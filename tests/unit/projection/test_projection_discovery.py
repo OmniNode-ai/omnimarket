@@ -21,6 +21,7 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
+import yaml
 
 from omnimarket.projection.discovery import (
     ALLOWED_SCHEMAS,
@@ -312,6 +313,40 @@ class TestBuildProjectionTopicMap:
         assert cfg.order_by == "created_at DESC"
         assert cfg.freshness_column == "created_at"
         assert "*" not in cfg.columns
+
+    def test_delegation_contract_exposes_dashboard_projection_topics(self) -> None:
+        topic_map = build_projection_topic_map()
+
+        expected_topics = {
+            "delegation",
+            "onex.snapshot.projection.delegation.decisions.v1",
+            "onex.snapshot.projection.delegation.summary.v1",
+            "onex.snapshot.projection.delegation.savings.v1",
+            "onex.snapshot.projection.delegation.model-routing.v1",
+            "onex.snapshot.projection.delegation.quality-gate.v1",
+            "onex.snapshot.projection.delegation.token-usage.v1",
+        }
+
+        assert expected_topics.issubset(topic_map)
+        assert topic_map["delegation"].table == "delegation_events"
+        assert (
+            topic_map["onex.snapshot.projection.delegation.savings.v1"].table
+            == "projection_delegation_savings"
+        )
+        assert topic_map[
+            "onex.snapshot.projection.delegation.model-routing.v1"
+        ].json_columns == ("rows", "by_model", "decision_traces")
+
+    def test_delegation_reducer_subscribes_to_canonical_terminal_events(self) -> None:
+        contract_path = (
+            Path(__file__).parents[3]
+            / "src/omnimarket/nodes/node_projection_delegation/contract.yaml"
+        )
+        contract = yaml.safe_load(contract_path.read_text())
+        topics = set(contract["event_bus"]["subscribe_topics"])
+
+        assert "onex.evt.omnibase-infra.delegation-completed.v1" in topics
+        assert "onex.evt.omnibase-infra.delegation-failed.v1" in topics
 
     def test_multiple_projection_api_exposures_are_registered(
         self, tmp_path: Path

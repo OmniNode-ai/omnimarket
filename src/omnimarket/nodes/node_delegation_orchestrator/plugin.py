@@ -28,7 +28,7 @@ import contextlib
 import logging
 import time
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, cast
 
 import yaml
 from omnibase_infra.runtime.contract_topic_router import (
@@ -65,6 +65,37 @@ _CONTRACT_DATA: dict[str, object] = (
     _contract_raw if isinstance(_contract_raw, dict) else {}
 )
 _TOPIC_ROUTER: dict[str, str] = build_topic_router_from_contract(_CONTRACT_DATA)
+_DELEGATION_CONSUMER_RUNTIME_PROFILES = frozenset({"main", "default"})
+
+
+def _configured_runtime_profile(config: ModelDomainPluginConfig) -> str:
+    runtime_profile = cast("str", config.runtime_profile)
+    return runtime_profile.strip().lower()
+
+
+def _owns_delegation_orchestration_consumers(profile: str) -> bool:
+    return profile.strip().lower() in _DELEGATION_CONSUMER_RUNTIME_PROFILES
+
+
+def _build_delegation_result_applier(
+    *,
+    event_bus: Any,
+    output_topic: str,
+    published_events_map: dict[str, str],
+    publish_topics: list[str],
+) -> Any:
+    """Build the plugin-managed applier from the delegation contract."""
+    from omnibase_infra.runtime.service_dispatch_result_applier import (
+        DispatchResultApplier,
+    )
+
+    return DispatchResultApplier(
+        event_bus=event_bus,
+        output_topic=output_topic,
+        topic_router=_TOPIC_ROUTER,
+        output_topic_map=published_events_map,
+        allowed_output_topics=publish_topics,
+    )
 
 
 class PluginDelegation:
@@ -73,6 +104,11 @@ class PluginDelegation:
     Wires the three delegation nodes (orchestrator, routing reducer,
     quality gate reducer) into the runtime kernel. Stateless — no
     external resources beyond the event bus.
+
+    NOTE: consumed cross-repo by omnibase_infra/runtime/service_kernel.py
+    (plugin_registry.register(PluginDelegation())). Static analysis tools
+    that scan only omnimarket will show zero importers — this is a false
+    positive. Do not delete without first removing the service_kernel wiring.
     """
 
     def __init__(self) -> None:
@@ -163,7 +199,7 @@ class PluginDelegation:
         self,
         config: ModelDomainPluginConfig,
     ) -> ModelDomainPluginResult:
-        """Wire delegation dispatchers into the MessageDispatchEngine."""
+        """Defer dispatcher route registration to contract auto-wiring."""
         start_time = time.time()
 
         if config.container.service_registry is None:
@@ -188,49 +224,19 @@ class PluginDelegation:
                 reason="dispatch_engine not available",
             )
 
-        try:
-            from omnimarket.nodes.node_delegation_orchestrator.wiring import (
-                wire_delegation_dispatchers,
-            )
-
-            dispatch_summary = await wire_delegation_dispatchers(
-                container=config.container,
-                engine=config.dispatch_engine,
-                correlation_id=config.correlation_id,
-                event_bus=config.event_bus,
-            )
-
-            duration = time.time() - start_time
-            logger.info(
-                "Delegation dispatchers wired into engine (correlation_id=%s)",
-                config.correlation_id,
-                extra={
-                    "dispatchers": dispatch_summary.get("dispatchers", []),
-                    "routes": dispatch_summary.get("routes", []),
-                },
-            )
-
-            self._dispatcher_wiring_succeeded = True
-            return ModelDomainPluginResult(
-                plugin_id=self.plugin_id,
-                success=True,
-                message="Delegation dispatchers wired into engine",
-                resources_created=list(dispatch_summary.get("dispatchers", [])),
-                duration_seconds=duration,
-            )
-
-        except Exception as e:
-            duration = time.time() - start_time
-            logger.exception(
-                "Failed to wire delegation dispatchers: %s",
-                sanitize_error_message(e),
-                extra={"correlation_id": str(config.correlation_id)},
-            )
-            return ModelDomainPluginResult.failed(
-                plugin_id=self.plugin_id,
-                error_message=sanitize_error_message(e),
-                duration_seconds=duration,
-            )
+        duration = time.time() - start_time
+        self._dispatcher_wiring_succeeded = True
+        logger.info(
+            "Delegation dispatcher wiring deferred to contract auto-wiring "
+            "(correlation_id=%s)",
+            config.correlation_id,
+        )
+        return ModelDomainPluginResult(
+            plugin_id=self.plugin_id,
+            success=True,
+            message="Delegation dispatcher routes are contract-managed",
+            duration_seconds=duration,
+        )
 
     async def start_consumers(
         self,
@@ -239,6 +245,22 @@ class PluginDelegation:
         """Start event consumers via EventBusSubcontractWiring."""
         start_time = time.time()
         correlation_id = config.correlation_id
+        runtime_profile = _configured_runtime_profile(config)
+
+        if not _owns_delegation_orchestration_consumers(runtime_profile):
+            logger.info(
+                "Skipping delegation orchestration consumer startup for runtime "
+                "profile '%s' (correlation_id=%s)",
+                runtime_profile,
+                correlation_id,
+            )
+            return ModelDomainPluginResult.skipped(
+                plugin_id=self.plugin_id,
+                reason=(
+                    "runtime profile does not own delegation orchestration "
+                    f"consumers: {runtime_profile}"
+                ),
+            )
 
         if not (self._handler_wiring_succeeded and self._dispatcher_wiring_succeeded):
             logger.warning(
@@ -325,11 +347,11 @@ class PluginDelegation:
 
             # DispatchResultApplier uses config.event_bus for publish_envelope
             # (publisher-only path, compatible with ProtocolEventBusPublisher).
-            result_applier = DispatchResultApplier(
+            result_applier = _build_delegation_result_applier(
                 event_bus=config.event_bus,
                 output_topic=config.output_topic,
-                topic_router=_TOPIC_ROUTER,
-                output_topic_map=published_events_map,
+                published_events_map=published_events_map,
+                publish_topics=subcontract.publish_topics,
             )
 
             if config.container.service_registry is not None:
@@ -359,92 +381,10 @@ class PluginDelegation:
                 node_name="delegation-orchestrator",
             )
 
-            from omnimarket.nodes.node_delegation_orchestrator.delegation_intent_bridge import (
-                DelegationIntentBridge,
-            )
-            from omnimarket.nodes.node_delegation_orchestrator.wiring import (
-                wire_delegation_bridge,
-            )
-
-            # Resolve the bridge registered by PluginLlm (has real LlmCallerDelegation).
-            # Fall back to None so routing/quality-gate intents still work without LLM.
-            llm_caller = None
-            if config.container.service_registry is not None:
-                try:
-                    existing_bridge = (
-                        await config.container.service_registry.resolve_service(
-                            DelegationIntentBridge
-                        )
-                    )
-                    llm_caller = existing_bridge.llm_caller
-                    logger.info(
-                        "PluginDelegation: resolved LlmCallerDelegation from container "
-                        "(correlation_id=%s)",
-                        correlation_id,
-                    )
-                except Exception:
-                    logger.debug(
-                        "PluginDelegation: DelegationIntentBridge not in container — "
-                        "inference intents will be disabled (correlation_id=%s)",
-                        correlation_id,
-                    )
-
-            bridge_result = await wire_delegation_bridge(
-                event_bus=config.event_bus,
-                llm_caller=llm_caller,
-            )
-            logger.info(
-                "DelegationIntentBridge wired llm_caller=%s (correlation_id=%s): %s",
-                type(llm_caller).__name__ if llm_caller else "None",
-                correlation_id,
-                {k: v for k, v in bridge_result.items() if k != "bridge"},
-            )
-
-            # Register DirectBridgeDelegationDispatchPort in the container so that
-            # ContainerBackedDelegationDispatchPort (injected into HandlerDelegateSkill
-            # at auto-wiring time) can lazy-resolve it at first dispatch() call.
-            # This drives the delegation chain in-process without Kafka round-trips.
-            wired_bridge = bridge_result.get("bridge")
-            if (
-                wired_bridge is not None
-                and config.container.service_registry is not None
-            ):
-                try:
-                    from omnibase_core.enums import EnumInjectionScope
-
-                    from omnimarket.nodes.node_delegate_skill_orchestrator.ports.port_direct_bridge_dispatch import (
-                        DirectBridgeDelegationDispatchPort,
-                    )
-                    from omnimarket.nodes.node_delegation_orchestrator.wiring import (
-                        get_shared_delegation_workflow_handler,
-                    )
-
-                    workflow_handler = get_shared_delegation_workflow_handler()
-                    direct_port = DirectBridgeDelegationDispatchPort(
-                        workflow=workflow_handler,
-                        bridge=wired_bridge,  # type: ignore[arg-type]
-                    )
-                    await config.container.service_registry.register_instance(
-                        interface="DirectBridgeDelegationDispatchPort",
-                        instance=direct_port,
-                        scope=EnumInjectionScope.GLOBAL,
-                        metadata={
-                            "description": "In-process delegation dispatch port (bridge-backed)",
-                        },
-                    )
-                    logger.info(
-                        "DirectBridgeDelegationDispatchPort registered in container "
-                        "(correlation_id=%s)",
-                        correlation_id,
-                    )
-                except Exception as _exc:
-                    logger.warning(
-                        "Failed to register DirectBridgeDelegationDispatchPort: %s "
-                        "(correlation_id=%s)",
-                        _exc,
-                        correlation_id,
-                    )
-
+            # The three intermediate intent topics are consumed natively by the
+            # routing reducer, LLM call effect, and quality gate reducer as their
+            # own bus consumers (OMN-12294). The orchestrator only publishes
+            # intents and consumes result events; no in-process bridge.
             self._wiring = wiring
 
             logger.info(

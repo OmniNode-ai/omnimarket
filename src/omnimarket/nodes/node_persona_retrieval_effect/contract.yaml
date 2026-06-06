@@ -16,6 +16,28 @@ handler:
   class: NodePersonaRetrievalEffect
   input_model: omnimarket.nodes.node_persona_retrieval_effect.models.model_persona_retrieval_request.ModelPersonaRetrievalRequest
 
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  runtime_profiles: [effects]
+
+runtime_dispatch:
+  command_topic: onex.cmd.omnimemory.persona-retrieval.v1
+  terminal_events:
+    success: onex.evt.omnimemory.persona-retrieval-completed.v1
+    failure: onex.evt.omnimemory.persona-retrieval-failed.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimemory.persona-retrieval.v1
+  publish_topics:
+    - onex.evt.omnimemory.persona-retrieval-completed.v1
+    - onex.evt.omnimemory.persona-retrieval-failed.v1
+
+externally_consumed_topics:
+  - onex.evt.omnimemory.persona-retrieval-completed.v1
+  - onex.evt.omnimemory.persona-retrieval-failed.v1
+
 io_operations:
   - operation_type: "database_read"
     atomic: false

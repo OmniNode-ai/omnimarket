@@ -15,6 +15,7 @@ class EnumSwarmCapability(StrEnum):
     PLANNING = "planning"
     SYNTHESIS = "synthesis"
     GENERAL = "general"
+    EMBEDDINGS = "embeddings"
 
 
 class EnumEndpointStatus(StrEnum):

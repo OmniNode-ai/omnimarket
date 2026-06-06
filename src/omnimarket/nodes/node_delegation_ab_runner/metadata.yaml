@@ -1,0 +1,25 @@
+name: node_delegation_ab_runner
+version: "1.0.0"
+description: "A/B harness — baseline frontier model vs OmniNode delegated routing, per-path tokens/cost/latency/quality"
+omnibase_core_compat: ">=0.40.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_delegation_ab_runner: "omnimarket.nodes.node_delegation_ab_runner"
+capabilities:
+  standalone: false
+  full_runtime: true
+  requires_network: true
+  requires_repo: false
+  requires_secrets: true
+  requires_docker: false
+  side_effect_class: external_api
+dependencies:
+  - "omnibase_core>=0.40.0"
+  - "omnibase-compat>=0.3.1"
+  - "httpx>=0.27"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["effect", "ab-compare", "delegation", "cost", "deterministic-proof"]
+pack: "delegation"
+display_name: "Delegation A/B Runner"
+node_role: "effect"

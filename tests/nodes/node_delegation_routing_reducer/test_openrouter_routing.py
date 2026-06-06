@@ -265,6 +265,23 @@ class TestBifrostBackendRefApiKeyEnv:
         backends = _load_bifrost_endpoints()
         assert "openrouter-glm-flash" not in backends
 
+    def test_api_key_ref_preserved_when_env_present_but_empty(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("OPENROUTER_API_KEY", "")
+        bifrost_file = tmp_path / "bifrost.yaml"
+        bifrost_file.write_text(_BIFROST_WITH_OPENROUTER)
+        monkeypatch.setenv("BIFROST_CONTRACT_PATH", str(bifrost_file))
+
+        from omnimarket.nodes.node_delegation_routing_reducer.handlers.handler_delegation_routing import (
+            _load_bifrost_endpoints,
+        )
+
+        backends = _load_bifrost_endpoints()
+        ref = backends.get("openrouter-glm-flash")
+        assert ref is not None
+        assert ref.api_key_ref == "OPENROUTER_API_KEY"
+
     def test_extra_headers_loaded(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:

@@ -1,6 +1,6 @@
 name: node_epic_team_orchestrator
 version: "1.0.0"
-description: "Multi-repo sprint orchestrator: epic → DAG → wave dispatch → stall recovery → DoD gate (STUB)"
+description: "Multi-repo sprint orchestrator: epic → DAG → wave dispatch → stall recovery → DoD gate"
 omnibase_core_compat: ">=0.40.0,<1.0.0"
 entry_points:
   onex.nodes:

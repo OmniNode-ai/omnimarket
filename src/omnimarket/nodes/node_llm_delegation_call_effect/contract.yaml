@@ -23,8 +23,8 @@ description: |
   cost telemetry derived from the pricing manifest, and typed terminal event
   emission on success, escalation, or total failure.
 
-  Endpoints are resolved from env vars declared in this contract — no raw
-  URL strings in handler code.
+  Endpoint authority is resolved by routing/contract configuration before this
+  effect runs; the handler consumes the route-supplied endpoint URL.
 
 # === RUNTIME PROFILES ===
 descriptor:
@@ -61,24 +61,10 @@ output_state:
   required: ["success", "request_id"]
   optional: ["content", "tokens_in", "tokens_out", "latency_ms", "actual_cost_usd", "failure_class", "error_message"]
 
-# === ENV VARS (resolved at runtime — never hardcoded URLs) ===
-# Each endpoint_ref in ModelLlmDelegationCallRequest is the name of one of these env vars.
-env_vars:
-  - name: "LLM_LOCAL_PRIMARY_URL"
-    required: false
-    description: "Base URL for primary local inference endpoint"
-  - name: "LLM_LOCAL_FAST_URL"
-    required: false
-    description: "Base URL for fast local inference endpoint"
-  - name: "LLM_CODER_FAST_URL"
-    required: false
-    description: "Base URL for fast coder inference endpoint"
-  - name: "LLM_GLM_URL"
-    required: false
-    description: "Base URL for GLM cloud endpoint"
-  - name: "LLM_REMOTE_FRONTIER_URL"
-    required: false
-    description: "Base URL for frontier remote endpoint"
+# Endpoint authority is resolved by the routing/contract layer before this
+# effect runs. ModelLlmDelegationCallRequest.endpoint_ref carries the resolved
+# endpoint URL for compatibility with the existing wire field name.
+env_vars: []
 
 # =============================================================================
 # EVENT BUS SUBCONTRACT - Runtime Routing Layer
@@ -91,8 +77,10 @@ event_bus:
 
   subscribe_topics:
     - "onex.cmd.omnimarket.delegation-execute.v1"
+    - "onex.cmd.omnibase-infra.delegation-inference-request.v1"
 
   publish_topics:
+    - "onex.evt.omnibase-infra.inference-response.v1"
     - "onex.evt.omnimarket.delegation-call-completed.v1"
     - "onex.evt.omnimarket.delegation-escalation-triggered.v1"
     - "onex.evt.omnimarket.delegation-all-tiers-failed.v1"
@@ -101,7 +89,10 @@ event_bus:
   subscribe_topic_metadata:
     "onex.cmd.omnimarket.delegation-execute.v1":
       schema_ref: "omnimarket.nodes.node_llm_delegation_call_effect.models.model_llm_delegation_call_request.ModelLlmDelegationCallRequest"
-      description: "Command to execute a single LLM delegation call for the given model/endpoint."
+      description: "Command to execute a single LLM delegation call for the given model and route-supplied endpoint URL."
+    "onex.cmd.omnibase-infra.delegation-inference-request.v1":
+      schema_ref: "omnibase_core.models.delegation.wire.ModelInferenceIntent"
+      description: "Inference intent from the delegation orchestrator. Handler resolves base_url directly."
 
   publish_topic_metadata:
     "onex.evt.omnimarket.delegation-call-completed.v1":
@@ -116,6 +107,9 @@ event_bus:
     "onex.evt.omnimarket.delegation-model-degraded.v1":
       schema_ref: "omnimarket.models.delegation.llm_cost_routing.model_llm_delegation_model_degraded_event.ModelLlmDelegationModelDegradedEvent"
       description: "Emitted when a model exceeds the escalation rate threshold for a task type."
+    "onex.evt.omnibase-infra.inference-response.v1":
+      schema_ref: "omnibase_core.models.delegation.wire.ModelInferenceResponseData"
+      description: "Inference response published to the orchestrator's subscribe topic after handling ModelInferenceIntent."
 
 externally_consumed_topics:
   - "onex.evt.omnimarket.delegation-call-completed.v1"
@@ -125,13 +119,40 @@ externally_consumed_topics:
 
 # === HANDLER ROUTING ===
 handler_routing:
-  routing_strategy: "operation_match"
+  routing_strategy: "payload_type_match"
   handlers:
     - operation: "execute_delegation_call"
+      event_model:
+        name: "ModelLlmDelegationCallRequest"
+        module: "omnimarket.nodes.node_llm_delegation_call_effect.models.model_llm_delegation_call_request"
       handler:
         name: "HandlerLlmDelegationCall"
         module: "omnimarket.nodes.node_llm_delegation_call_effect.handlers.handler_llm_delegation_call"
+      description: "Execute one LLM delegation call (swarm/A2A path); handle() returns the terminal event (call-completed or all-tiers-failed), runtime auto-publishes via published_events (OMN-12409/F-a)."
+    - operation: "execute_inference_intent"
+      event_model:
+        name: "ModelInferenceIntent"
+        module: "omnibase_core.models.delegation.wire"
+      handler:
+        name: "HandlerInferenceIntent"
+        module: "omnimarket.nodes.node_llm_delegation_call_effect.handlers.handler_inference_intent"
+      description: "Handle ModelInferenceIntent from delegation orchestrator; publish ModelInferenceResponseData to inference-response.v1 (OMN-12294). event_model type-scopes the dispatcher + validates the payload before handle()."
   default_handler: "HandlerLlmDelegationCall"
+
+# Maps HandlerInferenceIntent's returned model to its publish topic so the
+# runtime dispatch-result applier routes ModelInferenceResponseData to
+# inference-response.v1. event_type is the Model-prefix-stripped short class
+# name the applier looks up (OMN-12294).
+published_events:
+  - event_type: "InferenceResponseData"
+    topic: "onex.evt.omnibase-infra.inference-response.v1"
+    description: "Inference response emitted by HandlerInferenceIntent for the delegation orchestrator."
+  - event_type: "LlmDelegationCompletedEvent"
+    topic: "onex.evt.omnimarket.delegation-call-completed.v1"
+    description: "Terminal call-completed event returned by HandlerLlmDelegationCall.handle() on success."
+  - event_type: "LlmDelegationAllTiersFailedEvent"
+    topic: "onex.evt.omnimarket.delegation-all-tiers-failed.v1"
+    description: "Terminal all-tiers-failed event returned by HandlerLlmDelegationCall.handle() on unhealthy endpoint."
 
 # === DEPENDENCIES ===
 dependencies:

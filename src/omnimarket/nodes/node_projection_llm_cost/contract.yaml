@@ -3,6 +3,7 @@ name: projection_llm_cost
 contract_version: {major: 1, minor: 0, patch: 0}
 node_type: reducer
 node_version: {major: 1, minor: 0, patch: 0}
+input_model: omnimarket.nodes.node_projection_llm_cost.handlers.handler_projection_llm_cost.ModelLlmCallCompletedEvent
 description: >
   Projects llm-call-completed events into the llm_cost_aggregates table.
   SOW WARN blocker — cost tracking must be operational for budget compliance.
@@ -23,6 +24,7 @@ handler_routing:
         name: HandlerProjectionLlmCost
         module: omnimarket.nodes.node_projection_llm_cost.handlers.handler_projection_llm_cost
       handler_module: omnimarket.nodes.node_projection_llm_cost.handlers.handler_projection_llm_cost
+      event_model: omnimarket.nodes.node_projection_llm_cost.handlers.handler_projection_llm_cost.ModelLlmCallCompletedEvent
 
 env_dependencies:
   POSTGRES_HOST:
@@ -56,6 +58,9 @@ event_bus:
     - onex.evt.omniintelligence.llm-call-completed.v1
   publish_topics:
     - onex.evt.omnimarket.projection-llm-cost-applied.v1
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.projection-llm-cost-applied.v1
 
 config:
   OMNI_PRICING_MANIFEST_PATH:

@@ -11,9 +11,15 @@ from omnimarket.nodes.node_delegate_skill_orchestrator.models.model_delegate_ski
     ModelDelegateSkillResponse,
     ModelDelegateSkillResponseMetrics,
 )
+from omnimarket.nodes.node_delegate_skill_orchestrator.models.model_runtime_delegation_dispatch_config import (
+    ModelRuntimeDelegationDispatchConfig,
+    ModelRuntimeDelegationDispatchTopics,
+)
 
 __all__ = [
     "ModelDelegateSkillRequest",
     "ModelDelegateSkillResponse",
     "ModelDelegateSkillResponseMetrics",
+    "ModelRuntimeDelegationDispatchConfig",
+    "ModelRuntimeDelegationDispatchTopics",
 ]

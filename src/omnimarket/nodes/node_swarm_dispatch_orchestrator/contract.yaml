@@ -26,6 +26,13 @@ handler_routing:
       event_model:
         name: ModelSwarmDispatchRequest
         module: omnimarket.nodes.node_swarm_dispatch_orchestrator.models.model_swarm_dispatch_request
+      message_category: "COMMAND"
+      event_type: "omnimarket.swarm-dispatch"
+    - handler:
+        name: HandlerSwarmDispatchOrchestrator
+        module: omnimarket.nodes.node_swarm_dispatch_orchestrator.handlers.handler_swarm_dispatch
+      message_category: "EVENT"
+      operation: "fsm.events"
 
 descriptor:
   node_archetype: orchestrator

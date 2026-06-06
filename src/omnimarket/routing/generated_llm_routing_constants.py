@@ -11,9 +11,9 @@ from __future__ import annotations
 
 from enum import StrEnum, unique
 
-MODEL_REGISTRY_VERSION = "1.0.0"
-PRICING_MANIFEST_VERSION = "2026-05-23-initial"
-REGISTRY_OBSERVED_AT = "2026-05-23T00:00:00Z"
+MODEL_REGISTRY_VERSION = "1.1.0"
+PRICING_MANIFEST_VERSION = "2026-05-30-qwen36-dsv4-gemini-openrouter"
+REGISTRY_OBSERVED_AT = "2026-05-30T00:00:00Z"
 GENERATED_FROM = ("src/omnimarket/data/model_registry/model_registry_v1.yaml",)
 
 
@@ -25,7 +25,10 @@ class EnumLogicalModelKey(StrEnum):
     CLAUDE_SONNET_4_6 = "claude-sonnet-4-6"
     DEEPSEEK_R1_14B = "deepseek-r1-14b"
     DEEPSEEK_R1_32B = "deepseek-r1-32b"
+    DS_V4_FLASH = "ds-v4-flash"
+    GEMINI_2_0_FLASH = "gemini-2.0-flash"
     LLAMA_3_3_70B_FREE = "llama-3.3-70b-free"
+    OPENROUTER_QWEN3_CODER_480B = "openrouter-qwen3-coder-480b"
     QWEN3_CODER_30B = "qwen3-coder-30b"
     QWEN3_NEXT_80B = "qwen3-next-80b"
     QWEN3_6_35B = "qwen3.6-35b"
@@ -36,9 +39,11 @@ class EnumLlmEndpointRef(StrEnum):
     """Endpoint reference names declared by registry/topology contracts."""
 
     ANTHROPIC_DELEGATION_URL = "ANTHROPIC_DELEGATION_URL"
+    GEMINI_API_URL = "GEMINI_API_URL"
     LLM_CODER_FAST_URL = "LLM_CODER_FAST_URL"
     LLM_CODER_URL = "LLM_CODER_URL"
     LLM_DEEPSEEK_R1_URL = "LLM_DEEPSEEK_R1_URL"
+    LLM_DS_V4_FLASH_URL = "LLM_DS_V4_FLASH_URL"
     LLM_QWEN3_NEXT_URL = "LLM_QWEN3_NEXT_URL"
     OPENROUTER_URL = "OPENROUTER_URL"
 

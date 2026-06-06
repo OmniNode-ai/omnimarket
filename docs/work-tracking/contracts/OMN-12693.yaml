@@ -1,0 +1,59 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-12693"
+title: "Workstream J / Gate 2: required dead-node gate"
+summary: >
+  Adds required dead-node enforcement for omnimarket by extending the node drift
+  gate with contract-level producer/consumer shape checks, promoting Runtime
+  Sweep to import validation, and removing the contract-declared shortcut from
+  the unimported-handler gate.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-node-drift-liveness-gate"
+    description: "Node drift gate checks all nodes with orphan/dead-node liveness enabled."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run python scripts/validate_node_drift.py --check-all --check-orphan-nodes --strict --json"
+  - id: "dod-runtime-sweep-import-check"
+    description: "Runtime Sweep validates entry-point modules, contract handlers, and importable model refs."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run python scripts/ci/run_runtime_sweep.py --import-check"
+  - id: "dod-unimported-handler-boundary"
+    description: "Unimported-handler gate no longer treats contract metadata as Python import wiring."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run python scripts/ci/check_unimported_handlers.py"
+  - id: "dod-focused-tests-and-lint"
+    description: "Focused tests, lint, workflow syntax, and whitespace checks pass."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/unit/scripts/test_validate_node_drift.py tests/ci/test_check_unimported_handlers.py tests/ci/test_run_runtime_sweep.py -q"
+      - check_type: "command"
+        check_value: "uv run ruff check scripts/validate_node_drift.py scripts/ci/check_unimported_handlers.py scripts/ci/run_runtime_sweep.py tests/unit/scripts/test_validate_node_drift.py tests/ci/test_check_unimported_handlers.py tests/ci/test_run_runtime_sweep.py"
+      - check_type: "command"
+        check_value: "actionlint -shellcheck= .github/workflows/node-drift-gate.yml .github/workflows/ci.yml"
+      - check_type: "command"
+        check_value: "git diff --check"
+  - id: "dod-required-contexts"
+    description: "omnimarket dev branch protection requires node-drift-gate and Runtime Sweep."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "gh api repos/OmniNode-ai/omnimarket/branches/dev/protection --jq '.required_status_checks.contexts'"
+  - id: "dod-deploy-gate-no-runtime-mutation"
+    description: "CI/tooling/contract metadata enforcement only; no live runtime deploy, restart, .201 mutation, service config change, or production data migration is required."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "printf '%s\n' 'deploy gate: no live deploy, restart, .201 mutation, or production data mutation required for OMN-12693'"

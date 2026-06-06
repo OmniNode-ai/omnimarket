@@ -23,13 +23,12 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
-import os
 import time
 from collections.abc import Callable, MutableMapping
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import ClassVar
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from omnibase_core.models.delegation.model_agent_task_lifecycle_event import (
     ModelAgentTaskLifecycleEvent,
@@ -37,6 +36,8 @@ from omnibase_core.models.delegation.model_agent_task_lifecycle_event import (
 from omnibase_core.models.delegation.model_invocation_command import (
     ModelInvocationCommand,
 )
+from omnibase_core.models.dispatch.model_handler_output import ModelHandlerOutput
+from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
 from omnibase_infra.event_bus.topic_constants import (
     TOPIC_DELEGATION_COMPLETED,
     TOPIC_DELEGATION_FAILED,
@@ -94,6 +95,18 @@ from omnimarket.nodes.node_delegation_routing_reducer.models.model_routing_decis
 )
 from omnimarket.pricing import estimate_baseline_cost_usd, get_manifest_version_int
 
+# Max tier escalation attempts for infra errors (auth, timeout, connection refused).
+# Kept separate from handle_gate_result's max_escalation_attempts so callers can
+# tune them independently.
+_MAX_INFERENCE_ESCALATION_ATTEMPTS: int = 2
+_INFERENCE_ERROR_EXCLUDED_TIERS: frozenset[str] = frozenset({"cli_agents"})
+_NON_RETRYABLE_INFERENCE_ERROR_MARKERS: frozenset[str] = frozenset(
+    {
+        "finish_reason=length",
+        "empty message content",
+    }
+)
+
 # Temperature by task type (Task 10, OMN-7040)
 _TASK_TEMPERATURE: dict[str, float] = {
     "test": 0.3,
@@ -102,26 +115,6 @@ _TASK_TEMPERATURE: dict[str, float] = {
 }
 
 _logger = logging.getLogger(__name__)
-
-
-def _resolve_api_key(decision: ModelRoutingDecision) -> str | None:
-    """Resolve api_key from the routing decision's api_key_ref env var name.
-
-    Returns None for local backends (no api_key_ref) or when the env var
-    is unset. Logs a warning when a ref is declared but the env var is missing.
-    """
-    ref = decision.api_key_ref
-    if not ref:
-        return None
-    value = os.environ.get(
-        ref
-    )  # ONEX_FLAG_EXEMPT: resolves contract-declared api_key_ref at runtime
-    if not value:
-        _logger.warning(
-            "api_key_ref=%s declared but env var is unset; proceeding without api_key",
-            ref,
-        )
-    return value or None
 
 
 # Valid state transitions: from_state -> set of valid to_states
@@ -136,6 +129,7 @@ _VALID_TRANSITIONS: dict[EnumDelegationState, frozenset[EnumDelegationState]] = 
             EnumDelegationState.ROUTED,  # OMN-10794 — schema-repair re-prompt
             EnumDelegationState.EXECUTING,
             EnumDelegationState.INFERENCE_COMPLETED,
+            EnumDelegationState.ESCALATING,  # infra error on current tier → try next
             EnumDelegationState.COMPLETED,
             EnumDelegationState.FAILED,
         }
@@ -172,6 +166,14 @@ def _record_inference_response(
     workflow.inference_completion_tokens = response.completion_tokens
     workflow.inference_total_tokens = response.total_tokens
     workflow.inference_llm_call_id = response.llm_call_id
+
+
+def _should_escalate_inference_error(error_message: str) -> bool:
+    """Return whether an inference error should retry on a higher tier."""
+    normalized = error_message.lower()
+    return not any(
+        marker in normalized for marker in _NON_RETRYABLE_INFERENCE_ERROR_MARKERS
+    )
 
 
 def _inference_timeout_seconds(workflow: DelegationWorkflowState) -> float:
@@ -250,7 +252,7 @@ def _evaluate_compliance(
             temperature=temperature,
             timeout_seconds=_inference_timeout_seconds(workflow),
             correlation_id=workflow.correlation_id,
-            api_key=_resolve_api_key(workflow.routing_decision),
+            api_key_ref=workflow.routing_decision.api_key_ref,
             extra_headers=workflow.routing_decision.extra_headers,
         )
     ]
@@ -387,6 +389,11 @@ class HandlerDelegationWorkflow:
         cid = decision.correlation_id
         workflow = self._workflows.get(cid)
         if workflow is None:
+            _logger.warning(
+                "Ignoring routing decision without active delegation workflow "
+                "(correlation_id=%s)",
+                cid,
+            )
             return []
 
         if workflow.state == EnumDelegationState.RECEIVED:
@@ -429,7 +436,7 @@ class HandlerDelegationWorkflow:
                 temperature=temperature,
                 timeout_seconds=_inference_timeout_seconds(workflow),
                 correlation_id=cid,
-                api_key=_resolve_api_key(decision),
+                api_key_ref=decision.api_key_ref,
                 extra_headers=decision.extra_headers,
             )
         ]
@@ -461,17 +468,85 @@ class HandlerDelegationWorkflow:
             return []
 
         assert workflow.request is not None
-        assert workflow.routing_decision is not None
+        if workflow.routing_decision is None:
+            return []
 
         if response.error_message:
-            self._transition(workflow, EnumDelegationState.FAILED)
-            _record_inference_response(workflow, response)
             elapsed_ms = (time.monotonic_ns() - workflow.started_at_ns) // 1_000_000
+            model_used = response.model_used or workflow.routing_decision.selected_model
+
+            # Record this tier's failed attempt in escalation history before
+            # deciding whether to escalate or terminate.
+            workflow.escalation_history.append(
+                ModelDelegationEscalationAttempt(
+                    tier_name=workflow.current_tier_name or "unknown",
+                    model_used=model_used,
+                    quality_score=0.0,
+                    failure_reasons=(response.error_message,),
+                    latency_ms=elapsed_ms,
+                    fallback_recommended=True,
+                    attempted_at=datetime.now(UTC),
+                    routing_decision_id=workflow.routing_decision.selected_backend_id,
+                )
+            )
+
+            # Infra errors (auth failure, connection refused, timeout) are
+            # retryable at the next tier — attempt escalation before terminal FAILED.
+            terminal_failure_reason: str | None = None
+            next_tier: str | None = None
+
+            should_escalate_error = _should_escalate_inference_error(
+                response.error_message
+            )
+            if not should_escalate_error:
+                terminal_failure_reason = "non_retryable_inference_response"
+            elif workflow.escalation_count >= _MAX_INFERENCE_ESCALATION_ATTEMPTS:
+                terminal_failure_reason = "max_escalation_attempts_reached"
+            elif workflow.current_tier_name is None:
+                terminal_failure_reason = "current_tier_unknown"
+            else:
+                next_tier = next_eligible_tier(
+                    workflow.current_tier_name,
+                    _INFERENCE_ERROR_EXCLUDED_TIERS,
+                )
+                if next_tier is None:
+                    terminal_failure_reason = "no_higher_tier_available"
+
+            can_escalate = (
+                should_escalate_error
+                and terminal_failure_reason is None
+                and next_tier is not None
+            )
+
+            if can_escalate:
+                assert next_tier is not None
+                self._transition(workflow, EnumDelegationState.ESCALATING)
+                workflow.escalation_count += 1
+
+                workflow.inference_content = None
+                workflow.inference_model_used = None
+                workflow.inference_intent_in_flight = False
+                workflow.routing_decision = None
+
+                self._transition(workflow, EnumDelegationState.ROUTED)
+                assert workflow.request is not None
+                return [
+                    ModelRoutingIntent(
+                        payload=workflow.request,
+                        min_tier_name=next_tier,
+                    ),
+                ]
+
+            # No escalation possible: terminal FAILED.
+            _record_inference_response(workflow, response)
+            escalation_metadata = self._escalation_metadata(
+                workflow,
+                terminal_failure_reason=terminal_failure_reason,
+            )
             delegation_result = ModelDelegationResult(
                 correlation_id=response.correlation_id,
                 task_type=workflow.request.task_type,
-                model_used=response.model_used
-                or workflow.routing_decision.selected_model,
+                model_used=model_used,
                 endpoint_url=workflow.routing_decision.endpoint_url,
                 content=response.content,
                 quality_passed=False,
@@ -484,6 +559,7 @@ class HandlerDelegationWorkflow:
                 failure_reason=response.error_message,
                 tokens_to_compliance=workflow.accumulated_tokens,
                 compliance_attempts=workflow.compliance_attempts or 1,
+                **escalation_metadata,
             )
             compat_event = ModelTaskDelegatedEvent(
                 topic=TOPIC_DELEGATION_TASK_DELEGATED,
@@ -491,8 +567,7 @@ class HandlerDelegationWorkflow:
                 correlation_id=response.correlation_id,
                 session_id=None,
                 task_type=workflow.request.task_type,
-                delegated_to=response.model_used
-                or workflow.routing_decision.selected_model,
+                delegated_to=model_used,
                 model_name=workflow.routing_decision.selected_model,
                 quality_gate_passed=False,
                 quality_gates_failed=[response.error_message],
@@ -503,7 +578,15 @@ class HandlerDelegationWorkflow:
                 tokens_to_compliance=workflow.accumulated_tokens,
                 compliance_attempts=workflow.compliance_attempts or 1,
                 pricing_manifest_version=get_manifest_version_int(),
+                escalation_count=workflow.escalation_count,
+                escalation_history=tuple(
+                    attempt.model_dump(mode="json")
+                    for attempt in workflow.escalation_history
+                ),
+                routing_tiers_hash=self._routing_tiers_hash(),
+                attempts_count=workflow.escalation_count + 1,
             )
+            self._transition(workflow, EnumDelegationState.FAILED)
             return [
                 ModelDelegationEvent(
                     topic=TOPIC_DELEGATION_FAILED,
@@ -897,11 +980,77 @@ class HandlerDelegationWorkflow:
             compat_event,
         ]
 
-    async def handle(self, payload: object) -> None:
-        # Auto-wired by handler_routing for delegation.orchestrate alias generation.
-        # PluginDelegation's DispatcherDelegationRequest processes the real request
-        # first; this async no-op prevents TypeError when auto-wired dispatcher fires.
-        return None
+    async def handle(self, payload: object) -> list[BaseModel]:
+        """Route supported workflow payloads through the canonical FSM methods."""
+        if isinstance(payload, ModelEventEnvelope) or hasattr(payload, "payload"):
+            payload = payload.payload
+        if isinstance(payload, dict):
+            payload = self._coerce_payload_dict(payload)
+        if isinstance(payload, ModelDelegationRequest):
+            return list(self.handle_delegation_request(payload))
+        if isinstance(payload, ModelInvocationCommand):
+            return list(self.handle_invocation_command(payload))
+        if isinstance(payload, ModelRoutingDecision):
+            return list(self.handle_routing_decision(payload))
+        if isinstance(payload, ModelInferenceResponseData):
+            return list(self.handle_inference_response(payload))
+        if isinstance(payload, ModelQualityGateResult):
+            return list(self.handle_gate_result(payload))
+        if isinstance(payload, ModelAgentTaskLifecycleEvent):
+            return list(self.handle_agent_task_lifecycle(payload))
+        msg = f"Unsupported delegation workflow payload: {type(payload).__name__}"
+        raise ValueError(msg)
+
+    async def handle_async(self, payload: object) -> ModelHandlerOutput[None]:
+        """Runtime auto-wiring entrypoint that returns publishable handler output."""
+        events = await self.handle(payload)
+        return ModelHandlerOutput.for_orchestrator(
+            input_envelope_id=uuid4(),
+            correlation_id=self._coerce_payload_correlation_id(payload),
+            handler_id="node_delegation_orchestrator.workflow",
+            events=tuple(events),
+        )
+
+    @staticmethod
+    def _coerce_payload_correlation_id(payload: object) -> UUID:
+        candidate = getattr(payload, "correlation_id", None)
+        if candidate is None and isinstance(payload, ModelEventEnvelope):
+            candidate = payload.correlation_id
+        if candidate is None and hasattr(payload, "payload"):
+            candidate = getattr(payload.payload, "correlation_id", None)
+        if candidate is None and isinstance(payload, dict):
+            nested_payload = payload.get("payload")
+            candidate = payload.get("correlation_id")
+            if candidate is None and isinstance(nested_payload, dict):
+                candidate = nested_payload.get("correlation_id")
+        if isinstance(candidate, UUID):
+            return candidate
+        if isinstance(candidate, str) and candidate:
+            return UUID(candidate)
+        return uuid4()
+
+    @staticmethod
+    def _coerce_payload_dict(payload: dict[str, object]) -> BaseModel:
+        """Convert raw event-bus payload dictionaries into workflow models."""
+        nested_payload = payload.get("payload")
+        if isinstance(nested_payload, dict) and (
+            "event_type" in payload or "envelope_id" in payload
+        ):
+            return HandlerDelegationWorkflow._coerce_payload_dict(nested_payload)
+        if "lifecycle_type" in payload:
+            return ModelAgentTaskLifecycleEvent.model_validate(payload)
+        if "invocation_kind" in payload or "target_ref" in payload:
+            return ModelInvocationCommand.model_validate(payload)
+        if "selected_model" in payload or "selected_backend_id" in payload:
+            return ModelRoutingDecision.model_validate(payload)
+        if "model_used" in payload or "llm_call_id" in payload:
+            return ModelInferenceResponseData.model_validate(payload)
+        if "quality_score" in payload or "passed" in payload:
+            return ModelQualityGateResult.model_validate(payload)
+        if "prompt" in payload and "task_type" in payload:
+            return ModelDelegationRequest.model_validate(payload)
+        msg = "Unsupported delegation workflow payload dictionary"
+        raise ValueError(msg)
 
     @staticmethod
     def _render_lifecycle_content(

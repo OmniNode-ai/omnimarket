@@ -7,8 +7,15 @@ node_version: {major: 1, minor: 1, patch: 0}
 description: >
   Self-healing portable event publishing daemon. Accepts events via Unix
   domain socket, validates against a pluggable per-platform event registry,
-  queues with disk spool durability, and publishes to Kafka with circuit
-  breaker protection. Health endpoint responds within 100ms and never hangs.
+  and publishes to Kafka with circuit breaker protection. Durability is split
+  by declared per-topic tier: duty-critical / command / evidence topics use an
+  append-only durable outbox (acked replay outbox -> Kafka, truncate-on-ack,
+  never drop; outbox-full surfaces explicit backpressure to the caller), while
+  telemetry topics use a bounded in-memory queue + disk spool with drop-oldest
+  on overflow (bounded loss correct by design). Tier is a required per-topic
+  property in registries/topics.yaml; the registry fails fast on any fan-out
+  rule with no declared tier. Health endpoint responds within 100ms and never
+  hangs.
 
 handler_routing:
   handlers:
@@ -16,9 +23,28 @@ handler_routing:
         name: HandlerEmitDaemon
         module: omnimarket.nodes.node_emit_daemon.handlers.handler_emit_daemon
 
+input_model:
+  name: ModelEmitDaemonCommand
+  module: omnimarket.nodes.node_emit_daemon.models.model_daemon_state
+  description: Typed lifecycle command for start, stop, and health checks.
+output_model:
+  name: ModelEmitDaemonState
+  module: omnimarket.nodes.node_emit_daemon.models.model_daemon_state
+  description: Current daemon lifecycle state or completed transition event.
+
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.emit-daemon-lifecycle.v1
+  terminal_events:
+    success: onex.evt.omnimarket.emit-daemon-lifecycle-completed.v1
+    failure: onex.evt.omnimarket.emit-daemon-lifecycle-failed.v1
+  default_timeout_ms: 5000
+  max_timeout_ms: 30000
+
 descriptor:
   node_archetype: service
   purity: effectful
+  runtime_profiles:
+    - effects
   idempotent: false
   timeout_ms: 0  # long-running daemon, no timeout
 
@@ -51,11 +77,15 @@ self_healing:
     budget_ms: 100
 
 event_bus:
-  subscribe_topics: []
+  subscribe_topics:
+    - onex.cmd.omnimarket.emit-daemon-lifecycle.v1
   # Topics are driven by the event registry YAML (registries/topics.yaml).
   # This list mirrors the fan-out targets declared there so the dep-health
   # sweep can verify they are contract-declared (OMN-11061).
   publish_topics:
+    # Lifecycle management
+    - onex.evt.omnimarket.emit-daemon-lifecycle-completed.v1
+    - onex.evt.omnimarket.emit-daemon-lifecycle-failed.v1
     # Session events
     - onex.evt.omniclaude.session-started.v1
     - onex.evt.omniclaude.session-ended.v1

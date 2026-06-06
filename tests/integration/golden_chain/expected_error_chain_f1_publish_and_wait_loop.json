@@ -1,0 +1,20 @@
+{
+  "chain_name": "error_f1_publish_and_wait_loop",
+  "defect_id": "F1",
+  "description": "Error chain: publish_and_wait called from inside a running asyncio event loop (ADK --agent path) raises 'asyncio.run() cannot be called when another event loop is running'. OMN-12660.",
+  "trigger": "ADK agent calls publish_and_wait synchronously while an asyncio event loop is already running",
+  "location": "SEA pipeline publish_and_wait — sync surface that internally calls asyncio.run()",
+  "wrong_behavior": "RuntimeError: This event loop is already running — publish_and_wait hangs or raises before the delegation command reaches the bus",
+  "correct_behavior": "publish_and_wait detects a running loop and uses loop.run_until_complete() or equivalent non-blocking path; both sync and running-loop callers complete the same round-trip",
+  "branch_context": "Fix e0350d84 is on jonah/omn-12587-f1-loop-aware-publish, NOT on dev as of 2026-06-03",
+  "observable_signal": {
+    "error_type": "RuntimeError",
+    "message_pattern": "This event loop is already running",
+    "when": "ADK --agent invocation of publish_and_wait"
+  },
+  "failure_mode": "Delegation command never reaches bus; no consumer group event; SEA --agent returns immediately with no output",
+  "expected_error_type": "RuntimeError",
+  "regression_guard": "publish_and_wait must succeed when called from both a plain sync context AND from inside a running asyncio loop (e.g. ADK --agent). Both paths must complete the same round-trip.",
+  "test_requirement": "Test must exercise the running-loop path, not just a plain sync call",
+  "related_tickets": ["OMN-12660", "OMN-12587", "OMN-12588"]
+}

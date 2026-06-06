@@ -1,104 +1,19 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""Consumer-facing delegation request model.
-
-Distinct from the runtime-internal ``ModelDelegationRequest`` in omnibase_infra:
-consumers supply ``source``, ``cwd``, ``wait``, and ``metadata`` and never set
-the runtime-internal ``emitted_at`` / ``output_schema_key`` / ``compliance_budget``.
-The ``task_type`` Literal is the MVP taxonomy and must match the contract.yaml
-``allowed_task_types`` field.
-"""
+"""Compatibility re-export for the canonical delegate-skill request model."""
 
 from __future__ import annotations
 
-from typing import Literal
-from uuid import UUID, uuid4
-
-from pydantic import BaseModel, ConfigDict, Field, field_validator
-
-from omnimarket.events.delegation import (
+from omnimarket.models.delegation.wire.model_delegate_skill_request import (
+    DELEGATION_DEFAULT_MAX_TOKENS,
+    DELEGATION_MAX_TOKENS_HARD_LIMIT,
     EnumQualityContractMode,
-    validate_acceptance_criteria,
+    ModelDelegateSkillRequest,
 )
 
-
-class ModelDelegateSkillRequest(BaseModel):
-    """Typed delegation request from a registered adapter source."""
-
-    model_config = ConfigDict(frozen=True, extra="forbid")
-
-    prompt: str = Field(..., min_length=1, description="User prompt to delegate.")
-    task_type: Literal[
-        "test",
-        "document",
-        "research",
-        "code_generation",
-        "refactor",
-        "reasoning",
-        "complex_reasoning",
-        "planning",
-        "review",
-        "summarization",
-        "agent_delegation",
-        "escalation",
-    ] = Field(
-        ...,
-        description=(
-            "Task classification for routing. Must match contract allowed_task_types."
-        ),
-    )
-    source: Literal["claude-code", "codex"] = Field(
-        ...,
-        description="Registered adapter source.",
-    )
-    cwd: str | None = Field(default=None, description="Caller current directory.")
-    source_file_path: str | None = Field(
-        default=None,
-        description="File context for the delegation, if any.",
-    )
-    working_directory: str | None = Field(
-        default=None,
-        description="Worker working directory requested by the caller.",
-    )
-    session_id: str | None = Field(
-        default=None,
-        description="Session that originated the delegation request.",
-    )
-    recipient: str | None = Field(
-        default=None,
-        description="Requested delegation recipient surface.",
-    )
-    codex_sandbox_mode: str | None = Field(
-        default=None,
-        description="Codex sandbox mode requested by the caller.",
-    )
-    wait: bool = Field(default=True, description="Wait for synchronous result.")
-    max_tokens: int = Field(default=2048, gt=0, le=16384)
-    correlation_id: UUID = Field(default_factory=uuid4)
-    metadata: dict[str, str] = Field(default_factory=dict)
-    quality_contract_mode: EnumQualityContractMode = Field(
-        default="extend_task_class",
-        description=(
-            "How request-level acceptance criteria interact with task-class DoD."
-        ),
-    )
-    acceptance_criteria: tuple[str, ...] = Field(
-        default=(),
-        description=(
-            "Request-level quality criteria validated before dispatch and enforced "
-            "by the delegation quality gate."
-        ),
-    )
-
-    @field_validator("acceptance_criteria")
-    @classmethod
-    def _validate_supported_acceptance_criteria(
-        cls, criteria: tuple[str, ...]
-    ) -> tuple[str, ...]:
-        return validate_acceptance_criteria(criteria)
-
-
 __all__: list[str] = [
+    "DELEGATION_DEFAULT_MAX_TOKENS",
+    "DELEGATION_MAX_TOKENS_HARD_LIMIT",
     "EnumQualityContractMode",
     "ModelDelegateSkillRequest",
 ]

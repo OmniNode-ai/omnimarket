@@ -1,7 +1,6 @@
-# OMN-10821: documented legacy Handler* classes without external Python imports
-# or contract.yaml routing references. Keep this list small: new entries should
-# either add contract wiring, add a Python import, or explain why the handler is
-# intentionally dormant.
+# OMN-10821 / OMN-12693: documented legacy Handler* classes without external
+# Python imports. Keep this list small: new entries should either add a Python
+# import or explain why the handler is intentionally dormant.
 src/omnimarket/nodes/node_pr_lifecycle_fix_effect/handlers/handler_auto_rebase.py:HandlerAutoRebase # Legacy PR lifecycle helper; not in contract routing yet.
 src/omnimarket/nodes/node_pr_lifecycle_fix_effect/handlers/handler_comment_resolution.py:HandlerCommentResolution # Legacy PR lifecycle review-thread helper; not in contract routing yet.
 src/omnimarket/nodes/node_pr_review_bot/handlers/handler_commit_citation_verifier.py:HandlerCommitCitationVerifier # Verification-loop helper pending explicit contract routing.
@@ -13,3 +12,63 @@ src/omnimarket/nodes/node_hostile_reviewer/handlers/handler_response_parser.py:H
 src/omnimarket/nodes/node_hostile_reviewer/handlers/handler_review_orchestrator.py:HandlerReviewOrchestrator # Hostile-reviewer orchestration helper pending explicit contract routing.
 src/omnimarket/nodes/node_pr_review_bot/handlers/handler_webhook_reconciler.py:HandlerWebhookReconciler # PR-review webhook helper pending explicit contract routing.
 src/omnimarket/nodes/node_knowledge_context_assembler_orchestrator/handlers/handler_knowledge_context_assembler_orchestrator.py:HandlerKnowledgeContextAssemblerOrchestrator # Knowledge context assembler orchestrator pending explicit contract routing wiring.
+src/omnimarket/nodes/node_generate_node_effect/handlers/handler_generate_node.py:HandlerGenerateNode # OMN-12230 contract-first codegen node; handler routing intentionally deferred.
+src/omnimarket/nodes/node_ab_compare_reducer/handlers/handler_ab_compare_reducer.py:HandlerAbCompareReducer # Legacy dormant handler; no external Python import yet.
+src/omnimarket/nodes/node_ab_inference_effect/handlers/handler_ab_inference_effect.py:HandlerAbInferenceEffect # Legacy dormant handler; no external Python import yet.
+src/omnimarket/nodes/node_adversarial_pipeline_orchestrator/handlers/handler_adversarial_pipeline_orchestrator.py:HandlerAdversarialPipelineOrchestrator # Legacy dormant handler; no external Python import yet.
+src/omnimarket/nodes/node_monitor_alert_responder/handlers/handler_alert_classify.py:HandlerAlertClassify # Legacy dormant handler; no external Python import yet.
+src/omnimarket/nodes/node_audit_trail_compactor/handlers/handler_audit_trail_compactor.py:HandlerAuditTrailCompactor # Legacy dormant handler; no external Python import yet.
+src/omnimarket/nodes/node_auto_merge_effect/handlers/handler_auto_merge_effect.py:HandlerAutoMergeEffect # Legacy dormant handler; no external Python import yet.
+src/omnimarket/nodes/node_omnigate_check_executor/handlers/handler_check_executor.py:HandlerCheckExecutor # Legacy dormant handler; no external Python import yet.
+src/omnimarket/nodes/node_ci_fix_effect/handlers/handler_ci_fix.py:HandlerCiFixEffect # Legacy dormant handler; no external Python import yet.
+src/omnimarket/nodes/node_conflict_hunk_effect/handlers/handler_conflict_hunk.py:HandlerConflictHunk # Legacy dormant handler; no external Python import yet.
+src/omnimarket/nodes/node_content_ingestion_effect/handlers/handler_content_ingestion.py:HandlerContentIngestion # Legacy dormant handler; no external Python import yet.
+src/omnimarket/nodes/node_contract_reducer/handlers/handler_contract_reducer.py:HandlerContractReducer # Legacy dormant handler; no external Python import yet.
+src/omnimarket/nodes/node_create_followup_tickets_effect/handlers/handler_create_followup_tickets_effect.py:HandlerCreateFollowupTicketsEffect # Legacy dormant handler; no external Python import yet.
+src/omnimarket/nodes/node_decision_store_orchestrator/handlers/handler_decision_store_orchestrator.py:HandlerDecisionStoreOrchestrator # Legacy dormant handler; no external Python import yet.
+src/omnimarket/nodes/node_delegation_ab_runner/handlers/handler_delegation_ab_runner.py:HandlerDelegationAbRunner # Legacy dormant handler; no external Python import yet.
+src/omnimarket/nodes/node_design_to_plan/handlers/handler_design_to_plan_phase3_launch.py:HandlerDesignToPlanPhase3Launch # Legacy dormant handler; no external Python import yet.
+src/omnimarket/nodes/node_dispatch_outcome_bridge_effect/handlers/handler_bridge.py:HandlerDispatchOutcomeBridge # Legacy dormant handler; no external Python import yet.
+src/omnimarket/nodes/node_dod_sweep_orchestrator/handlers/handler_dod_sweep_orchestrator.py:HandlerDodSweepOrchestrator # Legacy dormant handler; no external Python import yet.
+src/omnimarket/nodes/node_pr_review_bot/handlers/handler_emergency_bypass_parser.py:HandlerEmergencyBypassParser # Legacy dormant handler; no external Python import yet.
+src/omnimarket/nodes/node_env_parity_compute/handlers/handler_env_parity_compute.py:HandlerEnvParityCompute # Legacy dormant handler; no external Python import yet.
+src/omnimarket/nodes/node_evidence_dashboard_effect/handlers/handler_evidence_dashboard_effect.py:HandlerEvidenceDashboardEffect # Legacy dormant handler; no external Python import yet.
+src/omnimarket/nodes/node_evidence_dashboard_reducer/handlers/handler_evidence_dashboard_reducer.py:HandlerEvidenceDashboardReducer # Legacy dormant handler; no external Python import yet.
+src/omnimarket/nodes/node_friction_triage_orchestrator/handlers/handler_friction_triage_orchestrator.py:HandlerFrictionTriageOrchestrator # Legacy dormant handler; no external Python import yet.
+src/omnimarket/nodes/node_generation_consumer/handlers/handler_generation_consumer.py:HandlerGenerationConsumer # Legacy dormant handler; no external Python import yet.
+src/omnimarket/nodes/node_llm_delegation_call_effect/handlers/handler_inference_intent.py:HandlerInferenceIntent # Legacy dormant handler; no external Python import yet.
+src/omnimarket/nodes/node_integration_sweep_orchestrator/handlers/handler_integration_sweep_orchestrator.py:HandlerIntegrationSweepOrchestrator # Legacy dormant handler; no external Python import yet.
+src/omnimarket/nodes/node_kafka_topic_emit_probe/handlers/handler_kafka_probe.py:HandlerKafkaProbe # Legacy dormant handler; no external Python import yet.
+src/omnimarket/nodes/node_knowledge_query_federation_orchestrator/handlers/handler_knowledge_query_federation.py:HandlerKnowledgeQueryFederation # Legacy dormant handler; no external Python import yet.
+src/omnimarket/nodes/node_ledger_append_effect/handlers/handler_ledger_append.py:HandlerLedgerAppend # Legacy dormant handler; no external Python import yet.
+src/omnimarket/nodes/node_ledger_hash_compute/handlers/handler_ledger_hash.py:HandlerLedgerHashCompute # Legacy dormant handler; no external Python import yet.
+src/omnimarket/nodes/node_ledger_orchestrator/handlers/handler_ledger_orchestrator.py:HandlerLedgerOrchestrator # Legacy dormant handler; no external Python import yet.
+src/omnimarket/nodes/node_ledger_state_reducer/handlers/handler_ledger_state.py:HandlerLedgerStateReducer # Legacy dormant handler; no external Python import yet.
+src/omnimarket/nodes/node_ledger_stats_compute/handlers/handler_ledger_stats.py:HandlerLedgerStats # Legacy dormant handler; no external Python import yet.
+src/omnimarket/nodes/node_local_supervisor/handlers/handler_local_supervisor.py:HandlerLocalSupervisor # Legacy dormant handler; no external Python import yet.
+src/omnimarket/nodes/node_merge_effect/handlers/handler_merge.py:HandlerMergeEffect # Legacy dormant handler; no external Python import yet.
+src/omnimarket/nodes/node_model_comparison_runner/handlers/handler_model_comparison.py:HandlerModelComparisonRunner # Legacy dormant handler; no external Python import yet.
+src/omnimarket/nodes/node_observability_sink_effect/handlers/handler_observability_sink_effect.py:HandlerObservabilitySinkEffect # Legacy dormant handler; no external Python import yet.
+src/omnimarket/nodes/node_occ_evidence_draft_orchestrator/handlers/handler_occ_evidence_draft_orchestrator.py:HandlerOccEvidenceDraftOrchestrator # Legacy dormant handler; no external Python import yet.
+src/omnimarket/nodes/node_occ_evidence_validator_compute/handlers/handler_occ_evidence_validator.py:HandlerOccEvidenceValidator # Legacy dormant handler; no external Python import yet.
+src/omnimarket/nodes/node_pipeline_cache_effect/handlers/handler_pipeline_cache.py:HandlerPipelineCache # Legacy dormant handler; no external Python import yet.
+src/omnimarket/nodes/node_polish_task_classifier/handlers/handler_classifier.py:HandlerPolishTaskClassifier # Legacy dormant handler; no external Python import yet.
+src/omnimarket/nodes/node_post_merge_knowledge_sync_orchestrator/handlers/handler_post_merge_sync.py:HandlerPostMergeSyncOrchestrator # Legacy dormant handler; no external Python import yet.
+src/omnimarket/nodes/node_projection_dep_health/handlers/handler_projection_dep_health.py:HandlerProjectionDepHealth # Legacy dormant handler; no external Python import yet.
+src/omnimarket/nodes/node_projection_llm_routing/handlers/handler_projection_llm_routing.py:HandlerProjectionLlmRouting # Legacy dormant handler; no external Python import yet.
+src/omnimarket/nodes/node_projection_swarm/handlers/handler_projection_swarm.py:HandlerProjectionSwarm # Legacy dormant handler; no external Python import yet.
+src/omnimarket/nodes/node_delegation_quality_gate_reducer/handlers/handler_quality_gate_intent.py:HandlerQualityGateIntent # Legacy dormant handler; no external Python import yet.
+src/omnimarket/nodes/node_omnigate_receipt_generator/handlers/handler_receipt_generator.py:HandlerReceiptGenerator # Legacy dormant handler; no external Python import yet.
+src/omnimarket/nodes/node_omnigate_receipt_verifier/handlers/handler_receipt_verifier.py:HandlerReceiptVerifier # Legacy dormant handler; no external Python import yet.
+src/omnimarket/nodes/node_review_thread_reconciler/handlers/handler_review_thread_reconciler.py:HandlerReviewThreadReconciler # Legacy dormant handler; no external Python import yet.
+src/omnimarket/nodes/node_delegation_routing_reducer/handlers/handler_routing_intent.py:HandlerRoutingIntent # Legacy dormant handler; no external Python import yet.
+src/omnimarket/nodes/node_runner_orchestrator/handlers/handler_runner_orchestrator.py:HandlerRunnerOrchestrator # Legacy dormant handler; no external Python import yet.
+src/omnimarket/nodes/node_self_healing_dispatch_orchestrator/handlers/handler_self_healing_dispatch_orchestrator.py:HandlerSelfHealingDispatchOrchestrator # Legacy dormant handler; no external Python import yet.
+src/omnimarket/nodes/node_shim_scanner/handlers/handler_shim_scanner.py:HandlerShimScanner # Legacy dormant handler; no external Python import yet.
+src/omnimarket/nodes/node_worker_stall_recovery/handlers/handler_stall_recovery.py:HandlerStallRecovery # Legacy dormant handler; no external Python import yet.
+src/omnimarket/nodes/node_tech_debt_sweep_orchestrator/handlers/handler_tech_debt_sweep_orchestrator.py:HandlerTechDebtSweepOrchestrator # Legacy dormant handler; no external Python import yet.
+src/omnimarket/nodes/node_thread_reply_effect/handlers/handler_thread_reply.py:HandlerThreadReply # Legacy dormant handler; no external Python import yet.
+src/omnimarket/nodes/node_ticket_query/handlers/handler_ticket_query.py:HandlerTicketQuery # Legacy dormant handler; no external Python import yet.
+src/omnimarket/nodes/node_two_strike_arbiter/handlers/handler_two_strike_arbiter.py:HandlerTwoStrikeArbiter # Legacy dormant handler; no external Python import yet.
+src/omnimarket/nodes/node_pr_review_bot/handlers/handler_verification_loop.py:HandlerVerificationLoop # Legacy dormant handler; no external Python import yet.
+src/omnimarket/nodes/node_hostile_reviewer/handlers/handler_workflow_runner.py:HandlerWorkflowRunner # Legacy dormant handler; no external Python import yet.

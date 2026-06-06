@@ -9,7 +9,7 @@ name: node_tech_debt_sweep_orchestrator
 contract_version: {major: 1, minor: 0, patch: 0}
 node_type: orchestrator
 node_version: {major: 1, minor: 0, patch: 0}
-node_not_implemented: true
+node_not_implemented: false
 
 description: >
   Tech debt sweep orchestrator. Scans all Python repos under omni_home for 6
@@ -17,8 +17,8 @@ description: >
   skipped-tests, stale-ignores), deduplicates findings against open Linear
   tickets via stable content-hash dedup keys, and creates one Linear epic per
   category with closeable tickets grouped by repo and top-level source
-  directory. STUB — not yet implemented.
-  Returns SkillRoutingError with reason node_not_implemented.
+  directory. Linear mutations and type-checker-backed stale-ignore analysis are
+  owned by injected native adapters; dry-run mode performs no external writes.
 
 handler:
   module: omnimarket.nodes.node_tech_debt_sweep_orchestrator.handlers.handler_tech_debt_sweep_orchestrator
@@ -40,6 +40,8 @@ descriptor:
   runtime_profiles:
     - effects
 
+terminal_event: onex.evt.omnimarket.tech-debt-sweep-completed.v1
+
 event_bus:
   consumer_group: omnimarket.tech_debt_sweep_orchestrator.consume.v1
   subscribe_topics:
@@ -51,3 +53,5 @@ event_bus:
 
 metadata:
   transport_type: kafka
+  implementation_wave: 3
+  related_tickets: ["OMN-12212", "OMN-12350"]

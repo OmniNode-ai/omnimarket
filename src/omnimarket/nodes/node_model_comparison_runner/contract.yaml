@@ -1,0 +1,92 @@
+---
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_model_comparison_runner
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: effect
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  EFFECT node that runs a side-by-side model comparison for a given task.
+  Accepts a task description and a list of model endpoint specs, calls each
+  model via an injected LLM effect handler, and returns per-model token
+  counts, latency, cost, and a winner determination. Mirrors the logic of
+  ComparisonRunner in onex-self-extending-agent/src/experiments/model_comparison/runner.py
+  but operates through the ONEX contract/handler boundary.
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - handler:
+        name: HandlerModelComparisonRunner
+        module: omnimarket.nodes.node_model_comparison_runner.handlers.handler_model_comparison
+      event_model:
+        name: ModelComparisonRequest
+        module: omnimarket.nodes.node_model_comparison_runner.models.model_comparison_request
+
+handler:
+  module: omnimarket.nodes.node_model_comparison_runner.handlers.handler_model_comparison
+  class: HandlerModelComparisonRunner
+  input_model: omnimarket.nodes.node_model_comparison_runner.models.model_comparison_request.ModelComparisonRequest
+
+descriptor:
+  node_archetype: effect
+  purity: impure
+  idempotent: false
+  timeout_ms: 300000
+  runtime_profiles:
+    - effects
+
+inputs:
+  task_description:
+    type: str
+    required: true
+    description: "The task or prompt to send to each model"
+  models:
+    type: list[object]
+    required: true
+    description: >
+      List of model endpoint specs. Each entry has: model_id, endpoint,
+      provider, label, and optional api_key.
+  system_prompt:
+    type: str
+    required: false
+    description: "Optional system prompt override sent to all models"
+  winner_criteria:
+    type: str
+    required: false
+    default: "fewest_attempts_then_cost"
+    description: "Strategy used to pick the winner cell"
+
+outputs:
+  task_description:
+    type: str
+  comparison_id:
+    type: str
+  cells:
+    type: list[object]
+    description: "Per-model result cells with token counts, cost, latency, quality score"
+  winner_label:
+    type: str | null
+  winner_criteria:
+    type: str
+
+terminal_event: onex.evt.omnimarket.model-comparison-completed.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.model-comparison-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.model-comparison-completed.v1
+
+metadata:
+  transport_type: kafka
+  description: "Effect node — runs side-by-side model comparison via injected LLM handler"
+  author: "OmniNode Platform Team"
+  created: "2026-05-28"
+  tags:
+    - "effect"
+    - "model-comparison"
+    - "llm"
+    - "cost"
+    - "evaluation"

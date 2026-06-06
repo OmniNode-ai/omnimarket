@@ -10,7 +10,7 @@ Flow per invocation:
   5. Retry on failure (up to max_attempts)
   6. Emit completed/failed benchmark event
   7. On success:
-     a. Emit deploy event (onex.cmd.runtime.node-deploy.v1) with contract + handler source
+     a. Emit deploy event (onex.cmd.omnimarket.node-deploy.v1) with contract + handler source
         → HandlerGeneratedExecutor receives this, writes to sandbox, registers for execution
      b. Emit registration event so ServiceMCPToolSync picks up the new MCP tool
 
@@ -62,7 +62,11 @@ _REQUIRED_CONTRACT_FIELDS = [
 
 # Contract model_routing keys — resolved at construction from contract.yaml
 _MODEL_ROUTING_ENDPOINT_ENV_KEY = "endpoint_env"
+_MODEL_ROUTING_ENDPOINT_MODE_KEY = "endpoint_mode"
 _MODEL_ROUTING_MODEL_ID_ENV_KEY = "served_model_id_env"
+_ENDPOINT_MODE_COMPLETE = "complete_endpoint"
+_ENDPOINT_MODE_OPENAI_BASE = "openai_compatible_base"
+_ALLOWED_ENDPOINT_MODES = {_ENDPOINT_MODE_COMPLETE, _ENDPOINT_MODE_OPENAI_BASE}
 
 _DEFAULT_SYSTEM_PROMPT = (
     "You are an ONEX node generator. Generate a valid ONEX contract.yaml and Python handler.\n"
@@ -201,8 +205,9 @@ class HandlerGenerationConsumer:
 
     Endpoint resolution order (contract-first, no bespoke env vars):
         1. contract.yaml model_routing.endpoint_env names the env var to read
-        2. That env var (e.g. LLM_CODER_URL) is populated by the overlay system
-        3. MixinLlmHttpTransport enforces CIDR allowlist + HMAC from the same overlay
+        2. contract.yaml model_routing.endpoint_mode declares how to post it
+        3. That env var (e.g. LLM_CODER_URL) is populated by the overlay system
+        4. MixinLlmHttpTransport enforces CIDR allowlist + HMAC from the same overlay
     """
 
     def __init__(
@@ -238,6 +243,9 @@ class HandlerGenerationConsumer:
         self._endpoint_env: str = model_routing.get(
             _MODEL_ROUTING_ENDPOINT_ENV_KEY, "LLM_CODER_URL"
         )
+        self._endpoint_mode: str = str(
+            model_routing.get(_MODEL_ROUTING_ENDPOINT_MODE_KEY, "")
+        )
         self._model_id_env: str = str(
             model_routing.get(_MODEL_ROUTING_MODEL_ID_ENV_KEY, "")
         )
@@ -245,6 +253,12 @@ class HandlerGenerationConsumer:
             raise ValueError(
                 "contract.yaml model_routing.served_model_id_env is required; "
                 "served model IDs must come from overlays, not handler defaults"
+            )
+        if self._endpoint_mode not in _ALLOWED_ENDPOINT_MODES:
+            allowed = ", ".join(sorted(_ALLOWED_ENDPOINT_MODES))
+            raise ValueError(
+                "contract.yaml model_routing.endpoint_mode must be one of "
+                f"{allowed}; got {self._endpoint_mode!r}"
             )
 
     def _resolve_model_id(self) -> str:
@@ -305,16 +319,33 @@ class HandlerGenerationConsumer:
             endpoint = os.environ[self._endpoint_env]
             assert self._effect is not None
 
-            request = ModelLlmInferenceRequest(
-                base_url=endpoint,
-                operation_type=EnumLlmOperationType.CHAT_COMPLETION,
-                model=self._resolve_model_id(),
-                messages=(
-                    {"role": "system", "content": _DEFAULT_SYSTEM_PROMPT},
-                    {"role": "user", "content": user_content},
-                ),
-                timeout_seconds=120.0,
-            )
+            if self._endpoint_mode == _ENDPOINT_MODE_COMPLETE:
+                request = ModelLlmInferenceRequest(
+                    base_url=endpoint,
+                    endpoint_url=endpoint,
+                    operation_type=EnumLlmOperationType.CHAT_COMPLETION,
+                    model=self._resolve_model_id(),
+                    messages=(
+                        {"role": "system", "content": _DEFAULT_SYSTEM_PROMPT},
+                        {"role": "user", "content": user_content},
+                    ),
+                    timeout_seconds=120.0,
+                )
+            elif self._endpoint_mode == _ENDPOINT_MODE_OPENAI_BASE:
+                request = ModelLlmInferenceRequest(
+                    base_url=endpoint,
+                    operation_type=EnumLlmOperationType.CHAT_COMPLETION,
+                    model=self._resolve_model_id(),
+                    messages=(
+                        {"role": "system", "content": _DEFAULT_SYSTEM_PROMPT},
+                        {"role": "user", "content": user_content},
+                    ),
+                    timeout_seconds=120.0,
+                )
+            else:
+                raise RuntimeError(
+                    "contract.yaml model_routing.endpoint_mode was not validated"
+                )
             response = await self._effect.handle(request)
 
         raw = response.generated_text or ""

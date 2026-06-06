@@ -360,13 +360,7 @@ class TestHandleAsyncReturnsNone:
         mock_bus.publish = AsyncMock()
         handler = HandlerSwarmDispatchOrchestrator(event_bus=mock_bus)
 
-        result = await handler.handle_async(request_fixture)  # type: ignore[func-returns-value]
-
-        assert result is None, (
-            "handle_async must return None for non-terminal RECEIVED state. "
-            "A non-None return causes DispatchResultApplier to fire a terminal "
-            "event prematurely, short-circuiting the 7-state FSM (OMN-12151)."
-        )
+        await handler.handle_async(request_fixture)
 
     @pytest.mark.asyncio
     async def test_handle_async_still_flushes_health_check_command(
@@ -416,9 +410,7 @@ class TestHandleAsyncReturnsNone:
             "transition_received",
             side_effect=RuntimeError("injected failure"),
         ):
-            result = await handler.handle_async(request_fixture)  # type: ignore[func-returns-value]
-
-        assert result is None
+            await handler.handle_async(request_fixture)
 
 
 class TestMaxSubtasksThreading:

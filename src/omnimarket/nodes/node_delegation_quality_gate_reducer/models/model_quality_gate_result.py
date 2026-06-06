@@ -4,7 +4,7 @@
 # Copyright (c) 2026 OmniNode Team
 """Compatibility imports for canonical quality gate result DTOs."""
 
-from omnibase_compat.contracts.delegation.wire import (
+from omnibase_core.models.delegation.wire import (
     EnumQualityGateCategory,
     ModelQualityGateResult,
 )

@@ -172,7 +172,54 @@ event_bus:
     - onex.evt.omnimarket.pr-lifecycle-merge-executed.v1
     - onex.evt.omnimarket.pr-lifecycle-verification-completed.v1
     - onex.evt.omnimarket.pr-lifecycle-fix-dispatched.v1
+    - onex.evt.omnimarket.pr-lifecycle-ledger-entry-projected.v1
     - onex.cmd.omnimarket.fixer-dispatch-start.v1
+
+# OMN-12569: durable, reconstructable PR-ledger projection.
+# The ledger is a DERIVED projection (not authoritative truth) materialized
+# from source events (inventory, workflow-run observations, merge-group SHAs,
+# rerun attempts, final conclusions). Authoritative truth = GitHub state +
+# durable orchestrator receipts. The projection lands in a control-plane
+# durable store (the projection database), not a repo artifact, and is
+# reconstructable from its recorded source events.
+projection:
+  name: pr_lifecycle_ledger
+  provenance_kind: derived_projection           # DT-005 provenance declaration
+  freshness_sla_seconds: 900                     # DT-003 freshness SLA
+  durable_store: projection_database
+  conflict_key: run_id,repo,pr_number
+  source_events:
+    - pr_inventoried
+    - workflow_run_observed
+    - merge_group_sha_minted
+    - rerun_attempted
+    - final_conclusion
+  entry_fields:
+    - run_id
+    - head_sha
+    - merge_group_shas
+    - rerun_attempts
+    - conclusion
+    - last_phase                                 # OMN-12570: phase the entry's last event was recorded in
+    - provenance                                 # workflow run, merge-group SHA, branch SHA, phase, action, timestamp
+
+# OMN-12570: branch checks, merge-group checks, and post-merge CI tails are
+# DISTINCT verification phases. Every source event and every ledger entry is
+# attributed to the phase it was produced in, and each phase transition is
+# recorded explicitly (at transition time, not inferred from logs) so a
+# post-merge-tail failure is distinguishable from a branch-check failure.
+phases:
+  vocabulary:
+    - inventory
+    - triage
+    - branch_checks                              # PR-branch CI (verify / fix remediation)
+    - merge_group                                # merge-queue checks
+    - post_merge_tail                            # CI on the merge target branch after a PR lands
+    - terminal                                   # COMPLETE / FAILED sink
+  transitions_recorded: true                     # recorded in pr_lifecycle_ledger_transitions
+  durable_store: projection_database
+  transition_table: pr_lifecycle_ledger_transitions
+  conflict_key: run_id,from_phase,to_phase,recorded_at
 
 fsm:
   states:
@@ -182,6 +229,7 @@ fsm:
     - VERIFYING
     - REBASING
     - MERGING
+    - POST_MERGE_TAIL                            # OMN-12570: post-merge CI tail phase
     - FIXING
     - COMPLETE
     - FAILED
@@ -227,11 +275,17 @@ fsm:
       to: FAILED
       trigger: "error"
     - from: MERGING
+      to: POST_MERGE_TAIL
+      trigger: "merge completed; tail CI runs on the merge target branch"
+    - from: POST_MERGE_TAIL
       to: FIXING
-      trigger: "merge completed, not merge_only"
-    - from: MERGING
+      trigger: "post-merge tail recorded, not merge_only, fix PRs remain"
+    - from: POST_MERGE_TAIL
       to: COMPLETE
-      trigger: "merge completed, merge_only flag set"
+      trigger: "post-merge tail recorded, merge_only or no fix PRs"
+    - from: POST_MERGE_TAIL
+      to: FAILED
+      trigger: "error"
     - from: FIXING
       to: COMPLETE
       trigger: "fix completed"
@@ -267,6 +321,7 @@ metadata:
     - "OMN-8085"
     - "OMN-8086"
     - "OMN-8070"
+    - "OMN-12569"
 
 config:
   ONEX_OCC_MERGE_SHA:

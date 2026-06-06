@@ -15,6 +15,7 @@ description: "Orchestrator node for cross-agent memory coordination. Manages sub
 node_type: orchestrator
 input_model: "ModelAgentCoordinatorRequest"
 output_model: "ModelAgentCoordinatorResponse"
+terminal_event: "onex.evt.omnimemory.coordination-completed.v1"
 
 # === DEPENDENCIES ===
 dependencies:
@@ -89,25 +90,51 @@ handler_routing:
   handlers:
     # Register an agent's subscription to a memory topic
     - routing_key: "subscribe"
+      handler_module: "omnimemory.handlers.handler_subscription"
+      handler_class: "HandlerSubscription"
       handler_key: "HandlerSubscription.subscribe"
       priority: 0
       output_events: []
     # Remove an agent's subscription from a memory topic
     - routing_key: "unsubscribe"
+      handler_module: "omnimemory.handlers.handler_subscription"
+      handler_class: "HandlerSubscription"
       handler_key: "HandlerSubscription.unsubscribe"
       priority: 0
       output_events: []
     # List all subscriptions for a given agent
     - routing_key: "list_subscriptions"
+      handler_module: "omnimemory.handlers.handler_subscription"
+      handler_class: "HandlerSubscription"
       handler_key: "HandlerSubscription.list_subscriptions"
       priority: 0
       output_events: []
     # Publish notification event to Kafka for subscriber consumption
     - routing_key: "notify"
+      handler_module: "omnimemory.handlers.handler_subscription"
+      handler_class: "HandlerSubscription"
       handler_key: "HandlerSubscription.notify"
       priority: 0
-      output_events: ["omnimemory.memory.notification.v1"]
+      output_events: ["onex.evt.omnimemory.memory-notification.v1"]
   default_handler: null
+
+event_bus:
+  version:
+    major: 1
+    minor: 0
+    patch: 0
+  subscribe_topics:
+    - "onex.cmd.omnimemory.coordination-subscribe.v1"
+    - "onex.cmd.omnimemory.coordination-unsubscribe.v1"
+    - "onex.cmd.omnimemory.coordination-list-subscriptions.v1"
+    - "onex.cmd.omnimemory.coordination-notify.v1"
+  publish_topics:
+    - "onex.evt.omnimemory.coordination-completed.v1"
+    - "onex.evt.omnimemory.memory-notification.v1"
+
+externally_consumed_topics:
+  - "onex.evt.omnimemory.coordination-completed.v1"
+  - "onex.evt.omnimemory.memory-notification.v1"
 
 # =============================================================================
 # CONSUMED EVENTS - Event Subscriptions
@@ -116,21 +143,21 @@ handler_routing:
 # Uses action field to route to appropriate handler method.
 # =============================================================================
 consumed_events:
-  - event_pattern: "omnimemory.coordination.cmd.subscribe.v1"
+  - event_pattern: "onex.cmd.omnimemory.coordination-subscribe.v1"
     handler_function: "handle_subscribe"
 
-  - event_pattern: "omnimemory.coordination.cmd.unsubscribe.v1"
+  - event_pattern: "onex.cmd.omnimemory.coordination-unsubscribe.v1"
     handler_function: "handle_unsubscribe"
 
-  - event_pattern: "omnimemory.coordination.cmd.list-subscriptions.v1"
+  - event_pattern: "onex.cmd.omnimemory.coordination-list-subscriptions.v1"
     handler_function: "handle_list_subscriptions"
 
-  - event_pattern: "omnimemory.coordination.cmd.notify.v1"
+  - event_pattern: "onex.cmd.omnimemory.coordination-notify.v1"
     handler_function: "handle_notify"
 
 # Published events - notification events go to Kafka
 published_events:
-  - event_pattern: "omnimemory.memory.notification.v1"
+  - event_pattern: "onex.evt.omnimemory.memory-notification.v1"
     description: "Memory change notification published for subscriber consumption"
 
 # Orchestration configuration

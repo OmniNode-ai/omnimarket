@@ -1,11 +1,8 @@
-"""Unit tests for node_dispatch_watchdog_orchestrator.
-
-Wave 1 contract-first stub: verifies importability, model validation,
-and that the handler correctly raises NotImplementedError per
-contract.yaml `node_not_implemented: true`.
-"""
+"""Unit tests for node_dispatch_watchdog_orchestrator."""
 
 from __future__ import annotations
+
+from datetime import UTC, datetime
 
 import pytest
 from pydantic import ValidationError
@@ -49,9 +46,9 @@ class TestPublicSurface:
 class TestEnumRecoveryAction:
     @pytest.mark.unit
     def test_all_members(self) -> None:
-        assert EnumRecoveryAction.REPORT == "report"
-        assert EnumRecoveryAction.CANCEL == "cancel"
-        assert EnumRecoveryAction.REDISPATCH == "redispatch"
+        assert EnumRecoveryAction.REPORT.value == "report"
+        assert EnumRecoveryAction.CANCEL.value == "cancel"
+        assert EnumRecoveryAction.REDISPATCH.value == "redispatch"
 
 
 # ---------------------------------------------------------------------------
@@ -62,11 +59,11 @@ class TestEnumRecoveryAction:
 class TestEnumTaskStatus:
     @pytest.mark.unit
     def test_all_members(self) -> None:
-        assert EnumTaskStatus.IN_PROGRESS == "in_progress"
-        assert EnumTaskStatus.COMPLETED == "completed"
-        assert EnumTaskStatus.FAILED == "failed"
-        assert EnumTaskStatus.BLOCKED == "blocked"
-        assert EnumTaskStatus.UNKNOWN == "unknown"
+        assert EnumTaskStatus.IN_PROGRESS.value == "in_progress"
+        assert EnumTaskStatus.COMPLETED.value == "completed"
+        assert EnumTaskStatus.FAILED.value == "failed"
+        assert EnumTaskStatus.BLOCKED.value == "blocked"
+        assert EnumTaskStatus.UNKNOWN.value == "unknown"
 
 
 # ---------------------------------------------------------------------------
@@ -342,21 +339,33 @@ class TestModelWatchdogRequest:
 
 
 # ---------------------------------------------------------------------------
-# Handler stub — must raise NotImplementedError
+# Handler
 # ---------------------------------------------------------------------------
 
 
-class TestHandlerDispatchWatchdogOrchestratorStub:
+class TestHandlerDispatchWatchdogOrchestrator:
     @pytest.mark.unit
-    def test_handle_raises_not_implemented(self) -> None:
-        handler = HandlerDispatchWatchdogOrchestrator()
-        req = ModelWatchdogRequest()
-        with pytest.raises(NotImplementedError) as exc_info:
-            handler.handle(req)
-        assert (
-            "node_not_implemented" in str(exc_info.value).lower()
-            or "wave" in str(exc_info.value).lower()
+    def test_dry_run_detects_stalled_task(self) -> None:
+        handler = HandlerDispatchWatchdogOrchestrator(
+            now_utc=datetime(2026, 5, 28, 12, 0, tzinfo=UTC)
         )
+        req = ModelWatchdogRequest(
+            wave_tasks=(
+                ModelWaveTask(
+                    task_id="task-1",
+                    ticket_id="OMN-1",
+                    team_name="wave-1",
+                    last_activity_ts="2026-05-28T11:57:00Z",
+                ),
+            ),
+            stall_timeout_seconds=120,
+            dry_run=True,
+        )
+        result = handler.handle(req)
+
+        assert result.summary.stalled == 1
+        assert result.summary.redispatched == 1
+        assert result.stall_events[0].idle_seconds == 180
 
     @pytest.mark.unit
     def test_handler_instantiates_without_args(self) -> None:
@@ -364,9 +373,43 @@ class TestHandlerDispatchWatchdogOrchestratorStub:
         assert handler is not None
 
     @pytest.mark.unit
-    def test_not_implemented_message_cites_ticket(self) -> None:
-        handler = HandlerDispatchWatchdogOrchestrator()
-        req = ModelWatchdogRequest()
-        with pytest.raises(NotImplementedError) as exc_info:
+    def test_live_redispatch_without_adapter_requires_adapter(self) -> None:
+        handler = HandlerDispatchWatchdogOrchestrator(
+            now_utc=datetime(2026, 5, 28, 12, 0, tzinfo=UTC)
+        )
+        req = ModelWatchdogRequest(
+            wave_tasks=(
+                ModelWaveTask(
+                    task_id="task-1",
+                    ticket_id="OMN-1",
+                    team_name="wave-1",
+                    last_activity_ts="2026-05-28T11:57:00Z",
+                ),
+            ),
+            stall_timeout_seconds=120,
+        )
+
+        with pytest.raises(RuntimeError, match="recovery_adapter required"):
             handler.handle(req)
-        assert "OMN-12209" in str(exc_info.value)
+
+    @pytest.mark.unit
+    def test_report_mode_does_not_require_adapter(self) -> None:
+        handler = HandlerDispatchWatchdogOrchestrator(
+            now_utc=datetime(2026, 5, 28, 12, 0, tzinfo=UTC)
+        )
+        req = ModelWatchdogRequest(
+            wave_tasks=(
+                ModelWaveTask(
+                    task_id="task-1",
+                    ticket_id="OMN-1",
+                    team_name="wave-1",
+                    last_activity_ts="2026-05-28T11:57:00Z",
+                ),
+            ),
+            action=EnumRecoveryAction.REPORT,
+        )
+
+        result = handler.handle(req)
+
+        assert result.summary.stalled == 1
+        assert result.recovery_actions[0].action is EnumRecoveryAction.REPORT

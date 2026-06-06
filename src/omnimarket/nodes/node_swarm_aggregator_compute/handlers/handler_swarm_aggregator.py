@@ -48,6 +48,14 @@ _SECTION_SEPARATOR = "\n\n---\n\n"
 class HandlerSwarmAggregator:
     """Deterministic, pure compute aggregator. No I/O, no LLM calls."""
 
+    def handle(self, request: ModelSwarmAggregateRequest) -> ModelSwarmAggregateResult:
+        logger.info(
+            "[SWARM-AGGREGATE] handle called run_id=%s mode=%s",
+            getattr(request, "run_id", "?"),
+            getattr(request, "mode", "?"),
+        )
+        return self.run(request)
+
     def run(self, request: ModelSwarmAggregateRequest) -> ModelSwarmAggregateResult:
         if (
             request.mode == EnumAggregationMode.SYNTHESIS

@@ -2,6 +2,8 @@
 # SPDX-License-Identifier: MIT
 """Tests for ModelDimensionResultV2 — OMN-8132, OMN-8696."""
 
+import pytest
+
 from omnimarket.nodes.node_platform_readiness.handlers.handler_platform_readiness import (
     EnumReadinessStatus,
     ModelDimensionResult,
@@ -183,3 +185,121 @@ def test_evidence_sample_rows_capped_at_three() -> None:
         last_verified_at="2026-04-13T00:00:00+00:00",
     )
     assert len(e.sample_rows) == 5
+
+
+# ---------------------------------------------------------------------------
+# GATED status tests (OMN-7778)
+# ---------------------------------------------------------------------------
+
+
+def test_gated_when_flag_absent(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Dimension with gated_by_flag set and flag absent resolves to GATED."""
+    from datetime import UTC, datetime
+
+    from omnimarket.nodes.node_platform_readiness.handlers.handler_platform_readiness import (
+        ModelDimensionInput,
+        ModelPlatformReadinessRequest,
+    )
+
+    monkeypatch.delenv("ENABLE_SHADOW_VALIDATION", raising=False)
+    handler = NodePlatformReadiness()
+    request = ModelPlatformReadinessRequest(
+        dimensions=[
+            ModelDimensionInput(
+                name="shadow_divergence",
+                healthy=False,
+                last_checked=datetime.now(UTC),
+                details="0 rows in shadow_comparison_results",
+                gated_by_flag="ENABLE_SHADOW_VALIDATION",
+            )
+        ]
+    )
+    result = handler.handle(request)
+    assert result.dimensions[0].status == EnumReadinessStatus.GATED
+    assert "ENABLE_SHADOW_VALIDATION" in result.dimensions[0].details
+    assert "to enable" in result.dimensions[0].details
+
+
+def test_gated_when_flag_false(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Flag explicitly set to false still resolves to GATED."""
+    from datetime import UTC, datetime
+
+    from omnimarket.nodes.node_platform_readiness.handlers.handler_platform_readiness import (
+        ModelDimensionInput,
+        ModelPlatformReadinessRequest,
+    )
+
+    monkeypatch.setenv("ENABLE_SHADOW_VALIDATION", "false")
+    handler = NodePlatformReadiness()
+    request = ModelPlatformReadinessRequest(
+        dimensions=[
+            ModelDimensionInput(
+                name="shadow_divergence",
+                healthy=False,
+                last_checked=datetime.now(UTC),
+                gated_by_flag="ENABLE_SHADOW_VALIDATION",
+            )
+        ]
+    )
+    result = handler.handle(request)
+    assert result.dimensions[0].status == EnumReadinessStatus.GATED
+
+
+def test_gated_when_flag_enabled_falls_through(monkeypatch: pytest.MonkeyPatch) -> None:
+    """When gated_by_flag is set but flag IS enabled, normal evaluation applies."""
+    from datetime import UTC, datetime
+
+    from omnimarket.nodes.node_platform_readiness.handlers.handler_platform_readiness import (
+        ModelDimensionInput,
+        ModelPlatformReadinessRequest,
+    )
+
+    monkeypatch.setenv("ENABLE_SHADOW_VALIDATION", "true")
+    handler = NodePlatformReadiness()
+    request = ModelPlatformReadinessRequest(
+        dimensions=[
+            ModelDimensionInput(
+                name="shadow_divergence",
+                healthy=False,
+                last_checked=datetime.now(UTC),
+                details="0 rows in shadow_comparison_results",
+                gated_by_flag="ENABLE_SHADOW_VALIDATION",
+            )
+        ]
+    )
+    result = handler.handle(request)
+    # Flag is on → falls through to normal evaluation → FAIL (healthy=False)
+    assert result.dimensions[0].status == EnumReadinessStatus.FAIL
+
+
+def test_gated_overall_is_warn_not_fail(monkeypatch: pytest.MonkeyPatch) -> None:
+    """GATED dimension rolls up to WARN overall, not FAIL."""
+    from datetime import UTC, datetime
+
+    from omnimarket.nodes.node_platform_readiness.handlers.handler_platform_readiness import (
+        ModelDimensionInput,
+        ModelPlatformReadinessRequest,
+    )
+
+    monkeypatch.delenv("ENABLE_SHADOW_VALIDATION", raising=False)
+    handler = NodePlatformReadiness()
+    request = ModelPlatformReadinessRequest(
+        dimensions=[
+            ModelDimensionInput(
+                name="shadow_divergence",
+                healthy=False,
+                last_checked=datetime.now(UTC),
+                gated_by_flag="ENABLE_SHADOW_VALIDATION",
+            ),
+            ModelDimensionInput(
+                name="runtime_wiring",
+                healthy=True,
+                last_checked=datetime.now(UTC),
+            ),
+        ]
+    )
+    result = handler.handle(request)
+    assert result.overall == EnumReadinessStatus.WARN
+    assert result.blockers == []
+    assert len(result.degraded) == 1
+    assert "shadow_divergence" in result.degraded[0]

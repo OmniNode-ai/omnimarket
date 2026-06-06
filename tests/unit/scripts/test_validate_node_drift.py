@@ -155,3 +155,90 @@ def test_collect_nodes_check_all_returns_none_strict_eligible(
     nodes, strict_eligible = drift_module.collect_nodes(changed_ref=None)  # type: ignore[attr-defined]
     assert {p.name for p in nodes} == {"node_alpha"}
     assert strict_eligible is None
+
+
+@pytest.mark.unit
+def test_orphan_node_check_fails_known_violation_without_allowlist(
+    drift_module: object,
+    tmp_path: Path,
+) -> None:
+    """Node liveness findings must not use KNOWN_MAIN_VIOLATIONS WARN mode."""
+    bad_node = tmp_path / "node_overseer_observer"  # in KNOWN_MAIN_VIOLATIONS
+    bad_node.mkdir()
+    (bad_node / "contract.yaml").write_text(
+        "name: node_overseer_observer\n"
+        "node_type: compute\n"
+        "event_bus:\n"
+        "  subscribe_topics:\n"
+        "    - onex.cmd.omnimarket.overseer-observer.v1\n"
+    )
+
+    result = drift_module.validate_node(  # type: ignore[attr-defined]
+        bad_node,
+        entry_points={"node_overseer_observer"},
+        strict=False,
+        check_orphan_nodes=True,
+    )
+
+    assert result.passed is False
+    assert any(
+        finding.check == "node_liveness"
+        and finding.level == "FAIL"
+        and "CONSUMER_ONLY" in finding.message
+        for finding in result.findings
+    )
+
+
+@pytest.mark.unit
+def test_orphan_node_check_allows_experimental_contract(
+    drift_module: object,
+    tmp_path: Path,
+) -> None:
+    node_dir = tmp_path / "node_experimental"
+    node_dir.mkdir()
+    (node_dir / "contract.yaml").write_text(
+        "name: node_experimental\n"
+        "node_type: orchestrator\n"
+        "lifecycle: experimental\n"
+        "event_bus:\n"
+        "  publish_topics:\n"
+        "    - onex.evt.omnimarket.experimental-completed.v1\n"
+    )
+
+    result = drift_module.validate_node(  # type: ignore[attr-defined]
+        node_dir,
+        entry_points={"node_experimental"},
+        check_orphan_nodes=True,
+    )
+
+    assert result.passed is True
+    assert not any(finding.check == "node_liveness" for finding in result.findings)
+
+
+@pytest.mark.unit
+def test_orphan_node_check_passes_bidirectional_contract(
+    drift_module: object,
+    tmp_path: Path,
+) -> None:
+    node_dir = tmp_path / "node_wired"
+    node_dir.mkdir()
+    (node_dir / "contract.yaml").write_text(
+        "name: node_wired\n"
+        "node_type: compute\n"
+        "handler:\n"
+        "  module: omnimarket.nodes.node_wired.handlers.handler_wired\n"
+        "  class: HandlerWired\n"
+        "event_bus:\n"
+        "  subscribe_topics:\n"
+        "    - onex.cmd.omnimarket.wired-start.v1\n"
+        "  publish_topics:\n"
+        "    - onex.evt.omnimarket.wired-completed.v1\n"
+    )
+
+    result = drift_module.validate_node(  # type: ignore[attr-defined]
+        node_dir,
+        entry_points={"node_wired"},
+        check_orphan_nodes=True,
+    )
+
+    assert result.passed is True

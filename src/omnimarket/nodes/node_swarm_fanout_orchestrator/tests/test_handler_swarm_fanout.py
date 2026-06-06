@@ -110,12 +110,14 @@ def test_owns_correlation_id_false_unrelated() -> None:
 
 
 @pytest.mark.unit
-def test_missing_publisher_raises() -> None:
+def test_no_publisher_uses_stub_and_returns_result() -> None:
     ep = _make_endpoint()
     s = ModelSubtask(subtask_id="s1", description="task")
     req = _make_request([s], {"s1": "ep1"}, [ep])
-    with pytest.raises(ValueError, match="queue_publisher"):
-        HandlerSwarmFanout().handle(req)
+    # No queue publisher/subscriber injected — stub no-ops are used; subtask has
+    # no delegation target so it lands in FAILED (no_endpoint_assigned) path.
+    result = HandlerSwarmFanout().handle(req)
+    assert result.run_id == req.run_id
 
 
 @pytest.mark.unit

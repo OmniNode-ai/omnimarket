@@ -15,39 +15,42 @@
 # in Python or YAML is prohibited — use this registry as the single source.
 
 schema_version: "1.0.0"
-model_registry_version: "1.0.0"
-pricing_manifest_version: "2026-05-23-initial"
-observed_at: "2026-05-23T00:00:00Z"
+model_registry_version: "1.1.0"
+pricing_manifest_version: "2026-05-30-qwen36-dsv4-gemini-openrouter"
+observed_at: "2026-05-30T00:00:00Z"
 
 models:
   qwen3-coder-30b:
     model_id: "qwen3-coder-30b"
     provider: "local"
     endpoint_env: "LLM_CODER_URL"
-    context_window: 114688
+    model_name: "Qwen3.6-35B-A3B"
+    context_window: 131072
     pricing_per_1m_input: "0.00"
     pricing_per_1m_output: "0.00"
     cost_basis: "zero_marginal_api_cost"
-    observed_at: "2026-05-23T00:00:00Z"
+    observed_at: "2026-05-30T00:00:00Z"
     source: "manual benchmark"
     notes: >
-      Local Qwen3-Coder-30B on .201:8000. Zero marginal API cost but electricity
-      and hardware amortization not included. ZERO_MARGINAL_API_COST basis.
-      Context extended to 114688 via TurboQuant aither-kvcache K4/V3 compression.
+      Routing key retained for downstream contract stability; actual served model
+      is Qwen3.6-35B-A3B (GPTQ-Int4) on .201:8000 via vLLM. Live-probed 2026-05-30.
+      Zero marginal API cost. context_window=131072 (131K GPTQ config).
 
   deepseek-r1-14b:
     model_id: "deepseek-r1-14b"
     provider: "local"
     endpoint_env: "LLM_CODER_FAST_URL"
-    context_window: 24576
+    model_name: "Qwen3.6-27B-MTP-IQ4_XS.gguf"
+    context_window: 114688
     pricing_per_1m_input: "0.00"
     pricing_per_1m_output: "0.00"
     cost_basis: "zero_marginal_api_cost"
-    observed_at: "2026-05-23T00:00:00Z"
+    observed_at: "2026-05-30T00:00:00Z"
     source: "manual benchmark"
     notes: >
-      Local DeepSeek-R1-14B on .201:8001. Reasoning model for structured tasks.
-      env var LLM_CODER_FAST_URL is misnamed (legacy) but correct reference.
+      Routing key retained for downstream contract stability; actual served model
+      is Qwen3.6-27B-MTP-IQ4_XS.gguf on .201:8001 via llama.cpp. Live-probed 2026-05-30.
+      env var LLM_CODER_FAST_URL is legacy-named but correct. context_window=114688.
 
   deepseek-r1-32b:
     model_id: "deepseek-r1-32b"
@@ -60,10 +63,26 @@ models:
     observed_at: "2026-05-24T00:00:00Z"
     source: "manual benchmark"
     notes: >
-      Local DeepSeek-R1-32B on .200:8101. MLX-served. Topology slot: reasoning-deepseek-32b.
-      context_window_budgeted=8192 per llm_endpoints.yaml. LLM_DEEPSEEK_R1_URL is the
-      canonical env var (topology url_env_var). Note: .env/Infisical may currently point
-      LLM_DEEPSEEK_R1_URL at .201:8001 (14B) — known drift, out of this ticket scope.
+      Stale slot — previously MLX-served on .200:8101. Superseded by ds-v4-flash
+      (OMN-12492). Key retained for routing contract stability; downstream contracts
+      should migrate to ds-v4-flash. LLM_DEEPSEEK_R1_URL env var still declared.
+
+  ds-v4-flash:
+    model_id: "ds-v4-flash"
+    provider: "local"
+    endpoint_env: "LLM_DS_V4_FLASH_URL"
+    model_name: "deepseek-v4-flash"
+    context_window: 65536
+    pricing_per_1m_input: "0.00"
+    pricing_per_1m_output: "0.00"
+    cost_basis: "zero_marginal_api_cost"
+    observed_at: "2026-05-30T00:00:00Z"
+    source: "manual benchmark"
+    notes: >
+      DeepSeek V4 Flash (284B MoE) served by antirez/ds4 on .200:8101 (Mac Studio).
+      Live-probed 2026-05-30 as the active .200:8101 endpoint.
+      Zero marginal API cost. context_window_budgeted=65536 (conservative).
+      LLM_DS_V4_FLASH_URL env var — actual URL lives in bifrost_overrides.yaml overlay (local file, not committed).
 
   qwen3.6-35b:
     model_id: "qwen3.6-35b"
@@ -77,10 +96,8 @@ models:
     observed_at: "2026-05-24T00:00:00Z"
     source: "manual benchmark"
     notes: >
-      Canonical reasoning-moe-35b local slot on .200:8102. This is the newer
-      served model replacing the previous qwen3-next-80b routing key. Use this
-      key for new routing policies; keep qwen3-next-80b only as a compatibility
-      alias until downstream contracts are migrated.
+      Canonical reasoning-moe-35b local slot. Key for new routing policies.
+      Keep qwen3-next-80b as a compatibility alias until downstream contracts migrate.
 
   qwen3-next-80b:
     model_id: "qwen3-next-80b"
@@ -94,10 +111,44 @@ models:
     observed_at: "2026-05-24T00:00:00Z"
     source: "manual benchmark"
     notes: >
-      Slot reasoning-moe-35b on .200:8102. Actual served model is
-      mlx-community/Qwen3.6-35B-A3B-8bit (replaced Qwen3-Next-80B-A3B 2026-04-18).
-      Model key retained for routing key stability. context_window_budgeted=8192 per
-      llm_endpoints.yaml. LLM_QWEN3_NEXT_URL is the canonical env var.
+      Compatibility alias for qwen3.6-35b. Key retained for routing key stability.
+      Actual served model is mlx-community/Qwen3.6-35B-A3B-8bit (replaced Qwen3-Next-80B-A3B 2026-04-18).
+
+  gemini-2.0-flash:
+    model_id: "gemini-2.0-flash"
+    provider: "google"
+    endpoint_env: "GEMINI_API_URL"
+    model_name: "gemini-2.0-flash"
+    requires_api_key_env: "GEMINI_API_KEY"
+    context_window: 1048576
+    pricing_per_1m_input: "0.10"
+    pricing_per_1m_output: "0.40"
+    cost_basis: "cloud_api_cost"
+    observed_at: "2026-05-30T00:00:00Z"
+    source: "provider docs"
+    notes: >
+      Gemini 2.0 Flash. 1M context window. GEMINI_API_KEY or GOOGLE_API_KEY required.
+      Pricing: $0.10/1M input, $0.40/1M output (Google AI pricing 2026-05-30).
+      endpoint_url empty in repo default; overlay fills https://generativelanguage.googleapis.com/v1beta/openai/.
+      Routed via cloud-gemini-flash bifrost backend.
+
+  openrouter-qwen3-coder-480b:
+    model_id: "openrouter-qwen3-coder-480b"
+    provider: "openrouter"
+    endpoint_env: "OPENROUTER_URL"
+    model_name: "qwen/qwen3-coder:free"
+    requires_api_key_env: "OPENROUTER_API_KEY"
+    context_window: 262144
+    pricing_per_1m_input: "0.00"
+    pricing_per_1m_output: "0.00"
+    cost_basis: "zero_marginal_api_cost"
+    observed_at: "2026-05-30T00:00:00Z"
+    source: "openrouter catalog"
+    notes: >
+      OpenRouter free tier — Qwen3 Coder 480B. Cheap frontier direct for June 5
+      model-experimentation campaign (OMN-12492). Zero API cost (free tier, provider
+      bears inference cost). Rate-limited, no SLA. Requires OPENROUTER_API_KEY.
+      Falls back to openrouter-glm-flash or local when key absent.
 
   llama-3.3-70b-free:
     model_id: "llama-3.3-70b-free"

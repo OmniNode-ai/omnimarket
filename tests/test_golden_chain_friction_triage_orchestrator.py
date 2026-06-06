@@ -2,11 +2,11 @@
 # SPDX-License-Identifier: MIT
 """Golden-chain guardrails for node_friction_triage_orchestrator [OMN-12205].
 
-This node is intentionally not implemented yet. The golden chain verifies:
-- contract marks the node as not implemented
+The golden chain verifies:
+- contract marks the node as implemented
 - typed models are strict (extra="forbid")
 - entry point loads
-- handler fails loudly with NotImplementedError
+- handler dry-run behavior is deterministic
 """
 
 from __future__ import annotations
@@ -42,10 +42,10 @@ def _contract_path() -> Path:
 
 
 @pytest.mark.unit
-def test_contract_marks_node_not_implemented() -> None:
+def test_contract_marks_node_implemented() -> None:
     raw = yaml.safe_load(_contract_path().read_text(encoding="utf-8"))
 
-    assert raw["node_not_implemented"] is True
+    assert raw["node_not_implemented"] is False
     assert raw["node_type"] == "orchestrator"
     assert raw["handler"]["module"] == HANDLER_MODULE
     assert raw["handler"]["class"] == HANDLER_CLASS
@@ -130,17 +130,35 @@ def test_result_model_is_strict() -> None:
 
 
 @pytest.mark.unit
-def test_handler_raises_not_implemented() -> None:
+def test_handler_dry_run_aggregates_threshold_crossings(tmp_path: Path) -> None:
     mod = import_module(HANDLER_MODULE)
     HandlerFrictionTriageOrchestrator = getattr(mod, HANDLER_CLASS)  # noqa: N806
 
     req_mod = import_module(REQUEST_MODULE)
     ModelFrictionTriageRequest = getattr(req_mod, REQUEST_CLASS)  # noqa: N806
 
-    handler = HandlerFrictionTriageOrchestrator()
-    request = ModelFrictionTriageRequest(
-        friction_registry_path="/tmp/friction.ndjson",
+    registry = tmp_path / "friction.ndjson"
+    registry.write_text(
+        "\n".join(
+            [
+                '{"skill":"ticketing","surface":"linear","severity_score":3}',
+                '{"skill":"ticketing","surface":"linear","severity_score":3}',
+                '{"skill":"ticketing","surface":"linear","severity_score":3}',
+                '{"skill":"other","surface":"docs","severity_score":1}',
+            ]
+        ),
+        encoding="utf-8",
     )
 
-    with pytest.raises(NotImplementedError, match="OMN-12205"):
-        handler.handle(request)
+    handler = HandlerFrictionTriageOrchestrator()
+    request = ModelFrictionTriageRequest(
+        friction_registry_path=str(registry),
+        dry_run=True,
+    )
+
+    result = handler.handle(request)
+
+    assert result.surfaces_tracked == 2
+    assert result.threshold_crossings == 1
+    assert result.tickets_created == 0
+    assert result.dry_run is True

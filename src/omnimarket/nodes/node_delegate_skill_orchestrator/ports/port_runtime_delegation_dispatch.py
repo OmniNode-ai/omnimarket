@@ -8,23 +8,23 @@ import asyncio
 import json
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any, Protocol, cast
 from uuid import UUID
 
+import yaml
 from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
-from omnibase_infra.event_bus.topic_constants import (
-    TOPIC_DELEGATION_COMPLETED,
-    TOPIC_DELEGATION_FAILED,
-    TOPIC_DELEGATION_REQUEST,
-)
 
 from omnimarket.adapters.codex.runtime_client import (
     ModelDispatchBusTerminalResult,
 )
 from omnimarket.events.delegation import ModelDelegationRequest
+from omnimarket.nodes.node_delegate_skill_orchestrator.models import (
+    ModelRuntimeDelegationDispatchConfig,
+)
 
-_REQUESTER = "delegate-skill-runtime-port"
-_DELEGATION_REQUEST_MESSAGE_TYPE = "omnibase-infra.delegation-request"
+_DEFAULT_CONTRACT_PATH = Path(__file__).resolve().parent.parent / "contract.yaml"
+_CONFIG_KEY = "delegation_runtime_dispatch"
 
 
 class ProtocolDelegationEventBus(Protocol):
@@ -54,17 +54,29 @@ class RuntimeDelegationDispatchPort:
         self,
         *,
         event_bus: ProtocolDelegationEventBus,
+        config: ModelRuntimeDelegationDispatchConfig | None = None,
         command_topic: str | None = None,
         completed_topic: str | None = None,
         failed_topic: str | None = None,
         response_topic: str | None = None,
     ) -> None:
         self._event_bus = event_bus
-        self._command_topic = command_topic or TOPIC_DELEGATION_REQUEST
-        self._completed_topic = (
-            completed_topic or response_topic or TOPIC_DELEGATION_COMPLETED
-        )
-        self._failed_topic = failed_topic or TOPIC_DELEGATION_FAILED
+        runtime_config = config or load_runtime_delegation_dispatch_config()
+        completed_override = completed_topic or response_topic
+        if command_topic or completed_override or failed_topic:
+            runtime_config = runtime_config.model_copy(
+                update={
+                    "topics": runtime_config.topics.model_copy(
+                        update={
+                            "command": command_topic or runtime_config.topics.command,
+                            "completed": completed_override
+                            or runtime_config.topics.completed,
+                            "failed": failed_topic or runtime_config.topics.failed,
+                        }
+                    )
+                }
+            )
+        self._config = runtime_config
 
     async def dispatch(
         self,
@@ -104,11 +116,15 @@ class RuntimeDelegationDispatchPort:
         unsubscribe, queue = await self._subscribe_for_result(correlation_id)
         try:
             await self._publish_request(request)
-            terminal = await asyncio.wait_for(queue.get(), timeout=300.0)
+            timeout_seconds = float(self._config.wait_timeout_seconds)
+            terminal = await asyncio.wait_for(queue.get(), timeout=timeout_seconds)
         except TimeoutError:
             return {
                 "status": "timeout",
-                "error_message": "timed out after 300s waiting for delegation result",
+                "error_message": (
+                    f"timed out after {self._config.wait_timeout_seconds}s "
+                    "waiting for delegation result"
+                ),
             }
         finally:
             await _unsubscribe(unsubscribe)
@@ -128,11 +144,11 @@ class RuntimeDelegationDispatchPort:
             payload=request,
             correlation_id=request.correlation_id,
             envelope_timestamp=datetime.now(UTC),
-            event_type=_DELEGATION_REQUEST_MESSAGE_TYPE,
-            source_tool=_REQUESTER,
+            event_type=self._config.request_message_type,
+            source_tool=self._config.source_tool,
         )
         await self._event_bus.publish(
-            self._command_topic,
+            self._config.topics.command,
             None,
             envelope.model_dump_json(exclude_none=True).encode("utf-8"),
             None,
@@ -152,22 +168,27 @@ class RuntimeDelegationDispatchPort:
             terminal = _parse_delegation_terminal(
                 value,
                 expected_correlation_id=dispatch_correlation_id,
+                failed_topic=self._config.topics.failed,
             )
             if terminal is None:
                 return
             await queue.put(terminal)
 
         unsubscribe_completed = await self._event_bus.subscribe(
-            self._completed_topic,
+            self._config.topics.completed,
             None,
             on_message,
-            group_id=f"delegate-skill-runtime-port-{dispatch_correlation_id.hex}",
+            group_id=(
+                f"{self._config.consumer_group_prefix}-{dispatch_correlation_id.hex}"
+            ),
         )
         unsubscribe_failed = await self._event_bus.subscribe(
-            self._failed_topic,
+            self._config.topics.failed,
             None,
             on_message,
-            group_id=f"delegate-skill-runtime-port-{dispatch_correlation_id.hex}",
+            group_id=(
+                f"{self._config.consumer_group_prefix}-{dispatch_correlation_id.hex}"
+            ),
         )
 
         async def unsubscribe() -> None:
@@ -201,6 +222,7 @@ def _parse_delegation_terminal(
     value: bytes | str,
     *,
     expected_correlation_id: UUID,
+    failed_topic: str,
 ) -> ModelDispatchBusTerminalResult | None:
     try:
         raw = json.loads(value.decode("utf-8") if isinstance(value, bytes) else value)
@@ -225,9 +247,7 @@ def _parse_delegation_terminal(
         return None
 
     topic = str(envelope_payload.get("topic") or raw.get("event_type") or "")
-    is_failed = topic == TOPIC_DELEGATION_FAILED or bool(
-        terminal_payload.get("failure_reason")
-    )
+    is_failed = topic == failed_topic or bool(terminal_payload.get("failure_reason"))
     error_message = str(terminal_payload.get("failure_reason") or "") or None
     return ModelDispatchBusTerminalResult(
         correlation_id=correlation_id,
@@ -239,3 +259,25 @@ def _parse_delegation_terminal(
 
 async def _unsubscribe(unsubscribe: Callable[[], Awaitable[None]]) -> None:
     await unsubscribe()
+
+
+def load_runtime_delegation_dispatch_config(
+    contract_path: Path = _DEFAULT_CONTRACT_PATH,
+) -> ModelRuntimeDelegationDispatchConfig:
+    """Load downstream delegation runtime dispatch settings from contract.yaml."""
+    raw = yaml.safe_load(contract_path.read_text(encoding="utf-8"))
+    if not isinstance(raw, dict):
+        raise ValueError(f"{contract_path} must contain a mapping")
+
+    config = raw.get(_CONFIG_KEY)
+    if not isinstance(config, dict):
+        raise ValueError(f"{contract_path} missing {_CONFIG_KEY} mapping")
+
+    return ModelRuntimeDelegationDispatchConfig.model_validate(config)
+
+
+__all__ = [
+    "ProtocolDelegationEventBus",
+    "RuntimeDelegationDispatchPort",
+    "load_runtime_delegation_dispatch_config",
+]

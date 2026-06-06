@@ -1,0 +1,49 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-12717"
+title: "Require useful delegation artifacts for test and code-generation routes"
+summary: >
+  Delegation test/code-generation routes now reject OpenAI-compatible responses
+  truncated by finish_reason=length, require a final_artifact_only deterministic
+  DoD check for artifact-producing task classes, and prove useful artifacts
+  through golden-chain DI coverage for OmniNode infra-style unit-test generation
+  and generic non-OmniNode code generation.
+is_seam_ticket: true
+interface_change: true
+interfaces_touched:
+  - "delegation_quality_gate"
+  - "llm_inference_intent"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-useful-artifact-golden-chain"
+    description: >
+      Golden-chain DI tests prove useful test and code-generation artifacts, not
+      just non-empty model responses.
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/integration/golden_chain/test_golden_chain_delegation_useful_artifact_chain.py -q"
+      - check_type: "command"
+        check_value: "uv run pytest tests/integration/golden_chain -q"
+  - id: "dod-focused-quality-unit-tests"
+    description: >
+      Focused inference, contract, and quality-gate tests prove truncated
+      responses are rejected and artifact tasks require final code/test output.
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/unit/delegation/test_handler_inference_intent.py tests/unit/delegation/test_delegation_quality_contract.py tests/unit/delegation/test_delegation_contracts.py -q"
+      - check_type: "command"
+        check_value: "uv run ruff check src/ tests/ && uv run ruff format --check src/ tests/"
+  - id: "dod-deploy"
+    description: >
+      Runtime behavior changed in the delegation/SEA path. After merge to dev,
+      deploy the dev runtime and rerun live SEA plus direct delegation probes to
+      confirm useful-artifact responses, not merely transport success.
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "deploy: after merge to dev, run live dev-runtime SEA and direct delegation useful-artifact probes for OMN-12717"

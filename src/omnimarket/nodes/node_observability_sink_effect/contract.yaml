@@ -1,0 +1,95 @@
+---
+name: node_observability_sink_effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: EFFECT_GENERIC
+node_version: {major: 0, minor: 1, patch: 0}
+node_not_implemented: false
+description: >
+  Effect node that persists observability events (action logs, execution
+  records, agent-tracking metrics) to configured runtime storage adapters
+  (Kafka and/or PostgreSQL). Replaces direct ActionLogger + Postgres writes made
+  inline by the observability skill, routing all I/O through the node dispatch
+  bus and eliminating the architectural bypass. Runtime smoke may explicitly set
+  both sink flags false to validate contract dispatch without side effects.
+
+handler:
+  module: omnimarket.nodes.node_observability_sink_effect.handlers.handler_observability_sink_effect
+  class: HandlerObservabilitySinkEffect
+  input_model: omnimarket.nodes.node_observability_sink_effect.models.model_observability_sink_input.ModelObservabilitySinkInput
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - handler:
+        name: HandlerObservabilitySinkEffect
+        module: omnimarket.nodes.node_observability_sink_effect.handlers.handler_observability_sink_effect
+
+input_model:
+  name: ModelObservabilitySinkInput
+  module: omnimarket.nodes.node_observability_sink_effect.models.model_observability_sink_input
+  description: "Batch of action events and session context to persist."
+output_model:
+  name: ModelObservabilitySinkOutput
+  module: omnimarket.nodes.node_observability_sink_effect.models.model_observability_sink_output
+  description: "Persistence acknowledgement with event count and trace IDs."
+
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  runtime_profiles: [effects]
+  idempotent: true
+  timeout_ms: 30000
+
+inputs:
+  correlation_id:
+    type: uuid
+    description: "Correlation ID for the session or run."
+    required: true
+  session_id:
+    type: uuid
+    description: "Session identifier."
+    required: true
+  events:
+    type: list[ActionEvent]
+    description: "Ordered action events to persist."
+    required: true
+  sink_kafka:
+    type: bool
+    description: "Publish events through the injected Kafka sink adapter."
+    required: false
+    default: true
+  sink_postgres:
+    type: bool
+    description: "Persist events through the injected PostgreSQL sink adapter."
+    required: false
+    default: true
+  submitted_at:
+    type: datetime
+    description: "Timestamp when the sink command was submitted."
+    required: true
+
+terminal_event: onex.evt.omnimarket.observability-persisted.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.observability-sink.v1
+  publish_topics:
+    - onex.evt.omnimarket.observability-persisted.v1
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.observability-persisted.v1
+
+side_effects:
+  reads: []
+  writes:
+    - kafka_publish
+    - postgres_insert
+  duplicate_key_fields:
+    - correlation_id
+    - session_id
+
+metadata:
+  transport_type: kafka
+  implementation_wave: 5
+  related_tickets: ["OMN-12217", "OMN-12325"]
+  runtime_smoke_mode: "Set sink_kafka=false and sink_postgres=false for side-effect-free dispatch proof."

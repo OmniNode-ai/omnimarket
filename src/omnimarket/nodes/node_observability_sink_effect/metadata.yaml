@@ -1,0 +1,22 @@
+name: node_observability_sink_effect
+version: "0.1.0"
+description: "Contract-only package for persisting observability events via the dispatch bus."
+pack: observability
+node_role: effect
+display_name: "Observability Sink Effect"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_observability_sink_effect: "omnimarket.nodes.node_observability_sink_effect"
+capabilities:
+  standalone: false
+  full_runtime: true
+  requires_network: true
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: write
+dependencies: []
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["effect", "observability", "kafka", "postgresql", "OMN-12217"]

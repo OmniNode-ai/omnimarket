@@ -17,6 +17,17 @@ handler:
   class: NodePersonaStorageEffect
   input_model: omnimarket.nodes.node_persona_storage_effect.models.model_persona_storage_request.ModelPersonaStorageRequest
 
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  runtime_profiles: [effects]
+
+runtime_dispatch:
+  command_topic: onex.cmd.omnimemory.persona-storage.v1
+  terminal_events:
+    success: onex.evt.omnimemory.persona-storage-completed.v1
+    failure: onex.evt.omnimemory.persona-storage-failed.v1
+
 io_operations:
   - operation_type: "database_write"
     atomic: true
@@ -24,8 +35,17 @@ io_operations:
     validation_enabled: true
 
 event_bus:
+  subscribe_topics:
+    - "onex.cmd.omnimemory.persona-storage.v1"
   publish_topics:
     - "onex.evt.omnimemory.persona-snapshot-created.v1"
+    - "onex.evt.omnimemory.persona-storage-completed.v1"
+    - "onex.evt.omnimemory.persona-storage-failed.v1"
+
+externally_consumed_topics:
+  - "onex.evt.omnimemory.persona-snapshot-created.v1"
+  - "onex.evt.omnimemory.persona-storage-completed.v1"
+  - "onex.evt.omnimemory.persona-storage-failed.v1"
 
 tags:
   - persona

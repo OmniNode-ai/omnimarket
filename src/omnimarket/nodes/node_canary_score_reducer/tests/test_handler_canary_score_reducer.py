@@ -150,7 +150,8 @@ def test_materialize_produces_capability_score_rows() -> None:
         ],
     )
     new_state = handler.accumulate(state, report)
-    rows = handler.materialize(new_state)
+    result = handler.materialize(new_state)
+    rows = result.capability_score_rows
 
     assert len(rows) == 1
     row = rows[0]
@@ -212,7 +213,8 @@ def test_materialize_preserves_entries_failed() -> None:
         ],
     )
     new_state = handler.accumulate(state, report)
-    rows = handler.materialize(new_state)
+    result = handler.materialize(new_state)
+    rows = result.capability_score_rows
 
     assert len(rows) == 1
     row = rows[0]

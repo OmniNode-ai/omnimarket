@@ -1,0 +1,19 @@
+name: node_skill_functional_audit_compute
+version: "1.0.0"
+description: "Static stub detection and connectivity checks across skills"
+omnibase_core_compat: ">=0.40.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_skill_functional_audit_compute: "omnimarket.nodes.node_skill_functional_audit_compute"
+capabilities:
+  standalone: false
+  full_runtime: true
+  requires_network: false
+dependencies:
+  - "omnibase_core>=0.40.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["compute", "skill", "audit", "stub-detection", "connectivity"]
+pack: "sweep"
+display_name: "Skill Functional Audit Compute"
+node_role: "compute"

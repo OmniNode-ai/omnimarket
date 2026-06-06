@@ -10,6 +10,8 @@ import pytest
 from pydantic import ValidationError
 
 from omnimarket.nodes.node_delegate_skill_orchestrator.models.model_delegate_skill_request import (
+    DELEGATION_DEFAULT_MAX_TOKENS,
+    DELEGATION_MAX_TOKENS_HARD_LIMIT,
     ModelDelegateSkillRequest,
 )
 from omnimarket.nodes.node_delegate_skill_orchestrator.models.model_delegate_skill_response import (
@@ -27,6 +29,7 @@ def test_valid_request_minimal() -> None:
     assert req.prompt == "Write tests for the payment webhook retry path"
     assert req.task_type == "test"
     assert req.source == "claude-code"
+    assert req.max_tokens == DELEGATION_DEFAULT_MAX_TOKENS
     assert isinstance(req.correlation_id, UUID)
 
 
@@ -115,6 +118,28 @@ def test_unsupported_acceptance_criterion_rejected() -> None:
         )
 
 
+def test_explicit_max_tokens_hard_limit_accepted() -> None:
+    req = ModelDelegateSkillRequest(
+        prompt="Use the full local response budget",
+        task_type="reasoning",
+        source="codex",
+        max_tokens=DELEGATION_MAX_TOKENS_HARD_LIMIT,
+    )
+
+    assert req.max_tokens == 8192
+
+
+@pytest.mark.parametrize("max_tokens", [8193, 16384])
+def test_max_tokens_above_hard_limit_rejected(max_tokens: int) -> None:
+    with pytest.raises(ValidationError):
+        ModelDelegateSkillRequest(
+            prompt="Too much response budget",
+            task_type="reasoning",
+            source="codex",
+            max_tokens=max_tokens,
+        )
+
+
 def test_response_includes_provider_and_metrics() -> None:
     cid = uuid4()
     resp = ModelDelegateSkillResponse(
@@ -123,6 +148,7 @@ def test_response_includes_provider_and_metrics() -> None:
         task_type="test",
         provider="qwen-coder",
         model_name="Qwen3-Coder-30B",
+        prompt_text="Write tests for the webhook",
         quality_gate_passed=True,
         quality_score=0.9,
         metrics=ModelDelegateSkillResponseMetrics(
@@ -136,6 +162,7 @@ def test_response_includes_provider_and_metrics() -> None:
     assert resp.correlation_id == cid
     assert resp.provider == "qwen-coder"
     assert resp.model_name == "Qwen3-Coder-30B"
+    assert resp.prompt_text == "Write tests for the webhook"
     assert resp.quality_gate_passed is True
     assert resp.quality_score == 0.9
     assert resp.metrics.cost_usd == 0.001
@@ -154,6 +181,7 @@ def test_response_defaults() -> None:
     )
     assert resp.provider == ""
     assert resp.model_name == ""
+    assert resp.prompt_text == ""
     assert resp.quality_gate_passed is False
     assert resp.quality_score == 0.0
     assert resp.metrics.cost_usd == 0.0

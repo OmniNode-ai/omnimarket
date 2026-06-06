@@ -1,0 +1,56 @@
+---
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Decision Store Orchestrator (OMN-12219)
+#
+# Orchestrator: conflict check (compute) → LLM review (effect) → persist (effect) → notify (effect)
+name: node_decision_store_orchestrator
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: orchestrator
+node_version: {major: 1, minor: 0, patch: 0}
+node_not_implemented: false
+
+description: >
+  Decision store orchestrator. Routes record/query/check-conflicts sub-operations
+  for architectural and design decisions. Pipeline: structural conflict check
+  (compute) → semantic LLM review (effect, only if structural_confidence >= 0.6) →
+  persist decision entry (effect) → notify on HIGH-severity conflicts (effect).
+  HIGH-severity conflicts trigger a notification gate. The handler owns
+  sequencing; conflict checks, semantic review, durable persistence, and
+  notification are injected through typed native adapters.
+
+handler:
+  module: omnimarket.nodes.node_decision_store_orchestrator.handlers.handler_decision_store_orchestrator
+  class: HandlerDecisionStoreOrchestrator
+  input_model: omnimarket.nodes.node_decision_store_orchestrator.models.model_decision_store_request.ModelDecisionStoreRequest
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - handler:
+        name: HandlerDecisionStoreOrchestrator
+        module: omnimarket.nodes.node_decision_store_orchestrator.handlers.handler_decision_store_orchestrator
+
+descriptor:
+  node_archetype: orchestrator
+  purity: impure
+  idempotent: false
+  timeout_ms: 120000
+  runtime_profiles:
+    - effects
+
+event_bus:
+  consumer_group: omnimarket.decision_store_orchestrator.consume.v1
+  subscribe_topics:
+    - onex.cmd.omnimarket.decision-store-start.v1
+  publish_topics:
+    - onex.evt.omnimarket.decision-stored.v1
+    - onex.evt.omnimarket.decision-conflict-detected.v1
+    - onex.evt.omnimarket.decision-query-result.v1
+  dlq_topics:
+    - onex.dlq.omnimarket.decision-store.v1
+
+metadata:
+  transport_type: kafka
+  implementation_wave: 4
+  related_tickets: ["OMN-12219", "OMN-12344"]

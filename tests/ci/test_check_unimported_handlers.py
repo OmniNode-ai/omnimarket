@@ -80,7 +80,7 @@ def test_allows_handler_referenced_in_registry(tmp_path: Path) -> None:
 
 
 @pytest.mark.unit
-def test_allows_handler_declared_in_node_contract(tmp_path: Path) -> None:
+def test_contract_declaration_is_not_import_wiring(tmp_path: Path) -> None:
     _write(
         tmp_path,
         "nodes/node_x/handlers/handler_x.py",
@@ -93,7 +93,9 @@ def test_allows_handler_declared_in_node_contract(tmp_path: Path) -> None:
         "  module: omnimarket.nodes.node_x.handlers.handler_x\n"
         "  class: HandlerXEffect\n",
     )
-    assert find_dead_handlers(tmp_path) == []
+    dead = find_dead_handlers(tmp_path)
+    assert len(dead) == 1
+    assert "HandlerXEffect" in dead[0]
 
 
 @pytest.mark.unit

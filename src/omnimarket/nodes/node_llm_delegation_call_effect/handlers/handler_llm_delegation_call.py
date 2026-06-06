@@ -6,7 +6,7 @@
 Health probe results are cached per endpoint URL with a 60-second TTL to avoid
 hammering unhealthy endpoints on every call.
 
-Endpoint URLs are resolved from env vars at call time (fail-fast on missing).
+Endpoint URLs are supplied by routing/contract resolution before this effect runs.
 Raw prompt is NEVER logged, persisted, or emitted to Kafka — only prompt_hash.
 
 Pricing for cost telemetry is resolved from routing_tiers.yaml (the model
@@ -19,7 +19,6 @@ from __future__ import annotations
 
 import hashlib
 import logging
-import os
 import time
 from datetime import UTC, datetime
 from decimal import Decimal, InvalidOperation
@@ -59,17 +58,51 @@ _CONTRACT = Path(__file__).parent.parent / "contract.yaml"
 _subscribe = contract_subscribe_topics(_CONTRACT)
 _publish = contract_publish_topics(_CONTRACT)
 
-TOPIC_DELEGATION_EXECUTE = _subscribe[0]
-TOPIC_DELEGATION_CALL_COMPLETED = _publish[0]
-TOPIC_DELEGATION_ESCALATION_TRIGGERED = _publish[1]
-TOPIC_DELEGATION_ALL_TIERS_FAILED = _publish[2]
-TOPIC_DELEGATION_MODEL_DEGRADED = _publish[3]
+_DELEGATION_EXECUTE_SUFFIX = (
+    "delegation-execute.v1"  # onex-topic-allow: suffix used for contract lookup
+)
+_DELEGATION_CALL_COMPLETED_SUFFIX = (
+    "delegation-call-completed.v1"  # onex-topic-allow: suffix used for contract lookup
+)
+_DELEGATION_ESCALATION_TRIGGERED_SUFFIX = "delegation-escalation-triggered.v1"  # onex-topic-allow: suffix used for contract lookup
+_DELEGATION_ALL_TIERS_FAILED_SUFFIX = "delegation-all-tiers-failed.v1"  # onex-topic-allow: suffix used for contract lookup
+_DELEGATION_MODEL_DEGRADED_SUFFIX = (
+    "delegation-model-degraded.v1"  # onex-topic-allow: suffix used for contract lookup
+)
+
+
+def _single_contract_topic(topics: tuple[str, ...], suffix: str, section: str) -> str:
+    matches = tuple(topic for topic in topics if topic.endswith(suffix))
+    if len(matches) != 1:
+        raise RuntimeError(
+            f"Contract {_CONTRACT} must declare exactly one event_bus.{section} "
+            f"topic ending with {suffix!r}; found {matches!r}."
+        )
+    return matches[0]
+
+
+TOPIC_DELEGATION_EXECUTE = _single_contract_topic(
+    _subscribe, _DELEGATION_EXECUTE_SUFFIX, "subscribe_topics"
+)
+TOPIC_DELEGATION_CALL_COMPLETED = _single_contract_topic(
+    _publish, _DELEGATION_CALL_COMPLETED_SUFFIX, "publish_topics"
+)
+TOPIC_DELEGATION_ESCALATION_TRIGGERED = _single_contract_topic(
+    _publish, _DELEGATION_ESCALATION_TRIGGERED_SUFFIX, "publish_topics"
+)
+TOPIC_DELEGATION_ALL_TIERS_FAILED = _single_contract_topic(
+    _publish, _DELEGATION_ALL_TIERS_FAILED_SUFFIX, "publish_topics"
+)
+TOPIC_DELEGATION_MODEL_DEGRADED = _single_contract_topic(
+    _publish, _DELEGATION_MODEL_DEGRADED_SUFFIX, "publish_topics"
+)
 
 __all__ = ["HandlerLlmDelegationCall"]
 
 logger = logging.getLogger(__name__)
 
 _HEALTH_CACHE_TTL_SECONDS = 60
+_CHAT_COMPLETIONS_SUFFIX = "/chat/completions"
 # (base_url, timestamp_of_check, is_healthy)
 _health_cache: dict[str, tuple[float, bool]] = {}
 
@@ -128,11 +161,18 @@ def _get_tier_price_per_1m(tier_name: str) -> tuple[Decimal, Decimal] | None:
 
 
 def _resolve_endpoint(endpoint_ref: str) -> str:
-    """Resolve env var name to base URL. Raises KeyError on missing var."""
-    value = os.environ.get(endpoint_ref)
-    if not value:
-        raise KeyError(f"Required env var '{endpoint_ref}' is not set or empty")
-    return value.rstrip("/")
+    """Validate the route-supplied endpoint URL."""
+    value = endpoint_ref.strip().rstrip("/")
+    if not value.startswith(("http://", "https://")):
+        raise ValueError("endpoint_ref must be a resolved http(s) endpoint URL")
+    return value
+
+
+def _chat_completions_url(endpoint_url: str) -> str:
+    """Return an OpenAI-compatible chat completions URL without double-appending."""
+    if endpoint_url.endswith(_CHAT_COMPLETIONS_SUFFIX):
+        return endpoint_url
+    return f"{endpoint_url}/v1/chat/completions"
 
 
 def _is_endpoint_healthy(base_url: str, client: httpx.Client) -> bool:
@@ -216,6 +256,47 @@ class HandlerLlmDelegationCall:
     HTTP call and emits exactly one terminal event.
     """
 
+    def handle(
+        self,
+        request: ModelLlmDelegationCallRequest,
+    ) -> (
+        ModelLlmDelegationCompletedEvent
+        | ModelLlmDelegationAllTiersFailedEvent
+        | ModelLlmDelegationCallResult
+    ):
+        """Runtime dispatch entrypoint (handler_wiring resolves handle, not __call__).
+
+        Executes the delegation call and RETURNS the terminal event/result; the
+        runtime dispatch-result applier publishes the returned model to the
+        contract's published_events topic. The handler does not publish directly.
+
+        The dispatch path emits exactly one terminal event:
+        - success → ModelLlmDelegationCompletedEvent (→ delegation-call-completed.v1)
+        - endpoint unhealthy → ModelLlmDelegationAllTiersFailedEvent (→ all-tiers-failed.v1)
+        - other failure (timeout, http error, invalid json) → ModelLlmDelegationCallResult
+          (no event publish; the failure is the returned result for the caller)
+
+        emit_escalation / emit_model_degraded remain separate methods invoked by
+        the swarm orchestrator outside this dispatch path.
+        """
+        try:
+            base_url = _resolve_endpoint(request.endpoint_ref)
+        except (KeyError, ValueError) as exc:
+            logger.error("endpoint resolution failed: %s", exc)
+            return self._failure_result(
+                request,
+                EnumDelegationFailureClass.MODEL_UNAVAILABLE,
+                str(exc),
+                endpoint_healthy=False,
+            )
+
+        with httpx.Client(timeout=120.0) as client:
+            healthy = _is_endpoint_healthy(base_url, client)
+            if not healthy:
+                logger.warning("health probe failed for %s — skipping call", base_url)
+                return self._build_all_tiers_failed(request)
+            return self._execute_call_for_handle(request, client, base_url)
+
     def __call__(
         self,
         request: ModelLlmDelegationCallRequest,
@@ -230,7 +311,7 @@ class HandlerLlmDelegationCall:
         """
         try:
             base_url = _resolve_endpoint(request.endpoint_ref)
-        except KeyError as exc:
+        except (KeyError, ValueError) as exc:
             logger.error("endpoint resolution failed: %s", exc)
             return self._failure_result(
                 request,
@@ -254,6 +335,24 @@ class HandlerLlmDelegationCall:
 
             return self._execute_call(request, client, base_url, event_publisher)
 
+    def _execute_call_for_handle(
+        self,
+        request: ModelLlmDelegationCallRequest,
+        client: httpx.Client,
+        base_url: str,
+    ) -> ModelLlmDelegationCompletedEvent | ModelLlmDelegationCallResult:
+        """Execute the call and RETURN the terminal event/result (no publish).
+
+        Used by handle(): the runtime publishes the returned model via the
+        contract's published_events. Returns the completed event on success, or
+        a failure result on timeout/http/invalid-json (no event published for
+        those — the failure is the returned result).
+        """
+        result = self._execute_call(request, client, base_url, event_publisher=None)
+        if not result.success:
+            return result
+        return self._build_completed_event(request, result)
+
     def _execute_call(
         self,
         request: ModelLlmDelegationCallRequest,
@@ -271,7 +370,7 @@ class HandlerLlmDelegationCall:
         t0 = time.monotonic()
         try:
             response = client.post(
-                f"{base_url}/v1/chat/completions",
+                _chat_completions_url(base_url),
                 json=payload,
                 timeout=120.0,
             )
@@ -309,47 +408,7 @@ class HandlerLlmDelegationCall:
             request.model_id, tokens_in, tokens_out, model_tier=request.model_tier
         )
 
-        completed_event = ModelLlmDelegationCompletedEvent(
-            correlation_id=request.correlation_id,
-            causation_id=request.causation_id,
-            request_id=request.request_id,
-            task_type=request.task_type,
-            task_id=request.task_id,
-            selected_model=request.model_id,
-            model_id=request.model_id,
-            model_tier=request.model_tier,
-            provider=request.provider,
-            endpoint_ref=request.endpoint_ref,
-            tokens_in=tokens_in,
-            tokens_out=tokens_out,
-            latency_ms=latency_ms,
-            actual_cost_usd=actual_cost,
-            opus_equivalent_cost_usd=opus_cost,
-            savings_usd=savings,
-            usage_source=EnumUsageSource.MEASURED,
-            cost_basis=cost_basis,
-            pricing_manifest_version=request.pricing_manifest_version,
-            pricing_manifest_hash=request.pricing_manifest_hash,
-            output_hash=output_hash,
-            prompt_hash=request.prompt_hash,
-            routing_policy_hash=request.routing_policy_hash,
-            policy_hash=request.routing_policy_hash,
-            registry_hash=request.registry_hash,
-            success=True,
-            quality_score=None,
-            escalated_to=None,
-            escalation_reason=None,
-            redacted_summary=None,
-            created_at=datetime.now(UTC),
-        )
-
-        self._publish(
-            TOPIC_DELEGATION_CALL_COMPLETED,
-            completed_event,
-            event_publisher,
-        )
-
-        return ModelLlmDelegationCallResult(
+        result = ModelLlmDelegationCallResult(
             request_id=request.request_id,
             success=True,
             content=content,
@@ -364,6 +423,70 @@ class HandlerLlmDelegationCall:
             cost_basis=cost_basis,
             quality_gate_passed=True,
             endpoint_healthy=True,
+        )
+
+        self._publish(
+            TOPIC_DELEGATION_CALL_COMPLETED,
+            self._build_completed_event(request, result),
+            event_publisher,
+        )
+
+        return result
+
+    def _build_completed_event(
+        self,
+        request: ModelLlmDelegationCallRequest,
+        result: ModelLlmDelegationCallResult,
+    ) -> ModelLlmDelegationCompletedEvent:
+        """Build the call-completed event from the request + successful result."""
+        return ModelLlmDelegationCompletedEvent(
+            correlation_id=request.correlation_id,
+            causation_id=request.causation_id,
+            request_id=request.request_id,
+            task_type=request.task_type,
+            task_id=request.task_id,
+            selected_model=request.model_id,
+            model_id=request.model_id,
+            model_tier=request.model_tier,
+            provider=request.provider,
+            endpoint_ref=request.endpoint_ref,
+            tokens_in=result.tokens_in,
+            tokens_out=result.tokens_out,
+            latency_ms=result.latency_ms,
+            actual_cost_usd=result.actual_cost_usd,
+            opus_equivalent_cost_usd=result.opus_equivalent_cost_usd,
+            savings_usd=result.savings_usd,
+            usage_source=EnumUsageSource.MEASURED,
+            cost_basis=result.cost_basis,
+            pricing_manifest_version=request.pricing_manifest_version,
+            pricing_manifest_hash=request.pricing_manifest_hash,
+            output_hash=result.output_hash,
+            prompt_hash=request.prompt_hash,
+            routing_policy_hash=request.routing_policy_hash,
+            policy_hash=request.routing_policy_hash,
+            registry_hash=request.registry_hash,
+            success=True,
+            quality_score=None,
+            escalated_to=None,
+            escalation_reason=None,
+            redacted_summary=None,
+            created_at=datetime.now(UTC),
+        )
+
+    def _build_all_tiers_failed(
+        self,
+        request: ModelLlmDelegationCallRequest,
+    ) -> ModelLlmDelegationAllTiersFailedEvent:
+        """Build the all-tiers-failed event (returned by handle on unhealthy endpoint)."""
+        return ModelLlmDelegationAllTiersFailedEvent(
+            correlation_id=request.correlation_id,
+            causation_id=request.causation_id,
+            request_id=request.request_id,
+            task_type=request.task_type,
+            task_id=request.task_id,
+            attempted_models=(request.model_id,),
+            failure_classes=(EnumDelegationFailureClass.MODEL_UNAVAILABLE,),
+            created_at=datetime.now(UTC),
         )
 
     def emit_escalation(

@@ -26,6 +26,9 @@ from pydantic import BaseModel
 from omnimarket.nodes.node_emit_daemon.models.model_daemon_health_event import (
     ModelDaemonHealthEvent,
 )
+from omnimarket.nodes.node_emit_daemon.models.model_durability import (
+    EnumDurabilityTier,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -105,15 +108,18 @@ EVENT_PAYLOAD_MODEL_REGISTRY: dict[str, PayloadModel] = {
 
 @dataclass(frozen=True)
 class FanOutRule:
-    """A single fan-out rule specifying a target topic and optional transform.
+    """A single fan-out rule specifying a target topic, tier, and transform.
 
     Attributes:
-        topic: The wire topic name (e.g., "onex.evt.omniclaude.session-started.v1").  # onex-topic-doc-example
+        topic: The wire topic name, shaped onex.{cmd|evt}.{service}.{event}.vN.
+        tier: Per-topic durability tier driving queue routing. Required: the
+            registry fails fast on any fan-out rule with no declared tier.
         transform: Function to transform the payload before publishing.
         description: Human-readable description of what this rule does.
     """
 
     topic: str
+    tier: EnumDurabilityTier
     transform: PayloadTransform | None = None
     description: str = ""
 
@@ -192,9 +198,29 @@ class EventRegistry:
                             f"{event_type}, using passthrough"
                         )
 
+                topic = rule_def["topic"]
+                # Tier is a required, contract-driven per-topic property. Fail
+                # fast on any fan-out rule that does not declare a valid tier.
+                if "tier" not in rule_def:
+                    raise ValueError(
+                        f"Fan-out rule for event '{event_type}' -> '{topic}' "
+                        "has no 'tier'. Every fan-out rule must declare a "
+                        "durability tier (duty_critical | telemetry)."
+                    )
+                tier_raw = rule_def["tier"]
+                try:
+                    tier = EnumDurabilityTier(tier_raw)
+                except ValueError as exc:
+                    valid = ", ".join(t.value for t in EnumDurabilityTier)
+                    raise ValueError(
+                        f"Fan-out rule for event '{event_type}' -> '{topic}' "
+                        f"declares unknown tier '{tier_raw}'. Valid tiers: {valid}."
+                    ) from exc
+
                 fan_out_rules.append(
                     FanOutRule(
-                        topic=rule_def["topic"],
+                        topic=topic,
+                        tier=tier,
                         transform=transform_fn,
                         description=rule_def.get("description", ""),
                     )

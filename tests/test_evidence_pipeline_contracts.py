@@ -127,16 +127,17 @@ def test_evidence_pipeline_contract_topics_and_terminal_events() -> None:
         assert set(event_bus["publish_topics"]) == expected["publish"]
 
 
-def test_evidence_pipeline_contracts_are_contract_only_until_wave_3() -> None:
+def test_evidence_pipeline_contracts_are_native_implemented_nodes() -> None:
     for node_name in EXPECTED_NODES:
         contract = _load_contract(node_name)
         metadata = contract["metadata"]
 
-        assert "handler" not in contract
-        assert "handler_routing" not in contract
-        assert contract["node_not_implemented"] is True
-        assert metadata["implementation_wave"] == 2
-        assert metadata["handlers_deferred_until_wave"] == 3
+        assert "handler" in contract
+        assert "handler_routing" in contract
+        assert contract["node_not_implemented"] is False
+        assert metadata["implementation_wave"] == 3
+        assert "handlers_deferred_until_wave" not in metadata
+        assert "OMN-12395" in metadata["related_tickets"]
 
 
 def test_evidence_pipeline_contracts_use_wave_1_wire_models() -> None:

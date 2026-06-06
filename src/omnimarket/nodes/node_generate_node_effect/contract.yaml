@@ -1,0 +1,57 @@
+---
+name: node_generate_node_effect
+contract_version: {major: 0, minor: 1, patch: 0}
+node_type: EFFECT_GENERIC
+node_version: {major: 0, minor: 1, patch: 0}
+node_not_implemented: false
+
+description: >
+  Effect node that performs template expansion and file writes to scaffold a new
+  ONEX node from a specification. Encapsulates the generate_node skill algorithm
+  as a contract-driven side-effecting node.
+
+input_model:
+  name: ModelGenerateNodeCommand
+  module: omnimarket.nodes.node_generate_node_effect.models.model_generate_node_command
+  description: "Command specifying the node to generate: name, type, and template args."
+
+output_model:
+  name: ModelGenerateNodeResult
+  module: omnimarket.nodes.node_generate_node_effect.models.model_generate_node_result
+  description: "Result listing created files and their paths."
+
+handler_routing:
+  routing_strategy: direct
+  handlers:
+    - handler:
+        name: HandlerGenerateNode
+        module: omnimarket.nodes.node_generate_node_effect.handlers.handler_generate_node
+
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  runtime_profiles: [effects]
+  idempotent: false
+  timeout_ms: 300000
+
+terminal_event: onex.evt.omnimarket.generate-node-completed.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.generate-node-start.v1
+  publish_topics:
+    - onex.evt.omnimarket.generate-node-completed.v1
+
+side_effects:
+  reads:
+    - filesystem
+  writes:
+    - filesystem
+  duplicate_key_fields:
+    - correlation_id
+    - node_name
+
+metadata:
+  transport_type: kafka
+  implementation_wave: 6
+  related_tickets: ["OMN-12230", "OMN-12363"]

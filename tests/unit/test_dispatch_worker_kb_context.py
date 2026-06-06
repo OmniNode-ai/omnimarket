@@ -27,11 +27,6 @@ from omnimarket.nodes.node_dispatch_worker.models.model_dispatch_worker_command 
 )
 
 
-@pytest.fixture(autouse=True)
-def _isolate_onex_state(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    monkeypatch.setenv("ONEX_STATE_DIR", str(tmp_path / ".onex_state"))
-
-
 def _make_fixer_cmd(**overrides: object) -> ModelDispatchWorkerCommand:
     defaults: dict[str, object] = {
         "name": "kb-test-fixer",

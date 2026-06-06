@@ -10,9 +10,9 @@ Usage:
     python -m omnimarket.nodes.node_dod_verify --ticket-id OMN-1234 --dry-run
     python -m omnimarket.nodes.node_dod_verify --ticket-id OMN-1234 --output-path /abs/path/dod_report.json
 
-Receipt persistence (OMN-10046):
+Receipt persistence (OMN-10046, OMN-12403):
     When ``ONEX_EVIDENCE_ROOT`` is set in the environment, the node writes a
-    Hook-2-compatible receipt to::
+    ModelDodReceipt-shaped receipt to::
 
         $ONEX_EVIDENCE_ROOT/<ticket-id>/dod_report.json
 
@@ -20,11 +20,9 @@ Receipt persistence (OMN-10046):
     location. When neither is set, only stdout JSON is produced (legacy
     behaviour preserved for callers that scrape stdout).
 
-    The receipt schema matches what
-    ``plugins/onex/hooks/scripts/pre_tool_use_dod_completion_guard.sh``
-    parses: ``timestamp`` (ISO-8601 UTC) and ``result.failed`` (int) — these
-    fields drive the Done-transition gate. Drift in those keys re-introduces
-    the OMN-10046 stuck-ticket class.
+    The receipt schema is ModelDodReceipt (OMN-9792). The DoD completion guard
+    (pre_tool_use_dod_completion_guard.sh) requires ``run_timestamp`` and
+    ``status == PASS`` — legacy ``timestamp``/``result`` keys are rejected.
 """
 
 from __future__ import annotations
@@ -39,6 +37,9 @@ import uuid
 from datetime import UTC, datetime
 from pathlib import Path
 
+from omnibase_core.enums.ticket.enum_receipt_status import EnumReceiptStatus
+from omnibase_core.models.contracts.ticket.model_dod_receipt import ModelDodReceipt
+
 from omnimarket.nodes.node_dod_verify.handlers.handler_dod_verify import (
     HandlerDodVerify,
 )
@@ -51,6 +52,8 @@ from omnimarket.nodes.node_dod_verify.models.model_dod_verify_state import (
 )
 
 _log = logging.getLogger(__name__)
+
+_FALLBACK_SHA = "0000000"
 
 
 def _git_info(working_dir: Path) -> tuple[str, str]:
@@ -79,8 +82,6 @@ def _git_info(working_dir: Path) -> tuple[str, str]:
         if branch_proc.returncode == 0:
             branch = branch_proc.stdout.strip()
     except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
-        # git unavailable or not a repo — git_info stays empty, the rest of
-        # the receipt is still valid for Hook 2.
         pass
     return sha, branch
 
@@ -90,22 +91,23 @@ def _build_receipt(
     contract_path: str | None,
     working_dir: Path,
 ) -> dict[str, object]:
-    """Build a Hook-2-compatible receipt dict from a ModelDodVerifyState.
+    """Build a ModelDodReceipt-shaped receipt dict from a ModelDodVerifyState.
 
-    The output matches the schema written by the omniclaude
-    ``dod_evidence_runner.write_evidence_receipt`` so a single hook reader can
-    consume receipts from either runner. See the module docstring for the keys
-    Hook 2 reads.
+    Emits ModelDodReceipt (OMN-9792). The DoD completion guard requires
+    ``run_timestamp`` and ``status == PASS``; the legacy ``timestamp``/``result``
+    schema is explicitly rejected by the guard.
     """
     sha, branch = _git_info(working_dir)
-    return {
-        "ticket_id": state.ticket_id,
-        "timestamp": datetime.now(tz=UTC).isoformat(),
-        "git_sha": sha,
-        "branch": branch,
-        "working_dir": str(working_dir),
-        "contract_path": contract_path or "",
-        "result": {
+    commit_sha = sha[:40] if sha and len(sha) >= 7 else _FALLBACK_SHA
+
+    status = (
+        EnumReceiptStatus.PASS
+        if state.failed_count == 0 and state.status != EnumDodVerifyStatus.FAILED
+        else EnumReceiptStatus.FAIL
+    )
+
+    probe_stdout = json.dumps(
+        {
             "total": state.total_checks,
             "verified": state.verified_count,
             "failed": state.failed_count,
@@ -120,7 +122,26 @@ def _build_receipt(
                 for check in state.checks
             ],
         },
-    }
+        default=str,
+    )[:4096]
+
+    receipt = ModelDodReceipt(
+        schema_version="1.0.0",
+        ticket_id=state.ticket_id,
+        evidence_item_id="dod-run",
+        check_type="command",
+        check_value=contract_path or "node_dod_verify",
+        status=status,
+        run_timestamp=datetime.now(tz=UTC),
+        commit_sha=commit_sha,
+        runner="node-dod-verify",
+        verifier="node-dod-verify-ci",
+        probe_command=f"node_dod_verify --ticket-id {state.ticket_id}",
+        probe_stdout=probe_stdout,
+        branch=branch or None,
+        working_dir=str(working_dir),
+    )
+    return receipt.model_dump(mode="json")
 
 
 def _resolve_receipt_path(

@@ -1,0 +1,64 @@
+---
+name: node_ticket_plan_compute
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: compute
+node_version: {major: 1, minor: 0, patch: 0}
+node_not_implemented: false
+description: >
+  Pure transform that parses a plan markdown document and produces a structured
+  list of Linear ticket definitions. No Linear API calls; caller supplies raw
+  plan text and receives ticket specs.
+
+handler:
+  module: omnimarket.nodes.node_ticket_plan_compute.handlers.handler_ticket_plan_compute
+  class: HandlerTicketPlanCompute
+  input_model: omnimarket.nodes.node_ticket_plan_compute.models.model_ticket_plan_request.ModelTicketPlanRequest
+
+handler_routing:
+  handlers:
+    - handler:
+        name: HandlerTicketPlanCompute
+        module: omnimarket.nodes.node_ticket_plan_compute.handlers.handler_ticket_plan_compute
+
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 30000
+
+inputs:
+  plan_text:
+    type: str
+    description: "Raw plan markdown text to parse"
+    required: true
+  epic_id:
+    type: str | null
+    description: "Optional Linear epic ID to attach tickets to"
+    required: false
+    default: null
+  team_id:
+    type: str | null
+    description: "Optional Linear team ID for created tickets"
+    required: false
+    default: null
+
+outputs:
+  tickets:
+    type: list[ModelTicketSpec]
+    description: "Structured ticket definitions parsed from the plan"
+  parse_warnings:
+    type: list[str]
+    description: "Non-fatal parse warnings (e.g. missing title, ambiguous phase)"
+
+terminal_event: onex.evt.omnimarket.ticket-plan-completed.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.ticket-plan-start.v1
+  publish_topics:
+    - onex.evt.omnimarket.ticket-plan-completed.v1
+
+metadata:
+  transport_type: kafka
+  implementation_wave: 6
+  related_tickets: ["OMN-12233"]

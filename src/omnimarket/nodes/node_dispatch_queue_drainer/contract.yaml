@@ -21,6 +21,26 @@ models:
   output:
     module: omnimarket.nodes.node_dispatch_queue_drainer.models.model_dispatch_queue_drainer_result
     class: ModelDispatchQueueDrainerResult
+
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.dispatch-queue-drain.v1
+  terminal_events:
+    success: onex.evt.omnimarket.dispatch-queue-drain-completed.v1
+    failure: onex.evt.omnimarket.dispatch-queue-drain-failed.v1
+  default_timeout_ms: 300000
+  max_timeout_ms: 900000
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.dispatch-queue-drain.v1
+  publish_topics:
+    - onex.evt.omnimarket.dispatch-queue-drain-completed.v1
+    - onex.evt.omnimarket.dispatch-queue-drain-failed.v1
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.dispatch-queue-drain-completed.v1
+  - onex.evt.omnimarket.dispatch-queue-drain-failed.v1
+
 capabilities:
   - compile_legacy_dispatch_queue_item
 invariants:

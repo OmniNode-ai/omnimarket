@@ -12,12 +12,12 @@ uuid: "a4e72f19-3c8b-4d56-b0a1-7f9e2d45c830"
 node_type: effect
 runtime_profiles:
   - memory
-input_model: "ModelDocumentDiscoveredEvent | ModelDocumentChangedEvent"
+input_model: "omnimemory.models.crawl.model_document_discovered_event.ModelDocumentDiscoveredEvent"
 output_model: "ModelKreuzbergParseResult"
 handler:
   module: omnimarket.nodes.node_kreuzberg_parse_effect.handlers.handler_kreuzberg_parse
   class: HandlerKreuzbergParse
-  input_model: ModelDocumentDiscoveredEvent | ModelDocumentChangedEvent
+  input_model: omnimemory.models.crawl.model_document_discovered_event.ModelDocumentDiscoveredEvent
 description: |
   KreuzbergParseEffect consumes document-discovered and document-changed events,
   calls the kreuzberg HTTP service to extract plain text from the raw document,
@@ -112,15 +112,20 @@ event_bus:
       schema_ref: "omnimemory.models.crawl.model_document_parse_failed_event.ModelDocumentParseFailedEvent"
       description: "Document parse failed event."
 
+externally_consumed_topics:
+  - "onex.evt.omnimemory.document-parse-failed.v1"
+
 # === HANDLER ROUTING ===
 handler_routing:
   handlers:
     - operation: "document_discovered"
       handler_class: "HandlerKreuzbergParse"
       handler_module: "omnimarket.nodes.node_kreuzberg_parse_effect.handlers.handler_kreuzberg_parse"
+      event_model: omnimemory.models.crawl.model_document_discovered_event.ModelDocumentDiscoveredEvent
     - operation: "document_changed"
       handler_class: "HandlerKreuzbergParse"
       handler_module: "omnimarket.nodes.node_kreuzberg_parse_effect.handlers.handler_kreuzberg_parse"
+      event_model: omnimemory.models.crawl.model_document_changed_event.ModelDocumentChangedEvent
 
 # === CONFIGURATION FIELDS ===
 config_fields:

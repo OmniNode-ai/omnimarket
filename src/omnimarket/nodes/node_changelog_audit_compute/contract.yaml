@@ -1,0 +1,68 @@
+---
+name: node_changelog_audit_compute
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: compute
+node_version: {major: 1, minor: 0, patch: 0}
+node_not_implemented: false
+description: >
+  Parse and classify caller-supplied changelog content for a set of
+  repositories since a given date. Pure compute transform — no filesystem or
+  network I/O.
+
+handler:
+  module: omnimarket.nodes.node_changelog_audit_compute.handlers.handler_changelog_audit_compute
+  class: HandlerChangelogAuditCompute
+  input_model: omnimarket.nodes.node_changelog_audit_compute.models.model_changelog_audit_request.ModelChangelogAuditRequest
+
+handler_routing:
+  handlers:
+    - handler:
+        name: HandlerChangelogAuditCompute
+        module: omnimarket.nodes.node_changelog_audit_compute.handlers.handler_changelog_audit_compute
+
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 30000
+
+inputs:
+  repos:
+    type: list[str]
+    description: "Repository names or paths to audit"
+    required: true
+  since_date:
+    type: str
+    description: "ISO-8601 date string; only entries on or after this date are returned"
+    required: true
+  dependencies:
+    type: list[str] | null
+    description: "Optional dependency filter — only include entries that affect these packages"
+    required: false
+    default: null
+  changelog_contents:
+    type: dict[str, str]
+    description: "Raw changelog markdown keyed by repository name or path"
+    required: false
+    default: {}
+
+outputs:
+  entries:
+    type: list[ModelChangelogEntry]
+    description: "Classified changelog entries"
+  summary:
+    type: object
+    description: "Aggregated counts by entry type (breaking, feature, fix, chore)"
+
+terminal_event: onex.evt.omnimarket.changelog-audit-completed.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.changelog-audit-start.v1
+  publish_topics:
+    - onex.evt.omnimarket.changelog-audit-completed.v1
+
+metadata:
+  transport_type: kafka
+  implementation_wave: 6
+  related_tickets: ["OMN-12225", "OMN-12358"]

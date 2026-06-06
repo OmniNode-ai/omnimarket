@@ -24,6 +24,24 @@ output_model:
   name: "ModelSimilarityComputeResponse"
   module: "omnimarket.nodes.node_similarity_compute.models.model_similarity_compute_response"
   description: "Distance, similarity, and optional is_match flag."
+
+runtime_dispatch:
+  command_topic: onex.cmd.omnimemory.similarity-compute.v1
+  terminal_events:
+    success: onex.evt.omnimemory.similarity-compute-completed.v1
+    failure: onex.evt.omnimemory.similarity-compute-failed.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimemory.similarity-compute.v1
+  publish_topics:
+    - onex.evt.omnimemory.similarity-compute-completed.v1
+    - onex.evt.omnimemory.similarity-compute-failed.v1
+
+externally_consumed_topics:
+  - onex.evt.omnimemory.similarity-compute-completed.v1
+  - onex.evt.omnimemory.similarity-compute-failed.v1
+
 handler:
   module: "omnimarket.nodes.node_similarity_compute.handlers.handler_similarity_compute"
   class: "HandlerSimilarityCompute"

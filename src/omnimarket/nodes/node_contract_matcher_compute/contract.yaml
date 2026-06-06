@@ -3,11 +3,22 @@ name: node_contract_matcher_compute
 contract_version: {major: 1, minor: 0, patch: 0}
 node_type: COMPUTE_GENERIC
 node_version: {major: 0, minor: 1, patch: 0}
-node_not_implemented: true
+node_not_implemented: false
 description: >
-  Contract-only Wave 2 pure compute node that compares an evidence bundle with
+  Native pure compute node that compares an evidence bundle with
   the typed ticket contract and emits a deterministic validation result. The
   validation path is explicitly non-LLM.
+
+handler:
+  module: omnimarket.nodes.node_contract_matcher_compute.handlers.handler_contract_matcher_compute
+  class: HandlerContractMatcherCompute
+  input_model: omnibase_compat.contracts.evidence_pipeline.wire.model_evidence_bundle.ModelEvidenceBundle
+
+handler_routing:
+  handlers:
+    - handler:
+        name: HandlerContractMatcherCompute
+        module: omnimarket.nodes.node_contract_matcher_compute.handlers.handler_contract_matcher_compute
 
 input_model:
   name: ModelEvidenceBundle
@@ -50,6 +61,5 @@ validation_contract:
 
 metadata:
   transport_type: kafka
-  implementation_wave: 2
-  handlers_deferred_until_wave: 3
-  related_tickets: ["OMN-11443"]
+  implementation_wave: 3
+  related_tickets: ["OMN-11443", "OMN-12395"]

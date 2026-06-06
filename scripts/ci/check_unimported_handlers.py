@@ -62,15 +62,6 @@ def _collect_all_source_lines(src_root: pathlib.Path) -> dict[pathlib.Path, str]
     return sources
 
 
-def _collect_contract_sources(src_root: pathlib.Path) -> dict[pathlib.Path, str]:
-    """Return {path: source_text} for node contract files under src_root."""
-    sources: dict[pathlib.Path, str] = {}
-    for contract_file in sorted((src_root / "nodes").rglob("contract.yaml")):
-        with contextlib.suppress(OSError):
-            sources[contract_file] = contract_file.read_text(encoding="utf-8")
-    return sources
-
-
 def _repo_relative(path: pathlib.Path, repo_root: pathlib.Path) -> pathlib.Path:
     with contextlib.suppress(ValueError):
         return path.relative_to(repo_root)
@@ -134,7 +125,6 @@ def find_dead_handlers(
         py_file: _collect_referenced_symbols(source)
         for py_file, source in all_sources.items()
     }
-    contract_sources = _collect_contract_sources(src_root)
     repo_root = src_root.parent.parent
     baseline = _load_baseline(baseline_path)
 
@@ -148,12 +138,9 @@ def find_dead_handlers(
                 imported_elsewhere = True
                 break
         if not imported_elsewhere:
-            contract_declared = any(
-                class_name in source for source in contract_sources.values()
-            )
             rel = _repo_relative(defining_file, repo_root)
             baseline_key = f"{rel}:{class_name}"
-            if contract_declared or baseline_key in baseline:
+            if baseline_key in baseline:
                 continue
             dead.append(f"{rel}:{lineno}: {class_name}")
 
@@ -177,15 +164,14 @@ def main() -> int:
             print(f"  {entry}")
         print()
         print(
-            "Fix: import the handler in a Python module, declare it in the node's "
-            "contract.yaml handler/handler_routing metadata, or add a documented "
+            "Fix: import the handler in a Python module, or add a documented "
             "legacy entry to scripts/validation/unimported_handler_baseline.txt."
         )
         return 1
 
     print(
         "OK: all Handler* classes in src/omnimarket/nodes/ are imported, "
-        "contract-declared, or explicitly baselined."
+        "or explicitly baselined."
     )
     return 0
 

@@ -14,6 +14,13 @@ from __future__ import annotations
 
 from typing import Any, Protocol, runtime_checkable
 
+from omnimarket.nodes.node_overseer_observer.models.model_overseer_observation_request import (
+    ModelOverseerObservationRequest,
+)
+from omnimarket.nodes.node_overseer_observer.models.model_overseer_observation_result import (
+    ModelOverseerObservationResult,
+)
+
 
 @runtime_checkable
 class EvidenceEvaluator(Protocol):
@@ -44,6 +51,20 @@ class NullEvidenceEvaluator:
         observed: list[dict[str, Any]],
     ) -> bool:
         return True
+
+    def handle(
+        self,
+        request: ModelOverseerObservationRequest,
+    ) -> ModelOverseerObservationResult:
+        passed = self.evaluate(
+            dod_evidence=request.dod_evidence,
+            observed=request.observed,
+        )
+        return ModelOverseerObservationResult(
+            passed=passed,
+            observed_count=len(request.observed),
+            evidence_count=len(request.dod_evidence),
+        )
 
 
 __all__: list[str] = ["EvidenceEvaluator", "NullEvidenceEvaluator"]

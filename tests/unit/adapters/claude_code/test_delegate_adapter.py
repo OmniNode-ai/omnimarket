@@ -15,6 +15,9 @@ from omnimarket.adapters.claude_code.delegate import (
     main,
     resolve_topics_from_contract,
 )
+from omnimarket.models.delegation.wire.model_token_limits import (
+    DELEGATION_DEFAULT_MAX_TOKENS,
+)
 
 
 @pytest.mark.unit
@@ -55,6 +58,7 @@ def test_build_delegation_payload_includes_all_fields() -> None:
     assert payload["codex_sandbox_mode"] == "workspace-write"
     assert payload["quality_contract_mode"] == "replace_task_class"
     assert payload["acceptance_criteria"] == ("exactly_two_sentences",)
+    assert payload["max_tokens"] == DELEGATION_DEFAULT_MAX_TOKENS
     assert payload["metadata"] == {"ticket": "OMN-11623"}
     assert "correlation_id" in payload
     # correlation_id must be a valid UUID string
@@ -104,6 +108,17 @@ def test_build_delegation_payload_rejects_non_positive_max_tokens(
             task_type="test",
             source="claude-code",
             max_tokens=bad_max_tokens,
+        )
+
+
+@pytest.mark.unit
+def test_build_delegation_payload_rejects_max_tokens_above_hard_limit() -> None:
+    with pytest.raises(ValueError, match="max_tokens"):
+        build_delegation_payload(
+            prompt="Test",
+            task_type="test",
+            source="claude-code",
+            max_tokens=8193,
         )
 
 

@@ -29,17 +29,17 @@ classifiers = [
     "Typing :: Typed",
 ]
 dependencies = [
-    "omnibase_core>=0.42.0,<0.43.0",
-    "omnibase-compat>=0.5.0,<0.6.0",
-    "omnibase-spi>=0.22.0,<0.23.0",
-    "omnibase-infra>=0.37.0,<0.38.0",
+    "omnibase_core>=0.44.0,<0.45.0",
+    "omnibase-compat==0.5.1",
+    "omnibase-spi>=0.20.6,<0.22.0",
+    "omnibase-infra>=0.38.0,<0.39.0",
     "onex-change-control>=0.5.0",
     "click>=8.1.0",
     "pydantic>=2.12.5,<3.0.0",
     "pydantic-settings>=2.0.0,<3.0.0",
     "pyyaml>=6.0.2,<7.0.0",
     "packaging>=24.0",
-    "aiokafka>=0.11.0",
+    "aiokafka>=0.13.0",
     "asyncpg>=0.30.0",
     "fastapi>=0.115.0",
     "uvicorn>=0.30.0",
@@ -72,6 +72,7 @@ node_delegate_skill_orchestrator = "omnimarket.nodes.node_delegate_skill_orchest
 node_ab_compare_reducer = "omnimarket.nodes.node_ab_compare_reducer"
 node_canary_score_reducer = "omnimarket.nodes.node_canary_score_reducer"
 node_ab_inference_effect = "omnimarket.nodes.node_ab_inference_effect"
+node_model_comparison_runner = "omnimarket.nodes.node_model_comparison_runner"
 node_antipattern_match_effect = "omnimarket.nodes.node_antipattern_match_effect"
 node_swarm_endpoint_health_effect = "omnimarket.nodes.node_swarm_endpoint_health_effect"
 node_adr_canary_orchestrator = "omnimarket.nodes.node_adr_canary_orchestrator"
@@ -90,12 +91,15 @@ node_session_phase_evaluator = "omnimarket.nodes.node_session_phase_evaluator"
 node_context_experiment_compute = "omnimarket.nodes.node_context_experiment_compute"
 node_kafka_topic_emit_probe = "omnimarket.nodes.node_kafka_topic_emit_probe"
 node_merge_effect = "omnimarket.nodes.node_merge_effect"
+node_pipeline_cache_effect = "omnimarket.nodes.node_pipeline_cache_effect"
 node_worker_stall_recovery = "omnimarket.nodes.node_worker_stall_recovery"
 node_merge_sweep_compute = "omnimarket.nodes.node_merge_sweep_compute"
 node_ledger_orchestrator = "omnimarket.nodes.node_ledger_orchestrator"
 node_ledger_append_effect = "omnimarket.nodes.node_ledger_append_effect"
 node_ledger_hash_compute = "omnimarket.nodes.node_ledger_hash_compute"
 node_ledger_state_reducer = "omnimarket.nodes.node_ledger_state_reducer"
+node_ledger_stats_compute = "omnimarket.nodes.node_ledger_stats_compute"
+node_delegation_ab_runner = "omnimarket.nodes.node_delegation_ab_runner"
 node_platform_readiness = "omnimarket.nodes.node_platform_readiness"
 node_platform_diagnostics = "omnimarket.nodes.node_platform_diagnostics"
 node_build_loop = "omnimarket.nodes.node_build_loop"
@@ -108,6 +112,7 @@ node_dod_verify = "omnimarket.nodes.node_dod_verify"
 node_coverage_sweep = "omnimarket.nodes.node_coverage_sweep"
 node_compliance_sweep = "omnimarket.nodes.node_compliance_sweep"
 node_contract_registry = "omnimarket.nodes.node_contract_registry"
+node_contract_drift_compute = "omnimarket.nodes.node_contract_drift_compute"
 node_contract_sweep = "omnimarket.nodes.node_contract_sweep"
 node_dashboard_sweep = "omnimarket.nodes.node_dashboard_sweep"
 node_data_flow_sweep = "omnimarket.nodes.node_data_flow_sweep"
@@ -119,6 +124,7 @@ node_log_projection = "omnimarket.nodes.node_log_projection"
 node_log_persistence_effect = "omnimarket.nodes.node_log_persistence_effect"
 node_data_verification = "omnimarket.nodes.node_data_verification"
 node_process_watchdog = "omnimarket.nodes.node_process_watchdog"
+node_generate_node_effect = "omnimarket.nodes.node_generate_node_effect"
 node_projection_session_outcome = "omnimarket.nodes.node_projection_session_outcome"
 node_projection_swarm = "omnimarket.nodes.node_projection_swarm"
 node_projection_llm_cost = "omnimarket.nodes.node_projection_llm_cost"
@@ -150,9 +156,9 @@ node_design_to_plan = "omnimarket.nodes.node_design_to_plan"
 node_ticket_work = "omnimarket.nodes.node_ticket_work"
 node_ticket_research_enrichment_compute = "omnimarket.nodes.node_ticket_research_enrichment_compute"
 node_create_ticket = "omnimarket.nodes.node_create_ticket"
-node_create_followup_tickets_effect = "omnimarket.nodes.node_create_followup_tickets_effect"
 node_plan_to_tickets = "omnimarket.nodes.node_plan_to_tickets"
 node_release = "omnimarket.nodes.node_release"
+node_recall_compute = "omnimarket.nodes.node_recall_compute"
 node_redeploy = "omnimarket.nodes.node_redeploy"
 node_baseline_capture = "omnimarket.nodes.node_baseline_capture"
 node_baseline_compare = "omnimarket.nodes.node_baseline_compare"
@@ -169,6 +175,7 @@ node_overnight = "omnimarket.nodes.node_overnight"
 node_pr_lifecycle_state_reducer = "omnimarket.nodes.node_pr_lifecycle_state_reducer"
 node_pr_lifecycle_orchestrator = "omnimarket.nodes.node_pr_lifecycle_orchestrator"
 node_pr_lifecycle_merge_effect = "omnimarket.nodes.node_pr_lifecycle_merge_effect"
+node_verification_sweep_orchestrator = "omnimarket.nodes.node_verification_sweep_orchestrator"
 node_retention_cleanup = "omnimarket.nodes.node_retention_cleanup"
 node_environment_health_scanner = "omnimarket.nodes.node_environment_health_scanner"
 node_linear_triage = "omnimarket.nodes.node_linear_triage"
@@ -200,6 +207,7 @@ node_model_router = "omnimarket.nodes.node_model_router"
 node_dispatch_worker = "omnimarket.nodes.node_dispatch_worker"
 node_dispatch_worker_execution_effect = "omnimarket.nodes.node_dispatch_worker_execution_effect"
 node_dispatch_queue_drainer = "omnimarket.nodes.node_dispatch_queue_drainer"
+node_dirty_canonical_sweep = "omnimarket.nodes.node_dirty_canonical_sweep"
 node_filesystem_crawler_effect = "omnimarket.nodes.node_filesystem_crawler_effect"
 node_kreuzberg_parse_effect = "omnimarket.nodes.node_kreuzberg_parse_effect"
 node_intent_storage_effect = "omnimarket.nodes.node_intent_storage_effect"
@@ -244,6 +252,7 @@ node_thread_reply_effect = "omnimarket.nodes.node_thread_reply_effect"
 node_polish_task_classifier = "omnimarket.nodes.node_polish_task_classifier"
 node_fixer_dispatcher = "omnimarket.nodes.node_fixer_dispatcher"
 node_verification_receipt_generator = "omnimarket.nodes.node_verification_receipt_generator"
+node_task_execution_orchestrator = "omnimarket.nodes.node_task_execution_orchestrator"
 node_pattern_b_broker = "omnimarket.nodes.node_pattern_b_broker"
 
 node_two_strike_arbiter = "omnimarket.nodes.node_two_strike_arbiter"
@@ -268,12 +277,26 @@ node_gap_analyzer_compute = "omnimarket.nodes.node_gap_analyzer_compute"
 node_readiness_scorer_compute = "omnimarket.nodes.node_readiness_scorer_compute"
 node_evidence_collector_effect = "omnimarket.nodes.node_evidence_collector_effect"
 node_occ_pr_writer_effect = "omnimarket.nodes.node_occ_pr_writer_effect"
+node_occ_evidence_draft_orchestrator = "omnimarket.nodes.node_occ_evidence_draft_orchestrator"
+node_occ_evidence_validator_compute = "omnimarket.nodes.node_occ_evidence_validator_compute"
 node_linear_updater_effect = "omnimarket.nodes.node_linear_updater_effect"
 node_evidence_publisher_effect = "omnimarket.nodes.node_evidence_publisher_effect"
 node_deployment_evidence_reducer = "omnimarket.nodes.node_deployment_evidence_reducer"
 node_pr_watch_orchestrator = "omnimarket.nodes.node_pr_watch_orchestrator"
 node_epic_team_orchestrator = "omnimarket.nodes.node_epic_team_orchestrator"
+node_self_healing_dispatch_orchestrator = "omnimarket.nodes.node_self_healing_dispatch_orchestrator"
+node_pipeline_audit_orchestrator = "omnimarket.nodes.node_pipeline_audit_orchestrator"
+node_observability_sink_effect = "omnimarket.nodes.node_observability_sink_effect"
+node_runner_orchestrator = "omnimarket.nodes.node_runner_orchestrator"
 node_wave_scheduler_orchestrator = "omnimarket.nodes.node_wave_scheduler_orchestrator"
+node_dep_cascade_dedup_orchestrator = "omnimarket.nodes.node_dep_cascade_dedup_orchestrator"
+node_create_followup_tickets_effect = "omnimarket.nodes.node_create_followup_tickets_effect"
+node_decompose_epic_orchestrator = "omnimarket.nodes.node_decompose_epic_orchestrator"
+node_dispatch_watchdog_orchestrator = "omnimarket.nodes.node_dispatch_watchdog_orchestrator"
+node_multi_agent_orchestrator = "omnimarket.nodes.node_multi_agent_orchestrator"
+node_refill_sprint_orchestrator = "omnimarket.nodes.node_refill_sprint_orchestrator"
+node_ticketing_epic_org_orchestrator = "omnimarket.nodes.node_ticketing_epic_org_orchestrator"
+node_ticketing_insights_compute = "omnimarket.nodes.node_ticketing_insights_compute"
 node_env_parity_compute = "omnimarket.nodes.node_env_parity_compute"
 node_friction_triage_orchestrator = "omnimarket.nodes.node_friction_triage_orchestrator"
 node_tech_debt_sweep_orchestrator = "omnimarket.nodes.node_tech_debt_sweep_orchestrator"
@@ -297,7 +320,6 @@ node_delegation_quality_gate_reducer = "omnimarket.nodes.node_delegation_quality
 node_delegation_routing_reducer = "omnimarket.nodes.node_delegation_routing_reducer"
 node_delegation_routing_feedback_reducer = "omnimarket.nodes.node_delegation_routing_feedback_reducer"
 node_llm_delegation_call_effect = "omnimarket.nodes.node_llm_delegation_call_effect"
-node_decompose_epic_orchestrator = "omnimarket.nodes.node_decompose_epic_orchestrator"
 node_codebase_intelligence_bridge_effect = "omnimarket.nodes.node_codebase_intelligence_bridge_effect"
 node_omnigate_check_executor = "omnimarket.nodes.node_omnigate_check_executor"
 node_omnigate_receipt_generator = "omnimarket.nodes.node_omnigate_receipt_generator"
@@ -309,11 +331,6 @@ node_demo_fix_dispatcher = "omnimarket.nodes.node_demo_fix_dispatcher"
 node_demo_fanout_orchestrator = "omnimarket.nodes.node_demo_fanout_orchestrator"
 node_demo_cost_compute = "omnimarket.nodes.node_demo_cost_compute"
 node_demo_renderer_effect = "omnimarket.nodes.node_demo_renderer_effect"
-node_dispatch_watchdog_orchestrator = "omnimarket.nodes.node_dispatch_watchdog_orchestrator"
-node_multi_agent_orchestrator = "omnimarket.nodes.node_multi_agent_orchestrator"
-node_refill_sprint_orchestrator = "omnimarket.nodes.node_refill_sprint_orchestrator"
-node_ticketing_epic_org_orchestrator = "omnimarket.nodes.node_ticketing_epic_org_orchestrator"
-node_ticketing_insights_compute = "omnimarket.nodes.node_ticketing_insights_compute"
 node_morning_handoff_generator = "omnimarket.nodes.node_morning_handoff_generator"
 node_session_phase_dispatcher = "omnimarket.nodes.node_session_phase_dispatcher"
 node_chain_diff = "omnimarket.nodes.node_chain_diff"
@@ -329,6 +346,20 @@ node_knowledge_query_federation_orchestrator = "omnimarket.nodes.node_knowledge_
 node_antipattern_index_effect = "omnimarket.nodes.node_antipattern_index_effect"
 node_handler_correctness_gate = "omnimarket.nodes.node_handler_correctness_gate"
 node_adversarial_pipeline_orchestrator = "omnimarket.nodes.node_adversarial_pipeline_orchestrator"
+node_decision_store_orchestrator = "omnimarket.nodes.node_decision_store_orchestrator"
+node_changelog_audit_compute = "omnimarket.nodes.node_changelog_audit_compute"
+node_shim_scanner = "omnimarket.nodes.node_shim_scanner"
+node_checkpoint_compute = "omnimarket.nodes.node_checkpoint_compute"
+node_env_sync_alert_effect = "omnimarket.nodes.node_env_sync_alert_effect"
+node_feature_dashboard_compute = "omnimarket.nodes.node_feature_dashboard_compute"
+node_ticket_plan_compute = "omnimarket.nodes.node_ticket_plan_compute"
+node_insights_to_plan_compute = "omnimarket.nodes.node_insights_to_plan_compute"
+node_plan_audit_compute = "omnimarket.nodes.node_plan_audit_compute"
+node_resume_session_compute = "omnimarket.nodes.node_resume_session_compute"
+node_rewind_compute = "omnimarket.nodes.node_rewind_compute"
+node_rrh_compute = "omnimarket.nodes.node_rrh_compute"
+node_skill_functional_audit_compute = "omnimarket.nodes.node_skill_functional_audit_compute"
+node_dispatch_outcome_bridge_effect = "omnimarket.nodes.node_dispatch_outcome_bridge_effect"
 
 [project.scripts]
 onex-integration-test-runner = "omnimarket.nodes.node_integration_test_runner.cli:main"
@@ -347,19 +378,18 @@ market = "omnimarket.cli.market:market"
 omnimarket = "omnimarket.nodes"
 
 [tool.uv.sources]
-# Release v0.4.1: pin to release tags
-omnibase-core = { git = "https://github.com/OmniNode-ai/omnibase_core.git", tag = "v0.42.0" }
-omnibase-compat = { git = "https://github.com/OmniNode-ai/omnibase_compat.git", tag = "v0.5.1" }
-omnibase-infra = { git = "https://github.com/OmniNode-ai/omnibase_infra.git", tag = "v0.37.0" }
-omninode-memory = { git = "https://github.com/OmniNode-ai/omnimemory.git", tag = "v0.15.0" }
+omnibase-core = { git = "https://github.com/OmniNode-ai/omnibase_core.git", rev = "c97c2c9a45c5fb0def5fb7dacfd5f01278bb9f55" }
+omnibase-compat = { git = "https://github.com/OmniNode-ai/omnibase_compat.git", rev = "4d887307aae34d9d40d389ba91070cb411ce3df5" }
+omnibase-infra = { git = "https://github.com/OmniNode-ai/omnibase_infra.git", rev = "65419970ee9f0433aa66f58f8f32cc0535dbadab" }
+omninode-memory = { git = "https://github.com/OmniNode-ai/omnimemory.git", rev = "9843dd18cedaa4f5939289ba527532262b87003c" }
 onex-change-control = { git = "https://github.com/OmniNode-ai/onex_change_control.git", rev = "4877d3c223517cb0c7e1eca462ba0f4d38916314" }
 
 [tool.uv]
 override-dependencies = [
-    "omnibase-core>=0.42.0,<0.43.0",
-    "omnibase-spi>=0.22.0,<0.23.0",
-    "omnibase-infra>=0.37.0,<0.38.0",
-    "omnibase-compat>=0.5.0,<0.6.0",
+    "omnibase-core @ git+https://github.com/OmniNode-ai/omnibase_core.git@c97c2c9a45c5fb0def5fb7dacfd5f01278bb9f55",
+    "omnibase-spi>=0.20.6,<0.22.0",
+    "omnibase-infra @ git+https://github.com/OmniNode-ai/omnibase_infra.git@65419970ee9f0433aa66f58f8f32cc0535dbadab",
+    "omnibase-compat @ git+https://github.com/OmniNode-ai/omnibase_compat.git@4d887307aae34d9d40d389ba91070cb411ce3df5",
 ]
 
 [tool.hatch.build.targets.wheel]

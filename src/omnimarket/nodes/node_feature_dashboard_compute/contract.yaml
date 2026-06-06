@@ -1,0 +1,68 @@
+---
+name: node_feature_dashboard_compute
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: compute
+node_version: {major: 1, minor: 0, patch: 0}
+node_not_implemented: false
+description: >
+  Pure skill connectivity audit across 8 layers of the platform. Checks that
+  each skill in the given filter set is wired through all required layers and
+  reports coverage gaps. This is a pure repository-file audit and does not
+  create tickets or touch UI/dashboard code.
+
+handler:
+  module: omnimarket.nodes.node_feature_dashboard_compute.handlers.handler_feature_dashboard_compute
+  class: HandlerFeatureDashboardCompute
+  input_model: omnimarket.nodes.node_feature_dashboard_compute.models.model_feature_dashboard_request.ModelFeatureDashboardRequest
+
+handler_routing:
+  handlers:
+    - handler:
+        name: HandlerFeatureDashboardCompute
+        module: omnimarket.nodes.node_feature_dashboard_compute.handlers.handler_feature_dashboard_compute
+
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 30000
+
+inputs:
+  skills:
+    type: list[str] | null
+    description: "Optional skill name filter; null means all skills"
+    required: false
+    default: null
+  check_types:
+    type: list[str] | null
+    description: "Layer check types to run; null means all 8 layers"
+    required: false
+    default: null
+
+outputs:
+  coverage_report:
+    type: object
+    description: "Per-skill coverage map across all audited layers"
+  gaps:
+    type: list[object]
+    description: "Skills missing wiring in one or more layers"
+
+  status:
+    type: str
+    description: "complete | partial | empty"
+  skills_audited:
+    type: int
+    description: "Number of skills included in the audit"
+
+terminal_event: onex.evt.omnimarket.feature-dashboard-completed.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.feature-dashboard-start.v1
+  publish_topics:
+    - onex.evt.omnimarket.feature-dashboard-completed.v1
+
+metadata:
+  transport_type: kafka
+  implementation_wave: 6
+  related_tickets: ["OMN-12229", "OMN-12354"]

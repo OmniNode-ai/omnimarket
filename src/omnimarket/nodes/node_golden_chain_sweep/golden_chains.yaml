@@ -32,7 +32,119 @@ chains:
       - correlation_id
 
   - name: evaluation
-    head_topic: onex.evt.omniintelligence.run-evaluated.v1
+    head_topic: onex.evt.omniclaude.session-outcome.v1
     tail_table: session_outcomes
     expected_fields:
+      - session_id
+
+  # OMN-12660: WS-G — SEA acceptance chain (happy path)
+  - name: sea_acceptance
+    head_topic: onex.cmd.omnibase-infra.delegation-request.v1
+    tail_table: delegation_events
+    proof_classification: diagnostic
+    replay_status: replay-not-applicable
+    expected_fields:
       - correlation_id
+      - task_type
+      - delegated_to
+    stages:
+      - name: routing_decision
+        handler: node_delegation_routing_reducer.HandlerRoutingIntent
+        topic: onex.evt.omnibase-infra.routing-decision.v1
+      - name: inference_response
+        handler: node_llm_delegation_call_effect.HandlerInferenceIntent
+        topic: onex.evt.omnibase-infra.inference-response.v1
+      - name: terminal_projection
+        handler: node_projection_delegation.HandlerProjectionDelegation
+        topic: onex.evt.omnibase-infra.delegation-completed.v1
+
+  # OMN-12660: WS-G — Error chain D3 (cloud tier routing regression guard)
+  - name: d3_local_routing
+    head_topic: onex.cmd.omnibase-infra.delegation-inference-request.v1
+    tail_table: delegation_events
+    expected_fields:
+      - correlation_id
+      - base_url
+      - model
+
+  # OMN-12660: WS-G — Error chain D1/D2 (scaffold stub / registration truth regression guard)
+  - name: d1_d2_scaffold
+    head_topic: onex.evt.omnibase-infra.delegation-completed.v1
+    tail_table: delegation_events
+    expected_fields:
+      - correlation_id
+      - node_name
+      - contract_passed
+      - content
+
+  # OMN-12660: WS-G — Error chain D4 (blank content as success regression guard)
+  - name: d4_blank_content
+    head_topic: onex.evt.omnibase-infra.inference-response.v1
+    tail_table: delegation_events
+    expected_fields:
+      - correlation_id
+      - content
+      - model_used
+
+  # OMN-12660: WS-G — Error chain D9 (missing wheel module regression guard)
+  - name: d9_wheel_module
+    head_topic: onex.cmd.omnibase-infra.delegation-request.v1
+    tail_table: delegation_events
+    expected_fields:
+      - correlation_id
+      - node_startup_ok
+
+  # OMN-12660: WS-G — Error chain F1 (publish_and_wait from running loop regression guard)
+  - name: f1_publish_loop
+    head_topic: onex.cmd.omnibase-infra.delegation-request.v1
+    tail_table: delegation_events
+    expected_fields:
+      - correlation_id
+      - published_at
+
+  # OMN-12687: WS I-A — inference request/response behavioral chain
+  - name: delegation_inference_round_trip
+    head_topic: onex.cmd.omnibase-infra.delegation-inference-request.v1
+    tail_table: event_bus:onex.evt.omnibase-infra.inference-response.v1
+    proof_classification: diagnostic
+    replay_status: replay-not-applicable
+    expected_fields:
+      - correlation_id
+      - content
+      - model_used
+      - llm_call_id
+      - prompt_tokens
+      - completion_tokens
+      - total_tokens
+    stages:
+      - name: inference_request
+        handler: node_llm_delegation_call_effect.HandlerInferenceIntent
+        topic: onex.cmd.omnibase-infra.delegation-inference-request.v1
+      - name: inference_response
+        handler: node_llm_delegation_call_effect.HandlerInferenceIntent
+        topic: onex.evt.omnibase-infra.inference-response.v1
+
+  # OMN-12687: WS I-A — terminal reducer materialization chain
+  - name: delegation_projection_materialization
+    head_topic: onex.evt.omnibase-infra.delegation-completed.v1
+    tail_table: delegation_events
+    proof_classification: diagnostic
+    replay_status: replay-proven
+    expected_fields:
+      - correlation_id
+      - task_type
+      - delegated_to
+      - model_name
+      - quality_gate_passed
+      - response_text
+      - tokens_input
+      - tokens_output
+      - tokens_to_compliance
+      - compliance_attempts
+    stages:
+      - name: delegation_completed
+        handler: node_projection_delegation.HandlerProjectionDelegation
+        topic: onex.evt.omnibase-infra.delegation-completed.v1
+      - name: delegation_events_row
+        handler: node_projection_delegation.HandlerProjectionDelegation
+        table: delegation_events

@@ -19,6 +19,11 @@ handler:
   class: HandlerFileSystemAdapter
   input_model: omnimemory.nodes.node_memory_storage_effect.models.model_memory_storage_request.ModelMemoryStorageRequest
 
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  runtime_profiles: [effects]
+
 # === IO OPERATIONS (Required for EFFECT nodes) ===
 io_operations:
   - operation_type: "database_write"
@@ -155,6 +160,12 @@ event_type:
   event_routing: "memory"
   invocation_mode: "orchestrator"
 
+runtime_dispatch:
+  command_topic: onex.cmd.omnimemory.memory-storage.v1
+  terminal_events:
+    success: onex.evt.omnimemory.memory-storage-completed.v1
+    failure: onex.evt.omnimemory.memory-storage-failed.v1
+
 # === INFRASTRUCTURE ===
 infrastructure:
   storage_backends:
@@ -204,8 +215,8 @@ event_bus:
     minor: 0
     patch: 0
 
-  # This node does not subscribe to topics (orchestrator-invoked)
-  subscribe_topics: []
+  subscribe_topics:
+    - "onex.cmd.omnimemory.memory-storage.v1"
 
   # Topics this node publishes to (sends events to)
   publish_topics:
@@ -213,6 +224,8 @@ event_bus:
     - "onex.evt.omnimemory.memory-retrieved.v1"
     - "onex.evt.omnimemory.memory-updated.v1"
     - "onex.evt.omnimemory.memory-deleted.v1"
+    - "onex.evt.omnimemory.memory-storage-completed.v1"
+    - "onex.evt.omnimemory.memory-storage-failed.v1"
 
   # Metadata for published topics
   publish_topic_metadata:
@@ -232,6 +245,14 @@ event_bus:
       schema_ref: "omnimarket.nodes.node_memory_storage_effect.models.model_memory_storage_response.ModelMemoryStorageResponse"
       description: "Memory deletion confirmation event. Emitted when a memory snapshot is successfully
         soft-deleted from the storage backend."
+
+externally_consumed_topics:
+  - "onex.evt.omnimemory.memory-stored.v1"
+  - "onex.evt.omnimemory.memory-retrieved.v1"
+  - "onex.evt.omnimemory.memory-updated.v1"
+  - "onex.evt.omnimemory.memory-deleted.v1"
+  - "onex.evt.omnimemory.memory-storage-completed.v1"
+  - "onex.evt.omnimemory.memory-storage-failed.v1"
 
 # === TAGS ===
 tags:

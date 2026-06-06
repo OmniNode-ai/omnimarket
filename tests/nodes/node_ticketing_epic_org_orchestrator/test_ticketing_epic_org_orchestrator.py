@@ -1,11 +1,6 @@
 # SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""Unit tests for node_ticketing_epic_org_orchestrator [OMN-12202].
-
-Wave 1 contract-first stub: verifies importability, model validation,
-and that the handler correctly raises NotImplementedError per
-contract.yaml `node_not_implemented: true`.
-"""
+"""Unit tests for node_ticketing_epic_org_orchestrator [OMN-12202]."""
 
 from __future__ import annotations
 
@@ -269,19 +264,37 @@ class TestModelTicketingEpicOrgResult:
 
 
 # ---------------------------------------------------------------------------
-# Handler stub — must raise NotImplementedError
+# Handler behavior
 # ---------------------------------------------------------------------------
 
 
-class TestHandlerTicketingEpicOrgStub:
+class TestHandlerTicketingEpicOrgBehavior:
     @pytest.mark.unit
-    def test_handle_raises_not_implemented(self) -> None:
+    def test_handle_dry_run_groups_prefixes(self) -> None:
         handler = HandlerTicketingEpicOrg()
-        req = ModelTicketingEpicOrgRequest()
-        with pytest.raises(NotImplementedError) as exc_info:
-            handler.handle(req)
-        msg = str(exc_info.value).lower()
-        assert "node_not_implemented" in msg or "wave" in msg
+        req = ModelTicketingEpicOrgRequest(
+            dry_run=True,
+            orphaned_tickets=[
+                ModelOrphanedTicket(
+                    ticket_id="OMN-2068",
+                    title="[omnimarket] DB-SPLIT-01: FK scan",
+                    repo="omnimarket",
+                ),
+                ModelOrphanedTicket(
+                    ticket_id="OMN-2069",
+                    title="[omnimarket] DB-SPLIT-02: migrate rows",
+                    repo="omnimarket",
+                ),
+            ],
+        )
+
+        result = handler.handle(req)
+
+        assert result.dry_run is True
+        assert result.orphaned_tickets_count == 2
+        assert len(result.proposed_groups) == 1
+        assert result.proposed_groups[0].verdict == "auto_create"
+        assert result.epics_created == []
 
     @pytest.mark.unit
     def test_handler_instantiates_without_args(self) -> None:
@@ -289,9 +302,22 @@ class TestHandlerTicketingEpicOrgStub:
         assert handler is not None
 
     @pytest.mark.unit
-    def test_stub_message_cites_ticket(self) -> None:
+    def test_live_auto_approve_requires_adapter(self) -> None:
         handler = HandlerTicketingEpicOrg()
-        req = ModelTicketingEpicOrgRequest()
-        with pytest.raises(NotImplementedError) as exc_info:
+        req = ModelTicketingEpicOrgRequest(
+            auto_approve=True,
+            orphaned_tickets=[
+                ModelOrphanedTicket(
+                    ticket_id="OMN-2068",
+                    title="[omnimarket] DB-SPLIT-01: FK scan",
+                    repo="omnimarket",
+                ),
+                ModelOrphanedTicket(
+                    ticket_id="OMN-2069",
+                    title="[omnimarket] DB-SPLIT-02: migrate rows",
+                    repo="omnimarket",
+                ),
+            ],
+        )
+        with pytest.raises(RuntimeError, match="linear adapter required"):
             handler.handle(req)
-        assert "OMN-12202" in str(exc_info.value)

@@ -1,14 +1,6 @@
 # SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""Golden-chain guardrails for node_wave_scheduler_orchestrator [OMN-12210].
-
-Honest routing behaviour for an explicit stub node:
-- contract marks node_not_implemented: true
-- entry point loads
-- typed models are strict (frozen, extra="forbid")
-- handler fails loudly with NotImplementedError containing "node_not_implemented"
-- contract declares the expected runtime routing surface
-"""
+"""Golden-chain guardrails for node_wave_scheduler_orchestrator [OMN-12210]."""
 
 from __future__ import annotations
 
@@ -49,7 +41,9 @@ def _repo_root() -> Path:
 
 def _contract() -> dict:  # type: ignore[type-arg]
     path = _repo_root() / "src" / "omnimarket" / "nodes" / _NODE_NAME / "contract.yaml"
-    return yaml.safe_load(path.read_text(encoding="utf-8"))
+    raw = yaml.safe_load(path.read_text(encoding="utf-8"))
+    assert isinstance(raw, dict)
+    return raw
 
 
 # ---------------------------------------------------------------------------
@@ -58,10 +52,10 @@ def _contract() -> dict:  # type: ignore[type-arg]
 
 
 @pytest.mark.unit
-def test_wave_scheduler_orchestrator_contract_is_explicit_stub() -> None:
+def test_wave_scheduler_orchestrator_contract_is_implemented() -> None:
     raw = _contract()
 
-    assert raw["node_not_implemented"] is True
+    assert raw["node_not_implemented"] is False
     assert raw["node_type"] == "orchestrator"
     assert raw["handler"]["module"] == _HANDLER_MODULE
     assert raw["handler"]["class"] == _HANDLER_CLASS
@@ -314,40 +308,75 @@ def test_model_dependency_violation_missing() -> None:
 
 @pytest.mark.unit
 def test_enum_wave_scheduler_status_values() -> None:
-    assert EnumWaveSchedulerStatus.COMPLETED == "completed"
-    assert EnumWaveSchedulerStatus.PARTIAL == "partial"
-    assert EnumWaveSchedulerStatus.FAILED == "failed"
-    assert EnumWaveSchedulerStatus.DRY_RUN == "dry_run"
-    assert EnumWaveSchedulerStatus.ABORTED == "aborted"
+    assert EnumWaveSchedulerStatus.COMPLETED.value == "completed"
+    assert EnumWaveSchedulerStatus.PARTIAL.value == "partial"
+    assert EnumWaveSchedulerStatus.FAILED.value == "failed"
+    assert EnumWaveSchedulerStatus.DRY_RUN.value == "dry_run"
+    assert EnumWaveSchedulerStatus.ABORTED.value == "aborted"
 
 
 @pytest.mark.unit
 def test_enum_ticket_execution_status_values() -> None:
-    assert EnumTicketExecutionStatus.COMPLETED == "completed"
-    assert EnumTicketExecutionStatus.FAILED == "failed"
-    assert EnumTicketExecutionStatus.BLOCKED == "blocked"
-    assert EnumTicketExecutionStatus.STALLED == "stalled"
-    assert EnumTicketExecutionStatus.SKIPPED == "skipped"
-    assert EnumTicketExecutionStatus.TIMEOUT == "timeout"
-    assert EnumTicketExecutionStatus.DEFERRED == "deferred"
+    assert EnumTicketExecutionStatus.COMPLETED.value == "completed"
+    assert EnumTicketExecutionStatus.FAILED.value == "failed"
+    assert EnumTicketExecutionStatus.BLOCKED.value == "blocked"
+    assert EnumTicketExecutionStatus.STALLED.value == "stalled"
+    assert EnumTicketExecutionStatus.SKIPPED.value == "skipped"
+    assert EnumTicketExecutionStatus.TIMEOUT.value == "timeout"
+    assert EnumTicketExecutionStatus.DEFERRED.value == "deferred"
 
 
 @pytest.mark.unit
 def test_enum_dependency_violation_kind_values() -> None:
-    assert EnumDependencyViolationKind.CYCLE == "cycle"
-    assert EnumDependencyViolationKind.MISSING_DEPENDENCY == "missing_dependency"
-    assert EnumDependencyViolationKind.SELF_REFERENCE == "self_reference"
+    assert EnumDependencyViolationKind.CYCLE.value == "cycle"
+    assert EnumDependencyViolationKind.MISSING_DEPENDENCY.value == "missing_dependency"
+    assert EnumDependencyViolationKind.SELF_REFERENCE.value == "self_reference"
 
 
 # ---------------------------------------------------------------------------
-# Handler stub (fails loudly)
+# Handler
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.unit
-def test_wave_scheduler_orchestrator_handler_fails_loudly() -> None:
+def test_wave_scheduler_orchestrator_dry_run_computes_waves(tmp_path: Path) -> None:
+    plan = tmp_path / "plan.yaml"
+    plan.write_text(
+        yaml.safe_dump(
+            {
+                "tickets": [
+                    {"ticket_id": "OMN-1", "repo": "omnimarket"},
+                    {
+                        "ticket_id": "OMN-2",
+                        "repo": "omnibase_core",
+                        "depends_on": ["OMN-1"],
+                    },
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
     handler = HandlerWaveSchedulerOrchestrator()
-    request = ModelWaveSchedulerRequest(plan_path="docs/plans/test-plan.yaml")
+    request = ModelWaveSchedulerRequest(plan_path=str(plan), dry_run=True)
 
-    with pytest.raises(NotImplementedError, match="node_not_implemented"):
+    result = handler.handle(request)
+
+    assert result.run_status is EnumWaveSchedulerStatus.DRY_RUN
+    assert [wave.ticket_ids for wave in result.wave_assignments] == [
+        ("OMN-1",),
+        ("OMN-2",),
+    ]
+
+
+@pytest.mark.unit
+def test_wave_scheduler_orchestrator_live_requires_dispatcher(tmp_path: Path) -> None:
+    plan = tmp_path / "plan.yaml"
+    plan.write_text(
+        yaml.safe_dump({"tickets": [{"ticket_id": "OMN-1"}]}),
+        encoding="utf-8",
+    )
+    handler = HandlerWaveSchedulerOrchestrator()
+    request = ModelWaveSchedulerRequest(plan_path=str(plan))
+
+    with pytest.raises(RuntimeError, match="dispatcher adapter required"):
         handler.handle(request)

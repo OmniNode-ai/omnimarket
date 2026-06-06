@@ -2,10 +2,11 @@
 # SPDX-License-Identifier: MIT
 """NodePlatformReadiness — Unified platform readiness gate.
 
-Aggregates verification dimensions into a tri-state report:
+Aggregates verification dimensions into a quad-state report:
 - PASS: Dimension healthy, data fresh
 - WARN: Dimension degraded or data stale (>24h)
 - FAIL: Dimension broken, data missing (>72h), or mock data
+- GATED: Pipeline wired but blocked by a disabled feature flag (yellow, not red)
 
 ONEX node type: COMPUTE
 """
@@ -32,11 +33,12 @@ _INFRA_SSH_TARGET = os.environ.get("ONEX_INFRA_SSH_TARGET", "")  # contract-conf
 
 
 class EnumReadinessStatus(StrEnum):
-    """Tri-state readiness status."""
+    """Quad-state readiness status."""
 
     PASS = "PASS"
     WARN = "WARN"
     FAIL = "FAIL"
+    GATED = "GATED"  # pipeline wired, blocked by disabled feature flag
 
 
 class ModelDimensionResult(BaseModel):
@@ -62,6 +64,7 @@ class ModelDimensionInput(BaseModel):
     last_checked: datetime | None = None
     details: str = ""
     is_mock: bool = False
+    gated_by_flag: str = ""  # non-empty = pipeline wired but flag disabled (e.g. "ENABLE_SHADOW_VALIDATION")
 
 
 class ModelPlatformReadinessRequest(BaseModel):
@@ -121,7 +124,7 @@ class NodePlatformReadiness:
 
             if result.status == EnumReadinessStatus.FAIL:
                 blockers.append(f"{result.name}: {result.details}")
-            elif result.status == EnumReadinessStatus.WARN:
+            elif result.status in (EnumReadinessStatus.WARN, EnumReadinessStatus.GATED):
                 degraded.append(f"{result.name}: {result.details}")
 
         # Overall status
@@ -405,6 +408,22 @@ class NodePlatformReadiness:
         self, dim: ModelDimensionInput, now: datetime
     ) -> ModelDimensionResult:
         """Evaluate a single dimension with freshness rules."""
+        # Feature-flag gated: pipeline wired but flag off — yellow, not red
+        if dim.gated_by_flag:
+            flag_val = os.environ.get(dim.gated_by_flag, "").strip().lower()
+            flag_enabled = flag_val in {"1", "true", "yes", "on"}
+            if not flag_enabled:
+                return ModelDimensionResult(
+                    name=dim.name,
+                    status=EnumReadinessStatus.GATED,
+                    critical=False,
+                    freshness="gated",
+                    details=(
+                        f"pipeline wired, blocked by {dim.gated_by_flag}=false"
+                        f" — to enable: set {dim.gated_by_flag}=true in .201 env"
+                    ),
+                )
+
         # Mock data is always FAIL
         if dim.is_mock:
             return ModelDimensionResult(

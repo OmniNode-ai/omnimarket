@@ -15,11 +15,11 @@ import argparse
 import logging
 import sys
 
+from omnimarket.events.verification import (
+    ModelVerificationReceiptRequest,
+)
 from omnimarket.nodes.node_verification_receipt_generator.handlers.handler_verification_receipt import (
     HandlerVerificationReceiptGenerator,
-)
-from omnimarket.nodes.node_verification_receipt_generator.models.model_verification_receipt import (
-    ModelVerificationReceiptRequest,
 )
 
 _log = logging.getLogger(__name__)

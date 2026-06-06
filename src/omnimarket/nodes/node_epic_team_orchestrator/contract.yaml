@@ -9,7 +9,7 @@ name: node_epic_team_orchestrator
 contract_version: {major: 1, minor: 0, patch: 0}
 node_type: orchestrator
 node_version: {major: 1, minor: 0, patch: 0}
-node_not_implemented: true
+node_not_implemented: false
 
 description: >
   Epic team orchestrator. Consumes a Linear epic ID and autonomously drives it
@@ -20,7 +20,8 @@ description: >
   via Agent Teams (TeamCreate + Agent with team_name), (5) monitoring for stalls
   with a 5-minute inactivity timeout, (6) collecting per-wave results and
   persisting checkpoint state, and (7) running the post-wave DoD compliance gate.
-  Handlers are deferred to the implementation wave (OMN-12206 stub).
+  Bounded handler slice supports deterministic dry-run planning and requires
+  injected adapters for live epic-team execution.
 
 handler:
   module: omnimarket.nodes.node_epic_team_orchestrator.handlers.handler_epic_team_orchestrator

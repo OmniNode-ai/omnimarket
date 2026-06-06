@@ -11,6 +11,7 @@ from omnimarket.nodes.node_redeploy.handlers.handler_workflow_runner import (
     run_redeploy_workflow,
 )
 from omnimarket.nodes.node_redeploy.models.model_deploy_agent_events import (
+    EnumBuildSource,
     ModelDeployRebuildCommand,
     ModelDeployRebuildCompleted,
     ModelRedeployResult,
@@ -21,6 +22,7 @@ from omnimarket.nodes.node_redeploy.models.model_redeploy_state import (
 )
 
 __all__ = [
+    "EnumBuildSource",
     "HandlerRedeploy",
     "HandlerRedeployKafka",
     "HandlerRedeployWorkflowRunner",

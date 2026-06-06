@@ -1,0 +1,113 @@
+---
+name: node_verification_sweep_orchestrator
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: orchestrator
+node_version: {major: 1, minor: 0, patch: 0}
+node_not_implemented: false
+
+description: >
+  Post-orchestration verification sweep orchestrator. Probes dashboard endpoints
+  for HTTP 200 with real data, checks database tables for expected rows, and
+  validates dod_evidence rendered_output items have passing receipts.
+  Non-blocking — flags only, does not halt orchestration.
+  Authoritative surface probes, receipt writes, and optional Linear comments are
+  owned by injected protocol adapters; the handler does not shell out or call
+  other handlers directly.
+
+handler:
+  module: omnimarket.nodes.node_verification_sweep_orchestrator.handlers.handler_verification_sweep_orchestrator
+  class: HandlerVerificationSweepOrchestrator
+  input_model: omnimarket.nodes.node_verification_sweep_orchestrator.models.model_verification_sweep_orchestrator_request.ModelVerificationSweepOrchestratorRequest
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: sweep
+      handler:
+        name: HandlerVerificationSweepOrchestrator
+        module: omnimarket.nodes.node_verification_sweep_orchestrator.handlers.handler_verification_sweep_orchestrator
+
+descriptor:
+  node_archetype: orchestrator
+  purity: impure
+  runtime_profiles:
+    - effects
+  idempotent: true
+  timeout_ms: 120000
+
+dependencies:
+  adapters:
+    - name: ProtocolVerificationProbeAdapter
+      module: omnimarket.nodes.node_verification_sweep_orchestrator.handlers.handler_verification_sweep_orchestrator
+      description: "Resolves targets and probes dashboard, database, and dod_evidence surfaces."
+    - name: ProtocolVerificationReceiptWriter
+      module: omnimarket.nodes.node_verification_sweep_orchestrator.handlers.handler_verification_sweep_orchestrator
+      description: "Writes durable OCC verification sweep receipts when dry_run is false."
+    - name: ProtocolVerificationLinearCommenter
+      module: omnimarket.nodes.node_verification_sweep_orchestrator.handlers.handler_verification_sweep_orchestrator
+      description: "Optionally annotates Linear tickets after failed or partial live sweeps."
+
+inputs:
+  targets:
+    type: list[str]
+    description: "Ticket IDs to verify (e.g. ['OMN-5400', 'OMN-5401'])"
+    required: false
+    default: []
+  epic:
+    type: str | null
+    description: "Epic ID — discover and verify all child tickets"
+    required: false
+    default: null
+  check_types:
+    type: list[str]
+    description: "Verification phases to run: dashboard | database | dod_evidence (default: all)"
+    required: false
+    default: []
+  dry_run:
+    type: bool
+    description: "Print results without writing receipts or creating Linear comments"
+    required: false
+    default: false
+  pr:
+    type: str | null
+    description: "GitHub PR reference (owner/repo#number) for pre-merge mode"
+    required: false
+    default: null
+  timeout_seconds:
+    type: int
+    description: "Hard timeout for a single pre-merge PR verification run (default: 30)"
+    required: false
+    default: 30
+
+outputs:
+  endpoint_results:
+    type: list[ModelEndpointVerificationResult]
+    description: "Per-endpoint HTTP verification results"
+  db_checks:
+    type: list[ModelDatabaseVerificationResult]
+    description: "Per-table database row and schema verification results"
+  dod_receipts:
+    type: list[ModelDodEvidenceVerificationResult]
+    description: "Per dod_evidence item verification results"
+  overall_status:
+    type: str
+    description: "pass | fail | partial | skip"
+  receipt_path:
+    type: str
+    description: "Absolute path to the written verification receipt YAML (empty if dry_run)"
+  adapter_errors:
+    type: list[ModelVerificationAdapterError]
+    description: "Structured adapter failures captured during verification or side effects"
+
+terminal_event: onex.evt.omnimarket.verification-sweep-completed.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.verification-sweep-start.v1
+  publish_topics:
+    - onex.evt.omnimarket.verification-sweep-finding.v1
+    - onex.evt.omnimarket.verification-sweep-completed.v1
+    - onex.evt.omnimarket.sweep-result.v1
+
+metadata:
+  transport_type: kafka

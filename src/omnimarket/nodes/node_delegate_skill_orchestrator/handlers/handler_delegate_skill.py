@@ -174,6 +174,7 @@ def _response_from_result(
             result.get("pricing_manifest_version"),
             default=get_manifest_version_int(),
         ),
+        prompt_text=request.prompt,
         response=str(result.get("content", "")),
         quality_gate_passed=bool(
             result.get("quality_gate_passed", result.get("quality_passed", False))

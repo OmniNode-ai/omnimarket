@@ -1,0 +1,80 @@
+---
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_ledger_stats_compute
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: compute
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  Pure deterministic ledger statistics aggregator. Accepts a list of
+  chain event records and returns aggregate stats: total chains, pass/fail
+  counts, per-model pass/fail/avg_attempts breakdown, and ledger hit rate.
+  No I/O, no filesystem access, no side effects. All data is supplied via
+  the request model — the caller is responsible for reading chain files.
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - handler:
+        name: HandlerLedgerStats
+        module: omnimarket.nodes.node_ledger_stats_compute.handlers.handler_ledger_stats
+      event_model:
+        name: ModelLedgerStatsRequest
+        module: omnimarket.nodes.node_ledger_stats_compute.models.model_ledger_stats_request
+
+handler:
+  module: omnimarket.nodes.node_ledger_stats_compute.handlers.handler_ledger_stats
+  class: HandlerLedgerStats
+  input_model: omnimarket.nodes.node_ledger_stats_compute.models.model_ledger_stats_request.ModelLedgerStatsRequest
+
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 1000
+
+inputs:
+  chains:
+    type: list[object]
+    required: true
+    description: >
+      List of chain event records. Each record is a dict with optional keys:
+      contract_passed (bool), model_id (str), attempt_count (int),
+      ledger_hit (bool), has_reference_chains (bool).
+
+outputs:
+  total_chains:
+    type: int
+    description: "Total number of completed chains processed"
+  pass_count:
+    type: int
+    description: "Number of chains that passed contract validation"
+  fail_count:
+    type: int
+    description: "Number of chains that failed contract validation"
+  by_model:
+    type: object
+    description: "Per-model stats: {model_id: {passed, failed, avg_attempts}}"
+  ledger_hit_rate:
+    type: float
+    description: "Fraction of chains that had a ledger hit (0.0–1.0)"
+
+terminal_event: onex.evt.omnimarket.ledger-stats-completed.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.ledger-stats-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.ledger-stats-completed.v1
+
+metadata:
+  transport_type: kafka
+  description: "Pure compute node — aggregates ledger chain stats with no I/O"
+  author: "OmniNode Platform Team"
+  created: "2026-05-28"
+  tags:
+    - "compute"
+    - "ledger"
+    - "stats"
+    - "deterministic"

@@ -28,6 +28,7 @@ Related:
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import inspect
 import json
 import logging
@@ -41,7 +42,7 @@ from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
 from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from omnimarket.nodes.node_pr_lifecycle_orchestrator.protocols.protocol_sub_handlers import (
     EnumPrCategory,
@@ -59,6 +60,19 @@ from omnimarket.nodes.node_pr_lifecycle_orchestrator.protocols.protocol_sub_hand
     PrTriageResult,
     ReducerResult,
     TriageRecord,
+)
+from omnimarket.nodes.pr_ledger_native import (
+    EnumOrchestratorAction,
+    EnumPrLedgerConclusion,
+    EnumPrLedgerEventKind,
+    EnumPrLifecyclePhase,
+    InMemoryPrLedgerStore,
+    ModelPrLedger,
+    ModelPrLedgerSourceEvent,
+    ModelPrLifecyclePhaseTransition,
+    ProtocolPrLedgerStore,
+    apply_pr_ledger_event,
+    record_phase_transition,
 )
 
 if TYPE_CHECKING:
@@ -152,6 +166,13 @@ class ModelPrLifecycleStartCommand(BaseModel):
         description="Hard per-PR verification timeout in seconds.",
     )
 
+    @field_validator("repos", mode="before")
+    @classmethod
+    def _coerce_repos(cls, value: object) -> str:
+        if isinstance(value, list | tuple):
+            return ",".join(str(item).strip() for item in value if str(item).strip())
+        return str(value or "")
+
 
 class ModelPrLifecycleResult(BaseModel):
     """Result returned by the orchestrator after a sweep run."""
@@ -179,6 +200,11 @@ class EnumOrchestratorState(StrEnum):
     TRIAGING = "TRIAGING"
     VERIFYING = "VERIFYING"
     MERGING = "MERGING"
+    # OMN-12570: after a PR merges, GitHub runs CI on the merge target branch
+    # (dev/main). That post-merge "tail" is a DISTINCT verification phase from
+    # the branch checks and the merge-group checks — modeled as its own state so
+    # a tail failure is attributable to POST_MERGE_TAIL, not to MERGING.
+    POST_MERGE_TAIL = "POST_MERGE_TAIL"
     FIXING = "FIXING"
     COMPLETE = "COMPLETE"
     FAILED = "FAILED"
@@ -186,12 +212,41 @@ class EnumOrchestratorState(StrEnum):
 
 _TERMINAL_STATES = {EnumOrchestratorState.COMPLETE, EnumOrchestratorState.FAILED}
 
+# OMN-12570: map each FSM state to the distinct CI-verification phase it
+# represents in the ledger. Branch checks, merge-group checks, and post-merge
+# CI tails are SEPARATE phases — the orchestrator stamps the active phase on
+# every ledger event and records each phase transition explicitly, so a
+# post-merge-tail failure is never confused with a branch-check failure.
+_STATE_TO_PHASE: dict[EnumOrchestratorState, EnumPrLifecyclePhase] = {
+    EnumOrchestratorState.IDLE: EnumPrLifecyclePhase.INVENTORY,
+    EnumOrchestratorState.INVENTORYING: EnumPrLifecyclePhase.INVENTORY,
+    EnumOrchestratorState.TRIAGING: EnumPrLifecyclePhase.TRIAGE,
+    # Verification and fix remediation both operate on PR branch checks.
+    EnumOrchestratorState.VERIFYING: EnumPrLifecyclePhase.BRANCH_CHECKS,
+    EnumOrchestratorState.FIXING: EnumPrLifecyclePhase.BRANCH_CHECKS,
+    # Merge enqueues into the merge queue → merge-group checks.
+    EnumOrchestratorState.MERGING: EnumPrLifecyclePhase.MERGE_GROUP,
+    # Post-merge CI tail on the target branch → its own phase.
+    EnumOrchestratorState.POST_MERGE_TAIL: EnumPrLifecyclePhase.POST_MERGE_TAIL,
+    EnumOrchestratorState.COMPLETE: EnumPrLifecyclePhase.TERMINAL,
+    EnumOrchestratorState.FAILED: EnumPrLifecyclePhase.TERMINAL,
+}
+
+
+def _phase_for_state(state: EnumOrchestratorState) -> EnumPrLifecyclePhase:
+    """Return the ledger phase a given FSM state belongs to (OMN-12570)."""
+    return _STATE_TO_PHASE[state]
+
 
 @dataclass
 class _SweepState:
     """Mutable sweep state tracked across phases."""
 
     fsm: EnumOrchestratorState = EnumOrchestratorState.IDLE
+    # OMN-12570: the CI-verification phase the orchestrator is currently in.
+    # Stamped onto every ledger event recorded while in this phase, and updated
+    # only through explicit recorded transitions (never inferred from logs).
+    phase: EnumPrLifecyclePhase = EnumPrLifecyclePhase.INVENTORY
     prs_inventoried: int = 0
     prs_merged: int = 0
     prs_fixed: int = 0
@@ -318,6 +373,26 @@ def _map_review_status(pr_state: Any) -> str:
     return _REVIEW_STATUS_MAP.get(decision.upper(), "unknown")
 
 
+def _synthetic_merge_group_sha(
+    run_id: str,
+    repo: str,
+    pr_number: int,
+    *,
+    attempt: int = 1,
+) -> str:
+    """Derive a deterministic synthetic merge-group SHA for a PR/attempt.
+
+    GitHub mints the real merge-group commit SHA at enqueue time; the
+    orchestrator does not always observe it synchronously. This deterministic
+    surrogate keys the ledger entry's merge-group provenance so reruns
+    (attempt>1) are distinguishable, and so the same (run_id, repo, pr_number,
+    attempt) always derives the same value — preserving reconstructability.
+    """
+    seed = f"{run_id}:{repo}:{pr_number}:{attempt}"
+    digest = hashlib.sha256(seed.encode("utf-8")).hexdigest()[:12]
+    return f"mg-{digest}-{attempt}"
+
+
 def _orch_checks_to_ci_status(checks_status: str) -> str:
     """Convert orchestrator checks_status to triage node's ci_status vocabulary."""
     return _CI_STATUS_MAP.get(checks_status.lower(), "unknown")
@@ -383,6 +458,7 @@ class HandlerPrLifecycleOrchestrator:
         merge: ProtocolMergeHandler | None = None,
         fix: ProtocolFixHandler | None = None,
         event_bus: ProtocolEventBusPublisher,
+        ledger_store: ProtocolPrLedgerStore | None = None,
     ) -> None:
         self._topic_phase_transition = TOPIC_PHASE_TRANSITION
         self._topic_completed = TOPIC_COMPLETED
@@ -394,6 +470,129 @@ class HandlerPrLifecycleOrchestrator:
         self._merge = merge
         self._fix = fix
         self._event_bus = event_bus
+        # Durable, reconstructable PR-ledger projection (OMN-12569). Defaults to
+        # the in-memory store for local/test runs; the runtime injects a
+        # ProjectionDatabasePrLedgerStore so the ledger lands in the
+        # control-plane durable surface. The ledger is a DERIVED projection —
+        # source events are recorded as they happen and folded into the store.
+        self._ledger_store: ProtocolPrLedgerStore = (
+            ledger_store if ledger_store is not None else InMemoryPrLedgerStore()
+        )
+
+    def _record_ledger_event(
+        self,
+        *,
+        kind: EnumPrLedgerEventKind,
+        run_id: str,
+        correlation_id: UUID,
+        repo: str,
+        pr_number: int,
+        orchestrator_action: EnumOrchestratorAction,
+        phase: EnumPrLifecyclePhase,
+        head_sha: str | None = None,
+        workflow_run_id: int | None = None,
+        merge_group_sha: str | None = None,
+        conclusion: EnumPrLedgerConclusion | None = None,
+    ) -> None:
+        """Fold one source event into the durable PR-ledger projection.
+
+        The ledger is a derived projection — never authoritative truth on its
+        own — so recording is best-effort and must never abort a sweep. Each
+        event carries full provenance (workflow run, merge-group SHA, branch
+        SHA, orchestrator action, timestamp).
+
+        OMN-12570: the caller passes the active FSM ``phase`` so the event is
+        attributed to the phase it was produced in. Phase comes from the
+        orchestrator's current recorded state — it is never inferred from the
+        orchestrator_action after the fact.
+        """
+        try:
+            event = ModelPrLedgerSourceEvent(
+                kind=kind,
+                run_id=run_id,
+                correlation_id=correlation_id,
+                repo=repo,
+                pr_number=pr_number,
+                head_sha=head_sha,
+                workflow_run_id=workflow_run_id,
+                merge_group_sha=merge_group_sha,
+                conclusion=conclusion,
+                orchestrator_action=orchestrator_action,
+                phase=phase,
+                observed_at=datetime.now(UTC).isoformat(),
+            )
+            apply_pr_ledger_event(event, store=self._ledger_store)
+        except Exception as exc:
+            logger.warning(
+                "[PR-LIFECYCLE-ORCH] failed to record ledger event kind=%s "
+                "repo=%s pr=%s: %s",
+                kind,
+                repo,
+                pr_number,
+                exc,
+            )
+
+    async def _transition_phase(
+        self,
+        state: _SweepState,
+        to_state: EnumOrchestratorState,
+        *,
+        run_id: str,
+        correlation_id: UUID,
+    ) -> None:
+        """Make an explicit, recorded FSM phase transition (OMN-12570).
+
+        One method owns *all* phase changes so that every transition is:
+          1. recorded durably in the ledger transition log at transition time
+             (only when the ledger phase actually changes — INVENTORYING and
+             IDLE share the INVENTORY phase, for example);
+          2. reflected in ``state.fsm`` and ``state.phase`` so subsequent ledger
+             events are stamped with the correct phase;
+          3. published on the phase-transition topic for live observers.
+
+        Recording the transition explicitly — rather than letting consumers
+        infer phase from log lines — is the core OMN-12570 requirement.
+        """
+        from_state = state.fsm
+        from_phase = state.phase
+        to_phase = _phase_for_state(to_state)
+
+        if to_phase is not from_phase:
+            try:
+                record_phase_transition(
+                    ModelPrLifecyclePhaseTransition(
+                        run_id=run_id,
+                        correlation_id=correlation_id,
+                        from_phase=from_phase,
+                        to_phase=to_phase,
+                        recorded_at=datetime.now(UTC).isoformat(),
+                    ),
+                    store=self._ledger_store,
+                )
+            except Exception as exc:
+                # The ledger is a derived projection; a recording failure must
+                # never abort a sweep. The transition still drives the FSM.
+                logger.warning(
+                    "[PR-LIFECYCLE-ORCH] failed to record phase transition "
+                    "%s -> %s: %s",
+                    from_phase.value,
+                    to_phase.value,
+                    exc,
+                )
+
+        state.fsm = to_state
+        state.phase = to_phase
+        await self._publish_phase_event(
+            from_state.value, to_state.value, correlation_id
+        )
+
+    def ledger(self, run_id: str) -> ModelPrLedger:
+        """Return the durable PR-ledger projection for a sweep run.
+
+        The projection is reconstructable from its source events; this accessor
+        returns the materialized view from the durable store.
+        """
+        return self._ledger_store.load(run_id)
 
     @staticmethod
     def _check_protocol_conformance(
@@ -662,10 +861,12 @@ class HandlerPrLifecycleOrchestrator:
         repos_filter = tuple(r.strip() for r in command.repos.split(",") if r.strip())
 
         try:
-            # Phase: INVENTORYING
-            state.fsm = EnumOrchestratorState.INVENTORYING
-            await self._publish_phase_event(
-                "IDLE", "INVENTORYING", command.correlation_id
+            # Phase: INVENTORYING (INVENTORY ledger phase)
+            await self._transition_phase(
+                state,
+                EnumOrchestratorState.INVENTORYING,
+                run_id=command.run_id,
+                correlation_id=command.correlation_id,
             )
 
             assert self._inventory is not None
@@ -682,19 +883,37 @@ class HandlerPrLifecycleOrchestrator:
                 "[PR-LIFECYCLE-ORCH] inventory completed: %d PRs",
                 inv_result.total_collected,
             )
+            # Ledger (OMN-12569): record one PR_INVENTORIED source event per
+            # collected PR so the projection captures run id + branch SHA from
+            # the start of the lifecycle.
+            for pr in inv_result.prs:
+                self._record_ledger_event(
+                    kind=EnumPrLedgerEventKind.PR_INVENTORIED,
+                    run_id=command.run_id,
+                    correlation_id=command.correlation_id,
+                    repo=pr.repo,
+                    pr_number=pr.pr_number,
+                    head_sha=pr.head_sha,
+                    orchestrator_action=EnumOrchestratorAction.INVENTORY,
+                    phase=state.phase,
+                )
             await self._remediate_stalled_queue_prs(command, inv_result)
 
             if command.inventory_only:
-                state.fsm = EnumOrchestratorState.COMPLETE
-                await self._publish_phase_event(
-                    "INVENTORYING", "COMPLETE", command.correlation_id
+                await self._transition_phase(
+                    state,
+                    EnumOrchestratorState.COMPLETE,
+                    run_id=command.run_id,
+                    correlation_id=command.correlation_id,
                 )
                 return self._build_result(state, command.correlation_id)
 
             # Phase: TRIAGING
-            state.fsm = EnumOrchestratorState.TRIAGING
-            await self._publish_phase_event(
-                "INVENTORYING", "TRIAGING", command.correlation_id
+            await self._transition_phase(
+                state,
+                EnumOrchestratorState.TRIAGING,
+                run_id=command.run_id,
+                correlation_id=command.correlation_id,
             )
 
             assert self._triage is not None
@@ -737,9 +956,11 @@ class HandlerPrLifecycleOrchestrator:
             if command.dry_run:
                 # dry_run: record intents but do not execute
                 state.prs_skipped = len(reducer_result.intents)
-                state.fsm = EnumOrchestratorState.COMPLETE
-                await self._publish_phase_event(
-                    "TRIAGING", "COMPLETE", command.correlation_id
+                await self._transition_phase(
+                    state,
+                    EnumOrchestratorState.COMPLETE,
+                    run_id=command.run_id,
+                    correlation_id=command.correlation_id,
                 )
                 return self._build_result(state, command.correlation_id)
 
@@ -766,22 +987,39 @@ class HandlerPrLifecycleOrchestrator:
                 if intent.intent == EnumReducerIntent.SKIP
             )
             state.prs_skipped = len(skip_prs)
+            # Ledger (OMN-12569): record a terminal SKIPPED conclusion for each
+            # PR the reducer chose not to act on.
+            for intent in skip_prs:
+                self._record_ledger_event(
+                    kind=EnumPrLedgerEventKind.FINAL_CONCLUSION,
+                    run_id=command.run_id,
+                    correlation_id=command.correlation_id,
+                    repo=intent.repo,
+                    pr_number=intent.pr_number,
+                    conclusion=EnumPrLedgerConclusion.SKIPPED,
+                    orchestrator_action=EnumOrchestratorAction.SKIP,
+                    phase=state.phase,
+                )
 
-            # Phase: MERGING (skip if fix_only)
+            # Phase: MERGING (merge-group checks; skip if fix_only)
             if merge_prs and not command.fix_only:
                 if command.verify:
-                    state.fsm = EnumOrchestratorState.VERIFYING
-                    await self._publish_phase_event(
-                        "TRIAGING", "VERIFYING", command.correlation_id
+                    await self._transition_phase(
+                        state,
+                        EnumOrchestratorState.VERIFYING,
+                        run_id=command.run_id,
+                        correlation_id=command.correlation_id,
                     )
                     raise RuntimeError(
                         "verify=True requested, but VERIFYING phase dispatch "
                         "is not wired yet (OMN-7742 follow-up). Refusing to "
                         "transition to MERGING without verification."
                     )
-                state.fsm = EnumOrchestratorState.MERGING
-                await self._publish_phase_event(
-                    "TRIAGING", "MERGING", command.correlation_id
+                await self._transition_phase(
+                    state,
+                    EnumOrchestratorState.MERGING,
+                    run_id=command.run_id,
+                    correlation_id=command.correlation_id,
                 )
 
                 assert self._merge is not None
@@ -799,22 +1037,52 @@ class HandlerPrLifecycleOrchestrator:
                     merge_result.prs_failed,
                 )
 
+                # Phase: POST_MERGE_TAIL (OMN-12570). A merged PR's terminal
+                # conclusion is reached after GitHub runs CI on the merge target
+                # branch — a DISTINCT phase from the merge-group checks. We
+                # transition explicitly so the MERGED conclusion (and any future
+                # tail failure) is attributed to POST_MERGE_TAIL, not MERGING.
+                await self._transition_phase(
+                    state,
+                    EnumOrchestratorState.POST_MERGE_TAIL,
+                    run_id=command.run_id,
+                    correlation_id=command.correlation_id,
+                )
+                # Ledger (OMN-12569): record a terminal MERGED conclusion for
+                # each PR routed through merge. The synthetic merge-group SHA is
+                # derived per-PR so the projection captures it as provenance;
+                # the conclusion is stamped with the POST_MERGE_TAIL phase.
+                for tr in merge_prs:
+                    self._record_ledger_event(
+                        kind=EnumPrLedgerEventKind.FINAL_CONCLUSION,
+                        run_id=command.run_id,
+                        correlation_id=command.correlation_id,
+                        repo=tr.repo,
+                        pr_number=tr.pr_number,
+                        merge_group_sha=_synthetic_merge_group_sha(
+                            command.run_id, tr.repo, tr.pr_number
+                        ),
+                        conclusion=EnumPrLedgerConclusion.MERGED,
+                        orchestrator_action=EnumOrchestratorAction.MERGE,
+                        phase=state.phase,
+                    )
+
                 if command.merge_only:
-                    state.fsm = EnumOrchestratorState.COMPLETE
-                    await self._publish_phase_event(
-                        "MERGING", "COMPLETE", command.correlation_id
+                    await self._transition_phase(
+                        state,
+                        EnumOrchestratorState.COMPLETE,
+                        run_id=command.run_id,
+                        correlation_id=command.correlation_id,
                     )
                     return self._build_result(state, command.correlation_id)
 
-                next_from = "MERGING"
-            else:
-                next_from = "TRIAGING"
-
-            # Phase: FIXING (skip if merge_only)
+            # Phase: FIXING (branch checks; skip if merge_only)
             if fix_prs and not command.merge_only:
-                state.fsm = EnumOrchestratorState.FIXING
-                await self._publish_phase_event(
-                    next_from, "FIXING", command.correlation_id
+                await self._transition_phase(
+                    state,
+                    EnumOrchestratorState.FIXING,
+                    run_id=command.run_id,
+                    correlation_id=command.correlation_id,
                 )
                 await self._publish_fixer_dispatch_start(
                     fix_prs, command.correlation_id
@@ -836,11 +1104,28 @@ class HandlerPrLifecycleOrchestrator:
                     state.prs_fixed,
                     sum(r.prs_skipped for r in fix_results),
                 )
-                next_from = "FIXING"
+                # Ledger (OMN-12569): record a terminal FAILED conclusion (a
+                # non-green PR routed to remediation) with FIX action provenance.
+                # Stamped with the BRANCH_CHECKS phase so this failure is
+                # distinguishable from a POST_MERGE_TAIL failure (OMN-12570).
+                for tr in fix_prs:
+                    self._record_ledger_event(
+                        kind=EnumPrLedgerEventKind.FINAL_CONCLUSION,
+                        run_id=command.run_id,
+                        correlation_id=command.correlation_id,
+                        repo=tr.repo,
+                        pr_number=tr.pr_number,
+                        head_sha=None,
+                        conclusion=EnumPrLedgerConclusion.FAILED,
+                        orchestrator_action=EnumOrchestratorAction.FIX,
+                        phase=state.phase,
+                    )
 
-            state.fsm = EnumOrchestratorState.COMPLETE
-            await self._publish_phase_event(
-                next_from, "COMPLETE", command.correlation_id
+            await self._transition_phase(
+                state,
+                EnumOrchestratorState.COMPLETE,
+                run_id=command.run_id,
+                correlation_id=command.correlation_id,
             )
 
         except Exception as exc:
@@ -851,9 +1136,11 @@ class HandlerPrLifecycleOrchestrator:
                 exc,
             )
             state.error_message = str(exc)
-            state.fsm = EnumOrchestratorState.FAILED
-            await self._publish_phase_event(
-                from_state, "FAILED", command.correlation_id
+            await self._transition_phase(
+                state,
+                EnumOrchestratorState.FAILED,
+                run_id=command.run_id,
+                correlation_id=command.correlation_id,
             )
 
         logger.info(
@@ -1016,6 +1303,7 @@ class HandlerPrLifecycleOrchestrator:
                         repo=pr_state.repo,
                         title=title,
                         branch=branch,
+                        head_sha=getattr(pr_state, "head_sha", None),
                         ticket_ids=_extract_ticket_ids(title, branch),
                         checks_status=_map_ci_status(pr_state),
                         review_status=_map_review_status(pr_state),
@@ -1070,6 +1358,25 @@ class HandlerPrLifecycleOrchestrator:
                 logger.warning(
                     "[PR-LIFECYCLE-ORCH] merge queue stall remediation: %s",
                     action,
+                )
+                # Ledger (OMN-12569): a dequeue+re-enqueue mints a fresh
+                # merge-group SHA and counts as a rerun attempt. Record it with
+                # the head SHA observed at stall detection for provenance.
+                # OMN-12570: a re-enqueue acts on the MERGE_GROUP phase (it
+                # re-mints the merge-group commit) regardless of where the
+                # coarse FSM is during inventory, so attribute it explicitly.
+                self._record_ledger_event(
+                    kind=EnumPrLedgerEventKind.RERUN_ATTEMPTED,
+                    run_id=command.run_id,
+                    correlation_id=command.correlation_id,
+                    repo=repo,
+                    pr_number=pr_number,
+                    head_sha=getattr(entry, "head_sha", None),
+                    merge_group_sha=_synthetic_merge_group_sha(
+                        command.run_id, repo, pr_number, attempt=2
+                    ),
+                    orchestrator_action=EnumOrchestratorAction.REQUEUE,
+                    phase=EnumPrLifecyclePhase.MERGE_GROUP,
                 )
             except Exception as exc:
                 logger.warning(

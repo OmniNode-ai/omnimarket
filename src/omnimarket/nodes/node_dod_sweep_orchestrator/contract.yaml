@@ -27,9 +27,30 @@ env_dependencies:
 descriptor:
   node_archetype: orchestrator
   purity: impure
+  runtime_profiles:
+    - effects
   idempotent: true
   timeout_ms: 30000
 terminal_event: onex.evt.omnimarket.dod-sweep-completed.v1
+
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.dod-sweep.v1
+  terminal_events:
+    success: onex.evt.omnimarket.dod-sweep-completed.v1
+    failure: onex.evt.omnimarket.dod-sweep-failed.v1
+  default_timeout_ms: 30000
+  max_timeout_ms: 300000
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.dod-sweep.v1
+  publish_topics:
+    - onex.evt.omnimarket.dod-sweep-completed.v1
+    - onex.evt.omnimarket.dod-sweep-failed.v1
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.dod-sweep-completed.v1
+  - onex.evt.omnimarket.dod-sweep-failed.v1
 
 config:
   ONEX_CC_REPO_PATH:

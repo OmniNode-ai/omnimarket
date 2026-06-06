@@ -1,0 +1,93 @@
+---
+name: node_occ_evidence_validator_compute
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: compute
+node_version: {major: 0, minor: 1, patch: 0}
+description: >
+  Pure deterministic validator for model-generated OCC evidence drafts
+  (OMN-12580, Phase 5). Receives a provisional ModelOccEvidenceDraft plus the
+  authoritative deployment proof and promotion pins, and decides acceptance with
+  no I/O, no bus, no DB, and no model calls. The PASS path emits the EXISTING
+  compat ModelEvidenceValidationResult on
+  onex.evt.omnimarket.evidence-validated.v1 so node_occ_pr_writer_effect fires
+  (blocker B4); the reject path emits ModelOccEvidenceDraftValidationResult on
+  onex.evt.omnimarket.occ-evidence-draft-rejected.v1. A local model may draft OCC
+  artifacts but may never mark them authoritative — this node owns acceptance.
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - handler:
+        name: HandlerOccEvidenceValidator
+        module: omnimarket.nodes.node_occ_evidence_validator_compute.handlers.handler_occ_evidence_validator
+
+handler:
+  module: omnimarket.nodes.node_occ_evidence_validator_compute.handlers.handler_occ_evidence_validator
+  class: HandlerOccEvidenceValidator
+  input_model: omnimarket.nodes.node_occ_evidence_validator_compute.models.model_occ_evidence_validate_command.ModelOccEvidenceValidateCommand
+
+input_model:
+  name: ModelOccEvidenceValidateCommand
+  module: omnimarket.nodes.node_occ_evidence_validator_compute.models.model_occ_evidence_validate_command
+  description: "Provisional OCC draft plus authoritative pins to validate against."
+output_model:
+  name: ModelEvidenceValidationResult
+  module: omnibase_compat.contracts.evidence_pipeline.wire.model_evidence_validation_result
+  description: "PASS result emitted on evidence-validated.v1 (existing OCC PR writer input)."
+
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 2000
+
+inputs:
+  draft:
+    type: object
+    required: true
+    description: Provisional ModelOccEvidenceDraft to validate
+  runtime_deployment_proof:
+    type: object
+    required: true
+    description: Authoritative per-lane deployment proof (source SHA, image digest)
+  expected_source_sha:
+    type: str
+    required: true
+    description: Authoritative source SHA the draft must match
+  expected_image_digest:
+    type: str
+    required: true
+    description: Authoritative image digest the draft must match
+
+outputs:
+  validation_state:
+    type: str
+    enum: [PASSED, FAILED]
+  schema_status:
+    type: str
+  sha_match_status:
+    type: str
+  image_digest_match_status:
+    type: str
+  receipt_probe_status:
+    type: str
+  topology_freshness_status:
+    type: str
+  blocking_reason_codes:
+    type: array
+    items:
+      type: str
+
+terminal_event: onex.evt.omnimarket.evidence-validated.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.occ-evidence-validate-start.v1
+  publish_topics:
+    - onex.evt.omnimarket.evidence-validated.v1
+    - onex.evt.omnimarket.occ-evidence-draft-rejected.v1
+
+metadata:
+  transport_type: kafka
+  implementation_wave: 5
+  related_tickets: ["OMN-12580", "OMN-12574"]

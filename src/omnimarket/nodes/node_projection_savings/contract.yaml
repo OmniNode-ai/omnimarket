@@ -3,6 +3,7 @@ name: projection_savings
 contract_version: {major: 1, minor: 0, patch: 0}
 node_type: reducer
 node_version: {major: 1, minor: 0, patch: 0}
+input_model: omnimarket.nodes.node_projection_savings.handlers.handler_projection_savings.ModelSavingsEstimatedEvent
 description: >
   Projects savings-estimated events into the savings_estimates table.
   Source topics include omnibase-infra savings estimates and omnimarket
@@ -20,6 +21,7 @@ handler_routing:
         name: HandlerProjectionSavings
         module: omnimarket.nodes.node_projection_savings.handlers.handler_projection_savings
       handler_module: omnimarket.nodes.node_projection_savings.handlers.handler_projection_savings
+      event_model: omnimarket.nodes.node_projection_savings.handlers.handler_projection_savings.ModelSavingsEstimatedEvent
     - handler:
         name: SavingsProjectionRunner
         module: omnimarket.nodes.node_projection_savings.handlers.handler_savings
@@ -43,6 +45,50 @@ event_bus:
     - onex.evt.omnimarket.delegate-skill-failed.v1
   publish_topics:
     - onex.evt.omnimarket.projection-savings-applied.v1
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.projection-savings-applied.v1
+
+projection_api:
+  expose: true
+  exposures:
+    - topic: onex.snapshot.projection.savings.v1 # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
+      table: savings_estimates
+      schema: public
+      columns:
+        - id
+        - session_id
+        - event_timestamp
+        - model_local
+        - model_cloud_baseline
+        - local_cost_usd
+        - cloud_cost_usd
+        - savings_usd
+        - repo_name
+        - machine_id
+        - created_at
+        - updated_at
+      order_by: created_at DESC
+      freshness_column: updated_at
+      limit: 500
+    - topic: onex.snapshot.projection.delegation.savings.v1 # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
+      table: projection_delegation_savings
+      schema: public
+      columns:
+        - cumulative_savings_usd
+        - cumulative_local_cost_usd
+        - cumulative_cloud_cost_usd
+        - baseline_model
+        - pricing_manifest_version
+        - session_count
+        - sessions
+        - captured_at
+        - provisioned
+        - latest_projection_updated_at
+      json_columns:
+        - sessions
+      freshness_column: latest_projection_updated_at
+      limit: 1
 
 metadata:
   transport_type: kafka

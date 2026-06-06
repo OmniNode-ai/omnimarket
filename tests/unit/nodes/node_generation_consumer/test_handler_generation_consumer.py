@@ -468,6 +468,7 @@ def test_handler_reads_endpoint_env_from_contract_model_routing(tmp_path: Path) 
         "event_bus": {"publish_topics": [], "subscribe_topics": []},
         "model_routing": {
             "endpoint_env": "LLM_CODER_URL",
+            "endpoint_mode": "complete_endpoint",
             "served_model_id_env": "LLM_CODER_MODEL_NAME",
         },
     }
@@ -480,6 +481,7 @@ def test_handler_reads_endpoint_env_from_contract_model_routing(tmp_path: Path) 
     )
 
     assert handler._endpoint_env == "LLM_CODER_URL"
+    assert handler._endpoint_mode == "complete_endpoint"
     assert handler._model_id_env == "LLM_CODER_MODEL_NAME"
 
 
@@ -506,6 +508,30 @@ def test_handler_rejects_contract_without_served_model_id_env(
 
 
 @pytest.mark.unit
+def test_handler_rejects_contract_without_valid_endpoint_mode(tmp_path: Path) -> None:
+    """Endpoint request shape must be explicitly declared by the contract."""
+    contract = {
+        "name": "node_generation_consumer",
+        "contract_version": {"major": 1, "minor": 0, "patch": 0},
+        "node_type": "orchestrator",
+        "node_version": {"major": 1, "minor": 0, "patch": 0},
+        "event_bus": {"publish_topics": [], "subscribe_topics": []},
+        "model_routing": {
+            "endpoint_env": "LLM_CODER_URL",
+            "served_model_id_env": "LLM_CODER_MODEL_NAME",
+        },
+    }
+    contract_path = tmp_path / "contract.yaml"
+    contract_path.write_text(yaml.dump(contract))
+
+    with pytest.raises(ValueError, match="endpoint_mode must be one of"):
+        HandlerGenerationConsumer(
+            effect_handler=FakeLlmEffect([_VALID_LLM_RESPONSE]),
+            contract_path=contract_path,
+        )
+
+
+@pytest.mark.unit
 def test_production_contract_declares_llm_coder_url_endpoint_env() -> None:
     """The production contract.yaml must declare model_routing.endpoint_env=LLM_CODER_URL."""
     from omnimarket.nodes.node_generation_consumer.handlers.handler_generation_consumer import (
@@ -519,6 +545,10 @@ def test_production_contract_declares_llm_coder_url_endpoint_env() -> None:
     assert model_routing.get("endpoint_env") == "LLM_CODER_URL", (
         "contract.yaml model_routing.endpoint_env must be 'LLM_CODER_URL'; "
         f"got: {model_routing.get('endpoint_env')!r}"
+    )
+    assert model_routing.get("endpoint_mode") == "complete_endpoint", (
+        "contract.yaml model_routing.endpoint_mode must be 'complete_endpoint'; "
+        f"got: {model_routing.get('endpoint_mode')!r}"
     )
     assert model_routing.get("served_model_id_env") == "LLM_CODER_MODEL_NAME", (
         "contract.yaml model_routing.served_model_id_env must be "
@@ -552,3 +582,257 @@ def test_production_contract_declares_required_env_dependencies() -> None:
     assert not missing, (
         f"contract.yaml is missing environment dependency declarations for: {missing}"
     )
+
+
+# ---------------------------------------------------------------------------
+# OMN-12683: endpoint URL preservation is contract-declared. Complete
+# endpoints POST as-is via endpoint_url; OpenAI-compatible base URLs keep append.
+#
+# The final POST URL is proven by running the request the handler builds
+# through the *real* infra URL builder (HandlerLlmOpenaiCompatible._build_url),
+# so the assertion is end-to-end, not a restatement of handler internals.
+# ---------------------------------------------------------------------------
+
+# The contract/overlay supplies the COMPLETE Gemini OpenAI-compatible endpoint
+# (ending in /chat/completions). It must be POSTed verbatim — not have any
+# version path appended. This is the registered endpoint per the live-path plan.
+_GEMINI_FULL_ENDPOINT = (
+    "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
+)
+_GEMINI_EXPECTED_URL = (
+    "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
+)
+# The two 404-producing variants the old base_url-append path created.
+_GEMINI_DOUBLE_VERSIONED_BAD_URL = (
+    "https://generativelanguage.googleapis.com/v1beta/openai/v1/chat/completions"
+)
+_GEMINI_ORIGIN_ONLY = "https://generativelanguage.googleapis.com"
+_GEMINI_ORIGIN_BAD_URL = "https://generativelanguage.googleapis.com/v1/chat/completions"
+_LOCAL_ORIGIN_ONLY = "http://100.109.203.94:8000"
+_LOCAL_EXPECTED_URL = "http://100.109.203.94:8000/v1/chat/completions"
+
+
+def _write_contract_for_endpoint_mode(tmp_path: Path, endpoint_mode: str) -> Path:
+    contract = {
+        "name": "node_generation_consumer",
+        "contract_version": {"major": 1, "minor": 0, "patch": 0},
+        "node_type": "orchestrator",
+        "node_version": {"major": 1, "minor": 0, "patch": 0},
+        "event_bus": {"publish_topics": [], "subscribe_topics": []},
+        "model_routing": {
+            "endpoint_env": "LLM_CODER_URL",
+            "endpoint_mode": endpoint_mode,
+            "served_model_id_env": "LLM_CODER_MODEL_NAME",
+        },
+    }
+    contract_path = tmp_path / f"contract-{endpoint_mode}.yaml"
+    contract_path.write_text(yaml.dump(contract))
+    return contract_path
+
+
+class _CapturingEffect:
+    """Captures the ModelLlmInferenceRequest the handler builds, returns valid."""
+
+    def __init__(self) -> None:
+        self.captured: Any | None = None
+
+    async def handle(self, request: Any) -> _FakeResponse:
+        await asyncio.sleep(0)
+        self.captured = request
+        return _FakeResponse(_VALID_LLM_RESPONSE)
+
+
+async def _request_for_endpoint(
+    monkeypatch: Any, tmp_path: Path, endpoint: str, endpoint_mode: str
+) -> Any:
+    """Build and capture the handler request for ``endpoint``.
+
+    Forces the non-injected code path (so the real ModelLlmInferenceRequest is
+    constructed) while capturing it.
+    """
+    monkeypatch.setenv("LLM_CODER_URL", endpoint)
+    monkeypatch.setenv("LLM_CODER_MODEL_NAME", "gemini-2.0-flash")
+
+    capturing = _CapturingEffect()
+    handler = HandlerGenerationConsumer(
+        contract_path=_write_contract_for_endpoint_mode(tmp_path, endpoint_mode),
+        event_publisher=lambda _t, _p: None,
+    )
+    # Use the capturing effect but keep the real request-building branch.
+    handler._effect = capturing
+    handler._injected_effect = False
+
+    await handler.handle(
+        ModelNodeGenerationRequest(
+            task_description="Build a stub node",
+            correlation_id="corr-url-1",
+        )
+    )
+
+    assert capturing.captured is not None
+    return capturing.captured
+
+
+async def _final_post_url_for_endpoint(
+    monkeypatch: Any, tmp_path: Path, endpoint: str, endpoint_mode: str
+) -> str:
+    from omnibase_infra.nodes.node_llm_inference_effect.handlers.handler_llm_openai_compatible import (
+        HandlerLlmOpenaiCompatible,
+    )
+
+    request = await _request_for_endpoint(
+        monkeypatch, tmp_path, endpoint, endpoint_mode
+    )
+    return HandlerLlmOpenaiCompatible._build_url(request)
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_gemini_full_endpoint_posts_as_is(
+    monkeypatch: Any, tmp_path: Path
+) -> None:
+    """Full Gemini endpoint routes via endpoint_url — posted verbatim + /chat/completions."""
+    final_url = await _final_post_url_for_endpoint(
+        monkeypatch,
+        tmp_path,
+        _GEMINI_FULL_ENDPOINT,
+        "complete_endpoint",
+    )
+    assert final_url == _GEMINI_EXPECTED_URL
+    # Neither 404 variant may appear.
+    assert final_url != _GEMINI_DOUBLE_VERSIONED_BAD_URL
+    assert final_url != _GEMINI_ORIGIN_BAD_URL
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_gemini_full_endpoint_no_double_versioned_append(
+    monkeypatch: Any, tmp_path: Path
+) -> None:
+    """Regression: full Gemini endpoint must not become /v1beta/openai/v1/chat/completions."""
+    final_url = await _final_post_url_for_endpoint(
+        monkeypatch,
+        tmp_path,
+        _GEMINI_FULL_ENDPOINT,
+        "complete_endpoint",
+    )
+    assert "/v1beta/openai/v1/chat/completions" not in final_url
+    assert final_url.endswith("/v1beta/openai/chat/completions")
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_gemini_request_sets_endpoint_url_field(
+    monkeypatch: Any, tmp_path: Path
+) -> None:
+    """The built request must carry endpoint_url for the full Gemini endpoint."""
+    request = await _request_for_endpoint(
+        monkeypatch,
+        tmp_path,
+        _GEMINI_FULL_ENDPOINT,
+        "complete_endpoint",
+    )
+    assert request.endpoint_url == _GEMINI_FULL_ENDPOINT
+
+
+@pytest.mark.unit
+def test_old_base_url_path_would_404_proves_regression() -> None:
+    """Documents the defect: the old code passed the full Gemini URL via base_url.
+
+    Feeding the complete Gemini endpoint through base_url (the pre-fix behavior)
+    yields the double-versioned 404 URL. This asserts the broken shape so the
+    fix (routing via endpoint_url) is demonstrably different.
+    """
+    from omnibase_infra.enums import EnumLlmOperationType
+    from omnibase_infra.nodes.node_llm_inference_effect.handlers.handler_llm_openai_compatible import (
+        HandlerLlmOpenaiCompatible,
+    )
+    from omnibase_infra.nodes.node_llm_inference_effect.models.model_llm_inference_request import (
+        ModelLlmInferenceRequest,
+    )
+
+    # The pre-fix overlay supplied the OpenAI-compat base "/v1beta/openai/".
+    # Routed through base_url, the legacy append produced the double-versioned
+    # 404 URL. The fix configures the COMPLETE endpoint + routes via endpoint_url.
+    gemini_openai_base = "https://generativelanguage.googleapis.com/v1beta/openai/"
+    old_request = ModelLlmInferenceRequest(
+        base_url=gemini_openai_base,
+        operation_type=EnumLlmOperationType.CHAT_COMPLETION,
+        model="gemini-2.0-flash",
+        messages=({"role": "user", "content": "hi"},),
+    )
+    bad_url = HandlerLlmOpenaiCompatible._build_url(old_request)
+    assert bad_url == _GEMINI_DOUBLE_VERSIONED_BAD_URL
+    assert bad_url != _GEMINI_EXPECTED_URL
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_local_origin_only_keeps_legacy_append(
+    monkeypatch: Any, tmp_path: Path
+) -> None:
+    """Origin-only base URL keeps legacy base_url + /v1/chat/completions append."""
+    final_url = await _final_post_url_for_endpoint(
+        monkeypatch,
+        tmp_path,
+        _LOCAL_ORIGIN_ONLY,
+        "openai_compatible_base",
+    )
+    assert final_url == _LOCAL_EXPECTED_URL
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_local_origin_only_does_not_set_endpoint_url(
+    monkeypatch: Any, tmp_path: Path
+) -> None:
+    """Origin-only base URL must NOT set endpoint_url (legacy append branch)."""
+    request = await _request_for_endpoint(
+        monkeypatch,
+        tmp_path,
+        _LOCAL_ORIGIN_ONLY,
+        "openai_compatible_base",
+    )
+    assert request.endpoint_url is None
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_provider_error_remains_typed_failure_not_blank_success(
+    monkeypatch: Any,
+) -> None:
+    """A provider call failure must not be reported as a successful (blank) generation.
+
+    The handler swallows the LLM exception into an empty raw output, which then
+    fails contract validation — so contract_passed stays False (typed failure
+    surface), and no deploy/registration is emitted. A 404 must never look like
+    success.
+    """
+    monkeypatch.setenv("LLM_CODER_URL", _GEMINI_FULL_ENDPOINT)
+    monkeypatch.setenv("LLM_CODER_MODEL_NAME", "gemini-2.0-flash")
+
+    class _Failing404Effect:
+        async def handle(self, request: Any) -> _FakeResponse:
+            await asyncio.sleep(0)
+            raise RuntimeError("404 Not Found from provider")
+
+    published: list[tuple[str, bytes]] = []
+    handler = HandlerGenerationConsumer(
+        event_publisher=lambda t, p: published.append((t, p))
+    )
+    handler._effect = _Failing404Effect()
+    handler._injected_effect = False
+
+    result = await handler.handle(
+        ModelNodeGenerationRequest(
+            task_description="Build a stub node",
+            correlation_id="corr-404-1",
+            max_attempts=1,
+        )
+    )
+
+    assert result.contract_passed is False
+    topics = [t for t, _ in published]
+    assert any("generation-failed" in t for t in topics)
+    assert not any("node-deploy" in t for t in topics)
+    assert not any("node-registered" in t for t in topics)

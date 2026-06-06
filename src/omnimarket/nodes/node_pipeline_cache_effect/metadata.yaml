@@ -1,0 +1,24 @@
+name: node_pipeline_cache_effect
+version: "1.0.0"
+description: "Pipeline cache effect — wires test generator and golden chain generator with filesystem cache"
+omnibase_core_compat: ">=0.40.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_pipeline_cache_effect: "omnimarket.nodes.node_pipeline_cache_effect"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: filesystem_read_write
+dependencies:
+  - "omnibase_core>=0.40.0"
+  - "pydantic>=2.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["effect", "pipeline", "cache", "test-generator", "golden-chain"]
+pack: "context-pack-pipeline"
+display_name: "Pipeline Cache"
+node_role: "effect"

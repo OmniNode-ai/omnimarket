@@ -1,0 +1,150 @@
+---
+name: node_task_execution_orchestrator
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: compute
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  Generic task.execute route planner (first vertical slice). Normalizes a raw
+  prompt or a fully formed ModelTaskContract into one ModelTaskContract, then
+  deterministically maps each requirement and mechanical DoD check to an
+  existing route NAME (delegation, verification) WITHOUT executing it. Dry-run
+  only: returns the route plan with no side effects. task.execute COMPOSES
+  existing authorities; it must not become a new authority.
+
+handler:
+  module: omnimarket.nodes.node_task_execution_orchestrator.handlers.handler_task_execution_orchestrator
+  class: HandlerTaskExecutionOrchestrator
+  input_model: omnimarket.nodes.node_task_execution_orchestrator.models.model_task_execution.ModelTaskExecutionRequest
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: plan
+      handler:
+        name: HandlerTaskExecutionOrchestrator
+        module: omnimarket.nodes.node_task_execution_orchestrator.handlers.handler_task_execution_orchestrator
+
+descriptor:
+  node_archetype: compute
+  purity: impure
+  idempotent: true
+  timeout_ms: 120000
+
+inputs:
+  prompt:
+    type: str
+    description: "Raw coding/mechanical task prompt to normalize into a contract"
+    required: false
+  task_contract:
+    type: dict
+    description: "Fully formed ModelTaskContract (reused verbatim, never duplicated)"
+    required: false
+  dry_run:
+    type: bool
+    description: "V1 supports dry-run only: plan routes, perform no side effects"
+    required: false
+    default: true
+  allowed_side_effects:
+    type: list
+    description: "Side-effect allowances; must be empty in the first vertical slice"
+    required: false
+  target_repo:
+    type: str
+    description: "Optional target repo applied when normalizing a prompt"
+    required: false
+  ticket_id:
+    type: str
+    description: "Optional parent ticket applied when normalizing a prompt"
+    required: false
+  execute_mechanical_checks:
+    type: bool
+    description: >
+      Dispatch the contract's mechanical DoD checks to
+      node_verification_receipt_generator (execution authority) and aggregate
+      its receipt unchanged. Read-only verification, permitted under dry_run.
+    required: false
+    default: false
+  worktree_path:
+    type: str
+    description: "Worktree the verification node runs mechanical checks in"
+    required: false
+  execute_delegation:
+    type: bool
+    description: >
+      Dispatch each requirement (coding/refactor/review work) through
+      node_delegate_skill_orchestrator (the delegation route authority) and
+      aggregate its typed responses unchanged. Real side effect: requires
+      dry_run=false. The delegation route owns model/backend selection, the
+      quality gate, correlation id, and output content; task.execute never
+      reinterprets delegation success.
+    required: false
+    default: false
+  create_pr:
+    type: bool
+    description: >
+      Run the PR creation path (NON-BLOCKING V1; isolated/optional). Under
+      dry_run it returns the intended branch/title/body (pr_plan) with no side
+      effects. Non-dry-run create_pr is a real side effect: requires
+      dry_run=false AND 'create_pr' in allowed_side_effects, then composes the
+      PR creation authority (git client behind node_ticket_work) and aggregates
+      its result unchanged. task.execute never reinterprets the PR outcome.
+    required: false
+    default: false
+
+outputs:
+  ok:
+    type: bool
+    description: >
+      True iff every requirement/DoD check mapped to a route and (when
+      mechanical checks ran) the verification receipt passed
+  task_contract:
+    type: dict
+    description: "Normalized ModelTaskContract"
+  contract_fingerprint:
+    type: str
+    description: "Deterministic fingerprint of the normalized contract"
+  route_plan:
+    type: list
+    description: "Deterministic, ordered route decisions for this contract"
+  verification_receipt:
+    type: dict
+    description: >
+      Receipt returned UNCHANGED by node_verification_receipt_generator when
+      mechanical checks were executed (aggregated, never transformed)
+  delegation_responses:
+    type: list
+    description: >
+      Typed responses returned UNCHANGED by node_delegate_skill_orchestrator
+      when requirements were delegated (one per requirement; aggregated, never
+      reinterpreted). Each carries the delegation route's quality-gate result,
+      model/backend selection, correlation id, and output content
+  pr_plan:
+    type: dict
+    description: >
+      Intended PR identity (branch/title/body/worktree_path) when the create_pr
+      path ran. Populated on both dry-run and non-dry-run create_pr; the dry-run
+      plan performs no side effects
+  pr_result:
+    type: dict
+    description: >
+      Result returned UNCHANGED by the PR creation authority (git client) on a
+      non-dry-run create_pr (aggregated, never reinterpreted); null on dry-run
+  failure_reason:
+    type: str
+    description: >
+      Typed deterministic reason when an action is unsupported, a mechanical
+      check failed, or PR creation failed
+
+terminal_event: onex.evt.omnimarket.task-execute-completed.v1
+
+event_bus:
+  consumer_group: omnimarket.task-execution.consume.v1
+  subscribe_topics:
+    - onex.cmd.omnimarket.task-execute-start.v1
+  publish_topics:
+    - onex.evt.omnimarket.task-execute-completed.v1
+    - onex.evt.omnimarket.task-execute-failed.v1
+
+metadata:
+  transport_type: kafka

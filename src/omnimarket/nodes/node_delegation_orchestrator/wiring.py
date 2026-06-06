@@ -5,13 +5,14 @@
 Registers delegation handlers in the DI container and wires dispatchers
 into the MessageDispatchEngine for event-driven routing.
 
-Also starts the DelegationIntentBridge, which subscribes to the three
-intermediate intent topics (routing-request, inference-request,
-quality-gate-request) and executes them inline, publishing results
-back to the topics the orchestrator consumes next.
+The intermediate intent topics (routing-request, inference-request,
+quality-gate-request) are consumed natively by their owning worker nodes
+(routing reducer, LLM call effect, quality gate reducer) as bus consumers;
+there is no in-process bridge.
 
 Related:
     - OMN-7040: Node-based delegation pipeline
+    - OMN-12294: Pure Kafka delegation chain (in-process intent bridge removed)
 """
 
 from __future__ import annotations
@@ -25,9 +26,6 @@ from omnibase_core.enums import EnumInjectionScope, EnumMessageCategory
 if TYPE_CHECKING:
     from omnibase_core.container import ModelONEXContainer
     from omnibase_core.protocols.event_bus.protocol_event_bus import ProtocolEventBus
-    from omnibase_core.protocols.event_bus.protocol_event_bus_subscriber import (
-        ProtocolEventBusSubscriber,
-    )
     from omnibase_infra.runtime import MessageDispatchEngine
 
     from omnimarket.nodes.node_delegation_orchestrator.handlers.handler_delegation_workflow import (
@@ -102,160 +100,6 @@ async def wire_delegation_handlers(
     return WiringResult(services=services_registered, status="success")
 
 
-async def wire_delegation_bridge(
-    event_bus: ProtocolEventBusSubscriber,
-    llm_caller: object | None = None,
-) -> dict[str, object]:
-    """Subscribe DelegationIntentBridge to the three intermediate intent topics.
-
-    The orchestrator emits ModelRoutingIntent, ModelInferenceIntent, and
-    ModelQualityGateIntent as output_events. These are published to their
-    respective Kafka topics (declared in published_events in contract.yaml).
-    The bridge subscribes to those topics, executes each intent inline
-    (calling the routing reducer, LLM inference effect, or quality gate
-    reducer), and publishes results back to the topics the orchestrator
-    subscribes to next.
-
-    Args:
-        event_bus: The Kafka/inmemory event bus to subscribe on.
-        llm_caller: Optional LLM caller implementing ProtocolLlmCaller.
-            If None, inference intents will raise RuntimeError.
-
-    Returns:
-        Summary dict with subscribed topics and status.
-    """
-    import json
-
-    from omnibase_infra.event_bus.topic_constants import (
-        TOPIC_DELEGATION_INFERENCE_REQUEST,
-        TOPIC_DELEGATION_QUALITY_GATE_REQUEST,
-        TOPIC_DELEGATION_ROUTING_REQUEST,
-    )
-    from omnibase_infra.models import ModelNodeIdentity
-    from pydantic import BaseModel
-
-    from omnimarket.nodes.node_delegation_orchestrator.delegation_intent_bridge import (
-        DelegationIntentBridge,
-    )
-    from omnimarket.nodes.node_delegation_orchestrator.models.model_inference_intent import (
-        ModelInferenceIntent,
-    )
-    from omnimarket.nodes.node_delegation_orchestrator.models.model_quality_gate_intent import (
-        ModelQualityGateIntent,
-    )
-    from omnimarket.nodes.node_delegation_orchestrator.models.model_routing_intent import (
-        ModelRoutingIntent,
-    )
-
-    bridge = DelegationIntentBridge(event_bus=event_bus, llm_caller=llm_caller)  # type: ignore[arg-type]
-    subscribed_topics: list[str] = []
-
-    def _parse_envelope_payload(
-        message: object, model_class: type[BaseModel]
-    ) -> BaseModel | None:
-        """Extract and validate payload from a raw Kafka message."""
-        try:
-            if hasattr(message, "value") and message.value:
-                raw = json.loads(message.value)
-            elif isinstance(message, dict):
-                raw = message
-            else:
-                return None
-            # Unwrap envelope if present
-            payload = raw.get("payload", raw)
-            return model_class.model_validate(payload)
-        except Exception:
-            return None
-
-    async def _on_routing_intent(message: object) -> None:
-        intent = _parse_envelope_payload(message, ModelRoutingIntent)
-        if intent is None:
-            logger.warning("DelegationIntentBridge: failed to parse ModelRoutingIntent")
-            return
-        try:
-            await bridge.handle_routing_intent(intent)  # type: ignore[arg-type]
-        except Exception as exc:
-            logger.exception(
-                "DelegationIntentBridge: routing intent failed: %s",
-                exc,
-            )
-
-    async def _on_inference_intent(message: object) -> None:
-        intent = _parse_envelope_payload(message, ModelInferenceIntent)
-        if intent is None:
-            logger.warning(
-                "DelegationIntentBridge: failed to parse ModelInferenceIntent"
-            )
-            return
-        try:
-            await bridge.handle_inference_intent(intent)  # type: ignore[arg-type]
-        except Exception as exc:
-            logger.exception(
-                "DelegationIntentBridge: inference intent failed: %s",
-                exc,
-            )
-
-    async def _on_quality_gate_intent(message: object) -> None:
-        intent = _parse_envelope_payload(message, ModelQualityGateIntent)
-        if intent is None:
-            logger.warning(
-                "DelegationIntentBridge: failed to parse ModelQualityGateIntent"
-            )
-            return
-        try:
-            await bridge.handle_quality_gate_intent(intent)  # type: ignore[arg-type]
-        except Exception as exc:
-            logger.exception(
-                "DelegationIntentBridge: quality gate intent failed: %s",
-                exc,
-            )
-
-    if hasattr(event_bus, "subscribe"):
-        _bridge_identity = ModelNodeIdentity(
-            env="onex",
-            service="omnibase-infra",
-            node_name="delegation-intent-bridge",
-            version="v1",
-        )
-
-        await event_bus.subscribe(
-            topic=TOPIC_DELEGATION_ROUTING_REQUEST,
-            node_identity=_bridge_identity,
-            on_message=_on_routing_intent,
-        )
-        subscribed_topics.append(TOPIC_DELEGATION_ROUTING_REQUEST)
-
-        await event_bus.subscribe(
-            topic=TOPIC_DELEGATION_INFERENCE_REQUEST,
-            node_identity=_bridge_identity,
-            on_message=_on_inference_intent,
-        )
-        subscribed_topics.append(TOPIC_DELEGATION_INFERENCE_REQUEST)
-
-        await event_bus.subscribe(
-            topic=TOPIC_DELEGATION_QUALITY_GATE_REQUEST,
-            node_identity=_bridge_identity,
-            on_message=_on_quality_gate_intent,
-        )
-        subscribed_topics.append(TOPIC_DELEGATION_QUALITY_GATE_REQUEST)
-
-        logger.info(
-            "DelegationIntentBridge subscribed to %d intent topics: %s",
-            len(subscribed_topics),
-            subscribed_topics,
-        )
-    else:
-        logger.warning(
-            "DelegationIntentBridge: event_bus has no subscribe() — bridge not wired"
-        )
-
-    return {
-        "bridge_topics": subscribed_topics,
-        "status": "success" if subscribed_topics else "skipped",
-        "bridge": bridge,
-    }
-
-
 async def wire_delegation_dispatchers(
     container: ModelONEXContainer,
     engine: MessageDispatchEngine,
@@ -278,23 +122,8 @@ async def wire_delegation_dispatchers(
     """
     from omnibase_infra.models.dispatch.model_dispatch_route import ModelDispatchRoute
 
-    from omnimarket.nodes.node_delegation_orchestrator.dispatchers.dispatcher_agent_task_lifecycle import (
-        DispatcherAgentTaskLifecycle,
-    )
-    from omnimarket.nodes.node_delegation_orchestrator.dispatchers.dispatcher_delegation_request import (
-        DispatcherDelegationRequest,
-    )
-    from omnimarket.nodes.node_delegation_orchestrator.dispatchers.dispatcher_inference_response import (
-        DispatcherInferenceResponse,
-    )
-    from omnimarket.nodes.node_delegation_orchestrator.dispatchers.dispatcher_invocation_command import (
-        DispatcherInvocationCommand,
-    )
-    from omnimarket.nodes.node_delegation_orchestrator.dispatchers.dispatcher_quality_gate_result import (
-        DispatcherQualityGateResult,
-    )
-    from omnimarket.nodes.node_delegation_orchestrator.dispatchers.dispatcher_routing_decision import (
-        DispatcherRoutingDecision,
+    from omnimarket.nodes.node_delegation_orchestrator.dispatchers.dispatcher_delegation_workflow import (
+        DispatcherDelegationWorkflow,
     )
     from omnimarket.nodes.node_delegation_orchestrator.handlers.handler_delegation_workflow import (
         HandlerDelegationWorkflow,
@@ -308,121 +137,97 @@ async def wire_delegation_dispatchers(
         await container.service_registry.resolve_service(HandlerDelegationWorkflow)
     )
 
-    # 1. DispatcherDelegationRequest — handles incoming delegation commands
-    dispatcher_request = DispatcherDelegationRequest(handler, event_bus=event_bus)
+    dispatcher_workflow = DispatcherDelegationWorkflow(handler, event_bus=event_bus)
+    command_dispatcher_id = f"{dispatcher_workflow.dispatcher_id}.command"
+    event_dispatcher_id = f"{dispatcher_workflow.dispatcher_id}.event"
+
     engine.register_dispatcher(
-        dispatcher_id=dispatcher_request.dispatcher_id,
-        dispatcher=dispatcher_request.handle,
-        category=dispatcher_request.category,
-        message_types=dispatcher_request.message_types,
+        dispatcher_id=command_dispatcher_id,
+        dispatcher=dispatcher_workflow.handle,
+        category=EnumMessageCategory.COMMAND,
+        message_types={
+            "ModelDelegationRequest",
+            "ModelInvocationCommand",
+            "omnibase-infra.delegation-request",
+            "omnibase-infra.invocation",
+        },
+        node_kind=dispatcher_workflow.node_kind,
     )
-    dispatchers_registered.append(dispatcher_request.dispatcher_id)
+    dispatchers_registered.append(command_dispatcher_id)
+
+    engine.register_dispatcher(
+        dispatcher_id=event_dispatcher_id,
+        dispatcher=dispatcher_workflow.handle,
+        category=EnumMessageCategory.EVENT,
+        message_types={
+            "ModelAgentTaskLifecycleEvent",
+            "ModelInferenceResponseData",
+            "ModelQualityGateResult",
+            "ModelRoutingDecision",
+            "omnibase-infra.agent-task-lifecycle",
+            "omnibase-infra.inference-response",
+            "omnibase-infra.quality-gate-result",
+            "omnibase-infra.routing-decision",
+        },
+        node_kind=dispatcher_workflow.node_kind,
+    )
+    dispatchers_registered.append(event_dispatcher_id)
 
     route_delegation_request = ModelDispatchRoute(
         route_id=ROUTE_ID_DELEGATION_REQUEST,
         topic_pattern="*.cmd.*.delegation-request.*",
         message_category=EnumMessageCategory.COMMAND,
-        dispatcher_id=dispatcher_request.dispatcher_id,
+        dispatcher_id=command_dispatcher_id,
         message_type="omnibase-infra.delegation-request",
     )
     engine.register_route(route_delegation_request)
     routes_registered.append(route_delegation_request.route_id)
 
-    # 2. DispatcherInvocationCommand — handles reducer output for A2A dispatch
-    dispatcher_invocation = DispatcherInvocationCommand(handler, event_bus=event_bus)
-    engine.register_dispatcher(
-        dispatcher_id=dispatcher_invocation.dispatcher_id,
-        dispatcher=dispatcher_invocation.handle,
-        category=dispatcher_invocation.category,
-        message_types=dispatcher_invocation.message_types,
-    )
-    dispatchers_registered.append(dispatcher_invocation.dispatcher_id)
-
     route_invocation_command = ModelDispatchRoute(
         route_id=ROUTE_ID_INVOCATION_COMMAND,
         topic_pattern="*.cmd.*.invocation.*",
         message_category=EnumMessageCategory.COMMAND,
-        dispatcher_id=dispatcher_invocation.dispatcher_id,
+        dispatcher_id=command_dispatcher_id,
         message_type="omnibase-infra.invocation",
     )
     engine.register_route(route_invocation_command)
     routes_registered.append(route_invocation_command.route_id)
 
-    # 3. DispatcherRoutingDecision — handles routing decisions from reducer
-    dispatcher_routing = DispatcherRoutingDecision(handler, event_bus=event_bus)
-    engine.register_dispatcher(
-        dispatcher_id=dispatcher_routing.dispatcher_id,
-        dispatcher=dispatcher_routing.handle,
-        category=dispatcher_routing.category,
-        message_types=dispatcher_routing.message_types,
-    )
-    dispatchers_registered.append(dispatcher_routing.dispatcher_id)
-
     route_routing_decision = ModelDispatchRoute(
         route_id=ROUTE_ID_ROUTING_DECISION,
         topic_pattern="*.evt.*.routing-decision.*",
         message_category=EnumMessageCategory.EVENT,
-        dispatcher_id=dispatcher_routing.dispatcher_id,
+        dispatcher_id=event_dispatcher_id,
         message_type="omnibase-infra.routing-decision",
     )
     engine.register_route(route_routing_decision)
     routes_registered.append(route_routing_decision.route_id)
 
-    # 4. DispatcherInferenceResponse — handles LLM responses from the bridge
-    dispatcher_inference = DispatcherInferenceResponse(handler, event_bus=event_bus)
-    engine.register_dispatcher(
-        dispatcher_id=dispatcher_inference.dispatcher_id,
-        dispatcher=dispatcher_inference.handle,
-        category=dispatcher_inference.category,
-        message_types=dispatcher_inference.message_types,
-    )
-    dispatchers_registered.append(dispatcher_inference.dispatcher_id)
-
     route_inference_response = ModelDispatchRoute(
         route_id=ROUTE_ID_INFERENCE_RESPONSE,
         topic_pattern="*.evt.*.inference-response.*",
         message_category=EnumMessageCategory.EVENT,
-        dispatcher_id=dispatcher_inference.dispatcher_id,
+        dispatcher_id=event_dispatcher_id,
         message_type="omnibase-infra.inference-response",
     )
     engine.register_route(route_inference_response)
     routes_registered.append(route_inference_response.route_id)
 
-    # 5. DispatcherQualityGateResult — handles quality gate results
-    dispatcher_gate = DispatcherQualityGateResult(handler, event_bus=event_bus)
-    engine.register_dispatcher(
-        dispatcher_id=dispatcher_gate.dispatcher_id,
-        dispatcher=dispatcher_gate.handle,
-        category=dispatcher_gate.category,
-        message_types=dispatcher_gate.message_types,
-    )
-    dispatchers_registered.append(dispatcher_gate.dispatcher_id)
-
     route_quality_gate = ModelDispatchRoute(
         route_id=ROUTE_ID_QUALITY_GATE_RESULT,
         topic_pattern="*.evt.*.quality-gate-result.*",
         message_category=EnumMessageCategory.EVENT,
-        dispatcher_id=dispatcher_gate.dispatcher_id,
+        dispatcher_id=event_dispatcher_id,
         message_type="omnibase-infra.quality-gate-result",
     )
     engine.register_route(route_quality_gate)
     routes_registered.append(route_quality_gate.route_id)
 
-    # 6. DispatcherAgentTaskLifecycle — handles A2A lifecycle events
-    dispatcher_lifecycle = DispatcherAgentTaskLifecycle(handler, event_bus=event_bus)
-    engine.register_dispatcher(
-        dispatcher_id=dispatcher_lifecycle.dispatcher_id,
-        dispatcher=dispatcher_lifecycle.handle,
-        category=dispatcher_lifecycle.category,
-        message_types=dispatcher_lifecycle.message_types,
-    )
-    dispatchers_registered.append(dispatcher_lifecycle.dispatcher_id)
-
     route_agent_task_lifecycle = ModelDispatchRoute(
         route_id=ROUTE_ID_AGENT_TASK_LIFECYCLE,
         topic_pattern="*.evt.*.agent-task-lifecycle.*",
         message_category=EnumMessageCategory.EVENT,
-        dispatcher_id=dispatcher_lifecycle.dispatcher_id,
+        dispatcher_id=event_dispatcher_id,
         message_type="omnibase-infra.agent-task-lifecycle",
     )
     engine.register_route(route_agent_task_lifecycle)

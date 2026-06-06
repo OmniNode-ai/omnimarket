@@ -1,6 +1,6 @@
 name: node_evidence_pipeline_orchestrator
 version: "0.1.0"
-description: "Contract-only package for the OMN-11443 evidence pipeline orchestrator."
+description: "Native package for the OMN-11443 evidence pipeline orchestrator."
 pack: evidence_pipeline
 node_role: orchestrator
 display_name: "Evidence Pipeline Orchestrator"
@@ -16,7 +16,8 @@ capabilities:
   requires_secrets: false
   requires_docker: false
   side_effect_class: orchestrates
-dependencies: []
+dependencies:
+  - "omnibase-compat>=0.3.1"
 authors: ["OmniNode Platform Team"]
 license: "MIT"
 tags: ["orchestrator", "evidence-pipeline", "OMN-11443"]

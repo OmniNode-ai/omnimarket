@@ -17,6 +17,10 @@ from omnibase_infra.event_bus.topic_constants import (
     TOPIC_DELEGATION_REQUEST,
 )
 
+from omnimarket.nodes.node_delegate_skill_orchestrator.models import (
+    ModelRuntimeDelegationDispatchConfig,
+    ModelRuntimeDelegationDispatchTopics,
+)
 from omnimarket.nodes.node_delegate_skill_orchestrator.ports import (
     RuntimeDelegationDispatchPort,
 )
@@ -29,6 +33,52 @@ from omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_reque
 from omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_result import (
     ModelDelegationResult,
 )
+
+
+class _CapturingEventBus:
+    def __init__(self) -> None:
+        self.published: list[tuple[str, bytes]] = []
+        self.subscriptions: list[tuple[str, str | None]] = []
+
+    async def publish(
+        self,
+        topic: str,
+        key: bytes | None,
+        value: bytes,
+        headers: object = None,
+    ) -> None:
+        self.published.append((topic, value))
+
+    async def subscribe(
+        self,
+        topic: str,
+        node_identity: object | None = None,
+        on_message: object | None = None,
+        **kwargs: object,
+    ) -> object:
+        group_id = kwargs.get("group_id")
+        self.subscriptions.append(
+            (topic, group_id if isinstance(group_id, str) else None)
+        )
+
+        async def unsubscribe() -> None:
+            return None
+
+        return unsubscribe
+
+
+def _runtime_dispatch_config() -> ModelRuntimeDelegationDispatchConfig:
+    return ModelRuntimeDelegationDispatchConfig(
+        topics=ModelRuntimeDelegationDispatchTopics(
+            command="test.cmd.delegation-request",
+            completed="test.evt.delegation-completed",
+            failed="test.evt.delegation-failed",
+        ),
+        request_message_type="test.delegation-request",
+        source_tool="test-delegate-port",
+        consumer_group_prefix="test-delegate-port",
+        wait_timeout_seconds=1,
+    )
 
 
 async def _publish_terminal_response(
@@ -111,6 +161,44 @@ async def test_runtime_dispatch_port_publishes_message_type_not_topic_as_event_t
         f"envelope event_type must be the routing key, not the full topic string, "
         f"got: {env.get('event_type')!r}"
     )
+
+
+@pytest.mark.unit
+async def test_runtime_dispatch_port_uses_contract_derived_transport_config() -> None:
+    bus = _CapturingEventBus()
+    correlation_id = uuid4()
+    port = RuntimeDelegationDispatchPort(
+        event_bus=bus,
+        config=_runtime_dispatch_config(),
+    )
+
+    await port.dispatch(
+        prompt="Write tests",
+        task_type="test",
+        correlation_id=correlation_id,
+        max_tokens=512,
+        source_file_path=None,
+        source_session_id=None,
+        wait=False,
+        quality_contract_mode="replace_task_class",
+        acceptance_criteria=(),
+    )
+    unsubscribe, _queue = await port._subscribe_for_result(correlation_id)
+    await unsubscribe()
+
+    assert len(bus.published) == 1
+    topic, value = bus.published[0]
+    assert topic == "test.cmd.delegation-request"
+
+    import json
+
+    envelope = json.loads(value)
+    assert envelope["event_type"] == "test.delegation-request"
+    assert envelope["source_tool"] == "test-delegate-port"
+    assert bus.subscriptions == [
+        ("test.evt.delegation-completed", f"test-delegate-port-{correlation_id.hex}"),
+        ("test.evt.delegation-failed", f"test-delegate-port-{correlation_id.hex}"),
+    ]
 
 
 @pytest.mark.unit

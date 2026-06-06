@@ -11,8 +11,8 @@ from pydantic import BaseModel, ConfigDict
 class ModelLlmDelegationCallRequest(BaseModel):
     """Input to HandlerLlmDelegationCall — one LLM API call to execute.
 
-    endpoint_ref is the NAME of an env var (e.g. 'LLM_LOCAL_PRIMARY_URL'),
-    not a raw URL. The handler resolves it via os.environ at call time.
+    endpoint_ref carries the routing-supplied endpoint URL. The handler never
+    resolves endpoint authority from os.environ at call time.
     prompt is in-memory only and must never be persisted or emitted to Kafka.
     """
 
@@ -26,7 +26,7 @@ class ModelLlmDelegationCallRequest(BaseModel):
     """Identifier of the model to call (e.g. 'Qwen/Qwen3-Coder-480B-A35B-Instruct')."""
 
     endpoint_ref: str
-    """Name of env var that holds the base URL — never a raw URL string."""
+    """Routing-supplied endpoint URL for this call."""
 
     prompt: str
     """Raw prompt. In-memory only — never persisted or published to Kafka."""

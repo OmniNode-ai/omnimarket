@@ -9,7 +9,7 @@ import json
 import logging
 import math
 import os
-from collections.abc import Callable, Coroutine
+from collections.abc import Callable, Coroutine, Mapping
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -114,6 +114,12 @@ class DelegationProjectionRunner(BaseProjectionRunner):
         )
         self._topic_delegate_skill_failed: str = next(
             (t for t in _topics if "delegate-skill-failed" in t), ""
+        )
+        self._topic_delegation_completed: str = next(
+            (t for t in _topics if "delegation-completed" in t), ""
+        )
+        self._topic_delegation_failed: str = next(
+            (t for t in _topics if "delegation-failed" in t), ""
         )
         self._terminal_topic: str | None = self._contract.get("terminal_event")
         # Inject for testing; real producer is built lazily on first emit.
@@ -241,6 +247,11 @@ class DelegationProjectionRunner(BaseProjectionRunner):
             self._topic_delegate_skill_failed,
         }:
             ok = await self._project_delegate_skill_terminal(data, meta)
+        elif topic in {
+            self._topic_delegation_completed,
+            self._topic_delegation_failed,
+        }:
+            ok = await self._project_delegation_terminal_result(data, meta)
         else:
             return False
 
@@ -255,6 +266,212 @@ class DelegationProjectionRunner(BaseProjectionRunner):
             )
 
         return ok
+
+    async def _project_delegation_terminal_result(
+        self, data: dict[str, Any], meta: MessageMeta
+    ) -> bool:
+        normalized = _canonical_result_to_task_delegated_payload(data)
+        return await self._upsert_canonical_delegation_terminal(normalized, meta)
+
+    async def _upsert_canonical_delegation_terminal(
+        self, data: dict[str, Any], meta: MessageMeta
+    ) -> bool:
+        """UPSERT a canonical delegation terminal result into delegation_events.
+
+        The compatibility task-delegated event can materialize a row before the
+        terminal result arrives. Terminal results therefore update missing row
+        evidence instead of using the task-delegated insert-only conflict policy.
+        """
+        correlation_id = (
+            data.get("correlation_id") or data.get("correlationId") or meta.fallback_id
+        )
+        task_type = data.get("task_type") or data.get("taskType")
+        delegated_to = (
+            data.get("delegated_to")
+            or data.get("delegatedTo")
+            or data.get("model_used")
+            or data.get("modelUsed")
+        )
+        if not task_type or not delegated_to:
+            logger.warning(
+                "delegation terminal event missing required fields (correlation_id=%s)",
+                correlation_id,
+            )
+            return True
+
+        timestamp = safe_parse_date(data.get("timestamp") or data.get("emitted_at"))
+        model_name = data.get("model_name") or data.get("modelName") or delegated_to
+        quality_gates_checked = data.get("quality_gates_checked") or data.get(
+            "qualityGatesChecked"
+        )
+        quality_gates_failed = data.get("quality_gates_failed") or data.get(
+            "qualityGatesFailed"
+        )
+        qgc_labels = _coerce_gate_labels(quality_gates_checked)
+        qgf_labels = _coerce_gate_labels(quality_gates_failed)
+        qgc_json = json.dumps(qgc_labels) if qgc_labels else None
+        qgf_json = json.dumps(qgf_labels) if qgf_labels else None
+        quality_gate_detail = (
+            data.get("quality_gate_detail") or data.get("qualityGateDetail") or None
+        )
+        cost_usd = _safe_numeric_str(data.get("cost_usd") or data.get("costUsd"))
+        cost_savings_usd = _safe_numeric_str(
+            data.get("cost_savings_usd")
+            or data.get("costSavingsUsd")
+            or data.get("estimated_savings_usd")
+            or data.get("estimatedSavingsUsd")
+        )
+        pricing_manifest_version = (
+            _safe_int_or_none(
+                data.get("pricing_manifest_version")
+                or data.get("pricingManifestVersion"),
+            )
+            or 0
+        )
+        delegation_latency_ms = _safe_int_or_none(
+            data.get("delegation_latency_ms")
+            or data.get("delegationLatencyMs")
+            or data.get("latency_ms")
+            or data.get("latencyMs")
+        )
+        tokens_input = (
+            _safe_int_or_none(
+                data.get("tokens_input")
+                or data.get("tokensInput")
+                or data.get("prompt_tokens")
+                or data.get("promptTokens")
+            )
+            or 0
+        )
+        tokens_output = (
+            _safe_int_or_none(
+                data.get("tokens_output")
+                or data.get("tokensOutput")
+                or data.get("completion_tokens")
+                or data.get("completionTokens")
+            )
+            or 0
+        )
+        tokens_to_compliance = (
+            _safe_int_or_none(
+                data.get("tokens_to_compliance") or data.get("tokensToCompliance")
+            )
+            or 0
+        )
+        compliance_attempts = (
+            _safe_int_or_none(
+                data.get("compliance_attempts") or data.get("complianceAttempts")
+            )
+            or 1
+        )
+        prompt_text = _blank_to_none(data.get("prompt_text") or data.get("promptText"))
+        response_text = _blank_to_none(
+            data.get("response_text") or data.get("responseText")
+        )
+
+        await self.db.execute(
+            f"""
+            INSERT INTO {self._table_delegation} (
+              correlation_id, session_id, timestamp, task_type,
+              delegated_to, model_name, delegated_by, quality_gate_passed,
+              quality_gates_checked, quality_gates_failed,
+              quality_gates_checked_jsonb, quality_gates_failed_jsonb,
+              quality_gate_detail,
+              cost_usd, cost_savings_usd, delegation_latency_ms,
+              repo, is_shadow, prompt_text, response_text,
+              tokens_input, tokens_output, tokens_to_compliance,
+              compliance_attempts, pricing_manifest_version
+            ) VALUES (
+              $1, $2, $3, $4,
+              $5, $6, $7, $8,
+              $9, $10,
+              $11::jsonb, $12::jsonb,
+              $13,
+              $14, $15, $16,
+              $17, $18, $19, $20,
+              $21, $22, $23,
+              $24, $25
+            )
+            ON CONFLICT (correlation_id) DO UPDATE SET
+              session_id = COALESCE(EXCLUDED.session_id, {self._table_delegation}.session_id),
+              timestamp = EXCLUDED.timestamp,
+              task_type = EXCLUDED.task_type,
+              delegated_to = EXCLUDED.delegated_to,
+              model_name = COALESCE(NULLIF(EXCLUDED.model_name, ''), {self._table_delegation}.model_name),
+              delegated_by = COALESCE(EXCLUDED.delegated_by, {self._table_delegation}.delegated_by),
+              quality_gate_passed = EXCLUDED.quality_gate_passed,
+              quality_gates_checked = EXCLUDED.quality_gates_checked,
+              quality_gates_failed = EXCLUDED.quality_gates_failed,
+              quality_gates_checked_jsonb = EXCLUDED.quality_gates_checked_jsonb,
+              quality_gates_failed_jsonb = EXCLUDED.quality_gates_failed_jsonb,
+              quality_gate_detail = COALESCE(EXCLUDED.quality_gate_detail, {self._table_delegation}.quality_gate_detail),
+              cost_usd = COALESCE(EXCLUDED.cost_usd, {self._table_delegation}.cost_usd),
+              cost_savings_usd = COALESCE(EXCLUDED.cost_savings_usd, {self._table_delegation}.cost_savings_usd),
+              delegation_latency_ms = COALESCE(EXCLUDED.delegation_latency_ms, {self._table_delegation}.delegation_latency_ms),
+              repo = COALESCE(EXCLUDED.repo, {self._table_delegation}.repo),
+              is_shadow = EXCLUDED.is_shadow,
+              prompt_text = COALESCE(EXCLUDED.prompt_text, {self._table_delegation}.prompt_text),
+              response_text = COALESCE(EXCLUDED.response_text, {self._table_delegation}.response_text),
+              tokens_input = CASE
+                WHEN EXCLUDED.tokens_input > 0 THEN EXCLUDED.tokens_input
+                ELSE {self._table_delegation}.tokens_input
+              END,
+              tokens_output = CASE
+                WHEN EXCLUDED.tokens_output > 0 THEN EXCLUDED.tokens_output
+                ELSE {self._table_delegation}.tokens_output
+              END,
+              tokens_to_compliance = CASE
+                WHEN EXCLUDED.tokens_to_compliance > 0 THEN EXCLUDED.tokens_to_compliance
+                ELSE {self._table_delegation}.tokens_to_compliance
+              END,
+              compliance_attempts = CASE
+                WHEN EXCLUDED.compliance_attempts > 0 THEN EXCLUDED.compliance_attempts
+                ELSE {self._table_delegation}.compliance_attempts
+              END,
+              pricing_manifest_version = CASE
+                WHEN EXCLUDED.pricing_manifest_version > 0 THEN EXCLUDED.pricing_manifest_version
+                ELSE {self._table_delegation}.pricing_manifest_version
+              END
+            """,
+            str(correlation_id),
+            str(data.get("session_id") or data.get("sessionId"))
+            if data.get("session_id") or data.get("sessionId")
+            else None,
+            timestamp,
+            str(task_type),
+            str(delegated_to),
+            str(model_name) if model_name else "",
+            str(data.get("delegated_by") or data.get("delegatedBy"))
+            if data.get("delegated_by") or data.get("delegatedBy")
+            else None,
+            bool(
+                data.get("quality_gate_passed")
+                if data.get("quality_gate_passed") is not None
+                else data.get("qualityGatePassed") or False
+            ),
+            len(qgc_labels),
+            len(qgf_labels),
+            qgc_json,
+            qgf_json,
+            str(quality_gate_detail) if quality_gate_detail else None,
+            cost_usd,
+            cost_savings_usd,
+            delegation_latency_ms,
+            str(data.get("repo")) if data.get("repo") else None,
+            bool(
+                data.get("is_shadow")
+                if data.get("is_shadow") is not None
+                else data.get("isShadow") or False
+            ),
+            prompt_text,
+            response_text,
+            tokens_input,
+            tokens_output,
+            tokens_to_compliance,
+            compliance_attempts,
+            pricing_manifest_version,
+        )
+        return True
 
     async def _project_task_delegated(
         self, data: dict[str, Any], meta: MessageMeta
@@ -302,6 +519,9 @@ class DelegationProjectionRunner(BaseProjectionRunner):
         qgf_labels = _coerce_gate_labels(quality_gates_failed)
         qgc_json = json.dumps(qgc_labels) if qgc_labels else None
         qgf_json = json.dumps(qgf_labels) if qgf_labels else None
+        quality_gate_detail = (
+            data.get("quality_gate_detail") or data.get("qualityGateDetail") or None
+        )
 
         cost_usd = _safe_numeric_str(data.get("cost_usd") or data.get("costUsd"))
         cost_savings_usd = _safe_numeric_str(
@@ -337,6 +557,36 @@ class DelegationProjectionRunner(BaseProjectionRunner):
         response_text = data.get("response_text")
         if response_text is None:
             response_text = data.get("responseText")
+        tokens_input = (
+            _safe_int_or_none(
+                data.get("tokens_input")
+                or data.get("tokensInput")
+                or data.get("prompt_tokens")
+                or data.get("promptTokens")
+            )
+            or 0
+        )
+        tokens_output = (
+            _safe_int_or_none(
+                data.get("tokens_output")
+                or data.get("tokensOutput")
+                or data.get("completion_tokens")
+                or data.get("completionTokens")
+            )
+            or 0
+        )
+        tokens_to_compliance = (
+            _safe_int_or_none(
+                data.get("tokens_to_compliance") or data.get("tokensToCompliance")
+            )
+            or 0
+        )
+        compliance_attempts = (
+            _safe_int_or_none(
+                data.get("compliance_attempts") or data.get("complianceAttempts")
+            )
+            or 1
+        )
 
         await self.db.execute(
             f"""
@@ -345,17 +595,21 @@ class DelegationProjectionRunner(BaseProjectionRunner):
               delegated_to, delegated_by, quality_gate_passed,
               quality_gates_checked, quality_gates_failed,
               quality_gates_checked_jsonb, quality_gates_failed_jsonb,
+              quality_gate_detail,
               cost_usd, cost_savings_usd, delegation_latency_ms,
               repo, is_shadow, prompt_text, response_text,
-              pricing_manifest_version
+              tokens_input, tokens_output, tokens_to_compliance,
+              compliance_attempts, pricing_manifest_version
             ) VALUES (
               $1, $2, $3, $4,
               $5, $6, $7,
               $8, $9,
               $10::jsonb, $11::jsonb,
-              $12, $13, $14,
-              $15, $16, $17, $18,
-              $19
+              $12,
+              $13, $14, $15,
+              $16, $17, $18, $19,
+              $20, $21, $22,
+              $23, $24
             )
             ON CONFLICT (correlation_id) DO NOTHING
             """,
@@ -370,6 +624,7 @@ class DelegationProjectionRunner(BaseProjectionRunner):
             len(qgf_labels),
             qgc_json,
             qgf_json,
+            str(quality_gate_detail) if quality_gate_detail else None,
             cost_usd,
             cost_savings_usd,
             delegation_latency_ms,
@@ -377,6 +632,10 @@ class DelegationProjectionRunner(BaseProjectionRunner):
             is_shadow,
             str(prompt_text) if prompt_text is not None else None,
             str(response_text) if response_text is not None else None,
+            tokens_input,
+            tokens_output,
+            tokens_to_compliance,
+            compliance_attempts,
             pricing_manifest_version,
         )
         return True
@@ -417,7 +676,8 @@ class DelegationProjectionRunner(BaseProjectionRunner):
               cost_usd, cost_savings_usd, delegation_latency_ms,
               latency_ms, repo, is_shadow, prompt_text, response_text,
               tokens_input, tokens_output, tokens_to_compliance,
-              compliance_attempts, pricing_manifest_version
+              compliance_attempts, pricing_manifest_version,
+              projection_version, reducer_version
             ) VALUES (
               $1, $2, $3, $4,
               $5, $6, $7, $8,
@@ -427,7 +687,8 @@ class DelegationProjectionRunner(BaseProjectionRunner):
               $14, $15, $16,
               $17, $18, $19, $20, $21,
               $22, $23, $24,
-              $25, $26
+              $25, $26,
+              $27, $28
             )
             ON CONFLICT (correlation_id) DO UPDATE SET
               session_id = COALESCE(EXCLUDED.session_id, {self._table_delegation}.session_id),
@@ -454,7 +715,9 @@ class DelegationProjectionRunner(BaseProjectionRunner):
               tokens_output = EXCLUDED.tokens_output,
               tokens_to_compliance = EXCLUDED.tokens_to_compliance,
               compliance_attempts = EXCLUDED.compliance_attempts,
-              pricing_manifest_version = EXCLUDED.pricing_manifest_version
+              pricing_manifest_version = EXCLUDED.pricing_manifest_version,
+              projection_version = EXCLUDED.projection_version,
+              reducer_version = EXCLUDED.reducer_version
             """,
             str(row.correlation_id),
             session_id,
@@ -482,6 +745,8 @@ class DelegationProjectionRunner(BaseProjectionRunner):
             row.tokens_to_compliance,
             row.compliance_attempts,
             row.pricing_manifest_version,
+            row.projection_version,
+            row.reducer_version,
         )
 
     async def _project_shadow_comparison(
@@ -647,6 +912,13 @@ def _safe_int_or_none(value: Any) -> int | None:
         return None
 
 
+def _blank_to_none(value: Any) -> str | None:
+    if value is None:
+        return None
+    text = str(value)
+    return text if text.strip() else None
+
+
 def _coerce_gate_labels(value: Any) -> list[str]:
     if value is None:
         return []
@@ -662,6 +934,133 @@ def _coerce_gate_labels(value: Any) -> list[str]:
     if isinstance(value, list | tuple | set):
         return [str(item) for item in value if str(item)]
     return [str(value)]
+
+
+def _canonical_terminal_result_payload(data: Mapping[str, Any]) -> dict[str, Any]:
+    payload = data.get("payload")
+    if isinstance(payload, Mapping):
+        nested_payload = payload.get("payload")
+        if isinstance(nested_payload, Mapping):
+            return dict(nested_payload)
+        return dict(payload)
+    return dict(data)
+
+
+def _first_present(data: Mapping[str, Any], *keys: str) -> Any:
+    for key in keys:
+        value = data.get(key)
+        if value is not None:
+            return value
+    return None
+
+
+def _first_mapping(data: Mapping[str, Any], *keys: str) -> Mapping[str, Any]:
+    for key in keys:
+        value = data.get(key)
+        if isinstance(value, Mapping):
+            return value
+    return {}
+
+
+def _canonical_result_to_task_delegated_payload(
+    data: dict[str, Any],
+) -> dict[str, Any]:
+    """Normalize canonical delegation terminal results to the projection row shape."""
+    result = _canonical_terminal_result_payload(data)
+    usage = _first_mapping(result, "usage", "metrics", "token_usage", "tokenUsage")
+    quality_passed = bool(
+        _first_present(
+            result,
+            "quality_passed",
+            "qualityPassed",
+            "quality_gate_passed",
+            "qualityGatePassed",
+        )
+    )
+    failure_reason = (
+        _first_present(result, "failure_reason", "failureReason", "error_message") or ""
+    )
+    quality_failures = (
+        [str(failure_reason)] if failure_reason and not quality_passed else []
+    )
+    model_used = _first_present(
+        result, "model_used", "modelUsed", "model_name", "modelName"
+    )
+    prompt_text = _first_present(result, "prompt_text", "promptText", "prompt")
+    response_text = _first_present(
+        result, "content", "response_text", "responseText", "response", "output"
+    )
+    prompt_tokens = _first_present(
+        result,
+        "prompt_tokens",
+        "promptTokens",
+        "input_tokens",
+        "inputTokens",
+    )
+    if prompt_tokens is None:
+        prompt_tokens = _first_present(
+            usage,
+            "prompt_tokens",
+            "promptTokens",
+            "input_tokens",
+            "inputTokens",
+        )
+    completion_tokens = _first_present(
+        result,
+        "completion_tokens",
+        "completionTokens",
+        "output_tokens",
+        "outputTokens",
+    )
+    if completion_tokens is None:
+        completion_tokens = _first_present(
+            usage,
+            "completion_tokens",
+            "completionTokens",
+            "output_tokens",
+            "outputTokens",
+        )
+    return {
+        "correlation_id": (
+            _first_present(result, "correlation_id", "correlationId")
+            or _first_present(data, "correlation_id", "correlationId")
+        ),
+        "session_id": _first_present(result, "session_id", "sessionId"),
+        "task_type": _first_present(result, "task_type", "taskType") or "unknown",
+        "delegated_to": (
+            model_used
+            or _first_present(result, "delegated_to", "delegatedTo")
+            or "unknown"
+        ),
+        "model_name": model_used or "",
+        "quality_gate_passed": quality_passed,
+        "quality_gates_failed": quality_failures,
+        "quality_gate_detail": str(failure_reason) if failure_reason else None,
+        "delegation_latency_ms": _first_present(
+            result, "latency_ms", "latencyMs", "delegation_latency_ms"
+        ),
+        "latency_ms": _first_present(result, "latency_ms", "latencyMs"),
+        "prompt_text": prompt_text,
+        "response_text": response_text,
+        "tokens_input": prompt_tokens or 0,
+        "tokens_output": completion_tokens or 0,
+        "tokens_to_compliance": (
+            _first_present(result, "tokens_to_compliance", "tokensToCompliance") or 0
+        ),
+        "compliance_attempts": (
+            _first_present(result, "compliance_attempts", "complianceAttempts") or 1
+        ),
+        "cost_usd": (
+            _first_present(result, "cost_usd", "costUsd", "final_attempt_cost") or 0
+        ),
+        "cost_savings_usd": (
+            _first_present(result, "cost_savings_usd", "costSavingsUsd") or 0
+        ),
+        "pricing_manifest_version": (
+            _first_present(result, "pricing_manifest_version", "pricingManifestVersion")
+            or 0
+        ),
+    }
 
 
 if __name__ == "__main__":
