@@ -28,7 +28,7 @@ import contextlib
 import logging
 import time
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 import yaml
 from omnibase_infra.runtime.contract_topic_router import (
@@ -65,6 +65,16 @@ _CONTRACT_DATA: dict[str, object] = (
     _contract_raw if isinstance(_contract_raw, dict) else {}
 )
 _TOPIC_ROUTER: dict[str, str] = build_topic_router_from_contract(_CONTRACT_DATA)
+_DELEGATION_CONSUMER_RUNTIME_PROFILES = frozenset({"main", "default"})
+
+
+def _configured_runtime_profile(config: ModelDomainPluginConfig) -> str:
+    runtime_profile = cast("str", config.runtime_profile)
+    return runtime_profile.strip().lower()
+
+
+def _owns_delegation_orchestration_consumers(profile: str) -> bool:
+    return profile.strip().lower() in _DELEGATION_CONSUMER_RUNTIME_PROFILES
 
 
 class PluginDelegation:
@@ -168,7 +178,7 @@ class PluginDelegation:
         self,
         config: ModelDomainPluginConfig,
     ) -> ModelDomainPluginResult:
-        """Wire delegation dispatchers into the MessageDispatchEngine."""
+        """Defer dispatcher route registration to contract auto-wiring."""
         start_time = time.time()
 
         if config.container.service_registry is None:
@@ -193,49 +203,19 @@ class PluginDelegation:
                 reason="dispatch_engine not available",
             )
 
-        try:
-            from omnimarket.nodes.node_delegation_orchestrator.wiring import (
-                wire_delegation_dispatchers,
-            )
-
-            dispatch_summary = await wire_delegation_dispatchers(
-                container=config.container,
-                engine=config.dispatch_engine,
-                correlation_id=config.correlation_id,
-                event_bus=config.event_bus,
-            )
-
-            duration = time.time() - start_time
-            logger.info(
-                "Delegation dispatchers wired into engine (correlation_id=%s)",
-                config.correlation_id,
-                extra={
-                    "dispatchers": dispatch_summary.get("dispatchers", []),
-                    "routes": dispatch_summary.get("routes", []),
-                },
-            )
-
-            self._dispatcher_wiring_succeeded = True
-            return ModelDomainPluginResult(
-                plugin_id=self.plugin_id,
-                success=True,
-                message="Delegation dispatchers wired into engine",
-                resources_created=list(dispatch_summary.get("dispatchers", [])),
-                duration_seconds=duration,
-            )
-
-        except Exception as e:
-            duration = time.time() - start_time
-            logger.exception(
-                "Failed to wire delegation dispatchers: %s",
-                sanitize_error_message(e),
-                extra={"correlation_id": str(config.correlation_id)},
-            )
-            return ModelDomainPluginResult.failed(
-                plugin_id=self.plugin_id,
-                error_message=sanitize_error_message(e),
-                duration_seconds=duration,
-            )
+        duration = time.time() - start_time
+        self._dispatcher_wiring_succeeded = True
+        logger.info(
+            "Delegation dispatcher wiring deferred to contract auto-wiring "
+            "(correlation_id=%s)",
+            config.correlation_id,
+        )
+        return ModelDomainPluginResult(
+            plugin_id=self.plugin_id,
+            success=True,
+            message="Delegation dispatcher routes are contract-managed",
+            duration_seconds=duration,
+        )
 
     async def start_consumers(
         self,
@@ -244,6 +224,22 @@ class PluginDelegation:
         """Start event consumers via EventBusSubcontractWiring."""
         start_time = time.time()
         correlation_id = config.correlation_id
+        runtime_profile = _configured_runtime_profile(config)
+
+        if not _owns_delegation_orchestration_consumers(runtime_profile):
+            logger.info(
+                "Skipping delegation orchestration consumer startup for runtime "
+                "profile '%s' (correlation_id=%s)",
+                runtime_profile,
+                correlation_id,
+            )
+            return ModelDomainPluginResult.skipped(
+                plugin_id=self.plugin_id,
+                reason=(
+                    "runtime profile does not own delegation orchestration "
+                    f"consumers: {runtime_profile}"
+                ),
+            )
 
         if not (self._handler_wiring_succeeded and self._dispatcher_wiring_succeeded):
             logger.warning(

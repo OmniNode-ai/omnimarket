@@ -44,6 +44,7 @@ event_bus:
     major: 1
     minor: 0
     patch: 0
+  plugin_managed: true
   subscribe_topics:
     - "onex.cmd.omnibase-infra.delegation-request.v1"
     - "onex.cmd.omnibase-infra.invocation.v1"
@@ -135,28 +136,75 @@ handler_routing:
   routing_strategy: "payload_type_match"
   handlers:
     - operation: "delegation.orchestrate"
+      message_category: "command"
       handler:
         name: "HandlerDelegationWorkflow"
         module: "omnimarket.nodes.node_delegation_orchestrator.handlers.handler_delegation_workflow"
-      description: "Coordinate delegation through routing, inference, and quality gate"
-      input_model:
+      event_model:
         name: "ModelDelegationRequest"
-        module: "omnimarket.nodes.node_delegation_orchestrator.models"
-        description: "Delegation request to orchestrate."
-    - operation: "delegation.evaluate_compliance"
+        module: "omnibase_core.models.delegation.wire"
+      event_type: "omnibase-infra.delegation-request"
+      description: "Receive a delegation request and emit the routing intent."
+    - operation: "delegation.orchestrate.invocation"
+      message_category: "command"
       handler:
-        name: "HandlerComplianceLoop"
-        module: "omnimarket.nodes.node_delegation_orchestrator.handlers.handler_compliance_loop"
-      description: "Per-attempt schema-compliance evaluator (OMN-10792). Composes omnimarket schema-registry, schema-repair, and budget-policy nodes; returns compliant=True, repair_prompt+CONTINUE, or ABORT. Invoked in-process by HandlerDelegationWorkflow per inference attempt — not routed via the bus."
-      input_model:
-        name: "ModelComplianceLoopResult"
-        module: "omnimarket.nodes.node_delegation_orchestrator.models.model_compliance_loop_result"
-        description: "Per-attempt directive emitted by the compliance loop."
-# PluginDelegation registers one contract-backed workflow dispatcher. All six
-# subscribed topics route through HandlerDelegationWorkflow.handle(), which performs
-# payload-type dispatch into the FSM methods declared by handler_routing. The
-# legacy per-payload dispatcher classes are retained only for backward-compatible
-# tests and are no longer the live wiring authority (OMN-12688).
+        name: "HandlerDelegationWorkflow"
+        module: "omnimarket.nodes.node_delegation_orchestrator.handlers.handler_delegation_workflow"
+      event_model:
+        name: "ModelInvocationCommand"
+        module: "omnibase_core.models.delegation.model_invocation_command"
+      event_type: "omnibase-infra.invocation"
+      description: "Accept typed invocation commands on the delegation workflow."
+    - operation: "delegation.orchestrate.routing"
+      message_category: "event"
+      handler:
+        name: "HandlerDelegationWorkflow"
+        module: "omnimarket.nodes.node_delegation_orchestrator.handlers.handler_delegation_workflow"
+      event_model:
+        name: "ModelRoutingDecision"
+        module: "omnimarket.nodes.node_delegation_routing_reducer.models.model_routing_decision"
+      event_type: "omnibase-infra.routing-decision"
+      description: "Advance the workflow after model-routing selection."
+    - operation: "delegation.orchestrate.inference"
+      message_category: "event"
+      handler:
+        name: "HandlerDelegationWorkflow"
+        module: "omnimarket.nodes.node_delegation_orchestrator.handlers.handler_delegation_workflow"
+      event_model:
+        name: "ModelInferenceResponseData"
+        module: "omnibase_core.models.delegation.wire"
+      event_type: "omnibase-infra.inference-response"
+      description: "Advance the workflow after an LLM inference response."
+    - operation: "delegation.orchestrate.lifecycle"
+      message_category: "event"
+      handler:
+        name: "HandlerDelegationWorkflow"
+        module: "omnimarket.nodes.node_delegation_orchestrator.handlers.handler_delegation_workflow"
+      event_model:
+        name: "ModelAgentTaskLifecycleEvent"
+        module: "omnibase_core.models.delegation.model_agent_task_lifecycle_event"
+      event_type: "omnibase-infra.agent-task-lifecycle"
+      description: "Advance the workflow from remote-agent lifecycle events."
+    - operation: "delegation.orchestrate.quality"
+      message_category: "event"
+      handler:
+        name: "HandlerDelegationWorkflow"
+        module: "omnimarket.nodes.node_delegation_orchestrator.handlers.handler_delegation_workflow"
+      event_model:
+        name: "ModelQualityGateResult"
+        module: "omnibase_core.models.delegation.wire"
+      event_type: "omnibase-infra.quality-gate-result"
+      description: "Complete or fail the workflow after quality evaluation."
+# PluginDelegation owns the Kafka subscription/result-applier lifecycle
+# (event_bus.plugin_managed=true), while generic contract auto-wiring owns the
+# dispatch route into HandlerDelegationWorkflow.handle(). All six subscribed
+# topics route through that handler, which performs payload-type dispatch into
+# the FSM methods declared by handler_routing. The legacy per-payload dispatcher
+# classes are retained only for backward-compatible tests and are no longer the
+# live wiring authority (OMN-12688, OMN-12724).
+# HandlerComplianceLoop is intentionally omitted from handler_routing because it
+# is invoked in-process by HandlerDelegationWorkflow per inference attempt. A
+# handler_routing entry without an event_model becomes a catch-all bus route.
 # Cross-repo topic ownership declarations.
 # Topics published by this node that are consumed by nodes in other repos.
 # The dependency-health sweep runs per-repo-root; these declarations suppress

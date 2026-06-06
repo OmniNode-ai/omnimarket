@@ -223,9 +223,8 @@ class TestDispatcherDelegationWorkflowBusPublish:
         assert TOPIC_DELEGATION_TASK_DELEGATED in published_topics
 
     async def test_routing_decision_returns_inference_intent_for_applier(self) -> None:
-        bus = _make_mock_bus()
         handler = HandlerDelegationWorkflow()
-        dispatcher = DispatcherDelegationWorkflow(handler, event_bus=bus)  # type: ignore[arg-type]
+        dispatcher = DispatcherDelegationWorkflow(handler, event_bus=None)
         cid = uuid4()
 
         request = ModelDelegationRequest(
@@ -255,7 +254,102 @@ class TestDispatcherDelegationWorkflowBusPublish:
         assert len(result.output_events) == 1
         assert type(result.output_events[0]).__name__ == "ModelInferenceIntent"
         assert result.output_events[0].prompt == request.prompt  # type: ignore[attr-defined]
-        assert not bus.publish_envelope.called
+
+    async def test_handler_accepts_materialized_event_envelope_dict(self) -> None:
+        handler = HandlerDelegationWorkflow(workflows={})
+        cid = uuid4()
+        request = ModelDelegationRequest(
+            prompt="Write pytest unit tests for normalize_status.",
+            task_type="test",  # type: ignore[arg-type]
+            correlation_id=cid,
+            emitted_at=datetime.now(UTC),
+        )
+        await handler.handle(
+            {
+                "payload": request.model_dump(mode="json"),
+                "correlation_id": str(cid),
+                "event_type": "omnibase-infra.delegation-request",
+                "envelope_id": str(uuid4()),
+            }
+        )
+        decision = ModelRoutingDecision(
+            correlation_id=cid,
+            task_type="test",
+            selected_model="qwen3-coder-30b",
+            selected_backend_id=uuid5(
+                NAMESPACE_DNS, "omninode.ai/backends/qwen3-coder-30b"
+            ),
+            endpoint_url=TEST_ENDPOINT_URL,
+            cost_tier="low",
+            max_context_tokens=65536,
+            system_prompt="You are an assistant.",
+            rationale="Routing test.",
+        )
+
+        events = await handler.handle(
+            {
+                "payload": decision.model_dump(mode="json"),
+                "correlation_id": str(cid),
+                "event_type": "omnibase-infra.routing-decision",
+                "envelope_id": str(uuid4()),
+            }
+        )
+
+        assert len(events) == 1
+        assert type(events[0]).__name__ == "ModelInferenceIntent"
+        assert events[0].correlation_id == cid  # type: ignore[attr-defined]
+        assert events[0].prompt == request.prompt  # type: ignore[attr-defined]
+
+    async def test_runtime_handle_async_returns_publishable_output(self) -> None:
+        handler = HandlerDelegationWorkflow(workflows={})
+        cid = uuid4()
+        request = ModelDelegationRequest(
+            prompt="Write pytest unit tests for normalize_status.",
+            task_type="test",  # type: ignore[arg-type]
+            correlation_id=cid,
+            emitted_at=datetime.now(UTC),
+        )
+
+        output = await handler.handle_async(request)
+
+        assert output.correlation_id == cid
+        assert len(output.events) == 1
+        assert type(output.events[0]).__name__ == "ModelRoutingIntent"
+        assert output.events[0].payload.prompt == request.prompt  # type: ignore[attr-defined]
+
+    async def test_handler_accepts_envelope_like_payload_object(self) -> None:
+        class EnvelopeLike:
+            def __init__(self, payload: object) -> None:
+                self.payload = payload
+
+        handler = HandlerDelegationWorkflow(workflows={})
+        cid = uuid4()
+        request = ModelDelegationRequest(
+            prompt="Write pytest unit tests for normalize_status.",
+            task_type="test",  # type: ignore[arg-type]
+            correlation_id=cid,
+            emitted_at=datetime.now(UTC),
+        )
+        await handler.handle(EnvelopeLike(request.model_dump(mode="json")))
+        decision = ModelRoutingDecision(
+            correlation_id=cid,
+            task_type="test",
+            selected_model="qwen3-coder-30b",
+            selected_backend_id=uuid5(
+                NAMESPACE_DNS, "omninode.ai/backends/qwen3-coder-30b"
+            ),
+            endpoint_url=TEST_ENDPOINT_URL,
+            cost_tier="low",
+            max_context_tokens=65536,
+            system_prompt="You are an assistant.",
+            rationale="Routing test.",
+        )
+
+        events = await handler.handle(EnvelopeLike(decision.model_dump(mode="json")))
+
+        assert len(events) == 1
+        assert type(events[0]).__name__ == "ModelInferenceIntent"
+        assert events[0].correlation_id == cid  # type: ignore[attr-defined]
 
 
 @pytest.mark.unit

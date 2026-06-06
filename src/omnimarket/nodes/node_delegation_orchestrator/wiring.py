@@ -138,19 +138,46 @@ async def wire_delegation_dispatchers(
     )
 
     dispatcher_workflow = DispatcherDelegationWorkflow(handler, event_bus=event_bus)
+    command_dispatcher_id = f"{dispatcher_workflow.dispatcher_id}.command"
+    event_dispatcher_id = f"{dispatcher_workflow.dispatcher_id}.event"
+
     engine.register_dispatcher(
-        dispatcher_id=dispatcher_workflow.dispatcher_id,
+        dispatcher_id=command_dispatcher_id,
         dispatcher=dispatcher_workflow.handle,
-        category=dispatcher_workflow.category,
-        message_types=dispatcher_workflow.message_types,
+        category=EnumMessageCategory.COMMAND,
+        message_types={
+            "ModelDelegationRequest",
+            "ModelInvocationCommand",
+            "omnibase-infra.delegation-request",
+            "omnibase-infra.invocation",
+        },
+        node_kind=dispatcher_workflow.node_kind,
     )
-    dispatchers_registered.append(dispatcher_workflow.dispatcher_id)
+    dispatchers_registered.append(command_dispatcher_id)
+
+    engine.register_dispatcher(
+        dispatcher_id=event_dispatcher_id,
+        dispatcher=dispatcher_workflow.handle,
+        category=EnumMessageCategory.EVENT,
+        message_types={
+            "ModelAgentTaskLifecycleEvent",
+            "ModelInferenceResponseData",
+            "ModelQualityGateResult",
+            "ModelRoutingDecision",
+            "omnibase-infra.agent-task-lifecycle",
+            "omnibase-infra.inference-response",
+            "omnibase-infra.quality-gate-result",
+            "omnibase-infra.routing-decision",
+        },
+        node_kind=dispatcher_workflow.node_kind,
+    )
+    dispatchers_registered.append(event_dispatcher_id)
 
     route_delegation_request = ModelDispatchRoute(
         route_id=ROUTE_ID_DELEGATION_REQUEST,
         topic_pattern="*.cmd.*.delegation-request.*",
         message_category=EnumMessageCategory.COMMAND,
-        dispatcher_id=dispatcher_workflow.dispatcher_id,
+        dispatcher_id=command_dispatcher_id,
         message_type="omnibase-infra.delegation-request",
     )
     engine.register_route(route_delegation_request)
@@ -160,7 +187,7 @@ async def wire_delegation_dispatchers(
         route_id=ROUTE_ID_INVOCATION_COMMAND,
         topic_pattern="*.cmd.*.invocation.*",
         message_category=EnumMessageCategory.COMMAND,
-        dispatcher_id=dispatcher_workflow.dispatcher_id,
+        dispatcher_id=command_dispatcher_id,
         message_type="omnibase-infra.invocation",
     )
     engine.register_route(route_invocation_command)
@@ -170,7 +197,7 @@ async def wire_delegation_dispatchers(
         route_id=ROUTE_ID_ROUTING_DECISION,
         topic_pattern="*.evt.*.routing-decision.*",
         message_category=EnumMessageCategory.EVENT,
-        dispatcher_id=dispatcher_workflow.dispatcher_id,
+        dispatcher_id=event_dispatcher_id,
         message_type="omnibase-infra.routing-decision",
     )
     engine.register_route(route_routing_decision)
@@ -180,7 +207,7 @@ async def wire_delegation_dispatchers(
         route_id=ROUTE_ID_INFERENCE_RESPONSE,
         topic_pattern="*.evt.*.inference-response.*",
         message_category=EnumMessageCategory.EVENT,
-        dispatcher_id=dispatcher_workflow.dispatcher_id,
+        dispatcher_id=event_dispatcher_id,
         message_type="omnibase-infra.inference-response",
     )
     engine.register_route(route_inference_response)
@@ -190,7 +217,7 @@ async def wire_delegation_dispatchers(
         route_id=ROUTE_ID_QUALITY_GATE_RESULT,
         topic_pattern="*.evt.*.quality-gate-result.*",
         message_category=EnumMessageCategory.EVENT,
-        dispatcher_id=dispatcher_workflow.dispatcher_id,
+        dispatcher_id=event_dispatcher_id,
         message_type="omnibase-infra.quality-gate-result",
     )
     engine.register_route(route_quality_gate)
@@ -200,7 +227,7 @@ async def wire_delegation_dispatchers(
         route_id=ROUTE_ID_AGENT_TASK_LIFECYCLE,
         topic_pattern="*.evt.*.agent-task-lifecycle.*",
         message_category=EnumMessageCategory.EVENT,
-        dispatcher_id=dispatcher_workflow.dispatcher_id,
+        dispatcher_id=event_dispatcher_id,
         message_type="omnibase-infra.agent-task-lifecycle",
     )
     engine.register_route(route_agent_task_lifecycle)

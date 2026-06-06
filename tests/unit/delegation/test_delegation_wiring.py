@@ -146,8 +146,11 @@ class TestWireDelegationDispatchers:
     ) -> None:
         result = await wire_delegation_dispatchers(mock_container, mock_engine)
 
-        assert result["dispatchers"] == ["dispatcher.delegation.workflow"]
-        assert mock_engine.register_dispatcher.call_count == 1
+        assert result["dispatchers"] == [
+            "dispatcher.delegation.workflow.command",
+            "dispatcher.delegation.workflow.event",
+        ]
+        assert mock_engine.register_dispatcher.call_count == 2
 
     @pytest.mark.asyncio
     async def test_registers_routes(
@@ -177,7 +180,10 @@ class TestWireDelegationDispatchers:
     ) -> None:
         result = await wire_delegation_dispatchers(mock_container, mock_engine)
 
-        assert result["dispatchers"] == ["dispatcher.delegation.workflow"]
+        assert result["dispatchers"] == [
+            "dispatcher.delegation.workflow.command",
+            "dispatcher.delegation.workflow.event",
+        ]
 
     @pytest.mark.asyncio
     async def test_status_is_success(
@@ -212,7 +218,7 @@ class TestWireDelegationDispatchers:
             for call in mock_engine.register_dispatcher.call_args_list
         ]
 
-        assert len(dispatcher_handlers) == 1
+        assert len(dispatcher_handlers) == 2
         assert len({id(handler) for handler in dispatcher_handlers}) == 1
 
     @pytest.mark.asyncio
@@ -226,11 +232,18 @@ class TestWireDelegationDispatchers:
             for call in mock_engine.register_route.call_args_list
         }
 
-        assert route_dispatcher_ids == {"dispatcher.delegation.workflow"}
-        registered_dispatcher = mock_engine.register_dispatcher.call_args.kwargs[
-            "dispatcher"
-        ].__self__
-        assert isinstance(registered_dispatcher, DispatcherDelegationWorkflow)
+        assert route_dispatcher_ids == {
+            "dispatcher.delegation.workflow.command",
+            "dispatcher.delegation.workflow.event",
+        }
+        registered_dispatchers = [
+            call.kwargs["dispatcher"].__self__
+            for call in mock_engine.register_dispatcher.call_args_list
+        ]
+        assert all(
+            isinstance(dispatcher, DispatcherDelegationWorkflow)
+            for dispatcher in registered_dispatchers
+        )
 
     @pytest.mark.asyncio
     async def test_wire_handlers_reuses_process_shared_workflow_handler(self) -> None:

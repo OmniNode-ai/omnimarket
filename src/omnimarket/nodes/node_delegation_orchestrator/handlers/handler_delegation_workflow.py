@@ -28,7 +28,7 @@ from collections.abc import Callable, MutableMapping
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import ClassVar
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from omnibase_core.models.delegation.model_agent_task_lifecycle_event import (
     ModelAgentTaskLifecycleEvent,
@@ -36,6 +36,8 @@ from omnibase_core.models.delegation.model_agent_task_lifecycle_event import (
 from omnibase_core.models.delegation.model_invocation_command import (
     ModelInvocationCommand,
 )
+from omnibase_core.models.dispatch.model_handler_output import ModelHandlerOutput
+from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
 from omnibase_infra.event_bus.topic_constants import (
     TOPIC_DELEGATION_COMPLETED,
     TOPIC_DELEGATION_FAILED,
@@ -373,6 +375,11 @@ class HandlerDelegationWorkflow:
         cid = decision.correlation_id
         workflow = self._workflows.get(cid)
         if workflow is None:
+            _logger.warning(
+                "Ignoring routing decision without active delegation workflow "
+                "(correlation_id=%s)",
+                cid,
+            )
             return []
 
         if workflow.state == EnumDelegationState.RECEIVED:
@@ -952,6 +959,8 @@ class HandlerDelegationWorkflow:
 
     async def handle(self, payload: object) -> list[BaseModel]:
         """Route supported workflow payloads through the canonical FSM methods."""
+        if isinstance(payload, ModelEventEnvelope) or hasattr(payload, "payload"):
+            payload = payload.payload
         if isinstance(payload, dict):
             payload = self._coerce_payload_dict(payload)
         if isinstance(payload, ModelDelegationRequest):
@@ -969,9 +978,42 @@ class HandlerDelegationWorkflow:
         msg = f"Unsupported delegation workflow payload: {type(payload).__name__}"
         raise ValueError(msg)
 
+    async def handle_async(self, payload: object) -> ModelHandlerOutput[None]:
+        """Runtime auto-wiring entrypoint that returns publishable handler output."""
+        events = await self.handle(payload)
+        return ModelHandlerOutput.for_orchestrator(
+            input_envelope_id=uuid4(),
+            correlation_id=self._coerce_payload_correlation_id(payload),
+            handler_id="node_delegation_orchestrator.workflow",
+            events=tuple(events),
+        )
+
+    @staticmethod
+    def _coerce_payload_correlation_id(payload: object) -> UUID:
+        candidate = getattr(payload, "correlation_id", None)
+        if candidate is None and isinstance(payload, ModelEventEnvelope):
+            candidate = payload.correlation_id
+        if candidate is None and hasattr(payload, "payload"):
+            candidate = getattr(payload.payload, "correlation_id", None)
+        if candidate is None and isinstance(payload, dict):
+            nested_payload = payload.get("payload")
+            candidate = payload.get("correlation_id")
+            if candidate is None and isinstance(nested_payload, dict):
+                candidate = nested_payload.get("correlation_id")
+        if isinstance(candidate, UUID):
+            return candidate
+        if isinstance(candidate, str) and candidate:
+            return UUID(candidate)
+        return uuid4()
+
     @staticmethod
     def _coerce_payload_dict(payload: dict[str, object]) -> BaseModel:
         """Convert raw event-bus payload dictionaries into workflow models."""
+        nested_payload = payload.get("payload")
+        if isinstance(nested_payload, dict) and (
+            "event_type" in payload or "envelope_id" in payload
+        ):
+            return HandlerDelegationWorkflow._coerce_payload_dict(nested_payload)
         if "lifecycle_type" in payload:
             return ModelAgentTaskLifecycleEvent.model_validate(payload)
         if "invocation_kind" in payload or "target_ref" in payload:
