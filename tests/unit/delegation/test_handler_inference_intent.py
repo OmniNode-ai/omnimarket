@@ -403,11 +403,17 @@ class TestHandlerInferenceIntent:
 
     def test_provider_request_options_are_merged_into_provider_payload(self) -> None:
         handler = HandlerInferenceIntent()
-        intent = _make_intent(
-            provider_request_options={
+        intent_kwargs: dict[str, object] = {
+            "model": "Qwen3.6-35B-A3B",
+            "system_prompt": "You are a production-quality code generation assistant.",
+        }
+        if "provider_request_options" in getattr(
+            ModelInferenceIntent, "model_fields", {}
+        ):
+            intent_kwargs["provider_request_options"] = {
                 "chat_template_kwargs": {"enable_thinking": False}
             }
-        )
+        intent = _make_intent(**intent_kwargs)
 
         captured_payload: list[dict[str, object]] = []
 
@@ -430,9 +436,7 @@ class TestHandlerInferenceIntent:
             result = handler.handle(intent)
 
         assert result.error_message == ""
-        assert captured_payload[0]["chat_template_kwargs"] == {
-            "enable_thinking": False
-        }
+        assert captured_payload[0]["chat_template_kwargs"] == {"enable_thinking": False}
 
     def test_api_key_ref_resolved_at_effect_boundary(
         self, monkeypatch: pytest.MonkeyPatch

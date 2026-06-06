@@ -27,7 +27,7 @@ from omnibase_core.models.delegation.wire import (
     ModelInferenceResponseData,
 )
 
-from omnimarket.inference.protocol_config import apply_inference_protocol_directives
+from omnimarket.inference.protocol_config import apply_inference_protocol
 from omnimarket.nodes.contract_topics import (
     contract_publish_topics,
 )
@@ -66,17 +66,38 @@ def _get_inference_response_topic() -> str:
 TOPIC_INFERENCE_RESPONSE: str = _get_inference_response_topic()
 
 
-def _build_messages(intent: ModelInferenceIntent) -> list[dict[str, str]]:
-    system_prompt, prompt = apply_inference_protocol_directives(
+def _merge_request_options(
+    base: dict[str, Any],
+    overlay: dict[str, Any],
+) -> dict[str, Any]:
+    merged = dict(base)
+    for key, value in overlay.items():
+        existing = merged.get(key)
+        if isinstance(existing, dict) and isinstance(value, dict):
+            merged[key] = _merge_request_options(existing, value)
+        else:
+            merged[key] = value
+    return merged
+
+
+def _build_messages_and_request_options(
+    intent: ModelInferenceIntent,
+) -> tuple[list[dict[str, str]], dict[str, Any]]:
+    system_prompt, prompt, configured_request_options = apply_inference_protocol(
         system_prompt=intent.system_prompt,
         prompt=intent.prompt,
         model=intent.model,
+    )
+    intent_request_options = getattr(intent, "provider_request_options", None) or {}
+    provider_request_options = _merge_request_options(
+        configured_request_options,
+        intent_request_options,
     )
     messages: list[dict[str, str]] = []
     if system_prompt:
         messages.append({"role": "system", "content": system_prompt})
     messages.append({"role": "user", "content": prompt})
-    return messages
+    return messages, provider_request_options
 
 
 def _resolve_api_key(api_key_ref: str | None) -> str | None:
@@ -148,7 +169,7 @@ class HandlerInferenceIntent:
         intent: ModelInferenceIntent,
         call_id: str,
     ) -> ModelInferenceResponseData:
-        messages = _build_messages(intent)
+        messages, provider_request_options = _build_messages_and_request_options(intent)
         payload: dict[str, Any] = {
             "model": intent.model,
             "messages": messages,
@@ -157,7 +178,7 @@ class HandlerInferenceIntent:
         }
         payload = _merge_provider_request_options(
             payload,
-            intent.provider_request_options,
+            provider_request_options,
         )
 
         headers: dict[str, str] = {}
