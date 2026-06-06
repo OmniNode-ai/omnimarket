@@ -202,6 +202,63 @@ class TestDelegationHandler:
         assert args[-1] == 1
 
     @pytest.mark.asyncio
+    async def test_delegation_terminal_enriches_nested_result_payload(
+        self, mock_db: AsyncMock
+    ) -> None:
+        from omnimarket.nodes.node_projection_delegation.handlers.handler_delegation import (
+            DelegationProjectionRunner,
+        )
+
+        runner = DelegationProjectionRunner()
+        runner._db = mock_db
+
+        useful_response = (
+            "import pytest\n\n"
+            "@pytest.mark.unit\n"
+            "def test_projection_terminal_payload():\n"
+            "    assert True\n"
+        )
+        data = {
+            "topic": "onex.evt.omnibase-infra.delegation-completed.v1",
+            "payload": {
+                "correlation_id": "c65f5188-4250-4b42-8a45-b9e355b207ee",
+                "task_type": "test_generation",
+                "model_used": "Qwen3.6-27B-MTP-IQ4_XS.gguf",
+                "prompt": "Write focused pytest coverage for the projection reducer.",
+                "content": useful_response,
+                "quality_passed": True,
+                "quality_score": 1.0,
+                "latency_ms": 2400,
+                "usage": {
+                    "input_tokens": 321,
+                    "output_tokens": 654,
+                    "total_tokens": 975,
+                },
+                "tokens_to_compliance": 975,
+                "compliance_attempts": 1,
+                "pricing_manifest_version": 1,
+            },
+        }
+
+        result = await runner.project_event(
+            "onex.evt.omnibase-infra.delegation-completed.v1", data, _make_meta()
+        )
+
+        assert result is True
+        mock_db.execute.assert_called_once()
+        args = mock_db.execute.call_args[0]
+        assert "ON CONFLICT (correlation_id) DO UPDATE SET" in args[0]
+        assert "prompt_text = COALESCE(EXCLUDED.prompt_text" in args[0]
+        assert "response_text = COALESCE(EXCLUDED.response_text" in args[0]
+        assert "c65f5188-4250-4b42-8a45-b9e355b207ee" in args
+        assert "Qwen3.6-27B-MTP-IQ4_XS.gguf" in args
+        assert "Write focused pytest coverage for the projection reducer." in args
+        assert useful_response in args
+        assert 321 in args
+        assert 654 in args
+        assert 975 in args
+
+    @pytest.mark.asyncio
     async def test_shadow_comparison(self, mock_db: AsyncMock) -> None:
         from omnimarket.nodes.node_projection_delegation.handlers.handler_delegation import (
             DelegationProjectionRunner,
