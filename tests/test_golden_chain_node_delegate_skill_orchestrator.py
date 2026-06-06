@@ -87,6 +87,7 @@ class TestDelegateSkillGoldenChain:
         assert response.task_type == "code_generation"
         assert response.provider == "local-runtime"
         assert response.model_name == "qwen-coder"
+        assert response.prompt_text == "generate a parser for the config file"
         assert response.response == "def parse(): ..."
         assert response.quality_gate_passed is True
         # The route dispatched exactly the requested coding work.

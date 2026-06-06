@@ -63,8 +63,8 @@ class ModelDelegateSkillTerminalProjection(ModelDelegateSkillResponse):
         default=None,
         validation_alias=AliasChoices("repo_name", "repoName", "repo"),
     )
-    prompt_text: str | None = Field(
-        default=None,
+    prompt_text: str = Field(
+        default="",
         validation_alias=AliasChoices("prompt_text", "promptText", "prompt"),
     )
     model_cloud_baseline: str = Field(
@@ -77,13 +77,18 @@ class ModelDelegateSkillTerminalProjection(ModelDelegateSkillResponse):
         ),
     )
 
-    @field_validator("repo_name", "prompt_text")
+    @field_validator("repo_name")
     @classmethod
     def _blank_string_to_none(cls, value: str | None) -> str | None:
         if value is None:
             return None
         text = value.strip()
         return text or None
+
+    @field_validator("prompt_text")
+    @classmethod
+    def _blank_prompt_to_empty(cls, value: str) -> str:
+        return value.strip()
 
     @field_validator("model_cloud_baseline")
     @classmethod

@@ -28,6 +28,7 @@ Target table schema (from omnidash, OMN-2284):
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from decimal import Decimal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -188,6 +189,7 @@ class HandlerProjectionDelegation:
             "response_text": event.response_text,
             "pricing_manifest_version": event.pricing_manifest_version,
         }
+        _preserve_existing_evidence(db, row)
         ok = db.upsert(TABLE, CONFLICT_KEY, row)
         return ModelProjectionResult(rows_upserted=1 if ok else 0)
 
@@ -295,3 +297,70 @@ def _canonical_result_to_task_delegated_payload(
 
 def _gate_count(value: list[str] | None) -> int:
     return len(value or [])
+
+
+def _preserve_existing_evidence(
+    db: DatabaseAdapter,
+    row: dict[str, object],
+) -> None:
+    """Keep terminal evidence when a sparse compatibility event arrives later."""
+    correlation_id = row.get(CONFLICT_KEY)
+    if not correlation_id:
+        return
+    existing_rows = db.query(TABLE, {CONFLICT_KEY: correlation_id})
+    if not existing_rows:
+        return
+    existing = existing_rows[0]
+    for key in ("prompt_text", "response_text"):
+        if _is_blank(row.get(key)) and not _is_blank(existing.get(key)):
+            row[key] = existing[key]
+    for key in (
+        "tokens_input",
+        "tokens_output",
+        "tokens_to_compliance",
+        "cost_usd",
+        "cost_savings_usd",
+        "delegation_latency_ms",
+        "pricing_manifest_version",
+    ):
+        if _is_zero(row.get(key)) and not _is_zero(existing.get(key)):
+            row[key] = existing[key]
+    if (
+        _as_int(row.get("compliance_attempts")) <= 1
+        and _as_int(existing.get("compliance_attempts")) > 1
+    ):
+        row["compliance_attempts"] = existing["compliance_attempts"]
+
+
+def _is_blank(value: object) -> bool:
+    return value is None or (isinstance(value, str) and not value.strip())
+
+
+def _is_zero(value: object) -> bool:
+    if value is None:
+        return True
+    if isinstance(value, bool):
+        return not value
+    if isinstance(value, int | float | Decimal):
+        return value == 0
+    if isinstance(value, str):
+        try:
+            return float(value) == 0.0
+        except ValueError:
+            return False
+    return False
+
+
+def _as_int(value: object) -> int:
+    if value is None:
+        return 0
+    if isinstance(value, bool):
+        return int(value)
+    if isinstance(value, int | float | Decimal):
+        return int(value)
+    if isinstance(value, str):
+        try:
+            return int(value)
+        except ValueError:
+            return 0
+    return 0
