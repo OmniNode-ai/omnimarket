@@ -1,0 +1,98 @@
+---
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - ON-vs-OFF Experiment Compute (OMN-12661)
+#
+# Pure COMPUTE node: bounded ON-vs-OFF cost-delta evidence harness.
+# Fixed task set -> ON path + OFF path -> token counts -> cost totals -> summary report.
+# Proof explicitly classified as replay-proven or runtime-observed-only.
+name: node_on_vs_off_experiment_compute
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: compute
+node_version: {major: 1, minor: 0, patch: 0}
+node_not_implemented: false
+
+description: >
+  Bounded ON-vs-OFF cost-delta evidence harness (OMN-12661). Accepts a fixed task
+  set with pre-captured token counts (fixture/replay mode) or caller-supplied live
+  counts, applies a pricing table, and produces a reproducible cost-delta evidence
+  bundle with an explicit proof classification (replay-proven or runtime-observed-only).
+  Pure, deterministic, no LLM calls in fixture mode.
+
+handler:
+  module: omnimarket.nodes.node_on_vs_off_experiment_compute.handlers.handler_on_vs_off_experiment
+  class: HandlerOnVsOffExperiment
+  input_model: omnimarket.nodes.node_on_vs_off_experiment_compute.models.model_on_vs_off_request.ModelOnVsOffRequest
+  output_model: omnimarket.nodes.node_on_vs_off_experiment_compute.models.model_on_vs_off_result.ModelOnVsOffResult
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: compute
+      handler:
+        name: HandlerOnVsOffExperiment
+        module: omnimarket.nodes.node_on_vs_off_experiment_compute.handlers.handler_on_vs_off_experiment
+
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 5000
+
+inputs:
+  run_id:
+    type: str
+    required: true
+    description: "Stable run identifier, e.g. 'omn-12661-run-001'"
+  model_id:
+    type: str
+    required: true
+    description: "Model identifier used for both ON and OFF paths"
+  tasks:
+    type: array
+    required: true
+    description: "Fixed task set; each task carries pre-captured token counts in fixture mode"
+  pricing:
+    type: ModelOnVsOffPricing
+    required: true
+    description: "Per-1k token pricing for both prompt and completion tokens"
+  fixture_mode:
+    type: bool
+    required: false
+    default: true
+    description: "True = caller-supplied token counts (replay-proven); False = live inference required"
+
+outputs:
+  status:
+    type: str
+    enum: [ok, failed]
+  rows:
+    type: array
+    description: "Per-task cost breakdown for both ON and OFF paths"
+  summary:
+    type: ModelOnVsOffSummaryReport
+    nullable: true
+    description: "Aggregated cost-delta summary with explicit proof_class classification"
+  failure_class:
+    type: str
+    nullable: true
+  errors:
+    type: array
+
+terminal_event: onex.evt.omnimarket.on-vs-off-experiment-completed.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.on-vs-off-experiment-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.on-vs-off-experiment-completed.v1
+    - onex.evt.omnimarket.on-vs-off-experiment-failed.v1
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.on-vs-off-experiment-completed.v1
+  - onex.evt.omnimarket.on-vs-off-experiment-failed.v1
+
+metadata:
+  transport_type: kafka
+  implementation_wave: 12
+  related_tickets: ["OMN-12661", "OMN-11674"]
