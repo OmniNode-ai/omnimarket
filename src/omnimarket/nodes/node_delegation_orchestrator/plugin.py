@@ -28,7 +28,7 @@ import contextlib
 import logging
 import time
 from pathlib import Path
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Any, cast
 
 import yaml
 from omnibase_infra.runtime.contract_topic_router import (
@@ -75,6 +75,27 @@ def _configured_runtime_profile(config: ModelDomainPluginConfig) -> str:
 
 def _owns_delegation_orchestration_consumers(profile: str) -> bool:
     return profile.strip().lower() in _DELEGATION_CONSUMER_RUNTIME_PROFILES
+
+
+def _build_delegation_result_applier(
+    *,
+    event_bus: Any,
+    output_topic: str,
+    published_events_map: dict[str, str],
+    publish_topics: list[str],
+) -> Any:
+    """Build the plugin-managed applier from the delegation contract."""
+    from omnibase_infra.runtime.service_dispatch_result_applier import (
+        DispatchResultApplier,
+    )
+
+    return DispatchResultApplier(
+        event_bus=event_bus,
+        output_topic=output_topic,
+        topic_router=_TOPIC_ROUTER,
+        output_topic_map=published_events_map,
+        allowed_output_topics=publish_topics,
+    )
 
 
 class PluginDelegation:
@@ -326,11 +347,11 @@ class PluginDelegation:
 
             # DispatchResultApplier uses config.event_bus for publish_envelope
             # (publisher-only path, compatible with ProtocolEventBusPublisher).
-            result_applier = DispatchResultApplier(
+            result_applier = _build_delegation_result_applier(
                 event_bus=config.event_bus,
                 output_topic=config.output_topic,
-                topic_router=_TOPIC_ROUTER,
-                output_topic_map=published_events_map,
+                published_events_map=published_events_map,
+                publish_topics=subcontract.publish_topics,
             )
 
             if config.container.service_registry is not None:
