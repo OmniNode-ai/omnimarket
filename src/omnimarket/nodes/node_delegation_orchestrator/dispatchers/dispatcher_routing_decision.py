@@ -13,25 +13,35 @@ from __future__ import annotations
 
 import logging
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
-from uuid import uuid4
+from typing import TYPE_CHECKING, cast
+from uuid import uuid4, uuid5
 
 from omnibase_core.enums import EnumNodeKind
 from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
+from omnibase_core.protocols.event_bus import ProtocolEventEnvelope
 from omnibase_infra.enums import (
     EnumDispatchStatus,
     EnumInfraTransportType,
     EnumMessageCategory,
 )
 from omnibase_infra.errors import InfraUnavailableError
+from omnibase_infra.event_bus.topic_constants import (
+    TOPIC_DELEGATION_INFERENCE_REQUEST,
+)
 from omnibase_infra.mixins import MixinAsyncCircuitBreaker
 from omnibase_infra.models.dispatch.model_dispatch_result import ModelDispatchResult
 from omnibase_infra.nodes.node_registration_orchestrator.dispatchers._util_envelope_extract import (
     extract_envelope_fields,
 )
 from omnibase_infra.utils import sanitize_error_message
-from pydantic import ValidationError
+from pydantic import BaseModel, ValidationError
 
+from omnimarket.nodes.node_delegation_orchestrator.dispatchers.topic_utils import (
+    derive_event_type_from_topic,
+)
+from omnimarket.nodes.node_delegation_orchestrator.models.model_inference_intent import (
+    ModelInferenceIntent,
+)
 from omnimarket.nodes.node_delegation_routing_reducer.models.model_routing_decision import (
     ModelRoutingDecision,
 )
@@ -115,6 +125,40 @@ class DispatcherRoutingDecision(MixinAsyncCircuitBreaker):  # type: ignore[misc]
             assert isinstance(payload, ModelRoutingDecision)
 
             intents = self._handler.handle_routing_decision(payload)
+            output_events: list[BaseModel] = list(intents)
+            if self._event_bus is not None and output_events:
+                unpublished: list[BaseModel] = []
+                for idx, event in enumerate(output_events):
+                    topic = getattr(event, "topic", None)
+                    if topic is None and isinstance(event, ModelInferenceIntent):
+                        topic = TOPIC_DELEGATION_INFERENCE_REQUEST
+                    if topic is None:
+                        unpublished.append(event)
+                        continue
+                    output_envelope: ModelEventEnvelope[object] = ModelEventEnvelope(
+                        envelope_id=uuid5(
+                            correlation_id,
+                            f"{type(event).__name__}:{idx}",
+                        ),
+                        payload=event,
+                        correlation_id=correlation_id,
+                        event_type=derive_event_type_from_topic(topic),
+                        envelope_timestamp=datetime.now(UTC),
+                    )
+                    await self._event_bus.publish_envelope(
+                        envelope=cast(
+                            ProtocolEventEnvelope[object],
+                            output_envelope,
+                        ),
+                        topic=topic,
+                    )
+                    logger.info(
+                        "DispatcherRoutingDecision published %s to %s",
+                        type(event).__name__,
+                        topic,
+                        extra={"correlation_id": str(correlation_id)},
+                    )
+                output_events = list(unpublished)
 
             completed_at = datetime.now(UTC)
             duration_ms = (completed_at - started_at).total_seconds() * 1000
@@ -141,7 +185,7 @@ class DispatcherRoutingDecision(MixinAsyncCircuitBreaker):  # type: ignore[misc]
                 completed_at=completed_at,
                 duration_ms=duration_ms,
                 correlation_id=correlation_id,
-                output_events=list(intents),
+                output_events=output_events,
             )
 
         except InfraUnavailableError as e:

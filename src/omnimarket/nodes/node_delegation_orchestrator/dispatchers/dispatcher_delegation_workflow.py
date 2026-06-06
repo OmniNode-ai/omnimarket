@@ -25,6 +25,10 @@ from omnibase_infra.nodes.node_registration_orchestrator.dispatchers._util_envel
 from omnibase_infra.utils import sanitize_error_message
 from pydantic import BaseModel, ValidationError
 
+from omnimarket.nodes.node_delegation_orchestrator.dispatchers.topic_utils import (
+    derive_event_type_from_topic,
+)
+
 if TYPE_CHECKING:
     from omnibase_core.protocols.event_bus.protocol_event_bus import ProtocolEventBus
 
@@ -104,13 +108,14 @@ class DispatcherDelegationWorkflow(MixinAsyncCircuitBreaker):  # type: ignore[mi
                 envelope_id=uuid5(correlation_id, f"{type(event).__name__}:{idx}"),
                 payload=event,
                 correlation_id=correlation_id,
+                event_type=derive_event_type_from_topic(topic),
                 envelope_timestamp=datetime.now(UTC),
             )
             await self._event_bus.publish_envelope(
-                envelope,  # type: ignore[arg-type]
+                envelope=envelope,  # type: ignore[arg-type]
                 topic=topic,
             )
-            logger.debug(
+            logger.info(
                 "DispatcherDelegationWorkflow published %s to %s (correlation_id=%s)",
                 type(event).__name__,
                 topic,

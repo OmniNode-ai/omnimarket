@@ -31,6 +31,7 @@ from omnibase_infra.errors import InfraUnavailableError
 from omnibase_infra.event_bus.topic_constants import (
     TOPIC_DELEGATION_COMPLETED,
     TOPIC_DELEGATION_FAILED,
+    TOPIC_DELEGATION_INFERENCE_REQUEST,
     TOPIC_DELEGATION_TASK_DELEGATED,
 )
 
@@ -42,6 +43,9 @@ from omnimarket.nodes.node_delegation_orchestrator.dispatchers.dispatcher_delega
 )
 from omnimarket.nodes.node_delegation_orchestrator.dispatchers.dispatcher_quality_gate_result import (
     DispatcherQualityGateResult,
+)
+from omnimarket.nodes.node_delegation_orchestrator.dispatchers.dispatcher_routing_decision import (
+    DispatcherRoutingDecision,
 )
 from omnimarket.nodes.node_delegation_orchestrator.handlers.handler_delegation_workflow import (
     HandlerDelegationWorkflow,
@@ -218,6 +222,41 @@ class TestDispatcherDelegationWorkflowBusPublish:
         assert TOPIC_DELEGATION_COMPLETED in published_topics
         assert TOPIC_DELEGATION_TASK_DELEGATED in published_topics
 
+    async def test_routing_decision_returns_inference_intent_for_applier(self) -> None:
+        bus = _make_mock_bus()
+        handler = HandlerDelegationWorkflow()
+        dispatcher = DispatcherDelegationWorkflow(handler, event_bus=bus)  # type: ignore[arg-type]
+        cid = uuid4()
+
+        request = ModelDelegationRequest(
+            prompt="Write pytest unit tests for normalize_status.",
+            task_type="test",  # type: ignore[arg-type]
+            correlation_id=cid,
+            emitted_at=datetime.now(UTC),
+        )
+        handler.handle_delegation_request(request)
+        decision = ModelRoutingDecision(
+            correlation_id=cid,
+            task_type="test",
+            selected_model="qwen3-coder-30b",
+            selected_backend_id=uuid5(
+                NAMESPACE_DNS, "omninode.ai/backends/qwen3-coder-30b"
+            ),
+            endpoint_url=TEST_ENDPOINT_URL,
+            cost_tier="low",
+            max_context_tokens=65536,
+            system_prompt="You are an assistant.",
+            rationale="Routing test.",
+        )
+
+        result = await dispatcher.handle(_make_envelope(decision, cid))
+
+        assert result.status == EnumDispatchStatus.SUCCESS
+        assert len(result.output_events) == 1
+        assert type(result.output_events[0]).__name__ == "ModelInferenceIntent"
+        assert result.output_events[0].prompt == request.prompt  # type: ignore[attr-defined]
+        assert not bus.publish_envelope.called
+
 
 @pytest.mark.unit
 @pytest.mark.asyncio
@@ -240,6 +279,59 @@ class TestDispatcherQualityGateResultBusPublish:
         ]
         assert TOPIC_DELEGATION_COMPLETED in published_topics
         assert TOPIC_DELEGATION_TASK_DELEGATED in published_topics
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+class TestDispatcherRoutingDecisionBusPublish:
+    """DispatcherRoutingDecision publishes inference commands directly."""
+
+    async def test_routing_decision_publishes_inference_intent_command(self) -> None:
+        bus = _make_mock_bus()
+        handler = HandlerDelegationWorkflow()
+        dispatcher = DispatcherRoutingDecision(handler, event_bus=bus)  # type: ignore[arg-type]
+        cid = uuid4()
+
+        request = ModelDelegationRequest(
+            prompt="Write pytest unit tests for normalize_status.",
+            task_type="test",  # type: ignore[arg-type]
+            correlation_id=cid,
+            emitted_at=datetime.now(UTC),
+        )
+        handler.handle_delegation_request(request)
+        decision = ModelRoutingDecision(
+            correlation_id=cid,
+            task_type="test",
+            selected_model="qwen3-coder-30b",
+            selected_backend_id=uuid5(
+                NAMESPACE_DNS, "omninode.ai/backends/qwen3-coder-30b"
+            ),
+            endpoint_url=TEST_ENDPOINT_URL,
+            cost_tier="low",
+            max_context_tokens=65536,
+            system_prompt="You are an assistant.",
+            rationale="Routing test.",
+        )
+
+        result = await dispatcher.handle(_make_envelope(decision, cid))
+
+        assert result.status == EnumDispatchStatus.SUCCESS
+        assert result.output_events == []
+        assert bus.publish_envelope.call_args.kwargs["topic"] == (
+            TOPIC_DELEGATION_INFERENCE_REQUEST
+        )
+        published_envelope = bus.publish_envelope.call_args.kwargs["envelope"]
+        assert (
+            published_envelope.event_type
+            == "omnibase-infra.delegation-inference-request"
+        )
+        assert published_envelope.payload.prompt == request.prompt
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+class TestDispatcherQualityGateResultOutputEvents:
+    """DispatcherQualityGateResult output-event behavior with and without a bus."""
 
     async def test_output_events_empty_when_bus_wired(self) -> None:
         """When bus is wired, routable events (with .topic) are published directly.
