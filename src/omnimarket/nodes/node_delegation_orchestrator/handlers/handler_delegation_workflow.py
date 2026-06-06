@@ -100,6 +100,12 @@ from omnimarket.pricing import estimate_baseline_cost_usd, get_manifest_version_
 # tune them independently.
 _MAX_INFERENCE_ESCALATION_ATTEMPTS: int = 2
 _INFERENCE_ERROR_EXCLUDED_TIERS: frozenset[str] = frozenset({"cli_agents"})
+_NON_RETRYABLE_INFERENCE_ERROR_MARKERS: frozenset[str] = frozenset(
+    {
+        "finish_reason=length",
+        "empty message content",
+    }
+)
 
 # Temperature by task type (Task 10, OMN-7040)
 _TASK_TEMPERATURE: dict[str, float] = {
@@ -160,6 +166,14 @@ def _record_inference_response(
     workflow.inference_completion_tokens = response.completion_tokens
     workflow.inference_total_tokens = response.total_tokens
     workflow.inference_llm_call_id = response.llm_call_id
+
+
+def _should_escalate_inference_error(error_message: str) -> bool:
+    """Return whether an inference error should retry on a higher tier."""
+    normalized = error_message.lower()
+    return not any(
+        marker in normalized for marker in _NON_RETRYABLE_INFERENCE_ERROR_MARKERS
+    )
 
 
 def _inference_timeout_seconds(workflow: DelegationWorkflowState) -> float:
@@ -481,7 +495,12 @@ class HandlerDelegationWorkflow:
             terminal_failure_reason: str | None = None
             next_tier: str | None = None
 
-            if workflow.escalation_count >= _MAX_INFERENCE_ESCALATION_ATTEMPTS:
+            should_escalate_error = _should_escalate_inference_error(
+                response.error_message
+            )
+            if not should_escalate_error:
+                terminal_failure_reason = "non_retryable_inference_response"
+            elif workflow.escalation_count >= _MAX_INFERENCE_ESCALATION_ATTEMPTS:
                 terminal_failure_reason = "max_escalation_attempts_reached"
             elif workflow.current_tier_name is None:
                 terminal_failure_reason = "current_tier_unknown"
@@ -493,7 +512,11 @@ class HandlerDelegationWorkflow:
                 if next_tier is None:
                     terminal_failure_reason = "no_higher_tier_available"
 
-            can_escalate = terminal_failure_reason is None and next_tier is not None
+            can_escalate = (
+                should_escalate_error
+                and terminal_failure_reason is None
+                and next_tier is not None
+            )
 
             if can_escalate:
                 assert next_tier is not None

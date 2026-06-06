@@ -778,6 +778,42 @@ class TestInferenceErrorEscalation:
         assert handler.workflows[cid].state == EnumDelegationState.ROUTED
         assert handler.workflows[cid].escalation_count == 1
 
+    @pytest.mark.parametrize(
+        "error_message",
+        [
+            "API response truncated: finish_reason=length",
+            "API returned empty message content",
+        ],
+    )
+    def test_response_shape_error_fails_without_rerouting(
+        self,
+        error_message: str,
+    ) -> None:
+        handler = HandlerDelegationWorkflow()
+        cid = uuid4()
+
+        handler.handle_delegation_request(_make_request(correlation_id=cid))
+        handler.handle_routing_decision(
+            _make_routing_decision_with_tier(cid, tier_name="local")
+        )
+
+        events = handler.handle_inference_response(
+            _make_error_inference_response(cid, error_message=error_message)
+        )
+
+        assert not any(isinstance(event, ModelRoutingIntent) for event in events)
+        failure_event = next(
+            event for event in events if isinstance(event, ModelDelegationEvent)
+        )
+        assert failure_event.topic == "onex.evt.omnibase-infra.delegation-failed.v1"
+        assert handler.workflows[cid].state == EnumDelegationState.FAILED
+        assert handler.workflows[cid].escalation_count == 0
+
+        result: ModelDelegationResult = failure_event.payload
+        assert result.quality_passed is False
+        assert result.failure_reason == error_message
+        assert result.terminal_failure_reason == "non_retryable_inference_response"
+
     def test_late_inference_response_during_escalation_is_ignored(self) -> None:
         handler = HandlerDelegationWorkflow()
         cid = uuid4()
