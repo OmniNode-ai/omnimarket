@@ -25,3 +25,6 @@ profiles:
       text: "/no_think"
       separator: "\n"
       apply_once: true
+    request_options:
+      chat_template_kwargs:
+        enable_thinking: false

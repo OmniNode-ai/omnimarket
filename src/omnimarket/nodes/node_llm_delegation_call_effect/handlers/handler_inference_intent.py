@@ -41,6 +41,9 @@ _CONTRACT_PATH = Path(__file__).parent.parent / "contract.yaml"
 _INFERENCE_RESPONSE_TOPIC_SUFFIX = (
     "inference-response.v1"  # onex-topic-allow: suffix used only for contract lookup
 )
+_RESERVED_PROVIDER_REQUEST_KEYS = frozenset(
+    {"model", "messages", "max_tokens", "temperature"}
+)
 
 
 def _get_inference_response_topic() -> str:
@@ -84,6 +87,19 @@ def _resolve_api_key(api_key_ref: str | None) -> str | None:
     if not value:
         raise KeyError(f"Required env var '{api_key_ref}' is not set or empty")
     return value
+
+
+def _merge_provider_request_options(
+    payload: dict[str, Any],
+    provider_request_options: dict[str, Any] | None,
+) -> dict[str, Any]:
+    if not provider_request_options:
+        return payload
+    reserved = _RESERVED_PROVIDER_REQUEST_KEYS.intersection(provider_request_options)
+    if reserved:
+        keys = ", ".join(sorted(reserved))
+        raise ValueError(f"provider request options cannot override: {keys}")
+    return {**payload, **provider_request_options}
 
 
 class HandlerInferenceIntent:
@@ -139,6 +155,10 @@ class HandlerInferenceIntent:
             "max_tokens": intent.max_tokens,
             "temperature": intent.temperature,
         }
+        payload = _merge_provider_request_options(
+            payload,
+            intent.provider_request_options,
+        )
 
         headers: dict[str, str] = {}
         api_key = _resolve_api_key(intent.api_key_ref)

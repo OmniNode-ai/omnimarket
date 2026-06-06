@@ -131,6 +131,7 @@ class TestDelegateSkillGoldenChain:
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         captured_prompts: list[str] = []
+        captured_provider_request_options: list[dict[str, object] | None] = []
 
         def fake_call_via_curl(
             *,
@@ -139,8 +140,10 @@ class TestDelegateSkillGoldenChain:
             system_prompt: str,
             prompt: str,
             max_tokens: int,
+            provider_request_options: dict[str, object] | None = None,
         ) -> dict[str, object]:
             captured_prompts.append(prompt)
+            captured_provider_request_options.append(provider_request_options)
             return {
                 "content": (
                     "import pytest\n\n"
@@ -191,6 +194,9 @@ class TestDelegateSkillGoldenChain:
         assert response.metrics.input_tokens == 18
         assert response.metrics.output_tokens == 44
         assert captured_prompts == [f"/no_think\n{original_prompt}"]
+        assert captured_provider_request_options == [
+            {"chat_template_kwargs": {"enable_thinking": False}}
+        ]
 
         conn = sqlite3.connect(str(db_path))
         try:

@@ -19,7 +19,7 @@ from pathlib import Path
 from typing import Any
 from uuid import UUID
 
-from omnimarket.inference.protocol_config import apply_inference_protocol_directives
+from omnimarket.inference.protocol_config import apply_inference_protocol
 
 logger = logging.getLogger(__name__)
 
@@ -57,6 +57,9 @@ _DELEGATION_EVENTS_ADDITIONAL_COLUMNS: tuple[tuple[str, str], ...] = (
     ("cost_savings_usd", "REAL NOT NULL DEFAULT 0.0"),
     ("prompt_text", "TEXT"),
     ("response_text", "TEXT"),
+)
+_RESERVED_PROVIDER_REQUEST_KEYS = frozenset(
+    {"model", "messages", "max_tokens", "temperature"}
 )
 
 
@@ -212,6 +215,7 @@ def _call_via_curl(
     system_prompt: str,
     prompt: str,
     max_tokens: int,
+    provider_request_options: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Call vLLM endpoint via curl subprocess (macOS LAN grant workaround)."""
     payload = {
@@ -223,6 +227,14 @@ def _call_via_curl(
         "max_tokens": max_tokens,
         "temperature": 0.3,
     }
+    if provider_request_options:
+        reserved = _RESERVED_PROVIDER_REQUEST_KEYS.intersection(
+            provider_request_options
+        )
+        if reserved:
+            keys = ", ".join(sorted(reserved))
+            raise ValueError(f"provider request options cannot override: {keys}")
+        payload.update(provider_request_options)
     url = f"{endpoint_url.rstrip('/')}/v1/chat/completions"
 
     t0 = time.monotonic_ns()
@@ -307,7 +319,11 @@ class DirectCurlDelegationDispatchPort:
         system_prompt = _TASK_TYPE_SYSTEM_PROMPTS.get(
             task_type, _TASK_TYPE_SYSTEM_PROMPTS["research"]
         )
-        outbound_system_prompt, outbound_prompt = apply_inference_protocol_directives(
+        (
+            outbound_system_prompt,
+            outbound_prompt,
+            provider_request_options,
+        ) = apply_inference_protocol(
             system_prompt=system_prompt,
             prompt=prompt,
             model=str(backend["model_name"]),
@@ -329,6 +345,7 @@ class DirectCurlDelegationDispatchPort:
             system_prompt=outbound_system_prompt,
             prompt=outbound_prompt,
             max_tokens=max_tokens,
+            provider_request_options=provider_request_options,
         )
 
         _persist_evidence(
