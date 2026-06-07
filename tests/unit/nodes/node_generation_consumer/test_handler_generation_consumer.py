@@ -570,8 +570,6 @@ def test_handler_reads_provider_from_contract(tmp_path: Path) -> None:
         "node_version": {"major": 1, "minor": 0, "patch": 0},
         "event_bus": {"publish_topics": [], "subscribe_topics": []},
         "model_routing": {
-            "endpoint_env": "LLM_CODER_URL",
-            "endpoint_mode": "complete_endpoint",
             "served_model_id": "test-model-v1",
             "endpoint_ref": "local-coder",
             "provider": "local",
@@ -598,8 +596,6 @@ def test_handler_rejects_contract_without_provider(tmp_path: Path) -> None:
         "node_version": {"major": 1, "minor": 0, "patch": 0},
         "event_bus": {"publish_topics": [], "subscribe_topics": []},
         "model_routing": {
-            "endpoint_env": "LLM_CODER_URL",
-            "endpoint_mode": "complete_endpoint",
             "served_model_id": "test-model-v1",
             "endpoint_ref": "local-coder",
             # provider intentionally absent
@@ -625,8 +621,6 @@ def test_handler_reads_served_model_id_from_contract(tmp_path: Path) -> None:
         "node_version": {"major": 1, "minor": 0, "patch": 0},
         "event_bus": {"publish_topics": [], "subscribe_topics": []},
         "model_routing": {
-            "endpoint_env": "LLM_CODER_URL",
-            "endpoint_mode": "complete_endpoint",
             "served_model_id": "Qwen3.6-35B-A3B",
             "endpoint_ref": "local-coder",
             "provider": "local",
@@ -653,8 +647,6 @@ def test_handler_rejects_contract_without_served_model_id(tmp_path: Path) -> Non
         "node_version": {"major": 1, "minor": 0, "patch": 0},
         "event_bus": {"publish_topics": [], "subscribe_topics": []},
         "model_routing": {
-            "endpoint_env": "LLM_CODER_URL",
-            "endpoint_mode": "complete_endpoint",
             "endpoint_ref": "local-coder",
             "provider": "local",
             # served_model_id intentionally absent
@@ -680,8 +672,6 @@ def test_handler_rejects_contract_without_endpoint_ref(tmp_path: Path) -> None:
         "node_version": {"major": 1, "minor": 0, "patch": 0},
         "event_bus": {"publish_topics": [], "subscribe_topics": []},
         "model_routing": {
-            "endpoint_env": "LLM_CODER_URL",
-            "endpoint_mode": "complete_endpoint",
             "served_model_id": "test-model-v1",
             "provider": "local",
             # endpoint_ref intentionally absent
@@ -718,8 +708,6 @@ async def test_benchmark_uses_provider_and_model_id_from_contract(
             "subscribe_topics": [],
         },
         "model_routing": {
-            "endpoint_env": "LLM_CODER_URL",
-            "endpoint_mode": "complete_endpoint",
             "served_model_id": "contract-declared-model",
             "endpoint_ref": "local-coder",
             "provider": "contract-declared-provider",
@@ -764,8 +752,6 @@ def test_handler_routing_source_is_contract(tmp_path: Path) -> None:
         "node_version": {"major": 1, "minor": 0, "patch": 0},
         "event_bus": {"publish_topics": [], "subscribe_topics": []},
         "model_routing": {
-            "endpoint_env": "LLM_CODER_URL",
-            "endpoint_mode": "complete_endpoint",
             "served_model_id": "Qwen3.6-35B-A3B",
             "endpoint_ref": "local-coder",
             "provider": "local",

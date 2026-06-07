@@ -286,6 +286,25 @@ def test_fail_closed_when_gemini_api_key_absent(
         )
 
 
+@pytest.mark.unit
+def test_fail_closed_when_gemini_api_key_blank(
+    monkeypatch: Any, tmp_path: Path
+) -> None:
+    """A backend declaring api_key_env whose env var is blank is unroutable."""
+    monkeypatch.setenv("GEMINI_API_KEY", "   ")
+    _set_bifrost(
+        monkeypatch,
+        tmp_path,
+        _bifrost_contract(local_endpoint=None, gemini_endpoint=_GEMINI_URL),
+    )
+    with pytest.raises(ValueError, match=r"endpoint_ref|backend|api_key"):
+        resolve_generation_endpoint(
+            endpoint_ref="cloud-gemini-flash",
+            provider="gemini",
+            served_model_id="gemini-2.0-flash",
+        )
+
+
 # ---------------------------------------------------------------------------
 # No env-var endpoint indirection anywhere in the resolution path.
 # ---------------------------------------------------------------------------

@@ -217,8 +217,8 @@ def _resolve_bifrost_backend(endpoint_ref: str) -> _ResolvedBackend | None:
     Loads the bifrost delegation contract deep-merged with the deploy overlay
     (same authority the delegation routing reducer uses) and returns the backend
     only when it has a non-empty endpoint_url AND, if it declares an
-    ``api_key_env``, that env var is present. Returns ``None`` otherwise so the
-    caller fails closed with a precise message.
+    ``api_key_env``, that env var is present with a non-empty value. Returns
+    ``None`` otherwise so the caller fails closed with a precise message.
     """
     contract_path = os.environ.get(  # contract-config-ok: config  # ONEX_EXCLUDE: contract path override
         "BIFROST_CONTRACT_PATH", ""
@@ -240,7 +240,8 @@ def _resolve_bifrost_backend(endpoint_ref: str) -> _ResolvedBackend | None:
             return None
         api_key_ref: str | None = None
         if backend.api_key_env:
-            if backend.api_key_env not in os.environ:  # ONEX_FLAG_EXEMPT: presence only
+            api_key_value = os.environ.get(backend.api_key_env, "").strip()
+            if not api_key_value:  # ONEX_FLAG_EXEMPT: secret presence only
                 return None
             api_key_ref = backend.api_key_env
         return _ResolvedBackend(endpoint_url=url, api_key_ref=api_key_ref)
@@ -499,9 +500,13 @@ class HandlerGenerationConsumer:
             )
             # The api_key reference names an env var; resolve the secret VALUE at
             # the call boundary only (the routing decision carries the reference,
-            # never the secret). Absence is already fail-closed in the resolver,
-            # so this read is guaranteed present.
-            api_key = os.environ[resolved.api_key_ref] if resolved.api_key_ref else None
+            # never the secret). Absence/blank is already fail-closed in the
+            # resolver, so this read is guaranteed present and non-empty.
+            api_key = (
+                os.environ[resolved.api_key_ref].strip()
+                if resolved.api_key_ref
+                else None
+            )
             assert self._effect is not None
 
             request = ModelLlmInferenceRequest(
