@@ -67,6 +67,25 @@ event_bus:
     - onex.evt.omnibase-infra.delegation-failed.v1
   publish_topics:
     - onex.evt.omnimarket.projection-delegation-applied.v1
+    # Projection-API snapshot topics: this reducer materializes each exposure
+    # into the projection table; the projection-API serves reads from those tables.
+    # Declared here so the OMN-12777 topic gate can verify widget_topics have a producer.
+    - onex.snapshot.projection.delegation.correlation-trace.v1  # onex-topic-allow: projection snapshot topic
+    - onex.snapshot.projection.delegation.decisions.v1  # onex-topic-allow: projection snapshot topic
+    - onex.snapshot.projection.delegation.summary.v1  # onex-topic-allow: projection snapshot topic
+    - onex.snapshot.projection.delegation.quality-gate.v1  # onex-topic-allow: projection snapshot topic
+    - onex.snapshot.projection.delegation.token-usage.v1  # onex-topic-allow: projection snapshot topic
+    - onex.snapshot.projection.delegation.model-routing.v1  # onex-topic-allow: projection snapshot topic
+
+externally_consumed_topics:
+  # Projection snapshot topics are served through projection_api/dashboard reads
+  # rather than consumed by another Kafka node.
+  - onex.snapshot.projection.delegation.correlation-trace.v1  # onex-topic-allow: projection snapshot topic
+  - onex.snapshot.projection.delegation.decisions.v1  # onex-topic-allow: projection snapshot topic
+  - onex.snapshot.projection.delegation.summary.v1  # onex-topic-allow: projection snapshot topic
+  - onex.snapshot.projection.delegation.quality-gate.v1  # onex-topic-allow: projection snapshot topic
+  - onex.snapshot.projection.delegation.token-usage.v1  # onex-topic-allow: projection snapshot topic
+  - onex.snapshot.projection.delegation.model-routing.v1  # onex-topic-allow: projection snapshot topic
 
 projection_api:
   expose: true
@@ -285,3 +304,14 @@ projection_api:
 
 metadata:
   transport_type: kafka
+  demo_path: true  # OMN-12777: demo-path topic coherence gate scope marker
+  # Projection-API exposure topics declared here so the topic gate can verify
+  # each widget topic has a producing node. These snapshot topics are written
+  # by this reducer's projection_api exposures.
+  widget_topics:
+    - onex.snapshot.projection.delegation.correlation-trace.v1  # onex-topic-allow: projection snapshot topic
+    - onex.snapshot.projection.delegation.decisions.v1  # onex-topic-allow: projection snapshot topic
+    - onex.snapshot.projection.delegation.summary.v1  # onex-topic-allow: projection snapshot topic
+    - onex.snapshot.projection.delegation.quality-gate.v1  # onex-topic-allow: projection snapshot topic
+    - onex.snapshot.projection.delegation.token-usage.v1  # onex-topic-allow: projection snapshot topic
+    - onex.snapshot.projection.delegation.model-routing.v1  # onex-topic-allow: projection snapshot topic

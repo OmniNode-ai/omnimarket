@@ -2,28 +2,17 @@
 # SPDX-License-Identifier: MIT
 """Result models for node_on_vs_off_experiment_compute (OMN-12661).
 
-EnumProofClass classifies the evidence bundle explicitly as required by the
-acceptance criteria: every bundle must carry an unambiguous classification.
+EnumProofClass was promoted to omnimarket.enums.enum_proof_class in OMN-12794
+(P2-1) because a second node (node_generation_consumer) also uses it.
+It is re-exported here so existing callers are unaffected.
 """
 
 from __future__ import annotations
 
-from enum import StrEnum
-
 from pydantic import BaseModel, ConfigDict, Field
 
-
-class EnumProofClass(StrEnum):
-    """Explicit classification of the evidence bundle provenance.
-
-    REPLAY_PROVEN: all token counts sourced from pre-captured fixtures;
-        the harness is fully deterministic and can be re-run offline.
-    RUNTIME_OBSERVED_ONLY: token counts captured from live LLM inference;
-        results depend on model state and cannot be replayed offline.
-    """
-
-    REPLAY_PROVEN = "replay-proven"
-    RUNTIME_OBSERVED_ONLY = "runtime-observed-only"
+# Canonical location — promoted in OMN-12794 (P2-1).
+from omnimarket.enums.enum_proof_class import EnumProofClass
 
 
 class ModelOnVsOffCostRow(BaseModel):
