@@ -291,6 +291,98 @@ class TestDelegationProjection:
         )
 
 
+class TestGenerationCompletedProjection:
+    """OMN-12800 — the live runtime dispatches HandlerProjectionDelegation.handle()
+    for the node-generation-completed topic (the contract `handler:` field). The
+    handler must project that event into the generation_events table rather than
+    falling through to ModelTaskDelegatedEvent and raising ValidationError.
+
+    The auto-wiring path derives _event_type as the topic's penultimate segment
+    (omnibase_infra .../runtime/auto_wiring/handler_wiring.py::
+    _derive_projection_event_type), i.e. "node-generation-completed" for
+    onex.evt.omnimarket.node-generation-completed.v1. These tests dispatch with
+    exactly that value.
+    """
+
+    _EVENT_TYPE = "node-generation-completed"
+
+    def _generation_payload(
+        self, db: InmemoryDatabaseAdapter, **overrides: object
+    ) -> dict[str, object]:
+        payload: dict[str, object] = {
+            "_db": db,
+            "_event_type": self._EVENT_TYPE,
+            "correlation_id": "gen-corr-001",
+            "task_description": "Build a node that classifies tickets",
+            "provider": "local-qwen",
+            "model_id": "Qwen3-Coder-30B-A3B",
+            "endpoint_class": "local",
+            "attempt_count": 1,
+            "total_latency_e2e_ms": 3200,
+            "contract_passed": True,
+            "cost_inference_usd": 0.0,
+            "contract_yaml": "name: node_ticket_classifier\ncontract_version: 1.0.0\n",
+            "handler_source": "def handle(input_data):\n    return {}\n",
+        }
+        payload.update(overrides)
+        return payload
+
+    def test_generation_event_projects_row(self) -> None:
+        db = InmemoryDatabaseAdapter()
+        result = HANDLER.handle(self._generation_payload(db))
+
+        assert result["rows_upserted"] == 1
+        rows = db.query("generation_events")
+        assert len(rows) == 1, "generation-completed event must write generation_events"
+        row = rows[0]
+        assert row["correlation_id"] == "gen-corr-001"
+        assert row["task_description"] == "Build a node that classifies tickets"
+        assert row["provider"] == "local-qwen"
+        assert row["model_id"] == "Qwen3-Coder-30B-A3B"
+        assert row["contract_passed"] is True
+
+    def test_generation_event_persists_contract_yaml_and_handler_source(self) -> None:
+        db = InmemoryDatabaseAdapter()
+        contract_yaml = "name: node_big\n" + ("# padding\n" * 10_000)
+        handler_source = "def handle(input_data):\n    return {'ok': True}\n"
+        HANDLER.handle(
+            self._generation_payload(
+                db, contract_yaml=contract_yaml, handler_source=handler_source
+            )
+        )
+
+        row = db.query("generation_events")[0]
+        # No truncation: the full payload round-trips intact (OMN-12780 Wave 1C).
+        assert row["contract_yaml"] == contract_yaml
+        assert row["handler_source"] == handler_source
+
+    def test_generation_event_does_not_write_delegation_events(self) -> None:
+        db = InmemoryDatabaseAdapter()
+        HANDLER.handle(self._generation_payload(db))
+
+        # The generation branch must NOT pollute delegation_events.
+        assert db.query("delegation_events") == []
+
+    def test_generation_event_dedup_by_correlation_id(self) -> None:
+        db = InmemoryDatabaseAdapter()
+        HANDLER.handle(self._generation_payload(db, contract_yaml="name: first\n"))
+        HANDLER.handle(self._generation_payload(db, contract_yaml="name: second\n"))
+
+        rows = db.query("generation_events")
+        assert len(rows) == 1, "duplicate correlation_id must dedup to one row"
+
+    def test_empty_output_persisted_as_empty_string(self) -> None:
+        db = InmemoryDatabaseAdapter()
+        HANDLER.handle(
+            self._generation_payload(db, contract_yaml="", handler_source="")
+        )
+
+        row = db.query("generation_events")[0]
+        # Empty string is the failed-generation sentinel; never coerced to NULL.
+        assert row["contract_yaml"] == ""
+        assert row["handler_source"] == ""
+
+
 class TestPromptResponseText:
     """OMN-10850 — prompt_text and response_text must be persisted to the row."""
 
@@ -593,7 +685,6 @@ class TestTerminalEventEmission:
                 os.environ["KAFKA_BROKERS"] = env_backup
 
     def test_terminal_event_topic_read_from_contract(self) -> None:
-
         from omnimarket.nodes.node_projection_delegation.handlers.handler_delegation import (
             DelegationProjectionRunner,
         )
