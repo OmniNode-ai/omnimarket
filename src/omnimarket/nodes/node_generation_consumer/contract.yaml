@@ -70,10 +70,16 @@ event_bus:
     - onex.cmd.omnimarket.node-deploy.v1
 
 model_routing:
+  # OMN-12779: all four routing authorities declared here, not via env indirection.
+  # provider, served_model_id, endpoint_ref, and routing_source are explicit.
+  # endpoint_env names the env var that holds the URL value (overlay mechanism);
+  # the env var NAME comes from this contract, its VALUE from the overlay system.
   provider: local
+  served_model_id: Qwen3.6-35B-A3B
+  endpoint_ref: local-coder
   endpoint_env: LLM_CODER_URL
   endpoint_mode: complete_endpoint
-  served_model_id_env: LLM_CODER_MODEL_NAME
+  routing_source: contract
   auth:
     shared_secret_env: LOCAL_LLM_SHARED_SECRET
     cidr_allowlist_env: LLM_ENDPOINT_CIDR_ALLOWLIST
@@ -87,11 +93,8 @@ dependencies:
       model_routing.endpoint_mode declares whether this value is a complete
       endpoint posted verbatim via endpoint_url or an OpenAI-compatible base URL
       that keeps the /v1/chat/completions append.
-    required: true
-  - name: llm_coder_model_name
-    type: environment
-    key: LLM_CODER_MODEL_NAME
-    description: "Served model ID for the generation LLM endpoint — set via overlay from Infisical"
+      The env var NAME is declared by this contract (LLM_CODER_URL);
+      its VALUE is populated by the overlay system at runtime.
     required: true
   - name: llm_shared_secret
     type: environment
