@@ -33,6 +33,7 @@ from typing import Any
 
 import yaml
 
+from omnimarket.enums.enum_usage_source import EnumUsageSource
 from omnimarket.nodes.node_generation_consumer.models.model_generation import (
     ModelGenerationAttempt,
     ModelGenerationBenchmark,
@@ -314,12 +315,19 @@ class HandlerGenerationConsumer:
         task_description: str,
         attempt: int,
         previous_errors: list[str] | None = None,
+        context_pack: str = "",
     ) -> tuple[str, int, int]:
         """Call LLM; return (raw_output, input_tokens, output_tokens).
 
         When a test fake was injected at construction time, we skip building
         a ModelLlmInferenceRequest (which validates base_url is non-empty) and
         pass None directly — the fake ignores the argument entirely.
+
+        OMN-12794 (P2-1): context_pack is the typed context-injection seam.
+        When non-empty it is prepended to the user message so the LLM receives
+        the selected context artifacts before the task description.  This is the
+        ONLY path context enters the prompt; previous_errors is unchanged (it
+        remains the internal repair-loop feedback channel).
         """
 
         user_content = f"Task: {task_description}"
@@ -328,6 +336,11 @@ class HandlerGenerationConsumer:
             user_content += (
                 f"\n\nPrevious attempt failed with:\n{error_list}\nPlease fix them."
             )
+
+        # Prepend injected context pack when present (P2-1 seam).
+        # Context is inserted before the task so it acts as a preamble.
+        if context_pack:
+            user_content = f"Context:\n{context_pack}\n\n{user_content}"
 
         if self._injected_effect:
             assert self._effect is not None
@@ -403,6 +416,7 @@ class HandlerGenerationConsumer:
                     command.task_description,
                     attempt_num,
                     previous_errors=previous_errors,
+                    context_pack=command.context_pack,
                 )
             except Exception as exc:
                 logger.warning(
@@ -445,13 +459,17 @@ class HandlerGenerationConsumer:
         total_output = sum(a.token_usage_output for a in attempts)
         cost_usd = _calculate_cost(provider, total_input, total_output)
 
+        # P2-1 (OMN-12794): derive first_pass_success from attempt records,
+        # not from a secondary flag — single source of truth.
+        first_pass_success = bool(attempts and attempts[0].contract_passed)
+
         benchmark = ModelGenerationBenchmark(
             correlation_id=command.correlation_id,
             task_description=command.task_description,
             provider=provider,
             model_id=model_id,
             endpoint_class=endpoint_class,
-            usage_source="estimated",
+            usage_source=EnumUsageSource.ESTIMATED,
             cost_basis="gemini_flash" if provider != "local" else "local_free",
             attempts=attempts,
             attempt_count=len(attempts),
@@ -460,6 +478,11 @@ class HandlerGenerationConsumer:
             cost_inference_usd=cost_usd,
             contract_yaml=final_contract_yaml,
             handler_source=final_handler_source,
+            # P2-1 new fields — emitter-first, sourced from typed records.
+            prompt_tokens=total_input,
+            completion_tokens=total_output,
+            first_pass_success=first_pass_success,
+            context_pack_hash=command.context_pack_hash,
         )
 
         self._emit_benchmark(benchmark)
