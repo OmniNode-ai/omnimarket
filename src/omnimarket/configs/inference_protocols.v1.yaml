@@ -1,0 +1,27 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# Provider request-shaping profiles for OpenAI-compatible inference calls.
+# This file is model/protocol-oriented, not endpoint-oriented: routing still
+# owns endpoint selection, while these profiles express provider-specific
+# request directives needed to keep generated artifacts inside the completion
+# budget.
+schema_version: inference_protocols.v1
+profiles:
+  - profile_id: local-qwen-no-think
+    enabled: true
+    model_name_patterns:
+      - "*qwen*"
+    system_prompt_contains:
+      - "test generation"
+      - "test engineer"
+      - "code generation"
+      - "production-quality code"
+    directive:
+      placement: user_prefix
+      text: "/no_think"
+      separator: "\n"
+      apply_once: true
+    request_options:
+      chat_template_kwargs:
+        enable_thinking: false
