@@ -27,6 +27,10 @@ import yaml
 from omnibase_compat.telemetry.model_sweep_result import ModelSweepResult
 from pydantic import BaseModel, ConfigDict, Field
 
+from omnimarket.nodes.node_aislop_sweep.handlers.url_authority import (
+    scan_source as scan_url_authority,
+)
+
 if TYPE_CHECKING:
     from omnibase_core.protocols.event_bus.protocol_event_bus_publisher import (
         ProtocolEventBusPublisher,
@@ -216,6 +220,7 @@ class NodeAislopSweep:
         "empty-impls",
         "todo-fixme",
         "hardcoded-config",
+        "url-authority",
     ]
 
     def __init__(
@@ -266,6 +271,10 @@ class NodeAislopSweep:
                 if "hardcoded-config" in checks:
                     findings.extend(
                         self._check_hardcoded_config(repo_name, rel_path, lines)
+                    )
+                if "url-authority" in checks:
+                    findings.extend(
+                        self._check_url_authority(repo_name, rel_path, lines)
                     )
 
         elapsed = time.monotonic() - start_ts
@@ -486,4 +495,33 @@ class NodeAislopSweep:
                         )
                     )
                     break  # one finding per line per check category
+        return findings
+
+    def _check_url_authority(
+        self, repo: str, path: str, lines: list[str]
+    ) -> list[ModelSweepFinding]:
+        """Flag URL/endpoint literals + ``*_URL``/``*_ENDPOINT`` env reads (OMN-12818).
+
+        Delegates to the shared ``url_authority`` detector so the same logic backs
+        both the sweep and the standalone ratchet gate. Every URL must resolve from
+        a contract; api-key env reads and config-PATH reads stay legal.
+        """
+        source = "\n".join(lines)
+        findings: list[ModelSweepFinding] = []
+        for v in scan_url_authority(repo, path, source):
+            findings.append(
+                ModelSweepFinding(
+                    repo=repo,
+                    path=path,
+                    line=v.line,
+                    check="url-authority",
+                    message=(
+                        f"URL not contract-resolved ({v.rule}): {v.snippet[:80]} — "
+                        "resolve from the routing authority / integration catalog, "
+                        "or annotate with # url-authority-ok: <reason>"
+                    ),
+                    severity="ERROR",
+                    confidence="HIGH",
+                )
+            )
         return findings

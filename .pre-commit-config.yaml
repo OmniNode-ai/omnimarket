@@ -172,6 +172,19 @@ repos:
         pass_filenames: true
         stages: [commit-msg]
 
+      # url-authority gate (OMN-12818 / OMN-12803): every URL/endpoint must resolve
+      # from a contract. Blocks NEW public-HTTPS literals and *_URL/*_ENDPOINT env
+      # reads in staged .py files; existing violations are grandfathered by the
+      # sha256 baseline (burn-down only). Escape: '# url-authority-ok: <reason>'.
+      - id: url-authority-gate
+        name: URL authority gate (OMN-12818)
+        entry: uv run python -m omnimarket.nodes.node_aislop_sweep.handlers.url_authority_gate --repo omnimarket --repo-root .
+        language: system
+        types: [python]
+        files: ^src/omnimarket/.*\.py$
+        pass_filenames: true
+        stages: [pre-commit]
+
       # mypy type checking (OMN-11412: added missing mypy pre-commit hook)
       - id: mypy-type-check
         name: mypy (type checking - strict)
