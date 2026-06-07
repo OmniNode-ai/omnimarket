@@ -1,0 +1,75 @@
+# OMN-12813 contract file for omnimarket deploy-gate.
+# The canonical ticket contract lives in onex_change_control.
+# This file is the per-repo deploy-evidence carrier only.
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-12813"
+title: "fix(OMN-12813): SEA generation output format — force fenced yaml+python blocks + exemplar, suppress reasoning"
+summary: >
+  Root cause of contract_passed=false / empty generation_events row: Qwen3.6-35B-A3B
+  returns reasoning prose instead of the required two-fenced-block output.
+  Fix: strengthen _DEFAULT_SYSTEM_PROMPT + add two inference protocol profiles
+  (local-qwen-generation-no-think, local-qwen-generation-exemplar) scoped to
+  task_type="node_generation", wired via apply_inference_protocol in
+  HandlerGenerationConsumer._call_llm. Profiles add /no_think directive and a
+  one-shot exemplar (```yaml contract + ```python handler) to force output format.
+  Non-Qwen models and non-generation task types unaffected. Reuses OMN-12738
+  inference_protocols machinery.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched:
+  - "handlers"
+  - "configs"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-new-tests-pass"
+    description: >
+      17 new unit tests in test_omn12813_output_format_fix.py covering:
+      _DEFAULT_SYSTEM_PROMPT marker/prose-suppression assertions, both inference
+      protocol profiles fire for Qwen+node_generation and are silent for other
+      models/task-types, apply_once deduplication, validate_generation on
+      well-formed and reasoning-prose responses, handler wires apply_inference_protocol,
+      end-to-end contract_passed=True with non-empty contract_yaml+handler_source.
+      All 17 pass.
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/unit/nodes/node_generation_consumer/test_omn12813_output_format_fix.py -v -q"
+  - id: "dod-full-suite-no-regression"
+    description: >
+      Full test suite (6338 passed, 10 skipped, 0 failed) confirms no regressions.
+      Existing inference protocol tests (test_protocol_config.py) and all 100
+      node_generation_consumer tests continue to pass.
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/ --ignore=tests/integration -q"
+  - id: "dod-mypy-strict"
+    description: >
+      mypy --strict on src/ reports 0 issues across 2308 source files.
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run mypy src/ --strict"
+  - id: "dod-pre-commit-clean"
+    description: >
+      All pre-commit hooks pass: ruff format, ruff check, topic lint,
+      leaked-literal gate, orphan-graph gate, golden-chain coverage gate,
+      no-silent-env-fallback, end-of-file-fixer, reject-skip-gate-bypass-tokens.
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "pre-commit run --all-files"
+  - id: "dod-profiles-scoped-to-node-generation"
+    description: >
+      Both new inference protocol profiles (local-qwen-generation-no-think,
+      local-qwen-generation-exemplar) are scoped to task_types: [node_generation]
+      and do NOT fire for summarization, code_generation, or any other task type.
+      Verified by test_generation_profiles_do_not_fire_for_other_task_types.
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/unit/nodes/node_generation_consumer/test_omn12813_output_format_fix.py::test_generation_profiles_do_not_fire_for_other_task_types -v"

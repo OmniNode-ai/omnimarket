@@ -39,6 +39,7 @@ from omnimarket.adapters.llm.bifrost.config_loader_bifrost_delegation import (
     load_bifrost_delegation_config,
 )
 from omnimarket.enums.enum_usage_source import EnumUsageSource
+from omnimarket.inference.protocol_config import apply_inference_protocol
 from omnimarket.nodes.node_generation_consumer.models.model_generation import (
     ModelGenerationAttempt,
     ModelGenerationBenchmark,
@@ -76,11 +77,17 @@ _MODEL_ROUTING_SERVED_MODEL_ID_KEY = "served_model_id"
 _MODEL_ROUTING_ENDPOINT_REF_KEY = "endpoint_ref"
 _MODEL_ROUTING_ROUTING_SOURCE_KEY = "routing_source"
 
+# OMN-12813: Explicit format instruction — no chain-of-thought, no numbered
+# analysis steps.  The inference protocol profile (local-qwen-generation-*)
+# appends the one-shot exemplar and /no_think directive for Qwen models.
 _DEFAULT_SYSTEM_PROMPT = (
-    "You are an ONEX node generator. Generate a valid ONEX contract.yaml and Python handler.\n"
-    "Output EXACTLY two fenced code blocks: first ```yaml with the contract, then ```python with the handler.\n"
-    "Contract must have: name, contract_version, node_type (compute), input_model, output_model.\n"
-    "Handler must define a handle(input_data) function. No hardcoded absolute paths or topic strings."
+    "You are an ONEX node generator. "
+    "Your ONLY output must be two fenced code blocks — nothing else.\n"
+    "Do NOT write any analysis, explanation, numbered steps, or surrounding text.\n"
+    "Block 1: ```yaml containing the contract (required fields: name, contract_version, "
+    "node_type, input_model, output_model).\n"
+    "Block 2: ```python containing the handler with a top-level handle(input_data) function.\n"
+    "No hardcoded absolute paths. No hardcoded topic strings."
 )
 
 _GEMINI_INPUT_COST_PER_TOKEN = 0.075 / 1_000_000
@@ -515,6 +522,18 @@ class HandlerGenerationConsumer:
         if context_pack:
             user_content = f"Context:\n{context_pack}\n\n{user_content}"
 
+        # OMN-12813: Apply inference protocol directives for the model.
+        # task_type="node_generation" activates the local-qwen-generation-* profiles
+        # declared in inference_protocols.v1.yaml, which add /no_think (user prefix)
+        # and the one-shot exemplar (system suffix) for Qwen models.  Non-Qwen models
+        # and models that don't match any profile are unaffected.
+        system_prompt, user_content, _ = apply_inference_protocol(
+            system_prompt=_DEFAULT_SYSTEM_PROMPT,
+            prompt=user_content,
+            model=self._served_model_id,
+            task_type="node_generation",
+        )
+
         if self._injected_effect:
             assert self._effect is not None
             response = await self._effect.handle(None)
@@ -552,6 +571,8 @@ class HandlerGenerationConsumer:
             # endpoint_url verbatim but appends the operation path to base_url, so
             # the two forms must route through different request fields — a bare
             # base sent via endpoint_url would POST to the root and 404.
+            # OMN-12813: system_prompt carries the inference-protocol-applied prompt
+            # (one-shot exemplar + /no_think for Qwen), not the bare default.
             base_url, endpoint_url = _split_resolved_endpoint(resolved.endpoint_url)
             request = ModelLlmInferenceRequest(
                 base_url=base_url,
@@ -559,7 +580,7 @@ class HandlerGenerationConsumer:
                 operation_type=EnumLlmOperationType.CHAT_COMPLETION,
                 model=resolved.served_model_id,
                 messages=(
-                    {"role": "system", "content": _DEFAULT_SYSTEM_PROMPT},
+                    {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_content},
                 ),
                 api_key=api_key,
