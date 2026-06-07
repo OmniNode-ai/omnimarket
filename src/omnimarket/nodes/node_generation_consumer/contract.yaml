@@ -43,6 +43,23 @@ inputs:
     description: "Maximum LLM retry attempts on validation failure"
     required: false
     default: 2
+  # P2-1 context-injection seam (OMN-12794) — all optional with safe defaults.
+  # Do not use previous_errors for context; that is the internal repair-loop channel.
+  context_pack:
+    type: str
+    description: "Serialised context pack text prepended to the generation prompt; empty = off arm"
+    required: false
+    default: ""
+  context_artifacts:
+    type: list
+    description: "Structured per-artifact provenance for audit/replay; handler uses context_pack for the prompt"
+    required: false
+    default: []
+  context_pack_hash:
+    type: str
+    description: "SHA-256 hex digest of context_pack (sha256:<hex>); empty when context_pack is empty"
+    required: false
+    default: ""
 
 outputs:
   contract_passed:
@@ -57,6 +74,19 @@ outputs:
   cost_inference_usd:
     type: float
     description: "Estimated inference cost in USD"
+  # P2-1 token split + attempt-reduction telemetry (OMN-12794)
+  prompt_tokens:
+    type: int
+    description: "Total prompt tokens across all attempts"
+  completion_tokens:
+    type: int
+    description: "Total completion tokens across all attempts"
+  first_pass_success:
+    type: bool
+    description: "True when contract validation passed on the first attempt"
+  context_pack_hash:
+    type: str
+    description: "Echoed context_pack_hash from the command for scorer correlation"
 
 terminal_event: onex.evt.omnimarket.node-generation-completed.v1
 
@@ -118,6 +148,7 @@ metadata:
   description: "Generation consumer node — generates ONEX nodes from natural language, validates, emits benchmark"
   author: "OmniNode Platform Team"
   created: "2026-05-16"
+  demo_path: true  # OMN-12777: demo-path topic coherence gate scope marker
   tags:
     - "orchestrator"
     - "generation"
@@ -126,7 +157,9 @@ metadata:
     - "node-generation"
     - "OMN-12683"
     - "OMN-11092"
+    - "OMN-12794"
   related_tickets:
     - "OMN-12683"
     - "OMN-11092"
     - "OMN-11091"
+    - "OMN-12794"

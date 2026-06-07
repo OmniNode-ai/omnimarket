@@ -1,9 +1,9 @@
 {
   "run_id": "proof-of-life-001",
-  "timestamp": "2026-06-06T19:44:12.885778+00:00",
+  "timestamp": "2026-06-07T18:20:04.742300+00:00",
   "repo_roots": [
     "<fixture>"
   ],
-  "graphify_version": "ast-fallback",
+  "graphify_version": "0.8.2",
   "rule_version": "v1"
 }

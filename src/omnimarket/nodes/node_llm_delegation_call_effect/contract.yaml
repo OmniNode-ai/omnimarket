@@ -194,3 +194,4 @@ tags:
 
 metadata:
   transport_type: kafka
+  demo_path: true  # OMN-12777: demo-path topic coherence gate scope marker

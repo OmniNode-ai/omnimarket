@@ -43,7 +43,7 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
     assert summary["entry_points"] == 296
     assert summary["missing_entry_points"] == []
     assert summary["dangling_entry_points"] == []
-    assert summary["routable"] >= 291
+    assert summary["routable"] >= 292
     assert summary["skipped"] == 3
     assert summary["failed"] == 0
     assert summary["failure_buckets"] == {}
