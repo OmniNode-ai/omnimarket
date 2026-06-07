@@ -793,6 +793,10 @@ _GEMINI_DOUBLE_VERSIONED_BAD_URL = (
 )
 _GEMINI_ORIGIN_BAD_URL = "https://generativelanguage.googleapis.com/v1/chat/completions"
 _LOCAL_FULL_ENDPOINT = "http://100.109.203.94:8000/v1/chat/completions"  # onex-allow-internal-ip OMN-12801 reason="test fixture endpoint URL for routing-authority resolution"
+# The bare-base form the deployed bifrost local-* backends actually declare (the
+# delegation chain reads the same shape and relies on the effect's path append).
+_LOCAL_BARE_BASE = "http://100.109.203.94:8000"  # onex-allow-internal-ip OMN-12801 reason="test fixture: bare-base backend URL matching the deployed overlay"
+_LOCAL_BARE_BASE_EXPECTED_URL = "http://100.109.203.94:8000/v1/chat/completions"  # onex-allow-internal-ip OMN-12801 reason="test fixture: expected POST URL after path append"
 
 
 def _write_routing_contract(
@@ -963,6 +967,39 @@ async def test_local_full_endpoint_posts_as_is(
         monkeypatch, tmp_path, _LOCAL_FULL_ENDPOINT
     )
     assert final_url == _LOCAL_FULL_ENDPOINT
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_local_bare_base_appends_chat_completions(
+    monkeypatch: Any, tmp_path: Path
+) -> None:
+    """Bare-base backend (the deployed overlay form) appends /v1/chat/completions.
+
+    Regression for OMN-12801: the deployed bifrost local-* backends declare a
+    BARE base (``http://host:8000``), not a complete URL. Routed through
+    ``endpoint_url`` it would POST to the root and 404 (the live vLLM serves only
+    ``/v1/chat/completions``; the bare root returns 404). The handler must route a
+    bare base through ``base_url`` so the effect appends the operation path.
+    """
+    final_url = await _final_post_url_for_endpoint(
+        monkeypatch, tmp_path, _LOCAL_BARE_BASE
+    )
+    assert final_url == _LOCAL_BARE_BASE_EXPECTED_URL
+    # Must NOT post to the bare root (the 404 shape).
+    assert final_url != _LOCAL_BARE_BASE
+    assert final_url.endswith("/v1/chat/completions")
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_local_bare_base_leaves_endpoint_url_unset(
+    monkeypatch: Any, tmp_path: Path
+) -> None:
+    """A bare-base backend builds a request with endpoint_url=None (append path)."""
+    request = await _request_for_endpoint(monkeypatch, tmp_path, _LOCAL_BARE_BASE)
+    assert request.endpoint_url is None
+    assert request.base_url == _LOCAL_BARE_BASE
 
 
 @pytest.mark.unit

@@ -30,6 +30,7 @@ import time
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 import yaml
 from pydantic import BaseModel, ConfigDict, Field
@@ -110,10 +111,13 @@ class ModelResolvedEndpoint(BaseModel):
     been validated as present — there are no silent defaults.
 
     Attributes:
-        endpoint_url: Complete URL to POST to, resolved from the bifrost backend
-            keyed by ``endpoint_ref``. Posted verbatim (the overlay declares the
-            full provider-specific path), so different providers resolve to
-            distinct URLs — never one shared base.
+        endpoint_url: The backend URL resolved from the bifrost backend keyed by
+            ``endpoint_ref``. May be a bare base (``http://host:8000`` — the
+            convention the local-* backends and the delegation chain use) or a
+            complete provider-specific URL (Gemini/z.ai). ``_split_resolved_endpoint``
+            routes each form to the correct inference-request field at the call
+            boundary. Different providers resolve to distinct URLs — never one
+            shared base.
         provider: Provider classification declared by the contract (e.g. "local",
             "gemini"). Drives cost basis, not endpoint shape.
         served_model_id: The model identifier sent on the wire, declared by the
@@ -247,6 +251,37 @@ def _resolve_bifrost_backend(endpoint_ref: str) -> _ResolvedBackend | None:
         return _ResolvedBackend(endpoint_url=url, api_key_ref=api_key_ref)
 
     return None
+
+
+def _split_resolved_endpoint(resolved_url: str) -> tuple[str, str | None]:
+    """Route a routing-authority URL to the right inference-request field.
+
+    The OpenAI-compatible effect (``HandlerLlmOpenaiCompatible._build_url``) posts
+    ``endpoint_url`` verbatim but appends the operation path (e.g.
+    ``/v1/chat/completions``) to ``base_url``. The bifrost routing authority
+    declares two shapes of backend URL:
+
+      * BARE base — ``http://host:8000`` (no path). The bifrost local-* backends
+        and the working delegation chain use this form and rely on the effect's
+        path append. Sent via ``endpoint_url`` it would POST to the root and 404.
+      * COMPLETE endpoint — ``https://.../v1beta/openai/chat/completions`` or a
+        vLLM overlay that already spells out ``/v1/chat/completions``. This must
+        be posted verbatim or the append would double-version the path.
+
+    A URL is COMPLETE when it carries a non-empty path beyond ``/``. Such URLs go
+    through ``endpoint_url`` (verbatim); bare bases go through ``base_url`` (append).
+
+    Returns:
+        ``(base_url, endpoint_url)`` — exactly one of which drives the POST URL.
+        ``base_url`` is always set (the model requires it); ``endpoint_url`` is
+        ``None`` for bare bases.
+    """
+    path = urlsplit(resolved_url).path.strip("/")
+    if path:
+        # Complete provider-specific URL — post verbatim.
+        return resolved_url, resolved_url
+    # Bare base — let the effect append the operation path.
+    return resolved_url, None
 
 
 def _extract_fenced_block(raw: str, langs: tuple[str, ...]) -> str | None:
@@ -509,12 +544,18 @@ class HandlerGenerationConsumer:
             )
             assert self._effect is not None
 
+            # OMN-12801: the routing authority may declare either a COMPLETE
+            # endpoint URL (provider declares the full path, e.g. Gemini/z.ai or a
+            # vLLM overlay that spells out /v1/chat/completions) or a BARE base URL
+            # (the convention the bifrost local-* backends and the delegation chain
+            # use, e.g. http://host:8000). The OpenAI-compatible effect posts
+            # endpoint_url verbatim but appends the operation path to base_url, so
+            # the two forms must route through different request fields — a bare
+            # base sent via endpoint_url would POST to the root and 404.
+            base_url, endpoint_url = _split_resolved_endpoint(resolved.endpoint_url)
             request = ModelLlmInferenceRequest(
-                # endpoint_url is the complete provider-specific URL; the infra
-                # builder posts it verbatim (no path append). base_url is required
-                # by the model but ignored when endpoint_url is set.
-                base_url=resolved.endpoint_url,
-                endpoint_url=resolved.endpoint_url,
+                base_url=base_url,
+                endpoint_url=endpoint_url,
                 operation_type=EnumLlmOperationType.CHAT_COMPLETION,
                 model=resolved.served_model_id,
                 messages=(
