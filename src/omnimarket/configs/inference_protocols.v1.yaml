@@ -25,3 +25,57 @@ profiles:
     request_options:
       chat_template_kwargs:
         enable_thinking: false
+
+  # OMN-12813: SEA generation output-format fix.
+  # Suppresses Qwen reasoning prose for the ONEX node generator and forces
+  # the model to emit EXACTLY two fenced code blocks with no surrounding text.
+  # Two profiles are required because ModelInferenceProtocolProfile carries a
+  # single directive; one handles the /no_think user prefix, the other injects
+  # the one-shot exemplar as a system-prompt suffix.
+  - profile_id: local-qwen-generation-no-think
+    enabled: true
+    model_name_patterns:
+      - "*qwen*"
+    task_types:
+      - "node_generation"
+    directive:
+      placement: user_prefix
+      text: "/no_think"
+      separator: "\n"
+      apply_once: true
+    request_options:
+      chat_template_kwargs:
+        enable_thinking: false
+
+  - profile_id: local-qwen-generation-exemplar
+    enabled: true
+    model_name_patterns:
+      - "*qwen*"
+    task_types:
+      - "node_generation"
+    directive:
+      placement: system_suffix
+      separator: "\n\n"
+      apply_once: true
+      text: |
+        REQUIRED OUTPUT FORMAT — no chain-of-thought, no numbered steps, no prose.
+        Emit EXACTLY these two fenced code blocks and nothing else:
+
+        ```yaml
+        name: node_example_compute
+        contract_version: "1.0.0"
+        node_type: compute
+        input_model:
+          name: ModelExampleInput
+          module: omnimarket.nodes.node_example_compute.models
+        output_model:
+          name: ModelExampleOutput
+          module: omnimarket.nodes.node_example_compute.models
+        ```
+
+        ```python
+        def handle(input_data):
+            return {"result": input_data}
+        ```
+
+        Your response must contain ONLY the two fenced blocks above, adapted to the requested node. Do NOT include any explanation, analysis, or surrounding text.
