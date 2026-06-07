@@ -2,6 +2,6 @@
 # SPDX-License-Identifier: MIT
 """Handlers for node_context_roi_compute."""
 
-from .handler_context_roi_compute import HandlerContextRoiCompute
+from .handler_context_roi import HandlerContextRoi
 
-__all__ = ["HandlerContextRoiCompute"]
+__all__ = ["HandlerContextRoi"]

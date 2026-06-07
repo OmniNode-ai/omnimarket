@@ -44,6 +44,33 @@ from omnimarket.projection.protocol_database import DatabaseAdapter
 
 TABLE = "delegation_events"
 CONFLICT_KEY = "correlation_id"
+GENERATION_TABLE = "generation_events"
+
+
+class ModelProjectionGenerationCompletedEvent(BaseModel):
+    """Inbound event from onex.evt.omnimarket.node-generation-completed.v1.
+
+    The live runtime dispatches this through HandlerProjectionDelegation.handle()
+    (the contract `handler:` field); the *ProjectionRunner sibling is skipped by
+    the DB-injection auto-wiring path (OMN-12800).
+    """
+
+    model_config = ConfigDict(frozen=True, extra="ignore")
+
+    correlation_id: str = Field(..., description="Unique correlation ID for dedup.")
+    task_description: str = Field(default="")
+    provider: str = Field(default="")
+    model_id: str = Field(default="")
+    endpoint_class: str = Field(default="")
+    attempt_count: int = Field(default=0, ge=0)
+    total_latency_e2e_ms: int = Field(default=0, ge=0)
+    contract_passed: bool = Field(default=False)
+    cost_inference_usd: float = Field(default=0.0)
+    timestamp: str | None = Field(default=None, description="ISO 8601 timestamp.")
+    # OMN-12780 (Wave 1C): full generated output — empty string is the
+    # failed/incomplete-generation sentinel, never coerced to NULL, never truncated.
+    contract_yaml: str = Field(default="")
+    handler_source: str = Field(default="")
 
 
 class ModelProjectionTaskDelegatedEvent(BaseModel):
@@ -140,6 +167,10 @@ class HandlerProjectionDelegation:
         if not isinstance(db_raw, DatabaseAdapter):
             raise TypeError("handle() requires a DatabaseAdapter in input_data['_db']")
         event_type = str(payload.pop("_event_type", ""))
+        if "node-generation-completed" in event_type:
+            generation = ModelProjectionGenerationCompletedEvent(**payload)
+            result = self.project_generation_completed(generation, db_raw)
+            return result.model_dump(mode="json")
         if (
             event_type in self._delegate_skill_terminal_events
             or _is_delegate_skill_terminal_payload(payload)
@@ -241,6 +272,37 @@ class HandlerProjectionDelegation:
         ok = db.upsert(TABLE, CONFLICT_KEY, row)
         return ModelProjectionResult(rows_upserted=1 if ok else 0)
 
+    def project_generation_completed(
+        self,
+        event: ModelProjectionGenerationCompletedEvent,
+        db: DatabaseAdapter,
+    ) -> ModelProjectionResult:
+        """UPSERT a node-generation-completed event into generation_events.
+
+        Mirrors DelegationProjectionRunner._project_generation_completed; this is
+        the path the live runtime actually invokes (OMN-12800). contract_yaml and
+        handler_source are persisted in full — no truncation.
+        """
+        now = datetime.now(tz=UTC).isoformat()
+        row: dict[str, object] = {
+            "correlation_id": event.correlation_id,
+            "task_description": event.task_description,
+            "provider": event.provider,
+            "model_id": event.model_id,
+            "endpoint_class": event.endpoint_class,
+            "attempt_count": event.attempt_count,
+            "total_latency_e2e_ms": event.total_latency_e2e_ms,
+            "contract_passed": event.contract_passed,
+            "cost_inference_usd": event.cost_inference_usd,
+            "timestamp": event.timestamp or now,
+            "contract_yaml": event.contract_yaml,
+            "handler_source": event.handler_source,
+        }
+        ok = db.upsert(GENERATION_TABLE, CONFLICT_KEY, row)
+        return ModelProjectionResult(
+            rows_upserted=1 if ok else 0, table=GENERATION_TABLE
+        )
+
     def project_batch(
         self,
         events: list[ModelTaskDelegatedEvent],
@@ -256,6 +318,7 @@ class HandlerProjectionDelegation:
 
 __all__: list[str] = [
     "HandlerProjectionDelegation",
+    "ModelProjectionGenerationCompletedEvent",
     "ModelProjectionResult",
     "ModelProjectionTaskDelegatedEvent",
     "ModelTaskDelegatedEvent",
