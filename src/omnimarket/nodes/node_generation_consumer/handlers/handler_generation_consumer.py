@@ -60,10 +60,15 @@ _REQUIRED_CONTRACT_FIELDS = [
     "output_model",
 ]
 
-# Contract model_routing keys — resolved at construction from contract.yaml
+# Contract model_routing keys — resolved at construction from contract.yaml.
+# OMN-12779: all four routing authorities (provider, served_model_id, endpoint_ref,
+# routing_source) must be declared in the contract. No env-var indirection for model IDs.
 _MODEL_ROUTING_ENDPOINT_ENV_KEY = "endpoint_env"
 _MODEL_ROUTING_ENDPOINT_MODE_KEY = "endpoint_mode"
-_MODEL_ROUTING_MODEL_ID_ENV_KEY = "served_model_id_env"
+_MODEL_ROUTING_PROVIDER_KEY = "provider"
+_MODEL_ROUTING_SERVED_MODEL_ID_KEY = "served_model_id"
+_MODEL_ROUTING_ENDPOINT_REF_KEY = "endpoint_ref"
+_MODEL_ROUTING_ROUTING_SOURCE_KEY = "routing_source"
 _ENDPOINT_MODE_COMPLETE = "complete_endpoint"
 _ENDPOINT_MODE_OPENAI_BASE = "openai_compatible_base"
 _ALLOWED_ENDPOINT_MODES = {_ENDPOINT_MODE_COMPLETE, _ENDPOINT_MODE_OPENAI_BASE}
@@ -203,11 +208,14 @@ class HandlerGenerationConsumer:
     The event_publisher is a thin sync callable (topic, bytes) -> None injected by
     the runtime's Kafka adapter. Falls back to a no-op for tests and dry runs.
 
-    Endpoint resolution order (contract-first, no bespoke env vars):
-        1. contract.yaml model_routing.endpoint_env names the env var to read
-        2. contract.yaml model_routing.endpoint_mode declares how to post it
-        3. That env var (e.g. LLM_CODER_URL) is populated by the overlay system
-        4. MixinLlmHttpTransport enforces CIDR allowlist + HMAC from the same overlay
+    Routing authority (OMN-12779 — all four from contract, no env-var indirection):
+        1. contract.yaml model_routing.provider — e.g. "local"
+        2. contract.yaml model_routing.served_model_id — the actual model ID string
+        3. contract.yaml model_routing.endpoint_ref — backend reference (e.g. "local-coder")
+        4. contract.yaml model_routing.endpoint_env — NAMES the env var holding the URL;
+           that var's VALUE comes from the overlay system (LLM_CODER_URL).
+        5. contract.yaml model_routing.endpoint_mode — how to POST the URL.
+        6. MixinLlmHttpTransport enforces CIDR allowlist + HMAC from the same overlay.
     """
 
     def __init__(
@@ -237,8 +245,9 @@ class HandlerGenerationConsumer:
         self._topic_deploy = next((t for t in publish_topics if "node-deploy" in t), "")
 
         # Resolve LLM routing config from contract model_routing section.
-        # The endpoint_env field names which env var holds the base URL;
-        # that var is populated by the overlay system (never hardcoded here).
+        # OMN-12779: all four routing authorities are declared by the contract — no
+        # env-var indirection for model IDs. endpoint_env names the env var that holds
+        # the URL value; that var's VALUE comes from the overlay system at runtime.
         model_routing: dict[str, Any] = contract.get("model_routing", {})
         self._endpoint_env: str = model_routing.get(
             _MODEL_ROUTING_ENDPOINT_ENV_KEY, "LLM_CODER_URL"
@@ -246,29 +255,44 @@ class HandlerGenerationConsumer:
         self._endpoint_mode: str = str(
             model_routing.get(_MODEL_ROUTING_ENDPOINT_MODE_KEY, "")
         )
-        self._model_id_env: str = str(
-            model_routing.get(_MODEL_ROUTING_MODEL_ID_ENV_KEY, "")
-        )
-        if not self._model_id_env:
+
+        # Fail fast on all four required routing authorities.
+        self._provider: str = str(model_routing.get(_MODEL_ROUTING_PROVIDER_KEY, ""))
+        if not self._provider:
             raise ValueError(
-                "contract.yaml model_routing.served_model_id_env is required; "
-                "served model IDs must come from overlays, not handler defaults"
+                "contract.yaml model_routing.provider is required; "
+                "provider must be declared in the contract, not defaulted in the handler"
             )
+
+        self._served_model_id: str = str(
+            model_routing.get(_MODEL_ROUTING_SERVED_MODEL_ID_KEY, "")
+        )
+        if not self._served_model_id:
+            raise ValueError(
+                "contract.yaml model_routing.served_model_id is required; "
+                "served model IDs must be declared in the contract/overlay, "
+                "not resolved via env var indirection"
+            )
+
+        self._endpoint_ref: str = str(
+            model_routing.get(_MODEL_ROUTING_ENDPOINT_REF_KEY, "")
+        )
+        if not self._endpoint_ref:
+            raise ValueError(
+                "contract.yaml model_routing.endpoint_ref is required; "
+                "it must reference a routing-tier backend (e.g. 'local-coder')"
+            )
+
+        self._routing_source: str = str(
+            model_routing.get(_MODEL_ROUTING_ROUTING_SOURCE_KEY, "contract")
+        )
+
         if self._endpoint_mode not in _ALLOWED_ENDPOINT_MODES:
             allowed = ", ".join(sorted(_ALLOWED_ENDPOINT_MODES))
             raise ValueError(
                 "contract.yaml model_routing.endpoint_mode must be one of "
                 f"{allowed}; got {self._endpoint_mode!r}"
             )
-
-    def _resolve_model_id(self) -> str:
-        model_id = os.environ.get(self._model_id_env, "").strip()
-        if not model_id:
-            raise RuntimeError(
-                f"{self._model_id_env} is unset/empty; served model ID must be "
-                "provided by the runtime overlay"
-            )
-        return model_id
 
     def _ensure_effect(self) -> None:
         if self._effect is not None:
@@ -324,7 +348,7 @@ class HandlerGenerationConsumer:
                     base_url=endpoint,
                     endpoint_url=endpoint,
                     operation_type=EnumLlmOperationType.CHAT_COMPLETION,
-                    model=self._resolve_model_id(),
+                    model=self._served_model_id,
                     messages=(
                         {"role": "system", "content": _DEFAULT_SYSTEM_PROMPT},
                         {"role": "user", "content": user_content},
@@ -335,7 +359,7 @@ class HandlerGenerationConsumer:
                 request = ModelLlmInferenceRequest(
                     base_url=endpoint,
                     operation_type=EnumLlmOperationType.CHAT_COMPLETION,
-                    model=self._resolve_model_id(),
+                    model=self._served_model_id,
                     messages=(
                         {"role": "system", "content": _DEFAULT_SYSTEM_PROMPT},
                         {"role": "user", "content": user_content},
@@ -358,14 +382,12 @@ class HandlerGenerationConsumer:
     ) -> ModelGenerationBenchmark:
         self._ensure_effect()
 
-        # Derive metadata from contract-resolved routing config.
-        # endpoint_env is always LLM_CODER_URL (or whatever the contract declares);
-        # "local" provider means no per-token cost.
-        model_id = (
-            "injected_effect" if self._injected_effect else self._resolve_model_id()
-        )
-        provider = "local"
-        endpoint_class = "local"
+        # All four routing authorities come from the contract (OMN-12779): provider,
+        # served_model_id, endpoint_ref (used as endpoint_class), and routing_source.
+        # No literals, no env-var fallbacks.
+        model_id = self._served_model_id
+        provider = self._provider
+        endpoint_class = self._endpoint_ref
 
         attempts: list[ModelGenerationAttempt] = []
         e2e_start = time.time()
