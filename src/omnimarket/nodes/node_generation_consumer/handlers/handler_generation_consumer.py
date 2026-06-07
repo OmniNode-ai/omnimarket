@@ -26,6 +26,7 @@ import json
 import logging
 import os
 import re
+import textwrap
 import time
 from collections.abc import Callable
 from pathlib import Path
@@ -76,11 +77,41 @@ _MODEL_ROUTING_SERVED_MODEL_ID_KEY = "served_model_id"
 _MODEL_ROUTING_ENDPOINT_REF_KEY = "endpoint_ref"
 _MODEL_ROUTING_ROUTING_SOURCE_KEY = "routing_source"
 
+# OMN-12816: a golden exemplar of a VALID generation — one ```yaml contract block
+# (with every required field) followed by one ```python handler block. The model is
+# shown this exact shape so the first pass matches the format the validator accepts.
+# The contract fields mirror _REQUIRED_CONTRACT_FIELDS; the handler defines handle().
+# Stabilising first-pass output with a worked example beats post-hoc repair
+# (project_context_matrix_v3_findings: an exemplar stabilises first-pass).
+_GOLDEN_EXEMPLAR = (
+    "Example of a correct response (format only — generate for the actual task below):\n"
+    "```yaml\n"
+    "name: node_example_compute\n"
+    'contract_version: "1.0.0"\n'
+    "node_type: compute\n"
+    "input_model:\n"
+    "  name: ModelExampleInput\n"
+    "  module: omnimarket.nodes.node_example_compute.models\n"
+    "output_model:\n"
+    "  name: ModelExampleOutput\n"
+    "  module: omnimarket.nodes.node_example_compute.models\n"
+    "```\n"
+    "```python\n"
+    "def handle(input_data):\n"
+    '    return {"result": input_data}\n'
+    "```"
+)
+
 _DEFAULT_SYSTEM_PROMPT = (
     "You are an ONEX node generator. Generate a valid ONEX contract.yaml and Python handler.\n"
-    "Output EXACTLY two fenced code blocks: first ```yaml with the contract, then ```python with the handler.\n"
-    "Contract must have: name, contract_version, node_type (compute), input_model, output_model.\n"
-    "Handler must define a handle(input_data) function. No hardcoded absolute paths or topic strings."
+    "Respond with EXACTLY two fenced code blocks and NOTHING else — no reasoning, no "
+    "explanation, no preamble, no commentary before, between, or after them: first a "
+    "```yaml block with the contract, then a ```python block with the handler.\n"
+    "The contract YAML must be valid YAML (correct indentation, quote version strings) "
+    "with the keys: name, contract_version, node_type (value: compute), input_model, "
+    "output_model.\n"
+    "The handler must define a top-level handle(input_data) function. No hardcoded "
+    "absolute paths or topic strings.\n\n" + _GOLDEN_EXEMPLAR
 )
 
 _GEMINI_INPUT_COST_PER_TOKEN = 0.075 / 1_000_000
@@ -285,30 +316,58 @@ def _split_resolved_endpoint(resolved_url: str) -> tuple[str, str | None]:
 
 
 def _extract_fenced_block(raw: str, langs: tuple[str, ...]) -> str | None:
-    """Find the first ```<lang>\n...\n``` block. Linear scan, no regex backtracking."""
+    """Return the LAST ```<lang>\n...\n``` block body, or None.
+
+    Linear scan, no regex backtracking. OMN-12816: the LAST matching block is
+    returned, not the first. Reasoning models emit one or more DRAFT blocks inside
+    their thinking before the final answer; the final block is the authoritative
+    one. Returning the first would extract a draft (often incomplete/malformed).
+    """
     cursor = 0
+    last_body: str | None = None
     while True:
         start = raw.find(_FENCE, cursor)
         if start == -1:
-            return None
+            return last_body
         lang_end = raw.find("\n", start + len(_FENCE))
         if lang_end == -1:
-            return None
+            return last_body
         lang = raw[start + len(_FENCE) : lang_end].strip().lower()
         body_start = lang_end + 1
         close = raw.find(_FENCE, body_start)
         if close == -1:
-            return None
+            return last_body
         if lang in langs:
-            return raw[body_start:close]
+            last_body = raw[body_start:close]
         cursor = close + len(_FENCE)
 
 
+def _normalize_block(body: str | None) -> str:
+    """Dedent and strip a fenced block body, or "" when absent.
+
+    OMN-12816: reasoning models often emit the final fenced block NESTED inside a
+    markdown list in their thinking, so every line carries a uniform leading
+    indent (e.g. 3 spaces). ``yaml.safe_load`` then rejects it ("mapping values
+    are not allowed here") and ``ast.parse`` raises "unexpected indent". Removing
+    the common leading whitespace with ``textwrap.dedent`` recovers a valid block.
+    """
+    if body is None:
+        return ""
+    return textwrap.dedent(body).strip()
+
+
 def _extract_blocks(raw: str) -> tuple[str, str]:
-    yaml_block = _extract_fenced_block(raw, _YAML_FENCE_LANGS)
-    py_block = _extract_fenced_block(raw, (_PYTHON_FENCE_LANG,))
-    contract_yaml = yaml_block.strip() if yaml_block is not None else raw
-    handler_source = py_block.strip() if py_block is not None else ""
+    """Extract (contract_yaml, handler_source) from fenced code blocks.
+
+    OMN-12816: when no fenced yaml block is found, return empty — do NOT fall back
+    to the raw response. Feeding a fenceless response (e.g. a reasoning model's
+    prose with embedded colons) straight to ``yaml.safe_load`` produced spurious
+    parse errors and masked the real failure (no usable contract was produced).
+    An empty contract_yaml fails validation cleanly with a precise message.
+    Each block is dedented (see ``_normalize_block``) to undo markdown nesting.
+    """
+    contract_yaml = _normalize_block(_extract_fenced_block(raw, _YAML_FENCE_LANGS))
+    handler_source = _normalize_block(_extract_fenced_block(raw, (_PYTHON_FENCE_LANG,)))
     return contract_yaml, handler_source
 
 

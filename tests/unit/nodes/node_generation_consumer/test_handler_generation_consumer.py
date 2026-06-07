@@ -20,6 +20,8 @@ import pytest
 import yaml
 
 from omnimarket.nodes.node_generation_consumer.handlers.handler_generation_consumer import (
+    _DEFAULT_SYSTEM_PROMPT,
+    _GOLDEN_EXEMPLAR,
     HandlerGenerationConsumer,
     _extract_blocks,
     _validate_generation,
@@ -120,11 +122,74 @@ def test_extract_blocks_parses_yaml_and_python() -> None:
 
 
 @pytest.mark.unit
-def test_extract_blocks_falls_back_to_raw_when_no_yaml_fence() -> None:
+def test_extract_blocks_returns_empty_when_no_yaml_fence() -> None:
+    # OMN-12816: a fenceless response (e.g. reasoning-model prose) must NOT be
+    # fed to the YAML parser as-is — return empty so validation fails cleanly.
     raw = "name: foo\ncontract_version: 1\n"
     contract_yaml, handler_source = _extract_blocks(raw)
-    assert contract_yaml == raw
+    assert contract_yaml == ""
     assert handler_source == ""
+
+
+@pytest.mark.unit
+def test_extract_blocks_prefers_last_block_over_thinking_drafts() -> None:
+    # OMN-12816: reasoning models emit DRAFT fenced blocks inside their thinking
+    # before the final answer. The LAST complete block is authoritative.
+    raw = (
+        "Let me draft this:\n"
+        "```yaml\nname: draft_wrong\n```\n"
+        "On reflection, the correct contract is:\n"
+        '```yaml\nname: final_right\ncontract_version: "1.0.0"\n```\n'
+        "```python\ndef handle(input_data):\n    return input_data\n```\n"
+    )
+    contract_yaml, handler_source = _extract_blocks(raw)
+    assert "final_right" in contract_yaml
+    assert "draft_wrong" not in contract_yaml
+    assert "def handle" in handler_source
+
+
+@pytest.mark.unit
+def test_extract_blocks_dedents_markdown_nested_block() -> None:
+    # OMN-12816: reasoning models emit the final fenced block nested in a markdown
+    # list, so every line is uniformly indented. Without dedent the YAML is invalid
+    # ("mapping values are not allowed here") and the handler source raises
+    # "unexpected indent". Dedent recovers a valid, parseable block.
+    raw = (
+        "Final answer:\n"
+        "```yaml\n"
+        '   name: node_x\n   contract_version: "1.0.0"\n   node_type: compute\n'
+        "   input_model:\n     name: In\n     module: m\n"
+        "   output_model:\n     name: Out\n     module: m\n"
+        "```\n"
+        "```python\n   def handle(input_data):\n       return input_data\n```\n"
+    )
+    contract_yaml, handler_source = _extract_blocks(raw)
+    # Top-level keys must be at column 0 after dedent.
+    assert contract_yaml.startswith("name: node_x")
+    assert "\ncontract_version:" in contract_yaml
+    assert handler_source.startswith("def handle(input_data):")
+    result = _validate_generation(contract_yaml, handler_source)
+    assert result["valid"] is True, result
+
+
+@pytest.mark.unit
+def test_golden_exemplar_is_embedded_in_system_prompt() -> None:
+    # OMN-12816: the system prompt must carry the golden exemplar so the model
+    # sees the exact two-fenced-block format on the first pass.
+    assert _GOLDEN_EXEMPLAR in _DEFAULT_SYSTEM_PROMPT
+    assert "```yaml" in _GOLDEN_EXEMPLAR
+    assert "```python" in _GOLDEN_EXEMPLAR
+
+
+@pytest.mark.unit
+def test_golden_exemplar_itself_passes_validation() -> None:
+    # The exemplar we teach the model must be a VALID generation, or we would be
+    # demonstrating output that the validator rejects.
+    contract_yaml, handler_source = _extract_blocks(_GOLDEN_EXEMPLAR)
+    assert contract_yaml, "exemplar must contain a yaml block"
+    assert handler_source, "exemplar must contain a python block"
+    result = _validate_generation(contract_yaml, handler_source)
+    assert result["valid"] is True, result
 
 
 # ---------------------------------------------------------------------------
@@ -196,6 +261,44 @@ async def test_passes_on_valid_generation() -> None:
     assert result.attempt_count == 1
     assert result.correlation_id == "corr-valid-1"
     assert "node_stub_compute" in result.contract_yaml
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_golden_chain_thinking_model_response_passes_first_attempt() -> None:
+    # OMN-12816 golden chain: a realistic reasoning-model response — preamble +
+    # a DRAFT fenced block inside thinking + the final answer fenced block nested
+    # in a markdown list (uniform leading indent). The combined fix (last-block
+    # extraction + dedent) must recover a VALID contract on the FIRST attempt.
+    thinking_response = (
+        "Here's a thinking process:\n"
+        "1. Draft the contract.\n"
+        "```yaml\nname: draft_only\n```\n"  # a thinking draft — must be ignored
+        "2. Final version:\n"
+        "   ```yaml\n"
+        '   name: node_sha256_compute\n   contract_version: "1.0.0"\n'
+        "   node_type: compute\n"
+        "   input_model:\n     name: Sha256Input\n     module: m.models\n"
+        "   output_model:\n     name: Sha256Output\n     module: m.models\n"
+        "   ```\n"
+        "   ```python\n   def handle(input_data):\n"
+        '       return {"digest": input_data}\n   ```\n'
+    )
+    published: list[tuple[str, bytes]] = []
+    handler = _make_handler([thinking_response], published=published)
+
+    result = await handler.handle(
+        ModelNodeGenerationRequest(
+            task_description="Generate a SHA256 compute node",
+            correlation_id="corr-thinking-1",
+        )
+    )
+
+    assert result.contract_passed is True
+    assert result.attempt_count == 1
+    assert "node_sha256_compute" in result.contract_yaml
+    assert "draft_only" not in result.contract_yaml
+    assert result.handler_source.startswith("def handle(input_data):")
 
 
 @pytest.mark.unit
