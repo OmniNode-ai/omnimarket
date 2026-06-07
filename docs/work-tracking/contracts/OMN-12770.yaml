@@ -1,0 +1,48 @@
+# OMN-12770 contract file for omnimarket deploy-gate.
+# The canonical ticket contract lives in onex_change_control.
+# This file is the per-repo deploy-evidence carrier only.
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-12770"
+title: "Fix delegation inference effect handler route binding"
+summary: >
+  Bind node_llm_delegation_call_effect handler_routing entries to their
+  concrete topic-derived event_type aliases so the multi-topic payload_match
+  contract prepares dispatch routes for both delegation-execute and
+  delegation-inference-request. This unblocks the live delegation unit-test
+  generation chain that timed out after the inference request was routed to DLQ.
+is_seam_ticket: false
+interface_change: true
+interfaces_touched:
+  - "events"
+  - "topics"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-focused-route-binding-tests"
+    description: "Focused contract route-binding and delegation inference handler tests pass."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/unit/nodes/node_llm_delegation_call_effect/test_contract_route_binding.py tests/unit/nodes/node_llm_delegation_call_effect/test_handler_llm_delegation_call.py tests/unit/delegation/test_handler_inference_intent.py -q"
+  - id: "dod-negative-live-proof"
+    description: >
+      Pre-fix dev runtime proof captured the production blocker: the inference
+      request reached the effects lane but had no dispatcher and the delegate
+      adapter timed out waiting for a terminal event.
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "grep -q 'deb83458-68e3-4a04-af0b-18171f947162' docs/work-tracking/contracts/OMN-12770.yaml"
+  - id: "dod-deploy"
+    description: >
+      Runtime-impacting contract route binding is deploy-gated. After merge,
+      rebuild the omnimarket runtime image, redeploy dev/stability/prod lanes,
+      and rerun live useful delegation plus SEA proofs.
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "python - <<'PY'\nfrom pathlib import Path\nimport yaml\np = Path('docs/work-tracking/contracts/OMN-12770.yaml')\ndata = yaml.safe_load(p.read_text())\nassert data['ticket_id'] == 'OMN-12770'\nprint('deploy contract ok')\nPY"
+failure_correlation_id: "deb83458-68e3-4a04-af0b-18171f947162"
