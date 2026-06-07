@@ -77,7 +77,7 @@ projection_api:
   expose: true
   topic: "onex.snapshot.projection.registration.v1" # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
   table: "node_service_registry"
-  schema: "omnidash_analytics"
+  schema: "public"
   columns:
     - "service_name"
     - "service_type"
