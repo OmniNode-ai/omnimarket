@@ -18,18 +18,19 @@ the terminal event.
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Any, TypeAlias
+from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
 from pydantic import BaseModel
 
 from omnimarket.models.delegation.wire import (
-    ModelDelegationEventEnvelope as ModelDelegationEvent,
-)
-from omnimarket.models.delegation.wire import (
+    EnumQualityContractMode,
     ModelDelegationRequest,
     ModelDelegationResult,
     ModelQualityGateIntent,
+)
+from omnimarket.models.delegation.wire import (
+    ModelDelegationEventEnvelope as ModelDelegationEvent,
 )
 
 if TYPE_CHECKING:
@@ -37,32 +38,35 @@ if TYPE_CHECKING:
         HandlerDelegationWorkflow,
     )
 
-    DelegationIntentBridge: TypeAlias = Any
+    type DelegationIntentBridge = Any
 
-_SUPPORTED_TASK_TYPES = frozenset({"test", "document", "research"})
+_SUPPORTED_TASK_TYPES = frozenset(
+    {
+        "test",
+        "document",
+        "research",
+        "code_generation",
+        "refactor",
+        "reasoning",
+        "complex_reasoning",
+        "planning",
+        "review",
+        "summarization",
+        "agent_delegation",
+        "escalation",
+    }
+)
 
 
 def _coerce_task_type(task_type: str) -> str:
-    """Map extended task types to the ModelDelegationRequest-supported subset.
+    """Pass through supported task types and normalize unknown values.
 
-    ModelDelegationRequest accepts only the three original task classes.
-    The delegate-skill node accepts a wider set; unknown types fall back to
-    "research" which has the broadest quality gate criteria.
+    Unknown types fall back to "research", which has the broadest quality gate
+    criteria for legacy callers.
     """
     if task_type in _SUPPORTED_TASK_TYPES:
         return task_type
-    _task_type_map = {
-        "code_generation": "research",
-        "refactor": "research",
-        "reasoning": "research",
-        "complex_reasoning": "research",
-        "planning": "research",
-        "review": "research",
-        "summarization": "document",
-        "agent_delegation": "research",
-        "escalation": "research",
-    }
-    return _task_type_map.get(task_type, "research")
+    return "research"
 
 
 def _extract_delegation_result(
@@ -127,7 +131,7 @@ class DirectBridgeDelegationDispatchPort:
         source_file_path: str | None,
         source_session_id: str | None,
         wait: bool,
-        quality_contract_mode: str,
+        quality_contract_mode: str | EnumQualityContractMode,
         acceptance_criteria: tuple[str, ...],
     ) -> dict[str, object]:
         coerced_task_type = _coerce_task_type(task_type)
@@ -146,11 +150,10 @@ class DirectBridgeDelegationDispatchPort:
         if not wait:
             self._workflow.handle_delegation_request(request)
             return {
-                "status": "completed",
-                "content": "",
+                "status": "submitted",
+                "content": None,
                 "delegated_to": "bridge",
-                "model_name": "",
-                "quality_gate_passed": False,
+                "model_name": None,
             }
 
         routing_intents = self._workflow.handle_delegation_request(request)
@@ -181,7 +184,6 @@ class DirectBridgeDelegationDispatchPort:
 
                     if next_intents:
                         for gate_intent in next_intents:
-                            assert isinstance(gate_intent, ModelQualityGateIntent)
                             gate_result = await self._bridge.handle_quality_gate_intent(
                                 gate_intent
                             )
@@ -201,7 +203,10 @@ class DirectBridgeDelegationDispatchPort:
 
         return {
             "status": "failed",
-            "error_message": "no routing intents produced for delegation request",
+            "error_message": (
+                "routing intents were processed for the delegation request but "
+                "handle_routing_decision produced no completed inference path"
+            ),
         }
 
 

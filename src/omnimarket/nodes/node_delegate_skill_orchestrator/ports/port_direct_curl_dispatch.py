@@ -363,21 +363,6 @@ class DirectCurlDelegationDispatchPort:
             session_id=source_session_id,
         )
 
-        _persist_evidence(
-            db_path=self._evidence_db_path,
-            correlation_id=str(correlation_id),
-            task_type=task_type,
-            delegated_to=backend["endpoint_url"],
-            model_name=result["model_used"],
-            quality_gate_passed=True,
-            delegation_latency_ms=result["latency_ms"],
-            tokens_input=result["prompt_tokens"],
-            tokens_output=result["completion_tokens"],
-            prompt_text=prompt,
-            response_text=result["content"],
-            session_id=source_session_id,
-        )
-
         return {
             "status": "completed",
             "content": result["content"],
