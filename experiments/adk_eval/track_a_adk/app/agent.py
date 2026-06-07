@@ -10,6 +10,15 @@ AI Studio auth path (GEMINI_API_KEY / GOOGLE_API_KEY). Single tool
 
 Output contract: agent is prompted to return a JSON payload parseable as
 `ModelTypeDebtReport` (the harness validates before writing).
+
+SCOPE NOTE (OMN-12743): Track A lives in experiments/adk_eval/track_a_adk/
+and runs in a dedicated venv isolated from the omnimarket demo bus. It is
+classified as EXPERIMENT-ONLY — not on the live demo path. The model is
+resolved from the TRACK_A_GEMINI_MODEL environment variable so the harness
+operator can override without editing source. The env-var default
+"gemini-flash-latest" is experiment-local and intentionally not routed
+through contract/overlay config (Track A predates the ONEX contract layer
+and runs outside the omnimarket node runtime).
 """
 
 import os
@@ -24,6 +33,13 @@ from google.adk.agents import Agent
 from google.adk.apps import App
 from google.adk.models import Gemini
 from google.genai import types
+
+# Model resolved from env var; "gemini-flash-latest" is the experiment default.
+# Override via TRACK_A_GEMINI_MODEL env var before invoking the harness.
+# experiment-model-literal-ok: OMN-12743 — Track A is experiment-only (not demo-path)
+TRACK_A_GEMINI_MODEL: str = os.environ.get(
+    "TRACK_A_GEMINI_MODEL", "gemini-flash-latest"
+)
 
 
 def run_mypy_and_parse(repo_path: str) -> list[dict[str, Any]]:
@@ -86,7 +102,7 @@ estimated_cost_usd with placeholders; the harness overwrites them.
 root_agent = Agent(
     name="type_debt_scout_adk",
     model=Gemini(
-        model="gemini-flash-latest",
+        model=TRACK_A_GEMINI_MODEL,
         retry_options=types.HttpRetryOptions(attempts=3),
     ),
     instruction=_SYSTEM_PROMPT,

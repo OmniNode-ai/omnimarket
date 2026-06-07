@@ -173,7 +173,7 @@ async def main() -> int:
             "input_tokens_per_run": [r["input_tokens"] for r in per_run],
             "output_tokens_per_run": [r["output_tokens"] for r in per_run],
             "llm_calls_per_run": [r["llm_calls"] for r in per_run],
-            "model": "gemini-flash-latest",
+            "model": TRACK_A_GEMINI_MODEL,
             "auth_path": "ai_studio",
             "estimated_cost_usd_per_run_median": (
                 statistics.median(
