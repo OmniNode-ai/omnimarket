@@ -173,6 +173,10 @@ class TestHandlerBehavior:
 
     @pytest.mark.asyncio
     async def test_live_provider_missing_credentials_preflights(self) -> None:
+        # test-literal-ok: OMN-12743 — these are test-fixture values exercising
+        # the preflight error path, not runtime defaults. The handler accepts
+        # arbitrary caller-supplied model_id / endpoint_url from the request
+        # model; no defaults are hardcoded in production handler code.
         from omnimarket.nodes.node_demo_fanout_orchestrator.handlers.handler_fanout import (
             HandlerDemoFanoutOrchestrator,
         )

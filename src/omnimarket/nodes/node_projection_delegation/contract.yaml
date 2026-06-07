@@ -138,6 +138,41 @@ projection_api:
       order_by: created_at DESC
       freshness_column: created_at
       limit: 500
+    # OMN-12748: per-correlation detail surface. Read by the dashboard via
+    # /projection/<topic>?correlation_id=<id> to render the actual delegated
+    # work — prompt_text + response_text — for a selected run. Dedicated detail
+    # topic so the high-frequency decisions.v1 list poll stays lean.
+    - topic: onex.snapshot.projection.delegation.correlation-trace.v1 # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
+      table: delegation_events
+      schema: public
+      columns:
+        - id
+        - correlation_id
+        - session_id
+        - task_type
+        - delegated_to
+        - delegated_by
+        - model_name
+        - quality_gate_passed
+        - quality_gate_detail
+        - quality_gates_checked
+        - quality_gates_failed
+        - latency_ms
+        - delegation_latency_ms
+        - tokens_input
+        - tokens_output
+        - tokens_to_compliance
+        - compliance_attempts
+        - cost_usd
+        - cost_savings_usd
+        - pricing_manifest_version
+        - prompt_text
+        - response_text
+        - timestamp
+        - created_at
+      order_by: created_at ASC
+      freshness_column: created_at
+      limit: 100
     - topic: onex.snapshot.projection.delegation.summary.v1 # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
       table: projection_delegation_summary
       schema: public

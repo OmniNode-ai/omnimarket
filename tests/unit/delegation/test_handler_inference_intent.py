@@ -347,6 +347,97 @@ class TestHandlerInferenceIntent:
         assert messages[0]["content"] == "Be precise."
         assert messages[1]["role"] == "user"
 
+    def test_qwen_test_prompt_adds_reasoning_suppression_to_provider_payload(
+        self,
+    ) -> None:
+        handler = HandlerInferenceIntent()
+        original_prompt = "Write pytest unit tests for normalize_status."
+        intent = _make_intent(
+            model="Qwen3-Coder-30B",
+            system_prompt="You are a test generation assistant.",
+            prompt=original_prompt,
+        )
+
+        captured_payload: list[dict[str, object]] = []
+
+        mock_response = MagicMock()
+        mock_response.json.return_value = {
+            "id": "chatcmpl-qwen-no-think",
+            "choices": [
+                {
+                    "finish_reason": "stop",
+                    "message": {
+                        "content": (
+                            "import pytest\n\n"
+                            "@pytest.mark.unit\n"
+                            "def test_normalize_status():\n"
+                            "    assert normalize_status('OK') == 'ok'\n"
+                        )
+                    },
+                }
+            ],
+            "usage": {"prompt_tokens": 14, "completion_tokens": 31, "total_tokens": 45},
+        }
+        mock_response.raise_for_status.return_value = None
+
+        with patch("httpx.Client") as mock_client_cls:
+            mock_client = MagicMock()
+            mock_client.__enter__ = MagicMock(return_value=mock_client)
+            mock_client.__exit__ = MagicMock(return_value=False)
+
+            def _capture_post(url: str, **kwargs: object) -> MagicMock:
+                captured_payload.append(kwargs.get("json", {}))  # type: ignore[arg-type]
+                return mock_response
+
+            mock_client.post.side_effect = _capture_post
+            mock_client_cls.return_value = mock_client
+
+            result = handler.handle(intent)
+
+        assert "/no_think" not in intent.prompt
+        assert result.error_message == ""
+        assert "def test_normalize_status" in result.content
+        assert result.prompt_tokens == 14
+        messages = captured_payload[0]["messages"]
+        assert messages[1]["content"] == f"/no_think\n{original_prompt}"
+
+    def test_provider_request_options_are_merged_into_provider_payload(self) -> None:
+        handler = HandlerInferenceIntent()
+        intent_kwargs: dict[str, object] = {
+            "model": "Qwen3.6-35B-A3B",
+            "system_prompt": "You are a production-quality code generation assistant.",
+        }
+        if "provider_request_options" in getattr(
+            ModelInferenceIntent, "model_fields", {}
+        ):
+            intent_kwargs["provider_request_options"] = {
+                "chat_template_kwargs": {"enable_thinking": False}
+            }
+        intent = _make_intent(**intent_kwargs)
+
+        captured_payload: list[dict[str, object]] = []
+
+        mock_response = MagicMock()
+        mock_response.json.return_value = _SUCCESSFUL_HTTPX_RESPONSE
+        mock_response.raise_for_status.return_value = None
+
+        with patch("httpx.Client") as mock_client_cls:
+            mock_client = MagicMock()
+            mock_client.__enter__ = MagicMock(return_value=mock_client)
+            mock_client.__exit__ = MagicMock(return_value=False)
+
+            def _capture_post(url: str, **kwargs: object) -> MagicMock:
+                captured_payload.append(kwargs.get("json", {}))  # type: ignore[arg-type]
+                return mock_response
+
+            mock_client.post.side_effect = _capture_post
+            mock_client_cls.return_value = mock_client
+
+            result = handler.handle(intent)
+
+        assert result.error_message == ""
+        assert captured_payload[0]["chat_template_kwargs"] == {"enable_thinking": False}
+
     def test_api_key_ref_resolved_at_effect_boundary(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
