@@ -591,3 +591,49 @@ def test_production_contract_declares_p2_outputs() -> None:
     }
     missing = required_outputs - set(outputs.keys())
     assert not missing, f"contract.yaml outputs missing P2-1 fields: {missing}"
+
+
+# ---------------------------------------------------------------------------
+# EnumUsageSource — usage_source is a typed enum, not a bare string
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+def test_benchmark_usage_source_is_enum() -> None:
+    """ModelGenerationBenchmark.usage_source must be EnumUsageSource, not a bare str."""
+    from omnimarket.enums.enum_usage_source import EnumUsageSource
+
+    bench = ModelGenerationBenchmark(
+        correlation_id="corr-usage-1",
+        task_description="stub",
+    )
+    assert isinstance(bench.usage_source, EnumUsageSource)
+    assert bench.usage_source == EnumUsageSource.ESTIMATED
+
+
+@pytest.mark.unit
+def test_benchmark_usage_source_rejects_unknown_string() -> None:
+    """ModelGenerationBenchmark must reject an unrecognised usage_source string."""
+    with pytest.raises(ValidationError):
+        ModelGenerationBenchmark(
+            correlation_id="corr-usage-2",
+            task_description="stub",
+            usage_source="totally_unknown_value",  # type: ignore[arg-type]
+        )
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_handler_emits_enum_usage_source() -> None:
+    """Emitted benchmark must carry EnumUsageSource.ESTIMATED, not a bare str."""
+    from omnimarket.enums.enum_usage_source import EnumUsageSource
+
+    handler = _make_handler([_VALID_LLM_RESPONSE])
+    result = await handler.handle(
+        ModelNodeGenerationRequest(
+            task_description="Build a stub node",
+            correlation_id="corr-enum-usage-1",
+        )
+    )
+    assert isinstance(result.usage_source, EnumUsageSource)
+    assert result.usage_source == EnumUsageSource.ESTIMATED

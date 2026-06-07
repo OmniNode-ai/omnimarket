@@ -33,6 +33,7 @@ from typing import Any
 
 import yaml
 
+from omnimarket.enums.enum_usage_source import EnumUsageSource
 from omnimarket.nodes.node_generation_consumer.models.model_generation import (
     ModelGenerationAttempt,
     ModelGenerationBenchmark,
@@ -468,7 +469,7 @@ class HandlerGenerationConsumer:
             provider=provider,
             model_id=model_id,
             endpoint_class=endpoint_class,
-            usage_source="estimated",
+            usage_source=EnumUsageSource.ESTIMATED,
             cost_basis="gemini_flash" if provider != "local" else "local_free",
             attempts=attempts,
             attempt_count=len(attempts),

@@ -12,6 +12,17 @@ from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from omnimarket.enums.enum_usage_source import EnumUsageSource
+
+__all__ = [
+    "EnumUsageSource",
+    "ModelContextArtifact",
+    "ModelGenerationAttempt",
+    "ModelGenerationBenchmark",
+    "ModelNodeDeploy",
+    "ModelNodeGenerationRequest",
+]
+
 
 class ModelContextArtifact(BaseModel):
     """A single context artifact injected into the generation prompt.
@@ -116,7 +127,10 @@ class ModelGenerationBenchmark(BaseModel):
     provider: str = Field(default="", description="LLM provider used")
     model_id: str = Field(default="", description="Model ID used for generation")
     endpoint_class: str = Field(default="", description="Endpoint class (local/cloud)")
-    usage_source: str = Field(default="estimated", description="Token usage source")
+    usage_source: EnumUsageSource = Field(
+        default=EnumUsageSource.ESTIMATED,
+        description="Token usage source — typed enum, not a bare string",
+    )
     cost_basis: str = Field(default="", description="Cost basis identifier")
     attempts: list[ModelGenerationAttempt] = Field(
         default_factory=list,
