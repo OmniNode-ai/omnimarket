@@ -253,7 +253,8 @@ class TestDispatcherDelegationWorkflowBusPublish:
         assert result.status == EnumDispatchStatus.SUCCESS
         assert len(result.output_events) == 1
         assert type(result.output_events[0]).__name__ == "ModelInferenceIntent"
-        assert result.output_events[0].prompt == request.prompt  # type: ignore[attr-defined]
+        assert result.output_events[0].prompt == f"/no_think\n{request.prompt}"  # type: ignore[attr-defined]
+        assert "/no_think" not in request.prompt
 
     async def test_handler_accepts_materialized_event_envelope_dict(self) -> None:
         handler = HandlerDelegationWorkflow(workflows={})
@@ -298,7 +299,8 @@ class TestDispatcherDelegationWorkflowBusPublish:
         assert len(events) == 1
         assert type(events[0]).__name__ == "ModelInferenceIntent"
         assert events[0].correlation_id == cid  # type: ignore[attr-defined]
-        assert events[0].prompt == request.prompt  # type: ignore[attr-defined]
+        assert events[0].prompt == f"/no_think\n{request.prompt}"  # type: ignore[attr-defined]
+        assert "/no_think" not in request.prompt
 
     async def test_runtime_handle_async_returns_publishable_output(self) -> None:
         handler = HandlerDelegationWorkflow(workflows={})
@@ -419,7 +421,8 @@ class TestDispatcherRoutingDecisionBusPublish:
             published_envelope.event_type
             == "omnibase-infra.delegation-inference-request"
         )
-        assert published_envelope.payload.prompt == request.prompt
+        assert published_envelope.payload.prompt == f"/no_think\n{request.prompt}"
+        assert "/no_think" not in request.prompt
 
 
 @pytest.mark.unit

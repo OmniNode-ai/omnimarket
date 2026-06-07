@@ -13,6 +13,8 @@ delegation route stays the single owner of delegation success/failure.
 
 from __future__ import annotations
 
+import sqlite3
+from pathlib import Path
 from uuid import UUID, uuid4
 
 import pytest
@@ -22,6 +24,12 @@ from omnimarket.models.delegation.wire.model_delegate_skill_request import (
 )
 from omnimarket.nodes.node_delegate_skill_orchestrator.handlers.handler_delegate_skill import (
     HandlerDelegateSkill,
+)
+from omnimarket.nodes.node_delegate_skill_orchestrator.ports import (
+    port_direct_curl_dispatch,
+)
+from omnimarket.nodes.node_delegate_skill_orchestrator.ports.port_direct_curl_dispatch import (
+    DirectCurlDelegationDispatchPort,
 )
 
 
@@ -116,3 +124,93 @@ class TestDelegateSkillGoldenChain:
         assert response.status == "failed"
         assert response.correlation_id == correlation_id
         assert "backend unavailable" in response.error_message
+
+    async def test_unit_test_prompt_suppresses_reasoning_and_persists_evidence(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        captured_prompts: list[str] = []
+        captured_provider_request_options: list[dict[str, object] | None] = []
+
+        def fake_call_via_curl(
+            *,
+            endpoint_url: str,
+            model: str,
+            system_prompt: str,
+            prompt: str,
+            max_tokens: int,
+            provider_request_options: dict[str, object] | None = None,
+        ) -> dict[str, object]:
+            captured_prompts.append(prompt)
+            captured_provider_request_options.append(provider_request_options)
+            return {
+                "content": (
+                    "import pytest\n\n"
+                    "@pytest.mark.unit\n"
+                    "def test_normalize_status_ok():\n"
+                    "    assert normalize_status('OK') == 'ok'\n"
+                ),
+                "model_used": model,
+                "latency_ms": 37,
+                "prompt_tokens": 18,
+                "completion_tokens": 44,
+                "total_tokens": 62,
+            }
+
+        monkeypatch.setattr(
+            port_direct_curl_dispatch,
+            "_call_via_curl",
+            fake_call_via_curl,
+        )
+        db_path = tmp_path / "delegation.sqlite"
+        port = DirectCurlDelegationDispatchPort(evidence_db_path=db_path)
+        port._backends = [
+            {
+                "backend_id": "local-coder",
+                "endpoint_url": "http://127.0.0.1:8000",
+                "model_name": "Qwen3-Coder-30B",
+                "tier": "local",
+                "capabilities": ["test", "code_generation"],
+            }
+        ]
+        handler = HandlerDelegateSkill(dispatch_port=port)
+        correlation_id = uuid4()
+        original_prompt = "Write pytest unit tests for normalize_status."
+
+        response = await handler.handle(
+            ModelDelegateSkillRequest(
+                prompt=original_prompt,
+                task_type="test",
+                source="codex",
+                correlation_id=correlation_id,
+            )
+        )
+
+        assert response.status == "completed"
+        assert response.prompt_text == original_prompt
+        assert "/no_think" not in response.prompt_text
+        assert "def test_normalize_status_ok" in response.response
+        assert response.metrics.input_tokens == 18
+        assert response.metrics.output_tokens == 44
+        assert captured_prompts == [f"/no_think\n{original_prompt}"]
+        assert captured_provider_request_options == [
+            {"chat_template_kwargs": {"enable_thinking": False}}
+        ]
+
+        conn = sqlite3.connect(str(db_path))
+        try:
+            conn.row_factory = sqlite3.Row
+            row = conn.execute(
+                "SELECT * FROM delegation_events WHERE correlation_id = ?",
+                (str(correlation_id),),
+            ).fetchone()
+        finally:
+            conn.close()
+
+        assert row is not None
+        assert row["prompt_text"] == original_prompt
+        assert "/no_think" not in row["prompt_text"]
+        assert "def test_normalize_status_ok" in row["response_text"]
+        assert row["tokens_input"] == 18
+        assert row["tokens_output"] == 44
