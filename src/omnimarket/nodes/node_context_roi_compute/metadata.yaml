@@ -1,6 +1,6 @@
 name: node_context_roi_compute
 version: "1.0.0"
-description: "N-arm context ROI COMPUTE scorer: per-subset attempt/cost deltas vs off arm (OMN-12796)"
+description: "N-arm factor-matrix scorer for the context-ROI experiment (OMN-12797 P2-2/P2-3)"
 omnibase_core_compat: ">=0.39.0,<1.0.0"
 entry_points:
   onex.nodes:
@@ -17,7 +17,7 @@ dependencies:
   - "omnibase_core>=0.39.0"
 authors: ["OmniNode Platform Team"]
 license: "MIT"
-tags: ["experiment", "context-roi", "n-arm", "compute", "evidence", "replay-proven", "cost-delta"]
+tags: ["experiment", "context-roi", "factor-matrix", "n-arm", "compute", "replay-proven"]
 pack: "demo"
 display_name: "Context ROI Compute"
 node_role: "compute"

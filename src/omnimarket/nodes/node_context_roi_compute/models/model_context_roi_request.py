@@ -1,108 +1,131 @@
 # SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""Request models for node_context_roi_compute (OMN-12796).
+"""Request model for node_context_roi_compute (OMN-12797 P2-2/P2-3).
 
-N-arm scorer: accepts frozen rows captured by the runner (one per
-task x factor_subset x trial) plus a pricing table, then aggregates
-per-subset statistics and computes deltas vs the `off` arm.
+The scorer accepts a task manifest and a factor matrix and validates:
+  - all required factors are declared in each arm
+  - missing required factors fail the row (not warn)
+  - missing optional factors are warned
+  - full_guidance_negative_control is never the preferred arm
 
-fixture_mode=True: caller-supplied rows with pre-captured token counts
-    → proof_class=REPLAY_PROVEN.
-fixture_mode=False: reserved for runtime-observed scoring (not implemented;
-    gated on coordinated lane deploy per OMN-12796/plan §P2-5).
+In fixture mode all token counts are pre-supplied; the scorer is offline
+and produces REPLAY_PROVEN bundles. In runtime-observed mode token counts
+come from live runner rows (gated on coordinated deploy per plan §Parallelization).
 """
 
 from __future__ import annotations
 
+from omnibase_core.enums.enum_context_factor import EnumContextFactor
 from pydantic import BaseModel, ConfigDict, Field
 
+from omnimarket.nodes.node_context_roi_compute.models.model_factor_arm import (
+    EnumArmLabel,
+)
+from omnimarket.nodes.node_context_roi_compute.models.model_task_manifest import (
+    EnumFailureStage,
+)
 
-class ModelContextRoiRow(BaseModel):
-    """One captured run record: one task x factor_subset x trial.
 
-    Captured by the runner EFFECT; scored offline by this COMPUTE node.
-    estimated_cost_usd is optional: if None the scorer derives cost from
-    prompt_tokens/completion_tokens + pricing table.
+class ModelArmRunRow(BaseModel):
+    """One captured row from a single (task x arm x trial) run.
+
+    These rows are produced by the runner EFFECT and fed to this scorer.
+    In fixture mode they are pre-constructed constants (replay-proven).
+    In runtime-observed mode they are captured from live events.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    run_id: str = Field(description="Stable run identifier matching the request run_id")
-    task_id: str = Field(description="Stable task identifier, e.g. 'task_001'")
-    factor_subset: str = Field(
-        description="Arm label, e.g. 'off', 'golden_only', 'golden_exemplar'"
+    task_id: str = Field(description="Must match a task_id in the manifest")
+    arm_label: EnumArmLabel = Field(description="Arm that produced this row")
+    trial_index: int = Field(
+        ge=0, description="0-based trial index within (task x arm)"
     )
-    trial_index: int = Field(ge=0, description="0-based trial index within this cell")
-
-    # Attempt-reduction signals (HEADLINE metrics per plan §P2-5)
-    attempt_count: int = Field(ge=1, description="Number of generation attempts taken")
+    run_id: str = Field(
+        description="Unique identifier minted by the runner for this run"
+    )
+    # Success signals
     first_pass_success: bool = Field(
-        description="Contract valid on attempt 1 (attempts[0].contract_passed)"
+        description="Contract valid on generation attempt 1"
     )
-    final_success: bool = Field(
-        description="Contract valid within max_attempts (contract_passed)"
+    final_success: bool = Field(description="Contract valid within max_attempts")
+    attempt_count: int = Field(ge=1, description="Number of generation attempts made")
+    failure_stage: EnumFailureStage = Field(
+        default=EnumFailureStage.NONE,
+        description=(
+            "Stage at which this row failed. 'none' = ran to completion. "
+            "'budget_fail' on full_guidance_negative_control is expected and "
+            "scored separately from generation failures."
+        ),
     )
-
-    # Token counts (pre-captured; used to derive cost when estimated_cost_usd is None)
-    prompt_tokens: int = Field(ge=0, description="Prompt token count for this run")
-    completion_tokens: int = Field(
-        ge=0, description="Completion token count for this run"
+    # Token and cost signals
+    prompt_tokens: int | None = Field(
+        default=None, ge=0, description="Prompt tokens used (None if not captured)"
     )
-
-    # Optional pre-computed cost; if present, scorer uses it directly
+    completion_tokens: int | None = Field(
+        default=None, ge=0, description="Completion tokens used (None if not captured)"
+    )
     estimated_cost_usd: float | None = Field(
-        default=None,
-        description="Pre-computed cost in USD, or None to derive from token counts",
+        default=None, ge=0.0, description="Estimated cost in USD (None if not captured)"
     )
-
-
-class ModelContextRoiPricing(BaseModel):
-    """Per-model pricing in USD per 1k tokens."""
-
-    model_config = ConfigDict(frozen=True, extra="forbid")
-
-    prompt_cost_per_1k: float = Field(
-        ge=0.0, description="Cost per 1k prompt tokens in USD"
+    # Identity
+    model_id: str | None = Field(
+        default=None, description="Model identifier used for this run"
     )
-    completion_cost_per_1k: float = Field(
-        ge=0.0, description="Cost per 1k completion tokens in USD"
+    provider: str | None = Field(
+        default=None, description="Provider identifier (e.g. 'local', 'anthropic')"
+    )
+    endpoint_ref: str | None = Field(
+        default=None, description="Routing endpoint reference"
+    )
+    # Context provenance
+    context_pack_hash: str | None = Field(
+        default=None, description="Hash of the assembled context pack for this arm"
+    )
+    factor_subset_hash: str | None = Field(
+        default=None, description="Hash of the factor subset for replay audit"
+    )
+    # Reproducibility fields
+    run_order: int | None = Field(
+        default=None, ge=0, description="Arm execution order within the task run"
+    )
+    factors_present: tuple[EnumContextFactor, ...] = Field(
+        default_factory=tuple,
+        description="Factors that were actually present in the resolved artifacts",
+    )
+    factors_warned_absent: tuple[EnumContextFactor, ...] = Field(
+        default_factory=tuple,
+        description="Optional factors that were absent (warnings were emitted)",
     )
 
 
 class ModelContextRoiRequest(BaseModel):
-    """Input to the N-arm context ROI COMPUTE scorer.
+    """Input to the context-ROI scorer compute node.
 
-    rows: all captured run records across all factor subsets.
-    off_arm_label: the label used for the baseline arm (typically 'off').
-    fixture_mode=True: all rows carry pre-captured token counts;
-        proof_class will be REPLAY_PROVEN.
-    fixture_mode=False: reserved for runtime-observed mode (not implemented).
+    fixture_mode=True: all rows are pre-captured (replay-proven offline scoring).
+    fixture_mode=False: rows from live runner (runtime-observed; gated on deploy).
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    run_id: str = Field(description="Stable run identifier, e.g. 'omn-12796-run-001'")
-    model_id: str = Field(description="Model identifier used across all arms")
-    rows: tuple[ModelContextRoiRow, ...] = Field(
-        min_length=1,
-        description="All captured run records; must include at least one off-arm row",
+    run_id: str = Field(description="Stable run identifier for this scoring pass")
+    manifest_id: str = Field(
+        description="Must match the manifest used to produce the rows"
     )
-    pricing: ModelContextRoiPricing
-    off_arm_label: str = Field(
-        default="off",
-        description="Label for the baseline arm against which deltas are computed",
+    rows: tuple[ModelArmRunRow, ...] = Field(
+        min_length=1,
+        description="All (task x arm x trial) rows to score",
     )
     fixture_mode: bool = Field(
         default=True,
         description=(
-            "True = all token counts are caller-supplied (replay-proven). "
-            "False = runtime-observed mode (not implemented; gated on deploy)."
+            "True = rows are pre-captured constants (replay-proven). "
+            "False = rows from live runner (runtime-observed-only, gated on deploy)."
         ),
     )
 
 
 __all__ = [
-    "ModelContextRoiPricing",
+    "ModelArmRunRow",
     "ModelContextRoiRequest",
-    "ModelContextRoiRow",
 ]
