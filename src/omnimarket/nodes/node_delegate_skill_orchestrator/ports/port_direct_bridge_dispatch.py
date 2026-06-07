@@ -18,7 +18,7 @@ the terminal event.
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, TypeAlias
 from uuid import UUID
 
 from pydantic import BaseModel
@@ -33,12 +33,11 @@ from omnimarket.models.delegation.wire import (
 )
 
 if TYPE_CHECKING:
-    from omnimarket.nodes.node_delegation_orchestrator.delegation_intent_bridge import (
-        DelegationIntentBridge,
-    )
     from omnimarket.nodes.node_delegation_orchestrator.handlers.handler_delegation_workflow import (
         HandlerDelegationWorkflow,
     )
+
+    DelegationIntentBridge: TypeAlias = Any
 
 _SUPPORTED_TASK_TYPES = frozenset({"test", "document", "research"})
 
