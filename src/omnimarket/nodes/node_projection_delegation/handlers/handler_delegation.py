@@ -860,17 +860,26 @@ class DelegationProjectionRunner(BaseProjectionRunner):
             or "0"
         )
         timestamp = safe_parse_date(data.get("timestamp") or data.get("emitted_at"))
+        # OMN-12780 (Wave 1C): persist the full generated output — no truncation.
+        # Empty string is the correct sentinel for a failed/incomplete generation;
+        # NULL is not used so the columns are always NOT NULL safe.
+        contract_yaml = str(data.get("contract_yaml") or data.get("contractYaml") or "")
+        handler_source = str(
+            data.get("handler_source") or data.get("handlerSource") or ""
+        )
 
         await self.db.execute(
             f"""
             INSERT INTO {self._table_generation} (
               correlation_id, task_description, provider, model_id,
               endpoint_class, attempt_count, total_latency_e2e_ms,
-              contract_passed, cost_inference_usd, timestamp
+              contract_passed, cost_inference_usd, timestamp,
+              contract_yaml, handler_source
             ) VALUES (
               $1, $2, $3, $4,
               $5, $6, $7,
-              $8, $9, $10
+              $8, $9, $10,
+              $11, $12
             )
             ON CONFLICT (correlation_id) DO NOTHING
             """,
@@ -884,6 +893,8 @@ class DelegationProjectionRunner(BaseProjectionRunner):
             contract_passed,
             cost_inference_usd,
             timestamp,
+            contract_yaml,
+            handler_source,
         )
         return True
 

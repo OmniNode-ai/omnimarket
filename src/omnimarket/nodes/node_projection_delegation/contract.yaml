@@ -51,7 +51,7 @@ db_io:
       database: omnidash_analytics
       role: shadow_comparisons
     - name: generation_events
-      migration: "0008_generation_events.sql"
+      migration: "0012_generation_output_columns.sql"
       access: write
       database: omnidash_analytics
       role: generation_events
@@ -257,6 +257,31 @@ projection_api:
         - by_model
       freshness_column: latest_projection_updated_at
       limit: 1
+    # OMN-12780 (Wave 1C): expose the full generated output via projection-API.
+    # Projection-API is the ONLY valid read path — no raw DB reads, no express reader.
+    # contract_yaml + handler_source are the full generated artifacts, never truncated.
+    # SHA256 verification: encode(sha256(contract_yaml::bytea), 'hex') at query time.
+    - topic: onex.evt.omnimarket.node-generation-completed.v1
+      table: generation_events
+      schema: public
+      columns:
+        - id
+        - correlation_id
+        - task_description
+        - provider
+        - model_id
+        - endpoint_class
+        - attempt_count
+        - total_latency_e2e_ms
+        - contract_passed
+        - cost_inference_usd
+        - contract_yaml
+        - handler_source
+        - timestamp
+        - created_at
+      order_by: created_at DESC
+      freshness_column: created_at
+      limit: 500
 
 metadata:
   transport_type: kafka
