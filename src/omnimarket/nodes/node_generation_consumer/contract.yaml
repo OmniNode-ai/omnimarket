@@ -115,6 +115,7 @@ metadata:
   description: "Generation consumer node — generates ONEX nodes from natural language, validates, emits benchmark"
   author: "OmniNode Platform Team"
   created: "2026-05-16"
+  demo_path: true  # OMN-12777: demo-path topic coherence gate scope marker
   tags:
     - "orchestrator"
     - "generation"
