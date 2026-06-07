@@ -1,0 +1,111 @@
+---
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Context ROI Compute (OMN-12796)
+#
+# N-arm COMPUTE scorer: given frozen run rows (one per task × factor_subset × trial),
+# aggregates per-subset statistics and computes deltas vs the `off` arm.
+# Modeled directly on node_on_vs_off_experiment_compute (OMN-12661).
+#
+# HEADLINE metrics: first_pass_rate + cost_per_success (NOT mean_attempts).
+# Pure, idempotent, no I/O. Fixture mode = replay-proven.
+name: node_context_roi_compute
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: compute
+node_version: {major: 1, minor: 0, patch: 0}
+node_not_implemented: false
+
+description: >
+  N-arm context ROI COMPUTE scorer (OMN-12796). Accepts frozen run rows
+  (one per task × factor_subset × trial), groups by factor_subset, aggregates
+  mean/median attempts, first-pass rate, final-pass rate, prompt/completion
+  token deltas, cost delta and cost-per-success vs the `off` arm, with variance.
+  Pure, deterministic, no LLM calls in fixture mode. Modeled on
+  node_on_vs_off_experiment_compute (OMN-12661).
+
+handler:
+  module: omnimarket.nodes.node_context_roi_compute.handlers.handler_context_roi_compute
+  class: HandlerContextRoiCompute
+  input_model: omnimarket.nodes.node_context_roi_compute.models.model_context_roi_request.ModelContextRoiRequest
+  output_model: omnimarket.nodes.node_context_roi_compute.models.model_context_roi_result.ModelContextRoiResult
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: compute
+      handler:
+        name: HandlerContextRoiCompute
+        module: omnimarket.nodes.node_context_roi_compute.handlers.handler_context_roi_compute
+
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 5000
+
+inputs:
+  run_id:
+    type: str
+    required: true
+    description: "Stable run identifier, e.g. 'omn-12796-run-001'"
+  model_id:
+    type: str
+    required: true
+    description: "Model identifier used across all arms"
+  rows:
+    type: array
+    required: true
+    description: "All captured run records across factor subsets; must include at least one off-arm row"
+  pricing:
+    type: ModelContextRoiPricing
+    required: true
+    description: "Per-1k token pricing for prompt and completion tokens"
+  off_arm_label:
+    type: str
+    required: false
+    default: "off"
+    description: "Label of the baseline arm against which deltas are computed"
+  fixture_mode:
+    type: bool
+    required: false
+    default: true
+    description: "True = caller-supplied token counts (replay-proven); False = live inference required"
+
+outputs:
+  status:
+    type: str
+    enum: [ok, failed]
+  run_id:
+    type: str
+  model_id:
+    type: str
+  proof_class:
+    type: str
+    enum: [replay-proven, runtime-observed-only]
+  subset_summaries:
+    type: array
+    nullable: true
+    description: "Per-arm aggregates with deltas vs off arm; None on failure"
+  failure_class:
+    type: str
+    nullable: true
+  errors:
+    type: array
+
+terminal_event: onex.evt.omnimarket.context-roi-score-completed.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.context-roi-score-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.context-roi-score-completed.v1
+    - onex.evt.omnimarket.context-roi-score-failed.v1
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.context-roi-score-completed.v1
+  - onex.evt.omnimarket.context-roi-score-failed.v1
+
+metadata:
+  transport_type: kafka
+  implementation_wave: 13
+  related_tickets: ["OMN-12796", "OMN-12661", "OMN-11674", "OMN-12792"]
