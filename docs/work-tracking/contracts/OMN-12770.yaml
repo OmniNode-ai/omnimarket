@@ -44,5 +44,5 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "command"
-        check_value: "python - <<'PY'\nfrom pathlib import Path\nimport yaml\np = Path('docs/work-tracking/contracts/OMN-12770.yaml')\ndata = yaml.safe_load(p.read_text())\nassert data['ticket_id'] == 'OMN-12770'\nprint('contract ok')\nPY"
+        check_value: "python - <<'PY'\nfrom pathlib import Path\nimport yaml\np = Path('docs/work-tracking/contracts/OMN-12770.yaml')\ndata = yaml.safe_load(p.read_text())\nassert data['ticket_id'] == 'OMN-12770'\nprint('deploy contract ok')\nPY"
 failure_correlation_id: "deb83458-68e3-4a04-af0b-18171f947162"
