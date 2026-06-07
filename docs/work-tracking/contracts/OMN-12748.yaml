@@ -1,0 +1,47 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-12748"
+title: "Expose delegated prompt and response text through correlation projection"
+summary: >-
+  Adds the contract-declared onex.snapshot.projection.delegation.correlation-trace.v1
+  projection exposure so dashboard and integration tests can inspect prompt_text and
+  response_text for a delegated run without adding a bespoke REST route or bloating the
+  high-frequency decisions projection.
+is_seam_ticket: true
+interface_change: true
+interfaces_touched:
+  - "delegation projections"
+  - "projection_api"
+evidence_requirements:
+  - kind: "tests"
+    description: "Focused projection contract test proves prompt_text and response_text are exposed on the correlation trace and omitted from decisions."
+    command: "uv run pytest tests/test_projection_delegation_api_contract.py -q"
+  - kind: "manual"
+    description: "Projection API topic remains contract-declared; no bespoke dashboard REST route is introduced."
+    command: "grep -q 'onex.snapshot.projection.delegation.correlation-trace.v1' src/omnimarket/nodes/node_projection_delegation/contract.yaml"
+  - kind: "deploy"
+    description: "Dev-lane runtime must be rebuilt after merge before live dashboard can read this topic from projection-api."
+    command: "post-merge deploy .201 dev lane and verify /projection/onex.snapshot.projection.delegation.correlation-trace.v1?correlation_id=<id> returns prompt_text and response_text"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-projection-contract-test"
+    description: "Focused projection contract test proves prompt_text and response_text are exposed on the correlation trace and omitted from decisions."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/test_projection_delegation_api_contract.py -q"
+  - id: "dod-contract-topic-declaration"
+    description: "Correlation trace projection topic is declared in the delegation projection contract."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "grep -q 'onex.snapshot.projection.delegation.correlation-trace.v1' src/omnimarket/nodes/node_projection_delegation/contract.yaml"
+  - id: "dod-deploy-assessment"
+    description: "Post-merge dev-lane deploy is required before live projection-api serves the new topic."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "post-merge deploy .201 dev lane and verify correlation trace projection prompt_text/response_text"
