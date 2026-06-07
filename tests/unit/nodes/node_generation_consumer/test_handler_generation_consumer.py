@@ -12,6 +12,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+import textwrap
 from pathlib import Path
 from typing import Any
 
@@ -454,91 +455,17 @@ async def test_registration_not_emitted_when_deploy_publisher_raises() -> None:
 
 # ---------------------------------------------------------------------------
 # Contract model_routing endpoint resolution tests
+#
+# OMN-12801: the endpoint URL + api_key are resolved per-model from the routing
+# authority (bifrost delegation overlay), NOT from an endpoint env var. The
+# endpoint_env / endpoint_mode contract keys and the LLM_CODER_URL env path are
+# deleted. Resolution behaviour is covered in test_endpoint_routing_authority.py.
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.unit
-def test_handler_reads_endpoint_env_from_contract_model_routing(tmp_path: Path) -> None:
-    """Handler must derive the endpoint env var name and mode from contract.yaml model_routing."""
-    contract = {
-        "name": "node_generation_consumer",
-        "contract_version": {"major": 1, "minor": 0, "patch": 0},
-        "node_type": "orchestrator",
-        "node_version": {"major": 1, "minor": 0, "patch": 0},
-        "event_bus": {"publish_topics": [], "subscribe_topics": []},
-        "model_routing": {
-            "endpoint_env": "LLM_CODER_URL",
-            "endpoint_mode": "complete_endpoint",
-            "served_model_id": "test-model-v1",
-            "endpoint_ref": "local-coder",
-            "provider": "local",
-        },
-    }
-    contract_path = tmp_path / "contract.yaml"
-    contract_path.write_text(yaml.dump(contract))
-
-    handler = HandlerGenerationConsumer(
-        effect_handler=FakeLlmEffect([_VALID_LLM_RESPONSE]),
-        contract_path=contract_path,
-    )
-
-    assert handler._endpoint_env == "LLM_CODER_URL"
-    assert handler._endpoint_mode == "complete_endpoint"
-    # OMN-12779: no _model_id_env — model ID is read directly from served_model_id.
-    assert handler._served_model_id == "test-model-v1"
-
-
-@pytest.mark.unit
-def test_handler_rejects_contract_without_valid_endpoint_mode(tmp_path: Path) -> None:
-    """Endpoint request shape must be explicitly declared by the contract."""
-    contract = {
-        "name": "node_generation_consumer",
-        "contract_version": {"major": 1, "minor": 0, "patch": 0},
-        "node_type": "orchestrator",
-        "node_version": {"major": 1, "minor": 0, "patch": 0},
-        "event_bus": {"publish_topics": [], "subscribe_topics": []},
-        "model_routing": {
-            "endpoint_env": "LLM_CODER_URL",
-            "served_model_id": "test-model-v1",
-            "endpoint_ref": "local-coder",
-            "provider": "local",
-            # endpoint_mode intentionally absent
-        },
-    }
-    contract_path = tmp_path / "contract.yaml"
-    contract_path.write_text(yaml.dump(contract))
-
-    with pytest.raises(ValueError, match="endpoint_mode must be one of"):
-        HandlerGenerationConsumer(
-            effect_handler=FakeLlmEffect([_VALID_LLM_RESPONSE]),
-            contract_path=contract_path,
-        )
-
-
-@pytest.mark.unit
-def test_production_contract_declares_llm_coder_url_endpoint_env() -> None:
-    """The production contract.yaml must declare model_routing.endpoint_env=LLM_CODER_URL."""
-    from omnimarket.nodes.node_generation_consumer.handlers.handler_generation_consumer import (
-        _CONTRACT_PATH,
-    )
-
-    with open(_CONTRACT_PATH) as f:
-        contract = yaml.safe_load(f)
-
-    model_routing = contract.get("model_routing", {})
-    assert model_routing.get("endpoint_env") == "LLM_CODER_URL", (
-        "contract.yaml model_routing.endpoint_env must be 'LLM_CODER_URL'; "
-        f"got: {model_routing.get('endpoint_env')!r}"
-    )
-    assert model_routing.get("endpoint_mode") == "complete_endpoint", (
-        "contract.yaml model_routing.endpoint_mode must be 'complete_endpoint'; "
-        f"got: {model_routing.get('endpoint_mode')!r}"
-    )
-
-
-@pytest.mark.unit
 def test_production_contract_declares_required_env_dependencies() -> None:
-    """contract.yaml must declare LLM_CODER_URL, LOCAL_LLM_SHARED_SECRET, LLM_ENDPOINT_CIDR_ALLOWLIST as dependencies."""
+    """contract.yaml must declare the HMAC + CIDR env deps (no LLM_CODER_URL)."""
     from omnimarket.nodes.node_generation_consumer.handlers.handler_generation_consumer import (
         _CONTRACT_PATH,
     )
@@ -551,16 +478,20 @@ def test_production_contract_declares_required_env_dependencies() -> None:
         for dep in contract.get("dependencies", [])
         if isinstance(dep, dict) and dep.get("type") == "environment" and "key" in dep
     }
-    # LLM_CODER_MODEL_NAME removed from required: served_model_id is now declared
-    # directly in model_routing.served_model_id (not resolved via env indirection).
+    # OMN-12801: LLM_CODER_URL is no longer an env dependency — the endpoint URL
+    # is resolved from the routing authority. The transport's HMAC + CIDR
+    # boundary env deps remain.
     required = {
-        "LLM_CODER_URL",
         "LOCAL_LLM_SHARED_SECRET",
         "LLM_ENDPOINT_CIDR_ALLOWLIST",
     }
     missing = required - env_keys
     assert not missing, (
         f"contract.yaml is missing environment dependency declarations for: {missing}"
+    )
+    assert "LLM_CODER_URL" not in env_keys, (
+        "contract.yaml must NOT declare LLM_CODER_URL as an env dependency; "
+        "the endpoint URL is resolved from the routing authority (OMN-12801)"
     )
 
 
@@ -852,17 +783,18 @@ def test_handler_routing_source_is_contract(tmp_path: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
-# OMN-12683: endpoint URL preservation is contract-declared. Complete
-# endpoints POST as-is via endpoint_url; OpenAI-compatible base URLs keep append.
+# OMN-12801: endpoint URL is resolved per-model from the routing authority
+# (bifrost delegation overlay keyed by endpoint_ref). The COMPLETE provider URL
+# the authority declares is posted verbatim via endpoint_url.
 #
-# The final POST URL is proven by running the request the handler builds
-# through the *real* infra URL builder (HandlerLlmOpenaiCompatible._build_url),
-# so the assertion is end-to-end, not a restatement of handler internals.
+# The final POST URL is proven by running the request the handler builds through
+# the *real* infra URL builder (HandlerLlmOpenaiCompatible._build_url), so the
+# assertion is end-to-end, not a restatement of handler internals.
 # ---------------------------------------------------------------------------
 
-# The contract/overlay supplies the COMPLETE Gemini OpenAI-compatible endpoint
-# (ending in /chat/completions). It must be POSTed verbatim — not have any
-# version path appended. This is the registered endpoint per the live-path plan.
+# The routing authority declares the COMPLETE Gemini OpenAI-compatible endpoint
+# (ending in /chat/completions). It must be POSTed verbatim — no version path
+# appended. This is the registered endpoint per the live-path plan.
 _GEMINI_FULL_ENDPOINT = (
     "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
 )
@@ -873,14 +805,14 @@ _GEMINI_EXPECTED_URL = (
 _GEMINI_DOUBLE_VERSIONED_BAD_URL = (
     "https://generativelanguage.googleapis.com/v1beta/openai/v1/chat/completions"
 )
-_GEMINI_ORIGIN_ONLY = "https://generativelanguage.googleapis.com"
 _GEMINI_ORIGIN_BAD_URL = "https://generativelanguage.googleapis.com/v1/chat/completions"
-_LOCAL_ORIGIN_ONLY = "http://100.109.203.94:8000"
-_LOCAL_EXPECTED_URL = "http://100.109.203.94:8000/v1/chat/completions"
+_LOCAL_FULL_ENDPOINT = "http://100.109.203.94:8000/v1/chat/completions"  # onex-allow-internal-ip OMN-12801 reason="test fixture endpoint URL for routing-authority resolution"
 
 
-def _write_contract_for_endpoint_mode(tmp_path: Path, endpoint_mode: str) -> Path:
-    # OMN-12779: served_model_id is declared directly, not via env indirection.
+def _write_routing_contract(
+    tmp_path: Path, *, endpoint_ref: str, provider: str, served_model_id: str
+) -> Path:
+    """Write a generation contract declaring the three contract-side routing keys."""
     contract = {
         "name": "node_generation_consumer",
         "contract_version": {"major": 1, "minor": 0, "patch": 0},
@@ -888,16 +820,54 @@ def _write_contract_for_endpoint_mode(tmp_path: Path, endpoint_mode: str) -> Pat
         "node_version": {"major": 1, "minor": 0, "patch": 0},
         "event_bus": {"publish_topics": [], "subscribe_topics": []},
         "model_routing": {
-            "endpoint_env": "LLM_CODER_URL",
-            "endpoint_mode": endpoint_mode,
-            "served_model_id": "gemini-2.0-flash",
-            "endpoint_ref": "local-coder",
-            "provider": "local",
+            "provider": provider,
+            "served_model_id": served_model_id,
+            "endpoint_ref": endpoint_ref,
+            "routing_source": "contract",
         },
     }
-    contract_path = tmp_path / f"contract-{endpoint_mode}.yaml"
+    contract_path = tmp_path / f"contract-{endpoint_ref}.yaml"
     contract_path.write_text(yaml.dump(contract))
     return contract_path
+
+
+def _write_bifrost_authority(
+    monkeypatch: Any, tmp_path: Path, *, backend_id: str, endpoint_url: str
+) -> None:
+    """Point the bifrost routing authority at a fixture backend declaring endpoint_url."""
+    contract_yaml = textwrap.dedent(
+        f"""\
+        config_version: "2.0.0"
+        schema_version: "bifrost_delegation.v1"
+        backends:
+          - backend_id: {backend_id}
+            endpoint_url: "{endpoint_url}"
+            model_name: null
+            tier: local
+            timeout_ms: 60000
+            capabilities: [code_generation]
+        routing_rules:
+          - rule_id: "d4e5f6a7-0001-4000-8000-000000000001"
+            priority: 10
+            task_class: code_generation
+            task_class_contract_version: "1.0.0"
+            backend_policy_version: "2.0.0"
+            match_operation_types: [chat_completion]
+            match_capabilities: [code_generation]
+            backend_ids: [{backend_id}]
+            fallback_policy:
+              action: escalate_to_next_tier
+              max_retries: 1
+              on_exhaust: return_error
+            shadow_policy_id: "e5f6a7b8-0001-4000-8000-000000000001"
+        default_backends: [{backend_id}]
+        """
+    )
+    contract_path = tmp_path / "bifrost_delegation.yaml"
+    contract_path.write_text(contract_yaml)
+    overlay_path = tmp_path / "__no_overlay__.yaml"
+    monkeypatch.setenv("BIFROST_CONTRACT_PATH", str(contract_path))
+    monkeypatch.setenv("BIFROST_OVERLAY_PATH", str(overlay_path))
 
 
 class _CapturingEffect:
@@ -912,22 +882,25 @@ class _CapturingEffect:
         return _FakeResponse(_VALID_LLM_RESPONSE)
 
 
-async def _request_for_endpoint(
-    monkeypatch: Any, tmp_path: Path, endpoint: str, endpoint_mode: str
-) -> Any:
-    """Build and capture the handler request for ``endpoint``.
+async def _request_for_endpoint(monkeypatch: Any, tmp_path: Path, endpoint: str) -> Any:
+    """Build and capture the handler request when the authority resolves ``endpoint``.
 
     Forces the non-injected code path (so the real ModelLlmInferenceRequest is
-    constructed) while capturing it.
-
-    OMN-12779: model ID comes from contract.served_model_id, not from env var.
-    Only the endpoint URL env var (LLM_CODER_URL) is still set via overlay.
+    constructed) while capturing it. The endpoint URL comes from the routing
+    authority (bifrost fixture), never from an env var.
     """
-    monkeypatch.setenv("LLM_CODER_URL", endpoint)
+    _write_bifrost_authority(
+        monkeypatch, tmp_path, backend_id="local-coder", endpoint_url=endpoint
+    )
 
     capturing = _CapturingEffect()
     handler = HandlerGenerationConsumer(
-        contract_path=_write_contract_for_endpoint_mode(tmp_path, endpoint_mode),
+        contract_path=_write_routing_contract(
+            tmp_path,
+            endpoint_ref="local-coder",
+            provider="local",
+            served_model_id="gemini-2.0-flash",
+        ),
         event_publisher=lambda _t, _p: None,
     )
     # Use the capturing effect but keep the real request-building branch.
@@ -946,15 +919,13 @@ async def _request_for_endpoint(
 
 
 async def _final_post_url_for_endpoint(
-    monkeypatch: Any, tmp_path: Path, endpoint: str, endpoint_mode: str
+    monkeypatch: Any, tmp_path: Path, endpoint: str
 ) -> str:
     from omnibase_infra.nodes.node_llm_inference_effect.handlers.handler_llm_openai_compatible import (
         HandlerLlmOpenaiCompatible,
     )
 
-    request = await _request_for_endpoint(
-        monkeypatch, tmp_path, endpoint, endpoint_mode
-    )
+    request = await _request_for_endpoint(monkeypatch, tmp_path, endpoint)
     return HandlerLlmOpenaiCompatible._build_url(request)
 
 
@@ -963,12 +934,9 @@ async def _final_post_url_for_endpoint(
 async def test_gemini_full_endpoint_posts_as_is(
     monkeypatch: Any, tmp_path: Path
 ) -> None:
-    """Full Gemini endpoint routes via endpoint_url — posted verbatim + /chat/completions."""
+    """Authority-resolved Gemini endpoint routes via endpoint_url — posted verbatim."""
     final_url = await _final_post_url_for_endpoint(
-        monkeypatch,
-        tmp_path,
-        _GEMINI_FULL_ENDPOINT,
-        "complete_endpoint",
+        monkeypatch, tmp_path, _GEMINI_FULL_ENDPOINT
     )
     assert final_url == _GEMINI_EXPECTED_URL
     # Neither 404 variant may appear.
@@ -983,10 +951,7 @@ async def test_gemini_full_endpoint_no_double_versioned_append(
 ) -> None:
     """Regression: full Gemini endpoint must not become /v1beta/openai/v1/chat/completions."""
     final_url = await _final_post_url_for_endpoint(
-        monkeypatch,
-        tmp_path,
-        _GEMINI_FULL_ENDPOINT,
-        "complete_endpoint",
+        monkeypatch, tmp_path, _GEMINI_FULL_ENDPOINT
     )
     assert "/v1beta/openai/v1/chat/completions" not in final_url
     assert final_url.endswith("/v1beta/openai/chat/completions")
@@ -997,14 +962,21 @@ async def test_gemini_full_endpoint_no_double_versioned_append(
 async def test_gemini_request_sets_endpoint_url_field(
     monkeypatch: Any, tmp_path: Path
 ) -> None:
-    """The built request must carry endpoint_url for the full Gemini endpoint."""
-    request = await _request_for_endpoint(
-        monkeypatch,
-        tmp_path,
-        _GEMINI_FULL_ENDPOINT,
-        "complete_endpoint",
-    )
+    """The built request must carry the authority-resolved endpoint_url verbatim."""
+    request = await _request_for_endpoint(monkeypatch, tmp_path, _GEMINI_FULL_ENDPOINT)
     assert request.endpoint_url == _GEMINI_FULL_ENDPOINT
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_local_full_endpoint_posts_as_is(
+    monkeypatch: Any, tmp_path: Path
+) -> None:
+    """Authority-resolved local vLLM complete endpoint is posted verbatim."""
+    final_url = await _final_post_url_for_endpoint(
+        monkeypatch, tmp_path, _LOCAL_FULL_ENDPOINT
+    )
+    assert final_url == _LOCAL_FULL_ENDPOINT
 
 
 @pytest.mark.unit
@@ -1040,38 +1012,8 @@ def test_old_base_url_path_would_404_proves_regression() -> None:
 
 @pytest.mark.unit
 @pytest.mark.asyncio
-async def test_local_origin_only_keeps_legacy_append(
-    monkeypatch: Any, tmp_path: Path
-) -> None:
-    """Origin-only base URL keeps legacy base_url + /v1/chat/completions append."""
-    final_url = await _final_post_url_for_endpoint(
-        monkeypatch,
-        tmp_path,
-        _LOCAL_ORIGIN_ONLY,
-        "openai_compatible_base",
-    )
-    assert final_url == _LOCAL_EXPECTED_URL
-
-
-@pytest.mark.unit
-@pytest.mark.asyncio
-async def test_local_origin_only_does_not_set_endpoint_url(
-    monkeypatch: Any, tmp_path: Path
-) -> None:
-    """Origin-only base URL must NOT set endpoint_url (legacy append branch)."""
-    request = await _request_for_endpoint(
-        monkeypatch,
-        tmp_path,
-        _LOCAL_ORIGIN_ONLY,
-        "openai_compatible_base",
-    )
-    assert request.endpoint_url is None
-
-
-@pytest.mark.unit
-@pytest.mark.asyncio
 async def test_provider_error_remains_typed_failure_not_blank_success(
-    monkeypatch: Any,
+    monkeypatch: Any, tmp_path: Path
 ) -> None:
     """A provider call failure must not be reported as a successful (blank) generation.
 
@@ -1080,18 +1022,23 @@ async def test_provider_error_remains_typed_failure_not_blank_success(
     surface), and no deploy/registration is emitted. A 404 must never look like
     success.
     """
-    # OMN-12779: model ID comes from the production contract.yaml (served_model_id),
-    # not from LLM_CODER_MODEL_NAME env var. Only the URL env var is needed.
-    monkeypatch.setenv("LLM_CODER_URL", _GEMINI_FULL_ENDPOINT)
+    # OMN-12801: the endpoint URL is resolved from the routing authority, not env.
+    _write_bifrost_authority(
+        monkeypatch,
+        tmp_path,
+        backend_id="local-coder",
+        endpoint_url=_GEMINI_FULL_ENDPOINT,
+    )
 
     class _Failing404Effect:
         async def handle(self, request: Any) -> _FakeResponse:
             await asyncio.sleep(0)
             raise RuntimeError("404 Not Found from provider")
 
+    # Use the production contract (it declares the failed topic + endpoint_ref=local-coder).
     published: list[tuple[str, bytes]] = []
     handler = HandlerGenerationConsumer(
-        event_publisher=lambda t, p: published.append((t, p))
+        event_publisher=lambda t, p: published.append((t, p)),
     )
     handler._effect = _Failing404Effect()
     handler._injected_effect = False
