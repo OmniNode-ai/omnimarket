@@ -24,7 +24,6 @@ import ast
 import hashlib
 import json
 import logging
-import os
 import re
 import time
 from collections.abc import Callable
@@ -39,6 +38,7 @@ from omnimarket.nodes.node_generation_consumer.models.model_generation import (
     ModelGenerationBenchmark,
     ModelNodeGenerationRequest,
 )
+from omnimarket.routing.endpoint_resolver import resolve_endpoint
 
 logger = logging.getLogger(__name__)
 
@@ -62,17 +62,13 @@ _REQUIRED_CONTRACT_FIELDS = [
 ]
 
 # Contract model_routing keys — resolved at construction from contract.yaml.
-# OMN-12779: all four routing authorities (provider, served_model_id, endpoint_ref,
-# routing_source) must be declared in the contract. No env-var indirection for model IDs.
-_MODEL_ROUTING_ENDPOINT_ENV_KEY = "endpoint_env"
-_MODEL_ROUTING_ENDPOINT_MODE_KEY = "endpoint_mode"
+# OMN-12779/OMN-12802: provider, served_model_id, endpoint_ref, and routing_source
+# are declared in the contract. The endpoint URL is NOT an env var — it is resolved
+# per backend from the routing authority (bifrost) keyed by endpoint_ref.
 _MODEL_ROUTING_PROVIDER_KEY = "provider"
 _MODEL_ROUTING_SERVED_MODEL_ID_KEY = "served_model_id"
 _MODEL_ROUTING_ENDPOINT_REF_KEY = "endpoint_ref"
 _MODEL_ROUTING_ROUTING_SOURCE_KEY = "routing_source"
-_ENDPOINT_MODE_COMPLETE = "complete_endpoint"
-_ENDPOINT_MODE_OPENAI_BASE = "openai_compatible_base"
-_ALLOWED_ENDPOINT_MODES = {_ENDPOINT_MODE_COMPLETE, _ENDPOINT_MODE_OPENAI_BASE}
 
 _DEFAULT_SYSTEM_PROMPT = (
     "You are an ONEX node generator. Generate a valid ONEX contract.yaml and Python handler.\n"
@@ -209,14 +205,14 @@ class HandlerGenerationConsumer:
     The event_publisher is a thin sync callable (topic, bytes) -> None injected by
     the runtime's Kafka adapter. Falls back to a no-op for tests and dry runs.
 
-    Routing authority (OMN-12779 — all four from contract, no env-var indirection):
+    Routing authority (OMN-12779/OMN-12802 — from contract + bifrost, no env URL):
         1. contract.yaml model_routing.provider — e.g. "local"
-        2. contract.yaml model_routing.served_model_id — the actual model ID string
-        3. contract.yaml model_routing.endpoint_ref — backend reference (e.g. "local-coder")
-        4. contract.yaml model_routing.endpoint_env — NAMES the env var holding the URL;
-           that var's VALUE comes from the overlay system (LLM_CODER_URL).
-        5. contract.yaml model_routing.endpoint_mode — how to POST the URL.
-        6. MixinLlmHttpTransport enforces CIDR allowlist + HMAC from the same overlay.
+        2. contract.yaml model_routing.served_model_id — declared model (provenance)
+        3. contract.yaml model_routing.endpoint_ref — the bifrost backend_id; the
+           endpoint URL + served model + api key ref are resolved PER backend from
+           the bifrost routing authority (contract + overlay) at call time via
+           ``resolve_endpoint``. There is NO shared LLM_CODER_URL env var.
+        4. MixinLlmHttpTransport enforces CIDR allowlist + HMAC from the overlay.
     """
 
     def __init__(
@@ -246,18 +242,11 @@ class HandlerGenerationConsumer:
         self._topic_deploy = next((t for t in publish_topics if "node-deploy" in t), "")
 
         # Resolve LLM routing config from contract model_routing section.
-        # OMN-12779: all four routing authorities are declared by the contract — no
-        # env-var indirection for model IDs. endpoint_env names the env var that holds
-        # the URL value; that var's VALUE comes from the overlay system at runtime.
+        # OMN-12802: the endpoint URL is NOT an env var — it is resolved per backend
+        # from the bifrost routing authority keyed by endpoint_ref at call time.
         model_routing: dict[str, Any] = contract.get("model_routing", {})
-        self._endpoint_env: str = model_routing.get(
-            _MODEL_ROUTING_ENDPOINT_ENV_KEY, "LLM_CODER_URL"
-        )
-        self._endpoint_mode: str = str(
-            model_routing.get(_MODEL_ROUTING_ENDPOINT_MODE_KEY, "")
-        )
 
-        # Fail fast on all four required routing authorities.
+        # Fail fast on the required routing authorities declared by the contract.
         self._provider: str = str(model_routing.get(_MODEL_ROUTING_PROVIDER_KEY, ""))
         if not self._provider:
             raise ValueError(
@@ -271,7 +260,7 @@ class HandlerGenerationConsumer:
         if not self._served_model_id:
             raise ValueError(
                 "contract.yaml model_routing.served_model_id is required; "
-                "served model IDs must be declared in the contract/overlay, "
+                "served model IDs must be declared in the contract, "
                 "not resolved via env var indirection"
             )
 
@@ -281,19 +270,13 @@ class HandlerGenerationConsumer:
         if not self._endpoint_ref:
             raise ValueError(
                 "contract.yaml model_routing.endpoint_ref is required; "
-                "it must reference a routing-tier backend (e.g. 'local-coder')"
+                "it is the bifrost backend_id whose endpoint is resolved from the "
+                "routing authority (e.g. 'local-coder')"
             )
 
         self._routing_source: str = str(
             model_routing.get(_MODEL_ROUTING_ROUTING_SOURCE_KEY, "contract")
         )
-
-        if self._endpoint_mode not in _ALLOWED_ENDPOINT_MODES:
-            allowed = ", ".join(sorted(_ALLOWED_ENDPOINT_MODES))
-            raise ValueError(
-                "contract.yaml model_routing.endpoint_mode must be one of "
-                f"{allowed}; got {self._endpoint_mode!r}"
-            )
 
     def _ensure_effect(self) -> None:
         if self._effect is not None:
@@ -351,38 +334,26 @@ class HandlerGenerationConsumer:
                 ModelLlmInferenceRequest,
             )
 
-            # Endpoint resolved from contract model_routing.endpoint_env,
-            # populated by the overlay system at boot.
-            endpoint = os.environ[self._endpoint_env]
+            # OMN-12802: resolve the endpoint PER backend from the routing authority
+            # (bifrost contract + overlay), keyed by the contract's endpoint_ref — the
+            # same authority the delegation router uses. No shared LLM_CODER_URL env.
+            # The resolved endpoint_url is the full provider-correct URL (carries its
+            # own path convention), so it is posted via endpoint_url as-is. Fails
+            # closed if the backend has no configured endpoint.
+            resolved = resolve_endpoint(self._endpoint_ref)
             assert self._effect is not None
 
-            if self._endpoint_mode == _ENDPOINT_MODE_COMPLETE:
-                request = ModelLlmInferenceRequest(
-                    base_url=endpoint,
-                    endpoint_url=endpoint,
-                    operation_type=EnumLlmOperationType.CHAT_COMPLETION,
-                    model=self._served_model_id,
-                    messages=(
-                        {"role": "system", "content": _DEFAULT_SYSTEM_PROMPT},
-                        {"role": "user", "content": user_content},
-                    ),
-                    timeout_seconds=120.0,
-                )
-            elif self._endpoint_mode == _ENDPOINT_MODE_OPENAI_BASE:
-                request = ModelLlmInferenceRequest(
-                    base_url=endpoint,
-                    operation_type=EnumLlmOperationType.CHAT_COMPLETION,
-                    model=self._served_model_id,
-                    messages=(
-                        {"role": "system", "content": _DEFAULT_SYSTEM_PROMPT},
-                        {"role": "user", "content": user_content},
-                    ),
-                    timeout_seconds=120.0,
-                )
-            else:
-                raise RuntimeError(
-                    "contract.yaml model_routing.endpoint_mode was not validated"
-                )
+            request = ModelLlmInferenceRequest(
+                base_url=resolved.endpoint_url,
+                endpoint_url=resolved.endpoint_url,
+                operation_type=EnumLlmOperationType.CHAT_COMPLETION,
+                model=resolved.model_name,
+                messages=(
+                    {"role": "system", "content": _DEFAULT_SYSTEM_PROMPT},
+                    {"role": "user", "content": user_content},
+                ),
+                timeout_seconds=resolved.timeout_ms / 1000.0,
+            )
             response = await self._effect.handle(request)
 
         raw = response.generated_text or ""

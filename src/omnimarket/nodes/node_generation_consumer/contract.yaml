@@ -100,32 +100,20 @@ event_bus:
     - onex.cmd.omnimarket.node-deploy.v1
 
 model_routing:
-  # OMN-12779: all four routing authorities declared here, not via env indirection.
-  # provider, served_model_id, endpoint_ref, and routing_source are explicit.
-  # endpoint_env names the env var that holds the URL value (overlay mechanism);
-  # the env var NAME comes from this contract, its VALUE from the overlay system.
+  # OMN-12779/OMN-12802: provider, served_model_id, endpoint_ref, and routing_source
+  # are declared here. The endpoint URL is NOT an env var — it is resolved PER backend
+  # from the bifrost routing authority (contract + overlay) keyed by endpoint_ref, the
+  # same authority the delegation router uses. Each backend's endpoint_url carries its
+  # own provider-correct full URL/convention, so there is no shared base + path append.
   provider: local
   served_model_id: Qwen3.6-35B-A3B
   endpoint_ref: local-coder
-  endpoint_env: LLM_CODER_URL
-  endpoint_mode: complete_endpoint
   routing_source: contract
   auth:
     shared_secret_env: LOCAL_LLM_SHARED_SECRET
     cidr_allowlist_env: LLM_ENDPOINT_CIDR_ALLOWLIST
 
 dependencies:
-  - name: llm_coder_url
-    type: environment
-    key: LLM_CODER_URL
-    description: >
-      Endpoint URL for the generation LLM. Set via overlay from Infisical.
-      model_routing.endpoint_mode declares whether this value is a complete
-      endpoint posted verbatim via endpoint_url or an OpenAI-compatible base URL
-      that keeps the /v1/chat/completions append.
-      The env var NAME is declared by this contract (LLM_CODER_URL);
-      its VALUE is populated by the overlay system at runtime.
-    required: true
   - name: llm_shared_secret
     type: environment
     key: LOCAL_LLM_SHARED_SECRET
