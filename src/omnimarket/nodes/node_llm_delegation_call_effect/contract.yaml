@@ -127,6 +127,7 @@ handler_routing:
   routing_strategy: "payload_type_match"
   handlers:
     - operation: "execute_delegation_call"
+      event_type: "omnimarket.delegation-execute"
       event_model:
         name: "ModelLlmDelegationCallRequest"
         module: "omnimarket.nodes.node_llm_delegation_call_effect.models.model_llm_delegation_call_request"
@@ -135,6 +136,7 @@ handler_routing:
         module: "omnimarket.nodes.node_llm_delegation_call_effect.handlers.handler_llm_delegation_call"
       description: "Execute one LLM delegation call (swarm/A2A path); handle() returns the terminal event (call-completed or all-tiers-failed), runtime auto-publishes via published_events (OMN-12409/F-a)."
     - operation: "execute_inference_intent"
+      event_type: "omnibase-infra.delegation-inference-request"
       event_model:
         name: "ModelInferenceIntent"
         module: "omnibase_core.models.delegation.wire"
