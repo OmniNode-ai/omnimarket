@@ -48,3 +48,38 @@ def test_explicit_max_tokens_hard_limit_accepted() -> None:
 def test_max_tokens_above_hard_limit_rejected(max_tokens: int) -> None:
     with pytest.raises(ValidationError):
         _request(max_tokens=max_tokens)
+
+
+@pytest.mark.unit
+def test_overlay_accepts_quality_gate_dod_checks() -> None:
+    request = _request(
+        quality_contract_mode="replace_task_class",
+        acceptance_criteria=(
+            "compiles_without_errors",
+            "final_artifact_only",
+            "no_refusal",
+            "uses_pytest_mark_unit",
+            "covers_edge_cases",
+            "covers_error_paths",
+            "follows_codebase_conventions",
+            "no_obvious_regressions",
+        ),
+    )
+
+    assert request.quality_contract_mode == "replace_task_class"
+    assert request.acceptance_criteria == (
+        "compiles_without_errors",
+        "final_artifact_only",
+        "no_refusal",
+        "uses_pytest_mark_unit",
+        "covers_edge_cases",
+        "covers_error_paths",
+        "follows_codebase_conventions",
+        "no_obvious_regressions",
+    )
+
+
+@pytest.mark.unit
+def test_unknown_overlay_acceptance_criterion_rejected() -> None:
+    with pytest.raises(ValidationError, match="unsupported acceptance criteria"):
+        _request(acceptance_criteria=("semantic_magic",))
