@@ -263,9 +263,13 @@ def _load_bifrost_endpoints() -> dict[str, BifrostBackendRef]:
 
     Returns a dict mapping backend_id → BifrostBackendRef.
 
-    When a backend declares ``api_key_env``, the environment variable must be
-    present for the backend to be routable. The routing decision carries only
-    the secret reference, not the secret value.
+    OMN-12828 (B3): a backend is routable when it declares a complete
+    ``endpoint_url`` (and, for authenticated cloud backends, a secret REFERENCE
+    NAME). Routability does NOT depend on the host environment carrying the
+    secret value — the routing decision carries only the reference name, and the
+    secret VALUE is resolved fail-closed at the inference effect boundary through
+    the secret store (HG2 / OMN-12824). This removes the host-``.env`` runtime
+    dependency that previously skipped a cloud backend when its key was unset.
     """
     env_path = os.environ.get(  # contract-config-ok: config  # ONEX_EXCLUDE: contract path override
         "BIFROST_CONTRACT_PATH", ""
@@ -292,11 +296,7 @@ def _load_bifrost_endpoints() -> dict[str, BifrostBackendRef]:
         if not (backend.backend_id and url and model_name):
             continue
 
-        api_key_ref: str | None = None
-        if backend.api_key_env:
-            if backend.api_key_env not in os.environ:  # ONEX_FLAG_EXEMPT: presence only
-                continue
-            api_key_ref = backend.api_key_env
+        api_key_ref: str | None = backend.api_key_env or None
 
         backends[backend.backend_id] = BifrostBackendRef(
             endpoint_url=url,

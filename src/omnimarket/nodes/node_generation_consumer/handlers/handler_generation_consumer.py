@@ -179,10 +179,10 @@ def resolve_generation_endpoint(
 
     Raises:
         ValueError: If provider/served_model_id is blank, the backend is unknown,
-            the backend has no endpoint_url, or the backend declares an
-            ``api_key_env`` that is absent from the environment (routability
-            gate). The secret VALUE is resolved fail-closed at the effect
-            boundary via the secret store (OMN-12824), not here.
+            or the backend has no endpoint_url. The secret VALUE is resolved
+            fail-closed at the effect boundary via the secret store (OMN-12824),
+            not here; routability no longer depends on the host environment
+            carrying the secret value (OMN-12828).
     """
     if not provider:
         raise ValueError(
@@ -205,9 +205,10 @@ def resolve_generation_endpoint(
         raise ValueError(
             f"endpoint_ref {endpoint_ref!r} is not a routable backend in the "
             "routing authority (bifrost delegation contract + overlay): it is "
-            "either undeclared, missing an endpoint_url, or declares an "
-            "api_key_env that is absent from the environment. Populate the "
-            "overlay endpoint_url / api key — no env fallback is permitted"
+            "either undeclared or missing an endpoint_url. Populate the contract "
+            "/ overlay endpoint_url — no env fallback is permitted. (The API-key "
+            "VALUE is resolved fail-closed at the effect boundary via the secret "
+            "store; routability does not depend on a host env var — OMN-12828.)"
         )
 
     return ModelResolvedEndpoint(
@@ -232,14 +233,17 @@ def _resolve_bifrost_backend(endpoint_ref: str) -> _ResolvedBackend | None:
 
     Loads the bifrost delegation contract deep-merged with the deploy overlay
     (same authority the delegation routing reducer uses) and returns the backend
-    only when it has a non-empty endpoint_url AND, if it declares an
-    ``api_key_env``, that env var is present with a non-empty value. Returns
-    ``None`` otherwise so the caller fails closed with a precise message.
+    only when it has a non-empty endpoint_url. Returns ``None`` otherwise so the
+    caller fails closed with a precise message.
 
-    Note (OMN-12824): the env-presence check below is a *routability gate* (is
-    this backend usable at all), not the value read used for the request. The
-    secret VALUE sent on the wire is resolved at the effect boundary through the
-    secret store — never read directly here.
+    OMN-12828 (B3): routability is a *contract* property — a backend is routable
+    when it declares a complete ``endpoint_url`` and (for authenticated cloud
+    backends) a secret REFERENCE NAME. The secret VALUE is never read here. It
+    resolves fail-closed at the inference effect boundary through the secret
+    store (HG2 / OMN-12824), so routing no longer depends on the host process
+    environment carrying the secret value (no host-``.env`` runtime dependency).
+    The reference name is carried through on ``api_key_ref`` so the effect
+    boundary can resolve and fail closed when the secret is absent.
     """
     contract_path = os.environ.get(  # contract-config-ok: config  # ONEX_EXCLUDE: contract path override
         "BIFROST_CONTRACT_PATH", ""
@@ -259,14 +263,7 @@ def _resolve_bifrost_backend(endpoint_ref: str) -> _ResolvedBackend | None:
         url = (backend.endpoint_url or "").strip()
         if not url:
             return None
-        api_key_ref: str | None = None
-        if backend.api_key_env:
-            api_key_value = os.environ.get(backend.api_key_env, "").strip()
-            if (
-                not api_key_value
-            ):  # ONEX_FLAG_EXEMPT: routability gate, not the wire value
-                return None
-            api_key_ref = backend.api_key_env
+        api_key_ref = backend.api_key_env or None
         return _ResolvedBackend(endpoint_url=url, api_key_ref=api_key_ref)
 
     return None
