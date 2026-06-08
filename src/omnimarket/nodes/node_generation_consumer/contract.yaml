@@ -43,6 +43,23 @@ inputs:
     description: "Maximum LLM retry attempts on validation failure"
     required: false
     default: 2
+  # P2-1 context-injection seam (OMN-12794) — all optional with safe defaults.
+  # Do not use previous_errors for context; that is the internal repair-loop channel.
+  context_pack:
+    type: str
+    description: "Serialised context pack text prepended to the generation prompt; empty = off arm"
+    required: false
+    default: ""
+  context_artifacts:
+    type: list
+    description: "Structured per-artifact provenance for audit/replay; handler uses context_pack for the prompt"
+    required: false
+    default: []
+  context_pack_hash:
+    type: str
+    description: "SHA-256 hex digest of context_pack (sha256:<hex>); empty when context_pack is empty"
+    required: false
+    default: ""
 
 outputs:
   contract_passed:
@@ -57,6 +74,19 @@ outputs:
   cost_inference_usd:
     type: float
     description: "Estimated inference cost in USD"
+  # P2-1 token split + attempt-reduction telemetry (OMN-12794)
+  prompt_tokens:
+    type: int
+    description: "Total prompt tokens across all attempts"
+  completion_tokens:
+    type: int
+    description: "Total completion tokens across all attempts"
+  first_pass_success:
+    type: bool
+    description: "True when contract validation passed on the first attempt"
+  context_pack_hash:
+    type: str
+    description: "Echoed context_pack_hash from the command for scorer correlation"
 
 terminal_event: onex.evt.omnimarket.node-generation-completed.v1
 
@@ -70,29 +100,30 @@ event_bus:
     - onex.cmd.omnimarket.node-deploy.v1
 
 model_routing:
+  # OMN-12779 + OMN-12801: provider, served_model_id, and endpoint_ref are
+  # declared here. The endpoint URL + api_key reference are NOT declared via an
+  # env var — they are resolved per-model from the routing authority (the bifrost
+  # delegation contract overlay keyed by endpoint_ref), the same authority the
+  # delegation routing reducer uses. A shared LLM_CODER_URL env cannot serve
+  # multiple providers (vLLM/Gemini/OpenRouter have distinct URLs), so there is
+  # no endpoint_env / endpoint_mode indirection.
   provider: local
-  endpoint_env: LLM_CODER_URL
-  endpoint_mode: complete_endpoint
-  served_model_id_env: LLM_CODER_MODEL_NAME
+  served_model_id: Qwen3.6-35B-A3B
+  endpoint_ref: local-coder
+  routing_source: contract
+  # OMN-12816: provider-specific inference params merged into the LLM request body
+  # (ModelLlmInferenceRequest.extra_body). enable_thinking:false suppresses the
+  # reasoning preamble on Qwen vLLM backends so the FIRST attempt returns clean
+  # fenced blocks (deterministic; turns attempt_count=2 into 1). Contract-native —
+  # no env var, no code literal. Backends that ignore the key are unaffected.
+  inference_extra_body:
+    chat_template_kwargs:
+      enable_thinking: false
   auth:
     shared_secret_env: LOCAL_LLM_SHARED_SECRET
     cidr_allowlist_env: LLM_ENDPOINT_CIDR_ALLOWLIST
 
 dependencies:
-  - name: llm_coder_url
-    type: environment
-    key: LLM_CODER_URL
-    description: >
-      Endpoint URL for the generation LLM. Set via overlay from Infisical.
-      model_routing.endpoint_mode declares whether this value is a complete
-      endpoint posted verbatim via endpoint_url or an OpenAI-compatible base URL
-      that keeps the /v1/chat/completions append.
-    required: true
-  - name: llm_coder_model_name
-    type: environment
-    key: LLM_CODER_MODEL_NAME
-    description: "Served model ID for the generation LLM endpoint — set via overlay from Infisical"
-    required: true
   - name: llm_shared_secret
     type: environment
     key: LOCAL_LLM_SHARED_SECRET
@@ -115,6 +146,7 @@ metadata:
   description: "Generation consumer node — generates ONEX nodes from natural language, validates, emits benchmark"
   author: "OmniNode Platform Team"
   created: "2026-05-16"
+  demo_path: true  # OMN-12777: demo-path topic coherence gate scope marker
   tags:
     - "orchestrator"
     - "generation"
@@ -123,7 +155,9 @@ metadata:
     - "node-generation"
     - "OMN-12683"
     - "OMN-11092"
+    - "OMN-12794"
   related_tickets:
     - "OMN-12683"
     - "OMN-11092"
     - "OMN-11091"
+    - "OMN-12794"

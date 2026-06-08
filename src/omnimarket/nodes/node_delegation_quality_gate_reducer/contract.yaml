@@ -92,6 +92,7 @@ health_check:
       critical: true
 metadata:
   description: "Deterministic quality gate that evaluates LLM output using heuristic checks for length, refusal detection, and task-type markers."
+  demo_path: true  # OMN-12777: demo-path topic coherence gate scope marker
   author: "OmniNode Team"
   license: "MIT"
   created: "2026-03-30"

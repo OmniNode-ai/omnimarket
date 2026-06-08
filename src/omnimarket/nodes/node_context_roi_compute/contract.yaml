@@ -1,0 +1,107 @@
+---
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Context ROI Compute (OMN-12797)
+#
+# Pure COMPUTE node: N-arm factor-matrix scorer for the context-ROI experiment.
+# Accepts pre-captured (task x arm x trial) rows, validates required/optional
+# factor declarations, and produces per-cell aggregates + cross-arm summary
+# with deltas vs the 'off' baseline. Proof classified as replay-proven or
+# runtime-observed-only.
+name: node_context_roi_compute
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: compute
+node_version: {major: 1, minor: 0, patch: 0}
+node_not_implemented: false
+
+description: >
+  N-arm factor-matrix scorer for the context-ROI experiment (OMN-12797 P2-2/P2-3).
+  Accepts a fixed task manifest and (task x arm x trial) run rows; validates
+  required/optional factor declarations (missing required -> fail, not warn);
+  aggregates per-cell metrics (first_pass_rate, final_success_rate, attempt_count,
+  token/cost deltas); produces cross-arm summary with deltas vs 'off' baseline.
+  full_guidance_negative_control budget failures are scored separately from
+  generation failures. Pure, deterministic, no I/O in fixture mode.
+
+handler:
+  module: omnimarket.nodes.node_context_roi_compute.handlers.handler_context_roi
+  class: HandlerContextRoi
+  input_model: omnimarket.nodes.node_context_roi_compute.models.model_context_roi_request.ModelContextRoiRequest
+  output_model: omnimarket.nodes.node_context_roi_compute.models.model_context_roi_result.ModelContextRoiResult
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: compute
+      handler:
+        name: HandlerContextRoi
+        module: omnimarket.nodes.node_context_roi_compute.handlers.handler_context_roi
+
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 5000
+
+inputs:
+  run_id:
+    type: str
+    required: true
+    description: "Stable run identifier for this scoring pass"
+  manifest_id:
+    type: str
+    required: true
+    description: "Must match the manifest used to produce the rows"
+  rows:
+    type: array
+    required: true
+    description: "All (task x arm x trial) ModelArmRunRow instances to score"
+  fixture_mode:
+    type: bool
+    required: false
+    default: true
+    description: "True = pre-captured rows (replay-proven); False = live runner rows (gated on deploy)"
+
+outputs:
+  status:
+    type: str
+    enum: [ok, failed]
+  arm_rows:
+    type: array
+    description: "Per-(task x arm) aggregate rows"
+  arm_summary:
+    type: array
+    description: "Cross-task per-arm summary with deltas vs off baseline"
+  preferred_arm:
+    type: str
+    nullable: true
+    description: "Best non-negative-control arm by first_pass_rate_delta_vs_off; never full_guidance_negative_control"
+  proof_class:
+    type: str
+    nullable: true
+    enum: [replay-proven, runtime-observed-only]
+  failure_class:
+    type: str
+    nullable: true
+  errors:
+    type: array
+  warnings:
+    type: array
+
+terminal_event: onex.evt.omnimarket.context-roi-score-completed.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.context-roi-score-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.context-roi-score-completed.v1
+    - onex.evt.omnimarket.context-roi-score-failed.v1
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.context-roi-score-completed.v1
+  - onex.evt.omnimarket.context-roi-score-failed.v1
+
+metadata:
+  transport_type: kafka
+  implementation_wave: p2
+  related_tickets: ["OMN-12797", "OMN-12792", "OMN-11674", "OMN-12661"]

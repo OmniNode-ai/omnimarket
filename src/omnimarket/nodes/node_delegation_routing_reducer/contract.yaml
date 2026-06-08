@@ -117,6 +117,7 @@ health_check:
       critical: true
 metadata:
   description: "Deterministic routing reducer that maps delegation requests to LLM endpoints based on task type and prompt length."
+  demo_path: true  # OMN-12777: demo-path topic coherence gate scope marker
   author: "OmniNode Team"
   license: "MIT"
   created: "2026-03-30"

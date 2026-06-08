@@ -194,3 +194,22 @@ class TestRegistrationProjection:
         topics = contract["event_bus"]["subscribe_topics"]
         assert "onex.evt.platform.node-introspection.v1" in topics
         assert "onex.evt.platform.node-heartbeat.v1" in topics
+
+    def test_projection_api_schema_is_public(self) -> None:
+        """OMN-12761: Assert that projection_api.schema is 'public', not a database name.
+
+        Root cause: contract.yaml had schema: "omnidash_analytics" which is a
+        database name, not a Postgres schema name. The table lives in the
+        public schema of omnidash_analytics. projection-api latched a degraded
+        flag at startup because SET search_path TO omnidash_analytics failed.
+        """
+        contract_path = (
+            "src/omnimarket/nodes/node_projection_registration/contract.yaml"
+        )
+        with open(contract_path) as f:
+            contract = yaml.safe_load(f)
+        schema = contract["projection_api"]["schema"]
+        assert schema == "public", (
+            "projection_api.schema must be 'public' (the Postgres schema name); "
+            "'omnidash_analytics' is the database name, not the schema"
+        )

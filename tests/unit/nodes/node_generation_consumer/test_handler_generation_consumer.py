@@ -12,6 +12,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+import textwrap
 from pathlib import Path
 from typing import Any
 
@@ -119,11 +120,49 @@ def test_extract_blocks_parses_yaml_and_python() -> None:
 
 
 @pytest.mark.unit
-def test_extract_blocks_falls_back_to_raw_when_no_yaml_fence() -> None:
+def test_extract_blocks_returns_empty_when_no_yaml_fence() -> None:
+    # OMN-12816: a fenceless response (e.g. reasoning-model prose) must NOT be fed
+    # to the YAML parser as-is — return empty so validation fails cleanly.
     raw = "name: foo\ncontract_version: 1\n"
     contract_yaml, handler_source = _extract_blocks(raw)
-    assert contract_yaml == raw
+    assert contract_yaml == ""
     assert handler_source == ""
+
+
+@pytest.mark.unit
+def test_extract_blocks_prefers_last_block_over_thinking_drafts() -> None:
+    # OMN-12816: reasoning models emit DRAFT fenced blocks before the final answer.
+    # The LAST complete block is authoritative.
+    raw = (
+        "Let me draft this:\n"
+        "```yaml\nname: draft_wrong\n```\n"
+        "On reflection, the correct contract is:\n"
+        '```yaml\nname: final_right\ncontract_version: "1.0.0"\n```\n'
+        "```python\ndef handle(input_data):\n    return input_data\n```\n"
+    )
+    contract_yaml, handler_source = _extract_blocks(raw)
+    assert "final_right" in contract_yaml
+    assert "draft_wrong" not in contract_yaml
+    assert "def handle" in handler_source
+
+
+@pytest.mark.unit
+def test_extract_blocks_dedents_markdown_nested_block() -> None:
+    # OMN-12816: the final block is often nested in a markdown list (uniform indent).
+    # Without dedent the YAML is invalid; dedent recovers a parseable block.
+    raw = (
+        "Final answer:\n"
+        "```yaml\n"
+        '   name: node_x\n   contract_version: "1.0.0"\n   node_type: compute\n'
+        "   input_model:\n     name: In\n     module: m\n"
+        "   output_model:\n     name: Out\n     module: m\n"
+        "```\n"
+        "```python\n   def handle(input_data):\n       return input_data\n```\n"
+    )
+    contract_yaml, handler_source = _extract_blocks(raw)
+    assert contract_yaml.startswith("name: node_x")
+    assert "\ncontract_version:" in contract_yaml
+    assert handler_source.startswith("def handle(input_data):")
 
 
 # ---------------------------------------------------------------------------
@@ -454,112 +493,17 @@ async def test_registration_not_emitted_when_deploy_publisher_raises() -> None:
 
 # ---------------------------------------------------------------------------
 # Contract model_routing endpoint resolution tests
+#
+# OMN-12801: the endpoint URL + api_key are resolved per-model from the routing
+# authority (bifrost delegation overlay), NOT from an endpoint env var. The
+# endpoint_env / endpoint_mode contract keys and the LLM_CODER_URL env path are
+# deleted. Resolution behaviour is covered in test_endpoint_routing_authority.py.
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.unit
-def test_handler_reads_endpoint_env_from_contract_model_routing(tmp_path: Path) -> None:
-    """Handler must derive runtime env names from contract.yaml model_routing."""
-    contract = {
-        "name": "node_generation_consumer",
-        "contract_version": {"major": 1, "minor": 0, "patch": 0},
-        "node_type": "orchestrator",
-        "node_version": {"major": 1, "minor": 0, "patch": 0},
-        "event_bus": {"publish_topics": [], "subscribe_topics": []},
-        "model_routing": {
-            "endpoint_env": "LLM_CODER_URL",
-            "endpoint_mode": "complete_endpoint",
-            "served_model_id_env": "LLM_CODER_MODEL_NAME",
-        },
-    }
-    contract_path = tmp_path / "contract.yaml"
-    contract_path.write_text(yaml.dump(contract))
-
-    handler = HandlerGenerationConsumer(
-        effect_handler=FakeLlmEffect([_VALID_LLM_RESPONSE]),
-        contract_path=contract_path,
-    )
-
-    assert handler._endpoint_env == "LLM_CODER_URL"
-    assert handler._endpoint_mode == "complete_endpoint"
-    assert handler._model_id_env == "LLM_CODER_MODEL_NAME"
-
-
-@pytest.mark.unit
-def test_handler_rejects_contract_without_served_model_id_env(
-    tmp_path: Path,
-) -> None:
-    """The handler must not silently supply a served model ID default."""
-    contract = {
-        "name": "node_generation_consumer",
-        "contract_version": {"major": 1, "minor": 0, "patch": 0},
-        "node_type": "orchestrator",
-        "node_version": {"major": 1, "minor": 0, "patch": 0},
-        "event_bus": {"publish_topics": [], "subscribe_topics": []},
-    }
-    contract_path = tmp_path / "contract.yaml"
-    contract_path.write_text(yaml.dump(contract))
-
-    with pytest.raises(ValueError, match="served_model_id_env is required"):
-        HandlerGenerationConsumer(
-            effect_handler=FakeLlmEffect([_VALID_LLM_RESPONSE]),
-            contract_path=contract_path,
-        )
-
-
-@pytest.mark.unit
-def test_handler_rejects_contract_without_valid_endpoint_mode(tmp_path: Path) -> None:
-    """Endpoint request shape must be explicitly declared by the contract."""
-    contract = {
-        "name": "node_generation_consumer",
-        "contract_version": {"major": 1, "minor": 0, "patch": 0},
-        "node_type": "orchestrator",
-        "node_version": {"major": 1, "minor": 0, "patch": 0},
-        "event_bus": {"publish_topics": [], "subscribe_topics": []},
-        "model_routing": {
-            "endpoint_env": "LLM_CODER_URL",
-            "served_model_id_env": "LLM_CODER_MODEL_NAME",
-        },
-    }
-    contract_path = tmp_path / "contract.yaml"
-    contract_path.write_text(yaml.dump(contract))
-
-    with pytest.raises(ValueError, match="endpoint_mode must be one of"):
-        HandlerGenerationConsumer(
-            effect_handler=FakeLlmEffect([_VALID_LLM_RESPONSE]),
-            contract_path=contract_path,
-        )
-
-
-@pytest.mark.unit
-def test_production_contract_declares_llm_coder_url_endpoint_env() -> None:
-    """The production contract.yaml must declare model_routing.endpoint_env=LLM_CODER_URL."""
-    from omnimarket.nodes.node_generation_consumer.handlers.handler_generation_consumer import (
-        _CONTRACT_PATH,
-    )
-
-    with open(_CONTRACT_PATH) as f:
-        contract = yaml.safe_load(f)
-
-    model_routing = contract.get("model_routing", {})
-    assert model_routing.get("endpoint_env") == "LLM_CODER_URL", (
-        "contract.yaml model_routing.endpoint_env must be 'LLM_CODER_URL'; "
-        f"got: {model_routing.get('endpoint_env')!r}"
-    )
-    assert model_routing.get("endpoint_mode") == "complete_endpoint", (
-        "contract.yaml model_routing.endpoint_mode must be 'complete_endpoint'; "
-        f"got: {model_routing.get('endpoint_mode')!r}"
-    )
-    assert model_routing.get("served_model_id_env") == "LLM_CODER_MODEL_NAME", (
-        "contract.yaml model_routing.served_model_id_env must be "
-        "'LLM_CODER_MODEL_NAME'; "
-        f"got: {model_routing.get('served_model_id_env')!r}"
-    )
-
-
-@pytest.mark.unit
 def test_production_contract_declares_required_env_dependencies() -> None:
-    """contract.yaml must declare LLM_CODER_URL, LOCAL_LLM_SHARED_SECRET, LLM_ENDPOINT_CIDR_ALLOWLIST as dependencies."""
+    """contract.yaml must declare the HMAC + CIDR env deps (no LLM_CODER_URL)."""
     from omnimarket.nodes.node_generation_consumer.handlers.handler_generation_consumer import (
         _CONTRACT_PATH,
     )
@@ -572,9 +516,10 @@ def test_production_contract_declares_required_env_dependencies() -> None:
         for dep in contract.get("dependencies", [])
         if isinstance(dep, dict) and dep.get("type") == "environment" and "key" in dep
     }
+    # OMN-12801: LLM_CODER_URL is no longer an env dependency — the endpoint URL
+    # is resolved from the routing authority. The transport's HMAC + CIDR
+    # boundary env deps remain.
     required = {
-        "LLM_CODER_URL",
-        "LLM_CODER_MODEL_NAME",
         "LOCAL_LLM_SHARED_SECRET",
         "LLM_ENDPOINT_CIDR_ALLOWLIST",
     }
@@ -582,20 +527,298 @@ def test_production_contract_declares_required_env_dependencies() -> None:
     assert not missing, (
         f"contract.yaml is missing environment dependency declarations for: {missing}"
     )
+    assert "LLM_CODER_URL" not in env_keys, (
+        "contract.yaml must NOT declare LLM_CODER_URL as an env dependency; "
+        "the endpoint URL is resolved from the routing authority (OMN-12801)"
+    )
 
 
 # ---------------------------------------------------------------------------
-# OMN-12683: endpoint URL preservation is contract-declared. Complete
-# endpoints POST as-is via endpoint_url; OpenAI-compatible base URLs keep append.
+# OMN-12779: model/provider/endpoint from contract, not env (Wave 1B)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+def test_production_contract_declares_provider() -> None:
+    """contract.yaml model_routing.provider must be non-empty (no env fallback)."""
+    from omnimarket.nodes.node_generation_consumer.handlers.handler_generation_consumer import (
+        _CONTRACT_PATH,
+    )
+
+    with open(_CONTRACT_PATH) as f:
+        contract = yaml.safe_load(f)
+
+    model_routing = contract.get("model_routing", {})
+    provider = model_routing.get("provider", "")
+    assert provider, (
+        f"contract.yaml model_routing.provider is required; got: {provider!r}"
+    )
+
+
+@pytest.mark.unit
+def test_production_contract_declares_served_model_id() -> None:
+    """contract.yaml model_routing.served_model_id must be declared directly, not via env."""
+    from omnimarket.nodes.node_generation_consumer.handlers.handler_generation_consumer import (
+        _CONTRACT_PATH,
+    )
+
+    with open(_CONTRACT_PATH) as f:
+        contract = yaml.safe_load(f)
+
+    model_routing = contract.get("model_routing", {})
+    served_model_id = model_routing.get("served_model_id", "")
+    assert served_model_id, (
+        "contract.yaml model_routing.served_model_id must be a non-empty string; "
+        "served model IDs must come from the contract/overlay, not from env var indirection. "
+        f"got: {served_model_id!r}"
+    )
+    # The old env-indirection key must be absent — no silent fallback path.
+    assert "served_model_id_env" not in model_routing, (
+        "contract.yaml must not contain served_model_id_env; "
+        "model ID is now declared directly as served_model_id"
+    )
+
+
+@pytest.mark.unit
+def test_production_contract_declares_endpoint_ref() -> None:
+    """contract.yaml model_routing.endpoint_ref must reference a routing-tier backend."""
+    from omnimarket.nodes.node_generation_consumer.handlers.handler_generation_consumer import (
+        _CONTRACT_PATH,
+    )
+
+    with open(_CONTRACT_PATH) as f:
+        contract = yaml.safe_load(f)
+
+    model_routing = contract.get("model_routing", {})
+    endpoint_ref = model_routing.get("endpoint_ref", "")
+    assert endpoint_ref, (
+        "contract.yaml model_routing.endpoint_ref is required; "
+        "it must reference a routing-tier backend (e.g. 'local-coder'). "
+        f"got: {endpoint_ref!r}"
+    )
+
+
+@pytest.mark.unit
+def test_handler_reads_provider_from_contract(tmp_path: Path) -> None:
+    """Handler must read model_routing.provider from contract, fail-fast if absent."""
+    contract = {
+        "name": "node_generation_consumer",
+        "contract_version": {"major": 1, "minor": 0, "patch": 0},
+        "node_type": "orchestrator",
+        "node_version": {"major": 1, "minor": 0, "patch": 0},
+        "event_bus": {"publish_topics": [], "subscribe_topics": []},
+        "model_routing": {
+            "served_model_id": "test-model-v1",
+            "endpoint_ref": "local-coder",
+            "provider": "local",
+        },
+    }
+    contract_path = tmp_path / "contract.yaml"
+    contract_path.write_text(yaml.dump(contract))
+
+    handler = HandlerGenerationConsumer(
+        effect_handler=FakeLlmEffect([_VALID_LLM_RESPONSE]),
+        contract_path=contract_path,
+    )
+
+    assert handler._provider == "local"
+
+
+@pytest.mark.unit
+def test_handler_rejects_contract_without_provider(tmp_path: Path) -> None:
+    """Handler must raise ValueError when model_routing.provider is absent."""
+    contract = {
+        "name": "node_generation_consumer",
+        "contract_version": {"major": 1, "minor": 0, "patch": 0},
+        "node_type": "orchestrator",
+        "node_version": {"major": 1, "minor": 0, "patch": 0},
+        "event_bus": {"publish_topics": [], "subscribe_topics": []},
+        "model_routing": {
+            "served_model_id": "test-model-v1",
+            "endpoint_ref": "local-coder",
+            # provider intentionally absent
+        },
+    }
+    contract_path = tmp_path / "contract.yaml"
+    contract_path.write_text(yaml.dump(contract))
+
+    with pytest.raises(ValueError, match=r"model_routing\.provider is required"):
+        HandlerGenerationConsumer(
+            effect_handler=FakeLlmEffect([_VALID_LLM_RESPONSE]),
+            contract_path=contract_path,
+        )
+
+
+@pytest.mark.unit
+def test_handler_reads_served_model_id_from_contract(tmp_path: Path) -> None:
+    """Handler must read model_routing.served_model_id directly from contract."""
+    contract = {
+        "name": "node_generation_consumer",
+        "contract_version": {"major": 1, "minor": 0, "patch": 0},
+        "node_type": "orchestrator",
+        "node_version": {"major": 1, "minor": 0, "patch": 0},
+        "event_bus": {"publish_topics": [], "subscribe_topics": []},
+        "model_routing": {
+            "served_model_id": "Qwen3.6-35B-A3B",
+            "endpoint_ref": "local-coder",
+            "provider": "local",
+        },
+    }
+    contract_path = tmp_path / "contract.yaml"
+    contract_path.write_text(yaml.dump(contract))
+
+    handler = HandlerGenerationConsumer(
+        effect_handler=FakeLlmEffect([_VALID_LLM_RESPONSE]),
+        contract_path=contract_path,
+    )
+
+    assert handler._served_model_id == "Qwen3.6-35B-A3B"
+
+
+@pytest.mark.unit
+def test_handler_rejects_contract_without_served_model_id(tmp_path: Path) -> None:
+    """Handler must raise ValueError when model_routing.served_model_id is absent."""
+    contract = {
+        "name": "node_generation_consumer",
+        "contract_version": {"major": 1, "minor": 0, "patch": 0},
+        "node_type": "orchestrator",
+        "node_version": {"major": 1, "minor": 0, "patch": 0},
+        "event_bus": {"publish_topics": [], "subscribe_topics": []},
+        "model_routing": {
+            "endpoint_ref": "local-coder",
+            "provider": "local",
+            # served_model_id intentionally absent
+        },
+    }
+    contract_path = tmp_path / "contract.yaml"
+    contract_path.write_text(yaml.dump(contract))
+
+    with pytest.raises(ValueError, match=r"model_routing\.served_model_id is required"):
+        HandlerGenerationConsumer(
+            effect_handler=FakeLlmEffect([_VALID_LLM_RESPONSE]),
+            contract_path=contract_path,
+        )
+
+
+@pytest.mark.unit
+def test_handler_rejects_contract_without_endpoint_ref(tmp_path: Path) -> None:
+    """Handler must raise ValueError when model_routing.endpoint_ref is absent."""
+    contract = {
+        "name": "node_generation_consumer",
+        "contract_version": {"major": 1, "minor": 0, "patch": 0},
+        "node_type": "orchestrator",
+        "node_version": {"major": 1, "minor": 0, "patch": 0},
+        "event_bus": {"publish_topics": [], "subscribe_topics": []},
+        "model_routing": {
+            "served_model_id": "test-model-v1",
+            "provider": "local",
+            # endpoint_ref intentionally absent
+        },
+    }
+    contract_path = tmp_path / "contract.yaml"
+    contract_path.write_text(yaml.dump(contract))
+
+    with pytest.raises(ValueError, match=r"model_routing\.endpoint_ref is required"):
+        HandlerGenerationConsumer(
+            effect_handler=FakeLlmEffect([_VALID_LLM_RESPONSE]),
+            contract_path=contract_path,
+        )
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_benchmark_uses_provider_and_model_id_from_contract(
+    tmp_path: Path,
+) -> None:
+    """The emitted benchmark must carry provider and model_id sourced from contract, not literals."""
+    contract = {
+        "name": "node_generation_consumer",
+        "contract_version": {"major": 1, "minor": 0, "patch": 0},
+        "node_type": "orchestrator",
+        "node_version": {"major": 1, "minor": 0, "patch": 0},
+        "event_bus": {
+            "publish_topics": [
+                "onex.evt.omnimarket.node-generation-completed.v1",
+                "onex.evt.omnimarket.node-generation-failed.v1",
+                "onex.evt.omnimarket.node-registered.v1",
+                "onex.cmd.omnimarket.node-deploy.v1",
+            ],
+            "subscribe_topics": [],
+        },
+        "model_routing": {
+            "served_model_id": "contract-declared-model",
+            "endpoint_ref": "local-coder",
+            "provider": "contract-declared-provider",
+        },
+    }
+    contract_path = tmp_path / "contract.yaml"
+    contract_path.write_text(yaml.dump(contract))
+
+    published: list[tuple[str, bytes]] = []
+    handler = HandlerGenerationConsumer(
+        effect_handler=FakeLlmEffect([_VALID_LLM_RESPONSE]),
+        event_publisher=lambda t, p: published.append((t, p)),
+        contract_path=contract_path,
+    )
+
+    result = await handler.handle(
+        ModelNodeGenerationRequest(
+            task_description="Build a stub node",
+            correlation_id="corr-contract-provider-1",
+        )
+    )
+
+    # Both provider and model_id must come from the contract, not literals.
+    assert result.provider == "contract-declared-provider"
+    assert result.model_id == "contract-declared-model"
+    assert result.endpoint_class == "local-coder"
+
+    # Per-attempt records must also carry the contract-sourced values.
+    for attempt in result.attempts:
+        assert attempt.provider == "contract-declared-provider"
+        assert attempt.model_id == "contract-declared-model"
+        assert attempt.endpoint_class == "local-coder"
+
+
+@pytest.mark.unit
+def test_handler_routing_source_is_contract(tmp_path: Path) -> None:
+    """Handler must expose the routing source as contract-sourced (not env/literal)."""
+    contract = {
+        "name": "node_generation_consumer",
+        "contract_version": {"major": 1, "minor": 0, "patch": 0},
+        "node_type": "orchestrator",
+        "node_version": {"major": 1, "minor": 0, "patch": 0},
+        "event_bus": {"publish_topics": [], "subscribe_topics": []},
+        "model_routing": {
+            "served_model_id": "Qwen3.6-35B-A3B",
+            "endpoint_ref": "local-coder",
+            "provider": "local",
+        },
+    }
+    contract_path = tmp_path / "contract.yaml"
+    contract_path.write_text(yaml.dump(contract))
+
+    handler = HandlerGenerationConsumer(
+        effect_handler=FakeLlmEffect([_VALID_LLM_RESPONSE]),
+        contract_path=contract_path,
+    )
+
+    assert handler._routing_source == "contract"
+
+
+# ---------------------------------------------------------------------------
+# OMN-12801: endpoint URL is resolved per-model from the routing authority
+# (bifrost delegation overlay keyed by endpoint_ref). The COMPLETE provider URL
+# the authority declares is posted verbatim via endpoint_url.
 #
-# The final POST URL is proven by running the request the handler builds
-# through the *real* infra URL builder (HandlerLlmOpenaiCompatible._build_url),
-# so the assertion is end-to-end, not a restatement of handler internals.
+# The final POST URL is proven by running the request the handler builds through
+# the *real* infra URL builder (HandlerLlmOpenaiCompatible._build_url), so the
+# assertion is end-to-end, not a restatement of handler internals.
 # ---------------------------------------------------------------------------
 
-# The contract/overlay supplies the COMPLETE Gemini OpenAI-compatible endpoint
-# (ending in /chat/completions). It must be POSTed verbatim — not have any
-# version path appended. This is the registered endpoint per the live-path plan.
+# The routing authority declares the COMPLETE Gemini OpenAI-compatible endpoint
+# (ending in /chat/completions). It must be POSTed verbatim — no version path
+# appended. This is the registered endpoint per the live-path plan.
 _GEMINI_FULL_ENDPOINT = (
     "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
 )
@@ -606,28 +829,81 @@ _GEMINI_EXPECTED_URL = (
 _GEMINI_DOUBLE_VERSIONED_BAD_URL = (
     "https://generativelanguage.googleapis.com/v1beta/openai/v1/chat/completions"
 )
-_GEMINI_ORIGIN_ONLY = "https://generativelanguage.googleapis.com"
 _GEMINI_ORIGIN_BAD_URL = "https://generativelanguage.googleapis.com/v1/chat/completions"
-_LOCAL_ORIGIN_ONLY = "http://100.109.203.94:8000"
-_LOCAL_EXPECTED_URL = "http://100.109.203.94:8000/v1/chat/completions"
+_LOCAL_FULL_ENDPOINT = "http://100.109.203.94:8000/v1/chat/completions"  # onex-allow-internal-ip OMN-12801 reason="test fixture endpoint URL for routing-authority resolution"
+# The bare-base form the deployed bifrost local-* backends actually declare (the
+# delegation chain reads the same shape and relies on the effect's path append).
+_LOCAL_BARE_BASE = "http://100.109.203.94:8000"  # onex-allow-internal-ip OMN-12801 reason="test fixture: bare-base backend URL matching the deployed overlay"
+_LOCAL_BARE_BASE_EXPECTED_URL = "http://100.109.203.94:8000/v1/chat/completions"  # onex-allow-internal-ip OMN-12801 reason="test fixture: expected POST URL after path append"
 
 
-def _write_contract_for_endpoint_mode(tmp_path: Path, endpoint_mode: str) -> Path:
+def _write_routing_contract(
+    tmp_path: Path,
+    *,
+    endpoint_ref: str,
+    provider: str,
+    served_model_id: str,
+    inference_extra_body: dict[str, Any] | None = None,
+) -> Path:
+    """Write a generation contract declaring the three contract-side routing keys."""
+    model_routing: dict[str, Any] = {
+        "provider": provider,
+        "served_model_id": served_model_id,
+        "endpoint_ref": endpoint_ref,
+        "routing_source": "contract",
+    }
+    if inference_extra_body is not None:
+        model_routing["inference_extra_body"] = inference_extra_body
     contract = {
         "name": "node_generation_consumer",
         "contract_version": {"major": 1, "minor": 0, "patch": 0},
         "node_type": "orchestrator",
         "node_version": {"major": 1, "minor": 0, "patch": 0},
         "event_bus": {"publish_topics": [], "subscribe_topics": []},
-        "model_routing": {
-            "endpoint_env": "LLM_CODER_URL",
-            "endpoint_mode": endpoint_mode,
-            "served_model_id_env": "LLM_CODER_MODEL_NAME",
-        },
+        "model_routing": model_routing,
     }
-    contract_path = tmp_path / f"contract-{endpoint_mode}.yaml"
+    contract_path = tmp_path / f"contract-{endpoint_ref}.yaml"
     contract_path.write_text(yaml.dump(contract))
     return contract_path
+
+
+def _write_bifrost_authority(
+    monkeypatch: Any, tmp_path: Path, *, backend_id: str, endpoint_url: str
+) -> None:
+    """Point the bifrost routing authority at a fixture backend declaring endpoint_url."""
+    contract_yaml = textwrap.dedent(
+        f"""\
+        config_version: "2.0.0"
+        schema_version: "bifrost_delegation.v1"
+        backends:
+          - backend_id: {backend_id}
+            endpoint_url: "{endpoint_url}"
+            model_name: null
+            tier: local
+            timeout_ms: 60000
+            capabilities: [code_generation]
+        routing_rules:
+          - rule_id: "d4e5f6a7-0001-4000-8000-000000000001"
+            priority: 10
+            task_class: code_generation
+            task_class_contract_version: "1.0.0"
+            backend_policy_version: "2.0.0"
+            match_operation_types: [chat_completion]
+            match_capabilities: [code_generation]
+            backend_ids: [{backend_id}]
+            fallback_policy:
+              action: escalate_to_next_tier
+              max_retries: 1
+              on_exhaust: return_error
+            shadow_policy_id: "e5f6a7b8-0001-4000-8000-000000000001"
+        default_backends: [{backend_id}]
+        """
+    )
+    contract_path = tmp_path / "bifrost_delegation.yaml"
+    contract_path.write_text(contract_yaml)
+    overlay_path = tmp_path / "__no_overlay__.yaml"
+    monkeypatch.setenv("BIFROST_CONTRACT_PATH", str(contract_path))
+    monkeypatch.setenv("BIFROST_OVERLAY_PATH", str(overlay_path))
 
 
 class _CapturingEffect:
@@ -642,20 +918,25 @@ class _CapturingEffect:
         return _FakeResponse(_VALID_LLM_RESPONSE)
 
 
-async def _request_for_endpoint(
-    monkeypatch: Any, tmp_path: Path, endpoint: str, endpoint_mode: str
-) -> Any:
-    """Build and capture the handler request for ``endpoint``.
+async def _request_for_endpoint(monkeypatch: Any, tmp_path: Path, endpoint: str) -> Any:
+    """Build and capture the handler request when the authority resolves ``endpoint``.
 
     Forces the non-injected code path (so the real ModelLlmInferenceRequest is
-    constructed) while capturing it.
+    constructed) while capturing it. The endpoint URL comes from the routing
+    authority (bifrost fixture), never from an env var.
     """
-    monkeypatch.setenv("LLM_CODER_URL", endpoint)
-    monkeypatch.setenv("LLM_CODER_MODEL_NAME", "gemini-2.0-flash")
+    _write_bifrost_authority(
+        monkeypatch, tmp_path, backend_id="local-coder", endpoint_url=endpoint
+    )
 
     capturing = _CapturingEffect()
     handler = HandlerGenerationConsumer(
-        contract_path=_write_contract_for_endpoint_mode(tmp_path, endpoint_mode),
+        contract_path=_write_routing_contract(
+            tmp_path,
+            endpoint_ref="local-coder",
+            provider="local",
+            served_model_id="gemini-2.0-flash",
+        ),
         event_publisher=lambda _t, _p: None,
     )
     # Use the capturing effect but keep the real request-building branch.
@@ -673,16 +954,69 @@ async def _request_for_endpoint(
     return capturing.captured
 
 
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_contract_inference_extra_body_flows_to_request(
+    monkeypatch: Any, tmp_path: Path
+) -> None:
+    # OMN-12816: model_routing.inference_extra_body (e.g. enable_thinking:false)
+    # must reach ModelLlmInferenceRequest.extra_body so the effect merges it.
+    _write_bifrost_authority(
+        monkeypatch,
+        tmp_path,
+        backend_id="local-coder",
+        endpoint_url="http://192.168.86.201:8000",  # onex-allow-internal-ip OMN-12816 reason="test fixture bare-base endpoint"
+    )
+    capturing = _CapturingEffect()
+    handler = HandlerGenerationConsumer(
+        contract_path=_write_routing_contract(
+            tmp_path,
+            endpoint_ref="local-coder",
+            provider="local",
+            served_model_id="Qwen3.6-35B-A3B",
+            inference_extra_body={"chat_template_kwargs": {"enable_thinking": False}},
+        ),
+        event_publisher=lambda _t, _p: None,
+    )
+    handler._effect = capturing
+    handler._injected_effect = False
+
+    await handler.handle(
+        ModelNodeGenerationRequest(
+            task_description="Build a stub node",
+            correlation_id="corr-extra-body-1",
+        )
+    )
+
+    assert capturing.captured is not None
+    assert capturing.captured.extra_body == {
+        "chat_template_kwargs": {"enable_thinking": False}
+    }
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_contract_without_inference_extra_body_defaults_empty(
+    monkeypatch: Any, tmp_path: Path
+) -> None:
+    # A contract that omits inference_extra_body yields an empty extra_body
+    # (no behavior change for callers that do not declare it).
+    request = await _request_for_endpoint(
+        monkeypatch,
+        tmp_path,
+        "http://192.168.86.201:8000/v1/chat/completions",  # onex-allow-internal-ip OMN-12816 reason="test fixture complete endpoint"
+    )
+    assert request.extra_body == {}
+
+
 async def _final_post_url_for_endpoint(
-    monkeypatch: Any, tmp_path: Path, endpoint: str, endpoint_mode: str
+    monkeypatch: Any, tmp_path: Path, endpoint: str
 ) -> str:
     from omnibase_infra.nodes.node_llm_inference_effect.handlers.handler_llm_openai_compatible import (
         HandlerLlmOpenaiCompatible,
     )
 
-    request = await _request_for_endpoint(
-        monkeypatch, tmp_path, endpoint, endpoint_mode
-    )
+    request = await _request_for_endpoint(monkeypatch, tmp_path, endpoint)
     return HandlerLlmOpenaiCompatible._build_url(request)
 
 
@@ -691,12 +1025,9 @@ async def _final_post_url_for_endpoint(
 async def test_gemini_full_endpoint_posts_as_is(
     monkeypatch: Any, tmp_path: Path
 ) -> None:
-    """Full Gemini endpoint routes via endpoint_url — posted verbatim + /chat/completions."""
+    """Authority-resolved Gemini endpoint routes via endpoint_url — posted verbatim."""
     final_url = await _final_post_url_for_endpoint(
-        monkeypatch,
-        tmp_path,
-        _GEMINI_FULL_ENDPOINT,
-        "complete_endpoint",
+        monkeypatch, tmp_path, _GEMINI_FULL_ENDPOINT
     )
     assert final_url == _GEMINI_EXPECTED_URL
     # Neither 404 variant may appear.
@@ -711,10 +1042,7 @@ async def test_gemini_full_endpoint_no_double_versioned_append(
 ) -> None:
     """Regression: full Gemini endpoint must not become /v1beta/openai/v1/chat/completions."""
     final_url = await _final_post_url_for_endpoint(
-        monkeypatch,
-        tmp_path,
-        _GEMINI_FULL_ENDPOINT,
-        "complete_endpoint",
+        monkeypatch, tmp_path, _GEMINI_FULL_ENDPOINT
     )
     assert "/v1beta/openai/v1/chat/completions" not in final_url
     assert final_url.endswith("/v1beta/openai/chat/completions")
@@ -725,14 +1053,54 @@ async def test_gemini_full_endpoint_no_double_versioned_append(
 async def test_gemini_request_sets_endpoint_url_field(
     monkeypatch: Any, tmp_path: Path
 ) -> None:
-    """The built request must carry endpoint_url for the full Gemini endpoint."""
-    request = await _request_for_endpoint(
-        monkeypatch,
-        tmp_path,
-        _GEMINI_FULL_ENDPOINT,
-        "complete_endpoint",
-    )
+    """The built request must carry the authority-resolved endpoint_url verbatim."""
+    request = await _request_for_endpoint(monkeypatch, tmp_path, _GEMINI_FULL_ENDPOINT)
     assert request.endpoint_url == _GEMINI_FULL_ENDPOINT
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_local_full_endpoint_posts_as_is(
+    monkeypatch: Any, tmp_path: Path
+) -> None:
+    """Authority-resolved local vLLM complete endpoint is posted verbatim."""
+    final_url = await _final_post_url_for_endpoint(
+        monkeypatch, tmp_path, _LOCAL_FULL_ENDPOINT
+    )
+    assert final_url == _LOCAL_FULL_ENDPOINT
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_local_bare_base_appends_chat_completions(
+    monkeypatch: Any, tmp_path: Path
+) -> None:
+    """Bare-base backend (the deployed overlay form) appends /v1/chat/completions.
+
+    Regression for OMN-12801: the deployed bifrost local-* backends declare a
+    BARE base (``http://host:8000``), not a complete URL. Routed through
+    ``endpoint_url`` it would POST to the root and 404 (the live vLLM serves only
+    ``/v1/chat/completions``; the bare root returns 404). The handler must route a
+    bare base through ``base_url`` so the effect appends the operation path.
+    """
+    final_url = await _final_post_url_for_endpoint(
+        monkeypatch, tmp_path, _LOCAL_BARE_BASE
+    )
+    assert final_url == _LOCAL_BARE_BASE_EXPECTED_URL
+    # Must NOT post to the bare root (the 404 shape).
+    assert final_url != _LOCAL_BARE_BASE
+    assert final_url.endswith("/v1/chat/completions")
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_local_bare_base_leaves_endpoint_url_unset(
+    monkeypatch: Any, tmp_path: Path
+) -> None:
+    """A bare-base backend builds a request with endpoint_url=None (append path)."""
+    request = await _request_for_endpoint(monkeypatch, tmp_path, _LOCAL_BARE_BASE)
+    assert request.endpoint_url is None
+    assert request.base_url == _LOCAL_BARE_BASE
 
 
 @pytest.mark.unit
@@ -768,38 +1136,8 @@ def test_old_base_url_path_would_404_proves_regression() -> None:
 
 @pytest.mark.unit
 @pytest.mark.asyncio
-async def test_local_origin_only_keeps_legacy_append(
-    monkeypatch: Any, tmp_path: Path
-) -> None:
-    """Origin-only base URL keeps legacy base_url + /v1/chat/completions append."""
-    final_url = await _final_post_url_for_endpoint(
-        monkeypatch,
-        tmp_path,
-        _LOCAL_ORIGIN_ONLY,
-        "openai_compatible_base",
-    )
-    assert final_url == _LOCAL_EXPECTED_URL
-
-
-@pytest.mark.unit
-@pytest.mark.asyncio
-async def test_local_origin_only_does_not_set_endpoint_url(
-    monkeypatch: Any, tmp_path: Path
-) -> None:
-    """Origin-only base URL must NOT set endpoint_url (legacy append branch)."""
-    request = await _request_for_endpoint(
-        monkeypatch,
-        tmp_path,
-        _LOCAL_ORIGIN_ONLY,
-        "openai_compatible_base",
-    )
-    assert request.endpoint_url is None
-
-
-@pytest.mark.unit
-@pytest.mark.asyncio
 async def test_provider_error_remains_typed_failure_not_blank_success(
-    monkeypatch: Any,
+    monkeypatch: Any, tmp_path: Path
 ) -> None:
     """A provider call failure must not be reported as a successful (blank) generation.
 
@@ -808,17 +1146,23 @@ async def test_provider_error_remains_typed_failure_not_blank_success(
     surface), and no deploy/registration is emitted. A 404 must never look like
     success.
     """
-    monkeypatch.setenv("LLM_CODER_URL", _GEMINI_FULL_ENDPOINT)
-    monkeypatch.setenv("LLM_CODER_MODEL_NAME", "gemini-2.0-flash")
+    # OMN-12801: the endpoint URL is resolved from the routing authority, not env.
+    _write_bifrost_authority(
+        monkeypatch,
+        tmp_path,
+        backend_id="local-coder",
+        endpoint_url=_GEMINI_FULL_ENDPOINT,
+    )
 
     class _Failing404Effect:
         async def handle(self, request: Any) -> _FakeResponse:
             await asyncio.sleep(0)
             raise RuntimeError("404 Not Found from provider")
 
+    # Use the production contract (it declares the failed topic + endpoint_ref=local-coder).
     published: list[tuple[str, bytes]] = []
     handler = HandlerGenerationConsumer(
-        event_publisher=lambda t, p: published.append((t, p))
+        event_publisher=lambda t, p: published.append((t, p)),
     )
     handler._effect = _Failing404Effect()
     handler._injected_effect = False
