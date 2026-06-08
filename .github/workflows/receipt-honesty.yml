@@ -46,8 +46,11 @@ jobs:
           version: "latest"
       - name: Set up Python 3.12
         run: uv python install 3.12
-      - name: Install omnibase_core (validator package)
-        run: uv pip install --system ../omnibase_core
+      - name: Install omnibase_core (validator package) into a uv venv
+        run: |
+          set -euo pipefail
+          uv venv .honesty-venv --python 3.12
+          uv pip install --python .honesty-venv/bin/python ../omnibase_core
       - name: Identify changed DoD receipt YAMLs
         id: receipts
         run: |
@@ -60,6 +63,9 @@ jobs:
             base_sha="${{ github.event.merge_group.base_sha }}"
             head_sha="${{ github.event.merge_group.head_sha }}"
           fi
+          # Ensure both endpoints are present locally (base may be unfetched).
+          git fetch --no-tags --depth=1 origin "$base_sha" 2>/dev/null || true
+          git fetch --no-tags --depth=1 origin "$head_sha" 2>/dev/null || true
           # Restrict to receipt files (matches the omnibase_core pre-commit
           # hook's `files: drift/dod_receipts/.*\.yaml$` filter).
           changed=$(git diff --name-only --diff-filter=d "$base_sha" "$head_sha" \
@@ -86,4 +92,4 @@ jobs:
           # Pass explicit changed receipt paths; validator exits non-zero on any
           # honesty violation.
           # shellcheck disable=SC2086
-          python -m omnibase_core.validation.validator_receipt_honesty $files
+          .honesty-venv/bin/python -m omnibase_core.validation.validator_receipt_honesty $files
