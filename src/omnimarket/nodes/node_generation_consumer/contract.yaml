@@ -111,6 +111,14 @@ model_routing:
   served_model_id: Qwen3.6-35B-A3B
   endpoint_ref: local-coder
   routing_source: contract
+  # OMN-12816: provider-specific inference params merged into the LLM request body
+  # (ModelLlmInferenceRequest.extra_body). enable_thinking:false suppresses the
+  # reasoning preamble on Qwen vLLM backends so the FIRST attempt returns clean
+  # fenced blocks (deterministic; turns attempt_count=2 into 1). Contract-native —
+  # no env var, no code literal. Backends that ignore the key are unaffected.
+  inference_extra_body:
+    chat_template_kwargs:
+      enable_thinking: false
   auth:
     shared_secret_env: LOCAL_LLM_SHARED_SECRET
     cidr_allowlist_env: LLM_ENDPOINT_CIDR_ALLOWLIST

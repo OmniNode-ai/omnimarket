@@ -26,6 +26,7 @@ import json
 import logging
 import os
 import re
+import textwrap
 import time
 from collections.abc import Callable
 from pathlib import Path
@@ -76,6 +77,7 @@ _MODEL_ROUTING_PROVIDER_KEY = "provider"
 _MODEL_ROUTING_SERVED_MODEL_ID_KEY = "served_model_id"
 _MODEL_ROUTING_ENDPOINT_REF_KEY = "endpoint_ref"
 _MODEL_ROUTING_ROUTING_SOURCE_KEY = "routing_source"
+_MODEL_ROUTING_INFERENCE_EXTRA_BODY_KEY = "inference_extra_body"
 
 # OMN-12813: Explicit format instruction — no chain-of-thought, no numbered
 # analysis steps.  The inference protocol profile (local-qwen-generation-*)
@@ -292,30 +294,58 @@ def _split_resolved_endpoint(resolved_url: str) -> tuple[str, str | None]:
 
 
 def _extract_fenced_block(raw: str, langs: tuple[str, ...]) -> str | None:
-    """Find the first ```<lang>\n...\n``` block. Linear scan, no regex backtracking."""
+    """Return the LAST ```<lang>\n...\n``` block body, or None.
+
+    Linear scan, no regex backtracking. OMN-12816: the LAST matching block is
+    returned, not the first. Reasoning models emit one or more DRAFT blocks inside
+    their thinking before the final answer; the final block is the authoritative
+    one. Returning the first would extract a draft (often incomplete/malformed).
+    """
     cursor = 0
+    last_body: str | None = None
     while True:
         start = raw.find(_FENCE, cursor)
         if start == -1:
-            return None
+            return last_body
         lang_end = raw.find("\n", start + len(_FENCE))
         if lang_end == -1:
-            return None
+            return last_body
         lang = raw[start + len(_FENCE) : lang_end].strip().lower()
         body_start = lang_end + 1
         close = raw.find(_FENCE, body_start)
         if close == -1:
-            return None
+            return last_body
         if lang in langs:
-            return raw[body_start:close]
+            last_body = raw[body_start:close]
         cursor = close + len(_FENCE)
 
 
+def _normalize_block(body: str | None) -> str:
+    """Dedent and strip a fenced block body, or "" when absent.
+
+    OMN-12816: reasoning models often emit the final fenced block NESTED inside a
+    markdown list in their thinking, so every line carries a uniform leading
+    indent (e.g. 3 spaces). ``yaml.safe_load`` then rejects it ("mapping values
+    are not allowed here") and ``ast.parse`` raises "unexpected indent". Removing
+    the common leading whitespace with ``textwrap.dedent`` recovers a valid block.
+    """
+    if body is None:
+        return ""
+    return textwrap.dedent(body).strip()
+
+
 def _extract_blocks(raw: str) -> tuple[str, str]:
-    yaml_block = _extract_fenced_block(raw, _YAML_FENCE_LANGS)
-    py_block = _extract_fenced_block(raw, (_PYTHON_FENCE_LANG,))
-    contract_yaml = yaml_block.strip() if yaml_block is not None else raw
-    handler_source = py_block.strip() if py_block is not None else ""
+    """Extract (contract_yaml, handler_source) from fenced code blocks.
+
+    OMN-12816: when no fenced yaml block is found, return empty — do NOT fall back
+    to the raw response. Feeding a fenceless response (e.g. a reasoning model's
+    prose with embedded colons) straight to ``yaml.safe_load`` produced spurious
+    parse errors and masked the real failure. An empty contract_yaml fails
+    validation cleanly with a precise message. Each block is dedented to undo
+    markdown nesting (see ``_normalize_block``).
+    """
+    contract_yaml = _normalize_block(_extract_fenced_block(raw, _YAML_FENCE_LANGS))
+    handler_source = _normalize_block(_extract_fenced_block(raw, (_PYTHON_FENCE_LANG,)))
     return contract_yaml, handler_source
 
 
@@ -475,6 +505,15 @@ class HandlerGenerationConsumer:
             model_routing.get(_MODEL_ROUTING_ROUTING_SOURCE_KEY, "contract")
         )
 
+        # OMN-12816: provider-specific inference params merged into the LLM request
+        # body (e.g. chat_template_kwargs:{enable_thinking:false} to suppress Qwen
+        # reasoning). Contract-declared, not a code literal. Default empty so a
+        # contract that omits the block behaves exactly as before.
+        extra_body = model_routing.get(_MODEL_ROUTING_INFERENCE_EXTRA_BODY_KEY, {})
+        self._inference_extra_body: dict[str, Any] = (
+            dict(extra_body) if isinstance(extra_body, dict) else {}
+        )
+
     def _ensure_effect(self) -> None:
         if self._effect is not None:
             return
@@ -584,6 +623,11 @@ class HandlerGenerationConsumer:
                     {"role": "user", "content": user_content},
                 ),
                 api_key=api_key,
+                # OMN-12816: contract-declared inference params (e.g.
+                # chat_template_kwargs:{enable_thinking:false}) merged into the
+                # request body by the effect, suppressing Qwen reasoning so the
+                # first attempt returns clean fenced blocks.
+                extra_body=self._inference_extra_body,
                 timeout_seconds=120.0,
             )
             response = await self._effect.handle(request)
