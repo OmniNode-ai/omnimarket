@@ -1,0 +1,117 @@
+# OMN-12828 per-repo evidence carrier for omnimarket.
+# Canonical ticket contract lives in onex_change_control
+# (contracts/OMN-12828.yaml on OmniNode-ai/onex_change_control).
+# B3 (close-the-loop plan, 2026-06-08): Cloud URLs + api-key references through
+# bifrost. Builds on A1 (OMN-12815, complete verbatim endpoints) and HG2
+# (OMN-12824, secret-store resolver at the inference effect boundary).
+schema_version: '1.0.0'
+ticket_id: OMN-12828
+title: "B3 — cloud URLs + api_key references → bifrost; remove host-env routability coupling on the demo cloud path"
+summary: >
+  The committed bifrost_delegation.yaml already carries the COMPLETE verbatim
+  cloud endpoint_url (full chat path) for cloud-gemini-flash,
+  openrouter-glm-flash, and openrouter-qwen3-coder-480b (landed by A1/OMN-12815),
+  and each cloud backend declares its API-key reference NAME. The HG2 resolver
+  (OMN-12824) resolves the secret VALUE fail-closed at the inference effect
+  boundary via the canonical ProtocolSecretStore (env-backed by default,
+  Infisical-swappable). B3 removes the remaining host-.env runtime dependency on
+  the demo cloud path: the routing resolvers no longer read os.environ to decide
+  whether a cloud backend is routable. Routability is now a CONTRACT property
+  (complete endpoint_url + declared key reference); the secret VALUE is resolved
+  fail-closed at the effect boundary, never in routing. The POST URL equals the
+  contract endpoint_url VERBATIM for every cloud backend, and resolution fails
+  closed when endpoint_url is empty — no silent fallback, no literal key in any
+  contract/overlay/source.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched:
+  - "omnimarket.nodes.node_generation_consumer.handlers.handler_generation_consumer._resolve_bifrost_backend"
+  - "omnimarket.nodes.node_delegation_routing_reducer.handlers.handler_delegation_routing._load_bifrost_endpoints"
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+# Scope decisions (documented per CLAUDE.md Rule 2):
+#   1. The contract field rename api_key_env -> api_key_ref + deletion of
+#      base_url_env is owned by the CANONICAL omnibase_core model
+#      ModelDelegationBackendConfig (OMN-12126/12659). That rename did NOT land
+#      in omnibase_core dev/main (branch jonah/omn-12824-bifrost-api-key-ref
+#      exists but never merged); core still ships api_key_env + base_url_env with
+#      extra="forbid". Renaming the committed YAML now would FAIL core schema
+#      validation. The rename is therefore cross-repo blocked and out of this
+#      single-repo PR's scope — it requires a core PR + omnimarket pin bump. No
+#      backwards-compat shim was added. The committed contract carries the key
+#      reference NAME today via api_key_env; the substance of B3 (no literal key,
+#      fail-closed, no host-.env runtime dependency) is fully satisfied.
+#   2. bridge_config_loader.py's OPENROUTER_BASE_URL env path is NOT on the demo
+#      cloud delegation path (verified: node_generation_consumer /
+#      node_delegation_routing_reducer / node_llm_delegation_call_effect do not
+#      import it). It feeds node_pr_review_bot / node_hostile_reviewer, whose
+#      adapter still constructs f"{base_url}/v1/chat/completions" (A1/OMN-12815
+#      append-debt in a different node). Fully sourcing that base from the bifrost
+#      contract requires the paired hostile-reviewer append fix; tracked as A1
+#      follow-up, not expanded into this PR.
+#   3. HG2 PREREQ (Infisical seeding): probed for GEMINI_API_KEY +
+#      OPENROUTER_API_KEY (NAMES only, values never printed). No Infisical CLI is
+#      available in this environment, so seeding could not be performed here.
+#      The code path is correct regardless: the HG2 resolver is fail-closed and
+#      the deployed effect boundary injects the Infisical-backed store. Seeding
+#      is an ops step to complete before the cloud demo run.
+dod_evidence:
+  - id: dod-001-cloud-endpoints-verbatim
+    description: >
+      The committed bifrost contract carries the COMPLETE verbatim endpoint_url
+      and a declared API-key reference NAME for cloud-gemini-flash,
+      openrouter-glm-flash, and openrouter-qwen3-coder-480b; no literal secret
+      token appears in the contract. Run by a verifier other than the author.
+    source: generated
+    checks:
+      - check_type: command
+        check_value: >
+          cd omnimarket && uv run pytest
+          tests/unit/nodes/node_generation_consumer/test_cloud_endpoints_key_refs_omn12828.py
+          -q --tb=short
+  - id: dod-002-no-host-env-routability-coupling
+    description: >
+      The routing resolvers no longer read os.environ to gate cloud-backend
+      routability. A cloud backend is routable from the contract even when the
+      secret VALUE is absent/blank in the host environment; the reference NAME is
+      carried through for fail-closed resolution at the effect boundary.
+    source: generated
+    checks:
+      - check_type: command
+        check_value: >
+          cd omnimarket && ! grep -n "api_key_env not in os.environ\|os.environ.get(backend.api_key_env"
+          src/omnimarket/nodes/node_generation_consumer/handlers/handler_generation_consumer.py
+          src/omnimarket/nodes/node_delegation_routing_reducer/handlers/handler_delegation_routing.py
+  - id: dod-003-fail-closed-no-silent-fallback
+    description: >
+      Resolution fails closed (raises ValueError) when a cloud backend's
+      endpoint_url is empty — never a silent default. Covered by the B3 fail-closed
+      test plus the existing routing-authority fail-closed suite.
+    source: generated
+    checks:
+      - check_type: command
+        check_value: >
+          cd omnimarket && uv run pytest
+          tests/unit/nodes/node_generation_consumer/test_endpoint_routing_authority.py
+          tests/nodes/node_delegation_routing_reducer/test_openrouter_routing.py
+          -q --tb=short
+  - id: dod-004-suites-green
+    description: >
+      Affected node + delegation + inference suites green (not kafka); mypy
+      --strict clean on the two touched handlers; ruff clean. Verified locally on
+      the worktree before push.
+    source: generated
+    checks:
+      - check_type: command
+        check_value: >
+          cd omnimarket && uv run pytest tests/unit/nodes/node_generation_consumer
+          tests/nodes/node_delegation_routing_reducer tests/unit/delegation
+          tests/unit/inference tests/inference -q -m "not kafka"
+  - id: dod-005-contract-file
+    description: Evidence contract file present in repo.
+    source: generated
+    checks:
+      - check_type: command
+        check_value: 'test -f docs/work-tracking/contracts/OMN-12828.yaml'

@@ -268,41 +268,54 @@ def test_fail_closed_when_served_model_id_blank(
 
 
 @pytest.mark.unit
-def test_fail_closed_when_gemini_api_key_absent(
+def test_routable_when_gemini_api_key_absent_from_host_env(
     monkeypatch: Any, tmp_path: Path
 ) -> None:
-    """A backend declaring api_key_env whose env var is absent is unroutable → raise."""
+    """OMN-12828 (B3): a cloud backend is routable from the contract even when the
+    secret VALUE is absent from the host environment.
+
+    Routability is a contract property (endpoint_url + declared key REFERENCE);
+    the secret VALUE resolves fail-closed at the effect boundary (HG2), not in
+    the routing resolver. This removes the host-``.env`` runtime dependency that
+    previously skipped the backend when its key env var was unset.
+    """
     monkeypatch.delenv("GEMINI_API_KEY", raising=False)
     _set_bifrost(
         monkeypatch,
         tmp_path,
         _bifrost_contract(local_endpoint=None, gemini_endpoint=_GEMINI_URL),
     )
-    with pytest.raises(ValueError, match=r"endpoint_ref|backend|api_key"):
-        resolve_generation_endpoint(
-            endpoint_ref="cloud-gemini-flash",
-            provider="gemini",
-            served_model_id="gemini-2.0-flash",
-        )
+    resolved = resolve_generation_endpoint(
+        endpoint_ref="cloud-gemini-flash",
+        provider="gemini",
+        served_model_id="gemini-2.0-flash",
+    )
+    assert resolved.endpoint_url == _GEMINI_URL
+    assert resolved.api_key_ref == "GEMINI_API_KEY"
 
 
 @pytest.mark.unit
-def test_fail_closed_when_gemini_api_key_blank(
+def test_routable_when_gemini_api_key_blank_in_host_env(
     monkeypatch: Any, tmp_path: Path
 ) -> None:
-    """A backend declaring api_key_env whose env var is blank is unroutable."""
+    """OMN-12828 (B3): a blank host env var no longer makes the backend unroutable.
+
+    The reference NAME is carried through; the effect boundary resolves the value
+    fail-closed (a blank value raises there), so routing stays contract-driven.
+    """
     monkeypatch.setenv("GEMINI_API_KEY", "   ")
     _set_bifrost(
         monkeypatch,
         tmp_path,
         _bifrost_contract(local_endpoint=None, gemini_endpoint=_GEMINI_URL),
     )
-    with pytest.raises(ValueError, match=r"endpoint_ref|backend|api_key"):
-        resolve_generation_endpoint(
-            endpoint_ref="cloud-gemini-flash",
-            provider="gemini",
-            served_model_id="gemini-2.0-flash",
-        )
+    resolved = resolve_generation_endpoint(
+        endpoint_ref="cloud-gemini-flash",
+        provider="gemini",
+        served_model_id="gemini-2.0-flash",
+    )
+    assert resolved.endpoint_url == _GEMINI_URL
+    assert resolved.api_key_ref == "GEMINI_API_KEY"
 
 
 # ---------------------------------------------------------------------------

@@ -250,9 +250,17 @@ class TestBifrostBackendRefApiKeyEnv:
         assert ref is not None
         assert ref.api_key_ref == "OPENROUTER_API_KEY"
 
-    def test_backend_unavailable_when_env_absent(
+    def test_backend_routable_when_host_env_absent(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
+        """OMN-12828 (B3): a cloud backend stays routable from the contract even
+        when the secret VALUE is absent from the host environment.
+
+        Routability is a contract property; the reference NAME is preserved and
+        the secret VALUE resolves fail-closed at the effect boundary (HG2). This
+        removes the host-``.env`` runtime dependency that previously dropped the
+        backend from the routable set when its key env var was unset.
+        """
         monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
         bifrost_file = tmp_path / "bifrost.yaml"
         bifrost_file.write_text(_BIFROST_WITH_OPENROUTER)
@@ -263,7 +271,9 @@ class TestBifrostBackendRefApiKeyEnv:
         )
 
         backends = _load_bifrost_endpoints()
-        assert "openrouter-glm-flash" not in backends
+        ref = backends.get("openrouter-glm-flash")
+        assert ref is not None
+        assert ref.api_key_ref == "OPENROUTER_API_KEY"
 
     def test_api_key_ref_preserved_when_env_present_but_empty(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
