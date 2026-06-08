@@ -198,6 +198,8 @@ def _build_model_inference_intent(
     extra_headers: dict[str, str] | None,
     provider_request_options: dict[str, Any],
 ) -> ModelInferenceIntent:
+    # OMN-12815: base_url carries the COMPLETE endpoint URL from the routing
+    # authority (decision.endpoint_url); the inference effect posts it verbatim.
     payload: dict[str, Any] = {
         "base_url": base_url,
         "model": model,

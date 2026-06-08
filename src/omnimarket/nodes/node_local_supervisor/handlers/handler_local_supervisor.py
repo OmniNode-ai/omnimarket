@@ -78,12 +78,11 @@ def _default_invoker(endpoint_url: str, model_key: str, prompt: str) -> str:
         "max_tokens": 4096,
         "temperature": 0.2,
     }
-    chat_path = (
-        "/chat/completions" if "/paas/v4" in endpoint_url else "/v1/chat/completions"
-    )
+    # OMN-12815: endpoint_url is the COMPLETE endpoint URL — post it VERBATIM.
+    # No in-code path construction (no /paas/v4 vs /v1 branching).
     with httpx.Client(timeout=60.0) as client:
         resp = client.post(
-            f"{endpoint_url}{chat_path}",
+            endpoint_url,
             json=payload,
             headers={"Content-Type": "application/json"},
         )

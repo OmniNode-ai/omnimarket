@@ -1,0 +1,82 @@
+# OMN-12815 per-repo evidence carrier for omnimarket.
+# Canonical ticket contract lives in onex_change_control
+# (contracts/OMN-12815.yaml on OnniNode-ai/onex_change_control).
+# A1 (close-the-loop plan, 2026-06-08): COMPLETE endpoints in contracts, used
+# VERBATIM; ALL in-code URL construction deleted (no split/append/path-resolver).
+schema_version: '1.0.0'
+ticket_id: OMN-12815
+title: "A1 — COMPLETE endpoints in contracts, posted VERBATIM; delete all in-code URL construction"
+summary: >
+  Endpoints are specified COMPLETELY in the contract (incl. the full chat path)
+  and posted VERBATIM at every call site. Deleted every in-code URL
+  constructor/derivation: omnibase_infra HandlerLlmOpenaiCompatible._build_url
+  append branch + _OPERATION_PATHS map; omnimarket _split_resolved_endpoint
+  (handler_generation_consumer), _chat_completions_url + _CHAT_COMPLETIONS_SUFFIX
+  (handler_llm_delegation_call), the inline /v1/chat/completions append
+  (handler_inference_intent), and the /paas/v4-vs-/v1 chat_path branches in
+  adapter_llm_dispatch + handler_local_supervisor. All POST sites now send the
+  contract endpoint_url unchanged and fail closed when it is empty/missing.
+  bifrost_delegation.yaml cloud demo backends carry the COMPLETE endpoint URL;
+  site-specific locals remain null in the repo default and MUST be supplied
+  COMPLETE by the deploy overlay.
+is_seam_ticket: false
+interface_change: true
+interfaces_touched:
+  - public_api
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+  - id: dod-001-no-url-construction
+    description: >
+      All deleted URL-construction helpers are absent from the repo
+      (_split_resolved_endpoint, _chat_completions_url, _CHAT_COMPLETIONS_SUFFIX,
+      _OPERATION_PATHS). Run by a verifier other than the author.
+    source: generated
+    checks:
+      - check_type: command
+        check_value: >
+          cd omnimarket && ! grep -rn "_split_resolved_endpoint\|_chat_completions_url\|_CHAT_COMPLETIONS_SUFFIX"
+          src/ tests/
+  - id: dod-002-build-url-verbatim
+    description: >
+      The infra OpenAI-compatible effect posts endpoint_url verbatim and fails
+      closed when absent; the _OPERATION_PATHS map is gone.
+    source: generated
+    checks:
+      - check_type: command
+        check_value: >
+          cd omnibase_infra && uv run pytest
+          tests/unit/nodes/node_llm_inference_effect/handlers/test_handler_llm_openai_compatible.py
+          tests/unit/nodes/node_llm_inference_effect/handlers/test_handler_llm_openai_compatible_class.py
+          -q --tb=short
+  - id: dod-003-verbatim-post-tests
+    description: >
+      Demo-path verbatim POST tests pass: generation consumer posts the contract
+      endpoint_url exactly (gemini/local/missing), delegation inference intent
+      posts base_url verbatim with no append, and the bifrost contract endpoint
+      invariant (complete-or-site-local) holds.
+    source: generated
+    checks:
+      - check_type: command
+        check_value: >
+          cd omnimarket && uv run pytest
+          tests/unit/nodes/node_generation_consumer/test_handler_generation_consumer.py
+          tests/unit/delegation/test_handler_inference_intent.py
+          tests/nodes/node_delegation_routing_reducer/test_bifrost_overlay_loader.py
+          -q --tb=short
+  - id: dod-004-full-suite-green
+    description: >
+      Full omnimarket suite green (not kafka), mypy --strict clean, ruff clean,
+      pre-commit all hooks pass. Verified locally on the worktree before push.
+    source: generated
+    checks:
+      - check_type: command
+        check_value: 'cd omnimarket && uv run mypy src/omnimarket/ --strict'
+  - id: dod-005-contract-file
+    description: Evidence contract file present in repo.
+    source: generated
+    checks:
+      - check_type: command
+        check_value: 'test -f docs/work-tracking/contracts/OMN-12815.yaml'

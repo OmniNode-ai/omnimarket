@@ -74,7 +74,8 @@ _BIFROST_CONTRACT = (
     "schema_version: bifrost_delegation.v1\n"
     "backends:\n"
     "  - backend_id: local-coder\n"
-    '    endpoint_url: "http://test-coder:8000"\n'
+    # OMN-12815: COMPLETE endpoint URL incl. chat path, posted VERBATIM.
+    '    endpoint_url: "http://test-coder:8000/v1/chat/completions"\n'
     '    model_name: "qwen3-coder-30b"\n'
     "    tier: local\n"
     "    timeout_ms: 30000\n"
@@ -310,7 +311,10 @@ class TestSeaAcceptanceGoldenChain:
             )
 
             assert routing_decision.correlation_id == correlation_id
-            assert routing_decision.endpoint_url == "http://test-coder:8000"
+            assert (
+                routing_decision.endpoint_url
+                == "http://test-coder:8000/v1/chat/completions"
+            )
             assert routing_decision.selected_model == MODEL_QWEN3_35B_A3B
 
             inference_intent = ModelInferenceIntent(
@@ -357,6 +361,8 @@ class TestSeaAcceptanceGoldenChain:
 
                 inference_response = HandlerInferenceIntent().handle(inference_intent)
 
+            # OMN-12815: POST URL equals the contract endpoint_url VERBATIM
+            # (no construction); the contract now carries the complete chat path.
             assert captured_urls == ["http://test-coder:8000/v1/chat/completions"]
             assert inference_response.correlation_id == correlation_id
             assert inference_response.error_message == ""

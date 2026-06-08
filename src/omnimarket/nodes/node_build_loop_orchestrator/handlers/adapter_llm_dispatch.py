@@ -1544,16 +1544,12 @@ class AdapterLlmDispatch:
         if endpoint.api_key:
             headers["Authorization"] = f"Bearer {endpoint.api_key}"
 
-        # BigModel's /api/paas/v4 base already includes the version prefix;
-        # appending /v1/chat/completions would produce an invalid double-versioned path.
-        chat_path = (
-            "/chat/completions"
-            if "/paas/v4" in endpoint.base_url
-            else "/v1/chat/completions"
-        )
+        # OMN-12815: endpoint.base_url is the COMPLETE endpoint URL — post it
+        # VERBATIM. No in-code path construction (no /paas/v4 vs /v1 branching);
+        # provider path differences live in the endpoint URL, not in code.
         async with httpx.AsyncClient(timeout=endpoint.timeout_seconds) as client:
             resp = await client.post(
-                f"{endpoint.base_url}{chat_path}",
+                endpoint.base_url,
                 json=payload,
                 headers=headers,
             )

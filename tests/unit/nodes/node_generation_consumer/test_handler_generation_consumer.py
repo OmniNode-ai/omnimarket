@@ -1190,44 +1190,44 @@ async def test_local_full_endpoint_posts_as_is(
 
 @pytest.mark.unit
 @pytest.mark.asyncio
-async def test_local_bare_base_appends_chat_completions(
+async def test_local_full_endpoint_posts_verbatim_no_append(
     monkeypatch: Any, tmp_path: Path
 ) -> None:
-    """Bare-base backend (the deployed overlay form) appends /v1/chat/completions.
+    """OMN-12815: a COMPLETE local endpoint is posted verbatim — no path append.
 
-    Regression for OMN-12801: the deployed bifrost local-* backends declare a
-    BARE base (``http://host:8000``), not a complete URL. Routed through
-    ``endpoint_url`` it would POST to the root and 404 (the live vLLM serves only
-    ``/v1/chat/completions``; the bare root returns 404). The handler must route a
-    bare base through ``base_url`` so the effect appends the operation path.
+    The deployed overlay must now declare the COMPLETE URL (incl.
+    ``/v1/chat/completions``); the handler posts it unchanged and the effect
+    appends nothing.
     """
     final_url = await _final_post_url_for_endpoint(
-        monkeypatch, tmp_path, _LOCAL_BARE_BASE
+        monkeypatch, tmp_path, _LOCAL_BARE_BASE_EXPECTED_URL
     )
     assert final_url == _LOCAL_BARE_BASE_EXPECTED_URL
-    # Must NOT post to the bare root (the 404 shape).
-    assert final_url != _LOCAL_BARE_BASE
-    assert final_url.endswith("/v1/chat/completions")
 
 
 @pytest.mark.unit
 @pytest.mark.asyncio
-async def test_local_bare_base_leaves_endpoint_url_unset(
+async def test_local_complete_endpoint_sets_endpoint_url_field(
     monkeypatch: Any, tmp_path: Path
 ) -> None:
-    """A bare-base backend builds a request with endpoint_url=None (append path)."""
-    request = await _request_for_endpoint(monkeypatch, tmp_path, _LOCAL_BARE_BASE)
-    assert request.endpoint_url is None
+    """OMN-12815: the built request carries the COMPLETE endpoint_url verbatim.
+
+    base_url is only the scheme://host observability label, never the POST URL.
+    """
+    request = await _request_for_endpoint(
+        monkeypatch, tmp_path, _LOCAL_BARE_BASE_EXPECTED_URL
+    )
+    assert request.endpoint_url == _LOCAL_BARE_BASE_EXPECTED_URL
     assert request.base_url == _LOCAL_BARE_BASE
 
 
 @pytest.mark.unit
-def test_old_base_url_path_would_404_proves_regression() -> None:
-    """Documents the defect: the old code passed the full Gemini URL via base_url.
+def test_build_url_posts_endpoint_url_verbatim_no_construction() -> None:
+    """OMN-12815: the effect posts endpoint_url verbatim — never base_url + path.
 
-    Feeding the complete Gemini endpoint through base_url (the pre-fix behavior)
-    yields the double-versioned 404 URL. This asserts the broken shape so the
-    fix (routing via endpoint_url) is demonstrably different.
+    Replaces the pre-fix regression test that proved the base_url append path.
+    The complete Gemini endpoint posted via endpoint_url is returned exactly;
+    no double-versioned ``/v1beta/openai/v1/chat/completions`` append occurs.
     """
     from omnibase_infra.enums import EnumLlmOperationType
     from omnibase_infra.nodes.node_llm_inference_effect.handlers.handler_llm_openai_compatible import (
@@ -1237,19 +1237,16 @@ def test_old_base_url_path_would_404_proves_regression() -> None:
         ModelLlmInferenceRequest,
     )
 
-    # The pre-fix overlay supplied the OpenAI-compat base "/v1beta/openai/".
-    # Routed through base_url, the legacy append produced the double-versioned
-    # 404 URL. The fix configures the COMPLETE endpoint + routes via endpoint_url.
-    gemini_openai_base = "https://generativelanguage.googleapis.com/v1beta/openai/"
-    old_request = ModelLlmInferenceRequest(
-        base_url=gemini_openai_base,
+    request = ModelLlmInferenceRequest(
+        base_url="https://generativelanguage.googleapis.com",
+        endpoint_url=_GEMINI_FULL_ENDPOINT,
         operation_type=EnumLlmOperationType.CHAT_COMPLETION,
         model="gemini-2.0-flash",
         messages=({"role": "user", "content": "hi"},),
     )
-    bad_url = HandlerLlmOpenaiCompatible._build_url(old_request)
-    assert bad_url == _GEMINI_DOUBLE_VERSIONED_BAD_URL
-    assert bad_url != _GEMINI_EXPECTED_URL
+    final_url = HandlerLlmOpenaiCompatible._build_url(request)
+    assert final_url == _GEMINI_EXPECTED_URL
+    assert final_url != _GEMINI_DOUBLE_VERSIONED_BAD_URL
 
 
 @pytest.mark.unit
