@@ -69,9 +69,9 @@ class ModelArmAggregateRow(BaseModel):
     mean_attempt_count: float | None = Field(
         default=None,
         description=(
-            "Mean attempts across successful trials. "
-            "At max_attempts=2 this has limited dynamic range; "
-            "first_pass_rate is the primary signal."
+            "Mean attempts across all trials. "
+            "With the standard 10-attempt budget, first_pass_rate remains "
+            "the primary signal and mean attempts is secondary."
         ),
     )
     # Budget/failure breakdown

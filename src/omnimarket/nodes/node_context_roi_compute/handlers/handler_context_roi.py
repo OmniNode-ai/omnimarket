@@ -139,7 +139,7 @@ def _build_aggregate_row(
         1 for r in rows if r.failure_stage == EnumFailureStage.GENERATION
     )
 
-    # attempt_count: mean over all rows (limited signal at max_attempts=2)
+    # attempt_count: mean over all rows; first-pass rate remains the headline signal.
     attempt_values = [r.attempt_count for r in rows]
     mean_attempts = _safe_mean_numeric(attempt_values)
 

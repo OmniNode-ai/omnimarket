@@ -221,7 +221,7 @@ externally_consumed_topics:
   # OMN-11058: verified subscriber exists; classified intentionally_external
 
 escalation:
-  max_attempts: 2
+  max_attempts: 10
   excluded_tiers:
     - cli_agents
 
