@@ -62,9 +62,11 @@ def test_model_config_is_frozen():
 
 
 @pytest.mark.unit
-def test_openrouter_models_registered_when_api_key_set(monkeypatch: pytest.MonkeyPatch):
+def test_openrouter_models_registered_when_api_key_and_base_url_set(
+    monkeypatch: pytest.MonkeyPatch,
+):
     monkeypatch.setenv("OPENROUTER_API_KEY", "test-key-abc")
-    monkeypatch.delenv("OPENROUTER_BASE_URL", raising=False)
+    monkeypatch.setenv("OPENROUTER_BASE_URL", "https://openrouter.ai/api")
 
     from omnimarket.inference.bridge_config_loader import (
         load_inference_bridge_config_from_env,
@@ -84,6 +86,20 @@ def test_openrouter_models_registered_when_api_key_set(monkeypatch: pytest.Monke
     assert isinstance(extra, dict)
     assert "HTTP-Referer" in extra
     assert "X-Title" in extra
+
+
+@pytest.mark.unit
+def test_openrouter_missing_base_url_fails_closed(monkeypatch: pytest.MonkeyPatch):
+    """OMN-12824: key present but base URL missing → fail closed, no in-code default."""
+    monkeypatch.setenv("OPENROUTER_API_KEY", "test-key-abc")
+    monkeypatch.delenv("OPENROUTER_BASE_URL", raising=False)
+
+    from omnimarket.inference.bridge_config_loader import (
+        load_inference_bridge_config_from_env,
+    )
+
+    with pytest.raises(ValueError, match="OPENROUTER_BASE_URL"):
+        load_inference_bridge_config_from_env()
 
 
 @pytest.mark.unit
@@ -120,9 +136,8 @@ def test_openrouter_base_url_override(monkeypatch: pytest.MonkeyPatch):
 
 
 @pytest.mark.unit
-def test_openrouter_blank_base_url_falls_back_to_default(
-    monkeypatch: pytest.MonkeyPatch,
-):
+def test_openrouter_blank_base_url_fails_closed(monkeypatch: pytest.MonkeyPatch):
+    """OMN-12824: a blank base URL is not a valid config and must not fall back."""
     monkeypatch.setenv("OPENROUTER_API_KEY", "test-key")
     monkeypatch.setenv("OPENROUTER_BASE_URL", "   ")
 
@@ -130,12 +145,8 @@ def test_openrouter_blank_base_url_falls_back_to_default(
         load_inference_bridge_config_from_env,
     )
 
-    cfg = load_inference_bridge_config_from_env()
-
-    openrouter_keys = [k for k in cfg.model_configs if k.startswith("openrouter/")]
-    assert len(openrouter_keys) > 0
-    for key in openrouter_keys:
-        assert cfg.model_configs[key]["base_url"] == "https://openrouter.ai/api"
+    with pytest.raises(ValueError, match="OPENROUTER_BASE_URL"):
+        load_inference_bridge_config_from_env()
 
 
 # --- AdapterInferenceBridge extra_headers passthrough ---
