@@ -30,9 +30,9 @@ file/line proving each came from authority, PLUS the negative-audit result. Any
 hardcoded/env path on the demo path fails this gate."
 
 Usage:
-    python scripts/ci/check_routing_authority.py            # enforce (exit 1 on fail)
-    python scripts/ci/check_routing_authority.py --json     # print evidence packet JSON
-    python scripts/ci/check_routing_authority.py --emit <path>  # write packet to <path>
+    uv run python scripts/ci/check_routing_authority.py            # enforce (exit 1 on fail)
+    uv run python scripts/ci/check_routing_authority.py --json     # print evidence packet JSON
+    uv run python scripts/ci/check_routing_authority.py --emit <path>  # write packet to <path>
 """
 
 from __future__ import annotations
@@ -202,6 +202,16 @@ def build_positive_proof(repo_root: Path) -> dict[str, Any]:
             endpoint_url, _api_key_ref, endpoint_source = _resolve_endpoint_for_ref(
                 repo_root, endpoint_ref
             )
+            # Fail closed: endpoint_ref MUST map to a declared bifrost backend in
+            # the routing authority. A missing mapping ("NOT FOUND"/"NOT DECLARED")
+            # is a broken demo path, not a PASS — otherwise positive_ok could be
+            # true with no authority backing the endpoint (false PASS evidence).
+            if "NOT FOUND" in endpoint_source or "NOT DECLARED" in endpoint_source:
+                errors.append(
+                    f"{contract_rel}: endpoint_ref={endpoint_ref!r} does not map to a "
+                    f"declared bifrost backend in the routing authority "
+                    f"({endpoint_source}) — the demo path is not authority-backed"
+                )
 
         entries.append(
             {

@@ -33,6 +33,7 @@ sys.path.insert(0, str(_SCRIPTS_CI))
 from check_routing_authority import (  # noqa: E402
     _REQUIRED_ROUTING_KEYS,
     _is_api_key_resolution,
+    _resolve_endpoint_for_ref,
     _scan_env_reads,
     _scan_literal_tokens,
     build_evidence_packet,
@@ -77,6 +78,42 @@ class TestPositiveRouteSourceProof:
         # never an in-code literal or env var.
         assert "bifrost_delegation.yaml" in entry["endpoint_source"]
         assert entry["endpoint_ref"] in entry["endpoint_source"]
+
+
+@pytest.mark.unit
+class TestEndpointResolutionFailsClosed:
+    def test_undeclared_endpoint_ref_returns_not_declared(self) -> None:
+        # An endpoint_ref absent from the bifrost authority must surface a
+        # NOT DECLARED source so the positive proof records it as an error
+        # (fail-closed) rather than a silent PASS with no authority backing.
+        _url, _key, source = _resolve_endpoint_for_ref(
+            _REPO_ROOT, "this-backend-does-not-exist"
+        )
+        assert "NOT DECLARED" in source
+
+    def test_undeclared_endpoint_ref_makes_positive_proof_fail(
+        self, tmp_path: Path
+    ) -> None:
+        # Build a tmp repo whose demo contract points at an undeclared backend.
+        import shutil
+
+        src_contract = (
+            _REPO_ROOT / "src/omnimarket/nodes/node_generation_consumer/contract.yaml"
+        )
+        dst_dir = tmp_path / "src/omnimarket/nodes/node_generation_consumer"
+        dst_dir.mkdir(parents=True)
+        text = src_contract.read_text(encoding="utf-8")
+        text = text.replace("endpoint_ref: local-coder", "endpoint_ref: nonexistent")
+        (dst_dir / "contract.yaml").write_text(text, encoding="utf-8")
+        # copy the bifrost authority config (which lacks 'nonexistent')
+        cfg_src = _REPO_ROOT / "src/omnimarket/configs/bifrost_delegation.yaml"
+        cfg_dst = tmp_path / "src/omnimarket/configs/bifrost_delegation.yaml"
+        cfg_dst.parent.mkdir(parents=True)
+        shutil.copy(cfg_src, cfg_dst)
+        (tmp_path / ".git").mkdir()
+
+        proof = build_positive_proof(tmp_path)
+        assert any("nonexistent" in e for e in proof["errors"]), proof["errors"]
 
 
 @pytest.mark.unit
