@@ -1,0 +1,70 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-12826"
+title: "Wire HandlerGeneratedExecutor as node-deploy.v1 consumer; sandbox importlib invoke; emit future terminal result shape"
+summary: >
+  Close-the-loop plan track B1. Wires HandlerGeneratedExecutor as the consumer of
+  onex.cmd.omnimarket.node-deploy.v1 via the new on_deploy_event entrypoint, which
+  sandbox-loads the generated handler (importlib), invokes it, and emits the
+  terminal result on the contract-declared onex.evt.omnimarket.generated-node-invoked.v1
+  topic. The terminal result mirrors the SAME evidence-key shape future runtime
+  dispatch (NodeInvocationAdapter.dispatch) produces (_runtime_backend,
+  _event_bus_backend, _state_store_backend, _node_contract, _command_topic, status)
+  and is explicitly labelled non-hot-load (_runtime_backend="sandbox", hot_load=False),
+  so a future runtime hot-load path can replace the sandbox path without changing the
+  result contract. All topics resolve from contract.yaml — no hardcoded topic strings.
+is_seam_ticket: false
+interface_change: true
+interfaces_touched:
+  - "HandlerGeneratedExecutor.on_deploy_event"
+  - "HandlerGeneratedExecutor.terminal_topic"
+  - "HandlerGeneratedExecutor.deploy_topic"
+  - "node_generation_consumer contract.yaml: new generated-node-invoked terminal topic"
+evidence_requirements:
+  - kind: "tests"
+    description: "Focused executor tests prove deploy-consume, sandbox invoke, and future-dispatch terminal shape (24 tests)"
+    command: "uv run pytest tests/unit/nodes/node_generation_consumer/test_handler_generated_executor.py -v"
+  - kind: "tests"
+    description: "Full omnimarket suite green (no -k filter)"
+    command: "uv run pytest tests/ -v"
+  - kind: "ci"
+    description: "omnimarket PR CI checks pass"
+    command: "gh pr checks <PR> --repo OmniNode-ai/omnimarket"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-executor-tests"
+    description: >
+      24 focused tests in test_handler_generated_executor.py pass, including the
+      B1 additions: on_deploy_event returns the future-runtime terminal shape,
+      carries invocation output, emits to the contract-declared terminal topic,
+      fails closed on bad payload / raising handler, and resolves topics from the
+      contract (not hardcoded).
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/unit/nodes/node_generation_consumer/test_handler_generated_executor.py -v"
+  - id: "dod-topic-compliance"
+    description: "No hardcoded ONEX topic literals; all Handler* classes imported; runtime sweep clean"
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run python scripts/ci/check_no_hardcoded_topics.py && uv run python scripts/ci/check_unimported_handlers.py && uv run python scripts/ci/run_runtime_sweep.py"
+  - id: "dod-typecheck"
+    description: "mypy --strict clean on node_generation_consumer"
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run mypy src/omnimarket/nodes/node_generation_consumer/ --strict"
+  - id: "dod-deploy"
+    description: >
+      Deploy-gate evidence: B1 is a sandbox importlib invoke wiring (consumer entrypoint
+      + terminal-result emission) inside omnimarket source. No new Docker image, daemon,
+      broker topic provisioning beyond the contract-declared topic, runtime process, or
+      service deploy is required before merge. Sandbox invocation is explicitly non-hot-load.
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "echo 'deploy-gate: OMN-12826 wires HandlerGeneratedExecutor as an in-process node-deploy consumer with contract-driven topic resolution and a future-dispatch-shaped terminal result; no Docker image, daemon, runtime process, docker exec, or service deploy is required before merge'"

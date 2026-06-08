@@ -93,11 +93,20 @@ terminal_event: onex.evt.omnimarket.node-generation-completed.v1
 event_bus:
   subscribe_topics:
     - onex.cmd.omnimarket.node-generation-requested.v1
+    # OMN-12826 (B1): HandlerGeneratedExecutor consumes node-deploy commands,
+    # sandbox-loads the generated handler, invokes it, and emits the terminal
+    # result on generated-node-invoked. The deploy command is published by this
+    # same node's generation flow (_emit_deploy) and consumed by the executor.
+    - onex.cmd.omnimarket.node-deploy.v1
   publish_topics:
     - onex.evt.omnimarket.node-generation-completed.v1
     - onex.evt.omnimarket.node-generation-failed.v1
     - onex.evt.platform.node-registration.v1
     - onex.cmd.omnimarket.node-deploy.v1
+    # OMN-12826 (B1): terminal result of a sandbox invocation. Carries the same
+    # evidence shape future runtime dispatch (NodeInvocationAdapter.dispatch)
+    # produces, explicitly labelled non-hot-load (_runtime_backend=sandbox).
+    - onex.evt.omnimarket.generated-node-invoked.v1
 
 model_routing:
   # OMN-12779 + OMN-12801: provider, served_model_id, and endpoint_ref are
