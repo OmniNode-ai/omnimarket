@@ -1,0 +1,23 @@
+name: node_context_roi_compute
+version: "1.0.0"
+description: "N-arm factor-matrix scorer for the context-ROI experiment (OMN-12797 P2-2/P2-3)"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_context_roi_compute: "omnimarket.nodes.node_context_roi_compute"
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: pure
+dependencies:
+  - "omnibase_core>=0.39.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["experiment", "context-roi", "factor-matrix", "n-arm", "compute", "replay-proven"]
+pack: "demo"
+display_name: "Context ROI Compute"
+node_role: "compute"

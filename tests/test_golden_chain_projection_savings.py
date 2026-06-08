@@ -327,3 +327,25 @@ def _row_checksum(row: dict[str, object]) -> str:
     }
     encoded = json.dumps(stable, sort_keys=True, separators=(",", ":")).encode()
     return hashlib.sha256(encoded).hexdigest()
+
+
+class TestProjectionSavingsContractConfig:
+    """OMN-12761: Assert that the savings contract routes db_io to omnidash_analytics.
+
+    Root cause: contract.yaml had database: omnibase_infra while the
+    savings_estimates table (with updated_at) lives in omnidash_analytics.
+    Every sibling projection uses omnidash_analytics; this test gates regression.
+    """
+
+    def test_db_io_database_is_omnidash_analytics(self) -> None:
+        contract_path = Path(
+            "src/omnimarket/nodes/node_projection_savings/contract.yaml"
+        )
+        with contract_path.open() as f:
+            contract = yaml.safe_load(f)
+        tables = contract["db_io"]["db_tables"]
+        savings_table = next(t for t in tables if t["name"] == "savings_estimates")
+        assert savings_table["database"] == "omnidash_analytics", (
+            "savings_estimates must target omnidash_analytics (not omnibase_infra); "
+            "migration 075 applied updated_at to omnidash_analytics only"
+        )

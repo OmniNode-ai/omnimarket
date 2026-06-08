@@ -250,6 +250,7 @@ timeout_behavior:
 
 metadata:
   transport_type: kafka
+  demo_path: true  # OMN-12777: demo-path topic coherence gate scope marker
   author: OmniNode Team
   license: MIT
   created: "2026-05-12"

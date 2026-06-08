@@ -34,7 +34,7 @@ db_io:
     - name: savings_estimates
       migration: "075_add_savings_estimates_updated_at.sql"
       access: write
-      database: omnibase_infra
+      database: omnidash_analytics
       role: estimates
 
 event_bus:

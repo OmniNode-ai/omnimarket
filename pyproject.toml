@@ -89,6 +89,8 @@ node_golden_chain_generator_compute = "omnimarket.nodes.node_golden_chain_genera
 node_test_generator_compute = "omnimarket.nodes.node_test_generator_compute"
 node_session_phase_evaluator = "omnimarket.nodes.node_session_phase_evaluator"
 node_context_experiment_compute = "omnimarket.nodes.node_context_experiment_compute"
+node_on_vs_off_experiment_compute = "omnimarket.nodes.node_on_vs_off_experiment_compute"
+node_context_roi_compute = "omnimarket.nodes.node_context_roi_compute"
 node_kafka_topic_emit_probe = "omnimarket.nodes.node_kafka_topic_emit_probe"
 node_merge_effect = "omnimarket.nodes.node_merge_effect"
 node_pipeline_cache_effect = "omnimarket.nodes.node_pipeline_cache_effect"
@@ -380,7 +382,7 @@ omnimarket = "omnimarket.nodes"
 [tool.uv.sources]
 omnibase-core = { git = "https://github.com/OmniNode-ai/omnibase_core.git", rev = "c97c2c9a45c5fb0def5fb7dacfd5f01278bb9f55" }
 omnibase-compat = { git = "https://github.com/OmniNode-ai/omnibase_compat.git", rev = "4d887307aae34d9d40d389ba91070cb411ce3df5" }
-omnibase-infra = { git = "https://github.com/OmniNode-ai/omnibase_infra.git", rev = "65419970ee9f0433aa66f58f8f32cc0535dbadab" }
+omnibase-infra = { git = "https://github.com/OmniNode-ai/omnibase_infra.git", rev = "e2dbdc950540df8bc59ca4370b2d4a0f5b8d6c59" }
 omninode-memory = { git = "https://github.com/OmniNode-ai/omnimemory.git", rev = "9843dd18cedaa4f5939289ba527532262b87003c" }
 onex-change-control = { git = "https://github.com/OmniNode-ai/onex_change_control.git", rev = "4877d3c223517cb0c7e1eca462ba0f4d38916314" }
 
@@ -388,7 +390,7 @@ onex-change-control = { git = "https://github.com/OmniNode-ai/onex_change_contro
 override-dependencies = [
     "omnibase-core @ git+https://github.com/OmniNode-ai/omnibase_core.git@c97c2c9a45c5fb0def5fb7dacfd5f01278bb9f55",
     "omnibase-spi>=0.20.6,<0.22.0",
-    "omnibase-infra @ git+https://github.com/OmniNode-ai/omnibase_infra.git@65419970ee9f0433aa66f58f8f32cc0535dbadab",
+    "omnibase-infra @ git+https://github.com/OmniNode-ai/omnibase_infra.git@e2dbdc950540df8bc59ca4370b2d4a0f5b8d6c59",
     "omnibase-compat @ git+https://github.com/OmniNode-ai/omnibase_compat.git@4d887307aae34d9d40d389ba91070cb411ce3df5",
 ]
 

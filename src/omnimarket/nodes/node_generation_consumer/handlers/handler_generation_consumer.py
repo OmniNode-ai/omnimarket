@@ -26,13 +26,21 @@ import json
 import logging
 import os
 import re
+import textwrap
 import time
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 import yaml
+from pydantic import BaseModel, ConfigDict, Field
 
+from omnimarket.adapters.llm.bifrost.config_loader_bifrost_delegation import (
+    load_bifrost_delegation_config,
+)
+from omnimarket.enums.enum_usage_source import EnumUsageSource
+from omnimarket.inference.protocol_config import apply_inference_protocol
 from omnimarket.nodes.node_generation_consumer.models.model_generation import (
     ModelGenerationAttempt,
     ModelGenerationBenchmark,
@@ -60,19 +68,28 @@ _REQUIRED_CONTRACT_FIELDS = [
     "output_model",
 ]
 
-# Contract model_routing keys — resolved at construction from contract.yaml
-_MODEL_ROUTING_ENDPOINT_ENV_KEY = "endpoint_env"
-_MODEL_ROUTING_ENDPOINT_MODE_KEY = "endpoint_mode"
-_MODEL_ROUTING_MODEL_ID_ENV_KEY = "served_model_id_env"
-_ENDPOINT_MODE_COMPLETE = "complete_endpoint"
-_ENDPOINT_MODE_OPENAI_BASE = "openai_compatible_base"
-_ALLOWED_ENDPOINT_MODES = {_ENDPOINT_MODE_COMPLETE, _ENDPOINT_MODE_OPENAI_BASE}
+# Contract model_routing keys — resolved at construction from contract.yaml.
+# OMN-12779 + OMN-12801: provider, served_model_id, and endpoint_ref are declared
+# in the contract. The endpoint URL + api_key reference are resolved per-model from
+# the routing authority (bifrost delegation contract overlay keyed by endpoint_ref),
+# NOT from a shared env var. There is no endpoint_env / endpoint_mode indirection.
+_MODEL_ROUTING_PROVIDER_KEY = "provider"
+_MODEL_ROUTING_SERVED_MODEL_ID_KEY = "served_model_id"
+_MODEL_ROUTING_ENDPOINT_REF_KEY = "endpoint_ref"
+_MODEL_ROUTING_ROUTING_SOURCE_KEY = "routing_source"
+_MODEL_ROUTING_INFERENCE_EXTRA_BODY_KEY = "inference_extra_body"
 
+# OMN-12813: Explicit format instruction — no chain-of-thought, no numbered
+# analysis steps.  The inference protocol profile (local-qwen-generation-*)
+# appends the one-shot exemplar and /no_think directive for Qwen models.
 _DEFAULT_SYSTEM_PROMPT = (
-    "You are an ONEX node generator. Generate a valid ONEX contract.yaml and Python handler.\n"
-    "Output EXACTLY two fenced code blocks: first ```yaml with the contract, then ```python with the handler.\n"
-    "Contract must have: name, contract_version, node_type (compute), input_model, output_model.\n"
-    "Handler must define a handle(input_data) function. No hardcoded absolute paths or topic strings."
+    "You are an ONEX node generator. "
+    "Your ONLY output must be two fenced code blocks — nothing else.\n"
+    "Do NOT write any analysis, explanation, numbered steps, or surrounding text.\n"
+    "Block 1: ```yaml containing the contract (required fields: name, contract_version, "
+    "node_type, input_model, output_model).\n"
+    "Block 2: ```python containing the handler with a top-level handle(input_data) function.\n"
+    "No hardcoded absolute paths. No hardcoded topic strings."
 )
 
 _GEMINI_INPUT_COST_PER_TOKEN = 0.075 / 1_000_000
@@ -94,31 +111,241 @@ def _load_contract(path: Path | None = None) -> dict[str, Any]:
     return data
 
 
+class ModelResolvedEndpoint(BaseModel):
+    """Per-model endpoint resolved from the routing authority (OMN-12801).
+
+    The four routing-authority fields the generation path requires. All four are
+    sourced from the routing authority (contract + bifrost delegation overlay),
+    never from a shared endpoint env var. Constructed only after every field has
+    been validated as present — there are no silent defaults.
+
+    Attributes:
+        endpoint_url: The backend URL resolved from the bifrost backend keyed by
+            ``endpoint_ref``. May be a bare base (``http://host:8000`` — the
+            convention the local-* backends and the delegation chain use) or a
+            complete provider-specific URL (Gemini/z.ai). ``_split_resolved_endpoint``
+            routes each form to the correct inference-request field at the call
+            boundary. Different providers resolve to distinct URLs — never one
+            shared base.
+        provider: Provider classification declared by the contract (e.g. "local",
+            "gemini"). Drives cost basis, not endpoint shape.
+        served_model_id: The model identifier sent on the wire, declared by the
+            contract ``served_model_id`` (the routing-tier authority value).
+        api_key_ref: Name of the env var holding the backend API key, declared by
+            the bifrost backend ``api_key_env``. ``None`` for unauthenticated
+            local backends.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    endpoint_url: str = Field(..., min_length=1)
+    provider: str = Field(..., min_length=1)
+    served_model_id: str = Field(..., min_length=1)
+    api_key_ref: str | None = Field(default=None)
+
+
+def resolve_generation_endpoint(
+    *,
+    endpoint_ref: str,
+    provider: str,
+    served_model_id: str,
+) -> ModelResolvedEndpoint:
+    """Resolve the generation endpoint from the routing authority.
+
+    Mirrors ``node_delegation_routing_reducer.delta()``: the endpoint URL and
+    api_key reference come from the bifrost delegation contract (deep-merged with
+    the deploy overlay) keyed by the contract-declared ``endpoint_ref``. The
+    provider and served_model_id come from the contract. There is no
+    ``LLM_CODER_URL`` / env-var endpoint indirection — a shared bare env cannot
+    serve multiple providers and 404s when a provider needs a full path.
+
+    Fail-closed: if any of ``{endpoint_url, provider, served_model_id,
+    api_key_ref-when-required}`` cannot be resolved, this raises ``ValueError``.
+    It never substitutes a default.
+
+    The bifrost contract path / overlay path may be redirected for tests and
+    staging via ``BIFROST_CONTRACT_PATH`` / ``BIFROST_OVERLAY_PATH`` (contract
+    *config* paths, not endpoint values). When unset, the canonical repo
+    contract plus the deploy overlay at ``~/.omninode/delegation`` are used.
+
+    Args:
+        endpoint_ref: Bifrost backend id declared by the contract (e.g. "local-coder").
+        provider: Provider declared by the contract.
+        served_model_id: Served model id declared by the contract.
+
+    Returns:
+        A fully-populated ``ModelResolvedEndpoint``.
+
+    Raises:
+        ValueError: If provider/served_model_id is blank, the backend is unknown,
+            the backend has no endpoint_url, or the backend declares an
+            ``api_key_env`` that is absent from the environment.
+    """
+    if not provider:
+        raise ValueError(
+            "model_routing.provider is required for endpoint resolution; "
+            "it must be declared in the contract, not defaulted"
+        )
+    if not served_model_id:
+        raise ValueError(
+            "model_routing.served_model_id is required for endpoint resolution; "
+            "it must be declared in the contract/overlay, not resolved via env indirection"
+        )
+    if not endpoint_ref:
+        raise ValueError(
+            "model_routing.endpoint_ref is required; it must reference a "
+            "routing-tier backend (e.g. 'local-coder')"
+        )
+
+    backend = _resolve_bifrost_backend(endpoint_ref)
+    if backend is None:
+        raise ValueError(
+            f"endpoint_ref {endpoint_ref!r} is not a routable backend in the "
+            "routing authority (bifrost delegation contract + overlay): it is "
+            "either undeclared, missing an endpoint_url, or declares an "
+            "api_key_env that is absent from the environment. Populate the "
+            "overlay endpoint_url / api key — no env fallback is permitted"
+        )
+
+    return ModelResolvedEndpoint(
+        endpoint_url=backend.endpoint_url,
+        provider=provider,
+        served_model_id=served_model_id,
+        api_key_ref=backend.api_key_ref,
+    )
+
+
+class _ResolvedBackend(BaseModel):
+    """Internal: a routable bifrost backend (endpoint_url present, key satisfied)."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    endpoint_url: str = Field(..., min_length=1)
+    api_key_ref: str | None = Field(default=None)
+
+
+def _resolve_bifrost_backend(endpoint_ref: str) -> _ResolvedBackend | None:
+    """Return the routable backend for ``endpoint_ref`` from the routing authority.
+
+    Loads the bifrost delegation contract deep-merged with the deploy overlay
+    (same authority the delegation routing reducer uses) and returns the backend
+    only when it has a non-empty endpoint_url AND, if it declares an
+    ``api_key_env``, that env var is present with a non-empty value. Returns
+    ``None`` otherwise so the caller fails closed with a precise message.
+    """
+    contract_path = os.environ.get(  # contract-config-ok: config  # ONEX_EXCLUDE: contract path override
+        "BIFROST_CONTRACT_PATH", ""
+    )
+    overlay_path = os.environ.get(  # contract-config-ok: config  # ONEX_EXCLUDE: contract path override
+        "BIFROST_OVERLAY_PATH", ""
+    )
+
+    config = load_bifrost_delegation_config(
+        config_path=Path(contract_path) if contract_path else None,
+        overlay_path=Path(overlay_path) if overlay_path else None,
+    )
+
+    for backend in config.backends:
+        if backend.backend_id != endpoint_ref:
+            continue
+        url = (backend.endpoint_url or "").strip()
+        if not url:
+            return None
+        api_key_ref: str | None = None
+        if backend.api_key_env:
+            api_key_value = os.environ.get(backend.api_key_env, "").strip()
+            if not api_key_value:  # ONEX_FLAG_EXEMPT: secret presence only
+                return None
+            api_key_ref = backend.api_key_env
+        return _ResolvedBackend(endpoint_url=url, api_key_ref=api_key_ref)
+
+    return None
+
+
+def _split_resolved_endpoint(resolved_url: str) -> tuple[str, str | None]:
+    """Route a routing-authority URL to the right inference-request field.
+
+    The OpenAI-compatible effect (``HandlerLlmOpenaiCompatible._build_url``) posts
+    ``endpoint_url`` verbatim but appends the operation path (e.g.
+    ``/v1/chat/completions``) to ``base_url``. The bifrost routing authority
+    declares two shapes of backend URL:
+
+      * BARE base — ``http://host:8000`` (no path). The bifrost local-* backends
+        and the working delegation chain use this form and rely on the effect's
+        path append. Sent via ``endpoint_url`` it would POST to the root and 404.
+      * COMPLETE endpoint — ``https://.../v1beta/openai/chat/completions`` or a
+        vLLM overlay that already spells out ``/v1/chat/completions``. This must
+        be posted verbatim or the append would double-version the path.
+
+    A URL is COMPLETE when it carries a non-empty path beyond ``/``. Such URLs go
+    through ``endpoint_url`` (verbatim); bare bases go through ``base_url`` (append).
+
+    Returns:
+        ``(base_url, endpoint_url)`` — exactly one of which drives the POST URL.
+        ``base_url`` is always set (the model requires it); ``endpoint_url`` is
+        ``None`` for bare bases.
+    """
+    path = urlsplit(resolved_url).path.strip("/")
+    if path:
+        # Complete provider-specific URL — post verbatim.
+        return resolved_url, resolved_url
+    # Bare base — let the effect append the operation path.
+    return resolved_url, None
+
+
 def _extract_fenced_block(raw: str, langs: tuple[str, ...]) -> str | None:
-    """Find the first ```<lang>\n...\n``` block. Linear scan, no regex backtracking."""
+    """Return the LAST ```<lang>\n...\n``` block body, or None.
+
+    Linear scan, no regex backtracking. OMN-12816: the LAST matching block is
+    returned, not the first. Reasoning models emit one or more DRAFT blocks inside
+    their thinking before the final answer; the final block is the authoritative
+    one. Returning the first would extract a draft (often incomplete/malformed).
+    """
     cursor = 0
+    last_body: str | None = None
     while True:
         start = raw.find(_FENCE, cursor)
         if start == -1:
-            return None
+            return last_body
         lang_end = raw.find("\n", start + len(_FENCE))
         if lang_end == -1:
-            return None
+            return last_body
         lang = raw[start + len(_FENCE) : lang_end].strip().lower()
         body_start = lang_end + 1
         close = raw.find(_FENCE, body_start)
         if close == -1:
-            return None
+            return last_body
         if lang in langs:
-            return raw[body_start:close]
+            last_body = raw[body_start:close]
         cursor = close + len(_FENCE)
 
 
+def _normalize_block(body: str | None) -> str:
+    """Dedent and strip a fenced block body, or "" when absent.
+
+    OMN-12816: reasoning models often emit the final fenced block NESTED inside a
+    markdown list in their thinking, so every line carries a uniform leading
+    indent (e.g. 3 spaces). ``yaml.safe_load`` then rejects it ("mapping values
+    are not allowed here") and ``ast.parse`` raises "unexpected indent". Removing
+    the common leading whitespace with ``textwrap.dedent`` recovers a valid block.
+    """
+    if body is None:
+        return ""
+    return textwrap.dedent(body).strip()
+
+
 def _extract_blocks(raw: str) -> tuple[str, str]:
-    yaml_block = _extract_fenced_block(raw, _YAML_FENCE_LANGS)
-    py_block = _extract_fenced_block(raw, (_PYTHON_FENCE_LANG,))
-    contract_yaml = yaml_block.strip() if yaml_block is not None else raw
-    handler_source = py_block.strip() if py_block is not None else ""
+    """Extract (contract_yaml, handler_source) from fenced code blocks.
+
+    OMN-12816: when no fenced yaml block is found, return empty — do NOT fall back
+    to the raw response. Feeding a fenceless response (e.g. a reasoning model's
+    prose with embedded colons) straight to ``yaml.safe_load`` produced spurious
+    parse errors and masked the real failure. An empty contract_yaml fails
+    validation cleanly with a precise message. Each block is dedented to undo
+    markdown nesting (see ``_normalize_block``).
+    """
+    contract_yaml = _normalize_block(_extract_fenced_block(raw, _YAML_FENCE_LANGS))
+    handler_source = _normalize_block(_extract_fenced_block(raw, (_PYTHON_FENCE_LANG,)))
     return contract_yaml, handler_source
 
 
@@ -203,11 +430,15 @@ class HandlerGenerationConsumer:
     The event_publisher is a thin sync callable (topic, bytes) -> None injected by
     the runtime's Kafka adapter. Falls back to a no-op for tests and dry runs.
 
-    Endpoint resolution order (contract-first, no bespoke env vars):
-        1. contract.yaml model_routing.endpoint_env names the env var to read
-        2. contract.yaml model_routing.endpoint_mode declares how to post it
-        3. That env var (e.g. LLM_CODER_URL) is populated by the overlay system
-        4. MixinLlmHttpTransport enforces CIDR allowlist + HMAC from the same overlay
+    Routing authority (OMN-12779 + OMN-12801 — no env-var endpoint indirection):
+        1. contract.yaml model_routing.provider — e.g. "local"
+        2. contract.yaml model_routing.served_model_id — the wire model ID string
+        3. contract.yaml model_routing.endpoint_ref — bifrost backend id (e.g. "local-coder")
+        4. endpoint_url + api_key_ref are resolved per-model from the routing
+           authority (bifrost delegation contract overlay) via
+           ``resolve_generation_endpoint`` — NOT from a shared LLM_CODER_URL env.
+           Different providers resolve to distinct complete URLs.
+        5. MixinLlmHttpTransport enforces CIDR allowlist + HMAC from the same overlay.
     """
 
     def __init__(
@@ -237,38 +468,51 @@ class HandlerGenerationConsumer:
         self._topic_deploy = next((t for t in publish_topics if "node-deploy" in t), "")
 
         # Resolve LLM routing config from contract model_routing section.
-        # The endpoint_env field names which env var holds the base URL;
-        # that var is populated by the overlay system (never hardcoded here).
+        # OMN-12779 + OMN-12801: provider, served_model_id, and endpoint_ref are
+        # declared by the contract. The endpoint URL + api_key reference are
+        # resolved per-model from the routing authority at request time via
+        # resolve_generation_endpoint — there is no endpoint env-var indirection.
         model_routing: dict[str, Any] = contract.get("model_routing", {})
-        self._endpoint_env: str = model_routing.get(
-            _MODEL_ROUTING_ENDPOINT_ENV_KEY, "LLM_CODER_URL"
-        )
-        self._endpoint_mode: str = str(
-            model_routing.get(_MODEL_ROUTING_ENDPOINT_MODE_KEY, "")
-        )
-        self._model_id_env: str = str(
-            model_routing.get(_MODEL_ROUTING_MODEL_ID_ENV_KEY, "")
-        )
-        if not self._model_id_env:
+
+        # Fail fast on all three contract-declared routing authorities.
+        self._provider: str = str(model_routing.get(_MODEL_ROUTING_PROVIDER_KEY, ""))
+        if not self._provider:
             raise ValueError(
-                "contract.yaml model_routing.served_model_id_env is required; "
-                "served model IDs must come from overlays, not handler defaults"
-            )
-        if self._endpoint_mode not in _ALLOWED_ENDPOINT_MODES:
-            allowed = ", ".join(sorted(_ALLOWED_ENDPOINT_MODES))
-            raise ValueError(
-                "contract.yaml model_routing.endpoint_mode must be one of "
-                f"{allowed}; got {self._endpoint_mode!r}"
+                "contract.yaml model_routing.provider is required; "
+                "provider must be declared in the contract, not defaulted in the handler"
             )
 
-    def _resolve_model_id(self) -> str:
-        model_id = os.environ.get(self._model_id_env, "").strip()
-        if not model_id:
-            raise RuntimeError(
-                f"{self._model_id_env} is unset/empty; served model ID must be "
-                "provided by the runtime overlay"
+        self._served_model_id: str = str(
+            model_routing.get(_MODEL_ROUTING_SERVED_MODEL_ID_KEY, "")
+        )
+        if not self._served_model_id:
+            raise ValueError(
+                "contract.yaml model_routing.served_model_id is required; "
+                "served model IDs must be declared in the contract/overlay, "
+                "not resolved via env var indirection"
             )
-        return model_id
+
+        self._endpoint_ref: str = str(
+            model_routing.get(_MODEL_ROUTING_ENDPOINT_REF_KEY, "")
+        )
+        if not self._endpoint_ref:
+            raise ValueError(
+                "contract.yaml model_routing.endpoint_ref is required; "
+                "it must reference a routing-tier backend (e.g. 'local-coder')"
+            )
+
+        self._routing_source: str = str(
+            model_routing.get(_MODEL_ROUTING_ROUTING_SOURCE_KEY, "contract")
+        )
+
+        # OMN-12816: provider-specific inference params merged into the LLM request
+        # body (e.g. chat_template_kwargs:{enable_thinking:false} to suppress Qwen
+        # reasoning). Contract-declared, not a code literal. Default empty so a
+        # contract that omits the block behaves exactly as before.
+        extra_body = model_routing.get(_MODEL_ROUTING_INFERENCE_EXTRA_BODY_KEY, {})
+        self._inference_extra_body: dict[str, Any] = (
+            dict(extra_body) if isinstance(extra_body, dict) else {}
+        )
 
     def _ensure_effect(self) -> None:
         if self._effect is not None:
@@ -290,12 +534,19 @@ class HandlerGenerationConsumer:
         task_description: str,
         attempt: int,
         previous_errors: list[str] | None = None,
+        context_pack: str = "",
     ) -> tuple[str, int, int]:
         """Call LLM; return (raw_output, input_tokens, output_tokens).
 
         When a test fake was injected at construction time, we skip building
         a ModelLlmInferenceRequest (which validates base_url is non-empty) and
         pass None directly — the fake ignores the argument entirely.
+
+        OMN-12794 (P2-1): context_pack is the typed context-injection seam.
+        When non-empty it is prepended to the user message so the LLM receives
+        the selected context artifacts before the task description.  This is the
+        ONLY path context enters the prompt; previous_errors is unchanged (it
+        remains the internal repair-loop feedback channel).
         """
 
         user_content = f"Task: {task_description}"
@@ -304,6 +555,23 @@ class HandlerGenerationConsumer:
             user_content += (
                 f"\n\nPrevious attempt failed with:\n{error_list}\nPlease fix them."
             )
+
+        # Prepend injected context pack when present (P2-1 seam).
+        # Context is inserted before the task so it acts as a preamble.
+        if context_pack:
+            user_content = f"Context:\n{context_pack}\n\n{user_content}"
+
+        # OMN-12813: Apply inference protocol directives for the model.
+        # task_type="node_generation" activates the local-qwen-generation-* profiles
+        # declared in inference_protocols.v1.yaml, which add /no_think (user prefix)
+        # and the one-shot exemplar (system suffix) for Qwen models.  Non-Qwen models
+        # and models that don't match any profile are unaffected.
+        system_prompt, user_content, _ = apply_inference_protocol(
+            system_prompt=_DEFAULT_SYSTEM_PROMPT,
+            prompt=user_content,
+            model=self._served_model_id,
+            task_type="node_generation",
+        )
 
         if self._injected_effect:
             assert self._effect is not None
@@ -314,38 +582,54 @@ class HandlerGenerationConsumer:
                 ModelLlmInferenceRequest,
             )
 
-            # Endpoint resolved from contract model_routing.endpoint_env,
-            # populated by the overlay system at boot.
-            endpoint = os.environ[self._endpoint_env]
+            # OMN-12801: resolve the COMPLETE endpoint URL + api_key reference
+            # per-model from the routing authority (bifrost delegation overlay
+            # keyed by endpoint_ref). No shared LLM_CODER_URL env. Fail-closed
+            # if any of the four fields cannot be resolved.
+            resolved = resolve_generation_endpoint(
+                endpoint_ref=self._endpoint_ref,
+                provider=self._provider,
+                served_model_id=self._served_model_id,
+            )
+            # The api_key reference names an env var; resolve the secret VALUE at
+            # the call boundary only (the routing decision carries the reference,
+            # never the secret). Absence/blank is already fail-closed in the
+            # resolver, so this read is guaranteed present and non-empty.
+            api_key = (
+                os.environ[resolved.api_key_ref].strip()
+                if resolved.api_key_ref
+                else None
+            )
             assert self._effect is not None
 
-            if self._endpoint_mode == _ENDPOINT_MODE_COMPLETE:
-                request = ModelLlmInferenceRequest(
-                    base_url=endpoint,
-                    endpoint_url=endpoint,
-                    operation_type=EnumLlmOperationType.CHAT_COMPLETION,
-                    model=self._resolve_model_id(),
-                    messages=(
-                        {"role": "system", "content": _DEFAULT_SYSTEM_PROMPT},
-                        {"role": "user", "content": user_content},
-                    ),
-                    timeout_seconds=120.0,
-                )
-            elif self._endpoint_mode == _ENDPOINT_MODE_OPENAI_BASE:
-                request = ModelLlmInferenceRequest(
-                    base_url=endpoint,
-                    operation_type=EnumLlmOperationType.CHAT_COMPLETION,
-                    model=self._resolve_model_id(),
-                    messages=(
-                        {"role": "system", "content": _DEFAULT_SYSTEM_PROMPT},
-                        {"role": "user", "content": user_content},
-                    ),
-                    timeout_seconds=120.0,
-                )
-            else:
-                raise RuntimeError(
-                    "contract.yaml model_routing.endpoint_mode was not validated"
-                )
+            # OMN-12801: the routing authority may declare either a COMPLETE
+            # endpoint URL (provider declares the full path, e.g. Gemini/z.ai or a
+            # vLLM overlay that spells out /v1/chat/completions) or a BARE base URL
+            # (the convention the bifrost local-* backends and the delegation chain
+            # use, e.g. http://host:8000). The OpenAI-compatible effect posts
+            # endpoint_url verbatim but appends the operation path to base_url, so
+            # the two forms must route through different request fields — a bare
+            # base sent via endpoint_url would POST to the root and 404.
+            # OMN-12813: system_prompt carries the inference-protocol-applied prompt
+            # (one-shot exemplar + /no_think for Qwen), not the bare default.
+            base_url, endpoint_url = _split_resolved_endpoint(resolved.endpoint_url)
+            request = ModelLlmInferenceRequest(
+                base_url=base_url,
+                endpoint_url=endpoint_url,
+                operation_type=EnumLlmOperationType.CHAT_COMPLETION,
+                model=resolved.served_model_id,
+                messages=(
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_content},
+                ),
+                api_key=api_key,
+                # OMN-12816: contract-declared inference params (e.g.
+                # chat_template_kwargs:{enable_thinking:false}) merged into the
+                # request body by the effect, suppressing Qwen reasoning so the
+                # first attempt returns clean fenced blocks.
+                extra_body=self._inference_extra_body,
+                timeout_seconds=120.0,
+            )
             response = await self._effect.handle(request)
 
         raw = response.generated_text or ""
@@ -358,14 +642,12 @@ class HandlerGenerationConsumer:
     ) -> ModelGenerationBenchmark:
         self._ensure_effect()
 
-        # Derive metadata from contract-resolved routing config.
-        # endpoint_env is always LLM_CODER_URL (or whatever the contract declares);
-        # "local" provider means no per-token cost.
-        model_id = (
-            "injected_effect" if self._injected_effect else self._resolve_model_id()
-        )
-        provider = "local"
-        endpoint_class = "local"
+        # All four routing authorities come from the contract (OMN-12779): provider,
+        # served_model_id, endpoint_ref (used as endpoint_class), and routing_source.
+        # No literals, no env-var fallbacks.
+        model_id = self._served_model_id
+        provider = self._provider
+        endpoint_class = self._endpoint_ref
 
         attempts: list[ModelGenerationAttempt] = []
         e2e_start = time.time()
@@ -381,6 +663,7 @@ class HandlerGenerationConsumer:
                     command.task_description,
                     attempt_num,
                     previous_errors=previous_errors,
+                    context_pack=command.context_pack,
                 )
             except Exception as exc:
                 logger.warning(
@@ -423,13 +706,17 @@ class HandlerGenerationConsumer:
         total_output = sum(a.token_usage_output for a in attempts)
         cost_usd = _calculate_cost(provider, total_input, total_output)
 
+        # P2-1 (OMN-12794): derive first_pass_success from attempt records,
+        # not from a secondary flag — single source of truth.
+        first_pass_success = bool(attempts and attempts[0].contract_passed)
+
         benchmark = ModelGenerationBenchmark(
             correlation_id=command.correlation_id,
             task_description=command.task_description,
             provider=provider,
             model_id=model_id,
             endpoint_class=endpoint_class,
-            usage_source="estimated",
+            usage_source=EnumUsageSource.ESTIMATED,
             cost_basis="gemini_flash" if provider != "local" else "local_free",
             attempts=attempts,
             attempt_count=len(attempts),
@@ -438,6 +725,11 @@ class HandlerGenerationConsumer:
             cost_inference_usd=cost_usd,
             contract_yaml=final_contract_yaml,
             handler_source=final_handler_source,
+            # P2-1 new fields — emitter-first, sourced from typed records.
+            prompt_tokens=total_input,
+            completion_tokens=total_output,
+            first_pass_success=first_pass_success,
+            context_pack_hash=command.context_pack_hash,
         )
 
         self._emit_benchmark(benchmark)
@@ -534,4 +826,8 @@ def _extract_node_name(contract_yaml: str) -> str:
     return "unknown"
 
 
-__all__: list[str] = ["HandlerGenerationConsumer"]
+__all__: list[str] = [
+    "HandlerGenerationConsumer",
+    "ModelResolvedEndpoint",
+    "resolve_generation_endpoint",
+]

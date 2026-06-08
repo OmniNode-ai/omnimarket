@@ -1,0 +1,23 @@
+name: node_on_vs_off_experiment_compute
+version: "1.0.0"
+description: "Bounded ON-vs-OFF cost-delta evidence harness producing replay-proven or runtime-observed-only bundles"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_on_vs_off_experiment_compute: "omnimarket.nodes.node_on_vs_off_experiment_compute"
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: pure
+dependencies:
+  - "omnibase_core>=0.39.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["experiment", "on-vs-off", "cost-delta", "compute", "evidence", "replay-proven"]
+pack: "demo"
+display_name: "ON-vs-OFF Experiment Compute"
+node_role: "compute"
