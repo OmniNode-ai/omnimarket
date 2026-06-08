@@ -513,7 +513,7 @@ async def _generate_validated_patch(
     patch_allowlist_patterns: tuple[str, ...],
     user_prompt: str,
     source_context: str,
-    max_attempts: int = 2,
+    max_attempts: int = 10,
 ) -> str:
     validation_failure: str | None = None
     for attempt in range(1, max_attempts + 1):

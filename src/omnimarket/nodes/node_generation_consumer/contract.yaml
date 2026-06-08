@@ -42,7 +42,7 @@ inputs:
     type: int
     description: "Maximum LLM retry attempts on validation failure"
     required: false
-    default: 2
+    default: 10
   # P2-1 context-injection seam (OMN-12794) — all optional with safe defaults.
   # Do not use previous_errors for context; that is the internal repair-loop channel.
   context_pack:

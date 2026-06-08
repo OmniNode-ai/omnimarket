@@ -81,7 +81,7 @@ class ModelNodeGenerationRequest(BaseModel):
     )
     correlation_id: str = Field(description="Unique run ID for event tracing")
     max_attempts: int = Field(
-        default=2, gt=0, description="Maximum LLM retry attempts on validation failure"
+        default=10, gt=0, description="Maximum LLM retry attempts on validation failure"
     )
 
     # --- P2-1 context-injection seam (OMN-12794) ---

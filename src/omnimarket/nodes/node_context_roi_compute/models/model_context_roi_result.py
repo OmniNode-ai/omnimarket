@@ -70,8 +70,8 @@ class ModelArmAggregateRow(BaseModel):
         default=None,
         description=(
             "Mean attempts across successful trials. "
-            "At max_attempts=2 this has limited dynamic range; "
-            "first_pass_rate is the primary signal."
+            "With the standard 10-attempt budget, first_pass_rate remains "
+            "the primary signal and mean attempts is secondary."
         ),
     )
     # Budget/failure breakdown
