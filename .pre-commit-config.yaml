@@ -100,6 +100,19 @@ repos:
         pass_filenames: false
         stages: [pre-commit]
 
+      # OMN-12821 (plan A1.5): routing-authority demo gate. Proves the demo path
+      # resolves provider/model/endpoint_ref/endpoint/route_source from authority
+      # and that no demo-path source reads env for endpoint/provider/model,
+      # hardcodes a provider literal, or reads a fallback endpoint string.
+      # SYNC with ci.yml step "Routing-authority demo gate (enforce)".
+      - id: routing-authority-demo-gate
+        name: Routing-authority demo gate
+        language: system
+        entry: uv run python scripts/ci/check_routing_authority.py
+        files: ^(src/omnimarket/nodes/node_generation_consumer/|src/omnimarket/nodes/node_llm_delegation_call_effect/|src/omnimarket/adapters/llm/bifrost/|src/omnimarket/configs/bifrost_delegation\.yaml|scripts/ci/check_routing_authority\.py)
+        pass_filenames: false
+        stages: [pre-commit]
+
       # OMN-12691: live-path node changes must ship with golden-chain coverage.
       # SYNC with ci.yml step "Golden-chain coverage gate".
       - id: golden-chain-coverage-gate

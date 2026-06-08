@@ -1,0 +1,57 @@
+{
+  "demo_path_contracts": [
+    "src/omnimarket/nodes/node_generation_consumer/contract.yaml"
+  ],
+  "demo_path_sources": [
+    "src/omnimarket/nodes/node_generation_consumer/handlers/handler_generation_consumer.py",
+    "src/omnimarket/nodes/node_llm_delegation_call_effect/handlers/handler_inference_intent.py",
+    "src/omnimarket/adapters/llm/bifrost/config_loader_bifrost_delegation.py"
+  ],
+  "gate": "routing-authority-demo-gate",
+  "negative_audit": {
+    "clean": true,
+    "errors": [],
+    "files": [
+      {
+        "clean": true,
+        "source": "src/omnimarket/nodes/node_generation_consumer/handlers/handler_generation_consumer.py",
+        "violations": []
+      },
+      {
+        "clean": true,
+        "source": "src/omnimarket/nodes/node_llm_delegation_call_effect/handlers/handler_inference_intent.py",
+        "violations": []
+      },
+      {
+        "clean": true,
+        "source": "src/omnimarket/adapters/llm/bifrost/config_loader_bifrost_delegation.py",
+        "violations": []
+      }
+    ],
+    "violation_count": 0
+  },
+  "negative_ok": true,
+  "passed": true,
+  "positive_ok": true,
+  "positive_proof": {
+    "entries": [
+      {
+        "contract": "src/omnimarket/nodes/node_generation_consumer/contract.yaml",
+        "endpoint": null,
+        "endpoint_ref": "local-coder",
+        "endpoint_source": "src/omnimarket/configs/bifrost_delegation.yaml: backend_id='local-coder' (overlay-merged at runtime)",
+        "field_sources": {
+          "endpoint_ref": "src/omnimarket/nodes/node_generation_consumer/contract.yaml:112",
+          "provider": "src/omnimarket/nodes/node_generation_consumer/contract.yaml:110",
+          "routing_source": "src/omnimarket/nodes/node_generation_consumer/contract.yaml:113",
+          "served_model_id": "src/omnimarket/nodes/node_generation_consumer/contract.yaml:111"
+        },
+        "model": "Qwen3.6-35B-A3B",
+        "provider": "local",
+        "route_source": "contract"
+      }
+    ],
+    "errors": []
+  },
+  "ticket": "OMN-12821"
+}

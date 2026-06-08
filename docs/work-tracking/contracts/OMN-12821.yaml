@@ -1,0 +1,67 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-12821"
+title: "Routing-authority verification — positive route-source proof + negative env/hardcode audit on the demo path"
+summary: >
+  Close-the-loop plan track A1.5 (DEMO GATE). Adds an enforcing routing-authority
+  gate that proves the exact demo path (node generation + delegation inference)
+  resolves provider, model (served_model_id), endpoint_ref, the resolved endpoint,
+  and route_source from the contract / overlay / routing authority — recording the
+  source file:line for each — PLUS a negative static audit proving NO demo-path
+  source reads env vars for endpoint/provider/model, hardcodes a provider literal,
+  or reads a fallback endpoint string after route resolution. Secret-value
+  resolution (os.environ[api_key_ref]) at the effect boundary is the sanctioned
+  contract-native pattern and is explicitly NOT flagged. Wired as a required CI
+  step and a pre-commit hook (Rule 5: enforcement, not detection).
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-routing-authority-gate-passes"
+    description: >
+      scripts/ci/check_routing_authority.py passes on the live demo path:
+      positive route-source proof resolves all required model_routing fields from
+      the contract and the bifrost authority, and the negative audit over the
+      three demo-path source files is clean (zero violations).
+    source: "command"
+    status: "verified"
+    checks:
+      - check_type: "command"
+        check_value: "uv run python scripts/ci/check_routing_authority.py"
+  - id: "dod-routing-authority-tests-green"
+    description: >
+      The TDD test suite tests/test_routing_authority_gate.py (18 tests) passes:
+      positive proof, negative audit on the live path, api-key-resolution is
+      sanctioned, injected violations are caught (env reads, provider literals,
+      fallback endpoint strings), and the evidence packet is serializable.
+    source: "command"
+    status: "verified"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/test_routing_authority_gate.py -v"
+  - id: "dod-evidence-packet-emitted"
+    description: >
+      The structured evidence packet recording {provider, model, endpoint_ref,
+      endpoint, route_source} for the demo path with per-field source file:line
+      plus the negative-audit result is committed at
+      docs/evidence/OMN-12821/routing-authority-proof.json.
+    source: "manual"
+    status: "verified"
+    checks:
+      - check_type: "command"
+        check_value: "test -f docs/evidence/OMN-12821/routing-authority-proof.json"
+  - id: "dod-gate-wired-as-ci-and-precommit"
+    description: >
+      The gate is wired as a required CI step ("Routing-authority demo gate
+      (enforce)" in .github/workflows/ci.yml) and a pre-commit hook
+      (routing-authority-demo-gate in .pre-commit-config.yaml) so the demo-path
+      authority invariant is mechanically enforced, not advisory.
+    source: "manual"
+    status: "verified"
+    checks:
+      - check_type: "command"
+        check_value: "grep -q 'check_routing_authority.py' .github/workflows/ci.yml && grep -q 'routing-authority-demo-gate' .pre-commit-config.yaml"
