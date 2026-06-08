@@ -9,6 +9,7 @@ from unittest.mock import MagicMock
 from uuid import uuid4
 
 import pytest
+import yaml
 from omnibase_infra.enums import EnumDispatchStatus
 from omnibase_infra.event_bus.topic_constants import (
     TOPIC_DELEGATION_COMPLETED,
@@ -58,6 +59,16 @@ def _plugin_config(runtime_profile: str = "main") -> ModelDomainPluginConfig:
         dispatch_engine=None,
         runtime_profile=runtime_profile,
     )
+
+
+@pytest.mark.unit
+def test_delegation_contract_declares_legacy_compatibility_publish_topic() -> None:
+    contract = yaml.safe_load(_CONTRACT_PATH.read_text(encoding="utf-8"))
+
+    assert contract["compatibility_publish_topics"] == [
+        TOPIC_DELEGATION_TASK_DELEGATED,
+    ]
+    assert TOPIC_DELEGATION_TASK_DELEGATED in contract["event_bus"]["publish_topics"]
 
 
 @pytest.mark.unit
