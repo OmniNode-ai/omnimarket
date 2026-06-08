@@ -12,11 +12,18 @@
 #   pre-commit run --all-files
 
 repos:
-  # Stub implementation detection — sourced from omnibase_core (OMN-5599)
+  # Stub implementation detection + receipt-honesty gate — sourced from
+  # omnibase_core (OMN-5599 stub; OMN-12791 honesty). Rev bumped to a commit
+  # that exports check-receipt-honesty (OMN-12825 gate-coverage prep).
   - repo: https://github.com/OmniNode-ai/omnibase_core
-    rev: 458f44ef24564956c6430ae7671570aed035c853 # pragma: allowlist secret
+    rev: 3a15187eb704995a397de9b3a8aae69797c365a8 # pragma: allowlist secret
     hooks:
       - id: check-stub-implementations
+      # OMN-12791: scan ModelDodReceipt YAML for gamed probes, deferred
+      # evidence, self-attestation, fake human verifiers. Triggers only on
+      # files under drift/dod_receipts/ (hook's own `files` filter), so it is
+      # a no-op for omnimarket PRs that carry no receipt YAMLs.
+      - id: check-receipt-honesty
 
   # Shared ONEX governance hooks (onex_change_control)
   - repo: https://github.com/OmniNode-ai/onex_change_control
