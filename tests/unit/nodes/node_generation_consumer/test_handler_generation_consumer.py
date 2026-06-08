@@ -297,7 +297,7 @@ async def test_emits_registration_on_success() -> None:
 
     topics = [t for t, _ in published]
     assert any("generation-completed" in t for t in topics)
-    assert any("node-registered" in t for t in topics)
+    assert any("node-registration" in t for t in topics)
 
 
 @pytest.mark.unit
@@ -319,7 +319,7 @@ async def test_no_registration_on_failure() -> None:
 
     topics = [t for t, _ in published]
     assert any("generation-failed" in t for t in topics)
-    assert not any("node-registered" in t for t in topics)
+    assert not any("node-registration" in t for t in topics)
 
 
 @pytest.mark.unit
@@ -447,7 +447,7 @@ async def test_deploy_event_emitted_before_registration() -> None:
 
     topics = [t for t, _ in published]
     deploy_idx = next(i for i, t in enumerate(topics) if "node-deploy" in t)
-    registered_idx = next(i for i, t in enumerate(topics) if "node-registered" in t)
+    registered_idx = next(i for i, t in enumerate(topics) if "node-registration" in t)
     assert deploy_idx < registered_idx
 
 
@@ -488,7 +488,125 @@ async def test_registration_not_emitted_when_deploy_publisher_raises() -> None:
     )
 
     topics = [t for t, _ in published]
-    assert not any("node-registered" in t for t in topics)
+    assert not any("node-registration" in t for t in topics)
+
+
+# ---------------------------------------------------------------------------
+# OMN-12823: registration topic + payload conformance
+#
+# The registration event must publish to onex.evt.platform.node-registration.v1
+# (the topic ServiceMCPToolSync consumes), NOT the dead
+# onex.evt.omnimarket.node-registered.v1. The payload must carry the fields the
+# MCP tool-sync consumer reads: event_type="registered", service_name, and tags
+# containing mcp-enabled + node-type:orchestrator + mcp-tool:<name>. The
+# correlation_id must be preserved end-to-end for the proof packet.
+# ---------------------------------------------------------------------------
+
+
+def _registration_event(
+    published: list[tuple[str, bytes]],
+) -> tuple[str, dict[str, Any]]:
+    """Return the (topic, parsed-payload) of the single registration event."""
+    events = [(t, json.loads(p)) for t, p in published if "node-registration" in t]
+    assert len(events) == 1, f"expected exactly one registration event, got {events}"
+    return events[0]
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_registration_uses_platform_node_registration_topic() -> None:
+    """Registration must publish to onex.evt.platform.node-registration.v1."""
+    published: list[tuple[str, bytes]] = []
+    handler = _make_handler([_VALID_LLM_RESPONSE], published=published)
+
+    await handler.handle(
+        ModelNodeGenerationRequest(
+            task_description="Build a stub node",
+            correlation_id="corr-reg-topic-1",
+        )
+    )
+
+    topic, _ = _registration_event(published)
+    assert topic == "onex.evt.platform.node-registration.v1"
+    # The dead omnimarket-scoped topic must NOT be emitted.
+    assert not any(t == "onex.evt.omnimarket.node-registered.v1" for t, _ in published)
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_registration_payload_has_event_type_registered() -> None:
+    """Payload must declare event_type='registered' so MCP sync upserts the tool."""
+    published: list[tuple[str, bytes]] = []
+    handler = _make_handler([_VALID_LLM_RESPONSE], published=published)
+
+    await handler.handle(
+        ModelNodeGenerationRequest(
+            task_description="Build a stub node",
+            correlation_id="corr-reg-evt-1",
+        )
+    )
+
+    _, payload = _registration_event(published)
+    assert payload["event_type"] == "registered"
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_registration_payload_has_service_name() -> None:
+    """Payload must carry service_name (MCP sync drops events without it)."""
+    published: list[tuple[str, bytes]] = []
+    handler = _make_handler([_VALID_LLM_RESPONSE], published=published)
+
+    await handler.handle(
+        ModelNodeGenerationRequest(
+            task_description="Build a stub node",
+            correlation_id="corr-reg-svc-1",
+        )
+    )
+
+    _, payload = _registration_event(published)
+    # service_name resolves to the generated node's name (the MCP tool surface).
+    assert payload["service_name"] == "node_stub_compute"
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_registration_payload_tags_are_mcp_conformant() -> None:
+    """tags must contain mcp-enabled, node-type:orchestrator, and mcp-tool:<name>."""
+    published: list[tuple[str, bytes]] = []
+    handler = _make_handler([_VALID_LLM_RESPONSE], published=published)
+
+    await handler.handle(
+        ModelNodeGenerationRequest(
+            task_description="Build a stub node",
+            correlation_id="corr-reg-tags-1",
+        )
+    )
+
+    _, payload = _registration_event(published)
+    assert "mcp_tags" not in payload, "legacy mcp_tags field must be removed"
+    tags = payload["tags"]
+    assert "mcp-enabled" in tags
+    assert "node-type:orchestrator" in tags
+    assert "mcp-tool:node_stub_compute" in tags
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_registration_payload_preserves_correlation_id() -> None:
+    """correlation_id must survive into the registration event for the proof packet."""
+    published: list[tuple[str, bytes]] = []
+    handler = _make_handler([_VALID_LLM_RESPONSE], published=published)
+
+    await handler.handle(
+        ModelNodeGenerationRequest(
+            task_description="Build a stub node",
+            correlation_id="corr-reg-correlation-1",
+        )
+    )
+
+    _, payload = _registration_event(published)
+    assert payload["correlation_id"] == "corr-reg-correlation-1"
 
 
 # ---------------------------------------------------------------------------
@@ -740,7 +858,7 @@ async def test_benchmark_uses_provider_and_model_id_from_contract(
             "publish_topics": [
                 "onex.evt.omnimarket.node-generation-completed.v1",
                 "onex.evt.omnimarket.node-generation-failed.v1",
-                "onex.evt.omnimarket.node-registered.v1",
+                "onex.evt.platform.node-registration.v1",
                 "onex.cmd.omnimarket.node-deploy.v1",
             ],
             "subscribe_topics": [],
@@ -1179,4 +1297,4 @@ async def test_provider_error_remains_typed_failure_not_blank_success(
     topics = [t for t, _ in published]
     assert any("generation-failed" in t for t in topics)
     assert not any("node-deploy" in t for t in topics)
-    assert not any("node-registered" in t for t in topics)
+    assert not any("node-registration" in t for t in topics)

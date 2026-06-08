@@ -1,0 +1,35 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-12823"
+title: "Emit platform.node-registration.v1 with conformant payload; preserve correlation_id"
+summary: >
+  Close-the-loop plan track A4. node_generation_consumer now publishes its
+  registration event to the canonical onex.evt.platform.node-registration.v1
+  topic (the topic ServiceMCPToolSync actually consumes) instead of the dead
+  onex.evt.omnimarket.node-registered.v1. The payload is made conformant with
+  the MCP tool-sync consumer contract: it adds event_type="registered" and
+  service_name, and replaces the unread mcp_tags field with tags carrying
+  mcp-enabled, node-type:orchestrator, and mcp-tool:<node_name>. correlation_id
+  is preserved through registration so the proof packet can correlate
+  generation -> registration -> invocation.
+is_seam_ticket: false
+interface_change: true
+interfaces_touched:
+  - "platform node-registration event payload shape (the topic ServiceMCPToolSync consumes)"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omnimarket-pr"
+    description: >
+      omnimarket PR retargets the registration emit from
+      onex.evt.omnimarket.node-registered.v1 to onex.evt.platform.node-registration.v1
+      and makes the payload MCP-sync-conformant (event_type, service_name, tags,
+      correlation_id). Covered by new TDD payload-conformance tests in
+      tests/unit/nodes/node_generation_consumer/test_handler_generation_consumer.py.
+    source: "manual"
+    status: "verified"
+    checks:
+      - check_type: "command"
+        check_value: "grep -q '^status: PASS$' drift/dod_receipts/OMN-12823/dod-omnimarket-pr/command.yaml"
