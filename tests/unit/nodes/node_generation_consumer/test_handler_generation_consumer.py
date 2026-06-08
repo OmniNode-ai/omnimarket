@@ -120,11 +120,49 @@ def test_extract_blocks_parses_yaml_and_python() -> None:
 
 
 @pytest.mark.unit
-def test_extract_blocks_falls_back_to_raw_when_no_yaml_fence() -> None:
+def test_extract_blocks_returns_empty_when_no_yaml_fence() -> None:
+    # OMN-12816: a fenceless response (e.g. reasoning-model prose) must NOT be fed
+    # to the YAML parser as-is — return empty so validation fails cleanly.
     raw = "name: foo\ncontract_version: 1\n"
     contract_yaml, handler_source = _extract_blocks(raw)
-    assert contract_yaml == raw
+    assert contract_yaml == ""
     assert handler_source == ""
+
+
+@pytest.mark.unit
+def test_extract_blocks_prefers_last_block_over_thinking_drafts() -> None:
+    # OMN-12816: reasoning models emit DRAFT fenced blocks before the final answer.
+    # The LAST complete block is authoritative.
+    raw = (
+        "Let me draft this:\n"
+        "```yaml\nname: draft_wrong\n```\n"
+        "On reflection, the correct contract is:\n"
+        '```yaml\nname: final_right\ncontract_version: "1.0.0"\n```\n'
+        "```python\ndef handle(input_data):\n    return input_data\n```\n"
+    )
+    contract_yaml, handler_source = _extract_blocks(raw)
+    assert "final_right" in contract_yaml
+    assert "draft_wrong" not in contract_yaml
+    assert "def handle" in handler_source
+
+
+@pytest.mark.unit
+def test_extract_blocks_dedents_markdown_nested_block() -> None:
+    # OMN-12816: the final block is often nested in a markdown list (uniform indent).
+    # Without dedent the YAML is invalid; dedent recovers a parseable block.
+    raw = (
+        "Final answer:\n"
+        "```yaml\n"
+        '   name: node_x\n   contract_version: "1.0.0"\n   node_type: compute\n'
+        "   input_model:\n     name: In\n     module: m\n"
+        "   output_model:\n     name: Out\n     module: m\n"
+        "```\n"
+        "```python\n   def handle(input_data):\n       return input_data\n```\n"
+    )
+    contract_yaml, handler_source = _extract_blocks(raw)
+    assert contract_yaml.startswith("name: node_x")
+    assert "\ncontract_version:" in contract_yaml
+    assert handler_source.startswith("def handle(input_data):")
 
 
 # ---------------------------------------------------------------------------
@@ -800,21 +838,29 @@ _LOCAL_BARE_BASE_EXPECTED_URL = "http://100.109.203.94:8000/v1/chat/completions"
 
 
 def _write_routing_contract(
-    tmp_path: Path, *, endpoint_ref: str, provider: str, served_model_id: str
+    tmp_path: Path,
+    *,
+    endpoint_ref: str,
+    provider: str,
+    served_model_id: str,
+    inference_extra_body: dict[str, Any] | None = None,
 ) -> Path:
     """Write a generation contract declaring the three contract-side routing keys."""
+    model_routing: dict[str, Any] = {
+        "provider": provider,
+        "served_model_id": served_model_id,
+        "endpoint_ref": endpoint_ref,
+        "routing_source": "contract",
+    }
+    if inference_extra_body is not None:
+        model_routing["inference_extra_body"] = inference_extra_body
     contract = {
         "name": "node_generation_consumer",
         "contract_version": {"major": 1, "minor": 0, "patch": 0},
         "node_type": "orchestrator",
         "node_version": {"major": 1, "minor": 0, "patch": 0},
         "event_bus": {"publish_topics": [], "subscribe_topics": []},
-        "model_routing": {
-            "provider": provider,
-            "served_model_id": served_model_id,
-            "endpoint_ref": endpoint_ref,
-            "routing_source": "contract",
-        },
+        "model_routing": model_routing,
     }
     contract_path = tmp_path / f"contract-{endpoint_ref}.yaml"
     contract_path.write_text(yaml.dump(contract))
@@ -906,6 +952,61 @@ async def _request_for_endpoint(monkeypatch: Any, tmp_path: Path, endpoint: str)
 
     assert capturing.captured is not None
     return capturing.captured
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_contract_inference_extra_body_flows_to_request(
+    monkeypatch: Any, tmp_path: Path
+) -> None:
+    # OMN-12816: model_routing.inference_extra_body (e.g. enable_thinking:false)
+    # must reach ModelLlmInferenceRequest.extra_body so the effect merges it.
+    _write_bifrost_authority(
+        monkeypatch,
+        tmp_path,
+        backend_id="local-coder",
+        endpoint_url="http://192.168.86.201:8000",  # onex-allow-internal-ip OMN-12816 reason="test fixture bare-base endpoint"
+    )
+    capturing = _CapturingEffect()
+    handler = HandlerGenerationConsumer(
+        contract_path=_write_routing_contract(
+            tmp_path,
+            endpoint_ref="local-coder",
+            provider="local",
+            served_model_id="Qwen3.6-35B-A3B",
+            inference_extra_body={"chat_template_kwargs": {"enable_thinking": False}},
+        ),
+        event_publisher=lambda _t, _p: None,
+    )
+    handler._effect = capturing
+    handler._injected_effect = False
+
+    await handler.handle(
+        ModelNodeGenerationRequest(
+            task_description="Build a stub node",
+            correlation_id="corr-extra-body-1",
+        )
+    )
+
+    assert capturing.captured is not None
+    assert capturing.captured.extra_body == {
+        "chat_template_kwargs": {"enable_thinking": False}
+    }
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_contract_without_inference_extra_body_defaults_empty(
+    monkeypatch: Any, tmp_path: Path
+) -> None:
+    # A contract that omits inference_extra_body yields an empty extra_body
+    # (no behavior change for callers that do not declare it).
+    request = await _request_for_endpoint(
+        monkeypatch,
+        tmp_path,
+        "http://192.168.86.201:8000/v1/chat/completions",  # onex-allow-internal-ip OMN-12816 reason="test fixture complete endpoint"
+    )
+    assert request.extra_body == {}
 
 
 async def _final_post_url_for_endpoint(
