@@ -49,7 +49,7 @@ from omnimarket.nodes.node_llm_delegation_call_effect.handlers.handler_inference
 
 def _make_intent(**kwargs: object) -> ModelInferenceIntent:
     defaults: dict[str, object] = {
-        "base_url": "http://localhost:8000",
+        "base_url": "http://localhost:8000/v1/chat/completions",
         "model": "test-model",
         "system_prompt": "You are a helpful assistant.",
         "prompt": "Write a test.",
@@ -132,6 +132,35 @@ class TestHandlerInferenceIntent:
         assert result.completion_tokens == 20
         assert result.total_tokens == 30
         assert result.error_message == ""
+
+    def test_posts_base_url_verbatim_no_path_append(self) -> None:
+        """OMN-12815: the POST URL equals intent.base_url exactly — no append."""
+        handler = HandlerInferenceIntent()
+        complete_url = (
+            "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
+        )
+        intent = _make_intent(base_url=complete_url)
+        captured_urls: list[str] = []
+
+        mock_response = MagicMock()
+        mock_response.json.return_value = _SUCCESSFUL_HTTPX_RESPONSE
+        mock_response.raise_for_status.return_value = None
+
+        def _capture_post(url: str, **kwargs: object) -> MagicMock:
+            captured_urls.append(url)
+            return mock_response
+
+        with patch("httpx.Client") as mock_client_cls:
+            mock_client = MagicMock()
+            mock_client.__enter__ = MagicMock(return_value=mock_client)
+            mock_client.__exit__ = MagicMock(return_value=False)
+            mock_client.post.side_effect = _capture_post
+            mock_client_cls.return_value = mock_client
+
+            handler.handle(intent)
+
+        assert captured_urls == [complete_url]
+        assert "/v1beta/openai/v1/chat/completions" not in captured_urls[0]
 
     def test_http_failure_returns_error_response(self) -> None:
         handler = HandlerInferenceIntent()

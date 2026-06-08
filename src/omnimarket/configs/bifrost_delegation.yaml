@@ -7,13 +7,18 @@
 # Every gateway response MUST include the selected rule_id and config_version
 # to make provenance auditable (OMN-10637 requirement R1).
 #
-# Backend endpoint URLs are intentionally empty in the repo default. User- or
-# environment-specific endpoints belong in the overlay file written by the
-# installer, usually ~/.omninode/delegation/bifrost_overrides.yaml.
+# OMN-12815: every endpoint_url is the COMPLETE final URL incl. the full chat
+# path (e.g. .../v1/chat/completions). It is posted VERBATIM at every call site
+# — no in-code construction, append, or path-resolver exists anymore. Public
+# cloud endpoints carry the complete URL here; site-specific LOCAL endpoints are
+# null in the repo default and MUST be supplied COMPLETE (incl. /v1/chat/completions)
+# by the overlay file written by the installer, usually
+# ~/.omninode/delegation/bifrost_overrides.yaml. A bare base (no chat path) is a
+# misconfiguration — resolution fails closed rather than constructing a path.
 #
 # See routing_tiers.yaml for tier escalation ladder.
 #
-# Tickets: OMN-10637, OMN-10638, OMN-10657
+# Tickets: OMN-10637, OMN-10638, OMN-10657, OMN-12815
 config_version: "2.0.0"
 schema_version: "bifrost_delegation.v1"
 # Backend definitions — endpoint_url values are merged from the overlay at load time.
@@ -90,8 +95,9 @@ backends:
       - reasoning
       - research
   - backend_id: cloud-gemini-flash
-    endpoint_url: ""
-    # endpoint_url empty in repo default; overlay sets https://generativelanguage.googleapis.com/v1beta/openai/
+    # OMN-12815: COMPLETE endpoint URL incl. the full chat path, posted VERBATIM.
+    # No in-code construction/append; the routing authority returns this unchanged.
+    endpoint_url: "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
     model_name: "gemini-2.0-flash"
     api_key_env: GEMINI_API_KEY
     tier: cheap_cloud
@@ -118,7 +124,8 @@ backends:
   # OpenRouter backends (OMN-7980) — uses OPENROUTER_API_KEY from env at dispatch time.
   # api_key_env declared so the bifrost adapter picks up the secret without hardcoding it.
   - backend_id: openrouter-glm-flash
-    endpoint_url: ""
+    # OMN-12815: COMPLETE endpoint URL incl. the full chat path, posted VERBATIM.
+    endpoint_url: "https://openrouter.ai/api/v1/chat/completions"
     model_name: "thudm/glm-4-9b-chat:free"
     api_key_env: OPENROUTER_API_KEY
     tier: cheap_cloud
@@ -132,8 +139,8 @@ backends:
       X-Title: "OmniNode ONEX Build Loop"
   # OpenRouter cheap-frontier-direct — Qwen3 Coder 480B (free tier, OMN-12492)
   - backend_id: openrouter-qwen3-coder-480b
-    endpoint_url: ""
-    # endpoint_url empty; OPENROUTER_URL env var or overlay fills actual endpoint
+    # OMN-12815: COMPLETE endpoint URL incl. the full chat path, posted VERBATIM.
+    endpoint_url: "https://openrouter.ai/api/v1/chat/completions"
     model_name: "qwen/qwen3-coder:free"
     api_key_env: OPENROUTER_API_KEY
     tier: cheap_frontier

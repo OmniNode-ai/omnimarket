@@ -24,6 +24,7 @@ from datetime import UTC, datetime
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 import httpx
 import yaml
@@ -102,8 +103,7 @@ __all__ = ["HandlerLlmDelegationCall"]
 logger = logging.getLogger(__name__)
 
 _HEALTH_CACHE_TTL_SECONDS = 60
-_CHAT_COMPLETIONS_SUFFIX = "/chat/completions"
-# (base_url, timestamp_of_check, is_healthy)
+# (endpoint_url, timestamp_of_check, is_healthy)
 _health_cache: dict[str, tuple[float, bool]] = {}
 
 # Pricing is expressed as cost per 1M tokens in USD.
@@ -161,36 +161,46 @@ def _get_tier_price_per_1m(tier_name: str) -> tuple[Decimal, Decimal] | None:
 
 
 def _resolve_endpoint(endpoint_ref: str) -> str:
-    """Validate the route-supplied endpoint URL."""
-    value = endpoint_ref.strip().rstrip("/")
+    """Validate the route-supplied COMPLETE endpoint URL (OMN-12815).
+
+    ``endpoint_ref`` is the COMPLETE chat-completions URL resolved by the
+    routing authority and posted VERBATIM — the handler appends no path and
+    never strips the trailing chat path. Fail-closed if it is not an http(s)
+    URL.
+    """
+    value = endpoint_ref.strip()
     if not value.startswith(("http://", "https://")):
         raise ValueError("endpoint_ref must be a resolved http(s) endpoint URL")
     return value
 
 
-def _chat_completions_url(endpoint_url: str) -> str:
-    """Return an OpenAI-compatible chat completions URL without double-appending."""
-    if endpoint_url.endswith(_CHAT_COMPLETIONS_SUFFIX):
-        return endpoint_url
-    return f"{endpoint_url}/v1/chat/completions"
+def _health_probe_url(endpoint_url: str) -> str:
+    """Return ``scheme://host[:port]/health`` for the complete endpoint URL.
+
+    OMN-12815: the POST URL is ``endpoint_url`` verbatim. The liveness probe is
+    a separate auxiliary request against the host root's ``/health`` path; this
+    derives only that probe URL and never affects the POST URL.
+    """
+    parts = urlsplit(endpoint_url)
+    return f"{parts.scheme}://{parts.netloc}/health"
 
 
-def _is_endpoint_healthy(base_url: str, client: httpx.Client) -> bool:
+def _is_endpoint_healthy(endpoint_url: str, client: httpx.Client) -> bool:
     """Return cached health status or probe /health, caching result for 60s."""
     now = time.monotonic()
-    cached = _health_cache.get(base_url)
+    cached = _health_cache.get(endpoint_url)
     if cached is not None:
         ts, healthy = cached
         if now - ts < _HEALTH_CACHE_TTL_SECONDS:
             return healthy
 
     try:
-        resp = client.get(f"{base_url}/health", timeout=5.0)
+        resp = client.get(_health_probe_url(endpoint_url), timeout=5.0)
         healthy = resp.status_code < 500
     except Exception:
         healthy = False
 
-    _health_cache[base_url] = (now, healthy)
+    _health_cache[endpoint_url] = (now, healthy)
     return healthy
 
 
@@ -280,7 +290,7 @@ class HandlerLlmDelegationCall:
         the swarm orchestrator outside this dispatch path.
         """
         try:
-            base_url = _resolve_endpoint(request.endpoint_ref)
+            endpoint_url = _resolve_endpoint(request.endpoint_ref)
         except (KeyError, ValueError) as exc:
             logger.error("endpoint resolution failed: %s", exc)
             return self._failure_result(
@@ -291,11 +301,13 @@ class HandlerLlmDelegationCall:
             )
 
         with httpx.Client(timeout=120.0) as client:
-            healthy = _is_endpoint_healthy(base_url, client)
+            healthy = _is_endpoint_healthy(endpoint_url, client)
             if not healthy:
-                logger.warning("health probe failed for %s — skipping call", base_url)
+                logger.warning(
+                    "health probe failed for %s — skipping call", endpoint_url
+                )
                 return self._build_all_tiers_failed(request)
-            return self._execute_call_for_handle(request, client, base_url)
+            return self._execute_call_for_handle(request, client, endpoint_url)
 
     def __call__(
         self,
@@ -310,7 +322,7 @@ class HandlerLlmDelegationCall:
         events are only logged (useful for tests and local invocation).
         """
         try:
-            base_url = _resolve_endpoint(request.endpoint_ref)
+            endpoint_url = _resolve_endpoint(request.endpoint_ref)
         except (KeyError, ValueError) as exc:
             logger.error("endpoint resolution failed: %s", exc)
             return self._failure_result(
@@ -321,9 +333,11 @@ class HandlerLlmDelegationCall:
             )
 
         with httpx.Client(timeout=120.0) as client:
-            healthy = _is_endpoint_healthy(base_url, client)
+            healthy = _is_endpoint_healthy(endpoint_url, client)
             if not healthy:
-                logger.warning("health probe failed for %s — skipping call", base_url)
+                logger.warning(
+                    "health probe failed for %s — skipping call", endpoint_url
+                )
                 result = self._failure_result(
                     request,
                     EnumDelegationFailureClass.MODEL_UNAVAILABLE,
@@ -333,13 +347,13 @@ class HandlerLlmDelegationCall:
                 self._emit_all_tiers_failed(request, event_publisher)
                 return result
 
-            return self._execute_call(request, client, base_url, event_publisher)
+            return self._execute_call(request, client, endpoint_url, event_publisher)
 
     def _execute_call_for_handle(
         self,
         request: ModelLlmDelegationCallRequest,
         client: httpx.Client,
-        base_url: str,
+        endpoint_url: str,
     ) -> ModelLlmDelegationCompletedEvent | ModelLlmDelegationCallResult:
         """Execute the call and RETURN the terminal event/result (no publish).
 
@@ -348,7 +362,7 @@ class HandlerLlmDelegationCall:
         a failure result on timeout/http/invalid-json (no event published for
         those — the failure is the returned result).
         """
-        result = self._execute_call(request, client, base_url, event_publisher=None)
+        result = self._execute_call(request, client, endpoint_url, event_publisher=None)
         if not result.success:
             return result
         return self._build_completed_event(request, result)
@@ -357,7 +371,7 @@ class HandlerLlmDelegationCall:
         self,
         request: ModelLlmDelegationCallRequest,
         client: httpx.Client,
-        base_url: str,
+        endpoint_url: str,
         event_publisher: Any,
     ) -> ModelLlmDelegationCallResult:
         payload = {
@@ -369,8 +383,10 @@ class HandlerLlmDelegationCall:
 
         t0 = time.monotonic()
         try:
+            # OMN-12815: post the COMPLETE contract endpoint URL VERBATIM —
+            # no path append, no construction.
             response = client.post(
-                _chat_completions_url(base_url),
+                endpoint_url,
                 json=payload,
                 timeout=120.0,
             )

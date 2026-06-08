@@ -3,7 +3,8 @@
 """HandlerInferenceIntent — executes ModelInferenceIntent from the delegation orchestrator.
 
 Subscribes to onex.cmd.omnibase-infra.delegation-inference-request.v1.
-Receives ModelInferenceIntent (base_url resolved by orchestrator routing decision),
+Receives ModelInferenceIntent (base_url carries the COMPLETE endpoint URL
+resolved by the orchestrator routing decision and is posted VERBATIM — OMN-12815),
 executes the LLM HTTP call, and publishes ModelInferenceResponseData to
 onex.evt.omnibase-infra.inference-response.v1 so the orchestrator's
 DispatcherInferenceResponse can consume it.
@@ -126,8 +127,9 @@ def _merge_provider_request_options(
 class HandlerInferenceIntent:
     """Execute ModelInferenceIntent and return ModelInferenceResponseData.
 
-    Receives the intent whose base_url was already resolved by the routing
-    reducer. Makes one HTTP call against that URL and returns the response;
+    Receives the intent whose base_url carries the COMPLETE endpoint URL resolved
+    by the routing reducer. Posts that URL VERBATIM (OMN-12815) and returns the
+    response;
     the runtime dispatch-result applier publishes the returned model to
     TOPIC_INFERENCE_RESPONSE (the contract's publish_topics drives the
     auto-publish) — the handler does not publish directly.
@@ -192,8 +194,11 @@ class HandlerInferenceIntent:
         started = time.monotonic()
 
         with httpx.Client(timeout=timeout) as client:
+            # OMN-12815: intent.base_url carries the COMPLETE endpoint URL
+            # resolved by the routing authority; post it VERBATIM — no path
+            # append, no construction.
             response = client.post(
-                f"{intent.base_url}/v1/chat/completions",
+                intent.base_url,
                 json=payload,
                 headers=headers or None,
                 timeout=timeout,

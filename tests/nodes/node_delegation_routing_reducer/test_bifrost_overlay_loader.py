@@ -66,14 +66,38 @@ _DEFAULT_CONTRACT = textwrap.dedent(
 
 
 @pytest.mark.unit
-def test_canonical_bifrost_contract_has_empty_or_null_endpoint_urls() -> None:
+def test_canonical_bifrost_contract_endpoint_urls_are_complete_or_site_local() -> None:
+    """OMN-12815: every endpoint_url is COMPLETE (incl. /chat/completions) or
+    null (site-specific local, supplied COMPLETE by the overlay).
+
+    Supersedes the pre-OMN-12815 invariant that ALL repo-default endpoint_urls
+    were empty: public cloud endpoints now carry the COMPLETE final URL here so
+    the routing authority can return them VERBATIM with no in-code construction.
+    A bare base (http(s) URL without a chat path) is forbidden — that would have
+    required the deleted append logic.
+    """
     path = Path("src/omnimarket/configs/bifrost_delegation.yaml")
     data = yaml.safe_load(path.read_text())
 
-    endpoints = [backend.get("endpoint_url") for backend in data["backends"]]
+    backends = data["backends"]
+    assert backends
 
-    assert endpoints
-    assert all(endpoint in ("", None) for endpoint in endpoints)
+    populated = [
+        backend
+        for backend in backends
+        if (backend.get("endpoint_url") or "").startswith(("http://", "https://"))
+    ]
+    # The demo cloud backends must declare COMPLETE URLs here (gemini + openrouter).
+    assert populated, "expected at least one COMPLETE cloud endpoint_url (OMN-12815)"
+
+    for backend in populated:
+        endpoint = backend["endpoint_url"]
+        # Populated endpoints must be COMPLETE — never a bare base. They are
+        # posted VERBATIM (no /chat/completions append in code, OMN-12815).
+        assert endpoint.endswith("/chat/completions"), (
+            f"{backend['backend_id']}: endpoint_url must be the COMPLETE URL incl. "
+            f"the chat path (OMN-12815), got {endpoint!r}"
+        )
 
 
 @pytest.mark.unit
