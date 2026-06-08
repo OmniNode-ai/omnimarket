@@ -81,6 +81,13 @@ jobs:
       # Fails CI if any delegation/LLM/bifrost module adds a new os.environ/os.getenv read.
       - name: Delegation env read scanner (enforce)
         run: uv run python scripts/ci/check_delegation_env_reads.py --mode enforce
+      # OMN-12821 (plan A1.5): routing-authority demo gate. Proves the demo path
+      # (generation + delegation) resolves provider/model/endpoint_ref/endpoint/
+      # route_source from contract+authority AND that no demo-path source reads
+      # env for endpoint/provider/model, hardcodes a provider literal, or reads a
+      # fallback endpoint string. Fails CI on any hardcoded/env path on the demo path.
+      - name: Routing-authority demo gate (enforce)
+        run: uv run python scripts/ci/check_routing_authority.py
       # OMN-10821: Handler* classes in handler_*.py with zero external import references
       # cannot be wired by the DI container and are silently absent from the pipeline.
       - name: Unimported-handler check
