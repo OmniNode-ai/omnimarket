@@ -96,7 +96,7 @@ event_bus:
   publish_topics:
     - onex.evt.omnimarket.node-generation-completed.v1
     - onex.evt.omnimarket.node-generation-failed.v1
-    - onex.evt.omnimarket.node-registered.v1
+    - onex.evt.platform.node-registration.v1
     - onex.cmd.omnimarket.node-deploy.v1
 
 model_routing:

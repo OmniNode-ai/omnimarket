@@ -17,7 +17,7 @@ execute(node_name, input_data):
 Full flow (no runtime restart):
   1. node_generation_consumer emits onex.cmd.omnimarket.node-deploy.v1
   2. deploy() writes source to sandbox + registers node
-  3. ServiceMCPToolSync receives node-registered event, hot-reloads tool metadata
+  3. ServiceMCPToolSync receives the platform.node-registration.v1 event, hot-reloads tool metadata
   4. Next MCP call to that tool → execute() loads handler from disk → runs it
 """
 
