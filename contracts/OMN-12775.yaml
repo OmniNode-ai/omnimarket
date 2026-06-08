@@ -1,0 +1,75 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-12775"
+title: "generation_events: populate proof fields in the write path + canonical projection read path, full output no truncation"
+summary: >
+  Close-the-loop plan track A3 (audit wwmx7fobe/D6). The omnidash render reads six
+  proof fields off the generation_events row (output_payload_sha256,
+  contract_sha256, handler_sha256, routing_source, resolved_endpoint,
+  projection_owner) but nothing produced them, so the canonical projection API
+  returned NULLs. Per the audit decision these fields ARE the evidence the demo
+  acceptance criteria require, so they are populated in the write path: migration
+  0013 adds the six columns; both the live-runtime sync writer
+  (HandlerProjectionDelegation) and the async runner writer
+  (DelegationProjectionRunner) populate them via a single shared helper
+  (compute_generation_proof_fields) so they cannot drift; the SHA256 fields are
+  deterministic digests of the FULL payload (verifiable, proving no truncation);
+  the generation terminal event (ModelGenerationBenchmark) now carries
+  routing_source + resolved_endpoint resolved verbatim from the routing authority;
+  and the projection_api exposure for generation_events lists the six columns so
+  the canonical projection API (/projection/{topic}) returns them — the only valid
+  read path.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+evidence_requirements:
+  - kind: "tests"
+    description: "TDD proof-fields suite (migration, both write paths, SHA256 no-truncation, exposure, event model) passes."
+    command: "uv run pytest tests/test_generation_events_proof_fields.py -v"
+  - kind: "tests"
+    description: "Pre-existing generation persist/expose suite still passes (no regression)."
+    command: "uv run pytest tests/test_generation_output_persist_expose.py tests/unit/nodes/node_generation_consumer/ -q"
+  - kind: "tests"
+    description: "Full suite green (kafka-broker integration tests excluded; they require a live broker and are unrelated)."
+    command: "uv run pytest tests/ -q -m 'not kafka'"
+  - kind: "ci"
+    description: "mypy --strict clean for src/omnimarket."
+    command: "uv run mypy src/omnimarket/ --strict"
+  - kind: "ci"
+    description: "Touched files pass ruff lint + format."
+    command: "uv run ruff check src/ tests/ && uv run ruff format --check src/ tests/"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-proof-fields-tests"
+    description: "TDD proof-fields suite passed (14 tests: migration declares 6 columns, both write paths populate them, SHA256 fields are full-payload digests, exposure lists them, event model carries routing proof)."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/test_generation_events_proof_fields.py -q"
+  - id: "dod-no-regression"
+    description: "Pre-existing OMN-12780 generation persist/expose suite + generation-consumer unit suite passed unchanged."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/test_generation_output_persist_expose.py tests/unit/nodes/node_generation_consumer/ -q"
+  - id: "dod-full-suite"
+    description: "Full pytest suite passed (6477 passed, 10 skipped, kafka-broker tests deselected as they require a running broker)."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/ -q -m 'not kafka'"
+  - id: "dod-mypy"
+    description: "mypy --strict reported no issues."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run mypy src/omnimarket/ --strict"
+  - id: "dod-lint"
+    description: "ruff check and format check passed."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run ruff check src/ tests/ && uv run ruff format --check src/ tests/"

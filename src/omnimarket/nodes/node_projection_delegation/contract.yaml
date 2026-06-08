@@ -51,7 +51,7 @@ db_io:
       database: omnidash_analytics
       role: shadow_comparisons
     - name: generation_events
-      migration: "0012_generation_output_columns.sql"
+      migration: "0013_generation_proof_fields.sql"
       access: write
       database: omnidash_analytics
       role: generation_events
@@ -296,6 +296,16 @@ projection_api:
         - cost_inference_usd
         - contract_yaml
         - handler_source
+        # OMN-12775 (close-the-loop A3): proof fields populated by the write path.
+        # The canonical projection API returns these so the dashboard renders the
+        # real evidence (SHA256 digests of the full payload, the routing decision,
+        # and the owning projection node) instead of NULLs.
+        - output_payload_sha256
+        - contract_sha256
+        - handler_sha256
+        - routing_source
+        - resolved_endpoint
+        - projection_owner
         - timestamp
         - created_at
       order_by: created_at DESC

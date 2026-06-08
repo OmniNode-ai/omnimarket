@@ -190,6 +190,29 @@ class ModelGenerationBenchmark(BaseModel):
         ),
     )
 
+    # --- OMN-12775 routing-authority proof fields (close-the-loop A3) ---
+    # Recorded so the projection can persist what the routing authority actually
+    # resolved for this run. These are the evidence the demo acceptance criteria
+    # require ("provider, model, endpoint_ref, resolved endpoint, and routing
+    # source are recorded — and all resolve from contract / overlay / routing
+    # authority"). Empty string is the failed/unresolved sentinel.
+    routing_source: str = Field(
+        default="",
+        description=(
+            "Where the endpoint/model decision came from: 'contract' / 'overlay' "
+            "/ 'routing_authority'. Declared by the contract model_routing, never "
+            "a code literal or env fallback."
+        ),
+    )
+    resolved_endpoint: str = Field(
+        default="",
+        description=(
+            "The COMPLETE endpoint URL the routing authority resolved for this "
+            "run, recorded verbatim (no in-code construction). Empty when "
+            "generation never reached endpoint resolution."
+        ),
+    )
+
 
 class ModelNodeDeploy(BaseModel):
     """Payload for the runtime hot-deploy event.

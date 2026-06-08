@@ -505,6 +505,13 @@ class HandlerGenerationConsumer:
             model_routing.get(_MODEL_ROUTING_ROUTING_SOURCE_KEY, "contract")
         )
 
+        # OMN-12775: the COMPLETE endpoint URL the routing authority resolves for
+        # this run. Captured at request time in _call_llm (verbatim, never
+        # constructed) so the terminal benchmark — and therefore the
+        # generation_events projection row — records the real resolved endpoint
+        # as evidence. Empty until the first endpoint resolution.
+        self._resolved_endpoint: str = ""
+
         # OMN-12816: provider-specific inference params merged into the LLM request
         # body (e.g. chat_template_kwargs:{enable_thinking:false} to suppress Qwen
         # reasoning). Contract-declared, not a code literal. Default empty so a
@@ -591,6 +598,9 @@ class HandlerGenerationConsumer:
                 provider=self._provider,
                 served_model_id=self._served_model_id,
             )
+            # OMN-12775: record the COMPLETE resolved endpoint verbatim for the
+            # evidence packet — the routing authority's value, never constructed.
+            self._resolved_endpoint = resolved.endpoint_url
             # The api_key reference names an env var; resolve the secret VALUE at
             # the call boundary only (the routing decision carries the reference,
             # never the secret). Absence/blank is already fail-closed in the
@@ -730,6 +740,11 @@ class HandlerGenerationConsumer:
             completion_tokens=total_output,
             first_pass_success=first_pass_success,
             context_pack_hash=command.context_pack_hash,
+            # OMN-12775: routing-authority proof — recorded from the contract
+            # model_routing source and the verbatim resolved endpoint, so the
+            # generation_events projection row carries the evidence.
+            routing_source=self._routing_source,
+            resolved_endpoint=self._resolved_endpoint,
         )
 
         self._emit_benchmark(benchmark)

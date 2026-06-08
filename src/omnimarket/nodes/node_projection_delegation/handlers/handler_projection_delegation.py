@@ -27,6 +27,7 @@ Target table schema (from omnidash, OMN-2284):
 
 from __future__ import annotations
 
+import hashlib
 from datetime import UTC, datetime
 from decimal import Decimal
 
@@ -45,6 +46,42 @@ from omnimarket.projection.protocol_database import DatabaseAdapter
 TABLE = "delegation_events"
 CONFLICT_KEY = "correlation_id"
 GENERATION_TABLE = "generation_events"
+
+# OMN-12775 (close-the-loop A3): canonical owner of the generation_events
+# projection — the node that writes the row. Persisted so the dashboard renders
+# the real owner instead of its reader-side fallback string.
+GENERATION_PROJECTION_OWNER = "node_projection_delegation"
+
+
+def compute_generation_proof_fields(
+    *,
+    contract_yaml: str,
+    handler_source: str,
+    routing_source: str,
+    resolved_endpoint: str,
+) -> dict[str, str]:
+    """Build the six generation_events proof fields (OMN-12775, A3).
+
+    The SHA256 fields are deterministic digests of the FULL stored payload, so a
+    verifier can recompute them from the persisted contract_yaml/handler_source
+    and prove no truncation occurred. routing_source and resolved_endpoint are
+    carried verbatim from the routing authority. projection_owner is the
+    canonical node that writes the row. Single source of truth shared by both the
+    sync (live-runtime) and async (runner) write paths so they cannot drift.
+    """
+    contract_sha256 = hashlib.sha256(contract_yaml.encode()).hexdigest()
+    handler_sha256 = hashlib.sha256(handler_source.encode()).hexdigest()
+    output_payload_sha256 = hashlib.sha256(
+        (contract_yaml + handler_source).encode()
+    ).hexdigest()
+    return {
+        "output_payload_sha256": output_payload_sha256,
+        "contract_sha256": contract_sha256,
+        "handler_sha256": handler_sha256,
+        "routing_source": routing_source,
+        "resolved_endpoint": resolved_endpoint,
+        "projection_owner": GENERATION_PROJECTION_OWNER,
+    }
 
 
 class ModelProjectionGenerationCompletedEvent(BaseModel):
@@ -71,6 +108,12 @@ class ModelProjectionGenerationCompletedEvent(BaseModel):
     # failed/incomplete-generation sentinel, never coerced to NULL, never truncated.
     contract_yaml: str = Field(default="")
     handler_source: str = Field(default="")
+    # OMN-12775 (close-the-loop A3): routing-authority proof carried verbatim from
+    # the generation terminal event. The SHA256 proof fields are derived in the
+    # write path from the full payload (the projection can recompute them), but
+    # the routing decision must be carried — the projection cannot reconstruct it.
+    routing_source: str = Field(default="")
+    resolved_endpoint: str = Field(default="")
 
 
 class ModelProjectionTaskDelegatedEvent(BaseModel):
@@ -284,6 +327,12 @@ class HandlerProjectionDelegation:
         handler_source are persisted in full — no truncation.
         """
         now = datetime.now(tz=UTC).isoformat()
+        proof = compute_generation_proof_fields(
+            contract_yaml=event.contract_yaml,
+            handler_source=event.handler_source,
+            routing_source=event.routing_source,
+            resolved_endpoint=event.resolved_endpoint,
+        )
         row: dict[str, object] = {
             "correlation_id": event.correlation_id,
             "task_description": event.task_description,
@@ -297,6 +346,7 @@ class HandlerProjectionDelegation:
             "timestamp": event.timestamp or now,
             "contract_yaml": event.contract_yaml,
             "handler_source": event.handler_source,
+            **proof,
         }
         ok = db.upsert(GENERATION_TABLE, CONFLICT_KEY, row)
         return ModelProjectionResult(
@@ -317,11 +367,13 @@ class HandlerProjectionDelegation:
 
 
 __all__: list[str] = [
+    "GENERATION_PROJECTION_OWNER",
     "HandlerProjectionDelegation",
     "ModelProjectionGenerationCompletedEvent",
     "ModelProjectionResult",
     "ModelProjectionTaskDelegatedEvent",
     "ModelTaskDelegatedEvent",
+    "compute_generation_proof_fields",
 ]
 
 

@@ -22,6 +22,9 @@ from omnimarket.models.delegation.wire.model_delegate_skill_terminal_projection 
     ModelDelegateSkillTerminalProjection,
     ModelDelegationEventProjectionRow,
 )
+from omnimarket.nodes.node_projection_delegation.handlers.handler_projection_delegation import (
+    compute_generation_proof_fields,
+)
 from omnimarket.projection.runner import (
     BaseProjectionRunner,
     MessageMeta,
@@ -867,6 +870,23 @@ class DelegationProjectionRunner(BaseProjectionRunner):
         handler_source = str(
             data.get("handler_source") or data.get("handlerSource") or ""
         )
+        # OMN-12775 (close-the-loop A3): persist the six proof fields the demo
+        # acceptance criteria require. SHA256 fields are derived from the full
+        # payload (verifiable, no truncation); routing_source/resolved_endpoint
+        # are carried verbatim from the routing authority. Shared helper keeps
+        # this in lockstep with the sync live-runtime write path.
+        routing_source = str(
+            data.get("routing_source") or data.get("routingSource") or ""
+        )
+        resolved_endpoint = str(
+            data.get("resolved_endpoint") or data.get("resolvedEndpoint") or ""
+        )
+        proof = compute_generation_proof_fields(
+            contract_yaml=contract_yaml,
+            handler_source=handler_source,
+            routing_source=routing_source,
+            resolved_endpoint=resolved_endpoint,
+        )
 
         await self.db.execute(
             f"""
@@ -874,12 +894,16 @@ class DelegationProjectionRunner(BaseProjectionRunner):
               correlation_id, task_description, provider, model_id,
               endpoint_class, attempt_count, total_latency_e2e_ms,
               contract_passed, cost_inference_usd, timestamp,
-              contract_yaml, handler_source
+              contract_yaml, handler_source,
+              output_payload_sha256, contract_sha256, handler_sha256,
+              routing_source, resolved_endpoint, projection_owner
             ) VALUES (
               $1, $2, $3, $4,
               $5, $6, $7,
               $8, $9, $10,
-              $11, $12
+              $11, $12,
+              $13, $14, $15,
+              $16, $17, $18
             )
             ON CONFLICT (correlation_id) DO NOTHING
             """,
@@ -895,6 +919,12 @@ class DelegationProjectionRunner(BaseProjectionRunner):
             timestamp,
             contract_yaml,
             handler_source,
+            proof["output_payload_sha256"],
+            proof["contract_sha256"],
+            proof["handler_sha256"],
+            proof["routing_source"],
+            proof["resolved_endpoint"],
+            proof["projection_owner"],
         )
         return True
 
