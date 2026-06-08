@@ -3,6 +3,9 @@
 
 """LLM cost routing models — registry, policy, request/response, and delegation event models."""
 
+from omnimarket.models.delegation.llm_cost_routing.model_generation_escalation_event import (
+    ModelGenerationEscalationTriggeredEvent,
+)
 from omnimarket.models.delegation.llm_cost_routing.model_llm_delegation_all_tiers_failed_event import (
     ModelLlmDelegationAllTiersFailedEvent,
 )
@@ -45,6 +48,7 @@ __all__ = [
     "ModelDelegationModelProfile",
     "ModelDelegationRoutingPolicy",
     "ModelDelegationTaskPolicy",
+    "ModelGenerationEscalationTriggeredEvent",
     "ModelLlmDelegationAllTiersFailedEvent",
     "ModelLlmDelegationCompletedEvent",
     "ModelLlmDelegationEscalationTriggeredEvent",
