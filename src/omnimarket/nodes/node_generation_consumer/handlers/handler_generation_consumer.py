@@ -463,7 +463,7 @@ class HandlerGenerationConsumer:
             (t for t in publish_topics if "generation-failed" in t), ""
         )
         self._topic_registered = next(
-            (t for t in publish_topics if "node-registered" in t), ""
+            (t for t in publish_topics if "node-registration" in t), ""
         )
         self._topic_deploy = next((t for t in publish_topics if "node-deploy" in t), "")
 
@@ -797,13 +797,20 @@ class HandlerGenerationConsumer:
             )
             return
         try:
+            node_name = _extract_node_name(benchmark.contract_yaml)
             payload = json.dumps(
                 {
+                    "event_type": "registered",
                     "correlation_id": benchmark.correlation_id,
-                    "node_name": _extract_node_name(benchmark.contract_yaml),
+                    "node_name": node_name,
+                    "service_name": node_name,
                     "contract_yaml": benchmark.contract_yaml,
                     "handler_source": benchmark.handler_source,
-                    "mcp_tags": ["generate_onex_node", "generation-consumer"],
+                    "tags": [
+                        "mcp-enabled",
+                        "node-type:orchestrator",
+                        f"mcp-tool:{node_name}",
+                    ],
                     "source": "node_generation_consumer",
                 }
             ).encode()
