@@ -15,7 +15,6 @@ chain — the orchestrator publishes the intent, this node consumes it (OMN-1229
 from __future__ import annotations
 
 import logging
-import os
 import time
 from pathlib import Path
 from typing import Any
@@ -28,6 +27,7 @@ from omnibase_core.models.delegation.wire import (
 )
 
 from omnimarket.inference.protocol_config import apply_inference_protocol
+from omnimarket.inference.secret_store_resolver import resolve_api_key
 from omnimarket.nodes.contract_topics import (
     contract_publish_topics,
 )
@@ -101,13 +101,17 @@ def _build_messages_and_request_options(
 
 
 def _resolve_api_key(api_key_ref: str | None) -> str | None:
-    """Resolve an API-key reference at the provider-call effect boundary."""
-    if not api_key_ref:
+    """Resolve an API-key reference at the provider-call effect boundary.
+
+    Resolves the secret VALUE through the canonical ``ProtocolSecretStore``
+    (OMN-12824) rather than reading ``os.environ`` directly. Fail-closed: a
+    declared reference with no secret-store value raises. ``None`` reference →
+    ``None`` (unauthenticated backend).
+    """
+    resolved = resolve_api_key(api_key_ref)
+    if resolved is None:
         return None
-    value = os.environ.get(api_key_ref)
-    if not value:
-        raise KeyError(f"Required env var '{api_key_ref}' is not set or empty")
-    return value
+    return resolved.get_secret_value()
 
 
 def _merge_provider_request_options(

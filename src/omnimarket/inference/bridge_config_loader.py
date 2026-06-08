@@ -25,8 +25,10 @@ new model.
 OpenRouter keys follow the pattern ``openrouter/<model_id>`` where model_id is
 the full OpenRouter routing string (e.g. ``qwen/qwen3-coder:free``). These are
 registered dynamically from the OpenRouter model catalog when OPENROUTER_API_KEY
-is present. The base URL is declared in contract and read from
-OPENROUTER_BASE_URL (defaults to https://openrouter.ai/api).
+is present. The base URL is resolved from ``OPENROUTER_BASE_URL`` config —
+there is NO hardcoded in-code provider URL default (OMN-12824). When OpenRouter
+is configured (key present) but the base URL is missing, registration fails
+closed rather than substituting a baked-in literal.
 """
 
 from __future__ import annotations
@@ -44,6 +46,7 @@ from omnimarket.inference.openrouter_models import (
 from omnimarket.inference.registry_context_windows import (
     get_context_window_for_endpoint_env,
 )
+from omnimarket.inference.secret_store_resolver import resolve_api_key
 
 # key -> (url env var, model_id env var)
 # Context windows are resolved from the model registry at load time via
@@ -66,9 +69,6 @@ _MODEL_KEY_REGISTRY: Final[tuple[tuple[str, str, str], ...]] = (
 _CONTEXT_WINDOW_FALLBACKS: Final[dict[str, int]] = {
     "LLM_GLM_URL": 128_000,
 }
-
-# Contract-declared OpenRouter base URL. OPENROUTER_API_KEY stays in env (secret).
-_OPENROUTER_BASE_URL_DEFAULT: Final[str] = "https://openrouter.ai/api"
 
 _DEFAULT_TIMEOUT_SECONDS: Final[float] = 120.0
 
@@ -119,17 +119,27 @@ def load_inference_bridge_config_from_env() -> ModelInferenceBridgeConfig:
 def _register_openrouter_models(model_configs: dict[str, dict[str, object]]) -> None:
     """Populate model_configs with OpenRouter free-tier entries.
 
-    Skips silently when OPENROUTER_API_KEY is absent so callers never fail
-    on hosts that don't have OpenRouter configured.
+    Skips silently when ``OPENROUTER_API_KEY`` is absent so callers never fail
+    on hosts that don't have OpenRouter configured. When the key IS present but
+    ``OPENROUTER_BASE_URL`` is missing, registration fails closed (OMN-12824):
+    there is no hardcoded in-code provider URL default to fall back to.
     """
-    api_key = os.environ.get("OPENROUTER_API_KEY", "").strip()
+    resolved_key = resolve_api_key("OPENROUTER_API_KEY", required=False)
+    if resolved_key is None:
+        return
+    api_key = resolved_key.get_secret_value().strip()
     if not api_key:
         return
 
-    raw_base_url = os.environ.get("OPENROUTER_BASE_URL")
-    base_url = (raw_base_url or _OPENROUTER_BASE_URL_DEFAULT).strip()
+    base_url = os.environ.get(
+        "OPENROUTER_BASE_URL", ""
+    ).strip()  # contract-config-ok: config
     if not base_url:
-        base_url = _OPENROUTER_BASE_URL_DEFAULT
+        raise ValueError(
+            "OpenRouter is configured (OPENROUTER_API_KEY present) but "
+            "OPENROUTER_BASE_URL is missing. Declare the OpenRouter base URL in "
+            "config — no hardcoded provider URL default is permitted (OMN-12824)."
+        )
 
     for model in get_openrouter_models():
         if model.availability != EnumModelAvailability.AVAILABLE:

@@ -41,6 +41,7 @@ from omnimarket.adapters.llm.bifrost.config_loader_bifrost_delegation import (
 )
 from omnimarket.enums.enum_usage_source import EnumUsageSource
 from omnimarket.inference.protocol_config import apply_inference_protocol
+from omnimarket.inference.secret_store_resolver import resolve_api_key_async
 from omnimarket.nodes.node_generation_consumer.models.model_generation import (
     ModelGenerationAttempt,
     ModelGenerationBenchmark,
@@ -131,9 +132,10 @@ class ModelResolvedEndpoint(BaseModel):
             "gemini"). Drives cost basis, not endpoint shape.
         served_model_id: The model identifier sent on the wire, declared by the
             contract ``served_model_id`` (the routing-tier authority value).
-        api_key_ref: Name of the env var holding the backend API key, declared by
-            the bifrost backend ``api_key_env``. ``None`` for unauthenticated
-            local backends.
+        api_key_ref: Secret-store reference (key NAME) for the backend API key,
+            declared by the bifrost backend ``api_key_env``. ``None`` for
+            unauthenticated local backends. The VALUE is resolved at the effect
+            boundary through the secret store (OMN-12824), never here.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -179,7 +181,9 @@ def resolve_generation_endpoint(
     Raises:
         ValueError: If provider/served_model_id is blank, the backend is unknown,
             the backend has no endpoint_url, or the backend declares an
-            ``api_key_env`` that is absent from the environment.
+            ``api_key_env`` that is absent from the environment (routability
+            gate). The secret VALUE is resolved fail-closed at the effect
+            boundary via the secret store (OMN-12824), not here.
     """
     if not provider:
         raise ValueError(
@@ -232,6 +236,11 @@ def _resolve_bifrost_backend(endpoint_ref: str) -> _ResolvedBackend | None:
     only when it has a non-empty endpoint_url AND, if it declares an
     ``api_key_env``, that env var is present with a non-empty value. Returns
     ``None`` otherwise so the caller fails closed with a precise message.
+
+    Note (OMN-12824): the env-presence check below is a *routability gate* (is
+    this backend usable at all), not the value read used for the request. The
+    secret VALUE sent on the wire is resolved at the effect boundary through the
+    secret store — never read directly here.
     """
     contract_path = os.environ.get(  # contract-config-ok: config  # ONEX_EXCLUDE: contract path override
         "BIFROST_CONTRACT_PATH", ""
@@ -254,7 +263,9 @@ def _resolve_bifrost_backend(endpoint_ref: str) -> _ResolvedBackend | None:
         api_key_ref: str | None = None
         if backend.api_key_env:
             api_key_value = os.environ.get(backend.api_key_env, "").strip()
-            if not api_key_value:  # ONEX_FLAG_EXEMPT: secret presence only
+            if (
+                not api_key_value
+            ):  # ONEX_FLAG_EXEMPT: routability gate, not the wire value
                 return None
             api_key_ref = backend.api_key_env
         return _ResolvedBackend(endpoint_url=url, api_key_ref=api_key_ref)
@@ -591,13 +602,14 @@ class HandlerGenerationConsumer:
                 provider=self._provider,
                 served_model_id=self._served_model_id,
             )
-            # The api_key reference names an env var; resolve the secret VALUE at
-            # the call boundary only (the routing decision carries the reference,
-            # never the secret). Absence/blank is already fail-closed in the
-            # resolver, so this read is guaranteed present and non-empty.
+            # OMN-12824: the routing decision carries only the api_key_ref
+            # (the secret NAME), never the value. Resolve the secret VALUE at
+            # the call boundary through the canonical secret store. Fail-closed:
+            # a declared ref with no secret-store value raises.
+            resolved_secret = await resolve_api_key_async(resolved.api_key_ref)
             api_key = (
-                os.environ[resolved.api_key_ref].strip()
-                if resolved.api_key_ref
+                resolved_secret.get_secret_value()
+                if resolved_secret is not None
                 else None
             )
             assert self._effect is not None
