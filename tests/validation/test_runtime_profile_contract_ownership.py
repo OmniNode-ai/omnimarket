@@ -184,3 +184,12 @@ def test_main_profile_excludes_memory_and_intelligence_crashers() -> None:
     assert _runtime_profiles(intelligence_orchestrator) == ("intelligence",)
     assert not _owned_by_runtime_profile(adr_canary_orchestrator, "main")
     assert _runtime_profiles(adr_canary_orchestrator) == ("canary",)
+
+
+def test_pr_review_bot_is_not_owned_by_always_on_runtime_profiles() -> None:
+    contract = _load_contract(NODES_ROOT / "node_pr_review_bot" / "contract.yaml")
+    descriptor = contract.get("descriptor")
+    assert isinstance(descriptor, dict)
+
+    assert _runtime_profiles(contract) == ("manual_pr_review",)
+    assert descriptor["runtime_profiles"] == ["effects"]
