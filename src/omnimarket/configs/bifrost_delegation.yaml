@@ -86,8 +86,10 @@ backends:
       - summarization
       - simple_tasks
   - backend_id: cloud-glm
-    endpoint_url: ""
-    model_name: glm-z-ai
+    # OMN-12819: COMPLETE endpoint URL incl. the full chat path, posted VERBATIM.
+    endpoint_url: "https://api.z.ai/api/coding/paas/v4/chat/completions"
+    model_name: "glm-4.5"
+    api_key_env: LLM_GLM_API_KEY
     tier: cheap_cloud
     timeout_ms: 60000
     capabilities:

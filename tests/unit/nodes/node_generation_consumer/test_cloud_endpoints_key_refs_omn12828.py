@@ -7,9 +7,9 @@ secret-store resolver at the inference effect boundary). The remaining B3 work,
 in omnimarket scope, is:
 
   1. The committed bifrost contract carries the COMPLETE verbatim ``endpoint_url``
-     (full chat path) for every cloud backend (``cloud-gemini-flash``,
-     ``openrouter-glm-flash``, ``openrouter-qwen3-coder-480b``) plus a declared
-     API-key reference.
+     (full chat path) for every cloud backend (``cloud-glm``,
+     ``cloud-gemini-flash``, ``openrouter-glm-flash``,
+     ``openrouter-qwen3-coder-480b``) plus a declared API-key reference.
   2. Cloud-backend routability must NOT depend on the host process environment
      carrying the secret VALUE. The secret VALUE is resolved fail-closed at the
      effect boundary via the secret store (HG2). Reading ``os.environ`` to decide
@@ -47,10 +47,12 @@ _COMMITTED_BIFROST = (
 
 # The COMPLETE verbatim endpoints B3 requires (A1 supplied these).
 _GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
+_GLM_URL = "https://api.z.ai/api/coding/paas/v4/chat/completions"
 _OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 
 _CLOUD_BACKENDS: dict[str, tuple[str, str]] = {
     # backend_id -> (expected endpoint_url, expected api-key reference name)
+    "cloud-glm": (_GLM_URL, "LLM_GLM_API_KEY"),
     "cloud-gemini-flash": (_GEMINI_URL, "GEMINI_API_KEY"),
     "openrouter-glm-flash": (_OPENROUTER_URL, "OPENROUTER_API_KEY"),
     "openrouter-qwen3-coder-480b": (_OPENROUTER_URL, "OPENROUTER_API_KEY"),
