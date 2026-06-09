@@ -18,17 +18,33 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from pathlib import Path
 from typing import Protocol, runtime_checkable
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict
 
 from omnimarket.github_api import rest_json, split_repo
+from omnimarket.inference.secret_store_resolver import resolve_api_key
+from omnimarket.nodes.contract_topics import contract_secret_ref
 from omnimarket.nodes.node_pr_lifecycle_inventory_compute.models.model_pr_lifecycle_inventory import (
     ModelStuckQueueEntry,
 )
 
 logger = logging.getLogger(__name__)
+_CONTRACT_PATH = Path(__file__).resolve().parents[1] / "contract.yaml"
+
+
+def _resolve_github_token() -> str:
+    """Resolve the GitHub token from the contract-declared ref (OMN-12856)."""
+    ref = contract_secret_ref(_CONTRACT_PATH, "GITHUB_TOKEN")
+    secret = resolve_api_key(ref)
+    if secret is None:
+        raise RuntimeError(
+            f"api_key_ref {ref!r} resolved to None — "
+            "ensure GITHUB_TOKEN is set in the secret store."
+        )
+    return secret.get_secret_value()
 
 
 # ---------------------------------------------------------------------------
@@ -71,10 +87,12 @@ class _LiveAdminMergeAdapter:
         await asyncio.to_thread(self._admin_merge_sync, repo, pr_number)
 
     def _admin_merge_sync(self, repo: str, pr_number: int) -> None:
+        token = _resolve_github_token()
         owner, repo_name = split_repo(repo)
         rest_json(
             "PUT",
             f"/repos/{owner}/{repo_name}/pulls/{pr_number}/merge",
+            token=token,
             body={"merge_method": "squash"},
         )
 

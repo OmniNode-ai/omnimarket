@@ -85,6 +85,15 @@ outputs:
     type: str
     description: "ISO timestamp of verification"
 
+secrets:
+  # OMN-12856: GitHub token is contract-declared so the handler reads the ref
+  # name from here — not a bare source literal. Value is resolved at the effect
+  # boundary via the canonical secret-store resolver. Only required when
+  # verify_ci=True in the input.
+  GITHUB_TOKEN:
+    description: "GitHub PAT or Actions token for gh pr checks CI verification."
+    required: false
+
 terminal_event: onex.evt.omnimarket.verification-receipt-completed.v1
 
 event_bus:

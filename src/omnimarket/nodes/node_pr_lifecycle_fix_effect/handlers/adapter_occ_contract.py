@@ -19,8 +19,24 @@ import uuid
 from pathlib import Path
 
 from omnimarket.github_api import rest_json, split_repo
+from omnimarket.inference.secret_store_resolver import resolve_api_key
+from omnimarket.nodes.contract_topics import contract_secret_ref
 
 logger = logging.getLogger(__name__)
+_CONTRACT_PATH = Path(__file__).resolve().parents[1] / "contract.yaml"
+
+
+def _resolve_github_token() -> str:
+    """Resolve the GitHub token from the contract-declared ref (OMN-12856)."""
+    ref = contract_secret_ref(_CONTRACT_PATH, "GITHUB_TOKEN")
+    secret = resolve_api_key(ref)
+    if secret is None:
+        raise RuntimeError(
+            f"api_key_ref {ref!r} resolved to None — "
+            "ensure GITHUB_TOKEN is set in the secret store."
+        )
+    return secret.get_secret_value()
+
 
 _OCC_REPO = "OmniNode-ai/onex_change_control"
 _OCC_REPO_GIT = "git@github.com:OmniNode-ai/onex_change_control.git"
@@ -261,9 +277,11 @@ class OccContractAdapter:
             f"Evidence-Ticket: {ticket_id}\n"
             f"Evidence-Source: auto-contract-{run_id}\n"
         )
+        token = _resolve_github_token()
         resp = rest_json(
             "POST",
             f"/repos/{owner}/{repo_name}/pulls",
+            token=token,
             body={
                 "title": f"auto(OCC): contract + receipt for {ticket_id}",
                 "head": branch,
@@ -286,8 +304,11 @@ class OccContractAdapter:
         occ_pr_number: int,
         ticket_id: str,
     ) -> None:
+        token = _resolve_github_token()
         owner, repo_name = split_repo(repo)
-        pr_data = rest_json("GET", f"/repos/{owner}/{repo_name}/pulls/{pr_number}")
+        pr_data = rest_json(
+            "GET", f"/repos/{owner}/{repo_name}/pulls/{pr_number}", token=token
+        )
         existing_body: str = pr_data.get("body") or ""
         evidence_footer = (
             f"\n\n---\n"
@@ -299,6 +320,7 @@ class OccContractAdapter:
             rest_json(
                 "PATCH",
                 f"/repos/{owner}/{repo_name}/pulls/{pr_number}",
+                token=token,
                 body={"body": existing_body + evidence_footer},
             )
 

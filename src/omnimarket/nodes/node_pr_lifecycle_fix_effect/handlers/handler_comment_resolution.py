@@ -17,14 +17,31 @@ from __future__ import annotations
 import asyncio
 import logging
 import re
+from pathlib import Path
 from typing import Protocol, runtime_checkable
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict
 
 from omnimarket.github_api import GitHubApiError, graphql, split_repo
+from omnimarket.inference.secret_store_resolver import resolve_api_key
+from omnimarket.nodes.contract_topics import contract_secret_ref
 
 logger = logging.getLogger(__name__)
+_CONTRACT_PATH = Path(__file__).resolve().parents[1] / "contract.yaml"
+
+
+def _resolve_github_token() -> str:
+    """Resolve the GitHub token from the contract-declared ref (OMN-12856)."""
+    ref = contract_secret_ref(_CONTRACT_PATH, "GITHUB_TOKEN")
+    secret = resolve_api_key(ref)
+    if secret is None:
+        raise RuntimeError(
+            f"api_key_ref {ref!r} resolved to None — "
+            "ensure GITHUB_TOKEN is set in the secret store."
+        )
+    return secret.get_secret_value()
+
 
 # Patterns that identify trivial bot comments
 _TRIVIAL_BOT_PATTERNS = re.compile(
@@ -130,10 +147,12 @@ class _LiveCommentAdapter:
     def _list_review_comments_sync(
         self, repo: str, pr_number: int
     ) -> list[dict[str, object]]:
+        token = _resolve_github_token()
         owner, repo_name = split_repo(repo)
         data = graphql(
             _REVIEW_THREADS_QUERY,
             {"owner": owner, "repo": repo_name, "prNumber": pr_number},
+            token=token,
         )
         thread_nodes = (
             (
@@ -183,8 +202,9 @@ class _LiveCommentAdapter:
         await asyncio.to_thread(self._resolve_thread_sync, thread_id)
 
     def _resolve_thread_sync(self, thread_id: str | int) -> None:
+        token = _resolve_github_token()
         try:
-            graphql(_RESOLVE_THREAD_MUTATION, {"threadId": str(thread_id)})
+            graphql(_RESOLVE_THREAD_MUTATION, {"threadId": str(thread_id)}, token=token)
         except GitHubApiError as exc:
             raise RuntimeError(
                 f"resolveReviewThread failed for {thread_id}: {exc}"

@@ -13,14 +13,30 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from pathlib import Path
 from typing import Protocol, runtime_checkable
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict
 
 from omnimarket.github_api import rest_json, split_repo
+from omnimarket.inference.secret_store_resolver import resolve_api_key
+from omnimarket.nodes.contract_topics import contract_secret_ref
 
 logger = logging.getLogger(__name__)
+_CONTRACT_PATH = Path(__file__).resolve().parents[1] / "contract.yaml"
+
+
+def _resolve_github_token() -> str:
+    """Resolve the GitHub token from the contract-declared ref (OMN-12856)."""
+    ref = contract_secret_ref(_CONTRACT_PATH, "GITHUB_TOKEN")
+    secret = resolve_api_key(ref)
+    if secret is None:
+        raise RuntimeError(
+            f"api_key_ref {ref!r} resolved to None — "
+            "ensure GITHUB_TOKEN is set in the secret store."
+        )
+    return secret.get_secret_value()
 
 
 # ---------------------------------------------------------------------------
@@ -66,8 +82,11 @@ class _LiveRebaseAdapter:
         return await asyncio.to_thread(self._update_branch_sync, repo, pr_number)
 
     def _update_branch_sync(self, repo: str, pr_number: int) -> str:
+        token = _resolve_github_token()
         owner, repo_name = split_repo(repo)
-        pr = rest_json("GET", f"/repos/{owner}/{repo_name}/pulls/{pr_number}")
+        pr = rest_json(
+            "GET", f"/repos/{owner}/{repo_name}/pulls/{pr_number}", token=token
+        )
         head = pr.get("head") or {}
         head_sha = head.get("sha")
         if not isinstance(head_sha, str) or not head_sha:
@@ -77,9 +96,12 @@ class _LiveRebaseAdapter:
         rest_json(
             "PUT",
             f"/repos/{owner}/{repo_name}/pulls/{pr_number}/update-branch",
+            token=token,
             body={"expected_head_sha": head_sha},
         )
-        refreshed = rest_json("GET", f"/repos/{owner}/{repo_name}/pulls/{pr_number}")
+        refreshed = rest_json(
+            "GET", f"/repos/{owner}/{repo_name}/pulls/{pr_number}", token=token
+        )
         refreshed_head = refreshed.get("head") or {}
         new_sha = refreshed_head.get("sha")
         if isinstance(new_sha, str) and new_sha:

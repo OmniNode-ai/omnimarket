@@ -32,6 +32,14 @@ descriptor:
   runtime_profiles:
     - effects
 
+secrets:
+  # OMN-12856: GitHub token is contract-declared so the handler reads the ref
+  # name from here — not a bare source literal. Value is resolved at the effect
+  # boundary via the canonical secret-store resolver.
+  GITHUB_TOKEN:
+    description: "GitHub PAT or Actions token for API calls (REST + GraphQL)."
+    required: true
+
 event_bus:
   consumer_group: omnimarket.ci_rerun_effect.consume.v1
   subscribe_topics:

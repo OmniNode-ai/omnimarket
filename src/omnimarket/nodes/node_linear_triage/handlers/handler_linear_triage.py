@@ -2,8 +2,10 @@
 # SPDX-License-Identifier: MIT
 """HandlerLinearTriage — scan non-completed tickets, verify PR state, auto-mark done.
 
-Uses GitHub REST API (via GH_PAT) for PR lookups instead of ``gh`` CLI
-subprocess calls. GH_PAT must be set in the environment; there is no fallback.
+Uses GitHub REST API for PR lookups instead of ``gh`` CLI subprocess calls.
+The GitHub token is resolved at handler invocation time from the contract-declared
+``api_key_ref`` (``GITHUB_TOKEN``) via the canonical secret-store resolver — no
+direct ``os.environ`` read of the token name occurs here.
 """
 
 from __future__ import annotations
@@ -15,8 +17,11 @@ import re
 import urllib.parse
 import urllib.request
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any, Protocol, runtime_checkable
 
+from omnimarket.inference.secret_store_resolver import resolve_api_key
+from omnimarket.nodes.contract_topics import contract_secret_ref
 from omnimarket.nodes.node_linear_triage.models.model_linear_triage_state import (
     EnumTriageAction,
     ModelLinearTicket,
@@ -41,6 +46,7 @@ KNOWN_REPOS = [
 ]
 
 _log = logging.getLogger(__name__)
+_CONTRACT_PATH = Path(__file__).resolve().parents[1] / "contract.yaml"
 
 # States considered "done" by Linear
 _DONE_STATES = frozenset({"Done", "Cancelled", "Canceled"})
@@ -262,25 +268,20 @@ class GitHubClientProtocol(Protocol):
 class GitHubHttpClient:
     """GitHub REST API client using urllib (no external deps).
 
-    Requires GH_PAT environment variable. No CLI fallback.
-    Uses GitHub search API for cross-repo PR lookups.
+    The caller must pass a resolved bearer token — this class never reads
+    ``os.environ`` directly.  Use :func:`resolve_github_token` to resolve
+    the token from the contract-declared ``api_key_ref`` before construction.
     """
 
     _BASE = "https://api.github.com"
 
     def __init__(self, token: str) -> None:
-        self._token = token
-
-    @classmethod
-    def from_env(cls) -> GitHubHttpClient:
-        """Create a client from GH_PAT env var. Raises if not set."""
-        token = os.environ.get("GH_PAT", "")
         if not token:
             raise RuntimeError(
-                "GH_PAT environment variable is not set. "
-                "Export it before running node_linear_triage."
+                "GitHub token must not be empty. "
+                "Resolve it via the contract api_key_ref before constructing GitHubHttpClient."
             )
-        return cls(token)
+        self._token = token
 
     def _get(self, path: str, params: dict[str, str] | None = None) -> Any:
         """GET request to GitHub API with rate-limit awareness."""
@@ -504,7 +505,15 @@ class HandlerLinearTriage:
     def _get_github_client(self) -> GitHubClientProtocol:
         if self._github_client is not None:
             return self._github_client
-        return GitHubHttpClient.from_env()
+        # Ref-name sourced from contract (OMN-12856) — not a bare source literal.
+        _github_ref = contract_secret_ref(_CONTRACT_PATH, "GITHUB_TOKEN")
+        secret = resolve_api_key(_github_ref)
+        if secret is None:
+            raise RuntimeError(
+                f"api_key_ref {_github_ref!r} resolved to None — "
+                "ensure GITHUB_TOKEN is set in the secret store."
+            )
+        return GitHubHttpClient(secret.get_secret_value())
 
     def handle(self, request: ModelLinearTriageStartCommand) -> ModelLinearTriageResult:
         """Run the full triage pipeline."""

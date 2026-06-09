@@ -1,0 +1,62 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-12856"
+title: "Resolve GitHub token via contract api_key_ref at effect boundary; enforce with gate"
+summary: >
+  All omnimarket handlers, adapters, and consumers that previously read
+  GH_PAT / GH_TOKEN / GITHUB_TOKEN directly via os.environ or os.getenv
+  are migrated to the canonical contract-native pattern: contract.yaml
+  declares github_token as an api_key_ref entry; handlers call
+  contract_secret_ref(CONTRACT_PATH, "GITHUB_TOKEN") + resolve_api_key(ref)
+  at the effect boundary. The raw-env path is eliminated from source.
+  A new enforcement gate (scripts/ci/check_github_token_env_reads.py)
+  scans omnimarket source and fails CI on any remaining direct env read of a
+  GitHub token, wired as a required CI step and a pre-commit hook so the
+  invariant is mechanically enforced, not advisory.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-grep-clean-no-raw-gh-pat-reads"
+    description: >
+      No omnimarket source file outside tests/ reads GH_PAT, GH_TOKEN, or
+      GITHUB_TOKEN via os.environ / os.getenv directly. The gate script
+      exits 0 (zero violations).
+    source: "command"
+    status: "verified"
+    checks:
+      - check_type: "command"
+        check_value: "uv run python scripts/ci/check_github_token_env_reads.py"
+  - id: "dod-gate-script-exists-and-wired"
+    description: >
+      scripts/ci/check_github_token_env_reads.py is present, wired as a
+      required CI step ("GitHub-token env-read gate (enforce)" in
+      .github/workflows/ci.yml) and as a pre-commit hook
+      (github-token-env-gate in .pre-commit-config.yaml).
+    source: "command"
+    status: "verified"
+    checks:
+      - check_type: "command"
+        check_value: "grep -q 'check_github_token_env_reads.py' .github/workflows/ci.yml && grep -q 'github-token-env-gate' .pre-commit-config.yaml"
+  - id: "dod-unit-tests-green"
+    description: >
+      Unit tests covering the gate script and the contract-secret-ref
+      resolution pattern pass without failures.
+    source: "command"
+    status: "verified"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/unit/scripts/test_check_github_token_env_reads.py tests/unit/nodes/test_contract_secret_ref.py -v"
+  - id: "dod-full-suite-green"
+    description: >
+      Full pytest suite (no -k filter) passes; no regressions from the
+      contract api_key_ref migration across all affected nodes.
+    source: "command"
+    status: "verified"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/ -v"

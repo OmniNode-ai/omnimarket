@@ -14,8 +14,8 @@ Usage:
 
 Outputs JSON to stdout: ModelMergeSweepResult model.
 
-Environment:
-    GH_PAT   GitHub PAT (required — fail-fast if missing)
+The GitHub token is resolved from the contract-declared ``secrets.GITHUB_TOKEN``
+ref via the canonical secret-store resolver — no raw ``GH_PAT`` env read.
 """
 
 from __future__ import annotations
@@ -27,6 +27,7 @@ import os
 import pathlib
 import sys
 from importlib import resources
+from pathlib import Path
 from typing import Any
 
 import yaml
@@ -34,6 +35,8 @@ import yaml
 from omnimarket.cli.args import add_output_args, resolve_output_config
 from omnimarket.cli.output.registry import resolve_handler
 from omnimarket.cli.reporting import build_report_from_merge_sweep_result
+from omnimarket.inference.secret_store_resolver import resolve_api_key
+from omnimarket.nodes.contract_topics import contract_secret_ref
 from omnimarket.nodes.node_merge_sweep_compute.adapter_github_http import (
     GitHubHttpClient,
 )
@@ -49,6 +52,7 @@ from omnimarket.nodes.node_merge_sweep_compute.handlers.handler_merge_sweep impo
 from omnimarket.nodes.node_merge_sweep_compute.protocols import GitHubPrFetchProtocol
 
 _log = logging.getLogger(__name__)
+_CONTRACT_PATH = Path(__file__).resolve().parent / "contract.yaml"
 
 _DEFAULT_REPOS = [
     "OmniNode-ai/omniclaude",
@@ -214,8 +218,16 @@ def main(
     logging.getLogger().setLevel(args.log_level.upper())
     repos = [r.strip() for r in args.repos.split(",") if r.strip()] or _DEFAULT_REPOS
 
-    # Fail-fast: GH_PAT must be present
-    github = github or GitHubHttpClient()
+    # Ref-name sourced from contract (OMN-12856); value resolved via secret store.
+    if github is None:
+        _github_ref = contract_secret_ref(_CONTRACT_PATH, "GITHUB_TOKEN")
+        github_secret = resolve_api_key(_github_ref)
+        if github_secret is None:
+            raise RuntimeError(
+                f"api_key_ref {_github_ref!r} resolved to None — "
+                "ensure GITHUB_TOKEN is set in the secret store."
+            )
+        github = GitHubHttpClient(github_secret.get_secret_value())
 
     all_prs: list[ModelPRInfo] = []
     protection = BranchProtectionCache(github)

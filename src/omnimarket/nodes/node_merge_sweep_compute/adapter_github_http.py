@@ -3,7 +3,10 @@
 """GitHub HTTP adapter for node_merge_sweep — zero external dependencies.
 
 Uses GitHub GraphQL API (via urllib) to fetch open PRs with rich status fields,
-and REST API for branch protection. Reads GH_PAT from env (fail-fast, no fallback).
+and REST API for branch protection. The GitHub token is passed explicitly at
+construction time — this module never reads ``os.environ`` for the token name.
+Callers resolve the token from the contract-declared ``api_key_ref``
+(``GITHUB_TOKEN``) via the canonical secret-store resolver.
 
 This is the ONLY file in node_merge_sweep that touches the network.
 Everything else works against GitHubPrFetchProtocol.
@@ -15,7 +18,6 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 import urllib.error
 import urllib.request
 from typing import Any
@@ -114,15 +116,17 @@ def _split_repo(repo: str) -> tuple[str, str]:
 class GitHubHttpClient(GitHubPrFetchProtocol):
     """Real GitHub HTTP client using GraphQL for PRs + REST for branch protection.
 
-    Reads GH_PAT from the environment at construction time (fail-fast).
+    The caller must pass a resolved bearer token — this class never reads
+    ``os.environ`` for the token name directly.  Callers resolve the token
+    from the contract-declared ``api_key_ref`` (``GITHUB_TOKEN``) via
+    :func:`omnimarket.inference.secret_store_resolver.resolve_api_key`.
     """
 
-    def __init__(self) -> None:
-        token = os.environ.get("GH_PAT", "")
+    def __init__(self, token: str) -> None:
         if not token:
             raise RuntimeError(
-                "GH_PAT environment variable is not set. "
-                "Export it before running node_merge_sweep."
+                "GitHub token must not be empty. "
+                "Resolve it via the contract api_key_ref before constructing GitHubHttpClient."
             )
         self._token = token
 
