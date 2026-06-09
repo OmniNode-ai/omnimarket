@@ -11,12 +11,6 @@ from unittest.mock import MagicMock, patch
 import pytest
 from pydantic import SecretStr
 
-_FAKE_SECRET = SecretStr("fake-github-token-for-test")
-_PATCH_RESOLVE = patch(
-    "omnimarket.nodes.node_verification_receipt_generator.handlers.handler_verification_receipt.resolve_api_key",
-    return_value=_FAKE_SECRET,
-)
-
 from omnimarket.events.verification import (
     ModelFileTestResult,
     ModelVerificationReceiptRequest,
@@ -25,6 +19,12 @@ from omnimarket.nodes.node_verification_receipt_generator.handlers.handler_verif
     GhClientProtocol,
     HandlerVerificationReceiptGenerator,
     PytestRunnerProtocol,
+)
+
+_FAKE_SECRET = SecretStr("fake-github-token-for-test")
+_PATCH_RESOLVE = patch(
+    "omnimarket.nodes.node_verification_receipt_generator.handlers.handler_verification_receipt.resolve_api_key",
+    return_value=_FAKE_SECRET,
 )
 
 
