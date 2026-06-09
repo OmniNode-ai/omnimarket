@@ -131,10 +131,16 @@ class TestOccContractAdapterOpenOccPr:
         adapter = OccContractAdapter()
         mock_resp = {"number": 42, "html_url": "https://github.com/test/pr/42"}
 
-        with patch(
-            "omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.adapter_occ_contract.rest_json",
-            return_value=mock_resp,
-        ) as mock_rest:
+        with (
+            patch(
+                "omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.adapter_occ_contract.rest_json",
+                return_value=mock_resp,
+            ) as mock_rest,
+            patch(
+                "omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.adapter_occ_contract._resolve_github_token",
+                return_value="fake-token",
+            ),
+        ):
             result = adapter._open_occ_pr(
                 branch="auto/omn-9999-occ-contract",
                 ticket_id="OMN-9999",
@@ -154,6 +160,10 @@ class TestOccContractAdapterOpenOccPr:
             patch(
                 "omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.adapter_occ_contract.rest_json",
                 return_value={"html_url": "https://github.com/test"},
+            ),
+            patch(
+                "omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.adapter_occ_contract._resolve_github_token",
+                return_value="fake-token",
             ),
             pytest.raises(RuntimeError, match="unexpected number field"),
         ):

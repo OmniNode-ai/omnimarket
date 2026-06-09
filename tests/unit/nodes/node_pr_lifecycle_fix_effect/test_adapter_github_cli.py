@@ -89,6 +89,10 @@ class TestGitHubCliAdapter:
             "omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.adapter_github_cli._resolve_github_token_async",
             fake_resolve_token_async,
         )
+        monkeypatch.setattr(
+            "omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.adapter_github_cli._resolve_github_token",
+            lambda: "fake-token",
+        )
 
         adapter = GitHubCliAdapter()
         result = await adapter.rerun_failed_checks("OmniNode-ai/omnimarket", 42)
@@ -132,6 +136,10 @@ class TestGitHubCliAdapter:
         monkeypatch.setattr(
             "omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.adapter_github_cli.graphql",
             fake_graphql,
+        )
+        monkeypatch.setattr(
+            "omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.adapter_github_cli._resolve_github_token",
+            lambda: "fake-token",
         )
 
         adapter = GitHubCliAdapter()
