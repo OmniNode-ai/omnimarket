@@ -13,6 +13,9 @@ import yaml
 from omnimarket.nodes.node_generation_consumer.handlers.handler_generated_executor import (
     HandlerGeneratedExecutor,
 )
+from omnimarket.nodes.node_generation_consumer.models.model_generation import (
+    ModelNodeDeploy,
+)
 
 _VALID_HANDLER = """\
 def handle(input_data):
@@ -406,6 +409,14 @@ def _deploy_payload(node_name: str, source: str, correlation_id: str) -> dict[st
     }
 
 
+def _typed_deploy_payload(
+    node_name: str, source: str, correlation_id: str
+) -> ModelNodeDeploy:
+    return ModelNodeDeploy.model_validate(
+        _deploy_payload(node_name, source, correlation_id)
+    )
+
+
 @pytest.mark.unit
 def test_on_deploy_event_returns_future_runtime_terminal_shape() -> None:
     """The terminal result MUST carry the same evidence keys future runtime
@@ -513,6 +524,21 @@ def test_on_deploy_event_accepts_json_bytes() -> None:
 
     assert result["status"] == "completed"
     assert result["output"] == {"echo": "bytes"}
+
+
+@pytest.mark.unit
+def test_handle_accepts_typed_model_node_deploy_payload() -> None:
+    """Auto-wiring validates node-deploy JSON into ModelNodeDeploy before handle()."""
+    with tempfile.TemporaryDirectory() as tmp:
+        executor = HandlerGeneratedExecutor(sandbox_dir=Path(tmp))
+        result = executor.handle(
+            _typed_deploy_payload("node_typed", _VALID_HANDLER, "corr-typed-1")
+        )
+
+    assert result["status"] == "completed"
+    assert result["node_name"] == "node_typed"
+    assert result["output"] == {"echo": "none"}
+    assert result["_command_topic"] == _DEPLOY_TOPIC
 
 
 @pytest.mark.unit

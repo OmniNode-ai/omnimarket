@@ -36,7 +36,7 @@ import json
 import logging
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import yaml
 
@@ -49,6 +49,21 @@ _CONTRACT_PATH = Path(__file__).parent.parent / "contract.yaml"
 # Sync (topic, bytes) -> None publisher injected by the runtime's Kafka adapter,
 # identical to the contract HandlerGenerationConsumer uses.
 EventPublisher = Callable[[str, bytes], None]
+
+
+def _coerce_deploy_payload(payload: object) -> dict[str, Any]:
+    """Normalize runtime deploy payload shapes to a mutable dict."""
+    if isinstance(payload, (bytes, str)):
+        loaded: object = json.loads(payload)
+        if isinstance(loaded, dict):
+            return cast(dict[str, Any], loaded)
+    if isinstance(payload, dict):
+        return cast(dict[str, Any], payload)
+    if hasattr(payload, "model_dump"):
+        dumped = payload.model_dump(mode="json")
+        if isinstance(dumped, dict):
+            return cast(dict[str, Any], dumped)
+    raise TypeError(f"Unsupported deploy payload type: {type(payload).__name__}")
 
 
 def _load_event_bus_topics(contract_path: Path | None = None) -> list[str]:
@@ -122,23 +137,23 @@ class HandlerGeneratedExecutor:
         """Terminal result topic this executor emits (contract-resolved)."""
         return self._terminal_topic
 
-    def handle(self, payload: dict[str, Any] | bytes | str) -> dict[str, Any]:
+    def handle(self, payload: object) -> dict[str, Any]:
         """Runtime dispatch entrypoint for the node-deploy command."""
         return self.on_deploy_event(payload)
 
-    def deploy(self, payload: dict[str, Any] | bytes | str) -> dict[str, Any]:
+    def deploy(self, payload: object) -> dict[str, Any]:
         """Receive a node-deploy event, write sandbox files, register for execution.
 
-        Accepts the raw event payload as a dict, JSON bytes, or JSON string.
+        Accepts the raw event payload as a dict, JSON bytes/string, or typed
+        Pydantic deploy model.
         Returns {"status": "ok", "node_name": ...} on success or {"error": ...}.
         """
-        if isinstance(payload, (bytes, str)):
-            try:
-                data: dict[str, Any] = json.loads(payload)
-            except ValueError as exc:
-                return {"error": f"Invalid deploy payload JSON: {exc}"}
-        else:
-            data = payload
+        try:
+            data = _coerce_deploy_payload(payload)
+        except ValueError as exc:
+            return {"error": f"Invalid deploy payload JSON: {exc}"}
+        except TypeError as exc:
+            return {"error": str(exc)}
 
         node_name = data.get("node_name", "")
         contract_yaml = data.get("contract_yaml", "")
@@ -224,7 +239,7 @@ class HandlerGeneratedExecutor:
 
     def on_deploy_event(
         self,
-        payload: dict[str, Any] | bytes | str,
+        payload: object,
         input_data: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """Consume a node-deploy command: sandbox-load, invoke, emit terminal.
@@ -243,18 +258,19 @@ class HandlerGeneratedExecutor:
         When an ``event_publisher`` is wired, the terminal result is also
         emitted on the contract-declared ``generated-node-invoked`` topic.
         """
-        if isinstance(payload, (bytes, str)):
-            try:
-                data: dict[str, Any] = json.loads(payload)
-            except ValueError as exc:
-                return self._terminal(
-                    status="failed",
-                    correlation_id="",
-                    node_name="",
-                    error=f"Invalid deploy payload JSON: {exc}",
-                )
-        else:
-            data = payload
+        try:
+            data = _coerce_deploy_payload(payload)
+        except (TypeError, ValueError) as exc:
+            return self._terminal(
+                status="failed",
+                correlation_id="",
+                node_name="",
+                error=(
+                    f"Invalid deploy payload JSON: {exc}"
+                    if isinstance(exc, ValueError)
+                    else str(exc)
+                ),
+            )
 
         correlation_id = str(data.get("correlation_id", ""))
         node_name = str(data.get("node_name", ""))
