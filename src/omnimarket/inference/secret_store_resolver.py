@@ -31,6 +31,7 @@ from functools import lru_cache
 from pathlib import Path
 from queue import Queue
 from threading import Thread
+from typing import cast
 
 import yaml
 from omnibase_infra.runtime.models.model_secret_resolver_config import (
@@ -56,7 +57,7 @@ class _MappedSecretStore:
         resolved = await self._resolver.get_secret_async(key, required=False)
         if resolved is None:
             return None
-        return resolved.get_secret_value()
+        return cast(str, resolved.get_secret_value())
 
     async def set_secret(self, key: str, value: str) -> bool:
         raise RuntimeError("Mapped secret store is read-only")
