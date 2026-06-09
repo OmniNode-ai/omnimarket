@@ -107,6 +107,12 @@ event_bus:
     # evidence shape future runtime dispatch (NodeInvocationAdapter.dispatch)
     # produces, explicitly labelled non-hot-load (_runtime_backend=sandbox).
     - onex.evt.omnimarket.generated-node-invoked.v1
+    # OMN-12829 (C1): escalation proof emitted on contract-validation failure
+    # with attempts remaining. The next tier/model/endpoint is selected by the
+    # ROUTING AUTHORITY (node_delegation_routing_reducer); this node only records
+    # the authority's decision (tier, provider, model, endpoint, attempt_count,
+    # escalation_reason). Generation does NOT select the next model itself.
+    - onex.evt.omnimarket.delegation-escalation-triggered.v1
 
 model_routing:
   # OMN-12779 + OMN-12801: provider, served_model_id, and endpoint_ref are
@@ -120,6 +126,11 @@ model_routing:
   served_model_id: Qwen3.6-35B-A3B
   endpoint_ref: local-coder
   routing_source: contract
+  # OMN-12829 (C1): task class driving the routing-authority escalation ladder
+  # (task_class_contracts.escalation_policy.tier_order). Node generation is a
+  # code-generation task; declared here so the escalation tier order is
+  # contract-governed, never inferred from the prompt or a code literal.
+  task_type: code_generation
   # OMN-12816: provider-specific inference params merged into the LLM request body
   # (ModelLlmInferenceRequest.extra_body). enable_thinking:false suppresses the
   # reasoning preamble on Qwen vLLM backends so the FIRST attempt returns clean

@@ -29,11 +29,14 @@ import re
 import textwrap
 import time
 from collections.abc import Callable
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
+from uuid import uuid4
 
 import yaml
+from omnibase_core.models.delegation.wire import ModelDelegationRequest
 from pydantic import BaseModel, ConfigDict, Field
 
 from omnimarket.adapters.llm.bifrost.config_loader_bifrost_delegation import (
@@ -42,6 +45,17 @@ from omnimarket.adapters.llm.bifrost.config_loader_bifrost_delegation import (
 from omnimarket.enums.enum_usage_source import EnumUsageSource
 from omnimarket.inference.protocol_config import apply_inference_protocol
 from omnimarket.inference.secret_store_resolver import resolve_api_key_async
+from omnimarket.models.delegation.llm_cost_routing.model_generation_escalation_event import (
+    ModelGenerationEscalationTriggeredEvent,
+)
+from omnimarket.nodes.node_delegation_routing_reducer.handlers.handler_delegation_routing import (
+    delta as routing_authority_delta,
+)
+from omnimarket.nodes.node_delegation_routing_reducer.handlers.handler_delegation_routing import (
+    next_eligible_tier,
+    tier_for_backend,
+    tier_max_retries,
+)
 from omnimarket.nodes.node_generation_consumer.models.model_generation import (
     ModelGenerationAttempt,
     ModelGenerationBenchmark,
@@ -79,6 +93,17 @@ _MODEL_ROUTING_SERVED_MODEL_ID_KEY = "served_model_id"
 _MODEL_ROUTING_ENDPOINT_REF_KEY = "endpoint_ref"
 _MODEL_ROUTING_ROUTING_SOURCE_KEY = "routing_source"
 _MODEL_ROUTING_INFERENCE_EXTRA_BODY_KEY = "inference_extra_body"
+# OMN-12829 (C1): the task class that drives the routing-authority escalation
+# ladder (task_class_contracts.escalation_policy.tier_order). Generation is a
+# code-generation task by default; declared in the contract so the escalation
+# tier order is contract-governed, never a code literal.
+_MODEL_ROUTING_TASK_TYPE_KEY = "task_type"
+_DEFAULT_GENERATION_TASK_TYPE = "code_generation"
+
+# OMN-12829 (C1): tiers whose escalated decision is classified as a local
+# provider. Mirrors the routing reducer's _LOCAL_TIERS so the escalation event's
+# provider field is derived from the authority's tier, not a code literal.
+_LOCAL_TIER_NAMES = frozenset({"local", "cli_agents"})
 
 # OMN-12813: Explicit format instruction — no chain-of-thought, no numbered
 # analysis steps.  The inference protocol profile (local-qwen-generation-*)
@@ -462,6 +487,12 @@ class HandlerGenerationConsumer:
             (t for t in publish_topics if "node-registration" in t), ""
         )
         self._topic_deploy = next((t for t in publish_topics if "node-deploy" in t), "")
+        # OMN-12829 (C1): the topic the escalation proof is published to. Empty
+        # when the contract does not declare it; escalation emission is then a
+        # no-op (graceful), but the production contract declares it.
+        self._topic_escalation = next(
+            (t for t in publish_topics if "delegation-escalation-triggered" in t), ""
+        )
 
         # Resolve LLM routing config from contract model_routing section.
         # OMN-12779 + OMN-12801: provider, served_model_id, and endpoint_ref are
@@ -499,6 +530,16 @@ class HandlerGenerationConsumer:
 
         self._routing_source: str = str(
             model_routing.get(_MODEL_ROUTING_ROUTING_SOURCE_KEY, "contract")
+        )
+
+        # OMN-12829 (C1): task class driving the routing-authority escalation
+        # ladder (escalation_policy.tier_order in task_class_contracts.v1.yaml).
+        # Contract-declared with a code-generation default for the generation
+        # node — never inferred from the prompt.
+        self._task_type: str = str(
+            model_routing.get(
+                _MODEL_ROUTING_TASK_TYPE_KEY, _DEFAULT_GENERATION_TASK_TYPE
+            )
         )
 
         # OMN-12775: the COMPLETE endpoint URL the routing authority resolves for
@@ -706,6 +747,18 @@ class HandlerGenerationConsumer:
 
             previous_errors = validation["errors"]
 
+            # OMN-12829 (C1): contract-validation failure WITH attempts remaining.
+            # Ask the ROUTING AUTHORITY for the escalated tier/model/endpoint and
+            # emit the escalation proof. The generation consumer never selects the
+            # next model itself — escalation authority stays owned by routing.
+            if attempt_num < command.max_attempts:
+                self._emit_escalation(
+                    correlation_id=command.correlation_id,
+                    task_description=command.task_description,
+                    failed_attempt_number=attempt_num,
+                    failure_errors=validation["errors"],
+                )
+
         total_latency_ms = int((time.time() - e2e_start) * 1000)
         total_input = sum(a.token_usage_input for a in attempts)
         total_output = sum(a.token_usage_output for a in attempts)
@@ -829,6 +882,148 @@ class HandlerGenerationConsumer:
             logger.warning(
                 "[generation-consumer] emit registration to %s failed: %s",
                 self._topic_registered,
+                exc,
+            )
+
+    def _build_escalation_event(
+        self,
+        *,
+        correlation_id: str,
+        task_description: str,
+        failed_attempt_number: int,
+        failure_errors: list[str],
+    ) -> ModelGenerationEscalationTriggeredEvent | None:
+        """Build the escalation proof from the ROUTING AUTHORITY's decision.
+
+        Architecture boundary (OMN-12829 C1): the generation consumer never picks
+        the next model itself. It advances through the routing authority's tier
+        ladder (one hop per exhausted per-tier ``max_retries`` budget from
+        routing_tiers.yaml, minimum one hop above the starting tier) and asks the
+        authority's ``delta`` to resolve the concrete model + endpoint for that
+        tier. The task class (``self._task_type``) drives
+        ``escalation_policy.tier_order`` inside the authority. The returned event
+        records exactly what the authority decided — tier, provider, model,
+        endpoint — plus the failing attempt count and reason.
+
+        Returns ``None`` when the ladder is exhausted (no higher tier) or the
+        authority cannot resolve the escalated tier — the caller emits nothing.
+        """
+        starting_tier = tier_for_backend(self._endpoint_ref)
+        if starting_tier is None:
+            logger.warning(
+                "[generation-consumer] endpoint_ref %r maps to no routing tier; "
+                "cannot resolve escalation",
+                self._endpoint_ref,
+            )
+            return None
+
+        # Integrate the per-tier retry budget from routing_tiers.yaml: a tier with
+        # max_retries=N tolerates N failures before escalation advances one tier.
+        # hops = number of fully-consumed per-tier budgets so far (minimum one —
+        # a contract-validation failure with attempts remaining always escalates
+        # at least one tier above the starting tier so the authority, not this
+        # node, selects the next model).
+        retries_budget = max(tier_max_retries(starting_tier), 1)
+        hops = max(1, (failed_attempt_number + retries_budget - 1) // retries_budget)
+
+        target_tier: str = starting_tier
+        excluded: frozenset[str] = frozenset()
+        for _ in range(hops):
+            nxt = next_eligible_tier(target_tier, excluded)
+            if nxt is None:
+                break
+            target_tier = nxt
+
+        if target_tier == starting_tier:
+            # Ladder exhausted — no higher tier to escalate to.
+            return None
+
+        # The routing authority owns model/endpoint selection for the target tier.
+        # min_tier_name skips tiers before target_tier; task_type drives the
+        # contract escalation ladder. The routing query carries the generation
+        # task as its prompt (token estimation only) and a fresh routing UUID —
+        # the escalation event preserves the human-facing generation correlation
+        # id separately.
+        request = ModelDelegationRequest(
+            prompt=task_description,
+            task_type=self._task_type,
+            correlation_id=uuid4(),
+            emitted_at=datetime.now(tz=UTC),
+        )
+        try:
+            decision = routing_authority_delta(request, min_tier_name=target_tier)
+        except Exception as exc:
+            logger.warning(
+                "[generation-consumer] routing authority could not resolve "
+                "escalation to tier %r: %s",
+                target_tier,
+                exc,
+            )
+            return None
+
+        # Provider classification is derived from the authority's tier (local vs
+        # cloud) — never a code literal.
+        provider = "local" if decision.tier_name in _LOCAL_TIER_NAMES else "cloud"
+        escalation_reason = (
+            "; ".join(failure_errors)
+            if failure_errors
+            else "contract validation failed"
+        )
+        return ModelGenerationEscalationTriggeredEvent(
+            correlation_id=correlation_id,
+            task_type=self._task_type,
+            tier=decision.tier_name,
+            provider=provider,
+            model=decision.selected_model,
+            endpoint=decision.endpoint_url,
+            attempt_count=failed_attempt_number,
+            escalation_reason=escalation_reason,
+        )
+
+    def _emit_escalation(
+        self,
+        *,
+        correlation_id: str,
+        task_description: str,
+        failed_attempt_number: int,
+        failure_errors: list[str],
+    ) -> None:
+        """Emit the escalation proof recorded from the routing authority's decision.
+
+        OMN-12829 (C1) acceptance: records tier, provider, model, endpoint,
+        attempt_count, escalation_reason. No-op when the contract declares no
+        escalation topic or the ladder is exhausted.
+        """
+        if not self._topic_escalation:
+            logger.debug(
+                "[generation-consumer] no escalation topic configured; skipping"
+            )
+            return
+
+        try:
+            event = self._build_escalation_event(
+                correlation_id=correlation_id,
+                task_description=task_description,
+                failed_attempt_number=failed_attempt_number,
+                failure_errors=failure_errors,
+            )
+        except Exception as exc:
+            logger.warning(
+                "[generation-consumer] building escalation event failed: %s", exc
+            )
+            return
+
+        if event is None:
+            return
+
+        try:
+            self._event_publisher(
+                self._topic_escalation, event.model_dump_json().encode()
+            )
+        except Exception as exc:
+            logger.warning(
+                "[generation-consumer] emit escalation to %s failed: %s",
+                self._topic_escalation,
                 exc,
             )
 

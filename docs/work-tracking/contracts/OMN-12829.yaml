@@ -1,0 +1,112 @@
+# OMN-12829 per-repo evidence carrier for omnimarket.
+# Canonical ticket contract lives in onex_change_control
+# (contracts/OMN-12829.yaml on OmniNode-ai/onex_change_control).
+# C1 (close-the-loop plan, 2026-06-08): OMN-12816B escalation. Builds on the
+# merged max_attempts=10 retry-budget cluster (core #1221 / market #1110) and on
+# B3 (OMN-12828, cloud URLs + api_key refs through bifrost — this branch is
+# stacked on jonah/omn-12828-cloud-endpoints-key-refs so the cloud backends are
+# available for escalation).
+schema_version: '1.0.0'
+ticket_id: OMN-12829
+title: "C1 — generation contract-validation-failure escalation through the routing authority"
+summary: >
+  On contract-validation failure in node_generation_consumer WITH attempts
+  remaining, the generation consumer calls the ROUTING AUTHORITY
+  (node_delegation_routing_reducer.delta) with escalation context — the task
+  class drives task_class_contracts.escalation_policy.tier_order — and emits
+  onex.evt.omnimarket.delegation-escalation-triggered.v1. The per-tier retry
+  budget (max_retries / max-attempts-per-tier) is integrated from
+  routing_tiers.yaml via the new authority accessor tier_max_retries. The
+  ARCHITECTURE BOUNDARY is preserved: escalation authority stays owned by routing
+  — the generation consumer never selects the next model itself; it advances the
+  authority's tier ladder and records what delta resolved. The escalation proof
+  records tier, provider, model, endpoint, attempt_count, escalation_reason.
+is_seam_ticket: false
+interface_change: true
+interfaces_touched:
+  - "omnimarket.models.delegation.llm_cost_routing.model_generation_escalation_event.ModelGenerationEscalationTriggeredEvent"
+  - "omnimarket.nodes.node_delegation_routing_reducer.handlers.handler_delegation_routing.tier_max_retries"
+  - "omnimarket.nodes.node_delegation_routing_reducer.handlers.handler_delegation_routing.tier_for_backend"
+  - "omnimarket.nodes.node_generation_consumer.handlers.handler_generation_consumer.HandlerGenerationConsumer"
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+# Scope decisions (documented per CLAUDE.md Rule 2):
+#   1. Escalation tier/model/endpoint selection is delegated to the routing
+#      authority's delta()/next_eligible_tier()/tier_max_retries(); the generation
+#      consumer never picks a model. New public authority accessors
+#      (tier_max_retries, tier_for_backend) keep routing_tiers.yaml as the single
+#      parsing path — the consumer does not re-parse the YAML.
+#   2. The escalation event model is a new omnimarket-local event under
+#      models/delegation/llm_cost_routing (sibling of the existing delegation
+#      escalation event). The existing ModelLlmDelegationEscalationTriggeredEvent
+#      lacks tier/provider/endpoint/attempt_count, which the C1 acceptance
+#      requires; a new model carries the full proof shape rather than mutating the
+#      delegation-call event consumed by the feedback reducer.
+#   3. Cross-node MODEL reach-ins are avoided: ModelDelegationRequest is imported
+#      from its canonical core home (omnibase_core.models.delegation.wire), and
+#      the routing decision is consumed via attribute access without annotating
+#      against the foreign node-private model (no test_no_cross_node_reach_in
+#      allowlist entry added).
+#   4. task_type is declared in the generation contract model_routing
+#      (code_generation default) so the escalation ladder is contract-governed,
+#      never inferred from the prompt.
+dod_evidence:
+  - id: dod-001-escalation-suite-green
+    description: >
+      The C1 escalation suite proves: the event model carries all required
+      acceptance fields; escalation is emitted on validation failure WITH attempts
+      remaining; no escalation on first-pass success or final-attempt failure; the
+      emitted event records the routing authority's decision (tier/provider/model/
+      endpoint/attempt_count/escalation_reason); the escalated tier is NOT the
+      starting tier. Run by a verifier other than the author.
+    source: generated
+    checks:
+      - check_type: command
+        check_value: >
+          cd omnimarket && uv run pytest
+          tests/unit/nodes/node_generation_consumer/test_escalation_omn12829.py
+          -q --tb=short
+  - id: dod-002-authority-owns-escalation
+    description: >
+      The escalation authority remains owned by routing. The generation consumer
+      resolves the escalated tier/model/endpoint exclusively through the routing
+      authority's delta/next_eligible_tier/tier_max_retries — it contains no
+      independent tier-order or model-selection logic and no routing_tiers.yaml
+      re-parse.
+    source: generated
+    checks:
+      - check_type: command
+        check_value: >
+          cd omnimarket && grep -q "routing_authority_delta(request, min_tier_name="
+          src/omnimarket/nodes/node_generation_consumer/handlers/handler_generation_consumer.py
+          && grep -q "def tier_max_retries"
+          src/omnimarket/nodes/node_delegation_routing_reducer/handlers/handler_delegation_routing.py
+  - id: dod-003-no-cross-node-reach-in
+    description: >
+      No new cross-node model reach-ins were introduced (the architecture guard
+      passes); ModelDelegationRequest is sourced from canonical core.
+    source: generated
+    checks:
+      - check_type: command
+        check_value: >
+          cd omnimarket && uv run pytest
+          tests/test_no_cross_node_reach_in.py -q --tb=short
+  - id: dod-004-suites-green
+    description: >
+      Generation + delegation routing suites green (not kafka); mypy --strict
+      clean; ruff clean. Verified on the worktree before push.
+    source: generated
+    checks:
+      - check_type: command
+        check_value: >
+          cd omnimarket && uv run pytest
+          tests/unit/nodes/node_generation_consumer
+          tests/nodes/node_delegation_routing_reducer -q -m "not kafka"
+  - id: dod-005-contract-file
+    description: Evidence contract file present in repo.
+    source: generated
+    checks:
+      - check_type: command
+        check_value: 'test -f docs/work-tracking/contracts/OMN-12829.yaml'

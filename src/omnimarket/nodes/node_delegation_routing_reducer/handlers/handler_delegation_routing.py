@@ -514,6 +514,57 @@ def next_eligible_tier(
     return None
 
 
+def tier_for_backend(backend_id: str) -> str | None:
+    """Return the routing-tier NAME that declares ``backend_id``, or None.
+
+    Single parsing path (OMN-12829 C1): a caller starting on a contract-declared
+    ``endpoint_ref`` (a bifrost backend id) resolves its starting tier from the
+    routing authority's parsed routing_tiers.yaml rather than re-deriving it from
+    the bifrost backend ``tier`` field (whose values — e.g. ``frontier_api`` —
+    do not match routing_tiers tier names like ``claude``).
+
+    Args:
+        backend_id: A model's ``backend_id`` as declared in routing_tiers.yaml.
+
+    Returns:
+        The tier name (e.g. "local") that declares a model with this backend_id,
+        or None when no tier declares it.
+    """
+    config = _get_config()
+    for tier in config.tiers:
+        for model in tier.models:
+            if model.backend_ref == backend_id:
+                return tier.name
+    return None
+
+
+def tier_max_retries(tier_name: str) -> int:
+    """Return the per-tier retry budget (``max_retries``) from routing_tiers.yaml.
+
+    Single parsing path for the per-tier retry budget (OMN-12829 C1): callers
+    integrating ``max_retries`` / max-attempts-per-tier read it from the routing
+    authority's parsed config rather than re-parsing the YAML. Raises when the
+    tier name is unknown — the budget must not silently default.
+
+    Args:
+        tier_name: Tier name as declared in routing_tiers.yaml (e.g. "local").
+
+    Returns:
+        The tier's ``max_retries`` value.
+
+    Raises:
+        ValueError: If ``tier_name`` is not declared in routing_tiers.yaml.
+    """
+    config = _get_config()
+    for tier in config.tiers:
+        if tier.name == tier_name:
+            return tier.max_retries
+    raise ValueError(
+        f"tier {tier_name!r} is not declared in routing_tiers.yaml; "
+        f"known tiers: {[t.name for t in config.tiers]}"
+    )
+
+
 def delta(
     request: ModelDelegationRequest,
     *,
@@ -649,4 +700,10 @@ def delta(
     raise ProtocolConfigurationError(msg, context=context)
 
 
-__all__: list[str] = ["_get_contract_model_ref", "delta", "next_eligible_tier"]
+__all__: list[str] = [
+    "_get_contract_model_ref",
+    "delta",
+    "next_eligible_tier",
+    "tier_for_backend",
+    "tier_max_retries",
+]
