@@ -561,3 +561,50 @@ def test_terminal_topic_resolved_from_contract_not_hardcoded() -> None:
     executor = HandlerGeneratedExecutor()
     assert executor.terminal_topic == _TERMINAL_TOPIC
     assert executor.deploy_topic == _DEPLOY_TOPIC
+
+
+@pytest.mark.unit
+def test_handle_payload_with_raising_model_dump_fails_gracefully() -> None:
+    """CodeRabbit hardening: a model_dump that raises must yield a failed terminal."""
+
+    class _BadDump:
+        def model_dump(self, *args: object, **kwargs: object) -> dict[str, object]:
+            raise RuntimeError("dump boom")
+
+    with tempfile.TemporaryDirectory() as tmp:
+        executor = HandlerGeneratedExecutor(sandbox_dir=Path(tmp))
+        result = executor.handle(_BadDump())
+
+    assert result["status"] == "failed"
+    assert "Failed to normalize deploy payload" in result["error"]
+
+
+@pytest.mark.unit
+def test_handle_payload_with_non_dict_model_dump_fails_gracefully() -> None:
+    """CodeRabbit hardening: a model_dump returning a non-dict must fail gracefully."""
+
+    class _NonDictDump:
+        def model_dump(self, *args: object, **kwargs: object) -> str:
+            return "not a dict"
+
+    with tempfile.TemporaryDirectory() as tmp:
+        executor = HandlerGeneratedExecutor(sandbox_dir=Path(tmp))
+        result = executor.handle(_NonDictDump())
+
+    assert result["status"] == "failed"
+    assert "Unsupported deploy payload type" in result["error"]
+
+
+@pytest.mark.unit
+def test_handle_payload_with_non_callable_model_dump_fails_gracefully() -> None:
+    """CodeRabbit hardening: a non-callable model_dump attribute must fail gracefully."""
+
+    class _AttrDump:
+        model_dump = "not callable"
+
+    with tempfile.TemporaryDirectory() as tmp:
+        executor = HandlerGeneratedExecutor(sandbox_dir=Path(tmp))
+        result = executor.handle(_AttrDump())
+
+    assert result["status"] == "failed"
+    assert "Unsupported deploy payload type" in result["error"]

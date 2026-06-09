@@ -136,15 +136,37 @@ class HandlerGeneratedExecutor:
         deploy_payload: dict[str, Any] | bytes | str
         if isinstance(payload, (dict, bytes, str)):
             deploy_payload = payload
-        elif hasattr(payload, "model_dump"):
-            deploy_payload = payload.model_dump(mode="json")
         else:
-            return self._terminal(
-                status="failed",
-                correlation_id="",
-                node_name="",
-                error=f"Unsupported deploy payload type: {type(payload).__name__}",
-            )
+            # Typed Pydantic event model (e.g. ModelNodeDeploy). Normalise to the
+            # JSON-mode dict on_deploy_event expects. Harden the normalisation so
+            # an object with a non-callable / raising / non-dict ``model_dump``
+            # always returns a failed terminal instead of crashing the dispatcher
+            # (CodeRabbit hardening on the OMN-12853 fix).
+            model_dump = getattr(payload, "model_dump", None)
+            if not callable(model_dump):
+                return self._terminal(
+                    status="failed",
+                    correlation_id="",
+                    node_name="",
+                    error=f"Unsupported deploy payload type: {type(payload).__name__}",
+                )
+            try:
+                dumped = model_dump(mode="json")
+            except Exception as exc:
+                return self._terminal(
+                    status="failed",
+                    correlation_id="",
+                    node_name="",
+                    error=f"Failed to normalize deploy payload: {exc}",
+                )
+            if not isinstance(dumped, dict):
+                return self._terminal(
+                    status="failed",
+                    correlation_id="",
+                    node_name="",
+                    error=f"Unsupported deploy payload type: {type(payload).__name__}",
+                )
+            deploy_payload = dumped
         return self.on_deploy_event(deploy_payload)
 
     def deploy(self, payload: dict[str, Any] | bytes | str) -> dict[str, Any]:
