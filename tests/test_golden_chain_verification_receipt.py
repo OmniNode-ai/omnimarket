@@ -6,9 +6,16 @@ Uses DI stubs for gh client and pytest runner — zero network calls.
 from __future__ import annotations
 
 from typing import Any
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
+from pydantic import SecretStr
+
+_FAKE_SECRET = SecretStr("fake-github-token-for-test")
+_PATCH_RESOLVE = patch(
+    "omnimarket.nodes.node_verification_receipt_generator.handlers.handler_verification_receipt.resolve_api_key",
+    return_value=_FAKE_SECRET,
+)
 
 from omnimarket.events.verification import (
     ModelFileTestResult,
@@ -72,9 +79,10 @@ class TestVerificationReceiptGoldenChain:
             gh_client=_stub_gh(checks),
             pytest_runner=_stub_pytest(),
         )
-        result = handler.handle(
-            _make_request(verify_ci=True, verify_tests=False, worktree_path="")
-        )
+        with _PATCH_RESOLVE:
+            result = handler.handle(
+                _make_request(verify_ci=True, verify_tests=False, worktree_path="")
+            )
 
         assert result.overall_pass is True
         assert result.checks[0].dimension == "ci_checks"
@@ -90,9 +98,10 @@ class TestVerificationReceiptGoldenChain:
             gh_client=_stub_gh(checks),
             pytest_runner=_stub_pytest(),
         )
-        result = handler.handle(
-            _make_request(verify_ci=True, verify_tests=False, worktree_path="")
-        )
+        with _PATCH_RESOLVE:
+            result = handler.handle(
+                _make_request(verify_ci=True, verify_tests=False, worktree_path="")
+            )
 
         assert result.overall_pass is False
         assert result.checks[0].passed is False
@@ -131,7 +140,8 @@ class TestVerificationReceiptGoldenChain:
             gh_client=_stub_gh(checks),
             pytest_runner=_stub_pytest(exit_code=0),
         )
-        result = handler.handle(_make_request())
+        with _PATCH_RESOLVE:
+            result = handler.handle(_make_request())
 
         assert result.overall_pass is True
         assert len(result.checks) == 2
@@ -143,7 +153,8 @@ class TestVerificationReceiptGoldenChain:
             gh_client=_stub_gh(checks),
             pytest_runner=_stub_pytest(exit_code=1, summary="1 failed"),
         )
-        result = handler.handle(_make_request())
+        with _PATCH_RESOLVE:
+            result = handler.handle(_make_request())
 
         assert result.overall_pass is False
         ci = [c for c in result.checks if c.dimension == "ci_checks"]
@@ -156,9 +167,10 @@ class TestVerificationReceiptGoldenChain:
             gh_client=_stub_gh(checks=[]),
             pytest_runner=_stub_pytest(),
         )
-        result = handler.handle(
-            _make_request(verify_ci=True, verify_tests=False, worktree_path="")
-        )
+        with _PATCH_RESOLVE:
+            result = handler.handle(
+                _make_request(verify_ci=True, verify_tests=False, worktree_path="")
+            )
 
         assert result.overall_pass is False
         assert "No CI check data" in result.checks[0].summary

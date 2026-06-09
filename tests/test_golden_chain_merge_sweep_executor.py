@@ -216,8 +216,15 @@ async def test_golden_chain_3_prs_full_pipeline() -> None:
     arm_cmd = next(
         e for e in orch_output.events if isinstance(e, ModelAutoMergeArmCommand)
     )
-    with patch.object(
-        HandlerAutoMergeArmEffect, "_arm_sync", return_value=(True, None)
+    from pydantic import SecretStr
+
+    _fake_secret = SecretStr("fake-github-token-for-test")
+    with (
+        patch.object(HandlerAutoMergeArmEffect, "_arm_sync", return_value=(True, None)),
+        patch(
+            "omnimarket.nodes.node_merge_sweep_auto_merge_arm_effect.handlers.handler_auto_merge_arm.resolve_api_key_async",
+            return_value=_fake_secret,
+        ),
     ):
         auto_merge_handler = HandlerAutoMergeArmEffect()
         arm_output = await auto_merge_handler.handle(arm_cmd)
@@ -266,7 +273,13 @@ async def test_golden_chain_3_prs_full_pipeline() -> None:
     # --- Node 4: CI rerun effect ---
     ci_cmd = next(e for e in orch_output.events if isinstance(e, ModelCiRerunCommand))
     assert ci_cmd.run_id_github == "99887700"
-    with patch.object(HandlerCiRerunEffect, "_rerun_sync", return_value=(True, None)):
+    with (
+        patch.object(HandlerCiRerunEffect, "_rerun_sync", return_value=(True, None)),
+        patch(
+            "omnimarket.nodes.node_ci_rerun_effect.handlers.handler_ci_rerun.resolve_api_key_async",
+            return_value=_fake_secret,
+        ),
+    ):
         ci_handler = HandlerCiRerunEffect()
         ci_output = await ci_handler.handle(ci_cmd)
 
