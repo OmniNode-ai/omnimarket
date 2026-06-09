@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+from collections.abc import Generator
 from pathlib import Path
 from typing import Any
 
@@ -65,6 +66,26 @@ _INVALID_LLM_RESPONSE = (
     "```yaml\nnot_a_mapping: [broken\n```\n\n"
     "```python\n" + _VALID_HANDLER_SOURCE + "```\n"
 )
+
+
+@pytest.fixture(autouse=True)
+def _stable_cloud_escalation_route(
+    monkeypatch: pytest.MonkeyPatch,
+) -> Generator[None, None, None]:
+    """Keep escalation routing hermetic after secret-aware route selection."""
+    from omnimarket.nodes.node_delegation_routing_reducer.handlers import (
+        handler_delegation_routing as routing_handler,
+    )
+
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+    monkeypatch.setenv("LLM_GLM_API_KEY", "test-glm-key")
+    routing_handler._config = None
+    routing_handler._get_task_class_contract.cache_clear()
+    routing_handler._load_bifrost_endpoints.cache_clear()
+    yield
+    routing_handler._config = None
+    routing_handler._get_task_class_contract.cache_clear()
+    routing_handler._load_bifrost_endpoints.cache_clear()
 
 
 class _FakeUsage:
