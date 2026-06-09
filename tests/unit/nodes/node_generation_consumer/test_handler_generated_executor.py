@@ -446,3 +446,63 @@ def test_terminal_topic_resolved_from_contract_not_hardcoded() -> None:
     executor = HandlerGeneratedExecutor()
     assert executor.terminal_topic == _TERMINAL_TOPIC
     assert executor.deploy_topic == _DEPLOY_TOPIC
+
+
+# ---------------------------------------------------------------------------
+# OMN-12853: handle() runtime dispatch entrypoint (node-deploy -> executor)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+def test_handle_dict_payload_delegates_and_emits_terminal() -> None:
+    """handle() (the auto-wiring dispatch entrypoint) deploys, invokes, emits."""
+    captured: list[tuple[str, bytes]] = []
+
+    def _publisher(topic: str, payload: bytes) -> None:
+        captured.append((topic, payload))
+
+    with tempfile.TemporaryDirectory() as tmp:
+        executor = HandlerGeneratedExecutor(
+            sandbox_dir=Path(tmp), event_publisher=_publisher
+        )
+        result = executor.handle(
+            _deploy_payload("node_echo", _VALID_HANDLER, "corr-handle-1")
+        )
+
+    assert result["status"] == "completed"
+    assert result["correlation_id"] == "corr-handle-1"
+    assert len(captured) == 1
+    topic, payload = captured[0]
+    assert topic == _TERMINAL_TOPIC
+    decoded = __import__("json").loads(payload)
+    assert decoded["status"] == "completed"
+    assert decoded["correlation_id"] == "corr-handle-1"
+
+
+@pytest.mark.unit
+def test_handle_typed_model_payload_is_normalised() -> None:
+    """handle() accepts a typed ModelNodeDeploy (auto-wiring event_model)."""
+    from omnimarket.nodes.node_generation_consumer.models.model_generation import (
+        ModelNodeDeploy,
+    )
+
+    deploy = ModelNodeDeploy(
+        **_deploy_payload("node_echo", _VALID_HANDLER, "corr-typed-1")
+    )
+    with tempfile.TemporaryDirectory() as tmp:
+        executor = HandlerGeneratedExecutor(sandbox_dir=Path(tmp))
+        result = executor.handle(deploy)
+
+    assert result["status"] == "completed"
+    assert result["correlation_id"] == "corr-typed-1"
+    assert result["_command_topic"] == _DEPLOY_TOPIC
+
+
+@pytest.mark.unit
+def test_handle_unsupported_payload_type_fails_gracefully() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        executor = HandlerGeneratedExecutor(sandbox_dir=Path(tmp))
+        result = executor.handle(12345)  # type: ignore[arg-type]
+
+    assert result["status"] == "failed"
+    assert "Unsupported deploy payload type" in result["error"]

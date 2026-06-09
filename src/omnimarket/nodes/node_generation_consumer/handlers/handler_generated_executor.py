@@ -215,8 +215,40 @@ class HandlerGeneratedExecutor:
         return result
 
     # ------------------------------------------------------------------
-    # B1 (OMN-12826): node-deploy consumer entrypoint + terminal result
+    # B1 (OMN-12826) / OMN-12853: runtime dispatch entrypoint
     # ------------------------------------------------------------------
+
+    def handle(self, payload: object) -> dict[str, Any]:
+        """Runtime dispatch entrypoint for ``onex.cmd.omnimarket.node-deploy.v1``.
+
+        OMN-12853: the auto-wiring dispatch callback invokes ``handle`` with the
+        contract-declared ``event_model`` payload (``ModelNodeDeploy``). This
+        adapts that payload to the executor's ``on_deploy_event`` consumer, which
+        sandbox-loads the generated handler, invokes it, and (via the injected
+        event_publisher) emits the terminal result on
+        ``onex.evt.omnimarket.generated-node-invoked.v1``. Keeping ``handle`` as
+        the dispatch entrypoint and ``on_deploy_event`` as the
+        test/standalone entry mirrors the consumer/handler split used elsewhere.
+
+        The payload may arrive as a typed ``ModelNodeDeploy`` (auto-wiring
+        validated it against the contract event_model), a mapping, or raw
+        JSON bytes/str; ``on_deploy_event`` normalises all three.
+        """
+        deploy_payload: dict[str, Any] | bytes | str
+        if isinstance(payload, (dict, bytes, str)):
+            deploy_payload = payload
+        elif hasattr(payload, "model_dump"):
+            # Typed Pydantic event model (e.g. ModelNodeDeploy) — serialise to
+            # the JSON-mode dict on_deploy_event expects.
+            deploy_payload = payload.model_dump(mode="json")
+        else:
+            return self._terminal(
+                status="failed",
+                correlation_id="",
+                node_name="",
+                error=f"Unsupported deploy payload type: {type(payload).__name__}",
+            )
+        return self.on_deploy_event(deploy_payload)
 
     def on_deploy_event(
         self,
