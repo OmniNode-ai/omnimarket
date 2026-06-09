@@ -497,6 +497,56 @@ class TestHandlerInferenceIntent:
         assert len(captured_headers) == 1
         assert captured_headers[0].get("Authorization") == "Bearer sk-test-key"
 
+    @pytest.mark.asyncio
+    async def test_api_key_ref_resolves_through_runtime_async_dispatch(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("TEST_MODEL_API_KEY", "sk-test-key")
+        correlation_id = uuid4()
+        intent = _make_intent(
+            correlation_id=correlation_id,
+            api_key_ref="TEST_MODEL_API_KEY",
+        )
+        callback = _make_dispatch_callback(
+            HandlerInferenceIntent(),  # type: ignore[arg-type]
+            event_model=_inference_event_model_ref(),
+        )
+        envelope = ModelEventEnvelope[object](
+            payload=intent,
+            correlation_id=correlation_id,
+            envelope_timestamp=datetime.now(UTC),
+            event_type="ModelInferenceIntent",
+            payload_type="ModelInferenceIntent",
+            source_tool="test-handler-inference-intent",
+        )
+        captured_headers: list[dict[str, str]] = []
+
+        mock_response = MagicMock()
+        mock_response.json.return_value = _SUCCESSFUL_HTTPX_RESPONSE
+        mock_response.raise_for_status.return_value = None
+
+        with patch("httpx.Client") as mock_client_cls:
+            mock_client = MagicMock()
+            mock_client.__enter__ = MagicMock(return_value=mock_client)
+            mock_client.__exit__ = MagicMock(return_value=False)
+
+            def _capture_post(url: str, **kwargs: object) -> MagicMock:
+                captured_headers.append(kwargs.get("headers") or {})  # type: ignore[arg-type]
+                return mock_response
+
+            mock_client.post.side_effect = _capture_post
+            mock_client_cls.return_value = mock_client
+
+            dispatch_result = await callback(envelope)
+
+        assert dispatch_result is not None
+        assert len(dispatch_result.output_events) == 1
+        response = dispatch_result.output_events[0]
+        assert isinstance(response, ModelInferenceResponseData)
+        assert response.error_message == ""
+        assert response.content == "def test_foo(): pass"
+        assert captured_headers == [{"Authorization": "Bearer sk-test-key"}]
+
     def test_missing_api_key_ref_returns_error_response(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:

@@ -15,6 +15,7 @@ chain — the orchestrator publishes the intent, this node consumes it (OMN-1229
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import time
 from pathlib import Path
@@ -145,6 +146,19 @@ class HandlerInferenceIntent:
     ``handle`` is the runtime dispatch entrypoint (handler_wiring resolves
     handle/handle_async, never __call__).
     """
+
+    async def handle_async(
+        self, intent: ModelInferenceIntent
+    ) -> ModelInferenceResponseData:
+        """Runtime dispatch entrypoint for async auto-wiring.
+
+        ``handle`` remains the synchronous standalone/test entrypoint and uses
+        the sync secret-store resolver. Runtime dispatch runs inside an active
+        event loop, so invoking that sync path directly would make the resolver
+        fail before the provider call. Run the sync effect in a worker thread so
+        secret resolution and the blocking HTTP client stay off the runtime loop.
+        """
+        return await asyncio.to_thread(self.handle, intent)
 
     def handle(self, intent: ModelInferenceIntent) -> ModelInferenceResponseData:
         started = time.monotonic()
