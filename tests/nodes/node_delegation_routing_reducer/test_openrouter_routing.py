@@ -6,7 +6,7 @@
 Verifies that:
 - code_generation routes to openrouter-glm-flash (cheap_cloud) when OPENROUTER_API_KEY is set
 - api_key_ref and extra_headers are propagated through BifrostBackendRef to ModelRoutingDecision
-- code_generation falls back to local-qwen-coder-30b when OPENROUTER_API_KEY is absent
+- code_generation skips OpenRouter when OPENROUTER_API_KEY is absent
 - BifrostBackendRef loads api_key_env and extra_headers from bifrost YAML
 """
 
@@ -181,6 +181,108 @@ _ROUTING_TIERS_WITH_OPENROUTER = textwrap.dedent("""\
         max_retries: 0
 """)
 
+_BIFROST_WITH_OPENROUTER_AND_GLM = textwrap.dedent("""\
+    config_version: "1.3.0"
+    schema_version: "bifrost_delegation.v1"
+    backends:
+      - backend_id: openrouter-glm-flash
+        endpoint_url: "https://openrouter.ai/api/v1/chat/completions"
+        model_name: "thudm/glm-4-9b-chat:free"
+        api_key_env: OPENROUTER_API_KEY
+        tier: cheap_cloud
+        timeout_ms: 60000
+        capabilities:
+          - code_generation
+          - reasoning
+          - research
+        extra_headers:
+          HTTP-Referer: "https://omninode.ai"
+          X-Title: "OmniNode ONEX Build Loop"
+      - backend_id: cloud-glm
+        endpoint_url: "https://api.z.ai/api/coding/paas/v4/chat/completions"
+        model_name: "glm-4.5"
+        api_key_env: LLM_GLM_API_KEY
+        tier: cheap_cloud
+        timeout_ms: 60000
+        capabilities:
+          - code_generation
+          - reasoning
+          - research
+    routing_rules:
+      - rule_id: "7fd3f4f2-bec0-5cbb-a8f9-87caa9146b5f"
+        priority: 10
+        task_class: code_generation
+        task_class_contract_version: "1.0"
+        backend_policy_version: "1.3.0"
+        match_operation_types: []
+        match_capabilities:
+          - code_generation
+        latency_sla_ms: 60000
+        cost_ceiling_usd_per_1k_tokens: 0.015
+        backend_ids:
+          - openrouter-glm-flash
+          - cloud-glm
+        fallback_policy:
+          action: escalate_to_next_tier
+          max_retries: 1
+          on_exhaust: return_error
+        shadow_policy_id: "83a3eb92-a3d4-5482-8fd7-11dcf91895f1"
+    default_backends:
+      - cloud-glm
+    circuit_breaker:
+      failure_threshold: 5
+      window_seconds: 30
+    failover:
+      max_attempts: 3
+      backoff_base_ms: 500
+    shadow_mode:
+      enabled: false
+      policy_version: "unknown"
+      log_sample_rate: 1.0
+      comparison_logging_enabled: true
+      max_shadow_latency_ms: 5.0
+""")
+
+_ROUTING_TIERS_WITH_OPENROUTER_AND_GLM = textwrap.dedent("""\
+    tiers:
+      - name: cheap_cloud
+        models:
+          - id: openrouter-glm-flash
+            backend_id: openrouter-glm-flash
+            max_context_tokens: 131072
+            use_for:
+              - code_generation
+              - reasoning
+              - research
+              - test
+              - refactor
+            fast_path_threshold_tokens: 8192
+          - id: glm-z-ai
+            backend_id: cloud-glm
+            max_context_tokens: 128000
+            use_for:
+              - code_generation
+              - reasoning
+              - research
+        eval_before_accept: true
+        eval_model: qwen3.6-35b
+        max_retries: 1
+      - name: local
+        models:
+          - id: qwen3-coder-30b
+            backend_id: local-qwen-coder-30b
+            max_context_tokens: 65536
+            use_for:
+              - code_generation
+              - code_review
+              - refactor
+              - test
+              - research
+        eval_before_accept: true
+        eval_model: deepseek-r1-14b
+        max_retries: 2
+""")
+
 
 @pytest.fixture(autouse=True)
 def _clear_lru_caches() -> Generator[None, None, None]:
@@ -250,16 +352,13 @@ class TestBifrostBackendRefApiKeyEnv:
         assert ref is not None
         assert ref.api_key_ref == "OPENROUTER_API_KEY"
 
-    def test_backend_routable_when_host_env_absent(
+    def test_api_key_ref_preserved_when_host_env_absent(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """OMN-12828 (B3): a cloud backend stays routable from the contract even
-        when the secret VALUE is absent from the host environment.
+        """Contract loading preserves the secret reference without the value.
 
-        Routability is a contract property; the reference NAME is preserved and
-        the secret VALUE resolves fail-closed at the effect boundary (HG2). This
-        removes the host-``.env`` runtime dependency that previously dropped the
-        backend from the routable set when its key env var was unset.
+        Selection separately skips authenticated backends when the active
+        runtime cannot resolve the referenced secret.
         """
         monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
         bifrost_file = tmp_path / "bifrost.yaml"
@@ -396,59 +495,8 @@ class TestOpenRouterDeltaRouting:
     def test_code_generation_falls_back_to_local_when_no_key(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """Without OPENROUTER_API_KEY, the OpenRouter backend is unavailable for routing and code_generation falls back to the local backend."""
-        bifrost_local_only = textwrap.dedent("""\
-            config_version: "1.3.0"
-            schema_version: "bifrost_delegation.v1"
-            backends:
-              - backend_id: local-qwen-coder-30b
-                endpoint_url: "http://192.168.86.201:8000"  # onex-allow-internal-ip OMN-7980 reason="test fixture for local AIPC vLLM fallback endpoint"
-                model_name: cyankiwi/Qwen3-Coder-30B-A3B-Instruct-AWQ-4bit  # onex-allow-model-id OMN-7980 reason="test fixture verifying local AIPC model fallback for build loop code gen"
-                tier: local
-                timeout_ms: 30000
-                capabilities: []
-              - backend_id: local-deepseek-r1-14b
-                endpoint_url: "http://192.168.86.201:8001"  # onex-allow-internal-ip OMN-7980 reason="test fixture for local AIPC DeepSeek endpoint"
-                model_name: Corianas/DeepSeek-R1-Distill-Qwen-14B-AWQ  # onex-allow-model-id OMN-7980 reason="test fixture verifying local AIPC DeepSeek model"
-                tier: local
-                timeout_ms: 30000
-                capabilities: []
-            routing_rules:
-              - rule_id: "7fd3f4f2-bec0-5cbb-a8f9-87caa9146b5f"
-                priority: 10
-                task_class: code_generation
-                task_class_contract_version: "1.0"
-                backend_policy_version: "1.3.0"
-                match_operation_types: []
-                match_capabilities:
-                  - code_generation
-                latency_sla_ms: 60000
-                cost_ceiling_usd_per_1k_tokens: 0.015
-                backend_ids:
-                  - local-qwen-coder-30b
-                fallback_policy:
-                  action: escalate_to_next_tier
-                  max_retries: 1
-                  on_exhaust: return_error
-                shadow_policy_id: "83a3eb92-a3d4-5482-8fd7-11dcf91895f1"
-            default_backends:
-              - local-qwen-coder-30b
-            circuit_breaker:
-              failure_threshold: 5
-              window_seconds: 30
-            failover:
-              max_attempts: 3
-              backoff_base_ms: 500
-            shadow_mode:
-              enabled: false
-              policy_version: "unknown"
-              log_sample_rate: 1.0
-              comparison_logging_enabled: true
-              max_shadow_latency_ms: 5.0
-        """)
-        bifrost_file, contract_file, tiers_file = _write_fixtures(
-            tmp_path, bifrost=bifrost_local_only
-        )
+        """Without OPENROUTER_API_KEY, selection skips OpenRouter and falls back."""
+        bifrost_file, contract_file, tiers_file = _write_fixtures(tmp_path)
         self._set_env(
             monkeypatch,
             bifrost_file=bifrost_file,
@@ -467,6 +515,39 @@ class TestOpenRouterDeltaRouting:
                 or "coder" in decision.selected_model.lower()
             ), f"Expected local Qwen coder fallback, got: {decision.selected_model!r}"
             assert decision.api_key_ref is None
+        finally:
+            self._reset_config()
+
+    def test_code_generation_falls_back_to_glm_when_openrouter_key_missing(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Stability regression: skip OpenRouter and use GLM when GLM secret exists."""
+        bifrost_file, contract_file, tiers_file = _write_fixtures(
+            tmp_path,
+            bifrost=_BIFROST_WITH_OPENROUTER_AND_GLM,
+            tiers=_ROUTING_TIERS_WITH_OPENROUTER_AND_GLM,
+        )
+        self._set_env(
+            monkeypatch,
+            bifrost_file=bifrost_file,
+            contract_file=contract_file,
+            tiers_file=tiers_file,
+            api_key=None,
+        )
+        monkeypatch.setenv("LLM_GLM_API_KEY", "glm-test-key")
+        try:
+            from omnimarket.nodes.node_delegation_routing_reducer.handlers.handler_delegation_routing import (
+                delta,
+            )
+
+            decision = delta(_make_request("code_generation"))
+            assert decision.selected_model == "glm-4.5"
+            assert (
+                decision.endpoint_url
+                == "https://api.z.ai/api/coding/paas/v4/chat/completions"
+            )
+            assert decision.api_key_ref == "LLM_GLM_API_KEY"
+            assert decision.tier_name == "cheap_cloud"
         finally:
             self._reset_config()
 

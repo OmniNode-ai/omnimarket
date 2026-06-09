@@ -23,6 +23,7 @@ from pydantic import SecretStr
 
 from omnimarket.inference.secret_store_resolver import (
     SecretResolutionError,
+    api_key_ref_available,
     resolve_api_key,
     resolve_api_key_async,
 )
@@ -114,3 +115,28 @@ class TestResolveApiKeySync:
                 resolve_api_key("ANY_KEY")
 
         asyncio.run(_inner())
+
+
+class TestApiKeyRefAvailable:
+    def test_none_ref_is_available(self) -> None:
+        assert api_key_ref_available(None) is True
+
+    def test_missing_ref_is_unavailable(self) -> None:
+        store = _FakeSecretStore({})
+        assert api_key_ref_available("OPENROUTER_API_KEY", store=store) is False
+
+    def test_empty_ref_is_unavailable(self) -> None:
+        store = _FakeSecretStore({"OPENROUTER_API_KEY": ""})
+        assert api_key_ref_available("OPENROUTER_API_KEY", store=store) is False
+
+    def test_present_ref_is_available(self) -> None:
+        store = _FakeSecretStore({"OPENROUTER_API_KEY": "sk"})
+        assert api_key_ref_available("OPENROUTER_API_KEY", store=store) is True
+
+    async def test_present_ref_is_available_from_async_context(self) -> None:
+        store = _FakeSecretStore({"OPENROUTER_API_KEY": "sk"})
+        assert api_key_ref_available("OPENROUTER_API_KEY", store=store) is True
+
+    async def test_missing_ref_is_unavailable_from_async_context(self) -> None:
+        store = _FakeSecretStore({})
+        assert api_key_ref_available("OPENROUTER_API_KEY", store=store) is False

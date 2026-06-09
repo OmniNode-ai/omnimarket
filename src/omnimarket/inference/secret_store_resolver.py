@@ -26,6 +26,8 @@ printed, logged, or serialized.
 from __future__ import annotations
 
 import asyncio
+from queue import Queue
+from threading import Thread
 
 from omnibase_infra.secret_stores import AdapterEnvSecretStore
 from omnibase_spi.protocols.services import ProtocolSecretStore
@@ -131,8 +133,68 @@ def resolve_api_key(
     )
 
 
+def _resolve_api_key_from_running_loop(
+    api_key_ref: str,
+    *,
+    store: ProtocolSecretStore | None,
+    required: bool,
+) -> SecretStr | None:
+    """Resolve from sync code that is already executing inside an event loop."""
+    result: Queue[tuple[SecretStr | None, BaseException | None]] = Queue(maxsize=1)
+
+    def _runner() -> None:
+        try:
+            resolved = asyncio.run(
+                resolve_api_key_async(api_key_ref, store=store, required=required)
+            )
+        except BaseException as exc:
+            result.put((None, exc))
+        else:
+            result.put((resolved, None))
+
+    thread = Thread(
+        target=_runner,
+        name="omnimarket-secret-availability",
+        daemon=True,
+    )
+    thread.start()
+    thread.join()
+    resolved, exc = result.get()
+    if exc is not None:
+        raise exc
+    return resolved
+
+
+def api_key_ref_available(
+    api_key_ref: str | None,
+    *,
+    store: ProtocolSecretStore | None = None,
+) -> bool:
+    """Return whether a secret ref resolves to a non-empty value.
+
+    This is for routing-time availability checks that must avoid selecting a
+    backend the active runtime secret store cannot use. It returns only a
+    boolean; the route decision still carries the secret reference name, never
+    the secret value.
+    """
+    if not api_key_ref:
+        return True
+    try:
+        resolved = resolve_api_key(api_key_ref, store=store, required=False)
+    except RuntimeError as exc:
+        if "sync-only" not in str(exc):
+            raise
+        resolved = _resolve_api_key_from_running_loop(
+            api_key_ref,
+            store=store,
+            required=False,
+        )
+    return resolved is not None
+
+
 __all__: list[str] = [
     "SecretResolutionError",
+    "api_key_ref_available",
     "resolve_api_key",
     "resolve_api_key_async",
 ]

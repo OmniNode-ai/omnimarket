@@ -53,6 +53,7 @@ from omnibase_infra.models.errors.model_infra_error_context import (
 from omnimarket.adapters.llm.bifrost.config_loader_bifrost_delegation import (
     load_bifrost_delegation_config,
 )
+from omnimarket.inference.secret_store_resolver import api_key_ref_available
 from omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_request import (
     ModelDelegationRequest,
 )
@@ -148,6 +149,11 @@ def _backend_id_for_model(model_id: str) -> UUID:
     return uuid5(NAMESPACE_DNS, f"omninode.ai/backends/{model_id}")
 
 
+def _backend_secret_available(backend: BifrostBackendRef) -> bool:
+    """Return whether the runtime can resolve the backend's declared secret ref."""
+    return api_key_ref_available(backend.api_key_ref)
+
+
 def _select_model_for_task(
     tier_models: tuple[ModelTierModel, ...],
     task_type: str,
@@ -174,6 +180,7 @@ def _select_model_for_task(
             if (
                 model.id == contract_model_ref
                 and backend
+                and _backend_secret_available(backend)
                 and estimated_tokens <= model.max_context_tokens
             ):
                 return model
@@ -186,6 +193,7 @@ def _select_model_for_task(
             and model.fast_path_threshold_tokens is not None
             and estimated_tokens <= model.fast_path_threshold_tokens
             and backend
+            and _backend_secret_available(backend)
         ):
             return model
 
@@ -194,6 +202,7 @@ def _select_model_for_task(
         if (
             task_type in model.use_for
             and backend
+            and _backend_secret_available(backend)
             and estimated_tokens <= model.max_context_tokens
         ):
             return model
@@ -263,13 +272,11 @@ def _load_bifrost_endpoints() -> dict[str, BifrostBackendRef]:
 
     Returns a dict mapping backend_id → BifrostBackendRef.
 
-    OMN-12828 (B3): a backend is routable when it declares a complete
-    ``endpoint_url`` (and, for authenticated cloud backends, a secret REFERENCE
-    NAME). Routability does NOT depend on the host environment carrying the
-    secret value — the routing decision carries only the reference name, and the
-    secret VALUE is resolved fail-closed at the inference effect boundary through
-    the secret store (HG2 / OMN-12824). This removes the host-``.env`` runtime
-    dependency that previously skipped a cloud backend when its key was unset.
+    OMN-12828 / OMN-12819: backend references are loaded when the contract
+    declares a complete ``endpoint_url`` and model name. Selection separately
+    skips authenticated backends when the current runtime cannot resolve their
+    declared secret reference, so the router does not emit a known-unusable
+    backend while still preserving the non-secret reference name in decisions.
     """
     env_path = os.environ.get(  # contract-config-ok: config  # ONEX_EXCLUDE: contract path override
         "BIFROST_CONTRACT_PATH", ""
