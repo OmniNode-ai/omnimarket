@@ -122,9 +122,30 @@ class HandlerGeneratedExecutor:
         """Terminal result topic this executor emits (contract-resolved)."""
         return self._terminal_topic
 
-    def handle(self, payload: dict[str, Any] | bytes | str) -> dict[str, Any]:
-        """Runtime dispatch entrypoint for the node-deploy command."""
-        return self.on_deploy_event(payload)
+    def handle(self, payload: object) -> dict[str, Any]:
+        """Runtime dispatch entrypoint for the node-deploy command.
+
+        OMN-12853: the auto-wiring dispatch callback invokes ``handle`` with the
+        contract-declared ``event_model`` payload (``ModelNodeDeploy``), a
+        mapping, or raw JSON bytes/str. ``on_deploy_event`` reads dict keys via
+        ``.get()``, so a typed Pydantic model must be normalised to its JSON-mode
+        dict first — otherwise it raises ``AttributeError: 'ModelNodeDeploy'
+        object has no attribute 'get'`` and the deploy is dropped before the
+        sandbox invoke.
+        """
+        deploy_payload: dict[str, Any] | bytes | str
+        if isinstance(payload, (dict, bytes, str)):
+            deploy_payload = payload
+        elif hasattr(payload, "model_dump"):
+            deploy_payload = payload.model_dump(mode="json")
+        else:
+            return self._terminal(
+                status="failed",
+                correlation_id="",
+                node_name="",
+                error=f"Unsupported deploy payload type: {type(payload).__name__}",
+            )
+        return self.on_deploy_event(deploy_payload)
 
     def deploy(self, payload: dict[str, Any] | bytes | str) -> dict[str, Any]:
         """Receive a node-deploy event, write sandbox files, register for execution.

@@ -292,6 +292,46 @@ def test_handle_is_runtime_entrypoint_for_node_deploy() -> None:
 
 
 @pytest.mark.unit
+def test_handle_accepts_typed_model_node_deploy_payload() -> None:
+    """OMN-12853 regression: the dispatch engine passes a typed ModelNodeDeploy
+    (the contract event_model), not a dict. handle() MUST normalise it before
+    delegating to on_deploy_event, which reads dict keys via .get(). Before the
+    fix this raised AttributeError: 'ModelNodeDeploy' object has no attribute
+    'get' and the deploy was dropped before the sandbox invoke (DLQ-equivalent).
+    """
+    from omnimarket.nodes.node_generation_consumer.models.model_generation import (
+        ModelNodeDeploy,
+    )
+
+    deploy = ModelNodeDeploy(
+        node_name="node_typed_entry",
+        contract_yaml="name: node_typed_entry\n",
+        handler_source=_VALID_HANDLER,
+        correlation_id="corr-typed-handle-1",
+        generated_contract_hash="sha256:abc",
+        generated_handler_hash="sha256:def",
+    )
+    with tempfile.TemporaryDirectory() as tmp:
+        executor = HandlerGeneratedExecutor(sandbox_dir=Path(tmp))
+        result = executor.handle(deploy)
+
+    assert result["status"] == "completed"
+    assert result["node_name"] == "node_typed_entry"
+    assert result["correlation_id"] == "corr-typed-handle-1"
+    assert result["_command_topic"] == _DEPLOY_TOPIC
+
+
+@pytest.mark.unit
+def test_handle_unsupported_payload_type_fails_gracefully() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        executor = HandlerGeneratedExecutor(sandbox_dir=Path(tmp))
+        result = executor.handle(12345)  # type: ignore[arg-type]
+
+    assert result["status"] == "failed"
+    assert "Unsupported deploy payload type" in result["error"]
+
+
+@pytest.mark.unit
 def test_deploy_accepts_json_bytes_payload() -> None:
     import json
 
