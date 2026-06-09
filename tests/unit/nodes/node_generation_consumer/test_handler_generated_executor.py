@@ -8,6 +8,7 @@ import tempfile
 from pathlib import Path
 
 import pytest
+import yaml
 
 from omnimarket.nodes.node_generation_consumer.handlers.handler_generated_executor import (
     HandlerGeneratedExecutor,
@@ -38,11 +39,61 @@ def handle(input_data
     return {}
 """
 
+_CONTRACT_PATH = (
+    Path(__file__).parents[4]
+    / "src/omnimarket/nodes/node_generation_consumer/contract.yaml"
+)
+
 
 def _write_handler(sandbox: Path, node_name: str, source: str) -> None:
     node_dir = sandbox / node_name
     node_dir.mkdir(parents=True, exist_ok=True)
     (node_dir / "handler.py").write_text(source)
+
+
+@pytest.mark.unit
+def test_contract_routes_node_deploy_to_generated_executor() -> None:
+    contract = yaml.safe_load(_CONTRACT_PATH.read_text())
+    handlers = contract["handler_routing"]["handlers"]
+
+    deploy_routes = [
+        entry
+        for entry in handlers
+        if entry.get("event_type") == "omnimarket.node-deploy"
+    ]
+
+    assert len(deploy_routes) == 1
+    route = deploy_routes[0]
+    assert route["message_category"] == "command"
+    assert route["handler"] == {
+        "name": "HandlerGeneratedExecutor",
+        "module": (
+            "omnimarket.nodes.node_generation_consumer.handlers."
+            "handler_generated_executor"
+        ),
+    }
+    assert route["event_model"] == {
+        "name": "ModelNodeDeploy",
+        "module": "omnimarket.nodes.node_generation_consumer.models.model_generation",
+    }
+
+
+@pytest.mark.unit
+def test_contract_routes_generation_request_to_generation_consumer_only() -> None:
+    contract = yaml.safe_load(_CONTRACT_PATH.read_text())
+    handlers = contract["handler_routing"]["handlers"]
+
+    generation_routes = [
+        entry
+        for entry in handlers
+        if entry.get("event_type") == "omnimarket.node-generation-requested"
+    ]
+
+    assert len(generation_routes) == 1
+    route = generation_routes[0]
+    assert route["message_category"] == "command"
+    assert route["handler"]["name"] == "HandlerGenerationConsumer"
+    assert route["event_model"]["name"] == "ModelNodeGenerationRequest"
 
 
 @pytest.mark.unit
@@ -214,6 +265,30 @@ def test_deploy_then_execute_runs_generated_handler() -> None:
         result = executor.execute("node_round_trip", {"value": "deployed"})
 
     assert result == {"echo": "deployed"}
+
+
+@pytest.mark.unit
+def test_handle_is_runtime_entrypoint_for_node_deploy() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        sandbox = Path(tmp)
+        executor = HandlerGeneratedExecutor(sandbox_dir=sandbox)
+
+        result = executor.handle(
+            {
+                "node_name": "node_runtime_entry",
+                "contract_yaml": "name: node_runtime_entry\n",
+                "handler_source": _VALID_HANDLER,
+                "correlation_id": "corr-handle-1",
+                "generated_contract_hash": "sha256:abc",
+                "generated_handler_hash": "sha256:def",
+            }
+        )
+
+    assert result["status"] == "completed"
+    assert result["node_name"] == "node_runtime_entry"
+    assert result["_runtime_backend"] == "sandbox"
+    assert result["hot_load"] is False
+    assert result["output"] == {"echo": "none"}
 
 
 @pytest.mark.unit

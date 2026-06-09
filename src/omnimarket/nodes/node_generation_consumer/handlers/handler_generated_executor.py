@@ -122,6 +122,10 @@ class HandlerGeneratedExecutor:
         """Terminal result topic this executor emits (contract-resolved)."""
         return self._terminal_topic
 
+    def handle(self, payload: dict[str, Any] | bytes | str) -> dict[str, Any]:
+        """Runtime dispatch entrypoint for the node-deploy command."""
+        return self.on_deploy_event(payload)
+
     def deploy(self, payload: dict[str, Any] | bytes | str) -> dict[str, Any]:
         """Receive a node-deploy event, write sandbox files, register for execution.
 
