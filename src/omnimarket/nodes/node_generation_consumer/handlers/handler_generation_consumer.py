@@ -288,8 +288,10 @@ def _resolve_bifrost_backend(endpoint_ref: str) -> _ResolvedBackend | None:
         url = (backend.endpoint_url or "").strip()
         if not url:
             return None
-        api_key_ref = backend.api_key_env or None
-        return _ResolvedBackend(endpoint_url=url, api_key_ref=api_key_ref)
+        return _ResolvedBackend(
+            endpoint_url=url,
+            api_key_ref=backend.resolved_secret_ref,
+        )
 
     return None
 

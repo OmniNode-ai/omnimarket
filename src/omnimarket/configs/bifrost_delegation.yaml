@@ -89,6 +89,7 @@ backends:
     # OMN-12819: COMPLETE endpoint URL incl. the full chat path, posted VERBATIM.
     endpoint_url: "https://api.z.ai/api/coding/paas/v4/chat/completions"
     model_name: "glm-4.5"
+    secret_ref: llm.glm.api_key
     api_key_env: LLM_GLM_API_KEY
     tier: cheap_cloud
     timeout_ms: 60000
@@ -101,6 +102,7 @@ backends:
     # No in-code construction/append; the routing authority returns this unchanged.
     endpoint_url: "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
     model_name: "gemini-2.0-flash"
+    secret_ref: llm.gemini.api_key
     api_key_env: GEMINI_API_KEY
     tier: cheap_cloud
     timeout_ms: 60000
@@ -123,12 +125,14 @@ backends:
       - reasoning
       - research
       - code_generation
-  # OpenRouter backends (OMN-7980) — uses OPENROUTER_API_KEY from env at dispatch time.
-  # api_key_env declared so the bifrost adapter picks up the secret without hardcoding it.
+  # OpenRouter backends (OMN-7980) — route authority carries logical secret refs.
+  # api_key_env remains migration metadata; lane overlays map the logical ref
+  # to the concrete secret source (env/Infisical/file).
   - backend_id: openrouter-glm-flash
     # OMN-12815: COMPLETE endpoint URL incl. the full chat path, posted VERBATIM.
     endpoint_url: "https://openrouter.ai/api/v1/chat/completions"
     model_name: "thudm/glm-4-9b-chat:free"
+    secret_ref: llm.openrouter.api_key
     api_key_env: OPENROUTER_API_KEY
     tier: cheap_cloud
     timeout_ms: 60000
@@ -144,6 +148,7 @@ backends:
     # OMN-12815: COMPLETE endpoint URL incl. the full chat path, posted VERBATIM.
     endpoint_url: "https://openrouter.ai/api/v1/chat/completions"
     model_name: "qwen/qwen3-coder:free"
+    secret_ref: llm.openrouter.api_key
     api_key_env: OPENROUTER_API_KEY
     tier: cheap_frontier
     timeout_ms: 120000
