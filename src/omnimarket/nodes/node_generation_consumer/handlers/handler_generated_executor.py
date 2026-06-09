@@ -34,6 +34,7 @@ from __future__ import annotations
 import importlib.util
 import json
 import logging
+import os
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any, cast
@@ -49,6 +50,14 @@ _CONTRACT_PATH = Path(__file__).parent.parent / "contract.yaml"
 # Sync (topic, bytes) -> None publisher injected by the runtime's Kafka adapter,
 # identical to the contract HandlerGenerationConsumer uses.
 EventPublisher = Callable[[str, bytes], None]
+
+
+def _default_sandbox_dir() -> Path:
+    """Resolve the generated-node sandbox under the runtime state directory."""
+    state_root = os.environ.get("ONEX_STATE_DIR") or os.environ.get("ONEX_STATE_ROOT")
+    if state_root:
+        return Path(state_root) / "hackathon" / "generated"
+    return _DEFAULT_SANDBOX
 
 
 def _coerce_deploy_payload(payload: object) -> dict[str, Any]:
@@ -106,7 +115,7 @@ class HandlerGeneratedExecutor:
         event_publisher: EventPublisher | None = None,
         contract_path: Path | None = None,
     ) -> None:
-        self.sandbox_dir = sandbox_dir or _DEFAULT_SANDBOX
+        self.sandbox_dir = sandbox_dir or _default_sandbox_dir()
         self._event_publisher: EventPublisher | None = event_publisher
         # node_name → handler_path, populated by deploy()
         self._registry: dict[str, Path] = {}

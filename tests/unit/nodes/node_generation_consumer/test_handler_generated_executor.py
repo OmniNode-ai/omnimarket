@@ -192,10 +192,36 @@ def test_execute_picks_up_updated_handler_without_reinit() -> None:
 
 
 @pytest.mark.unit
-def test_default_sandbox_path_is_relative() -> None:
+def test_default_sandbox_path_is_relative(monkeypatch: pytest.MonkeyPatch) -> None:
     """Default sandbox must not be an absolute machine-specific path."""
+    monkeypatch.delenv("ONEX_STATE_DIR", raising=False)
+    monkeypatch.delenv("ONEX_STATE_ROOT", raising=False)
     executor = HandlerGeneratedExecutor()
     assert not executor.sandbox_dir.is_absolute()
+
+
+@pytest.mark.unit
+def test_default_sandbox_uses_runtime_state_dir(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("ONEX_STATE_DIR", str(tmp_path / "state-dir"))
+    monkeypatch.setenv("ONEX_STATE_ROOT", str(tmp_path / "state-root"))
+
+    executor = HandlerGeneratedExecutor()
+
+    assert executor.sandbox_dir == tmp_path / "state-dir" / "hackathon" / "generated"
+
+
+@pytest.mark.unit
+def test_default_sandbox_uses_runtime_state_root_when_state_dir_missing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delenv("ONEX_STATE_DIR", raising=False)
+    monkeypatch.setenv("ONEX_STATE_ROOT", str(tmp_path / "state-root"))
+
+    executor = HandlerGeneratedExecutor()
+
+    assert executor.sandbox_dir == tmp_path / "state-root" / "hackathon" / "generated"
 
 
 # ---------------------------------------------------------------------------
