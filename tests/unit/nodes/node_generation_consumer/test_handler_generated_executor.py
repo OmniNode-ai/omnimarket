@@ -192,12 +192,37 @@ def test_execute_picks_up_updated_handler_without_reinit() -> None:
 
 
 @pytest.mark.unit
-def test_default_sandbox_path_is_relative(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Default sandbox must not be an absolute machine-specific path."""
+def test_default_sandbox_resolves_from_onex_state_dir(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """OMN-12854: the sandbox resolves under ONEX_STATE_DIR (preferred)."""
+    monkeypatch.delenv("ONEX_STATE_ROOT", raising=False)
+    monkeypatch.setenv("ONEX_STATE_DIR", str(tmp_path / "state-dir"))
+    executor = HandlerGeneratedExecutor()
+    assert executor.sandbox_dir == tmp_path / "state-dir" / "hackathon" / "generated"
+    assert executor.sandbox_dir.is_absolute()
+
+
+@pytest.mark.unit
+def test_default_sandbox_falls_back_to_onex_state_root(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """OMN-12854: ONEX_STATE_ROOT is used when ONEX_STATE_DIR is unset."""
+    monkeypatch.delenv("ONEX_STATE_DIR", raising=False)
+    monkeypatch.setenv("ONEX_STATE_ROOT", str(tmp_path / "state-root"))
+    executor = HandlerGeneratedExecutor()
+    assert executor.sandbox_dir == tmp_path / "state-root" / "hackathon" / "generated"
+
+
+@pytest.mark.unit
+def test_default_sandbox_fails_fast_when_state_root_unset(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """OMN-12854: no hardcoded relative fallback — fail fast when env is unset."""
     monkeypatch.delenv("ONEX_STATE_DIR", raising=False)
     monkeypatch.delenv("ONEX_STATE_ROOT", raising=False)
-    executor = HandlerGeneratedExecutor()
-    assert not executor.sandbox_dir.is_absolute()
+    with pytest.raises(RuntimeError, match="ONEX_STATE"):
+        HandlerGeneratedExecutor()
 
 
 @pytest.mark.unit
@@ -568,8 +593,10 @@ def test_handle_accepts_typed_model_node_deploy_payload() -> None:
 
 
 @pytest.mark.unit
-def test_terminal_topic_resolved_from_contract_not_hardcoded() -> None:
+def test_terminal_topic_resolved_from_contract_not_hardcoded(
+    tmp_path: Path,
+) -> None:
     """The terminal-result topic must come from the node contract, not a literal."""
-    executor = HandlerGeneratedExecutor()
+    executor = HandlerGeneratedExecutor(sandbox_dir=tmp_path)
     assert executor.terminal_topic == _TERMINAL_TOPIC
     assert executor.deploy_topic == _DEPLOY_TOPIC

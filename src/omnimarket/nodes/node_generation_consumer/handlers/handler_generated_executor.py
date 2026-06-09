@@ -43,21 +43,41 @@ import yaml
 
 logger = logging.getLogger(__name__)
 
-_DEFAULT_SANDBOX = Path(".onex_state/hackathon/generated")
 _HANDLER_FILENAME = "handler.py"
 _CONTRACT_PATH = Path(__file__).parent.parent / "contract.yaml"
+
+# OMN-12854: the generated-node sandbox MUST live under the runtime's writable
+# state root, NOT a hardcoded relative path. A relative ".onex_state" resolves
+# against the runtime's effective CWD, which is not writable in the deployed
+# container (Errno 13 Permission denied) — the generated source was never
+# materialized and sandbox-invoke had no artifact to import. The state root is
+# resolved from the runtime-provided env (ONEX_STATE_DIR preferred, then
+# ONEX_STATE_ROOT) and FAILS FAST when unset — no silent relative fallback
+# (CLAUDE.md Rule 6/8: no hardcoded paths, no silent defaults).
+_SANDBOX_SUBDIR = ("hackathon", "generated")
+_STATE_ROOT_ENV_KEYS = ("ONEX_STATE_DIR", "ONEX_STATE_ROOT")
+
+
+def _resolve_sandbox_dir() -> Path:
+    """Resolve the generated-node sandbox under the runtime writable state root.
+
+    Reads ONEX_STATE_DIR (preferred) or ONEX_STATE_ROOT. Raises a fail-fast
+    error when neither is set so a misconfigured runtime surfaces immediately
+    instead of silently writing (or failing to write) a relative path.
+    """
+    for key in _STATE_ROOT_ENV_KEYS:
+        value = os.environ.get(key, "").strip()
+        if value:
+            return Path(value).joinpath(*_SANDBOX_SUBDIR)
+    raise RuntimeError(
+        "HandlerGeneratedExecutor requires a writable runtime state root: set "
+        f"one of {_STATE_ROOT_ENV_KEYS} (no hardcoded relative sandbox fallback)."
+    )
+
 
 # Sync (topic, bytes) -> None publisher injected by the runtime's Kafka adapter,
 # identical to the contract HandlerGenerationConsumer uses.
 EventPublisher = Callable[[str, bytes], None]
-
-
-def _default_sandbox_dir() -> Path:
-    """Resolve the generated-node sandbox under the runtime state directory."""
-    state_root = os.environ.get("ONEX_STATE_DIR") or os.environ.get("ONEX_STATE_ROOT")
-    if state_root:
-        return Path(state_root) / "hackathon" / "generated"
-    return _DEFAULT_SANDBOX
 
 
 def _coerce_deploy_payload(payload: object) -> dict[str, Any]:
@@ -115,7 +135,12 @@ class HandlerGeneratedExecutor:
         event_publisher: EventPublisher | None = None,
         contract_path: Path | None = None,
     ) -> None:
-        self.sandbox_dir = sandbox_dir or _default_sandbox_dir()
+        # OMN-12854: an explicit sandbox_dir (tests) wins; otherwise resolve from
+        # the runtime writable state root, fail-fast if unset — never a relative
+        # default.
+        self.sandbox_dir = (
+            sandbox_dir if sandbox_dir is not None else _resolve_sandbox_dir()
+        )
         self._event_publisher: EventPublisher | None = event_publisher
         # node_name → handler_path, populated by deploy()
         self._registry: dict[str, Path] = {}
