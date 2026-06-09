@@ -20,6 +20,16 @@ handler_routing:
       event_model:
         name: ModelNodeGenerationRequest
         module: omnimarket.nodes.node_generation_consumer.models.model_generation
+      event_type: omnimarket.node-generation-requested
+      message_category: command
+    - handler:
+        name: HandlerGeneratedExecutor
+        module: omnimarket.nodes.node_generation_consumer.handlers.handler_generated_executor
+      event_model:
+        name: ModelNodeDeploy
+        module: omnimarket.nodes.node_generation_consumer.models.model_generation
+      event_type: omnimarket.node-deploy
+      message_category: command
 
 descriptor:
   node_archetype: orchestrator
