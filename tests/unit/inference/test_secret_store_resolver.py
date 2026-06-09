@@ -16,6 +16,7 @@ canonical ``ProtocolSecretStore``. These tests pin the contract:
 from __future__ import annotations
 
 import asyncio
+import textwrap
 
 import pytest
 from omnibase_spi.protocols.services import ProtocolSecretStore
@@ -24,9 +25,15 @@ from pydantic import SecretStr
 from omnimarket.inference.secret_store_resolver import (
     SecretResolutionError,
     api_key_ref_available,
+    clear_secret_store_resolver_cache,
     resolve_api_key,
     resolve_api_key_async,
 )
+
+
+@pytest.fixture(autouse=True)
+def _clear_configured_secret_store_cache() -> None:
+    clear_secret_store_resolver_cache()
 
 
 class _FakeSecretStore:
@@ -86,6 +93,29 @@ class TestResolveApiKeyAsync:
         resolved = await resolve_api_key_async("OPENROUTER_API_KEY", store=store)
         assert isinstance(resolved, SecretStr)
         assert resolved.get_secret_value() == "sk-from-infisical"
+
+    async def test_logical_ref_resolves_through_configured_mapping(
+        self, tmp_path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+        monkeypatch.setenv("OPEN_ROUTER_API_KEY", "sk-from-lane-overlay")
+        config_file = tmp_path / "secret_resolver.yaml"
+        config_file.write_text(
+            textwrap.dedent("""\
+                mappings:
+                  - logical_name: llm.openrouter.api_key
+                    source:
+                      source_type: env
+                      source_path: OPEN_ROUTER_API_KEY
+            """)
+        )
+        monkeypatch.setenv("ONEX_SECRET_RESOLVER_CONFIG_PATH", str(config_file))
+        clear_secret_store_resolver_cache()
+
+        resolved = await resolve_api_key_async("llm.openrouter.api_key")
+
+        assert isinstance(resolved, SecretStr)
+        assert resolved.get_secret_value() == "sk-from-lane-overlay"
 
     async def test_injected_store_satisfies_protocol(self) -> None:
         store: ProtocolSecretStore = _FakeSecretStore({"K": "v"})
