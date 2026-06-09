@@ -26,9 +26,18 @@ printed, logged, or serialized.
 from __future__ import annotations
 
 import asyncio
+import os
+from functools import lru_cache
+from pathlib import Path
 from queue import Queue
 from threading import Thread
+from typing import cast
 
+import yaml
+from omnibase_infra.runtime.models.model_secret_resolver_config import (
+    ModelSecretResolverConfig,
+)
+from omnibase_infra.runtime.secret_resolver import SecretResolver
 from omnibase_infra.secret_stores import AdapterEnvSecretStore
 from omnibase_spi.protocols.services import ProtocolSecretStore
 from pydantic import SecretStr
@@ -38,13 +47,69 @@ class SecretResolutionError(RuntimeError):
     """Raised when a declared ``api_key_ref`` cannot be resolved fail-closed."""
 
 
+class _MappedSecretStore:
+    """``ProtocolSecretStore`` adapter over infra's logical secret resolver."""
+
+    def __init__(self, resolver: SecretResolver) -> None:
+        self._resolver = resolver
+
+    async def get_secret(self, key: str) -> str | None:
+        resolved = await self._resolver.get_secret_async(key, required=False)
+        if resolved is None:
+            return None
+        return cast(str, resolved.get_secret_value())
+
+    async def set_secret(self, key: str, value: str) -> bool:
+        raise RuntimeError("Mapped secret store is read-only")
+
+    async def delete_secret(self, key: str) -> bool:
+        raise RuntimeError("Mapped secret store is read-only")
+
+    async def list_keys(self, prefix: str | None = None) -> list[str]:
+        del prefix
+        return []
+
+    async def health_check(self) -> bool:
+        return True
+
+    async def close(self, timeout_seconds: float = 30.0) -> None:
+        del timeout_seconds
+        return
+
+
+@lru_cache(maxsize=1)
+def _configured_secret_store() -> ProtocolSecretStore | None:
+    """Return a lane-configured logical secret store when one is declared."""
+    config_path = os.environ.get(  # ONEX_EXCLUDE: secret_resolver
+        "ONEX_SECRET_RESOLVER_CONFIG_PATH", ""
+    ).strip()
+    if not config_path:
+        return None
+
+    path = Path(config_path)
+    raw = yaml.safe_load(path.read_text(encoding="utf-8"))
+    config = ModelSecretResolverConfig.model_validate(raw)
+    resolver = SecretResolver(config=config)
+    store: ProtocolSecretStore = _MappedSecretStore(resolver)
+    return store
+
+
+def clear_secret_store_resolver_cache() -> None:
+    """Clear cached lane secret mapping state after config changes in tests."""
+    _configured_secret_store.cache_clear()
+
+
 def _default_secret_store() -> ProtocolSecretStore:
     """Return the default effect-boundary secret store.
 
-    ``AdapterEnvSecretStore`` reads from ``os.environ`` and is the canonical
-    ``ProtocolSecretStore`` for runtime profiles where Infisical is not wired.
-    A deployed Infisical-backed store is injected via ``store=`` instead.
+    When ``ONEX_SECRET_RESOLVER_CONFIG_PATH`` is set, logical secret refs are
+    resolved through the lane secret mapping before reaching the concrete source.
+    Otherwise ``AdapterEnvSecretStore`` remains the compatibility backend for
+    runtime profiles where a logical resolver is not wired yet.
     """
+    configured = _configured_secret_store()
+    if configured is not None:
+        return configured
     store: ProtocolSecretStore = AdapterEnvSecretStore()
     return store
 

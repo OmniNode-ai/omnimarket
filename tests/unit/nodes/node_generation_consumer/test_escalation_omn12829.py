@@ -71,18 +71,40 @@ _INVALID_LLM_RESPONSE = (
 @pytest.fixture(autouse=True)
 def _stable_cloud_escalation_route(
     monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
 ) -> Generator[None, None, None]:
     """Keep escalation routing hermetic after secret-aware route selection."""
+    from omnimarket.inference import secret_store_resolver
     from omnimarket.nodes.node_delegation_routing_reducer.handlers import (
         handler_delegation_routing as routing_handler,
     )
 
     monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
     monkeypatch.setenv("LLM_GLM_API_KEY", "test-glm-key")
+    secret_config = tmp_path / "secret_resolver.yaml"
+    secret_config.write_text(
+        yaml.safe_dump(
+            {
+                "mappings": [
+                    {
+                        "logical_name": "llm.glm.api_key",
+                        "source": {
+                            "source_type": "env",
+                            "source_path": "LLM_GLM_API_KEY",
+                        },
+                    }
+                ]
+            },
+            sort_keys=False,
+        )
+    )
+    monkeypatch.setenv("ONEX_SECRET_RESOLVER_CONFIG_PATH", str(secret_config))
+    secret_store_resolver.clear_secret_store_resolver_cache()
     routing_handler._config = None
     routing_handler._get_task_class_contract.cache_clear()
     routing_handler._load_bifrost_endpoints.cache_clear()
     yield
+    secret_store_resolver.clear_secret_store_resolver_cache()
     routing_handler._config = None
     routing_handler._get_task_class_contract.cache_clear()
     routing_handler._load_bifrost_endpoints.cache_clear()

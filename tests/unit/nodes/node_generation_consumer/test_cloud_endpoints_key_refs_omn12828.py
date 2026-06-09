@@ -51,11 +51,11 @@ _GLM_URL = "https://api.z.ai/api/coding/paas/v4/chat/completions"
 _OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 
 _CLOUD_BACKENDS: dict[str, tuple[str, str]] = {
-    # backend_id -> (expected endpoint_url, expected api-key reference name)
-    "cloud-glm": (_GLM_URL, "LLM_GLM_API_KEY"),
-    "cloud-gemini-flash": (_GEMINI_URL, "GEMINI_API_KEY"),
-    "openrouter-glm-flash": (_OPENROUTER_URL, "OPENROUTER_API_KEY"),
-    "openrouter-qwen3-coder-480b": (_OPENROUTER_URL, "OPENROUTER_API_KEY"),
+    # backend_id -> (expected endpoint_url, expected logical secret reference)
+    "cloud-glm": (_GLM_URL, "llm.glm.api_key"),
+    "cloud-gemini-flash": (_GEMINI_URL, "llm.gemini.api_key"),
+    "openrouter-glm-flash": (_OPENROUTER_URL, "llm.openrouter.api_key"),
+    "openrouter-qwen3-coder-480b": (_OPENROUTER_URL, "llm.openrouter.api_key"),
 }
 
 
@@ -86,9 +86,13 @@ def test_committed_contract_declares_api_key_reference(backend_id: str) -> None:
     backends = _committed_backends()
     _, expected_ref = _CLOUD_BACKENDS[backend_id]
     backend = backends[backend_id]
-    # The contract may name the reference field ``api_key_ref`` (canonical) or
-    # ``api_key_env`` (legacy core model). Either way it carries only the NAME.
-    declared = backend.get("api_key_ref") or backend.get("api_key_env")
+    # The contract names the canonical logical ref with ``secret_ref``. Legacy
+    # ``api_key_ref``/``api_key_env`` may appear only as migration metadata.
+    declared = (
+        backend.get("secret_ref")
+        or backend.get("api_key_ref")
+        or backend.get("api_key_env")
+    )
     assert declared == expected_ref
 
 
@@ -96,8 +100,7 @@ def test_committed_contract_declares_api_key_reference(backend_id: str) -> None:
 def test_committed_contract_has_no_literal_api_key() -> None:
     """No literal secret VALUE appears in the committed contract.
 
-    The contract carries only reference NAMES (``GEMINI_API_KEY`` /
-    ``OPENROUTER_API_KEY``), never values. A real key would appear as a long
+    The contract carries only reference NAMES, never values. A real key would appear as a long
     provider-prefixed token (``sk-or-...`` / ``sk-...`` / ``AIza...``) — match
     those token shapes, not bare prose substrings like "task-class".
     """

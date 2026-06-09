@@ -4,10 +4,10 @@
 """Tests for OpenRouter delegation backend wiring (OMN-7980).
 
 Verifies that:
-- code_generation routes to openrouter-glm-flash (cheap_cloud) when OPENROUTER_API_KEY is set
+- code_generation routes to openrouter-glm-flash when its logical secret ref is mapped
 - api_key_ref and extra_headers are propagated through BifrostBackendRef to ModelRoutingDecision
-- code_generation skips OpenRouter when OPENROUTER_API_KEY is absent
-- BifrostBackendRef loads api_key_env and extra_headers from bifrost YAML
+- code_generation skips OpenRouter when its logical secret ref is unavailable
+- BifrostBackendRef prefers secret_ref and still accepts legacy api_key_env
 """
 
 from __future__ import annotations
@@ -39,6 +39,7 @@ _BIFROST_WITH_OPENROUTER = textwrap.dedent("""\
       - backend_id: openrouter-glm-flash
         endpoint_url: "https://openrouter.ai/api"
         model_name: "thudm/glm-4-9b-chat:free"
+        secret_ref: llm.openrouter.api_key
         api_key_env: OPENROUTER_API_KEY
         tier: cheap_cloud
         timeout_ms: 60000
@@ -188,6 +189,7 @@ _BIFROST_WITH_OPENROUTER_AND_GLM = textwrap.dedent("""\
       - backend_id: openrouter-glm-flash
         endpoint_url: "https://openrouter.ai/api/v1/chat/completions"
         model_name: "thudm/glm-4-9b-chat:free"
+        secret_ref: llm.openrouter.api_key
         api_key_env: OPENROUTER_API_KEY
         tier: cheap_cloud
         timeout_ms: 60000
@@ -201,6 +203,7 @@ _BIFROST_WITH_OPENROUTER_AND_GLM = textwrap.dedent("""\
       - backend_id: cloud-glm
         endpoint_url: "https://api.z.ai/api/coding/paas/v4/chat/completions"
         model_name: "glm-4.5"
+        secret_ref: llm.glm.api_key
         api_key_env: LLM_GLM_API_KEY
         tier: cheap_cloud
         timeout_ms: 60000
@@ -292,9 +295,13 @@ def _clear_lru_caches() -> Generator[None, None, None]:
 
     h._get_task_class_contract.cache_clear()
     h._load_bifrost_endpoints.cache_clear()
+    from omnimarket.inference import secret_store_resolver
+
+    secret_store_resolver.clear_secret_store_resolver_cache()
     yield
     h._get_task_class_contract.cache_clear()
     h._load_bifrost_endpoints.cache_clear()
+    secret_store_resolver.clear_secret_store_resolver_cache()
 
 
 def _make_request(task_type: str, prompt: str = "x" * 100):  # type: ignore[no-untyped-def]
@@ -326,6 +333,24 @@ def _write_fixtures(
     return bifrost_file, contract_file, tiers_file
 
 
+def _write_secret_resolver_config(tmp_path: Path) -> Path:
+    config_file = tmp_path / "secret_resolver.yaml"
+    config_file.write_text(
+        textwrap.dedent("""\
+            mappings:
+              - logical_name: llm.openrouter.api_key
+                source:
+                  source_type: env
+                  source_path: OPEN_ROUTER_API_KEY
+              - logical_name: llm.glm.api_key
+                source:
+                  source_type: env
+                  source_path: LLM_GLM_API_KEY
+        """)
+    )
+    return config_file
+
+
 # ---------------------------------------------------------------------------
 # BifrostBackendRef — api_key_env and extra_headers loading
 # ---------------------------------------------------------------------------
@@ -350,7 +375,7 @@ class TestBifrostBackendRefApiKeyEnv:
         backends = _load_bifrost_endpoints()
         ref = backends.get("openrouter-glm-flash")
         assert ref is not None
-        assert ref.api_key_ref == "OPENROUTER_API_KEY"
+        assert ref.api_key_ref == "llm.openrouter.api_key"
 
     def test_api_key_ref_preserved_when_host_env_absent(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -372,7 +397,7 @@ class TestBifrostBackendRefApiKeyEnv:
         backends = _load_bifrost_endpoints()
         ref = backends.get("openrouter-glm-flash")
         assert ref is not None
-        assert ref.api_key_ref == "OPENROUTER_API_KEY"
+        assert ref.api_key_ref == "llm.openrouter.api_key"
 
     def test_api_key_ref_preserved_when_env_present_but_empty(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -389,7 +414,7 @@ class TestBifrostBackendRefApiKeyEnv:
         backends = _load_bifrost_endpoints()
         ref = backends.get("openrouter-glm-flash")
         assert ref is not None
-        assert ref.api_key_ref == "OPENROUTER_API_KEY"
+        assert ref.api_key_ref == "llm.openrouter.api_key"
 
     def test_extra_headers_loaded(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -448,10 +473,15 @@ class TestOpenRouterDeltaRouting:
     ) -> None:
         monkeypatch.setenv("BIFROST_CONTRACT_PATH", str(bifrost_file))
         monkeypatch.setenv("TASK_CLASS_CONTRACT_PATH", str(contract_file))
+        monkeypatch.setenv(
+            "ONEX_SECRET_RESOLVER_CONFIG_PATH",
+            str(_write_secret_resolver_config(bifrost_file.parent)),
+        )
+        monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
         if api_key:
-            monkeypatch.setenv("OPENROUTER_API_KEY", api_key)
+            monkeypatch.setenv("OPEN_ROUTER_API_KEY", api_key)
         else:
-            monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+            monkeypatch.delenv("OPEN_ROUTER_API_KEY", raising=False)
 
         # Override module-level config singleton so the test tier file is used.
         import omnimarket.nodes.node_delegation_routing_reducer.handlers.handler_delegation_routing as h
@@ -486,7 +516,7 @@ class TestOpenRouterDeltaRouting:
             assert "glm" in decision.selected_model.lower(), (
                 f"Expected OpenRouter GLM for code_generation, got: {decision.selected_model!r}"
             )
-            assert decision.api_key_ref == "OPENROUTER_API_KEY"
+            assert decision.api_key_ref == "llm.openrouter.api_key"
             assert decision.extra_headers is not None
             assert decision.extra_headers.get("HTTP-Referer") == "https://omninode.ai"
         finally:
@@ -546,7 +576,7 @@ class TestOpenRouterDeltaRouting:
                 decision.endpoint_url
                 == "https://api.z.ai/api/coding/paas/v4/chat/completions"
             )
-            assert decision.api_key_ref == "LLM_GLM_API_KEY"
+            assert decision.api_key_ref == "llm.glm.api_key"
             assert decision.tier_name == "cheap_cloud"
         finally:
             self._reset_config()
@@ -568,7 +598,7 @@ class TestOpenRouterDeltaRouting:
             )
 
             decision = delta(_make_request("code_generation"))
-            assert decision.api_key_ref == "OPENROUTER_API_KEY"
+            assert decision.api_key_ref == "llm.openrouter.api_key"
             assert decision.extra_headers is not None
             assert "HTTP-Referer" in decision.extra_headers
             assert "X-Title" in decision.extra_headers

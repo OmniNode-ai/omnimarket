@@ -303,13 +303,11 @@ def _load_bifrost_endpoints() -> dict[str, BifrostBackendRef]:
         if not (backend.backend_id and url and model_name):
             continue
 
-        api_key_ref: str | None = backend.api_key_env or None
-
         backends[backend.backend_id] = BifrostBackendRef(
             endpoint_url=url,
             model_name=model_name,
             timeout_ms=backend.timeout_ms,
-            api_key_ref=api_key_ref,
+            api_key_ref=backend.resolved_secret_ref,
             extra_headers=dict(backend.extra_headers)
             if backend.extra_headers
             else None,
