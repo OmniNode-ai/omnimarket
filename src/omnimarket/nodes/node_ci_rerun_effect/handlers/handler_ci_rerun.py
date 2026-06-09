@@ -23,7 +23,7 @@ from uuid import uuid4
 
 from omnibase_core.models.dispatch.model_handler_output import ModelHandlerOutput
 
-from omnimarket.inference.secret_store_resolver import resolve_api_key
+from omnimarket.inference.secret_store_resolver import resolve_api_key_async
 from omnimarket.nodes.contract_topics import contract_secret_ref
 from omnimarket.nodes.node_ci_rerun_effect.models.model_ci_rerun_triggered_event import (
     ModelCiRerunTriggeredEvent,
@@ -49,7 +49,7 @@ class HandlerCiRerunEffect:
         secret-store resolver — never read from env directly in this handler.
         """
         _github_ref = contract_secret_ref(_CONTRACT_PATH, "GITHUB_TOKEN")
-        github_secret = resolve_api_key(_github_ref)
+        github_secret = await resolve_api_key_async(_github_ref)
         if github_secret is None:
             raise RuntimeError(
                 f"api_key_ref {_github_ref!r} resolved to None — "

@@ -4,10 +4,11 @@
 
 from __future__ import annotations
 
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 from uuid import UUID
 
 import pytest
+from pydantic import SecretStr
 
 from omnimarket.nodes.node_ci_rerun_effect.handlers.handler_ci_rerun import (
     HandlerCiRerunEffect,
@@ -21,6 +22,15 @@ from omnimarket.nodes.node_merge_sweep_triage_orchestrator.models.model_triage_r
 
 _RUN_ID = UUID("00000000-0000-4000-a000-000000000001")
 _CORR_ID = UUID("00000000-0000-4000-a000-000000000002")
+
+
+@pytest.fixture(autouse=True)
+def _mock_resolve_api_key_async(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Stub out resolve_api_key_async for all ci_rerun tests (no GITHUB_TOKEN in CI)."""
+    monkeypatch.setattr(
+        "omnimarket.nodes.node_ci_rerun_effect.handlers.handler_ci_rerun.resolve_api_key_async",
+        AsyncMock(return_value=SecretStr("fake-token")),
+    )
 
 
 def _cmd(run_id_github: str = "99887766") -> ModelCiRerunCommand:

@@ -247,6 +247,7 @@ class TestSourceContext:
             ci_log="FAILED src/omnimarket/foo.py:12",
             worktree_path=str(tmp_path),
             allowlist_patterns=(re.compile(r"^src/"),),
+            token="fake-token",
         )
 
         assert "--- src/omnimarket/foo.py (worktree, current contents) ---" in context

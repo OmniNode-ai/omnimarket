@@ -14,7 +14,10 @@ from omnimarket.github_api import (
     rest_no_content,
     split_repo,
 )
-from omnimarket.inference.secret_store_resolver import resolve_api_key
+from omnimarket.inference.secret_store_resolver import (
+    resolve_api_key,
+    resolve_api_key_async,
+)
 from omnimarket.nodes.contract_topics import contract_secret_ref
 
 logger = logging.getLogger(__name__)
@@ -23,9 +26,26 @@ _CONTRACT_PATH = Path(__file__).resolve().parents[1] / "contract.yaml"
 
 
 def _resolve_github_token() -> str:
-    """Resolve the GitHub token from the contract-declared ref (OMN-12856)."""
+    """Resolve the GitHub token from the contract-declared ref (OMN-12856).
+
+    Sync variant — only safe to call from sync helpers running in
+    ``asyncio.to_thread`` (e.g. ``_failed_run_ids_sync``,
+    ``_resolve_conflicts_sync``).
+    """
     ref = contract_secret_ref(_CONTRACT_PATH, "GITHUB_TOKEN")
     secret = resolve_api_key(ref)
+    if secret is None:
+        raise RuntimeError(
+            f"api_key_ref {ref!r} resolved to None — "
+            "ensure GITHUB_TOKEN is set in the secret store."
+        )
+    return secret.get_secret_value()
+
+
+async def _resolve_github_token_async() -> str:
+    """Async variant — call from async methods that are not inside asyncio.to_thread."""
+    ref = contract_secret_ref(_CONTRACT_PATH, "GITHUB_TOKEN")
+    secret = await resolve_api_key_async(ref)
     if secret is None:
         raise RuntimeError(
             f"api_key_ref {ref!r} resolved to None — "
@@ -72,7 +92,7 @@ class GitHubCliAdapter:
         run_ids = await asyncio.to_thread(self._failed_run_ids_sync, repo, pr_number)
         if not run_ids:
             return f"no failed checks on {repo}#{pr_number}"
-        token = _resolve_github_token()
+        token = await _resolve_github_token_async()
         for run_id in run_ids:
             owner, repo_name = split_repo(repo)
             await asyncio.to_thread(

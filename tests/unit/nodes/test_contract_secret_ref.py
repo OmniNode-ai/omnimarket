@@ -23,7 +23,7 @@ import yaml
 
 from omnimarket.nodes.contract_topics import contract_secret_ref
 
-_REPO_ROOT = Path(__file__).resolve().parents[4]
+_REPO_ROOT = Path(__file__).resolve().parents[3]
 _NODES_ROOT = _REPO_ROOT / "src" / "omnimarket" / "nodes"
 
 # All nodes updated by OMN-12856 to declare GITHUB_TOKEN in their contracts.

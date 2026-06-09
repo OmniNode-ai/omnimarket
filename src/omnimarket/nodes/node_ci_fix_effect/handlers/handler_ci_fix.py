@@ -845,11 +845,11 @@ class HandlerCiFixEffect:
         (OMN-12856) and resolved at the effect boundary via the canonical
         secret-store resolver — never read from env directly in this handler.
         """
-        from omnimarket.inference.secret_store_resolver import resolve_api_key
+        from omnimarket.inference.secret_store_resolver import resolve_api_key_async
         from omnimarket.nodes.contract_topics import contract_secret_ref
 
         _github_ref = contract_secret_ref(_CONTRACT_PATH, "GITHUB_TOKEN")
-        github_secret = resolve_api_key(_github_ref)
+        github_secret = await resolve_api_key_async(_github_ref)
         if github_secret is None:
             raise RuntimeError(
                 f"api_key_ref {_github_ref!r} resolved to None — "
