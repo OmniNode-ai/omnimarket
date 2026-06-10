@@ -514,6 +514,34 @@ def test_on_deploy_event_emits_terminal_event_to_contract_topic() -> None:
 
 
 @pytest.mark.unit
+def test_on_deploy_event_replay_returns_stored_terminal_without_republishing(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setenv("ONEX_STATE_DIR", str(tmp_path))
+    captured: list[tuple[str, bytes]] = []
+
+    def _publisher(topic: str, payload: bytes) -> None:
+        captured.append((topic, payload))
+
+    executor = HandlerGeneratedExecutor(
+        sandbox_dir=tmp_path, event_publisher=_publisher
+    )
+    payload = _deploy_payload("node_echo", _VALID_HANDLER, "corr-replay-exec-1")
+
+    first = executor.on_deploy_event(payload, input_data={"value": "first"})
+    node_handler = tmp_path / "node_echo" / "handler.py"
+    mtime_first = node_handler.stat().st_mtime_ns
+    second = executor.on_deploy_event(
+        {**payload, "handler_source": _RAISING_HANDLER},
+        input_data={"value": "second"},
+    )
+
+    assert second == first
+    assert len(captured) == 1
+    assert node_handler.stat().st_mtime_ns == mtime_first
+
+
+@pytest.mark.unit
 def test_on_deploy_event_failed_status_when_handler_raises() -> None:
     with tempfile.TemporaryDirectory() as tmp:
         executor = HandlerGeneratedExecutor(sandbox_dir=Path(tmp))

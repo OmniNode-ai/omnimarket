@@ -452,6 +452,40 @@ async def test_deploy_event_emitted_before_registration() -> None:
 
 
 @pytest.mark.unit
+@pytest.mark.asyncio
+async def test_replay_correlation_returns_stored_benchmark_without_side_effects(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setenv("ONEX_STATE_DIR", str(tmp_path))
+    first_published: list[tuple[str, bytes]] = []
+    first_handler = _make_handler([_VALID_LLM_RESPONSE], published=first_published)
+
+    first = await first_handler.handle(
+        ModelNodeGenerationRequest(
+            task_description="Build a stub node",
+            correlation_id="corr-replay-generation-1",
+        )
+    )
+
+    second_published: list[tuple[str, bytes]] = []
+    second_handler = _make_handler([_INVALID_LLM_RESPONSE], published=second_published)
+    second = await second_handler.handle(
+        ModelNodeGenerationRequest(
+            task_description="Build a stub node",
+            correlation_id="corr-replay-generation-1",
+        )
+    )
+
+    assert second == first
+    assert second_published == []
+    fake = second_handler._effect
+    assert isinstance(fake, FakeLlmEffect)
+    assert fake._calls == []
+    assert sum(1 for t, _ in first_published if "node-deploy" in t) == 1
+    assert sum(1 for t, _ in first_published if "node-registration" in t) == 1
+
+
+@pytest.mark.unit
 def test_validate_generation_fails_on_empty_handler() -> None:
     result = _validate_generation(_VALID_CONTRACT_YAML, "")
     assert result["valid"] is False

@@ -31,6 +31,7 @@ Full flow (no runtime restart):
 
 from __future__ import annotations
 
+import hashlib
 import importlib.util
 import json
 import logging
@@ -56,6 +57,7 @@ _CONTRACT_PATH = Path(__file__).parent.parent / "contract.yaml"
 # (CLAUDE.md Rule 6/8: no hardcoded paths, no silent defaults).
 _SANDBOX_SUBDIR = ("hackathon", "generated")
 _STATE_ROOT_ENV_KEYS = ("ONEX_STATE_DIR", "ONEX_STATE_ROOT")
+_REPLAY_STATE_SUBDIR = ("node_generation_consumer", "generated_executor_replay")
 
 
 def _resolve_sandbox_dir() -> Path:
@@ -73,6 +75,22 @@ def _resolve_sandbox_dir() -> Path:
         "HandlerGeneratedExecutor requires a writable runtime state root: set "
         f"one of {_STATE_ROOT_ENV_KEYS} (no hardcoded relative sandbox fallback)."
     )
+
+
+def _resolve_state_root() -> Path | None:
+    for key in _STATE_ROOT_ENV_KEYS:
+        value = os.environ.get(key, "").strip()
+        if value:
+            return Path(value)
+    return None
+
+
+def _replay_state_path(correlation_id: str) -> Path | None:
+    state_root = _resolve_state_root()
+    if state_root is None:
+        return None
+    digest = hashlib.sha256(correlation_id.encode("utf-8")).hexdigest()
+    return state_root.joinpath(*_REPLAY_STATE_SUBDIR) / f"{digest}.json"
 
 
 # Sync (topic, bytes) -> None publisher injected by the runtime's Kafka adapter,
@@ -309,6 +327,15 @@ class HandlerGeneratedExecutor:
         correlation_id = str(data.get("correlation_id", ""))
         node_name = str(data.get("node_name", ""))
 
+        replayed = self._load_replay_terminal(correlation_id)
+        if replayed is not None:
+            logger.info(
+                "[generated-executor] replay correlation_id=%s; "
+                "returning stored terminal without deploy/invoke emit",
+                correlation_id,
+            )
+            return replayed
+
         deploy_result = self.deploy(data)
         if "error" in deploy_result:
             return self._terminal(
@@ -334,6 +361,47 @@ class HandlerGeneratedExecutor:
             node_name=node_name,
             output=output,
         )
+
+    def _load_replay_terminal(self, correlation_id: str) -> dict[str, Any] | None:
+        if not correlation_id:
+            return None
+        path = _replay_state_path(correlation_id)
+        if path is None or not path.exists():
+            return None
+        try:
+            loaded = json.loads(path.read_text())
+        except (OSError, json.JSONDecodeError) as exc:
+            logger.warning(
+                "[generated-executor] ignoring unreadable replay marker for %s: %s",
+                correlation_id,
+                exc,
+            )
+            return None
+        return loaded if isinstance(loaded, dict) else None
+
+    def _record_replay_terminal(self, result: dict[str, Any]) -> None:
+        correlation_id = str(result.get("correlation_id", ""))
+        if not correlation_id:
+            return
+        path = _replay_state_path(correlation_id)
+        if path is None:
+            logger.debug(
+                "[generated-executor] no ONEX state root configured; "
+                "replay guard disabled for correlation_id=%s",
+                correlation_id,
+            )
+            return
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            tmp = path.with_suffix(".tmp")
+            tmp.write_text(json.dumps(result, sort_keys=True))
+            tmp.replace(path)
+        except OSError as exc:
+            logger.warning(
+                "[generated-executor] failed to persist replay marker for %s: %s",
+                correlation_id,
+                exc,
+            )
 
     def _terminal(
         self,
@@ -378,6 +446,7 @@ class HandlerGeneratedExecutor:
                     self._terminal_topic,
                     exc,
                 )
+        self._record_replay_terminal(result)
         return result
 
 

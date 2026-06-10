@@ -122,12 +122,30 @@ _GEMINI_INPUT_COST_PER_TOKEN = 0.075 / 1_000_000
 _GEMINI_OUTPUT_COST_PER_TOKEN = 0.30 / 1_000_000
 
 EventPublisher = Callable[[str, bytes], None]
+_STATE_ROOT_ENV_KEYS = ("ONEX_STATE_DIR", "ONEX_STATE_ROOT")
+_REPLAY_STATE_DIR = "node_generation_consumer/replay"
 
 
 def _noop_publisher(topic: str, payload: bytes) -> None:
     logger.debug(
         "[generation-consumer] noop publish to %s (%d bytes)", topic, len(payload)
     )
+
+
+def _resolve_state_root() -> Path | None:
+    for env_key in _STATE_ROOT_ENV_KEYS:
+        raw = os.environ.get(env_key, "").strip()
+        if raw:
+            return Path(raw)
+    return None
+
+
+def _replay_state_path(correlation_id: str) -> Path | None:
+    state_root = _resolve_state_root()
+    if state_root is None:
+        return None
+    digest = hashlib.sha256(correlation_id.encode("utf-8")).hexdigest()
+    return state_root / _REPLAY_STATE_DIR / f"{digest}.json"
 
 
 def _load_contract(path: Path | None = None) -> dict[str, Any]:
@@ -688,6 +706,15 @@ class HandlerGenerationConsumer:
     async def handle(
         self, command: ModelNodeGenerationRequest
     ) -> ModelGenerationBenchmark:
+        replayed = self._load_replay_benchmark(command.correlation_id)
+        if replayed is not None:
+            logger.info(
+                "[generation-consumer] replay correlation_id=%s; "
+                "returning stored benchmark without emitting deploy/registration",
+                command.correlation_id,
+            )
+            return replayed
+
         self._ensure_effect()
 
         # All four routing authorities come from the contract (OMN-12779): provider,
@@ -803,7 +830,45 @@ class HandlerGenerationConsumer:
             if deploy_ok:
                 self._emit_registration(benchmark)
 
+        self._record_replay_benchmark(benchmark)
         return benchmark
+
+    def _load_replay_benchmark(
+        self, correlation_id: str
+    ) -> ModelGenerationBenchmark | None:
+        path = _replay_state_path(correlation_id)
+        if path is None or not path.exists():
+            return None
+        try:
+            return ModelGenerationBenchmark.model_validate_json(path.read_text())
+        except Exception as exc:
+            logger.warning(
+                "[generation-consumer] ignoring unreadable replay marker for %s: %s",
+                correlation_id,
+                exc,
+            )
+            return None
+
+    def _record_replay_benchmark(self, benchmark: ModelGenerationBenchmark) -> None:
+        path = _replay_state_path(benchmark.correlation_id)
+        if path is None:
+            logger.debug(
+                "[generation-consumer] no ONEX state root configured; "
+                "replay guard disabled for correlation_id=%s",
+                benchmark.correlation_id,
+            )
+            return
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            tmp = path.with_suffix(".tmp")
+            tmp.write_text(benchmark.model_dump_json())
+            tmp.replace(path)
+        except OSError as exc:
+            logger.warning(
+                "[generation-consumer] failed to persist replay marker for %s: %s",
+                benchmark.correlation_id,
+                exc,
+            )
 
     def _emit_benchmark(self, benchmark: ModelGenerationBenchmark) -> None:
         topic = (
