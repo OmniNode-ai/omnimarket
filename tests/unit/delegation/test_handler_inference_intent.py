@@ -180,6 +180,60 @@ class TestHandlerInferenceIntent:
         assert result.error_message != ""
         assert result.model_used == "test-model"
 
+    def test_provider_http_status_error_includes_sanitized_body(self) -> None:
+        handler = HandlerInferenceIntent()
+        intent = _make_intent(
+            base_url="https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
+            model="gemini-2.5-flash",
+            api_key_ref="TEST_MODEL_API_KEY",
+        )
+        request = httpx.Request(
+            "POST",
+            intent.base_url,
+            headers={"Authorization": "Bearer sk-test-secret"},
+        )
+        response = httpx.Response(
+            400,
+            request=request,
+            json={
+                "error": {
+                    "message": "unsupported request field: chat_template_kwargs",
+                    "status": "INVALID_ARGUMENT",
+                }
+            },
+        )
+
+        mock_response = MagicMock()
+        mock_response.raise_for_status.side_effect = httpx.HTTPStatusError(
+            "bad request",
+            request=request,
+            response=response,
+        )
+
+        with (
+            patch("httpx.Client") as mock_client_cls,
+            patch(
+                "omnimarket.nodes.node_llm_delegation_call_effect.handlers.handler_inference_intent.resolve_api_key"
+            ) as mock_resolve_api_key,
+        ):
+            mock_resolve_api_key.return_value.get_secret_value.return_value = (
+                "sk-test-secret"
+            )
+            mock_client = MagicMock()
+            mock_client.__enter__ = MagicMock(return_value=mock_client)
+            mock_client.__exit__ = MagicMock(return_value=False)
+            mock_client.post.return_value = mock_response
+            mock_client_cls.return_value = mock_client
+
+            result = handler.handle(intent)
+
+        assert result.content == ""
+        assert result.model_used == "gemini-2.5-flash"
+        assert "provider HTTP 400 Bad Request" in result.error_message
+        assert "unsupported request field: chat_template_kwargs" in result.error_message
+        assert "sk-test-secret" not in result.error_message
+        assert "Authorization" not in result.error_message
+
     @pytest.mark.asyncio
     async def test_provider_timeout_publishes_inference_response_and_terminal_failure(
         self,
