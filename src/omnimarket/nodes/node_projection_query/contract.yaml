@@ -5,9 +5,10 @@ node_type: query
 node_version: {major: 1, minor: 0, patch: 0}
 input_model: ModelProjectionQueryRequest
 description: >
-  Read-only query node exposing 10 dashboard query shapes via HTTP.
-  Omnidash calls this node instead of querying omnidash_analytics directly,
-  enforcing projection-only architecture (OMN-8899).
+  Read-only query node exposing dashboard query and projection readiness shapes.
+  Omnidash and demo gates call this node instead of querying
+  omnidash_analytics directly, enforcing projection-only architecture
+  (OMN-8899, OMN-12898).
 
 handler:
   module: omnimarket.nodes.node_projection_query.handlers.handler_projection_query
@@ -101,10 +102,18 @@ golden_path:
     tables: [intent_signals]
     response_keys: [breakdown]
 
+  - shape: projection-topic-readiness
+    description: >
+      Contract-declared projection topic readiness check. Maps topic -> table ->
+      table exists -> row count and fails unless missing or empty topics are
+      explicitly classified degraded.
+    tables: [contract-declared projection tables]
+    response_keys: [accepted, accepted_count, total_count, results]
+
 dod_evidence:
   - type: contract
     path: src/omnimarket/nodes/node_projection_query/contract.yaml
-    assertion: golden_path declares all 10 query shapes
+    assertion: golden_path declares all dashboard query and readiness shapes
   - type: entry_point
     path: pyproject.toml
     assertion: node_projection_query registered in the node registry

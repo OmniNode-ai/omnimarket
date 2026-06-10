@@ -94,6 +94,10 @@ class InmemoryDatabaseAdapter:
                 result.append(row)
         return result
 
+    def has_table(self, table: str) -> bool:
+        """Return True when the in-memory fixture has an explicit table."""
+        return table in self.tables
+
 
 __all__: list[str] = [
     "DatabaseAdapter",

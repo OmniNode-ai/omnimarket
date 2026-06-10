@@ -1,7 +1,7 @@
 name: projection_query
 version: "1.0.0"
 description: >
-  Read-only query node exposing 10 dashboard query shapes via HTTP.
+  Read-only query node exposing dashboard query and projection readiness shapes.
   Replaces direct omnidash-to-Postgres queries for projection-only architecture.
 omnibase_core_compat: ">=0.39.0,<1.0.0"
 capabilities:
