@@ -428,7 +428,7 @@ def _extract_patch_from_llm_response(llm_text: str) -> str:
 
 
 async def _read_context_file_from_github(
-    repo: str, pr_number: int, path: str
+    repo: str, pr_number: int, path: str, *, token: str
 ) -> str | None:
     owner, repo_name = split_repo(repo)
     try:
@@ -436,6 +436,7 @@ async def _read_context_file_from_github(
             rest_json,
             "GET",
             f"/repos/{owner}/{repo_name}/pulls/{pr_number}",
+            token=token,
         )
         head = pr_data.get("head")
         sha = str(head.get("sha", "")) if isinstance(head, dict) else ""
@@ -446,6 +447,7 @@ async def _read_context_file_from_github(
             rest_json,
             "GET",
             f"/repos/{owner}/{repo_name}/contents/{encoded_path}?ref={sha}",
+            token=token,
         )
     except GitHubApiError:
         return None
@@ -466,6 +468,7 @@ async def _build_source_context(
     ci_log: str,
     worktree_path: str | None,
     allowlist_patterns: tuple[re.Pattern[str], ...],
+    token: str,
 ) -> str:
     paths = _extract_candidate_context_paths(ci_log, allowlist_patterns)
     if not paths:
@@ -493,7 +496,9 @@ async def _build_source_context(
                 except OSError:
                     content = None
         if content is None:
-            content = await _read_context_file_from_github(repo, pr_number, path)
+            content = await _read_context_file_from_github(
+                repo, pr_number, path, token=token
+            )
         if content is None:
             sections.append(f"\n--- {path} (unavailable) ---\n<file not found>")
             continue
@@ -579,7 +584,11 @@ async def _run_subprocess(
 
 
 async def _fetch_ci_log(
-    repo: str, run_id_github: str, failing_job_name: str | None = None
+    repo: str,
+    run_id_github: str,
+    failing_job_name: str | None = None,
+    *,
+    token: str,
 ) -> str:
     owner, repo_name = split_repo(repo)
 
@@ -599,7 +608,7 @@ async def _fetch_ci_log(
         req = urllib.request.Request(
             f"https://api.github.com/repos/{owner}/{repo_name}/actions/jobs/{job_id}/logs",
             headers={
-                "Authorization": f"Bearer {os.environ['GH_PAT']}",
+                "Authorization": f"Bearer {token}",
                 "Accept": "application/vnd.github+json",
                 "X-GitHub-Api-Version": "2022-11-28",
             },
@@ -626,6 +635,7 @@ async def _fetch_ci_log(
         jobs_payload = rest_json(
             "GET",
             f"/repos/{owner}/{repo_name}/actions/runs/{run_id_github}/jobs",
+            token=token,
         )
         jobs = jobs_payload.get("jobs")
         if not isinstance(jobs, list):
@@ -663,13 +673,14 @@ async def _fetch_ci_log(
         ) from exc
 
 
-async def _resolve_pr_worktree(repo: str, pr_number: int) -> str | None:
+async def _resolve_pr_worktree(repo: str, pr_number: int, *, token: str) -> str | None:
     owner, repo_name = split_repo(repo)
     try:
         data = await asyncio.to_thread(
             rest_json,
             "GET",
             f"/repos/{owner}/{repo_name}/pulls/{pr_number}",
+            token=token,
         )
     except GitHubApiError:
         return None
@@ -828,7 +839,24 @@ class HandlerCiFixEffect:
     """EFFECT: diagnose failing CI job via LLM, apply patch, run test gate."""
 
     async def handle(self, request: ModelCiFixCommand) -> ModelHandlerOutput:  # type: ignore[type-arg]
-        """Attempt CI fix. Returns CiFixResult with patch_applied/local_tests_passed."""
+        """Attempt CI fix. Returns CiFixResult with patch_applied/local_tests_passed.
+
+        The GitHub token ref-name is sourced from the contract ``secrets`` block
+        (OMN-12856) and resolved at the effect boundary via the canonical
+        secret-store resolver — never read from env directly in this handler.
+        """
+        from omnimarket.inference.secret_store_resolver import resolve_api_key_async
+        from omnimarket.nodes.contract_topics import contract_secret_ref
+
+        _github_ref = contract_secret_ref(_CONTRACT_PATH, "GITHUB_TOKEN")
+        github_secret = await resolve_api_key_async(_github_ref)
+        if github_secret is None:
+            raise RuntimeError(
+                f"api_key_ref {_github_ref!r} resolved to None — "
+                "ensure GITHUB_TOKEN is set in the secret store."
+            )
+        gh_token = github_secret.get_secret_value()
+
         t0 = time.monotonic()
         _log.info(
             "CI fix attempt: %s#%s job=%r run=%s",
@@ -854,7 +882,10 @@ class HandlerCiFixEffect:
             )
             phase_t0 = time.monotonic()
             ci_log = await _fetch_ci_log(
-                request.repo, request.run_id_github, request.failing_job_name
+                request.repo,
+                request.run_id_github,
+                request.failing_job_name,
+                token=gh_token,
             )
             _log.info(
                 "CI fix phase=fetch_ci_log done repo=%s pr=%s elapsed_ms=%d chars=%d",
@@ -888,7 +919,9 @@ class HandlerCiFixEffect:
                 request.pr_number,
             )
             phase_t0 = time.monotonic()
-            worktree_path = await _resolve_pr_worktree(request.repo, request.pr_number)
+            worktree_path = await _resolve_pr_worktree(
+                request.repo, request.pr_number, token=gh_token
+            )
             _log.info(
                 "CI fix phase=resolve_pr_worktree done repo=%s pr=%s "
                 "elapsed_ms=%d path=%s",
@@ -910,6 +943,7 @@ class HandlerCiFixEffect:
                 ci_log=ci_log,
                 worktree_path=worktree_path,
                 allowlist_patterns=allowlist_patterns,
+                token=gh_token,
             )
             _log.info(
                 "CI fix phase=source_context done repo=%s pr=%s elapsed_ms=%d chars=%d",

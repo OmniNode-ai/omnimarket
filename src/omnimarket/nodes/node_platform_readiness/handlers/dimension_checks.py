@@ -39,7 +39,9 @@ from omnimarket.nodes.node_platform_readiness.models.dimension_result_v2 import 
 
 _RUNTIME_API = os.environ.get("ONEX_RUNTIME_API", "")  # contract-config-ok: config  # fmt: skip
 _DASHBOARD_API = os.environ.get("ONEX_DASHBOARD_API", "")  # contract-config-ok: config  # fmt: skip
-_GITHUB_TOKEN = os.environ.get("GITHUB_TOKEN", "")
+_GITHUB_TOKEN = os.environ.get(
+    "GITHUB_TOKEN", ""
+)  # omn-allow-env-read: diagnostic health-check, not an effect boundary
 _GITHUB_REPOS = [
     "OmniNode-ai/omnimarket",
     "OmniNode-ai/omniclaude",

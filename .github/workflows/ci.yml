@@ -81,6 +81,12 @@ jobs:
       # Fails CI if any delegation/LLM/bifrost module adds a new os.environ/os.getenv read.
       - name: Delegation env read scanner (enforce)
         run: uv run python scripts/ci/check_delegation_env_reads.py --mode enforce
+      # OMN-12856: GitHub-token env-read gate. Fails CI if any omnimarket source
+      # reads GH_PAT/GH_TOKEN/GITHUB_TOKEN via os.environ/os.getenv directly.
+      # After OMN-12856 the canonical path is contract_secret_ref + resolve_api_key.
+      # SYNC with pre-commit hook 'github-token-env-gate'.
+      - name: GitHub-token env-read gate (enforce)
+        run: uv run python scripts/ci/check_github_token_env_reads.py
       # OMN-12821 (plan A1.5): routing-authority demo gate. Proves the demo path
       # (generation + delegation) resolves provider/model/endpoint_ref/endpoint/
       # route_source from contract+authority AND that no demo-path source reads

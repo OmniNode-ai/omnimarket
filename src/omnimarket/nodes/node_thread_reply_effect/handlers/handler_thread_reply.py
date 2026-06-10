@@ -19,6 +19,7 @@ import logging
 import os
 import re
 from collections.abc import Callable
+from pathlib import Path
 from typing import Any, Literal
 from uuid import UUID
 
@@ -29,6 +30,8 @@ from omnibase_infra.adapters.llm.adapter_llm_provider_openai import (
 from omnibase_infra.adapters.llm.model_llm_adapter_request import ModelLlmAdapterRequest
 
 from omnimarket.github_api import GitHubApiError, rest_json
+from omnimarket.inference.secret_store_resolver import resolve_api_key
+from omnimarket.nodes.contract_topics import contract_secret_ref
 from omnimarket.nodes.node_model_router.handlers.handler_model_router import (
     HandlerModelRouter,
 )
@@ -40,6 +43,20 @@ from omnimarket.nodes.node_thread_reply_effect.models.model_thread_replied_event
 )
 
 _log = logging.getLogger(__name__)
+_CONTRACT_PATH = Path(__file__).resolve().parents[1] / "contract.yaml"
+
+
+def _resolve_github_token() -> str:
+    """Resolve the GitHub token from the contract-declared ref (OMN-12856)."""
+    ref = contract_secret_ref(_CONTRACT_PATH, "GITHUB_TOKEN")
+    secret = resolve_api_key(ref)
+    if secret is None:
+        raise RuntimeError(
+            f"api_key_ref {ref!r} resolved to None — "
+            "ensure GITHUB_TOKEN is set in the secret store."
+        )
+    return secret.get_secret_value()
+
 
 _DRAFT_TAG = "<!-- omni-draft -->"
 
@@ -150,10 +167,12 @@ async def _real_llm_call(
 
 
 def _default_post_comment(repo: str, pr_number: int, body: str) -> dict[str, Any]:
+    token = _resolve_github_token()
     try:
         return rest_json(
             "POST",
             f"/repos/{repo}/issues/{pr_number}/comments",
+            token=token,
             body={"body": body},
         )
     except GitHubApiError as exc:

@@ -15,7 +15,8 @@ This node is the EXECUTION authority for mechanical DoD checks; the
 ``task.execute`` orchestrator PLANS checks and dispatches them here — it never
 executes a check itself (OMN-12703).
 
-Protocol-compliant: accepts GH_PAT from env (fail-fast, no fallback).
+The GitHub token is resolved at handle() time from the contract-declared
+``api_key_ref`` (``GITHUB_TOKEN``) — no direct ``os.environ`` read.
 
 OMN-9403, OMN-12703.
 """
@@ -40,8 +41,11 @@ from omnimarket.events.verification import (
     ModelVerificationReceipt,
     ModelVerificationReceiptRequest,
 )
+from omnimarket.inference.secret_store_resolver import resolve_api_key
+from omnimarket.nodes.contract_topics import contract_secret_ref
 
 _log = logging.getLogger(__name__)
+_CONTRACT_PATH = Path(__file__).resolve().parents[1] / "contract.yaml"
 
 _GH_CHECKS_TIMEOUT = 30
 _PYTEST_TIMEOUT = 300
@@ -79,14 +83,17 @@ class MechanicalCheckRunnerProtocol(Protocol):
 
 
 class GhClient:
-    """Real GitHub CI checks client using gh CLI with GH_PAT auth."""
+    """Real GitHub CI checks client using gh CLI.
 
-    def __init__(self) -> None:
-        token = os.environ.get("GH_PAT", "")
+    The caller must pass a resolved bearer token — this class never reads
+    ``os.environ`` for the token name directly.
+    """
+
+    def __init__(self, token: str) -> None:
         if not token:
             raise RuntimeError(
-                "GH_PAT environment variable is not set. "
-                "Export it before running node_verification_receipt_generator."
+                "GitHub token must not be empty. "
+                "Resolve it via the contract api_key_ref before constructing GhClient."
             )
         self._token = token
 
@@ -104,7 +111,7 @@ class GhClient:
         ]
         try:
             env = os.environ.copy()
-            env.setdefault("GH_TOKEN", self._token)
+            env["GH_TOKEN"] = self._token
             result = subprocess.run(
                 cmd,
                 capture_output=True,
@@ -264,10 +271,10 @@ class HandlerVerificationReceiptGenerator:
         self._pytest_runner = pytest_runner
         self._mechanical_check_runner = mechanical_check_runner
 
-    def _get_gh_client(self) -> GhClientProtocol:
+    def _get_gh_client(self, token: str) -> GhClientProtocol:
         if self._gh_client is not None:
             return self._gh_client
-        return GhClient()
+        return GhClient(token)
 
     def _get_pytest_runner(self) -> PytestRunnerProtocol:
         if self._pytest_runner is not None:
@@ -282,7 +289,12 @@ class HandlerVerificationReceiptGenerator:
     def handle(
         self, request: ModelVerificationReceiptRequest
     ) -> ModelVerificationReceipt:
-        """Generate a verification receipt for the task claim."""
+        """Generate a verification receipt for the task claim.
+
+        Resolves the GitHub token from the contract-declared api_key_ref
+        (GITHUB_TOKEN) at the effect boundary — never reads env directly.
+        Only resolves the token when CI verification is actually requested.
+        """
         _log.info(
             "Generating receipt for task=%s claim='%s'",
             request.task_id,
@@ -309,7 +321,18 @@ class HandlerVerificationReceiptGenerator:
         # Dimension 1: CI checks
         if request.verify_ci:
             if request.repo and request.pr_number is not None:
-                checks.append(self._verify_ci(request.repo, request.pr_number))
+                # Ref-name sourced from contract (OMN-12856); value resolved via store.
+                _github_ref = contract_secret_ref(_CONTRACT_PATH, "GITHUB_TOKEN")
+                github_secret = resolve_api_key(_github_ref)
+                if github_secret is None:
+                    raise RuntimeError(
+                        f"api_key_ref {_github_ref!r} resolved to None — "
+                        "ensure GITHUB_TOKEN is set in the secret store."
+                    )
+                gh_token = github_secret.get_secret_value()
+                checks.append(
+                    self._verify_ci(request.repo, request.pr_number, gh_token)
+                )
             else:
                 checks.append(
                     ModelCheckEvidence(
@@ -395,9 +418,9 @@ class HandlerVerificationReceiptGenerator:
             },
         )
 
-    def _verify_ci(self, repo: str, pr_number: int) -> ModelCheckEvidence:
+    def _verify_ci(self, repo: str, pr_number: int, token: str) -> ModelCheckEvidence:
         """Verify CI checks via gh."""
-        client = self._get_gh_client()
+        client = self._get_gh_client(token)
         checks_data = client.get_pr_checks(repo, pr_number)
 
         if not checks_data:

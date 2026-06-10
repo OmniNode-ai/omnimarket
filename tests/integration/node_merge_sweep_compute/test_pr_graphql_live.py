@@ -18,16 +18,19 @@ from omnimarket.nodes.node_merge_sweep_compute.adapter_github_http import (
 )
 from omnimarket.nodes.node_merge_sweep_compute.protocols import GitHubTransportError
 
-_SKIP_REASON = "requires GH_PAT env var (export GH_PAT=$(gh auth token) before running)"
+_SKIP_REASON = (
+    "requires GITHUB_TOKEN env var "
+    "(export GITHUB_TOKEN=$(gh auth token) before running)"
+)
 
 
 @pytest.fixture(scope="module")
 def github_client() -> GitHubHttpClient:
-    token = os.environ.get("GH_PAT") or os.environ.get("GH_TOKEN")
+    # OMN-12856: token is now passed explicitly — no raw GH_PAT env read.
+    token = os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN")
     if not token:
         pytest.skip(_SKIP_REASON)
-    os.environ["GH_PAT"] = token
-    return GitHubHttpClient()
+    return GitHubHttpClient(token)
 
 
 @pytest.mark.integration

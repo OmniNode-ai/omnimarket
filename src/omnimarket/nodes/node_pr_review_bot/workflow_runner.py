@@ -185,7 +185,7 @@ def run_review(
         WorkflowRunnerResult with the final verdict, all FSM transition events,
         and the terminal FSM state.
     """
-    token = github_token or os.environ.get("GITHUB_TOKEN", "")
+    token = github_token or os.environ.get("GITHUB_TOKEN", "")  # omn-allow-env-read: AdapterGitHubBridge reads GITHUB_TOKEN from env by design; full contract migration is tracked separately from OMN-12856  # fmt: skip
     run_id = correlation_id or uuid4()
 
     resolved_reviewer_models = reviewer_models or []

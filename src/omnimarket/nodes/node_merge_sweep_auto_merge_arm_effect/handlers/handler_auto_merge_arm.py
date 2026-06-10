@@ -8,6 +8,9 @@ Returns ModelHandlerOutput.for_effect(events=(completion,)).
 
 NEVER calls gh pr merge --auto. NEVER uses --admin. Always GraphQL.
 Idempotent: re-arming an already-armed PR returns success.
+
+The GitHub token is resolved at handle() time from the contract-declared
+``api_key_ref`` (``GITHUB_TOKEN``) — no direct ``os.environ`` read.
 """
 
 from __future__ import annotations
@@ -15,14 +18,16 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-import os
 import time
 import urllib.error
 import urllib.request
+from pathlib import Path
 from uuid import uuid4
 
 from omnibase_core.models.dispatch.model_handler_output import ModelHandlerOutput
 
+from omnimarket.inference.secret_store_resolver import resolve_api_key_async
+from omnimarket.nodes.contract_topics import contract_secret_ref
 from omnimarket.nodes.node_merge_sweep_auto_merge_arm_effect.models.model_auto_merge_armed_event import (
     ModelAutoMergeArmedEvent,
 )
@@ -31,6 +36,7 @@ from omnimarket.nodes.node_merge_sweep_triage_orchestrator.models.model_triage_r
 )
 
 _log = logging.getLogger(__name__)
+_CONTRACT_PATH = Path(__file__).resolve().parents[1] / "contract.yaml"
 
 _GRAPHQL_MUTATION = (
     "mutation($id: ID!, $method: PullRequestMergeMethod!) {"
@@ -48,9 +54,24 @@ class HandlerAutoMergeArmEffect:
     """EFFECT: arm auto-merge via GraphQL SQUASH, inline, serial."""
 
     async def handle(self, request: ModelAutoMergeArmCommand) -> ModelHandlerOutput:  # type: ignore[type-arg]
-        """Arm auto-merge. Real work runs inline before returning."""
+        """Arm auto-merge. Real work runs inline before returning.
+
+        The GitHub token ref-name is sourced from the contract ``secrets`` block
+        (OMN-12856) and resolved at the effect boundary via the canonical
+        secret-store resolver — never read from env directly in this handler.
+        """
+        # Resolve token ref-name from contract, then value from secret store.
+        _github_ref = contract_secret_ref(_CONTRACT_PATH, "GITHUB_TOKEN")
+        github_secret = await resolve_api_key_async(_github_ref)
+        if github_secret is None:
+            raise RuntimeError(
+                f"api_key_ref {_github_ref!r} resolved to None — "
+                "ensure GITHUB_TOKEN is set in the secret store."
+            )
+        token = github_secret.get_secret_value()
+
         t0 = time.monotonic()
-        armed, error = await self._arm(request.pr_node_id, request.repo)
+        armed, error = await self._arm(request.pr_node_id, request.repo, token)
         elapsed = time.monotonic() - t0
 
         if armed:
@@ -86,15 +107,15 @@ class HandlerAutoMergeArmEffect:
             events=(completion,),
         )
 
-    async def _arm(self, pr_node_id: str, repo: str) -> tuple[bool, str | None]:
+    async def _arm(
+        self, pr_node_id: str, repo: str, token: str
+    ) -> tuple[bool, str | None]:
         """Enable auto-merge via GraphQL. Idempotent per GitHub API contract."""
-        return await asyncio.to_thread(self._arm_sync, pr_node_id, repo)
+        return await asyncio.to_thread(self._arm_sync, pr_node_id, repo, token)
 
-    def _arm_sync(self, pr_node_id: str, repo: str) -> tuple[bool, str | None]:
-        token = os.environ.get("GH_PAT", "")
-        if not token:
-            return False, "GH_PAT environment variable is not set"
-
+    def _arm_sync(
+        self, pr_node_id: str, repo: str, token: str
+    ) -> tuple[bool, str | None]:
         payload = json.dumps(
             {
                 "query": _GRAPHQL_MUTATION,

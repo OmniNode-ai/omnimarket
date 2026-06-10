@@ -15,7 +15,7 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from pydantic import ValidationError
+from pydantic import SecretStr, ValidationError
 
 from omnimarket.nodes.node_ci_fix_effect.handlers.handler_ci_fix import (
     HandlerCiFixEffect,
@@ -37,6 +37,23 @@ from omnimarket.nodes.node_ci_fix_effect.models.model_ci_fix_command import (
     ModelCiFixCommand,
 )
 from omnimarket.nodes.node_ci_fix_effect.models.model_ci_fix_result import CiFixResult
+
+
+@pytest.fixture(autouse=True)
+def _stub_github_secret() -> Any:
+    """Resolve the GitHub api_key_ref to a fake secret (OMN-12856).
+
+    handle() resolves GITHUB_TOKEN at the effect boundary via
+    resolve_api_key_async; patch the source-module symbol (imported lazily
+    inside handle) so tests need no real token and never hit the secret store.
+    patch() auto-detects the async target and returns an AsyncMock.
+    """
+    with patch(
+        "omnimarket.inference.secret_store_resolver.resolve_api_key_async",
+        return_value=SecretStr("fake-github-token-for-test"),
+    ):
+        yield
+
 
 _CORR_ID = uuid.UUID("00000000-0000-4000-a000-000000000001")
 _RUN_ID = "run-test-001"
@@ -247,6 +264,7 @@ class TestSourceContext:
             ci_log="FAILED src/omnimarket/foo.py:12",
             worktree_path=str(tmp_path),
             allowlist_patterns=(re.compile(r"^src/"),),
+            token="fake-token",
         )
 
         assert "--- src/omnimarket/foo.py (worktree, current contents) ---" in context

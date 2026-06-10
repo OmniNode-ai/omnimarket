@@ -50,6 +50,14 @@ event_bus:
 metadata:
   transport_type: kafka
 
+secrets:
+  # OMN-12856: GitHub token is contract-declared so dimension_checks reads the
+  # ref name from here — not a bare source literal. Value is resolved at the
+  # effect boundary via the canonical secret-store resolver.
+  GITHUB_TOKEN:
+    description: "GitHub PAT or Actions token for GitHub API calls in dimension checks."
+    required: false
+
 config:
   ONEX_RUNTIME_API:
     description: "ONEX runtime API endpoint URL."

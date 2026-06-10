@@ -7,7 +7,8 @@ invokes NodeMergeSweep.  Emits ``onex.evt.omnimarket.merge-sweep-completed.v1``
 on completion.
 
 Environment variables (all resolved at startup — no hardcoded strings):
-    GH_PAT             GitHub PAT (required — fail-fast if missing)
+    GITHUB_TOKEN        GitHub PAT/Actions token (resolved via contract-declared
+                        secrets.GITHUB_TOKEN ref through the secret-store resolver)
     KAFKA_BROKER        Redpanda/Kafka bootstrap server (required — no default)
     ONEX_STATE_DIR      Failure-history state dir (default: ~/.onex_state)
     MERGE_SWEEP_GROUP   Consumer group ID (default: omnimarket.merge_sweep.consume.v1)
@@ -28,8 +29,11 @@ import os
 import pathlib
 import signal
 import sys
+from pathlib import Path
 from typing import Any
 
+from omnimarket.inference.secret_store_resolver import resolve_api_key
+from omnimarket.nodes.contract_topics import contract_secret_ref
 from omnimarket.nodes.node_merge_sweep_compute.adapter_github_http import (
     GitHubHttpClient,
 )
@@ -47,6 +51,7 @@ from omnimarket.nodes.node_merge_sweep_compute.handlers.handler_merge_sweep impo
 from omnimarket.nodes.node_merge_sweep_compute.protocols import GitHubTransportError
 
 _log = logging.getLogger(__name__)
+_CONTRACT_PATH = Path(__file__).resolve().parent / "contract.yaml"
 
 _DEFAULT_REPOS = [
     "OmniNode-ai/omniclaude",
@@ -192,8 +197,15 @@ async def _run_consumer(broker: str, group_id: str, state_dir: str) -> None:
         )
         sys.exit(1)
 
-    # Fail-fast: GH_PAT must be present for GitHubHttpClient
-    github = GitHubHttpClient()
+    # Ref-name sourced from contract (OMN-12856); value resolved via secret store.
+    _github_ref = contract_secret_ref(_CONTRACT_PATH, "GITHUB_TOKEN")
+    github_secret = resolve_api_key(_github_ref)
+    if github_secret is None:
+        raise RuntimeError(
+            f"api_key_ref {_github_ref!r} resolved to None — "
+            "ensure GITHUB_TOKEN is set in the secret store."
+        )
+    github = GitHubHttpClient(github_secret.get_secret_value())
 
     consumer = AIOKafkaConsumer(
         TOPIC_MERGE_SWEEP_START,

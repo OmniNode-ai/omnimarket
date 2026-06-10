@@ -19,7 +19,9 @@ class TestGitHubCliAdapter:
         graphql_calls: list[tuple[str, dict[str, object]]] = []
         rerun_calls: list[tuple[str, str]] = []
 
-        def fake_graphql(query: str, variables: dict[str, object]) -> dict[str, object]:
+        def fake_graphql(
+            query: str, variables: dict[str, object], **kwargs: object
+        ) -> dict[str, object]:
             graphql_calls.append((query, variables))
             return {
                 "repository": {
@@ -63,10 +65,17 @@ class TestGitHubCliAdapter:
             }
 
         def fake_rest_no_content(
-            method: str, path: str, *, body: dict[str, object] | None = None
+            method: str,
+            path: str,
+            *,
+            body: dict[str, object] | None = None,
+            token: str | None = None,
         ) -> None:
-            del body
+            del body, token
             rerun_calls.append((method, path))
+
+        async def fake_resolve_token_async() -> str:
+            return "fake-token"
 
         monkeypatch.setattr(
             "omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.adapter_github_cli.graphql",
@@ -75,6 +84,14 @@ class TestGitHubCliAdapter:
         monkeypatch.setattr(
             "omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.adapter_github_cli.rest_no_content",
             fake_rest_no_content,
+        )
+        monkeypatch.setattr(
+            "omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.adapter_github_cli._resolve_github_token_async",
+            fake_resolve_token_async,
+        )
+        monkeypatch.setattr(
+            "omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.adapter_github_cli._resolve_github_token",
+            lambda: "fake-token",
         )
 
         adapter = GitHubCliAdapter()
@@ -96,7 +113,9 @@ class TestGitHubCliAdapter:
     async def test_rerun_failed_checks_no_failed_runs(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        def fake_graphql(query: str, variables: dict[str, object]) -> dict[str, object]:
+        def fake_graphql(
+            query: str, variables: dict[str, object], **kwargs: object
+        ) -> dict[str, object]:
             del query, variables
             return {
                 "repository": {
@@ -118,6 +137,10 @@ class TestGitHubCliAdapter:
             "omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.adapter_github_cli.graphql",
             fake_graphql,
         )
+        monkeypatch.setattr(
+            "omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.adapter_github_cli._resolve_github_token",
+            lambda: "fake-token",
+        )
 
         adapter = GitHubCliAdapter()
         result = await adapter.rerun_failed_checks("OmniNode-ai/omnimarket", 42)
@@ -130,7 +153,11 @@ class TestGitHubCliAdapter:
         calls: list[tuple[str, str, dict[str, object] | None]] = []
 
         def fake_rest_json(
-            method: str, path: str, *, body: dict[str, object] | None = None
+            method: str,
+            path: str,
+            *,
+            body: dict[str, object] | None = None,
+            token: str | None = None,
         ) -> dict[str, object]:
             calls.append((method, path, body))
             if method == "GET":
@@ -141,6 +168,7 @@ class TestGitHubCliAdapter:
             "omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.adapter_github_cli.rest_json",
             fake_rest_json,
         )
+        monkeypatch.setenv("GITHUB_TOKEN", "fake-token")
 
         adapter = GitHubCliAdapter()
         result = await adapter.resolve_conflicts("OmniNode-ai/omnimarket", 42)
@@ -163,9 +191,13 @@ class TestGitHubCliAdapter:
             pass
 
         def fake_rest_json(
-            method: str, path: str, *, body: dict[str, object] | None = None
+            method: str,
+            path: str,
+            *,
+            body: dict[str, object] | None = None,
+            token: str | None = None,
         ) -> dict[str, object]:
-            del path, body
+            del path, body, token
             if method == "GET":
                 return {"head": {"sha": "deadbeef"}}
             raise _BoomError("structural conflict - manual merge required")
@@ -174,6 +206,7 @@ class TestGitHubCliAdapter:
             "omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.adapter_github_cli.rest_json",
             fake_rest_json,
         )
+        monkeypatch.setenv("GITHUB_TOKEN", "fake-token")
 
         adapter = GitHubCliAdapter()
         with pytest.raises(RuntimeError, match="manual resolution"):

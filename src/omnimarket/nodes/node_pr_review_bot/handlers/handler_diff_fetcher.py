@@ -58,7 +58,9 @@ class DiffFetcherConfig:
     """Configuration for HandlerDiffFetcher."""
 
     github_token: str = field(
-        default_factory=lambda: os.environ.get("GITHUB_TOKEN", "")
+        default_factory=lambda: os.environ.get(
+            "GITHUB_TOKEN", ""
+        )  # omn-allow-env-read: caller always provides via DiffFetcherConfig(github_token=token); default is a no-op fallback within the bot's env-injection wiring
     )
     github_api_base: str = field(
         default_factory=lambda: (

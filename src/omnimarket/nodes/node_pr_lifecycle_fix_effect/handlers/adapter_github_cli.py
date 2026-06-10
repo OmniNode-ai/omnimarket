@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from pathlib import Path
 
 from omnimarket.github_api import (
     graphql,
@@ -13,8 +14,45 @@ from omnimarket.github_api import (
     rest_no_content,
     split_repo,
 )
+from omnimarket.inference.secret_store_resolver import (
+    resolve_api_key,
+    resolve_api_key_async,
+)
+from omnimarket.nodes.contract_topics import contract_secret_ref
 
 logger = logging.getLogger(__name__)
+
+_CONTRACT_PATH = Path(__file__).resolve().parents[1] / "contract.yaml"
+
+
+def _resolve_github_token() -> str:
+    """Resolve the GitHub token from the contract-declared ref (OMN-12856).
+
+    Sync variant — only safe to call from sync helpers running in
+    ``asyncio.to_thread`` (e.g. ``_failed_run_ids_sync``,
+    ``_resolve_conflicts_sync``).
+    """
+    ref = contract_secret_ref(_CONTRACT_PATH, "GITHUB_TOKEN")
+    secret = resolve_api_key(ref)
+    if secret is None:
+        raise RuntimeError(
+            f"api_key_ref {ref!r} resolved to None — "
+            "ensure GITHUB_TOKEN is set in the secret store."
+        )
+    return secret.get_secret_value()
+
+
+async def _resolve_github_token_async() -> str:
+    """Async variant — call from async methods that are not inside asyncio.to_thread."""
+    ref = contract_secret_ref(_CONTRACT_PATH, "GITHUB_TOKEN")
+    secret = await resolve_api_key_async(ref)
+    if secret is None:
+        raise RuntimeError(
+            f"api_key_ref {ref!r} resolved to None — "
+            "ensure GITHUB_TOKEN is set in the secret store."
+        )
+    return secret.get_secret_value()
+
 
 _PR_STATUS_QUERY = """
 query($owner: String!, $repo: String!, $prNumber: Int!) {
@@ -54,12 +92,14 @@ class GitHubCliAdapter:
         run_ids = await asyncio.to_thread(self._failed_run_ids_sync, repo, pr_number)
         if not run_ids:
             return f"no failed checks on {repo}#{pr_number}"
+        token = await _resolve_github_token_async()
         for run_id in run_ids:
             owner, repo_name = split_repo(repo)
             await asyncio.to_thread(
                 rest_no_content,
                 "POST",
                 f"/repos/{owner}/{repo_name}/actions/runs/{run_id}/rerun-failed-jobs",
+                token=token,
             )
         return f"rerequested {len(run_ids)} failed run(s) on {repo}#{pr_number}"
 
@@ -67,8 +107,11 @@ class GitHubCliAdapter:
         return await asyncio.to_thread(self._resolve_conflicts_sync, repo, pr_number)
 
     def _resolve_conflicts_sync(self, repo: str, pr_number: int) -> str:
+        token = _resolve_github_token()
         owner, repo_name = split_repo(repo)
-        pr = rest_json("GET", f"/repos/{owner}/{repo_name}/pulls/{pr_number}")
+        pr = rest_json(
+            "GET", f"/repos/{owner}/{repo_name}/pulls/{pr_number}", token=token
+        )
         head = pr.get("head") or {}
         head_sha = head.get("sha")
         if not isinstance(head_sha, str) or not head_sha:
@@ -79,6 +122,7 @@ class GitHubCliAdapter:
             rest_json(
                 "PUT",
                 f"/repos/{owner}/{repo_name}/pulls/{pr_number}/update-branch",
+                token=token,
                 body={"expected_head_sha": head_sha},
             )
         except Exception as exc:
@@ -86,7 +130,9 @@ class GitHubCliAdapter:
                 f"update-branch failed on {repo}#{pr_number}: {exc} — falling back to manual resolution"
             ) from exc
 
-        refreshed = rest_json("GET", f"/repos/{owner}/{repo_name}/pulls/{pr_number}")
+        refreshed = rest_json(
+            "GET", f"/repos/{owner}/{repo_name}/pulls/{pr_number}", token=token
+        )
         refreshed_head = refreshed.get("head") or {}
         new_sha = refreshed_head.get("sha")
         if isinstance(new_sha, str) and new_sha:
@@ -94,10 +140,12 @@ class GitHubCliAdapter:
         return f"update-branch succeeded on {repo}#{pr_number}"
 
     def _failed_run_ids_sync(self, repo: str, pr_number: int) -> list[str]:
+        token = _resolve_github_token()
         owner, repo_name = split_repo(repo)
         data = graphql(
             _PR_STATUS_QUERY,
             {"owner": owner, "repo": repo_name, "prNumber": pr_number},
+            token=token,
         )
         checks = (
             ((((data.get("repository") or {}).get("pullRequest")) or {}).get("commits"))

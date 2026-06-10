@@ -131,10 +131,16 @@ class TestOccContractAdapterOpenOccPr:
         adapter = OccContractAdapter()
         mock_resp = {"number": 42, "html_url": "https://github.com/test/pr/42"}
 
-        with patch(
-            "omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.adapter_occ_contract.rest_json",
-            return_value=mock_resp,
-        ) as mock_rest:
+        with (
+            patch(
+                "omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.adapter_occ_contract.rest_json",
+                return_value=mock_resp,
+            ) as mock_rest,
+            patch(
+                "omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.adapter_occ_contract._resolve_github_token",
+                return_value="fake-token",
+            ),
+        ):
             result = adapter._open_occ_pr(
                 branch="auto/omn-9999-occ-contract",
                 ticket_id="OMN-9999",
@@ -154,6 +160,10 @@ class TestOccContractAdapterOpenOccPr:
             patch(
                 "omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.adapter_occ_contract.rest_json",
                 return_value={"html_url": "https://github.com/test"},
+            ),
+            patch(
+                "omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.adapter_occ_contract._resolve_github_token",
+                return_value="fake-token",
             ),
             pytest.raises(RuntimeError, match="unexpected number field"),
         ):
@@ -176,15 +186,27 @@ class TestOccContractAdapterAppendEvidence:
         adapter = OccContractAdapter()
         call_log: list[tuple[str, str]] = []
 
-        def fake_rest(method: str, path: str, *, body: dict | None = None) -> dict:
+        def fake_rest(
+            method: str,
+            path: str,
+            *,
+            body: dict | None = None,
+            token: str | None = None,
+        ) -> dict:
             call_log.append((method, path))
             if method == "GET":
                 return {"body": "existing PR body"}
             return {}
 
-        with patch(
-            "omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.adapter_occ_contract.rest_json",
-            side_effect=fake_rest,
+        with (
+            patch(
+                "omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.adapter_occ_contract.rest_json",
+                side_effect=fake_rest,
+            ),
+            patch(
+                "omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.adapter_occ_contract._resolve_github_token",
+                return_value="fake-token",
+            ),
         ):
             adapter._append_evidence_to_pr(
                 repo="OmniNode-ai/omnimarket",
@@ -200,7 +222,13 @@ class TestOccContractAdapterAppendEvidence:
         adapter = OccContractAdapter()
         existing_body = "existing body\n\nEvidence-Source: OCC#99\n"
 
-        def fake_rest(method: str, path: str, *, body: dict | None = None) -> dict:
+        def fake_rest(
+            method: str,
+            path: str,
+            *,
+            body: dict | None = None,
+            token: str | None = None,
+        ) -> dict:
             if method == "GET":
                 return {"body": existing_body}
             return {}
@@ -208,16 +236,26 @@ class TestOccContractAdapterAppendEvidence:
         patch_called = False
 
         def fake_rest_with_check(
-            method: str, path: str, *, body: dict | None = None
+            method: str,
+            path: str,
+            *,
+            body: dict | None = None,
+            token: str | None = None,
         ) -> dict:
             nonlocal patch_called
             if method == "PATCH":
                 patch_called = True
-            return fake_rest(method, path, body=body)
+            return fake_rest(method, path, body=body, token=token)
 
-        with patch(
-            "omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.adapter_occ_contract.rest_json",
-            side_effect=fake_rest_with_check,
+        with (
+            patch(
+                "omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.adapter_occ_contract.rest_json",
+                side_effect=fake_rest_with_check,
+            ),
+            patch(
+                "omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.adapter_occ_contract._resolve_github_token",
+                return_value="fake-token",
+            ),
         ):
             adapter._append_evidence_to_pr(
                 repo="OmniNode-ai/omnimarket",
