@@ -46,6 +46,7 @@ _INFERENCE_RESPONSE_TOPIC_SUFFIX = (
 _RESERVED_PROVIDER_REQUEST_KEYS = frozenset(
     {"model", "messages", "max_tokens", "temperature"}
 )
+_MAX_PROVIDER_ERROR_BODY_CHARS = 1000
 
 
 def _get_inference_response_topic() -> str:
@@ -127,6 +128,27 @@ def _merge_provider_request_options(
         keys = ", ".join(sorted(reserved))
         raise ValueError(f"provider request options cannot override: {keys}")
     return {**payload, **provider_request_options}
+
+
+def _provider_http_error_message(exc: httpx.HTTPStatusError) -> str:
+    """Return a bounded provider error message with body context.
+
+    Runtime logs previously collapsed provider 4xx responses to the generic
+    httpx status text, which made Gemini/OpenAI-compatible failures impossible
+    to diagnose from the typed inference-response event. The response body is
+    provider-authored and should not contain request headers or API keys; keep it
+    bounded anyway so the published failure stays small.
+    """
+    response = exc.response
+    body = response.text.strip()
+    if len(body) > _MAX_PROVIDER_ERROR_BODY_CHARS:
+        body = body[:_MAX_PROVIDER_ERROR_BODY_CHARS] + "...[truncated]"
+    if not body:
+        body = "<empty>"
+    return (
+        f"provider HTTP {response.status_code} {response.reason_phrase} "
+        f"for {response.request.url}; response_body={body}"
+    )
 
 
 class HandlerInferenceIntent:
@@ -222,7 +244,10 @@ class HandlerInferenceIntent:
                 timeout=timeout,
             )
             latency_ms = int((time.monotonic() - started) * 1000)
-            response.raise_for_status()
+            try:
+                response.raise_for_status()
+            except httpx.HTTPStatusError as exc:
+                raise RuntimeError(_provider_http_error_message(exc)) from exc
             data: dict[str, Any] = response.json()
 
         choices = data.get("choices") or []
