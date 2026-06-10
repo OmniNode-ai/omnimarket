@@ -260,6 +260,15 @@ class TestSavingsProjection:
         ).read_text()
         assert "ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ" in repair_migration
 
+        overview_migration = Path(
+            "src/omnimarket/nodes/node_projection_savings/migrations/"
+            "077_create_cost_savings_overview_projection_view.sql"
+        ).read_text()
+        assert (
+            "CREATE OR REPLACE VIEW projection_cost_savings_overview"
+            in overview_migration
+        )
+
     def test_sync_handler_projects_delegate_skill_terminal_savings(self) -> None:
         db = InmemoryDatabaseAdapter()
         handler = HandlerProjectionSavings()

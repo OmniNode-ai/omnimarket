@@ -337,6 +337,36 @@ class TestBuildProjectionTopicMap:
             "onex.snapshot.projection.delegation.model-routing.v1"
         ].json_columns == ("rows", "by_model", "decision_traces")
 
+    def test_savings_reducer_exposes_cost_savings_overview_snapshot(self) -> None:
+        topic_map = build_projection_topic_map()
+
+        cfg = topic_map["onex.snapshot.projection.cost.savings-overview.v1"]
+
+        assert cfg.source_contract == "projection_savings"
+        assert cfg.schema_name == "public"
+        assert cfg.table == "projection_cost_savings_overview"
+        assert cfg.columns == (
+            "window",
+            "total_cost_usd",
+            "total_baseline_cost_usd",
+            "total_savings_usd",
+            "savings_rate",
+            "tokens_total",
+            "tokens_to_compliance",
+            "local_token_pct",
+            "captured_at",
+            "rows",
+            "recent_runs",
+            "measured_run_count",
+            "zero_token_run_count",
+            "warnings",
+            "provisioned",
+            "latest_projection_updated_at",
+        )
+        assert cfg.json_columns == ("rows", "recent_runs", "warnings")
+        assert cfg.freshness_column == "latest_projection_updated_at"
+        assert cfg.limit == 1
+
     def test_overnight_reducer_exposes_readiness_snapshot(self) -> None:
         topic_map = build_projection_topic_map()
 

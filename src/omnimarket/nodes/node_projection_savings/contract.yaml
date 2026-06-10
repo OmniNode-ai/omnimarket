@@ -45,9 +45,11 @@ event_bus:
     - onex.evt.omnimarket.delegate-skill-failed.v1
   publish_topics:
     - onex.evt.omnimarket.projection-savings-applied.v1
+    - onex.snapshot.projection.cost.savings-overview.v1  # onex-topic-allow: projection snapshot topic
 
 externally_consumed_topics:
   - onex.evt.omnimarket.projection-savings-applied.v1
+  - onex.snapshot.projection.cost.savings-overview.v1  # onex-topic-allow: projection snapshot topic
 
 projection_api:
   expose: true
@@ -87,6 +89,32 @@ projection_api:
         - latest_projection_updated_at
       json_columns:
         - sessions
+      freshness_column: latest_projection_updated_at
+      limit: 1
+    - topic: onex.snapshot.projection.cost.savings-overview.v1 # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
+      table: projection_cost_savings_overview
+      schema: public
+      columns:
+        - "window"
+        - total_cost_usd
+        - total_baseline_cost_usd
+        - total_savings_usd
+        - savings_rate
+        - tokens_total
+        - tokens_to_compliance
+        - local_token_pct
+        - captured_at
+        - rows
+        - recent_runs
+        - measured_run_count
+        - zero_token_run_count
+        - warnings
+        - provisioned
+        - latest_projection_updated_at
+      json_columns:
+        - rows
+        - recent_runs
+        - warnings
       freshness_column: latest_projection_updated_at
       limit: 1
 
