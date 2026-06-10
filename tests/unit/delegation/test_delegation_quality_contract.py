@@ -397,3 +397,44 @@ def test_request_quality_contract_rejects_output_shape_mismatch() -> None:
     assert result.passed is False
     assert result.fail_category == "fail_deterministic"
     assert any("expected plain text" in r for r in result.failure_reasons)
+
+
+@pytest.mark.unit
+def test_summarization_quality_gate_accepts_concise_matching_bullets() -> None:
+    gate_input = ModelQualityGateInput(
+        correlation_id=UUID("7e8c446d-766a-4971-8202-bb875f3f15a6"),
+        task_type="summarization",
+        llm_response_content=(
+            "*   Projection reads are healthy and dashboard dispatch is accepted.\n"
+            "*   Quality gates classify the result separately from transport success."
+        ),
+        dod_deterministic=("response_non_empty",),
+        dod_heuristic=("no_refusal", "concise", "accurate"),
+    )
+
+    result = quality_gate_delta(gate_input)
+
+    assert result.passed is True
+    assert result.failure_reasons == ()
+
+
+@pytest.mark.unit
+def test_accurate_quality_gate_rejects_explicit_accuracy_disclaimer() -> None:
+    gate_input = ModelQualityGateInput(
+        correlation_id=uuid4(),
+        task_type="summarization",
+        llm_response_content=(
+            "The projection is populated, but I cannot verify whether these "
+            "values are accurate."
+        ),
+        dod_deterministic=("response_non_empty",),
+        dod_heuristic=("accurate",),
+    )
+
+    result = quality_gate_delta(gate_input)
+
+    assert result.passed is False
+    assert result.fail_category == "fail_heuristic"
+    assert result.failure_reasons == (
+        "TASK_MISMATCH: response explicitly disclaims accuracy: cannot verify",
+    )
