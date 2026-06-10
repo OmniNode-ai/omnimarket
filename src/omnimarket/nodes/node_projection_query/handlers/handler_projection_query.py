@@ -14,6 +14,7 @@ from collections import Counter
 from datetime import UTC, datetime
 from typing import cast
 
+from omnimarket.projection.discovery import build_projection_topic_map
 from omnimarket.projection.protocol_database import DatabaseAdapter
 
 SUPPORTED_SHAPES: list[str] = [
@@ -27,6 +28,7 @@ SUPPORTED_SHAPES: list[str] = [
     "dlq",
     "eval-results",
     "intent-breakdown",
+    "projection-topic-readiness",
 ]
 
 STALENESS_FEATURE_TABLES: dict[str, tuple[str, str]] = {
@@ -78,6 +80,7 @@ class HandlerProjectionQuery:
             "dlq": self._query_dlq,
             "eval-results": self._query_eval_results,
             "intent-breakdown": self._query_intent_breakdown,
+            "projection-topic-readiness": self._query_projection_topic_readiness,
         }
 
         handler_fn = dispatch[shape]
@@ -283,6 +286,96 @@ class HandlerProjectionQuery:
             {"intent_type": t, "count": c} for t, c in type_counter.most_common()
         ]
         return {"breakdown": breakdown}
+
+    def _query_projection_topic_readiness(
+        self, params: dict[str, object], db: DatabaseAdapter
+    ) -> dict[str, object]:
+        """Validate contract-declared projection topics against backing tables.
+
+        This is the node-owned P2 dashboard acceptance check. It intentionally
+        does not call the HTTP projection API; HTTP is only an edge transport.
+        """
+        topic_map = build_projection_topic_map()
+        required_topics = _string_set(params.get("required_topics"))
+        allowed_degraded_topics = _string_set(params.get("allowed_degraded_topics"))
+        require_rows_topics = _string_set(params.get("require_rows_topics"))
+        topics_to_check = sorted(set(topic_map) | required_topics)
+
+        results: list[dict[str, object]] = []
+        for topic in topics_to_check:
+            cfg = topic_map.get(topic)
+            if cfg is None:
+                results.append(
+                    {
+                        "topic": topic,
+                        "accepted": False,
+                        "reason": "required topic is not contract-declared",
+                    }
+                )
+                continue
+
+            table_exists = _table_exists(db, cfg.table)
+            row_count: int | None = None
+            query_error: str | None = None
+            if table_exists:
+                try:
+                    row_count = len(db.query(cfg.table))
+                except Exception as exc:  # pragma: no cover - defensive for adapters
+                    query_error = str(exc)
+                    table_exists = False
+
+            accepted = True
+            reason = "ok"
+            if topic in allowed_degraded_topics:
+                reason = "explicitly classified degraded"
+            elif not table_exists:
+                accepted = False
+                reason = query_error or "backing table is missing"
+            elif topic in require_rows_topics and row_count == 0:
+                accepted = False
+                reason = "required topic returned zero rows"
+
+            results.append(
+                {
+                    "topic": topic,
+                    "schema": cfg.schema_name,
+                    "table": cfg.table,
+                    "source_contract": cfg.source_contract,
+                    "table_exists": table_exists,
+                    "row_count": row_count,
+                    "accepted": accepted,
+                    "reason": reason,
+                }
+            )
+
+        accepted_count = sum(1 for result in results if result["accepted"] is True)
+        return {
+            "accepted": accepted_count == len(results),
+            "accepted_count": accepted_count,
+            "total_count": len(results),
+            "results": results,
+        }
+
+
+def _string_set(raw: object) -> set[str]:
+    if raw is None:
+        return set()
+    if isinstance(raw, str):
+        return {raw}
+    if isinstance(raw, list | tuple | set):
+        return {item for item in raw if isinstance(item, str) and item}
+    return set()
+
+
+def _table_exists(db: DatabaseAdapter, table: str) -> bool:
+    has_table = getattr(db, "has_table", None)
+    if callable(has_table):
+        return bool(has_table(table))
+    try:
+        db.query(table)
+    except Exception:
+        return False
+    return True
 
 
 __all__: list[str] = [

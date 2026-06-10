@@ -1,6 +1,6 @@
 """Golden chain tests for node_projection_query (OMN-8900).
 
-Tests all 10 query shapes against InmemoryDatabaseAdapter with pre-seeded data.
+Tests all query shapes against InmemoryDatabaseAdapter with pre-seeded data.
 """
 
 from __future__ import annotations
@@ -12,6 +12,7 @@ from omnimarket.nodes.node_projection_query.handlers.handler_projection_query im
     SUPPORTED_SHAPES,
     HandlerProjectionQuery,
 )
+from omnimarket.projection.models import ProjectionTableConfig
 from omnimarket.projection.protocol_database import InmemoryDatabaseAdapter
 
 HANDLER = HandlerProjectionQuery()
@@ -27,6 +28,7 @@ SHAPES = [
     "dlq",
     "eval-results",
     "intent-breakdown",
+    "projection-topic-readiness",
 ]
 
 
@@ -415,6 +417,106 @@ class TestIntentBreakdown:
         types = {b["intent_type"] for b in breakdown}
         assert "debug" in types
         assert "refactor" in types
+
+
+class TestProjectionTopicReadiness:
+    def _cfg(self, topic: str, table: str) -> ProjectionTableConfig:
+        return ProjectionTableConfig(
+            topic=topic,
+            table=table,
+            schema_name="public",
+            columns=("*",),
+            order_by=None,
+            freshness_column=None,
+            cursor_column=None,
+            last_event_id_column=None,
+            last_ingest_sequence_column=None,
+            freshness_state_column=None,
+            degraded_reason_column=None,
+            observed_at_column=None,
+            limit=100,
+            source_contract="node_test_projection",
+        )
+
+    def test_fails_when_required_topic_is_not_contract_declared(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(
+            "omnimarket.nodes.node_projection_query.handlers.handler_projection_query.build_projection_topic_map",
+            lambda: {},
+        )
+        db = InmemoryDatabaseAdapter()
+
+        result = HANDLER.query(
+            "projection-topic-readiness",
+            {"required_topics": ["missing.topic.v1"]},
+            db,
+        )
+
+        data = result["data"]
+        assert data["accepted"] is False
+        assert data["results"][0]["topic"] == "missing.topic.v1"
+        assert data["results"][0]["reason"] == "required topic is not contract-declared"
+
+    def test_fails_when_contract_declared_table_is_missing(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        topic = "onex.snapshot.projection.cost.summary.v1"
+        monkeypatch.setattr(
+            "omnimarket.nodes.node_projection_query.handlers.handler_projection_query.build_projection_topic_map",
+            lambda: {topic: self._cfg(topic, "llm_cost_aggregates")},
+        )
+        db = InmemoryDatabaseAdapter()
+
+        result = HANDLER.query("projection-topic-readiness", {}, db)
+
+        data = result["data"]
+        assert data["accepted"] is False
+        row = data["results"][0]
+        assert row["topic"] == topic
+        assert row["table_exists"] is False
+        assert row["reason"] == "backing table is missing"
+
+    def test_accepts_missing_table_only_when_explicitly_degraded(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        topic = "onex.snapshot.projection.cost.summary.v1"
+        monkeypatch.setattr(
+            "omnimarket.nodes.node_projection_query.handlers.handler_projection_query.build_projection_topic_map",
+            lambda: {topic: self._cfg(topic, "llm_cost_aggregates")},
+        )
+        db = InmemoryDatabaseAdapter()
+
+        result = HANDLER.query(
+            "projection-topic-readiness",
+            {"allowed_degraded_topics": [topic]},
+            db,
+        )
+
+        data = result["data"]
+        assert data["accepted"] is True
+        assert data["results"][0]["reason"] == "explicitly classified degraded"
+
+    def test_fails_required_rows_topic_when_table_is_empty(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        topic = "onex.snapshot.projection.delegation.summary.v1"
+        monkeypatch.setattr(
+            "omnimarket.nodes.node_projection_query.handlers.handler_projection_query.build_projection_topic_map",
+            lambda: {topic: self._cfg(topic, "delegation_events")},
+        )
+        db = InmemoryDatabaseAdapter()
+        db.tables["delegation_events"] = []
+
+        result = HANDLER.query(
+            "projection-topic-readiness",
+            {"require_rows_topics": [topic]},
+            db,
+        )
+
+        data = result["data"]
+        assert data["accepted"] is False
+        assert data["results"][0]["reason"] == "required topic returned zero rows"
 
 
 class TestHandleProtocol:
