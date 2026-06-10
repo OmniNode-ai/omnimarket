@@ -30,9 +30,10 @@ def test_routing_decision_projection_api_contract_and_view_are_bound() -> None:
         "task_presets",
         "routing_rules",
     ]
-    assert "onex.snapshot.projection.routing-decision.v1" in contract["event_bus"][
-        "publish_topics"
-    ]
+    assert (
+        "onex.snapshot.projection.routing-decision.v1"
+        in contract["event_bus"]["publish_topics"]
+    )
     assert "CREATE OR REPLACE VIEW projection_routing_decision" in (
         migration_path.read_text()
     )
