@@ -367,6 +367,24 @@ class TestBuildProjectionTopicMap:
         assert cfg.freshness_column == "latest_projection_updated_at"
         assert cfg.limit == 1
 
+    def test_overnight_reducer_exposes_readiness_snapshot(self) -> None:
+        topic_map = build_projection_topic_map()
+
+        cfg = topic_map["onex.snapshot.projection.overnight.v1"]
+
+        assert cfg.source_contract == "projection_overnight"
+        assert cfg.schema_name == "public"
+        assert cfg.table == "projection_overnight_readiness"
+        assert cfg.columns == (
+            "dimensions",
+            "overallStatus",
+            "lastCheckedAt",
+            "latest_projection_updated_at",
+        )
+        assert cfg.json_columns == ("dimensions",)
+        assert cfg.freshness_column == "latest_projection_updated_at"
+        assert cfg.limit == 1
+
     def test_delegation_reducer_subscribes_to_canonical_terminal_events(self) -> None:
         contract_path = (
             Path(__file__).parents[3]
@@ -377,6 +395,32 @@ class TestBuildProjectionTopicMap:
 
         assert "onex.evt.omnibase-infra.delegation-completed.v1" in topics
         assert "onex.evt.omnibase-infra.delegation-failed.v1" in topics
+
+    def test_routing_reducer_exposes_dashboard_snapshot_view(self) -> None:
+        topic_map = build_projection_topic_map()
+
+        cfg = topic_map["onex.snapshot.projection.routing-decision.v1"]
+
+        assert cfg.source_contract == "projection_llm_routing"
+        assert cfg.schema_name == "public"
+        assert cfg.table == "projection_routing_decision"
+        assert cfg.columns == (
+            "models",
+            "intents",
+            "task_presets",
+            "routing_rules",
+            "captured_at",
+            "provisioned",
+            "latest_projection_updated_at",
+        )
+        assert cfg.json_columns == (
+            "models",
+            "intents",
+            "task_presets",
+            "routing_rules",
+        )
+        assert cfg.freshness_column == "latest_projection_updated_at"
+        assert cfg.limit == 1
 
     def test_multiple_projection_api_exposures_are_registered(
         self, tmp_path: Path
