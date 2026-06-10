@@ -20,14 +20,28 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
+from pathlib import Path
 from typing import Any
 from uuid import UUID
 
 import asyncpg
+import yaml
 from fastapi import Depends, FastAPI, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    SecretStr,
+    field_validator,
+    model_validator,
+)
 
+from omnimarket.config.settings import Settings
+from omnimarket.inference.secret_store_resolver import (
+    resolve_api_key as resolve_secret_ref,
+)
 from omnimarket.projection.discovery import build_projection_topic_map
 from omnimarket.projection.models import ProjectionStatus, ProjectionTableConfig
 from omnimarket.projection.validation import validate_topic_map_tables
@@ -41,6 +55,9 @@ _EVIDENCE_STAGES_TOPIC = "onex.snapshot.projection.evidence_pipeline.stages.v1"
 _EVIDENCE_TRACE_TOPIC = "onex.snapshot.projection.evidence_pipeline.correlations.v1"
 _EVIDENCE_READINESS_TOPIC = "onex.snapshot.projection.evidence_pipeline.readiness.v1"
 _EVIDENCE_EVENTS_TOPIC = "onex.snapshot.projection.evidence_pipeline.live_events.v1"
+PROJECTION_DATABASE_BINDING_OVERLAY_ENV = (
+    "OMNIMARKET_PROJECTION_DATABASE_BINDING_OVERLAY"
+)
 
 
 # ---------------------------------------------------------------------------
@@ -90,15 +107,107 @@ def _json_value(value: Any, *, decode_json: bool = False) -> Any:
 # ---------------------------------------------------------------------------
 
 
-def _dsn() -> str:
-    dsn = os.environ.get("OMNIDASH_ANALYTICS_DB_URL") or os.environ.get(
-        "OMNIBASE_INFRA_DB_URL"
+class ModelProjectionDatabaseBinding(BaseModel):
+    """Typed projection database binding supplied by contract overlay/runtime config."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    database_url: SecretStr | None = Field(
+        default=None,
+        description="Resolved PostgreSQL DSN for the dashboard projection database.",
     )
-    if not dsn:
+    database_url_secret_ref: str | None = Field(
+        default=None,
+        description="Secret-store reference for the projection database DSN.",
+    )
+
+    @field_validator("database_url")
+    @classmethod
+    def _database_url_non_empty(cls, value: SecretStr | None) -> SecretStr | None:
+        if value is not None and not value.get_secret_value().strip():
+            raise ValueError("projection database_url must be non-empty")
+        return value
+
+    @field_validator("database_url_secret_ref")
+    @classmethod
+    def _database_url_secret_ref_non_empty(cls, value: str | None) -> str | None:
+        if value is not None and not value.strip():
+            raise ValueError("projection database_url_secret_ref must be non-empty")
+        return value
+
+    @model_validator(mode="after")
+    def _exactly_one_database_url_source(self) -> ModelProjectionDatabaseBinding:
+        if bool(self.database_url) == bool(self.database_url_secret_ref):
+            raise ValueError(
+                "declare exactly one of database_url or database_url_secret_ref"
+            )
+        return self
+
+    def resolve_database_url(self) -> str:
+        if self.database_url is not None:
+            return self.database_url.get_secret_value()
+        resolved = resolve_secret_ref(self.database_url_secret_ref, required=True)
+        if resolved is None:
+            raise RuntimeError(
+                "projection database_url_secret_ref resolved to no value"
+            )
+        return resolved.get_secret_value()
+
+
+def load_projection_database_binding_overlay(
+    path: str | Path,
+) -> ModelProjectionDatabaseBinding:
+    overlay_path = Path(path)
+    raw = yaml.safe_load(overlay_path.read_text(encoding="utf-8"))
+    if not isinstance(raw, dict):
         raise RuntimeError(
-            "OMNIDASH_ANALYTICS_DB_URL or OMNIBASE_INFRA_DB_URL is required for projection API"
+            f"projection database binding overlay must be a mapping: {overlay_path}"
         )
-    return dsn
+    return ModelProjectionDatabaseBinding.model_validate(raw)
+
+
+def _projection_database_binding_from_overlay_env() -> (
+    ModelProjectionDatabaseBinding | None
+):
+    overlay_path = os.environ.get(PROJECTION_DATABASE_BINDING_OVERLAY_ENV, "").strip()
+    if not overlay_path:
+        return None
+    return load_projection_database_binding_overlay(overlay_path)
+
+
+def _projection_database_binding_from_settings(
+    settings: Settings,
+) -> ModelProjectionDatabaseBinding | None:
+    for candidate in (
+        settings.omnidash_analytics_db_url,
+        settings.omnibase_infra_db_url,
+    ):
+        if candidate.get_secret_value().strip():
+            return ModelProjectionDatabaseBinding(database_url=candidate)
+    return None
+
+
+def _dsn(
+    binding: ModelProjectionDatabaseBinding | None = None,
+    *,
+    settings: Settings | None = None,
+    overlay_path: str | Path | None = None,
+) -> str:
+    resolved_binding = binding
+    if resolved_binding is None and overlay_path is not None:
+        resolved_binding = load_projection_database_binding_overlay(overlay_path)
+    if resolved_binding is None and settings is None:
+        resolved_binding = _projection_database_binding_from_overlay_env()
+    if resolved_binding is None:
+        resolved_binding = _projection_database_binding_from_settings(
+            settings or Settings()
+        )
+    if resolved_binding is None:
+        raise RuntimeError(
+            "projection database binding is required for projection API; provide a contract/overlay "
+            "ModelProjectionDatabaseBinding or configure the legacy Settings compatibility fields"
+        )
+    return resolved_binding.resolve_database_url()
 
 
 async def _create_pool() -> asyncpg.Pool:
