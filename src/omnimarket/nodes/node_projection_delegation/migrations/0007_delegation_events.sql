@@ -38,6 +38,18 @@ CREATE TABLE IF NOT EXISTS delegation_events (
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+-- Warm dev/stability volumes may already contain delegation_events from an
+-- older projection schema. CREATE TABLE IF NOT EXISTS does not reconcile
+-- missing columns, so keep this base migration idempotent before indexes and
+-- later views reference the current shape.
+ALTER TABLE delegation_events
+    ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    ADD COLUMN IF NOT EXISTS quality_gates_checked_jsonb JSONB,
+    ADD COLUMN IF NOT EXISTS quality_gates_failed_jsonb JSONB,
+    ADD COLUMN IF NOT EXISTS latency_ms INT,
+    ADD COLUMN IF NOT EXISTS tokens_input INT NOT NULL DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS tokens_output INT NOT NULL DEFAULT 0;
+
 CREATE INDEX IF NOT EXISTS idx_delegation_events_timestamp
     ON delegation_events (timestamp DESC);
 

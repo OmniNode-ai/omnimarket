@@ -22,7 +22,7 @@ description: >
   POST_THREADS -> WATCH -> JUDGE_VERIFY -> REPORT -> DONE.
   Circuit breaker trips after 3 consecutive failures.
 runtime_profiles:
-  - workers
+  - manual_pr_review
 
 handler_routing:
   routing_strategy: "phase_dispatch"
