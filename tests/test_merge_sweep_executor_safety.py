@@ -256,11 +256,12 @@ async def test_re_arm_already_armed_pr_returns_success() -> None:
         run_id=_RUN_ID,
         total_prs=1,
     )
-    with patch.object(
-        HandlerAutoMergeArmEffect, "_arm_sync", return_value=(True, None)
-    ), patch(
-        "omnimarket.nodes.node_merge_sweep_auto_merge_arm_effect.handlers.handler_auto_merge_arm.resolve_api_key_async",
-        AsyncMock(return_value=SecretStr("fake-token")),
+    with (
+        patch.object(HandlerAutoMergeArmEffect, "_arm_sync", return_value=(True, None)),
+        patch(
+            "omnimarket.nodes.node_merge_sweep_auto_merge_arm_effect.handlers.handler_auto_merge_arm.resolve_api_key_async",
+            AsyncMock(return_value=SecretStr("fake-token")),
+        ),
     ):
         handler = HandlerAutoMergeArmEffect()
         output = await handler.handle(cmd)
