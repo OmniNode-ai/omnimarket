@@ -111,10 +111,6 @@ _HEURISTIC_CONTAINS_ANY_CHECKS: dict[str, tuple[str, tuple[str, ...]]] = {
         ),
     ),
     "step_by_step_explanation": ("TASK_MISMATCH", ("step", "1.", "first", "then")),
-    "accurate": (
-        "TASK_MISMATCH",
-        ("evidence", "verified", "based on", "according to", "line "),
-    ),
     "methodical_analysis": (
         "TASK_MISMATCH",
         ("because", "therefore", "evidence", "risk"),
@@ -124,6 +120,21 @@ _HEURISTIC_CONTAINS_ANY_CHECKS: dict[str, tuple[str, tuple[str, ...]]] = {
         ("verified", "passed", "evidence", "check"),
     ),
 }
+
+_ACCURACY_UNCERTAINTY_PHRASES: tuple[str, ...] = (
+    "cannot verify",
+    "can't verify",
+    "unable to verify",
+    "not verified",
+    "unverified",
+    "not sure",
+    "i don't know",
+    "i do not know",
+    "may be inaccurate",
+    "might be inaccurate",
+    "could be inaccurate",
+    "without evidence",
+)
 
 
 _THINKING_TRACE_RE = re.compile(r"<think>.*?</think>\s*", re.DOTALL)
@@ -310,6 +321,22 @@ def _check_concise(content: str) -> str | None:
     return None
 
 
+def _check_accurate(content: str) -> str | None:
+    """Heuristic: response must not explicitly disclaim its own accuracy.
+
+    True semantic accuracy requires source context that ModelQualityGateInput
+    does not carry. The gate should not fail a concise faithful summary merely
+    because it omits provenance words such as "evidence" or "verified".
+    """
+    lowered = content.lower()
+    detected = [p for p in _ACCURACY_UNCERTAINTY_PHRASES if p in lowered]
+    if detected:
+        return "TASK_MISMATCH: response explicitly disclaims accuracy: " + ", ".join(
+            detected
+        )
+    return None
+
+
 def _evaluate_deterministic_checks(
     content: str,
     dod_deterministic: tuple[str, ...],
@@ -353,6 +380,7 @@ _HEURISTIC_SIMPLE_CHECKS: dict[str, Callable[[str], str | None]] = {
     "covers_args_returns_raises": _check_covers_args_returns_raises,
     "cites_specific_lines": _check_cites_specific_lines,
     "concise": _check_concise,
+    "accurate": _check_accurate,
 }
 
 
