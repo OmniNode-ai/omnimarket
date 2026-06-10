@@ -90,6 +90,7 @@ class LinearHttpClient:
 
     def __init__(self, api_key: str) -> None:
         self._api_key = api_key
+        self._workflow_state_cache: dict[str, str] | None = None
 
     def _post(self, query: str, variables: dict[str, object]) -> Any:
         import json
@@ -171,15 +172,48 @@ class LinearHttpClient:
         """
         return self._post(query, {"id": issue_id})
 
-    def save_issue(self, *, issue_id: str, state: str) -> None:
+    def _get_workflow_states(self, *, team: str = "Omninode") -> dict[str, str]:
+        """Fetch team workflow states once and cache a {name: id} map.
+
+        The cache is populated on first call; subsequent calls return the
+        cached map without hitting the network.
+        """
+        if self._workflow_state_cache is not None:
+            return self._workflow_state_cache
         query = """
-        mutation UpdateIssue($id: String!, $state: String!) {
-          issueUpdate(id: $id, input: { stateName: $state }) {
+        query WorkflowStates($team: String!) {
+          workflowStates(filter: { team: { name: { eq: $team } } }) {
+            nodes { id name }
+          }
+        }
+        """
+        data = self._post(query, {"team": team})
+        nodes = data.get("data", {}).get("workflowStates", {}).get("nodes", [])
+        self._workflow_state_cache = {n["name"]: n["id"] for n in nodes}
+        return self._workflow_state_cache
+
+    def save_issue(self, *, issue_id: str, state: str) -> None:
+        """Update a Linear issue's workflow state.
+
+        Resolves the state name to a workflow-state UUID via ``_get_workflow_states``
+        and calls ``issueUpdate`` with ``stateId``.  Linear's ``IssueUpdateInput``
+        has no ``stateName`` field — using it produces a 400 error.
+        """
+        state_map = self._get_workflow_states()
+        state_id = state_map.get(state)
+        if state_id is None:
+            raise ValueError(
+                f"Unknown workflow state '{state}'. "
+                f"Available states: {sorted(state_map)}"
+            )
+        query = """
+        mutation UpdateIssue($id: String!, $stateId: String!) {
+          issueUpdate(id: $id, input: { stateId: $stateId }) {
             success
           }
         }
         """
-        self._post(query, {"id": issue_id, "state": state})
+        self._post(query, {"id": issue_id, "stateId": state_id})
 
     def save_comment(self, *, issue_id: str, body: str) -> None:
         query = """
@@ -429,6 +463,16 @@ class GitHubHttpClient:
             raise
 
 
+# OCC receipt PRs are evidence artifacts, not implementation work.
+# Excluding them from done-detection prevents false positives.
+_OCC_REPO = "onex_change_control"
+
+
+def _is_implementation_pr(pr: dict[str, str]) -> bool:
+    """Return True when the PR comes from a real implementation repo (not OCC)."""
+    return pr.get("repo", "") != _OCC_REPO
+
+
 def _find_merged_pr(
     ticket_id: str,
     repo_slug: str | None,
@@ -439,19 +483,23 @@ def _find_merged_pr(
     """Search for a merged PR for this ticket using GitHub API.
 
     Strategy:
-    1. If repo_slug known, search that repo first (higher confidence).
+    1. If repo_slug known (and not OCC), search that repo first (higher confidence).
     2. Fall back to org-wide search (single API call).
     3. If branch_name provided and repo_slug matches, also search by head branch.
+
+    OCC receipt PRs (repo == onex_change_control) are always excluded — they are
+    evidence receipts, not implementation work.
     """
-    # Try repo-scoped search first (more precise)
-    if repo_slug:
+    # Try repo-scoped search first (more precise), but never treat OCC as impl
+    if repo_slug and repo_slug != _OCC_REPO:
         prs = gh.search_prs_in_repo(
             repo=repo_slug,
             search_term=ticket_id,
             state="merged",
         )
-        if prs:
-            return prs[0]
+        impl_prs = [p for p in prs if _is_implementation_pr(p)]
+        if impl_prs:
+            return impl_prs[0]
 
         # Try branch name in same repo
         if branch_name:
@@ -460,13 +508,15 @@ def _find_merged_pr(
                 branch=branch_name,
                 state="merged",
             )
-            if branch_prs:
-                return branch_prs[0]
+            impl_branch = [p for p in branch_prs if _is_implementation_pr(p)]
+            if impl_branch:
+                return impl_branch[0]
 
-    # Org-wide search (single API call, covers all repos)
+    # Org-wide search (single API call, covers all repos); exclude OCC results
     prs = gh.search_prs(search_term=ticket_id, state="merged")
-    if prs:
-        return prs[0]
+    impl_prs = [p for p in prs if _is_implementation_pr(p)]
+    if impl_prs:
+        return impl_prs[0]
 
     return None
 

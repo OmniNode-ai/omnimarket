@@ -28,8 +28,9 @@ schema_version: "bifrost_delegation.v1"
 backends:
   # Local backends (vLLM on .201) — capability-named, model_name resolved via overlay
   - backend_id: local-coder
+    base_url_env: BIFROST_LOCAL_CODER_ENDPOINT_URL
     endpoint_url: null
-    model_name: null
+    model_name: Qwen3.6-35B-A3B
     tier: local
     timeout_ms: 60000
     capabilities:
@@ -37,8 +38,9 @@ backends:
       - refactoring
       - documentation
   - backend_id: local-reasoner
+    base_url_env: BIFROST_LOCAL_REASONER_ENDPOINT_URL
     endpoint_url: null
-    model_name: null
+    model_name: Qwen3.6-27B-MTP-IQ4_XS.gguf
     tier: local
     timeout_ms: 60000
     capabilities:
@@ -46,8 +48,9 @@ backends:
       - research
       - classification
   - backend_id: local-heavy-reasoning
+    base_url_env: BIFROST_LOCAL_CODER_ENDPOINT_URL
     endpoint_url: null
-    model_name: null
+    model_name: Qwen3.6-35B-A3B
     tier: local
     timeout_ms: 60000
     capabilities:
@@ -57,8 +60,9 @@ backends:
       - classification
       - documentation
   - backend_id: local-embedding
+    base_url_env: BIFROST_LOCAL_EMBEDDING_ENDPOINT_URL
     endpoint_url: null
-    model_name: null
+    model_name: local-embedding
     tier: local
     timeout_ms: 30000
     capabilities:
@@ -101,7 +105,7 @@ backends:
     # OMN-12815: COMPLETE endpoint URL incl. the full chat path, posted VERBATIM.
     # No in-code construction/append; the routing authority returns this unchanged.
     endpoint_url: "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
-    model_name: "gemini-2.0-flash"
+    model_name: "gemini-2.5-flash-lite"
     secret_ref: llm.gemini.api_key
     api_key_env: GEMINI_API_KEY
     tier: cheap_cloud
@@ -115,9 +119,10 @@ backends:
       X-Title: "OmniNode ONEX"
   # Local DS-V4-Flash backend — DeepSeek V4 Flash (284B MoE) on .200:8101 (OMN-12492)
   - backend_id: local-ds-v4-flash
+    base_url_env: BIFROST_LOCAL_DS_V4_FLASH_ENDPOINT_URL
     endpoint_url: null
     # endpoint_url null in repo default; overlay sets .200:8101  # onex-allow-internal-ip OMN-12492 reason="repo-default comment documenting local overlay target for DS-V4-Flash"
-    model_name: null
+    model_name: ds-v4-flash
     tier: local
     timeout_ms: 60000
     capabilities:
