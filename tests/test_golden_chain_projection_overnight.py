@@ -303,3 +303,13 @@ class TestOvernightProjectionContractWiring:
         with open(self._contract_path()) as f:
             contract = yaml.safe_load(f)
         assert len(contract["event_bus"]["publish_topics"]) >= 1
+
+    def test_readiness_projection_view_migration_exists(self) -> None:
+        import pathlib
+
+        migration = (
+            pathlib.Path(__file__).parent.parent
+            / "src/omnimarket/nodes/node_projection_overnight/migrations/"
+            "0001_create_overnight_readiness_projection_view.sql"
+        ).read_text()
+        assert "CREATE OR REPLACE VIEW projection_overnight_readiness" in migration

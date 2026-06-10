@@ -54,12 +54,30 @@ event_bus:
     - onex.evt.omnimarket.overnight-session-completed.v1
   publish_topics:
     - onex.evt.omnimarket.projection-overnight-applied.v1
+    - onex.snapshot.projection.overnight.v1  # onex-topic-allow: projection snapshot topic
 
 externally_consumed_topics:
   - onex.evt.omnimarket.projection-overnight-applied.v1
+  - onex.snapshot.projection.overnight.v1  # onex-topic-allow: projection snapshot topic
 
 sub_handler_dependencies:
   - HandlerProjectionOvernightSessionStart
+
+projection_api:
+  expose: true
+  exposures:
+    - topic: onex.snapshot.projection.overnight.v1 # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
+      table: projection_overnight_readiness
+      schema: public
+      columns:
+        - dimensions
+        - "overallStatus"
+        - "lastCheckedAt"
+        - latest_projection_updated_at
+      json_columns:
+        - dimensions
+      freshness_column: latest_projection_updated_at
+      limit: 1
 
 metadata:
   transport_type: kafka
