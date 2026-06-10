@@ -8,7 +8,6 @@ import asyncio
 import json
 import logging
 import math
-import os
 from collections.abc import Callable, Coroutine, Mapping
 from datetime import UTC, datetime
 from pathlib import Path
@@ -157,9 +156,7 @@ class DelegationProjectionRunner(BaseProjectionRunner):
         if self._publish_fn is not None:
             return self._publish_fn
 
-        brokers = os.environ.get(
-            "KAFKA_BROKERS", ""
-        )  # ONEX_FLAG_EXEMPT: infra bootstrap var, mirrors BaseProjectionRunner.run()
+        brokers = self.kafka_bootstrap_servers
         if not brokers:
             return None
 
@@ -202,7 +199,7 @@ class DelegationProjectionRunner(BaseProjectionRunner):
         publish = await self._get_publish_fn()
         if publish is None:
             logger.debug(
-                "Terminal event skipped (no publish_fn/KAFKA_BROKERS): topic=%s correlation_id=%s",
+                "Terminal event skipped (no publish_fn/projection runtime binding): topic=%s correlation_id=%s",
                 terminal_topic,
                 correlation_id,
             )
