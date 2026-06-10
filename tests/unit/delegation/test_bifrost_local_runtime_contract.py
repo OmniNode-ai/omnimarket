@@ -21,9 +21,7 @@ _CONTRACT_PATH = (
 @pytest.mark.unit
 def test_local_delegation_backends_declare_renderable_endpoint_envs() -> None:
     contract = yaml.safe_load(_CONTRACT_PATH.read_text(encoding="utf-8"))
-    backends = {
-        backend["backend_id"]: backend for backend in contract["backends"]
-    }
+    backends = {backend["backend_id"]: backend for backend in contract["backends"]}
 
     assert backends["local-coder"]["base_url_env"] == (
         "BIFROST_LOCAL_CODER_ENDPOINT_URL"
@@ -38,10 +36,7 @@ def test_local_delegation_backends_declare_renderable_endpoint_envs() -> None:
     assert backends["local-reasoner"]["base_url_env"] == (
         "BIFROST_LOCAL_REASONER_ENDPOINT_URL"
     )
-    assert (
-        backends["local-reasoner"]["model_name"]
-        == "Qwen3.6-27B-MTP-IQ4_XS.gguf"
-    )
+    assert backends["local-reasoner"]["model_name"] == "Qwen3.6-27B-MTP-IQ4_XS.gguf"
 
     assert backends["local-ds-v4-flash"]["base_url_env"] == (
         "BIFROST_LOCAL_DS_V4_FLASH_ENDPOINT_URL"
