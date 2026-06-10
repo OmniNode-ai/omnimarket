@@ -40,6 +40,10 @@ event_bus:
     - onex.evt.omniclaude.llm-routing-decision.v1
   publish_topics:
     - onex.evt.omnimarket.projection-llm-routing-applied.v1
+    - onex.snapshot.projection.routing-decision.v1  # onex-topic-allow: projection snapshot topic
+
+externally_consumed_topics:
+  - onex.snapshot.projection.routing-decision.v1  # onex-topic-allow: projection snapshot topic
 
 db_io:
   db_tables:
@@ -48,6 +52,28 @@ db_io:
       access: write
       database: omnidash_analytics
       role: projection
+
+projection_api:
+  expose: true
+  exposures:
+    - topic: onex.snapshot.projection.routing-decision.v1 # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
+      table: projection_routing_decision
+      schema: public
+      columns:
+        - models
+        - intents
+        - task_presets
+        - routing_rules
+        - captured_at
+        - provisioned
+        - latest_projection_updated_at
+      json_columns:
+        - models
+        - intents
+        - task_presets
+        - routing_rules
+      freshness_column: latest_projection_updated_at
+      limit: 1
 
 dod_evidence:
   - test: tests/integration/golden_chain/test_routing_e2e.py::TestRoutingProjection::test_project_single_event
