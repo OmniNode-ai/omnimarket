@@ -7,6 +7,7 @@ from omnimarket.projection.api_server import (  # noqa: F401
     compute_freshness,
     get_pool,
     get_topic_map,
+    load_projection_api_runtime_binding_overlay,
     main,
 )
 

@@ -20,14 +20,18 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
+from pathlib import Path
 from typing import Any
 from uuid import UUID
 
 import asyncpg
+import yaml
 from fastapi import Depends, FastAPI, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
+from pydantic import BaseModel, ConfigDict, model_validator
 
+from omnimarket.config.settings import Settings, get_settings
 from omnimarket.projection.discovery import build_projection_topic_map
 from omnimarket.projection.models import ProjectionStatus, ProjectionTableConfig
 from omnimarket.projection.validation import validate_topic_map_tables
@@ -41,6 +45,88 @@ _EVIDENCE_STAGES_TOPIC = "onex.snapshot.projection.evidence_pipeline.stages.v1"
 _EVIDENCE_TRACE_TOPIC = "onex.snapshot.projection.evidence_pipeline.correlations.v1"
 _EVIDENCE_READINESS_TOPIC = "onex.snapshot.projection.evidence_pipeline.readiness.v1"
 _EVIDENCE_EVENTS_TOPIC = "onex.snapshot.projection.evidence_pipeline.live_events.v1"
+_PROJECTION_API_BINDING_OVERLAY_ENV = "OMNIMARKET_PROJECTION_API_BINDING_OVERLAY"
+
+
+class ModelProjectionApiRuntimeBinding(BaseModel):
+    """Contract overlay for projection API runtime database binding."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    database_url: str | None = None
+    database_url_secret_ref: str | None = None
+    source: str = "inline"
+
+    @model_validator(mode="after")
+    def _exactly_one_database_binding(self) -> ModelProjectionApiRuntimeBinding:
+        bindings = [
+            value
+            for value in (self.database_url, self.database_url_secret_ref)
+            if value is not None and value.strip()
+        ]
+        if len(bindings) != 1:
+            raise ValueError(
+                "exactly one of database_url or database_url_secret_ref is required"
+            )
+        return self
+
+    def resolve_database_url(self, settings: Settings | None = None) -> str:
+        if self.database_url:
+            return self.database_url
+        secret_ref = self.database_url_secret_ref
+        if not secret_ref:
+            raise RuntimeError(
+                "projection API binding must define database_url or database_url_secret_ref"
+            )
+        return _resolve_secret_ref(secret_ref, settings=settings)
+
+
+def _resolve_secret_ref(secret_ref: str, settings: Settings | None = None) -> str:
+    """Resolve transitional secret refs at the boundary only."""
+
+    if secret_ref.startswith("env:"):
+        env_name = secret_ref.removeprefix("env:")
+        value = os.environ.get(env_name, "")
+        if not value:
+            raise RuntimeError(f"Secret ref {secret_ref!r} resolved to an empty value")
+        return value
+
+    if secret_ref.startswith("settings:"):
+        field_name = secret_ref.removeprefix("settings:")
+        settings_obj = settings if settings is not None else get_settings()
+        raw = getattr(settings_obj, field_name, None)
+        if raw is None:
+            raise RuntimeError(f"Settings secret ref {secret_ref!r} is not defined")
+        value = raw.get_secret_value() if hasattr(raw, "get_secret_value") else str(raw)
+        if not value:
+            raise RuntimeError(f"Secret ref {secret_ref!r} resolved to an empty value")
+        return value
+
+    raise RuntimeError(
+        f"Unsupported secret ref {secret_ref!r}; expected env:<NAME> or settings:<field>"
+    )
+
+
+def load_projection_api_runtime_binding_overlay(
+    path: str | Path,
+) -> ModelProjectionApiRuntimeBinding:
+    overlay_path = Path(path)
+    payload = yaml.safe_load(overlay_path.read_text(encoding="utf-8"))
+    if not isinstance(payload, dict):
+        raise ValueError(
+            f"Projection API runtime binding overlay {overlay_path} must be a mapping"
+        )
+    return ModelProjectionApiRuntimeBinding(
+        **payload,
+        source=f"overlay:{overlay_path}",
+    )
+
+
+def _load_selected_projection_api_binding() -> ModelProjectionApiRuntimeBinding | None:
+    overlay_path = os.environ.get(_PROJECTION_API_BINDING_OVERLAY_ENV, "").strip()
+    if not overlay_path:
+        return None
+    return load_projection_api_runtime_binding_overlay(overlay_path)
 
 
 # ---------------------------------------------------------------------------
@@ -90,13 +176,23 @@ def _json_value(value: Any, *, decode_json: bool = False) -> Any:
 # ---------------------------------------------------------------------------
 
 
-def _dsn() -> str:
+def _dsn(
+    runtime_binding: ModelProjectionApiRuntimeBinding | None = None,
+    *,
+    settings: Settings | None = None,
+) -> str:
+    selected_binding = runtime_binding or _load_selected_projection_api_binding()
+    if selected_binding is not None:
+        return selected_binding.resolve_database_url(settings=settings)
+
     dsn = os.environ.get("OMNIDASH_ANALYTICS_DB_URL") or os.environ.get(
         "OMNIBASE_INFRA_DB_URL"
     )
     if not dsn:
         raise RuntimeError(
-            "OMNIDASH_ANALYTICS_DB_URL or OMNIBASE_INFRA_DB_URL is required for projection API"
+            "Projection API database binding is required: set "
+            "OMNIMARKET_PROJECTION_API_BINDING_OVERLAY or provide legacy "
+            "OMNIDASH_ANALYTICS_DB_URL/OMNIBASE_INFRA_DB_URL"
         )
     return dsn
 

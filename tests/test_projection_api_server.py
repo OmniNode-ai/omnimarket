@@ -23,6 +23,7 @@ from uuid import UUID
 import pytest
 from fastapi.testclient import TestClient
 
+from omnimarket.config.settings import Settings
 from omnimarket.projection.models import ProjectionTableConfig
 from scripts.projection_api_server import (
     _cors_origins_from_env,
@@ -31,6 +32,7 @@ from scripts.projection_api_server import (
     compute_freshness,
     get_pool,
     get_topic_map,
+    load_projection_api_runtime_binding_overlay,
 )
 
 # ---------------------------------------------------------------------------
@@ -173,16 +175,18 @@ class TestPostgresDsn:
     def test_dsn_requires_projection_or_contract_db_url(self, monkeypatch) -> None:
         monkeypatch.delenv("OMNIDASH_ANALYTICS_DB_URL", raising=False)
         monkeypatch.delenv("OMNIBASE_INFRA_DB_URL", raising=False)
+        monkeypatch.delenv("OMNIMARKET_PROJECTION_API_BINDING_OVERLAY", raising=False)
 
         with pytest.raises(
             RuntimeError,
-            match="OMNIDASH_ANALYTICS_DB_URL or OMNIBASE_INFRA_DB_URL is required",
+            match="OMNIMARKET_PROJECTION_API_BINDING_OVERLAY",
         ):
             _dsn()
 
     def test_dsn_prefers_analytics_db_url(self, monkeypatch) -> None:
         expected = "postgresql://projection:pw@db.internal:15436/omnidash_analytics"
         fallback = "postgresql://projection:pw@db.internal:15436/omnibase_infra"
+        monkeypatch.delenv("OMNIMARKET_PROJECTION_API_BINDING_OVERLAY", raising=False)
         monkeypatch.setenv("OMNIDASH_ANALYTICS_DB_URL", expected)
         monkeypatch.setenv("OMNIBASE_INFRA_DB_URL", fallback)
 
@@ -190,10 +194,88 @@ class TestPostgresDsn:
 
     def test_dsn_falls_back_to_contract_db_url(self, monkeypatch) -> None:
         expected = "postgresql://projection:pw@db.internal:15436/omnibase_infra"
+        monkeypatch.delenv("OMNIMARKET_PROJECTION_API_BINDING_OVERLAY", raising=False)
         monkeypatch.delenv("OMNIDASH_ANALYTICS_DB_URL", raising=False)
         monkeypatch.setenv("OMNIBASE_INFRA_DB_URL", expected)
 
         assert _dsn() == expected
+
+    def test_dsn_uses_explicit_runtime_binding_without_env(self, monkeypatch) -> None:
+        from omnimarket.projection.api_server import ModelProjectionApiRuntimeBinding
+
+        monkeypatch.delenv("OMNIDASH_ANALYTICS_DB_URL", raising=False)
+        monkeypatch.delenv("OMNIBASE_INFRA_DB_URL", raising=False)
+        binding = ModelProjectionApiRuntimeBinding(
+            database_url="postgresql://projection:pw@db.overlay:5432/omnidash"
+        )
+
+        assert _dsn(binding) == "postgresql://projection:pw@db.overlay:5432/omnidash"
+
+    def test_dsn_loads_overlay_file_without_db_env(self, monkeypatch, tmp_path) -> None:
+        monkeypatch.delenv("OMNIDASH_ANALYTICS_DB_URL", raising=False)
+        monkeypatch.delenv("OMNIBASE_INFRA_DB_URL", raising=False)
+        overlay = tmp_path / "projection-api-binding.yaml"
+        overlay.write_text(
+            "database_url: postgresql://projection:pw@db.overlay:5432/omnidash\n",
+            encoding="utf-8",
+        )
+
+        binding = load_projection_api_runtime_binding_overlay(overlay)
+
+        assert _dsn(binding) == "postgresql://projection:pw@db.overlay:5432/omnidash"
+        assert binding.source == f"overlay:{overlay}"
+
+    def test_dsn_uses_overlay_selector_env_without_db_env(
+        self, monkeypatch, tmp_path
+    ) -> None:
+        monkeypatch.delenv("OMNIDASH_ANALYTICS_DB_URL", raising=False)
+        monkeypatch.delenv("OMNIBASE_INFRA_DB_URL", raising=False)
+        overlay = tmp_path / "projection-api-binding.yaml"
+        overlay.write_text(
+            "database_url: postgresql://projection:pw@db.selector:5432/omnidash\n",
+            encoding="utf-8",
+        )
+        monkeypatch.setenv("OMNIMARKET_PROJECTION_API_BINDING_OVERLAY", str(overlay))
+
+        assert _dsn() == "postgresql://projection:pw@db.selector:5432/omnidash"
+
+    def test_dsn_resolves_env_secret_ref_at_boundary(
+        self, monkeypatch, tmp_path
+    ) -> None:
+        monkeypatch.delenv("OMNIDASH_ANALYTICS_DB_URL", raising=False)
+        monkeypatch.delenv("OMNIBASE_INFRA_DB_URL", raising=False)
+        monkeypatch.setenv(
+            "PROJECTION_API_DB_URL_SECRET",
+            "postgresql://projection:pw@db.secret:5432/omnidash",
+        )
+        overlay = tmp_path / "projection-api-binding.yaml"
+        overlay.write_text(
+            "database_url_secret_ref: env:PROJECTION_API_DB_URL_SECRET\n",
+            encoding="utf-8",
+        )
+
+        binding = load_projection_api_runtime_binding_overlay(overlay)
+
+        assert _dsn(binding) == "postgresql://projection:pw@db.secret:5432/omnidash"
+
+    def test_dsn_resolves_settings_secret_ref(self, monkeypatch, tmp_path) -> None:
+        monkeypatch.delenv("OMNIDASH_ANALYTICS_DB_URL", raising=False)
+        monkeypatch.delenv("OMNIBASE_INFRA_DB_URL", raising=False)
+        overlay = tmp_path / "projection-api-binding.yaml"
+        overlay.write_text(
+            "database_url_secret_ref: settings:omnidash_analytics_db_url\n",
+            encoding="utf-8",
+        )
+        settings = Settings(
+            omnidash_analytics_db_url="postgresql://projection:pw@db.settings:5432/omnidash"
+        )
+
+        binding = load_projection_api_runtime_binding_overlay(overlay)
+
+        assert (
+            _dsn(binding, settings=settings)
+            == "postgresql://projection:pw@db.settings:5432/omnidash"
+        )
 
 
 class TestCorsConfiguration:
