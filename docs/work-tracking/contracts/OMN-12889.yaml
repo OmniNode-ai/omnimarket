@@ -1,0 +1,69 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-12889"
+title: "Delegation quality gate accepts source-free accurate summaries"
+summary: >-
+  Fixes a false negative in the delegation quality gate where source-free summarization tasks had to
+  include marker words such as "evidence", "verified", "based on", or "line" to satisfy the `accurate`
+  heuristic. The updated check treats explicit accuracy disclaimers as failures and allows concise
+  summaries that otherwise satisfy the prompt shape and content constraints.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+evidence_requirements:
+  - kind: "tests"
+    description: "Focused delegation quality-gate tests pass."
+    command: >-
+      uv run pytest tests/unit/delegation/test_delegation_quality_contract.py
+      tests/unit/delegation/test_handler_quality_gate_thinking_traces.py
+      tests/unit/delegation/test_handler_quality_gate_intent.py -q
+  - kind: "lint"
+    description: "Changed quality-gate files pass ruff check and format verification."
+    command: >-
+      uv run ruff check src/omnimarket/nodes/node_delegation_quality_gate_reducer/handlers/handler_quality_gate.py
+      tests/unit/delegation/test_delegation_quality_contract.py &&
+      uv run ruff format --check src/omnimarket/nodes/node_delegation_quality_gate_reducer/handlers/handler_quality_gate.py
+      tests/unit/delegation/test_delegation_quality_contract.py
+  - kind: "manual"
+    description: >-
+      Deploy assessment: this changes deterministic quality-gate handler logic only. No Kafka topic,
+      database migration, secret, or live runtime restart is performed pre-merge. After merge/deploy to
+      stability-test, rerun an E3-style summarization task and verify the projected quality-gate pass.
+    command: >-
+      printf '%s\n' 'deploy-assessment: deterministic handler-only quality-gate fix; no live deploy,
+      Kafka topic, DB migration, or secret mutation performed pre-merge; post-merge stability rerun required'
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-focused-quality-tests"
+    description: "Focused delegation quality-gate tests pass locally."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          uv run pytest tests/unit/delegation/test_delegation_quality_contract.py
+          tests/unit/delegation/test_handler_quality_gate_thinking_traces.py
+          tests/unit/delegation/test_handler_quality_gate_intent.py -q
+  - id: "dod-ruff-quality-files"
+    description: "Changed quality-gate files pass ruff check and format verification."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          uv run ruff check src/omnimarket/nodes/node_delegation_quality_gate_reducer/handlers/handler_quality_gate.py
+          tests/unit/delegation/test_delegation_quality_contract.py &&
+          uv run ruff format --check src/omnimarket/nodes/node_delegation_quality_gate_reducer/handlers/handler_quality_gate.py
+          tests/unit/delegation/test_delegation_quality_contract.py
+  - id: "dod-deploy-assessment"
+    description: >-
+      Deterministic handler-only quality-gate fix. No live deployment, Kafka topic creation, database
+      migration, or secret mutation is required or performed before merge. Stability-test rerun is required
+      after merge/deploy because historical projection rows do not update retroactively.
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          printf '%s\n' 'deploy-assessment: deterministic handler-only quality-gate fix; no live deploy,
+          Kafka topic, DB migration, or secret mutation performed pre-merge; post-merge stability rerun required'
