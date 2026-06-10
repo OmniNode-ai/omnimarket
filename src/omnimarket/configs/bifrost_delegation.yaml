@@ -105,7 +105,7 @@ backends:
     # OMN-12815: COMPLETE endpoint URL incl. the full chat path, posted VERBATIM.
     # No in-code construction/append; the routing authority returns this unchanged.
     endpoint_url: "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
-    model_name: "gemini-2.0-flash"
+    model_name: "gemini-2.5-flash-lite"
     secret_ref: llm.gemini.api_key
     api_key_env: GEMINI_API_KEY
     tier: cheap_cloud
