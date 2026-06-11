@@ -1,0 +1,19 @@
+name: node_context_artifact_resolver_compute
+version: "1.0.0"
+description: "Pure deterministic context-artifact resolver (materialises per-factor content map)"
+omnibase_core_compat: ">=0.44.0,<0.45.0"
+entry_points:
+  onex.nodes:
+    node_context_artifact_resolver_compute: "omnimarket.nodes.node_context_artifact_resolver_compute"
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+dependencies:
+  - "omnibase_core>=0.44.0,<0.45.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["compute", "context-roi", "artifact-resolution", "contract", "deterministic"]
+pack: "pipeline"
+display_name: "Context Artifact Resolver Compute"
+node_role: "compute"
