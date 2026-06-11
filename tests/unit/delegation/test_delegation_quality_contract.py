@@ -94,9 +94,15 @@ def _bifrost_contract(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 @pytest.mark.unit
-def test_routing_decision_carries_document_contract_dod() -> None:
+def test_routing_decision_document_prose_dod_is_not_docstring() -> None:
+    # OMN-12964: the request task_type Literal exposes `document` (prose), and
+    # the routing reducer resolves it to the `document` task class. That class
+    # must NOT carry code-docstring DoD — the prior defect (docstring_present /
+    # follows_google_style / covers_args_returns_raises) scored every prose
+    # output 0.000 on both tiers (live CID a604cd40). Prose DoD is non-empty +
+    # no-refusal + accurate.
     request = ModelDelegationRequest(
-        prompt="Write a Google-style docstring for a runtime payload validator.",
+        prompt="Write a short paragraph describing the cart total module.",
         task_type="document",
         correlation_id=uuid4(),
         emitted_at=datetime.now(UTC),
@@ -104,12 +110,11 @@ def test_routing_decision_carries_document_contract_dod() -> None:
 
     decision = handler_delegation_routing.delta(request)
 
-    assert decision.dod_deterministic == ("docstring_present",)
-    assert decision.dod_heuristic == (
-        "no_refusal",
-        "follows_google_style",
-        "covers_args_returns_raises",
-    )
+    assert decision.dod_deterministic == ("response_non_empty",)
+    assert decision.dod_heuristic == ("no_refusal", "accurate")
+    assert "docstring_present" not in decision.dod_deterministic
+    assert "follows_google_style" not in decision.dod_heuristic
+    assert "covers_args_returns_raises" not in decision.dod_heuristic
 
 
 @pytest.mark.unit
