@@ -96,6 +96,22 @@ repos:
         pass_filenames: false
         stages: [pre-commit]
 
+      # OMN-12957: runtime_profiles contract validator (omnibase_core).
+      # Enforces runtime_profiles_missing (OMN-9886) + runtime_profile_unregistered
+      # (declared profile not in canonical REGISTERED_RUNTIME_PROFILES) +
+      # runtime_profile_no_consumer_lane (subscribing REDUCER/EFFECT names no
+      # consumer-attached profile). Pre-existing violators are frozen in
+      # validation/runtime_profiles_allowlist.yaml (discovered by repo-root walk;
+      # drain tracked by OMN-12982). Blocks NEW orphans. Requires the omnibase_core
+      # pin to include OMN-12957's validator (new rules).
+      - id: onex-validate-runtime-profiles
+        name: Validate runtime_profiles on node contracts (OMN-12957)
+        language: system
+        entry: uv run python -m omnibase_core.validation.validator_runtime_profiles src/
+        files: ^src/omnimarket/nodes/node_.*/contract\.yaml$
+        pass_filenames: false
+        stages: [pre-commit]
+
       # OMN-10909: stricter topic-literal gate (delegation thin-shim plan, Task 8).
       # Allowlist: topics.py, test_*/conftest* files, inline `# onex-topic-allow`
       # annotations. SYNC with ci.yml step "Topic-literal guardrail (annotation allowlist)".
@@ -132,6 +148,33 @@ repos:
         pass_filenames: false
         stages: [pre-commit]
 
+      # OMN-12942: node migration sets must create base tables before the views
+      # that read them. A view-before-base-table migration hard-fails the
+      # forward-migration runner on a clean node-set apply (this forced
+      # node_projection_llm_routing's view to be pruned during the 2026-06-11
+      # stability hot-patch). SYNC with ci.yml step "Migration base-before-view gate".
+      - id: migration-base-before-view
+        name: Migration base-table-before-view gate
+        language: system
+        entry: uv run python scripts/ci/check_migration_base_before_view.py
+        files: ^(src/omnimarket/nodes/.*/migrations/.*\.sql|scripts/ci/check_migration_base_before_view\.py)$
+        pass_filenames: false
+        stages: [pre-commit]
+
+      # OMN-12971: backend secret-ref / credential-ref discipline gate. Fails if a
+      # literal credential value (PEM key, service-account JSON, bearer/api-key)
+      # lands in routing-authority config, or if an authenticated cloud backend
+      # lacks a logical secret/credential ref. Keeps the Vertex ADC path (and all
+      # cloud backends) value-free in committed config.
+      # SYNC with ci.yml step "Backend secret-discipline gate (enforce)".
+      - id: backend-secret-discipline-gate
+        name: Backend secret-discipline gate
+        language: system
+        entry: uv run python scripts/ci/check_backend_secret_discipline.py
+        files: ^(src/omnimarket/configs/bifrost_delegation\.yaml|src/omnimarket/configs/routing_tiers\.yaml|src/omnimarket/data/model_registry/model_registry_v1\.yaml|scripts/ci/check_backend_secret_discipline\.py)
+        pass_filenames: false
+        stages: [pre-commit]
+
       # OMN-12691: live-path node changes must ship with golden-chain coverage.
       # SYNC with ci.yml step "Golden-chain coverage gate".
       - id: golden-chain-coverage-gate
@@ -139,6 +182,19 @@ repos:
         language: system
         entry: uv run python scripts/ci/check_golden_chain_coverage.py --staged
         files: ^(src/omnimarket/nodes/node_.*/|tests/.*/?test_golden_chain.*\.py$)
+        pass_filenames: false
+        stages: [pre-commit]
+
+      # OMN-12959: FSM terminal-state invariant — watchdog topic literals may
+      # only live in the canonical omnimarket.events.topics registry (the source
+      # of truth; omnimarket.events.watchdog imports them and exposes the typed
+      # EnumWatchdogEventType authority). Forces the typed authority instead of
+      # hardcoded strings. SYNC with ci.yml step "Watchdog-topic authority gate".
+      - id: watchdog-topic-authority-gate
+        name: Watchdog-topic authority gate
+        language: system
+        entry: uv run python scripts/ci/check_watchdog_topic_authority.py
+        files: ^(src/omnimarket/.*\.py|scripts/ci/check_watchdog_topic_authority\.py)
         pass_filenames: false
         stages: [pre-commit]
 

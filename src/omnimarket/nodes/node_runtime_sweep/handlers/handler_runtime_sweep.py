@@ -10,8 +10,11 @@ from __future__ import annotations
 
 import re
 from enum import StrEnum
+from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
+
+from omnimarket.events.watchdog import EnumWatchdogEventType
 
 # ---------------------------------------------------------------------------
 # Enums
@@ -55,11 +58,58 @@ class EnumFindingType(StrEnum):
     )
     PRODUCER_ONLY = "PRODUCER_ONLY"
     CONSUMER_ONLY = "CONSUMER_ONLY"
+    NON_DURABLE_CONTRACT = "NON_DURABLE_CONTRACT"
+    STRANDED_WORKFLOW = "STRANDED_WORKFLOW"
+    # OMN-12957: manifest declares a node under a runtime_profile but no live
+    # consumer group is attached for that profile — the node is silently
+    # orphaned even though static profile membership looks valid. This is the
+    # second class of orphaning that static profile-subset validation misses.
+    PROFILE_NO_LIVE_CONSUMER = "PROFILE_NO_LIVE_CONSUMER"
 
 
 # ---------------------------------------------------------------------------
 # Models
 # ---------------------------------------------------------------------------
+
+
+class ModelWorkflowObservation(BaseModel):
+    """One workflow FSM instance observed from the event stream.
+
+    Pure-compute input: the collector pairs a workflow-start observation with any
+    terminal evidence (a domain ``*-completed`` / ``*-failed`` event OR a typed
+    watchdog event) for the same correlation id. ``reached_terminal`` is True when
+    terminal evidence exists. A started-but-not-terminal workflow whose
+    ``elapsed_ms`` exceeds its archetype SLA is stranded and trips the invariant.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    correlation_id: UUID
+    archetype: str
+    workflow_state: str = Field(
+        description="Last observed non-terminal FSM state for the workflow."
+    )
+    elapsed_ms: int = Field(
+        ge=0,
+        description="Milliseconds from workflow-start to observation cutoff.",
+    )
+    reached_terminal: bool = Field(
+        description="True when a domain terminal OR typed watchdog event was observed.",
+    )
+    has_routable_next: bool = Field(
+        default=True,
+        description=(
+            "False when no eligible handler/tier/backend can advance the workflow "
+            "(unroutable). Drives watchdog classification."
+        ),
+    )
+    making_progress: bool = Field(
+        default=True,
+        description=(
+            "False when the workflow is alive but wedged with no forward progress "
+            "(stalled). Drives watchdog classification."
+        ),
+    )
 
 
 class ModelContractInput(BaseModel):
@@ -73,6 +123,8 @@ class ModelContractInput(BaseModel):
     handler_exists: bool = True
     publish_topics: list[str] = Field(default_factory=list)
     subscribe_topics: list[str] = Field(default_factory=list)
+    # OMN-12957: runtime_profiles declared by this contract (lower-cased).
+    runtime_profiles: list[str] = Field(default_factory=list)
 
 
 class ModelRuntimeFinding(BaseModel):
@@ -94,6 +146,44 @@ class RuntimeSweepRequest(BaseModel):
     contracts: list[ModelContractInput] = Field(default_factory=list)
     topic_producers: list[str] = Field(default_factory=list)
     topic_consumers: list[str] = Field(default_factory=list)
+    durable_node_names: list[str] | None = Field(
+        default=None,
+        description=(
+            "Census of node names reconstructable from a durable source on a "
+            "COLD runtime start — i.e. the image-bundled filesystem manifest "
+            "(HYBRID-mode bootstrap + PluginLoaderContractSource) and/or a "
+            "compacted snapshot topic. Contracts present in the live registered "
+            "census (`contracts`) but ABSENT from this set were materialized "
+            "ONLY via the post-freeze dynamic-contract listener, which consumes "
+            "the SUFFIX_NODE_REGISTRATION topic (cleanup.policy=delete, "
+            "7-day retention) with auto_offset_reset=latest and therefore does "
+            "NOT replay history on cold start. Such contracts vanish on a cold "
+            "restart unless their registrant re-publishes. When None, the "
+            "durability check is skipped (caller did not supply a manifest)."
+        ),
+    )
+    workflow_observations: list[ModelWorkflowObservation] = Field(
+        default_factory=list,
+        description=(
+            "Observed workflow FSM instances for the stranded-workflow invariant "
+            "(started-but-no-terminal-event after archetype SLA)."
+        ),
+    )
+    archetype_sla_ms: dict[str, int] = Field(
+        default_factory=dict,
+        description=(
+            "Per-archetype terminal SLA in ms. Archetypes absent from the map use "
+            "DEFAULT_ARCHETYPE_SLA_MS."
+        ),
+    )
+    # OMN-12957: live consumer-group census — the set of runtime_profiles that
+    # actually have an attached consumer group on the broker right now. When
+    # provided (non-None), the sweep runs the dual check: any node whose
+    # declared runtime_profiles are all absent from this census is flagged as a
+    # silent orphan (manifest-declares-node != consumer-attached). When None the
+    # broker census was not collected and the dual check is skipped — distinct
+    # from an empty census (broker reachable, zero consumer groups).
+    live_consumer_profiles: list[str] | None = None
     dry_run: bool = False
 
 
@@ -105,6 +195,7 @@ class RuntimeSweepResult(BaseModel):
     findings: list[ModelRuntimeFinding] = Field(default_factory=list)
     contracts_checked: int = 0
     topics_checked: int = 0
+    workflows_checked: int = 0
     status: str = "clean"  # clean | findings | error
     dry_run: bool = False
 
@@ -136,6 +227,10 @@ _PLACEHOLDER_PATTERNS = [
     re.compile(r"Generated by generate_skill_node", re.IGNORECASE),
     re.compile(r"^(TODO|TBD|FIXME|placeholder)$", re.IGNORECASE),
 ]
+
+# Default terminal SLA for any archetype not present in request.archetype_sla_ms.
+# A workflow started-but-not-terminal past this is treated as stranded.
+DEFAULT_ARCHETYPE_SLA_MS = 600_000  # 10 minutes
 
 
 # ---------------------------------------------------------------------------
@@ -171,15 +266,96 @@ class NodeRuntimeSweep:
         all_topics = all_producers | all_consumers
         findings.extend(self._check_symmetry(all_topics, all_producers, all_consumers))
 
+        # Phase 4: Contract-store durability audit (OMN-12962)
+        # Flag any live-registered contract that is not reconstructable from a
+        # durable cold-start source — these depend on retained registration
+        # events and silently vanish on a cold runtime restart.
+        findings.extend(
+            self._check_census_durability(request.contracts, request.durable_node_names)
+        )
+
+        # Phase 5: Stranded-workflow audit (FSM terminal-state invariant, OMN-12959).
+        findings.extend(
+            self._check_stranded_workflows(
+                request.workflow_observations, request.archetype_sla_ms
+            )
+        )
+        # Phase 6 (OMN-12957): manifest-vs-live-consumer census dual check.
+        # Only runs when the caller collected the live broker consumer-group
+        # census; static profile membership alone misses this orphan class.
+        if request.live_consumer_profiles is not None:
+            findings.extend(
+                self._check_profile_consumer_census(
+                    request.contracts, request.live_consumer_profiles
+                )
+            )
+
         status = "clean" if not findings else "findings"
 
         return RuntimeSweepResult(
             findings=findings,
             contracts_checked=len(request.contracts),
             topics_checked=len(all_topics),
+            workflows_checked=len(request.workflow_observations),
             status=status,
             dry_run=request.dry_run,
         )
+
+    @staticmethod
+    def _classify_watchdog(
+        observation: ModelWorkflowObservation,
+    ) -> EnumWatchdogEventType:
+        """Classify the typed watchdog class for a stranded workflow.
+
+        Precedence: unroutable (no path to advance) > stalled (alive but wedged)
+        > timeout (ran past SLA). Unroutable and stalled are structural holes;
+        timeout is the residual catch-all when the workflow could in principle
+        advance but did not within SLA.
+        """
+        if not observation.has_routable_next:
+            return EnumWatchdogEventType.WORKFLOW_UNROUTABLE
+        if not observation.making_progress:
+            return EnumWatchdogEventType.WORKFLOW_STALLED
+        return EnumWatchdogEventType.WORKFLOW_TIMEOUT
+
+    def _check_stranded_workflows(
+        self,
+        observations: list[ModelWorkflowObservation],
+        archetype_sla_ms: dict[str, int],
+    ) -> list[ModelRuntimeFinding]:
+        """Flag workflows started-but-not-terminal past their archetype SLA.
+
+        The FSM terminal-state invariant (OMN-12959): every workflow FSM must
+        reach a terminal state or trip a watchdog. A workflow that has not reached
+        terminal and whose elapsed time exceeds the archetype SLA is stranded —
+        silent absence in every projection — and is reported with its typed
+        watchdog class so the runtime sweep can auto-ticket by failure class.
+        """
+        findings: list[ModelRuntimeFinding] = []
+
+        for obs in observations:
+            if obs.reached_terminal:
+                continue
+            sla_ms = archetype_sla_ms.get(obs.archetype, DEFAULT_ARCHETYPE_SLA_MS)
+            if obs.elapsed_ms <= sla_ms:
+                continue
+
+            watchdog_type = self._classify_watchdog(obs)
+            findings.append(
+                ModelRuntimeFinding(
+                    finding_type=EnumFindingType.STRANDED_WORKFLOW,
+                    subject=f"{obs.archetype}:{obs.correlation_id}",
+                    message=(
+                        f"Workflow {obs.correlation_id} (archetype {obs.archetype}) "
+                        f"stranded in {obs.workflow_state} for {obs.elapsed_ms}ms "
+                        f"with no terminal event (SLA {sla_ms}ms); "
+                        f"watchdog class {watchdog_type.value}"
+                    ),
+                    severity="CRITICAL",
+                )
+            )
+
+        return findings
 
     def _check_description(
         self, contract: ModelContractInput
@@ -225,6 +401,55 @@ class NodeRuntimeSweep:
 
         return findings
 
+    def _check_census_durability(
+        self,
+        contracts: list[ModelContractInput],
+        durable_node_names: list[str] | None,
+    ) -> list[ModelRuntimeFinding]:
+        """Audit cold-start durability of the registered contract census.
+
+        The cold-start census is reconstructed from the image-bundled
+        filesystem manifest (HYBRID-mode bootstrap + PluginLoaderContractSource),
+        which is durable and independent of Kafka retention. The post-freeze
+        dynamic-contract listener consumes the ``SUFFIX_NODE_REGISTRATION``
+        topic (``cleanup.policy=delete``, 7-day retention) with
+        ``auto_offset_reset=latest`` — it never replays history on a cold start.
+
+        Therefore any contract present in the live registered census but absent
+        from the durable source is NON-durable: it was materialized only via the
+        dynamic path and will vanish on a cold runtime restart unless its
+        registrant re-publishes. This check surfaces those contracts.
+
+        When ``durable_node_names`` is None the caller supplied no manifest and
+        the check is skipped (no finding emitted).
+        """
+        if durable_node_names is None:
+            return []
+
+        findings: list[ModelRuntimeFinding] = []
+        durable = set(durable_node_names)
+
+        for contract in contracts:
+            if contract.node_name not in durable:
+                findings.append(
+                    ModelRuntimeFinding(
+                        finding_type=EnumFindingType.NON_DURABLE_CONTRACT,
+                        subject=contract.node_name,
+                        message=(
+                            f"Contract {contract.node_name} is registered in the "
+                            f"live runtime but absent from the durable cold-start "
+                            f"census (filesystem manifest). It was materialized "
+                            f"only via the dynamic node-registration listener "
+                            f"(cleanup.policy=delete topic, auto_offset_reset="
+                            f"latest) and will not be reconstructed on a cold "
+                            f"restart unless its registrant re-publishes."
+                        ),
+                        severity="CRITICAL",
+                    )
+                )
+
+        return findings
+
     def _check_symmetry(
         self,
         all_topics: set[str],
@@ -257,4 +482,46 @@ class NodeRuntimeSweep:
                     )
                 )
 
+        return findings
+
+    def _check_profile_consumer_census(
+        self,
+        contracts: list[ModelContractInput],
+        live_consumer_profiles: list[str],
+    ) -> list[ModelRuntimeFinding]:
+        """OMN-12957 dual check: manifest profile vs live consumer-group census.
+
+        A node may declare a valid, registered runtime_profile yet have no
+        process actually consuming for it (the runtime lane for that profile is
+        not deployed / not attached). Static profile-subset validation passes
+        but the node is still a silent orphan. Compares each subscribing node's
+        declared profiles against the set of profiles with a live consumer group
+        and flags nodes whose every declared profile is absent from the census.
+        """
+        live = {p.strip().lower() for p in live_consumer_profiles if p.strip()}
+        findings: list[ModelRuntimeFinding] = []
+        for contract in contracts:
+            # Only nodes that subscribe can be orphaned at the consumer level.
+            if not contract.subscribe_topics:
+                continue
+            declared = {
+                p.strip().lower() for p in contract.runtime_profiles if p.strip()
+            }
+            if not declared:
+                continue
+            if declared & live:
+                continue
+            findings.append(
+                ModelRuntimeFinding(
+                    finding_type=EnumFindingType.PROFILE_NO_LIVE_CONSUMER,
+                    subject=contract.node_name,
+                    message=(
+                        f"Node {contract.node_name} declares runtime_profiles "
+                        f"{sorted(declared)} but none has a live consumer group "
+                        f"(census: {sorted(live)}). Subscriptions are not being "
+                        "drained — silent orphan."
+                    ),
+                    severity="CRITICAL",
+                )
+            )
         return findings

@@ -58,6 +58,12 @@ class ModelLlmModelProfile(BaseModel):
     requires_api_key_env: str | None = None
     """Name of env var for API key, if required."""
 
+    requires_secret_ref: str | None = None
+    """Logical secret-store reference (key NAME) for the backend bearer token,
+    if required (e.g. ``llm.vertex.access_token`` for the Vertex ADC path). The
+    token VALUE is resolved fail-closed at the effect boundary via the secret
+    store and is never committed here — only the logical ref name (OMN-12971)."""
+
     notes: str | None = None
 
     @field_validator("context_window")

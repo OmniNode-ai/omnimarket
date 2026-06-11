@@ -235,3 +235,21 @@ class TestModelLlmModelRegistryLoader:
                 f"{model_id}.endpoint_env looks like a URL: {profile.endpoint_env}. "
                 "Must be an env var name."
             )
+
+    def test_vertex_gemini_registry_entry_uses_secret_ref(self) -> None:
+        """OMN-12971: the Vertex registry entry declares only a logical secret ref.
+
+        The token VALUE is resolved fail-closed at the effect boundary via the
+        secret store; the registry carries only the ref NAME. The Vertex path is
+        ADDITIVE — the AI Studio ``gemini-2.5-flash-lite`` entry is preserved.
+        """
+        loader = ModelLlmModelRegistryLoader(_REGISTRY_PATH)
+        registry = loader.load()
+        assert "vertex-gemini-flash" in registry.models
+        vertex = registry.get_model("vertex-gemini-flash")
+        assert vertex.provider == "vertex"
+        assert vertex.requires_secret_ref == "llm.vertex.access_token"
+        assert vertex.requires_api_key_env is None
+        assert vertex.endpoint_env == "BIFROST_VERTEX_GEMINI_ENDPOINT_URL"
+        # ADDITIVE: AI Studio key path preserved.
+        assert "gemini-2.5-flash-lite" in registry.models

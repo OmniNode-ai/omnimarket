@@ -30,7 +30,10 @@ descriptor:
   purity: pure
   idempotent: true
   timeout_ms: 120000
-  runtime_profiles: [compute]
+  # OMN-12957: 'compute' is not a registered runtime profile — it silently
+  # orphaned this command-consuming node. The canonical lane for command
+  # consumers is 'main'.
+  runtime_profiles: [main]
 
 inputs:
   mode:

@@ -127,6 +127,43 @@ backends:
     extra_headers:
       HTTP-Referer: "https://omninode.ai"
       X-Title: "OmniNode ONEX"
+  # Vertex-served Gemini (OMN-12971) — burns the Vertex $500 credit via Vertex AI.
+  # ADDITIVE next to cloud-gemini-flash (AI Studio key path); both routes stay
+  # selectable so the project remains provider-agnostic. This backend is NOT a
+  # replacement — neither provider is removed or forced.
+  #
+  # Auth (secret-ref discipline): the outbound call carries a standard
+  #   Authorization: Bearer <token>
+  # header (the same path every cloud backend uses). For Vertex that token is a
+  # short-lived OAuth access token MINTED FROM ADC. ADC delivery to the effects
+  # container: a mounted service-account / Application-Default-Credentials file
+  # (GOOGLE_APPLICATION_CREDENTIALS) is exchanged for the bearer token, and that
+  # token is published to the secret store under the logical ref
+  # ``llm.vertex.access_token``. Only the logical ref name lives here; the token
+  # VALUE is resolved fail-closed at the effect boundary via ProtocolSecretStore
+  # (OMN-12824). No credential value is ever committed in this config.
+  #
+  # endpoint_url is null in the repo default because the Vertex OpenAI-compat URL
+  # is project + region specific
+  #   https://{LOCATION}-aiplatform.googleapis.com/v1/projects/{PROJECT}/
+  #     locations/{LOCATION}/endpoints/openapi/chat/completions
+  # The overlay (bifrost_overrides.yaml) supplies the COMPLETE chat-completions
+  # URL via BIFROST_VERTEX_GEMINI_ENDPOINT_URL. A bare base fails closed
+  # (OMN-12815) — no in-code path construction.
+  - backend_id: cloud-vertex-gemini
+    base_url_env: BIFROST_VERTEX_GEMINI_ENDPOINT_URL
+    endpoint_url: null
+    model_name: "gemini-2.5-flash-lite"
+    secret_ref: llm.vertex.access_token
+    tier: cheap_cloud
+    timeout_ms: 60000
+    capabilities:
+      - summarization
+      - simple_tasks
+      - document
+    extra_headers:
+      HTTP-Referer: "https://omninode.ai"
+      X-Title: "OmniNode ONEX"
   # Local DS-V4-Flash backend — DeepSeek V4 Flash (284B MoE) on .200:8101 (OMN-12492)
   - backend_id: local-ds-v4-flash
     base_url_env: BIFROST_LOCAL_DS_V4_FLASH_ENDPOINT_URL

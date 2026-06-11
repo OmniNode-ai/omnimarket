@@ -436,7 +436,7 @@ def _run_contract_checks(
     """Run contract-declared DoD checks.
 
     Returns:
-        (deterministic_failures, heuristic_failures) — separate lists so the
+        (deterministic_failures, heuristic_failures) - separate lists so the
         caller can apply the correct blocking/escalation semantics.
     """
     det_failures = _evaluate_deterministic_checks(content, dod_deterministic)
@@ -445,6 +445,72 @@ def _run_contract_checks(
     )
     det_failures.extend(extra_det_failures)
     return det_failures, heuristic_failures
+
+
+# Relative weighting of the two DoD bands when computing the graded quality
+# score (OMN-12964). Deterministic checks gate harder, so a deterministic miss
+# costs more than a heuristic miss, but neither band collapses the score to a
+# single degenerate value. Weights need not sum to 1.0 - they are normalised by
+# the per-band check count below.
+_DETERMINISTIC_BAND_WEIGHT: float = 0.6
+_HEURISTIC_BAND_WEIGHT: float = 0.4
+
+
+def _graded_quality_score(
+    *,
+    deterministic_total: int,
+    deterministic_failures: int,
+    heuristic_total: int,
+    heuristic_failures: int,
+) -> float:
+    """Compute a continuous 0.0-1.0 quality score from DoD check outcomes.
+
+    The score is the band-weighted fraction of DoD checks satisfied. Before
+    OMN-12964 the gate returned a degenerate {0.0, 1.0} verdict: any single
+    failing check forced the score to 0.0, so a near-perfect output and an
+    outright refusal scored identically. That made the quality signal useless
+    for experiment interpretation (Experiments 1-3). This graded score
+    discriminates by how many checks pass, independent of the pass/fail gate.
+
+    Bands are weighted (deterministic > heuristic) and each band's contribution
+    is the fraction of its checks that passed. A band with no checks contributes
+    its full weight (nothing to fail). When no checks ran at all, the score is
+    0.0 - there is no evidence of quality.
+
+    Args:
+        deterministic_total: Number of deterministic checks evaluated.
+        deterministic_failures: Number of deterministic checks that failed.
+        heuristic_total: Number of heuristic checks evaluated.
+        heuristic_failures: Number of heuristic checks that failed.
+
+    Returns:
+        Quality score in [0.0, 1.0], rounded to 3 decimals.
+    """
+
+    def _band_fraction(total: int, failures: int) -> float:
+        if total <= 0:
+            return 1.0
+        passed = max(0, total - failures)
+        return passed / total
+
+    det_fraction = _band_fraction(deterministic_total, deterministic_failures)
+    heur_fraction = _band_fraction(heuristic_total, heuristic_failures)
+
+    if deterministic_total <= 0 and heuristic_total <= 0:
+        return 0.0
+
+    # Only weight bands that actually contributed checks so the normalisation
+    # reflects the checks that ran rather than the static band weights.
+    active_weight = 0.0
+    weighted_sum = 0.0
+    if deterministic_total > 0:
+        active_weight += _DETERMINISTIC_BAND_WEIGHT
+        weighted_sum += _DETERMINISTIC_BAND_WEIGHT * det_fraction
+    if heuristic_total > 0:
+        active_weight += _HEURISTIC_BAND_WEIGHT
+        weighted_sum += _HEURISTIC_BAND_WEIGHT * heur_fraction
+
+    return round(weighted_sum / active_weight, 3)
 
 
 def _run_legacy_checks(
@@ -555,13 +621,30 @@ def delta(gate_input: ModelQualityGateInput) -> ModelQualityGateResult:
 
     all_failures = det_failures + heuristic_failures
 
+    # Graded quality score (OMN-12964): the fraction of DoD checks satisfied,
+    # band-weighted. This is independent of the pass/fail gate below - the gate
+    # still hard-blocks on any deterministic failure - but the score now
+    # discriminates output quality instead of collapsing to {0.0, 1.0}.
+    # Unsupported heuristic checks surface as deterministic failures, so the
+    # deterministic band total includes any extra failures beyond the declared
+    # deterministic check count.
+    deterministic_total = max(len(dod_deterministic), len(det_failures))
+    quality_score = _graded_quality_score(
+        deterministic_total=deterministic_total,
+        deterministic_failures=len(det_failures),
+        heuristic_total=len(dod_heuristic),
+        heuristic_failures=len(heuristic_failures),
+    )
+
     if det_failures:
-        # Deterministic failure blocks delegation — quality score irrelevant
+        # Deterministic failure blocks delegation. The score is still graded so
+        # downstream experiment analysis can distinguish a near-miss from a
+        # total failure even when the gate verdict is identical.
         return ModelQualityGateResult(
             correlation_id=gate_input.correlation_id,
             passed=False,
             fail_category="fail_deterministic",
-            quality_score=0.0,
+            quality_score=quality_score,
             failure_reasons=tuple(all_failures),
             fallback_recommended=True,
         )
@@ -572,7 +655,7 @@ def delta(gate_input: ModelQualityGateInput) -> ModelQualityGateResult:
             correlation_id=gate_input.correlation_id,
             passed=False,
             fail_category="fail_heuristic",
-            quality_score=0.0,
+            quality_score=quality_score,
             failure_reasons=tuple(heuristic_failures),
             fallback_recommended=fallback_recommended,
         )
@@ -581,7 +664,7 @@ def delta(gate_input: ModelQualityGateInput) -> ModelQualityGateResult:
         correlation_id=gate_input.correlation_id,
         passed=True,
         fail_category="pass",
-        quality_score=1.0,
+        quality_score=quality_score,
         failure_reasons=(),
         fallback_recommended=False,
     )

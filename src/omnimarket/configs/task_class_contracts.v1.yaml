@@ -84,6 +84,12 @@ task_classes:
       tier_order:
         - local
         - cheap_cloud
+  # OMN-12964: `document` is a PROSE natural-language task (write/explain), not a
+  # code-docstring task. Its DoD must not require docstring syntax — that defect
+  # forced every prose output to fail `docstring_present` / `follows_google_style`
+  # / `covers_args_returns_raises` (code-docstring markers `args:`/`returns:`/
+  # `raises:`) and score 0.000 on both tiers (live CID a604cd40). The docstring
+  # DoD lives on the `documentation` task class below, which is the correct home.
   document:
     required_capabilities:
       - natural_language_generation
@@ -92,11 +98,10 @@ task_classes:
     cloud_routing_policy: allowed
     definition_of_done:
       deterministic:
-        - docstring_present
+        - response_non_empty
       heuristic:
         - no_refusal
-        - follows_google_style
-        - covers_args_returns_raises
+        - accurate
     escalation_policy:
       max_escalations: 1
       tier_order:
