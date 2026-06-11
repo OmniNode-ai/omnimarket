@@ -558,6 +558,11 @@ class HandlerDelegationWorkflow:
                 next_tier = next_eligible_tier(
                     workflow.current_tier_name,
                     _INFERENCE_ERROR_EXCLUDED_TIERS,
+                    task_type=(
+                        workflow.request.task_type
+                        if workflow.request is not None
+                        else None
+                    ),
                 )
                 if next_tier is None:
                     terminal_failure_reason = "no_higher_tier_available"
@@ -802,6 +807,7 @@ class HandlerDelegationWorkflow:
             next_tier = next_eligible_tier(
                 workflow.current_tier_name,
                 excluded_tiers,
+                task_type=workflow.request.task_type,
             )
             if next_tier is None:
                 terminal_failure_reason = "no_higher_tier_available"

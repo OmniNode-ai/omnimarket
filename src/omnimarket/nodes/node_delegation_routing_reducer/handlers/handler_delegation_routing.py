@@ -496,26 +496,74 @@ def _definition_of_done_checks(
     )
 
 
+def _tier_can_route_task(
+    tier: ModelRoutingTier,
+    task_type: str,
+    bifrost_backends: dict[str, BifrostBackendRef],
+    contract: dict[str, object] | None,
+) -> bool:
+    """Return whether ``tier`` can actually route ``task_type``.
+
+    A tier is routable when it is permitted by the task-class contract AND
+    declares at least one model that serves ``task_type`` with a resolvable
+    backend endpoint. This mirrors the eligibility logic in ``delta`` so that
+    escalation cannot advance to a tier the reducer would then crash on
+    (OMN-12939: deployed frontier_api endpoints were empty, so escalating to the
+    claude tier raised ProtocolConfigurationError and stranded the FSM).
+    """
+    entry = _task_class_entry(contract, task_type)
+    if not _tier_allowed_by_contract(tier, entry):
+        return False
+    contract_model_ref = _get_contract_model_ref(task_type, contract=contract)
+    # Availability probe (token budget 0): answers "could any model in this tier
+    # serve the task with a resolvable backend", not the final selection. delta()
+    # re-selects with the real token estimate when it builds the decision.
+    selected = _select_model_for_task(
+        tier.models,
+        task_type,
+        0,
+        bifrost_backends,
+        contract_model_ref=contract_model_ref,
+    )
+    return selected is not None
+
+
 def next_eligible_tier(
     current_tier_name: str,
     excluded_tiers: frozenset[str],
+    *,
+    task_type: str | None = None,
 ) -> str | None:
     """Return the next tier name after current_tier_name, skipping excluded_tiers.
 
     Parses routing_tiers.yaml once (cached via _get_config). Returns None if
     current tier is the last eligible tier or is unrecognized.
 
+    When ``task_type`` is provided, tiers that cannot actually route the task
+    (no model serving ``task_type`` with a resolvable backend endpoint, or
+    disallowed by the task-class contract) are skipped — so the orchestrator
+    never escalates to a tier whose endpoint the routing reducer cannot resolve
+    (OMN-12939). When ``task_type`` is None the legacy pure declaration-order
+    behavior is preserved for callers without a task context.
+
     This is the single parsing path for tier escalation order. The orchestrator
     imports and calls this directly -- no independent YAML parsing.
     """
     config = _get_config()
+    bifrost_backends = _load_bifrost_endpoints() if task_type is not None else {}
+    contract = _get_task_class_contract() if task_type is not None else None
     found_current = False
     for tier in config.tiers:
         if tier.name == current_tier_name:
             found_current = True
             continue
-        if found_current and tier.name not in excluded_tiers:
-            return tier.name
+        if not found_current or tier.name in excluded_tiers:
+            continue
+        if task_type is not None and not _tier_can_route_task(
+            tier, task_type, bifrost_backends, contract
+        ):
+            continue
+        return tier.name
     return None
 
 

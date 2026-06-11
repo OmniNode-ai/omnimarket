@@ -151,7 +151,9 @@ def _advance_to_gate_evaluated(
 class TestGateFailWithFallbackTriggersEscalation:
     """Task 10, test 1: gate fail + fallback_recommended -> ESCALATING -> ROUTED."""
 
-    def test_gate_fail_with_fallback_triggers_escalation(self) -> None:
+    def test_gate_fail_with_fallback_triggers_escalation(
+        self, frontier_unconfigured_bifrost: None
+    ) -> None:
         handler = HandlerDelegationWorkflow(workflows={})
         cid = uuid4()
         _advance_to_gate_evaluated(handler, cid, tier_name="local")
@@ -275,7 +277,9 @@ class TestGateFailFallbackNotRecommended:
 class TestRoutingReducerMinTierName:
     """Task 10, tests 5-6: routing reducer handles min_tier_name."""
 
-    def test_routing_intent_carries_min_tier_name(self) -> None:
+    def test_routing_intent_carries_min_tier_name(
+        self, frontier_unconfigured_bifrost: None
+    ) -> None:
         """Verify the escalation path emits intent with min_tier_name set."""
         handler = HandlerDelegationWorkflow(workflows={})
         cid = uuid4()
@@ -437,6 +441,129 @@ class TestNextEligibleTier:
         """Unrecognized tier name returns None."""
         result = next_eligible_tier("nonexistent_tier", frozenset())
         assert result is None
+
+
+# ---------------------------------------------------------------------------
+# Tests: next_eligible_tier task-aware endpoint resolvability (OMN-12939)
+# ---------------------------------------------------------------------------
+#
+# Regression: CID a604cd40 (stability-test, 2026-06-11). A `document` task
+# failed the quality gate on local AND cheap_cloud. The orchestrator escalated
+# to the next *declared* tier (cheap_frontier, then claude). But for a document
+# task, cheap_frontier declares no model serving `document`, and the claude tier
+# backend (cloud-sonnet) had an EMPTY endpoint_url in the deployed bifrost
+# config. The routing reducer's delta() therefore found no routable tier and
+# raised ProtocolConfigurationError, crashing the dispatcher — no routing
+# decision, no terminal delegation event, no projection row. The FSM stranded
+# in ROUTED forever.
+#
+# Fix: next_eligible_tier must be task-aware — skip any higher tier that cannot
+# actually route the task (no model serving task_type with a resolvable backend
+# endpoint). When no higher tier can route, it returns None so the orchestrator
+# terminates with `no_higher_tier_available` and emits a delegation-failed event
+# (which materializes a projection row) instead of stranding.
+
+
+@pytest.mark.unit
+class TestNextEligibleTierEndpointResolvability:
+    """OMN-12939: next_eligible_tier must skip tiers that cannot route the task.
+
+    Without task-awareness, escalation off cheap_cloud for a `document` task
+    returns cheap_frontier/claude even though neither can serve the task, and the
+    routing reducer crashes resolving an endpoint. The fix returns None so the
+    orchestrator terminates gracefully.
+    """
+
+    def test_skips_higher_tier_with_unresolvable_endpoint_for_document_task(
+        self, frontier_unconfigured_bifrost: None
+    ) -> None:
+        # cheap_frontier declares no model serving `document`; the claude tier's
+        # backend has an empty endpoint_url. No higher tier can route a document
+        # task, so the correct answer is None (terminate, do not strand).
+        result = next_eligible_tier(
+            "cheap_cloud",
+            frozenset({"cli_agents"}),
+            task_type="document",
+        )
+        assert result is None
+
+    def test_task_aware_still_advances_when_higher_tier_routable(
+        self, frontier_unconfigured_bifrost: None
+    ) -> None:
+        # cheap_cloud carries resolvable endpoints that serve `document`, so
+        # escalating from local must still advance to cheap_cloud.
+        result = next_eligible_tier(
+            "local",
+            frozenset({"cli_agents"}),
+            task_type="document",
+        )
+        assert result == "cheap_cloud"
+
+    def test_task_unaware_call_preserves_declaration_order(self) -> None:
+        # Backward-compat: omitting task_type preserves pure declaration order.
+        result = next_eligible_tier("cheap_cloud", frozenset({"cli_agents"}))
+        assert result == "cheap_frontier"
+
+
+@pytest.mark.unit
+class TestEscalationTerminatesWhenFrontierUnconfigured:
+    """OMN-12939: full orchestrator path — gate fails on local+cheap_cloud for a
+    document task with an unconfigured frontier tier must reach terminal FAILED
+    and emit a delegation-failed event (so a projection row materializes),
+    never strand in ROUTED.
+    """
+
+    def test_gate_fail_document_task_terminates_when_no_routable_higher_tier(
+        self, frontier_unconfigured_bifrost: None
+    ) -> None:
+        handler = HandlerDelegationWorkflow(workflows={})
+        cid = uuid4()
+
+        # Drive through local then cheap_cloud, failing the gate each time.
+        request = _make_request(correlation_id=cid, task_type="document")
+        handler.handle_delegation_request(request)
+
+        # Attempt 1: local tier, gate fails -> escalate.
+        decision1 = _make_routing_decision(cid, task_type="document", tier_name="local")
+        handler.handle_routing_decision(decision1)
+        handler.handle_inference_response(_make_inference_response(cid))
+        gate1 = _make_gate_result(
+            cid,
+            passed=False,
+            quality_score=0.0,
+            failure_reasons=("dod_failure",),
+            fallback_recommended=True,
+        )
+        events1 = handler.handle_gate_result(gate1)
+        assert any(isinstance(e, ModelRoutingIntent) for e in events1)
+        assert handler.workflows[cid].state == EnumDelegationState.ROUTED
+
+        # Attempt 2: cheap_cloud tier, gate fails -> must terminate (no routable
+        # higher tier for a document task), NOT strand.
+        decision2 = _make_routing_decision(
+            cid, task_type="document", tier_name="cheap_cloud"
+        )
+        handler.handle_routing_decision(decision2)
+        handler.handle_inference_response(_make_inference_response(cid))
+        gate2 = _make_gate_result(
+            cid,
+            passed=False,
+            quality_score=0.0,
+            failure_reasons=("dod_failure",),
+            fallback_recommended=True,
+        )
+        events2 = handler.handle_gate_result(gate2)
+
+        workflow = handler.workflows[cid]
+        assert workflow.state == EnumDelegationState.FAILED, (
+            "FSM must reach terminal FAILED, not strand in ROUTED"
+        )
+        result_events = [e for e in events2 if isinstance(e, ModelDelegationEvent)]
+        assert len(result_events) == 1, "a terminal delegation event must be emitted"
+        result = result_events[0].payload
+        assert isinstance(result, ModelDelegationResult)
+        assert result.quality_passed is False
+        assert result.terminal_failure_reason == "no_higher_tier_available"
 
 
 # ---------------------------------------------------------------------------
