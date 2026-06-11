@@ -97,6 +97,28 @@ def test_committed_contract_declares_api_key_reference(backend_id: str) -> None:
 
 
 @pytest.mark.unit
+def test_vertex_backend_declares_secret_ref_overlay_endpoint() -> None:
+    """OMN-12971: the Vertex backend follows secret-ref discipline.
+
+    The Vertex path is ADDITIVE next to ``cloud-gemini-flash`` (AI Studio key
+    path). It carries only the logical secret ref ``llm.vertex.access_token`` —
+    the OAuth bearer token minted from ADC is published to the secret store under
+    that ref and resolved fail-closed at the effect boundary; the token VALUE
+    never lives in committed config. Its endpoint is project+region specific, so
+    ``endpoint_url`` is null in the repo default and the overlay supplies the
+    COMPLETE Vertex OpenAI-compat URL via ``BIFROST_VERTEX_GEMINI_ENDPOINT_URL``.
+    """
+    backends = _committed_backends()
+    assert "cloud-vertex-gemini" in backends, "Vertex backend missing from contract"
+    vertex = backends["cloud-vertex-gemini"]
+    assert vertex.get("secret_ref") == "llm.vertex.access_token"
+    assert vertex.get("endpoint_url") is None
+    assert vertex.get("base_url_env") == "BIFROST_VERTEX_GEMINI_ENDPOINT_URL"
+    # ADDITIVE: the AI Studio key path is preserved, not replaced.
+    assert backends["cloud-gemini-flash"].get("secret_ref") == "llm.gemini.api_key"
+
+
+@pytest.mark.unit
 def test_committed_contract_has_no_literal_api_key() -> None:
     """No literal secret VALUE appears in the committed contract.
 
