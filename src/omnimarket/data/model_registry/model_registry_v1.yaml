@@ -15,9 +15,9 @@
 # in Python or YAML is prohibited — use this registry as the single source.
 
 schema_version: "1.0.0"
-model_registry_version: "1.1.0"
-pricing_manifest_version: "2026-05-30-qwen36-dsv4-gemini-openrouter"
-observed_at: "2026-05-30T00:00:00Z"
+model_registry_version: "1.2.0"
+pricing_manifest_version: "2026-06-11-gemini-25-flash-lite"
+observed_at: "2026-06-11T00:00:00Z"
 
 models:
   qwen3-coder-30b:
@@ -114,23 +114,26 @@ models:
       Compatibility alias for qwen3.6-35b. Key retained for routing key stability.
       Actual served model is mlx-community/Qwen3.6-35B-A3B-8bit (replaced Qwen3-Next-80B-A3B 2026-04-18).
 
-  gemini-2.0-flash:
-    model_id: "gemini-2.0-flash"
+  gemini-2.5-flash-lite:
+    model_id: "gemini-2.5-flash-lite"
     provider: "google"
     endpoint_env: "GEMINI_API_URL"
-    model_name: "gemini-2.0-flash"
+    model_name: "gemini-2.5-flash-lite"
     requires_api_key_env: "GEMINI_API_KEY"
     context_window: 1048576
     pricing_per_1m_input: "0.10"
     pricing_per_1m_output: "0.40"
     cost_basis: "cloud_api_cost"
-    observed_at: "2026-05-30T00:00:00Z"
+    observed_at: "2026-06-11T00:00:00Z"
     source: "provider docs"
     notes: >
-      Gemini 2.0 Flash. 1M context window. GEMINI_API_KEY or GOOGLE_API_KEY required.
-      Pricing: $0.10/1M input, $0.40/1M output (Google AI pricing 2026-05-30).
+      Gemini 2.5 Flash Lite. 1M context window. GEMINI_API_KEY or GOOGLE_API_KEY required.
+      Pricing: $0.10/1M input, $0.40/1M output (Google AI pricing 2026-06-11).
       endpoint_url empty in repo default; overlay fills https://generativelanguage.googleapis.com/v1beta/openai/.
       Routed via cloud-gemini-flash bifrost backend.
+      OMN-12937: retargeted from gemini-2.0-flash, whose free tier was quota-exhausted
+      (HTTP 429). The delegation inference effect sources the wire model id from this
+      registry entry directly; gemini-2.5-flash-lite probes HTTP 200 on the deployed key.
 
   openrouter-qwen3-coder-480b:
     model_id: "openrouter-qwen3-coder-480b"

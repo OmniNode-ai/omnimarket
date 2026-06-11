@@ -80,19 +80,19 @@ LITERAL_CLASSIFICATION_TABLE: list[tuple[str, str, ClassificationKind]] = [
     ),
     (
         "src/omnimarket/data/model_registry/model_registry_v1.yaml",
-        "model_name: 'gemini-2.0-flash' (registry data, endpoint resolved from GEMINI_API_URL env)",
+        "model_name: 'gemini-2.5-flash-lite' (registry data, endpoint resolved from GEMINI_API_URL env; OMN-12937)",
         "deferred",
     ),
     # --- tests/constants.py (experiment-only: test-only symbolic constant) ---
     (
         "tests/constants.py",
-        "MODEL_GEMINI_2_0_FLASH = 'gemini-2.0-flash' (test constant module)",
+        "MODEL_GEMINI_2_5_FLASH_LITE = 'gemini-2.5-flash-lite' (test constant module; OMN-12937)",
         "experiment-only",
     ),
     # --- Unit test using model registry (experiment-only: tests the registry itself) ---
     (
         "tests/unit/models/delegation/llm_cost_routing/test_model_registry_omn12492.py",
-        "'gemini-2.0-flash' as registry lookup key in test",
+        "'gemini-2.5-flash-lite' as registry lookup key in test (OMN-12937)",
         "experiment-only",
     ),
     # --- generation_consumer test (experiment-only: regression test for URL construction) ---

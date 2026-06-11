@@ -7,7 +7,7 @@ Verifies that the 2026-05-30 registry refresh correctly contains:
 - Updated local model facts for Qwen3.6-35B-A3B (.201:8000) and
   Qwen3.6-27B-MTP (.201:8001) under the stable routing keys
 - New ds-v4-flash entry (DeepSeek V4 Flash on .200:8101)
-- New gemini-2.0-flash entry (cloud Gemini Flash)
+- Cloud Gemini Flash entry, retargeted to gemini-2.5-flash-lite (OMN-12937)
 - New openrouter-qwen3-coder-480b entry (cheap frontier direct)
 - All new entries pass existing registry invariants
 """
@@ -74,29 +74,49 @@ class TestOmn12492LocalModelFacts:
 
 
 @pytest.mark.unit
-class TestOmn12492GeminiFlash:
-    """gemini-2.0-flash entry correct after OMN-12492 refresh."""
+class TestOmn12937GeminiFlashLite:
+    """gemini-2.5-flash-lite registry entry (OMN-12937).
 
-    def test_gemini_flash_present(self, registry) -> None:  # type: ignore[no-untyped-def]
-        model = registry.get_model("gemini-2.0-flash")
+    OMN-12937: the delegation inference effect sources the Gemini wire model id
+    directly from this registry entry (key/model_id/model_name), NOT from the
+    bifrost backend. gemini-2.0-flash is free-tier-exhausted (HTTP 429), so the
+    registry entry was retargeted to gemini-2.5-flash-lite, which probes HTTP 200
+    on the deployed key. See diagnosis agent-live-gemini-proof-OMN-12890.md.
+    """
+
+    def test_gemini_flash_lite_present(self, registry) -> None:  # type: ignore[no-untyped-def]
+        model = registry.get_model("gemini-2.5-flash-lite")
         assert model.provider == "google"
         assert model.endpoint_env == "GEMINI_API_URL"
-        assert model.model_name == "gemini-2.0-flash"
+        assert model.model_name == "gemini-2.5-flash-lite"
         assert model.requires_api_key_env == "GEMINI_API_KEY"
 
-    def test_gemini_flash_context_window(self, registry) -> None:  # type: ignore[no-untyped-def]
-        model = registry.get_model("gemini-2.0-flash")
+    def test_gemini_flash_lite_model_id_matches_key(self, registry) -> None:  # type: ignore[no-untyped-def]
+        """key == model_id == model_name: the wire id the live effect sends is
+        the quota-available model, with no stale alias surface."""
+        model = registry.get_model("gemini-2.5-flash-lite")
+        assert model.model_id == "gemini-2.5-flash-lite"
+        assert model.model_name == "gemini-2.5-flash-lite"
+
+    def test_stale_gemini_2_0_flash_absent(self, registry) -> None:  # type: ignore[no-untyped-def]
+        """The free-tier-exhausted gemini-2.0-flash entry must be gone so the
+        live effect cannot resolve it and 429."""
+        with pytest.raises(KeyError):
+            registry.get_model("gemini-2.0-flash")
+
+    def test_gemini_flash_lite_context_window(self, registry) -> None:  # type: ignore[no-untyped-def]
+        model = registry.get_model("gemini-2.5-flash-lite")
         assert model.context_window == 1048576  # 1M token context
 
-    def test_gemini_flash_pricing(self, registry) -> None:  # type: ignore[no-untyped-def]
-        model = registry.get_model("gemini-2.0-flash")
+    def test_gemini_flash_lite_pricing(self, registry) -> None:  # type: ignore[no-untyped-def]
+        model = registry.get_model("gemini-2.5-flash-lite")
         assert model.pricing_per_1m_input == Decimal("0.10")
         assert model.pricing_per_1m_output == Decimal("0.40")
         assert model.cost_basis == EnumCostBasis.CLOUD_API_COST
 
     def test_gemini_endpoint_env_is_not_url(self, registry) -> None:  # type: ignore[no-untyped-def]
         """endpoint_env must be an env var name, not a raw URL (registry invariant)."""
-        model = registry.get_model("gemini-2.0-flash")
+        model = registry.get_model("gemini-2.5-flash-lite")
         assert not model.endpoint_env.startswith("http"), (
             f"endpoint_env must be an env var name, got: {model.endpoint_env}"
         )
@@ -131,7 +151,7 @@ class TestOmn12492RegistryInvariants:
 
     NEW_MODEL_IDS = [
         "ds-v4-flash",
-        "gemini-2.0-flash",
+        "gemini-2.5-flash-lite",
         "openrouter-qwen3-coder-480b",
     ]
 
@@ -148,11 +168,8 @@ class TestOmn12492RegistryInvariants:
             )
 
     def test_registry_version_bumped(self, registry) -> None:  # type: ignore[no-untyped-def]
-        """OMN-12492 bumped model_registry_version to 1.1.0."""
-        assert registry.model_registry_version == "1.1.0"
+        """OMN-12937 bumped model_registry_version to 1.2.0 (Gemini retarget)."""
+        assert registry.model_registry_version == "1.2.0"
 
     def test_pricing_manifest_version_updated(self, registry) -> None:  # type: ignore[no-untyped-def]
-        assert (
-            registry.pricing_manifest_version
-            == "2026-05-30-qwen36-dsv4-gemini-openrouter"
-        )
+        assert registry.pricing_manifest_version == "2026-06-11-gemini-25-flash-lite"
