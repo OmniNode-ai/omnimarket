@@ -52,6 +52,13 @@ from typing import Any, Protocol
 
 from pydantic import BaseModel, ConfigDict
 
+from omnimarket.events.context_roi import (
+    EnumFailureStage as EnumRunnerFailureStage,
+)
+from omnimarket.events.context_roi import (
+    ModelAttemptReductionRow,
+    ModelContextRoiRunResult,
+)
 from omnimarket.nodes.node_context_roi_compute.handlers.handler_context_roi import (
     HandlerContextRoi,
 )
@@ -74,19 +81,10 @@ from omnimarket.nodes.node_context_roi_compute.models.model_task_manifest import
 from omnimarket.nodes.node_context_roi_runner.handlers.handler_context_roi_runner import (
     HandlerContextRoiRunner,
 )
-from omnimarket.nodes.node_context_roi_runner.models.model_attempt_reduction import (
-    EnumFailureStage as EnumRunnerFailureStage,
-)
-from omnimarket.nodes.node_context_roi_runner.models.model_attempt_reduction import (
-    ModelAttemptReductionRow,
-)
 from omnimarket.nodes.node_context_roi_runner.models.model_context_roi_run_request import (
     ModelContextRoiArmSpec,
     ModelContextRoiRunRequest,
     ModelContextRoiTask,
-)
-from omnimarket.nodes.node_context_roi_runner.models.model_context_roi_run_result import (
-    ModelContextRoiRunResult,
 )
 
 # Default output directory: repo-local evidence/scratch, never /tmp.
