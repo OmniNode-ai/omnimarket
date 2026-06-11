@@ -16,6 +16,7 @@ from omnimarket.events.evidence_dashboard import (
     DashboardStatus,
     ModelDashboardProjectionEvent,
 )
+from omnimarket.nodes.evidence_pipeline_native import unwrap_envelope
 
 _CONTRACT_PATH = Path(__file__).resolve().parents[1] / "contract.yaml"
 _START_SUFFIX = "-start"
@@ -64,7 +65,7 @@ class HandlerEvidenceDashboardEffect:
         return event.model_dump(mode="json", exclude={"source_topic", "status"})
 
     def normalize(self, input_data: dict[str, object]) -> ModelDashboardProjectionEvent:
-        payload = dict(input_data)
+        payload = dict(unwrap_envelope(input_data))
         source_topic = str(payload.pop("_topic", "") or payload.get("topic") or "")
         if not source_topic:
             source_topic = "unknown"

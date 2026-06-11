@@ -758,6 +758,24 @@ def _unwrap_envelope(
     return payload
 
 
+def unwrap_envelope(
+    payload: Mapping[str, object],
+) -> Mapping[str, object]:
+    """Public mapping-only wrapper over ``_unwrap_envelope`` (OMN-12935).
+
+    Effect nodes that read raw dict fields (rather than constructing a typed
+    wire model) — e.g. the dashboard projection effect — must strip the same
+    transport envelope before reading ``correlation_id``/``event_id``; otherwise
+    they read those off the outer envelope, fabricate a ``projection_cursor``,
+    and emit a malformed correlation id downstream. The dashboard delivery is
+    always a dict, so this narrows the shared helper's return to ``Mapping``.
+    """
+    unwrapped = _unwrap_envelope(payload)
+    if isinstance(unwrapped, Mapping):
+        return unwrapped
+    return payload
+
+
 def coerce_command(
     payload: ModelEvidencePipelineCommand | Mapping[str, object],
 ) -> ModelEvidencePipelineCommand:
