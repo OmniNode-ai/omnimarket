@@ -155,6 +155,19 @@ repos:
         pass_filenames: false
         stages: [pre-commit]
 
+      # OMN-12959: FSM terminal-state invariant — watchdog topic literals may
+      # only live in the canonical omnimarket.events.topics registry (the source
+      # of truth; omnimarket.events.watchdog imports them and exposes the typed
+      # EnumWatchdogEventType authority). Forces the typed authority instead of
+      # hardcoded strings. SYNC with ci.yml step "Watchdog-topic authority gate".
+      - id: watchdog-topic-authority-gate
+        name: Watchdog-topic authority gate
+        language: system
+        entry: uv run python scripts/ci/check_watchdog_topic_authority.py
+        files: ^(src/omnimarket/.*\.py|scripts/ci/check_watchdog_topic_authority\.py)
+        pass_filenames: false
+        stages: [pre-commit]
+
   # Ruff — standalone pre-commit hooks (no uv source resolution needed)
   # Using astral-sh/ruff-pre-commit avoids `uv run ruff` which fails in worktrees
   # because uv.sources relative paths (../omnibase_core) resolve against the worktree

@@ -16,6 +16,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
@@ -85,6 +86,56 @@ def compute_freshness(latest_ts: str | None) -> str:
         return "degraded"
     except (ValueError, TypeError):
         return "degraded"
+
+
+# ---------------------------------------------------------------------------
+# Casing-safe SELECT column list (OMN-12941)
+# ---------------------------------------------------------------------------
+#
+# Projection views may materialize case-sensitive output columns via quoted
+# camelCase aliases (e.g. ``... AS "overallStatus"`` in
+# projection_overnight_readiness). PostgreSQL preserves the case of a column
+# identifier only when it is double-quoted; an unquoted reference is folded to
+# lowercase. The contract's ``projection_api.columns`` declares those aliases
+# verbatim ("overallStatus"), but YAML strips the quotes, so a naive
+# ``", ".join(columns)`` emits the mixed-case column UNQUOTED and PostgreSQL
+# raises ``column "overallstatus" does not exist`` → 503 on ``overnight.v1``.
+#
+# Quote any identifier that is not already a safe bare identifier (lowercase
+# letters, digits, underscores, not starting with a digit). This is correct for
+# every projection regardless of casing convention and is idempotent for columns
+# the contract already wrote quoted.
+
+_BARE_IDENTIFIER = re.compile(r"^[a-z_][a-z0-9_]*$")
+
+
+def _quote_column_identifier(column: str) -> str:
+    """Return ``column`` as a casing-safe SQL identifier.
+
+    A bare all-lowercase identifier is returned unchanged; anything else
+    (mixed/upper case, already-quoted, or otherwise non-bare) is emitted
+    double-quoted so PostgreSQL preserves its case. Embedded double quotes are
+    escaped per the SQL standard.
+    """
+    stripped = column.strip('"')
+    if _BARE_IDENTIFIER.match(stripped):
+        return stripped
+    escaped = stripped.replace('"', '""')
+    return f'"{escaped}"'
+
+
+def build_select_column_list(columns: tuple[str, ...]) -> str:
+    """Build a casing-safe SELECT column list from contract-declared columns.
+
+    ``("*",)`` selects all columns; otherwise each column is quoted when its
+    casing must be preserved (see :func:`_quote_column_identifier`). This is the
+    single column-list builder for every projection-api read path so the
+    OMN-12941 read-path defect cannot recur at one call site while being fixed
+    at another.
+    """
+    if columns == ("*",):
+        return "*"
+    return ", ".join(_quote_column_identifier(column) for column in columns)
 
 
 def _json_value(value: Any, *, decode_json: bool = False) -> Any:
@@ -401,8 +452,9 @@ async def projection_query(
     limit: int = cfg.limit
     freshness_col: str | None = cfg.freshness_column
 
-    # Build column list — ["*"] means SELECT *, otherwise join explicit columns.
-    col_list = "*" if columns == ("*",) else ", ".join(columns)
+    # Build column list — ["*"] means SELECT *, otherwise casing-safe join that
+    # quotes mixed-case view aliases (OMN-12941).
+    col_list = build_select_column_list(columns)
     generated_at = datetime.now(UTC).isoformat()
 
     try:
@@ -640,7 +692,7 @@ async def _evidence_projection_response(
     generated_at = datetime.now(UTC).isoformat()
     qualified_table = f"{cfg.schema_name}.{cfg.table}"
     columns = cfg.columns
-    col_list = "*" if columns == ("*",) else ", ".join(columns)
+    col_list = build_select_column_list(columns)
 
     clauses: list[str] = []
     args: list[object] = []
