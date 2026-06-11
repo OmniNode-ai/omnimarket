@@ -720,11 +720,40 @@ def _readiness_from_occ_pr(occ: ModelOccPrReference) -> ModelDeploymentReadiness
 
 # Transport-envelope keys that the runtime adds around the domain payload.
 # When the dispatch engine materializes a ``ModelEventEnvelope`` to a dict it
-# wraps the domain fields under ``payload`` and carries routing metadata such
-# as ``partition_key`` alongside it. The domain models below never declare
-# these keys, so they must be stripped before model construction.
+# wraps the domain fields under ``payload`` and carries routing metadata
+# alongside it. The domain models below never declare these keys, so they must
+# be stripped before model construction.
+#
+# Two distinct outer shapes reach this boundary and BOTH must be recognised:
+#
+#   1. The dispatch-engine *materialized* shape — the only shape the live
+#      runtime actually delivers to ``handle()`` for the evidence/readiness
+#      contracts (their ``handler_routing`` declares no ``event_model``, so
+#      auto-wiring passes the materialized dict raw). Outer keys are exactly
+#      ``{"payload", "__bindings", "__debug_trace"}`` — the real
+#      ``partition_key`` lives *inside* ``__debug_trace``, not at the top level.
+#      See ``omnibase_infra.runtime.message_dispatch_engine.
+#      _materialize_envelope_with_bindings``.
+#   2. The bare envelope-field shape (``partition_key``/``event_type``/
+#      ``correlation_id`` at the top level) — non-materialized deliveries.
+#
+# CONSISTENCY: this set is the omnimarket twin of
+# ``omnibase_infra.runtime.auto_wiring.handler_wiring._ENVELOPE_MARKER_KEYS``
+# (OMN-12940). A cross-repo shared constant would force a cross-repo dependency,
+# so the two are kept in sync by hand and pinned by
+# ``test_marker_set_covers_materialized_dispatch_keys`` (OMN-12946). Dropping the
+# materialization markers (``__debug_trace``/``__bindings``) silently turns
+# ``_unwrap_envelope`` back into a no-op on live dispatch — the OMN-12946 defect.
 _ENVELOPE_MARKER_KEYS: frozenset[str] = frozenset(
-    {"partition_key", "event_type", "envelope_id", "event_id", "correlation_id"}
+    {
+        "partition_key",
+        "event_type",
+        "envelope_id",
+        "event_id",
+        "correlation_id",
+        "__debug_trace",
+        "__bindings",
+    }
 )
 
 
