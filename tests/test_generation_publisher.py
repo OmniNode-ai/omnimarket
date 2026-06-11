@@ -93,27 +93,30 @@ def test_envelope_matches_exp0_wire_shape() -> None:
 
 @pytest.mark.asyncio
 async def test_publish_sends_one_command_to_canonical_topic() -> None:
-    producer = AsyncMock()
+    event_bus = AsyncMock()
     req = ModelGenerateRequest(task_description="Generate a CSV parser node")
 
-    resp = await publish_generation_request(req, producer=producer)
+    resp = await publish_generation_request(req, event_bus=event_bus)
 
     assert isinstance(resp, ModelGenerateResponse)
     assert resp.topic == EXP0_TOPIC
     assert resp.correlation_id.startswith("ui-")
 
-    # Exactly one send to the canonical topic; injected producer is NOT
+    # Exactly one publish_envelope to the canonical topic; injected bus is NOT
     # started/stopped by the publisher (caller owns its lifecycle).
-    producer.send_and_wait.assert_awaited_once()
-    args, kwargs = producer.send_and_wait.await_args
-    assert args[0] == EXP0_TOPIC
-    producer.start.assert_not_called()
-    producer.stop.assert_not_called()
+    event_bus.publish_envelope.assert_awaited_once()
+    args, kwargs = event_bus.publish_envelope.await_args
+    envelope, topic = args[0], args[1]
+    assert topic == EXP0_TOPIC
+    event_bus.start.assert_not_called()
+    event_bus.stop.assert_not_called()
 
-    # Key is the cid; value is the JSON envelope carrying that cid.
+    # Key is the cid; the envelope is the canonical type carrying that cid on
+    # payload.correlation_id (exp0 threading).
     assert kwargs["key"] == resp.correlation_id.encode("utf-8")
-    wire = json.loads(kwargs["value"].decode("utf-8"))
-    assert wire["event_type"] == EXP0_TOPIC
+    assert isinstance(envelope, ModelEventEnvelope)
+    assert envelope.event_type == EXP0_TOPIC
+    wire = json.loads(envelope.model_dump_json())
     assert wire["payload"]["correlation_id"] == resp.correlation_id
 
 

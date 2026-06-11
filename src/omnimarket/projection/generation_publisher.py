@@ -30,9 +30,13 @@ from __future__ import annotations
 
 import uuid
 from datetime import UTC, datetime
+from typing import Protocol, cast
 
-from aiokafka import AIOKafkaProducer
 from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
+from omnibase_infra.event_bus.event_bus_kafka import EventBusKafka
+from omnibase_infra.event_bus.models.config.model_kafka_event_bus_config import (
+    ModelKafkaEventBusConfig,
+)
 from pydantic import BaseModel, ConfigDict, Field
 
 from omnimarket.config.settings import Settings
@@ -40,6 +44,27 @@ from omnimarket.events.topics import NODE_GENERATION_REQUESTED_TOPIC_V1
 from omnimarket.nodes.node_generation_consumer.models.model_generation import (
     ModelNodeGenerationRequest,
 )
+
+
+class ProtocolGenerationEventBus(Protocol):
+    """Minimal event-bus seam this publisher needs (satisfied by EventBusKafka).
+
+    Declared locally so the publisher depends on behaviour, not a concrete class,
+    and tests can inject a fake without a broker.
+    """
+
+    async def start(self) -> None: ...
+
+    async def stop(self) -> None: ...
+
+    async def publish_envelope(
+        self,
+        envelope: ModelEventEnvelope[ModelNodeGenerationRequest],
+        topic: str,
+        *,
+        key: bytes | None = None,
+    ) -> None: ...
+
 
 # Canonical command topic — verified live by gate-zero on 2026-06-11 (12/12
 # terminal completions).  Sourced from the canonical topic registry
@@ -126,7 +151,13 @@ def build_generation_envelope(
     )
 
 
-def _bootstrap_servers(settings: Settings | None = None) -> str:
+def _build_event_bus(settings: Settings | None = None) -> ProtocolGenerationEventBus:
+    """Construct the canonical Kafka event bus from resolved bootstrap servers.
+
+    Publishing goes through the injected/canonical event bus (EventBusKafka),
+    NOT a raw broker client — the imperative-contract guard requires the bus
+    abstraction, and the bus owns serialization, idempotence, and acks.
+    """
     resolved = settings or Settings()
     bootstrap = resolved.get_effective_kafka_bootstrap_servers()
     if not bootstrap:
@@ -134,40 +165,39 @@ def _bootstrap_servers(settings: Settings | None = None) -> str:
             "KAFKA_BOOTSTRAP_SERVERS (or KAFKA_BROKER) is required to publish a "
             "node-generation request; the projection API has no broker configured."
         )
-    return bootstrap
+    config = ModelKafkaEventBusConfig(bootstrap_servers=bootstrap)
+    # EventBusKafka satisfies the start/stop/publish_envelope shape we need.
+    return cast(ProtocolGenerationEventBus, EventBusKafka(config))
 
 
 async def publish_generation_request(
     request: ModelGenerateRequest,
     *,
     settings: Settings | None = None,
-    producer: AIOKafkaProducer | None = None,
+    event_bus: ProtocolGenerationEventBus | None = None,
 ) -> ModelGenerateResponse:
     """Publish ONE generation command to the canonical topic and return the cid.
 
-    ``producer`` is injectable for tests; in production a short-lived producer
-    is created and closed around the single ``send_and_wait``.  ``send_and_wait``
-    means a returned response is proof the command is durably on the broker
-    (not just buffered), so the UI's correlation id is honest.
+    ``event_bus`` is injectable for tests; in production the canonical
+    ``EventBusKafka`` is constructed, started, used for a single
+    ``publish_envelope``, and stopped.  A returned response is proof the command
+    was handed to the bus, so the UI's correlation id is honest.  The envelope's
+    ``payload.correlation_id`` (str) is the value the generation consumer threads
+    through to the terminal event + projection row.
     """
     correlation_id = mint_correlation_id()
     envelope = build_generation_envelope(request, correlation_id)
-    value = envelope.model_dump_json().encode("utf-8")
     key = correlation_id.encode("utf-8")
 
-    owns_producer = producer is None
-    active = producer or AIOKafkaProducer(
-        bootstrap_servers=_bootstrap_servers(settings), acks="all"
-    )
-    if owns_producer:
-        await active.start()
+    owns_bus = event_bus is None
+    bus = event_bus or _build_event_bus(settings)
+    if owns_bus:
+        await bus.start()
     try:
-        await active.send_and_wait(
-            NODE_GENERATION_REQUESTED_TOPIC, value=value, key=key
-        )
+        await bus.publish_envelope(envelope, NODE_GENERATION_REQUESTED_TOPIC, key=key)
     finally:
-        if owns_producer:
-            await active.stop()
+        if owns_bus:
+            await bus.stop()
 
     return ModelGenerateResponse(
         correlation_id=correlation_id, topic=NODE_GENERATION_REQUESTED_TOPIC
