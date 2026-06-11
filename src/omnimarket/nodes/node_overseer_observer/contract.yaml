@@ -59,17 +59,23 @@ externally_consumed_topics:
 
 # Phase-0 stubs — no active bus subscription yet (Wave 3+). Declared here for
 # contract completeness so the compliance scanner can verify module paths (OMN-11907).
+#
+# Route to the CONCRETE Null* implementations, not the EvidenceEvaluator /
+# SideEffectObserver typing.Protocol interfaces. The runtime handler resolver
+# instantiates the routed class; a Protocol target raises
+# "TypeError: Protocols cannot be instantiated" and crash-loops main-runtime
+# bootstrap on infra builds predating the OMN-12501 quarantine guard (OMN-12956).
 handler_routing:
   routing_strategy: payload_type_match
   handlers:
     - handler:
-        name: EvidenceEvaluator
+        name: NullEvidenceEvaluator
         module: omnimarket.nodes.node_overseer_observer.handlers.handler_evidence_evaluator
-      description: "Phase-0 stub: checks dod_evidence against observed outputs (Wave 3+)"
+      description: "Phase-0 no-op: checks dod_evidence against observed outputs (Wave 3+)"
     - handler:
-        name: SideEffectObserver
+        name: NullSideEffectObserver
         module: omnimarket.nodes.node_overseer_observer.handlers.handler_side_effect_observer
-      description: "Phase-0 stub: records Kafka side effects for downstream inspection (Wave 3+)"
+      description: "Phase-0 no-op: records Kafka side effects for downstream inspection (Wave 3+)"
 
 stub_interfaces:
   - name: SideEffectObserver
