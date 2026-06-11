@@ -1,0 +1,24 @@
+name: node_context_roi_runner
+version: "1.0.0"
+description: "Context-ROI experiment runner — drives generation over the bus per (task × factor_subset × trial), emits ModelAttemptReductionRow per run"
+omnibase_core_compat: ">=0.40.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_context_roi_runner: "omnimarket.nodes.node_context_roi_runner"
+capabilities:
+  standalone: false
+  full_runtime: true
+  requires_network: true
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: bus_publish_consume
+dependencies:
+  - "omnibase_core>=0.40.0"
+  - "omnibase-compat>=0.3.1"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["effect", "context-roi", "experiment", "generation", "attempt-reduction"]
+pack: "context-roi"
+display_name: "Context ROI Runner"
+node_role: "effect"

@@ -1,0 +1,77 @@
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+name: node_context_roi_runner
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: effect
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  Context-ROI experiment runner (EFFECT). Drives the generation pipeline over
+  the bus per (task × factor_subset × trial): builds a context pack via
+  node_context_pack_builder_compute (REUSE), publishes
+  onex.cmd.omnimarket.node-generation-requested.v1 with the typed context_pack
+  field (P2-1 seam), consumes the terminal
+  onex.evt.omnimarket.node-generation-completed.v1, reads back attempt_count /
+  first_pass_success / prompt+completion tokens / provider / model_id from the
+  event payload, and emits a ModelAttemptReductionRow per run.
+
+  Statistical validity: K ≥ 3 trials per cell, fixed model + temperature via
+  the routing authority (contract model_routing), arm order randomised within
+  each task, run_order recorded on every row, rows frozen as fixtures for
+  REPLAY_PROVEN scoring (mirrors OMN-12661).
+
+  HARD constraints:
+  - Bus is the transport — no in-process GenerationConsumer import, no
+    kafka_runner use, no hardcoded topic literals.
+  - Endpoint/model identity from the routing authority on results, never env.
+  - Topics contract-declared on both producer and consumer ends.
+
+handler:
+  module: omnimarket.nodes.node_context_roi_runner.handlers.handler_context_roi_runner
+  class: HandlerContextRoiRunner
+  input_model: omnimarket.nodes.node_context_roi_runner.models.model_context_roi_run_request.ModelContextRoiRunRequest
+
+handler_routing:
+  routing_strategy: direct
+  handlers:
+    - handler:
+        name: HandlerContextRoiRunner
+        module: omnimarket.nodes.node_context_roi_runner.handlers.handler_context_roi_runner
+
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  idempotent: false
+  timeout_ms: 600000
+  runtime_profiles:
+    - effects
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.context-roi-run-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.context-roi-run-completed.v1
+    - onex.evt.omnimarket.context-roi-run-failed.v1
+
+# Additional topics this node publishes commands to / subscribes events from.
+# Both are already contract-declared on node_generation_consumer (both ends).
+generation_pipeline:
+  command_topic: onex.cmd.omnimarket.node-generation-requested.v1
+  terminal_event_topic: onex.evt.omnimarket.node-generation-completed.v1
+
+metadata:
+  transport_type: kafka
+  description: "Context-ROI runner — drives generation over the bus per (task × factor_subset × trial)"
+  author: "OmniNode Platform Team"
+  tags:
+    - "effect"
+    - "context-roi"
+    - "experiment"
+    - "generation"
+    - "attempt-reduction"
+    - "OMN-12798"
+  related_tickets:
+    - "OMN-12798"
+    - "OMN-12794"
+    - "OMN-12661"
