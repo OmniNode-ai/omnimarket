@@ -3,19 +3,21 @@
 """HandlerArtifactResolver -- materialise real artifact_content_map (COMPUTE).
 
 Pure, deterministic, zero I/O.  Turns pre-read artifact sources into the
-per-factor content map the ROI runner (OMN-12798) injects, reusing the two
-existing authorities instead of reimplementing them:
+per-factor content map the ROI runner (OMN-12798) injects.
 
-  1. ``GuidanceSectionParser`` (OMN-12795) splits markdown guidance /
-     architecture sources into heading sections; the resolver greedily selects
-     the highest-precedence sections up to a per-factor token budget.
-  2. ``HandlerContextPackBuilder`` enforces the 16k token budget hard-reject,
-     the canonical factor precedence, and chunk dedup.  The resolver collapses
-     the resulting pack's chunks per factor into ``artifact_content_map``.
-
-Archetype conformance:
+Architecture conformance:
   - COMPUTE: no filesystem / network access; the EFFECT boundary supplied
     ``raw_content`` for every source.
+  - Builds ONLY on shared omnibase_core pack types (EnumContextFactor,
+    EnumContextPackProvenance, EnumContextPackFailure, ModelContextChunk,
+    ModelContextPack, compute_chunk_id) -- NO cross-node model reach-in into
+    node_context_pack_builder_compute (the omnimarket no-cross-node-reach-in
+    gate forbids importing another node's private models).
+  - The budget/precedence policy is the SAME deterministic policy the pack
+    builder owns, expressed against the shared core types: factor-precedence
+    ordering, then a 16k token-budget HARD-REJECT (EnumContextPackFailure.
+    TOKEN_BUDGET_EXCEEDED) -- never silent truncation. This keeps the negative
+    control (full-guidance) failing closed exactly as the pack builder would.
   - No hardcoded paths or topic literals; sources carry logical names declared
     in contract config.
   - Deterministic: identical inputs always produce an identical content map.
@@ -24,8 +26,17 @@ Archetype conformance:
 from __future__ import annotations
 
 import hashlib
+import json
+import re
+from dataclasses import dataclass
 
 from omnibase_core.enums.enum_context_factor import EnumContextFactor
+from omnibase_core.enums.enum_context_pack_failure import EnumContextPackFailure
+from omnibase_core.enums.enum_context_pack_provenance import (
+    EnumContextPackProvenance,
+)
+from omnibase_core.models.pack.model_context_chunk import ModelContextChunk
+from omnibase_core.utils.util_context_pack import compute_chunk_id
 
 from omnimarket.nodes.node_context_artifact_resolver_compute.models.model_artifact_resolver_request import (
     ModelArtifactResolverRequest,
@@ -37,34 +48,19 @@ from omnimarket.nodes.node_context_artifact_resolver_compute.models.model_artifa
 from omnimarket.nodes.node_context_artifact_resolver_compute.models.model_artifact_source import (
     ModelArtifactSource,
 )
-from omnimarket.nodes.node_context_pack_builder_compute.handlers.handler_context_pack_builder import (
-    HandlerContextPackBuilder,
-)
-from omnimarket.nodes.node_context_pack_builder_compute.models.model_context_pack_artifact import (
-    ModelContextPackArtifact,
-)
-from omnimarket.nodes.node_context_pack_builder_compute.models.model_context_pack_builder_request import (
-    ModelContextPackBuilderRequest,
-)
-from omnimarket.nodes.node_context_pack_builder_compute.models.model_context_pack_builder_result import (
-    EnumContextPackBuilderStatus,
-    ModelContextPackBuilderResult,
-)
-from omnimarket.nodes.node_context_pack_builder_compute.models.model_context_profile import (
-    ModelContextProfile,
-)
-from omnimarket.nodes.node_context_pack_builder_compute.parsers.parser_guidance_section import (
-    GuidanceSectionParser,
-    ParsedSection,
-)
 
 # heuristic_chars token estimation: ~4 chars per token (matches the pack-builder
 # profile default token_estimation_method="heuristic_chars"). A non-empty body
 # always estimates at least one token so a source can never be silently dropped
 # for a zero estimate.
 _CHARS_PER_TOKEN = 4
-
 _TOKEN_ESTIMATION_METHOD = "heuristic_chars"
+_TOKENIZER_SOURCE = "heuristic"
+_TOKENIZER_VERSION = "1.0.0"
+_ESTIMATION_ACCURACY = "estimated"
+
+# Matches ATX headings: one to six `#` chars followed by a space and text.
+_HEADING_RE = re.compile(r"^(#{1,6})\s+(.+)$", re.MULTILINE)
 
 
 def estimate_tokens(text: str) -> int:
@@ -74,150 +70,165 @@ def estimate_tokens(text: str) -> int:
     return max(1, -(-len(text) // _CHARS_PER_TOKEN))
 
 
-def _profile(request: ModelArtifactResolverRequest) -> ModelContextProfile:
-    """Build the pack-builder profile from the resolver request.
+def _content_hash(text: str) -> str:
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
-    Every factor with a source is declared optional (not required) so that the
-    pack builder never hard-fails on a missing factor -- the resolver resolves
-    whatever sources it is given; arm-level required/optional policy is the
-    runner's job, not the resolver's.
+
+@dataclass(frozen=True)
+class _ResolvedChunk:
+    """An intermediate chunk pre-budget/precedence ordering."""
+
+    factor: EnumContextFactor
+    content: str
+    token_estimate: int
+    provenance: EnumContextPackProvenance
+    source_artifact_hash: str
+    source_contract_hash: str
+    source_ticket_id: str | None
+    source_priority: int
+
+
+def _split_sections(text: str) -> list[str]:
+    """Split markdown into ATX-heading sections; whole body if no headings.
+
+    Pure: deterministic, no I/O. Each section spans from one heading to the
+    next (or to end-of-document for the last heading).
     """
-    return ModelContextProfile(
-        model_id=request.model_id,
-        required_factors=(),
-        optional_factors=request.factor_precedence,
-        excluded_factors=(),
-        factor_precedence=request.factor_precedence,
-        token_budget=request.token_budget,
-        token_estimation_method=_TOKEN_ESTIMATION_METHOD,
-    )
+    if not text:
+        return []
+    starts = [m.start() for m in _HEADING_RE.finditer(text)]
+    if not starts:
+        return [text]
+    sections: list[str] = []
+    for idx, start in enumerate(starts):
+        end = starts[idx + 1] if idx + 1 < len(starts) else len(text)
+        section = text[start:end].rstrip("\n")
+        if section:
+            sections.append(section)
+    return sections
 
 
 def _select_sections(
-    sections: list[ParsedSection],
+    sections: list[str],
     per_factor_token_budget: int,
-) -> tuple[list[ParsedSection], int]:
+) -> tuple[list[str], bool]:
     """Greedily select leading sections up to the per-factor token budget.
 
-    Sections preserve document order (the parser's heading order). Selection is
-    greedy in that order: include each section while the running token total
-    stays within budget; stop at the first section that would overflow. At
-    least one section is always included if the first fits, so a non-empty
-    source never resolves to empty unless its very first section alone exceeds
-    the budget.
+    Returns (selected, dropped_any). At least one section is always kept if the
+    first fits; if the first section alone overflows it is kept anyway (so the
+    factor is never silently empty) and the overall pack budget guards the union
+    arm downstream.
     """
-    selected: list[ParsedSection] = []
+    selected: list[str] = []
     running = 0
+    dropped = False
     for section in sections:
-        cost = estimate_tokens(section.content)
+        cost = estimate_tokens(section)
         if selected and running + cost > per_factor_token_budget:
-            break
-        if not selected and cost > per_factor_token_budget:
-            # First section alone overflows: take it anyway so the factor is not
-            # silently empty; the overall pack-budget hard-reject still guards
-            # the union arm downstream.
-            selected.append(section)
-            running += cost
+            dropped = True
             break
         selected.append(section)
         running += cost
-    return selected, running
+        if not selected[:-1] and cost > per_factor_token_budget:
+            # First section alone overflows: keep it, stop here.
+            if len(sections) > 1:
+                dropped = True
+            break
+    if len(selected) < len(sections):
+        dropped = True
+    return selected, dropped
 
 
-def _artifacts_for_source(
+def _resolved_chunks_for_source(
     source: ModelArtifactSource,
     per_factor_token_budget: int,
     warnings: list[str],
-) -> tuple[ModelContextPackArtifact, ...]:
-    """Build one or more pack artifacts from a single resolved source."""
+) -> list[_ResolvedChunk]:
+    """Build resolved chunks from a single pre-read source."""
     if not source.is_markdown_sectioned:
         content = source.raw_content
-        return (
-            ModelContextPackArtifact(
+        return [
+            _ResolvedChunk(
                 factor=source.factor,
                 content=content,
                 token_estimate=estimate_tokens(content),
                 provenance=source.provenance,
                 source_artifact_hash=_content_hash(content),
-                source_ticket_id=source.source_ticket_id,
                 source_contract_hash=source.source_contract_hash,
+                source_ticket_id=source.source_ticket_id,
                 source_priority=source.source_priority,
-                source_file=source.source_name,
-            ),
-        )
+            )
+        ]
 
-    parser = GuidanceSectionParser()
-    sections = parser.parse(source.raw_content, source_file=source.source_name)
-    if not sections:
-        # No ATX headings: fall back to the whole body as one section-less
-        # artifact so a markdown source without headings is not dropped.
-        content = source.raw_content
+    sections = _split_sections(source.raw_content)
+    if len(sections) <= 1 and (
+        not sections or not _HEADING_RE.search(source.raw_content)
+    ):
         warnings.append(
             f"source '{source.source_name}' for factor "
             f"'{source.factor.value}' has no headings -- using whole body"
         )
-        return (
-            ModelContextPackArtifact(
-                factor=source.factor,
-                content=content,
-                token_estimate=estimate_tokens(content),
-                provenance=source.provenance,
-                source_artifact_hash=_content_hash(content),
-                source_ticket_id=source.source_ticket_id,
-                source_contract_hash=source.source_contract_hash,
-                source_priority=source.source_priority,
-                source_file=source.source_name,
-            ),
-        )
 
-    selected, _running = _select_sections(sections, per_factor_token_budget)
-    if len(selected) < len(sections):
+    selected, dropped = _select_sections(sections, per_factor_token_budget)
+    if dropped:
         warnings.append(
             f"source '{source.source_name}' for factor '{source.factor.value}': "
             f"selected {len(selected)}/{len(sections)} sections within "
             f"per-factor budget {per_factor_token_budget}"
         )
-    return tuple(
-        section.to_artifact(
+    return [
+        _ResolvedChunk(
             factor=source.factor,
-            token_estimate=estimate_tokens(section.content),
+            content=section,
+            token_estimate=estimate_tokens(section),
             provenance=source.provenance,
+            source_artifact_hash=_content_hash(section),
             source_contract_hash=source.source_contract_hash,
             source_ticket_id=source.source_ticket_id,
             source_priority=source.source_priority,
         )
         for section in selected
+    ]
+
+
+def _to_context_chunk(resolved: _ResolvedChunk) -> ModelContextChunk:
+    """Promote a resolved chunk to the shared core ModelContextChunk."""
+    return ModelContextChunk(
+        chunk_id=compute_chunk_id(resolved.factor.value, resolved.content),
+        factor=resolved.factor,
+        content=resolved.content,
+        token_estimate=resolved.token_estimate,
+        token_estimation_method=_TOKEN_ESTIMATION_METHOD,
+        tokenizer_source=_TOKENIZER_SOURCE,
+        tokenizer_version=_TOKENIZER_VERSION,
+        estimation_accuracy=_ESTIMATION_ACCURACY,
+        provenance=resolved.provenance,
+        source_artifact_hash=resolved.source_artifact_hash,
+        source_ticket_id=resolved.source_ticket_id,
+        source_contract_hash=resolved.source_contract_hash,
+        source_run_id=None,
     )
 
 
-def _content_hash(text: str) -> str:
-    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+def _ordered_chunks(
+    chunks: list[ModelContextChunk],
+    precedence: tuple[EnumContextFactor, ...],
+) -> list[ModelContextChunk]:
+    """Order chunks by factor precedence, then source priority, deterministically.
 
-
-def _collapse_pack_to_map(
-    result: ModelContextPackBuilderResult,
-) -> tuple[dict[str, str], tuple[str, ...], int]:
-    """Collapse a built pack's chunks into a per-factor content map.
-
-    Multiple chunks for the same factor (e.g. several selected guidance
-    sections) are joined in pack (precedence) order with a blank line between
-    them -- the same shape the runner's _assemble_context_text expects for a
-    single factor's section.
+    This is the same precedence policy node_context_pack_builder_compute owns,
+    expressed against the shared core ModelContextChunk so no cross-node model
+    import is needed.
     """
-    pack = result.context_pack
-    if pack is None:
-        return {}, (), 0
-
-    per_factor_parts: dict[str, list[str]] = {}
-    for chunk in pack.chunks:
-        per_factor_parts.setdefault(chunk.factor.value, []).append(chunk.content)
-
-    content_map = {
-        factor_value: "\n\n".join(parts)
-        for factor_value, parts in per_factor_parts.items()
-    }
-    resolved_factors = tuple(content_map.keys())
-    return content_map, resolved_factors, pack.total_token_estimate
+    order = {factor: index for index, factor in enumerate(precedence)}
+    return sorted(
+        chunks,
+        key=lambda c: (
+            order.get(c.factor, len(order)),
+            c.source_artifact_hash,
+            c.chunk_id,
+        ),
+    )
 
 
 class HandlerArtifactResolver:
@@ -235,64 +246,90 @@ class HandlerArtifactResolver:
                 errors=("no artifact sources supplied",),
             )
 
-        artifacts: list[ModelContextPackArtifact] = []
+        resolved: list[_ResolvedChunk] = []
         for source in request.sources:
-            artifacts.extend(
-                _artifacts_for_source(
+            resolved.extend(
+                _resolved_chunks_for_source(
                     source,
                     request.per_factor_token_budget,
                     warnings,
                 )
             )
 
-        # Run through the existing budget/precedence authority. The pack builder
-        # orders by factor precedence, dedups chunk ids, and hard-rejects when
-        # the total exceeds token_budget (e.g. the full-guidance negative
-        # control). The resolver never reimplements those rules.
-        builder_request = ModelContextPackBuilderRequest(
-            contract_hash=request.contract_hash,
-            generated_at=request.generated_at,
-            profile=_profile(request),
-            artifacts=tuple(artifacts),
-        )
-        builder_result = HandlerContextPackBuilder().handle(builder_request)
+        chunks = [_to_context_chunk(rc) for rc in resolved]
 
-        if builder_result.status is EnumContextPackBuilderStatus.FAILED:
-            failure_class = (
-                builder_result.failure_class.value
-                if builder_result.failure_class is not None
-                else None
-            )
+        # Dedup by chunk_id (same factor+content collapses to one chunk),
+        # mirroring the pack builder's intra-pack dedup.
+        seen: set[str] = set()
+        deduped: list[ModelContextChunk] = []
+        for chunk in chunks:
+            if chunk.chunk_id in seen:
+                continue
+            seen.add(chunk.chunk_id)
+            deduped.append(chunk)
+
+        ordered = _ordered_chunks(deduped, request.factor_precedence)
+
+        # Budget HARD-REJECT -- the same gate the pack builder enforces. Never
+        # silently truncate; the full-guidance negative control fails closed.
+        total_tokens = sum(c.token_estimate for c in ordered)
+        if total_tokens > request.token_budget:
             return ModelArtifactResolverResult(
                 status=EnumArtifactResolverStatus.FAILED,
-                failure_class=failure_class,
-                errors=builder_result.errors,
+                failure_class=EnumContextPackFailure.TOKEN_BUDGET_EXCEEDED.value,
+                errors=(
+                    f"token estimate {total_tokens} exceeds budget "
+                    f"{request.token_budget}",
+                ),
                 warnings=tuple(warnings),
             )
 
-        content_map, resolved_factors, total_tokens = _collapse_pack_to_map(
-            builder_result
-        )
+        content_map, resolved_factors = _collapse_to_map(ordered)
+        pack_hash = _pack_hash(request, ordered)
 
         return ModelArtifactResolverResult(
             status=EnumArtifactResolverStatus.OK,
             artifact_content_map=content_map,
-            resolved_factors=_ordered_resolved(
-                resolved_factors, request.factor_precedence
-            ),
-            pack_hash=builder_result.pack_hash,
+            resolved_factors=resolved_factors,
+            pack_hash=pack_hash,
             total_token_estimate=total_tokens,
             warnings=tuple(warnings),
         )
 
 
-def _ordered_resolved(
-    resolved: tuple[str, ...],
-    precedence: tuple[EnumContextFactor, ...],
-) -> tuple[str, ...]:
-    """Return resolved factor values in canonical precedence order."""
-    order = {factor.value: index for index, factor in enumerate(precedence)}
-    return tuple(sorted(resolved, key=lambda value: order.get(value, len(order))))
+def _collapse_to_map(
+    ordered: list[ModelContextChunk],
+) -> tuple[dict[str, str], tuple[str, ...]]:
+    """Collapse ordered chunks into a per-factor content map.
+
+    Multiple chunks for the same factor (e.g. several selected guidance
+    sections) join in precedence order with a blank line between them -- the
+    shape the runner's _assemble_context_text expects for a single factor.
+    """
+    per_factor: dict[str, list[str]] = {}
+    factor_order: list[str] = []
+    for chunk in ordered:
+        key = chunk.factor.value
+        if key not in per_factor:
+            per_factor[key] = []
+            factor_order.append(key)
+        per_factor[key].append(chunk.content)
+    content_map = {k: "\n\n".join(v) for k, v in per_factor.items()}
+    return content_map, tuple(factor_order)
+
+
+def _pack_hash(
+    request: ModelArtifactResolverRequest,
+    ordered: list[ModelContextChunk],
+) -> str:
+    payload = {
+        "contract_hash": request.contract_hash,
+        "model_id": request.model_id,
+        "chunks": [c.model_dump(mode="json") for c in ordered],
+    }
+
+    raw = json.dumps(payload, sort_keys=True, separators=(",", ":"), default=str)
+    return "pack_" + hashlib.sha256(raw.encode("utf-8")).hexdigest()[:16]
 
 
 __all__ = ["HandlerArtifactResolver", "estimate_tokens"]
