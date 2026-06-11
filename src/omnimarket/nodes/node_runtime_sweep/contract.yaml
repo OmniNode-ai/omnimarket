@@ -7,7 +7,9 @@ node_version: {major: 1, minor: 0, patch: 0}
 description: >
   Runtime registration and wiring verification — checks node descriptions are real,
   all contract-declared handlers are wired in dispatch, all topics have both
-  producer and consumer, and container logs are free of repeated errors.
+  producer and consumer, container logs are free of repeated errors, and every
+  workflow FSM reaches a terminal state or trips a watchdog (stranded-workflow
+  invariant: started-but-no-terminal-event after archetype SLA).
 
 handler:
   module: omnimarket.nodes.node_runtime_sweep.handlers.handler_runtime_sweep
@@ -41,6 +43,14 @@ inputs:
     type: list[str]
     description: "All known consumer topics across repos"
     required: false
+  workflow_observations:
+    type: list[WorkflowObservation]
+    description: "Observed workflow FSM instances (correlation_id, archetype, state, elapsed_ms, reached_terminal) for the stranded-workflow invariant"
+    required: false
+  archetype_sla_ms:
+    type: object
+    description: "Per-archetype terminal SLA in ms; archetypes absent use DEFAULT_ARCHETYPE_SLA_MS"
+    required: false
   dry_run:
     type: bool
     description: "If true, report findings without creating tickets"
@@ -63,6 +73,23 @@ event_bus:
   publish_topics:
     - onex.evt.omnimarket.runtime-sweep-finding.v1
     - onex.evt.omnimarket.runtime-sweep-completed.v1
+    # Typed FSM watchdog vocabulary (OMN-12959). When the stranded-workflow
+    # audit detects a started-but-no-terminal-event workflow past its archetype
+    # SLA, the sweep emits the typed watchdog event for the classified failure
+    # class so projections/sweeps can distinguish unroutable vs stalled vs
+    # timeout. These are the canonical declaration site for the topics resolved
+    # in omnimarket.events.topics / omnimarket.events.watchdog.
+    - onex.evt.omnimarket.workflow-timeout.v1
+    - onex.evt.omnimarket.workflow-unroutable.v1
+    - onex.evt.omnimarket.workflow-stalled.v1
+
+# The typed watchdog events are consumed externally for operator review (the
+# evidence dashboard / FSM-invariant projection surface), not by an in-repo
+# subscriber. Declared here so the dependency-health gate treats them as edged.
+externally_consumed_topics:
+  - onex.evt.omnimarket.workflow-timeout.v1
+  - onex.evt.omnimarket.workflow-unroutable.v1
+  - onex.evt.omnimarket.workflow-stalled.v1
 
 metadata:
   transport_type: kafka
