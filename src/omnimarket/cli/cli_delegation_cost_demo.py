@@ -98,7 +98,7 @@ class ProjectionTableCounts(TypedDict):
     """Projection row counts emitted by the proof flow."""
 
     delegation_events: int
-    llm_cost_aggregates: int
+    llm_call_metrics: int
     savings_estimates: int
 
 
@@ -362,7 +362,10 @@ def _project_flow(
     delegation_row = db.query("delegation_events", {"correlation_id": correlation_id})[
         0
     ]
-    cost_row = db.query("llm_cost_aggregates", {"id": correlation_id})[0]
+    # The per-call writer keys on input_hash, and coerces a non-UUID
+    # correlation_id to NULL; the demo projects exactly one cost row, so select
+    # it by session_id (stable in the demo flow).
+    cost_row = db.query("llm_call_metrics", {"session_id": session_id})[0]
     savings_row = db.query("savings_estimates", {"session_id": session_id})[0]
     total_tokens_value = cost_row["total_tokens"]
     total_tokens_joined = (
@@ -375,7 +378,7 @@ def _project_flow(
         "correlation_id": delegation_row["correlation_id"],
         "task_type": delegation_row["task_type"],
         "delegated_to": delegation_row["delegated_to"],
-        "model": cost_row["model_name"],
+        "model": cost_row["model_id"],
         "tokens": total_tokens_joined,
         "local_cost_usd": savings_row["local_cost_usd"],
         "cloud_baseline": savings_row["model_cloud_baseline"],
@@ -384,7 +387,7 @@ def _project_flow(
         "usage_source": cost_row["usage_source"],
         "tables": {
             "delegation_events": delegation_result.rows_upserted,
-            "llm_cost_aggregates": cost_result.rows_upserted,
+            "llm_call_metrics": cost_result.rows_upserted,
             "savings_estimates": savings_result.rows_upserted,
         },
     }
@@ -418,7 +421,7 @@ def _render_json(
         "task_text": task_text,
         "rows": {
             "delegation_events": delegation_row,
-            "llm_cost_aggregates": cost_row,
+            "llm_call_metrics": cost_row,
             "savings_estimates": savings_row,
         },
         "joined": joined,
@@ -450,7 +453,7 @@ def _render_table(
     click.echo(
         "projection_rows="
         f"delegation_events:{joined['tables']['delegation_events']} "
-        f"llm_cost_aggregates:{joined['tables']['llm_cost_aggregates']} "
+        f"llm_call_metrics:{joined['tables']['llm_call_metrics']} "
         f"savings_estimates:{joined['tables']['savings_estimates']}"
     )
     click.echo(

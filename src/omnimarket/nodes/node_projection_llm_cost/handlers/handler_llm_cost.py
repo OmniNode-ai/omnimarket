@@ -1,45 +1,53 @@
-"""LLM cost projection: Kafka -> llm_cost_aggregates table."""
+"""LLM cost projection: Kafka -> llm_call_metrics table (contract-owned writer).
+
+This is the DEPLOYED runtime entrypoint for node_projection_llm_cost
+(omnibase_infra/docker/catalog/services/omnimarket-projection-llm-cost.yaml
+``command`` runs ``python -m ...handlers.handler_llm_cost``). It consumes
+``onex.evt.omniintelligence.llm-call-completed.v1`` and materializes one
+per-call row into ``llm_call_metrics`` — the read model the dashboard reads via
+node_projection_cost_token_usage (cost.token_usage.v1) and node_ab_compare_reducer
+(ab-compare.v1).
+
+OMN-13001: this runner previously wrote ``llm_cost_aggregates`` with a drifted
+column set (``bucket_time, granularity, model_name, ...``) that no longer matched
+the deployed table (``aggregation_key, "window", total_cost_usd, ...`` from
+migration 0001_create_llm_cost_aggregates.sql / infra 031), so it landed nothing.
+The aggregate read model is owned by node_projection_cost_summary, not this node.
+This runner is now the single contract-owned writer of ``llm_call_metrics``;
+the per-call insert logic lives in row_llm_call_metrics.build_llm_call_metrics_row.
+
+The write model column set is asserted equal to the migration column set by the
+schema-parity test (tests/test_schema_parity_projection_llm_cost.py) — the
+ratchet that prevents this drift class from recurring.
+"""
 
 from __future__ import annotations
 
 import asyncio
 import logging
-import math
 from pathlib import Path
 from typing import Any
 
 import yaml
 
-from omnimarket.enums.enum_usage_source import EnumUsageSource
-from omnimarket.projection.runner import (
-    BaseProjectionRunner,
-    MessageMeta,
-    safe_parse_date,
+from omnimarket.nodes.node_projection_llm_cost.handlers.row_llm_call_metrics import (
+    LLM_CALL_METRICS_COLUMNS,
+    build_llm_call_metrics_row,
 )
+from omnimarket.projection.runner import BaseProjectionRunner, MessageMeta
 
 logger = logging.getLogger(__name__)
 
-KNOWN_PROJECTION_TABLES: frozenset[str] = frozenset(
-    {
-        "delegation_events",
-        "delegation_shadow_comparisons",
-        "llm_cost_aggregates",
-        "node_service_registry",
-        "baselines_snapshots",
-        "baselines_comparisons",
-        "baselines_trend",
-        "baselines_breakdown",
-        "savings_estimates",
-        "session_outcomes",
-        "injection_effectiveness",
-    }
-)
+TABLE = "llm_call_metrics"
+CONFLICT_KEY = "input_hash"
 
 
 class LlmCostProjectionRunner(BaseProjectionRunner):
-    """Projects llm-call-completed events into llm_cost_aggregates table.
+    """Project llm-call-completed events into the llm_call_metrics table.
 
-    Append-only (no ON CONFLICT) -- matches omnidash projectLlmCostEvent() exactly.
+    Per-call append, deduplicated by ``input_hash`` via
+    ``ON CONFLICT (input_hash) DO NOTHING`` (the partial unique index from
+    migration 0001_create_llm_call_metrics.sql).
     """
 
     def __init__(self, contract_path: Path | None = None) -> None:
@@ -49,22 +57,20 @@ class LlmCostProjectionRunner(BaseProjectionRunner):
             self._contract: dict[str, Any] = yaml.safe_load(f)
 
         _tables = self._contract.get("db_io", {}).get("db_tables", [])
-        _by_role = {t["role"]: t["name"] for t in _tables}
-
-        for role, name in _by_role.items():
-            if name not in KNOWN_PROJECTION_TABLES:
-                raise ValueError(
-                    f"Unknown table role {role!r} maps to {name!r} which is not in KNOWN_PROJECTION_TABLES"
-                )
-
-        if "aggregates" not in _by_role:
-            raise ValueError("Contract missing required table role 'aggregates'")
-
-        self._table_aggregates: str = _by_role["aggregates"]
+        _write_tables = [t["name"] for t in _tables if t.get("access") == "write"]
+        if TABLE not in _write_tables:
+            raise ValueError(
+                f"Contract must declare {TABLE!r} as a write model; "
+                f"db_io write tables are {_write_tables!r}"
+            )
 
     @property
     def subscribe_topics(self) -> list[str]:
         return list(self._contract.get("event_bus", {}).get("subscribe_topics", []))
+
+    @property
+    def topics(self) -> list[str]:
+        return self.subscribe_topics
 
     def handle(self, input_data: dict[str, Any]) -> dict[str, Any]:
         """RuntimeLocal handler protocol shim.
@@ -81,163 +87,59 @@ class LlmCostProjectionRunner(BaseProjectionRunner):
         ok = asyncio.run(self.project_event(topic, input_data, meta))
         return {"projected": ok}
 
-    @property
-    def topics(self) -> list[str]:
-        return self.subscribe_topics
-
     async def project_event(
         self, topic: str, data: dict[str, Any], meta: MessageMeta
     ) -> bool:
-        bucket_time = safe_parse_date(
-            data.get("timestamp_iso")
-            or data.get("bucket_time")
-            or data.get("bucketTime")
-            or data.get("timestamp")
-            or data.get("created_at")
-        )
-
-        # usage_source normalization
-        usage_normalized = data.get("usage_normalized") or {}
-        usage_source_raw = (
-            (
-                usage_normalized.get("source")
-                if isinstance(usage_normalized, dict)
-                else None
-            )
-            or data.get("usage_source")
-            or data.get("usageSource")
-            or (
-                EnumUsageSource.ESTIMATED.value
-                if data.get("usage_is_estimated")
-                else EnumUsageSource.MEASURED.value
-            )
-        )
-        try:
-            usage_source = EnumUsageSource(usage_source_raw).value
-        except ValueError:
-            logger.warning(
-                "LLM cost event has unrecognised usage_source %r -- defaulting to unknown",
-                usage_source_raw,
-            )
-            usage_source = EnumUsageSource.UNKNOWN.value
-
-        granularity_raw = data.get("granularity") or "hour"
-        granularity = granularity_raw if granularity_raw in ("hour", "day") else "hour"
-
-        prompt_tokens = _safe_int(data.get("prompt_tokens") or data.get("promptTokens"))
-        completion_tokens = _safe_int(
-            data.get("completion_tokens") or data.get("completionTokens")
-        )
-        raw_total = _safe_int(data.get("total_tokens") or data.get("totalTokens"))
-        derived_total = prompt_tokens + completion_tokens
-
-        if raw_total == 0 and derived_total > 0:
-            total_tokens = derived_total
-        else:
-            if raw_total != 0 and derived_total != 0 and raw_total != derived_total:
-                logger.warning(
-                    "LLM cost event token total mismatch: total=%d but prompt(%d)+completion(%d)=%d",
-                    raw_total,
-                    prompt_tokens,
-                    completion_tokens,
-                    derived_total,
-                )
-            total_tokens = raw_total
-
-        estimated_cost_usd = _safe_cost(
-            data.get("estimated_cost_usd") or data.get("estimatedCostUsd")
-        )
-        total_cost_usd = _safe_cost(
-            data.get("total_cost_usd")
-            or data.get("totalCostUsd")
-            or data.get("estimated_cost_usd")
-            or data.get("estimatedCostUsd")
-        )
-        reported_cost_usd = _safe_cost(
-            data.get("reported_cost_usd") or data.get("reportedCostUsd")
-        )
-
-        model_name = (
-            data.get("model_id")
-            or data.get("model_name")
-            or data.get("modelName")
-            or "unknown"
-        )
-
-        reporting_source = data.get("reporting_source") or data.get("reportingSource")
-        explicit_repo = data.get("repo_name") or data.get("repoName")
-        repo_name = explicit_repo or (
-            reporting_source
-            if (
-                reporting_source
-                and len(str(reporting_source)) < 64
-                and " " not in str(reporting_source)
-            )
-            else None
-        )
-
-        session_id = data.get("session_id") or data.get("sessionId") or None
-        pattern_id = data.get("pattern_id") or data.get("patternId") or None
-        pattern_name = data.get("pattern_name") or data.get("patternName") or None
-        request_count = _safe_int(
-            data.get("request_count") or data.get("requestCount") or 1
-        )
-
-        if model_name == "unknown":
-            logger.warning(
-                "LLM cost event missing model_id/model_name -- inserting as 'unknown'"
-            )
-
+        row = build_llm_call_metrics_row(data)
         await self.db.execute(
             f"""
-            INSERT INTO {self._table_aggregates} (
-              bucket_time, granularity, model_name, repo_name,
-              pattern_id, pattern_name, session_id, usage_source,
-              request_count, prompt_tokens, completion_tokens, total_tokens,
-              total_cost_usd, reported_cost_usd, estimated_cost_usd
+            INSERT INTO {TABLE} (
+                correlation_id, session_id, run_id, model_id,
+                prompt_tokens, completion_tokens, total_tokens,
+                estimated_cost_usd, latency_ms,
+                usage_source, usage_is_estimated, usage_raw,
+                input_hash, source,
+                code_version, contract_version,
+                created_at
             ) VALUES (
-              $1, $2, $3, $4,
-              $5, $6, $7, $8,
-              $9, $10, $11, $12,
-              $13, $14, $15
+                $1, $2, $3, $4,
+                $5, $6, $7,
+                $8, $9,
+                $10::usage_source_type, $11, $12::jsonb,
+                $13, $14,
+                $15, $16,
+                $17
             )
+            ON CONFLICT ({CONFLICT_KEY}) DO NOTHING
             """,
-            bucket_time,
-            granularity,
-            str(model_name),
-            str(repo_name) if repo_name else None,
-            str(pattern_id) if pattern_id else None,
-            str(pattern_name) if pattern_name else None,
-            str(session_id) if session_id else None,
-            usage_source,
-            request_count,
-            prompt_tokens,
-            completion_tokens,
-            total_tokens,
-            str(total_cost_usd),
-            str(reported_cost_usd),
-            str(estimated_cost_usd),
+            row["correlation_id"],
+            row["session_id"],
+            row["run_id"],
+            row["model_id"],
+            row["prompt_tokens"],
+            row["completion_tokens"],
+            row["total_tokens"],
+            row["estimated_cost_usd"],
+            row["latency_ms"],
+            row["usage_source"],
+            row["usage_is_estimated"],
+            row["usage_raw"],
+            row["input_hash"],
+            row["source"],
+            row["code_version"],
+            row["contract_version"],
+            row["created_at"],
         )
         return True
 
 
-def _safe_int(value: Any, default: int = 0) -> int:
-    if value is None:
-        return default
-    try:
-        return int(float(value))
-    except (ValueError, TypeError):
-        return default
-
-
-def _safe_cost(value: Any) -> float:
-    if value is None:
-        return 0.0
-    try:
-        n = float(value)
-        return n if math.isfinite(n) else 0.0
-    except (ValueError, TypeError):
-        return 0.0
+__all__ = [
+    "CONFLICT_KEY",
+    "LLM_CALL_METRICS_COLUMNS",
+    "TABLE",
+    "LlmCostProjectionRunner",
+    "build_llm_call_metrics_row",
+]
 
 
 if __name__ == "__main__":

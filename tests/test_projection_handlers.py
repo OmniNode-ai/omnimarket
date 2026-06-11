@@ -139,10 +139,11 @@ class TestLlmCostHandler:
             "onex.evt.omniintelligence.llm-call-completed.v1", data, _make_meta()
         )
         assert result is True
-        # Should default to unknown for unrecognized source
+        # OMN-13001: writes llm_call_metrics. An unrecognized usage_source maps
+        # to the DB enum's MISSING value. call_args[0] is SQL; the 10th INSERT
+        # column (usage_source) is the 10th positional bind -> index 10.
         call_args = mock_db.execute.call_args[0]
-        # call_args[0] is SQL; usage_source is the $8 bind value -> index 8.
-        assert call_args[8] == "unknown"
+        assert call_args[10] == "MISSING"
 
 
 class TestDelegationHandler:
