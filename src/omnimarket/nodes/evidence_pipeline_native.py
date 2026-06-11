@@ -718,12 +718,55 @@ def _readiness_from_occ_pr(occ: ModelOccPrReference) -> ModelDeploymentReadiness
     )
 
 
+# Transport-envelope keys that the runtime adds around the domain payload.
+# When the dispatch engine materializes a ``ModelEventEnvelope`` to a dict it
+# wraps the domain fields under ``payload`` and carries routing metadata such
+# as ``partition_key`` alongside it. The domain models below never declare
+# these keys, so they must be stripped before model construction.
+_ENVELOPE_MARKER_KEYS: frozenset[str] = frozenset(
+    {"partition_key", "event_type", "envelope_id", "event_id", "correlation_id"}
+)
+
+
+def _unwrap_envelope(
+    payload: BaseModel | Mapping[str, object],
+) -> BaseModel | Mapping[str, object]:
+    """Return the domain payload, unwrapping any transport envelope around it.
+
+    The runtime delivers either a ``ModelEventEnvelope``-shaped object exposing
+    a ``.payload`` attribute, or a materialized dict of the form
+    ``{"payload": {...}, "partition_key": ...}``. Domain models do not declare
+    the transport keys, so splatting the raw envelope into ``Model(**payload)``
+    raises a ``ValidationError`` with every required field reported missing.
+    Unwrapping recursively at the coercion boundary keeps the domain models
+    transport-agnostic and fixes the shared ``coerce(**payload)`` defect class
+    for the whole evidence/readiness node family.
+    """
+    # ModelEventEnvelope (or any object exposing a populated ``payload``).
+    nested = getattr(payload, "payload", None)
+    if nested is not None and not isinstance(payload, Mapping):
+        return _unwrap_envelope(nested)
+    # Only unwrap when the outer mapping is a transport envelope (carries a
+    # ``payload`` mapping plus a transport marker), never when ``payload`` is a
+    # legitimate domain field on the model itself.
+    if (
+        isinstance(payload, Mapping)
+        and isinstance(payload.get("payload"), Mapping)
+        and _ENVELOPE_MARKER_KEYS & payload.keys()
+    ):
+        return _unwrap_envelope(cast(Mapping[str, object], payload["payload"]))
+    return payload
+
+
 def coerce_command(
     payload: ModelEvidencePipelineCommand | Mapping[str, object],
 ) -> ModelEvidencePipelineCommand:
     if isinstance(payload, ModelEvidencePipelineCommand):
         return payload
-    return ModelEvidencePipelineCommand(**payload)
+    unwrapped = _unwrap_envelope(payload)
+    if isinstance(unwrapped, ModelEvidencePipelineCommand):
+        return unwrapped
+    return ModelEvidencePipelineCommand(**cast(Mapping[str, object], unwrapped))
 
 
 def coerce_raw(
@@ -731,7 +774,10 @@ def coerce_raw(
 ) -> ModelRawEvidencePayload:
     if isinstance(payload, ModelRawEvidencePayload):
         return payload
-    return ModelRawEvidencePayload(**payload)
+    unwrapped = _unwrap_envelope(payload)
+    if isinstance(unwrapped, ModelRawEvidencePayload):
+        return unwrapped
+    return ModelRawEvidencePayload(**cast(Mapping[str, object], unwrapped))
 
 
 def coerce_bundle(
@@ -739,7 +785,10 @@ def coerce_bundle(
 ) -> ModelEvidenceBundle:
     if isinstance(payload, ModelEvidenceBundle):
         return payload
-    return ModelEvidenceBundle(**payload)
+    unwrapped = _unwrap_envelope(payload)
+    if isinstance(unwrapped, ModelEvidenceBundle):
+        return unwrapped
+    return ModelEvidenceBundle(**cast(Mapping[str, object], unwrapped))
 
 
 def coerce_validation(
@@ -747,21 +796,30 @@ def coerce_validation(
 ) -> ModelEvidenceValidationResult:
     if isinstance(payload, ModelEvidenceValidationResult):
         return payload
-    return ModelEvidenceValidationResult(**payload)
+    unwrapped = _unwrap_envelope(payload)
+    if isinstance(unwrapped, ModelEvidenceValidationResult):
+        return unwrapped
+    return ModelEvidenceValidationResult(**cast(Mapping[str, object], unwrapped))
 
 
-def coerce_gap(payload: ModelGapReport | Mapping[str, object]) -> ModelGapReport:
+def coerce_gap(payload: BaseModel | Mapping[str, object]) -> ModelGapReport:
     if isinstance(payload, ModelGapReport):
         return payload
-    return ModelGapReport(**payload)
+    unwrapped = _unwrap_envelope(payload)
+    if isinstance(unwrapped, ModelGapReport):
+        return unwrapped
+    return ModelGapReport(**cast(Mapping[str, object], unwrapped))
 
 
 def coerce_readiness(
-    payload: ModelDeploymentReadinessResult | Mapping[str, object],
+    payload: BaseModel | Mapping[str, object],
 ) -> ModelDeploymentReadinessResult:
     if isinstance(payload, ModelDeploymentReadinessResult):
         return payload
-    return ModelDeploymentReadinessResult(**payload)
+    unwrapped = _unwrap_envelope(payload)
+    if isinstance(unwrapped, ModelDeploymentReadinessResult):
+        return unwrapped
+    return ModelDeploymentReadinessResult(**cast(Mapping[str, object], unwrapped))
 
 
 def coerce_occ(
@@ -769,7 +827,10 @@ def coerce_occ(
 ) -> ModelOccPrReference:
     if isinstance(payload, ModelOccPrReference):
         return payload
-    return ModelOccPrReference(**payload)
+    unwrapped = _unwrap_envelope(payload)
+    if isinstance(unwrapped, ModelOccPrReference):
+        return unwrapped
+    return ModelOccPrReference(**cast(Mapping[str, object], unwrapped))
 
 
 def coerce_evidence_event(
@@ -784,11 +845,22 @@ def coerce_evidence_event(
         ),
     ):
         return payload
-    if "readiness_state" in payload:
-        return ModelDeploymentReadinessResult(**payload)
-    if "occ_repository" in payload:
-        return ModelOccPrReference(**payload)
-    return ModelEvidenceValidationResult(**payload)
+    unwrapped = _unwrap_envelope(payload)
+    if isinstance(
+        unwrapped,
+        (
+            ModelEvidenceValidationResult,
+            ModelDeploymentReadinessResult,
+            ModelOccPrReference,
+        ),
+    ):
+        return unwrapped
+    fields = cast(Mapping[str, object], unwrapped)
+    if "readiness_state" in fields:
+        return ModelDeploymentReadinessResult(**fields)
+    if "occ_repository" in fields:
+        return ModelOccPrReference(**fields)
+    return ModelEvidenceValidationResult(**fields)
 
 
 def _validation_evidence_refs(bundle: ModelEvidenceBundle) -> tuple[str, ...]:

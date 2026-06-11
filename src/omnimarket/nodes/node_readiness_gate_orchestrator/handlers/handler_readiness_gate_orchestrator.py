@@ -12,6 +12,7 @@ from omnibase_compat.contracts.evidence_pipeline.wire.model_gap_report import (
 from omnimarket.nodes.evidence_pipeline_native import (
     NativeReadinessGatePorts,
     ReadinessGatePorts,
+    _unwrap_envelope,
     coerce_gap,
     coerce_readiness,
 )
@@ -27,10 +28,14 @@ class HandlerReadinessGateOrchestrator:
         self,
         request: ModelGapReport | ModelDeploymentReadinessResult | Mapping[str, object],
     ) -> ModelDeploymentReadinessResult:
-        if isinstance(request, ModelDeploymentReadinessResult) or (
-            isinstance(request, Mapping) and "readiness_state" in request
+        # Unwrap any transport envelope before deciding the dispatch branch so a
+        # ``readiness_state`` nested under ``.payload`` is not misrouted to the
+        # gap-scoring path.
+        unwrapped = _unwrap_envelope(request)
+        if isinstance(unwrapped, ModelDeploymentReadinessResult) or (
+            isinstance(unwrapped, Mapping) and "readiness_state" in unwrapped
         ):
-            readiness = coerce_readiness(request)
+            readiness = coerce_readiness(unwrapped)
         else:
-            readiness = self._ports.score(coerce_gap(request))
+            readiness = self._ports.score(coerce_gap(unwrapped))
         return self._ports.publish_gate(readiness)
