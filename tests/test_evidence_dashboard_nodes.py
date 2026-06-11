@@ -87,6 +87,30 @@ def test_effect_handle_payload_matches_canonical_contract_fields() -> None:
     assert "source_topic" not in payload
 
 
+def test_effect_unwraps_runtime_envelope_before_normalizing() -> None:
+    # OMN-12935: the runtime kernel delivers events wrapped as
+    # {"payload": <event>, "partition_key": ...}. The effect must strip the
+    # transport envelope before reading correlation/event ids, otherwise it
+    # fabricates a projection_cursor and loses the real correlation_id,
+    # propagating a malformed UUID downstream.
+    delivered = {
+        "payload": {
+            "_topic": "onex.evt.omnimarket.evidence-collected.v1",
+            "event_id": "evt-collected",
+            "ingest_sequence": 10,
+            "correlation_id": "corr-omn-12935",
+        },
+        "partition_key": None,
+    }
+
+    event = HandlerEvidenceDashboardEffect().normalize(delivered)
+
+    assert event.correlation_id == "corr-omn-12935"
+    assert event.event_id == "evt-collected"
+    assert event.topic == "onex.evt.omnimarket.evidence-collected.v1"
+    assert event.normalized_status == "PASSED"
+
+
 def test_reducer_contract_exposes_versioned_projection_topics() -> None:
     contract = _contract("node_evidence_dashboard_reducer")
     exposures = contract["projection_api"]["exposures"]
