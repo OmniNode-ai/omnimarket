@@ -756,6 +756,11 @@ def _make_error_inference_response(
 class TestInferenceErrorEscalation:
     """Auth/infra inference errors should trigger tier escalation, not terminal FAILED."""
 
+    @pytest.fixture(autouse=True)
+    def _routable_higher_tier(self, frontier_unconfigured_bifrost: None) -> None:
+        """Bind a bifrost config where local+cheap_cloud are routable so the
+        task-aware escalation path (OMN-12939) can advance to the next tier."""
+
     def test_auth_error_triggers_escalation_to_next_tier(self) -> None:
         handler = HandlerDelegationWorkflow()
         cid = uuid4()
