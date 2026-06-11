@@ -18,7 +18,7 @@ import re
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Protocol
+from typing import Protocol, cast
 
 import asyncpg
 import yaml
@@ -114,7 +114,11 @@ def validate_projection_materialization_contracts(
     Returns:
         Tuple of validation issues. Empty means every scoped exposure passed.
     """
-    resolved_manifest = discover_contracts() if manifest is None else manifest
+    resolved_manifest = (
+        cast(ProtocolAutoWiringManifest, discover_contracts())
+        if manifest is None
+        else manifest
+    )
     scoped_names = set(contract_names) if contract_names is not None else None
 
     issues: list[ProjectionMaterializationIssue] = []
