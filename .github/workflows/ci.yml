@@ -104,6 +104,14 @@ jobs:
       # cannot be wired by the DI container and are silently absent from the pipeline.
       - name: Unimported-handler check
         run: uv run python scripts/ci/check_unimported_handlers.py
+      # OMN-12959: FSM terminal-state invariant. Watchdog topic literals
+      # (workflow-timeout/unroutable/stalled) may only live in the canonical
+      # omnimarket.events.topics registry (omnimarket.events.watchdog imports
+      # them and exposes the typed authority); orchestrators must resolve them
+      # through the typed EnumWatchdogEventType authority. Fails CI on any
+      # hardcoded watchdog topic string outside the registry.
+      - name: Watchdog-topic authority gate
+        run: uv run python scripts/ci/check_watchdog_topic_authority.py
       - name: Golden-chain coverage gate
         env:
           PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
