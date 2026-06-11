@@ -43,6 +43,7 @@ Architecture conformance:
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 import logging
@@ -239,6 +240,31 @@ class HandlerContextRoiRunner:
         )
         self._emit_result(result)
         return result
+
+    async def handle_async(
+        self, request: ModelContextRoiRunRequest
+    ) -> ModelContextRoiRunResult:
+        """Runtime dispatch entry point — runs the blocking ``handle`` off the loop.
+
+        The runtime auto-wiring dispatch callback prefers ``handle_async`` when a
+        handler declares it (omnibase_infra ``handler_wiring._make_dispatch_callback``).
+        ``handle`` is synchronous and blocks up to ``generation_timeout_seconds``
+        per arm on the correlated terminal-event consumer. If it ran directly on
+        the single effects-container event loop it would pin that loop, starving
+        every co-resident consumer group's poll/heartbeat — including
+        ``node_generation_consumer``, the consumer that must produce the terminal
+        this runner awaits. That starvation (broker-verified mass
+        ``UnknownMemberIdError`` rebalance, OMN-13010) made the generation
+        terminals arrive only after the runner's windows had already closed, so
+        every row was degenerate.
+
+        Offloading the blocking ``handle`` to a worker thread via
+        ``asyncio.to_thread`` keeps the dispatch loop free for the full duration
+        of the runner's blocking waits, so generation runs concurrently and its
+        terminal arrives inside the window. ``handle`` stays the synchronous
+        standalone/test entry point.
+        """
+        return await asyncio.to_thread(self.handle, request)
 
     # ------------------------------------------------------------------
     # Per-trial logic
