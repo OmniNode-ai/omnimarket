@@ -31,6 +31,7 @@ descriptor:
   purity: impure
   idempotent: true
   timeout_ms: 60000
+  runtime_profiles: [compute]
 
 inputs:
   config_name:
@@ -79,6 +80,12 @@ event_bus:
     - onex.cmd.omnimarket.volume-config-drift-sweep-start.v1
   publish_topics:
     - onex.evt.omnimarket.volume-config-drift-sweep-completed.v1
+
+# The terminal event is consumed by the invoking skill/orchestrator (operator
+# review), which owns Linear ticket creation for drift findings. There is no
+# in-repo subscriber by design — the sweep reports drift, the caller acts on it.
+externally_consumed_topics:
+  - onex.evt.omnimarket.volume-config-drift-sweep-completed.v1
 
 metadata:
   transport_type: kafka
