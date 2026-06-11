@@ -53,7 +53,26 @@ class ModelLlmModelProfile(BaseModel):
     """Source of pricing/capability data: 'provider docs', 'manual benchmark', 'openrouter catalog'."""
 
     model_name: str | None = None
-    """Provider-specific model identifier (e.g. OpenRouter model slug)."""
+    """Provider-specific model identifier (e.g. OpenRouter model slug).
+
+    For a single-environment provider this is the served model id. For a provider
+    served under DIFFERENT names per environment (e.g. Gemini via AI Studio vs
+    Vertex), use ``served_model_names`` and leave this as the default/AI-Studio id.
+    """
+
+    served_model_names: dict[str, str] | None = None
+    """Per-environment served model id mapping (OMN-12972).
+
+    The registry key-path id (the YAML key / ``model_id``) is a STABLE routing
+    handle. The provider-served wire name can differ per serving environment:
+    Vertex serves the publisher-qualified ``publishers/google/models/<name>``
+    while AI Studio (``generativelanguage``) serves the bare ``<name>``. Mapping
+    each environment to its exact served name prevents the 404 that occurs when a
+    single bare name is posted to the wrong environment (the OMN-12937 / P2.7
+    failure: ``gemini-2.0-flash`` 404'd on Vertex). Keys are environment ids
+    (e.g. ``ai_studio``, ``vertex``); values are the exact served model id for
+    that environment.
+    """
 
     requires_api_key_env: str | None = None
     """Name of env var for API key, if required."""
@@ -71,6 +90,33 @@ class ModelLlmModelProfile(BaseModel):
     def context_window_positive(cls, v: int) -> int:
         if v <= 0:
             raise ValueError(f"context_window must be > 0, got {v}")
+        return v
+
+    @field_validator("served_model_names")
+    @classmethod
+    def served_model_names_non_empty(
+        cls, v: dict[str, str] | None
+    ) -> dict[str, str] | None:
+        """Reject an empty mapping and any blank environment id / served name.
+
+        A present-but-empty mapping is a configuration mistake (it silently
+        provides no per-environment name), so fail fast rather than fall back to
+        an ambiguous bare ``model_name`` at the call boundary.
+        """
+        if v is None:
+            return v
+        if not v:
+            raise ValueError(
+                "served_model_names must not be empty when declared; "
+                "omit the field entirely for single-environment models"
+            )
+        for env_id, served_name in v.items():
+            if not env_id.strip():
+                raise ValueError("served_model_names environment id must be non-blank")
+            if not served_name.strip():
+                raise ValueError(
+                    f"served_model_names[{env_id!r}] served name must be non-blank"
+                )
         return v
 
     @field_validator("pricing_per_1m_input", "pricing_per_1m_output", mode="before")

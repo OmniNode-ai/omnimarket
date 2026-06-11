@@ -15,7 +15,7 @@
 # in Python or YAML is prohibited — use this registry as the single source.
 
 schema_version: "1.0.0"
-model_registry_version: "1.2.0"
+model_registry_version: "1.3.0"
 pricing_manifest_version: "2026-06-11-gemini-25-flash-lite"
 observed_at: "2026-06-11T00:00:00Z"
 
@@ -119,6 +119,14 @@ models:
     provider: "google"
     endpoint_env: "GEMINI_API_URL"
     model_name: "gemini-2.5-flash-lite"
+    served_model_names:
+      # AI Studio (generativelanguage) serves the bare model id.
+      ai_studio: "gemini-2.5-flash-lite"
+      # Vertex AI requires the publisher-qualified resource path. Posting the
+      # bare AI-Studio name to the Vertex environment 404s — the P2.7 failure
+      # mode (OMN-12937: gemini-2.0-flash 404 on Vertex). Live Vertex resource:
+      # publishers/google/models/gemini-2.5-flash-lite (Vertex model garden, 2026-06).
+      vertex: "publishers/google/models/gemini-2.5-flash-lite"
     requires_api_key_env: "GEMINI_API_KEY"
     context_window: 1048576
     pricing_per_1m_input: "0.10"
@@ -134,6 +142,10 @@ models:
       OMN-12937: retargeted from gemini-2.0-flash, whose free tier was quota-exhausted
       (HTTP 429). The delegation inference effect sources the wire model id from this
       registry entry directly; gemini-2.5-flash-lite probes HTTP 200 on the deployed key.
+      OMN-12972 (P2.7): served_model_names maps each serving environment to its exact
+      Vertex/AI-Studio wire name. The key-path id stays stable; the call boundary picks
+      the env-specific served name so neither environment receives a name it 404s on.
+      model_name retains the AI-Studio (default) served name for single-name consumers.
 
   vertex-gemini-flash:
     model_id: "vertex-gemini-flash"

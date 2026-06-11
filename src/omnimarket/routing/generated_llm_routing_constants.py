@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from enum import StrEnum, unique
 
-MODEL_REGISTRY_VERSION = "1.2.0"
+MODEL_REGISTRY_VERSION = "1.3.0"
 PRICING_MANIFEST_VERSION = "2026-06-11-gemini-25-flash-lite"
 REGISTRY_OBSERVED_AT = "2026-06-11T00:00:00Z"
 GENERATED_FROM = ("src/omnimarket/data/model_registry/model_registry_v1.yaml",)

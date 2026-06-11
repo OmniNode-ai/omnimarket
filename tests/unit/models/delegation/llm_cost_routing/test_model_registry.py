@@ -72,6 +72,35 @@ class TestModelLlmModelProfile:
         with pytest.raises(ValidationError):
             ModelLlmModelProfile(**kwargs)
 
+    def test_served_model_names_defaults_to_none(self) -> None:
+        profile = ModelLlmModelProfile(**self._valid_kwargs())
+        assert profile.served_model_names is None
+
+    def test_served_model_names_per_environment_accepted(self) -> None:
+        # OMN-12972: a per-environment served-name map is accepted and frozen.
+        kwargs = self._valid_kwargs()
+        kwargs["served_model_names"] = {
+            "ai_studio": "gemini-2.5-flash-lite",
+            "vertex": "publishers/google/models/gemini-2.5-flash-lite",
+        }
+        profile = ModelLlmModelProfile(**kwargs)
+        assert profile.served_model_names == {
+            "ai_studio": "gemini-2.5-flash-lite",
+            "vertex": "publishers/google/models/gemini-2.5-flash-lite",
+        }
+
+    def test_served_model_names_empty_rejected(self) -> None:
+        kwargs = self._valid_kwargs()
+        kwargs["served_model_names"] = {}
+        with pytest.raises(ValidationError, match="must not be empty"):
+            ModelLlmModelProfile(**kwargs)
+
+    def test_served_model_names_blank_value_rejected(self) -> None:
+        kwargs = self._valid_kwargs()
+        kwargs["served_model_names"] = {"vertex": "  "}
+        with pytest.raises(ValidationError, match="must be non-blank"):
+            ModelLlmModelProfile(**kwargs)
+
 
 class TestModelLlmModelRegistryHashing:
     """Registry hash generation must be deterministic."""
