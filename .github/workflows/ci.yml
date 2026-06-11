@@ -98,6 +98,12 @@ jobs:
       # cannot be wired by the DI container and are silently absent from the pipeline.
       - name: Unimported-handler check
         run: uv run python scripts/ci/check_unimported_handlers.py
+      # OMN-12942: node migration sets must create base tables before views.
+      # A view-before-base-table migration hard-fails the forward-migration
+      # runner on a clean node-set apply. SYNC with pre-commit hook
+      # 'migration-base-before-view'.
+      - name: Migration base-before-view gate
+        run: uv run python scripts/ci/check_migration_base_before_view.py
       - name: Golden-chain coverage gate
         env:
           PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
