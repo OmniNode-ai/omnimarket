@@ -32,6 +32,7 @@ class EnumLogicalModelKey(StrEnum):
     QWEN3_CODER_30B = "qwen3-coder-30b"
     QWEN3_NEXT_80B = "qwen3-next-80b"
     QWEN3_6_35B = "qwen3.6-35b"
+    VERTEX_GEMINI_FLASH = "vertex-gemini-flash"
 
 
 @unique
@@ -39,6 +40,7 @@ class EnumLlmEndpointRef(StrEnum):
     """Endpoint reference names declared by registry/topology contracts."""
 
     ANTHROPIC_DELEGATION_URL = "ANTHROPIC_DELEGATION_URL"
+    BIFROST_VERTEX_GEMINI_ENDPOINT_URL = "BIFROST_VERTEX_GEMINI_ENDPOINT_URL"
     GEMINI_API_URL = "GEMINI_API_URL"
     LLM_CODER_FAST_URL = "LLM_CODER_FAST_URL"
     LLM_CODER_URL = "LLM_CODER_URL"

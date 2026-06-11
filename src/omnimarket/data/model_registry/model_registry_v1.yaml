@@ -135,6 +135,32 @@ models:
       (HTTP 429). The delegation inference effect sources the wire model id from this
       registry entry directly; gemini-2.5-flash-lite probes HTTP 200 on the deployed key.
 
+  vertex-gemini-flash:
+    model_id: "vertex-gemini-flash"
+    provider: "vertex"
+    endpoint_env: "BIFROST_VERTEX_GEMINI_ENDPOINT_URL"
+    model_name: "gemini-2.5-flash-lite"
+    requires_secret_ref: "llm.vertex.access_token"
+    context_window: 1048576
+    pricing_per_1m_input: "0.10"
+    pricing_per_1m_output: "0.40"
+    cost_basis: "cloud_api_cost"
+    observed_at: "2026-06-11T00:00:00Z"
+    source: "provider docs"
+    notes: >
+      Vertex-served Gemini 2.5 Flash Lite (OMN-12971). Burns the Vertex $500
+      credit via Vertex AI. The outbound call carries Authorization: Bearer
+      <token>, where the token is a short-lived OAuth access token minted from
+      Application Default Credentials (ADC) and published to the secret store as
+      llm.vertex.access_token. ADC delivery to the effects container is a mounted
+      credential file (GOOGLE_APPLICATION_CREDENTIALS) exchanged for that token;
+      the token VALUE is resolved fail-closed at the effect boundary and never
+      committed. ADDITIVE next to gemini-2.5-flash-lite (AI Studio key path);
+      both routes stay selectable (provider-agnostic). endpoint_url null in repo
+      default; the overlay supplies the COMPLETE project+region Vertex
+      OpenAI-compat URL via BIFROST_VERTEX_GEMINI_ENDPOINT_URL. ADC proven HTTP
+      200 from .201. Routed via cloud-vertex-gemini bifrost backend.
+
   openrouter-qwen3-coder-480b:
     model_id: "openrouter-qwen3-coder-480b"
     provider: "openrouter"
