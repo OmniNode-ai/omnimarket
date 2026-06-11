@@ -195,6 +195,7 @@ node_semantic_analyzer_compute = "omnimarket.nodes.node_semantic_analyzer_comput
 node_semantic_antipattern_classifier_compute = "omnimarket.nodes.node_semantic_antipattern_classifier_compute"
 node_semantic_antipattern_validator_orchestrator = "omnimarket.nodes.node_semantic_antipattern_validator_orchestrator"
 node_database_sweep = "omnimarket.nodes.node_database_sweep"
+node_volume_config_drift_sweep = "omnimarket.nodes.node_volume_config_drift_sweep"
 node_duplication_sweep = "omnimarket.nodes.node_duplication_sweep"
 node_doc_freshness_sweep = "omnimarket.nodes.node_doc_freshness_sweep"
 node_memory_storage_effect = "omnimarket.nodes.node_memory_storage_effect"
