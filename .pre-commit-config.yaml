@@ -132,6 +132,19 @@ repos:
         pass_filenames: false
         stages: [pre-commit]
 
+      # OMN-12942: node migration sets must create base tables before the views
+      # that read them. A view-before-base-table migration hard-fails the
+      # forward-migration runner on a clean node-set apply (this forced
+      # node_projection_llm_routing's view to be pruned during the 2026-06-11
+      # stability hot-patch). SYNC with ci.yml step "Migration base-before-view gate".
+      - id: migration-base-before-view
+        name: Migration base-table-before-view gate
+        language: system
+        entry: uv run python scripts/ci/check_migration_base_before_view.py
+        files: ^(src/omnimarket/nodes/.*/migrations/.*\.sql|scripts/ci/check_migration_base_before_view\.py)$
+        pass_filenames: false
+        stages: [pre-commit]
+
       # OMN-12691: live-path node changes must ship with golden-chain coverage.
       # SYNC with ci.yml step "Golden-chain coverage gate".
       - id: golden-chain-coverage-gate
