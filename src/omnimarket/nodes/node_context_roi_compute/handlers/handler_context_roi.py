@@ -13,8 +13,10 @@ Key invariants (enforced here, not just declared in models):
   - full_guidance_negative_control arm budget failures are scored separately
     from generation failures and never counted as generation evidence.
   - full_guidance_negative_control arm is NEVER ranked as preferred arm.
-  - Runtime-observed mode is gated on coordinated deploy (plan §Parallelization);
-    fixture_mode=False emits a clear failure, not empty output.
+  - Runtime-observed mode (fixture_mode=False) scores live runner rows through
+    the identical aggregation path; only the proof_class label differs
+    (OMN-12947). The runner emits the same ModelArmRunRow schema fixture mode
+    uses, so no provenance-specific branching is required in _score.
 
 Proof classification mirrors node_on_vs_off_experiment_compute:
   - REPLAY_PROVEN: fixture_mode=True, all rows pre-captured.
@@ -278,28 +280,24 @@ class HandlerContextRoi:
     fixture_mode=True (default): all rows are pre-supplied constants.
         Produces REPLAY_PROVEN bundles with no I/O.
 
-    fixture_mode=False: reserved for live runner rows (runtime-observed);
-        gated on coordinated deploy per plan §Parallelization. Emits a clear
-        failure rather than silently producing empty output.
+    fixture_mode=False: live runner rows (runtime-observed). Scored through the
+        identical aggregation path as fixture mode — the runner emits the same
+        ModelArmRunRow schema — and classified RUNTIME_OBSERVED_ONLY (OMN-12947).
     """
 
     def handle(self, request: ModelContextRoiRequest) -> ModelContextRoiResult:
-        if not request.fixture_mode:
-            return ModelContextRoiResult(
-                status="failed",
-                run_id=request.run_id,
-                manifest_id=request.manifest_id,
-                failure_class="runtime_mode_not_implemented",
-                errors=(
-                    "runtime-observed mode requires live runner integration "
-                    "(gated on coordinated deploy per plan §Parallelization); "
-                    "use fixture_mode=True for replay-proven scoring",
-                ),
-            )
+        proof_class = (
+            EnumProofClass.REPLAY_PROVEN
+            if request.fixture_mode
+            else EnumProofClass.RUNTIME_OBSERVED_ONLY
+        )
+        return self._score(request, proof_class)
 
-        return self._score(request)
-
-    def _score(self, request: ModelContextRoiRequest) -> ModelContextRoiResult:
+    def _score(
+        self,
+        request: ModelContextRoiRequest,
+        proof_class: EnumProofClass,
+    ) -> ModelContextRoiResult:
         matrix = build_canonical_factor_matrix()
         arm_map: dict[EnumArmLabel, ModelFactorArm] = {arm.label: arm for arm in matrix}
 
@@ -389,7 +387,7 @@ class HandlerContextRoi:
             arm_rows=tuple(aggregate_rows),
             arm_summary=tuple(summaries),
             preferred_arm=preferred,
-            proof_class=EnumProofClass.REPLAY_PROVEN,
+            proof_class=proof_class,
             warnings=tuple(all_warnings),
         )
 
