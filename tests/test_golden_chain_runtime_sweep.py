@@ -297,3 +297,98 @@ class TestRuntimeSweepGoldenChain:
         result = handler.handle(request)
 
         assert result.by_type.get("PLACEHOLDER_DESCRIPTION", 0) >= 1
+
+
+@pytest.mark.unit
+class TestRuntimeSweepProfileConsumerCensus:
+    """OMN-12957 dual check: manifest profile vs live consumer-group census."""
+
+    async def test_profile_without_live_consumer_flagged(
+        self, event_bus: EventBusInmemory
+    ) -> None:
+        """A subscribing node whose profile has no live consumer is a silent orphan."""
+        handler = NodeRuntimeSweep()
+        request = RuntimeSweepRequest(
+            contracts=[
+                ModelContractInput(
+                    node_name="node_orphan_effect",
+                    description="An effect node with a real description here",
+                    handler_module="omnimarket.handlers.orphan",
+                    handler_exists=True,
+                    subscribe_topics=["onex.cmd.demo.do.v1"],
+                    runtime_profiles=["effects"],
+                )
+            ],
+            # effects has no live consumer; only main is attached.
+            live_consumer_profiles=["main"],
+        )
+        result = handler.handle(request)
+
+        assert result.by_type.get("PROFILE_NO_LIVE_CONSUMER", 0) == 1
+        finding = next(
+            f
+            for f in result.findings
+            if f.finding_type == EnumFindingType.PROFILE_NO_LIVE_CONSUMER
+        )
+        assert finding.subject == "node_orphan_effect"
+        assert finding.severity == "CRITICAL"
+
+    async def test_profile_with_live_consumer_passes(
+        self, event_bus: EventBusInmemory
+    ) -> None:
+        """A node whose profile is in the live census is not orphaned."""
+        handler = NodeRuntimeSweep()
+        request = RuntimeSweepRequest(
+            contracts=[
+                ModelContractInput(
+                    node_name="node_live_effect",
+                    description="An effect node with a real description here",
+                    subscribe_topics=["onex.cmd.demo.do.v1"],
+                    runtime_profiles=["effects"],
+                )
+            ],
+            live_consumer_profiles=["main", "effects", "workers"],
+        )
+        result = handler.handle(request)
+
+        assert result.by_type.get("PROFILE_NO_LIVE_CONSUMER", 0) == 0
+
+    async def test_census_not_collected_skips_check(
+        self, event_bus: EventBusInmemory
+    ) -> None:
+        """When live census is None, the dual check does not run (no false orphans)."""
+        handler = NodeRuntimeSweep()
+        request = RuntimeSweepRequest(
+            contracts=[
+                ModelContractInput(
+                    node_name="node_effect",
+                    description="An effect node with a real description here",
+                    subscribe_topics=["onex.cmd.demo.do.v1"],
+                    runtime_profiles=["effects"],
+                )
+            ],
+            live_consumer_profiles=None,
+        )
+        result = handler.handle(request)
+
+        assert result.by_type.get("PROFILE_NO_LIVE_CONSUMER", 0) == 0
+
+    async def test_non_subscribing_node_exempt(
+        self, event_bus: EventBusInmemory
+    ) -> None:
+        """A publish-only node cannot be consumer-orphaned even with empty census."""
+        handler = NodeRuntimeSweep()
+        request = RuntimeSweepRequest(
+            contracts=[
+                ModelContractInput(
+                    node_name="node_publisher",
+                    description="A publisher node with a real description here",
+                    publish_topics=["onex.evt.demo.done.v1"],
+                    runtime_profiles=["effects"],
+                )
+            ],
+            live_consumer_profiles=[],
+        )
+        result = handler.handle(request)
+
+        assert result.by_type.get("PROFILE_NO_LIVE_CONSUMER", 0) == 0

@@ -96,6 +96,22 @@ repos:
         pass_filenames: false
         stages: [pre-commit]
 
+      # OMN-12957: runtime_profiles contract validator (omnibase_core).
+      # Enforces runtime_profiles_missing (OMN-9886) + runtime_profile_unregistered
+      # (declared profile not in canonical REGISTERED_RUNTIME_PROFILES) +
+      # runtime_profile_no_consumer_lane (subscribing REDUCER/EFFECT names no
+      # consumer-attached profile). Pre-existing violators are frozen in
+      # validation/runtime_profiles_allowlist.yaml (discovered by repo-root walk;
+      # drain tracked by OMN-12982). Blocks NEW orphans. Requires the omnibase_core
+      # pin to include OMN-12957's validator (new rules).
+      - id: onex-validate-runtime-profiles
+        name: Validate runtime_profiles on node contracts (OMN-12957)
+        language: system
+        entry: uv run python -m omnibase_core.validation.validator_runtime_profiles src/
+        files: ^src/omnimarket/nodes/node_.*/contract\.yaml$
+        pass_filenames: false
+        stages: [pre-commit]
+
       # OMN-10909: stricter topic-literal gate (delegation thin-shim plan, Task 8).
       # Allowlist: topics.py, test_*/conftest* files, inline `# onex-topic-allow`
       # annotations. SYNC with ci.yml step "Topic-literal guardrail (annotation allowlist)".
