@@ -69,9 +69,16 @@ backends:
       - embedding
   # Cloud fallback backends
   - backend_id: cloud-sonnet
-    endpoint_url: ""
-    # Claude Sonnet via OAuth — no API key required (Claude Code uses OAuth)
+    # OMN-12939: COMPLETE endpoint URL incl. the full chat path, posted VERBATIM.
+    # Anthropic OpenAI-compatibility endpoint. Provenance: pre-OMN-10717 source
+    # carried base "https://api.anthropic.com/v1" (adapter appended the chat path);
+    # OMN-12815 requires the complete /chat/completions form here. The frontier tier
+    # was orphaned (empty endpoint_url, no secret_ref) when OMN-12815 (#1118) moved
+    # cloud backends to complete-verbatim URLs but skipped cloud-sonnet/cloud-haiku.
+    endpoint_url: "https://api.anthropic.com/v1/chat/completions"
     model_name: claude-sonnet-4-6
+    secret_ref: llm.anthropic.api_key
+    api_key_env: ANTHROPIC_API_KEY
     tier: frontier_api
     timeout_ms: 60000
     capabilities:
@@ -80,9 +87,12 @@ backends:
       - documentation
       - research
   - backend_id: cloud-haiku
-    endpoint_url: ""
-    # Claude Haiku — cheapest frontier model for documentation/simple tasks
+    # OMN-12939: COMPLETE endpoint URL incl. the full chat path, posted VERBATIM.
+    # Claude Haiku — cheapest frontier model for documentation/simple tasks.
+    endpoint_url: "https://api.anthropic.com/v1/chat/completions"
     model_name: claude-haiku-4-5-20251001
+    secret_ref: llm.anthropic.api_key
+    api_key_env: ANTHROPIC_API_KEY
     tier: frontier_api
     timeout_ms: 30000
     capabilities:
