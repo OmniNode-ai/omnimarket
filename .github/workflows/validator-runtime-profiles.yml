@@ -67,4 +67,18 @@ jobs:
         run: uv sync --all-extras
 
       - name: Validate runtime_profiles on omnimarket contracts
-        run: uv run python -m omnibase_core.validation.validator_runtime_profiles src/
+        run: |
+          uv run python - <<'PY'
+          from pathlib import Path
+
+          from omnibase_core.validation.validator_runtime_profiles import (
+              ValidatorRuntimeProfiles,
+          )
+
+          result = ValidatorRuntimeProfiles(
+              allowlist_path=Path("validation/runtime_profiles_allowlist.yaml")
+          ).validate(Path("src"))
+          for issue in result.issues:
+              print(f"[{issue.severity.value}] {issue.file_path}:{issue.line_number}: {issue.message}")
+          raise SystemExit(0 if result.is_valid else 1)
+          PY
