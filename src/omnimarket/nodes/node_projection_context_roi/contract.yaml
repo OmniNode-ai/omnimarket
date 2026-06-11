@@ -1,0 +1,105 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Context-ROI scores projection (OMN-12955)
+#
+# Projects the per-(task x arm x trial) attempt-reduction rows carried on the
+# context-ROI runner terminal event into the context_roi_scores table, and
+# exposes that table through the projection API on
+#   onex.snapshot.projection.context.experiment-scores.v1  # onex-topic-allow: projection snapshot topics use the onex.snapshot.* prefix by convention
+# so the omnidash /experiments ContextExperimentHero + ContextEffectivenessHeatmap
+# panels read live experiment output instead of failing with unknown_topic.
+---
+name: projection_context_roi
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: reducer
+node_version: {major: 1, minor: 0, patch: 0}
+input_model: omnimarket.nodes.node_projection_context_roi.handlers.handler_projection_context_roi.ModelContextRoiRunCompletedEvent
+description: >
+  Projects context-ROI experiment runner output into the context_roi_scores
+  table. Source topic: onex.evt.omnimarket.context-roi-run-completed.v1, whose
+  payload carries one ModelAttemptReductionRow per (task x arm x trial) cell.
+  Each row is upserted by its runner-minted correlation_id. The table is exposed
+  through the projection API as the context experiment-scores snapshot topic
+  (declared under projection_api.exposures below) for the /experiments hero +
+  heatmap panels.
+
+handler:
+  module: omnimarket.nodes.node_projection_context_roi.handlers.handler_projection_context_roi
+  class: HandlerProjectionContextRoi
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - handler:
+        name: HandlerProjectionContextRoi
+        module: omnimarket.nodes.node_projection_context_roi.handlers.handler_projection_context_roi
+      handler_module: omnimarket.nodes.node_projection_context_roi.handlers.handler_projection_context_roi
+      event_model: omnimarket.nodes.node_projection_context_roi.handlers.handler_projection_context_roi.ModelContextRoiRunCompletedEvent
+
+terminal_event: onex.evt.omnimarket.projection-context-roi-applied.v1
+
+db_io:
+  db_tables:
+    - name: context_roi_scores
+      migration: "001_create_context_roi_scores.sql"
+      access: write
+      database: omnidash_analytics
+      role: scores
+
+event_bus:
+  consumer_group: local.omnimarket.node_projection_context_roi.consume.v1
+  subscribe_topics:
+    - onex.evt.omnimarket.context-roi-run-completed.v1
+  publish_topics:
+    - onex.evt.omnimarket.projection-context-roi-applied.v1
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.projection-context-roi-applied.v1
+
+projection_api:
+  expose: true
+  exposures:
+    - topic: onex.snapshot.projection.context.experiment-scores.v1 # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
+      table: context_roi_scores
+      schema: public
+      columns:
+        - id
+        - run_id
+        - correlation_id
+        - task_id
+        - run_order
+        - context_factor_subset
+        - context_pack_hash
+        - attempt_count
+        - first_pass_success
+        - final_success
+        - failure_stage
+        - prompt_tokens
+        - completion_tokens
+        - tokens_used
+        - estimated_cost
+        - model_id
+        - provider
+        - endpoint_ref
+        - proof_class
+        - created_at
+        - updated_at
+      order_by: created_at DESC
+      freshness_column: updated_at
+      limit: 1000
+
+metadata:
+  transport_type: kafka
+  description: "Context-ROI scores projection — projects runner attempt-reduction rows into context_roi_scores"
+  author: "OmniNode Platform Team"
+  implementation_wave: p0
+  tags:
+    - "reducer"
+    - "projection"
+    - "context-roi"
+    - "experiment"
+    - "OMN-12955"
+  related_tickets:
+    - "OMN-12955"
+    - "OMN-12798"
+    - "OMN-12797"

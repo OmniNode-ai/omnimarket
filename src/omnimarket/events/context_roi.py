@@ -1,17 +1,18 @@
 # SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""Attempt-reduction result models for node_context_roi_runner (OMN-12798).
+"""Shared context-ROI experiment event payload models (OMN-12955).
 
-These models are emitted by the context-ROI runner EFFECT and scored offline
-by the context-ROI compute node (pure COMPUTE).  They record per-run context
-and attempt telemetry for the N-arm experiment matrix.
+Canonical home for the context-ROI runner terminal-event payload models:
+:class:`EnumFailureStage`, :class:`ModelAttemptReductionRow`, and
+:class:`ModelContextRoiRunResult`. These are the typed payload carried on
+``onex.evt.omnimarket.context-roi-run-completed.v1`` and consumed by more than
+one node (the runner EFFECT that emits them, the COMPUTE scorer that re-scores
+them, and the projection reducer that materializes them into context_roi_scores).
 
-Placement: experiment-private to node_context_roi_runner.  Not promoted to
-omnibase_core unless a second repo imports them (per A5 layer rule).  The
-scorer node (P2-5a) imports from here, not from node_generation_consumer.
-
-EnumProofClass is imported from omnimarket.enums.enum_proof_class (shared
-omnimarket-level location, not a node-private package).
+Promoted out of node_context_roi_runner.models into omnimarket.events so that
+consuming nodes read a shared event model instead of reaching into another
+node's private models package (enforced by tests/test_no_cross_node_reach_in.py).
+EnumProofClass stays in omnimarket.enums.enum_proof_class (shared).
 """
 
 from __future__ import annotations
@@ -156,7 +157,44 @@ class ModelAttemptReductionRow(BaseModel):
     )
 
 
+class ModelContextRoiRunResult(BaseModel):
+    """Terminal output for one full experiment run.
+
+    rows holds one entry per (task x arm x trial).  Freeze these rows as
+    fixtures so the scorer node is REPLAY_PROVEN (mirrors OMN-12661).
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    run_id: str = Field(description="Echoed from the request run_id")
+    rows: tuple[ModelAttemptReductionRow, ...] = Field(
+        description="Per-(task x arm x trial) attempt-reduction rows"
+    )
+    proof_class: EnumProofClass = Field(
+        default=EnumProofClass.RUNTIME_OBSERVED_ONLY,
+        description=(
+            "REPLAY_PROVEN when rows were re-scored from frozen fixtures; "
+            "RUNTIME_OBSERVED_ONLY when captured from a live run."
+        ),
+    )
+    total_trials: int = Field(
+        default=0,
+        ge=0,
+        description="Total number of (task x arm x trial) cells attempted",
+    )
+    failed_trials: int = Field(
+        default=0,
+        ge=0,
+        description="Number of trials that ended in a non-none failure_stage",
+    )
+    warnings: tuple[str, ...] = Field(
+        default_factory=tuple,
+        description="Non-fatal warnings from the run (e.g. optional factor absent)",
+    )
+
+
 __all__ = [
     "EnumFailureStage",
     "ModelAttemptReductionRow",
+    "ModelContextRoiRunResult",
 ]
