@@ -5,13 +5,14 @@
 from __future__ import annotations
 
 import fnmatch
-import os
 from functools import lru_cache
 from pathlib import Path
 from typing import Any, Literal
 
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
+
+from omnimarket.inference.delegation_config_provenance import resolve_path_config
 
 _DEFAULT_CONFIG_PATH = (
     Path(__file__).resolve().parent.parent / "configs" / "inference_protocols.v1.yaml"
@@ -88,8 +89,12 @@ def load_inference_protocol_config(
 ) -> ModelInferenceProtocolConfig:
     """Load provider protocol directives from a typed YAML config."""
 
-    env_path = os.environ.get(_CONFIG_PATH_ENV, "").strip()
-    resolved = Path(config_path or env_path or _DEFAULT_CONFIG_PATH)
+    if config_path is not None:
+        resolved = Path(config_path)
+    else:
+        # Resolve the env selector through the delegation-path provenance surface
+        # (OMN-12967) so a cold runtime logs which protocol config it loaded.
+        resolved, _ = resolve_path_config(_CONFIG_PATH_ENV, _DEFAULT_CONFIG_PATH)
     return _load_inference_protocol_config_cached(str(resolved))
 
 
