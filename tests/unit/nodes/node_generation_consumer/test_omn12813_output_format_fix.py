@@ -23,6 +23,7 @@ from typing import Any
 
 import pytest
 
+from omnimarket.enums.enum_usage_source import EnumUsageSource
 from omnimarket.inference.protocol_config import (
     apply_inference_protocol,
     load_inference_protocol_config,
@@ -76,10 +77,12 @@ _QWEN_REASONING_PROSE_RESPONSE = (
 
 
 class _FakeUsage:
-    def __init__(self, inp: int = 10, out: int = 20) -> None:
+    def __init__(self, inp: int = 10, out: int = 20, usage_source: str = "api") -> None:
         self.tokens_input = inp
         self.tokens_output = out
         self.tokens_total = inp + out
+        # OMN-12996: provider-reported provenance ("api" -> MEASURED).
+        self.usage_source = usage_source
 
 
 class _FakeResponse:
@@ -112,6 +115,17 @@ def _make_handler(
         effect_handler=_FakeLlmEffect(responses),
         event_publisher=_publisher,
     )
+
+
+@pytest.fixture(autouse=True)
+def _isolate_onex_state(monkeypatch: pytest.MonkeyPatch, tmp_path: Any) -> None:
+    """Isolate the replay-state dir per test (OMN-12996).
+
+    Point both state-root env keys at a per-test tmp dir so handle() never reads
+    or writes the shared operator ONEX_STATE_DIR and stays order-independent.
+    """
+    monkeypatch.setenv("ONEX_STATE_DIR", str(tmp_path / "onex_state"))
+    monkeypatch.delenv("ONEX_STATE_ROOT", raising=False)
 
 
 # ---------------------------------------------------------------------------
@@ -428,7 +442,7 @@ async def test_handler_applies_inference_protocol_to_system_prompt() -> None:
         attempt: int,
         previous_errors: list[str] | None = None,
         context_pack: str = "",
-    ) -> tuple[str, int, int]:
+    ) -> tuple[str, int, int, EnumUsageSource]:
         # Replicate exactly what the real _call_llm does before the LLM call,
         # then capture the post-apply_inference_protocol prompts.
         user_content = f"Task: {task_description}"
@@ -453,7 +467,7 @@ async def test_handler_applies_inference_protocol_to_system_prompt() -> None:
         )
         system_prompts_seen.append(sys_p)
         user_prompts_seen.append(usr_p)
-        return _VALID_LLM_RESPONSE, 10, 20
+        return _VALID_LLM_RESPONSE, 10, 20, EnumUsageSource.MEASURED
 
     HandlerGenerationConsumer._call_llm = _patched_call_llm  # type: ignore[method-assign]
     try:
