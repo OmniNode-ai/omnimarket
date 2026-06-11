@@ -1,0 +1,138 @@
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+name: node_context_artifact_resolver_compute
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: compute
+node_version: {major: 1, minor: 0, patch: 0}
+description: >
+  Pure deterministic resolver that materialises the per-factor
+  artifact_content_map the context-ROI runner (OMN-12798) injects. Turns
+  pre-read artifact sources (golden-chain YAML, exemplar files, CLAUDE.md /
+  architecture-doc bodies, local-failure notes) into real per-factor text,
+  reusing GuidanceSectionParser (OMN-12795) for markdown section selection and
+  node_context_pack_builder_compute for 16k token-budget + factor-precedence
+  enforcement. No filesystem/network I/O: the EFFECT boundary supplies file
+  content as strings. No hardcoded paths; artifact sources are declared in the
+  artifact_source_registry below by logical name + provenance + factor.
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - handler:
+        name: HandlerArtifactResolver
+        module: omnimarket.nodes.node_context_artifact_resolver_compute.handlers.handler_artifact_resolver
+
+handler:
+  module: omnimarket.nodes.node_context_artifact_resolver_compute.handlers.handler_artifact_resolver
+  class: HandlerArtifactResolver
+  input_model: omnimarket.nodes.node_context_artifact_resolver_compute.models.model_artifact_resolver_request.ModelArtifactResolverRequest
+  output_model: omnimarket.nodes.node_context_artifact_resolver_compute.models.model_artifact_resolver_result.ModelArtifactResolverResult
+
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 2000
+
+inputs:
+  contract_hash:
+    type: str
+    required: true
+  generated_at:
+    type: str
+    required: true
+    description: Caller-supplied timezone-aware ISO8601 UTC timestamp.
+  sources:
+    type: array
+    required: true
+    description: Pre-read artifact sources, one or more per factor.
+  token_budget:
+    type: int
+    required: false
+    description: Overall pack token budget (default 16000).
+  per_factor_token_budget:
+    type: int
+    required: false
+    description: Max tokens selected for a single sectioned-markdown factor.
+
+outputs:
+  status:
+    type: str
+    enum: [ok, failed]
+  artifact_content_map:
+    type: object
+    description: EnumContextFactor value -> resolved factor text.
+  resolved_factors:
+    type: array
+  pack_hash:
+    type: str
+    required: false
+    nullable: true
+  total_token_estimate:
+    type: int
+  failure_class:
+    type: str
+    required: false
+    nullable: true
+  errors:
+    type: array
+  warnings:
+    type: array
+
+terminal_event: onex.evt.omnimarket.context-artifact-resolve-completed.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.context-artifact-resolve-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.context-artifact-resolve-completed.v1
+    - onex.evt.omnimarket.context-artifact-resolve-failed.v1
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.context-artifact-resolve-completed.v1
+  - onex.evt.omnimarket.context-artifact-resolve-failed.v1
+
+# Declarative artifact source registry: which logical artifact feeds each
+# factor, and how to resolve it. Logical source names only -- NEVER absolute
+# filesystem paths. The EFFECT boundary maps a logical name to a real file and
+# supplies its content as a string at resolve time.
+#   - sectioned: true  -> markdown body split into heading sections, top
+#                         sections selected within per_factor_token_budget.
+#   - sectioned: false -> whole resolved body used as one artifact.
+artifact_source_registry:
+  golden_chain:
+    logical_source: golden_chains.yaml
+    provenance: curated
+    sectioned: false
+  exemplar:
+    logical_source: exemplar_node
+    provenance: curated
+    sectioned: false
+  local_failures:
+    logical_source: local_failure_notes
+    provenance: observed
+    sectioned: false
+  architecture_patterns:
+    logical_source: architecture_canonical_doc
+    provenance: curated
+    sectioned: true
+  claude_md:
+    logical_source: CLAUDE.md
+    provenance: curated
+    sectioned: true
+
+metadata:
+  transport_type: kafka
+  description: "Context-artifact resolver -- materialises real per-factor content for the ROI runner"
+  author: "OmniNode Platform Team"
+  tags:
+    - "compute"
+    - "context-roi"
+    - "artifact-resolution"
+    - "OMN-12948"
+  related_tickets:
+    - "OMN-12948"
+    - "OMN-12798"
+    - "OMN-12795"
+    - "OMN-12792"
