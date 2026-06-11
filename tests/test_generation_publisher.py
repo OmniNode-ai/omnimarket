@@ -15,13 +15,16 @@ Covers:
 
 from __future__ import annotations
 
+import inspect
 import json
 from unittest.mock import AsyncMock
 
 import pytest
 from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
+from omnibase_infra.event_bus.event_bus_kafka import EventBusKafka
 from pydantic import ValidationError
 
+import omnimarket.projection.generation_publisher as gp
 from omnimarket.nodes.node_generation_consumer.models.model_generation import (
     ModelNodeGenerationRequest,
 )
@@ -29,6 +32,7 @@ from omnimarket.projection.generation_publisher import (
     NODE_GENERATION_REQUESTED_TOPIC,
     ModelGenerateRequest,
     ModelGenerateResponse,
+    ProtocolGenerationEventBus,
     build_generation_envelope,
     mint_correlation_id,
     publish_generation_request,
@@ -91,9 +95,51 @@ def test_envelope_matches_exp0_wire_shape() -> None:
     assert wire["payload"]["correlation_id"] == cid
 
 
+def test_eventbuskafka_satisfies_publisher_lifecycle_surface() -> None:
+    """Guard against the mock-masking defect class (OMN-13004, 2026-06-11).
+
+    The publisher names lifecycle methods on ``ProtocolGenerationEventBus`` and
+    calls them on the *real* ``EventBusKafka`` it constructs in ``_build_event_bus``.
+    An ``AsyncMock`` auto-provides ANY attribute, so a mock-only test cannot catch
+    a method-name drift between the protocol and the concrete class. The live
+    HTTP 500 was exactly that: the publisher called ``bus.stop()`` but
+    ``EventBusKafka`` only exposes ``start``/``close``/``shutdown``.
+
+    This test asserts every async method the protocol declares actually exists,
+    is callable, and is a coroutine function on the real ``EventBusKafka`` — so a
+    future rename on either side fails here instead of in production.
+    """
+    protocol_methods = [
+        name for name in vars(ProtocolGenerationEventBus) if not name.startswith("_")
+    ]
+    # The protocol must at least declare the lifecycle + publish surface.
+    assert {"start", "close", "publish_envelope"} <= set(protocol_methods)
+    # And it must NOT declare a non-existent lifecycle method (the bug).
+    assert "stop" not in protocol_methods, (
+        "ProtocolGenerationEventBus declares 'stop', but EventBusKafka has no "
+        "'stop' method (lifecycle is start/close/shutdown). This is the "
+        "mock-masking defect that returned HTTP 500 after a successful publish."
+    )
+
+    for name in protocol_methods:
+        member = getattr(EventBusKafka, name, None)
+        assert member is not None, (
+            f"ProtocolGenerationEventBus.{name} is not present on the real "
+            f"EventBusKafka — the publisher would AttributeError at runtime."
+        )
+        assert inspect.iscoroutinefunction(member), (
+            f"EventBusKafka.{name} must be an async method to satisfy the "
+            f"publisher's awaited call site."
+        )
+
+
 @pytest.mark.asyncio
 async def test_publish_sends_one_command_to_canonical_topic() -> None:
-    event_bus = AsyncMock()
+    # Spec the mock against the REAL EventBusKafka so accessing an attribute the
+    # concrete class does not have (e.g. a renamed lifecycle method) raises
+    # AttributeError instead of being silently auto-provided. This is the
+    # spec'd-mock guard against the mock-masking defect class.
+    event_bus = AsyncMock(spec=EventBusKafka)
     req = ModelGenerateRequest(task_description="Generate a CSV parser node")
 
     resp = await publish_generation_request(req, event_bus=event_bus)
@@ -103,13 +149,13 @@ async def test_publish_sends_one_command_to_canonical_topic() -> None:
     assert resp.correlation_id.startswith("ui-")
 
     # Exactly one publish_envelope to the canonical topic; injected bus is NOT
-    # started/stopped by the publisher (caller owns its lifecycle).
+    # started/closed by the publisher (caller owns its lifecycle).
     event_bus.publish_envelope.assert_awaited_once()
     args, kwargs = event_bus.publish_envelope.await_args
     envelope, topic = args[0], args[1]
     assert topic == EXP0_TOPIC
     event_bus.start.assert_not_called()
-    event_bus.stop.assert_not_called()
+    event_bus.close.assert_not_called()
 
     # Key is the cid; the envelope is the canonical type carrying that cid on
     # payload.correlation_id (exp0 threading).
@@ -118,6 +164,38 @@ async def test_publish_sends_one_command_to_canonical_topic() -> None:
     assert envelope.event_type == EXP0_TOPIC
     wire = json.loads(envelope.model_dump_json())
     assert wire["payload"]["correlation_id"] == resp.correlation_id
+
+
+@pytest.mark.asyncio
+async def test_owned_bus_lifecycle_uses_start_then_close(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """When the publisher constructs+owns the bus, it must start then close it.
+
+    Spec'd against the real EventBusKafka so ``await bus.close()`` resolves only
+    because EventBusKafka actually exposes ``close`` — a regression back to
+    ``stop`` would AttributeError here (mocks spec'd to EventBusKafka reject
+    ``.stop``).
+    """
+    owned_bus = AsyncMock(spec=EventBusKafka)
+    req = ModelGenerateRequest(task_description="Generate a JSON normalizer node")
+
+    # No event_bus injected → publisher builds + owns the bus; patch the builder
+    # to hand back our spec'd mock so we never touch a real broker.
+    def _fake_build(_settings: object = None) -> AsyncMock:
+        return owned_bus
+
+    monkeypatch.setattr(gp, "_build_event_bus", _fake_build)
+
+    resp = await publish_generation_request(req)
+
+    assert resp.correlation_id.startswith("ui-")
+    owned_bus.start.assert_awaited_once()
+    owned_bus.publish_envelope.assert_awaited_once()
+    owned_bus.close.assert_awaited_once()
+    # A spec'd-to-EventBusKafka mock has no 'stop' attribute, proving the
+    # buggy lifecycle method is not part of the real class's surface.
+    assert not hasattr(owned_bus, "stop")
 
 
 def test_empty_task_description_is_rejected() -> None:

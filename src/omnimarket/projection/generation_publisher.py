@@ -55,7 +55,7 @@ class ProtocolGenerationEventBus(Protocol):
 
     async def start(self) -> None: ...
 
-    async def stop(self) -> None: ...
+    async def close(self) -> None: ...
 
     async def publish_envelope(
         self,
@@ -166,7 +166,7 @@ def _build_event_bus(settings: Settings | None = None) -> ProtocolGenerationEven
             "node-generation request; the projection API has no broker configured."
         )
     config = ModelKafkaEventBusConfig(bootstrap_servers=bootstrap)
-    # EventBusKafka satisfies the start/stop/publish_envelope shape we need.
+    # EventBusKafka satisfies the start/close/publish_envelope shape we need.
     return cast(ProtocolGenerationEventBus, EventBusKafka(config))
 
 
@@ -180,7 +180,7 @@ async def publish_generation_request(
 
     ``event_bus`` is injectable for tests; in production the canonical
     ``EventBusKafka`` is constructed, started, used for a single
-    ``publish_envelope``, and stopped.  A returned response is proof the command
+    ``publish_envelope``, and closed.  A returned response is proof the command
     was handed to the bus, so the UI's correlation id is honest.  The envelope's
     ``payload.correlation_id`` (str) is the value the generation consumer threads
     through to the terminal event + projection row.
@@ -197,7 +197,7 @@ async def publish_generation_request(
         await bus.publish_envelope(envelope, NODE_GENERATION_REQUESTED_TOPIC, key=key)
     finally:
         if owns_bus:
-            await bus.stop()
+            await bus.close()
 
     return ModelGenerateResponse(
         correlation_id=correlation_id, topic=NODE_GENERATION_REQUESTED_TOPIC
