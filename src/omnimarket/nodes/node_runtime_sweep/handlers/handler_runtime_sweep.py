@@ -60,6 +60,11 @@ class EnumFindingType(StrEnum):
     CONSUMER_ONLY = "CONSUMER_ONLY"
     NON_DURABLE_CONTRACT = "NON_DURABLE_CONTRACT"
     STRANDED_WORKFLOW = "STRANDED_WORKFLOW"
+    # OMN-12957: manifest declares a node under a runtime_profile but no live
+    # consumer group is attached for that profile — the node is silently
+    # orphaned even though static profile membership looks valid. This is the
+    # second class of orphaning that static profile-subset validation misses.
+    PROFILE_NO_LIVE_CONSUMER = "PROFILE_NO_LIVE_CONSUMER"
 
 
 # ---------------------------------------------------------------------------
@@ -118,6 +123,8 @@ class ModelContractInput(BaseModel):
     handler_exists: bool = True
     publish_topics: list[str] = Field(default_factory=list)
     subscribe_topics: list[str] = Field(default_factory=list)
+    # OMN-12957: runtime_profiles declared by this contract (lower-cased).
+    runtime_profiles: list[str] = Field(default_factory=list)
 
 
 class ModelRuntimeFinding(BaseModel):
@@ -169,6 +176,14 @@ class RuntimeSweepRequest(BaseModel):
             "DEFAULT_ARCHETYPE_SLA_MS."
         ),
     )
+    # OMN-12957: live consumer-group census — the set of runtime_profiles that
+    # actually have an attached consumer group on the broker right now. When
+    # provided (non-None), the sweep runs the dual check: any node whose
+    # declared runtime_profiles are all absent from this census is flagged as a
+    # silent orphan (manifest-declares-node != consumer-attached). When None the
+    # broker census was not collected and the dual check is skipped — distinct
+    # from an empty census (broker reachable, zero consumer groups).
+    live_consumer_profiles: list[str] | None = None
     dry_run: bool = False
 
 
@@ -265,6 +280,15 @@ class NodeRuntimeSweep:
                 request.workflow_observations, request.archetype_sla_ms
             )
         )
+        # Phase 6 (OMN-12957): manifest-vs-live-consumer census dual check.
+        # Only runs when the caller collected the live broker consumer-group
+        # census; static profile membership alone misses this orphan class.
+        if request.live_consumer_profiles is not None:
+            findings.extend(
+                self._check_profile_consumer_census(
+                    request.contracts, request.live_consumer_profiles
+                )
+            )
 
         status = "clean" if not findings else "findings"
 
@@ -458,4 +482,46 @@ class NodeRuntimeSweep:
                     )
                 )
 
+        return findings
+
+    def _check_profile_consumer_census(
+        self,
+        contracts: list[ModelContractInput],
+        live_consumer_profiles: list[str],
+    ) -> list[ModelRuntimeFinding]:
+        """OMN-12957 dual check: manifest profile vs live consumer-group census.
+
+        A node may declare a valid, registered runtime_profile yet have no
+        process actually consuming for it (the runtime lane for that profile is
+        not deployed / not attached). Static profile-subset validation passes
+        but the node is still a silent orphan. Compares each subscribing node's
+        declared profiles against the set of profiles with a live consumer group
+        and flags nodes whose every declared profile is absent from the census.
+        """
+        live = {p.strip().lower() for p in live_consumer_profiles if p.strip()}
+        findings: list[ModelRuntimeFinding] = []
+        for contract in contracts:
+            # Only nodes that subscribe can be orphaned at the consumer level.
+            if not contract.subscribe_topics:
+                continue
+            declared = {
+                p.strip().lower() for p in contract.runtime_profiles if p.strip()
+            }
+            if not declared:
+                continue
+            if declared & live:
+                continue
+            findings.append(
+                ModelRuntimeFinding(
+                    finding_type=EnumFindingType.PROFILE_NO_LIVE_CONSUMER,
+                    subject=contract.node_name,
+                    message=(
+                        f"Node {contract.node_name} declares runtime_profiles "
+                        f"{sorted(declared)} but none has a live consumer group "
+                        f"(census: {sorted(live)}). Subscriptions are not being "
+                        "drained — silent orphan."
+                    ),
+                    severity="CRITICAL",
+                )
+            )
         return findings

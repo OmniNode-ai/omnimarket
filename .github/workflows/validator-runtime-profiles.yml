@@ -1,0 +1,70 @@
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+# Runtime Profiles — ValidatorRuntimeProfiles gate [OMN-12957]
+#
+# Wires omnibase_core.validation.validator_runtime_profiles as a required
+# status check on omnimarket node contracts. Enforces three rules:
+#   - runtime_profiles_missing (OMN-9886)
+#   - runtime_profile_unregistered (OMN-12957) — declared profile not in the
+#     canonical REGISTERED_RUNTIME_PROFILES registry
+#   - runtime_profile_no_consumer_lane (OMN-12957) — subscribing REDUCER/EFFECT
+#     names no consumer-attached profile, so its subscriptions are never drained
+#
+# Pre-existing violators are frozen in
+# validation/runtime_profiles_allowlist.yaml (drain tracked by OMN-12982); the
+# validator discovers that file by walking up from each scanned contract to the
+# repo root (pyproject.toml). The gate blocks NEW orphans.
+#
+# Requires the omnibase_core pin to include OMN-12957's validator (new rules).
+# Required status check context: "Runtime Profiles / validate".
+
+name: Runtime Profiles
+
+on:
+  push:
+    branches: [main, develop, dev, "hotfix/**"]
+  pull_request:
+    branches: [main, develop, dev]
+  merge_group:
+    branches: [main, develop, dev]
+
+env:
+  PYTHON_VERSION: "3.12"
+  UV_VERSION: "0.8.3"
+
+concurrency:
+  group: runtime-profiles-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: validate
+    # OMNI_RUNNER_SELECTOR_V1 - trusted events default to self-hosted omnibase-ci; pull_request defaults to ubuntu-latest
+    runs-on: >-
+      ${{
+        github.event_name != 'pull_request'
+        && fromJSON(vars.OMNI_TRUSTED_CI_RUNS_ON_JSON || '["self-hosted","omnibase-ci"]')
+        || fromJSON(vars.OMNI_PUBLIC_PR_RUNS_ON_JSON || '["ubuntu-latest"]')
+      }}
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout omnimarket
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          version: ${{ env.UV_VERSION }}
+
+      - name: Install dependencies
+        run: uv sync --all-extras
+
+      - name: Validate runtime_profiles on omnimarket contracts
+        run: uv run python -m omnibase_core.validation.validator_runtime_profiles src/

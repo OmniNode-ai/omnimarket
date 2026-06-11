@@ -29,6 +29,21 @@ from omnimarket.nodes.node_runtime_sweep.handlers.handler_runtime_sweep import (
 _log = logging.getLogger(__name__)
 
 
+def _extract_runtime_profiles(raw: dict[str, object]) -> list[str]:
+    """Return declared runtime_profiles (top-level or under descriptor), lower-cased."""
+    profiles_raw = raw.get("runtime_profiles")
+    descriptor = raw.get("descriptor")
+    if profiles_raw is None and isinstance(descriptor, dict):
+        profiles_raw = descriptor.get("runtime_profiles")
+    if isinstance(profiles_raw, str):
+        candidates: list[object] = [profiles_raw]
+    elif isinstance(profiles_raw, (list, tuple)):
+        candidates = list(profiles_raw)
+    else:
+        return []
+    return [p.strip().lower() for p in candidates if isinstance(p, str) and p.strip()]
+
+
 def _collect_contracts(omni_home: str, scope: str) -> list[ModelContractInput]:
     """Walk omni_home repos and collect contract.yaml definitions."""
     root = Path(omni_home)
@@ -85,6 +100,7 @@ def _collect_contracts(omni_home: str, scope: str) -> list[ModelContractInput]:
                         handler_module=handler_module,
                         publish_topics=publish_topics,
                         subscribe_topics=subscribe_topics,
+                        runtime_profiles=_extract_runtime_profiles(raw),
                     )
                 )
             except Exception as exc:
@@ -112,6 +128,17 @@ def main() -> None:
         default=False,
         help="Report findings without creating Linear tickets",
     )
+    parser.add_argument(
+        "--live-consumer-profiles",
+        default=None,
+        help=(
+            "Comma-separated runtime_profiles that currently have a live "
+            "consumer group on the broker (e.g. 'main,effects,workers'). When "
+            "provided, runs the OMN-12957 dual check: any subscribing node whose "
+            "declared profiles are all absent from this census is flagged as a "
+            "silent orphan. Omit to skip the live-census check."
+        ),
+    )
 
     args = parser.parse_args()
 
@@ -129,10 +156,19 @@ def main() -> None:
         all_publish.extend(c.publish_topics)
         all_subscribe.extend(c.subscribe_topics)
 
+    live_consumer_profiles: list[str] | None = None
+    if args.live_consumer_profiles is not None:
+        live_consumer_profiles = [
+            p.strip().lower()
+            for p in args.live_consumer_profiles.split(",")
+            if p.strip()
+        ]
+
     request = RuntimeSweepRequest(
         contracts=contracts,
         topic_producers=all_publish,
         topic_consumers=all_subscribe,
+        live_consumer_profiles=live_consumer_profiles,
         dry_run=args.dry_run,
     )
 
