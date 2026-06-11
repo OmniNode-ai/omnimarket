@@ -1,0 +1,58 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-13003"
+title: "node_context_roi_runner contract omits event_model — live dispatcher crash"
+summary: >
+  The first-ever run-request on onex.cmd.omnimarket.context-roi-run-requested.v1
+  crashed the stability-test dispatcher with
+  "AttributeError: 'dict' object has no attribute 'tasks'", halting experiment
+  batteries Exp 1-3. Root cause: the node_context_roi_runner handler_routing
+  entry omitted the event_model block, so the runtime dispatcher took the
+  event_model-is-None branch and handed the handler the raw envelope dict
+  instead of a validated ModelContextRoiRunRequest. Fix adds the event_model
+  (+ event_type + message_category: command) mapping to the handler entry and
+  a real-dispatch-path regression test that replays the crashing envelope
+  through _make_dispatch_callback. Same defect class as OMN-12420.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-contract-declares-event-model"
+    description: >
+      The node_context_roi_runner handler_routing entry now declares the
+      ModelContextRoiRunRequest event_model — the exact field whose absence
+      caused the live dispatcher crash.
+    source: "manual"
+    status: "verified"
+    checks:
+      - check_type: "command"
+        check_value: "grep -q 'ModelContextRoiRunRequest' src/omnimarket/nodes/node_context_roi_runner/contract.yaml && grep -A6 'name: HandlerContextRoiRunner' src/omnimarket/nodes/node_context_roi_runner/contract.yaml | grep -q 'event_model'"
+  - id: "dod-real-dispatch-path-test"
+    description: >
+      Real-dispatch-path regression test replays the exact wrapped envelope
+      through the runtime dispatch callback built from the contract event_model
+      and asserts no AttributeError + a typed ModelDispatchResult. Fails before
+      the contract fix (KeyError: 'event_model'), passes after.
+    source: "manual"
+    status: "verified"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/nodes/node_context_roi_runner/test_dispatch_envelope_unwrap.py -q"
+  - id: "dod-runner-suite-green"
+    description: "Full node_context_roi_runner test suite passes with the fix applied."
+    source: "manual"
+    status: "verified"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/nodes/node_context_roi_runner/ -q"
+  - id: "dod-lint-types"
+    description: "Changed contract and new test pass ruff; src passes mypy --strict."
+    source: "manual"
+    status: "verified"
+    checks:
+      - check_type: "command"
+        check_value: "uv run ruff check tests/nodes/node_context_roi_runner/test_dispatch_envelope_unwrap.py && uv run mypy src/omnimarket/ --strict"
