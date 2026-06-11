@@ -206,6 +206,75 @@ class TestRuntimeSweepGoldenChain:
 
         await event_bus.close()
 
+    async def test_census_durability_check_skipped_when_no_manifest(
+        self, event_bus: EventBusInmemory
+    ) -> None:
+        """Durability check is skipped when durable_node_names is None."""
+        handler = NodeRuntimeSweep()
+        request = RuntimeSweepRequest(
+            contracts=[
+                ModelContractInput(
+                    node_name="node_dynamic_only",
+                    description="A node registered only via the dynamic listener",
+                )
+            ],
+            durable_node_names=None,
+        )
+        result = handler.handle(request)
+
+        assert result.by_type.get("NON_DURABLE_CONTRACT", 0) == 0
+
+    async def test_non_durable_contract_flagged_critical(
+        self, event_bus: EventBusInmemory
+    ) -> None:
+        """A live contract absent from the durable manifest is CRITICAL."""
+        handler = NodeRuntimeSweep()
+        request = RuntimeSweepRequest(
+            contracts=[
+                ModelContractInput(
+                    node_name="node_bundled",
+                    description="A node present in the image filesystem manifest",
+                ),
+                ModelContractInput(
+                    node_name="node_dynamic_only",
+                    description="A node registered only via the dynamic listener",
+                ),
+            ],
+            durable_node_names=["node_bundled"],
+        )
+        result = handler.handle(request)
+
+        non_durable = [
+            f
+            for f in result.findings
+            if f.finding_type == EnumFindingType.NON_DURABLE_CONTRACT
+        ]
+        assert len(non_durable) == 1
+        assert non_durable[0].subject == "node_dynamic_only"
+        assert non_durable[0].severity == "CRITICAL"
+
+    async def test_full_durable_census_is_clean(
+        self, event_bus: EventBusInmemory
+    ) -> None:
+        """When every live contract is in the durable manifest, no finding."""
+        handler = NodeRuntimeSweep()
+        request = RuntimeSweepRequest(
+            contracts=[
+                ModelContractInput(
+                    node_name="node_a",
+                    description="A durable node bundled in the runtime image",
+                ),
+                ModelContractInput(
+                    node_name="node_b",
+                    description="Another durable node bundled in the image",
+                ),
+            ],
+            durable_node_names=["node_a", "node_b", "node_extra_in_manifest"],
+        )
+        result = handler.handle(request)
+
+        assert result.by_type.get("NON_DURABLE_CONTRACT", 0) == 0
+
     async def test_dry_run_flag(self, event_bus: EventBusInmemory) -> None:
         """dry_run flag should propagate from request to result."""
         handler = NodeRuntimeSweep()

@@ -55,6 +55,7 @@ class EnumFindingType(StrEnum):
     )
     PRODUCER_ONLY = "PRODUCER_ONLY"
     CONSUMER_ONLY = "CONSUMER_ONLY"
+    NON_DURABLE_CONTRACT = "NON_DURABLE_CONTRACT"
 
 
 # ---------------------------------------------------------------------------
@@ -94,6 +95,22 @@ class RuntimeSweepRequest(BaseModel):
     contracts: list[ModelContractInput] = Field(default_factory=list)
     topic_producers: list[str] = Field(default_factory=list)
     topic_consumers: list[str] = Field(default_factory=list)
+    durable_node_names: list[str] | None = Field(
+        default=None,
+        description=(
+            "Census of node names reconstructable from a durable source on a "
+            "COLD runtime start — i.e. the image-bundled filesystem manifest "
+            "(HYBRID-mode bootstrap + PluginLoaderContractSource) and/or a "
+            "compacted snapshot topic. Contracts present in the live registered "
+            "census (`contracts`) but ABSENT from this set were materialized "
+            "ONLY via the post-freeze dynamic-contract listener, which consumes "
+            "the SUFFIX_NODE_REGISTRATION topic (cleanup.policy=delete, "
+            "7-day retention) with auto_offset_reset=latest and therefore does "
+            "NOT replay history on cold start. Such contracts vanish on a cold "
+            "restart unless their registrant re-publishes. When None, the "
+            "durability check is skipped (caller did not supply a manifest)."
+        ),
+    )
     dry_run: bool = False
 
 
@@ -171,6 +188,14 @@ class NodeRuntimeSweep:
         all_topics = all_producers | all_consumers
         findings.extend(self._check_symmetry(all_topics, all_producers, all_consumers))
 
+        # Phase 4: Contract-store durability audit (OMN-12962)
+        # Flag any live-registered contract that is not reconstructable from a
+        # durable cold-start source — these depend on retained registration
+        # events and silently vanish on a cold runtime restart.
+        findings.extend(
+            self._check_census_durability(request.contracts, request.durable_node_names)
+        )
+
         status = "clean" if not findings else "findings"
 
         return RuntimeSweepResult(
@@ -222,6 +247,55 @@ class NodeRuntimeSweep:
                     severity="CRITICAL",
                 )
             )
+
+        return findings
+
+    def _check_census_durability(
+        self,
+        contracts: list[ModelContractInput],
+        durable_node_names: list[str] | None,
+    ) -> list[ModelRuntimeFinding]:
+        """Audit cold-start durability of the registered contract census.
+
+        The cold-start census is reconstructed from the image-bundled
+        filesystem manifest (HYBRID-mode bootstrap + PluginLoaderContractSource),
+        which is durable and independent of Kafka retention. The post-freeze
+        dynamic-contract listener consumes the ``SUFFIX_NODE_REGISTRATION``
+        topic (``cleanup.policy=delete``, 7-day retention) with
+        ``auto_offset_reset=latest`` — it never replays history on a cold start.
+
+        Therefore any contract present in the live registered census but absent
+        from the durable source is NON-durable: it was materialized only via the
+        dynamic path and will vanish on a cold runtime restart unless its
+        registrant re-publishes. This check surfaces those contracts.
+
+        When ``durable_node_names`` is None the caller supplied no manifest and
+        the check is skipped (no finding emitted).
+        """
+        if durable_node_names is None:
+            return []
+
+        findings: list[ModelRuntimeFinding] = []
+        durable = set(durable_node_names)
+
+        for contract in contracts:
+            if contract.node_name not in durable:
+                findings.append(
+                    ModelRuntimeFinding(
+                        finding_type=EnumFindingType.NON_DURABLE_CONTRACT,
+                        subject=contract.node_name,
+                        message=(
+                            f"Contract {contract.node_name} is registered in the "
+                            f"live runtime but absent from the durable cold-start "
+                            f"census (filesystem manifest). It was materialized "
+                            f"only via the dynamic node-registration listener "
+                            f"(cleanup.policy=delete topic, auto_offset_reset="
+                            f"latest) and will not be reconstructed on a cold "
+                            f"restart unless its registrant re-publishes."
+                        ),
+                        severity="CRITICAL",
+                    )
+                )
 
         return findings
 
