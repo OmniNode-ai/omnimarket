@@ -1,0 +1,91 @@
+---
+name: volume_config_drift_sweep
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: compute
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  Volume-vs-packaged config drift detection. Compares the deployed (Docker named
+  volume) copy of a runtime-rendered config against the packaged source shipped in
+  the image, and classifies IN_SYNC / DRIFTED / DEPLOYED_ABSENT / SOURCE_ABSENT.
+  The Bifrost delegation contract is rendered once to /app/data/delegation/ and the
+  volume survives rebuilds, so the deployed copy can silently diverge from packaged
+  source. Drift findings carry a recommended Linear ticket payload; the invoking
+  skill/orchestrator owns ticket creation.
+
+handler:
+  module: omnimarket.nodes.node_volume_config_drift_sweep.handlers.handler_volume_config_drift_sweep
+  class: NodeVolumeConfigDriftSweep
+  input_model: omnimarket.nodes.node_volume_config_drift_sweep.handlers.handler_volume_config_drift_sweep.VolumeConfigDriftSweepRequest
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: sweep
+      handler:
+        name: NodeVolumeConfigDriftSweep
+        module: omnimarket.nodes.node_volume_config_drift_sweep.handlers.handler_volume_config_drift_sweep
+
+descriptor:
+  node_archetype: compute
+  purity: impure
+  idempotent: true
+  timeout_ms: 60000
+  runtime_profiles: [compute]
+
+inputs:
+  config_name:
+    type: str
+    description: "Logical config identifier (default: bifrost_delegation)"
+    required: false
+    default: bifrost_delegation
+  lane:
+    type: str
+    description: "Runtime lane label for the deployed copy (default: local)"
+    required: false
+    default: local
+  sidecar_path:
+    type: str
+    description: "Path to a provenance sidecar JSON probed off a runtime lane"
+    required: false
+  deployed_path:
+    type: str
+    description: "Path to the deployed (volume) contract copy"
+    required: false
+  source_path:
+    type: str
+    description: "Path to the packaged source contract (default: omnimarket package)"
+    required: false
+  dry_run:
+    type: bool
+    description: "If true, report findings without creating Linear tickets"
+    required: false
+    default: false
+
+outputs:
+  findings:
+    type: list[ModelDriftFinding]
+    description: "Per-config drift classification findings"
+  drift_count:
+    type: int
+    description: "Number of findings classified as DRIFTED"
+  status:
+    type: str
+    description: "clean | drift_found | error"
+
+terminal_event: onex.evt.omnimarket.volume-config-drift-sweep-completed.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.volume-config-drift-sweep-start.v1
+  publish_topics:
+    - onex.evt.omnimarket.volume-config-drift-sweep-completed.v1
+
+# The terminal event is consumed by the invoking skill/orchestrator (operator
+# review), which owns Linear ticket creation for drift findings. There is no
+# in-repo subscriber by design — the sweep reports drift, the caller acts on it.
+externally_consumed_topics:
+  - onex.evt.omnimarket.volume-config-drift-sweep-completed.v1
+
+metadata:
+  transport_type: kafka
