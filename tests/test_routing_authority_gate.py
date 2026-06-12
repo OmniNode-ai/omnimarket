@@ -426,7 +426,7 @@ class TestProviderEndpointShapeOMN12883:
                     "backend_id": "conflict-backend",
                     "tier": "local",
                     "base_url_env": "BIFROST_LOCAL_CODER_ENDPOINT_URL",
-                    "endpoint_url": "http://192.168.86.201:8000/v1/chat/completions",
+                    "endpoint_url": "http://local-inference.internal:8000/v1/chat/completions",
                 }
             ]
         }
