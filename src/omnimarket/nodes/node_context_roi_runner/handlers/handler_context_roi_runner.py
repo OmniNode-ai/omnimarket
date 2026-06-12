@@ -16,9 +16,12 @@ Flow per (task x arm x trial):
   2. Serialise pack text; compute SHA-256 hash.
   3. Publish a generation command on the generation command topic
      (read from contract via generation_pipeline.command_topic).
-  4. Wait for the terminal generation event on the generation terminal event
-     topic (read from contract via generation_pipeline.terminal_event_topic),
-     correlating by correlation_id.
+  4. Wait for the terminal generation event, racing correlated waits across
+     BOTH terminal topics -- completed (generation_pipeline.terminal_event_topic)
+     AND failed (generation_pipeline.terminal_failed_event_topic) -- because the
+     generation consumer routes contract_passed=False benchmarks to the failed
+     topic (OMN-13038).  First correlated terminal wins; correlating by
+     correlation_id.
   5. Read back attempt_count / first_pass_success / prompt+completion tokens /
      provider / model_id from the typed event payload.  Fail closed if a
      required event field is absent (no silent default that fakes a result).
@@ -44,12 +47,14 @@ Architecture conformance:
 from __future__ import annotations
 
 import asyncio
+import functools
 import hashlib
 import json
 import logging
 import random
 import uuid
 from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Protocol, runtime_checkable
@@ -74,6 +79,13 @@ logger = logging.getLogger(__name__)
 # Path to contract.yaml for this node.
 # Topics are resolved from this file -- never hardcoded in handler logic.
 _RUNNER_CONTRACT_PATH = Path(__file__).parent.parent / "contract.yaml"
+
+# Backstop for the cross-topic terminal race (OMN-13038).  Each per-topic wait
+# already bounds itself at timeout_seconds plus the session's own internal caps
+# (assign cap 30s + submit grace 5s in omnibase_infra's TerminalConsumerSession),
+# so this only guards against a wait that never returns at all.  Must exceed
+# that internal 35s overhead.
+_TERMINAL_RACE_GRACE_SECONDS = 45.0
 
 # Type alias for the injectable event publisher (topic, payload) -> None.
 EventPublisher = Callable[[str, bytes], None]
@@ -216,16 +228,26 @@ class HandlerContextRoiRunner:
         )
 
         # Generation pipeline topics -- read from runner contract's
-        # generation_pipeline section (both already declared on the generation
-        # consumer contract on both ends).
+        # generation_pipeline section (all already declared on the generation
+        # consumer contract on both ends).  The generation consumer routes
+        # contract_passed=False benchmarks to the FAILED terminal topic, so the
+        # runner must consume both terminals (OMN-13038).
         gen_pipeline = runner_contract.get("generation_pipeline", {})
         self._gen_command_topic: str = gen_pipeline.get("command_topic", "")
         self._gen_terminal_topic: str = gen_pipeline.get("terminal_event_topic", "")
+        self._gen_terminal_failed_topic: str = gen_pipeline.get(
+            "terminal_failed_event_topic", ""
+        )
 
-        if not self._gen_command_topic or not self._gen_terminal_topic:
+        if (
+            not self._gen_command_topic
+            or not self._gen_terminal_topic
+            or not self._gen_terminal_failed_topic
+        ):
             raise ValueError(
-                "contract.yaml generation_pipeline.command_topic and "
-                "generation_pipeline.terminal_event_topic are required; "
+                "contract.yaml generation_pipeline.command_topic, "
+                "generation_pipeline.terminal_event_topic and "
+                "generation_pipeline.terminal_failed_event_topic are required; "
                 "do not hardcode topic strings in the handler"
             )
 
@@ -306,26 +328,28 @@ class HandlerContextRoiRunner:
     # Per-trial logic
     # ------------------------------------------------------------------
 
-    def _open_terminal_session(self) -> TerminalConsumerSessionLike | None:
+    def _open_terminal_session(
+        self, terminal_topic: str
+    ) -> TerminalConsumerSessionLike | None:
         """Open a positioned terminal session BEFORE publishing, if supported.
 
         Returns a two-phase session (assign + seek_to_end already done at current
         end) when the injected consumer exposes ``open(topic)`` — the runtime's
         ``TerminalEventConsumer`` (OMN-13012). Returns ``None`` for the legacy
         single-call consumer or the no-op default, in which case the caller falls
-        back to seek-at-wait (the original, race-prone path).
+        back to seek-at-wait (the original, race-prone path) for that topic.
         """
         consumer = self._consumer
         opener = getattr(consumer, "open", None)
         if not callable(opener):
             return None
         try:
-            session = opener(self._gen_terminal_topic)
+            session = opener(terminal_topic)
         except Exception as exc:
             logger.warning(
                 "[roi-runner] failed to open terminal session on %s; "
                 "falling back to single-call consume: %s",
-                self._gen_terminal_topic,
+                terminal_topic,
                 exc,
             )
             return None
@@ -334,13 +358,107 @@ class HandlerContextRoiRunner:
         logger.warning(
             "[roi-runner] consumer.open(%s) returned a non-session object %r; "
             "falling back to single-call consume",
-            self._gen_terminal_topic,
+            terminal_topic,
             type(session).__name__,
         )
         close = getattr(session, "close", None)
         if callable(close):
             close()
         return None
+
+    def _close_terminal_sessions(
+        self, sessions: dict[str, TerminalConsumerSessionLike | None]
+    ) -> None:
+        """Close every opened terminal session (idempotent, best-effort)."""
+        for topic, session in sessions.items():
+            if session is None:
+                continue
+            try:
+                session.close()
+            except Exception as exc:
+                logger.warning(
+                    "[roi-runner] failed to close terminal session on %s: %s",
+                    topic,
+                    exc,
+                )
+
+    def _await_first_terminal(
+        self,
+        sessions: dict[str, TerminalConsumerSessionLike | None],
+        correlation_id: str,
+        timeout_seconds: float,
+    ) -> dict[str, Any] | None:
+        """Race the correlated wait across all terminal topics (OMN-13038).
+
+        The generation consumer emits exactly one terminal per command —
+        completed (contract_passed=True) or failed (contract_passed=False) — on
+        different topics, so the runner must wait on BOTH within the single
+        per-arm timeout. The first correlated terminal wins; ``None`` only on
+        genuine timeout (silence on every topic).
+
+        Per topic: a two-phase session (positioned pre-publish) waits via
+        ``session.wait``; a missing session falls back to the legacy single-call
+        consumer for that topic. All waits run on short-lived worker threads
+        (``handle`` itself already runs off the dispatch loop, OMN-13010). All
+        sessions are closed on the way out; a losing wait unblocks when its
+        session is closed and its thread ends no later than its own timeout —
+        the executor is shut down without joining so the winner returns
+        immediately.
+        """
+        waiters: dict[str, Callable[[], dict[str, Any] | None]] = {}
+        for topic, session in sessions.items():
+            if session is not None:
+                waiters[topic] = functools.partial(
+                    session.wait, correlation_id, timeout_seconds
+                )
+            else:
+                waiters[topic] = functools.partial(
+                    self._consumer, topic, correlation_id, timeout_seconds
+                )
+
+        payload: dict[str, Any] | None = None
+        executor = ThreadPoolExecutor(
+            max_workers=len(waiters), thread_name_prefix="roi-terminal-wait"
+        )
+        try:
+            future_to_topic = {
+                executor.submit(waiter): topic for topic, waiter in waiters.items()
+            }
+            try:
+                for future in as_completed(
+                    future_to_topic,
+                    timeout=timeout_seconds + _TERMINAL_RACE_GRACE_SECONDS,
+                ):
+                    topic = future_to_topic[future]
+                    try:
+                        candidate = future.result()
+                    except Exception as exc:
+                        logger.warning(
+                            "[roi-runner] terminal wait on %s raised for %s: %s",
+                            topic,
+                            correlation_id,
+                            exc,
+                        )
+                        continue
+                    if candidate is not None:
+                        logger.debug(
+                            "[roi-runner] terminal for %s delivered on %s",
+                            correlation_id,
+                            topic,
+                        )
+                        payload = candidate
+                        break
+            except TimeoutError:
+                logger.warning(
+                    "[roi-runner] terminal race exceeded its backstop for %s "
+                    "(timeout_seconds=%s)",
+                    correlation_id,
+                    timeout_seconds,
+                )
+        finally:
+            self._close_terminal_sessions(sessions)
+            executor.shutdown(wait=False, cancel_futures=True)
+        return payload
 
     def _run_trial(
         self,
@@ -410,15 +528,21 @@ class HandlerContextRoiRunner:
                 warnings,
             )
 
-        # --- Step 2a: subscribe-before-publish (OMN-13012) ---
-        # Position the terminal consumer to the current end BEFORE publishing the
-        # command. With the dispatch loop freed (OMN-13010) generation completes
-        # in ~1s, so a single-call consumer that seeks AFTER publishing skips past
-        # the already-emitted terminal (probe3). A two-phase session captures the
-        # pre-publish offset here; the post-publish wait resumes from it. If the
-        # injected consumer is the legacy single-call form (or the no-op default),
-        # session stays None and we fall back to seek-at-wait below.
-        session = self._open_terminal_session()
+        # --- Step 2a: subscribe-before-publish (OMN-13012), BOTH terminals ---
+        # Position one terminal consumer per terminal topic to the current end
+        # BEFORE publishing the command. With the dispatch loop freed (OMN-13010)
+        # generation completes in ~1s, so a single-call consumer that seeks AFTER
+        # publishing skips past the already-emitted terminal (probe3). A two-phase
+        # session captures the pre-publish offset here; the post-publish wait
+        # resumes from it. The generation consumer routes contract_passed=False
+        # benchmarks to the FAILED terminal topic, so both topics must be
+        # positioned (OMN-13038). For a legacy single-call consumer (or the no-op
+        # default) a topic's session stays None and the race falls back to
+        # seek-at-wait for that topic.
+        sessions: dict[str, TerminalConsumerSessionLike | None] = {
+            topic: self._open_terminal_session(topic)
+            for topic in (self._gen_terminal_topic, self._gen_terminal_failed_topic)
+        }
 
         # --- Step 2b: publish generation command over the bus ---
         command_payload = {
@@ -443,8 +567,7 @@ class HandlerContextRoiRunner:
                 trial_num,
                 exc,
             )
-            if session is not None:
-                session.close()
+            self._close_terminal_sessions(sessions)
             return (
                 ModelAttemptReductionRow(
                     run_id=request.run_id,
@@ -460,19 +583,14 @@ class HandlerContextRoiRunner:
             )
 
         # --- Step 3: consume terminal generation event (block AFTER publish) ---
-        if session is not None:
-            try:
-                event_payload = session.wait(
-                    correlation_id, request.generation_timeout_seconds
-                )
-            finally:
-                session.close()
-        else:
-            event_payload = self._consumer(
-                self._gen_terminal_topic,
-                correlation_id,
-                request.generation_timeout_seconds,
-            )
+        # Race the correlated wait across BOTH terminal topics; the generation
+        # consumer emits exactly one terminal per command, on the completed OR
+        # the failed topic (OMN-13038). All sessions are closed on the way out.
+        event_payload = self._await_first_terminal(
+            sessions=sessions,
+            correlation_id=correlation_id,
+            timeout_seconds=request.generation_timeout_seconds,
+        )
 
         if event_payload is None:
             logger.warning(

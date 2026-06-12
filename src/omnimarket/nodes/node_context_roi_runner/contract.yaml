@@ -11,10 +11,12 @@ description: >
   the bus per (task × factor_subset × trial): builds a context pack via
   node_context_pack_builder_compute (REUSE), publishes
   onex.cmd.omnimarket.node-generation-requested.v1 with the typed context_pack
-  field (P2-1 seam), consumes the terminal
-  onex.evt.omnimarket.node-generation-completed.v1, reads back attempt_count /
-  first_pass_success / prompt+completion tokens / provider / model_id from the
-  event payload, and emits a ModelAttemptReductionRow per run.
+  field (P2-1 seam), consumes BOTH generation terminals —
+  onex.evt.omnimarket.node-generation-completed.v1 AND
+  onex.evt.omnimarket.node-generation-failed.v1 (the generation consumer routes
+  contract_passed=False benchmarks to the failed topic; OMN-13038) — reads back
+  attempt_count / first_pass_success / prompt+completion tokens / provider /
+  model_id from the event payload, and emits a ModelAttemptReductionRow per run.
 
   Statistical validity: K ≥ 3 trials per cell, fixed model + temperature via
   the routing authority (contract model_routing), arm order randomised within
@@ -64,10 +66,14 @@ event_bus:
     - onex.evt.omnimarket.context-roi-run-failed.v1
 
 # Additional topics this node publishes commands to / subscribes events from.
-# Both are already contract-declared on node_generation_consumer (both ends).
+# All are already contract-declared on node_generation_consumer (both ends).
+# The runner races correlated waits across BOTH terminal topics: the generation
+# consumer emits contract_passed=True benchmarks on terminal_event_topic and
+# contract_passed=False benchmarks on terminal_failed_event_topic (OMN-13038).
 generation_pipeline:
   command_topic: onex.cmd.omnimarket.node-generation-requested.v1
   terminal_event_topic: onex.evt.omnimarket.node-generation-completed.v1
+  terminal_failed_event_topic: onex.evt.omnimarket.node-generation-failed.v1
 
 metadata:
   transport_type: kafka
