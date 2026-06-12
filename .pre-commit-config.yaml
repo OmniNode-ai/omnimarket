@@ -182,6 +182,20 @@ repos:
         pass_filenames: false
         stages: [pre-commit]
 
+      # OMN-12972 (plan P2.7): Gemini registry/version hygiene gate. Enforces
+      # that every provider:google registry entry + its bifrost backend align
+      # with the live Vertex-served model name PER ENVIRONMENT (Vertex names are
+      # publisher-qualified; AI Studio names are bare) and that no entry carries a
+      # retired/404 model id (the gemini-2.0-flash-on-Vertex failure).
+      # SYNC with ci.yml step "Gemini registry/version hygiene gate (enforce)".
+      - id: gemini-registry-version-hygiene
+        name: Gemini registry/version hygiene gate
+        language: system
+        entry: uv run python scripts/ci/check_model_registry_served_names.py
+        files: ^(src/omnimarket/data/model_registry/model_registry_v1\.yaml|src/omnimarket/configs/bifrost_delegation\.yaml|scripts/ci/check_model_registry_served_names\.py)
+        pass_filenames: false
+        stages: [pre-commit]
+
       # OMN-12691: live-path node changes must ship with golden-chain coverage.
       # SYNC with ci.yml step "Golden-chain coverage gate".
       - id: golden-chain-coverage-gate

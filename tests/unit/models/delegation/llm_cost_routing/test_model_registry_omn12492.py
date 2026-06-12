@@ -168,8 +168,8 @@ class TestOmn12492RegistryInvariants:
             )
 
     def test_registry_version_bumped(self, registry) -> None:  # type: ignore[no-untyped-def]
-        """OMN-12937 bumped model_registry_version to 1.2.0 (Gemini retarget)."""
-        assert registry.model_registry_version == "1.2.0"
+        """OMN-12937 set 1.2.0 (Gemini retarget); OMN-12972 → 1.3.0 (per-env served names)."""
+        assert registry.model_registry_version == "1.3.0"
 
     def test_pricing_manifest_version_updated(self, registry) -> None:  # type: ignore[no-untyped-def]
         assert registry.pricing_manifest_version == "2026-06-11-gemini-25-flash-lite"

@@ -106,6 +106,13 @@ jobs:
       # the Vertex ADC path (and all cloud backends) value-free in committed config.
       - name: Backend secret-discipline gate (enforce)
         run: uv run python scripts/ci/check_backend_secret_discipline.py
+      # OMN-12972 (plan P2.7): Gemini registry/version hygiene. Every provider:google
+      # registry entry + its bifrost backend must align with the live Vertex-served
+      # model name PER ENVIRONMENT (Vertex = publisher-qualified, AI Studio = bare)
+      # and carry no retired/404 model id (the gemini-2.0-flash-on-Vertex failure).
+      # SYNC with pre-commit hook "gemini-registry-version-hygiene".
+      - name: Gemini registry/version hygiene gate (enforce)
+        run: uv run python scripts/ci/check_model_registry_served_names.py
       # OMN-10821: Handler* classes in handler_*.py with zero external import references
       # cannot be wired by the DI container and are silently absent from the pipeline.
       - name: Unimported-handler check
