@@ -38,7 +38,6 @@ Related:
 
 from __future__ import annotations
 
-import os
 from functools import lru_cache
 from pathlib import Path
 from uuid import NAMESPACE_DNS, UUID, uuid5
@@ -52,6 +51,10 @@ from omnibase_infra.models.errors.model_infra_error_context import (
 
 from omnimarket.adapters.llm.bifrost.config_loader_bifrost_delegation import (
     load_bifrost_delegation_config,
+)
+from omnimarket.inference.delegation_config_provenance import (
+    resolve_optional_path_config,
+    resolve_path_config,
 )
 from omnimarket.inference.secret_store_resolver import api_key_ref_available
 from omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_request import (
@@ -228,10 +231,10 @@ _config: ModelDelegationConfig | None = None
 def _get_config() -> ModelDelegationConfig:
     global _config
     if _config is None:
-        env_path = os.environ.get(  # contract-config-ok: config
-            "DELEGATION_ROUTING_TIERS_PATH", ""
-        )  # ONEX_EXCLUDE: env_access - contract path override for testing
-        config_path = Path(env_path) if env_path else _DEFAULT_CONFIG_PATH
+        config_path, _ = resolve_path_config(
+            "DELEGATION_ROUTING_TIERS_PATH",
+            _DEFAULT_CONFIG_PATH,
+        )
         yaml_text = config_path.read_text()
         _config = parse_delegation_config_yaml(yaml_text)
     return _config
@@ -278,19 +281,19 @@ def _load_bifrost_endpoints() -> dict[str, BifrostBackendRef]:
     declared secret reference, so the router does not emit a known-unusable
     backend while still preserving the non-secret reference name in decisions.
     """
-    env_path = os.environ.get(  # contract-config-ok: config  # ONEX_EXCLUDE: contract path override
-        "BIFROST_CONTRACT_PATH", ""
-    )
-    overlay_path = os.environ.get(  # contract-config-ok: config  # ONEX_EXCLUDE: contract path override
-        "BIFROST_OVERLAY_PATH", ""
-    )
+    # The bifrost loader supplies its own packaged default when an override is
+    # absent (passthrough None below). Resolve through the provenance surface so
+    # an absent override is recorded as the bootstrap fallback and a cold
+    # runtime's resolution order for the routing contract+overlay is auditable
+    # from the logs (OMN-12967).
+    contract_override, _ = resolve_optional_path_config("BIFROST_CONTRACT_PATH")
+    overlay_override, _ = resolve_optional_path_config("BIFROST_OVERLAY_PATH")
 
     try:
-        overlay_override = Path(overlay_path) if overlay_path else None
-        if env_path and overlay_override is None:
+        if contract_override is not None and overlay_override is None:
             overlay_override = Path("__omnimarket_no_bifrost_overlay__.yaml")
         config = load_bifrost_delegation_config(
-            config_path=Path(env_path) if env_path else None,
+            config_path=contract_override,
             overlay_path=overlay_override,
         )
     except (FileNotFoundError, ValueError, yaml.YAMLError):
@@ -326,10 +329,10 @@ def _get_task_class_contract() -> dict[str, object] | None:
     value is cached for the process lifetime; tests clear the cache explicitly
     when changing environment overrides.
     """
-    env_path = os.environ.get(  # contract-config-ok: config  # ONEX_EXCLUDE: contract path override
-        "TASK_CLASS_CONTRACT_PATH", ""
+    contract_path, _ = resolve_path_config(
+        "TASK_CLASS_CONTRACT_PATH",
+        _DEFAULT_TASK_CLASS_CONTRACT_PATH,
     )
-    contract_path = Path(env_path) if env_path else _DEFAULT_TASK_CLASS_CONTRACT_PATH
 
     if not contract_path.exists():
         return None
@@ -364,11 +367,9 @@ def _get_contract_model_ref(
         raw: dict[str, object] | None = contract
     else:
         if contract_path is None:
-            env_path = os.environ.get(  # contract-config-ok: config
-                "TASK_CLASS_CONTRACT_PATH", ""
-            )  # ONEX_EXCLUDE: env_access - contract path override for testing
-            contract_path = (
-                Path(env_path) if env_path else _DEFAULT_TASK_CLASS_CONTRACT_PATH
+            contract_path, _ = resolve_path_config(
+                "TASK_CLASS_CONTRACT_PATH",
+                _DEFAULT_TASK_CLASS_CONTRACT_PATH,
             )
 
         if not contract_path.exists():

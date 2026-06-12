@@ -43,6 +43,9 @@ from omnimarket.adapters.llm.bifrost.config_loader_bifrost_delegation import (
     load_bifrost_delegation_config,
 )
 from omnimarket.enums.enum_usage_source import EnumUsageSource
+from omnimarket.inference.delegation_config_provenance import (
+    resolve_optional_path_config,
+)
 from omnimarket.inference.protocol_config import apply_inference_protocol
 from omnimarket.inference.secret_store_resolver import resolve_api_key_async
 from omnimarket.models.delegation.llm_cost_routing.model_generation_escalation_event import (
@@ -288,16 +291,15 @@ def _resolve_bifrost_backend(endpoint_ref: str) -> _ResolvedBackend | None:
     The reference name is carried through on ``api_key_ref`` so the effect
     boundary can resolve and fail closed when the secret is absent.
     """
-    contract_path = os.environ.get(  # contract-config-ok: config  # ONEX_EXCLUDE: contract path override
-        "BIFROST_CONTRACT_PATH", ""
-    )
-    overlay_path = os.environ.get(  # contract-config-ok: config  # ONEX_EXCLUDE: contract path override
-        "BIFROST_OVERLAY_PATH", ""
-    )
+    # Resolve the bifrost contract/overlay paths through the delegation-path
+    # provenance surface (OMN-12967) so this consumer's cold-runtime resolution
+    # order is auditable from the logs, identical to the routing reducer.
+    contract_override, _ = resolve_optional_path_config("BIFROST_CONTRACT_PATH")
+    overlay_override, _ = resolve_optional_path_config("BIFROST_OVERLAY_PATH")
 
     config = load_bifrost_delegation_config(
-        config_path=Path(contract_path) if contract_path else None,
-        overlay_path=Path(overlay_path) if overlay_path else None,
+        config_path=contract_override,
+        overlay_path=overlay_override,
     )
 
     for backend in config.backends:
