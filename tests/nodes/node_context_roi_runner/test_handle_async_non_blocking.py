@@ -112,14 +112,26 @@ def _blocking_consumer(
 
 
 class _FakeTerminalSession:
-    def __init__(self) -> None:
+    """Per-topic session fake: only the COMPLETED topic delivers a terminal.
+
+    A topic with ``payload=None`` blocks briefly (stand-in for the real blocking
+    correlate) and reports a genuine timeout — mirroring the OMN-13038 race where
+    exactly one terminal topic delivers per command.
+    """
+
+    def __init__(self, payload: dict[str, Any] | None) -> None:
+        self._payload = payload
         self.calls: list[str] = []
         self.closed = False
 
-    def wait(self, correlation_id: str, timeout_seconds: float) -> dict[str, Any]:
-        assert self.closed is False, "session closed before wait()"
+    def wait(
+        self, correlation_id: str, timeout_seconds: float
+    ) -> dict[str, Any] | None:
         self.calls.append("wait")
-        return {**_VALID_EVENT, "correlation_id": correlation_id}
+        if self._payload is None:
+            time.sleep(min(timeout_seconds, 0.2))
+            return None
+        return {**self._payload, "correlation_id": correlation_id}
 
     def close(self) -> None:
         self.calls.append("close")
@@ -128,10 +140,13 @@ class _FakeTerminalSession:
 
 class _FakeTwoPhaseConsumer:
     def __init__(self) -> None:
-        self.session = _FakeTerminalSession()
+        self.sessions: dict[str, _FakeTerminalSession] = {}
 
     def open(self, terminal_topic: str) -> _FakeTerminalSession:
-        return self.session
+        payload = _VALID_EVENT if "generation-completed" in terminal_topic else None
+        session = _FakeTerminalSession(payload)
+        self.sessions[terminal_topic] = session
+        return session
 
     def __call__(
         self, terminal_topic: str, correlation_id: str, timeout_seconds: float
@@ -240,12 +255,19 @@ async def test_handle_async_result_matches_sync_handle() -> None:
 
 
 def test_two_phase_terminal_session_closes_after_wait() -> None:
-    """The subscribe-before-publish session must close after the terminal wait."""
+    """Every subscribe-before-publish session (one per terminal topic, OMN-13038)
+    must close after the terminal wait — winner and loser alike."""
     consumer = _FakeTwoPhaseConsumer()
     handler = _make_handler(consumer)
 
     result = handler.handle(_make_request())
 
     assert result.failed_trials == 0
-    assert consumer.session.calls == ["wait", "close"]
-    assert consumer.session.closed is True
+    completed_sessions = [
+        s for t, s in consumer.sessions.items() if "generation-completed" in t
+    ]
+    assert len(completed_sessions) == 1
+    assert completed_sessions[0].calls[0] == "wait"
+    assert "close" in completed_sessions[0].calls
+    for topic, session in consumer.sessions.items():
+        assert session.closed is True, f"session for {topic} leaked (never closed)"
