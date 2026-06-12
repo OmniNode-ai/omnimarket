@@ -31,7 +31,7 @@ descriptor:
   purity: impure
   idempotent: true
   timeout_ms: 60000
-  runtime_profiles: [compute]
+  runtime_profiles: [workers]
 
 inputs:
   config_name:
