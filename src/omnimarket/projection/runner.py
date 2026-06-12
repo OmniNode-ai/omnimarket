@@ -21,6 +21,7 @@ from pydantic import (
     ConfigDict,
     Field,
     SecretStr,
+    ValidationError,
     field_validator,
     model_validator,
 )
@@ -281,7 +282,7 @@ class BaseProjectionRunner(ABC):
         if resolved_binding is None:
             resolved_binding = _projection_runtime_binding_from_overlay_env()
         if resolved_binding is None:
-            with contextlib.suppress(RuntimeError):
+            with contextlib.suppress(RuntimeError, ValidationError):
                 resolved_binding = ModelProjectionRuntimeBinding.from_legacy_settings()
         self._runtime_binding = resolved_binding
         self._group_id = group_id or (
