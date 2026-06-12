@@ -79,6 +79,9 @@ task_classes:
         - no_refusal
         - follows_google_style
         - covers_args_returns_raises
+        # OMN-12964: min_length ensures a single-line summary (e.g. docstring_summary_only)
+        # fails a third heuristic so the per-class margin (min_good - max_bad) reaches >= 0.3.
+        - min_length_chars_50
     escalation_policy:
       max_escalations: 1
       tier_order:
@@ -102,6 +105,10 @@ task_classes:
       heuristic:
         - no_refusal
         - accurate
+        # OMN-12964: min_length_chars_200 ensures a short refusal or uncertain stub
+        # fails a third heuristic so the per-class margin (min_good - max_bad) reaches >= 0.3.
+        # A well-formed prose document (the only accepted good output) comfortably exceeds 200 chars.
+        - min_length_chars_200
     escalation_policy:
       max_escalations: 1
       tier_order:
@@ -232,6 +239,10 @@ task_classes:
         - no_refusal
         - concise
         - accurate
+        # OMN-12964: min_length_chars_100 ensures a short uncertain stub fails a third
+        # heuristic so the per-class margin (min_good - max_bad) reaches >= 0.3.
+        # A useful summary must be at least one full sentence (~100 chars minimum).
+        - min_length_chars_100
     escalation_policy:
       max_escalations: 1
       tier_order:

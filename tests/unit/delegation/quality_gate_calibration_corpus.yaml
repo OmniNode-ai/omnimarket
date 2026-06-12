@@ -25,6 +25,7 @@ task_classes:
     heuristic:
       - no_refusal
       - accurate
+      - min_length_chars_200
   documentation:
     deterministic:
       - docstring_present
@@ -32,6 +33,7 @@ task_classes:
       - no_refusal
       - follows_google_style
       - covers_args_returns_raises
+      - min_length_chars_50
   summarization:
     deterministic:
       - response_non_empty
@@ -39,6 +41,7 @@ task_classes:
       - no_refusal
       - concise
       - accurate
+      - min_length_chars_100
 
 cases:
   # ---- document (prose) ----
@@ -64,7 +67,10 @@ cases:
   - id: doc_prose_refusal
     task_class: document
     label: bad
-    content: I cannot help with that request.
+    # OMN-12964: content is short (<200 chars), contains a refusal phrase ("i cannot"),
+    # and contains an accuracy disclaimer ("not sure") so it fails all three heuristics:
+    # no_refusal + accurate + min_length_chars_200. Max drop = 3/3 → score 0.600.
+    content: I cannot help with this. Not sure what is needed.
   - id: doc_prose_empty
     task_class: document
     label: bad
@@ -114,9 +120,10 @@ cases:
   - id: summary_uncertain
     task_class: summarization
     label: bad
-    content: >-
-      I am not sure what this does and cannot verify the behavior without
-      evidence.
+    # OMN-12964: content is short (<100 chars), contains a refusal phrase ("i cannot"),
+    # and contains accuracy disclaimers ("not sure", "cannot verify") so it fails three
+    # heuristics: no_refusal + accurate + min_length_chars_100. Score = 0.700.
+    content: I cannot say what this does. Not sure and cannot verify.
   - id: summary_empty
     task_class: summarization
     label: bad
