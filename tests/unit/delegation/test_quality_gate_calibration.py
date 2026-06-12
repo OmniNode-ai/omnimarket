@@ -39,6 +39,11 @@ _MIN_SCORE_RANGE = 0.3
 _MIN_DISTINCT_SCORES = 4
 # Minimum margin by which mean(good) must exceed mean(bad).
 _MIN_GOOD_BAD_MARGIN = 0.2
+# Per-task-class minimum margin: min(good) - max(bad) must reach this threshold.
+# A soft refusal that passes response_non_empty but fails no_refusal would otherwise
+# produce a max_bad of 0.800 (1-heuristic-miss in a 2-heuristic DoD), leaving only
+# a 0.200 margin — insufficient to distinguish quality tiers reliably (OMN-12964).
+_MIN_PER_CLASS_MARGIN = 0.3
 
 
 def _load_corpus() -> dict[str, object]:
@@ -166,3 +171,56 @@ def test_corpus_task_class_dod_matches_shipped_contract() -> None:
         assert list(dod["heuristic"]) == list(shipped_dod["heuristic"]), (
             f"corpus heuristic DoD for '{name}' drifted from the contract"
         )
+
+
+@pytest.mark.unit
+def test_per_class_margin_meets_threshold() -> None:
+    """Per task-class min(good) - max(bad) must be >= 0.3 with both bands nonzero.
+
+    The corpus-level mean test (test_known_good_outscores_known_bad) passes even when
+    a single task class has a narrow margin — a soft refusal that only fails one
+    heuristic (e.g. no_refusal in a 2-heuristic DoD) scores 0.800, leaving only a
+    0.200 margin that is indistinguishable from measurement noise in experiment data.
+    This test locks the per-class floor introduced by OMN-12964 M2.4 fix.
+    """
+    corpus = _load_corpus()
+    task_classes = corpus["task_classes"]  # type: ignore[index]
+
+    # Group scores by task_class x label
+    class_good: dict[str, list[float]] = {}
+    class_bad: dict[str, list[float]] = {}
+    for case in corpus["cases"]:  # type: ignore[index]
+        tc = str(case["task_class"])
+        label = str(case["label"])
+        score = _score_case(case, task_classes)  # type: ignore[arg-type]
+        if label == "good":
+            class_good.setdefault(tc, []).append(score)
+        elif label == "bad":
+            class_bad.setdefault(tc, []).append(score)
+
+    all_classes = set(class_good) | set(class_bad)
+    assert all_classes, "corpus has no task classes"
+
+    failures: list[str] = []
+    for tc in sorted(all_classes):
+        good = class_good.get(tc, [])
+        bad = class_bad.get(tc, [])
+        if not good or not bad:
+            failures.append(
+                f"  {tc}: missing good ({len(good)}) or bad ({len(bad)}) cases"
+            )
+            continue
+        min_good = min(good)
+        max_bad = max(bad)
+        margin = round(min_good - max_bad, 3)
+        if margin < _MIN_PER_CLASS_MARGIN:
+            failures.append(
+                f"  {tc}: min_good={min_good:.3f} max_bad={max_bad:.3f} "
+                f"margin={margin:.3f} < {_MIN_PER_CLASS_MARGIN} — "
+                f"quality gate does not discriminate this class reliably"
+            )
+
+    assert not failures, (
+        f"Per-class margin below {_MIN_PER_CLASS_MARGIN} for "
+        f"{len(failures)} class(es):\n" + "\n".join(failures)
+    )
