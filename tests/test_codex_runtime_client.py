@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import asyncio
+import copy
 import json
+import os
 import subprocess
 import sys
 from datetime import UTC, datetime
@@ -1724,6 +1726,18 @@ def test_delegate_skill_python_m_local_runtime_dispatch(
 ) -> None:
     monkeypatch.setenv("ONEX_LOCAL_RUNTIME_STATE_ROOT", str(tmp_path / "state"))
 
+    # Build a clean subprocess environment: inherit everything except live
+    # Kafka broker vars that would cause AIOKafkaProducer to block on teardown,
+    # and redirect ONEX_STATE_DIR so no cross-run replay state leaks in.
+    # monkeypatch.setenv only affects the in-process env; we must pass an
+    # explicit env= dict to subprocess.run for the child process.
+
+    child_env = copy.copy(os.environ)
+    for _k in ("KAFKA_BOOTSTRAP_SERVERS", "KAFKA_BROKER", "KAFKA_BROKERS"):
+        child_env.pop(_k, None)
+    child_env["ONEX_LOCAL_RUNTIME_STATE_ROOT"] = str(tmp_path / "state")
+    child_env["ONEX_STATE_DIR"] = str(tmp_path / "onex_state")
+
     completed = subprocess.run(
         [
             sys.executable,
@@ -1743,7 +1757,8 @@ def test_delegate_skill_python_m_local_runtime_dispatch(
         check=False,
         capture_output=True,
         text=True,
-        timeout=10,
+        timeout=30,
+        env=child_env,
     )
 
     assert completed.returncode == 0, completed.stdout + completed.stderr

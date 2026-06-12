@@ -670,26 +670,40 @@ class HandlerContextRoiRunner:
                 warnings,
             )
 
-        if "attempt_count" not in event_payload:
+        # Unwrap ModelEventEnvelope if present: EventBusKafka.publish() wraps
+        # the raw ModelGenerationBenchmark bytes in an envelope before writing
+        # to Kafka, producing {"payload": {attempt_count, ...}, "envelope_id":
+        # ..., "correlation_id": ...}.  The CID match succeeds because
+        # correlation_id is copied to the top-level envelope field, but all
+        # telemetry fields live under "payload".  Use the inner dict when a
+        # "payload" key is present; otherwise the dict is already raw.
+        # (OMN-13099 — probe4 degenerate-row defect)
+        telemetry: dict[str, Any] = (
+            event_payload["payload"]
+            if isinstance(event_payload.get("payload"), dict)
+            else event_payload
+        )
+
+        if "attempt_count" not in telemetry:
             return _fail_closed_row(
                 "terminal event missing 'attempt_count' (fail-closed)"
             )
 
         try:
-            attempt_count = int(event_payload["attempt_count"])
-            prompt_tokens = int(event_payload.get("prompt_tokens", 0))
-            completion_tokens = int(event_payload.get("completion_tokens", 0))
-            cost_usd = float(event_payload.get("cost_inference_usd", 0.0))
+            attempt_count = int(telemetry["attempt_count"])
+            prompt_tokens = int(telemetry.get("prompt_tokens", 0))
+            completion_tokens = int(telemetry.get("completion_tokens", 0))
+            cost_usd = float(telemetry.get("cost_inference_usd", 0.0))
         except (TypeError, ValueError) as exc:
             return _fail_closed_row(
                 f"terminal event has non-numeric telemetry field ({exc})"
             )
 
-        contract_passed: bool = bool(event_payload.get("contract_passed", False))
-        first_pass_success: bool = bool(event_payload.get("first_pass_success", False))
-        model_id: str = str(event_payload.get("model_id", ""))
-        provider: str = str(event_payload.get("provider", ""))
-        endpoint_class: str = str(event_payload.get("endpoint_class", ""))
+        contract_passed: bool = bool(telemetry.get("contract_passed", False))
+        first_pass_success: bool = bool(telemetry.get("first_pass_success", False))
+        model_id: str = str(telemetry.get("model_id", ""))
+        provider: str = str(telemetry.get("provider", ""))
+        endpoint_class: str = str(telemetry.get("endpoint_class", ""))
 
         # Warn (but do not fail closed) on absent P2-1 optional fields.
         if not model_id:

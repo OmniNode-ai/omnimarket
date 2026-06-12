@@ -114,6 +114,9 @@ backends:
   - backend_id: cloud-gemini-flash
     # OMN-12815: COMPLETE endpoint URL incl. the full chat path, posted VERBATIM.
     # No in-code construction/append; the routing authority returns this unchanged.
+    # OMN-12890: model_name repointed from gemini-2.0-flash (AI Studio free-tier
+    # quota-zero, HTTP 429) to gemini-2.5-flash-lite (quota-available on same key).
+    # Key is valid; the sole failing dimension was external quota exhaustion.
     endpoint_url: "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
     model_name: "gemini-2.5-flash-lite"
     secret_ref: llm.gemini.api_key
