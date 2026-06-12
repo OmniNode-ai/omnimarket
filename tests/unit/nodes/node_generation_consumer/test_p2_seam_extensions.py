@@ -24,6 +24,7 @@ import pytest
 from pydantic import ValidationError
 
 from omnimarket.enums.enum_proof_class import EnumProofClass
+from omnimarket.enums.enum_usage_source import EnumUsageSource
 from omnimarket.nodes.node_generation_consumer.handlers.handler_generation_consumer import (
     HandlerGenerationConsumer,
 )
@@ -72,10 +73,12 @@ _INVALID_LLM_RESPONSE = (
 
 
 class _FakeUsage:
-    def __init__(self, inp: int = 10, out: int = 20) -> None:
+    def __init__(self, inp: int = 10, out: int = 20, usage_source: str = "api") -> None:
         self.tokens_input = inp
         self.tokens_output = out
         self.tokens_total = inp + out
+        # OMN-12996: provider-reported provenance ("api" -> MEASURED).
+        self.usage_source = usage_source
 
 
 class _FakeResponse:
@@ -116,6 +119,20 @@ def _make_handler(
         effect_handler=_CapturingEffect(responses),
         event_publisher=_publisher,
     )
+
+
+@pytest.fixture(autouse=True)
+def _isolate_onex_state(monkeypatch: pytest.MonkeyPatch, tmp_path: Any) -> None:
+    """Isolate the replay-state dir per test (OMN-12996).
+
+    The handler persists a replay benchmark keyed by correlation_id under
+    ONEX_STATE_DIR; when the operator's shared state dir leaks into the test
+    environment, handle() short-circuits on a stale marker (possibly written by
+    older code) instead of recomputing. Point both state-root env keys at a
+    per-test tmp dir so every run is hermetic.
+    """
+    monkeypatch.setenv("ONEX_STATE_DIR", str(tmp_path / "onex_state"))
+    monkeypatch.delenv("ONEX_STATE_ROOT", raising=False)
 
 
 # ---------------------------------------------------------------------------
@@ -228,13 +245,13 @@ async def test_handler_prepends_context_pack_to_prompt() -> None:
         attempt: int,
         previous_errors: list[str] | None = None,
         context_pack: str = "",
-    ) -> tuple[str, int, int]:
+    ) -> tuple[str, int, int, EnumUsageSource]:
         # Build expected user_content the same way the handler does.
         user_content = f"Task: {task_description}"
         if context_pack:
             user_content = f"Context:\n{context_pack}\n\n{user_content}"
         prompt_seen.append(user_content)
-        return _VALID_LLM_RESPONSE, 10, 20
+        return _VALID_LLM_RESPONSE, 10, 20, EnumUsageSource.MEASURED
 
     HandlerGenerationConsumer._call_llm = _patched_call_llm  # type: ignore[method-assign]
     try:
@@ -268,12 +285,12 @@ async def test_handler_no_context_pack_omits_context_prefix() -> None:
         attempt: int,
         previous_errors: list[str] | None = None,
         context_pack: str = "",
-    ) -> tuple[str, int, int]:
+    ) -> tuple[str, int, int, EnumUsageSource]:
         user_content = f"Task: {task_description}"
         if context_pack:
             user_content = f"Context:\n{context_pack}\n\n{user_content}"
         prompt_seen.append(user_content)
-        return _VALID_LLM_RESPONSE, 10, 20
+        return _VALID_LLM_RESPONSE, 10, 20, EnumUsageSource.MEASURED
 
     HandlerGenerationConsumer._call_llm = _patched_call_llm  # type: ignore[method-assign]
     try:
@@ -601,14 +618,15 @@ def test_production_contract_declares_p2_outputs() -> None:
 @pytest.mark.unit
 def test_benchmark_usage_source_is_enum() -> None:
     """ModelGenerationBenchmark.usage_source must be EnumUsageSource, not a bare str."""
-    from omnimarket.enums.enum_usage_source import EnumUsageSource
-
     bench = ModelGenerationBenchmark(
         correlation_id="corr-usage-1",
         task_description="stub",
     )
+    # OMN-12996: the default is now UNKNOWN (honest absent-provenance), not the
+    # old hardcoded ESTIMATED. The emitter sets MEASURED/ESTIMATED only when the
+    # provider/local tokenizer actually reported usage.
     assert isinstance(bench.usage_source, EnumUsageSource)
-    assert bench.usage_source == EnumUsageSource.ESTIMATED
+    assert bench.usage_source == EnumUsageSource.UNKNOWN
 
 
 @pytest.mark.unit
@@ -625,9 +643,12 @@ def test_benchmark_usage_source_rejects_unknown_string() -> None:
 @pytest.mark.unit
 @pytest.mark.asyncio
 async def test_handler_emits_enum_usage_source() -> None:
-    """Emitted benchmark must carry EnumUsageSource.ESTIMATED, not a bare str."""
-    from omnimarket.enums.enum_usage_source import EnumUsageSource
+    """Emitted benchmark carries a typed EnumUsageSource (not a bare str).
 
+    OMN-12996: with the fake effect reporting a provider usage block
+    (_FakeUsage.usage_source="api"), the honest provenance is MEASURED — the
+    benchmark no longer hardcodes ESTIMATED.
+    """
     handler = _make_handler([_VALID_LLM_RESPONSE])
     result = await handler.handle(
         ModelNodeGenerationRequest(
@@ -636,4 +657,4 @@ async def test_handler_emits_enum_usage_source() -> None:
         )
     )
     assert isinstance(result.usage_source, EnumUsageSource)
-    assert result.usage_source == EnumUsageSource.ESTIMATED
+    assert result.usage_source == EnumUsageSource.MEASURED

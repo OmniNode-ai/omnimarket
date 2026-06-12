@@ -64,10 +64,13 @@ _INVALID_LLM_RESPONSE = (
 
 
 class _FakeUsage:
-    def __init__(self, inp: int = 10, out: int = 20) -> None:
+    def __init__(self, inp: int = 10, out: int = 20, usage_source: str = "api") -> None:
         self.tokens_input = inp
         self.tokens_output = out
         self.tokens_total = inp + out
+        # OMN-12996: mirror ModelLlmUsage.usage_source — "api" is the
+        # provider-reported (MEASURED) provenance carried by a real response.
+        self.usage_source = usage_source
 
 
 class _FakeResponse:
@@ -105,6 +108,21 @@ def _make_handler(
         event_publisher=_publisher,
     )
     return handler
+
+
+@pytest.fixture(autouse=True)
+def _isolate_onex_state(monkeypatch: pytest.MonkeyPatch, tmp_path: Any) -> None:
+    """Isolate the replay-state dir per test (OMN-12996).
+
+    The handler persists a replay benchmark keyed by correlation_id under
+    ONEX_STATE_DIR; when the operator's shared state dir leaks into the test
+    environment, handle() short-circuits on a stale marker (sometimes written by
+    an earlier test in this file, or by older code) instead of recomputing the
+    benchmark. Point both state-root env keys at a per-test tmp dir so every run
+    is hermetic and order-independent.
+    """
+    monkeypatch.setenv("ONEX_STATE_DIR", str(tmp_path / "onex_state"))
+    monkeypatch.delenv("ONEX_STATE_ROOT", raising=False)
 
 
 # ---------------------------------------------------------------------------

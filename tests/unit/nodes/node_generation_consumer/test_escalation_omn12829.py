@@ -99,6 +99,10 @@ def _stable_cloud_escalation_route(
         )
     )
     monkeypatch.setenv("ONEX_SECRET_RESOLVER_CONFIG_PATH", str(secret_config))
+    # OMN-12996: isolate the replay-state dir so handle() never reads a stale
+    # benchmark marker leaked from the shared operator ONEX_STATE_DIR.
+    monkeypatch.setenv("ONEX_STATE_DIR", str(tmp_path / "onex_state"))
+    monkeypatch.delenv("ONEX_STATE_ROOT", raising=False)
     secret_store_resolver.clear_secret_store_resolver_cache()
     routing_handler._config = None
     routing_handler._get_task_class_contract.cache_clear()
@@ -111,10 +115,12 @@ def _stable_cloud_escalation_route(
 
 
 class _FakeUsage:
-    def __init__(self, inp: int = 10, out: int = 20) -> None:
+    def __init__(self, inp: int = 10, out: int = 20, usage_source: str = "api") -> None:
         self.tokens_input = inp
         self.tokens_output = out
         self.tokens_total = inp + out
+        # OMN-12996: provider-reported provenance ("api" -> MEASURED).
+        self.usage_source = usage_source
 
 
 class _FakeResponse:
