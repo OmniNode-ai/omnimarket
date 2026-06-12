@@ -63,9 +63,7 @@ handler_routing:
         name: ModelContractRegistrationRequest
         module: omnimarket.nodes.node_contract_registry.models
 
-runtime_profiles:
-  - stability
-  - demo
+
 
 metadata:
   description: Central policy enforcement node for dynamic contract registration.
