@@ -27,7 +27,7 @@ from uuid import UUID
 
 import asyncpg
 import yaml
-from fastapi import Depends, FastAPI, Query
+from fastapi import Depends, FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import (
@@ -44,6 +44,11 @@ from omnimarket.inference.secret_store_resolver import (
     resolve_api_key as resolve_secret_ref,
 )
 from omnimarket.projection.discovery import build_projection_topic_map
+from omnimarket.projection.generation_publisher import (
+    ModelGenerateRequest,
+    ModelGenerateResponse,
+    publish_generation_request,
+)
 from omnimarket.projection.models import ProjectionStatus, ProjectionTableConfig
 from omnimarket.projection.validation import validate_topic_map_tables
 
@@ -382,7 +387,7 @@ def _configure_cors(application: FastAPI) -> None:
         CORSMiddleware,
         allow_origins=origins,
         allow_credentials=True,
-        allow_methods=["GET", "OPTIONS"],
+        allow_methods=["GET", "POST", "OPTIONS"],
         allow_headers=["*"],
     )
 
@@ -431,6 +436,22 @@ async def health(
             "postgres": postgres_status,
         }
     )
+
+
+@app.post("/api/generate")
+async def generate_node(request: ModelGenerateRequest) -> ModelGenerateResponse:
+    """Thin publisher: wrap the typed request in the canonical envelope and
+    publish ONE command to ``onex.cmd.omnimarket.node-generation-requested.v1``.
+
+    Returns the minted correlation id; the existing node_generation_consumer
+    does the work and the SEA Control Plane projection renders the result.  No
+    generation, Postgres, or state synthesis happens here.
+    """
+    try:
+        return await publish_generation_request(request)
+    except RuntimeError as exc:
+        # Broker not configured / unreachable — fail-fast, no silent fallback.
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
 @app.get("/projections")

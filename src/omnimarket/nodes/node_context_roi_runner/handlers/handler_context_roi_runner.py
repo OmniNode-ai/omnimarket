@@ -43,6 +43,7 @@ Architecture conformance:
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 import logging
@@ -51,23 +52,21 @@ import uuid
 from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol, runtime_checkable
 
 import yaml
 from omnibase_core.enums.enum_context_factor import EnumContextFactor
 
 from omnimarket.enums.enum_proof_class import EnumProofClass
-from omnimarket.nodes.node_context_roi_runner.models.model_attempt_reduction import (
+from omnimarket.events.context_roi import (
     EnumFailureStage,
     ModelAttemptReductionRow,
+    ModelContextRoiRunResult,
 )
 from omnimarket.nodes.node_context_roi_runner.models.model_context_roi_run_request import (
     ModelContextRoiArmSpec,
     ModelContextRoiRunRequest,
     ModelContextRoiTask,
-)
-from omnimarket.nodes.node_context_roi_runner.models.model_context_roi_run_result import (
-    ModelContextRoiRunResult,
 )
 
 logger = logging.getLogger(__name__)
@@ -83,6 +82,42 @@ EventPublisher = Callable[[str, bytes], None]
 # (topic, correlation_id, timeout_seconds) -> dict[str, Any] | None
 # Returns the raw deserialized event payload, or None on timeout/failure.
 EventConsumer = Callable[[str, str, float], dict[str, Any] | None]
+
+
+@runtime_checkable
+class TerminalConsumerSessionLike(Protocol):
+    """Two-phase session over a single terminal topic (OMN-13012).
+
+    Produced by ``TwoPhaseEventConsumer.open(topic)`` already positioned (assign +
+    seek_to_end done at ``open`` time, BEFORE the caller publishes). ``wait`` then
+    blocks from that captured position, so a terminal emitted in the publish→wait
+    gap is still delivered — closing the subscribe-after-publish race that made
+    every row degenerate (probe3).
+    """
+
+    def wait(
+        self, correlation_id: str, timeout_seconds: float
+    ) -> dict[str, Any] | None: ...
+
+    def close(self) -> None: ...
+
+
+@runtime_checkable
+class TwoPhaseEventConsumer(Protocol):
+    """Injected ``event_consumer`` that supports subscribe-before-publish.
+
+    Directly callable with the legacy single-call shape AND exposes
+    ``open(topic) -> TerminalConsumerSessionLike`` so the runner can position the
+    terminal consumer to current end BEFORE publishing each generation command.
+    The runtime injects ``omnibase_infra``'s
+    ``service_terminal_event_consumer.TerminalEventConsumer`` here.
+    """
+
+    def open(self, terminal_topic: str) -> TerminalConsumerSessionLike: ...
+
+    def __call__(
+        self, terminal_topic: str, correlation_id: str, timeout_seconds: float
+    ) -> dict[str, Any] | None: ...
 
 
 def _noop_publisher(topic: str, payload: bytes) -> None:
@@ -242,9 +277,70 @@ class HandlerContextRoiRunner:
         self._emit_result(result)
         return result
 
+    async def handle_async(
+        self, request: ModelContextRoiRunRequest
+    ) -> ModelContextRoiRunResult:
+        """Runtime dispatch entry point — runs the blocking ``handle`` off the loop.
+
+        The runtime auto-wiring dispatch callback prefers ``handle_async`` when a
+        handler declares it (omnibase_infra ``handler_wiring._make_dispatch_callback``).
+        ``handle`` is synchronous and blocks up to ``generation_timeout_seconds``
+        per arm on the correlated terminal-event consumer. If it ran directly on
+        the single effects-container event loop it would pin that loop, starving
+        every co-resident consumer group's poll/heartbeat — including
+        ``node_generation_consumer``, the consumer that must produce the terminal
+        this runner awaits. That starvation (broker-verified mass
+        ``UnknownMemberIdError`` rebalance, OMN-13010) made the generation
+        terminals arrive only after the runner's windows had already closed, so
+        every row was degenerate.
+
+        Offloading the blocking ``handle`` to a worker thread via
+        ``asyncio.to_thread`` keeps the dispatch loop free for the full duration
+        of the runner's blocking waits, so generation runs concurrently and its
+        terminal arrives inside the window. ``handle`` stays the synchronous
+        standalone/test entry point.
+        """
+        return await asyncio.to_thread(self.handle, request)
+
     # ------------------------------------------------------------------
     # Per-trial logic
     # ------------------------------------------------------------------
+
+    def _open_terminal_session(self) -> TerminalConsumerSessionLike | None:
+        """Open a positioned terminal session BEFORE publishing, if supported.
+
+        Returns a two-phase session (assign + seek_to_end already done at current
+        end) when the injected consumer exposes ``open(topic)`` — the runtime's
+        ``TerminalEventConsumer`` (OMN-13012). Returns ``None`` for the legacy
+        single-call consumer or the no-op default, in which case the caller falls
+        back to seek-at-wait (the original, race-prone path).
+        """
+        consumer = self._consumer
+        opener = getattr(consumer, "open", None)
+        if not callable(opener):
+            return None
+        try:
+            session = opener(self._gen_terminal_topic)
+        except Exception as exc:
+            logger.warning(
+                "[roi-runner] failed to open terminal session on %s; "
+                "falling back to single-call consume: %s",
+                self._gen_terminal_topic,
+                exc,
+            )
+            return None
+        if isinstance(session, TerminalConsumerSessionLike):
+            return session
+        logger.warning(
+            "[roi-runner] consumer.open(%s) returned a non-session object %r; "
+            "falling back to single-call consume",
+            self._gen_terminal_topic,
+            type(session).__name__,
+        )
+        close = getattr(session, "close", None)
+        if callable(close):
+            close()
+        return None
 
     def _run_trial(
         self,
@@ -314,7 +410,17 @@ class HandlerContextRoiRunner:
                 warnings,
             )
 
-        # --- Step 2: publish generation command over the bus ---
+        # --- Step 2a: subscribe-before-publish (OMN-13012) ---
+        # Position the terminal consumer to the current end BEFORE publishing the
+        # command. With the dispatch loop freed (OMN-13010) generation completes
+        # in ~1s, so a single-call consumer that seeks AFTER publishing skips past
+        # the already-emitted terminal (probe3). A two-phase session captures the
+        # pre-publish offset here; the post-publish wait resumes from it. If the
+        # injected consumer is the legacy single-call form (or the no-op default),
+        # session stays None and we fall back to seek-at-wait below.
+        session = self._open_terminal_session()
+
+        # --- Step 2b: publish generation command over the bus ---
         command_payload = {
             "task_description": task.task_description,
             "correlation_id": correlation_id,
@@ -337,6 +443,8 @@ class HandlerContextRoiRunner:
                 trial_num,
                 exc,
             )
+            if session is not None:
+                session.close()
             return (
                 ModelAttemptReductionRow(
                     run_id=request.run_id,
@@ -351,12 +459,20 @@ class HandlerContextRoiRunner:
                 warnings,
             )
 
-        # --- Step 3: consume terminal generation event ---
-        event_payload = self._consumer(
-            self._gen_terminal_topic,
-            correlation_id,
-            request.generation_timeout_seconds,
-        )
+        # --- Step 3: consume terminal generation event (block AFTER publish) ---
+        if session is not None:
+            try:
+                event_payload = session.wait(
+                    correlation_id, request.generation_timeout_seconds
+                )
+            finally:
+                session.close()
+        else:
+            event_payload = self._consumer(
+                self._gen_terminal_topic,
+                correlation_id,
+                request.generation_timeout_seconds,
+            )
 
         if event_payload is None:
             logger.warning(

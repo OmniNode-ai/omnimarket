@@ -32,19 +32,17 @@ import pytest
 import yaml
 
 from omnimarket.enums.enum_proof_class import EnumProofClass
+from omnimarket.events.context_roi import (
+    EnumFailureStage,
+    ModelContextRoiRunResult,
+)
 from omnimarket.nodes.node_context_roi_runner.handlers.handler_context_roi_runner import (
     HandlerContextRoiRunner,
-)
-from omnimarket.nodes.node_context_roi_runner.models.model_attempt_reduction import (
-    EnumFailureStage,
 )
 from omnimarket.nodes.node_context_roi_runner.models.model_context_roi_run_request import (
     ModelContextRoiArmSpec,
     ModelContextRoiRunRequest,
     ModelContextRoiTask,
-)
-from omnimarket.nodes.node_context_roi_runner.models.model_context_roi_run_result import (
-    ModelContextRoiRunResult,
 )
 
 # ---------------------------------------------------------------------------

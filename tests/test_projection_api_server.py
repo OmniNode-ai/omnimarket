@@ -916,3 +916,61 @@ class TestProjectionQueryLimitOrderParams:
         assert resp.status_code == 200
         assert "WHERE correlation_id = $1" in captured[0]
         assert "LIMIT 3" in captured[0]
+
+
+# ---------------------------------------------------------------------------
+# POST /api/generate — thin publisher route (OMN-13004)
+# ---------------------------------------------------------------------------
+
+
+class TestGenerateRoute:
+    def test_generate_publishes_and_returns_correlation_id(self, monkeypatch) -> None:
+        import omnimarket.projection.api_server as api
+        from omnimarket.projection.generation_publisher import (
+            NODE_GENERATION_REQUESTED_TOPIC,
+            ModelGenerateRequest,
+            ModelGenerateResponse,
+        )
+
+        seen: dict[str, Any] = {}
+
+        async def _fake_publish(
+            request: ModelGenerateRequest,
+        ) -> ModelGenerateResponse:
+            seen["task_description"] = request.task_description
+            return ModelGenerateResponse(
+                correlation_id="ui-20260611T120000Z-abcd1234",
+                topic=NODE_GENERATION_REQUESTED_TOPIC,
+            )
+
+        monkeypatch.setattr(api, "publish_generation_request", _fake_publish)
+
+        client = TestClient(app, raise_server_exceptions=True)
+        resp = client.post(
+            "/api/generate",
+            json={"task_description": "Generate a node that adds two ints"},
+        )
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["correlation_id"] == "ui-20260611T120000Z-abcd1234"
+        assert body["topic"] == NODE_GENERATION_REQUESTED_TOPIC
+        assert seen["task_description"] == "Generate a node that adds two ints"
+
+    def test_generate_rejects_empty_task_description(self) -> None:
+        client = TestClient(app, raise_server_exceptions=True)
+        resp = client.post("/api/generate", json={"task_description": ""})
+        assert resp.status_code == 422
+
+    def test_generate_returns_503_when_broker_unconfigured(self, monkeypatch) -> None:
+        import omnimarket.projection.api_server as api
+        from omnimarket.projection.generation_publisher import ModelGenerateRequest
+
+        async def _raise(request: ModelGenerateRequest) -> None:
+            raise RuntimeError("KAFKA_BOOTSTRAP_SERVERS is required")
+
+        monkeypatch.setattr(api, "publish_generation_request", _raise)
+
+        client = TestClient(app, raise_server_exceptions=True)
+        resp = client.post("/api/generate", json={"task_description": "x"})
+        assert resp.status_code == 503
+        assert "KAFKA_BOOTSTRAP_SERVERS" in resp.json()["detail"]
