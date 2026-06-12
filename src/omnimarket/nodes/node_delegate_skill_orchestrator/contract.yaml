@@ -163,9 +163,6 @@ config_dependencies:
     required: false
     description: Optional override for typed provider request-shaping profiles used by direct local dispatch.
 
-runtime_profiles:
-  - main
-
 descriptor:
   node_archetype: orchestrator
   purity: effectful
