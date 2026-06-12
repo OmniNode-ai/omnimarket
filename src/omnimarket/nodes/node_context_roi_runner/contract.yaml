@@ -38,6 +38,15 @@ handler_routing:
     - handler:
         name: HandlerContextRoiRunner
         module: omnimarket.nodes.node_context_roi_runner.handlers.handler_context_roi_runner
+      # event_model is REQUIRED: without it the runtime dispatcher takes the
+      # ``event_model is None`` branch and hands the handler the raw envelope
+      # dict instead of a validated ModelContextRoiRunRequest, crashing on
+      # ``for task in request.tasks`` (OMN-13003; same class as OMN-12420).
+      event_model:
+        name: ModelContextRoiRunRequest
+        module: omnimarket.nodes.node_context_roi_runner.models.model_context_roi_run_request
+      event_type: omnimarket.context-roi-run-requested
+      message_category: command
 
 descriptor:
   node_archetype: effect
