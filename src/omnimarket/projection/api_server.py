@@ -94,7 +94,7 @@ def compute_freshness(latest_ts: str | None) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Casing-safe SELECT column list (OMN-12941)
+# Casing-safe SELECT column list (OMN-12941 / OMN-13066)
 # ---------------------------------------------------------------------------
 #
 # Projection views may materialize case-sensitive output columns via quoted
@@ -110,20 +110,124 @@ def compute_freshness(latest_ts: str | None) -> str:
 # letters, digits, underscores, not starting with a digit). This is correct for
 # every projection regardless of casing convention and is idempotent for columns
 # the contract already wrote quoted.
+#
+# OMN-13066: additionally quote SQL reserved words even when they are all-
+# lowercase.  ``window`` is a reserved word in PostgreSQL 14+ (used in the OVER
+# clause); an unquoted ``window`` in a SELECT list causes a 503 on
+# ``cost.summary.v1`` and ``cost.savings-overview.v1``.  The fix is
+# authoritative here (the single quoting path) rather than renaming the contract
+# columns, which would require a DB migration and a wire-format change.
 
 _BARE_IDENTIFIER = re.compile(r"^[a-z_][a-z0-9_]*$")
+
+# PostgreSQL reserved words that are valid column names when quoted but must not
+# appear unquoted in a SELECT list.  Source: PostgreSQL 14 keyword table
+# (https://www.postgresql.org/docs/14/sql-keywords-appendix.html), category
+# "reserved" — filtered to the lowercase words contracts are likely to use as
+# column names.  Adding a word here is safe (idempotent quoting); omitting one
+# that PostgreSQL treats as reserved causes a 503.
+_PG_RESERVED_WORDS: frozenset[str] = frozenset(
+    {
+        "all",
+        "analyse",
+        "analyze",
+        "and",
+        "any",
+        "array",
+        "as",
+        "asc",
+        "asymmetric",
+        "both",
+        "case",
+        "cast",
+        "check",
+        "collate",
+        "column",
+        "constraint",
+        "create",
+        "cross",
+        "current_catalog",
+        "current_date",
+        "current_role",
+        "current_schema",
+        "current_time",
+        "current_timestamp",
+        "current_user",
+        "default",
+        "deferrable",
+        "desc",
+        "distinct",
+        "do",
+        "else",
+        "end",
+        "except",
+        "false",
+        "fetch",
+        "for",
+        "foreign",
+        "from",
+        "full",
+        "grant",
+        "group",
+        "having",
+        "in",
+        "initially",
+        "inner",
+        "intersect",
+        "into",
+        "lateral",
+        "leading",
+        "limit",
+        "localtime",
+        "localtimestamp",
+        "natural",
+        "not",
+        "null",
+        "offset",
+        "on",
+        "only",
+        "or",
+        "order",
+        "placing",
+        "primary",
+        "references",
+        "returning",
+        "right",
+        "rows",
+        "select",
+        "session_user",
+        "some",
+        "symmetric",
+        "table",
+        "then",
+        "to",
+        "trailing",
+        "true",
+        "union",
+        "unique",
+        "user",
+        "using",
+        "variadic",
+        "verbose",
+        "when",
+        "where",
+        "window",
+        "with",
+    }
+)
 
 
 def _quote_column_identifier(column: str) -> str:
     """Return ``column`` as a casing-safe SQL identifier.
 
-    A bare all-lowercase identifier is returned unchanged; anything else
-    (mixed/upper case, already-quoted, or otherwise non-bare) is emitted
-    double-quoted so PostgreSQL preserves its case. Embedded double quotes are
-    escaped per the SQL standard.
+    A bare all-lowercase identifier that is not a PostgreSQL reserved word is
+    returned unchanged; anything else (mixed/upper case, already-quoted,
+    reserved word, or otherwise non-bare) is emitted double-quoted so
+    PostgreSQL preserves its case or does not misinterpret it as a keyword.
+    Embedded double quotes are escaped per the SQL standard (OMN-13066).
     """
     stripped = column.strip('"')
-    if _BARE_IDENTIFIER.match(stripped):
+    if _BARE_IDENTIFIER.match(stripped) and stripped not in _PG_RESERVED_WORDS:
         return stripped
     escaped = stripped.replace('"', '""')
     return f'"{escaped}"'

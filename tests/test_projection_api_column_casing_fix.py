@@ -87,6 +87,101 @@ def test_embedded_double_quote_is_escaped() -> None:
 
 
 # ---------------------------------------------------------------------------
+# OMN-13066: reserved-word quoting — ``window`` column causes 503.
+# ---------------------------------------------------------------------------
+#
+# ``window`` is a PostgreSQL reserved word (used in OVER clauses). An unquoted
+# ``window`` in a SELECT list makes the query parser misread it as a keyword,
+# producing ``ERROR: syntax error at or near "window"`` which the projection API
+# surfaces as a 503. The fix adds ``window`` (and other PG reserved words) to
+# the quoting set inside ``_quote_column_identifier`` so they are always emitted
+# double-quoted regardless of casing.
+
+
+def test_window_is_quoted() -> None:
+    """``window`` must be emitted quoted — it is a PostgreSQL reserved word."""
+    result = build_select_column_list(("window",))
+    assert result == '"window"', (
+        f"reserved word 'window' must be double-quoted in SELECT list; got {result!r}"
+    )
+
+
+def test_window_mixed_with_plain_columns() -> None:
+    """Only ``window`` is quoted; plain lowercase identifiers stay bare."""
+    result = build_select_column_list(
+        ("aggregation_key", "window", "total_cost_usd", "updated_at")
+    )
+    assert result == 'aggregation_key, "window", total_cost_usd, updated_at', (
+        f"unexpected column list: {result!r}"
+    )
+
+
+def test_cost_summary_contract_columns_quoted_correctly() -> None:
+    """The cost.summary.v1 contract columns emit ``window`` quoted and the rest bare.
+
+    This is the exact column list from
+    node_projection_cost_summary/contract.yaml so a contract edit that adds
+    a new reserved word will fail here before it reaches the live runtime.
+    """
+    from pathlib import Path
+
+    import yaml  # already imported at module level in the test file context
+
+    contract_path = (
+        Path(__file__).resolve().parents[1]
+        / "src"
+        / "omnimarket"
+        / "nodes"
+        / "node_projection_cost_summary"
+        / "contract.yaml"
+    )
+    contract = yaml.safe_load(contract_path.read_text(encoding="utf-8"))
+    columns = tuple(str(c) for c in contract["projection_api"]["columns"])
+
+    col_list = build_select_column_list(columns)
+    # ``window`` must be quoted; other columns are plain lowercase — must stay bare.
+    assert '"window"' in col_list, (
+        f"'window' column must be double-quoted in SELECT list; got {col_list!r}"
+    )
+    for plain in (
+        "aggregation_key",
+        "total_cost_usd",
+        "total_tokens",
+        "call_count",
+        "updated_at",
+    ):
+        assert f'"{plain}"' not in col_list, (
+            f"plain column {plain!r} must not be unnecessarily quoted; got {col_list!r}"
+        )
+
+
+def test_savings_overview_contract_window_column_quoted() -> None:
+    """The cost.savings-overview.v1 contract also contains ``window`` — must be quoted."""
+    from pathlib import Path
+
+    import yaml
+
+    contract_path = (
+        Path(__file__).resolve().parents[1]
+        / "src"
+        / "omnimarket"
+        / "nodes"
+        / "node_projection_savings"
+        / "contract.yaml"
+    )
+    contract = yaml.safe_load(contract_path.read_text(encoding="utf-8"))
+    # savings-overview exposure is the third entry (index 2)
+    exposures = contract["projection_api"]["exposures"]
+    savings_overview = next(e for e in exposures if "savings-overview" in e["topic"])
+    columns = tuple(str(c) for c in savings_overview["columns"])
+
+    col_list = build_select_column_list(columns)
+    assert '"window"' in col_list, (
+        f"savings-overview 'window' column must be double-quoted; got {col_list!r}"
+    )
+
+
+# ---------------------------------------------------------------------------
 # End-to-end read-path proof against the real overnight contract + view DDL.
 # ---------------------------------------------------------------------------
 
