@@ -13,6 +13,13 @@ class ModelLinearTriageStartCommand(BaseModel):
     correlation_id: str = ""
     threshold_days: int = Field(default=14, ge=1)
     dry_run: bool = False
+    # flag_only: when True (the default), the node NEVER writes to Linear.
+    # It reports close-candidates in result.suppressed_closes but executes
+    # zero state mutations.  Precision on auto-close is ~17% (OMN-12869);
+    # human review is required before allowing actual closes.
+    # Set flag_only=False explicitly only after precision has been raised
+    # above an acceptable threshold via human-in-the-loop validation.
+    flag_only: bool = True
     team: str = "Omninode"
 
 
@@ -63,6 +70,7 @@ class ModelLinearTriageResult(BaseModel):
 
     status: str = "completed"
     dry_run: bool = False
+    flag_only: bool = True
     total_scanned: int = 0
     recent_count: int = 0
     stale_count: int = 0
@@ -73,6 +81,9 @@ class ModelLinearTriageResult(BaseModel):
     orphaned: int = 0
     actions: list[ModelTriageAction] = Field(default_factory=list)
     validation_errors: list[str] = Field(default_factory=list)
+    # Candidate closes suppressed by flag_only mode.
+    # Each entry is "<ticket_id>: <evidence>" for human review.
+    suppressed_closes: list[str] = Field(default_factory=list)
 
 
 class ModelLinearTriageCompletedEvent(BaseModel):

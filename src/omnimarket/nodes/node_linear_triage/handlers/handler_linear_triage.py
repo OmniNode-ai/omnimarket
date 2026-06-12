@@ -566,11 +566,25 @@ class HandlerLinearTriage:
         return GitHubHttpClient(secret.get_secret_value())
 
     def handle(self, request: ModelLinearTriageStartCommand) -> ModelLinearTriageResult:
-        """Run the full triage pipeline."""
+        """Run the full triage pipeline.
+
+        When ``request.flag_only`` is True (the default), the node NEVER writes
+        to Linear — it reports close-candidates in result.suppressed_closes
+        instead.  This is the safe operating mode until auto-close precision
+        exceeds a human-approved threshold (current precision: ~17%, OMN-12869).
+        Set ``flag_only=False`` only after precision has been validated.
+        """
         client = self._get_client()
         gh = self._get_github_client()
         threshold = request.threshold_days
         dry_run = request.dry_run
+        flag_only = request.flag_only
+
+        if flag_only:
+            _log.info(
+                "flag_only=True: running in report-only mode; "
+                "zero Linear state mutations will be executed"
+            )
 
         # --- Phase 1: Fetch all non-done tickets ---
         all_tickets: list[ModelLinearTicket] = []
@@ -614,12 +628,14 @@ class HandlerLinearTriage:
         )
 
         actions: list[ModelTriageAction] = []
+        suppressed_closes: list[str] = []
 
         # --- Phase 3: PR status check (active tickets only) ---
-        pr_actions, marked_done, marked_done_superseded = self._phase_pr_check(
-            all_tickets, gh, client, dry_run
+        pr_actions, marked_done, marked_done_superseded, pr_suppressed = (
+            self._phase_pr_check(all_tickets, gh, client, dry_run, flag_only)
         )
         actions.extend(pr_actions)
+        suppressed_closes.extend(pr_suppressed)
 
         # --- Phase 4: Stale flagging ---
         stale_actions, stale_flagged = self._phase_stale_flag(all_tickets)
@@ -631,14 +647,23 @@ class HandlerLinearTriage:
         )
 
         # --- Phase 5b: Epic completion detection ---
-        epic_actions, epics_closed = self._phase_epic_check(
-            all_tickets, client, dry_run
+        epic_actions, epics_closed, epic_suppressed = self._phase_epic_check(
+            all_tickets, client, dry_run, flag_only
         )
         actions.extend(epic_actions)
+        suppressed_closes.extend(epic_suppressed)
+
+        if flag_only and suppressed_closes:
+            _log.info(
+                "flag_only=True: suppressed %d candidate close(s) — "
+                "attach result.suppressed_closes to the human-review artifact",
+                len(suppressed_closes),
+            )
 
         return ModelLinearTriageResult(
             status="completed",
             dry_run=dry_run,
+            flag_only=flag_only,
             total_scanned=len(all_tickets),
             recent_count=len(recent),
             stale_count=len(stale),
@@ -648,6 +673,7 @@ class HandlerLinearTriage:
             stale_flagged=stale_flagged,
             orphaned=orphaned,
             actions=actions,
+            suppressed_closes=suppressed_closes,
         )
 
     def _phase_pr_check(
@@ -656,14 +682,18 @@ class HandlerLinearTriage:
         gh: GitHubClientProtocol,
         client: LinearClientProtocol,
         dry_run: bool,
-    ) -> tuple[list[ModelTriageAction], int, int]:
+        flag_only: bool,
+    ) -> tuple[list[ModelTriageAction], int, int, list[str]]:
         """Phase 3: check In Progress / In Review tickets against GitHub PR state.
 
-        Returns (actions, marked_done, marked_done_superseded).
+        Returns (actions, marked_done, marked_done_superseded, suppressed_closes).
+        When flag_only=True, no Linear mutations are executed; candidate closes
+        are recorded in suppressed_closes instead.
         """
         actions: list[ModelTriageAction] = []
         marked_done = 0
         marked_done_superseded = 0
+        suppressed: list[str] = []
 
         pr_candidates = [
             t for t in all_tickets if t.state in {"In Progress", "In Review"}
@@ -685,18 +715,24 @@ class HandlerLinearTriage:
             )
 
             if merged_pr:
-                new_actions, delta = self._apply_merged_pr(
-                    ticket, merged_pr, client, dry_run
+                new_actions, delta, suppressed_entry = self._apply_merged_pr(
+                    ticket, merged_pr, client, dry_run, flag_only
                 )
                 actions.extend(new_actions)
                 marked_done += delta
+                if suppressed_entry:
+                    suppressed.append(suppressed_entry)
                 continue
 
-            new_actions, delta = self._check_superseded_pr(ticket, gh, client, dry_run)
+            new_actions, delta, suppressed_entry = self._check_superseded_pr(
+                ticket, gh, client, dry_run, flag_only
+            )
             actions.extend(new_actions)
             marked_done_superseded += delta
+            if suppressed_entry:
+                suppressed.append(suppressed_entry)
 
-        return actions, marked_done, marked_done_superseded
+        return actions, marked_done, marked_done_superseded, suppressed
 
     def _apply_merged_pr(
         self,
@@ -704,11 +740,34 @@ class HandlerLinearTriage:
         merged_pr: dict[str, str],
         client: LinearClientProtocol,
         dry_run: bool,
-    ) -> tuple[list[ModelTriageAction], int]:
-        """Mark a ticket Done given its directly merged PR. Returns (actions, count)."""
+        flag_only: bool,
+    ) -> tuple[list[ModelTriageAction], int, str | None]:
+        """Mark a ticket Done given its directly merged PR.
+
+        Returns (actions, count, suppressed_entry).
+        When flag_only=True, no mutation occurs; suppressed_entry carries the
+        candidate close description for human review.
+        """
         merged_at = merged_pr.get("mergedAt", "unknown date")
         pr_url = merged_pr.get("url", "")
         evidence = f"PR #{merged_pr.get('number')} merged {merged_at}\n{pr_url}"
+
+        # flag_only is the outer safety gate — it overrides dry_run.
+        if flag_only:
+            suppressed_entry = f"{ticket.identifier}: {evidence}"
+            return (
+                [
+                    ModelTriageAction(
+                        ticket_id=ticket.identifier,
+                        ticket_title=ticket.title,
+                        action=EnumTriageAction.WOULD_MARK_DONE,
+                        evidence=evidence,
+                    )
+                ],
+                0,
+                suppressed_entry,
+            )
+
         action_name = (
             EnumTriageAction.WOULD_MARK_DONE if dry_run else EnumTriageAction.MARK_DONE
         )
@@ -733,6 +792,7 @@ class HandlerLinearTriage:
                         )
                     ],
                     1,
+                    None,
                 )
             except Exception as exc:
                 return (
@@ -745,6 +805,7 @@ class HandlerLinearTriage:
                         )
                     ],
                     0,
+                    None,
                 )
 
         return (
@@ -757,6 +818,7 @@ class HandlerLinearTriage:
                 )
             ],
             0,
+            None,
         )
 
     def _check_superseded_pr(
@@ -765,11 +827,17 @@ class HandlerLinearTriage:
         gh: GitHubClientProtocol,
         client: LinearClientProtocol,
         dry_run: bool,
-    ) -> tuple[list[ModelTriageAction], int]:
-        """Check for a closed-unmerged PR with a sibling merged elsewhere. Returns (actions, count)."""
+        flag_only: bool,
+    ) -> tuple[list[ModelTriageAction], int, str | None]:
+        """Check for a closed-unmerged PR with a sibling merged elsewhere.
+
+        Returns (actions, count, suppressed_entry).
+        When flag_only=True, no mutation occurs; suppressed_entry carries the
+        candidate close description for human review.
+        """
         repo_slug = _extract_repo(ticket)
         if not repo_slug:
-            return [], 0
+            return [], 0, None
 
         closed_prs = gh.search_prs_in_repo(
             repo=repo_slug,
@@ -778,11 +846,11 @@ class HandlerLinearTriage:
         )
         unmerged_closed = [p for p in closed_prs if not p.get("mergedAt")]
         if not unmerged_closed:
-            return [], 0
+            return [], 0, None
 
         sibling = _find_merged_pr(ticket.identifier, None, "", gh=gh)
         if not sibling:
-            return [], 0
+            return [], 0, None
 
         closed_pr_num = unmerged_closed[0].get("number", "?")
         evidence = (
@@ -790,6 +858,23 @@ class HandlerLinearTriage:
             f"merged {sibling.get('mergedAt')}\n{sibling.get('url')}\n"
             f"(Original PR #{closed_pr_num} was closed as superseded)"
         )
+
+        # flag_only is the outer safety gate — it overrides dry_run.
+        if flag_only:
+            suppressed_entry = f"{ticket.identifier} (superseded): {evidence}"
+            return (
+                [
+                    ModelTriageAction(
+                        ticket_id=ticket.identifier,
+                        ticket_title=ticket.title,
+                        action=EnumTriageAction.WOULD_MARK_DONE_SUPERSEDED,
+                        evidence=evidence,
+                    )
+                ],
+                0,
+                suppressed_entry,
+            )
+
         action_name = (
             EnumTriageAction.WOULD_MARK_DONE_SUPERSEDED
             if dry_run
@@ -818,6 +903,7 @@ class HandlerLinearTriage:
                         )
                     ],
                     1,
+                    None,
                 )
             except Exception as exc:
                 return (
@@ -830,6 +916,7 @@ class HandlerLinearTriage:
                         )
                     ],
                     0,
+                    None,
                 )
 
         return (
@@ -842,6 +929,7 @@ class HandlerLinearTriage:
                 )
             ],
             0,
+            None,
         )
 
     def _phase_stale_flag(
@@ -878,14 +966,18 @@ class HandlerLinearTriage:
         all_tickets: list[ModelLinearTicket],
         client: LinearClientProtocol,
         dry_run: bool,
-    ) -> tuple[list[ModelTriageAction], int]:
+        flag_only: bool,
+    ) -> tuple[list[ModelTriageAction], int, list[str]]:
         """Phase 5b: auto-close epics whose children are all Done.
 
         Only checks non-backlog root tickets to avoid burning Linear API quota.
-        Returns (actions, epics_closed_count).
+        Returns (actions, epics_closed_count, suppressed_closes).
+        When flag_only=True, no mutation occurs; suppressed_closes carries the
+        candidate epic-close descriptions for human review.
         """
         actions: list[ModelTriageAction] = []
         epics_closed = 0
+        suppressed: list[str] = []
 
         candidate_epics = [
             t
@@ -909,6 +1001,21 @@ class HandlerLinearTriage:
                 continue
 
             child_ids = ", ".join(c["identifier"] for c in children)
+            evidence = f"All {len(children)} children done: {child_ids}"
+
+            # flag_only is the outer safety gate — it overrides dry_run.
+            if flag_only:
+                suppressed.append(f"{ticket.identifier} (epic): {evidence}")
+                actions.append(
+                    ModelTriageAction(
+                        ticket_id=ticket.identifier,
+                        ticket_title=ticket.title,
+                        action=EnumTriageAction.WOULD_MARK_DONE_EPIC,
+                        evidence=evidence,
+                    )
+                )
+                continue
+
             action_name = (
                 EnumTriageAction.WOULD_MARK_DONE_EPIC
                 if dry_run
@@ -941,11 +1048,11 @@ class HandlerLinearTriage:
                     ticket_id=ticket.identifier,
                     ticket_title=ticket.title,
                     action=action_name,
-                    evidence=f"All {len(children)} children done: {child_ids}",
+                    evidence=evidence,
                 )
             )
 
-        return actions, epics_closed
+        return actions, epics_closed, suppressed
 
     def _fetch_children(
         self,

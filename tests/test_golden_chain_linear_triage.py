@@ -142,7 +142,7 @@ class TestLinearTriageGoldenChain:
         assert result.stale_flagged == 0
 
     def test_recent_ticket_merged_pr_marked_done(self) -> None:
-        """Recent ticket with a merged PR gets marked done."""
+        """Recent ticket with a merged PR gets marked done when flag_only=False."""
         fake_pr = {
             "number": "42",
             "url": "https://github.com/OmniNode-ai/omniclaude/pull/42",
@@ -158,7 +158,8 @@ class TestLinearTriageGoldenChain:
         client = _stub_client([issue])
         gh = _stub_github(merged_prs={"OMN-1234": fake_pr})
         handler = HandlerLinearTriage(client=client, github_client=gh)
-        result = handler.handle(ModelLinearTriageStartCommand())
+        # flag_only=False required: this test exercises the approved-close path
+        result = handler.handle(ModelLinearTriageStartCommand(flag_only=False))
 
         assert result.marked_done == 1
         client.save_issue.assert_called_once_with(issue_id="abc", state="Done")
@@ -239,7 +240,7 @@ class TestLinearTriageGoldenChain:
         assert result.epics_closed == 0
 
     def test_epic_completion_all_done(self) -> None:
-        """Parent ticket closed when ALL children are Done."""
+        """Parent ticket closed when ALL children are Done and flag_only=False."""
         parent = _make_issue(
             id="parent-id",
             identifier="OMN-100",
@@ -269,10 +270,152 @@ class TestLinearTriageGoldenChain:
         )
         gh = _stub_github()
         handler = HandlerLinearTriage(client=client, github_client=gh)
-        result = handler.handle(ModelLinearTriageStartCommand())
+        # flag_only=False required: this test exercises the approved-close path
+        result = handler.handle(ModelLinearTriageStartCommand(flag_only=False))
 
         assert result.epics_closed == 1
         client.save_issue.assert_any_call(issue_id="parent-id", state="Done")
+
+
+@pytest.mark.unit
+class TestFlagOnlySafety:
+    """OMN-12869: flag_only=True (the default) must NEVER execute Linear mutations.
+
+    These are the red-case proof tests. They verify that even when the handler
+    finds merged PRs and fully-done epics — candidates that WOULD be closed —
+    zero save_issue / save_comment calls happen and suppressed_closes is populated.
+    """
+
+    def test_flag_only_default_suppresses_pr_close(self) -> None:
+        """Default command (flag_only=True) must NOT call save_issue even with merged PR."""
+        fake_pr = {
+            "number": "101",
+            "url": "https://github.com/OmniNode-ai/omniclaude/pull/101",
+            "mergedAt": "2026-06-01T12:00:00Z",
+            "repo": "omniclaude",
+        }
+        issue = _make_issue(
+            days_ago=2,
+            identifier="OMN-9001",
+            branch_name="jonah/omn-9001-omniclaude-something",
+        )
+        client = _stub_client([issue])
+        gh = _stub_github(merged_prs={"OMN-9001": fake_pr})
+        handler = HandlerLinearTriage(client=client, github_client=gh)
+
+        # Default ModelLinearTriageStartCommand has flag_only=True
+        result = handler.handle(ModelLinearTriageStartCommand())
+
+        # ZERO mutations — the core invariant
+        client.save_issue.assert_not_called()
+        client.save_comment.assert_not_called()
+        # marked_done counter stays at zero
+        assert result.marked_done == 0
+        # The candidate IS reported in suppressed_closes
+        assert len(result.suppressed_closes) == 1
+        assert "OMN-9001" in result.suppressed_closes[0]
+        # The action is WOULD_MARK_DONE, not MARK_DONE
+        assert any(a.action == "would_mark_done" for a in result.actions)
+        assert not any(a.action == "marked_done" for a in result.actions)
+        # flag_only echoed in result
+        assert result.flag_only is True
+
+    def test_flag_only_explicit_true_suppresses_pr_close(self) -> None:
+        """Explicit flag_only=True is identical to default: zero mutations."""
+        fake_pr = {
+            "number": "202",
+            "url": "https://github.com/OmniNode-ai/omnimarket/pull/202",
+            "mergedAt": "2026-06-02T08:00:00Z",
+            "repo": "omnimarket",
+        }
+        issue = _make_issue(
+            days_ago=1,
+            identifier="OMN-9002",
+            branch_name="jonah/omn-9002-omnimarket-fix",
+        )
+        client = _stub_client([issue])
+        gh = _stub_github(merged_prs={"OMN-9002": fake_pr})
+        handler = HandlerLinearTriage(client=client, github_client=gh)
+
+        result = handler.handle(ModelLinearTriageStartCommand(flag_only=True))
+
+        client.save_issue.assert_not_called()
+        client.save_comment.assert_not_called()
+        assert result.marked_done == 0
+        assert len(result.suppressed_closes) == 1
+        assert "OMN-9002" in result.suppressed_closes[0]
+
+    def test_flag_only_suppresses_epic_close(self) -> None:
+        """flag_only=True must suppress epic auto-close even when all children are Done."""
+        parent = _make_issue(
+            id="epic-id",
+            identifier="OMN-9010",
+            title="Epic: flag_only proof",
+            state="In Progress",
+            days_ago=3,
+        )
+        child_stub = _make_issue(
+            id="child-stub-id",
+            identifier="OMN-9011",
+            title="Child",
+            state="In Progress",
+            days_ago=3,
+            parent_id="epic-id",
+        )
+        all_done_children = [
+            {"id": "c1", "identifier": "OMN-9011", "state": {"name": "Done"}},
+            {"id": "c2", "identifier": "OMN-9012", "state": {"name": "Done"}},
+        ]
+        client = _stub_client(
+            [parent, child_stub],
+            children={"epic-id": all_done_children},
+        )
+        gh = _stub_github()
+        handler = HandlerLinearTriage(client=client, github_client=gh)
+
+        # Default command: flag_only=True
+        result = handler.handle(ModelLinearTriageStartCommand())
+
+        client.save_issue.assert_not_called()
+        client.save_comment.assert_not_called()
+        assert result.epics_closed == 0
+        assert len(result.suppressed_closes) == 1
+        assert "OMN-9010" in result.suppressed_closes[0]
+        assert any(a.action == "would_mark_done_epic" for a in result.actions)
+
+    def test_flag_only_multiple_candidates_all_suppressed(self) -> None:
+        """With N close-candidates and flag_only=True, all N are suppressed."""
+        prs = {
+            "OMN-9020": {
+                "number": "300",
+                "url": "https://github.com/OmniNode-ai/omniclaude/pull/300",
+                "mergedAt": "2026-06-03T10:00:00Z",
+                "repo": "omniclaude",
+            },
+            "OMN-9021": {
+                "number": "301",
+                "url": "https://github.com/OmniNode-ai/omniclaude/pull/301",
+                "mergedAt": "2026-06-04T10:00:00Z",
+                "repo": "omniclaude",
+            },
+        }
+        issues = [
+            _make_issue(days_ago=2, identifier="OMN-9020"),
+            _make_issue(id="def", days_ago=2, identifier="OMN-9021"),
+        ]
+        client = _stub_client(issues)
+        gh = _stub_github(merged_prs=prs)
+        handler = HandlerLinearTriage(client=client, github_client=gh)
+
+        result = handler.handle(ModelLinearTriageStartCommand())
+
+        client.save_issue.assert_not_called()
+        client.save_comment.assert_not_called()
+        assert result.marked_done == 0
+        assert len(result.suppressed_closes) == 2
+        suppressed_ids = {entry.split(":")[0] for entry in result.suppressed_closes}
+        assert "OMN-9020" in suppressed_ids
+        assert "OMN-9021" in suppressed_ids
 
 
 @pytest.mark.unit

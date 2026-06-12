@@ -219,7 +219,8 @@ class TestBugBOccReceiptPrsExcluded:
         client.save_issue.assert_not_called()
 
     def test_real_repo_merged_pr_still_marks_done(self) -> None:
-        """A ticket with a merged PR from a real implementation repo IS marked done."""
+        """A ticket with a merged PR from a real implementation repo IS marked done
+        when flag_only=False (the approved-close path)."""
         real_pr = _make_merged_pr(number="99", repo="omniclaude")
 
         issue = _make_issue(identifier="OMN-5555", state="In Progress", days_ago=3)
@@ -230,7 +231,8 @@ class TestBugBOccReceiptPrsExcluded:
         )
 
         handler = HandlerLinearTriage(client=client, github_client=gh)
-        result = handler.handle(ModelLinearTriageStartCommand())
+        # flag_only=False: this test exercises the approved-close path
+        result = handler.handle(ModelLinearTriageStartCommand(flag_only=False))
 
         assert result.marked_done == 1, (
             "Merged PR in real repo must trigger mark_done; "
@@ -240,7 +242,7 @@ class TestBugBOccReceiptPrsExcluded:
 
     def test_mixed_occ_and_real_merged_pr_marks_done(self) -> None:
         """If both an OCC PR and a real PR are matched, the ticket is still marked done
-        (real PR is the implementation signal)."""
+        when flag_only=False (real PR is the implementation signal)."""
         occ_pr = _make_merged_pr(number="2391", repo="onex_change_control")
         real_pr = _make_merged_pr(number="55", repo="omnimarket")
 
@@ -254,7 +256,8 @@ class TestBugBOccReceiptPrsExcluded:
         )
 
         handler = HandlerLinearTriage(client=client, github_client=gh)
-        result = handler.handle(ModelLinearTriageStartCommand())
+        # flag_only=False: this test exercises the approved-close path
+        result = handler.handle(ModelLinearTriageStartCommand(flag_only=False))
 
         assert result.marked_done == 1, (
             "Mixed OCC+real merged PRs: the real PR should still trigger mark_done"
