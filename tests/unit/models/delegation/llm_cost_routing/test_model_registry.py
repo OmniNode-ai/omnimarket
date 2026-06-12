@@ -72,6 +72,35 @@ class TestModelLlmModelProfile:
         with pytest.raises(ValidationError):
             ModelLlmModelProfile(**kwargs)
 
+    def test_served_model_names_defaults_to_none(self) -> None:
+        profile = ModelLlmModelProfile(**self._valid_kwargs())
+        assert profile.served_model_names is None
+
+    def test_served_model_names_per_environment_accepted(self) -> None:
+        # OMN-12972: a per-environment served-name map is accepted and frozen.
+        kwargs = self._valid_kwargs()
+        kwargs["served_model_names"] = {
+            "ai_studio": "gemini-2.5-flash-lite",
+            "vertex": "publishers/google/models/gemini-2.5-flash-lite",
+        }
+        profile = ModelLlmModelProfile(**kwargs)
+        assert profile.served_model_names == {
+            "ai_studio": "gemini-2.5-flash-lite",
+            "vertex": "publishers/google/models/gemini-2.5-flash-lite",
+        }
+
+    def test_served_model_names_empty_rejected(self) -> None:
+        kwargs = self._valid_kwargs()
+        kwargs["served_model_names"] = {}
+        with pytest.raises(ValidationError, match="must not be empty"):
+            ModelLlmModelProfile(**kwargs)
+
+    def test_served_model_names_blank_value_rejected(self) -> None:
+        kwargs = self._valid_kwargs()
+        kwargs["served_model_names"] = {"vertex": "  "}
+        with pytest.raises(ValidationError, match="must be non-blank"):
+            ModelLlmModelProfile(**kwargs)
+
 
 class TestModelLlmModelRegistryHashing:
     """Registry hash generation must be deterministic."""
@@ -235,3 +264,21 @@ class TestModelLlmModelRegistryLoader:
                 f"{model_id}.endpoint_env looks like a URL: {profile.endpoint_env}. "
                 "Must be an env var name."
             )
+
+    def test_vertex_gemini_registry_entry_uses_secret_ref(self) -> None:
+        """OMN-12971: the Vertex registry entry declares only a logical secret ref.
+
+        The token VALUE is resolved fail-closed at the effect boundary via the
+        secret store; the registry carries only the ref NAME. The Vertex path is
+        ADDITIVE — the AI Studio ``gemini-2.5-flash-lite`` entry is preserved.
+        """
+        loader = ModelLlmModelRegistryLoader(_REGISTRY_PATH)
+        registry = loader.load()
+        assert "vertex-gemini-flash" in registry.models
+        vertex = registry.get_model("vertex-gemini-flash")
+        assert vertex.provider == "vertex"
+        assert vertex.requires_secret_ref == "llm.vertex.access_token"
+        assert vertex.requires_api_key_env is None
+        assert vertex.endpoint_env == "BIFROST_VERTEX_GEMINI_ENDPOINT_URL"
+        # ADDITIVE: AI Studio key path preserved.
+        assert "gemini-2.5-flash-lite" in registry.models

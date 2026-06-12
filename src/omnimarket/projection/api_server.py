@@ -27,7 +27,7 @@ from uuid import UUID
 
 import asyncpg
 import yaml
-from fastapi import Depends, FastAPI, Query
+from fastapi import Depends, FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import (
@@ -44,6 +44,11 @@ from omnimarket.inference.secret_store_resolver import (
     resolve_api_key as resolve_secret_ref,
 )
 from omnimarket.projection.discovery import build_projection_topic_map
+from omnimarket.projection.generation_publisher import (
+    ModelGenerateRequest,
+    ModelGenerateResponse,
+    publish_generation_request,
+)
 from omnimarket.projection.models import ProjectionStatus, ProjectionTableConfig
 from omnimarket.projection.validation import validate_topic_map_tables
 
@@ -136,6 +141,52 @@ def build_select_column_list(columns: tuple[str, ...]) -> str:
     if columns == ("*",):
         return "*"
     return ", ".join(_quote_column_identifier(column) for column in columns)
+
+
+def resolve_effective_limit(requested: int | None, contract_limit: int) -> int:
+    """Clamp a caller-requested ``limit`` to the contract-declared ceiling.
+
+    ``None`` (no request) yields the contract limit. A positive request is
+    bounded by ``contract_limit`` so a caller can shrink — but never enlarge —
+    the result window. Non-positive requests are treated as unset. This is a
+    generic, topic-agnostic bound: every projection respects its own declared
+    ``limit`` as the hard ceiling.
+    """
+    if requested is None or requested <= 0:
+        return contract_limit
+    return min(requested, contract_limit)
+
+
+def resolve_order_clause(order_by: str | None, order: str | None) -> str:
+    """Build a casing-safe ``ORDER BY`` clause, honouring a direction toggle.
+
+    The orderable column and its default direction come *only* from the
+    contract's ``order_by`` (e.g. ``"created_at DESC"``); ``order`` may toggle
+    that direction to ``"asc"`` or ``"desc"``. Callers cannot inject an
+    arbitrary column — they can only flip the direction of the contract-declared
+    sort column. When the contract declares no ``order_by`` the result ordering
+    is undefined and no clause is emitted (``order`` is ignored).
+    """
+    if order_by is None:
+        return ""
+
+    parts = order_by.split()
+    column = parts[0]
+    declared_direction = (
+        parts[1].upper()
+        if len(parts) > 1 and parts[1].upper() in {"ASC", "DESC"}
+        else "ASC"
+    )
+
+    direction = declared_direction
+    if order is not None:
+        normalised = order.strip().lower()
+        if normalised == "asc":
+            direction = "ASC"
+        elif normalised == "desc":
+            direction = "DESC"
+
+    return f" ORDER BY {_quote_column_identifier(column)} {direction}"
 
 
 def _json_value(value: Any, *, decode_json: bool = False) -> Any:
@@ -336,7 +387,7 @@ def _configure_cors(application: FastAPI) -> None:
         CORSMiddleware,
         allow_origins=origins,
         allow_credentials=True,
-        allow_methods=["GET", "OPTIONS"],
+        allow_methods=["GET", "POST", "OPTIONS"],
         allow_headers=["*"],
     )
 
@@ -387,6 +438,22 @@ async def health(
     )
 
 
+@app.post("/api/generate")
+async def generate_node(request: ModelGenerateRequest) -> ModelGenerateResponse:
+    """Thin publisher: wrap the typed request in the canonical envelope and
+    publish ONE command to ``onex.cmd.omnimarket.node-generation-requested.v1``.
+
+    Returns the minted correlation id; the existing node_generation_consumer
+    does the work and the SEA Control Plane projection renders the result.  No
+    generation, Postgres, or state synthesis happens here.
+    """
+    try:
+        return await publish_generation_request(request)
+    except RuntimeError as exc:
+        # Broker not configured / unreachable — fail-fast, no silent fallback.
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
 @app.get("/projections")
 async def list_projections(
     topic_map: dict[str, ProjectionTableConfig] = Depends(get_topic_map),  # noqa: B008
@@ -421,6 +488,8 @@ async def list_projections(
 async def projection_query(
     topic: str,
     correlation_id: str | None = Query(default=None),
+    limit: int | None = Query(default=None, ge=1),
+    order: str | None = Query(default=None, pattern="^(?i:asc|desc)$"),
     pool: asyncpg.Pool = Depends(get_pool),  # noqa: B008
     topic_map: dict[str, ProjectionTableConfig] = Depends(get_topic_map),  # noqa: B008
 ) -> JSONResponse:
@@ -449,8 +518,14 @@ async def projection_query(
     qualified_table = f"{cfg.schema_name}.{table}"
     columns: tuple[str, ...] = cfg.columns
     order_by: str | None = cfg.order_by
-    limit: int = cfg.limit
     freshness_col: str | None = cfg.freshness_column
+
+    # Generic, contract-respecting bounds (OMN-12999): a caller may request a
+    # smaller window (limit) and flip the contract-declared sort direction
+    # (order), but can never exceed the contract limit ceiling nor pick an
+    # arbitrary sort column. Bounding rows is the lever that cuts the
+    # serialization cost driving the ~10-28s Event Bus / SEA tile gap.
+    effective_limit = resolve_effective_limit(limit, cfg.limit)
 
     # Build column list — ["*"] means SELECT *, otherwise casing-safe join that
     # quotes mixed-case view aliases (OMN-12941).
@@ -459,13 +534,13 @@ async def projection_query(
 
     try:
         async with pool.acquire() as conn:
-            order_clause = f" ORDER BY {order_by}" if order_by is not None else ""
+            order_clause = resolve_order_clause(order_by, order)
 
             if correlation_id is not None:
                 sql = (
                     f"SELECT {col_list} FROM {qualified_table}"
                     f" WHERE correlation_id = $1"
-                    f"{order_clause} LIMIT {limit}"
+                    f"{order_clause} LIMIT {effective_limit}"
                 )
                 raw_rows = await conn.fetch(sql, correlation_id)
                 latest_ts_val: Any = (
@@ -480,7 +555,7 @@ async def projection_query(
             else:
                 sql = (
                     f"SELECT {col_list} FROM {qualified_table}"
-                    f"{order_clause} LIMIT {limit}"
+                    f"{order_clause} LIMIT {effective_limit}"
                 )
                 raw_rows = await conn.fetch(sql)
                 latest_ts_val = (
@@ -523,13 +598,18 @@ async def projection_query(
             }
         )
 
+    reported_ordering = (
+        "undefined" if not order_clause else order_clause.removeprefix(" ORDER BY ")
+    )
+
     return JSONResponse(
         {
             "topic": topic,
             "projection_version": _PROJECTION_VERSION,
             "generated_at": generated_at,
             "data_freshness": freshness,
-            "ordering": "undefined" if order_by is None else order_by,
+            "ordering": reported_ordering,
+            "row_limit": effective_limit,
             "latest_event_at": latest_ts,
             "latest_projection_updated_at": latest_ts,
             "row_count": len(serialisable_rows),

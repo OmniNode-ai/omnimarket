@@ -36,6 +36,8 @@ from scripts.projection_api_server import (
     get_pool,
     get_topic_map,
     load_projection_database_binding_overlay,
+    resolve_effective_limit,
+    resolve_order_clause,
 )
 
 # ---------------------------------------------------------------------------
@@ -140,6 +142,33 @@ def _make_pool(rows: list[dict[str, Any]], latest_ts: str | None = None) -> Magi
     pool = MagicMock()
     pool.acquire = MagicMock(return_value=acquire_ctx)
     return pool
+
+
+def _make_capturing_pool(
+    rows: list[dict[str, Any]], latest_ts: str | None = None
+) -> tuple[MagicMock, list[str]]:
+    """Pool whose ``fetch`` records every SQL string it receives.
+
+    Returns the pool and a list that accumulates SQL strings in call order so a
+    test can assert the emitted ``LIMIT`` / ``ORDER BY`` clause.
+    """
+    captured: list[str] = []
+
+    async def _fetch(sql: str, *args: object) -> list[dict[str, Any]]:
+        captured.append(sql)
+        return rows
+
+    conn = AsyncMock()
+    conn.fetch = AsyncMock(side_effect=_fetch)
+    conn.fetchval = AsyncMock(return_value=latest_ts)
+
+    acquire_ctx = MagicMock()
+    acquire_ctx.__aenter__ = AsyncMock(return_value=conn)
+    acquire_ctx.__aexit__ = AsyncMock(return_value=None)
+
+    pool = MagicMock()
+    pool.acquire = MagicMock(return_value=acquire_ctx)
+    return pool, captured
 
 
 def _make_broken_pool() -> MagicMock:
@@ -753,3 +782,195 @@ def _assert_envelope(body: dict[str, Any], topic: str) -> None:
     assert "row_count" in body
     assert "rows" in body
     assert isinstance(body["rows"], list)
+
+
+# ---------------------------------------------------------------------------
+# OMN-12999: generic limit / order query params on /projection/{topic}
+# ---------------------------------------------------------------------------
+
+
+class TestResolveEffectiveLimit:
+    def test_none_request_uses_contract_limit(self) -> None:
+        assert resolve_effective_limit(None, 500) == 500
+
+    def test_smaller_request_is_honoured(self) -> None:
+        assert resolve_effective_limit(25, 500) == 25
+
+    def test_request_above_ceiling_is_clamped(self) -> None:
+        assert resolve_effective_limit(10_000, 500) == 500
+
+    def test_non_positive_request_falls_back_to_contract_limit(self) -> None:
+        assert resolve_effective_limit(0, 500) == 500
+        assert resolve_effective_limit(-5, 500) == 500
+
+
+class TestResolveOrderClause:
+    def test_no_order_by_yields_empty_clause(self) -> None:
+        assert resolve_order_clause(None, None) == ""
+        # order param is ignored when the contract declares no orderable column.
+        assert resolve_order_clause(None, "asc") == ""
+
+    def test_default_direction_from_contract(self) -> None:
+        assert resolve_order_clause("created_at DESC", None) == (
+            " ORDER BY created_at DESC"
+        )
+
+    def test_caller_can_flip_to_asc(self) -> None:
+        assert resolve_order_clause("created_at DESC", "asc") == (
+            " ORDER BY created_at ASC"
+        )
+
+    def test_caller_can_flip_to_desc(self) -> None:
+        assert resolve_order_clause("created_at ASC", "DESC") == (
+            " ORDER BY created_at DESC"
+        )
+
+    def test_column_only_contract_defaults_to_asc(self) -> None:
+        assert resolve_order_clause("updated_at", None) == " ORDER BY updated_at ASC"
+
+    def test_caller_cannot_inject_arbitrary_column(self) -> None:
+        # The clause column is ALWAYS the contract column; the order param only
+        # toggles direction. An injection attempt via order is rejected by the
+        # route's regex pattern, but the helper itself never reads a column from
+        # `order`.
+        clause = resolve_order_clause("created_at DESC", "created_at; DROP TABLE x")
+        assert clause == " ORDER BY created_at DESC"
+
+
+class TestProjectionQueryLimitOrderParams:
+    """Route-level behaviour: limit/order forwarded into the emitted SQL."""
+
+    _TOPIC = "onex.snapshot.projection.ab-compare.v1"  # contract limit 100
+
+    def _row(self) -> dict[str, Any]:
+        return {
+            "correlation_id": "run-abc",
+            "model_id": "qwen3-coder-30b",
+            "prompt_tokens": 1,
+            "completion_tokens": 2,
+            "total_tokens": 3,
+            "estimated_cost_usd": "0.001",
+            "latency_ms": "10.0",
+            "usage_source": "actual",
+            "created_at": _ts(timedelta(minutes=1)),
+        }
+
+    def test_default_limit_is_contract_limit(self) -> None:
+        pool, captured = _make_capturing_pool([self._row()])
+        with _with_pool(pool) as client:
+            resp = client.get(f"/projection/{self._TOPIC}")
+        assert resp.status_code == 200
+        assert resp.json()["row_limit"] == 100
+        assert "LIMIT 100" in captured[0]
+
+    def test_requested_limit_is_applied(self) -> None:
+        pool, captured = _make_capturing_pool([self._row()])
+        with _with_pool(pool) as client:
+            resp = client.get(f"/projection/{self._TOPIC}?limit=5")
+        assert resp.status_code == 200
+        assert resp.json()["row_limit"] == 5
+        assert "LIMIT 5" in captured[0]
+
+    def test_requested_limit_above_ceiling_is_clamped(self) -> None:
+        pool, captured = _make_capturing_pool([self._row()])
+        with _with_pool(pool) as client:
+            resp = client.get(f"/projection/{self._TOPIC}?limit=99999")
+        assert resp.status_code == 200
+        assert resp.json()["row_limit"] == 100
+        assert "LIMIT 100" in captured[0]
+
+    def test_order_default_is_contract_direction(self) -> None:
+        pool, captured = _make_capturing_pool([self._row()])
+        with _with_pool(pool) as client:
+            resp = client.get(f"/projection/{self._TOPIC}")
+        assert resp.status_code == 200
+        assert "ORDER BY created_at DESC" in captured[0]
+        assert resp.json()["ordering"] == "created_at DESC"
+
+    def test_order_asc_toggles_direction(self) -> None:
+        pool, captured = _make_capturing_pool([self._row()])
+        with _with_pool(pool) as client:
+            resp = client.get(f"/projection/{self._TOPIC}?order=asc")
+        assert resp.status_code == 200
+        assert "ORDER BY created_at ASC" in captured[0]
+        assert resp.json()["ordering"] == "created_at ASC"
+
+    def test_invalid_order_value_rejected_with_422(self) -> None:
+        pool, _captured = _make_capturing_pool([self._row()])
+        with _with_pool(pool) as client:
+            resp = client.get(f"/projection/{self._TOPIC}?order=sideways")
+        assert resp.status_code == 422
+
+    def test_zero_limit_rejected_with_422(self) -> None:
+        pool, _captured = _make_capturing_pool([self._row()])
+        with _with_pool(pool) as client:
+            resp = client.get(f"/projection/{self._TOPIC}?limit=0")
+        assert resp.status_code == 422
+
+    def test_limit_applies_on_correlation_filtered_path(self) -> None:
+        pool, captured = _make_capturing_pool([self._row()])
+        with _with_pool(pool) as client:
+            resp = client.get(
+                f"/projection/{self._TOPIC}?correlation_id=run-abc&limit=3"
+            )
+        assert resp.status_code == 200
+        assert "WHERE correlation_id = $1" in captured[0]
+        assert "LIMIT 3" in captured[0]
+
+
+# ---------------------------------------------------------------------------
+# POST /api/generate — thin publisher route (OMN-13004)
+# ---------------------------------------------------------------------------
+
+
+class TestGenerateRoute:
+    def test_generate_publishes_and_returns_correlation_id(self, monkeypatch) -> None:
+        import omnimarket.projection.api_server as api
+        from omnimarket.projection.generation_publisher import (
+            NODE_GENERATION_REQUESTED_TOPIC,
+            ModelGenerateRequest,
+            ModelGenerateResponse,
+        )
+
+        seen: dict[str, Any] = {}
+
+        async def _fake_publish(
+            request: ModelGenerateRequest,
+        ) -> ModelGenerateResponse:
+            seen["task_description"] = request.task_description
+            return ModelGenerateResponse(
+                correlation_id="ui-20260611T120000Z-abcd1234",
+                topic=NODE_GENERATION_REQUESTED_TOPIC,
+            )
+
+        monkeypatch.setattr(api, "publish_generation_request", _fake_publish)
+
+        client = TestClient(app, raise_server_exceptions=True)
+        resp = client.post(
+            "/api/generate",
+            json={"task_description": "Generate a node that adds two ints"},
+        )
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["correlation_id"] == "ui-20260611T120000Z-abcd1234"
+        assert body["topic"] == NODE_GENERATION_REQUESTED_TOPIC
+        assert seen["task_description"] == "Generate a node that adds two ints"
+
+    def test_generate_rejects_empty_task_description(self) -> None:
+        client = TestClient(app, raise_server_exceptions=True)
+        resp = client.post("/api/generate", json={"task_description": ""})
+        assert resp.status_code == 422
+
+    def test_generate_returns_503_when_broker_unconfigured(self, monkeypatch) -> None:
+        import omnimarket.projection.api_server as api
+        from omnimarket.projection.generation_publisher import ModelGenerateRequest
+
+        async def _raise(request: ModelGenerateRequest) -> None:
+            raise RuntimeError("KAFKA_BOOTSTRAP_SERVERS is required")
+
+        monkeypatch.setattr(api, "publish_generation_request", _raise)
+
+        client = TestClient(app, raise_server_exceptions=True)
+        resp = client.post("/api/generate", json={"task_description": "x"})
+        assert resp.status_code == 503
+        assert "KAFKA_BOOTSTRAP_SERVERS" in resp.json()["detail"]

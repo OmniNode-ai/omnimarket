@@ -50,9 +50,11 @@ def test_cli_default_profile_prints_joined_projection_table(
     assert "glm-4.5" in result.output
     assert "$   0.000084" in result.output
     assert "delegation_events:1" in result.output
-    assert "llm_cost_aggregates:1" in result.output
+    assert "llm_call_metrics:1" in result.output
     assert "savings_estimates:1" in result.output
-    assert "usage_source=measured" in result.output
+    # OMN-13001: usage_source is now persisted in the DB enum's vocabulary
+    # (MEASURED -> API) by the per-call llm_call_metrics writer.
+    assert "usage_source=API" in result.output
 
 
 @pytest.mark.unit
@@ -67,7 +69,7 @@ def test_cli_json_output_contains_projected_rows_and_join(
     assert "ticket-classification task" in payload["task_text"]
     assert payload["profile"]["local_model_id"] == "qwen3-coder-30b"
     assert payload["rows"]["delegation_events"]["delegated_to"] == "local-qwen"
-    assert payload["rows"]["llm_cost_aggregates"]["model_name"] == "qwen3-coder-30b"
+    assert payload["rows"]["llm_call_metrics"]["model_id"] == "qwen3-coder-30b"
     assert payload["rows"]["savings_estimates"]["model_cloud_baseline"] == "glm-4.5"
     assert payload["joined"]["correlation_id"] == "demo-2026-05-03-cost-routing-001"
     assert payload["joined"]["tokens"] == 123
@@ -76,7 +78,7 @@ def test_cli_json_output_contains_projected_rows_and_join(
     assert payload["joined"]["savings_usd"] == "0.000084"
     assert payload["joined"]["tables"] == {
         "delegation_events": 1,
-        "llm_cost_aggregates": 1,
+        "llm_call_metrics": 1,
         "savings_estimates": 1,
     }
 
@@ -182,4 +184,5 @@ profiles:
     payload = json.loads(result.output)
     assert payload["profile"]["local_delegate"] == "tiny-delegate"
     assert payload["profile"]["local_model_id"] == "phi4-mini"
-    assert payload["joined"]["usage_source"] == "measured"
+    # OMN-13001: persisted usage_source is the DB enum value (MEASURED -> API).
+    assert payload["joined"]["usage_source"] == "API"

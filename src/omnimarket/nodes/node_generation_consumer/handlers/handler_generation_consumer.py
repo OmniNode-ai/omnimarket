@@ -43,6 +43,9 @@ from omnimarket.adapters.llm.bifrost.config_loader_bifrost_delegation import (
     load_bifrost_delegation_config,
 )
 from omnimarket.enums.enum_usage_source import EnumUsageSource
+from omnimarket.inference.delegation_config_provenance import (
+    resolve_optional_path_config,
+)
 from omnimarket.inference.protocol_config import apply_inference_protocol
 from omnimarket.inference.secret_store_resolver import resolve_api_key_async
 from omnimarket.models.delegation.llm_cost_routing.model_generation_escalation_event import (
@@ -288,16 +291,15 @@ def _resolve_bifrost_backend(endpoint_ref: str) -> _ResolvedBackend | None:
     The reference name is carried through on ``api_key_ref`` so the effect
     boundary can resolve and fail closed when the secret is absent.
     """
-    contract_path = os.environ.get(  # contract-config-ok: config  # ONEX_EXCLUDE: contract path override
-        "BIFROST_CONTRACT_PATH", ""
-    )
-    overlay_path = os.environ.get(  # contract-config-ok: config  # ONEX_EXCLUDE: contract path override
-        "BIFROST_OVERLAY_PATH", ""
-    )
+    # Resolve the bifrost contract/overlay paths through the delegation-path
+    # provenance surface (OMN-12967) so this consumer's cold-runtime resolution
+    # order is auditable from the logs, identical to the routing reducer.
+    contract_override, _ = resolve_optional_path_config("BIFROST_CONTRACT_PATH")
+    overlay_override, _ = resolve_optional_path_config("BIFROST_OVERLAY_PATH")
 
     config = load_bifrost_delegation_config(
-        config_path=Path(contract_path) if contract_path else None,
-        overlay_path=Path(overlay_path) if overlay_path else None,
+        config_path=contract_override,
+        overlay_path=overlay_override,
     )
 
     for backend in config.backends:
@@ -461,6 +463,60 @@ def _calculate_cost(provider: str, input_tokens: int, output_tokens: int) -> flo
     )
 
 
+def _map_response_usage_source(response_usage: Any) -> EnumUsageSource:
+    """Map an LLM inference response's usage provenance to EnumUsageSource.
+
+    The infra inference effect (HandlerLlmOpenaiCompatible) already computes the
+    provenance on ``response.usage.usage_source`` — ``API`` when the provider
+    returned a usage block, ``ESTIMATED`` when derived locally, ``MISSING`` when
+    absent (see node_llm_inference_effect ``_parse_usage``). It is carried as a
+    ``ContractEnumUsageSource`` (or a string when a test fake supplies one).
+
+    This is the only place the generation path classifies usage provenance: an
+    absent usage object (``response.usage is None``) is UNKNOWN — token counts on
+    that path are zero and unattributed, so the row must never claim MEASURED.
+
+    Returns:
+        MEASURED for provider-reported usage (``api``), ESTIMATED for locally
+        derived usage, UNKNOWN otherwise (including an absent usage block).
+    """
+    if response_usage is None:
+        return EnumUsageSource.UNKNOWN
+    raw = getattr(response_usage, "usage_source", None)
+    if raw is None:
+        return EnumUsageSource.UNKNOWN
+    # ContractEnumUsageSource / EnumUsageSource are StrEnums; a test fake may set
+    # a bare string. Normalise via the StrEnum value so "api" -> MEASURED.
+    value = str(getattr(raw, "value", raw)).lower()
+    if value in ("api", "measured"):
+        return EnumUsageSource.MEASURED
+    if value == "estimated":
+        return EnumUsageSource.ESTIMATED
+    return EnumUsageSource.UNKNOWN
+
+
+def _aggregate_usage_source(
+    attempts: list[ModelGenerationAttempt],
+) -> EnumUsageSource:
+    """Aggregate per-attempt usage provenance into a single honest verdict.
+
+    Provenance is taken at its strongest honest level across attempts:
+      * MEASURED  — at least one attempt carried provider-reported usage.
+      * ESTIMATED — no MEASURED attempt, but at least one locally-estimated.
+      * UNKNOWN   — no attempt carried any usage data (the hollow-row case).
+
+    MEASURED is never synthesised: it only appears when an attempt's response
+    actually reported usage. This keeps the emitted ab-compare.v1 / llm_call_metrics
+    rows honest rather than uniformly claiming ESTIMATED.
+    """
+    sources = {a.usage_source for a in attempts}
+    if EnumUsageSource.MEASURED in sources:
+        return EnumUsageSource.MEASURED
+    if EnumUsageSource.ESTIMATED in sources:
+        return EnumUsageSource.ESTIMATED
+    return EnumUsageSource.UNKNOWN
+
+
 class HandlerGenerationConsumer:
     """Generates ONEX nodes from natural language via LLM, validates, emits benchmark.
 
@@ -599,8 +655,8 @@ class HandlerGenerationConsumer:
         attempt: int,
         previous_errors: list[str] | None = None,
         context_pack: str = "",
-    ) -> tuple[str, int, int]:
-        """Call LLM; return (raw_output, input_tokens, output_tokens).
+    ) -> tuple[str, int, int, EnumUsageSource]:
+        """Call LLM; return (raw_output, input_tokens, output_tokens, usage_source).
 
         When a test fake was injected at construction time, we skip building
         a ModelLlmInferenceRequest (which validates base_url is non-empty) and
@@ -701,7 +757,12 @@ class HandlerGenerationConsumer:
         raw = response.generated_text or ""
         input_tokens = response.usage.tokens_input if response.usage else 0
         output_tokens = response.usage.tokens_output if response.usage else 0
-        return raw, input_tokens, output_tokens
+        # OMN-12996: propagate the provider-reported usage provenance the infra
+        # inference effect already computed (response.usage.usage_source). The
+        # exp0/generation path previously dropped it and the benchmark hardcoded
+        # ESTIMATED, hollowing the ab-compare.v1 / llm_call_metrics cost columns.
+        usage_source = _map_response_usage_source(response.usage)
+        return raw, input_tokens, output_tokens, usage_source
 
     async def handle(
         self, command: ModelNodeGenerationRequest
@@ -734,7 +795,12 @@ class HandlerGenerationConsumer:
         for attempt_num in range(1, command.max_attempts + 1):
             start = time.time()
             try:
-                raw_output, input_tokens, output_tokens = await self._call_llm(
+                (
+                    raw_output,
+                    input_tokens,
+                    output_tokens,
+                    attempt_usage_source,
+                ) = await self._call_llm(
                     command.task_description,
                     attempt_num,
                     previous_errors=previous_errors,
@@ -749,6 +815,9 @@ class HandlerGenerationConsumer:
                 raw_output = ""
                 input_tokens = 0
                 output_tokens = 0
+                # A failed call produced no provider usage block — provenance is
+                # UNKNOWN, never silently ESTIMATED.
+                attempt_usage_source = EnumUsageSource.UNKNOWN
 
             latency_ms = int((time.time() - start) * 1000)
             contract_yaml, handler_source = _extract_blocks(raw_output)
@@ -765,6 +834,7 @@ class HandlerGenerationConsumer:
                     latency_inference_ms=latency_ms,
                     contract_passed=validation["valid"],
                     validation_errors=validation["errors"],
+                    usage_source=attempt_usage_source,
                 )
             )
 
@@ -792,6 +862,9 @@ class HandlerGenerationConsumer:
         total_input = sum(a.token_usage_input for a in attempts)
         total_output = sum(a.token_usage_output for a in attempts)
         cost_usd = _calculate_cost(provider, total_input, total_output)
+        # OMN-12996: honest run-level provenance aggregated from the attempts'
+        # provider-reported usage_source — never the old hardcoded ESTIMATED.
+        usage_source = _aggregate_usage_source(attempts)
 
         # P2-1 (OMN-12794): derive first_pass_success from attempt records,
         # not from a secondary flag — single source of truth.
@@ -803,7 +876,7 @@ class HandlerGenerationConsumer:
             provider=provider,
             model_id=model_id,
             endpoint_class=endpoint_class,
-            usage_source=EnumUsageSource.ESTIMATED,
+            usage_source=usage_source,
             cost_basis="gemini_flash" if provider != "local" else "local_free",
             attempts=attempts,
             attempt_count=len(attempts),

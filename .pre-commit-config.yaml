@@ -101,13 +101,20 @@ repos:
       # (declared profile not in canonical REGISTERED_RUNTIME_PROFILES) +
       # runtime_profile_no_consumer_lane (subscribing REDUCER/EFFECT names no
       # consumer-attached profile). Pre-existing violators are frozen in
-      # validation/runtime_profiles_allowlist.yaml (discovered by repo-root walk;
-      # drain tracked by OMN-12982). Blocks NEW orphans. Requires the omnibase_core
-      # pin to include OMN-12957's validator (new rules).
+      # validation/runtime_profiles_allowlist.yaml (drain tracked by OMN-12982).
+      # Blocks NEW orphans. Requires the omnibase_core pin to include OMN-12957's
+      # validator (new rules).
+      #
+      # OMN-12955: invoke via scripts/ci/run_runtime_profiles_validator.py so the
+      # repo-local allowlist (validation/runtime_profiles_allowlist.yaml) is loaded
+      # the SAME way as the required CI gate (validator-runtime-profiles.yml). The
+      # bare module entry resolves its allowlist from the omnibase_core *package*
+      # dir, not this repo, so it spuriously flagged every frozen contract locally
+      # while CI passed.
       - id: onex-validate-runtime-profiles
         name: Validate runtime_profiles on node contracts (OMN-12957)
         language: system
-        entry: uv run python -m omnibase_core.validation.validator_runtime_profiles src/
+        entry: uv run python scripts/ci/run_runtime_profiles_validator.py
         files: ^src/omnimarket/nodes/node_.*/contract\.yaml$
         pass_filenames: false
         stages: [pre-commit]
@@ -158,6 +165,34 @@ repos:
         language: system
         entry: uv run python scripts/ci/check_migration_base_before_view.py
         files: ^(src/omnimarket/nodes/.*/migrations/.*\.sql|scripts/ci/check_migration_base_before_view\.py)$
+        pass_filenames: false
+        stages: [pre-commit]
+
+      # OMN-12971: backend secret-ref / credential-ref discipline gate. Fails if a
+      # literal credential value (PEM key, service-account JSON, bearer/api-key)
+      # lands in routing-authority config, or if an authenticated cloud backend
+      # lacks a logical secret/credential ref. Keeps the Vertex ADC path (and all
+      # cloud backends) value-free in committed config.
+      # SYNC with ci.yml step "Backend secret-discipline gate (enforce)".
+      - id: backend-secret-discipline-gate
+        name: Backend secret-discipline gate
+        language: system
+        entry: uv run python scripts/ci/check_backend_secret_discipline.py
+        files: ^(src/omnimarket/configs/bifrost_delegation\.yaml|src/omnimarket/configs/routing_tiers\.yaml|src/omnimarket/data/model_registry/model_registry_v1\.yaml|scripts/ci/check_backend_secret_discipline\.py)
+        pass_filenames: false
+        stages: [pre-commit]
+
+      # OMN-12972 (plan P2.7): Gemini registry/version hygiene gate. Enforces
+      # that every provider:google registry entry + its bifrost backend align
+      # with the live Vertex-served model name PER ENVIRONMENT (Vertex names are
+      # publisher-qualified; AI Studio names are bare) and that no entry carries a
+      # retired/404 model id (the gemini-2.0-flash-on-Vertex failure).
+      # SYNC with ci.yml step "Gemini registry/version hygiene gate (enforce)".
+      - id: gemini-registry-version-hygiene
+        name: Gemini registry/version hygiene gate
+        language: system
+        entry: uv run python scripts/ci/check_model_registry_served_names.py
+        files: ^(src/omnimarket/data/model_registry/model_registry_v1\.yaml|src/omnimarket/configs/bifrost_delegation\.yaml|scripts/ci/check_model_registry_served_names\.py)
         pass_filenames: false
         stages: [pre-commit]
 
