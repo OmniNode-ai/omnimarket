@@ -113,12 +113,16 @@ def _blocking_consumer(
 
 class _FakeTerminalSession:
     def __init__(self) -> None:
+        self.calls: list[str] = []
         self.closed = False
 
     def wait(self, correlation_id: str, timeout_seconds: float) -> dict[str, Any]:
+        assert self.closed is False, "session closed before wait()"
+        self.calls.append("wait")
         return {**_VALID_EVENT, "correlation_id": correlation_id}
 
     def close(self) -> None:
+        self.calls.append("close")
         self.closed = True
 
 
@@ -243,4 +247,5 @@ def test_two_phase_terminal_session_closes_after_wait() -> None:
     result = handler.handle(_make_request())
 
     assert result.failed_trials == 0
+    assert consumer.session.calls == ["wait", "close"]
     assert consumer.session.closed is True
