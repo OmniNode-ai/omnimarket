@@ -1,12 +1,15 @@
 # SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""Unit tests for node_projection_llm_cost consumer.
+"""Unit tests for the llm_call_metrics row builder + backfill entrypoint.
+
+OMN-13001: the per-call row logic moved out of the retired standalone consumer
+into the shared row builder (row_llm_call_metrics) used by both the runtime
+writer (handler_llm_cost) and the backfill entrypoint (backfill_llm_call_metrics).
 
 Tests cover:
-- Schema validation (_validate_event)
-- Row building (_build_row) — all columns including new ones
+- Projectability check (event_has_projectable_fields)
+- Row building (build_llm_call_metrics_row) — all columns
 - Idempotent insert logic (ON CONFLICT (input_hash) DO NOTHING via mock DB)
-- Malformed event handling (parse errors, missing fields)
 - Envelope unwrapping integration
 - usage_source mapping (MEASURED → API, UNKNOWN → MISSING)
 - input_hash determinism via sha256 formula
@@ -23,14 +26,20 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from omnimarket.nodes.node_projection_llm_cost.consumer import (
-    CONSUMER_GROUP,
+from omnimarket.nodes.node_projection_llm_cost.backfill_llm_call_metrics import (
+    DEFAULT_BACKFILL_GROUP,
     SUBSCRIBE_TOPIC,
-    TABLE,
-    _build_row,
-    _compute_input_hash,
     _insert_row,
-    _validate_event,
+)
+from omnimarket.nodes.node_projection_llm_cost.handlers.handler_llm_cost import TABLE
+from omnimarket.nodes.node_projection_llm_cost.handlers.row_llm_call_metrics import (
+    _compute_input_hash,
+)
+from omnimarket.nodes.node_projection_llm_cost.handlers.row_llm_call_metrics import (
+    build_llm_call_metrics_row as _build_row,
+)
+from omnimarket.nodes.node_projection_llm_cost.handlers.row_llm_call_metrics import (
+    event_has_projectable_fields as _validate_event,
 )
 
 # ---------------------------------------------------------------------------
@@ -472,8 +481,10 @@ class TestConstants:
     def test_subscribe_topic_matches_contract(self) -> None:
         assert SUBSCRIBE_TOPIC == "onex.evt.omniintelligence.llm-call-completed.v1"
 
-    def test_consumer_group_format(self) -> None:
-        assert CONSUMER_GROUP == "local.omnimarket.projection-llm-cost.consume.v1"
+    def test_backfill_group_format(self) -> None:
+        assert (
+            DEFAULT_BACKFILL_GROUP == "local.omnimarket.projection-llm-cost.backfill.v1"
+        )
 
     def test_table_name(self) -> None:
         assert TABLE == "llm_call_metrics"

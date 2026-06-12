@@ -1,26 +1,25 @@
-"""HandlerProjectionLlmCost — project LLM call events to cost aggregates.
+"""HandlerProjectionLlmCost — project LLM call events into llm_call_metrics.
 
-Consumes onex.evt.omniintelligence.llm-call-completed.v1 and UPSERTs into
-the llm_cost_aggregates table. SOW WARN blocker — cost data must flow.
+Consumes onex.evt.omniintelligence.llm-call-completed.v1 and writes a per-call
+row into the ``llm_call_metrics`` table (the dashboard read model). SOW WARN
+blocker — cost data must flow.
 
-Target table schema (from omnidash migration 0003):
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid()
-  bucket_time TIMESTAMPTZ NOT NULL
-  granularity TEXT NOT NULL (hour | day)
-  model_name TEXT NOT NULL
-  session_id TEXT
-  total_tokens INT DEFAULT 0
-  prompt_tokens INT DEFAULT 0
-  completion_tokens INT DEFAULT 0
-  estimated_cost_usd NUMERIC(12,10) DEFAULT 0
-  call_count INT DEFAULT 1
-  usage_source TEXT DEFAULT 'measured'
-  ingested_at TIMESTAMPTZ DEFAULT NOW()
+OMN-13001: this handler previously wrote ``llm_cost_aggregates`` with a drifted
+column set that no longer matched the deployed table, so it landed nothing. It
+now writes ``llm_call_metrics`` through the shared per-call row builder
+(row_llm_call_metrics.build_llm_call_metrics_row) — the same single write
+authority the deployed runtime writer (handler_llm_cost.LlmCostProjectionRunner)
+and the backfill entrypoint use. The aggregate read model is owned by
+node_projection_cost_summary, not this node.
+
+This sync ``project()`` path is the in-process/RuntimeLocal shim (used by the
+golden-chain test and cli_delegation_cost_demo). The deployed Kafka writer is
+handler_llm_cost.LlmCostProjectionRunner. Both write the same column set
+(asserted by the schema-parity ratchet).
 """
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -28,10 +27,13 @@ import yaml
 from pydantic import AliasChoices, BaseModel, ConfigDict, Field
 
 from omnimarket.enums.enum_usage_source import EnumUsageSource
+from omnimarket.nodes.node_projection_llm_cost.handlers.row_llm_call_metrics import (
+    build_llm_call_metrics_row,
+)
 from omnimarket.projection.protocol_database import DatabaseAdapter
 
-TABLE = "llm_cost_aggregates"
-CONFLICT_KEY = "id"
+TABLE = "llm_call_metrics"
+CONFLICT_KEY = "input_hash"
 
 TOPIC_LLM_CALL_COMPLETED: str = "onex.evt.omniintelligence.llm-call-completed.v1"  # onex-topic-allow: pending contract auto-wiring
 
@@ -86,7 +88,7 @@ class ModelProjectionResult(BaseModel):
 
 
 class HandlerProjectionLlmCost:
-    """Project LLM call completed events into llm_cost_aggregates."""
+    """Project LLM call completed events into llm_call_metrics (per-call read model)."""
 
     def __init__(self, pricing_manifest_path: str | Path | None = None) -> None:
         self._pricing_manifest_path = (
@@ -111,33 +113,18 @@ class HandlerProjectionLlmCost:
         event: ModelLlmCallCompletedEvent,
         db: DatabaseAdapter,
     ) -> ModelProjectionResult:
-        """UPSERT a single LLM cost event as an hourly aggregate row."""
-        now = datetime.now(tz=UTC)
-        event_time = event.timestamp or now.isoformat()
-        call_id = event.call_id or f"{event.model_name}:{event.session_id}:{event_time}"
-        compute_cost_usd = self._compute_cost_usd(event)
+        """Write a single LLM call event as a per-call llm_call_metrics row.
 
-        row: dict[str, object] = {
-            "id": call_id,
-            "bucket_time": event_time,
-            "granularity": "hour",
-            "model_name": event.model_name,
-            "session_id": event.session_id,
-            "total_tokens": event.total_tokens,
-            "prompt_tokens": event.prompt_tokens,
-            "completion_tokens": event.completion_tokens,
-            "estimated_cost_usd": event.estimated_cost_usd,
-            "compute_cost_usd": compute_cost_usd,
-            "total_cost_usd": round(event.estimated_cost_usd + compute_cost_usd, 10),
-            "call_count": 1,
-            "usage_source": event.usage_source.value,
-            "compute_usage_source": (
-                event.compute_usage_source.value
-                if event.compute_usage_source is not None
-                else None
-            ),
-            "ingested_at": now.isoformat(),
-        }
+        Cost folds compute cost (GPU electricity + amortization, from the pricing
+        manifest) into the persisted ``estimated_cost_usd`` so locally-served
+        model calls carry an honest dollar figure rather than 0.
+        """
+        compute_cost_usd = self._compute_cost_usd(event)
+        event_payload: dict[str, Any] = event.model_dump(mode="json")
+        event_payload["estimated_cost_usd"] = round(
+            event.estimated_cost_usd + compute_cost_usd, 10
+        )
+        row = build_llm_call_metrics_row(event_payload)
         ok = db.upsert(TABLE, CONFLICT_KEY, row)
         return ModelProjectionResult(rows_upserted=1 if ok else 0)
 
@@ -146,7 +133,7 @@ class HandlerProjectionLlmCost:
         events: list[ModelLlmCallCompletedEvent],
         db: DatabaseAdapter,
     ) -> ModelProjectionResult:
-        """UPSERT a batch of LLM cost events."""
+        """Write a batch of LLM cost events."""
         count = 0
         for event in events:
             result = self.project(event, db)
@@ -227,6 +214,7 @@ def _default_pricing_manifest_path() -> Path | None:
 
 
 __all__: list[str] = [
+    "TOPIC_LLM_CALL_COMPLETED",
     "HandlerProjectionLlmCost",
     "ModelLlmCallCompletedEvent",
     "ModelProjectionResult",
