@@ -131,6 +131,19 @@ jobs:
       # hardcoded watchdog topic string outside the registry.
       - name: Watchdog-topic authority gate
         run: uv run python scripts/ci/check_watchdog_topic_authority.py
+      # OMN-13026: Transport-mock lint. Bare AsyncMock/MagicMock without
+      # spec=/spec_set= on EventBus/transport/kafka surfaces. Ratchet: existing
+      # violations frozen in validation/transport_mock_baseline.yaml. New
+      # violations in any PR are blocked. Drain tracked by per-site tickets.
+      # SYNC with pre-commit hook 'transport-mock-lint'.
+      # Invoked via PYTHONPATH so it uses the sibling clone (already cloned
+      # earlier in this job) rather than the uv-locked pin.
+      - name: Transport-mock lint (OMN-13026)
+        run: |
+          PYTHONPATH=../omnibase_core/src python \
+            -m omnibase_core.validators.transport_mock_lint \
+            --baseline validation/transport_mock_baseline.yaml \
+            tests/
       - name: Golden-chain coverage gate
         env:
           PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
