@@ -461,9 +461,12 @@ class HandlerContextRoiRunner:
 
         # --- Step 3: consume terminal generation event (block AFTER publish) ---
         if session is not None:
-            event_payload = session.wait(
-                correlation_id, request.generation_timeout_seconds
-            )
+            try:
+                event_payload = session.wait(
+                    correlation_id, request.generation_timeout_seconds
+                )
+            finally:
+                session.close()
         else:
             event_payload = self._consumer(
                 self._gen_terminal_topic,

@@ -111,6 +111,30 @@ def _blocking_consumer(
     return _consume
 
 
+class _FakeTerminalSession:
+    def __init__(self) -> None:
+        self.closed = False
+
+    def wait(self, correlation_id: str, timeout_seconds: float) -> dict[str, Any]:
+        return {**_VALID_EVENT, "correlation_id": correlation_id}
+
+    def close(self) -> None:
+        self.closed = True
+
+
+class _FakeTwoPhaseConsumer:
+    def __init__(self) -> None:
+        self.session = _FakeTerminalSession()
+
+    def open(self, terminal_topic: str) -> _FakeTerminalSession:
+        return self.session
+
+    def __call__(
+        self, terminal_topic: str, correlation_id: str, timeout_seconds: float
+    ) -> dict[str, Any] | None:
+        raise AssertionError("two-phase consumer should use open().wait()")
+
+
 def _make_handler(
     consumer: Callable[[str, str, float], dict[str, Any] | None],
 ) -> HandlerContextRoiRunner:
@@ -209,3 +233,14 @@ async def test_handle_async_result_matches_sync_handle() -> None:
     assert async_result.rows[0].attempt_count == sync_result.rows[0].attempt_count
     assert async_result.rows[0].model_id == sync_result.rows[0].model_id
     assert async_result.rows[0].failure_stage == sync_result.rows[0].failure_stage
+
+
+def test_two_phase_terminal_session_closes_after_wait() -> None:
+    """The subscribe-before-publish session must close after the terminal wait."""
+    consumer = _FakeTwoPhaseConsumer()
+    handler = _make_handler(consumer)
+
+    result = handler.handle(_make_request())
+
+    assert result.failed_trials == 0
+    assert consumer.session.closed is True
