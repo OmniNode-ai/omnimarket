@@ -49,11 +49,17 @@ _COMMITTED_BIFROST = (
 _GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
 _GLM_URL = "https://api.z.ai/api/coding/paas/v4/chat/completions"
 _OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
+# OMN-12939: Anthropic OpenAI-compatibility endpoint. The frontier (claude) tier
+# was orphaned with empty endpoint_url + no secret_ref when OMN-12815 moved cloud
+# backends to complete-verbatim URLs; restored here so escalation can resolve it.
+_ANTHROPIC_URL = "https://api.anthropic.com/v1/chat/completions"
 
 _CLOUD_BACKENDS: dict[str, tuple[str, str]] = {
     # backend_id -> (expected endpoint_url, expected logical secret reference)
     "cloud-glm": (_GLM_URL, "llm.glm.api_key"),
     "cloud-gemini-flash": (_GEMINI_URL, "llm.gemini.api_key"),
+    "cloud-sonnet": (_ANTHROPIC_URL, "llm.anthropic.api_key"),
+    "cloud-haiku": (_ANTHROPIC_URL, "llm.anthropic.api_key"),
     "openrouter-glm-flash": (_OPENROUTER_URL, "llm.openrouter.api_key"),
     "openrouter-qwen3-coder-480b": (_OPENROUTER_URL, "llm.openrouter.api_key"),
 }
