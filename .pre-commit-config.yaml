@@ -146,12 +146,24 @@ repos:
       # resolves provider/model/endpoint_ref/endpoint/route_source from authority
       # and that no demo-path source reads env for endpoint/provider/model,
       # hardcodes a provider literal, or reads a fallback endpoint string.
+      # Extended in OMN-12877 (M7.2) to add residue audit over confirmed env-var
+      # residue files (bridge_config_loader, cli_ab_compare_suite, model_policy).
+      # Extended in OMN-12883 (M7.2) to add provider-class endpoint URL shape
+      # audit over bifrost_delegation.yaml.
       # SYNC with ci.yml step "Routing-authority demo gate (enforce)".
       - id: routing-authority-demo-gate
         name: Routing-authority demo gate
         language: system
         entry: uv run python scripts/ci/check_routing_authority.py
-        files: ^(src/omnimarket/nodes/node_generation_consumer/|src/omnimarket/nodes/node_llm_delegation_call_effect/|src/omnimarket/adapters/llm/bifrost/|src/omnimarket/configs/bifrost_delegation\.yaml|scripts/ci/check_routing_authority\.py)
+        files: >-
+          ^(src/omnimarket/nodes/node_generation_consumer/|
+          src/omnimarket/nodes/node_llm_delegation_call_effect/|
+          src/omnimarket/adapters/llm/bifrost/|
+          src/omnimarket/configs/bifrost_delegation\.yaml|
+          src/omnimarket/inference/bridge_config_loader\.py|
+          src/omnimarket/cli/cli_ab_compare_suite\.py|
+          src/omnimarket/model_policy\.yaml|
+          scripts/ci/check_routing_authority\.py)
         pass_filenames: false
         stages: [pre-commit]
 

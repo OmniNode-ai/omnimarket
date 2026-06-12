@@ -2,11 +2,14 @@
 # SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
 
-"""Routing-authority verification gate for the demo path (OMN-12821, plan A1.5).
+"""Routing-authority verification gate (OMN-12821, OMN-12877, OMN-12883).
 
-This is a DEMO GATE, not a build. It proves two things about the exact demo
-path (node generation + delegation inference) and emits a structured evidence
-packet:
+Extended in OMN-12877 (M7.2) to add a RESIDUE AUDIT over four confirmed env-var
+residue files, and in OMN-12883 (M7.2) to add a PROVIDER-CLASS ENDPOINT SHAPE
+audit over the bifrost delegation config.
+
+This gate proves three things about the routing authority and emits a structured
+evidence packet:
 
 POSITIVE route-source proof
     For each demo-path entry, ``provider``, ``model`` (served_model_id),
@@ -19,10 +22,55 @@ NEGATIVE audit
     code reads env vars for endpoint/provider/model, no hardcoded provider
     literals, and no fallback endpoint strings after route resolution.
 
+RESIDUE audit (OMN-12877)
+    Scope-extended ratchet over confirmed residue files that carry known
+    env-authority debt. For each file, the gate enforces that the violation
+    count never INCREASES beyond the baselined value (the existing debt is
+    itemised with ticket refs but not retroactively fixed in this PR). Any NEW
+    env-authority violation in these files — i.e. a violation count above the
+    baseline — fails the gate.
+
+    Confirmed residue files and their violation baselines:
+      src/omnimarket/inference/bridge_config_loader.py
+          Baseline: 2 env reads (os.environ.get(url_env) + os.environ.get(model_env)
+          inside the _MODEL_KEY_REGISTRY loop — bootstrap config loader).
+          Debt ticket: OMN-12877 (migrate to contract routing authority)
+      src/omnimarket/cli/cli_ab_compare_suite.py
+          Baseline: 2 env reads (LLM_GLM_URL:344 + LLM_GLM_MODEL_NAME:346).
+          Debt ticket: OMN-12877 (migrate to contract routing authority)
+      src/omnimarket/model_policy.yaml
+          Baseline: 6 env_var declarations (coder, coder_fast, judge, delegation,
+          delegation_review, embedding policies).
+          Debt ticket: OMN-12877 (supersede with bifrost routing authority)
+      omnibase_infra:service_llm_endpoint_health.py:237-238
+          CROSS-REPO (omnibase_infra, not scanned here). os.getenv calls in
+          the docstring Usage:: example.
+          Debt ticket: OMN-12877 (omnibase_infra remediation, separate PR)
+
+PROVIDER-CLASS ENDPOINT SHAPE audit (OMN-12883)
+    Static scan over the committed bifrost_delegation.yaml proves every backend
+    respects the provider-class endpoint URL shape contract:
+      * If a backend declares ``base_url_env``, ``endpoint_url`` MUST be null.
+        The overlay is responsible for supplying the complete URL at runtime.
+      * If a backend does NOT declare ``base_url_env`` (i.e. the URL is static),
+        ``endpoint_url`` MUST be a non-null non-empty complete URL (full chat
+        path verbatim — no in-code append). An empty string is a
+        misconfiguration that fails closed.
+    Special tiers:
+      * ``local``: always overlay-supplied (base_url_env required,
+        endpoint_url must be null).
+      * ``cli_agents``: CLI-invoked agents, not HTTP backends; endpoint_url
+        may be empty (no outbound HTTP call).
+    The rule is: overlay-supplied (base_url_env set) → endpoint_url null;
+    static-URL (no base_url_env) + non-cli_agents → endpoint_url complete.
+
 The gate FAILS (exit 1) when:
     * a demo-path routing field cannot be resolved from authority, OR
     * the negative audit finds an env read / provider literal / fallback URL on
-      a demo-path source file.
+      a demo-path source file, OR
+    * a residue-file violation count exceeds its baselined value (new violation
+      introduced), OR
+    * a bifrost backend violates the provider-class endpoint URL shape contract.
 
 Acceptance (plan §A1.5): "evidence packet records {provider, model,
 endpoint_ref, endpoint, route_source} for the demo path, with the source
@@ -80,7 +128,14 @@ _REQUIRED_ROUTING_KEYS: tuple[str, ...] = (
 
 # Inline skip tokens honored by the negative audit (same vocabulary as the
 # delegation env scanner — a deliberate, reviewed exemption, not a silent one).
-_SKIP_TOKENS: tuple[str, ...] = ("ONEX_FLAG_EXEMPT", "ONEX_EXCLUDE")
+# "contract-config-ok" is honoured for bootstrap config loaders that read
+# from env vars by design (e.g. OPENROUTER_BASE_URL in bridge_config_loader.py
+# where the overlay-vs-env distinction is explicit in the surrounding comment).
+_SKIP_TOKENS: tuple[str, ...] = (
+    "ONEX_FLAG_EXEMPT",
+    "ONEX_EXCLUDE",
+    "contract-config-ok",
+)
 
 # Provider literals that must never be hardcoded on a demo path AFTER routing.
 # Resolution must come from the contract-declared ``provider``, never a literal.
@@ -100,6 +155,68 @@ _FALLBACK_ENDPOINT_ENV_TOKENS: tuple[str, ...] = (
     "OPENROUTER_BASE_URL",
     "base_url_env",
 )
+
+# ---------------------------------------------------------------------------
+# RESIDUE audit constants (OMN-12877)
+#
+# Each entry: (file_rel, baseline_count, debt_ticket, description)
+#   file_rel        — path relative to repo root
+#   baseline_count  — maximum allowed violation count (pre-existing debt)
+#   debt_ticket     — Linear ticket owning the remediation
+#   description     — human-readable description of the debt
+#
+# The gate FAILS when actual_count > baseline_count (new violation added).
+# The gate PASSES when actual_count <= baseline_count (no regression).
+# ---------------------------------------------------------------------------
+
+_RESIDUE_SOURCES: tuple[tuple[str, int, str, str], ...] = (
+    (
+        "src/omnimarket/inference/bridge_config_loader.py",
+        2,  # os.environ.get(url_env) + os.environ.get(model_env) in loop body
+        "OMN-12877",
+        "bootstrap config loader reads LLM_*_URL and LLM_*_MODEL_NAME from env vars",
+    ),
+    (
+        "src/omnimarket/cli/cli_ab_compare_suite.py",
+        2,  # LLM_GLM_URL:344 + LLM_GLM_MODEL_NAME:346
+        "OMN-12877",
+        "CLI A/B compare suite reads LLM_GLM_URL and LLM_GLM_MODEL_NAME directly",
+    ),
+)
+
+# YAML residue file: model_policy.yaml declares env_var fields that reference
+# LLM_*_URL endpoint env vars. These are superseded by the bifrost routing
+# authority but remain as a legacy config layer.
+_RESIDUE_YAML_POLICIES: tuple[tuple[str, int, str, str], ...] = (
+    (
+        "src/omnimarket/model_policy.yaml",
+        6,  # coder, coder_fast, judge, delegation, delegation_review, embedding
+        "OMN-12877",
+        "model_policy.yaml carries 6 env_var declarations superseded by bifrost authority",
+    ),
+)
+
+# Cross-repo debt note (omnibase_infra — not scanned here).
+# Documented for audit completeness; remediation tracked in OMN-12877.
+_CROSS_REPO_DEBT: tuple[tuple[str, str, str, str], ...] = (
+    (
+        "omnibase_infra",
+        "src/omnibase_infra/services/service_llm_endpoint_health.py:237-238",
+        "OMN-12877",
+        "docstring Usage:: example uses os.getenv('LLM_CODER_URL'); "
+        "remediation is a separate omnibase_infra PR",
+    ),
+)
+
+# ---------------------------------------------------------------------------
+# PROVIDER-CLASS ENDPOINT SHAPE constants (OMN-12883)
+# ---------------------------------------------------------------------------
+
+_BIFROST_CONFIG_REL = "src/omnimarket/configs/bifrost_delegation.yaml"
+
+# Tiers whose endpoints are CLI-invoked agents (no outbound HTTP calls);
+# endpoint_url may be absent/empty for these.
+_CLI_AGENT_TIERS: frozenset[str] = frozenset({"cli_agents"})
 
 
 def _find_repo_root(start: Path) -> Path:
@@ -135,10 +252,9 @@ def _resolve_endpoint_for_ref(
     so the proof is auditable. A ``None`` endpoint_url means the committed
     contract leaves it to the overlay (fail-closed at runtime by the resolver).
     """
-    config_rel = "src/omnimarket/configs/bifrost_delegation.yaml"
-    config_path = repo_root / config_rel
+    config_path = repo_root / _BIFROST_CONFIG_REL
     if not config_path.exists():
-        return None, None, f"{config_rel}: NOT FOUND"
+        return None, None, f"{_BIFROST_CONFIG_REL}: NOT FOUND"
 
     data = yaml.safe_load(config_path.read_text(encoding="utf-8"))
     backends = data.get("backends", []) if isinstance(data, dict) else []
@@ -152,9 +268,13 @@ def _resolve_endpoint_for_ref(
         return (
             endpoint_url,
             api_key_ref,
-            f"{config_rel}: backend_id={endpoint_ref!r} (overlay-merged at runtime)",
+            f"{_BIFROST_CONFIG_REL}: backend_id={endpoint_ref!r} (overlay-merged at runtime)",
         )
-    return None, None, f"{config_rel}: backend_id={endpoint_ref!r} NOT DECLARED"
+    return (
+        None,
+        None,
+        f"{_BIFROST_CONFIG_REL}: backend_id={endpoint_ref!r} NOT DECLARED",
+    )
 
 
 def build_positive_proof(repo_root: Path) -> dict[str, Any]:
@@ -444,6 +564,238 @@ def build_negative_audit(repo_root: Path) -> dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
+# RESIDUE audit (OMN-12877)
+# ---------------------------------------------------------------------------
+
+
+def _count_yaml_env_var_fields(data: dict[str, Any]) -> int:
+    """Count ``env_var:`` declarations in the top-level ``policies`` mapping."""
+    policies = data.get("policies", {})
+    if not isinstance(policies, dict):
+        return 0
+    count = 0
+    for _name, policy in policies.items():
+        if isinstance(policy, dict) and policy.get("env_var"):
+            count += 1
+    return count
+
+
+def build_residue_audit(repo_root: Path) -> dict[str, Any]:
+    """Scope-extended ratchet over confirmed env-authority residue files (OMN-12877).
+
+    For each residue file, counts current violations and compares against the
+    baselined count. The gate FAILS if actual_count > baseline_count (new
+    violation introduced since the baseline was set). The gate PASSES if
+    actual_count <= baseline_count (no regression).
+
+    Cross-repo debt (omnibase_infra) is documented but not scanned.
+    """
+    file_results: list[dict[str, Any]] = []
+    errors: list[str] = []
+    new_violations: list[str] = []
+
+    # Python source residue files
+    for src_rel, baseline, debt_ticket, debt_desc in _RESIDUE_SOURCES:
+        src_path = repo_root / src_rel
+        if not src_path.exists():
+            errors.append(f"residue source missing: {src_rel}")
+            continue
+
+        source = src_path.read_text(encoding="utf-8")
+        lines = source.splitlines()
+        env_reads = _scan_env_reads(source, lines)
+        actual_count = len(env_reads)
+
+        regression = actual_count > baseline
+        if regression:
+            delta = actual_count - baseline
+            new_violations.append(
+                f"{src_rel}: {delta} new env-authority violation(s) "
+                f"(actual={actual_count}, baseline={baseline}, "
+                f"debt-ticket={debt_ticket})"
+            )
+
+        file_results.append(
+            {
+                "source": src_rel,
+                "debt_ticket": debt_ticket,
+                "debt_description": debt_desc,
+                "baseline_count": baseline,
+                "actual_count": actual_count,
+                "regression": regression,
+                "violations": [f"{src_rel}:{ln}: env-read: {d}" for ln, d in env_reads],
+            }
+        )
+
+    # YAML policy residue file
+    for yaml_rel, baseline, debt_ticket, debt_desc in _RESIDUE_YAML_POLICIES:
+        yaml_path = repo_root / yaml_rel
+        if not yaml_path.exists():
+            errors.append(f"residue YAML missing: {yaml_rel}")
+            continue
+
+        data = yaml.safe_load(yaml_path.read_text(encoding="utf-8"))
+        if not isinstance(data, dict):
+            errors.append(f"{yaml_rel}: did not parse to a mapping")
+            continue
+
+        actual_count = _count_yaml_env_var_fields(data)
+        regression = actual_count > baseline
+        if regression:
+            delta = actual_count - baseline
+            new_violations.append(
+                f"{yaml_rel}: {delta} new env_var policy declaration(s) "
+                f"(actual={actual_count}, baseline={baseline}, "
+                f"debt-ticket={debt_ticket})"
+            )
+
+        file_results.append(
+            {
+                "source": yaml_rel,
+                "debt_ticket": debt_ticket,
+                "debt_description": debt_desc,
+                "baseline_count": baseline,
+                "actual_count": actual_count,
+                "regression": regression,
+                "violations": [],
+            }
+        )
+
+    # Cross-repo debt documentation (informational only — not a gate failure)
+    cross_repo = [
+        {
+            "repo": repo,
+            "location": location,
+            "debt_ticket": debt_ticket,
+            "description": desc,
+        }
+        for repo, location, debt_ticket, desc in _CROSS_REPO_DEBT
+    ]
+
+    clean = len(new_violations) == 0 and len(errors) == 0
+    return {
+        "files": file_results,
+        "cross_repo_debt": cross_repo,
+        "errors": errors,
+        "new_violations": new_violations,
+        "clean": clean,
+    }
+
+
+# ---------------------------------------------------------------------------
+# PROVIDER-CLASS ENDPOINT SHAPE audit (OMN-12883)
+# ---------------------------------------------------------------------------
+
+
+def build_provider_endpoint_shape_audit(repo_root: Path) -> dict[str, Any]:
+    """Validate provider-class endpoint URL shape for every bifrost backend.
+
+    Rules (from memory reference_bifrost_bare_base_vs_complete_url):
+      * If a backend declares ``base_url_env`` (overlay-supplied endpoint),
+        ``endpoint_url`` MUST be null. The overlay supplies the complete URL
+        at runtime. A non-null endpoint_url alongside base_url_env means two
+        conflicting URL sources are declared — this is a misconfiguration.
+      * If a backend does NOT declare ``base_url_env`` (static endpoint):
+        - For ``cli_agents`` tier: endpoint_url may be absent/empty (no HTTP
+          call is made; the CLI agent is invoked directly).
+        - For all other tiers: ``endpoint_url`` MUST be a non-null, non-empty
+          complete URL (full chat path verbatim, e.g.
+          ``.../v1/chat/completions``). A bare base (no chat path) is a
+          misconfiguration that fails closed at call time.
+    """
+    config_path = repo_root / _BIFROST_CONFIG_REL
+    if not config_path.exists():
+        return {
+            "config": _BIFROST_CONFIG_REL,
+            "backends": [],
+            "violations": [f"{_BIFROST_CONFIG_REL}: NOT FOUND"],
+            "clean": False,
+        }
+
+    data = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+    if not isinstance(data, dict):
+        return {
+            "config": _BIFROST_CONFIG_REL,
+            "backends": [],
+            "violations": [f"{_BIFROST_CONFIG_REL}: did not parse to a mapping"],
+            "clean": False,
+        }
+
+    backends = data.get("backends", [])
+    if not isinstance(backends, list):
+        return {
+            "config": _BIFROST_CONFIG_REL,
+            "backends": [],
+            "violations": [f"{_BIFROST_CONFIG_REL}: 'backends' is not a list"],
+            "clean": False,
+        }
+
+    violations: list[str] = []
+    backend_results: list[dict[str, Any]] = []
+
+    for backend in backends:
+        if not isinstance(backend, dict):
+            violations.append(f"{_BIFROST_CONFIG_REL}: backend entry is not a mapping")
+            continue
+
+        backend_id = backend.get("backend_id", "<unnamed>")
+        tier = backend.get("tier", "")
+        endpoint_url = backend.get("endpoint_url")  # may be None or str
+        base_url_env = backend.get("base_url_env")  # may be None or str
+
+        has_base_url_env = bool(base_url_env)
+        has_endpoint_url = endpoint_url is not None and str(endpoint_url).strip() != ""
+        is_cli_tier = tier in _CLI_AGENT_TIERS
+
+        backend_violations: list[str] = []
+
+        if has_base_url_env:
+            # Overlay-supplied backend: endpoint_url MUST be null.
+            if endpoint_url is not None:
+                backend_violations.append(
+                    f"backend_id={backend_id!r}: base_url_env={base_url_env!r} is set "
+                    f"(overlay-supplied) but endpoint_url={endpoint_url!r} is non-null — "
+                    "only one URL source is allowed; set endpoint_url to null"
+                )
+        else:
+            # Static-URL backend.
+            if is_cli_tier:
+                # CLI agents: no outbound HTTP call; endpoint_url may be empty.
+                pass
+            else:
+                # All other tiers: endpoint_url MUST be a non-null, non-empty
+                # complete URL (full chat path verbatim).
+                if not has_endpoint_url:
+                    backend_violations.append(
+                        f"backend_id={backend_id!r} tier={tier!r}: "
+                        f"endpoint_url is absent/empty but base_url_env is not set — "
+                        "a non-local backend with no base_url_env must carry a complete "
+                        "static endpoint_url (full chat path verbatim, e.g. "
+                        ".../v1/chat/completions)"
+                    )
+
+        violations.extend(backend_violations)
+        backend_results.append(
+            {
+                "backend_id": backend_id,
+                "tier": tier,
+                "endpoint_url": endpoint_url,
+                "base_url_env": base_url_env,
+                "url_source": "overlay" if has_base_url_env else "static",
+                "violations": backend_violations,
+                "compliant": len(backend_violations) == 0,
+            }
+        )
+
+    return {
+        "config": _BIFROST_CONFIG_REL,
+        "backends": backend_results,
+        "violations": violations,
+        "clean": len(violations) == 0,
+    }
+
+
+# ---------------------------------------------------------------------------
 # Evidence packet + gate
 # ---------------------------------------------------------------------------
 
@@ -451,27 +803,39 @@ def build_negative_audit(repo_root: Path) -> dict[str, Any]:
 def build_evidence_packet(repo_root: Path) -> dict[str, Any]:
     positive = build_positive_proof(repo_root)
     negative = build_negative_audit(repo_root)
+    residue = build_residue_audit(repo_root)
+    shape = build_provider_endpoint_shape_audit(repo_root)
 
     positive_ok = len(positive["errors"]) == 0 and len(positive["entries"]) > 0
     negative_ok = negative["clean"]
-    passed = positive_ok and negative_ok
+    residue_ok = residue["clean"]
+    shape_ok = shape["clean"]
+    passed = positive_ok and negative_ok and residue_ok and shape_ok
 
     return {
         "ticket": "OMN-12821",
+        "extension_tickets": ["OMN-12877", "OMN-12883"],
         "gate": "routing-authority-demo-gate",
         "demo_path_contracts": list(_DEMO_PATH_CONTRACTS),
         "demo_path_sources": list(_DEMO_PATH_SOURCES),
         "positive_proof": positive,
         "negative_audit": negative,
+        "residue_audit": residue,
+        "provider_endpoint_shape_audit": shape,
         "positive_ok": positive_ok,
         "negative_ok": negative_ok,
+        "residue_ok": residue_ok,
+        "shape_ok": shape_ok,
         "passed": passed,
     }
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Routing-authority verification gate for the demo path (OMN-12821)"
+        description=(
+            "Routing-authority verification gate "
+            "(OMN-12821, extended OMN-12877, OMN-12883)"
+        )
     )
     parser.add_argument(
         "--json", action="store_true", help="print the evidence packet as JSON"
@@ -495,10 +859,14 @@ def main() -> int:
 
     if packet["passed"]:
         entries = packet["positive_proof"]["entries"]
+        residue_files = len(packet["residue_audit"]["files"])
+        shape_backends = len(packet["provider_endpoint_shape_audit"]["backends"])
         print(
             "[routing-authority-gate] PASS — "
             f"{len(entries)} demo-path entry(ies) resolve from authority; "
-            "negative audit clean."
+            f"negative audit clean; "
+            f"{residue_files} residue file(s) within baseline; "
+            f"{shape_backends} backend(s) shape-compliant."
         )
         for entry in entries:
             print(
@@ -516,10 +884,18 @@ def main() -> int:
     for fr in packet["negative_audit"]["files"]:
         for v in fr["violations"]:
             print(f"  negative-audit violation: {v}")
+    for err in packet["residue_audit"]["errors"]:
+        print(f"  residue-audit error: {err}")
+    for v in packet["residue_audit"]["new_violations"]:
+        print(f"  residue-audit new violation: {v}")
+    for v in packet["provider_endpoint_shape_audit"]["violations"]:
+        print(f"  shape-audit violation: {v}")
     print(
         "\nFix: every demo-path routing field must resolve from contract / "
         "overlay / routing authority; no env reads / provider literals / "
-        "fallback endpoint strings on the demo path."
+        "fallback endpoint strings on the demo path. Residue files must not "
+        "exceed their baselined violation counts. Bifrost backends must "
+        "respect provider-class endpoint URL shape rules."
     )
     return 1
 
