@@ -63,6 +63,49 @@ def _ensure_omni_home(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
         monkeypatch.setenv("OMNI_HOME", str(tmp_path / "omni_home"))
 
 
+@pytest.fixture(autouse=True)
+def _isolate_unit_env(
+    request: pytest.FixtureRequest,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Isolate unit tests from live-infra env vars.
+
+    Guards two classes of pre-existing failures:
+
+    1. Kafka hang (OMN-13068 Cluster A/C): unit tests that construct
+       BaseProjectionRunner subclasses call _emit_terminal_event after a
+       successful DB write.  When KAFKA_BOOTSTRAP_SERVERS points at a live
+       broker, AIOKafkaProducer.start() blocks indefinitely.  Unit tests must
+       not reach real brokers — clear the broker env vars so the suppress path
+       in BaseProjectionRunner.__init__ takes the no-binding branch.
+
+    2. Replay-state pollution (OMN-13068 Cluster B/E): HandlerGeneratedExecutor
+       persists replay markers under ONEX_STATE_DIR.  Tests that use hardcoded
+       correlation IDs (e.g. "corr-3", "omn-12831-golden-chain-001") hit a
+       stale replay file written by a previous run and skip the emit, causing
+       assertion failures.  Redirect ONEX_STATE_DIR (and its alias
+       ONEX_STATE_ROOT) to the per-test tmp_path so no cross-run state leaks.
+
+    Only tests that live under ``tests/integration/`` (the true integration
+    suite that requires live Kafka/DB) are exempted.  Tests outside that
+    directory that carry ``@pytest.mark.integration`` are golden-chain or
+    in-memory tests that must still be isolated from live-infra env vars.
+    """
+    test_path = str(request.node.fspath)
+    if "/tests/integration/" in test_path:
+        return
+
+    # Clear Kafka broker env vars so unit tests never reach a live broker.
+    monkeypatch.delenv("KAFKA_BOOTSTRAP_SERVERS", raising=False)
+    monkeypatch.delenv("KAFKA_BROKER", raising=False)
+    monkeypatch.delenv("KAFKA_BROKERS", raising=False)
+
+    # Redirect node-generation-consumer replay state to an isolated tmp dir.
+    monkeypatch.setenv("ONEX_STATE_DIR", str(tmp_path / "onex_state"))
+    monkeypatch.delenv("ONEX_STATE_ROOT", raising=False)
+
+
 @pytest.fixture
 def fake_lan_ip() -> str:
     """Loopback address used in unit tests instead of a LAN IP."""
