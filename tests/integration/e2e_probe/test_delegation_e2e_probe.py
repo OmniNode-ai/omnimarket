@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-# onex-allow-internal-ip: lab GPU server defaults for dev/stability-test lanes (read from env at runtime)
+# onex-allow-file OMN-12789 reason="e2e probe test fixture — lab GPU server IP (192.168.86.201) used as parameterizable default; overridden by ONEX_E2E_* env vars at runtime; not a runtime default"
 """Re-runnable delegation e2e probe harness — OMN-12789 / OMN-12952.
 
 Wave-4 4A-4F slice: thin publish → bus → terminal event → projection →
