@@ -1,7 +1,9 @@
 # Known pre-existing event-registry drift.
 # Format: source_only|registry_only <topic>
-source_only onex.cmd.omniclaude.delegate-task.v1
-source_only onex.evt.omniclaude.agent-actions.v1
-source_only onex.evt.omniintelligence.llm-call-completed.v1
 registry_only onex.cmd.omnibase-infra.delegation-request.v1
 registry_only onex.evt.diagnostic.daemon-health.v1
+# OMN-13092: capture topics land in the market registry first; omniclaude
+# TopicBase/event_registry registration follows in the paired omniclaude PR.
+# Remove these two entries once that PR merges.
+registry_only onex.evt.omnimarket.artifact-captured.v1
+registry_only onex.evt.omnimarket.tool-output-captured.v1

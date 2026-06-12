@@ -1,8 +1,8 @@
 ---
 name: emit_daemon
-contract_version: {major: 1, minor: 1, patch: 0}
+contract_version: {major: 1, minor: 2, patch: 0}
 node_type: service
-node_version: {major: 1, minor: 1, patch: 0}
+node_version: {major: 1, minor: 2, patch: 0}
 
 description: >
   Self-healing portable event publishing daemon. Accepts events via Unix
@@ -158,6 +158,15 @@ event_bus:
     - onex.evt.omniclaude.team-task-progress.v1
     - onex.evt.omniclaude.team-task-completed.v1
     - onex.evt.omniclaude.team-evidence-written.v1
+    # Delegation command (renamed from delegation.request)
+    - onex.cmd.omniclaude.delegate-task.v1
+    # Agent action telemetry
+    - onex.evt.omniclaude.agent-actions.v1
+    # LLM cost telemetry
+    - onex.evt.omniintelligence.llm-call-completed.v1
+    # Durable capture events (duty-critical)
+    - onex.evt.omnimarket.artifact-captured.v1
+    - onex.evt.omnimarket.tool-output-captured.v1
     # Hook health
     - onex.evt.omniclaude.hook-health-error.v1
     # Runtime diagnostics
