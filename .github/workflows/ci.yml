@@ -140,7 +140,7 @@ jobs:
       # earlier in this job) rather than the uv-locked pin.
       - name: Transport-mock lint (OMN-13026)
         run: |
-          PYTHONPATH=../omnibase_core/src python \
+          uv run python \
             -m omnibase_core.validators.transport_mock_lint \
             --baseline validation/transport_mock_baseline.yaml \
             tests/

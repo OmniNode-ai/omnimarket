@@ -5,7 +5,7 @@ requires-python = "==3.12.*"
 [manifest]
 overrides = [
     { name = "omnibase-compat", git = "https://github.com/OmniNode-ai/omnibase_compat.git?rev=4d887307aae34d9d40d389ba91070cb411ce3df5" },
-    { name = "omnibase-core", git = "https://github.com/OmniNode-ai/omnibase_core.git?rev=c97c2c9a45c5fb0def5fb7dacfd5f01278bb9f55" },
+    { name = "omnibase-core", git = "https://github.com/OmniNode-ai/omnibase_core.git?rev=309d89fa7254701347f95bf99205cccfb3f6c1df" },
     { name = "omnibase-infra", git = "https://github.com/OmniNode-ai/omnibase_infra.git?rev=e2dbdc950540df8bc59ca4370b2d4a0f5b8d6c59" },
     { name = "omnibase-spi", specifier = ">=0.20.6,<0.22.0" },
 ]
@@ -1229,7 +1229,7 @@ dependencies = [
 [[package]]
 name = "omnibase-core"
 version = "0.44.0"
-source = { git = "https://github.com/OmniNode-ai/omnibase_core.git?rev=c97c2c9a45c5fb0def5fb7dacfd5f01278bb9f55#c97c2c9a45c5fb0def5fb7dacfd5f01278bb9f55" }
+source = { git = "https://github.com/OmniNode-ai/omnibase_core.git?rev=309d89fa7254701347f95bf99205cccfb3f6c1df#309d89fa7254701347f95bf99205cccfb3f6c1df" }
 dependencies = [
     { name = "blake3" },
     { name = "click" },
@@ -1370,7 +1370,7 @@ requires-dist = [
     { name = "graphifyy", marker = "extra == 'dep-health'", specifier = "==0.8.2" },
     { name = "httpx", specifier = ">=0.27.0" },
     { name = "omnibase-compat", git = "https://github.com/OmniNode-ai/omnibase_compat.git?rev=4d887307aae34d9d40d389ba91070cb411ce3df5" },
-    { name = "omnibase-core", git = "https://github.com/OmniNode-ai/omnibase_core.git?rev=c97c2c9a45c5fb0def5fb7dacfd5f01278bb9f55" },
+    { name = "omnibase-core", git = "https://github.com/OmniNode-ai/omnibase_core.git?rev=309d89fa7254701347f95bf99205cccfb3f6c1df" },
     { name = "omnibase-infra", git = "https://github.com/OmniNode-ai/omnibase_infra.git?rev=e2dbdc950540df8bc59ca4370b2d4a0f5b8d6c59" },
     { name = "omnibase-spi", specifier = ">=0.20.6,<0.22.0" },
     { name = "omninode-memory", git = "https://github.com/OmniNode-ai/omnimemory.git?rev=9843dd18cedaa4f5939289ba527532262b87003c" },
