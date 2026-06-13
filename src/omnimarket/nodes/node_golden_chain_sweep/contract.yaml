@@ -6,8 +6,8 @@ node_version: {major: 1, minor: 0, patch: 0}
 
 description: >
   Validate end-to-end Kafka-to-DB-projection data flow for golden chains.
-  Publishes synthetic events with correlation IDs, polls projection tables
-  for matching rows, and asserts field-level correctness.
+  Accepts pre-collected projected_rows and validates field-level correctness
+  against chain definitions — pure compute, no Kafka publish or DB polling.
 
 handler:
   module: omnimarket.nodes.node_golden_chain_sweep.handlers.handler_golden_chain_sweep
@@ -54,7 +54,7 @@ event_bus:
     - onex.cmd.omnimarket.golden-chain-sweep-start.v1
     # Monitored golden-chain head topics — swept for Kafka-to-DB-projection health
     - onex.evt.omniintelligence.pattern-stored.v1
-    - onex.evt.omniintelligence.run-evaluated.v1
+    - onex.evt.omniclaude.session-outcome.v1
   publish_topics:
     - onex.evt.omnimarket.golden-chain-sweep-result.v1
     - onex.evt.omnimarket.golden-chain-sweep-completed.v1
