@@ -1,0 +1,81 @@
+---
+name: projection_pattern_learning
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: reducer
+node_version: {major: 1, minor: 0, patch: 0}
+input_model: omnimarket.nodes.node_projection_pattern_learning.handlers.handler_projection_pattern_learning.ModelPatternStoredEvent
+description: >
+  Projects pattern-stored events into the pattern_learning_artifacts table.
+  UPSERT by pattern_id (latest-state-wins). Source topic:
+  onex.evt.omniintelligence.pattern-stored.v1. Closes the golden chain
+  pattern_learning chain (OMN-13124): the tail table had no consumer for
+  pattern-stored.v1, so the sweep timed out. This reducer is the consumer.
+
+handler:
+  module: omnimarket.nodes.node_projection_pattern_learning.handlers.handler_projection_pattern_learning
+  class: HandlerProjectionPatternLearning
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - handler:
+        name: HandlerProjectionPatternLearning
+        module: omnimarket.nodes.node_projection_pattern_learning.handlers.handler_projection_pattern_learning
+      handler_module: omnimarket.nodes.node_projection_pattern_learning.handlers.handler_projection_pattern_learning
+      event_model: omnimarket.nodes.node_projection_pattern_learning.handlers.handler_projection_pattern_learning.ModelPatternStoredEvent
+    - handler:
+        name: PatternLearningProjectionRunner
+        module: omnimarket.nodes.node_projection_pattern_learning.handlers.handler_pattern_learning
+      handler_module: omnimarket.nodes.node_projection_pattern_learning.handlers.handler_pattern_learning
+
+terminal_event: onex.evt.omnimarket.projection-pattern-learning-applied.v1
+
+# Golden path: pattern_learning chain (pattern-stored -> pattern_learning_artifacts table)
+golden_path:
+  - "Consume pattern-stored event from onex.evt.omniintelligence.pattern-stored.v1"
+  - "Projection handler upserts row into pattern_learning_artifacts table"
+  - "Dedup by pattern_id (UPSERT semantics)"
+  - "Preserve existing scoring evidence when a sparse event arrives later"
+  - "Emit projection-applied event to onex.evt.omnimarket.projection-pattern-learning-applied.v1"
+  - "Verify row exists with pattern_id, pattern_name, correlation_id fields"
+  - "Golden chain test: omnimarket/tests/test_golden_chain_pattern_learning.py"
+
+db_io:
+  db_tables:
+    - name: pattern_learning_artifacts
+      migration: "0000_create_pattern_learning_artifacts.sql"
+      access: write
+      database: omnidash_analytics
+      role: artifacts
+
+event_bus:
+  subscribe_topics:
+    - onex.evt.omniintelligence.pattern-stored.v1
+  publish_topics:
+    - onex.evt.omnimarket.projection-pattern-learning-applied.v1
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.projection-pattern-learning-applied.v1
+
+projection_api:
+  expose: true
+  topic: "onex.snapshot.projection.pattern-learning.v1" # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
+  table: "pattern_learning_artifacts"
+  schema: "public"
+  columns:
+    - "pattern_id"
+    - "pattern_name"
+    - "pattern_type"
+    - "language"
+    - "lifecycle_state"
+    - "composite_score"
+    - "correlation_id"
+    - "created_at"
+    - "updated_at"
+    - "projected_at"
+  order_by: "updated_at DESC"
+  freshness_column: "updated_at"
+  limit: 100
+
+metadata:
+  transport_type: kafka
