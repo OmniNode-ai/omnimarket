@@ -170,6 +170,26 @@ def test_contract_event_bus_topics_match_runtime_dispatch() -> None:
 
 
 @pytest.mark.unit
+def test_handler_routing_has_message_category_command() -> None:
+    """Regression for DEL-06 / OMN-13123.
+
+    Without message_category: command in handler_routing the runtime dispatcher
+    cannot match the command category, causing direct publishes to
+    onex.cmd.omnimarket.delegate-skill.v1 to dead-letter.
+    """
+    contract = _load_contract()
+    routing = contract["handler_routing"]
+    assert routing["routing_strategy"] == "operation_match"
+    handlers = routing["handlers"]
+    assert len(handlers) >= 1, "handler_routing must declare at least one handler"
+    entry = handlers[0]
+    assert entry.get("message_category") == "command", (
+        "handler_routing entry must set message_category: command so the runtime "
+        "dispatcher can match the command category on onex.cmd.omnimarket.delegate-skill.v1"
+    )
+
+
+@pytest.mark.unit
 def test_metadata_registers_entry_points() -> None:
     metadata = yaml.safe_load(_METADATA_PATH.read_text())
     assert (
