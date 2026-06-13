@@ -5572,6 +5572,26 @@
       "detail": "Topic literal 'onex.evt.omnibase-infra.pattern-b-dispatch-completed.v1' appears in source code but is not declared in any contract.yaml file.",
       "rule_id": "UNDECLARED_TOPIC",
       "rule_version": "v1"
+    },
+    {
+      "finding_type": "UNTESTED_HANDLER",
+      "severity": "MAJOR",
+      "repo": "omnimarket",
+      "file_path": "src/omnimarket/nodes/node_projection_routing_decision/handlers/handler_projection_routing_decision.py",
+      "symbol": "handler_projection_routing_decision",
+      "detail": "Contract-referenced handler 'handler_projection_routing_decision' has no test file and no golden-chain fixture coverage.",
+      "rule_id": "UNTESTED_HANDLER",
+      "rule_version": "v1"
+    },
+    {
+      "finding_type": "UNTESTED_HANDLER",
+      "severity": "MAJOR",
+      "repo": "omnimarket",
+      "file_path": "src/omnimarket/nodes/node_projection_routing_decision/handlers/handler_routing_decision.py",
+      "symbol": "handler_routing_decision",
+      "detail": "Contract-referenced handler 'handler_routing_decision' has no test file and no golden-chain fixture coverage.",
+      "rule_id": "UNTESTED_HANDLER",
+      "rule_version": "v1"
     }
   ]
 }
