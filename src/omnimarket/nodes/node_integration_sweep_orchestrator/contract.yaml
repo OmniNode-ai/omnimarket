@@ -25,8 +25,8 @@ handler_routing:
 
 env_dependencies:
   ONEX_CC_REPO_PATH:
-    required: false
-    description: "Path to the omni_home repo registry; used as fallback root when not resolvable from the process environment"
+    required: true
+    description: "Path to the omni_home repo registry; required when artifact_root is not provided explicitly"
 
 descriptor:
   node_archetype: orchestrator
@@ -59,4 +59,4 @@ externally_consumed_topics:
 config:
   ONEX_CC_REPO_PATH:
     description: "Path to the omniclaude repository for Claude Code plugin operations."
-    required: false
+    required: true

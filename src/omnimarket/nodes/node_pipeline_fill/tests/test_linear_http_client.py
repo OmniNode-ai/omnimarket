@@ -140,7 +140,8 @@ async def test_handler_uses_linear_http_client_when_no_client_injected(
     with patch.object(default_client, "_list_issues", mock_list_issues):
         # Instantiate with the patched default client (simulates production wiring)
         handler = HandlerPipelineFill(
-            linear_client=default_client, event_bus=AsyncMock()
+            linear_client=default_client,
+            event_bus=AsyncMock(),  # transport-mock-ok: event_bus typed Any in handler; spec requires protocol resolution in separate ticket
         )
 
         with patch(
