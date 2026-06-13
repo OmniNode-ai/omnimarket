@@ -1,0 +1,19 @@
+name: projection_pattern_learning
+version: "1.0.0"
+description: >
+  Projects pattern-stored events into the pattern_learning_artifacts table.
+  UPSERT by pattern_id. Closes the pattern_learning golden chain (OMN-13124).
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: true
+  requires_secrets: true
+  side_effect_class: write_db
+tags:
+  - projection
+  - pattern
+  - reducer
+pack: "data"
+display_name: "Projection: Pattern Learning"
+node_role: "effect"
