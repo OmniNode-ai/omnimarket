@@ -1,0 +1,37 @@
+name: projection_routing_decision
+version: "1.0.0"
+description: >
+  Projects polymorphic-router routing-decision events into the
+  agent_routing_decisions table. Append-only INSERT by id.
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: true
+  requires_secrets: true
+  side_effect_class: write_db
+tags:
+  - projection
+  - routing
+  - registration
+  - reducer
+pack: "data"
+display_name: "Projection: Routing Decision"
+node_role: "effect"
+dependencies:
+  - "aiokafka>=0.10.0"
+# agent_routing_decisions DDL is owned by omnibase_infra (migration 021).
+# This node is a WRITER/non-owner: it projects routing-decision events into the
+# pre-existing table and must NOT add a duplicate CREATE TABLE migration.
+ownership:
+  agent_routing_decisions:
+    ddl_owner: "omnibase_infra"
+    table_role: "projection_write_model"
+    create_migration: "docker/migrations/forward/021_create_agent_routing_decisions_table.sql"
+    duplicate_migration_policy: "forbid_cross_repo_create_table"
+    non_owner_repos: ["omnimarket"]
+    rationale: >
+      omnibase_infra migration 021 is the DDL owner for agent_routing_decisions.
+      node_projection_routing_decision is the omnimarket projection writer that
+      consumes onex.evt.omniclaude.routing-decision.v1 and inserts rows; it does
+      not own the table's CREATE TABLE migration.
