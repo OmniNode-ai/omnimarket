@@ -133,8 +133,17 @@ class HandlerIntegrationSweepOrchestrator:
             return Path(configured).expanduser().resolve()
         env_root = os.environ.get("ONEX_CC_REPO_PATH")  # contract-config-ok: config  # fmt: skip
         if env_root:
-            return Path(env_root).expanduser().resolve()
-        return Path.cwd().resolve()
+            resolved = Path(env_root).expanduser().resolve()
+            if not resolved.exists() or not (resolved / "contracts").is_dir():
+                raise RuntimeError(
+                    f"ONEX_CC_REPO_PATH={env_root!r} resolves to {resolved} "
+                    "which does not exist or lacks a contracts/ directory"
+                )
+            return resolved
+        raise RuntimeError(
+            "ONEX_CC_REPO_PATH is not set and no explicit artifact_root was provided. "
+            "Set ONEX_CC_REPO_PATH to the omni_home repo registry path."
+        )
 
     @staticmethod
     def _resolve_dir(configured: str, default_path: Path) -> Path:
