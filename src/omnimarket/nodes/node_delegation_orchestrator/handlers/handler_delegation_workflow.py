@@ -101,10 +101,23 @@ from omnimarket.pricing import estimate_baseline_cost_usd, get_manifest_version_
 # tune them independently.
 _MAX_INFERENCE_ESCALATION_ATTEMPTS: int = 2
 _INFERENCE_ERROR_EXCLUDED_TIERS: frozenset[str] = frozenset({"cli_agents"})
+# OMN-13140 GATE 1 classification. Inference effects (node_llm_delegation_call_effect)
+# raise three terminal-shaped errors for an otherwise-reachable provider:
+#   * "finish_reason=length"     — response TRUNCATED at the tier's max_tokens.
+#   * "empty message content"    — provider returned a blank message body.
+#   * "API returned empty choices array" — provider returned no choices.
+# `finish_reason=length` is a CONTEXT/output-budget limit, not a hard refusal:
+# a longer-context successor (the cheap_cloud Gemini route declares a 1M-token
+# window) can complete what a quantized local model truncated, so it is now
+# RETRYABLE and escalates. The original (truncated) and escalated models are both
+# recorded in escalation_history (one ModelDelegationEscalationAttempt per tier).
+# An empty body / empty choices is left NON-retryable: re-issuing the same prompt
+# to a higher tier is unlikely to turn a blank completion into content and would
+# burn cloud budget on a probable repeat — the minimal-safe classification.
 _NON_RETRYABLE_INFERENCE_ERROR_MARKERS: frozenset[str] = frozenset(
     {
-        "finish_reason=length",
         "empty message content",
+        "empty choices array",
     }
 )
 

@@ -786,14 +786,17 @@ class TestInferenceErrorEscalation:
     @pytest.mark.parametrize(
         "error_message",
         [
-            "API response truncated: finish_reason=length",
             "API returned empty message content",
+            "API returned empty choices array",
         ],
     )
-    def test_response_shape_error_fails_without_rerouting(
+    def test_empty_response_fails_without_rerouting(
         self,
         error_message: str,
     ) -> None:
+        """OMN-13140 GATE 1: a blank provider body / empty choices is left
+        NON-retryable. Re-issuing the same prompt to a higher tier is unlikely to
+        turn an empty completion into content, so the workflow terminates."""
         handler = HandlerDelegationWorkflow()
         cid = uuid4()
 
@@ -818,6 +821,46 @@ class TestInferenceErrorEscalation:
         assert result.quality_passed is False
         assert result.failure_reason == error_message
         assert result.terminal_failure_reason == "non_retryable_inference_response"
+
+    def test_length_truncation_escalates_to_longer_context_tier(self) -> None:
+        """OMN-13140 GATE 1: finish_reason=length is a TRUNCATION (output budget
+        hit), not a refusal. A longer-context successor can complete it, so the
+        orchestrator escalates to the next tier instead of terminating, and the
+        truncated attempt is recorded in escalation_history with its model."""
+        handler = HandlerDelegationWorkflow()
+        cid = uuid4()
+
+        handler.handle_delegation_request(_make_request(correlation_id=cid))
+        handler.handle_routing_decision(
+            _make_routing_decision_with_tier(cid, tier_name="local")
+        )
+
+        events = handler.handle_inference_response(
+            _make_error_inference_response(
+                cid, error_message="API response truncated: finish_reason=length"
+            )
+        )
+
+        # Escalation, not terminal failure: a routing intent for the next tier.
+        routing_intents = [e for e in events if isinstance(e, ModelRoutingIntent)]
+        assert len(routing_intents) == 1
+        assert routing_intents[0].min_tier_name is not None
+        assert routing_intents[0].min_tier_name != "local"
+        assert not any(isinstance(e, ModelDelegationEvent) for e in events)
+
+        workflow = handler.workflows[cid]
+        assert workflow.state == EnumDelegationState.ROUTED
+        assert workflow.escalation_count == 1
+
+        # The truncated attempt's original model is captured in the trace, so the
+        # original (local) and the escalated tier are both recoverable from history.
+        assert len(workflow.escalation_history) == 1
+        truncated_attempt = workflow.escalation_history[0]
+        assert truncated_attempt.tier_name == "local"
+        assert truncated_attempt.model_used == "qwen3-coder-30b"
+        assert truncated_attempt.failure_reasons == (
+            "API response truncated: finish_reason=length",
+        )
 
     def test_late_inference_response_during_escalation_is_ignored(self) -> None:
         handler = HandlerDelegationWorkflow()

@@ -38,6 +38,7 @@ Related:
 
 from __future__ import annotations
 
+import logging
 from functools import lru_cache
 from pathlib import Path
 from uuid import NAMESPACE_DNS, UUID, uuid5
@@ -73,6 +74,8 @@ from omnimarket.nodes.node_delegation_routing_reducer.models.model_routing_tier 
 from omnimarket.nodes.node_delegation_routing_reducer.models.model_tier_model import (
     ModelTierModel,
 )
+
+_logger = logging.getLogger(__name__)
 
 # System prompts by task type — kept here because they are presentation strings,
 # not routing configuration.
@@ -289,6 +292,12 @@ def _load_bifrost_endpoints() -> dict[str, BifrostBackendRef]:
     contract_override, _ = resolve_optional_path_config("BIFROST_CONTRACT_PATH")
     overlay_override, _ = resolve_optional_path_config("BIFROST_OVERLAY_PATH")
 
+    # OMN-13143: fail loud (Rule 8). The previous body swallowed every load error
+    # and returned {} silently, so a missing/corrupt bifrost contract surfaced
+    # downstream as the indistinguishable "No tier has a configured endpoint"
+    # routing error — masking the true root cause (bad config path) and making
+    # cloud escalation impossible to diagnose. We now emit structured evidence
+    # and re-raise as a configuration error so the failure is attributable.
     try:
         if contract_override is not None and overlay_override is None:
             overlay_override = Path("__omnimarket_no_bifrost_overlay__.yaml")
@@ -296,8 +305,28 @@ def _load_bifrost_endpoints() -> dict[str, BifrostBackendRef]:
             config_path=contract_override,
             overlay_path=overlay_override,
         )
-    except (FileNotFoundError, ValueError, yaml.YAMLError):
-        return {}
+    except (FileNotFoundError, ValueError, yaml.YAMLError) as exc:
+        _logger.error(
+            "bifrost_endpoint_load_failed",
+            extra={
+                "event": "bifrost_endpoint_load_failed",
+                "error_type": type(exc).__name__,
+                "error": str(exc),
+                "contract_path": str(contract_override) if contract_override else None,
+                "overlay_path": str(overlay_override) if overlay_override else None,
+            },
+        )
+        context = ModelInfraErrorContext.from_exception(
+            exc,
+            transport_type=EnumInfraTransportType.FILESYSTEM,
+            operation="load_bifrost_endpoints",
+        )
+        msg = (
+            "Failed to load bifrost delegation config for endpoint resolution "
+            f"({type(exc).__name__}: {exc}). The routing reducer cannot resolve "
+            "any backend endpoint without a valid bifrost contract."
+        )
+        raise ProtocolConfigurationError(msg, context=context) from exc
 
     backends: dict[str, BifrostBackendRef] = {}
     for backend in config.backends:
@@ -315,6 +344,32 @@ def _load_bifrost_endpoints() -> dict[str, BifrostBackendRef]:
             if backend.extra_headers
             else None,
         )
+
+    if not backends:
+        # A contract that parses but yields zero usable endpoints is still a
+        # misconfiguration: every backend declared a null/empty endpoint_url or
+        # model_name. Returning {} here would silently route every task to the
+        # "no configured endpoint" failure with no attributable cause.
+        _logger.error(
+            "bifrost_no_usable_endpoints",
+            extra={
+                "event": "bifrost_no_usable_endpoints",
+                "declared_backends": len(config.backends),
+                "contract_path": str(contract_override) if contract_override else None,
+                "overlay_path": str(overlay_override) if overlay_override else None,
+            },
+        )
+        context = ModelInfraErrorContext.with_correlation(
+            transport_type=EnumInfraTransportType.FILESYSTEM,
+            operation="load_bifrost_endpoints",
+        )
+        msg = (
+            "Bifrost delegation config declared "
+            f"{len(config.backends)} backend(s) but none carry a complete "
+            "endpoint_url and model_name. No backend endpoint is resolvable; "
+            "populate endpoint_url/model_name in the contract or overlay."
+        )
+        raise ProtocolConfigurationError(msg, context=context)
 
     return backends
 
