@@ -19,7 +19,11 @@ from omnimarket.nodes.node_integration_sweep_orchestrator.handlers.handler_integ
 )
 from omnimarket.nodes.node_integration_sweep_orchestrator.handlers.surface_probes import (
     probe_container_health,
+    probe_db_tables,
     probe_github_ci,
+    probe_golden_chain,
+    probe_kafka_topics,
+    probe_projection_api,
     probe_runtime_health,
 )
 from omnimarket.nodes.node_integration_sweep_orchestrator.models.model_integration_sweep_orchestrator_request import (
@@ -328,6 +332,233 @@ def test_handler_surface_probes_written_to_artifact(tmp_path: Path) -> None:
     assert "GITHUB_CI" in surface_names
     assert result.details["surface_probe_count"] == "3"
     assert len(result.surfaces) == 3
+
+
+# --- Infrastructure-surface probe unit tests (KAFKA / DB / PROJECTION / GOLDEN_CHAIN) ---
+
+_PROBES_RUN = (
+    "omnimarket.nodes.node_integration_sweep_orchestrator."
+    "handlers.surface_probes.subprocess.run"
+)
+_HOST = "192.168.86.201"  # onex-allow-internal-ip: test fixture
+
+
+@pytest.mark.unit
+def test_probe_kafka_topics_pass() -> None:
+    def _run(argv: list[str], **_kw: object) -> MagicMock:
+        out = MagicMock()
+        out.returncode = 0
+        out.stderr = ""
+        joined = " ".join(argv)
+        if "topic list" in joined:
+            out.stdout = "NAME\nonex.cmd.foo.v1\n"
+        else:
+            out.stdout = "BROKER GROUP\n0 grp-foo\n"
+        return out
+
+    with patch(_PROBES_RUN, side_effect=_run):
+        result = probe_kafka_topics(_HOST, "redpanda", ["onex.cmd.foo.v1"], ["grp-foo"])
+
+    assert result["surface"] == "KAFKA"
+    assert result["status"] == "pass"
+    assert result["details"]["topics_missing"] == []
+    assert result["details"]["consumer_groups_missing"] == []
+
+
+@pytest.mark.unit
+def test_probe_kafka_topics_fail_on_missing_topic() -> None:
+    def _run(argv: list[str], **_kw: object) -> MagicMock:
+        out = MagicMock()
+        out.returncode = 0
+        out.stderr = ""
+        joined = " ".join(argv)
+        out.stdout = "NAME\n" if "topic list" in joined else "BROKER GROUP\n0 grp-foo\n"
+        return out
+
+    with patch(_PROBES_RUN, side_effect=_run):
+        result = probe_kafka_topics(
+            _HOST, "redpanda", ["onex.cmd.missing.v1"], ["grp-foo"]
+        )
+
+    assert result["status"] == "fail"
+    assert result["details"]["topics_missing"] == ["onex.cmd.missing.v1"]
+
+
+@pytest.mark.unit
+def test_probe_kafka_topics_error_on_exception() -> None:
+    with patch(_PROBES_RUN, side_effect=TimeoutError("ssh timeout")):
+        result = probe_kafka_topics(_HOST, "redpanda", ["t"], ["g"])
+    assert result["status"] == "error"
+    assert "error" in result["details"]
+
+
+@pytest.mark.unit
+def test_probe_db_tables_pass() -> None:
+    def _run(argv: list[str], **_kw: object) -> MagicMock:
+        out = MagicMock()
+        out.returncode = 0
+        out.stderr = ""
+        joined = " ".join(argv)
+        if "to_regclass" in joined:
+            out.stdout = "public.session_outcomes\n"
+        else:
+            out.stdout = "3\n"
+        return out
+
+    with patch(_PROBES_RUN, side_effect=_run):
+        result = probe_db_tables(
+            _HOST, "pg", "postgres", "omnidash_analytics", ["session_outcomes"]
+        )
+
+    assert result["surface"] == "DB"
+    assert result["status"] == "pass"
+    assert result["details"]["tables_absent"] == []
+    assert result["details"]["tables_empty"] == []
+    assert result["details"]["tables"][0]["row_count"] == 3
+
+
+@pytest.mark.unit
+def test_probe_db_tables_fail_on_empty_table() -> None:
+    def _run(argv: list[str], **_kw: object) -> MagicMock:
+        out = MagicMock()
+        out.returncode = 0
+        out.stderr = ""
+        joined = " ".join(argv)
+        out.stdout = "public.session_outcomes\n" if "to_regclass" in joined else "0\n"
+        return out
+
+    with patch(_PROBES_RUN, side_effect=_run):
+        result = probe_db_tables(
+            _HOST, "pg", "postgres", "omnidash_analytics", ["session_outcomes"]
+        )
+
+    assert result["status"] == "fail"
+    assert result["details"]["tables_empty"] == ["session_outcomes"]
+
+
+@pytest.mark.unit
+def test_probe_db_tables_fail_on_absent_table() -> None:
+    def _run(argv: list[str], **_kw: object) -> MagicMock:
+        out = MagicMock()
+        out.returncode = 0
+        out.stderr = ""
+        out.stdout = "NULL\n"  # to_regclass NULL => absent
+        return out
+
+    with patch(_PROBES_RUN, side_effect=_run):
+        result = probe_db_tables(_HOST, "pg", "postgres", "db", ["ghost_table"])
+
+    assert result["status"] == "fail"
+    assert result["details"]["tables_absent"] == ["ghost_table"]
+
+
+@pytest.mark.unit
+def test_probe_db_tables_error_on_exception() -> None:
+    with patch(_PROBES_RUN, side_effect=TimeoutError("ssh timeout")):
+        result = probe_db_tables(_HOST, "pg", "postgres", "db", ["t"])
+    assert result["status"] == "error"
+    assert "error" in result["details"]
+
+
+@pytest.mark.unit
+def test_probe_projection_api_pass() -> None:
+    mock = MagicMock()
+    mock.returncode = 0
+    mock.stdout = "200"
+    mock.stderr = ""
+    url = "http://192.168.86.201:3002"  # onex-allow-internal-ip: test fixture
+    with patch(_PROBES_RUN, return_value=mock):
+        result = probe_projection_api(url, ["onex.evt.foo.v1"])
+    assert result["surface"] == "PROJECTION"
+    assert result["status"] == "pass"
+    assert result["details"]["topics_failed"] == []
+
+
+@pytest.mark.unit
+def test_probe_projection_api_fail_on_non_200() -> None:
+    mock = MagicMock()
+    mock.returncode = 22
+    mock.stdout = "404"
+    mock.stderr = ""
+    url = "http://192.168.86.201:3002"  # onex-allow-internal-ip: test fixture
+    with patch(_PROBES_RUN, return_value=mock):
+        result = probe_projection_api(url, ["onex.evt.missing.v1"])
+    assert result["status"] == "fail"
+    assert result["details"]["topics_failed"] == ["onex.evt.missing.v1"]
+
+
+@pytest.mark.unit
+def test_probe_golden_chain_pass() -> None:
+    def _run(argv: list[str], **_kw: object) -> MagicMock:
+        out = MagicMock()
+        out.returncode = 0
+        out.stderr = ""
+        joined = " ".join(argv)
+        if "topic list" in joined:
+            out.stdout = "NAME\nonex.cmd.foo.v1\n"
+        elif "group list" in joined:
+            out.stdout = "BROKER GROUP\n0 grp-foo\n"
+        elif "to_regclass" in joined:
+            out.stdout = "public.tail_table\n"
+        elif "count(*)" in joined:
+            out.stdout = "7\n"
+        else:
+            out.stdout = ""
+        return out
+
+    with patch(_PROBES_RUN, side_effect=_run):
+        result = probe_golden_chain(
+            runtime_host=_HOST,
+            redpanda_container="redpanda",
+            postgres_container="pg",
+            postgres_user="postgres",
+            chain_name="routing",
+            command_topic="onex.cmd.foo.v1",
+            consumer_group="grp-foo",
+            tail_database="omnidash_analytics",
+            tail_table="tail_table",
+        )
+
+    assert result["surface"] == "GOLDEN_CHAIN"
+    assert result["status"] == "pass"
+    assert result["details"]["tail_row_count"] == 7
+    assert result["details"]["tail_has_rows"] is True
+
+
+@pytest.mark.unit
+def test_probe_golden_chain_fail_on_empty_tail() -> None:
+    def _run(argv: list[str], **_kw: object) -> MagicMock:
+        out = MagicMock()
+        out.returncode = 0
+        out.stderr = ""
+        joined = " ".join(argv)
+        if "topic list" in joined:
+            out.stdout = "NAME\nonex.cmd.foo.v1\n"
+        elif "group list" in joined:
+            out.stdout = "BROKER GROUP\n0 grp-foo\n"
+        elif "to_regclass" in joined:
+            out.stdout = "public.tail_table\n"
+        elif "count(*)" in joined:
+            out.stdout = "0\n"
+        else:
+            out.stdout = ""
+        return out
+
+    with patch(_PROBES_RUN, side_effect=_run):
+        result = probe_golden_chain(
+            runtime_host=_HOST,
+            redpanda_container="redpanda",
+            postgres_container="pg",
+            postgres_user="postgres",
+            chain_name="routing",
+            command_topic="onex.cmd.foo.v1",
+            consumer_group="grp-foo",
+            tail_database="omnidash_analytics",
+            tail_table="tail_table",
+        )
+
+    assert result["status"] == "fail"
+    assert result["details"]["tail_has_rows"] is False
 
 
 class _StubRuntimeShaHandler:

@@ -14,7 +14,11 @@ from omnimarket.nodes.node_dod_verify.handlers.handler_runtime_sha_verify import
 )
 from omnimarket.nodes.node_integration_sweep_orchestrator.handlers.surface_probes import (
     probe_container_health,
+    probe_db_tables,
     probe_github_ci,
+    probe_golden_chain,
+    probe_kafka_topics,
+    probe_projection_api,
     probe_runtime_health,
 )
 from omnimarket.nodes.node_integration_sweep_orchestrator.models.model_integration_sweep_orchestrator_request import (
@@ -120,11 +124,58 @@ class HandlerIntegrationSweepOrchestrator:
     def _run_surface_probes(
         request: ModelIntegrationSweepOrchestratorRequest,
     ) -> list[dict[str, Any]]:
-        """Execute RUNTIME_HEALTH, CONTAINER_HEALTH, and GITHUB_CI surface probes."""
+        """Execute the configured surface probes.
+
+        RUNTIME_HEALTH, CONTAINER_HEALTH, and GITHUB_CI always run (the health/CI
+        baseline). The KAFKA, DB, PROJECTION, and GOLDEN_CHAIN probes run only
+        when their config lists are populated, so an unconfigured caller still
+        gets the baseline and never a spurious infra-probe failure.
+        """
         results: list[dict[str, Any]] = []
         results.append(probe_runtime_health(request.stability_test_runtime_url))
         results.append(probe_container_health(request.container_health_host))
         results.append(probe_github_ci(request.github_ci_repo))
+
+        if request.kafka_topics or request.kafka_consumer_groups:
+            results.append(
+                probe_kafka_topics(
+                    request.infra_runtime_host,
+                    request.redpanda_container,
+                    request.kafka_topics,
+                    request.kafka_consumer_groups,
+                )
+            )
+        if request.db_tables:
+            results.append(
+                probe_db_tables(
+                    request.infra_runtime_host,
+                    request.postgres_container,
+                    request.postgres_user,
+                    request.db_database,
+                    request.db_tables,
+                )
+            )
+        if request.projection_topics:
+            results.append(
+                probe_projection_api(
+                    request.projection_api_url,
+                    request.projection_topics,
+                )
+            )
+        for chain in request.golden_chains:
+            results.append(
+                probe_golden_chain(
+                    runtime_host=request.infra_runtime_host,
+                    redpanda_container=request.redpanda_container,
+                    postgres_container=request.postgres_container,
+                    postgres_user=request.postgres_user,
+                    chain_name=chain.chain_name,
+                    command_topic=chain.command_topic,
+                    consumer_group=chain.consumer_group,
+                    tail_database=chain.tail_database,
+                    tail_table=chain.tail_table,
+                )
+            )
         return results
 
     @staticmethod
