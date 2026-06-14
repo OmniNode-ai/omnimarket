@@ -544,6 +544,27 @@ class HandlerContextRoiRunner:
             for topic in (self._gen_terminal_topic, self._gen_terminal_failed_topic)
         }
 
+        # --- Step 2a': register the correlation_id BEFORE publish (OMN-13118) ---
+        # The injected long-lived correlator (omnibase_infra TerminalEventConsumer)
+        # runs an always-on poll loop. Its per-correlation future must exist BEFORE
+        # the command is published, or the loop reads the correlated terminal and
+        # UNMATCHED-drops it (pending_keys=[]) ~before the post-publish wait would
+        # register the cid — the strike-six wedge traced in
+        # docs/evidence/2026-06-12-weekend-pass/experiments/probe4-stability/
+        # diagnostic-rebuild8/FINDINGS.md. The two-phase contract is
+        # open -> register -> publish -> wait; open() (Step 2a) and wait() (Step 3)
+        # were wired but register() was folded into wait() (post-publish), so it is
+        # hoisted here. Idempotent: wait() re-registering the same cid is a no-op.
+        # Duck-typed because TerminalConsumerSessionLike (runtime_checkable) does
+        # not declare register(); the runtime session has it, legacy/None sessions
+        # skip (their seek-at-wait fallback needs no pre-registration).
+        for session in sessions.values():
+            if session is None:
+                continue
+            register = getattr(session, "register", None)
+            if callable(register):
+                register(correlation_id)
+
         # --- Step 2b: publish generation command over the bus ---
         command_payload = {
             "task_description": task.task_description,
