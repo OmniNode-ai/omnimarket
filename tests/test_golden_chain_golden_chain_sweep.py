@@ -219,3 +219,26 @@ class TestGoldenChainSweepGoldenChain:
         result = handler.handle(request)
 
         assert result.chain_results[0].status == EnumChainStatus.PASS
+
+    async def test_runtime_injected_correlation_id_validates(
+        self, event_bus: EventBusInmemory
+    ) -> None:
+        """The runtime-injected minimal payload validates into the request model.
+
+        RuntimeLocal publishes ``{"correlation_id": "<uuid>"}`` as the minimal
+        initial payload when no input file is supplied. The request model must
+        accept that field (OMN-8724) — under ``extra="forbid"`` an undeclared
+        ``correlation_id`` would be rejected before the handler ran, which is the
+        crash this guards against on the ``onex node`` dispatch path.
+        """
+        minimal_payload = {"correlation_id": "1670df3e-f18d-4e6a-83f4-4c9718a4f3ac"}
+        request = GoldenChainSweepRequest.model_validate(minimal_payload)
+
+        assert request.correlation_id == minimal_payload["correlation_id"]
+        assert request.chains == []
+
+        result = NodeGoldenChainSweep().handle(request)
+        # No chains supplied → nothing to validate → PASS with zero counts.
+        # This is an empty-input PASS, NOT live data-flow evidence.
+        assert result.overall_status == EnumSweepStatus.PASS
+        assert result.chains_total == 0

@@ -1,9 +1,17 @@
-"""NodeGoldenChainSweep — Golden chain validation for Kafka-to-DB projections.
+"""NodeGoldenChainSweep — field-presence validation over pre-collected projection rows.
 
-Validates end-to-end data flow by defining chains (head topic -> tail table),
-running field-level assertions, and producing per-chain pass/fail results.
+Defines chains (head topic -> tail table) and runs field-level assertions against
+``projected_rows`` the **caller** supplies, producing per-chain pass/fail results.
 
-ONEX node type: COMPUTE — pure, deterministic, no LLM calls.
+ONEX node type: COMPUTE — pure, deterministic, no LLM calls, **zero live I/O**.
+
+Evidence scope (OMN-8724, OMN-13126): this node does NOT perform any live I/O —
+no Kafka publish, no DB poll, no ``count(*)``, no row-count delta. A ``pass`` only
+asserts that the caller-supplied rows contain the expected field keys; it does NOT
+prove an event flowed end-to-end or that a row materialized in a live tail table.
+Do NOT cite a pass here as live row / end-to-end data-flow evidence. A real
+live-Postgres fetch + row-count-delta assertion is tracked under OMN-8724 and is
+not implemented here yet.
 """
 
 from __future__ import annotations
@@ -82,6 +90,12 @@ class GoldenChainSweepRequest(BaseModel):
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
+    # Injected by the runtime into every dispatched command payload (RuntimeLocal
+    # publishes {"correlation_id": ...} as the minimal initial payload when no
+    # input file is supplied). Declared so the request validates cleanly on the
+    # bus dispatch path — without it the runtime-injected field is rejected by
+    # extra="forbid" before the handler ever runs.
+    correlation_id: str = ""
     chains: list[ModelChainDefinition] = Field(default_factory=list)
     timeout_ms: int = 15000
     projected_rows: dict[str, dict[str, object]] = Field(default_factory=dict)
@@ -117,10 +131,13 @@ class GoldenChainSweepResult(BaseModel):
 
 
 class NodeGoldenChainSweep:
-    """Validate golden chains from Kafka topics to DB projection tables.
+    """Validate chain field-presence against pre-collected projection rows.
 
-    Pure compute handler — validates pre-collected projection data against
-    chain definitions.
+    Pure compute handler — validates the caller-supplied ``projected_rows``
+    against chain definitions. Performs **zero live I/O** (no Kafka, no DB). A
+    ``pass`` proves field presence in caller-supplied rows only — NOT live row
+    materialization or end-to-end data flow. Do not cite as live evidence
+    (OMN-8724).
     """
 
     def handle(self, request: GoldenChainSweepRequest) -> GoldenChainSweepResult:
