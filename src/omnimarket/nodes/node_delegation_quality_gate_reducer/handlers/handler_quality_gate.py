@@ -51,6 +51,37 @@ _REFUSAL_PHRASES: tuple[str, ...] = (
     "traceback",
 )
 
+# Failure-reason verdict prefixes that recommend escalation to a higher tier
+# (OMN-13140). Quality-gate failure reasons are tagged with a verdict category
+# prefix (e.g. "WEAK_OUTPUT: ...", "TASK_MISMATCH: ...", "REFUSAL: ..."). Before
+# OMN-13140 only REFUSAL set fallback_recommended, so the common WEAK_OUTPUT and
+# TASK_MISMATCH verdicts terminated the workflow instead of escalating to cloud.
+# These three categories are recoverable by a stronger model, so they recommend
+# fallback. MALFORMED is intentionally excluded: a non-parseable / truncated
+# artifact is a structural defect a higher tier is unlikely to fix more cheaply,
+# and deterministic MALFORMED failures already hard-block elsewhere.
+_FALLBACK_VERDICT_PREFIXES: tuple[str, ...] = (
+    "REFUSAL",
+    "WEAK_OUTPUT",
+    "TASK_MISMATCH",
+)
+
+
+def _recommends_fallback(failure_reasons: tuple[str, ...] | list[str]) -> bool:
+    """Return whether any failure reason carries an escalation-worthy verdict.
+
+    A failure reason recommends fallback when its verdict-category prefix is one
+    of ``_FALLBACK_VERDICT_PREFIXES`` (REFUSAL, WEAK_OUTPUT, TASK_MISMATCH). The
+    prefix is matched at the start of the reason string, the form every check in
+    this module emits (e.g. "WEAK_OUTPUT: response length 12 below minimum 80").
+    """
+    return any(
+        reason.startswith(prefix)
+        for reason in failure_reasons
+        for prefix in _FALLBACK_VERDICT_PREFIXES
+    )
+
+
 # Task-type specific markers (legacy fallback)
 _TASK_MARKERS: dict[str, tuple[str, ...]] = {
     "test": ("def test_", "@pytest.mark"),
@@ -562,9 +593,12 @@ def _run_legacy_checks(
 
     no_refusal_score = scores["no_refusal"]
     passed = quality_score >= 0.6 and math.isclose(no_refusal_score, 1.0)
-    fallback_recommended = not passed and (
-        math.isclose(no_refusal_score, 0.0) or quality_score < 0.3
-    )
+    # OMN-13140: recommend fallback whenever an unpassed legacy result carries a
+    # REFUSAL / WEAK_OUTPUT / TASK_MISMATCH verdict. The legacy checks emit those
+    # same prefixes (see failure_reasons above), so WEAK_OUTPUT (length miss) and
+    # TASK_MISMATCH (missing markers) now escalate instead of terminating — the
+    # prior score-threshold gate (quality_score < 0.3) silently dropped them.
+    fallback_recommended = not passed and _recommends_fallback(failure_reasons)
     fail_category: EnumQualityGateCategory = (
         EnumQualityGateCategory.PASS
         if passed
@@ -650,7 +684,11 @@ def delta(gate_input: ModelQualityGateInput) -> ModelQualityGateResult:
         )
 
     if heuristic_failures:
-        fallback_recommended = any("REFUSAL" in r for r in heuristic_failures)
+        # OMN-13140: recommend fallback for REFUSAL, WEAK_OUTPUT, and TASK_MISMATCH
+        # verdicts — not REFUSAL alone. Previously the common WEAK_OUTPUT /
+        # TASK_MISMATCH heuristic failures returned fallback_recommended=False, so
+        # the orchestrator terminated instead of escalating to a cloud tier.
+        fallback_recommended = _recommends_fallback(heuristic_failures)
         return ModelQualityGateResult(
             correlation_id=gate_input.correlation_id,
             passed=False,

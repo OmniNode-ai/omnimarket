@@ -93,6 +93,11 @@ tiers:
         backend_id: cloud-gemini-flash
         max_context_tokens: 1000000
         use_for:
+          # OMN-13140: code_generation added so the canonical cloud-escalation
+          # target (AI Studio cloud-gemini-flash) is SELECTABLE for the hackathon
+          # code_generation proof. Without it the cheap_cloud tier could not route
+          # code_generation to Gemini and escalation never reached Google.
+          - code_generation
           - summarization
           - simple_tasks
           - document

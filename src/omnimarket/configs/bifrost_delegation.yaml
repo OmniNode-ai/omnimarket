@@ -124,6 +124,11 @@ backends:
     tier: cheap_cloud
     timeout_ms: 60000
     capabilities:
+      # OMN-13140: code_generation added so AI Studio cloud-gemini-flash is the
+      # canonical cloud-escalation target for the hackathon code_generation proof.
+      # cloud-vertex-gemini (below) intentionally does NOT carry code_generation —
+      # exactly one canonical Gemini target is live for the escalation path.
+      - code_generation
       - summarization
       - simple_tasks
       - document
