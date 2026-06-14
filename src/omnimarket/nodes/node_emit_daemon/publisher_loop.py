@@ -149,6 +149,19 @@ class KafkaPublisherLoop:
         return self._started_at
 
     # ------------------------------------------------------------------
+    # Publish callable wiring
+    # ------------------------------------------------------------------
+
+    def set_publish_fn(self, publish_fn: PublishFn) -> None:
+        """Rebind the publish callable before the loop starts consuming.
+
+        Used by the standalone runner to swap the spool-only no-op for the
+        real Kafka-backed publish path once the event bus has been started
+        on the running event loop.
+        """
+        self._publish_fn = publish_fn
+
+    # ------------------------------------------------------------------
     # Lifecycle
     # ------------------------------------------------------------------
 
