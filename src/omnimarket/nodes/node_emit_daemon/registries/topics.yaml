@@ -1,5 +1,12 @@
 # Event Registry: Claude Code Platform
-# Generated from omniclaude/src/omniclaude/hooks/event_registry.py
+#
+# CANONICAL SOURCE OF TRUTH (OMN-13146). This file is the single registry the
+# emit daemon loads at runtime. The omniclaude hook registry
+# (hooks/event_registry.py + the TopicBase enum) is a projection of this file and
+# must agree with it on every event type, fan-out topic set, partition_key_field,
+# and required_fields list. The structural drift validator
+# (omnimarket.validators.event_registry_drift), wired as a pre-commit hook and a
+# required CI gate, fails on any unbaselined divergence in either direction.
 #
 # This file defines all event types, their fan-out rules, required fields,
 # and partition key configuration for the Claude Code platform.
@@ -282,7 +289,10 @@ events:
         tier: telemetry
         description: "Task delegation event"
     partition_key_field: session_id
-    required_fields: [session_id, correlation_id, task_type]
+    # OMN-13146: delegated_to is required by the omniclaude hook registry and by
+    # the delegation golden chain / SQLite projection. It was missing here and the
+    # old topic-set-only drift validator could not see the required_fields skew.
+    required_fields: [session_id, correlation_id, task_type, delegated_to]
 
   delegation.request:
     fan_out:
