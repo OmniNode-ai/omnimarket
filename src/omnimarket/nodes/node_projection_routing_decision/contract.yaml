@@ -54,7 +54,19 @@ db_io:
     - name: agent_routing_decisions
       migration: "021_create_agent_routing_decisions_table.sql"
       access: write
-      database: omnidash_analytics
+      # OMN-13122: canonical DB home is omnibase_infra (the DDL owner via migration
+      # 021). This node is a NON-OWNER WRITER (metadata duplicate_migration_policy:
+      # forbid_cross_repo_create_table), so agent_routing_decisions only exists in
+      # omnibase_infra, never omnidash_analytics. The runtime auto-wiring
+      # (omnibase_infra handler_wiring._DB_URL_ENV_MAP) resolves this field to the
+      # DSN env: omnidash_analytics -> OMNIDASH_ANALYTICS_DB_URL,
+      # omnibase_infra -> OMNIBASE_INFRA_DB_URL. With the prior omnidash_analytics
+      # value the handler logged UndefinedTable against the dashboard DB
+      # (golden-chain run12 Finding). Repointing to omnibase_infra makes writer DSN
+      # == reader DSN (the registration golden chain reads agent_routing_decisions
+      # from omnibase_infra) — the single-canonical-home invariant (OMN-13127),
+      # with no divergent duplicate table.
+      database: omnibase_infra
       role: routing_decisions
 
 event_bus:
