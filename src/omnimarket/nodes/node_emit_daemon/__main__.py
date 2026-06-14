@@ -24,6 +24,12 @@ import signal
 import sys
 from pathlib import Path
 
+from omnimarket.nodes.node_emit_daemon.kafka_publish import (
+    build_kafka_publish_fn,
+    create_kafka_bus,
+)
+from omnimarket.nodes.node_emit_daemon.publisher_loop import KafkaPublisherLoop
+
 logger = logging.getLogger(__name__)
 
 _DAEMON_LOGGER_NAME = "omnimarket.emit_daemon"
@@ -218,6 +224,41 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
+async def _close_bus(event_bus: object) -> None:
+    """Best-effort close of a started Kafka event bus on shutdown."""
+    close = getattr(event_bus, "close", None)
+    if close is None:
+        return
+    try:
+        await close()
+    except Exception:
+        logger.exception("Failed to close Kafka event bus cleanly")
+
+
+async def _wire_kafka_publisher(
+    publisher: KafkaPublisherLoop,
+    bootstrap_servers: str | None,
+) -> object | None:
+    """Bind the real Kafka publish path onto the publisher loop.
+
+    When ``bootstrap_servers`` is supplied, build + start an ``EventBusKafka``
+    on the running event loop and rebind the loop's publish callable to route
+    through ``bus.publish`` (the canonical bus path). Returns the started bus
+    so the caller can close it on shutdown, or ``None`` for spool-only mode.
+
+    This is the wiring seam for OMN-13144: previously ``--kafka-bootstrap-servers``
+    only logged a banner and left the publisher on the no-op spool-only path.
+    """
+
+    if not bootstrap_servers:
+        return None
+
+    logger.info(f"Kafka publishing enabled: {bootstrap_servers}")
+    event_bus = await create_kafka_bus(bootstrap_servers, timeout_seconds=10.0)
+    publisher.set_publish_fn(build_kafka_publish_fn(event_bus, source="omnimarket"))
+    return event_bus
+
+
 def _do_start(args: argparse.Namespace) -> int:
     if args.log_path:
         _configure_logging(
@@ -231,7 +272,6 @@ def _do_start(args: argparse.Namespace) -> int:
     from omnimarket.nodes.node_emit_daemon.handlers.handler_emit_daemon import (
         HandlerEmitDaemon,
     )
-    from omnimarket.nodes.node_emit_daemon.publisher_loop import KafkaPublisherLoop
     from omnimarket.nodes.node_emit_daemon.socket_server import EmitSocketServer
 
     socket_path = _resolve_socket_path(args.socket_path)
@@ -270,7 +310,8 @@ def _do_start(args: argparse.Namespace) -> int:
     handler = HandlerEmitDaemon()
     queue = BoundedEventQueue(spool_dir=spool_dir, outbox_dir=outbox_dir)
 
-    # Create publisher loop with optional Kafka
+    # Spool-only fallback when no Kafka bootstrap servers are supplied: events
+    # remain durably spooled/acked but are not forwarded to a broker.
     async def _noop_publish(
         topic: str,
         key: bytes | None,
@@ -279,12 +320,11 @@ def _do_start(args: argparse.Namespace) -> int:
     ) -> None:
         logger.debug(f"[no-kafka] Would publish to {topic} ({len(value)} bytes)")
 
-    publish_fn = _noop_publish
-    if args.kafka_bootstrap_servers:
-        logger.info(f"Kafka publishing enabled: {args.kafka_bootstrap_servers}")
-        # Kafka integration will be wired here when available
-
-    publisher = KafkaPublisherLoop(queue=queue, publish_fn=publish_fn)
+    # The publisher loop is constructed with the no-op publish callable. When
+    # --kafka-bootstrap-servers is supplied, _run() builds a real EventBusKafka
+    # (which must start on the running event loop) and rebinds publish_fn to the
+    # canonical bus path before the loop starts consuming.
+    publisher = KafkaPublisherLoop(queue=queue, publish_fn=_noop_publish)
 
     # Wire publisher into socket server so health endpoint can report circuit state
     server = EmitSocketServer(
@@ -303,16 +343,27 @@ def _do_start(args: argparse.Namespace) -> int:
     async def _run() -> None:
         handler.transition_to_binding(socket_path, os.getpid())
 
+        event_bus: object | None = None
         try:
             await queue.load_spool()
             # Restore pending duty-critical events from the durable outbox so
             # replay resumes after a crash or restart (truncate-on-ack).
             await queue.load_outbox()
+
+            # Wire the real Kafka publish path when bootstrap servers are
+            # supplied. Building + starting the bus must happen on the running
+            # event loop, so it is done here rather than in synchronous setup.
+            event_bus = await _wire_kafka_publisher(
+                publisher, args.kafka_bootstrap_servers
+            )
+
             await server.start()
             await publisher.start()
             handler.transition_to_listening()
         except Exception as e:
             handler.transition_to_failed(str(e))
+            if event_bus is not None:
+                await _close_bus(event_bus)
             raise
 
         loop = asyncio.get_running_loop()
@@ -329,6 +380,9 @@ def _do_start(args: argparse.Namespace) -> int:
         drained = await queue.drain_to_spool()
         if drained > 0:
             logger.info(f"Drained {drained} events to spool")
+
+        if event_bus is not None:
+            await _close_bus(event_bus)
 
         handler.transition_to_stopped(
             events_published=publisher.events_published,
