@@ -9,6 +9,8 @@ OMN-13122.
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import yaml
 
 from omnimarket.nodes.node_projection_routing_decision.handlers.handler_projection_routing_decision import (
@@ -158,19 +160,45 @@ class TestRoutingDecisionProjectionRunner:
 
 
 class TestRoutingDecisionOwnership:
-    def test_metadata_declares_infra_as_ddl_owner(self) -> None:
-        """agent_routing_decisions DDL is owned by omnibase_infra (migration 021).
+    def test_metadata_declares_node_as_ddl_owner(self) -> None:
+        """The omnidash_analytics agent_routing_decisions copy is owned by this node.
 
-        This node is a non-owner writer and must not add a duplicate CREATE TABLE.
+        OMN-13150 (FIX-1): omnidash_analytics is the canonical projection DB (the
+        projection-API reader and the projection runner both resolve it first, and
+        every sibling projection table lives there). This node ships and owns the
+        omnidash_analytics CREATE TABLE migration; omnibase_infra owns a separate
+        same-named runtime-observability table in the omnibase_infra DB.
         """
-        metadata_path = (
-            "src/omnimarket/nodes/node_projection_routing_decision/metadata.yaml"
+        node_dir = Path(__file__).resolve().parents[1] / (
+            "src/omnimarket/nodes/node_projection_routing_decision"
         )
-        with open(metadata_path) as f:
-            metadata = yaml.safe_load(f)
+        metadata = yaml.safe_load((node_dir / "metadata.yaml").read_text())
         ownership = metadata["ownership"]["agent_routing_decisions"]
-        assert ownership["ddl_owner"] == "omnibase_infra"
+        assert (
+            ownership["ddl_owner"]
+            == "omnimarket.nodes.node_projection_routing_decision"
+        )
         assert (
             ownership["duplicate_migration_policy"] == "forbid_cross_repo_create_table"
         )
-        assert "omnimarket" in ownership["non_owner_repos"]
+        assert "omnibase_infra" in ownership["non_owner_repos"]
+
+    def test_metadata_create_migration_resolves_to_a_file(self) -> None:
+        """The declared create_migration must exist under the node's migrations/."""
+        node_dir = Path(__file__).resolve().parents[1] / (
+            "src/omnimarket/nodes/node_projection_routing_decision"
+        )
+        metadata = yaml.safe_load((node_dir / "metadata.yaml").read_text())
+        migration = metadata["ownership"]["agent_routing_decisions"]["create_migration"]
+        assert (node_dir / migration).is_file()
+
+    def test_create_migration_targets_omnidash_analytics(self) -> None:
+        """The migration must declare omnidash_analytics as its target DB."""
+        node_dir = Path(__file__).resolve().parents[1] / (
+            "src/omnimarket/nodes/node_projection_routing_decision"
+        )
+        sql = (
+            node_dir / "migrations/0021_create_agent_routing_decisions.sql"
+        ).read_text()
+        assert "omnidash_analytics" in sql
+        assert "CREATE TABLE IF NOT EXISTS agent_routing_decisions" in sql

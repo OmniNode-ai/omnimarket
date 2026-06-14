@@ -52,21 +52,27 @@ dod_evidence:
 db_io:
   db_tables:
     - name: agent_routing_decisions
-      migration: "021_create_agent_routing_decisions_table.sql"
+      migration: "0021_create_agent_routing_decisions.sql"
       access: write
-      # OMN-13122: canonical DB home is omnibase_infra (the DDL owner via migration
-      # 021). This node is a NON-OWNER WRITER (metadata duplicate_migration_policy:
-      # forbid_cross_repo_create_table), so agent_routing_decisions only exists in
-      # omnibase_infra, never omnidash_analytics. The runtime auto-wiring
-      # (omnibase_infra handler_wiring._DB_URL_ENV_MAP) resolves this field to the
-      # DSN env: omnidash_analytics -> OMNIDASH_ANALYTICS_DB_URL,
-      # omnibase_infra -> OMNIBASE_INFRA_DB_URL. With the prior omnidash_analytics
-      # value the handler logged UndefinedTable against the dashboard DB
-      # (golden-chain run12 Finding). Repointing to omnibase_infra makes writer DSN
-      # == reader DSN (the registration golden chain reads agent_routing_decisions
-      # from omnibase_infra) — the single-canonical-home invariant (OMN-13127),
-      # with no divergent duplicate table.
-      database: omnibase_infra
+      # OMN-13150 (FIX-1): canonical DB home is omnidash_analytics — the projection
+      # DB where EVERY sibling projection table lives (session_outcomes,
+      # llm_call_metrics, llm_routing_decisions, node_service_registry,
+      # savings_estimates, pattern_learning_artifacts, ...). The prior OMN-13127
+      # repoint to omnibase_infra was RETRACTED: it fed ONLY the canonical
+      # message_dispatch_engine path (handler_wiring._DB_URL_ENV_MAP reads this
+      # field), but the projection-API reader
+      # (api_server._projection_database_binding_from_settings) and the standalone
+      # RoutingDecisionProjectionRunner (runner.ModelProjectionRuntimeBinding
+      # .from_legacy_settings) BOTH resolve omnidash_analytics_db_url FIRST,
+      # regardless of this field. So omnibase_infra split the writer DSN
+      # (canonical dispatch) from the reader DSN (projection-API + dashboard) —
+      # the opposite of single-canonical-home. omnidash_analytics makes all three
+      # paths agree. Verified live 2026-06-14 on dev lane: the real handler resolved
+      # omnidash_analytics and wrote+read back a row (docs/evidence/
+      # 2026-06-14-post-closeout/). DDL is owned by this node's per-node migration
+      # (0021_create_agent_routing_decisions.sql), vendored into omnibase_infra
+      # forward/nodes/ and applied to $NODE_PGDB (omnidash_analytics).
+      database: omnidash_analytics
       role: routing_decisions
 
 event_bus:
@@ -74,9 +80,41 @@ event_bus:
     - onex.evt.omniclaude.routing-decision.v1
   publish_topics:
     - onex.evt.omnimarket.projection-routing-decision-applied.v1
+    - onex.snapshot.projection.agent-routing-decision.v1  # onex-topic-allow: projection snapshot topic
 
 externally_consumed_topics:
   - onex.evt.omnimarket.projection-routing-decision-applied.v1
+  - onex.snapshot.projection.agent-routing-decision.v1  # onex-topic-allow: projection snapshot topic
+
+# OMN-13150 (FIX-1): expose the agent_routing_decisions projection table directly
+# over the projection API so the registration chain row is dashboard-readable.
+# Distinct snapshot topic from node_projection_llm_routing's
+# onex.snapshot.projection.routing-decision.v1 (that one projects the llm_routing
+# view, not this append-only agent_routing_decisions table).
+projection_api:
+  expose: true
+  exposures:
+    - topic: onex.snapshot.projection.agent-routing-decision.v1  # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
+      table: agent_routing_decisions
+      schema: public
+      columns:
+        - id
+        - correlation_id
+        - selected_agent
+        - confidence_score
+        - request_type
+        - routing_reason
+        - domain
+        - metadata
+        - project_path
+        - project_name
+        - claude_session_id
+        - created_at
+      json_columns:
+        - metadata
+      order_by: created_at
+      freshness_column: created_at
+      limit: 100
 
 metadata:
   transport_type: kafka
