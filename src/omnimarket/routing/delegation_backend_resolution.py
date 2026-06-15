@@ -56,6 +56,16 @@ class ModelResolvedDelegationBackend(BaseModel):
         ),
     )
     tier: str = Field(default="unknown")
+    max_tokens: int = Field(
+        ...,
+        ge=1,
+        description=(
+            "Per-backend output-token budget/ceiling resolved from the routing "
+            "contract (overlay-overridable). The orchestrator uses this as the "
+            "effective max_tokens when the request omits one and as the hard cap "
+            "when the request supplies an explicit value (OMN-13161)."
+        ),
+    )
     extra_headers: dict[str, str] = Field(default_factory=dict)
 
 
@@ -148,6 +158,23 @@ def resolve_delegation_backend(
             "overlay must resolve the model identifier at deploy time."
         )
 
+    # OMN-13161: the per-backend output-token budget is contract-resolved — there
+    # is no Python constant or env-var fallback for the value. A backend that omits
+    # max_tokens (or sets a non-positive one) fails closed rather than silently
+    # falling back to a magic number.
+    raw_max_tokens = backend.get("max_tokens")
+    if not isinstance(raw_max_tokens, int) or isinstance(raw_max_tokens, bool):
+        raise RuntimeError(
+            f"backend {backend.get('backend_id')!r} has no integer max_tokens; the "
+            "routing contract (bifrost_delegation.yaml + overlay) must declare a "
+            "per-backend output-token budget (OMN-13161)."
+        )
+    if raw_max_tokens < 1:
+        raise RuntimeError(
+            f"backend {backend.get('backend_id')!r} declares max_tokens="
+            f"{raw_max_tokens}; the per-backend output-token budget must be >= 1."
+        )
+
     raw_headers = backend.get("extra_headers") or {}
     extra_headers = {str(k): str(v) for k, v in raw_headers.items()}
 
@@ -156,12 +183,34 @@ def resolve_delegation_backend(
         model_id=model_name,
         endpoint_ref=endpoint_url,
         tier=str(backend.get("tier", "unknown")),
+        max_tokens=raw_max_tokens,
         extra_headers=extra_headers,
     )
+
+
+def resolve_effective_max_tokens(
+    *, requested: int | None, backend_max_tokens: int
+) -> int:
+    """Resolve the effective output-token budget for one delegation call.
+
+    The per-backend ``backend_max_tokens`` is the contract-resolved ceiling
+    (OMN-13161). When the request omits ``max_tokens`` the backend value is used
+    verbatim; when it supplies an explicit value the result is capped at the
+    backend ceiling (``min(requested, backend_max_tokens)``) so a caller can ask
+    for fewer tokens but never more than the backend allows.
+    """
+    if backend_max_tokens < 1:
+        raise ValueError(f"backend_max_tokens must be >= 1, got {backend_max_tokens}")
+    if requested is None:
+        return backend_max_tokens
+    if requested < 1:
+        raise ValueError(f"requested max_tokens must be >= 1, got {requested}")
+    return min(requested, backend_max_tokens)
 
 
 __all__ = [
     "ModelResolvedDelegationBackend",
     "load_bifrost_backends",
     "resolve_delegation_backend",
+    "resolve_effective_max_tokens",
 ]

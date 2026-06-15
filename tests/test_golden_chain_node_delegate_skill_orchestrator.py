@@ -46,7 +46,7 @@ class _StubDispatchPort:
         prompt: str,
         task_type: str,
         correlation_id: UUID,
-        max_tokens: int,
+        max_tokens: int | None,
         source_file_path: str | None,
         source_session_id: str | None,
         wait: bool,
@@ -184,6 +184,8 @@ class TestDelegateSkillGoldenChain:
                     "endpoint_url": "http://inference.example:8000/v1/chat/completions",
                     "model_name": "Qwen3-Coder-30B",
                     "tier": "local",
+                    # OMN-13161: per-backend output-token ceiling (router-resolved).
+                    "max_tokens": 65536,
                     "capabilities": ["test", "code_generation"],
                 }
             ],

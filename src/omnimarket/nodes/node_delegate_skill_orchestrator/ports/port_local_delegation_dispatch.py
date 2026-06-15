@@ -47,6 +47,7 @@ from omnimarket.projection.sqlite_database import (
 )
 from omnimarket.routing.delegation_backend_resolution import (
     resolve_delegation_backend,
+    resolve_effective_max_tokens,
 )
 
 logger = logging.getLogger(__name__)
@@ -97,15 +98,22 @@ class LocalDelegationDispatchPort:
         prompt: str,
         task_type: str,
         correlation_id: UUID,
-        max_tokens: int,
+        max_tokens: int | None,
         source_file_path: str | None,
         source_session_id: str | None,
         wait: bool,
         quality_contract_mode: str,
         acceptance_criteria: tuple[str, ...],
     ) -> dict[str, object]:
-        # 1. ROUTING AUTHORITY — resolve model_id + COMPLETE endpoint_ref.
+        # 1. ROUTING AUTHORITY — resolve model_id + COMPLETE endpoint_ref +
+        #    the per-backend output-token budget (OMN-13161).
         backend = resolve_delegation_backend(task_type)
+
+        # 2. RESOLVE the effective output-token budget from the routing contract.
+        #    Unset request -> backend ceiling; explicit request -> capped at it.
+        effective_max_tokens = resolve_effective_max_tokens(
+            requested=max_tokens, backend_max_tokens=backend.max_tokens
+        )
 
         # Inference-protocol shaping (e.g. /no_think prefix, chat_template_kwargs).
         system_prompt = _TASK_TYPE_SYSTEM_PROMPTS.get(
@@ -137,7 +145,7 @@ class LocalDelegationDispatchPort:
             correlation_id,
         )
 
-        # 2. CANONICAL EFFECT HANDLER — one LLM call, transport selected by profile.
+        # 3. CANONICAL EFFECT HANDLER — one LLM call, transport selected by profile.
         call_request = ModelLlmDelegationCallRequest(
             request_id=str(uuid.uuid4()),
             correlation_id=str(correlation_id),
@@ -148,7 +156,7 @@ class LocalDelegationDispatchPort:
             prompt_hash="",
             system_prompt=outbound_system_prompt,
             task_type=task_type,
-            max_tokens=max_tokens,
+            max_tokens=effective_max_tokens,
             model_tier=backend.tier,
             provider=backend.backend_id,
             extra_headers=backend.extra_headers,
@@ -177,7 +185,7 @@ class LocalDelegationDispatchPort:
                 "model_name": backend.model_id,
             }
 
-        # 3. PROJECTION — materialize the local evidence row from the terminal.
+        # 4. PROJECTION — materialize the local evidence row from the terminal.
         self._project_evidence(
             correlation_id=correlation_id,
             task_type=task_type,
