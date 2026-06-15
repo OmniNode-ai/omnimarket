@@ -369,11 +369,16 @@ def test_handler_constructs_without_dispatch_port() -> None:
 
 
 @pytest.mark.unit
-async def test_handler_with_no_port_uses_direct_curl_dispatch() -> None:
-    """Default port is DirectCurlDelegationDispatchPort (not fail-closed)."""
-    from omnimarket.nodes.node_delegate_skill_orchestrator.ports.port_direct_curl_dispatch import (
-        DirectCurlDelegationDispatchPort,
+async def test_handler_with_no_port_uses_local_in_process_dispatch() -> None:
+    """Default port is the in-process LocalDelegationDispatchPort (OMN-13160).
+
+    The standalone CLI path composes the routing authority, the canonical effect
+    handler (curl on the macOS LAN profile, httpx elsewhere), and the canonical
+    projection — replacing the deleted bespoke DirectCurl port.
+    """
+    from omnimarket.nodes.node_delegate_skill_orchestrator.ports.port_local_delegation_dispatch import (
+        LocalDelegationDispatchPort,
     )
 
     handler = HandlerDelegateSkill()
-    assert isinstance(handler._dispatch_port, DirectCurlDelegationDispatchPort)
+    assert isinstance(handler._dispatch_port, LocalDelegationDispatchPort)

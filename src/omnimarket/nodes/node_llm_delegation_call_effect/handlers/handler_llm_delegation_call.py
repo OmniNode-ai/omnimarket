@@ -9,6 +9,12 @@ hammering unhealthy endpoints on every call.
 Endpoint URLs are supplied by routing/contract resolution before this effect runs.
 Raw prompt is NEVER logged, persisted, or emitted to Kafka — only prompt_hash.
 
+Transport is a runtime-profile-internal detail (OMN-13160): the ``transport``
+module selects curl on ``local_macos_claude_hooks`` (the only LAN-safe transport
+from uv-managed Python on the local Mac — httpx EHOSTUNREACHes on the .201 LAN)
+and httpx everywhere else. The POST URL is the resolved ``endpoint_ref`` posted
+verbatim (OMN-12815/OMN-13159).
+
 Pricing for cost telemetry is resolved from routing_tiers.yaml (the model
 registry) at call time using the tier name from the request. The hardcoded
 _FALLBACK_PRICE_PER_1M dict is retained as a safe default when the tier is
@@ -24,7 +30,6 @@ from datetime import UTC, datetime
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Any
-from urllib.parse import urlsplit
 
 import httpx
 import yaml
@@ -48,6 +53,7 @@ from omnimarket.nodes.contract_topics import (
     contract_publish_topics,
     contract_subscribe_topics,
 )
+from omnimarket.nodes.node_llm_delegation_call_effect.handlers import transport
 from omnimarket.nodes.node_llm_delegation_call_effect.models.model_llm_delegation_call_request import (
     ModelLlmDelegationCallRequest,
 )
@@ -174,19 +180,13 @@ def _resolve_endpoint(endpoint_ref: str) -> str:
     return value
 
 
-def _health_probe_url(endpoint_url: str) -> str:
-    """Return ``scheme://host[:port]/health`` for the complete endpoint URL.
+def _is_endpoint_healthy(endpoint_url: str) -> bool:
+    """Return cached health status or probe /health, caching result for 60s.
 
-    OMN-12815: the POST URL is ``endpoint_url`` verbatim. The liveness probe is
-    a separate auxiliary request against the host root's ``/health`` path; this
-    derives only that probe URL and never affects the POST URL.
+    The probe is routed through the transport module so the LAN-safe curl
+    transport is exercised on the ``local_macos_claude_hooks`` profile and httpx
+    everywhere else (OMN-13160).
     """
-    parts = urlsplit(endpoint_url)
-    return f"{parts.scheme}://{parts.netloc}/health"
-
-
-def _is_endpoint_healthy(endpoint_url: str, client: httpx.Client) -> bool:
-    """Return cached health status or probe /health, caching result for 60s."""
     now = time.monotonic()
     cached = _health_cache.get(endpoint_url)
     if cached is not None:
@@ -194,12 +194,7 @@ def _is_endpoint_healthy(endpoint_url: str, client: httpx.Client) -> bool:
         if now - ts < _HEALTH_CACHE_TTL_SECONDS:
             return healthy
 
-    try:
-        resp = client.get(_health_probe_url(endpoint_url), timeout=5.0)
-        healthy = resp.status_code < 500
-    except Exception:
-        healthy = False
-
+    healthy = transport.probe_health(endpoint_url)
     _health_cache[endpoint_url] = (now, healthy)
     return healthy
 
@@ -300,14 +295,11 @@ class HandlerLlmDelegationCall:
                 endpoint_healthy=False,
             )
 
-        with httpx.Client(timeout=120.0) as client:
-            healthy = _is_endpoint_healthy(endpoint_url, client)
-            if not healthy:
-                logger.warning(
-                    "health probe failed for %s — skipping call", endpoint_url
-                )
-                return self._build_all_tiers_failed(request)
-            return self._execute_call_for_handle(request, client, endpoint_url)
+        healthy = _is_endpoint_healthy(endpoint_url)
+        if not healthy:
+            logger.warning("health probe failed for %s — skipping call", endpoint_url)
+            return self._build_all_tiers_failed(request)
+        return self._execute_call_for_handle(request, endpoint_url)
 
     def __call__(
         self,
@@ -332,27 +324,23 @@ class HandlerLlmDelegationCall:
                 endpoint_healthy=False,
             )
 
-        with httpx.Client(timeout=120.0) as client:
-            healthy = _is_endpoint_healthy(endpoint_url, client)
-            if not healthy:
-                logger.warning(
-                    "health probe failed for %s — skipping call", endpoint_url
-                )
-                result = self._failure_result(
-                    request,
-                    EnumDelegationFailureClass.MODEL_UNAVAILABLE,
-                    f"endpoint {request.endpoint_ref} failed health probe",
-                    endpoint_healthy=False,
-                )
-                self._emit_all_tiers_failed(request, event_publisher)
-                return result
+        healthy = _is_endpoint_healthy(endpoint_url)
+        if not healthy:
+            logger.warning("health probe failed for %s — skipping call", endpoint_url)
+            result = self._failure_result(
+                request,
+                EnumDelegationFailureClass.MODEL_UNAVAILABLE,
+                f"endpoint {request.endpoint_ref} failed health probe",
+                endpoint_healthy=False,
+            )
+            self._emit_all_tiers_failed(request, event_publisher)
+            return result
 
-            return self._execute_call(request, client, endpoint_url, event_publisher)
+        return self._execute_call(request, endpoint_url, event_publisher)
 
     def _execute_call_for_handle(
         self,
         request: ModelLlmDelegationCallRequest,
-        client: httpx.Client,
         endpoint_url: str,
     ) -> ModelLlmDelegationCompletedEvent | ModelLlmDelegationCallResult:
         """Execute the call and RETURN the terminal event/result (no publish).
@@ -362,7 +350,7 @@ class HandlerLlmDelegationCall:
         a failure result on timeout/http/invalid-json (no event published for
         those — the failure is the returned result).
         """
-        result = self._execute_call(request, client, endpoint_url, event_publisher=None)
+        result = self._execute_call(request, endpoint_url, event_publisher=None)
         if not result.success:
             return result
         return self._build_completed_event(request, result)
@@ -370,29 +358,33 @@ class HandlerLlmDelegationCall:
     def _execute_call(
         self,
         request: ModelLlmDelegationCallRequest,
-        client: httpx.Client,
         endpoint_url: str,
         event_publisher: Any,
     ) -> ModelLlmDelegationCallResult:
-        payload = {
+        messages: list[dict[str, str]] = []
+        if request.system_prompt:
+            messages.append({"role": "system", "content": request.system_prompt})
+        messages.append({"role": "user", "content": request.prompt})
+        payload: dict[str, Any] = {
             "model": request.model_id,
-            "messages": [{"role": "user", "content": request.prompt}],
+            "messages": messages,
             "max_tokens": request.max_tokens,
             "temperature": request.temperature,
         }
+        if request.provider_request_options:
+            payload.update(request.provider_request_options)
 
-        t0 = time.monotonic()
         try:
-            # OMN-12815: post the COMPLETE contract endpoint URL VERBATIM —
-            # no path append, no construction.
-            response = client.post(
-                endpoint_url,
-                json=payload,
-                timeout=120.0,
+            # OMN-12815/OMN-13159: the transport posts the COMPLETE endpoint URL
+            # VERBATIM — no append, no construction — using curl on the macOS LAN
+            # profile and httpx elsewhere.
+            response = transport.post_chat_completion(
+                endpoint_url=endpoint_url,
+                payload=payload,
+                extra_headers=request.extra_headers,
             )
-            latency_ms = int((time.monotonic() - t0) * 1000)
-            response.raise_for_status()
-            response_json: dict[str, Any] = response.json()
+            latency_ms = response.latency_ms
+            response_json: dict[str, Any] = response.json_body
         except httpx.TimeoutException:
             return self._failure_result(
                 request, EnumDelegationFailureClass.TIMEOUT, "request timed out"
