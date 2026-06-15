@@ -21,8 +21,11 @@ additionally enforces:
   - cloud_routing_policy: "blocked" skips non-local tiers for that task class
   - pricing_ceiling_per_1k_tokens: tiers whose cost tier exceeds the ceiling
     are skipped (local=low, cheap_cloud=medium, claude=high)
-  - escalation_policy.tier_order: when present, overrides the default tier
-    iteration order declared in routing_tiers.yaml
+  - escalation_policy.tier_order: when present, this is the COMPLETE, CLOSED,
+    ORDERED set of eligible tiers for the task class — only the named tiers are
+    tried, in that order. Tiers absent from tier_order are excluded for the task
+    class (they are NOT appended after the declared order). When absent, the
+    routing_tiers.yaml declaration order is used.
   - task_model_overrides: per-task-type model ID overrides; takes priority over
     tier-order-based model selection (OMN-10942)
   - default_task_model_ref: fallback model ID for tasks with no explicit override
@@ -499,9 +502,17 @@ def _tier_order_from_contract(
 ) -> tuple[ModelRoutingTier, ...]:
     """Return tiers in contract-declared escalation order, or config default.
 
-    When the task-class entry declares escalation_policy.tier_order, tiers are
-    reordered to match. Tiers not mentioned in tier_order are appended in their
-    original config order after declared tiers.
+    When the task-class entry declares escalation_policy.tier_order, that list is
+    the COMPLETE, CLOSED, ORDERED set of eligible tiers for the task class: only
+    the named tiers are tried, in the declared order. Tiers absent from
+    tier_order are excluded for that task class (OMN-13140) — they are NOT
+    appended after the declared order. Appending them re-opened the set and let a
+    task whose ceiling tier failed escalate past it into an unlisted tier (e.g.
+    `test` declares [local, cheap_cloud, claude] but escalated into cheap_frontier
+    after claude), defeating the per-class ceiling the tier_order encodes.
+
+    When the task-class entry declares no tier_order, the config declaration
+    order is returned unchanged (graceful degradation).
     """
     if entry is None:
         return config.tiers
@@ -518,14 +529,9 @@ def _tier_order_from_contract(
     seen: set[str] = set()
 
     for name in tier_order:
-        if name in tier_by_name:
+        if name in tier_by_name and name not in seen:
             ordered.append(tier_by_name[name])
             seen.add(name)
-
-    # Append any tiers not mentioned in tier_order (maintains coverage).
-    for tier in config.tiers:
-        if tier.name not in seen:
-            ordered.append(tier)
 
     return tuple(ordered)
 
@@ -608,8 +614,14 @@ def next_eligible_tier(
     config = _get_config()
     bifrost_backends = _load_bifrost_endpoints() if task_type is not None else {}
     contract = _get_task_class_contract() if task_type is not None else None
+    entry = _task_class_entry(contract, task_type) if task_type is not None else None
+    tiers = (
+        _tier_order_from_contract(config, entry)
+        if task_type is not None
+        else config.tiers
+    )
     found_current = False
-    for tier in config.tiers:
+    for tier in tiers:
         if tier.name == current_tier_name:
             found_current = True
             continue
