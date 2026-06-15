@@ -29,11 +29,11 @@ classifiers = [
     "Typing :: Typed",
 ]
 dependencies = [
-    "omnibase_core>=0.44.0,<0.45.0",
-    "omnibase-compat==0.5.1",
-    "omnibase-spi>=0.20.6,<0.22.0",
-    "omnibase-infra>=0.38.0,<0.39.0",
-    "onex-change-control>=0.5.0",
+    "omnibase_core>=0.44.2,<0.45.0",
+    "omnibase-compat==0.5.4",
+    "omnibase-spi>=0.22.0,<0.23.0",
+    "omnibase-infra>=0.38.3,<0.39.0",
+    "onex-change-control>=0.5.1",
     "click>=8.1.0",
     "pydantic>=2.12.5,<3.0.0",
     "pydantic-settings>=2.0.0,<3.0.0",
@@ -386,18 +386,18 @@ market = "omnimarket.cli.market:market"
 omnimarket = "omnimarket.nodes"
 
 [tool.uv.sources]
-omnibase-core = { git = "https://github.com/OmniNode-ai/omnibase_core.git", rev = "309d89fa7254701347f95bf99205cccfb3f6c1df" }
-omnibase-compat = { git = "https://github.com/OmniNode-ai/omnibase_compat.git", rev = "4d887307aae34d9d40d389ba91070cb411ce3df5" }
-omnibase-infra = { git = "https://github.com/OmniNode-ai/omnibase_infra.git", rev = "e2dbdc950540df8bc59ca4370b2d4a0f5b8d6c59" }
+omnibase-core = { git = "https://github.com/OmniNode-ai/omnibase_core.git", rev = "35fce1b6ae16a8fefec8996e26c1d66a3fb693c2" }
+omnibase-compat = { git = "https://github.com/OmniNode-ai/omnibase_compat.git", rev = "6db825163f72be98331b50b9cb0f389f910d1d1f" }
+omnibase-infra = { git = "https://github.com/OmniNode-ai/omnibase_infra.git", rev = "649b233a32965d56d0b965d4aec246d8317cb92f" }
 omninode-memory = { git = "https://github.com/OmniNode-ai/omnimemory.git", rev = "9843dd18cedaa4f5939289ba527532262b87003c" }
-onex-change-control = { git = "https://github.com/OmniNode-ai/onex_change_control.git", rev = "4877d3c223517cb0c7e1eca462ba0f4d38916314" }
+onex-change-control = { git = "https://github.com/OmniNode-ai/onex_change_control.git", rev = "1c95c63b514f471543c65264dcd79462f4e91f04" }
 
 [tool.uv]
 override-dependencies = [
-    "omnibase-core @ git+https://github.com/OmniNode-ai/omnibase_core.git@309d89fa7254701347f95bf99205cccfb3f6c1df",
-    "omnibase-spi>=0.20.6,<0.22.0",
-    "omnibase-infra @ git+https://github.com/OmniNode-ai/omnibase_infra.git@e2dbdc950540df8bc59ca4370b2d4a0f5b8d6c59",
-    "omnibase-compat @ git+https://github.com/OmniNode-ai/omnibase_compat.git@4d887307aae34d9d40d389ba91070cb411ce3df5",
+    "omnibase-core @ git+https://github.com/OmniNode-ai/omnibase_core.git@35fce1b6ae16a8fefec8996e26c1d66a3fb693c2",
+    "omnibase-spi>=0.22.0,<0.23.0",
+    "omnibase-infra @ git+https://github.com/OmniNode-ai/omnibase_infra.git@649b233a32965d56d0b965d4aec246d8317cb92f",
+    "omnibase-compat @ git+https://github.com/OmniNode-ai/omnibase_compat.git@6db825163f72be98331b50b9cb0f389f910d1d1f",
 ]
 
 [tool.hatch.build.targets.wheel]
