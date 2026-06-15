@@ -32,7 +32,13 @@ handler_routing:
 descriptor:
   node_archetype: reducer
   purity: pure
-  runtime_profiles: [compute]
+  # Reducers run as standalone bus consumers; they must be owned by a deployed
+  # runtime profile. `compute` is NOT a registered runtime profile, so a
+  # [compute] declaration assigns this contract to no running runtime and no
+  # consumer group is ever started (see omnibase_infra runtime_profile._PROFILES
+  # and auto_wiring.profile_ownership.filter_manifest_for_runtime_profile).
+  # `workers` is the deployed standalone-consumer runtime on every lane.
+  runtime_profiles: [workers]
   idempotent: true
   timeout_ms: 120000
 

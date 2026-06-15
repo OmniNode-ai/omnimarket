@@ -79,11 +79,20 @@ task_classes:
         - no_refusal
         - follows_google_style
         - covers_args_returns_raises
+        # OMN-12964: min_length ensures a single-line summary (e.g. docstring_summary_only)
+        # fails a third heuristic so the per-class margin (min_good - max_bad) reaches >= 0.3.
+        - min_length_chars_50
     escalation_policy:
       max_escalations: 1
       tier_order:
         - local
         - cheap_cloud
+  # OMN-12964: `document` is a PROSE natural-language task (write/explain), not a
+  # code-docstring task. Its DoD must not require docstring syntax — that defect
+  # forced every prose output to fail `docstring_present` / `follows_google_style`
+  # / `covers_args_returns_raises` (code-docstring markers `args:`/`returns:`/
+  # `raises:`) and score 0.000 on both tiers (live CID a604cd40). The docstring
+  # DoD lives on the `documentation` task class below, which is the correct home.
   document:
     required_capabilities:
       - natural_language_generation
@@ -92,11 +101,14 @@ task_classes:
     cloud_routing_policy: allowed
     definition_of_done:
       deterministic:
-        - docstring_present
+        - response_non_empty
       heuristic:
         - no_refusal
-        - follows_google_style
-        - covers_args_returns_raises
+        - accurate
+        # OMN-12964: min_length_chars_200 ensures a short refusal or uncertain stub
+        # fails a third heuristic so the per-class margin (min_good - max_bad) reaches >= 0.3.
+        # A well-formed prose document (the only accepted good output) comfortably exceeds 200 chars.
+        - min_length_chars_200
     escalation_policy:
       max_escalations: 1
       tier_order:
@@ -227,6 +239,10 @@ task_classes:
         - no_refusal
         - concise
         - accurate
+        # OMN-12964: min_length_chars_100 ensures a short uncertain stub fails a third
+        # heuristic so the per-class margin (min_good - max_bad) reaches >= 0.3.
+        # A useful summary must be at least one full sentence (~100 chars minimum).
+        - min_length_chars_100
     escalation_policy:
       max_escalations: 1
       tier_order:

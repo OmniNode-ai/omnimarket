@@ -27,6 +27,7 @@ import time
 from collections.abc import Callable, MutableMapping
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any, ClassVar
 from uuid import UUID, uuid4
 
@@ -45,7 +46,12 @@ from omnibase_infra.event_bus.topic_constants import (
 )
 from pydantic import BaseModel
 
+from omnimarket.enums.enum_delegation_failure_class import EnumDelegationFailureClass
 from omnimarket.inference.protocol_config import apply_inference_protocol
+from omnimarket.models.delegation.llm_cost_routing.model_llm_delegation_escalation_triggered_event import (
+    ModelLlmDelegationEscalationTriggeredEvent,
+)
+from omnimarket.nodes.contract_topics import contract_publish_topics
 from omnimarket.nodes.node_delegation_orchestrator.enums import (
     EnumDelegationState,
 )
@@ -101,10 +107,23 @@ from omnimarket.pricing import estimate_baseline_cost_usd, get_manifest_version_
 # tune them independently.
 _MAX_INFERENCE_ESCALATION_ATTEMPTS: int = 2
 _INFERENCE_ERROR_EXCLUDED_TIERS: frozenset[str] = frozenset({"cli_agents"})
+# OMN-13140 GATE 1 classification. Inference effects (node_llm_delegation_call_effect)
+# raise three terminal-shaped errors for an otherwise-reachable provider:
+#   * "finish_reason=length"     — response TRUNCATED at the tier's max_tokens.
+#   * "empty message content"    — provider returned a blank message body.
+#   * "API returned empty choices array" — provider returned no choices.
+# `finish_reason=length` is a CONTEXT/output-budget limit, not a hard refusal:
+# a longer-context successor (the cheap_cloud Gemini route declares a 1M-token
+# window) can complete what a quantized local model truncated, so it is now
+# RETRYABLE and escalates. The original (truncated) and escalated models are both
+# recorded in escalation_history (one ModelDelegationEscalationAttempt per tier).
+# An empty body / empty choices is left NON-retryable: re-issuing the same prompt
+# to a higher tier is unlikely to turn a blank completion into content and would
+# burn cloud budget on a probable repeat — the minimal-safe classification.
 _NON_RETRYABLE_INFERENCE_ERROR_MARKERS: frozenset[str] = frozenset(
     {
-        "finish_reason=length",
         "empty message content",
+        "empty choices array",
     }
 )
 
@@ -116,6 +135,32 @@ _TASK_TEMPERATURE: dict[str, float] = {
 }
 
 _logger = logging.getLogger(__name__)
+
+# OMN-13140: resolve the escalation topic from THIS node's contract rather than
+# hardcoding it — the publish topic is contract-declared (event_bus.publish_topics
+# + published_events), so the runtime DispatchResultApplier routes the typed
+# escalation event returned from the escalation branches to it.
+_CONTRACT_PATH = Path(__file__).parent.parent / "contract.yaml"
+_DELEGATION_ESCALATION_TRIGGERED_SUFFIX = "delegation-escalation-triggered.v1"  # onex-topic-allow: suffix used for contract lookup
+
+
+def _resolve_escalation_topic() -> str:
+    """Return the single escalation publish topic declared by the contract."""
+    matches = tuple(
+        topic
+        for topic in contract_publish_topics(_CONTRACT_PATH)
+        if topic.endswith(_DELEGATION_ESCALATION_TRIGGERED_SUFFIX)
+    )
+    if len(matches) != 1:
+        raise RuntimeError(
+            f"Contract {_CONTRACT_PATH} must declare exactly one "
+            f"event_bus.publish_topics topic ending with "
+            f"{_DELEGATION_ESCALATION_TRIGGERED_SUFFIX!r}; found {matches!r}."
+        )
+    return matches[0]
+
+
+TOPIC_DELEGATION_ESCALATION_TRIGGERED = _resolve_escalation_topic()
 
 
 # Valid state transitions: from_state -> set of valid to_states
@@ -175,6 +220,26 @@ def _should_escalate_inference_error(error_message: str) -> bool:
     return not any(
         marker in normalized for marker in _NON_RETRYABLE_INFERENCE_ERROR_MARKERS
     )
+
+
+def _inference_error_failure_class(error_message: str) -> EnumDelegationFailureClass:
+    """Classify a retryable inference error into a failure class for the escalation
+    event (OMN-13140). The classification is derived from the error text the
+    inference effect raised — never a blanket UNKNOWN — so the emitted
+    ModelLlmDelegationEscalationTriggeredEvent carries an honest failure_class.
+    """
+    normalized = error_message.lower()
+    if "finish_reason=length" in normalized or "truncat" in normalized:
+        return EnumDelegationFailureClass.CONTEXT_TOO_LARGE
+    if "timed out" in normalized or "timeout" in normalized:
+        return EnumDelegationFailureClass.TIMEOUT
+    if "rate limit" in normalized or "429" in normalized:
+        return EnumDelegationFailureClass.RATE_LIMITED
+    if "401" in normalized or "unauthorized" in normalized or "auth" in normalized:
+        return EnumDelegationFailureClass.PROVIDER_AUTH_FAILED
+    if "unavailable" in normalized or "connection" in normalized or "503" in normalized:
+        return EnumDelegationFailureClass.MODEL_UNAVAILABLE
+    return EnumDelegationFailureClass.UNKNOWN
 
 
 def _inference_timeout_seconds(workflow: DelegationWorkflowState) -> float:
@@ -558,6 +623,11 @@ class HandlerDelegationWorkflow:
                 next_tier = next_eligible_tier(
                     workflow.current_tier_name,
                     _INFERENCE_ERROR_EXCLUDED_TIERS,
+                    task_type=(
+                        workflow.request.task_type
+                        if workflow.request is not None
+                        else None
+                    ),
                 )
                 if next_tier is None:
                     terminal_failure_reason = "no_higher_tier_available"
@@ -570,6 +640,19 @@ class HandlerDelegationWorkflow:
 
             if can_escalate:
                 assert next_tier is not None
+                # OMN-13140: a retryable inference error with a routable next tier
+                # is a real escalation — emit the typed escalation proof BEFORE the
+                # state reset clears the failing model. failure_class is derived
+                # from the error (timeout/rate-limit/unavailable), never blanket.
+                escalation_event = self._build_escalation_event(
+                    workflow,
+                    failure_class=_inference_error_failure_class(
+                        response.error_message
+                    ),
+                    escalation_reason=response.error_message,
+                    model_id=model_used,
+                )
+
                 self._transition(workflow, EnumDelegationState.ESCALATING)
                 workflow.escalation_count += 1
 
@@ -585,6 +668,7 @@ class HandlerDelegationWorkflow:
                         payload=workflow.request,
                         min_tier_name=next_tier,
                     ),
+                    escalation_event,
                 ]
 
             # No escalation possible: terminal FAILED.
@@ -802,6 +886,7 @@ class HandlerDelegationWorkflow:
             next_tier = next_eligible_tier(
                 workflow.current_tier_name,
                 excluded_tiers,
+                task_type=workflow.request.task_type,
             )
             if next_tier is None:
                 terminal_failure_reason = "no_higher_tier_available"
@@ -810,6 +895,18 @@ class HandlerDelegationWorkflow:
 
         if can_escalate:
             assert next_tier is not None
+            # OMN-13140: build the terminal escalation proof BEFORE the inference
+            # state reset below clears inference_model_used. The quality gate
+            # recommended fallback and a routable next tier exists — this is the
+            # real escalation decision point, so emit the typed escalation event
+            # to the contract-declared escalation topic alongside the re-route.
+            escalation_event = self._build_escalation_event(
+                workflow,
+                failure_class=EnumDelegationFailureClass.QUALITY_GATE_FAILED,
+                escalation_reason="; ".join(result.failure_reasons)
+                or "quality_gate_failed",
+            )
+
             self._transition(workflow, EnumDelegationState.ESCALATING)
             workflow.escalation_count += 1
 
@@ -827,6 +924,7 @@ class HandlerDelegationWorkflow:
                     payload=workflow.request,
                     min_tier_name=next_tier,
                 ),
+                escalation_event,
             ]
 
         # Cannot escalate: terminal FAILED with reason.
@@ -871,6 +969,51 @@ class HandlerDelegationWorkflow:
         events.append(compat_event)
         return events
 
+    def _build_escalation_event(
+        self,
+        workflow: DelegationWorkflowState,
+        *,
+        failure_class: EnumDelegationFailureClass,
+        escalation_reason: str,
+        model_id: str | None = None,
+    ) -> ModelLlmDelegationEscalationTriggeredEvent:
+        """Build the typed escalation proof for the escalation decision (OMN-13140).
+
+        Emitted from the orchestrator's escalation branches — the only surface
+        holding the full escalation decision state (the resolved fallback verdict,
+        the routable next tier, ``escalation_count``, ``current_tier_name``, the
+        escalating model). ``attempt_number`` is the in-tier attempt number for
+        the failing model BEFORE the count is incremented for the next tier, so it
+        is always >= 1. ``next_model_id`` is None here: only the next *tier* is
+        resolved at this point; the routing reducer resolves the concrete next
+        model on the re-route. The concrete escalating model is carried in
+        ``model_id``.
+
+        The returned event is published to the contract-declared escalation topic
+        by the runtime DispatchResultApplier (publish_topics + published_events),
+        never by this handler directly — orchestrators emit, they do not publish.
+        """
+        assert workflow.request is not None
+        resolved_model_id = (
+            model_id
+            if model_id is not None
+            else (workflow.inference_model_used or "unknown")
+        )
+        correlation_id = str(workflow.correlation_id)
+        return ModelLlmDelegationEscalationTriggeredEvent(
+            correlation_id=correlation_id,
+            causation_id=correlation_id,
+            request_id=correlation_id,
+            task_type=workflow.request.task_type,
+            task_id=None,
+            model_id=resolved_model_id,
+            attempt_number=workflow.escalation_count + 1,
+            failure_class=failure_class,
+            escalation_reason=escalation_reason,
+            next_model_id=None,
+            created_at=datetime.now(UTC),
+        )
+
     def _escalation_metadata(
         self,
         workflow: DelegationWorkflowState,
@@ -897,8 +1040,6 @@ class HandlerDelegationWorkflow:
     @staticmethod
     def _routing_tiers_hash() -> str | None:
         """SHA-256 of routing_tiers.yaml for replay determinism."""
-        from pathlib import Path
-
         config_path = (
             Path(__file__).parent.parent.parent.parent.parent
             / "configs"

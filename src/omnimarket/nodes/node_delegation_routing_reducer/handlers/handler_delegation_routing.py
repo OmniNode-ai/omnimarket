@@ -38,7 +38,7 @@ Related:
 
 from __future__ import annotations
 
-import os
+import logging
 from functools import lru_cache
 from pathlib import Path
 from uuid import NAMESPACE_DNS, UUID, uuid5
@@ -52,6 +52,10 @@ from omnibase_infra.models.errors.model_infra_error_context import (
 
 from omnimarket.adapters.llm.bifrost.config_loader_bifrost_delegation import (
     load_bifrost_delegation_config,
+)
+from omnimarket.inference.delegation_config_provenance import (
+    resolve_optional_path_config,
+    resolve_path_config,
 )
 from omnimarket.inference.secret_store_resolver import api_key_ref_available
 from omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_request import (
@@ -70,6 +74,8 @@ from omnimarket.nodes.node_delegation_routing_reducer.models.model_routing_tier 
 from omnimarket.nodes.node_delegation_routing_reducer.models.model_tier_model import (
     ModelTierModel,
 )
+
+_logger = logging.getLogger(__name__)
 
 # System prompts by task type — kept here because they are presentation strings,
 # not routing configuration.
@@ -228,10 +234,10 @@ _config: ModelDelegationConfig | None = None
 def _get_config() -> ModelDelegationConfig:
     global _config
     if _config is None:
-        env_path = os.environ.get(  # contract-config-ok: config
-            "DELEGATION_ROUTING_TIERS_PATH", ""
-        )  # ONEX_EXCLUDE: env_access - contract path override for testing
-        config_path = Path(env_path) if env_path else _DEFAULT_CONFIG_PATH
+        config_path, _ = resolve_path_config(
+            "DELEGATION_ROUTING_TIERS_PATH",
+            _DEFAULT_CONFIG_PATH,
+        )
         yaml_text = config_path.read_text()
         _config = parse_delegation_config_yaml(yaml_text)
     return _config
@@ -278,23 +284,49 @@ def _load_bifrost_endpoints() -> dict[str, BifrostBackendRef]:
     declared secret reference, so the router does not emit a known-unusable
     backend while still preserving the non-secret reference name in decisions.
     """
-    env_path = os.environ.get(  # contract-config-ok: config  # ONEX_EXCLUDE: contract path override
-        "BIFROST_CONTRACT_PATH", ""
-    )
-    overlay_path = os.environ.get(  # contract-config-ok: config  # ONEX_EXCLUDE: contract path override
-        "BIFROST_OVERLAY_PATH", ""
-    )
+    # The bifrost loader supplies its own packaged default when an override is
+    # absent (passthrough None below). Resolve through the provenance surface so
+    # an absent override is recorded as the bootstrap fallback and a cold
+    # runtime's resolution order for the routing contract+overlay is auditable
+    # from the logs (OMN-12967).
+    contract_override, _ = resolve_optional_path_config("BIFROST_CONTRACT_PATH")
+    overlay_override, _ = resolve_optional_path_config("BIFROST_OVERLAY_PATH")
 
+    # OMN-13143: fail loud (Rule 8). The previous body swallowed every load error
+    # and returned {} silently, so a missing/corrupt bifrost contract surfaced
+    # downstream as the indistinguishable "No tier has a configured endpoint"
+    # routing error — masking the true root cause (bad config path) and making
+    # cloud escalation impossible to diagnose. We now emit structured evidence
+    # and re-raise as a configuration error so the failure is attributable.
     try:
-        overlay_override = Path(overlay_path) if overlay_path else None
-        if env_path and overlay_override is None:
+        if contract_override is not None and overlay_override is None:
             overlay_override = Path("__omnimarket_no_bifrost_overlay__.yaml")
         config = load_bifrost_delegation_config(
-            config_path=Path(env_path) if env_path else None,
+            config_path=contract_override,
             overlay_path=overlay_override,
         )
-    except (FileNotFoundError, ValueError, yaml.YAMLError):
-        return {}
+    except (FileNotFoundError, ValueError, yaml.YAMLError) as exc:
+        _logger.error(
+            "bifrost_endpoint_load_failed",
+            extra={
+                "event": "bifrost_endpoint_load_failed",
+                "error_type": type(exc).__name__,
+                "error": str(exc),
+                "contract_path": str(contract_override) if contract_override else None,
+                "overlay_path": str(overlay_override) if overlay_override else None,
+            },
+        )
+        context = ModelInfraErrorContext.from_exception(
+            exc,
+            transport_type=EnumInfraTransportType.FILESYSTEM,
+            operation="load_bifrost_endpoints",
+        )
+        msg = (
+            "Failed to load bifrost delegation config for endpoint resolution "
+            f"({type(exc).__name__}: {exc}). The routing reducer cannot resolve "
+            "any backend endpoint without a valid bifrost contract."
+        )
+        raise ProtocolConfigurationError(msg, context=context) from exc
 
     backends: dict[str, BifrostBackendRef] = {}
     for backend in config.backends:
@@ -313,6 +345,32 @@ def _load_bifrost_endpoints() -> dict[str, BifrostBackendRef]:
             else None,
         )
 
+    if not backends:
+        # A contract that parses but yields zero usable endpoints is still a
+        # misconfiguration: every backend declared a null/empty endpoint_url or
+        # model_name. Returning {} here would silently route every task to the
+        # "no configured endpoint" failure with no attributable cause.
+        _logger.error(
+            "bifrost_no_usable_endpoints",
+            extra={
+                "event": "bifrost_no_usable_endpoints",
+                "declared_backends": len(config.backends),
+                "contract_path": str(contract_override) if contract_override else None,
+                "overlay_path": str(overlay_override) if overlay_override else None,
+            },
+        )
+        context = ModelInfraErrorContext.with_correlation(
+            transport_type=EnumInfraTransportType.FILESYSTEM,
+            operation="load_bifrost_endpoints",
+        )
+        msg = (
+            "Bifrost delegation config declared "
+            f"{len(config.backends)} backend(s) but none carry a complete "
+            "endpoint_url and model_name. No backend endpoint is resolvable; "
+            "populate endpoint_url/model_name in the contract or overlay."
+        )
+        raise ProtocolConfigurationError(msg, context=context)
+
     return backends
 
 
@@ -326,10 +384,10 @@ def _get_task_class_contract() -> dict[str, object] | None:
     value is cached for the process lifetime; tests clear the cache explicitly
     when changing environment overrides.
     """
-    env_path = os.environ.get(  # contract-config-ok: config  # ONEX_EXCLUDE: contract path override
-        "TASK_CLASS_CONTRACT_PATH", ""
+    contract_path, _ = resolve_path_config(
+        "TASK_CLASS_CONTRACT_PATH",
+        _DEFAULT_TASK_CLASS_CONTRACT_PATH,
     )
-    contract_path = Path(env_path) if env_path else _DEFAULT_TASK_CLASS_CONTRACT_PATH
 
     if not contract_path.exists():
         return None
@@ -364,11 +422,9 @@ def _get_contract_model_ref(
         raw: dict[str, object] | None = contract
     else:
         if contract_path is None:
-            env_path = os.environ.get(  # contract-config-ok: config
-                "TASK_CLASS_CONTRACT_PATH", ""
-            )  # ONEX_EXCLUDE: env_access - contract path override for testing
-            contract_path = (
-                Path(env_path) if env_path else _DEFAULT_TASK_CLASS_CONTRACT_PATH
+            contract_path, _ = resolve_path_config(
+                "TASK_CLASS_CONTRACT_PATH",
+                _DEFAULT_TASK_CLASS_CONTRACT_PATH,
             )
 
         if not contract_path.exists():
@@ -496,26 +552,74 @@ def _definition_of_done_checks(
     )
 
 
+def _tier_can_route_task(
+    tier: ModelRoutingTier,
+    task_type: str,
+    bifrost_backends: dict[str, BifrostBackendRef],
+    contract: dict[str, object] | None,
+) -> bool:
+    """Return whether ``tier`` can actually route ``task_type``.
+
+    A tier is routable when it is permitted by the task-class contract AND
+    declares at least one model that serves ``task_type`` with a resolvable
+    backend endpoint. This mirrors the eligibility logic in ``delta`` so that
+    escalation cannot advance to a tier the reducer would then crash on
+    (OMN-12939: deployed frontier_api endpoints were empty, so escalating to the
+    claude tier raised ProtocolConfigurationError and stranded the FSM).
+    """
+    entry = _task_class_entry(contract, task_type)
+    if not _tier_allowed_by_contract(tier, entry):
+        return False
+    contract_model_ref = _get_contract_model_ref(task_type, contract=contract)
+    # Availability probe (token budget 0): answers "could any model in this tier
+    # serve the task with a resolvable backend", not the final selection. delta()
+    # re-selects with the real token estimate when it builds the decision.
+    selected = _select_model_for_task(
+        tier.models,
+        task_type,
+        0,
+        bifrost_backends,
+        contract_model_ref=contract_model_ref,
+    )
+    return selected is not None
+
+
 def next_eligible_tier(
     current_tier_name: str,
     excluded_tiers: frozenset[str],
+    *,
+    task_type: str | None = None,
 ) -> str | None:
     """Return the next tier name after current_tier_name, skipping excluded_tiers.
 
     Parses routing_tiers.yaml once (cached via _get_config). Returns None if
     current tier is the last eligible tier or is unrecognized.
 
+    When ``task_type`` is provided, tiers that cannot actually route the task
+    (no model serving ``task_type`` with a resolvable backend endpoint, or
+    disallowed by the task-class contract) are skipped — so the orchestrator
+    never escalates to a tier whose endpoint the routing reducer cannot resolve
+    (OMN-12939). When ``task_type`` is None the legacy pure declaration-order
+    behavior is preserved for callers without a task context.
+
     This is the single parsing path for tier escalation order. The orchestrator
     imports and calls this directly -- no independent YAML parsing.
     """
     config = _get_config()
+    bifrost_backends = _load_bifrost_endpoints() if task_type is not None else {}
+    contract = _get_task_class_contract() if task_type is not None else None
     found_current = False
     for tier in config.tiers:
         if tier.name == current_tier_name:
             found_current = True
             continue
-        if found_current and tier.name not in excluded_tiers:
-            return tier.name
+        if not found_current or tier.name in excluded_tiers:
+            continue
+        if task_type is not None and not _tier_can_route_task(
+            tier, task_type, bifrost_backends, contract
+        ):
+            continue
+        return tier.name
     return None
 
 

@@ -31,7 +31,11 @@ if TYPE_CHECKING:
 
 @pytest.fixture
 def handler() -> HandlerSwarmDispatchOrchestrator:
-    mock_bus = MagicMock()
+    from omnibase_core.protocols.event_bus.protocol_event_bus_publisher import (
+        ProtocolEventBusPublisher,
+    )
+
+    mock_bus = MagicMock(spec=ProtocolEventBusPublisher)
     mock_bus.publish = AsyncMock()
     return HandlerSwarmDispatchOrchestrator(
         event_bus=cast("ProtocolEventBusPublisher", mock_bus)

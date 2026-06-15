@@ -24,6 +24,7 @@ sys.path.insert(0, str(scripts_ci_dir))
 from check_delegation_env_reads import (  # noqa: E402
     ScanResult,
     _find_env_calls_in_source,
+    _find_provenance_bypass_in_source,
     _is_allowlisted,
     _is_delegation_module,
     scan_delegation_modules,
@@ -251,3 +252,74 @@ class TestScanDelegationModules:
 
         result = scan_delegation_modules(repo_root=tmp_path, mode="enforce")
         assert len(result.violations) == 0
+
+
+@pytest.mark.unit
+class TestProvenanceBypassRatchet:
+    """OMN-12967: delegation-path config keys must resolve via the provenance
+    surface; raw reads anywhere outside it are hard violations (skip-token-proof).
+    """
+
+    def test_raw_read_of_required_key_is_bypass(self) -> None:
+        source = 'import os\np = os.environ.get("BIFROST_CONTRACT_PATH", "")\n'
+        violations = _find_provenance_bypass_in_source(source, "src/x.py")
+        assert len(violations) == 1
+        assert "BIFROST_CONTRACT_PATH" in violations[0]
+        assert "bypasses provenance" in violations[0]
+
+    def test_subscript_read_of_required_key_is_bypass(self) -> None:
+        source = 'import os\np = os.environ["TASK_CLASS_CONTRACT_PATH"]\n'
+        violations = _find_provenance_bypass_in_source(source, "src/x.py")
+        assert len(violations) == 1
+        assert "TASK_CLASS_CONTRACT_PATH" in violations[0]
+
+    def test_getenv_read_of_required_key_is_bypass(self) -> None:
+        source = 'import os\np = os.getenv("DELEGATION_ROUTING_TIERS_PATH")\n'
+        violations = _find_provenance_bypass_in_source(source, "src/x.py")
+        assert len(violations) == 1
+
+    def test_skip_token_does_not_exempt_bypass(self) -> None:
+        source = (
+            "import os\n"
+            'p = os.environ.get("BIFROST_OVERLAY_PATH", "")  # ONEX_EXCLUDE: x\n'
+        )
+        violations = _find_provenance_bypass_in_source(source, "src/x.py")
+        assert len(violations) == 1
+
+    def test_provenance_module_is_exempt(self) -> None:
+        source = 'import os\np = os.environ.get("BIFROST_CONTRACT_PATH", "")\n'
+        violations = _find_provenance_bypass_in_source(
+            source,
+            "src/omnimarket/inference/delegation_config_provenance.py",
+        )
+        assert violations == []
+
+    def test_non_required_key_is_not_bypass(self) -> None:
+        source = 'import os\np = os.environ.get("SOME_OTHER_KEY", "")\n'
+        violations = _find_provenance_bypass_in_source(source, "src/x.py")
+        assert violations == []
+
+    def test_dynamic_key_is_out_of_scope(self) -> None:
+        source = 'import os\nk = "BIFROST_CONTRACT_PATH"\np = os.environ.get(k, "")\n'
+        violations = _find_provenance_bypass_in_source(source, "src/x.py")
+        assert violations == []
+
+    def test_required_keys_in_sync_with_module(self) -> None:
+        from check_delegation_env_reads import PROVENANCE_REQUIRED_KEYS
+
+        from omnimarket.inference.delegation_config_provenance import (
+            DELEGATION_PATH_CONFIG_KEYS,
+        )
+
+        assert PROVENANCE_REQUIRED_KEYS == DELEGATION_PATH_CONFIG_KEYS
+
+    def test_repo_is_provenance_clean(self) -> None:
+        """The live repo must have zero provenance-bypass violations after the
+        OMN-12967 re-homing (delegation routing path uses the resolver)."""
+        repo_root = Path(__file__).parent.parent
+        result = scan_delegation_modules(repo_root=repo_root, mode="enforce")
+        assert result.provenance_bypass == [], (
+            "Delegation-path config keys read raw — route through "
+            "delegation_config_provenance (OMN-12967):\n"
+            + "\n".join(result.provenance_bypass)
+        )

@@ -11,6 +11,27 @@ handler:
   class: HandlerIntegrationSweepOrchestrator
   input_model: omnimarket.nodes.node_integration_sweep_orchestrator.models.model_integration_sweep_orchestrator_request.ModelIntegrationSweepOrchestratorRequest
 
+# OMN-13145: top-level input_model so the event-driven runtime builds the
+# initial command from the caller's `--input` payload. RuntimeLocal reads the
+# top-level `input_model` (not the nested handler.input_model) when constructing
+# the initial command in _run_event_driven; without this the runtime published
+# only `{"correlation_id": ...}` and the handler received an empty request,
+# silently falling back to ONEX_CC_REPO_PATH and ignoring --input fields.
+input_model: omnimarket.nodes.node_integration_sweep_orchestrator.models.model_integration_sweep_orchestrator_request.ModelIntegrationSweepOrchestratorRequest
+
+# OMN-13145: single-handler operation_match with an inline event_model so the
+# runtime unwraps envelope.payload and validates it against the typed request
+# before dispatch (mirrors node_dod_verify / node_closeout_verifier_compute /
+# node_ledger_stats_compute). Without event_model the runtime forwarded the raw
+# envelope payload dict straight to handle(), the same dict-not-typed dispatch
+# bug that hid in node_golden_chain_sweep (OMN-8724) and OMN-13141.
+#
+# The former `surface_probes` operation entry was removed: surface_probes.py
+# exports probe FUNCTIONS (probe_runtime_health/probe_container_health/
+# probe_github_ci), not a ProtocolMessageHandler class. The probes are invoked
+# in-process by HandlerIntegrationSweepOrchestrator, never dispatched as a
+# handler, so registering them in handler_routing pointed the resolver at a
+# non-existent `surface_probes` class and crashed every dispatch.
 handler_routing:
   routing_strategy: operation_match
   handlers:
@@ -18,15 +39,14 @@ handler_routing:
       handler:
         name: HandlerIntegrationSweepOrchestrator
         module: omnimarket.nodes.node_integration_sweep_orchestrator.handlers.handler_integration_sweep_orchestrator
-    - operation: surface_probes
-      handler:
-        name: surface_probes
-        module: omnimarket.nodes.node_integration_sweep_orchestrator.handlers.surface_probes
+      event_model:
+        name: ModelIntegrationSweepOrchestratorRequest
+        module: omnimarket.nodes.node_integration_sweep_orchestrator.models.model_integration_sweep_orchestrator_request
 
 env_dependencies:
   ONEX_CC_REPO_PATH:
-    required: false
-    description: "Path to the omni_home repo registry; used as fallback root when not resolvable from the process environment"
+    required: true
+    description: "Path to the omni_home repo registry; required when artifact_root is not provided explicitly"
 
 descriptor:
   node_archetype: orchestrator
@@ -59,4 +79,4 @@ externally_consumed_topics:
 config:
   ONEX_CC_REPO_PATH:
     description: "Path to the omniclaude repository for Claude Code plugin operations."
-    required: false
+    required: true

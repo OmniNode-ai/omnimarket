@@ -94,10 +94,56 @@ jobs:
       # fallback endpoint string. Fails CI on any hardcoded/env path on the demo path.
       - name: Routing-authority demo gate (enforce)
         run: uv run python scripts/ci/check_routing_authority.py
+      # OMN-12964: Quality-gate calibration. Fails CI if the delegation quality
+      # gate score distribution collapses (degenerate {0.0,1.0}) or fails to
+      # discriminate known-good from known-bad outputs. A meaningless quality
+      # signal masquerades as an ON/OFF effect and invalidates Experiments 1-3.
+      - name: Quality-gate calibration (enforce)
+        run: uv run python scripts/ci/run_quality_gate_calibration.py
+      # OMN-12971: backend secret-ref / credential-ref discipline. Fails CI if a
+      # literal credential value lands in routing-authority config, or if an
+      # authenticated cloud backend lacks a logical secret/credential ref. Keeps
+      # the Vertex ADC path (and all cloud backends) value-free in committed config.
+      - name: Backend secret-discipline gate (enforce)
+        run: uv run python scripts/ci/check_backend_secret_discipline.py
+      # OMN-12972 (plan P2.7): Gemini registry/version hygiene. Every provider:google
+      # registry entry + its bifrost backend must align with the live Vertex-served
+      # model name PER ENVIRONMENT (Vertex = publisher-qualified, AI Studio = bare)
+      # and carry no retired/404 model id (the gemini-2.0-flash-on-Vertex failure).
+      # SYNC with pre-commit hook "gemini-registry-version-hygiene".
+      - name: Gemini registry/version hygiene gate (enforce)
+        run: uv run python scripts/ci/check_model_registry_served_names.py
       # OMN-10821: Handler* classes in handler_*.py with zero external import references
       # cannot be wired by the DI container and are silently absent from the pipeline.
       - name: Unimported-handler check
         run: uv run python scripts/ci/check_unimported_handlers.py
+      # OMN-12942: node migration sets must create base tables before views.
+      # A view-before-base-table migration hard-fails the forward-migration
+      # runner on a clean node-set apply. SYNC with pre-commit hook
+      # 'migration-base-before-view'.
+      - name: Migration base-before-view gate
+        run: uv run python scripts/ci/check_migration_base_before_view.py
+      # OMN-12959: FSM terminal-state invariant. Watchdog topic literals
+      # (workflow-timeout/unroutable/stalled) may only live in the canonical
+      # omnimarket.events.topics registry (omnimarket.events.watchdog imports
+      # them and exposes the typed authority); orchestrators must resolve them
+      # through the typed EnumWatchdogEventType authority. Fails CI on any
+      # hardcoded watchdog topic string outside the registry.
+      - name: Watchdog-topic authority gate
+        run: uv run python scripts/ci/check_watchdog_topic_authority.py
+      # OMN-13026: Transport-mock lint. Bare AsyncMock/MagicMock without
+      # spec=/spec_set= on EventBus/transport/kafka surfaces. Ratchet: existing
+      # violations frozen in validation/transport_mock_baseline.yaml. New
+      # violations in any PR are blocked. Drain tracked by per-site tickets.
+      # SYNC with pre-commit hook 'transport-mock-lint'.
+      # Invoked via PYTHONPATH so it uses the sibling clone (already cloned
+      # earlier in this job) rather than the uv-locked pin.
+      - name: Transport-mock lint (OMN-13026)
+        run: |
+          uv run python \
+            -m omnibase_core.validators.transport_mock_lint \
+            --baseline validation/transport_mock_baseline.yaml \
+            tests/
       - name: Golden-chain coverage gate
         env:
           PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}

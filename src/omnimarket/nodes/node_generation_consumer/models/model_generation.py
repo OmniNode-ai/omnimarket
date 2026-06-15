@@ -61,6 +61,15 @@ class ModelGenerationAttempt(BaseModel):
     latency_inference_ms: int = 0
     contract_passed: bool = False
     validation_errors: list[str] = Field(default_factory=list)
+    usage_source: EnumUsageSource = Field(
+        default=EnumUsageSource.UNKNOWN,
+        description=(
+            "Provenance of this attempt's token counts, propagated from the LLM "
+            "inference response: MEASURED when the provider reported a usage block, "
+            "ESTIMATED when derived locally, UNKNOWN when no usage data was "
+            "available. Never fabricated — an absent/zero usage block stays UNKNOWN."
+        ),
+    )
 
 
 class ModelNodeGenerationRequest(BaseModel):
@@ -128,8 +137,15 @@ class ModelGenerationBenchmark(BaseModel):
     model_id: str = Field(default="", description="Model ID used for generation")
     endpoint_class: str = Field(default="", description="Endpoint class (local/cloud)")
     usage_source: EnumUsageSource = Field(
-        default=EnumUsageSource.ESTIMATED,
-        description="Token usage source — typed enum, not a bare string",
+        default=EnumUsageSource.UNKNOWN,
+        description=(
+            "Aggregated token-usage provenance for the run — typed enum, not a "
+            "bare string. Set honestly by the emitter from per-attempt "
+            "ModelGenerationAttempt.usage_source: MEASURED when the provider "
+            "reported real usage on any attempt, ESTIMATED when only locally "
+            "derived, UNKNOWN when no usage data was available. Never fabricated "
+            "as MEASURED for an absent/zero usage block."
+        ),
     )
     cost_basis: str = Field(default="", description="Cost basis identifier")
     attempts: list[ModelGenerationAttempt] = Field(

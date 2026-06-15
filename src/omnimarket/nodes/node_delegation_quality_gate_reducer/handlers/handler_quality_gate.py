@@ -51,6 +51,37 @@ _REFUSAL_PHRASES: tuple[str, ...] = (
     "traceback",
 )
 
+# Failure-reason verdict prefixes that recommend escalation to a higher tier
+# (OMN-13140). Quality-gate failure reasons are tagged with a verdict category
+# prefix (e.g. "WEAK_OUTPUT: ...", "TASK_MISMATCH: ...", "REFUSAL: ..."). Before
+# OMN-13140 only REFUSAL set fallback_recommended, so the common WEAK_OUTPUT and
+# TASK_MISMATCH verdicts terminated the workflow instead of escalating to cloud.
+# These three categories are recoverable by a stronger model, so they recommend
+# fallback. MALFORMED is intentionally excluded: a non-parseable / truncated
+# artifact is a structural defect a higher tier is unlikely to fix more cheaply,
+# and deterministic MALFORMED failures already hard-block elsewhere.
+_FALLBACK_VERDICT_PREFIXES: tuple[str, ...] = (
+    "REFUSAL",
+    "WEAK_OUTPUT",
+    "TASK_MISMATCH",
+)
+
+
+def _recommends_fallback(failure_reasons: tuple[str, ...] | list[str]) -> bool:
+    """Return whether any failure reason carries an escalation-worthy verdict.
+
+    A failure reason recommends fallback when its verdict-category prefix is one
+    of ``_FALLBACK_VERDICT_PREFIXES`` (REFUSAL, WEAK_OUTPUT, TASK_MISMATCH). The
+    prefix is matched at the start of the reason string, the form every check in
+    this module emits (e.g. "WEAK_OUTPUT: response length 12 below minimum 80").
+    """
+    return any(
+        reason.startswith(prefix)
+        for reason in failure_reasons
+        for prefix in _FALLBACK_VERDICT_PREFIXES
+    )
+
+
 # Task-type specific markers (legacy fallback)
 _TASK_MARKERS: dict[str, tuple[str, ...]] = {
     "test": ("def test_", "@pytest.mark"),
@@ -436,7 +467,7 @@ def _run_contract_checks(
     """Run contract-declared DoD checks.
 
     Returns:
-        (deterministic_failures, heuristic_failures) — separate lists so the
+        (deterministic_failures, heuristic_failures) - separate lists so the
         caller can apply the correct blocking/escalation semantics.
     """
     det_failures = _evaluate_deterministic_checks(content, dod_deterministic)
@@ -445,6 +476,72 @@ def _run_contract_checks(
     )
     det_failures.extend(extra_det_failures)
     return det_failures, heuristic_failures
+
+
+# Relative weighting of the two DoD bands when computing the graded quality
+# score (OMN-12964). Deterministic checks gate harder, so a deterministic miss
+# costs more than a heuristic miss, but neither band collapses the score to a
+# single degenerate value. Weights need not sum to 1.0 - they are normalised by
+# the per-band check count below.
+_DETERMINISTIC_BAND_WEIGHT: float = 0.6
+_HEURISTIC_BAND_WEIGHT: float = 0.4
+
+
+def _graded_quality_score(
+    *,
+    deterministic_total: int,
+    deterministic_failures: int,
+    heuristic_total: int,
+    heuristic_failures: int,
+) -> float:
+    """Compute a continuous 0.0-1.0 quality score from DoD check outcomes.
+
+    The score is the band-weighted fraction of DoD checks satisfied. Before
+    OMN-12964 the gate returned a degenerate {0.0, 1.0} verdict: any single
+    failing check forced the score to 0.0, so a near-perfect output and an
+    outright refusal scored identically. That made the quality signal useless
+    for experiment interpretation (Experiments 1-3). This graded score
+    discriminates by how many checks pass, independent of the pass/fail gate.
+
+    Bands are weighted (deterministic > heuristic) and each band's contribution
+    is the fraction of its checks that passed. A band with no checks contributes
+    its full weight (nothing to fail). When no checks ran at all, the score is
+    0.0 - there is no evidence of quality.
+
+    Args:
+        deterministic_total: Number of deterministic checks evaluated.
+        deterministic_failures: Number of deterministic checks that failed.
+        heuristic_total: Number of heuristic checks evaluated.
+        heuristic_failures: Number of heuristic checks that failed.
+
+    Returns:
+        Quality score in [0.0, 1.0], rounded to 3 decimals.
+    """
+
+    def _band_fraction(total: int, failures: int) -> float:
+        if total <= 0:
+            return 1.0
+        passed = max(0, total - failures)
+        return passed / total
+
+    det_fraction = _band_fraction(deterministic_total, deterministic_failures)
+    heur_fraction = _band_fraction(heuristic_total, heuristic_failures)
+
+    if deterministic_total <= 0 and heuristic_total <= 0:
+        return 0.0
+
+    # Only weight bands that actually contributed checks so the normalisation
+    # reflects the checks that ran rather than the static band weights.
+    active_weight = 0.0
+    weighted_sum = 0.0
+    if deterministic_total > 0:
+        active_weight += _DETERMINISTIC_BAND_WEIGHT
+        weighted_sum += _DETERMINISTIC_BAND_WEIGHT * det_fraction
+    if heuristic_total > 0:
+        active_weight += _HEURISTIC_BAND_WEIGHT
+        weighted_sum += _HEURISTIC_BAND_WEIGHT * heur_fraction
+
+    return round(weighted_sum / active_weight, 3)
 
 
 def _run_legacy_checks(
@@ -496,9 +593,12 @@ def _run_legacy_checks(
 
     no_refusal_score = scores["no_refusal"]
     passed = quality_score >= 0.6 and math.isclose(no_refusal_score, 1.0)
-    fallback_recommended = not passed and (
-        math.isclose(no_refusal_score, 0.0) or quality_score < 0.3
-    )
+    # OMN-13140: recommend fallback whenever an unpassed legacy result carries a
+    # REFUSAL / WEAK_OUTPUT / TASK_MISMATCH verdict. The legacy checks emit those
+    # same prefixes (see failure_reasons above), so WEAK_OUTPUT (length miss) and
+    # TASK_MISMATCH (missing markers) now escalate instead of terminating — the
+    # prior score-threshold gate (quality_score < 0.3) silently dropped them.
+    fallback_recommended = not passed and _recommends_fallback(failure_reasons)
     fail_category: EnumQualityGateCategory = (
         EnumQualityGateCategory.PASS
         if passed
@@ -555,24 +655,45 @@ def delta(gate_input: ModelQualityGateInput) -> ModelQualityGateResult:
 
     all_failures = det_failures + heuristic_failures
 
+    # Graded quality score (OMN-12964): the fraction of DoD checks satisfied,
+    # band-weighted. This is independent of the pass/fail gate below - the gate
+    # still hard-blocks on any deterministic failure - but the score now
+    # discriminates output quality instead of collapsing to {0.0, 1.0}.
+    # Unsupported heuristic checks surface as deterministic failures, so the
+    # deterministic band total includes any extra failures beyond the declared
+    # deterministic check count.
+    deterministic_total = max(len(dod_deterministic), len(det_failures))
+    quality_score = _graded_quality_score(
+        deterministic_total=deterministic_total,
+        deterministic_failures=len(det_failures),
+        heuristic_total=len(dod_heuristic),
+        heuristic_failures=len(heuristic_failures),
+    )
+
     if det_failures:
-        # Deterministic failure blocks delegation — quality score irrelevant
+        # Deterministic failure blocks delegation. The score is still graded so
+        # downstream experiment analysis can distinguish a near-miss from a
+        # total failure even when the gate verdict is identical.
         return ModelQualityGateResult(
             correlation_id=gate_input.correlation_id,
             passed=False,
             fail_category="fail_deterministic",
-            quality_score=0.0,
+            quality_score=quality_score,
             failure_reasons=tuple(all_failures),
             fallback_recommended=True,
         )
 
     if heuristic_failures:
-        fallback_recommended = any("REFUSAL" in r for r in heuristic_failures)
+        # OMN-13140: recommend fallback for REFUSAL, WEAK_OUTPUT, and TASK_MISMATCH
+        # verdicts — not REFUSAL alone. Previously the common WEAK_OUTPUT /
+        # TASK_MISMATCH heuristic failures returned fallback_recommended=False, so
+        # the orchestrator terminated instead of escalating to a cloud tier.
+        fallback_recommended = _recommends_fallback(heuristic_failures)
         return ModelQualityGateResult(
             correlation_id=gate_input.correlation_id,
             passed=False,
             fail_category="fail_heuristic",
-            quality_score=0.0,
+            quality_score=quality_score,
             failure_reasons=tuple(heuristic_failures),
             fallback_recommended=fallback_recommended,
         )
@@ -581,7 +702,7 @@ def delta(gate_input: ModelQualityGateInput) -> ModelQualityGateResult:
         correlation_id=gate_input.correlation_id,
         passed=True,
         fail_category="pass",
-        quality_score=1.0,
+        quality_score=quality_score,
         failure_reasons=(),
         fallback_recommended=False,
     )

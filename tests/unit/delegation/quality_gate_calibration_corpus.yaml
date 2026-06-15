@@ -1,0 +1,130 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# quality_gate_calibration_corpus.yaml — OMN-12964
+#
+# Known-good / known-bad outputs used to prove the delegation quality gate
+# produces a NON-DEGENERATE score distribution. Before OMN-12964 the gate
+# returned a degenerate {0.0, 1.0} verdict and (for the `document` task class)
+# applied code-docstring DoD to prose, so every output — excellent or refusal —
+# scored 0.000 on both tiers (live CID a604cd40). A scoring artifact then
+# masqueraded as an ON/OFF effect, invalidating Experiments 1–3.
+#
+# This corpus is consumed by test_quality_gate_calibration.py, which is wired as
+# a CI gate (see scripts/ci/run_quality_gate_calibration.py). The gate FAILS if
+# the score distribution collapses, if known-good does not out-score known-bad,
+# or if the score range falls below the discrimination threshold.
+#
+# Each case declares the task_class (DoD resolved from task_class_contracts.v1.yaml)
+# a label in {good, mediocre, bad}, and the raw output content.
+
+task_classes:
+  document:
+    deterministic:
+      - response_non_empty
+    heuristic:
+      - no_refusal
+      - accurate
+      - min_length_chars_200
+  documentation:
+    deterministic:
+      - docstring_present
+    heuristic:
+      - no_refusal
+      - follows_google_style
+      - covers_args_returns_raises
+      - min_length_chars_50
+  summarization:
+    deterministic:
+      - response_non_empty
+    heuristic:
+      - no_refusal
+      - concise
+      - accurate
+      - min_length_chars_100
+
+cases:
+  # ---- document (prose) ----
+  - id: doc_prose_excellent
+    task_class: document
+    label: good
+    content: >-
+      This module computes order totals across the cart. It validates each line
+      item, applies the active discount schedule, and returns a typed summary
+      object that the projection layer can persist without further coercion.
+  - id: doc_prose_adequate
+    task_class: document
+    label: mediocre
+    content: >-
+      The module adds up the cart and returns a number. It handles discounts in
+      some cases.
+  - id: doc_prose_uncertain
+    task_class: document
+    label: bad
+    content: >-
+      This may be inaccurate, but the module probably computes totals somehow. I
+      cannot verify the discount behavior.
+  - id: doc_prose_refusal
+    task_class: document
+    label: bad
+    # OMN-12964: content is short (<200 chars), contains a refusal phrase ("i cannot"),
+    # and contains an accuracy disclaimer ("not sure") so it fails all three heuristics:
+    # no_refusal + accurate + min_length_chars_200. Max drop = 3/3 → score 0.600.
+    content: I cannot help with this. Not sure what is needed.
+  - id: doc_prose_empty
+    task_class: document
+    label: bad
+    content: "   "
+
+  # ---- documentation (docstring) ----
+  - id: docstring_full
+    task_class: documentation
+    label: good
+    content: |-
+      """Compute order totals.
+
+      Args:
+          cart: The cart whose line items are summed.
+      Returns:
+          A typed summary of the computed total.
+      Raises:
+          ValidationFailure: When a line item is malformed.
+      """
+  - id: docstring_partial
+    task_class: documentation
+    label: mediocre
+    content: |-
+      """Compute order totals.
+
+      Args:
+          cart: The cart whose line items are summed.
+      Returns:
+          A typed summary of the computed total.
+      """
+  - id: docstring_summary_only
+    task_class: documentation
+    label: bad
+    content: '"""Compute order totals."""'
+  - id: docstring_refusal
+    task_class: documentation
+    label: bad
+    content: I'm sorry, I cannot produce documentation for that.
+
+  # ---- summarization ----
+  - id: summary_concise_accurate
+    task_class: summarization
+    label: good
+    content: >-
+      The change adds a graded quality score so the gate discriminates output
+      quality instead of collapsing every result to zero.
+  - id: summary_uncertain
+    task_class: summarization
+    label: bad
+    # OMN-12964: content is short (<100 chars), contains a refusal phrase ("i cannot"),
+    # and contains accuracy disclaimers ("not sure", "cannot verify") so it fails three
+    # heuristics: no_refusal + accurate + min_length_chars_100. Score = 0.700.
+    content: I cannot say what this does. Not sure and cannot verify.
+  - id: summary_empty
+    task_class: summarization
+    label: bad
+    content: ""

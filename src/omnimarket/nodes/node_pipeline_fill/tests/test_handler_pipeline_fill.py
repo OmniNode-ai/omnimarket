@@ -179,7 +179,7 @@ async def test_dispatch_top_n(tmp_path: Path) -> None:
     linear_client = AsyncMock()
     linear_client.list_active_sprint_unstarted.return_value = tickets
 
-    event_bus = AsyncMock()
+    event_bus = AsyncMock()  # transport-mock-ok: event_bus typed Any in handler; spec requires protocol resolution in separate ticket
 
     handler = HandlerPipelineFill(linear_client=linear_client, event_bus=event_bus)
 
@@ -217,7 +217,10 @@ async def test_wave_cap_blocks_dispatch(tmp_path: Path) -> None:
         )
     )
 
-    handler = HandlerPipelineFill(linear_client=linear_client, event_bus=AsyncMock())
+    handler = HandlerPipelineFill(
+        linear_client=linear_client,
+        event_bus=AsyncMock(),  # transport-mock-ok: event_bus typed Any in handler; spec requires protocol resolution in separate ticket
+    )
     cmd = _make_command(wave_cap=5, tmp_path=tmp_path)
     with patch(
         "omnimarket.nodes.node_pipeline_fill.handlers.handler_pipeline_fill._resolve_omni_home",
@@ -241,7 +244,7 @@ async def test_blocked_tickets_filtered(tmp_path: Path) -> None:
 
     linear_client = AsyncMock()
     linear_client.list_active_sprint_unstarted.return_value = tickets
-    event_bus = AsyncMock()
+    event_bus = AsyncMock()  # transport-mock-ok: event_bus typed Any in handler; spec requires protocol resolution in separate ticket
 
     handler = HandlerPipelineFill(linear_client=linear_client, event_bus=event_bus)
     cmd = _make_command(top_n=5, tmp_path=tmp_path)
@@ -269,7 +272,7 @@ async def test_already_in_flight_filtered(tmp_path: Path) -> None:
     tickets = [_make_ticket("OMN-10"), _make_ticket("OMN-20")]
     linear_client = AsyncMock()
     linear_client.list_active_sprint_unstarted.return_value = tickets
-    event_bus = AsyncMock()
+    event_bus = AsyncMock()  # transport-mock-ok: event_bus typed Any in handler; spec requires protocol resolution in separate ticket
 
     handler = HandlerPipelineFill(linear_client=linear_client, event_bus=event_bus)
     cmd = _make_command(top_n=5, tmp_path=tmp_path)
@@ -289,7 +292,7 @@ async def test_dry_run_no_dispatch(tmp_path: Path) -> None:
     tickets = [_make_ticket(f"OMN-{i}") for i in range(3)]
     linear_client = AsyncMock()
     linear_client.list_active_sprint_unstarted.return_value = tickets
-    event_bus = AsyncMock()
+    event_bus = AsyncMock()  # transport-mock-ok: event_bus typed Any in handler; spec requires protocol resolution in separate ticket
 
     handler = HandlerPipelineFill(linear_client=linear_client, event_bus=event_bus)
     cmd = _make_command(dry_run=True, top_n=3, tmp_path=tmp_path)
@@ -324,7 +327,7 @@ async def test_min_score_filters_low_scoring_tickets(tmp_path: Path) -> None:
     ]
     linear_client = AsyncMock()
     linear_client.list_active_sprint_unstarted.return_value = tickets
-    event_bus = AsyncMock()
+    event_bus = AsyncMock()  # transport-mock-ok: event_bus typed Any in handler; spec requires protocol resolution in separate ticket
 
     handler = HandlerPipelineFill(linear_client=linear_client, event_bus=event_bus)
     cmd = _make_command(min_score=0.9, tmp_path=tmp_path)  # Very high threshold
@@ -346,7 +349,7 @@ async def test_state_file_written_after_dispatch(tmp_path: Path) -> None:
     tickets = [_make_ticket("OMN-99")]
     linear_client = AsyncMock()
     linear_client.list_active_sprint_unstarted.return_value = tickets
-    event_bus = AsyncMock()
+    event_bus = AsyncMock()  # transport-mock-ok: event_bus typed Any in handler; spec requires protocol resolution in separate ticket
 
     handler = HandlerPipelineFill(linear_client=linear_client, event_bus=event_bus)
     cmd = _make_command(top_n=1, tmp_path=tmp_path)
@@ -425,7 +428,7 @@ async def test_integration_dispatch_writes_artifacts_and_publishes(
     linear_client = AsyncMock()
     linear_client.list_active_sprint_unstarted.return_value = tickets
 
-    event_bus = AsyncMock()
+    event_bus = AsyncMock()  # transport-mock-ok: event_bus typed Any in handler; spec requires protocol resolution in separate ticket
 
     handler = HandlerPipelineFill(linear_client=linear_client, event_bus=event_bus)
     cmd = _make_command(top_n=2, wave_cap=5, min_score=0.0, tmp_path=tmp_path)
@@ -480,7 +483,7 @@ async def test_noop_cycle_still_writes_last_run(tmp_path: Path) -> None:
     )
 
     linear_client = AsyncMock()
-    event_bus = AsyncMock()
+    event_bus = AsyncMock()  # transport-mock-ok: event_bus typed Any in handler; spec requires protocol resolution in separate ticket
 
     handler = HandlerPipelineFill(linear_client=linear_client, event_bus=event_bus)
     cmd = _make_command(wave_cap=5, tmp_path=tmp_path)

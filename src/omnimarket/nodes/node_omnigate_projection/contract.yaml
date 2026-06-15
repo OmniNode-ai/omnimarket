@@ -27,6 +27,46 @@ descriptor:
   timeout_ms: 5000
 
 projection_api:
+  expose: true
+  exposures:
+    - topic: onex.snapshot.projection.gate.activity.v1  # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
+      table: gate_activity
+      schema: public
+      columns:
+        - id
+        - repository_id
+        - project_name
+        - branch
+        - base_sha
+        - head_sha
+        - diff_hash
+        - config_hash
+        - status
+        - action
+        - reason
+        - total_checks
+        - failed_checks
+        - advisory_checks
+        - pending_checks
+        - observed_at
+      order_by: observed_at DESC
+      freshness_column: observed_at
+      limit: 100
+    - topic: onex.snapshot.projection.gate.metrics.v1  # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
+      table: gate_metrics
+      schema: public
+      columns:
+        - id
+        - total_events
+        - passed
+        - failed
+        - advisory
+        - pending
+        - updated_at
+      order_by: updated_at DESC
+      freshness_column: updated_at
+      limit: 1
+  # Reducer-runtime snapshot metadata (consumed by the effects runtime).
   snapshots:
     - topic: onex.snapshot.projection.gate.activity.v1  # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
       model: omnimarket.nodes.node_omnigate_projection.models.model_omnigate_projection_row.ModelOmniGateProjectionRow
@@ -36,6 +76,19 @@ projection_api:
       model: omnimarket.nodes.node_omnigate_projection.models.model_omnigate_projection_row.ModelOmniGateMetricsSnapshot
       ownership: authoritative
       ordering: aggregate
+
+db_io:
+  db_tables:
+    - name: gate_activity
+      migration: "0000_create_gate_projection_tables.sql"
+      access: write
+      database: omnidash_analytics
+      role: gate_projection
+    - name: gate_metrics
+      migration: "0000_create_gate_projection_tables.sql"
+      access: write
+      database: omnidash_analytics
+      role: gate_projection
 
 event_bus:
   subscribe_topics:

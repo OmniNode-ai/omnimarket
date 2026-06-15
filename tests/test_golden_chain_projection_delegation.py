@@ -696,8 +696,12 @@ class TestTerminalEventEmission:
         )
 
 
-class TestZeroTokenGuard:
-    """Synthetic test events with no token/cost data must not pollute the projection table."""
+class TestZeroTokenZeroCostTerminal:
+    """OMN-13121 — a well-formed zero-token/zero-cost terminal must materialize a
+    row. Zero tokens + zero cost is the steady state for free local-LLM delegation
+    and golden-chain proofs, not a malformed event. The prior OMN-11923 guard
+    silently dropped these (rows_upserted=0, no upsert, no raise), stranding the
+    organic delegation tail at zero rows."""
 
     _CORR_ZERO = "00000000-0000-0000-0000-000000000001"
     _CORR_REAL = "00000000-0000-0000-0000-000000000002"
@@ -731,13 +735,26 @@ class TestZeroTokenGuard:
             "pricing_manifest_version": 0,
         }
 
-    def test_zero_token_terminal_event_skipped(self) -> None:
+    def test_zero_token_terminal_event_upserts_exactly_one_row(self) -> None:
+        """Row-delta proof: before=0 rows, publish a zero-token/zero-cost
+        terminal, after=exactly 1 row (OMN-13121 foundational pattern)."""
         db = InmemoryDatabaseAdapter()
+        # before: projection table is empty.
+        assert db.query("delegation_events") == []
+
         payload = self._make_zero_token_terminal_payload(self._CORR_ZERO)
         payload["_db"] = db
         result = HANDLER.handle(payload)
-        assert result["rows_upserted"] == 0
-        assert db.query("delegation_events") == []
+
+        # after: the zero-value terminal materialized exactly one row.
+        assert result["rows_upserted"] == 1
+        rows = db.query("delegation_events")
+        assert len(rows) == 1
+        row = rows[0]
+        assert row["correlation_id"] == self._CORR_ZERO
+        assert row["tokens_input"] == 0
+        assert row["tokens_output"] == 0
+        assert row["cost_usd"] == Decimal("0")
 
     def test_real_token_terminal_event_accepted(self) -> None:
         db = InmemoryDatabaseAdapter()

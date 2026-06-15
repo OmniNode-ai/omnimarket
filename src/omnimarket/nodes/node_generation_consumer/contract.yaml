@@ -140,6 +140,10 @@ model_routing:
   # (task_class_contracts.escalation_policy.tier_order). Node generation is a
   # code-generation task; declared here so the escalation tier order is
   # contract-governed, never inferred from the prompt or a code literal.
+  # OMN-12890: when local tier exhausts retries the routing authority escalates to
+  # cheap_cloud, selecting backend cloud-gemini-flash (model: gemini-2.5-flash-lite
+  # via AI Studio key GEMINI_API_KEY). The prior model gemini-2.0-flash hit free-tier
+  # quota (HTTP 429); gemini-2.5-flash-lite is quota-available on the same key.
   task_type: code_generation
   # OMN-12816: provider-specific inference params merged into the LLM request body
   # (ModelLlmInferenceRequest.extra_body). enable_thinking:false suppresses the

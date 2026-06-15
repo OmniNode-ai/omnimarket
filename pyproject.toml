@@ -29,11 +29,11 @@ classifiers = [
     "Typing :: Typed",
 ]
 dependencies = [
-    "omnibase_core>=0.44.0,<0.45.0",
-    "omnibase-compat==0.5.1",
-    "omnibase-spi>=0.20.6,<0.22.0",
-    "omnibase-infra>=0.38.0,<0.39.0",
-    "onex-change-control>=0.5.0",
+    "omnibase_core>=0.44.2,<0.45.0",
+    "omnibase-compat==0.5.4",
+    "omnibase-spi>=0.22.0,<0.23.0",
+    "omnibase-infra>=0.38.3,<0.39.0",
+    "onex-change-control>=0.5.1",
     "click>=8.1.0",
     "pydantic>=2.12.5,<3.0.0",
     "pydantic-settings>=2.0.0,<3.0.0",
@@ -84,6 +84,7 @@ node_budget_policy_compute = "omnimarket.nodes.node_budget_policy_compute"
 node_chain_diff_compute = "omnimarket.nodes.node_chain_diff_compute"
 node_closeout_verifier_compute = "omnimarket.nodes.node_closeout_verifier_compute"
 node_context_pack_builder_compute = "omnimarket.nodes.node_context_pack_builder_compute"
+node_context_artifact_resolver_compute = "omnimarket.nodes.node_context_artifact_resolver_compute"
 node_design_plan_context_compute = "omnimarket.nodes.node_design_plan_context_compute"
 node_golden_chain_generator_compute = "omnimarket.nodes.node_golden_chain_generator_compute"
 node_test_generator_compute = "omnimarket.nodes.node_test_generator_compute"
@@ -135,10 +136,13 @@ node_projection_cost_by_repo = "omnimarket.nodes.node_projection_cost_by_repo"
 node_projection_cost_summary = "omnimarket.nodes.node_projection_cost_summary"
 node_projection_cost_token_usage = "omnimarket.nodes.node_projection_cost_token_usage"
 node_projection_savings = "omnimarket.nodes.node_projection_savings"
+node_projection_context_roi = "omnimarket.nodes.node_projection_context_roi"
 node_projection_delegation = "omnimarket.nodes.node_projection_delegation"
 node_projection_overnight = "omnimarket.nodes.node_projection_overnight"
 node_projection_baselines = "omnimarket.nodes.node_projection_baselines"
 node_projection_registration = "omnimarket.nodes.node_projection_registration"
+node_projection_routing_decision = "omnimarket.nodes.node_projection_routing_decision"
+node_projection_pattern_learning = "omnimarket.nodes.node_projection_pattern_learning"
 node_projection_llm_routing = "omnimarket.nodes.node_projection_llm_routing"
 node_projection_dep_health = "omnimarket.nodes.node_projection_dep_health"
 node_emit_daemon = "omnimarket.nodes.node_emit_daemon"
@@ -194,6 +198,7 @@ node_semantic_analyzer_compute = "omnimarket.nodes.node_semantic_analyzer_comput
 node_semantic_antipattern_classifier_compute = "omnimarket.nodes.node_semantic_antipattern_classifier_compute"
 node_semantic_antipattern_validator_orchestrator = "omnimarket.nodes.node_semantic_antipattern_validator_orchestrator"
 node_database_sweep = "omnimarket.nodes.node_database_sweep"
+node_volume_config_drift_sweep = "omnimarket.nodes.node_volume_config_drift_sweep"
 node_duplication_sweep = "omnimarket.nodes.node_duplication_sweep"
 node_doc_freshness_sweep = "omnimarket.nodes.node_doc_freshness_sweep"
 node_memory_storage_effect = "omnimarket.nodes.node_memory_storage_effect"
@@ -381,18 +386,18 @@ market = "omnimarket.cli.market:market"
 omnimarket = "omnimarket.nodes"
 
 [tool.uv.sources]
-omnibase-core = { git = "https://github.com/OmniNode-ai/omnibase_core.git", rev = "c97c2c9a45c5fb0def5fb7dacfd5f01278bb9f55" }
-omnibase-compat = { git = "https://github.com/OmniNode-ai/omnibase_compat.git", rev = "4d887307aae34d9d40d389ba91070cb411ce3df5" }
-omnibase-infra = { git = "https://github.com/OmniNode-ai/omnibase_infra.git", rev = "e2dbdc950540df8bc59ca4370b2d4a0f5b8d6c59" }
+omnibase-core = { git = "https://github.com/OmniNode-ai/omnibase_core.git", rev = "35fce1b6ae16a8fefec8996e26c1d66a3fb693c2" }
+omnibase-compat = { git = "https://github.com/OmniNode-ai/omnibase_compat.git", rev = "6db825163f72be98331b50b9cb0f389f910d1d1f" }
+omnibase-infra = { git = "https://github.com/OmniNode-ai/omnibase_infra.git", rev = "a96fb355fbfca2d8647cc515106e164b51030a33" }
 omninode-memory = { git = "https://github.com/OmniNode-ai/omnimemory.git", rev = "9843dd18cedaa4f5939289ba527532262b87003c" }
-onex-change-control = { git = "https://github.com/OmniNode-ai/onex_change_control.git", rev = "4877d3c223517cb0c7e1eca462ba0f4d38916314" }
+onex-change-control = { git = "https://github.com/OmniNode-ai/onex_change_control.git", rev = "1c95c63b514f471543c65264dcd79462f4e91f04" }
 
 [tool.uv]
 override-dependencies = [
-    "omnibase-core @ git+https://github.com/OmniNode-ai/omnibase_core.git@c97c2c9a45c5fb0def5fb7dacfd5f01278bb9f55",
-    "omnibase-spi>=0.20.6,<0.22.0",
-    "omnibase-infra @ git+https://github.com/OmniNode-ai/omnibase_infra.git@e2dbdc950540df8bc59ca4370b2d4a0f5b8d6c59",
-    "omnibase-compat @ git+https://github.com/OmniNode-ai/omnibase_compat.git@4d887307aae34d9d40d389ba91070cb411ce3df5",
+    "omnibase-core @ git+https://github.com/OmniNode-ai/omnibase_core.git@35fce1b6ae16a8fefec8996e26c1d66a3fb693c2",
+    "omnibase-spi>=0.22.0,<0.23.0",
+    "omnibase-infra @ git+https://github.com/OmniNode-ai/omnibase_infra.git@a96fb355fbfca2d8647cc515106e164b51030a33",
+    "omnibase-compat @ git+https://github.com/OmniNode-ai/omnibase_compat.git@6db825163f72be98331b50b9cb0f389f910d1d1f",
 ]
 
 [tool.hatch.build.targets.wheel]
@@ -548,4 +553,5 @@ markers = [
     "integration: Integration tests that test multiple components together",
     "slow: Tests that take a long time to run (>1s)",
     "kafka: marks tests requiring a running Kafka broker",
+    "e2e: End-to-end probe tests against a live lane (requires OMN_ALLOW_LIVE_E2E_PROBE=true)",
 ]

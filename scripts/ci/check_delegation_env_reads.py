@@ -10,9 +10,20 @@ after contract-driven config is landed.
 
 Module scope: nodes matching delegation/LLM-inference/bifrost patterns.
 
+Provenance ratchet (OMN-12967): the canonical delegation/routing-path config
+*path* keys (``BIFROST_CONTRACT_PATH``, ``BIFROST_OVERLAY_PATH``,
+``DELEGATION_ROUTING_TIERS_PATH``, ``TASK_CLASS_CONTRACT_PATH``) MUST resolve
+through ``omnimarket.inference.delegation_config_provenance`` so that every cold
+runtime emits a single provenance line per read. A raw ``os.environ`` /
+``os.getenv`` read of one of these keys anywhere outside that provenance module
+is a hard violation in BOTH report and enforce mode, and a skip token does NOT
+exempt it. This closes the silent-unmanaged-volume-selection hole proven on
+2026-06-11 (``BIFROST_CONTRACT_PATH`` silently selecting a drifted volume file).
+
 Exit codes:
-    0: Scan completed (report mode always returns 0)
-    1: Violations found (enforce mode only)
+    0: Scan completed, no provenance-bypass violations (report mode)
+    1: Violations found (enforce mode) or any provenance-bypass violation
+       (both modes — provenance bypass always blocks)
 
 Usage:
     python scripts/ci/check_delegation_env_reads.py
@@ -51,11 +62,29 @@ ALLOWLISTED_PATH_SEGMENTS = [
 # Inline skip token: # ONEX_FLAG_EXEMPT or # ONEX_EXCLUDE allows a line
 SKIP_TOKENS = ["ONEX_FLAG_EXEMPT", "ONEX_EXCLUDE"]
 
+# OMN-12967 provenance ratchet: canonical delegation/routing-path config *path*
+# keys that MUST resolve through the provenance surface. Kept in sync with
+# ``DELEGATION_PATH_CONFIG_KEYS`` in
+# ``omnimarket.inference.delegation_config_provenance`` (asserted by a test).
+PROVENANCE_REQUIRED_KEYS = frozenset(
+    {
+        "BIFROST_CONTRACT_PATH",
+        "BIFROST_OVERLAY_PATH",
+        "DELEGATION_ROUTING_TIERS_PATH",
+        "TASK_CLASS_CONTRACT_PATH",
+        "INFERENCE_PROTOCOL_CONFIG_PATH",
+    }
+)
+
+# The single module permitted to read PROVENANCE_REQUIRED_KEYS via os.environ.
+PROVENANCE_MODULE_SUFFIX = "inference/delegation_config_provenance.py"
+
 
 @dataclass
 class ScanResult:
     scanned_files: int = 0
     violations: list[str] = field(default_factory=list)
+    provenance_bypass: list[str] = field(default_factory=list)
     report_generated: bool = False
 
 
@@ -69,6 +98,89 @@ def _is_delegation_module(rel_path: str) -> bool:
 
 def _has_skip_token(line: str) -> bool:
     return any(token in line for token in SKIP_TOKENS)
+
+
+def _is_provenance_module(rel_path: str) -> bool:
+    return rel_path.endswith(PROVENANCE_MODULE_SUFFIX)
+
+
+def _env_read_key_arg(node: ast.Call) -> str | None:
+    """Return the string-literal env key from an os.environ.get/os.getenv call.
+
+    Returns None when the call is not an env read or the key is not a constant
+    string literal (dynamic keys are out of scope for the provenance ratchet).
+    """
+    func = node.func
+    if not isinstance(func, ast.Attribute):
+        return None
+    is_getenv = (
+        func.attr == "getenv"
+        and isinstance(func.value, ast.Name)
+        and func.value.id == "os"
+    )
+    is_environ_get = (
+        func.attr == "get"
+        and isinstance(func.value, ast.Attribute)
+        and func.value.attr == "environ"
+        and isinstance(func.value.value, ast.Name)
+        and func.value.value.id == "os"
+    )
+    if not (is_getenv or is_environ_get):
+        return None
+    if not node.args:
+        return None
+    first = node.args[0]
+    if isinstance(first, ast.Constant) and isinstance(first.value, str):
+        return first.value
+    return None
+
+
+def _find_provenance_bypass_in_source(source: str, filepath: str) -> list[str]:
+    """Return provenance-bypass violations for the given source.
+
+    A raw os.environ/os.getenv read of a PROVENANCE_REQUIRED_KEYS key outside the
+    provenance module is a hard violation that a skip token does NOT exempt
+    (OMN-12967). os.environ[...] subscript reads are also caught.
+    """
+    if _is_provenance_module(filepath):
+        return []
+    try:
+        tree = ast.parse(source)
+    except SyntaxError:
+        return []
+
+    lines = source.splitlines()
+    violations: list[str] = []
+    seen: set[int] = set()
+
+    for node in ast.walk(tree):
+        key: str | None = None
+        if isinstance(node, ast.Call):
+            key = _env_read_key_arg(node)
+        elif (
+            isinstance(node, ast.Subscript)
+            and isinstance(node.value, ast.Attribute)
+            and node.value.attr == "environ"
+            and isinstance(node.value.value, ast.Name)
+            and node.value.value.id == "os"
+            and isinstance(node.slice, ast.Constant)
+            and isinstance(node.slice.value, str)
+        ):
+            key = node.slice.value
+
+        if key is None or key not in PROVENANCE_REQUIRED_KEYS:
+            continue
+        lineno = node.lineno
+        if lineno in seen:
+            continue
+        seen.add(lineno)
+        line_text = lines[lineno - 1].strip() if lineno <= len(lines) else ""
+        violations.append(
+            f"{filepath}:{lineno}: raw read of {key} bypasses provenance "
+            f"resolver — {line_text}"
+        )
+
+    return violations
 
 
 def _find_env_calls_in_source(source: str, filepath: str) -> list[str]:
@@ -180,15 +292,23 @@ def scan_delegation_modules(
 
         if _is_allowlisted(rel_forward):
             continue
-        if not _is_delegation_module(rel_forward):
-            continue
 
-        result.scanned_files += 1
         try:
             source = py_file.read_text(encoding="utf-8")
         except (OSError, UnicodeDecodeError):
             continue
 
+        # Provenance-bypass ratchet (OMN-12967): runs across ALL src modules —
+        # a raw read of a provenance-required key anywhere bypasses the resolver.
+        result.provenance_bypass.extend(
+            _find_provenance_bypass_in_source(source, rel_forward)
+        )
+
+        # Broad delegation env-read scan: scoped to delegation-owned modules.
+        if not _is_delegation_module(rel_forward):
+            continue
+
+        result.scanned_files += 1
         violations = _find_env_calls_in_source(source, rel_forward)
         result.violations.extend(violations)
 
@@ -220,6 +340,26 @@ def main() -> int:
 
     result = scan_delegation_modules(repo_root=repo_root, mode=args.mode)
 
+    exit_code = 0
+
+    # Provenance-bypass violations always block, in both report and enforce mode
+    # (OMN-12967) — a skip token does NOT exempt them.
+    if result.provenance_bypass:
+        print(
+            f"[delegation-env-scanner] Found {len(result.provenance_bypass)} "
+            "provenance-bypass violation(s) — delegation-path config keys must "
+            "resolve through omnimarket.inference.delegation_config_provenance "
+            "(OMN-12967)"
+        )
+        for v in sorted(result.provenance_bypass):
+            print(f"  {v}")
+        print(
+            "\nFix: replace the raw os.environ read with resolve_path_config() or "
+            "resolve_optional_path_config() so every cold runtime emits a "
+            "provenance line. A skip token does NOT exempt these keys."
+        )
+        exit_code = 1
+
     if result.violations:
         print(
             f"[delegation-env-scanner] Found {len(result.violations)} env read(s) "
@@ -232,18 +372,19 @@ def main() -> int:
                 "\nFix: replace os.environ/os.getenv with contract-driven config "
                 "resolution (OMN-10915 Wave 2)."
             )
-            return 1
-        print(
-            "\n[report mode] These will become blocking violations in Wave 2 "
-            "(OMN-10917 → OMN-10915)."
-        )
-    elif args.verbose:
+            exit_code = 1
+        else:
+            print(
+                "\n[report mode] These will become blocking violations in Wave 2 "
+                "(OMN-10917 → OMN-10915)."
+            )
+    elif args.verbose and not result.provenance_bypass:
         print(
             f"[delegation-env-scanner] OK — scanned {result.scanned_files} files, "
             "no violations."
         )
 
-    return 0
+    return exit_code
 
 
 if __name__ == "__main__":

@@ -12,11 +12,10 @@
 #   pre-commit run --all-files
 
 repos:
-  # Stub implementation detection + receipt-honesty gate — sourced from
-  # omnibase_core (OMN-5599 stub; OMN-12791 honesty). Rev bumped to a commit
-  # that exports check-receipt-honesty (OMN-12825 gate-coverage prep).
+  # Stub implementation detection + receipt-honesty gate + transport-mock lint
+  # sourced from omnibase_core. Rev bumped to OMN-13026 (transport-mock-lint).
   - repo: https://github.com/OmniNode-ai/omnibase_core
-    rev: 3a15187eb704995a397de9b3a8aae69797c365a8 # pragma: allowlist secret
+    rev: cfaa6ec863c3026b5e65196151ed76cdad13dae3 # pragma: allowlist secret
     hooks:
       - id: check-stub-implementations
       # OMN-12791: scan ModelDodReceipt YAML for gamed probes, deferred
@@ -24,6 +23,12 @@ repos:
       # files under drift/dod_receipts/ (hook's own `files` filter), so it is
       # a no-op for omnimarket PRs that carry no receipt YAMLs.
       - id: check-receipt-honesty
+      # OMN-13026: bare AsyncMock/MagicMock without spec=/spec_set= on
+      # EventBus/transport/kafka surfaces. Ratchet: existing violations frozen
+      # in validation/transport_mock_baseline.yaml (101 violations, 26 files).
+      # New violations blocked. Drain tracked by OMN-13026 per-site tickets.
+      - id: transport-mock-lint
+        args: [--baseline, validation/transport_mock_baseline.yaml]
 
   # Shared ONEX governance hooks (onex_change_control)
   - repo: https://github.com/OmniNode-ai/onex_change_control
@@ -96,6 +101,29 @@ repos:
         pass_filenames: false
         stages: [pre-commit]
 
+      # OMN-12957: runtime_profiles contract validator (omnibase_core).
+      # Enforces runtime_profiles_missing (OMN-9886) + runtime_profile_unregistered
+      # (declared profile not in canonical REGISTERED_RUNTIME_PROFILES) +
+      # runtime_profile_no_consumer_lane (subscribing REDUCER/EFFECT names no
+      # consumer-attached profile). Pre-existing violators are frozen in
+      # validation/runtime_profiles_allowlist.yaml (drain tracked by OMN-12982).
+      # Blocks NEW orphans. Requires the omnibase_core pin to include OMN-12957's
+      # validator (new rules).
+      #
+      # OMN-12955: invoke via scripts/ci/run_runtime_profiles_validator.py so the
+      # repo-local allowlist (validation/runtime_profiles_allowlist.yaml) is loaded
+      # the SAME way as the required CI gate (validator-runtime-profiles.yml). The
+      # bare module entry resolves its allowlist from the omnibase_core *package*
+      # dir, not this repo, so it spuriously flagged every frozen contract locally
+      # while CI passed.
+      - id: onex-validate-runtime-profiles
+        name: Validate runtime_profiles on node contracts (OMN-12957)
+        language: system
+        entry: uv run python scripts/ci/run_runtime_profiles_validator.py
+        files: ^src/omnimarket/nodes/node_.*/contract\.yaml$
+        pass_filenames: false
+        stages: [pre-commit]
+
       # OMN-10909: stricter topic-literal gate (delegation thin-shim plan, Task 8).
       # Allowlist: topics.py, test_*/conftest* files, inline `# onex-topic-allow`
       # annotations. SYNC with ci.yml step "Topic-literal guardrail (annotation allowlist)".
@@ -123,12 +151,65 @@ repos:
       # resolves provider/model/endpoint_ref/endpoint/route_source from authority
       # and that no demo-path source reads env for endpoint/provider/model,
       # hardcodes a provider literal, or reads a fallback endpoint string.
+      # Extended in OMN-12877 (M7.2) to add residue audit over confirmed env-var
+      # residue files (bridge_config_loader, cli_ab_compare_suite, model_policy).
+      # Extended in OMN-12883 (M7.2) to add provider-class endpoint URL shape
+      # audit over bifrost_delegation.yaml.
       # SYNC with ci.yml step "Routing-authority demo gate (enforce)".
       - id: routing-authority-demo-gate
         name: Routing-authority demo gate
         language: system
         entry: uv run python scripts/ci/check_routing_authority.py
-        files: ^(src/omnimarket/nodes/node_generation_consumer/|src/omnimarket/nodes/node_llm_delegation_call_effect/|src/omnimarket/adapters/llm/bifrost/|src/omnimarket/configs/bifrost_delegation\.yaml|scripts/ci/check_routing_authority\.py)
+        files: >-
+          ^(src/omnimarket/nodes/node_generation_consumer/|
+          src/omnimarket/nodes/node_llm_delegation_call_effect/|
+          src/omnimarket/adapters/llm/bifrost/|
+          src/omnimarket/configs/bifrost_delegation\.yaml|
+          src/omnimarket/inference/bridge_config_loader\.py|
+          src/omnimarket/cli/cli_ab_compare_suite\.py|
+          src/omnimarket/model_policy\.yaml|
+          scripts/ci/check_routing_authority\.py)
+        pass_filenames: false
+        stages: [pre-commit]
+
+      # OMN-12942: node migration sets must create base tables before the views
+      # that read them. A view-before-base-table migration hard-fails the
+      # forward-migration runner on a clean node-set apply (this forced
+      # node_projection_llm_routing's view to be pruned during the 2026-06-11
+      # stability hot-patch). SYNC with ci.yml step "Migration base-before-view gate".
+      - id: migration-base-before-view
+        name: Migration base-table-before-view gate
+        language: system
+        entry: uv run python scripts/ci/check_migration_base_before_view.py
+        files: ^(src/omnimarket/nodes/.*/migrations/.*\.sql|scripts/ci/check_migration_base_before_view\.py)$
+        pass_filenames: false
+        stages: [pre-commit]
+
+      # OMN-12971: backend secret-ref / credential-ref discipline gate. Fails if a
+      # literal credential value (PEM key, service-account JSON, bearer/api-key)
+      # lands in routing-authority config, or if an authenticated cloud backend
+      # lacks a logical secret/credential ref. Keeps the Vertex ADC path (and all
+      # cloud backends) value-free in committed config.
+      # SYNC with ci.yml step "Backend secret-discipline gate (enforce)".
+      - id: backend-secret-discipline-gate
+        name: Backend secret-discipline gate
+        language: system
+        entry: uv run python scripts/ci/check_backend_secret_discipline.py
+        files: ^(src/omnimarket/configs/bifrost_delegation\.yaml|src/omnimarket/configs/routing_tiers\.yaml|src/omnimarket/data/model_registry/model_registry_v1\.yaml|scripts/ci/check_backend_secret_discipline\.py)
+        pass_filenames: false
+        stages: [pre-commit]
+
+      # OMN-12972 (plan P2.7): Gemini registry/version hygiene gate. Enforces
+      # that every provider:google registry entry + its bifrost backend align
+      # with the live Vertex-served model name PER ENVIRONMENT (Vertex names are
+      # publisher-qualified; AI Studio names are bare) and that no entry carries a
+      # retired/404 model id (the gemini-2.0-flash-on-Vertex failure).
+      # SYNC with ci.yml step "Gemini registry/version hygiene gate (enforce)".
+      - id: gemini-registry-version-hygiene
+        name: Gemini registry/version hygiene gate
+        language: system
+        entry: uv run python scripts/ci/check_model_registry_served_names.py
+        files: ^(src/omnimarket/data/model_registry/model_registry_v1\.yaml|src/omnimarket/configs/bifrost_delegation\.yaml|scripts/ci/check_model_registry_served_names\.py)
         pass_filenames: false
         stages: [pre-commit]
 
@@ -139,6 +220,19 @@ repos:
         language: system
         entry: uv run python scripts/ci/check_golden_chain_coverage.py --staged
         files: ^(src/omnimarket/nodes/node_.*/|tests/.*/?test_golden_chain.*\.py$)
+        pass_filenames: false
+        stages: [pre-commit]
+
+      # OMN-12959: FSM terminal-state invariant — watchdog topic literals may
+      # only live in the canonical omnimarket.events.topics registry (the source
+      # of truth; omnimarket.events.watchdog imports them and exposes the typed
+      # EnumWatchdogEventType authority). Forces the typed authority instead of
+      # hardcoded strings. SYNC with ci.yml step "Watchdog-topic authority gate".
+      - id: watchdog-topic-authority-gate
+        name: Watchdog-topic authority gate
+        language: system
+        entry: uv run python scripts/ci/check_watchdog_topic_authority.py
+        files: ^(src/omnimarket/.*\.py|scripts/ci/check_watchdog_topic_authority\.py)
         pass_filenames: false
         stages: [pre-commit]
 

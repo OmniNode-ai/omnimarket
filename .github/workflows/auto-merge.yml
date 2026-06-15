@@ -84,7 +84,11 @@ jobs:
           REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
-          if output=$(gh pr merge "$PR" --repo "$REPO" --auto --squash 2>&1); then
+          # OMN-13138: dev is queue-controlled — the merge method is set by the merge
+          # queue, so passing an explicit --squash is rejected ("The merge strategy for
+          # dev is set by the merge queue") and the PR is NEVER enqueued (sits CLEAN +
+          # auto-merge armed forever). Use bare --auto and let the queue pick the method.
+          if output=$(gh pr merge "$PR" --repo "$REPO" --auto 2>&1); then
             echo "auto-merge enabled: $output"
             exit 0
           fi

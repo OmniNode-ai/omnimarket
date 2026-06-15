@@ -4,10 +4,10 @@ requires-python = "==3.12.*"
 
 [manifest]
 overrides = [
-    { name = "omnibase-compat", git = "https://github.com/OmniNode-ai/omnibase_compat.git?rev=4d887307aae34d9d40d389ba91070cb411ce3df5" },
-    { name = "omnibase-core", git = "https://github.com/OmniNode-ai/omnibase_core.git?rev=c97c2c9a45c5fb0def5fb7dacfd5f01278bb9f55" },
-    { name = "omnibase-infra", git = "https://github.com/OmniNode-ai/omnibase_infra.git?rev=e2dbdc950540df8bc59ca4370b2d4a0f5b8d6c59" },
-    { name = "omnibase-spi", specifier = ">=0.20.6,<0.22.0" },
+    { name = "omnibase-compat", git = "https://github.com/OmniNode-ai/omnibase_compat.git?rev=6db825163f72be98331b50b9cb0f389f910d1d1f" },
+    { name = "omnibase-core", git = "https://github.com/OmniNode-ai/omnibase_core.git?rev=35fce1b6ae16a8fefec8996e26c1d66a3fb693c2" },
+    { name = "omnibase-infra", git = "https://github.com/OmniNode-ai/omnibase_infra.git?rev=a96fb355fbfca2d8647cc515106e164b51030a33" },
+    { name = "omnibase-spi", specifier = ">=0.22.0,<0.23.0" },
 ]
 
 [[package]]
@@ -1219,8 +1219,8 @@ wheels = [
 
 [[package]]
 name = "omnibase-compat"
-version = "0.5.1"
-source = { git = "https://github.com/OmniNode-ai/omnibase_compat.git?rev=4d887307aae34d9d40d389ba91070cb411ce3df5#4d887307aae34d9d40d389ba91070cb411ce3df5" }
+version = "0.5.4"
+source = { git = "https://github.com/OmniNode-ai/omnibase_compat.git?rev=6db825163f72be98331b50b9cb0f389f910d1d1f#6db825163f72be98331b50b9cb0f389f910d1d1f" }
 dependencies = [
     { name = "pydantic" },
     { name = "typing-extensions" },
@@ -1228,8 +1228,8 @@ dependencies = [
 
 [[package]]
 name = "omnibase-core"
-version = "0.44.0"
-source = { git = "https://github.com/OmniNode-ai/omnibase_core.git?rev=c97c2c9a45c5fb0def5fb7dacfd5f01278bb9f55#c97c2c9a45c5fb0def5fb7dacfd5f01278bb9f55" }
+version = "0.44.2"
+source = { git = "https://github.com/OmniNode-ai/omnibase_core.git?rev=35fce1b6ae16a8fefec8996e26c1d66a3fb693c2#35fce1b6ae16a8fefec8996e26c1d66a3fb693c2" }
 dependencies = [
     { name = "blake3" },
     { name = "click" },
@@ -1247,8 +1247,8 @@ dependencies = [
 
 [[package]]
 name = "omnibase-infra"
-version = "0.38.1"
-source = { git = "https://github.com/OmniNode-ai/omnibase_infra.git?rev=e2dbdc950540df8bc59ca4370b2d4a0f5b8d6c59#e2dbdc950540df8bc59ca4370b2d4a0f5b8d6c59" }
+version = "0.38.3"
+source = { git = "https://github.com/OmniNode-ai/omnibase_infra.git?rev=a96fb355fbfca2d8647cc515106e164b51030a33#a96fb355fbfca2d8647cc515106e164b51030a33" }
 dependencies = [
     { name = "a2a-sdk" },
     { name = "aiofiles" },
@@ -1300,16 +1300,16 @@ dependencies = [
 
 [[package]]
 name = "omnibase-spi"
-version = "0.20.6"
+version = "0.22.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "omnibase-core" },
     { name = "pydantic" },
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/e5/52/d7623f3d4a063364639768240fe9d981ed95e4d631f9d477aca54499ed96/omnibase_spi-0.20.6.tar.gz", hash = "sha256:89c70b21fe1aeaa61a7622ae40bcf21e925ebb6d5282039ce5f4258eae22da48", size = 1135612, upload-time = "2026-05-04T02:20:10.286Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/43/7d/219a855c2e556030be09255dee9d5320cf21360a5372e05f91be042d84bb/omnibase_spi-0.22.0.tar.gz", hash = "sha256:a527e1e4fcff790d11ba78a5345cb9c58f1e36158a38bf83cf1c27ad22f87c66", size = 1115850, upload-time = "2026-05-26T13:51:00.209Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/e8/68/b8b917f1c6de94c5cca26a5af673fd164ee656953503000254edad4bd090/omnibase_spi-0.20.6-py3-none-any.whl", hash = "sha256:1e32893d1fabb9215a1cb2e314ca03a5362b89495be5f3ec049491ec4cc0d041", size = 792937, upload-time = "2026-05-04T02:20:08.691Z" },
+    { url = "https://files.pythonhosted.org/packages/ce/33/c8e98b6200f9a078b2d9205091467c6eddf2fd4a1cce9ca989b7ca256d1b/omnibase_spi-0.22.0-py3-none-any.whl", hash = "sha256:54f7f49a4e33c6d3f4fe185926e440c822671962da5ab976214db30af110c0af", size = 744687, upload-time = "2026-05-26T13:50:58.213Z" },
 ]
 
 [[package]]
@@ -1369,12 +1369,12 @@ requires-dist = [
     { name = "fastapi", specifier = ">=0.115.0" },
     { name = "graphifyy", marker = "extra == 'dep-health'", specifier = "==0.8.2" },
     { name = "httpx", specifier = ">=0.27.0" },
-    { name = "omnibase-compat", git = "https://github.com/OmniNode-ai/omnibase_compat.git?rev=4d887307aae34d9d40d389ba91070cb411ce3df5" },
-    { name = "omnibase-core", git = "https://github.com/OmniNode-ai/omnibase_core.git?rev=c97c2c9a45c5fb0def5fb7dacfd5f01278bb9f55" },
-    { name = "omnibase-infra", git = "https://github.com/OmniNode-ai/omnibase_infra.git?rev=e2dbdc950540df8bc59ca4370b2d4a0f5b8d6c59" },
-    { name = "omnibase-spi", specifier = ">=0.20.6,<0.22.0" },
+    { name = "omnibase-compat", git = "https://github.com/OmniNode-ai/omnibase_compat.git?rev=6db825163f72be98331b50b9cb0f389f910d1d1f" },
+    { name = "omnibase-core", git = "https://github.com/OmniNode-ai/omnibase_core.git?rev=35fce1b6ae16a8fefec8996e26c1d66a3fb693c2" },
+    { name = "omnibase-infra", git = "https://github.com/OmniNode-ai/omnibase_infra.git?rev=a96fb355fbfca2d8647cc515106e164b51030a33" },
+    { name = "omnibase-spi", specifier = ">=0.22.0,<0.23.0" },
     { name = "omninode-memory", git = "https://github.com/OmniNode-ai/omnimemory.git?rev=9843dd18cedaa4f5939289ba527532262b87003c" },
-    { name = "onex-change-control", git = "https://github.com/OmniNode-ai/onex_change_control.git?rev=4877d3c223517cb0c7e1eca462ba0f4d38916314" },
+    { name = "onex-change-control", git = "https://github.com/OmniNode-ai/onex_change_control.git?rev=1c95c63b514f471543c65264dcd79462f4e91f04" },
     { name = "packaging", specifier = ">=24.0" },
     { name = "psycopg2-binary", specifier = ">=2.9.10" },
     { name = "pydantic", specifier = ">=2.12.5,<3.0.0" },
@@ -1433,8 +1433,8 @@ dependencies = [
 
 [[package]]
 name = "onex-change-control"
-version = "0.5.0"
-source = { git = "https://github.com/OmniNode-ai/onex_change_control.git?rev=4877d3c223517cb0c7e1eca462ba0f4d38916314#4877d3c223517cb0c7e1eca462ba0f4d38916314" }
+version = "0.5.1"
+source = { git = "https://github.com/OmniNode-ai/onex_change_control.git?rev=1c95c63b514f471543c65264dcd79462f4e91f04#1c95c63b514f471543c65264dcd79462f4e91f04" }
 dependencies = [
     { name = "colorama" },
     { name = "omnibase-core" },

@@ -1,0 +1,20 @@
+name: projection_context_roi
+version: "1.0.0"
+description: >
+  Projects context-ROI experiment runner output into the context_roi_scores
+  table and exposes it through the projection API for the /experiments panels.
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: true
+  requires_secrets: true
+  side_effect_class: write_db
+tags:
+  - projection
+  - context-roi
+  - experiment
+  - reducer
+pack: "data"
+display_name: "Projection: Context-ROI Scores"
+node_role: "effect"

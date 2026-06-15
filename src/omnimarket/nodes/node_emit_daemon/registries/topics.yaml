@@ -1,5 +1,12 @@
 # Event Registry: Claude Code Platform
-# Generated from omniclaude/src/omniclaude/hooks/event_registry.py
+#
+# CANONICAL SOURCE OF TRUTH (OMN-13146). This file is the single registry the
+# emit daemon loads at runtime. The omniclaude hook registry
+# (hooks/event_registry.py + the TopicBase enum) is a projection of this file and
+# must agree with it on every event type, fan-out topic set, partition_key_field,
+# and required_fields list. The structural drift validator
+# (omnimarket.validators.event_registry_drift), wired as a pre-commit hook and a
+# required CI gate, fails on any unbaselined divergence in either direction.
 #
 # This file defines all event types, their fan-out rules, required fields,
 # and partition key configuration for the Claude Code platform.
@@ -168,6 +175,14 @@ events:
     partition_key_field: session_id
     required_fields: [agent_name, session_id, state, message]
 
+  agent.action:
+    fan_out:
+      - topic: "onex.evt.omniclaude.agent-actions.v1"
+        tier: telemetry
+        description: "Per-tool agent action event for omnidash agent_actions projection"
+    partition_key_field: session_id
+    required_fields: [correlation_id, agent_name, action_type, session_id]
+
   agent.chat.broadcast:
     fan_out:
       - topic: "onex.evt.omniclaude.agent-chat-broadcast.v1"
@@ -194,6 +209,17 @@ events:
         tier: telemetry
         description: "Phase instrumentation metrics"
     required_fields: [event_id, event_type, timestamp_iso, payload]
+
+  # =========================================================================
+  # LLM Cost Telemetry
+  # =========================================================================
+  llm.cost.completed:
+    fan_out:
+      - topic: "onex.evt.omniintelligence.llm-call-completed.v1"
+        tier: telemetry
+        description: "LLM cost telemetry for omnidash llm_cost_aggregates projection"
+    partition_key_field: session_id
+    required_fields: [session_id, model_id, total_tokens]
 
   # =========================================================================
   # Stop Hook Events
@@ -263,13 +289,24 @@ events:
         tier: telemetry
         description: "Task delegation event"
     partition_key_field: session_id
-    required_fields: [session_id, correlation_id, task_type]
+    # OMN-13146: delegated_to is required by the omniclaude hook registry and by
+    # the delegation golden chain / SQLite projection. It was missing here and the
+    # old topic-set-only drift validator could not see the required_fields skew.
+    required_fields: [session_id, correlation_id, task_type, delegated_to]
 
   delegation.request:
     fan_out:
       - topic: "onex.cmd.omnibase-infra.delegation-request.v1"
         tier: duty_critical
         description: "Delegation request command"
+    partition_key_field: correlation_id
+    required_fields: [payload, correlation_id]
+
+  delegate.task:
+    fan_out:
+      - topic: "onex.cmd.omniclaude.delegate-task.v1"
+        tier: duty_critical
+        description: "Delegation request command for node_delegation_orchestrator"
     partition_key_field: correlation_id
     required_fields: [payload, correlation_id]
 
@@ -540,6 +577,37 @@ events:
         description: "Synthetic emit daemon health probe round-trip event"
     partition_key_field: correlation_id
     required_fields: [correlation_id, probe]
+
+  # =========================================================================
+  # Durable Capture Events
+  # =========================================================================
+  # Capture topics are duty-critical: suppression of tool output from the
+  # LLM context is only allowed when the full bytes are content-addressed
+  # in the artifact store and an event records the capture. Losing these
+  # events silently would violate the no-hidden-loss invariant.
+  artifact.captured:
+    fan_out:
+      - topic: "onex.evt.omnimarket.artifact-captured.v1"
+        tier: duty_critical
+        description: "Content-addressed artifact captured in the artifact store"
+    partition_key_field: correlation_id
+    required_fields:
+      [
+        artifact_ref,
+        artifact_hash,
+        artifact_size_bytes,
+        artifact_kind,
+        source_system,
+        correlation_id,
+      ]
+
+  tool.output.captured:
+    fan_out:
+      - topic: "onex.evt.omnimarket.tool-output-captured.v1"
+        tier: duty_critical
+        description: "Tool output captured with artifact refs and suppression decision"
+    partition_key_field: correlation_id
+    required_fields: [tool_name, suppression_decision, correlation_id]
 
   # =========================================================================
   # Runtime Diagnostics

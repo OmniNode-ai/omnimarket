@@ -69,9 +69,19 @@ def test_contract_declares_delegation_runtime_dispatch_config() -> None:
 
 @pytest.mark.unit
 def test_contract_declares_runtime_profile() -> None:
+    # Fix for OMN-13104: top-level runtime_profiles: [main] was a stray authoring
+    # error that caused profile_ownership.py to wire this node into the main kernel
+    # without a dispatcher.  The correct profile is descriptor.runtime_profiles:
+    # [effects].  There must be NO top-level runtime_profiles key.
     contract = _load_contract()
-    assert "main" in contract["runtime_profiles"]
-    assert len(contract["runtime_profiles"]) == 1
+    assert "runtime_profiles" not in contract, (
+        "node_delegate_skill_orchestrator must NOT declare top-level runtime_profiles; "
+        "the effective profile is declared in descriptor.runtime_profiles: [effects]"
+    )
+    descriptor = contract.get("descriptor", {})
+    assert descriptor.get("runtime_profiles") == ["effects"], (
+        "node_delegate_skill_orchestrator must declare descriptor.runtime_profiles: [effects]"
+    )
 
 
 @pytest.mark.unit
@@ -157,6 +167,26 @@ def test_contract_event_bus_topics_match_runtime_dispatch() -> None:
     assert rd["command_topic"] in eb["subscribe_topics"]
     assert rd["terminal_events"]["success"] in eb["publish_topics"]
     assert rd["terminal_events"]["failure"] in eb["publish_topics"]
+
+
+@pytest.mark.unit
+def test_handler_routing_has_message_category_command() -> None:
+    """Regression for DEL-06 / OMN-13123.
+
+    Without message_category: command in handler_routing the runtime dispatcher
+    cannot match the command category, causing direct publishes to
+    onex.cmd.omnimarket.delegate-skill.v1 to dead-letter.
+    """
+    contract = _load_contract()
+    routing = contract["handler_routing"]
+    assert routing["routing_strategy"] == "operation_match"
+    handlers = routing["handlers"]
+    assert len(handlers) >= 1, "handler_routing must declare at least one handler"
+    entry = handlers[0]
+    assert entry.get("message_category") == "command", (
+        "handler_routing entry must set message_category: command so the runtime "
+        "dispatcher can match the command category on onex.cmd.omnimarket.delegate-skill.v1"
+    )
 
 
 @pytest.mark.unit

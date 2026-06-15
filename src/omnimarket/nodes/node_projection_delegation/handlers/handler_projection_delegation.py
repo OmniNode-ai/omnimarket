@@ -272,14 +272,20 @@ class HandlerProjectionDelegation:
         event: ModelDelegateSkillTerminalProjection,
         db: DatabaseAdapter,
     ) -> ModelProjectionResult:
-        """UPSERT a typed delegate-skill terminal event into delegation_events."""
+        """UPSERT a typed delegate-skill terminal event into delegation_events.
+
+        OMN-13121: a well-formed terminal event is always upserted, even when
+        tokens_input, tokens_output and cost_usd are all zero. Zero-token/zero-cost
+        is the steady state for free local-LLM delegations and golden-chain proofs,
+        not a malformed event — the prior OMN-11923 guard silently dropped these,
+        stranding the organic delegation tail at zero rows. Genuinely malformed or
+        empty payloads cannot reach this method: ModelDelegateSkillTerminalProjection
+        requires status, correlation_id and task_type, so an empty payload
+        raises a validation error in from_payload() rather than being silently
+        dropped here. Dedup against synthetic re-emits is handled by the
+        correlation_id UPSERT key plus _preserve_existing_evidence.
+        """
         row_model = ModelDelegationEventProjectionRow.from_terminal_event(event)
-        if (
-            not row_model.tokens_input
-            and not row_model.tokens_output
-            and not row_model.cost_usd
-        ):
-            return ModelProjectionResult(rows_upserted=0)
         row: dict[str, object] = {
             "correlation_id": str(row_model.correlation_id),
             "session_id": (

@@ -18,6 +18,7 @@ from pathlib import Path
 from unittest.mock import AsyncMock
 
 import pytest
+import yaml
 
 from omnimarket.nodes.node_emit_daemon.client import EmitClient, default_socket_path
 from omnimarket.nodes.node_emit_daemon.event_queue import (
@@ -1312,3 +1313,117 @@ class TestNewModels:
 
         req = parse_daemon_request({"command": "health"})
         assert isinstance(req, ModelDaemonHealthRequest)
+
+
+# =============================================================================
+# Durable Capture Topic Registrations (OMN-13092)
+# =============================================================================
+
+
+class TestCaptureTopicRegistrations:
+    """Registry entries for the durable-capture and drift-fix event types.
+
+    The capture topics back the skill-output-suppression slice: suppression
+    is only allowed when the full bytes are content-addressed and an event
+    records the capture, so both capture topics must be duty-critical.
+    """
+
+    @pytest.fixture
+    def registry(self) -> EventRegistry:
+        registry_path = (
+            Path(__file__).parent.parent
+            / "src"
+            / "omnimarket"
+            / "nodes"
+            / "node_emit_daemon"
+            / "registries"
+            / "topics.yaml"
+        )
+        return EventRegistry.from_yaml(registry_path)
+
+    def test_artifact_captured_registered_duty_critical(
+        self, registry: EventRegistry
+    ) -> None:
+        registration = registry.get_registration("artifact.captured")
+        assert registration is not None
+        assert registration.partition_key_field == "correlation_id"
+        assert registration.required_fields == [
+            "artifact_ref",
+            "artifact_hash",
+            "artifact_size_bytes",
+            "artifact_kind",
+            "source_system",
+            "correlation_id",
+        ]
+        assert [(rule.topic, rule.tier) for rule in registration.fan_out] == [
+            (
+                "onex.evt.omnimarket.artifact-captured.v1",
+                EnumDurabilityTier.DUTY_CRITICAL,
+            )
+        ]
+
+    def test_tool_output_captured_registered_duty_critical(
+        self, registry: EventRegistry
+    ) -> None:
+        registration = registry.get_registration("tool.output.captured")
+        assert registration is not None
+        assert registration.partition_key_field == "correlation_id"
+        assert registration.required_fields == [
+            "tool_name",
+            "suppression_decision",
+            "correlation_id",
+        ]
+        assert [(rule.topic, rule.tier) for rule in registration.fan_out] == [
+            (
+                "onex.evt.omnimarket.tool-output-captured.v1",
+                EnumDurabilityTier.DUTY_CRITICAL,
+            )
+        ]
+
+    def test_previously_unregistered_hook_events_are_registered(
+        self, registry: EventRegistry
+    ) -> None:
+        """delegate.task / agent.action / llm.cost.completed drift fix.
+
+        These event types were registered in omniclaude's hook-side registry
+        but missing from this daemon registry (tracked as source_only baseline
+        drift before OMN-13092).
+        """
+        expected: dict[str, tuple[str, EnumDurabilityTier]] = {
+            "delegate.task": (
+                "onex.cmd.omniclaude.delegate-task.v1",
+                EnumDurabilityTier.DUTY_CRITICAL,
+            ),
+            "agent.action": (
+                "onex.evt.omniclaude.agent-actions.v1",
+                EnumDurabilityTier.TELEMETRY,
+            ),
+            "llm.cost.completed": (
+                "onex.evt.omniintelligence.llm-call-completed.v1",
+                EnumDurabilityTier.TELEMETRY,
+            ),
+        }
+        for event_type, (topic, tier) in expected.items():
+            registration = registry.get_registration(event_type)
+            assert registration is not None, f"{event_type} not registered"
+            assert [(rule.topic, rule.tier) for rule in registration.fan_out] == [
+                (topic, tier)
+            ], f"unexpected fan-out for {event_type}"
+
+    def test_capture_topics_declared_in_contract(self) -> None:
+        """The emit daemon contract mirrors registry fan-out targets."""
+        contract_path = (
+            Path(__file__).parent.parent
+            / "src"
+            / "omnimarket"
+            / "nodes"
+            / "node_emit_daemon"
+            / "contract.yaml"
+        )
+        contract = yaml.safe_load(contract_path.read_text(encoding="utf-8"))
+        publish_topics = set(contract["event_bus"]["publish_topics"])
+        assert "onex.evt.omnimarket.artifact-captured.v1" in publish_topics
+        assert "onex.evt.omnimarket.tool-output-captured.v1" in publish_topics
+        assert "onex.cmd.omniclaude.delegate-task.v1" in publish_topics
+        assert "onex.evt.omniclaude.agent-actions.v1" in publish_topics
+        assert "onex.evt.omniintelligence.llm-call-completed.v1" in publish_topics

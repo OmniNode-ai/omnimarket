@@ -1,6 +1,6 @@
 name: node_golden_chain_sweep
 version: "1.0.0"
-description: "Validate end-to-end Kafka-to-DB-projection golden chains with synthetic events"
+description: "Validate end-to-end Kafka-to-DB-projection golden chains from pre-collected projected_rows"
 omnibase_core_compat: ">=0.39.0,<1.0.0"
 entry_points:
   onex.nodes:

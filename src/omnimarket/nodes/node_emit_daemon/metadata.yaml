@@ -16,6 +16,7 @@ capabilities:
 dependencies:
   - "confluent-kafka"
   - "omnibase_core>=0.39.0"
+  - "omnibase-infra>=0.38.0"
 authors: ["OmniNode Platform Team"]
 license: "MIT"
 tags: ["daemon", "event-publishing", "kafka", "socket", "service"]

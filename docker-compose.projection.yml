@@ -60,3 +60,8 @@ services:
     <<: *projection-defaults
     container_name: omnimarket-projection-registration
     command: ["python", "-m", "omnimarket.nodes.node_projection_registration.handlers.handler_registration"]
+
+  projection-routing-decision:
+    <<: *projection-defaults
+    container_name: omnimarket-projection-routing-decision
+    command: ["python", "-m", "omnimarket.nodes.node_projection_routing_decision.handlers.handler_routing_decision"]

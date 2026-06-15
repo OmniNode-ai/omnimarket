@@ -1,0 +1,120 @@
+---
+name: projection_routing_decision
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: reducer
+node_version: {major: 1, minor: 0, patch: 0}
+input_model: omnimarket.nodes.node_projection_routing_decision.handlers.handler_projection_routing_decision.ModelRoutingDecisionEvent
+description: >
+  Projects polymorphic-router routing-decision events into the
+  agent_routing_decisions table. Append-only, INSERT ... ON CONFLICT (id)
+  DO NOTHING (the router mints the UUID idempotency key). Source topic:
+  onex.evt.omniclaude.routing-decision.v1. This is the canonical projection
+  node that closes the golden "registration" chain
+  (routing-decision.v1 -> agent_routing_decisions); it does NOT own the table
+  DDL (omnibase_infra migration 021 is the DDL owner).
+
+handler:
+  module: omnimarket.nodes.node_projection_routing_decision.handlers.handler_projection_routing_decision
+  class: HandlerProjectionRoutingDecision
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - handler:
+        name: HandlerProjectionRoutingDecision
+        module: omnimarket.nodes.node_projection_routing_decision.handlers.handler_projection_routing_decision
+      handler_module: omnimarket.nodes.node_projection_routing_decision.handlers.handler_projection_routing_decision
+      event_model: omnimarket.nodes.node_projection_routing_decision.handlers.handler_projection_routing_decision.ModelRoutingDecisionEvent
+    - handler:
+        name: RoutingDecisionProjectionRunner
+        module: omnimarket.nodes.node_projection_routing_decision.handlers.handler_routing_decision
+      handler_module: omnimarket.nodes.node_projection_routing_decision.handlers.handler_routing_decision
+
+terminal_event: onex.evt.omnimarket.projection-routing-decision-applied.v1
+
+# Golden path: registration chain (routing decision -> agent_routing_decisions table)
+golden_path:
+  - "Consume routing-decision event from onex.evt.omniclaude.routing-decision.v1"
+  - "Projection handler inserts row into agent_routing_decisions table"
+  - "Append-only dedup by id (INSERT ... ON CONFLICT (id) DO NOTHING)"
+  - "Emit projection-applied event to onex.evt.omnimarket.projection-routing-decision-applied.v1"
+  - "Verify row exists with correlation_id, selected_agent fields"
+  - "Golden chain test: omnimarket/tests/test_golden_chain_projection_routing_decision.py"
+
+dod_evidence:
+  - test: tests/test_golden_chain_projection_routing_decision.py::TestRoutingDecisionProjection::test_project_single_event
+    description: routing-decision event lands one row in agent_routing_decisions
+  - test: tests/test_golden_chain_projection_routing_decision.py::TestRoutingDecisionProjection::test_row_delta_before_zero_after_one
+    description: row-delta proof — before=0, after publish=1 row
+  - test: tests/test_golden_chain_projection_routing_decision.py::TestRoutingDecisionProjection::test_dedup_by_id
+    description: append-only dedup on id (ON CONFLICT DO NOTHING)
+
+db_io:
+  db_tables:
+    - name: agent_routing_decisions
+      migration: "0021_create_agent_routing_decisions.sql"
+      access: write
+      # OMN-13150 (FIX-1): canonical DB home is omnidash_analytics — the projection
+      # DB where EVERY sibling projection table lives (session_outcomes,
+      # llm_call_metrics, llm_routing_decisions, node_service_registry,
+      # savings_estimates, pattern_learning_artifacts, ...). The prior OMN-13127
+      # repoint to omnibase_infra was RETRACTED: it fed ONLY the canonical
+      # message_dispatch_engine path (handler_wiring._DB_URL_ENV_MAP reads this
+      # field), but the projection-API reader
+      # (api_server._projection_database_binding_from_settings) and the standalone
+      # RoutingDecisionProjectionRunner (runner.ModelProjectionRuntimeBinding
+      # .from_legacy_settings) BOTH resolve omnidash_analytics_db_url FIRST,
+      # regardless of this field. So omnibase_infra split the writer DSN
+      # (canonical dispatch) from the reader DSN (projection-API + dashboard) —
+      # the opposite of single-canonical-home. omnidash_analytics makes all three
+      # paths agree. Verified live 2026-06-14 on dev lane: the real handler resolved
+      # omnidash_analytics and wrote+read back a row (docs/evidence/
+      # 2026-06-14-post-closeout/). DDL is owned by this node's per-node migration
+      # (0021_create_agent_routing_decisions.sql), vendored into omnibase_infra
+      # forward/nodes/ and applied to $NODE_PGDB (omnidash_analytics).
+      database: omnidash_analytics
+      role: routing_decisions
+
+event_bus:
+  subscribe_topics:
+    - onex.evt.omniclaude.routing-decision.v1
+  publish_topics:
+    - onex.evt.omnimarket.projection-routing-decision-applied.v1
+    - onex.snapshot.projection.agent-routing-decision.v1  # onex-topic-allow: projection snapshot topic
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.projection-routing-decision-applied.v1
+  - onex.snapshot.projection.agent-routing-decision.v1  # onex-topic-allow: projection snapshot topic
+
+# OMN-13150 (FIX-1): expose the agent_routing_decisions projection table directly
+# over the projection API so the registration chain row is dashboard-readable.
+# Distinct snapshot topic from node_projection_llm_routing's
+# onex.snapshot.projection.routing-decision.v1 (that one projects the llm_routing
+# view, not this append-only agent_routing_decisions table).
+projection_api:
+  expose: true
+  exposures:
+    - topic: onex.snapshot.projection.agent-routing-decision.v1  # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
+      table: agent_routing_decisions
+      schema: public
+      columns:
+        - id
+        - correlation_id
+        - selected_agent
+        - confidence_score
+        - request_type
+        - routing_reason
+        - domain
+        - metadata
+        - project_path
+        - project_name
+        - claude_session_id
+        - created_at
+      json_columns:
+        - metadata
+      order_by: created_at
+      freshness_column: created_at
+      limit: 100
+
+metadata:
+  transport_type: kafka

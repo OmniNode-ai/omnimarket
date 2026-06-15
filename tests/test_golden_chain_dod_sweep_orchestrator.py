@@ -84,6 +84,7 @@ def test_dry_run_does_not_write_receipt(tmp_path: Path) -> None:
     result = HandlerDodSweepOrchestrator().handle(
         ModelDodSweepOrchestratorRequest(
             scope="OMN-10408",
+            contract_root=str(tmp_path),
             evidence_root=str(tmp_path),
             dry_run=True,
             enabled_checks=("contract_exists",),

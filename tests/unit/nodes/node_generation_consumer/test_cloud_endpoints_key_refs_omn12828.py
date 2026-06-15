@@ -49,11 +49,17 @@ _COMMITTED_BIFROST = (
 _GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
 _GLM_URL = "https://api.z.ai/api/coding/paas/v4/chat/completions"
 _OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
+# OMN-12939: Anthropic OpenAI-compatibility endpoint. The frontier (claude) tier
+# was orphaned with empty endpoint_url + no secret_ref when OMN-12815 moved cloud
+# backends to complete-verbatim URLs; restored here so escalation can resolve it.
+_ANTHROPIC_URL = "https://api.anthropic.com/v1/chat/completions"
 
 _CLOUD_BACKENDS: dict[str, tuple[str, str]] = {
     # backend_id -> (expected endpoint_url, expected logical secret reference)
     "cloud-glm": (_GLM_URL, "llm.glm.api_key"),
     "cloud-gemini-flash": (_GEMINI_URL, "llm.gemini.api_key"),
+    "cloud-sonnet": (_ANTHROPIC_URL, "llm.anthropic.api_key"),
+    "cloud-haiku": (_ANTHROPIC_URL, "llm.anthropic.api_key"),
     "openrouter-glm-flash": (_OPENROUTER_URL, "llm.openrouter.api_key"),
     "openrouter-qwen3-coder-480b": (_OPENROUTER_URL, "llm.openrouter.api_key"),
 }
@@ -94,6 +100,28 @@ def test_committed_contract_declares_api_key_reference(backend_id: str) -> None:
         or backend.get("api_key_env")
     )
     assert declared == expected_ref
+
+
+@pytest.mark.unit
+def test_vertex_backend_declares_secret_ref_overlay_endpoint() -> None:
+    """OMN-12971: the Vertex backend follows secret-ref discipline.
+
+    The Vertex path is ADDITIVE next to ``cloud-gemini-flash`` (AI Studio key
+    path). It carries only the logical secret ref ``llm.vertex.access_token`` —
+    the OAuth bearer token minted from ADC is published to the secret store under
+    that ref and resolved fail-closed at the effect boundary; the token VALUE
+    never lives in committed config. Its endpoint is project+region specific, so
+    ``endpoint_url`` is null in the repo default and the overlay supplies the
+    COMPLETE Vertex OpenAI-compat URL via ``BIFROST_VERTEX_GEMINI_ENDPOINT_URL``.
+    """
+    backends = _committed_backends()
+    assert "cloud-vertex-gemini" in backends, "Vertex backend missing from contract"
+    vertex = backends["cloud-vertex-gemini"]
+    assert vertex.get("secret_ref") == "llm.vertex.access_token"
+    assert vertex.get("endpoint_url") is None
+    assert vertex.get("base_url_env") == "BIFROST_VERTEX_GEMINI_ENDPOINT_URL"
+    # ADDITIVE: the AI Studio key path is preserved, not replaced.
+    assert backends["cloud-gemini-flash"].get("secret_ref") == "llm.gemini.api_key"
 
 
 @pytest.mark.unit

@@ -1,0 +1,44 @@
+name: projection_routing_decision
+version: "1.0.0"
+description: >
+  Projects polymorphic-router routing-decision events into the
+  agent_routing_decisions table. Append-only INSERT by id.
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: true
+  requires_secrets: true
+  side_effect_class: write_db
+tags:
+  - projection
+  - routing
+  - registration
+  - reducer
+pack: "data"
+display_name: "Projection: Routing Decision"
+node_role: "effect"
+dependencies:
+  - "aiokafka>=0.10.0"
+# OMN-13150 (FIX-1): this node OWNS the omnidash_analytics projection copy of
+# agent_routing_decisions. The canonical projection DB is omnidash_analytics —
+# the projection-API reader and the projection runner both resolve it first, and
+# every sibling projection table lives there. omnibase_infra's flat migration 021
+# creates an unrelated same-named table in the omnibase_infra DB (the runtime
+# observability writer's home); it is NOT the projection home. This node ships and
+# owns the omnidash_analytics CREATE TABLE via migrations/, mirroring
+# node_projection_registration's node_service_registry ownership.
+ownership:
+  agent_routing_decisions:
+    ddl_owner: "omnimarket.nodes.node_projection_routing_decision"
+    table_role: "projection_read_model"
+    create_migration: "migrations/0021_create_agent_routing_decisions.sql"
+    duplicate_migration_policy: "forbid_cross_repo_create_table"
+    non_owner_repos: ["omnibase_infra"]
+    rationale: >
+      agent_routing_decisions in omnidash_analytics is the omnimarket projection
+      read model fed by this node. node_projection_routing_decision consumes
+      onex.evt.omniclaude.routing-decision.v1 and inserts rows; it owns the
+      omnidash_analytics CREATE TABLE migration. omnibase_infra owns a separate
+      same-named runtime-observability table in the omnibase_infra DB, not this
+      projection copy.

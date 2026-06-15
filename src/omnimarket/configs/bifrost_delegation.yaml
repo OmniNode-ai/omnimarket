@@ -69,9 +69,16 @@ backends:
       - embedding
   # Cloud fallback backends
   - backend_id: cloud-sonnet
-    endpoint_url: ""
-    # Claude Sonnet via OAuth — no API key required (Claude Code uses OAuth)
+    # OMN-12939: COMPLETE endpoint URL incl. the full chat path, posted VERBATIM.
+    # Anthropic OpenAI-compatibility endpoint. Provenance: pre-OMN-10717 source
+    # carried base "https://api.anthropic.com/v1" (adapter appended the chat path);
+    # OMN-12815 requires the complete /chat/completions form here. The frontier tier
+    # was orphaned (empty endpoint_url, no secret_ref) when OMN-12815 (#1118) moved
+    # cloud backends to complete-verbatim URLs but skipped cloud-sonnet/cloud-haiku.
+    endpoint_url: "https://api.anthropic.com/v1/chat/completions"
     model_name: claude-sonnet-4-6
+    secret_ref: llm.anthropic.api_key
+    api_key_env: ANTHROPIC_API_KEY
     tier: frontier_api
     timeout_ms: 60000
     capabilities:
@@ -80,9 +87,12 @@ backends:
       - documentation
       - research
   - backend_id: cloud-haiku
-    endpoint_url: ""
-    # Claude Haiku — cheapest frontier model for documentation/simple tasks
+    # OMN-12939: COMPLETE endpoint URL incl. the full chat path, posted VERBATIM.
+    # Claude Haiku — cheapest frontier model for documentation/simple tasks.
+    endpoint_url: "https://api.anthropic.com/v1/chat/completions"
     model_name: claude-haiku-4-5-20251001
+    secret_ref: llm.anthropic.api_key
+    api_key_env: ANTHROPIC_API_KEY
     tier: frontier_api
     timeout_ms: 30000
     capabilities:
@@ -104,10 +114,55 @@ backends:
   - backend_id: cloud-gemini-flash
     # OMN-12815: COMPLETE endpoint URL incl. the full chat path, posted VERBATIM.
     # No in-code construction/append; the routing authority returns this unchanged.
+    # OMN-12890: model_name repointed from gemini-2.0-flash (AI Studio free-tier
+    # quota-zero, HTTP 429) to gemini-2.5-flash-lite (quota-available on same key).
+    # Key is valid; the sole failing dimension was external quota exhaustion.
     endpoint_url: "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
     model_name: "gemini-2.5-flash-lite"
     secret_ref: llm.gemini.api_key
     api_key_env: GEMINI_API_KEY
+    tier: cheap_cloud
+    timeout_ms: 60000
+    capabilities:
+      # OMN-13140: code_generation added so AI Studio cloud-gemini-flash is the
+      # canonical cloud-escalation target for the hackathon code_generation proof.
+      # cloud-vertex-gemini (below) intentionally does NOT carry code_generation —
+      # exactly one canonical Gemini target is live for the escalation path.
+      - code_generation
+      - summarization
+      - simple_tasks
+      - document
+    extra_headers:
+      HTTP-Referer: "https://omninode.ai"
+      X-Title: "OmniNode ONEX"
+  # Vertex-served Gemini (OMN-12971) — burns the Vertex $500 credit via Vertex AI.
+  # ADDITIVE next to cloud-gemini-flash (AI Studio key path); both routes stay
+  # selectable so the project remains provider-agnostic. This backend is NOT a
+  # replacement — neither provider is removed or forced.
+  #
+  # Auth (secret-ref discipline): the outbound call carries a standard
+  #   Authorization: Bearer <token>
+  # header (the same path every cloud backend uses). For Vertex that token is a
+  # short-lived OAuth access token MINTED FROM ADC. ADC delivery to the effects
+  # container: a mounted service-account / Application-Default-Credentials file
+  # (GOOGLE_APPLICATION_CREDENTIALS) is exchanged for the bearer token, and that
+  # token is published to the secret store under the logical ref
+  # ``llm.vertex.access_token``. Only the logical ref name lives here; the token
+  # VALUE is resolved fail-closed at the effect boundary via ProtocolSecretStore
+  # (OMN-12824). No credential value is ever committed in this config.
+  #
+  # endpoint_url is null in the repo default because the Vertex OpenAI-compat URL
+  # is project + region specific
+  #   https://{LOCATION}-aiplatform.googleapis.com/v1/projects/{PROJECT}/
+  #     locations/{LOCATION}/endpoints/openapi/chat/completions
+  # The overlay (bifrost_overrides.yaml) supplies the COMPLETE chat-completions
+  # URL via BIFROST_VERTEX_GEMINI_ENDPOINT_URL. A bare base fails closed
+  # (OMN-12815) — no in-code path construction.
+  - backend_id: cloud-vertex-gemini
+    base_url_env: BIFROST_VERTEX_GEMINI_ENDPOINT_URL
+    endpoint_url: null
+    model_name: "gemini-2.5-flash-lite"
+    secret_ref: llm.vertex.access_token
     tier: cheap_cloud
     timeout_ms: 60000
     capabilities:

@@ -155,7 +155,11 @@ _AGGREGATION_COMPLETED_EVENT: dict[str, Any] = {
 
 @pytest.fixture
 def mock_bus() -> MagicMock:
-    bus = MagicMock()
+    from omnibase_core.protocols.event_bus.protocol_event_bus_publisher import (
+        ProtocolEventBusPublisher,
+    )
+
+    bus = MagicMock(spec=ProtocolEventBusPublisher)
     bus.publish = AsyncMock()
     return bus
 

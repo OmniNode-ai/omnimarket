@@ -6,7 +6,9 @@ node_version: {major: 1, minor: 0, patch: 0}
 
 description: >
   Scan all non-completed Linear tickets, verify status against actual GitHub PR state,
-  auto-mark merged tickets done, flag stale tickets, and detect completed epics.
+  flag close-candidates for human review (flag_only=true by default), and detect
+  stale and completed epics. Auto-close is gated behind flag_only=false which must
+  only be set after precision has been validated above an acceptable threshold.
 
 handler_routing:
   routing_strategy: operation_match
@@ -37,6 +39,15 @@ inputs:
     description: "Assess and report without writing any changes to Linear"
     required: false
     default: false
+  flag_only:
+    type: bool
+    description: >
+      Safety gate: when true (the default), the node NEVER writes to Linear.
+      Close-candidates are reported in suppressed_closes for human review.
+      Set to false only after auto-close precision has been validated above an
+      acceptable threshold via human-in-the-loop review. Current precision: ~17%.
+    required: false
+    default: true
   team:
     type: str
     description: "Linear team name (default: Omninode)"
@@ -68,6 +79,9 @@ outputs:
   orphaned:
     type: int
     description: "Tickets without a parent epic"
+  suppressed_closes:
+    type: list[str]
+    description: "Close-candidates suppressed by flag_only=true. Each entry is '<ticket_id>: <evidence>'. Attach to human-review artifact."
 
 secrets:
   # OMN-12856: GitHub token is contract-declared so the handler reads the ref

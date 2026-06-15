@@ -537,18 +537,154 @@ class TestHandlerFixtureMode:
         assert r1.proof_class == r2.proof_class
 
 
-class TestHandlerRuntimeModeGate:
-    def test_runtime_mode_returns_failed(self, handler: HandlerContextRoi) -> None:
-        req = ModelContextRoiRequest(
-            run_id="rt-test",
+class TestHandlerRuntimeMode:
+    """Runtime-observed mode (OMN-12947): fixture_mode=False consumes real
+    ModelArmRunRow rows (same schema the runner emits) through the identical
+    deterministic aggregation path, and classifies the bundle as
+    RUNTIME_OBSERVED_ONLY rather than failing closed.
+
+    Lineage: OMN-12743 part (d) — runtime-observed evidence, not source-read.
+    """
+
+    @pytest.fixture
+    def runtime_request(self) -> ModelContextRoiRequest:
+        return ModelContextRoiRequest(
+            run_id="rt-run-001",
             manifest_id="omn-12797-v1",
-            rows=(_SIMPLE_OFF_ROW,),
+            rows=(_SIMPLE_OFF_ROW, _SIMPLE_GOLDEN_ROW),
+            fixture_mode=False,
+        )
+
+    def test_runtime_mode_status_ok(
+        self, handler: HandlerContextRoi, runtime_request: ModelContextRoiRequest
+    ) -> None:
+        """Valid live rows score to ok — no longer fails closed."""
+        result = handler.handle(runtime_request)
+        assert result.status == "ok"
+        assert result.failure_class is None
+
+    def test_runtime_mode_proof_class_runtime_observed(
+        self, handler: HandlerContextRoi, runtime_request: ModelContextRoiRequest
+    ) -> None:
+        result = handler.handle(runtime_request)
+        assert result.proof_class == EnumProofClass.RUNTIME_OBSERVED_ONLY
+
+    def test_runtime_mode_produces_same_aggregation_as_fixture(
+        self, handler: HandlerContextRoi
+    ) -> None:
+        """The only legitimate difference between modes is proof_class.
+
+        Identical rows must produce identical arm_rows, arm_summary, and
+        preferred_arm regardless of mode — provenance label aside.
+        """
+        rows = (_SIMPLE_OFF_ROW, _SIMPLE_GOLDEN_ROW)
+        fixture_req = ModelContextRoiRequest(
+            run_id="parity",
+            manifest_id="omn-12797-v1",
+            rows=rows,
+            fixture_mode=True,
+        )
+        runtime_req = ModelContextRoiRequest(
+            run_id="parity",
+            manifest_id="omn-12797-v1",
+            rows=rows,
+            fixture_mode=False,
+        )
+        fixture_result = handler.handle(fixture_req)
+        runtime_result = handler.handle(runtime_req)
+        assert fixture_result.arm_rows == runtime_result.arm_rows
+        assert fixture_result.arm_summary == runtime_result.arm_summary
+        assert fixture_result.preferred_arm == runtime_result.preferred_arm
+        # Provenance label differs, and only that.
+        assert fixture_result.proof_class == EnumProofClass.REPLAY_PROVEN
+        assert runtime_result.proof_class == EnumProofClass.RUNTIME_OBSERVED_ONLY
+
+    def test_runtime_mode_preferred_arm(
+        self, handler: HandlerContextRoi, runtime_request: ModelContextRoiRequest
+    ) -> None:
+        result = handler.handle(runtime_request)
+        assert result.preferred_arm == EnumArmLabel.GOLDEN_ONLY
+
+    def test_runtime_mode_missing_required_factor_fails_row(
+        self, handler: HandlerContextRoi
+    ) -> None:
+        """Invariant holds in runtime mode: missing required factor fails."""
+        bad_row = _make_row(
+            task_id="sea_001",
+            arm_label=EnumArmLabel.GOLDEN_ONLY,
+            factors_present=(),  # GOLDEN_CHAIN absent — required!
+        )
+        req = ModelContextRoiRequest(
+            run_id="rt-missing-required",
+            manifest_id="omn-12797-v1",
+            rows=(bad_row,),
             fixture_mode=False,
         )
         result = handler.handle(req)
         assert result.status == "failed"
-        assert result.failure_class == "runtime_mode_not_implemented"
-        assert any("gated" in e for e in result.errors)
+        assert result.failure_class == "required_factor_missing"
+        assert any("missing required" in e for e in result.errors)
+
+    def test_runtime_mode_absent_optional_factor_warns(
+        self, handler: HandlerContextRoi
+    ) -> None:
+        """Invariant holds in runtime mode: absent optional factor warns."""
+        row = _make_row(
+            task_id="sea_001",
+            arm_label=EnumArmLabel.GOLDEN_EXEMPLAR,
+            factors_present=(EnumContextFactor.GOLDEN_CHAIN,),
+            factors_warned_absent=(),
+        )
+        req = ModelContextRoiRequest(
+            run_id="rt-optional-warn",
+            manifest_id="omn-12797-v1",
+            rows=(row,),
+            fixture_mode=False,
+        )
+        result = handler.handle(req)
+        assert result.status == "ok"
+        assert any("exemplar" in w.lower() for w in result.warnings)
+
+    def test_runtime_mode_negative_control_never_preferred(
+        self, handler: HandlerContextRoi
+    ) -> None:
+        """Invariant holds in runtime mode: negative control never preferred."""
+        off_row = _make_row(
+            "sea_001",
+            EnumArmLabel.OFF,
+            first_pass_success=False,
+            final_success=False,
+            attempt_count=2,
+            factors_present=(),
+        )
+        neg_row = _make_row(
+            "sea_001",
+            EnumArmLabel.FULL_GUIDANCE_NEGATIVE_CONTROL,
+            first_pass_success=True,
+            final_success=True,
+            attempt_count=1,
+            failure_stage=EnumFailureStage.BUDGET_FAIL,
+            factors_present=(),
+            factors_warned_absent=(EnumContextFactor.CLAUDE_MD,),
+        )
+        req = ModelContextRoiRequest(
+            run_id="rt-neg-not-preferred",
+            manifest_id="omn-12797-v1",
+            rows=(off_row, neg_row),
+            fixture_mode=False,
+        )
+        result = handler.handle(req)
+        assert result.preferred_arm != EnumArmLabel.FULL_GUIDANCE_NEGATIVE_CONTROL
+
+    def test_runtime_mode_deterministic(
+        self, handler: HandlerContextRoi, runtime_request: ModelContextRoiRequest
+    ) -> None:
+        r1 = handler.handle(runtime_request)
+        r2 = handler.handle(runtime_request)
+        assert r1.status == r2.status
+        assert r1.preferred_arm == r2.preferred_arm
+        assert r1.proof_class == r2.proof_class
+        assert r1.arm_rows == r2.arm_rows
 
 
 # ---------------------------------------------------------------------------
