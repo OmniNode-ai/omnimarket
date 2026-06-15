@@ -1,13 +1,22 @@
 # SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
 
-"""Unit tests for handler_llm_delegation_call (OMN-11776)."""
+"""Unit tests for handler_llm_delegation_call (OMN-11776, OMN-13160).
+
+OMN-13160 moved the HTTP transport behind the runtime-profile-selected
+``transport`` module (curl on ``local_macos_claude_hooks``, httpx elsewhere).
+These tests patch the transport boundary (``transport.probe_health`` /
+``transport.post_chat_completion``) rather than ``httpx.Client`` directly, so the
+handler's failure classification and cost-telemetry logic is exercised
+independent of which transport is selected.
+"""
 
 from __future__ import annotations
 
 import time
 from decimal import Decimal
 from pathlib import Path
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 import httpx
@@ -17,6 +26,7 @@ import yaml
 from omnimarket.enums.enum_cost_basis import EnumCostBasis
 from omnimarket.enums.enum_delegation_failure_class import EnumDelegationFailureClass
 from omnimarket.enums.enum_usage_source import EnumUsageSource
+from omnimarket.nodes.node_llm_delegation_call_effect.handlers import transport
 from omnimarket.nodes.node_llm_delegation_call_effect.handlers.handler_llm_delegation_call import (
     TOPIC_DELEGATION_ALL_TIERS_FAILED,
     TOPIC_DELEGATION_CALL_COMPLETED,
@@ -28,6 +38,11 @@ from omnimarket.nodes.node_llm_delegation_call_effect.handlers.handler_llm_deleg
 )
 from omnimarket.nodes.node_llm_delegation_call_effect.models.model_llm_delegation_call_request import (
     ModelLlmDelegationCallRequest,
+)
+
+_HANDLER_MODULE = (
+    "omnimarket.nodes.node_llm_delegation_call_effect.handlers."
+    "handler_llm_delegation_call"
 )
 
 
@@ -50,59 +65,87 @@ def _make_request(**overrides: object) -> ModelLlmDelegationCallRequest:
 
 def _make_api_response(
     content: str = "hello world", tokens_in: int = 10, tokens_out: int = 20
-) -> dict:
+) -> dict[str, Any]:
     return {
         "choices": [{"message": {"content": content}}],
         "usage": {"prompt_tokens": tokens_in, "completion_tokens": tokens_out},
     }
 
 
+def _patch_post(
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    json_body: dict[str, Any] | None = None,
+    side_effect: BaseException | None = None,
+) -> dict[str, Any]:
+    """Patch transport.post_chat_completion to return a typed body or raise."""
+    captured: dict[str, Any] = {}
+
+    def fake_post(
+        *,
+        endpoint_url: str,
+        payload: dict[str, Any],
+        extra_headers: dict[str, str] | None = None,
+        runtime_profile: str | None = None,
+        timeout_seconds: float = 120.0,
+    ) -> transport.ModelTransportResponse:
+        captured["endpoint_url"] = endpoint_url
+        captured["payload"] = payload
+        if side_effect is not None:
+            raise side_effect
+        return transport.ModelTransportResponse(
+            status_code=200,
+            json_body=json_body or {},
+            latency_ms=7,
+        )
+
+    monkeypatch.setattr(transport, "post_chat_completion", fake_post)
+    return captured
+
+
 class TestHealthProbeCache:
     def setup_method(self) -> None:
         _health_cache.clear()
 
-    def test_healthy_endpoint_is_cached(self) -> None:
-        mock_client = MagicMock()
-        mock_resp = MagicMock()
-        mock_resp.status_code = 200
-        mock_client.get.return_value = mock_resp
+    def test_healthy_endpoint_is_cached(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        probe = MagicMock(return_value=True)
+        monkeypatch.setattr(transport, "probe_health", probe)
 
-        result1 = _is_endpoint_healthy("http://localhost:8000", mock_client)
-        result2 = _is_endpoint_healthy("http://localhost:8000", mock_client)
+        result1 = _is_endpoint_healthy("http://localhost:8000")
+        result2 = _is_endpoint_healthy("http://localhost:8000")
 
         assert result1 is True
         assert result2 is True
-        assert mock_client.get.call_count == 1  # second call hits cache
+        assert probe.call_count == 1  # second call hits cache
 
-    def test_unhealthy_endpoint_is_cached(self) -> None:
-        mock_client = MagicMock()
-        mock_client.get.side_effect = httpx.ConnectError("refused")
+    def test_unhealthy_endpoint_is_cached(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        probe = MagicMock(return_value=False)
+        monkeypatch.setattr(transport, "probe_health", probe)
 
-        result1 = _is_endpoint_healthy("http://localhost:9999", mock_client)
-        result2 = _is_endpoint_healthy("http://localhost:9999", mock_client)
+        result1 = _is_endpoint_healthy("http://localhost:9999")
+        result2 = _is_endpoint_healthy("http://localhost:9999")
 
         assert result1 is False
         assert result2 is False
-        assert mock_client.get.call_count == 1
+        assert probe.call_count == 1
 
-    def test_cache_expires_after_ttl(self) -> None:
-        mock_client = MagicMock()
-        mock_resp = MagicMock()
-        mock_resp.status_code = 200
-        mock_client.get.return_value = mock_resp
+    def test_cache_expires_after_ttl(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        probe = MagicMock(return_value=True)
+        monkeypatch.setattr(transport, "probe_health", probe)
 
         _health_cache["http://example.com"] = (time.monotonic() - 61, True)
-        _is_endpoint_healthy("http://example.com", mock_client)
+        _is_endpoint_healthy("http://example.com")
 
-        assert mock_client.get.call_count == 1  # cache expired, re-probed
+        assert probe.call_count == 1  # cache expired, re-probed
 
-    def test_500_response_marks_unhealthy(self) -> None:
-        mock_client = MagicMock()
-        mock_resp = MagicMock()
-        mock_resp.status_code = 503
-        mock_client.get.return_value = mock_resp
+    def test_500_response_marks_unhealthy(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(transport, "probe_health", MagicMock(return_value=False))
 
-        result = _is_endpoint_healthy("http://bad.endpoint", mock_client)
+        result = _is_endpoint_healthy("http://bad.endpoint")
         assert result is False
 
 
@@ -144,7 +187,7 @@ class TestHandlerLlmDelegationCall:
         publisher = MagicMock()
 
         with patch(
-            "omnimarket.nodes.node_llm_delegation_call_effect.handlers.handler_llm_delegation_call._is_endpoint_healthy",
+            f"{_HANDLER_MODULE}._is_endpoint_healthy",
             return_value=False,
         ):
             handler = HandlerLlmDelegationCall()
@@ -159,30 +202,15 @@ class TestHandlerLlmDelegationCall:
 
     @pytest.mark.unit
     def test_successful_call_returns_result_with_cost_telemetry(
-        self,
+        self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         publisher = MagicMock()
         api_resp = _make_api_response(
             "def hello(): return 'world'", tokens_in=50, tokens_out=30
         )
+        _patch_post(monkeypatch, json_body=api_resp)
 
-        mock_response = MagicMock()
-        mock_response.json.return_value = api_resp
-        mock_response.raise_for_status.return_value = None
-
-        with (
-            patch(
-                "omnimarket.nodes.node_llm_delegation_call_effect.handlers.handler_llm_delegation_call._is_endpoint_healthy",
-                return_value=True,
-            ),
-            patch("httpx.Client") as mock_client_cls,
-        ):
-            mock_client = MagicMock()
-            mock_client.__enter__ = MagicMock(return_value=mock_client)
-            mock_client.__exit__ = MagicMock(return_value=False)
-            mock_client.post.return_value = mock_response
-            mock_client_cls.return_value = mock_client
-
+        with patch(f"{_HANDLER_MODULE}._is_endpoint_healthy", return_value=True):
             handler = HandlerLlmDelegationCall()
             result = handler(_make_request(), event_publisher=publisher)
 
@@ -197,66 +225,33 @@ class TestHandlerLlmDelegationCall:
         assert result.output_hash is not None
 
     @pytest.mark.unit
-    def test_complete_chat_completions_endpoint_is_not_double_appended(self) -> None:
+    def test_complete_chat_completions_endpoint_is_not_double_appended(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         api_resp = _make_api_response("ok", tokens_in=1, tokens_out=1)
         complete_endpoint = (
             "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
         )
-        captured_urls: list[str] = []
+        captured = _patch_post(monkeypatch, json_body=api_resp)
 
-        mock_response = MagicMock()
-        mock_response.json.return_value = api_resp
-        mock_response.raise_for_status.return_value = None
-
-        with (
-            patch(
-                "omnimarket.nodes.node_llm_delegation_call_effect.handlers.handler_llm_delegation_call._is_endpoint_healthy",
-                return_value=True,
-            ),
-            patch("httpx.Client") as mock_client_cls,
-        ):
-            mock_client = MagicMock()
-            mock_client.__enter__ = MagicMock(return_value=mock_client)
-            mock_client.__exit__ = MagicMock(return_value=False)
-
-            def _capture_post(url: str, **kwargs: object) -> MagicMock:
-                captured_urls.append(url)
-                return mock_response
-
-            mock_client.post.side_effect = _capture_post
-            mock_client_cls.return_value = mock_client
-
+        with patch(f"{_HANDLER_MODULE}._is_endpoint_healthy", return_value=True):
             result = HandlerLlmDelegationCall()(
                 _make_request(endpoint_ref=complete_endpoint)
             )
 
         assert result.success is True
-        assert captured_urls == [complete_endpoint]
+        # The transport receives the COMPLETE endpoint URL verbatim — no append.
+        assert captured["endpoint_url"] == complete_endpoint
 
     @pytest.mark.unit
     def test_successful_call_emits_completed_event(
-        self,
+        self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         publisher = MagicMock()
         api_resp = _make_api_response("result text", tokens_in=10, tokens_out=5)
+        _patch_post(monkeypatch, json_body=api_resp)
 
-        mock_response = MagicMock()
-        mock_response.json.return_value = api_resp
-        mock_response.raise_for_status.return_value = None
-
-        with (
-            patch(
-                "omnimarket.nodes.node_llm_delegation_call_effect.handlers.handler_llm_delegation_call._is_endpoint_healthy",
-                return_value=True,
-            ),
-            patch("httpx.Client") as mock_client_cls,
-        ):
-            mock_client = MagicMock()
-            mock_client.__enter__ = MagicMock(return_value=mock_client)
-            mock_client.__exit__ = MagicMock(return_value=False)
-            mock_client.post.return_value = mock_response
-            mock_client_cls.return_value = mock_client
-
+        with patch(f"{_HANDLER_MODULE}._is_endpoint_healthy", return_value=True):
             handler = HandlerLlmDelegationCall()
             handler(_make_request(), event_publisher=publisher)
 
@@ -269,21 +264,11 @@ class TestHandlerLlmDelegationCall:
 
     @pytest.mark.unit
     def test_timeout_returns_timeout_failure(
-        self,
+        self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        with (
-            patch(
-                "omnimarket.nodes.node_llm_delegation_call_effect.handlers.handler_llm_delegation_call._is_endpoint_healthy",
-                return_value=True,
-            ),
-            patch("httpx.Client") as mock_client_cls,
-        ):
-            mock_client = MagicMock()
-            mock_client.__enter__ = MagicMock(return_value=mock_client)
-            mock_client.__exit__ = MagicMock(return_value=False)
-            mock_client.post.side_effect = httpx.TimeoutException("timed out")
-            mock_client_cls.return_value = mock_client
+        _patch_post(monkeypatch, side_effect=httpx.TimeoutException("timed out"))
 
+        with patch(f"{_HANDLER_MODULE}._is_endpoint_healthy", return_value=True):
             handler = HandlerLlmDelegationCall()
             result = handler(_make_request())
 
@@ -292,27 +277,16 @@ class TestHandlerLlmDelegationCall:
 
     @pytest.mark.unit
     def test_rate_limit_returns_rate_limited_failure(
-        self,
+        self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         mock_resp = MagicMock()
         mock_resp.status_code = 429
         http_error = httpx.HTTPStatusError(
             "429", request=MagicMock(), response=mock_resp
         )
+        _patch_post(monkeypatch, side_effect=http_error)
 
-        with (
-            patch(
-                "omnimarket.nodes.node_llm_delegation_call_effect.handlers.handler_llm_delegation_call._is_endpoint_healthy",
-                return_value=True,
-            ),
-            patch("httpx.Client") as mock_client_cls,
-        ):
-            mock_client = MagicMock()
-            mock_client.__enter__ = MagicMock(return_value=mock_client)
-            mock_client.__exit__ = MagicMock(return_value=False)
-            mock_client.post.side_effect = http_error
-            mock_client_cls.return_value = mock_client
-
+        with patch(f"{_HANDLER_MODULE}._is_endpoint_healthy", return_value=True):
             handler = HandlerLlmDelegationCall()
             result = handler(_make_request())
 
@@ -321,25 +295,11 @@ class TestHandlerLlmDelegationCall:
 
     @pytest.mark.unit
     def test_empty_choices_returns_invalid_json_failure(
-        self,
+        self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        mock_response = MagicMock()
-        mock_response.json.return_value = {"choices": [], "usage": {}}
-        mock_response.raise_for_status.return_value = None
+        _patch_post(monkeypatch, json_body={"choices": [], "usage": {}})
 
-        with (
-            patch(
-                "omnimarket.nodes.node_llm_delegation_call_effect.handlers.handler_llm_delegation_call._is_endpoint_healthy",
-                return_value=True,
-            ),
-            patch("httpx.Client") as mock_client_cls,
-        ):
-            mock_client = MagicMock()
-            mock_client.__enter__ = MagicMock(return_value=mock_client)
-            mock_client.__exit__ = MagicMock(return_value=False)
-            mock_client.post.return_value = mock_response
-            mock_client_cls.return_value = mock_client
-
+        with patch(f"{_HANDLER_MODULE}._is_endpoint_healthy", return_value=True):
             handler = HandlerLlmDelegationCall()
             result = handler(_make_request())
 
@@ -347,26 +307,11 @@ class TestHandlerLlmDelegationCall:
         assert result.failure_class == EnumDelegationFailureClass.INVALID_JSON
 
     @pytest.mark.unit
-    def test_no_publisher_does_not_raise(self) -> None:
+    def test_no_publisher_does_not_raise(self, monkeypatch: pytest.MonkeyPatch) -> None:
         api_resp = _make_api_response("ok", tokens_in=5, tokens_out=5)
+        _patch_post(monkeypatch, json_body=api_resp)
 
-        mock_response = MagicMock()
-        mock_response.json.return_value = api_resp
-        mock_response.raise_for_status.return_value = None
-
-        with (
-            patch(
-                "omnimarket.nodes.node_llm_delegation_call_effect.handlers.handler_llm_delegation_call._is_endpoint_healthy",
-                return_value=True,
-            ),
-            patch("httpx.Client") as mock_client_cls,
-        ):
-            mock_client = MagicMock()
-            mock_client.__enter__ = MagicMock(return_value=mock_client)
-            mock_client.__exit__ = MagicMock(return_value=False)
-            mock_client.post.return_value = mock_response
-            mock_client_cls.return_value = mock_client
-
+        with patch(f"{_HANDLER_MODULE}._is_endpoint_healthy", return_value=True):
             handler = HandlerLlmDelegationCall()
             result = handler(_make_request(), event_publisher=None)
 
@@ -394,29 +339,16 @@ class TestHandlerLlmDelegationCall:
         assert event.attempt_number == 2
 
     @pytest.mark.unit
-    def test_cost_calculation_nonzero_for_nonzero_tokens(self) -> None:
+    def test_cost_calculation_nonzero_for_nonzero_tokens(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """cheap_cloud tier has nonzero pricing in registry → actual_cost_usd > 0."""
         api_resp = _make_api_response("content", tokens_in=1000, tokens_out=500)
+        _patch_post(monkeypatch, json_body=api_resp)
 
-        mock_response = MagicMock()
-        mock_response.json.return_value = api_resp
-        mock_response.raise_for_status.return_value = None
-
-        with (
-            patch(
-                "omnimarket.nodes.node_llm_delegation_call_effect.handlers.handler_llm_delegation_call._is_endpoint_healthy",
-                return_value=True,
-            ),
-            patch("httpx.Client") as mock_client_cls,
-        ):
-            mock_client = MagicMock()
-            mock_client.__enter__ = MagicMock(return_value=mock_client)
-            mock_client.__exit__ = MagicMock(return_value=False)
-            mock_client.post.return_value = mock_response
-            mock_client_cls.return_value = mock_client
-
+        with patch(f"{_HANDLER_MODULE}._is_endpoint_healthy", return_value=True):
             handler = HandlerLlmDelegationCall()
-            # Use cheap_cloud tier which has cost_per_1k_tokens=0.002 in routing_tiers.yaml
+            # cheap_cloud tier has cost_per_1k_tokens=0.002 in routing_tiers.yaml
             result = handler(_make_request(model_tier="cheap_cloud"))
 
         assert result.actual_cost_usd > Decimal("0")
@@ -424,27 +356,14 @@ class TestHandlerLlmDelegationCall:
         assert result.savings_usd > Decimal("0")
 
     @pytest.mark.unit
-    def test_cost_calculation_uses_registry_price_for_local_tier(self) -> None:
-        """Local tier has cost_per_1k_tokens=0.0 in registry → actual_cost should be 0."""
+    def test_cost_calculation_uses_registry_price_for_local_tier(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Local tier has cost_per_1k_tokens=0.0 in registry → actual_cost is 0."""
         api_resp = _make_api_response("content", tokens_in=1000, tokens_out=500)
+        _patch_post(monkeypatch, json_body=api_resp)
 
-        mock_response = MagicMock()
-        mock_response.json.return_value = api_resp
-        mock_response.raise_for_status.return_value = None
-
-        with (
-            patch(
-                "omnimarket.nodes.node_llm_delegation_call_effect.handlers.handler_llm_delegation_call._is_endpoint_healthy",
-                return_value=True,
-            ),
-            patch("httpx.Client") as mock_client_cls,
-        ):
-            mock_client = MagicMock()
-            mock_client.__enter__ = MagicMock(return_value=mock_client)
-            mock_client.__exit__ = MagicMock(return_value=False)
-            mock_client.post.return_value = mock_response
-            mock_client_cls.return_value = mock_client
-
+        with patch(f"{_HANDLER_MODULE}._is_endpoint_healthy", return_value=True):
             handler = HandlerLlmDelegationCall()
             result = handler(_make_request(model_tier="local"), event_publisher=None)
 
@@ -462,25 +381,12 @@ class TestHandlerLlmDelegationCall:
         )
 
         api_resp = _make_api_response("content", tokens_in=1000, tokens_out=500)
-
-        mock_response = MagicMock()
-        mock_response.json.return_value = api_resp
-        mock_response.raise_for_status.return_value = None
+        _patch_post(monkeypatch, json_body=api_resp)
 
         with (
-            patch(
-                "omnimarket.nodes.node_llm_delegation_call_effect.handlers.handler_llm_delegation_call._is_endpoint_healthy",
-                return_value=True,
-            ),
-            patch("httpx.Client") as mock_client_cls,
+            patch(f"{_HANDLER_MODULE}._is_endpoint_healthy", return_value=True),
             patch.object(h, "_get_tier_price_per_1m", return_value=None),
         ):
-            mock_client = MagicMock()
-            mock_client.__enter__ = MagicMock(return_value=mock_client)
-            mock_client.__exit__ = MagicMock(return_value=False)
-            mock_client.post.return_value = mock_response
-            mock_client_cls.return_value = mock_client
-
             handler = HandlerLlmDelegationCall()
             result = handler(
                 _make_request(model_tier="unknown_tier"), event_publisher=None
