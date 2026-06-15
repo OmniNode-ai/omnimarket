@@ -59,8 +59,8 @@ _SCANNED_CONFIGS: tuple[str, ...] = (
     "src/omnimarket/data/model_registry/model_registry_v1.yaml",
 )
 
-# Local backends do not require cloud auth; identified by tier == "local" or a
-# base_url_env pointing at a local inference endpoint.
+# Local backends do not require cloud auth; identified by tier == "local" or an
+# endpoint_url_env pointing at a local inference endpoint.
 _LOCAL_TIERS: frozenset[str] = frozenset({"local"})
 
 # Tiers whose backends route to a provider that requires authentication.

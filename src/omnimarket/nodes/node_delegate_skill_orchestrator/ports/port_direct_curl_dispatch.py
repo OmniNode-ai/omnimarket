@@ -235,7 +235,18 @@ def _call_via_curl(
             keys = ", ".join(sorted(reserved))
             raise ValueError(f"provider request options cannot override: {keys}")
         payload.update(provider_request_options)
-    url = f"{endpoint_url.rstrip('/')}/v1/chat/completions"
+
+    # OMN-13159: post the COMPLETE contract endpoint_url VERBATIM — no path
+    # append, no rstrip, no construction (OMN-12815 doctrine). The resolved
+    # endpoint_url already includes the full /v1/chat/completions path. Appending
+    # a path here double-wrote it (.../v1/chat/completions/v1/chat/completions)
+    # and 404'd. Fail closed if the resolved value is not an http(s) URL.
+    if not endpoint_url.startswith(("http://", "https://")):
+        raise ValueError(
+            "endpoint_url must be the COMPLETE resolved http(s) endpoint URL "
+            "(OMN-12815); it is posted verbatim with no construction. "
+            f"Got: {endpoint_url!r}"
+        )
 
     t0 = time.monotonic_ns()
     proc = subprocess.run(
@@ -248,7 +259,7 @@ def _call_via_curl(
             "Content-Type: application/json",
             "-X",
             "POST",
-            url,
+            endpoint_url,
             "-d",
             json.dumps(payload),
         ],

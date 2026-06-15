@@ -119,7 +119,7 @@ def test_vertex_backend_declares_secret_ref_overlay_endpoint() -> None:
     vertex = backends["cloud-vertex-gemini"]
     assert vertex.get("secret_ref") == "llm.vertex.access_token"
     assert vertex.get("endpoint_url") is None
-    assert vertex.get("base_url_env") == "BIFROST_VERTEX_GEMINI_ENDPOINT_URL"
+    assert vertex.get("endpoint_url_env") == "BIFROST_VERTEX_GEMINI_ENDPOINT_URL"
     # ADDITIVE: the AI Studio key path is preserved, not replaced.
     assert backends["cloud-gemini-flash"].get("secret_ref") == "llm.gemini.api_key"
 

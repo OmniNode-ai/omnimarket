@@ -7,14 +7,16 @@
 # Every gateway response MUST include the selected rule_id and config_version
 # to make provenance auditable (OMN-10637 requirement R1).
 #
-# OMN-12815: every endpoint_url is the COMPLETE final URL incl. the full chat
-# path (e.g. .../v1/chat/completions). It is posted VERBATIM at every call site
-# — no in-code construction, append, or path-resolver exists anymore. Public
-# cloud endpoints carry the complete URL here; site-specific LOCAL endpoints are
-# null in the repo default and MUST be supplied COMPLETE (incl. /v1/chat/completions)
-# by the overlay file written by the installer, usually
-# ~/.omninode/delegation/bifrost_overrides.yaml. A bare base (no chat path) is a
-# misconfiguration — resolution fails closed rather than constructing a path.
+# OMN-12815 / OMN-13159: every endpoint_url is the COMPLETE final URL incl. the
+# full chat path (e.g. .../v1/chat/completions). It is posted VERBATIM at every
+# call site — no in-code construction, append, rstrip, or path-resolver exists
+# anymore. Public cloud endpoints carry the complete URL here; site-specific
+# LOCAL endpoints are null in the repo default and the env var named by
+# `endpoint_url_env` (formerly `base_url_env`) MUST hold the COMPLETE URL (incl.
+# /v1/chat/completions) — supplied by the overlay file the installer writes,
+# usually ~/.omninode/delegation/bifrost_overrides.yaml. A bare base (no chat
+# path) is a misconfiguration — resolution fails closed rather than
+# constructing a path.
 #
 # See routing_tiers.yaml for tier escalation ladder.
 #
@@ -28,7 +30,7 @@ schema_version: "bifrost_delegation.v1"
 backends:
   # Local backends (vLLM on .201) — capability-named, model_name resolved via overlay
   - backend_id: local-coder
-    base_url_env: BIFROST_LOCAL_CODER_ENDPOINT_URL
+    endpoint_url_env: BIFROST_LOCAL_CODER_ENDPOINT_URL
     endpoint_url: null
     model_name: Qwen3.6-35B-A3B
     tier: local
@@ -38,7 +40,7 @@ backends:
       - refactoring
       - documentation
   - backend_id: local-reasoner
-    base_url_env: BIFROST_LOCAL_REASONER_ENDPOINT_URL
+    endpoint_url_env: BIFROST_LOCAL_REASONER_ENDPOINT_URL
     endpoint_url: null
     model_name: Qwen3.6-27B-MTP-IQ4_XS.gguf
     tier: local
@@ -48,7 +50,7 @@ backends:
       - research
       - classification
   - backend_id: local-heavy-reasoning
-    base_url_env: BIFROST_LOCAL_CODER_ENDPOINT_URL
+    endpoint_url_env: BIFROST_LOCAL_CODER_ENDPOINT_URL
     endpoint_url: null
     model_name: Qwen3.6-35B-A3B
     tier: local
@@ -60,7 +62,7 @@ backends:
       - classification
       - documentation
   - backend_id: local-embedding
-    base_url_env: BIFROST_LOCAL_EMBEDDING_ENDPOINT_URL
+    endpoint_url_env: BIFROST_LOCAL_EMBEDDING_ENDPOINT_URL
     endpoint_url: null
     model_name: local-embedding
     tier: local
@@ -159,7 +161,7 @@ backends:
   # URL via BIFROST_VERTEX_GEMINI_ENDPOINT_URL. A bare base fails closed
   # (OMN-12815) — no in-code path construction.
   - backend_id: cloud-vertex-gemini
-    base_url_env: BIFROST_VERTEX_GEMINI_ENDPOINT_URL
+    endpoint_url_env: BIFROST_VERTEX_GEMINI_ENDPOINT_URL
     endpoint_url: null
     model_name: "gemini-2.5-flash-lite"
     secret_ref: llm.vertex.access_token
@@ -174,7 +176,7 @@ backends:
       X-Title: "OmniNode ONEX"
   # Local DS-V4-Flash backend — DeepSeek V4 Flash (284B MoE) on .200:8101 (OMN-12492)
   - backend_id: local-ds-v4-flash
-    base_url_env: BIFROST_LOCAL_DS_V4_FLASH_ENDPOINT_URL
+    endpoint_url_env: BIFROST_LOCAL_DS_V4_FLASH_ENDPOINT_URL
     endpoint_url: null
     # endpoint_url null in repo default; overlay sets .200:8101  # onex-allow-internal-ip OMN-12492 reason="repo-default comment documenting local overlay target for DS-V4-Flash"
     model_name: ds-v4-flash

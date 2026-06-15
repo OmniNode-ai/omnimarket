@@ -127,13 +127,17 @@ class ModelDelegationBackendConfig(BaseModel):
     backend_id: str = Field(
         ..., min_length=1, description="Stable human-readable slug."
     )
-    base_url_env: str | None = Field(
+    endpoint_url_env: str | None = Field(
         default=None,
-        description="Env var name holding the backend base URL (local backends).",
+        description=(
+            "Env var name holding the COMPLETE endpoint URL for local backends "
+            "(incl. /v1/chat/completions). Resolved verbatim — no construction "
+            "(OMN-13159 / OMN-12815)."
+        ),
     )
     endpoint_url: str | None = Field(
         default=None,
-        description="Endpoint URL populated by the deploy-time overlay. Null for local backends until overlay is applied.",
+        description="COMPLETE endpoint URL (incl. the full chat/completions path) populated by the deploy-time overlay, posted verbatim. Null for local backends until the overlay is applied.",
     )
     model_name: str | None = Field(
         default=None,
