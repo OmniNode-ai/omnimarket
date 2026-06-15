@@ -6,7 +6,7 @@ requires-python = "==3.12.*"
 overrides = [
     { name = "omnibase-compat", git = "https://github.com/OmniNode-ai/omnibase_compat.git?rev=6db825163f72be98331b50b9cb0f389f910d1d1f" },
     { name = "omnibase-core", git = "https://github.com/OmniNode-ai/omnibase_core.git?rev=35fce1b6ae16a8fefec8996e26c1d66a3fb693c2" },
-    { name = "omnibase-infra", git = "https://github.com/OmniNode-ai/omnibase_infra.git?rev=649b233a32965d56d0b965d4aec246d8317cb92f" },
+    { name = "omnibase-infra", git = "https://github.com/OmniNode-ai/omnibase_infra.git?rev=a96fb355fbfca2d8647cc515106e164b51030a33" },
     { name = "omnibase-spi", specifier = ">=0.22.0,<0.23.0" },
 ]
 
@@ -1248,7 +1248,7 @@ dependencies = [
 [[package]]
 name = "omnibase-infra"
 version = "0.38.3"
-source = { git = "https://github.com/OmniNode-ai/omnibase_infra.git?rev=649b233a32965d56d0b965d4aec246d8317cb92f#649b233a32965d56d0b965d4aec246d8317cb92f" }
+source = { git = "https://github.com/OmniNode-ai/omnibase_infra.git?rev=a96fb355fbfca2d8647cc515106e164b51030a33#a96fb355fbfca2d8647cc515106e164b51030a33" }
 dependencies = [
     { name = "a2a-sdk" },
     { name = "aiofiles" },
@@ -1371,7 +1371,7 @@ requires-dist = [
     { name = "httpx", specifier = ">=0.27.0" },
     { name = "omnibase-compat", git = "https://github.com/OmniNode-ai/omnibase_compat.git?rev=6db825163f72be98331b50b9cb0f389f910d1d1f" },
     { name = "omnibase-core", git = "https://github.com/OmniNode-ai/omnibase_core.git?rev=35fce1b6ae16a8fefec8996e26c1d66a3fb693c2" },
-    { name = "omnibase-infra", git = "https://github.com/OmniNode-ai/omnibase_infra.git?rev=649b233a32965d56d0b965d4aec246d8317cb92f" },
+    { name = "omnibase-infra", git = "https://github.com/OmniNode-ai/omnibase_infra.git?rev=a96fb355fbfca2d8647cc515106e164b51030a33" },
     { name = "omnibase-spi", specifier = ">=0.22.0,<0.23.0" },
     { name = "omninode-memory", git = "https://github.com/OmniNode-ai/omnimemory.git?rev=9843dd18cedaa4f5939289ba527532262b87003c" },
     { name = "onex-change-control", git = "https://github.com/OmniNode-ai/onex_change_control.git?rev=1c95c63b514f471543c65264dcd79462f4e91f04" },
