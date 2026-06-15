@@ -36,7 +36,12 @@ _TERMINAL_STATUSES = frozenset({"completed", "failed", "timeout"})
 
 
 class ProtocolDelegationDispatchPort(Protocol):
-    """Injected port for delegation dispatch. Implementation is runtime-owned."""
+    """Injected port for delegation dispatch. Implementation is runtime-owned.
+
+    OMN-13161: ``max_tokens`` is ``int | None``. ``None`` means the request
+    omitted an explicit budget; the dispatch implementation resolves the effective
+    value from the selected backend's per-backend ceiling in the routing contract.
+    """
 
     async def dispatch(
         self,
@@ -44,7 +49,7 @@ class ProtocolDelegationDispatchPort(Protocol):
         prompt: str,
         task_type: str,
         correlation_id: UUID,
-        max_tokens: int,
+        max_tokens: int | None,
         source_file_path: str | None,
         source_session_id: str | None,
         wait: bool,

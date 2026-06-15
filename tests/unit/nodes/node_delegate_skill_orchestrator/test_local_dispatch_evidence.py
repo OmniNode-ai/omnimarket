@@ -40,6 +40,8 @@ def fake_backends() -> list[dict[str, object]]:
             "endpoint_url": "http://inference.example:8000/v1/chat/completions",
             "model_name": "Qwen3.6-35B-A3B",
             "tier": "local",
+            # OMN-13161: per-backend output-token ceiling resolved by the router.
+            "max_tokens": 65536,
             "capabilities": ["code_generation"],
         }
     ]
@@ -289,3 +291,97 @@ def test_local_dispatch_reaches_lan_endpoint_via_curl_on_macos_profile(
     assert url_like == [endpoint]
     # Defense in depth against the OMN-13159 doubled-chat-path regression.
     assert "/v1/chat/completions/v1/chat/completions" not in " ".join(post_args)
+
+
+def test_local_dispatch_unset_max_tokens_uses_backend_ceiling(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    fake_backends: list[dict[str, object]],
+) -> None:
+    """OMN-13161: an unset request max_tokens resolves to the backend ceiling.
+
+    The fake backend declares max_tokens=65536; with the request carrying None the
+    outbound effect-handler payload must carry 65536.
+    """
+    db_path = tmp_path / "delegation.sqlite"
+    _patch_routing(monkeypatch, fake_backends)
+    captured = _patch_transport(monkeypatch)
+
+    port = LocalDelegationDispatchPort(evidence_db_path=db_path)
+    result = asyncio.run(
+        port.dispatch(
+            prompt="reverse a string",
+            task_type="code_generation",
+            correlation_id=uuid4(),
+            max_tokens=None,
+            source_file_path=None,
+            source_session_id=None,
+            wait=True,
+            quality_contract_mode="lenient",
+            acceptance_criteria=(),
+        )
+    )
+
+    assert result["status"] == "completed"
+    assert captured["payload"]["max_tokens"] == 65536
+
+
+def test_local_dispatch_explicit_max_tokens_capped_at_backend_ceiling(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    fake_backends: list[dict[str, object]],
+) -> None:
+    """OMN-13161: an explicit request above the backend ceiling is capped to it.
+
+    The backend ceiling is 65536; a request for 200000 must be clamped to 65536.
+    """
+    db_path = tmp_path / "delegation.sqlite"
+    _patch_routing(monkeypatch, fake_backends)
+    captured = _patch_transport(monkeypatch)
+
+    port = LocalDelegationDispatchPort(evidence_db_path=db_path)
+    result = asyncio.run(
+        port.dispatch(
+            prompt="reverse a string",
+            task_type="code_generation",
+            correlation_id=uuid4(),
+            max_tokens=200000,
+            source_file_path=None,
+            source_session_id=None,
+            wait=True,
+            quality_contract_mode="lenient",
+            acceptance_criteria=(),
+        )
+    )
+
+    assert result["status"] == "completed"
+    assert captured["payload"]["max_tokens"] == 65536
+
+
+def test_local_dispatch_explicit_max_tokens_below_ceiling_passes_through(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    fake_backends: list[dict[str, object]],
+) -> None:
+    """OMN-13161: an explicit request below the backend ceiling is used verbatim."""
+    db_path = tmp_path / "delegation.sqlite"
+    _patch_routing(monkeypatch, fake_backends)
+    captured = _patch_transport(monkeypatch)
+
+    port = LocalDelegationDispatchPort(evidence_db_path=db_path)
+    result = asyncio.run(
+        port.dispatch(
+            prompt="reverse a string",
+            task_type="code_generation",
+            correlation_id=uuid4(),
+            max_tokens=4096,
+            source_file_path=None,
+            source_session_id=None,
+            wait=True,
+            quality_contract_mode="lenient",
+            acceptance_criteria=(),
+        )
+    )
+
+    assert result["status"] == "completed"
+    assert captured["payload"]["max_tokens"] == 4096

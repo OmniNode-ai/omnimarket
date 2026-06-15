@@ -11,10 +11,6 @@ import pytest
 import yaml
 
 from omnimarket.adapters.claude_code.delegate import _ALLOWED_TASK_TYPES
-from omnimarket.models.delegation.wire.model_token_limits import (
-    DELEGATION_DEFAULT_MAX_TOKENS,
-    DELEGATION_MAX_TOKENS_HARD_LIMIT,
-)
 from omnimarket.nodes.node_delegate_skill_orchestrator.models.model_delegate_skill_request import (
     ModelDelegateSkillRequest,
 )
@@ -115,11 +111,18 @@ def test_contract_model_and_adapter_task_types_match() -> None:
 
 
 @pytest.mark.unit
-def test_contract_declares_max_tokens_boundary() -> None:
+def test_contract_declares_max_tokens_optional_without_hardcap() -> None:
+    """OMN-13161: max_tokens is optional, no 8192 default, no 8192 hardcap.
+
+    The effective value is resolved from the selected backend's per-backend
+    ceiling in the routing contract; the schema only carries the absolute bound.
+    """
     max_tokens = _load_contract()["inputs"]["max_tokens"]
 
-    assert max_tokens["default"] == DELEGATION_DEFAULT_MAX_TOKENS
-    assert max_tokens["maximum"] == DELEGATION_MAX_TOKENS_HARD_LIMIT
+    assert max_tokens["required"] is False
+    assert "default" not in max_tokens
+    assert max_tokens["minimum"] == 1
+    assert max_tokens["maximum"] == 200000
 
 
 @pytest.mark.unit

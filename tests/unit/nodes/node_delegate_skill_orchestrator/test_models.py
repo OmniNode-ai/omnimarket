@@ -10,8 +10,6 @@ import pytest
 from pydantic import ValidationError
 
 from omnimarket.nodes.node_delegate_skill_orchestrator.models.model_delegate_skill_request import (
-    DELEGATION_DEFAULT_MAX_TOKENS,
-    DELEGATION_MAX_TOKENS_HARD_LIMIT,
     ModelDelegateSkillRequest,
 )
 from omnimarket.nodes.node_delegate_skill_orchestrator.models.model_delegate_skill_response import (
@@ -29,7 +27,9 @@ def test_valid_request_minimal() -> None:
     assert req.prompt == "Write tests for the payment webhook retry path"
     assert req.task_type == "test"
     assert req.source == "claude-code"
-    assert req.max_tokens == DELEGATION_DEFAULT_MAX_TOKENS
+    # OMN-13161: max_tokens is unset by default; the effective value is resolved
+    # from the selected backend's per-backend ceiling at dispatch time.
+    assert req.max_tokens is None
     assert isinstance(req.correlation_id, UUID)
 
 
@@ -118,22 +118,27 @@ def test_unsupported_acceptance_criterion_rejected() -> None:
         )
 
 
-def test_explicit_max_tokens_hard_limit_accepted() -> None:
+def test_explicit_max_tokens_accepted_above_legacy_hard_limit() -> None:
+    """OMN-13161: the request no longer hardcaps at 8192.
+
+    A larger explicit value is accepted on the request; the per-backend ceiling
+    (resolved at dispatch time) is what bounds the effective value.
+    """
     req = ModelDelegateSkillRequest(
-        prompt="Use the full local response budget",
+        prompt="Use a large local response budget",
         task_type="reasoning",
         source="codex",
-        max_tokens=DELEGATION_MAX_TOKENS_HARD_LIMIT,
+        max_tokens=65536,
     )
 
-    assert req.max_tokens == 8192
+    assert req.max_tokens == 65536
 
 
-@pytest.mark.parametrize("max_tokens", [8193, 16384])
-def test_max_tokens_above_hard_limit_rejected(max_tokens: int) -> None:
+@pytest.mark.parametrize("max_tokens", [0, -1])
+def test_non_positive_max_tokens_rejected(max_tokens: int) -> None:
     with pytest.raises(ValidationError):
         ModelDelegateSkillRequest(
-            prompt="Too much response budget",
+            prompt="Non-positive response budget",
             task_type="reasoning",
             source="codex",
             max_tokens=max_tokens,

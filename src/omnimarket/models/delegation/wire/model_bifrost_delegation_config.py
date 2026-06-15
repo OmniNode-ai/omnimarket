@@ -174,6 +174,17 @@ class ModelDelegationBackendConfig(BaseModel):
         le=600000,
         description="Per-backend HTTP timeout in milliseconds.",
     )
+    max_tokens: int = Field(
+        default=65536,
+        ge=1,
+        le=200000,
+        description=(
+            "Per-backend output-token budget/ceiling, resolved from the routing "
+            "contract (overlay-overridable). Bounded by the backend model's "
+            "context window. Local Qwen 128k backends carry 65536; cloud backends "
+            "carry their real provider output ceiling (OMN-13161)."
+        ),
+    )
     capabilities: tuple[str, ...] = Field(
         default_factory=tuple,
         description="Capabilities this backend supports.",
