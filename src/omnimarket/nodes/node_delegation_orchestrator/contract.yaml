@@ -69,6 +69,10 @@ event_bus:
     - "onex.evt.omnibase-infra.inference-response.v1"
     - "onex.evt.omniclaude.task-delegated.v1"
     - "onex.cmd.omnibase-infra.baseline-comparison-request.v1"
+    # OMN-13140: terminal escalation proof emitted at the escalation decision
+    # point (quality-gate-recommends-fallback, or retryable-inference-error, with
+    # a routable next tier). Consumed by node_delegation_routing_feedback_reducer.
+    - "onex.evt.omnimarket.delegation-escalation-triggered.v1"
 published_events:
   - event_type: "RoutingIntent"
     topic: "onex.cmd.omnibase-infra.delegation-routing-request.v1"
@@ -91,6 +95,13 @@ published_events:
   - event_type: "BaselineIntent"
     topic: "onex.cmd.omnibase-infra.baseline-comparison-request.v1"
     description: "Intent to trigger baseline cost comparison for savings tracking."
+  # OMN-13140: maps the typed escalation event returned from the escalation
+  # branches of HandlerDelegationWorkflow to its declared topic, so the runtime
+  # DispatchResultApplier publishes it to the canonical escalation topic. The
+  # event_type is the Model-prefix-stripped short class name the applier looks up.
+  - event_type: "LlmDelegationEscalationTriggeredEvent"
+    topic: "onex.evt.omnimarket.delegation-escalation-triggered.v1"
+    description: "Terminal escalation event emitted when the orchestrator escalates a delegation to a higher routing tier (quality-gate fallback or retryable inference error)."
 fsm:
   states:
     - RECEIVED

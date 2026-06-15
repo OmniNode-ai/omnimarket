@@ -24,6 +24,9 @@ from uuid import UUID, uuid4
 
 import pytest
 
+from omnimarket.models.delegation.llm_cost_routing.model_llm_delegation_escalation_triggered_event import (
+    ModelLlmDelegationEscalationTriggeredEvent,
+)
 from omnimarket.nodes.node_delegation_orchestrator.enums import (
     EnumDelegationState,
 )
@@ -776,10 +779,18 @@ class TestInferenceErrorEscalation:
             )
         )
 
-        # Should emit a routing intent for next tier, not a failure event.
-        assert len(intents) == 1
-        assert isinstance(intents[0], ModelRoutingIntent)
-        assert intents[0].min_tier_name is not None
+        # Should emit a routing intent for next tier, not a failure event,
+        # alongside the typed escalation proof (OMN-13140).
+        routing_intents = [e for e in intents if isinstance(e, ModelRoutingIntent)]
+        assert len(routing_intents) == 1
+        assert routing_intents[0].min_tier_name is not None
+        assert not any(isinstance(e, ModelDelegationEvent) for e in intents)
+        escalations = [
+            e
+            for e in intents
+            if isinstance(e, ModelLlmDelegationEscalationTriggeredEvent)
+        ]
+        assert len(escalations) == 1
         assert handler.workflows[cid].state == EnumDelegationState.ROUTED
         assert handler.workflows[cid].escalation_count == 1
 

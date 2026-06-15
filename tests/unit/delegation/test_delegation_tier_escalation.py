@@ -21,6 +21,9 @@ from uuid import NAMESPACE_DNS, UUID, uuid4, uuid5
 
 import pytest
 
+from omnimarket.models.delegation.llm_cost_routing.model_llm_delegation_escalation_triggered_event import (
+    ModelLlmDelegationEscalationTriggeredEvent,
+)
 from omnimarket.nodes.node_delegation_orchestrator.enums import (
     EnumDelegationState,
 )
@@ -172,12 +175,19 @@ class TestGateFailWithFallbackTriggersEscalation:
         assert workflow.state == EnumDelegationState.ROUTED
         assert workflow.escalation_count == 1
 
-        # Should emit a ModelRoutingIntent with min_tier_name
-        assert len(events) == 1
-        intent = events[0]
-        assert isinstance(intent, ModelRoutingIntent)
+        # Should emit a ModelRoutingIntent with min_tier_name...
+        routing_intents = [e for e in events if isinstance(e, ModelRoutingIntent)]
+        assert len(routing_intents) == 1
+        intent = routing_intents[0]
         assert intent.min_tier_name is not None
         assert intent.min_tier_name != "local"  # Should be a higher tier
+        # ...alongside the typed escalation proof (OMN-13140).
+        escalations = [
+            e
+            for e in events
+            if isinstance(e, ModelLlmDelegationEscalationTriggeredEvent)
+        ]
+        assert len(escalations) == 1
 
 
 @pytest.mark.unit
@@ -294,9 +304,9 @@ class TestRoutingReducerMinTierName:
         )
         events = handler.handle_gate_result(gate)
 
-        assert len(events) == 1
-        intent = events[0]
-        assert isinstance(intent, ModelRoutingIntent)
+        routing_intents = [e for e in events if isinstance(e, ModelRoutingIntent)]
+        assert len(routing_intents) == 1
+        intent = routing_intents[0]
         # min_tier_name should be set to something above "local"
         assert intent.min_tier_name is not None
 
