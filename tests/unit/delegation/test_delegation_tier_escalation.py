@@ -514,6 +514,31 @@ class TestNextEligibleTierEndpointResolvability:
         result = next_eligible_tier("cheap_cloud", frozenset({"cli_agents"}))
         assert result == "cheap_frontier"
 
+    def test_task_unaware_call_does_not_apply_code_generation_tier_order(
+        self,
+    ) -> None:
+        # Backward-compat: without task_type, escalation remains forward-only in
+        # routing_tiers.yaml declaration order. It must not jump back to local
+        # just because code_generation declares cheap_cloud -> local -> claude.
+        result = next_eligible_tier(
+            "cheap_cloud",
+            frozenset({"cheap_frontier", "cli_agents"}),
+        )
+        assert result == "claude"
+
+    def test_code_generation_uses_contract_tier_order_after_cheap_cloud(
+        self, frontier_unconfigured_bifrost: None
+    ) -> None:
+        # code_generation declares cheap_cloud -> local -> claude. A cheap_cloud
+        # failure must therefore try local next, even though local appears before
+        # cheap_cloud in routing_tiers.yaml declaration order.
+        result = next_eligible_tier(
+            "cheap_cloud",
+            frozenset({"cheap_frontier", "cli_agents"}),
+            task_type="code_generation",
+        )
+        assert result == "local"
+
 
 @pytest.mark.unit
 class TestEscalationTerminatesWhenFrontierUnconfigured:
