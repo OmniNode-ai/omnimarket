@@ -167,29 +167,38 @@ def test_nonstandard_handler_constructor_declares_runtime_ownership_or_dependenc
     )
 
 
-def test_main_profile_excludes_memory_and_intelligence_crashers() -> None:
+def test_runtime_profile_lane_assignments_post_omn_12982_batch1() -> None:
+    # OMN-12982 Batch 1: verify unregistered profiles were corrected.
+    # node_intent_event_consumer_effect: memory (unregistered) -> effects (consumer lane)
     intent_consumer = _load_contract(
         NODES_ROOT / "node_intent_event_consumer_effect" / "contract.yaml"
     )
+    # node_intelligence_orchestrator: intelligence (unregistered) -> main (orchestrator lane)
     intelligence_orchestrator = _load_contract(
         NODES_ROOT / "node_intelligence_orchestrator" / "contract.yaml"
     )
+    # node_adr_canary_orchestrator: canary (registered, unchanged)
     adr_canary_orchestrator = _load_contract(
         NODES_ROOT / "node_adr_canary_orchestrator" / "contract.yaml"
     )
 
+    # intent consumer runs in effects lane (consumer-attached), not main
     assert not _owned_by_runtime_profile(intent_consumer, "main")
-    assert _runtime_profiles(intent_consumer) == ("memory",)
-    assert not _owned_by_runtime_profile(intelligence_orchestrator, "main")
-    assert _runtime_profiles(intelligence_orchestrator) == ("intelligence",)
+    assert _runtime_profiles(intent_consumer) == ("effects",)
+    # intelligence orchestrator now correctly runs in main lane
+    assert _owned_by_runtime_profile(intelligence_orchestrator, "main")
+    assert _runtime_profiles(intelligence_orchestrator) == ("main",)
+    # canary orchestrator still runs in isolated canary lane, not main
     assert not _owned_by_runtime_profile(adr_canary_orchestrator, "main")
     assert _runtime_profiles(adr_canary_orchestrator) == ("canary",)
 
 
-def test_pr_review_bot_is_not_owned_by_always_on_runtime_profiles() -> None:
+def test_pr_review_bot_runs_in_effects_lane_post_omn_12982_batch1() -> None:
+    # OMN-12982 Batch 1: top-level runtime_profiles was manual_pr_review (unregistered)
+    # -> corrected to effects. Descriptor already had effects; now both levels agree.
     contract = _load_contract(NODES_ROOT / "node_pr_review_bot" / "contract.yaml")
     descriptor = contract.get("descriptor")
     assert isinstance(descriptor, dict)
 
-    assert _runtime_profiles(contract) == ("manual_pr_review",)
+    assert _runtime_profiles(contract) == ("effects",)
     assert descriptor["runtime_profiles"] == ["effects"]

@@ -23,8 +23,7 @@ descriptor:
   node_archetype: orchestrator
   purity: effectful
   runtime_profiles:
-    - full_runtime
-    - standalone
+    - main
 
 runtime_dispatch:
   addressable: false

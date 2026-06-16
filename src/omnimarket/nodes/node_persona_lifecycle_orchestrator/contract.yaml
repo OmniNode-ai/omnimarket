@@ -10,7 +10,7 @@ description: >
   per tick) and on-demand single-user builds. Phase 3 Adaptive Personalization (OMN-7305).
 node_type: orchestrator
 runtime_profiles:
-  - memory
+  - main
 input_model: "ModelPersonaLifecycleRequest"
 output_model: "ModelPersonaLifecycleResponse"
 

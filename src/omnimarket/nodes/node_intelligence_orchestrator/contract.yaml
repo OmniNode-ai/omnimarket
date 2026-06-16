@@ -21,7 +21,7 @@ node_version:
 name: "node_intelligence_orchestrator"
 node_type: "ORCHESTRATOR_GENERIC"
 runtime_profiles:
-  - intelligence
+  - main
 description: >-
   Unified orchestrator for all intelligence operations using Llama Index workflows. Handles document ingestion,
   pattern learning, quality assessment, semantic analysis, and relationship detection workflows.
