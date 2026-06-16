@@ -577,7 +577,7 @@ def _check_bus_target_configured() -> None:
             f"Deployed bus target is not configured: "
             f"environment variable {_KAFKA_BOOTSTRAP_ENV_VAR!r} is missing or empty. "
             f"Set {_KAFKA_BOOTSTRAP_ENV_VAR} to the Redpanda/Kafka bootstrap address "
-            f"(e.g. '192.168.86.201:19092' for the dev lane). "
+            f"(e.g. '<host>:19092'). "
             f"Use --runtime-selection local or --compile-only to run without a live bus.",
             context=context,
             parameter=_KAFKA_BOOTSTRAP_ENV_VAR,
