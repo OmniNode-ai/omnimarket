@@ -16,6 +16,7 @@ from uuid import uuid4
 
 import pytest
 from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
+from omnibase_infra.errors import ProtocolConfigurationError
 from omnibase_infra.event_bus.event_bus_inmemory import EventBusInmemory
 from omnibase_infra.event_bus.models import (
     ModelEventBusReadiness,
@@ -25,9 +26,11 @@ from omnibase_infra.event_bus.models import (
 
 from omnimarket.adapters.codex import runtime_client
 from omnimarket.adapters.codex.runtime_client import (
+    _KAFKA_BOOTSTRAP_ENV_VAR,
     CodexRuntimeRequestAdapter,
     ModelDispatchBusCommand,
     ModelDispatchBusTerminalResult,
+    _check_bus_target_configured,
     default_command_topic,
     default_requester,
     default_response_topic,
@@ -2905,3 +2908,76 @@ async def test_delegate_skill_subscribes_to_contract_terminal_topics_when_defaul
         "onex.evt.omnimarket.delegate-skill-completed.v1",
         "onex.evt.omnimarket.delegate-skill-failed.v1",
     ]
+
+
+# ---------------------------------------------------------------------------
+# OMN-13164: bus-target preflight guard tests
+# ---------------------------------------------------------------------------
+
+
+class TestBusTargetPreflightGuard:
+    """Verify that _check_bus_target_configured() fails fast before the
+    aiokafka producer bootstrap loop when KAFKA_BOOTSTRAP_SERVERS is absent.
+    """
+
+    def test_raises_protocol_configuration_error_when_env_var_missing(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Missing KAFKA_BOOTSTRAP_SERVERS must raise ProtocolConfigurationError
+        immediately, not enter the Kafka connection-retry loop."""
+        monkeypatch.delenv(_KAFKA_BOOTSTRAP_ENV_VAR, raising=False)
+
+        with pytest.raises(ProtocolConfigurationError) as exc_info:
+            _check_bus_target_configured()
+
+        msg = str(exc_info.value)
+        assert _KAFKA_BOOTSTRAP_ENV_VAR in msg
+        assert "not configured" in msg.lower()
+
+    def test_raises_protocol_configuration_error_when_env_var_empty(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """An empty KAFKA_BOOTSTRAP_SERVERS must also raise before dialling."""
+        monkeypatch.setenv(_KAFKA_BOOTSTRAP_ENV_VAR, "   ")
+
+        with pytest.raises(ProtocolConfigurationError) as exc_info:
+            _check_bus_target_configured()
+
+        assert _KAFKA_BOOTSTRAP_ENV_VAR in str(exc_info.value)
+
+    def test_passes_when_env_var_is_set(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """A non-empty KAFKA_BOOTSTRAP_SERVERS must not raise."""
+        monkeypatch.setenv(_KAFKA_BOOTSTRAP_ENV_VAR, "redpanda:19092")
+        # Should return None without raising.
+        result = _check_bus_target_configured()
+        assert result is None
+
+    def test_cli_main_returns_typed_blocker_packet_when_env_var_missing(
+        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """CLI main() must emit a JSON blocker packet with code
+        'bus_target_not_configured' instead of hanging for 30 s."""
+        monkeypatch.delenv(_KAFKA_BOOTSTRAP_ENV_VAR, raising=False)
+
+        exit_code = main(["--command-name", "merge_sweep"])
+
+        assert exit_code != 0
+        captured = capsys.readouterr()
+        parsed = json.loads(captured.out)
+        assert parsed["ok"] is False
+        assert parsed["error"]["code"] == "bus_target_not_configured"
+        assert _KAFKA_BOOTSTRAP_ENV_VAR in parsed["error"]["message"]
+
+    def test_default_event_bus_factory_raises_when_no_bootstrap_servers(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """_default_event_bus_factory must raise ProtocolConfigurationError
+        before constructing EventBusKafka when env var is absent."""
+        from omnimarket.adapters.codex.runtime_client import _default_event_bus_factory
+
+        monkeypatch.delenv(_KAFKA_BOOTSTRAP_ENV_VAR, raising=False)
+
+        with pytest.raises(ProtocolConfigurationError) as exc_info:
+            _default_event_bus_factory()
+
+        assert _KAFKA_BOOTSTRAP_ENV_VAR in str(exc_info.value)

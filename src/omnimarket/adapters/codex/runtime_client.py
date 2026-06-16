@@ -20,6 +20,8 @@ from uuid import UUID
 
 import yaml
 from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
+from omnibase_infra.enums import EnumInfraTransportType
+from omnibase_infra.errors import ModelInfraErrorContext, ProtocolConfigurationError
 from omnibase_infra.event_bus.event_bus_kafka import EventBusKafka
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
@@ -544,7 +546,47 @@ def _build_client_request(
     )
 
 
+_KAFKA_BOOTSTRAP_ENV_VAR = "KAFKA_BOOTSTRAP_SERVERS"
+
+
+def _check_bus_target_configured() -> None:
+    """Fail fast with a typed error if no Kafka bus target is configured.
+
+    When KAFKA_BOOTSTRAP_SERVERS is absent the EventBusKafka.default()
+    factory silently falls back to localhost:19092.  That fallback enters a
+    30-second aiokafka connection-retry loop before raising InfraTimeoutError,
+    which is indistinguishable from a real runtime failure.
+
+    This guard fires *before* the producer bootstrap loop so that an
+    unconfigured overnight sweep produces a typed blocker packet
+    (ProtocolConfigurationError naming the missing env var) instead of a
+    30-second hang followed by an opaque timeout.
+
+    Raises:
+        ProtocolConfigurationError: If KAFKA_BOOTSTRAP_SERVERS is unset or
+            empty, naming the missing configuration target explicitly.
+    """
+    value = os.environ.get(_KAFKA_BOOTSTRAP_ENV_VAR)
+    if value is None or not value.strip():
+        context = ModelInfraErrorContext.with_correlation(
+            transport_type=EnumInfraTransportType.KAFKA,
+            operation="deployed_event_bus_factory",
+            target_name="codex_runtime_request_adapter",
+        )
+        raise ProtocolConfigurationError(
+            f"Deployed bus target is not configured: "
+            f"environment variable {_KAFKA_BOOTSTRAP_ENV_VAR!r} is missing or empty. "
+            f"Set {_KAFKA_BOOTSTRAP_ENV_VAR} to the Redpanda/Kafka bootstrap address "
+            f"(e.g. '192.168.86.201:19092' for the dev lane). "
+            f"Use --runtime-selection local or --compile-only to run without a live bus.",
+            context=context,
+            parameter=_KAFKA_BOOTSTRAP_ENV_VAR,
+            value=value,
+        )
+
+
 def _default_event_bus_factory() -> _ProtocolLifecycleTransport:
+    _check_bus_target_configured()
     return cast(_ProtocolLifecycleTransport, EventBusKafka.default())
 
 
@@ -1455,6 +1497,13 @@ def main(argv: list[str] | None = None) -> int:
                 target_runtime_address=args.target_runtime_address,
                 runtime_selection=args.runtime_selection,
             )
+    except ProtocolConfigurationError as exc:
+        response = _build_cli_error_response(
+            command_name=args.command_name,
+            code="bus_target_not_configured",
+            message=str(exc),
+            details={"missing_env_var": _KAFKA_BOOTSTRAP_ENV_VAR},
+        )
     except ValidationError as exc:
         response = _build_cli_error_response(
             command_name=args.command_name,
