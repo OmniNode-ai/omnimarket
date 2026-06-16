@@ -13,6 +13,7 @@ from omnimarket.projection.api_server import (  # noqa: F401
     main,
     resolve_effective_limit,
     resolve_order_clause,
+    topic_supports_correlation_id_filter,
 )
 
 if __name__ == "__main__":

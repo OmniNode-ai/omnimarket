@@ -6,6 +6,7 @@ Tests that the projection API server honours the contract-driven topic map:
 - Unknown topic returns 404 with available topic list
 - GET /projections returns full metadata per topic
 - DB query failure returns 503 with reason in body
+- correlation_id filter on a topic without that column returns 422 (OMN-13165)
 """
 
 from __future__ import annotations
@@ -19,7 +20,12 @@ from unittest.mock import AsyncMock, MagicMock
 from fastapi.testclient import TestClient
 
 from omnimarket.projection.models import ProjectionStatus, ProjectionTableConfig
-from scripts.projection_api_server import app, get_pool, get_topic_map
+from scripts.projection_api_server import (
+    app,
+    get_pool,
+    get_topic_map,
+    topic_supports_correlation_id_filter,
+)
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -297,3 +303,141 @@ class TestProjectionEndpointDynamic:
         assert resp.status_code == 200
         body = resp.json()
         assert body["data_freshness"] == "unknown"
+
+    # -----------------------------------------------------------------------
+    # OMN-13165: correlation_id filter on topics without that column
+    # -----------------------------------------------------------------------
+
+    def test_correlation_id_filter_on_topic_without_column_returns_422(self) -> None:
+        """Filtering by correlation_id on a topic whose declared columns do not
+        include that column must return a typed 422 (unsupported_filter) before
+        issuing any SQL — not a 503 'column does not exist' from Postgres.
+
+        This is the regression test for the delegation.summary.v1 defect
+        discovered in the 2026-06-15 night gate-zero run (OMN-13165).
+        """
+        # Simulate an aggregate/summary topic whose view has no correlation_id.
+        # The camelCase aliases match the delegation.summary.v1 contract pattern.
+        cfg = _make_cfg(
+            topic="onex.snapshot.projection.delegation.summary.v1",
+            table="projection_delegation_summary",
+            columns=(
+                '"totalDelegations"',
+                '"qualityGatePassRate"',
+                '"totalSavingsUsd"',
+                "latest_projection_updated_at",
+            ),
+            order_by=None,
+            freshness_column="latest_projection_updated_at",
+        )
+        topic_map = {cfg.topic: cfg}
+        # A broken pool would surface as 503 — use the healthy one to prove the
+        # guard fires before any DB call.
+        pool = _make_pool([])
+        with _with_overrides(pool, topic_map) as client:
+            resp = client.get(
+                "/projection/onex.snapshot.projection.delegation.summary.v1"
+                "?correlation_id=1b90ea27-1f06-42ae-b668-ecdf9450f7ca"
+            )
+        assert resp.status_code == 422
+        body = resp.json()
+        assert body["error"] == "unsupported_filter"
+        assert body["filter"] == "correlation_id"
+        assert "delegation.summary.v1" in body["topic"]
+        # Must name the authoritative surface so the caller knows where to look.
+        assert "correlation-trace" in body["detail"]
+
+    def test_correlation_id_filter_on_topic_with_column_is_allowed(self) -> None:
+        """A topic that explicitly declares ``correlation_id`` in its column list
+        must accept the filter and return rows (not 422).
+        """
+        cfg = _make_cfg(
+            topic="onex.snapshot.projection.delegation.correlation-trace.v1",
+            table="delegation_events",
+            columns=(
+                "id",
+                "correlation_id",
+                "task_type",
+                "delegated_to",
+                "created_at",
+            ),
+            order_by="created_at ASC",
+            freshness_column="created_at",
+        )
+        topic_map = {cfg.topic: cfg}
+        rows = [
+            {
+                "id": "c205cf7f-6c34-497b-a262-2a8be33cd84b",
+                "correlation_id": "1b90ea27-1f06-42ae-b668-ecdf9450f7ca",
+                "task_type": "summarization",
+                "delegated_to": "Qwen3.6-35B-A3B",
+                "created_at": _ts(timedelta(minutes=1)),
+            }
+        ]
+        pool = _make_pool(rows, latest_ts=_ts(timedelta(minutes=1)))
+        with _with_overrides(pool, topic_map) as client:
+            resp = client.get(
+                "/projection/onex.snapshot.projection.delegation.correlation-trace.v1"
+                "?correlation_id=1b90ea27-1f06-42ae-b668-ecdf9450f7ca"
+            )
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["row_count"] == 1
+
+    def test_correlation_id_filter_on_star_columns_is_allowed(self) -> None:
+        """A topic that uses SELECT * (columns = ('*',)) must allow the filter
+        because the underlying table may expose correlation_id even though the
+        column list is not enumerated explicitly.
+        """
+        cfg = _make_cfg(
+            topic="onex.snapshot.projection.test.star.v1",
+            columns=("*",),
+            order_by=None,
+            freshness_column=None,
+        )
+        topic_map = {cfg.topic: cfg}
+        pool = _make_pool([{"correlation_id": "abc", "val": 1}])
+        with _with_overrides(pool, topic_map) as client:
+            resp = client.get(
+                "/projection/onex.snapshot.projection.test.star.v1?correlation_id=abc"
+            )
+        assert resp.status_code == 200
+
+
+class TestTopicSupportsCorrelationIdFilter:
+    """Unit tests for the pure helper (OMN-13165)."""
+
+    def _cfg(self, columns: tuple[str, ...]) -> ProjectionTableConfig:
+        return ProjectionTableConfig(
+            topic="test.v1",
+            table="t",
+            schema_name="public",
+            columns=columns,
+            limit=100,
+            source_contract="test",
+        )
+
+    def test_explicit_correlation_id_column_returns_true(self) -> None:
+        cfg = self._cfg(("id", "correlation_id", "task_type"))
+        assert topic_supports_correlation_id_filter(cfg) is True
+
+    def test_missing_correlation_id_column_returns_false(self) -> None:
+        # Mirrors the delegation.summary.v1 column set (camelCase aliases, no
+        # correlation_id).
+        cfg = self._cfg(
+            (
+                '"totalDelegations"',
+                '"qualityGatePassRate"',
+                "latest_projection_updated_at",
+            )
+        )
+        assert topic_supports_correlation_id_filter(cfg) is False
+
+    def test_star_columns_returns_true(self) -> None:
+        cfg = self._cfg(("*",))
+        assert topic_supports_correlation_id_filter(cfg) is True
+
+    def test_quoted_correlation_id_column_returns_true(self) -> None:
+        # Although unusual, a contract could declare it with surrounding quotes.
+        cfg = self._cfg(('"correlation_id"', "task_type"))
+        assert topic_supports_correlation_id_filter(cfg) is True
