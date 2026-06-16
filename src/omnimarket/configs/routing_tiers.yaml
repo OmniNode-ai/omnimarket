@@ -10,6 +10,9 @@
 #
 # Tier evaluation order: local → cheap_cloud → claude
 # The handler iterates tiers top-to-bottom, stopping at the first accepted result.
+# The claude-named terminal tier is preserved for task-class escalation-policy
+# compatibility, but it routes to OAuth-backed headless Codex CLI rather than an
+# Anthropic API-key backend.
 #
 # Endpoint URLs are resolved from the repo bifrost contract deep-merged with
 # the user overlay at ~/.omninode/delegation/bifrost_overrides.yaml. The
@@ -139,10 +142,10 @@ tiers:
     eval_model: qwen3.6-35b
     max_retries: 1
   - name: claude
-    cost_per_1k_tokens: 0.015
+    cost_per_1k_tokens: 0.0
     models:
-      - id: claude-sonnet-4-6
-        backend_id: cloud-sonnet
+      - id: codex-cli
+        backend_id: cli-codex
         max_context_tokens: 200000
         use_for:
           - escalation

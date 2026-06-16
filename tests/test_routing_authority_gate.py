@@ -470,3 +470,29 @@ class TestProviderEndpointShapeOMN12883:
             f"cli_agents tier must be exempt from endpoint_url requirement: "
             f"{audit['violations']}"
         )
+
+    def test_cli_backend_url_exempt_from_http_endpoint_shape_even_in_claude_tier(
+        self, tmp_path: Path
+    ) -> None:
+        """CLI backends may serve the claude-named terminal escalation tier."""
+        data = {
+            "backends": [
+                {
+                    "backend_id": "cli-codex",
+                    "tier": "claude",
+                    "endpoint_url": "cli://codex",
+                }
+            ]
+        }
+        cfg_dir = tmp_path / "src/omnimarket/configs"
+        cfg_dir.mkdir(parents=True)
+        (cfg_dir / "bifrost_delegation.yaml").write_text(
+            yaml.dump(data), encoding="utf-8"
+        )
+        (tmp_path / ".git").mkdir()
+
+        audit = build_provider_endpoint_shape_audit(tmp_path)
+        assert audit["clean"], (
+            f"cli:// terminal backend must be exempt from HTTP endpoint shape: "
+            f"{audit['violations']}"
+        )

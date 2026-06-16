@@ -985,12 +985,12 @@ class TestInferenceErrorEscalation:
         OMN-13140: the `test` task class declares the closed tier_order
         [local, cheap_cloud, claude]. To exercise the max-escalation ceiling
         (2 real escalations) this test needs all three of those tiers routable;
-        the autouse `frontier_unconfigured_bifrost` fixture leaves the claude tier
-        unconfigured (so escalation off cheap_cloud would terminate early via
-        `no_higher_tier_available` after only one escalation). We therefore bind a
-        bifrost config where local, cheap_cloud, AND claude carry resolvable
-        `test`-serving endpoints, so the chain escalates twice (local ->
-        cheap_cloud -> claude) and the third attempt hits the escalation ceiling.
+        the autouse `frontier_unconfigured_bifrost` fixture predates the
+        cli-codex terminal backend and leaves that backend undeclared. We
+        therefore bind a bifrost config where local, cheap_cloud, AND the
+        claude-named cli-codex terminal tier carry resolvable `test` transports,
+        so the chain escalates twice (local -> cheap_cloud -> claude) and the
+        third attempt hits the escalation ceiling.
         """
         from omnimarket.nodes.node_delegation_orchestrator.handlers.handler_delegation_workflow import (
             _MAX_INFERENCE_ESCALATION_ATTEMPTS,
@@ -1004,20 +1004,22 @@ class TestInferenceErrorEscalation:
         # All three declared `test` tiers (local, cheap_cloud, claude) must be
         # routable so two real escalations (local -> cheap_cloud -> claude) occur
         # before the ceiling is reached. Reuse the shared frontier-unconfigured
-        # bifrost shape (which already declares every required config field) but
-        # flip the claude-tier backend (cloud-sonnet) endpoint from empty to a
-        # resolvable URL so escalation can reach it. The shared constant is
-        # textwrap.dedent'd, so the cloud-sonnet block sits at 2-space indent.
-        cloud_sonnet_empty = '  - backend_id: cloud-sonnet\n    endpoint_url: ""\n'
-        cloud_sonnet_routable = (
-            "  - backend_id: cloud-sonnet\n"
-            '    endpoint_url: "https://cloud.test/anthropic/v1/messages"\n'
+        # bifrost shape, then add the terminal cli-codex backend referenced by
+        # the claude-named tier in routing_tiers.yaml.
+        routing_rules_marker = "routing_rules:\n"
+        cli_codex_backend = (
+            "  - backend_id: cli-codex\n"
+            '    endpoint_url: "cli://codex"\n'
+            "    model_name: codex-cli\n"
+            "    tier: claude\n"
+            "    timeout_ms: 300000\n"
+            "    capabilities: [agent_delegation, code_generation, test]\n"
         )
-        assert cloud_sonnet_empty in BIFROST_FRONTIER_UNCONFIGURED, (
-            "expected the shared fixture to declare an empty cloud-sonnet endpoint"
+        assert routing_rules_marker in BIFROST_FRONTIER_UNCONFIGURED, (
+            "expected shared fixture to contain routing_rules marker"
         )
         all_tiers_routable = BIFROST_FRONTIER_UNCONFIGURED.replace(
-            cloud_sonnet_empty, cloud_sonnet_routable
+            routing_rules_marker, cli_codex_backend + routing_rules_marker
         )
         contract_path = tmp_path / "all_tiers_routable.yaml"
         contract_path.write_text(all_tiers_routable)

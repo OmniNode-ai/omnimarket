@@ -255,8 +255,25 @@ backends:
       HTTP-Referer: "https://omninode.ai"
       X-Title: "OmniNode ONEX Experiment"
   # CLI agent backends — dispatched via subprocess, not HTTP.
+  # cli-codex is the selected terminal delegation backend for the claude-named
+  # escalation tier. It uses the Codex CLI's existing OAuth login, not an API key.
+  - backend_id: cli-codex
+    endpoint_url: "cli://codex"
+    model_name: codex-cli
+    tier: claude
+    timeout_ms: 300000
+    # OMN-13161: subprocess CLI agent — generous 64k budget for long agent turns.
+    max_tokens: 65536
+    capabilities:
+      - agent_delegation
+      - complex_reasoning
+      - code_generation
+      - reasoning
+      - research
+      - test
+      - document
   - backend_id: cli-claude
-    endpoint_url: ""
+    endpoint_url: "cli://claude"
     model_name: claude-cli
     tier: cli_agents
     timeout_ms: 300000
@@ -302,7 +319,7 @@ routing_rules:
     latency_sla_ms: 30000
     backend_ids:
       - local-coder
-      - cloud-sonnet
+      - cli-codex
     fallback_policy:
       action: escalate_to_next_tier
       max_retries: 2
@@ -325,7 +342,7 @@ routing_rules:
     latency_sla_ms: 60000
     backend_ids:
       - local-coder
-      - cloud-sonnet
+      - cli-codex
     fallback_policy:
       action: escalate_to_next_tier
       max_retries: 1
@@ -347,7 +364,7 @@ routing_rules:
     cost_ceiling_usd_per_1k_tokens: 0.004
     backend_ids:
       - local-coder
-      - cloud-haiku
+      - cli-codex
     fallback_policy:
       action: escalate_to_next_tier
       max_retries: 1
@@ -369,7 +386,7 @@ routing_rules:
     backend_ids:
       - local-heavy-reasoning
       - local-reasoner
-      - cloud-sonnet
+      - cli-codex
     fallback_policy:
       action: escalate_to_next_tier
       max_retries: 2
@@ -379,7 +396,7 @@ routing_rules:
 # Attempts backends in order.
 default_backends:
   - local-coder
-  - cloud-sonnet
+  - cli-codex
 # Gateway-level circuit breaker settings (apply to all backends).
 circuit_breaker:
   failure_threshold: 5

@@ -8,6 +8,7 @@ DelegationIntentBridge.handle_inference_intent() path.
 
 from __future__ import annotations
 
+import subprocess
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import NAMESPACE_DNS, uuid4, uuid5
@@ -179,6 +180,103 @@ class TestHandlerInferenceIntent:
         assert result.content == ""
         assert result.error_message != ""
         assert result.model_used == "test-model"
+
+    def test_cli_codex_backend_invokes_headless_codex_oauth(self) -> None:
+        handler = HandlerInferenceIntent()
+        intent = _make_intent(base_url="cli://codex", model="codex-cli")
+
+        completed = subprocess.CompletedProcess(
+            args=["codex"],
+            returncode=0,
+            stdout="codex result\n",
+            stderr="",
+        )
+
+        with (
+            patch(
+                "omnimarket.nodes.node_llm_delegation_call_effect.handlers.handler_inference_intent.shutil.which",
+                return_value="/usr/local/bin/codex",
+            ),
+            patch(
+                "omnimarket.nodes.node_llm_delegation_call_effect.handlers.handler_inference_intent.os.getcwd",
+                return_value="/workspace",
+            ),
+            patch(
+                "omnimarket.nodes.node_llm_delegation_call_effect.handlers.handler_inference_intent.subprocess.run",
+                return_value=completed,
+            ) as mock_run,
+        ):
+            result = handler.handle(intent)
+
+        command = mock_run.call_args.args[0]
+        assert command[:8] == [
+            "/usr/local/bin/codex",
+            "--sandbox",
+            "read-only",
+            "--ask-for-approval",
+            "never",
+            "--cd",
+            "/workspace",
+            "exec",
+        ]
+        assert "SYSTEM:\nYou are a helpful assistant." in command[-1]
+        assert "USER:\nWrite a test." in command[-1]
+        assert result.content == "codex result"
+        assert result.model_used == "codex-cli"
+        assert result.error_message == ""
+
+    def test_cli_claude_backend_invokes_headless_claude_oauth(self) -> None:
+        handler = HandlerInferenceIntent()
+        intent = _make_intent(base_url="cli://claude", model="claude-cli")
+
+        completed = subprocess.CompletedProcess(
+            args=["claude"],
+            returncode=0,
+            stdout="claude result\n",
+            stderr="",
+        )
+
+        with (
+            patch(
+                "omnimarket.nodes.node_llm_delegation_call_effect.handlers.handler_inference_intent.shutil.which",
+                return_value="/usr/local/bin/claude",
+            ),
+            patch(
+                "omnimarket.nodes.node_llm_delegation_call_effect.handlers.handler_inference_intent.subprocess.run",
+                return_value=completed,
+            ) as mock_run,
+        ):
+            result = handler.handle(intent)
+
+        command = mock_run.call_args.args[0]
+        assert command[:7] == [
+            "/usr/local/bin/claude",
+            "-p",
+            "--output-format",
+            "text",
+            "--permission-mode",
+            "dontAsk",
+            "--no-session-persistence",
+        ]
+        assert "SYSTEM:\nYou are a helpful assistant." in command[-1]
+        assert "USER:\nWrite a test." in command[-1]
+        assert result.content == "claude result"
+        assert result.model_used == "claude-cli"
+        assert result.error_message == ""
+
+    def test_cli_backend_missing_binary_returns_error_response(self) -> None:
+        handler = HandlerInferenceIntent()
+        intent = _make_intent(base_url="cli://codex", model="codex-cli")
+
+        with patch(
+            "omnimarket.nodes.node_llm_delegation_call_effect.handlers.handler_inference_intent.shutil.which",
+            return_value=None,
+        ):
+            result = handler.handle(intent)
+
+        assert result.content == ""
+        assert "codex executable not found" in result.error_message
+        assert result.model_used == "codex-cli"
 
     def test_provider_http_status_error_includes_sanitized_body(self) -> None:
         handler = HandlerInferenceIntent()
