@@ -21,6 +21,9 @@ from unittest.mock import MagicMock
 from uuid import uuid4
 
 import pytest
+from omnibase_core.protocols.event_bus.protocol_event_bus_publisher import (
+    ProtocolEventBusPublisher,
+)
 
 from omnimarket.nodes.node_pr_lifecycle_orchestrator.handlers.handler_pr_lifecycle_orchestrator import (
     EnumOrchestratorState,
@@ -192,14 +195,14 @@ class TestFailedCheckNames:
 class TestHandlerPrLifecycleOrchestratorConstruction:
     def test_construction_with_mock_event_bus(self) -> None:
         """Minimal construction with required event_bus succeeds."""
-        mock_bus = MagicMock()
+        mock_bus = MagicMock(spec=ProtocolEventBusPublisher)
         handler = HandlerPrLifecycleOrchestrator(event_bus=mock_bus)
         assert handler is not None
         assert handler._event_bus is mock_bus
 
     def test_sub_handlers_default_to_none(self) -> None:
         """All optional sub-handlers default to None until _ensure_sub_handlers()."""
-        mock_bus = MagicMock()
+        mock_bus = MagicMock(spec=ProtocolEventBusPublisher)
         handler = HandlerPrLifecycleOrchestrator(event_bus=mock_bus)
         assert handler._inventory is None
         assert handler._triage is None
@@ -209,7 +212,7 @@ class TestHandlerPrLifecycleOrchestratorConstruction:
 
     def test_explicit_sub_handler_injection(self) -> None:
         """Explicitly injected handlers are stored correctly."""
-        mock_bus = MagicMock()
+        mock_bus = MagicMock(spec=ProtocolEventBusPublisher)
         mock_inventory = MagicMock()
         mock_inventory.handle = MagicMock()
         handler = HandlerPrLifecycleOrchestrator(

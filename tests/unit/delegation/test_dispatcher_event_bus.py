@@ -26,6 +26,7 @@ from omnibase_core.models.delegation.model_invocation_command import (
     ModelInvocationCommand,
 )
 from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
+from omnibase_core.protocols.event_bus.protocol_event_bus import ProtocolEventBus
 from omnibase_infra.enums import EnumDispatchStatus
 from omnibase_infra.errors import InfraUnavailableError
 from omnibase_infra.event_bus.topic_constants import (
@@ -71,7 +72,7 @@ TEST_ENDPOINT_URL = "http://delegation-llm.test:8000"
 
 
 def _make_mock_bus() -> MagicMock:
-    bus = MagicMock()
+    bus = MagicMock(spec=ProtocolEventBus)
     bus.publish_envelope = AsyncMock()
     return bus
 

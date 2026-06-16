@@ -11,6 +11,7 @@ import pytest
 
 from omnimarket.nodes.node_pr_review_bot.handlers.handler_webhook_reconciler import (
     HandlerWebhookReconciler,
+    ProtocolKafkaPublisher,
 )
 
 TOPIC_THREAD_REOPENED = "onex.evt.omnimarket.review-bot-thread-reopened.v1"
@@ -59,7 +60,7 @@ class TestReconcilerBotResolution:
         graphql.execute.assert_not_called()
 
     def test_bot_resolution_does_not_emit_kafka(self) -> None:
-        kafka = MagicMock()
+        kafka = MagicMock(spec=ProtocolKafkaPublisher)
         handler = _make_handler(kafka=kafka)
         handler.handle(
             thread_id="TH_abc123",
@@ -118,7 +119,7 @@ class TestReconcilerUnauthorizedResolution:
         assert "onex review bot" in body.lower()
 
     def test_reopen_emits_kafka_event(self) -> None:
-        kafka = MagicMock()
+        kafka = MagicMock(spec=ProtocolKafkaPublisher)
         handler = _make_handler(kafka=kafka)
         handler.handle(
             thread_id="TH_mno345",

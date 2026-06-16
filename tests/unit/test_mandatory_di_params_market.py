@@ -70,7 +70,9 @@ def test_handler_model_router_boot_constructible_then_fails_loudly() -> None:
 
     # Boot-time construction with only event_bus must succeed (no TypeError):
     # this is exactly the runtime auto-wiring resolver's known-param path.
-    router = HandlerModelRouter(event_bus=MagicMock())
+    router = HandlerModelRouter(
+        event_bus=MagicMock(),  # transport-mock-ok: HandlerModelRouter.event_bus is typed Any — spec= cannot be applied
+    )
 
     # Routing through an unconfigured instance must fail loudly, not silently.
     with pytest.raises(RuntimeError, match="without policy/registry"):
