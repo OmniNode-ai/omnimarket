@@ -14,7 +14,10 @@ from enum import StrEnum, unique
 MODEL_REGISTRY_VERSION = "1.3.0"
 PRICING_MANIFEST_VERSION = "2026-06-11-gemini-25-flash-lite"
 REGISTRY_OBSERVED_AT = "2026-06-11T00:00:00Z"
-GENERATED_FROM = ("src/omnimarket/data/model_registry/model_registry_v1.yaml",)
+GENERATED_FROM = (
+    "src/omnimarket/data/model_registry/model_registry_v1.yaml",
+    "omnibase_infra/contracts/llm_endpoints.yaml",
+)
 
 
 @unique
@@ -32,7 +35,6 @@ class EnumLogicalModelKey(StrEnum):
     QWEN3_CODER_30B = "qwen3-coder-30b"
     QWEN3_NEXT_80B = "qwen3-next-80b"
     QWEN3_6_35B = "qwen3.6-35b"
-    VERTEX_GEMINI_FLASH = "vertex-gemini-flash"
 
 
 @unique
@@ -40,13 +42,21 @@ class EnumLlmEndpointRef(StrEnum):
     """Endpoint reference names declared by registry/topology contracts."""
 
     ANTHROPIC_DELEGATION_URL = "ANTHROPIC_DELEGATION_URL"
-    BIFROST_VERTEX_GEMINI_ENDPOINT_URL = "BIFROST_VERTEX_GEMINI_ENDPOINT_URL"
     GEMINI_API_URL = "GEMINI_API_URL"
     LLM_CODER_FAST_URL = "LLM_CODER_FAST_URL"
+    LLM_CODER_SLOW_URL = "LLM_CODER_SLOW_URL"
     LLM_CODER_URL = "LLM_CODER_URL"
     LLM_DEEPSEEK_R1_URL = "LLM_DEEPSEEK_R1_URL"
     LLM_DS_V4_FLASH_URL = "LLM_DS_V4_FLASH_URL"
+    LLM_EMBEDDING_URL = "LLM_EMBEDDING_URL"
     LLM_QWEN3_NEXT_URL = "LLM_QWEN3_NEXT_URL"
+    LLM_REASONING_FAST_URL = "LLM_REASONING_FAST_URL"
+    LLM_REASONING_TRANSIENT_URL = "LLM_REASONING_TRANSIENT_URL"
+    LLM_REASONING_URL = "LLM_REASONING_URL"
+    LLM_RERANKER_URL = "LLM_RERANKER_URL"
+    LLM_STT_URL = "LLM_STT_URL"
+    LLM_TTS_URL = "LLM_TTS_URL"
+    LLM_VISION_URL = "LLM_VISION_URL"
     OPENROUTER_URL = "OPENROUTER_URL"
 
 

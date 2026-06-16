@@ -90,15 +90,10 @@ def test_cloud_gemini_flash_not_quota_zero_model() -> None:
 
 
 @pytest.mark.unit
-def test_vertex_gemini_backend_also_uses_quota_available_model() -> None:
-    """OMN-12890 + OMN-12971: both Gemini backends use gemini-2.5-flash-lite."""
+def test_vertex_gemini_backend_is_not_active() -> None:
+    """There is no active Vertex Gemini backend in the bifrost contract."""
     backends = _load_bifrost_backends()
-    assert "cloud-vertex-gemini" in backends, "cloud-vertex-gemini backend missing"
-    vertex_model = backends["cloud-vertex-gemini"]["model_name"]
-    assert vertex_model == _QUOTA_AVAILABLE_MODEL, (
-        f"cloud-vertex-gemini model_name is '{vertex_model}'; "
-        f"expected '{_QUOTA_AVAILABLE_MODEL}'"
-    )
+    assert "cloud-vertex-gemini" not in backends
 
 
 # ---------------------------------------------------------------------------

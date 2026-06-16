@@ -51,34 +51,35 @@ def test_live_repo_config_passes() -> None:
 
 
 @pytest.mark.unit
-def test_vertex_backend_uses_secret_ref_bearer_path() -> None:
-    """The Vertex backend declares only a logical secret ref (bearer-token path).
-
-    The Vertex OAuth bearer token is minted from ADC at the secret-store / seed
-    boundary and published under ``llm.vertex.access_token``. The committed
-    config carries only the logical ref NAME — never the token VALUE, never a
-    credential file path, never a service-account JSON. The outbound call reuses
-    the standard ``Authorization: Bearer <token>`` path shared by every cloud
-    backend, so no inference-handler change is required.
-    """
+def test_vertex_backend_is_not_active_in_runtime_routing() -> None:
+    """The committed active routing config must not advertise Vertex."""
     import yaml
 
     config = _repo_root() / "src" / "omnimarket" / "configs" / "bifrost_delegation.yaml"
     data = yaml.safe_load(config.read_text(encoding="utf-8"))
-    vertex = next(
-        b for b in data["backends"] if b.get("backend_id") == "cloud-vertex-gemini"
-    )
-    assert vertex.get("secret_ref") == "llm.vertex.access_token"
-    # No literal api-key env on the Vertex path (token resolves via the ref).
-    assert "api_key_env" not in vertex
-    # endpoint_url must be null in the repo default (overlay supplies complete URL).
-    assert vertex.get("endpoint_url") is None
-    assert vertex.get("endpoint_url_env") == "BIFROST_VERTEX_GEMINI_ENDPOINT_URL"
+    backend_ids = {b.get("backend_id") for b in data["backends"]}
+    assert "cloud-vertex-gemini" not in backend_ids
+    assert "llm.vertex.access_token" not in config.read_text(encoding="utf-8")
+
+
+@pytest.mark.unit
+def test_anthropic_api_backends_are_not_active_in_runtime_routing() -> None:
+    """The active runtime route graph must not require Anthropic API keys."""
+    import yaml
+
+    config = _repo_root() / "src" / "omnimarket" / "configs" / "bifrost_delegation.yaml"
+    config_text = config.read_text(encoding="utf-8")
+    data = yaml.safe_load(config_text)
+    backend_ids = {b.get("backend_id") for b in data["backends"]}
+    assert "cloud-sonnet" not in backend_ids
+    assert "cloud-haiku" not in backend_ids
+    assert "llm.anthropic.api_key" not in config_text
+    assert "ANTHROPIC_API_KEY" not in config_text
 
 
 @pytest.mark.unit
 def test_gemini_key_path_preserved() -> None:
-    """Vertex wiring is ADDITIVE — the AI Studio key path must still exist."""
+    """The AI Studio Gemini key path must stay active."""
     import yaml
 
     config = _repo_root() / "src" / "omnimarket" / "configs" / "bifrost_delegation.yaml"

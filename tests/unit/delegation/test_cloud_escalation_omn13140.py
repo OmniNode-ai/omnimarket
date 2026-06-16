@@ -439,8 +439,7 @@ class TestNextEligibleTierCodeGeneration:
 @pytest.mark.unit
 class TestCanonicalCloudTargetCapability:
     """GATE 3 (config): the canonical AI Studio Gemini target declares
-    code_generation in both the bifrost capabilities and the routing tier use_for;
-    Vertex stays defined but is intentionally NOT in the code_generation path.
+    code_generation in both the bifrost capabilities and the routing tier use_for.
     """
 
     def _bifrost(self) -> dict[str, object]:
@@ -455,13 +454,9 @@ class TestCanonicalCloudTargetCapability:
         by_id = {b["backend_id"]: b for b in self._bifrost()["backends"]}
         assert "code_generation" in by_id[_CANONICAL_GEMINI_BACKEND_ID]["capabilities"]
 
-    def test_vertex_gemini_bifrost_capability_excludes_code_generation(self) -> None:
+    def test_vertex_gemini_bifrost_backend_is_not_active(self) -> None:
         by_id = {b["backend_id"]: b for b in self._bifrost()["backends"]}
-        # Vertex stays defined (provider-agnostic) but NOT in the escalation path.
-        assert _CANONICAL_VERTEX_BACKEND_ID in by_id
-        assert (
-            "code_generation" not in by_id[_CANONICAL_VERTEX_BACKEND_ID]["capabilities"]
-        )
+        assert _CANONICAL_VERTEX_BACKEND_ID not in by_id
 
     def test_gemini_flash_routing_tier_use_for_includes_code_generation(self) -> None:
         tiers = {t["name"]: t for t in self._routing_tiers()["tiers"]}
@@ -471,15 +466,11 @@ class TestCanonicalCloudTargetCapability:
         )
         assert "code_generation" in gemini["use_for"]
 
-    def test_vertex_routing_tier_use_for_excludes_code_generation(self) -> None:
+    def test_vertex_routing_tier_entry_is_not_active(self) -> None:
         tiers = {t["name"]: t for t in self._routing_tiers()["tiers"]}
         cheap_cloud = tiers["cheap_cloud"]
-        vertex = next(
-            m
-            for m in cheap_cloud["models"]
-            if m["backend_id"] == _CANONICAL_VERTEX_BACKEND_ID
-        )
-        assert "code_generation" not in vertex["use_for"]
+        backend_ids = {m["backend_id"] for m in cheap_cloud["models"]}
+        assert _CANONICAL_VERTEX_BACKEND_ID not in backend_ids
 
     def test_canonical_gemini_endpoint_is_ai_studio(self) -> None:
         by_id = {b["backend_id"]: b for b in self._bifrost()["backends"]}

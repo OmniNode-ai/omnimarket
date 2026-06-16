@@ -104,19 +104,6 @@ tiers:
           - summarization
           - simple_tasks
           - document
-      # OMN-12971: Vertex-served Gemini (ADC / $500-credit path), ADDITIVE next to
-      # gemini-flash (AI Studio key path). Both routes stay selectable; the Vertex
-      # entry uses backend_id cloud-vertex-gemini, whose secret_ref is
-      # llm.vertex.access_token — a short-lived OAuth bearer token minted from ADC,
-      # resolved fail-closed at the effect boundary and posted as Authorization:
-      # Bearer <token> via the standard api-key path (no token VALUE committed).
-      - id: vertex-gemini-flash
-        backend_id: cloud-vertex-gemini
-        max_context_tokens: 1000000
-        use_for:
-          - summarization
-          - simple_tasks
-          - document
     eval_before_accept: true
     eval_model: qwen3.6-35b
     max_retries: 1
