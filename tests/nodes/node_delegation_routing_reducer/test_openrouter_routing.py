@@ -284,6 +284,20 @@ _ROUTING_TIERS_WITH_OPENROUTER_AND_GLM = textwrap.dedent("""\
         eval_before_accept: true
         eval_model: deepseek-r1-14b
         max_retries: 2
+      - name: claude
+        models:
+          - id: claude-sonnet-4-6
+            backend_id: cloud-sonnet
+            max_context_tokens: 200000
+            use_for:
+              - escalation
+              - complex_reasoning
+              - code_generation
+              - reasoning
+              - test
+              - research
+        eval_before_accept: false
+        max_retries: 0
 """)
 
 
