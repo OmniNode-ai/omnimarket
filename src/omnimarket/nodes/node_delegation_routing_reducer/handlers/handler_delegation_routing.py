@@ -4,8 +4,8 @@
 # Copyright (c) 2026 OmniNode Team
 """Handler for delegation routing decisions.
 
-Iterates routing tiers declared in routing_tiers.yaml (local → cheap_cloud → claude)
-and returns the first tier that has a configured endpoint for the given task type.
+Iterates routing tiers declared in routing_tiers.yaml and returns the first tier
+that has a configured transport for the given task type.
 All tier order, model assignments, and retry counts come from the YAML config —
 no constants are hardcoded here.
 
@@ -335,6 +335,8 @@ def _load_bifrost_endpoints() -> dict[str, BifrostBackendRef]:
     for backend in config.backends:
         url = (backend.endpoint_url or "").strip()
         model_name = (backend.model_name or "").strip()
+        if backend.tier == "cli_agents" and backend.backend_id and model_name:
+            url = f"subprocess://{model_name}"
         if not (backend.backend_id and url and model_name):
             continue
 
@@ -575,7 +577,7 @@ def _tier_can_route_task(
 
     A tier is routable when it is permitted by the task-class contract AND
     declares at least one model that serves ``task_type`` with a resolvable
-    backend endpoint. This mirrors the eligibility logic in ``delta`` so that
+    backend transport. This mirrors the eligibility logic in ``delta`` so that
     escalation cannot advance to a tier the reducer would then crash on
     (OMN-12939: deployed frontier_api endpoints were empty, so escalating to the
     claude tier raised ProtocolConfigurationError and stranded the FSM).
@@ -609,7 +611,7 @@ def next_eligible_tier(
     current tier is the last eligible tier or is unrecognized.
 
     When ``task_type`` is provided, tiers that cannot actually route the task
-    (no model serving ``task_type`` with a resolvable backend endpoint, or
+    (no model serving ``task_type`` with a resolvable backend transport, or
     disallowed by the task-class contract) are skipped — so the orchestrator
     never escalates to a tier whose endpoint the routing reducer cannot resolve
     (OMN-12939). When ``task_type`` is None the legacy pure declaration-order
@@ -700,9 +702,9 @@ def delta(
 ) -> ModelRoutingDecision:
     """Compute routing decision for a delegation request.
 
-    Iterates tiers in declaration order (local -> cheap_cloud -> claude), with
+    Iterates tiers in declaration order, with
     optional reordering from task-class contract escalation_policy.tier_order.
-    Returns the first tier that has a configured endpoint, handles the requested
+    Returns the first tier that has a configured transport, handles the requested
     task type, and satisfies task-class contract constraints (cloud routing policy
     and pricing ceiling).
 
@@ -710,7 +712,8 @@ def delta(
     ``min_tier_name`` in the tier list are skipped. This preserves the reducer
     as a pure function -- it does not need to know about escalation state.
 
-    Endpoint URLs are resolved from the bifrost contract overlay, not endpoint env vars.
+    HTTP endpoint URLs are resolved from the bifrost contract overlay, not
+    endpoint env vars. CLI-agent backends use a synthetic subprocess:// marker.
 
     Args:
         request: The delegation request to route.
