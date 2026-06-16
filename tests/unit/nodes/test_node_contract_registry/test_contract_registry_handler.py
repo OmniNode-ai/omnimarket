@@ -17,6 +17,7 @@ from omnibase_core.models.contracts.model_handler_contract import (
 
 from omnimarket.nodes.node_contract_registry.handlers.handler_contract_registry import (
     ContractRegistryHandler,
+    EventPublisher,
 )
 from omnimarket.nodes.node_contract_registry.models.enums import (
     EnumMaterializationRejection,
@@ -78,7 +79,7 @@ def _make_handler(**kwargs: Any) -> ContractRegistryHandler:
 
 @pytest.mark.unit
 def test_valid_contract_materialized() -> None:
-    publisher = MagicMock()
+    publisher = MagicMock(spec=EventPublisher)
     handler = _make_handler(publisher=publisher)
     request = _make_request(
         node_version={"major": 0, "minor": 1, "patch": 0},
@@ -114,7 +115,7 @@ def test_valid_contract_materialized() -> None:
 
 @pytest.mark.unit
 def test_hash_mismatch_rejected() -> None:
-    publisher = MagicMock()
+    publisher = MagicMock(spec=EventPublisher)
     handler = _make_handler(publisher=publisher)
     request = _make_request(contract_hash="deadbeef" * 8)
 
@@ -130,7 +131,7 @@ def test_hash_mismatch_rejected() -> None:
 
 @pytest.mark.unit
 def test_canonical_command_fields_allowed_and_forwarded() -> None:
-    publisher = MagicMock()
+    publisher = MagicMock(spec=EventPublisher)
     handler = _make_handler(publisher=publisher)
     registration_request_id = uuid.uuid4()
     request = _make_request(
@@ -171,7 +172,7 @@ handler_routing:
         name: BadHandler
         module: os.system
 """
-    publisher = MagicMock()
+    publisher = MagicMock(spec=EventPublisher)
     handler = _make_handler(publisher=publisher)
     request = _make_request(
         node_name="node_malicious",
@@ -199,7 +200,7 @@ handler_routing:
         name: SomeHandler
         module: omnimarket.nodes.node_no_profile.handlers.handler
 """
-    publisher = MagicMock()
+    publisher = MagicMock(spec=EventPublisher)
     handler = _make_handler(publisher=publisher)
     request = _make_request(
         node_name="node_no_profile",
@@ -264,7 +265,7 @@ handler:
   module: omnimarket.nodes.node_no_input.handlers.handler_no_input
   class: HandlerNoInput
 """
-    publisher = MagicMock()
+    publisher = MagicMock(spec=EventPublisher)
     handler = _make_handler(publisher=publisher)
     request = _make_request(
         node_name="node_no_input",
@@ -283,7 +284,7 @@ handler:
 @pytest.mark.unit
 def test_malformed_yaml_rejected() -> None:
     bad_yaml = "key: [unclosed bracket\n  - item"
-    publisher = MagicMock()
+    publisher = MagicMock(spec=EventPublisher)
     handler = _make_handler(publisher=publisher)
     request = _make_request(
         node_name="node_broken",

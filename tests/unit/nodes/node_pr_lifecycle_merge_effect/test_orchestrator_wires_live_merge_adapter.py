@@ -6,9 +6,13 @@ from __future__ import annotations
 
 from pathlib import Path
 from typing import Any
+from unittest.mock import MagicMock
 from uuid import uuid4
 
 import pytest
+from omnibase_core.protocols.event_bus.protocol_event_bus_publisher import (
+    ProtocolEventBusPublisher,
+)
 
 from omnimarket.nodes.node_pr_lifecycle_merge_effect.handlers.adapter_github_merge_queue import (
     GitHubMergeQueueAdapter,
@@ -30,10 +34,11 @@ class TestOrchestratorWiresLiveMergeAdapter:
     def test_default_merge_handler_has_live_adapter_not_noop(
         self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
     ) -> None:
-        from unittest.mock import MagicMock
 
         monkeypatch.setenv("ONEX_STATE_DIR", str(tmp_path / "state"))
-        orch = HandlerPrLifecycleOrchestrator(event_bus=MagicMock())
+        orch = HandlerPrLifecycleOrchestrator(
+            event_bus=MagicMock(spec=ProtocolEventBusPublisher)
+        )
         orch._ensure_sub_handlers()
 
         merge = orch._merge
@@ -56,10 +61,10 @@ class TestOrchestratorWiresLiveMergeAdapter:
 
                 return _Result()
 
-        from unittest.mock import MagicMock
-
         recorder = _RecordingMerge()
-        orch = HandlerPrLifecycleOrchestrator(event_bus=MagicMock(), merge=recorder)
+        orch = HandlerPrLifecycleOrchestrator(
+            event_bus=MagicMock(spec=ProtocolEventBusPublisher), merge=recorder
+        )
 
         result = await orch._call_merge_fanout(
             correlation_id=uuid4(),

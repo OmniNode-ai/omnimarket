@@ -22,6 +22,9 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 import yaml
+from omnibase_core.protocols.event_bus.protocol_event_bus_publisher import (
+    ProtocolEventBusPublisher,
+)
 
 from omnimarket.nodes.node_build_loop_orchestrator.handlers.adapter_llm_dispatch import (
     _get_state_dir,
@@ -89,13 +92,13 @@ class TestSingleTopic:
 class TestHandlerBuildLoopOrchestratorConstruction:
     def test_construction_with_event_bus_succeeds(self) -> None:
         """Construction with required event_bus does not raise."""
-        mock_bus = MagicMock()
+        mock_bus = MagicMock(spec=ProtocolEventBusPublisher)
         handler = HandlerBuildLoopOrchestrator(event_bus=mock_bus)
         assert handler is not None
 
     def test_explicit_sub_handler_injection(self) -> None:
         """Explicitly passed sub-handlers are stored on the instance."""
-        mock_bus = MagicMock()
+        mock_bus = MagicMock(spec=ProtocolEventBusPublisher)
         mock_closeout = MagicMock()
         mock_verify = MagicMock()
         handler = HandlerBuildLoopOrchestrator(
@@ -108,14 +111,14 @@ class TestHandlerBuildLoopOrchestratorConstruction:
 
     def test_sub_handlers_default_to_none(self) -> None:
         """Optional sub-handlers default to None at construction time."""
-        mock_bus = MagicMock()
+        mock_bus = MagicMock(spec=ProtocolEventBusPublisher)
         handler = HandlerBuildLoopOrchestrator(event_bus=mock_bus)
         assert handler._closeout is None
         assert handler._verify is None
 
     def test_event_bus_stored_on_instance(self) -> None:
         """event_bus is stored and accessible on the handler."""
-        mock_bus = MagicMock()
+        mock_bus = MagicMock(spec=ProtocolEventBusPublisher)
         handler = HandlerBuildLoopOrchestrator(event_bus=mock_bus)
         assert handler._event_bus is mock_bus
 

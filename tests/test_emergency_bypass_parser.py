@@ -16,6 +16,7 @@ import pytest
 from omnimarket.nodes.node_pr_review_bot.handlers.handler_emergency_bypass_parser import (
     BypassRejectionReason,
     HandlerEmergencyBypassParser,
+    ProtocolKafkaPublisher,
 )
 
 TOPIC_BYPASS_ROLLED_BACK = "onex.evt.omnimarket.review-bot-bypass-rolled-back.v1"
@@ -239,7 +240,7 @@ class TestBypassOneTimeConsumption:
 @pytest.mark.unit
 class TestBypassKafkaEvent:
     def test_kafka_event_emitted_on_granted_bypass(self) -> None:
-        kafka = MagicMock()
+        kafka = MagicMock(spec=ProtocolKafkaPublisher)
         valkey = MagicMock()
         valkey.set.return_value = True
         db_conn = MagicMock()
@@ -266,7 +267,7 @@ class TestBypassKafkaEvent:
         assert payload["sha"] == "jjj000"
 
     def test_kafka_event_not_emitted_on_rejected_bypass(self) -> None:
-        kafka = MagicMock()
+        kafka = MagicMock(spec=ProtocolKafkaPublisher)
         handler = _make_handler(kafka_publisher=kafka)
         handler.parse(
             comment_body="EMERGENCY-BYPASS: unauthorized attempt",
@@ -307,7 +308,7 @@ class TestBypassDbAudit:
         assert params["reason"] == "critical deploy needed"
 
     def test_db_failure_emits_compensating_kafka_event(self) -> None:
-        kafka = MagicMock()
+        kafka = MagicMock(spec=ProtocolKafkaPublisher)
         db_conn = MagicMock()
         db_conn.execute.side_effect = Exception("DB write failed")
         valkey = MagicMock()
@@ -431,7 +432,7 @@ class TestBypassTopicNamespace:
 
     def test_kafka_event_published_to_namespaced_topic(self) -> None:
         """Handler must publish to the omnimarket-namespaced topic, not review_bot.*."""
-        kafka = MagicMock()
+        kafka = MagicMock(spec=ProtocolKafkaPublisher)
         valkey = MagicMock()
         valkey.set.return_value = True
         db_conn = MagicMock()
@@ -513,7 +514,7 @@ class TestBypassTOCTOUAtomicClaim:
         valkey = MagicMock()
         valkey.set.side_effect = atomic_set
         db_conn = MagicMock()
-        kafka = MagicMock()
+        kafka = MagicMock(spec=ProtocolKafkaPublisher)
 
         handler = _make_handler(
             kafka_publisher=kafka, valkey_client=valkey, db_conn=db_conn
@@ -544,7 +545,7 @@ class TestBypassTOCTOUAtomicClaim:
         valkey.set.return_value = True
         db_conn = MagicMock()
         db_conn.execute.side_effect = Exception("DB down")
-        kafka = MagicMock()
+        kafka = MagicMock(spec=ProtocolKafkaPublisher)
 
         handler = _make_handler(
             kafka_publisher=kafka, valkey_client=valkey, db_conn=db_conn
