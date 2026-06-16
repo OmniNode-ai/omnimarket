@@ -21,6 +21,12 @@ the repo-level ownership boundary.
 - [Node testing](node-testing.md) - skill-to-node dispatch parity and
   golden-chain test expectations.
 
+## Patterns
+
+- [Skill-backing node handler](patterns/skill_backing_node_pattern.md) - canonical
+  shape for skill-backing node handlers: dispatch record persistence, required
+  input/output model fields, and why handlers must not call Agent() directly.
+
 ## Migrations
 
 - [Build-loop migration boundary](migrations/build-loop.md) - what moved into
