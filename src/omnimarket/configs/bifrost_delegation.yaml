@@ -255,6 +255,21 @@ backends:
       HTTP-Referer: "https://omninode.ai"
       X-Title: "OmniNode ONEX Experiment"
   # CLI agent backends — dispatched via subprocess, not HTTP.
+  - backend_id: cli-codex
+    endpoint_url: ""
+    model_name: codex-cli
+    tier: cli_agents
+    timeout_ms: 300000
+    # OMN-13158: Codex headless CLI uses local OAuth/subscription auth, not an API key.
+    max_tokens: 65536
+    capabilities:
+      - agent_delegation
+      - code_generation
+      - complex_reasoning
+      - reasoning
+      - planning
+      - test
+      - research
   - backend_id: cli-claude
     endpoint_url: ""
     model_name: claude-cli

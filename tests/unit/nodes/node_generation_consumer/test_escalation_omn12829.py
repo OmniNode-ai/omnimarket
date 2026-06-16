@@ -327,7 +327,7 @@ async def test_escalation_tier_is_not_the_starting_tier(tmp_path: Path) -> None:
     """The authority escalates to a DIFFERENT tier than the consumer's starting tier.
 
     The generation consumer starts on tier 'local' (endpoint_ref=local-coder).
-    code_generation escalation_policy.tier_order is [cheap_cloud, local, claude];
+    code_generation escalation_policy.tier_order is [cheap_cloud, local, cli_agents];
     the authority must select the next tier in that ladder, not re-pick 'local'.
     """
     published: list[tuple[str, bytes]] = []
