@@ -3,7 +3,7 @@
 The canonical entry-point list is
 `[project.entry-points."onex.nodes"]` in `pyproject.toml`.
 
-The current repository contains 134 node package directories, exposes 130
+The current repository contains 302 node package directories, exposes 302
 runtime entry points, and every direct `src/omnimarket/nodes/node_*` directory
 has a `metadata.yaml`.
 
@@ -32,25 +32,17 @@ Verify every registered entry point has the expected package shape:
 uv run python scripts/ci/run_runtime_sweep.py
 ```
 
-Current package directories that are intentionally present but not registered as
-runtime entry points:
-
-- `node_full_triage_orchestrator`
-- `node_overseer_observer`
-- `node_routing_policy_engine`
-- `node_state_persist_effect`
-
 ## Node Families
 
 | Family | Representative nodes |
 | --- | --- |
 | Build and pipeline | `node_build_loop_orchestrator`, `node_build_dispatch_effect`, `node_loop_state_reducer`, `node_ticket_pipeline`, `node_pipeline_fill`, `node_session_orchestrator` |
 | PR and review lifecycle | `node_pr_lifecycle_orchestrator`, `node_pr_lifecycle_triage_compute`, `node_pr_lifecycle_merge_effect`, `node_pr_polish`, `node_pr_review_bot`, `node_rebase_effect`, `node_ci_fix_effect` |
-| Validation and diagnostics | `node_platform_readiness`, `node_runtime_sweep`, `node_golden_chain_sweep`, `node_data_flow_sweep`, `node_doc_freshness_sweep`, `node_quality_scoring_compute`, `node_environment_health_scanner` |
+| Validation and diagnostics | `node_platform_readiness`, `node_runtime_sweep`, `node_golden_chain_sweep`, `node_data_flow_sweep`, `node_doc_freshness_sweep`, `node_quality_scoring_compute`, `node_environment_health_scanner`, `node_version_skew_detector`, `node_volume_config_drift_sweep` |
 | Planning and tickets | `node_design_to_plan`, `node_plan_to_tickets`, `node_create_ticket`, `node_ticket_query`, `node_ticket_work`, `node_rsd_fill_compute` |
 | Memory and intelligence | `node_memory_lifecycle_orchestrator`, `node_memory_storage_effect`, `node_intelligence_orchestrator`, `node_intelligence_reducer`, `node_semantic_analyzer_compute`, `node_persona_lifecycle_orchestrator` |
-| Projection and data | `node_projection_baselines`, `node_projection_registration`, `node_projection_session_outcome`, `node_projection_query`, `node_log_projection` |
-| Operations and integration | `node_emit_daemon`, `node_authorize`, `node_release`, `node_redeploy`, `node_model_router`, `node_onboarding`, `node_monitor_alert_responder` |
+| Projection and data | `node_projection_baselines`, `node_projection_registration`, `node_projection_session_outcome`, `node_projection_query`, `node_log_projection`, `node_projection_routing_decision`, `node_projection_pattern_learning` |
+| Operations and integration | `node_emit_daemon`, `node_authorize`, `node_release`, `node_redeploy`, `node_model_router`, `node_onboarding`, `node_monitor_alert_responder`, `node_delegate_skill_orchestrator`, `node_integration_sweep_orchestrator` |
 
 ## Current Canary Nodes
 

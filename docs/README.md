@@ -11,6 +11,14 @@ the repo-level ownership boundary.
   - what belongs in wrapper repos versus OmniMarket.
 - [Dependency boundary](architecture/dependency-boundary.md) - root dependency
   scope, node metadata dependencies, and current isolation limits.
+- [Delegation dispatch](architecture/delegation-dispatch.md) - canonical
+  delegation dispatch path, endpoint_url verbatim rule, and escalation gate
+  sequence (OMN-13160 / OMN-13159 / OMN-13140).
+- [Delegation routing contract](architecture/delegation-routing-contract.md) -
+  per-backend max_tokens, task-class tier escalation order, and codegen
+  fallback (OMN-13161 / OMN-13158).
+- [Event registry](architecture/event-registry.md) - canonical event registry,
+  drift gate, and contributor compliance path (OMN-13146).
 
 ## Reference
 
@@ -20,6 +28,12 @@ the repo-level ownership boundary.
   fields and package capability conventions.
 - [Node testing](node-testing.md) - skill-to-node dispatch parity and
   golden-chain test expectations.
+
+## Patterns
+
+- [Skill-backing node handler](patterns/skill_backing_node_pattern.md) - canonical
+  shape for skill-backing node handlers: dispatch record persistence, required
+  input/output model fields, and why handlers must not call Agent() directly.
 
 ## Migrations
 
