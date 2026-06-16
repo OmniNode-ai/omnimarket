@@ -42,7 +42,9 @@ def test_overnight_dispatch_real_contract_dry_run() -> None:
         phase.pop("dispatch_items", None)
 
     contract = ModelOvernightContract.model_validate(data)
-    handler = HandlerOvernight(event_bus=MagicMock())
+    handler = HandlerOvernight(
+        event_bus=MagicMock()  # transport-mock-ok: EventPublisher is a Callable type alias, not a Protocol class — spec= cannot be applied
+    )
     result = handler.handle(
         ModelOvernightCommand(
             correlation_id="smoke-2026-04-11",

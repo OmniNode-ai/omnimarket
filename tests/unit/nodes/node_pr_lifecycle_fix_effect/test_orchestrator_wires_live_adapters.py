@@ -12,8 +12,12 @@ to no-op adapters fails loudly.
 from __future__ import annotations
 
 from pathlib import Path
+from unittest.mock import MagicMock
 
 import pytest
+from omnibase_core.protocols.event_bus.protocol_event_bus_publisher import (
+    ProtocolEventBusPublisher,
+)
 
 from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.adapter_github_cli import (
     GitHubCliAdapter,
@@ -36,10 +40,11 @@ class TestOrchestratorWiresLiveAdapters:
     def test_default_fix_handler_has_live_adapters_not_noop(
         self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
     ) -> None:
-        from unittest.mock import MagicMock
 
         monkeypatch.setenv("ONEX_STATE_DIR", str(tmp_path / "state"))
-        orch = HandlerPrLifecycleOrchestrator(event_bus=MagicMock())
+        orch = HandlerPrLifecycleOrchestrator(
+            event_bus=MagicMock(spec=ProtocolEventBusPublisher)
+        )
         orch._ensure_sub_handlers()
 
         fix = orch._fix
