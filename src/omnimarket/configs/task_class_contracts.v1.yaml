@@ -20,7 +20,7 @@
 #   order. Tiers NOT listed are excluded for this task class (they are not
 #   appended after the declared order) — the listed ceiling tier is the final
 #   tier tried. When tier_order is absent, the routing_tiers.yaml declaration
-#   order (local → cheap_cloud → claude) is used instead.
+#   order is used instead; that file is the source of truth for fallback order.
 #
 # default_task_model_ref: model ID used when no per-task override is declared.
 #   Maps to the model `id` field in routing_tiers.yaml (e.g. "qwen3-coder-30b").

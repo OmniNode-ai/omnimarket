@@ -529,7 +529,14 @@ def _tier_order_from_contract(
     seen: set[str] = set()
 
     for name in tier_order:
-        if name in tier_by_name and name not in seen:
+        if not isinstance(name, str) or name not in tier_by_name:
+            msg = "task-class escalation_policy.tier_order references unknown routing tier"
+            raise ProtocolConfigurationError(
+                msg,
+                tier_name=name,
+                known_tiers=tuple(tier_by_name),
+            )
+        if name not in seen:
             ordered.append(tier_by_name[name])
             seen.add(name)
 

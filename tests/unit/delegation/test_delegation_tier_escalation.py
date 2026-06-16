@@ -20,6 +20,7 @@ from datetime import UTC, datetime
 from uuid import NAMESPACE_DNS, UUID, uuid4, uuid5
 
 import pytest
+from omnibase_infra.errors import ProtocolConfigurationError
 
 from omnimarket.models.delegation.llm_cost_routing.model_llm_delegation_escalation_triggered_event import (
     ModelLlmDelegationEscalationTriggeredEvent,
@@ -49,6 +50,8 @@ from omnimarket.nodes.node_delegation_quality_gate_reducer.models.model_quality_
     ModelQualityGateResult,
 )
 from omnimarket.nodes.node_delegation_routing_reducer.handlers.handler_delegation_routing import (
+    _get_config,
+    _tier_order_from_contract,
     next_eligible_tier,
 )
 from omnimarket.nodes.node_delegation_routing_reducer.models.model_routing_decision import (
@@ -538,6 +541,17 @@ class TestNextEligibleTierEndpointResolvability:
             task_type="code_generation",
         )
         assert result == "local"
+
+    def test_tier_order_unknown_tier_fails_configuration(self) -> None:
+        config = _get_config()
+        with pytest.raises(
+            ProtocolConfigurationError,
+            match="tier_order references unknown routing tier",
+        ):
+            _tier_order_from_contract(
+                config,
+                {"escalation_policy": {"tier_order": ["local", "not_a_tier"]}},
+            )
 
 
 @pytest.mark.unit
