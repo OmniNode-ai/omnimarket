@@ -13,7 +13,7 @@
 #   blocked  — cloud routing is never permitted for this task class
 #
 # pricing_ceiling_per_1k_tokens: maximum acceptable cost per 1000 tokens (USD).
-#   local tier ≈ $0.000, cheap_cloud ≈ $0.002, cli_agents use OAuth/subscription CLIs.
+#   local tier ≈ $0.000, cheap_cloud ≈ $0.002, claude ≈ $0.015
 #
 # escalation_policy.tier_order: the COMPLETE, CLOSED, ORDERED set of tiers
 #   eligible for this task class. Only the tiers named here are tried, in this
@@ -64,13 +64,11 @@ task_classes:
         - no_obvious_regressions
     escalation_policy:
       max_escalations: 2
-      # OMN-13158: OpenRouter (cheap_cloud) is primary; local is fallback when
-      # cloud keys are absent; headless Codex in cli_agents is the final
-      # OAuth/subscription-backed escalation tier.
+      # OMN-7980: OpenRouter (cheap_cloud) is primary; local is fallback when key absent.
       tier_order:
         - cheap_cloud
         - local
-        - cli_agents
+        - claude
   documentation:
     required_capabilities:
       - natural_language_generation
@@ -138,7 +136,7 @@ task_classes:
       tier_order:
         - local
         - cheap_cloud
-        - cli_agents
+        - claude
   test:
     required_capabilities:
       - code_completion
@@ -159,7 +157,7 @@ task_classes:
       tier_order:
         - local
         - cheap_cloud
-        - cli_agents
+        - claude
   reasoning:
     required_capabilities:
       - reasoning
@@ -194,7 +192,7 @@ task_classes:
       max_escalations: 2
       tier_order:
         - local
-        - cli_agents
+        - claude
   planning:
     required_capabilities:
       - reasoning
@@ -269,6 +267,7 @@ task_classes:
       max_escalations: 1
       tier_order:
         - cli_agents
+        - claude
   escalation:
     required_capabilities:
       - reasoning
@@ -285,4 +284,4 @@ task_classes:
     escalation_policy:
       max_escalations: 1
       tier_order:
-        - cli_agents
+        - claude

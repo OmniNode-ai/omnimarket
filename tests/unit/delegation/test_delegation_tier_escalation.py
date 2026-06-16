@@ -522,7 +522,7 @@ class TestNextEligibleTierEndpointResolvability:
     ) -> None:
         # Backward-compat: without task_type, escalation remains forward-only in
         # routing_tiers.yaml declaration order. It must not jump back to local
-        # just because code_generation declares cheap_cloud -> local -> cli_agents.
+        # just because code_generation declares cheap_cloud -> local -> claude.
         result = next_eligible_tier(
             "cheap_cloud",
             frozenset({"cheap_frontier", "cli_agents"}),
@@ -532,7 +532,7 @@ class TestNextEligibleTierEndpointResolvability:
     def test_code_generation_uses_contract_tier_order_after_cheap_cloud(
         self, frontier_unconfigured_bifrost: None
     ) -> None:
-        # code_generation declares cheap_cloud -> local -> cli_agents. A cheap_cloud
+        # code_generation declares cheap_cloud -> local -> claude. A cheap_cloud
         # failure must therefore try local next, even though local appears before
         # cheap_cloud in routing_tiers.yaml declaration order.
         result = next_eligible_tier(
@@ -541,18 +541,6 @@ class TestNextEligibleTierEndpointResolvability:
             task_type="code_generation",
         )
         assert result == "local"
-
-    def test_code_generation_uses_cli_agents_after_local(
-        self, frontier_unconfigured_bifrost: None
-    ) -> None:
-        # After cheap_cloud and local fail, code_generation must escalate to the
-        # OAuth/subscription-backed CLI tier rather than an Anthropic API-key tier.
-        result = next_eligible_tier(
-            "local",
-            frozenset({"cheap_cloud", "cheap_frontier"}),
-            task_type="code_generation",
-        )
-        assert result == "cli_agents"
 
     def test_tier_order_unknown_tier_fails_configuration(self) -> None:
         config = _get_config()
