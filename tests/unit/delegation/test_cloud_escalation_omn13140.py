@@ -162,6 +162,7 @@ _TASK_CLASS_CONTRACT_GEMINI = textwrap.dedent(
 
 _CANONICAL_GEMINI_BACKEND_ID = "cloud-gemini-flash"
 _CANONICAL_VERTEX_BACKEND_ID = "cloud-vertex-gemini"
+_TERMINAL_CLI_BACKEND_ID = "cli-codex"
 
 
 @pytest.fixture
@@ -487,6 +488,19 @@ class TestCanonicalCloudTargetCapability:
             "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
         )
         assert gemini["secret_ref"] == "llm.gemini.api_key"
+
+    def test_terminal_claude_tier_routes_to_headless_codex_cli(self) -> None:
+        tiers = {t["name"]: t for t in self._routing_tiers()["tiers"]}
+        terminal = tiers["claude"]
+        assert terminal["cost_per_1k_tokens"] == 0.0
+        assert terminal["models"][0]["backend_id"] == _TERMINAL_CLI_BACKEND_ID
+        assert terminal["models"][0]["id"] == "codex-cli"
+
+        by_id = {b["backend_id"]: b for b in self._bifrost()["backends"]}
+        codex = by_id[_TERMINAL_CLI_BACKEND_ID]
+        assert codex["endpoint_url"] == "cli://codex"
+        assert codex["model_name"] == "codex-cli"
+        assert "secret_ref" not in codex
 
 
 # ---------------------------------------------------------------------------

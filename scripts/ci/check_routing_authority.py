@@ -56,13 +56,13 @@ PROVIDER-CLASS ENDPOINT SHAPE audit (OMN-12883)
         ``endpoint_url`` MUST be a non-null non-empty complete URL (full chat
         path verbatim — no in-code append). An empty string is a
         misconfiguration that fails closed.
-    Special tiers:
+    Special backends:
       * ``local``: always overlay-supplied (endpoint_url_env required,
         endpoint_url must be null).
-      * ``cli_agents``: CLI-invoked agents, not HTTP backends; endpoint_url
-        may be empty (no outbound HTTP call).
+      * CLI backends: CLI-invoked agents, not HTTP backends; endpoint_url may
+        be a ``cli://`` URI or empty for legacy excluded agent tiers.
     The rule is: overlay-supplied (endpoint_url_env set) → endpoint_url null;
-    static-URL (no endpoint_url_env) + non-cli_agents → endpoint_url complete.
+    static-URL (no endpoint_url_env) + non-CLI backend → endpoint_url complete.
 
 The gate FAILS (exit 1) when:
     * a demo-path routing field cannot be resolved from authority, OR
@@ -214,9 +214,10 @@ _CROSS_REPO_DEBT: tuple[tuple[str, str, str, str], ...] = (
 
 _BIFROST_CONFIG_REL = "src/omnimarket/configs/bifrost_delegation.yaml"
 
-# Tiers whose endpoints are CLI-invoked agents (no outbound HTTP calls);
-# endpoint_url may be absent/empty for these.
+# Legacy excluded agent tier whose endpoints are CLI-invoked agents; empty
+# endpoint_url is still allowed for these until every backend declares cli://.
 _CLI_AGENT_TIERS: frozenset[str] = frozenset({"cli_agents"})
+_CLI_URL_PREFIX = "cli://"
 
 
 def _find_repo_root(start: Path) -> Path:
@@ -744,8 +745,15 @@ def build_provider_endpoint_shape_audit(repo_root: Path) -> dict[str, Any]:
         endpoint_url_env = backend.get("endpoint_url_env")  # may be None or str
 
         has_endpoint_url_env = bool(endpoint_url_env)
-        has_endpoint_url = endpoint_url is not None and str(endpoint_url).strip() != ""
-        is_cli_tier = tier in _CLI_AGENT_TIERS
+        endpoint_url_text = (
+            str(endpoint_url).strip() if endpoint_url is not None else ""
+        )
+        has_endpoint_url = bool(endpoint_url_text)
+        is_cli_backend = (
+            str(backend_id).startswith("cli-")
+            or endpoint_url_text.startswith(_CLI_URL_PREFIX)
+            or tier in _CLI_AGENT_TIERS
+        )
 
         backend_violations: list[str] = []
 
@@ -759,8 +767,10 @@ def build_provider_endpoint_shape_audit(repo_root: Path) -> dict[str, Any]:
                 )
         else:
             # Static-URL backend.
-            if is_cli_tier:
-                # CLI agents: no outbound HTTP call; endpoint_url may be empty.
+            if is_cli_backend:
+                # CLI agents: no outbound HTTP call; endpoint_url may be
+                # empty for legacy cli_agents or a cli:// provider URI for
+                # routable OAuth-backed terminal delegation.
                 pass
             else:
                 # All other tiers: endpoint_url MUST be a non-null, non-empty
