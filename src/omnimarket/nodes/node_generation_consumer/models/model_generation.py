@@ -60,6 +60,13 @@ class ModelGenerationAttempt(BaseModel):
     token_usage_output: int = 0
     latency_inference_ms: int = 0
     contract_passed: bool = False
+    # OMN-13166: behavioral pass, independent of contract/shape validity. True
+    # only when a semantic fixture was derivable for the task AND the generated
+    # handler produced the correct output for every fixture. semantic_checked
+    # records whether a fixture was applicable at all — checked=False means the
+    # behavioral check was inconclusive, which is NOT a pass.
+    semantic_checked: bool = False
+    semantic_passed: bool = False
     validation_errors: list[str] = Field(default_factory=list)
     usage_source: EnumUsageSource = Field(
         default=EnumUsageSource.UNKNOWN,
@@ -156,6 +163,28 @@ class ModelGenerationBenchmark(BaseModel):
     total_latency_e2e_ms: int = Field(default=0, description="End-to-end latency in ms")
     contract_passed: bool = Field(
         default=False, description="Whether final output passed validation"
+    )
+    # OMN-13166: behavioral verdict, separate from contract/shape validity.
+    # contract_passed=true means the artifact is shaped like an ONEX node;
+    # semantic_passed=true means the generated handler actually performs the
+    # requested transformation (verified by executing it against synthesized
+    # fixtures). A handler that is shaped correctly but computes the wrong answer
+    # is contract_passed=true, semantic_passed=false.
+    semantic_checked: bool = Field(
+        default=False,
+        description=(
+            "Whether a behavioral fixture was derivable for the task. False means "
+            "the semantic check was inconclusive (no known invariant), which is "
+            "NOT a behavioral pass."
+        ),
+    )
+    semantic_passed: bool = Field(
+        default=False,
+        description=(
+            "True only when semantic_checked is true AND the generated handler "
+            "produced the correct output for every synthesized fixture. Never "
+            "true for an inconclusive (uncheckable) task."
+        ),
     )
     cost_inference_usd: float = Field(
         default=0.0, description="Estimated inference cost in USD"
