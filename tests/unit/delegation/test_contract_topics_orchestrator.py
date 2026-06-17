@@ -60,14 +60,52 @@ def test_publish_topic_constants_match_contract() -> None:
     publish_topics = _contract_event_bus()["publish_topics"]
     assert isinstance(publish_topics, list)
 
-    for resolved in (
-        contract_topics.TOPIC_ID_INFERENCE_REQUEST,
-        contract_topics.TOPIC_ID_QUALITY_GATE_REQUEST,
-        contract_topics.TOPIC_ID_ROUTING_REQUEST,
-        contract_topics.TOPIC_ID_DELEGATION_COMPLETED,
-        contract_topics.TOPIC_ID_DELEGATION_FAILED,
-        contract_topics.TOPIC_ID_TASK_DELEGATED,
-    ):
+    # Locked expected values (migration-lock). These equal the prior
+    # omnibase_infra.event_bus.topic_constants literals; if contract.yaml and the
+    # resolver drift together, membership-only checks would still pass — the
+    # fixed values catch a cross-service topic-contract change. (CodeRabbit 1241.)
+    expected = {
+        "inference": contract_topics.TOPIC_ID_INFERENCE_REQUEST,
+        "quality_gate": contract_topics.TOPIC_ID_QUALITY_GATE_REQUEST,
+        "routing": contract_topics.TOPIC_ID_ROUTING_REQUEST,
+        "completed": contract_topics.TOPIC_ID_DELEGATION_COMPLETED,
+        "failed": contract_topics.TOPIC_ID_DELEGATION_FAILED,
+        "task_delegated": contract_topics.TOPIC_ID_TASK_DELEGATED,
+    }
+    assert (
+        expected["inference"]
+        == (
+            "onex.cmd.omnibase-infra.delegation-inference-request.v1"  # onex-topic-allow: equality proof
+        )
+    )
+    assert (
+        expected["quality_gate"]
+        == (
+            "onex.cmd.omnibase-infra.delegation-quality-gate-request.v1"  # onex-topic-allow: equality proof
+        )
+    )
+    assert (
+        expected["routing"]
+        == (
+            "onex.cmd.omnibase-infra.delegation-routing-request.v1"  # onex-topic-allow: equality proof
+        )
+    )
+    assert (
+        expected["completed"]
+        == (
+            "onex.evt.omnibase-infra.delegation-completed.v1"  # onex-topic-allow: equality proof
+        )
+    )
+    assert (
+        expected["failed"]
+        == (
+            "onex.evt.omnibase-infra.delegation-failed.v1"  # onex-topic-allow: equality proof
+        )
+    )
+    assert expected["task_delegated"] == (
+        "onex.evt.omniclaude.task-delegated.v1"  # onex-topic-allow: equality proof
+    )
+    for resolved in expected.values():
         assert resolved in publish_topics
 
 
