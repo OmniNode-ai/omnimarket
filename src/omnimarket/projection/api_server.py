@@ -61,6 +61,16 @@ _EVIDENCE_STAGES_TOPIC = "onex.snapshot.projection.evidence_pipeline.stages.v1"
 _EVIDENCE_TRACE_TOPIC = "onex.snapshot.projection.evidence_pipeline.correlations.v1"
 _EVIDENCE_READINESS_TOPIC = "onex.snapshot.projection.evidence_pipeline.readiness.v1"
 _EVIDENCE_EVENTS_TOPIC = "onex.snapshot.projection.evidence_pipeline.live_events.v1"
+# The /v1/evidence-pipeline/* endpoints serve only the OCC/deployment evidence
+# pipeline projection — they are NOT a per-correlation surface for delegation
+# runs. A delegation correlation_id legitimately has zero rows here and must be
+# read from the authoritative delegation correlation-trace projection instead
+# (OMN-12748). Surfaced on filtered/empty responses so callers are not misled
+# into reading the empty result as a broken projection (OMN-13168).
+_EVIDENCE_QUERY_SCOPE = "evidence_pipeline"
+_DELEGATION_CORRELATION_TRACE_TOPIC = (
+    "onex.snapshot.projection.delegation.correlation-trace.v1"
+)
 PROJECTION_DATABASE_BINDING_OVERLAY_ENV = (
     "OMNIMARKET_PROJECTION_DATABASE_BINDING_OVERLAY"
 )
@@ -918,6 +928,15 @@ async def _evidence_projection_response(
     columns = cfg.columns
     col_list = build_select_column_list(columns)
 
+    # A content filter selects a subset of rows by identity (correlation/ticket/
+    # repo/PR). The cursor is pagination, not a content filter, so it does not
+    # count: an empty page on a healthy projection is still EMPTY, not a content
+    # match failure. Used below to distinguish "healthy projection, no rows for
+    # this filter" (EMPTY) from "projection itself stale/degraded" (OMN-13168).
+    row_filtered = any(
+        v is not None for v in (correlation_id, ticket_id, repo, pr_number)
+    )
+
     clauses: list[str] = []
     args: list[object] = []
     _append_filter(clauses, args, cfg.cursor_column, ">", cursor)
@@ -971,19 +990,35 @@ async def _evidence_projection_response(
         else compute_freshness(str(latest_ts)).upper()
     )
 
+    # A content filter that matched no rows is healthy-but-empty, not degraded.
+    # The query succeeded; the requested correlation simply is not an evidence-
+    # pipeline correlation (e.g. a delegation id, whose authoritative trace lives
+    # on _DELEGATION_CORRELATION_TRACE_TOPIC). Reporting DEGRADED here falsely
+    # flags the projection as broken, which is what OMN-13168 observed during the
+    # 2026-06-16 runtime matrix. Reserve DEGRADED for genuine staleness/upstream
+    # failure (the 503 branches above plus a populated-but-stale read).
+    freshness_state: str = (
+        "EMPTY"
+        if (row_filtered and not serialisable_rows)
+        else (
+            _column_value(latest_row, cfg.freshness_state_column) or computed_freshness
+        )
+    )
+
     return JSONResponse(
         {
             "topic": topic,
             "version": _PROJECTION_VERSION,
             "generated_at": generated_at,
+            "query_scope": _EVIDENCE_QUERY_SCOPE,
+            "authoritative_correlation_source": _DELEGATION_CORRELATION_TRACE_TOPIC,
             "projection_cursor": latest_row.get(cfg.cursor_column),
             "next_cursor": next_cursor,
             "last_event_id": _column_value(latest_row, cfg.last_event_id_column),
             "last_ingest_sequence": _column_value(
                 latest_row, cfg.last_ingest_sequence_column
             ),
-            "freshness_state": _column_value(latest_row, cfg.freshness_state_column)
-            or computed_freshness,
+            "freshness_state": freshness_state,
             "degraded_reason": _column_value(latest_row, cfg.degraded_reason_column),
             "observed_at": _column_value(latest_row, cfg.observed_at_column)
             or latest_ts,
