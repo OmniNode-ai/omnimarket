@@ -14,6 +14,7 @@ format_compliance=0 and extraction_failed in evidence.
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 import logging
@@ -21,7 +22,7 @@ import time
 from typing import Any, Literal
 
 from omnimarket.inference.bridge_config_loader import (
-    load_inference_bridge_config_from_env,
+    load_inference_bridge_config_from_env_async,
 )
 from omnimarket.nodes.node_adr_segmentation_llm_effect.models.model_segmentation_request import (
     ModelSegmentationRequest,
@@ -212,18 +213,34 @@ class HandlerSegmentation:
         prompt_template_id: str = "adr_segmentation_v1",
         prompt_template_version: str = "1.0.0",
     ) -> None:
-        self._bridge: ModelInferenceAdapter
-        if inference_bridge is None:  # lifecycle-ok: optional-di-fallback
-            bridge_config = load_inference_bridge_config_from_env()
-            self._bridge = AdapterInferenceBridge(bridge_config)
-        else:
-            self._bridge = inference_bridge
+        # Construction is pure and sync: when no bridge is injected the default
+        # bridge is built lazily on first ``handle`` via ``_ensure_bridge`` so the
+        # async secret-store resolution never runs inside this sync constructor.
+        # The runtime auto-wiring boot path constructs handlers inside a running
+        # event loop, where the sync secret resolver fails closed (F1 root cause).
+        self._bridge: ModelInferenceAdapter | None = inference_bridge
+        self._bridge_lock = asyncio.Lock()
         self._model_key = segmentation_model_key
         self._temperature = segmentation_temperature
         self._timeout = segmentation_timeout_seconds
         self._low_confidence_threshold = low_confidence_threshold
         self._prompt_template_id = prompt_template_id
         self._prompt_template_version = prompt_template_version
+
+    async def _ensure_bridge(self) -> ModelInferenceAdapter:
+        """Return the inference bridge, building the default one once on demand.
+
+        Single-flight under ``_bridge_lock``: concurrent ``handle`` calls on one
+        event loop construct EXACTLY ONE default bridge. An injected bridge (or
+        one already built) short-circuits without taking the lock.
+        """
+        if self._bridge is not None:
+            return self._bridge
+        async with self._bridge_lock:
+            if self._bridge is None:
+                bridge_config = await load_inference_bridge_config_from_env_async()
+                self._bridge = AdapterInferenceBridge(bridge_config)
+            return self._bridge
 
     async def handle(
         self, request: ModelSegmentationRequest
@@ -233,6 +250,8 @@ class HandlerSegmentation:
             request.source_path,
             request.correlation_id,
         )
+
+        bridge = await self._ensure_bridge()
 
         user_prompt = _build_user_prompt(request)
         system_prompt = _SYSTEM_PROMPT_TEMPLATE.format(
@@ -247,7 +266,7 @@ class HandlerSegmentation:
         json_repair_attempted = False
 
         try:
-            raw_response = await self._bridge.infer(
+            raw_response = await bridge.infer(
                 model_key=self._model_key,
                 system_prompt=system_prompt,
                 user_prompt=user_prompt,
@@ -288,7 +307,7 @@ class HandlerSegmentation:
                 f"Original document:\n\n{user_prompt}"
             )
             try:
-                repair_response = await self._bridge.infer(
+                repair_response = await bridge.infer(
                     model_key=self._model_key,
                     system_prompt=system_prompt,
                     user_prompt=repair_prompt,

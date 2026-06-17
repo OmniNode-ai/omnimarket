@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 
@@ -613,3 +614,117 @@ def test_handler_segmentation_init_type_annotation_is_typed() -> None:
     annotation_str = str(param.annotation)
     assert "ModelInferenceAdapter" in annotation_str
     assert "Any" not in annotation_str
+
+
+# ---------------------------------------------------------------------------
+# F1: async secret resolution — sync resolve_api_key must never run inside an
+# event loop, and the default bridge is built single-flight under a lock.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+def test_init_does_not_load_bridge_when_bridge_omitted(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Construction is pure: omitting the bridge must not load env config.
+
+    The sync constructor must never touch the bridge config loader (which would
+    drive the sync secret resolver). Deferred construction happens in handle().
+    """
+    import omnimarket.nodes.node_adr_segmentation_llm_effect.handlers.handler_segmentation as hs
+
+    def _boom() -> None:  # pragma: no cover - asserts non-invocation
+        raise AssertionError(
+            "load_inference_bridge_config_from_env_async must not run in __init__"
+        )
+
+    monkeypatch.setattr(hs, "load_inference_bridge_config_from_env_async", _boom)
+
+    handler = HandlerSegmentation()  # no inference_bridge
+
+    # Bridge is deferred (None) until first handle(); no loader call happened.
+    assert handler._bridge is None  # noqa: SLF001 — internal state under test
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_handle_in_async_context_does_not_call_sync_resolve_api_key(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Preparing the default bridge inside an event loop uses the async resolver.
+
+    Regression for F1: the sync ``resolve_api_key`` raised inside a running loop.
+    We assert the async path resolves the OpenRouter key via the async resolver
+    and the sync resolver is never invoked.
+    """
+    import omnimarket.inference.bridge_config_loader as loader
+
+    def _sync_must_not_run(*args: object, **kwargs: object) -> None:
+        raise AssertionError("sync resolve_api_key() called from async context")
+
+    async_calls: list[str | None] = []
+
+    async def _fake_async_resolve(
+        api_key_ref: str | None, *, store: object = None, required: bool = True
+    ) -> None:
+        async_calls.append(api_key_ref)
+        return  # no OpenRouter key configured on this host
+
+    monkeypatch.setattr(loader, "resolve_api_key", _sync_must_not_run)
+    monkeypatch.setattr(loader, "resolve_api_key_async", _fake_async_resolve)
+    # Ensure no static LLM_* endpoints leak in from the ambient env.
+    for _key, url_env, model_env in loader._MODEL_KEY_REGISTRY:  # noqa: SLF001 — internal env registry under test
+        monkeypatch.delenv(url_env, raising=False)
+        monkeypatch.delenv(model_env, raising=False)
+
+    handler = HandlerSegmentation()  # no injected bridge -> deferred default
+
+    # Resolving the default bridge inside the running loop must not raise the
+    # sync-in-async RuntimeError; it goes through the async resolver.
+    bridge = await handler._ensure_bridge()  # noqa: SLF001 — internal API under test
+
+    assert bridge is not None
+    assert async_calls == ["OPENROUTER_API_KEY"]
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_concurrent_handle_constructs_exactly_one_bridge(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Two concurrent handle() calls construct EXACTLY ONE default bridge.
+
+    Single-flight under ``_bridge_lock``: the async loader must run once even
+    when both coroutines reach an unbuilt bridge simultaneously.
+    """
+    import omnimarket.nodes.node_adr_segmentation_llm_effect.handlers.handler_segmentation as hs
+
+    loader_calls = 0
+
+    async def _slow_loader() -> object:
+        nonlocal loader_calls
+        loader_calls += 1
+        # Yield so a second coroutine can reach the lock before the first builds.
+        await asyncio.sleep(0)
+        return object()
+
+    built_bridges: list[object] = []
+
+    def _fake_bridge(config: object) -> ModelInferenceAdapter:
+        built_bridges.append(config)
+        return _MockBridge([_GOOD_RESPONSE, _GOOD_RESPONSE])
+
+    monkeypatch.setattr(hs, "load_inference_bridge_config_from_env_async", _slow_loader)
+    monkeypatch.setattr(hs, "AdapterInferenceBridge", _fake_bridge)
+
+    handler = HandlerSegmentation()  # deferred default bridge
+
+    b1, b2 = await asyncio.gather(
+        handler._ensure_bridge(),  # noqa: SLF001 — concurrency under test
+        handler._ensure_bridge(),  # noqa: SLF001
+    )
+
+    assert loader_calls == 1
+    assert len(built_bridges) == 1
+    assert b1 is b2
+    assert handler._bridge is b1  # noqa: SLF001
