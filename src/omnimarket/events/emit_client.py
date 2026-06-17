@@ -1,7 +1,12 @@
-# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
 
-"""Synchronous Unix socket client for the emit daemon.
+"""Synchronous Unix socket client for the emit transport.
+
+Shared owner of the emit-socket client (re-homed from node_emit_daemon in
+OMN-13213 Phase D1). Lives in the shared ``omnimarket.events`` package so
+canonical EFFECT nodes consume it without importing another node's private
+package.
 
 stdlib-only (socket + json) for maximum portability across all
 IDE/coding tool platforms. Zero external dependencies.

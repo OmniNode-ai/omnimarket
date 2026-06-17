@@ -29,7 +29,7 @@ __all__: list[str] = [
 
 def __getattr__(name: str) -> object:
     if name == "EmitClient":
-        from omnimarket.nodes.node_emit_daemon.client import EmitClient
+        from omnimarket.events.emit_client import EmitClient
 
         return EmitClient
     if name == "EmitSocketServer":

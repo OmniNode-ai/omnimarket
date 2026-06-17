@@ -8,6 +8,7 @@ from omnimarket.events.design_to_plan import (
     ModelPlanToTicketsCompletedEvent,
     ModelPlanToTicketsStartCommand,
 )
+from omnimarket.events.emit_client import EmitClient, default_socket_path
 from omnimarket.events.evidence_dashboard import ModelDashboardProjectionEvent
 from omnimarket.events.generation import (
     EnumGoldenChainGenerationStatus,
@@ -39,6 +40,7 @@ from omnimarket.intelligence.events import (
 )
 
 __all__ = [
+    "EmitClient",
     "EnumBundleStatus",
     "EnumFragmentSource",
     "EnumGoldenChainGenerationStatus",
@@ -65,4 +67,5 @@ __all__ = [
     "ModelTestGenerationRequest",
     "ModelTestGenerationResult",
     "RuntimeLaneLike",
+    "default_socket_path",
 ]
