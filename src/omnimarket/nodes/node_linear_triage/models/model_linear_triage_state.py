@@ -44,11 +44,14 @@ class EnumTriageAction(str):
     MARK_DONE = "marked_done"
     MARK_DONE_SUPERSEDED = "marked_done_superseded"
     MARK_DONE_EPIC = "marked_done_epic"
+    # OMN-13039: epic auto-start ratchet
+    MARK_IN_PROGRESS = "marked_in_progress"
     FLAG_STALE = "flag_stale"
     NO_CHANGE = "no_change"
     WOULD_MARK_DONE = "would_mark_done"
     WOULD_MARK_DONE_SUPERSEDED = "would_mark_done_superseded"
     WOULD_MARK_DONE_EPIC = "would_mark_done_epic"
+    WOULD_MARK_IN_PROGRESS = "would_mark_in_progress"
 
 
 class ModelTriageAction(BaseModel):
@@ -77,6 +80,8 @@ class ModelLinearTriageResult(BaseModel):
     marked_done: int = 0
     marked_done_superseded: int = 0
     epics_closed: int = 0
+    # OMN-13039: epics transitioned from Backlog/Todo to In Progress by the auto-start ratchet
+    epics_started: int = 0
     stale_flagged: int = 0
     orphaned: int = 0
     actions: list[ModelTriageAction] = Field(default_factory=list)
@@ -97,6 +102,8 @@ class ModelLinearTriageCompletedEvent(BaseModel):
     marked_done: int = 0
     marked_done_superseded: int = 0
     epics_closed: int = 0
+    # OMN-13039: epics transitioned from Backlog/Todo to In Progress by the auto-start ratchet
+    epics_started: int = 0
     stale_flagged: int = 0
     orphaned: int = 0
     dry_run: bool = False
