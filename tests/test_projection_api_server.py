@@ -652,8 +652,8 @@ class TestProjectionRoutes:
             or body.get("error") == "upstream_unavailable"
         )
 
-    def test_correlation_id_filter_forwarded(self) -> None:
-        """correlation_id query param is forwarded as a SQL positional arg."""
+    def test_correlation_id_filter_rejected_for_aggregate_topic(self) -> None:
+        """Aggregate topics without correlation_id expose typed 422."""
         conn = AsyncMock()
         conn.fetch = AsyncMock(return_value=[])
         conn.fetchval = AsyncMock(return_value=None)
@@ -670,10 +670,12 @@ class TestProjectionRoutes:
                 "/projection/onex.snapshot.projection.cost.summary.v1",
                 params={"correlation_id": "corr-abc"},
             )
-        assert resp.status_code == 200
-        call_args = conn.fetch.call_args
-        assert "FROM public.llm_cost_aggregates" in call_args[0][0]
-        assert "corr-abc" in call_args[0]
+        assert resp.status_code == 422
+        body = resp.json()
+        assert body["error"] == "unsupported_filter"
+        assert body["filter"] == "correlation_id"
+        assert body["topic"] == "onex.snapshot.projection.cost.summary.v1"
+        conn.fetch.assert_not_called()
 
     def test_ab_compare_correlation_id_filter_targets_llm_call_metrics(self) -> None:
         """AB Compare projection forwards correlation_id against llm_call_metrics."""

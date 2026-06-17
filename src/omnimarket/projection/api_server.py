@@ -71,6 +71,24 @@ PROJECTION_DATABASE_BINDING_OVERLAY_ENV = (
 # ---------------------------------------------------------------------------
 
 
+def topic_supports_correlation_id_filter(cfg: ProjectionTableConfig) -> bool:
+    """Return True when the topic's declared columns include ``correlation_id``.
+
+    ``("*",)`` (SELECT *) is treated as supporting all filters because the
+    underlying table may expose that column even if it is not enumerated.
+    For an explicit column list, ``correlation_id`` must appear verbatim — the
+    summary/aggregate topics (e.g. ``delegation.summary.v1``) use views without
+    a per-row ``correlation_id`` column and must not receive a WHERE filter on
+    that column (OMN-13165).
+    """
+    if cfg.columns == ("*",):
+        return True
+    # Strip surrounding double-quotes used for camelCase aliases before
+    # comparing, e.g. '"totalDelegations"' → 'totalDelegations'.
+    bare_columns = {col.strip('"') for col in cfg.columns}
+    return "correlation_id" in bare_columns
+
+
 def compute_freshness(latest_ts: str | None) -> str:
     if latest_ts is None:
         return "degraded"
@@ -635,6 +653,28 @@ async def projection_query(
     # quotes mixed-case view aliases (OMN-12941).
     col_list = build_select_column_list(columns)
     generated_at = datetime.now(UTC).isoformat()
+
+    # Guard: reject correlation_id filter before issuing SQL when the topic's
+    # declared column list does not include that column.  Aggregate/summary
+    # topics (e.g. delegation.summary.v1) back a view with no per-row
+    # correlation_id; a WHERE filter on that column would raise a Postgres error
+    # that the caller then sees as a 503 "degraded" response.  Return a typed
+    # 422 instead so callers know the filter is unsupported for this topic,
+    # rather than being led to believe the projection itself is broken (OMN-13165).
+    if correlation_id is not None and not topic_supports_correlation_id_filter(cfg):
+        return JSONResponse(
+            status_code=422,
+            content={
+                "error": "unsupported_filter",
+                "filter": "correlation_id",
+                "topic": topic,
+                "detail": (
+                    f"Topic '{topic}' does not expose a 'correlation_id' column "
+                    "and cannot be filtered by it. "
+                    "Use the correlation-trace topic for per-correlation queries."
+                ),
+            },
+        )
 
     try:
         async with pool.acquire() as conn:
