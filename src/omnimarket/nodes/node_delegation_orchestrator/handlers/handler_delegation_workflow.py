@@ -39,11 +39,6 @@ from omnibase_core.models.delegation.model_invocation_command import (
 )
 from omnibase_core.models.dispatch.model_handler_output import ModelHandlerOutput
 from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
-from omnibase_infra.event_bus.topic_constants import (
-    TOPIC_DELEGATION_COMPLETED,
-    TOPIC_DELEGATION_FAILED,
-    TOPIC_DELEGATION_TASK_DELEGATED,
-)
 from pydantic import BaseModel
 
 from omnimarket.enums.enum_delegation_failure_class import EnumDelegationFailureClass
@@ -52,6 +47,11 @@ from omnimarket.models.delegation.llm_cost_routing.model_llm_delegation_escalati
     ModelLlmDelegationEscalationTriggeredEvent,
 )
 from omnimarket.nodes.contract_topics import contract_publish_topics
+from omnimarket.nodes.node_delegation_orchestrator.contract_topics import (
+    TOPIC_ID_DELEGATION_COMPLETED,
+    TOPIC_ID_DELEGATION_FAILED,
+    TOPIC_ID_TASK_DELEGATED,
+)
 from omnimarket.nodes.node_delegation_orchestrator.enums import (
     EnumDelegationState,
 )
@@ -696,7 +696,7 @@ class HandlerDelegationWorkflow:
                 **escalation_metadata,
             )
             compat_event = ModelTaskDelegatedEvent(
-                topic=TOPIC_DELEGATION_TASK_DELEGATED,
+                topic=TOPIC_ID_TASK_DELEGATED,
                 timestamp=datetime.now(UTC).isoformat(),
                 correlation_id=response.correlation_id,
                 session_id=None,
@@ -723,7 +723,7 @@ class HandlerDelegationWorkflow:
             self._transition(workflow, EnumDelegationState.FAILED)
             return [
                 ModelDelegationEvent(
-                    topic=TOPIC_DELEGATION_FAILED,
+                    topic=TOPIC_ID_DELEGATION_FAILED,
                     payload=delegation_result,
                 ),
                 compat_event,
@@ -836,7 +836,7 @@ class HandlerDelegationWorkflow:
             self._transition(workflow, EnumDelegationState.COMPLETED)
             events.append(
                 ModelDelegationEvent(
-                    topic=TOPIC_DELEGATION_COMPLETED,
+                    topic=TOPIC_ID_DELEGATION_COMPLETED,
                     payload=delegation_result,
                 )
             )
@@ -962,7 +962,7 @@ class HandlerDelegationWorkflow:
         self._transition(workflow, EnumDelegationState.FAILED)
         events.append(
             ModelDelegationEvent(
-                topic=TOPIC_DELEGATION_FAILED,
+                topic=TOPIC_ID_DELEGATION_FAILED,
                 payload=delegation_result,
             )
         )
@@ -1073,7 +1073,7 @@ class HandlerDelegationWorkflow:
         )
 
         return ModelTaskDelegatedEvent(
-            topic=TOPIC_DELEGATION_TASK_DELEGATED,
+            topic=TOPIC_ID_TASK_DELEGATED,
             timestamp=datetime.now(UTC).isoformat(),
             correlation_id=result.correlation_id,
             session_id=None,
@@ -1145,7 +1145,7 @@ class HandlerDelegationWorkflow:
         )
 
         compat_event = ModelTaskDelegatedEvent(
-            topic=TOPIC_DELEGATION_TASK_DELEGATED,
+            topic=TOPIC_ID_TASK_DELEGATED,
             timestamp=datetime.now(UTC).isoformat(),
             correlation_id=cid,
             session_id=None,
@@ -1162,9 +1162,9 @@ class HandlerDelegationWorkflow:
         )
 
         topic = (
-            TOPIC_DELEGATION_COMPLETED
+            TOPIC_ID_DELEGATION_COMPLETED
             if next_state is EnumDelegationState.COMPLETED
-            else TOPIC_DELEGATION_FAILED
+            else TOPIC_ID_DELEGATION_FAILED
         )
         return [
             ModelDelegationEvent(topic=topic, payload=delegation_result),
