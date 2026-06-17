@@ -7,14 +7,16 @@
 # Every gateway response MUST include the selected rule_id and config_version
 # to make provenance auditable (OMN-10637 requirement R1).
 #
-# OMN-12815: every endpoint_url is the COMPLETE final URL incl. the full chat
-# path (e.g. .../v1/chat/completions). It is posted VERBATIM at every call site
-# — no in-code construction, append, or path-resolver exists anymore. Public
-# cloud endpoints carry the complete URL here; site-specific LOCAL endpoints are
-# null in the repo default and MUST be supplied COMPLETE (incl. /v1/chat/completions)
-# by the overlay file written by the installer, usually
-# ~/.omninode/delegation/bifrost_overrides.yaml. A bare base (no chat path) is a
-# misconfiguration — resolution fails closed rather than constructing a path.
+# OMN-12815 / OMN-13159: every endpoint_url is the COMPLETE final URL incl. the
+# full chat path (e.g. .../v1/chat/completions). It is posted VERBATIM at every
+# call site — no in-code construction, append, rstrip, or path-resolver exists
+# anymore. Public cloud endpoints carry the complete URL here; site-specific
+# LOCAL endpoints are null in the repo default and the env var named by
+# `endpoint_url_env` (formerly `base_url_env`) MUST hold the COMPLETE URL (incl.
+# /v1/chat/completions) — supplied by the overlay file the installer writes,
+# usually ~/.omninode/delegation/bifrost_overrides.yaml. A bare base (no chat
+# path) is a misconfiguration — resolution fails closed rather than
+# constructing a path.
 #
 # See routing_tiers.yaml for tier escalation ladder.
 #
@@ -28,31 +30,41 @@ schema_version: "bifrost_delegation.v1"
 backends:
   # Local backends (vLLM on .201) — capability-named, model_name resolved via overlay
   - backend_id: local-coder
-    base_url_env: BIFROST_LOCAL_CODER_ENDPOINT_URL
+    endpoint_url_env: BIFROST_LOCAL_CODER_ENDPOINT_URL
     endpoint_url: null
     model_name: Qwen3.6-35B-A3B
     tier: local
     timeout_ms: 60000
+    # OMN-13161: per-backend output-token ceiling. Qwen3.6-35B-A3B serves a 128k
+    # (max_model_len=131072) context window, so a 64k output budget is well within
+    # range for code-generation artifacts.
+    max_tokens: 65536
     capabilities:
       - code_generation
       - refactoring
       - documentation
   - backend_id: local-reasoner
-    base_url_env: BIFROST_LOCAL_REASONER_ENDPOINT_URL
+    endpoint_url_env: BIFROST_LOCAL_REASONER_ENDPOINT_URL
     endpoint_url: null
     model_name: Qwen3.6-27B-MTP-IQ4_XS.gguf
     tier: local
     timeout_ms: 60000
+    # OMN-13161: the 27B reasoner runs a smaller 24576-token context window
+    # (routing_tiers.yaml max_context_tokens), so the output budget is capped at
+    # 16384 to leave room for the prompt rather than blanket-65536.
+    max_tokens: 16384
     capabilities:
       - deep_reasoning
       - research
       - classification
   - backend_id: local-heavy-reasoning
-    base_url_env: BIFROST_LOCAL_CODER_ENDPOINT_URL
+    endpoint_url_env: BIFROST_LOCAL_CODER_ENDPOINT_URL
     endpoint_url: null
     model_name: Qwen3.6-35B-A3B
     tier: local
     timeout_ms: 60000
+    # OMN-13161: same Qwen3.6-35B-A3B 128k model as local-coder → 64k output budget.
+    max_tokens: 65536
     capabilities:
       - deep_reasoning
       - reasoning
@@ -60,11 +72,15 @@ backends:
       - classification
       - documentation
   - backend_id: local-embedding
-    base_url_env: BIFROST_LOCAL_EMBEDDING_ENDPOINT_URL
+    endpoint_url_env: BIFROST_LOCAL_EMBEDDING_ENDPOINT_URL
     endpoint_url: null
     model_name: local-embedding
     tier: local
     timeout_ms: 30000
+    # OMN-13161: embedding backend produces vectors, not chat completions — it never
+    # consumes an output-token budget. The field is required by the schema, so set
+    # the minimum (1); it is never read on the embedding path.
+    max_tokens: 1
     capabilities:
       - embedding
   # Cloud fallback backends
@@ -81,6 +97,8 @@ backends:
     api_key_env: ANTHROPIC_API_KEY
     tier: frontier_api
     timeout_ms: 60000
+    # OMN-13161: Claude Sonnet 4.x supports up to 64k output tokens.
+    max_tokens: 65536
     capabilities:
       - code_generation
       - reasoning
@@ -95,6 +113,8 @@ backends:
     api_key_env: ANTHROPIC_API_KEY
     tier: frontier_api
     timeout_ms: 30000
+    # OMN-13161: Claude Haiku 4.5 supports up to 32k output tokens.
+    max_tokens: 32768
     capabilities:
       - documentation
       - summarization
@@ -107,6 +127,8 @@ backends:
     api_key_env: LLM_GLM_API_KEY
     tier: cheap_cloud
     timeout_ms: 60000
+    # OMN-13161: GLM-4.5 serves a 128k context window; 64k output budget.
+    max_tokens: 65536
     capabilities:
       - code_generation
       - reasoning
@@ -123,6 +145,9 @@ backends:
     api_key_env: GEMINI_API_KEY
     tier: cheap_cloud
     timeout_ms: 60000
+    # OMN-13161: Gemini Flash family caps output at ~8192 tokens; do not exceed the
+    # provider's real output limit.
+    max_tokens: 8192
     capabilities:
       # OMN-13140: code_generation added so AI Studio cloud-gemini-flash is the
       # canonical cloud-escalation target for the hackathon code_generation proof.
@@ -159,12 +184,14 @@ backends:
   # URL via BIFROST_VERTEX_GEMINI_ENDPOINT_URL. A bare base fails closed
   # (OMN-12815) — no in-code path construction.
   - backend_id: cloud-vertex-gemini
-    base_url_env: BIFROST_VERTEX_GEMINI_ENDPOINT_URL
+    endpoint_url_env: BIFROST_VERTEX_GEMINI_ENDPOINT_URL
     endpoint_url: null
     model_name: "gemini-2.5-flash-lite"
     secret_ref: llm.vertex.access_token
     tier: cheap_cloud
     timeout_ms: 60000
+    # OMN-13161: Vertex-served Gemini Flash carries the same ~8192 output cap.
+    max_tokens: 8192
     capabilities:
       - summarization
       - simple_tasks
@@ -174,12 +201,15 @@ backends:
       X-Title: "OmniNode ONEX"
   # Local DS-V4-Flash backend — DeepSeek V4 Flash (284B MoE) on .200:8101 (OMN-12492)
   - backend_id: local-ds-v4-flash
-    base_url_env: BIFROST_LOCAL_DS_V4_FLASH_ENDPOINT_URL
+    endpoint_url_env: BIFROST_LOCAL_DS_V4_FLASH_ENDPOINT_URL
     endpoint_url: null
     # endpoint_url null in repo default; overlay sets .200:8101  # onex-allow-internal-ip OMN-12492 reason="repo-default comment documenting local overlay target for DS-V4-Flash"
     model_name: ds-v4-flash
     tier: local
     timeout_ms: 60000
+    # OMN-13161: DS-V4-Flash serves a 65536-token context window
+    # (routing_tiers.yaml max_context_tokens); 64k output budget fits.
+    max_tokens: 65536
     capabilities:
       - deep_reasoning
       - reasoning
@@ -196,6 +226,8 @@ backends:
     api_key_env: OPENROUTER_API_KEY
     tier: cheap_cloud
     timeout_ms: 60000
+    # OMN-13161: GLM-4-9B (free OpenRouter tier) — modest 8192 output budget.
+    max_tokens: 8192
     capabilities:
       - code_generation
       - reasoning
@@ -212,6 +244,8 @@ backends:
     api_key_env: OPENROUTER_API_KEY
     tier: cheap_frontier
     timeout_ms: 120000
+    # OMN-13161: Qwen3 Coder 480B serves a 256k context window; 64k output budget.
+    max_tokens: 65536
     capabilities:
       - code_generation
       - reasoning
@@ -221,11 +255,30 @@ backends:
       HTTP-Referer: "https://omninode.ai"
       X-Title: "OmniNode ONEX Experiment"
   # CLI agent backends — dispatched via subprocess, not HTTP.
+  # cli-codex is the selected terminal delegation backend for the claude-named
+  # escalation tier. It uses the Codex CLI's existing OAuth login, not an API key.
+  - backend_id: cli-codex
+    endpoint_url: "cli://codex"
+    model_name: codex-cli
+    tier: claude
+    timeout_ms: 300000
+    # OMN-13161: subprocess CLI agent — generous 64k budget for long agent turns.
+    max_tokens: 65536
+    capabilities:
+      - agent_delegation
+      - complex_reasoning
+      - code_generation
+      - reasoning
+      - research
+      - test
+      - document
   - backend_id: cli-claude
-    endpoint_url: ""
+    endpoint_url: "cli://claude"
     model_name: claude-cli
     tier: cli_agents
     timeout_ms: 300000
+    # OMN-13161: subprocess CLI agent — generous 64k budget for long agent turns.
+    max_tokens: 65536
     capabilities:
       - agent_delegation
       - complex_reasoning
@@ -234,6 +287,8 @@ backends:
     model_name: opencode-cli
     tier: cli_agents
     timeout_ms: 300000
+    # OMN-13161: subprocess CLI agent — generous 64k budget for long agent turns.
+    max_tokens: 65536
     capabilities:
       - agent_delegation
       - code_generation
@@ -264,7 +319,7 @@ routing_rules:
     latency_sla_ms: 30000
     backend_ids:
       - local-coder
-      - cloud-sonnet
+      - cli-codex
     fallback_policy:
       action: escalate_to_next_tier
       max_retries: 2
@@ -287,7 +342,7 @@ routing_rules:
     latency_sla_ms: 60000
     backend_ids:
       - local-coder
-      - cloud-sonnet
+      - cli-codex
     fallback_policy:
       action: escalate_to_next_tier
       max_retries: 1
@@ -309,7 +364,7 @@ routing_rules:
     cost_ceiling_usd_per_1k_tokens: 0.004
     backend_ids:
       - local-coder
-      - cloud-haiku
+      - cli-codex
     fallback_policy:
       action: escalate_to_next_tier
       max_retries: 1
@@ -331,7 +386,7 @@ routing_rules:
     backend_ids:
       - local-heavy-reasoning
       - local-reasoner
-      - cloud-sonnet
+      - cli-codex
     fallback_policy:
       action: escalate_to_next_tier
       max_retries: 2
@@ -341,7 +396,7 @@ routing_rules:
 # Attempts backends in order.
 default_backends:
   - local-coder
-  - cloud-sonnet
+  - cli-codex
 # Gateway-level circuit breaker settings (apply to all backends).
 circuit_breaker:
   failure_threshold: 5

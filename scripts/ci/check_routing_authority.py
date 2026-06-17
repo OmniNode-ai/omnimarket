@@ -50,19 +50,19 @@ RESIDUE audit (OMN-12877)
 PROVIDER-CLASS ENDPOINT SHAPE audit (OMN-12883)
     Static scan over the committed bifrost_delegation.yaml proves every backend
     respects the provider-class endpoint URL shape contract:
-      * If a backend declares ``base_url_env``, ``endpoint_url`` MUST be null.
+      * If a backend declares ``endpoint_url_env``, ``endpoint_url`` MUST be null.
         The overlay is responsible for supplying the complete URL at runtime.
-      * If a backend does NOT declare ``base_url_env`` (i.e. the URL is static),
+      * If a backend does NOT declare ``endpoint_url_env`` (i.e. the URL is static),
         ``endpoint_url`` MUST be a non-null non-empty complete URL (full chat
         path verbatim — no in-code append). An empty string is a
         misconfiguration that fails closed.
-    Special tiers:
-      * ``local``: always overlay-supplied (base_url_env required,
+    Special backends:
+      * ``local``: always overlay-supplied (endpoint_url_env required,
         endpoint_url must be null).
-      * ``cli_agents``: CLI-invoked agents, not HTTP backends; endpoint_url
-        may be empty (no outbound HTTP call).
-    The rule is: overlay-supplied (base_url_env set) → endpoint_url null;
-    static-URL (no base_url_env) + non-cli_agents → endpoint_url complete.
+      * CLI backends: CLI-invoked agents, not HTTP backends; endpoint_url may
+        be a ``cli://`` URI or empty for legacy excluded agent tiers.
+    The rule is: overlay-supplied (endpoint_url_env set) → endpoint_url null;
+    static-URL (no endpoint_url_env) + non-CLI backend → endpoint_url complete.
 
 The gate FAILS (exit 1) when:
     * a demo-path routing field cannot be resolved from authority, OR
@@ -153,7 +153,7 @@ _FALLBACK_ENDPOINT_ENV_TOKENS: tuple[str, ...] = (
     "LLM_REASONER_URL",
     "LLM_BASE_URL",
     "OPENROUTER_BASE_URL",
-    "base_url_env",
+    "endpoint_url_env",
 )
 
 # ---------------------------------------------------------------------------
@@ -214,9 +214,10 @@ _CROSS_REPO_DEBT: tuple[tuple[str, str, str, str], ...] = (
 
 _BIFROST_CONFIG_REL = "src/omnimarket/configs/bifrost_delegation.yaml"
 
-# Tiers whose endpoints are CLI-invoked agents (no outbound HTTP calls);
-# endpoint_url may be absent/empty for these.
+# Legacy excluded agent tier whose endpoints are CLI-invoked agents; empty
+# endpoint_url is still allowed for these until every backend declares cli://.
 _CLI_AGENT_TIERS: frozenset[str] = frozenset({"cli_agents"})
+_CLI_URL_PREFIX = "cli://"
 
 
 def _find_repo_root(start: Path) -> Path:
@@ -691,11 +692,11 @@ def build_provider_endpoint_shape_audit(repo_root: Path) -> dict[str, Any]:
     """Validate provider-class endpoint URL shape for every bifrost backend.
 
     Rules (from memory reference_bifrost_bare_base_vs_complete_url):
-      * If a backend declares ``base_url_env`` (overlay-supplied endpoint),
+      * If a backend declares ``endpoint_url_env`` (overlay-supplied endpoint),
         ``endpoint_url`` MUST be null. The overlay supplies the complete URL
-        at runtime. A non-null endpoint_url alongside base_url_env means two
+        at runtime. A non-null endpoint_url alongside endpoint_url_env means two
         conflicting URL sources are declared — this is a misconfiguration.
-      * If a backend does NOT declare ``base_url_env`` (static endpoint):
+      * If a backend does NOT declare ``endpoint_url_env`` (static endpoint):
         - For ``cli_agents`` tier: endpoint_url may be absent/empty (no HTTP
           call is made; the CLI agent is invoked directly).
         - For all other tiers: ``endpoint_url`` MUST be a non-null, non-empty
@@ -741,26 +742,35 @@ def build_provider_endpoint_shape_audit(repo_root: Path) -> dict[str, Any]:
         backend_id = backend.get("backend_id", "<unnamed>")
         tier = backend.get("tier", "")
         endpoint_url = backend.get("endpoint_url")  # may be None or str
-        base_url_env = backend.get("base_url_env")  # may be None or str
+        endpoint_url_env = backend.get("endpoint_url_env")  # may be None or str
 
-        has_base_url_env = bool(base_url_env)
-        has_endpoint_url = endpoint_url is not None and str(endpoint_url).strip() != ""
-        is_cli_tier = tier in _CLI_AGENT_TIERS
+        has_endpoint_url_env = bool(endpoint_url_env)
+        endpoint_url_text = (
+            str(endpoint_url).strip() if endpoint_url is not None else ""
+        )
+        has_endpoint_url = bool(endpoint_url_text)
+        is_cli_backend = (
+            str(backend_id).startswith("cli-")
+            or endpoint_url_text.startswith(_CLI_URL_PREFIX)
+            or tier in _CLI_AGENT_TIERS
+        )
 
         backend_violations: list[str] = []
 
-        if has_base_url_env:
+        if has_endpoint_url_env:
             # Overlay-supplied backend: endpoint_url MUST be null.
             if endpoint_url is not None:
                 backend_violations.append(
-                    f"backend_id={backend_id!r}: base_url_env={base_url_env!r} is set "
+                    f"backend_id={backend_id!r}: endpoint_url_env={endpoint_url_env!r} is set "
                     f"(overlay-supplied) but endpoint_url={endpoint_url!r} is non-null — "
                     "only one URL source is allowed; set endpoint_url to null"
                 )
         else:
             # Static-URL backend.
-            if is_cli_tier:
-                # CLI agents: no outbound HTTP call; endpoint_url may be empty.
+            if is_cli_backend:
+                # CLI agents: no outbound HTTP call; endpoint_url may be
+                # empty for legacy cli_agents or a cli:// provider URI for
+                # routable OAuth-backed terminal delegation.
                 pass
             else:
                 # All other tiers: endpoint_url MUST be a non-null, non-empty
@@ -768,8 +778,8 @@ def build_provider_endpoint_shape_audit(repo_root: Path) -> dict[str, Any]:
                 if not has_endpoint_url:
                     backend_violations.append(
                         f"backend_id={backend_id!r} tier={tier!r}: "
-                        f"endpoint_url is absent/empty but base_url_env is not set — "
-                        "a non-local backend with no base_url_env must carry a complete "
+                        f"endpoint_url is absent/empty but endpoint_url_env is not set — "
+                        "a non-local backend with no endpoint_url_env must carry a complete "
                         "static endpoint_url (full chat path verbatim, e.g. "
                         ".../v1/chat/completions)"
                     )
@@ -780,8 +790,8 @@ def build_provider_endpoint_shape_audit(repo_root: Path) -> dict[str, Any]:
                 "backend_id": backend_id,
                 "tier": tier,
                 "endpoint_url": endpoint_url,
-                "base_url_env": base_url_env,
-                "url_source": "overlay" if has_base_url_env else "static",
+                "endpoint_url_env": endpoint_url_env,
+                "url_source": "overlay" if has_endpoint_url_env else "static",
                 "violations": backend_violations,
                 "compliant": len(backend_violations) == 0,
             }

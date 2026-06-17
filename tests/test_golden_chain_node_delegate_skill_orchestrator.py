@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import sqlite3
 from pathlib import Path
+from typing import Any
 from uuid import UUID, uuid4
 
 import pytest
@@ -25,12 +26,11 @@ from omnimarket.models.delegation.wire.model_delegate_skill_request import (
 from omnimarket.nodes.node_delegate_skill_orchestrator.handlers.handler_delegate_skill import (
     HandlerDelegateSkill,
 )
-from omnimarket.nodes.node_delegate_skill_orchestrator.ports import (
-    port_direct_curl_dispatch,
+from omnimarket.nodes.node_delegate_skill_orchestrator.ports.port_local_delegation_dispatch import (
+    LocalDelegationDispatchPort,
 )
-from omnimarket.nodes.node_delegate_skill_orchestrator.ports.port_direct_curl_dispatch import (
-    DirectCurlDelegationDispatchPort,
-)
+from omnimarket.nodes.node_llm_delegation_call_effect.handlers import transport
+from omnimarket.routing import delegation_backend_resolution
 
 
 class _StubDispatchPort:
@@ -46,7 +46,7 @@ class _StubDispatchPort:
         prompt: str,
         task_type: str,
         correlation_id: UUID,
-        max_tokens: int,
+        max_tokens: int | None,
         source_file_path: str | None,
         source_session_id: str | None,
         wait: bool,
@@ -130,50 +130,69 @@ class TestDelegateSkillGoldenChain:
         tmp_path: Path,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        captured_prompts: list[str] = []
-        captured_provider_request_options: list[dict[str, object] | None] = []
+        """The local in-process path shapes the prompt and materializes evidence.
 
-        def fake_call_via_curl(
+        Routes through the canonical effect handler transport (patched at the
+        boundary) and the canonical projection (local SQLite). The shaped prompt
+        carries the inference-protocol /no_think directive + chat_template_kwargs;
+        the materialized evidence row carries the ORIGINAL prompt (no directive).
+        """
+        captured_payloads: list[dict[str, Any]] = []
+
+        def fake_post(
             *,
             endpoint_url: str,
-            model: str,
-            system_prompt: str,
-            prompt: str,
-            max_tokens: int,
-            provider_request_options: dict[str, object] | None = None,
-        ) -> dict[str, object]:
-            captured_prompts.append(prompt)
-            captured_provider_request_options.append(provider_request_options)
-            return {
-                "content": (
-                    "import pytest\n\n"
-                    "@pytest.mark.unit\n"
-                    "def test_normalize_status_ok():\n"
-                    "    assert normalize_status('OK') == 'ok'\n"
-                ),
-                "model_used": model,
-                "latency_ms": 37,
-                "prompt_tokens": 18,
-                "completion_tokens": 44,
-                "total_tokens": 62,
-            }
+            payload: dict[str, Any],
+            extra_headers: dict[str, str] | None = None,
+            runtime_profile: str | None = None,
+            timeout_seconds: float = 120.0,
+        ) -> transport.ModelTransportResponse:
+            captured_payloads.append(payload)
+            return transport.ModelTransportResponse(
+                status_code=200,
+                json_body={
+                    "choices": [
+                        {
+                            "message": {
+                                "content": (
+                                    "import pytest\n\n"
+                                    "@pytest.mark.unit\n"
+                                    "def test_normalize_status_ok():\n"
+                                    "    assert normalize_status('OK') == 'ok'\n"
+                                )
+                            }
+                        }
+                    ],
+                    "model": "Qwen3-Coder-30B",
+                    "usage": {
+                        "prompt_tokens": 18,
+                        "completion_tokens": 44,
+                        "total_tokens": 62,
+                    },
+                },
+                latency_ms=37,
+            )
 
+        monkeypatch.setattr(transport, "probe_health", lambda *_a, **_k: True)
+        monkeypatch.setattr(transport, "post_chat_completion", fake_post)
         monkeypatch.setattr(
-            port_direct_curl_dispatch,
-            "_call_via_curl",
-            fake_call_via_curl,
+            delegation_backend_resolution,
+            "load_bifrost_backends",
+            lambda **_: [
+                {
+                    "backend_id": "local-coder",
+                    "endpoint_url": "http://inference.example:8000/v1/chat/completions",
+                    "model_name": "Qwen3-Coder-30B",
+                    "tier": "local",
+                    # OMN-13161: per-backend output-token ceiling (router-resolved).
+                    "max_tokens": 65536,
+                    "capabilities": ["test", "code_generation"],
+                }
+            ],
         )
+
         db_path = tmp_path / "delegation.sqlite"
-        port = DirectCurlDelegationDispatchPort(evidence_db_path=db_path)
-        port._backends = [
-            {
-                "backend_id": "local-coder",
-                "endpoint_url": "http://127.0.0.1:8000",
-                "model_name": "Qwen3-Coder-30B",
-                "tier": "local",
-                "capabilities": ["test", "code_generation"],
-            }
-        ]
+        port = LocalDelegationDispatchPort(evidence_db_path=db_path)
         handler = HandlerDelegateSkill(dispatch_port=port)
         correlation_id = uuid4()
         original_prompt = "Write pytest unit tests for normalize_status."
@@ -193,10 +212,14 @@ class TestDelegateSkillGoldenChain:
         assert "def test_normalize_status_ok" in response.response
         assert response.metrics.input_tokens == 18
         assert response.metrics.output_tokens == 44
-        assert captured_prompts == [f"/no_think\n{original_prompt}"]
-        assert captured_provider_request_options == [
-            {"chat_template_kwargs": {"enable_thinking": False}}
-        ]
+        # The shaped user message carries the /no_think directive + thinking off.
+        assert len(captured_payloads) == 1
+        messages = captured_payloads[0]["messages"]
+        user_message = next(m for m in messages if m["role"] == "user")
+        assert user_message["content"] == f"/no_think\n{original_prompt}"
+        assert captured_payloads[0]["chat_template_kwargs"] == {
+            "enable_thinking": False
+        }
 
         conn = sqlite3.connect(str(db_path))
         try:

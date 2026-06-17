@@ -7,6 +7,10 @@ from omnimarket.projection.protocol_database import (
     InmemoryDatabaseAdapter,
     ProtocolProjectionDatabaseSync,
 )
+from omnimarket.projection.sqlite_database import (
+    SqliteDatabaseAdapter,
+    default_evidence_db_path,
+)
 
 __all__: list[str] = [
     "DatabaseAdapter",
@@ -14,5 +18,7 @@ __all__: list[str] = [
     "ProjectionStatus",
     "ProjectionTableConfig",
     "ProtocolProjectionDatabaseSync",
+    "SqliteDatabaseAdapter",
     "build_projection_topic_map",
+    "default_evidence_db_path",
 ]

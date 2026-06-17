@@ -1,8 +1,8 @@
 # OmniMarket
 
 OmniMarket is the portable ONEX (OmniNode eXecution) workflow package registry — the consolidation
-target for all OmniNode automation logic. It ships ~135 contract-backed node
-entry points covering build loops, PR lifecycle management, sweeps, projections,
+target for all OmniNode automation logic. It ships 302 contract-backed node
+entry points (as of v0.4.3) covering build loops, PR lifecycle management, sweeps, projections,
 ledger, memory orchestration, session management, and diagnostics. Platform
 wrappers invoke Market nodes for execution, but never own the business logic
 themselves.
@@ -57,6 +57,11 @@ omnimarket/
 │   ├── intelligence/           # LLM and inference abstractions
 │   ├── inference/              # Model selection and endpoint routing
 │   ├── classifiers/            # Shared classification logic
+│   ├── cli/                    # CLI entry points
+│   ├── config/                 # Configuration models and loaders
+│   ├── configs/                # Configuration files and overlays
+│   ├── data/                   # Static data assets
+│   ├── registry/               # Node registry helpers
 │   ├── enums/                  # Shared enumerations
 │   ├── adapters/               # Adapter templates for external platforms
 │   ├── runtime/                # Runtime version handshake utilities
@@ -65,12 +70,14 @@ omnimarket/
 ├── tests/                      # Golden-chain and contract tests
 ├── scripts/
 │   ├── ci/                     # CI gate scripts (runtime sweep, metadata check)
+│   ├── validation/             # Additional validation scripts (leaked literals, contract overlay boundary, topic lint)
 │   ├── generate_node.py        # Node scaffold generator
 │   ├── generate_adapters.py    # Adapter output generator
 │   └── lint_no_hardcoded_topics.py
 ├── docs/
 │   ├── architecture/           # Package model, boundaries, dependency scope
 │   ├── reference/              # Node catalog, metadata reference
+│   ├── patterns/               # Implementation patterns (skill-backing node, etc.)
 │   └── migrations/             # Migration boundary docs
 ├── pyproject.toml
 └── CLAUDE.md

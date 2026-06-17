@@ -36,30 +36,11 @@ _TERMINAL_STATUSES = frozenset({"completed", "failed", "timeout"})
 
 
 class ProtocolDelegationDispatchPort(Protocol):
-    """Injected port for delegation dispatch. Implementation is runtime-owned."""
+    """Injected port for delegation dispatch. Implementation is runtime-owned.
 
-    async def dispatch(
-        self,
-        *,
-        prompt: str,
-        task_type: str,
-        correlation_id: UUID,
-        max_tokens: int,
-        source_file_path: str | None,
-        source_session_id: str | None,
-        wait: bool,
-        quality_contract_mode: str,
-        acceptance_criteria: tuple[str, ...],
-    ) -> dict[str, object]: ...
-
-
-class _UnwiredDelegationDispatchPort:
-    """Fail-closed default port used when the runtime has not wired a real port.
-
-    The auto-wiring resolver constructs handlers zero-arg when no explicit
-    dependency map is provided. A handler that crashed on construction would
-    break runtime boot for every other co-located node, so this default lets
-    the handler load but raises a clear error on first dispatch attempt.
+    OMN-13161: ``max_tokens`` is ``int | None``. ``None`` means the request
+    omitted an explicit budget; the dispatch implementation resolves the effective
+    value from the selected backend's per-backend ceiling in the routing contract.
     """
 
     async def dispatch(
@@ -68,18 +49,13 @@ class _UnwiredDelegationDispatchPort:
         prompt: str,
         task_type: str,
         correlation_id: UUID,
-        max_tokens: int,
+        max_tokens: int | None,
         source_file_path: str | None,
         source_session_id: str | None,
         wait: bool,
         quality_contract_mode: str,
         acceptance_criteria: tuple[str, ...],
-    ) -> dict[str, object]:
-        raise RuntimeError(
-            "HandlerDelegateSkill has no dispatch port wired. Construct the "
-            "handler with dispatch_port=<ProtocolDelegationDispatchPort impl> "
-            "or register one in the runtime DI container before invoking."
-        )
+    ) -> dict[str, object]: ...
 
 
 def _as_int(value: object, default: int = 0) -> int:
@@ -219,11 +195,15 @@ class HandlerDelegateSkill:
         elif event_bus is not None:
             self._dispatch_port = RuntimeDelegationDispatchPort(event_bus=event_bus)
         else:
-            from omnimarket.nodes.node_delegate_skill_orchestrator.ports.port_direct_curl_dispatch import (
-                DirectCurlDelegationDispatchPort,
+            # Standalone CLI (no broker): the in-process local port composes the
+            # routing authority, the canonical effect handler (curl on the macOS
+            # LAN profile, httpx elsewhere), and the canonical projection that
+            # materializes the local evidence row (OMN-13160).
+            from omnimarket.nodes.node_delegate_skill_orchestrator.ports.port_local_delegation_dispatch import (
+                LocalDelegationDispatchPort,
             )
 
-            self._dispatch_port = DirectCurlDelegationDispatchPort()
+            self._dispatch_port = LocalDelegationDispatchPort()
 
     async def handle(
         self, request: ModelDelegateSkillRequest

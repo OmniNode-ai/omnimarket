@@ -5,7 +5,9 @@
 
 from __future__ import annotations
 
-from pydantic import BaseModel, ConfigDict
+from typing import Any
+
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class ModelLlmDelegationCallRequest(BaseModel):
@@ -34,6 +36,14 @@ class ModelLlmDelegationCallRequest(BaseModel):
     prompt_hash: str
     """SHA-256 of prompt. Stored in events for correlation and deduplication."""
 
+    system_prompt: str = ""
+    """Optional system message prepended to the chat-completions message set.
+
+    Resolved by the routing/task-type layer before the effect runs. Empty means
+    no system message is sent (single user message). In-memory only — never
+    persisted or published to Kafka.
+    """
+
     task_type: str = "generic"
     task_id: str | None = None
 
@@ -50,3 +60,11 @@ class ModelLlmDelegationCallRequest(BaseModel):
     attempt_number: int = 1
     model_tier: str = "unknown"
     provider: str = "unknown"
+
+    # Outbound request shaping resolved by the routing/contract layer before the
+    # effect runs. extra_headers are static provider headers from the bifrost
+    # backend config; provider_request_options are inference-protocol options
+    # (e.g. chat_template_kwargs) merged into the chat-completions payload. Both
+    # default empty so existing callers are unaffected.
+    extra_headers: dict[str, str] = Field(default_factory=dict)
+    provider_request_options: dict[str, Any] = Field(default_factory=dict)

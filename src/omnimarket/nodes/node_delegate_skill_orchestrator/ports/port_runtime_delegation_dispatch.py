@@ -84,20 +84,27 @@ class RuntimeDelegationDispatchPort:
         prompt: str,
         task_type: str,
         correlation_id: UUID,
-        max_tokens: int,
+        max_tokens: int | None,
         source_file_path: str | None,
         source_session_id: str | None,
         wait: bool,
         quality_contract_mode: str,
         acceptance_criteria: tuple[str, ...],
     ) -> dict[str, object]:
+        # OMN-13161: the bus runtime path carries its own routing-tier budgets in
+        # the downstream delegation chain. When the request omits max_tokens, fall
+        # back to the runtime model's contract default rather than forcing a value;
+        # the per-backend ceiling is applied on the in-process local path.
+        max_tokens_fields: dict[str, int] = (
+            {} if max_tokens is None else {"max_tokens": max_tokens}
+        )
         request = ModelDelegationRequest(
             prompt=prompt,
             task_type=cast("Any", task_type),
             source_session_id=source_session_id,
             source_file_path=source_file_path,
             correlation_id=correlation_id,
-            max_tokens=max_tokens,
+            **max_tokens_fields,
             emitted_at=datetime.now(UTC),
             quality_contract_mode=cast("Any", quality_contract_mode),
             acceptance_criteria=acceptance_criteria,

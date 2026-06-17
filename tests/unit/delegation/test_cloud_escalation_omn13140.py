@@ -162,6 +162,7 @@ _TASK_CLASS_CONTRACT_GEMINI = textwrap.dedent(
 
 _CANONICAL_GEMINI_BACKEND_ID = "cloud-gemini-flash"
 _CANONICAL_VERTEX_BACKEND_ID = "cloud-vertex-gemini"
+_TERMINAL_CLI_BACKEND_ID = "cli-codex"
 
 
 @pytest.fixture
@@ -289,14 +290,38 @@ class TestQualityGateVerdictRecommendsFallback:
 
 @pytest.mark.unit
 @pytest.mark.parametrize(
-    ("task_type", "content", "dod_heuristic", "expected_prefix"),
+    (
+        "task_type",
+        "content",
+        "dod_heuristic",
+        "expected_prefix",
+        "start_tier",
+        "expected_min_tier",
+    ),
     [
-        ("code_generation", "x = 1", ("min_length_chars_400",), "WEAK_OUTPUT"),
+        # OMN-13140 closed-set tier_order: code_generation declares
+        # [cheap_cloud, local, claude]. A gate failure on cheap_cloud escalates
+        # forward to the next declared tier (local), which is routable in the
+        # fixture. (Previously this case started on local and relied on the
+        # append-unlisted bug to reach cheap_frontier — a tier code_generation's
+        # tier_order does not list, so it is excluded under closed-set semantics.)
+        (
+            "code_generation",
+            "x = 1",
+            ("min_length_chars_400",),
+            "WEAK_OUTPUT",
+            "cheap_cloud",
+            "local",
+        ),
+        # research declares [local, cheap_cloud, claude]: a gate failure on local
+        # escalates forward to cheap_cloud (routable in the fixture).
         (
             "research",
             "The function returns a value to the caller without line refs.",
             ("cites_specific_lines",),
             "TASK_MISMATCH",
+            "local",
+            "cheap_cloud",
         ),
     ],
 )
@@ -312,6 +337,8 @@ class TestWeakAndMismatchProduceEscalationCandidate:
         content: str,
         dod_heuristic: tuple[str, ...],
         expected_prefix: str,
+        start_tier: str,
+        expected_min_tier: str,
         frontier_unconfigured_bifrost: None,
     ) -> None:
         handler = HandlerDelegationWorkflow(workflows={})
@@ -340,7 +367,7 @@ class TestWeakAndMismatchProduceEscalationCandidate:
             max_context_tokens=65536,
             system_prompt="sp",
             rationale="r",
-            tier_name="local",
+            tier_name=start_tier,
             dod_heuristic=dod_heuristic,
         )
         handler.handle_routing_decision(decision)
@@ -367,8 +394,7 @@ class TestWeakAndMismatchProduceEscalationCandidate:
         assert len(routing_intents) == 1, (
             f"{expected_prefix} verdict must produce an escalation candidate"
         )
-        assert routing_intents[0].min_tier_name is not None
-        assert routing_intents[0].min_tier_name != "local"
+        assert routing_intents[0].min_tier_name == expected_min_tier
         assert handler.workflows[cid].state == EnumDelegationState.ROUTED
         assert handler.workflows[cid].escalation_count == 1
 
@@ -462,6 +488,19 @@ class TestCanonicalCloudTargetCapability:
             "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
         )
         assert gemini["secret_ref"] == "llm.gemini.api_key"
+
+    def test_terminal_claude_tier_routes_to_headless_codex_cli(self) -> None:
+        tiers = {t["name"]: t for t in self._routing_tiers()["tiers"]}
+        terminal = tiers["claude"]
+        assert terminal["cost_per_1k_tokens"] == 0.0
+        assert terminal["models"][0]["backend_id"] == _TERMINAL_CLI_BACKEND_ID
+        assert terminal["models"][0]["id"] == "codex-cli"
+
+        by_id = {b["backend_id"]: b for b in self._bifrost()["backends"]}
+        codex = by_id[_TERMINAL_CLI_BACKEND_ID]
+        assert codex["endpoint_url"] == "cli://codex"
+        assert codex["model_name"] == "codex-cli"
+        assert "secret_ref" not in codex
 
 
 # ---------------------------------------------------------------------------

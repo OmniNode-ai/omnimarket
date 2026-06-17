@@ -19,7 +19,7 @@ RESIDUE (OMN-12877): scope-extended ratchet over confirmed residue files. The
     New violations above the baseline fail the gate.
 
 SHAPE (OMN-12883): every bifrost backend respects the provider-class endpoint
-    URL shape contract: overlay-supplied (base_url_env set) → endpoint_url null;
+    URL shape contract: overlay-supplied (endpoint_url_env set) → endpoint_url null;
     static-URL non-cli backends → endpoint_url is a non-null complete URL.
 
 These tests assert the live demo path passes AND that the gate actually fails
@@ -380,24 +380,24 @@ class TestProviderEndpointShapeOMN12883:
                     f"endpoint_url=null, got {backend['endpoint_url']!r}"
                 )
 
-    def test_all_local_backends_declare_base_url_env(self) -> None:
-        """Local backends must declare base_url_env (overlay source)."""
+    def test_all_local_backends_declare_endpoint_url_env(self) -> None:
+        """Local backends must declare endpoint_url_env (overlay source)."""
         audit = build_provider_endpoint_shape_audit(_REPO_ROOT)
         for backend in audit["backends"]:
             if backend.get("tier") == "local":
-                assert backend["base_url_env"], (
+                assert backend["endpoint_url_env"], (
                     f"local backend {backend['backend_id']!r} must declare "
-                    "base_url_env for overlay-supplied endpoint"
+                    "endpoint_url_env for overlay-supplied endpoint"
                 )
 
     def test_cloud_backend_missing_endpoint_url_is_violation(
         self, tmp_path: Path
     ) -> None:
-        """A non-local backend with no base_url_env and no endpoint_url must fail."""
+        """A non-local backend with no endpoint_url_env and no endpoint_url must fail."""
 
         src_cfg = _REPO_ROOT / "src/omnimarket/configs/bifrost_delegation.yaml"
         data = yaml.safe_load(src_cfg.read_text(encoding="utf-8"))
-        # Inject a rogue cloud backend with no endpoint_url and no base_url_env
+        # Inject a rogue cloud backend with no endpoint_url and no endpoint_url_env
         data["backends"].append(
             {"backend_id": "rogue-cloud", "tier": "cheap_cloud", "endpoint_url": None}
         )
@@ -419,13 +419,13 @@ class TestProviderEndpointShapeOMN12883:
     def test_overlay_backend_with_nonnull_endpoint_url_is_violation(
         self, tmp_path: Path
     ) -> None:
-        """A backend with base_url_env set AND a non-null endpoint_url must fail."""
+        """A backend with endpoint_url_env set AND a non-null endpoint_url must fail."""
         data = {
             "backends": [
                 {
                     "backend_id": "conflict-backend",
                     "tier": "local",
-                    "base_url_env": "BIFROST_LOCAL_CODER_ENDPOINT_URL",
+                    "endpoint_url_env": "BIFROST_LOCAL_CODER_ENDPOINT_URL",
                     "endpoint_url": "http://local-inference.internal:8000/v1/chat/completions",
                 }
             ]
@@ -439,7 +439,7 @@ class TestProviderEndpointShapeOMN12883:
 
         audit = build_provider_endpoint_shape_audit(tmp_path)
         assert not audit["clean"], (
-            "backend with both base_url_env and non-null endpoint_url must fail"
+            "backend with both endpoint_url_env and non-null endpoint_url must fail"
         )
         assert any("conflict-backend" in v for v in audit["violations"]), (
             f"conflict-backend must appear in violations: {audit['violations']}"
@@ -468,5 +468,31 @@ class TestProviderEndpointShapeOMN12883:
         audit = build_provider_endpoint_shape_audit(tmp_path)
         assert audit["clean"], (
             f"cli_agents tier must be exempt from endpoint_url requirement: "
+            f"{audit['violations']}"
+        )
+
+    def test_cli_backend_url_exempt_from_http_endpoint_shape_even_in_claude_tier(
+        self, tmp_path: Path
+    ) -> None:
+        """CLI backends may serve the claude-named terminal escalation tier."""
+        data = {
+            "backends": [
+                {
+                    "backend_id": "cli-codex",
+                    "tier": "claude",
+                    "endpoint_url": "cli://codex",
+                }
+            ]
+        }
+        cfg_dir = tmp_path / "src/omnimarket/configs"
+        cfg_dir.mkdir(parents=True)
+        (cfg_dir / "bifrost_delegation.yaml").write_text(
+            yaml.dump(data), encoding="utf-8"
+        )
+        (tmp_path / ".git").mkdir()
+
+        audit = build_provider_endpoint_shape_audit(tmp_path)
+        assert audit["clean"], (
+            f"cli:// terminal backend must be exempt from HTTP endpoint shape: "
             f"{audit['violations']}"
         )

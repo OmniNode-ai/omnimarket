@@ -22,9 +22,6 @@ from omnimarket.cli.reporting import (
     load_contract_metadata,
 )
 from omnimarket.models.cli_report import ModelMarketCliStep
-from omnimarket.models.delegation.wire.model_token_limits import (
-    DELEGATION_DEFAULT_MAX_TOKENS,
-)
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -63,7 +60,15 @@ def _build_parser() -> argparse.ArgumentParser:
         default=[],
         help="Request-level quality criterion. May be repeated.",
     )
-    parser.add_argument("--max-tokens", type=int, default=DELEGATION_DEFAULT_MAX_TOKENS)
+    parser.add_argument(
+        "--max-tokens",
+        type=int,
+        default=None,
+        help=(
+            "Optional explicit output-token budget. Omit to resolve the effective "
+            "value from the selected backend's per-backend ceiling (OMN-13161)."
+        ),
+    )
     parser.add_argument("--correlation-id", default=None)
     parser.add_argument(
         "--dispatch",
@@ -115,7 +120,8 @@ def _compile_or_dispatch(args: argparse.Namespace) -> dict[str, object]:
         "quality_contract_mode": args.quality_contract_mode,
         "acceptance_criteria": tuple(str(item) for item in args.acceptance_criterion),
         "wait": bool(args.wait),
-        "max_tokens": int(args.max_tokens),
+        # OMN-13161: None => omit from payload so the backend ceiling resolves.
+        "max_tokens": None if args.max_tokens is None else int(args.max_tokens),
         "correlation_id": args.correlation_id,
     }
     if args.dispatch:

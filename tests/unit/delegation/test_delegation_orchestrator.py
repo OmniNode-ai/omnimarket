@@ -20,6 +20,7 @@ from __future__ import annotations
 import asyncio
 import inspect
 from datetime import UTC, datetime
+from pathlib import Path
 from uuid import UUID, uuid4
 
 import pytest
@@ -974,22 +975,69 @@ class TestInferenceErrorEscalation:
         assert result.quality_passed is False
         assert "401" in result.failure_reason
 
-    def test_max_escalation_attempts_reached_produces_terminal_failed(self) -> None:
-        """After _MAX_INFERENCE_ESCALATION_ATTEMPTS escalations, emit terminal FAILED."""
+    def test_max_escalation_attempts_reached_produces_terminal_failed(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Path,
+    ) -> None:
+        """After _MAX_INFERENCE_ESCALATION_ATTEMPTS escalations, emit terminal FAILED.
+
+        OMN-13140: the `test` task class declares the closed tier_order
+        [local, cheap_cloud, claude]. To exercise the max-escalation ceiling
+        (2 real escalations) this test needs all three of those tiers routable;
+        the autouse `frontier_unconfigured_bifrost` fixture predates the
+        cli-codex terminal backend and leaves that backend undeclared. We
+        therefore bind a bifrost config where local, cheap_cloud, AND the
+        claude-named cli-codex terminal tier carry resolvable `test` transports,
+        so the chain escalates twice (local -> cheap_cloud -> claude) and the
+        third attempt hits the escalation ceiling.
+        """
         from omnimarket.nodes.node_delegation_orchestrator.handlers.handler_delegation_workflow import (
             _MAX_INFERENCE_ESCALATION_ATTEMPTS,
         )
+        from omnimarket.nodes.node_delegation_routing_reducer.handlers import (
+            handler_delegation_routing as routing,
+        )
+
+        from .conftest import BIFROST_FRONTIER_UNCONFIGURED
+
+        # All three declared `test` tiers (local, cheap_cloud, claude) must be
+        # routable so two real escalations (local -> cheap_cloud -> claude) occur
+        # before the ceiling is reached. Reuse the shared frontier-unconfigured
+        # bifrost shape, then add the terminal cli-codex backend referenced by
+        # the claude-named tier in routing_tiers.yaml.
+        routing_rules_marker = "routing_rules:\n"
+        cli_codex_backend = (
+            "  - backend_id: cli-codex\n"
+            '    endpoint_url: "cli://codex"\n'
+            "    model_name: codex-cli\n"
+            "    tier: claude\n"
+            "    timeout_ms: 300000\n"
+            "    capabilities: [agent_delegation, code_generation, test]\n"
+        )
+        assert routing_rules_marker in BIFROST_FRONTIER_UNCONFIGURED, (
+            "expected shared fixture to contain routing_rules marker"
+        )
+        all_tiers_routable = BIFROST_FRONTIER_UNCONFIGURED.replace(
+            routing_rules_marker, cli_codex_backend + routing_rules_marker
+        )
+        contract_path = tmp_path / "all_tiers_routable.yaml"
+        contract_path.write_text(all_tiers_routable)
+        monkeypatch.setenv("BIFROST_CONTRACT_PATH", str(contract_path))
+        monkeypatch.delenv("BIFROST_OVERLAY_PATH", raising=False)
+        routing._load_bifrost_endpoints.cache_clear()
 
         handler = HandlerDelegationWorkflow()
         cid = uuid4()
 
         handler.handle_delegation_request(_make_request(correlation_id=cid))
 
-        # Exhaust max attempts via successive infra errors
+        # Exhaust max attempts via successive infra errors. `test` tier_order is
+        # [local, cheap_cloud, claude]: local -> cheap_cloud -> claude.
+        tiers_in_order = ("local", "cheap_cloud")
         for i in range(_MAX_INFERENCE_ESCALATION_ATTEMPTS):
-            tier = "local" if i == 0 else "cheap_cloud"
             handler.handle_routing_decision(
-                _make_routing_decision_with_tier(cid, tier_name=tier)
+                _make_routing_decision_with_tier(cid, tier_name=tiers_in_order[i])
             )
             result = handler.handle_inference_response(
                 _make_error_inference_response(cid, f"502 Bad Gateway attempt {i + 1}")
@@ -1010,3 +1058,7 @@ class TestInferenceErrorEscalation:
         failure_event = next(e for e in final if isinstance(e, ModelDelegationEvent))
         assert failure_event.topic == "onex.evt.omnibase-infra.delegation-failed.v1"
         assert handler.workflows[cid].state == EnumDelegationState.FAILED
+        result_payload: ModelDelegationResult = failure_event.payload
+        assert (
+            result_payload.terminal_failure_reason == "max_escalation_attempts_reached"
+        )

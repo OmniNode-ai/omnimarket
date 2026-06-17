@@ -24,9 +24,6 @@ handler_routing:
         name: ModelOrchestratorStartCommand
         module: omnimarket.nodes.node_build_loop_orchestrator.models.model_orchestrator_start_command
     - handler:
-        name: AdapterDelegationRouter
-        module: omnimarket.nodes.node_build_loop_orchestrator.handlers.adapter_delegation_router
-    - handler:
         name: AdapterLinearFill
         module: omnimarket.nodes.node_build_loop_orchestrator.handlers.adapter_linear_fill
         handler_type: http
@@ -37,12 +34,6 @@ handler_routing:
         name: AdapterLlmDispatch
         module: omnimarket.nodes.node_build_loop_orchestrator.handlers.adapter_llm_dispatch
         handler_type: http
-    - handler:
-        name: AssembleLive
-        module: omnimarket.nodes.node_build_loop_orchestrator.handlers.assemble_live
-    - handler:
-        name: ModelPolicyLoader
-        module: omnimarket.nodes.node_build_loop_orchestrator.handlers.model_policy_loader
 
 descriptor:
   node_archetype: orchestrator

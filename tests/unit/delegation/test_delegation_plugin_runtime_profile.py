@@ -10,6 +10,7 @@ from uuid import uuid4
 
 import pytest
 import yaml
+from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
 from omnibase_infra.enums import EnumDispatchStatus
 from omnibase_infra.event_bus.topic_constants import (
     TOPIC_DELEGATION_COMPLETED,
@@ -51,7 +52,7 @@ class _RecordingEventBus:
 def _plugin_config(runtime_profile: str = "main") -> ModelDomainPluginConfig:
     return ModelDomainPluginConfig(
         container=MagicMock(),
-        event_bus=MagicMock(),
+        event_bus=MagicMock(spec=EventBusInmemory),
         correlation_id=uuid4(),
         input_topic="onex.cmd.omnibase-infra.delegation-request.v1",
         output_topic="onex.evt.omnibase-infra.delegation-completed.v1",

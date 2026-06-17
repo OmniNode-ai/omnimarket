@@ -39,3 +39,48 @@ Requirements for a node to be harness-compatible:
 ## CI gate
 
 The harness runs as part of the standard `pytest -m unit` suite in CI. No separate configuration required.
+
+## Dispatcher route-coverage gate (OMN-12880)
+
+Every node that subscribes to a command topic must declare a dispatcher route.
+A node that subscribes without a dispatcher route silently delivers messages to
+the dead-letter queue. This has caused two production incidents (June 9 DLQ
+regression; DEL-01 June 12 live finding).
+
+The gate is implemented in `tests/ci/test_dispatcher_route_coverage_fixtures.py`
+and runs as part of the `pytest -m unit` suite. It scans every `contract.yaml`
+in the omnimarket contract tree and asserts that for every subscribed command
+topic (`onex.cmd.*`) the contract declares either `handler_routing` or
+`runtime_dispatch`.
+
+### What counts as a dispatcher route
+
+- `handler_routing` block with at least one `handlers` entry, OR
+- `runtime_dispatch` block with a `command_topic` field.
+
+`compatibility_publish_topics` are sender-side declarations and are never a
+gap; they do not satisfy the gate.
+
+### When adding a node that subscribes to a command topic
+
+1. Add `handler_routing` (preferred) or `runtime_dispatch` to your
+   `contract.yaml`.
+2. Run the coverage gate locally:
+
+   ```bash
+   uv run pytest tests/ci/test_dispatcher_route_coverage_fixtures.py -v -m unit
+   ```
+
+3. Do not add an allowlist entry to bypass the gate — fix the contract.
+
+### Real-dispatch-path tests
+
+Handler-isolation tests can pass while the live dispatch path fails. A
+real-dispatch-path test registers the handler through the real dispatcher,
+emits the command event, and asserts the terminal event is produced.
+
+For delegation nodes, see
+`tests/unit/delegation/test_delegation_wiring.py` for the dispatch wiring
+pattern. For general nodes, the golden-chain test in `tests/test_golden_chain_*.py`
+satisfies this requirement when it uses `EventBusInmemory` with real handler
+registration (not a mock).

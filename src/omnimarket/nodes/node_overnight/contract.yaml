@@ -115,9 +115,6 @@ handler_routing:
       event_model:
         name: ModelOvernightCommand
         module: omnimarket.nodes.node_overnight.handlers.handler_overnight
-    - handler:
-        name: OverseerTick
-        module: omnimarket.nodes.node_overnight.handlers.overseer_tick
 
 metadata:
   transport_type: kafka
