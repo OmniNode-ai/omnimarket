@@ -292,12 +292,20 @@ class HandlerProjectionDelegation:
         correlation_id UPSERT key plus _preserve_existing_evidence.
         """
         row_model = ModelDelegationEventProjectionRow.from_terminal_event(event)
+        timestamp_iso = row_model.timestamp.isoformat()
         row: dict[str, object] = {
             "correlation_id": str(row_model.correlation_id),
             "session_id": (
                 str(row_model.session_id) if row_model.session_id is not None else None
             ),
-            "timestamp": row_model.timestamp.isoformat(),
+            "timestamp": timestamp_iso,
+            # OMN-13171: explicit created_at injection. The deployed
+            # delegation_events schema declares created_at NOT NULL; a backing
+            # store without an implicit DB default (the local SQLite evidence
+            # target on a warm volume) raises a NOT NULL constraint when the
+            # write omits it. Mirror the event timestamp — deterministic, not an
+            # implicit datetime.now() at the DB layer (frozen-schema convention).
+            "created_at": timestamp_iso,
             "task_type": row_model.task_type,
             "delegated_to": row_model.delegated_to,
             "model_name": row_model.model_name,

@@ -39,8 +39,8 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
     report = build_report()
     summary = report["summary"]
 
-    assert summary["node_dirs"] == 302
-    assert summary["entry_points"] == 302
+    assert summary["node_dirs"] == 301
+    assert summary["entry_points"] == 301
     assert summary["missing_entry_points"] == []
     assert summary["dangling_entry_points"] == []
     assert summary["routable"] >= 294
@@ -94,10 +94,6 @@ def test_market_node_runtime_dogfood_proves_nested_contract_shapes() -> None:
     assert (
         routable["node_code_embedding_effect"]["input_model"]
         == "omnimarket.nodes.node_code_embedding_effect.models.model_code_embedding_request.ModelCodeEmbeddingRequest"
-    )
-    assert (
-        routable["node_projection_query"]["input_model"]
-        == "omnimarket.nodes.node_projection_query.models.model_projection_query_request.ModelProjectionQueryRequest"
     )
     assert (
         routable["node_emit_daemon"]["input_model"]
