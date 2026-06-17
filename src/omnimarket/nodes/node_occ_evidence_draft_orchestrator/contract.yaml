@@ -22,15 +22,15 @@ handler_routing:
 handler:
   module: omnimarket.nodes.node_occ_evidence_draft_orchestrator.handlers.handler_occ_evidence_draft_orchestrator
   class: HandlerOccEvidenceDraftOrchestrator
-  input_model: omnimarket.nodes.node_redeploy.models.model_occ_evidence_draft.ModelOccEvidenceDraftRequest
+  input_model: omnimarket.events.occ_evidence.ModelOccEvidenceDraftRequest
 
 input_model:
   name: ModelOccEvidenceDraftRequest
-  module: omnimarket.nodes.node_redeploy.models.model_occ_evidence_draft
+  module: omnimarket.events.occ_evidence
   description: "OCC draft request carrying ticket, lane, proof, and required receipts."
 output_model:
   name: ModelOccEvidenceDraft
-  module: omnimarket.nodes.node_redeploy.models.model_occ_evidence_draft
+  module: omnimarket.events.occ_evidence
   description: "Provisional OCC evidence draft (always PROVISIONAL)."
 
 descriptor:
