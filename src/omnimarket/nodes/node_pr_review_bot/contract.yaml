@@ -124,8 +124,8 @@ handler_routing:
       description: "Abstracts all GitHub REST API calls behind a protocol with retry/backoff."
 
     - name: "AdapterInferenceBridge"
-      module: "omnimarket.nodes.node_hostile_reviewer.handlers.adapter_inference_bridge"
-      description: "HTTP adapter to vLLM endpoints (reused from node_hostile_reviewer)."
+      module: "omnimarket.inference.adapter_inference_bridge"
+      description: "HTTP adapter to vLLM endpoints (shared omnimarket.inference owner, OMN-13208)."
 
 input_model:
   name: "ReviewRequest"

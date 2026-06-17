@@ -18,7 +18,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from omnimarket.nodes.node_hostile_reviewer.handlers.adapter_inference_bridge import (
+from omnimarket.inference.adapter_inference_bridge import (
     ModelInferenceBridgeConfig,
 )
 from omnimarket.nodes.node_pr_review_bot.handlers.handler_thread_poster import (
@@ -143,7 +143,7 @@ def test_run_review_uses_concrete_thread_poster(
             return_value=[],
         ),
         patch(
-            "omnimarket.nodes.node_hostile_reviewer.handlers.adapter_inference_bridge.AdapterInferenceBridge.infer",
+            "omnimarket.inference.adapter_inference_bridge.AdapterInferenceBridge.infer",
             new_callable=AsyncMock,
             return_value=_SAMPLE_LLM_RESPONSE,
         ),
@@ -182,7 +182,7 @@ def test_run_review_no_value_error_on_model_key(
             return_value=[],
         ),
         patch(
-            "omnimarket.nodes.node_hostile_reviewer.handlers.adapter_inference_bridge.AdapterInferenceBridge.infer",
+            "omnimarket.inference.adapter_inference_bridge.AdapterInferenceBridge.infer",
             new_callable=AsyncMock,
             return_value="[]",
         ),
