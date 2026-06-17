@@ -642,6 +642,100 @@ def next_eligible_tier(
     return None
 
 
+# Stable machine-readable token prefixed onto every precise no-higher-tier
+# terminal reason (OMN-13167). Operators and projections key off this prefix; the
+# precise detail (exhausted policy + missing/unroutable tiers) follows after the
+# `: ` separator.
+NO_HIGHER_TIER_REASON_TOKEN = "no_higher_tier_available"
+
+
+def _tier_skip_reason(
+    tier: ModelRoutingTier,
+    task_type: str,
+    excluded_tiers: frozenset[str],
+    bifrost_backends: dict[str, BifrostBackendRef],
+    contract: dict[str, object] | None,
+) -> str:
+    """Return the specific reason ``tier`` is not usable for ``task_type``.
+
+    Used only to build the precise no-higher-tier terminal reason — never to make
+    a routing decision. The returned phrase names exactly why the tier was
+    skipped so the terminal record is self-describing (OMN-13167).
+    """
+    if tier.name in excluded_tiers:
+        return "excluded"
+    entry = _task_class_entry(contract, task_type)
+    if not _tier_allowed_by_contract(tier, entry):
+        policy = entry.get("cloud_routing_policy") if entry is not None else None
+        if policy == _CLOUD_BLOCKED_POLICY and tier.name not in _LOCAL_TIERS:
+            return "cloud_routing_blocked"
+        return "above_pricing_ceiling"
+    return "no_routable_backend_for_task"
+
+
+def describe_no_higher_tier_available(
+    current_tier_name: str,
+    excluded_tiers: frozenset[str],
+    *,
+    task_type: str,
+) -> str:
+    """Return a precise terminal reason when no higher tier can serve a task.
+
+    Names the exhausted escalation policy (the task class and its declared,
+    closed-set ``tier_order``), the current tier, and each tier the policy lists
+    AFTER the current tier together with the reason it was unusable (excluded,
+    cloud-routing blocked, above pricing ceiling, or no routable backend serving
+    the task). The string is prefixed with ``NO_HIGHER_TIER_REASON_TOKEN`` so it
+    stays machine-keyable while carrying the diagnostic the bare token lacked
+    (OMN-13167). The orchestrator emits this as ``terminal_failure_reason`` so the
+    delegation-failed event and its correlation-trace projection row identify the
+    missing tier rather than a bare ``no_higher_tier_available``.
+    """
+    config = _get_config()
+    bifrost_backends = _load_bifrost_endpoints()
+    contract = _get_task_class_contract()
+    entry = _task_class_entry(contract, task_type)
+    tiers = _tier_order_from_contract(config, entry)
+    policy_order = tuple(t.name for t in tiers)
+
+    # Candidate tiers are those the policy lists strictly after the current tier.
+    after_current: list[ModelRoutingTier] = []
+    found_current = False
+    for tier in tiers:
+        if tier.name == current_tier_name:
+            found_current = True
+            continue
+        if found_current:
+            after_current.append(tier)
+
+    if not found_current:
+        return (
+            f"{NO_HIGHER_TIER_REASON_TOKEN}: task_class='{task_type}' "
+            f"current_tier='{current_tier_name}' is not in the declared "
+            f"escalation policy tier_order={list(policy_order)}"
+        )
+
+    if not after_current:
+        return (
+            f"{NO_HIGHER_TIER_REASON_TOKEN}: task_class='{task_type}' exhausted "
+            f"escalation policy tier_order={list(policy_order)} — "
+            f"current_tier='{current_tier_name}' is the final (ceiling) tier; "
+            f"no higher tier is declared for this task class"
+        )
+
+    skipped = [
+        f"{tier.name}("
+        f"{_tier_skip_reason(tier, task_type, excluded_tiers, bifrost_backends, contract)})"
+        for tier in after_current
+    ]
+    return (
+        f"{NO_HIGHER_TIER_REASON_TOKEN}: task_class='{task_type}' exhausted "
+        f"escalation policy tier_order={list(policy_order)} — "
+        f"current_tier='{current_tier_name}'; no usable higher tier: "
+        f"{', '.join(skipped)}"
+    )
+
+
 def tier_for_backend(backend_id: str) -> str | None:
     """Return the routing-tier NAME that declares ``backend_id``, or None.
 
@@ -829,8 +923,10 @@ def delta(
 
 
 __all__: list[str] = [
+    "NO_HIGHER_TIER_REASON_TOKEN",
     "_get_contract_model_ref",
     "delta",
+    "describe_no_higher_tier_available",
     "next_eligible_tier",
     "tier_for_backend",
     "tier_max_retries",

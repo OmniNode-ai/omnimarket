@@ -50,8 +50,10 @@ from omnimarket.nodes.node_delegation_quality_gate_reducer.models.model_quality_
     ModelQualityGateResult,
 )
 from omnimarket.nodes.node_delegation_routing_reducer.handlers.handler_delegation_routing import (
+    NO_HIGHER_TIER_REASON_TOKEN,
     _get_config,
     _tier_order_from_contract,
+    describe_no_higher_tier_available,
     next_eligible_tier,
 )
 from omnimarket.nodes.node_delegation_routing_reducer.models.model_routing_decision import (
@@ -250,7 +252,12 @@ class TestGateFailNoHigherTier:
         assert len(result_events) == 1
         result = result_events[0].payload
         assert isinstance(result, ModelDelegationResult)
-        assert result.terminal_failure_reason == "no_higher_tier_available"
+        # OMN-13167: precise reason — stable machine-keyable token prefix plus the
+        # exhausted task-class policy that produced the dead-end.
+        assert result.terminal_failure_reason is not None
+        assert result.terminal_failure_reason.startswith("no_higher_tier_available")
+        assert "task_class='test'" in result.terminal_failure_reason
+        assert "tier_order=" in result.terminal_failure_reason
 
 
 @pytest.mark.unit
@@ -393,7 +400,9 @@ class TestTerminalEventEscalationMetadata:
         assert (
             result.routing_tiers_hash is not None or result.routing_tiers_hash is None
         )  # May or may not exist depending on config file
-        assert result.terminal_failure_reason == "no_higher_tier_available"
+        # OMN-13167: precise terminal reason keyed by the stable token prefix.
+        assert result.terminal_failure_reason is not None
+        assert result.terminal_failure_reason.startswith("no_higher_tier_available")
         assert isinstance(result.escalation_history, tuple)
 
     def test_passed_result_carries_zero_escalation_count(self) -> None:
@@ -612,7 +621,11 @@ class TestEscalationTerminatesWhenFrontierUnconfigured:
         result = result_events[0].payload
         assert isinstance(result, ModelDelegationResult)
         assert result.quality_passed is False
-        assert result.terminal_failure_reason == "no_higher_tier_available"
+        # OMN-13167: precise reason naming the exhausted `document` policy plus
+        # the unusable higher tiers, prefixed with the stable token.
+        assert result.terminal_failure_reason is not None
+        assert result.terminal_failure_reason.startswith("no_higher_tier_available")
+        assert "task_class='document'" in result.terminal_failure_reason
 
 
 # ---------------------------------------------------------------------------
@@ -655,3 +668,179 @@ class TestRoutingDecisionTierName:
 
         workflow = handler.workflows[cid]
         assert workflow.current_tier_name == "local"
+
+
+# ---------------------------------------------------------------------------
+# Tests: OMN-13167 — test/research task-class tier policy + precise terminal
+# ---------------------------------------------------------------------------
+#
+# Repro: night autonomous runtime matrix (2026-06-16) found `test` (dev) and
+# `research` (stability-test) delegation cells fail quality with fallback
+# recommended but no usable higher tier, dead-ending with a bare
+# `no_higher_tier_available` that named neither the exhausted policy nor the
+# missing tier. Acceptance:
+#   (1) test/research tier policies are verified (not just code_generation), and
+#   (2) when fallback is recommended the runtime either escalates to an available
+#       configured tier OR emits a precise terminal reason naming the exhausted
+#       policy and missing tier.
+
+
+@pytest.mark.unit
+class TestTestResearchTierPolicyVerified:
+    """OMN-13167 (1): `test` and `research` declare claude as the ceiling tier,
+    so when the claude (cli-codex) backend is configured, escalation off
+    cheap_cloud advances to claude — a usable higher tier exists, no dead-end.
+
+    Uses the repo-default bifrost contract (cli-codex declares cli://codex with
+    no api_key_ref, so the claude tier is routable for both task classes).
+    """
+
+    @pytest.mark.parametrize("task_type", ["test", "research"])
+    def test_claude_tier_reachable_when_configured(self, task_type: str) -> None:
+        # local -> cheap_cloud -> claude is the declared closed-set policy for
+        # both classes. With the repo-default contract the claude tier (cli-codex)
+        # is routable, so escalating off cheap_cloud must land on claude rather
+        # than returning None.
+        assert (
+            next_eligible_tier(
+                "cheap_cloud",
+                frozenset({"cli_agents"}),
+                task_type=task_type,
+            )
+            == "claude"
+        )
+
+    @pytest.mark.parametrize("task_type", ["test", "research"])
+    def test_claude_is_ceiling_no_higher_tier(self, task_type: str) -> None:
+        # claude is the final declared tier for both classes; nothing follows it.
+        assert (
+            next_eligible_tier(
+                "claude",
+                frozenset({"cli_agents"}),
+                task_type=task_type,
+            )
+            is None
+        )
+
+
+@pytest.mark.unit
+class TestDescribeNoHigherTierAvailable:
+    """OMN-13167 (2): the diagnostic names the exhausted policy and missing tier.
+
+    Uses the frontier_unconfigured fixture (cli-codex / claude tier NOT declared),
+    reproducing the runtime lane where the claude tier was unconfigured — the
+    exact condition that dead-ended the night-matrix `test`/`research` cells.
+    """
+
+    def test_reason_names_policy_and_missing_tiers_for_test_after_cheap_cloud(
+        self, frontier_unconfigured_bifrost: None
+    ) -> None:
+        # `test` policy is local -> cheap_cloud -> claude. In this lane the claude
+        # tier (cli-codex) is unconfigured, so after cheap_cloud there is no usable
+        # higher tier — the real dead-end the night matrix hit.
+        reason = describe_no_higher_tier_available(
+            "cheap_cloud",
+            frozenset({"cli_agents"}),
+            task_type="test",
+        )
+        assert reason.startswith(NO_HIGHER_TIER_REASON_TOKEN)
+        assert "task_class='test'" in reason
+        # The closed-set policy order is named (the exhausted policy).
+        assert "tier_order=" in reason
+        assert "'cheap_cloud'" in reason
+        assert "'claude'" in reason
+        # The current tier and the unusable higher tier are named with a reason.
+        assert "current_tier='cheap_cloud'" in reason
+        assert "claude(" in reason
+
+    def test_reason_names_policy_for_research_after_cheap_cloud(
+        self, frontier_unconfigured_bifrost: None
+    ) -> None:
+        reason = describe_no_higher_tier_available(
+            "cheap_cloud",
+            frozenset({"cli_agents"}),
+            task_type="research",
+        )
+        assert reason.startswith(NO_HIGHER_TIER_REASON_TOKEN)
+        assert "task_class='research'" in reason
+        assert "current_tier='cheap_cloud'" in reason
+        # claude is the only tier after cheap_cloud in the research policy; it is
+        # unroutable here, so it must be named with a skip reason.
+        assert "claude(" in reason
+
+    def test_reason_for_ceiling_tier_states_final_tier(self) -> None:
+        # On the repo-default contract, claude is the declared ceiling for `test`.
+        reason = describe_no_higher_tier_available(
+            "claude",
+            frozenset({"cli_agents"}),
+            task_type="test",
+        )
+        assert reason.startswith(NO_HIGHER_TIER_REASON_TOKEN)
+        assert "task_class='test'" in reason
+        assert "final" in reason
+        assert "ceiling" in reason
+
+
+@pytest.mark.unit
+class TestTestTaskDeadEndEmitsPreciseReason:
+    """OMN-13167 (2) end-to-end: a `test` task that fails on local with the
+    claude tier unconfigured must terminate FAILED with a PRECISE reason naming
+    the exhausted policy and missing tier — not a bare token.
+    """
+
+    def test_test_task_terminal_reason_is_precise(
+        self, frontier_unconfigured_bifrost: None
+    ) -> None:
+        handler = HandlerDelegationWorkflow(workflows={})
+        cid = uuid4()
+
+        request = _make_request(correlation_id=cid, task_type="test")
+        handler.handle_delegation_request(request)
+
+        # Attempt 1: local tier, gate fails with fallback -> escalate to cheap_cloud.
+        decision1 = _make_routing_decision(cid, task_type="test", tier_name="local")
+        handler.handle_routing_decision(decision1)
+        handler.handle_inference_response(_make_inference_response(cid))
+        gate1 = _make_gate_result(
+            cid,
+            passed=False,
+            quality_score=0.867,
+            failure_reasons=("TASK_MISMATCH: failed covers_edge_cases",),
+            fallback_recommended=True,
+        )
+        events1 = handler.handle_gate_result(gate1)
+        assert any(isinstance(e, ModelRoutingIntent) for e in events1)
+        assert handler.workflows[cid].state == EnumDelegationState.ROUTED
+
+        # Attempt 2: cheap_cloud tier, gate fails -> claude tier is unconfigured
+        # in this lane, so no usable higher tier -> terminate FAILED with a
+        # PRECISE reason (the night-matrix DEL-DEV-TEST-EXTEND dead-end shape).
+        decision2 = _make_routing_decision(
+            cid, task_type="test", tier_name="cheap_cloud"
+        )
+        handler.handle_routing_decision(decision2)
+        handler.handle_inference_response(_make_inference_response(cid))
+        gate2 = _make_gate_result(
+            cid,
+            passed=False,
+            quality_score=0.867,
+            failure_reasons=("TASK_MISMATCH: failed covers_edge_cases",),
+            fallback_recommended=True,
+        )
+        events = handler.handle_gate_result(gate2)
+
+        workflow = handler.workflows[cid]
+        assert workflow.state == EnumDelegationState.FAILED
+        result_events = [e for e in events if isinstance(e, ModelDelegationEvent)]
+        assert len(result_events) == 1
+        result = result_events[0].payload
+        assert isinstance(result, ModelDelegationResult)
+        assert result.fallback_to_claude is True
+        assert result.terminal_failure_reason is not None
+        assert result.terminal_failure_reason.startswith(NO_HIGHER_TIER_REASON_TOKEN)
+        # Names the exhausted policy and the missing/unusable higher tiers — the
+        # bare token alone is no longer acceptable (OMN-13167 acceptance).
+        assert "task_class='test'" in result.terminal_failure_reason
+        assert "tier_order=" in result.terminal_failure_reason
+        assert "claude(" in result.terminal_failure_reason
+        assert result.terminal_failure_reason != NO_HIGHER_TIER_REASON_TOKEN
