@@ -184,7 +184,7 @@ class TestHandlerLlmDelegationCall:
     def test_unhealthy_endpoint_returns_failure_and_emits_all_tiers_failed(
         self,
     ) -> None:
-        publisher = MagicMock()
+        publisher = MagicMock()  # transport-mock-ok: event_publisher typed Any
 
         with patch(
             f"{_HANDLER_MODULE}._is_endpoint_healthy",
@@ -204,7 +204,7 @@ class TestHandlerLlmDelegationCall:
     def test_successful_call_returns_result_with_cost_telemetry(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        publisher = MagicMock()
+        publisher = MagicMock()  # transport-mock-ok: event_publisher typed Any
         api_resp = _make_api_response(
             "def hello(): return 'world'", tokens_in=50, tokens_out=30
         )
@@ -247,7 +247,7 @@ class TestHandlerLlmDelegationCall:
     def test_successful_call_emits_completed_event(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        publisher = MagicMock()
+        publisher = MagicMock()  # transport-mock-ok: event_publisher typed Any
         api_resp = _make_api_response("result text", tokens_in=10, tokens_out=5)
         _patch_post(monkeypatch, json_body=api_resp)
 
@@ -319,7 +319,7 @@ class TestHandlerLlmDelegationCall:
 
     @pytest.mark.unit
     def test_emit_escalation_publishes_correct_topic(self) -> None:
-        publisher = MagicMock()
+        publisher = MagicMock()  # transport-mock-ok: event_publisher typed Any
         handler = HandlerLlmDelegationCall()
         request = _make_request(attempt_number=2)
 

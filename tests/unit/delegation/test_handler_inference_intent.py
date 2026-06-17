@@ -21,6 +21,7 @@ from omnibase_core.models.delegation.wire import (
     ModelInferenceResponseData,
 )
 from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
+from omnibase_infra.protocols import ProtocolEventBusLike
 from omnibase_infra.runtime.auto_wiring.handler_wiring import _make_dispatch_callback
 from omnibase_infra.runtime.auto_wiring.models import ModelHandlerRef
 from omnibase_infra.runtime.service_dispatch_result_applier import (
@@ -378,7 +379,7 @@ class TestHandlerInferenceIntent:
         assert response.content == ""
         assert "provider timed out" in response.error_message
 
-        bus = AsyncMock()
+        bus = AsyncMock(spec=ProtocolEventBusLike)
         applier = DispatchResultApplier(
             event_bus=bus,
             output_topic="onex.evt.omnibase-infra.delegation-completed.v1",

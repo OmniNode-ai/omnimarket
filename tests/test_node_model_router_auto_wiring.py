@@ -62,7 +62,11 @@ def test_resolver_constructs_handler_via_event_bus_known_param() -> None:
     that resolution does NOT raise and yields a constructed handler.
     """
     resolver = ServiceHandlerResolver()
-    resolution = resolver.resolve(_context(event_bus=MagicMock()))
+    resolution = resolver.resolve(
+        _context(
+            event_bus=MagicMock(),  # transport-mock-ok: HandlerModelRouter.event_bus is typed Any — spec= cannot be applied
+        )
+    )
 
     assert isinstance(resolution.handler_instance, HandlerModelRouter)
     # Any non-failure outcome is acceptable; Step-6 TypeError is the regression.

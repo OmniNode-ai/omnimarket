@@ -11,6 +11,7 @@ import pytest
 from omnimarket.nodes.node_pr_review_bot.handlers.handler_commit_citation_verifier import (
     STATUS_CONTEXT,
     HandlerCommitCitationVerifier,
+    ProtocolKafkaPublisher,
 )
 
 TOPIC_THREAD_RESOLVED = "onex.evt.omnimarket.review-bot-thread-resolved.v1"
@@ -124,7 +125,7 @@ class TestCitationParsing:
 class TestVerificationOutcomes:
     def test_passing_verification_resolves_thread(self) -> None:
         graphql = MagicMock()
-        kafka = MagicMock()
+        kafka = MagicMock(spec=ProtocolKafkaPublisher)
         handler = _make_handler(reviewer_passes=True, graphql=graphql, kafka=kafka)
         result = handler.process_commit(
             pr_number=5,
@@ -157,7 +158,7 @@ class TestVerificationOutcomes:
         rest.post_thread_reply.assert_called_once()
 
     def test_resolved_thread_emits_kafka_event(self) -> None:
-        kafka = MagicMock()
+        kafka = MagicMock(spec=ProtocolKafkaPublisher)
         handler = _make_handler(reviewer_passes=True, kafka=kafka)
         handler.process_commit(
             pr_number=5,
@@ -175,7 +176,7 @@ class TestVerificationOutcomes:
         assert payload["resolved_by"] == BOT_LOGIN
 
     def test_failed_verification_does_not_emit_kafka(self) -> None:
-        kafka = MagicMock()
+        kafka = MagicMock(spec=ProtocolKafkaPublisher)
         handler = _make_handler(reviewer_passes=False, kafka=kafka)
         handler.process_commit(
             pr_number=5,
