@@ -1080,7 +1080,7 @@ class HandlerLinearTriage:
     ) -> tuple[list[ModelTriageAction], int]:
         """Phase 5c: epic auto-start ratchet (OMN-13039).
 
-        Transitions unstarted epics (Backlog or Todo state) to In Progress when
+        Transitions unstarted epics (Backlog or to-do state) to In Progress when
         they have at least one child in a started or completed state.
 
         Semantics:
