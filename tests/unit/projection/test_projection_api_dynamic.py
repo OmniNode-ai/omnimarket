@@ -263,6 +263,103 @@ class TestProjectionEndpointDynamic:
         assert stream_resp.status_code == 200
         assert "projection_state_required" in stream_resp.text
 
+    # -----------------------------------------------------------------------
+    # OMN-13168: a correlation_id that matches no evidence-pipeline rows must
+    # report EMPTY (healthy-but-no-match), NOT DEGRADED. DEGRADED on a 200
+    # response falsely signals the projection is broken when the correlation
+    # simply is not an evidence-pipeline correlation (e.g. a delegation id),
+    # and it must point callers at the authoritative per-correlation surface.
+    # -----------------------------------------------------------------------
+    def test_evidence_pipeline_empty_correlation_reports_empty_not_degraded(
+        self,
+    ) -> None:
+        cfg = _make_cfg(
+            topic="onex.snapshot.projection.evidence_pipeline.correlations.v1",
+            table="evidence_correlation_trace_projection",
+            columns=(
+                "correlation_id",
+                "projection_cursor",
+                "last_event_id",
+                "last_ingest_sequence",
+                "freshness_state",
+                "degraded_reason",
+                "observed_at",
+            ),
+            order_by="last_ingest_sequence ASC",
+            freshness_column="observed_at",
+            cursor_column="projection_cursor",
+            last_event_id_column="last_event_id",
+            last_ingest_sequence_column="last_ingest_sequence",
+            freshness_state_column="freshness_state",
+            degraded_reason_column="degraded_reason",
+            observed_at_column="observed_at",
+        )
+        # Query succeeds but the requested correlation has no evidence-pipeline
+        # rows (delegation correlation id), and the table itself is empty so the
+        # MAX(observed_at) freshness probe returns NULL.
+        pool = _make_pool([], latest_ts=None)
+
+        with _with_overrides(pool, {cfg.topic: cfg}) as client:
+            resp = client.get(
+                "/v1/evidence-pipeline/correlation-traces"
+                "?correlation_id=22f52e6a-a6f7-443e-9ea6-196b0a2eb11c"
+            )
+
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["row_count"] == 0
+        # The empty-but-healthy result must NOT be reported as DEGRADED.
+        assert body["freshness_state"] == "EMPTY", body["freshness_state"]
+        # A filtered, empty result must carry a typed scope pointer so callers
+        # know the endpoint serves evidence-pipeline runs and where to look for
+        # delegation correlation traces.
+        assert body["query_scope"] == "evidence_pipeline"
+        assert (
+            body["authoritative_correlation_source"]
+            == "onex.snapshot.projection.delegation.correlation-trace.v1"
+        )
+
+    def test_evidence_pipeline_genuinely_stale_table_still_degraded(self) -> None:
+        """A populated-but-stale table (no filter) keeps the DEGRADED signal.
+
+        EMPTY must only apply when a filter returned zero rows; an unfiltered
+        read of a stale projection must continue to surface DEGRADED so real
+        staleness is not masked.
+        """
+        cfg = _make_cfg(
+            topic="onex.snapshot.projection.evidence_pipeline.correlations.v1",
+            table="evidence_correlation_trace_projection",
+            columns=(
+                "correlation_id",
+                "projection_cursor",
+                "freshness_state",
+                "observed_at",
+            ),
+            order_by="observed_at ASC",
+            freshness_column="observed_at",
+            cursor_column="projection_cursor",
+            freshness_state_column="freshness_state",
+            observed_at_column="observed_at",
+        )
+        stale_ts = _ts(timedelta(hours=2))
+        rows = [
+            {
+                "correlation_id": "abc",
+                "projection_cursor": "cursor-9",
+                "freshness_state": None,
+                "observed_at": stale_ts,
+            }
+        ]
+        pool = _make_pool(rows, latest_ts=stale_ts)
+
+        with _with_overrides(pool, {cfg.topic: cfg}) as client:
+            resp = client.get("/v1/evidence-pipeline/correlation-traces")
+
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["row_count"] == 1
+        assert body["freshness_state"] == "DEGRADED"
+
     def test_query_failure_returns_503_degraded(self) -> None:
         """A DB query error during serving returns 503 with reason, not 500."""
         cfg = _make_cfg(topic="onex.snapshot.projection.test.v1")
