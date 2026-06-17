@@ -11,7 +11,7 @@ node_version: {major: 0, minor: 1, patch: 0}
 uuid: "a4e72f19-3c8b-4d56-b0a1-7f9e2d45c830"
 node_type: effect
 runtime_profiles:
-  - memory
+  - effects
 input_model: "omnimemory.models.crawl.model_document_discovered_event.ModelDocumentDiscoveredEvent"
 output_model: "ModelKreuzbergParseResult"
 handler:

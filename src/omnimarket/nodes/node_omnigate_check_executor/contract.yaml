@@ -25,9 +25,6 @@ descriptor:
   timeout_ms: 600000
   runtime_profiles:
     - effects
-    - local_cli
-    - contributor_workstation
-    - ci_action
 
 inputs:
   config_path:

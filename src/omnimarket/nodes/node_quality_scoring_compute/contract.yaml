@@ -13,7 +13,7 @@ node_version:
 name: "node_quality_scoring_compute"
 node_type: "COMPUTE_GENERIC"
 runtime_profiles:
-  - intelligence
+  - main
 description: >-
   Compute node for scoring code quality across multiple dimensions. Calculates maintainability, complexity,
   documentation, and ONEX compliance scores.

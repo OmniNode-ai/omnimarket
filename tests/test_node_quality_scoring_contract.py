@@ -69,11 +69,11 @@ def test_quality_scoring_contract_uses_omnimarket_models() -> None:
     )
 
 
-def test_quality_scoring_contract_is_intelligence_runtime_owned() -> None:
+def test_quality_scoring_contract_uses_registered_main_runtime_profile() -> None:
     data = yaml.safe_load(CONTRACT_PATH.read_text())
 
-    assert data["runtime_profiles"] == ["intelligence"]
-    assert "main" not in data["runtime_profiles"]
+    assert data["runtime_profiles"] == ["main"]
+    assert "intelligence" not in data["runtime_profiles"]
 
 
 def test_quality_scoring_handler_routing_is_runtime_importable() -> None:

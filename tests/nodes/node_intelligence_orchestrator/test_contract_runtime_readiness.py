@@ -1,6 +1,11 @@
 # SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""Runtime profile guards for intelligence-owned market contracts."""
+"""Runtime profile guards for intelligence-owned market contracts.
+
+OMN-12982 (Batch 1): runtime_profiles corrected from nonexistent names to
+registered lanes. node_intelligence_orchestrator: [intelligence] → [main].
+node_intent_event_consumer_effect: [memory] → [effects].
+"""
 
 from __future__ import annotations
 
@@ -20,18 +25,20 @@ def _load_contract(node_name: str) -> dict[str, Any]:
     return contract
 
 
-def test_intelligence_orchestrator_is_not_main_runtime_owned() -> None:
+def test_intelligence_orchestrator_is_main_runtime_owned() -> None:
+    """OMN-12982 B1: [intelligence] was nonexistent → corrected to [main]."""
     contract = _load_contract("node_intelligence_orchestrator")
 
-    assert contract["runtime_profiles"] == ["intelligence"]
-    assert "main" not in contract["runtime_profiles"]
+    assert contract["runtime_profiles"] == ["main"]
+    assert "intelligence" not in contract["runtime_profiles"]
 
 
-def test_intent_event_consumer_is_memory_runtime_owned() -> None:
+def test_intent_event_consumer_is_effects_runtime_owned() -> None:
+    """OMN-12982 B1: [memory] was nonexistent → corrected to [effects]."""
     contract = _load_contract("node_intent_event_consumer_effect")
 
-    assert contract["runtime_profiles"] == ["memory"]
-    assert "main" not in contract["runtime_profiles"]
+    assert contract["runtime_profiles"] == ["effects"]
+    assert "memory" not in contract["runtime_profiles"]
     assert contract["handler"]["class"] == "HandlerIntentEventConsumer"
 
 
@@ -39,12 +46,12 @@ def test_intelligence_orchestrator_handler_entries_have_autowiring_names() -> No
     contract = _load_contract("node_intelligence_orchestrator")
     handlers = contract["handler_routing"]["handlers"]
 
-    assert contract["runtime_profiles"] == ["intelligence"]
+    assert contract["runtime_profiles"] == ["main"]
     for entry in handlers:
         handler_ref = entry["handler"]
         assert handler_ref["name"]
         assert handler_ref["name"] == handler_ref["function"]
-        assert "main" not in contract["runtime_profiles"]
+        assert "intelligence" not in contract["runtime_profiles"]
 
 
 def test_intelligence_orchestrator_function_handlers_resolve() -> None:

@@ -33,7 +33,6 @@ descriptor:
   timeout_ms: 300000
   runtime_profiles:
     - effects
-    - local_macos_claude_hooks
 
 env_dependencies:
   LLM_CODER_URL:

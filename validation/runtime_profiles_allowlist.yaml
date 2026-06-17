@@ -98,15 +98,11 @@ allowlist:
     reason: OMN-12957 baseline freeze; remediate via OMN-12982 (assign correct runtime lane or document runtime-exempt)
   - node_id: node_contract_drift_compute
     reason: OMN-12957 baseline freeze; remediate via OMN-12982 (assign correct runtime lane or document runtime-exempt)
-  - node_id: node_contract_matcher_compute
-    reason: OMN-12957 baseline freeze; remediate via OMN-12982 (assign correct runtime lane or document runtime-exempt)
   - node_id: node_contract_reducer
     reason: OMN-12957 baseline freeze; remediate via OMN-12982 (assign correct runtime lane or document runtime-exempt)
   - node_id: node_contract_registry
     reason: OMN-12957 baseline freeze; remediate via OMN-12982 (assign correct runtime lane or document runtime-exempt)
   - node_id: node_create_ticket
-    reason: OMN-12957 baseline freeze; remediate via OMN-12982 (assign correct runtime lane or document runtime-exempt)
-  - node_id: node_delegation_ab_runner
     reason: OMN-12957 baseline freeze; remediate via OMN-12982 (assign correct runtime lane or document runtime-exempt)
   - node_id: node_delegation_orchestrator
     reason: OMN-12957 baseline freeze; remediate via OMN-12982 (assign correct runtime lane or document runtime-exempt)
@@ -122,17 +118,11 @@ allowlist:
     reason: OMN-12957 baseline freeze; remediate via OMN-12982 (assign correct runtime lane or document runtime-exempt)
   - node_id: node_dispatch_worker
     reason: OMN-12957 baseline freeze; remediate via OMN-12982 (assign correct runtime lane or document runtime-exempt)
-  - node_id: node_e2e_orchestrator
-    reason: OMN-12957 baseline freeze; remediate via OMN-12982 (assign correct runtime lane or document runtime-exempt)
   - node_id: node_env_parity_compute
-    reason: OMN-12957 baseline freeze; remediate via OMN-12982 (assign correct runtime lane or document runtime-exempt)
-  - node_id: node_evidence_extractor_compute
     reason: OMN-12957 baseline freeze; remediate via OMN-12982 (assign correct runtime lane or document runtime-exempt)
   - node_id: node_feature_dashboard_compute
     reason: OMN-12957 baseline freeze; remediate via OMN-12982 (assign correct runtime lane or document runtime-exempt)
   - node_id: node_finding_aggregator_compute
-    reason: OMN-12957 baseline freeze; remediate via OMN-12982 (assign correct runtime lane or document runtime-exempt)
-  - node_id: node_gap_analyzer_compute
     reason: OMN-12957 baseline freeze; remediate via OMN-12982 (assign correct runtime lane or document runtime-exempt)
   - node_id: node_gap_compute
     reason: OMN-12957 baseline freeze; remediate via OMN-12982 (assign correct runtime lane or document runtime-exempt)
@@ -142,23 +132,15 @@ allowlist:
     reason: OMN-12957 baseline freeze; remediate via OMN-12982 (assign correct runtime lane or document runtime-exempt)
   - node_id: node_insights_to_plan_compute
     reason: OMN-12957 baseline freeze; remediate via OMN-12982 (assign correct runtime lane or document runtime-exempt)
-  - node_id: node_intelligence_orchestrator
-    reason: OMN-12957 baseline freeze; remediate via OMN-12982 (assign correct runtime lane or document runtime-exempt)
   - node_id: node_intelligence_reducer
-    reason: OMN-12957 baseline freeze; remediate via OMN-12982 (assign correct runtime lane or document runtime-exempt)
-  - node_id: node_intent_event_consumer_effect
     reason: OMN-12957 baseline freeze; remediate via OMN-12982 (assign correct runtime lane or document runtime-exempt)
   - node_id: node_knowledge_health_compute
     reason: OMN-12957 baseline freeze; remediate via OMN-12982 (assign correct runtime lane or document runtime-exempt)
   - node_id: node_knowledge_query_federation_orchestrator
     reason: OMN-12957 baseline freeze; remediate via OMN-12982 (assign correct runtime lane or document runtime-exempt)
-  - node_id: node_kreuzberg_parse_effect
-    reason: OMN-12957 baseline freeze; remediate via OMN-12982 (assign correct runtime lane or document runtime-exempt)
   - node_id: node_ledger_stats_compute
     reason: OMN-12957 baseline freeze; remediate via OMN-12982 (assign correct runtime lane or document runtime-exempt)
   - node_id: node_linear_triage
-    reason: OMN-12957 baseline freeze; remediate via OMN-12982 (assign correct runtime lane or document runtime-exempt)
-  - node_id: node_llm_delegation_call_effect
     reason: OMN-12957 baseline freeze; remediate via OMN-12982 (assign correct runtime lane or document runtime-exempt)
   - node_id: node_llm_delegation_routing_compute
     reason: OMN-12957 baseline freeze; remediate via OMN-12982 (assign correct runtime lane or document runtime-exempt)
@@ -167,8 +149,6 @@ allowlist:
   - node_id: node_occ_evidence_draft_orchestrator
     reason: OMN-12957 baseline freeze; remediate via OMN-12982 (assign correct runtime lane or document runtime-exempt)
   - node_id: node_occ_evidence_validator_compute
-    reason: OMN-12957 baseline freeze; remediate via OMN-12982 (assign correct runtime lane or document runtime-exempt)
-  - node_id: node_omnigate_check_executor
     reason: OMN-12957 baseline freeze; remediate via OMN-12982 (assign correct runtime lane or document runtime-exempt)
   - node_id: node_omnigate_receipt_generator
     reason: OMN-12957 baseline freeze; remediate via OMN-12982 (assign correct runtime lane or document runtime-exempt)
@@ -184,8 +164,6 @@ allowlist:
     reason: OMN-12957 baseline freeze; remediate via OMN-12982 (assign correct runtime lane or document runtime-exempt)
   - node_id: node_persona_builder_compute
     reason: OMN-12957 baseline freeze; remediate via OMN-12982 (assign correct runtime lane or document runtime-exempt)
-  - node_id: node_persona_lifecycle_orchestrator
-    reason: OMN-12957 baseline freeze; remediate via OMN-12982 (assign correct runtime lane or document runtime-exempt)
   - node_id: node_plan_audit_compute
     reason: OMN-12957 baseline freeze; remediate via OMN-12982 (assign correct runtime lane or document runtime-exempt)
   - node_id: node_plan_to_tickets
@@ -195,10 +173,6 @@ allowlist:
   - node_id: node_pr_lifecycle_inventory_compute
     reason: OMN-12957 baseline freeze; remediate via OMN-12982 (assign correct runtime lane or document runtime-exempt)
   - node_id: node_pr_lifecycle_state_reducer
-    reason: OMN-12957 baseline freeze; remediate via OMN-12982 (assign correct runtime lane or document runtime-exempt)
-  - node_id: node_quality_scoring_compute
-    reason: OMN-12957 baseline freeze; remediate via OMN-12982 (assign correct runtime lane or document runtime-exempt)
-  - node_id: node_readiness_scorer_compute
     reason: OMN-12957 baseline freeze; remediate via OMN-12982 (assign correct runtime lane or document runtime-exempt)
   - node_id: node_recall_compute
     reason: OMN-12957 baseline freeze; remediate via OMN-12982 (assign correct runtime lane or document runtime-exempt)
@@ -258,8 +232,6 @@ allowlist:
     reason: OMN-12957 baseline freeze; remediate via OMN-12982 (assign correct runtime lane or document runtime-exempt)
   - node_id: pr_polish
     reason: OMN-12957 baseline freeze; remediate via OMN-12982 (assign correct runtime lane or document runtime-exempt)
-  - node_id: pr_review_bot
-    reason: OMN-12957 baseline freeze; remediate via OMN-12982 (assign correct runtime lane or document runtime-exempt)
   - node_id: process_watchdog
     reason: OMN-12957 baseline freeze; remediate via OMN-12982 (assign correct runtime lane or document runtime-exempt)
   - node_id: projection_query
@@ -274,5 +246,3 @@ allowlist:
     reason: OMN-12957 baseline freeze; remediate via OMN-12982 (assign correct runtime lane or document runtime-exempt)
   - node_id: version_skew_detector
     reason: OMN-12957 baseline freeze; remediate via OMN-12982 (assign correct runtime lane or document runtime-exempt)
-  - node_id: volume_config_drift_sweep
-    reason: OMN-13067 pre-existing; compute profile unregistered — added by PR #1172; remediate via OMN-12982
