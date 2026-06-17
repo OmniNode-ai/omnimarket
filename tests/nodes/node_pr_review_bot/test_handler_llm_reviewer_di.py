@@ -8,7 +8,7 @@ import json
 from unittest.mock import AsyncMock
 from uuid import uuid4
 
-from omnimarket.nodes.node_hostile_reviewer.handlers.adapter_inference_bridge import (
+from omnimarket.inference.adapter_inference_bridge import (
     ModelInferenceAdapter,
 )
 from omnimarket.nodes.node_pr_review_bot.handlers.handler_llm_reviewer import (

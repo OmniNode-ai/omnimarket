@@ -1,68 +1,22 @@
-"""ModelReviewFinding — versioned structured finding schema for review workflows.
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+"""node_hostile_reviewer review-finding models — re-export of the canonical owner.
 
-Canonical contract for review findings. All model responses are normalized into
-this schema before aggregation or storage. See design doc section
-"Structured Finding Schema" for the full specification.
+The real definitions were re-homed to ``omnimarket.models.model_review_finding``
+in OMN-13208 (A1). This module re-exports them so node-internal handlers keep
+working until the B1 rebuild (OMN-13210) deletes the node.
 """
 
 from __future__ import annotations
 
-from enum import StrEnum
-from uuid import UUID
-
-from pydantic import BaseModel, ConfigDict, Field
-
-
-class EnumFindingCategory(StrEnum):
-    SECURITY = "security"
-    LOGIC_ERROR = "logic_error"
-    INTEGRATION = "integration"
-    SCOPE_VIOLATION = "scope_violation"
-    CONTRACT_BREACH = "contract_breach"
-    STYLE = "style"
-    INFORMATIONAL = "informational"
-
-
-class EnumFindingSeverity(StrEnum):
-    CRITICAL = "critical"
-    MAJOR = "major"
-    MINOR = "minor"
-    NIT = "nit"
-
-
-class EnumReviewConfidence(StrEnum):
-    HIGH = "high"
-    MEDIUM = "medium"
-    LOW = "low"
-
-
-class EnumReviewVerdict(StrEnum):
-    CLEAN = "clean"
-    RISKS_NOTED = "risks_noted"
-    BLOCKING_ISSUE = "blocking_issue"
-
-
-class ModelFindingEvidence(BaseModel):
-    model_config = ConfigDict(frozen=True, extra="forbid")
-
-    file_path: str | None = Field(default=None)
-    line_range: dict[str, int] | None = Field(default=None)
-    code_snippet: str | None = Field(default=None)
-
-
-class ModelReviewFinding(BaseModel):
-    model_config = ConfigDict(frozen=True, extra="forbid", from_attributes=True)
-
-    id: UUID = Field(..., description="Unique finding identifier.")
-    category: EnumFindingCategory = Field(...)
-    severity: EnumFindingSeverity = Field(...)
-    title: str = Field(..., min_length=1, max_length=120)
-    description: str = Field(..., min_length=1, max_length=500)
-    evidence: ModelFindingEvidence = Field(default_factory=ModelFindingEvidence)
-    confidence: EnumReviewConfidence = Field(...)
-    source_model: str = Field(..., min_length=1)
-    detection_method: str = Field(default="")
-
+from omnimarket.models.model_review_finding import (
+    EnumFindingCategory,
+    EnumFindingSeverity,
+    EnumReviewConfidence,
+    EnumReviewVerdict,
+    ModelFindingEvidence,
+    ModelReviewFinding,
+)
 
 __all__: list[str] = [
     "EnumFindingCategory",

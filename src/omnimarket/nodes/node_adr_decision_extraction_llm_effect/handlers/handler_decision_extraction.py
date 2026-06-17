@@ -20,6 +20,11 @@ import logging
 import time
 from typing import Any, Literal
 
+from omnimarket.inference.adapter_inference_bridge import (
+    AdapterInferenceBridge,
+    ModelInferenceAdapter,
+    ModelInferenceBridgeConfig,
+)
 from omnimarket.nodes.node_adr_decision_extraction_llm_effect.models.model_extraction_request import (
     ModelExtractionRequest,
 )
@@ -28,11 +33,6 @@ from omnimarket.nodes.node_adr_decision_extraction_llm_effect.models.model_extra
     ModelDecisionExtraction,
     ModelExtractionResult,
     ModelLLMCallEvidence,
-)
-from omnimarket.nodes.node_hostile_reviewer.handlers.adapter_inference_bridge import (
-    AdapterInferenceBridge,
-    ModelInferenceAdapter,
-    ModelInferenceBridgeConfig,
 )
 
 logger = logging.getLogger(__name__)

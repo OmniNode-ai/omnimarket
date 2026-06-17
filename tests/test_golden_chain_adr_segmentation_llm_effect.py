@@ -26,6 +26,9 @@ from pathlib import Path
 import pytest
 import yaml
 
+from omnimarket.inference.adapter_inference_bridge import (
+    ModelInferenceAdapter,
+)
 from omnimarket.nodes.node_adr_segmentation_llm_effect.handlers.handler_segmentation import (
     HandlerSegmentation,
 )
@@ -35,9 +38,6 @@ from omnimarket.nodes.node_adr_segmentation_llm_effect.models.model_segmentation
 from omnimarket.nodes.node_adr_segmentation_llm_effect.models.model_segmentation_result import (
     EnumSegmentType,
     ModelSegmentationResult,
-)
-from omnimarket.nodes.node_hostile_reviewer.handlers.adapter_inference_bridge import (
-    ModelInferenceAdapter,
 )
 
 _CONTRACT_PATH = (

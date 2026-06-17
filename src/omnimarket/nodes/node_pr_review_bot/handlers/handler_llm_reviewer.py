@@ -23,17 +23,10 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from omnimarket.nodes.node_hostile_reviewer.handlers.adapter_inference_bridge import (
+from omnimarket.inference.adapter_inference_bridge import (
     AdapterInferenceBridge,
     ModelInferenceAdapter,
     ModelInferenceBridgeConfig,
-)
-from omnimarket.nodes.node_hostile_reviewer.handlers.handler_prompt_builder import (
-    ModelPromptBuilderInput,
-    build_prompt,
-)
-from omnimarket.nodes.node_hostile_reviewer.handlers.handler_response_parser import (
-    parse_model_response,
 )
 from omnimarket.nodes.node_pr_review_bot.handlers.handler_fsm import (
     ProtocolReviewer,
@@ -41,6 +34,13 @@ from omnimarket.nodes.node_pr_review_bot.handlers.handler_fsm import (
 from omnimarket.nodes.node_pr_review_bot.models.models import (
     DiffHunk,
     ReviewFinding,
+)
+from omnimarket.review.prompt_builder import (
+    ModelPromptBuilderInput,
+    build_prompt,
+)
+from omnimarket.review.response_parser import (
+    parse_model_response,
 )
 
 logger = logging.getLogger(__name__)
@@ -74,9 +74,10 @@ class LlmReviewerConfig(BaseModel):
 class HandlerLlmReviewer(ProtocolReviewer):
     """Concrete reviewer that fans out LLM calls via AdapterInferenceBridge.
 
-    Reuses the inference bridge and prompt/parser from node_hostile_reviewer
-    rather than duplicating them. Model selection is driven entirely by the
-    reviewer_models argument (from contract inputs) — never hardcoded here.
+    Reuses the shared inference bridge (omnimarket.inference) and prompt/parser
+    COMPUTE primitives (omnimarket.review) rather than duplicating them. Model
+    selection is driven entirely by the reviewer_models argument (from contract
+    inputs) — never hardcoded here.
     """
 
     def __init__(

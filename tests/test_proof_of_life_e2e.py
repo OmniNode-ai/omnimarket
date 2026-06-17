@@ -24,6 +24,14 @@ from uuid import uuid4
 import pytest
 import yaml
 
+from omnimarket.inference.adapter_inference_bridge import (
+    ModelInferenceAdapter,
+)
+from omnimarket.models.model_review_finding import (
+    EnumFindingCategory,
+    EnumFindingSeverity,
+    EnumReviewVerdict,
+)
 from omnimarket.nodes.node_finding_aggregator_compute.handlers.handler_finding_aggregator import (
     HandlerFindingAggregator,
 )
@@ -37,21 +45,10 @@ from omnimarket.nodes.node_finding_aggregator_compute.models.model_finding_aggre
 from omnimarket.nodes.node_finding_aggregator_compute.models.model_finding_aggregator_output import (
     EnumAggregatedVerdict,
 )
-from omnimarket.nodes.node_hostile_reviewer.handlers.adapter_inference_bridge import (
-    ModelInferenceAdapter,
-)
 from omnimarket.nodes.node_hostile_reviewer.handlers.handler_convergence_reducer import (
     ModelConvergenceInput,
     ModelFindingLabel,
     compute_convergence,
-)
-from omnimarket.nodes.node_hostile_reviewer.handlers.handler_prompt_builder import (
-    ModelPromptBuilderInput,
-    build_prompt,
-)
-from omnimarket.nodes.node_hostile_reviewer.handlers.handler_response_parser import (
-    EnumParseStatus,
-    parse_model_response,
 )
 from omnimarket.nodes.node_hostile_reviewer.handlers.handler_workflow_runner import (
     ModelWorkflowInput,
@@ -61,14 +58,17 @@ from omnimarket.nodes.node_hostile_reviewer.handlers.handler_workflow_runner imp
 from omnimarket.nodes.node_hostile_reviewer.models.model_hostile_reviewer_state import (
     EnumHostileReviewerPhase,
 )
-from omnimarket.nodes.node_hostile_reviewer.models.model_review_finding import (
-    EnumFindingCategory,
-    EnumFindingSeverity,
-    EnumReviewVerdict,
-)
 from omnimarket.nodes.node_hostile_reviewer.models.model_training_data import (
     EnumLabelSource,
     ModelTrainingDataRecord,
+)
+from omnimarket.review.prompt_builder import (
+    ModelPromptBuilderInput,
+    build_prompt,
+)
+from omnimarket.review.response_parser import (
+    EnumParseStatus,
+    parse_model_response,
 )
 
 # --- Stub responses simulating real model output ---
