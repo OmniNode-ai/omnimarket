@@ -42,6 +42,8 @@ def fake_backends() -> list[dict[str, object]]:
             "tier": "local",
             # OMN-13161: per-backend output-token ceiling resolved by the router.
             "max_tokens": 65536,
+            # OMN-13170: per-backend HTTP timeout resolved by the router (ms).
+            "timeout_ms": 300000,
             "capabilities": ["code_generation"],
         }
     ]
@@ -70,12 +72,13 @@ def _patch_transport(monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
         *,
         endpoint_url: str,
         payload: dict[str, Any],
+        timeout_seconds: float,
         extra_headers: dict[str, str] | None = None,
         runtime_profile: str | None = None,
-        timeout_seconds: float = 120.0,
     ) -> transport.ModelTransportResponse:
         captured["post_url"] = endpoint_url
         captured["payload"] = payload
+        captured["timeout_seconds"] = timeout_seconds
         return transport.ModelTransportResponse(
             status_code=200,
             json_body={
@@ -385,3 +388,38 @@ def test_local_dispatch_explicit_max_tokens_below_ceiling_passes_through(
 
     assert result["status"] == "completed"
     assert captured["payload"]["max_tokens"] == 4096
+
+
+def test_local_dispatch_threads_backend_timeout_to_transport(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    fake_backends: list[dict[str, object]],
+) -> None:
+    """OMN-13170: the backend timeout_ms (÷1000) is threaded into the transport.
+
+    The fake backend declares timeout_ms=300000; the effect handler transport must
+    receive timeout_seconds=300.0 — above the deleted 120s hardcoded cap — so large
+    generations are not killed prematurely.
+    """
+    db_path = tmp_path / "delegation.sqlite"
+    _patch_routing(monkeypatch, fake_backends)
+    captured = _patch_transport(monkeypatch)
+
+    port = LocalDelegationDispatchPort(evidence_db_path=db_path)
+    result = asyncio.run(
+        port.dispatch(
+            prompt="reverse a string",
+            task_type="code_generation",
+            correlation_id=uuid4(),
+            max_tokens=256,
+            source_file_path=None,
+            source_session_id=None,
+            wait=True,
+            quality_contract_mode="lenient",
+            acceptance_criteria=(),
+        )
+    )
+
+    assert result["status"] == "completed"
+    assert captured["timeout_seconds"] == 300.0
+    assert captured["timeout_seconds"] > 120.0

@@ -39,6 +39,7 @@ def _backend(**overrides: Any) -> dict[str, Any]:
         "model_name": "Qwen3.6-35B-A3B",
         "tier": "local",
         "max_tokens": 65536,
+        "timeout_ms": 60000,
         "capabilities": ["code_generation"],
     }
     base.update(overrides)

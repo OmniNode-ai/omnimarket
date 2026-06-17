@@ -143,9 +143,9 @@ class TestDelegateSkillGoldenChain:
             *,
             endpoint_url: str,
             payload: dict[str, Any],
+            timeout_seconds: float,
             extra_headers: dict[str, str] | None = None,
             runtime_profile: str | None = None,
-            timeout_seconds: float = 120.0,
         ) -> transport.ModelTransportResponse:
             captured_payloads.append(payload)
             return transport.ModelTransportResponse(
@@ -186,6 +186,8 @@ class TestDelegateSkillGoldenChain:
                     "tier": "local",
                     # OMN-13161: per-backend output-token ceiling (router-resolved).
                     "max_tokens": 65536,
+                    # OMN-13170: per-backend HTTP timeout (router-resolved, ms).
+                    "timeout_ms": 300000,
                     "capabilities": ["test", "code_generation"],
                 }
             ],
