@@ -378,9 +378,12 @@ class HandlerLlmDelegationCall:
             # OMN-12815/OMN-13159: the transport posts the COMPLETE endpoint URL
             # VERBATIM — no append, no construction — using curl on the macOS LAN
             # profile and httpx elsewhere.
+            # OMN-13170: thread the contract-resolved per-backend timeout so large
+            # generations are not capped by a hardcoded transport default.
             response = transport.post_chat_completion(
                 endpoint_url=endpoint_url,
                 payload=payload,
+                timeout_seconds=request.timeout_seconds,
                 extra_headers=request.extra_headers,
             )
             latency_ms = response.latency_ms

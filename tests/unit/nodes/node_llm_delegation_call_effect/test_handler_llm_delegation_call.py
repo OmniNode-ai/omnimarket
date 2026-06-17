@@ -58,6 +58,7 @@ def _make_request(**overrides: object) -> ModelLlmDelegationCallRequest:
         "task_type": "codegen",
         "model_tier": "local",
         "provider": "vllm",
+        "timeout_seconds": 60.0,
     }
     defaults.update(overrides)
     return ModelLlmDelegationCallRequest(**defaults)
@@ -85,12 +86,13 @@ def _patch_post(
         *,
         endpoint_url: str,
         payload: dict[str, Any],
+        timeout_seconds: float,
         extra_headers: dict[str, str] | None = None,
         runtime_profile: str | None = None,
-        timeout_seconds: float = 120.0,
     ) -> transport.ModelTransportResponse:
         captured["endpoint_url"] = endpoint_url
         captured["payload"] = payload
+        captured["timeout_seconds"] = timeout_seconds
         if side_effect is not None:
             raise side_effect
         return transport.ModelTransportResponse(
@@ -242,6 +244,25 @@ class TestHandlerLlmDelegationCall:
         assert result.success is True
         # The transport receives the COMPLETE endpoint URL verbatim — no append.
         assert captured["endpoint_url"] == complete_endpoint
+
+    @pytest.mark.unit
+    def test_request_timeout_seconds_is_threaded_to_transport(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """OMN-13170: the request timeout flows to the transport, not a 120s cap.
+
+        A 300s request timeout (the local-coder overlay's 300000ms) must reach
+        post_chat_completion verbatim so large generations are not capped by the
+        previously hardcoded transport default.
+        """
+        api_resp = _make_api_response("ok", tokens_in=1, tokens_out=1)
+        captured = _patch_post(monkeypatch, json_body=api_resp)
+
+        with patch(f"{_HANDLER_MODULE}._is_endpoint_healthy", return_value=True):
+            result = HandlerLlmDelegationCall()(_make_request(timeout_seconds=300.0))
+
+        assert result.success is True
+        assert captured["timeout_seconds"] == 300.0
 
     @pytest.mark.unit
     def test_successful_call_emits_completed_event(

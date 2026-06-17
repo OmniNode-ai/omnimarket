@@ -118,14 +118,19 @@ def post_chat_completion(
     *,
     endpoint_url: str,
     payload: dict[str, Any],
+    timeout_seconds: float,
     extra_headers: dict[str, str] | None = None,
     runtime_profile: str | None = None,
-    timeout_seconds: float = 120.0,
 ) -> ModelTransportResponse:
     """POST ``payload`` to ``endpoint_url`` VERBATIM via the selected transport.
 
     curl on ``local_macos_claude_hooks`` (LAN-safe), httpx elsewhere. The URL is
     posted byte-for-byte; non-http(s) values fail closed before any network call.
+
+    ``timeout_seconds`` is REQUIRED — the caller threads the contract-resolved
+    per-backend timeout (OMN-13170). There is no hardcoded default that would
+    silently cap a large generation regardless of the backend's configured
+    ``timeout_ms``.
     """
     _require_http_url(endpoint_url)
     if uses_lan_curl_transport(runtime_profile):
