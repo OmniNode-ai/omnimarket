@@ -3,23 +3,10 @@
 from __future__ import annotations
 
 from datetime import datetime
-from enum import StrEnum
 from uuid import UUID
 
+from omnibase_core.models.runtime_deployment.wire import EnumRuntimeLane
 from pydantic import BaseModel, ConfigDict, Field, model_validator
-
-
-class EnumRuntimeLane(StrEnum):
-    """Runtime lane targeted by a deployment request or proof (OMN-12576).
-
-    Values match the OCC-owned wire schema enum and the live ``.201`` runtime
-    lanes: dev (8085/8086, omnibase-infra), stability-test (18085/18086,
-    omnibase-infra-stability-test), prod (28085/28086, omnibase-infra-prod).
-    """
-
-    DEV = "dev"
-    STABILITY_TEST = "stability-test"
-    PROD = "prod"
 
 
 class ModelRedeployCommand(BaseModel):

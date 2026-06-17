@@ -64,6 +64,11 @@ from omnimarket.nodes.node_generation_consumer.models.model_generation import (
     ModelGenerationBenchmark,
     ModelNodeGenerationRequest,
 )
+from omnimarket.nodes.node_generation_consumer.semantic_validation import (
+    ModelSemanticResult,
+    derive_semantic_fixtures,
+    evaluate_handler_semantics,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -789,8 +794,15 @@ class HandlerGenerationConsumer:
         e2e_start = time.time()
         previous_errors: list[str] | None = None
         final_contract_passed = False
+        final_semantic_checked = False
+        final_semantic_passed = False
         final_contract_yaml = ""
         final_handler_source = ""
+
+        # OMN-13166: derive behavioral fixtures once per run from the task. Empty
+        # when no known transformation invariant is recognised — the semantic
+        # check is then inconclusive (never a silent pass).
+        semantic_fixtures = derive_semantic_fixtures(command.task_description)
 
         for attempt_num in range(1, command.max_attempts + 1):
             start = time.time()
@@ -823,6 +835,21 @@ class HandlerGenerationConsumer:
             contract_yaml, handler_source = _extract_blocks(raw_output)
             validation = _validate_generation(contract_yaml, handler_source)
 
+            # OMN-13166: run the behavioral check only when the artifact is shaped
+            # correctly (a syntax-broken handler cannot be executed). When the
+            # contract is invalid the semantic result is the inconclusive default.
+            if validation["valid"]:
+                semantic = evaluate_handler_semantics(handler_source, semantic_fixtures)
+            else:
+                semantic = ModelSemanticResult()
+
+            # An attempt is a real success only when it is BOTH shaped correctly
+            # (contract) AND behaviorally correct when a fixture was derivable.
+            # An inconclusive semantic check (checked=False) does not block — but
+            # it is recorded honestly as not-a-pass.
+            semantic_failed = semantic.checked and not semantic.passed
+            attempt_success = validation["valid"] and not semantic_failed
+
             attempts.append(
                 ModelGenerationAttempt(
                     attempt_number=attempt_num,
@@ -833,29 +860,46 @@ class HandlerGenerationConsumer:
                     token_usage_output=output_tokens,
                     latency_inference_ms=latency_ms,
                     contract_passed=validation["valid"],
-                    validation_errors=validation["errors"],
+                    semantic_checked=semantic.checked,
+                    semantic_passed=semantic.passed,
+                    validation_errors=validation["errors"] + semantic.errors,
                     usage_source=attempt_usage_source,
                 )
             )
 
+            # OMN-13166: remember the most recent contract-valid artifact even
+            # when it failed the behavioral check, so the terminal benchmark and
+            # the generation_events projection record contract_passed=true with
+            # semantic_passed=false (the honest distinction the acceptance
+            # criteria require) instead of collapsing to contract_passed=false.
             if validation["valid"]:
                 final_contract_passed = True
+                final_semantic_checked = semantic.checked
+                final_semantic_passed = semantic.passed
                 final_contract_yaml = contract_yaml
                 final_handler_source = handler_source
+
+            if attempt_success:
                 break
 
-            previous_errors = validation["errors"]
+            # OMN-13166: feed BOTH contract and semantic failures back into the
+            # repair loop so the model is told the transformation was wrong, not
+            # only that the shape was wrong. A contract-valid but behaviorally
+            # wrong handler now triggers a retry/escalation instead of false-green.
+            combined_errors = validation["errors"] + semantic.errors
+            previous_errors = combined_errors
 
-            # OMN-12829 (C1): contract-validation failure WITH attempts remaining.
-            # Ask the ROUTING AUTHORITY for the escalated tier/model/endpoint and
-            # emit the escalation proof. The generation consumer never selects the
-            # next model itself — escalation authority stays owned by routing.
+            # OMN-12829 (C1): a failed attempt (contract OR semantic) WITH attempts
+            # remaining. Ask the ROUTING AUTHORITY for the escalated
+            # tier/model/endpoint and emit the escalation proof. The generation
+            # consumer never selects the next model itself — escalation authority
+            # stays owned by routing.
             if attempt_num < command.max_attempts:
                 self._emit_escalation(
                     correlation_id=command.correlation_id,
                     task_description=command.task_description,
                     failed_attempt_number=attempt_num,
-                    failure_errors=validation["errors"],
+                    failure_errors=combined_errors,
                 )
 
         total_latency_ms = int((time.time() - e2e_start) * 1000)
@@ -882,6 +926,10 @@ class HandlerGenerationConsumer:
             attempt_count=len(attempts),
             total_latency_e2e_ms=total_latency_ms,
             contract_passed=final_contract_passed,
+            # OMN-13166: behavioral verdict carried alongside contract_passed so
+            # the projection row distinguishes shape-valid from task-correct.
+            semantic_checked=final_semantic_checked,
+            semantic_passed=final_semantic_passed,
             cost_inference_usd=cost_usd,
             contract_yaml=final_contract_yaml,
             handler_source=final_handler_source,
@@ -898,7 +946,14 @@ class HandlerGenerationConsumer:
         )
 
         self._emit_benchmark(benchmark)
-        if final_contract_passed:
+        # OMN-13166: deploy/register a generated node ONLY when it is both shaped
+        # correctly AND behaviorally correct. A contract-valid but semantically
+        # wrong handler (the gate-zero false-green) must NOT reach the runtime —
+        # a behaviorally-checked failure (semantic_checked && !semantic_passed)
+        # blocks deployment. An inconclusive check (no derivable fixture) does
+        # not block, preserving today's behavior for unrecognised task families.
+        semantic_blocks_deploy = final_semantic_checked and not final_semantic_passed
+        if final_contract_passed and not semantic_blocks_deploy:
             deploy_ok = self._emit_deploy(benchmark)
             if deploy_ok:
                 self._emit_registration(benchmark)

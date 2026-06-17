@@ -51,7 +51,7 @@ db_io:
       database: omnidash_analytics
       role: shadow_comparisons
     - name: generation_events
-      migration: "0013_generation_proof_fields.sql"
+      migration: "0014_generation_semantic_pass.sql"
       access: write
       database: omnidash_analytics
       role: generation_events
@@ -293,6 +293,11 @@ projection_api:
         - attempt_count
         - total_latency_e2e_ms
         - contract_passed
+        # OMN-13166: behavioral verdict, surfaced separately from contract_passed
+        # so the dashboard can show a shape-valid-but-behaviorally-wrong
+        # generation (the gate-zero false-green) as NOT a task-behavior pass.
+        - semantic_checked
+        - semantic_passed
         - cost_inference_usd
         - contract_yaml
         - handler_source

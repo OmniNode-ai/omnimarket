@@ -16,9 +16,8 @@ from datetime import datetime
 from enum import StrEnum
 from typing import Literal
 
+from omnibase_core.models.runtime_deployment.wire import EnumRuntimeLane
 from pydantic import BaseModel, ConfigDict, Field, model_validator
-
-from omnimarket.nodes.node_redeploy.models.model_redeploy_command import EnumRuntimeLane
 
 
 class EnumRedeployScope(StrEnum):

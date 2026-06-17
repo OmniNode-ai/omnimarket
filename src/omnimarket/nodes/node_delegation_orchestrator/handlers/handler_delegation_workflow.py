@@ -95,6 +95,8 @@ from omnimarket.nodes.node_delegation_quality_gate_reducer.models.model_quality_
     ModelQualityGateResult,
 )
 from omnimarket.nodes.node_delegation_routing_reducer.handlers.handler_delegation_routing import (
+    NO_HIGHER_TIER_REASON_TOKEN,
+    describe_no_higher_tier_available,
     next_eligible_tier,
 )
 from omnimarket.nodes.node_delegation_routing_reducer.models.model_routing_decision import (
@@ -620,17 +622,28 @@ class HandlerDelegationWorkflow:
             elif workflow.current_tier_name is None:
                 terminal_failure_reason = "current_tier_unknown"
             else:
+                error_task_type = (
+                    workflow.request.task_type if workflow.request is not None else None
+                )
                 next_tier = next_eligible_tier(
                     workflow.current_tier_name,
                     _INFERENCE_ERROR_EXCLUDED_TIERS,
-                    task_type=(
-                        workflow.request.task_type
-                        if workflow.request is not None
-                        else None
-                    ),
+                    task_type=error_task_type,
                 )
                 if next_tier is None:
-                    terminal_failure_reason = "no_higher_tier_available"
+                    # OMN-13167: precise reason naming the exhausted policy and
+                    # unusable higher tiers. task_type is required for the
+                    # diagnostic; without it (legacy task-unaware path) fall back
+                    # to the bare token.
+                    terminal_failure_reason = (
+                        describe_no_higher_tier_available(
+                            workflow.current_tier_name,
+                            _INFERENCE_ERROR_EXCLUDED_TIERS,
+                            task_type=error_task_type,
+                        )
+                        if error_task_type is not None
+                        else NO_HIGHER_TIER_REASON_TOKEN
+                    )
 
             can_escalate = (
                 should_escalate_error
@@ -889,7 +902,16 @@ class HandlerDelegationWorkflow:
                 task_type=workflow.request.task_type,
             )
             if next_tier is None:
-                terminal_failure_reason = "no_higher_tier_available"
+                # OMN-13167: emit a precise reason that names the exhausted
+                # task-class escalation policy and the unusable higher tiers,
+                # not the bare token. `test`/`research` (and any task class)
+                # dead-ended here previously with no indication of which policy
+                # or missing tier caused it.
+                terminal_failure_reason = describe_no_higher_tier_available(
+                    workflow.current_tier_name,
+                    excluded_tiers,
+                    task_type=workflow.request.task_type,
+                )
 
         can_escalate = terminal_failure_reason is None and next_tier is not None
 
