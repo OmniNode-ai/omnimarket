@@ -8,15 +8,15 @@ from omnibase_compat.contracts.evidence_pipeline.wire.model_evidence_validation_
     ModelEvidenceValidationResult,
 )
 
+from omnimarket.events.occ_evidence import (
+    ModelOccEvidenceDraft,
+)
 from omnimarket.nodes.evidence_pipeline_native import coerce_validation, write_occ_pr
 from omnimarket.nodes.node_occ_evidence_validator_compute.handlers.handler_occ_evidence_validator import (
     HandlerOccEvidenceValidator,
 )
 from omnimarket.nodes.node_occ_evidence_validator_compute.models.model_occ_evidence_validate_command import (
     ModelOccEvidenceValidateCommand,
-)
-from omnimarket.nodes.node_redeploy.models.model_occ_evidence_draft import (
-    ModelOccEvidenceDraft,
 )
 from tests.test_occ_evidence_draft_orchestrator import (
     DEPLOYMENT_ID,
