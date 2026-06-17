@@ -853,6 +853,18 @@ class DelegationProjectionRunner(BaseProjectionRunner):
             if data.get("contract_passed") is not None
             else data.get("contractPassed") or False
         )
+        # OMN-13166: behavioral verdict, persisted alongside contract_passed so
+        # the runner write path stays in lockstep with the live-runtime path.
+        semantic_checked = bool(
+            data.get("semantic_checked")
+            if data.get("semantic_checked") is not None
+            else data.get("semanticChecked") or False
+        )
+        semantic_passed = bool(
+            data.get("semantic_passed")
+            if data.get("semantic_passed") is not None
+            else data.get("semanticPassed") or False
+        )
         cost_inference_usd = (
             _safe_numeric_str(
                 data.get("cost_inference_usd") or data.get("costInferenceUsd")
@@ -890,7 +902,8 @@ class DelegationProjectionRunner(BaseProjectionRunner):
             INSERT INTO {self._table_generation} (
               correlation_id, task_description, provider, model_id,
               endpoint_class, attempt_count, total_latency_e2e_ms,
-              contract_passed, cost_inference_usd, timestamp,
+              contract_passed, semantic_checked, semantic_passed,
+              cost_inference_usd, timestamp,
               contract_yaml, handler_source,
               output_payload_sha256, contract_sha256, handler_sha256,
               routing_source, resolved_endpoint, projection_owner
@@ -899,8 +912,9 @@ class DelegationProjectionRunner(BaseProjectionRunner):
               $5, $6, $7,
               $8, $9, $10,
               $11, $12,
-              $13, $14, $15,
-              $16, $17, $18
+              $13, $14,
+              $15, $16, $17,
+              $18, $19, $20
             )
             ON CONFLICT (correlation_id) DO NOTHING
             """,
@@ -912,6 +926,8 @@ class DelegationProjectionRunner(BaseProjectionRunner):
             attempt_count,
             total_latency_e2e_ms,
             contract_passed,
+            semantic_checked,
+            semantic_passed,
             cost_inference_usd,
             timestamp,
             contract_yaml,
