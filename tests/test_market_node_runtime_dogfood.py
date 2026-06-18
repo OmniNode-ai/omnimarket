@@ -43,8 +43,9 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
     # workflow node into canonical nodes; B2 nets +3 (4 new canonical nodes minus
     # the deleted node_pr_review_bot shell): 308 -> 311.
     # OMN-13226 T2 adds node_pr_merged_projection stub: 311 -> 312.
-    assert summary["node_dirs"] == 312
-    assert summary["entry_points"] == 312
+    # OMN-13131 W5 adds node_renderer_capability_projection reducer: 312 -> 313.
+    assert summary["node_dirs"] == 313
+    assert summary["entry_points"] == 313
     assert summary["missing_entry_points"] == []
     assert summary["dangling_entry_points"] == []
     assert summary["routable"] >= 297
