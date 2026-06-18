@@ -20,10 +20,15 @@ from uuid import uuid4
 
 import pytest
 from omnibase_core.enums.enum_node_kind import EnumNodeKind
+from omnibase_core.models.dispatch.model_handler_output import ModelHandlerOutput
 
 from omnimarket.inference.adapter_inference_bridge import ModelInferenceAdapter
 from omnimarket.nodes.node_github_diff_effect.handlers.handler_github_diff import (
     HandlerGithubDiffEffect,
+)
+from omnimarket.nodes.node_github_diff_effect.models.model_github_diff import (
+    ModelGithubDiffCommand,
+    ModelGithubDiffResolvedEvent,
 )
 from omnimarket.nodes.node_hostile_reviewer_orchestrator.handlers.handler_hostile_reviewer_orchestrator import (
     HandlerHostileReviewerOrchestrator,
@@ -76,11 +81,21 @@ class _StubGithubDiffEffect(HandlerGithubDiffEffect):
     def __init__(self, content: str = "diff --git a/foo.py\n+print('x')") -> None:
         self._content = content
 
-    def _read_file(self, file_path: str) -> str:  # pragma: no cover - unused path
-        return self._content
-
-    def _fetch_pr_diff(self, repo: str, pr_number: int, token: str) -> str:
-        return self._content
+    async def handle(self, request: ModelGithubDiffCommand) -> ModelHandlerOutput[None]:
+        event = ModelGithubDiffResolvedEvent(
+            correlation_id=request.correlation_id,
+            repo=request.repo,
+            pr_number=request.pr_number,
+            file_path=request.file_path,
+            content=self._content,
+            content_chars=len(self._content),
+        )
+        return ModelHandlerOutput.for_effect(
+            input_envelope_id=uuid4(),
+            correlation_id=request.correlation_id,
+            handler_id="node_github_diff_effect",
+            events=(event,),
+        )
 
 
 def _command(
@@ -185,7 +200,9 @@ class TestHostileReviewerOrchestratorGoldenChain:
     async def test_fatal_error_yields_failed_event(self) -> None:
         # A github-diff effect that raises makes the whole run fail.
         class _BoomDiffEffect(HandlerGithubDiffEffect):
-            def _fetch_pr_diff(self, repo: str, pr_number: int, token: str) -> str:
+            async def handle(
+                self, request: ModelGithubDiffCommand
+            ) -> ModelHandlerOutput[None]:
                 raise RuntimeError("diff resolution exploded")
 
         handler = HandlerHostileReviewerOrchestrator(
