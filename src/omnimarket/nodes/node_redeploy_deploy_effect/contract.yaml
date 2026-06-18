@@ -15,14 +15,14 @@ node_type: effect
 node_version: {major: 1, minor: 0, patch: 0}
 
 description: >
-  Deploy publish-monitor + rollback effect. Publishes onex.cmd.deploy.rebuild-
-  requested.v1 (HMAC-signed) to the external .201 deploy agent, subscribes
-  onex.evt.deploy.rebuild-completed.v1 and polls by correlation_id, and on a
-  deploy that succeeded then failed post-deploy health (smoke/health/timeout)
-  publishes onex.evt.omnimarket.redeploy-rolled-back.v1. The actual Docker rebuild
-  and image restore are the external deploy agent's job — this effect publishes
-  the command, monitors the bus, and records the outcome. Event bus is
-  DI-injected; topics are contract-sourced.
+  Deploy publish-monitor + rollback effect. Publishes the HMAC-signed deploy-agent
+  rebuild command to the external .201 deploy agent, subscribes the deploy-agent
+  completion event and polls by correlation_id, and on a deploy that succeeded then
+  failed post-deploy health (smoke/health/timeout) publishes the redeploy-rolled-back
+  event. The actual Docker rebuild and image restore are the external deploy agent's
+  job — this effect publishes the command, monitors the bus, and records the outcome.
+  Event bus is DI-injected; the exact topic names are declared below under event_bus
+  and are the single source of truth (no topic strings in this prose).
 
 handler_routing:
   routing_strategy: operation_match
