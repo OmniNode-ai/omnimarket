@@ -19,10 +19,6 @@ EXPECTED_PACKAGE_MIGRATIONS = {
         "src/omnimarket/nodes/node_nightly_loop_controller/migrations/"
         "001_create_nightly_loop_tables.sql"
     ),
-    "review_bot_bypass_log": Path(
-        "src/omnimarket/nodes/node_pr_review_bot/migrations/"
-        "001_create_review_bot_bypass_log.sql"
-    ),
 }
 
 

@@ -2,15 +2,14 @@
 # Python imports. Keep this list small: new entries should either add a Python
 # import or explain why the handler is intentionally dormant.
 src/omnimarket/nodes/node_pr_lifecycle_fix_effect/handlers/handler_auto_rebase.py:HandlerAutoRebase # Legacy PR lifecycle helper; not in contract routing yet.
+src/omnimarket/nodes/node_ticket_pipeline/handlers/handler_report_poster.py:HandlerReportPoster # OMN-13212: contract-wired (node_ticket_pipeline/contract.yaml handler_routing), no Python importer. Surfaced when B2 deleted node_pr_review_bot's same-named handler that coincidentally cross-referenced the name.
 src/omnimarket/nodes/node_pr_lifecycle_fix_effect/handlers/handler_comment_resolution.py:HandlerCommentResolution # Legacy PR lifecycle review-thread helper; not in contract routing yet.
-src/omnimarket/nodes/node_pr_review_bot/handlers/handler_commit_citation_verifier.py:HandlerCommitCitationVerifier # Verification-loop helper pending explicit contract routing.
 src/omnimarket/nodes/node_generation_consumer/handlers/handler_generated_executor.py:HandlerGeneratedExecutor # Dynamic generated-node executor pending explicit contract routing.
 src/omnimarket/nodes/node_hostile_reviewer/handlers/handler_convergence_reducer.py:HandlerConvergenceReducer # Hostile-reviewer internal helper pending explicit contract routing.
 src/omnimarket/nodes/node_overseer_verifier/handlers/handler_overseer_verifier_consumer.py:HandlerOverseerVerifierConsumer # Standalone consumer shim pending explicit contract routing.
 src/omnimarket/nodes/node_nightly_loop_controller/handlers/handler_projection_nightly_loop.py:HandlerProjectionNightlyLoop # Projection helper pending explicit contract routing.
 src/omnimarket/nodes/node_hostile_reviewer/handlers/handler_response_parser.py:HandlerResponseParser # Hostile-reviewer internal helper pending explicit contract routing.
 src/omnimarket/nodes/node_hostile_reviewer/handlers/handler_review_orchestrator.py:HandlerReviewOrchestrator # Hostile-reviewer orchestration helper pending explicit contract routing.
-src/omnimarket/nodes/node_pr_review_bot/handlers/handler_webhook_reconciler.py:HandlerWebhookReconciler # PR-review webhook helper pending explicit contract routing.
 src/omnimarket/nodes/node_knowledge_context_assembler_orchestrator/handlers/handler_knowledge_context_assembler_orchestrator.py:HandlerKnowledgeContextAssemblerOrchestrator # Knowledge context assembler orchestrator pending explicit contract routing wiring.
 src/omnimarket/nodes/node_generate_node_effect/handlers/handler_generate_node.py:HandlerGenerateNode # OMN-12230 contract-first codegen node; handler routing intentionally deferred.
 src/omnimarket/nodes/node_ab_compare_reducer/handlers/handler_ab_compare_reducer.py:HandlerAbCompareReducer # Legacy dormant handler; no external Python import yet.
@@ -30,7 +29,6 @@ src/omnimarket/nodes/node_delegation_ab_runner/handlers/handler_delegation_ab_ru
 src/omnimarket/nodes/node_design_to_plan/handlers/handler_design_to_plan_phase3_launch.py:HandlerDesignToPlanPhase3Launch # Legacy dormant handler; no external Python import yet.
 src/omnimarket/nodes/node_dispatch_outcome_bridge_effect/handlers/handler_bridge.py:HandlerDispatchOutcomeBridge # Legacy dormant handler; no external Python import yet.
 src/omnimarket/nodes/node_dod_sweep_orchestrator/handlers/handler_dod_sweep_orchestrator.py:HandlerDodSweepOrchestrator # Legacy dormant handler; no external Python import yet.
-src/omnimarket/nodes/node_pr_review_bot/handlers/handler_emergency_bypass_parser.py:HandlerEmergencyBypassParser # Legacy dormant handler; no external Python import yet.
 src/omnimarket/nodes/node_env_parity_compute/handlers/handler_env_parity_compute.py:HandlerEnvParityCompute # Legacy dormant handler; no external Python import yet.
 src/omnimarket/nodes/node_evidence_dashboard_effect/handlers/handler_evidence_dashboard_effect.py:HandlerEvidenceDashboardEffect # Legacy dormant handler; no external Python import yet.
 src/omnimarket/nodes/node_evidence_dashboard_reducer/handlers/handler_evidence_dashboard_reducer.py:HandlerEvidenceDashboardReducer # Legacy dormant handler; no external Python import yet.
@@ -70,5 +68,4 @@ src/omnimarket/nodes/node_tech_debt_sweep_orchestrator/handlers/handler_tech_deb
 src/omnimarket/nodes/node_thread_reply_effect/handlers/handler_thread_reply.py:HandlerThreadReply # Legacy dormant handler; no external Python import yet.
 src/omnimarket/nodes/node_ticket_query/handlers/handler_ticket_query.py:HandlerTicketQuery # Legacy dormant handler; no external Python import yet.
 src/omnimarket/nodes/node_two_strike_arbiter/handlers/handler_two_strike_arbiter.py:HandlerTwoStrikeArbiter # Legacy dormant handler; no external Python import yet.
-src/omnimarket/nodes/node_pr_review_bot/handlers/handler_verification_loop.py:HandlerVerificationLoop # Legacy dormant handler; no external Python import yet.
 src/omnimarket/nodes/node_hostile_reviewer/handlers/handler_workflow_runner.py:HandlerWorkflowRunner # Legacy dormant handler; no external Python import yet.

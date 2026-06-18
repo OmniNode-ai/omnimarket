@@ -37,7 +37,7 @@ uv run python scripts/ci/run_runtime_sweep.py
 | Family | Representative nodes |
 | --- | --- |
 | Build and pipeline | `node_build_loop_orchestrator`, `node_build_dispatch_effect`, `node_loop_state_reducer`, `node_ticket_pipeline`, `node_pipeline_fill`, `node_session_orchestrator` |
-| PR and review lifecycle | `node_pr_lifecycle_orchestrator`, `node_pr_lifecycle_triage_compute`, `node_pr_lifecycle_merge_effect`, `node_pr_polish`, `node_pr_review_bot`, `node_rebase_effect`, `node_ci_fix_effect` |
+| PR and review lifecycle | `node_pr_lifecycle_orchestrator`, `node_pr_lifecycle_triage_compute`, `node_pr_lifecycle_merge_effect`, `node_pr_polish`, `node_pr_review_orchestrator`, `node_pr_review_fsm_reducer`, `node_github_review_effect`, `node_judge_verdict_parse_compute`, `node_rebase_effect`, `node_ci_fix_effect` |
 | Validation and diagnostics | `node_platform_readiness`, `node_runtime_sweep`, `node_golden_chain_sweep`, `node_data_flow_sweep`, `node_doc_freshness_sweep`, `node_quality_scoring_compute`, `node_environment_health_scanner`, `node_version_skew_detector`, `node_volume_config_drift_sweep` |
 | Planning and tickets | `node_design_to_plan`, `node_plan_to_tickets`, `node_create_ticket`, `node_ticket_query`, `node_ticket_work`, `node_rsd_fill_compute` |
 | Memory and intelligence | `node_memory_lifecycle_orchestrator`, `node_memory_storage_effect`, `node_intelligence_orchestrator`, `node_intelligence_reducer`, `node_semantic_analyzer_compute`, `node_persona_lifecycle_orchestrator` |

@@ -1,0 +1,23 @@
+name: node_judge_verdict_parse_compute
+version: "1.0.0"
+description: "Pure judge PASS/FAIL verdict parse — deterministic, fail-closed."
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_judge_verdict_parse_compute: "omnimarket.nodes.node_judge_verdict_parse_compute"
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: none
+dependencies:
+  - "omnibase_core>=0.39.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["compute", "review", "judge", "parse", "OMN-13212"]
+pack: "pr_lifecycle"
+display_name: "Judge Verdict Parse Compute"
+node_role: "compute"
