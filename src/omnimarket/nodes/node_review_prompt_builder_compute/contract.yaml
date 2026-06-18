@@ -1,0 +1,79 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Review Prompt Builder Compute (OMN-13210 / B1)
+#
+# Pure COMPUTE: builds the adversarial-review (system, user) prompt pair from a
+# template + context + target context-window. Wraps the A1-rehomed
+# omnimarket.review.prompt_builder primitive in a canonical COMPUTE node.
+---
+name: node_review_prompt_builder_compute
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: compute
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  Pure COMPUTE: builds the adversarial-review (system, user) prompt pair from a
+  prompt template, context content, and target model context window. Applies
+  head+tail truncation when content exceeds the budget. No I/O; deterministic.
+
+input_model:
+  name: ModelReviewPromptBuilderRequest
+  module: omnimarket.nodes.node_review_prompt_builder_compute.models.model_review_prompt_builder
+  description: "Prompt template id + context content + context window for one review route."
+
+output_model:
+  name: ModelPromptBuilderOutput
+  module: omnimarket.review.prompt_builder
+  description: "The built (system_prompt, user_prompt) pair with truncation metadata."
+
+handler:
+  module: omnimarket.nodes.node_review_prompt_builder_compute.handlers.handler_prompt_builder_compute
+  class: HandlerPromptBuilderCompute
+  input_model: omnimarket.nodes.node_review_prompt_builder_compute.models.model_review_prompt_builder.ModelReviewPromptBuilderRequest
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - handler:
+        name: HandlerPromptBuilderCompute
+        module: omnimarket.nodes.node_review_prompt_builder_compute.handlers.handler_prompt_builder_compute
+
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 5000
+  runtime_profiles:
+    - effects
+
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.review-prompt-build.v1
+  terminal_events:
+    success: onex.evt.omnimarket.review-prompt-built.v1
+    failure: onex.evt.omnimarket.review-prompt-build-failed.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.review-prompt-build.v1
+  publish_topics:
+    - onex.evt.omnimarket.review-prompt-built.v1
+    - onex.evt.omnimarket.review-prompt-build-failed.v1
+
+terminal_event: onex.evt.omnimarket.review-prompt-built.v1
+
+dependencies:
+  packages:
+    - "omnibase_core>=0.39.0"
+
+metadata:
+  transport_type: kafka
+  description: "Review prompt builder compute node"
+  author: "OmniNode Team"
+  tags:
+    - "compute"
+    - "review"
+    - "prompt"
+    - "adversarial"
+  related_tickets:
+    - "OMN-13210"
+    - "OMN-13205"

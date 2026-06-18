@@ -1,6 +1,11 @@
-# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""Tests for hostile reviewer caller-supplied logical model routing."""
+"""Tests for hostile reviewer caller-supplied logical model routing.
+
+Migrated to node_hostile_reviewer_orchestrator (OMN-13210 / B1). Regression
+guard for the contract-driven model routing: the contract declares the routing
+policy schema + route-config env source, not served runtime defaults.
+"""
 
 from __future__ import annotations
 
@@ -13,12 +18,12 @@ from unittest.mock import AsyncMock, patch
 import pytest
 import yaml
 
-from omnimarket.nodes.node_hostile_reviewer.handlers.adapter_inference_bridge import (
+from omnimarket.inference.adapter_inference_bridge import (
     AdapterInferenceBridge,
     ModelInferenceBridgeConfig,
-    build_from_contract,
 )
-from omnimarket.nodes.node_hostile_reviewer.handlers.model_config_loader import (
+from omnimarket.nodes.node_hostile_reviewer_orchestrator.model_config_loader import (
+    build_from_contract,
     build_model_configs,
 )
 
@@ -27,7 +32,7 @@ CONTRACT_PATH = (
     / "src"
     / "omnimarket"
     / "nodes"
-    / "node_hostile_reviewer"
+    / "node_hostile_reviewer_orchestrator"
     / "contract.yaml"
 )
 ROUTE_CONFIG_ENV = "HOSTILE_REVIEWER_MODEL_CONFIGS_JSON"
@@ -59,10 +64,8 @@ def contract() -> dict[str, Any]:
 class TestHostileReviewerContractPolicy:
     """contract.yaml declares routing policy, not served runtime defaults."""
 
-    def test_models_input_requires_caller_keys(self, contract: dict[str, Any]) -> None:
-        models_input = contract["inputs"]["models"]
-        assert models_input["required"] is True
-        assert "default" not in models_input
+    def test_input_model_is_start_command(self, contract: dict[str, Any]) -> None:
+        assert contract["input_model"]["name"] == "ModelHostileReviewerStartCommand"
 
     def test_contract_has_no_model_specific_endpoint_envs(
         self, contract: dict[str, Any]

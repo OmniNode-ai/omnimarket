@@ -1,0 +1,79 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Review Convergence Compute (OMN-13210 / B1)
+#
+# Pure COMPUTE: per-model precision / recall / F1 of locally-detected findings
+# against frontier-labeled ground truth. Eval tooling re-homed from the dying
+# node_hostile_reviewer shell (decision: retain as standalone COMPUTE, not delete).
+---
+name: node_review_convergence_compute
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: compute
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  Pure COMPUTE: computes per-model precision, recall, and F1 (overall and per
+  finding category) of locally-detected review findings against frontier-labeled
+  ground truth. Eval-time tooling. No I/O; deterministic.
+
+input_model:
+  name: ModelConvergenceInput
+  module: omnimarket.nodes.node_review_convergence_compute.models.model_review_convergence
+  description: "Labeled findings (local vs frontier) for one model route."
+
+output_model:
+  name: ModelConvergenceOutput
+  module: omnimarket.nodes.node_review_convergence_compute.models.model_review_convergence
+  description: "Per-model precision / recall / F1 metrics."
+
+handler:
+  module: omnimarket.nodes.node_review_convergence_compute.handlers.handler_convergence_compute
+  class: HandlerConvergenceCompute
+  input_model: omnimarket.nodes.node_review_convergence_compute.models.model_review_convergence.ModelConvergenceInput
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - handler:
+        name: HandlerConvergenceCompute
+        module: omnimarket.nodes.node_review_convergence_compute.handlers.handler_convergence_compute
+
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 5000
+  runtime_profiles:
+    - effects
+
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.review-convergence.v1
+  terminal_events:
+    success: onex.evt.omnimarket.review-convergence-reduced.v1
+    failure: onex.evt.omnimarket.review-convergence-failed.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.review-convergence.v1
+  publish_topics:
+    - onex.evt.omnimarket.review-convergence-reduced.v1
+    - onex.evt.omnimarket.review-convergence-failed.v1
+
+terminal_event: onex.evt.omnimarket.review-convergence-reduced.v1
+
+dependencies:
+  packages:
+    - "omnibase_core>=0.39.0"
+
+metadata:
+  transport_type: kafka
+  description: "Review convergence (per-model F1) compute node"
+  author: "OmniNode Team"
+  tags:
+    - "compute"
+    - "review"
+    - "convergence"
+    - "eval"
+  related_tickets:
+    - "OMN-13210"
+    - "OMN-13205"
