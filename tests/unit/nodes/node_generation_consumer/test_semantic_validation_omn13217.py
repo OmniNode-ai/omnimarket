@@ -224,3 +224,102 @@ def test_behaviorally_wrong_handler_still_fails_even_with_import() -> None:
     assert result.checked is True
     assert result.passed is False
     assert any("snake_to_pascal" in e for e in result.errors)
+
+
+# ---------------------------------------------------------------------------
+# Defect 2 ordering: structured payload signal wins over snake/camel keywords.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+def test_json_object_task_mentioning_camelcase_derives_no_fixtures() -> None:
+    """A JSON/object task that ALSO mentions snake_case/camelCase derives nothing.
+
+    Regression for the CodeRabbit major: the structured-payload check must run
+    BEFORE the snake->casing branches, else this task would wrongly derive
+    whole-string camel fixtures and re-open the structured false-RED class.
+    """
+    task = (
+        "Generate a node that accepts a JSON object with snake_case keys and "
+        "converts each key to camelCase, returning the transformed object."
+    )
+    assert derive_semantic_fixtures(task) == []
+
+
+@pytest.mark.unit
+def test_object_with_fields_task_mentioning_pascal_derives_no_fixtures() -> None:
+    task = (
+        "Generate a node that accepts an object with fields name and value, "
+        "converts name to PascalCase, and returns the object."
+    )
+    assert derive_semantic_fixtures(task) == []
+
+
+# ---------------------------------------------------------------------------
+# Defect 1 hardening: the sandbox __import__ is NOT introspectably bypassable.
+# CodeRabbit critical: __import__.__globals__['importlib'] / ['__builtins__']
+# must not yield an escape (OMN-13217).
+# ---------------------------------------------------------------------------
+
+_CAMEL_HANDLER_TAIL = """\
+def handle(input_data):
+    return {"camel_case": "x", "changed": True}
+"""
+
+
+@pytest.mark.unit
+def test_import_globals_does_not_leak_importlib() -> None:
+    """`__import__.__globals__['importlib']` must NOT be reachable."""
+    escape = (
+        "def handle(input_data):\n"
+        "    mod = __import__.__globals__['importlib'].import_module('os')\n"
+        "    return {'escaped': mod.__name__}\n"
+    )
+    fixtures = derive_semantic_fixtures(_CAMEL_TASK)
+    result = evaluate_handler_semantics(escape, fixtures)
+    assert result.checked is True
+    assert result.passed is False
+    assert any("raised" in e for e in result.errors)
+
+
+@pytest.mark.unit
+def test_import_globals_does_not_leak_real_builtins() -> None:
+    """`__import__.__globals__['__builtins__']` must not expose real __import__/open."""
+    escape = (
+        "def handle(input_data):\n"
+        "    b = __import__.__globals__['__builtins__']\n"
+        "    mod = b['__import__']('os')\n"
+        "    return {'escaped': mod.__name__}\n"
+    )
+    fixtures = derive_semantic_fixtures(_CAMEL_TASK)
+    result = evaluate_handler_semantics(escape, fixtures)
+    assert result.checked is True
+    assert result.passed is False
+    assert any("raised" in e for e in result.errors)
+
+
+@pytest.mark.unit
+def test_dunder_import_cannot_load_blocked_module_directly() -> None:
+    """`__import__('os')` from generated code raises ImportError (allowlist)."""
+    escape = (
+        "def handle(input_data):\n"
+        "    mod = __import__('os')\n"
+        "    return {'escaped': mod.__name__}\n"
+    )
+    fixtures = derive_semantic_fixtures(_CAMEL_TASK)
+    result = evaluate_handler_semantics(escape, fixtures)
+    assert result.checked is True
+    assert result.passed is False
+    assert any("raised" in e for e in result.errors)
+
+
+@pytest.mark.unit
+def test_sandbox_import_globals_carries_no_escape_object() -> None:
+    """Direct introspection: the importer's __globals__ exposes only ImportError."""
+    from omnimarket.nodes.node_generation_consumer.semantic_validation import (
+        _SANDBOX_IMPORT,
+    )
+
+    g = _SANDBOX_IMPORT.__globals__  # type: ignore[attr-defined]
+    assert set(g.keys()) == {"__builtins__"}
+    assert set(g["__builtins__"].keys()) == {"ImportError"}

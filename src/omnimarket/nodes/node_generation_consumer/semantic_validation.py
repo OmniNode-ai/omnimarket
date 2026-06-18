@@ -46,7 +46,7 @@ so a correct ``import re`` passes while ``import os`` / ``import socket`` /
 from __future__ import annotations
 
 import importlib
-from types import ModuleType
+from types import FunctionType, ModuleType
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -157,40 +157,75 @@ _SAFE_STDLIB_MODULES: frozenset[str] = frozenset(
 )
 
 
-def _safe_import(
-    name: str,
-    globals_: dict[str, object] | None = None,
-    locals_: dict[str, object] | None = None,
-    fromlist: tuple[str, ...] = (),
-    level: int = 0,
-) -> ModuleType:
-    """A ``__import__`` that admits only the curated safe stdlib allowlist.
+def _build_sandbox_import() -> object:
+    """Build a ``__import__`` whose ``__globals__`` exposes no escape vector.
 
-    Mirrors the CPython ``__import__`` signature so ``import re`` and
-    ``from collections import OrderedDict`` both work. Relative imports
-    (``level > 0``) and any module outside ``_SAFE_STDLIB_MODULES`` raise
-    ``ImportError`` — surfaced by the caller as a semantic failure, never an
-    escape from the sandbox.
+    CodeRabbit (OMN-13217 critical) showed that exposing an ordinary function as
+    the sandbox ``__import__`` is bypassable: generated code can read
+    ``__import__.__globals__['importlib']`` and call ``import_module('os')``,
+    defeating the allowlist. The defenses here:
+
+    * The allowlisted modules are resolved ONCE here and captured as a local
+      (``safe_modules``) — a genuine closure cell, NOT a module global — so the
+      importer never references ``importlib`` and never imports at request time.
+    * The importer is rebuilt with ``FunctionType`` over a MINIMAL ``__globals__``
+      whose only entry is ``__builtins__ = {"ImportError": ImportError}`` (the
+      sole name the importer body looks up globally). So
+      ``generated_handler.__import__.__globals__`` exposes neither ``importlib``,
+      module objects, the real ``__builtins__`` (which would re-leak ``open`` /
+      the real ``__import__``), nor any other escape — only ``ImportError``.
+
+    Lookups are served from the captured mapping; anything outside the allowlist
+    (and any relative import) raises ``ImportError``, surfaced by the caller as a
+    semantic failure rather than an escape.
     """
-    if level != 0:
-        raise ImportError("relative imports are not permitted in the semantic sandbox")
-    top = name.split(".", 1)[0]
-    if name not in _SAFE_STDLIB_MODULES and top not in _SAFE_STDLIB_MODULES:
-        raise ImportError(
-            f"import of {name!r} is not permitted in the semantic sandbox"
-        )
-    return importlib.import_module(name)
+    safe_modules: dict[str, ModuleType] = {
+        name: importlib.import_module(name) for name in sorted(_SAFE_STDLIB_MODULES)
+    }
+
+    def _sandbox_import(
+        name: str,
+        globals_: dict[str, object] | None = None,
+        locals_: dict[str, object] | None = None,
+        fromlist: tuple[str, ...] = (),
+        level: int = 0,
+    ) -> ModuleType:
+        if level != 0:
+            raise ImportError(
+                "relative imports are not permitted in the semantic sandbox"
+            )
+        module = safe_modules.get(name) or safe_modules.get(name.split(".", 1)[0])
+        if module is None:
+            raise ImportError(
+                f"import of {name!r} is not permitted in the semantic sandbox"
+            )
+        return module
+
+    # Rebuild over a minimal globals whose __builtins__ holds ONLY ImportError,
+    # so __import__.__globals__ leaks nothing (not importlib, not the real
+    # __builtins__); the captured safe_modules mapping lives only in the closure.
+    return FunctionType(
+        _sandbox_import.__code__,
+        {"__builtins__": {"ImportError": ImportError}},
+        _sandbox_import.__name__,
+        _sandbox_import.__defaults__,
+        _sandbox_import.__closure__,
+    )
+
+
+_SANDBOX_IMPORT = _build_sandbox_import()
 
 
 # A pure, deterministic, I/O-free builtin subset. Generated transformation
 # handlers only need string/sequence primitives plus a guarded ``__import__``
-# (OMN-13217) limited to the safe stdlib allowlist above. Notably ABSENT: open,
-# eval, exec, compile, input, globals, locals, vars, getattr, setattr, delattr
-# — so reaching network/filesystem/env/time/random from inside raises NameError
-# (or ImportError for a disallowed module), which surfaces as a semantic failure
+# (OMN-13217) limited to the safe stdlib allowlist above and hardened against
+# ``__globals__`` introspection. Notably ABSENT: open, eval, exec, compile,
+# input, globals, locals, vars, getattr, setattr, delattr — so reaching
+# network/filesystem/env/time/random from inside raises NameError (or
+# ImportError for a disallowed module), which surfaces as a semantic failure
 # (not an escape).
 _SAFE_BUILTINS: dict[str, object] = {
-    "__import__": _safe_import,
+    "__import__": _SANDBOX_IMPORT,
     "abs": abs,
     "bool": bool,
     "dict": dict,
@@ -339,17 +374,31 @@ _STRUCTURED_TASK_SIGNALS: tuple[str, ...] = (
 )
 
 
+def _has_structured_payload_signal(text: str) -> bool:
+    """True for a STRONG object/field/JSON shape signal (high confidence).
+
+    These signals (JSON object, "object with", explicit "fields", a named field
+    such as ``ticket_id``, schema/dictionary/nested) mean the task transforms a
+    structured payload, not a whole string — even when it also mentions
+    ``snake_case``/``camelCase`` (the C1 false-RED case). Checked BEFORE the
+    snake->casing branches so such tasks derive NO whole-string fixtures
+    (CodeRabbit OMN-13217 major).
+    """
+    return _wants(text, *_STRUCTURED_TASK_SIGNALS)
+
+
 def _is_structured_task(text: str) -> bool:
     """True when the task shapes a multi-field / object transform, not a string one.
 
     Whole-string casing/reversal invariants (uppercase, lowercase, reverse) are
     matched by loose substrings, so they must NOT fire on a structured task whose
-    casing word is only a qualifier. A task that returns several named fields, or
-    operates on a JSON object / specific field, is structured: its invariant is
-    not a single whole-string transform and the behavioral check is inconclusive
-    rather than guessed against the wrong fixtures.
+    casing word is only a qualifier. Combines the strong payload-shape signals
+    with a weaker multi-output heuristic ("returns a, b, and c"). The weak
+    heuristic is intentionally applied ONLY to the bare upper/lower/reverse
+    branches (after snake->casing), so a legitimate "snake_case ... returns
+    camel_case plus changed boolean" task still derives camel fixtures.
     """
-    if _wants(text, *_STRUCTURED_TASK_SIGNALS):
+    if _has_structured_payload_signal(text):
         return True
     # "returns a, b, and c" / "returns x plus y" — more than one named output.
     if "return" in text and _wants(text, ", and ", " plus ", " and returns"):
@@ -380,6 +429,13 @@ def derive_semantic_fixtures(task_description: str) -> list[ModelSemanticFixture
     """
     text = task_description.lower()
     wants_changed = _wants(text, "changed", "modified")
+
+    # Object/field/JSON payloads need task-specific fixtures; whole-string
+    # casing fixtures would validate the wrong invariant. Checked BEFORE the
+    # snake->casing branches so a structured task that also mentions
+    # snake_case/camelCase still derives nothing (CodeRabbit OMN-13217 major).
+    if _has_structured_payload_signal(text):
+        return []
 
     # snake_case -> PascalCase (the gate-zero stability invariant). Requires the
     # strong "pascal" keyword AND snake_case framing so it is not a loose match.
