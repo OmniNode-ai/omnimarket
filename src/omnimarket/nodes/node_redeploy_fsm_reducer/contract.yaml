@@ -1,0 +1,74 @@
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Redeploy FSM REDUCER
+#
+# Pure FSM reducer for the redeploy workflow (OMN-13211 / B3). Folds one
+# phase-advance event into the redeploy FSM state projection. Owns the phase
+# sequence IDLE -> SYNC_CLONES -> UPDATE_PINS -> REBUILD -> SEED_INFISICAL ->
+# VERIFY_HEALTH -> DONE and the 3-failure circuit breaker (-> FAILED). No I/O.
+---
+name: node_redeploy_fsm_reducer
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: reducer
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  Pure redeploy FSM reducer. Folds one phase-advance event (prior state + phase
+  outcome) into a new ModelRedeployState projection. Owns the deploy phase
+  sequence and the 3-failure circuit breaker that trips to FAILED. A successful
+  advance moves to next_phase and resets the failure counter; a failed advance
+  retries the phase in place until the circuit breaker trips. Pure fold — no
+  events, no intents, no I/O; the orchestrator publishes transition events.
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: "redeploy.fsm.advance"
+      handler:
+        name: HandlerRedeployFsm
+        module: omnimarket.nodes.node_redeploy_fsm_reducer.handlers.handler_redeploy_fsm
+      description: "Fold one phase-advance event into the FSM state projection."
+      input_model:
+        name: ModelRedeployAdvanceCommand
+        module: omnimarket.nodes.node_redeploy_fsm_reducer.models.model_redeploy_advance_command
+        description: "Prior FSM state + phase outcome to fold."
+
+handler:
+  module: omnimarket.nodes.node_redeploy_fsm_reducer.handlers.handler_redeploy_fsm
+  class: HandlerRedeployFsm
+  input_model: omnimarket.nodes.node_redeploy_fsm_reducer.models.model_redeploy_advance_command.ModelRedeployAdvanceCommand
+
+input_model:
+  name: ModelRedeployAdvanceCommand
+  module: omnimarket.nodes.node_redeploy_fsm_reducer.models.model_redeploy_advance_command
+  description: "Prior FSM state + phase outcome + optional error message."
+output_model:
+  name: ModelRedeployState
+  module: omnimarket.events.runtime_deployment
+  description: "Advanced FSM state projection."
+
+descriptor:
+  node_archetype: reducer
+  purity: pure
+  idempotent: true
+  timeout_ms: 2000
+  runtime_profiles:
+    - effects
+
+event_bus:
+  subscribe_topics:
+    - onex.evt.omnimarket.redeploy-phase-advance.v1
+  publish_topics:
+    - onex.evt.omnimarket.redeploy-fsm-state-updated.v1
+
+dependencies:
+  packages:
+    - "omnibase_core>=0.39.0"
+
+metadata:
+  transport_type: kafka
+  description: "Pure redeploy FSM reducer"
+  author: "OmniNode Platform Team"
+  related_tickets:
+    - "OMN-13211"
+    - "OMN-12577"
