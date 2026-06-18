@@ -70,11 +70,33 @@ inputs:
     description: "SHA-256 hex digest of context_pack (sha256:<hex>); empty when context_pack is empty"
     required: false
     default: ""
+  # OMN-13289 (G0): validator-generation acceptance corpus. Optional with a null
+  # default so ordinary free-text node generation is unaffected. When present,
+  # the run is a VALIDATOR generation: the generated scanner is accepted only if
+  # it flags every violation_fixture and passes every clean_fixture, by
+  # deterministic execution (the corpus, NOT the LLM, is the acceptance
+  # authority). The corpus must include at least one adversarial mutation case.
+  validator_corpus:
+    type: object
+    description: >-
+      ModelValidatorCorpus gating acceptance of the generated validator
+      (violation_fixtures the scanner MUST flag, clean_fixtures it MUST pass).
+      Null for ordinary free-text generation (no corpus gate).
+    required: false
+    default: null
 
 outputs:
   contract_passed:
     type: bool
     description: "True if the generated node passed all validation checks"
+  # OMN-13289 (G0): validator-acceptance verdict (the corpus gate is the
+  # acceptance authority, not the LLM).
+  corpus_checked:
+    type: bool
+    description: "True when this run carried a validator acceptance corpus"
+  corpus_passed:
+    type: bool
+    description: "True only when the generated scanner flagged every violation_fixture and passed every clean_fixture"
   attempt_count:
     type: int
     description: "Number of generation attempts made"
