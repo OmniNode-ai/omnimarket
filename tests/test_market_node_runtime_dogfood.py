@@ -42,12 +42,13 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
     # OMN-13210 B1, OMN-13211 B3, and OMN-13212 B2 each decompose a legacy
     # workflow node into canonical nodes; B2 nets +3 (4 new canonical nodes minus
     # the deleted node_pr_review_bot shell): 308 -> 311.
-    assert summary["node_dirs"] == 311
-    assert summary["entry_points"] == 311
+    # OMN-13226 T2 adds node_pr_merged_projection stub: 311 -> 312.
+    assert summary["node_dirs"] == 312
+    assert summary["entry_points"] == 312
     assert summary["missing_entry_points"] == []
     assert summary["dangling_entry_points"] == []
     assert summary["routable"] >= 297
-    assert summary["skipped"] == 3
+    assert summary["skipped"] == 4
     assert summary["failed"] == 0
     assert summary["failure_buckets"] == {}
     assert {
@@ -58,6 +59,7 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
         "node_e2e_orchestrator",
         "node_navigation_history_reducer",
         "node_projection_dep_health",
+        "node_pr_merged_projection",  # OMN-13226 T2 stub; handler pending T3
     }
     assert not {
         item["node_name"]

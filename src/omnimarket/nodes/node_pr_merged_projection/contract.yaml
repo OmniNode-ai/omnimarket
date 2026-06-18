@@ -1,0 +1,58 @@
+---
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# node_pr_merged_projection — contract stub (OMN-13226 / T2)
+#
+# Full projection handler implementation is T3 (OMN-13227). This contract stub
+# registers the subscribe_topics binding so the topic registry is green for T2.
+#
+# Ticket: OMN-13226 (publisher) + OMN-13227 (projection handler)
+
+name: pr_merged_projection
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: reducer
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  Projects GitHub PR-merged events (onex.evt.github.pr-merged.v1) into a
+  queryable monotonic-cursor projection. Enables the per-machine worktree
+  reaper (T4, OMN-13228) to poll GET /projection/onex.evt.github.pr-merged.v1
+  on the .201 lane (:3002) to discover newly merged PRs and trigger
+  prune-worktrees.sh on matched worktrees.
+
+  Transport note: the publisher (GHA pr-merged-publisher workflow) runs on
+  ubuntu-latest and publishes to Confluent Cloud via SASL_SSL. This node
+  consumes from Confluent and re-publishes onto the .201 Redpanda lane so the
+  :3002 projection API serves the events locally.
+
+  Full handler implementation: T3 (OMN-13227).
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - handler:
+        name: HandlerPrMergedProjection
+        module: omnimarket.nodes.node_pr_merged_projection.handlers.handler_pr_merged_projection
+
+event_bus:
+  subscribe_topics:
+    - onex.evt.github.pr-merged.v1
+  publish_topics:
+    - onex.evt.omnimarket.pr-merged-projection-snapshot.v1
+
+runtime_dispatch:
+  addressable: false
+  invocation_mode: projection_reducer
+  reason: >
+    PR-merged projection is an event-sourced reducer invoked by the projection
+    host; it does not own a request/response command route. Handler stub
+    pending T3 (OMN-13227).
+
+descriptor:
+  node_archetype: reducer
+  purity: effectful
+  runtime_profiles:
+    - effects
+  idempotent: true
+  timeout_ms: 0

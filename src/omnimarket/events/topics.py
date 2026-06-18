@@ -18,6 +18,12 @@ DELEGATION_ALL_TIERS_FAILED_TOPIC_V1 = "onex.evt.omnimarket.delegation-all-tiers
 DELEGATION_PROJECTION_SNAPSHOT_TOPIC_V1 = "onex.evt.omnimarket.delegation-projection-snapshot.v1"  # onex-topic-allow: canonical topic registry; declared in node_llm_delegation_projection contract.yaml publish_topics
 ROUTING_FEEDBACK_UPDATED_TOPIC_V1 = "onex.evt.omnimarket.routing-feedback-updated.v1"  # onex-topic-allow: canonical topic registry; declared in node_delegation_routing_feedback_reducer contract.yaml publish_topics
 
+# GitHub PR merge event (OMN-13226). Published by the pr-merged-publisher GHA
+# workflow on every repo merge; consumed by node_pr_merged_projection (T3,
+# OMN-13227) which materialises the projection at
+# GET /projection/onex.evt.github.pr-merged.v1 on the .201 lane (:3002).
+PR_MERGED_TOPIC_V1 = "onex.evt.github.pr-merged.v1"  # onex-topic-allow: canonical topic registry; declared in node_pr_merged_projection contract.yaml subscribe_topics (OMN-13226/13227)
+
 # Typed FSM watchdog topics (OMN-12959). Canonical terminal-state-invariant
 # vocabulary: every workflow FSM reaches a declared terminal OR trips one of
 # these typed watchdogs. Consumed via omnimarket.events.watchdog, which maps the
