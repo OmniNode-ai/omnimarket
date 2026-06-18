@@ -620,6 +620,7 @@ async def list_projections(
 async def projection_query(
     topic: str,
     correlation_id: str | None = Query(default=None),
+    since: str | None = Query(default=None),
     limit: int | None = Query(default=None, ge=1),
     order: str | None = Query(default=None, pattern="^(?i:asc|desc)$"),
     pool: asyncpg.Pool = Depends(get_pool),  # noqa: B008
@@ -686,6 +687,26 @@ async def projection_query(
             },
         )
 
+    # Generic monotonic-cursor pagination (OMN-13227): when the topic declares a
+    # cursor_column, `?since=<cursor>` returns only rows with cursor_column >
+    # since and the response carries next_cursor. Reject `since` on topics that
+    # do not declare a cursor_column so callers do not silently get an unpaged
+    # full scan. The cursor_column identifier is contract-trusted; the since
+    # value is always a bound parameter.
+    if since is not None and cfg.cursor_column is None:
+        return JSONResponse(
+            status_code=422,
+            content={
+                "error": "unsupported_filter",
+                "filter": "since",
+                "topic": topic,
+                "detail": (
+                    f"Topic '{topic}' does not declare a 'cursor_column' and "
+                    "cannot be paginated by 'since'."
+                ),
+            },
+        )
+
     try:
         async with pool.acquire() as conn:
             order_clause = resolve_order_clause(order_by, order)
@@ -702,6 +723,22 @@ async def projection_query(
                         f"SELECT MAX({freshness_col}) FROM {qualified_table}"
                         f" WHERE correlation_id = $1",
                         correlation_id,
+                    )
+                    if freshness_col is not None
+                    else None
+                )
+            elif since is not None:
+                # cfg.cursor_column is contract-trusted (validated by discovery);
+                # since is a bound parameter. Guarded above to be non-None here.
+                sql = (
+                    f"SELECT {col_list} FROM {qualified_table}"
+                    f" WHERE {cfg.cursor_column} > $1"
+                    f"{order_clause} LIMIT {effective_limit}"
+                )
+                raw_rows = await conn.fetch(sql, since)
+                latest_ts_val = (
+                    await conn.fetchval(
+                        f"SELECT MAX({freshness_col}) FROM {qualified_table}"
                     )
                     if freshness_col is not None
                     else None
@@ -756,6 +793,15 @@ async def projection_query(
         "undefined" if not order_clause else order_clause.removeprefix(" ORDER BY ")
     )
 
+    # Monotonic-cursor pagination (OMN-13227): when the topic declares a
+    # cursor_column, the last returned row's cursor is the caller's next `since`.
+    # None when the topic has no cursor_column or the page is empty.
+    next_cursor: str | None = None
+    if cfg.cursor_column is not None and serialisable_rows:
+        last_cursor_val = serialisable_rows[-1].get(cfg.cursor_column)
+        if last_cursor_val is not None:
+            next_cursor = str(last_cursor_val)
+
     return JSONResponse(
         {
             "topic": topic,
@@ -767,6 +813,7 @@ async def projection_query(
             "latest_event_at": latest_ts,
             "latest_projection_updated_at": latest_ts,
             "row_count": len(serialisable_rows),
+            "next_cursor": next_cursor,
             "rows": serialisable_rows,
         }
     )
