@@ -1,7 +1,7 @@
 -- OMN-13131 / W5: Renderer Capability Registry projection.
 -- Sole writer: node_renderer_capability_projection (NodeReducer). This table IS
 -- the registry — there is no in-memory CapabilityRegistry class. Consumers read
--- the materialized projection via GET /projection/onex.snapshot.projection.renderer-capability.v1.
+-- the materialized projection via GET /projection/onex.evt.omnimarket.renderer-capability-projection-snapshot.v1.
 -- One row per renderer_id (UPSERT key); heartbeat-TTL freshness is materialized
 -- as is_degraded + a typed empty_state_reason ('upstream-blocked' when degraded).
 
