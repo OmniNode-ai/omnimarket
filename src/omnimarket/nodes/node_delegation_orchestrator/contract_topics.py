@@ -46,11 +46,17 @@ _SUBSCRIBE_TOPICS: Final[tuple[str, ...]] = contract_subscribe_topics(_CONTRACT_
 _PUBLISH_TOPICS: Final[tuple[str, ...]] = contract_publish_topics(_CONTRACT_PATH)
 
 # Subscribe topics (commands/events the orchestrator consumes).
+TOPIC_ID_DELEGATION_REQUEST: Final[str] = _single_topic(
+    _SUBSCRIBE_TOPICS, "delegation-request.v1", section="subscribe_topics"
+)
 TOPIC_ID_INVOCATION_COMMAND: Final[str] = _single_topic(
     _SUBSCRIBE_TOPICS, "invocation.v1", section="subscribe_topics"
 )
 TOPIC_ID_AGENT_TASK_LIFECYCLE: Final[str] = _single_topic(
     _SUBSCRIBE_TOPICS, "agent-task-lifecycle.v1", section="subscribe_topics"
+)
+TOPIC_ID_INFERENCE_RESPONSE: Final[str] = _single_topic(
+    _SUBSCRIBE_TOPICS, "inference-response.v1", section="subscribe_topics"
 )
 
 # Publish topics (commands/events the orchestrator emits).
@@ -77,7 +83,9 @@ __all__ = [
     "TOPIC_ID_AGENT_TASK_LIFECYCLE",
     "TOPIC_ID_DELEGATION_COMPLETED",
     "TOPIC_ID_DELEGATION_FAILED",
+    "TOPIC_ID_DELEGATION_REQUEST",
     "TOPIC_ID_INFERENCE_REQUEST",
+    "TOPIC_ID_INFERENCE_RESPONSE",
     "TOPIC_ID_INVOCATION_COMMAND",
     "TOPIC_ID_QUALITY_GATE_REQUEST",
     "TOPIC_ID_ROUTING_REQUEST",

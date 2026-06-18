@@ -392,17 +392,17 @@ market = "omnimarket.cli.market:market"
 omnimarket = "omnimarket.nodes"
 
 [tool.uv.sources]
-omnibase-core = { git = "https://github.com/OmniNode-ai/omnibase_core.git", rev = "d209d12a8695922839383cd36b55ea58f6f653bd" }
+omnibase-core = { git = "https://github.com/OmniNode-ai/omnibase_core.git", rev = "00be64168d071052cb7ab531d29ff1e3796c0d49" }
 omnibase-compat = { git = "https://github.com/OmniNode-ai/omnibase_compat.git", rev = "bd7fe461316effa7cd0a1918e29f83bc5787a7e0" }
-omnibase-infra = { git = "https://github.com/OmniNode-ai/omnibase_infra.git", rev = "1c1a5b17d2e794bb99317b4dc2a96fe570720bd6" }
+omnibase-infra = { git = "https://github.com/OmniNode-ai/omnibase_infra.git", rev = "4672c6bde87f84a19d4a9852a96db76280aebe73" }
 omninode-memory = { git = "https://github.com/OmniNode-ai/omnimemory.git", rev = "9843dd18cedaa4f5939289ba527532262b87003c" }
-onex-change-control = { git = "https://github.com/OmniNode-ai/onex_change_control.git", rev = "42388127110cfdf2f6e507eed0b5ab0a814fc600" }
+onex-change-control = { git = "https://github.com/OmniNode-ai/onex_change_control.git", rev = "70ef4007c857fe7d1370da7c13fe350db22d5f3e" }
 
 [tool.uv]
 override-dependencies = [
-    "omnibase-core @ git+https://github.com/OmniNode-ai/omnibase_core.git@d209d12a8695922839383cd36b55ea58f6f653bd",
+    "omnibase-core @ git+https://github.com/OmniNode-ai/omnibase_core.git@00be64168d071052cb7ab531d29ff1e3796c0d49",
     "omnibase-spi>=0.22.0,<0.23.0",
-    "omnibase-infra @ git+https://github.com/OmniNode-ai/omnibase_infra.git@1c1a5b17d2e794bb99317b4dc2a96fe570720bd6",
+    "omnibase-infra @ git+https://github.com/OmniNode-ai/omnibase_infra.git@4672c6bde87f84a19d4a9852a96db76280aebe73",
     "omnibase-compat @ git+https://github.com/OmniNode-ai/omnibase_compat.git@bd7fe461316effa7cd0a1918e29f83bc5787a7e0",
 ]
 

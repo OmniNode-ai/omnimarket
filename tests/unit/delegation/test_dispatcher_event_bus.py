@@ -29,13 +29,19 @@ from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
 from omnibase_core.protocols.event_bus.protocol_event_bus import ProtocolEventBus
 from omnibase_infra.enums import EnumDispatchStatus
 from omnibase_infra.errors import InfraUnavailableError
-from omnibase_infra.event_bus.topic_constants import (
-    TOPIC_DELEGATION_COMPLETED,
-    TOPIC_DELEGATION_FAILED,
-    TOPIC_DELEGATION_INFERENCE_REQUEST,
-    TOPIC_DELEGATION_TASK_DELEGATED,
-)
 
+from omnimarket.nodes.node_delegation_orchestrator.contract_topics import (
+    TOPIC_ID_DELEGATION_COMPLETED as TOPIC_DELEGATION_COMPLETED,
+)
+from omnimarket.nodes.node_delegation_orchestrator.contract_topics import (
+    TOPIC_ID_DELEGATION_FAILED as TOPIC_DELEGATION_FAILED,
+)
+from omnimarket.nodes.node_delegation_orchestrator.contract_topics import (
+    TOPIC_ID_INFERENCE_REQUEST as TOPIC_DELEGATION_INFERENCE_REQUEST,
+)
+from omnimarket.nodes.node_delegation_orchestrator.contract_topics import (
+    TOPIC_ID_TASK_DELEGATED as TOPIC_DELEGATION_TASK_DELEGATED,
+)
 from omnimarket.nodes.node_delegation_orchestrator.dispatchers.dispatcher_agent_task_lifecycle import (
     DispatcherAgentTaskLifecycle,
 )

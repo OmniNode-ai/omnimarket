@@ -288,8 +288,8 @@ class TestHappyPath:
         assert intents[2].cost_savings_usd == pytest.approx(expected_savings)
         assert intents[2].pricing_manifest_version == get_manifest_version_int()
         assert intents[2].pricing_manifest_version > 0
-        from omnibase_infra.event_bus.topic_constants import (
-            TOPIC_DELEGATION_TASK_DELEGATED,
+        from omnimarket.nodes.node_delegation_orchestrator.contract_topics import (
+            TOPIC_ID_TASK_DELEGATED as TOPIC_DELEGATION_TASK_DELEGATED,
         )
 
         assert intents[2].topic == TOPIC_DELEGATION_TASK_DELEGATED
@@ -623,10 +623,9 @@ class TestTaskDelegatedEventTopicRouting:
     """
 
     def test_compat_event_has_topic_on_gate_pass(self) -> None:
-        from omnibase_infra.event_bus.topic_constants import (
-            TOPIC_DELEGATION_TASK_DELEGATED,
+        from omnimarket.nodes.node_delegation_orchestrator.contract_topics import (
+            TOPIC_ID_TASK_DELEGATED as TOPIC_DELEGATION_TASK_DELEGATED,
         )
-
         from omnimarket.nodes.node_delegation_orchestrator.models.model_task_delegated_event import (
             ModelTaskDelegatedEvent,
         )
@@ -646,10 +645,9 @@ class TestTaskDelegatedEventTopicRouting:
         assert compat_events[0].topic == TOPIC_DELEGATION_TASK_DELEGATED
 
     def test_compat_event_has_topic_on_gate_fail(self) -> None:
-        from omnibase_infra.event_bus.topic_constants import (
-            TOPIC_DELEGATION_TASK_DELEGATED,
+        from omnimarket.nodes.node_delegation_orchestrator.contract_topics import (
+            TOPIC_ID_TASK_DELEGATED as TOPIC_DELEGATION_TASK_DELEGATED,
         )
-
         from omnimarket.nodes.node_delegation_orchestrator.models.model_task_delegated_event import (
             ModelTaskDelegatedEvent,
         )
@@ -671,10 +669,9 @@ class TestTaskDelegatedEventTopicRouting:
         assert compat_events[0].topic == TOPIC_DELEGATION_TASK_DELEGATED
 
     def test_model_task_delegated_event_default_topic(self) -> None:
-        from omnibase_infra.event_bus.topic_constants import (
-            TOPIC_DELEGATION_TASK_DELEGATED,
+        from omnimarket.nodes.node_delegation_orchestrator.contract_topics import (
+            TOPIC_ID_TASK_DELEGATED as TOPIC_DELEGATION_TASK_DELEGATED,
         )
-
         from omnimarket.nodes.node_delegation_orchestrator.models.model_task_delegated_event import (
             ModelTaskDelegatedEvent,
         )
