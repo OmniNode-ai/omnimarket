@@ -101,6 +101,59 @@ def test_canonical_bifrost_contract_endpoint_urls_are_complete_or_site_local() -
 
 
 @pytest.mark.unit
+def test_large_output_backends_carry_realistic_timeout() -> None:
+    """OMN-13170 follow-up: a backend whose output budget is large enough to take
+    minutes to generate must declare a ``timeout_ms`` long enough to actually
+    produce that output.
+
+    OMN-13161 raised ``max_tokens`` to 65536 on the code-generation / large-read
+    backends, but their ``timeout_ms`` stayed at 60000. OMN-13170 then deleted the
+    hardcoded 120s transport cap so the contract value is honored end-to-end —
+    which exposed that the *value* (60000) is too short: a 64k-token generation on
+    local throughput (ds-v4-flash 284B codegen, glm-4.5 large reads) exceeds 60s
+    and fails with ``error=timed out`` / ``output_tokens=0``.
+
+    Invariant: every HTTP backend advertising a >=64k output budget must allow at
+    least 300000 ms (5 min). Backends with smaller output ceilings (embedding,
+    gemini/haiku ~8-32k) keep their shorter timeouts — they cannot be asked for a
+    generation large enough to need the longer ceiling.
+    """
+    path = Path("src/omnimarket/configs/bifrost_delegation.yaml")
+    data = yaml.safe_load(path.read_text())
+
+    large_output_threshold = 65536
+    min_timeout_ms = 300000
+
+    violations = [
+        (backend["backend_id"], backend["max_tokens"], backend["timeout_ms"])
+        for backend in data["backends"]
+        if backend["max_tokens"] >= large_output_threshold
+        and backend["timeout_ms"] < min_timeout_ms
+    ]
+    assert not violations, (
+        "backends with a >=64k output budget must declare timeout_ms >= "
+        f"{min_timeout_ms} so large generations can complete (OMN-13170); "
+        f"violations (backend_id, max_tokens, timeout_ms): {violations}"
+    )
+
+
+@pytest.mark.unit
+def test_named_timeout_regression_backends_are_tuned() -> None:
+    """OMN-13170 follow-up: explicit guard on the backends named in the binding
+    decision — ds-v4-flash codegen and glm-4.5 large reads timed out at 60000.
+
+    Pins the tuned values so a future edit cannot silently regress the two
+    backends the runtime evidence flagged as failing.
+    """
+    path = Path("src/omnimarket/configs/bifrost_delegation.yaml")
+    data = yaml.safe_load(path.read_text())
+    by_id = {backend["backend_id"]: backend for backend in data["backends"]}
+
+    assert by_id["local-ds-v4-flash"]["timeout_ms"] >= 300000
+    assert by_id["cloud-glm"]["timeout_ms"] >= 300000
+
+
+@pytest.mark.unit
 def test_research_route_prefers_capability_named_backends() -> None:
     path = Path("src/omnimarket/configs/bifrost_delegation.yaml")
     data = yaml.safe_load(path.read_text())

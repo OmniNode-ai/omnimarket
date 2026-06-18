@@ -20,8 +20,8 @@
 #
 # See routing_tiers.yaml for tier escalation ladder.
 #
-# Tickets: OMN-10637, OMN-10638, OMN-10657, OMN-12815
-config_version: "2.0.0"
+# Tickets: OMN-10637, OMN-10638, OMN-10657, OMN-12815, OMN-13170
+config_version: "2.1.0"
 schema_version: "bifrost_delegation.v1"
 # Backend definitions — endpoint_url values are merged from the overlay at load time.
 # model_name is null here; resolved at deploy time via bifrost_overrides.yaml overlay.
@@ -34,7 +34,12 @@ backends:
     endpoint_url: null
     model_name: Qwen3.6-35B-A3B
     tier: local
-    timeout_ms: 60000
+    # OMN-13170: timeout_ms is sized to the 65536-token output budget below — a
+    # 64k-token code-generation artifact at local vLLM throughput exceeds 60s and
+    # was failing with error="request timed out" / output_tokens=0 once OMN-13170
+    # deleted the hardcoded 120s transport cap. 300000 ms (5 min) gives the model
+    # room to finish a full module + tests. Overlay-overridable per deploy lane.
+    timeout_ms: 300000
     # OMN-13161: per-backend output-token ceiling. Qwen3.6-35B-A3B serves a 128k
     # (max_model_len=131072) context window, so a 64k output budget is well within
     # range for code-generation artifacts.
@@ -62,7 +67,9 @@ backends:
     endpoint_url: null
     model_name: Qwen3.6-35B-A3B
     tier: local
-    timeout_ms: 60000
+    # OMN-13170: same 65536-token budget as local-coder → same 300000 ms ceiling so
+    # large deep-reasoning/research outputs are not killed at 60s.
+    timeout_ms: 300000
     # OMN-13161: same Qwen3.6-35B-A3B 128k model as local-coder → 64k output budget.
     max_tokens: 65536
     capabilities:
@@ -96,7 +103,9 @@ backends:
     secret_ref: llm.anthropic.api_key
     api_key_env: ANTHROPIC_API_KEY
     tier: frontier_api
-    timeout_ms: 60000
+    # OMN-13170: 64k-output code-generation fallback — size the timeout to the
+    # 65536-token budget below (300000 ms) rather than the 60s default.
+    timeout_ms: 300000
     # OMN-13161: Claude Sonnet 4.x supports up to 64k output tokens.
     max_tokens: 65536
     capabilities:
@@ -126,7 +135,9 @@ backends:
     secret_ref: llm.glm.api_key
     api_key_env: LLM_GLM_API_KEY
     tier: cheap_cloud
-    timeout_ms: 60000
+    # OMN-13170: GLM-4.5 large reads/generations (64k output budget) were timing
+    # out at 60s on the dev runtime; size the timeout to the budget (300000 ms).
+    timeout_ms: 300000
     # OMN-13161: GLM-4.5 serves a 128k context window; 64k output budget.
     max_tokens: 65536
     capabilities:
@@ -206,7 +217,11 @@ backends:
     # endpoint_url null in repo default; overlay sets .200:8101  # onex-allow-internal-ip OMN-12492 reason="repo-default comment documenting local overlay target for DS-V4-Flash"
     model_name: ds-v4-flash
     tier: local
-    timeout_ms: 60000
+    # OMN-13170: DS-V4-Flash is a 284B MoE serving code_generation; full
+    # module/test-suite generation at its throughput well exceeds 60s and was
+    # failing with error="timed out" on the dev runtime. Size the timeout to the
+    # 65536-token budget below (300000 ms). Overlay-overridable per deploy lane.
+    timeout_ms: 300000
     # OMN-13161: DS-V4-Flash serves a 65536-token context window
     # (routing_tiers.yaml max_context_tokens); 64k output budget fits.
     max_tokens: 65536
@@ -243,7 +258,9 @@ backends:
     secret_ref: llm.openrouter.api_key
     api_key_env: OPENROUTER_API_KEY
     tier: cheap_frontier
-    timeout_ms: 120000
+    # OMN-13170: 64k-output coder backend — align the timeout to the budget
+    # (300000 ms); 120s was short for full 64k generations.
+    timeout_ms: 300000
     # OMN-13161: Qwen3 Coder 480B serves a 256k context window; 64k output budget.
     max_tokens: 65536
     capabilities:
