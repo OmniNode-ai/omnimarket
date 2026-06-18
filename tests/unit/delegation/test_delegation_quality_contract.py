@@ -111,9 +111,11 @@ def test_routing_decision_document_prose_dod_is_not_docstring() -> None:
     decision = handler_delegation_routing.delta(request)
 
     assert decision.dod_deterministic == ("response_non_empty",)
-    # OMN-12964 M2.4: min_length_chars_200 was added so short refusals fail a third
-    # heuristic, raising the per-class margin to >= 0.3.
-    assert decision.dod_heuristic == ("no_refusal", "accurate", "min_length_chars_200")
+    # OMN-13218: semantic_adequacy replaced the blunt min_length_chars_200 floor.
+    # A correct short prose answer now passes at tier 1 instead of escalating on
+    # character count, while a truncated/empty stub still fails. The per-class
+    # margin (>= 0.3) holds because the bad cases fail on real defects.
+    assert decision.dod_heuristic == ("no_refusal", "accurate", "semantic_adequacy")
     assert "docstring_present" not in decision.dod_deterministic
     assert "follows_google_style" not in decision.dod_heuristic
     assert "covers_args_returns_raises" not in decision.dod_heuristic

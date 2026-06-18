@@ -82,9 +82,12 @@ task_classes:
         - no_refusal
         - follows_google_style
         - covers_args_returns_raises
-        # OMN-12964: min_length ensures a single-line summary (e.g. docstring_summary_only)
-        # fails a third heuristic so the per-class margin (min_good - max_bad) reaches >= 0.3.
-        - min_length_chars_50
+        # OMN-13218: semantic_adequacy replaces the blunt min_length_chars_50 floor.
+        # A complete docstring passes; an empty/truncated stub fails. A correct
+        # short docstring is no longer rejected on character count, while the
+        # bad docstring cases still fail on real defects (google-style /
+        # covers_args_returns_raises) so the per-class margin holds.
+        - semantic_adequacy
     escalation_policy:
       max_escalations: 1
       tier_order:
@@ -108,10 +111,12 @@ task_classes:
       heuristic:
         - no_refusal
         - accurate
-        # OMN-12964: min_length_chars_200 ensures a short refusal or uncertain stub
-        # fails a third heuristic so the per-class margin (min_good - max_bad) reaches >= 0.3.
-        # A well-formed prose document (the only accepted good output) comfortably exceeds 200 chars.
-        - min_length_chars_200
+        # OMN-13218: semantic_adequacy replaces the blunt min_length_chars_200 floor.
+        # A complete prose answer passes at any length; an empty/truncated stub
+        # fails. A correct short document is no longer rejected on character
+        # count. The bad prose cases still fail on real defects (refusal /
+        # accuracy disclaimer) so the per-class margin holds.
+        - semantic_adequacy
     escalation_policy:
       max_escalations: 1
       tier_order:
@@ -242,10 +247,12 @@ task_classes:
         - no_refusal
         - concise
         - accurate
-        # OMN-12964: min_length_chars_100 ensures a short uncertain stub fails a third
-        # heuristic so the per-class margin (min_good - max_bad) reaches >= 0.3.
-        # A useful summary must be at least one full sentence (~100 chars minimum).
-        - min_length_chars_100
+        # OMN-13218: semantic_adequacy replaces the blunt min_length_chars_100 floor.
+        # A correct short summary (one complete sentence) passes at tier 1 instead
+        # of escalating on a length floor; an empty/truncated stub still fails.
+        # The bad summary cases fail on real defects (refusal / accuracy disclaimer /
+        # truncation) so the per-class margin (min_good - max_bad >= 0.3) holds.
+        - semantic_adequacy
     escalation_policy:
       max_escalations: 1
       tier_order:
