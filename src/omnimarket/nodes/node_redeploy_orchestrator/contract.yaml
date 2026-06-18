@@ -1,0 +1,95 @@
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Redeploy ORCHESTRATOR
+#
+# Post-release runtime redeploy orchestrator (OMN-13211 / B3). Owns phase
+# sequencing but dispatches commands OVER THE BUS — it never constructs sibling
+# handlers in-process, never runs an in-process FSM loop, and never does I/O.
+# Replaces the bespoke node_redeploy HandlerRedeployWorkflowRunner.
+---
+name: node_redeploy_orchestrator
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: orchestrator
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  Post-release runtime redeploy orchestrator. On redeploy-start it emits the
+  prod-promotion-gate-evaluate command (the gate runs BEFORE any deploy effect so
+  a bad prod request is rejected before the agent is invoked). On the gate
+  decision it emits the deploy-publish command (allowed) threading the resolved
+  digest + rollback target, or redeploy-completed with final_phase=BLOCKED
+  (denied). Non-prod lanes pass the gate trivially, so one dispatch path serves
+  dev / stability-test / prod. The orchestrator consumes the deploy effect's
+  completion / rolled-back facts and readiness-gate outcomes; it publishes the
+  readiness-gate-start command and the terminal redeploy-completed event. No
+  in-process handler construction, no FSM loop, no I/O.
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: "redeploy.orchestrate"
+      handler:
+        name: HandlerRedeployOrchestrator
+        module: omnimarket.nodes.node_redeploy_orchestrator.handlers.handler_redeploy_orchestrator
+      description: "Route a redeploy lifecycle event to the next bus command."
+      input_model:
+        name: ModelRedeployStartCommand
+        module: omnimarket.nodes.node_redeploy_orchestrator.models.model_redeploy_start_command
+        description: "Start command + prod-promotion facts."
+
+handler:
+  module: omnimarket.nodes.node_redeploy_orchestrator.handlers.handler_redeploy_orchestrator
+  class: HandlerRedeployOrchestrator
+  input_model: omnimarket.nodes.node_redeploy_orchestrator.models.model_redeploy_start_command.ModelRedeployStartCommand
+
+input_model:
+  name: ModelRedeployStartCommand
+  module: omnimarket.nodes.node_redeploy_orchestrator.models.model_redeploy_start_command
+  description: "Start command carrying deploy request + prod-promotion facts."
+output_model:
+  name: ModelRedeployCompletedEvent
+  module: omnimarket.events.runtime_deployment
+  description: "Terminal redeploy event (DONE | BLOCKED | FAILED)."
+
+descriptor:
+  node_archetype: orchestrator
+  purity: orchestration
+  idempotent: false
+  timeout_ms: 660000
+  runtime_profiles:
+    - effects
+
+terminal_event: onex.evt.omnimarket.redeploy-completed.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.redeploy-start.v1
+    - onex.evt.omnimarket.prod-promotion-gate-evaluated.v1
+    # Deploy effect completion + rollback facts.
+    - onex.evt.omnimarket.redeploy-rolled-back.v1
+    # OMN-12577 readiness handoff: consume the readiness gate outcome.
+    - onex.evt.omnimarket.readiness-gate-completed.v1
+    - onex.evt.omnimarket.readiness-gate-blocked.v1
+    # OMN-12577 PROBING consumes the LIVE runtime attestation.
+    - onex.evt.omnibase-infra.runtime-booted.v1
+    - onex.evt.omnibase-infra.runtime-manifest-published.v1
+  publish_topics:
+    - onex.cmd.omnimarket.prod-promotion-gate-evaluate.v1
+    - onex.cmd.omnimarket.redeploy-deploy-publish.v1
+    - onex.evt.omnimarket.redeploy-phase-transition.v1
+    - onex.evt.omnimarket.redeploy-completed.v1
+    # OMN-12577 readiness handoff: start the readiness gate scoring.
+    - onex.cmd.omnimarket.readiness-gate-start.v1
+
+dependencies:
+  packages:
+    - "omnibase_core>=0.39.0"
+
+metadata:
+  transport_type: kafka
+  description: "Post-release runtime redeploy orchestrator"
+  author: "OmniNode Platform Team"
+  related_tickets:
+    - "OMN-13211"
+    - "OMN-12577"
+    - "OMN-12581"

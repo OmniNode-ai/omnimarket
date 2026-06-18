@@ -19,6 +19,13 @@ from datetime import UTC, datetime
 from uuid import uuid4
 
 import pytest
+from omnibase_compat.contracts.runtime_deployment.wire.model_runtime_deployment_request import (
+    ModelRuntimeDeploymentRequest,
+)
+from omnibase_core.models.runtime_deployment.wire import (
+    EnumRuntimeLane,
+    ModelRuntimeDeploymentProof,
+)
 from pydantic import ValidationError
 
 from omnimarket.events.occ_evidence import (
@@ -27,19 +34,10 @@ from omnimarket.events.occ_evidence import (
     ModelOccEvidenceDraftRequest,
     ModelOccEvidenceDraftValidationResult,
 )
-from omnimarket.nodes.node_redeploy.models.model_deploy_agent_events import (
+from omnimarket.events.runtime_deployment import (
     EnumBuildSource,
     ModelDeployRebuildCommand,
-)
-from omnimarket.nodes.node_redeploy.models.model_redeploy_command import (
-    EnumRuntimeLane,
     ModelRedeployCommand,
-)
-from omnimarket.nodes.node_redeploy.models.model_runtime_deployment import (
-    ModelRuntimeBuildResult,
-    ModelRuntimeDeploymentProof,
-    ModelRuntimeDeploymentRequest,
-    ModelRuntimeDeployResult,
 )
 
 
@@ -179,51 +177,6 @@ def test_deployment_request_rejects_missing_runtime_lane() -> None:
     del kwargs["runtime_lane"]
     with pytest.raises(ValidationError):
         ModelRuntimeDeploymentRequest(**kwargs)  # type: ignore[arg-type]
-
-
-@pytest.mark.unit
-def test_deployment_request_requires_prod_pins() -> None:
-    kwargs = _deployment_request_kwargs()
-    kwargs["runtime_lane"] = EnumRuntimeLane.PROD
-    kwargs["promotion_batch_id"] = "promo-2026-06-01-001"
-    with pytest.raises(ValidationError, match="image_digest and promotion_batch_id"):
-        ModelRuntimeDeploymentRequest(**kwargs)  # type: ignore[arg-type]
-
-
-@pytest.mark.unit
-def test_build_result_rejects_missing_image_digest() -> None:
-    with pytest.raises(ValidationError):
-        ModelRuntimeBuildResult(
-            correlation_id=uuid4(),
-            deployment_id=uuid4(),
-            runtime_lane=EnumRuntimeLane.STABILITY_TEST,
-            source_sha="abc123",
-            # image_digest missing
-            image_ref="ghcr.io/omninode/omninode-runtime:main",
-            build_source="dev",
-            build_started_at=datetime.now(tz=UTC),
-            build_completed_at=datetime.now(tz=UTC),
-            status="success",  # type: ignore[arg-type]
-        )
-
-
-@pytest.mark.unit
-def test_deploy_result_requires_lane_and_digest() -> None:
-    result = ModelRuntimeDeployResult(
-        correlation_id=uuid4(),
-        deployment_id=uuid4(),
-        runtime_lane=EnumRuntimeLane.PROD,
-        source_sha="abc123",
-        image_digest="sha256:deadbeef",
-        compose_project="omnibase-infra-prod",
-        compose_files=("docker-compose.infra.yml", "docker-compose.prod.yml"),
-        services_restarted=("omninode-runtime",),
-        deploy_started_at=datetime.now(tz=UTC),
-        deploy_completed_at=datetime.now(tz=UTC),
-        status="success",
-    )
-    assert result.runtime_lane is EnumRuntimeLane.PROD
-    assert result.rollback_target is None
 
 
 @pytest.mark.unit

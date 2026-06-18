@@ -119,13 +119,13 @@ def test_handler_pr_lifecycle_orchestrator_requires_event_bus() -> None:
         HandlerPrLifecycleOrchestrator()  # type: ignore[call-arg]
 
 
-def test_handler_workflow_runner_requires_event_bus() -> None:
-    from omnimarket.nodes.node_redeploy.handlers.handler_workflow_runner import (
-        HandlerRedeployWorkflowRunner,
+def test_handler_deploy_publish_monitor_requires_event_bus() -> None:
+    from omnimarket.nodes.node_redeploy_deploy_effect.handlers.handler_deploy_publish_monitor import (
+        HandlerDeployPublishMonitor,
     )
 
     with pytest.raises(TypeError):
-        HandlerRedeployWorkflowRunner()  # type: ignore[call-arg]
+        HandlerDeployPublishMonitor()  # type: ignore[call-arg]
 
 
 def test_handler_review_thread_reconciler_requires_event_bus() -> None:

@@ -1,0 +1,91 @@
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Deploy Publish-Monitor + Rollback EFFECT
+#
+# Deploy publish-monitor + rollback effect (OMN-13211 / B3). Absorbs the
+# node_redeploy HandlerRedeployKafka (publish-monitor) and DeploymentAdapterKafka
+# (rollback). The only real I/O in the redeploy decomposition: publish the
+# HMAC-signed rebuild command to the external .201 deploy agent, poll for
+# completion, and roll back on failed post-deploy health. No SSH, no rpk, no
+# subprocess.
+---
+name: node_redeploy_deploy_effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: effect
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  Deploy publish-monitor + rollback effect. Publishes the HMAC-signed deploy-agent
+  rebuild command to the external .201 deploy agent, subscribes the deploy-agent
+  completion event and polls by correlation_id, and on a deploy that succeeded then
+  failed post-deploy health (smoke/health/timeout) publishes the redeploy-rolled-back
+  event. The actual Docker rebuild and image restore are the external deploy agent's
+  job — this effect publishes the command, monitors the bus, and records the outcome.
+  Event bus is DI-injected; the exact topic names are declared below under event_bus
+  and are the single source of truth (no topic strings in this prose).
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: "redeploy.deploy.publish_monitor"
+      handler:
+        name: HandlerDeployPublishMonitor
+        module: omnimarket.nodes.node_redeploy_deploy_effect.handlers.handler_deploy_publish_monitor
+      description: "Publish rebuild command, poll completion, roll back on failed health."
+      input_model:
+        name: ModelDeployPublishCommand
+        module: omnimarket.nodes.node_redeploy_deploy_effect.models.model_deploy_publish_command
+        description: "Inputs for one publish-monitor (+rollback) invocation."
+
+handler:
+  module: omnimarket.nodes.node_redeploy_deploy_effect.handlers.handler_deploy_publish_monitor
+  class: HandlerDeployPublishMonitor
+  input_model: omnimarket.nodes.node_redeploy_deploy_effect.models.model_deploy_publish_command.ModelDeployPublishCommand
+
+input_model:
+  name: ModelDeployPublishCommand
+  module: omnimarket.nodes.node_redeploy_deploy_effect.models.model_deploy_publish_command
+  description: "Inputs for one deploy publish-monitor (+rollback) invocation."
+output_model:
+  name: ModelRedeployResult
+  module: omnimarket.events.runtime_deployment
+  description: "Structured deploy outcome (success/failure, digest, health, errors)."
+
+descriptor:
+  node_archetype: effect
+  purity: side_effect
+  idempotent: false
+  timeout_ms: 660000
+  runtime_profiles:
+    - effects
+
+terminal_event: onex.evt.omnimarket.redeploy-rolled-back.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.redeploy-deploy-publish.v1
+    # Cross-service subscribe: deploy agent completion event.
+    - onex.evt.deploy.rebuild-completed.v1
+  publish_topics:
+    # Cross-service publish: deploy agent rebuild command.
+    - onex.cmd.deploy.rebuild-requested.v1
+    # OMN-9579 rollback: failed post-deploy health restores the previous image.
+    - onex.evt.omnimarket.redeploy-rolled-back.v1
+
+dependencies:
+  packages:
+    - "omnibase_core>=0.39.0"
+
+secret_dependencies:
+  DEPLOY_AGENT_HMAC_SECRET:
+    required: false
+    description: "Shared HMAC secret for signing the deploy-agent rebuild command."
+
+metadata:
+  transport_type: kafka
+  description: "Deploy publish-monitor + rollback effect"
+  author: "OmniNode Platform Team"
+  related_tickets:
+    - "OMN-13211"
+    - "OMN-9579"
+    - "OMN-12577"

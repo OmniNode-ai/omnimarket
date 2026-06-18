@@ -1,0 +1,23 @@
+name: node_redeploy_fsm_reducer
+version: "1.0.0"
+description: "Pure redeploy FSM reducer — phase transitions + 3-failure circuit breaker."
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_redeploy_fsm_reducer: "omnimarket.nodes.node_redeploy_fsm_reducer"
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: none
+dependencies:
+  - "omnibase_core>=0.39.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["reducer", "fsm", "deploy", "runtime", "circuit-breaker", "OMN-13211"]
+pack: "release"
+display_name: "Redeploy FSM Reducer"
+node_role: "reducer"
