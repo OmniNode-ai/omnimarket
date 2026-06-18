@@ -70,10 +70,12 @@ import asyncio
 import logging
 from collections.abc import Callable
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Literal
-from uuid import UUID
+from typing import TYPE_CHECKING, Any, Literal
+from uuid import UUID, uuid4
 
+from omnibase_core.models.dispatch.model_handler_output import ModelHandlerOutput
 from omnibase_core.models.events import ModelIntentStoredEvent
+from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
 from omnimemory.models.events import ModelIntentClassifiedEvent
 from omnimemory.models.utils.model_health_status import HealthStatus
 from omnimemory.utils.concurrency import CircuitBreaker, CircuitBreakerState
@@ -131,24 +133,40 @@ class HandlerIntentEventConsumer:
 
     def __init__(
         self,
-        config: ModelIntentEventConsumerConfig,
-        storage_adapter: HandlerIntentStorageAdapter,
+        config: ModelIntentEventConsumerConfig | None = None,
+        storage_adapter: HandlerIntentStorageAdapter | None = None,
     ) -> None:
         """Initialize the consumer handler.
 
+        Construction is pure and resolver-satisfiable: both ``config`` and
+        ``storage_adapter`` are optional. When the runtime auto-wiring boot path
+        constructs the handler with zero args, the config defaults are applied
+        and the storage adapter is resolved lazily on first ``handle`` via
+        ``_ensure_storage_adapter`` (which performs the Memgraph-backed
+        construction off the boot constructor). Tests inject both directly,
+        short-circuiting the lazy path. Eagerly resolving the storage adapter in
+        ``__init__`` is the F1 root cause that crashes the effects lane.
+
         Args:
             config: Consumer configuration including topic lists,
-                circuit breaker settings, and staleness threshold.
-            storage_adapter: Adapter for storing intents to graph.
-                Must be initialized before calling consumer.initialize().
+                circuit breaker settings, and staleness threshold. Defaults to
+                ``ModelIntentEventConsumerConfig()`` (all contract-aligned
+                defaults) when not injected.
+            storage_adapter: Adapter for storing intents to graph. Resolved
+                lazily from ``HandlerIntentStorageAdapter`` when not injected.
         """
-        self._config = config
+        self._config = (
+            config if config is not None else ModelIntentEventConsumerConfig()
+        )
         self._storage_adapter = storage_adapter
+        self._storage_adapter_lock = asyncio.Lock()
 
         # Circuit breaker for storage failures
         self._circuit_breaker = CircuitBreaker(
-            failure_threshold=config.circuit_breaker_failure_threshold,
-            recovery_timeout=float(config.circuit_breaker_recovery_timeout_seconds),
+            failure_threshold=self._config.circuit_breaker_failure_threshold,
+            recovery_timeout=float(
+                self._config.circuit_breaker_recovery_timeout_seconds
+            ),
             success_threshold=1,  # Close after 1 success in half-open
         )
 
@@ -170,8 +188,8 @@ class HandlerIntentEventConsumer:
             "HandlerIntentEventConsumer initialized",
             extra={
                 "handler": HANDLER_ID_INTENT_CONSUMER,
-                "subscribe_topics": config.subscribe_topics,
-                "publish_topics": config.publish_topics,
+                "subscribe_topics": self._config.subscribe_topics,
+                "publish_topics": self._config.publish_topics,
             },
         )
 
@@ -179,6 +197,69 @@ class HandlerIntentEventConsumer:
     def is_initialized(self) -> bool:
         """Check if the consumer has been initialized."""
         return self._initialized
+
+    async def _ensure_storage_adapter(self) -> HandlerIntentStorageAdapter:
+        """Return the storage adapter, building the default one once on demand.
+
+        Single-flight under ``_storage_adapter_lock``: concurrent ``handle``
+        calls on one event loop construct EXACTLY ONE default adapter. An
+        injected adapter (tests, explicit wiring) short-circuits without the
+        lock. The Memgraph-backed import + construction is deferred here so the
+        sync ``__init__`` stays pure and resolver-satisfiable.
+        """
+        if self._storage_adapter is not None:
+            return self._storage_adapter
+        async with self._storage_adapter_lock:
+            if self._storage_adapter is None:
+                from omnimarket.nodes.node_intent_storage_effect import (
+                    HandlerIntentStorageAdapter as _HandlerIntentStorageAdapter,
+                )
+
+                self._storage_adapter = _HandlerIntentStorageAdapter()
+            return self._storage_adapter
+
+    async def handle(
+        self, envelope: ModelEventEnvelope[Any]
+    ) -> ModelHandlerOutput[None]:
+        """Canonical dispatch entrypoint for the effects runtime.
+
+        Unwraps the intent-classified event from the envelope payload and runs
+        the real consume/store path (``_handle_message``, including circuit
+        breaker, retry, DLQ routing, and storage). Emitted intent-stored /
+        DLQ facts are collected and returned as EFFECT events. This is the
+        same fully-wired logic the bus subscription callback drives.
+        """
+        emitted: list[ModelEventEnvelope[Any]] = []
+
+        def _capture(topic: str, message: dict[str, object]) -> None:
+            emitted.append(
+                ModelEventEnvelope(
+                    payload=message,
+                    correlation_id=envelope.correlation_id,
+                    event_type=topic,
+                )
+            )
+
+        prior_publish = self._publish_callback
+        self._publish_callback = _capture
+        try:
+            payload = envelope.payload
+            if isinstance(payload, dict):
+                message: dict[str, object] = payload
+            elif hasattr(payload, "model_dump"):
+                message = payload.model_dump(mode="json")
+            else:
+                message = dict(payload)
+            await self._handle_message(message, retry_count=0)
+        finally:
+            self._publish_callback = prior_publish
+
+        return ModelHandlerOutput.for_effect(
+            input_envelope_id=envelope.envelope_id,
+            correlation_id=envelope.correlation_id or uuid4(),
+            handler_id=HANDLER_ID_INTENT_CONSUMER,
+            events=tuple(emitted),
+        )
 
     def __repr__(self) -> str:
         """Return string representation for debugging."""
@@ -380,7 +461,8 @@ class HandlerIntentEventConsumer:
 
             # Store the intent
             start_time = datetime.now(UTC)
-            result = await self._storage_adapter.execute(storage_request)
+            storage_adapter = await self._ensure_storage_adapter()
+            result = await storage_adapter.execute(storage_request)
             storage_latency_ms = (datetime.now(UTC) - start_time).total_seconds() * 1000
 
             if result.status == "success":
@@ -684,6 +766,27 @@ class HandlerIntentEventConsumer:
 
         # Check storage adapter health via public interface
         storage_healthy: bool | None = None
+        if self._storage_adapter is None:
+            # Adapter not yet resolved (zero-arg boot, no message handled yet).
+            # Unknown rather than asserting health on a dependency we have not
+            # constructed.
+            storage_healthy = None
+            return ModelIntentEventConsumerHealth(
+                status=status,
+                is_healthy=status == HealthStatus.HEALTHY,
+                initialized=self._initialized,
+                error_message=error_message,
+                last_consume_timestamp=self._last_consume_timestamp,
+                is_stale=is_stale,
+                staleness_seconds=staleness_seconds,
+                circuit_breaker_state=cb_state_str,
+                circuit_breaker_failure_count=self._circuit_breaker.failure_count,
+                messages_consumed_total=self._messages_consumed,
+                messages_failed_total=self._messages_failed,
+                messages_dlq_total=self._messages_dlq,
+                storage_handler_healthy=storage_healthy,
+                health_check_timestamp=now,
+            )
         try:
             # Check if storage adapter has a public health_check method
             if hasattr(self._storage_adapter, "health_check"):
