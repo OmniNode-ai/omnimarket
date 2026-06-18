@@ -2,10 +2,15 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
 #
-# node_pr_merged_projection — contract stub (OMN-13226 / T2)
+# node_pr_merged_projection — pr-merged event projection (OMN-13227 / T3)
 #
-# Full projection handler implementation is T3 (OMN-13227). This contract stub
-# registers the subscribe_topics binding so the topic registry is green for T2.
+# Materializes onex.evt.github.pr-merged.v1 events (published by the
+# pr-merged-publisher GHA workflow, OMN-13226 / T2) into the pr_merged_events
+# projection table, deduped by event_id with a strictly-monotonic
+# projection_cursor. The generic projection API serves the rows at
+# GET /projection/onex.evt.github.pr-merged.v1?since=<cursor> on the local :3002
+# lane so the per-machine worktree reaper (OMN-13228 / T4) can discover newly
+# merged PRs and reap their worktrees via prune-worktrees.sh.
 #
 # Ticket: OMN-13226 (publisher) + OMN-13227 (projection handler)
 
@@ -13,20 +18,30 @@ name: pr_merged_projection
 contract_version: {major: 1, minor: 0, patch: 0}
 node_type: reducer
 node_version: {major: 1, minor: 0, patch: 0}
+# Consumer-only event-sourced reducer: it subscribes to the pr-merged topic and
+# materializes rows for the projection API to read; it publishes nothing. The
+# node-liveness drift gate accepts a consumer-only contract when lifecycle is
+# experimental (mirrors node_projection_dep_health).
+lifecycle: experimental
 
 description: >
-  Projects GitHub PR-merged events (onex.evt.github.pr-merged.v1) into a
-  queryable monotonic-cursor projection. Enables the per-machine worktree
-  reaper (T4, OMN-13228) to poll GET /projection/onex.evt.github.pr-merged.v1
-  on the local projection API to discover newly merged PRs and trigger
-  prune-worktrees.sh on matched worktrees.
+  Projects GitHub PR-merged events (onex.evt.github.pr-merged.v1) into the
+  pr_merged_events table — one row per merged PR, deduped by the publisher
+  event_id, with a strictly-monotonic projection_cursor BIGSERIAL. Enables the
+  per-machine worktree reaper (T4, OMN-13228) to poll
+  GET /projection/onex.evt.github.pr-merged.v1?since=<cursor> on the local
+  projection API to discover newly merged PRs and trigger prune-worktrees.sh on
+  matched worktrees.
 
   Transport note: the publisher (GHA pr-merged-publisher workflow) runs on
-  ubuntu-latest and publishes to Confluent Cloud via SASL_SSL. This node
-  consumes from Confluent and re-publishes onto the local Redpanda lane so the
-  projection API serves the events locally.
+  ubuntu-latest and publishes to the canonical bus via SASL_SSL. The .201 lane's
+  projection consumer subscribes to onex.evt.github.pr-merged.v1 (the runtime
+  wires the broker per lane); the :3002 projection API then serves the
+  materialized rows locally for the reaper.
 
-  Full handler implementation: T3 (OMN-13227).
+handler:
+  module: omnimarket.nodes.node_pr_merged_projection.handlers.handler_pr_merged_projection
+  class: HandlerPrMergedProjection
 
 handler_routing:
   routing_strategy: operation_match
@@ -35,19 +50,49 @@ handler_routing:
         name: HandlerPrMergedProjection
         module: omnimarket.nodes.node_pr_merged_projection.handlers.handler_pr_merged_projection
 
-event_bus:
-  subscribe_topics:
-    - onex.evt.github.pr-merged.v1
-  publish_topics:
-    - onex.evt.omnimarket.pr-merged-projection-snapshot.v1
-
 runtime_dispatch:
   addressable: false
   invocation_mode: projection_reducer
   reason: >
     PR-merged projection is an event-sourced reducer invoked by the projection
-    host; it does not own a request/response command route. Handler stub
-    pending T3 (OMN-13227).
+    host with a database adapter; it does not own a request/response command
+    route.
+
+db_io:
+  db_tables:
+    - name: pr_merged_events
+      migration: "0001_create_pr_merged_events.sql"
+      access: write
+      database: omnidash_analytics
+      role: pr_merged_events
+
+event_bus:
+  subscribe_topics:
+    - onex.evt.github.pr-merged.v1
+  publish_topics: []
+
+projection_api:
+  expose: true
+  exposures:
+    # Read path for the worktree reaper. The generic projection API serves
+    # GET /projection/onex.evt.github.pr-merged.v1?since=<cursor>; since filters
+    # projection_cursor > <cursor> and the response carries next_cursor.
+    - topic: onex.evt.github.pr-merged.v1
+      table: pr_merged_events
+      schema: public
+      columns:
+        - projection_cursor
+        - event_id
+        - repo
+        - branch
+        - pr_number
+        - ticket
+        - merged_at
+        - created_at
+      order_by: projection_cursor ASC
+      freshness_column: created_at
+      cursor_column: projection_cursor
+      limit: 500
 
 descriptor:
   node_archetype: reducer

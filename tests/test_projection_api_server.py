@@ -976,3 +976,89 @@ class TestGenerateRoute:
         resp = client.post("/api/generate", json={"task_description": "x"})
         assert resp.status_code == 503
         assert "KAFKA_BOOTSTRAP_SERVERS" in resp.json()["detail"]
+
+
+_PR_MERGED_TOPIC = "onex.evt.github.pr-merged.v1"
+
+_PR_MERGED_CURSOR_MAP: dict[str, ProjectionTableConfig] = {
+    _PR_MERGED_TOPIC: ProjectionTableConfig(
+        topic=_PR_MERGED_TOPIC,
+        table="pr_merged_events",
+        schema_name="public",
+        columns=(
+            "projection_cursor",
+            "event_id",
+            "repo",
+            "branch",
+            "pr_number",
+            "ticket",
+            "merged_at",
+            "created_at",
+        ),
+        order_by="projection_cursor ASC",
+        freshness_column="created_at",
+        cursor_column="projection_cursor",
+        limit=500,
+    ),
+}
+
+_NO_CURSOR_MAP: dict[str, ProjectionTableConfig] = {
+    "onex.evt.example.no-cursor.v1": ProjectionTableConfig(
+        topic="onex.evt.example.no-cursor.v1",
+        table="example_rows",
+        schema_name="public",
+        columns=("id",),
+        order_by="id ASC",
+    ),
+}
+
+
+@pytest.mark.unit
+class TestGenericProjectionSinceCursor:
+    """OMN-13227: generic ?since=<cursor> pagination on /projection/{topic}."""
+
+    def test_since_filters_on_cursor_column(self) -> None:
+        """`since` emits a WHERE cursor_column > $1 clause bound to the value."""
+        rows = [
+            {"projection_cursor": 5, "event_id": "e5", "repo": "r", "branch": "b"},
+        ]
+        pool, captured = _make_capturing_pool(rows, latest_ts=_ts(timedelta(minutes=1)))
+        with _with_pool(pool, _PR_MERGED_CURSOR_MAP) as client:
+            resp = client.get(f"/projection/{_PR_MERGED_TOPIC}", params={"since": "3"})
+        assert resp.status_code == 200
+        assert captured, "no SQL captured"
+        assert "WHERE projection_cursor > $1" in captured[0]
+
+    def test_since_returns_next_cursor(self) -> None:
+        """next_cursor is the last row's cursor value, for the reaper to advance."""
+        rows = [
+            {"projection_cursor": 7, "event_id": "e7", "repo": "r", "branch": "b"},
+            {"projection_cursor": 9, "event_id": "e9", "repo": "r", "branch": "b"},
+        ]
+        pool = _make_pool(rows, latest_ts=_ts(timedelta(minutes=1)))
+        with _with_pool(pool, _PR_MERGED_CURSOR_MAP) as client:
+            resp = client.get(f"/projection/{_PR_MERGED_TOPIC}", params={"since": "0"})
+        body = resp.json()
+        assert resp.status_code == 200
+        assert body["next_cursor"] == "9"
+        assert body["row_count"] == 2
+
+    def test_empty_page_has_null_next_cursor(self) -> None:
+        """An empty page (caller already caught up) returns next_cursor=None."""
+        pool = _make_pool([], latest_ts=_ts(timedelta(minutes=1)))
+        with _with_pool(pool, _PR_MERGED_CURSOR_MAP) as client:
+            resp = client.get(f"/projection/{_PR_MERGED_TOPIC}", params={"since": "99"})
+        body = resp.json()
+        assert resp.status_code == 200
+        assert body["next_cursor"] is None
+        assert body["row_count"] == 0
+
+    def test_since_rejected_when_no_cursor_column(self) -> None:
+        """`since` on a topic without a cursor_column is a typed 422, not a scan."""
+        pool = _make_pool([])
+        with _with_pool(pool, _NO_CURSOR_MAP) as client:
+            resp = client.get(
+                "/projection/onex.evt.example.no-cursor.v1", params={"since": "1"}
+            )
+        assert resp.status_code == 422
+        assert resp.json()["filter"] == "since"
