@@ -31,3 +31,14 @@ PR_MERGED_TOPIC_V1 = "onex.evt.github.pr-merged.v1"  # onex-topic-allow: canonic
 TOPIC_WORKFLOW_TIMEOUT = "onex.evt.omnimarket.workflow-timeout.v1"  # onex-topic-allow: canonical typed-watchdog topic registry (OMN-12959)
 TOPIC_WORKFLOW_UNROUTABLE = "onex.evt.omnimarket.workflow-unroutable.v1"  # onex-topic-allow: canonical typed-watchdog topic registry (OMN-12959)
 TOPIC_WORKFLOW_STALLED = "onex.evt.omnimarket.workflow-stalled.v1"  # onex-topic-allow: canonical typed-watchdog topic registry (OMN-12959)
+
+# Renderer capability declaration command (OMN-13131 / W5). A renderer thin-publishes
+# its capability surface heartbeat onto this command topic; the sole writer
+# node_renderer_capability_projection (NodeReducer) folds each declaration into the
+# heartbeat-backed Renderer Capability Registry projection. The materialized
+# projection (read via /projection/{topic}) is the only read authority — there is
+# no in-memory registry class. The topic is the canonical source of truth for every
+# Python consumer in the node path; the node's contract.yaml declares it for runtime
+# wiring, and handler/model code references THIS constant (never the literal) so the
+# no-hardcoded-topics gate stays green (G-E).
+RENDERER_CAPABILITY_DECLARED_TOPIC_V1 = "onex.cmd.ui.renderer-capability-declared.v1"  # onex-topic-allow: canonical topic registry; declared in node_renderer_capability_projection contract.yaml subscribe_topics (OMN-13131)

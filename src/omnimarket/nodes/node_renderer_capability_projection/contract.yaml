@@ -1,0 +1,129 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Renderer Capability Registry projection REDUCER
+#
+# OMN-13131 / W5 (epic OMN-13129, Contract-Driven UI Platform). Sole-writer
+# REDUCER that materializes the Renderer Capability Registry as a
+# heartbeat-backed projection. A renderer thin-publishes a capability heartbeat
+# onto onex.cmd.ui.renderer-capability-declared.v1; this reducer folds each
+# declaration into the projection state. The materialized projection (read via
+# /projection/{topic}) is the ONLY read authority — no CapabilityRegistry class,
+# no in-memory authority, no UI-owned registry state.
+#
+# Topic naming: onex.{kind}.{producer}.{event-name}.v{n}
+#   - kind=cmd: a renderer declaration is a write request onto the bus
+#   - producer=ui: the renderer (ui.effect.*) is the declaring producer
+# The cmd-topic literal is the canonical constant
+# RENDERER_CAPABILITY_DECLARED_TOPIC_V1 in omnimarket.events.topics; handler and
+# model code reference that constant, never the literal (G-E).
+#
+# Related Tickets:
+#   - OMN-13131: Phase 1 — close the runtime action loop (bus-native), W5
+#   - OMN-13129: epic — Contract-Driven UI Platform (OmniRender + OmniStudio)
+---
+name: node_renderer_capability_projection
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: reducer
+node_version: {major: 1, minor: 0, patch: 0}
+input_model: omnimarket.nodes.node_renderer_capability_projection.models.model_renderer_capability_declaration.ModelRendererCapabilityDeclaration
+
+description: >
+  Sole-writer REDUCER for the Renderer Capability Registry. Folds one renderer
+  capability heartbeat declaration (renderer_id, platform,
+  supported_component_kinds, interaction_model, accessibility_tier,
+  contract_version, declared_at) into a heartbeat-backed projection keyed on
+  renderer_id. Each fold re-derives heartbeat-TTL freshness for every row: a
+  renderer that has not re-declared within the TTL flips to is_degraded, and a
+  degraded/absent row carries the typed EnumEmptyStateReason.UPSTREAM_BLOCKED so
+  the client surfaces the gate instead of rendering blind. Pure fold — no events,
+  no intents, no I/O; the effects runtime materializes the projection.
+
+handler:
+  module: omnimarket.nodes.node_renderer_capability_projection.handlers.handler_renderer_capability_projection
+  class: HandlerRendererCapabilityProjection
+  input_model: omnimarket.nodes.node_renderer_capability_projection.models.model_renderer_capability_declaration.ModelRendererCapabilityDeclaration
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: "ui.renderer_capability.declare"
+      event_model: omnimarket.nodes.node_renderer_capability_projection.models.model_renderer_capability_declaration.ModelRendererCapabilityDeclaration
+      handler:
+        name: HandlerRendererCapabilityProjection
+        module: omnimarket.nodes.node_renderer_capability_projection.handlers.handler_renderer_capability_projection
+      description: "Fold one renderer capability heartbeat into the projection state."
+      input_model:
+        name: ModelRendererCapabilityDeclaration
+        module: omnimarket.nodes.node_renderer_capability_projection.models.model_renderer_capability_declaration
+        description: "One renderer capability heartbeat declaration."
+  default_handler: HandlerRendererCapabilityProjection
+
+output_model:
+  name: ModelRendererCapabilityProjectionState
+  module: omnimarket.nodes.node_renderer_capability_projection.models.model_renderer_capability_projection_state
+  description: "Renderer Capability Registry projection state (one row per renderer_id)."
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.ui.renderer-capability-declared.v1
+  publish_topics:
+    - onex.snapshot.projection.renderer-capability.v1
+
+reducer_contract:
+  state_update: "fold(state, declaration, observed_at) -> upserted_renderer_row + re-derived freshness"
+  owns_state: true
+  idempotent: true
+  ordering_authority: kafka_topic_partition_offset
+  duplicate_key_fields:
+    - renderer_id
+
+projection_api:
+  expose: true
+  exposures:
+    - topic: onex.snapshot.projection.renderer-capability.v1  # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
+      table: renderer_capability_projection
+      schema: public
+      database: omnidash_analytics
+      columns:
+        - renderer_id
+        - platform
+        - supported_component_kinds
+        - interaction_model
+        - accessibility_tier
+        - contract_version
+        - declared_at
+        - last_heartbeat
+        - is_degraded
+        - empty_state_reason
+        - observed_at
+      order_by: last_heartbeat DESC
+      freshness_column: last_heartbeat
+      limit: 100
+
+db_io:
+  db_tables:
+    - name: renderer_capability_projection
+      migration: "0001_create_renderer_capability_projection.sql"
+      access: write
+      database: omnidash_analytics
+      role: projection
+
+descriptor:
+  node_archetype: reducer
+  purity: pure
+  idempotent: true
+  timeout_ms: 2000
+  runtime_profiles:
+    - effects
+
+dependencies:
+  packages:
+    - "omnibase_core>=0.45.0,<0.46.0"
+
+metadata:
+  transport_type: kafka
+  description: "Sole-writer renderer capability registry projection reducer"
+  author: "OmniNode Platform Team"
+  related_tickets:
+    - "OMN-13131"
+    - "OMN-13129"
