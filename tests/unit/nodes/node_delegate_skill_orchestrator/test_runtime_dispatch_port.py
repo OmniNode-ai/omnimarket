@@ -11,11 +11,6 @@ import pytest
 from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
 from omnibase_infra.event_bus.event_bus_inmemory import EventBusInmemory
 from omnibase_infra.event_bus.models.model_event_message import ModelEventMessage
-from omnibase_infra.event_bus.topic_constants import (
-    TOPIC_DELEGATION_COMPLETED,
-    TOPIC_DELEGATION_FAILED,
-    TOPIC_DELEGATION_REQUEST,
-)
 
 from omnimarket.nodes.node_delegate_skill_orchestrator.models import (
     ModelRuntimeDelegationDispatchConfig,
@@ -23,6 +18,15 @@ from omnimarket.nodes.node_delegate_skill_orchestrator.models import (
 )
 from omnimarket.nodes.node_delegate_skill_orchestrator.ports import (
     RuntimeDelegationDispatchPort,
+)
+from omnimarket.nodes.node_delegation_orchestrator.contract_topics import (
+    TOPIC_ID_DELEGATION_COMPLETED as TOPIC_DELEGATION_COMPLETED,
+)
+from omnimarket.nodes.node_delegation_orchestrator.contract_topics import (
+    TOPIC_ID_DELEGATION_FAILED as TOPIC_DELEGATION_FAILED,
+)
+from omnimarket.nodes.node_delegation_orchestrator.contract_topics import (
+    TOPIC_ID_DELEGATION_REQUEST as TOPIC_DELEGATION_REQUEST,
 )
 from omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_event import (
     ModelDelegationEvent,

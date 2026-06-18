@@ -20,10 +20,10 @@ import pytest
 import yaml
 from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
 from omnibase_infra.enums import EnumDispatchStatus
-from omnibase_infra.event_bus.topic_constants import (
-    TOPIC_DELEGATION_INFERENCE_RESPONSE,
-)
 
+from omnimarket.nodes.node_delegation_orchestrator.contract_topics import (
+    TOPIC_ID_INFERENCE_RESPONSE as TOPIC_DELEGATION_INFERENCE_RESPONSE,
+)
 from omnimarket.nodes.node_delegation_orchestrator.dispatchers.dispatcher_delegation_request import (
     DispatcherDelegationRequest,
 )

@@ -12,10 +12,6 @@ import pytest
 import yaml
 from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
 from omnibase_infra.enums import EnumDispatchStatus
-from omnibase_infra.event_bus.topic_constants import (
-    TOPIC_DELEGATION_COMPLETED,
-    TOPIC_DELEGATION_TASK_DELEGATED,
-)
 from omnibase_infra.models.dispatch.model_dispatch_result import ModelDispatchResult
 from omnibase_infra.runtime.event_bus_subcontract_wiring import (
     load_event_bus_subcontract,
@@ -23,6 +19,12 @@ from omnibase_infra.runtime.event_bus_subcontract_wiring import (
 )
 from omnibase_infra.runtime.models import ModelDomainPluginConfig
 
+from omnimarket.nodes.node_delegation_orchestrator.contract_topics import (
+    TOPIC_ID_DELEGATION_COMPLETED as TOPIC_DELEGATION_COMPLETED,
+)
+from omnimarket.nodes.node_delegation_orchestrator.contract_topics import (
+    TOPIC_ID_TASK_DELEGATED as TOPIC_DELEGATION_TASK_DELEGATED,
+)
 from omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_event import (
     ModelDelegationEvent,
 )
