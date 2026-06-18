@@ -13,6 +13,7 @@ import asyncio
 import hashlib
 import logging
 import mimetypes
+import os
 import uuid
 from collections.abc import Callable, Coroutine
 from datetime import UTC, datetime
@@ -20,6 +21,12 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
+import yaml
+from omnibase_core.models.dispatch.model_handler_output import ModelHandlerOutput
+from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
+from omnimemory.models.crawl.model_document_discovered_event import (
+    ModelDocumentDiscoveredEvent,
+)
 from omnimemory.models.crawl.model_document_indexed_kreuzberg_event import (
     ModelDocumentIndexedKreuzbergEvent,
 )
@@ -34,6 +41,9 @@ from omnimarket.nodes.node_kreuzberg_parse_effect.clients.client_kreuzberg impor
     read_cached_text,
     write_cached_text,
 )
+from omnimarket.nodes.node_kreuzberg_parse_effect.models.model_kreuzberg_parse_config import (
+    ModelKreuzbergParseConfig,
+)
 from omnimarket.nodes.node_kreuzberg_parse_effect.models.model_kreuzberg_parse_result import (
     ModelKreuzbergParseResult,
 )
@@ -42,15 +52,74 @@ if TYPE_CHECKING:
     from omnimemory.models.crawl.model_document_changed_event import (
         ModelDocumentChangedEvent,
     )
-    from omnimemory.models.crawl.model_document_discovered_event import (
-        ModelDocumentDiscoveredEvent,
-    )
-
-    from omnimarket.nodes.node_kreuzberg_parse_effect.models.model_kreuzberg_parse_config import (
-        ModelKreuzbergParseConfig,
-    )
 
 _log = logging.getLogger(__name__)
+
+_CONTRACT_PATH = Path(__file__).resolve().parent.parent / "contract.yaml"
+
+
+def _resolve_config_from_contract() -> ModelKreuzbergParseConfig:
+    """Resolve ``ModelKreuzbergParseConfig`` from the contract's config_fields.
+
+    The contract ``config_fields`` block declares each field's env-var name and
+    optional default. Endpoint and path values are read from those env vars per
+    routing/config doctrine — never hardcoded in source. Fields with a contract
+    default fall back to it when the env var is unset. This runs lazily at the
+    handler boundary (inside ``handle``), so handler construction stays pure and
+    resolver-satisfiable.
+    """
+    raw = yaml.safe_load(_CONTRACT_PATH.read_text(encoding="utf-8"))
+    if not isinstance(raw, dict):
+        raise ValueError(f"{_CONTRACT_PATH} must contain a mapping")
+    fields = raw.get("config_fields")
+    if not isinstance(fields, dict):
+        raise ValueError(f"{_CONTRACT_PATH} missing config_fields mapping")
+
+    def _resolve(field_name: str) -> str | None:
+        spec = fields.get(field_name)
+        default = spec.get("default") if isinstance(spec, dict) else None
+        value = os.environ.get(field_name)
+        if value is not None:
+            return value
+        return str(default) if default is not None else None
+
+    kreuzberg_url = _resolve("KREUZBERG_URL")
+    text_store_path = _resolve("KREUZBERG_TEXT_STORE_PATH")
+    parser_version = _resolve("KREUZBERG_PARSER_VERSION")
+    document_root = _resolve("KREUZBERG_DOCUMENT_ROOT")
+    missing = [
+        name
+        for name, val in (
+            ("KREUZBERG_URL", kreuzberg_url),
+            ("KREUZBERG_TEXT_STORE_PATH", text_store_path),
+            ("KREUZBERG_PARSER_VERSION", parser_version),
+            ("KREUZBERG_DOCUMENT_ROOT", document_root),
+        )
+        if val is None
+    ]
+    if missing:
+        raise ValueError(
+            "kreuzberg config could not be resolved from contract/env; "
+            f"missing required values: {missing}"
+        )
+
+    overrides: dict[str, int] = {}
+    for field_name, attr in (
+        ("KREUZBERG_MAX_DOC_BYTES", "max_doc_bytes"),
+        ("KREUZBERG_TIMEOUT_MS", "timeout_ms"),
+        ("KREUZBERG_INLINE_TEXT_MAX_CHARS", "inline_text_max_chars"),
+    ):
+        resolved = _resolve(field_name)
+        if resolved is not None:
+            overrides[attr] = int(resolved)
+
+    return ModelKreuzbergParseConfig(
+        kreuzberg_url=kreuzberg_url,
+        text_store_path=text_store_path,
+        document_root=document_root,
+        parser_version=parser_version,
+        **overrides,
+    )
 
 
 def _validate_source_path(source_url: str, document_root: Path) -> Path:
@@ -98,8 +167,75 @@ def _detect_mime_type(source_url: str) -> str:
 class HandlerKreuzbergParse:
     """Handler that calls kreuzberg to extract text from documents."""
 
-    def __init__(self, config: ModelKreuzbergParseConfig) -> None:
-        self._config = config
+    def __init__(self, config: ModelKreuzbergParseConfig | None = None) -> None:
+        # Construction is pure and resolver-satisfiable: when ``config`` is not
+        # injected (the runtime auto-wiring boot path constructs handlers with
+        # zero args), it is resolved lazily from the contract on first use via
+        # ``_ensure_config``. Tests inject ``config`` directly, short-circuiting
+        # the lazy path. Resolving config in ``__init__`` here would force the
+        # contract/env read into the boot constructor and crash the effects lane.
+        self._config: ModelKreuzbergParseConfig | None = config
+        self._config_lock = asyncio.Lock()
+
+    async def _ensure_config(self) -> ModelKreuzbergParseConfig:
+        """Return the parse config, resolving it from the contract once on demand.
+
+        Single-flight under ``_config_lock``: concurrent ``handle`` calls on one
+        event loop resolve EXACTLY ONE config. An injected config short-circuits
+        without taking the lock.
+        """
+        if self._config is not None:
+            return self._config
+        async with self._config_lock:
+            if self._config is None:
+                self._config = await asyncio.to_thread(_resolve_config_from_contract)
+            return self._config
+
+    async def handle(
+        self, envelope: ModelEventEnvelope[Any]
+    ) -> ModelHandlerOutput[None]:
+        """Canonical dispatch entrypoint for the effects runtime.
+
+        Unwraps the document-discovered/changed event from the envelope payload,
+        resolves config lazily, runs the real parse logic in ``process_event``,
+        and returns the published facts as EFFECT events. This drives the
+        same fully-wired kreuzberg-call/cache/emit path the consumer uses.
+        """
+        # Resolve config eagerly at the boundary so a misconfigured contract/env
+        # fails fast here rather than mid-parse. ``process_event`` re-resolves
+        # via the same single-flight cache (no duplicate construction).
+        await self._ensure_config()
+        payload = envelope.payload
+        if isinstance(payload, (ModelDocumentDiscoveredEvent,)):
+            event: ModelDocumentDiscoveredEvent | ModelDocumentChangedEvent = payload
+        elif isinstance(payload, dict):
+            event = ModelDocumentDiscoveredEvent.model_validate(payload)
+        else:
+            event = ModelDocumentDiscoveredEvent.model_validate(
+                payload.model_dump()
+                if hasattr(payload, "model_dump")
+                else dict(payload)
+            )
+
+        emitted: list[ModelEventEnvelope[Any]] = []
+
+        async def _capture(topic: str, message: dict[str, object]) -> None:
+            emitted.append(
+                ModelEventEnvelope(
+                    payload=message,
+                    correlation_id=envelope.correlation_id,
+                    event_type=topic,
+                )
+            )
+
+        await self.process_event(event=event, publish_callback=_capture)
+
+        return ModelHandlerOutput.for_effect(
+            input_envelope_id=envelope.envelope_id,
+            correlation_id=envelope.correlation_id or uuid.uuid4(),
+            handler_id="kreuzberg-parse-effect",
+            events=tuple(emitted),
+        )
 
     async def process_event(
         self,
@@ -109,7 +245,7 @@ class HandlerKreuzbergParse:
         """Process a single document discovered or changed event."""
         source_url = event.source_ref
         content_hash = event.content_fingerprint
-        config = self._config
+        config = await self._ensure_config()
 
         indexed_topic = config.publish_topic_indexed
         failed_topic = config.publish_topic_parse_failed
