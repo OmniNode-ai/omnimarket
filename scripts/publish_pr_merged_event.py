@@ -10,26 +10,29 @@
 #
 # Payload: {repo, branch, pr_number, ticket, merged_at}
 #
-# F3 BROKER DECISION (OMN-13226):
+# F3 BROKER DECISION (OMN-13226), resolved by verified reachability:
 #   This workflow runs on ubuntu-latest (cloud runner) and therefore CANNOT
-#   reach the private LAN broker. It publishes to Confluent Cloud using the
-#   same SASL_SSL transport as OMN-8917
-#   (trigger_rebuild_on_merge.py). A bridge/projection node (T3, OMN-13227)
-#   materializes the event onto the local projection lane so
+#   reach the private LAN broker directly. It publishes via the same SASL_SSL
+#   transport as OMN-8917 (trigger_rebuild_on_merge.py), emitting to whatever
+#   broker KAFKA_BOOTSTRAP_SERVERS resolves to in the runner Infisical
+#   environment (the canonical bus endpoint) — the transport is NOT hardcoded
+#   to a single provider. The T3 projection node (OMN-13227)
+#   bridges/materializes the event onto the .201 Redpanda lane so
 #   GET /projection/onex.evt.github.pr-merged.v1 is served by the :3002
-#   projection API.
+#   projection API for local reaper polling (T4, OMN-13228).
 #
 # Evidence for runner constraint: omnimarket/.github/workflows/
-#   runtime-rebuild-trigger.yml uses runs-on: ubuntu-latest and documents
-#   the Confluent Cloud secrets. No workflow in this repo uses self-hosted
-#   runners that target the private LAN.
+#   runtime-rebuild-trigger.yml uses runs-on: ubuntu-latest; pr-review-bot.yml
+#   documents that KAFKA_BOOTSTRAP_SERVERS is pre-mounted in the runner
+#   Infisical environment. No workflow in this repo uses a self-hosted runner
+#   that reaches the private LAN.
 #
 # Ticket: OMN-13226
 #
-# Required environment variables (when not --dry-run):
-#   KAFKA_BOOTSTRAP_SERVERS   -- Confluent Cloud broker endpoint
-#   KAFKA_SASL_USERNAME       -- Confluent Cloud API key
-#   KAFKA_SASL_PASSWORD       -- Confluent Cloud API secret
+# Required environment variables (when not --dry-run, resolved from Infisical):
+#   KAFKA_BOOTSTRAP_SERVERS   -- canonical bus broker endpoint
+#   KAFKA_SASL_USERNAME       -- SASL username / API key
+#   KAFKA_SASL_PASSWORD       -- SASL password / API secret
 #   PR_REPO                   -- repository slug, e.g. OmniNode-ai/omnimarket
 #   PR_BRANCH                 -- head branch name of the merged PR
 #   PR_NUMBER                 -- PR number as a string
