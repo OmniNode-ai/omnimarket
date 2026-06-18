@@ -67,7 +67,10 @@ event_bus:
   subscribe_topics:
     - onex.cmd.ui.renderer-capability-declared.v1
   publish_topics:
-    - onex.snapshot.projection.renderer-capability.v1
+    - onex.evt.omnimarket.renderer-capability-projection-snapshot.v1
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.renderer-capability-projection-snapshot.v1
 
 reducer_contract:
   state_update: "fold(state, declaration, observed_at) -> upserted_renderer_row + re-derived freshness"
@@ -80,7 +83,7 @@ reducer_contract:
 projection_api:
   expose: true
   exposures:
-    - topic: onex.snapshot.projection.renderer-capability.v1  # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
+    - topic: onex.evt.omnimarket.renderer-capability-projection-snapshot.v1
       table: renderer_capability_projection
       schema: public
       database: omnidash_analytics
