@@ -1,0 +1,80 @@
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Prod Promotion Gate COMPUTE
+#
+# Pure deterministic prod-promotion gate (OMN-13211 / B3). Re-expresses the
+# node_redeploy _evaluate_prod_gate logic as a canonical COMPUTE node: no I/O, no
+# bus, no DB, no subprocess. Decides whether a prod redeploy may proceed BEFORE
+# any deploy effect — the regression guard against prod-vs-stability digest drift.
+---
+name: node_prod_promotion_gate_compute
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: compute
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  Pure prod-promotion-gate compute node. Consumes the deterministic promotion
+  facts for one redeploy request (lane, requested digest, promotion batch,
+  reducer-owned readiness projection, OCC evidence state, rollback target) and
+  returns a ModelProdPromotionGateDecision. Non-prod lanes are allowed
+  unconditionally; prod runs the full promotion gate (readiness READY for matching
+  digest and batch, OCC merged or Receipt-Gate-PASS, known rollback target) or,
+  when no readiness projection is threaded through, the OMN-12577 same-digest gate
+  which fails closed. No I/O, no bus, no DB, no model calls.
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: "redeploy.prod_gate.evaluate"
+      handler:
+        name: HandlerProdPromotionGate
+        module: omnimarket.nodes.node_prod_promotion_gate_compute.handlers.handler_prod_promotion_gate
+      description: "Evaluate the prod promotion gate for one redeploy request."
+      input_model:
+        name: ModelProdPromotionGateCommand
+        module: omnimarket.nodes.node_prod_promotion_gate_compute.models.model_prod_promotion_gate_command
+        description: "Deterministic prod-promotion facts for one request."
+
+handler:
+  module: omnimarket.nodes.node_prod_promotion_gate_compute.handlers.handler_prod_promotion_gate
+  class: HandlerProdPromotionGate
+  input_model: omnimarket.nodes.node_prod_promotion_gate_compute.models.model_prod_promotion_gate_command.ModelProdPromotionGateCommand
+
+input_model:
+  name: ModelProdPromotionGateCommand
+  module: omnimarket.nodes.node_prod_promotion_gate_compute.models.model_prod_promotion_gate_command
+  description: "Deterministic prod-promotion facts for one redeploy request."
+output_model:
+  name: ModelProdPromotionGateDecision
+  module: omnimarket.events.runtime_deployment
+  description: "Gate decision: allowed + resolved digest + rollback target + reason."
+
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 2000
+  runtime_profiles:
+    - effects
+
+terminal_event: onex.evt.omnimarket.prod-promotion-gate-evaluated.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.prod-promotion-gate-evaluate.v1
+  publish_topics:
+    - onex.evt.omnimarket.prod-promotion-gate-evaluated.v1
+
+dependencies:
+  packages:
+    - "omnibase_core>=0.39.0"
+    - "omnibase-compat>=0.3.1"
+
+metadata:
+  transport_type: kafka
+  description: "Pure prod-promotion gate compute node"
+  author: "OmniNode Platform Team"
+  related_tickets:
+    - "OMN-13211"
+    - "OMN-12581"
+    - "OMN-12577"

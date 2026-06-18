@@ -1,822 +1,293 @@
-"""Golden chain tests for node_redeploy.
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+"""Golden-chain coverage for the canonical redeploy nodes (OMN-13211 / B3).
 
-Verifies:
-  - TestRedeployGoldenChain: FSM state machine (HandlerRedeploy)
-  - TestRedeployKafkaGoldenChain: Kafka publish-monitor pattern (HandlerRedeployKafka)
-  - TestRedeployWorkflowRunnerGoldenChain: end-to-end WorkflowPackage (HandlerRedeployWorkflowRunner)
+The bespoke ``node_redeploy`` WorkflowPackage is decomposed into four canonical
+nodes; this suite proves the FSM REDUCER's transition coverage and the deploy
+EFFECT's publish-monitor golden chain.
+
+Per the B3 DoD (plan §3.3 / §6 golden-chain criterion): the FSM reducer ships
+contract-derived golden chains over IDLE -> ... -> DONE INCLUDING the negative /
+reject paths (illegal advance-from-terminal, 3-failure circuit breaker -> FAILED).
+The transition edges are derived from the contract FSM enum + sequence helpers
+(``next_phase`` / the failure rule), so an edge with no chain is a coverage gap.
+
+The reducer is the canonical REDUCER archetype (typed FSM schema + traverser
+exists), so its chains are GENERATED from the phase sequence rather than
+hand-authored — the durable path the FSM-traversability verdict mandates for
+reducers.
 """
 
 from __future__ import annotations
 
-import hashlib
-import hmac
 import json
-import sys
 from datetime import UTC, datetime
-from types import ModuleType
 from uuid import uuid4
 
 import pytest
+from omnibase_core.enums.enum_node_kind import EnumNodeKind
 from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
+from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
 
-from omnimarket.nodes.node_redeploy.handlers.handler_redeploy import HandlerRedeploy
-from omnimarket.nodes.node_redeploy.handlers.handler_redeploy_kafka import (
-    HandlerRedeployKafka,
-)
-from omnimarket.nodes.node_redeploy.handlers.handler_workflow_runner import (
-    ModelRedeployWorkflowInput,
-    run_redeploy_workflow,
-)
-from omnimarket.nodes.node_redeploy.models.model_deploy_agent_events import (
-    EnumBuildSource,
+from omnimarket.events.runtime_deployment import (
+    TERMINAL_PHASES,
+    EnumRedeployPhase,
     EnumRedeployStatus,
+    EnumRuntimeLane,
     ModelDeployPhaseResults,
     ModelDeployRebuildCompleted,
-)
-from omnimarket.nodes.node_redeploy.models.model_redeploy_command import (
-    EnumRuntimeLane,
+    ModelHealthCheck,
     ModelRedeployCommand,
+    ModelRedeployState,
+    next_phase,
 )
-from omnimarket.nodes.node_redeploy.models.model_redeploy_state import (
-    EnumRedeployPhase,
+from omnimarket.nodes.node_redeploy_deploy_effect.handlers.handler_deploy_publish_monitor import (
+    TOPIC_REBUILD_COMPLETED,
+    TOPIC_REBUILD_REQUESTED,
+    HandlerDeployPublishMonitor,
+)
+from omnimarket.nodes.node_redeploy_deploy_effect.models.model_deploy_publish_command import (
+    ModelDeployPublishCommand,
+)
+from omnimarket.nodes.node_redeploy_fsm_reducer.handlers.handler_redeploy_fsm import (
+    HandlerRedeployFsm,
+    advance,
+    make_completed_event,
+    start_state,
+)
+from omnimarket.nodes.node_redeploy_fsm_reducer.models.model_redeploy_advance_command import (
+    ModelRedeployAdvanceCommand,
 )
 
-_EVT_TOPIC = "onex.evt.deploy.rebuild-completed.v1"
-_CMD_TOPIC = "onex.cmd.deploy.rebuild-requested.v1"
 
-CMD_TOPIC = "onex.cmd.omnimarket.redeploy-start.v1"
-PHASE_TOPIC = "onex.evt.omnimarket.redeploy-phase-transition.v1"
-COMPLETED_TOPIC = "onex.evt.omnimarket.redeploy-completed.v1"
-
-
-def _make_command(
-    versions: dict[str, str] | None = None,
-    skip_sync: bool = False,
-    verify_only: bool = False,
-    dry_run: bool = False,
-) -> ModelRedeployCommand:
+def _make_command(*, dry_run: bool = False) -> ModelRedeployCommand:
     return ModelRedeployCommand(
         correlation_id=uuid4(),
-        versions=versions or {"omniintelligence": "0.8.0"},
-        skip_sync=skip_sync,
-        verify_only=verify_only,
+        versions={"omniintelligence": "0.8.0"},
         dry_run=dry_run,
         requested_at=datetime.now(tz=UTC),
     )
 
 
+def _base_success_edges() -> list[tuple[EnumRedeployPhase, EnumRedeployPhase]]:
+    """Generated transition edges over the base deploy segment (IDLE..DONE)."""
+    edges: list[tuple[EnumRedeployPhase, EnumRedeployPhase]] = []
+    cur = EnumRedeployPhase.IDLE
+    while cur != EnumRedeployPhase.DONE:
+        nxt = next_phase(cur)
+        edges.append((cur, nxt))
+        cur = nxt
+    return edges
+
+
+# ---------------------------------------------------------------------------
+# FSM REDUCER golden chains (generated over all transition edges)
+# ---------------------------------------------------------------------------
+
+
 @pytest.mark.unit
-class TestRedeployGoldenChain:
-    """Golden chain: start command -> phase transitions -> completion."""
-
-    async def test_full_cycle_all_phases_succeed(
-        self, event_bus: EventBusInmemory
-    ) -> None:
-        """All 5 phases succeed -> DONE."""
-        handler = HandlerRedeploy()
-        command = _make_command()
-
-        state, events, completed = handler.run_full_pipeline(command)
+class TestRedeployFsmReducerGoldenChain:
+    def test_full_success_chain_idle_to_done(self) -> None:
+        """Generated chain: every successful edge IDLE -> ... -> DONE."""
+        state = start_state(_make_command())
+        events = []
+        while state.current_phase not in TERMINAL_PHASES:
+            state, event = advance(state, phase_success=True)
+            events.append(event)
 
         assert state.current_phase == EnumRedeployPhase.DONE
-        assert completed.final_phase == EnumRedeployPhase.DONE
         # 6 transitions: IDLE->SYNC->UPDATE->REBUILD->SEED->VERIFY->DONE
         assert len(events) == 6
         assert all(e.success for e in events)
         assert events[0].from_phase == EnumRedeployPhase.IDLE
         assert events[0].to_phase == EnumRedeployPhase.SYNC_CLONES
         assert events[-1].to_phase == EnumRedeployPhase.DONE
-
-    async def test_circuit_breaker_after_3_failures(
-        self, event_bus: EventBusInmemory
-    ) -> None:
-        """3 consecutive failures -> FAILED."""
-        handler = HandlerRedeploy()
-        command = _make_command()
-        state = handler.start(command)
-
-        state, _ = handler.advance(state, phase_success=True)
-        state, _ = handler.advance(state, phase_success=False, error_message="fail 1")
-        state, _ = handler.advance(state, phase_success=False, error_message="fail 2")
-        state, _ = handler.advance(state, phase_success=False, error_message="fail 3")
-
-        assert state.current_phase == EnumRedeployPhase.FAILED
-
-    async def test_versions_propagated(self, event_bus: EventBusInmemory) -> None:
-        """Version pins propagate from command to state."""
-        handler = HandlerRedeploy()
-        command = _make_command(
-            versions={"omniintelligence": "0.8.0", "omninode-claude": "0.4.0"}
-        )
-
-        state, _events, _completed = handler.run_full_pipeline(command)
-
-        assert state.versions == {
-            "omniintelligence": "0.8.0",
-            "omninode-claude": "0.4.0",
-        }
-
-    async def test_phases_completed_counter(self, event_bus: EventBusInmemory) -> None:
-        """phases_completed counter increments on each successful advance."""
-        handler = HandlerRedeploy()
-        command = _make_command()
-
-        state, _events, completed = handler.run_full_pipeline(command)
-
-        # 5 successful phases (SYNC, UPDATE, REBUILD, SEED, VERIFY) + DONE transition
-        assert state.phases_completed == 6
+        completed = make_completed_event(state)
+        assert completed.final_phase == EnumRedeployPhase.DONE
         assert completed.phases_completed == 6
 
-    async def test_dry_run_propagated(self, event_bus: EventBusInmemory) -> None:
-        """dry_run flag propagates through state."""
-        handler = HandlerRedeploy()
-        command = _make_command(dry_run=True)
-
-        state, _events, _completed = handler.run_full_pipeline(command)
-        assert state.dry_run is True
-
-    async def test_event_bus_wiring(self, event_bus: EventBusInmemory) -> None:
-        """Handler events can be wired through EventBusInmemory."""
-        handler = HandlerRedeploy()
-        completed_events: list[dict[str, object]] = []
-
-        async def on_command(message: object) -> None:
-            payload = json.loads(message.value)  # type: ignore[union-attr]
-            command = ModelRedeployCommand(
-                correlation_id=payload["correlation_id"],
-                versions=payload.get("versions", {}),
-                dry_run=payload.get("dry_run", False),
-                requested_at=datetime.now(tz=UTC),
-            )
-            _state, _events, completed = handler.run_full_pipeline(command)
-            completed_payload = completed.model_dump(mode="json")
-            completed_events.append(completed_payload)
-            await event_bus.publish(
-                COMPLETED_TOPIC,
-                key=None,
-                value=json.dumps(completed_payload).encode(),
-            )
-
-        await event_bus.start()
-        await event_bus.subscribe(
-            CMD_TOPIC, on_message=on_command, group_id="test-redeploy"
-        )
-
-        cmd_payload = json.dumps(
-            {
-                "correlation_id": str(uuid4()),
-                "versions": {"omniintelligence": "0.8.0"},
-            }
-        ).encode()
-        await event_bus.publish(CMD_TOPIC, key=None, value=cmd_payload)
-
-        assert len(completed_events) == 1
-        assert completed_events[0]["final_phase"] == "done"
-
-        await event_bus.close()
-
-    async def test_cannot_advance_from_terminal(
-        self, event_bus: EventBusInmemory
+    @pytest.mark.parametrize("edge", _base_success_edges())
+    def test_each_success_edge_advances(
+        self, edge: tuple[EnumRedeployPhase, EnumRedeployPhase]
     ) -> None:
-        """Advancing from DONE raises ValueError."""
-        handler = HandlerRedeploy()
-        command = _make_command()
-        state, _, _ = handler.run_full_pipeline(command)
+        """Generated: every success edge in the contract sequence is covered."""
+        from_phase, to_phase = edge
+        state = ModelRedeployState(correlation_id=uuid4(), current_phase=from_phase)
+        new_state, event = advance(state, phase_success=True)
+        assert new_state.current_phase == to_phase
+        assert event.from_phase == from_phase
+        assert event.to_phase == to_phase
+        assert event.success is True
 
-        with pytest.raises(ValueError, match="terminal phase"):
-            handler.advance(state, phase_success=True)
+    def test_circuit_breaker_after_3_failures(self) -> None:
+        """Negative chain: 3 consecutive failures -> FAILED."""
+        state = start_state(_make_command())
+        state, _ = advance(state, phase_success=True)
+        state, _ = advance(state, phase_success=False, error_message="fail 1")
+        assert state.current_phase != EnumRedeployPhase.FAILED
+        state, _ = advance(state, phase_success=False, error_message="fail 2")
+        assert state.current_phase != EnumRedeployPhase.FAILED
+        state, event = advance(state, phase_success=False, error_message="fail 3")
+        assert state.current_phase == EnumRedeployPhase.FAILED
+        assert event.to_phase == EnumRedeployPhase.FAILED
+        assert state.consecutive_failures == 3
 
-    async def test_skip_sync_propagated(self, event_bus: EventBusInmemory) -> None:
-        """skip_sync flag propagates from command to state."""
-        handler = HandlerRedeploy()
-        command = _make_command(skip_sync=True)
-        state = handler.start(command)
-        assert state.skip_sync is True
-
-    async def test_phase_failure_stops_pipeline(
-        self, event_bus: EventBusInmemory
-    ) -> None:
-        """Pipeline stops on first failure."""
-        handler = HandlerRedeploy()
-        command = _make_command()
-
-        state, _events, completed = handler.run_full_pipeline(
-            command,
-            phase_results={EnumRedeployPhase.REBUILD: False},
-        )
-
-        assert completed.final_phase == EnumRedeployPhase.UPDATE_PINS
+    def test_single_failure_retries_in_place(self) -> None:
+        """Negative edge: one failure retries the same phase, counter increments."""
+        state = start_state(_make_command())
+        state, _ = advance(state, phase_success=True)  # -> SYNC_CLONES
+        before = state.current_phase
+        state, event = advance(state, phase_success=False, error_message="transient")
+        assert state.current_phase == before  # retried in place
         assert state.consecutive_failures == 1
+        assert event.success is False
+
+    @pytest.mark.parametrize("terminal", sorted(TERMINAL_PHASES))
+    def test_advance_from_terminal_rejects(self, terminal: EnumRedeployPhase) -> None:
+        """Reject path: advancing from any terminal phase raises ValueError."""
+        state = ModelRedeployState(correlation_id=uuid4(), current_phase=terminal)
+        with pytest.raises(ValueError, match="terminal phase"):
+            advance(state, phase_success=True)
+
+    def test_success_resets_failure_counter(self) -> None:
+        state = start_state(_make_command())
+        state, _ = advance(state, phase_success=True)
+        state, _ = advance(state, phase_success=False, error_message="blip")
+        assert state.consecutive_failures == 1
+        state, _ = advance(state, phase_success=True)
+        assert state.consecutive_failures == 0
+
+    async def test_reducer_handle_emits_state_projection(self) -> None:
+        """The REDUCER handler folds an advance event into a state projection."""
+        handler = HandlerRedeployFsm()
+        state = start_state(_make_command())
+        command = ModelRedeployAdvanceCommand(state=state, phase_success=True)
+        envelope: ModelEventEnvelope[ModelRedeployAdvanceCommand] = ModelEventEnvelope(
+            payload=command,
+            correlation_id=state.correlation_id,
+            event_type="onex.evt.omnimarket.redeploy-phase-advance.v1",
+        )
+        output = await handler.handle(envelope)
+
+        assert output.node_kind == EnumNodeKind.REDUCER
+        assert len(output.projections) == 1
+        projected = output.projections[0]
+        assert isinstance(projected, ModelRedeployState)
+        assert projected.current_phase == EnumRedeployPhase.SYNC_CLONES
+        # REDUCER must not emit events/intents/result.
+        assert output.events == ()
+        assert output.intents == ()
+        assert output.result is None
 
 
 # ---------------------------------------------------------------------------
-# HandlerRedeployKafka golden chain tests
+# Deploy EFFECT publish-monitor golden chain (replay-equivalent)
 # ---------------------------------------------------------------------------
 
 
-def _make_completed_event(
+def _make_completed(
     correlation_id: str,
+    *,
     status: str = "success",
-    duration_seconds: float = 12.5,
     git_sha: str = "deadbeef",
-    services_restarted: list[str] | None = None,
     errors: list[str] | None = None,
+    health_checks: list[ModelHealthCheck] | None = None,
 ) -> ModelDeployRebuildCompleted:
     return ModelDeployRebuildCompleted(
         correlation_id=correlation_id,
         status=EnumRedeployStatus(status),
-        duration_seconds=duration_seconds,
+        duration_seconds=12.5,
         git_sha=git_sha,
-        services_restarted=services_restarted or ["omninode-runtime"],
+        services_restarted=["omninode-runtime"],
         phase_results=ModelDeployPhaseResults(),
         errors=errors or [],
+        health_checks=health_checks or [],
     )
 
 
 @pytest.mark.unit
-class TestRedeployKafkaGoldenChain:
-    """Golden chain: HandlerRedeployKafka publish-monitor with EventBusInmemory."""
-
-    async def test_full_success_cycle(self) -> None:
-        """Publish command -> deploy agent responds with success -> result is success."""
-        bus = EventBusInmemory(environment="test", group="redeploy-test")
+class TestDeployEffectGoldenChain:
+    async def test_publish_monitor_success(self) -> None:
+        """Golden chain: publish rebuild-requested -> agent completes -> success."""
+        bus = EventBusInmemory(environment="test", group="deploy-effect-test")
         await bus.start()
+        corr_id = uuid4()
+        handler = HandlerDeployPublishMonitor(event_bus=bus, timeout_s=5.0)
 
-        corr_id = str(uuid4())
-        handler = HandlerRedeployKafka(event_bus=bus, timeout_s=5.0)
-
-        # Simulate the deploy agent: subscribe to cmd topic, publish completion
-        async def _fake_deploy_agent(message: object) -> None:
+        async def _fake_agent(message: object) -> None:
             payload = json.loads(message.value)  # type: ignore[union-attr]
-            completion = _make_completed_event(
-                correlation_id=payload["correlation_id"],
-                git_sha="abc123",
-                services_restarted=["omninode-runtime", "omninode-runtime-shadow"],
-            )
+            completed = _make_completed(payload["correlation_id"], git_sha="abc123")
             await bus.publish(
-                _EVT_TOPIC,
+                TOPIC_REBUILD_COMPLETED,
                 key=payload["correlation_id"].encode(),
-                value=json.dumps(completion.model_dump(mode="json")).encode(),
+                value=json.dumps(completed.model_dump(mode="json")).encode(),
             )
 
         await bus.subscribe(
-            _CMD_TOPIC, on_message=_fake_deploy_agent, group_id="fake-agent"
+            TOPIC_REBUILD_REQUESTED, on_message=_fake_agent, group_id="fake-agent"
         )
 
-        result = await handler.execute(
-            scope="full",
-            git_ref="origin/main",
-            correlation_id=corr_id,
+        result = await handler.publish_and_monitor(
+            ModelDeployPublishCommand(
+                correlation_id=corr_id, runtime_lane=EnumRuntimeLane.DEV
+            )
         )
-
         assert result.success is True
         assert result.status == EnumRedeployStatus.SUCCESS
-        assert result.correlation_id == corr_id
         assert result.git_sha == "abc123"
-        assert "omninode-runtime" in result.services_restarted
         assert result.timed_out is False
-
         await bus.close()
 
-    async def test_deploy_agent_reports_failure(self) -> None:
-        """Deploy agent returns failed status -> result is failure."""
-        bus = EventBusInmemory(environment="test", group="redeploy-test")
+    async def test_publish_monitor_agent_failure(self) -> None:
+        """Golden chain: agent reports failed -> result is failure (no rollback)."""
+        bus = EventBusInmemory(environment="test", group="deploy-effect-test")
         await bus.start()
-
-        corr_id = str(uuid4())
-        handler = HandlerRedeployKafka(event_bus=bus, timeout_s=5.0)
+        corr_id = uuid4()
+        handler = HandlerDeployPublishMonitor(event_bus=bus, timeout_s=5.0)
 
         async def _failed_agent(message: object) -> None:
             payload = json.loads(message.value)  # type: ignore[union-attr]
-            completion = _make_completed_event(
-                correlation_id=payload["correlation_id"],
+            completed = _make_completed(
+                payload["correlation_id"],
                 status="failed",
                 errors=["git pull failed: merge conflict"],
             )
             await bus.publish(
-                _EVT_TOPIC,
+                TOPIC_REBUILD_COMPLETED,
                 key=payload["correlation_id"].encode(),
-                value=json.dumps(completion.model_dump(mode="json")).encode(),
+                value=json.dumps(completed.model_dump(mode="json")).encode(),
             )
 
-        await bus.subscribe(_CMD_TOPIC, on_message=_failed_agent, group_id="fake-agent")
+        await bus.subscribe(
+            TOPIC_REBUILD_REQUESTED, on_message=_failed_agent, group_id="fake-agent"
+        )
 
-        result = await handler.execute(scope="full", correlation_id=corr_id)
-
+        result = await handler.publish_and_monitor(
+            ModelDeployPublishCommand(
+                correlation_id=corr_id, runtime_lane=EnumRuntimeLane.DEV
+            )
+        )
         assert result.success is False
         assert result.status == EnumRedeployStatus.FAILED
         assert "git pull failed" in result.errors[0]
-        assert result.timed_out is False
-
         await bus.close()
 
-    async def test_deploy_agent_payload_without_status_is_normalized(self) -> None:
-        """Deployed agent payload shape without computed status still completes."""
-        bus = EventBusInmemory(environment="test", group="redeploy-test")
+    async def test_publish_monitor_timeout(self) -> None:
+        """Golden chain: no agent responds -> timed_out."""
+        bus = EventBusInmemory(environment="test", group="deploy-effect-test")
         await bus.start()
+        handler = HandlerDeployPublishMonitor(event_bus=bus, timeout_s=0.1)
 
-        corr_id = str(uuid4())
-        handler = HandlerRedeployKafka(event_bus=bus, timeout_s=5.0)
-
-        async def _agent_sends_deployed_shape(message: object) -> None:
-            payload = json.loads(message.value)  # type: ignore[union-attr]
-            completion_payload = {
-                "correlation_id": payload["correlation_id"],
-                "requested_git_ref": "origin/dev",
-                "git_sha": "abc123",
-                "started_at": "2026-06-03T19:24:36.000000+00:00",
-                "completed_at": "2026-06-03T19:24:39.000000+00:00",
-                "duration_seconds": 3.0,
-                "scope": "runtime",
-                "runtime_lane": "dev",
-                "services_restarted": ["omninode-runtime"],
-                "phase_results": {
-                    "preflight": "success",
-                    "git": "success",
-                    "compose_gen": "in_progress",
-                    "publish": "in_progress",
-                },
-                "errors": ["No such file or directory: 'uv'"],
-                "health_checks": [],
-            }
-            await bus.publish(
-                _EVT_TOPIC,
-                key=payload["correlation_id"].encode(),
-                value=json.dumps(completion_payload).encode(),
+        result = await handler.publish_and_monitor(
+            ModelDeployPublishCommand(
+                correlation_id=uuid4(), runtime_lane=EnumRuntimeLane.DEV
             )
-
-        await bus.subscribe(
-            _CMD_TOPIC, on_message=_agent_sends_deployed_shape, group_id="fake-agent"
         )
-
-        result = await handler.execute(
-            scope="runtime",
-            runtime_lane=EnumRuntimeLane.DEV,
-            correlation_id=corr_id,
-        )
-
-        assert result.success is False
-        assert result.status == EnumRedeployStatus.FAILED
-        assert result.errors == ["No such file or directory: 'uv'"]
-        assert result.phase_results["git"] == "success"
-        assert result.phase_results["publish"] == "success"
-
-        await bus.close()
-
-    async def test_timeout_when_no_agent_responds(self) -> None:
-        """No deploy agent responds -> timeout -> timed_out=True."""
-        bus = EventBusInmemory(environment="test", group="redeploy-test")
-        await bus.start()
-
-        handler = HandlerRedeployKafka(event_bus=bus, timeout_s=0.1)
-
-        result = await handler.execute(scope="full")
-
         assert result.success is False
         assert result.timed_out is True
-        assert result.status == EnumRedeployStatus.FAILED
         assert "Timed out" in result.errors[0]
-
         await bus.close()
-
-    async def test_correlation_id_filtering(self) -> None:
-        """Only the matching correlation_id resolves the future."""
-        bus = EventBusInmemory(environment="test", group="redeploy-test")
-        await bus.start()
-
-        target_corr_id = str(uuid4())
-        other_corr_id = str(uuid4())
-        handler = HandlerRedeployKafka(event_bus=bus, timeout_s=5.0)
-
-        async def _agent_sends_wrong_then_right(message: object) -> None:
-            # First publish an event with a different correlation_id
-            wrong_completion = _make_completed_event(
-                correlation_id=other_corr_id,
-                git_sha="wrong",
-            )
-            await bus.publish(
-                _EVT_TOPIC,
-                key=other_corr_id.encode(),
-                value=json.dumps(wrong_completion.model_dump(mode="json")).encode(),
-            )
-            # Then publish the right one
-            right_completion = _make_completed_event(
-                correlation_id=target_corr_id,
-                git_sha="correct",
-            )
-            await bus.publish(
-                _EVT_TOPIC,
-                key=target_corr_id.encode(),
-                value=json.dumps(right_completion.model_dump(mode="json")).encode(),
-            )
-
-        await bus.subscribe(
-            _CMD_TOPIC, on_message=_agent_sends_wrong_then_right, group_id="fake-agent"
-        )
-
-        result = await handler.execute(scope="full", correlation_id=target_corr_id)
-
-        assert result.success is True
-        assert result.git_sha == "correct"
-
-        await bus.close()
-
-    async def test_make_completed_event_helper(self) -> None:
-        """make_completion_event() produces a valid ModelDeployRebuildCompleted."""
-        corr_id = str(uuid4())
-        event = HandlerRedeployKafka.make_completion_event(
-            correlation_id=corr_id,
-            status="success",
-            duration_seconds=45.2,
-            git_sha="f00ba7",
-            services_restarted=["svc-a", "svc-b"],
-        )
-        assert event.correlation_id == corr_id
-        assert event.status == EnumRedeployStatus.SUCCESS
-        assert event.duration_seconds == 45.2
-        assert event.git_sha == "f00ba7"
-        assert event.services_restarted == ["svc-a", "svc-b"]
 
     async def test_none_event_bus_raises(self) -> None:
-        """Passing None as event_bus raises RuntimeError immediately."""
         with pytest.raises(RuntimeError, match="requires an event_bus"):
-            HandlerRedeployKafka(event_bus=None)
-
-    async def test_from_env_wires_typed_kafka_config(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        """from_env wires EventBusKafka with the current typed config model."""
-        kafka_module = ModuleType("omnibase_infra.event_bus.event_bus_kafka")
-        config_module = ModuleType("omnibase_infra.event_bus.models.config")
-
-        class FakeModelKafkaEventBusConfig:
-            model_fields = {
-                "bootstrap_servers": object(),
-                "environment": object(),
-                "api_version": object(),
-            }
-
-            def __init__(self, **kwargs: object) -> None:
-                self.bootstrap_servers = kwargs["bootstrap_servers"]
-                self.environment = kwargs["environment"]
-                self.api_version = kwargs["api_version"]
-
-        class FakeEventBusKafka:
-            def __init__(self, config: FakeModelKafkaEventBusConfig) -> None:
-                self._config = config
-                self._bootstrap_servers = config.bootstrap_servers
-                self._environment = config.environment
-
-        kafka_module.EventBusKafka = FakeEventBusKafka  # type: ignore[attr-defined]
-        config_module.ModelKafkaEventBusConfig = FakeModelKafkaEventBusConfig  # type: ignore[attr-defined]
-        monkeypatch.setitem(
-            sys.modules, "omnibase_infra.event_bus.event_bus_kafka", kafka_module
-        )
-        monkeypatch.setitem(
-            sys.modules, "omnibase_infra.event_bus.models.config", config_module
-        )
-        monkeypatch.setenv("KAFKA_BOOTSTRAP_SERVERS", "broker:19092")
-        monkeypatch.setenv("KAFKA_ENVIRONMENT", "dev")
-        monkeypatch.setenv("KAFKA_API_VERSION", "2.8.0")
-
-        handler = HandlerRedeployKafka.from_env()
-
-        assert handler.bus._bootstrap_servers == "broker:19092"
-        assert handler.bus._environment == "dev"
-        assert handler.bus._config.api_version == "2.8.0"
-
-    async def test_from_env_omits_api_version_for_older_config(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        """from_env remains compatible with older ModelKafkaEventBusConfig."""
-        kafka_module = ModuleType("omnibase_infra.event_bus.event_bus_kafka")
-        config_module = ModuleType("omnibase_infra.event_bus.models.config")
-
-        class FakeModelKafkaEventBusConfig:
-            model_fields = {
-                "bootstrap_servers": object(),
-                "environment": object(),
-            }
-
-            def __init__(self, **kwargs: object) -> None:
-                assert "api_version" not in kwargs
-                self.bootstrap_servers = kwargs["bootstrap_servers"]
-                self.environment = kwargs["environment"]
-
-        class FakeEventBusKafka:
-            def __init__(self, config: FakeModelKafkaEventBusConfig) -> None:
-                self._config = config
-                self._bootstrap_servers = config.bootstrap_servers
-                self._environment = config.environment
-
-        kafka_module.EventBusKafka = FakeEventBusKafka  # type: ignore[attr-defined]
-        config_module.ModelKafkaEventBusConfig = FakeModelKafkaEventBusConfig  # type: ignore[attr-defined]
-        monkeypatch.setitem(
-            sys.modules, "omnibase_infra.event_bus.event_bus_kafka", kafka_module
-        )
-        monkeypatch.setitem(
-            sys.modules, "omnibase_infra.event_bus.models.config", config_module
-        )
-        monkeypatch.setenv("KAFKA_BOOTSTRAP_SERVERS", "broker:19092")
-        monkeypatch.setenv("KAFKA_ENVIRONMENT", "dev")
-        monkeypatch.setenv("KAFKA_API_VERSION", "2.8.0")
-
-        handler = HandlerRedeployKafka.from_env()
-
-        assert handler.bus._bootstrap_servers == "broker:19092"
-        assert handler.bus._environment == "dev"
-
-    async def test_duration_from_agent_preferred(self) -> None:
-        """Duration from deploy agent is used when > 0, else wall-clock."""
-        bus = EventBusInmemory(environment="test", group="redeploy-test")
-        await bus.start()
-
-        corr_id = str(uuid4())
-        handler = HandlerRedeployKafka(event_bus=bus, timeout_s=5.0)
-
-        async def _agent_with_known_duration(message: object) -> None:
-            payload = json.loads(message.value)  # type: ignore[union-attr]
-            completion = _make_completed_event(
-                correlation_id=payload["correlation_id"],
-                duration_seconds=123.456,
-            )
-            await bus.publish(
-                _EVT_TOPIC,
-                key=payload["correlation_id"].encode(),
-                value=json.dumps(completion.model_dump(mode="json")).encode(),
-            )
-
-        await bus.subscribe(
-            _CMD_TOPIC, on_message=_agent_with_known_duration, group_id="fake-agent"
-        )
-
-        result = await handler.execute(scope="full", correlation_id=corr_id)
-        assert result.duration_seconds == 123.456
-
-        await bus.close()
-
-    async def test_command_payload_fields(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        """Published command payload contains all required deploy agent fields."""
-        bus = EventBusInmemory(environment="test", group="redeploy-test")
-        await bus.start()
-
-        received_commands: list[dict[str, object]] = []
-        corr_id = str(uuid4())
-        secret = "test-deploy-agent-secret"
-        monkeypatch.setenv("DEPLOY_AGENT_HMAC_SECRET", secret)
-        handler = HandlerRedeployKafka(event_bus=bus, timeout_s=5.0)
-
-        async def _capturing_agent(message: object) -> None:
-            payload = json.loads(message.value)  # type: ignore[union-attr]
-            received_commands.append(payload)
-            completion = _make_completed_event(correlation_id=payload["correlation_id"])
-            await bus.publish(
-                _EVT_TOPIC,
-                key=payload["correlation_id"].encode(),
-                value=json.dumps(completion.model_dump(mode="json")).encode(),
-            )
-
-        await bus.subscribe(
-            _CMD_TOPIC, on_message=_capturing_agent, group_id="fake-agent"
-        )
-
-        await handler.execute(
-            scope="runtime",
-            git_ref="origin/develop",
-            runtime_lane=EnumRuntimeLane.STABILITY_TEST,
-            build_source=EnumBuildSource.WORKSPACE,
-            services=["omninode-runtime"],
-            image_ref="ghcr.io/omninode/omninode-runtime:dev",
-            image_digest="sha256:" + "a" * 64,
-            requested_by="test-suite",
-            correlation_id=corr_id,
-        )
-
-        assert len(received_commands) == 1
-        cmd = received_commands[0]
-        assert cmd["correlation_id"] == corr_id
-        assert cmd["scope"] == "runtime"
-        assert cmd["git_ref"] == "origin/develop"
-        assert cmd["runtime_lane"] == "stability-test"
-        assert cmd["build_source"] == "workspace"
-        assert cmd["image_ref"] == "ghcr.io/omninode/omninode-runtime:dev"
-        assert cmd["image_digest"] == "sha256:" + "a" * 64
-        assert cmd["services"] == ["omninode-runtime"]
-        assert cmd["requested_by"] == "test-suite"
-        assert isinstance(cmd["_signature"], str)
-        body = json.dumps(
-            {k: v for k, v in cmd.items() if k != "_signature"},
-            sort_keys=True,
-            separators=(",", ":"),
-        ).encode()
-        expected_signature = hmac.new(secret.encode(), body, hashlib.sha256).hexdigest()
-        assert cmd["_signature"] == expected_signature
-
-        await bus.close()
-
-    async def test_prod_command_requires_digest(self) -> None:
-        """Prod deploy-agent commands fail closed without a pinned digest."""
-        bus = EventBusInmemory(environment="test", group="redeploy-test")
-        await bus.start()
-
-        handler = HandlerRedeployKafka(event_bus=bus, timeout_s=0.1)
-
-        with pytest.raises(ValueError, match="image_digest"):
-            await handler.execute(runtime_lane=EnumRuntimeLane.PROD)
-
-        await bus.close()
-
-
-# ---------------------------------------------------------------------------
-# HandlerRedeployWorkflowRunner golden chain tests
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.unit
-class TestRedeployWorkflowRunnerGoldenChain:
-    """Golden chain: start command -> WorkflowPackage FSM -> completion."""
-
-    async def test_dry_run_full_cycle(self) -> None:
-        """Dry-run completes all phases without Kafka, reaches DONE."""
-        workflow_input = ModelRedeployWorkflowInput(
-            scope="full",
-            git_ref="origin/main",
-            dry_run=True,
-        )
-        result = await run_redeploy_workflow(workflow_input, event_bus=None)
-
-        assert result.success is True
-        assert result.final_phase == EnumRedeployPhase.DONE
-        assert result.rebuild_result is not None
-        assert result.rebuild_result.git_sha == "dry-run"
-        assert result.error_message is None
-
-    async def test_dry_run_phases_completed(self) -> None:
-        """Dry-run: all 6 FSM phases complete."""
-        workflow_input = ModelRedeployWorkflowInput(dry_run=True)
-        result = await run_redeploy_workflow(workflow_input, event_bus=None)
-
-        # IDLE -> SYNC_CLONES -> UPDATE_PINS -> REBUILD -> SEED_INFISICAL -> VERIFY_HEALTH -> DONE
-        assert result.phases_completed == 6
-
-    async def test_no_event_bus_without_dry_run_fails(self) -> None:
-        """Without event_bus and dry_run=False, workflow exits non-successful."""
-        workflow_input = ModelRedeployWorkflowInput(
-            scope="full",
-            dry_run=False,
-        )
-        result = await run_redeploy_workflow(workflow_input, event_bus=None)
-
-        assert result.success is False
-        assert result.error_message is not None
-        assert "event_bus required" in result.error_message
-
-    async def test_kafka_integration_full_success(self) -> None:
-        """Workflow with EventBusInmemory + fake deploy agent reaches DONE."""
-        from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
-
-        bus = EventBusInmemory(environment="test", group="workflow-test")
-        await bus.start()
-
-        async def _fake_deploy_agent(message: object) -> None:
-            payload = json.loads(message.value)  # type: ignore[union-attr]
-            completion = _make_completed_event(
-                correlation_id=payload["correlation_id"],
-                git_sha="workflow-sha",
-                services_restarted=["omninode-runtime"],
-            )
-            await bus.publish(
-                _EVT_TOPIC,
-                key=payload["correlation_id"].encode(),
-                value=json.dumps(completion.model_dump(mode="json")).encode(),
-            )
-
-        await bus.subscribe(
-            _CMD_TOPIC, on_message=_fake_deploy_agent, group_id="fake-agent"
-        )
-
-        workflow_input = ModelRedeployWorkflowInput(
-            correlation_id=uuid4(),
-            scope="full",
-            git_ref="origin/main",
-            dry_run=False,
-        )
-        result = await run_redeploy_workflow(workflow_input, event_bus=bus)
-
-        assert result.success is True
-        assert result.final_phase == EnumRedeployPhase.DONE
-        assert result.rebuild_result is not None
-        assert result.rebuild_result.success is True
-        assert result.rebuild_result.git_sha == "workflow-sha"
-
-        await bus.close()
-
-    async def test_workflow_propagates_lane_fields_to_deploy_agent(self) -> None:
-        """Workflow input fields survive through the Kafka deploy-agent command."""
-        from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
-
-        bus = EventBusInmemory(environment="test", group="workflow-test")
-        await bus.start()
-
-        received_commands: list[dict[str, object]] = []
-
-        async def _capturing_agent(message: object) -> None:
-            payload = json.loads(message.value)  # type: ignore[union-attr]
-            received_commands.append(payload)
-            completion = _make_completed_event(
-                correlation_id=payload["correlation_id"],
-                git_sha="workflow-sha",
-            )
-            await bus.publish(
-                _EVT_TOPIC,
-                key=payload["correlation_id"].encode(),
-                value=json.dumps(completion.model_dump(mode="json")).encode(),
-            )
-
-        await bus.subscribe(
-            _CMD_TOPIC, on_message=_capturing_agent, group_id="fake-agent"
-        )
-
-        workflow_input = ModelRedeployWorkflowInput(
-            correlation_id=uuid4(),
-            scope="runtime",
-            git_ref="origin/dev",
-            runtime_lane=EnumRuntimeLane.STABILITY_TEST,
-            build_source=EnumBuildSource.WORKSPACE,
-            image_ref="ghcr.io/omninode/omninode-runtime:dev",
-            image_digest="sha256:" + "b" * 64,
-            dry_run=False,
-        )
-        result = await run_redeploy_workflow(workflow_input, event_bus=bus)
-
-        assert result.success is True
-        assert len(received_commands) == 1
-        cmd = received_commands[0]
-        assert cmd["runtime_lane"] == "stability-test"
-        assert cmd["build_source"] == "workspace"
-        assert cmd["image_ref"] == "ghcr.io/omninode/omninode-runtime:dev"
-        assert cmd["image_digest"] == "sha256:" + "b" * 64
-
-        await bus.close()
-
-    async def test_kafka_integration_deploy_agent_failure(self) -> None:
-        """Deploy agent failure propagates: workflow reaches FAILED."""
-        from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
-
-        bus = EventBusInmemory(environment="test", group="workflow-test")
-        await bus.start()
-
-        async def _failed_agent(message: object) -> None:
-            payload = json.loads(message.value)  # type: ignore[union-attr]
-            completion = _make_completed_event(
-                correlation_id=payload["correlation_id"],
-                status="failed",
-                errors=["build failed: docker image pull error"],
-            )
-            await bus.publish(
-                _EVT_TOPIC,
-                key=payload["correlation_id"].encode(),
-                value=json.dumps(completion.model_dump(mode="json")).encode(),
-            )
-
-        await bus.subscribe(_CMD_TOPIC, on_message=_failed_agent, group_id="fake-agent")
-
-        workflow_input = ModelRedeployWorkflowInput(dry_run=False)
-        result = await run_redeploy_workflow(workflow_input, event_bus=bus)
-
-        assert result.success is False
-        assert result.rebuild_result is not None
-        assert result.rebuild_result.success is False
-        assert "build failed" in result.rebuild_result.errors[0]
-
-        await bus.close()
-
-    async def test_dry_run_versions_propagated(self) -> None:
-        """Version pins propagate into dry_run rebuild_result."""
-        workflow_input = ModelRedeployWorkflowInput(
-            versions={"omniintelligence": "0.9.0", "omninode-claude": "0.5.0"},
-            dry_run=True,
-        )
-        result = await run_redeploy_workflow(workflow_input, event_bus=None)
-
-        assert result.success is True
-        assert result.final_phase == EnumRedeployPhase.DONE
-
-    async def test_dry_run_skip_sync_flag(self) -> None:
-        """skip_sync=True propagates through workflow without error."""
-        workflow_input = ModelRedeployWorkflowInput(skip_sync=True, dry_run=True)
-        result = await run_redeploy_workflow(workflow_input, event_bus=None)
-
-        assert result.success is True
-
-    async def test_result_model_serializable(self) -> None:
-        """WorkflowResult is fully JSON-serializable via model_dump."""
-        workflow_input = ModelRedeployWorkflowInput(dry_run=True)
-        result = await run_redeploy_workflow(workflow_input, event_bus=None)
-
-        dumped = result.model_dump(mode="json")
-        assert dumped["final_phase"] == "done"
-        assert dumped["success"] is True
-        assert isinstance(dumped["phases_completed"], int)
+            HandlerDeployPublishMonitor(event_bus=None)
