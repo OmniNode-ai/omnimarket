@@ -12,23 +12,22 @@
 #
 # F3 BROKER DECISION (OMN-13226):
 #   This workflow runs on ubuntu-latest (cloud runner) and therefore CANNOT
-#   reach the private .201 LAN broker (192.168.86.201). We publish to
-#   Confluent Cloud using the same SASL_SSL transport as OMN-8917
+#   reach the private LAN broker. It publishes to Confluent Cloud using the
+#   same SASL_SSL transport as OMN-8917
 #   (trigger_rebuild_on_merge.py). A bridge/projection node (T3, OMN-13227)
-#   materializes the event onto the .201 lane so
+#   materializes the event onto the local projection lane so
 #   GET /projection/onex.evt.github.pr-merged.v1 is served by the :3002
 #   projection API.
 #
 # Evidence for runner constraint: omnimarket/.github/workflows/
 #   runtime-rebuild-trigger.yml uses runs-on: ubuntu-latest and documents
-#   the Confluent Cloud secrets (KAFKA_BOOTSTRAP_SERVERS pointing to
-#   pkc-xxx.us-east-1.aws.confluent.cloud:9092). No workflow in this repo
-#   uses self-hosted runners that target the .201 LAN.
+#   the Confluent Cloud secrets. No workflow in this repo uses self-hosted
+#   runners that target the private LAN.
 #
 # Ticket: OMN-13226
 #
 # Required environment variables (when not --dry-run):
-#   KAFKA_BOOTSTRAP_SERVERS   -- Confluent Cloud broker, e.g. pkc-xxx...:9092
+#   KAFKA_BOOTSTRAP_SERVERS   -- Confluent Cloud broker endpoint
 #   KAFKA_SASL_USERNAME       -- Confluent Cloud API key
 #   KAFKA_SASL_PASSWORD       -- Confluent Cloud API secret
 #   PR_REPO                   -- repository slug, e.g. OmniNode-ai/omnimarket

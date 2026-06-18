@@ -18,13 +18,13 @@ description: >
   Projects GitHub PR-merged events (onex.evt.github.pr-merged.v1) into a
   queryable monotonic-cursor projection. Enables the per-machine worktree
   reaper (T4, OMN-13228) to poll GET /projection/onex.evt.github.pr-merged.v1
-  on the .201 lane (:3002) to discover newly merged PRs and trigger
+  on the local projection API to discover newly merged PRs and trigger
   prune-worktrees.sh on matched worktrees.
 
   Transport note: the publisher (GHA pr-merged-publisher workflow) runs on
   ubuntu-latest and publishes to Confluent Cloud via SASL_SSL. This node
-  consumes from Confluent and re-publishes onto the .201 Redpanda lane so the
-  :3002 projection API serves the events locally.
+  consumes from Confluent and re-publishes onto the local Redpanda lane so the
+  projection API serves the events locally.
 
   Full handler implementation: T3 (OMN-13227).
 

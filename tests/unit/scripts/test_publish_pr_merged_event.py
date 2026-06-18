@@ -16,6 +16,12 @@ from click.testing import CliRunner
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 SCRIPT_PATH = REPO_ROOT / "scripts" / "publish_pr_merged_event.py"
+BRANCH_OWNER = "contributor"
+BRANCH_TICKET = "OMN-13226"
+LEGACY_BRANCH_TICKET = "OMN-99"
+EXAMPLE_FEATURE_BRANCH = f"{BRANCH_OWNER}/{BRANCH_TICKET.lower()}-some-feature"
+PUBLISH_BRANCH = f"{BRANCH_OWNER}/{BRANCH_TICKET.lower()}-t2"
+BROKER_ENDPOINT = "broker.example.invalid:9092"
 
 
 def _load_publisher_module() -> types.ModuleType:
@@ -97,7 +103,7 @@ def test_build_payload_shape(publisher_module: types.ModuleType) -> None:
     """build_payload returns all required fields with correct types."""
     payload = publisher_module.build_payload(  # type: ignore[attr-defined]
         repo="OmniNode-ai/omnimarket",
-        branch="jonahgabriel/omn-12345-some-feature",
+        branch=EXAMPLE_FEATURE_BRANCH,
         pr_number=42,
         ticket="OMN-12345",
         merged_at="2026-06-18T12:00:00Z",
@@ -106,7 +112,7 @@ def test_build_payload_shape(publisher_module: types.ModuleType) -> None:
 
     assert payload["topic"] == "onex.evt.github.pr-merged.v1"
     assert payload["repo"] == "OmniNode-ai/omnimarket"
-    assert payload["branch"] == "jonahgabriel/omn-12345-some-feature"
+    assert payload["branch"] == EXAMPLE_FEATURE_BRANCH
     assert payload["pr_number"] == 42
     assert payload["ticket"] == "OMN-12345"
     assert payload["merged_at"] == "2026-06-18T12:00:00Z"
@@ -118,8 +124,10 @@ def test_build_payload_shape(publisher_module: types.ModuleType) -> None:
 def test_extract_ticket_from_branch(publisher_module: types.ModuleType) -> None:
     """_extract_ticket pulls OMN-XXXX from a branch name."""
     fn = publisher_module._extract_ticket  # type: ignore[attr-defined]
-    assert fn("jonahgabriel/omn-13226-t2-publisher") == "OMN-13226"
-    assert fn("jonahgabriel/omn-99-fix") == "OMN-99"
+    assert fn(f"{BRANCH_OWNER}/{BRANCH_TICKET.lower()}-t2-publisher") == BRANCH_TICKET
+    assert (
+        fn(f"{BRANCH_OWNER}/{LEGACY_BRANCH_TICKET.lower()}-fix") == LEGACY_BRANCH_TICKET
+    )
     assert fn("no-ticket-here") == ""
 
 
@@ -144,7 +152,7 @@ def test_publish_pr_merged_event_correct_topic_and_payload(
         username="user",
         password="secret",
         repo="OmniNode-ai/omnimarket",
-        branch="jonahgabriel/omn-13226-t2",
+        branch=PUBLISH_BRANCH,
         pr_number=99,
         ticket="OMN-13226",
         merged_at="2026-06-18T10:00:00Z",
@@ -160,7 +168,7 @@ def test_publish_pr_merged_event_correct_topic_and_payload(
 
     value = record["value"]
     assert value["repo"] == "OmniNode-ai/omnimarket"
-    assert value["branch"] == "jonahgabriel/omn-13226-t2"
+    assert value["branch"] == PUBLISH_BRANCH
     assert value["pr_number"] == 99
     assert value["ticket"] == "OMN-13226"
     assert value["merged_at"] == "2026-06-18T10:00:00Z"
@@ -177,7 +185,7 @@ def test_publish_pr_merged_event_sasl_config(
     monkeypatch.setitem(sys.modules, "confluent_kafka", fake_confluent)
 
     publisher_module.publish_pr_merged_event(  # type: ignore[attr-defined]
-        bootstrap_servers="pkc-xxx.us-east-1.aws.confluent.cloud:9092",
+        bootstrap_servers=BROKER_ENDPOINT,
         username="apikey",
         password="apisecret",
         repo="OmniNode-ai/omnimarket",
@@ -192,7 +200,7 @@ def test_publish_pr_merged_event_sasl_config(
     assert cfg["sasl.mechanisms"] == "PLAIN"
     assert cfg["sasl.username"] == "apikey"
     assert cfg["sasl.password"] == "apisecret"
-    assert cfg["bootstrap.servers"] == "pkc-xxx.us-east-1.aws.confluent.cloud:9092"
+    assert cfg["bootstrap.servers"] == BROKER_ENDPOINT
 
 
 @pytest.mark.unit
@@ -205,7 +213,7 @@ def test_cli_dry_run_no_kafka(
     monkeypatch.setitem(sys.modules, "confluent_kafka", fake_confluent)
 
     monkeypatch.setenv("PR_REPO", "OmniNode-ai/omnimarket")
-    monkeypatch.setenv("PR_BRANCH", "jonahgabriel/omn-13226-dry")
+    monkeypatch.setenv("PR_BRANCH", f"{BRANCH_OWNER}/{BRANCH_TICKET.lower()}-dry")
     monkeypatch.setenv("PR_NUMBER", "77")
     monkeypatch.setenv("PR_MERGED_AT", "2026-06-18T09:00:00Z")
     monkeypatch.delenv("PR_TICKET", raising=False)
@@ -250,11 +258,11 @@ def test_cli_publishes_when_broker_set(
     monkeypatch.setitem(sys.modules, "confluent_kafka", fake_confluent)
 
     monkeypatch.setenv("PR_REPO", "OmniNode-ai/omnimarket")
-    monkeypatch.setenv("PR_BRANCH", "jonahgabriel/omn-13226-publish")
+    monkeypatch.setenv("PR_BRANCH", f"{BRANCH_OWNER}/{BRANCH_TICKET.lower()}-publish")
     monkeypatch.setenv("PR_NUMBER", "200")
     monkeypatch.setenv("PR_MERGED_AT", "2026-06-18T11:00:00Z")
     monkeypatch.delenv("PR_TICKET", raising=False)
-    monkeypatch.setenv("KAFKA_BOOTSTRAP_SERVERS", "pkc-xxx:9092")
+    monkeypatch.setenv("KAFKA_BOOTSTRAP_SERVERS", BROKER_ENDPOINT)
     monkeypatch.setenv("KAFKA_SASL_USERNAME", "key")
     monkeypatch.setenv("KAFKA_SASL_PASSWORD", "secret")
 

@@ -7,21 +7,21 @@
 # merges to any branch. The event payload carries {repo, branch, pr_number,
 # ticket, merged_at} and is consumed by the projection node (OMN-13227) which
 # materialises a queryable projection at GET /projection/onex.evt.github.pr-merged.v1
-# on the .201 lane (:3002). The per-machine worktree reaper (T4, OMN-13228)
+# on the local projection API. The per-machine worktree reaper (T4, OMN-13228)
 # polls that projection to trigger prune-worktrees.sh on matched worktrees.
 #
 # F3 BROKER DECISION (OMN-13226):
 #   Runs on ubuntu-latest (GitHub-hosted cloud runner). Cloud runners cannot
-#   reach the private 192.168.86.201 LAN broker. We therefore publish to
+#   reach the private LAN broker. We therefore publish to
 #   Confluent Cloud using SASL_SSL, identical to OMN-8917
-#   (runtime-rebuild-trigger.yml / trigger_rebuild_on_merge.py). The .201
-#   projection node (T3) bridges Confluent → .201 lane Redpanda so the :3002
+#   (runtime-rebuild-trigger.yml / trigger_rebuild_on_merge.py). The
+#   projection node (T3) bridges Confluent to the local Redpanda lane so the
 #   projection is populated for local reaper polling.
 #
 # Ticket: OMN-13226
 #
 # Required GitHub Secrets:
-#   KAFKA_BOOTSTRAP_SERVERS    -- e.g. pkc-xxx.us-east-1.aws.confluent.cloud:9092
+#   KAFKA_BOOTSTRAP_SERVERS    -- Confluent Cloud broker endpoint
 #   KAFKA_SASL_USERNAME        -- Confluent Cloud API key
 #   KAFKA_SASL_PASSWORD        -- Confluent Cloud API secret
 
