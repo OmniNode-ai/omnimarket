@@ -22,6 +22,9 @@ LEGACY_BRANCH_TICKET = "OMN-99"
 EXAMPLE_FEATURE_BRANCH = f"{BRANCH_OWNER}/{BRANCH_TICKET.lower()}-some-feature"
 PUBLISH_BRANCH = f"{BRANCH_OWNER}/{BRANCH_TICKET.lower()}-t2"
 BROKER_ENDPOINT = "broker.example.invalid:9092"
+LOCAL_LANE_ENDPOINT = (
+    "broker.local.invalid:19092"  # local lane plaintext broker stand-in
+)
 
 
 def _load_publisher_module() -> types.ModuleType:
@@ -176,11 +179,11 @@ def test_publish_pr_merged_event_correct_topic_and_payload(
 
 
 @pytest.mark.unit
-def test_publish_pr_merged_event_sasl_config(
+def test_publish_pr_merged_event_sasl_config_when_creds_present(
     publisher_module: types.ModuleType,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Producer is configured with SASL_SSL, matching the Confluent Cloud pattern."""
+    """SASL_SSL transport is used when SASL credentials are supplied (cloud broker)."""
     fake_confluent = types.SimpleNamespace(Producer=_FakeProducer)
     monkeypatch.setitem(sys.modules, "confluent_kafka", fake_confluent)
 
@@ -201,6 +204,39 @@ def test_publish_pr_merged_event_sasl_config(
     assert cfg["sasl.username"] == "apikey"
     assert cfg["sasl.password"] == "apisecret"
     assert cfg["bootstrap.servers"] == BROKER_ENDPOINT
+
+
+@pytest.mark.unit
+def test_publish_pr_merged_event_plaintext_when_no_creds(
+    publisher_module: types.ModuleType,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Plaintext transport (no SASL keys) is used for the local lane broker.
+
+    The local lane Redpanda broker has no SASL; the producer must connect in
+    plaintext, resolving the endpoint purely from KAFKA_BOOTSTRAP_SERVERS.
+    """
+    fake_confluent = types.SimpleNamespace(Producer=_FakeProducer)
+    monkeypatch.setitem(sys.modules, "confluent_kafka", fake_confluent)
+
+    publisher_module.publish_pr_merged_event(  # type: ignore[attr-defined]
+        bootstrap_servers=LOCAL_LANE_ENDPOINT,
+        username="",
+        password="",
+        repo="OmniNode-ai/omnimarket",
+        branch="main",
+        pr_number=2,
+        ticket="",
+        merged_at="2026-06-18T00:00:00Z",
+    )
+
+    cfg = _FakeProducer.instances[0].config
+    assert cfg["bootstrap.servers"] == LOCAL_LANE_ENDPOINT
+    # No SASL/SSL keys when credentials are absent (plaintext LAN broker).
+    assert "security.protocol" not in cfg
+    assert "sasl.mechanisms" not in cfg
+    assert "sasl.username" not in cfg
+    assert "sasl.password" not in cfg
 
 
 @pytest.mark.unit
@@ -277,3 +313,77 @@ def test_cli_publishes_when_broker_set(
     record = _FakeProducer.instances[0].produced[0]
     assert record["topic"] == "onex.evt.github.pr-merged.v1"
     assert record["value"]["pr_number"] == 200
+
+
+@pytest.mark.unit
+def test_cli_publishes_local_lane_plaintext_no_sasl(
+    publisher_module: types.ModuleType,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """CLI publishes via plaintext when a broker is set but no SASL creds.
+
+    This is the self-hosted-runner path: KAFKA_BOOTSTRAP_SERVERS resolves to the
+    local lane broker (from ~/.omnibase/.env) with no SASL credentials, so the
+    event still publishes to the canonical topic over plaintext.
+    """
+    fake_confluent = types.SimpleNamespace(Producer=_FakeProducer)
+    monkeypatch.setitem(sys.modules, "confluent_kafka", fake_confluent)
+
+    monkeypatch.setenv("PR_REPO", "OmniNode-ai/omnimarket")
+    monkeypatch.setenv("PR_BRANCH", f"{BRANCH_OWNER}/{BRANCH_TICKET.lower()}-lane")
+    monkeypatch.setenv("PR_NUMBER", "201")
+    monkeypatch.setenv("PR_MERGED_AT", "2026-06-18T11:30:00Z")
+    monkeypatch.delenv("PR_TICKET", raising=False)
+    monkeypatch.setenv("KAFKA_BOOTSTRAP_SERVERS", LOCAL_LANE_ENDPOINT)
+    monkeypatch.delenv("KAFKA_SASL_USERNAME", raising=False)
+    monkeypatch.delenv("KAFKA_SASL_PASSWORD", raising=False)
+
+    result = CliRunner().invoke(
+        publisher_module.main,  # type: ignore[attr-defined]
+        [],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert "Published onex.evt.github.pr-merged.v1" in result.output
+    assert len(_FakeProducer.instances) == 1
+    cfg = _FakeProducer.instances[0].config
+    assert cfg["bootstrap.servers"] == LOCAL_LANE_ENDPOINT
+    assert "security.protocol" not in cfg
+    record = _FakeProducer.instances[0].produced[0]
+    assert record["topic"] == "onex.evt.github.pr-merged.v1"
+    assert record["value"]["pr_number"] == 201
+
+
+@pytest.mark.unit
+def test_cli_skips_gracefully_when_broker_unset(
+    publisher_module: types.ModuleType,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """CLI exits 0 with a loud warning when KAFKA_BOOTSTRAP_SERVERS is unset.
+
+    A broker misconfiguration (e.g. misrouted onto a cloud runner with no broker
+    provisioned) must be visible in the logs but must NOT red every merge: the
+    publisher skips gracefully (exit 0) and instantiates no Producer.
+    """
+    fake_confluent = types.SimpleNamespace(Producer=_FakeProducer)
+    monkeypatch.setitem(sys.modules, "confluent_kafka", fake_confluent)
+
+    monkeypatch.setenv("PR_REPO", "OmniNode-ai/omnimarket")
+    monkeypatch.setenv("PR_BRANCH", f"{BRANCH_OWNER}/{BRANCH_TICKET.lower()}-skip")
+    monkeypatch.setenv("PR_NUMBER", "202")
+    monkeypatch.setenv("PR_MERGED_AT", "2026-06-18T12:00:00Z")
+    monkeypatch.delenv("PR_TICKET", raising=False)
+    monkeypatch.delenv("KAFKA_BOOTSTRAP_SERVERS", raising=False)
+    monkeypatch.delenv("KAFKA_SASL_USERNAME", raising=False)
+    monkeypatch.delenv("KAFKA_SASL_PASSWORD", raising=False)
+
+    result = CliRunner().invoke(
+        publisher_module.main,  # type: ignore[attr-defined]
+        [],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert "WARNING" in result.output
+    assert "KAFKA_BOOTSTRAP_SERVERS is not set" in result.output
+    # No Producer should have been instantiated when skipping.
+    assert len(_FakeProducer.instances) == 0

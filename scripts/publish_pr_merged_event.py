@@ -10,35 +10,44 @@
 #
 # Payload: {repo, branch, pr_number, ticket, merged_at}
 #
-# F3 BROKER DECISION (OMN-13226), resolved by verified reachability:
-#   This workflow runs on ubuntu-latest (cloud runner) and therefore CANNOT
-#   reach the private LAN broker directly. It publishes via the same SASL_SSL
-#   transport as OMN-8917 (trigger_rebuild_on_merge.py), emitting to whatever
-#   broker KAFKA_BOOTSTRAP_SERVERS resolves to in the runner Infisical
-#   environment (the canonical bus endpoint) — the transport is NOT hardcoded
-#   to a single provider. The T3 projection node (OMN-13227)
-#   bridges/materializes the event onto the .201 Redpanda lane so
+# F3 BROKER DECISION (OMN-13226), re-resolved by verified reachability (OMN-13226
+# follow-up):
+#   The workflow runs on the self-hosted omnibase-ci runner (which lives on
+#   .201) for trusted, non-fork merge events. That runner reaches the LOCAL lane
+#   Redpanda broker directly: KAFKA_BOOTSTRAP_SERVERS is sourced from
+#   ~/.omnibase/.env on the runner and points at the lane broker (plaintext LAN
+#   endpoint, e.g. localhost:19092). The event therefore lands on the same
+#   Redpanda lane that node_pr_merged_projection (T3, OMN-13227) consumes, so
 #   GET /projection/onex.evt.github.pr-merged.v1 is served by the :3002
 #   projection API for local reaper polling (T4, OMN-13228).
 #
-# Evidence for runner constraint: omnimarket/.github/workflows/
-#   runtime-rebuild-trigger.yml uses runs-on: ubuntu-latest; pr-review-bot.yml
-#   documents that KAFKA_BOOTSTRAP_SERVERS is pre-mounted in the runner
-#   Infisical environment. No workflow in this repo uses a self-hosted runner
-#   that reaches the private LAN.
+# Transport is resolved from the env, never hardcoded:
+#   - When KAFKA_SASL_USERNAME and KAFKA_SASL_PASSWORD are both set, the producer
+#     uses SASL_SSL/PLAIN (cloud Confluent-style broker).
+#   - Otherwise it uses a plaintext connection (the local lane Redpanda broker,
+#     which has no SASL). The broker endpoint always comes from
+#     KAFKA_BOOTSTRAP_SERVERS — no provider or address is hardcoded.
+#
+# If KAFKA_BOOTSTRAP_SERVERS is unset (true misconfiguration — e.g. the workflow
+# was forced onto a cloud runner with no broker provisioned), the publish is
+# SKIPPED with a loud warning and exit 0, so a misconfig is visible in the logs
+# but does NOT red every merge. On the self-hosted runner the broker IS
+# configured, so the event actually publishes.
 #
 # Ticket: OMN-13226
 #
-# Required environment variables (when not --dry-run, resolved from Infisical):
-#   KAFKA_BOOTSTRAP_SERVERS   -- canonical bus broker endpoint
-#   KAFKA_SASL_USERNAME       -- SASL username / API key
-#   KAFKA_SASL_PASSWORD       -- SASL password / API secret
+# Required environment variables (when not --dry-run):
+#   KAFKA_BOOTSTRAP_SERVERS   -- canonical bus broker endpoint (from ~/.omnibase/.env
+#                                on the self-hosted runner; from the runner Infisical
+#                                environment for a cloud broker)
 #   PR_REPO                   -- repository slug, e.g. OmniNode-ai/omnimarket
 #   PR_BRANCH                 -- head branch name of the merged PR
 #   PR_NUMBER                 -- PR number as a string
 #   PR_MERGED_AT              -- ISO-8601 merge timestamp from GitHub event
 #
 # Optional:
+#   KAFKA_SASL_USERNAME       -- SASL username / API key (cloud broker only)
+#   KAFKA_SASL_PASSWORD       -- SASL password / API secret (cloud broker only)
 #   PR_TICKET                 -- Linear ticket ID extracted from branch/title
 #
 # Usage:
@@ -52,10 +61,21 @@ import re
 import sys
 import uuid
 from datetime import UTC, datetime
+from pathlib import Path
 
 import click
 
-TOPIC = "onex.evt.github.pr-merged.v1"  # onex-topic-allow: canonical topic registry; declared in node_pr_merged_projection contract.yaml subscribe_topics (OMN-13226/13227)
+# Canonical topic constant (single source of truth in omnimarket.events.topics).
+# The script runs both via `uv run python scripts/...` (package importable) and
+# as a bare `python scripts/...`; ensure the src tree is importable in the latter
+# case before importing the canonical constant.
+_SRC_ROOT = Path(__file__).resolve().parents[1] / "src"
+if str(_SRC_ROOT) not in sys.path:
+    sys.path.insert(0, str(_SRC_ROOT))
+
+from omnimarket.events.topics import PR_MERGED_TOPIC_V1  # noqa: E402
+
+TOPIC = PR_MERGED_TOPIC_V1
 
 _TICKET_RE = re.compile(r"OMN-\d+", re.IGNORECASE)
 
@@ -69,18 +89,27 @@ def _extract_ticket(branch: str, title: str = "") -> str:
     return ""
 
 
-def _kafka_sasl_config(
+def _kafka_producer_config(
     bootstrap_servers: str,
     username: str,
     password: str,
 ) -> dict[str, str | int | float | bool]:
-    return {
+    """Resolve the producer transport from the env.
+
+    SASL_SSL/PLAIN when SASL credentials are supplied (cloud broker); plaintext
+    otherwise (the local lane Redpanda broker, which has no SASL). The broker
+    endpoint is always taken from ``bootstrap_servers`` (KAFKA_BOOTSTRAP_SERVERS)
+    — never hardcoded.
+    """
+    config: dict[str, str | int | float | bool] = {
         "bootstrap.servers": bootstrap_servers,
-        "security.protocol": "SASL_SSL",
-        "sasl.mechanisms": "PLAIN",
-        "sasl.username": username,
-        "sasl.password": password,
     }
+    if username and password:
+        config["security.protocol"] = "SASL_SSL"
+        config["sasl.mechanisms"] = "PLAIN"
+        config["sasl.username"] = username
+        config["sasl.password"] = password
+    return config
 
 
 def build_payload(
@@ -115,7 +144,7 @@ def publish_pr_merged_event(
     merged_at: str,
 ) -> str:
     """Publish onex.evt.github.pr-merged.v1 to Kafka. Returns the event_id."""
-    from confluent_kafka import Producer  # type: ignore[import-untyped]
+    from confluent_kafka import Producer  # type: ignore[import-untyped,unused-ignore]
 
     event_id = str(uuid.uuid4())
     payload = build_payload(
@@ -127,11 +156,11 @@ def publish_pr_merged_event(
         event_id=event_id,
     )
 
-    producer = Producer(_kafka_sasl_config(bootstrap_servers, username, password))
+    producer = Producer(_kafka_producer_config(bootstrap_servers, username, password))
 
     delivery_error: BaseException | None = None
 
-    def _on_delivery(err: object, _msg: object) -> None:  # type: ignore[misc]
+    def _on_delivery(err: object, _msg: object) -> None:
         nonlocal delivery_error
         if err is not None:
             delivery_error = RuntimeError(str(err))
@@ -215,11 +244,20 @@ def main(dry_run: bool) -> None:
     password = os.environ.get("KAFKA_SASL_PASSWORD", "")
 
     if not bootstrap_servers:
-        click.echo("KAFKA_BOOTSTRAP_SERVERS is not set -- skipping publish", err=True)
-        sys.exit(1)
-    if not username or not password:
-        click.echo("KAFKA_SASL_USERNAME and KAFKA_SASL_PASSWORD must be set", err=True)
-        sys.exit(1)
+        # True misconfiguration: no broker resolvable from the env. On the
+        # self-hosted runner the broker comes from ~/.omnibase/.env, so reaching
+        # here means the runner was misrouted (e.g. forced onto a cloud runner
+        # with no broker provisioned). Make it loudly visible but do NOT red the
+        # merge — a misconfig should not fail every PR's checks.
+        click.echo(
+            "WARNING: KAFKA_BOOTSTRAP_SERVERS is not set -- skipping pr-merged "
+            "publish (no broker resolvable from the environment). The "
+            "self-hosted omnibase-ci runner sources this from ~/.omnibase/.env; "
+            "if you see this on the trusted runner, the runner env is "
+            "misconfigured. Exiting 0 so a misconfig does not fail every merge.",
+            err=True,
+        )
+        sys.exit(0)
 
     try:
         published_id = publish_pr_merged_event(
