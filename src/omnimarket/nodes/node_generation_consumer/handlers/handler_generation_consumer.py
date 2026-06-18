@@ -111,7 +111,9 @@ _DEFAULT_GENERATION_TASK_TYPE = "code_generation"
 # OMN-12829 (C1): tiers whose escalated decision is classified as a local
 # provider. Mirrors the routing reducer's _LOCAL_TIERS so the escalation event's
 # provider field is derived from the authority's tier, not a code literal.
-_LOCAL_TIER_NAMES = frozenset({"local", "cli_agents"})
+# OMN-13215: the shelled ``cli_agents`` tier was removed; ``local`` is the only
+# local-provider tier.
+_LOCAL_TIER_NAMES = frozenset({"local"})
 
 # OMN-12813: Explicit format instruction — no chain-of-thought, no numbered
 # analysis steps.  The inference protocol profile (local-qwen-generation-*)

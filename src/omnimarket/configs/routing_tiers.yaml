@@ -10,9 +10,16 @@
 #
 # Tier evaluation order: local → cheap_cloud → claude
 # The handler iterates tiers top-to-bottom, stopping at the first accepted result.
-# The claude-named terminal tier is preserved for task-class escalation-policy
-# compatibility, but it routes to OAuth-backed headless Codex CLI rather than an
-# Anthropic API-key backend.
+#
+# OMN-13215: every tier — INCLUDING the ceiling (claude) — resolves provider +
+# endpoint + model + api_key_ref per-tier from this contract deep-merged with the
+# overlay, and executes through the canonical HTTP inference path (Bifrost
+# complete-URL-from-contract) identical to the lower tiers. The ceiling tier model
+# maps to an HTTP frontier backend (default backend_id ``cloud-sonnet``); it is
+# swappable across gemini / glm / openrouter / claude purely via contract overlay
+# (repoint the model's backend_id, or override the backend's endpoint_url /
+# model_name / secret_ref) — no code change, no env var, no CLI shell-out. The
+# former shelled ``codex-cli`` / ``cli_agents`` tiers were REMOVED.
 #
 # Endpoint URLs are resolved from the repo bifrost contract deep-merged with
 # the user overlay at ~/.omninode/delegation/bifrost_overrides.yaml. The
@@ -23,6 +30,7 @@
 #   - OMN-8029: Delegation pipeline — local→cheap-cloud→claude routing
 #   - OMN-10657: Endpoint resolution from bifrost contract, not env vars
 #   - OMN-10717: Default contract + endpoint overlay merge semantics
+#   - OMN-13215: Canonical, provider-swappable ceiling tier; remove shelled CLI
 tiers:
   - name: local
     cost_per_1k_tokens: 0.0
@@ -141,11 +149,18 @@ tiers:
     eval_before_accept: true
     eval_model: qwen3.6-35b
     max_retries: 1
+  # Ceiling tier (OMN-13215). Executes through the canonical HTTP inference path
+  # like every lower tier — NO subprocess, NO shelled CLI. The model maps to an
+  # HTTP frontier backend (default backend_id ``cloud-sonnet``: complete verbatim
+  # endpoint_url + secret_ref llm.anthropic.api_key). To swap the ceiling provider
+  # (gemini / glm / openrouter / claude) edit ONLY this contract/overlay: repoint
+  # backend_id to another HTTP backend, or override that backend's endpoint_url /
+  # model_name / secret_ref in bifrost_overrides.yaml. No code change required.
   - name: claude
-    cost_per_1k_tokens: 0.0
+    cost_per_1k_tokens: 0.015
     models:
-      - id: codex-cli
-        backend_id: cli-codex
+      - id: claude-sonnet-4-6
+        backend_id: cloud-sonnet
         max_context_tokens: 200000
         use_for:
           - escalation
@@ -157,25 +172,5 @@ tiers:
           - test
           - document
           - research
-    eval_before_accept: false
-    max_retries: 0
-  # CLI agent delegation tier (OMN-10137)
-  # Models dispatched via subprocess rather than HTTP API.
-  # Availability confirmed at dispatch time via shutil.which inside HandlerLlmCliSubprocess.
-  - name: cli_agents
-    cost_per_1k_tokens: 0.002
-    models:
-      - id: claude-cli
-        backend_id: cli-claude
-        max_context_tokens: 200000
-        use_for:
-          - agent_delegation
-          - complex_reasoning
-      - id: opencode-cli
-        backend_id: cli-opencode
-        max_context_tokens: 200000
-        use_for:
-          - agent_delegation
-          - code_generation
     eval_before_accept: false
     max_retries: 0

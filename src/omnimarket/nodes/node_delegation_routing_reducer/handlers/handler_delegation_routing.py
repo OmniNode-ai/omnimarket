@@ -145,7 +145,9 @@ _SYSTEM_PROMPTS: dict[str, str] = {
 
 # cloud_routing_policy values that block routing to non-local tiers.
 _CLOUD_BLOCKED_POLICY = "blocked"
-_LOCAL_TIERS = {"local", "cli_agents"}
+# OMN-13215: the shelled ``cli_agents`` tier was removed; ``local`` is the only
+# zero-cost local-execution tier exempt from the cloud-blocked routing policy.
+_LOCAL_TIERS = {"local"}
 
 
 def _estimate_prompt_tokens(prompt: str) -> int:
@@ -489,7 +491,11 @@ def _tier_allowed_by_contract(
     if (
         ceiling_raw is not None
         and isinstance(ceiling_raw, (int, float))
-        and tier.cost_per_1k_tokens > float(ceiling_raw)
+        # OMN-13215: compare with a small epsilon so a tier whose cost EQUALS the
+        # contract ceiling (e.g. the claude ceiling tier at $0.015 vs a $0.015
+        # ceiling) is permitted. Strict ``>`` mis-rejected the equal case due to
+        # binary float representation of 0.015, stranding the declared ceiling tier.
+        and tier.cost_per_1k_tokens > float(ceiling_raw) + 1e-9
     ):
         return False
 

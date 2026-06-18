@@ -108,7 +108,10 @@ from omnimarket.pricing import estimate_baseline_cost_usd, get_manifest_version_
 # Kept separate from handle_gate_result's max_escalation_attempts so callers can
 # tune them independently.
 _MAX_INFERENCE_ESCALATION_ATTEMPTS: int = 2
-_INFERENCE_ERROR_EXCLUDED_TIERS: frozenset[str] = frozenset({"cli_agents"})
+# OMN-13215: the shelled ``cli_agents`` tier was removed. Every tier — including
+# the ceiling (claude) — now executes through the canonical HTTP inference path, so
+# no tier is excluded from inference-error escalation.
+_INFERENCE_ERROR_EXCLUDED_TIERS: frozenset[str] = frozenset()
 # OMN-13140 GATE 1 classification. Inference effects (node_llm_delegation_call_effect)
 # raise three terminal-shaped errors for an otherwise-reachable provider:
 #   * "finish_reason=length"     — response TRUNCATED at the tier's max_tokens.
@@ -769,7 +772,10 @@ class HandlerDelegationWorkflow:
         result: ModelQualityGateResult,
         *,
         max_escalation_attempts: int = 2,
-        excluded_tiers: frozenset[str] = frozenset({"cli_agents"}),
+        # OMN-13215: the shelled ``cli_agents`` tier was removed; no tier is
+        # excluded from quality-gate escalation now that every tier (including the
+        # ceiling) runs over the canonical HTTP inference path.
+        excluded_tiers: frozenset[str] = frozenset(),
     ) -> list[BaseModel]:
         """Handle quality gate result with escalation support (OMN-12254).
 

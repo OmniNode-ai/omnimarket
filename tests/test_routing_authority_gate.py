@@ -445,10 +445,12 @@ class TestProviderEndpointShapeOMN12883:
             f"conflict-backend must appear in violations: {audit['violations']}"
         )
 
-    def test_cli_agent_tier_exempt_from_endpoint_url_requirement(
-        self, tmp_path: Path
-    ) -> None:
-        """CLI-agent tier backends may have empty endpoint_url (no HTTP call made)."""
+    def test_cli_agent_tier_backend_is_a_violation(self, tmp_path: Path) -> None:
+        """OMN-13215: a ``cli_agents`` tier / ``cli-`` backend is now FORBIDDEN.
+
+        The shelled-CLI inference path was removed; reintroducing it must fail the
+        routing-authority shape gate.
+        """
         data = {
             "backends": [
                 {
@@ -466,15 +468,19 @@ class TestProviderEndpointShapeOMN12883:
         (tmp_path / ".git").mkdir()
 
         audit = build_provider_endpoint_shape_audit(tmp_path)
-        assert audit["clean"], (
-            f"cli_agents tier must be exempt from endpoint_url requirement: "
-            f"{audit['violations']}"
+        assert not audit["clean"], (
+            "a cli_agents tier backend must be flagged as a violation (OMN-13215)"
         )
+        assert any("cli-claude" in v and "forbidden" in v for v in audit["violations"])
 
-    def test_cli_backend_url_exempt_from_http_endpoint_shape_even_in_claude_tier(
+    def test_cli_scheme_endpoint_is_a_violation_even_in_claude_tier(
         self, tmp_path: Path
     ) -> None:
-        """CLI backends may serve the claude-named terminal escalation tier."""
+        """OMN-13215: a ``cli://`` endpoint_url is FORBIDDEN in any tier.
+
+        The ceiling tier must execute over HTTP; the removed cli://codex shell-out
+        must not pass the shape gate even when declared on the claude-named tier.
+        """
         data = {
             "backends": [
                 {
@@ -492,7 +498,7 @@ class TestProviderEndpointShapeOMN12883:
         (tmp_path / ".git").mkdir()
 
         audit = build_provider_endpoint_shape_audit(tmp_path)
-        assert audit["clean"], (
-            f"cli:// terminal backend must be exempt from HTTP endpoint shape: "
-            f"{audit['violations']}"
+        assert not audit["clean"], (
+            "a cli:// endpoint_url must be flagged as a violation (OMN-13215)"
         )
+        assert any("cli-codex" in v and "forbidden" in v for v in audit["violations"])

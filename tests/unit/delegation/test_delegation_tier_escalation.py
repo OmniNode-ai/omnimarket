@@ -16,6 +16,7 @@ Covers:
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from datetime import UTC, datetime
 from uuid import NAMESPACE_DNS, UUID, uuid4, uuid5
 
@@ -432,31 +433,30 @@ class TestTerminalEventEscalationMetadata:
 class TestNextEligibleTier:
     """Task 10, tests 10-11: next_eligible_tier helper logic."""
 
-    def test_next_eligible_tier_excludes_cli_agents(self) -> None:
-        """next_eligible_tier('cheap_cloud', {'cli_agents'}) -> 'cheap_frontier'.
+    def test_next_eligible_tier_advances_to_cheap_frontier(self) -> None:
+        """next_eligible_tier('cheap_cloud', {}) -> 'cheap_frontier'.
 
         OMN-12492 added cheap_frontier between cheap_cloud and claude.
-        Escalation from cheap_cloud now lands on cheap_frontier (not claude directly).
-        cli_agents is excluded but that does not skip cheap_frontier.
+        Escalation from cheap_cloud lands on cheap_frontier (not claude directly).
+        OMN-13215: the shelled cli_agents tier was removed; declaration order is
+        local -> cheap_cloud -> cheap_frontier -> claude.
         """
-        result = next_eligible_tier("cheap_cloud", frozenset({"cli_agents"}))
-        # cheap_frontier is the next declared tier after cheap_cloud; cli_agents
-        # is excluded but cheap_frontier is not, so it is returned.
+        result = next_eligible_tier("cheap_cloud", frozenset())
         assert result == "cheap_frontier"
 
     def test_next_eligible_tier_from_cheap_frontier(self) -> None:
-        """next_eligible_tier('cheap_frontier', {'cli_agents'}) -> 'claude'."""
-        result = next_eligible_tier("cheap_frontier", frozenset({"cli_agents"}))
+        """next_eligible_tier('cheap_frontier', {}) -> 'claude' (HTTP ceiling)."""
+        result = next_eligible_tier("cheap_frontier", frozenset())
         assert result == "claude"
 
     def test_next_eligible_tier_last_eligible_returns_none(self) -> None:
-        """next_eligible_tier('claude', {'cli_agents'}) -> None."""
-        result = next_eligible_tier("claude", frozenset({"cli_agents"}))
+        """next_eligible_tier('claude', {}) -> None (claude is the ceiling)."""
+        result = next_eligible_tier("claude", frozenset())
         assert result is None
 
     def test_next_eligible_tier_from_local(self) -> None:
-        """next_eligible_tier('local', {'cli_agents'}) -> 'cheap_cloud'."""
-        result = next_eligible_tier("local", frozenset({"cli_agents"}))
+        """next_eligible_tier('local', {}) -> 'cheap_cloud'."""
+        result = next_eligible_tier("local", frozenset())
         assert result == "cheap_cloud"
 
     def test_next_eligible_tier_unrecognized_returns_none(self) -> None:
@@ -504,7 +504,7 @@ class TestNextEligibleTierEndpointResolvability:
         # task, so the correct answer is None (terminate, do not strand).
         result = next_eligible_tier(
             "cheap_cloud",
-            frozenset({"cli_agents"}),
+            frozenset(),
             task_type="document",
         )
         assert result is None
@@ -516,14 +516,14 @@ class TestNextEligibleTierEndpointResolvability:
         # escalating from local must still advance to cheap_cloud.
         result = next_eligible_tier(
             "local",
-            frozenset({"cli_agents"}),
+            frozenset(),
             task_type="document",
         )
         assert result == "cheap_cloud"
 
     def test_task_unaware_call_preserves_declaration_order(self) -> None:
         # Backward-compat: omitting task_type preserves pure declaration order.
-        result = next_eligible_tier("cheap_cloud", frozenset({"cli_agents"}))
+        result = next_eligible_tier("cheap_cloud", frozenset())
         assert result == "cheap_frontier"
 
     def test_task_unaware_call_does_not_apply_code_generation_tier_order(
@@ -534,7 +534,7 @@ class TestNextEligibleTierEndpointResolvability:
         # just because code_generation declares cheap_cloud -> local -> claude.
         result = next_eligible_tier(
             "cheap_cloud",
-            frozenset({"cheap_frontier", "cli_agents"}),
+            frozenset({"cheap_frontier"}),
         )
         assert result == "claude"
 
@@ -546,7 +546,7 @@ class TestNextEligibleTierEndpointResolvability:
         # cheap_cloud in routing_tiers.yaml declaration order.
         result = next_eligible_tier(
             "cheap_cloud",
-            frozenset({"cheap_frontier", "cli_agents"}),
+            frozenset({"cheap_frontier"}),
             task_type="code_generation",
         )
         assert result == "local"
@@ -688,23 +688,41 @@ class TestRoutingDecisionTierName:
 @pytest.mark.unit
 class TestTestResearchTierPolicyVerified:
     """OMN-13167 (1): `test` and `research` declare claude as the ceiling tier,
-    so when the claude (cli-codex) backend is configured, escalation off
-    cheap_cloud advances to claude — a usable higher tier exists, no dead-end.
+    so when the claude tier backend is configured, escalation off cheap_cloud
+    advances to claude — a usable higher tier exists, no dead-end.
 
-    Uses the repo-default bifrost contract (cli-codex declares cli://codex with
-    no api_key_ref, so the claude tier is routable for both task classes).
+    OMN-13215: the ceiling tier is now the HTTP-backed ``cloud-sonnet`` backend
+    (secret_ref llm.anthropic.api_key), routable through the canonical HTTP path
+    exactly like the lower tiers. "Configured" means the ceiling's secret_ref
+    resolves; the test sets that env-mapped secret so the claude tier is routable.
     """
+
+    @pytest.fixture(autouse=True)
+    def _configure_ceiling_secret(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> Iterator[None]:
+        # The repo-default bifrost contract maps the claude tier to cloud-sonnet,
+        # whose secret_ref is llm.anthropic.api_key. The env-backed secret store
+        # reads the ref name verbatim, so set it to make the ceiling routable.
+        from omnimarket.nodes.node_delegation_routing_reducer.handlers import (
+            handler_delegation_routing as routing,
+        )
+
+        monkeypatch.setenv("llm.anthropic.api_key", "test-anthropic-key")
+        routing._load_bifrost_endpoints.cache_clear()
+        yield
+        routing._load_bifrost_endpoints.cache_clear()
 
     @pytest.mark.parametrize("task_type", ["test", "research"])
     def test_claude_tier_reachable_when_configured(self, task_type: str) -> None:
         # local -> cheap_cloud -> claude is the declared closed-set policy for
-        # both classes. With the repo-default contract the claude tier (cli-codex)
-        # is routable, so escalating off cheap_cloud must land on claude rather
-        # than returning None.
+        # both classes. With the repo-default contract the claude tier
+        # (cloud-sonnet) is routable once its secret resolves, so escalating off
+        # cheap_cloud must land on claude rather than returning None.
         assert (
             next_eligible_tier(
                 "cheap_cloud",
-                frozenset({"cli_agents"}),
+                frozenset(),
                 task_type=task_type,
             )
             == "claude"
@@ -716,7 +734,7 @@ class TestTestResearchTierPolicyVerified:
         assert (
             next_eligible_tier(
                 "claude",
-                frozenset({"cli_agents"}),
+                frozenset(),
                 task_type=task_type,
             )
             is None
@@ -740,7 +758,7 @@ class TestDescribeNoHigherTierAvailable:
         # higher tier — the real dead-end the night matrix hit.
         reason = describe_no_higher_tier_available(
             "cheap_cloud",
-            frozenset({"cli_agents"}),
+            frozenset(),
             task_type="test",
         )
         assert reason.startswith(NO_HIGHER_TIER_REASON_TOKEN)
@@ -758,7 +776,7 @@ class TestDescribeNoHigherTierAvailable:
     ) -> None:
         reason = describe_no_higher_tier_available(
             "cheap_cloud",
-            frozenset({"cli_agents"}),
+            frozenset(),
             task_type="research",
         )
         assert reason.startswith(NO_HIGHER_TIER_REASON_TOKEN)
@@ -772,7 +790,7 @@ class TestDescribeNoHigherTierAvailable:
         # On the repo-default contract, claude is the declared ceiling for `test`.
         reason = describe_no_higher_tier_available(
             "claude",
-            frozenset({"cli_agents"}),
+            frozenset(),
             task_type="test",
         )
         assert reason.startswith(NO_HIGHER_TIER_REASON_TOKEN)

@@ -8,7 +8,6 @@ DelegationIntentBridge.handle_inference_intent() path.
 
 from __future__ import annotations
 
-import subprocess
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import NAMESPACE_DNS, uuid4, uuid5
@@ -182,102 +181,91 @@ class TestHandlerInferenceIntent:
         assert result.error_message != ""
         assert result.model_used == "test-model"
 
-    def test_cli_codex_backend_invokes_headless_codex_oauth(self) -> None:
+    @pytest.mark.parametrize(
+        "cli_url",
+        ["cli://codex", "cli://claude", "CLI://codex", " cli://codex "],
+    )
+    def test_cli_scheme_fails_closed_no_subprocess(self, cli_url: str) -> None:
+        """OMN-13215: the shelled-CLI inference path is removed.
+
+        A ``cli://`` endpoint (config drift / a removed tier) must fail closed at
+        the effect boundary with a typed error response — never spawn a subprocess.
+        ``subprocess`` and ``shutil`` are no longer imported by the handler module,
+        so any attempt to reach them would raise AttributeError; assert the handler
+        returns a clean error response instead.
+        """
         handler = HandlerInferenceIntent()
-        intent = _make_intent(base_url="cli://codex", model="codex-cli")
+        intent = _make_intent(base_url=cli_url, model="codex-cli")
 
-        completed = subprocess.CompletedProcess(
-            args=["codex"],
-            returncode=0,
-            stdout="codex result\n",
-            stderr="",
-        )
+        # No httpx mock: a correctly-failing handler rejects the scheme BEFORE any
+        # HTTP client is constructed.
+        result = handler.handle(intent)
 
-        with (
-            patch(
-                "omnimarket.nodes.node_llm_delegation_call_effect.handlers.handler_inference_intent.shutil.which",
-                return_value="/usr/local/bin/codex",
-            ),
-            patch(
-                "omnimarket.nodes.node_llm_delegation_call_effect.handlers.handler_inference_intent.os.getcwd",
-                return_value="/workspace",
-            ),
-            patch(
-                "omnimarket.nodes.node_llm_delegation_call_effect.handlers.handler_inference_intent.subprocess.run",
-                return_value=completed,
-            ) as mock_run,
-        ):
-            result = handler.handle(intent)
-
-        command = mock_run.call_args.args[0]
-        assert command[:8] == [
-            "/usr/local/bin/codex",
-            "--sandbox",
-            "read-only",
-            "--ask-for-approval",
-            "never",
-            "--cd",
-            "/workspace",
-            "exec",
-        ]
-        assert "SYSTEM:\nYou are a helpful assistant." in command[-1]
-        assert "USER:\nWrite a test." in command[-1]
-        assert result.content == "codex result"
-        assert result.model_used == "codex-cli"
-        assert result.error_message == ""
-
-    def test_cli_claude_backend_invokes_headless_claude_oauth(self) -> None:
-        handler = HandlerInferenceIntent()
-        intent = _make_intent(base_url="cli://claude", model="claude-cli")
-
-        completed = subprocess.CompletedProcess(
-            args=["claude"],
-            returncode=0,
-            stdout="claude result\n",
-            stderr="",
-        )
-
-        with (
-            patch(
-                "omnimarket.nodes.node_llm_delegation_call_effect.handlers.handler_inference_intent.shutil.which",
-                return_value="/usr/local/bin/claude",
-            ),
-            patch(
-                "omnimarket.nodes.node_llm_delegation_call_effect.handlers.handler_inference_intent.subprocess.run",
-                return_value=completed,
-            ) as mock_run,
-        ):
-            result = handler.handle(intent)
-
-        command = mock_run.call_args.args[0]
-        assert command[:7] == [
-            "/usr/local/bin/claude",
-            "-p",
-            "--output-format",
-            "text",
-            "--permission-mode",
-            "dontAsk",
-            "--no-session-persistence",
-        ]
-        assert "SYSTEM:\nYou are a helpful assistant." in command[-1]
-        assert "USER:\nWrite a test." in command[-1]
-        assert result.content == "claude result"
-        assert result.model_used == "claude-cli"
-        assert result.error_message == ""
-
-    def test_cli_backend_missing_binary_returns_error_response(self) -> None:
-        handler = HandlerInferenceIntent()
-        intent = _make_intent(base_url="cli://codex", model="codex-cli")
-
-        with patch(
-            "omnimarket.nodes.node_llm_delegation_call_effect.handlers.handler_inference_intent.shutil.which",
-            return_value=None,
-        ):
-            result = handler.handle(intent)
-
+        assert isinstance(result, ModelInferenceResponseData)
         assert result.content == ""
-        assert "codex executable not found" in result.error_message
         assert result.model_used == "codex-cli"
+        assert "HTTP" in result.error_message
+        assert "cli://" in result.error_message.lower() or cli_url.strip() in (
+            result.error_message
+        )
+
+    def test_handler_module_has_no_subprocess_or_shutil(self) -> None:
+        """OMN-13215: the codex-cli shell-execution code path is removed.
+
+        Guard against reintroduction: the inference handler module must not import
+        ``subprocess`` or ``shutil`` (the only consumers were the deleted CLI path).
+        """
+        import omnimarket.nodes.node_llm_delegation_call_effect.handlers.handler_inference_intent as mod
+
+        assert not hasattr(mod, "subprocess")
+        assert not hasattr(mod, "shutil")
+        assert not hasattr(mod, "_call_cli_backend")
+        assert not hasattr(mod, "_build_cli_command")
+        assert not hasattr(mod, "_is_cli_backend")
+
+    def test_ceiling_tier_http_endpoint_executes_like_lower_tiers(self) -> None:
+        """OMN-13215: the ceiling tier executes via the canonical HTTP path.
+
+        A complete Anthropic chat-completions URL (the default ceiling backend
+        ``cloud-sonnet``) is posted verbatim with the resolved api_key, identical to
+        every lower tier.
+        """
+        handler = HandlerInferenceIntent()
+        ceiling_url = "https://api.anthropic.com/v1/chat/completions"
+        intent = _make_intent(
+            base_url=ceiling_url,
+            model="claude-sonnet-4-6",
+            api_key_ref="TEST_MODEL_API_KEY",
+        )
+        captured_urls: list[str] = []
+
+        mock_response = MagicMock()
+        mock_response.json.return_value = _SUCCESSFUL_HTTPX_RESPONSE
+        mock_response.raise_for_status.return_value = None
+
+        def _capture_post(url: str, **kwargs: object) -> MagicMock:
+            captured_urls.append(url)
+            return mock_response
+
+        with (
+            patch(
+                "omnimarket.nodes.node_llm_delegation_call_effect.handlers.handler_inference_intent.resolve_api_key",
+                return_value=None,
+            ),
+            patch("httpx.Client") as mock_client_cls,
+        ):
+            mock_client = MagicMock()
+            mock_client.__enter__ = MagicMock(return_value=mock_client)
+            mock_client.__exit__ = MagicMock(return_value=False)
+            mock_client.post.side_effect = _capture_post
+            mock_client_cls.return_value = mock_client
+
+            result = handler.handle(intent)
+
+        assert captured_urls == [ceiling_url]
+        assert result.content == "def test_foo(): pass"
+        assert result.model_used == "claude-sonnet-4-6"
+        assert result.error_message == ""
 
     def test_provider_http_status_error_includes_sanitized_body(self) -> None:
         handler = HandlerInferenceIntent()

@@ -214,8 +214,8 @@ _CROSS_REPO_DEBT: tuple[tuple[str, str, str, str], ...] = (
 
 _BIFROST_CONFIG_REL = "src/omnimarket/configs/bifrost_delegation.yaml"
 
-# Legacy excluded agent tier whose endpoints are CLI-invoked agents; empty
-# endpoint_url is still allowed for these until every backend declares cli://.
+# OMN-13215: the shelled-CLI agent tier was removed. These markers now identify a
+# FORBIDDEN shell-out backend so the shape gate fails closed if one is reintroduced.
 _CLI_AGENT_TIERS: frozenset[str] = frozenset({"cli_agents"})
 _CLI_URL_PREFIX = "cli://"
 
@@ -697,12 +697,14 @@ def build_provider_endpoint_shape_audit(repo_root: Path) -> dict[str, Any]:
         at runtime. A non-null endpoint_url alongside endpoint_url_env means two
         conflicting URL sources are declared — this is a misconfiguration.
       * If a backend does NOT declare ``endpoint_url_env`` (static endpoint):
-        - For ``cli_agents`` tier: endpoint_url may be absent/empty (no HTTP
-          call is made; the CLI agent is invoked directly).
-        - For all other tiers: ``endpoint_url`` MUST be a non-null, non-empty
-          complete URL (full chat path verbatim, e.g.
-          ``.../v1/chat/completions``). A bare base (no chat path) is a
-          misconfiguration that fails closed at call time.
+        ``endpoint_url`` MUST be a non-null, non-empty complete URL (full chat
+        path verbatim, e.g. ``.../v1/chat/completions``). A bare base (no chat
+        path) is a misconfiguration that fails closed at call time.
+      * OMN-13215: shelled-CLI backends are FORBIDDEN. A ``cli://`` endpoint_url —
+        or a ``cli-`` backend_id / ``cli_agents`` tier — is a violation. Every
+        delegation tier (including the ceiling) must execute over the canonical
+        HTTP inference path; there is no subprocess fallback. This gate prevents
+        reintroduction of the removed codex-cli/claude-cli shell-out path.
     """
     config_path = repo_root / _BIFROST_CONFIG_REL
     if not config_path.exists():
@@ -749,15 +751,26 @@ def build_provider_endpoint_shape_audit(repo_root: Path) -> dict[str, Any]:
             str(endpoint_url).strip() if endpoint_url is not None else ""
         )
         has_endpoint_url = bool(endpoint_url_text)
+        # OMN-13215: shelled-CLI backends are no longer permitted anywhere in the
+        # delegation routing contract. Detect the removed shell-out shape.
         is_cli_backend = (
             str(backend_id).startswith("cli-")
-            or endpoint_url_text.startswith(_CLI_URL_PREFIX)
+            or endpoint_url_text.lower().startswith(_CLI_URL_PREFIX)
             or tier in _CLI_AGENT_TIERS
         )
 
         backend_violations: list[str] = []
 
-        if has_endpoint_url_env:
+        if is_cli_backend:
+            # Forbidden: the codex-cli / claude-cli shell-out tier was removed.
+            backend_violations.append(
+                f"backend_id={backend_id!r} tier={tier!r}: shelled-CLI backends are "
+                "forbidden (OMN-13215) — a cli:// endpoint_url, a 'cli-' backend_id, "
+                "or a 'cli_agents' tier reintroduces the removed subprocess inference "
+                "path. Every tier (including the ceiling) must declare a complete "
+                "HTTP(S) chat-completions endpoint resolved from contract/overlay."
+            )
+        elif has_endpoint_url_env:
             # Overlay-supplied backend: endpoint_url MUST be null.
             if endpoint_url is not None:
                 backend_violations.append(
@@ -766,23 +779,16 @@ def build_provider_endpoint_shape_audit(repo_root: Path) -> dict[str, Any]:
                     "only one URL source is allowed; set endpoint_url to null"
                 )
         else:
-            # Static-URL backend.
-            if is_cli_backend:
-                # CLI agents: no outbound HTTP call; endpoint_url may be
-                # empty for legacy cli_agents or a cli:// provider URI for
-                # routable OAuth-backed terminal delegation.
-                pass
-            else:
-                # All other tiers: endpoint_url MUST be a non-null, non-empty
-                # complete URL (full chat path verbatim).
-                if not has_endpoint_url:
-                    backend_violations.append(
-                        f"backend_id={backend_id!r} tier={tier!r}: "
-                        f"endpoint_url is absent/empty but endpoint_url_env is not set — "
-                        "a non-local backend with no endpoint_url_env must carry a complete "
-                        "static endpoint_url (full chat path verbatim, e.g. "
-                        ".../v1/chat/completions)"
-                    )
+            # Static-URL backend: endpoint_url MUST be a non-null, non-empty
+            # complete URL (full chat path verbatim).
+            if not has_endpoint_url:
+                backend_violations.append(
+                    f"backend_id={backend_id!r} tier={tier!r}: "
+                    f"endpoint_url is absent/empty but endpoint_url_env is not set — "
+                    "a non-local backend with no endpoint_url_env must carry a complete "
+                    "static endpoint_url (full chat path verbatim, e.g. "
+                    ".../v1/chat/completions)"
+                )
 
         violations.extend(backend_violations)
         backend_results.append(

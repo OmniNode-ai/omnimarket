@@ -11,15 +11,18 @@ DispatcherInferenceResponse can consume it.
 
 This handler is the Kafka-native inference-intent consumer for the delegation
 chain — the orchestrator publishes the intent, this node consumes it (OMN-12294).
+
+OMN-13215: every delegation tier — including the ceiling — executes through this
+single canonical HTTP inference path. The ceiling tier is swappable across
+providers (gemini / glm / openrouter / claude) purely via the routing
+contract/overlay (per-tier provider + endpoint + model + ``api_key_ref``); no
+shelled-CLI tier remains. The former ``cli://`` subprocess backend was removed.
 """
 
 from __future__ import annotations
 
 import asyncio
 import logging
-import os
-import shutil
-import subprocess
 import time
 from pathlib import Path
 from typing import Any
@@ -50,8 +53,12 @@ _RESERVED_PROVIDER_REQUEST_KEYS = frozenset(
     {"model", "messages", "max_tokens", "temperature"}
 )
 _MAX_PROVIDER_ERROR_BODY_CHARS = 1000
-_CLI_BACKEND_PREFIX = "cli://"
-_MAX_CLI_ERROR_CHARS = 1000
+# OMN-13215: every delegation tier (including the ceiling) executes through the
+# canonical HTTP inference path. Endpoint URLs are COMPLETE verbatim URLs resolved
+# per-tier from the routing contract + overlay. Non-HTTP schemes (the deleted
+# ``cli://`` shell-out tier) are a config-drift error and fail closed here — there
+# is no subprocess fallback.
+_SUPPORTED_URL_SCHEMES = ("http://", "https://")
 
 
 def _get_inference_response_topic() -> str:
@@ -156,71 +163,6 @@ def _provider_http_error_message(exc: httpx.HTTPStatusError) -> str:
     )
 
 
-def _is_cli_backend(base_url: str) -> bool:
-    return base_url.strip().lower().startswith(_CLI_BACKEND_PREFIX)
-
-
-def _cli_provider_from_url(base_url: str) -> str:
-    provider = base_url.strip()[len(_CLI_BACKEND_PREFIX) :].split("/", maxsplit=1)[0]
-    provider = provider.split("?", maxsplit=1)[0].lower()
-    if not provider:
-        raise ValueError("CLI backend URL must include a provider, e.g. cli://codex")
-    return provider
-
-
-def _bounded_cli_text(value: str) -> str:
-    text = value.strip()
-    if len(text) > _MAX_CLI_ERROR_CHARS:
-        text = text[:_MAX_CLI_ERROR_CHARS] + "...[truncated]"
-    return text or "<empty>"
-
-
-def _build_cli_prompt(intent: ModelInferenceIntent) -> str:
-    messages, _provider_request_options = _build_messages_and_request_options(intent)
-    parts: list[str] = []
-    for message in messages:
-        role = message.get("role", "user").strip() or "user"
-        content = message.get("content", "").strip()
-        if content:
-            parts.append(f"{role.upper()}:\n{content}")
-    if not parts:
-        raise ValueError("CLI backend prompt is empty")
-    return "\n\n".join(parts)
-
-
-def _build_cli_command(provider: str, prompt: str) -> list[str]:
-    if provider == "codex":
-        executable = shutil.which("codex")
-        if executable is None:
-            raise RuntimeError("CLI backend unavailable: codex executable not found")
-        return [
-            executable,
-            "--sandbox",
-            "read-only",
-            "--ask-for-approval",
-            "never",
-            "--cd",
-            os.getcwd(),
-            "exec",
-            prompt,
-        ]
-    if provider == "claude":
-        executable = shutil.which("claude")
-        if executable is None:
-            raise RuntimeError("CLI backend unavailable: claude executable not found")
-        return [
-            executable,
-            "-p",
-            "--output-format",
-            "text",
-            "--permission-mode",
-            "dontAsk",
-            "--no-session-persistence",
-            prompt,
-        ]
-    raise ValueError(f"Unsupported CLI backend provider: {provider!r}")
-
-
 class HandlerInferenceIntent:
     """Execute ModelInferenceIntent and return ModelInferenceResponseData.
 
@@ -281,8 +223,20 @@ class HandlerInferenceIntent:
         intent: ModelInferenceIntent,
         call_id: str,
     ) -> ModelInferenceResponseData:
-        if _is_cli_backend(intent.base_url):
-            return self._call_cli_backend(intent, call_id)
+        # OMN-13215: every tier (including the ceiling) executes through this single
+        # canonical HTTP inference path. The endpoint URL is the COMPLETE verbatim
+        # URL resolved per-tier from the routing contract + overlay. A non-HTTP
+        # scheme (e.g. the deleted ``cli://`` shell-out tier) is a config-drift
+        # error and fails closed — there is no subprocess fallback.
+        base_url = intent.base_url.strip()
+        if not base_url.lower().startswith(_SUPPORTED_URL_SCHEMES):
+            raise ValueError(
+                "delegation inference requires a complete HTTP(S) endpoint URL "
+                f"resolved from the routing contract/overlay; got {intent.base_url!r}. "
+                "Non-HTTP backends (shelled-CLI tiers) are not supported — every "
+                "tier including the ceiling must declare a complete chat-completions "
+                "URL (OMN-13215)."
+            )
 
         messages, provider_request_options = _build_messages_and_request_options(intent)
         payload: dict[str, Any] = {
@@ -363,59 +317,6 @@ class HandlerInferenceIntent:
             prompt_tokens=prompt_tokens,
             completion_tokens=completion_tokens,
             total_tokens=total_tokens,
-        )
-
-    def _call_cli_backend(
-        self,
-        intent: ModelInferenceIntent,
-        call_id: str,
-    ) -> ModelInferenceResponseData:
-        provider = _cli_provider_from_url(intent.base_url)
-        prompt = _build_cli_prompt(intent)
-        command = _build_cli_command(provider, prompt)
-        timeout = max(1.0, min(600.0, intent.timeout_seconds))
-        started = time.monotonic()
-
-        try:
-            completed = subprocess.run(
-                command,
-                check=False,
-                capture_output=True,
-                text=True,
-                timeout=timeout,
-            )
-        except subprocess.TimeoutExpired as exc:
-            raise RuntimeError(
-                f"CLI backend {provider!r} timed out after {timeout:.1f}s"
-            ) from exc
-
-        latency_ms = int((time.monotonic() - started) * 1000)
-        stdout = completed.stdout.strip()
-        if completed.returncode != 0:
-            raise RuntimeError(
-                f"CLI backend {provider!r} exited {completed.returncode}: "
-                f"stderr={_bounded_cli_text(completed.stderr)}"
-            )
-        if not stdout:
-            raise ValueError(f"CLI backend {provider!r} returned empty output")
-
-        logger.info(
-            "HandlerInferenceIntent CLI succeeded: provider=%s model=%s latency=%dms correlation_id=%s",
-            provider,
-            intent.model,
-            latency_ms,
-            intent.correlation_id,
-        )
-
-        return ModelInferenceResponseData(
-            correlation_id=intent.correlation_id,
-            content=stdout,
-            model_used=intent.model,
-            llm_call_id=f"{provider}-{call_id}",
-            latency_ms=latency_ms,
-            prompt_tokens=0,
-            completion_tokens=0,
-            total_tokens=0,
         )
 
 

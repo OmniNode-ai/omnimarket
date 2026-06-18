@@ -101,12 +101,6 @@ _BIFROST_CODE_GEN_CLOUD_ROUTABLE = textwrap.dedent(
         tier: frontier_api
         timeout_ms: 60000
         capabilities: [code_generation]
-      - backend_id: cli-claude
-        endpoint_url: ""
-        model_name: claude-cli
-        tier: cli_agents
-        timeout_ms: 60000
-        capabilities: [agent_delegation]
     routing_rules:
       - rule_id: "d4e5f6a7-0001-4000-8000-000000000001"
         priority: 10
@@ -162,7 +156,8 @@ _TASK_CLASS_CONTRACT_GEMINI = textwrap.dedent(
 
 _CANONICAL_GEMINI_BACKEND_ID = "cloud-gemini-flash"
 _CANONICAL_VERTEX_BACKEND_ID = "cloud-vertex-gemini"
-_TERMINAL_CLI_BACKEND_ID = "cli-codex"
+# OMN-13215: the ceiling tier is the HTTP cloud-sonnet backend (no shelled CLI).
+_TERMINAL_CEILING_BACKEND_ID = "cloud-sonnet"
 
 
 @pytest.fixture
@@ -430,7 +425,7 @@ class TestNextEligibleTierCodeGeneration:
     ) -> None:
         result = next_eligible_tier(
             "local",
-            frozenset({"cli_agents"}),
+            frozenset(),
             task_type="code_generation",
         )
         assert result == "cheap_cloud"
@@ -489,18 +484,31 @@ class TestCanonicalCloudTargetCapability:
         )
         assert gemini["secret_ref"] == "llm.gemini.api_key"
 
-    def test_terminal_claude_tier_routes_to_headless_codex_cli(self) -> None:
+    def test_terminal_claude_tier_routes_to_http_frontier_backend(self) -> None:
+        """OMN-13215: the ceiling tier executes via the canonical HTTP path.
+
+        The claude ceiling tier maps to the HTTP cloud-sonnet backend (complete
+        verbatim endpoint_url + secret_ref), NOT a shelled CLI. No ``cli://`` or
+        ``cli-`` backend remains in the contract.
+        """
         tiers = {t["name"]: t for t in self._routing_tiers()["tiers"]}
         terminal = tiers["claude"]
-        assert terminal["cost_per_1k_tokens"] == 0.0
-        assert terminal["models"][0]["backend_id"] == _TERMINAL_CLI_BACKEND_ID
-        assert terminal["models"][0]["id"] == "codex-cli"
+        assert terminal["models"][0]["backend_id"] == _TERMINAL_CEILING_BACKEND_ID
+        assert terminal["models"][0]["id"] == "claude-sonnet-4-6"
 
-        by_id = {b["backend_id"]: b for b in self._bifrost()["backends"]}
-        codex = by_id[_TERMINAL_CLI_BACKEND_ID]
-        assert codex["endpoint_url"] == "cli://codex"
-        assert codex["model_name"] == "codex-cli"
-        assert "secret_ref" not in codex
+        backends = self._bifrost()["backends"]
+        by_id = {b["backend_id"]: b for b in backends}
+        ceiling = by_id[_TERMINAL_CEILING_BACKEND_ID]
+        # Complete verbatim HTTP chat-completions URL (OMN-12815 shape).
+        assert ceiling["endpoint_url"].endswith("/chat/completions")
+        assert ceiling["endpoint_url"].startswith("https://")
+        # Secret resolved at the effect boundary via api_key_ref (not a literal).
+        assert ceiling["secret_ref"] == "llm.anthropic.api_key"
+
+        # The shelled-CLI backends were removed entirely.
+        for b in backends:
+            assert not str(b["backend_id"]).startswith("cli-")
+            assert not str(b.get("endpoint_url") or "").lower().startswith("cli://")
 
 
 # ---------------------------------------------------------------------------
