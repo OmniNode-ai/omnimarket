@@ -140,8 +140,27 @@ jobs:
           echo "strict-update on '${DEFAULT_BRANCH}': ${STRICT}"
 
           fetch_pr() {
-            gh pr view "$PR" --repo "$GH_REPO" \
-              --json isInMergeQueue,mergeStateStatus,autoMergeRequest,mergeable
+            # isInMergeQueue is only on the GraphQL PullRequest object, NOT a
+            # `gh pr view --json` field, so fetch PR state via GraphQL.
+            # shellcheck disable=SC2016  # $owner/$name/$number are GraphQL vars, not shell vars
+            gh api graphql \
+              -f owner="$OWNER" \
+              -f name="$NAME" \
+              -F number="$PR" \
+              -f query='
+                query($owner:String!, $name:String!, $number:Int!) {
+                  repository(owner: $owner, name: $name) {
+                    pullRequest(number: $number) {
+                      isInMergeQueue
+                      mergeStateStatus
+                      mergeable
+                      autoMergeRequest {
+                        enabledAt
+                      }
+                    }
+                  }
+                }' \
+              --jq '.data.repository.pullRequest'
           }
 
           PR_JSON="$(fetch_pr)"
