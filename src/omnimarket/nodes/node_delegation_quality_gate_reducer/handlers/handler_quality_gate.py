@@ -11,8 +11,11 @@ Check semantics:
   - Deterministic checks (dod_deterministic): BLOCK delegation result injection on failure.
     Supported: the DoD names declared in task_class_contracts.v1.yaml.
   - Heuristic checks (dod_heuristic): escalate per contract policy on failure.
-    Supported: "no_refusal", "min_length_chars_N" (N is the char threshold)
-    and the task-class heuristic checks declared in task_class_contracts.v1.yaml.
+    Supported: "no_refusal", "semantic_adequacy" (complete-answer check used by
+    short-output task classes, OMN-13218), "min_length_chars_N" (N is the char
+    threshold; retained for explicit opt-in, no longer used by short-output
+    classes) and the task-class heuristic checks declared in
+    task_class_contracts.v1.yaml.
 
 When no contract DoD is provided (both dod_deterministic and dod_heuristic are empty),
 falls back to the legacy hardcoded checks: length, refusal detection, marker presence.
@@ -228,9 +231,130 @@ def _check_no_refusal(content: str) -> str | None:
 
 
 def _check_min_length(content: str, threshold: int) -> str | None:
-    """Heuristic: response must meet minimum character count."""
+    """Heuristic: response must meet minimum character count.
+
+    A blunt absolute character floor. Retained for contracts/acceptance criteria
+    that explicitly opt into a length minimum, but NOT used by short-output task
+    classes (summarization / document / documentation) — those use
+    ``semantic_adequacy`` instead so a correct short answer is not rejected on
+    length alone (OMN-13218).
+    """
     if len(content) < threshold:
         return f"WEAK_OUTPUT: response length {len(content)} below minimum {threshold}"
+    return None
+
+
+# Trailing tokens that mark a mid-token / mid-clause truncation (OMN-13218):
+# an opening bracket, or a clause-internal punctuation mark that no complete
+# answer ends on.
+_TRUNCATION_TRAILING_TOKENS: tuple[str, ...] = ("(", ",", "=", "[", "{", "-", ":", ";")
+
+# Terminal punctuation that marks a complete sentence (OMN-13218).
+_TERMINAL_PUNCTUATION: tuple[str, ...] = (".", "!", "?", '"', "'", ")", "]", "}", "`")
+
+# Function words a complete answer does not end on. A response whose final word
+# is one of these AND that lacks terminal punctuation is a truncated clause
+# ("...the change adds a graded score so the"), not a complete answer
+# (OMN-13218). This is the truncation signal that survives long fragments, where
+# a raw word-count floor cannot tell a long truncated clause from a real answer.
+_DANGLING_TRAILING_WORDS: frozenset[str] = frozenset(
+    {
+        "a",
+        "an",
+        "the",
+        "and",
+        "or",
+        "but",
+        "nor",
+        "so",
+        "yet",
+        "for",
+        "of",
+        "to",
+        "in",
+        "on",
+        "at",
+        "by",
+        "with",
+        "from",
+        "as",
+        "is",
+        "are",
+        "was",
+        "were",
+        "be",
+        "been",
+        "that",
+        "which",
+        "this",
+        "these",
+        "those",
+        "if",
+        "when",
+        "while",
+        "because",
+        "into",
+        "onto",
+        "than",
+        "then",
+    }
+)
+
+
+def _check_semantic_adequacy(content: str) -> str | None:
+    """Heuristic: response must be a complete answer, not a truncated fragment.
+
+    Replaces the blunt ``min_length_chars_N`` floor for short-output task classes
+    (OMN-13218). The floor rejected behaviorally-correct short answers
+    (a correct one-sentence summary, a short prose document) purely on character
+    count, forcing wasteful escalation to the ceiling tier.
+
+    Adequacy is length-independent. A response is INADEQUATE — and only then —
+    when it is:
+      * empty / whitespace-only,
+      * truncated mid-token (ends on an opening bracket, comma, ``=`` etc.),
+      * a truncated clause: lacks terminal punctuation AND ends on a dangling
+        function word ("...adds a graded score so the"),
+      * a bare single-word fragment with no terminal punctuation.
+
+    A complete short sentence ("The gate scores short summaries adequately."), a
+    multi-word phrase that does not dangle, and a fenced / docstring code
+    artifact all pass; a truncated fragment ("The change adds a"), a clause that
+    dangles on a function word, and an empty string all fail.
+    """
+    stripped = content.strip()
+    if not stripped:
+        return "WEAK_OUTPUT: response is empty, fails semantic_adequacy"
+
+    if stripped[-1] in _TRUNCATION_TRAILING_TOKENS:
+        return "WEAK_OUTPUT: response truncated mid-token, fails semantic_adequacy"
+
+    # A complete structured / code artifact is a complete answer regardless of
+    # prose sentence shape.
+    if _extract_fenced_code_blocks(content) or '"""' in stripped or "'''" in stripped:
+        return None
+
+    if stripped[-1] in _TERMINAL_PUNCTUATION:
+        return None
+
+    words = stripped.split()
+    last_word = words[-1].lower().strip(".,;:!?\"'()[]{}`-")
+
+    if last_word in _DANGLING_TRAILING_WORDS:
+        return (
+            "WEAK_OUTPUT: response truncated mid-clause "
+            f"(ends on '{last_word}'), fails semantic_adequacy"
+        )
+
+    # A single bare token with no terminal punctuation is a fragment, not an
+    # answer. A multi-word phrase that does not dangle is treated as complete —
+    # short correct answers (classification labels, extractions) live here.
+    if len(words) < 2:
+        return (
+            "WEAK_OUTPUT: response is a bare single-word fragment, "
+            "fails semantic_adequacy"
+        )
+
     return None
 
 
@@ -412,6 +536,7 @@ _HEURISTIC_SIMPLE_CHECKS: dict[str, Callable[[str], str | None]] = {
     "cites_specific_lines": _check_cites_specific_lines,
     "concise": _check_concise,
     "accurate": _check_accurate,
+    "semantic_adequacy": _check_semantic_adequacy,
 }
 
 
