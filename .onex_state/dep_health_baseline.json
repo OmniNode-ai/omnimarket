@@ -5672,6 +5672,56 @@
       "detail": "Topic 'onex.evt.platform.node-registration.v1' is published but has no subscriber and is not declared as externally consumed.",
       "rule_id": "MISSING_TOPIC_EDGE",
       "rule_version": "v1"
+    },
+    {
+      "finding_type": "MISSING_TOPIC_EDGE",
+      "severity": "CRITICAL",
+      "repo": "omnimarket",
+      "file_path": "src/omnimarket/nodes/node_github_review_effect/contract.yaml",
+      "symbol": "onex.evt.omnimarket.github-review-op-completed.v1",
+      "detail": "Topic 'onex.evt.omnimarket.github-review-op-completed.v1' is published but has no subscriber and is not declared as externally consumed.",
+      "rule_id": "MISSING_TOPIC_EDGE",
+      "rule_version": "v1"
+    },
+    {
+      "finding_type": "MISSING_TOPIC_EDGE",
+      "severity": "CRITICAL",
+      "repo": "omnimarket",
+      "file_path": "src/omnimarket/nodes/node_github_review_effect/contract.yaml",
+      "symbol": "onex.evt.omnimarket.github-review-op-failed.v1",
+      "detail": "Topic 'onex.evt.omnimarket.github-review-op-failed.v1' is published but has no subscriber and is not declared as externally consumed.",
+      "rule_id": "MISSING_TOPIC_EDGE",
+      "rule_version": "v1"
+    },
+    {
+      "finding_type": "MISSING_TOPIC_EDGE",
+      "severity": "CRITICAL",
+      "repo": "omnimarket",
+      "file_path": "src/omnimarket/nodes/node_judge_verdict_parse_compute/contract.yaml",
+      "symbol": "onex.evt.omnimarket.judge-verdict-parsed.v1",
+      "detail": "Topic 'onex.evt.omnimarket.judge-verdict-parsed.v1' is published but has no subscriber and is not declared as externally consumed.",
+      "rule_id": "MISSING_TOPIC_EDGE",
+      "rule_version": "v1"
+    },
+    {
+      "finding_type": "MISSING_TOPIC_EDGE",
+      "severity": "CRITICAL",
+      "repo": "omnimarket",
+      "file_path": "src/omnimarket/nodes/node_judge_verdict_parse_compute/contract.yaml",
+      "symbol": "onex.evt.omnimarket.judge-verdict-parse-failed.v1",
+      "detail": "Topic 'onex.evt.omnimarket.judge-verdict-parse-failed.v1' is published but has no subscriber and is not declared as externally consumed.",
+      "rule_id": "MISSING_TOPIC_EDGE",
+      "rule_version": "v1"
+    },
+    {
+      "finding_type": "MISSING_TOPIC_EDGE",
+      "severity": "CRITICAL",
+      "repo": "omnimarket",
+      "file_path": "src/omnimarket/nodes/node_pr_review_fsm_reducer/contract.yaml",
+      "symbol": "onex.evt.omnimarket.pr-review-bot-fsm-state-updated.v1",
+      "detail": "Topic 'onex.evt.omnimarket.pr-review-bot-fsm-state-updated.v1' is published but has no subscriber and is not declared as externally consumed.",
+      "rule_id": "MISSING_TOPIC_EDGE",
+      "rule_version": "v1"
     }
   ]
 }
