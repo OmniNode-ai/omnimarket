@@ -1,0 +1,47 @@
+---
+schema_version: "1.0.0"
+ticket_id: OMN-13276
+title: "Mirror node_dod_verify dispatch fix across three omnimarket compute nodes"
+summary: "Applies the OMN-13253 fix pattern to node_handler_correctness_gate, node_closeout_verifier_compute, and node_ledger_stats_compute. For each node: adds the correct `operation` to its operation_match handler routing entry (check / verify / aggregate) so runtime_local routing validation passes ('handlers[0].operation is missing'), ensures a top-level `input_model` so the RuntimeLocal event-driven path seeds the full required payload instead of a degenerate {correlation_id}-only command, and renames the handler's first positional parameter to `payload` so the adapter dispatches the validated request positionally rather than keyword-fanning the model fields. No handler had a secondary results parameter, so no keyword-only change was required (unlike node_dod_verify's evidence_results). node_handler_correctness_gate already carried a top-level input_model block; only the operation entry and handler param rename were added there."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+evidence_requirements:
+  - kind: tests
+    description: "All three nodes' unit tests pass"
+    command: "uv run pytest tests/ src/omnimarket/nodes/node_handler_correctness_gate/tests/ -q"
+  - kind: ci
+    description: "Runtime sweep validates all node entry points (operation_match entries now valid)"
+    command: "uv run python scripts/ci/run_runtime_sweep.py"
+  - kind: manual
+    description: "Node contract + handler change across three compute nodes. The onex skill / CLI (RuntimeLocal) dispatch path works immediately from the package; the deployed omninode-runtime daemon routing benefits after a redeploy (recommended post-merge, not required for the CLI/skill path). No Kafka topic or schema change."
+    command: "printf '%s\n' 'deploy gate: three compute-node dispatch fixes — CLI/skill path works from package; omninode-runtime redeploy recommended post-merge; no topic/schema change'"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: dod-tests
+    description: "Unit tests pass for node_handler_correctness_gate, node_closeout_verifier_compute, node_ledger_stats_compute"
+    source: manual
+    checks:
+      - check_type: command
+        check_value: "uv run pytest tests/ src/omnimarket/nodes/node_handler_correctness_gate/tests/ -q"
+  - id: dod-runtime-sweep
+    description: "Runtime sweep reports all entry points OK (the three node contracts validate)"
+    source: manual
+    checks:
+      - check_type: command
+        check_value: "uv run python scripts/ci/run_runtime_sweep.py"
+  - id: dod-dispatch
+    description: "Each of the three nodes dispatches via RuntimeLocal with no 'operation is missing' / dropped-input error"
+    source: manual
+    checks:
+      - check_type: command
+        check_value: "uv run python scripts/ci/run_runtime_sweep.py"
+  - id: dod-deploy
+    description: "Node contract+handler change; CLI/skill dispatch path works from package, omninode-runtime redeploy recommended post-merge. No topic/schema change."
+    source: manual
+    checks:
+      - check_type: command
+        check_value: "printf '%s\n' 'deploy gate: three compute-node dispatch fixes; CLI path immediate; daemon redeploy recommended post-merge'"

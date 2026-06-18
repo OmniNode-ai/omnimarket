@@ -29,7 +29,11 @@ handler:
 handler_routing:
   routing_strategy: operation_match
   handlers:
-    - handler:
+    # OMN-13276: operation_match entries require an `operation`; runtime_local
+    # rejects the contract without it ("handlers[0].operation is missing").
+    # `check` mirrors the node's action (handler-correctness-check command).
+    - operation: check
+      handler:
         name: HandlerCorrectnessGate
         module: omnimarket.nodes.node_handler_correctness_gate.handlers.handler_correctness_gate
       event_model:
