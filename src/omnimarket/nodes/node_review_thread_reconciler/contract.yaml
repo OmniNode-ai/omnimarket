@@ -10,7 +10,7 @@ description: >
   Reconciler webhook handler. Consumes pull_request_review_thread.resolved events
   forwarded via Kafka and re-opens any thread resolved by an actor not in the
   allowed_actors list. Posts a policy reminder comment and emits a
-  thread_reopened Kafka event. Only the pr_review_bot may resolve threads.
+  thread_reopened Kafka event. Only node_pr_review_orchestrator may resolve threads.
 
 ticket_id: "OMN-8493"
 is_seam_ticket: false

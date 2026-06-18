@@ -70,11 +70,6 @@ exemptions:
     ticket: OMN-10580
     reason: writes synthetic leaky files to test the gate script itself
 
-  - file: tests/nodes/node_pr_review_bot/test_workflow_runner_wiring.py
-    type: file_level
-    ticket: OMN-10580
-    reason: LLM wiring test using lab endpoints as allowed-endpoint inputs
-
   - file: tests/test_webhook_reconciler.py
     type: file_level
     ticket: OMN-10580

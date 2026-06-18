@@ -1,0 +1,142 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - PR Review Orchestrator (OMN-13212 / B2)
+#
+# Automated multi-model PR review with a judge-verification gate, rebuilt
+# canonically from the deleted node_pr_review_bot `workflow` shell. ORCHESTRATOR:
+# consumes the start command, coordinates github-diff EFFECT + inference fan-out +
+# finding aggregation + github-review EFFECT + judge verification, folds the FSM
+# via the pure pr-review FSM helpers, and emits the completed event over the bus.
+#
+# Related Tickets:
+#   - OMN-13212: B2 — rebuild node_pr_review_bot canonically
+#   - OMN-13205: canonical node migration epic
+#   - OMN-13208: A1 — re-homed inference bridge + review models + prompt/parse
+#   - OMN-13210: B1 — github diff EFFECT + prompt/parse COMPUTE reused here
+---
+name: node_pr_review_orchestrator
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: orchestrator
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  Automated PR review ORCHESTRATOR. Consumes a ReviewRequest start command,
+  resolves the PR diff via node_github_diff_effect, builds the adversarial prompt
+  via node_review_prompt_builder_compute, fans out to N reviewer model routes via
+  the canonical inference bridge, parses responses via
+  node_review_response_parser_compute, dedups via node_finding_aggregator_compute,
+  posts findings as GitHub review threads via node_github_review_effect, watches
+  for resolutions, verifies each resolved thread with a judge model (inference
+  bridge + node_judge_verdict_parse_compute), posts the summary report, and emits
+  the ReviewVerdict-shaped completed event. Phase progression + the 3-failure
+  circuit breaker are folded by the pure pr-review FSM (node_pr_review_fsm_reducer
+  applies the same fold). Coordinates over the bus; no in-process workflow runner,
+  no shelled gh, no raw-httpx judge call.
+
+input_model:
+  name: ReviewRequest
+  module: omnimarket.review.pr_review_io
+  description: "Start command for the PR review run."
+
+output_model:
+  name: ModelPrReviewCompletedEvent
+  module: omnimarket.nodes.node_pr_review_orchestrator.models.model_pr_review_completed_event
+  description: "Completed event with terminal phase + preserved ReviewVerdict."
+
+handler:
+  module: omnimarket.nodes.node_pr_review_orchestrator.handlers.handler_pr_review_orchestrator
+  class: HandlerPrReviewOrchestrator
+  input_model: omnimarket.review.pr_review_io.ReviewRequest
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - handler:
+        name: HandlerPrReviewOrchestrator
+        module: omnimarket.nodes.node_pr_review_orchestrator.handlers.handler_pr_review_orchestrator
+
+descriptor:
+  node_archetype: orchestrator
+  purity: impure
+  idempotent: false
+  timeout_ms: 600000
+  runtime_profiles:
+    - effects
+
+terminal_event: onex.evt.omnimarket.pr-review-bot-completed.v1
+
+event_bus:
+  consumer_group: omnimarket.pr_review_orchestrator.consume.v1
+  subscribe_topics:
+    - onex.cmd.omnimarket.pr-review-bot-start.v1
+  publish_topics:
+    - onex.evt.omnimarket.pr-review-bot-phase-transition.v1
+    - onex.evt.omnimarket.pr-review-bot-thread-posted.v1
+    - onex.evt.omnimarket.pr-review-bot-thread-verified.v1
+    - onex.evt.omnimarket.pr-review-bot-completed.v1
+  dlq_topics:
+    - onex.dlq.omnimarket.pr-review-bot-start.v1
+
+model_routing:
+  policy_id: "pr_review.caller_supplied_routes.v1"
+  route_config_env: "PR_REVIEW_MODEL_CONFIGS_JSON"
+  description: >
+    PR review accepts caller-provided logical route keys only (reviewer_models +
+    judge_model). Runtime route configs are injected separately and must map each
+    requested key to a concrete http transport configuration; this contract
+    intentionally does not declare served model IDs or model-specific endpoint
+    environment variables.
+  reviewer:
+    schema: "required_caller_supplied_logical_keys"
+    input_field: "reviewer_models"
+    min_items: 1
+    transport: "http"
+    description: "Ordered reviewer logical keys supplied by the command payload."
+  judge:
+    schema: "required_caller_supplied_logical_key"
+    input_field: "judge_model"
+    transport: "http"
+    description: "Judge logical key supplied by the command payload."
+
+dependencies:
+  nodes:
+    - name: "node_github_diff_effect"
+      reason: "Resolve the PR diff for review"
+      required: true
+    - name: "node_review_prompt_builder_compute"
+      reason: "Build the adversarial review prompt"
+      required: true
+    - name: "node_review_response_parser_compute"
+      reason: "Tolerant-parse reviewer responses into findings"
+      required: true
+    - name: "node_finding_aggregator_compute"
+      reason: "Weighted-union dedup of findings from N models"
+      required: true
+    - name: "node_github_review_effect"
+      reason: "Post review threads, watch resolutions, post the report"
+      required: true
+    - name: "node_judge_verdict_parse_compute"
+      reason: "Parse the judge model PASS/FAIL verdict"
+      required: true
+    - name: "node_pr_review_fsm_reducer"
+      reason: "Pure FSM fold (phase progression + circuit breaker)"
+      required: true
+  packages:
+    - "omnibase_core>=0.39.0"
+    - "httpx>=0.27.0"
+
+metadata:
+  transport_type: kafka
+  description: "Automated multi-model PR review orchestrator with judge gate"
+  author: "OmniNode Team"
+  tags:
+    - "review"
+    - "pr-bot"
+    - "github"
+    - "judge-verification"
+    - "orchestrator"
+  related_tickets:
+    - "OMN-13212"
+    - "OMN-13205"
+    - "OMN-13208"
+    - "OMN-13210"

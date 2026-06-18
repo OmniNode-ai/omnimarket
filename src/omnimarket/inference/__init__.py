@@ -4,8 +4,8 @@
 
 ``bridge_config_loader`` builds a ``ModelInferenceBridgeConfig`` populated
 from ``LLM_*_URL`` / ``LLM_*_MODEL_NAME`` env vars so reviewer nodes
-(node_pr_review_bot, node_hostile_reviewer) can resolve caller-supplied
-model keys without per-node registry duplication.
+(node_pr_review_orchestrator, node_hostile_reviewer_orchestrator) can resolve
+caller-supplied model keys without per-node registry duplication.
 
 ``openrouter_models`` defines the free-tier OpenRouter model catalog.
 ``adapter_inference_bridge`` re-exports the shared bridge adapter.

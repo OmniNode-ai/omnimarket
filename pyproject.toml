@@ -161,7 +161,10 @@ node_auto_merge_effect = "omnimarket.nodes.node_auto_merge_effect"
 node_finding_aggregator_compute = "omnimarket.nodes.node_finding_aggregator_compute"
 node_pr_snapshot_effect = "omnimarket.nodes.node_pr_snapshot_effect"
 node_pr_health_monitor = "omnimarket.nodes.node_pr_health_monitor"
-node_pr_review_bot = "omnimarket.nodes.node_pr_review_bot"
+node_pr_review_orchestrator = "omnimarket.nodes.node_pr_review_orchestrator"
+node_pr_review_fsm_reducer = "omnimarket.nodes.node_pr_review_fsm_reducer"
+node_github_review_effect = "omnimarket.nodes.node_github_review_effect"
+node_judge_verdict_parse_compute = "omnimarket.nodes.node_judge_verdict_parse_compute"
 node_review_thread_reconciler = "omnimarket.nodes.node_review_thread_reconciler"
 node_design_to_plan = "omnimarket.nodes.node_design_to_plan"
 node_ticket_work = "omnimarket.nodes.node_ticket_work"
@@ -499,10 +502,6 @@ ignore_missing_imports = true
 [[tool.mypy.overrides]]
 module = "omnimarket.nodes.node_navigation_history_reducer.node_navigation_history_reducer"
 ignore_errors = true
-
-[[tool.mypy.overrides]]
-module = "omnimarket.nodes.node_pr_review_bot.adapter_github_bridge"
-ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
 module = ["radon", "radon.*"]

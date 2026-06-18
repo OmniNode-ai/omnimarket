@@ -156,6 +156,15 @@ _KNOWN_VIOLATIONS: frozenset[str] = frozenset(
         # aggregator input to omnimarket.review if a second consumer appears.
         "omnimarket.nodes.node_hostile_reviewer_orchestrator.handlers.handler_hostile_reviewer_orchestrator:omnimarket.nodes.node_finding_aggregator_compute.models.model_finding_aggregator_input:ModelFindingAggregatorInput",
         "omnimarket.nodes.node_hostile_reviewer_orchestrator.handlers.handler_hostile_reviewer_orchestrator:omnimarket.nodes.node_finding_aggregator_compute.models.model_finding_aggregator_input:ModelSourceFindings",
+        # OMN-13212 (B2): node_pr_review_orchestrator → node_finding_aggregator_compute.
+        # The orchestrator dispatches the canonical finding aggregator COMPUTE and must
+        # construct its input; the aggregator pre-dates this rebuild and keeps its
+        # node-local input model (same exception as the B1 hostile_reviewer orchestrator).
+        # All other review node I/O is shared via omnimarket.review (no reach-in). Track
+        # follow-up to promote the aggregator input to omnimarket.review if a second
+        # consumer appears.
+        "omnimarket.nodes.node_pr_review_orchestrator.handlers.handler_pr_review_orchestrator:omnimarket.nodes.node_finding_aggregator_compute.models.model_finding_aggregator_input:ModelFindingAggregatorInput",
+        "omnimarket.nodes.node_pr_review_orchestrator.handlers.handler_pr_review_orchestrator:omnimarket.nodes.node_finding_aggregator_compute.models.model_finding_aggregator_input:ModelSourceFindings",
     ]
 )
 

@@ -193,12 +193,14 @@ def test_runtime_profile_lane_assignments_post_omn_12982_batch1() -> None:
     assert _runtime_profiles(adr_canary_orchestrator) == ("canary",)
 
 
-def test_pr_review_bot_runs_in_effects_lane_post_omn_12982_batch1() -> None:
-    # OMN-12982 Batch 1: top-level runtime_profiles was manual_pr_review (unregistered)
-    # -> corrected to effects. Descriptor already had effects; now both levels agree.
-    contract = _load_contract(NODES_ROOT / "node_pr_review_bot" / "contract.yaml")
+def test_pr_review_orchestrator_runs_in_effects_lane() -> None:
+    # OMN-13212 (B2): node_pr_review_bot `workflow` shell rebuilt as
+    # node_pr_review_orchestrator (ORCHESTRATOR). The canonical orchestrator runs
+    # in the effects lane (descriptor runtime_profiles == [effects]).
+    contract = _load_contract(
+        NODES_ROOT / "node_pr_review_orchestrator" / "contract.yaml"
+    )
     descriptor = contract.get("descriptor")
     assert isinstance(descriptor, dict)
 
-    assert _runtime_profiles(contract) == ("effects",)
     assert descriptor["runtime_profiles"] == ["effects"]

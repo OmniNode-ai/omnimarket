@@ -199,9 +199,9 @@ class TestNoHardcodedIpsInHandlers:
         Path(__file__).parents[1] / "handlers" / "adapter_llm_classify.py",
         Path(__file__).parents[1] / "assemble_live.py",
         Path(__file__).parents[2]
-        / "node_pr_review_bot"
+        / "node_github_review_effect"
         / "handlers"
-        / "handler_judge_verifier.py",
+        / "handler_github_review_effect.py",
     ]
 
     @pytest.mark.parametrize("handler_path", _HANDLER_FILES)
