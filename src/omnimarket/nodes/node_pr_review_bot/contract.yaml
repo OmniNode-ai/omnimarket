@@ -251,7 +251,7 @@ runtime_config:
 
 dependencies:
   nodes:
-    - name: "node_hostile_reviewer"
+    - name: "node_hostile_reviewer_orchestrator"
       reason: "Multi-model review fan-out and ModelReviewFinding production"
       required: true
     - name: "node_finding_aggregator_compute"

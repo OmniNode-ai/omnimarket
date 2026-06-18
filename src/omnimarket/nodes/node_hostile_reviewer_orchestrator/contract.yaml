@@ -1,0 +1,135 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Hostile Reviewer Orchestrator (OMN-13210 / B1)
+#
+# Multi-model adversarial code review, rebuilt canonically from the deleted
+# node_hostile_reviewer `workflow` shell. ORCHESTRATOR: consumes the start
+# command, coordinates github-diff EFFECT + prompt/parse/aggregate COMPUTE +
+# canonical inference fan-out, and emits the completed event over the bus.
+#
+# Related Tickets:
+#   - OMN-13210: B1 — rebuild node_hostile_reviewer canonically
+#   - OMN-13205: canonical node migration epic
+#   - OMN-13208: A1 — re-homed inference bridge + review models + prompt/parse
+---
+name: node_hostile_reviewer_orchestrator
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: orchestrator
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  Multi-model adversarial code review ORCHESTRATOR. Consumes a start command,
+  resolves the review target via node_github_diff_effect, builds per-route
+  prompts via node_review_prompt_builder_compute, fans out to N model routes via
+  the canonical inference bridge, parses responses via
+  node_review_response_parser_compute, and dedups + scores findings via
+  node_finding_aggregator_compute, then emits the completed event. Coordinates
+  over the bus; no in-process FSM, no shelled CLI.
+
+input_model:
+  name: ModelHostileReviewerStartCommand
+  module: omnimarket.nodes.node_hostile_reviewer_orchestrator.models.model_hostile_reviewer_start_command
+  description: "Start command for the hostile reviewer."
+
+output_model:
+  name: ModelHostileReviewerCompletedEvent
+  module: omnimarket.nodes.node_hostile_reviewer_orchestrator.models.model_hostile_reviewer_completed_event
+  description: "Completed event with terminal phase, verdict-driving findings, and timing."
+
+handler:
+  module: omnimarket.nodes.node_hostile_reviewer_orchestrator.handlers.handler_hostile_reviewer_orchestrator
+  class: HandlerHostileReviewerOrchestrator
+  input_model: omnimarket.nodes.node_hostile_reviewer_orchestrator.models.model_hostile_reviewer_start_command.ModelHostileReviewerStartCommand
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - handler:
+        name: HandlerHostileReviewerOrchestrator
+        module: omnimarket.nodes.node_hostile_reviewer_orchestrator.handlers.handler_hostile_reviewer_orchestrator
+
+descriptor:
+  node_archetype: orchestrator
+  purity: impure
+  idempotent: true
+  timeout_ms: 600000
+  runtime_profiles:
+    - effects
+
+terminal_event: onex.evt.omnimarket.hostile-reviewer-completed.v1
+
+event_bus:
+  consumer_group: omnimarket.hostile_reviewer_orchestrator.consume.v1
+  subscribe_topics:
+    - onex.cmd.omnimarket.hostile-reviewer-start.v1
+  publish_topics:
+    - onex.evt.omnimarket.hostile-reviewer-completed.v1
+  dlq_topics:
+    - onex.dlq.omnimarket.hostile-reviewer-start.v1
+
+model_routing:
+  policy_id: "hostile_reviewer.caller_supplied_routes.v1"
+  route_keys_input: "models"
+  route_config_env: "HOSTILE_REVIEWER_MODEL_CONFIGS_JSON"
+  description: >
+    Hostile reviewer accepts caller-provided logical route keys only. Runtime
+    route configs are injected separately and must map each requested key to a
+    concrete transport configuration; this contract intentionally does not
+    declare served model IDs or model-specific endpoint environment variables.
+  route_schema:
+    logical_key:
+      type: str
+      required: true
+      description: "Opaque logical route key supplied in inputs.models."
+    transport:
+      type: str
+      required: true
+      allowed_values: ["http", "cli"]
+    http:
+      required_fields:
+        - "base_url or base_url_env"
+        - "model_id"
+      optional_fields:
+        - "api_key"
+        - "extra_headers"
+        - "temperature"
+        - "context_window"
+        - "timeout_seconds"
+    cli:
+      required_fields:
+        - "cli_command"
+      optional_fields:
+        - "context_window"
+        - "timeout_seconds"
+
+dependencies:
+  nodes:
+    - name: "node_github_diff_effect"
+      reason: "Resolve the PR diff / file content for review"
+      required: true
+    - name: "node_review_prompt_builder_compute"
+      reason: "Build per-route adversarial prompts"
+      required: true
+    - name: "node_review_response_parser_compute"
+      reason: "Tolerant-parse model responses into findings"
+      required: true
+    - name: "node_finding_aggregator_compute"
+      reason: "Weighted-union dedup of findings from N models"
+      required: true
+  packages:
+    - "omnibase_core>=0.39.0"
+    - "httpx>=0.27.0"
+
+metadata:
+  transport_type: kafka
+  description: "Multi-model adversarial code review orchestrator"
+  author: "OmniNode Team"
+  tags:
+    - "review"
+    - "adversarial"
+    - "multi-model"
+    - "orchestrator"
+  related_tickets:
+    - "OMN-13210"
+    - "OMN-13205"
+    - "OMN-13208"

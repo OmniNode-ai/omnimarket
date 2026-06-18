@@ -71,12 +71,12 @@ event_bus:
 
 review_gates:
   # hostile_reviewer is the adversarial review gate for the PR_REVIEW phase.
-  # When PR_REVIEW is wired, it must invoke node_hostile_reviewer via
-  # build_from_contract() before advancing to AUTO_MERGE. The contract-driven
-  # model routing in node_hostile_reviewer guarantees N-1 graceful degradation
-  # so a single unavailable model does not block the pipeline.
+  # When PR_REVIEW is wired, it dispatches node_hostile_reviewer_orchestrator
+  # over the bus before advancing to AUTO_MERGE. The contract-driven model
+  # routing in node_hostile_reviewer_orchestrator guarantees N-1 graceful
+  # degradation so a single unavailable model does not block the pipeline.
   pr_review:
-    node: "node_hostile_reviewer"
+    node: "node_hostile_reviewer_orchestrator"
     phase: "PR_REVIEW"
     mode: "gate"
     blocking_verdict: "blocking_issue"
@@ -84,7 +84,7 @@ review_gates:
 
 dependencies:
   nodes:
-    - name: "node_hostile_reviewer"
+    - name: "node_hostile_reviewer_orchestrator"
       reason: "Adversarial review gate at PR_REVIEW phase"
       required: false
 

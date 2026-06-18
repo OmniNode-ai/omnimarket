@@ -51,7 +51,7 @@ node_full_triage_orchestrator,orchestrator,false,,,,1,1,,config_required,"handle
 node_gap_compute,compute,false,,,,1,1,,config_required,"handler_transports=[], declared_dep_transports=[], config_env_vars=0, publish=1, subscribe=1"
 node_golden_chain_sweep,compute,false,,,,2,1,,config_required,"handler_transports=[], declared_dep_transports=[], config_env_vars=0, publish=2, subscribe=1"
 node_handoff_effect,effect,false,,,,1,1,,config_required,"handler_transports=[], declared_dep_transports=[], config_env_vars=0, publish=1, subscribe=1"
-node_hostile_reviewer,workflow,false,,,,6,1,,config_required,"handler_transports=[], declared_dep_transports=[], config_env_vars=0, publish=6, subscribe=1"
+node_hostile_reviewer_orchestrator,orchestrator,true,kafka,,,1,1,,config_required,"handler_transports=[], declared_dep_transports=[], config_env_vars=0, publish=1, subscribe=1 (OMN-13210: rebuilt canonically from node_hostile_reviewer)"
 node_integration_sweep_orchestrator,orchestrator,false,,,,0,0,,config_free,"no handler transports, no config env_vars, no topics, no transport deps"
 node_integration_test_runner,compute,false,,,,1,1,,config_required,"handler_transports=[], declared_dep_transports=[], config_env_vars=0, publish=1, subscribe=1"
 node_intelligence_orchestrator,ORCHESTRATOR_GENERIC,false,,intelligence_adapter_effect|intelligence_reducer|pattern_extraction_compute|pattern_learning_compute|pattern_matching_compute|quality_scoring_compute|semantic_analysis_compute,,8,5,,config_required,"handler_transports=[], declared_dep_transports=[], config_env_vars=0, publish=8, subscribe=5"

@@ -1,0 +1,23 @@
+name: node_review_convergence_compute
+version: "1.0.0"
+description: "Per-model precision/recall/F1 of review findings vs frontier ground truth — pure COMPUTE"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_review_convergence_compute: "omnimarket.nodes.node_review_convergence_compute"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: read_only
+dependencies:
+  - "omnibase_core>=0.39.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["compute", "review", "convergence", "eval"]
+pack: "review"
+display_name: "Review Convergence"
+node_role: "compute"

@@ -1,0 +1,92 @@
+---
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - GitHub Diff Effect (OMN-13210 / B1)
+#
+# EFFECT: resolves a review target's content over the GitHub REST API (PR unified
+# diff) or from a local file. Replaces the legacy shelled `gh pr diff` in the
+# hostile reviewer workflow runner.
+name: node_github_diff_effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: effect
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  EFFECT: resolves a review target's content. For a pull request it fetches the
+  unified diff via the GitHub REST API (application/vnd.github.v3.diff). For a
+  file_path it reads the local file's content. The GitHub token is resolved at
+  the effect boundary from the contract-declared api_key_ref via the canonical
+  secret-store resolver. No subprocess shell-out.
+
+input_model:
+  name: ModelGithubDiffCommand
+  module: omnimarket.nodes.node_github_diff_effect.models.model_github_diff
+  description: "Review target: (pr_number + repo) or file_path."
+
+output_model:
+  name: ModelGithubDiffResolvedEvent
+  module: omnimarket.nodes.node_github_diff_effect.models.model_github_diff
+  description: "Resolved unified diff or file content."
+
+handler:
+  module: omnimarket.nodes.node_github_diff_effect.handlers.handler_github_diff
+  class: HandlerGithubDiffEffect
+  input_model: omnimarket.nodes.node_github_diff_effect.models.model_github_diff.ModelGithubDiffCommand
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - handler:
+        name: HandlerGithubDiffEffect
+        module: omnimarket.nodes.node_github_diff_effect.handlers.handler_github_diff
+
+descriptor:
+  node_archetype: effect
+  purity: impure
+  idempotent: true
+  timeout_ms: 30000
+  runtime_profiles:
+    - effects
+
+secrets:
+  # GitHub token is contract-declared so the handler reads the ref name from
+  # here — not a bare source literal. Value is resolved at the effect boundary
+  # via the canonical secret-store resolver.
+  GITHUB_TOKEN:
+    description: "GitHub PAT or Actions token for REST API diff resolution."
+    required: true
+
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.github-diff-resolve.v1
+  terminal_events:
+    success: onex.evt.omnimarket.github-diff-resolved.v1
+    failure: onex.evt.omnimarket.github-diff-resolve-failed.v1
+
+event_bus:
+  consumer_group: omnimarket.github_diff_effect.consume.v1
+  subscribe_topics:
+    - onex.cmd.omnimarket.github-diff-resolve.v1
+  publish_topics:
+    - onex.evt.omnimarket.github-diff-resolved.v1
+    - onex.evt.omnimarket.github-diff-resolve-failed.v1
+  dlq_topics:
+    - onex.dlq.omnimarket.github-diff-resolve.v1
+
+terminal_event: onex.evt.omnimarket.github-diff-resolved.v1
+
+dependencies:
+  packages:
+    - "omnibase_core>=0.39.0"
+
+metadata:
+  transport_type: kafka
+  description: "GitHub diff resolution effect node"
+  author: "OmniNode Team"
+  tags:
+    - "effect"
+    - "github"
+    - "diff"
+    - "review"
+  related_tickets:
+    - "OMN-13210"
+    - "OMN-13205"
