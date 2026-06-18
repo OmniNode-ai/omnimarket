@@ -21,15 +21,15 @@ from uuid import uuid4
 import pytest
 from pydantic import ValidationError
 
-from omnimarket.nodes.node_redeploy.models.model_deploy_agent_events import (
-    EnumBuildSource,
-    ModelDeployRebuildCommand,
-)
-from omnimarket.nodes.node_redeploy.models.model_occ_evidence_draft import (
+from omnimarket.events.occ_evidence import (
     EnumEvidenceLifecycleState,
     ModelOccEvidenceDraft,
     ModelOccEvidenceDraftRequest,
     ModelOccEvidenceDraftValidationResult,
+)
+from omnimarket.nodes.node_redeploy.models.model_deploy_agent_events import (
+    EnumBuildSource,
+    ModelDeployRebuildCommand,
 )
 from omnimarket.nodes.node_redeploy.models.model_redeploy_command import (
     EnumRuntimeLane,

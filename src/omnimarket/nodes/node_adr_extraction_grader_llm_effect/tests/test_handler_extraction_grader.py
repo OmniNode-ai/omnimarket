@@ -10,6 +10,9 @@ import json
 import pytest
 from pydantic import ValidationError
 
+from omnimarket.inference.adapter_inference_bridge import (
+    ModelInferenceAdapter,
+)
 from omnimarket.nodes.node_adr_extraction_grader_llm_effect.handlers.handler_extraction_grader import (
     HandlerExtractionGrader,
     _parse_scores,
@@ -20,9 +23,6 @@ from omnimarket.nodes.node_adr_extraction_grader_llm_effect.models.model_grading
 from omnimarket.nodes.node_adr_extraction_grader_llm_effect.models.model_grading_result import (
     ModelGradingResult,
     ModelLLMCallEvidence,
-)
-from omnimarket.nodes.node_hostile_reviewer.handlers.adapter_inference_bridge import (
-    ModelInferenceAdapter,
 )
 
 _GROUND_TRUTH = (

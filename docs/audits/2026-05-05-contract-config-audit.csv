@@ -115,7 +115,6 @@ node_projection_cost_token_usage,REDUCER_GENERIC,false,,,,1,1,,config_required,"
 node_projection_delegation,reducer,false,,,,1,2,,config_required,"handler_transports=[], declared_dep_transports=[], config_env_vars=0, publish=1, subscribe=2"
 node_projection_llm_cost,reducer,false,,,,1,1,kafka|postgres,needs_review,handler uses ['postgres'] but contract dependencies[] does not declare it
 node_projection_overnight,reducer,false,,,,1,3,,config_required,"handler_transports=[], declared_dep_transports=[], config_env_vars=0, publish=1, subscribe=3"
-node_projection_query,query,false,,,,1,1,,config_required,"handler_transports=[], declared_dep_transports=[], config_env_vars=0, publish=1, subscribe=1"
 node_projection_registration,reducer,false,,,,1,3,,config_required,"handler_transports=[], declared_dep_transports=[], config_env_vars=0, publish=1, subscribe=3"
 node_projection_savings,reducer,false,,,,1,1,,config_required,"handler_transports=[], declared_dep_transports=[], config_env_vars=0, publish=1, subscribe=1"
 node_projection_session_outcome,reducer,false,,,,1,1,,config_required,"handler_transports=[], declared_dep_transports=[], config_env_vars=0, publish=1, subscribe=1"

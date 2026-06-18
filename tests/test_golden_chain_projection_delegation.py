@@ -259,6 +259,109 @@ class TestDelegationProjection:
         assert row["tokens_to_compliance"] == 737
         assert row["response_text"] == "projection proof"
 
+    def test_terminal_row_carries_created_at(self) -> None:
+        """OMN-13171: the terminal projection row populates created_at.
+
+        The deployed delegation_events schema declares created_at as
+        NOT NULL. The projection write must inject created_at explicitly so a
+        backing store without an implicit DB default (e.g. the local SQLite
+        evidence target on a warm volume) does not raise a NOT NULL constraint.
+        """
+        db = InmemoryDatabaseAdapter()
+        payload: dict[str, object] = {
+            "_db": db,
+            "_event_type": "delegate-skill-completed",
+            "status": "completed",
+            "correlation_id": "1d8f9a02-5b6c-4d7e-8f10-2a3b4c5d6e7f",
+            "task_type": "test",
+            "provider": "local-qwen",
+            "model_name": _DELEGATE_SKILL_TEST_MODEL,
+            "response": "projection proof",
+            "quality_gate_passed": True,
+            "quality_gates_failed": [],
+            "metrics": {
+                "input_tokens": 144,
+                "output_tokens": 593,
+                "total_tokens": 737,
+                "latency_ms": 1250,
+                "cost_usd": 0.0,
+                "cost_savings_usd": 0.0,
+            },
+        }
+
+        result = HANDLER.handle(payload)
+
+        assert result["rows_upserted"] == 1
+        row = db.query("delegation_events")[0]
+        created_at = row.get("created_at")
+        assert created_at, "terminal projection row must populate created_at"
+        # created_at mirrors the event timestamp (explicit injection, deterministic),
+        # not an implicit datetime.now() at the DB layer.
+        assert created_at == row["timestamp"]
+
+    def test_terminal_write_to_sqlite_with_not_null_created_at(
+        self, tmp_path: Path
+    ) -> None:
+        """OMN-13171: terminal write to a NOT NULL created_at SQLite store succeeds.
+
+        Reproduces the local-delegate evidence path against a warm-volume schema
+        where delegation_events.created_at is NOT NULL with no DB default. Before
+        the fix the INSERT raised sqlite3.IntegrityError: NOT NULL constraint
+        failed: delegation_events.created_at.
+        """
+        import sqlite3
+
+        from omnimarket.models.delegation.wire.model_delegate_skill_terminal_projection import (
+            ModelDelegateSkillTerminalProjection,
+        )
+        from omnimarket.projection.sqlite_database import SqliteDatabaseAdapter
+
+        db_path = tmp_path / "delegation.sqlite"
+        # Seed the deployed-shape table: created_at NOT NULL, no default — the
+        # warm-volume scenario the SqliteDatabaseAdapter additive DDL cannot relax.
+        conn = sqlite3.connect(str(db_path))
+        try:
+            conn.execute(
+                "CREATE TABLE delegation_events ("
+                "correlation_id TEXT NOT NULL UNIQUE, "
+                "created_at TEXT NOT NULL)"
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        adapter = SqliteDatabaseAdapter(db_path)
+        terminal = ModelDelegateSkillTerminalProjection.from_payload(
+            {
+                "status": "completed",
+                "correlation_id": "2e9f0b13-6c7d-5e8f-9012-3b4c5d6e7f80",
+                "task_type": "code_generation",
+                "provider": "local-qwen",
+                "model_name": _DELEGATE_SKILL_TEST_MODEL,
+                "response": "evidence proof",
+                "quality_gate_passed": True,
+                "quality_gates_failed": [],
+                "metrics": {
+                    "input_tokens": 11,
+                    "output_tokens": 22,
+                    "total_tokens": 33,
+                    "latency_ms": 42,
+                    "cost_usd": 0.0,
+                    "cost_savings_usd": 0.0,
+                },
+            }
+        )
+
+        result = HANDLER.project_delegate_skill_terminal(terminal, adapter)
+
+        assert result.rows_upserted == 1
+        rows = adapter.query(
+            "delegation_events",
+            {"correlation_id": "2e9f0b13-6c7d-5e8f-9012-3b4c5d6e7f80"},
+        )
+        assert len(rows) == 1
+        assert rows[0]["created_at"]
+
     def test_dashboard_projection_views_are_declared_by_migrations(self) -> None:
         delegation_view_migration = Path(
             "src/omnimarket/nodes/node_projection_delegation/migrations/"

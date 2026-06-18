@@ -11,6 +11,9 @@ import json
 
 import pytest
 
+from omnimarket.inference.adapter_inference_bridge import (
+    ModelInferenceAdapter,
+)
 from omnimarket.nodes.node_adr_segmentation_llm_effect.handlers.handler_segmentation import (
     HandlerSegmentation,
     _build_user_prompt,
@@ -26,9 +29,6 @@ from omnimarket.nodes.node_adr_segmentation_llm_effect.models.model_segmentation
     ModelDocumentSegment,
     ModelLLMCallEvidence,
     ModelSegmentationResult,
-)
-from omnimarket.nodes.node_hostile_reviewer.handlers.adapter_inference_bridge import (
-    ModelInferenceAdapter,
 )
 
 # ---------------------------------------------------------------------------

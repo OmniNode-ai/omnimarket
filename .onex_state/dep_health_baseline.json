@@ -437,16 +437,6 @@
       "finding_type": "UNTESTED_HANDLER",
       "severity": "MAJOR",
       "repo": "omnimarket",
-      "file_path": "src/omnimarket/nodes/node_projection_query/handlers/handler_projection_query.py",
-      "symbol": "handler_projection_query",
-      "detail": "Contract-referenced handler 'handler_projection_query' has no test file and no golden-chain fixture coverage.",
-      "rule_id": "UNTESTED_HANDLER",
-      "rule_version": "v1"
-    },
-    {
-      "finding_type": "UNTESTED_HANDLER",
-      "severity": "MAJOR",
-      "repo": "omnimarket",
       "file_path": "src/omnimarket/nodes/node_knowledge_context_assembler_reducer/handlers/handler_knowledge_context_assembler_reducer.py",
       "symbol": "handler_knowledge_context_assembler_reducer",
       "detail": "Contract-referenced handler 'handler_knowledge_context_assembler_reducer' has no test file and no golden-chain fixture coverage.",
@@ -4530,16 +4520,6 @@
       "file_path": "src/omnimarket/nodes/node_projection_overnight/contract.yaml",
       "symbol": "onex.evt.omnimarket.projection-overnight-applied.v1",
       "detail": "Topic 'onex.evt.omnimarket.projection-overnight-applied.v1' is published but has no subscriber and is not declared as externally consumed.",
-      "rule_id": "MISSING_TOPIC_EDGE",
-      "rule_version": "v1"
-    },
-    {
-      "finding_type": "MISSING_TOPIC_EDGE",
-      "severity": "MAJOR",
-      "repo": "omnimarket",
-      "file_path": "src/omnimarket/nodes/node_projection_query/contract.yaml",
-      "symbol": "onex.evt.omnimarket.projection-query-completed.v1",
-      "detail": "Topic 'onex.evt.omnimarket.projection-query-completed.v1' is published but has no subscriber and is not declared as externally consumed.",
       "rule_id": "MISSING_TOPIC_EDGE",
       "rule_version": "v1"
     },

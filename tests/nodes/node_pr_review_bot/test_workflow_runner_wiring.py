@@ -26,11 +26,11 @@ from uuid import uuid4
 
 import pytest
 
+from omnimarket.inference.adapter_inference_bridge import (
+    ModelInferenceBridgeConfig,
+)
 from omnimarket.inference.bridge_config_loader import (
     load_inference_bridge_config_from_env,
-)
-from omnimarket.nodes.node_hostile_reviewer.handlers.adapter_inference_bridge import (
-    ModelInferenceBridgeConfig,
 )
 from omnimarket.nodes.node_pr_review_bot.handlers.handler_judge_verifier import (
     HandlerJudgeVerifier,
@@ -268,7 +268,7 @@ def test_report_phase_receives_findings_from_fsm_state(
     from datetime import UTC, datetime
     from uuid import uuid4
 
-    from omnimarket.nodes.node_hostile_reviewer.models.model_review_finding import (
+    from omnimarket.models.model_review_finding import (
         EnumFindingSeverity,
         EnumReviewConfidence,
     )

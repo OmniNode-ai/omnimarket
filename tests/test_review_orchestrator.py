@@ -13,14 +13,14 @@ from uuid import uuid4
 
 import pytest
 
+from omnimarket.models.model_review_finding import (
+    EnumReviewVerdict,
+)
 from omnimarket.nodes.node_hostile_reviewer.handlers.handler_review_orchestrator import (
     ModelInferenceAdapter,
     ModelOrchestratorInput,
     ModelOrchestratorOutput,
     run_review_orchestration,
-)
-from omnimarket.nodes.node_hostile_reviewer.models.model_review_finding import (
-    EnumReviewVerdict,
 )
 
 

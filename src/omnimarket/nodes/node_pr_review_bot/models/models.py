@@ -17,7 +17,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from omnimarket.nodes.node_hostile_reviewer.models.model_review_finding import (
+from omnimarket.models.model_review_finding import (
     EnumFindingCategory,
     EnumFindingSeverity,
     EnumReviewConfidence,

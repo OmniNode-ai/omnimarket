@@ -48,6 +48,7 @@ from omnimarket.projection.sqlite_database import (
 from omnimarket.routing.delegation_backend_resolution import (
     resolve_delegation_backend,
     resolve_effective_max_tokens,
+    resolve_timeout_seconds,
 )
 
 logger = logging.getLogger(__name__)
@@ -115,6 +116,11 @@ class LocalDelegationDispatchPort:
             requested=max_tokens, backend_max_tokens=backend.max_tokens
         )
 
+        # 2b. RESOLVE the per-call HTTP timeout from the routing contract (÷1000),
+        #     so the transport honors the backend's configured timeout_ms instead
+        #     of a hardcoded cap (OMN-13170).
+        timeout_seconds = resolve_timeout_seconds(backend_timeout_ms=backend.timeout_ms)
+
         # Inference-protocol shaping (e.g. /no_think prefix, chat_template_kwargs).
         system_prompt = _TASK_TYPE_SYSTEM_PROMPTS.get(
             task_type, _TASK_TYPE_SYSTEM_PROMPTS["research"]
@@ -157,6 +163,7 @@ class LocalDelegationDispatchPort:
             system_prompt=outbound_system_prompt,
             task_type=task_type,
             max_tokens=effective_max_tokens,
+            timeout_seconds=timeout_seconds,
             model_tier=backend.tier,
             provider=backend.backend_id,
             extra_headers=backend.extra_headers,

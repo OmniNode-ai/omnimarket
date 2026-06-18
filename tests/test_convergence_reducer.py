@@ -2,14 +2,14 @@
 
 from uuid import uuid4
 
+from omnimarket.models.model_review_finding import (
+    EnumFindingCategory,
+)
 from omnimarket.nodes.node_hostile_reviewer.handlers.handler_convergence_reducer import (
     ModelConvergenceInput,
     ModelConvergenceOutput,
     ModelFindingLabel,
     compute_convergence,
-)
-from omnimarket.nodes.node_hostile_reviewer.models.model_review_finding import (
-    EnumFindingCategory,
 )
 
 

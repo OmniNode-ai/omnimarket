@@ -50,6 +50,15 @@ class ModelLlmDelegationCallRequest(BaseModel):
     max_tokens: int = 4096
     temperature: float = 0.3
 
+    timeout_seconds: float = Field(gt=0)
+    """Per-call HTTP timeout in seconds, resolved from the backend ``timeout_ms``.
+
+    Threaded by the routing/orchestrator layer from the contract-resolved
+    per-backend ``timeout_ms`` (÷1000) so the transport honors the configured
+    backend timeout instead of a hardcoded cap (OMN-13170). Required — there is
+    no silent default that would override contract config.
+    """
+
     # Cost provenance carried from the routing layer
     routing_policy_hash: str = ""
     registry_hash: str = ""

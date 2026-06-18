@@ -141,11 +141,9 @@ _KNOWN_VIOLATIONS: frozenset[str] = frozenset(
         "omnimarket.nodes.node_pr_lifecycle_orchestrator.handlers.handler_pr_lifecycle_orchestrator:omnimarket.nodes.node_pr_lifecycle_merge_effect.models.model_merge_command:ModelPrMergeCommand",
         "omnimarket.nodes.node_pr_lifecycle_orchestrator.handlers.handler_pr_lifecycle_orchestrator:omnimarket.nodes.node_pr_lifecycle_fix_effect.models.model_fix_command:EnumPrBlockReason",
         "omnimarket.nodes.node_pr_lifecycle_orchestrator.handlers.handler_pr_lifecycle_orchestrator:omnimarket.nodes.node_pr_lifecycle_fix_effect.models.model_fix_command:ModelPrLifecycleFixCommand",
-        # node_pr_review_bot → node_hostile_reviewer
-        "omnimarket.nodes.node_pr_review_bot.models.models:omnimarket.nodes.node_hostile_reviewer.models.model_review_finding:EnumFindingCategory",
-        "omnimarket.nodes.node_pr_review_bot.models.models:omnimarket.nodes.node_hostile_reviewer.models.model_review_finding:EnumFindingSeverity",
-        "omnimarket.nodes.node_pr_review_bot.models.models:omnimarket.nodes.node_hostile_reviewer.models.model_review_finding:EnumReviewConfidence",
-        "omnimarket.nodes.node_pr_review_bot.models.models:omnimarket.nodes.node_hostile_reviewer.models.model_review_finding:ModelReviewFinding",
+        # OMN-13208 (A1): node_pr_review_bot → node_hostile_reviewer review-finding
+        # reach-ins removed — ModelReviewFinding/enums re-homed to the shared
+        # omnimarket.models package, so the import is no longer a cross-node reach-in.
         # node_rebase_effect → node_merge_sweep_triage_orchestrator
         "omnimarket.nodes.node_rebase_effect.handlers.handler_rebase:omnimarket.nodes.node_merge_sweep_triage_orchestrator.models.model_triage_request:ModelRebaseCommand",
         # node_thread_reply_effect → node_model_router

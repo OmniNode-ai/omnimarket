@@ -139,7 +139,7 @@ class HandlerCrossCliOriginator:
     def _resolve_client(self) -> _EmitClientProtocol:
         if self._emit_client is not None:
             return self._emit_client
-        from omnimarket.nodes.node_emit_daemon.client import EmitClient
+        from omnimarket.events.emit_client import EmitClient
 
         return EmitClient()
 

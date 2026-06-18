@@ -5,7 +5,7 @@ requires-python = "==3.12.*"
 [manifest]
 overrides = [
     { name = "omnibase-compat", git = "https://github.com/OmniNode-ai/omnibase_compat.git?rev=bd7fe461316effa7cd0a1918e29f83bc5787a7e0" },
-    { name = "omnibase-core", git = "https://github.com/OmniNode-ai/omnibase_core.git?rev=0babc78b76287aa72874aad0856867993c298013" },
+    { name = "omnibase-core", git = "https://github.com/OmniNode-ai/omnibase_core.git?rev=d209d12a8695922839383cd36b55ea58f6f653bd" },
     { name = "omnibase-infra", git = "https://github.com/OmniNode-ai/omnibase_infra.git?rev=1c1a5b17d2e794bb99317b4dc2a96fe570720bd6" },
     { name = "omnibase-spi", specifier = ">=0.22.0,<0.23.0" },
 ]
@@ -1228,8 +1228,8 @@ dependencies = [
 
 [[package]]
 name = "omnibase-core"
-version = "0.44.2"
-source = { git = "https://github.com/OmniNode-ai/omnibase_core.git?rev=0babc78b76287aa72874aad0856867993c298013#0babc78b76287aa72874aad0856867993c298013" }
+version = "0.45.0"
+source = { git = "https://github.com/OmniNode-ai/omnibase_core.git?rev=d209d12a8695922839383cd36b55ea58f6f653bd#d209d12a8695922839383cd36b55ea58f6f653bd" }
 dependencies = [
     { name = "blake3" },
     { name = "click" },
@@ -1370,7 +1370,7 @@ requires-dist = [
     { name = "graphifyy", marker = "extra == 'dep-health'", specifier = "==0.8.2" },
     { name = "httpx", specifier = ">=0.27.0" },
     { name = "omnibase-compat", git = "https://github.com/OmniNode-ai/omnibase_compat.git?rev=bd7fe461316effa7cd0a1918e29f83bc5787a7e0" },
-    { name = "omnibase-core", git = "https://github.com/OmniNode-ai/omnibase_core.git?rev=0babc78b76287aa72874aad0856867993c298013" },
+    { name = "omnibase-core", git = "https://github.com/OmniNode-ai/omnibase_core.git?rev=d209d12a8695922839383cd36b55ea58f6f653bd" },
     { name = "omnibase-infra", git = "https://github.com/OmniNode-ai/omnibase_infra.git?rev=1c1a5b17d2e794bb99317b4dc2a96fe570720bd6" },
     { name = "omnibase-spi", specifier = ">=0.22.0,<0.23.0" },
     { name = "omninode-memory", git = "https://github.com/OmniNode-ai/omnimemory.git?rev=9843dd18cedaa4f5939289ba527532262b87003c" },

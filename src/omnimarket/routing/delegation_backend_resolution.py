@@ -66,6 +66,16 @@ class ModelResolvedDelegationBackend(BaseModel):
             "when the request supplies an explicit value (OMN-13161)."
         ),
     )
+    timeout_ms: int = Field(
+        ...,
+        ge=1,
+        description=(
+            "Per-backend HTTP request timeout in milliseconds resolved from the "
+            "routing contract (overlay-overridable). The orchestrator threads this "
+            "(÷1000) into the effect handler's transport so large generations are "
+            "not capped by a hardcoded transport default (OMN-13170)."
+        ),
+    )
     extra_headers: dict[str, str] = Field(default_factory=dict)
 
 
@@ -175,6 +185,23 @@ def resolve_delegation_backend(
             f"{raw_max_tokens}; the per-backend output-token budget must be >= 1."
         )
 
+    # OMN-13170: the per-backend HTTP timeout is contract-resolved — there is no
+    # Python constant or transport default that silently overrides it. A backend
+    # that omits timeout_ms (or sets a non-positive one) fails closed rather than
+    # falling back to the old hardcoded 120s transport cap.
+    raw_timeout_ms = backend.get("timeout_ms")
+    if not isinstance(raw_timeout_ms, int) or isinstance(raw_timeout_ms, bool):
+        raise RuntimeError(
+            f"backend {backend.get('backend_id')!r} has no integer timeout_ms; the "
+            "routing contract (bifrost_delegation.yaml + overlay) must declare a "
+            "per-backend HTTP timeout (OMN-13170)."
+        )
+    if raw_timeout_ms < 1:
+        raise RuntimeError(
+            f"backend {backend.get('backend_id')!r} declares timeout_ms="
+            f"{raw_timeout_ms}; the per-backend HTTP timeout must be >= 1."
+        )
+
     raw_headers = backend.get("extra_headers") or {}
     extra_headers = {str(k): str(v) for k, v in raw_headers.items()}
 
@@ -184,6 +211,7 @@ def resolve_delegation_backend(
         endpoint_ref=endpoint_url,
         tier=str(backend.get("tier", "unknown")),
         max_tokens=raw_max_tokens,
+        timeout_ms=raw_timeout_ms,
         extra_headers=extra_headers,
     )
 
@@ -208,9 +236,23 @@ def resolve_effective_max_tokens(
     return min(requested, backend_max_tokens)
 
 
+def resolve_timeout_seconds(*, backend_timeout_ms: int) -> float:
+    """Convert the contract-resolved per-backend timeout (ms) to seconds.
+
+    The per-backend ``backend_timeout_ms`` is the contract-resolved HTTP timeout
+    (OMN-13170). The effect handler's transport takes seconds, so the orchestrator
+    converts ms → seconds here. Fails closed on a non-positive value rather than
+    falling back to the old hardcoded 120s transport cap.
+    """
+    if backend_timeout_ms < 1:
+        raise ValueError(f"backend_timeout_ms must be >= 1, got {backend_timeout_ms}")
+    return backend_timeout_ms / 1000.0
+
+
 __all__ = [
     "ModelResolvedDelegationBackend",
     "load_bifrost_backends",
     "resolve_delegation_backend",
     "resolve_effective_max_tokens",
+    "resolve_timeout_seconds",
 ]

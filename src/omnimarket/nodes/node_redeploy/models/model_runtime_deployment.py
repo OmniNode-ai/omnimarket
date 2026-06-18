@@ -1,11 +1,12 @@
-"""Runtime deployment request/result/proof models for node_redeploy (OMN-12576).
+"""Runtime deployment request/result models for node_redeploy.
 
-These are repo-private models in the node_redeploy model layer. They mirror the
-OCC-owned wire schema (source of truth in onex_change_control); the wire DTOs are
-also mirrored transiently through omnibase_compat. ``image_digest`` is the
-prod-gate authority: production deploys only the digest proven READY in
-stability-test, so it is a required field on the build result, deploy result,
-and deployment proof.
+The node-private request/build/deploy result models live here; the shared
+``EnumRuntimeLane`` and ``ModelRuntimeDeploymentProof`` are re-homed to their
+canonical ``omnibase_core.models.runtime_deployment.wire`` home (OMN-13209 / A2)
+and imported below. They mirror the OCC-owned wire schema (source of truth in
+onex_change_control). ``image_digest`` is the prod-gate authority: production
+deploys only the digest proven READY in stability-test, so it is a required field
+on the build result and deploy result.
 """
 
 from __future__ import annotations
@@ -14,11 +15,11 @@ from datetime import datetime
 from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
-
-from omnimarket.nodes.node_redeploy.models.model_redeploy_command import (
+from omnibase_core.models.runtime_deployment.wire import (
     EnumRuntimeLane,
+    ModelRuntimeDeploymentProof,
 )
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 type ProbeStatus = Literal["pass", "fail"]
 type DeploymentResultStatus = Literal["success", "failed"]
@@ -151,63 +152,6 @@ class ModelRuntimeDeployResult(BaseModel):
     )
     rollback_target: str | None = Field(
         default=None, description="Previous known-good digest for rollback, if any."
-    )
-
-
-class ModelRuntimeDeploymentProof(BaseModel):
-    """Per-lane deployment proof assembled from probe + runtime attestation.
-
-    ``image_digest`` is the prod-gate authority: production may deploy only the
-    digest proven READY in stability-test, so it is a required proof field.
-    """
-
-    model_config = ConfigDict(frozen=True, extra="forbid")
-
-    correlation_id: UUID = Field(..., description="Deployment run correlation ID.")
-    deployment_id: UUID = Field(
-        ..., description="Stable deployment attempt identifier."
-    )
-    runtime_lane: EnumRuntimeLane = Field(..., description="Lane that was probed.")
-    source_sha: str = Field(
-        ..., min_length=1, description="Source SHA bound to the deployed artifact."
-    )
-    image_digest: str = Field(
-        ..., min_length=1, description="Digest of the running container image."
-    )
-    compose_project: str = Field(
-        ..., min_length=1, description="Compose project that owns the deployed lane."
-    )
-    health_status: ProbeStatus = Field(
-        ..., description="Per-lane /health probe result."
-    )
-    ready_status: ProbeStatus = Field(..., description="Per-lane /ready probe result.")
-    probed_at: datetime = Field(..., description="When the probe completed.")
-    status: DeploymentResultStatus = Field(..., description="Overall proof status.")
-    promotion_batch_id: str | None = Field(
-        default=None, description="Promotion batch identifier shared with OCC evidence."
-    )
-    runtime_addresses: tuple[str, ...] = Field(
-        default_factory=tuple, description="Probed runtime addresses for the lane."
-    )
-    topology_manifest_sha256: str | None = Field(
-        default=None,
-        description="Topology manifest hash from the runtime manifest reducer.",
-    )
-    package_versions: dict[str, str] = Field(
-        default_factory=dict,
-        description="Deployed package versions from runtime attestation.",
-    )
-    runtime_source_hash: str | None = Field(
-        default=None,
-        description="Runtime source hash from the runtime source attestor.",
-    )
-    consumer_groups: tuple[str, ...] = Field(
-        default_factory=tuple,
-        description="Active consumer groups observed on the lane.",
-    )
-    runtime_sweep_input_ref: str | None = Field(
-        default=None,
-        description="Reference to the runtime sweep input used for classification.",
     )
 
 

@@ -10,7 +10,7 @@ import json
 import pytest
 from pydantic import ValidationError
 
-from omnimarket.nodes.node_hostile_reviewer.handlers.adapter_inference_bridge import (
+from omnimarket.inference.adapter_inference_bridge import (
     ModelInferenceAdapter,
 )
 from omnimarket.nodes.node_pr_semantic_grader_llm_effect.handlers.handler_pr_semantic_grader import (

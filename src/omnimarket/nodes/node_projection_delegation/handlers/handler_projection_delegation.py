@@ -102,6 +102,12 @@ class ModelProjectionGenerationCompletedEvent(BaseModel):
     attempt_count: int = Field(default=0, ge=0)
     total_latency_e2e_ms: int = Field(default=0, ge=0)
     contract_passed: bool = Field(default=False)
+    # OMN-13166: behavioral verdict carried from the terminal benchmark, persisted
+    # alongside contract_passed so the dashboard can show that a shape-valid
+    # generation was behaviorally wrong (the gate-zero false-green). semantic_checked
+    # records whether any behavioral fixture was applicable.
+    semantic_checked: bool = Field(default=False)
+    semantic_passed: bool = Field(default=False)
     cost_inference_usd: float = Field(default=0.0)
     timestamp: str | None = Field(default=None, description="ISO 8601 timestamp.")
     # OMN-12780 (Wave 1C): full generated output — empty string is the
@@ -286,12 +292,20 @@ class HandlerProjectionDelegation:
         correlation_id UPSERT key plus _preserve_existing_evidence.
         """
         row_model = ModelDelegationEventProjectionRow.from_terminal_event(event)
+        timestamp_iso = row_model.timestamp.isoformat()
         row: dict[str, object] = {
             "correlation_id": str(row_model.correlation_id),
             "session_id": (
                 str(row_model.session_id) if row_model.session_id is not None else None
             ),
-            "timestamp": row_model.timestamp.isoformat(),
+            "timestamp": timestamp_iso,
+            # OMN-13171: explicit created_at injection. The deployed
+            # delegation_events schema declares created_at NOT NULL; a backing
+            # store without an implicit DB default (the local SQLite evidence
+            # target on a warm volume) raises a NOT NULL constraint when the
+            # write omits it. Mirror the event timestamp — deterministic, not an
+            # implicit datetime.now() at the DB layer (frozen-schema convention).
+            "created_at": timestamp_iso,
             "task_type": row_model.task_type,
             "delegated_to": row_model.delegated_to,
             "model_name": row_model.model_name,
@@ -348,6 +362,9 @@ class HandlerProjectionDelegation:
             "attempt_count": event.attempt_count,
             "total_latency_e2e_ms": event.total_latency_e2e_ms,
             "contract_passed": event.contract_passed,
+            # OMN-13166: persist the behavioral verdict next to contract_passed.
+            "semantic_checked": event.semantic_checked,
+            "semantic_passed": event.semantic_passed,
             "cost_inference_usd": event.cost_inference_usd,
             "timestamp": event.timestamp or now,
             "contract_yaml": event.contract_yaml,

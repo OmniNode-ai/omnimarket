@@ -78,6 +78,7 @@ def test_curl_post_uses_endpoint_url_verbatim(
     transport.post_chat_completion(
         endpoint_url=endpoint_url,
         payload={"model": "Qwen3.6-35B-A3B", "messages": []},
+        timeout_seconds=60.0,
         runtime_profile=_MACOS_PROFILE,
     )
 
@@ -124,6 +125,7 @@ def test_curl_post_does_not_append_chat_path(
     transport.post_chat_completion(
         endpoint_url=bare_base,
         payload={"model": "Qwen3.6-35B-A3B", "messages": []},
+        timeout_seconds=60.0,
         runtime_profile=_MACOS_PROFILE,
     )
 
@@ -159,6 +161,7 @@ def test_post_fails_closed_on_non_http_url(
         transport.post_chat_completion(
             endpoint_url=bad_url,
             payload={"model": "Qwen3.6-35B-A3B", "messages": []},
+            timeout_seconds=60.0,
             runtime_profile=profile,
         )
 
@@ -205,6 +208,7 @@ def test_non_macos_profile_uses_httpx_not_curl(
     response = transport.post_chat_completion(
         endpoint_url=endpoint,
         payload={"model": "Qwen3.6-35B-A3B", "messages": []},
+        timeout_seconds=60.0,
         runtime_profile="effects",
     )
 

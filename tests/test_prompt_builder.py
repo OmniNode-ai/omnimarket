@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import pytest
 
-from omnimarket.nodes.node_hostile_reviewer.handlers.handler_prompt_builder import (
+from omnimarket.review.prompt_builder import (
     ModelPromptBuilderInput,
     ModelPromptBuilderOutput,
     build_prompt,

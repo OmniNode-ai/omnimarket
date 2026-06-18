@@ -9,14 +9,14 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from pydantic import ValidationError
 
+from omnimarket.inference.adapter_inference_bridge import (
+    AdapterInferenceBridge,
+    ModelInferenceBridgeConfig,
+)
 from omnimarket.inference.openrouter_models import (
     EnumModelAvailability,
     EnumOpenRouterTier,
     get_openrouter_models,
-)
-from omnimarket.nodes.node_hostile_reviewer.handlers.adapter_inference_bridge import (
-    AdapterInferenceBridge,
-    ModelInferenceBridgeConfig,
 )
 
 # --- openrouter_models unit tests ---

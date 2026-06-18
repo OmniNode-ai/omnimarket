@@ -18,6 +18,15 @@ from uuid import UUID, uuid4
 import pytest
 from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
 
+from omnimarket.inference.adapter_inference_bridge import (
+    ModelInferenceAdapter,
+)
+from omnimarket.models.model_review_finding import (
+    EnumFindingCategory,
+    EnumFindingSeverity,
+    EnumReviewConfidence,
+    EnumReviewVerdict,
+)
 from omnimarket.nodes.node_finding_aggregator_compute.handlers.handler_finding_aggregator import (
     HandlerFindingAggregator,
 )
@@ -32,9 +41,6 @@ from omnimarket.nodes.node_finding_aggregator_compute.models.model_finding_aggre
     EnumAggregatedVerdict,
     ModelFindingAggregatorOutput,
 )
-from omnimarket.nodes.node_hostile_reviewer.handlers.adapter_inference_bridge import (
-    ModelInferenceAdapter,
-)
 from omnimarket.nodes.node_hostile_reviewer.handlers.handler_convergence_reducer import (
     ModelConvergenceInput,
     ModelConvergenceOutput,
@@ -43,16 +49,6 @@ from omnimarket.nodes.node_hostile_reviewer.handlers.handler_convergence_reducer
 )
 from omnimarket.nodes.node_hostile_reviewer.handlers.handler_hostile_reviewer import (
     HandlerHostileReviewer,
-)
-from omnimarket.nodes.node_hostile_reviewer.handlers.handler_prompt_builder import (
-    ModelPromptBuilderInput,
-    ModelPromptBuilderOutput,
-    build_prompt,
-)
-from omnimarket.nodes.node_hostile_reviewer.handlers.handler_response_parser import (
-    EnumParseStatus,
-    ModelParseResult,
-    parse_model_response,
 )
 from omnimarket.nodes.node_hostile_reviewer.handlers.handler_review_orchestrator import (
     ModelOrchestratorInput,
@@ -65,11 +61,15 @@ from omnimarket.nodes.node_hostile_reviewer.models.model_hostile_reviewer_start_
 from omnimarket.nodes.node_hostile_reviewer.models.model_hostile_reviewer_state import (
     EnumHostileReviewerPhase,
 )
-from omnimarket.nodes.node_hostile_reviewer.models.model_review_finding import (
-    EnumFindingCategory,
-    EnumFindingSeverity,
-    EnumReviewConfidence,
-    EnumReviewVerdict,
+from omnimarket.review.prompt_builder import (
+    ModelPromptBuilderInput,
+    ModelPromptBuilderOutput,
+    build_prompt,
+)
+from omnimarket.review.response_parser import (
+    EnumParseStatus,
+    ModelParseResult,
+    parse_model_response,
 )
 
 # --- Topics ---
