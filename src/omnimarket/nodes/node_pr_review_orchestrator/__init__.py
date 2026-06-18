@@ -7,3 +7,9 @@ github-diff EFFECT, inference fan-out, finding aggregation, github-review EFFECT
 and judge verification over the bus; folds the FSM via the pure pr-review FSM
 helpers; emits the ReviewVerdict completed event.
 """
+
+from omnimarket.nodes.node_pr_review_orchestrator.handlers.handler_pr_review_orchestrator import (
+    HandlerPrReviewOrchestrator,
+)
+
+__all__ = ["HandlerPrReviewOrchestrator"]

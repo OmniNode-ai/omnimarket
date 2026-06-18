@@ -16,20 +16,23 @@ composed internally (the I/O boundary of an EFFECT node).
 
 from __future__ import annotations
 
+import asyncio
+import json as _json
 import logging
+import time
+import urllib.error
+import urllib.request
 from collections import Counter
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 from uuid import uuid4
 
 from omnibase_core.models.dispatch.model_handler_output import ModelHandlerOutput
+from pydantic import BaseModel, ConfigDict, Field
 
 from omnimarket.inference.secret_store_resolver import resolve_api_key_async
 from omnimarket.nodes.contract_topics import contract_secret_ref
-from omnimarket.nodes.node_github_review_effect.github_bridge import (
-    AdapterGithubReviewBridge,
-    ReviewThread,
-)
 from omnimarket.review.pr_review_io import (
     EnumFindingSeverity,
     EnumPrVerdict,
@@ -67,6 +70,224 @@ _SEVERITY_ORDER: tuple[EnumFindingSeverity, ...] = (
     EnumFindingSeverity.MINOR,
     EnumFindingSeverity.NIT,
 )
+
+_GITHUB_API_BASE = "https://api.github.com"
+_GITHUB_API_VERSION = "2022-11-28"
+_RATE_LIMIT_THRESHOLD = 50
+_MAX_RETRIES = 3
+_BACKOFF_BASE_SECONDS = 2.0
+_REQUEST_TIMEOUT = 30.0
+
+
+# ---------------------------------------------------------------------------
+# GitHub REST bridge (urllib; this EFFECT handler is the canonical I/O boundary)
+# ---------------------------------------------------------------------------
+
+
+class PrMetadata(BaseModel):
+    """Minimal PR metadata needed by the review effect."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    number: int
+    title: str
+    body: str
+    author: str
+    head_sha: str
+    base_ref: str
+    head_ref: str
+    state: str
+    files_changed: tuple[str, ...] = Field(default_factory=tuple)
+
+
+class ReviewThread(BaseModel):
+    """A single GitHub pull request review comment (thread)."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    id: int
+    body: str
+    path: str
+    line: int | None
+    commit_id: str
+    user_login: str
+    created_at: str
+    updated_at: str
+    in_reply_to_id: int | None
+    resolved: bool
+
+
+class AdapterGithubReviewBridge:
+    """Synchronous ``urllib`` GitHub REST adapter for review-side I/O.
+
+    Defined inside the EFFECT handler module so the imperative-contract guard
+    treats the raw GitHub calls as the canonical EFFECT I/O boundary (the same
+    surface node_github_diff_effect uses), not freestanding imperative I/O. The
+    token is supplied to the constructor (resolved at the effect's ``handle()``
+    boundary via the canonical secret-store resolver). Methods are blocking; the
+    handler runs them via ``asyncio.to_thread``.
+    """
+
+    def __init__(self, *, token: str) -> None:
+        if not token.strip():
+            raise ValueError("AdapterGithubReviewBridge requires a non-empty token")
+        self._token = token
+
+    def _build_headers(self) -> dict[str, str]:
+        return {
+            "Authorization": f"Bearer {self._token}",
+            "Accept": "application/vnd.github+json",
+            "X-GitHub-Api-Version": _GITHUB_API_VERSION,
+            "Content-Type": "application/json",
+        }
+
+    def _check_rate_limit(self, headers: Any) -> None:
+        remaining = headers.get("X-RateLimit-Remaining")
+        if remaining is not None and int(remaining) < _RATE_LIMIT_THRESHOLD:
+            reset_at = headers.get("X-RateLimit-Reset", "unknown")
+            _log.warning(
+                "GitHub rate limit low: %s requests remaining (resets at %s)",
+                remaining,
+                reset_at,
+            )
+
+    def _request(
+        self, method: str, url: str, *, body: dict[str, Any] | None = None
+    ) -> tuple[Any, Any]:
+        """Execute a request with exponential backoff. Returns (json, headers)."""
+        data = _json.dumps(body).encode("utf-8") if body is not None else None
+        last_exc: Exception | None = None
+
+        for attempt in range(_MAX_RETRIES):
+            req = urllib.request.Request(
+                url, data=data, headers=self._build_headers(), method=method
+            )
+            try:
+                with urllib.request.urlopen(req, timeout=_REQUEST_TIMEOUT) as resp:
+                    self._check_rate_limit(resp.headers)
+                    raw = resp.read().decode("utf-8", errors="replace")
+                    parsed = _json.loads(raw) if raw.strip() else None
+                    return parsed, resp.headers
+            except urllib.error.HTTPError as exc:
+                if exc.code == 429 or exc.code >= 500:
+                    retry_after = (
+                        exc.headers.get("Retry-After") if exc.headers else None
+                    )
+                    wait = (
+                        float(retry_after)
+                        if retry_after
+                        else _BACKOFF_BASE_SECONDS ** (attempt + 1)
+                    )
+                    _log.warning(
+                        "GitHub API %s %s returned %d, retrying in %.1fs",
+                        method,
+                        url,
+                        exc.code,
+                        wait,
+                    )
+                    last_exc = exc
+                    time.sleep(wait)
+                    continue
+                detail = exc.read().decode("utf-8", errors="replace").strip()
+                raise RuntimeError(
+                    f"GitHub API {method} {url} failed: {exc.code} {detail or exc.reason}"
+                ) from exc
+            except (urllib.error.URLError, TimeoutError, OSError) as exc:
+                last_exc = exc
+                wait = _BACKOFF_BASE_SECONDS ** (attempt + 1)
+                _log.warning(
+                    "GitHub API error on %s %s, retrying in %.1fs", method, url, wait
+                )
+                time.sleep(wait)
+
+        raise RuntimeError(
+            f"GitHub API {method} {url} failed after {_MAX_RETRIES} attempts: {last_exc}"
+        )
+
+    def _paginate(self, url: str) -> list[dict[str, Any]]:
+        results: list[dict[str, Any]] = []
+        page = 1
+        while True:
+            sep = "&" if "?" in url else "?"
+            data, _ = self._request("GET", f"{url}{sep}per_page=100&page={page}")
+            if not data:
+                break
+            results.extend(data)
+            if len(data) < 100:
+                break
+            page += 1
+        return results
+
+    def fetch_pr_metadata(self, repo: str, pr_number: int) -> PrMetadata:
+        pr_data, _ = self._request(
+            "GET", f"{_GITHUB_API_BASE}/repos/{repo}/pulls/{pr_number}"
+        )
+        pr_data = pr_data or {}
+        files_data = self._paginate(
+            f"{_GITHUB_API_BASE}/repos/{repo}/pulls/{pr_number}/files"
+        )
+        return PrMetadata(
+            number=pr_number,
+            title=pr_data.get("title", ""),
+            body=pr_data.get("body") or "",
+            author=pr_data.get("user", {}).get("login", ""),
+            head_sha=pr_data.get("head", {}).get("sha", ""),
+            base_ref=pr_data.get("base", {}).get("ref", ""),
+            head_ref=pr_data.get("head", {}).get("ref", ""),
+            state=pr_data.get("state", ""),
+            files_changed=tuple(f["filename"] for f in files_data),
+        )
+
+    def fetch_review_threads(self, repo: str, pr_number: int) -> list[ReviewThread]:
+        raw = self._paginate(
+            f"{_GITHUB_API_BASE}/repos/{repo}/pulls/{pr_number}/comments"
+        )
+        return [self._parse_review_thread(c) for c in raw]
+
+    def post_review_comment(
+        self,
+        repo: str,
+        pr_number: int,
+        commit_id: str,
+        path: str,
+        line: int,
+        body: str,
+    ) -> ReviewThread:
+        data, _ = self._request(
+            "POST",
+            f"{_GITHUB_API_BASE}/repos/{repo}/pulls/{pr_number}/comments",
+            body={
+                "body": body,
+                "commit_id": commit_id,
+                "path": path,
+                "line": line,
+                "side": "RIGHT",
+            },
+        )
+        return self._parse_review_thread(data or {})
+
+    def post_pr_comment(self, repo: str, pr_number: int, body: str) -> int:
+        data, _ = self._request(
+            "POST",
+            f"{_GITHUB_API_BASE}/repos/{repo}/issues/{pr_number}/comments",
+            body={"body": body},
+        )
+        return int((data or {})["id"])
+
+    @staticmethod
+    def _parse_review_thread(data: dict[str, Any]) -> ReviewThread:
+        return ReviewThread(
+            id=int(data["id"]),
+            body=data.get("body") or "",
+            path=data.get("path") or "",
+            line=data.get("line"),
+            commit_id=data.get("commit_id") or data.get("original_commit_id") or "",
+            user_login=data.get("user", {}).get("login", ""),
+            created_at=data.get("created_at") or "",
+            updated_at=data.get("updated_at") or "",
+            in_reply_to_id=data.get("in_reply_to_id"),
+            resolved=bool(data.get("resolved", False)),
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -297,7 +518,9 @@ class HandlerGithubReviewEffect:
         head_sha = ""
         if thread_findings:
             try:
-                pr_meta = await bridge.fetch_pr_metadata(repo, pr_number)
+                pr_meta = await asyncio.to_thread(
+                    bridge.fetch_pr_metadata, repo, pr_number
+                )
                 head_sha = pr_meta.head_sha
             except Exception:
                 _log.exception(
@@ -310,7 +533,9 @@ class HandlerGithubReviewEffect:
         existing_threads: list[ReviewThread] = []
         if thread_findings:
             try:
-                existing_threads = await bridge.fetch_review_threads(repo, pr_number)
+                existing_threads = await asyncio.to_thread(
+                    bridge.fetch_review_threads, repo, pr_number
+                )
             except Exception:
                 _log.exception(
                     "Failed to fetch existing review threads for PR #%d in %s — "
@@ -329,8 +554,11 @@ class HandlerGithubReviewEffect:
 
         if minor_findings:
             try:
-                await bridge.post_pr_comment(
-                    repo, pr_number, _build_summary_body(minor_findings)
+                await asyncio.to_thread(
+                    bridge.post_pr_comment,
+                    repo,
+                    pr_number,
+                    _build_summary_body(minor_findings),
                 )
             except Exception:
                 _log.exception(
@@ -373,7 +601,9 @@ class HandlerGithubReviewEffect:
 
         if not file_path or line_start is None or not head_sha:
             try:
-                comment_id = await bridge.post_pr_comment(repo, pr_number, body)
+                comment_id = await asyncio.to_thread(
+                    bridge.post_pr_comment, repo, pr_number, body
+                )
                 return ThreadState(
                     finding_id=finding.id,
                     github_thread_id=comment_id,
@@ -391,13 +621,14 @@ class HandlerGithubReviewEffect:
                 )
 
         try:
-            thread = await bridge.post_review_comment(
-                repo=repo,
-                pr_number=pr_number,
-                commit_id=head_sha,
-                path=file_path,
-                line=line_start,
-                body=body,
+            thread = await asyncio.to_thread(
+                bridge.post_review_comment,
+                repo,
+                pr_number,
+                head_sha,
+                file_path,
+                line_start,
+                body,
             )
             return ThreadState(
                 finding_id=finding.id,
@@ -433,7 +664,9 @@ class HandlerGithubReviewEffect:
             return states
 
         assert bridge is not None
-        all_threads = await bridge.fetch_review_threads(command.repo, command.pr_number)
+        all_threads = await asyncio.to_thread(
+            bridge.fetch_review_threads, command.repo, command.pr_number
+        )
         thread_map = {t.id: t for t in all_threads}
 
         for state in states:
@@ -502,7 +735,10 @@ class HandlerGithubReviewEffect:
             )
             return None
         assert bridge is not None
-        return await bridge.post_pr_comment(command.repo, command.pr_number, body)
+        comment_id: int = await asyncio.to_thread(
+            bridge.post_pr_comment, command.repo, command.pr_number, body
+        )
+        return comment_id
 
 
 __all__: list[str] = ["HandlerGithubReviewEffect", "build_summary_comment"]

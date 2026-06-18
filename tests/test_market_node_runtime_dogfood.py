@@ -39,10 +39,11 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
     report = build_report()
     summary = report["summary"]
 
-    # OMN-13210 B1 and OMN-13211 B3 both decompose legacy workflow nodes into
-    # canonical nodes; the combined branch inventory is verified below.
-    assert summary["node_dirs"] == 308
-    assert summary["entry_points"] == 308
+    # OMN-13210 B1, OMN-13211 B3, and OMN-13212 B2 each decompose a legacy
+    # workflow node into canonical nodes; B2 nets +3 (4 new canonical nodes minus
+    # the deleted node_pr_review_bot shell): 308 -> 311.
+    assert summary["node_dirs"] == 311
+    assert summary["entry_points"] == 311
     assert summary["missing_entry_points"] == []
     assert summary["dangling_entry_points"] == []
     assert summary["routable"] >= 297
