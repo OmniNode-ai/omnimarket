@@ -122,7 +122,7 @@ _FALLBACK_PRICE_PER_1M: dict[str, tuple[Decimal, Decimal]] = {
     "local": (Decimal("0.00"), Decimal("0.00")),
     "cheap_cloud": (Decimal("2.00"), Decimal("2.00")),
     "claude": (Decimal("15.00"), Decimal("75.00")),
-    "cli_agents": (Decimal("2.00"), Decimal("2.00")),
+    # OMN-13215: the shelled ``cli_agents`` tier was removed.
     # Generic default for unknown tiers
     "default": (Decimal("0.15"), Decimal("0.60")),
 }

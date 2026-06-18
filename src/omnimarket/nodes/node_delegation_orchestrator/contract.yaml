@@ -235,8 +235,10 @@ externally_consumed_topics:
 
 escalation:
   max_attempts: 10
-  excluded_tiers:
-    - cli_agents
+  # OMN-13215: the shelled ``cli_agents`` tier was removed. Every tier — including
+  # the ceiling (claude) — runs over the canonical HTTP inference path, so no tier
+  # is excluded from escalation.
+  excluded_tiers: []
 
 error_handling:
   retry_policy:

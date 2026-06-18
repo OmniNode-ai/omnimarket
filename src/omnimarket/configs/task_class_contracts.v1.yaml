@@ -121,7 +121,12 @@ task_classes:
     required_capabilities:
       - context_window_large
       - reasoning
-    pricing_ceiling_per_1k_tokens: 0.002
+    # OMN-13215: research declares ``claude`` as its escalation ceiling tier, which
+    # is now the HTTP cloud-sonnet backend (~$0.015/1k). The prior $0.002 ceiling
+    # contradicted that tier_order — it only "worked" while the ceiling was the free
+    # codex-cli OAuth tier. Align the ceiling with the declared ceiling tier so the
+    # claude safety-net tier is actually reachable for research.
+    pricing_ceiling_per_1k_tokens: 0.015
     latency_sla_p99_ms: 60000
     cloud_routing_policy: allowed
     definition_of_done:
@@ -263,10 +268,14 @@ task_classes:
       heuristic:
         - no_refusal
         - sub_tasks_verified
+    # OMN-13215: the former shelled ``cli_agents`` tier was removed. Agent
+    # delegation now escalates local → cheap_cloud → the canonical HTTP ceiling
+    # (claude), all of which execute over the bus/inference-effect HTTP path.
     escalation_policy:
-      max_escalations: 1
+      max_escalations: 2
       tier_order:
-        - cli_agents
+        - local
+        - cheap_cloud
         - claude
   escalation:
     required_capabilities:

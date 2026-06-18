@@ -6,11 +6,13 @@
 Provides a bifrost-delegation config that mirrors the deployed stability-test
 regression shape from OMN-12939: local and cheap_cloud tiers carry resolvable
 endpoints, while the claude/frontier_api tier backends (cloud-sonnet,
-cloud-haiku) and the cli_agents backends have empty endpoint_url values. This
-lets escalation tests exercise the real routing-reducer eligibility path —
-including the case where escalation past cheap_cloud has no routable higher
-tier and the orchestrator must terminate (delegation-failed) rather than
-strand the FSM.
+cloud-haiku) have empty endpoint_url values. This lets escalation tests exercise
+the real routing-reducer eligibility path — including the case where escalation
+past cheap_cloud has no routable higher tier and the orchestrator must terminate
+(delegation-failed) rather than strand the FSM.
+
+OMN-13215: the shelled ``cli_agents`` backends were removed from this fixture
+along with the tier itself; the ceiling is the HTTP-backed ``claude`` tier.
 """
 
 from __future__ import annotations
@@ -22,9 +24,8 @@ from pathlib import Path
 import pytest
 
 # Bifrost config covering every backend_id referenced by routing_tiers.yaml.
-# cloud-sonnet / cloud-haiku (claude tier) and cli-claude / cli-opencode
-# (cli_agents) carry empty endpoint_url — so escalating to those tiers yields
-# no routable backend, matching the deployed regression.
+# cloud-sonnet / cloud-haiku (claude tier) carry empty endpoint_url — so escalating
+# to that tier yields no routable backend, matching the deployed regression.
 BIFROST_FRONTIER_UNCONFIGURED = textwrap.dedent(
     """\
     config_version: "1.2.0"
@@ -96,18 +97,6 @@ BIFROST_FRONTIER_UNCONFIGURED = textwrap.dedent(
         tier: frontier_api
         timeout_ms: 30000
         capabilities: [documentation]
-      - backend_id: cli-claude
-        endpoint_url: ""
-        model_name: claude-cli
-        tier: cli_agents
-        timeout_ms: 60000
-        capabilities: [agent_delegation]
-      - backend_id: cli-opencode
-        endpoint_url: ""
-        model_name: opencode-cli
-        tier: cli_agents
-        timeout_ms: 60000
-        capabilities: [code_generation]
     routing_rules:
       - rule_id: "d4e5f6a7-0001-4000-8000-000000000001"
         priority: 10
@@ -148,9 +137,9 @@ def frontier_unconfigured_bifrost(
     tier endpoints are empty (the deployed stability-test regression shape).
 
     Local and cheap_cloud backends carry resolvable endpoints; cloud-sonnet /
-    cloud-haiku (claude tier) and the cli_agents backends do not. Backends here
-    declare no api_key_ref, so they are usable in unit context purely on a
-    non-empty endpoint_url — exactly the eligibility delta() applies.
+    cloud-haiku (claude tier) do not. Backends here declare no api_key_ref, so they
+    are usable in unit context purely on a non-empty endpoint_url — exactly the
+    eligibility delta() applies.
     """
     from omnimarket.nodes.node_delegation_routing_reducer.handlers import (
         handler_delegation_routing as routing,
