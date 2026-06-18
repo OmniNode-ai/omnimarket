@@ -29,12 +29,24 @@ schema validation:
 The handler is stateless and deterministic by archetype (NodeCompute), so the
 fixtures are deterministic and replay-safe. No network, filesystem, env, time,
 or randomness is reachable from the executed code: the restricted builtins omit
-``open``, ``__import__``, ``eval``, ``exec``, ``input``, etc., so an attempt to
-reach I/O raises ``NameError`` inside the sandbox and is reported as a semantic
-failure rather than escaping it.
+``open``, ``eval``, ``exec``, ``input``, etc., so an attempt to reach I/O raises
+``NameError`` inside the sandbox and is reported as a semantic failure rather
+than escaping it.
+
+OMN-13217: the sandbox originally omitted ``__import__`` entirely, which
+false-REJECTed behaviorally-correct handlers that import a safe stdlib module
+such as ``re`` (used OR merely declared). It now exposes a *controlled*
+``__import__`` that admits a curated, pure, deterministic, I/O-free stdlib
+allowlist (``re``, ``string``, ``math``, ``itertools``, ``functools``,
+``collections``, ``json``, ...) and raises ``ImportError`` for anything else —
+so a correct ``import re`` passes while ``import os`` / ``import socket`` /
+``import subprocess`` remain a semantic failure (the I/O prohibition is intact).
 """
 
 from __future__ import annotations
+
+import importlib
+from types import ModuleType
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -116,12 +128,69 @@ class ModelSemanticResult(BaseModel):
 # Restricted execution sandbox
 # ---------------------------------------------------------------------------
 
+# Curated stdlib modules that are pure, deterministic, and I/O-free. Generated
+# string-transformation handlers reach for these (most often ``re``). Modules
+# that touch the filesystem / network / env / clock / randomness (``os``,
+# ``sys``, ``io``, ``socket``, ``subprocess``, ``pathlib``, ``time``,
+# ``random``, ...) are deliberately EXCLUDED, so importing one stays a semantic
+# failure and the I/O prohibition that catches malicious handlers is intact.
+_SAFE_STDLIB_MODULES: frozenset[str] = frozenset(
+    {
+        "re",
+        "string",
+        "math",
+        "itertools",
+        "functools",
+        "collections",
+        "collections.abc",
+        "json",
+        "decimal",
+        "fractions",
+        "textwrap",
+        "unicodedata",
+        "operator",
+        "typing",
+        "dataclasses",
+        "enum",
+        "numbers",
+    }
+)
+
+
+def _safe_import(
+    name: str,
+    globals_: dict[str, object] | None = None,
+    locals_: dict[str, object] | None = None,
+    fromlist: tuple[str, ...] = (),
+    level: int = 0,
+) -> ModuleType:
+    """A ``__import__`` that admits only the curated safe stdlib allowlist.
+
+    Mirrors the CPython ``__import__`` signature so ``import re`` and
+    ``from collections import OrderedDict`` both work. Relative imports
+    (``level > 0``) and any module outside ``_SAFE_STDLIB_MODULES`` raise
+    ``ImportError`` — surfaced by the caller as a semantic failure, never an
+    escape from the sandbox.
+    """
+    if level != 0:
+        raise ImportError("relative imports are not permitted in the semantic sandbox")
+    top = name.split(".", 1)[0]
+    if name not in _SAFE_STDLIB_MODULES and top not in _SAFE_STDLIB_MODULES:
+        raise ImportError(
+            f"import of {name!r} is not permitted in the semantic sandbox"
+        )
+    return importlib.import_module(name)
+
+
 # A pure, deterministic, I/O-free builtin subset. Generated transformation
-# handlers only need string/sequence primitives. Notably ABSENT: open,
-# __import__, eval, exec, compile, input, globals, locals, vars, getattr,
-# setattr, delattr — so reaching network/filesystem/env/time/random from inside
-# raises NameError, which surfaces as a semantic failure (not an escape).
+# handlers only need string/sequence primitives plus a guarded ``__import__``
+# (OMN-13217) limited to the safe stdlib allowlist above. Notably ABSENT: open,
+# eval, exec, compile, input, globals, locals, vars, getattr, setattr, delattr
+# — so reaching network/filesystem/env/time/random from inside raises NameError
+# (or ImportError for a disallowed module), which surfaces as a semantic failure
+# (not an escape).
 _SAFE_BUILTINS: dict[str, object] = {
+    "__import__": _safe_import,
     "abs": abs,
     "bool": bool,
     "dict": dict,
@@ -250,12 +319,59 @@ def _wants(text: str, *needles: str) -> bool:
     return any(n in text for n in needles)
 
 
+# OMN-13217: signals that a task is a STRUCTURED transform (an object with
+# multiple fields, or normalization of a specific field into a specific form)
+# rather than a single whole-string transform. A casing word that appears inside
+# such a task ("normalizes ticket_id to uppercase OMN-123 form") is a qualifier,
+# NOT the invariant — deriving plain whole-string uppercase fixtures
+# (``hello`` -> ``HELLO``) for it judges the handler against the wrong transform.
+_STRUCTURED_TASK_SIGNALS: tuple[str, ...] = (
+    "json object",
+    "json payload",
+    "object with",
+    "fields",
+    "ticket_id",
+    "ticket id",
+    "schema",
+    "dictionary",
+    "dict with",
+    "nested",
+)
+
+
+def _is_structured_task(text: str) -> bool:
+    """True when the task shapes a multi-field / object transform, not a string one.
+
+    Whole-string casing/reversal invariants (uppercase, lowercase, reverse) are
+    matched by loose substrings, so they must NOT fire on a structured task whose
+    casing word is only a qualifier. A task that returns several named fields, or
+    operates on a JSON object / specific field, is structured: its invariant is
+    not a single whole-string transform and the behavioral check is inconclusive
+    rather than guessed against the wrong fixtures.
+    """
+    if _wants(text, *_STRUCTURED_TASK_SIGNALS):
+        return True
+    # "returns a, b, and c" / "returns x plus y" — more than one named output.
+    if "return" in text and _wants(text, ", and ", " plus ", " and returns"):
+        return True
+    return False
+
+
 def derive_semantic_fixtures(task_description: str) -> list[ModelSemanticFixture]:
     """Derive input/expected fixtures from a transformation task description.
 
-    Recognises a small, high-confidence set of string-transformation invariants.
-    Returns an empty list when the task does not match a known invariant — the
-    behavioral check is then inconclusive rather than guessed.
+    Recognises a small, high-confidence set of WHOLE-STRING transformation
+    invariants. Returns an empty list when the task does not match a known
+    invariant — the behavioral check is then inconclusive rather than guessed.
+
+    OMN-13217: loose-substring matches on structured/multi-field tasks are
+    rejected. A casing/reversal keyword that is merely a qualifier inside a
+    structured normalization task (e.g. "normalizes ticket_id to uppercase
+    OMN-123 form, ... and returns ticket_id, title, and valid boolean") does NOT
+    derive plain whole-string fixtures — those would test the wrong invariant.
+    The cased/compound invariants (snake->Pascal, snake->camel) require their
+    strong keyword AND snake_case framing; the bare upper/lower/reverse branches
+    additionally require a single-string task shape.
 
     The input is keyed by every plausible input field name the model might read
     (the handler picks one via ``input_data.get(...)``). The gate-zero task uses
@@ -265,13 +381,23 @@ def derive_semantic_fixtures(task_description: str) -> list[ModelSemanticFixture
     text = task_description.lower()
     wants_changed = _wants(text, "changed", "modified")
 
-    # snake_case -> PascalCase (the gate-zero stability invariant).
-    if _wants(text, "pascalcase", "pascal case", "pascal_case", "pascal"):
+    # snake_case -> PascalCase (the gate-zero stability invariant). Requires the
+    # strong "pascal" keyword AND snake_case framing so it is not a loose match.
+    if _wants(text, "pascalcase", "pascal case", "pascal_case", "pascal") and _wants(
+        text, "snake_case", "snake case", "snake"
+    ):
         return _snake_to_pascal_fixtures(wants_changed)
 
-    # snake_case -> camelCase.
-    if _wants(text, "camelcase", "camel case", "camel_case", "camel"):
+    # snake_case -> camelCase. Same strong-keyword + snake_case requirement.
+    if _wants(text, "camelcase", "camel case", "camel_case", "camel") and _wants(
+        text, "snake_case", "snake case", "snake"
+    ):
         return _snake_to_camel_fixtures(wants_changed)
+
+    # Whole-string invariants below are loose-substring-prone, so they never fire
+    # on a structured/multi-field task (OMN-13217).
+    if _is_structured_task(text):
+        return []
 
     # Reverse a string.
     if _wants(text, "revers"):
