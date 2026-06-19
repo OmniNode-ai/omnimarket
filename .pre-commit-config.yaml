@@ -209,17 +209,22 @@ repos:
         pass_filenames: false
         stages: [pre-commit]
 
-      # OMN-12971: backend secret-ref / credential-ref discipline gate. Fails if a
+      # OMN-13290: backend secret-ref / credential-ref discipline gate. Fails if a
       # literal credential value (PEM key, service-account JSON, bearer/api-key)
       # lands in routing-authority config, or if an authenticated cloud backend
       # lacks a logical secret/credential ref. Keeps the Vertex ADC path (and all
-      # cloud backends) value-free in committed config.
+      # cloud backends) value-free in committed config. Now sourced from
+      # omnibase_core (ported from the deleted local OMN-12971 script — single
+      # canonical implementation, validator_standardization W8).
       # SYNC with ci.yml step "Backend secret-discipline gate (enforce)".
       - id: backend-secret-discipline-gate
         name: Backend secret-discipline gate
         language: system
-        entry: uv run python scripts/ci/check_backend_secret_discipline.py
-        files: ^(src/omnimarket/configs/bifrost_delegation\.yaml|src/omnimarket/configs/routing_tiers\.yaml|src/omnimarket/data/model_registry/model_registry_v1\.yaml|scripts/ci/check_backend_secret_discipline\.py)
+        entry: uv run python -m omnibase_core.validators.backend_secret_discipline
+          src/omnimarket/configs/bifrost_delegation.yaml
+          src/omnimarket/configs/routing_tiers.yaml
+          src/omnimarket/data/model_registry/model_registry_v1.yaml
+        files: ^(src/omnimarket/configs/bifrost_delegation\.yaml|src/omnimarket/configs/routing_tiers\.yaml|src/omnimarket/data/model_registry/model_registry_v1\.yaml)
         pass_filenames: false
         stages: [pre-commit]
 
