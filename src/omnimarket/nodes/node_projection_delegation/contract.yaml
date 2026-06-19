@@ -51,7 +51,7 @@ db_io:
       database: omnidash_analytics
       role: shadow_comparisons
     - name: generation_events
-      migration: "0014_generation_semantic_pass.sql"
+      migration: "0015_generation_corpus_acceptance.sql"
       access: write
       database: omnidash_analytics
       role: generation_events
@@ -298,6 +298,12 @@ projection_api:
         # generation (the gate-zero false-green) as NOT a task-behavior pass.
         - semantic_checked
         - semantic_passed
+        # OMN-13289 (G0) / OMN-13350: validator-acceptance (corpus) verdict,
+        # surfaced so the dashboard can show a shape-valid validator that does NOT
+        # actually enforce its rule (corpus_checked=true, corpus_passed=false).
+        - corpus_checked
+        - corpus_passed
+        - corpus_errors
         - cost_inference_usd
         - contract_yaml
         - handler_source
