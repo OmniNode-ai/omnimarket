@@ -38,17 +38,14 @@ import json
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
-from uuid import uuid4
 
 import pytest
 from omnibase_core.contracts.contract_loader import load_contract
 from omnibase_core.enums.enum_empty_state_reason import EnumEmptyStateReason
-from omnibase_core.enums.enum_node_kind import EnumNodeKind
-from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
 
 from omnimarket.events.topics import RENDERER_CAPABILITY_DECLARED_TOPIC_V1
 from omnimarket.nodes.node_renderer_capability_projection.handlers.handler_renderer_capability_projection import (
-    STATE_KEY,
+    TABLE,
     HandlerRendererCapabilityProjection,
 )
 from omnimarket.nodes.node_renderer_capability_projection.models.model_renderer_capability_declaration import (
@@ -60,6 +57,7 @@ from omnimarket.nodes.node_renderer_capability_projection.models.model_renderer_
 from omnimarket.nodes.node_renderer_capability_projection.renderer_capability_fold import (
     fold_declaration,
 )
+from omnimarket.projection.protocol_database import InmemoryDatabaseAdapter
 
 _CHAIN_DIR = Path(__file__).resolve().parent
 _NODE_DIR = (
@@ -86,6 +84,11 @@ def _parse_ts(value: str) -> datetime:
 def _normalize(state: ModelRendererCapabilityProjectionState) -> Any:
     """Canonical JSON form of a projection end-state for byte-for-byte compare."""
     return json.loads(state.model_dump_json())
+
+
+def _rows_by_renderer(state: ModelRendererCapabilityProjectionState) -> dict[str, Any]:
+    """Index a projection end-state's rows by ``renderer_id`` (order-insensitive)."""
+    return {row.renderer_id: json.loads(row.model_dump_json()) for row in state.rows}
 
 
 def _expected(chain: dict[str, Any]) -> Any:
@@ -115,15 +118,6 @@ def _replay_fold(chain: dict[str, Any]) -> ModelRendererCapabilityProjectionStat
     return state
 
 
-def _envelope(payload: object, *, observed_at: datetime) -> ModelEventEnvelope[object]:
-    return ModelEventEnvelope(
-        payload=payload,
-        correlation_id=uuid4(),
-        envelope_timestamp=observed_at,
-        event_type=RENDERER_CAPABILITY_DECLARED_TOPIC_V1,
-    )
-
-
 def _resolve_wired_handler() -> type[HandlerRendererCapabilityProjection]:
     """Resolve the handler class through the canonical contract loader.
 
@@ -149,34 +143,46 @@ def _resolve_wired_handler() -> type[HandlerRendererCapabilityProjection]:
     return HandlerRendererCapabilityProjection
 
 
-async def _replay_dispatch(
+def _replay_dispatch(
     chain: dict[str, Any],
 ) -> ModelRendererCapabilityProjectionState:
-    """Replay the chain through the canonical-contract-loader-resolved handler.
+    """Replay the chain through the canonical-contract-loader-resolved handler
+    via its real runtime projection-runner protocol.
 
-    Accumulates the projection across dispatch invocations by threading the prior
-    state under ``STATE_KEY`` in the flattened mapping payload — exactly the shape
-    the live auto-wiring dispatcher delivers.
+    The contract declares ``db_io.db_tables`` + ``projection_api``, so the runtime
+    wires this node through the projection dispatch path: it delivers the
+    flattened declaration payload + an injected ``DatabaseAdapter`` and UPSERTs the
+    folded rows through it. ``project()`` is the deterministic core ``handle()``
+    invokes; it is driven directly here with the chain's ``observed_at`` so the
+    TTL-degraded fixtures are reproducible (``handle()`` uses the wall clock,
+    which is exercised by the unit test that drives ``handle(input_data)``). The
+    durable accumulator is the table itself, so the projection end-state is read
+    back from the adapter — exactly how a consumer reads it via
+    ``/projection/{topic}``.
     """
     handler = _resolve_wired_handler()()
-    state = ModelRendererCapabilityProjectionState()
+    db = InmemoryDatabaseAdapter()
     for event in chain["events"]:
-        payload: dict[str, Any] = {
-            **event["payload"],
-            STATE_KEY: state.model_dump(mode="json"),
-        }
-        output = await handler.handle(
-            _envelope(payload, observed_at=_parse_ts(event["observed_at"]))
+        result = handler.project(
+            ModelRendererCapabilityDeclaration.model_validate(event["payload"]),
+            db,
+            observed_at=_parse_ts(event["observed_at"]),
+            ttl_seconds=int(chain["ttl_seconds"]),
         )
-        assert output.node_kind == EnumNodeKind.REDUCER
-        assert output.events == ()
-        assert output.intents == ()
-        assert output.result is None
-        assert len(output.projections) == 1
-        projected = output.projections[0]
-        assert isinstance(projected, ModelRendererCapabilityProjectionState)
-        state = projected
-    return state
+        assert result.rows_upserted >= 1
+    persisted = db.query(TABLE)
+    return ModelRendererCapabilityProjectionState(
+        rows=tuple(_row_from_record(record) for record in persisted)
+    )
+
+
+def _row_from_record(record: dict[str, Any]) -> Any:
+    """Rebuild a projection row from a persisted table record (read-back)."""
+    from omnimarket.nodes.node_renderer_capability_projection.handlers.handler_renderer_capability_projection import (
+        _columns_to_row,
+    )
+
+    return _columns_to_row(record)
 
 
 @pytest.mark.integration
@@ -192,14 +198,23 @@ class TestRendererCapabilityGoldenChains:
             f"fold replay drifted from golden end-state for {chain['chain_name']}"
         )
 
-    async def test_dispatch_replay_matches_golden_end_state(
-        self, chain_path: Path
-    ) -> None:
+    def test_dispatch_replay_matches_golden_end_state(self, chain_path: Path) -> None:
         """The real-dispatch-path (contract-loader-resolved handler) replay
-        reproduces the same golden projection byte-for-byte."""
+        materializes the same golden projection rows.
+
+        Compared per-renderer (order-insensitive): the projection table carries
+        no inherent row order — ``order_by last_heartbeat DESC`` is a read concern
+        — whereas the pure-fold golden fixture fixes one tuple order. The set of
+        materialized rows must match the golden end-state's rows exactly.
+        """
         chain = _load_chain(chain_path)
-        actual = _normalize(await _replay_dispatch(chain))
-        assert actual == _expected(chain), (
+        actual = _rows_by_renderer(_replay_dispatch(chain))
+        expected = _rows_by_renderer(
+            ModelRendererCapabilityProjectionState.model_validate(
+                chain["expected_state"]
+            )
+        )
+        assert actual == expected, (
             f"dispatch replay drifted from golden end-state for {chain['chain_name']}"
         )
 
