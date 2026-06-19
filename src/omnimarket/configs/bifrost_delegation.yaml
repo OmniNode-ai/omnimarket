@@ -20,8 +20,8 @@
 #
 # See routing_tiers.yaml for tier escalation ladder.
 #
-# Tickets: OMN-10637, OMN-10638, OMN-10657, OMN-12815, OMN-13170
-config_version: "2.1.0"
+# Tickets: OMN-10637, OMN-10638, OMN-10657, OMN-12815, OMN-13170, OMN-13343
+config_version: "2.2.0"
 schema_version: "bifrost_delegation.v1"
 # Backend definitions — endpoint_url values are merged from the overlay at load time.
 # model_name is null here; resolved at deploy time via bifrost_overrides.yaml overlay.
@@ -131,14 +131,20 @@ backends:
   - backend_id: cloud-glm
     # OMN-12819: COMPLETE endpoint URL incl. the full chat path, posted VERBATIM.
     endpoint_url: "https://api.z.ai/api/coding/paas/v4/chat/completions"
-    model_name: "glm-4.5"
+    # OMN-13343: refreshed glm-4.5 -> glm-5.2, the current z.ai GLM Coding Plan
+    # flagship ("AI Coding Powered by GLM-5.2 & GLM-5-Turbo"). Live 1-token probe
+    # of the endpoint above with the LLM_GLM_API_KEY secret confirmed glm-5.2 is
+    # accepted (response echoes model=glm-5.2); glm-5 is an alias that resolves to
+    # glm-5.2. Use the exact verified id — a wrong id fails closed.
+    model_name: "glm-5.2"
     secret_ref: llm.glm.api_key
     api_key_env: LLM_GLM_API_KEY
     tier: cheap_cloud
-    # OMN-13170: GLM-4.5 large reads/generations (64k output budget) were timing
+    # OMN-13170: GLM large reads/generations (64k output budget) were timing
     # out at 60s on the dev runtime; size the timeout to the budget (300000 ms).
     timeout_ms: 300000
-    # OMN-13161: GLM-4.5 serves a 128k context window; 64k output budget.
+    # OMN-13161: the z.ai GLM coding endpoint serves a 128k context window; 64k
+    # output budget.
     max_tokens: 65536
     capabilities:
       - code_generation
