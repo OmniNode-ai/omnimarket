@@ -57,11 +57,16 @@ def test_migration_is_idempotent_and_cites_ticket() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_contract_references_semantic_migration() -> None:
+def test_contract_references_generation_migration() -> None:
+    # OMN-13350: the contract now points generation_events at the LATEST
+    # generation migration (0015_generation_corpus_acceptance.sql). The 0014
+    # semantic columns are still applied — node migrations apply in filename
+    # order, so a later migration superseding the contract pointer does not skip
+    # 0014.
     contract = yaml.safe_load(CONTRACT_PATH.read_text())
     tables = contract["db_io"]["db_tables"]
     gen = next(t for t in tables if t["name"] == "generation_events")
-    assert gen["migration"] == "0014_generation_semantic_pass.sql"
+    assert gen["migration"] == "0015_generation_corpus_acceptance.sql"
 
 
 def test_contract_exposes_semantic_columns() -> None:

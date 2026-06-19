@@ -108,6 +108,17 @@ class ModelProjectionGenerationCompletedEvent(BaseModel):
     # records whether any behavioral fixture was applicable.
     semantic_checked: bool = Field(default=False)
     semantic_passed: bool = Field(default=False)
+    # OMN-13289 (G0): validator-acceptance (corpus) verdict, carried from the
+    # terminal benchmark and persisted alongside contract_passed/semantic_passed.
+    # corpus_checked records whether the run carried a validator acceptance
+    # corpus; corpus_passed is the deterministic corpus-execution verdict;
+    # corpus_errors lists the per-fixture acceptance failures. The handler model
+    # used extra="ignore" before OMN-13350, so these emitted fields were dropped
+    # on the model side AND never written — and the columns did not exist, so the
+    # INSERT raised UndefinedColumn and the whole completion event was dropped.
+    corpus_checked: bool = Field(default=False)
+    corpus_passed: bool = Field(default=False)
+    corpus_errors: list[str] = Field(default_factory=list)
     cost_inference_usd: float = Field(default=0.0)
     timestamp: str | None = Field(default=None, description="ISO 8601 timestamp.")
     # OMN-12780 (Wave 1C): full generated output — empty string is the
@@ -365,6 +376,13 @@ class HandlerProjectionDelegation:
             # OMN-13166: persist the behavioral verdict next to contract_passed.
             "semantic_checked": event.semantic_checked,
             "semantic_passed": event.semantic_passed,
+            # OMN-13289 (G0) / OMN-13350: persist the validator-acceptance (corpus)
+            # verdict. corpus_errors is a JSONB column — the sync DB adapter
+            # JSON-adapts the list, so it is passed as a list here, not a JSON
+            # string (the async runner path serializes its own $N::jsonb param).
+            "corpus_checked": event.corpus_checked,
+            "corpus_passed": event.corpus_passed,
+            "corpus_errors": list(event.corpus_errors),
             "cost_inference_usd": event.cost_inference_usd,
             "timestamp": event.timestamp or now,
             "contract_yaml": event.contract_yaml,

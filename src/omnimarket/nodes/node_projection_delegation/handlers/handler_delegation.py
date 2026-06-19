@@ -865,6 +865,23 @@ class DelegationProjectionRunner(BaseProjectionRunner):
             if data.get("semantic_passed") is not None
             else data.get("semanticPassed") or False
         )
+        # OMN-13289 (G0) / OMN-13350: validator-acceptance (corpus) verdict,
+        # persisted alongside contract_passed/semantic_passed so the runner write
+        # path stays in lockstep with the live-runtime path. corpus_errors is a
+        # JSONB column written via an explicit ::jsonb cast on a JSON string.
+        corpus_checked = bool(
+            data.get("corpus_checked")
+            if data.get("corpus_checked") is not None
+            else data.get("corpusChecked") or False
+        )
+        corpus_passed = bool(
+            data.get("corpus_passed")
+            if data.get("corpus_passed") is not None
+            else data.get("corpusPassed") or False
+        )
+        corpus_errors_json = json.dumps(
+            _coerce_gate_labels(data.get("corpus_errors") or data.get("corpusErrors"))
+        )
         cost_inference_usd = (
             _safe_numeric_str(
                 data.get("cost_inference_usd") or data.get("costInferenceUsd")
@@ -903,6 +920,7 @@ class DelegationProjectionRunner(BaseProjectionRunner):
               correlation_id, task_description, provider, model_id,
               endpoint_class, attempt_count, total_latency_e2e_ms,
               contract_passed, semantic_checked, semantic_passed,
+              corpus_checked, corpus_passed, corpus_errors,
               cost_inference_usd, timestamp,
               contract_yaml, handler_source,
               output_payload_sha256, contract_sha256, handler_sha256,
@@ -911,10 +929,11 @@ class DelegationProjectionRunner(BaseProjectionRunner):
               $1, $2, $3, $4,
               $5, $6, $7,
               $8, $9, $10,
-              $11, $12,
-              $13, $14,
-              $15, $16, $17,
-              $18, $19, $20
+              $11, $12, $13::jsonb,
+              $14, $15,
+              $16, $17,
+              $18, $19, $20,
+              $21, $22, $23
             )
             ON CONFLICT (correlation_id) DO NOTHING
             """,
@@ -928,6 +947,9 @@ class DelegationProjectionRunner(BaseProjectionRunner):
             contract_passed,
             semantic_checked,
             semantic_passed,
+            corpus_checked,
+            corpus_passed,
+            corpus_errors_json,
             cost_inference_usd,
             timestamp,
             contract_yaml,

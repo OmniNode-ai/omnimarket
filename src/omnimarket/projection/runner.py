@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import Any
 
 import yaml
-from aiokafka import AIOKafkaConsumer
+from aiokafka import AIOKafkaConsumer, TopicPartition
 from pydantic import (
     BaseModel,
     ConfigDict,
@@ -374,7 +374,17 @@ class BaseProjectionRunner(ABC):
                     group_id=self._group_id,
                     client_id=self._client_id,
                     auto_offset_reset="earliest",
-                    enable_auto_commit=True,
+                    # OMN-13350 (fail-loud): auto-commit was the data-loss
+                    # mechanism. When enabled, the offset advanced on the timer
+                    # regardless of whether the DB write succeeded, so a failed
+                    # INSERT (e.g. UndefinedColumn on a schema-drifted projection
+                    # table) was committed-and-dropped while the group reported
+                    # Stable / LAG=0. The offset is now committed explicitly ONLY
+                    # after a row is successfully projected (or the message is a
+                    # genuine non-event); a projection error propagates and leaves
+                    # the offset uncommitted so the message is re-read, never
+                    # silently skipped.
+                    enable_auto_commit=False,
                     value_deserializer=None,
                 )
                 await self._consumer.start()
@@ -420,14 +430,27 @@ class BaseProjectionRunner(ABC):
         await self._db.close()
 
     async def _handle_message(self, msg: Any) -> None:
-        """Parse, unwrap, dispatch, and track a single Kafka message."""
+        """Parse, unwrap, dispatch, and commit a single Kafka message.
+
+        Fail-loud contract (OMN-13350): the consumer runs with auto-commit
+        disabled. This method commits the offset ONLY when the message is fully
+        accounted for — either successfully projected, or a genuine non-event
+        (empty value / un-unwrappable envelope) that carries no row to persist.
+        A projection error (e.g. an ``UndefinedColumn`` from a schema-drifted
+        table) is counted, logged, and **re-raised** so the offset is NOT
+        committed. The outer run loop restarts the consumer and the uncommitted
+        message is re-read on the next poll — the failure surfaces and the data
+        is never committed-and-dropped while the group reports Stable.
+        """
         topic = msg.topic
         try:
             if msg.value is None:
+                await self._commit_message(msg)
                 return
 
             data = unwrap_envelope(msg.value)
             if data is None:
+                await self._commit_message(msg)
                 return
 
             fallback_id = deterministic_correlation_id(topic, msg.partition, msg.offset)
@@ -438,23 +461,57 @@ class BaseProjectionRunner(ABC):
             )
 
             projected = await self.project_event(topic, data, meta)
-
-            if projected:
-                self._stats.events_projected += 1
-                self._stats.last_projected_at = datetime.now(UTC)
-                ts = self._stats.topic_stats.setdefault(
-                    topic, {"projected": 0, "errors": 0}
-                )
-                ts["projected"] += 1
-                await self._update_watermark(f"{topic}:{msg.partition}", msg.offset)
-
         except Exception as err:
+            # Fail-loud: a projection error must NOT advance the offset. Count it,
+            # log it, and propagate so the run loop tears the consumer down with
+            # the offset uncommitted; the message is re-read, never dropped.
             self._stats.errors_count += 1
             ts = self._stats.topic_stats.setdefault(
                 topic, {"projected": 0, "errors": 0}
             )
             ts["errors"] += 1
-            logger.error("Error projecting %s: %s", topic, err)
+            logger.error("Error projecting %s (offset uncommitted): %s", topic, err)
+            raise
+
+        if projected:
+            self._stats.events_projected += 1
+            self._stats.last_projected_at = datetime.now(UTC)
+            ts = self._stats.topic_stats.setdefault(
+                topic, {"projected": 0, "errors": 0}
+            )
+            ts["projected"] += 1
+            await self._update_watermark(f"{topic}:{msg.partition}", msg.offset)
+
+        # Commit on a successful projection AND on a handled-but-not-applicable
+        # message (project_event returned False for a topic this runner does not
+        # project): both are fully accounted for, so the offset may advance. The
+        # only path that does NOT reach here is a raised projection error above.
+        await self._commit_message(msg)
+
+    async def _commit_message(self, msg: Any) -> None:
+        """Explicitly commit the offset for a fully-accounted-for message.
+
+        OMN-13350: replaces the removed enable_auto_commit timer. A commit
+        failure is logged but not raised — the offset stays where it is and the
+        message is re-read, which is the safe direction (at-least-once), not a
+        silent drop.
+        """
+        if self._consumer is None:
+            return
+        try:
+            await self._consumer.commit(
+                {
+                    TopicPartition(msg.topic, msg.partition): msg.offset + 1,
+                }
+            )
+        except Exception as err:
+            logger.warning(
+                "Failed to commit offset for %s:%d@%d: %s",
+                msg.topic,
+                msg.partition,
+                msg.offset,
+                err,
+            )
 
     async def _update_watermark(self, projection_name: str, offset: int) -> None:
         """Update projection_watermarks table -- matches omnidash SQL exactly."""
