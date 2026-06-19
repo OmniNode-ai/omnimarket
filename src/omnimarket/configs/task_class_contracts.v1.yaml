@@ -127,10 +127,12 @@ task_classes:
       - context_window_large
       - reasoning
     # OMN-13215: research declares ``claude`` as its escalation ceiling tier, which
-    # is now the HTTP cloud-sonnet backend (~$0.015/1k). The prior $0.002 ceiling
-    # contradicted that tier_order — it only "worked" while the ceiling was the free
-    # codex-cli OAuth tier. Align the ceiling with the declared ceiling tier so the
-    # claude safety-net tier is actually reachable for research.
+    # is the HTTP frontier ceiling backend. OMN-13351 repointed that backend off the
+    # dead Anthropic cloud-sonnet to the resolvable Gemini cloud-gemini-pro
+    # (gemini-2.5-flash, served on the AI Studio free-tier key → ceiling tier cost
+    # 0.0). This 0.015 cap stays as a generous ceiling-cap headroom (the 0.0 ceiling
+    # tier is well under it); the prior $0.002 ceiling contradicted the tier_order —
+    # it only "worked" while the ceiling was the free codex-cli OAuth tier.
     pricing_ceiling_per_1k_tokens: 0.015
     latency_sla_p99_ms: 60000
     cloud_routing_policy: allowed
