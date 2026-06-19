@@ -100,12 +100,17 @@ jobs:
       # signal masquerades as an ON/OFF effect and invalidates Experiments 1-3.
       - name: Quality-gate calibration (enforce)
         run: uv run python scripts/ci/run_quality_gate_calibration.py
-      # OMN-12971: backend secret-ref / credential-ref discipline. Fails CI if a
+      # OMN-13290: backend secret-ref / credential-ref discipline. Fails CI if a
       # literal credential value lands in routing-authority config, or if an
       # authenticated cloud backend lacks a logical secret/credential ref. Keeps
       # the Vertex ADC path (and all cloud backends) value-free in committed config.
+      # Sourced from omnibase_core (ported from the deleted local OMN-12971 script).
       - name: Backend secret-discipline gate (enforce)
-        run: uv run python scripts/ci/check_backend_secret_discipline.py
+        run: >-
+          uv run python -m omnibase_core.validators.backend_secret_discipline
+          src/omnimarket/configs/bifrost_delegation.yaml
+          src/omnimarket/configs/routing_tiers.yaml
+          src/omnimarket/data/model_registry/model_registry_v1.yaml
       # OMN-12972 (plan P2.7): Gemini registry/version hygiene. Every provider:google
       # registry entry + its bifrost backend must align with the live Vertex-served
       # model name PER ENVIRONMENT (Vertex = publisher-qualified, AI Studio = bare)
