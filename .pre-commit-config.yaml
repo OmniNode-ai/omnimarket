@@ -171,19 +171,21 @@ repos:
         pass_filenames: false
         stages: [pre-commit]
 
-      # OMN-12821 (plan A1.5): routing-authority demo gate. Proves the demo path
-      # resolves provider/model/endpoint_ref/endpoint/route_source from authority
-      # and that no demo-path source reads env for endpoint/provider/model,
-      # hardcodes a provider literal, or reads a fallback endpoint string.
-      # Extended in OMN-12877 (M7.2) to add residue audit over confirmed env-var
-      # residue files (bridge_config_loader, cli_ab_compare_suite, model_policy).
-      # Extended in OMN-12883 (M7.2) to add provider-class endpoint URL shape
-      # audit over bifrost_delegation.yaml.
-      # SYNC with ci.yml step "Routing-authority demo gate (enforce)".
+      # OMN-13285 (W6/GAP-3): routing-authority demo gate. PORTED to the canonical
+      # core COMPUTE validator omnibase_core.validation.validator_routing_authority
+      # (replaces the deleted omnimarket-local scripts/ci/check_routing_authority.py
+      # and folds in the previously-unwired core validator_delegation_profile).
+      # Proves the demo path resolves provider/served_model_id/endpoint_ref/
+      # routing_source from contract + bifrost authority; no demo-path source reads
+      # env for endpoint/provider/model, hardcodes a provider literal, or reads a
+      # fallback endpoint string; residue files stay within their env-authority
+      # baselines (OMN-12877); every bifrost backend respects the provider-class
+      # endpoint URL shape contract (OMN-12883); delegation profiles use symbolic
+      # refs. SYNC with ci.yml step "Routing-authority demo gate (enforce)".
       - id: routing-authority-demo-gate
-        name: Routing-authority demo gate
+        name: Routing-authority demo gate (OMN-13285)
         language: system
-        entry: uv run python scripts/ci/check_routing_authority.py
+        entry: uv run python -m omnibase_core.validation.validator_routing_authority --repo omnimarket --repo-root .
         files: >-
           ^(src/omnimarket/nodes/node_generation_consumer/|
           src/omnimarket/nodes/node_llm_delegation_call_effect/|
@@ -191,8 +193,7 @@ repos:
           src/omnimarket/configs/bifrost_delegation\.yaml|
           src/omnimarket/inference/bridge_config_loader\.py|
           src/omnimarket/cli/cli_ab_compare_suite\.py|
-          src/omnimarket/model_policy\.yaml|
-          scripts/ci/check_routing_authority\.py)
+          src/omnimarket/model_policy\.yaml)
         pass_filenames: false
         stages: [pre-commit]
 
