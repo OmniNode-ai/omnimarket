@@ -1085,15 +1085,19 @@ class TestInferenceErrorEscalation:
         [local, cheap_cloud, claude]. To exercise the max-escalation ceiling
         (2 real escalations) this test needs all three of those tiers routable;
         the autouse `frontier_unconfigured_bifrost` fixture leaves the claude-tier
-        backend (cloud-sonnet) with an empty endpoint_url. We therefore bind a
-        bifrost config where local, cheap_cloud, AND the claude-named HTTP ceiling
-        backend (cloud-sonnet) carry resolvable `test` transports, so the chain
-        escalates twice (local -> cheap_cloud -> claude) and the third attempt hits
-        the escalation ceiling.
+        backend with an empty endpoint_url. We therefore bind a bifrost config
+        where local, cheap_cloud, AND the claude-named HTTP ceiling backend carry
+        resolvable `test` transports, so the chain escalates twice
+        (local -> cheap_cloud -> claude) and the third attempt hits the escalation
+        ceiling.
 
-        OMN-13215: the ceiling tier is the canonical HTTP cloud-sonnet backend (no
-        shelled CLI). Routability requires its secret_ref (llm.anthropic.api_key) to
-        resolve, so the env-mapped secret is set.
+        OMN-13215/OMN-13351: the ceiling tier is the canonical HTTP cloud-gemini-pro
+        backend (no shelled CLI; repointed off the dead Anthropic cloud-sonnet —
+        llm.anthropic.api_key resolves to None in every lane). Routability requires
+        its secret_ref (llm.gemini.api_key) to resolve, so the env-mapped secret is
+        set. The synthetic ceiling backend_id MUST match the claude-tier backend_id
+        in the real routing_tiers.yaml (cloud-gemini-pro), which is not overridden
+        here.
         """
         from omnimarket.nodes.node_delegation_orchestrator.handlers.handler_delegation_workflow import (
             _MAX_INFERENCE_ESCALATION_ATTEMPTS,
@@ -1107,15 +1111,15 @@ class TestInferenceErrorEscalation:
         # All three declared `test` tiers (local, cheap_cloud, claude) must be
         # routable so two real escalations (local -> cheap_cloud -> claude) occur
         # before the ceiling is reached. Reuse the shared frontier-unconfigured
-        # bifrost shape, then add the HTTP cloud-sonnet ceiling backend (complete
+        # bifrost shape, then add the HTTP cloud-gemini-pro ceiling backend (complete
         # verbatim URL + secret_ref) referenced by the claude tier in
         # routing_tiers.yaml.
         routing_rules_marker = "routing_rules:\n"
         ceiling_backend = (
-            "  - backend_id: cloud-sonnet\n"
-            '    endpoint_url: "https://api.anthropic.com/v1/chat/completions"\n'
-            "    model_name: claude-sonnet-4-6\n"
-            "    secret_ref: llm.anthropic.api_key\n"
+            "  - backend_id: cloud-gemini-pro\n"
+            '    endpoint_url: "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"\n'
+            "    model_name: gemini-2.5-flash\n"
+            "    secret_ref: llm.gemini.api_key\n"
             "    tier: claude\n"
             "    timeout_ms: 60000\n"
             "    capabilities: [code_generation, reasoning, test]\n"
@@ -1123,12 +1127,12 @@ class TestInferenceErrorEscalation:
         assert routing_rules_marker in BIFROST_FRONTIER_UNCONFIGURED, (
             "expected shared fixture to contain routing_rules marker"
         )
-        # Remove the empty-endpoint cloud-sonnet stub from the shared fixture so the
-        # complete-URL ceiling backend is the single cloud-sonnet definition.
+        # Remove the empty-endpoint cloud-gemini-pro stub from the shared fixture so
+        # the complete-URL ceiling backend is the single ceiling definition.
         base_contract = BIFROST_FRONTIER_UNCONFIGURED.replace(
-            "      - backend_id: cloud-sonnet\n"
+            "      - backend_id: cloud-gemini-pro\n"
             '        endpoint_url: ""\n'
-            "        model_name: claude-sonnet-4-6\n"
+            "        model_name: gemini-2.5-flash\n"
             "        tier: frontier_api\n"
             "        timeout_ms: 60000\n"
             "        capabilities: [documentation]\n",
@@ -1140,7 +1144,7 @@ class TestInferenceErrorEscalation:
         contract_path = tmp_path / "all_tiers_routable.yaml"
         contract_path.write_text(all_tiers_routable)
         monkeypatch.setenv("BIFROST_CONTRACT_PATH", str(contract_path))
-        monkeypatch.setenv("llm.anthropic.api_key", "test-anthropic-key")
+        monkeypatch.setenv("llm.gemini.api_key", "test-gemini-key")
         monkeypatch.delenv("BIFROST_OVERLAY_PATH", raising=False)
         routing._load_bifrost_endpoints.cache_clear()
 

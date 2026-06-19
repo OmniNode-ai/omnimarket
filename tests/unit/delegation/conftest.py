@@ -5,14 +5,21 @@
 
 Provides a bifrost-delegation config that mirrors the deployed stability-test
 regression shape from OMN-12939: local and cheap_cloud tiers carry resolvable
-endpoints, while the claude/frontier_api tier backends (cloud-sonnet,
-cloud-haiku) have empty endpoint_url values. This lets escalation tests exercise
-the real routing-reducer eligibility path — including the case where escalation
-past cheap_cloud has no routable higher tier and the orchestrator must terminate
-(delegation-failed) rather than strand the FSM.
+endpoints, while the claude/frontier_api tier ceiling backend has an empty
+endpoint_url value. This lets escalation tests exercise the real routing-reducer
+eligibility path — including the case where escalation past cheap_cloud has no
+routable higher tier and the orchestrator must terminate (delegation-failed)
+rather than strand the FSM.
 
 OMN-13215: the shelled ``cli_agents`` backends were removed from this fixture
 along with the tier itself; the ceiling is the HTTP-backed ``claude`` tier.
+
+OMN-13351: the claude-tier ceiling backend in routing_tiers.yaml was repointed
+from the dead Anthropic ``cloud-sonnet`` (llm.anthropic.api_key resolves to None
+in every lane) to the resolvable Gemini ``cloud-gemini-pro``. This fixture's
+unconfigured-ceiling stub is therefore ``cloud-gemini-pro`` with an empty
+endpoint_url (so the claude tier referenced by routing_tiers.yaml is the one left
+unroutable). The dead Anthropic ``cloud-sonnet``/``cloud-haiku`` stubs were removed.
 """
 
 from __future__ import annotations
@@ -24,8 +31,9 @@ from pathlib import Path
 import pytest
 
 # Bifrost config covering every backend_id referenced by routing_tiers.yaml.
-# cloud-sonnet / cloud-haiku (claude tier) carry empty endpoint_url — so escalating
-# to that tier yields no routable backend, matching the deployed regression.
+# cloud-gemini-pro (claude ceiling tier, OMN-13351) carries an empty endpoint_url —
+# so escalating to that tier yields no routable backend, matching the deployed
+# regression.
 BIFROST_FRONTIER_UNCONFIGURED = textwrap.dedent(
     """\
     config_version: "1.2.0"
@@ -85,17 +93,11 @@ BIFROST_FRONTIER_UNCONFIGURED = textwrap.dedent(
         tier: cheap_frontier
         timeout_ms: 30000
         capabilities: [code_generation]
-      - backend_id: cloud-sonnet
+      - backend_id: cloud-gemini-pro
         endpoint_url: ""
-        model_name: claude-sonnet-4-6
+        model_name: gemini-2.5-flash
         tier: frontier_api
         timeout_ms: 60000
-        capabilities: [documentation]
-      - backend_id: cloud-haiku
-        endpoint_url: ""
-        model_name: claude-haiku-4-5
-        tier: frontier_api
-        timeout_ms: 30000
         capabilities: [documentation]
     routing_rules:
       - rule_id: "d4e5f6a7-0001-4000-8000-000000000001"
@@ -136,10 +138,10 @@ def frontier_unconfigured_bifrost(
     """Point the routing reducer at a bifrost config where the claude/frontier
     tier endpoints are empty (the deployed stability-test regression shape).
 
-    Local and cheap_cloud backends carry resolvable endpoints; cloud-sonnet /
-    cloud-haiku (claude tier) do not. Backends here declare no api_key_ref, so they
-    are usable in unit context purely on a non-empty endpoint_url — exactly the
-    eligibility delta() applies.
+    Local and cheap_cloud backends carry resolvable endpoints; cloud-gemini-pro
+    (the claude ceiling tier, OMN-13351) does not. Backends here declare no
+    api_key_ref, so they are usable in unit context purely on a non-empty
+    endpoint_url — exactly the eligibility delta() applies.
     """
     from omnimarket.nodes.node_delegation_routing_reducer.handlers import (
         handler_delegation_routing as routing,

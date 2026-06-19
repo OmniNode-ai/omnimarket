@@ -49,17 +49,18 @@ _COMMITTED_BIFROST = (
 _GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
 _GLM_URL = "https://api.z.ai/api/coding/paas/v4/chat/completions"
 _OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
-# OMN-12939: Anthropic OpenAI-compatibility endpoint. The frontier (claude) tier
-# was orphaned with empty endpoint_url + no secret_ref when OMN-12815 moved cloud
-# backends to complete-verbatim URLs; restored here so escalation can resolve it.
-_ANTHROPIC_URL = "https://api.anthropic.com/v1/chat/completions"
+# OMN-13351: the Anthropic ceiling backends (cloud-sonnet/cloud-haiku, secret_ref
+# llm.anthropic.api_key) were DELETED — that key resolves to None in every lane.
+# The ceiling is now the resolvable Gemini backend cloud-gemini-pro on the AI Studio
+# endpoint (secret_ref llm.gemini.api_key), so the committed-contract assertions
+# cover it here instead.
 
 _CLOUD_BACKENDS: dict[str, tuple[str, str]] = {
     # backend_id -> (expected endpoint_url, expected logical secret reference)
     "cloud-glm": (_GLM_URL, "llm.glm.api_key"),
     "cloud-gemini-flash": (_GEMINI_URL, "llm.gemini.api_key"),
-    "cloud-sonnet": (_ANTHROPIC_URL, "llm.anthropic.api_key"),
-    "cloud-haiku": (_ANTHROPIC_URL, "llm.anthropic.api_key"),
+    # OMN-13351: Gemini ceiling backend, replacing the dead Anthropic cloud-sonnet.
+    "cloud-gemini-pro": (_GEMINI_URL, "llm.gemini.api_key"),
     "openrouter-glm-flash": (_OPENROUTER_URL, "llm.openrouter.api_key"),
     "openrouter-qwen3-coder-480b": (_OPENROUTER_URL, "llm.openrouter.api_key"),
 }
@@ -170,7 +171,9 @@ def test_cloud_backend_routable_without_host_env_secret(
 
     resolved = resolve_generation_endpoint(
         endpoint_ref=backend_id,
-        provider="gemini" if backend_id == "cloud-gemini-flash" else "openrouter",
+        provider="gemini"
+        if backend_id in ("cloud-gemini-flash", "cloud-gemini-pro")
+        else "openrouter",
         served_model_id="model-x",
     )
     # POST URL == contract endpoint_url, VERBATIM.

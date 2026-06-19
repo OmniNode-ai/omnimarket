@@ -693,24 +693,31 @@ class TestTestResearchTierPolicyVerified:
     so when the claude tier backend is configured, escalation off cheap_cloud
     advances to claude — a usable higher tier exists, no dead-end.
 
-    OMN-13215: the ceiling tier is now the HTTP-backed ``cloud-sonnet`` backend
-    (secret_ref llm.anthropic.api_key), routable through the canonical HTTP path
-    exactly like the lower tiers. "Configured" means the ceiling's secret_ref
-    resolves; the test sets that env-mapped secret so the claude tier is routable.
+    OMN-13215: the ceiling tier is an HTTP-backed frontier backend, routable
+    through the canonical HTTP path exactly like the lower tiers. "Configured"
+    means the ceiling's secret_ref resolves; the test sets that env-mapped secret
+    so the claude tier is routable.
+
+    OMN-13351: the ceiling backend was repointed from the dead Anthropic
+    ``cloud-sonnet`` (secret_ref llm.anthropic.api_key, resolves to None in every
+    lane) to the resolvable Gemini ``cloud-gemini-pro`` (secret_ref
+    llm.gemini.api_key). The fixture now sets llm.gemini.api_key so the new ceiling
+    backend is routable.
     """
 
     @pytest.fixture(autouse=True)
     def _configure_ceiling_secret(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> Iterator[None]:
-        # The repo-default bifrost contract maps the claude tier to cloud-sonnet,
-        # whose secret_ref is llm.anthropic.api_key. The env-backed secret store
-        # reads the ref name verbatim, so set it to make the ceiling routable.
+        # OMN-13351: the repo-default bifrost contract maps the claude ceiling tier
+        # to cloud-gemini-pro, whose secret_ref is llm.gemini.api_key. The env-backed
+        # secret store reads the ref name verbatim, so set it to make the ceiling
+        # routable.
         from omnimarket.nodes.node_delegation_routing_reducer.handlers import (
             handler_delegation_routing as routing,
         )
 
-        monkeypatch.setenv("llm.anthropic.api_key", "test-anthropic-key")
+        monkeypatch.setenv("llm.gemini.api_key", "test-gemini-key")
         routing._load_bifrost_endpoints.cache_clear()
         yield
         routing._load_bifrost_endpoints.cache_clear()

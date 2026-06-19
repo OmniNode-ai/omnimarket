@@ -225,17 +225,20 @@ class TestHandlerInferenceIntent:
         assert not hasattr(mod, "_is_cli_backend")
 
     def test_ceiling_tier_http_endpoint_executes_like_lower_tiers(self) -> None:
-        """OMN-13215: the ceiling tier executes via the canonical HTTP path.
+        """OMN-13215/OMN-13351: the ceiling tier executes via the canonical HTTP path.
 
-        A complete Anthropic chat-completions URL (the default ceiling backend
-        ``cloud-sonnet``) is posted verbatim with the resolved api_key, identical to
-        every lower tier.
+        A complete Gemini chat-completions URL (the default ceiling backend
+        ``cloud-gemini-pro``, repointed off the dead Anthropic ``cloud-sonnet`` in
+        OMN-13351) is posted verbatim with the resolved api_key, identical to every
+        lower tier.
         """
         handler = HandlerInferenceIntent()
-        ceiling_url = "https://api.anthropic.com/v1/chat/completions"
+        ceiling_url = (
+            "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
+        )
         intent = _make_intent(
             base_url=ceiling_url,
-            model="claude-sonnet-4-6",
+            model="gemini-2.5-flash",
             api_key_ref="TEST_MODEL_API_KEY",
         )
         captured_urls: list[str] = []
@@ -265,7 +268,7 @@ class TestHandlerInferenceIntent:
 
         assert captured_urls == [ceiling_url]
         assert result.content == "def test_foo(): pass"
-        assert result.model_used == "claude-sonnet-4-6"
+        assert result.model_used == "gemini-2.5-flash"
         assert result.error_message == ""
 
     def test_provider_http_status_error_includes_sanitized_body(self) -> None:

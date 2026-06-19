@@ -15,7 +15,8 @@
 # endpoint + model + api_key_ref per-tier from this contract deep-merged with the
 # overlay, and executes through the canonical HTTP inference path (Bifrost
 # complete-URL-from-contract) identical to the lower tiers. The ceiling tier model
-# maps to an HTTP frontier backend (default backend_id ``cloud-sonnet``); it is
+# maps to an HTTP frontier backend (default backend_id ``cloud-gemini-pro`` since
+# OMN-13351 — repointed off the dead Anthropic ``cloud-sonnet``); it is
 # swappable across gemini / glm / openrouter / claude purely via contract overlay
 # (repoint the model's backend_id, or override the backend's endpoint_url /
 # model_name / secret_ref) — no code change, no env var, no CLI shell-out. The
@@ -151,17 +152,34 @@ tiers:
     max_retries: 1
   # Ceiling tier (OMN-13215). Executes through the canonical HTTP inference path
   # like every lower tier — NO subprocess, NO shelled CLI. The model maps to an
-  # HTTP frontier backend (default backend_id ``cloud-sonnet``: complete verbatim
-  # endpoint_url + secret_ref llm.anthropic.api_key). To swap the ceiling provider
-  # (gemini / glm / openrouter / claude) edit ONLY this contract/overlay: repoint
-  # backend_id to another HTTP backend, or override that backend's endpoint_url /
-  # model_name / secret_ref in bifrost_overrides.yaml. No code change required.
+  # HTTP frontier backend. To swap the ceiling provider (gemini / glm / openrouter
+  # / claude) edit ONLY this contract/overlay: repoint backend_id to another HTTP
+  # backend, or override that backend's endpoint_url / model_name / secret_ref in
+  # bifrost_overrides.yaml. No code change required.
+  #
+  # OMN-13351: the ceiling backend was repointed from the dead Anthropic
+  # ``cloud-sonnet`` (secret_ref llm.anthropic.api_key, which resolves to None in
+  # every lane — this org has NO Anthropic key, Claude Code is OAuth) to the
+  # resolvable Gemini frontier backend ``cloud-gemini-pro`` (secret_ref
+  # llm.gemini.api_key, model gemini-2.5-flash). The 2026-06-19 stability-test
+  # escalation reprove proved the Anthropic key resolves to None and the ceiling
+  # terminated ``no_routable_backend_for_task`` on every escalation; a live
+  # key-resolution + 1-token model probe this ticket confirmed llm.gemini.api_key
+  # resolves and gemini-2.5-flash returns HTTP 200 (gemini-2.5-pro is quota-zero
+  # 429 on the only resolvable Gemini key, OMN-12890-class free-tier exhaustion).
+  #
+  # The tier slot is kept named ``claude`` because every task-class
+  # escalation_policy.tier_order and the handler cost_tier_map key on this literal
+  # tier name; ``claude`` is now a stable ceiling-slot identifier, NOT a provider
+  # claim. The backend it routes to is provider-correct (Gemini). cost_per_1k_tokens
+  # drops 0.015 -> 0.0 because gemini-2.5-flash is served on the AI Studio free-tier
+  # key (no marginal API cost), matching the resolved-key reality.
   - name: claude
-    cost_per_1k_tokens: 0.015
+    cost_per_1k_tokens: 0.0
     models:
-      - id: claude-sonnet-4-6
-        backend_id: cloud-sonnet
-        max_context_tokens: 200000
+      - id: gemini-2.5-flash
+        backend_id: cloud-gemini-pro
+        max_context_tokens: 1000000
         use_for:
           - escalation
           - complex_reasoning
