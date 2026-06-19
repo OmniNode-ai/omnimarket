@@ -232,6 +232,47 @@ def test_validate_generation_fails_on_hardcoded_topic() -> None:
     assert any("hardcoded topic string" in e for e in result["errors"])
 
 
+@pytest.mark.unit
+def test_validator_generation_allows_path_literals_in_handler() -> None:
+    """OMN-13293 (G1): a validator-generation run must NOT reject a scanner that
+    embeds path-pattern literals — a hardcoded-path *detector* legitimately
+    contains them. The path security pre-filter is suppressed when the run
+    carries a validator corpus; correctness is enforced by the corpus gate.
+    """
+    # A natural path-scanner handler — contains the very literals it detects.
+    scanner = (
+        "import re\n"
+        "def handle(input_data):\n"
+        "    src = input_data.get('source', '')\n"
+        "    pats = [re.compile(r'/Users/[A-Za-z_]'), re.compile(r'/Volumes/[A-Za-z]')]\n"  # test-literal-ok: scanner-under-test pattern
+        "    return {'findings': [1 for p in pats if p.search(src)]}\n"
+    )
+    # Ordinary generation: the path literals are rejected (unchanged behavior).
+    ordinary = _validate_generation(_VALID_CONTRACT_YAML, scanner)
+    assert ordinary["valid"] is False
+    assert any("hardcoded absolute path" in e for e in ordinary["errors"])
+
+    # Validator generation: the path literals are allowed; the handler is valid.
+    validator = _validate_generation(
+        _VALID_CONTRACT_YAML, scanner, is_validator_generation=True
+    )
+    assert validator["valid"] is True
+    assert "security" in validator["checks_passed"]
+
+
+@pytest.mark.unit
+def test_validator_generation_still_rejects_hardcoded_topic() -> None:
+    """The topic-literal check is unconditional even for validator generation —
+    a validator has no reason to embed a hardcoded onex.* topic.
+    """
+    handler_with_topic = 'def handle(x):\n    return "onex.cmd.omnimarket.foo.v1"\n'
+    result = _validate_generation(
+        _VALID_CONTRACT_YAML, handler_with_topic, is_validator_generation=True
+    )
+    assert result["valid"] is False
+    assert any("hardcoded topic string" in e for e in result["errors"])
+
+
 # ---------------------------------------------------------------------------
 # Integration-style tests: handler.handle() with fake effect
 # ---------------------------------------------------------------------------
