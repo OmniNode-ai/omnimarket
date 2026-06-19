@@ -142,6 +142,30 @@ def test_gap_fix_requires_report() -> None:
 
 
 @pytest.mark.unit
+def test_gap_contract_operation_match_handler_declares_operation() -> None:
+    """Every operation_match handler must declare an ``operation``.
+
+    The runtime's receipt-mode dispatch (``onex skill gap ...``) validates
+    handler_routing and fails with ``handlers[N].operation is missing`` when an
+    ``operation_match`` handler omits the field. The handler and the ``__main__``
+    CLI path do not exercise this validation, so it was the gap that let the
+    bus-dispatch path break while the node "ran fine directly".
+    """
+    contract_path = (
+        Path(handler_gap_compute.__file__).resolve().parents[1] / "contract.yaml"
+    )
+    contract = yaml.safe_load(contract_path.read_text(encoding="utf-8"))
+    routing = contract["handler_routing"]
+    assert routing["routing_strategy"] == "operation_match"
+    for index, entry in enumerate(routing["handlers"]):
+        operation = entry.get("operation")
+        assert operation, (
+            f"handler_routing.handlers[{index}] must declare a non-empty "
+            f"'operation' for operation_match dispatch; got {operation!r}"
+        )
+
+
+@pytest.mark.unit
 def test_gap_cli_outputs_json(tmp_path: Path) -> None:
     repo = tmp_path / "omnimarket"
     _write_contract(
