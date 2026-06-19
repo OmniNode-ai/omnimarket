@@ -38,10 +38,11 @@ This service refuses the Linear Done transition when any of the following holds:
 
 1. No receipt is tracked under ``drift/dod_receipts/<TICKET>/`` on the OCC
    governance ref (untracked or local-only commit).
-2. The contract's ``dod_evidence`` cites a ``pr_url`` whose state is not
-   ``MERGED`` or whose ``mergeCommit.oid`` does not match the cited SHA.
-3. The contract version on the OCC governance ref does not yet contain the
-   real merge commit citation (i.e. the ref still has the stale contract).
+2. The durable receipts under ``drift/dod_receipts/<TICKET>/`` do not bind at
+   least one PASS ``pr_number`` + ``commit_sha`` receipt to a GitHub repository,
+   or the bound PR is not ``MERGED`` with that ``mergeCommit.oid``.
+3. The contract version on the OCC governance ref does not yet declare the
+   receipt-bound evidence checks (i.e. the ref still has the stale contract).
 
 The gate is pure logic plus pluggable Protocol probes (git receipt-tracked,
 gh pr view, contract loader). Tests inject deterministic probe stubs;
@@ -50,6 +51,7 @@ production wiring uses subprocess implementations.
 
 from __future__ import annotations
 
+import json
 import re
 from typing import Protocol
 
@@ -165,6 +167,19 @@ class ContractOnRefLoader(Protocol):
     ) -> dict[str, object] | None: ...
 
 
+class ReceiptsOnRefLoader(Protocol):
+    """Probe that returns parsed receipt YAML payloads tracked under a receipt dir.
+
+    Production wiring should load every ``*.yaml`` receipt under
+    ``<repo>:<ref>:<receipt_dir>/``. The gate treats these receipts as the
+    schema-valid source of PR/merge-commit bindings.
+    """
+
+    def __call__(
+        self, repo_path: str, ref: str, receipt_dir: str
+    ) -> list[dict[str, object]]: ...
+
+
 def parse_pr_url(pr_url: str) -> tuple[str, int] | None:
     """Parse ``https://github.com/<owner>/<repo>/pull/<n>`` into ``(repo, n)``.
 
@@ -176,68 +191,137 @@ def parse_pr_url(pr_url: str) -> tuple[str, int] | None:
     return f"{match.group('owner')}/{match.group('repo')}", int(match.group("num"))
 
 
-def extract_cited_merge_commits(
-    contract: dict[str, object],
-) -> list[ModelCitedMergeCommit]:
-    """Extract ``(pr_url, commit_sha)`` citations from a contract's dod_evidence.
+def extract_contract_check_keys(contract: dict[str, object]) -> set[tuple[str, str]]:
+    """Extract schema-valid ``(evidence_item_id, check_type)`` keys from a contract."""
+    keys: set[tuple[str, str]] = set()
+    items = contract.get("dod_evidence", [])
+    if not isinstance(items, list):
+        return keys
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        item_id = item.get("id")
+        checks = item.get("checks", [])
+        if not isinstance(item_id, str) or not isinstance(checks, list):
+            continue
+        for check in checks:
+            if not isinstance(check, dict):
+                continue
+            check_type = check.get("check_type")
+            if isinstance(check_type, str):
+                keys.add((item_id, check_type))
+    return keys
 
-    The contract schema's ``dod_evidence[]`` items may declare ``pr_url`` and
-    ``commit_sha`` fields directly, or nest them inside ``checks[]`` entries.
-    The gate inspects both shapes; missing or malformed citations are skipped
-    rather than failing the gate (a contract with zero citations is fine —
-    only contracts that DO cite must cite real merged commits).
+
+def extract_receipt_merge_commits(
+    receipts: list[dict[str, object]],
+) -> list[ModelCitedMergeCommit]:
+    """Extract PR/merge-commit citations from schema-valid receipt fields.
+
+    ``ModelTicketContract`` forbids ad hoc ``pr_url``/``commit_sha`` fields on
+    ``dod_evidence`` items and checks. The durable binding lives in
+    ``ModelDodReceipt`` payloads: ``pr_number``, ``commit_sha``, and the probed
+    GitHub repository encoded in ``probe_stdout``/``probe_command``/``check_value``.
+    Receipts that do not carry a complete PASS PR binding are ignored; the gate
+    fails when the complete receipt set yields zero citations.
 
     Pure function — no I/O.
     """
     citations: list[ModelCitedMergeCommit] = []
     seen: set[tuple[str, int, str]] = set()
-    items = contract.get("dod_evidence", [])
-    if not isinstance(items, list):
-        return citations
-    for item in items:
-        if not isinstance(item, dict):
+    for receipt in receipts:
+        if not isinstance(receipt, dict):
             continue
-        candidates: list[dict[str, object]] = [item]
-        nested = item.get("checks", [])
-        if isinstance(nested, list):
-            for c in nested:
-                if isinstance(c, dict):
-                    candidates.append(c)
-        for cand in candidates:
-            pr_url = cand.get("pr_url")
-            sha = cand.get("commit_sha")
-            if not isinstance(pr_url, str) or not isinstance(sha, str):
-                continue
-            # Skip malformed SHAs (the docstring contracts that malformed
-            # citations are skipped, not raised). Without this guard a sha
-            # like "abc" reaches ModelCitedMergeCommit and raises
-            # ValidationError on min_length=7.
-            if not _SHA_RE.match(sha):
-                continue
-            parsed = parse_pr_url(pr_url)
-            if parsed is None:
-                continue
-            repo, num = parsed
-            # Dedupe on the normalized identity (repo, pr_number, sha) — NOT
-            # the raw pr_url. parse_pr_url() accepts multiple URL shapes for
-            # the same PR (e.g. ``/pull/123`` vs ``/pull/123/files``); keying
-            # on raw pr_url would treat them as distinct citations and
-            # double-call gh_pr_view AND falsely hard-fail
-            # CONTRACT_ON_OCC_MAIN when local and OCC main spell the same
-            # PR differently.
-            key = (repo, num, sha)
-            if key in seen:
-                continue
-            seen.add(key)
-            citations.append(
-                ModelCitedMergeCommit(
-                    pr_url=pr_url,
-                    repo=repo,
-                    pr_number=num,
-                    cited_sha=sha,
-                )
+        if receipt.get("status") != "PASS":
+            continue
+        evidence_item_id = receipt.get("evidence_item_id")
+        check_type = receipt.get("check_type")
+        pr_number = receipt.get("pr_number")
+        sha = receipt.get("commit_sha")
+        if (
+            not isinstance(evidence_item_id, str)
+            or not isinstance(check_type, str)
+            or not isinstance(pr_number, int)
+            or not isinstance(sha, str)
+            or not _SHA_RE.match(sha)
+        ):
+            continue
+        repo = _extract_receipt_repo(receipt, pr_number)
+        if repo is None:
+            continue
+        key = (repo, pr_number, sha)
+        if key in seen:
+            continue
+        seen.add(key)
+        citations.append(
+            ModelCitedMergeCommit(
+                pr_url=f"https://github.com/{repo}/pull/{pr_number}",
+                repo=repo,
+                pr_number=pr_number,
+                cited_sha=sha,
+                evidence_item_id=evidence_item_id,
+                check_type=check_type,
             )
+        )
     return citations
+
+
+def _extract_receipt_repo(receipt: dict[str, object], pr_number: int) -> str | None:
+    """Resolve ``owner/repo`` for a PR-bound receipt from schema fields."""
+    fields = ("probe_stdout", "probe_command", "check_value")
+    for field in fields:
+        value = receipt.get(field)
+        if not isinstance(value, str):
+            continue
+        repo = _extract_repo_from_github_json(value, pr_number)
+        if repo is not None:
+            return repo
+        repo = _extract_repo_from_text(value, pr_number)
+        if repo is not None:
+            return repo
+    return None
+
+
+def _extract_repo_from_github_json(value: str, pr_number: int) -> str | None:
+    try:
+        parsed = json.loads(value)
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(parsed, dict):
+        return None
+    number = parsed.get("number")
+    if number != pr_number:
+        return None
+    url = parsed.get("url")
+    if not isinstance(url, str):
+        return None
+    parsed_url = parse_pr_url(url)
+    if parsed_url is None:
+        return None
+    repo, number_from_url = parsed_url
+    if number_from_url != pr_number:
+        return None
+    return repo
+
+
+def _extract_repo_from_text(value: str, pr_number: int) -> str | None:
+    repo_match = re.search(
+        r"(?:^|\s)--repo(?:=|\s+)(?P<repo>[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)",
+        value,
+    )
+    if repo_match is not None:
+        return repo_match.group("repo")
+    for match in re.finditer(
+        r"https://github\.com/[^\s\"')]+/[^\s\"')]+/pull/\d+(?:/[^\s\"')]*)?",
+        value,
+    ):
+        parsed = parse_pr_url(match.group(0))
+        if parsed is None:
+            continue
+        repo, number = parsed
+        if number == pr_number:
+            return repo
+    return None
 
 
 class DurableEvidenceGate:
@@ -260,12 +344,14 @@ class DurableEvidenceGate:
         is_receipt_tracked: GitReceiptTrackedProbe,
         gh_pr_view: GhPrViewProbe,
         load_contract_on_ref: ContractOnRefLoader,
+        load_receipts_on_ref: ReceiptsOnRefLoader,
         occ_repo_path: str,
         occ_governance_ref: str = DEFAULT_OCC_GOVERNANCE_REF,
     ) -> None:
         self._is_receipt_tracked = is_receipt_tracked
         self._gh_pr_view = gh_pr_view
         self._load_contract_on_ref = load_contract_on_ref
+        self._load_receipts_on_ref = load_receipts_on_ref
         self._occ_repo_path = occ_repo_path
         self._occ_governance_ref = occ_governance_ref
 
@@ -357,37 +443,48 @@ class DurableEvidenceGate:
                 )
             )
 
-        # Check 2: every cited PR is MERGED with mergeCommit.oid == cited_sha
-        citations = extract_cited_merge_commits(contract)
+        receipts = self._load_receipts_on_ref(
+            self._occ_repo_path, self._occ_governance_ref, receipt_dir
+        )
+
+        # Check 2: every PR-bound receipt is MERGED with mergeCommit.oid == commit_sha.
+        citations = extract_receipt_merge_commits(receipts)
         check2_failure: str | None = None
-        for citation in citations:
-            state, merge_commit_oid = self._gh_pr_view(
-                citation.repo, citation.pr_number
+        if not citations:
+            check2_failure = (
+                f"No PASS receipt under {receipt_dir}/ binds pr_number, "
+                "commit_sha, and a GitHub repo. Durable evidence must cite an "
+                "actual merged PR via receipt fields before Linear can move to Done."
             )
-            if state != "MERGED":
-                check2_failure = (
-                    f"{citation.pr_url} state={state}, expected MERGED. "
-                    "Update the contract dod_evidence to cite the real merged PR "
-                    "before re-running the gate."
+        else:
+            for citation in citations:
+                state, merge_commit_oid = self._gh_pr_view(
+                    citation.repo, citation.pr_number
                 )
-                break
-            if merge_commit_oid is None or (
-                not merge_commit_oid.startswith(citation.cited_sha[:7])
-                and not citation.cited_sha.startswith(merge_commit_oid[:7])
-            ):
-                check2_failure = (
-                    f"{citation.pr_url} mergeCommit.oid="
-                    f"{merge_commit_oid!r} does not match cited "
-                    f"commit_sha={citation.cited_sha!r}. The contract is citing "
-                    "a superseded or wrong PR — update dod_evidence to the actual "
-                    "merge commit before re-running the gate."
-                )
-                break
+                if state != "MERGED":
+                    check2_failure = (
+                        f"{citation.pr_url} state={state}, expected MERGED. "
+                        "Update the durable receipt to cite the real merged PR "
+                        "before re-running the gate."
+                    )
+                    break
+                if merge_commit_oid is None or (
+                    not merge_commit_oid.startswith(citation.cited_sha[:7])
+                    and not citation.cited_sha.startswith(merge_commit_oid[:7])
+                ):
+                    check2_failure = (
+                        f"{citation.pr_url} mergeCommit.oid="
+                        f"{merge_commit_oid!r} does not match receipt "
+                        f"commit_sha={citation.cited_sha!r}. The durable receipt "
+                        "is citing a superseded, head-only, or wrong commit — "
+                        "update the receipt to the actual merge commit before "
+                        "re-running the gate."
+                    )
+                    break
         if check2_failure is None:
             cite_msg = (
-                f"All {len(citations)} cited PR(s) are MERGED with matching SHAs."
-                if citations
-                else "Contract has no PR/commit citations to verify."
+                f"All {len(citations)} receipt-bound PR(s) are MERGED with "
+                "matching merge SHAs."
             )
             checks.append(
                 ModelDurableEvidenceCheckResult(
@@ -405,10 +502,10 @@ class DurableEvidenceGate:
                 )
             )
 
-        # Check 3: the OCC governance ref contains a contract version with the
-        # cited merge commits. This catches the OMN-9855 case where the ref
-        # still has the stale contract (citing #926) while the local contract
-        # has been updated to cite #949.
+        # Check 3: the OCC governance ref contains a contract version declaring
+        # the schema-valid evidence checks for the receipt-bound PR commits.
+        # This catches stale refs where the receipt exists but the contract on
+        # the governance ref does not yet declare the bound evidence item.
         main_contract = self._load_contract_on_ref(
             self._occ_repo_path, self._occ_governance_ref, contract_rel_path
         )
@@ -426,23 +523,22 @@ class DurableEvidenceGate:
                 )
             )
         else:
-            main_citations = extract_cited_merge_commits(main_contract)
-            # Compare on normalized identity (repo, pr_number, sha) — NOT raw
-            # pr_url — so different URL spellings for the same PR do not
-            # produce a false stale-ref hard fail.
-            local_keys = {(c.repo, c.pr_number, c.cited_sha) for c in citations}
-            main_keys = {(c.repo, c.pr_number, c.cited_sha) for c in main_citations}
-            if citations and not local_keys.issubset(main_keys):
-                missing = local_keys - main_keys
+            local_contract_keys = extract_contract_check_keys(contract)
+            main_contract_keys = extract_contract_check_keys(main_contract)
+            receipt_keys = {(c.evidence_item_id, c.check_type) for c in citations}
+            missing_contract_keys = local_contract_keys - main_contract_keys
+            missing_receipt_keys = receipt_keys - main_contract_keys
+            if missing_contract_keys or missing_receipt_keys:
                 checks.append(
                     ModelDurableEvidenceCheckResult(
                         check=EnumDurableEvidenceCheck.CONTRACT_ON_OCC_MAIN,
                         passed=False,
                         message=(
                             f"Contract on {self._occ_governance_ref} is stale — "
-                            f"missing citation(s) {sorted(missing)}. Open an OCC "
-                            "PR to update the contract and merge it before "
-                            "transitioning Linear to Done."
+                            f"missing local check(s) {sorted(missing_contract_keys)} "
+                            f"or receipt-bound check(s) {sorted(missing_receipt_keys)}. "
+                            "Open an OCC PR to update the contract and merge it "
+                            "before transitioning Linear to Done."
                         ),
                     )
                 )
@@ -453,7 +549,7 @@ class DurableEvidenceGate:
                         passed=True,
                         message=(
                             f"Contract on {self._occ_governance_ref} contains "
-                            "the expected merge-commit citations."
+                            "the receipt-bound evidence checks."
                         ),
                     )
                 )
@@ -518,8 +614,10 @@ __all__: list[str] = [
     "DurableEvidenceGateError",
     "GhPrViewProbe",
     "GitReceiptTrackedProbe",
+    "ReceiptsOnRefLoader",
     "default_contract_path",
     "default_receipt_dir",
-    "extract_cited_merge_commits",
+    "extract_contract_check_keys",
+    "extract_receipt_merge_commits",
     "parse_pr_url",
 ]

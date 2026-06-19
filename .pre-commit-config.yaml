@@ -373,6 +373,17 @@ repos:
 
   - repo: local
     hooks:
+      # OMN-13346: DurableEvidenceGate must not pass CONTRACT_CITES_MERGE_COMMIT
+      # vacuously when schema-valid contracts carry zero receipt-bound commits.
+      # SYNC with ci.yml pytest suite.
+      - id: durable-evidence-gate-regression
+        name: DurableEvidenceGate regression tests (OMN-13346)
+        language: system
+        entry: uv run pytest tests/unit/nodes/node_dod_verify/test_durable_evidence_gate.py -q -m unit
+        files: ^(src/omnimarket/nodes/node_dod_verify/(services/durable_evidence_gate|models/model_durable_evidence_gate)\.py|tests/unit/nodes/node_dod_verify/test_durable_evidence_gate\.py)$
+        pass_filenames: false
+        stages: [pre-commit]
+
       - id: normalization-symmetry
         name: normalization-symmetry
         entry: uv run python -m omnibase_core.validation.checker_normalization_symmetry
