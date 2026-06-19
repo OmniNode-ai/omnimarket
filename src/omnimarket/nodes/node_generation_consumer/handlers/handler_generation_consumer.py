@@ -433,16 +433,44 @@ def _check_handler_syntax(handler_source: str) -> tuple[list[str], bool]:
     return [], True
 
 
-def _check_handler_security(handler_source: str) -> list[str]:
+def _check_handler_security(
+    handler_source: str, *, is_validator_generation: bool = False
+) -> list[str]:
+    """Pre-filter a generated handler for forbidden literals.
+
+    OMN-13293 (G1 integration finding): the hardcoded-absolute-path *literal*
+    check is suppressed for a validator-generation run. A scanner that DETECTS
+    hardcoded paths must itself embed the path-pattern literals it matches on
+    (e.g. ``re.compile(r"/Users/[A-Za-z_]...")``) — flagging that as a
+    "hardcoded absolute path" makes generating a path validator impossible: a
+    real local model writes the natural regex and is rejected every attempt
+    (proven live: 6/6 ``contract_passed=false`` before this fix). The G0 test
+    only passed by assembling the needle from string parts (``"/" + "Users"``),
+    an obfuscation we cannot expect a model to discover and which is itself an
+    anti-pattern.
+
+    Suppressing the literal check here is safe for the validator case because
+    correctness is enforced by the corpus-acceptance gate, which executes the
+    generated handler in the hardened sandbox (``execute_handler_in_sandbox``)
+    where no filesystem / network / env / ``os`` / ``pathlib`` is reachable — so
+    a generated validator cannot USE a hardcoded path at runtime even though its
+    source mentions the pattern. The topic-literal check is unconditional: a
+    validator has no reason to embed a hardcoded ``onex.*`` topic.
+    """
     security_errors: list[str] = []
-    if _HARDCODED_PATH_RE.search(handler_source):
+    if not is_validator_generation and _HARDCODED_PATH_RE.search(handler_source):
         security_errors.append("security: hardcoded absolute path detected")
     if _HARDCODED_TOPIC_RE.search(handler_source):
         security_errors.append("security: hardcoded topic string detected")
     return security_errors
 
 
-def _validate_generation(contract_yaml: str, handler_source: str) -> dict[str, Any]:
+def _validate_generation(
+    contract_yaml: str,
+    handler_source: str,
+    *,
+    is_validator_generation: bool = False,
+) -> dict[str, Any]:
     errors: list[str] = []
     checks_passed: list[str] = []
 
@@ -456,7 +484,9 @@ def _validate_generation(contract_yaml: str, handler_source: str) -> dict[str, A
     if syntax_ok:
         checks_passed.append("syntax")
 
-    security_errors = _check_handler_security(handler_source)
+    security_errors = _check_handler_security(
+        handler_source, is_validator_generation=is_validator_generation
+    )
     if security_errors:
         errors.extend(security_errors)
     else:
@@ -845,7 +875,17 @@ class HandlerGenerationConsumer:
 
             latency_ms = int((time.time() - start) * 1000)
             contract_yaml, handler_source = _extract_blocks(raw_output)
-            validation = _validate_generation(contract_yaml, handler_source)
+            # OMN-13293 (G1): a validator-generation run (carrying a corpus) is
+            # EXPECTED to embed path-pattern literals because it detects them, so
+            # the hardcoded-path literal pre-filter is suppressed for it. The
+            # corpus-acceptance gate (run in the hardened sandbox) is the real
+            # correctness authority for that case.
+            is_validator_generation = command.validator_corpus is not None
+            validation = _validate_generation(
+                contract_yaml,
+                handler_source,
+                is_validator_generation=is_validator_generation,
+            )
 
             # OMN-13166: run the behavioral check only when the artifact is shaped
             # correctly (a syntax-broken handler cannot be executed). When the
