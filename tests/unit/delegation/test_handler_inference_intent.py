@@ -90,6 +90,7 @@ def _make_terminal_routing_decision(correlation_id: object) -> ModelRoutingDecis
         endpoint_url="http://192.168.86.201:8001",  # onex-allow-internal-ip OMN-12720 reason="live probe endpoint reproduced in failure-chain unit test"
         cost_tier="local",
         max_context_tokens=65536,
+        max_tokens=65536,  # OMN-13345: contract backend output ceiling
         system_prompt="You are a test generation assistant.",
         rationale="Live probe selected the local Qwen endpoint.",
         tier_name="claude",

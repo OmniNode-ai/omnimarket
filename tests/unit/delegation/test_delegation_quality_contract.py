@@ -143,6 +143,7 @@ def test_workflow_forwards_routing_dod_to_quality_gate_input() -> None:
             endpoint_url="http://test-llm:8000",
             cost_tier="low",
             max_context_tokens=24576,
+            max_tokens=65536,  # OMN-13345: contract backend output ceiling
             system_prompt="Write documentation.",
             rationale="test",
             dod_deterministic=("docstring_present",),
@@ -201,6 +202,7 @@ def test_workflow_forwards_request_acceptance_criteria() -> None:
             endpoint_url="http://test-llm:8000",
             cost_tier="low",
             max_context_tokens=24576,
+            max_tokens=65536,  # OMN-13345: contract backend output ceiling
             system_prompt="Write documentation.",
             rationale="test",
             dod_deterministic=("docstring_present",),
