@@ -224,3 +224,148 @@ class TestProjectionRuntimeBinding:
 
         with pytest.raises(RuntimeError, match="unresolved"):
             binding.resolve_database_url()
+
+
+class _RecordingConsumer:
+    """Minimal AIOKafkaConsumer stand-in that records explicit offset commits."""
+
+    def __init__(self) -> None:
+        self.commits: list[dict[Any, int]] = []
+
+    async def commit(self, offsets: dict[Any, int]) -> None:
+        self.commits.append(offsets)
+
+
+class _Msg:
+    """Minimal Kafka message stand-in for _handle_message."""
+
+    def __init__(
+        self, *, topic: str, partition: int, offset: int, value: bytes | None
+    ) -> None:
+        self.topic = topic
+        self.partition = partition
+        self.offset = offset
+        self.value = value
+
+
+class _EnvelopeFreeRunner(BaseProjectionRunner):
+    """Runner whose project_event outcome is controlled per test.
+
+    OMN-13350 fail-loud: drives _handle_message directly with a recording
+    consumer to prove the offset is committed ONLY when a message is fully
+    accounted for, and that a projection error propagates WITHOUT committing.
+    """
+
+    def __init__(self, *, behavior: str) -> None:
+        binding = ModelProjectionRuntimeBinding(
+            kafka_bootstrap_servers="redpanda.test:9092",
+            database_url="postgresql://p:s@db.test:5432/projections",
+        )
+        super().__init__(runtime_binding=binding)
+        self._behavior = behavior
+        self.project_event_calls = 0
+        self._consumer = _RecordingConsumer()  # type: ignore[assignment]
+
+    @property
+    def topics(self) -> list[str]:
+        return ["onex.evt.omnimarket.node-generation-completed.v1"]
+
+    async def project_event(
+        self, topic: str, data: dict[str, Any], meta: MessageMeta
+    ) -> bool:
+        self.project_event_calls += 1
+        if self._behavior == "raise":
+            # Mirror the live UndefinedColumn the projection raises on a
+            # schema-drifted generation_events table.
+            raise RuntimeError(
+                'column "corpus_checked" of relation "generation_events" does not exist'
+            )
+        if self._behavior == "unhandled":
+            return False
+        return True
+
+    async def _update_watermark(self, projection_name: str, offset: int) -> None:
+        # No real DB in this unit test; the watermark write is exercised
+        # elsewhere and is not the offset-commit path under test here.
+        return None
+
+
+def _msg() -> _Msg:
+    # Non-None, unwrappable value so project_event is reached.
+    return _Msg(
+        topic="onex.evt.omnimarket.node-generation-completed.v1",
+        partition=0,
+        offset=41,
+        value=b'{"payload": {"correlation_id": "c-1"}}',
+    )
+
+
+class TestFailLoudOffsetCommit:
+    """OMN-13350: no commit-and-drop. Offset advances only when accounted for."""
+
+    @pytest.mark.asyncio
+    async def test_successful_projection_commits_offset(self) -> None:
+        runner = _EnvelopeFreeRunner(behavior="project")
+        await runner._handle_message(_msg())
+        commits = runner._consumer.commits  # type: ignore[attr-defined]
+        assert len(commits) == 1, "a projected message must commit its offset"
+        # Committed position is offset + 1 (next message to read).
+        assert list(commits[0].values()) == [42]
+        assert runner.stats.events_projected == 1
+        assert runner.stats.errors_count == 0
+
+    @pytest.mark.asyncio
+    async def test_projection_error_does_not_commit_and_raises(self) -> None:
+        runner = _EnvelopeFreeRunner(behavior="raise")
+        with pytest.raises(RuntimeError, match="does not exist"):
+            await runner._handle_message(_msg())
+        commits = runner._consumer.commits  # type: ignore[attr-defined]
+        assert commits == [], (
+            "a failed projection must NOT commit the offset — committing here is "
+            "the silent-drop data-loss bug (the message would be skipped while "
+            "the consumer group reported Stable)"
+        )
+        assert runner.stats.errors_count == 1
+        assert runner.stats.events_projected == 0
+
+    @pytest.mark.asyncio
+    async def test_unhandled_topic_commits_to_avoid_partition_wedge(self) -> None:
+        # project_event returning False means "not my topic" — a handled
+        # non-event. It must commit so the partition is not wedged forever on a
+        # message this runner does not project.
+        runner = _EnvelopeFreeRunner(behavior="unhandled")
+        await runner._handle_message(_msg())
+        commits = runner._consumer.commits  # type: ignore[attr-defined]
+        assert len(commits) == 1
+        assert runner.stats.events_projected == 0
+        assert runner.stats.errors_count == 0
+
+    @pytest.mark.asyncio
+    async def test_empty_value_commits_as_non_event(self) -> None:
+        runner = _EnvelopeFreeRunner(behavior="project")
+        msg = _Msg(
+            topic="onex.evt.omnimarket.node-generation-completed.v1",
+            partition=0,
+            offset=7,
+            value=None,
+        )
+        await runner._handle_message(msg)
+        commits = runner._consumer.commits  # type: ignore[attr-defined]
+        assert len(commits) == 1, "an empty message is a non-event; commit and move on"
+        assert runner.project_event_calls == 0
+
+    @pytest.mark.asyncio
+    async def test_auto_commit_is_disabled(self) -> None:
+        """The consumer is constructed with enable_auto_commit disabled.
+
+        Auto-commit was the data-loss mechanism: the timer advanced the offset
+        regardless of DB-write success. Guard the source so a future edit cannot
+        silently re-enable it.
+        """
+        import inspect
+
+        from omnimarket.projection import runner as runner_module
+
+        source = inspect.getsource(runner_module.BaseProjectionRunner.run)
+        assert "enable_auto_commit=False" in source
+        assert "enable_auto_commit=True" not in source
