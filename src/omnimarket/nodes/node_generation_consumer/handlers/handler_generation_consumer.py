@@ -200,6 +200,13 @@ class ModelResolvedEndpoint(BaseModel):
     provider: str = Field(..., min_length=1)
     served_model_id: str = Field(..., min_length=1)
     api_key_ref: str | None = Field(default=None)
+    # OMN-13342: the contract-declared per-backend output-token ceiling
+    # (e.g. 65536 for cloud-glm) resolved from the bifrost backend. It MUST be
+    # threaded onto the inference request — when omitted, z.ai glm-4.5 applies a
+    # small server-side default cap, truncates (finish_reason=length), and the
+    # quality gate scores 0.0. Bounded >= 1; never silently defaulted in
+    # handler code (the wire DTO already validates the contract value).
+    max_tokens: int = Field(..., ge=1)
 
 
 def resolve_generation_endpoint(
@@ -273,6 +280,10 @@ def resolve_generation_endpoint(
         provider=provider,
         served_model_id=served_model_id,
         api_key_ref=backend.api_key_ref,
+        # OMN-13342: thread the contract-declared per-backend output ceiling
+        # through to the inference request so cloud backends (z.ai glm-4.5)
+        # receive their full budget instead of the provider's truncating default.
+        max_tokens=backend.max_tokens,
     )
 
 
@@ -283,6 +294,11 @@ class _ResolvedBackend(BaseModel):
 
     endpoint_url: str = Field(..., min_length=1)
     api_key_ref: str | None = Field(default=None)
+    # OMN-13342: contract-declared per-backend output-token ceiling carried
+    # through from the bifrost backend so the generation inference request can
+    # post it on the wire. Fail-closed >= 1 (mirrors the delegation backend
+    # resolution validation); never silently defaulted here.
+    max_tokens: int = Field(..., ge=1)
 
 
 def _resolve_bifrost_backend(endpoint_ref: str) -> _ResolvedBackend | None:
@@ -319,9 +335,23 @@ def _resolve_bifrost_backend(endpoint_ref: str) -> _ResolvedBackend | None:
         url = (backend.endpoint_url or "").strip()
         if not url:
             return None
+        # OMN-13342: fail closed on a non-positive contract output ceiling.
+        # Omitting/zeroing max_tokens is exactly what truncates z.ai glm-4.5
+        # output (finish_reason=length, QG 0.0); a silent default would
+        # re-introduce the bug. Mirrors delegation_backend_resolution.py:175-185.
+        if backend.max_tokens < 1:
+            raise ValueError(
+                f"bifrost backend {endpoint_ref!r} declares max_tokens="
+                f"{backend.max_tokens}; the per-backend output-token budget "
+                "must be >= 1. It is the wire ceiling threaded onto the "
+                "generation inference request — a missing/non-positive value "
+                "lets the provider truncate output. Populate the routing "
+                "contract/overlay; no default is substituted."
+            )
         return _ResolvedBackend(
             endpoint_url=url,
             api_key_ref=backend.resolved_secret_ref,
+            max_tokens=backend.max_tokens,
         )
 
     return None
@@ -786,6 +816,14 @@ class HandlerGenerationConsumer:
                     {"role": "user", "content": user_content},
                 ),
                 api_key=api_key,
+                # OMN-13342: post the contract-declared per-backend output
+                # ceiling on the wire. Without it the infra effect omits
+                # max_tokens (handler_llm_openai_compatible.py:535-536) and
+                # z.ai glm-4.5 truncates at its small server-side default
+                # (finish_reason=length, quality-gate score 0.0). The value is
+                # resolved from the bifrost backend (cloud-glm: 65536), never a
+                # hardcoded literal.
+                max_tokens=resolved.max_tokens,
                 # OMN-12816: contract-declared inference params (e.g.
                 # chat_template_kwargs:{enable_thinking:false}) merged into the
                 # request body by the effect, suppressing Qwen reasoning so the

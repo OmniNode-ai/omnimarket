@@ -45,6 +45,8 @@ def _bifrost_contract(
     local_endpoint: str | None,
     gemini_endpoint: str | None,
     local_model_name: str | None = "qwen-coder",
+    local_max_tokens: int = 65536,
+    gemini_max_tokens: int = 8192,
 ) -> str:
     """Build a bifrost delegation contract with local + gemini backends."""
     return textwrap.dedent(
@@ -57,6 +59,7 @@ def _bifrost_contract(
             model_name: {"null" if local_model_name is None else f'"{local_model_name}"'}
             tier: local
             timeout_ms: 60000
+            max_tokens: {local_max_tokens}
             capabilities: [code_generation]
           - backend_id: cloud-gemini-flash
             endpoint_url: {"null" if gemini_endpoint is None else f'"{gemini_endpoint}"'}
@@ -64,6 +67,7 @@ def _bifrost_contract(
             api_key_env: GEMINI_API_KEY
             tier: cheap_cloud
             timeout_ms: 60000
+            max_tokens: {gemini_max_tokens}
             capabilities: [code_generation]
         routing_rules:
           - rule_id: "d4e5f6a7-0001-4000-8000-000000000001"
@@ -316,6 +320,146 @@ def test_routable_when_gemini_api_key_blank_in_host_env(
     )
     assert resolved.endpoint_url == _GEMINI_URL
     assert resolved.api_key_ref == "GEMINI_API_KEY"
+
+
+# ---------------------------------------------------------------------------
+# OMN-13342 — the contract-declared per-backend max_tokens (output ceiling)
+# MUST be threaded onto the resolved endpoint and the inference request. When
+# omitted, z.ai glm-4.5 truncates at its small server-side default
+# (finish_reason=length) and the quality gate scores 0.0.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+def test_resolved_endpoint_carries_backend_max_tokens(
+    monkeypatch: Any, tmp_path: Path
+) -> None:
+    """The resolved endpoint carries the contract-declared backend output ceiling.
+
+    Regression for OMN-13342: the bifrost backend max_tokens was read then
+    discarded (_ResolvedBackend / ModelResolvedEndpoint had no field), so the
+    generation inference request omitted max_tokens and cloud providers
+    truncated. The resolved endpoint must surface the contract value verbatim,
+    not the wire-DTO default — proven here with a non-default explicit value.
+    """
+    _set_bifrost(
+        monkeypatch,
+        tmp_path,
+        _bifrost_contract(
+            local_endpoint=_LOCAL_VLLM_URL,
+            gemini_endpoint=None,
+            local_max_tokens=12345,
+        ),
+    )
+    resolved = resolve_generation_endpoint(
+        endpoint_ref="local-coder",
+        provider="local",
+        served_model_id="Qwen3.6-35B-A3B",
+    )
+    assert resolved.max_tokens == 12345
+
+
+@pytest.mark.unit
+def test_cloud_backend_resolves_full_output_ceiling(
+    monkeypatch: Any, tmp_path: Path
+) -> None:
+    """A cloud backend resolves its full output ceiling (the truncation guard).
+
+    Mirrors the cloud-glm case: a 65536 ceiling must reach the resolved
+    endpoint so the inference effect posts max_tokens on the wire and z.ai
+    glm-4.5 stops truncating at finish_reason=length.
+    """
+    monkeypatch.setenv("GEMINI_API_KEY", "test-key")
+    _set_bifrost(
+        monkeypatch,
+        tmp_path,
+        _bifrost_contract(
+            local_endpoint=None,
+            gemini_endpoint=_GEMINI_URL,
+            gemini_max_tokens=65536,
+        ),
+    )
+    resolved = resolve_generation_endpoint(
+        endpoint_ref="cloud-gemini-flash",
+        provider="gemini",
+        served_model_id="gemini-2.0-flash",
+    )
+    assert resolved.max_tokens == 65536
+
+
+@pytest.mark.unit
+def test_production_cloud_glm_resolves_65536_ceiling(
+    monkeypatch: Any, tmp_path: Path
+) -> None:
+    """The real production cloud-glm backend resolves a 65536 output ceiling.
+
+    Guards against the canonical bifrost config (configs/bifrost_delegation.yaml)
+    dropping or shrinking the cloud-glm max_tokens, which would re-open the
+    z.ai glm-4.5 truncation. Loads the production config with a sentinel overlay
+    so the developer's ~/.omninode overlay does not perturb the assertion.
+    """
+    from omnimarket.adapters.llm.bifrost.config_loader_bifrost_delegation import (
+        _DEFAULT_CONFIG_PATH,
+    )
+
+    overlay_path = tmp_path / "__no_overlay__.yaml"
+    monkeypatch.setenv("BIFROST_CONTRACT_PATH", str(_DEFAULT_CONFIG_PATH))
+    monkeypatch.setenv("BIFROST_OVERLAY_PATH", str(overlay_path))
+    resolved = resolve_generation_endpoint(
+        endpoint_ref="cloud-glm",
+        provider="cloud",
+        served_model_id="glm-4.5",
+    )
+    assert resolved.max_tokens == 65536
+
+
+@pytest.mark.unit
+def test_fail_closed_when_backend_max_tokens_non_positive(
+    monkeypatch: Any, tmp_path: Path
+) -> None:
+    """A non-positive contract output ceiling raises — no silent default.
+
+    The wire DTO bounds max_tokens >= 1, but the resolver also fails closed at
+    the resolution boundary (mirrors delegation_backend_resolution.py). A
+    fixture declaring max_tokens: 0 must be rejected before it can produce a
+    truncating wire request.
+    """
+    contract_yaml = textwrap.dedent(
+        f"""\
+        config_version: "2.0.0"
+        schema_version: "bifrost_delegation.v1"
+        backends:
+          - backend_id: local-coder
+            endpoint_url: "{_LOCAL_VLLM_URL}"
+            model_name: "qwen-coder"
+            tier: local
+            timeout_ms: 60000
+            max_tokens: 0
+            capabilities: [code_generation]
+        routing_rules:
+          - rule_id: "d4e5f6a7-0001-4000-8000-000000000001"
+            priority: 10
+            task_class: code_generation
+            task_class_contract_version: "1.0.0"
+            backend_policy_version: "2.0.0"
+            match_operation_types: [chat_completion]
+            match_capabilities: [code_generation]
+            backend_ids: [local-coder]
+            fallback_policy:
+              action: escalate_to_next_tier
+              max_retries: 1
+              on_exhaust: return_error
+            shadow_policy_id: "e5f6a7b8-0001-4000-8000-000000000001"
+        default_backends: [local-coder]
+        """
+    )
+    _set_bifrost(monkeypatch, tmp_path, contract_yaml)
+    with pytest.raises(ValueError, match=r"max_tokens"):
+        resolve_generation_endpoint(
+            endpoint_ref="local-coder",
+            provider="local",
+            served_model_id="Qwen3.6-35B-A3B",
+        )
 
 
 # ---------------------------------------------------------------------------
