@@ -103,6 +103,7 @@ def _make_routing_decision(correlation_id: object) -> ModelRoutingDecision:
         endpoint_url="https://delegation-llm.test:8000",
         cost_tier="low",
         max_context_tokens=65536,
+        max_tokens=65536,  # OMN-13345: contract backend output ceiling
         system_prompt="You are a delegation test assistant.",
         rationale="Routing test.",
     )

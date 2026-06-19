@@ -149,6 +149,7 @@ def _start_delegation(
         endpoint_url=TEST_ENDPOINT_URL,
         cost_tier="low",
         max_context_tokens=65536,
+        max_tokens=65536,  # OMN-13345: contract backend output ceiling
         system_prompt="You are an assistant.",
         rationale="Routing test.",
     )
@@ -251,6 +252,7 @@ class TestDispatcherDelegationWorkflowBusPublish:
             endpoint_url=TEST_ENDPOINT_URL,
             cost_tier="low",
             max_context_tokens=65536,
+            max_tokens=65536,  # OMN-13345: contract backend output ceiling
             system_prompt="You are an assistant.",
             rationale="Routing test.",
         )
@@ -290,6 +292,7 @@ class TestDispatcherDelegationWorkflowBusPublish:
             endpoint_url=TEST_ENDPOINT_URL,
             cost_tier="low",
             max_context_tokens=65536,
+            max_tokens=65536,  # OMN-13345: contract backend output ceiling
             system_prompt="You are an assistant.",
             rationale="Routing test.",
         )
@@ -350,6 +353,7 @@ class TestDispatcherDelegationWorkflowBusPublish:
             endpoint_url=TEST_ENDPOINT_URL,
             cost_tier="low",
             max_context_tokens=65536,
+            max_tokens=65536,  # OMN-13345: contract backend output ceiling
             system_prompt="You are an assistant.",
             rationale="Routing test.",
         )
@@ -412,6 +416,7 @@ class TestDispatcherRoutingDecisionBusPublish:
             endpoint_url=TEST_ENDPOINT_URL,
             cost_tier="low",
             max_context_tokens=65536,
+            max_tokens=65536,  # OMN-13345: contract backend output ceiling
             system_prompt="You are an assistant.",
             rationale="Routing test.",
         )
