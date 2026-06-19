@@ -86,9 +86,6 @@ gaps:
     validator: arch-002-no-transport-imports
     kind: MISSING_CI_WORKFLOW
   - repo: omnimarket
-    validator: arch-002-no-transport-imports
-    kind: MISSING_PRE_COMMIT
-  - repo: omnimarket
     validator: bandit-security
     kind: MISSING_CI_WORKFLOW
   - repo: omnimarket
