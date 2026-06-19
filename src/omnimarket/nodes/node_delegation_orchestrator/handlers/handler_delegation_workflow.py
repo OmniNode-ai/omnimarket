@@ -360,7 +360,13 @@ def _evaluate_compliance(
             model=workflow.routing_decision.selected_model,
             system_prompt=system_prompt,
             prompt=prompt,
-            max_tokens=workflow.request.max_tokens,
+            # OMN-13345: post the contract-declared per-backend output ceiling
+            # resolved onto the routing decision (cloud-glm: 65536), NOT the
+            # delegation request's max_tokens — that is hard-capped at the 8192
+            # DELEGATION_MAX_TOKENS_HARD_LIMIT default and would truncate cloud
+            # GLM (finish_reason=length), tanking the quality gate. Same defect
+            # class as OMN-13342/#1282 (generation path).
+            max_tokens=workflow.routing_decision.max_tokens,
             temperature=temperature,
             timeout_seconds=_inference_timeout_seconds(workflow),
             correlation_id=workflow.correlation_id,
@@ -551,7 +557,16 @@ class HandlerDelegationWorkflow:
                 model=decision.selected_model,
                 system_prompt=system_prompt,
                 prompt=prompt,
-                max_tokens=workflow.request.max_tokens,
+                # OMN-13345: post the contract-declared per-backend output
+                # ceiling from the routing decision (cloud-glm: 65536), NOT the
+                # delegation request's max_tokens. This is the initial dispatch
+                # AND the escalation re-entry (ESCALATING -> ROUTED with a fresh
+                # decision) — the very path the live prober exercised. The
+                # request value is hard-capped at the 8192
+                # DELEGATION_MAX_TOKENS_HARD_LIMIT default and truncates cloud
+                # GLM (finish_reason=length). Same defect class as
+                # OMN-13342/#1282 (generation path).
+                max_tokens=decision.max_tokens,
                 temperature=temperature,
                 timeout_seconds=_inference_timeout_seconds(workflow),
                 correlation_id=cid,

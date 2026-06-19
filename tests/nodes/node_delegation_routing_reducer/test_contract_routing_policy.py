@@ -346,6 +346,56 @@ class TestDeltaContractRouting:
             else:
                 os.environ["BIFROST_CONTRACT_PATH"] = prev_bifrost_contract_path
 
+    def test_decision_carries_contract_backend_max_tokens(self, tmp_path: Path) -> None:
+        """OMN-13345: the routing decision carries the contract-declared
+        per-backend output ceiling (max_tokens), not a hardcoded/discarded value.
+
+        The orchestrator posts decision.max_tokens on the wire; if the reducer
+        dropped the contract value (as it did before this fix), cloud GLM would
+        truncate (finish_reason=length) and the quality gate would score low.
+        Asserting an explicit non-default ceiling proves the value is threaded
+        from the bifrost backend rather than substituted.
+        """
+        import yaml
+
+        from omnimarket.nodes.node_delegation_routing_reducer.handlers.handler_delegation_routing import (
+            delta,
+        )
+
+        # Declare an explicit, non-default per-backend ceiling on the selected
+        # backend so the assertion cannot pass on the model default (65536).
+        # Parse + mutate + re-dump so the fixture stays robust to formatting.
+        bifrost_doc = yaml.safe_load(_MINIMAL_BIFROST)
+        coder = next(
+            b for b in bifrost_doc["backends"] if b["backend_id"] == "local-coder"
+        )
+        coder["max_tokens"] = 49152
+        bifrost_with_ceiling = yaml.safe_dump(bifrost_doc, sort_keys=False)
+
+        contract_file, bifrost_file = self._write_files(
+            tmp_path, bifrost=bifrost_with_ceiling
+        )
+
+        prev_task_contract_path = os.environ.get("TASK_CLASS_CONTRACT_PATH")
+        prev_bifrost_contract_path = os.environ.get("BIFROST_CONTRACT_PATH")
+        os.environ["TASK_CLASS_CONTRACT_PATH"] = str(contract_file)
+        os.environ["BIFROST_CONTRACT_PATH"] = str(bifrost_file)
+
+        try:
+            decision = delta(self._make_request("code_generation"))
+            # local-coder is the first backend for code_generation and carries
+            # the explicit contract ceiling.
+            assert decision.max_tokens == 49152
+        finally:
+            if prev_task_contract_path is None:
+                os.environ.pop("TASK_CLASS_CONTRACT_PATH", None)
+            else:
+                os.environ["TASK_CLASS_CONTRACT_PATH"] = prev_task_contract_path
+            if prev_bifrost_contract_path is None:
+                os.environ.pop("BIFROST_CONTRACT_PATH", None)
+            else:
+                os.environ["BIFROST_CONTRACT_PATH"] = prev_bifrost_contract_path
+
     def test_local_route_uses_served_model_id_over_stale_bifrost_name(
         self, tmp_path: Path
     ) -> None:

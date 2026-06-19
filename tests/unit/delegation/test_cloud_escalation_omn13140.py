@@ -360,6 +360,7 @@ class TestWeakAndMismatchProduceEscalationCandidate:
             endpoint_url="http://local.test:8000/v1/chat/completions",
             cost_tier="low",
             max_context_tokens=65536,
+            max_tokens=65536,  # OMN-13345: contract backend output ceiling
             system_prompt="sp",
             rationale="r",
             tier_name=start_tier,

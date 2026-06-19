@@ -255,6 +255,7 @@ class BifrostBackendRef:
         "api_key_ref",
         "endpoint_url",
         "extra_headers",
+        "max_tokens",
         "model_name",
         "timeout_ms",
     )
@@ -264,12 +265,17 @@ class BifrostBackendRef:
         endpoint_url: str,
         model_name: str,
         timeout_ms: int,
+        max_tokens: int,
         api_key_ref: str | None = None,
         extra_headers: dict[str, str] | None = None,
     ) -> None:
         self.endpoint_url = endpoint_url
         self.model_name = model_name
         self.timeout_ms = timeout_ms
+        # OMN-13345: the contract-declared per-backend output-token ceiling,
+        # carried onto the routing decision so the orchestrator posts it on the
+        # wire instead of the truncating 8192 request default.
+        self.max_tokens = max_tokens
         self.api_key_ref = api_key_ref
         self.extra_headers = extra_headers
 
@@ -344,6 +350,11 @@ def _load_bifrost_endpoints() -> dict[str, BifrostBackendRef]:
             endpoint_url=url,
             model_name=model_name,
             timeout_ms=backend.timeout_ms,
+            # OMN-13345: carry the contract-declared per-backend output ceiling
+            # (cloud-glm: 65536) onto the resolved backend so the routing
+            # decision can thread it to the orchestrator. The wire DTO already
+            # validates max_tokens >= 1, so no default is substituted here.
+            max_tokens=backend.max_tokens,
             api_key_ref=backend.resolved_secret_ref,
             extra_headers=dict(backend.extra_headers)
             if backend.extra_headers
@@ -908,6 +919,11 @@ def delta(
             cost_tier=cost_tier,
             max_context_tokens=selected.max_context_tokens,
             timeout_ms=backend.timeout_ms,
+            # OMN-13345: thread the contract-declared per-backend output ceiling
+            # onto the decision so the orchestrator posts it on the wire instead
+            # of the 8192 request default, which truncates cloud GLM
+            # (finish_reason=length) and tanks the quality gate.
+            max_tokens=backend.max_tokens,
             system_prompt=system_prompt,
             rationale=rationale,
             dod_deterministic=dod_deterministic,

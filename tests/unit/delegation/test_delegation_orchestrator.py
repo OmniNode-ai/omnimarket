@@ -89,6 +89,7 @@ def _make_routing_decision(
     correlation_id: UUID,
     task_type: str = "test",
     api_key_ref: str | None = None,
+    max_tokens: int = 65536,
 ) -> ModelRoutingDecision:
     from uuid import NAMESPACE_DNS, uuid5
 
@@ -103,6 +104,10 @@ def _make_routing_decision(
         api_key_ref=api_key_ref,
         cost_tier="low",
         max_context_tokens=65536,
+        # OMN-13345: contract-declared per-backend output ceiling carried onto
+        # the decision; the orchestrator must post THIS on the wire, not the
+        # request's 8192 default.
+        max_tokens=max_tokens,
         system_prompt="You are a test generation assistant.",
         rationale="Task 'test' routed to qwen3-coder-30b.",
     )
@@ -144,6 +149,100 @@ def _make_gate_result(
         failure_reasons=failure_reasons,
         fallback_recommended=fallback_recommended,
     )
+
+
+# ---------------------------------------------------------------------------
+# Tests: Contract backend max_tokens threading (OMN-13345)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestContractBackendMaxTokens:
+    """Regression: the orchestrator posts the contract-declared per-backend
+    output ceiling carried on the routing decision, NOT the delegation request's
+    max_tokens (hard-capped at the 8192 ``DELEGATION_MAX_TOKENS_HARD_LIMIT``
+    default).
+
+    Same defect class as OMN-13342/#1282 (generation path): without this the
+    request value truncates cloud GLM (finish_reason=length) and the quality
+    gate scores low on every escalated cloud up-tier. This is the bus-native
+    delegation-request command path the live prober exercised, plus the
+    escalation re-dispatch to the next tier.
+    """
+
+    def test_initial_routing_decision_posts_backend_ceiling_not_request_default(
+        self,
+    ) -> None:
+        handler = HandlerDelegationWorkflow()
+        cid = uuid4()
+        request = _make_request(correlation_id=cid)
+        # The live bus request carries a small default ceiling that previously
+        # was posted verbatim (truncating cloud GLM). It is well below the
+        # contract backend ceiling of 65536.
+        assert request.max_tokens < 65536
+        handler.handle_delegation_request(request)
+
+        # Production cloud-glm declares max_tokens: 65536 in bifrost_delegation.yaml.
+        decision = _make_routing_decision(cid, max_tokens=65536)
+        intents = handler.handle_routing_decision(decision)
+
+        assert len(intents) == 1
+        intent = intents[0]
+        assert isinstance(intent, ModelInferenceIntent)
+        # The wire ceiling MUST be the contract backend value, not the 8192
+        # request default that previously truncated cloud GLM.
+        assert intent.max_tokens == 65536
+        assert intent.max_tokens != request.max_tokens
+
+    def test_initial_routing_decision_threads_explicit_non_default_ceiling(
+        self,
+    ) -> None:
+        handler = HandlerDelegationWorkflow()
+        cid = uuid4()
+        handler.handle_delegation_request(_make_request(correlation_id=cid))
+
+        # An explicit non-default, non-production ceiling proves the value is
+        # threaded from the decision rather than hardcoded.
+        decision = _make_routing_decision(cid, max_tokens=12345)
+        intents = handler.handle_routing_decision(decision)
+
+        assert len(intents) == 1
+        assert isinstance(intents[0], ModelInferenceIntent)
+        assert intents[0].max_tokens == 12345
+
+    def test_escalation_re_dispatch_posts_next_tier_backend_ceiling(self) -> None:
+        """Escalation re-entry (ESCALATING -> ROUTED with a fresh decision) must
+        post the NEW tier's contract ceiling — the exact path the live prober
+        re-dispatched through the routing reducer."""
+        handler = HandlerDelegationWorkflow()
+        cid = uuid4()
+        request = _make_request(correlation_id=cid)
+        handler.handle_delegation_request(request)
+
+        # Tier 1 routes with a small ceiling.
+        first = _make_routing_decision(cid, max_tokens=8192)
+        first_intents = handler.handle_routing_decision(first)
+        assert isinstance(first_intents[0], ModelInferenceIntent)
+        assert first_intents[0].max_tokens == 8192
+
+        # Drive into the documented escalation re-entry condition: state ROUTED
+        # with routing_decision cleared and the in-flight intent reset, so the
+        # next routing decision is processed as the up-tier re-dispatch.
+        workflow = handler.workflows[cid]
+        workflow.state = EnumDelegationState.ROUTED
+        workflow.routing_decision = None
+        workflow.inference_intent_in_flight = False
+
+        # The escalated tier (e.g. cloud-glm) carries the larger 65536 ceiling.
+        second = _make_routing_decision(cid, max_tokens=65536)
+        second_intents = handler.handle_routing_decision(second)
+
+        assert len(second_intents) == 1
+        assert isinstance(second_intents[0], ModelInferenceIntent)
+        # The re-dispatch posts the escalated backend's contract ceiling, not the
+        # request default and not the prior tier's smaller value.
+        assert second_intents[0].max_tokens == 65536
+        assert second_intents[0].max_tokens != request.max_tokens
 
 
 # ---------------------------------------------------------------------------
@@ -721,6 +820,7 @@ def _make_routing_decision_with_tier(
     correlation_id: UUID,
     tier_name: str = "local",
     task_type: str = "test",
+    max_tokens: int = 65536,
 ) -> ModelRoutingDecision:
     from uuid import NAMESPACE_DNS, uuid5
 
@@ -734,6 +834,8 @@ def _make_routing_decision_with_tier(
         endpoint_url="http://192.168.86.201:8000",  # onex-allow-internal-ip OMN-10865 reason="delegation test fixture for local AIPC LLM endpoint"
         cost_tier="low",
         max_context_tokens=65536,
+        # OMN-13345: contract-declared per-backend output ceiling.
+        max_tokens=max_tokens,
         system_prompt="You are a test generation assistant.",
         rationale=f"Task 'test' routed via tier '{tier_name}'.",
         tier_name=tier_name,
