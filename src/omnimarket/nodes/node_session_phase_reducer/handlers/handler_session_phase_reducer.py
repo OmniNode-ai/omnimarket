@@ -196,6 +196,6 @@ class HandlerSessionPhaseReducer:
         """Write phase state to YAML — the reducer's projection side effect."""
         path.parent.mkdir(parents=True, exist_ok=True)
         raw = state.model_dump(mode="json")
-        with path.open("w") as fh:
+        with path.open("w") as fh:  # node-purity-ok: pre-existing reducer state-file projection write; move to EFFECT egress tracked under OMN-9048 follow-up
             yaml.safe_dump(raw, fh, default_flow_style=False, sort_keys=True)
         logger.debug("phase_state.yaml written: %s", path)
