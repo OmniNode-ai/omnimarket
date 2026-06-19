@@ -108,6 +108,32 @@ _MIN_LENGTH_CHECK_RE = re.compile(r"^min_length_chars_(\d+)$")
 _LINE_CITATION_RE = re.compile(
     r"(?i)(?:\bline\s+\d+\b|\blines\s+\d+(?:-\d+)?\b|\bL\d+\b|:[1-9]\d*)"
 )
+# General source/reference citation detection for RESEARCH outputs (OMN-13354).
+# Research answers cite theorems, papers, sections, pages, URLs, and authors —
+# NOT code line numbers. ``cites_specific_lines`` (the code-line regex above) is
+# a CODE-REVIEW check and must not be applied to research; the research task
+# class declares ``cites_sources`` instead, which matches any of:
+#   * a reference / citation / source / bibliography keyword,
+#   * a "see"/"according to"/"per"/"cf." attribution lead-in,
+#   * a named result form (theorem / lemma / corollary / proposition / proof /
+#     equation / figure / table / appendix / chapter / section / page N),
+#   * a bracketed numeric citation ``[12]`` or author-year ``(Smith, 2020)``,
+#   * an http(s) URL or a DOI.
+# This is a presence check (at least one marker), not a count: it discriminates a
+# substantive, attributed research answer from a thin/unsupported one without
+# demanding the code-line markers a legitimate research answer cannot supply.
+_SOURCE_CITATION_RE = re.compile(
+    r"(?ix)"
+    r"\breferences?\b | \bcitations?\b | \bbibliograph | \bsources?\b"
+    r"| \bsee\s+(?:also|section|chapter|appendix|figure|table|eq) "
+    r"| \baccording\s+to\b | \bas\s+shown\s+in\b | \bcf\.\s | \bper\s+\["
+    r"| \b(?:theorem|lemma|corollary|proposition|proof|equation|figure"
+    r"|table|appendix|chapter|section|page)\s+\d"
+    r"| \[\s*\d+\s*\]"  # bracketed numeric citation: [12]
+    r"| \(\s*[A-Z][A-Za-z.'-]+(?:\s+(?:et\s+al\.?|and|&)\s+[A-Z][A-Za-z.'-]+)?"
+    r"\s*,?\s*\d{4}[a-z]?\s*\)"  # author-year: (Smith, 2020) / (Smith et al., 2020)
+    r"| https?://\S | \bdoi:\s*\S"
+)
 _SENTENCE_RE = re.compile(r"[^.!?]+[.!?]")
 
 # Heuristic checks that delegate to _check_contains_any with fixed marker sets
@@ -463,9 +489,35 @@ def _check_covers_args_returns_raises(content: str) -> str | None:
 
 
 def _check_cites_specific_lines(content: str) -> str | None:
-    """Heuristic: response must cite specific line numbers."""
+    """Heuristic: response must cite specific CODE line numbers.
+
+    A code-review check. The line-citation regex matches ``line N`` / ``Lnn`` /
+    ``:nn`` forms a code reviewer uses when pointing at a diff. This check stays
+    bound to the ``review`` (code-review) task class only — it is NOT a research
+    check. The research task class declares ``cites_sources`` instead
+    (OMN-13354), because a legitimate research answer cites theorems / papers /
+    sections, never code line numbers, and could never satisfy this regex.
+    """
     if not _LINE_CITATION_RE.search(content):
         return "TASK_MISMATCH: missing specific line citations"
+    return None
+
+
+def _check_cites_sources(content: str) -> str | None:
+    """Heuristic: a research response must attribute claims to sources.
+
+    The research-appropriate replacement for ``cites_specific_lines`` (OMN-13354).
+    A substantive research answer grounds its claims in references — named
+    results (theorem / lemma / section / page N), bibliographic markers
+    (references / citations / sources), attribution lead-ins (see, according to,
+    cf.), bracketed numeric citations ``[12]``, author-year ``(Smith, 2020)``,
+    URLs, or DOIs. A thin, unsupported answer carries none of these and fails.
+    This is a presence check (at least one source marker), so it discriminates an
+    attributed research answer from an unsupported one WITHOUT demanding the
+    code-line markers a research answer cannot legitimately supply.
+    """
+    if not _SOURCE_CITATION_RE.search(content):
+        return "TASK_MISMATCH: missing source citations or references"
     return None
 
 
@@ -534,6 +586,7 @@ _HEURISTIC_SIMPLE_CHECKS: dict[str, Callable[[str], str | None]] = {
     "no_refusal": _check_no_refusal,
     "covers_args_returns_raises": _check_covers_args_returns_raises,
     "cites_specific_lines": _check_cites_specific_lines,
+    "cites_sources": _check_cites_sources,
     "concise": _check_concise,
     "accurate": _check_accurate,
     "semantic_adequacy": _check_semantic_adequacy,

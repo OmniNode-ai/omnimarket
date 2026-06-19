@@ -53,6 +53,20 @@ task_classes:
       - concise
       - accurate
       - semantic_adequacy
+  # OMN-13354: research is a PROSE research task (cites theorems / papers /
+  # sections). Its DoD must NOT require code-line citations — `cites_specific_lines`
+  # is a CODE-line-citation regex no research answer can satisfy, which made the
+  # research gate a catch-22 (every research output failed at every tier, live
+  # 2026-06-19 reprove score 0.733). The research DoD now declares the
+  # research-appropriate `cites_sources` (references / theorem N / [12] /
+  # (Author, 2020) / URL / DOI) and `methodical_analysis` (reasoning structure).
+  research:
+    deterministic:
+      - response_non_empty
+    heuristic:
+      - no_refusal
+      - cites_sources
+      - methodical_analysis
 
 cases:
   # ---- document (prose) ----
@@ -160,3 +174,38 @@ cases:
     task_class: summarization
     label: bad
     content: ""
+
+  # ---- research (OMN-13354) ----
+  # A substantive research answer: cites a named theorem + author-year + a
+  # bracketed reference + a section, and reasons through the claim (because /
+  # therefore / evidence). No code line numbers — and it PASSES, proving the
+  # research gate no longer demands the code-line markers it used to.
+  - id: research_substantive
+    task_class: research
+    label: good
+    content: >-
+      The spectral theorem (Theorem 4.1, Reed & Simon, 1980) shows that every
+      self-adjoint compact operator on a separable Hilbert space has an
+      orthonormal eigenbasis. According to the proof in Section 3 the eigenvalues
+      accumulate only at zero; therefore the operator is a norm limit of
+      finite-rank operators, and the evidence in [12] supports this decomposition.
+  # A second good research answer with different citation forms (theorem N +
+  # equation N + author-year + references keyword) — not over-fit to one marker.
+  - id: research_alt_citation_forms
+    task_class: research
+    label: good
+    content: >-
+      See Theorem 2 and equation 5 in the cited references. According to (Smith,
+      2021) the number of labeled connected graphs grows asymptotically because
+      the graph is labeled; therefore the evidence supports the stated bound.
+  # OMN-13354: an unsupported answer that also refuses — fails no_refusal +
+  # cites_sources + methodical_analysis (3/3 heuristic). response_non_empty passes.
+  # Score = 0.600.
+  - id: research_unsupported_refusal
+    task_class: research
+    label: bad
+    content: "I cannot answer that. It is just true."
+  - id: research_empty
+    task_class: research
+    label: bad
+    content: "   "
