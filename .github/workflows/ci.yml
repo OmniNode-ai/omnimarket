@@ -92,8 +92,10 @@ jobs:
       # route_source from contract+authority AND that no demo-path source reads
       # env for endpoint/provider/model, hardcodes a provider literal, or reads a
       # fallback endpoint string. Fails CI on any hardcoded/env path on the demo path.
+      # OMN-13285 (W6/GAP-3): ported to the canonical core COMPUTE validator
+      # (replaces the deleted omnimarket-local scripts/ci/check_routing_authority.py).
       - name: Routing-authority demo gate (enforce)
-        run: uv run python scripts/ci/check_routing_authority.py
+        run: uv run python -m omnibase_core.validation.validator_routing_authority --repo omnimarket --repo-root .
       # OMN-12964: Quality-gate calibration. Fails CI if the delegation quality
       # gate score distribution collapses (degenerate {0.0,1.0}) or fails to
       # discriminate known-good from known-bad outputs. A meaningless quality
