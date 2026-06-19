@@ -7,6 +7,8 @@ from pathlib import Path
 from uuid import NAMESPACE_URL, uuid5
 
 import yaml
+from omnibase_core.enums.enum_node_kind import EnumNodeKind
+from omnibase_core.enums.enum_node_type import EnumNodeType
 
 from omnimarket.nodes.node_gap_compute.models.model_gap_compute_request import (
     EnumGapSubcommand,
@@ -27,6 +29,24 @@ _OMNI_HOME = _REPO_ROOT.parent
 _TOPIC_RE = re.compile(
     r"^onex\.(cmd|evt|intent)\.[a-z0-9_-]+(?:\.[a-z0-9][a-z0-9_-]*)+\.v[0-9]+$"
 )
+
+# Archetypes that legitimately have no required event-bus surface: pure COMPUTE
+# nodes are invoked in-process and return a typed result synchronously (per the
+# omnibase_core handler-output constraints), and RUNTIME_HOST nodes are runtime
+# infrastructure rather than bus participants. EFFECT / REDUCER / ORCHESTRATOR
+# nodes must touch the bus, so a missing event_bus on those remains a finding.
+_BUS_OPTIONAL_NODE_KINDS = frozenset({EnumNodeKind.COMPUTE, EnumNodeKind.RUNTIME_HOST})
+
+# Bare lowercase archetype words used in contracts map to the canonical
+# ``*_GENERIC`` EnumNodeType (same mapping omnibase_core uses in
+# MixinNodeTypeValidator / ContractMergeEngine).
+_ARCH_WORD_TO_NODE_TYPE = {
+    "compute": EnumNodeType.COMPUTE_GENERIC,
+    "effect": EnumNodeType.EFFECT_GENERIC,
+    "reducer": EnumNodeType.REDUCER_GENERIC,
+    "orchestrator": EnumNodeType.ORCHESTRATOR_GENERIC,
+    "runtime_host": EnumNodeType.RUNTIME_HOST_GENERIC,
+}
 
 
 class HandlerGapCompute:
@@ -111,6 +131,19 @@ class HandlerGapCompute:
                     )
                 event_bus = raw.get("event_bus")
                 if not isinstance(event_bus, dict):
+                    node_kind = _resolve_node_kind(raw.get("node_type"))
+                    if node_kind in _BUS_OPTIONAL_NODE_KINDS:
+                        skipped_probes.append(
+                            ModelSkippedGapProbe(
+                                probe="missing_event_bus_contract",
+                                reason=(
+                                    f"{rel_path}: {node_name} is a "
+                                    f"{node_kind.value} node; pure compute has no "
+                                    f"required event_bus surface."
+                                ),
+                            )
+                        )
+                        continue
                     findings.append(
                         self._finding(
                             category=EnumGapCategory.CONTRACT_DRIFT,
@@ -316,6 +349,30 @@ class HandlerGapCompute:
                 ),
             )
         )
+
+
+def _resolve_node_kind(raw_node_type: object) -> EnumNodeKind | None:
+    """Resolve a contract ``node_type`` value to its canonical ``EnumNodeKind``.
+
+    Accepts the lowercase archetype strings ("compute"/"effect"/"reducer"/
+    "orchestrator") and the ``*_GENERIC`` / specific ``EnumNodeType`` forms used
+    across contracts. Returns ``None`` for absent or unrecognized values so the
+    caller fails loud (keeps the WARNING) rather than silently suppressing.
+    """
+    if not isinstance(raw_node_type, str):
+        return None
+    token = raw_node_type.strip().strip('"').strip("'")
+    if not token:
+        return None
+    node_type = _ARCH_WORD_TO_NODE_TYPE.get(token.lower())
+    if node_type is None:
+        try:
+            node_type = EnumNodeType(token.upper())
+        except ValueError:
+            return None
+    if not EnumNodeType.has_node_kind(node_type):
+        return None
+    return EnumNodeType.get_node_kind(node_type)
 
 
 def _contract_topics(event_bus: dict[str, object], raw: dict[str, object]) -> list[str]:

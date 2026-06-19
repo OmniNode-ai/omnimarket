@@ -37,6 +37,16 @@ def _write_contract(path: Path, *, topic: str, stub: bool = False) -> None:
     path.write_text(yaml.safe_dump(payload), encoding="utf-8")
 
 
+def _write_contract_without_event_bus(
+    path: Path, *, node_type: str | None, name: str = "node_sample"
+) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    payload: dict[str, object] = {"name": name}
+    if node_type is not None:
+        payload["node_type"] = node_type
+    path.write_text(yaml.safe_dump(payload), encoding="utf-8")
+
+
 @pytest.mark.unit
 def test_gap_detect_clean_fixture(tmp_path: Path) -> None:
     repo = tmp_path / "omnimarket"
@@ -87,6 +97,75 @@ def test_gap_detect_deduplicates_repeated_contract_topics(tmp_path: Path) -> Non
     )
 
     assert [finding.rule_name for finding in result.findings] == ["topic_name_mismatch"]
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("node_type", ["compute", "COMPUTE_GENERIC", "transformer"])
+def test_missing_event_bus_skipped_for_pure_compute(
+    tmp_path: Path, node_type: str
+) -> None:
+    """Pure-compute archetypes missing event_bus are SKIP, not a WARNING finding."""
+    repo = tmp_path / "omnimarket"
+    _write_contract_without_event_bus(
+        repo / "src/omnimarket/nodes/node_sample/contract.yaml",
+        node_type=node_type,
+    )
+
+    result = HandlerGapCompute().handle(
+        ModelGapComputeRequest(repo_roots=[str(repo)], dry_run=True)
+    )
+
+    assert result.status == EnumGapStatus.CLEAN
+    assert all(
+        finding.rule_name != "missing_event_bus_contract" for finding in result.findings
+    )
+    assert any(
+        probe.probe == "missing_event_bus_contract" for probe in result.skipped_probes
+    )
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("node_type", ["orchestrator", "reducer", "effect"])
+def test_missing_event_bus_warns_for_bus_archetypes(
+    tmp_path: Path, node_type: str
+) -> None:
+    """Orchestrator/reducer/effect missing event_bus keep the WARNING finding."""
+    repo = tmp_path / "omnimarket"
+    _write_contract_without_event_bus(
+        repo / "src/omnimarket/nodes/node_sample/contract.yaml",
+        node_type=node_type,
+    )
+
+    result = HandlerGapCompute().handle(
+        ModelGapComputeRequest(repo_roots=[str(repo)], dry_run=True)
+    )
+
+    assert result.status == EnumGapStatus.FINDINGS
+    assert [finding.rule_name for finding in result.findings] == [
+        "missing_event_bus_contract"
+    ]
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("node_type", [None, "totally_unknown_archetype"])
+def test_missing_event_bus_warns_for_unknown_node_type(
+    tmp_path: Path, node_type: str | None
+) -> None:
+    """Unknown/absent node_type fails loud: keep the WARNING, never silently skip."""
+    repo = tmp_path / "omnimarket"
+    _write_contract_without_event_bus(
+        repo / "src/omnimarket/nodes/node_sample/contract.yaml",
+        node_type=node_type,
+    )
+
+    result = HandlerGapCompute().handle(
+        ModelGapComputeRequest(repo_roots=[str(repo)], dry_run=True)
+    )
+
+    assert result.status == EnumGapStatus.FINDINGS
+    assert [finding.rule_name for finding in result.findings] == [
+        "missing_event_bus_contract"
+    ]
 
 
 @pytest.mark.unit
