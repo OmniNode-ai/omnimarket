@@ -20,8 +20,8 @@
 #
 # See routing_tiers.yaml for tier escalation ladder.
 #
-# Tickets: OMN-10637, OMN-10638, OMN-10657, OMN-12815, OMN-13170, OMN-13343
-config_version: "2.2.0"
+# Tickets: OMN-10637, OMN-10638, OMN-10657, OMN-12815, OMN-13170, OMN-13343, OMN-13351
+config_version: "2.3.0"
 schema_version: "bifrost_delegation.v1"
 # Backend definitions — endpoint_url values are merged from the overlay at load time.
 # model_name is null here; resolved at deploy time via bifrost_overrides.yaml overlay.
@@ -90,44 +90,58 @@ backends:
     max_tokens: 1
     capabilities:
       - embedding
-  # Cloud fallback backends
-  - backend_id: cloud-sonnet
-    # OMN-12939: COMPLETE endpoint URL incl. the full chat path, posted VERBATIM.
-    # Anthropic OpenAI-compatibility endpoint. Provenance: pre-OMN-10717 source
-    # carried base "https://api.anthropic.com/v1" (adapter appended the chat path);
-    # OMN-12815 requires the complete /chat/completions form here. The frontier tier
-    # was orphaned (empty endpoint_url, no secret_ref) when OMN-12815 (#1118) moved
-    # cloud backends to complete-verbatim URLs but skipped cloud-sonnet/cloud-haiku.
-    endpoint_url: "https://api.anthropic.com/v1/chat/completions"
-    model_name: claude-sonnet-4-6
-    secret_ref: llm.anthropic.api_key
-    api_key_env: ANTHROPIC_API_KEY
+  # Cloud fallback / ceiling backends
+  #
+  # OMN-13351: the former Anthropic ceiling backends `cloud-sonnet`
+  # (claude-sonnet-4-6) and `cloud-haiku` (claude-haiku-4-5-20251001) were DELETED.
+  # Both declared secret_ref `llm.anthropic.api_key`, which resolves to None in
+  # every deployed lane — this org has NO Anthropic key and NO OpenAI key (Claude
+  # Code + Codex are OAuth). The 2026-06-19 stability-test escalation reprove
+  # (docs/evidence/2026-06-19-sea-escalation-reprove.md §2d) proved live, in
+  # `omninode-stability-test-runtime`, that `resolve_api_key('llm.anthropic.api_key',
+  # required=False)` returns None, so the ceiling terminated
+  # `no_routable_backend_for_task` on every escalation. A config-wired but
+  # secret-dead ceiling is functionally absent, so both Anthropic backends are
+  # removed from the active ladder rather than left as zombie entries. The new
+  # ceiling is `cloud-gemini-pro` below (secret_ref `llm.gemini.api_key`, which
+  # DOES resolve).
+  - backend_id: cloud-gemini-pro
+    # OMN-13351: resolvable Gemini frontier ceiling backend. Replaces the dead
+    # Anthropic `cloud-sonnet` ceiling. COMPLETE endpoint URL incl. the full chat
+    # path, posted VERBATIM (OMN-12815) — the AI Studio OpenAI-compatibility
+    # endpoint, identical host to cloud-gemini-flash.
+    #
+    # model_name verification (live, this ticket, in `omninode-stability-test-runtime`):
+    # the resolved `llm.gemini.api_key` AUTHENTICATES (1-token probes return HTTP
+    # 200/429, never 401/403). `gemini-2.5-pro` was the first-preference ceiling but
+    # is quota-zero on the only resolvable Gemini key (HTTP 429 "exceeded current
+    # quota" — the same AI Studio free-tier failure mode OMN-12890 documented for
+    # gemini-2.0-flash). `gemini-2.5-flash` returns HTTP 200 (echo
+    # `model=gemini-2.5-flash`), so it is pinned here: it is the most capable
+    # Gemini model that actually RESPONDS on the resolved key, strictly more capable
+    # than the cheap_cloud `gemini-2.5-flash-lite`, and a real escalation step above
+    # the cheap_cloud glm-5.2 tier. A wrong/quota-blocked id fails closed, so the
+    # exact verified-200 id is pinned.
+    endpoint_url: "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
+    model_name: "gemini-2.5-flash"
+    secret_ref: llm.gemini.api_key
+    api_key_env: GEMINI_API_KEY
     tier: frontier_api
-    # OMN-13170: 64k-output code-generation fallback — size the timeout to the
-    # 65536-token budget below (300000 ms) rather than the 60s default.
+    # OMN-13170: size the timeout to the output budget below (300000 ms) so large
+    # ceiling-tier generations are not killed at the 60s default.
     timeout_ms: 300000
-    # OMN-13161: Claude Sonnet 4.x supports up to 64k output tokens.
+    # Gemini 2.5 Flash serves a 1M context window and supports a large output
+    # budget; 65536 tokens is well within range and >= the 16384 floor this ceiling
+    # requires.
     max_tokens: 65536
     capabilities:
       - code_generation
       - reasoning
       - documentation
       - research
-  - backend_id: cloud-haiku
-    # OMN-12939: COMPLETE endpoint URL incl. the full chat path, posted VERBATIM.
-    # Claude Haiku — cheapest frontier model for documentation/simple tasks.
-    endpoint_url: "https://api.anthropic.com/v1/chat/completions"
-    model_name: claude-haiku-4-5-20251001
-    secret_ref: llm.anthropic.api_key
-    api_key_env: ANTHROPIC_API_KEY
-    tier: frontier_api
-    timeout_ms: 30000
-    # OMN-13161: Claude Haiku 4.5 supports up to 32k output tokens.
-    max_tokens: 32768
-    capabilities:
-      - documentation
-      - summarization
-      - simple_tasks
+    extra_headers:
+      HTTP-Referer: "https://omninode.ai"
+      X-Title: "OmniNode ONEX"
   - backend_id: cloud-glm
     # OMN-12819: COMPLETE endpoint URL incl. the full chat path, posted VERBATIM.
     endpoint_url: "https://api.z.ai/api/coding/paas/v4/chat/completions"
@@ -278,13 +292,16 @@ backends:
       HTTP-Referer: "https://omninode.ai"
       X-Title: "OmniNode ONEX Experiment"
   # OMN-13215: shelled CLI agent backends (cli-codex / cli-claude / cli-opencode,
-  # endpoint_url "cli://...") were REMOVED. The ceiling (claude) tier now maps to
-  # the HTTP cloud-sonnet backend above — complete verbatim endpoint_url +
-  # secret_ref llm.anthropic.api_key — and executes through the canonical HTTP
-  # inference path identical to every lower tier. To swap the ceiling provider,
-  # repoint the claude tier model's backend_id (routing_tiers.yaml) to another HTTP
-  # backend, or override that backend's endpoint_url / model_name / secret_ref in
-  # the overlay. No subprocess, no env var, no code change.
+  # endpoint_url "cli://...") were REMOVED. The ceiling tier now maps to an HTTP
+  # frontier backend and executes through the canonical HTTP inference path
+  # identical to every lower tier. To swap the ceiling provider, repoint the
+  # ceiling tier model's backend_id (routing_tiers.yaml) to another HTTP backend,
+  # or override that backend's endpoint_url / model_name / secret_ref in the
+  # overlay. No subprocess, no env var, no code change.
+  #
+  # OMN-13351: the ceiling backend is `cloud-gemini-pro` (secret_ref
+  # llm.gemini.api_key, model gemini-2.5-flash) — NOT the former `cloud-sonnet`,
+  # which was deleted because llm.anthropic.api_key resolves to None in every lane.
 # Routing rules — evaluated in ascending priority order.
 # First matching rule wins. Each rule maps a task_class to an ordered
 # list of backends to try.
@@ -298,7 +315,7 @@ backends:
 routing_rules:
   # ── code_generation ──────────────────────────────────────────────────────
   # Route code generation to local coder first (zero API cost),
-  # fall back to cloud Sonnet for reliability.
+  # fall back to the resolvable Gemini ceiling (cloud-gemini-pro) for reliability.
   - rule_id: "d4e5f6a7-0001-4000-8000-000000000001"
     priority: 10
     task_class: code_generation
@@ -312,7 +329,7 @@ routing_rules:
     latency_sla_ms: 30000
     backend_ids:
       - local-coder
-      - cloud-sonnet
+      - cloud-gemini-pro
     fallback_policy:
       action: escalate_to_next_tier
       max_retries: 2
@@ -335,15 +352,16 @@ routing_rules:
     latency_sla_ms: 60000
     backend_ids:
       - local-coder
-      - cloud-sonnet
+      - cloud-gemini-pro
     fallback_policy:
       action: escalate_to_next_tier
       max_retries: 1
       on_exhaust: return_error
     shadow_policy_id: "e5f6a7b8-0004-4000-8000-000000000004"
   # ── documentation ────────────────────────────────────────────────────────
-  # Documentation tasks: local coder is capable; haiku is cheaper
-  # cloud fallback for cost-sensitive runs.
+  # Documentation tasks: local coder is capable; the resolvable Gemini ceiling
+  # (cloud-gemini-pro) is the cloud fallback. The former cheaper Anthropic haiku
+  # fallback was deleted (OMN-13351 — llm.anthropic.api_key resolves to None).
   - rule_id: "d4e5f6a7-0002-4000-8000-000000000002"
     priority: 20
     task_class: documentation
@@ -357,7 +375,7 @@ routing_rules:
     cost_ceiling_usd_per_1k_tokens: 0.004
     backend_ids:
       - local-coder
-      - cloud-sonnet
+      - cloud-gemini-pro
     fallback_policy:
       action: escalate_to_next_tier
       max_retries: 1
@@ -365,7 +383,8 @@ routing_rules:
     shadow_policy_id: "e5f6a7b8-0002-4000-8000-000000000002"
   # ── research ─────────────────────────────────────────────────────────────
   # Research tasks require deep reasoning; route to the heavy-reasoning local
-  # slot first, then reasoner as secondary, then cloud Sonnet as fallback.
+  # slot first, then reasoner as secondary, then the resolvable Gemini ceiling
+  # (cloud-gemini-pro) as fallback.
   - rule_id: "d4e5f6a7-0003-4000-8000-000000000003"
     priority: 30
     task_class: research
@@ -379,7 +398,7 @@ routing_rules:
     backend_ids:
       - local-heavy-reasoning
       - local-reasoner
-      - cloud-sonnet
+      - cloud-gemini-pro
     fallback_policy:
       action: escalate_to_next_tier
       max_retries: 2
@@ -389,7 +408,9 @@ routing_rules:
 # Attempts backends in order.
 default_backends:
   - local-coder
-  - cloud-sonnet
+  # OMN-13351: ceiling fallback is the resolvable Gemini backend, not the dead
+  # Anthropic cloud-sonnet (llm.anthropic.api_key resolves to None in every lane).
+  - cloud-gemini-pro
 # Gateway-level circuit breaker settings (apply to all backends).
 circuit_breaker:
   failure_threshold: 5

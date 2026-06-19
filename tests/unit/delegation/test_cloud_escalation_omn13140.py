@@ -156,8 +156,11 @@ _TASK_CLASS_CONTRACT_GEMINI = textwrap.dedent(
 
 _CANONICAL_GEMINI_BACKEND_ID = "cloud-gemini-flash"
 _CANONICAL_VERTEX_BACKEND_ID = "cloud-vertex-gemini"
-# OMN-13215: the ceiling tier is the HTTP cloud-sonnet backend (no shelled CLI).
-_TERMINAL_CEILING_BACKEND_ID = "cloud-sonnet"
+# OMN-13215: the ceiling tier is an HTTP frontier backend (no shelled CLI).
+# OMN-13351: repointed from the dead Anthropic cloud-sonnet (llm.anthropic.api_key
+# resolves to None in every lane) to the resolvable Gemini cloud-gemini-pro
+# (secret_ref llm.gemini.api_key, model gemini-2.5-flash).
+_TERMINAL_CEILING_BACKEND_ID = "cloud-gemini-pro"
 
 
 @pytest.fixture
@@ -486,16 +489,18 @@ class TestCanonicalCloudTargetCapability:
         assert gemini["secret_ref"] == "llm.gemini.api_key"
 
     def test_terminal_claude_tier_routes_to_http_frontier_backend(self) -> None:
-        """OMN-13215: the ceiling tier executes via the canonical HTTP path.
+        """OMN-13215/OMN-13351: the ceiling tier executes via the canonical HTTP path.
 
-        The claude ceiling tier maps to the HTTP cloud-sonnet backend (complete
-        verbatim endpoint_url + secret_ref), NOT a shelled CLI. No ``cli://`` or
-        ``cli-`` backend remains in the contract.
+        The claude ceiling tier maps to the HTTP cloud-gemini-pro backend (complete
+        verbatim endpoint_url + secret_ref llm.gemini.api_key), NOT a shelled CLI
+        and NOT the dead Anthropic cloud-sonnet (llm.anthropic.api_key resolves to
+        None in every lane). No ``cli://`` or ``cli-`` backend remains, and no active
+        backend routes to the deleted Anthropic cloud-sonnet/cloud-haiku entries.
         """
         tiers = {t["name"]: t for t in self._routing_tiers()["tiers"]}
         terminal = tiers["claude"]
         assert terminal["models"][0]["backend_id"] == _TERMINAL_CEILING_BACKEND_ID
-        assert terminal["models"][0]["id"] == "claude-sonnet-4-6"
+        assert terminal["models"][0]["id"] == "gemini-2.5-flash"
 
         backends = self._bifrost()["backends"]
         by_id = {b["backend_id"]: b for b in backends}
@@ -503,8 +508,13 @@ class TestCanonicalCloudTargetCapability:
         # Complete verbatim HTTP chat-completions URL (OMN-12815 shape).
         assert ceiling["endpoint_url"].endswith("/chat/completions")
         assert ceiling["endpoint_url"].startswith("https://")
-        # Secret resolved at the effect boundary via api_key_ref (not a literal).
-        assert ceiling["secret_ref"] == "llm.anthropic.api_key"
+        # Secret resolved at the effect boundary via api_key_ref (not a literal),
+        # and it is the RESOLVABLE Gemini ref — not the dead Anthropic ref.
+        assert ceiling["secret_ref"] == "llm.gemini.api_key"
+
+        # OMN-13351: the dead Anthropic backends were deleted; nothing routes to them.
+        assert "cloud-sonnet" not in by_id
+        assert "cloud-haiku" not in by_id
 
         # The shelled-CLI backends were removed entirely.
         for b in backends:
