@@ -24,8 +24,13 @@ from omnimarket.nodes.node_gap_compute.models.model_gap_compute_result import (
 
 _REPO_ROOT = Path(__file__).resolve().parents[5]
 _OMNI_HOME = _REPO_ROOT.parent
+# Kept in lockstep with omnibase_core.topics._CANONICAL_TOPIC_PATTERN: the probe
+# must accept every kind the canonical bus pattern accepts (cmd|evt|dlq|snapshot|
+# intent), otherwise valid onex.snapshot.* and onex.dlq.* topics are flagged as
+# CRITICAL topic-drift false positives. Parity is enforced by
+# test_gap_compute_topic_regex.py.
 _TOPIC_RE = re.compile(
-    r"^onex\.(cmd|evt|intent)\.[a-z0-9_-]+(?:\.[a-z0-9][a-z0-9_-]*)+\.v[0-9]+$"
+    r"^onex\.(cmd|evt|dlq|snapshot|intent)\.[a-zA-Z0-9_-]+\.[a-zA-Z0-9_-]+(?:\.[a-zA-Z0-9_-]+)*\.v\d+$"
 )
 
 
