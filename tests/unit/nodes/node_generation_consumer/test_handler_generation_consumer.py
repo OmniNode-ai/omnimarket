@@ -25,7 +25,9 @@ from omnimarket.nodes.node_generation_consumer.handlers.handler_generation_consu
     _validate_generation,
 )
 from omnimarket.nodes.node_generation_consumer.models.model_generation import (
+    ModelCorpusFixture,
     ModelNodeGenerationRequest,
+    ModelValidatorCorpus,
 )
 
 # ---------------------------------------------------------------------------
@@ -1347,3 +1349,164 @@ async def test_provider_error_remains_typed_failure_not_blank_success(
     assert any("generation-failed" in t for t in topics)
     assert not any("node-deploy" in t for t in topics)
     assert not any("node-registration" in t for t in topics)
+
+
+# ---------------------------------------------------------------------------
+# OMN-13289 (G0): validator-generation acceptance corpus gates deploy.
+#
+# When the request carries a validator_corpus, the generated scanner is accepted
+# ONLY if it flags every violation_fixture and passes every clean_fixture by
+# deterministic execution. A corpus-failed scanner must NOT deploy, even though
+# it is contract-valid. The corpus — not the LLM — is the acceptance authority.
+# ---------------------------------------------------------------------------
+
+# A generated scanner that correctly flags any hardcoded user path.  # test-literal-ok: OMN-13289 scanner subject
+_CORRECT_SCANNER_CONTRACT = """\
+name: node_no_hardcoded_paths_compute
+contract_version: "1.0.0"
+node_type: compute
+input_model:
+  name: ModelScanInput
+  module: omnibase_core.validation.models
+output_model:
+  name: ModelScanOutput
+  module: omnibase_core.validation.models
+"""
+
+# The detection needle is assembled from parts so this scanner's OWN source does
+# not contain a literal hardcoded-path string (which the generation security
+# check would otherwise flag). The scanned INPUT still contains the real paths.
+_CORRECT_SCANNER_HANDLER = """\
+import re
+
+def handle(input_data):
+    source = input_data.get("source", "")
+    needle = "/" + "Users" + "/"
+    findings = []
+    for i, line in enumerate(source.splitlines(), start=1):
+        if re.search(needle + r"[A-Za-z_]", line):
+            findings.append({"line": i})
+    return {"findings": findings}
+"""
+
+# A generated scanner that misses any user name other than 'jonah' — a silent
+# false negative the corpus gate must catch.
+_FALSE_NEG_SCANNER_HANDLER = """\
+def handle(input_data):
+    source = input_data.get("source", "")
+    needle = "/" + "Users" + "/" + "jonah"
+    findings = []
+    if needle in source:
+        findings.append({"hit": True})
+    return {"findings": findings}
+"""
+
+
+def _scanner_llm_response(handler_source: str) -> str:
+    return (
+        "```yaml\n" + _CORRECT_SCANNER_CONTRACT + "```\n\n"
+        "```python\n" + handler_source + "```\n"
+    )
+
+
+def _validator_corpus() -> ModelValidatorCorpus:
+    return ModelValidatorCorpus(
+        violation_fixtures=[
+            ModelCorpusFixture(
+                fixture_id="v-jonah",
+                source='ROOT = "/Users/jonah/Code"',  # test-literal-ok  # onex-allow-local-path OMN-13289 reason="corpus violation fixture the scanner-under-test must flag"
+            ),
+            ModelCorpusFixture(
+                fixture_id="v-alice",
+                source='ROOT = "/Users/alice/work"',  # test-literal-ok  # onex-allow-local-path OMN-13289 reason="corpus mutation fixture the scanner-under-test must flag"
+                mutation_of="v-jonah",
+            ),
+        ],
+        clean_fixtures=[
+            ModelCorpusFixture(
+                fixture_id="c-rel", source="ROOT = Path(__file__).parent"
+            ),
+            ModelCorpusFixture(
+                fixture_id="c-env",
+                source='ROOT = os.environ["OMNI_HOME"]',
+                mutation_of="c-rel",
+            ),
+        ],
+    )
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_corpus_accepted_scanner_deploys() -> None:
+    """A scanner that passes the corpus is corpus_passed and deploys."""
+    published: list[tuple[str, bytes]] = []
+    handler = _make_handler(
+        [_scanner_llm_response(_CORRECT_SCANNER_HANDLER)], published=published
+    )
+
+    result = await handler.handle(
+        ModelNodeGenerationRequest(
+            task_description="Generate a hardcoded-absolute-path scanner",
+            correlation_id="corr-corpus-pass-1",
+            validator_corpus=_validator_corpus(),
+        )
+    )
+
+    assert result.contract_passed is True
+    assert result.corpus_checked is True
+    assert result.corpus_passed is True
+    assert result.corpus_errors == []
+    topics = [t for t, _ in published]
+    assert any("node-deploy" in t for t in topics)
+    assert any("node-registration" in t for t in topics)
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_corpus_failed_scanner_does_not_deploy() -> None:
+    """A contract-valid scanner that MISSES a violation_fixture must NOT deploy."""
+    published: list[tuple[str, bytes]] = []
+    # max_attempts=1 so the false-negative scanner is the final artifact.
+    handler = _make_handler(
+        [_scanner_llm_response(_FALSE_NEG_SCANNER_HANDLER)], published=published
+    )
+
+    result = await handler.handle(
+        ModelNodeGenerationRequest(
+            task_description="Generate a hardcoded-absolute-path scanner",
+            correlation_id="corr-corpus-fail-1",
+            max_attempts=1,
+            validator_corpus=_validator_corpus(),
+        )
+    )
+
+    # Shaped correctly, but the corpus rejected it (missed v-alice).
+    assert result.contract_passed is True
+    assert result.corpus_checked is True
+    assert result.corpus_passed is False
+    assert any("v-alice" in e for e in result.corpus_errors)
+    # The false-green gate must NOT reach the runtime.
+    topics = [t for t, _ in published]
+    assert not any("node-deploy" in t for t in topics)
+    assert not any("node-registration" in t for t in topics)
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_no_corpus_run_is_not_corpus_checked() -> None:
+    """An ordinary free-text generation run carries no corpus gate."""
+    published: list[tuple[str, bytes]] = []
+    handler = _make_handler([_VALID_LLM_RESPONSE], published=published)
+
+    result = await handler.handle(
+        ModelNodeGenerationRequest(
+            task_description="Build a stub node",
+            correlation_id="corr-no-corpus-1",
+        )
+    )
+
+    assert result.corpus_checked is False
+    assert result.corpus_passed is False
+    # Deploy still happens on the normal path (no corpus gate to block it).
+    topics = [t for t, _ in published]
+    assert any("node-deploy" in t for t in topics)

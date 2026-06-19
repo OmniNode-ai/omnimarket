@@ -55,6 +55,7 @@ __all__ = [
     "ModelSemanticResult",
     "derive_semantic_fixtures",
     "evaluate_handler_semantics",
+    "execute_handler_in_sandbox",
 ]
 
 
@@ -263,6 +264,22 @@ def _execute_handler(handler_source: str, input_data: dict[str, object]) -> obje
     if not callable(handle):
         raise ValueError("generated source defines no callable handle()")
     return handle(input_data)
+
+
+def execute_handler_in_sandbox(
+    handler_source: str, input_data: dict[str, object]
+) -> object:
+    """Run a generated handler's ``handle(input_data)`` in the restricted sandbox.
+
+    Public re-export of the hardened sandbox executor (the same isolated
+    namespace + restricted builtins + curated ``__import__`` used for behavioral
+    validation). Reused by ``corpus_acceptance`` (OMN-13289) so generated
+    validators are executed through the ONE canonical sandbox — no second,
+    drift-prone executor. Raises whatever the handler raises (or a ``NameError`` /
+    ``ImportError`` when it reaches for a disallowed builtin/module); the caller
+    converts a raised exception into a recorded failure, never an escape.
+    """
+    return _execute_handler(handler_source, input_data)
 
 
 def evaluate_handler_semantics(

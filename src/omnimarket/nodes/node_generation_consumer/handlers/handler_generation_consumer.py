@@ -59,6 +59,10 @@ from omnimarket.nodes.node_delegation_routing_reducer.handlers.handler_delegatio
     tier_for_backend,
     tier_max_retries,
 )
+from omnimarket.nodes.node_generation_consumer.corpus_acceptance import (
+    ModelCorpusAcceptanceResult,
+    evaluate_corpus_acceptance,
+)
 from omnimarket.nodes.node_generation_consumer.models.model_generation import (
     ModelGenerationAttempt,
     ModelGenerationBenchmark,
@@ -798,6 +802,12 @@ class HandlerGenerationConsumer:
         final_contract_passed = False
         final_semantic_checked = False
         final_semantic_passed = False
+        # OMN-13289 (G0): validator-generation acceptance verdict, recorded from
+        # the most recent contract-valid attempt. corpus_checked is True only
+        # when the request carried a validator_corpus.
+        final_corpus_checked = False
+        final_corpus_passed = False
+        final_corpus_errors: list[str] = []
         final_contract_yaml = ""
         final_handler_source = ""
 
@@ -845,12 +855,28 @@ class HandlerGenerationConsumer:
             else:
                 semantic = ModelSemanticResult()
 
-            # An attempt is a real success only when it is BOTH shaped correctly
-            # (contract) AND behaviorally correct when a fixture was derivable.
-            # An inconclusive semantic check (checked=False) does not block — but
-            # it is recorded honestly as not-a-pass.
+            # OMN-13289 (G0): when this run carries a validator acceptance corpus,
+            # run the generated scanner against it deterministically. The corpus —
+            # not the LLM — is the acceptance authority. Only evaluated on a
+            # contract-valid artifact (a syntax-broken handler cannot be executed);
+            # otherwise the corpus result is the inconclusive default.
+            if validation["valid"]:
+                corpus = evaluate_corpus_acceptance(
+                    handler_source, command.validator_corpus
+                )
+            else:
+                corpus = ModelCorpusAcceptanceResult()
+
+            # An attempt is a real success only when it is shaped correctly
+            # (contract), behaviorally correct when a fixture was derivable
+            # (semantic), AND — for a validator-generation run — corpus-accepted.
+            # An inconclusive check (checked=False) does not block, but is recorded
+            # honestly as not-a-pass.
             semantic_failed = semantic.checked and not semantic.passed
-            attempt_success = validation["valid"] and not semantic_failed
+            corpus_failed = corpus.checked and not corpus.passed
+            attempt_success = (
+                validation["valid"] and not semantic_failed and not corpus_failed
+            )
 
             attempts.append(
                 ModelGenerationAttempt(
@@ -864,7 +890,9 @@ class HandlerGenerationConsumer:
                     contract_passed=validation["valid"],
                     semantic_checked=semantic.checked,
                     semantic_passed=semantic.passed,
-                    validation_errors=validation["errors"] + semantic.errors,
+                    validation_errors=(
+                        validation["errors"] + semantic.errors + corpus.errors
+                    ),
                     usage_source=attempt_usage_source,
                 )
             )
@@ -878,17 +906,26 @@ class HandlerGenerationConsumer:
                 final_contract_passed = True
                 final_semantic_checked = semantic.checked
                 final_semantic_passed = semantic.passed
+                # OMN-13289 (G0): carry the corpus acceptance verdict from the
+                # most recent contract-valid artifact so the benchmark and the
+                # generation_events projection record corpus_passed alongside
+                # contract_passed/semantic_passed.
+                final_corpus_checked = corpus.checked
+                final_corpus_passed = corpus.passed
+                final_corpus_errors = corpus.errors
                 final_contract_yaml = contract_yaml
                 final_handler_source = handler_source
 
             if attempt_success:
                 break
 
-            # OMN-13166: feed BOTH contract and semantic failures back into the
-            # repair loop so the model is told the transformation was wrong, not
-            # only that the shape was wrong. A contract-valid but behaviorally
-            # wrong handler now triggers a retry/escalation instead of false-green.
-            combined_errors = validation["errors"] + semantic.errors
+            # OMN-13166 + OMN-13289: feed contract, semantic, AND corpus-acceptance
+            # failures back into the repair loop so the model is told which
+            # violation_fixture it missed / which clean_fixture it false-flagged,
+            # not only that the shape was wrong. A contract-valid but
+            # corpus-rejected scanner now triggers a retry/escalation instead of
+            # being accepted as a false-green gate.
+            combined_errors = validation["errors"] + semantic.errors + corpus.errors
             previous_errors = combined_errors
 
             # OMN-12829 (C1): a failed attempt (contract OR semantic) WITH attempts
@@ -932,6 +969,13 @@ class HandlerGenerationConsumer:
             # the projection row distinguishes shape-valid from task-correct.
             semantic_checked=final_semantic_checked,
             semantic_passed=final_semantic_passed,
+            # OMN-13289 (G0): validator-acceptance verdict. corpus_checked=True
+            # only for a validator-generation run; corpus_passed=True only when
+            # the generated scanner flagged every violation_fixture and passed
+            # every clean_fixture by deterministic execution.
+            corpus_checked=final_corpus_checked,
+            corpus_passed=final_corpus_passed,
+            corpus_errors=final_corpus_errors,
             cost_inference_usd=cost_usd,
             contract_yaml=final_contract_yaml,
             handler_source=final_handler_source,
@@ -955,7 +999,17 @@ class HandlerGenerationConsumer:
         # blocks deployment. An inconclusive check (no derivable fixture) does
         # not block, preserving today's behavior for unrecognised task families.
         semantic_blocks_deploy = final_semantic_checked and not final_semantic_passed
-        if final_contract_passed and not semantic_blocks_deploy:
+        # OMN-13289 (G0): a validator-generation run whose scanner did NOT pass
+        # the acceptance corpus must NOT deploy — an LLM-written gate with a
+        # false negative (misses a violation_fixture) or a false positive
+        # (flags a clean_fixture) is exactly the silent-failure mode this gate
+        # exists to block. corpus_checked && !corpus_passed blocks deployment.
+        corpus_blocks_deploy = final_corpus_checked and not final_corpus_passed
+        if (
+            final_contract_passed
+            and not semantic_blocks_deploy
+            and not corpus_blocks_deploy
+        ):
             deploy_ok = self._emit_deploy(benchmark)
             if deploy_ok:
                 self._emit_registration(benchmark)

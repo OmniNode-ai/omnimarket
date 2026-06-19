@@ -17,11 +17,120 @@ from omnimarket.enums.enum_usage_source import EnumUsageSource
 __all__ = [
     "EnumUsageSource",
     "ModelContextArtifact",
+    "ModelCorpusFixture",
     "ModelGenerationAttempt",
     "ModelGenerationBenchmark",
     "ModelNodeDeploy",
     "ModelNodeGenerationRequest",
+    "ModelValidatorCorpus",
 ]
+
+
+class ModelCorpusFixture(BaseModel):
+    """A single fixture in a validator-generation acceptance corpus (OMN-13289).
+
+    The generated artifact under test is a *validator/scanner*: a ``handle``
+    function that takes a source-text payload and returns findings. A fixture is
+    one concrete source-text input plus the deterministic verdict the generated
+    scanner MUST produce for it.
+
+    The corpus is split into two named sets on ``ModelValidatorCorpus``:
+
+    * ``violation_fixtures`` — the scanner MUST flag every one (>=1 finding).
+    * ``clean_fixtures`` — the scanner MUST pass every one (0 findings).
+
+    The naming is deliberate: ``violation``/``clean`` describe the *required
+    verdict*, not ``positive``/``negative`` (which inverts trivially — §1B of the
+    validator-standardization remediation plan forbids positive/negative naming).
+
+    ``source`` is the raw input handed to the generated ``handle(input_data)`` as
+    ``input_data[source_field]``. ``mutation_of`` marks an adversarial /
+    planted-failure case derived by perturbing a base fixture id, so the corpus
+    verdict cannot be passed by memorising a curated set (a gate that only passes
+    hand-picked examples is not proven).
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    fixture_id: str = Field(
+        description="Stable identifier for this fixture (for evidence + mutation provenance)"
+    )
+    source: str = Field(
+        description=(
+            "Raw source text handed to the generated scanner's handle(input_data) "
+            "as input_data[source_field]. The unit the validator scans."
+        )
+    )
+    description: str = Field(
+        default="",
+        description="Human-readable note on what this fixture probes",
+    )
+    mutation_of: str = Field(
+        default="",
+        description=(
+            "fixture_id of the base fixture this case was derived from by "
+            "adversarial perturbation. Empty for a hand-authored base fixture. "
+            "A corpus with zero mutation cases is rejected: a gate that passes "
+            "only curated examples is not proven (OMN-13289)."
+        ),
+    )
+
+
+class ModelValidatorCorpus(BaseModel):
+    """Fixture corpus that gates acceptance of a generated validator (OMN-13289).
+
+    The corpus is the *acceptance authority* for a generated validator/scanner —
+    NOT the LLM's self-report (memory ``feedback_adversarial_receipts``). A
+    generated scanner is accepted iff it flags every ``violation_fixtures`` entry
+    and produces zero findings on every ``clean_fixtures`` entry, evaluated by
+    deterministic execution.
+
+    ``source_field`` names the key under which each fixture's ``source`` is
+    placed in the ``input_data`` mapping the generated ``handle`` receives.
+    ``findings_keys`` are the acceptable output-field names under which the
+    generated handler may return its findings list (a handler legitimately names
+    it ``findings`` / ``violations`` / ``errors`` / ``matches``); a non-empty
+    value under any one of them means "flagged".
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    source_field: str = Field(
+        default="source",
+        min_length=1,
+        description="Key in input_data carrying the fixture source the scanner reads",
+    )
+    findings_keys: tuple[str, ...] = Field(
+        default=("findings", "violations", "errors", "matches"),
+        description=(
+            "Acceptable output-field names for the scanner's findings list. A "
+            "non-empty value under any one means the input was flagged."
+        ),
+    )
+    violation_fixtures: list[ModelCorpusFixture] = Field(
+        default_factory=list,
+        description="Inputs the generated scanner MUST flag (>=1 finding each)",
+    )
+    clean_fixtures: list[ModelCorpusFixture] = Field(
+        default_factory=list,
+        description="Inputs the generated scanner MUST pass (0 findings each)",
+    )
+
+    @property
+    def is_empty(self) -> bool:
+        """True when the corpus carries no fixtures at all (acceptance N/A)."""
+        return not self.violation_fixtures and not self.clean_fixtures
+
+    @property
+    def has_mutation_case(self) -> bool:
+        """True when at least one fixture is an adversarial mutation case.
+
+        A corpus with no mutation cases is rejected at acceptance time: a gate
+        that passes only hand-picked examples is not proven (OMN-13289 DoD).
+        """
+        return any(
+            fx.mutation_of for fx in (*self.violation_fixtures, *self.clean_fixtures)
+        )
 
 
 class ModelContextArtifact(BaseModel):
@@ -126,6 +235,24 @@ class ModelNodeGenerationRequest(BaseModel):
         ),
     )
 
+    # --- OMN-13289 (G0): validator-generation acceptance corpus ---
+    # Optional with a None default so existing free-text generation callers are
+    # unaffected. When present, the run is a *validator generation*: the
+    # generated scanner is accepted ONLY if it flags every violation_fixture and
+    # passes every clean_fixture (deterministic corpus execution — NOT an LLM
+    # self-report). A contract-valid handler that fails the corpus is NOT
+    # accepted: it does not deploy, and its corpus failures feed the repair loop.
+    validator_corpus: ModelValidatorCorpus | None = Field(
+        default=None,
+        description=(
+            "Fixture corpus that gates acceptance of the generated validator. "
+            "None for ordinary free-text node generation (no corpus gate). When "
+            "set, acceptance = flags every violation_fixture AND zero findings on "
+            "every clean_fixture, by deterministic execution. The corpus is the "
+            "acceptance authority, not the LLM (OMN-13289)."
+        ),
+    )
+
 
 class ModelGenerationBenchmark(BaseModel):
     """Output benchmark emitted as the terminal event payload.
@@ -184,6 +311,37 @@ class ModelGenerationBenchmark(BaseModel):
             "True only when semantic_checked is true AND the generated handler "
             "produced the correct output for every synthesized fixture. Never "
             "true for an inconclusive (uncheckable) task."
+        ),
+    )
+    # OMN-13289 (G0): validator-generation acceptance verdict, separate from
+    # contract/semantic validity. corpus_checked is True only when the request
+    # carried a validator_corpus (this run is a validator generation).
+    # corpus_passed is True only when the generated scanner flagged every
+    # violation_fixture AND produced zero findings on every clean_fixture, by
+    # deterministic corpus execution. The corpus — not the LLM — is the
+    # acceptance authority. A corpus-checked run that did NOT pass blocks deploy.
+    corpus_checked: bool = Field(
+        default=False,
+        description=(
+            "Whether this run carried a validator acceptance corpus. False means "
+            "ordinary free-text generation (no corpus gate), which is NOT a "
+            "corpus pass."
+        ),
+    )
+    corpus_passed: bool = Field(
+        default=False,
+        description=(
+            "True only when corpus_checked is true AND the generated scanner "
+            "flagged every violation_fixture and passed every clean_fixture. "
+            "Never true for a run without a corpus."
+        ),
+    )
+    corpus_errors: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Per-fixture acceptance failures (which violation_fixture was missed, "
+            "which clean_fixture was false-flagged). Empty on a corpus pass or a "
+            "run with no corpus. Fed back into the repair loop."
         ),
     )
     cost_inference_usd: float = Field(
