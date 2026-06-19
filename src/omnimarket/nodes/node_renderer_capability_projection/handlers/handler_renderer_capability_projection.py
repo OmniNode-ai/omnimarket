@@ -1,132 +1,227 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
 
-"""Renderer Capability Registry projection REDUCER handler (OMN-13131 / W5).
+"""Renderer Capability Registry projection handler (OMN-13131 / W5).
 
-Canonical REDUCER node: a pure fold ``(state, declaration) -> new_state``. The
-runtime delivers a ``ModelEventEnvelope`` whose payload is a
-``ModelRendererCapabilityDeclaration`` (a renderer capability heartbeat
-published on the renderer-capability-declared command topic — constant
-``RENDERER_CAPABILITY_DECLARED_TOPIC_V1`` in ``omnimarket.events.topics``); the
-handler returns ``ModelHandlerOutput.for_reducer`` carrying the advanced
-projection state as its sole projection.
+Sole-writer projection for the Renderer Capability Registry. A renderer
+thin-publishes a ``ModelRendererCapabilityDeclaration`` heartbeat onto the
+renderer-capability-declared command topic (constant
+``RENDERER_CAPABILITY_DECLARED_TOPIC_V1`` in ``omnimarket.events.topics``); this
+handler folds each declaration into the heartbeat-backed projection and UPSERTs
+one row per ``renderer_id`` into ``renderer_capability_projection``.
 
-This node is the **sole writer** of the Renderer Capability Registry. The
-registry is a *projection*, not a class — there is no ``CapabilityRegistry``
-object, no in-memory authority, and no UI-owned state. Consumers read the
-materialized projection via ``/projection/{topic}``; a stale/absent renderer
-surfaces ``EnumEmptyStateReason.UPSTREAM_BLOCKED`` rather than rendering blind.
+Runtime materialization protocol
+--------------------------------
+The contract declares ``db_io.db_tables`` + ``projection_api``, so the effects
+runtime wires this node through the canonical *projection* dispatch path
+(``omnibase_infra.runtime.auto_wiring.handler_wiring._make_projection_dispatch_callback``)
+— the SAME path every materializing projection on the lane uses
+(``HandlerProjectionSavings``, ``HandlerPrMergedProjection``, …). That path
+delivers a *flattened domain payload dict* plus an injected ``DatabaseAdapter``
+under ``input_data['_db']`` and the topic-derived ``input_data['_event_type']``,
+then calls ``handle(input_data)`` and persists through the adapter. It does NOT
+construct a ``ModelEventEnvelope`` and it discards any returned
+``ModelHandlerOutput``. A handler that takes ``handle(envelope)`` and returns
+``ModelHandlerOutput.for_reducer`` would (1) crash on ``dict.payload`` and (2)
+never write a row even if it didn't — the projection is the only read authority,
+so a dropped projection means ``row_count`` stays 0 and the registry never
+materializes. Hence ``handle`` implements the projection-runner protocol.
 
-No I/O, no bus, no DB: the handler folds and emits a projection; the effects
-runtime materializes it.
+The deterministic core stays pure: ``renderer_capability_fold.fold_declaration``
+is the sole writer of capability rows and re-derives heartbeat-TTL freshness for
+every row. This handler reads the prior projection rows back through the adapter,
+folds the new declaration onto them, and UPSERTs the resulting rows — keyed on
+``renderer_id`` so a re-heartbeat upserts (not duplicates) the row, and so a
+stale renderer flips to ``is_degraded`` carrying
+``EnumEmptyStateReason.UPSTREAM_BLOCKED`` rather than rendering blind.
 """
 
 from __future__ import annotations
 
-from collections.abc import Mapping
 from datetime import UTC, datetime
-from typing import Any
-from uuid import uuid4
 
-from omnibase_core.models.dispatch.model_handler_output import ModelHandlerOutput
-from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
+from omnibase_core.enums.enum_accessibility_tier import EnumAccessibilityTier
+from omnibase_core.enums.enum_empty_state_reason import EnumEmptyStateReason
+from omnibase_core.enums.enum_renderer_interaction_model import (
+    EnumRendererInteractionModel,
+)
+from omnibase_core.enums.enum_widget_type import EnumWidgetType
+from omnibase_core.models.primitives.model_semver import ModelSemVer
+from pydantic import BaseModel, ConfigDict, Field
 
 from omnimarket.nodes.node_renderer_capability_projection.models.model_renderer_capability_declaration import (
     ModelRendererCapabilityDeclaration,
 )
 from omnimarket.nodes.node_renderer_capability_projection.models.model_renderer_capability_projection_state import (
     DEFAULT_HEARTBEAT_TTL_SECONDS,
+    ModelRendererCapabilityProjectionRow,
     ModelRendererCapabilityProjectionState,
 )
 from omnimarket.nodes.node_renderer_capability_projection.renderer_capability_fold import (
     fold_declaration,
 )
+from omnimarket.projection.protocol_database import DatabaseAdapter
 
 HANDLER_ID = "renderer-capability-projection-reducer"
 
-# Reducer state key carried alongside the envelope payload so the pure fold
-# accumulates across dispatch invocations. The runtime/projection host supplies
-# prior state under this key; absent, the fold starts from an empty projection.
-STATE_KEY = "_state"
+# Projection table + UPSERT key. Mirrors the contract's db_io.db_tables entry and
+# the unique constraint in 0001_create_renderer_capability_projection.sql.
+TABLE = "renderer_capability_projection"
+CONFLICT_KEY = "renderer_id"
+
+# Runtime-injected keys the projection dispatch path adds alongside the domain
+# payload. Stripped before the payload is validated into a declaration.
+_DB_KEY = "_db"
+_EVENT_TYPE_KEY = "_event_type"
+
+
+class ModelProjectionResult(BaseModel):
+    """Outcome of folding one capability heartbeat into the projection."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    rows_upserted: int = Field(default=0, ge=0)
+    table: str = Field(default=TABLE)
 
 
 class HandlerRendererCapabilityProjection:
-    """Pure reducer: fold one renderer capability heartbeat into the projection."""
+    """Sole-writer projection: fold one capability heartbeat and UPSERT its rows."""
 
-    async def handle(
-        self, envelope: ModelEventEnvelope[Any]
-    ) -> ModelHandlerOutput[None]:
-        """Fold one declaration heartbeat and emit the new projection state."""
-        declaration, prior_state = _coerce(envelope.payload)
-        observed_at = _observed_at(envelope)
+    def handle(self, input_data: dict[str, object]) -> dict[str, object]:
+        """Runtime projection-dispatch entrypoint (OMN-13131 / W5).
+
+        The projection host delivers the flattened declaration payload plus a
+        ``DatabaseAdapter`` under ``input_data['_db']``. Coerce the payload into a
+        ``ModelRendererCapabilityDeclaration``, fold it onto the rows already in
+        the table, and UPSERT the resulting rows. Fail fast when the adapter is
+        absent — a missing adapter is a wiring bug, not recoverable state.
+        """
+        payload = dict(input_data)
+        db_raw = payload.pop(_DB_KEY, None)
+        if not isinstance(db_raw, DatabaseAdapter):
+            raise TypeError("handle() requires a DatabaseAdapter in input_data['_db']")
+        payload.pop(_EVENT_TYPE_KEY, None)
+        declaration = ModelRendererCapabilityDeclaration.model_validate(payload)
+        result = self.project(declaration, db_raw)
+        return result.model_dump(mode="json")
+
+    def project(
+        self,
+        declaration: ModelRendererCapabilityDeclaration,
+        db: DatabaseAdapter,
+        *,
+        observed_at: datetime | None = None,
+        ttl_seconds: int = DEFAULT_HEARTBEAT_TTL_SECONDS,
+    ) -> ModelProjectionResult:
+        """Fold one heartbeat onto the persisted rows and UPSERT the result.
+
+        Reads the prior projection rows back through the adapter so the pure fold
+        can upsert the declaring renderer (keyed on ``renderer_id``) and
+        re-derive TTL freshness for every other row. Every row in the folded
+        state is UPSERTed so a TTL-lapsed sibling persists its
+        ``is_degraded``/``empty_state_reason`` flip on the same write.
+        """
+        clock = observed_at or datetime.now(tz=UTC)
+        prior_state = _load_prior_state(db)
         new_state = fold_declaration(
             prior_state,
             declaration,
-            observed_at=observed_at,
-            ttl_seconds=DEFAULT_HEARTBEAT_TTL_SECONDS,
+            observed_at=clock,
+            ttl_seconds=ttl_seconds,
         )
-        return ModelHandlerOutput.for_reducer(
-            input_envelope_id=envelope.envelope_id,
-            correlation_id=envelope.correlation_id or uuid4(),
-            handler_id=HANDLER_ID,
-            projections=(new_state,),
-        )
+        upserted = 0
+        for row in new_state.rows:
+            if db.upsert(TABLE, CONFLICT_KEY, _row_to_columns(row, observed_at=clock)):
+                upserted += 1
+        return ModelProjectionResult(rows_upserted=upserted)
 
 
-def _observed_at(envelope: ModelEventEnvelope[Any]) -> datetime:
-    """Observer clock for freshness: the envelope timestamp (already tz-aware)."""
-    ts = envelope.envelope_timestamp
-    if ts.tzinfo is None:
-        return ts.replace(tzinfo=UTC)
-    return ts
+def _load_prior_state(db: DatabaseAdapter) -> ModelRendererCapabilityProjectionState:
+    """Reconstruct the prior projection state from the persisted rows.
 
-
-def _coerce(
-    payload: Any,
-) -> tuple[ModelRendererCapabilityDeclaration, ModelRendererCapabilityProjectionState]:
-    """Coerce the dispatched payload into (declaration, prior_state).
-
-    Accepts a typed ``ModelRendererCapabilityDeclaration`` directly, or a mapping
-    carrying the declaration fields plus an optional ``_state`` projection the
-    fold accumulates onto. A payload that is neither is a hard type error — the
-    reducer never silently swallows an unroutable payload.
+    The fold accumulates across heartbeats; the durable accumulator is the
+    projection table itself (the sole read authority), so prior rows are read
+    back rather than carried in process memory.
     """
-    if isinstance(payload, ModelRendererCapabilityDeclaration):
-        return payload, ModelRendererCapabilityProjectionState()
-    if isinstance(payload, Mapping):
-        data = dict(payload)
-        raw_state = data.pop(STATE_KEY, None)
-        prior_state = _coerce_state(raw_state)
-        declaration = ModelRendererCapabilityDeclaration.model_validate(data)
-        return declaration, prior_state
-    if hasattr(payload, "model_dump"):
-        return (
-            ModelRendererCapabilityDeclaration.model_validate(payload.model_dump()),
-            ModelRendererCapabilityProjectionState(),
-        )
-    raise TypeError(
-        "renderer-capability declaration payload must be "
-        "ModelRendererCapabilityDeclaration or a mapping; "
-        f"got {type(payload).__name__}"
+    persisted = db.query(TABLE)
+    rows = tuple(_columns_to_row(record) for record in persisted)
+    return ModelRendererCapabilityProjectionState(rows=rows)
+
+
+def _row_to_columns(
+    row: ModelRendererCapabilityProjectionRow,
+    *,
+    observed_at: datetime,
+) -> dict[str, object]:
+    """Map a projection row to its table columns (JSON-safe scalars)."""
+    return {
+        "renderer_id": row.renderer_id,
+        "platform": row.platform,
+        "supported_component_kinds": [k.value for k in row.supported_component_kinds],
+        "interaction_model": row.interaction_model.value,
+        "accessibility_tier": row.accessibility_tier.value,
+        "contract_version": str(row.contract_version),
+        "declared_at": row.declared_at.astimezone(UTC).isoformat(),
+        "last_heartbeat": row.last_heartbeat.astimezone(UTC).isoformat(),
+        "is_degraded": row.is_degraded,
+        "empty_state_reason": (
+            row.empty_state_reason.value if row.empty_state_reason is not None else None
+        ),
+        "observed_at": observed_at.astimezone(UTC).isoformat(),
+        "updated_at": observed_at.astimezone(UTC).isoformat(),
+    }
+
+
+def _columns_to_row(record: dict[str, object]) -> ModelRendererCapabilityProjectionRow:
+    """Rebuild a projection row from a persisted table record."""
+    return ModelRendererCapabilityProjectionRow(
+        renderer_id=_as_str(record["renderer_id"]),
+        platform=_as_str(record["platform"]),
+        supported_component_kinds=tuple(
+            EnumWidgetType(value)
+            for value in _as_str_sequence(record["supported_component_kinds"])
+        ),
+        interaction_model=EnumRendererInteractionModel(
+            _as_str(record["interaction_model"])
+        ),
+        accessibility_tier=EnumAccessibilityTier(_as_str(record["accessibility_tier"])),
+        contract_version=ModelSemVer.parse(_as_str(record["contract_version"])),
+        declared_at=_as_datetime(record["declared_at"]),
+        last_heartbeat=_as_datetime(record["last_heartbeat"]),
+        is_degraded=bool(record["is_degraded"]),
+        empty_state_reason=(
+            EnumEmptyStateReason(_as_str(record["empty_state_reason"]))
+            if record.get("empty_state_reason") is not None
+            else None
+        ),
     )
 
 
-def _coerce_state(raw_state: Any) -> ModelRendererCapabilityProjectionState:
-    """Coerce a prior-state value into a projection state (empty when absent)."""
-    if raw_state is None:
-        return ModelRendererCapabilityProjectionState()
-    if isinstance(raw_state, ModelRendererCapabilityProjectionState):
-        return raw_state
-    if isinstance(raw_state, Mapping):
-        return ModelRendererCapabilityProjectionState.model_validate(dict(raw_state))
-    raise TypeError(
-        "prior projection state must be ModelRendererCapabilityProjectionState or a "
-        f"mapping; got {type(raw_state).__name__}"
-    )
+def _as_str(value: object) -> str:
+    if not isinstance(value, str):
+        raise TypeError(f"expected str column, got {type(value).__name__}")
+    return value
 
 
-__all__ = [
+def _as_str_sequence(value: object) -> tuple[str, ...]:
+    if not isinstance(value, (list, tuple)):
+        raise TypeError(f"expected list column, got {type(value).__name__}")
+    return tuple(_as_str(item) for item in value)
+
+
+def _as_datetime(value: object) -> datetime:
+    if isinstance(value, datetime):
+        return value if value.tzinfo is not None else value.replace(tzinfo=UTC)
+    if isinstance(value, str):
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        return parsed if parsed.tzinfo is not None else parsed.replace(tzinfo=UTC)
+    raise TypeError(f"expected datetime/str column, got {type(value).__name__}")
+
+
+__all__: list[str] = [
+    "CONFLICT_KEY",
     "HANDLER_ID",
-    "STATE_KEY",
+    "TABLE",
     "HandlerRendererCapabilityProjection",
+    "ModelProjectionResult",
 ]

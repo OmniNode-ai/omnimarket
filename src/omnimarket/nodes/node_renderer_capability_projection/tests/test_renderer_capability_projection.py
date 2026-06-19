@@ -11,10 +11,11 @@ Registry reducer:
   2. Heartbeat-TTL freshness — is_degraded is BOTH False (fresh heartbeat) AND
      True (TTL-expired heartbeat); a degraded row carries the typed
      EnumEmptyStateReason.UPSTREAM_BLOCKED (never renders blind).
-  3. Real-dispatch-path — the canonical handler.handle(envelope) -> for_reducer
-     output drives the fold (REDUCER node-kind, projections only), and the node
-     resolves through the real auto-wiring contract loader (not handler isolation
-     alone).
+  3. Real-dispatch-path — the canonical projection-runner protocol
+     handler.handle(input_data) -> dict UPSERTs the folded rows through the
+     injected DatabaseAdapter (the exact path the runtime wires for a db_io
+     projection), and the node resolves through the real auto-wiring contract
+     loader (not handler isolation alone).
   4. G-E no-hardcoded-topic — the canonical onex.* command topic literal does NOT
      appear in any .py file in the node path; code references the constant.
 """
@@ -23,12 +24,10 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from uuid import uuid4
 
 import pytest
 from omnibase_core.enums.enum_accessibility_tier import EnumAccessibilityTier
 from omnibase_core.enums.enum_empty_state_reason import EnumEmptyStateReason
-from omnibase_core.enums.enum_node_kind import EnumNodeKind
 from omnibase_core.enums.enum_renderer_interaction_model import (
     EnumRendererInteractionModel,
 )
@@ -36,12 +35,12 @@ from omnibase_core.enums.enum_widget_type import EnumWidgetType
 from omnibase_core.models.dashboard.model_renderer_capability_contract import (
     ModelRendererCapabilityContract,
 )
-from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
 from omnibase_core.models.primitives.model_semver import ModelSemVer
 from omnibase_core.validation.validator_topic_suffix import validate_topic_suffix
 
 from omnimarket.events.topics import RENDERER_CAPABILITY_DECLARED_TOPIC_V1
 from omnimarket.nodes.node_renderer_capability_projection.handlers.handler_renderer_capability_projection import (
+    TABLE,
     HandlerRendererCapabilityProjection,
 )
 from omnimarket.nodes.node_renderer_capability_projection.models.model_renderer_capability_declaration import (
@@ -56,6 +55,7 @@ from omnimarket.nodes.node_renderer_capability_projection.models.model_renderer_
 from omnimarket.nodes.node_renderer_capability_projection.renderer_capability_fold import (
     fold_declaration,
 )
+from omnimarket.projection.protocol_database import InmemoryDatabaseAdapter
 
 _T0 = datetime(2026, 6, 18, 12, 0, 0, tzinfo=UTC)
 
@@ -82,17 +82,6 @@ def _declaration(
 ) -> ModelRendererCapabilityDeclaration:
     return ModelRendererCapabilityDeclaration(
         capability=_capability(renderer_id=renderer_id), declared_at=declared_at
-    )
-
-
-def _envelope(
-    payload: object, *, observed_at: datetime = _T0
-) -> ModelEventEnvelope[object]:
-    return ModelEventEnvelope(
-        payload=payload,
-        correlation_id=uuid4(),
-        envelope_timestamp=observed_at,
-        event_type=RENDERER_CAPABILITY_DECLARED_TOPIC_V1,
     )
 
 
@@ -232,65 +221,85 @@ class TestHeartbeatTtlFreshness:
 
 
 # ---------------------------------------------------------------------------
-# 3. Real-dispatch-path — canonical handler output + auto-wiring resolution
+# 3. Real-dispatch-path — projection-runner materialization + auto-wiring resolution
+#
+# The contract declares db_io.db_tables + projection_api, so the runtime wires
+# this node through the projection dispatch path: it delivers the flattened
+# declaration payload + an injected DatabaseAdapter under input_data['_db'] and
+# calls handle(input_data), which UPSERTs the folded rows. These tests drive that
+# exact protocol (not the prior handle(envelope) -> ModelHandlerOutput shape that
+# the runtime never invokes for a db_io projection and that crashed live on
+# dict.payload).
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.unit
 class TestHandlerDispatchPath:
-    async def test_handler_emits_reducer_projection(self) -> None:
+    def test_handle_materializes_one_row(self) -> None:
         handler = HandlerRendererCapabilityProjection()
-        envelope = _envelope(_declaration(), observed_at=_T0)
-        output = await handler.handle(envelope)
-        assert output.node_kind == EnumNodeKind.REDUCER
-        assert output.events == ()
-        assert output.intents == ()
-        assert output.result is None
-        assert len(output.projections) == 1
-        projected = output.projections[0]
-        assert isinstance(projected, ModelRendererCapabilityProjectionState)
-        assert _row(projected, "ui.effect.web").is_degraded is False
-
-    async def test_handler_accepts_flattened_mapping_with_prior_state(self) -> None:
-        # The live auto-wiring dispatcher delivers the flattened domain payload.
-        handler = HandlerRendererCapabilityProjection()
-        first = await handler.handle(_envelope(_declaration(), observed_at=_T0))
-        prior_state = first.projections[0]
-        payload = {
-            **_declaration(renderer_id="ui.effect.cli").model_dump(mode="json"),
-            "_state": prior_state.model_dump(mode="json"),
-        }
-        out = await handler.handle(_envelope(payload, observed_at=_T0))
-        state = out.projections[0]
-        assert {r.renderer_id for r in state.rows} == {
-            "ui.effect.web",
-            "ui.effect.cli",
-        }
-
-    async def test_handler_degraded_path_through_dispatch(self) -> None:
-        handler = HandlerRendererCapabilityProjection()
-        observed = _T0 + timedelta(seconds=DEFAULT_HEARTBEAT_TTL_SECONDS + 1)
-        out = await handler.handle(
-            _envelope(_declaration(declared_at=_T0), observed_at=observed)
+        db = InmemoryDatabaseAdapter()
+        # handle() takes the runtime payload (no observed_at) and uses the wall
+        # clock as the observer, so a fresh heartbeat (declared_at=now) is the
+        # not-degraded case — mirroring the live W-cap producer (declared_at=now).
+        out = handler.handle(
+            {
+                **_declaration(declared_at=datetime.now(tz=UTC)).model_dump(
+                    mode="json"
+                ),
+                "_db": db,
+                "_event_type": RENDERER_CAPABILITY_DECLARED_TOPIC_V1,
+            }
         )
-        row = _row(out.projections[0], "ui.effect.web")
-        assert row.is_degraded is True
-        assert row.empty_state_reason == EnumEmptyStateReason.UPSTREAM_BLOCKED
+        assert out["rows_upserted"] == 1
+        rows = db.query(TABLE)
+        assert len(rows) == 1
+        assert rows[0]["renderer_id"] == "ui.effect.web"
+        assert rows[0]["is_degraded"] is False
+        assert rows[0]["empty_state_reason"] is None
 
-    async def test_handler_rejects_unroutable_payload(self) -> None:
+    def test_project_accumulates_across_heartbeats(self) -> None:
+        # The durable accumulator is the table itself: a second renderer's
+        # heartbeat folds onto the rows already persisted, keeping both rows.
         handler = HandlerRendererCapabilityProjection()
-        with pytest.raises(TypeError, match="declaration payload"):
-            await handler.handle(_envelope(object(), observed_at=_T0))
+        db = InmemoryDatabaseAdapter()
+        handler.project(_declaration(renderer_id="ui.effect.web"), db, observed_at=_T0)
+        handler.project(_declaration(renderer_id="ui.effect.cli"), db, observed_at=_T0)
+        rows = db.query(TABLE)
+        assert {r["renderer_id"] for r in rows} == {"ui.effect.web", "ui.effect.cli"}
 
-    async def test_node_resolves_and_dispatches_through_real_contract_loader(
+    def test_reheartbeat_upserts_not_duplicates(self) -> None:
+        handler = HandlerRendererCapabilityProjection()
+        db = InmemoryDatabaseAdapter()
+        handler.project(_declaration(declared_at=_T0), db, observed_at=_T0)
+        later = _T0 + timedelta(seconds=30)
+        handler.project(_declaration(declared_at=later), db, observed_at=later)
+        rows = db.query(TABLE)
+        assert len(rows) == 1
+        assert rows[0]["last_heartbeat"] == later.isoformat()
+
+    def test_degraded_path_persists_typed_reason(self) -> None:
+        handler = HandlerRendererCapabilityProjection()
+        db = InmemoryDatabaseAdapter()
+        observed = _T0 + timedelta(seconds=DEFAULT_HEARTBEAT_TTL_SECONDS + 1)
+        handler.project(_declaration(declared_at=_T0), db, observed_at=observed)
+        row = db.query(TABLE)[0]
+        assert row["is_degraded"] is True
+        assert row["empty_state_reason"] == EnumEmptyStateReason.UPSTREAM_BLOCKED.value
+
+    def test_handle_requires_db_adapter(self) -> None:
+        handler = HandlerRendererCapabilityProjection()
+        with pytest.raises(TypeError, match="DatabaseAdapter"):
+            handler.handle(_declaration().model_dump(mode="json"))
+
+    def test_node_resolves_and_materializes_through_real_contract_loader(
         self,
     ) -> None:
         # Real-dispatch-path proof (not handler isolation): load the contract via
         # the canonical omnibase_core contract_loader.load_contract — the exact
         # loader the runtime uses — resolve the handler class declared in
         # handler_routing via importlib (the auto-wiring resolution path), then
-        # instantiate and dispatch a real envelope. A green isolated handler that
-        # was never wired into the contract would fail here.
+        # instantiate and drive its projection-runner protocol. A green isolated
+        # handler that was never wired into the contract would fail here.
         import importlib
 
         from omnibase_core.contracts.contract_loader import (
@@ -305,6 +314,12 @@ class TestHandlerDispatchPath:
         assert isinstance(event_bus, dict)
         assert RENDERER_CAPABILITY_DECLARED_TOPIC_V1 in event_bus["subscribe_topics"]
 
+        # The contract declares the projection materialization surface the runtime
+        # uses to wire this node through the projection dispatch path.
+        db_io = contract["db_io"]
+        assert isinstance(db_io, dict)
+        assert TABLE in {t["name"] for t in db_io["db_tables"]}
+
         routing = contract["handler_routing"]
         assert isinstance(routing, dict)
         assert routing["routing_strategy"] == "operation_match"
@@ -314,14 +329,17 @@ class TestHandlerDispatchPath:
         resolved_cls = getattr(module, handler_ref["name"])
         assert resolved_cls is HandlerRendererCapabilityProjection
 
-        # Dispatch through the resolved class exactly as the runtime would.
-        resolved_handler = resolved_cls()
-        output = await resolved_handler.handle(
-            _envelope(_declaration(), observed_at=_T0)
+        # Materialize through the resolved class exactly as the runtime would.
+        db = InmemoryDatabaseAdapter()
+        out = resolved_cls().handle(
+            {
+                **_declaration(declared_at=_T0).model_dump(mode="json"),
+                "_db": db,
+                "_event_type": RENDERER_CAPABILITY_DECLARED_TOPIC_V1,
+            }
         )
-        assert output.node_kind == EnumNodeKind.REDUCER
-        assert len(output.projections) == 1
-        assert output.projections[0].row_for("ui.effect.web") is not None
+        assert out["rows_upserted"] == 1
+        assert db.query(TABLE)[0]["renderer_id"] == "ui.effect.web"
 
 
 # ---------------------------------------------------------------------------
