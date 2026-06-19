@@ -26,6 +26,9 @@ from omnibase_infra.errors import ProtocolConfigurationError
 from omnimarket.models.delegation.llm_cost_routing.model_llm_delegation_escalation_triggered_event import (
     ModelLlmDelegationEscalationTriggeredEvent,
 )
+from omnimarket.nodes.node_delegation_orchestrator.contract_topics import (
+    TOPIC_ID_DELEGATION_FAILED,
+)
 from omnimarket.nodes.node_delegation_orchestrator.enums import (
     EnumDelegationState,
 )
@@ -423,6 +426,202 @@ class TestTerminalEventEscalationMetadata:
         assert result.escalation_count == 0
         assert result.attempts_count == 1
         assert result.terminal_failure_reason is None
+
+
+# ---------------------------------------------------------------------------
+# Tests: OMN-13365 — all tiers fail QG with a reasoning-model ceiling whose
+# provider token report does not sum (total != prompt + completion). The
+# terminal delegation-failed construction must NOT raise ValidationError and
+# must NOT crash the dispatcher.
+# ---------------------------------------------------------------------------
+#
+# Verified evidence (2026-06-19 reprove, stability-test): a delegation that
+# escalated through every tier to the gemini-2.5-flash ceiling, which also
+# failed the quality gate, crashed the dispatcher with
+#   service_kernel: Dispatcher 'node_delegation_orchestrator.
+#   HandlerDelegationWorkflow.delegation_orchestrate_quality_<hash>' failed:
+#   ValidationError
+# on CID7 (22:27:19) and CID8 (22:32:21). The delegation-failed topic HWMs
+# never moved and those correlation_ids never projected — the terminal outcome
+# was silently lost.
+#
+# Root cause: ModelInferenceResponseData carries prompt/completion/total token
+# counts with no sum constraint; reasoning-model providers (gemini-2.5-flash)
+# bundle thinking tokens into total_tokens so total != prompt + completion. The
+# terminal ModelDelegationResult wire DTO enforces
+# total_tokens == prompt_tokens + completion_tokens, so building it from the raw
+# ceiling response raised ValidationError. _record_inference_response now derives
+# total_tokens from prompt + completion so the wire invariant always holds.
+
+
+@pytest.mark.unit
+class TestAllTiersFailMismatchedCeilingTokensTerminatesCleanly:
+    """OMN-13365: ceiling-tier QG failure with non-summing provider tokens emits
+    exactly one terminal delegation-failed event instead of crashing.
+    """
+
+    @staticmethod
+    def _mismatched_ceiling_response(cid: UUID) -> ModelInferenceResponseData:
+        # gemini-2.5-flash shape: total_tokens (512) bundles reasoning tokens and
+        # does NOT equal prompt (150) + completion (250) = 400.
+        return _make_inference_response(
+            cid,
+            model_used="gemini-2.5-flash",
+            prompt_tokens=150,
+            completion_tokens=250,
+            total_tokens=512,
+        )
+
+    @staticmethod
+    def _drive_to_ceiling_inference(
+        handler: HandlerDelegationWorkflow, cid: UUID
+    ) -> None:
+        """Drive RECEIVED -> ROUTED(claude) -> INFERENCE_COMPLETED recording the
+        non-summing reasoning-model ceiling response (not the default fixture).
+        """
+        handler.handle_delegation_request(_make_request(correlation_id=cid))
+        handler.handle_routing_decision(
+            _make_routing_decision(
+                cid, tier_name="claude", selected_model="gemini-2.5-flash"
+            )
+        )
+        handler.handle_inference_response(
+            TestAllTiersFailMismatchedCeilingTokensTerminatesCleanly._mismatched_ceiling_response(
+                cid
+            )
+        )
+        assert handler.workflows[cid].state == EnumDelegationState.INFERENCE_COMPLETED
+
+    def test_record_inference_response_reconciles_total_tokens(self) -> None:
+        """The orchestrator stores a wire-consistent token triple even when the
+        provider's reported total bundles unaccounted reasoning tokens.
+        """
+        handler = HandlerDelegationWorkflow(workflows={})
+        cid = uuid4()
+        self._drive_to_ceiling_inference(handler, cid)
+
+        workflow = handler.workflows[cid]
+        assert workflow.inference_prompt_tokens == 150
+        assert workflow.inference_completion_tokens == 250
+        # Derived from prompt + completion, NOT the provider's bundled 512.
+        assert workflow.inference_total_tokens == 400
+
+    def test_ceiling_qg_failure_emits_single_terminal_failed_event(self) -> None:
+        """All tiers exhausted at the ceiling whose tokens do not sum must
+        terminate FAILED and emit exactly one delegation-failed event — no
+        ValidationError, no dispatcher crash.
+        """
+        handler = HandlerDelegationWorkflow(workflows={})
+        cid = uuid4()
+
+        # Reach the ceiling tier (claude) recording the non-summing
+        # reasoning-model response.
+        self._drive_to_ceiling_inference(handler, cid)
+
+        gate = _make_gate_result(
+            cid,
+            passed=False,
+            quality_score=0.2,
+            failure_reasons=("low_quality", "dod_failure"),
+            fallback_recommended=True,
+        )
+        # Before OMN-13365 this raised pydantic ValidationError
+        # ("total_tokens must equal prompt_tokens + completion_tokens").
+        events = handler.handle_gate_result(gate)
+
+        workflow = handler.workflows[cid]
+        assert workflow.state == EnumDelegationState.FAILED
+
+        delegation_events = [e for e in events if isinstance(e, ModelDelegationEvent)]
+        assert len(delegation_events) == 1, (
+            "exactly one terminal delegation event must be emitted"
+        )
+        terminal = delegation_events[0]
+        assert terminal.topic == TOPIC_ID_DELEGATION_FAILED
+
+        result = terminal.payload
+        assert isinstance(result, ModelDelegationResult)
+        assert result.quality_passed is False
+        assert result.fallback_to_claude is True
+        # The terminal carries the wire-consistent token triple.
+        assert result.prompt_tokens == 150
+        assert result.completion_tokens == 250
+        assert result.total_tokens == 400
+        # Terminal failure is named (failure_class derives quality_gate_failed),
+        # and the escalation history is carried for audit.
+        assert result.terminal_failure_reason is not None
+        assert isinstance(result.escalation_history, tuple)
+        assert len(result.escalation_history) >= 1
+
+    def test_full_escalation_to_ceiling_failure_does_not_crash(
+        self, frontier_unconfigured_bifrost: None, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """End-to-end: local QG-fail escalates to the routable ceiling tier whose
+        re-dispatch fails QG with non-summing tokens — terminate cleanly.
+        """
+        # Make the claude ceiling tier routable so escalation off local reaches it
+        # (mirrors TestTestResearchTierPolicyVerified._configure_ceiling_secret).
+        from omnimarket.nodes.node_delegation_routing_reducer.handlers import (
+            handler_delegation_routing as routing,
+        )
+
+        monkeypatch.setenv("llm.gemini.api_key", "test-gemini-key")
+        routing._load_bifrost_endpoints.cache_clear()
+        try:
+            handler = HandlerDelegationWorkflow(workflows={})
+            cid = uuid4()
+
+            request = _make_request(correlation_id=cid, task_type="test")
+            handler.handle_delegation_request(request)
+
+            # Attempt 1: local tier, gate fails with fallback -> escalate.
+            decision1 = _make_routing_decision(cid, task_type="test", tier_name="local")
+            handler.handle_routing_decision(decision1)
+            handler.handle_inference_response(_make_inference_response(cid))
+            gate1 = _make_gate_result(
+                cid,
+                passed=False,
+                quality_score=0.2,
+                failure_reasons=("low_quality",),
+                fallback_recommended=True,
+            )
+            events1 = handler.handle_gate_result(gate1)
+            assert any(isinstance(e, ModelRoutingIntent) for e in events1)
+            assert handler.workflows[cid].state == EnumDelegationState.ROUTED
+
+            # Attempt 2: ceiling (claude) tier, re-dispatch fails QG with a
+            # reasoning-model response whose tokens do not sum. No higher tier
+            # remains -> terminal FAILED, emitted cleanly (no ValidationError).
+            decision2 = _make_routing_decision(
+                cid,
+                task_type="test",
+                tier_name="claude",
+                selected_model="gemini-2.5-flash",
+            )
+            handler.handle_routing_decision(decision2)
+            handler.handle_inference_response(self._mismatched_ceiling_response(cid))
+            gate2 = _make_gate_result(
+                cid,
+                passed=False,
+                quality_score=0.2,
+                failure_reasons=("low_quality",),
+                fallback_recommended=True,
+            )
+            events2 = handler.handle_gate_result(gate2)
+        finally:
+            routing._load_bifrost_endpoints.cache_clear()
+
+        workflow = handler.workflows[cid]
+        assert workflow.state == EnumDelegationState.FAILED
+        delegation_events = [e for e in events2 if isinstance(e, ModelDelegationEvent)]
+        assert len(delegation_events) == 1
+        assert delegation_events[0].topic == TOPIC_ID_DELEGATION_FAILED
+        result = delegation_events[0].payload
+        assert isinstance(result, ModelDelegationResult)
+        assert result.quality_passed is False
+        assert result.total_tokens == result.prompt_tokens + result.completion_tokens
+        # Escalation through both tiers is recorded.
+        assert len(result.escalation_history) == 2
 
 
 # ---------------------------------------------------------------------------

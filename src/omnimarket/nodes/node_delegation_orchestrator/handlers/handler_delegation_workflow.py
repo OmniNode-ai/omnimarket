@@ -208,14 +208,35 @@ def _record_inference_response(
     workflow: DelegationWorkflowState,
     response: ModelInferenceResponseData,
 ) -> None:
-    """Persist a single inference attempt's data onto the workflow."""
+    """Persist a single inference attempt's data onto the workflow.
+
+    OMN-13365: ``ModelInferenceResponseData`` carries the three token counts the
+    provider reported with no sum constraint between them. Every terminal event
+    the orchestrator emits (``ModelDelegationResult`` on the completed/failed/
+    all-tiers-exhausted paths and the omnidash compat event) is built from these
+    fields, and the canonical ``ModelDelegationResult`` wire DTO enforces
+    ``total_tokens == prompt_tokens + completion_tokens``. Reasoning-model
+    providers (e.g. ``gemini-2.5-flash``) report a ``total_tokens`` that bundles
+    thinking/reasoning tokens NOT split into prompt+completion, so a verbatim
+    copy makes ``total != prompt + completion`` and the terminal model
+    construction raises ``ValidationError``, crashing the dispatcher with no
+    terminal event emitted (silent loss of the outcome).
+
+    Reconcile at this boundary: keep ``prompt_tokens`` and ``completion_tokens``
+    exactly as reported (they drive cost estimation independently) and derive
+    ``total_tokens`` from their sum so the wire invariant always holds. The
+    provider's bundled reasoning-token total is not separately modeled anywhere
+    downstream, and every projection consumer already assumes this invariant.
+    """
     workflow.inference_intent_in_flight = False
     workflow.inference_content = response.content
     workflow.inference_model_used = response.model_used
     workflow.inference_latency_ms = response.latency_ms
     workflow.inference_prompt_tokens = response.prompt_tokens
     workflow.inference_completion_tokens = response.completion_tokens
-    workflow.inference_total_tokens = response.total_tokens
+    workflow.inference_total_tokens = (
+        response.prompt_tokens + response.completion_tokens
+    )
     workflow.inference_llm_call_id = response.llm_call_id
 
 
