@@ -242,11 +242,17 @@ class TestDelegationChainE2E:
         request_model: ModelDelegationRequest,
     ) -> None:
         publisher = _CapturingPublisher()
+        # OMN-13354: a research-shaped good answer — cites sources (Section /
+        # author-year / bracketed reference) and reasons through the claim
+        # (because / therefore / evidence). The research DoD is cites_sources +
+        # methodical_analysis, NOT the old code-line cites_specific_lines, so the
+        # fixture must look like research, not a code review.
         good_content = (
-            "Line 42 shows the runtime ingress boundary where validation should "
-            "happen before dispatch. The tradeoff is that strict validation can "
-            "reject more requests up front, but the benefit is clearer evidence "
-            "and lower risk of malformed payloads entering the event bus."
+            "According to Section 2 of the runtime design, validation belongs at "
+            "the ingress boundary before dispatch. As shown in (Gray, 2026) and "
+            "the references in [3], early validation lowers the risk of malformed "
+            "payloads entering the bus, because rejected requests never reach the "
+            "handlers; therefore the evidence favors front-loading the check."
         )
 
         gate_result = self._run_chain_to_gate_result(

@@ -141,8 +141,22 @@ task_classes:
         - response_non_empty
       heuristic:
         - no_refusal
-        - cites_specific_lines
-        - explains_tradeoffs
+        # OMN-13354: research is a PROSE research task (cites theorems / papers /
+        # sections), NOT a code review. The prior `cites_specific_lines` +
+        # `explains_tradeoffs` pair was a catch-22: `cites_specific_lines` is a
+        # CODE-line-citation regex (`line N` / `Lnn` / `:nn`) that a legitimate
+        # research answer cannot satisfy, so every research output failed the gate
+        # at every tier with `TASK_MISMATCH: missing specific line citations`
+        # (live 2026-06-19 reprove, score 0.733). `cites_sources` is the
+        # research-appropriate citation check (references / theorem N / [12] /
+        # (Author, 2020) / URL / DOI); `methodical_analysis` replaces the narrow
+        # `explains_tradeoffs` keyword form with a reasoning-structure check
+        # (because / therefore / evidence / risk). A substantive, attributed
+        # research answer passes; a thin/empty answer still fails. The
+        # `cites_specific_lines` / `explains_tradeoffs` code-review checks stay on
+        # the `review` task class below.
+        - cites_sources
+        - methodical_analysis
     escalation_policy:
       max_escalations: 2
       tier_order:
