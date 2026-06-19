@@ -45,7 +45,9 @@ class HandlerPlanAuditCompute:
         checks.append(ModelCheckResult(name="path", passed=True))
 
         try:
-            raw_plan = yaml.safe_load(plan_path.read_text(encoding="utf-8"))
+            # fmt: off
+            raw_plan = yaml.safe_load(plan_path.read_text(encoding="utf-8"))  # node-purity-ok: OMN-9048
+            # fmt: on
         except (OSError, yaml.YAMLError) as exc:
             return self._error_result(
                 "yaml_parse",
