@@ -62,7 +62,7 @@ class ModelDurableEvidenceGateResult(BaseModel):
 
 
 class ModelCitedMergeCommit(BaseModel):
-    """A single PR / merge-commit citation pulled from a contract."""
+    """A single PR / merge-commit citation pulled from a durable receipt."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -74,7 +74,13 @@ class ModelCitedMergeCommit(BaseModel):
     cited_sha: str = Field(
         ...,
         min_length=7,
-        description="The commit SHA the contract claims is the merge commit.",
+        description="The receipt commit SHA claimed as the PR merge commit.",
+    )
+    evidence_item_id: str = Field(
+        ..., min_length=1, description="dod_evidence[].id covered by the receipt."
+    )
+    check_type: str = Field(
+        ..., min_length=1, description="dod_evidence[].checks[].check_type."
     )
 
 
