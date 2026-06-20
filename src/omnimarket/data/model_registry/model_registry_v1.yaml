@@ -189,7 +189,8 @@ models:
       OpenRouter free tier — Qwen3 Coder 480B. Cheap frontier direct for June 5
       model-experimentation campaign (OMN-12492). Zero API cost (free tier, provider
       bears inference cost). Rate-limited, no SLA. Requires OPENROUTER_API_KEY.
-      Falls back to openrouter-glm-flash or local when key absent.
+      Falls back to the cheap_cloud direct z.ai GLM-5.2 (cloud-glm) or local when
+      key absent (OMN-13380).
 
   llama-3.3-70b-free:
     model_id: "llama-3.3-70b-free"

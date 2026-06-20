@@ -82,11 +82,18 @@ tiers:
   - name: cheap_cloud
     cost_per_1k_tokens: 0.002
     models:
-      # OpenRouter GLM Flash — primary cheap-cloud code-gen backend (OMN-7980).
-      # Requires OPENROUTER_API_KEY. Falls back to glm-z-ai when key absent.
-      - id: openrouter-glm-flash
-        backend_id: openrouter-glm-flash
-        max_context_tokens: 131072
+      # OMN-13380: Direct z.ai GLM-5.2 — PRIMARY cheap-cloud code-gen backend.
+      # We hold a resolvable DIRECT GLM key (secret_ref llm.glm.api_key), so GLM
+      # routes direct to z.ai (backend cloud-glm) rather than through the
+      # OpenRouter aggregator. The former openrouter-glm-flash primary entry was
+      # REMOVED: OpenRouter is reserved for genuinely FREE models (the
+      # cheap_frontier Qwen3-Coder-480B free tier) — paying an aggregator markup
+      # for a model we can hit directly with our own key is a routing-cost bug,
+      # not a fallback strategy. model_name (glm-5.2) is resolved from the
+      # cloud-glm backend in bifrost_delegation.yaml (OMN-13343 verified id).
+      - id: glm-5.2
+        backend_id: cloud-glm
+        max_context_tokens: 128000
         use_for:
           - code_generation
           - reasoning
@@ -94,13 +101,6 @@ tiers:
           - test
           - refactor
         fast_path_threshold_tokens: 8192
-      - id: glm-z-ai
-        backend_id: cloud-glm
-        max_context_tokens: 128000
-        use_for:
-          - code_generation
-          - reasoning
-          - research
       - id: gemini-flash
         backend_id: cloud-gemini-flash
         max_context_tokens: 1000000
