@@ -42,3 +42,12 @@ TOPIC_WORKFLOW_STALLED = "onex.evt.omnimarket.workflow-stalled.v1"  # onex-topic
 # wiring, and handler/model code references THIS constant (never the literal) so the
 # no-hardcoded-topics gate stays green (G-E).
 RENDERER_CAPABILITY_DECLARED_TOPIC_V1 = "onex.cmd.ui.renderer-capability-declared.v1"  # onex-topic-allow: canonical topic registry; declared in node_renderer_capability_projection contract.yaml subscribe_topics (OMN-13131)
+
+# Context-ROI score event consumed by node_projection_capsule_store (OMN-12842).
+# node_context_roi_compute emits this terminal event carrying the per-capsule
+# effectiveness numbers; the capsule-store reducer folds each scored event into
+# the durable capsule_store projection. The reducer references THESE constants
+# (never the literals) so the no-hardcoded-topics gate stays green; the node's
+# contract.yaml declares them for runtime wiring.
+CONTEXT_ROI_SCORE_COMPLETED_TOPIC_V1 = "onex.evt.omnimarket.context-roi-score-completed.v1"  # onex-topic-allow: canonical topic registry; declared in node_context_roi_compute contract.yaml publish_topics and node_projection_capsule_store subscribe_topics (OMN-12842)
+CAPSULE_STORE_APPLIED_TOPIC_V1 = "onex.evt.omnimarket.capsule-store-applied.v1"  # onex-topic-allow: canonical topic registry; declared in node_projection_capsule_store contract.yaml publish_topics (OMN-12842)
