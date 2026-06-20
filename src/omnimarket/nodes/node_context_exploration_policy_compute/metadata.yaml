@@ -1,0 +1,27 @@
+name: node_context_exploration_policy_compute
+version: "1.0.0"
+description: >
+  Deterministic bandit exploration policy over scored, decay-adjusted capsule
+  candidates. Replaces greedy argmax selection to prevent cold-start starvation
+  and winner lock-in (OMN-12844 / M4). Pure compute: no I/O, no inference, no
+  bus, no datetime.now(), no ambient random().
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_context_exploration_policy_compute: "omnimarket.nodes.node_context_exploration_policy_compute"
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: pure
+dependencies:
+  - "omnibase_core>=0.39.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["context", "exploration", "bandit", "exploit-explore", "decay", "compute", "replay-proven"]
+pack: "demo"
+display_name: "Context Exploration Policy Compute"
+node_role: "compute"

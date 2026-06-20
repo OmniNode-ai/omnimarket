@@ -47,8 +47,10 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
     # OMN-13356 adds node_tool_reuse_matcher_compute: 313 -> 314.
     # OMN-12842 M2 adds node_projection_capsule_store reducer: 314 -> 315.
     # OMN-12846 adds node_user_correction_observer_effect: 315 -> 316.
-    assert summary["node_dirs"] == 316
-    assert summary["entry_points"] == 316
+    # OMN-12844 M4 adds node_context_exploration_policy_compute: 316 -> 317.
+    # OMN-12843 M3 adds node_context_selection_policy_compute: 317 -> 318.
+    assert summary["node_dirs"] == 318
+    assert summary["entry_points"] == 318
     assert summary["missing_entry_points"] == []
     assert summary["dangling_entry_points"] == []
     assert summary["routable"] >= 297

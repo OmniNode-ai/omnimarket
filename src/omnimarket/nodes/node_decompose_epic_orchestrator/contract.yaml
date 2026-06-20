@@ -48,5 +48,8 @@ event_bus:
   dlq_topics:
     - onex.dlq.omnimarket.decompose-epic.v1
 
+externally_consumed_topics:
+  - onex.cmd.omnimarket.contract-generate.v1
+
 metadata:
   transport_type: kafka

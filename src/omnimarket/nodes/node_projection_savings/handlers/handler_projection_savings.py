@@ -13,6 +13,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 from omnimarket.events.topics import (
     DELEGATE_SKILL_COMPLETED_TOPIC_V1,
     DELEGATE_SKILL_FAILED_TOPIC_V1,
+    TASK_DELEGATED_TOPIC_V1,
 )
 from omnimarket.models.delegation.wire.model_delegate_skill_terminal_projection import (
     ModelDelegateSkillSavingsProjection,
@@ -24,12 +25,6 @@ from omnimarket.projection.protocol_database import DatabaseAdapter
 
 TABLE = "savings_estimates"
 CONFLICT_KEY = "session_id,event_timestamp,model_local,model_cloud_baseline"
-
-# OMN-12494: the canonical task-delegated SOURCE topic that drives the
-# delegation_events projection. Materializing savings_estimates from this stream
-# (not only the derived delegate-skill terminal event) closes the projection gap
-# that left the Delegation Savings widget truthfully-empty.
-TASK_DELEGATED_SOURCE_TOPIC_V1 = "onex.evt.omniclaude.task-delegated.v1"
 
 
 class ModelSavingsEstimatedEvent(BaseModel):
@@ -121,7 +116,7 @@ class HandlerProjectionSavings:
 
         # OMN-12494: canonical task-delegated SOURCE event -> savings_estimates.
         if (
-            event_type == TASK_DELEGATED_SOURCE_TOPIC_V1
+            event_type == TASK_DELEGATED_TOPIC_V1
             or "task-delegated" in event_type
             or _is_task_delegated_source_payload(payload)
         ):
