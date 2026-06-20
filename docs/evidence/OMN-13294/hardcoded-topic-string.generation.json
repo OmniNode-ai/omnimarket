@@ -1,0 +1,20 @@
+{
+  "accepted": true,
+  "attempt_count": 1,
+  "clean_fixture_count": 4,
+  "contract_passed": true,
+  "contract_yaml": "name: node_onex_topic_validator\ncontract_version: \"1.0.0\"\nnode_type: compute\ninput_model:\n  name: ModelOnexTopicValidatorInput\n  module: omnimarket.nodes.node_onex_topic_validator.models\noutput_model:\n  name: ModelOnexTopicValidatorOutput\n  module: omnimarket.nodes.node_onex_topic_validator.models",
+  "corpus_checked": true,
+  "corpus_errors": [],
+  "corpus_passed": true,
+  "correlation_id": "omn-13294-g2-hardcoded-topic-string-e7aedd0e7d95",
+  "endpoint_class": "local-coder",
+  "handler_source": "import re\n\ndef handle(input_data):\n    source = input_data.get('source', '')\n    findings = []\n\n    # Pattern explanation:\n    # (?:'|\"(?:(?!\\\").)*\") | (?:\"(?:(?!\\').)*\") -> Matches '...' or \"...\" handling basic escapes implicitly by non-greedy/lookahead\n    # More robust simple quote matching for single/double quotes containing the onex prefix\n    # We look for single or double quoted strings.\n    quote_pattern = re.compile(r'''(['\"])(.*?)(?<!\\\\)\\1''')\n\n    # The topic shape: onex.<segment>.<segment>.<segment>+\n    # Segment: lowercase letters, digits, hyphens? Usually slugs. Let's assume [a-z0-9-]+ or just [a-z]+.\n    # Requirement: \"at least three dot-separated lowercase segments after the onex prefix\"\n    # Pattern: onex\\.[a-z0-9]+(\\.[a-z0-9]+){2,}\n    topic_pattern = re.compile(r'onex\\.[a-z0-9]+(\\.[a-z0-9]+){2,}')\n\n    lines = source.split('\\n')\n    for line_num, line in enumerate(lines, 1):\n        # Find all quoted strings in the line\n        for match in quote_pattern.finditer(line):\n            quoted_str = match.group(2)\n            if topic_pattern.search(quoted_str):\n                findings.append({\n                    \"line\": line_num,\n                    \"content\": line.strip(),\n                    \"topic\": quoted_str\n                })\n\n    return {\"findings\": findings}",
+  "model_id": "Qwen3.6-35B-A3B",
+  "provider": "local",
+  "resolved_endpoint": "http://192.168.86.201:8000/v1/chat/completions",
+  "routing_source": "contract",
+  "usage_source": "measured",
+  "validator": "hardcoded-topic-string",
+  "violation_fixture_count": 5
+}
