@@ -37,6 +37,9 @@ from omnimarket.events.topics import (
     DELEGATE_SKILL_COMPLETED_TOPIC_V1,
     DELEGATE_SKILL_FAILED_TOPIC_V1,
 )
+from omnimarket.models.delegation.quality_bar_evidence import (
+    extract_quality_bar_evidence,
+)
 from omnimarket.models.delegation.wire.model_delegate_skill_terminal_projection import (
     ModelDelegateSkillTerminalProjection,
     ModelDelegationEventProjectionRow,
@@ -190,6 +193,13 @@ class ModelProjectionTaskDelegatedEvent(BaseModel):
         ge=0,
         description="Version of the pricing manifest used to compute cost_savings_usd (OMN-10949).",
     )
+    required_bar: float | None = Field(default=None, ge=0.0, le=1.0)
+    actual_score: float | None = Field(default=None, ge=0.0, le=1.0)
+    escalation_count: int = Field(default=0, ge=0)
+    authority_source: str | None = Field(default=None)
+    score_source: str | None = Field(default=None)
+    request_override_applied: bool = Field(default=False)
+    override_within_bounds: bool = Field(default=True)
 
 
 class ModelProjectionResult(BaseModel):
@@ -279,7 +289,22 @@ class HandlerProjectionDelegation:
             "prompt_text": event.prompt_text,
             "response_text": event.response_text,
             "pricing_manifest_version": event.pricing_manifest_version,
+            "required_bar": event.required_bar,
+            "actual_score": event.actual_score,
+            "escalation_count": event.escalation_count,
+            "authority_source": event.authority_source,
+            "score_source": event.score_source,
+            "request_override_applied": event.request_override_applied,
+            "override_within_bounds": event.override_within_bounds,
         }
+        evidence = extract_quality_bar_evidence(row)
+        evidence.update(
+            extract_quality_bar_evidence(
+                {},
+                checked_labels=event.quality_gates_checked or (),
+            )
+        )
+        row.update(evidence)
         _preserve_existing_evidence(db, row)
         ok = db.upsert(TABLE, CONFLICT_KEY, row)
         return ModelProjectionResult(rows_upserted=1 if ok else 0)
@@ -448,6 +473,14 @@ def _canonical_result_to_task_delegated_payload(
         "tokens_output": payload.get("completion_tokens") or 0,
         "tokens_to_compliance": payload.get("tokens_to_compliance") or 0,
         "compliance_attempts": payload.get("compliance_attempts") or 1,
+        "required_bar": payload.get("required_bar"),
+        "actual_score": payload.get("actual_score") or payload.get("quality_score"),
+        "escalation_count": payload.get("escalation_count") or 0,
+        "authority_source": payload.get("authority_source")
+        or payload.get("required_bar_source"),
+        "score_source": payload.get("score_source"),
+        "request_override_applied": payload.get("request_override_applied") or False,
+        "override_within_bounds": payload.get("override_within_bounds") is not False,
     }
 
 
@@ -478,9 +511,19 @@ def _preserve_existing_evidence(
         "cost_savings_usd",
         "delegation_latency_ms",
         "pricing_manifest_version",
+        "required_bar",
+        "actual_score",
+        "escalation_count",
     ):
         if _is_zero(row.get(key)) and not _is_zero(existing.get(key)):
             row[key] = existing[key]
+    for key in ("authority_source", "score_source"):
+        if _is_blank(row.get(key)) and not _is_blank(existing.get(key)):
+            row[key] = existing[key]
+    if bool(existing.get("request_override_applied")):
+        row["request_override_applied"] = True
+    if existing.get("override_within_bounds") is False:
+        row["override_within_bounds"] = False
     if (
         _as_int(row.get("compliance_attempts")) <= 1
         and _as_int(existing.get("compliance_attempts")) > 1

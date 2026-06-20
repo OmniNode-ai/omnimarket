@@ -482,8 +482,9 @@ class TestGateFailure:
 
         assert isinstance(intents[0], ModelDelegationEvent)
         result: ModelDelegationResult = intents[0].payload
-        assert result.fallback_to_claude is False
+        assert result.fallback_to_claude is True
         assert result.quality_passed is False
+        assert "score_below_required_bar" in result.failure_reason
 
 
 # ---------------------------------------------------------------------------

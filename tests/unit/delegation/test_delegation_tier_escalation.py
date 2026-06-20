@@ -18,6 +18,7 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 from datetime import UTC, datetime
+from pathlib import Path
 from uuid import NAMESPACE_DNS, UUID, uuid4, uuid5
 
 import pytest
@@ -49,6 +50,10 @@ from omnimarket.nodes.node_delegation_orchestrator.models.model_inference_respon
 )
 from omnimarket.nodes.node_delegation_orchestrator.models.model_routing_intent import (
     ModelRoutingIntent,
+)
+from omnimarket.nodes.node_delegation_orchestrator.quality_bar_authority import (
+    RequiredBarAuthorityError,
+    resolve_required_bar_authority,
 )
 from omnimarket.nodes.node_delegation_quality_gate_reducer.models.model_quality_gate_result import (
     ModelQualityGateResult,
@@ -267,9 +272,9 @@ class TestGateFailNoHigherTier:
 
 @pytest.mark.unit
 class TestGateFailFallbackNotRecommended:
-    """Task 10, test 4: gate fails but fallback not recommended -> FAILED."""
+    """OMN-13368: fallback flags are no longer escalation authority."""
 
-    def test_gate_fail_fallback_not_recommended(self) -> None:
+    def test_above_bar_does_not_escalate_even_when_marker_gate_failed(self) -> None:
         handler = HandlerDelegationWorkflow(workflows={})
         cid = uuid4()
         _advance_to_gate_evaluated(handler, cid, tier_name="local")
@@ -277,20 +282,51 @@ class TestGateFailFallbackNotRecommended:
         gate = _make_gate_result(
             cid,
             passed=False,
-            quality_score=0.4,
+            quality_score=0.9,
             failure_reasons=("low_quality",),
             fallback_recommended=False,
         )
         events = handler.handle_gate_result(gate)
 
         workflow = handler.workflows[cid]
-        assert workflow.state == EnumDelegationState.FAILED
+        assert workflow.state == EnumDelegationState.COMPLETED
 
         result_events = [e for e in events if isinstance(e, ModelDelegationEvent)]
         assert len(result_events) == 1
         result = result_events[0].payload
         assert isinstance(result, ModelDelegationResult)
-        assert result.terminal_failure_reason == "fallback_not_recommended"
+        assert result.quality_passed is True
+        assert result.escalation_count == 0
+
+    def test_below_bar_escalates_even_when_fallback_not_recommended(
+        self, frontier_unconfigured_bifrost: None
+    ) -> None:
+        handler = HandlerDelegationWorkflow(workflows={})
+        cid = uuid4()
+        _advance_to_gate_evaluated(handler, cid, tier_name="local")
+
+        gate = _make_gate_result(
+            cid,
+            passed=True,
+            quality_score=0.7,
+            failure_reasons=(),
+            fallback_recommended=False,
+        )
+        events = handler.handle_gate_result(gate)
+
+        workflow = handler.workflows[cid]
+        assert workflow.state == EnumDelegationState.ROUTED
+        assert workflow.escalation_count == 1
+        routing_intents = [e for e in events if isinstance(e, ModelRoutingIntent)]
+        assert len(routing_intents) == 1
+        escalations = [
+            e
+            for e in events
+            if isinstance(e, ModelLlmDelegationEscalationTriggeredEvent)
+        ]
+        assert len(escalations) == 1
+        assert "score_below_required_bar" in escalations[0].escalation_reason
+        assert "required_bar=0.800" in escalations[0].escalation_reason
 
 
 # ---------------------------------------------------------------------------
@@ -426,6 +462,111 @@ class TestTerminalEventEscalationMetadata:
         assert result.escalation_count == 0
         assert result.attempts_count == 1
         assert result.terminal_failure_reason is None
+
+
+@pytest.mark.unit
+class TestRequiredBarAuthority:
+    """OMN-13368: task-class/workflow/request required-bar authority."""
+
+    def test_task_class_default_required_bar_resolves(self) -> None:
+        authority = resolve_required_bar_authority(task_type="test")
+
+        assert authority.required_bar == pytest.approx(0.8)
+        assert authority.authority_source == "task_class:test"
+        assert authority.score_source == "quality_gate_graded_score"
+        assert authority.request_override_applied is False
+
+    def test_valid_request_override_within_declared_bounds_applies(self) -> None:
+        authority = resolve_required_bar_authority(
+            task_type="test",
+            request_override=0.95,
+        )
+
+        assert authority.required_bar == pytest.approx(0.95)
+        assert authority.authority_source == "request_override"
+        assert authority.request_override_applied is True
+        assert authority.override_within_bounds is True
+
+    def test_request_override_outside_declared_bounds_fails_closed(self) -> None:
+        with pytest.raises(RequiredBarAuthorityError, match="outside declared bounds"):
+            resolve_required_bar_authority(
+                task_type="test",
+                request_override=0.5,
+            )
+
+    def test_workflow_override_can_narrow_or_raise_within_bounds(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from omnimarket.nodes.node_delegation_orchestrator import (
+            quality_bar_authority,
+        )
+        from omnimarket.nodes.node_delegation_routing_reducer.handlers import (
+            handler_delegation_routing as routing,
+        )
+
+        contract = routing._get_task_class_contract()
+        assert contract is not None
+        task_classes = contract["task_classes"]
+        assert isinstance(task_classes, dict)
+        test_entry = task_classes["test"]
+        assert isinstance(test_entry, dict)
+        quality_gate = test_entry["quality_gate"]
+        assert isinstance(quality_gate, dict)
+        quality_gate["workflow_overrides"] = {
+            "strict_review": {"required_bar": 0.9},
+            "fast_path": {"required_bar": 0.7},
+        }
+        monkeypatch.setattr(
+            quality_bar_authority,
+            "_get_task_class_contract",
+            lambda: contract,
+        )
+
+        strict = resolve_required_bar_authority(
+            task_type="test",
+            workflow_name="strict_review",
+        )
+        narrow = resolve_required_bar_authority(
+            task_type="test",
+            workflow_name="fast_path",
+        )
+
+        assert strict.required_bar == pytest.approx(0.9)
+        assert strict.authority_source == "workflow:strict_review"
+        assert narrow.required_bar == pytest.approx(0.7)
+        assert narrow.authority_source == "workflow:fast_path"
+
+    def test_missing_required_bar_fails_closed(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Path,
+    ) -> None:
+        from omnimarket.nodes.node_delegation_routing_reducer.handlers import (
+            handler_delegation_routing as routing,
+        )
+
+        contract_path = tmp_path / "task_class_contracts.v1.yaml"
+        contract_path.write_text(
+            """
+version: "1.0"
+task_classes:
+  test:
+    definition_of_done:
+      deterministic:
+        - response_non_empty
+      heuristic: []
+    escalation_policy:
+      tier_order:
+        - local
+""".strip()
+        )
+        monkeypatch.setenv("TASK_CLASS_CONTRACT_PATH", str(contract_path))
+        routing._get_task_class_contract.cache_clear()
+        try:
+            with pytest.raises(RequiredBarAuthorityError, match="required_bar missing"):
+                resolve_required_bar_authority(task_type="test")
+        finally:
+            routing._get_task_class_contract.cache_clear()
 
 
 # ---------------------------------------------------------------------------
@@ -1030,7 +1171,7 @@ class TestTestTaskDeadEndEmitsPreciseReason:
         gate1 = _make_gate_result(
             cid,
             passed=False,
-            quality_score=0.867,
+            quality_score=0.733,
             failure_reasons=("TASK_MISMATCH: failed covers_edge_cases",),
             fallback_recommended=True,
         )
@@ -1049,7 +1190,7 @@ class TestTestTaskDeadEndEmitsPreciseReason:
         gate2 = _make_gate_result(
             cid,
             passed=False,
-            quality_score=0.867,
+            quality_score=0.733,
             failure_reasons=("TASK_MISMATCH: failed covers_edge_cases",),
             fallback_recommended=True,
         )

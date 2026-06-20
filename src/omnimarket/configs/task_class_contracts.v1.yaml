@@ -62,6 +62,12 @@ task_classes:
         - no_refusal
         - follows_codebase_conventions
         - no_obvious_regressions
+    quality_gate:
+      score_source: quality_gate_graded_score
+      required_bar: 0.85
+      request_override_bounds:
+        min: 0.6
+        max: 1.0
     escalation_policy:
       max_escalations: 2
       # OMN-7980: OpenRouter (cheap_cloud) is primary; local is fallback when key absent.
@@ -88,6 +94,12 @@ task_classes:
         # bad docstring cases still fail on real defects (google-style /
         # covers_args_returns_raises) so the per-class margin holds.
         - semantic_adequacy
+    quality_gate:
+      score_source: quality_gate_graded_score
+      required_bar: 0.8
+      request_override_bounds:
+        min: 0.6
+        max: 1.0
     escalation_policy:
       max_escalations: 1
       tier_order:
@@ -117,6 +129,12 @@ task_classes:
         # count. The bad prose cases still fail on real defects (refusal /
         # accuracy disclaimer) so the per-class margin holds.
         - semantic_adequacy
+    quality_gate:
+      score_source: quality_gate_graded_score
+      required_bar: 0.8
+      request_override_bounds:
+        min: 0.6
+        max: 1.0
     escalation_policy:
       max_escalations: 1
       tier_order:
@@ -157,6 +175,12 @@ task_classes:
         # the `review` task class below.
         - cites_sources
         - methodical_analysis
+    quality_gate:
+      score_source: quality_gate_graded_score
+      required_bar: 0.8
+      request_override_bounds:
+        min: 0.6
+        max: 1.0
     escalation_policy:
       max_escalations: 2
       tier_order:
@@ -178,6 +202,12 @@ task_classes:
         - no_refusal
         - covers_edge_cases
         - covers_error_paths
+    quality_gate:
+      score_source: quality_gate_graded_score
+      required_bar: 0.8
+      request_override_bounds:
+        min: 0.6
+        max: 1.0
     escalation_policy:
       max_escalations: 2
       tier_order:
@@ -196,6 +226,12 @@ task_classes:
       heuristic:
         - no_refusal
         - step_by_step_explanation
+    quality_gate:
+      score_source: quality_gate_graded_score
+      required_bar: 0.8
+      request_override_bounds:
+        min: 0.6
+        max: 1.0
     escalation_policy:
       max_escalations: 1
       tier_order:
@@ -214,6 +250,12 @@ task_classes:
       heuristic:
         - step_by_step_explanation
         - methodical_analysis
+    quality_gate:
+      score_source: quality_gate_graded_score
+      required_bar: 0.8
+      request_override_bounds:
+        min: 0.6
+        max: 1.0
     escalation_policy:
       max_escalations: 2
       tier_order:
@@ -232,6 +274,12 @@ task_classes:
       heuristic:
         - structured_output
         - covers_dependencies
+    quality_gate:
+      score_source: quality_gate_graded_score
+      required_bar: 0.8
+      request_override_bounds:
+        min: 0.6
+        max: 1.0
     escalation_policy:
       max_escalations: 1
       tier_order:
@@ -250,6 +298,12 @@ task_classes:
       heuristic:
         - cites_specific_lines
         - explains_tradeoffs
+    quality_gate:
+      score_source: quality_gate_graded_score
+      required_bar: 0.8
+      request_override_bounds:
+        min: 0.6
+        max: 1.0
     escalation_policy:
       max_escalations: 1
       tier_order:
@@ -274,6 +328,12 @@ task_classes:
         # The bad summary cases fail on real defects (refusal / accuracy disclaimer /
         # truncation) so the per-class margin (min_good - max_bad >= 0.3) holds.
         - semantic_adequacy
+    quality_gate:
+      score_source: quality_gate_graded_score
+      required_bar: 0.8
+      request_override_bounds:
+        min: 0.6
+        max: 1.0
     escalation_policy:
       max_escalations: 1
       tier_order:
@@ -291,6 +351,12 @@ task_classes:
       heuristic:
         - no_refusal
         - sub_tasks_verified
+    quality_gate:
+      score_source: quality_gate_graded_score
+      required_bar: 0.8
+      request_override_bounds:
+        min: 0.6
+        max: 1.0
     # OMN-13215: the former shelled ``cli_agents`` tier was removed. Agent
     # delegation now escalates local → cheap_cloud → the canonical HTTP ceiling
     # (claude), all of which execute over the bus/inference-effect HTTP path.
@@ -313,6 +379,12 @@ task_classes:
       heuristic:
         - no_refusal
         - methodical_analysis
+    quality_gate:
+      score_source: quality_gate_graded_score
+      required_bar: 0.8
+      request_override_bounds:
+        min: 0.6
+        max: 1.0
     escalation_policy:
       max_escalations: 1
       tier_order:
