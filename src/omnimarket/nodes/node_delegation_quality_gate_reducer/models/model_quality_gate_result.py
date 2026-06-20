@@ -2,9 +2,14 @@
 # SPDX-License-Identifier: MIT
 
 # Copyright (c) 2026 OmniNode Team
-"""Compatibility imports for canonical quality gate result DTOs."""
+"""Compatibility import for the OMN-13366 quality gate result DTO.
 
-from omnibase_core.models.delegation.wire import (
+``ModelQualityGateInput`` stays canonical in omnibase_core. The result carries
+omnimarket P1 deterministic acceptance evidence fields until those fields are
+promoted into the shared core wire DTO.
+"""
+
+from omnimarket.models.delegation.wire.model_quality_gate import (
     EnumQualityGateCategory,
     ModelQualityGateResult,
 )

@@ -47,6 +47,18 @@ task_model_overrides:
   research: "Qwen3.6-35B-A3B"
 task_classes:
   code_generation:
+    score_source: deterministic_acceptance
+    acceptance_authority:
+      type: deterministic_acceptance
+      acceptance_version: delegation-deterministic-acceptance.v1
+      evidence_fields:
+        - acceptance_version
+        - corpus_hash
+        - validator_or_artifact_hash
+        - acceptance_command
+        - actual_score
+        - pass
+        - failure_cases
     required_capabilities:
       - code_completion
       - context_window_large
@@ -201,6 +213,18 @@ task_classes:
         - cheap_cloud
         - claude
   test:
+    score_source: deterministic_acceptance
+    acceptance_authority:
+      type: deterministic_acceptance
+      acceptance_version: delegation-deterministic-acceptance.v1
+      evidence_fields:
+        - acceptance_version
+        - corpus_hash
+        - validator_or_artifact_hash
+        - acceptance_command
+        - actual_score
+        - pass
+        - failure_cases
     required_capabilities:
       - code_completion
     pricing_ceiling_per_1k_tokens: 0.015
@@ -221,6 +245,37 @@ task_classes:
       request_override_bounds:
         min: 0.6
         max: 1.0
+    escalation_policy:
+      max_escalations: 2
+      tier_order:
+        - local
+        - cheap_cloud
+        - claude
+  validator_generation:
+    score_source: deterministic_acceptance
+    acceptance_authority:
+      type: deterministic_acceptance
+      acceptance_version: node_generation_consumer.corpus_acceptance.v1
+      evidence_fields:
+        - acceptance_version
+        - corpus_hash
+        - validator_or_artifact_hash
+        - acceptance_command
+        - actual_score
+        - pass
+        - failure_cases
+    required_capabilities:
+      - code_completion
+    pricing_ceiling_per_1k_tokens: 0.015
+    latency_sla_p99_ms: 30000
+    cloud_routing_policy: allowed
+    definition_of_done:
+      deterministic:
+        - compiles_without_errors
+        - final_artifact_only
+        - passes_existing_tests
+      heuristic:
+        - no_refusal
     escalation_policy:
       max_escalations: 2
       tier_order:
