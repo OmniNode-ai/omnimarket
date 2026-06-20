@@ -1,0 +1,23 @@
+name: node_capsule_effectiveness_feedback_reducer
+version: "0.1.0"
+description: "M5 feedback edge: writes scored runtime ROI effectiveness onto the M2 capsule store with attribution honesty"
+omnibase_core_compat: ">=0.45.0,<0.46.0"
+entry_points:
+  onex.nodes:
+    node_capsule_effectiveness_feedback_reducer: "omnimarket.nodes.node_capsule_effectiveness_feedback_reducer"
+capabilities:
+  standalone: false
+  full_runtime: true
+  requires_network: true
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: external_io
+dependencies:
+  - "omnibase_core>=0.45.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["context-roi", "capsule", "feedback-edge", "closed-loop", "reducer"]
+pack: "intelligence"
+display_name: "Capsule Effectiveness Feedback Reducer"
+node_role: "reducer"
