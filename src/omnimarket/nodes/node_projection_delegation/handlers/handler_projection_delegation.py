@@ -207,6 +207,13 @@ class ModelProjectionTaskDelegatedEvent(BaseModel):
             "as JSONB so the saving (counterfactual - actual) is auditable."
         ),
     )
+    # OMN-13234: typed per-tier actual-cost measurement carried from the
+    # task-delegated event, persisted to the cost_* columns added in migration
+    # 0018 so the OTHER half of the saving (cost_usd actual) is auditable.
+    cost_tier_type: str = Field(default="")
+    cost_tier_name: str = Field(default="")
+    cost_measurement_source: str = Field(default="")
+    budget_headroom_consumed_usd: float = Field(default=0.0, ge=0.0)
     required_bar: float | None = Field(default=None, ge=0.0, le=1.0)
     actual_score: float | None = Field(default=None, ge=0.0, le=1.0)
     escalation_count: int = Field(default=0, ge=0)
@@ -314,6 +321,12 @@ class HandlerProjectionDelegation:
                 if event.premium_counterfactual is not None
                 else None
             ),
+            # OMN-13234: persist the typed per-tier actual-cost measurement so the
+            # cost_usd half of the saving is auditable (columns from 0018).
+            "cost_tier_type": event.cost_tier_type,
+            "cost_tier_name": event.cost_tier_name,
+            "cost_measurement_source": event.cost_measurement_source,
+            "budget_headroom_consumed_usd": event.budget_headroom_consumed_usd,
             "required_bar": event.required_bar,
             "actual_score": event.actual_score,
             "escalation_count": event.escalation_count,
