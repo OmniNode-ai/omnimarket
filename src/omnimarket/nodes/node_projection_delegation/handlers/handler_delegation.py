@@ -17,6 +17,9 @@ from uuid import uuid4
 import yaml
 from pydantic import ValidationError
 
+from omnimarket.models.delegation.quality_bar_evidence import (
+    extract_quality_bar_evidence,
+)
 from omnimarket.models.delegation.wire.model_delegate_skill_terminal_projection import (
     ModelDelegateSkillTerminalProjection,
     ModelDelegationEventProjectionRow,
@@ -314,6 +317,10 @@ class DelegationProjectionRunner(BaseProjectionRunner):
         quality_gate_detail = (
             data.get("quality_gate_detail") or data.get("qualityGateDetail") or None
         )
+        quality_bar_evidence = extract_quality_bar_evidence(
+            data,
+            checked_labels=qgc_labels,
+        )
         cost_usd = _safe_numeric_str(data.get("cost_usd") or data.get("costUsd"))
         cost_savings_usd = _safe_numeric_str(
             data.get("cost_savings_usd")
@@ -380,7 +387,9 @@ class DelegationProjectionRunner(BaseProjectionRunner):
               cost_usd, cost_savings_usd, delegation_latency_ms,
               repo, is_shadow, prompt_text, response_text,
               tokens_input, tokens_output, tokens_to_compliance,
-              compliance_attempts, pricing_manifest_version
+              compliance_attempts, pricing_manifest_version,
+              required_bar, actual_score, escalation_count, authority_source,
+              score_source, request_override_applied, override_within_bounds
             ) VALUES (
               $1, $2, $3, $4,
               $5, $6, $7, $8,
@@ -390,7 +399,9 @@ class DelegationProjectionRunner(BaseProjectionRunner):
               $14, $15, $16,
               $17, $18, $19, $20,
               $21, $22, $23,
-              $24, $25
+              $24, $25,
+              $26, $27, $28, $29,
+              $30, $31, $32
             )
             ON CONFLICT (correlation_id) DO UPDATE SET
               session_id = COALESCE(EXCLUDED.session_id, {self._table_delegation}.session_id),
@@ -431,7 +442,14 @@ class DelegationProjectionRunner(BaseProjectionRunner):
               pricing_manifest_version = CASE
                 WHEN EXCLUDED.pricing_manifest_version > 0 THEN EXCLUDED.pricing_manifest_version
                 ELSE {self._table_delegation}.pricing_manifest_version
-              END
+              END,
+              required_bar = COALESCE(EXCLUDED.required_bar, {self._table_delegation}.required_bar),
+              actual_score = COALESCE(EXCLUDED.actual_score, {self._table_delegation}.actual_score),
+              escalation_count = GREATEST(EXCLUDED.escalation_count, {self._table_delegation}.escalation_count),
+              authority_source = COALESCE(EXCLUDED.authority_source, {self._table_delegation}.authority_source),
+              score_source = COALESCE(EXCLUDED.score_source, {self._table_delegation}.score_source),
+              request_override_applied = EXCLUDED.request_override_applied OR {self._table_delegation}.request_override_applied,
+              override_within_bounds = EXCLUDED.override_within_bounds AND {self._table_delegation}.override_within_bounds
             """,
             str(correlation_id),
             str(data.get("session_id") or data.get("sessionId"))
@@ -470,6 +488,17 @@ class DelegationProjectionRunner(BaseProjectionRunner):
             tokens_to_compliance,
             compliance_attempts,
             pricing_manifest_version,
+            _safe_numeric_str(quality_bar_evidence.get("required_bar")),
+            _safe_numeric_str(quality_bar_evidence.get("actual_score")),
+            _safe_int_or_none(quality_bar_evidence.get("escalation_count")) or 0,
+            str(quality_bar_evidence.get("authority_source"))
+            if quality_bar_evidence.get("authority_source") is not None
+            else None,
+            str(quality_bar_evidence.get("score_source"))
+            if quality_bar_evidence.get("score_source") is not None
+            else None,
+            bool(quality_bar_evidence.get("request_override_applied") or False),
+            bool(quality_bar_evidence.get("override_within_bounds") is not False),
         )
         return True
 
@@ -521,6 +550,10 @@ class DelegationProjectionRunner(BaseProjectionRunner):
         qgf_json = json.dumps(qgf_labels) if qgf_labels else None
         quality_gate_detail = (
             data.get("quality_gate_detail") or data.get("qualityGateDetail") or None
+        )
+        quality_bar_evidence = extract_quality_bar_evidence(
+            data,
+            checked_labels=qgc_labels,
         )
 
         cost_usd = _safe_numeric_str(data.get("cost_usd") or data.get("costUsd"))
@@ -599,7 +632,9 @@ class DelegationProjectionRunner(BaseProjectionRunner):
               cost_usd, cost_savings_usd, delegation_latency_ms,
               repo, is_shadow, prompt_text, response_text,
               tokens_input, tokens_output, tokens_to_compliance,
-              compliance_attempts, pricing_manifest_version
+              compliance_attempts, pricing_manifest_version,
+              required_bar, actual_score, escalation_count, authority_source,
+              score_source, request_override_applied, override_within_bounds
             ) VALUES (
               $1, $2, $3, $4,
               $5, $6, $7,
@@ -609,9 +644,18 @@ class DelegationProjectionRunner(BaseProjectionRunner):
               $13, $14, $15,
               $16, $17, $18, $19,
               $20, $21, $22,
-              $23, $24
+              $23, $24,
+              $25, $26, $27, $28,
+              $29, $30, $31
             )
-            ON CONFLICT (correlation_id) DO NOTHING
+            ON CONFLICT (correlation_id) DO UPDATE SET
+              required_bar = COALESCE(EXCLUDED.required_bar, {self._table_delegation}.required_bar),
+              actual_score = COALESCE(EXCLUDED.actual_score, {self._table_delegation}.actual_score),
+              escalation_count = GREATEST(EXCLUDED.escalation_count, {self._table_delegation}.escalation_count),
+              authority_source = COALESCE(EXCLUDED.authority_source, {self._table_delegation}.authority_source),
+              score_source = COALESCE(EXCLUDED.score_source, {self._table_delegation}.score_source),
+              request_override_applied = EXCLUDED.request_override_applied OR {self._table_delegation}.request_override_applied,
+              override_within_bounds = EXCLUDED.override_within_bounds AND {self._table_delegation}.override_within_bounds
             """,
             correlation_id,
             str(session_id) if session_id else None,
@@ -637,6 +681,17 @@ class DelegationProjectionRunner(BaseProjectionRunner):
             tokens_to_compliance,
             compliance_attempts,
             pricing_manifest_version,
+            _safe_numeric_str(quality_bar_evidence.get("required_bar")),
+            _safe_numeric_str(quality_bar_evidence.get("actual_score")),
+            _safe_int_or_none(quality_bar_evidence.get("escalation_count")) or 0,
+            str(quality_bar_evidence.get("authority_source"))
+            if quality_bar_evidence.get("authority_source") is not None
+            else None,
+            str(quality_bar_evidence.get("score_source"))
+            if quality_bar_evidence.get("score_source") is not None
+            else None,
+            bool(quality_bar_evidence.get("request_override_applied") or False),
+            bool(quality_bar_evidence.get("override_within_bounds") is not False),
         )
         return True
 
@@ -1135,6 +1190,31 @@ def _canonical_result_to_task_delegated_payload(
         "pricing_manifest_version": (
             _first_present(result, "pricing_manifest_version", "pricingManifestVersion")
             or 0
+        ),
+        "required_bar": _first_present(result, "required_bar", "requiredBar"),
+        "actual_score": (
+            _first_present(result, "actual_score", "actualScore")
+            or _first_present(result, "quality_score", "qualityScore")
+        ),
+        "escalation_count": (
+            _first_present(result, "escalation_count", "escalationCount") or 0
+        ),
+        "authority_source": (
+            _first_present(result, "authority_source", "authoritySource")
+            or _first_present(result, "required_bar_source", "requiredBarSource")
+        ),
+        "score_source": _first_present(result, "score_source", "scoreSource"),
+        "request_override_applied": (
+            _first_present(
+                result,
+                "request_override_applied",
+                "requestOverrideApplied",
+            )
+            or False
+        ),
+        "override_within_bounds": (
+            _first_present(result, "override_within_bounds", "overrideWithinBounds")
+            is not False
         ),
     }
 

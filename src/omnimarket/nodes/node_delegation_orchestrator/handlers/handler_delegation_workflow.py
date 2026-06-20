@@ -46,6 +46,9 @@ from omnimarket.inference.protocol_config import apply_inference_protocol
 from omnimarket.models.delegation.llm_cost_routing.model_llm_delegation_escalation_triggered_event import (
     ModelLlmDelegationEscalationTriggeredEvent,
 )
+from omnimarket.models.delegation.quality_bar_evidence import (
+    format_quality_bar_labels,
+)
 from omnimarket.nodes.contract_topics import contract_publish_topics
 from omnimarket.nodes.node_delegation_orchestrator.contract_topics import (
     TOPIC_ID_DELEGATION_COMPLETED,
@@ -87,6 +90,11 @@ from omnimarket.nodes.node_delegation_orchestrator.models.model_routing_intent i
 )
 from omnimarket.nodes.node_delegation_orchestrator.models.model_task_delegated_event import (
     ModelTaskDelegatedEvent,
+)
+from omnimarket.nodes.node_delegation_orchestrator.quality_bar_authority import (
+    RequiredBarAuthority,
+    RequiredBarAuthorityError,
+    resolve_required_bar_authority,
 )
 from omnimarket.nodes.node_delegation_quality_gate_reducer.models.model_quality_gate_input import (
     ModelQualityGateInput,
@@ -852,8 +860,56 @@ class HandlerDelegationWorkflow:
         )
 
         events: list[BaseModel] = []
+        try:
+            required_bar_authority = resolve_required_bar_authority(
+                task_type=workflow.request.task_type
+            )
+        except RequiredBarAuthorityError as exc:
+            escalation_metadata = self._escalation_metadata(
+                workflow,
+                terminal_failure_reason="required_bar_missing",
+            )
+            delegation_result = ModelDelegationResult(
+                correlation_id=cid,
+                task_type=workflow.request.task_type,
+                model_used=workflow.inference_model_used,
+                endpoint_url=workflow.routing_decision.endpoint_url,
+                content=workflow.inference_content,
+                quality_passed=False,
+                quality_score=result.quality_score,
+                latency_ms=elapsed_ms,
+                prompt_tokens=workflow.inference_prompt_tokens,
+                completion_tokens=workflow.inference_completion_tokens,
+                total_tokens=workflow.inference_total_tokens,
+                fallback_to_claude=False,
+                failure_reason=f"required_bar_missing: {exc}",
+                tokens_to_compliance=tokens_to_compliance,
+                compliance_attempts=compliance_attempts,
+                **escalation_metadata,
+            )
+            compat_event = self._build_compat_event(
+                workflow,
+                result,
+                elapsed_ms,
+                tokens_to_compliance,
+                compliance_attempts,
+                quality_gate_passed=False,
+            )
+            self._transition(workflow, EnumDelegationState.FAILED)
+            return [
+                ModelDelegationEvent(
+                    topic=TOPIC_ID_DELEGATION_FAILED,
+                    payload=delegation_result,
+                ),
+                compat_event,
+            ]
 
-        if result.passed:
+        actual_score = result.quality_score
+        score_below_required_bar = actual_score < required_bar_authority.required_bar
+        pre_filter_rejected = result.fail_category == "fail_deterministic"
+        quality_accepted = not pre_filter_rejected and not score_below_required_bar
+
+        if quality_accepted:
             # --- PASSED: complete as before ---
             escalation_metadata = self._escalation_metadata(workflow)
             delegation_result = ModelDelegationResult(
@@ -868,7 +924,7 @@ class HandlerDelegationWorkflow:
                 prompt_tokens=workflow.inference_prompt_tokens,
                 completion_tokens=workflow.inference_completion_tokens,
                 total_tokens=workflow.inference_total_tokens,
-                fallback_to_claude=result.fallback_recommended,
+                fallback_to_claude=False,
                 failure_reason="",
                 tokens_to_compliance=tokens_to_compliance,
                 compliance_attempts=compliance_attempts,
@@ -886,6 +942,8 @@ class HandlerDelegationWorkflow:
                 elapsed_ms,
                 tokens_to_compliance,
                 compliance_attempts,
+                quality_gate_passed=True,
+                required_bar_authority=required_bar_authority,
             )
 
             self._transition(workflow, EnumDelegationState.COMPLETED)
@@ -917,9 +975,13 @@ class HandlerDelegationWorkflow:
                 tier_name=workflow.current_tier_name or "unknown",
                 model_used=workflow.inference_model_used or "unknown",
                 quality_score=result.quality_score,
+                required_bar=required_bar_authority.required_bar,
+                actual_score=actual_score,
+                authority_source=required_bar_authority.authority_source,
+                score_source=required_bar_authority.score_source,
                 failure_reasons=tuple(result.failure_reasons),
                 latency_ms=elapsed_ms,
-                fallback_recommended=result.fallback_recommended,
+                fallback_recommended=True,
                 attempted_at=result.evaluated_at
                 if hasattr(result, "evaluated_at") and result.evaluated_at is not None
                 else datetime.now(UTC),
@@ -931,9 +993,7 @@ class HandlerDelegationWorkflow:
         terminal_failure_reason: str | None = None
         next_tier: str | None = None
 
-        if not result.fallback_recommended:
-            terminal_failure_reason = "fallback_not_recommended"
-        elif workflow.escalation_count >= max_escalation_attempts:
+        if workflow.escalation_count >= max_escalation_attempts:
             terminal_failure_reason = "max_escalation_attempts_reached"
         elif workflow.current_tier_name is None:
             terminal_failure_reason = "current_tier_unknown"
@@ -967,8 +1027,11 @@ class HandlerDelegationWorkflow:
             escalation_event = self._build_escalation_event(
                 workflow,
                 failure_class=EnumDelegationFailureClass.QUALITY_GATE_FAILED,
-                escalation_reason="; ".join(result.failure_reasons)
-                or "quality_gate_failed",
+                escalation_reason=self._score_vs_bar_reason(
+                    result,
+                    required_bar_authority,
+                    pre_filter_rejected=pre_filter_rejected,
+                ),
             )
 
             self._transition(workflow, EnumDelegationState.ESCALATING)
@@ -1008,8 +1071,12 @@ class HandlerDelegationWorkflow:
             prompt_tokens=workflow.inference_prompt_tokens,
             completion_tokens=workflow.inference_completion_tokens,
             total_tokens=workflow.inference_total_tokens,
-            fallback_to_claude=result.fallback_recommended,
-            failure_reason="; ".join(result.failure_reasons),
+            fallback_to_claude=True,
+            failure_reason=self._score_vs_bar_reason(
+                result,
+                required_bar_authority,
+                pre_filter_rejected=pre_filter_rejected,
+            ),
             tokens_to_compliance=tokens_to_compliance,
             compliance_attempts=compliance_attempts,
             **escalation_metadata,
@@ -1021,6 +1088,8 @@ class HandlerDelegationWorkflow:
             elapsed_ms,
             tokens_to_compliance,
             compliance_attempts,
+            quality_gate_passed=False,
+            required_bar_authority=required_bar_authority,
         )
 
         self._transition(workflow, EnumDelegationState.FAILED)
@@ -1078,6 +1147,26 @@ class HandlerDelegationWorkflow:
             created_at=datetime.now(UTC),
         )
 
+    @staticmethod
+    def _score_vs_bar_reason(
+        result: ModelQualityGateResult,
+        required_bar_authority: RequiredBarAuthority,
+        *,
+        pre_filter_rejected: bool,
+    ) -> str:
+        prefix = (
+            "pre_filter_rejected" if pre_filter_rejected else "score_below_required_bar"
+        )
+        detail = (
+            f"{prefix}: actual_score={result.quality_score:.3f} "
+            f"required_bar={required_bar_authority.required_bar:.3f} "
+            f"authority_source={required_bar_authority.authority_source} "
+            f"score_source={required_bar_authority.score_source}"
+        )
+        if result.failure_reasons:
+            return f"{detail}; failures={'; '.join(result.failure_reasons)}"
+        return detail
+
     def _escalation_metadata(
         self,
         workflow: DelegationWorkflowState,
@@ -1121,6 +1210,9 @@ class HandlerDelegationWorkflow:
         elapsed_ms: int,
         tokens_to_compliance: int,
         compliance_attempts: int,
+        *,
+        quality_gate_passed: bool | None = None,
+        required_bar_authority: RequiredBarAuthority | None = None,
     ) -> ModelTaskDelegatedEvent:
         """Build backward-compatible task-delegated.v1 event for omnidash."""
         assert workflow.request is not None
@@ -1135,6 +1227,20 @@ class HandlerDelegationWorkflow:
         history_dicts = tuple(
             attempt.model_dump(mode="json") for attempt in workflow.escalation_history
         )
+        accepted = result.passed if quality_gate_passed is None else quality_gate_passed
+        quality_gates_checked = (
+            format_quality_bar_labels(
+                required_bar=required_bar_authority.required_bar,
+                actual_score=result.quality_score,
+                escalation_count=workflow.escalation_count,
+                authority_source=required_bar_authority.authority_source,
+                score_source=required_bar_authority.score_source,
+                request_override_applied=required_bar_authority.request_override_applied,
+                override_within_bounds=required_bar_authority.override_within_bounds,
+            )
+            if required_bar_authority is not None
+            else ["required_bar_missing"]
+        )
 
         return ModelTaskDelegatedEvent(
             topic=TOPIC_ID_TASK_DELEGATED,
@@ -1144,8 +1250,9 @@ class HandlerDelegationWorkflow:
             task_type=workflow.request.task_type,
             delegated_to=workflow.inference_model_used,
             model_name=workflow.routing_decision.selected_model,
-            quality_gate_passed=result.passed,
-            quality_gates_failed=list(result.failure_reasons),
+            quality_gate_passed=accepted,
+            quality_gates_checked=quality_gates_checked,
+            quality_gates_failed=[] if accepted else list(result.failure_reasons),
             cost_usd=0.0,
             cost_savings_usd=round(estimated_claude_cost, 6),
             delegation_latency_ms=elapsed_ms,

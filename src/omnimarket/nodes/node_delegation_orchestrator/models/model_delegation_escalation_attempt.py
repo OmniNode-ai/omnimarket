@@ -23,6 +23,22 @@ class ModelDelegationEscalationAttempt(BaseModel):
     quality_score: float = Field(
         ..., description="Quality gate score for this attempt (0.0-1.0)."
     )
+    required_bar: float | None = Field(
+        default=None,
+        description="Required adequacy bar resolved from task-class/workflow/request authority.",
+    )
+    actual_score: float | None = Field(
+        default=None,
+        description="Actual score compared against required_bar for escalation.",
+    )
+    authority_source: str | None = Field(
+        default=None,
+        description="Authority source that supplied required_bar.",
+    )
+    score_source: str | None = Field(
+        default=None,
+        description="Scoring authority that produced actual_score.",
+    )
     failure_reasons: tuple[str, ...] = Field(
         default=(),
         description="Failure reason strings emitted by the quality gate.",

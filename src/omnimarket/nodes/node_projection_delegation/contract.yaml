@@ -41,7 +41,7 @@ golden_path:
 db_io:
   db_tables:
     - name: delegation_events
-      migration: "0011_delegation_event_projection_versions.sql"
+      migration: "0016_delegation_quality_bar_evidence.sql"
       access: write
       database: omnidash_analytics
       role: events
@@ -108,6 +108,13 @@ projection_api:
         - tokens_output
         - tokens_to_compliance
         - compliance_attempts
+        - required_bar
+        - actual_score
+        - escalation_count
+        - authority_source
+        - score_source
+        - request_override_applied
+        - override_within_bounds
         - cost_usd
         - cost_savings_usd
         - pricing_manifest_version
@@ -133,6 +140,10 @@ projection_api:
         - tokens_output
         - tokens_to_compliance
         - compliance_attempts
+        - required_bar
+        - actual_score
+        - escalation_count
+        - authority_source
         - pricing_manifest_version
       order_by: timestamp DESC
       freshness_column: timestamp
@@ -153,6 +164,11 @@ projection_api:
         - tokens_input
         - tokens_output
         - tokens_to_compliance
+        - required_bar
+        - actual_score
+        - escalation_count
+        - authority_source
+        - score_source
         - created_at
       order_by: created_at DESC
       freshness_column: created_at
@@ -182,6 +198,13 @@ projection_api:
         - tokens_output
         - tokens_to_compliance
         - compliance_attempts
+        - required_bar
+        - actual_score
+        - escalation_count
+        - authority_source
+        - score_source
+        - request_override_applied
+        - override_within_bounds
         - cost_usd
         - cost_savings_usd
         - pricing_manifest_version
@@ -243,6 +266,8 @@ projection_api:
         - total_checks
         - escalation_count
         - escalation_rate
+        - avg_actual_score
+        - avg_required_bar
         - by_check_type
         - failure_categories
         - avg_tokens_to_compliance

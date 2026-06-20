@@ -1,0 +1,55 @@
+---
+schema_version: "1.0.0"
+ticket_id: OMN-13368
+title: "P3 score-vs-required-bar escalation and projection visibility"
+summary: >-
+  Implements P3 of the delegation quality-gate redesign in omnimarket. Required-bar authority now resolves
+  from task_class contract defaults, workflow overrides that can narrow or raise, and request overrides
+  only within declared contract bounds. Delegation escalation is driven by actual_score < required_bar;
+  deterministic pre-filters remain reject-only and cannot promote output to adequate. Delegation events
+  and projections expose required_bar, actual_score, escalation_count, authority_source, score_source,
+  and request override evidence.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+evidence_requirements:
+  - kind: tests
+    description: "Focused delegation and projection tests cover no-escalation, escalation, ceiling failure, and missing bar fail-closed behavior"
+    command: "uv run pytest tests/unit/delegation/test_delegation_tier_escalation.py tests/test_golden_chain_projection_delegation.py tests/unit/delegation/test_delegation_orchestrator.py tests/unit/delegation/test_delegation_quality_contract.py -q"
+  - kind: tests
+    description: "Projection suites cover quality-bar persistence and API exposure"
+    command: "uv run pytest tests/unit/projection tests/test_projection_delegation_api_contract.py tests/test_projection_handlers.py -q"
+  - kind: ci
+    description: "CI pipeline green on the omnimarket PR"
+    command: "gh pr checks ${PR_NUMBER} --repo OmniNode-ai/omnimarket"
+  - kind: manual
+    description: >-
+      Deploy assessment: code + config + projection migration change. Migration 0016 is vendored with
+      the omnimarket package; live apply/restart follows normal dev deployment policy. No bespoke REST
+      endpoint, topic, or off-bus integration is introduced.
+    command: "printf '%s\n' 'deploy gate: P3 required-bar escalation + delegation projection evidence; migration 0016 vendored; no bespoke REST endpoint; live apply follows normal dev deployment policy'"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: dod-tests
+    description: "Focused delegation and projection tests pass"
+    source: manual
+    checks:
+      - check_type: command
+        check_value: "uv run pytest tests/unit/delegation/test_delegation_tier_escalation.py tests/test_golden_chain_projection_delegation.py tests/unit/delegation/test_delegation_orchestrator.py tests/unit/delegation/test_delegation_quality_contract.py -q"
+  - id: dod-projection
+    description: "Projection test suites pass with P3 quality-bar evidence fields"
+    source: manual
+    checks:
+      - check_type: command
+        check_value: "uv run pytest tests/unit/projection tests/test_projection_delegation_api_contract.py tests/test_projection_handlers.py -q"
+  - id: dod-deploy
+    description: >-
+      Projection migration 0016 is included in the package. No runtime restart, Kafka topic change, or
+      bespoke REST endpoint is performed by this PR; live apply follows normal dev deployment policy.
+    source: manual
+    checks:
+      - check_type: command
+        check_value: "printf '%s\n' 'deploy gate: migration 0016 vendored; no runtime restart or Kafka topic change in PR; live apply follows normal dev deployment policy'"

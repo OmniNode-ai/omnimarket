@@ -151,6 +151,12 @@ _TASK_CLASS_CONTRACT_GEMINI = textwrap.dedent(
         definition_of_done:
           deterministic: []
           heuristic: [min_length_chars_400]
+        quality_gate:
+          score_source: quality_gate_graded_score
+          required_bar: 0.85
+          request_override_bounds:
+            min: 0.6
+            max: 1.0
     """
 )
 

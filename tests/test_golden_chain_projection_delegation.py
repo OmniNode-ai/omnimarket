@@ -244,6 +244,11 @@ class TestDelegationProjection:
             "fallback_to_claude": False,
             "tokens_to_compliance": 737,
             "compliance_attempts": 1,
+            "required_bar": 0.8,
+            "actual_score": 0.98,
+            "escalation_count": 0,
+            "authority_source": "task_class:test",
+            "score_source": "quality_gate_graded_score",
         }
 
         result = HANDLER.handle(payload)
@@ -258,6 +263,43 @@ class TestDelegationProjection:
         assert row["tokens_output"] == 593
         assert row["tokens_to_compliance"] == 737
         assert row["response_text"] == "projection proof"
+        assert row["required_bar"] == 0.8
+        assert row["actual_score"] == 0.98
+        assert row["escalation_count"] == 0
+        assert row["authority_source"] == "task_class:test"
+        assert row["score_source"] == "quality_gate_graded_score"
+
+    def test_task_delegated_labels_project_quality_bar_evidence(self) -> None:
+        db = InmemoryDatabaseAdapter()
+        payload: dict[str, object] = {
+            "_db": db,
+            "correlation_id": "corr-quality-bar-labels",
+            "task_type": "test",
+            "delegated_to": _DELEGATE_SKILL_TEST_MODEL,
+            "quality_gate_passed": False,
+            "quality_gates_checked": [
+                "p3.required_bar=0.800",
+                "p3.actual_score=0.700",
+                "p3.escalation_count=1",
+                "p3.authority_source=task_class:test",
+                "p3.score_source=quality_gate_graded_score",
+                "p3.request_override_applied=false",
+                "p3.override_within_bounds=true",
+            ],
+            "quality_gates_failed": ["score_below_required_bar"],
+        }
+
+        result = HANDLER.handle(payload)
+
+        assert result["rows_upserted"] == 1
+        row = db.query("delegation_events")[0]
+        assert row["required_bar"] == 0.8
+        assert row["actual_score"] == 0.7
+        assert row["escalation_count"] == 1
+        assert row["authority_source"] == "task_class:test"
+        assert row["score_source"] == "quality_gate_graded_score"
+        assert row["request_override_applied"] is False
+        assert row["override_within_bounds"] is True
 
     def test_terminal_row_carries_created_at(self) -> None:
         """OMN-13171: the terminal projection row populates created_at.
@@ -1042,3 +1084,13 @@ class TestNoBackfillMaterialization:
         ).read_text()
         assert "projection_version" in migration
         assert "reducer_version" in migration
+
+    def test_migration_declares_quality_bar_evidence_columns(self) -> None:
+        migration = Path(
+            "src/omnimarket/nodes/node_projection_delegation/migrations/"
+            "0016_delegation_quality_bar_evidence.sql"
+        ).read_text()
+        assert "required_bar NUMERIC" in migration
+        assert "actual_score NUMERIC" in migration
+        assert "escalation_count INT NOT NULL DEFAULT 0" in migration
+        assert "authority_source TEXT" in migration
