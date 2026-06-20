@@ -130,6 +130,14 @@ event_bus:
     # result on generated-node-invoked. The deploy command is published by this
     # same node's generation flow (_emit_deploy) and consumed by the executor.
     - onex.cmd.omnimarket.node-deploy.v1
+    # OMN-13356: the tool-reuse pre-check is bus-native. Before generating, this
+    # node publishes a tool-reuse-match-requested command (below) and awaits the
+    # matcher's verdict on one of these two terminals. A MATCHED verdict
+    # short-circuits generation (the existing tool is returned, no LLM call); a
+    # NO_MATCH verdict proceeds to fresh generation. Both terminals are produced
+    # by node_tool_reuse_matcher_compute.
+    - onex.evt.omnimarket.tool-reuse-matched.v1
+    - onex.evt.omnimarket.tool-reuse-no-match.v1
   publish_topics:
     - onex.evt.omnimarket.node-generation-completed.v1
     - onex.evt.omnimarket.node-generation-failed.v1
@@ -145,6 +153,11 @@ event_bus:
     # the authority's decision (tier, provider, model, endpoint, attempt_count,
     # escalation_reason). Generation does NOT select the next model itself.
     - onex.evt.omnimarket.delegation-escalation-triggered.v1
+    # OMN-13356: the tool-reuse pre-check command. Published BEFORE the LLM
+    # generation loop runs; consumed by node_tool_reuse_matcher_compute, which
+    # replies on tool-reuse-matched.v1 / tool-reuse-no-match.v1 (subscribed
+    # above). A MATCHED verdict short-circuits generation; NO_MATCH proceeds.
+    - onex.cmd.omnimarket.tool-reuse-match-requested.v1
 
 model_routing:
   # OMN-12779 + OMN-12801: provider, served_model_id, and endpoint_ref are

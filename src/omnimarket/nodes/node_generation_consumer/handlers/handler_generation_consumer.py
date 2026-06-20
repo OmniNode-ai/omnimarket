@@ -52,15 +52,13 @@ from omnimarket.models.delegation.llm_cost_routing.model_generation_escalation_e
     ModelGenerationEscalationTriggeredEvent,
 )
 from omnimarket.nodes.node_delegation_routing_reducer.handlers.handler_delegation_routing import (
-    delta as routing_authority_delta,
-)
-from omnimarket.nodes.node_delegation_routing_reducer.handlers.handler_delegation_routing import (
+    ModelRoutingDecision,
     next_eligible_tier,
     tier_for_backend,
     tier_max_retries,
 )
-from omnimarket.nodes.node_delegation_routing_reducer.models.model_routing_decision import (
-    ModelRoutingDecision,
+from omnimarket.nodes.node_delegation_routing_reducer.handlers.handler_delegation_routing import (
+    delta as routing_authority_delta,
 )
 from omnimarket.nodes.node_generation_consumer.corpus_acceptance import (
     ModelCorpusAcceptanceResult,
@@ -139,14 +137,46 @@ _GEMINI_INPUT_COST_PER_TOKEN = 0.075 / 1_000_000
 _GEMINI_OUTPUT_COST_PER_TOKEN = 0.30 / 1_000_000
 
 EventPublisher = Callable[[str, bytes], None]
+# OMN-13356: the injectable bus consumer used to await the tool-reuse matcher's
+# verdict. (topic, correlation_id, timeout_seconds) -> deserialized payload dict
+# or None on timeout. Same shape node_context_roi_runner injects so the runtime
+# can supply the same omnibase_infra TerminalEventConsumer adapter for both.
+EventConsumer = Callable[[str, str, float], dict[str, Any] | None]
 _STATE_ROOT_ENV_KEYS = ("ONEX_STATE_DIR", "ONEX_STATE_ROOT")
 _REPLAY_STATE_DIR = "node_generation_consumer/replay"
+
+# OMN-13356: the tool-reuse pre-check is bus-native. Before generating, the node
+# publishes a match-request command (semantic strategy — the contract signature
+# is unknown pre-generation, so the matcher's lexical-similarity path over the
+# task description is the only honest match strategy) and awaits the matcher's
+# verdict. A MATCHED verdict short-circuits the LLM generation loop entirely.
+_TOOL_REUSE_MATCH_STRATEGY = "semantic"
+# Default seconds to wait for the matcher's verdict before proceeding to
+# generation. The matcher is a pure compute node (no I/O), so its turnaround is
+# fast; a missed/late verdict must NOT block generation indefinitely, so on
+# timeout the node proceeds to generate (fail-open to fresh generation — never
+# skip generation because the reuse optimisation was slow or unavailable).
+_TOOL_REUSE_WAIT_TIMEOUT_SECONDS = 10.0
+# Pre-generation requests carry no real contract signature (the signature is an
+# OUTPUT of generation). The matcher's SEMANTIC path ignores requested_signature,
+# but the field is required and min_length-validated, so a clearly-labelled
+# sentinel is sent. It never participates in matching.
+_PRE_GENERATION_SIGNATURE_SENTINEL = "__pre_generation_unknown__"
 
 
 def _noop_publisher(topic: str, payload: bytes) -> None:
     logger.debug(
         "[generation-consumer] noop publish to %s (%d bytes)", topic, len(payload)
     )
+
+
+def _noop_consumer(
+    topic: str, correlation_id: str, timeout_seconds: float
+) -> dict[str, Any] | None:
+    logger.debug(
+        "[generation-consumer] noop consume from %s for %s", topic, correlation_id
+    )
+    return None
 
 
 def _resolve_state_root() -> Path | None:
@@ -671,12 +701,21 @@ class HandlerGenerationConsumer:
         effect_handler: Any | None = None,
         event_publisher: EventPublisher | None = None,
         contract_path: Path | None = None,
+        event_consumer: EventConsumer | None = None,
     ) -> None:
         self._effect = effect_handler
         self._injected_effect: bool = effect_handler is not None
         self._event_publisher: EventPublisher = event_publisher or _noop_publisher
+        # OMN-13356: bus consumer used to await the tool-reuse matcher's verdict.
+        # Falls back to a no-op (which always returns None → proceed to generate)
+        # so a runtime/test that does not wire the matcher behaves exactly as
+        # before — the reuse pre-check is then a no-op, never a hang.
+        self._event_consumer: EventConsumer = event_consumer or _noop_consumer
 
         contract = _load_contract(contract_path)
+        subscribe_topics: list[str] = contract.get("event_bus", {}).get(
+            "subscribe_topics", []
+        )
         publish_topics: list[str] = contract.get("event_bus", {}).get(
             "publish_topics", []
         )
@@ -696,6 +735,21 @@ class HandlerGenerationConsumer:
         # no-op (graceful), but the production contract declares it.
         self._topic_escalation = next(
             (t for t in publish_topics if "delegation-escalation-triggered" in t), ""
+        )
+
+        # OMN-13356: tool-reuse pre-check topics, resolved from the contract (never
+        # hardcoded). The command is published before generation; the two verdict
+        # terminals (matched / no-match) are awaited via the injected consumer.
+        # Empty when the contract omits a topic — the pre-check then no-ops and
+        # generation proceeds (the matcher node owns the inverse subscriptions).
+        self._topic_tool_reuse_request = next(
+            (t for t in publish_topics if "tool-reuse-match-requested" in t), ""
+        )
+        self._topic_tool_reuse_matched = next(
+            (t for t in subscribe_topics if "tool-reuse-matched" in t), ""
+        )
+        self._topic_tool_reuse_no_match = next(
+            (t for t in subscribe_topics if "tool-reuse-no-match" in t), ""
         )
 
         # Resolve LLM routing config from contract model_routing section.
@@ -1024,6 +1078,22 @@ class HandlerGenerationConsumer:
             )
             return replayed
 
+        # OMN-13356: tool-reuse pre-check (bus-native). Before doing ANY LLM work,
+        # ask the tool-reuse matcher whether an already-generated tool serves this
+        # task. On a MATCHED verdict, short-circuit: return a benchmark for the
+        # existing tool and skip generation entirely (the whole point — reuse
+        # avoids the LLM call). On NO_MATCH (or no matcher wired / timeout), fall
+        # through to fresh generation.
+        reuse_benchmark = self._try_tool_reuse_short_circuit(command)
+        if reuse_benchmark is not None:
+            # Emit the benchmark so the reuse is observable on the bus / projection
+            # (contract_passed=True, reused_tool_id set, zero attempts/cost) — but
+            # do NOT deploy/register: the reused tool already exists. Record the
+            # replay marker so a re-delivery of the same command is idempotent.
+            self._emit_benchmark(reuse_benchmark)
+            self._record_replay_benchmark(reuse_benchmark)
+            return reuse_benchmark
+
         self._ensure_effect()
 
         # OMN-13359: start the run on the contract-declared tier, then ride the
@@ -1302,6 +1372,161 @@ class HandlerGenerationConsumer:
                 self._emit_registration(benchmark)
 
         self._record_replay_benchmark(benchmark)
+        return benchmark
+
+    # ------------------------------------------------------------------ #
+    # OMN-13356: tool-reuse short-circuit (bus-native)
+    # ------------------------------------------------------------------ #
+    def _try_tool_reuse_short_circuit(
+        self, command: ModelNodeGenerationRequest
+    ) -> ModelGenerationBenchmark | None:
+        """Ask the tool-reuse matcher over the bus whether to skip generation.
+
+        Bus-native flow (no in-process call into the matcher node):
+          1. Publish a ``tool-reuse-match-requested`` command carrying the task
+             description and a SEMANTIC match strategy (the contract signature is
+             unknown pre-generation, so the matcher's lexical-similarity path over
+             the description is the only honest strategy).
+          2. Await the matcher's verdict on the ``tool-reuse-matched`` terminal.
+          3. On a MATCHED payload → return a short-circuit benchmark for the
+             existing tool (zero attempts, zero cost, ``reused_tool_id`` set), so
+             ``handle`` returns WITHOUT ever calling the LLM.
+          4. On timeout / no-match / no matcher wired → return ``None`` so
+             ``handle`` proceeds to fresh generation (fail-open to generation —
+             the reuse path is an optimisation, never a hard dependency).
+
+        The matcher emits exactly ONE terminal per command (matched OR no-match
+        on different topics). The decision only needs the MATCHED terminal: its
+        absence (the wait times out because the matcher published NO_MATCH
+        instead, or no matcher is wired) means "proceed to generate".
+        """
+        if not self._topic_tool_reuse_request or not self._topic_tool_reuse_matched:
+            # Contract does not declare the reuse topics — pre-check disabled.
+            return None
+
+        # The matcher correlates on a UUID (ModelToolReuseRequest.correlation_id),
+        # but the generation correlation_id is a free-form string (e.g.
+        # "OMN-13356-..."). Mint a dedicated UUID for the match request/verdict
+        # round-trip and correlate on it; the human-facing generation
+        # correlation_id is preserved separately on the returned benchmark.
+        match_correlation_id = str(uuid4())
+        payload = {
+            "correlation_id": match_correlation_id,
+            "task_description": command.task_description,
+            "match_strategy": _TOOL_REUSE_MATCH_STRATEGY,
+            # The contract signature is an OUTPUT of generation, unknown here. The
+            # SEMANTIC path ignores it; the sentinel only satisfies the matcher's
+            # required, min_length-validated signature fields. It never matches.
+            "requested_signature": {
+                "input_model_name": _PRE_GENERATION_SIGNATURE_SENTINEL,
+                "input_model_module": _PRE_GENERATION_SIGNATURE_SENTINEL,
+                "output_model_name": _PRE_GENERATION_SIGNATURE_SENTINEL,
+                "output_model_module": _PRE_GENERATION_SIGNATURE_SENTINEL,
+                "input_fields_hash": _PRE_GENERATION_SIGNATURE_SENTINEL,
+                "output_fields_hash": _PRE_GENERATION_SIGNATURE_SENTINEL,
+            },
+        }
+        try:
+            self._event_publisher(
+                self._topic_tool_reuse_request,
+                json.dumps(payload).encode("utf-8"),
+            )
+        except Exception as exc:
+            logger.warning(
+                "[generation-consumer] failed to publish tool-reuse match "
+                "request to %s; proceeding to generation: %s",
+                self._topic_tool_reuse_request,
+                exc,
+            )
+            return None
+
+        try:
+            verdict_payload = self._event_consumer(
+                self._topic_tool_reuse_matched,
+                match_correlation_id,
+                _TOOL_REUSE_WAIT_TIMEOUT_SECONDS,
+            )
+        except Exception as exc:
+            logger.warning(
+                "[generation-consumer] awaiting tool-reuse verdict on %s failed; "
+                "proceeding to generation: %s",
+                self._topic_tool_reuse_matched,
+                exc,
+            )
+            return None
+
+        if verdict_payload is None:
+            # No MATCHED terminal arrived in time — the matcher published NO_MATCH
+            # (or none is wired). Proceed to fresh generation.
+            return None
+
+        return self._build_reuse_benchmark(command, verdict_payload)
+
+    def _build_reuse_benchmark(
+        self,
+        command: ModelNodeGenerationRequest,
+        verdict_payload: dict[str, Any],
+    ) -> ModelGenerationBenchmark | None:
+        """Build the short-circuit benchmark from a MATCHED matcher verdict.
+
+        Returns ``None`` (→ proceed to generation) when the payload does not carry
+        a genuine ``matched`` verdict with a resolved tool — a malformed or
+        non-matched event must never masquerade as a reuse, which would skip
+        generation without a real tool to return.
+        """
+        verdict = str(verdict_payload.get("verdict", "")).lower()
+        matched_tool = verdict_payload.get("matched_tool")
+        if verdict != "matched" or not isinstance(matched_tool, dict):
+            return None
+
+        tool = matched_tool.get("tool")
+        if not isinstance(tool, dict):
+            return None
+
+        tool_id = str(tool.get("tool_id", "")).strip()
+        if not tool_id:
+            return None
+
+        benchmark = ModelGenerationBenchmark(
+            correlation_id=command.correlation_id,
+            task_description=command.task_description,
+            # No LLM ran: the run was satisfied by an existing tool.
+            provider="",
+            model_id="",
+            endpoint_class="",
+            usage_source=EnumUsageSource.UNKNOWN,
+            cost_basis="tool_reuse",
+            attempts=[],
+            attempt_count=0,
+            total_latency_e2e_ms=0,
+            # The reused tool already passed validation when it was generated, so
+            # the task IS served — contract_passed=True. semantic/corpus are not
+            # re-evaluated here (no fresh artifact was produced); they stay False
+            # (not-a-pass), which is honest: this run did no behavioral check.
+            contract_passed=True,
+            semantic_checked=False,
+            semantic_passed=False,
+            corpus_checked=False,
+            corpus_passed=False,
+            corpus_errors=[],
+            cost_inference_usd=0.0,
+            contract_yaml="",
+            handler_source="",
+            prompt_tokens=0,
+            completion_tokens=0,
+            first_pass_success=False,
+            context_pack_hash=command.context_pack_hash,
+            routing_source="",
+            resolved_endpoint="",
+            # OMN-13356: the proof this run was a reuse short-circuit.
+            reused_tool_id=tool_id,
+        )
+        logger.info(
+            "[generation-consumer] tool-reuse MATCHED for correlation_id=%s -> "
+            "reusing tool_id=%s; skipping LLM generation",
+            command.correlation_id,
+            tool_id,
+        )
         return benchmark
 
     def _load_replay_benchmark(
