@@ -10,6 +10,7 @@ from decimal import Decimal
 from typing import Self
 from uuid import UUID
 
+from omnibase_core.models.delegation.wire import ModelPremiumCounterfactual
 from pydantic import (
     AliasChoices,
     AwareDatetime,
@@ -132,6 +133,7 @@ class ModelDelegationEventProjectionRow(BaseModel):
     tokens_to_compliance: int
     compliance_attempts: int
     pricing_manifest_version: int = 0
+    premium_counterfactual: ModelPremiumCounterfactual | None = None
     projection_version: str = PROJECTION_VERSION
     reducer_version: str = REDUCER_VERSION
 
@@ -167,6 +169,8 @@ class ModelDelegationEventProjectionRow(BaseModel):
             tokens_to_compliance=tokens_to_compliance,
             compliance_attempts=metrics.compliance_attempts,
             pricing_manifest_version=event.pricing_manifest_version,
+            # OMN-13355: carry the pinned premium counterfactual onto the row.
+            premium_counterfactual=metrics.premium_counterfactual,
             projection_version=PROJECTION_VERSION,
             reducer_version=REDUCER_VERSION,
         )

@@ -31,6 +31,7 @@ import hashlib
 from datetime import UTC, datetime
 from decimal import Decimal
 
+from omnibase_core.models.delegation.wire import ModelPremiumCounterfactual
 from pydantic import BaseModel, ConfigDict, Field
 
 from omnimarket.events.delegation_judge_verdict import (
@@ -198,6 +199,14 @@ class ModelProjectionTaskDelegatedEvent(BaseModel):
         ge=0,
         description="Version of the pricing manifest used to compute cost_savings_usd (OMN-10949).",
     )
+    premium_counterfactual: ModelPremiumCounterfactual | None = Field(
+        default=None,
+        description=(
+            "Pinned premium counterfactual {model, price, as_of, tokens, cost} "
+            "carried from the durable task-delegated event (OMN-13355). Persisted "
+            "as JSONB so the saving (counterfactual - actual) is auditable."
+        ),
+    )
     required_bar: float | None = Field(default=None, ge=0.0, le=1.0)
     actual_score: float | None = Field(default=None, ge=0.0, le=1.0)
     escalation_count: int = Field(default=0, ge=0)
@@ -298,6 +307,13 @@ class HandlerProjectionDelegation:
             "prompt_text": event.prompt_text,
             "response_text": event.response_text,
             "pricing_manifest_version": event.pricing_manifest_version,
+            # OMN-13355: persist the pinned premium counterfactual as JSONB so the
+            # saving (counterfactual - actual) is auditable from the projection row.
+            "premium_counterfactual": (
+                event.premium_counterfactual.model_dump(mode="json")
+                if event.premium_counterfactual is not None
+                else None
+            ),
             "required_bar": event.required_bar,
             "actual_score": event.actual_score,
             "escalation_count": event.escalation_count,
@@ -374,6 +390,12 @@ class HandlerProjectionDelegation:
             "tokens_to_compliance": row_model.tokens_to_compliance,
             "compliance_attempts": row_model.compliance_attempts,
             "pricing_manifest_version": row_model.pricing_manifest_version,
+            # OMN-13355: persist the pinned premium counterfactual as JSONB.
+            "premium_counterfactual": (
+                row_model.premium_counterfactual.model_dump(mode="json")
+                if row_model.premium_counterfactual is not None
+                else None
+            ),
             "projection_version": row_model.projection_version,
             "reducer_version": row_model.reducer_version,
         }
