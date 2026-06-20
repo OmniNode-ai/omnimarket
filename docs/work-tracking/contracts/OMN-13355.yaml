@@ -1,0 +1,93 @@
+---
+schema_version: "1.0.0"
+ticket_id: OMN-13355
+title: "Delegation: emit auditable premium counterfactual per task (savings = measurement, not estimate)"
+summary: >-
+  When a cheaper tier serves a delegated task the premium (frontier) model never
+  runs, so the saving was a modeled estimate with no pinned provenance. This adds a
+  pinned premium counterfactual {model, price_in/out_per_1k, as_of, tokens_in,
+  tokens_out, counterfactual_cost_usd, pricing_source, measured} carried through the
+  delegation projection so cost_savings_usd = counterfactual_cost_usd - actual_cost
+  is auditable and recomputable from persisted provenance — no Opus-vs-$0 sleight of
+  hand. The pinned price/as_of come from the canonical pricing manifest; there is no
+  live premium API call (OAuth-only org, no Anthropic/OpenAI key). One calibrated
+  real-premium run was executed via the headless Claude Code CLI (OAuth) and its
+  measured Opus tokens + provider cost recorded for audit against the pinned table.
+is_seam_ticket: false
+interface_change: true
+interfaces_touched:
+  - "omnibase_core.models.delegation.wire.ModelPremiumCounterfactual (new wire DTO)"
+  - "omnibase_core.models.delegation.wire.ModelTaskDelegatedEvent.premium_counterfactual (new field)"
+  - "omnimarket delegation_events projection: new premium_counterfactual JSONB column"
+evidence_requirements:
+  - kind: tests
+    description: "omnibase_core wire DTO + event-field tests"
+    command: "uv run pytest tests/unit/models/delegation/wire/test_delegation_wire_models.py -q"
+  - kind: tests
+    description: "omnimarket carry-path: build + persist counterfactual through projection"
+    command: "uv run pytest tests/test_premium_counterfactual_omn13355.py tests/test_golden_chain_projection_delegation.py -m 'not kafka' -q"
+  - kind: tests
+    description: "omnibase_infra migration discovery (0017 vendored + declares column)"
+    command: "OMNIMARKET_SRC=<omnimarket-src> uv run pytest tests/unit/migrations/test_node_migration_discovery.py -q"
+  - kind: tests
+    description: "omnidash reader exposes premium_counterfactual (postgres + sqlite)"
+    command: "npx vitest run server/__tests__/postgres-projection-reader.test.ts server/sqlite-projection-reader.test.ts"
+  - kind: manual
+    description: >-
+      Real-dispatch proof: HandlerProjectionDelegation.handle() against a real SQLite
+      delegation_events store persisted a row carrying the pinned counterfactual
+      {claude-opus-4-6, 0.015/0.075 per 1k, as_of 2026-02-01}; saving 0.046635 equals
+      counterfactual - actual. Evidence: docs/evidence/OMN-13355/projection_row_counterfactual.json
+    command: "test -f docs/evidence/OMN-13355/projection_row_counterfactual.json"
+  - kind: manual
+    description: >-
+      Calibration run: one real-premium task via headless Claude Code CLI (OAuth, no
+      API key). Measured Opus tokens + provider cost recorded with delta vs pinned
+      table. Evidence: docs/evidence/OMN-13355/calibration_record.json
+    command: "test -f docs/evidence/OMN-13355/calibration_record.json"
+  - kind: ci
+    description: "CI pipeline green on the four PRs"
+    command: "gh pr checks <PR> --repo OmniNode-ai/<repo>"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: dod-core-tests
+    description: "omnibase_core wire DTO + task-delegated event field tests pass"
+    source: manual
+    checks:
+      - check_type: command
+        check_value: "uv run pytest tests/unit/models/delegation/wire/test_delegation_wire_models.py -q"
+  - id: dod-market-tests
+    description: "omnimarket counterfactual carry-path tests pass (non-kafka)"
+    source: manual
+    checks:
+      - check_type: command
+        check_value: "uv run pytest tests/test_premium_counterfactual_omn13355.py tests/test_golden_chain_projection_delegation.py -m 'not kafka' -q"
+  - id: dod-projection-row-proof
+    description: >-
+      Real HandlerProjectionDelegation dispatch persisted a delegation_events row
+      carrying the pinned counterfactual; saving == counterfactual - actual.
+    source: manual
+    checks:
+      - check_type: file_exists
+        check_value: "docs/evidence/OMN-13355/projection_row_counterfactual.json"
+  - id: dod-calibration
+    description: >-
+      One calibrated real-premium run via headless Claude Code (OAuth) recorded with
+      measured Opus tokens, provider cost, and delta vs the pinned table.
+    source: manual
+    checks:
+      - check_type: file_exists
+        check_value: "docs/evidence/OMN-13355/calibration_record.json"
+  - id: dod-deploy
+    description: >-
+      Migration 0017 vendored to omnibase_infra forward tree (ADD COLUMN IF NOT
+      EXISTS premium_counterfactual JSONB). Live apply to stability-test/prod is
+      user-gated; runs on the next forward-migration pass. No docker exec, runtime
+      restart, or Kafka topic change performed in these PRs.
+    source: manual
+    checks:
+      - check_type: command
+        check_value: "printf '%s\\n' 'deploy gate: delegation_events premium_counterfactual JSONB column; migration vendored, live apply is user-gated'"
