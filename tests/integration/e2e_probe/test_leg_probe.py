@@ -110,7 +110,7 @@ pytestmark = [
 _LANE = os.environ.get("ONEX_E2E_LANE", "dev")
 
 # onex-allow-internal-ip: lab GPU server — read from env at runtime
-_DEFAULT_KAFKA = "192.168.86.201:19092"  # onex-allow-internal-ip OMN-12952 reason="dev/stability-test lab Redpanda; overridden by ONEX_E2E_KAFKA_BOOTSTRAP at runtime"
+_DEFAULT_KAFKA = "192.168.86.201:19092"  # onex-allow-internal-ip OMN-12952 reason="dev lane lab Redpanda default (port 19092); stability-test lane is port 39092 and must be set via ONEX_E2E_KAFKA_BOOTSTRAP at runtime"
 _DEFAULT_PG_HOST = "192.168.86.201"  # onex-allow-internal-ip OMN-12952 reason="dev/stability-test lab Postgres host; overridden by ONEX_E2E_POSTGRES_HOST at runtime"
 _DEFAULT_PG_PORT_DEV = 5436
 _DEFAULT_PG_PORT_STABILITY = 15436
