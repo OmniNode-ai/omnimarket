@@ -81,13 +81,43 @@ dod_evidence:
     checks:
       - check_type: file_exists
         check_value: "docs/evidence/OMN-13355/calibration_record.json"
+  - id: dod-measured-actual-cost
+    description: >-
+      FINISH OMN-13355: the projection now computes a MEASURED actual cost (the
+      serving tier's typed cost model priced against measured tokens) and writes it
+      into cost_usd, so cost_savings_usd = counterfactual - real_actual, NOT
+      counterfactual - 0. Metered cheap_cloud 1500 tokens @ 0.002/1k = 0.003 actual
+      => saving 0.0495 (not the full 0.0525); free_local local = 0 actual => full
+      counterfactual saved.
+    source: manual
+    checks:
+      - check_type: command
+        check_value: "uv run pytest tests/test_actual_cost_recompute_omn13355.py::TestProjectionWiresMeasuredActualCost -q"
+  - id: dod-recompute-validator
+    description: >-
+      The recompute validator (validate_actual_cost_provenance) asserts actual-cost
+      provenance: a non-zero saving must carry a non-empty cost_measurement_source
+      and reconcile against the pinned counterfactual (counterfactual - cost_usd ==
+      cost_savings_usd). Rejects savings computed against the hardcoded 0.0.
+    source: manual
+    checks:
+      - check_type: command
+        check_value: "uv run pytest tests/test_actual_cost_recompute_omn13355.py::TestRecomputeValidator -q"
+  - id: dod-measured-mypy
+    description: "mypy --strict green on the measured-cost recompute modules."
+    source: manual
+    checks:
+      - check_type: command
+        check_value: "uv run mypy src/omnimarket/pricing.py src/omnimarket/nodes/node_projection_delegation/handlers/handler_projection_delegation.py --strict"
   - id: dod-deploy
     description: >-
       Migration 0017 vendored to omnibase_infra forward tree (ADD COLUMN IF NOT
       EXISTS premium_counterfactual JSONB). Live apply to stability-test/prod is
       user-gated; runs on the next forward-migration pass. No docker exec, runtime
-      restart, or Kafka topic change performed in these PRs.
+      restart, or Kafka topic change performed in these PRs. Full LIVE bus proof of
+      the measured-cost wiring (rpk consume showing non-null actual_cost_usd) is
+      deferred until 0017/0018 deploy to dev; proven at handler + integration level.
     source: manual
     checks:
       - check_type: command
-        check_value: "printf '%s\\n' 'deploy gate: delegation_events premium_counterfactual JSONB column; migration vendored, live apply is user-gated'"
+        check_value: "printf '%s\\n' 'deploy gate: delegation_events premium_counterfactual JSONB column; migration vendored, live apply is user-gated; measured-cost live bus proof deferred to dev deploy'"

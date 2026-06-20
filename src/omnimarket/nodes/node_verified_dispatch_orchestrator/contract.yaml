@@ -55,6 +55,9 @@ event_bus:
     - onex.evt.omnimarket.verified-dispatch-completed.v1
     - onex.cmd.omnimarket.verified-dispatch-escalate.v1
 
+externally_consumed_topics:
+  - onex.cmd.omnimarket.verified-dispatch-escalate.v1
+
 inputs:
   ticket_id:
     type: str

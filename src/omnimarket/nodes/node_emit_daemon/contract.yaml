@@ -177,5 +177,9 @@ event_bus:
 
 externally_consumed_topics:
   - onex.cmd.omniintelligence.tool-content.v1
+  - onex.cmd.omniintelligence.claude-hook-event.v1
+  - onex.cmd.omniintelligence.compliance-evaluate.v1
+  - onex.cmd.omniintelligence.session-outcome.v1
+  - onex.cmd.omniintelligence.utilization-scoring.v1
   - onex.evt.omniclaude.notification-blocked.v1
   - onex.evt.omnimarket.tool-output-captured.v1
