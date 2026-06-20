@@ -1,0 +1,31 @@
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+"""Acceptance corpora for G2 mass-produced mechanical scanner validators (OMN-13294).
+
+Each module here exports a typed ``ModelValidatorCorpus`` that is the acceptance
+authority for one generated validator. The corpus — NOT the LLM's self-report —
+decides whether a generated scanner is accepted (``corpus_acceptance``, G0). A
+corpus is seeded from the hand-authored ground-truth invariant (regex patterns +
+suppression marker) it encodes, and it MUST carry at least one adversarial
+mutation case (``ModelCorpusFixture.mutation_of``) — a gate that passes only
+curated examples is not proven (OMN-13289).
+
+These corpora are the durable, committed evidence of what each G2 validator was
+required to flag and pass, so a generation run is replayable: same corpus + same
+generated scanner => same verdict.
+"""
+
+from __future__ import annotations
+
+from omnimarket.nodes.node_generation_consumer.validator_corpora.corpus_hardcoded_ip import (
+    HARDCODED_IP_CORPUS,
+)
+
+__all__ = ["CORPORA", "HARDCODED_IP_CORPUS"]
+
+# Registry of every G2 corpus keyed by its target validator name. The generation
+# driver iterates this map so adding a corpus here is the only edit needed to
+# enrol a new mechanical scanner in the G2 batch.
+CORPORA = {
+    "hardcoded-private-ip": HARDCODED_IP_CORPUS,
+}
