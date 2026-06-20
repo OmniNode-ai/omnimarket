@@ -75,7 +75,6 @@ import time
 import uuid
 from collections.abc import AsyncGenerator
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
 from typing import Any
 
 import asyncpg
@@ -153,8 +152,16 @@ _TOPIC_GENERATION_COMPLETED = "onex.evt.omnimarket.node-generation-completed.v1"
 # GEN-01: node-generation-failed terminal event (emitted on failure)
 _TOPIC_GENERATION_FAILED = "onex.evt.omnimarket.node-generation-failed.v1"
 
-# Projection API topic for generation events
-_PROJECTION_API_TOPIC_GENERATION = "onex.snapshot.projection.generation.events.v1"
+# Projection API read key for generation events (OMN-13378).
+# The projection API serves reads keyed by the EVENT topic — it materializes
+# onex.evt.omnimarket.node-generation-completed.v1 into the generation_events
+# table (node_projection_delegation reducer) and exposes it at
+# GET /projection/<event-topic>. The previously-referenced
+# onex.snapshot.projection.generation.events.v1 is declared by no producer or
+# reducer and returns HTTP 404 — it was never exposed. Read the proven
+# terminal-event topic, the same one node_generation_consumer publishes on
+# success and the SEA generation path proves against.
+_PROJECTION_API_TOPIC_GENERATION = _TOPIC_GENERATION_COMPLETED
 
 # ---------------------------------------------------------------------------
 # Timing constants
@@ -880,11 +887,20 @@ class TestE2ELegSummary:
 
 
 def _build_generation_payload(correlation_id: str) -> dict[str, Any]:
-    """Build a minimal node-generation-requested payload for the probe.
+    """Build a declared-fields-only node-generation-requested payload (OMN-13378).
 
     Uses a deliberately trivial task description so the LLM call is cheap
     and the generated handler is minimal. The probe does not validate the
     generated handler quality — only that the routing + projection path works.
+
+    The payload carries ONLY fields declared on ModelNodeGenerationRequest
+    (frozen, extra="forbid"). The proven SEA generation path publishes
+    declared-fields-only; undeclared probe-bookkeeping fields
+    (node_name_hint / requested_by / timestamp / probe / ticket) were stripped
+    because node_generation_consumer rejects the command on strict validation
+    (extra=forbid) before any terminal event or projection row is produced.
+    Probe provenance is carried on the envelope (source_tool="...omn-12952")
+    by _thin_publish_cmd, not inside the strictly-validated command payload.
 
     TODO OMN-12952 Milestone 4.4(b): update task_description if the GEN-01
     packet reveals that a specific minimal task description yields a more
@@ -897,9 +913,4 @@ def _build_generation_payload(correlation_id: str) -> dict[str, Any]:
             "Generate a no-op compute handler that returns an empty dict. "
             "This is a dry-run probe call, not a real generation request."
         ),
-        "node_name_hint": "node_probe_noop_compute",
-        "requested_by": "omnimarket.e2e-probe-harness.omn-12952",
-        "timestamp": datetime.now(UTC).isoformat(),
-        "probe": True,
-        "ticket": "OMN-12952",
     }
