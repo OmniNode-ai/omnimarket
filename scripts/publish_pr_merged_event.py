@@ -55,6 +55,7 @@
 
 from __future__ import annotations
 
+import importlib.util
 import json
 import os
 import re
@@ -65,17 +66,47 @@ from pathlib import Path
 
 import click
 
-# Canonical topic constant (single source of truth in omnimarket.events.topics).
-# The script runs both via `uv run python scripts/...` (package importable) and
-# as a bare `python scripts/...`; ensure the src tree is importable in the latter
-# case before importing the canonical constant.
-_SRC_ROOT = Path(__file__).resolve().parents[1] / "src"
-if str(_SRC_ROOT) not in sys.path:
-    sys.path.insert(0, str(_SRC_ROOT))
 
-from omnimarket.events.topics import PR_MERGED_TOPIC_V1  # noqa: E402
+def _load_pr_merged_topic() -> str:
+    """Resolve PR_MERGED_TOPIC_V1 from omnimarket/events/topics.py without
+    importing the omnimarket.events package.
 
-TOPIC = PR_MERGED_TOPIC_V1
+    The publisher is bus-native: it needs exactly one string constant and must
+    run in the minimal CI env the pr-merged-publisher workflow provisions
+    (confluent-kafka + click + pydantic only). Importing
+    ``omnimarket.events.topics`` would first execute the parent package
+    ``omnimarket/events/__init__.py``, which eagerly re-exports a model graph
+    that imports ``omnibase_core`` — a package that is NOT installed in that CI
+    env. So the package import crashes the publish path with
+    ``ModuleNotFoundError: No module named 'omnibase_core'``.
+
+    To keep ``topics.py`` the single source of truth (no inlined literal that
+    could drift) while staying self-contained, load that one module by file
+    path via importlib. This executes only ``topics.py`` — a pure-constant
+    module with no upstream deps — and never touches the package ``__init__``.
+    """
+    topics_path = (
+        Path(__file__).resolve().parents[1]
+        / "src"
+        / "omnimarket"
+        / "events"
+        / "topics.py"
+    )
+    spec = importlib.util.spec_from_file_location(
+        "_omnimarket_events_topics_standalone", topics_path
+    )
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"Cannot load topic constants from {topics_path}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return str(module.PR_MERGED_TOPIC_V1)
+
+
+# Canonical topic constant (single source of truth in
+# omnimarket/events/topics.py), loaded standalone so the bus-native publish
+# path does not drag in the omnimarket.events package (and its omnibase_core
+# dependency) — which is absent from the minimal publisher CI env.
+TOPIC = _load_pr_merged_topic()
 
 _TICKET_RE = re.compile(r"OMN-\d+", re.IGNORECASE)
 
