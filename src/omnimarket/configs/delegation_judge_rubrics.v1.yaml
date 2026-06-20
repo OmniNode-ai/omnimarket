@@ -1,0 +1,47 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# Rubric contracts for reproducible judge verdict events on non-verifiable
+# delegation classes. These contracts define the audit surface only: the judge
+# event records the rubric_id and rubric_hash, and replay compares that identity
+# bundle against the durable verdict event.
+
+version: "1.0"
+rubrics:
+  delegation_non_verifiable_v1:
+    rubric_hash: "sha256:321240472e3b52d21fd8cb9b9b7639bb73161a2945adf580948e86275ce20681"
+    score_source: "reproducible_judge"
+    terminology: "controlled_reproducible_auditable"
+    temperature: 0.0
+    judge_node_version: "delegation-judge-verdict/1.0.0"
+    applies_to_task_classes:
+      - document
+      - research
+      - summarization
+      - reasoning
+      - complex_reasoning
+      - planning
+      - escalation
+    dimensions:
+      - id: answer_correctness
+        weight: 0.45
+        description: "Claims answer the requested task and do not contradict the supplied input."
+      - id: evidence_alignment
+        weight: 0.25
+        description: "Important claims are grounded in the provided context or cited sources where applicable."
+      - id: completeness
+        weight: 0.20
+        description: "The response covers the material requirements without padding or evasive omissions."
+      - id: clarity
+        weight: 0.10
+        description: "The response is clear enough for downstream use."
+    verdict_thresholds:
+      pass_min_score: 0.80
+      borderline_min_score: 0.60
+      fail_below_score: 0.60
+    failure_semantics:
+      verdict: "judge_failed"
+      actual_score: null
+      required_fields:
+        - failure_kind
+        - failure_message

@@ -4,6 +4,13 @@
 
 from omnimarket.events.checkpoint import ModelCheckpointRequest
 from omnimarket.events.daemon_health_probe import ModelDaemonHealthProbeResult
+from omnimarket.events.delegation_judge_verdict import (
+    EnumDelegationJudgeVerdict,
+    ModelDelegationJudgeVerdictEvent,
+    build_delegation_judge_verdict_event,
+    sha256_json,
+    sha256_text,
+)
 from omnimarket.events.design_to_plan import (
     ModelPlanToTicketsCompletedEvent,
     ModelPlanToTicketsStartCommand,
@@ -63,6 +70,7 @@ __all__ = [
     "EmitClient",
     "EnumBuildSource",
     "EnumBundleStatus",
+    "EnumDelegationJudgeVerdict",
     "EnumFragmentSource",
     "EnumGoldenChainGenerationStatus",
     "EnumOccGateState",
@@ -74,6 +82,7 @@ __all__ = [
     "ModelDaemonHealthProbeResult",
     "ModelDashboardProjectionEvent",
     "ModelDeferredChainWarning",
+    "ModelDelegationJudgeVerdictEvent",
     "ModelDeployRebuildCommand",
     "ModelDeployRebuildCompleted",
     "ModelGeneratedTestFile",
@@ -102,8 +111,11 @@ __all__ = [
     "ModelTestGenerationRequest",
     "ModelTestGenerationResult",
     "RuntimeLaneLike",
+    "build_delegation_judge_verdict_event",
     "default_socket_path",
     "evaluate_prod_digest_gate",
     "evaluate_prod_promotion_gate",
     "lane_target",
+    "sha256_json",
+    "sha256_text",
 ]
