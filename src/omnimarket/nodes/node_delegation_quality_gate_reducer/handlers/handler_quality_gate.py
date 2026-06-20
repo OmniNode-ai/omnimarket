@@ -775,8 +775,22 @@ def _is_verifiable_deterministic_acceptance(
     gate_input: ModelQualityGateInput,
     dod_deterministic: tuple[str, ...],
 ) -> bool:
-    """Return whether this contract path uses deterministic acceptance authority."""
-    return gate_input.task_type in _VERIFIABLE_TASK_TYPES and bool(dod_deterministic)
+    """Return whether this contract path holds deterministic acceptance authority.
+
+    Authority requires a verifiable task type AND at least one NON-reject-only
+    deterministic check. A ``dod_deterministic`` set composed solely of
+    reject-only structural pre-filters (OMN-13370/OMN-13373:
+    ``no_refusal``/``response_non_empty``/``output_parses``/...) can still
+    *reject* bad output, but per OMN-13370 it must never *promote* a clean
+    output to adequate — so it confers no acceptance authority here. Without
+    this guard, ``task_type=code_generation`` + ``acceptance_criteria=
+    ["no_refusal"]`` + a clean output leaked to ``passed=True`` (OMN-13375).
+    """
+    if gate_input.task_type not in _VERIFIABLE_TASK_TYPES:
+        return False
+    return any(
+        not _is_reject_only_deterministic_check(check) for check in dod_deterministic
+    )
 
 
 # Relative weighting of the two DoD bands when computing the graded quality
