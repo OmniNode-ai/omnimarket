@@ -45,6 +45,59 @@ def publisher_module() -> types.ModuleType:
 
 
 # ---------------------------------------------------------------------------
+# Regression: bus-native publish path must not require omnibase_core (OMN-13379)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+def test_module_imports_without_omnibase_core(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The publisher must import in the minimal CI env (no omnibase_core).
+
+    The pr-merged-publisher workflow installs only confluent-kafka, click, and
+    pydantic. Importing the omnimarket.events package (to read the topic
+    constant) used to drag in omnibase_core via events/__init__.py and crash the
+    job with ModuleNotFoundError. This test simulates that env by making any
+    import of omnibase_core OR the omnimarket.events package raise, then loads
+    the script fresh and asserts it still resolves the canonical topic.
+    """
+    import builtins
+
+    real_import = builtins.__import__
+
+    def _blocking_import(name: str, *args: Any, **kwargs: Any) -> Any:
+        if name == "omnibase_core" or name.startswith("omnibase_core."):
+            raise ModuleNotFoundError("No module named 'omnibase_core'")
+        if name == "omnimarket.events" or name.startswith("omnimarket.events."):
+            # The standalone topic loader must not route through the package.
+            raise ModuleNotFoundError(
+                f"package import '{name}' is forbidden in the minimal publisher env"
+            )
+        return real_import(name, *args, **kwargs)
+
+    # Drop any cached modules so the fresh load actually re-executes imports.
+    for cached in [
+        key
+        for key in sys.modules
+        if key == "publish_pr_merged_event"
+        or key == "omnibase_core"
+        or key.startswith("omnibase_core.")
+        or key == "omnimarket.events"
+        or key.startswith("omnimarket.events.")
+        or key.startswith("_omnimarket_events_topics_standalone")
+    ]:
+        monkeypatch.delitem(sys.modules, cached, raising=False)
+
+    monkeypatch.setattr(builtins, "__import__", _blocking_import)
+
+    module = _load_publisher_module()
+
+    # Topic resolved from topics.py without the package or omnibase_core.
+    assert module.TOPIC == "onex.evt.github.pr-merged.v1"
+
+
+# ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
