@@ -51,3 +51,15 @@ RENDERER_CAPABILITY_DECLARED_TOPIC_V1 = "onex.cmd.ui.renderer-capability-declare
 # contract.yaml declares them for runtime wiring.
 CONTEXT_ROI_SCORE_COMPLETED_TOPIC_V1 = "onex.evt.omnimarket.context-roi-score-completed.v1"  # onex-topic-allow: canonical topic registry; declared in node_context_roi_compute contract.yaml publish_topics and node_projection_capsule_store subscribe_topics (OMN-12842)
 CAPSULE_STORE_APPLIED_TOPIC_V1 = "onex.evt.omnimarket.capsule-store-applied.v1"  # onex-topic-allow: canonical topic registry; declared in node_projection_capsule_store contract.yaml publish_topics (OMN-12842)
+
+# M5 live closed-loop feedback edge (OMN-12845). The runner emits a scored
+# runtime ROI row onto context-roi-runtime-row-scored.v1; the feedback-edge
+# reducer (node_capsule_effectiveness_feedback_reducer) enforces attribution
+# honesty: a CONTROLLED_INTERVENTION row is republished as a
+# context-roi-score-completed.v1 effectiveness claim (folded onto the M2 capsule
+# store, which then re-ranks M3 selection); an OBSERVATIONAL row is republished
+# ONLY as a capsule-effectiveness-hypothesis.v1 and is never written as a measured
+# score. Handler/model code references THESE constants (never the literals) so the
+# no-hardcoded-topics gate stays green; each node's contract.yaml declares them.
+CONTEXT_ROI_RUNTIME_ROW_SCORED_TOPIC_V1 = "onex.evt.omnimarket.context-roi-runtime-row-scored.v1"  # onex-topic-allow: canonical topic registry; declared in node_capsule_effectiveness_feedback_reducer contract.yaml subscribe_topics (OMN-12845)
+CAPSULE_EFFECTIVENESS_HYPOTHESIS_TOPIC_V1 = "onex.evt.omnimarket.capsule-effectiveness-hypothesis.v1"  # onex-topic-allow: canonical topic registry; declared in node_capsule_effectiveness_feedback_reducer contract.yaml publish_topics (OMN-12845)

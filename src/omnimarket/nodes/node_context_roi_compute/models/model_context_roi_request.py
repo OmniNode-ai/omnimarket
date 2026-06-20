@@ -78,6 +78,16 @@ class ModelArmRunRow(BaseModel):
     endpoint_ref: str | None = Field(
         default=None, description="Routing endpoint reference"
     )
+    routing_source: str | None = Field(
+        default=None,
+        description=(
+            "Provenance of the model/endpoint selection for this row, resolved "
+            "from the routing authority (e.g. 'routing_tier:local-coder'). "
+            "Required for full per-row metadata so a 'winning factor' can be "
+            "distinguished from a routing-authority artifact (BAC plan line 111). "
+            "None ONLY when the row predates routing-source capture."
+        ),
+    )
     # Context provenance
     context_pack_hash: str | None = Field(
         default=None, description="Hash of the assembled context pack for this arm"
