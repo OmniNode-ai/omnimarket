@@ -48,6 +48,11 @@ from omnimarket.models.delegation.wire.model_delegate_skill_terminal_projection 
     ModelDelegateSkillTerminalProjection,
     ModelDelegationEventProjectionRow,
 )
+from omnimarket.nodes.node_projection_delegation.handlers.handler_budget_state import (
+    ModelDelegationBudgetStateEvent,
+    materialize_budget_state,
+)
+from omnimarket.pricing import recompute_actual_cost_and_savings
 from omnimarket.projection.protocol_database import DatabaseAdapter
 
 TABLE = "delegation_events"
@@ -287,6 +292,7 @@ class HandlerProjectionDelegation:
     ) -> ModelProjectionResult:
         """UPSERT a single delegation event."""
         now = datetime.now(tz=UTC).isoformat()
+        measurement = _measure_actual_cost(event)
         row: dict[str, object] = {
             "correlation_id": event.correlation_id,
             "session_id": event.session_id,
@@ -301,8 +307,14 @@ class HandlerProjectionDelegation:
             "quality_gates_checked_jsonb": event.quality_gates_checked,
             "quality_gates_failed_jsonb": event.quality_gates_failed,
             "quality_gate_detail": event.quality_gate_detail,
-            "cost_usd": event.cost_usd,
-            "cost_savings_usd": event.cost_savings_usd,
+            # OMN-13355: cost_usd is the MEASURED actual cost — the serving tier's
+            # typed cost model (OMN-13234) priced against the measured tokens — not
+            # the hardcoded 0.0 the workflow handler emits on the durable event.
+            # cost_savings_usd is therefore counterfactual - real_actual, not
+            # counterfactual - 0. See _measure_actual_cost for the fall-through to
+            # the event values when no authoritative measurement is possible.
+            "cost_usd": measurement.cost_usd,
+            "cost_savings_usd": measurement.cost_savings_usd,
             "delegation_latency_ms": event.delegation_latency_ms,
             "repo": event.repo,
             "is_shadow": event.is_shadow,
@@ -321,12 +333,14 @@ class HandlerProjectionDelegation:
                 if event.premium_counterfactual is not None
                 else None
             ),
-            # OMN-13234: persist the typed per-tier actual-cost measurement so the
-            # cost_usd half of the saving is auditable (columns from 0018).
-            "cost_tier_type": event.cost_tier_type,
-            "cost_tier_name": event.cost_tier_name,
-            "cost_measurement_source": event.cost_measurement_source,
-            "budget_headroom_consumed_usd": event.budget_headroom_consumed_usd,
+            # OMN-13234/13355: persist the typed per-tier actual-cost measurement
+            # provenance (columns from 0018). cost_measurement_source proves HOW
+            # cost_usd was derived; the recompute validator asserts it is non-empty
+            # whenever a non-zero saving is claimed.
+            "cost_tier_type": measurement.cost_tier_type,
+            "cost_tier_name": measurement.cost_tier_name,
+            "cost_measurement_source": measurement.cost_measurement_source,
+            "budget_headroom_consumed_usd": measurement.headroom_consumed_usd,
             "required_bar": event.required_bar,
             "actual_score": event.actual_score,
             "escalation_count": event.escalation_count,
@@ -345,6 +359,23 @@ class HandlerProjectionDelegation:
         row.update(evidence)
         _preserve_existing_evidence(db, row)
         ok = db.upsert(TABLE, CONFLICT_KEY, row)
+        # OMN-13235: event-source the per-tenant ceiling budget state. No-op for
+        # free_local / metered tiers (no monthly cap); for budgeted tiers it draws
+        # down the tenant's monthly headroom by the measured drawdown.
+        materialize_budget_state(
+            ModelDelegationBudgetStateEvent(
+                correlation_id=event.correlation_id,
+                cost_tier_name=measurement.cost_tier_name,
+                cost_measurement_source=measurement.cost_measurement_source,
+                budget_headroom_consumed_usd=_as_decimal(
+                    measurement.headroom_consumed_usd
+                ),
+                cost_usd=_as_decimal(measurement.cost_usd),
+                tenant_id=event.session_id,
+                timestamp=event.timestamp,
+            ),
+            db,
+        )
         return ModelProjectionResult(rows_upserted=1 if ok else 0)
 
     def project_delegate_skill_terminal(
@@ -492,11 +523,13 @@ __all__: list[str] = [
     "GENERATION_PROJECTION_OWNER",
     "JUDGE_VERDICT_TABLE",
     "HandlerProjectionDelegation",
+    "ModelActualCostProjection",
     "ModelProjectionGenerationCompletedEvent",
     "ModelProjectionResult",
     "ModelProjectionTaskDelegatedEvent",
     "ModelTaskDelegatedEvent",
     "compute_generation_proof_fields",
+    "validate_actual_cost_provenance",
 ]
 
 
@@ -564,6 +597,125 @@ def _canonical_result_to_task_delegated_payload(
         "request_override_applied": payload.get("request_override_applied") or False,
         "override_within_bounds": payload.get("override_within_bounds") is not False,
     }
+
+
+class ModelActualCostProjection(BaseModel):
+    """Resolved actual-cost figures written onto a delegation_events row.
+
+    OMN-13355: the projection's authoritative cost provenance. cost_usd is a
+    MEASUREMENT (the serving tier's typed cost model priced against the measured
+    tokens), not the workflow handler's hardcoded 0.0. cost_savings_usd is
+    counterfactual - real_actual. The recompute validator asserts that any row
+    claiming a non-zero saving carries a non-empty cost_measurement_source.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    cost_usd: float = Field(default=0.0)
+    cost_savings_usd: float = Field(default=0.0)
+    headroom_consumed_usd: float = Field(default=0.0, ge=0.0)
+    cost_tier_type: str = Field(default="")
+    cost_tier_name: str = Field(default="")
+    cost_measurement_source: str = Field(default="")
+
+
+def _measure_actual_cost(
+    event: ModelProjectionTaskDelegatedEvent,
+) -> ModelActualCostProjection:
+    """Resolve the MEASURED actual cost + honest savings for one delegation row.
+
+    OMN-13355 wiring. The workflow handler emits the durable task-delegated event
+    with ``cost_usd`` hardcoded to 0.0, so a saving of ``counterfactual - cost_usd``
+    is really ``counterfactual - 0`` — the full counterfactual, overstated by the
+    serving tier's real (non-zero, for metered / budgeted-overage) cost. When the
+    event carries a pinned premium counterfactual and a serving tier name, this
+    re-prices the measured tokens through that tier's typed cost model and returns
+    ``cost_savings_usd = counterfactual - measured_actual``.
+
+    Fall-through (preserves the event's own values, no recompute):
+      * No premium_counterfactual — there is no auditable baseline to subtract
+        against, so honest savings cannot be computed; keep what the event carried.
+      * No cost_tier_name — the serving tier is unknown, so the typed cost model
+        cannot be resolved; keep the event values + carried provenance.
+    """
+    if event.premium_counterfactual is None or not event.cost_tier_name:
+        return ModelActualCostProjection(
+            cost_usd=event.cost_usd,
+            cost_savings_usd=event.cost_savings_usd,
+            headroom_consumed_usd=event.budget_headroom_consumed_usd,
+            cost_tier_type=event.cost_tier_type,
+            cost_tier_name=event.cost_tier_name,
+            cost_measurement_source=event.cost_measurement_source,
+        )
+    measurement = recompute_actual_cost_and_savings(
+        tier_name=event.cost_tier_name,
+        prompt_tokens=event.tokens_input,
+        completion_tokens=event.tokens_output,
+        premium_counterfactual=event.premium_counterfactual,
+    )
+    return ModelActualCostProjection(
+        cost_usd=measurement.cash_cost_usd,
+        cost_savings_usd=measurement.cost_savings_usd,
+        headroom_consumed_usd=measurement.headroom_consumed_usd,
+        cost_tier_type=measurement.cost_tier_type,
+        cost_tier_name=measurement.cost_tier_name,
+        cost_measurement_source=measurement.cost_measurement_source,
+    )
+
+
+def validate_actual_cost_provenance(row: dict[str, object]) -> None:
+    """Assert a delegation_events row's savings is backed by a measured actual cost.
+
+    OMN-13355 recompute validator. A row that claims a non-zero ``cost_savings_usd``
+    must prove its provenance:
+
+      1. ``cost_measurement_source`` is non-empty — it records HOW ``cost_usd`` was
+         measured (free_local | metered | budgeted_* | no_cost_model). An empty
+         source means the saving was computed against the hardcoded 0.0, the exact
+         bug this ticket closes.
+      2. If a ``premium_counterfactual`` is present, the saving reconciles:
+         ``cost_savings_usd == counterfactual_cost_usd - cost_usd`` (within a
+         Decimal tolerance). This is the audit invariant — a verifier recomputes
+         the saving from the persisted counterfactual and actual cost.
+
+    Raises ``ValueError`` on a provenance gap so the projection's own tests and
+    the OCC evidence path can assert the invariant. Side-effect free.
+    """
+    savings = _as_decimal(row.get("cost_savings_usd"))
+    cost = _as_decimal(row.get("cost_usd"))
+    source = str(row.get("cost_measurement_source") or "")
+    if savings != Decimal("0") and not source:
+        raise ValueError(
+            "delegation_events row claims a non-zero cost_savings_usd but carries "
+            "no cost_measurement_source — savings was computed without an "
+            "actual-cost measurement (OMN-13355 provenance gap)"
+        )
+    counterfactual = row.get("premium_counterfactual")
+    if isinstance(counterfactual, dict):
+        cf_cost = _as_decimal(counterfactual.get("counterfactual_cost_usd"))
+        if abs((cf_cost - cost) - savings) > Decimal("0.000001"):
+            raise ValueError(
+                "delegation_events row savings does not reconcile: "
+                f"counterfactual_cost_usd({cf_cost}) - cost_usd({cost}) != "
+                f"cost_savings_usd({savings}) (OMN-13355 audit invariant)"
+            )
+
+
+def _as_decimal(value: object) -> Decimal:
+    if value is None:
+        return Decimal("0")
+    if isinstance(value, Decimal):
+        return value
+    if isinstance(value, bool):
+        return Decimal(int(value))
+    if isinstance(value, int | float):
+        return Decimal(str(value))
+    if isinstance(value, str):
+        try:
+            return Decimal(value)
+        except (ValueError, ArithmeticError):
+            return Decimal("0")
+    return Decimal("0")
 
 
 def _gate_count(value: list[str] | None) -> int:

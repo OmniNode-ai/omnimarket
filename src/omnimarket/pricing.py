@@ -12,9 +12,11 @@ from __future__ import annotations
 import functools
 import logging
 from decimal import Decimal
+from pathlib import Path
 
 from omnibase_core.models.delegation.wire import (
     EnumTierCostType,
+    ModelDelegationConfig,
     ModelPremiumCounterfactual,
     ModelTierCost,
 )
@@ -23,6 +25,13 @@ from omnibase_infra.models.pricing.model_pricing_table import ModelPricingTable
 from pydantic import BaseModel, ConfigDict, Field
 
 logger = logging.getLogger(__name__)
+
+# Canonical routing-tier registry — the single source for each tier's typed
+# cost model (OMN-13234). The projection's actual-cost recompute resolves the
+# serving tier's ModelTierCost by name from here so the persisted cost_usd is a
+# MEASUREMENT (tier rate x measured tokens), not the hardcoded 0.0 the workflow
+# handler currently emits on the durable event.
+ROUTING_TIERS_YAML = Path(__file__).resolve().parent / "configs" / "routing_tiers.yaml"
 
 DEFAULT_BASELINE_MODEL = "claude-opus-4-6"
 DEFAULT_FRONTIER_COMPARISON_MODELS: tuple[str, ...] = (
@@ -243,13 +252,129 @@ def compute_tier_cost_usd(
     )
 
 
+@functools.cache
+def _load_routing_config() -> ModelDelegationConfig:
+    """Load + cache the canonical routing-tier registry for the process lifetime.
+
+    Returns an empty config (no tiers) if the file is missing or unparsable so
+    the recompute path fails open to ``no_cost_model`` rather than raising at the
+    projection boundary — a missing tier registry must not drop a delegation row.
+    """
+    try:
+        from omnimarket.nodes.node_delegation_routing_reducer.models.model_delegation_config import (
+            parse_delegation_config_yaml,
+        )
+
+        return parse_delegation_config_yaml(ROUTING_TIERS_YAML.read_text())
+    except Exception as exc:
+        logger.warning(
+            "Failed to load routing_tiers.yaml for cost recompute: %s — "
+            "actual cost will fall back to no_cost_model",
+            exc,
+        )
+        return ModelDelegationConfig(tiers=())
+
+
+def resolve_tier_cost(tier_name: str) -> ModelTierCost | None:
+    """Resolve a tier's typed ModelTierCost by name from the routing registry.
+
+    None means the tier is absent from the registry OR has not been migrated to
+    the typed cost model — the caller treats that as ``no_cost_model``.
+    """
+    if not tier_name:
+        return None
+    for tier in _load_routing_config().tiers:
+        if tier.name == tier_name:
+            return tier.cost
+    return None
+
+
+class ModelActualCostMeasurement(BaseModel):
+    """Measured actual cost of one delegated task plus its audit provenance
+    (OMN-13355).
+
+    The projection persists ``cost_usd`` from ``cash_cost_usd`` (a MEASUREMENT:
+    the serving tier's typed cost model applied to the measured token counts —
+    never the hardcoded 0.0 the workflow handler emits on the durable event) and
+    ``cost_savings_usd`` from ``cost_savings_usd`` (the pinned premium
+    counterfactual minus that measured actual). ``cost_tier_type``,
+    ``cost_tier_name`` and ``cost_measurement_source`` are the provenance the
+    recompute validator asserts: a row whose savings is real carries a non-empty
+    ``cost_measurement_source`` proving HOW the actual cost was derived.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    cash_cost_usd: float = Field(default=0.0, ge=0.0)
+    cost_savings_usd: float = Field(default=0.0)
+    headroom_consumed_usd: float = Field(default=0.0, ge=0.0)
+    cost_tier_type: str = Field(default="")
+    cost_tier_name: str = Field(default="")
+    cost_measurement_source: str = Field(default="")
+
+
+def recompute_actual_cost_and_savings(
+    *,
+    tier_name: str,
+    prompt_tokens: int,
+    completion_tokens: int,
+    premium_counterfactual: ModelPremiumCounterfactual | None,
+    remaining_budget_usd: float | None = None,
+) -> ModelActualCostMeasurement:
+    """Recompute a delegated task's MEASURED actual cost and honest savings.
+
+    This is the OMN-13355 wiring: the workflow handler emits a durable event with
+    ``cost_usd`` hardcoded to 0.0, so a saving computed as
+    ``counterfactual - cost_usd`` is really ``counterfactual - 0`` — the full
+    counterfactual, overstated by the tier's real (non-zero, for metered/budgeted
+    overage) cost. This function resolves the serving tier's typed cost model
+    (OMN-13234) from the canonical routing registry, prices the measured tokens
+    through it, and computes
+
+        cost_savings_usd = counterfactual_cost_usd - cash_cost_usd
+
+    so the persisted saving is ``premium_counterfactual - real_actual``, not
+    ``counterfactual - 0``. Deterministic and side-effect free (the budget store
+    owns headroom mutation; this only reports the drawdown). When the premium
+    counterfactual is absent the saving is 0.0 (no auditable baseline to subtract
+    against) but the actual-cost measurement + provenance are still produced.
+    """
+    cost = resolve_tier_cost(tier_name)
+    tier_result = compute_tier_cost_usd(
+        cost=cost,
+        prompt_tokens=prompt_tokens,
+        completion_tokens=completion_tokens,
+        remaining_budget_usd=remaining_budget_usd,
+    )
+    tier_type = cost.cost_type.value if cost is not None else ""
+    if premium_counterfactual is None:
+        savings = 0.0
+    else:
+        savings = float(
+            premium_counterfactual.counterfactual_cost_usd
+            - Decimal(str(tier_result.cash_cost_usd))
+        )
+    return ModelActualCostMeasurement(
+        cash_cost_usd=tier_result.cash_cost_usd,
+        cost_savings_usd=savings,
+        headroom_consumed_usd=tier_result.headroom_consumed_usd,
+        cost_tier_type=tier_type,
+        cost_tier_name=tier_name,
+        cost_measurement_source=tier_result.measurement_source,
+    )
+
+
 __all__: list[str] = [
     "DEFAULT_BASELINE_MODEL",
     "DEFAULT_FRONTIER_COMPARISON_MODELS",
+    "ROUTING_TIERS_YAML",
+    "ModelActualCostMeasurement",
     "ModelTierCostResult",
     "build_premium_counterfactual",
     "compute_tier_cost_usd",
     "estimate_baseline_cost_usd",
     "estimate_frontier_costs_usd",
     "get_manifest_version_int",
+    "recompute_actual_cost_and_savings",
+    "resolve_tier_cost",
 ]
