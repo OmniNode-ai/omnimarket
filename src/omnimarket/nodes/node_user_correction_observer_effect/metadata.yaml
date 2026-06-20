@@ -1,0 +1,23 @@
+name: node_user_correction_observer_effect
+version: "0.1.0"
+description: "Observes typed user corrections and republishes them as category-weighted facts"
+omnibase_core_compat: ">=0.45.0,<0.46.0"
+entry_points:
+  onex.nodes:
+    node_user_correction_observer_effect: "omnimarket.nodes.node_user_correction_observer_effect"
+capabilities:
+  standalone: false
+  full_runtime: true
+  requires_network: true
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: external_io
+dependencies:
+  - "omnibase_core>=0.45.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["correction", "intelligence", "context-selection", "effect"]
+pack: "intelligence"
+display_name: "User Correction Observer Effect"
+node_role: "effect"
