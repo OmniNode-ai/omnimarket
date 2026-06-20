@@ -135,6 +135,12 @@ task_classes:
       request_override_bounds:
         min: 0.6
         max: 1.0
+    adequacy_authority:
+      score_source: reproducible_judge
+      rubric_id: delegation_non_verifiable_v1
+      rubric_hash: "sha256:321240472e3b52d21fd8cb9b9b7639bb73161a2945adf580948e86275ce20681"
+      event_topic_ref: delegation_judge_verdict_v1
+      terminology: controlled_reproducible_auditable
     escalation_policy:
       max_escalations: 1
       tier_order:
@@ -181,6 +187,12 @@ task_classes:
       request_override_bounds:
         min: 0.6
         max: 1.0
+    adequacy_authority:
+      score_source: reproducible_judge
+      rubric_id: delegation_non_verifiable_v1
+      rubric_hash: "sha256:321240472e3b52d21fd8cb9b9b7639bb73161a2945adf580948e86275ce20681"
+      event_topic_ref: delegation_judge_verdict_v1
+      terminology: controlled_reproducible_auditable
     escalation_policy:
       max_escalations: 2
       tier_order:
@@ -232,6 +244,12 @@ task_classes:
       request_override_bounds:
         min: 0.6
         max: 1.0
+    adequacy_authority:
+      score_source: reproducible_judge
+      rubric_id: delegation_non_verifiable_v1
+      rubric_hash: "sha256:321240472e3b52d21fd8cb9b9b7639bb73161a2945adf580948e86275ce20681"
+      event_topic_ref: delegation_judge_verdict_v1
+      terminology: controlled_reproducible_auditable
     escalation_policy:
       max_escalations: 1
       tier_order:
@@ -256,6 +274,12 @@ task_classes:
       request_override_bounds:
         min: 0.6
         max: 1.0
+    adequacy_authority:
+      score_source: reproducible_judge
+      rubric_id: delegation_non_verifiable_v1
+      rubric_hash: "sha256:321240472e3b52d21fd8cb9b9b7639bb73161a2945adf580948e86275ce20681"
+      event_topic_ref: delegation_judge_verdict_v1
+      terminology: controlled_reproducible_auditable
     escalation_policy:
       max_escalations: 2
       tier_order:
@@ -280,6 +304,12 @@ task_classes:
       request_override_bounds:
         min: 0.6
         max: 1.0
+    adequacy_authority:
+      score_source: reproducible_judge
+      rubric_id: delegation_non_verifiable_v1
+      rubric_hash: "sha256:321240472e3b52d21fd8cb9b9b7639bb73161a2945adf580948e86275ce20681"
+      event_topic_ref: delegation_judge_verdict_v1
+      terminology: controlled_reproducible_auditable
     escalation_policy:
       max_escalations: 1
       tier_order:
@@ -334,6 +364,12 @@ task_classes:
       request_override_bounds:
         min: 0.6
         max: 1.0
+    adequacy_authority:
+      score_source: reproducible_judge
+      rubric_id: delegation_non_verifiable_v1
+      rubric_hash: "sha256:321240472e3b52d21fd8cb9b9b7639bb73161a2945adf580948e86275ce20681"
+      event_topic_ref: delegation_judge_verdict_v1
+      terminology: controlled_reproducible_auditable
     escalation_policy:
       max_escalations: 1
       tier_order:
@@ -385,6 +421,12 @@ task_classes:
       request_override_bounds:
         min: 0.6
         max: 1.0
+    adequacy_authority:
+      score_source: reproducible_judge
+      rubric_id: delegation_non_verifiable_v1
+      rubric_hash: "sha256:321240472e3b52d21fd8cb9b9b7639bb73161a2945adf580948e86275ce20681"
+      event_topic_ref: delegation_judge_verdict_v1
+      terminology: controlled_reproducible_auditable
     escalation_policy:
       max_escalations: 1
       tier_order:

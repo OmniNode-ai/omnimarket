@@ -24,7 +24,9 @@ node_version:
   patch: 0
 node_type: "REDUCER_GENERIC"
 description: >
-  Deterministic quality gate reducer for the delegation pipeline. Evaluates LLM output quality using DoD checks declared in the task-class contract: deterministic checks (output_parses, signature_preserved) BLOCK delegation result injection on failure (fail_category="fail_deterministic"); heuristic checks (no_refusal, min_length_chars, etc.) carry the legacy semantics. Reads dod_deterministic and dod_heuristic from ModelQualityGateInput (OMN-10616). Pure function, no I/O.
+  Delegation quality gate reducer for the delegation pipeline. Evaluates LLM output quality using DoD checks declared in the task-class contract: deterministic checks (output_parses, signature_preserved) BLOCK delegation result injection on failure (fail_category="fail_deterministic"); heuristic checks (no_refusal, min_length_chars, etc.) carry the legacy semantics. Reads dod_deterministic and dod_heuristic from ModelQualityGateInput (OMN-10616). Pure function, no I/O.
+
+  OMN-13367 adds the controlled, reproducible, auditable judge verdict event schema for non-verifiable task classes. The judge verdict event records the judge identity bundle and replay hash; it does not claim LLM judge inference is deterministic.
 
   Failure categories: REFUSAL, MALFORMED, WEAK_OUTPUT, TASK_MISMATCH, FAIL_DETERMINISTIC.
 
@@ -45,6 +47,7 @@ event_bus:
     - "onex.cmd.omnibase-infra.delegation-quality-gate-request.v1"
   publish_topics:
     - "onex.evt.omnibase-infra.quality-gate-result.v1"
+    - "onex.evt.omnibase-infra.delegation-judge-verdict.v1"
 # Maps the handler's returned model to its publish topic so the runtime
 # dispatch-result applier routes ModelQualityGateResult to quality-gate-result.v1.
 # event_type is the Model-prefix-stripped short class name (OMN-12294).
@@ -52,6 +55,12 @@ published_events:
   - event_type: "QualityGateResult"
     topic: "onex.evt.omnibase-infra.quality-gate-result.v1"
     description: "Quality gate verdict emitted by HandlerQualityGateIntent for the delegation orchestrator."
+  - event_type: "DelegationJudgeVerdictEvent"
+    topic: "onex.evt.omnibase-infra.delegation-judge-verdict.v1"
+    model:
+      name: "ModelDelegationJudgeVerdictEvent"
+      module: "omnimarket.nodes.node_delegation_quality_gate_reducer.models.model_judge_verdict"
+    description: "Controlled, reproducible, auditable judge verdict for non-verifiable delegation classes. Includes judge_model, judge_model_version, judge_provider, rubric_id, rubric_hash, prompt_hash, input_hash, temperature, judge_node_version, reasoning_hash, verdict, actual_score, and event_hash."
 handler_routing:
   routing_strategy: "operation_match"
   handlers:
@@ -91,7 +100,25 @@ health_check:
       type: "handler"
       critical: true
 metadata:
-  description: "Deterministic quality gate that evaluates LLM output using heuristic checks for length, refusal detection, and task-type markers."
+  description: "Delegation quality gate that evaluates LLM output using declared checks and records controlled, reproducible, auditable judge verdicts for non-verifiable classes."
+  judge_verdict_event:
+    topic: "onex.evt.omnibase-infra.delegation-judge-verdict.v1"
+    score_source: "reproducible_judge"
+    terminology: "controlled_reproducible_auditable"
+    identity_bundle_fields:
+      - judge_model
+      - judge_model_version
+      - judge_provider
+      - rubric_id
+      - rubric_hash
+      - prompt_hash
+      - input_hash
+      - temperature
+      - judge_node_version
+      - reasoning_hash
+      - verdict
+      - actual_score
+    failure_semantics: "judge_failed verdict carries failure_kind/failure_message and actual_score=null, never a silent zero score"
   demo_path: true  # OMN-12777: demo-path topic coherence gate scope marker
   author: "OmniNode Team"
   license: "MIT"

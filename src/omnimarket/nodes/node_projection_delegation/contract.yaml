@@ -55,6 +55,11 @@ db_io:
       access: write
       database: omnidash_analytics
       role: generation_events
+    - name: delegation_judge_verdict_events
+      migration: "0016_delegation_judge_verdict_events.sql"
+      access: write
+      database: omnidash_analytics
+      role: judge_verdict_events
 
 event_bus:
   subscribe_topics:
@@ -65,6 +70,7 @@ event_bus:
     - onex.evt.omnimarket.delegate-skill-failed.v1
     - onex.evt.omnibase-infra.delegation-completed.v1
     - onex.evt.omnibase-infra.delegation-failed.v1
+    - onex.evt.omnibase-infra.delegation-judge-verdict.v1
   publish_topics:
     - onex.evt.omnimarket.projection-delegation-applied.v1
     # Projection-API snapshot topics: this reducer materializes each exposure
@@ -76,6 +82,7 @@ event_bus:
     - onex.snapshot.projection.delegation.quality-gate.v1  # onex-topic-allow: projection snapshot topic
     - onex.snapshot.projection.delegation.token-usage.v1  # onex-topic-allow: projection snapshot topic
     - onex.snapshot.projection.delegation.model-routing.v1  # onex-topic-allow: projection snapshot topic
+    - onex.snapshot.projection.delegation.judge-verdicts.v1  # onex-topic-allow: projection snapshot topic
 
 externally_consumed_topics:
   # Projection snapshot topics are served through projection_api/dashboard reads
@@ -86,6 +93,7 @@ externally_consumed_topics:
   - onex.snapshot.projection.delegation.quality-gate.v1  # onex-topic-allow: projection snapshot topic
   - onex.snapshot.projection.delegation.token-usage.v1  # onex-topic-allow: projection snapshot topic
   - onex.snapshot.projection.delegation.model-routing.v1  # onex-topic-allow: projection snapshot topic
+  - onex.snapshot.projection.delegation.judge-verdicts.v1  # onex-topic-allow: projection snapshot topic
 
 projection_api:
   expose: true
@@ -283,6 +291,33 @@ projection_api:
         - tokens_to_compliance_by_model
       freshness_column: latest_projection_updated_at
       limit: 1
+    - topic: onex.snapshot.projection.delegation.judge-verdicts.v1 # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
+      table: delegation_judge_verdict_events
+      schema: public
+      columns:
+        - id
+        - event_hash
+        - correlation_id
+        - task_type
+        - score_source
+        - judge_model
+        - judge_model_version
+        - judge_provider
+        - rubric_id
+        - rubric_hash
+        - prompt_hash
+        - input_hash
+        - temperature
+        - judge_node_version
+        - reasoning_hash
+        - verdict
+        - actual_score
+        - failure_kind
+        - failure_message
+        - created_at
+      order_by: created_at DESC
+      freshness_column: created_at
+      limit: 500
     - topic: onex.snapshot.projection.delegation.token-usage.v1 # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
       table: projection_delegation_token_usage
       schema: public
@@ -361,3 +396,4 @@ metadata:
     - onex.snapshot.projection.delegation.quality-gate.v1  # onex-topic-allow: projection snapshot topic
     - onex.snapshot.projection.delegation.token-usage.v1  # onex-topic-allow: projection snapshot topic
     - onex.snapshot.projection.delegation.model-routing.v1  # onex-topic-allow: projection snapshot topic
+    - onex.snapshot.projection.delegation.judge-verdicts.v1  # onex-topic-allow: projection snapshot topic

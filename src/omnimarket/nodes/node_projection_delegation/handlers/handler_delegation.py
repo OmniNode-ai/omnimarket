@@ -24,7 +24,11 @@ from omnimarket.models.delegation.wire.model_delegate_skill_terminal_projection 
     ModelDelegateSkillTerminalProjection,
     ModelDelegationEventProjectionRow,
 )
+from omnimarket.nodes.node_delegation_quality_gate_reducer.models.model_judge_verdict import (
+    ModelDelegationJudgeVerdictEvent,
+)
 from omnimarket.nodes.node_projection_delegation.handlers.handler_projection_delegation import (
+    _judge_verdict_projection_row,
     compute_generation_proof_fields,
 )
 from omnimarket.projection.runner import (
@@ -40,6 +44,7 @@ KNOWN_PROJECTION_TABLES: frozenset[str] = frozenset(
         "delegation_events",
         "delegation_shadow_comparisons",
         "generation_events",
+        "delegation_judge_verdict_events",
         "llm_cost_aggregates",
         "node_service_registry",
         "baselines_snapshots",
@@ -97,10 +102,15 @@ class DelegationProjectionRunner(BaseProjectionRunner):
             )
         if "generation_events" not in _by_role:
             raise ValueError("Contract missing required table role 'generation_events'")
+        if "judge_verdict_events" not in _by_role:
+            raise ValueError(
+                "Contract missing required table role 'judge_verdict_events'"
+            )
 
         self._table_delegation: str = _by_role["events"]
         self._table_shadow: str = _by_role["shadow_comparisons"]
         self._table_generation: str = _by_role["generation_events"]
+        self._table_judge_verdict: str = _by_role["judge_verdict_events"]
 
         _topics: list[str] = self._contract.get("event_bus", {}).get(
             "subscribe_topics", []
@@ -113,6 +123,9 @@ class DelegationProjectionRunner(BaseProjectionRunner):
         )
         self._topic_generation: str = next(
             (t for t in _topics if "node-generation-completed" in t), ""
+        )
+        self._topic_judge_verdict: str = next(
+            (t for t in _topics if "delegation-judge-verdict" in t), ""
         )
         self._topic_delegate_skill_completed: str = next(
             (t for t in _topics if "delegate-skill-completed" in t), ""
@@ -245,6 +258,8 @@ class DelegationProjectionRunner(BaseProjectionRunner):
             ok = await self._project_shadow_comparison(data, meta)
         elif topic == self._topic_generation:
             ok = await self._project_generation_completed(data, meta)
+        elif topic == self._topic_judge_verdict:
+            ok = await self._project_judge_verdict(data)
         elif topic in {
             self._topic_delegate_skill_completed,
             self._topic_delegate_skill_failed,
@@ -269,6 +284,52 @@ class DelegationProjectionRunner(BaseProjectionRunner):
             )
 
         return ok
+
+    async def _project_judge_verdict(self, data: dict[str, Any]) -> bool:
+        try:
+            event = ModelDelegationJudgeVerdictEvent.model_validate(data)
+        except ValidationError as exc:
+            logger.warning("judge verdict event failed model validation: %s", exc)
+            return True
+
+        row = _judge_verdict_projection_row(event)
+        await self.db.execute(
+            f"""
+            INSERT INTO {self._table_judge_verdict} (
+              event_hash, correlation_id, task_type, score_source,
+              judge_model, judge_model_version, judge_provider,
+              rubric_id, rubric_hash, prompt_hash, input_hash,
+              temperature, judge_node_version, reasoning_hash,
+              verdict, actual_score, failure_kind, failure_message
+            ) VALUES (
+              $1, $2, $3, $4,
+              $5, $6, $7,
+              $8, $9, $10, $11,
+              $12, $13, $14,
+              $15, $16, $17, $18
+            )
+            ON CONFLICT (event_hash) DO NOTHING
+            """,
+            row["event_hash"],
+            row["correlation_id"],
+            row["task_type"],
+            row["score_source"],
+            row["judge_model"],
+            row["judge_model_version"],
+            row["judge_provider"],
+            row["rubric_id"],
+            row["rubric_hash"],
+            row["prompt_hash"],
+            row["input_hash"],
+            row["temperature"],
+            row["judge_node_version"],
+            row["reasoning_hash"],
+            row["verdict"],
+            row["actual_score"],
+            row["failure_kind"],
+            row["failure_message"],
+        )
+        return True
 
     async def _project_delegation_terminal_result(
         self, data: dict[str, Any], meta: MessageMeta

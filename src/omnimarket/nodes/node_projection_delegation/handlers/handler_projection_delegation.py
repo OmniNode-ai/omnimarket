@@ -44,11 +44,16 @@ from omnimarket.models.delegation.wire.model_delegate_skill_terminal_projection 
     ModelDelegateSkillTerminalProjection,
     ModelDelegationEventProjectionRow,
 )
+from omnimarket.nodes.node_delegation_quality_gate_reducer.models.model_judge_verdict import (
+    ModelDelegationJudgeVerdictEvent,
+)
 from omnimarket.projection.protocol_database import DatabaseAdapter
 
 TABLE = "delegation_events"
 CONFLICT_KEY = "correlation_id"
 GENERATION_TABLE = "generation_events"
+JUDGE_VERDICT_TABLE = "delegation_judge_verdict_events"
+JUDGE_VERDICT_CONFLICT_KEY = "event_hash"
 
 # OMN-12775 (close-the-loop A3): canonical owner of the generation_events
 # projection — the node that writes the row. Persisted so the dashboard renders
@@ -237,6 +242,10 @@ class HandlerProjectionDelegation:
         if not isinstance(db_raw, DatabaseAdapter):
             raise TypeError("handle() requires a DatabaseAdapter in input_data['_db']")
         event_type = str(payload.pop("_event_type", ""))
+        if "delegation-judge-verdict" in event_type:
+            verdict = ModelDelegationJudgeVerdictEvent(**payload)
+            result = self.project_judge_verdict(verdict, db_raw)
+            return result.model_dump(mode="json")
         if "node-generation-completed" in event_type:
             generation = ModelProjectionGenerationCompletedEvent(**payload)
             result = self.project_generation_completed(generation, db_raw)
@@ -419,6 +428,18 @@ class HandlerProjectionDelegation:
             rows_upserted=1 if ok else 0, table=GENERATION_TABLE
         )
 
+    def project_judge_verdict(
+        self,
+        event: ModelDelegationJudgeVerdictEvent,
+        db: DatabaseAdapter,
+    ) -> ModelProjectionResult:
+        """UPSERT a reproducible judge verdict event into its evidence table."""
+        row = _judge_verdict_projection_row(event)
+        ok = db.upsert(JUDGE_VERDICT_TABLE, JUDGE_VERDICT_CONFLICT_KEY, row)
+        return ModelProjectionResult(
+            rows_upserted=1 if ok else 0, table=JUDGE_VERDICT_TABLE
+        )
+
     def project_batch(
         self,
         events: list[ModelTaskDelegatedEvent],
@@ -434,6 +455,7 @@ class HandlerProjectionDelegation:
 
 __all__: list[str] = [
     "GENERATION_PROJECTION_OWNER",
+    "JUDGE_VERDICT_TABLE",
     "HandlerProjectionDelegation",
     "ModelProjectionGenerationCompletedEvent",
     "ModelProjectionResult",
@@ -441,6 +463,31 @@ __all__: list[str] = [
     "ModelTaskDelegatedEvent",
     "compute_generation_proof_fields",
 ]
+
+
+def _judge_verdict_projection_row(
+    event: ModelDelegationJudgeVerdictEvent,
+) -> dict[str, object]:
+    return {
+        "event_hash": event.event_hash,
+        "correlation_id": str(event.correlation_id),
+        "task_type": event.task_type,
+        "score_source": event.score_source,
+        "judge_model": event.judge_model,
+        "judge_model_version": event.judge_model_version,
+        "judge_provider": event.judge_provider,
+        "rubric_id": event.rubric_id,
+        "rubric_hash": event.rubric_hash,
+        "prompt_hash": event.prompt_hash,
+        "input_hash": event.input_hash,
+        "temperature": event.temperature,
+        "judge_node_version": event.judge_node_version,
+        "reasoning_hash": event.reasoning_hash,
+        "verdict": event.verdict.value,
+        "actual_score": event.actual_score,
+        "failure_kind": event.failure_kind,
+        "failure_message": event.failure_message,
+    }
 
 
 def _is_delegate_skill_terminal_payload(payload: dict[str, object]) -> bool:
