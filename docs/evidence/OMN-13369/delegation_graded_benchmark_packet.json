@@ -1,0 +1,580 @@
+{
+  "ticket": "OMN-13369",
+  "gate": "delegation_graded_benchmark",
+  "fixture": "tests/unit/delegation/delegation_graded_benchmark_corpus.yaml",
+  "contract": "src/omnimarket/configs/task_class_contracts.v1.yaml",
+  "summary": {
+    "n_cases": 6,
+    "benchmark_classes": [
+      "easy",
+      "hard",
+      "medium"
+    ],
+    "score_range": 0.4,
+    "escalation_cells": 3,
+    "negative_controls": 2,
+    "passed_cells": 6,
+    "failed_terminal_cells": 1
+  },
+  "event_bus": {
+    "quality_gate_request_topic": "onex.cmd.omnibase-infra.delegation-quality-gate-request.v1",
+    "quality_gate_result_topic": "onex.evt.omnibase-infra.quality-gate-result.v1",
+    "escalation_event_topic": "onex.evt.omnimarket.delegation-escalation-triggered.v1",
+    "terminal_success_topic": "onex.evt.omnibase-infra.delegation-completed.v1",
+    "terminal_failure_topic": "onex.evt.omnibase-infra.delegation-failed.v1",
+    "projection_topics": {
+      "correlation_trace": "onex.snapshot.projection.delegation.correlation-trace.v1",
+      "quality_gate": "onex.snapshot.projection.delegation.quality-gate.v1",
+      "model_routing": "onex.snapshot.projection.delegation.model-routing.v1"
+    }
+  },
+  "cases": [
+    {
+      "id": "easy_local_summary_passes",
+      "benchmark_class": "easy",
+      "task_class": "summarization",
+      "required_bar": 0.95,
+      "required_bar_source": "benchmark_fixture",
+      "score_source": "quality_gate_delta",
+      "score_source_ticket": "OMN-12964",
+      "related_evidence_ticket": "OMN-13335",
+      "negative_control": false,
+      "model": "Qwen3.6-35B-A3B",
+      "tier": "local",
+      "score": 1.0,
+      "actual_score": 1.0,
+      "escalation_count": 0,
+      "terminal_status": "completed",
+      "classification": "pass",
+      "benchmark_passed": true,
+      "failures": [],
+      "attempts": [
+        {
+          "attempt_index": 0,
+          "correlation_id": "7ffa2b8f-36b2-5cea-8477-d5a388224f2a",
+          "event_id": "1df3805f-fa8c-5eee-af2a-2b5917175b6a",
+          "model": "Qwen3.6-35B-A3B",
+          "tier": "local",
+          "task_class": "summarization",
+          "score": 1.0,
+          "actual_score": 1.0,
+          "required_bar": 0.95,
+          "quality_gate_passed": true,
+          "adequacy_passed": true,
+          "classification": "pass",
+          "fail_category": "pass",
+          "fallback_recommended": false,
+          "failure_reasons": [],
+          "event_refs": {
+            "quality_gate_request_topic": "onex.cmd.omnibase-infra.delegation-quality-gate-request.v1",
+            "quality_gate_result_topic": "onex.evt.omnibase-infra.quality-gate-result.v1",
+            "quality_gate_result_event_id": "1df3805f-fa8c-5eee-af2a-2b5917175b6a",
+            "projection_correlation_trace_topic": "onex.snapshot.projection.delegation.correlation-trace.v1",
+            "projection_quality_gate_topic": "onex.snapshot.projection.delegation.quality-gate.v1",
+            "projection_model_routing_topic": "onex.snapshot.projection.delegation.model-routing.v1"
+          }
+        }
+      ],
+      "terminal_event": {
+        "topic": "onex.evt.omnibase-infra.delegation-completed.v1",
+        "event_id": "bbed32b3-0ea9-5a0f-84ea-a673c76c71f4",
+        "correlation_id": "7ffa2b8f-36b2-5cea-8477-d5a388224f2a"
+      },
+      "projection_rows": {
+        "correlation_trace": {
+          "topic": "onex.snapshot.projection.delegation.correlation-trace.v1",
+          "correlation_id": "7ffa2b8f-36b2-5cea-8477-d5a388224f2a"
+        },
+        "quality_gate": {
+          "topic": "onex.snapshot.projection.delegation.quality-gate.v1",
+          "correlation_id": "7ffa2b8f-36b2-5cea-8477-d5a388224f2a"
+        },
+        "model_routing": {
+          "topic": "onex.snapshot.projection.delegation.model-routing.v1",
+          "correlation_id": "7ffa2b8f-36b2-5cea-8477-d5a388224f2a"
+        }
+      }
+    },
+    {
+      "id": "medium_summary_escalates_once",
+      "benchmark_class": "medium",
+      "task_class": "summarization",
+      "required_bar": 0.95,
+      "required_bar_source": "benchmark_fixture",
+      "score_source": "quality_gate_delta",
+      "score_source_ticket": "OMN-12964",
+      "related_evidence_ticket": "OMN-13335",
+      "negative_control": false,
+      "model": "openrouter-glm-flash",
+      "tier": "cheap_cloud",
+      "score": 1.0,
+      "actual_score": 1.0,
+      "escalation_count": 1,
+      "terminal_status": "completed",
+      "classification": "pass",
+      "benchmark_passed": true,
+      "failures": [],
+      "attempts": [
+        {
+          "attempt_index": 0,
+          "correlation_id": "54302009-2dcb-5d27-a7a6-5246b929a623",
+          "event_id": "b1fa2541-b4af-5d6f-b8c3-6a17ca3a321b",
+          "model": "Qwen3.6-35B-A3B",
+          "tier": "local",
+          "task_class": "summarization",
+          "score": 0.9,
+          "actual_score": 0.9,
+          "required_bar": 0.95,
+          "quality_gate_passed": false,
+          "adequacy_passed": false,
+          "classification": "fail",
+          "fail_category": "fail_heuristic",
+          "fallback_recommended": true,
+          "failure_reasons": [
+            "WEAK_OUTPUT: response truncated mid-clause (ends on 'because'), fails semantic_adequacy"
+          ],
+          "event_refs": {
+            "quality_gate_request_topic": "onex.cmd.omnibase-infra.delegation-quality-gate-request.v1",
+            "quality_gate_result_topic": "onex.evt.omnibase-infra.quality-gate-result.v1",
+            "quality_gate_result_event_id": "b1fa2541-b4af-5d6f-b8c3-6a17ca3a321b",
+            "projection_correlation_trace_topic": "onex.snapshot.projection.delegation.correlation-trace.v1",
+            "projection_quality_gate_topic": "onex.snapshot.projection.delegation.quality-gate.v1",
+            "projection_model_routing_topic": "onex.snapshot.projection.delegation.model-routing.v1",
+            "escalation_event_topic": "onex.evt.omnimarket.delegation-escalation-triggered.v1",
+            "escalation_event_id": "640c5265-5d1c-5f49-bb6f-c54a3e6572b1"
+          }
+        },
+        {
+          "attempt_index": 1,
+          "correlation_id": "9d2bfdc2-8b54-582a-a9b7-10a9fd4e6a8d",
+          "event_id": "4e49da0d-c1d2-5554-bf6d-3ca4fe9d9c86",
+          "model": "openrouter-glm-flash",
+          "tier": "cheap_cloud",
+          "task_class": "summarization",
+          "score": 1.0,
+          "actual_score": 1.0,
+          "required_bar": 0.95,
+          "quality_gate_passed": true,
+          "adequacy_passed": true,
+          "classification": "pass",
+          "fail_category": "pass",
+          "fallback_recommended": false,
+          "failure_reasons": [],
+          "event_refs": {
+            "quality_gate_request_topic": "onex.cmd.omnibase-infra.delegation-quality-gate-request.v1",
+            "quality_gate_result_topic": "onex.evt.omnibase-infra.quality-gate-result.v1",
+            "quality_gate_result_event_id": "4e49da0d-c1d2-5554-bf6d-3ca4fe9d9c86",
+            "projection_correlation_trace_topic": "onex.snapshot.projection.delegation.correlation-trace.v1",
+            "projection_quality_gate_topic": "onex.snapshot.projection.delegation.quality-gate.v1",
+            "projection_model_routing_topic": "onex.snapshot.projection.delegation.model-routing.v1"
+          }
+        }
+      ],
+      "terminal_event": {
+        "topic": "onex.evt.omnibase-infra.delegation-completed.v1",
+        "event_id": "ced32df7-995c-5c13-8c4b-50ac1f37f5fc",
+        "correlation_id": "9d2bfdc2-8b54-582a-a9b7-10a9fd4e6a8d"
+      },
+      "projection_rows": {
+        "correlation_trace": {
+          "topic": "onex.snapshot.projection.delegation.correlation-trace.v1",
+          "correlation_id": "9d2bfdc2-8b54-582a-a9b7-10a9fd4e6a8d"
+        },
+        "quality_gate": {
+          "topic": "onex.snapshot.projection.delegation.quality-gate.v1",
+          "correlation_id": "9d2bfdc2-8b54-582a-a9b7-10a9fd4e6a8d"
+        },
+        "model_routing": {
+          "topic": "onex.snapshot.projection.delegation.model-routing.v1",
+          "correlation_id": "9d2bfdc2-8b54-582a-a9b7-10a9fd4e6a8d"
+        }
+      }
+    },
+    {
+      "id": "hard_research_reaches_ceiling",
+      "benchmark_class": "hard",
+      "task_class": "research",
+      "required_bar": 0.95,
+      "required_bar_source": "benchmark_fixture",
+      "score_source": "quality_gate_delta",
+      "score_source_ticket": "OMN-12964",
+      "related_evidence_ticket": "OMN-13335",
+      "negative_control": false,
+      "model": "cloud-gemini-pro",
+      "tier": "claude",
+      "score": 1.0,
+      "actual_score": 1.0,
+      "escalation_count": 2,
+      "terminal_status": "completed",
+      "classification": "pass",
+      "benchmark_passed": true,
+      "failures": [],
+      "attempts": [
+        {
+          "attempt_index": 0,
+          "correlation_id": "0a9f105e-5c0e-5b6c-953d-bd795162ece9",
+          "event_id": "0603cba3-c8ac-50f2-ae52-1984d3e13f83",
+          "model": "Qwen3.6-35B-A3B",
+          "tier": "local",
+          "task_class": "research",
+          "score": 0.6,
+          "actual_score": 0.6,
+          "required_bar": 0.95,
+          "quality_gate_passed": false,
+          "adequacy_passed": false,
+          "classification": "fail",
+          "fail_category": "fail_heuristic",
+          "fallback_recommended": true,
+          "failure_reasons": [
+            "REFUSAL: detected refusal phrases: i cannot",
+            "TASK_MISMATCH: missing source citations or references",
+            "TASK_MISMATCH: failed methodical_analysis"
+          ],
+          "event_refs": {
+            "quality_gate_request_topic": "onex.cmd.omnibase-infra.delegation-quality-gate-request.v1",
+            "quality_gate_result_topic": "onex.evt.omnibase-infra.quality-gate-result.v1",
+            "quality_gate_result_event_id": "0603cba3-c8ac-50f2-ae52-1984d3e13f83",
+            "projection_correlation_trace_topic": "onex.snapshot.projection.delegation.correlation-trace.v1",
+            "projection_quality_gate_topic": "onex.snapshot.projection.delegation.quality-gate.v1",
+            "projection_model_routing_topic": "onex.snapshot.projection.delegation.model-routing.v1",
+            "escalation_event_topic": "onex.evt.omnimarket.delegation-escalation-triggered.v1",
+            "escalation_event_id": "28ad592f-c7dd-5f83-84ab-741124fa8418"
+          }
+        },
+        {
+          "attempt_index": 1,
+          "correlation_id": "c8309cc1-6bb3-5f03-8c43-66f834488144",
+          "event_id": "d02e1549-b8ec-5c4b-8d75-22d936f8bc3a",
+          "model": "openrouter-glm-flash",
+          "tier": "cheap_cloud",
+          "task_class": "research",
+          "score": 0.867,
+          "actual_score": 0.867,
+          "required_bar": 0.95,
+          "quality_gate_passed": false,
+          "adequacy_passed": false,
+          "classification": "fail",
+          "fail_category": "fail_heuristic",
+          "fallback_recommended": true,
+          "failure_reasons": [
+            "TASK_MISMATCH: failed methodical_analysis"
+          ],
+          "event_refs": {
+            "quality_gate_request_topic": "onex.cmd.omnibase-infra.delegation-quality-gate-request.v1",
+            "quality_gate_result_topic": "onex.evt.omnibase-infra.quality-gate-result.v1",
+            "quality_gate_result_event_id": "d02e1549-b8ec-5c4b-8d75-22d936f8bc3a",
+            "projection_correlation_trace_topic": "onex.snapshot.projection.delegation.correlation-trace.v1",
+            "projection_quality_gate_topic": "onex.snapshot.projection.delegation.quality-gate.v1",
+            "projection_model_routing_topic": "onex.snapshot.projection.delegation.model-routing.v1",
+            "escalation_event_topic": "onex.evt.omnimarket.delegation-escalation-triggered.v1",
+            "escalation_event_id": "79624713-b0ca-55e4-b905-6886640824ca"
+          }
+        },
+        {
+          "attempt_index": 2,
+          "correlation_id": "97b787b5-7fa5-54ac-8a15-a6ad9f41f4c3",
+          "event_id": "a2343536-8a3f-5dd2-ab5d-5a422a63a581",
+          "model": "cloud-gemini-pro",
+          "tier": "claude",
+          "task_class": "research",
+          "score": 1.0,
+          "actual_score": 1.0,
+          "required_bar": 0.95,
+          "quality_gate_passed": true,
+          "adequacy_passed": true,
+          "classification": "pass",
+          "fail_category": "pass",
+          "fallback_recommended": false,
+          "failure_reasons": [],
+          "event_refs": {
+            "quality_gate_request_topic": "onex.cmd.omnibase-infra.delegation-quality-gate-request.v1",
+            "quality_gate_result_topic": "onex.evt.omnibase-infra.quality-gate-result.v1",
+            "quality_gate_result_event_id": "a2343536-8a3f-5dd2-ab5d-5a422a63a581",
+            "projection_correlation_trace_topic": "onex.snapshot.projection.delegation.correlation-trace.v1",
+            "projection_quality_gate_topic": "onex.snapshot.projection.delegation.quality-gate.v1",
+            "projection_model_routing_topic": "onex.snapshot.projection.delegation.model-routing.v1"
+          }
+        }
+      ],
+      "terminal_event": {
+        "topic": "onex.evt.omnibase-infra.delegation-completed.v1",
+        "event_id": "2d6e28f5-d0f9-5d10-a57f-831961dd721c",
+        "correlation_id": "97b787b5-7fa5-54ac-8a15-a6ad9f41f4c3"
+      },
+      "projection_rows": {
+        "correlation_trace": {
+          "topic": "onex.snapshot.projection.delegation.correlation-trace.v1",
+          "correlation_id": "97b787b5-7fa5-54ac-8a15-a6ad9f41f4c3"
+        },
+        "quality_gate": {
+          "topic": "onex.snapshot.projection.delegation.quality-gate.v1",
+          "correlation_id": "97b787b5-7fa5-54ac-8a15-a6ad9f41f4c3"
+        },
+        "model_routing": {
+          "topic": "onex.snapshot.projection.delegation.model-routing.v1",
+          "correlation_id": "97b787b5-7fa5-54ac-8a15-a6ad9f41f4c3"
+        }
+      }
+    },
+    {
+      "id": "negative_document_local_adequate",
+      "benchmark_class": "easy",
+      "task_class": "document",
+      "required_bar": 0.95,
+      "required_bar_source": "benchmark_fixture",
+      "score_source": "quality_gate_delta",
+      "score_source_ticket": "OMN-12964",
+      "related_evidence_ticket": "OMN-13335",
+      "negative_control": true,
+      "model": "Qwen3.6-35B-A3B",
+      "tier": "local",
+      "score": 1.0,
+      "actual_score": 1.0,
+      "escalation_count": 0,
+      "terminal_status": "completed",
+      "classification": "pass",
+      "benchmark_passed": true,
+      "failures": [],
+      "attempts": [
+        {
+          "attempt_index": 0,
+          "correlation_id": "b7f62e8c-1da6-5052-8161-d3efce4b0396",
+          "event_id": "4a2d2d09-f108-5246-9bff-c8992cb54681",
+          "model": "Qwen3.6-35B-A3B",
+          "tier": "local",
+          "task_class": "document",
+          "score": 1.0,
+          "actual_score": 1.0,
+          "required_bar": 0.95,
+          "quality_gate_passed": true,
+          "adequacy_passed": true,
+          "classification": "pass",
+          "fail_category": "pass",
+          "fallback_recommended": false,
+          "failure_reasons": [],
+          "event_refs": {
+            "quality_gate_request_topic": "onex.cmd.omnibase-infra.delegation-quality-gate-request.v1",
+            "quality_gate_result_topic": "onex.evt.omnibase-infra.quality-gate-result.v1",
+            "quality_gate_result_event_id": "4a2d2d09-f108-5246-9bff-c8992cb54681",
+            "projection_correlation_trace_topic": "onex.snapshot.projection.delegation.correlation-trace.v1",
+            "projection_quality_gate_topic": "onex.snapshot.projection.delegation.quality-gate.v1",
+            "projection_model_routing_topic": "onex.snapshot.projection.delegation.model-routing.v1"
+          }
+        }
+      ],
+      "terminal_event": {
+        "topic": "onex.evt.omnibase-infra.delegation-completed.v1",
+        "event_id": "1c81b442-f0f0-598e-a545-70c44fc0aa3b",
+        "correlation_id": "b7f62e8c-1da6-5052-8161-d3efce4b0396"
+      },
+      "projection_rows": {
+        "correlation_trace": {
+          "topic": "onex.snapshot.projection.delegation.correlation-trace.v1",
+          "correlation_id": "b7f62e8c-1da6-5052-8161-d3efce4b0396"
+        },
+        "quality_gate": {
+          "topic": "onex.snapshot.projection.delegation.quality-gate.v1",
+          "correlation_id": "b7f62e8c-1da6-5052-8161-d3efce4b0396"
+        },
+        "model_routing": {
+          "topic": "onex.snapshot.projection.delegation.model-routing.v1",
+          "correlation_id": "b7f62e8c-1da6-5052-8161-d3efce4b0396"
+        }
+      }
+    },
+    {
+      "id": "negative_correct_marker_light_passes",
+      "benchmark_class": "easy",
+      "task_class": "document",
+      "required_bar": 0.95,
+      "required_bar_source": "benchmark_fixture",
+      "score_source": "quality_gate_delta",
+      "score_source_ticket": "OMN-12964",
+      "related_evidence_ticket": "OMN-13335",
+      "negative_control": true,
+      "model": "Qwen3.6-35B-A3B",
+      "tier": "local",
+      "score": 1.0,
+      "actual_score": 1.0,
+      "escalation_count": 0,
+      "terminal_status": "completed",
+      "classification": "pass",
+      "benchmark_passed": true,
+      "failures": [],
+      "attempts": [
+        {
+          "attempt_index": 0,
+          "correlation_id": "c8ef5929-c35d-5701-bf12-e8b7d33e9c07",
+          "event_id": "1dbe3525-8c4a-5f28-8783-78fe3d9714ec",
+          "model": "Qwen3.6-35B-A3B",
+          "tier": "local",
+          "task_class": "document",
+          "score": 1.0,
+          "actual_score": 1.0,
+          "required_bar": 0.95,
+          "quality_gate_passed": true,
+          "adequacy_passed": true,
+          "classification": "pass",
+          "fail_category": "pass",
+          "fallback_recommended": false,
+          "failure_reasons": [],
+          "event_refs": {
+            "quality_gate_request_topic": "onex.cmd.omnibase-infra.delegation-quality-gate-request.v1",
+            "quality_gate_result_topic": "onex.evt.omnibase-infra.quality-gate-result.v1",
+            "quality_gate_result_event_id": "1dbe3525-8c4a-5f28-8783-78fe3d9714ec",
+            "projection_correlation_trace_topic": "onex.snapshot.projection.delegation.correlation-trace.v1",
+            "projection_quality_gate_topic": "onex.snapshot.projection.delegation.quality-gate.v1",
+            "projection_model_routing_topic": "onex.snapshot.projection.delegation.model-routing.v1"
+          }
+        }
+      ],
+      "terminal_event": {
+        "topic": "onex.evt.omnibase-infra.delegation-completed.v1",
+        "event_id": "336219e9-4a36-5ea9-a9c8-ed48b4bf9dc7",
+        "correlation_id": "c8ef5929-c35d-5701-bf12-e8b7d33e9c07"
+      },
+      "projection_rows": {
+        "correlation_trace": {
+          "topic": "onex.snapshot.projection.delegation.correlation-trace.v1",
+          "correlation_id": "c8ef5929-c35d-5701-bf12-e8b7d33e9c07"
+        },
+        "quality_gate": {
+          "topic": "onex.snapshot.projection.delegation.quality-gate.v1",
+          "correlation_id": "c8ef5929-c35d-5701-bf12-e8b7d33e9c07"
+        },
+        "model_routing": {
+          "topic": "onex.snapshot.projection.delegation.model-routing.v1",
+          "correlation_id": "c8ef5929-c35d-5701-bf12-e8b7d33e9c07"
+        }
+      }
+    },
+    {
+      "id": "marker_rich_wrong_fails",
+      "benchmark_class": "hard",
+      "task_class": "research",
+      "required_bar": 0.95,
+      "required_bar_source": "benchmark_fixture",
+      "score_source": "quality_gate_delta",
+      "score_source_ticket": "OMN-12964",
+      "related_evidence_ticket": "OMN-13335",
+      "negative_control": false,
+      "model": "cloud-gemini-pro",
+      "tier": "claude",
+      "score": 0.867,
+      "actual_score": 0.867,
+      "escalation_count": 2,
+      "terminal_status": "failed",
+      "classification": "fail",
+      "benchmark_passed": true,
+      "failures": [],
+      "attempts": [
+        {
+          "attempt_index": 0,
+          "correlation_id": "0ce87d9a-95ba-5055-b7b1-72f2cb1f7d69",
+          "event_id": "14cf7875-d6c6-59bb-bff6-66f08e10bfaf",
+          "model": "Qwen3.6-35B-A3B",
+          "tier": "local",
+          "task_class": "research",
+          "score": 0.867,
+          "actual_score": 0.867,
+          "required_bar": 0.95,
+          "quality_gate_passed": false,
+          "adequacy_passed": false,
+          "classification": "fail",
+          "fail_category": "fail_heuristic",
+          "fallback_recommended": true,
+          "failure_reasons": [
+            "REFUSAL: detected refusal phrases: i cannot"
+          ],
+          "event_refs": {
+            "quality_gate_request_topic": "onex.cmd.omnibase-infra.delegation-quality-gate-request.v1",
+            "quality_gate_result_topic": "onex.evt.omnibase-infra.quality-gate-result.v1",
+            "quality_gate_result_event_id": "14cf7875-d6c6-59bb-bff6-66f08e10bfaf",
+            "projection_correlation_trace_topic": "onex.snapshot.projection.delegation.correlation-trace.v1",
+            "projection_quality_gate_topic": "onex.snapshot.projection.delegation.quality-gate.v1",
+            "projection_model_routing_topic": "onex.snapshot.projection.delegation.model-routing.v1",
+            "escalation_event_topic": "onex.evt.omnimarket.delegation-escalation-triggered.v1",
+            "escalation_event_id": "5ef6ac45-733f-585f-9039-9583ad698882"
+          }
+        },
+        {
+          "attempt_index": 1,
+          "correlation_id": "45cbc380-0c27-5235-a47c-32761f26982f",
+          "event_id": "67229c63-1dc4-5187-94c2-a25b1a98fcdf",
+          "model": "openrouter-glm-flash",
+          "tier": "cheap_cloud",
+          "task_class": "research",
+          "score": 0.867,
+          "actual_score": 0.867,
+          "required_bar": 0.95,
+          "quality_gate_passed": false,
+          "adequacy_passed": false,
+          "classification": "fail",
+          "fail_category": "fail_heuristic",
+          "fallback_recommended": true,
+          "failure_reasons": [
+            "REFUSAL: detected refusal phrases: i cannot"
+          ],
+          "event_refs": {
+            "quality_gate_request_topic": "onex.cmd.omnibase-infra.delegation-quality-gate-request.v1",
+            "quality_gate_result_topic": "onex.evt.omnibase-infra.quality-gate-result.v1",
+            "quality_gate_result_event_id": "67229c63-1dc4-5187-94c2-a25b1a98fcdf",
+            "projection_correlation_trace_topic": "onex.snapshot.projection.delegation.correlation-trace.v1",
+            "projection_quality_gate_topic": "onex.snapshot.projection.delegation.quality-gate.v1",
+            "projection_model_routing_topic": "onex.snapshot.projection.delegation.model-routing.v1",
+            "escalation_event_topic": "onex.evt.omnimarket.delegation-escalation-triggered.v1",
+            "escalation_event_id": "229d1de5-9c05-5864-869f-cad8480c075e"
+          }
+        },
+        {
+          "attempt_index": 2,
+          "correlation_id": "8bf8162a-67e5-530a-a835-8bb67f81a35a",
+          "event_id": "29a27165-3dad-5446-bd25-adfcce1171a9",
+          "model": "cloud-gemini-pro",
+          "tier": "claude",
+          "task_class": "research",
+          "score": 0.867,
+          "actual_score": 0.867,
+          "required_bar": 0.95,
+          "quality_gate_passed": false,
+          "adequacy_passed": false,
+          "classification": "fail",
+          "fail_category": "fail_heuristic",
+          "fallback_recommended": true,
+          "failure_reasons": [
+            "REFUSAL: detected refusal phrases: i cannot"
+          ],
+          "event_refs": {
+            "quality_gate_request_topic": "onex.cmd.omnibase-infra.delegation-quality-gate-request.v1",
+            "quality_gate_result_topic": "onex.evt.omnibase-infra.quality-gate-result.v1",
+            "quality_gate_result_event_id": "29a27165-3dad-5446-bd25-adfcce1171a9",
+            "projection_correlation_trace_topic": "onex.snapshot.projection.delegation.correlation-trace.v1",
+            "projection_quality_gate_topic": "onex.snapshot.projection.delegation.quality-gate.v1",
+            "projection_model_routing_topic": "onex.snapshot.projection.delegation.model-routing.v1"
+          }
+        }
+      ],
+      "terminal_event": {
+        "topic": "onex.evt.omnibase-infra.delegation-failed.v1",
+        "event_id": "d92f3633-361d-51a2-b805-c8393566744e",
+        "correlation_id": "8bf8162a-67e5-530a-a835-8bb67f81a35a"
+      },
+      "projection_rows": {
+        "correlation_trace": {
+          "topic": "onex.snapshot.projection.delegation.correlation-trace.v1",
+          "correlation_id": "8bf8162a-67e5-530a-a835-8bb67f81a35a"
+        },
+        "quality_gate": {
+          "topic": "onex.snapshot.projection.delegation.quality-gate.v1",
+          "correlation_id": "8bf8162a-67e5-530a-a835-8bb67f81a35a"
+        },
+        "model_routing": {
+          "topic": "onex.snapshot.projection.delegation.model-routing.v1",
+          "correlation_id": "8bf8162a-67e5-530a-a835-8bb67f81a35a"
+        }
+      }
+    }
+  ],
+  "failures": [],
+  "passed": true
+}
