@@ -181,6 +181,7 @@ task_classes:
         # the `review` task class below.
         - cites_sources
         - methodical_analysis
+        - semantic_adequacy
     quality_gate:
       score_source: quality_gate_graded_score
       required_bar: 0.8

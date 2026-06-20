@@ -123,7 +123,7 @@ def test_known_good_outscores_known_bad() -> None:
 
 @pytest.mark.unit
 def test_prose_document_is_not_scored_against_docstring_dod() -> None:
-    """A good prose `document` output must pass - not fail docstring DoD (OMN-12964)."""
+    """A good prose `document` output scores cleanly against prose DoD."""
     corpus = _load_corpus()
     task_classes = corpus["task_classes"]  # type: ignore[index]
     good_prose = next(
@@ -146,8 +146,10 @@ def test_prose_document_is_not_scored_against_docstring_dod() -> None:
             dod_heuristic=tuple(dod["heuristic"]),
         )
     )
-    assert result.passed, f"good prose document failed gate: {result.failure_reasons}"
+    assert result.passed
+    assert result.fail_category == "pass"
     assert result.quality_score == pytest.approx(1.0)
+    assert result.failure_reasons == ()
 
 
 @pytest.mark.unit

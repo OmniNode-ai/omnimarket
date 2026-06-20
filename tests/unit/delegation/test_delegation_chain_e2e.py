@@ -236,7 +236,7 @@ class TestDelegationChainE2E:
         publisher.publish(TOPIC_QUALITY_GATE_RESULT, gate_result)
         return gate_result
 
-    def test_full_chain_completes_with_passing_gate(
+    def test_full_chain_routes_research_with_semantic_authority(
         self,
         workflow: HandlerDelegationWorkflow,
         request_model: ModelDelegationRequest,
@@ -245,8 +245,9 @@ class TestDelegationChainE2E:
         # OMN-13354: a research-shaped good answer — cites sources (Section /
         # author-year / bracketed reference) and reasons through the claim
         # (because / therefore / evidence). The research DoD is cites_sources +
-        # methodical_analysis, NOT the old code-line cites_specific_lines, so the
-        # fixture must look like research, not a code review.
+        # methodical_analysis plus semantic_adequacy, NOT the old code-line
+        # cites_specific_lines, so the fixture must look like research, not a
+        # code review.
         good_content = (
             "According to Section 2 of the runtime design, validation belongs at "
             "the ingress boundary before dispatch. As shown in (Gray, 2026) and "
@@ -259,8 +260,11 @@ class TestDelegationChainE2E:
             workflow, request_model, publisher, good_content
         )
         assert gate_result.passed is True  # type: ignore[attr-defined]
+        assert gate_result.quality_score == pytest.approx(1.0)  # type: ignore[attr-defined]
+        assert gate_result.failure_reasons == ()  # type: ignore[attr-defined]
 
-        # Hop 7: orchestrator consumes the gate result, emits terminal events.
+        # Hop 7: orchestrator consumes the gate result and completes once the
+        # explicit semantic adequacy authority clears.
         events = workflow.handle_gate_result(gate_result)  # type: ignore[arg-type]
         assert len(events) >= 1
         assert (

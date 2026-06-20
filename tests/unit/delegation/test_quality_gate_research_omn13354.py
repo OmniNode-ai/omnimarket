@@ -19,8 +19,13 @@ The fix swaps the research DoD to research-appropriate heuristics:
   * `methodical_analysis` — reasoning-structure markers (because / therefore /
     evidence / risk), replacing the narrow `explains_tradeoffs` keyword form.
 
+OMN-13370 keeps those checks as diagnostics/reject-only pre-filters: they can
+reject thin research, but they no longer promote a marker-rich answer to adequate
+without the explicit semantic_adequacy authority declared by the research DoD.
+
 These tests pin the acceptance criteria:
-  (a) a substantive research answer (cites sources, reasoned) PASSES;
+  (a) a substantive research answer (cites sources, reasoned, semantically
+      complete) passes because semantic_adequacy is declared;
   (b) a thin / empty research answer still FAILS;
   (c) the research path is NOT the code-line-citation regex.
 """
@@ -95,14 +100,13 @@ def _score_research(content: str) -> ModelQualityGateInput:
 
 @pytest.mark.unit
 def test_substantive_research_answer_passes() -> None:
-    """(a) A real research answer (cites sources + reasons) must PASS the gate."""
+    """(a) Research passes when explicit semantic adequacy is also present."""
     result = quality_gate_delta(_score_research(_SUBSTANTIVE_RESEARCH))
 
-    assert result.passed, (
-        f"substantive research answer failed the gate: {result.failure_reasons}"
-    )
+    assert result.passed
     assert result.fail_category == "pass"
     assert result.quality_score == pytest.approx(1.0)
+    assert result.failure_reasons == ()
     assert not any("specific line citations" in r for r in result.failure_reasons), (
         f"code-line-citation reason fired on research: {result.failure_reasons}"
     )
@@ -110,13 +114,13 @@ def test_substantive_research_answer_passes() -> None:
 
 @pytest.mark.unit
 def test_second_substantive_research_answer_passes() -> None:
-    """(a) Different citation forms (theorem/equation/author-year) also PASS."""
+    """(a) Different citation forms also pass with semantic adequacy."""
     result = quality_gate_delta(_score_research(_SUBSTANTIVE_RESEARCH_ALT))
 
-    assert result.passed, (
-        f"alt substantive research answer failed: {result.failure_reasons}"
-    )
+    assert result.passed
+    assert result.fail_category == "pass"
     assert result.quality_score == pytest.approx(1.0)
+    assert result.failure_reasons == ()
 
 
 @pytest.mark.unit
@@ -175,6 +179,7 @@ def test_research_dod_is_not_the_code_line_citation_check() -> None:
         "check (OMN-13354 catch-22)"
     )
     assert "methodical_analysis" in heur
+    assert "semantic_adequacy" in heur
     assert "explains_tradeoffs" not in heur
 
 
