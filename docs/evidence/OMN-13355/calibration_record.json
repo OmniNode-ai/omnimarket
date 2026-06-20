@@ -1,0 +1,28 @@
+{
+  "ticket": "OMN-13355",
+  "calibration": "one real-premium run via headless claude (Claude Code, OAuth \u2014 no API key)",
+  "premium_model_run": "claude-opus-4-8[1m]",
+  "measured_tokens": {
+    "input": 44170,
+    "output": 55
+  },
+  "provider_reported_cost_usd": "0.38178500000000004",
+  "pinned_manifest_model": "claude-opus-4-6",
+  "pinned_price_in_per_1k": "0.015",
+  "pinned_price_out_per_1k": "0.075",
+  "pinned_as_of": "2026-02-01",
+  "pinned_counterfactual_cost_usd": "0.666675",
+  "delta_provider_minus_pinned_usd": "-0.28488999999999996",
+  "calibrated_counterfactual_model_dump": {
+    "model": "claude-opus-4-6",
+    "price_in_per_1k": "0.015",
+    "price_out_per_1k": "0.075",
+    "as_of": "2026-02-01",
+    "tokens_in": 44170,
+    "tokens_out": 55,
+    "counterfactual_cost_usd": "0.666675",
+    "pricing_source": "calibration",
+    "measured": true
+  },
+  "note": "Provider cost includes ephemeral prompt-cache creation on the live Claude Code session; the pinned counterfactual prices the same measured tokens at the manifest's claude-opus-4-6 rate. The delta is the auditable gap between the pinned table and the live provider meter."
+}

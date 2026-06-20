@@ -14,6 +14,8 @@ from __future__ import annotations
 from typing import Literal, Protocol
 from uuid import UUID
 
+from omnibase_core.models.delegation.wire import ModelPremiumCounterfactual
+
 from omnimarket.nodes.node_delegate_skill_orchestrator.models.model_delegate_skill_request import (
     ModelDelegateSkillRequest,
 )
@@ -27,6 +29,7 @@ from omnimarket.nodes.node_delegate_skill_orchestrator.ports.port_runtime_delega
 )
 from omnimarket.pricing import (
     DEFAULT_BASELINE_MODEL,
+    build_premium_counterfactual,
     estimate_baseline_cost_usd,
     estimate_frontier_costs_usd,
     get_manifest_version_int,
@@ -117,6 +120,26 @@ def _frontier_cost_estimates(result: dict[str, object]) -> dict[str, float]:
     )
 
 
+def _premium_counterfactual(
+    result: dict[str, object],
+) -> ModelPremiumCounterfactual | None:
+    """Build the pinned premium counterfactual from measured tokens (OMN-13355)."""
+    prompt_tokens = _as_int(result.get("input_tokens", result.get("prompt_tokens", 0)))
+    completion_tokens = _as_int(
+        result.get("output_tokens", result.get("completion_tokens", 0))
+    )
+    premium_model = str(
+        result.get("model_cloud_baseline")
+        or result.get("baseline_model")
+        or DEFAULT_BASELINE_MODEL
+    )
+    return build_premium_counterfactual(
+        prompt_tokens=prompt_tokens,
+        completion_tokens=completion_tokens,
+        premium_model=premium_model,
+    )
+
+
 def _response_from_result(
     request: ModelDelegateSkillRequest, result: dict[str, object]
 ) -> ModelDelegateSkillResponse:
@@ -174,6 +197,7 @@ def _response_from_result(
                 default=_estimate_claude_cost_savings(result),
             ),
             frontier_costs_usd=_frontier_cost_estimates(result),
+            premium_counterfactual=_premium_counterfactual(result),
             latency_ms=_as_int(
                 result.get("delegation_latency_ms", result.get("latency_ms", 0))
             ),

@@ -7,6 +7,7 @@ from __future__ import annotations
 from typing import Literal
 from uuid import UUID
 
+from omnibase_core.models.delegation.wire import ModelPremiumCounterfactual
 from pydantic import BaseModel, ConfigDict, Field
 
 
@@ -23,6 +24,13 @@ class ModelDelegateSkillResponseMetrics(BaseModel):
     cost_usd: float = Field(default=0.0, ge=0.0)
     cost_savings_usd: float = Field(default=0.0, ge=0.0)
     frontier_costs_usd: dict[str, float] = Field(default_factory=dict)
+    premium_counterfactual: ModelPremiumCounterfactual | None = Field(
+        default=None,
+        description=(
+            "Pinned premium counterfactual {model, price, as_of, tokens, cost} "
+            "(OMN-13355). cost_savings_usd = counterfactual_cost_usd - cost_usd."
+        ),
+    )
     latency_ms: int = Field(default=0, ge=0)
 
 
