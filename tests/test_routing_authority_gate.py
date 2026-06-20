@@ -23,33 +23,59 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+from omnibase_core.nodes.node_routing_authority_check_compute.handler import (
+    check_routing_authority_at_path,
+)
 from omnibase_core.validation.validator_routing_authority import (
-    build_input_from_disk,
-    evaluate,
     main,
 )
 
 _REPO_ROOT = Path(__file__).parent.parent
+_DEFAULT_CONTRACTS = ("src/omnimarket/nodes/node_generation_consumer/contract.yaml",)
+_DEFAULT_SOURCES = (
+    "src/omnimarket/nodes/node_generation_consumer/handlers/handler_generation_consumer.py",
+    "src/omnimarket/nodes/node_llm_delegation_call_effect/handlers/handler_inference_intent.py",
+    "src/omnimarket/adapters/llm/bifrost/config_loader_bifrost_delegation.py",
+)
+_DEFAULT_BIFROST = "src/omnimarket/configs/bifrost_delegation.yaml"
+
+
+def _run_gate(repo_root: Path = _REPO_ROOT):
+    return check_routing_authority_at_path(
+        repo_root=repo_root,
+        demo_path_contracts=_DEFAULT_CONTRACTS,
+        demo_path_sources=_DEFAULT_SOURCES,
+        bifrost_config_rel=_DEFAULT_BIFROST,
+    )
+
+
+def _violations(report: dict[str, object], key: str) -> list[str]:
+    entries = report.get(key, [])
+    if not isinstance(entries, list):
+        return []
+    found: list[str] = []
+    for entry in entries:
+        if isinstance(entry, dict):
+            values = entry.get("violations", [])
+            if isinstance(values, list):
+                found.extend(str(value) for value in values)
+    return found
 
 
 @pytest.mark.unit
 class TestLiveDemoPathPasses:
     def test_live_omnimarket_tree_passes(self) -> None:
-        payload, missing, present = build_input_from_disk("omnimarket", _REPO_ROOT)
-        assert present > 0, "omnimarket must host the routing-authority demo path"
-        assert missing == [], f"configured demo-path artifacts missing: {missing}"
-        report = evaluate(payload)
-        assert report.passed, [f"{f.location}: {f.message}" for f in report.findings]
+        report = _run_gate()
+        assert report.passed, report.model_dump()
 
     def test_cli_exit_zero_on_live_tree(self) -> None:
-        rc = main(["--repo", "omnimarket", "--repo-root", str(_REPO_ROOT)])
+        rc = main(["--repo-root", str(_REPO_ROOT)])
         assert rc == 0
 
     def test_demo_path_artifacts_present(self) -> None:
-        _payload, missing, present = build_input_from_disk("omnimarket", _REPO_ROOT)
-        # 1 contract + 3 sources + 3 residue + 1 bifrost config = 8 expected.
-        assert present == 8, f"expected 8 demo-path artifacts, found {present}"
-        assert missing == []
+        required = (*_DEFAULT_CONTRACTS, *_DEFAULT_SOURCES, _DEFAULT_BIFROST)
+        missing = [rel for rel in required if not (_REPO_ROOT / rel).exists()]
+        assert missing == [], f"configured demo-path artifacts missing: {missing}"
 
 
 @pytest.mark.unit
@@ -81,22 +107,57 @@ class TestGateIsEnforcing:
             "backends:\n  - backend_id: local-coder\n    endpoint_url_env: X\n    endpoint_url: null\n",
             encoding="utf-8",
         )
-        payload, _missing, _present = build_input_from_disk("omnimarket", tmp_path)
-        report = evaluate(payload)
+        report = check_routing_authority_at_path(
+            repo_root=tmp_path,
+            demo_path_contracts=(
+                "src/omnimarket/nodes/node_generation_consumer/contract.yaml",
+            ),
+            demo_path_sources=(
+                "src/omnimarket/nodes/node_llm_delegation_call_effect/handlers/handler_inference_intent.py",
+            ),
+            bifrost_config_rel="src/omnimarket/configs/bifrost_delegation.yaml",
+        )
         assert not report.passed
-        assert any(f.rule_id == "negative-audit" for f in report.findings)
+        assert any(
+            "env-read" in violation
+            for violation in _violations(report.negative_audit, "files")
+        )
 
     def test_injected_cli_backend_fails(self, tmp_path: Path) -> None:
+        src_dir = tmp_path / "src/omnimarket/nodes/node_generation_consumer/handlers"
+        src_dir.mkdir(parents=True)
+        (src_dir / "handler_generation_consumer.py").write_text(
+            "def handle(payload):\n    return payload\n",
+            encoding="utf-8",
+        )
+        contract_dir = tmp_path / "src/omnimarket/nodes/node_generation_consumer"
+        contract_dir.mkdir(parents=True, exist_ok=True)
+        (contract_dir / "contract.yaml").write_text(
+            "model_routing:\n"
+            "  provider: local\n"
+            "  served_model_id: qwen\n"
+            "  endpoint_ref: cli-codex\n"
+            "  routing_source: contract\n",
+            encoding="utf-8",
+        )
         cfg_dir = tmp_path / "src/omnimarket/configs"
         cfg_dir.mkdir(parents=True)
         (cfg_dir / "bifrost_delegation.yaml").write_text(
             "backends:\n  - backend_id: cli-codex\n    tier: cli_agents\n    endpoint_url: cli://codex\n",
             encoding="utf-8",
         )
-        payload, _missing, present = build_input_from_disk("omnimarket", tmp_path)
-        assert present > 0
-        report = evaluate(payload)
+        report = check_routing_authority_at_path(
+            repo_root=tmp_path,
+            demo_path_contracts=(
+                "src/omnimarket/nodes/node_generation_consumer/contract.yaml",
+            ),
+            demo_path_sources=(
+                "src/omnimarket/nodes/node_generation_consumer/handlers/handler_generation_consumer.py",
+            ),
+            bifrost_config_rel="src/omnimarket/configs/bifrost_delegation.yaml",
+        )
         assert not report.passed
         assert any(
-            "shelled-CLI backends are forbidden" in f.message for f in report.findings
+            "shelled-CLI backends are forbidden" in violation
+            for violation in report.provider_endpoint_shape_audit["violations"]
         )

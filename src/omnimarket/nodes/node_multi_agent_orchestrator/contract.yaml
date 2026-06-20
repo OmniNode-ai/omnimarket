@@ -57,6 +57,9 @@ event_bus:
   dlq_topics:
     - onex.dlq.omnimarket.multi-agent-start.v1
 
+externally_consumed_topics:
+  - onex.cmd.omnimarket.agent-task-dispatch.v1
+
 metadata:
   transport_type: kafka
   implementation_wave: 3

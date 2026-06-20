@@ -45,6 +45,8 @@ KNOWN_PROJECTION_TABLES: frozenset[str] = frozenset(
         "delegation_shadow_comparisons",
         "generation_events",
         "delegation_judge_verdict_events",
+        # OMN-13235: per-tenant ceiling budget-state surface (cap + consumption).
+        "delegation_budget_state",
         "llm_cost_aggregates",
         "node_service_registry",
         "baselines_snapshots",

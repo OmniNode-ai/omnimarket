@@ -41,6 +41,9 @@ event_bus:
     - onex.cmd.omnimarket.session-halt-required.v1
     - onex.evt.omnimarket.session-orchestrator-tick-completed.v1
 
+externally_consumed_topics:
+  - onex.cmd.omnimarket.session-halt-required.v1
+
 dod_evidence:
   PYTEST:
     description: "session phase orchestrator unit tests"

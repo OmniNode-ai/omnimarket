@@ -64,6 +64,53 @@ _TASK_DESCRIPTIONS: dict[str, str] = {
         "Python standard library (re). Do not read files, the network, env vars, or "
         "the clock."
     ),
+    "hardcoded-localhost-url": (
+        "Generate a Python validator handler that scans source text for hardcoded "
+        "localhost / loopback URL literals and returns the violations. The handler "
+        "must define `def handle(input_data):` reading the source text from "
+        "input_data['source']. Scan line by line. Flag any quoted URL literal whose "
+        "host is exactly 'localhost' or '127.0.0.1' behind an http:// or https:// "
+        "scheme, e.g. \"http://localhost:8000/v1\" or 'https://127.0.0.1/api'. The "
+        "host must be exactly localhost or 127.0.0.1 — a public host whose NAME "
+        "merely contains the substring 'localhost' (e.g. https://localhost-mirror."
+        "example.com) must NOT be flagged, and a public URL like "
+        "https://docs.example.com must NOT be flagged. The bare word 'localhost' in "
+        "prose that is not inside an http(s):// URL literal must NOT be flagged. Skip "
+        "any line containing the marker 'onex-allow-internal-ip'. Return a dict "
+        "{'findings': [...]} where each finding describes the line and the matched "
+        "URL. Use only the Python standard library (re). Do not read files, the "
+        "network, env vars, or the clock."
+    ),
+    "hardcoded-topic-string": (
+        "Generate a Python validator handler that scans source text for hardcoded "
+        "ONEX event-topic string literals and returns the violations. The handler "
+        "must define `def handle(input_data):` reading the source text from "
+        "input_data['source']. Scan line by line. Flag any quoted string literal "
+        "that is an onex topic of the shape onex.<segment>.<segment>.<segment> (at "
+        "least three dot-separated lowercase segments after the onex prefix), e.g. "
+        "\"onex.generation.benchmark.completed\" or 'onex.delegation.attempt.started'. "
+        'A two-segment string like "onex.core" is BELOW the topic shape and must '
+        "NOT be flagged. A dotted python import path like "
+        "omnimarket.nodes.node_x.models or a non-onex dotted string like "
+        '"kafka.cluster.broker.id" must NOT be flagged. Return a dict '
+        "{'findings': [...]} where each finding describes the line and the matched "
+        "topic. Use only the Python standard library (re). Do not read files, the "
+        "network, env vars, or the clock."
+    ),
+    "todo-fixme-marker": (
+        "Generate a Python validator handler that scans source text for agent-left "
+        "TODO / FIXME / HACK markers and returns the violations. The handler must "
+        "define `def handle(input_data):` reading the source text from "
+        "input_data['source']. Scan line by line. Flag any line containing the "
+        "uppercase token TODO, FIXME, or HACK as a standalone whole word (word "
+        "boundary on both sides), as it appears in a code comment. The token must be "
+        "a standalone word: a substring inside a larger identifier such as TODOLIST, "
+        "or the letters of HACK inside 'hackathon', or the lowercase prose phrase "
+        "'to do', must NOT be flagged. "
+        "Return a dict {'findings': [...]} where each finding describes the line and "
+        "the matched marker. Use only the Python standard library (re). Do not read "
+        "files, the network, env vars, or the clock."
+    ),
 }
 
 

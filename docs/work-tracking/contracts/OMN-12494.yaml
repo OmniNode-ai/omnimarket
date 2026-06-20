@@ -1,0 +1,62 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-12494"
+title: "Materialize savings_estimates projection from source delegation events"
+summary: >
+  Close the projection gap: savings_estimates was only materialized from the
+  derived delegate-skill terminal event, leaving the Delegation Savings widget
+  truthfully-empty for the canonical onex.evt.omniclaude.task-delegated.v1 stream
+  that drives delegation_events. node_projection_savings now subscribes to that
+  source stream and materializes a savings_estimates row from it via
+  ModelTaskDelegatedSavingsSource + ModelDelegateSkillSavingsProjection
+  .from_task_delegated_event. The figures are MEASUREMENTS, not estimates: local =
+  the measured actual cost (OMN-13355), cloud = the pinned premium counterfactual,
+  savings = cloud - local. Idempotent on the (session_id, event_timestamp,
+  model_local, model_cloud_baseline) identity index; replay-deterministic;
+  truthful-empty (no row) when there is no pinned counterfactual.
+is_seam_ticket: false
+interface_change: true
+interfaces_touched:
+  - "events"
+evidence_requirements:
+  - kind: "tests"
+    description: "Source-event materialization: task-delegated source -> savings_estimates row; saving = counterfactual - measured actual; idempotent replay; truthful-empty without counterfactual."
+    command: "uv run pytest tests/test_savings_estimates_from_source_omn12494.py tests/test_golden_chain_projection_savings.py -q"
+  - kind: "ci"
+    description: "mypy --strict green on the changed src modules."
+    command: "uv run mypy src/omnimarket/nodes/node_projection_savings/handlers/handler_projection_savings.py src/omnimarket/models/delegation/wire/model_delegate_skill_terminal_projection.py --strict"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-001"
+    description: "A canonical task-delegated SOURCE event materializes exactly one savings_estimates row with local = measured actual, cloud = counterfactual, savings = cloud - local."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/test_savings_estimates_from_source_omn12494.py::TestHandlerMaterializesFromSource::test_source_event_writes_savings_row -q"
+  - id: "dod-002"
+    description: "Idempotent correlation binding: replaying the same source event yields exactly one row (identity index), proving replay determinism."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/test_savings_estimates_from_source_omn12494.py::TestHandlerMaterializesFromSource::test_replay_is_idempotent -q"
+  - id: "dod-003"
+    description: "Dashboard truthful-empty preserved: a source event without a pinned premium counterfactual writes no row (no fixture/fallback savings data)."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/test_savings_estimates_from_source_omn12494.py::TestHandlerMaterializesFromSource::test_source_event_without_counterfactual_is_truthful_empty -q"
+  - id: "dod-mypy"
+    description: "mypy --strict green on the changed src modules."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run mypy src/omnimarket/nodes/node_projection_savings/handlers/handler_projection_savings.py src/omnimarket/models/delegation/wire/model_delegate_skill_terminal_projection.py --strict"
+  - id: "dod-deploy"
+    description: "Deploy-gate evidence: savings_estimates already exists (migration 074); this adds a SOURCE-event subscription + materializer, no new migration. Contract declares the onex.evt.omniclaude.task-delegated.v1 subscription; picked up on the next runtime redeploy. No bespoke endpoint, no env-for-model."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "echo 'deploy-gate: OMN-12494 adds a task-delegated source subscription + savings materializer over the existing savings_estimates table (074); applied on the next runtime redeploy'"
