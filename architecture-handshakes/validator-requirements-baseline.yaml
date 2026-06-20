@@ -50,6 +50,14 @@ classification:
     pre_commit: backlog
     ci_workflow: backlog
     tracking: OMN-9048
+  hardcoded-private-ip:
+    # G2 (OMN-13294): generated + corpus-accepted private-IP COMPUTE validator.
+    # Lives in omnibase_core (the owner); omnimarket consumes it via the OMN-9050
+    # pin-bump propagation like every other core validator, so both gates are an
+    # accepted backlog gap here until that wiring lands.
+    pre_commit: backlog
+    ci_workflow: backlog
+    tracking: OMN-13294
   naming-conventions:
     pre_commit: backlog
     ci_workflow: backlog
@@ -108,6 +116,12 @@ gaps:
     kind: MISSING_CI_WORKFLOW
   - repo: omnimarket
     validator: hardcoded-local-paths
+    kind: MISSING_PRE_COMMIT
+  - repo: omnimarket
+    validator: hardcoded-private-ip
+    kind: MISSING_CI_WORKFLOW
+  - repo: omnimarket
+    validator: hardcoded-private-ip
     kind: MISSING_PRE_COMMIT
   - repo: omnimarket
     validator: naming-conventions

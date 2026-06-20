@@ -177,6 +177,23 @@ def test_self_exempt_files_do_not_trigger(tmp_path: Path) -> None:
 
 
 @pytest.mark.unit
+def test_generation_evidence_json_is_path_exempt(tmp_path: Path) -> None:
+    _init_repo(tmp_path)
+    evidence = tmp_path / "docs" / "evidence" / "OMN-13294" / "proof.generation.json"
+    evidence.parent.mkdir(parents=True, exist_ok=True)
+    evidence.write_text(
+        '{"resolved_endpoint": "http://192.168.86.201:8000/v1/chat/completions"}\n'
+    )
+    subprocess.run(["git", "add", "-A"], cwd=tmp_path, check=True)
+    subprocess.run(
+        ["git", "commit", "-qm", "generation evidence"], cwd=tmp_path, check=True
+    )
+
+    result = _run(tmp_path, "blocking", "all")
+    assert result.returncode == 0, result.stdout
+
+
+@pytest.mark.unit
 def test_filename_with_spaces_is_handled(tmp_path: Path) -> None:
     _init_repo(tmp_path)
     spaced_dir = tmp_path / "src" / "with space"

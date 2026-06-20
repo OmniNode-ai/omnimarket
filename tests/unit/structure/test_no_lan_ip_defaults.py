@@ -23,6 +23,15 @@ _SRC_ROOT = Path(__file__).resolve().parents[3] / "src"
 
 _LAN_IP_PATTERN = re.compile(r"192\.168\.")
 _LINE_EXEMPTION = re.compile(r"#\s*onex-allow-internal-ip")
+# A file whose entire subject is LAN-IP literals (e.g. the OMN-13294 private-IP
+# acceptance corpus, whose fixtures + docstring ARE 192.168. literals) carries a
+# file-level marker in its first 10 lines and is skipped wholesale — same
+# convention as test_no_hardcoded_literals. Must include a ticket + reason.
+_FILE_EXEMPTION = re.compile(r"#\s*onex-allow-file-internal-ip\s+OMN-[0-9]+ reason=")
+
+
+def _file_is_exempt(lines: list[str]) -> bool:
+    return any(_FILE_EXEMPTION.search(line) for line in lines[:10])
 
 
 def _collect_violations() -> list[tuple[str, int, str]]:
@@ -41,7 +50,10 @@ def _collect_violations() -> list[tuple[str, int, str]]:
         except OSError as exc:
             violations.append((rel, 0, f"<unreadable file: {exc}>"))
             continue
-        for lineno, line in enumerate(text.splitlines(), start=1):
+        file_lines = text.splitlines()
+        if _file_is_exempt(file_lines):
+            continue
+        for lineno, line in enumerate(file_lines, start=1):
             if _LINE_EXEMPTION.search(line):
                 continue
             if _LAN_IP_PATTERN.search(line):
