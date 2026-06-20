@@ -59,7 +59,7 @@ published_events:
     topic: "onex.evt.omnibase-infra.delegation-judge-verdict.v1"
     model:
       name: "ModelDelegationJudgeVerdictEvent"
-      module: "omnimarket.nodes.node_delegation_quality_gate_reducer.models.model_judge_verdict"
+      module: "omnimarket.events.delegation_judge_verdict"
     description: "Controlled, reproducible, auditable judge verdict for non-verifiable delegation classes. Includes judge_model, judge_model_version, judge_provider, rubric_id, rubric_hash, prompt_hash, input_hash, temperature, judge_node_version, reasoning_hash, verdict, actual_score, and event_hash."
 handler_routing:
   routing_strategy: "operation_match"

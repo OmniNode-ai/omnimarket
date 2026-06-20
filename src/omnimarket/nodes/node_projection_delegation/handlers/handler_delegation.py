@@ -17,15 +17,15 @@ from uuid import uuid4
 import yaml
 from pydantic import ValidationError
 
+from omnimarket.events.delegation_judge_verdict import (
+    ModelDelegationJudgeVerdictEvent,
+)
 from omnimarket.models.delegation.quality_bar_evidence import (
     extract_quality_bar_evidence,
 )
 from omnimarket.models.delegation.wire.model_delegate_skill_terminal_projection import (
     ModelDelegateSkillTerminalProjection,
     ModelDelegationEventProjectionRow,
-)
-from omnimarket.nodes.node_delegation_quality_gate_reducer.models.model_judge_verdict import (
-    ModelDelegationJudgeVerdictEvent,
 )
 from omnimarket.nodes.node_projection_delegation.handlers.handler_projection_delegation import (
     _judge_verdict_projection_row,

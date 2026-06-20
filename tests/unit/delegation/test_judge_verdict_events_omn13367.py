@@ -11,7 +11,7 @@ import pytest
 import yaml
 from pydantic import ValidationError
 
-from omnimarket.nodes.node_delegation_quality_gate_reducer.models.model_judge_verdict import (
+from omnimarket.events.delegation_judge_verdict import (
     EnumDelegationJudgeVerdict,
     ModelDelegationJudgeVerdictEvent,
     build_delegation_judge_verdict_event,

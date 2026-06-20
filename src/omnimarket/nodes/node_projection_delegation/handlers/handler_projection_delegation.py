@@ -33,6 +33,9 @@ from decimal import Decimal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from omnimarket.events.delegation_judge_verdict import (
+    ModelDelegationJudgeVerdictEvent,
+)
 from omnimarket.events.topics import (
     DELEGATE_SKILL_COMPLETED_TOPIC_V1,
     DELEGATE_SKILL_FAILED_TOPIC_V1,
@@ -43,9 +46,6 @@ from omnimarket.models.delegation.quality_bar_evidence import (
 from omnimarket.models.delegation.wire.model_delegate_skill_terminal_projection import (
     ModelDelegateSkillTerminalProjection,
     ModelDelegationEventProjectionRow,
-)
-from omnimarket.nodes.node_delegation_quality_gate_reducer.models.model_judge_verdict import (
-    ModelDelegationJudgeVerdictEvent,
 )
 from omnimarket.projection.protocol_database import DatabaseAdapter
 
