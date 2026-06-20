@@ -31,7 +31,7 @@ CREATE TABLE IF NOT EXISTS delegation_judge_verdict_events (
     CHECK (
         (verdict = 'judge_failed' AND actual_score IS NULL AND failure_kind IS NOT NULL AND failure_message IS NOT NULL)
         OR
-        (verdict <> 'judge_failed' AND actual_score IS NOT NULL)
+        (verdict <> 'judge_failed' AND actual_score IS NOT NULL AND failure_kind IS NULL AND failure_message IS NULL)
     )
 );
 
