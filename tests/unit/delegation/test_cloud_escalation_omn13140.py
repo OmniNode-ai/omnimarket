@@ -134,7 +134,8 @@ _BIFROST_CODE_GEN_CLOUD_ROUTABLE = textwrap.dedent(
 
 # A task-class contract that selects cloud-gemini-flash for code_generation so the
 # escalation lands on the canonical Gemini target (overriding the repo default
-# task_model_overrides which prefers openrouter-glm-flash, absent in this fixture).
+# task_model_overrides which prefers the direct z.ai glm-5.2, absent in this
+# fixture — OMN-13380).
 _TASK_CLASS_CONTRACT_GEMINI = textwrap.dedent(
     """\
     schema_version: "task_class_contracts.v1"

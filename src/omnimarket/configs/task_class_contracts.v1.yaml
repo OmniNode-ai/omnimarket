@@ -35,11 +35,15 @@
 version: "1.0"
 default_task_model_ref: "Qwen3.6-35B-A3B"
 task_model_overrides:
-  # OMN-7980: OpenRouter GLM Flash is the primary code-gen backend (preferred in cheap_cloud tier).
-  # Local .201 served models are the fallback when OPENROUTER_API_KEY is absent.
-  code_generation: "openrouter-glm-flash"
-  test: "openrouter-glm-flash"
-  refactor: "openrouter-glm-flash"
+  # OMN-13380: Direct z.ai GLM-5.2 is the primary code-gen backend (preferred in
+  # the cheap_cloud tier, backend cloud-glm, secret_ref llm.glm.api_key). The
+  # former openrouter-glm-flash override was repointed here: we hold a direct GLM
+  # key, so GLM routes direct to z.ai rather than through the OpenRouter
+  # aggregator (routing-cost principle — OpenRouter is for FREE models only). The
+  # model id "glm-5.2" matches the cheap_cloud tier model id in routing_tiers.yaml.
+  code_generation: "glm-5.2"
+  test: "glm-5.2"
+  refactor: "glm-5.2"
   reasoning: "Qwen3.6-35B-A3B"
   complex_reasoning: "Qwen3.6-35B-A3B"
   planning: "Qwen3.6-35B-A3B"
@@ -82,7 +86,8 @@ task_classes:
         max: 1.0
     escalation_policy:
       max_escalations: 2
-      # OMN-7980: OpenRouter (cheap_cloud) is primary; local is fallback when key absent.
+      # OMN-13380: cheap_cloud is primary (direct z.ai GLM-5.2 via cloud-glm);
+      # local is the fallback when the GLM key is absent.
       tier_order:
         - cheap_cloud
         - local
