@@ -1,0 +1,63 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-13235"
+title: "Per-tenant ceiling budget-state surface (cap + consumption), event-sourced, projection-readable"
+summary: >
+  A bus-sourced, projection-readable budget state (cap + period consumption) for
+  budgeted ceiling tiers. Migration 0019 adds delegation_budget_state (one row per
+  tenant / cost_tier_name / budget_period: monthly_cap_usd, consumed_usd,
+  overage_usd, headroom_remaining_usd, delegation_count), reusing the foundation
+  migration prefix family (next free after 0018) — no competing migration.
+  handler_budget_state.materialize_budget_state event-sources consumption from
+  delegation source events for budgeted tiers (resolves the tier cap from
+  routing_tiers.yaml, draws the cap down by the measured headroom drawdown plus
+  cash overage), per-tenant and per-period, idempotent per source event via
+  last_correlation_id. Wired into HandlerProjectionDelegation.project(); a no-op
+  for free_local / metered tiers. The contract exposes
+  onex.snapshot.projection.delegation.budget-state.v1 so the surface is readable.
+is_seam_ticket: false
+interface_change: true
+interfaces_touched:
+  - "events"
+evidence_requirements:
+  - kind: "tests"
+    description: "Budget-state event sourcing: consumption accumulates and headroom falls for budgeted tiers; per-tenant + per-period isolation; idempotent replay; free_local/metered produce no row; overage floors headroom at zero."
+    command: "uv run pytest tests/test_budget_state_surface_omn13235.py -q"
+  - kind: "ci"
+    description: "mypy --strict green on the budget-state reducer + projection handler."
+    command: "uv run mypy src/omnimarket/nodes/node_projection_delegation/handlers/handler_budget_state.py src/omnimarket/nodes/node_projection_delegation/handlers/handler_projection_delegation.py --strict"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-001"
+    description: "Budget consumption is event-sourced (not polled): each delegation source event for a budgeted tier accumulates consumed_usd and decrements headroom_remaining_usd; readback shows consumption rising and headroom falling."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/test_budget_state_surface_omn13235.py::TestBudgetStateEventSourcing -q"
+  - id: "dod-002"
+    description: "Per-tenant and per-period isolation: separate tenants and separate UTC months maintain independent cap/consumption rows."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/test_budget_state_surface_omn13235.py::TestBudgetStateEventSourcing::test_per_tenant_isolation tests/test_budget_state_surface_omn13235.py::TestBudgetStateEventSourcing::test_per_period_isolation -q"
+  - id: "dod-003"
+    description: "Non-budgeted tiers (free_local / metered / unknown) produce no budget-state row (truthful empty — no ceiling to track)."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/test_budget_state_surface_omn13235.py::TestNonBudgetedTiersProduceNoRow -q"
+  - id: "dod-mypy"
+    description: "mypy --strict green on the changed src modules."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run mypy src/omnimarket/nodes/node_projection_delegation/handlers/handler_budget_state.py src/omnimarket/nodes/node_projection_delegation/handlers/handler_projection_delegation.py --strict"
+  - id: "dod-deploy"
+    description: "Deploy-gate evidence: migration 0019 (delegation_budget_state) is an idempotent CREATE TABLE IF NOT EXISTS reusing the foundation prefix family; the contract exposes onex.snapshot.projection.delegation.budget-state.v1. Applied by the canonical forward-migration runner + runtime redeploy. The /api/delegation savings-sibling headroom readback over the live surface is deferred until 0019 deploys to dev; proven at reducer + integration level here. No bespoke endpoint, no env-for-model."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "echo 'deploy-gate: OMN-13235 ships an idempotent CREATE TABLE migration (0019) + projection-api exposure; budgeted-tier consumption event-sourced from delegation events; live headroom readback deferred to dev deploy'"

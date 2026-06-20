@@ -55,6 +55,10 @@ event_bus:
   dlq_topics:
     - onex.dlq.omnimarket.ticketing-epic-org.v1
 
+externally_consumed_topics:
+  - onex.cmd.omnimarket.linear-epic-create.v1
+  - onex.cmd.omnimarket.linear-ticket-reparent.v1
+
 metadata:
   transport_type: kafka
   implementation_wave: 2
