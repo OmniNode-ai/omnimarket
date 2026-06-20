@@ -1,0 +1,20 @@
+name: node_tool_reuse_matcher_compute
+version: "1.0.0"
+description: "Pure deterministic tool-reuse matcher — routes a request to an existing generated tool, no LLM calls"
+omnibase_core_compat: ">=0.40.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_tool_reuse_matcher_compute: "omnimarket.nodes.node_tool_reuse_matcher_compute"
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+dependencies:
+  - "omnibase_core>=0.40.0"
+  - "omnibase-compat>=0.3.1"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["compute", "tool-reuse", "matcher", "deterministic", "node-generation"]
+pack: "core"
+display_name: "Tool Reuse Matcher"
+node_role: "compute"
