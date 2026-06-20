@@ -380,7 +380,10 @@ def test_request_quality_contract_can_replace_task_class_dod() -> None:
 
     result = quality_gate_delta(gate_input)
 
-    assert result.passed is True
+    assert result.passed is False
+    assert result.fail_category == "fail_heuristic"
+    assert result.quality_score == pytest.approx(1.0)
+    assert any("reject-only" in r for r in result.failure_reasons)
 
 
 @pytest.mark.unit
@@ -425,8 +428,10 @@ def test_summarization_quality_gate_accepts_concise_matching_bullets() -> None:
 
     result = quality_gate_delta(gate_input)
 
-    assert result.passed is True
-    assert result.failure_reasons == ()
+    assert result.passed is False
+    assert result.fail_category == "fail_heuristic"
+    assert result.quality_score == pytest.approx(1.0)
+    assert any("reject-only" in r for r in result.failure_reasons)
 
 
 @pytest.mark.unit

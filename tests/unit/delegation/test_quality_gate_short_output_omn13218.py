@@ -9,13 +9,13 @@ extraction) the correct answer is legitimately short, so the floor rejected
 correct tier-1 output and forced wasteful escalation to the ceiling tier (which
 then dead-ended on `no_higher_tier_available`).
 
-The fix replaces the absolute character floor with a `semantic_adequacy`
-heuristic: a complete short answer (at least one terminated sentence or a
-complete structured artifact) is adequate; an empty / whitespace-only /
-mid-token-truncated / bare fragment is not.
+The OMN-13218 fix replaced the absolute character floor with a
+`semantic_adequacy` heuristic. OMN-13370 keeps that check as reject-only:
+a complete short answer can score cleanly, while empty/truncated fragments fail,
+but semantic adequacy alone no longer promotes output to adequate.
 
 These tests pin the behavioral acceptance criteria:
-  * A correct short summarization output passes at tier 1 (no escalation).
+  * A correct short summarization output is not failed on length and scores 1.0.
   * A genuinely truncated / empty output still fails.
   * The blunt `min_length_chars_N` floor no longer hard-fails short content.
 """
@@ -72,16 +72,14 @@ def _score(task_class: str, content: str) -> ModelQualityGateInput:
 
 @pytest.mark.unit
 def test_correct_short_summarization_passes_at_tier_one() -> None:
-    """A correct short summary must PASS — not escalate on a length floor."""
+    """A correct short summary passes through semantic adequacy authority."""
     result = quality_gate_delta(_score("summarization", _CORRECT_SHORT_SUMMARY))
 
-    assert result.passed, (
-        f"correct short summary failed the gate: {result.failure_reasons}"
-    )
-    assert not result.fallback_recommended, (
-        "correct short summary should not recommend escalation to a higher tier"
-    )
+    assert result.passed
+    assert result.fail_category == "pass"
+    assert not result.fallback_recommended
     assert result.quality_score == pytest.approx(1.0)
+    assert result.failure_reasons == ()
     assert not any("below minimum" in r for r in result.failure_reasons), (
         f"length floor still firing on short content: {result.failure_reasons}"
     )
@@ -113,11 +111,14 @@ def test_truncated_summarization_still_fails() -> None:
 
 @pytest.mark.unit
 def test_correct_short_document_passes() -> None:
-    """A correct short prose document must PASS instead of failing min_length_chars_200."""
+    """A correct short prose document is not failed on min_length_chars_200."""
     short_doc = "This module computes order totals and returns a typed summary object."
     result = quality_gate_delta(_score("document", short_doc))
 
-    assert result.passed, f"correct short document failed: {result.failure_reasons}"
+    assert result.passed
+    assert result.fail_category == "pass"
+    assert result.quality_score == pytest.approx(1.0)
+    assert result.failure_reasons == ()
     assert not any("below minimum" in r for r in result.failure_reasons)
 
 

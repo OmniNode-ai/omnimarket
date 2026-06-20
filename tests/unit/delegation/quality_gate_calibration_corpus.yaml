@@ -67,6 +67,7 @@ task_classes:
       - no_refusal
       - cites_sources
       - methodical_analysis
+      - semantic_adequacy
 
 cases:
   # ---- document (prose) ----

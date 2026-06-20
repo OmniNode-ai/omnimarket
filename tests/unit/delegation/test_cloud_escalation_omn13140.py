@@ -279,7 +279,7 @@ class TestQualityGateVerdictRecommendsFallback:
         assert result.passed is False
         assert result.fallback_recommended is True
 
-    def test_passing_output_does_not_recommend_fallback(self) -> None:
+    def test_length_only_passing_output_still_recommends_fallback(self) -> None:
         result = handler_quality_gate.delta(
             handler_quality_gate.ModelQualityGateInput(
                 correlation_id=uuid4(),
@@ -288,8 +288,10 @@ class TestQualityGateVerdictRecommendsFallback:
                 dod_heuristic=("min_length_chars_5",),
             )
         )
-        assert result.passed is True
-        assert result.fallback_recommended is False
+        assert result.passed is False
+        assert result.quality_score == pytest.approx(1.0)
+        assert any("reject-only" in r for r in result.failure_reasons)
+        assert result.fallback_recommended is True
 
 
 @pytest.mark.unit

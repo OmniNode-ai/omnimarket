@@ -47,7 +47,7 @@ class TestHandlerQualityGateIntent:
             )
         )
 
-    def test_passing_content_returns_passed_result(self) -> None:
+    def test_marker_only_content_returns_reject_only_result(self) -> None:
         handler = HandlerQualityGateIntent()
         intent = self._intent(_GOOD_RESEARCH)
 
@@ -55,7 +55,9 @@ class TestHandlerQualityGateIntent:
 
         assert isinstance(result, ModelQualityGateResult)
         assert result.correlation_id == intent.payload.correlation_id
-        assert result.passed is True
+        assert result.passed is False
+        assert result.quality_score == pytest.approx(1.0)
+        assert any("reject-only" in r for r in result.failure_reasons)
 
     def test_refusal_content_fails_gate(self) -> None:
         handler = HandlerQualityGateIntent()

@@ -10,15 +10,19 @@ Evaluates LLM output quality using checks declared in the task-class contract
 Check semantics:
   - Deterministic checks (dod_deterministic): BLOCK delegation result injection on failure.
     Supported: the DoD names declared in task_class_contracts.v1.yaml.
-  - Heuristic checks (dod_heuristic): escalate per contract policy on failure.
+  - Heuristic checks (dod_heuristic): reject/escalate per contract policy on failure.
     Supported: "no_refusal", "semantic_adequacy" (complete-answer check used by
     short-output task classes, OMN-13218), "min_length_chars_N" (N is the char
     threshold; retained for explicit opt-in, no longer used by short-output
     classes) and the task-class heuristic checks declared in
     task_class_contracts.v1.yaml.
 
+Heuristic checks, length floors, refusal checks, and structural/schema-only checks are
+reject-only. They may fail an invalid output, but passing them is not adequacy authority
+and cannot by itself return passed=true (OMN-13370).
+
 When no contract DoD is provided (both dod_deterministic and dod_heuristic are empty),
-falls back to the legacy hardcoded checks: length, refusal detection, marker presence.
+falls back to the legacy hardcoded checks as reject-only diagnostics.
 
 Failure categories: REFUSAL, MALFORMED, WEAK_OUTPUT, TASK_MISMATCH.
 
@@ -30,7 +34,6 @@ Related:
 from __future__ import annotations
 
 import ast
-import math
 import re
 from collections.abc import Callable
 
@@ -135,6 +138,24 @@ _SOURCE_CITATION_RE = re.compile(
     r"| https?://\S | \bdoi:\s*\S"
 )
 _SENTENCE_RE = re.compile(r"[^.!?]+[.!?]")
+
+# Deterministic checks in this set are structural pre-filters only. They are useful
+# rejection signals, but OMN-13370 forbids treating them as adequacy authority.
+_REJECT_ONLY_DETERMINISTIC_CHECKS: frozenset[str] = frozenset(
+    {
+        "output_parses",
+        "signature_preserved",
+        "response_non_empty",
+        "task_completed",
+        "exactly_two_sentences",
+        "plain_text_only",
+    }
+)
+
+_NO_ADEQUACY_AUTHORITY_REASON = (
+    "TASK_MISMATCH: no deterministic acceptance or judge adequacy authority; "
+    "schema/length/no-refusal/marker checks are reject-only"
+)
 
 # Heuristic checks that delegate to _check_contains_any with fixed marker sets
 _HEURISTIC_CONTAINS_ANY_CHECKS: dict[str, tuple[str, tuple[str, ...]]] = {
@@ -592,6 +613,18 @@ _HEURISTIC_SIMPLE_CHECKS: dict[str, Callable[[str], str | None]] = {
     "semantic_adequacy": _check_semantic_adequacy,
 }
 
+_REJECT_ONLY_HEURISTIC_CHECKS: frozenset[str] = frozenset(
+    {
+        "no_refusal",
+        "accurate",
+        "concise",
+        "covers_args_returns_raises",
+        "cites_specific_lines",
+        "cites_sources",
+        *_HEURISTIC_CONTAINS_ANY_CHECKS,
+    }
+)
+
 
 def _apply_heuristic_check(check: str, content: str) -> str | None:
     """Dispatch a named heuristic check against content."""
@@ -722,10 +755,41 @@ def _graded_quality_score(
     return round(weighted_sum / active_weight, 3)
 
 
+def _is_reject_only_deterministic_check(check: str) -> bool:
+    """Return whether a deterministic check is only a structural pre-filter."""
+    return check in _REJECT_ONLY_DETERMINISTIC_CHECKS or bool(
+        MAX_WORDS_PER_SENTENCE_RE.match(check)
+    )
+
+
+def _is_reject_only_heuristic_check(check: str) -> bool:
+    """Return whether a heuristic check is only a pre-filter/marker diagnostic."""
+    return check in _REJECT_ONLY_HEURISTIC_CHECKS or bool(
+        _MIN_LENGTH_CHECK_RE.match(check)
+    )
+
+
+def _has_adequacy_authority(
+    dod_deterministic: tuple[str, ...],
+    dod_heuristic: tuple[str, ...],
+) -> bool:
+    """Return whether any declared check can serve as adequacy authority.
+
+    Structural deterministic checks and marker/refusal/length heuristics can
+    reject invalid output and keep contributing diagnostics/score, but OMN-13370
+    bars them from promoting an output to adequate by themselves.
+    """
+    if any(
+        not _is_reject_only_deterministic_check(check) for check in dod_deterministic
+    ):
+        return True
+    return any(not _is_reject_only_heuristic_check(check) for check in dod_heuristic)
+
+
 def _run_legacy_checks(
     gate_input: ModelQualityGateInput,
 ) -> ModelQualityGateResult:
-    """Fallback: run the original hardcoded heuristic checks."""
+    """Fallback: run the original hardcoded checks as reject-only diagnostics."""
     content = _strip_thinking_traces(gate_input.llm_response_content)
     task_type = gate_input.task_type
     failure_reasons: list[str] = []
@@ -769,19 +833,18 @@ def _run_legacy_checks(
         + scores["markers"] * _WEIGHT_MARKERS
     )
 
-    no_refusal_score = scores["no_refusal"]
-    passed = quality_score >= 0.6 and math.isclose(no_refusal_score, 1.0)
+    # OMN-13370: legacy length/refusal/marker checks are never adequacy authority.
+    if not failure_reasons:
+        failure_reasons.append(_NO_ADEQUACY_AUTHORITY_REASON)
+
+    passed = False
     # OMN-13140: recommend fallback whenever an unpassed legacy result carries a
     # REFUSAL / WEAK_OUTPUT / TASK_MISMATCH verdict. The legacy checks emit those
     # same prefixes (see failure_reasons above), so WEAK_OUTPUT (length miss) and
     # TASK_MISMATCH (missing markers) now escalate instead of terminating — the
     # prior score-threshold gate (quality_score < 0.3) silently dropped them.
-    fallback_recommended = not passed and _recommends_fallback(failure_reasons)
-    fail_category: EnumQualityGateCategory = (
-        EnumQualityGateCategory.PASS
-        if passed
-        else EnumQualityGateCategory.FAIL_HEURISTIC
-    )
+    fallback_recommended = _recommends_fallback(failure_reasons)
+    fail_category: EnumQualityGateCategory = EnumQualityGateCategory.FAIL_HEURISTIC
 
     return ModelQualityGateResult(
         correlation_id=gate_input.correlation_id,
@@ -802,7 +865,8 @@ def delta(gate_input: ModelQualityGateInput) -> ModelQualityGateResult:
     dod_heuristic), those checks take precedence:
       - Deterministic failures → fail_category="fail_deterministic" (hard block)
       - Heuristic-only failures → fail_category="fail_heuristic" (escalate)
-      - All pass → fail_category="pass"
+      - All checks pass without adequacy authority → fail_category="fail_heuristic"
+      - All checks pass with adequacy authority → fail_category="pass"
 
     Falls back to the legacy hardcoded checks when both DoD fields are empty.
 
@@ -874,6 +938,16 @@ def delta(gate_input: ModelQualityGateInput) -> ModelQualityGateResult:
             quality_score=quality_score,
             failure_reasons=tuple(heuristic_failures),
             fallback_recommended=fallback_recommended,
+        )
+
+    if not _has_adequacy_authority(dod_deterministic, dod_heuristic):
+        return ModelQualityGateResult(
+            correlation_id=gate_input.correlation_id,
+            passed=False,
+            fail_category="fail_heuristic",
+            quality_score=quality_score,
+            failure_reasons=(_NO_ADEQUACY_AUTHORITY_REASON,),
+            fallback_recommended=True,
         )
 
     return ModelQualityGateResult(
