@@ -265,11 +265,19 @@ async def _wait_for_terminal_event(
     """Subscribe to projection-delegation-applied topic and wait for the terminal event.
 
     Returns the raw deserialized envelope dict.
+
+    OMN-13361: ``consumer_timeout_ms`` does NOT stop ``async for msg in consumer``
+    on idle in aiokafka — ``__anext__`` only raises ``StopAsyncIteration`` when the
+    consumer is explicitly stopped, so an idle topic blocks forever and the
+    ``TimeoutError`` below was unreachable (the test hung indefinitely, which is
+    why ``TestE2E4BTerminalEvent`` was skipped). Wrap the consume loop in an
+    ``asyncio.timeout`` monotonic deadline — mirroring the working
+    ``_wait_for_projection_row`` poll — so the wait bounds at ``timeout`` seconds
+    and raises ``TimeoutError`` on miss.
     """
     from aiokafka import AIOKafkaConsumer
 
     received: list[dict[str, Any]] = []
-    ready = asyncio.Event()
     group_id = f"omnimarket-e2e-probe-{uuid.uuid4().hex[:8]}"
 
     consumer = AIOKafkaConsumer(
@@ -279,22 +287,28 @@ async def _wait_for_terminal_event(
         value_deserializer=lambda v: json.loads(v.decode("utf-8")),
         auto_offset_reset="latest",
         enable_auto_commit=True,
-        consumer_timeout_ms=int(timeout * 1000),
     )
 
     await consumer.start()
     try:
-        async for msg in consumer:
-            envelope = msg.value
-            # Extract correlation_id from envelope payload or top-level
-            payload = envelope.get("payload", {}) if isinstance(envelope, dict) else {}
-            env_correlation = str(
-                envelope.get("correlation_id", "") or payload.get("correlation_id", "")
-            )
-            if env_correlation == correlation_id or correlation_id in str(envelope):
-                received.append(envelope)
-                ready.set()
-                break
+        async with asyncio.timeout(timeout):
+            async for msg in consumer:
+                envelope = msg.value
+                # Extract correlation_id from envelope payload or top-level
+                payload = (
+                    envelope.get("payload", {}) if isinstance(envelope, dict) else {}
+                )
+                env_correlation = str(
+                    envelope.get("correlation_id", "")
+                    or payload.get("correlation_id", "")
+                )
+                if env_correlation == correlation_id or correlation_id in str(envelope):
+                    received.append(envelope)
+                    break
+    except TimeoutError:
+        # Idle / terminal-never-arrived: fall through to the explicit raise below
+        # so the miss carries the full diagnostic context, not a bare deadline.
+        pass
     except asyncio.CancelledError:
         pass
     except Exception as exc:
