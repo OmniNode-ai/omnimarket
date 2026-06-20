@@ -88,6 +88,7 @@ node_context_artifact_resolver_compute = "omnimarket.nodes.node_context_artifact
 node_design_plan_context_compute = "omnimarket.nodes.node_design_plan_context_compute"
 node_golden_chain_generator_compute = "omnimarket.nodes.node_golden_chain_generator_compute"
 node_test_generator_compute = "omnimarket.nodes.node_test_generator_compute"
+node_tool_reuse_matcher_compute = "omnimarket.nodes.node_tool_reuse_matcher_compute"
 node_session_phase_evaluator = "omnimarket.nodes.node_session_phase_evaluator"
 node_context_experiment_compute = "omnimarket.nodes.node_context_experiment_compute"
 node_on_vs_off_experiment_compute = "omnimarket.nodes.node_on_vs_off_experiment_compute"
