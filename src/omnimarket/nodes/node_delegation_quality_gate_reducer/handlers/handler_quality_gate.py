@@ -34,6 +34,8 @@ Related:
 from __future__ import annotations
 
 import ast
+import hashlib
+import json
 import re
 from collections.abc import Callable
 
@@ -70,6 +72,12 @@ _FALLBACK_VERDICT_PREFIXES: tuple[str, ...] = (
     "REFUSAL",
     "WEAK_OUTPUT",
     "TASK_MISMATCH",
+)
+
+_ACCEPTANCE_VERSION = "delegation-deterministic-acceptance.v1"
+_DETERMINISTIC_SCORE_SOURCE = "deterministic_acceptance"
+_VERIFIABLE_TASK_TYPES: frozenset[str] = frozenset(
+    {"code_generation", "test", "validator_generation"}
 )
 
 
@@ -689,6 +697,73 @@ def _run_contract_checks(
     return det_failures, heuristic_failures
 
 
+def _stable_hash(value: object) -> str:
+    """Return a stable sha256 hash for acceptance replay identity."""
+    encoded = json.dumps(value, sort_keys=True, separators=(",", ":")).encode()
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def _artifact_hash(content: str) -> str:
+    """Return the stable hash of the evaluated delegated artifact."""
+    return hashlib.sha256(content.encode()).hexdigest()
+
+
+def _deterministic_acceptance_score(
+    deterministic_total: int,
+    deterministic_failures: int,
+) -> float:
+    """Score deterministic acceptance by passed checks over total checks."""
+    if deterministic_total <= 0:
+        return 0.0
+    passed = max(0, deterministic_total - deterministic_failures)
+    return round(passed / deterministic_total, 3)
+
+
+def _deterministic_acceptance_evidence(
+    *,
+    task_type: str,
+    content: str,
+    dod_deterministic: tuple[str, ...],
+    deterministic_failures: list[str],
+) -> dict[str, object]:
+    """Build deterministic acceptance evidence for verifiable task classes."""
+    deterministic_total = max(len(dod_deterministic), len(deterministic_failures))
+    actual_score = _deterministic_acceptance_score(
+        deterministic_total, len(deterministic_failures)
+    )
+    passed = deterministic_total > 0 and not deterministic_failures
+    corpus_identity = {
+        "acceptance_version": _ACCEPTANCE_VERSION,
+        "score_source": _DETERMINISTIC_SCORE_SOURCE,
+        "task_type": task_type,
+        "checks": dod_deterministic,
+    }
+    acceptance_command = (
+        "uv run python -m "
+        "omnimarket.nodes.node_delegation_quality_gate_reducer "
+        f"--score-source={_DETERMINISTIC_SCORE_SOURCE} "
+        f"--task-type={task_type}"
+    )
+    return {
+        "score_source": _DETERMINISTIC_SCORE_SOURCE,
+        "acceptance_version": _ACCEPTANCE_VERSION,
+        "corpus_hash": _stable_hash(corpus_identity),
+        "validator_or_artifact_hash": _artifact_hash(content),
+        "acceptance_command": acceptance_command,
+        "actual_score": actual_score,
+        "pass_": passed,
+        "failure_cases": tuple(deterministic_failures),
+    }
+
+
+def _is_verifiable_deterministic_acceptance(
+    gate_input: ModelQualityGateInput,
+    dod_deterministic: tuple[str, ...],
+) -> bool:
+    """Return whether this contract path uses deterministic acceptance authority."""
+    return gate_input.task_type in _VERIFIABLE_TASK_TYPES and bool(dod_deterministic)
+
+
 # Relative weighting of the two DoD bands when computing the graded quality
 # score (OMN-12964). Deterministic checks gate harder, so a deterministic miss
 # costs more than a heuristic miss, but neither band collapses the score to a
@@ -843,8 +918,8 @@ def _run_legacy_checks(
     # same prefixes (see failure_reasons above), so WEAK_OUTPUT (length miss) and
     # TASK_MISMATCH (missing markers) now escalate instead of terminating — the
     # prior score-threshold gate (quality_score < 0.3) silently dropped them.
-    fallback_recommended = _recommends_fallback(failure_reasons)
-    fail_category: EnumQualityGateCategory = EnumQualityGateCategory.FAIL_HEURISTIC
+    fallback_recommended = not passed and _recommends_fallback(failure_reasons)
+    fail_category: EnumQualityGateCategory = "pass" if passed else "fail_heuristic"
 
     return ModelQualityGateResult(
         correlation_id=gate_input.correlation_id,
@@ -894,6 +969,19 @@ def delta(gate_input: ModelQualityGateInput) -> ModelQualityGateResult:
     det_failures, heuristic_failures = _run_contract_checks(
         content, dod_deterministic, dod_heuristic
     )
+    deterministic_acceptance_authority = _is_verifiable_deterministic_acceptance(
+        gate_input, dod_deterministic
+    )
+    acceptance_evidence = (
+        _deterministic_acceptance_evidence(
+            task_type=gate_input.task_type,
+            content=content,
+            dod_deterministic=dod_deterministic,
+            deterministic_failures=det_failures,
+        )
+        if deterministic_acceptance_authority
+        else {}
+    )
 
     all_failures = det_failures + heuristic_failures
 
@@ -923,6 +1011,18 @@ def delta(gate_input: ModelQualityGateInput) -> ModelQualityGateResult:
             quality_score=quality_score,
             failure_reasons=tuple(all_failures),
             fallback_recommended=True,
+            **acceptance_evidence,
+        )
+
+    if deterministic_acceptance_authority:
+        return ModelQualityGateResult(
+            correlation_id=gate_input.correlation_id,
+            passed=True,
+            fail_category="pass",
+            quality_score=quality_score,
+            failure_reasons=(),
+            fallback_recommended=False,
+            **acceptance_evidence,
         )
 
     if heuristic_failures:
@@ -938,6 +1038,7 @@ def delta(gate_input: ModelQualityGateInput) -> ModelQualityGateResult:
             quality_score=quality_score,
             failure_reasons=tuple(heuristic_failures),
             fallback_recommended=fallback_recommended,
+            **acceptance_evidence,
         )
 
     if not _has_adequacy_authority(dod_deterministic, dod_heuristic):
@@ -957,6 +1058,7 @@ def delta(gate_input: ModelQualityGateInput) -> ModelQualityGateResult:
         quality_score=quality_score,
         failure_reasons=(),
         fallback_recommended=False,
+        **acceptance_evidence,
     )
 
 

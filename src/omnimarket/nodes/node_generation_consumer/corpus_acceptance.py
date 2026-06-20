@@ -40,6 +40,9 @@ verdict. It does NOT call the LLM, read the filesystem, or touch the bus.
 
 from __future__ import annotations
 
+import hashlib
+import json
+
 from pydantic import BaseModel, ConfigDict, Field
 
 from omnimarket.nodes.node_generation_consumer.models.model_generation import (
@@ -54,6 +57,30 @@ __all__ = [
     "ModelCorpusAcceptanceResult",
     "evaluate_corpus_acceptance",
 ]
+
+_ACCEPTANCE_VERSION = "node_generation_consumer.corpus_acceptance.v1"
+_SCORE_SOURCE = "deterministic_acceptance"
+
+
+def _stable_hash(value: object) -> str:
+    encoded = json.dumps(value, sort_keys=True, separators=(",", ":")).encode()
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def _artifact_hash(handler_source: str) -> str:
+    return hashlib.sha256(handler_source.encode()).hexdigest()
+
+
+def _corpus_hash(corpus: ModelValidatorCorpus) -> str:
+    return _stable_hash(corpus.model_dump(mode="json"))
+
+
+def _acceptance_command(corpus: ModelValidatorCorpus) -> str:
+    return (
+        "uv run python -m omnimarket.nodes.node_generation_consumer "
+        "--score-source=deterministic_acceptance "
+        f"--source-field={corpus.source_field}"
+    )
 
 
 class ModelCorpusAcceptanceResult(BaseModel):
@@ -76,7 +103,12 @@ class ModelCorpusAcceptanceResult(BaseModel):
             the generation repair loop and recorded on the benchmark.
     """
 
-    model_config = ConfigDict(frozen=True, extra="forbid")
+    model_config = ConfigDict(
+        frozen=True,
+        extra="forbid",
+        populate_by_name=True,
+        serialize_by_alias=True,
+    )
 
     checked: bool = Field(default=False)
     passed: bool = Field(default=False)
@@ -85,6 +117,49 @@ class ModelCorpusAcceptanceResult(BaseModel):
     clean_total: int = Field(default=0, ge=0)
     clean_passed: int = Field(default=0, ge=0)
     errors: list[str] = Field(default_factory=list)
+    score_source: str = Field(default="")
+    acceptance_version: str = Field(default="")
+    corpus_hash: str = Field(default="")
+    validator_or_artifact_hash: str = Field(default="")
+    acceptance_command: str = Field(default="")
+    actual_score: float | None = Field(default=None, ge=0.0, le=1.0)
+    pass_: bool | None = Field(default=None, alias="pass")
+    failure_cases: list[str] = Field(default_factory=list)
+
+
+def _result_with_evidence(
+    *,
+    handler_source: str,
+    corpus: ModelValidatorCorpus,
+    checked: bool,
+    passed: bool,
+    violation_total: int,
+    violation_flagged: int = 0,
+    clean_total: int,
+    clean_passed: int = 0,
+    errors: list[str] | None = None,
+) -> ModelCorpusAcceptanceResult:
+    failure_cases = list(errors or [])
+    total = violation_total + clean_total
+    correct = violation_flagged + clean_passed
+    actual_score = round(correct / total, 3) if total else 0.0
+    return ModelCorpusAcceptanceResult(
+        checked=checked,
+        passed=passed,
+        violation_total=violation_total,
+        violation_flagged=violation_flagged,
+        clean_total=clean_total,
+        clean_passed=clean_passed,
+        errors=failure_cases,
+        score_source=_SCORE_SOURCE,
+        acceptance_version=_ACCEPTANCE_VERSION,
+        corpus_hash=_corpus_hash(corpus),
+        validator_or_artifact_hash=_artifact_hash(handler_source),
+        acceptance_command=_acceptance_command(corpus),
+        actual_score=actual_score,
+        pass_=passed,
+        failure_cases=failure_cases,
+    )
 
 
 def _scanner_findings_count(
@@ -151,7 +226,9 @@ def evaluate_corpus_acceptance(
         # Fail-closed: an all-base-case corpus does not prove the gate. Recorded
         # as checked=True so this is a real (non-passing) acceptance verdict, not
         # a silent "inconclusive" skip.
-        return ModelCorpusAcceptanceResult(
+        return _result_with_evidence(
+            handler_source=handler_source,
+            corpus=corpus,
             checked=True,
             passed=False,
             violation_total=len(corpus.violation_fixtures),
@@ -202,7 +279,9 @@ def evaluate_corpus_acceptance(
         and violation_flagged == violation_total
         and clean_passed == clean_total
     )
-    return ModelCorpusAcceptanceResult(
+    return _result_with_evidence(
+        handler_source=handler_source,
+        corpus=corpus,
         checked=True,
         passed=passed,
         violation_total=violation_total,

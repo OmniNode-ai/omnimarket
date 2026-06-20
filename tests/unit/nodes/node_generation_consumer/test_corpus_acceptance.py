@@ -122,8 +122,17 @@ def _corpus_with_mutation() -> ModelValidatorCorpus:
 @pytest.mark.unit
 def test_correct_scanner_is_accepted() -> None:
     result = evaluate_corpus_acceptance(_CORRECT_SCANNER, _corpus_with_mutation())
+    dumped = result.model_dump(by_alias=True)
     assert result.checked is True
     assert result.passed is True
+    assert result.score_source == "deterministic_acceptance"
+    assert result.acceptance_version == "node_generation_consumer.corpus_acceptance.v1"
+    assert len(result.corpus_hash) == 64
+    assert len(result.validator_or_artifact_hash) == 64
+    assert "deterministic_acceptance" in result.acceptance_command
+    assert result.actual_score == pytest.approx(1.0)
+    assert dumped["pass"] is True
+    assert result.failure_cases == []
     assert result.errors == []
     assert result.violation_flagged == result.violation_total == 2
     assert result.clean_passed == result.clean_total == 2
@@ -147,12 +156,16 @@ def test_false_negative_scanner_is_rejected() -> None:
     result = evaluate_corpus_acceptance(
         _FALSE_NEGATIVE_SCANNER, _corpus_with_mutation()
     )
+    dumped = result.model_dump(by_alias=True)
     assert result.checked is True
     assert result.passed is False
+    assert result.actual_score == pytest.approx(0.75)
+    assert dumped["pass"] is False
     # It flagged the jonah base but MISSED the mutated alice violation.
     assert result.violation_flagged == 1
     assert result.violation_total == 2
     assert any("v-mut-alice" in e and "NOT flagged" in e for e in result.errors)
+    assert result.failure_cases == result.errors
 
 
 # ---------------------------------------------------------------------------
