@@ -29,8 +29,9 @@ Lanes and their env vars
 
   ONEX_E2E_LANE=stability-test — stability-test lane
     Same env-var names override; default addresses shift to stability-test ports
-    (19092, 15436, http://192.168.86.201:3002 — stability-test projection API
+    (39092, 15436, http://192.168.86.201:3002 — stability-test projection API
      is on the same :3002 host but bound to the stability-test container).
+     NOTE: the stability-test Redpanda is on 39092, NOT the dev port 19092.
 
 Opt-in guard
 --------------------------
@@ -52,10 +53,10 @@ Usage
   ONEX_E2E_POSTGRES_PASSWORD=<pw> \\
   uv run pytest tests/integration/e2e_probe/test_delegation_e2e_probe.py -v -m e2e
 
-  # Against stability-test lane:
+  # Against stability-test lane (Redpanda on 39092, NOT the dev port 19092):
   OMN_ALLOW_LIVE_E2E_PROBE=true \\
   ONEX_E2E_LANE=stability-test \\
-  ONEX_E2E_KAFKA_BOOTSTRAP=192.168.86.201:19092 \\
+  ONEX_E2E_KAFKA_BOOTSTRAP=192.168.86.201:39092 \\
   ONEX_E2E_POSTGRES_PORT=15436 \\
   ONEX_E2E_POSTGRES_PASSWORD=<pw> \\
   uv run pytest tests/integration/e2e_probe/test_delegation_e2e_probe.py -v -m e2e
@@ -108,7 +109,7 @@ pytestmark = [
 _LANE = os.environ.get("ONEX_E2E_LANE", "dev")
 
 # Dev lane defaults (onex-allow-internal-ip: lab GPU server — read from env at runtime)
-_DEFAULT_KAFKA = "192.168.86.201:19092"  # onex-allow-internal-ip OMN-12789 reason="dev/stability-test lab Redpanda; overridden by ONEX_E2E_KAFKA_BOOTSTRAP at runtime"
+_DEFAULT_KAFKA = "192.168.86.201:19092"  # onex-allow-internal-ip OMN-12789 reason="dev lane lab Redpanda default (port 19092); stability-test lane is port 39092 and must be set via ONEX_E2E_KAFKA_BOOTSTRAP at runtime"
 _DEFAULT_PG_HOST = "192.168.86.201"  # onex-allow-internal-ip OMN-12789 reason="dev/stability-test lab Postgres host; overridden by ONEX_E2E_POSTGRES_HOST at runtime"
 _DEFAULT_PG_PORT_DEV = 5436
 _DEFAULT_PG_PORT_STABILITY = 15436
