@@ -2,6 +2,10 @@
 # SPDX-License-Identifier: MIT
 """Shared typed primitives for intelligence ONCP nodes in omnimarket."""
 
+from omnimarket.intelligence.aggregation import (
+    context_selection_failure_count,
+    context_selection_failure_rate,
+)
 from omnimarket.intelligence.domain import EvidenceTierLiteral, ModelGateSnapshot
 from omnimarket.intelligence.enums import (
     EnumFSMType,
@@ -14,6 +18,7 @@ from omnimarket.intelligence.events import (
     ModelIntentDriftDetectedEnvelope,
     ModelIntentOutcomeLabeledEnvelope,
     ModelIntentPatternPromotedEnvelope,
+    ModelUserCorrectionEvent,
 )
 
 __all__ = [
@@ -27,4 +32,7 @@ __all__ = [
     "ModelIntentDriftDetectedEnvelope",
     "ModelIntentOutcomeLabeledEnvelope",
     "ModelIntentPatternPromotedEnvelope",
+    "ModelUserCorrectionEvent",
+    "context_selection_failure_count",
+    "context_selection_failure_rate",
 ]
