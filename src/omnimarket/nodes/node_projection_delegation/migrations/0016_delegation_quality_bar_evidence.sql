@@ -5,8 +5,8 @@
 -- projection API instead of hiding it in logs or client state.
 
 ALTER TABLE delegation_events
-    ADD COLUMN IF NOT EXISTS required_bar NUMERIC,
-    ADD COLUMN IF NOT EXISTS actual_score NUMERIC,
+    ADD COLUMN IF NOT EXISTS required_bar NUMERIC(5, 3),
+    ADD COLUMN IF NOT EXISTS actual_score NUMERIC(5, 3),
     ADD COLUMN IF NOT EXISTS escalation_count INT NOT NULL DEFAULT 0,
     ADD COLUMN IF NOT EXISTS authority_source TEXT,
     ADD COLUMN IF NOT EXISTS score_source TEXT,
@@ -19,11 +19,9 @@ CREATE INDEX IF NOT EXISTS idx_delegation_events_score_vs_bar
 CREATE OR REPLACE VIEW projection_delegation_quality_gate AS
 WITH totals AS (
     SELECT
-        COUNT(*)::int AS total_checks,
-        COALESCE(SUM(CASE WHEN quality_gate_passed THEN 1 ELSE 0 END), 0)::int
-            AS total_passed,
-        COALESCE(SUM(CASE WHEN NOT quality_gate_passed THEN 1 ELSE 0 END), 0)::int
-            AS total_failed,
+        COUNT(*) FILTER (WHERE quality_gate_passed IS NOT NULL)::int AS total_checks,
+        COUNT(*) FILTER (WHERE quality_gate_passed IS TRUE)::int AS total_passed,
+        COUNT(*) FILTER (WHERE quality_gate_passed IS FALSE)::int AS total_failed,
         COALESCE(SUM(escalation_count), 0)::int AS total_escalations,
         COALESCE(AVG(NULLIF(tokens_to_compliance, 0)), 0)::float
             AS avg_tokens_to_compliance,
