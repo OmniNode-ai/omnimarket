@@ -9,7 +9,13 @@ from pathlib import Path
 
 import pytest
 
-from scripts.ci.run_delegation_graded_benchmark import _build_packet, main
+from scripts.ci.run_delegation_graded_benchmark import (
+    _benchmark_fixture,
+    _build_packet,
+    _score_case,
+    _task_contracts,
+    main,
+)
 
 
 @pytest.mark.unit
@@ -89,6 +95,34 @@ def test_marker_controls_have_expected_terminal_classification() -> None:
     marker_rich_wrong = by_id["marker_rich_wrong_fails"]
     assert marker_rich_wrong["terminal_status"] == "failed"
     assert marker_rich_wrong["classification"] == "fail"
+
+
+@pytest.mark.unit
+def test_empty_attempt_fixture_is_controlled_failure() -> None:
+    case = {
+        "id": "empty_attempts_fixture",
+        "benchmark_class": "easy",
+        "task_class": "summarization",
+        "required_bar": 0.95,
+        "required_bar_source": "benchmark_fixture",
+        "expected_terminal_status": "failed",
+        "expected_escalations": 0,
+        "expected_terminal_tier": "",
+        "expected_terminal_model": "",
+        "negative_control": False,
+        "attempts": [],
+    }
+
+    scored = _score_case(
+        case,
+        task_contracts=_task_contracts(),
+        fixture=_benchmark_fixture(),
+    )
+
+    assert scored["terminal_status"] == "failed"
+    assert scored["benchmark_passed"] is False
+    assert "empty_attempts_fixture: no attempts configured" in scored["failures"]
+    assert scored["attempts"] == []
 
 
 @pytest.mark.unit

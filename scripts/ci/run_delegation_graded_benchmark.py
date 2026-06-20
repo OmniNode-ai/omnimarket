@@ -164,49 +164,60 @@ def _score_case(
     terminal_status = "failed"
     failures: list[str] = []
 
-    if len(attempts_input) > max_escalations + 1:
+    if not attempts_input:
+        failures.append(f"{case_id}: no attempts configured")
+        empty_correlation_id = str(_stable_uuid("OMN-13369", case_id, "empty"))
+        terminal_attempt = {
+            "correlation_id": empty_correlation_id,
+            "model": "",
+            "tier": "",
+            "score": 0.0,
+            "actual_score": 0.0,
+        }
+    elif len(attempts_input) > max_escalations + 1:
         failures.append(
             f"{case_id}: fixture attempts exceed max_escalations for {task_class}"
         )
 
-    for index, attempt in enumerate(attempts_input):
-        tier = str(attempt["tier"])
-        if tier_order and index < len(tier_order) and tier != tier_order[index]:
-            failures.append(
-                f"{case_id}: attempt {index} tier {tier!r} does not match "
-                f"contract tier_order {tier_order[index]!r}"
+    if attempts_input:
+        for index, attempt in enumerate(attempts_input):
+            tier = str(attempt["tier"])
+            if tier_order and index < len(tier_order) and tier != tier_order[index]:
+                failures.append(
+                    f"{case_id}: attempt {index} tier {tier!r} does not match "
+                    f"contract tier_order {tier_order[index]!r}"
+                )
+
+            scored = _score_attempt(
+                case_id=case_id,
+                task_class=task_class,
+                attempt_index=index,
+                attempt=attempt,
+                dod=dod,
+                required_bar=required_bar,
+                correlation_id=_stable_uuid("OMN-13369", case_id, index),
+                fixture=fixture,
             )
+            attempts.append(scored)
 
-        scored = _score_attempt(
-            case_id=case_id,
-            task_class=task_class,
-            attempt_index=index,
-            attempt=attempt,
-            dod=dod,
-            required_bar=required_bar,
-            correlation_id=_stable_uuid("OMN-13369", case_id, index),
-            fixture=fixture,
-        )
-        attempts.append(scored)
+            if scored["adequacy_passed"]:
+                terminal_attempt = scored
+                terminal_status = "completed"
+                break
 
-        if scored["adequacy_passed"]:
+            if index < len(attempts_input) - 1 and escalation_count < max_escalations:
+                escalation_count += 1
+                scored["event_refs"]["escalation_event_topic"] = str(
+                    fixture["escalation_event_topic"]
+                )
+                scored["event_refs"]["escalation_event_id"] = str(
+                    _stable_uuid("OMN-13369", case_id, index, "escalation")
+                )
+                continue
+
             terminal_attempt = scored
-            terminal_status = "completed"
+            terminal_status = "failed"
             break
-
-        if index < len(attempts_input) - 1 and escalation_count < max_escalations:
-            escalation_count += 1
-            scored["event_refs"]["escalation_event_topic"] = str(
-                fixture["escalation_event_topic"]
-            )
-            scored["event_refs"]["escalation_event_id"] = str(
-                _stable_uuid("OMN-13369", case_id, index, "escalation")
-            )
-            continue
-
-        terminal_attempt = scored
-        terminal_status = "failed"
-        break
 
     if terminal_attempt is None:
         failures.append(f"{case_id}: no terminal attempt produced")
