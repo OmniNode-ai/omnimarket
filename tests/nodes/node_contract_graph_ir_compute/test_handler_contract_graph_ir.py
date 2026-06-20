@@ -18,6 +18,15 @@ import shutil
 from pathlib import Path
 
 import pytest
+from omnibase_core.enums.enum_widget_type import EnumWidgetType
+from omnibase_core.models.dashboard.model_action_contract import ModelActionContract
+from omnibase_core.models.dashboard.model_component_contract import (
+    ModelComponentContract,
+)
+from omnibase_core.models.dashboard.model_data_binding_contract import (
+    ModelDataBindingContract,
+)
+from omnibase_core.models.primitives.model_semver import ModelSemVer
 
 from omnimarket.nodes.node_contract_graph_ir_compute.handlers.handler_contract_graph_ir import (
     HandlerContractGraphIr,
@@ -31,6 +40,36 @@ from omnimarket.nodes.node_contract_graph_ir_compute.models.model_contract_graph
 
 # Fixture source directory alongside this test file.
 _FIXTURES_SRC = Path(__file__).resolve().parent / "fixtures"
+
+
+def _real_ui_component() -> ModelComponentContract:
+    """A real-shape UI component contract instance (Phase-0 primitive).
+
+    Mirrors the omnibase_core ui_component dialect adapter test fixture: one
+    data binding (projection topic) and one action (command topic), so the
+    imported IR component node yields both a DATA_BINDS and an ACTION_EMITS edge.
+    """
+    return ModelComponentContract(
+        component_id="contract_graph_ir_viewer",
+        component_kind=EnumWidgetType.STATUS_GRID,
+        title="Contract Graph IR Viewer",
+        contract_version=ModelSemVer(major=1, minor=0, patch=0),
+        data_bindings=(
+            ModelDataBindingContract(
+                binding_id="b1",
+                projection_topic="onex.evt.omnimarket.contract-graph-ir-computed.v1",
+                ordering_authority_field="updated_at",
+                required_fields=("ir_json",),
+            ),
+        ),
+        actions=(
+            ModelActionContract(
+                action_id="a1",
+                command_topic="onex.cmd.omnimarket.contract-graph-ir-requested.v1",
+                label="Recompute",
+            ),
+        ),
+    )
 
 
 def _make_ir_root(tmp_path: Path) -> Path:
@@ -243,3 +282,88 @@ class TestHandlerContractGraphIrUnit:
         assert response.edge_count > 0, (
             "Expected edges from fixture contracts with topic declarations"
         )
+
+
+@pytest.mark.unit
+class TestHandlerContractGraphIrBothDialects:
+    """Acceptance: import >= 1 backend node contract AND >= 1 UI component.
+
+    The OMN-13385 acceptance criterion requires the read surface to import at
+    least one real backend node contract AND at least one UI component contract
+    via the shipped Phase-2 importer, and to prove the IR + hashes are
+    byte-stable across two calls for those two contracts.
+    """
+
+    def _request(self, tmp_path: Path) -> ModelContractGraphIrRequest:
+        ir_root = _make_ir_root(tmp_path)
+        return ModelContractGraphIrRequest(
+            discovery_roots=(".",),
+            repo_base_path=str(ir_root),
+            ui_components=(_real_ui_component(),),
+        )
+
+    def test_imports_both_node_and_ui_component_dialects(self, tmp_path: Path) -> None:
+        """IR spans both the node dialect and the ui_component dialect."""
+        response = HandlerContractGraphIr().handle(self._request(tmp_path))
+        dialects = {entry.dialect for entry in response.hash_manifest}
+        assert "node" in dialects, (
+            f"Expected a backend node contract (dialect='node'). Found: {dialects}"
+        )
+        assert "ui_component" in dialects, (
+            f"Expected a UI component contract (dialect='ui_component'). "
+            f"Found: {dialects}"
+        )
+
+    def test_ui_component_node_present_in_ir(self, tmp_path: Path) -> None:
+        """The imported UI component appears as a COMPONENT node in the IR."""
+        import json
+
+        from omnibase_core.enums.enum_contract_graph_node_role import (
+            EnumContractGraphNodeRole,
+        )
+
+        response = HandlerContractGraphIr().handle(self._request(tmp_path))
+        ir_data = json.loads(response.ir_json)
+        roles = {n["role"] for n in ir_data["nodes"]}
+        node_ids = {n["node_id"] for n in ir_data["nodes"]}
+        assert EnumContractGraphNodeRole.COMPONENT.value in roles, (
+            f"Expected COMPONENT role in IR. Found roles: {roles}"
+        )
+        assert "contract_graph_ir_viewer" in node_ids, (
+            f"UI component node id not found in IR. Found: {sorted(node_ids)}"
+        )
+
+    def test_hash_manifest_covers_both_dialects(self, tmp_path: Path) -> None:
+        """Every imported source (node + UI component) carries valid sha256 hashes."""
+        response = HandlerContractGraphIr().handle(self._request(tmp_path))
+        # >= 2 node fixtures + 1 UI component
+        assert response.node_count >= 3
+        assert len(response.hash_manifest) == response.node_count
+        for entry in response.hash_manifest:
+            assert entry.source_contract_sha256.startswith("sha256:")
+            assert entry.adapter_version_sha256.startswith("sha256:")
+
+    def test_determinism_ir_and_hashes_byte_stable_across_two_calls(
+        self, tmp_path: Path
+    ) -> None:
+        """Core acceptance: IR JSON + hash manifest are byte-stable across two
+        calls for a backend node contract AND a UI component contract.
+        """
+        handler = HandlerContractGraphIr()
+        ir_root = _make_ir_root(tmp_path)
+        request = ModelContractGraphIrRequest(
+            discovery_roots=(".",),
+            repo_base_path=str(ir_root),
+            ui_components=(_real_ui_component(),),
+        )
+        first = handler.handle(request)
+        second = handler.handle(request)
+
+        assert first.ir_json == second.ir_json, (
+            "IR JSON is not byte-stable across identical mixed-dialect requests"
+        )
+        assert first.hash_manifest == second.hash_manifest, (
+            "Hash manifest is not byte-stable across identical mixed-dialect requests"
+        )
+        assert first.node_count == second.node_count
+        assert first.edge_count == second.edge_count

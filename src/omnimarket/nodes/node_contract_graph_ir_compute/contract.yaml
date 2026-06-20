@@ -76,5 +76,13 @@ event_bus:
   publish_topics:
     - onex.evt.omnimarket.contract-graph-ir-computed.v1
 
+# The terminal event is a derived-artifact read result consumed by authoring
+# tooling (omnidash IR viewer, contract-graph diff tooling) outside this repo's
+# node graph, not by another in-repo node. Declared externally consumed so the
+# dependency-health MISSING_TOPIC_EDGE rule does not flag a missing in-repo
+# subscriber for this read surface.
+externally_consumed_topics:
+  - onex.evt.omnimarket.contract-graph-ir-computed.v1
+
 metadata:
   transport_type: kafka

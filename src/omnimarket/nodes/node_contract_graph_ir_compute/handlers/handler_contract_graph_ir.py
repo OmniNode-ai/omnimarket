@@ -69,10 +69,17 @@ def _build_response(
             repo_relative = str(fs_path)
         node_paths.append((fs_path, repo_relative))
 
+    # UI component contracts are in-memory primitives, not on-disk contract.yaml
+    # files, so they carry a stable in-memory source_path derived from their id.
+    ui_components = tuple(
+        (component, f"in-memory://ui_component/{component.component_id}")
+        for component in request.ui_components
+    )
+
     ir = import_paths(
         discovery_roots=request.discovery_roots,
         node_paths=tuple(node_paths),
-        ui_components=(),
+        ui_components=ui_components,
     )
 
     hash_manifest = tuple(
