@@ -1,0 +1,96 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+
+# ONEX Node Contract — node_context_selection_policy_compute
+# Pure compute: policy-based, reason-annotated context-factor selection that
+# implements the Context Authority Rule (OMN-12843 / M3).
+#
+# Related: OMN-12843, OMN-12837, OMN-12842
+---
+name: node_context_selection_policy_compute
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: compute
+node_version: {major: 1, minor: 0, patch: 0}
+description: >
+  Deterministic context-selection policy engine. Accepts candidate context
+  factors/capsules with their M2-resolved effectiveness scores, required flags,
+  and experiment-arm bindings plus the active experiment cohort; ranks by
+  measured effectiveness (ties broken deterministically by stable source id) and
+  stamps every selection with the Context Authority 5-tuple {factor, source,
+  selection_reason, effectiveness_score, experiment_cohort}. Rejects hidden
+  authority (profile-declared candidates with no score and no cohort) and forced
+  experiment arms with no matching active cohort. No LLM calls, no I/O, same
+  input = same output.
+
+handler:
+  module: omnimarket.nodes.node_context_selection_policy_compute.handlers.handler_context_selection_policy
+  class: HandlerContextSelectionPolicy
+  input_model: omnimarket.nodes.node_context_selection_policy_compute.models.model_selection_request.ModelContextSelectionRequest
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - handler:
+        name: HandlerContextSelectionPolicy
+        module: omnimarket.nodes.node_context_selection_policy_compute.handlers.handler_context_selection_policy
+
+descriptor:
+  node_archetype: compute
+  purity: pure
+  runtime_profiles: [main]
+  idempotent: true
+  timeout_ms: 1000
+
+inputs:
+  candidates:
+    type: array
+    description: "Candidate context factors with source id, effectiveness_score, is_required, and forced_experiment_cohort"
+    required: true
+  active_experiment_cohort:
+    type: str
+    description: "Active experiment cohort id for this run; required for any arm-fixed candidate"
+    required: false
+    nullable: true
+  request_id:
+    type: str
+    required: false
+    default: ""
+
+outputs:
+  status:
+    type: str
+    enum: [ok, error]
+  selections:
+    type: array
+    description: "Ordered, reason-annotated selection; each entry carries the Authority 5-tuple"
+  request_id:
+    type: str
+  error:
+    type: str
+    required: false
+    nullable: true
+
+terminal_event: onex.evt.omnimarket.context-selection-policy-completed.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.context-selection-policy-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.context-selection-policy-completed.v1
+
+metadata:
+  transport_type: kafka
+  author: OmniNode Platform Team
+  license: MIT
+  maturity: stable
+  implementation_wave: m3
+  tags:
+    - context
+    - selection
+    - policy
+    - compute
+    - authority-rule
+  related_tickets:
+    - "OMN-12843"
+    - "OMN-12837"
+    - "OMN-12842"
