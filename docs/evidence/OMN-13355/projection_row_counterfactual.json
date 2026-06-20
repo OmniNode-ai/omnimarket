@@ -1,0 +1,22 @@
+{
+  "ticket": "OMN-13355",
+  "path": "real HandlerProjectionDelegation.handle() -> SqliteDatabaseAdapter (deployed delegation_events shape)",
+  "dispatch_result": {
+    "rows_upserted": 1,
+    "table": "delegation_events"
+  },
+  "persisted_premium_counterfactual": {
+    "model": "claude-opus-4-6",
+    "price_in_per_1k": "0.015",
+    "price_out_per_1k": "0.075",
+    "as_of": "2026-02-01",
+    "tokens_in": 144,
+    "tokens_out": 593,
+    "counterfactual_cost_usd": "0.046635",
+    "pricing_source": "pricing_manifest",
+    "measured": false
+  },
+  "row_cost_usd": "0.0",
+  "row_cost_savings_usd": "0.046635",
+  "audit_saving_equals_counterfactual_minus_actual": "0.046635"
+}

@@ -88,6 +88,7 @@ node_context_artifact_resolver_compute = "omnimarket.nodes.node_context_artifact
 node_design_plan_context_compute = "omnimarket.nodes.node_design_plan_context_compute"
 node_golden_chain_generator_compute = "omnimarket.nodes.node_golden_chain_generator_compute"
 node_test_generator_compute = "omnimarket.nodes.node_test_generator_compute"
+node_tool_reuse_matcher_compute = "omnimarket.nodes.node_tool_reuse_matcher_compute"
 node_session_phase_evaluator = "omnimarket.nodes.node_session_phase_evaluator"
 node_context_experiment_compute = "omnimarket.nodes.node_context_experiment_compute"
 node_on_vs_off_experiment_compute = "omnimarket.nodes.node_on_vs_off_experiment_compute"
@@ -398,7 +399,7 @@ market = "omnimarket.cli.market:market"
 omnimarket = "omnimarket.nodes"
 
 [tool.uv.sources]
-omnibase-core = { git = "https://github.com/OmniNode-ai/omnibase_core.git", rev = "793cf11ea955ed831af670966cb63a47d0538f00" }
+omnibase-core = { git = "https://github.com/OmniNode-ai/omnibase_core.git", rev = "cdf15372968eead831f5a82399430a1529520f77" }
 omnibase-compat = { git = "https://github.com/OmniNode-ai/omnibase_compat.git", rev = "bd7fe461316effa7cd0a1918e29f83bc5787a7e0" }
 omnibase-infra = { git = "https://github.com/OmniNode-ai/omnibase_infra.git", rev = "d56384fb481399a1b6509df21531ba5a5454b964" }
 omninode-memory = { git = "https://github.com/OmniNode-ai/omnimemory.git", rev = "9843dd18cedaa4f5939289ba527532262b87003c" }
@@ -406,7 +407,7 @@ onex-change-control = { git = "https://github.com/OmniNode-ai/onex_change_contro
 
 [tool.uv]
 override-dependencies = [
-    "omnibase-core @ git+https://github.com/OmniNode-ai/omnibase_core.git@793cf11ea955ed831af670966cb63a47d0538f00",
+    "omnibase-core @ git+https://github.com/OmniNode-ai/omnibase_core.git@cdf15372968eead831f5a82399430a1529520f77",
     "omnibase-spi>=0.22.0,<0.23.0",
     "omnibase-infra @ git+https://github.com/OmniNode-ai/omnibase_infra.git@d56384fb481399a1b6509df21531ba5a5454b964",
     "omnibase-compat @ git+https://github.com/OmniNode-ai/omnibase_compat.git@bd7fe461316effa7cd0a1918e29f83bc5787a7e0",

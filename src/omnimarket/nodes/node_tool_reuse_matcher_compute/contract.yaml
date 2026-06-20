@@ -1,0 +1,110 @@
+---
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_tool_reuse_matcher_compute
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: compute
+node_version: {major: 1, minor: 0, patch: 0}
+description: >
+  Pure deterministic tool-reuse matcher. Evaluates an incoming tool-generation
+  request against a registry of already-generated tools and routes to an existing
+  tool when one matches — short-circuiting fresh LLM generation. Matching is
+  explicitly non-LLM: exact input/output contract-signature equality (hash match)
+  is the fast path; a deterministic token-set lexical similarity over the task
+  description is the fallback. Emits a MATCHED / NO_MATCH / AMBIGUOUS verdict.
+  No side effects, no I/O beyond the injected registry query.
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - handler:
+        name: HandlerToolReuseMatcher
+        module: omnimarket.nodes.node_tool_reuse_matcher_compute.handlers.handler_tool_reuse_matcher
+
+handler:
+  module: omnimarket.nodes.node_tool_reuse_matcher_compute.handlers.handler_tool_reuse_matcher
+  class: HandlerToolReuseMatcher
+  input_model: omnimarket.nodes.node_tool_reuse_matcher_compute.models.model_tool_reuse_request.ModelToolReuseRequest
+
+input_model:
+  name: ModelToolReuseRequest
+  module: omnimarket.nodes.node_tool_reuse_matcher_compute.models.model_tool_reuse_request
+  description: "Incoming tool request: task description + input/output signature to match against the registry."
+output_model:
+  name: ModelToolReuseMatchResult
+  module: omnimarket.nodes.node_tool_reuse_matcher_compute.models.model_tool_reuse_result
+  description: "Reuse verdict (MATCHED / NO_MATCH / AMBIGUOUS / REGISTRY_UNAVAILABLE) plus the resolved tool, if any."
+
+descriptor:
+  node_archetype: compute
+  purity: pure
+  runtime_profiles: [main]
+  idempotent: true
+  timeout_ms: 5000
+
+inputs:
+  correlation_id:
+    type: uuid
+    required: true
+    description: Run correlation ID for event tracing
+  task_description:
+    type: str
+    required: true
+    description: Natural-language description of the requested tool task
+  requested_signature:
+    type: object
+    required: true
+    description: Input/output contract signature (model names, modules, field hashes)
+  match_strategy:
+    type: str
+    required: false
+    enum: [signature, semantic, hybrid]
+    default: hybrid
+    description: Matching algorithm selection
+  similarity_threshold:
+    type: float
+    required: false
+    default: 0.85
+    description: Minimum lexical similarity (0.0-1.0) for a semantic/hybrid match
+  max_candidates:
+    type: int
+    required: false
+    default: 5
+    description: Maximum candidate tools to return for ranking/disambiguation
+
+outputs:
+  verdict:
+    type: str
+    enum: [matched, no_match, ambiguous, registry_unavailable]
+  matched_tool:
+    type: object
+    description: Present iff verdict == matched
+  candidate_tools:
+    type: array
+    items:
+      type: object
+  match_strategy_used:
+    type: str
+  failure_reason:
+    type: str
+
+terminal_event: onex.evt.omnimarket.tool-reuse-matched.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.tool-reuse-match-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.tool-reuse-matched.v1
+    - onex.evt.omnimarket.tool-reuse-no-match.v1
+
+replay:
+  deterministic: true
+  timestamp_authority: ingest_sequence
+
+validation_contract:
+  llm_allowed: false
+
+metadata:
+  transport_type: kafka
+  implementation_wave: 7
+  related_tickets: ["OMN-13356", "OMN-12296"]
