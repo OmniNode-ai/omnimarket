@@ -153,6 +153,20 @@ def _sha256(text: str) -> str:
     return "sha256:" + hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
+def _factor_subset_hash(factor_subset: tuple[str, ...]) -> str:
+    """Deterministic hash of an arm's factor-subset label set.
+
+    Empty subset (the off arm) returns the empty string -- there is no factor
+    combination to attribute.  A non-empty subset hashes the ordered labels so
+    the same arm reproduces the same hash across runs, replay-auditing which
+    factor combination produced the row (BAC plan line 111).
+    """
+    if not factor_subset:
+        return ""
+    canonical = json.dumps(list(factor_subset), separators=(",", ":"))
+    return _sha256(canonical)
+
+
 def _utc_now_iso() -> str:
     return datetime.now(tz=UTC).isoformat()
 
@@ -471,6 +485,10 @@ class HandlerContextRoiRunner:
         """Execute one (task x arm x trial) and return a row + any warnings."""
         warnings: list[str] = []
         correlation_id = str(uuid.uuid4())
+        # Factor-subset hash is arm-intrinsic -- computed once up front so every
+        # row construction path (pack failure, publish failure, terminal timeout,
+        # success) carries the same replay-audit hash.
+        factor_subset_hash = _factor_subset_hash(arm.factor_subset)
 
         # --- Step 1: assemble context pack text (off arm = empty string) ---
         context_pack_text = ""
@@ -522,6 +540,7 @@ class HandlerContextRoiRunner:
                     run_order=run_order,
                     context_factor_subset=arm.label,
                     context_pack_hash=context_pack_hash,
+                    factor_subset_hash=factor_subset_hash,
                     failure_stage=pack_failure_stage,
                     proof_class=EnumProofClass.RUNTIME_OBSERVED_ONLY,
                 ),
@@ -597,6 +616,7 @@ class HandlerContextRoiRunner:
                     run_order=run_order,
                     context_factor_subset=arm.label,
                     context_pack_hash=context_pack_hash,
+                    factor_subset_hash=factor_subset_hash,
                     failure_stage=EnumFailureStage.GENERATION,
                     proof_class=EnumProofClass.RUNTIME_OBSERVED_ONLY,
                 ),
@@ -630,6 +650,7 @@ class HandlerContextRoiRunner:
                     run_order=run_order,
                     context_factor_subset=arm.label,
                     context_pack_hash=context_pack_hash,
+                    factor_subset_hash=factor_subset_hash,
                     failure_stage=EnumFailureStage.GENERATION,
                     proof_class=EnumProofClass.RUNTIME_OBSERVED_ONLY,
                 ),
@@ -644,6 +665,7 @@ class HandlerContextRoiRunner:
             task_id=task.task_id,
             arm_label=arm.label,
             context_pack_hash=context_pack_hash,
+            factor_subset_hash=factor_subset_hash,
             run_order=run_order,
         )
         warnings.extend(extract_warnings)
@@ -661,6 +683,7 @@ class HandlerContextRoiRunner:
         task_id: str,
         arm_label: str,
         context_pack_hash: str,
+        factor_subset_hash: str,
         run_order: int,
     ) -> tuple[ModelAttemptReductionRow, list[str]]:
         """Extract a ModelAttemptReductionRow from the terminal event dict.
@@ -685,6 +708,7 @@ class HandlerContextRoiRunner:
                     run_order=run_order,
                     context_factor_subset=arm_label,
                     context_pack_hash=context_pack_hash,
+                    factor_subset_hash=factor_subset_hash,
                     failure_stage=EnumFailureStage.GENERATION,
                     proof_class=EnumProofClass.RUNTIME_OBSERVED_ONLY,
                 ),
@@ -725,6 +749,13 @@ class HandlerContextRoiRunner:
         model_id: str = str(telemetry.get("model_id", ""))
         provider: str = str(telemetry.get("provider", ""))
         endpoint_class: str = str(telemetry.get("endpoint_class", ""))
+        # routing_source is echoed back from the routing authority on the terminal
+        # event when the generation consumer carries it; otherwise it is derived
+        # from the endpoint class so every row carries a provenance string rather
+        # than a silent empty (BAC plan line 111). Never hardcoded here.
+        routing_source: str = str(telemetry.get("routing_source", ""))
+        if not routing_source and endpoint_class:
+            routing_source = f"routing_tier:{endpoint_class}"
 
         # Warn (but do not fail closed) on absent P2-1 optional fields.
         if not model_id:
@@ -750,6 +781,7 @@ class HandlerContextRoiRunner:
                 run_order=run_order,
                 context_factor_subset=arm_label,
                 context_pack_hash=context_pack_hash,
+                factor_subset_hash=factor_subset_hash,
                 attempt_count=attempt_count,
                 first_pass_success=first_pass_success,
                 final_success=contract_passed,
@@ -760,6 +792,7 @@ class HandlerContextRoiRunner:
                 model_id=model_id,
                 provider=provider,
                 endpoint_ref=endpoint_class,
+                routing_source=routing_source,
                 proof_class=EnumProofClass.RUNTIME_OBSERVED_ONLY,
             ),
             warnings,
@@ -787,5 +820,6 @@ __all__ = [
     "HandlerContextRoiRunner",
     "_assemble_context_text",
     "_factor_str_to_enum",
+    "_factor_subset_hash",
     "_sha256",
 ]

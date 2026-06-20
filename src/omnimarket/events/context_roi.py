@@ -98,6 +98,15 @@ class ModelAttemptReductionRow(BaseModel):
             "Enables exact replay of the injected context."
         ),
     )
+    factor_subset_hash: str = Field(
+        default="",
+        description=(
+            "SHA-256 hex digest of the canonical (ordered) factor-subset label "
+            "set for this arm; empty string for the off arm (no factors). "
+            "Replay-audits which factor combination produced the row so a "
+            "'winning factor' is attributable (BAC plan line 111)."
+        ),
+    )
 
     # Generation telemetry -- sourced from typed event fields (never log scraping)
     attempt_count: int = Field(
@@ -145,6 +154,16 @@ class ModelAttemptReductionRow(BaseModel):
     provider: str = Field(default="", description="LLM provider (local, gemini, etc.)")
     endpoint_ref: str = Field(
         default="", description="Routing-tier endpoint reference (e.g. 'local-coder')"
+    )
+    routing_source: str = Field(
+        default="",
+        description=(
+            "Provenance of the model/endpoint selection for this row, resolved "
+            "from the routing authority (e.g. 'routing_tier:local-coder'); empty "
+            "string when the routing source was not captured. Completes the "
+            "per-row metadata set so a winning factor is not a routing artifact "
+            "(BAC plan line 111)."
+        ),
     )
 
     # Evidence classification

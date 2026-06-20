@@ -51,8 +51,9 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
     # OMN-12843 M3 adds node_context_selection_policy_compute: 317 -> 318.
     # OMN-13385 adds node_contract_graph_ir_compute (read-only IR GET surface):
     # 318 -> 319.
-    assert summary["node_dirs"] == 319
-    assert summary["entry_points"] == 319
+    # OMN-12845 M5 adds node_capsule_effectiveness_feedback_reducer: 319 -> 320.
+    assert summary["node_dirs"] == 320
+    assert summary["entry_points"] == 320
     assert summary["missing_entry_points"] == []
     assert summary["dangling_entry_points"] == []
     assert summary["routable"] >= 297
