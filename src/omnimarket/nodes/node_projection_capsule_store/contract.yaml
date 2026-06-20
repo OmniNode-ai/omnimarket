@@ -1,0 +1,86 @@
+---
+name: projection_capsule_store
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: reducer
+node_version: {major: 1, minor: 0, patch: 0}
+input_model: omnimarket.nodes.node_projection_capsule_store.handlers.handler_capsule_store_projection.ModelCapsuleScoredEvent
+description: >
+  Materializes a durable, scored capsule/exemplar store from context-ROI score
+  events. Each scored event is folded into a row keyed by the deterministic
+  capsule_hash; effectiveness is populated from the ROI metrics (never empty),
+  hit_count increments idempotently on replay, and staleness decay is applied
+  at read time from contract-declared decay parameters (OMN-12842 / M2).
+
+handler:
+  module: omnimarket.nodes.node_projection_capsule_store.handlers.handler_capsule_store_projection
+  class: HandlerCapsuleStoreProjection
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - handler:
+        name: HandlerCapsuleStoreProjection
+        module: omnimarket.nodes.node_projection_capsule_store.handlers.handler_capsule_store_projection
+      handler_module: omnimarket.nodes.node_projection_capsule_store.handlers.handler_capsule_store_projection
+      event_model: omnimarket.nodes.node_projection_capsule_store.handlers.handler_capsule_store_projection.ModelCapsuleScoredEvent
+
+terminal_event: onex.evt.omnimarket.capsule-store-applied.v1
+
+# === STALENESS-DECAY CONFIG ===
+# Decay parameters are contract-declared and resolved at the handler boundary;
+# never hardcoded constants and never env vars. effective_score = raw * decay(age),
+# decay(age) = max(floor, 0.5 ** (age_days / half_life_days)).
+config:
+  decay:
+    half_life_days: 30.0
+    floor: 0.25
+
+db_io:
+  db_tables:
+    - name: capsule_store
+      migration: "078_create_capsule_store.sql"
+      access: write
+      database: omnidash_analytics
+      role: capsules
+
+event_bus:
+  consumer_group: local.omnimarket.node_projection_capsule_store.consume.v1
+  subscribe_topics:
+    - onex.evt.omnimarket.context-roi-score-completed.v1
+  publish_topics:
+    - onex.evt.omnimarket.capsule-store-applied.v1
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.capsule-store-applied.v1
+
+projection_api:
+  expose: true
+  exposures:
+    - topic: onex.snapshot.projection.capsules.v1 # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
+      table: projection_capsule_effectiveness
+      schema: public
+      columns:
+        - capsule_id
+        - capsule_hash
+        - factor
+        - validity_scope
+        - source_commit
+        - source_artifact
+        - schema_version
+        - success_rate
+        - first_pass_rate
+        - cost_per_success
+        - effective_success_rate
+        - effective_first_pass_rate
+        - hit_count
+        - last_scored
+        - created_at
+        - updated_at
+      order_by: effective_first_pass_rate DESC
+      freshness_column: updated_at
+      limit: 500
+
+metadata:
+  transport_type: kafka
+  implementation_wave: m2
+  related_tickets: ["OMN-12842", "OMN-12837"]

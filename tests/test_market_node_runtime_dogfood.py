@@ -45,8 +45,9 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
     # OMN-13226 T2 adds node_pr_merged_projection stub: 311 -> 312.
     # OMN-13131 W5 adds node_renderer_capability_projection reducer: 312 -> 313.
     # OMN-13356 adds node_tool_reuse_matcher_compute: 313 -> 314.
-    assert summary["node_dirs"] == 314
-    assert summary["entry_points"] == 314
+    # OMN-12842 M2 adds node_projection_capsule_store reducer: 314 -> 315.
+    assert summary["node_dirs"] == 315
+    assert summary["entry_points"] == 315
     assert summary["missing_entry_points"] == []
     assert summary["dangling_entry_points"] == []
     assert summary["routable"] >= 297
