@@ -210,7 +210,7 @@ handler_routing:
         module: "omnimarket.nodes.node_delegation_orchestrator.handlers.handler_delegation_workflow"
       event_model:
         name: "ModelQualityGateResult"
-        module: "omnibase_core.models.delegation.wire"
+        module: "omnimarket.nodes.node_delegation_quality_gate_reducer.models"
       event_type: "omnibase-infra.quality-gate-result"
       description: "Complete or fail the workflow after quality evaluation."
 # PluginDelegation owns the Kafka subscription/result-applier lifecycle
