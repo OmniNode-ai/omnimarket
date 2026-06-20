@@ -1,0 +1,122 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+
+# ONEX Node Contract — node_context_exploration_policy_compute
+# Pure compute: probabilistic explore/exploit selection over scored, decay-
+# adjusted capsule candidates. Replaces the greedy argmax in
+# node_context_roi_compute (_select_preferred_arm) to prevent cold-start
+# starvation and winner lock-in.
+#
+# Related: OMN-12844 (M4 — exploration policy: bandit + effectiveness decay)
+---
+name: node_context_exploration_policy_compute
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: compute
+node_version: {major: 1, minor: 0, patch: 0}
+runtime_profiles:
+  - main
+description: >
+  Deterministic bandit exploration policy. Accepts scored, decay-adjusted
+  capsule candidates (each carrying effectiveness_score, decayed_confidence,
+  hit_count, last_scored, is_negative_control), a contract-resolved bandit
+  policy config (family + epsilon/ucb_c/priors/min_trials/decay_half_life), a
+  typed RNG seed, and a typed now; returns a selection distribution plus the
+  chosen candidate, per-candidate probabilities, and the selection reason.
+  Cold-start candidates always retain strictly positive probability; a decayed
+  winner re-enters exploration. No LLM calls, no I/O, no bus, no datetime.now(),
+  no ambient random() — same (candidates, config, seed) = same decision.
+
+handler:
+  module: omnimarket.nodes.node_context_exploration_policy_compute.handlers.handler_exploration_policy
+  class: HandlerExplorationPolicy
+  input_model: omnimarket.nodes.node_context_exploration_policy_compute.models.model_exploration_request.ModelExplorationRequest
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - handler:
+        name: HandlerExplorationPolicy
+        module: omnimarket.nodes.node_context_exploration_policy_compute.handlers.handler_exploration_policy
+
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 1000
+
+# Bandit policy configuration. Every parameter is resolved from this contract
+# block (or an overlay) into ModelExplorationPolicyConfig — NEVER from module
+# level constants or env vars. Switching the family or epsilon is a contract
+# edit, not a code change.
+policy_config:
+  family: epsilon_greedy
+  epsilon: 0.15
+  ucb_c: 2.0
+  prior_alpha: 1.0
+  prior_beta: 1.0
+  min_trials_before_exploit: 3
+  decay_half_life_days: 14.0
+
+inputs:
+  candidates:
+    type: array
+    description: >
+      Scored, decay-adjusted candidates. Each carries capsule_hash,
+      effectiveness_score, decayed_confidence, hit_count, last_scored,
+      is_negative_control. Decay is consumed, never recomputed.
+    required: true
+  config:
+    type: object
+    description: "Contract-resolved ModelExplorationPolicyConfig bandit parameters."
+    required: true
+  seed:
+    type: integer
+    description: "Typed RNG seed for deterministic, replayable selection."
+    required: true
+  now:
+    type: str
+    description: "Typed reference timestamp (tz-aware UTC) for staleness audit; no datetime.now()."
+    required: true
+  experiment_cohort:
+    type: str
+    description: "Cohort label recorded on the decision for audit."
+    required: true
+
+outputs:
+  selected_capsule_hash:
+    type: str
+  selection_reason:
+    type: str
+  selection_reason_class:
+    type: str
+    enum: [exploit, explore, cold_start, experiment_assignment]
+  family:
+    type: str
+    enum: [epsilon_greedy, ucb1, thompson]
+  experiment_cohort:
+    type: str
+  candidate_probabilities:
+    type: array
+
+terminal_event: onex.evt.omnimarket.context-exploration-policy-completed.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.context-exploration-policy-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.context-exploration-policy-completed.v1
+
+metadata:
+  transport_type: kafka
+  author: OmniNode Platform Team
+  license: MIT
+  maturity: stable
+  tags:
+    - context
+    - exploration
+    - bandit
+    - compute
+    - exploit-explore
+    - decay
+  related_tickets:
+    - "OMN-12844"
