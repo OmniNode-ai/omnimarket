@@ -1,5 +1,8 @@
 # SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
+# onex-allow-file OMN-13294 reason="test exercises the corpus whose subject is hardcoded private-IP literals; the .201 literal is the false-negative probe input"
+# onex-allow-internal-ip OMN-13294 reason="the .201 literal is the deliberate false-negative probe input for the corpus-acceptance test"
+# test-literal-ok: OMN-13294 — the hardcoded IP is the intentional probe input the corpus-acceptance test feeds the scanner
 """Structural tests for the G2 validator acceptance corpora (OMN-13294).
 
 These assert each registered corpus is RUNNABLE by the corpus-acceptance gate:
