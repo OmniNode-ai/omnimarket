@@ -110,7 +110,11 @@ from omnimarket.nodes.node_delegation_routing_reducer.handlers.handler_delegatio
 from omnimarket.nodes.node_delegation_routing_reducer.models.model_routing_decision import (
     ModelRoutingDecision,
 )
-from omnimarket.pricing import estimate_baseline_cost_usd, get_manifest_version_int
+from omnimarket.pricing import (
+    build_premium_counterfactual,
+    estimate_baseline_cost_usd,
+    get_manifest_version_int,
+)
 
 # Max tier escalation attempts for infra errors (auth, timeout, connection refused).
 # Kept separate from handle_gate_result's max_escalation_attempts so callers can
@@ -1223,6 +1227,14 @@ class HandlerDelegationWorkflow:
             prompt_tokens=workflow.inference_prompt_tokens,
             completion_tokens=workflow.inference_completion_tokens,
         )
+        # OMN-13355: pin the premium counterfactual so cost_savings_usd
+        # (= counterfactual_cost_usd - cost_usd) is auditable rather than an opaque
+        # estimate. The pinned price + as_of come from the canonical pricing
+        # manifest; no live premium call is made.
+        premium_counterfactual = build_premium_counterfactual(
+            prompt_tokens=workflow.inference_prompt_tokens,
+            completion_tokens=workflow.inference_completion_tokens,
+        )
 
         history_dicts = tuple(
             attempt.model_dump(mode="json") for attempt in workflow.escalation_history
@@ -1264,6 +1276,7 @@ class HandlerDelegationWorkflow:
             escalation_history=history_dicts,
             routing_tiers_hash=self._routing_tiers_hash(),
             attempts_count=workflow.escalation_count + 1,
+            premium_counterfactual=premium_counterfactual,
         )
 
     def handle_agent_task_lifecycle(

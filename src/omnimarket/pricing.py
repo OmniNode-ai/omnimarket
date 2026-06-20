@@ -11,7 +11,10 @@ from __future__ import annotations
 
 import functools
 import logging
+from decimal import Decimal
 
+from omnibase_core.models.delegation.wire import ModelPremiumCounterfactual
+from omnibase_infra.models.pricing.model_pricing_entry import ModelPricingEntry
 from omnibase_infra.models.pricing.model_pricing_table import ModelPricingTable
 
 logger = logging.getLogger(__name__)
@@ -88,9 +91,56 @@ def estimate_frontier_costs_usd(
     return estimates
 
 
+def build_premium_counterfactual(
+    *,
+    prompt_tokens: int,
+    completion_tokens: int,
+    premium_model: str = DEFAULT_BASELINE_MODEL,
+    measured: bool = False,
+    pricing_source: str = "pricing_manifest",
+) -> ModelPremiumCounterfactual | None:
+    """Build the pinned premium counterfactual for one delegated task (OMN-13355).
+
+    Resolves the premium model's pinned per-1k input/output price and the
+    ``effective_date`` (carried as ``as_of``) from the canonical pricing manifest,
+    then computes the counterfactual cost with Decimal precision so the saving
+    (counterfactual - actual) is auditable and recomputable from the persisted
+    provenance. There is NO live premium API call.
+
+    Returns ``None`` when the premium model is absent from the manifest (e.g. an
+    empty test table) — the carrying event then records ``premium_counterfactual``
+    as ``None`` rather than a placeholder.
+    """
+    entry: ModelPricingEntry | None = _load_table().get_entry(premium_model)
+    if entry is None:
+        logger.debug(
+            "Premium model %r not in pricing manifest; no counterfactual emitted",
+            premium_model,
+        )
+        return None
+
+    price_in = Decimal(str(entry.input_cost_per_1k))
+    price_out = Decimal(str(entry.output_cost_per_1k))
+    counterfactual_cost = (
+        price_in * Decimal(prompt_tokens) + price_out * Decimal(completion_tokens)
+    ) / Decimal("1000")
+    return ModelPremiumCounterfactual(
+        model=premium_model,
+        price_in_per_1k=price_in,
+        price_out_per_1k=price_out,
+        as_of=entry.effective_date,
+        tokens_in=prompt_tokens,
+        tokens_out=completion_tokens,
+        counterfactual_cost_usd=counterfactual_cost,
+        pricing_source=pricing_source,
+        measured=measured,
+    )
+
+
 __all__: list[str] = [
     "DEFAULT_BASELINE_MODEL",
     "DEFAULT_FRONTIER_COMPARISON_MODELS",
+    "build_premium_counterfactual",
     "estimate_baseline_cost_usd",
     "estimate_frontier_costs_usd",
     "get_manifest_version_int",
