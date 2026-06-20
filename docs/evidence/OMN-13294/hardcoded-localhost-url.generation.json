@@ -1,0 +1,20 @@
+{
+  "accepted": true,
+  "attempt_count": 2,
+  "clean_fixture_count": 5,
+  "contract_passed": true,
+  "contract_yaml": "name: node_check_hardcoded_localhost\ncontract_version: \"1.0.0\"\nnode_type: compute\ninput_model:\n  name: ModelCheckHardcodedLocalhostInput\n  module: omnimarket.nodes.node_check_hardcoded_localhost.models\noutput_model:\n  name: ModelCheckHardcodedLocalhostOutput\n  module: omnimarket.nodes.node_check_hardcoded_localhost.models",
+  "corpus_checked": true,
+  "corpus_errors": [],
+  "corpus_passed": true,
+  "correlation_id": "omn-13294-g2-hardcoded-localhost-url-672bc74413ad",
+  "endpoint_class": "local-coder",
+  "handler_source": "import re\n\ndef handle(input_data):\n    source = input_data.get('source', '')\n    findings = []\n\n    # Pattern explanation:\n    # (http://|https://) - Match scheme\n    # (localhost|127\\.0\\.0\\.1) - Match EXACTLY localhost or 127.0.0.1\n    # ([/:#?]) or end - Must be followed by a URL delimiter or end of string/line.\n    #    This prevents matching \"localhost-internal.com\" where the host is followed by a letter/symbol.\n    #    We use negative lookahead if needed, but simpler: ensure the host part ends with a delimiter.\n    #    The regex below captures the full URL literal for reporting.\n\n    # We need to find quoted strings. Let's look for http(s):// followed by localhost/127.0.0.1\n    # followed by a character that is NOT a valid hostname character (alphanumeric, dash, dot).\n    # Actually, standard URL parsing is safer, but constraint says standard lib only (no urllib.parse in handle? re is fine).\n\n    # Regex:\n    # (http://|https://)   Scheme\n    # (localhost|127\\.0\\.0\\.1)   Host\n    # (?=[/:#\\?]|$)      Followed by path/query/hash or end of line/string (to ensure it's a full host match)\n\n    pattern = re.compile(r'(https?://(?:localhost|127\\.0\\.0\\.1)(?=[/:#\\?]|$))')\n\n    lines = source.split('\\n')\n\n    for line_num, line in enumerate(lines, start=1):\n        # Skip lines with the allow marker\n        if 'onex-allow-internal-ip' in line:\n            continue\n\n        matches = pattern.finditer(line)\n        for match in matches:\n            url = match.group(1)\n            # Double check: ensure we didn't just catch the start of a longer domain\n            # The lookahead (?=[/:#\\?]|$) ensures that after 'localhost' comes a delimiter.\n            # However, if the line is `http://localhost:8000`, it matches `http://localhost` because `:` is in lookahead.\n            # We want to capture the whole URL for the finding, but the regex logic holds for detection.\n            # Let's refine the capture to get the surrounding context or the full quoted string if possible, \n            # but the requirement says \"describes the line and the matched URL\".\n            # We will report the matched URL string found by the regex.\n\n            # To be more precise about the \"matched URL\" in the finding, let's try to extract the full quoted string\n            # containing this match, but simple is safer. The prompt asks for \"the matched URL\".\n            # The regex `http://localhost:8000` matches.\n\n            findings.append({\n                \"line\": line_num,\n                \"content\": line.strip(),\n                \"matched_url\": url\n            })\n\n    return {\"findings\": findings}",
+  "model_id": "Qwen3.6-35B-A3B",
+  "provider": "local",
+  "resolved_endpoint": "http://192.168.86.201:8000/v1/chat/completions",
+  "routing_source": "contract",
+  "usage_source": "measured",
+  "validator": "hardcoded-localhost-url",
+  "violation_fixture_count": 5
+}
