@@ -157,6 +157,11 @@ _REJECT_ONLY_DETERMINISTIC_CHECKS: frozenset[str] = frozenset(
         "task_completed",
         "exactly_two_sentences",
         "plain_text_only",
+        # OMN-13373: ``no_refusal`` flows into the deterministic band when supplied
+        # as request-level acceptance_criteria. It is a reject-only refusal
+        # pre-filter — it can fail a refusal but, per OMN-13370, never grants
+        # adequacy authority on a clean output.
+        "no_refusal",
     }
 )
 
@@ -599,6 +604,16 @@ def _evaluate_deterministic_checks(
             reason = _check_exactly_two_sentences(content)
         elif check == "plain_text_only":
             reason = _check_plain_text_only(content)
+        elif check == "no_refusal":
+            # Reject-only pre-filter (OMN-13373). ``no_refusal`` is a
+            # SUPPORTED_ACCEPTANCE_CRITERIA value that the orchestrator merges into
+            # ``dod_deterministic`` via ``acceptance_criteria``, so it must resolve
+            # here rather than fall through to the MALFORMED branch below. It
+            # rejects a refusal (REFUSAL: prefix, escalation-worthy) but, per
+            # OMN-13370, cannot promote a clean output to adequate — ``no_refusal``
+            # is in _REJECT_ONLY_DETERMINISTIC_CHECKS so it grants no adequacy
+            # authority.
+            reason = _check_no_refusal(content)
         else:
             m = MAX_WORDS_PER_SENTENCE_RE.match(check)
             if m:
