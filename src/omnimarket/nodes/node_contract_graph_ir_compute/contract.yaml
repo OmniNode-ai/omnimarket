@@ -50,6 +50,10 @@ inputs:
     type: string
     description: "Absolute filesystem path of the repo root used to resolve discovery_roots"
     required: true
+  ui_components:
+    type: array
+    description: "Optional in-memory UI component contracts to import alongside discovered node contracts"
+    required: false
 
 outputs:
   ir_json:
