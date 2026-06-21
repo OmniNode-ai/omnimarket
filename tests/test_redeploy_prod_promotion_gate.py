@@ -23,6 +23,7 @@ handler that dispatches them.
 
 from __future__ import annotations
 
+from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
 import pytest
@@ -33,6 +34,7 @@ from omnimarket.events.runtime_deployment import (
     EnumOccGateState,
     EnumRuntimeLane,
     ModelProdPromotionGateDecision,
+    ModelProdPromotionGrant,
     ModelProdPromotionInputs,
     ModelReadinessProjectionFact,
     evaluate_prod_promotion_gate,
@@ -49,6 +51,9 @@ _DIGEST_STABILITY = "sha256:0037aaaa"  # the 0.37.0 stability READY digest
 _DIGEST_PROD_DRIFT = "sha256:0036bbbb"  # the live prod 0.36.1 drift digest
 _BATCH = "promo-2026-06-02"
 _ROLLBACK_TARGET = "sha256:0036bbbb"  # previous good = current prod digest
+_REQUESTER = "node_redeploy_orchestrator"  # gate command default requested_by
+_APPROVER = "release-captain"
+_EVALUATED_AT = datetime(2026, 6, 21, 12, 0, 0, tzinfo=UTC)
 
 
 def _ready_projection(
@@ -65,6 +70,23 @@ def _ready_projection(
     )
 
 
+def _valid_grant(
+    *,
+    digest: str = _DIGEST_STABILITY,
+    batch: str = _BATCH,
+) -> ModelProdPromotionGrant:
+    """An approver-issued grant that authorizes the default prod request."""
+    return ModelProdPromotionGrant(
+        grant_id="grant-omn-13418-default",
+        approved_lane=EnumRuntimeLane.PROD,
+        approved_image_digest=digest,
+        approved_promotion_batch_id=batch,
+        approved_by=_APPROVER,
+        created_at=_EVALUATED_AT - timedelta(minutes=5),
+        expires_at=_EVALUATED_AT + timedelta(hours=2),
+    )
+
+
 def _inputs(
     *,
     requested_digest: str = _DIGEST_STABILITY,
@@ -72,6 +94,7 @@ def _inputs(
     projection: ModelReadinessProjectionFact | None = None,
     occ_state: EnumOccGateState = EnumOccGateState.MERGED,
     rollback_target: str | None = _ROLLBACK_TARGET,
+    grant: ModelProdPromotionGrant | None = None,
 ) -> ModelProdPromotionInputs:
     return ModelProdPromotionInputs(
         requested_image_digest=requested_digest,
@@ -81,6 +104,9 @@ def _inputs(
         else _ready_projection(),
         occ_gate_state=occ_state,
         rollback_target=rollback_target,
+        requested_by=_REQUESTER,
+        promotion_grant=grant if grant is not None else _valid_grant(),
+        evaluated_at=_EVALUATED_AT,
     )
 
 
@@ -92,6 +118,7 @@ def _command(
     projection: ModelReadinessProjectionFact | None = None,
     occ_state: EnumOccGateState = EnumOccGateState.MERGED,
     rollback_target: str | None = _ROLLBACK_TARGET,
+    grant: ModelProdPromotionGrant | None = None,
 ) -> ModelProdPromotionGateCommand:
     return ModelProdPromotionGateCommand(
         correlation_id=uuid4(),
@@ -101,6 +128,9 @@ def _command(
         readiness_projection=projection,
         occ_gate_state=occ_state,
         rollback_target=rollback_target,
+        requested_by=_REQUESTER,
+        promotion_grant=grant if grant is not None else _valid_grant(),
+        evaluated_at=_EVALUATED_AT,
     )
 
 
@@ -126,6 +156,9 @@ class TestProdPromotionGate:
             readiness_projection=None,
             occ_gate_state=EnumOccGateState.MERGED,
             rollback_target=_ROLLBACK_TARGET,
+            requested_by=_REQUESTER,
+            promotion_grant=_valid_grant(),
+            evaluated_at=_EVALUATED_AT,
         )
         decision = evaluate_prod_promotion_gate(inputs)
         assert decision.allowed is False
