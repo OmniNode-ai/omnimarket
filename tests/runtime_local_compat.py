@@ -12,8 +12,6 @@ except ModuleNotFoundError:
 try:
     from omnibase_infra.runtime.runtime_local_adapter import LocalRuntimeBusAdapter
 except ModuleNotFoundError:
-    from omnibase_core.runtime.runtime_local_adapter import (
-        HandlerBusAdapter as LocalRuntimeBusAdapter,
-    )
+    from omnibase_core.runtime.runtime_local_adapter import LocalRuntimeBusAdapter
 
 __all__ = ["LocalRuntimeBusAdapter", "RuntimeLocal"]

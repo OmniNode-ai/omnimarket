@@ -411,6 +411,51 @@ jobs:
         run: uv run python scripts/ci/run_runtime_sweep.py --import-check
 
   # ============================================================================
+  # CORE-ONLY-INSTALL GATE (OMN-13446, Phase 5, epic OMN-13442)
+  # Local-First Runtime Re-Convergence: RuntimeLocal + the local-runtime protocols
+  # are now CORE-RESIDENT (omnibase_core.runtime / omnibase_core.protocols.runtime,
+  # relocated from omnibase_infra in OMN-13444, deleted from infra in OMN-13445).
+  # This job proves the core-only-install guarantee: a clean venv with
+  # omnibase-infra UNINSTALLED can `import omnibase_core.runtime`, resolve
+  # RuntimeLocal from core, and run the in-memory harness end-to-end (zero infra).
+  # Required via the ci-summary aggregator (Rule 5: enforcement, not detection).
+  # ============================================================================
+  core-only-install:
+    name: Core-Only Install Gate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
+      - name: Install uv
+        uses: astral-sh/setup-uv@38f3f104447c67c051c4a08e39b64a148898af3a # v4
+        with:
+          version: "latest"
+      - name: Set up Python 3.12
+        run: uv python install 3.12
+      - name: Create clean core-only venv (NO omnibase-infra)
+        run: uv venv --python 3.12 .venv-core-only
+      - name: Install omnibase-core ONLY (from the pinned core git rev)
+        # Install core from the exact rev pinned in pyproject [tool.uv.sources].
+        # We deliberately do NOT run `uv sync` (which would pull omnibase-infra)
+        # and we never install omnimarket as a package — the harness imports the
+        # in-tree handler via PYTHONPATH=src, exercising the real workflow with
+        # only core + its transitive deps present.
+        run: |
+          uv pip install --python .venv-core-only \
+            "omnibase-core @ git+https://github.com/OmniNode-ai/omnibase_core.git@db7f341353e598df84629b1c32514c78d554ef57"
+      - name: Assert omnibase-infra is genuinely absent
+        run: |
+          if .venv-core-only/bin/python -c "import importlib.util,sys; sys.exit(0 if importlib.util.find_spec('omnibase_infra') is None else 1)"; then
+            echo "OK: omnibase_infra is NOT installed"
+          else
+            echo "::error::omnibase_infra leaked into the core-only venv — the gate is invalid"
+            exit 1
+          fi
+      - name: Run core-only-install guarantee harness (infra uninstalled)
+        env:
+          PYTHONPATH: src
+        run: .venv-core-only/bin/python scripts/ci/core_only_install_harness.py
+
+  # ============================================================================
   # E2E WORKFLOW RUNNER (inmemory bus)
   # Proves the deterministic node platform works end-to-end on every PR:
   #   - onex node CLI loads a real workflow contract
@@ -651,7 +696,7 @@ jobs:
   ci-summary:
     name: CI Summary
     runs-on: ubuntu-latest
-    needs: [zone-filter, lint, typecheck, detect-changes, test, topic-naming-lint, runtime-sweep, contract-compliance, e2e-workflow-runner, golden-chains, sea-e2e-chains, dep-health]
+    needs: [zone-filter, lint, typecheck, detect-changes, test, topic-naming-lint, runtime-sweep, core-only-install, contract-compliance, e2e-workflow-runner, golden-chains, sea-e2e-chains, dep-health]
     if: always()
     steps:
       - name: Check CI results
@@ -667,6 +712,7 @@ jobs:
             "test=${{ needs.test.result }}" \
             "topic-naming-lint=${{ needs.topic-naming-lint.result }}" \
             "runtime-sweep=${{ needs.runtime-sweep.result }}" \
+            "core-only-install=${{ needs.core-only-install.result }}" \
             "contract-compliance=${{ needs.contract-compliance.result }}" \
             "e2e-workflow-runner=${{ needs.e2e-workflow-runner.result }}" \
             "golden-chains=${{ needs.golden-chains.result }}" \
