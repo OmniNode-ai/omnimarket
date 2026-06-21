@@ -1,0 +1,92 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract — node_contract_graph_ir_compute (OMN-13385)
+---
+name: node_contract_graph_ir_compute
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: compute
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  Read-only GET surface returning the deterministic Contract Graph IR for a
+  set of discovery roots. Reuses the Phase-2 IR adapters from omnibase_core
+  (contract_graph package, OMN-13132). Manifest-driven discovery finds all
+  contract.yaml files under the given roots (excluding .venv, omni_worktrees,
+  generated surfaces) and imports them into the canonical ModelContractGraphIr.
+  The response includes the stable per-source / per-adapter sha256 hash
+  manifest so diff evidence cannot drift. STRICTLY READ-ONLY: no mutation,
+  no authoring logic, no write path.
+
+handler:
+  module: omnimarket.nodes.node_contract_graph_ir_compute.handlers.handler_contract_graph_ir
+  class: HandlerContractGraphIr
+  input_model: omnimarket.nodes.node_contract_graph_ir_compute.models.model_contract_graph_ir_request.ModelContractGraphIrRequest
+  output_model: omnimarket.nodes.node_contract_graph_ir_compute.models.model_contract_graph_ir_response.ModelContractGraphIrResponse
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: get_ir
+      handler:
+        name: HandlerContractGraphIr
+        module: omnimarket.nodes.node_contract_graph_ir_compute.handlers.handler_contract_graph_ir
+
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 30000
+  runtime_profiles:
+    - main
+
+inputs:
+  discovery_roots:
+    type: array
+    items:
+      type: string
+    description: "Repo-relative directory roots to scan for contract.yaml files"
+    required: true
+  repo_base_path:
+    type: string
+    description: "Absolute filesystem path of the repo root used to resolve discovery_roots"
+    required: true
+  ui_components:
+    type: array
+    description: "Optional in-memory UI component contracts to import alongside discovered node contracts"
+    required: false
+
+outputs:
+  ir_json:
+    type: string
+    description: "Full ModelContractGraphIr serialized as JSON (byte-stable across identical inputs)"
+  hash_manifest:
+    type: array
+    description: "Per-source / per-adapter sha256 hash manifest (deterministically ordered)"
+  node_count:
+    type: integer
+    description: "Number of IR nodes imported"
+  edge_count:
+    type: integer
+    description: "Number of IR edges imported"
+  discovery_roots:
+    type: array
+    description: "Repo-relative discovery roots that were scanned"
+
+terminal_event: onex.evt.omnimarket.contract-graph-ir-computed.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.contract-graph-ir-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.contract-graph-ir-computed.v1
+
+# The terminal event is a derived-artifact read result consumed by authoring
+# tooling (omnidash IR viewer, contract-graph diff tooling) outside this repo's
+# node graph, not by another in-repo node. Declared externally consumed so the
+# dependency-health MISSING_TOPIC_EDGE rule does not flag a missing in-repo
+# subscriber for this read surface.
+externally_consumed_topics:
+  - onex.evt.omnimarket.contract-graph-ir-computed.v1
+
+metadata:
+  transport_type: kafka

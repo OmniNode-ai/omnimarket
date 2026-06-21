@@ -82,6 +82,7 @@ node_architectural_invariant_loop = "omnimarket.nodes.node_architectural_invaria
 node_authorize = "omnimarket.nodes.node_authorize"
 node_budget_policy_compute = "omnimarket.nodes.node_budget_policy_compute"
 node_chain_diff_compute = "omnimarket.nodes.node_chain_diff_compute"
+node_contract_graph_ir_compute = "omnimarket.nodes.node_contract_graph_ir_compute"
 node_closeout_verifier_compute = "omnimarket.nodes.node_closeout_verifier_compute"
 node_context_pack_builder_compute = "omnimarket.nodes.node_context_pack_builder_compute"
 node_context_artifact_resolver_compute = "omnimarket.nodes.node_context_artifact_resolver_compute"
