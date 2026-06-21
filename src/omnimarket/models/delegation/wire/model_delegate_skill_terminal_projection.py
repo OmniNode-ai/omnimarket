@@ -223,6 +223,98 @@ class ModelDelegateSkillSavingsProjection(BaseModel):
             machine_id=event.machine_id,
         )
 
+    @classmethod
+    def from_task_delegated_event(
+        cls,
+        event: ModelTaskDelegatedSavingsSource,
+        *,
+        baseline_model: str,
+    ) -> ModelDelegateSkillSavingsProjection | None:
+        """Materialize a savings_estimates row from a canonical task-delegated
+        SOURCE event (OMN-12494).
+
+        This closes the projection gap: previously savings_estimates was only
+        materialized from the derived delegate-skill terminal event, so the
+        Delegation Savings widget stayed truthfully-empty for the canonical
+        ``onex.evt.omniclaude.task-delegated.v1`` stream that drives
+        delegation_events. The figures are MEASUREMENTS, not estimates — the
+        local cost is the serving tier's measured actual cost (OMN-13355) and the
+        cloud baseline is the pinned premium counterfactual:
+
+            local_cost_usd  = cost_usd                         (measured actual)
+            cloud_cost_usd  = counterfactual_cost_usd          (pinned baseline)
+            savings_usd     = cloud_cost_usd - local_cost_usd
+
+        Returns ``None`` (truthful no-row) when there is no pinned premium
+        counterfactual to defend the saving, or the resulting saving is <= 0 —
+        the dashboard's truthful-empty state is preserved, never fixture data.
+        """
+        counterfactual = event.premium_counterfactual
+        if counterfactual is None:
+            return None
+        local_cost_usd = Decimal(str(event.cost_usd))
+        cloud_cost_usd = counterfactual.counterfactual_cost_usd
+        savings_usd = cloud_cost_usd - local_cost_usd
+        if savings_usd <= 0:
+            return None
+        model_local = event.model_name or event.delegated_to
+        if not model_local:
+            return None
+        return cls(
+            event_timestamp=event.resolved_timestamp().replace(microsecond=0),
+            session_id=event.correlation_id,
+            model_local=model_local,
+            model_cloud_baseline=counterfactual.model or baseline_model,
+            local_cost_usd=local_cost_usd,
+            cloud_cost_usd=cloud_cost_usd,
+            savings_usd=savings_usd,
+            repo_name=event.repo,
+            machine_id=None,
+        )
+
+
+class ModelTaskDelegatedSavingsSource(BaseModel):
+    """Canonical task-delegated SOURCE event fields needed to materialize a
+    savings_estimates row (OMN-12494).
+
+    Parsed from ``onex.evt.omniclaude.task-delegated.v1`` — the same stream that
+    drives the delegation_events projection. Carries the measured actual cost
+    (OMN-13355) and the pinned premium counterfactual (OMN-13355) so the savings
+    materialization is a measurement, not an estimate. ``extra="ignore"`` so the
+    rich task-delegated payload (quality gates, tokens, scores) parses cleanly.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="ignore")
+
+    correlation_id: UUID = Field(
+        ..., description="Unique correlation ID; the savings row identity key."
+    )
+    task_type: str = Field(..., min_length=1)
+    delegated_to: str = Field(default="")
+    model_name: str = Field(default="")
+    repo: str | None = Field(default=None)
+    cost_usd: Decimal = Field(default=Decimal("0"), ge=Decimal("0"))
+    premium_counterfactual: ModelPremiumCounterfactual | None = Field(default=None)
+    timestamp: AwareDatetime | None = Field(default=None)
+
+    @field_validator("repo", mode="before")
+    @classmethod
+    def _blank_repo_to_none(cls, value: object) -> object:
+        if isinstance(value, str) and not value.strip():
+            return None
+        return value
+
+    def resolved_timestamp(self) -> datetime:
+        """Event timestamp, defaulting to now() only when the source omits it."""
+        return self.timestamp or datetime.now(tz=UTC)
+
+    @classmethod
+    def from_payload(
+        cls,
+        payload: Mapping[str, object],
+    ) -> ModelTaskDelegatedSavingsSource:
+        return cls.model_validate(_payload_with_envelope_timestamp(payload))
+
 
 def _payload_with_envelope_timestamp(
     payload: Mapping[str, object],
@@ -250,4 +342,5 @@ __all__ = [
     "ModelDelegateSkillTerminalProjection",
     "ModelDelegationEventProjectionRow",
     "ModelProjectionEnvelopeMetadata",
+    "ModelTaskDelegatedSavingsSource",
 ]

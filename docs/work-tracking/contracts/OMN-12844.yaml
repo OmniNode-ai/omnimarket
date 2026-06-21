@@ -1,0 +1,111 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-12844"
+title: "M4 — Exploration policy: contract-config bandit + effectiveness decay"
+summary: >
+  Add node_context_exploration_policy_compute, a pure COMPUTE node that replaces
+  the greedy argmax in node_context_roi_compute (_select_preferred_arm) with a
+  probabilistic explore/exploit bandit over scored, decay-adjusted capsule
+  candidates. Prevents cold-start starvation (a fresh capsule is never selected)
+  and winner lock-in (a stale winner is selected forever). Every bandit
+  parameter (family/epsilon/ucb_c/priors/min_trials/decay_half_life) is resolved
+  from the contract config block into a frozen ModelExplorationPolicyConfig —
+  never from module-level constants or env. Consumes M2's already-decayed
+  confidence; never recomputes decay. Deterministic given a typed seed; no I/O,
+  no bus, no inference, no datetime.now(), no ambient random().
+is_seam_ticket: false
+interface_change: true
+interfaces_touched:
+  - topics
+  - events
+  - models
+evidence_requirements:
+  - kind: "tests"
+    description: "Six TDD invariant tests pass (RED-before-implementation, GREEN after)"
+    command: "uv run pytest tests/nodes/node_context_exploration_policy_compute/ -v"
+  - kind: "tests"
+    description: "Full test suite passes with no regressions"
+    command: "uv run pytest tests/ --tb=short -q -m 'not kafka'"
+  - kind: "manual"
+    description: "mypy --strict clean"
+    command: "uv run mypy src/omnimarket/ --strict"
+  - kind: "manual"
+    description: "Runtime sweep: every entry point resolves (this node routable)"
+    command: "uv run python scripts/ci/run_runtime_sweep.py"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-coldstart-no-starvation"
+    description: >
+      test_greedy_winner_does_not_starve_coldstart: a hit_count==0 candidate has
+      strictly-positive selection probability alongside established winners.
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest 'tests/nodes/node_context_exploration_policy_compute/test_handler_exploration_policy.py::TestColdStartNoStarvation::test_greedy_winner_does_not_starve_coldstart' -q"
+  - id: "dod-decay-reentry"
+    description: >
+      test_decayed_winner_reenters_exploration: a winner whose decayed
+      confidence dropped re-enters exploration (lower exploit prob, rivals rise).
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest 'tests/nodes/node_context_exploration_policy_compute/test_handler_exploration_policy.py::TestDecayReentry::test_decayed_winner_reenters_exploration' -q"
+  - id: "dod-config-from-contract"
+    description: >
+      test_bandit_params_from_contract_not_constants + grep-guard: changing
+      epsilon/family in the contract-resolved config changes the distribution;
+      no module-level epsilon/EPSILON constant exists.
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest 'tests/nodes/node_context_exploration_policy_compute/test_handler_exploration_policy.py::TestContractConfigGovernsDistribution' -q"
+  - id: "dod-negative-control"
+    description: >
+      test_negative_control_never_exploit_winner: an is_negative_control
+      candidate is never the exploit selection in any family.
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest 'tests/nodes/node_context_exploration_policy_compute/test_handler_exploration_policy.py::TestNegativeControlInvariant' -q"
+  - id: "dod-deterministic-replay"
+    description: >
+      test_deterministic_given_seed (REPLAY_PROVEN): same candidates + config +
+      seed yields an identical ModelExplorationDecision.
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest 'tests/nodes/node_context_exploration_policy_compute/test_handler_exploration_policy.py::TestDeterminism::test_deterministic_given_seed' -q"
+  - id: "dod-distribution-normalizes"
+    description: >
+      test_distribution_normalizes: per-candidate probabilities sum to 1.0 and
+      none are negative, across all three bandit families.
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest 'tests/nodes/node_context_exploration_policy_compute/test_handler_exploration_policy.py::TestDistributionNormalizes' -q"
+  - id: "dod-mypy-strict"
+    description: "mypy --strict clean across src/omnimarket/"
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run mypy src/omnimarket/ --strict"
+  - id: "dod-runtime-routable"
+    description: "Runtime sweep resolves all entry points; new compute node is routable, not skipped."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run python scripts/ci/run_runtime_sweep.py"
+  - id: "dod-deploy"
+    description: >
+      Pure COMPUTE node (contract + handler, no I/O, no bus, no inference). Not
+      wired into any runtime profile in this PR — it is an in-process scorer
+      consumed by the context-selection path. No live deploy or runtime restart
+      required or performed. Production wiring / closed loop is owned by M3
+      (OMN-12843) and M5 (OMN-12845).
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "printf '%s\\n' 'deploy-deferred: pure compute scorer, no runtime registration; live wiring in M3/M5'"

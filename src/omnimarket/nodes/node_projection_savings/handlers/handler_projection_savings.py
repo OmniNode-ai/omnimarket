@@ -13,10 +13,12 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 from omnimarket.events.topics import (
     DELEGATE_SKILL_COMPLETED_TOPIC_V1,
     DELEGATE_SKILL_FAILED_TOPIC_V1,
+    TASK_DELEGATED_TOPIC_V1,
 )
 from omnimarket.models.delegation.wire.model_delegate_skill_terminal_projection import (
     ModelDelegateSkillSavingsProjection,
     ModelDelegateSkillTerminalProjection,
+    ModelTaskDelegatedSavingsSource,
 )
 from omnimarket.pricing import DEFAULT_BASELINE_MODEL
 from omnimarket.projection.protocol_database import DatabaseAdapter
@@ -112,6 +114,22 @@ class HandlerProjectionSavings:
             result = self.project_delegate_skill_savings(projection, db_raw)
             return result.model_dump(mode="json")
 
+        # OMN-12494: canonical task-delegated SOURCE event -> savings_estimates.
+        if (
+            event_type == TASK_DELEGATED_TOPIC_V1
+            or "task-delegated" in event_type
+            or _is_task_delegated_source_payload(payload)
+        ):
+            source = ModelTaskDelegatedSavingsSource.from_payload(payload)
+            projection = ModelDelegateSkillSavingsProjection.from_task_delegated_event(
+                source,
+                baseline_model=self._delegate_skill_baseline_model,
+            )
+            if projection is None:
+                return ModelProjectionResult(rows_upserted=0).model_dump(mode="json")
+            result = self.project_delegate_skill_savings(projection, db_raw)
+            return result.model_dump(mode="json")
+
         event_data = {
             key: value
             for key, value in payload.items()
@@ -198,4 +216,24 @@ def _is_delegate_skill_terminal_payload(payload: dict[str, object]) -> bool:
         payload.get("correlation_id") is not None
         and payload.get("status") is not None
         and isinstance(payload.get("metrics"), dict)
+    )
+
+
+def _is_task_delegated_source_payload(payload: dict[str, object]) -> bool:
+    """Discriminate a canonical task-delegated SOURCE payload (OMN-12494).
+
+    A task-delegated event carries ``correlation_id`` + ``task_type`` but neither
+    the terminal ``status``/``metrics`` shape nor the savings-estimated
+    ``local_cost_usd``/``cloud_cost_usd`` shape — and it carries the pinned
+    premium counterfactual that makes the saving a measurement. The
+    counterfactual presence is the positive signal: without it there is no
+    auditable baseline to materialize a savings row from.
+    """
+    return (
+        payload.get("correlation_id") is not None
+        and payload.get("task_type") is not None
+        and payload.get("status") is None
+        and "metrics" not in payload
+        and "local_cost_usd" not in payload
+        and payload.get("premium_counterfactual") is not None
     )

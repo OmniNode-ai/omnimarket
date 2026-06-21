@@ -20,12 +20,30 @@ from __future__ import annotations
 from omnimarket.nodes.node_generation_consumer.validator_corpora.corpus_hardcoded_ip import (
     HARDCODED_IP_CORPUS,
 )
+from omnimarket.nodes.node_generation_consumer.validator_corpora.corpus_hardcoded_localhost_url import (
+    HARDCODED_LOCALHOST_URL_CORPUS,
+)
+from omnimarket.nodes.node_generation_consumer.validator_corpora.corpus_hardcoded_topic import (
+    HARDCODED_TOPIC_CORPUS,
+)
+from omnimarket.nodes.node_generation_consumer.validator_corpora.corpus_todo_marker import (
+    TODO_MARKER_CORPUS,
+)
 
-__all__ = ["CORPORA", "HARDCODED_IP_CORPUS"]
+__all__ = [
+    "CORPORA",
+    "HARDCODED_IP_CORPUS",
+    "HARDCODED_LOCALHOST_URL_CORPUS",
+    "HARDCODED_TOPIC_CORPUS",
+    "TODO_MARKER_CORPUS",
+]
 
 # Registry of every G2 corpus keyed by its target validator name. The generation
 # driver iterates this map so adding a corpus here is the only edit needed to
 # enrol a new mechanical scanner in the G2 batch.
 CORPORA = {
     "hardcoded-private-ip": HARDCODED_IP_CORPUS,
+    "hardcoded-localhost-url": HARDCODED_LOCALHOST_URL_CORPUS,
+    "hardcoded-topic-string": HARDCODED_TOPIC_CORPUS,
+    "todo-fixme-marker": TODO_MARKER_CORPUS,
 }

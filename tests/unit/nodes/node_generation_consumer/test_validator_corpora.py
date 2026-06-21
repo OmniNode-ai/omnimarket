@@ -14,6 +14,9 @@ generation run is gated against is itself well-formed before any model is called
 
 from __future__ import annotations
 
+import inspect
+import textwrap
+
 import pytest
 
 from omnimarket.nodes.node_generation_consumer.corpus_acceptance import (
@@ -93,3 +96,112 @@ def test_hardcoded_ip_corpus_rejects_a_false_negative_scanner() -> None:
     assert result.checked is True
     assert result.passed is False
     assert result.errors
+
+
+# A scanner that flags NOTHING — the most dangerous gate failure (every real
+# violation passes silently). Every well-specified corpus MUST reject it.
+_FLAG_NOTHING_SCANNER = "def handle(input_data):\n    return {'findings': []}\n"
+
+# A scanner that flags EVERYTHING — false-positives on every clean fixture.
+# Every well-specified corpus MUST reject it too.
+_FLAG_EVERYTHING_SCANNER = (
+    "def handle(input_data):\n    return {'findings': [{'line': 1}]}\n"
+)
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("name", sorted(CORPORA))
+def test_corpus_rejects_a_flag_nothing_scanner(name: str) -> None:
+    # Negative control (false-negative direction): a permissive gate that never
+    # flags must miss every violation_fixture and so be rejected. This is what
+    # makes corpus acceptance meaningful rather than always-true.
+    result = evaluate_corpus_acceptance(_FLAG_NOTHING_SCANNER, CORPORA[name])
+    assert result.checked is True, name
+    assert result.passed is False, name
+    # every violation fixture must be unflagged by the no-op scanner
+    assert result.violation_flagged == 0, name
+    assert result.errors, name
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("name", sorted(CORPORA))
+def test_corpus_rejects_a_flag_everything_scanner(name: str) -> None:
+    # Negative control (false-positive direction): an over-eager gate that flags
+    # every input must false-flag every clean_fixture and so be rejected.
+    result = evaluate_corpus_acceptance(_FLAG_EVERYTHING_SCANNER, CORPORA[name])
+    assert result.checked is True, name
+    assert result.passed is False, name
+    # every clean fixture must be false-flagged by the flag-all scanner
+    assert result.clean_passed == 0, name
+    assert result.errors, name
+
+
+# Correct hand-authored reference scanners for the G2 long-tail invariants — the
+# implementations the corpus must ACCEPT. A corpus no correct scanner can pass is
+# mis-specified. Each uses only the stdlib `re` and explicit logic (the hardened
+# acceptance sandbox denies several builtins, the same constraint a real local
+# model generates around). They are defined as real module-level functions and
+# fed to the sandbox via inspect.getsource so there is no source-in-source escaping.
+
+
+def _reference_localhost_url_handle(input_data):
+    import re
+
+    source = input_data.get("source", "")
+    pat = re.compile(r"""https?://(localhost|127\.0\.0\.1)(?=[:/"']|$)""")
+    findings = []
+    for line in source.split("\n"):
+        if "onex-allow-internal-ip" in line:
+            continue
+        if pat.search(line):
+            findings.append({"url": line})
+    return {"findings": findings}
+
+
+def _reference_topic_handle(input_data):
+    import re
+
+    source = input_data.get("source", "")
+    pat = re.compile(r"""['"]onex(\.[a-z][a-z0-9_]*){3,}['"]""")
+    findings = []
+    for line in source.split("\n"):
+        if pat.search(line):
+            findings.append({"topic": line})
+    return {"findings": findings}
+
+
+def _reference_todo_handle(input_data):
+    import re
+
+    source = input_data.get("source", "")
+    pat = re.compile(r"\b(TODO|FIXME|HACK)\b")
+    findings = []
+    for line in source.split("\n"):
+        if pat.search(line):
+            findings.append({"marker": line})
+    return {"findings": findings}
+
+
+def _scanner_source(fn: object) -> str:
+    """Dedent a reference handler function to a sandbox-loadable `handle` source."""
+    src = textwrap.dedent(inspect.getsource(fn))
+    # The sandbox loads a symbol named `handle`; alias the reference function name.
+    return src + f"\nhandle = {fn.__name__}\n"  # type: ignore[attr-defined]
+
+
+_REFERENCE_SCANNERS = {
+    "hardcoded-localhost-url": _scanner_source(_reference_localhost_url_handle),
+    "hardcoded-topic-string": _scanner_source(_reference_topic_handle),
+    "todo-fixme-marker": _scanner_source(_reference_todo_handle),
+}
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("name", sorted(_REFERENCE_SCANNERS))
+def test_longtail_corpus_accepts_a_correct_reference_scanner(name: str) -> None:
+    # The corpus must be satisfiable by a correct hand-authored scanner — proof
+    # the corpus is well-specified, not merely unsatisfiable.
+    result = evaluate_corpus_acceptance(_REFERENCE_SCANNERS[name], CORPORA[name])
+    assert result.checked is True, name
+    assert result.passed is True, f"{name}: reference scanner failed: {result.errors}"
+    assert result.errors == [], name

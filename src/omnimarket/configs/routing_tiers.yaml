@@ -35,6 +35,12 @@
 tiers:
   - name: local
     cost_per_1k_tokens: 0.0
+    # OMN-13234: typed per-tier cost model. local is served on owned GPUs
+    # (.201/.200) — no marginal API cost. The dollar figure for a local call,
+    # when surfaced, comes from the pricing manifest's GPU compute_cost
+    # (electricity + amortization), not a per-token rate.
+    cost:
+      cost_type: free_local
     models:
       - id: Qwen3.6-35B-A3B
         backend_id: local-coder
@@ -81,6 +87,13 @@ tiers:
     max_retries: 2
   - name: cheap_cloud
     cost_per_1k_tokens: 0.002
+    # OMN-13234: metered tier — billed per token at a fixed rate (direct z.ai
+    # GLM key + Gemini Flash key), no monthly cap. Mirrors the legacy
+    # cost_per_1k_tokens above; the typed model is the authoritative source for
+    # the projection's actual-cost computation.
+    cost:
+      cost_type: metered
+      rate_per_1k_usd: 0.002
     models:
       # OMN-13380: Direct z.ai GLM-5.2 — PRIMARY cheap-cloud code-gen backend.
       # We hold a resolvable DIRECT GLM key (secret_ref llm.glm.api_key), so GLM
@@ -135,6 +148,11 @@ tiers:
   # marginal API cost when the key is available.
   - name: cheap_frontier
     cost_per_1k_tokens: 0.0
+    # OMN-13234: free_local-class cost — the OpenRouter Qwen3-Coder-480B entry is
+    # the genuinely FREE tier (zero marginal API cost). Modeled as free_local so
+    # the projection records 0 actual cost without a per-token rate.
+    cost:
+      cost_type: free_local
     models:
       # Qwen3 Coder 480B via OpenRouter free tier — cheap frontier direct (OMN-12492)
       - id: openrouter-qwen3-coder-480b
@@ -176,6 +194,12 @@ tiers:
   # key (no marginal API cost), matching the resolved-key reality.
   - name: claude
     cost_per_1k_tokens: 0.0
+    # OMN-13234: ceiling tier now routes to gemini-2.5-flash on the AI Studio
+    # free-tier key (OMN-13351), so there is no marginal API cost — modeled as
+    # free_local-class zero cost. If the ceiling is later repointed to a metered
+    # frontier backend, switch cost_type to metered with the billed rate.
+    cost:
+      cost_type: free_local
     models:
       - id: gemini-2.5-flash
         backend_id: cloud-gemini-pro

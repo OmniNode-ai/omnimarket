@@ -50,11 +50,27 @@ classification:
     pre_commit: backlog
     ci_workflow: backlog
     tracking: OMN-9048
+  hardcoded-localhost-url:
+    # G2 (OMN-13294): generated + corpus-accepted localhost/loopback-URL COMPUTE
+    # validator. Owner is omnibase_core; omnimarket consumes it via OMN-9050 pin-
+    # bump propagation, so both gates are an accepted backlog (shadow) gap here
+    # until the core handler lands + the gate is shadow-baked to blocking.
+    pre_commit: backlog
+    ci_workflow: backlog
+    tracking: OMN-13294
   hardcoded-private-ip:
     # G2 (OMN-13294): generated + corpus-accepted private-IP COMPUTE validator.
     # Lives in omnibase_core (the owner); omnimarket consumes it via the OMN-9050
     # pin-bump propagation like every other core validator, so both gates are an
     # accepted backlog gap here until that wiring lands.
+    pre_commit: backlog
+    ci_workflow: backlog
+    tracking: OMN-13294
+  hardcoded-topic-string:
+    # G2 (OMN-13294): generated + corpus-accepted onex.* topic-literal COMPUTE
+    # validator. Owner is omnibase_core; omnimarket consumes it via OMN-9050 pin-
+    # bump propagation, so both gates are an accepted backlog (shadow) gap here
+    # until the core handler lands + the gate is shadow-baked to blocking.
     pre_commit: backlog
     ci_workflow: backlog
     tracking: OMN-13294
@@ -82,6 +98,14 @@ classification:
     pre_commit: backlog
     ci_workflow: backlog
     tracking: OMN-9048
+  todo-fixme-marker:
+    # G2 (OMN-13294): generated + corpus-accepted TODO/FIXME/HACK-marker COMPUTE
+    # validator. Owner is omnibase_core; omnimarket consumes it via OMN-9050 pin-
+    # bump propagation, so both gates are an accepted backlog (shadow) gap here
+    # until the core handler lands + the gate is shadow-baked to blocking.
+    pre_commit: backlog
+    ci_workflow: backlog
+    tracking: OMN-13294
 
 gaps:
   - repo: omnimarket
@@ -118,10 +142,22 @@ gaps:
     validator: hardcoded-local-paths
     kind: MISSING_PRE_COMMIT
   - repo: omnimarket
+    validator: hardcoded-localhost-url
+    kind: MISSING_CI_WORKFLOW
+  - repo: omnimarket
+    validator: hardcoded-localhost-url
+    kind: MISSING_PRE_COMMIT
+  - repo: omnimarket
     validator: hardcoded-private-ip
     kind: MISSING_CI_WORKFLOW
   - repo: omnimarket
     validator: hardcoded-private-ip
+    kind: MISSING_PRE_COMMIT
+  - repo: omnimarket
+    validator: hardcoded-topic-string
+    kind: MISSING_CI_WORKFLOW
+  - repo: omnimarket
+    validator: hardcoded-topic-string
     kind: MISSING_PRE_COMMIT
   - repo: omnimarket
     validator: naming-conventions
@@ -152,4 +188,10 @@ gaps:
     kind: MISSING_CI_WORKFLOW
   - repo: omnimarket
     validator: spdx-headers
+    kind: MISSING_PRE_COMMIT
+  - repo: omnimarket
+    validator: todo-fixme-marker
+    kind: MISSING_CI_WORKFLOW
+  - repo: omnimarket
+    validator: todo-fixme-marker
     kind: MISSING_PRE_COMMIT
