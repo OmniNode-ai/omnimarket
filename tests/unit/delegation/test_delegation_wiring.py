@@ -198,7 +198,7 @@ class TestWireDelegationDispatchers:
     async def test_routes_have_correct_model_types(
         self, mock_container: MagicMock, mock_engine: MagicMock
     ) -> None:
-        from omnibase_infra.models.dispatch.model_dispatch_route import (
+        from omnibase_core.models.dispatch.model_dispatch_route import (
             ModelDispatchRoute,
         )
 

@@ -31,7 +31,7 @@ import time
 from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol, cast
 from urllib.parse import urlsplit
 from uuid import uuid4
 
@@ -52,13 +52,12 @@ from omnimarket.models.delegation.llm_cost_routing.model_generation_escalation_e
     ModelGenerationEscalationTriggeredEvent,
 )
 from omnimarket.nodes.node_delegation_routing_reducer.handlers.handler_delegation_routing import (
-    ModelRoutingDecision,
+    delta as routing_authority_delta,
+)
+from omnimarket.nodes.node_delegation_routing_reducer.handlers.handler_delegation_routing import (
     next_eligible_tier,
     tier_for_backend,
     tier_max_retries,
-)
-from omnimarket.nodes.node_delegation_routing_reducer.handlers.handler_delegation_routing import (
-    delta as routing_authority_delta,
 )
 from omnimarket.nodes.node_generation_consumer.corpus_acceptance import (
     ModelCorpusAcceptanceResult,
@@ -112,6 +111,17 @@ _MODEL_ROUTING_INFERENCE_EXTRA_BODY_KEY = "inference_extra_body"
 # tier order is contract-governed, never a code literal.
 _MODEL_ROUTING_TASK_TYPE_KEY = "task_type"
 _DEFAULT_GENERATION_TASK_TYPE = "code_generation"
+
+
+class _RoutingDecision(Protocol):
+    """Structural view of the routing authority decision consumed here."""
+
+    tier_name: str
+    selected_model: str
+    endpoint_url: str
+    api_key_ref: str | None
+    max_tokens: int
+
 
 # OMN-12829 (C1): tiers whose escalated decision is classified as a local
 # provider. Mirrors the routing reducer's _LOCAL_TIERS so the escalation event's
@@ -1653,7 +1663,7 @@ class HandlerGenerationConsumer:
         *,
         task_description: str,
         failed_attempt_number: int,
-    ) -> ModelRoutingDecision | None:
+    ) -> _RoutingDecision | None:
         """Resolve the routing authority's escalated decision, or ``None``.
 
         Single authority surface for escalation (OMN-12829 C1 + OMN-13359): both
@@ -1714,7 +1724,10 @@ class HandlerGenerationConsumer:
             emitted_at=datetime.now(tz=UTC),
         )
         try:
-            return routing_authority_delta(request, min_tier_name=target_tier)
+            return cast(
+                _RoutingDecision,
+                routing_authority_delta(request, min_tier_name=target_tier),
+            )
         except Exception as exc:
             logger.warning(
                 "[generation-consumer] routing authority could not resolve "

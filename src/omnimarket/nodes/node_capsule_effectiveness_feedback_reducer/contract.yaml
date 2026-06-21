@@ -1,0 +1,57 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+name: capsule_effectiveness_feedback_reducer
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: reducer
+node_version: {major: 1, minor: 0, patch: 0}
+input_model: omnimarket.events.capsule_feedback.ModelScoredRuntimeRow
+description: >
+  M5 live closed-loop feedback edge (OMN-12845). Consumes a scored runtime ROI
+  row and writes its effectiveness back onto the durable M2 capsule store keyed
+  by capsule_hash, so M3 context selection re-ranks on the live-updated score.
+  Attribution honesty is enforced: a controlled-intervention runtime-observed
+  row republishes a context-roi-score-completed.v1 effectiveness CLAIM (folded
+  onto capsule_store via the M2 projection, the sole capsule_store writer); an
+  observational row republishes ONLY a capsule-effectiveness-hypothesis.v1 and is
+  never written as a measured score.
+
+handler:
+  module: omnimarket.nodes.node_capsule_effectiveness_feedback_reducer.handlers.handler_capsule_effectiveness_feedback
+  class: HandlerCapsuleEffectivenessFeedback
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - handler:
+        name: HandlerCapsuleEffectivenessFeedback
+        module: omnimarket.nodes.node_capsule_effectiveness_feedback_reducer.handlers.handler_capsule_effectiveness_feedback
+      handler_module: omnimarket.nodes.node_capsule_effectiveness_feedback_reducer.handlers.handler_capsule_effectiveness_feedback
+      event_model: omnimarket.events.capsule_feedback.ModelScoredRuntimeRow
+
+terminal_event: onex.evt.omnimarket.capsule-effectiveness-hypothesis.v1
+
+db_io:
+  db_tables:
+    - name: capsule_store
+      migration: "078_create_capsule_store.sql"
+      access: write
+      database: omnidash_analytics
+      role: capsules
+
+event_bus:
+  consumer_group: local.omnimarket.node_capsule_effectiveness_feedback_reducer.consume.v1
+  subscribe_topics:
+    - onex.evt.omnimarket.context-roi-runtime-row-scored.v1
+  publish_topics:
+    - onex.evt.omnimarket.context-roi-score-completed.v1
+    - onex.evt.omnimarket.capsule-effectiveness-hypothesis.v1
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.context-roi-score-completed.v1
+  - onex.evt.omnimarket.capsule-effectiveness-hypothesis.v1
+
+metadata:
+  transport_type: kafka
+  implementation_wave: m5
+  related_tickets: ["OMN-12845", "OMN-12837", "OMN-12842"]
