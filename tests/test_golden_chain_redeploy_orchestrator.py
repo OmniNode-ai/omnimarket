@@ -18,6 +18,7 @@ orchestrator typed-FSM schema (§6 option (a)) lands.
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from uuid import uuid4
 
 import pytest
@@ -25,17 +26,22 @@ from omnibase_core.enums.enum_node_kind import EnumNodeKind
 from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
 
 from omnimarket.events.runtime_deployment import (
+    EnumGrantResolution,
     EnumOccGateState,
     EnumRedeployPhase,
     EnumRuntimeLane,
     ModelDeployPublishCommand,
+    ModelGrantProvenance,
     ModelProdPromotionGateCommand,
     ModelProdPromotionGateDecision,
+    ModelProdPromotionGrantResolveCommand,
+    ModelProdPromotionGrantResolvedEvent,
     ModelReadinessProjectionFact,
     ModelRedeployCompletedEvent,
 )
 from omnimarket.nodes.node_redeploy_orchestrator.handlers.handler_redeploy_orchestrator import (
     TOPIC_DEPLOY_PUBLISH,
+    TOPIC_GRANT_RESOLVE,
     TOPIC_PROD_GATE_EVALUATE,
     TOPIC_REDEPLOY_COMPLETED,
     HandlerRedeployOrchestrator,
@@ -69,8 +75,45 @@ class TestRedeployOrchestratorGoldenChain:
         assert isinstance(gate_cmd, ModelProdPromotionGateCommand)
         assert gate_cmd.runtime_lane is EnumRuntimeLane.DEV
 
-    async def test_prod_start_to_gate_evaluate_threads_facts(self) -> None:
-        """Edge 1 (prod): start threads readiness/OCC/rollback into the gate command."""
+    async def test_prod_start_to_grant_resolve(self) -> None:
+        """Edge 1 (prod): redeploy-start -> grant-RESOLVE command (before the gate).
+
+        OMN-13439 Phase 2b: a prod request resolves the promotion grant from the
+        durable anchor BEFORE the gate; the resolve command carries the request key
+        + a deterministic evaluated_at and never carries a caller grant.
+        """
+        handler = HandlerRedeployOrchestrator()
+        start = ModelRedeployStartCommand(
+            correlation_id=uuid4(),
+            runtime_lane=EnumRuntimeLane.PROD,
+            image_digest=_DIGEST,
+            promotion_batch_id=_BATCH,
+            readiness_projection=ModelReadinessProjectionFact(
+                readiness_state="READY", image_digest=_DIGEST, promotion_batch_id=_BATCH
+            ),
+            occ_gate_state=EnumOccGateState.MERGED,
+            rollback_target="sha256:prev",
+        )
+        envelope = ModelEventEnvelope(
+            payload=start,
+            correlation_id=start.correlation_id,
+            event_type="onex.cmd.omnimarket.redeploy-start.v1",
+        )
+        output = await handler.handle(envelope)
+        assert [e.event_type for e in output.events] == [TOPIC_GRANT_RESOLVE]
+        resolve_cmd = output.events[0].payload
+        assert isinstance(resolve_cmd, ModelProdPromotionGrantResolveCommand)
+        assert resolve_cmd.requested_image_digest == _DIGEST
+        assert resolve_cmd.promotion_batch_id == _BATCH
+        assert resolve_cmd.evaluated_at is not None
+
+    async def test_prod_grant_resolved_threads_facts_into_gate(self) -> None:
+        """Edge 1b (prod): grant-resolved -> gate command threads readiness/OCC/rollback.
+
+        After the out-of-band resolver emits the resolved grant, the orchestrator
+        threads the echoed start's facts + the resolved grant + evaluated_at into
+        the gate command (the grant is NEVER taken from start.promotion_grant).
+        """
         handler = HandlerRedeployOrchestrator()
         projection = ModelReadinessProjectionFact(
             readiness_state="READY", image_digest=_DIGEST, promotion_batch_id=_BATCH
@@ -84,17 +127,37 @@ class TestRedeployOrchestratorGoldenChain:
             occ_gate_state=EnumOccGateState.MERGED,
             rollback_target="sha256:prev",
         )
-        envelope = ModelEventEnvelope(
-            payload=start,
+        evaluated_at = datetime(2026, 6, 21, 12, 0, 0, tzinfo=UTC)
+        resolved = ModelProdPromotionGrantResolvedEvent(
             correlation_id=start.correlation_id,
-            event_type="onex.cmd.omnimarket.redeploy-start.v1",
+            resolution=EnumGrantResolution.ABSENT,
+            grant=None,
+            evaluated_at=evaluated_at,
+            provenance=ModelGrantProvenance(
+                source_commit_sha="0" * 40,
+                grant_id=None,
+                file_sha256="0" * 64,
+                codeowners_match=True,
+            ),
+        )
+        envelope: ModelEventEnvelope[dict[str, object]] = ModelEventEnvelope(
+            payload={
+                "resolved": resolved.model_dump(mode="json"),
+                "start": start.model_dump(mode="json"),
+            },
+            correlation_id=start.correlation_id,
+            event_type="onex.evt.omnimarket.prod-promotion-grant-resolved.v1",
         )
         output = await handler.handle(envelope)
+        assert [e.event_type for e in output.events] == [TOPIC_PROD_GATE_EVALUATE]
         gate_cmd = output.events[0].payload
         assert isinstance(gate_cmd, ModelProdPromotionGateCommand)
         assert gate_cmd.readiness_projection == projection
         assert gate_cmd.occ_gate_state is EnumOccGateState.MERGED
         assert gate_cmd.rollback_target == "sha256:prev"
+        assert gate_cmd.evaluated_at == evaluated_at
+        # ABSENT resolution -> no grant threaded -> gate fails closed.
+        assert gate_cmd.promotion_grant is None
 
     async def test_gate_allowed_to_deploy_publish(self) -> None:
         """Edge 2 (allowed): gate-evaluated -> deploy-publish command."""

@@ -64,6 +64,8 @@ terminal_event: onex.evt.omnimarket.redeploy-completed.v1
 event_bus:
   subscribe_topics:
     - onex.cmd.omnimarket.redeploy-start.v1
+    # OMN-13439 Phase 2b: consume the out-of-band grant resolution before the gate.
+    - onex.evt.omnimarket.prod-promotion-grant-resolved.v1
     - onex.evt.omnimarket.prod-promotion-gate-evaluated.v1
     # Deploy effect completion + rollback facts.
     - onex.evt.omnimarket.redeploy-rolled-back.v1
@@ -74,6 +76,8 @@ event_bus:
     - onex.evt.omnibase-infra.runtime-booted.v1
     - onex.evt.omnibase-infra.runtime-manifest-published.v1
   publish_topics:
+    # OMN-13439 Phase 2b: resolve the grant from onex_change_control@main first.
+    - onex.cmd.omnimarket.prod-promotion-grant-resolve.v1
     - onex.cmd.omnimarket.prod-promotion-gate-evaluate.v1
     - onex.cmd.omnimarket.redeploy-deploy-publish.v1
     - onex.evt.omnimarket.redeploy-phase-transition.v1
@@ -93,3 +97,4 @@ metadata:
     - "OMN-13211"
     - "OMN-12577"
     - "OMN-12581"
+    - "OMN-13439"

@@ -31,6 +31,7 @@ orchestrator.
 from __future__ import annotations
 
 from collections.abc import Mapping
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 from uuid import UUID, uuid4
@@ -39,10 +40,15 @@ from omnibase_core.models.dispatch.model_handler_output import ModelHandlerOutpu
 from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
 
 from omnimarket.events.runtime_deployment import (
+    EnumGrantResolution,
     EnumRedeployPhase,
+    EnumRuntimeLane,
     ModelDeployPublishCommand,
     ModelProdPromotionGateCommand,
     ModelProdPromotionGateDecision,
+    ModelProdPromotionGrant,
+    ModelProdPromotionGrantResolveCommand,
+    ModelProdPromotionGrantResolvedEvent,
     ModelRedeployCommand,
     ModelRedeployCompletedEvent,
 )
@@ -68,6 +74,7 @@ def _topic_with_suffix(suffix: str) -> str:
     return matches[0]
 
 
+TOPIC_GRANT_RESOLVE = _topic_with_suffix("prod-promotion-grant-resolve.v1")
 TOPIC_PROD_GATE_EVALUATE = _topic_with_suffix("prod-promotion-gate-evaluate.v1")
 TOPIC_DEPLOY_PUBLISH = _topic_with_suffix("redeploy-deploy-publish.v1")
 TOPIC_REDEPLOY_COMPLETED = _topic_with_suffix("redeploy-completed.v1")
@@ -81,14 +88,19 @@ class HandlerRedeployOrchestrator:
     ) -> ModelHandlerOutput[None]:
         """Route a redeploy lifecycle event to the next bus command.
 
-        ``redeploy-start`` -> prod-gate-evaluate command.
+        ``redeploy-start`` (prod) -> prod-promotion-grant-resolve command;
+        ``redeploy-start`` (non-prod) -> prod-gate-evaluate command directly.
+        ``prod-promotion-grant-resolved`` -> prod-gate-evaluate command with the
+        out-of-band resolved grant + evaluated_at stamped (NEVER from the start).
         ``prod-promotion-gate-evaluated`` -> deploy-publish command (allowed) or
         redeploy-completed:BLOCKED (denied).
         """
         event_type = envelope.event_type or ""
         correlation_id = envelope.correlation_id or uuid4()
 
-        if event_type.endswith("prod-promotion-gate-evaluated.v1"):
+        if event_type.endswith("prod-promotion-grant-resolved.v1"):
+            events = self._on_grant_resolved(envelope, correlation_id)
+        elif event_type.endswith("prod-promotion-gate-evaluated.v1"):
             events = self._on_gate_evaluated(envelope, correlation_id)
         else:
             # Default entrypoint: the redeploy-start command.
@@ -104,14 +116,63 @@ class HandlerRedeployOrchestrator:
     def _on_start(
         self, envelope: ModelEventEnvelope[Any], correlation_id: UUID
     ) -> list[ModelEventEnvelope[Any]]:
-        """Emit the prod-gate-evaluate command for a redeploy-start request."""
+        """Route a redeploy-start request to the next command.
+
+        Prod requests MUST resolve the promotion grant out-of-band first
+        (OMN-13439 Phase-2b resolver EFFECT reads the grant from
+        ``onex_change_control@main``), so prod emits the grant-resolve command and
+        only reaches the gate after the resolved fact rides back. Non-prod lanes
+        need no grant — the gate trivially allows them — so they go straight to the
+        gate-evaluate command, leaving dev/stability dispatch unchanged.
+        """
         start = _coerce_start(envelope.payload, correlation_id)
-        # OMN-13436: the promotion grant is resolved OUT-OF-BAND (Phase-2b resolver
-        # EFFECT) and is NEVER carried from the start request — a request cannot
-        # author the authorization that approves it. The gate command leaves
-        # ``promotion_grant`` and ``evaluated_at`` unset here; the resolver/runtime
-        # stamps them before the gate compute runs. ``requested_by`` IS threaded so
-        # the gate can enforce ``approved_by != requested_by``.
+        if start.runtime_lane is EnumRuntimeLane.PROD:
+            return self._emit_grant_resolve(start)
+        return self._emit_gate_evaluate(start, grant=None, evaluated_at=None)
+
+    def _emit_grant_resolve(
+        self, start: ModelRedeployStartCommand
+    ) -> list[ModelEventEnvelope[Any]]:
+        """Emit the grant-resolve command for a prod redeploy-start request.
+
+        The deterministic ``evaluated_at`` is stamped at this orchestration
+        boundary and threaded through the resolver back into the gate command, so
+        the COMPUTE gate never reads a clock. The caller-supplied
+        ``start.promotion_grant`` is DROPPED — a request cannot author the
+        authorization that approves it; the resolver reads it from the durable
+        anchor on ``@main``.
+        """
+        resolve_command = ModelProdPromotionGrantResolveCommand(
+            correlation_id=start.correlation_id,
+            runtime_lane=start.runtime_lane,
+            requested_image_digest=start.image_digest,
+            promotion_batch_id=start.promotion_batch_id,
+            requested_by=start.requested_by,
+            evaluated_at=datetime.now(UTC),
+        )
+        return [
+            ModelEventEnvelope(
+                payload=resolve_command,
+                correlation_id=start.correlation_id,
+                event_type=TOPIC_GRANT_RESOLVE,
+            )
+        ]
+
+    def _emit_gate_evaluate(
+        self,
+        start: ModelRedeployStartCommand,
+        *,
+        grant: ModelProdPromotionGrant | None,
+        evaluated_at: datetime | None,
+    ) -> list[ModelEventEnvelope[Any]]:
+        """Emit the prod-gate-evaluate command.
+
+        ``grant`` + ``evaluated_at`` come ONLY from the out-of-band resolver
+        (Phase-2b); they are NEVER taken from ``start.promotion_grant``. For
+        non-prod lanes both are ``None`` and the gate allows trivially.
+        ``requested_by`` is threaded so the gate enforces
+        ``approved_by != requested_by``.
+        """
         gate_command = ModelProdPromotionGateCommand(
             correlation_id=start.correlation_id,
             runtime_lane=start.runtime_lane,
@@ -122,6 +183,8 @@ class HandlerRedeployOrchestrator:
             rollback_target=start.rollback_target,
             previous_image=start.previous_image,
             requested_by=start.requested_by,
+            promotion_grant=grant,
+            evaluated_at=evaluated_at,
         )
         return [
             ModelEventEnvelope(
@@ -130,6 +193,27 @@ class HandlerRedeployOrchestrator:
                 event_type=TOPIC_PROD_GATE_EVALUATE,
             )
         ]
+
+    def _on_grant_resolved(
+        self, envelope: ModelEventEnvelope[Any], correlation_id: UUID
+    ) -> list[ModelEventEnvelope[Any]]:
+        """Thread the out-of-band resolved grant into the gate-evaluate command.
+
+        The resolver EFFECT emits ``ModelProdPromotionGrantResolvedEvent`` plus the
+        echoed original start request. The orchestrator stamps the RESOLVED grant
+        (``None`` for every non-RESOLVED outcome, so the gate fails closed) and the
+        resolver's deterministic ``evaluated_at`` onto the gate command. The grant
+        is NEVER taken from ``start.promotion_grant``.
+        """
+        resolved, start = _coerce_grant_resolved(envelope.payload, correlation_id)
+        grant = (
+            resolved.grant
+            if resolved.resolution is EnumGrantResolution.RESOLVED
+            else None
+        )
+        return self._emit_gate_evaluate(
+            start, grant=grant, evaluated_at=resolved.evaluated_at
+        )
 
     def _on_gate_evaluated(
         self, envelope: ModelEventEnvelope[Any], correlation_id: UUID
@@ -236,6 +320,46 @@ def _coerce_gate_result(
     return decision, start
 
 
+def _coerce_grant_resolved(
+    payload: Any, correlation_id: UUID
+) -> tuple[ModelProdPromotionGrantResolvedEvent, ModelRedeployStartCommand]:
+    """Coerce the grant-resolved payload into (resolved event, original start).
+
+    The runtime delivers the resolved event whose payload carries the
+    ``ModelProdPromotionGrantResolvedEvent`` (under a ``resolved`` key) and the
+    echoed original start request (under a ``start`` key) so the orchestrator can
+    build the gate command without rehydrating state. A bare resolved event (no
+    echoed start) is rebuilt into a minimal prod start from the resolved fact so
+    the gate still runs against the resolved grant.
+    """
+    mapping = _as_mapping(payload)
+    if mapping is None:
+        raise TypeError(
+            f"grant-resolved payload must be a mapping or model; got "
+            f"{type(payload).__name__}"
+        )
+
+    resolved_raw = mapping.get("resolved", mapping)
+    resolved = ModelProdPromotionGrantResolvedEvent.model_validate(
+        _as_dict(resolved_raw)
+    )
+
+    start_raw = mapping.get("start")
+    if start_raw is not None:
+        start = ModelRedeployStartCommand.model_validate(_as_dict(start_raw))
+    else:
+        grant = resolved.grant
+        start = ModelRedeployStartCommand(
+            correlation_id=resolved.correlation_id or correlation_id,
+            runtime_lane=EnumRuntimeLane.PROD,
+            image_digest=grant.approved_image_digest if grant is not None else None,
+            promotion_batch_id=(
+                grant.approved_promotion_batch_id if grant is not None else None
+            ),
+        )
+    return resolved, start
+
+
 def _as_mapping(candidate: Any) -> Mapping[str, Any] | None:
     if isinstance(candidate, Mapping):
         return candidate
@@ -257,6 +381,7 @@ def _as_dict(candidate: Any) -> dict[str, Any]:
 __all__: list[str] = [
     "HANDLER_ID",
     "TOPIC_DEPLOY_PUBLISH",
+    "TOPIC_GRANT_RESOLVE",
     "TOPIC_PROD_GATE_EVALUATE",
     "TOPIC_REDEPLOY_COMPLETED",
     "HandlerRedeployOrchestrator",

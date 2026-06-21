@@ -1192,11 +1192,163 @@ class ModelDeployPublishCommand(BaseModel):
     )
 
 
+# ---------------------------------------------------------------------------
+# Prod-promotion grant resolution (Phase 2b resolver EFFECT, OMN-13439)
+# ---------------------------------------------------------------------------
+
+
+# Canonical durable anchor the resolver reads the grant from. The grant is
+# fetched from onex_change_control@main (NOT the PR branch) so a redeploy request
+# cannot author the authorization that approves it (anti-self-approval, OMN-10971;
+# mirrors reject-deploy-gate-skip.yml's `?ref=main` fetch). The file path inside
+# that repo is fixed by the OMN-13437 schema.
+GRANT_REPO = "OmniNode-ai/onex_change_control"
+GRANT_FILE_PATH = "grants/prod_promotion_grants.yaml"
+GRANT_FETCH_REF = "main"
+
+
+class EnumGrantResolution(StrEnum):
+    """Outcome of resolving a prod-promotion grant from the durable anchor.
+
+    Only ``RESOLVED`` materializes a grant into the gate command. Every other
+    outcome leaves the grant ``None`` so the prod gate fails closed — there is no
+    silent default and no replay of a consumed grant.
+    """
+
+    RESOLVED = "resolved"
+    ABSENT = "absent"
+    EXPIRED = "expired"
+    CONSUMED = "consumed"
+    SELF_GRANTED = "self_granted"
+
+
+class ModelProdPromotionGrantResolveCommand(BaseModel):
+    """Command the orchestrator emits to the grant resolver EFFECT.
+
+    Carries the request key ``(promotion_batch_id, image_digest, lane=prod)`` plus
+    the requester identity and the deterministic ``evaluated_at`` the resolver
+    stamps so the gate compute never calls ``datetime.now()``. The resolver reads
+    the grant from ``onex_change_control@main`` — the command does NOT carry a
+    caller-supplied grant (a request cannot author its own authorization).
+
+    The redeploy ORCHESTRATOR builds this command and the grant resolver EFFECT
+    consumes it, so it lives in this shared owner module.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    correlation_id: UUID = Field(..., description="Redeploy run correlation ID.")
+    runtime_lane: EnumRuntimeLane = Field(
+        default=EnumRuntimeLane.PROD,
+        description="Lane the grant must authorize; resolver keys on lane=prod.",
+    )
+    requested_image_digest: str | None = Field(
+        default=None,
+        description="Digest the request wants to promote; the grant must match it.",
+    )
+    promotion_batch_id: str | None = Field(
+        default=None,
+        description="Promotion batch the request belongs to; the grant must match it.",
+    )
+    requested_by: str = Field(
+        default="node_redeploy_orchestrator",
+        description="Requester identity; a grant whose approver equals it is rejected.",
+    )
+    evaluated_at: datetime = Field(
+        ...,
+        description=(
+            "Deterministic evaluation timestamp stamped by the orchestrator; the "
+            "resolver compares it against the grant's absolute expiry and threads "
+            "it into the gate command so the compute never calls datetime.now()."
+        ),
+    )
+
+
+class ModelGrantProvenance(BaseModel):
+    """Durable audit provenance for one grant-resolution attempt (OMN-13439).
+
+    Emitted on the resolver EFFECT's audit-evidence event — NEVER on the pure
+    ``ModelProdPromotionGrant`` DTO (which is approver-authored truth, not
+    resolver-observed metadata). Records exactly which durable bytes the resolver
+    read so a promotion decision is reproducible from the anchor: the
+    ``onex_change_control@main`` source commit, the grant file path, the matched
+    ``grant_id``, the sha256 of the fetched file content, and whether the grant
+    file is CODEOWNERS-protected (the un-forgeable trust property).
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    source_commit_sha: str = Field(
+        ...,
+        min_length=1,
+        description="onex_change_control@main commit the grant file was read at.",
+    )
+    grant_file_path: str = Field(
+        default=GRANT_FILE_PATH,
+        min_length=1,
+        description="Path of the grant file inside onex_change_control.",
+    )
+    grant_id: str | None = Field(
+        default=None,
+        description="grant_id of the matched entry; None when no entry matched.",
+    )
+    file_sha256: str = Field(
+        ...,
+        min_length=64,
+        max_length=64,
+        description="sha256 hex of the exact grant-file bytes the resolver parsed.",
+    )
+    codeowners_match: bool = Field(
+        ...,
+        description=(
+            "Whether the grant file is CODEOWNERS-protected on the source ref "
+            "(the un-forgeable trust property; the dedicated platform-leads rule)."
+        ),
+    )
+
+
+class ModelProdPromotionGrantResolvedEvent(BaseModel):
+    """The resolver EFFECT's emitted fact: resolved grant (or None) + provenance.
+
+    The orchestrator consumes this to stamp ``promotion_grant`` + ``evaluated_at``
+    onto the gate command. ``grant`` is ``None`` for every non-``RESOLVED``
+    outcome so the prod gate fails closed; ``resolution`` carries the typed
+    reason. ``provenance`` is always populated — even when no grant matched — so
+    the audit trail records what durable bytes were inspected.
+
+    The grant resolver EFFECT emits this and the redeploy ORCHESTRATOR consumes
+    it, so it lives in this shared owner module.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    correlation_id: UUID = Field(..., description="Redeploy run correlation ID.")
+    resolution: EnumGrantResolution = Field(
+        ..., description="Typed resolution outcome (only RESOLVED yields a grant)."
+    )
+    grant: ModelProdPromotionGrant | None = Field(
+        default=None,
+        description="Materialized grant when RESOLVED; None otherwise (fail closed).",
+    )
+    evaluated_at: datetime = Field(
+        ...,
+        description="Deterministic evaluation timestamp threaded into the gate.",
+    )
+    provenance: ModelGrantProvenance = Field(
+        ...,
+        description="Durable audit provenance of the bytes the resolver inspected.",
+    )
+
+
 __all__ = [
     "DEFAULT_PREVIOUS_IMAGE",
+    "GRANT_FETCH_REF",
+    "GRANT_FILE_PATH",
+    "GRANT_REPO",
     "ROLLBACK_ELIGIBLE_PHASES",
     "TERMINAL_PHASES",
     "EnumBuildSource",
+    "EnumGrantResolution",
     "EnumOccGateState",
     "EnumPhaseResult",
     "EnumProdGrantReason",
@@ -1208,12 +1360,15 @@ __all__ = [
     "ModelDeployPublishCommand",
     "ModelDeployRebuildCommand",
     "ModelDeployRebuildCompleted",
+    "ModelGrantProvenance",
     "ModelHealthCheck",
     "ModelLaneDeployTarget",
     "ModelProdGateDecision",
     "ModelProdPromotionGateCommand",
     "ModelProdPromotionGateDecision",
     "ModelProdPromotionGrant",
+    "ModelProdPromotionGrantResolveCommand",
+    "ModelProdPromotionGrantResolvedEvent",
     "ModelProdPromotionInputs",
     "ModelReadinessProjectionFact",
     "ModelRedeployCommand",
