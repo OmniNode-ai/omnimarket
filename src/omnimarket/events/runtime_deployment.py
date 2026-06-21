@@ -1238,7 +1238,7 @@ class ModelProdPromotionGrantResolveCommand(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     correlation_id: UUID = Field(..., description="Redeploy run correlation ID.")
-    runtime_lane: EnumRuntimeLane = Field(
+    runtime_lane: Literal[EnumRuntimeLane.PROD] = Field(
         default=EnumRuntimeLane.PROD,
         description="Lane the grant must authorize; resolver keys on lane=prod.",
     )

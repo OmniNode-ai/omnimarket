@@ -30,6 +30,7 @@ import pytest
 import yaml
 from omnibase_core.enums.enum_node_kind import EnumNodeKind
 from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
+from pydantic import ValidationError
 
 from omnimarket.events.runtime_deployment import (
     GRANT_FETCH_REF,
@@ -322,12 +323,13 @@ class TestResolverEffectHandler:
 
 @pytest.mark.unit
 class TestFetchFromMain:
-    def test_resolver_fetches_from_main_not_branch(self) -> None:
-        """The default fetcher reads the grant file from onex_change_control@main.
+    def test_resolver_fetches_immutable_main_commit_not_branch(self) -> None:
+        """The default fetcher pins all reads to the resolved main commit.
 
-        Mirrors reject-deploy-gate-skip.yml's ``?ref=main`` fetch: pinning to main
-        prevents a request from authoring the authorization that approves it by
-        editing the grant file in the same PR branch.
+        Resolving ``main`` first prevents a request from authoring the
+        authorization that approves it by editing the grant file in the same PR
+        branch while keeping provenance and CODEOWNERS checks on one immutable
+        ref.
         """
         captured: list[str] = []
 
@@ -353,16 +355,33 @@ class TestFetchFromMain:
         assert fetched.source_commit_sha == _SOURCE_SHA
         assert fetched.codeowners_match is True
 
-        # The grant file MUST be fetched at ref=main, never the PR branch.
+        # The grant file and CODEOWNERS MUST be fetched at the same immutable
+        # main commit, never the PR branch.
         grant_url = next(u for u in captured if GRANT_FILE_PATH in u)
-        assert f"ref={GRANT_FETCH_REF}" in grant_url
-        assert "ref=main" in grant_url
+        codeowners_url = next(u for u in captured if "CODEOWNERS" in u)
+        commit_url = next(u for u in captured if "/commits/" in u)
+        assert f"ref={_SOURCE_SHA}" in grant_url
+        assert f"ref={_SOURCE_SHA}" in codeowners_url
+        assert commit_url.endswith(f"/commits/{GRANT_FETCH_REF}")
         assert GRANT_REPO in grant_url
 
     def test_grant_fetch_ref_constant_is_main(self) -> None:
         assert GRANT_FETCH_REF == "main"
         assert GRANT_REPO == "OmniNode-ai/onex_change_control"
         assert GRANT_FILE_PATH == "grants/prod_promotion_grants.yaml"
+
+
+@pytest.mark.unit
+def test_grant_resolve_command_rejects_non_prod_lane() -> None:
+    with pytest.raises(ValidationError):
+        ModelProdPromotionGrantResolveCommand(
+            correlation_id=uuid4(),
+            runtime_lane=EnumRuntimeLane.STABILITY_TEST,
+            requested_image_digest=_DIGEST,
+            promotion_batch_id=_BATCH,
+            requested_by=_REQUESTER,
+            evaluated_at=_EVALUATED_AT,
+        )
 
 
 # ---------------------------------------------------------------------------

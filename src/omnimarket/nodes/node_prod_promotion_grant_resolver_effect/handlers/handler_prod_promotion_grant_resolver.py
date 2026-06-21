@@ -117,16 +117,16 @@ class GitHubMainGrantFetcher:
             body: bytes = response.read()
         return body
 
-    def _file_is_codeowners_protected(self) -> bool:
-        """Probe whether the grant file path is CODEOWNERS-protected on main.
+    def _file_is_codeowners_protected(self, *, ref: str) -> bool:
+        """Probe whether the grant file path is CODEOWNERS-protected on a ref.
 
         The trust property is that the grant file requires a dedicated CODEOWNERS
-        rule. We confirm a CODEOWNERS file on main names the grant path.
+        rule. We confirm a CODEOWNERS file on the fetched commit names the grant
+        path.
         """
         for candidate in _CODEOWNERS_PATHS:
             url = (
-                f"{_GITHUB_API_BASE}/repos/{GRANT_REPO}/contents/{candidate}"
-                f"?ref={GRANT_FETCH_REF}"
+                f"{_GITHUB_API_BASE}/repos/{GRANT_REPO}/contents/{candidate}?ref={ref}"
             )
             try:
                 payload = json.loads(self._request(url).decode("utf-8"))
@@ -140,17 +140,17 @@ class GitHubMainGrantFetcher:
         return False
 
     async def fetch(self) -> ModelGrantFetch:
+        source_commit_sha = self._resolve_main_commit_sha()
         url = (
             f"{_GITHUB_API_BASE}/repos/{GRANT_REPO}/contents/{GRANT_FILE_PATH}"
-            f"?ref={GRANT_FETCH_REF}"
+            f"?ref={source_commit_sha}"
         )
         payload = json.loads(self._request(url).decode("utf-8"))
         raw = base64.b64decode(payload["content"])
-        source_commit_sha = self._resolve_main_commit_sha()
         return ModelGrantFetch(
             raw=raw,
             source_commit_sha=source_commit_sha,
-            codeowners_match=self._file_is_codeowners_protected(),
+            codeowners_match=self._file_is_codeowners_protected(ref=source_commit_sha),
         )
 
     def _resolve_main_commit_sha(self) -> str:
