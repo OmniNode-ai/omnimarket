@@ -612,6 +612,118 @@ class ModelProdPromotionGrant(BaseModel):
     )
 
 
+class ModelDeployRefusedEvent(BaseModel):
+    """Emitted when the deploy EFFECT refuses a prod command at its own boundary.
+
+    Defense-in-depth refusal (OMN-13440 Phase 3): the deploy publish-monitor
+    EFFECT independently verifies that a prod ``ModelDeployPublishCommand`` carries
+    a grant whose ``(approved_lane==PROD, approved_image_digest,
+    approved_promotion_batch_id)`` MATCH the command's ``(runtime_lane,
+    image_digest, promotion_batch_id)`` (target binding, not mere presence). When
+    that target-binding check fails, the EFFECT refuses to publish the deploy-agent
+    rebuild command and emits this durable fact on
+    ``onex.evt.omnimarket.redeploy-deploy-refused.v1`` instead — closing the
+    deploy-agent off-gate path even if the upstream gate were bypassed.
+
+    ``reason`` is a typed ``EnumProdGrantReason`` so consumers branch on the exact
+    authorization failure mode without parsing free text.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    correlation_id: UUID = Field(..., description="Redeploy run correlation ID.")
+    runtime_lane: EnumRuntimeLane = Field(
+        ..., description="Lane the refused command targeted (PROD)."
+    )
+    requested_image_digest: str | None = Field(
+        default=None,
+        description="Digest the refused command wanted to deploy.",
+    )
+    promotion_batch_id: str | None = Field(
+        default=None,
+        description="Promotion batch the refused command belonged to.",
+    )
+    grant_id: str | None = Field(
+        default=None,
+        description="grant_id carried by the command, if any; None when absent.",
+    )
+    reason: EnumProdGrantReason = Field(
+        ..., description="Typed prod-grant authorization failure mode."
+    )
+    detail: str = Field(..., min_length=1, description="Human-readable refusal detail.")
+
+
+def verify_prod_deploy_grant_binding(
+    *,
+    runtime_lane: EnumRuntimeLane,
+    image_digest: str | None,
+    promotion_batch_id: str | None,
+    grant: ModelProdPromotionGrant | None,
+    evaluated_at: datetime | None,
+) -> tuple[EnumProdGrantReason, str] | None:
+    """Verify a prod deploy command is target-bound to a verified grant (OMN-13440).
+
+    Pure, deterministic, side-effect-free. Returns ``None`` when the deploy may
+    proceed; otherwise a ``(typed reason, detail)`` describing why the deploy EFFECT
+    must refuse.
+
+    Non-prod lanes always pass (``None``) — the prod-promotion authorization gate is
+    a prod-only concern and dev/stability deploys are byte-for-byte unchanged.
+
+    For ``runtime_lane == PROD`` the deploy refuses unless the grant satisfies ALL
+    of (target binding, NOT mere presence):
+
+    * a grant is present at all (``missing_promotion_grant``);
+    * ``approved_lane == PROD`` (``grant_lane_mismatch``);
+    * ``approved_image_digest == image_digest`` — a grant for digest A must never
+      authorize a deploy of digest B (``grant_digest_mismatch``);
+    * ``approved_promotion_batch_id == promotion_batch_id`` — likewise for batch
+      (``grant_batch_mismatch``);
+    * ``evaluated_at <= expires_at`` (``expired_promotion_grant``); the boundary is
+      inclusive and ``evaluated_at`` must be present (a prod deploy with no
+      evaluation timestamp is treated as expired/unverifiable).
+
+    This mirrors ``_evaluate_promotion_grant`` in the prod gate COMPUTE but runs at
+    the deploy EFFECT boundary so the deploy-agent off-gate path is closed even if
+    the upstream gate were bypassed. ``approved_by != requested_by`` (anti-self-
+    grant) is enforced upstream at the gate; the deploy EFFECT does not re-thread a
+    forgeable requester identity, so it does not duplicate that check here.
+    """
+    if runtime_lane is not EnumRuntimeLane.PROD:
+        return None
+
+    if grant is None:
+        return (
+            EnumProdGrantReason.MISSING_PROMOTION_GRANT,
+            "prod deploy refused: no verified promotion grant on the command",
+        )
+    if grant.approved_lane is not EnumRuntimeLane.PROD:
+        return (
+            EnumProdGrantReason.GRANT_LANE_MISMATCH,
+            f"prod deploy refused: grant lane {grant.approved_lane.value!r} != prod",
+        )
+    if grant.approved_image_digest != image_digest:
+        return (
+            EnumProdGrantReason.GRANT_DIGEST_MISMATCH,
+            "prod deploy refused: grant digest "
+            f"{grant.approved_image_digest!r} != command digest {image_digest!r}",
+        )
+    if grant.approved_promotion_batch_id != promotion_batch_id:
+        return (
+            EnumProdGrantReason.GRANT_BATCH_MISMATCH,
+            "prod deploy refused: grant batch "
+            f"{grant.approved_promotion_batch_id!r} != command batch "
+            f"{promotion_batch_id!r}",
+        )
+    if evaluated_at is None or evaluated_at > grant.expires_at:
+        return (
+            EnumProdGrantReason.EXPIRED_PROMOTION_GRANT,
+            "prod deploy refused: grant expired "
+            f"(evaluated_at={evaluated_at}, expires_at={grant.expires_at})",
+        )
+    return None
+
+
 class ModelProdPromotionInputs(BaseModel):
     """All deterministic facts the prod promotion gate consults."""
 
@@ -1163,6 +1275,30 @@ class ModelDeployPublishCommand(BaseModel):
     runtime_lane: EnumRuntimeLane = Field(
         default=EnumRuntimeLane.DEV, description="Target runtime lane."
     )
+    promotion_batch_id: str | None = Field(
+        default=None,
+        description=(
+            "Promotion batch the deploy belongs to. For prod the carried grant's "
+            "approved_promotion_batch_id must match this (target binding, OMN-13440)."
+        ),
+    )
+    promotion_grant: ModelProdPromotionGrant | None = Field(
+        default=None,
+        description=(
+            "Verified prod-promotion grant the orchestrator resolved out-of-band and "
+            "threaded through the gate. For prod the deploy EFFECT refuses to publish "
+            "the rebuild command unless this grant is target-bound to (lane, digest, "
+            "batch); None means the prod deploy is refused (fail closed, OMN-13440)."
+        ),
+    )
+    evaluated_at: datetime | None = Field(
+        default=None,
+        description=(
+            "Deterministic evaluation timestamp threaded by the orchestrator; the "
+            "deploy EFFECT compares it against the grant's absolute expiry. Required "
+            "(non-None) for a prod deploy to be authorized."
+        ),
+    )
     build_source: EnumBuildSource = Field(
         default=EnumBuildSource.RELEASE, description="Artifact source for the agent."
     )
@@ -1360,6 +1496,7 @@ __all__ = [
     "ModelDeployPublishCommand",
     "ModelDeployRebuildCommand",
     "ModelDeployRebuildCompleted",
+    "ModelDeployRefusedEvent",
     "ModelGrantProvenance",
     "ModelHealthCheck",
     "ModelLaneDeployTarget",
@@ -1385,4 +1522,5 @@ __all__ = [
     "lane_target",
     "next_phase",
     "next_verification_phase",
+    "verify_prod_deploy_grant_binding",
 ]

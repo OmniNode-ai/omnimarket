@@ -35,12 +35,15 @@ from omnibase_core.models.dispatch.model_handler_output import ModelHandlerOutpu
 from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
 
 from omnimarket.events.runtime_deployment import (
+    EnumProdGrantReason,
     EnumRedeployPhase,
     EnumRedeployStatus,
     ModelDeployRebuildCommand,
     ModelDeployRebuildCompleted,
+    ModelDeployRefusedEvent,
     ModelRedeployResult,
     ModelRedeployRolledBackEvent,
+    verify_prod_deploy_grant_binding,
 )
 from omnimarket.nodes.contract_topics import (
     contract_publish_topics,
@@ -83,6 +86,9 @@ TOPIC_REBUILD_COMPLETED = _topic_with_suffix(
 )
 TOPIC_ROLLED_BACK = _topic_with_suffix(
     _PUBLISH, "redeploy-rolled-back.v1", "publish_topics"
+)
+TOPIC_DEPLOY_REFUSED = _topic_with_suffix(
+    _PUBLISH, "redeploy-deploy-refused.v1", "publish_topics"
 )
 
 
@@ -189,8 +195,28 @@ class HandlerDeployPublishMonitor:
     async def handle(
         self, envelope: ModelEventEnvelope[Any]
     ) -> ModelHandlerOutput[None]:
-        """Publish the rebuild command, monitor completion, and roll back if needed."""
+        """Refuse off-gate prod deploys, else publish/monitor and roll back if needed.
+
+        Defense-in-depth (OMN-13440): before any deploy-agent I/O, the EFFECT
+        independently verifies a prod command is target-bound to a verified
+        promotion grant. A prod command with no/mismatched/expired grant is REFUSED
+        here — the deploy-agent rebuild command is NEVER published — and a typed
+        ``ModelDeployRefusedEvent`` is emitted instead. Non-prod lanes are
+        unaffected (the binding check returns ``None``), so dev/stability dispatch
+        is byte-for-byte unchanged.
+        """
         command = _coerce_command(envelope.payload)
+
+        refusal = verify_prod_deploy_grant_binding(
+            runtime_lane=command.runtime_lane,
+            image_digest=command.image_digest,
+            promotion_batch_id=command.promotion_batch_id,
+            grant=command.promotion_grant,
+            evaluated_at=command.evaluated_at,
+        )
+        if refusal is not None:
+            return await self._refuse(envelope, command, refusal)
+
         result = await self.publish_and_monitor(command)
 
         emitted: list[ModelEventEnvelope[Any]] = []
@@ -220,6 +246,65 @@ class HandlerDeployPublishMonitor:
                 "rebuild_success": 1.0 if result.success else 0.0,
                 "timed_out": 1.0 if result.timed_out else 0.0,
                 "rolled_back": 1.0 if reason is not None else 0.0,
+            },
+        )
+
+    async def _refuse(
+        self,
+        envelope: ModelEventEnvelope[Any],
+        command: ModelDeployPublishCommand,
+        refusal: tuple[EnumProdGrantReason, str],
+    ) -> ModelHandlerOutput[None]:
+        """Refuse an off-gate prod deploy: emit the typed refusal, publish NOTHING else.
+
+        The deploy-agent rebuild command is NEVER published on a refusal — the whole
+        point of the EFFECT-boundary check is that a prod deploy that is not target-
+        bound to a verified grant never reaches the deploy agent. The refusal is
+        recorded as a durable bus fact on the contract-declared refused topic.
+        """
+        reason, detail = refusal
+        grant = command.promotion_grant
+        refused = ModelDeployRefusedEvent(
+            correlation_id=command.correlation_id,
+            runtime_lane=command.runtime_lane,
+            requested_image_digest=command.image_digest,
+            promotion_batch_id=command.promotion_batch_id,
+            grant_id=grant.grant_id if grant is not None else None,
+            reason=reason,
+            detail=detail,
+        )
+        await self._bus.publish(
+            TOPIC_DEPLOY_REFUSED,
+            key=str(command.correlation_id).encode(),
+            value=json.dumps(refused.model_dump(mode="json")).encode(),
+        )
+        logger.warning(
+            "Prod deploy refused at the EFFECT boundary",
+            extra={
+                "correlation_id": str(command.correlation_id),
+                "runtime_lane": command.runtime_lane.value,
+                "reason": reason.value,
+                "image_digest": command.image_digest,
+                "promotion_batch_id": command.promotion_batch_id,
+                "topic": TOPIC_DEPLOY_REFUSED,
+            },
+        )
+        return ModelHandlerOutput.for_effect(
+            input_envelope_id=envelope.envelope_id,
+            correlation_id=envelope.correlation_id or command.correlation_id,
+            handler_id=HANDLER_ID,
+            events=(
+                ModelEventEnvelope(
+                    payload=refused,
+                    correlation_id=envelope.correlation_id or command.correlation_id,
+                    event_type=TOPIC_DEPLOY_REFUSED,
+                ),
+            ),
+            metrics={
+                "rebuild_success": 0.0,
+                "timed_out": 0.0,
+                "rolled_back": 0.0,
+                "deploy_refused": 1.0,
             },
         )
 
@@ -409,6 +494,7 @@ def _coerce_command(payload: Any) -> ModelDeployPublishCommand:
 
 __all__: list[str] = [
     "HANDLER_ID",
+    "TOPIC_DEPLOY_REFUSED",
     "TOPIC_REBUILD_COMPLETED",
     "TOPIC_REBUILD_REQUESTED",
     "TOPIC_ROLLED_BACK",
