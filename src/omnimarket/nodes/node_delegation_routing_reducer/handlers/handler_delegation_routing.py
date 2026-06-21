@@ -946,6 +946,11 @@ def delta(
 
 __all__: list[str] = [
     "NO_HIGHER_TIER_REASON_TOKEN",
+    # OMN-13356: re-exported as the routing-authority surface. Consumers (e.g.
+    # node_generation_consumer) annotate against the type ``delta`` returns by
+    # importing it from this authority handler module — not by reaching into the
+    # reducer's private models package (cross-node model reach-in guard).
+    "ModelRoutingDecision",
     "_get_contract_model_ref",
     "delta",
     "describe_no_higher_tier_available",

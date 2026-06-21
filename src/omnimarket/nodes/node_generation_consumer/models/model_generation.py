@@ -416,6 +416,22 @@ class ModelGenerationBenchmark(BaseModel):
         ),
     )
 
+    # --- OMN-13356: tool-reuse short-circuit proof ---
+    # When the tool-reuse matcher returned a MATCHED verdict before generation,
+    # this run was satisfied by an EXISTING tool and NO LLM generation ran. The
+    # matched tool's id is recorded here so the short-circuit is provable from the
+    # benchmark / projection (zero attempts, zero cost, reused_tool_id set).
+    # Empty for an ordinary generation run (no reuse).
+    reused_tool_id: str = Field(
+        default="",
+        description=(
+            "Tool id of the existing tool reused for this task (tool-reuse "
+            "matcher MATCHED verdict). Empty when generation actually ran. When "
+            "set, attempt_count and cost_inference_usd are 0 — the LLM was never "
+            "called."
+        ),
+    )
+
 
 class ModelNodeDeploy(BaseModel):
     """Payload for the runtime hot-deploy event.
