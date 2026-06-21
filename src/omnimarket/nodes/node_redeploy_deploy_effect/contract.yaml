@@ -71,6 +71,9 @@ event_bus:
     - onex.cmd.deploy.rebuild-requested.v1
     # OMN-9579 rollback: failed post-deploy health restores the previous image.
     - onex.evt.omnimarket.redeploy-rolled-back.v1
+    # OMN-13440 defense-in-depth: prod deploy refused at the EFFECT boundary when
+    # the command is not target-bound to a verified prod-promotion grant.
+    - onex.evt.omnimarket.redeploy-deploy-refused.v1
 
 dependencies:
   packages:
@@ -89,3 +92,4 @@ metadata:
     - "OMN-13211"
     - "OMN-9579"
     - "OMN-12577"
+    - "OMN-13440"

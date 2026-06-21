@@ -219,7 +219,9 @@ class HandlerRedeployOrchestrator:
         self, envelope: ModelEventEnvelope[Any], correlation_id: UUID
     ) -> list[ModelEventEnvelope[Any]]:
         """React to the gate decision: deploy if allowed, else complete BLOCKED."""
-        decision, start = _coerce_gate_result(envelope.payload, correlation_id)
+        decision, start, gate_command = _coerce_gate_result(
+            envelope.payload, correlation_id
+        )
 
         if not decision.allowed:
             completed = ModelRedeployCompletedEvent(
@@ -236,6 +238,20 @@ class HandlerRedeployOrchestrator:
                 )
             ]
 
+        # OMN-13440: thread the verified grant + batch + evaluated_at from the gate
+        # command into the deploy-publish command so the deploy EFFECT can re-verify
+        # target binding at its own boundary (defense-in-depth). The grant is taken
+        # ONLY from the gate command (resolved out-of-band by Phase-2b), NEVER from
+        # the start request. For a prod deploy with no gate command (gate command not
+        # echoed), promotion_grant stays None and the deploy EFFECT fails closed.
+        promotion_grant = gate_command.promotion_grant if gate_command else None
+        evaluated_at = gate_command.evaluated_at if gate_command else None
+        promotion_batch_id = (
+            gate_command.promotion_batch_id
+            if gate_command
+            else start.promotion_batch_id
+        )
+
         publish_command = ModelDeployPublishCommand(
             correlation_id=correlation_id,
             scope=start.scope,
@@ -245,6 +261,9 @@ class HandlerRedeployOrchestrator:
             services=start.services,
             image_ref=start.image_ref,
             image_digest=decision.image_digest or start.image_digest,
+            promotion_batch_id=promotion_batch_id,
+            promotion_grant=promotion_grant,
+            evaluated_at=evaluated_at,
             requested_by=start.requested_by,
             smoke_test=start.smoke_test,
             rollback_target=(
@@ -290,12 +309,20 @@ def _coerce_start(payload: Any, correlation_id: UUID) -> ModelRedeployStartComma
 
 def _coerce_gate_result(
     payload: Any, correlation_id: UUID
-) -> tuple[ModelProdPromotionGateDecision, ModelRedeployStartCommand]:
-    """Coerce the gate-evaluated payload into (decision, original start command).
+) -> tuple[
+    ModelProdPromotionGateDecision,
+    ModelRedeployStartCommand,
+    ModelProdPromotionGateCommand | None,
+]:
+    """Coerce the gate-evaluated payload into (decision, start, gate command).
 
     The runtime delivers the gate-evaluated event whose payload carries the
-    ``ModelProdPromotionGateDecision`` and the echoed original start request so
-    the orchestrator can build the deploy command without rehydrating state.
+    ``ModelProdPromotionGateDecision`` (under ``decision``), the echoed original
+    start request (under ``start``), and — for prod — the echoed gate command
+    (under ``command``) that carries the out-of-band-resolved promotion grant +
+    ``evaluated_at``. The orchestrator threads that verified grant into the deploy
+    command so the deploy EFFECT can re-verify target binding (OMN-13440). The gate
+    command is ``None`` when not echoed (non-prod, or a digest-only deploy).
     """
     mapping = _as_mapping(payload)
     if mapping is None:
@@ -317,7 +344,14 @@ def _coerce_gate_result(
             image_digest=decision.image_digest,
             rollback_target=decision.rollback_target,
         )
-    return decision, start
+
+    command_raw = mapping.get("command")
+    gate_command = (
+        ModelProdPromotionGateCommand.model_validate(_as_dict(command_raw))
+        if command_raw is not None
+        else None
+    )
+    return decision, start, gate_command
 
 
 def _coerce_grant_resolved(
