@@ -1,0 +1,66 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-13402"
+title: "Re-lock omnimarket sibling git pins to merged dev SHAs (workspace build pin-drift)"
+summary: >
+  The workspace-mode image build (BUILD_SOURCE=workspace) makes the consuming
+  repo's uv.lock the pin authority and compares it to the canonical clone HEAD
+  SHAs via the OMN-12977 guard (check_sibling_lock_pins.py). omnimarket's
+  pyproject.toml [tool.uv.sources] rev= pins (mirrored in [tool.uv]
+  override-dependencies git URLs and uv.lock) hardcoded stale sibling SHAs that
+  the cross-repo pin bot never bumped after the 2026-06-20 savings-cluster
+  merges: omnibase-core 25a71031 (lives only on the un-merged jonah/OMN-13234
+  branch; dev tip 8a53a063 is a strict superset), omnibase-infra d56384fb
+  (behind dev tip f2533f5a, which carries the A2 0018/0019 migration vendoring),
+  omnibase-compat bd7fe461 (behind dev tip 331a9de4), and onex-change-control
+  33d6747e (behind dev tip dd2620d1). Versions were identical
+  (drift_direction=none) -- pure SHA staleness -- so the OMN-12977 guard
+  (no silent fallbacks) aborted stage_workspace.sh with exit 3, blocking ALL
+  workspace builds (dev + stability + prod). This change syncs the canonical
+  sibling clones to their origin/dev tips and re-locks the four stale pins to
+  those LIVE SHAs (and regenerates uv.lock), so the guard reports 0 drift.
+  omnibase-spi stays as a version specifier (not git-pinned). omninode-memory
+  was intentionally NOT bumped: its dev tip (c3cec15d / v0.16.0) removed the
+  node_persona_lifecycle_orchestrator module that omnimarket source imports, and
+  the guard does not track omninode-memory, so bumping it provides zero guard
+  benefit while breaking imports. No version specifiers changed; no source
+  changed -- only pyproject.toml pins + uv.lock.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+evidence_requirements:
+  - kind: "manual"
+    description: "OMN-12977 sibling-pin guard reports 0 drift against the origin/dev-synced canonical clones using the exact --repo args stage_workspace.sh passes."
+    command: "uv run python ../../omnibase_infra/scripts/runtime_build/check_sibling_lock_pins.py --lock uv.lock --repo omnibase-infra=../../omnibase_infra --repo omnibase-core=../../omnibase_core --repo omnibase-spi=../../omnibase_spi --repo omnibase-compat=../../omnibase_compat --repo onex-change-control=../../onex_change_control --repo omnimarket=."
+  - kind: "ci"
+    description: "Full suite green (no -k; kafka integration tests are env-gated and excluded by the repo's `-m 'not kafka'` CI default)."
+    command: "uv run pytest tests/ -q -m 'not kafka'"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-001"
+    description: "OMN-12977 sibling-pin guard exits 0 with drift_count=0; all 6 tracked comparisons (omnibase-infra/core/spi/compat, onex-change-control, omnimarket) report matches=true and drift_direction=none. Evidence JSON: .onex_state/runtime-e2e-2026-06-21/02-dev-deploy/03-relock-guard-after.json."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run python ../../omnibase_infra/scripts/runtime_build/check_sibling_lock_pins.py --lock uv.lock --repo omnibase-infra=../../omnibase_infra --repo omnibase-core=../../omnibase_core --repo omnibase-spi=../../omnibase_spi --repo omnibase-compat=../../omnibase_compat --repo onex-change-control=../../onex_change_control --repo omnimarket=."
+  - id: "dod-002"
+    description: "Lock is internally consistent with the re-locked pyproject (uv lock --check passes); the four bumped pins resolve to the live origin/dev tips: core 8a53a063, infra f2533f5a, compat 331a9de4, onex-change-control dd2620d1."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv lock --check"
+  - id: "dod-003"
+    description: "No regression from the pin bump: full pytest suite green (7824 passed, 0 import/collection errors) excluding the two env-gated @pytest.mark.kafka integration tests that require the live .201 broker, unreachable from CI/local. Log: .onex_state/runtime-e2e-2026-06-21/02-dev-deploy/03-relock-pytest.log. ruff format/check + pre-commit clean on the changed files."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/ -q -m 'not kafka'"
+  - id: "dod-deploy"
+    description: "Deploy-gate evidence: this is a pure dependency-pin re-lock -- only pyproject.toml [tool.uv.sources]/override-dependencies SHAs and uv.lock change; no source, migration, schema, endpoint, or env-for-model change. After merge, stage_workspace.sh passes the OMN-12977 preflight with NO drift override, unblocking the dev cold bring-up (Ticket B / OMN-13397) and downstream stability/prod workspace builds."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "printf 'deploy gate: pre-merge no live deploy; post-merge docker exec smoke deferred per policy (OMN-9685 precedent)'"

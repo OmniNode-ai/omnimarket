@@ -404,18 +404,18 @@ market = "omnimarket.cli.market:market"
 omnimarket = "omnimarket.nodes"
 
 [tool.uv.sources]
-omnibase-core = { git = "https://github.com/OmniNode-ai/omnibase_core.git", rev = "25a71031083c7acecb039e9c4eede0f2da6243f2" }
-omnibase-compat = { git = "https://github.com/OmniNode-ai/omnibase_compat.git", rev = "bd7fe461316effa7cd0a1918e29f83bc5787a7e0" }
-omnibase-infra = { git = "https://github.com/OmniNode-ai/omnibase_infra.git", rev = "d56384fb481399a1b6509df21531ba5a5454b964" }
+omnibase-core = { git = "https://github.com/OmniNode-ai/omnibase_core.git", rev = "8a53a063bd28f643d08b4cbbc6dd5c7c9f6435df" }
+omnibase-compat = { git = "https://github.com/OmniNode-ai/omnibase_compat.git", rev = "331a9de450c7d4349825cb8933c5d2f663ba685b" }
+omnibase-infra = { git = "https://github.com/OmniNode-ai/omnibase_infra.git", rev = "f2533f5ad6e1ce5889e581175cf02e9c50ff38b3" }
 omninode-memory = { git = "https://github.com/OmniNode-ai/omnimemory.git", rev = "9843dd18cedaa4f5939289ba527532262b87003c" }
-onex-change-control = { git = "https://github.com/OmniNode-ai/onex_change_control.git", rev = "33d6747edadc8ade2aacc87c6af01adcc877531f" }
+onex-change-control = { git = "https://github.com/OmniNode-ai/onex_change_control.git", rev = "dd2620d18001495b8d0f493b421b38399e9aab4b" }
 
 [tool.uv]
 override-dependencies = [
-    "omnibase-core @ git+https://github.com/OmniNode-ai/omnibase_core.git@25a71031083c7acecb039e9c4eede0f2da6243f2",
+    "omnibase-core @ git+https://github.com/OmniNode-ai/omnibase_core.git@8a53a063bd28f643d08b4cbbc6dd5c7c9f6435df",
     "omnibase-spi>=0.22.0,<0.23.0",
-    "omnibase-infra @ git+https://github.com/OmniNode-ai/omnibase_infra.git@d56384fb481399a1b6509df21531ba5a5454b964",
-    "omnibase-compat @ git+https://github.com/OmniNode-ai/omnibase_compat.git@bd7fe461316effa7cd0a1918e29f83bc5787a7e0",
+    "omnibase-infra @ git+https://github.com/OmniNode-ai/omnibase_infra.git@f2533f5ad6e1ce5889e581175cf02e9c50ff38b3",
+    "omnibase-compat @ git+https://github.com/OmniNode-ai/omnibase_compat.git@331a9de450c7d4349825cb8933c5d2f663ba685b",
 ]
 
 [tool.hatch.build.targets.wheel]
