@@ -80,6 +80,15 @@ tokens_by_model AS (
         GROUP BY COALESCE(NULLIF(model_name, ''), delegated_to)
     ) by_model
 )
+-- Column ordinals 1-15 below are byte-for-byte the same name/position as the
+-- view created in 0010. CREATE OR REPLACE VIEW only forbids renaming or
+-- reordering an EXISTING output column at a given ordinal; it permits changing
+-- the underlying expression at the same ordinal and appending new columns at
+-- the end. The two new authority columns (avg_actual_score, avg_required_bar)
+-- are therefore APPENDED at ordinals 16-17 — consumers select by name, so this
+-- is non-breaking. Reordering them ahead of by_check_type (as the original
+-- 0016 did) renamed the ordinal-7 column and tripped
+-- "cannot change name of view column by_check_type to avg_actual_score".
 SELECT
     CASE WHEN totals.total_checks > 0
         THEN totals.total_passed::float / totals.total_checks ELSE 0 END
@@ -91,8 +100,6 @@ SELECT
     CASE WHEN totals.total_checks > 0
         THEN totals.total_escalations::float / totals.total_checks ELSE 0 END
         AS escalation_rate,
-    totals.avg_actual_score,
-    totals.avg_required_bar,
     jsonb_build_array(jsonb_build_object(
         'check_type', 'score_vs_required_bar',
         'passed', totals.total_passed,
@@ -108,7 +115,9 @@ SELECT
     tokens_by_model.rows AS tokens_to_compliance_by_model,
     COALESCE(totals.latest_projection_updated_at, NOW()) AS captured_at,
     TRUE AS provisioned,
-    totals.latest_projection_updated_at
+    totals.latest_projection_updated_at,
+    totals.avg_actual_score,
+    totals.avg_required_bar
 FROM totals
 CROSS JOIN failure_categories
 CROSS JOIN tokens_by_model;
