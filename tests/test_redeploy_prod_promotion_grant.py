@@ -30,13 +30,17 @@ from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
 from pydantic import ValidationError
 
 from omnimarket.events.runtime_deployment import (
+    EnumGrantResolution,
     EnumOccGateState,
     EnumRedeployPhase,
     EnumRuntimeLane,
     ModelDeployPublishCommand,
+    ModelGrantProvenance,
     ModelProdPromotionGateCommand,
     ModelProdPromotionGateDecision,
     ModelProdPromotionGrant,
+    ModelProdPromotionGrantResolveCommand,
+    ModelProdPromotionGrantResolvedEvent,
     ModelProdPromotionInputs,
     ModelReadinessProjectionFact,
     ModelRedeployCompletedEvent,
@@ -47,6 +51,7 @@ from omnimarket.nodes.node_prod_promotion_gate_compute.handlers.handler_prod_pro
 )
 from omnimarket.nodes.node_redeploy_orchestrator.handlers.handler_redeploy_orchestrator import (
     TOPIC_DEPLOY_PUBLISH,
+    TOPIC_GRANT_RESOLVE,
     TOPIC_PROD_GATE_EVALUATE,
     TOPIC_REDEPLOY_COMPLETED,
     HandlerRedeployOrchestrator,
@@ -149,7 +154,9 @@ async def _drive_dispatch(
     orchestrator = HandlerRedeployOrchestrator()
     gate = HandlerProdPromotionGate()
 
-    # Edge 1: redeploy-start -> prod-promotion-gate-evaluate command.
+    # Edge 1: redeploy-start. Prod routes through the grant-RESOLVE command (the
+    # grant is resolved out-of-band BEFORE the gate; OMN-13439 Phase 2b); non-prod
+    # lanes go straight to the gate-evaluate command (no grant needed).
     start_envelope: ModelEventEnvelope[ModelRedeployStartCommand] = ModelEventEnvelope(
         payload=start,
         correlation_id=start.correlation_id,
@@ -157,17 +164,53 @@ async def _drive_dispatch(
     )
     start_output = await orchestrator.handle(start_envelope)
     assert start_output.node_kind == EnumNodeKind.ORCHESTRATOR
-    assert [e.event_type for e in start_output.events] == [TOPIC_PROD_GATE_EVALUATE]
-    gate_command = start_output.events[0].payload
-    assert isinstance(gate_command, ModelProdPromotionGateCommand)
-    # The orchestrator MUST NOT have authored a grant from the start request.
-    assert gate_command.promotion_grant is None
 
-    # Resolver boundary (Phase-2b, simulated): stamp the out-of-band grant + the
-    # deterministic evaluated_at onto the gate command before the gate compute.
-    gate_command = gate_command.model_copy(
-        update={"promotion_grant": grant, "evaluated_at": evaluated_at}
-    )
+    if start.runtime_lane is EnumRuntimeLane.PROD:
+        assert [e.event_type for e in start_output.events] == [TOPIC_GRANT_RESOLVE]
+        resolve_command = start_output.events[0].payload
+        assert isinstance(resolve_command, ModelProdPromotionGrantResolveCommand)
+
+        # Resolver boundary (Phase-2b, simulated): the resolver reads the grant
+        # from onex_change_control@main and emits the resolved fact. ``grant``
+        # stands in for what the durable anchor yields; ``None`` simulates an
+        # absent/rejected grant.
+        resolved_event = ModelProdPromotionGrantResolvedEvent(
+            correlation_id=resolve_command.correlation_id,
+            resolution=(
+                EnumGrantResolution.RESOLVED
+                if grant is not None
+                else EnumGrantResolution.ABSENT
+            ),
+            grant=grant,
+            evaluated_at=evaluated_at,
+            provenance=ModelGrantProvenance(
+                source_commit_sha="0" * 40,
+                grant_id=grant.grant_id if grant is not None else None,
+                file_sha256="0" * 64,
+                codeowners_match=True,
+            ),
+        )
+        resolved_envelope: ModelEventEnvelope[dict[str, object]] = ModelEventEnvelope(
+            payload={
+                "resolved": resolved_event.model_dump(mode="json"),
+                "start": start.model_dump(mode="json"),
+            },
+            correlation_id=start.correlation_id,
+            event_type="onex.evt.omnimarket.prod-promotion-grant-resolved.v1",
+        )
+        resolved_output = await orchestrator.handle(resolved_envelope)
+        gate_events = resolved_output.events
+    else:
+        # Non-prod: the start emits the gate-evaluate command directly.
+        gate_events = start_output.events
+
+    assert [e.event_type for e in gate_events] == [TOPIC_PROD_GATE_EVALUATE]
+    gate_command = gate_events[0].payload
+    assert isinstance(gate_command, ModelProdPromotionGateCommand)
+    if start.runtime_lane is EnumRuntimeLane.PROD:
+        # The gate command carries ONLY the out-of-band resolved grant
+        # (round-tripped through the resolved event, so compare by value).
+        assert gate_command.promotion_grant == grant
 
     # Edge 2: gate COMPUTE evaluates the command.
     gate_envelope: ModelEventEnvelope[ModelProdPromotionGateCommand] = (
@@ -214,10 +257,10 @@ class TestProdGrantBoundaryDispatch:
         """A redeploy-start request cannot self-supply a valid promotion grant.
 
         The orchestrator MUST NOT forward a caller-supplied grant from the start
-        command into the gate command — the grant is resolved out-of-band (Phase
-        2b resolver), never authored by the same request it authorizes. If a
-        start request smuggles a grant, the gate command carries no grant and
-        prod fails closed.
+        command — the grant is resolved out-of-band (Phase 2b resolver), never
+        authored by the same request it authorizes. A prod start emits a
+        grant-RESOLVE command which has no grant field at all, so a smuggled grant
+        cannot ride through; the resolver reads the durable anchor on @main.
         """
         smuggled = _grant(approved_by=_REQUESTER)  # self-grant attempt
         start = ModelRedeployStartCommand(
@@ -238,17 +281,20 @@ class TestProdGrantBoundaryDispatch:
             event_type="onex.cmd.omnimarket.redeploy-start.v1",
         )
         output = await orchestrator.handle(envelope)
-        gate_command = output.events[0].payload
-        assert isinstance(gate_command, ModelProdPromotionGateCommand)
-        # The start request cannot inject authorization: the gate command has no grant.
-        assert gate_command.promotion_grant is None
+        resolve_command = output.events[0].payload
+        # The start request cannot inject authorization: the resolve command has
+        # no grant field — only the request key + requester ride through.
+        assert isinstance(resolve_command, ModelProdPromotionGrantResolveCommand)
+        assert not hasattr(resolve_command, "promotion_grant")
+        assert resolve_command.requested_by == _REQUESTER
 
     async def test_orchestrator_resolves_grant_before_gate_command(self) -> None:
-        """The orchestrator emits the gate-evaluate command BEFORE any deploy.
+        """A prod redeploy-start resolves the grant BEFORE the gate or any deploy.
 
-        Edge 1 must be the gate-evaluate command (not a deploy-publish command):
-        the gate runs before the deploy effect, so a missing/invalid grant blocks
-        prod before the agent is ever invoked.
+        Edge 1 must be the grant-RESOLVE command (not a gate-evaluate or a
+        deploy-publish command): the grant is read from the durable anchor before
+        the gate runs, so a missing/invalid grant blocks prod before the agent is
+        ever invoked.
         """
         start = _start()
         orchestrator = HandlerRedeployOrchestrator()
@@ -258,8 +304,10 @@ class TestProdGrantBoundaryDispatch:
             event_type="onex.cmd.omnimarket.redeploy-start.v1",
         )
         output = await orchestrator.handle(envelope)
-        assert [e.event_type for e in output.events] == [TOPIC_PROD_GATE_EVALUATE]
-        assert TOPIC_DEPLOY_PUBLISH not in [e.event_type for e in output.events]
+        emitted = [e.event_type for e in output.events]
+        assert emitted == [TOPIC_GRANT_RESOLVE]
+        assert TOPIC_PROD_GATE_EVALUATE not in emitted
+        assert TOPIC_DEPLOY_PUBLISH not in emitted
 
     async def test_prod_gate_blocks_missing_grant(self) -> None:
         decision, events = await _drive_dispatch(_start(), grant=None)

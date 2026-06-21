@@ -1,0 +1,24 @@
+name: node_prod_promotion_grant_resolver_effect
+version: "1.0.0"
+description: "Resolve the prod promotion grant from onex_change_control@main."
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_prod_promotion_grant_resolver_effect: "omnimarket.nodes.node_prod_promotion_grant_resolver_effect"
+capabilities:
+  standalone: false
+  full_runtime: true
+  requires_network: true
+  requires_repo: false
+  requires_secrets: true
+  requires_docker: false
+  side_effect_class: read_only
+dependencies:
+  - "omnibase_core>=0.39.0"
+  - "pyyaml>=6.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["effect", "deploy", "promotion-gate", "prod", "grant-resolver", "OMN-13439"]
+pack: "release"
+display_name: "Prod Promotion Grant Resolver Effect"
+node_role: "effect"
