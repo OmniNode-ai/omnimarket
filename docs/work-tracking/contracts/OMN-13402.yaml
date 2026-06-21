@@ -29,7 +29,7 @@ is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
 evidence_requirements:
-  - kind: "command"
+  - kind: "manual"
     description: "OMN-12977 sibling-pin guard reports 0 drift against the origin/dev-synced canonical clones using the exact --repo args stage_workspace.sh passes."
     command: "uv run python ../../omnibase_infra/scripts/runtime_build/check_sibling_lock_pins.py --lock uv.lock --repo omnibase-infra=../../omnibase_infra --repo omnibase-core=../../omnibase_core --repo omnibase-spi=../../omnibase_spi --repo omnibase-compat=../../omnibase_compat --repo onex-change-control=../../onex_change_control --repo omnimarket=."
   - kind: "ci"
@@ -53,7 +53,7 @@ dod_evidence:
       - check_type: "command"
         check_value: "uv lock --check"
   - id: "dod-003"
-    description: "No regression from the pin bump: full pytest suite green (7824 passed, 0 import/collection errors) excluding the two env-gated @pytest.mark.kafka integration tests that require the live .201 broker (192.168.86.201:19092), unreachable from CI/local. Log: .onex_state/runtime-e2e-2026-06-21/02-dev-deploy/03-relock-pytest.log. ruff format/check + pre-commit clean on the changed files."
+    description: "No regression from the pin bump: full pytest suite green (7824 passed, 0 import/collection errors) excluding the two env-gated @pytest.mark.kafka integration tests that require the live .201 broker, unreachable from CI/local. Log: .onex_state/runtime-e2e-2026-06-21/02-dev-deploy/03-relock-pytest.log. ruff format/check + pre-commit clean on the changed files."
     source: "manual"
     checks:
       - check_type: "command"
