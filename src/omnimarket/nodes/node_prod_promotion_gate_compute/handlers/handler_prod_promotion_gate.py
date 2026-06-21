@@ -74,6 +74,12 @@ def evaluate_gate(
             reason=digest_gate.reason,
         )
 
+    if command.evaluated_at is None:
+        raise ValueError(
+            "prod promotion gate requires a deterministic evaluated_at stamped by "
+            "the orchestrator/runtime; the compute never calls datetime.now()"
+        )
+
     return evaluate_prod_promotion_gate(
         ModelProdPromotionInputs(
             requested_image_digest=command.requested_image_digest,
@@ -81,6 +87,9 @@ def evaluate_gate(
             readiness_projection=command.readiness_projection,
             occ_gate_state=command.occ_gate_state,
             rollback_target=rollback_target,
+            requested_by=command.requested_by,
+            promotion_grant=command.promotion_grant,
+            evaluated_at=command.evaluated_at,
         )
     )
 

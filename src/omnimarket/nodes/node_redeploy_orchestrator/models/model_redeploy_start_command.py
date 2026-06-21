@@ -20,6 +20,7 @@ from omnimarket.events.runtime_deployment import (
     EnumOccGateState,
     EnumRedeployScope,
     EnumRuntimeLane,
+    ModelProdPromotionGrant,
     ModelReadinessProjectionFact,
 )
 
@@ -82,6 +83,15 @@ class ModelRedeployStartCommand(BaseModel):
     rollback_target: str | None = Field(
         default=None,
         description="Known previous-good digest for the prod rollback path.",
+    )
+    promotion_grant: ModelProdPromotionGrant | None = Field(
+        default=None,
+        description=(
+            "Caller-attached grant, if any. The orchestrator DROPS this: a "
+            "promotion grant is resolved out-of-band (Phase-2b resolver), never "
+            "authored by the request it authorizes. Present here only so an "
+            "attempted self-grant is observably discarded."
+        ),
     )
 
 

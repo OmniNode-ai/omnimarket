@@ -512,6 +512,21 @@ _OCC_SATISFIED: frozenset[EnumOccGateState] = frozenset(
 )
 
 
+class EnumProdGrantReason(StrEnum):
+    """Typed prod-promotion authorization-grant failure reasons (OMN-13436).
+
+    Emitted verbatim in the gate decision reason so consumers can branch on the
+    exact authorization failure mode without parsing free text.
+    """
+
+    MISSING_PROMOTION_GRANT = "missing_promotion_grant"
+    EXPIRED_PROMOTION_GRANT = "expired_promotion_grant"
+    GRANT_LANE_MISMATCH = "grant_lane_mismatch"
+    GRANT_DIGEST_MISMATCH = "grant_digest_mismatch"
+    GRANT_BATCH_MISMATCH = "grant_batch_mismatch"
+    SELF_GRANTED = "self_granted"
+
+
 class ModelReadinessProjectionFact(BaseModel):
     """A stability-test readiness fact read from the reducer-owned projection.
 
@@ -552,6 +567,51 @@ class ModelReadinessProjectionFact(BaseModel):
         )
 
 
+class ModelProdPromotionGrant(BaseModel):
+    """An approver-issued authorization grant for one prod promotion (OMN-13436).
+
+    The keystone fact of the prod-promotion authorization gate. A grant is issued
+    out-of-band by an approver (resolved by the Phase-2b grant resolver EFFECT,
+    never authored by the redeploy request it authorizes) and pins the exact lane,
+    image digest, and promotion batch it authorizes. ``expires_at`` is an
+    approver-set ABSOLUTE timestamp (not a 30-minute relative TTL): the prod gate
+    fails closed once the deterministic ``evaluated_at`` passes it.
+
+    Known follow-on gap (NOT closed by this model): the requester identity threaded
+    into the gate is forgeable, so ``approved_by != requested_by`` is an
+    anti-self-grant check, NOT cryptographic two-person integrity.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    grant_id: str = Field(
+        ..., min_length=1, description="Stable identifier for the authorization grant."
+    )
+    approved_lane: EnumRuntimeLane = Field(
+        ..., description="Lane the grant authorizes; must be PROD for a prod gate."
+    )
+    approved_image_digest: str = Field(
+        ...,
+        min_length=1,
+        description="Exact image digest the grant authorizes for promotion.",
+    )
+    approved_promotion_batch_id: str = Field(
+        ...,
+        min_length=1,
+        description="Promotion batch the grant authorizes.",
+    )
+    approved_by: str = Field(
+        ...,
+        min_length=1,
+        description="Approver identity; must differ from the requester (anti-self-grant).",
+    )
+    created_at: datetime = Field(..., description="When the approver issued the grant.")
+    expires_at: datetime = Field(
+        ...,
+        description="Approver-set ABSOLUTE expiry; the gate fails closed once past it.",
+    )
+
+
 class ModelProdPromotionInputs(BaseModel):
     """All deterministic facts the prod promotion gate consults."""
 
@@ -576,6 +636,22 @@ class ModelProdPromotionInputs(BaseModel):
     rollback_target: str | None = Field(
         default=None,
         description="Known previous-good digest restored on failed post-deploy health.",
+    )
+    requested_by: str = Field(
+        default="node_redeploy_orchestrator",
+        description="Identity that requested the promotion; gated against the grant approver.",
+    )
+    promotion_grant: ModelProdPromotionGrant | None = Field(
+        default=None,
+        description="Approver-issued authorization grant; None means the prod gate fails closed.",
+    )
+    evaluated_at: datetime = Field(
+        ...,
+        description=(
+            "Deterministic evaluation timestamp threaded in by the orchestrator/"
+            "runtime; compared against the grant's absolute expiry. NEVER "
+            "datetime.now() inside the compute."
+        ),
     )
 
 
@@ -684,15 +760,113 @@ def evaluate_prod_promotion_gate(
             reason="prod promotion requires a known rollback target",
         )
 
+    # OMN-13436: prod-promotion authorization gate. After the technical checks
+    # pass, prod additionally requires an approver-issued promotion grant. The
+    # gate fails CLOSED — no grant, or a grant that does not satisfy every field,
+    # blocks promotion. dev/stability never reach this function (the compute node
+    # short-circuits non-prod lanes), so their behavior is byte-for-byte unchanged.
+    grant_block = _evaluate_promotion_grant(inputs)
+    if grant_block is not None:
+        return grant_block
+
     return ModelProdPromotionGateDecision(
         allowed=True,
         image_digest=digest_gate.image_digest,
         rollback_target=inputs.rollback_target,
         reason=(
             "readiness projection READY for matching digest and batch, OCC "
-            "evidence durable, rollback target known; prod reuses the "
-            "stability digest (no rebuild)"
+            "evidence durable, rollback target known, promotion grant authorized; "
+            "prod reuses the stability digest (no rebuild)"
         ),
+    )
+
+
+def _evaluate_promotion_grant(
+    inputs: ModelProdPromotionInputs,
+) -> ModelProdPromotionGateDecision | None:
+    """Authorize a prod promotion against its approver-issued grant.
+
+    Returns a BLOCKED decision (with a typed ``EnumProdGrantReason``) when the
+    grant is absent or fails any condition; returns ``None`` when the grant fully
+    authorizes the request so the caller proceeds to allow.
+
+    The grant must satisfy ALL of: ``approved_lane == PROD``, digest match, batch
+    match, ``approved_by != requested_by`` (anti-self-grant), and
+    ``evaluated_at <= expires_at`` (absolute expiry, inclusive boundary).
+    """
+    grant = inputs.promotion_grant
+    if grant is None:
+        return _grant_blocked(
+            inputs,
+            EnumProdGrantReason.MISSING_PROMOTION_GRANT,
+            "prod promotion requires an approver-issued promotion grant; none present",
+        )
+
+    if grant.approved_lane is not EnumRuntimeLane.PROD:
+        return _grant_blocked(
+            inputs,
+            EnumProdGrantReason.GRANT_LANE_MISMATCH,
+            (
+                "promotion grant authorizes a different lane "
+                f"({grant.approved_lane.value!r} != prod)"
+            ),
+        )
+
+    if grant.approved_image_digest != inputs.requested_image_digest:
+        return _grant_blocked(
+            inputs,
+            EnumProdGrantReason.GRANT_DIGEST_MISMATCH,
+            (
+                "promotion grant digest does not match the request "
+                f"({grant.approved_image_digest!r} != {inputs.requested_image_digest!r})"
+            ),
+        )
+
+    if grant.approved_promotion_batch_id != inputs.promotion_batch_id:
+        return _grant_blocked(
+            inputs,
+            EnumProdGrantReason.GRANT_BATCH_MISMATCH,
+            (
+                "promotion grant batch does not match the request "
+                f"({grant.approved_promotion_batch_id!r} != {inputs.promotion_batch_id!r})"
+            ),
+        )
+
+    if grant.approved_by == inputs.requested_by:
+        return _grant_blocked(
+            inputs,
+            EnumProdGrantReason.SELF_GRANTED,
+            (
+                "promotion grant approver equals the requester "
+                f"({grant.approved_by!r}); self-granted promotions are blocked"
+            ),
+        )
+
+    if inputs.evaluated_at > grant.expires_at:
+        return _grant_blocked(
+            inputs,
+            EnumProdGrantReason.EXPIRED_PROMOTION_GRANT,
+            (
+                "promotion grant has expired "
+                f"(evaluated_at={inputs.evaluated_at.isoformat()} > "
+                f"expires_at={grant.expires_at.isoformat()})"
+            ),
+        )
+
+    return None
+
+
+def _grant_blocked(
+    inputs: ModelProdPromotionInputs,
+    reason: EnumProdGrantReason,
+    detail: str,
+) -> ModelProdPromotionGateDecision:
+    """Build a BLOCKED decision carrying a typed grant-failure reason verbatim."""
+    return ModelProdPromotionGateDecision(
+        allowed=False,
+        image_digest=None,
+        rollback_target=inputs.rollback_target,
+        reason=f"{reason.value}: {detail}",
     )
 
 
@@ -949,6 +1123,25 @@ class ModelProdPromotionGateCommand(BaseModel):
         default=None,
         description="Previous known-good image used as the rollback target fallback.",
     )
+    requested_by: str = Field(
+        default="node_redeploy_orchestrator",
+        description="Identity that requested the promotion; gated against the grant approver.",
+    )
+    promotion_grant: ModelProdPromotionGrant | None = Field(
+        default=None,
+        description=(
+            "Approver-issued authorization grant resolved out-of-band (Phase-2b "
+            "resolver). None means the prod gate fails closed."
+        ),
+    )
+    evaluated_at: datetime | None = Field(
+        default=None,
+        description=(
+            "Deterministic evaluation timestamp stamped by the orchestrator/"
+            "runtime; threaded into the gate so the compute never calls "
+            "datetime.now(). Required for the prod grant expiry check."
+        ),
+    )
 
 
 class ModelDeployPublishCommand(BaseModel):
@@ -1006,6 +1199,7 @@ __all__ = [
     "EnumBuildSource",
     "EnumOccGateState",
     "EnumPhaseResult",
+    "EnumProdGrantReason",
     "EnumRedeployPhase",
     "EnumRedeployScope",
     "EnumRedeployStatus",
@@ -1019,6 +1213,7 @@ __all__ = [
     "ModelProdGateDecision",
     "ModelProdPromotionGateCommand",
     "ModelProdPromotionGateDecision",
+    "ModelProdPromotionGrant",
     "ModelProdPromotionInputs",
     "ModelReadinessProjectionFact",
     "ModelRedeployCommand",

@@ -106,6 +106,12 @@ class HandlerRedeployOrchestrator:
     ) -> list[ModelEventEnvelope[Any]]:
         """Emit the prod-gate-evaluate command for a redeploy-start request."""
         start = _coerce_start(envelope.payload, correlation_id)
+        # OMN-13436: the promotion grant is resolved OUT-OF-BAND (Phase-2b resolver
+        # EFFECT) and is NEVER carried from the start request — a request cannot
+        # author the authorization that approves it. The gate command leaves
+        # ``promotion_grant`` and ``evaluated_at`` unset here; the resolver/runtime
+        # stamps them before the gate compute runs. ``requested_by`` IS threaded so
+        # the gate can enforce ``approved_by != requested_by``.
         gate_command = ModelProdPromotionGateCommand(
             correlation_id=start.correlation_id,
             runtime_lane=start.runtime_lane,
@@ -115,6 +121,7 @@ class HandlerRedeployOrchestrator:
             occ_gate_state=start.occ_gate_state,
             rollback_target=start.rollback_target,
             previous_image=start.previous_image,
+            requested_by=start.requested_by,
         )
         return [
             ModelEventEnvelope(
