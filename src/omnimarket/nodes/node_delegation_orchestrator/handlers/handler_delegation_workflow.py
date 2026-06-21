@@ -37,6 +37,7 @@ from omnibase_core.models.delegation.model_agent_task_lifecycle_event import (
 from omnibase_core.models.delegation.model_invocation_command import (
     ModelInvocationCommand,
 )
+from omnibase_core.models.delegation.wire import ModelPremiumCounterfactual
 from omnibase_core.models.dispatch.model_handler_output import ModelHandlerOutput
 from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
 from pydantic import BaseModel
@@ -111,9 +112,11 @@ from omnimarket.nodes.node_delegation_routing_reducer.models.model_routing_decis
     ModelRoutingDecision,
 )
 from omnimarket.pricing import (
+    ModelActualCostMeasurement,
     build_premium_counterfactual,
     estimate_baseline_cost_usd,
     get_manifest_version_int,
+    recompute_actual_cost_and_savings,
 )
 
 # Max tier escalation attempts for infra errors (auth, timeout, connection refused).
@@ -741,6 +744,17 @@ class HandlerDelegationWorkflow:
                 workflow,
                 terminal_failure_reason=terminal_failure_reason,
             )
+            # OMN-13396: price the failed attempt's measured tokens through the
+            # serving tier's typed cost model instead of hardcoding cost_usd=0.0.
+            # No premium counterfactual on the failure path (no accepted result to
+            # bank a saving against), so cost_savings_usd stays 0.0 — but cost_usd
+            # is the real metered cost the failed inference still incurred.
+            failed_cost = self._measure_terminal_cost(
+                tier_name=workflow.current_tier_name or "",
+                prompt_tokens=response.prompt_tokens,
+                completion_tokens=response.completion_tokens,
+                premium_counterfactual=None,
+            )
             delegation_result = ModelDelegationResult(
                 correlation_id=response.correlation_id,
                 task_type=workflow.request.task_type,
@@ -769,8 +783,12 @@ class HandlerDelegationWorkflow:
                 model_name=workflow.routing_decision.selected_model,
                 quality_gate_passed=False,
                 quality_gates_failed=[response.error_message],
-                cost_usd=0.0,
+                cost_usd=failed_cost.cash_cost_usd,
                 cost_savings_usd=0.0,
+                cost_tier_type=failed_cost.cost_tier_type,
+                cost_tier_name=failed_cost.cost_tier_name,
+                cost_measurement_source=failed_cost.cost_measurement_source,
+                budget_headroom_consumed_usd=failed_cost.headroom_consumed_usd,
                 delegation_latency_ms=elapsed_ms,
                 llm_call_id=response.llm_call_id,
                 tokens_to_compliance=workflow.accumulated_tokens,
@@ -939,6 +957,16 @@ class HandlerDelegationWorkflow:
                 prompt_tokens=workflow.inference_prompt_tokens,
                 completion_tokens=workflow.inference_completion_tokens,
             )
+            # OMN-13396: the candidate (delegated tier) cost is the MEASURED actual
+            # cost of the served tokens, not a hardcoded 0.0. free_local -> 0.0;
+            # metered -> rate x measured tokens. Same typed-tier-cost computation
+            # the projection uses, so baseline-vs-candidate is an honest delta.
+            candidate_cost = self._measure_terminal_cost(
+                tier_name=workflow.current_tier_name or "",
+                prompt_tokens=workflow.inference_prompt_tokens,
+                completion_tokens=workflow.inference_completion_tokens,
+                premium_counterfactual=None,
+            )
 
             compat_event = self._build_compat_event(
                 workflow,
@@ -962,7 +990,7 @@ class HandlerDelegationWorkflow:
                     correlation_id=cid,
                     task_type=workflow.request.task_type,
                     baseline_cost_usd=estimated_claude_cost,
-                    candidate_cost_usd=0.0,
+                    candidate_cost_usd=candidate_cost.cash_cost_usd,
                     prompt_tokens=workflow.inference_prompt_tokens,
                     completion_tokens=workflow.inference_completion_tokens,
                     total_tokens=workflow.inference_total_tokens,
@@ -1195,6 +1223,37 @@ class HandlerDelegationWorkflow:
         }
 
     @staticmethod
+    def _measure_terminal_cost(
+        *,
+        tier_name: str,
+        prompt_tokens: int,
+        completion_tokens: int,
+        premium_counterfactual: ModelPremiumCounterfactual | None,
+    ) -> ModelActualCostMeasurement:
+        """Measure a terminal event's actual cost from the typed tier cost model.
+
+        OMN-13396. The terminal-event construction points (delegate-skill-terminal
+        compat events + the baseline intent) previously hardcoded ``cost_usd=0.0``,
+        so the live delegation/SEA chain persisted a zero actual cost and the
+        savings number was ``counterfactual - 0`` — the full counterfactual,
+        overstated by the serving tier's real (non-zero, for metered) cost.
+
+        This mirrors the projection's ``_measure_actual_cost`` exactly by reusing
+        the SAME canonical computation (``recompute_actual_cost_and_savings``):
+        the serving tier's typed cost model (``ModelTierCost`` /
+        ``EnumTierCostType`` from OMN-13234) resolved by tier name from the
+        canonical routing registry, priced against the measured token counts —
+        ``free_local`` → 0.0, ``metered`` → ``rate_per_1k_usd * tokens / 1000``.
+        No parallel formula, no hardcoded 0.0.
+        """
+        return recompute_actual_cost_and_savings(
+            tier_name=tier_name,
+            prompt_tokens=prompt_tokens,
+            completion_tokens=completion_tokens,
+            premium_counterfactual=premium_counterfactual,
+        )
+
+    @staticmethod
     def _routing_tiers_hash() -> str | None:
         """SHA-256 of routing_tiers.yaml for replay determinism."""
         config_path = (
@@ -1223,10 +1282,6 @@ class HandlerDelegationWorkflow:
         assert workflow.routing_decision is not None
         assert workflow.inference_model_used is not None
 
-        estimated_claude_cost = estimate_baseline_cost_usd(
-            prompt_tokens=workflow.inference_prompt_tokens,
-            completion_tokens=workflow.inference_completion_tokens,
-        )
         # OMN-13355: pin the premium counterfactual so cost_savings_usd
         # (= counterfactual_cost_usd - cost_usd) is auditable rather than an opaque
         # estimate. The pinned price + as_of come from the canonical pricing
@@ -1234,6 +1289,18 @@ class HandlerDelegationWorkflow:
         premium_counterfactual = build_premium_counterfactual(
             prompt_tokens=workflow.inference_prompt_tokens,
             completion_tokens=workflow.inference_completion_tokens,
+        )
+        # OMN-13396: price the served tokens through the serving tier's typed cost
+        # model and bank the HONEST saving (counterfactual - measured actual),
+        # mirroring the projection's recompute. cost_usd is the measured actual
+        # (free_local -> 0.0; metered -> rate x tokens), not a hardcoded 0.0, so a
+        # later projection over this terminal event no longer reads counterfactual
+        # minus zero.
+        measured_cost = self._measure_terminal_cost(
+            tier_name=workflow.current_tier_name or "",
+            prompt_tokens=workflow.inference_prompt_tokens,
+            completion_tokens=workflow.inference_completion_tokens,
+            premium_counterfactual=premium_counterfactual,
         )
 
         history_dicts = tuple(
@@ -1265,8 +1332,12 @@ class HandlerDelegationWorkflow:
             quality_gate_passed=accepted,
             quality_gates_checked=quality_gates_checked,
             quality_gates_failed=[] if accepted else list(result.failure_reasons),
-            cost_usd=0.0,
-            cost_savings_usd=round(estimated_claude_cost, 6),
+            cost_usd=measured_cost.cash_cost_usd,
+            cost_savings_usd=round(measured_cost.cost_savings_usd, 6),
+            cost_tier_type=measured_cost.cost_tier_type,
+            cost_tier_name=measured_cost.cost_tier_name,
+            cost_measurement_source=measured_cost.cost_measurement_source,
+            budget_headroom_consumed_usd=measured_cost.headroom_consumed_usd,
             delegation_latency_ms=elapsed_ms,
             llm_call_id=workflow.inference_llm_call_id,
             tokens_to_compliance=tokens_to_compliance,
@@ -1328,6 +1399,19 @@ class HandlerDelegationWorkflow:
             failure_reason=failure_reason,
         )
 
+        # OMN-13396: the remote-agent (A2A) lifecycle carries no token counts and
+        # no serving tier — it is not a tier-routed LLM inference. Route it through
+        # the same typed-tier-cost measurement so the zero is PROVEN by the cost
+        # model (no_cost_model provenance) rather than a silent hardcoded 0.0:
+        # measure_terminal_cost with the (unset) tier resolves to no_cost_model and
+        # deterministically yields cash_cost_usd == 0.0.
+        agent_cost = self._measure_terminal_cost(
+            tier_name=workflow.current_tier_name or "",
+            prompt_tokens=0,
+            completion_tokens=0,
+            premium_counterfactual=None,
+        )
+
         compat_event = ModelTaskDelegatedEvent(
             topic=TOPIC_ID_TASK_DELEGATED,
             timestamp=datetime.now(UTC).isoformat(),
@@ -1339,8 +1423,12 @@ class HandlerDelegationWorkflow:
             quality_gate_passed=next_state is EnumDelegationState.COMPLETED,
             quality_gates_checked=["agent-task-lifecycle"],
             quality_gates_failed=[failure_reason] if failure_reason else [],
-            cost_usd=0.0,
+            cost_usd=agent_cost.cash_cost_usd,
             cost_savings_usd=0.0,
+            cost_tier_type=agent_cost.cost_tier_type,
+            cost_tier_name=agent_cost.cost_tier_name,
+            cost_measurement_source=agent_cost.cost_measurement_source,
+            budget_headroom_consumed_usd=agent_cost.headroom_consumed_usd,
             delegation_latency_ms=elapsed_ms,
             llm_call_id=lifecycle_event.remote_task_handle or "",
         )
