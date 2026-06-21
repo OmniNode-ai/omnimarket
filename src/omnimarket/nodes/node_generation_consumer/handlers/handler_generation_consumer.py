@@ -31,7 +31,7 @@ import time
 from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol, cast
 from urllib.parse import urlsplit
 from uuid import uuid4
 
@@ -112,6 +112,17 @@ _MODEL_ROUTING_INFERENCE_EXTRA_BODY_KEY = "inference_extra_body"
 _MODEL_ROUTING_TASK_TYPE_KEY = "task_type"
 _DEFAULT_GENERATION_TASK_TYPE = "code_generation"
 
+
+class _RoutingDecision(Protocol):
+    """Structural view of the routing authority decision consumed here."""
+
+    tier_name: str
+    selected_model: str
+    endpoint_url: str
+    api_key_ref: str | None
+    max_tokens: int
+
+
 # OMN-12829 (C1): tiers whose escalated decision is classified as a local
 # provider. Mirrors the routing reducer's _LOCAL_TIERS so the escalation event's
 # provider field is derived from the authority's tier, not a code literal.
@@ -167,6 +178,60 @@ def _load_contract(path: Path | None = None) -> dict[str, Any]:
     with open(p) as f:
         data: dict[str, Any] = yaml.safe_load(f)
     return data
+
+
+class ModelActiveRoute(BaseModel):
+    """The model/endpoint the generation run is CURRENTLY routing to (OMN-13359).
+
+    Generation rides the delegation routing ladder: the first attempt starts on
+    the contract-declared starting tier, and each quality-gate (contract-
+    validation) failure escalates the active route to the next tier via the
+    routing authority (``node_delegation_routing_reducer.delta``). The next
+    attempt then calls the escalated model — generation never picks the model
+    itself; the authority owns selection.
+
+    ``provider`` / ``served_model_id`` / ``endpoint_ref`` drive the per-attempt
+    benchmark record. On the STARTING route they are the contract-declared values
+    and ``authority_resolved`` is False, so ``_call_llm`` resolves the concrete
+    endpoint URL + secret ref via ``resolve_generation_endpoint`` exactly as
+    before (preserving the contract-declared first-attempt behavior). After an
+    escalation the route carries the authority's concrete ``endpoint_url`` /
+    ``api_key_ref`` / ``max_tokens`` verbatim and ``authority_resolved`` is True,
+    so ``_call_llm`` posts to the escalated tier's endpoint with no re-resolution.
+
+    Attributes:
+        tier_name: Routing-tier name this route belongs to (e.g. "local",
+            "cheap_cloud", "claude"). The escalation handle, sourced from the
+            authority's ``ModelRoutingDecision.tier_name`` (or the contract's
+            starting tier resolved via ``tier_for_backend``).
+        provider: Provider classification for cost basis ("local" for local
+            tiers, "cloud" otherwise on escalated routes; the contract value on
+            the starting route).
+        served_model_id: Model id sent on the wire for this attempt.
+        endpoint_ref: Bifrost backend id for the starting route (used to resolve
+            the endpoint via ``resolve_generation_endpoint``). Empty on an
+            authority-resolved escalated route, which carries the concrete URL.
+        authority_resolved: True when this route was produced by the routing
+            authority's ``delta`` (escalated). False on the contract-declared
+            starting route.
+        endpoint_url: Concrete endpoint URL the authority resolved (escalated
+            routes only). Empty on the starting route.
+        api_key_ref: Secret-store reference the authority resolved (escalated
+            routes only). ``None`` for local/unauthenticated backends.
+        max_tokens: Output-token ceiling the authority resolved (escalated routes
+            only). ``None`` on the starting route (resolved at call time).
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    tier_name: str = Field(..., min_length=1)
+    provider: str = Field(..., min_length=1)
+    served_model_id: str = Field(..., min_length=1)
+    endpoint_ref: str = Field(default="")
+    authority_resolved: bool = Field(default=False)
+    endpoint_url: str = Field(default="")
+    api_key_ref: str | None = Field(default=None)
+    max_tokens: int | None = Field(default=None)
 
 
 class ModelResolvedEndpoint(BaseModel):
@@ -705,6 +770,94 @@ class HandlerGenerationConsumer:
             dict(extra_body) if isinstance(extra_body, dict) else {}
         )
 
+        # OMN-13359: the model/endpoint the run is currently routing to. The
+        # STARTING route is the contract-declared tier (resolved lazily in
+        # handle()); each quality-gate failure advances it to the next tier via
+        # the routing authority so the next attempt rides the ladder. Initialised
+        # to None and built once per run so per-run escalation state never leaks
+        # across requests on a reused handler instance.
+        self._active_route: ModelActiveRoute | None = None
+
+    def _starting_route(self) -> ModelActiveRoute:
+        """Build the contract-declared STARTING route (OMN-13359).
+
+        Attempt #1 routes to exactly what the contract declares — provider,
+        served_model_id, endpoint_ref — with ``authority_resolved=False`` so
+        ``_call_llm`` resolves the concrete endpoint via
+        ``resolve_generation_endpoint`` (unchanged first-attempt behavior). The
+        tier name is resolved from the routing authority's parsed
+        routing_tiers.yaml via ``tier_for_backend`` (single parsing path); it
+        falls back to the contract provider only when the endpoint_ref maps to no
+        tier, so the route is always constructible.
+        """
+        starting_tier = tier_for_backend(self._endpoint_ref) or self._provider
+        return ModelActiveRoute(
+            tier_name=starting_tier,
+            provider=self._provider,
+            served_model_id=self._served_model_id,
+            endpoint_ref=self._endpoint_ref,
+            authority_resolved=False,
+        )
+
+    def _escalate_route(
+        self,
+        *,
+        task_description: str,
+        failed_attempt_number: int,
+    ) -> ModelActiveRoute | None:
+        """Advance the active route one tier up the ladder via the authority.
+
+        OMN-13359: generation does not select the next model itself. This asks the
+        ROUTING AUTHORITY (``node_delegation_routing_reducer.delta``) for the
+        concrete model + endpoint of the next eligible tier and returns the new
+        active route. The next attempt's ``_call_llm`` posts to that endpoint.
+
+        Tier advancement integrates the per-tier retry budget (``max_retries``
+        from routing_tiers.yaml) exactly like the escalation event: a tier with
+        ``max_retries=N`` tolerates N failures before escalation advances one
+        tier, minimum one hop. Returns ``None`` when the ladder is exhausted or
+        the authority cannot resolve the escalated tier — the caller then keeps
+        the current route (the run continues on the same model rather than
+        crashing), preserving the resilience of the pre-OMN-13359 behavior.
+        """
+        current = self._active_route
+        if current is None:
+            return None
+
+        # Shared authority surface with the escalation PROOF event: the route the
+        # next attempt rides is the exact decision the proof records.
+        try:
+            decision = self._resolve_escalation_decision(
+                task_description=task_description,
+                failed_attempt_number=failed_attempt_number,
+            )
+        except Exception as exc:
+            # Resilience parity with _emit_escalation: a routing-config or
+            # resolution failure must not crash the generation run. Keep the
+            # current route and retry the same tier.
+            logger.warning(
+                "[generation-consumer] routing authority could not advance the "
+                "active route; keeping current route: %s",
+                exc,
+            )
+            return None
+
+        if decision is None or decision.tier_name == current.tier_name:
+            # Ladder exhausted, or the route is already on the target tier.
+            return None
+
+        provider = "local" if decision.tier_name in _LOCAL_TIER_NAMES else "cloud"
+        return ModelActiveRoute(
+            tier_name=decision.tier_name,
+            provider=provider,
+            served_model_id=decision.selected_model,
+            endpoint_ref="",
+            authority_resolved=True,
+            endpoint_url=decision.endpoint_url,
+            api_key_ref=decision.api_key_ref,
+            max_tokens=decision.max_tokens,
+        )
+
     def _ensure_effect(self) -> None:
         if self._effect is not None:
             return
@@ -752,6 +905,13 @@ class HandlerGenerationConsumer:
         if context_pack:
             user_content = f"Context:\n{context_pack}\n\n{user_content}"
 
+        # OMN-13359: route to the run's CURRENT active route (the contract tier
+        # on attempt #1, an authority-escalated tier afterward). Never re-read the
+        # static contract fields here — that is what kept generation pinned to the
+        # local model regardless of the ladder.
+        route = self._active_route
+        assert route is not None, "_active_route must be set before _call_llm"
+
         # OMN-12813: Apply inference protocol directives for the model.
         # task_type="node_generation" activates the local-qwen-generation-* profiles
         # declared in inference_protocols.v1.yaml, which add /no_think (user prefix)
@@ -760,7 +920,7 @@ class HandlerGenerationConsumer:
         system_prompt, user_content, _ = apply_inference_protocol(
             system_prompt=_DEFAULT_SYSTEM_PROMPT,
             prompt=user_content,
-            model=self._served_model_id,
+            model=route.served_model_id,
             task_type="node_generation",
         )
 
@@ -773,23 +933,40 @@ class HandlerGenerationConsumer:
                 ModelLlmInferenceRequest,
             )
 
-            # OMN-12801: resolve the COMPLETE endpoint URL + api_key reference
-            # per-model from the routing authority (bifrost delegation overlay
-            # keyed by endpoint_ref). No shared LLM_CODER_URL env. Fail-closed
-            # if any of the four fields cannot be resolved.
-            resolved = resolve_generation_endpoint(
-                endpoint_ref=self._endpoint_ref,
-                provider=self._provider,
-                served_model_id=self._served_model_id,
-            )
+            # OMN-13359: an authority-escalated route carries the concrete
+            # endpoint URL + secret ref + output ceiling the routing authority
+            # resolved (delta) — post to it verbatim with no re-resolution. The
+            # STARTING route (contract-declared, authority_resolved=False) is
+            # resolved per-model via resolve_generation_endpoint exactly as
+            # before (OMN-12801), so first-attempt behavior is unchanged.
+            if route.authority_resolved:
+                endpoint_url = route.endpoint_url
+                api_key_ref = route.api_key_ref
+                wire_model = route.served_model_id
+                assert route.max_tokens is not None
+                max_tokens = route.max_tokens
+            else:
+                # OMN-12801: resolve the COMPLETE endpoint URL + api_key reference
+                # per-model from the routing authority (bifrost delegation overlay
+                # keyed by endpoint_ref). No shared LLM_CODER_URL env. Fail-closed
+                # if any of the four fields cannot be resolved.
+                resolved = resolve_generation_endpoint(
+                    endpoint_ref=route.endpoint_ref,
+                    provider=route.provider,
+                    served_model_id=route.served_model_id,
+                )
+                endpoint_url = resolved.endpoint_url
+                api_key_ref = resolved.api_key_ref
+                wire_model = resolved.served_model_id
+                max_tokens = resolved.max_tokens
             # OMN-12775: record the COMPLETE resolved endpoint verbatim for the
             # evidence packet — the routing authority's value, never constructed.
-            self._resolved_endpoint = resolved.endpoint_url
+            self._resolved_endpoint = endpoint_url
             # OMN-12824: the routing decision carries only the api_key_ref
             # (the secret NAME), never the value. Resolve the secret VALUE at
             # the call boundary through the canonical secret store. Fail-closed:
             # a declared ref with no secret-store value raises.
-            resolved_secret = await resolve_api_key_async(resolved.api_key_ref)
+            resolved_secret = await resolve_api_key_async(api_key_ref)
             api_key = (
                 resolved_secret.get_secret_value()
                 if resolved_secret is not None
@@ -804,13 +981,12 @@ class HandlerGenerationConsumer:
             # routing/observability label (scheme://host), never the POST URL.
             # OMN-12813: system_prompt carries the inference-protocol-applied prompt
             # (one-shot exemplar + /no_think for Qwen), not the bare default.
-            endpoint_url = resolved.endpoint_url
             base_url = _endpoint_label(endpoint_url)
             request = ModelLlmInferenceRequest(
                 base_url=base_url,
                 endpoint_url=endpoint_url,
                 operation_type=EnumLlmOperationType.CHAT_COMPLETION,
-                model=resolved.served_model_id,
+                model=wire_model,
                 messages=(
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_content},
@@ -822,8 +998,9 @@ class HandlerGenerationConsumer:
                 # z.ai glm-4.5 truncates at its small server-side default
                 # (finish_reason=length, quality-gate score 0.0). The value is
                 # resolved from the bifrost backend (cloud-glm: 65536), never a
-                # hardcoded literal.
-                max_tokens=resolved.max_tokens,
+                # hardcoded literal. OMN-13359: on an escalated route this is the
+                # authority's per-tier ceiling, carried verbatim on the route.
+                max_tokens=max_tokens,
                 # OMN-12816: contract-declared inference params (e.g.
                 # chat_template_kwargs:{enable_thinking:false}) merged into the
                 # request body by the effect, suppressing Qwen reasoning so the
@@ -857,12 +1034,12 @@ class HandlerGenerationConsumer:
 
         self._ensure_effect()
 
-        # All four routing authorities come from the contract (OMN-12779): provider,
-        # served_model_id, endpoint_ref (used as endpoint_class), and routing_source.
-        # No literals, no env-var fallbacks.
-        model_id = self._served_model_id
-        provider = self._provider
-        endpoint_class = self._endpoint_ref
+        # OMN-13359: start the run on the contract-declared tier, then ride the
+        # routing ladder. The active route is re-pointed to the next tier (via the
+        # routing authority) on each quality-gate failure, so the NEXT attempt
+        # actually calls the escalated model. Reset per run so escalation state
+        # from a prior request never leaks on a reused handler instance.
+        self._active_route = self._starting_route()
 
         attempts: list[ModelGenerationAttempt] = []
         e2e_start = time.time()
@@ -886,6 +1063,21 @@ class HandlerGenerationConsumer:
 
         for attempt_num in range(1, command.max_attempts + 1):
             start = time.time()
+            # OMN-13359: capture the route this attempt rides BEFORE the call so
+            # the per-attempt record reflects the tier/model the ladder selected
+            # for this attempt (the contract tier on #1, an escalated tier after).
+            assert self._active_route is not None
+            attempt_route = self._active_route
+            attempt_provider = attempt_route.provider
+            attempt_model_id = attempt_route.served_model_id
+            # endpoint_class is the bifrost endpoint_ref on the contract route and
+            # the authority's tier name on an escalated route (the route's stable
+            # routing handle in each case).
+            attempt_endpoint_class = (
+                attempt_route.endpoint_ref
+                if attempt_route.endpoint_ref
+                else attempt_route.tier_name
+            )
             try:
                 (
                     raw_output,
@@ -959,9 +1151,9 @@ class HandlerGenerationConsumer:
             attempts.append(
                 ModelGenerationAttempt(
                     attempt_number=attempt_num,
-                    provider=provider,
-                    model_id=model_id,
-                    endpoint_class=endpoint_class,
+                    provider=attempt_provider,
+                    model_id=attempt_model_id,
+                    endpoint_class=attempt_endpoint_class,
                     token_usage_input=input_tokens,
                     token_usage_output=output_tokens,
                     latency_inference_ms=latency_ms,
@@ -1018,11 +1210,36 @@ class HandlerGenerationConsumer:
                     failed_attempt_number=attempt_num,
                     failure_errors=combined_errors,
                 )
+                # OMN-13359: actually RIDE the ladder. The escalation event above
+                # only RECORDS the authority's decision; here we re-point the
+                # run's active route to that escalated tier/model/endpoint so the
+                # NEXT attempt calls the escalated model. Before this, generation
+                # emitted an escalation proof but kept hammering the same local
+                # model every retry — the ladder was advisory, never effective.
+                # When the authority cannot advance (ladder exhausted / cannot
+                # resolve), the route is unchanged and the run retries the same
+                # tier (resilient, never crashes).
+                escalated_route = self._escalate_route(
+                    task_description=command.task_description,
+                    failed_attempt_number=attempt_num,
+                )
+                if escalated_route is not None:
+                    self._active_route = escalated_route
 
         total_latency_ms = int((time.time() - e2e_start) * 1000)
         total_input = sum(a.token_usage_input for a in attempts)
         total_output = sum(a.token_usage_output for a in attempts)
-        cost_usd = _calculate_cost(provider, total_input, total_output)
+        # OMN-13359: the run-level identity is the FINAL route the run ended on —
+        # the tier/model that produced the accepted (or last) artifact, not the
+        # contract starting tier. When the run never escalated this equals the
+        # contract values, so single-attempt behavior is unchanged. The last
+        # attempt record is the source of truth (it captured its own route).
+        run_provider = attempts[-1].provider if attempts else self._provider
+        run_model_id = attempts[-1].model_id if attempts else self._served_model_id
+        run_endpoint_class = (
+            attempts[-1].endpoint_class if attempts else self._endpoint_ref
+        )
+        cost_usd = _calculate_cost(run_provider, total_input, total_output)
         # OMN-12996: honest run-level provenance aggregated from the attempts'
         # provider-reported usage_source — never the old hardcoded ESTIMATED.
         usage_source = _aggregate_usage_source(attempts)
@@ -1034,11 +1251,11 @@ class HandlerGenerationConsumer:
         benchmark = ModelGenerationBenchmark(
             correlation_id=command.correlation_id,
             task_description=command.task_description,
-            provider=provider,
-            model_id=model_id,
-            endpoint_class=endpoint_class,
+            provider=run_provider,
+            model_id=run_model_id,
+            endpoint_class=run_endpoint_class,
             usage_source=usage_source,
-            cost_basis="gemini_flash" if provider != "local" else "local_free",
+            cost_basis="gemini_flash" if run_provider != "local" else "local_free",
             attempts=attempts,
             attempt_count=len(attempts),
             total_latency_e2e_ms=total_latency_ms,
@@ -1214,28 +1431,28 @@ class HandlerGenerationConsumer:
                 exc,
             )
 
-    def _build_escalation_event(
+    def _resolve_escalation_decision(
         self,
         *,
-        correlation_id: str,
         task_description: str,
         failed_attempt_number: int,
-        failure_errors: list[str],
-    ) -> ModelGenerationEscalationTriggeredEvent | None:
-        """Build the escalation proof from the ROUTING AUTHORITY's decision.
+    ) -> _RoutingDecision | None:
+        """Resolve the routing authority's escalated decision, or ``None``.
 
-        Architecture boundary (OMN-12829 C1): the generation consumer never picks
-        the next model itself. It advances through the routing authority's tier
-        ladder (one hop per exhausted per-tier ``max_retries`` budget from
-        routing_tiers.yaml, minimum one hop above the starting tier) and asks the
-        authority's ``delta`` to resolve the concrete model + endpoint for that
-        tier. The task class (``self._task_type``) drives
-        ``escalation_policy.tier_order`` inside the authority. The returned event
-        records exactly what the authority decided — tier, provider, model,
-        endpoint — plus the failing attempt count and reason.
+        Single authority surface for escalation (OMN-12829 C1 + OMN-13359): both
+        the escalation PROOF event and the active-route ADVANCEMENT consult this
+        one helper, so the tier/model/endpoint the proof records is exactly the
+        one the next attempt rides — they can never diverge.
 
-        Returns ``None`` when the ladder is exhausted (no higher tier) or the
-        authority cannot resolve the escalated tier — the caller emits nothing.
+        The generation consumer never picks the model itself. It advances through
+        the routing authority's tier ladder (one hop per exhausted per-tier
+        ``max_retries`` budget from routing_tiers.yaml, minimum one hop above the
+        starting tier) and asks the authority's ``delta`` to resolve the concrete
+        model + endpoint for that tier.
+
+        Returns ``None`` when the endpoint_ref maps to no tier, the ladder is
+        exhausted, or the authority cannot resolve the escalated tier — the
+        callers then emit nothing / keep the current route.
         """
         starting_tier = tier_for_backend(self._endpoint_ref)
         if starting_tier is None:
@@ -1280,7 +1497,10 @@ class HandlerGenerationConsumer:
             emitted_at=datetime.now(tz=UTC),
         )
         try:
-            decision = routing_authority_delta(request, min_tier_name=target_tier)
+            return cast(
+                _RoutingDecision,
+                routing_authority_delta(request, min_tier_name=target_tier),
+            )
         except Exception as exc:
             logger.warning(
                 "[generation-consumer] routing authority could not resolve "
@@ -1288,6 +1508,31 @@ class HandlerGenerationConsumer:
                 target_tier,
                 exc,
             )
+            return None
+
+    def _build_escalation_event(
+        self,
+        *,
+        correlation_id: str,
+        task_description: str,
+        failed_attempt_number: int,
+        failure_errors: list[str],
+    ) -> ModelGenerationEscalationTriggeredEvent | None:
+        """Build the escalation proof from the ROUTING AUTHORITY's decision.
+
+        Architecture boundary (OMN-12829 C1): the generation consumer never picks
+        the next model itself. The returned event records exactly what the
+        authority decided (via ``_resolve_escalation_decision``) — tier, provider,
+        model, endpoint — plus the failing attempt count and reason.
+
+        Returns ``None`` when the ladder is exhausted (no higher tier) or the
+        authority cannot resolve the escalated tier — the caller emits nothing.
+        """
+        decision = self._resolve_escalation_decision(
+            task_description=task_description,
+            failed_attempt_number=failed_attempt_number,
+        )
+        if decision is None:
             return None
 
         # Provider classification is derived from the authority's tier (local vs
@@ -1369,6 +1614,7 @@ def _extract_node_name(contract_yaml: str) -> str:
 
 __all__: list[str] = [
     "HandlerGenerationConsumer",
+    "ModelActiveRoute",
     "ModelResolvedEndpoint",
     "resolve_generation_endpoint",
 ]
