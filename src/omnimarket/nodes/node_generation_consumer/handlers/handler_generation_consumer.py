@@ -31,7 +31,7 @@ import time
 from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Protocol
+from typing import Any, Protocol, cast
 from urllib.parse import urlsplit
 from uuid import uuid4
 
@@ -1497,7 +1497,10 @@ class HandlerGenerationConsumer:
             emitted_at=datetime.now(tz=UTC),
         )
         try:
-            return routing_authority_delta(request, min_tier_name=target_tier)
+            return cast(
+                _RoutingDecision,
+                routing_authority_delta(request, min_tier_name=target_tier),
+            )
         except Exception as exc:
             logger.warning(
                 "[generation-consumer] routing authority could not resolve "
