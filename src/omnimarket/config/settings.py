@@ -254,7 +254,11 @@ class Settings(BaseSettings):
     # GLM cloud fallback / cloud APIs (kept distinct from LAN endpoints).
     llm_glm_url: str = Field(
         default="",
-        description="GLM cloud API base URL (e.g. https://api.z.ai).",
+        description=(
+            "GLM cloud endpoint, resolved from routing config at the effect "
+            "boundary. No hardcoded provider URL example — the value comes "
+            "from the routing authority only (OMN-12805)."
+        ),
     )
     llm_glm_api_key: SecretStr = Field(  # noqa: secrets — pydantic field
         default=SecretStr(""),
