@@ -50,13 +50,80 @@ from omnimarket.nodes.node_delegation_quality_gate_reducer.models.model_quality_
     ModelQualityGateResult,
 )
 
-# Error phrases that indicate LLM refusal or malformed output
+# Error phrases that indicate LLM refusal or malformed output.
+# OMN-13409: extended to cover common soft-refusal patterns missed before
+# (e.g. "cannot be fulfilled", "unable to complete", "not possible",
+# "i refuse", "this is not possible"). The original five phrases are retained;
+# the additions close the gap where a model replies with a polite declination
+# that contains none of the original markers and passes the gate undetected.
 _REFUSAL_PHRASES: tuple[str, ...] = (
+    # Original phrase set
     "i cannot",
     "i'm sorry",
     "as an ai",
     "error:",
     "traceback",
+    # OMN-13409: additional common refusal patterns
+    "cannot be fulfilled",
+    "cannot be completed",
+    "unable to complete",
+    "unable to fulfill",
+    "unable to process",
+    "not able to",
+    "not possible",
+    "i refuse",
+    "i will not",
+    "i won't",
+    "i am unable",
+    "i'm unable",
+    "this is not something",
+    "that is not something",
+    "i don't have the ability",
+    "i do not have the ability",
+    "cannot assist",
+    "can't assist",
+)
+
+# Ultra-short response word threshold for the refusal pre-pass (OMN-13409).
+# A response of _REFUSAL_SHORT_WORD_THRESHOLD words or fewer that contains no
+# task-relevant content is classified as a content-free response (REFUSAL).
+# This catches dogfood repro cases like "NO" (1 word) and "No." (1 word) that
+# do not match any phrase in _REFUSAL_PHRASES. The threshold is conservative
+# (5 words) so short but correct answers (e.g. a classification label "positive"
+# followed by brief reasoning) are not misflagged.
+_REFUSAL_SHORT_WORD_THRESHOLD: int = 5
+
+# Words that indicate the response is a pure negation / content-free declination
+# rather than a meaningful answer. Used in the ultra-short refusal pre-pass.
+# These are matched as whole words (case-insensitive) on the stripped response.
+_NEGATION_TOKENS: frozenset[str] = frozenset(
+    {
+        "no",
+        "nope",
+        "nah",
+        "n/a",
+        "na",
+        "none",
+        "never",
+        "nothing",
+        "not",
+        "cannot",
+        "cant",
+        "impossible",
+        "unavailable",
+        "unknown",
+        "undefined",
+        "null",
+        "nil",
+        "void",
+        "false",
+        "negative",
+        "declined",
+        "denied",
+        "refused",
+        "skip",
+        "skipped",
+    }
 )
 
 # Failure-reason verdict prefixes that recommend escalation to a higher tier
@@ -282,11 +349,45 @@ def _check_signature_preserved(content: str) -> str | None:
 
 
 def _check_no_refusal(content: str) -> str | None:
-    """Heuristic: no refusal phrases in first 200 chars."""
-    first_200 = content[:200].lower()
+    """Heuristic: no refusal phrases and no ultra-short content-free response.
+
+    Two-pass refusal pre-filter (OMN-13409):
+
+    Pass 1 — ultra-short content-free detection: when the response is
+    _REFUSAL_SHORT_WORD_THRESHOLD words or fewer AND every non-punctuation
+    token resolves to a negation/declination word (from _NEGATION_TOKENS), the
+    response carries no task content and is classified as a REFUSAL. This catches
+    dogfood repro cases like "NO" (1 word) or "No." (1 word) that do not match
+    any phrase in _REFUSAL_PHRASES. The threshold is conservative (5 words) so
+    short but meaningful answers (a classification label, a short extraction) are
+    not misflagged; a genuine short answer contains at least one non-negation token
+    (a noun, a verb, a number, a named entity).
+
+    Pass 2 — extended phrase detection: check the first 200 chars against
+    _REFUSAL_PHRASES, which includes both the original set ("i cannot", "i'm sorry",
+    "as an ai", "error:", "traceback") and the OMN-13409 additions that cover
+    common model soft-refusal patterns ("cannot be fulfilled", "unable to complete",
+    "not possible", etc.).
+    """
+    stripped = content.strip()
+
+    # Pass 1: ultra-short content-free response pre-pass.
+    words = stripped.split()
+    if 0 < len(words) <= _REFUSAL_SHORT_WORD_THRESHOLD:
+        # Normalize each token: lowercase, strip surrounding punctuation.
+        normalized_tokens = [word.lower().strip(".,;:!?\"'()[]{}`-") for word in words]
+        # A response whose every token is a negation word (or empty after stripping)
+        # contains no task content — it is a content-free declination.
+        if all(not token or token in _NEGATION_TOKENS for token in normalized_tokens):
+            joined = " ".join(normalized_tokens)
+            return f"REFUSAL: ultra-short content-free response (no task content): {joined!r}"
+
+    # Pass 2: extended phrase detection on the first 200 chars.
+    first_200 = stripped[:200].lower()
     detected = [p for p in _REFUSAL_PHRASES if p in first_200]
     if detected:
         return f"REFUSAL: detected refusal phrases: {', '.join(detected)}"
+
     return None
 
 
