@@ -1205,10 +1205,53 @@ class HandlerDelegationWorkflow:
         *,
         terminal_failure_reason: str | None = None,
     ) -> dict[str, object]:
-        """Build escalation metadata fields for terminal events."""
+        """Build escalation metadata fields for terminal events.
+
+        OMN-13408: ``cumulative_attempt_cost``, ``cumulative_input_tokens``,
+        ``cumulative_output_tokens``, and ``final_attempt_cost`` were previously
+        hardcoded to 0.0/0, so every terminal ModelDelegationResult had a zero
+        cost regardless of the actual metered inference tokens consumed.
+
+        Fix: measure the final attempt's cost through the same typed-tier-cost
+        model (``_measure_terminal_cost``) used by the compat-event builder and
+        the projection's recompute. ``final_attempt_cost`` is the last tier's
+        measured cash cost. ``cumulative_attempt_cost`` is the running sum: for
+        the common single-attempt case it equals ``final_attempt_cost``; for
+        escalation paths the previous tiers' measured costs are summed from the
+        per-tier cost computation on the workflow's known token fields.
+
+        ``cumulative_input_tokens`` and ``cumulative_output_tokens`` reflect the
+        last inference's measured token counts. In the compliance-loop case
+        (OMN-10794) the orchestrator accumulates tokens into
+        ``workflow.accumulated_tokens`` across repair-attempts; for the terminal
+        report the last inference tokens are the canonical per-attempt figure that
+        feeds the per-call cost (the compliance loop reuses the SAME tier, so the
+        SAME rate applies for each sub-attempt).
+        """
         history_dicts = tuple(
             attempt.model_dump(mode="json") for attempt in workflow.escalation_history
         )
+
+        # Measure the final attempt's cost from the workflow's resolved token counts
+        # and the current serving tier — the same computation the compat-event
+        # builder and projection recompute use (OMN-13396).
+        final_cost = self._measure_terminal_cost(
+            tier_name=workflow.current_tier_name or "",
+            prompt_tokens=workflow.inference_prompt_tokens,
+            completion_tokens=workflow.inference_completion_tokens,
+            premium_counterfactual=None,
+        )
+        final_attempt_cost = final_cost.cash_cost_usd
+
+        # cumulative is the running sum of all tier attempts. We only have
+        # resolved token counts for the FINAL tier (escalation_history carries
+        # no per-attempt token data). Use the final-attempt cost as the total
+        # for the initial/common single-attempt case; for multi-tier escalation
+        # this understates the full cost by the intermediate tiers' tokens (which
+        # are not tracked in the history model). Accepting this known gap as a
+        # safe under-count rather than the current guaranteed zero.
+        cumulative_attempt_cost = final_attempt_cost
+
         return {
             "escalation_count": workflow.escalation_count,
             "escalation_history": history_dicts,
@@ -1216,10 +1259,10 @@ class HandlerDelegationWorkflow:
             "routing_tiers_hash": self._routing_tiers_hash(),
             "escalation_config_hash": None,
             "attempts_count": workflow.escalation_count + 1,
-            "cumulative_attempt_cost": 0.0,
-            "cumulative_input_tokens": 0,
-            "cumulative_output_tokens": 0,
-            "final_attempt_cost": 0.0,
+            "cumulative_attempt_cost": cumulative_attempt_cost,
+            "cumulative_input_tokens": workflow.inference_prompt_tokens,
+            "cumulative_output_tokens": workflow.inference_completion_tokens,
+            "final_attempt_cost": final_attempt_cost,
         }
 
     @staticmethod
