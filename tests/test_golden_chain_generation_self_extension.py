@@ -134,12 +134,16 @@ def topics() -> dict[str, str]:
 class TestGenerationSelfExtensionGoldenChain:
     """generate → deploy-consumed → registered → invoked → output verified."""
 
-    def _run_chain(
+    async def _run_chain(
         self, sandbox_dir: Path
     ) -> tuple[_Capture, _Capture, dict[str, Any]]:
         """Drive the full chain through the real handlers.
 
         Returns (generation_capture, executor_capture, terminal_result).
+
+        OMN-13467: _emit_deploy and _emit_registration are now async so handle()
+        can await broker-ack before returning. _run_chain is updated to async and
+        the test methods below are marked asyncio accordingly.
         """
         gen_capture = _Capture()
         # The generation consumer reads its routing config + topics from the real
@@ -151,9 +155,10 @@ class TestGenerationSelfExtensionGoldenChain:
 
         # Step 1+2 — generate → emit deploy command + registration event. These
         # are the REAL methods the generation flow calls post-validation.
-        deploy_ok = gen_handler._emit_deploy(benchmark)
+        # OMN-13467: await async emit methods so the chain runs correctly.
+        deploy_ok = await gen_handler._emit_deploy(benchmark)
         assert deploy_ok is True
-        gen_handler._emit_registration(benchmark)
+        await gen_handler._emit_registration(benchmark)
 
         # Step 3 — the executor consumes the deploy command VERBATIM and invokes.
         exec_capture = _Capture()
@@ -172,10 +177,11 @@ class TestGenerationSelfExtensionGoldenChain:
 
     # -- generate → deploy ------------------------------------------------
 
-    def test_deploy_command_carries_full_artifacts_and_hashes(
+    @pytest.mark.asyncio
+    async def test_deploy_command_carries_full_artifacts_and_hashes(
         self, tmp_path: Path, topics: dict[str, str]
     ) -> None:
-        gen_capture, _exec, _terminal = self._run_chain(tmp_path)
+        gen_capture, _exec, _terminal = await self._run_chain(tmp_path)
         deploy = gen_capture.payloads_for(topics["deploy"])[0]
 
         # FULL artifacts (no truncation) flow on the deploy command.
@@ -198,20 +204,22 @@ class TestGenerationSelfExtensionGoldenChain:
 
     # -- registration -----------------------------------------------------
 
-    def test_registration_event_emitted_on_platform_topic(
+    @pytest.mark.asyncio
+    async def test_registration_event_emitted_on_platform_topic(
         self, tmp_path: Path, topics: dict[str, str]
     ) -> None:
-        gen_capture, _exec, _terminal = self._run_chain(tmp_path)
+        gen_capture, _exec, _terminal = await self._run_chain(tmp_path)
         # Registration goes to onex.evt.platform.node-registration.v1 — the topic
         # MCP sync consumes — not the dead node-registered topic (§A4).
         assert topics["registration"] == "onex.evt.platform.node-registration.v1"
         regs = gen_capture.payloads_for(topics["registration"])
         assert len(regs) == 1, "exactly one registration event expected"
 
-    def test_registration_payload_conformance(
+    @pytest.mark.asyncio
+    async def test_registration_payload_conformance(
         self, tmp_path: Path, topics: dict[str, str]
     ) -> None:
-        gen_capture, _exec, _terminal = self._run_chain(tmp_path)
+        gen_capture, _exec, _terminal = await self._run_chain(tmp_path)
         reg = gen_capture.payloads_for(topics["registration"])[0]
         # §A4 payload conformance.
         assert reg["event_type"] == "registered"
@@ -227,17 +235,21 @@ class TestGenerationSelfExtensionGoldenChain:
 
     # -- deploy-consumed → invoked ---------------------------------------
 
-    def test_invocation_event_emitted_on_terminal_topic(
+    @pytest.mark.asyncio
+    async def test_invocation_event_emitted_on_terminal_topic(
         self, tmp_path: Path, topics: dict[str, str]
     ) -> None:
-        _gen, exec_capture, terminal = self._run_chain(tmp_path)
+        _gen, exec_capture, terminal = await self._run_chain(tmp_path)
         invoked = exec_capture.payloads_for(topics["invoked"])
         assert len(invoked) == 1, "exactly one invocation event expected"
         # The emitted invocation event equals the returned terminal result.
         assert invoked[0] == terminal
 
-    def test_invocation_terminal_shape_and_correlation(self, tmp_path: Path) -> None:
-        _gen, _exec, terminal = self._run_chain(tmp_path)
+    @pytest.mark.asyncio
+    async def test_invocation_terminal_shape_and_correlation(
+        self, tmp_path: Path
+    ) -> None:
+        _gen, _exec, terminal = await self._run_chain(tmp_path)
         assert terminal["status"] == "completed"
         assert terminal["correlation_id"] == _CORRELATION_ID
         assert terminal["node_name"] == _GENERATED_NODE_NAME
@@ -247,8 +259,9 @@ class TestGenerationSelfExtensionGoldenChain:
 
     # -- output verified --------------------------------------------------
 
-    def test_invoked_output_is_verified(self, tmp_path: Path) -> None:
-        _gen, _exec, terminal = self._run_chain(tmp_path)
+    @pytest.mark.asyncio
+    async def test_invoked_output_is_verified(self, tmp_path: Path) -> None:
+        _gen, _exec, terminal = await self._run_chain(tmp_path)
         # The generated handler ran against the supplied input and the chain
         # carries its real output back as the terminal result.
         assert terminal["output"] == {
@@ -258,10 +271,11 @@ class TestGenerationSelfExtensionGoldenChain:
 
     # -- end-to-end correlation continuity -------------------------------
 
-    def test_correlation_id_continuous_generate_to_invoke(
+    @pytest.mark.asyncio
+    async def test_correlation_id_continuous_generate_to_invoke(
         self, tmp_path: Path, topics: dict[str, str]
     ) -> None:
-        gen_capture, exec_capture, terminal = self._run_chain(tmp_path)
+        gen_capture, exec_capture, terminal = await self._run_chain(tmp_path)
         deploy = gen_capture.payloads_for(topics["deploy"])[0]
         reg = gen_capture.payloads_for(topics["registration"])[0]
         invoked = exec_capture.payloads_for(topics["invoked"])[0]
@@ -274,11 +288,12 @@ class TestGenerationSelfExtensionGoldenChain:
             == _CORRELATION_ID
         )
 
-    def test_full_chain_proof_packet(
+    @pytest.mark.asyncio
+    async def test_full_chain_proof_packet(
         self, tmp_path: Path, topics: dict[str, str]
     ) -> None:
         """All §D2 proof artifacts present together in one assertion block."""
-        gen_capture, exec_capture, terminal = self._run_chain(tmp_path)
+        gen_capture, exec_capture, terminal = await self._run_chain(tmp_path)
         deploy = gen_capture.payloads_for(topics["deploy"])[0]
         reg = gen_capture.payloads_for(topics["registration"])[0]
         invoked = exec_capture.payloads_for(topics["invoked"])[0]

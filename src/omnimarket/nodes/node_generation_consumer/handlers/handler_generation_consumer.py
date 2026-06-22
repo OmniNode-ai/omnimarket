@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import ast
 import hashlib
+import inspect
 import json
 import logging
 import os
@@ -146,7 +147,12 @@ _DEFAULT_SYSTEM_PROMPT = (
 _GEMINI_INPUT_COST_PER_TOKEN = 0.075 / 1_000_000
 _GEMINI_OUTPUT_COST_PER_TOKEN = 0.30 / 1_000_000
 
-EventPublisher = Callable[[str, bytes], None]
+# OMN-13467: EventPublisher accepts both sync and async callables so the
+# runtime can supply an awaitable publisher (async publish → broker-ack) while
+# tests keep their existing sync captures. The handler awaits the return value
+# when it is a coroutine, ensuring the terminal event is broker-ACKED before
+# handle() returns (and therefore before the wiring layer commits the offset).
+EventPublisher = Callable[[str, bytes], Any]
 # OMN-13356: the injectable bus consumer used to await the tool-reuse matcher's
 # verdict. (topic, correlation_id, timeout_seconds) -> deserialized payload dict
 # or None on timeout. Same shape node_context_roi_runner injects so the runtime
@@ -174,7 +180,7 @@ _TOOL_REUSE_WAIT_TIMEOUT_SECONDS = 10.0
 _PRE_GENERATION_SIGNATURE_SENTINEL = "__pre_generation_unknown__"
 
 
-def _noop_publisher(topic: str, payload: bytes) -> None:
+async def _noop_publisher(topic: str, payload: bytes) -> None:
     logger.debug(
         "[generation-consumer] noop publish to %s (%d bytes)", topic, len(payload)
     )
@@ -187,6 +193,21 @@ def _noop_consumer(
         "[generation-consumer] noop consume from %s for %s", topic, correlation_id
     )
     return None
+
+
+async def _await_publish(publisher: EventPublisher, topic: str, payload: bytes) -> None:
+    """Invoke publisher and await the result if it is a coroutine.
+
+    OMN-13467: The runtime injects an async publisher so that the terminal event
+    is durably broker-ACKed before handle() returns. Tests may inject sync
+    publishers that return None — those are accepted transparently. Awaiting
+    the coroutine here ensures that handle() does NOT return (and therefore the
+    wiring layer does NOT commit the input Kafka offset) until the terminal
+    publish has a broker acknowledgement.
+    """
+    result = publisher(topic, payload)
+    if inspect.isawaitable(result):
+        await result
 
 
 def _resolve_state_root() -> Path | None:
@@ -1094,13 +1115,15 @@ class HandlerGenerationConsumer:
         # existing tool and skip generation entirely (the whole point — reuse
         # avoids the LLM call). On NO_MATCH (or no matcher wired / timeout), fall
         # through to fresh generation.
-        reuse_benchmark = self._try_tool_reuse_short_circuit(command)
+        reuse_benchmark = await self._try_tool_reuse_short_circuit(command)
         if reuse_benchmark is not None:
             # Emit the benchmark so the reuse is observable on the bus / projection
             # (contract_passed=True, reused_tool_id set, zero attempts/cost) — but
             # do NOT deploy/register: the reused tool already exists. Record the
             # replay marker so a re-delivery of the same command is idempotent.
-            self._emit_benchmark(reuse_benchmark)
+            # OMN-13467: await so the terminal event is broker-ACKed before
+            # handle() returns and the wiring layer commits the offset.
+            await self._emit_benchmark(reuse_benchmark)
             self._record_replay_benchmark(reuse_benchmark)
             return reuse_benchmark
 
@@ -1358,7 +1381,16 @@ class HandlerGenerationConsumer:
             resolved_endpoint=self._resolved_endpoint,
         )
 
-        self._emit_benchmark(benchmark)
+        # OMN-13467: await _emit_benchmark so the terminal event is durably
+        # broker-ACKed before handle() returns. The wiring layer commits the
+        # input Kafka offset only after handle() returns, so the ordering is:
+        #
+        #   publish terminal → await broker-ack → handle() returns → commit offset
+        #
+        # A crash between publish and commit causes input re-delivery; the replay
+        # guard below makes re-processing idempotent. There is no at-most-once
+        # window: the terminal event is never silently lost.
+        await self._emit_benchmark(benchmark)
         # OMN-13166: deploy/register a generated node ONLY when it is both shaped
         # correctly AND behaviorally correct. A contract-valid but semantically
         # wrong handler (the gate-zero false-green) must NOT reach the runtime —
@@ -1377,9 +1409,9 @@ class HandlerGenerationConsumer:
             and not semantic_blocks_deploy
             and not corpus_blocks_deploy
         ):
-            deploy_ok = self._emit_deploy(benchmark)
+            deploy_ok = await self._emit_deploy(benchmark)
             if deploy_ok:
-                self._emit_registration(benchmark)
+                await self._emit_registration(benchmark)
 
         self._record_replay_benchmark(benchmark)
         return benchmark
@@ -1387,7 +1419,7 @@ class HandlerGenerationConsumer:
     # ------------------------------------------------------------------ #
     # OMN-13356: tool-reuse short-circuit (bus-native)
     # ------------------------------------------------------------------ #
-    def _try_tool_reuse_short_circuit(
+    async def _try_tool_reuse_short_circuit(
         self, command: ModelNodeGenerationRequest
     ) -> ModelGenerationBenchmark | None:
         """Ask the tool-reuse matcher over the bus whether to skip generation.
@@ -1437,7 +1469,8 @@ class HandlerGenerationConsumer:
             },
         }
         try:
-            self._event_publisher(
+            await _await_publish(
+                self._event_publisher,
                 self._topic_tool_reuse_request,
                 json.dumps(payload).encode("utf-8"),
             )
@@ -1576,7 +1609,20 @@ class HandlerGenerationConsumer:
                 exc,
             )
 
-    def _emit_benchmark(self, benchmark: ModelGenerationBenchmark) -> None:
+    async def _emit_benchmark(self, benchmark: ModelGenerationBenchmark) -> None:
+        """Publish the terminal event and AWAIT broker acknowledgement.
+
+        OMN-13467: this method is async so that handle() does not return until
+        the terminal event (node-generation-completed or node-generation-failed)
+        is durably broker-ACKed. The wiring layer commits the input Kafka offset
+        only after handle() returns, so the sequence is now:
+
+            publish terminal → await broker-ack → handle() returns → commit offset
+
+        A crash between publish and commit results in a re-delivery of the input
+        event; the replay guard (_load_replay_benchmark / _record_replay_benchmark)
+        makes re-processing idempotent. There is no longer an at-most-once window.
+        """
         topic = (
             self._topic_completed if benchmark.contract_passed else self._topic_failed
         )
@@ -1586,15 +1632,25 @@ class HandlerGenerationConsumer:
                 benchmark.contract_passed,
             )
             return
-        try:
-            payload = json.dumps(benchmark.model_dump()).encode()
-            self._event_publisher(topic, payload)
-        except Exception as exc:
-            logger.warning(
-                "[generation-consumer] emit benchmark to %s failed: %s", topic, exc
-            )
+        # OMN-13467: the terminal-event publish failure MUST propagate. This emit
+        # is the durable terminal record (node-generation-completed/failed). The
+        # wiring layer commits the input Kafka offset only after handle() returns
+        # WITHOUT raising; an at-least-once consumer re-delivers the input on a
+        # raised handler exception. So if the broker does not ACK the terminal
+        # publish we must NOT swallow the error — letting it propagate aborts the
+        # commit and triggers re-delivery (the replay guard makes re-processing
+        # idempotent and re-emits the terminal). Swallowing here would advance the
+        # offset past an unpublished terminal — the at-most-once gap this ticket
+        # closes. Do NOT add a try/except that absorbs the publish exception.
+        payload = json.dumps(benchmark.model_dump()).encode()
+        await _await_publish(self._event_publisher, topic, payload)
 
-    def _emit_deploy(self, benchmark: ModelGenerationBenchmark) -> bool:
+    async def _emit_deploy(self, benchmark: ModelGenerationBenchmark) -> bool:
+        """Publish the deploy command and await broker acknowledgement.
+
+        OMN-13467: async so crashes between terminal publish and offset commit
+        do not silently advance the offset past an undeployed node.
+        """
         if not self._topic_deploy:
             logger.debug("[generation-consumer] no deploy topic configured; skipping")
             return False
@@ -1616,7 +1672,7 @@ class HandlerGenerationConsumer:
                     "generated_handler_hash": handler_hash,
                 }
             ).encode()
-            self._event_publisher(self._topic_deploy, payload)
+            await _await_publish(self._event_publisher, self._topic_deploy, payload)
             return True
         except Exception as exc:
             logger.warning(
@@ -1626,7 +1682,12 @@ class HandlerGenerationConsumer:
             )
             return False
 
-    def _emit_registration(self, benchmark: ModelGenerationBenchmark) -> None:
+    async def _emit_registration(self, benchmark: ModelGenerationBenchmark) -> None:
+        """Publish the registration event and await broker acknowledgement.
+
+        OMN-13467: async for the same at-most-once elimination reason as
+        _emit_benchmark and _emit_deploy.
+        """
         if not self._topic_registered:
             logger.debug(
                 "[generation-consumer] no registration topic configured; skipping"
@@ -1650,7 +1711,7 @@ class HandlerGenerationConsumer:
                     "source": "node_generation_consumer",
                 }
             ).encode()
-            self._event_publisher(self._topic_registered, payload)
+            await _await_publish(self._event_publisher, self._topic_registered, payload)
         except Exception as exc:
             logger.warning(
                 "[generation-consumer] emit registration to %s failed: %s",
