@@ -76,6 +76,9 @@ def test_correlation_trace_exposure_includes_prompt_and_response():
     columns = _exposure_columns(CORRELATION_TRACE_TOPIC)
     assert "prompt_text" in columns, "correlation-trace.v1 must expose prompt_text"
     assert "response_text" in columns, "correlation-trace.v1 must expose response_text"
+    assert "context_pack_hash" in columns, (
+        "correlation-trace.v1 must expose context_pack_hash for context ON/OFF ROI"
+    )
     assert "correlation_id" in columns, (
         "correlation-trace.v1 must expose correlation_id for ?correlation_id= filtering"
     )

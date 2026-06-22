@@ -148,6 +148,7 @@ class TestDelegationProjection:
             "provider": "local-qwen",
             "model_name": _DELEGATE_SKILL_TEST_MODEL,
             "response": "projection proof",
+            "context_pack_hash": "sha256:terminal",
             "quality_gate_passed": True,
             "quality_gates_failed": [],
             "metrics": {
@@ -174,6 +175,7 @@ class TestDelegationProjection:
         assert row["quality_gates_failed_jsonb"] == []
         assert row["tokens_input"] == 144
         assert row["tokens_output"] == 593
+        assert row["context_pack_hash"] == "sha256:terminal"
         assert row["cost_savings_usd"] == Decimal("0.009327")
         assert row["pricing_manifest_version"] == 1
 
@@ -546,6 +548,19 @@ class TestPromptResponseText:
         assert rows[0]["prompt_text"] == "test prompt"
         assert rows[0]["response_text"] == "test response"
 
+    def test_context_pack_hash_written_to_row(self) -> None:
+        db = InmemoryDatabaseAdapter()
+        event = ModelTaskDelegatedEvent(
+            correlation_id="corr-context-pack",
+            task_type="code-review",
+            delegated_to="agent-alpha",
+            context_pack_hash="sha256:ctx",
+        )
+        HANDLER.project(event, db)
+        rows = db.query("delegation_events")
+        assert len(rows) == 1
+        assert rows[0]["context_pack_hash"] == "sha256:ctx"
+
     def test_prompt_response_text_default_none(self) -> None:
         db = InmemoryDatabaseAdapter()
         event = ModelTaskDelegatedEvent(
@@ -558,6 +573,7 @@ class TestPromptResponseText:
         assert len(rows) == 1
         assert rows[0]["prompt_text"] is None
         assert rows[0]["response_text"] is None
+        assert rows[0]["context_pack_hash"] == ""
 
     def test_prompt_response_text_via_handle_protocol(self) -> None:
         db = InmemoryDatabaseAdapter()
@@ -567,6 +583,7 @@ class TestPromptResponseText:
             "delegated_to": "agent-beta",
             "prompt_text": "test prompt",
             "response_text": "test response",
+            "context_pack_hash": "sha256:handle",
             "_db": db,
         }
         result = HANDLER.handle(payload)
@@ -574,6 +591,7 @@ class TestPromptResponseText:
         rows = db.query("delegation_events")
         assert rows[0]["prompt_text"] == "test prompt"
         assert rows[0]["response_text"] == "test response"
+        assert rows[0]["context_pack_hash"] == "sha256:handle"
 
 
 class TestCostFields:

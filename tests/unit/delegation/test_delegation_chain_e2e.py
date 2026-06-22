@@ -236,6 +236,26 @@ class TestDelegationChainE2E:
         publisher.publish(TOPIC_QUALITY_GATE_RESULT, gate_result)
         return gate_result
 
+    def test_context_pack_is_injected_into_inference_prompt(
+        self,
+        workflow: HandlerDelegationWorkflow,
+        request_model: ModelDelegationRequest,
+    ) -> None:
+        request = request_model.model_copy(
+            update={
+                "context_pack": "Context: prefer the event-bus path.",
+                "context_pack_hash": "sha256:ctx",
+            }
+        )
+        routing_handler = HandlerRoutingIntent()
+
+        routing_intent = workflow.handle_delegation_request(request)[0]
+        decision = routing_handler.handle(routing_intent)
+        inference_intent = workflow.handle_routing_decision(decision)[0]
+
+        assert "Context: prefer the event-bus path." in inference_intent.prompt
+        assert request.prompt in inference_intent.prompt
+
     def test_full_chain_routes_research_with_semantic_authority(
         self,
         workflow: HandlerDelegationWorkflow,

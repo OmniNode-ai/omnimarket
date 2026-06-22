@@ -325,6 +325,13 @@ def _build_model_inference_intent(
     return ModelInferenceIntent.model_validate(payload)
 
 
+def _prompt_with_context_pack(request: ModelDelegationRequest, prompt: str) -> str:
+    context_pack = request.context_pack.strip()
+    if not context_pack:
+        return prompt
+    return f"{context_pack}\n\n{prompt}"
+
+
 def _evaluate_compliance(
     workflow: DelegationWorkflowState,
     response: ModelInferenceResponseData,
@@ -386,7 +393,7 @@ def _evaluate_compliance(
     temperature = _TASK_TEMPERATURE.get(workflow.request.task_type, 0.3)
     system_prompt, prompt, provider_request_options = apply_inference_protocol(
         system_prompt=workflow.routing_decision.system_prompt,
-        prompt=result.repair_prompt,
+        prompt=_prompt_with_context_pack(workflow.request, result.repair_prompt),
         model=workflow.routing_decision.selected_model,
         task_type=workflow.request.task_type,
     )
@@ -583,7 +590,7 @@ class HandlerDelegationWorkflow:
         temperature = _TASK_TEMPERATURE.get(workflow.request.task_type, 0.3)
         system_prompt, prompt, provider_request_options = apply_inference_protocol(
             system_prompt=decision.system_prompt,
-            prompt=workflow.request.prompt,
+            prompt=_prompt_with_context_pack(workflow.request, workflow.request.prompt),
             model=decision.selected_model,
             task_type=workflow.request.task_type,
         )
@@ -794,6 +801,7 @@ class HandlerDelegationWorkflow:
                 tokens_to_compliance=workflow.accumulated_tokens,
                 compliance_attempts=workflow.compliance_attempts or 1,
                 pricing_manifest_version=get_manifest_version_int(),
+                context_pack_hash=workflow.request.context_pack_hash,
                 escalation_count=workflow.escalation_count,
                 escalation_history=tuple(
                     attempt.model_dump(mode="json")
@@ -1397,6 +1405,7 @@ class HandlerDelegationWorkflow:
             tokens_to_compliance=tokens_to_compliance,
             compliance_attempts=compliance_attempts,
             pricing_manifest_version=get_manifest_version_int(),
+            context_pack_hash=workflow.request.context_pack_hash,
             escalation_count=workflow.escalation_count,
             escalation_history=history_dicts,
             routing_tiers_hash=self._routing_tiers_hash(),
@@ -1485,6 +1494,7 @@ class HandlerDelegationWorkflow:
             budget_headroom_consumed_usd=agent_cost.headroom_consumed_usd,
             delegation_latency_ms=elapsed_ms,
             llm_call_id=lifecycle_event.remote_task_handle or "",
+            context_pack_hash=workflow.request.context_pack_hash,
         )
 
         topic = (
