@@ -274,7 +274,24 @@ class TestGateFailNoHigherTier:
 class TestGateFailFallbackNotRecommended:
     """OMN-13368: fallback flags are no longer escalation authority."""
 
-    def test_above_bar_does_not_escalate_even_when_marker_gate_failed(self) -> None:
+    def test_passed_false_above_bar_does_not_complete(self) -> None:
+        """OMN-13409: passed=False must never emit delegation-completed.
+
+        Before OMN-13409, the orchestrator accepted gate results with
+        passed=False when score >= required_bar, ignoring result.passed and
+        emitting delegation-completed with quality_passed=True. That allowed
+        heuristic refusals (e.g. "No.") to pass as completed delegations.
+
+        OMN-13409 fixes this by adding result.passed to quality_accepted. A
+        gate result with passed=False MUST NOT produce a COMPLETED workflow
+        state, regardless of the score. The workflow transitions to FAILED (no
+        higher tier available from 'local' without escalation configured) or
+        to ROUTED (if a higher tier is available) — never COMPLETED.
+
+        OMN-13368 intent is preserved: fallback_recommended is still not the
+        escalation authority — the orchestrator uses score + fail_category +
+        result.passed; fallback_recommended is informational only.
+        """
         handler = HandlerDelegationWorkflow(workflows={})
         cid = uuid4()
         _advance_to_gate_evaluated(handler, cid, tier_name="local")
@@ -289,14 +306,30 @@ class TestGateFailFallbackNotRecommended:
         events = handler.handle_gate_result(gate)
 
         workflow = handler.workflows[cid]
-        assert workflow.state == EnumDelegationState.COMPLETED
+        # OMN-13409: passed=False must never complete as COMPLETED.
+        assert workflow.state != EnumDelegationState.COMPLETED, (
+            "A gate result with passed=False must not emit delegation-completed "
+            "(OMN-13409); the orchestrator must respect result.passed."
+        )
+        # The workflow ends in FAILED (no next tier from "local" without a
+        # configured frontier) or ROUTED (escalation if a next tier resolves).
+        assert workflow.state in {
+            EnumDelegationState.FAILED,
+            EnumDelegationState.ROUTED,
+        }
 
         result_events = [e for e in events if isinstance(e, ModelDelegationEvent)]
-        assert len(result_events) == 1
-        result = result_events[0].payload
-        assert isinstance(result, ModelDelegationResult)
-        assert result.quality_passed is True
-        assert result.escalation_count == 0
+        assert len(result_events) >= 1
+        # If FAILED, the terminal event must carry quality_passed=False.
+        failed_events = [
+            e
+            for e in result_events
+            if getattr(e, "topic", None) == TOPIC_ID_DELEGATION_FAILED
+        ]
+        if failed_events:
+            result = failed_events[0].payload
+            assert isinstance(result, ModelDelegationResult)
+            assert result.quality_passed is False
 
     def test_below_bar_escalates_even_when_fallback_not_recommended(
         self, frontier_unconfigured_bifrost: None

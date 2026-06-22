@@ -929,7 +929,18 @@ class HandlerDelegationWorkflow:
         actual_score = result.quality_score
         score_below_required_bar = actual_score < required_bar_authority.required_bar
         pre_filter_rejected = result.fail_category == "fail_deterministic"
-        quality_accepted = not pre_filter_rejected and not score_below_required_bar
+        # OMN-13409: quality_accepted requires result.passed in addition to the
+        # score-threshold and deterministic-rejection checks. Before this fix the
+        # orchestrator recomputed acceptance from fail_category + score alone and
+        # ignored result.passed, so a heuristic refusal (e.g. "No.", "NO") with a
+        # score at or above the required_bar was accepted and delegation-completed
+        # was emitted with quality_passed=True. result.passed is the quality gate's
+        # authoritative verdict — it is False whenever any heuristic with adequacy
+        # authority fails (including the extended no_refusal pre-pass) — and the
+        # orchestrator must honour it.
+        quality_accepted = (
+            not pre_filter_rejected and not score_below_required_bar and result.passed
+        )
 
         if quality_accepted:
             # --- PASSED: complete as before ---
