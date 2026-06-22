@@ -2,8 +2,16 @@
 # SPDX-License-Identifier: MIT
 """Golden-chain tests for node_hostile_reviewer_orchestrator (OMN-13210 / B1).
 
-Exercises the rebuilt canonical ORCHESTRATOR end-to-end with injected fakes for
-the inference fan-out and the github-diff EFFECT, asserting:
+Exercises the rebuilt canonical ORCHESTRATOR end-to-end. The inference fan-out is
+driven by a RECORDED-FROM-REAL replay (OMN-13498 B1): the findings replayed for
+each model route were CAPTURED FROM A REAL z.ai GLM (``cloud-glm``, ``glm-5.2``)
+call resolved through the committed routing contract (see
+``tests/fixtures/inference_replay/glm_review_findings.json``). The replay adapter
+HARD-REJECTS a delegation tier name handed in as a ``model_key``, so it cannot
+mask the tier-name-as-model_key regression a hand-written canned fake would
+(OMN-13470 / OMN-13497 ``check-no-faked-boundary``). The github-diff EFFECT is
+substituted with a fixed-diff stub (a NON-inference boundary — not a fake of the
+platform's inference/routing/dispatch egress). The chain asserts:
   - the start command -> completed event chain preserves the
     ModelHostileReviewerCompletedEvent shape on the preserved topic,
   - the orchestrator emits via for_orchestrator(events=...) (events only),
@@ -14,7 +22,6 @@ the inference fan-out and the github-diff EFFECT, asserting:
 
 from __future__ import annotations
 
-import json
 from datetime import UTC, datetime
 from uuid import uuid4
 
@@ -42,27 +49,33 @@ from omnimarket.nodes.node_hostile_reviewer_orchestrator.models.model_hostile_re
 from omnimarket.nodes.node_hostile_reviewer_orchestrator.models.model_hostile_reviewer_start_command import (
     ModelHostileReviewerStartCommand,
 )
+from tests.fixtures.inference_replay import RecordedReplayInferenceAdapter
+
+# The real recorded GLM hostile-review findings response (replayed, never canned).
+# Captured from a live cloud-glm call resolved through the routing contract.
+_FINDINGS_FIXTURE = "glm_review_findings.json"
 
 
-class _FakeInferenceAdapter(ModelInferenceAdapter):
-    """Returns a canned raw response per model route key."""
+def _replay_adapter(finding_routes: list[str]) -> RecordedReplayInferenceAdapter:
+    """Replay the REAL recorded findings for the named routes; others get [].
 
-    def __init__(self, responses: dict[str, str]) -> None:
-        self._responses = responses
-
-    async def infer(
-        self,
-        model_key: str,
-        system_prompt: str,
-        user_prompt: str,
-        timeout_seconds: float,
-        temperature: float | None = None,
-    ) -> str:
-        return self._responses.get(model_key, "[]")
+    A route NOT listed resolves to the replay adapter's empty-findings default,
+    exercising the orchestrator's per-model degradation path with real-recorded
+    inference (no hand-written canned string).
+    """
+    return RecordedReplayInferenceAdapter(
+        route_fixtures=dict.fromkeys(finding_routes, _FINDINGS_FIXTURE),
+        default_response="[]",
+    )
 
 
 class _FailInferenceAdapter(ModelInferenceAdapter):
-    """Always raises — simulates a transport failure for every route."""
+    """Negative-path inference adapter: always raises (transport failure).
+
+    Not a fake of real output — it injects a transport-layer failure so the
+    orchestrator's per-model degradation path can be exercised. It returns no
+    canned/echoed completion and stands in for no real model.
+    """
 
     async def infer(
         self,
@@ -111,21 +124,6 @@ def _command(
     )
 
 
-def _major_finding_json() -> str:
-    return json.dumps(
-        [
-            {
-                "category": "security",
-                "severity": "major",
-                "title": "XSS in template",
-                "description": "Unescaped HTML output",
-                "evidence": "line 10",
-                "location": "template.html",
-            }
-        ]
-    )
-
-
 def _orchestrator(adapter: ModelInferenceAdapter) -> HandlerHostileReviewerOrchestrator:
     return HandlerHostileReviewerOrchestrator(
         inference_adapter=adapter,
@@ -137,9 +135,7 @@ def _orchestrator(adapter: ModelInferenceAdapter) -> HandlerHostileReviewerOrche
 @pytest.mark.asyncio
 class TestHostileReviewerOrchestratorGoldenChain:
     async def test_happy_path_emits_completed_event(self) -> None:
-        adapter = _FakeInferenceAdapter(
-            {"review_primary": _major_finding_json(), "review_b": _major_finding_json()}
-        )
+        adapter = _replay_adapter(["review_primary", "review_b"])
         command = _command(models=["review_primary", "review_b"])
 
         output = await _orchestrator(adapter).handle(command)
@@ -158,7 +154,7 @@ class TestHostileReviewerOrchestratorGoldenChain:
         assert completed.pass_count == 2
 
     async def test_completed_event_shape_is_byte_stable(self) -> None:
-        adapter = _FakeInferenceAdapter({"review_primary": _major_finding_json()})
+        adapter = _replay_adapter(["review_primary"])
         command = _command()
 
         output = await _orchestrator(adapter).handle(command)
@@ -178,8 +174,9 @@ class TestHostileReviewerOrchestratorGoldenChain:
         assert payload["final_phase"] == "done"
 
     async def test_partial_failure_does_not_abort(self) -> None:
-        # review_b returns empty findings; the run still completes DONE.
-        adapter = _FakeInferenceAdapter({"review_primary": "[]"})
+        # Neither route is mapped to recorded findings, so both replay the empty
+        # default; the run still completes DONE with zero findings.
+        adapter = _replay_adapter([])
         command = _command(models=["review_primary", "review_b"])
 
         output = await _orchestrator(adapter).handle(command)
@@ -206,7 +203,7 @@ class TestHostileReviewerOrchestratorGoldenChain:
                 raise RuntimeError("diff resolution exploded")
 
         handler = HandlerHostileReviewerOrchestrator(
-            inference_adapter=_FakeInferenceAdapter({"review_primary": "[]"}),
+            inference_adapter=_replay_adapter([]),
             github_diff_effect=_BoomDiffEffect(),
         )
         command = _command()

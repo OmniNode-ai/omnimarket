@@ -1,0 +1,6 @@
+{
+  "captured_from": "real z.ai GLM call (cloud-glm backend, routing-contract resolved)",
+  "resolved_model_id": "glm-5.2",
+  "raw_response": "[\n  {\n    \"start_line\": 1,\n    \"end_line\": 1,\n    \"segment_type\": \"background\",\n    \"content\": \"# ADR-007: Adopt the bus as the inter-service transport\",\n    \"confidence\": 1.0\n  },\n  {\n    \"start_line\": 3,\n    \"end_line\": 4,\n    \"segment_type\": \"decision\",\n    \"content\": \"## Decision\\nAll inter-service traffic flows over Kafka topics.\",\n    \"confidence\": 1.0\n  }\n]",
+  "task": "adr_segmentation"
+}

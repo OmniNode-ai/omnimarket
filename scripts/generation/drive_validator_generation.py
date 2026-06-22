@@ -111,6 +111,52 @@ _TASK_DESCRIPTIONS: dict[str, str] = {
         "the matched marker. Use only the Python standard library (re). Do not read "
         "files, the network, env vars, or the clock."
     ),
+    "no-faked-boundary": (
+        "Generate a Python validator handler that scans source text for FAKES of "
+        "the platform's own inference / routing / dispatch boundary and returns the "
+        "violations. The handler must define `def handle(input_data):` reading the "
+        "source text from input_data['source']. Scan line by line. Flag a line when "
+        "ANY of these patterns appears: "
+        "(1) a class definition whose class name contains 'Fake', 'Stub', or 'Mock' "
+        "AND that subclasses (has in its parenthesised bases) an identifier ending "
+        "in one of: InferenceAdapter, Bridge, Router, RoutingResolver, or "
+        "containing 'Dispatch' — e.g. `class _FakeBridge(ModelInferenceAdapter):` or "
+        "`class _StubInferenceRouter(ModelInferenceAdapter):`. Do NOT flag a class "
+        "that subclasses a base which is NOT one of those inference/routing/dispatch "
+        "boundary identifiers — e.g. `class MockServiceHub(MixinServiceRegistry):` "
+        "(a service-registry mixin) is a test harness, not a fake of the inference "
+        "boundary, and must NOT be flagged; "
+        "(2) a patch of the real HTTP egress: the line contains patch( (in any form "
+        '— patch("..."), mock.patch(...), or a @patch(...) decorator) whose target '
+        'string is "httpx.Client" or "httpx.AsyncClient"; '
+        "(3) an assignment of the form `<target> = MagicMock()` or "
+        "`<target> = AsyncMock()` where the assignment TARGET (the text to the LEFT "
+        "of the '=', which may include a 'self.' prefix) contains any of the "
+        "substrings 'inference', 'bridge', 'router', or 'dispatch' "
+        "(case-insensitive). Concretely, flag a line that matches the regex "
+        "`(inference|bridge|router|dispatch)\\w*\\s*=\\s*(MagicMock|AsyncMock)\\(` "
+        "case-insensitively — this catches `inference_bridge = MagicMock()` and "
+        "`self.router = AsyncMock()`. Both of those lines MUST be flagged; "
+        "(4) a completion keyword argument whose VALUE is derived from the prompt "
+        "variable rather than a recorded string literal — i.e. `completion=prompt` "
+        '(the bare identifier prompt) or `completion=f"...{prompt}..."` (an '
+        "f-string that interpolates {prompt}). "
+        "Do NOT flag CLEAN lines: a completion set to a plain quoted string literal "
+        "with no f-string interpolation of prompt (e.g. "
+        '`completion="The capital of France is Paris."` or even '
+        "`completion=\"Answer the prompt carefully.\"` where 'prompt' is just a word "
+        "inside the recorded literal, not the variable) must NOT be flagged; a real "
+        "adapter usage such as `RoutingResolvedJudgeInferenceAdapter(...)` must NOT "
+        "be flagged; a real `EventBusInmemory()` usage must NOT be flagged; a class "
+        "subclassing a non-boundary base such as "
+        "`class MockServiceHub(MixinServiceRegistry):` must NOT be flagged; and a "
+        "patch / mock of a genuinely external third-party service whose target is "
+        'NOT httpx.Client/httpx.AsyncClient (e.g. patch("slack_sdk.WebClient"), '
+        '@patch("boto3.client")) must NOT be flagged. '
+        "Return a dict {'findings': [...]} where each finding describes the line and "
+        "the matched pattern. Use only the Python standard library (re). Do not read "
+        "files, the network, env vars, or the clock."
+    ),
 }
 
 

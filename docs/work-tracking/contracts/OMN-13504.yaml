@@ -1,0 +1,55 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-13504"
+title: "Re-lock omnimarket dev omnibase-core pin from unmerged branch SHA to merged dev SHA (81c865f6)"
+summary: >
+  omnimarket dev's omnibase-core git pin was hardcoded to 79ec3ad9d801b8da38b4d9099852cc8bfffad00e,
+  a commit that lives only on the un-merged OMN-13408 feature branch. The squash-merge of that
+  branch (#1300 / OMN-13408) landed on omnibase_core dev as 81c865f69a15781d526125ee13f39834a3ce69fd
+  with identical content (git diff 79ec3ad9..81c865f6 is empty). Because 79ec3ad9 is not an
+  ancestor of omnibase_core origin/dev, the OMN-12977 sibling-pin guard (check_sibling_lock_pins.py,
+  invoked by stage_workspace.sh) aborted the dev runtime workspace build. This change repoints the
+  pin in pyproject.toml [tool.uv.sources] rev= and [tool.uv] override-dependencies git URL (mirrored
+  into uv.lock via uv lock --upgrade-package omnibase-core) to the merged dev SHA 81c865f6, making
+  the pin an ancestor of core dev and unblocking the dev redeploy. Content-safe (merged SHA is
+  byte-identical to the prior unmerged pin); no source, version specifier, migration, schema,
+  endpoint, or env change -- only pyproject.toml pins + uv.lock.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+evidence_requirements:
+  - kind: "manual"
+    description: "New core pin 81c865f6 is an ancestor of omnibase_core origin/dev (OMN-12977 guard precondition)."
+    command: "git -C ../../omnibase_core merge-base --is-ancestor 81c865f69a15781d526125ee13f39834a3ce69fd origin/dev && echo is_ancestor=true"
+  - kind: "manual"
+    description: "OMN-12977 sibling-pin guard reports omnibase-core [OK] and exits 0 against the canonical clones."
+    command: "uv run python ../../omnibase_infra/scripts/runtime_build/check_sibling_lock_pins.py --lock uv.lock --repo omnibase-infra=../../omnibase_infra --repo omnibase-core=../../omnibase_core --repo omnibase-spi=../../omnibase_spi --repo omnibase-compat=../../omnibase_compat --repo onex-change-control=../../onex_change_control --repo omnimarket=."
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-001"
+    description: "New core pin 81c865f69a15781d526125ee13f39834a3ce69fd is an ancestor of omnibase_core origin/dev (merge-base --is-ancestor exits 0). The prior pin 79ec3ad9 was NOT an ancestor (lives only on the unmerged OMN-13408 branch); content is identical (git diff 79ec3ad9..81c865f6 empty)."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "git -C ../../omnibase_core merge-base --is-ancestor 81c865f69a15781d526125ee13f39834a3ce69fd origin/dev"
+  - id: "dod-002"
+    description: "OMN-12977 sibling-pin guard exits 0 with omnibase-core reported [OK] (lock=0.46.0 clone=0.46.0). The build that previously aborted on the un-ancestor pin now passes its preflight."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run python ../../omnibase_infra/scripts/runtime_build/check_sibling_lock_pins.py --lock uv.lock --repo omnibase-infra=../../omnibase_infra --repo omnibase-core=../../omnibase_core --repo omnibase-spi=../../omnibase_spi --repo omnibase-compat=../../omnibase_compat --repo onex-change-control=../../onex_change_control --repo omnimarket=."
+  - id: "dod-003"
+    description: "Lock resolves and the package imports: uv sync --all-extras resolves 213 packages; python -c 'import omnibase_core' loads v0.46.0. ruff check + format clean on the changed files; no old SHA (79ec3ad9) remains in pyproject.toml or uv.lock."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run python -c 'import omnibase_core; print(omnibase_core.__version__)'"
+  - id: "dod-deploy"
+    description: "Deploy-gate evidence: pure dependency-pin re-lock -- only pyproject.toml [tool.uv.sources]/override-dependencies omnibase-core SHA and uv.lock change; no source, migration, schema, endpoint, or env-for-model change. After merge, stage_workspace.sh passes the OMN-12977 preflight with NO drift override, unblocking the dev runtime redeploy. No live deploy performed by this PR (deploy is a separate gated step)."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "printf 'deploy gate: pre-merge no live deploy; re-lock only unblocks the subsequent gated dev redeploy'"

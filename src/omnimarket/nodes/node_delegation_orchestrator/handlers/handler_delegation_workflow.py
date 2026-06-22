@@ -51,6 +51,9 @@ from omnimarket.models.delegation.quality_bar_evidence import (
     format_quality_bar_labels,
 )
 from omnimarket.nodes.contract_topics import contract_publish_topics
+from omnimarket.nodes.node_delegation_escalation_decision_compute.handlers.handler_escalation_decision import (
+    HandlerEscalationDecision,
+)
 from omnimarket.nodes.node_delegation_orchestrator.contract_topics import (
     TOPIC_ID_DELEGATION_COMPLETED,
     TOPIC_ID_DELEGATION_FAILED,
@@ -117,6 +120,12 @@ from omnimarket.pricing import (
     estimate_baseline_cost_usd,
     get_manifest_version_int,
     recompute_actual_cost_and_savings,
+)
+from omnimarket.routing.model_escalation_decision_request import (
+    ModelEscalationDecisionRequest,
+)
+from omnimarket.routing.model_escalation_decision_result import (
+    ModelEscalationDecisionResult,
 )
 
 # Max tier escalation attempts for infra errors (auth, timeout, connection refused).
@@ -430,6 +439,59 @@ def _evaluate_compliance(
     ]
 
 
+@dataclass(frozen=True)
+class TerminalEmissionInputs:
+    """Single source of truth for a delegation terminal emission (OMN-13475).
+
+    Every terminal site resolves its outcome into ONE of these and hands it to
+    ``HandlerDelegationWorkflow._emit_terminal``. That builder is the *only*
+    construction site for the canonical ``ModelDelegationResult`` and the compat
+    ``ModelTaskDelegatedEvent``: it measures cost ONCE and reads the served
+    tokens ONCE, then derives BOTH events from these identical values. Because
+    the two events can no longer be assembled from independently-read fields,
+    the OMN-13408 token/cost-zeroing divergence is structurally impossible — the
+    two events that co-write the same projection row always agree.
+
+    ``premium_counterfactual`` is supplied only when a saving should be banked
+    (the accepted/completed path); on failure/agent paths it is ``None`` so
+    ``cost_savings_usd`` is 0.0 by construction.
+    """
+
+    completed: bool
+    correlation_id: UUID
+    task_type: str
+    model_used: str
+    endpoint_url: str
+    content: str
+    quality_passed: bool
+    quality_score: float
+    latency_ms: int
+    prompt_tokens: int
+    completion_tokens: int
+    total_tokens: int
+    fallback_to_claude: bool
+    failure_reason: str
+    tokens_to_compliance: int
+    compliance_attempts: int
+    # Cost-measurement inputs (priced once inside _emit_terminal).
+    cost_tier_name: str
+    premium_counterfactual: ModelPremiumCounterfactual | None
+    # Escalation / audit metadata (shared by both events).
+    escalation_count: int
+    escalation_history: tuple[dict[str, object], ...]
+    terminal_failure_reason: str | None
+    routing_tiers_hash: str | None
+    escalation_config_hash: str | None
+    attempts_count: int
+    # Compat-event-only descriptive fields.
+    model_name: str
+    session_id: UUID | None
+    quality_gates_checked: list[str]
+    quality_gates_failed: list[str]
+    llm_call_id: str
+    context_pack_hash: str
+
+
 @dataclass
 class DelegationWorkflowState:
     """Mutable workflow state for a single delegation correlation_id."""
@@ -478,6 +540,14 @@ class HandlerDelegationWorkflow:
 
     _shared_workflows: ClassVar[dict[UUID, DelegationWorkflowState]] = {}
 
+    # OMN-13476: the escalation/tier decision is owned by a stateless COMPUTE
+    # node. The orchestrator resolves the config-dependent inputs (next eligible
+    # tier + no-higher-tier reason, which read the routing contract+overlay) and
+    # delegates the deterministic verdict to this handler.
+    _escalation_decider: ClassVar[HandlerEscalationDecision] = (
+        HandlerEscalationDecision()
+    )
+
     def __init__(
         self,
         workflows: MutableMapping[UUID, DelegationWorkflowState] | None = None,
@@ -503,6 +573,71 @@ class HandlerDelegationWorkflow:
             )
             raise InvalidStateTransitionError(msg)
         workflow.state = target
+
+    def _decide_escalation(
+        self,
+        workflow: DelegationWorkflowState,
+        *,
+        max_escalation_attempts: int,
+        excluded_tiers: frozenset[str],
+        error_retryable: bool,
+        non_retryable_reason: str,
+        task_type: str | None,
+    ) -> ModelEscalationDecisionResult:
+        """Delegate the escalate-or-terminate verdict to the COMPUTE (OMN-13476).
+
+        The config-dependent inputs are resolved here — the orchestrator owns the
+        routing-contract I/O. ``next_eligible_tier`` /
+        ``describe_no_higher_tier_available`` read ``routing_tiers.yaml`` and the
+        task-class contract; their plain results are handed to the stateless
+        COMPUTE, which applies the deterministic decision precedence. The
+        relocation preserves behavior exactly: the COMPUTE checks retryability,
+        budget, current-tier identifiability, and ladder exhaustion in the same
+        order the inline branches did.
+
+        When ``task_type`` is None (the legacy task-unaware inference-error path)
+        the precise no-higher-tier diagnostic cannot be built, so the bare
+        ``NO_HIGHER_TIER_REASON_TOKEN`` is used — matching the prior inline
+        behavior. The quality-gate path always supplies a ``task_type``.
+        """
+        next_tier: str | None = None
+        no_higher_tier_reason: str | None = None
+
+        # Only resolve a next tier when the cheap pure preconditions allow it; the
+        # COMPUTE re-checks them, but resolving the tier here would be wasted I/O
+        # (and, for current_tier_name=None, impossible).
+        if (
+            error_retryable
+            and workflow.escalation_count < max_escalation_attempts
+            and workflow.current_tier_name is not None
+        ):
+            next_tier = next_eligible_tier(
+                workflow.current_tier_name,
+                excluded_tiers,
+                task_type=task_type,
+            )
+            if next_tier is None:
+                no_higher_tier_reason = (
+                    describe_no_higher_tier_available(
+                        workflow.current_tier_name,
+                        excluded_tiers,
+                        task_type=task_type,
+                    )
+                    if task_type is not None
+                    else NO_HIGHER_TIER_REASON_TOKEN
+                )
+
+        return self._escalation_decider.handle(
+            ModelEscalationDecisionRequest(
+                escalation_count=workflow.escalation_count,
+                max_escalation_attempts=max_escalation_attempts,
+                current_tier_name=workflow.current_tier_name,
+                error_retryable=error_retryable,
+                next_tier_name=next_tier,
+                non_retryable_reason=non_retryable_reason,
+                no_higher_tier_reason=no_higher_tier_reason,
+            )
+        )
 
     def handle_delegation_request(
         self,
@@ -678,51 +813,30 @@ class HandlerDelegationWorkflow:
                 )
             )
 
-            # Infra errors (auth failure, connection refused, timeout) are
-            # retryable at the next tier — attempt escalation before terminal FAILED.
-            terminal_failure_reason: str | None = None
-            next_tier: str | None = None
-
-            should_escalate_error = _should_escalate_inference_error(
-                response.error_message
+            # OMN-13476: the escalate-or-terminate decision is owned by the
+            # node_delegation_escalation_decision_compute COMPUTE. Infra errors
+            # (auth failure, connection refused, timeout) are retryable at the
+            # next tier; empty body / empty choices are not. The orchestrator
+            # resolves the routing-contract inputs inside ``_decide_escalation``
+            # and delegates the verdict — behavior identical to the prior inline
+            # branch (retryability → budget → current-tier → ladder precedence).
+            error_task_type = (
+                workflow.request.task_type if workflow.request is not None else None
             )
-            if not should_escalate_error:
-                terminal_failure_reason = "non_retryable_inference_response"
-            elif workflow.escalation_count >= _MAX_INFERENCE_ESCALATION_ATTEMPTS:
-                terminal_failure_reason = "max_escalation_attempts_reached"
-            elif workflow.current_tier_name is None:
-                terminal_failure_reason = "current_tier_unknown"
-            else:
-                error_task_type = (
-                    workflow.request.task_type if workflow.request is not None else None
-                )
-                next_tier = next_eligible_tier(
-                    workflow.current_tier_name,
-                    _INFERENCE_ERROR_EXCLUDED_TIERS,
-                    task_type=error_task_type,
-                )
-                if next_tier is None:
-                    # OMN-13167: precise reason naming the exhausted policy and
-                    # unusable higher tiers. task_type is required for the
-                    # diagnostic; without it (legacy task-unaware path) fall back
-                    # to the bare token.
-                    terminal_failure_reason = (
-                        describe_no_higher_tier_available(
-                            workflow.current_tier_name,
-                            _INFERENCE_ERROR_EXCLUDED_TIERS,
-                            task_type=error_task_type,
-                        )
-                        if error_task_type is not None
-                        else NO_HIGHER_TIER_REASON_TOKEN
-                    )
-
-            can_escalate = (
-                should_escalate_error
-                and terminal_failure_reason is None
-                and next_tier is not None
+            decision = self._decide_escalation(
+                workflow,
+                max_escalation_attempts=_MAX_INFERENCE_ESCALATION_ATTEMPTS,
+                excluded_tiers=_INFERENCE_ERROR_EXCLUDED_TIERS,
+                error_retryable=_should_escalate_inference_error(
+                    response.error_message
+                ),
+                non_retryable_reason="non_retryable_inference_response",
+                task_type=error_task_type,
             )
+            terminal_failure_reason = decision.terminal_failure_reason
+            next_tier = decision.next_tier_name
 
-            if can_escalate:
+            if decision.can_escalate:
                 assert next_tier is not None
                 # OMN-13140: a retryable inference error with a routable next tier
                 # is a real escalation — emit the typed escalation proof BEFORE the
@@ -756,23 +870,14 @@ class HandlerDelegationWorkflow:
                 ]
 
             # No escalation possible: terminal FAILED.
+            # OMN-13408/OMN-13365: _record_inference_response reconciles the
+            # served tokens onto workflow.inference_* (deriving total from
+            # prompt + completion so a reasoning model's bundled total cannot
+            # crash the wire DTO with no terminal emitted). The single terminal
+            # builder then reads those reconciled token counts once.
             _record_inference_response(workflow, response)
-            escalation_metadata = self._escalation_metadata(
-                workflow,
-                terminal_failure_reason=terminal_failure_reason,
-            )
-            # OMN-13396: price the failed attempt's measured tokens through the
-            # serving tier's typed cost model instead of hardcoding cost_usd=0.0.
-            # No premium counterfactual on the failure path (no accepted result to
-            # bank a saving against), so cost_savings_usd stays 0.0 — but cost_usd
-            # is the real metered cost the failed inference still incurred.
-            failed_cost = self._measure_terminal_cost(
-                tier_name=workflow.current_tier_name or "",
-                prompt_tokens=response.prompt_tokens,
-                completion_tokens=response.completion_tokens,
-                premium_counterfactual=None,
-            )
-            delegation_result = ModelDelegationResult(
+            terminal_inputs = TerminalEmissionInputs(
+                completed=False,
                 correlation_id=response.correlation_id,
                 task_type=workflow.request.task_type,
                 model_used=model_used,
@@ -781,68 +886,39 @@ class HandlerDelegationWorkflow:
                 quality_passed=False,
                 quality_score=0.0,
                 latency_ms=elapsed_ms,
-                prompt_tokens=response.prompt_tokens,
-                completion_tokens=response.completion_tokens,
-                # OMN-13408/OMN-13365: derive total from prompt + completion. The
-                # wire DTO enforces total == prompt + completion, but a reasoning
-                # model (gemini-2.5) reports a usage.total_tokens that bundles
-                # thinking tokens (total > prompt + completion). Copying
-                # response.total_tokens verbatim raises ValidationError here and
-                # crashes the dispatcher with NO terminal event emitted — exactly
-                # the silent-loss mode _record_inference_response reconciles for the
-                # gate path. Before the served-usage fix this passed by accident
-                # (0 == 0 + 0); now that real served tokens flow on the truncated
-                # path, the reconciliation is required here too.
-                total_tokens=response.prompt_tokens + response.completion_tokens,
+                prompt_tokens=workflow.inference_prompt_tokens,
+                completion_tokens=workflow.inference_completion_tokens,
+                total_tokens=workflow.inference_total_tokens,
                 fallback_to_claude=False,
                 failure_reason=response.error_message,
                 tokens_to_compliance=workflow.accumulated_tokens,
                 compliance_attempts=workflow.compliance_attempts or 1,
-                **escalation_metadata,
-            )
-            compat_event = ModelTaskDelegatedEvent(
-                topic=TOPIC_ID_TASK_DELEGATED,
-                timestamp=datetime.now(UTC).isoformat(),
-                correlation_id=response.correlation_id,
-                session_id=None,
-                task_type=workflow.request.task_type,
-                delegated_to=model_used,
-                model_name=workflow.routing_decision.selected_model,
-                quality_gate_passed=False,
-                quality_gates_failed=[response.error_message],
-                cost_usd=failed_cost.cash_cost_usd,
-                cost_savings_usd=0.0,
-                # OMN-13408: carry the served tokens so the projection upsert is not
-                # clobbered to 0 by this compat event (it co-writes the same row as
-                # delegation-failed.v1, which DOES carry real tokens).
-                tokens_input=response.prompt_tokens,
-                tokens_output=response.completion_tokens,
-                cost_tier_type=failed_cost.cost_tier_type,
-                cost_tier_name=failed_cost.cost_tier_name,
-                cost_measurement_source=failed_cost.cost_measurement_source,
-                budget_headroom_consumed_usd=failed_cost.headroom_consumed_usd,
-                delegation_latency_ms=elapsed_ms,
-                llm_call_id=response.llm_call_id,
-                tokens_to_compliance=workflow.accumulated_tokens,
-                compliance_attempts=workflow.compliance_attempts or 1,
-                pricing_manifest_version=get_manifest_version_int(),
-                context_pack_hash=_context_pack_hash_for_event(workflow.request),
+                # No premium counterfactual on the failure path — no accepted
+                # result to bank a saving against, so cost_savings_usd is 0.0
+                # while cost_usd is the real metered cost the failed inference
+                # still incurred (priced once inside _emit_terminal).
+                cost_tier_name=workflow.current_tier_name or "",
+                premium_counterfactual=None,
                 escalation_count=workflow.escalation_count,
                 escalation_history=tuple(
                     attempt.model_dump(mode="json")
                     for attempt in workflow.escalation_history
                 ),
+                terminal_failure_reason=terminal_failure_reason,
                 routing_tiers_hash=self._routing_tiers_hash(),
+                escalation_config_hash=None,
                 attempts_count=workflow.escalation_count + 1,
+                model_name=workflow.routing_decision.selected_model,
+                session_id=None,
+                # Pre-gate inference failure: no quality gate ran, so report the
+                # compat DTO's documented default gate set as "checked".
+                quality_gates_checked=["length", "refusal", "markers"],
+                quality_gates_failed=[response.error_message],
+                llm_call_id=response.llm_call_id,
+                context_pack_hash=_context_pack_hash_for_event(workflow.request),
             )
             self._transition(workflow, EnumDelegationState.FAILED)
-            return [
-                ModelDelegationEvent(
-                    topic=TOPIC_ID_DELEGATION_FAILED,
-                    payload=delegation_result,
-                ),
-                compat_event,
-            ]
+            return self._emit_terminal(terminal_inputs)
 
         # Legacy path: no compliance loop, single attempt.
         if workflow.request.output_schema_key is None:
@@ -865,6 +941,32 @@ class HandlerDelegationWorkflow:
 
         # Compliance-loop path.
         return _evaluate_compliance(workflow, response, self._transition)
+
+    @staticmethod
+    def _terminal_failed_fields(
+        workflow: DelegationWorkflowState,
+    ) -> tuple[str, str, str]:
+        """Resolve fail-closed (model_used, endpoint_url, content) for a terminal
+        FAILED event.
+
+        OMN-13470 / OMN-13140: the terminal ``ModelDelegationResult`` wire DTO
+        requires non-null ``model_used``, ``endpoint_url``, and ``content``. On an
+        all-tiers-failed / judge-failed terminal these workflow fields can be
+        ``None`` (e.g. the inference attempt never produced content, or the
+        routing decision was reset on a prior escalation), which made the terminal
+        construction raise ``ValidationError`` — crashing the dispatcher with NO
+        terminal event emitted (silent loss; the all-tiers-failed HWM stayed 0).
+        Fail closed to explicit sentinel strings so a valid terminal event is
+        ALWAYS emitted; the failure reason carries the real cause.
+        """
+        model_used = workflow.inference_model_used or "none"
+        endpoint_url = (
+            workflow.routing_decision.endpoint_url
+            if workflow.routing_decision is not None
+            else "none"
+        )
+        content = workflow.inference_content if workflow.inference_content else ""
+        return model_used, endpoint_url, content
 
     def handle_gate_result(
         self,
@@ -920,44 +1022,20 @@ class HandlerDelegationWorkflow:
                 task_type=workflow.request.task_type
             )
         except RequiredBarAuthorityError as exc:
-            escalation_metadata = self._escalation_metadata(
-                workflow,
-                terminal_failure_reason="required_bar_missing",
-            )
-            delegation_result = ModelDelegationResult(
-                correlation_id=cid,
-                task_type=workflow.request.task_type,
-                model_used=workflow.inference_model_used,
-                endpoint_url=workflow.routing_decision.endpoint_url,
-                content=workflow.inference_content,
-                quality_passed=False,
-                quality_score=result.quality_score,
-                latency_ms=elapsed_ms,
-                prompt_tokens=workflow.inference_prompt_tokens,
-                completion_tokens=workflow.inference_completion_tokens,
-                total_tokens=workflow.inference_total_tokens,
-                fallback_to_claude=False,
-                failure_reason=f"required_bar_missing: {exc}",
-                tokens_to_compliance=tokens_to_compliance,
-                compliance_attempts=compliance_attempts,
-                **escalation_metadata,
-            )
-            compat_event = self._build_compat_event(
+            terminal_inputs = self._gate_terminal_inputs(
                 workflow,
                 result,
                 elapsed_ms,
                 tokens_to_compliance,
                 compliance_attempts,
-                quality_gate_passed=False,
+                completed=False,
+                fallback_to_claude=False,
+                failure_reason=f"required_bar_missing: {exc}",
+                terminal_failure_reason="required_bar_missing",
+                required_bar_authority=None,
             )
             self._transition(workflow, EnumDelegationState.FAILED)
-            return [
-                ModelDelegationEvent(
-                    topic=TOPIC_ID_DELEGATION_FAILED,
-                    payload=delegation_result,
-                ),
-                compat_event,
-            ]
+            return self._emit_terminal(terminal_inputs)
 
         actual_score = result.quality_score
         score_below_required_bar = actual_score < required_bar_authority.required_bar
@@ -977,24 +1055,17 @@ class HandlerDelegationWorkflow:
 
         if quality_accepted:
             # --- PASSED: complete as before ---
-            escalation_metadata = self._escalation_metadata(workflow)
-            delegation_result = ModelDelegationResult(
-                correlation_id=cid,
-                task_type=workflow.request.task_type,
-                model_used=workflow.inference_model_used,
-                endpoint_url=workflow.routing_decision.endpoint_url,
-                content=workflow.inference_content,
-                quality_passed=True,
-                quality_score=result.quality_score,
-                latency_ms=elapsed_ms,
-                prompt_tokens=workflow.inference_prompt_tokens,
-                completion_tokens=workflow.inference_completion_tokens,
-                total_tokens=workflow.inference_total_tokens,
+            terminal_inputs = self._gate_terminal_inputs(
+                workflow,
+                result,
+                elapsed_ms,
+                tokens_to_compliance,
+                compliance_attempts,
+                completed=True,
                 fallback_to_claude=False,
                 failure_reason="",
-                tokens_to_compliance=tokens_to_compliance,
-                compliance_attempts=compliance_attempts,
-                **escalation_metadata,
+                terminal_failure_reason=None,
+                required_bar_authority=required_bar_authority,
             )
 
             estimated_claude_cost = estimate_baseline_cost_usd(
@@ -1012,23 +1083,12 @@ class HandlerDelegationWorkflow:
                 premium_counterfactual=None,
             )
 
-            compat_event = self._build_compat_event(
-                workflow,
-                result,
-                elapsed_ms,
-                tokens_to_compliance,
-                compliance_attempts,
-                quality_gate_passed=True,
-                required_bar_authority=required_bar_authority,
-            )
-
             self._transition(workflow, EnumDelegationState.COMPLETED)
-            events.append(
-                ModelDelegationEvent(
-                    topic=TOPIC_ID_DELEGATION_COMPLETED,
-                    payload=delegation_result,
-                )
-            )
+            # OMN-13475: terminal + compat come from the single builder; the
+            # baseline intent is interleaved between them to preserve the prior
+            # emission order ([completed, baseline, compat]).
+            terminal_events = self._emit_terminal(terminal_inputs)
+            events.append(terminal_events[0])
             events.append(
                 ModelBaselineIntent(
                     correlation_id=cid,
@@ -1040,7 +1100,7 @@ class HandlerDelegationWorkflow:
                     total_tokens=workflow.inference_total_tokens,
                 )
             )
-            events.append(compat_event)
+            events.append(terminal_events[1])
             return events
 
         # --- FAILED: evaluate escalation (OMN-12254) ---
@@ -1065,35 +1125,25 @@ class HandlerDelegationWorkflow:
             )
         )
 
-        # Determine why escalation cannot proceed (for audit trail).
-        terminal_failure_reason: str | None = None
-        next_tier: str | None = None
+        # OMN-13476: a sub-bar quality result is always retryable on a higher
+        # tier, so the decision reduces to budget / current-tier / ladder. The
+        # orchestrator resolves the routing-contract inputs inside
+        # ``_decide_escalation`` and delegates the verdict to the COMPUTE —
+        # behavior identical to the prior inline branch (OMN-13167 precise
+        # no-higher-tier reason still emitted, sourced from the same
+        # describe_no_higher_tier_available call).
+        decision = self._decide_escalation(
+            workflow,
+            max_escalation_attempts=max_escalation_attempts,
+            excluded_tiers=excluded_tiers,
+            error_retryable=True,
+            non_retryable_reason="non_retryable_quality_result",
+            task_type=workflow.request.task_type,
+        )
+        terminal_failure_reason = decision.terminal_failure_reason
+        next_tier = decision.next_tier_name
 
-        if workflow.escalation_count >= max_escalation_attempts:
-            terminal_failure_reason = "max_escalation_attempts_reached"
-        elif workflow.current_tier_name is None:
-            terminal_failure_reason = "current_tier_unknown"
-        else:
-            next_tier = next_eligible_tier(
-                workflow.current_tier_name,
-                excluded_tiers,
-                task_type=workflow.request.task_type,
-            )
-            if next_tier is None:
-                # OMN-13167: emit a precise reason that names the exhausted
-                # task-class escalation policy and the unusable higher tiers,
-                # not the bare token. `test`/`research` (and any task class)
-                # dead-ended here previously with no indication of which policy
-                # or missing tier caused it.
-                terminal_failure_reason = describe_no_higher_tier_available(
-                    workflow.current_tier_name,
-                    excluded_tiers,
-                    task_type=workflow.request.task_type,
-                )
-
-        can_escalate = terminal_failure_reason is None and next_tier is not None
-
-        if can_escalate:
+        if decision.can_escalate:
             assert next_tier is not None
             # OMN-13140: build the terminal escalation proof BEFORE the inference
             # state reset below clears inference_model_used. The quality gate
@@ -1131,51 +1181,25 @@ class HandlerDelegationWorkflow:
             ]
 
         # Cannot escalate: terminal FAILED with reason.
-        escalation_metadata = self._escalation_metadata(
+        terminal_inputs = self._gate_terminal_inputs(
             workflow,
-            terminal_failure_reason=terminal_failure_reason,
-        )
-        delegation_result = ModelDelegationResult(
-            correlation_id=cid,
-            task_type=workflow.request.task_type,
-            model_used=workflow.inference_model_used,
-            endpoint_url=workflow.routing_decision.endpoint_url,
-            content=workflow.inference_content,
-            quality_passed=False,
-            quality_score=result.quality_score,
-            latency_ms=elapsed_ms,
-            prompt_tokens=workflow.inference_prompt_tokens,
-            completion_tokens=workflow.inference_completion_tokens,
-            total_tokens=workflow.inference_total_tokens,
+            result,
+            elapsed_ms,
+            tokens_to_compliance,
+            compliance_attempts,
+            completed=False,
             fallback_to_claude=True,
             failure_reason=self._score_vs_bar_reason(
                 result,
                 required_bar_authority,
                 pre_filter_rejected=pre_filter_rejected,
             ),
-            tokens_to_compliance=tokens_to_compliance,
-            compliance_attempts=compliance_attempts,
-            **escalation_metadata,
-        )
-
-        compat_event = self._build_compat_event(
-            workflow,
-            result,
-            elapsed_ms,
-            tokens_to_compliance,
-            compliance_attempts,
-            quality_gate_passed=False,
+            terminal_failure_reason=terminal_failure_reason,
             required_bar_authority=required_bar_authority,
         )
 
         self._transition(workflow, EnumDelegationState.FAILED)
-        events.append(
-            ModelDelegationEvent(
-                topic=TOPIC_ID_DELEGATION_FAILED,
-                payload=delegation_result,
-            )
-        )
-        events.append(compat_event)
+        events.extend(self._emit_terminal(terminal_inputs))
         return events
 
     def _build_escalation_event(
@@ -1243,72 +1267,6 @@ class HandlerDelegationWorkflow:
             return f"{detail}; failures={'; '.join(result.failure_reasons)}"
         return detail
 
-    def _escalation_metadata(
-        self,
-        workflow: DelegationWorkflowState,
-        *,
-        terminal_failure_reason: str | None = None,
-    ) -> dict[str, object]:
-        """Build escalation metadata fields for terminal events.
-
-        OMN-13408: ``cumulative_attempt_cost``, ``cumulative_input_tokens``,
-        ``cumulative_output_tokens``, and ``final_attempt_cost`` were previously
-        hardcoded to 0.0/0, so every terminal ModelDelegationResult had a zero
-        cost regardless of the actual metered inference tokens consumed.
-
-        Fix: measure the final attempt's cost through the same typed-tier-cost
-        model (``_measure_terminal_cost``) used by the compat-event builder and
-        the projection's recompute. ``final_attempt_cost`` is the last tier's
-        measured cash cost. ``cumulative_attempt_cost`` is the running sum: for
-        the common single-attempt case it equals ``final_attempt_cost``; for
-        escalation paths the previous tiers' measured costs are summed from the
-        per-tier cost computation on the workflow's known token fields.
-
-        ``cumulative_input_tokens`` and ``cumulative_output_tokens`` reflect the
-        last inference's measured token counts. In the compliance-loop case
-        (OMN-10794) the orchestrator accumulates tokens into
-        ``workflow.accumulated_tokens`` across repair-attempts; for the terminal
-        report the last inference tokens are the canonical per-attempt figure that
-        feeds the per-call cost (the compliance loop reuses the SAME tier, so the
-        SAME rate applies for each sub-attempt).
-        """
-        history_dicts = tuple(
-            attempt.model_dump(mode="json") for attempt in workflow.escalation_history
-        )
-
-        # Measure the final attempt's cost from the workflow's resolved token counts
-        # and the current serving tier — the same computation the compat-event
-        # builder and projection recompute use (OMN-13396).
-        final_cost = self._measure_terminal_cost(
-            tier_name=workflow.current_tier_name or "",
-            prompt_tokens=workflow.inference_prompt_tokens,
-            completion_tokens=workflow.inference_completion_tokens,
-            premium_counterfactual=None,
-        )
-        final_attempt_cost = final_cost.cash_cost_usd
-
-        # cumulative is the running sum of all tier attempts. We only have
-        # resolved token counts for the FINAL tier (escalation_history carries
-        # no per-attempt token data). Use the final-attempt cost as the total
-        # for the initial/common single-attempt case; for multi-tier escalation
-        # this understates the full cost by the intermediate tiers' tokens (which
-        # are not tracked in the history model). Accepting this known gap as a
-        # safe under-count rather than the current guaranteed zero.
-        cumulative_attempt_cost = final_attempt_cost
-
-        return {
-            "escalation_count": workflow.escalation_count,
-            "escalation_history": history_dicts,
-            "terminal_failure_reason": terminal_failure_reason,
-            "routing_tiers_hash": self._routing_tiers_hash(),
-            "escalation_config_hash": None,
-            "attempts_count": workflow.escalation_count + 1,
-            "cumulative_attempt_cost": cumulative_attempt_cost,
-            "cumulative_input_tokens": workflow.inference_prompt_tokens,
-            "cumulative_output_tokens": workflow.inference_completion_tokens,
-            "final_attempt_cost": final_attempt_cost,
-        }
-
     @staticmethod
     def _measure_terminal_cost(
         *,
@@ -1353,7 +1311,100 @@ class HandlerDelegationWorkflow:
         content = config_path.read_bytes()
         return hashlib.sha256(content).hexdigest()
 
-    def _build_compat_event(
+    def _emit_terminal(self, inputs: TerminalEmissionInputs) -> list[BaseModel]:
+        """ONE builder for BOTH terminal events (OMN-13475).
+
+        This is the sole construction site for the canonical
+        ``ModelDelegationResult`` (wrapped in a ``ModelDelegationEvent`` on the
+        completed/failed topic) and the compat ``ModelTaskDelegatedEvent``. Cost
+        is measured exactly once here from the inputs' token counts + serving
+        tier; both events are derived from that single measurement and the same
+        token values. There is no second path that could read a different token
+        count or a different cost — so the two events that co-write the same
+        delegation projection row can never diverge (the permanent fix for the
+        OMN-13408 telemetry-zeroing bug class).
+        """
+        cost = self._measure_terminal_cost(
+            tier_name=inputs.cost_tier_name,
+            prompt_tokens=inputs.prompt_tokens,
+            completion_tokens=inputs.completion_tokens,
+            premium_counterfactual=inputs.premium_counterfactual,
+        )
+
+        delegation_result = ModelDelegationResult(
+            correlation_id=inputs.correlation_id,
+            task_type=inputs.task_type,
+            model_used=inputs.model_used,
+            endpoint_url=inputs.endpoint_url,
+            content=inputs.content,
+            quality_passed=inputs.quality_passed,
+            quality_score=inputs.quality_score,
+            latency_ms=inputs.latency_ms,
+            prompt_tokens=inputs.prompt_tokens,
+            completion_tokens=inputs.completion_tokens,
+            total_tokens=inputs.total_tokens,
+            fallback_to_claude=inputs.fallback_to_claude,
+            failure_reason=inputs.failure_reason,
+            tokens_to_compliance=inputs.tokens_to_compliance,
+            compliance_attempts=inputs.compliance_attempts,
+            escalation_count=inputs.escalation_count,
+            escalation_history=inputs.escalation_history,
+            terminal_failure_reason=inputs.terminal_failure_reason,
+            routing_tiers_hash=inputs.routing_tiers_hash,
+            escalation_config_hash=inputs.escalation_config_hash,
+            attempts_count=inputs.attempts_count,
+            # Same measured cost the compat twin carries — measured once above.
+            cumulative_attempt_cost=cost.cash_cost_usd,
+            cumulative_input_tokens=inputs.prompt_tokens,
+            cumulative_output_tokens=inputs.completion_tokens,
+            final_attempt_cost=cost.cash_cost_usd,
+        )
+
+        compat_event = ModelTaskDelegatedEvent(
+            topic=TOPIC_ID_TASK_DELEGATED,
+            timestamp=datetime.now(UTC).isoformat(),
+            correlation_id=inputs.correlation_id,
+            session_id=inputs.session_id,
+            task_type=inputs.task_type,
+            delegated_to=inputs.model_used,
+            model_name=inputs.model_name,
+            quality_gate_passed=inputs.quality_passed,
+            quality_gates_checked=inputs.quality_gates_checked,
+            quality_gates_failed=inputs.quality_gates_failed,
+            cost_usd=cost.cash_cost_usd,
+            cost_savings_usd=round(cost.cost_savings_usd, 6),
+            cost_tier_type=cost.cost_tier_type,
+            cost_tier_name=cost.cost_tier_name,
+            cost_measurement_source=cost.cost_measurement_source,
+            budget_headroom_consumed_usd=cost.headroom_consumed_usd,
+            delegation_latency_ms=inputs.latency_ms,
+            llm_call_id=inputs.llm_call_id,
+            tokens_to_compliance=inputs.tokens_to_compliance,
+            compliance_attempts=inputs.compliance_attempts,
+            # Served tokens — identical to the canonical terminal above.
+            tokens_input=inputs.prompt_tokens,
+            tokens_output=inputs.completion_tokens,
+            pricing_manifest_version=get_manifest_version_int(),
+            context_pack_hash=inputs.context_pack_hash,
+            escalation_count=inputs.escalation_count,
+            escalation_history=inputs.escalation_history,
+            routing_tiers_hash=inputs.routing_tiers_hash,
+            escalation_config_hash=inputs.escalation_config_hash,
+            attempts_count=inputs.attempts_count,
+            premium_counterfactual=inputs.premium_counterfactual,
+        )
+
+        topic = (
+            TOPIC_ID_DELEGATION_COMPLETED
+            if inputs.completed
+            else TOPIC_ID_DELEGATION_FAILED
+        )
+        return [
+            ModelDelegationEvent(topic=topic, payload=delegation_result),
+            compat_event,
+        ]
+
+    def _gate_terminal_inputs(
         self,
         workflow: DelegationWorkflowState,
         result: ModelQualityGateResult,
@@ -1361,39 +1412,39 @@ class HandlerDelegationWorkflow:
         tokens_to_compliance: int,
         compliance_attempts: int,
         *,
-        quality_gate_passed: bool | None = None,
-        required_bar_authority: RequiredBarAuthority | None = None,
-    ) -> ModelTaskDelegatedEvent:
-        """Build backward-compatible task-delegated.v1 event for omnidash."""
+        completed: bool,
+        fallback_to_claude: bool,
+        failure_reason: str,
+        terminal_failure_reason: str | None,
+        required_bar_authority: RequiredBarAuthority | None,
+    ) -> TerminalEmissionInputs:
+        """Resolve a quality-gate terminal outcome into the single-source inputs.
+
+        OMN-13475: the gate paths (completed-pass, required_bar_missing, and
+        gate-failed-escalation-exhausted) all funnel through here so the one
+        ``_emit_terminal`` builder produces BOTH terminal events from these
+        identical values — no separate ``ModelDelegationResult`` /
+        ``ModelTaskDelegatedEvent`` construction.
+        """
         assert workflow.request is not None
         assert workflow.routing_decision is not None
         assert workflow.inference_model_used is not None
 
         # OMN-13355: pin the premium counterfactual so cost_savings_usd
-        # (= counterfactual_cost_usd - cost_usd) is auditable rather than an opaque
-        # estimate. The pinned price + as_of come from the canonical pricing
-        # manifest; no live premium call is made.
-        premium_counterfactual = build_premium_counterfactual(
-            prompt_tokens=workflow.inference_prompt_tokens,
-            completion_tokens=workflow.inference_completion_tokens,
-        )
-        # OMN-13396: price the served tokens through the serving tier's typed cost
-        # model and bank the HONEST saving (counterfactual - measured actual),
-        # mirroring the projection's recompute. cost_usd is the measured actual
-        # (free_local -> 0.0; metered -> rate x tokens), not a hardcoded 0.0, so a
-        # later projection over this terminal event no longer reads counterfactual
-        # minus zero.
-        measured_cost = self._measure_terminal_cost(
-            tier_name=workflow.current_tier_name or "",
-            prompt_tokens=workflow.inference_prompt_tokens,
-            completion_tokens=workflow.inference_completion_tokens,
-            premium_counterfactual=premium_counterfactual,
+        # (= counterfactual_cost_usd - cost_usd) is auditable. Only banked on the
+        # completed/accepted path; failure paths bank no saving (None).
+        premium_counterfactual = (
+            build_premium_counterfactual(
+                prompt_tokens=workflow.inference_prompt_tokens,
+                completion_tokens=workflow.inference_completion_tokens,
+            )
+            if completed
+            else None
         )
 
         history_dicts = tuple(
             attempt.model_dump(mode="json") for attempt in workflow.escalation_history
         )
-        accepted = result.passed if quality_gate_passed is None else quality_gate_passed
         quality_gates_checked = (
             format_quality_bar_labels(
                 required_bar=required_bar_authority.required_bar,
@@ -1408,38 +1459,37 @@ class HandlerDelegationWorkflow:
             else ["required_bar_missing"]
         )
 
-        return ModelTaskDelegatedEvent(
-            topic=TOPIC_ID_TASK_DELEGATED,
-            timestamp=datetime.now(UTC).isoformat(),
+        return TerminalEmissionInputs(
+            completed=completed,
             correlation_id=result.correlation_id,
-            session_id=None,
             task_type=workflow.request.task_type,
-            delegated_to=workflow.inference_model_used,
-            model_name=workflow.routing_decision.selected_model,
-            quality_gate_passed=accepted,
-            quality_gates_checked=quality_gates_checked,
-            quality_gates_failed=[] if accepted else list(result.failure_reasons),
-            cost_usd=measured_cost.cash_cost_usd,
-            cost_savings_usd=round(measured_cost.cost_savings_usd, 6),
-            cost_tier_type=measured_cost.cost_tier_type,
-            cost_tier_name=measured_cost.cost_tier_name,
-            cost_measurement_source=measured_cost.cost_measurement_source,
-            budget_headroom_consumed_usd=measured_cost.headroom_consumed_usd,
-            delegation_latency_ms=elapsed_ms,
-            llm_call_id=workflow.inference_llm_call_id,
+            model_used=workflow.inference_model_used,
+            endpoint_url=workflow.routing_decision.endpoint_url,
+            content=workflow.inference_content or "",
+            quality_passed=completed,
+            quality_score=result.quality_score,
+            latency_ms=elapsed_ms,
+            prompt_tokens=workflow.inference_prompt_tokens,
+            completion_tokens=workflow.inference_completion_tokens,
+            total_tokens=workflow.inference_total_tokens,
+            fallback_to_claude=fallback_to_claude,
+            failure_reason=failure_reason,
             tokens_to_compliance=tokens_to_compliance,
             compliance_attempts=compliance_attempts,
-            # OMN-13408: carry the served tokens so the projection upsert is not
-            # clobbered to 0 by this compat event.
-            tokens_input=workflow.inference_prompt_tokens,
-            tokens_output=workflow.inference_completion_tokens,
-            pricing_manifest_version=get_manifest_version_int(),
-            context_pack_hash=_context_pack_hash_for_event(workflow.request),
+            cost_tier_name=workflow.current_tier_name or "",
+            premium_counterfactual=premium_counterfactual,
             escalation_count=workflow.escalation_count,
             escalation_history=history_dicts,
+            terminal_failure_reason=terminal_failure_reason,
             routing_tiers_hash=self._routing_tiers_hash(),
+            escalation_config_hash=None,
             attempts_count=workflow.escalation_count + 1,
-            premium_counterfactual=premium_counterfactual,
+            model_name=workflow.routing_decision.selected_model,
+            session_id=None,
+            quality_gates_checked=quality_gates_checked,
+            quality_gates_failed=[] if completed else list(result.failure_reasons),
+            llm_call_id=workflow.inference_llm_call_id,
+            context_pack_hash=_context_pack_hash_for_event(workflow.request),
         )
 
     def handle_agent_task_lifecycle(
@@ -1478,63 +1528,46 @@ class HandlerDelegationWorkflow:
         content = self._render_lifecycle_content(lifecycle_event)
         failure_reason = lifecycle_event.error or ""
 
-        delegation_result = ModelDelegationResult(
+        completed = next_state is EnumDelegationState.COMPLETED
+        # OMN-13396/OMN-13475: the remote-agent (A2A) lifecycle carries no token
+        # counts and no serving tier — it is not a tier-routed LLM inference. The
+        # single terminal builder still prices it through the same typed-tier-cost
+        # model so the zero is PROVEN by the cost model (no_cost_model provenance)
+        # rather than a silent hardcoded 0.0: an unset tier resolves to
+        # no_cost_model and deterministically yields cash_cost_usd == 0.0.
+        terminal_inputs = TerminalEmissionInputs(
+            completed=completed,
             correlation_id=cid,
             task_type=workflow.request.task_type,
             model_used=delegated_to,
             endpoint_url=delegated_to,
             content=content,
-            quality_passed=next_state is EnumDelegationState.COMPLETED,
-            quality_score=1.0 if next_state is EnumDelegationState.COMPLETED else 0.0,
+            quality_passed=completed,
+            quality_score=1.0 if completed else 0.0,
             latency_ms=elapsed_ms,
-            fallback_to_claude=False,
-            failure_reason=failure_reason,
-        )
-
-        # OMN-13396: the remote-agent (A2A) lifecycle carries no token counts and
-        # no serving tier — it is not a tier-routed LLM inference. Route it through
-        # the same typed-tier-cost measurement so the zero is PROVEN by the cost
-        # model (no_cost_model provenance) rather than a silent hardcoded 0.0:
-        # measure_terminal_cost with the (unset) tier resolves to no_cost_model and
-        # deterministically yields cash_cost_usd == 0.0.
-        agent_cost = self._measure_terminal_cost(
-            tier_name=workflow.current_tier_name or "",
             prompt_tokens=0,
             completion_tokens=0,
+            total_tokens=0,
+            fallback_to_claude=False,
+            failure_reason=failure_reason,
+            tokens_to_compliance=0,
+            compliance_attempts=1,
+            cost_tier_name=workflow.current_tier_name or "",
             premium_counterfactual=None,
-        )
-
-        compat_event = ModelTaskDelegatedEvent(
-            topic=TOPIC_ID_TASK_DELEGATED,
-            timestamp=datetime.now(UTC).isoformat(),
-            correlation_id=cid,
-            session_id=None,
-            task_type=workflow.request.task_type,
-            delegated_to=delegated_to,
+            escalation_count=0,
+            escalation_history=(),
+            terminal_failure_reason=None,
+            routing_tiers_hash=None,
+            escalation_config_hash=None,
+            attempts_count=1,
             model_name=delegated_to,
-            quality_gate_passed=next_state is EnumDelegationState.COMPLETED,
+            session_id=None,
             quality_gates_checked=["agent-task-lifecycle"],
             quality_gates_failed=[failure_reason] if failure_reason else [],
-            cost_usd=agent_cost.cash_cost_usd,
-            cost_savings_usd=0.0,
-            cost_tier_type=agent_cost.cost_tier_type,
-            cost_tier_name=agent_cost.cost_tier_name,
-            cost_measurement_source=agent_cost.cost_measurement_source,
-            budget_headroom_consumed_usd=agent_cost.headroom_consumed_usd,
-            delegation_latency_ms=elapsed_ms,
             llm_call_id=lifecycle_event.remote_task_handle or "",
             context_pack_hash=_context_pack_hash_for_event(workflow.request),
         )
-
-        topic = (
-            TOPIC_ID_DELEGATION_COMPLETED
-            if next_state is EnumDelegationState.COMPLETED
-            else TOPIC_ID_DELEGATION_FAILED
-        )
-        return [
-            ModelDelegationEvent(topic=topic, payload=delegation_result),
-            compat_event,
-        ]
+        return self._emit_terminal(terminal_inputs)
 
     async def handle(self, payload: object) -> list[BaseModel]:
         """Route supported workflow payloads through the canonical FSM methods."""

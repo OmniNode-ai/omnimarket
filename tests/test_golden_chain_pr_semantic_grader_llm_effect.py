@@ -3,18 +3,24 @@
 
 """Golden-chain test for node_pr_semantic_grader_llm_effect.
 
-Exercises the full effect chain end to end without a live broker or LLM:
+Exercises the full effect chain end to end over a RECORDED-FROM-REAL inference
+replay (OMN-13498 B1), never a hand-written canned fake:
 
     cmd envelope (subscribe topic)
         -> ModelSemanticGradingRequest deserialization
-        -> HandlerPrSemanticGrader.handle(...)  (injected fake inference bridge)
+        -> HandlerPrSemanticGrader.handle(...)  (RecordedReplayInferenceAdapter)
         -> ModelSemanticGradingResult
         -> evt payload (publish topic) round-trips through JSON
 
-The inference bridge is injected per the handler's documented test-injection
-path so no network call is made. The chain asserts the contract's declared
-subscribe/publish topics stay aligned with the handler's behavior, and that a
-grader failure yields a typed failure evt rather than zero scores.
+The grading response replayed here was CAPTURED FROM A REAL z.ai GLM
+(``cloud-glm``, ``glm-5.2``) call resolved through the committed routing contract
+(see ``tests/fixtures/inference_replay/glm_pr_semantic_grading.json``). The replay
+adapter HARD-REJECTS a delegation tier name handed in as a ``model_key``, so it
+cannot mask the tier-name-as-model_key regression a hand-written fake would
+(OMN-13470 / OMN-13497 ``check-no-faked-boundary``). The chain asserts the
+contract's declared subscribe/publish topics stay aligned with the handler's
+behavior, and that a grader failure yields a typed failure evt rather than zero
+scores.
 
 Added by OMN-13208 (A1): the inference bridge re-home repointed this node's
 handler import to ``omnimarket.inference``; this golden chain proves the
@@ -38,6 +44,10 @@ from omnimarket.nodes.node_pr_semantic_grader_llm_effect.models.model_semantic_g
 )
 from omnimarket.nodes.node_pr_semantic_grader_llm_effect.models.model_semantic_grading_result import (
     ModelSemanticGradingResult,
+)
+from tests.fixtures.inference_replay import (
+    RecordedReplayInferenceAdapter,
+    load_recorded_response,
 )
 
 _CONTRACT_PATH = (
@@ -66,23 +76,24 @@ _CLEAN_DIFF = """\
          await self._bus.publish(topic, request)
 """
 
-_GOOD_RESPONSE = json.dumps(
-    {
-        "criteria_coverage": 0.9,
-        "contract_alignment": 0.85,
-        "anti_pattern_present": 0.1,
-        "overall_confidence": 0.9,
-        "rationale": "Good coverage|Contract-driven|No violations|High confidence",
-    }
-)
+# The real recorded GLM grading response (replayed, never canned). Captured from
+# a live cloud-glm call resolved through the routing contract.
+_RECORDED_FIXTURE = "glm_pr_semantic_grading.json"
+_GOOD_RESPONSE = load_recorded_response(_RECORDED_FIXTURE)
+# Values the handler parses out of the REAL recorded grading response above.
+_RECORDED_CRITERIA_COVERAGE = 0.75
 
 
-class _FakeInferenceBridge(ModelInferenceAdapter):
-    """In-process bridge returning a canned valid grading response."""
+class _FailingInferenceAdapter(ModelInferenceAdapter):
+    """Negative-path inference adapter: always raises (transport failure).
 
-    def __init__(self, response: str | Exception) -> None:
-        self._response = response
-        self.calls: list[dict[str, object]] = []
+    Not a fake of real output — it injects a transport-layer failure so the
+    handler's typed-failure path can be exercised. It returns no canned/echoed
+    completion and accepts no model_key as a stand-in for a real model.
+    """
+
+    def __init__(self, exc: Exception) -> None:
+        self._exc = exc
 
     async def infer(
         self,
@@ -92,16 +103,7 @@ class _FakeInferenceBridge(ModelInferenceAdapter):
         timeout_seconds: float,
         temperature: float | None = None,
     ) -> str:
-        self.calls.append(
-            {
-                "model_key": model_key,
-                "user_prompt": user_prompt,
-                "timeout_seconds": timeout_seconds,
-            }
-        )
-        if isinstance(self._response, Exception):
-            raise self._response
-        return self._response
+        raise self._exc
 
 
 def _load_contract() -> dict[str, object]:
@@ -132,8 +134,8 @@ def test_contract_topics_match_chain_expectations() -> None:
 @pytest.mark.unit
 @pytest.mark.asyncio
 async def test_golden_chain_cmd_to_evt_produces_graded_result() -> None:
-    """cmd envelope -> handler -> evt payload, no broker, no network."""
-    bridge = _FakeInferenceBridge(_GOOD_RESPONSE)
+    """cmd envelope -> handler -> evt payload over a real recorded replay."""
+    bridge = RecordedReplayInferenceAdapter(_RECORDED_FIXTURE)
     handler = HandlerPrSemanticGrader(inference_bridge=bridge)
 
     request = ModelSemanticGradingRequest.model_validate(_cmd_envelope())
@@ -143,7 +145,9 @@ async def test_golden_chain_cmd_to_evt_produces_graded_result() -> None:
     assert result.success is True
     assert result.correlation_id == "golden-chain-pr-semantic-grader"
     assert result.ticket_id == "OMN-13208"
-    assert result.criteria_coverage == 0.9
+    # The real recorded GLM grading scored criteria_coverage at 0.75 with
+    # anti_pattern_present 0.0 (advisory stays False).
+    assert result.criteria_coverage == _RECORDED_CRITERIA_COVERAGE
     assert result.advisory is False
     assert result.llm_call_evidence is not None
 
@@ -154,14 +158,14 @@ async def test_golden_chain_cmd_to_evt_produces_graded_result() -> None:
     evt_payload = json.loads(result.model_dump_json())
     assert evt_payload["success"] is True
     assert evt_payload["correlation_id"] == "golden-chain-pr-semantic-grader"
-    assert evt_payload["criteria_coverage"] == 0.9
+    assert evt_payload["criteria_coverage"] == _RECORDED_CRITERIA_COVERAGE
 
 
 @pytest.mark.unit
 @pytest.mark.asyncio
 async def test_golden_chain_llm_failure_yields_typed_failure_evt() -> None:
     """A bridge failure produces a typed failure evt, never zero scores."""
-    bridge = _FakeInferenceBridge(ConnectionError("broker unreachable"))
+    bridge = _FailingInferenceAdapter(ConnectionError("broker unreachable"))
     handler = HandlerPrSemanticGrader(inference_bridge=bridge)
 
     request = ModelSemanticGradingRequest.model_validate(_cmd_envelope())

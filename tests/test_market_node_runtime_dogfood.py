@@ -53,8 +53,10 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
     # 318 -> 319.
     # OMN-12845 M5 adds node_capsule_effectiveness_feedback_reducer: 319 -> 320.
     # OMN-13439 Phase 2b adds node_prod_promotion_grant_resolver_effect: 320 -> 321.
-    assert summary["node_dirs"] == 321
-    assert summary["entry_points"] == 321
+    # OMN-13476 W4 extracts the delegation escalation/tier decision into
+    # node_delegation_escalation_decision_compute (COMPUTE): 321 -> 322.
+    assert summary["node_dirs"] == 322
+    assert summary["entry_points"] == 322
     assert summary["missing_entry_points"] == []
     assert summary["dangling_entry_points"] == []
     assert summary["routable"] >= 297

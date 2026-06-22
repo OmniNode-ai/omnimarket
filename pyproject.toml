@@ -83,6 +83,7 @@ node_authorize = "omnimarket.nodes.node_authorize"
 node_budget_policy_compute = "omnimarket.nodes.node_budget_policy_compute"
 node_chain_diff_compute = "omnimarket.nodes.node_chain_diff_compute"
 node_contract_graph_ir_compute = "omnimarket.nodes.node_contract_graph_ir_compute"
+node_delegation_escalation_decision_compute = "omnimarket.nodes.node_delegation_escalation_decision_compute"
 node_closeout_verifier_compute = "omnimarket.nodes.node_closeout_verifier_compute"
 node_context_pack_builder_compute = "omnimarket.nodes.node_context_pack_builder_compute"
 node_context_artifact_resolver_compute = "omnimarket.nodes.node_context_artifact_resolver_compute"
@@ -405,7 +406,7 @@ market = "omnimarket.cli.market:market"
 omnimarket = "omnimarket.nodes"
 
 [tool.uv.sources]
-omnibase-core = { git = "https://github.com/OmniNode-ai/omnibase_core.git", rev = "79ec3ad9d801b8da38b4d9099852cc8bfffad00e" }
+omnibase-core = { git = "https://github.com/OmniNode-ai/omnibase_core.git", rev = "4c91bc1848d739a0f72003b8cc5a4f6c79c7b433" }
 omnibase-compat = { git = "https://github.com/OmniNode-ai/omnibase_compat.git", rev = "331a9de450c7d4349825cb8933c5d2f663ba685b" }
 omnibase-infra = { git = "https://github.com/OmniNode-ai/omnibase_infra.git", rev = "f2533f5ad6e1ce5889e581175cf02e9c50ff38b3" }
 omninode-memory = { git = "https://github.com/OmniNode-ai/omnimemory.git", rev = "9843dd18cedaa4f5939289ba527532262b87003c" }
@@ -413,7 +414,7 @@ onex-change-control = { git = "https://github.com/OmniNode-ai/onex_change_contro
 
 [tool.uv]
 override-dependencies = [
-    "omnibase-core @ git+https://github.com/OmniNode-ai/omnibase_core.git@79ec3ad9d801b8da38b4d9099852cc8bfffad00e",
+    "omnibase-core @ git+https://github.com/OmniNode-ai/omnibase_core.git@4c91bc1848d739a0f72003b8cc5a4f6c79c7b433",
     "omnibase-spi>=0.22.0,<0.23.0",
     "omnibase-infra @ git+https://github.com/OmniNode-ai/omnibase_infra.git@f2533f5ad6e1ce5889e581175cf02e9c50ff38b3",
     "omnibase-compat @ git+https://github.com/OmniNode-ai/omnibase_compat.git@331a9de450c7d4349825cb8933c5d2f663ba685b",

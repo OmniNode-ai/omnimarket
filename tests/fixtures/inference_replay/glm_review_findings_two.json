@@ -1,0 +1,6 @@
+{
+  "captured_from": "real z.ai GLM call (cloud-glm backend, routing-contract resolved)",
+  "resolved_model_id": "glm-5.2",
+  "raw_response": "[\n  {\n    \"category\": \"Logic Error\",\n    \"severity\": \"major\",\n    \"title\": \"Missing division by zero guard\",\n    \"description\": \"The function blindly attempts to divide by the denominator without checking if it is zero. This lazy implementation guarantees an unhandled ZeroDivisionError crash at runtime.\",\n    \"evidence\": \"return a / b  # no zero check\",\n    \"location\": \"x.py:2\"\n  },\n  {\n    \"category\": \"Maintainability\",\n    \"severity\": \"major\",\n    \"title\": \"Complete absence of type hints\",\n    \"description\": \"The function signature lacks basic type annotations, rendering static analysis impossible and forcing developers to guess the expected input and output types.\",\n    \"evidence\": \"def divide(a, b):\",\n    \"location\": \"x.py:1\"\n  }\n]",
+  "task": "pr_review_findings_two"
+}
