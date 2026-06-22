@@ -68,6 +68,10 @@ class ModelDelegateSkillTerminalProjection(ModelDelegateSkillResponse):
         default="",
         validation_alias=AliasChoices("prompt_text", "promptText", "prompt"),
     )
+    context_pack_hash: str = Field(
+        default="",
+        validation_alias=AliasChoices("context_pack_hash", "contextPackHash"),
+    )
     model_cloud_baseline: str = Field(
         default="",
         validation_alias=AliasChoices(
@@ -89,6 +93,11 @@ class ModelDelegateSkillTerminalProjection(ModelDelegateSkillResponse):
     @field_validator("prompt_text")
     @classmethod
     def _blank_prompt_to_empty(cls, value: str) -> str:
+        return value.strip()
+
+    @field_validator("context_pack_hash")
+    @classmethod
+    def _blank_context_pack_hash_to_empty(cls, value: str) -> str:
         return value.strip()
 
     @field_validator("model_cloud_baseline")
@@ -128,6 +137,7 @@ class ModelDelegationEventProjectionRow(BaseModel):
     is_shadow: bool = False
     prompt_text: str | None = None
     response_text: str | None = None
+    context_pack_hash: str = ""
     tokens_input: int
     tokens_output: int
     tokens_to_compliance: int
@@ -164,6 +174,7 @@ class ModelDelegationEventProjectionRow(BaseModel):
             repo_name=event.repo_name,
             prompt_text=event.prompt_text,
             response_text=event.response or event.error_message or None,
+            context_pack_hash=event.context_pack_hash,
             tokens_input=metrics.input_tokens,
             tokens_output=metrics.output_tokens,
             tokens_to_compliance=tokens_to_compliance,

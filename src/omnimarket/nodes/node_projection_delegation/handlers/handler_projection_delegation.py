@@ -199,6 +199,13 @@ class ModelProjectionTaskDelegatedEvent(BaseModel):
         default=None,
         description="Raw response received from the delegated agent (OMN-10850).",
     )
+    context_pack_hash: str = Field(
+        default="",
+        description=(
+            "Stable hash of the context pack injected into the delegated prompt. "
+            "Empty string means the OFF arm or no context pack."
+        ),
+    )
     pricing_manifest_version: int = Field(
         default=0,
         ge=0,
@@ -332,6 +339,7 @@ class HandlerProjectionDelegation:
             "compliance_attempts": event.compliance_attempts,
             "prompt_text": event.prompt_text,
             "response_text": event.response_text,
+            "context_pack_hash": event.context_pack_hash,
             "pricing_manifest_version": event.pricing_manifest_version,
             # OMN-13355: persist the pinned premium counterfactual as JSONB so the
             # saving (counterfactual - actual) is auditable from the projection row.
@@ -436,6 +444,7 @@ class HandlerProjectionDelegation:
             "is_shadow": row_model.is_shadow,
             "prompt_text": row_model.prompt_text,
             "response_text": row_model.response_text,
+            "context_pack_hash": row_model.context_pack_hash,
             "tokens_input": row_model.tokens_input,
             "tokens_output": row_model.tokens_output,
             "tokens_to_compliance": row_model.tokens_to_compliance,
@@ -741,7 +750,7 @@ def _preserve_existing_evidence(
     if not existing_rows:
         return
     existing = existing_rows[0]
-    for key in ("prompt_text", "response_text"):
+    for key in ("prompt_text", "response_text", "context_pack_hash"):
         if _is_blank(row.get(key)) and not _is_blank(existing.get(key)):
             row[key] = existing[key]
     for key in (

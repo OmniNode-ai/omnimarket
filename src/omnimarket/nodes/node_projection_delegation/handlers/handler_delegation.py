@@ -801,7 +801,7 @@ class DelegationProjectionRunner(BaseProjectionRunner):
               quality_gate_detail,
               cost_usd, cost_savings_usd, delegation_latency_ms,
               latency_ms, repo, is_shadow, prompt_text, response_text,
-              tokens_input, tokens_output, tokens_to_compliance,
+              context_pack_hash, tokens_input, tokens_output, tokens_to_compliance,
               compliance_attempts, pricing_manifest_version,
               projection_version, reducer_version
             ) VALUES (
@@ -812,9 +812,9 @@ class DelegationProjectionRunner(BaseProjectionRunner):
               $13,
               $14, $15, $16,
               $17, $18, $19, $20, $21,
-              $22, $23, $24,
-              $25, $26,
-              $27, $28
+              $22, $23, $24, $25,
+              $26, $27,
+              $28, $29
             )
             ON CONFLICT (correlation_id) DO UPDATE SET
               session_id = COALESCE(EXCLUDED.session_id, {self._table_delegation}.session_id),
@@ -837,6 +837,7 @@ class DelegationProjectionRunner(BaseProjectionRunner):
               is_shadow = EXCLUDED.is_shadow,
               prompt_text = COALESCE(EXCLUDED.prompt_text, {self._table_delegation}.prompt_text),
               response_text = COALESCE(EXCLUDED.response_text, {self._table_delegation}.response_text),
+              context_pack_hash = COALESCE(NULLIF(EXCLUDED.context_pack_hash, ''), {self._table_delegation}.context_pack_hash),
               tokens_input = EXCLUDED.tokens_input,
               tokens_output = EXCLUDED.tokens_output,
               tokens_to_compliance = EXCLUDED.tokens_to_compliance,
@@ -866,6 +867,7 @@ class DelegationProjectionRunner(BaseProjectionRunner):
             row.is_shadow,
             row.prompt_text,
             row.response_text,
+            row.context_pack_hash,
             row.tokens_input,
             row.tokens_output,
             row.tokens_to_compliance,

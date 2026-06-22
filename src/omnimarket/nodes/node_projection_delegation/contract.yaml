@@ -41,7 +41,7 @@ golden_path:
 db_io:
   db_tables:
     - name: delegation_events
-      migration: "0016_delegation_quality_bar_evidence.sql"
+      migration: "0020_delegation_context_pack_hash.sql"
       access: write
       database: omnidash_analytics
       role: events
@@ -128,6 +128,7 @@ projection_api:
         - delegation_latency_ms
         - tokens_input
         - tokens_output
+        - context_pack_hash
         - tokens_to_compliance
         - compliance_attempts
         - required_bar
@@ -160,6 +161,7 @@ projection_api:
         - delegation_latency_ms
         - tokens_input
         - tokens_output
+        - context_pack_hash
         - tokens_to_compliance
         - compliance_attempts
         - required_bar
@@ -185,6 +187,7 @@ projection_api:
         - latency_ms
         - tokens_input
         - tokens_output
+        - context_pack_hash
         - tokens_to_compliance
         - required_bar
         - actual_score
@@ -218,6 +221,7 @@ projection_api:
         - delegation_latency_ms
         - tokens_input
         - tokens_output
+        - context_pack_hash
         - tokens_to_compliance
         - compliance_attempts
         - required_bar
