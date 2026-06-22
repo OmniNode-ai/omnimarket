@@ -1,0 +1,81 @@
+---
+name: node_delegation_escalation_decision_compute
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: compute
+node_version: {major: 1, minor: 0, patch: 0}
+description: >
+  Pure deterministic delegation escalation/tier decision (OMN-13476, epic
+  OMN-13471). Given the already-resolved decision state — escalation count,
+  budget, current tier, retryability, and the orchestrator-resolved next
+  eligible tier — returns whether to escalate and to which tier, or a terminal
+  failure reason. No side effects, no I/O, no bus or DB dependencies. Tiers,
+  providers and models are resolved upstream from the routing contract+overlay
+  and arrive as plain values.
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - handler:
+        name: HandlerEscalationDecision
+        module: omnimarket.nodes.node_delegation_escalation_decision_compute.handlers.handler_escalation_decision
+
+handler:
+  module: omnimarket.nodes.node_delegation_escalation_decision_compute.handlers.handler_escalation_decision
+  class: HandlerEscalationDecision
+  input_model: omnimarket.routing.model_escalation_decision_request.ModelEscalationDecisionRequest
+
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 500
+  runtime_profiles: [main]
+
+inputs:
+  escalation_count:
+    type: int
+    required: true
+    description: Escalations already performed for this workflow.
+  max_escalation_attempts:
+    type: int
+    required: true
+    description: Ceiling on escalations for this decision path.
+  current_tier_name:
+    type: str
+    required: false
+    description: Tier whose attempt just failed; null when unidentifiable.
+  error_retryable:
+    type: bool
+    required: false
+    description: Whether the underlying failure is retryable on a higher tier.
+  next_tier_name:
+    type: str
+    required: false
+    description: Next eligible tier resolved upstream; null when ladder exhausted.
+  non_retryable_reason:
+    type: str
+    required: false
+    description: Terminal reason token when error_retryable is false.
+  no_higher_tier_reason:
+    type: str
+    required: false
+    description: Precise terminal reason when next_tier_name is null.
+
+outputs:
+  can_escalate:
+    type: bool
+  next_tier_name:
+    type: str
+  terminal_failure_reason:
+    type: str
+
+terminal_event: onex.evt.omnimarket.delegation-escalation-decided.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.delegation-escalation-decision-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.delegation-escalation-decided.v1
+
+metadata:
+  transport_type: kafka
