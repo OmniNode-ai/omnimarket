@@ -90,7 +90,8 @@ _JSON_OBJECT_RE = re.compile(r"\{.*\}", re.DOTALL)
 
 def _load_rubric(rubric_id: str) -> dict[str, Any]:
     """Load one rubric definition from the contract config. Fail fast if absent."""
-    data = yaml.safe_load(_RUBRIC_PATH.read_text())
+    raw_rubric = _RUBRIC_PATH.read_text()  # node-purity-ok: judge effect rubric
+    data = yaml.safe_load(raw_rubric)
     rubrics = data["rubrics"]
     if rubric_id not in rubrics:
         raise KeyError(
@@ -194,6 +195,7 @@ class HandlerJudgeAdequacy:
         """Score candidate adequacy and return a durable judge verdict event."""
         rubric = _load_rubric(self._rubric_id)
         temperature = float(rubric["temperature"])
+        judge_model_version = str(rubric["judge_model_version"])
         judge_node_version = str(rubric["judge_node_version"])
         rubric_hash = str(rubric["rubric_hash"])
         user_prompt = _build_user_prompt(
@@ -222,7 +224,7 @@ class HandlerJudgeAdequacy:
                 correlation_id=correlation_id,
                 task_type=task_type,
                 judge_model=self._judge_model_key,
-                judge_model_version=judge_node_version,
+                judge_model_version=judge_model_version,
                 judge_provider=judge_provider,
                 rubric_id=self._rubric_id,
                 rubric_hash=rubric_hash,
@@ -248,7 +250,7 @@ class HandlerJudgeAdequacy:
                 correlation_id=correlation_id,
                 task_type=task_type,
                 judge_model=self._judge_model_key,
-                judge_model_version=judge_node_version,
+                judge_model_version=judge_model_version,
                 judge_provider=judge_provider,
                 rubric_id=self._rubric_id,
                 rubric_hash=rubric_hash,
@@ -269,7 +271,7 @@ class HandlerJudgeAdequacy:
             correlation_id=correlation_id,
             task_type=task_type,
             judge_model=self._judge_model_key,
-            judge_model_version=judge_node_version,
+            judge_model_version=judge_model_version,
             judge_provider=judge_provider,
             rubric_id=self._rubric_id,
             rubric_hash=rubric_hash,

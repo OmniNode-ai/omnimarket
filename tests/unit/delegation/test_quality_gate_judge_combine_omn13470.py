@@ -222,6 +222,8 @@ class TestJudgeAdequacyEffect:
         assert isinstance(verdict, ModelDelegationJudgeVerdictEvent)
         assert verdict.actual_score == 0.92
         assert verdict.verdict is EnumDelegationJudgeVerdict.PASS
+        assert verdict.judge_model_version == "routing-contract:cheap_cloud"
+        assert verdict.judge_model_version != verdict.judge_node_version
         # Replay identity: the recorded event hash recomputes deterministically.
         assert verdict.event_hash == verdict.compute_event_hash()
 

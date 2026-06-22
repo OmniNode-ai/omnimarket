@@ -13,6 +13,7 @@ rubrics:
     score_source: "reproducible_judge"
     terminology: "controlled_reproducible_auditable"
     temperature: 0.0
+    judge_model_version: "routing-contract:cheap_cloud"
     judge_node_version: "delegation-judge-verdict/1.0.0"
     applies_to_task_classes:
       - document
@@ -56,6 +57,7 @@ rubrics:
     score_source: "reproducible_judge"
     terminology: "controlled_reproducible_auditable"
     temperature: 0.0
+    judge_model_version: "routing-contract:cheap_cloud"
     judge_node_version: "delegation-judge-verdict/1.0.0"
     applies_to_task_classes:
       - code_generation
