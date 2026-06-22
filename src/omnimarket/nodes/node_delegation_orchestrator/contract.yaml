@@ -150,6 +150,20 @@ fsm:
     - from: GATE_EVALUATED
       to: FAILED
       trigger: "quality gate failed"
+    # OMN-13473: reconciled handler-driven transitions. The imperative handler
+    # (handler_delegation_workflow.py _VALID_TRANSITIONS) drives these three
+    # ROUTED-origin edges that were previously undeclared. The contract is the
+    # single source of truth, so they are added here rather than removed from
+    # the handler — each is a real, reachable transition:
+    - from: ROUTED
+      to: ESCALATING
+      trigger: "retryable inference infra-error on current tier with a routable next tier (OMN-13140; handle_inference_response)"
+    - from: ROUTED
+      to: FAILED
+      trigger: "terminal inference failure with no escalation possible, or remote lifecycle FAILED received before EXECUTING (handle_inference_response / handle_agent_task_lifecycle)"
+    - from: ROUTED
+      to: COMPLETED
+      trigger: "remote lifecycle COMPLETED received before any PROGRESS event reached EXECUTING (handle_agent_task_lifecycle)"
 handler_routing:
   routing_strategy: "payload_type_match"
   handlers:
