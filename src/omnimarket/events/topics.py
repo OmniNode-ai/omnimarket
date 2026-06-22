@@ -9,6 +9,15 @@ TOPIC_LLM_CALL_COMPLETED = "onex.evt.omniintelligence.llm-call-completed.v1"  # 
 
 NODE_GENERATION_REQUESTED_TOPIC_V1 = "onex.cmd.omnimarket.node-generation-requested.v1"  # onex-topic-allow: canonical topic registry; declared in node_generation_consumer contract.yaml subscribe_topics
 
+# OMN-13468: node-generation terminal topics. The failure terminal was missing
+# from the topic registry and the projection contract, making failed runs
+# invisible at GET /projection/onex.evt.omnimarket.node-generation-failed.v1
+# (404 unknown_topic). Both terminals share the same payload shape
+# (ModelGenerationBenchmark) and write to the generation_events table; only
+# contract_passed differs (True for completed, False for failed).
+NODE_GENERATION_COMPLETED_TOPIC_V1 = "onex.evt.omnimarket.node-generation-completed.v1"  # onex-topic-allow: canonical topic registry; declared in node_generation_consumer contract.yaml publish_topics + node_projection_delegation subscribe_topics (OMN-13468)
+NODE_GENERATION_FAILED_TOPIC_V1 = "onex.evt.omnimarket.node-generation-failed.v1"  # onex-topic-allow: canonical topic registry; declared in node_generation_consumer contract.yaml publish_topics + node_projection_delegation subscribe_topics (OMN-13468)
+
 TASK_DELEGATED_TOPIC_V1 = "onex.evt.omniclaude.task-delegated.v1"  # onex-topic-allow: canonical topic registry; declared in node_delegation_orchestrator contract.yaml publish_topics
 DELEGATE_SKILL_COMPLETED_TOPIC_V1 = "onex.evt.omnimarket.delegate-skill-completed.v1"  # onex-topic-allow: canonical topic registry; declared in node_delegate_skill_orchestrator contract.yaml terminal events
 DELEGATE_SKILL_FAILED_TOPIC_V1 = "onex.evt.omnimarket.delegate-skill-failed.v1"  # onex-topic-allow: canonical topic registry; declared in node_delegate_skill_orchestrator contract.yaml terminal events

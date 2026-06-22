@@ -126,6 +126,12 @@ class DelegationProjectionRunner(BaseProjectionRunner):
         self._topic_generation: str = next(
             (t for t in _topics if "node-generation-completed" in t), ""
         )
+        # OMN-13468: the failure terminal was absent from subscribe_topics, making
+        # failed runs invisible at the projection API. Route it to the same
+        # _project_generation_completed handler — same payload, same table.
+        self._topic_generation_failed: str = next(
+            (t for t in _topics if "node-generation-failed" in t), ""
+        )
         self._topic_judge_verdict: str = next(
             (t for t in _topics if "delegation-judge-verdict" in t), ""
         )
@@ -258,7 +264,9 @@ class DelegationProjectionRunner(BaseProjectionRunner):
             ok = await self._project_task_delegated(data, meta)
         elif topic == self._topic_shadow:
             ok = await self._project_shadow_comparison(data, meta)
-        elif topic == self._topic_generation:
+        elif topic in {self._topic_generation, self._topic_generation_failed}:
+            # OMN-13468: route both completed + failed terminals to the same
+            # handler — same payload shape, same generation_events table write.
             ok = await self._project_generation_completed(data, meta)
         elif topic == self._topic_judge_verdict:
             ok = await self._project_judge_verdict(data)
