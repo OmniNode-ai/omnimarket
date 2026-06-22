@@ -10,7 +10,7 @@ from datetime import datetime
 from typing import Literal, Self
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from omnimarket.models.delegation.wire.model_budget import ModelBudgetLimits
 from omnimarket.models.delegation.wire.model_token_limits import (
@@ -151,6 +151,11 @@ class ModelDelegationRequest(BaseModel):
         description="Request-level quality checks enforced by the quality gate.",
     )
 
+    @field_validator("context_pack", "context_pack_hash")
+    @classmethod
+    def _strip_context_fields(cls, value: str) -> str:
+        return value.strip()
+
     @model_validator(mode="after")
     def _validate_compliance_loop_config(self) -> Self:
         if self.output_schema_key is not None and self.compliance_budget is None:
@@ -161,6 +166,8 @@ class ModelDelegationRequest(BaseModel):
             )
             raise ValueError(msg)
         validate_acceptance_criteria(self.acceptance_criteria)
+        if not self.context_pack and self.context_pack_hash:
+            return self.model_copy(update={"context_pack_hash": ""})
         return self
 
 

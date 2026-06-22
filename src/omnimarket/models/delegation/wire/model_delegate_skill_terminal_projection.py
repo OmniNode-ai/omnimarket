@@ -95,6 +95,11 @@ class ModelDelegateSkillTerminalProjection(ModelDelegateSkillResponse):
     def _blank_prompt_to_empty(cls, value: str) -> str:
         return value.strip()
 
+    @field_validator("context_pack_hash")
+    @classmethod
+    def _blank_context_pack_hash_to_empty(cls, value: str) -> str:
+        return value.strip()
+
     @field_validator("model_cloud_baseline")
     @classmethod
     def _blank_baseline_to_empty(cls, value: str) -> str:

@@ -750,7 +750,7 @@ def _preserve_existing_evidence(
     if not existing_rows:
         return
     existing = existing_rows[0]
-    for key in ("prompt_text", "response_text"):
+    for key in ("prompt_text", "response_text", "context_pack_hash"):
         if _is_blank(row.get(key)) and not _is_blank(existing.get(key)):
             row[key] = existing[key]
     for key in (

@@ -837,7 +837,7 @@ class DelegationProjectionRunner(BaseProjectionRunner):
               is_shadow = EXCLUDED.is_shadow,
               prompt_text = COALESCE(EXCLUDED.prompt_text, {self._table_delegation}.prompt_text),
               response_text = COALESCE(EXCLUDED.response_text, {self._table_delegation}.response_text),
-              context_pack_hash = EXCLUDED.context_pack_hash,
+              context_pack_hash = COALESCE(NULLIF(EXCLUDED.context_pack_hash, ''), {self._table_delegation}.context_pack_hash),
               tokens_input = EXCLUDED.tokens_input,
               tokens_output = EXCLUDED.tokens_output,
               tokens_to_compliance = EXCLUDED.tokens_to_compliance,

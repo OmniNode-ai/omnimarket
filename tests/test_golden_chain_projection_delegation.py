@@ -192,6 +192,7 @@ class TestDelegationProjection:
             "model_name": _DELEGATE_SKILL_TEST_MODEL,
             "prompt_text": "write useful unit tests",
             "response": "useful pytest proof",
+            "context_pack_hash": "sha256:terminal",
             "quality_gate_passed": True,
             "quality_gates_failed": [],
             "metrics": {
@@ -222,6 +223,7 @@ class TestDelegationProjection:
         row = db.query("delegation_events")[0]
         assert row["prompt_text"] == "write useful unit tests"
         assert row["response_text"] == "useful pytest proof"
+        assert row["context_pack_hash"] == "sha256:terminal"
         assert row["tokens_input"] == 144
         assert row["tokens_output"] == 593
         assert row["tokens_to_compliance"] == 737

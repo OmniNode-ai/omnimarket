@@ -325,8 +325,18 @@ def _build_model_inference_intent(
     return ModelInferenceIntent.model_validate(payload)
 
 
+def _normalized_context_pack(request: ModelDelegationRequest) -> str:
+    return (getattr(request, "context_pack", "") or "").strip()
+
+
+def _context_pack_hash_for_event(request: ModelDelegationRequest) -> str:
+    if not _normalized_context_pack(request):
+        return ""
+    return (getattr(request, "context_pack_hash", "") or "").strip()
+
+
 def _prompt_with_context_pack(request: ModelDelegationRequest, prompt: str) -> str:
-    context_pack = request.context_pack.strip()
+    context_pack = _normalized_context_pack(request)
     if not context_pack:
         return prompt
     return f"{context_pack}\n\n{prompt}"
@@ -801,7 +811,7 @@ class HandlerDelegationWorkflow:
                 tokens_to_compliance=workflow.accumulated_tokens,
                 compliance_attempts=workflow.compliance_attempts or 1,
                 pricing_manifest_version=get_manifest_version_int(),
-                context_pack_hash=workflow.request.context_pack_hash,
+                context_pack_hash=_context_pack_hash_for_event(workflow.request),
                 escalation_count=workflow.escalation_count,
                 escalation_history=tuple(
                     attempt.model_dump(mode="json")
@@ -1405,7 +1415,7 @@ class HandlerDelegationWorkflow:
             tokens_to_compliance=tokens_to_compliance,
             compliance_attempts=compliance_attempts,
             pricing_manifest_version=get_manifest_version_int(),
-            context_pack_hash=workflow.request.context_pack_hash,
+            context_pack_hash=_context_pack_hash_for_event(workflow.request),
             escalation_count=workflow.escalation_count,
             escalation_history=history_dicts,
             routing_tiers_hash=self._routing_tiers_hash(),
@@ -1494,7 +1504,7 @@ class HandlerDelegationWorkflow:
             budget_headroom_consumed_usd=agent_cost.headroom_consumed_usd,
             delegation_latency_ms=elapsed_ms,
             llm_call_id=lifecycle_event.remote_task_handle or "",
-            context_pack_hash=workflow.request.context_pack_hash,
+            context_pack_hash=_context_pack_hash_for_event(workflow.request),
         )
 
         topic = (
