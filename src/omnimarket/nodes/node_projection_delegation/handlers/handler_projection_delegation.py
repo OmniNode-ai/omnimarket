@@ -267,7 +267,14 @@ class HandlerProjectionDelegation:
             verdict = ModelDelegationJudgeVerdictEvent(**payload)
             result = self.project_judge_verdict(verdict, db_raw)
             return result.model_dump(mode="json")
-        if "node-generation-completed" in event_type:
+        if (
+            "node-generation-completed" in event_type
+            or "node-generation-failed" in event_type
+        ):
+            # OMN-13468: both terminals (completed + failed) share the same payload
+            # shape (ModelGenerationBenchmark) and write to generation_events. Only
+            # contract_passed differs in value. Route failed terminal here so failed
+            # runs are observable at GET /projection/node-generation-failed.v1.
             generation = ModelProjectionGenerationCompletedEvent(**payload)
             result = self.project_generation_completed(generation, db_raw)
             return result.model_dump(mode="json")
