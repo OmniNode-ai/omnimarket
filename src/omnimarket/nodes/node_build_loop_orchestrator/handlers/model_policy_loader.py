@@ -110,5 +110,12 @@ class ModelPolicyLoader:
             )
         return model_id
 
+    def resolve_model_id_optional(self, policy_id: str) -> str | None:
+        """Resolve a policy's served model ID, returning None if not configured."""
+        try:
+            return self.resolve_model_id(policy_id)
+        except RuntimeError:
+            return None
+
 
 __all__: list[str] = ["ModelPolicyLoader"]

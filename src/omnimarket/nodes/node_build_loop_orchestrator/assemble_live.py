@@ -48,6 +48,9 @@ from omnimarket.nodes.node_build_loop.models.model_loop_start_command import (
 from omnimarket.nodes.node_build_loop_orchestrator.handlers.handler_build_loop_orchestrator import (
     HandlerBuildLoopOrchestrator,
 )
+from omnimarket.nodes.node_build_loop_orchestrator.handlers.model_policy_loader import (
+    ModelPolicyLoader,
+)
 from omnimarket.nodes.node_build_loop_orchestrator.models.model_live_runner_config import (
     ModelLlmClassificationResult,
 )
@@ -78,8 +81,14 @@ WORKTREE_ROOT = Path(os.environ.get("OMNI_WORKTREES_ROOT", ""))
 # LLM endpoints — resolved from env vars only, no hardcoded IP fallbacks (OMN-8782)
 LLM_FAST_URL = os.environ.get("LLM_CODER_FAST_URL", "")
 LLM_FAST_MODEL_NAME = os.environ.get("LLM_CODER_FAST_MODEL_NAME", "")
-LLM_CODER_URL = os.environ.get("LLM_CODER_URL", "")
-LLM_CODER_MODEL_NAME = os.environ.get("LLM_CODER_MODEL_NAME", "")
+
+# Local coder endpoint/profile resolved through the routing authority
+# (model_policy.yaml "coder" policy) rather than a raw env read (OMN-12805).
+# resolve_optional / resolve_model_id_optional return None when the policy is
+# not configured, preserving the tiered-fallback skip semantics below.
+_POLICY_LOADER = ModelPolicyLoader()
+LOCAL_CODER_URL = _POLICY_LOADER.resolve_optional("coder")
+LOCAL_CODER_MODEL_NAME = _POLICY_LOADER.resolve_model_id_optional("coder")
 
 # Frontier GLM endpoint/profile resolved from runtime overlay.
 LLM_GLM_API_KEY = os.environ.get("LLM_GLM_API_KEY", "")
@@ -878,11 +887,11 @@ class LiveBuildDispatchHandler:
             if impl and "_skip" not in impl:
                 return impl, LLM_GLM_MODEL_NAME
 
-        # Tier 2: configured local coder endpoint.
-        if LLM_CODER_URL and LLM_CODER_MODEL_NAME:
-            coder_model = LLM_CODER_MODEL_NAME
+        # Tier 2: configured local coder endpoint (routing-authority resolved).
+        if LOCAL_CODER_URL and LOCAL_CODER_MODEL_NAME:
+            coder_model = LOCAL_CODER_MODEL_NAME
             impl = await self._call_llm(
-                url=f"{LLM_CODER_URL}/v1/chat/completions",
+                url=f"{LOCAL_CODER_URL}/v1/chat/completions",
                 model=coder_model,
                 prompt=prompt,
                 max_tokens=4096,
