@@ -802,6 +802,11 @@ class HandlerDelegationWorkflow:
                 quality_gates_failed=[response.error_message],
                 cost_usd=failed_cost.cash_cost_usd,
                 cost_savings_usd=0.0,
+                # OMN-13408: carry the served tokens so the projection upsert is not
+                # clobbered to 0 by this compat event (it co-writes the same row as
+                # delegation-failed.v1, which DOES carry real tokens).
+                tokens_input=response.prompt_tokens,
+                tokens_output=response.completion_tokens,
                 cost_tier_type=failed_cost.cost_tier_type,
                 cost_tier_name=failed_cost.cost_tier_name,
                 cost_measurement_source=failed_cost.cost_measurement_source,
@@ -1414,6 +1419,10 @@ class HandlerDelegationWorkflow:
             llm_call_id=workflow.inference_llm_call_id,
             tokens_to_compliance=tokens_to_compliance,
             compliance_attempts=compliance_attempts,
+            # OMN-13408: carry the served tokens so the projection upsert is not
+            # clobbered to 0 by this compat event.
+            tokens_input=workflow.inference_prompt_tokens,
+            tokens_output=workflow.inference_completion_tokens,
             pricing_manifest_version=get_manifest_version_int(),
             context_pack_hash=_context_pack_hash_for_event(workflow.request),
             escalation_count=workflow.escalation_count,
