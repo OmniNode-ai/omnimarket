@@ -1321,7 +1321,7 @@ class TestClosedSetTierOrderOMN13157:
         )
 
     def test_cheap_frontier_excluded_from_code_generation_by_closed_set(
-        self,
+        self, frontier_unconfigured_bifrost: None
     ) -> None:
         """OMN-13157 AC3: cheap_frontier is NEVER tried for code_generation.
 
@@ -1330,6 +1330,12 @@ class TestClosedSetTierOrderOMN13157:
         excluded_tiers argument. This test uses task_type=None (no contract order)
         to confirm cheap_frontier IS reachable in declaration order, then
         task_type='code_generation' to confirm it is excluded by the closed set.
+
+        The ``frontier_unconfigured_bifrost`` fixture pins resolvable ``local`` and
+        ``cheap_cloud`` backends (claude/frontier left empty) so the closed-set
+        assertion is deterministic regardless of the ambient bifrost config — the
+        ``task_type=None`` declaration-order branch never consults bifrost, so the
+        backward-compat baseline below is unaffected by the fixture.
         """
         # Declaration-order (task_type=None) DOES advance to cheap_frontier
         # from cheap_cloud (proves it is reachable in principle).
