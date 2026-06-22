@@ -181,6 +181,12 @@ class TestHandlerInferenceIntent:
         assert result.content == ""
         assert result.error_message != ""
         assert result.model_used == "test-model"
+        # OMN-13408: a transport failure raises BEFORE any response.json(), so no
+        # usage was served — token fields stay 0 (only usage-bearing provider
+        # responses carry real tokens onto the error path).
+        assert result.prompt_tokens == 0
+        assert result.completion_tokens == 0
+        assert result.total_tokens == 0
 
     @pytest.mark.parametrize(
         "cli_url",
@@ -433,6 +439,10 @@ class TestHandlerInferenceIntent:
         assert result.content == ""
         assert result.model_used == "test-model"
         assert "empty message content" in result.error_message
+        # OMN-13408: served usage on the empty-content response is carried, not 0.
+        assert result.prompt_tokens == 10
+        assert result.completion_tokens == 0
+        assert result.total_tokens == 10
 
     def test_length_finish_reason_returns_error_response(self) -> None:
         handler = HandlerInferenceIntent()
@@ -468,6 +478,12 @@ class TestHandlerInferenceIntent:
         assert result.content == ""
         assert result.model_used == "test-model"
         assert "finish_reason=length" in result.error_message
+        # OMN-13408: the provider STILL reported served usage on the truncated
+        # response — the error-path response must carry the real metered tokens
+        # (not drop them to 0) so the canonical terminal records non-zero tokens.
+        assert result.prompt_tokens == 10
+        assert result.completion_tokens == 20
+        assert result.total_tokens == 30
 
     def test_returns_response_for_runtime_autopublish(self) -> None:
         # The runtime dispatch-result applier publishes the RETURNED model to the

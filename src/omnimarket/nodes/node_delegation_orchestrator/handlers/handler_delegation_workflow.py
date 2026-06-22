@@ -783,7 +783,17 @@ class HandlerDelegationWorkflow:
                 latency_ms=elapsed_ms,
                 prompt_tokens=response.prompt_tokens,
                 completion_tokens=response.completion_tokens,
-                total_tokens=response.total_tokens,
+                # OMN-13408/OMN-13365: derive total from prompt + completion. The
+                # wire DTO enforces total == prompt + completion, but a reasoning
+                # model (gemini-2.5) reports a usage.total_tokens that bundles
+                # thinking tokens (total > prompt + completion). Copying
+                # response.total_tokens verbatim raises ValidationError here and
+                # crashes the dispatcher with NO terminal event emitted — exactly
+                # the silent-loss mode _record_inference_response reconciles for the
+                # gate path. Before the served-usage fix this passed by accident
+                # (0 == 0 + 0); now that real served tokens flow on the truncated
+                # path, the reconciliation is required here too.
+                total_tokens=response.prompt_tokens + response.completion_tokens,
                 fallback_to_claude=False,
                 failure_reason=response.error_message,
                 tokens_to_compliance=workflow.accumulated_tokens,
