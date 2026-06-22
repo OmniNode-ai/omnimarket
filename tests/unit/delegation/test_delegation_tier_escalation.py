@@ -1244,3 +1244,126 @@ class TestTestTaskDeadEndEmitsPreciseReason:
         assert "tier_order=" in result.terminal_failure_reason
         assert "claude(" in result.terminal_failure_reason
         assert result.terminal_failure_reason != NO_HIGHER_TIER_REASON_TOKEN
+
+
+# ---------------------------------------------------------------------------
+# Tests: OMN-13157 — closed-set tier_order acceptance criteria
+# ---------------------------------------------------------------------------
+#
+# Acceptance: next_eligible_tier honors escalation_policy.tier_order as a
+# COMPLETE, CLOSED, ORDERED set. For code_generation (tier_order=[cheap_cloud,
+# local, claude]):
+#   1. A cheap_cloud failure must escalate to local (contract order respected
+#      even though local precedes cheap_cloud in routing_tiers.yaml).
+#   2. task_type=None calls remain forward-only in routing_tiers.yaml
+#      declaration order (backward compat).
+#   3. Tiers absent from a task class tier_order are NEVER tried for that
+#      class (cheap_frontier is excluded from code_generation even without
+#      being in the excluded_tiers frozenset).
+#
+# Live repro: code_generation rows escalated to gemini-2.5-flash (cheap_cloud)
+# and stalled at 0.733/0.533 because next_eligible_tier returned None after
+# cheap_cloud instead of local — the append-unlisted bug re-opened the closed
+# set by appending cheap_frontier (not in code_generation tier_order) after the
+# declared order, and that tier also failed, leaving no further candidates.
+
+
+@pytest.mark.unit
+class TestClosedSetTierOrderOMN13157:
+    """OMN-13157: escalation_policy.tier_order is a COMPLETE, CLOSED, ORDERED set.
+
+    These tests directly assert the three acceptance criteria and serve as the
+    regression guard for the append-unlisted bug that caused code_generation
+    to stall after cheap_cloud instead of escalating to local.
+    """
+
+    def test_code_generation_after_cheap_cloud_escalates_to_local(
+        self, frontier_unconfigured_bifrost: None
+    ) -> None:
+        """OMN-13157 AC1: after cheap_cloud fails, code_generation MUST escalate
+        to local (contract order [cheap_cloud, local, claude]), even though local
+        appears before cheap_cloud in routing_tiers.yaml declaration order.
+
+        cheap_frontier is NOT in code_generation's tier_order so it must be
+        excluded WITHOUT needing to put it in excluded_tiers — the closed set
+        alone enforces the exclusion.
+        """
+        result = next_eligible_tier(
+            "cheap_cloud",
+            frozenset(),  # empty: cheap_frontier must be excluded by closed-set
+            task_type="code_generation",
+        )
+        assert result == "local", (
+            "code_generation tier_order=[cheap_cloud, local, claude]: "
+            "after cheap_cloud, next must be local — NOT cheap_frontier "
+            "(which is absent from the closed set)"
+        )
+
+    def test_code_generation_after_local_no_routable_ceiling(
+        self, frontier_unconfigured_bifrost: None
+    ) -> None:
+        """OMN-13157 AC1 (continued): after local, code_generation escalates to
+        claude (the ceiling in the contract order). claude backend is unconfigured
+        in the frontier_unconfigured_bifrost fixture, so the call returns None
+        (not claude), confirming the ceiling is honored.
+        """
+        result = next_eligible_tier(
+            "local",
+            frozenset(),
+            task_type="code_generation",
+        )
+        # claude is the next declared tier but its backend is unconfigured (empty
+        # endpoint_url) in frontier_unconfigured_bifrost — so it is skipped and
+        # None is returned (terminal: no routable tier beyond local in this lane).
+        assert result is None, (
+            "code_generation ceiling is claude; with an unconfigured claude "
+            "backend there is no routable tier after local"
+        )
+
+    def test_cheap_frontier_excluded_from_code_generation_by_closed_set(
+        self,
+    ) -> None:
+        """OMN-13157 AC3: cheap_frontier is NEVER tried for code_generation.
+
+        The closed-set contract order for code_generation is [cheap_cloud, local,
+        claude]. cheap_frontier is absent, so it is excluded regardless of the
+        excluded_tiers argument. This test uses task_type=None (no contract order)
+        to confirm cheap_frontier IS reachable in declaration order, then
+        task_type='code_generation' to confirm it is excluded by the closed set.
+        """
+        # Declaration-order (task_type=None) DOES advance to cheap_frontier
+        # from cheap_cloud (proves it is reachable in principle).
+        decl_result = next_eligible_tier(
+            "cheap_cloud",
+            frozenset(),
+            task_type=None,
+        )
+        assert decl_result == "cheap_frontier", (
+            "declaration-order must advance to cheap_frontier from cheap_cloud "
+            "when no task_type is given (backward compat baseline)"
+        )
+
+        # Closed-set for code_generation MUST NOT return cheap_frontier.
+        contract_result = next_eligible_tier(
+            "cheap_cloud",
+            frozenset(),
+            task_type="code_generation",
+        )
+        assert contract_result != "cheap_frontier", (
+            "cheap_frontier is absent from code_generation tier_order; "
+            "the closed-set must exclude it without needing it in excluded_tiers"
+        )
+        # Must return local (the next listed tier in the contract order).
+        assert contract_result == "local"
+
+    def test_task_type_none_preserves_declaration_order(self) -> None:
+        """OMN-13157 AC2: task_type=None uses routing_tiers.yaml declaration order.
+
+        Without a task_type the function must NOT apply any task-class tier_order
+        — it remains forward-only in routing_tiers.yaml order (local→cheap_cloud
+        →cheap_frontier→claude). This is the backward-compat guarantee.
+        """
+        assert next_eligible_tier("local", frozenset()) == "cheap_cloud"
+        assert next_eligible_tier("cheap_cloud", frozenset()) == "cheap_frontier"
+        assert next_eligible_tier("cheap_frontier", frozenset()) == "claude"
+        assert next_eligible_tier("claude", frozenset()) is None
