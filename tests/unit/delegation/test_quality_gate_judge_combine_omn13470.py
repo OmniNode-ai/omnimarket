@@ -114,6 +114,51 @@ _GOOD_CODE = "```python\ndef add(a: int, b: int) -> int:\n    return a + b\n```"
 
 _REFUSAL = "I cannot help with that request."
 
+# Self-contained bifrost contract for the real-bus chain's routing resolution.
+# Same shape as the committed src/omnimarket/configs/bifrost_delegation.yaml — a
+# concrete cloud backend with a COMPLETE verbatim endpoint_url so routing resolves
+# without a host overlay (CI has no ~/.omninode/delegation/bifrost_overrides.yaml).
+_BIFROST_CONTRACT_CODE = (
+    "config_version: '2.0.0'\n"
+    "schema_version: bifrost_delegation.v1\n"
+    "backends:\n"
+    "  - backend_id: cloud-gemini-flash\n"
+    '    endpoint_url: "https://example.test/v1/chat/completions"\n'
+    '    model_name: "gemini-2.5-flash-lite"\n'
+    "    tier: cheap_cloud\n"
+    "    timeout_ms: 30000\n"
+    "    max_tokens: 8192\n"
+    "    capabilities: [code_generation, simple_tasks, document, summarization]\n"
+    "routing_rules:\n"
+    '  - rule_id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"\n'
+    "    priority: 10\n"
+    "    task_class: code_generation\n"
+    '    task_class_contract_version: "1.0.0"\n'
+    '    backend_policy_version: "2.0.0"\n'
+    "    match_operation_types: [chat_completion]\n"
+    "    match_capabilities: [code_generation]\n"
+    "    backend_ids: [cloud-gemini-flash]\n"
+    "    fallback_policy:\n"
+    "      action: escalate_to_next_tier\n"
+    "      max_retries: 1\n"
+    "      on_exhaust: return_error\n"
+    '    shadow_policy_id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"\n'
+    "default_backends:\n"
+    "  - cloud-gemini-flash\n"
+    "circuit_breaker:\n"
+    "  failure_threshold: 5\n"
+    "  window_seconds: 30\n"
+    "failover:\n"
+    "  max_attempts: 3\n"
+    "  backoff_base_ms: 500\n"
+    "shadow_mode:\n"
+    "  enabled: false\n"
+    '  policy_version: "test"\n'
+    "  log_sample_rate: 1.0\n"
+    "  comparison_logging_enabled: true\n"
+    "  max_shadow_latency_ms: 5.0\n"
+)
+
 _GLM_KEY_CONFIGURED = bool(os.environ.get("LLM_GLM_API_KEY", "").strip())
 _LIVE_JUDGE_ENABLED = (
     os.environ.get("OMN_ALLOW_LIVE_JUDGE_CALL", "").lower() == "true"
@@ -359,7 +404,27 @@ class TestJudgeCombineRealBusChain:
     The terminal delegation events are PUBLISHED OVER THE BUS and consumed by a
     real subscriber, proving a valid terminal event actually lands on the bus
     (the OMN-13140 all-tiers-failed-terminal-must-emit invariant).
+
+    The routing reducer resolves a concrete backend from a SELF-CONTAINED bifrost
+    contract pointed to by BIFROST_CONTRACT_PATH — REAL routing resolution, but
+    host-independent (CI has no ~/.omninode overlay). The contract carries the
+    same shape the committed bifrost config uses; resolution is real, not mocked.
     """
+
+    @pytest.fixture(autouse=True)
+    def _bifrost_contract(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> object:
+        import omnimarket.nodes.node_delegation_routing_reducer.handlers.handler_delegation_routing as _h
+
+        _h._config = None
+        _h._load_bifrost_endpoints.cache_clear()
+        contract_path = tmp_path / "bifrost_delegation.yaml"
+        contract_path.write_text(_BIFROST_CONTRACT_CODE, encoding="utf-8")
+        monkeypatch.setenv("BIFROST_CONTRACT_PATH", str(contract_path))
+        yield
+        _h._config = None
+        _h._load_bifrost_endpoints.cache_clear()
 
     async def _drive_chain(
         self,
