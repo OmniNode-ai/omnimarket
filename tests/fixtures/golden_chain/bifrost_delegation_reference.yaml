@@ -1,0 +1,37 @@
+config_version: '2.0.0'
+schema_version: bifrost_delegation.v1
+backends:
+  - backend_id: local-coder
+    endpoint_url: "http://test-coder:8000"
+    model_name: "test-local-coder"
+    tier: local
+    timeout_ms: 30000
+    capabilities: [code_completion, context_window_large]
+default_backends:
+  - local-coder
+routing_rules:
+  - rule_id: "55555555-5555-4555-8555-555555555555"
+    priority: 10
+    task_class: test
+    task_class_contract_version: "1.0.0"
+    backend_policy_version: "2.0.0"
+    match_operation_types: [chat_completion]
+    match_capabilities: [code_completion]
+    backend_ids: [local-coder]
+    fallback_policy:
+      action: return_error
+      max_retries: 0
+      on_exhaust: return_error
+    shadow_policy_id: "66666666-6666-4666-8666-666666666666"
+circuit_breaker:
+  failure_threshold: 5
+  window_seconds: 30
+failover:
+  max_attempts: 1
+  backoff_base_ms: 0
+shadow_mode:
+  enabled: false
+  policy_version: "test"
+  log_sample_rate: 1.0
+  comparison_logging_enabled: true
+  max_shadow_latency_ms: 5.0

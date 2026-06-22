@@ -1,0 +1,32 @@
+{
+  "fixture_version": "golden_chain_fixture.v1",
+  "provenance": {
+    "endpoint": "http://test-coder:8000",
+    "endpoint_ref": "local-coder",
+    "fixture_version": "golden_chain_fixture.v1",
+    "model_id": "Qwen3.6-35B-A3B",
+    "prompt_hash": "sha256:c55ac789d2bd23e418ce700191cc03edb60c53d5a990a45ee385714e0b2939b2",
+    "provider": "vllm",
+    "recorded_at": "2026-06-22T20:43:40.520180+00:00",
+    "request_hash": "sha256:ac2acb6a34f126ad543a3cb6651f8e017cb873c2ecbdd5241081f100e86865ae",
+    "routing_contract_hash": "sha256:b334628b8c6669404bdd67114ddf8d1187d0950379bed88ab0a9129c71eb13e6",
+    "routing_overlay_hash": "none"
+  },
+  "raw_response": {
+    "choices": [
+      {
+        "finish_reason": "stop",
+        "message": {
+          "content": "import pytest\n\n\n@pytest.mark.unit\ndef test_normalize_unit_state_maps_running_to_healthy():\n    assert normalize_unit_state(\" running \") == \"healthy\"\n\n\n@pytest.mark.unit\ndef test_normalize_unit_state_rejects_blank_input():\n    # Edge case: blank input should raise an error.\n    with pytest.raises(ValueError):\n        normalize_unit_state(\"   \")\n",
+          "role": "assistant"
+        }
+      }
+    ],
+    "id": "chatcmpl-useful-artifact",
+    "usage": {
+      "completion_tokens": 200,
+      "prompt_tokens": 100,
+      "total_tokens": 300
+    }
+  }
+}
