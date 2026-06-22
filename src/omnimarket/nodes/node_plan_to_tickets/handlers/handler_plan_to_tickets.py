@@ -3,8 +3,11 @@
 from __future__ import annotations
 
 import re
+from pathlib import Path
 
 from pydantic import BaseModel, ConfigDict, Field
+
+from omnimarket.events.design_to_plan import ModelPlanToTicketsStartCommand
 
 
 class ModelPlanToTicketsRequest(BaseModel):
@@ -114,8 +117,51 @@ def _detect_cycle(entries: list[ModelTicketEntry]) -> bool:
 class HandlerPlanToTickets:
     """Handler that parses a markdown plan into structured ticket entries."""
 
-    def handle(self, request: ModelPlanToTicketsRequest) -> ModelPlanToTicketsResult:
-        """Parse plan content and return structured entries."""
+    @staticmethod
+    def _normalize_request(
+        payload: ModelPlanToTicketsRequest
+        | ModelPlanToTicketsStartCommand
+        | dict[str, object],
+    ) -> ModelPlanToTicketsRequest:
+        """Coerce a dispatch-boundary payload into a ``ModelPlanToTicketsRequest``.
+
+        Accepts three shapes:
+        - ``ModelPlanToTicketsRequest`` — passed through unchanged (CLI / tests).
+        - ``ModelPlanToTicketsStartCommand`` — the contract ``input_model`` on the
+          single-handler dispatch path; its ``plan_path`` is read into
+          ``plan_content``.
+        - ``dict`` — the raw operation_match payload from RuntimeLocal; validated
+          into ``ModelPlanToTicketsStartCommand`` first, then resolved as above.
+        """
+        if isinstance(payload, ModelPlanToTicketsRequest):
+            return payload
+        if isinstance(payload, dict):
+            command = ModelPlanToTicketsStartCommand.model_validate(payload)
+        else:
+            command = payload
+        plan_content = Path(command.plan_path).expanduser().read_text(encoding="utf-8")
+        return ModelPlanToTicketsRequest(
+            plan_content=plan_content,
+            dry_run=command.dry_run,
+        )
+
+    def handle(
+        self,
+        request: ModelPlanToTicketsRequest
+        | ModelPlanToTicketsStartCommand
+        | dict[str, object],
+    ) -> ModelPlanToTicketsResult:
+        """Parse plan content and return structured entries.
+
+        The RuntimeLocal dispatch boundary delivers the contract ``input_model``
+        (``ModelPlanToTicketsStartCommand``) as a raw ``dict`` for operation_match
+        handlers, or as a ``ModelPlanToTicketsStartCommand`` instance on the
+        single-handler path — not the ``ModelPlanToTicketsRequest`` this handler
+        operates on. Normalize the payload before any attribute access so live
+        ``onex run-node`` invocations emit a completion event instead of crashing
+        with ``AttributeError`` (and timing out after 30s). (OMN-12460)
+        """
+        request = self._normalize_request(request)
         content = request.plan_content
 
         # Detect epic title
