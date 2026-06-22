@@ -10,9 +10,17 @@ canonical nodes; this suite proves:
     3-failure circuit breaker -> FAILED) — per the B2 DoD;
   * the judge-verdict-parse COMPUTE is pure and fail-closed;
   * the github-review EFFECT performs each operation as an EFFECT (events only);
-  * the ORCHESTRATOR runs the full pipeline over injected canonical effects and
-    a fake inference adapter, preserving the ``ReviewVerdict`` output shape and
-    the ``pr-review-bot-completed`` terminal event.
+  * the ORCHESTRATOR runs the full pipeline over injected canonical effects and a
+    RECORDED-FROM-REAL inference replay (OMN-13498 B1), preserving the
+    ``ReviewVerdict`` output shape and the ``pr-review-bot-completed`` terminal
+    event. The reviewer-findings and judge-PASS responses replayed for the
+    reviewer/judge routes were CAPTURED FROM REAL z.ai GLM (``cloud-glm``,
+    ``glm-5.2``) calls resolved through the committed routing contract (see
+    ``tests/fixtures/inference_replay/glm_review_findings_two.json`` +
+    ``glm_judge_pass.json``). The replay adapter HARD-REJECTS a delegation tier
+    name handed in as a ``model_key``, so it cannot mask the
+    tier-name-as-model_key regression a hand-written canned fake would (OMN-13470 /
+    OMN-13497 ``check-no-faked-boundary``).
 
 The reducer is the canonical REDUCER archetype (typed FSM schema + traverser
 exists), so its chains are GENERATED from the phase sequence rather than
@@ -22,7 +30,6 @@ coverage is hand-authored (§6 option (b)) — see the # hand-authored marker.
 
 from __future__ import annotations
 
-import json
 from datetime import UTC, datetime
 from uuid import uuid4
 
@@ -30,7 +37,6 @@ import pytest
 from omnibase_core.enums.enum_node_kind import EnumNodeKind
 from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
 
-from omnimarket.inference.adapter_inference_bridge import ModelInferenceAdapter
 from omnimarket.models.model_review_finding import (
     EnumFindingCategory,
     EnumFindingSeverity,
@@ -80,6 +86,7 @@ from omnimarket.review.pr_review_node_io import (
     ModelGithubReviewResultEvent,
     ModelJudgeParseRequest,
 )
+from tests.fixtures.inference_replay import RecordedReplayInferenceAdapter
 
 
 def _make_request(*, dry_run: bool = True) -> ReviewRequest:
@@ -335,39 +342,36 @@ class TestGithubReviewEffect:
 # ---------------------------------------------------------------------------
 
 
-class _FakeInferenceAdapter(ModelInferenceAdapter):
-    """Deterministic inference adapter — reviewer findings + judge PASS."""
+# The reviewer / judge routes the pr-review orchestrator dispatches to
+# (ReviewRequest.reviewer_models / judge_model in _make_request). Mapping the
+# replay fixtures by route key keeps a tier name from ever resolving as a route.
+_REVIEWER_ROUTE = "reviewer-a"
+_JUDGE_ROUTE = "judge-a"
 
-    def __init__(self, *, finding_count: int = 1, judge_pass: bool = True) -> None:
-        self._finding_count = finding_count
-        self._judge_pass = judge_pass
-
-    async def infer(
-        self,
-        model_key: str,
-        system_prompt: str,
-        user_prompt: str,
-        timeout_seconds: float,
-        temperature: float | None = None,
-    ) -> str:
-        if model_key.startswith("judge"):
-            verdict = "PASS" if self._judge_pass else "FAIL"
-            return json.dumps({"verdict": verdict, "reasoning": "deterministic"})
-        findings = [
-            {
-                "category": "logic_error",
-                "severity": "major",
-                "title": f"Finding {i}",
-                "description": "A deterministic finding for the golden chain.",
-                "confidence": "high",
-            }
-            for i in range(self._finding_count)
-        ]
-        return json.dumps(findings)
+# The REAL recorded GLM responses (replayed, never canned): the reviewer route
+# replays a live 2-finding hostile review, the judge route replays a live PASS
+# verdict. Both captured from cloud-glm calls resolved through the routing
+# contract. The 2-finding fixture yields exactly two findings (assert below).
+_RECORDED_REVIEWER_FINDINGS = 2
 
 
-class _FakeGithubDiffEffect(HandlerGithubDiffEffect):
-    """Returns a fixed diff without touching GitHub."""
+def _recorded_review_adapter() -> RecordedReplayInferenceAdapter:
+    """Replay the REAL recorded reviewer findings + judge PASS by route key."""
+    return RecordedReplayInferenceAdapter(
+        route_fixtures={
+            _REVIEWER_ROUTE: "glm_review_findings_two.json",
+            _JUDGE_ROUTE: "glm_judge_pass.json",
+        },
+    )
+
+
+class _RecordedGithubDiffEffect(HandlerGithubDiffEffect):
+    """Returns a fixed diff without touching GitHub (a NON-inference boundary).
+
+    The github-diff EFFECT is not the platform's inference/routing/dispatch egress
+    that the no-faked-boundary gate guards; this stub supplies a deterministic diff
+    so the orchestrator can drive the real recorded inference replay.
+    """
 
     async def handle(self, request):  # type: ignore[override, no-untyped-def]
         from omnibase_core.models.dispatch.model_handler_output import (
@@ -403,8 +407,8 @@ class TestPrReviewOrchestratorGoldenChain:
         Output preserves the ReviewVerdict shape + terminal phase.
         """
         orchestrator = HandlerPrReviewOrchestrator(
-            inference_adapter=_FakeInferenceAdapter(finding_count=2, judge_pass=True),
-            github_diff_effect=_FakeGithubDiffEffect(),
+            inference_adapter=_recorded_review_adapter(),
+            github_diff_effect=_RecordedGithubDiffEffect(),
             github_review_effect=HandlerGithubReviewEffect(),
         )
         request = _make_request(dry_run=True)
@@ -425,7 +429,7 @@ class TestPrReviewOrchestratorGoldenChain:
             EnumPrVerdict.RISKS_NOTED,
             EnumPrVerdict.CLEAN,
         }
-        assert completed.verdict.total_findings == 2
+        assert completed.verdict.total_findings == _RECORDED_REVIEWER_FINDINGS
 
     async def test_diff_failure_fails_closed_blocking(self) -> None:
         """A failure in the pipeline drives the FSM to FAILED + BLOCKING_ISSUE."""
@@ -435,7 +439,7 @@ class TestPrReviewOrchestratorGoldenChain:
                 raise RuntimeError("diff resolution exploded")
 
         orchestrator = HandlerPrReviewOrchestrator(
-            inference_adapter=_FakeInferenceAdapter(),
+            inference_adapter=_recorded_review_adapter(),
             github_diff_effect=_BoomDiff(),
             github_review_effect=HandlerGithubReviewEffect(),
         )

@@ -3,18 +3,24 @@
 
 """Golden-chain test for node_adr_segmentation_llm_effect.
 
-Exercises the full effect chain end to end without a live broker or LLM:
+Exercises the full effect chain end to end over a RECORDED-FROM-REAL inference
+replay (OMN-13498 B1), never a hand-written canned fake:
 
     cmd envelope (subscribe topic)
         -> ModelSegmentationRequest deserialization
-        -> HandlerSegmentation.handle(...)  (injected fake inference bridge)
+        -> HandlerSegmentation.handle(...)  (RecordedReplayInferenceAdapter)
         -> ModelSegmentationResult
         -> evt payload (publish topic) round-trips through JSON
 
-The inference bridge is injected per the handler's documented test-injection
-path so no network call is made. The chain asserts the contract's declared
+The inference response replayed here was CAPTURED FROM A REAL z.ai GLM
+(``cloud-glm``, ``glm-5.2``) call resolved through the committed routing contract
+(see ``tests/fixtures/inference_replay/glm_adr_segmentation.json`` +
+``tests/fixtures/inference_replay/__init__.py``). The replay adapter HARD-REJECTS
+a delegation tier name handed in as a ``model_key``, so it cannot mask the
+tier-name-as-model_key regression a hand-written fake would (OMN-13470 /
+OMN-13497 ``check-no-faked-boundary``). The chain asserts the contract's declared
 subscribe/publish topics stay aligned with what the handler consumes/produces,
-and that a successful segmentation yields a JSON-serializable evt payload.
+and that the real recorded segmentation yields a JSON-serializable evt payload.
 """
 
 from __future__ import annotations
@@ -39,6 +45,10 @@ from omnimarket.nodes.node_adr_segmentation_llm_effect.models.model_segmentation
     EnumSegmentType,
     ModelSegmentationResult,
 )
+from tests.fixtures.inference_replay import (
+    RecordedReplayInferenceAdapter,
+    load_recorded_response,
+)
 
 _CONTRACT_PATH = (
     Path(__file__).resolve().parents[1]
@@ -61,50 +71,10 @@ _SOURCE_CONTENT = (
 _SOURCE_PATH = "docs/adr/adr-007-bus-transport.md"
 _SOURCE_SHA = hashlib.sha256(_SOURCE_CONTENT.encode()).hexdigest()
 
-_LLM_RESPONSE = json.dumps(
-    [
-        {
-            "start_line": 1,
-            "end_line": 1,
-            "segment_type": "background",
-            "content": "# ADR-007: Adopt the bus as the inter-service transport",
-            "confidence": 0.9,
-        },
-        {
-            "start_line": 3,
-            "end_line": 4,
-            "segment_type": "decision",
-            "content": "## Decision\nAll inter-service traffic flows over Kafka topics.",
-            "confidence": 0.95,
-        },
-    ]
-)
-
-
-class _FakeInferenceBridge(ModelInferenceAdapter):
-    """In-process bridge returning a canned valid segmentation response."""
-
-    def __init__(self, response: str) -> None:
-        self._response = response
-        self.calls: list[dict[str, object]] = []
-
-    async def infer(
-        self,
-        model_key: str,
-        system_prompt: str,
-        user_prompt: str,
-        timeout_seconds: float,
-        temperature: float | None = None,
-    ) -> str:
-        self.calls.append(
-            {
-                "model_key": model_key,
-                "user_prompt": user_prompt,
-                "timeout_seconds": timeout_seconds,
-                "temperature": temperature,
-            }
-        )
-        return self._response
+# The real recorded GLM segmentation response (replayed, never canned). Captured
+# from a live cloud-glm call resolved through the routing contract.
+_RECORDED_FIXTURE = "glm_adr_segmentation.json"
+_LLM_RESPONSE = load_recorded_response(_RECORDED_FIXTURE)
 
 
 def _load_contract() -> dict[str, object]:
@@ -134,8 +104,8 @@ def test_contract_topics_match_chain_expectations() -> None:
 @pytest.mark.unit
 @pytest.mark.asyncio
 async def test_golden_chain_cmd_to_evt_produces_segmented_result() -> None:
-    """cmd envelope -> handler -> evt payload, no broker, no network."""
-    bridge = _FakeInferenceBridge(_LLM_RESPONSE)
+    """cmd envelope -> handler -> evt payload over a real recorded replay."""
+    bridge = RecordedReplayInferenceAdapter(_RECORDED_FIXTURE)
     handler = HandlerSegmentation(inference_bridge=bridge)
 
     # Subscribe-topic envelope deserializes into the request contract.
