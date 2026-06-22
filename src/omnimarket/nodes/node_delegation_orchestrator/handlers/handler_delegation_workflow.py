@@ -881,6 +881,32 @@ class HandlerDelegationWorkflow:
         # Compliance-loop path.
         return _evaluate_compliance(workflow, response, self._transition)
 
+    @staticmethod
+    def _terminal_failed_fields(
+        workflow: DelegationWorkflowState,
+    ) -> tuple[str, str, str]:
+        """Resolve fail-closed (model_used, endpoint_url, content) for a terminal
+        FAILED event.
+
+        OMN-13470 / OMN-13140: the terminal ``ModelDelegationResult`` wire DTO
+        requires non-null ``model_used``, ``endpoint_url``, and ``content``. On an
+        all-tiers-failed / judge-failed terminal these workflow fields can be
+        ``None`` (e.g. the inference attempt never produced content, or the
+        routing decision was reset on a prior escalation), which made the terminal
+        construction raise ``ValidationError`` — crashing the dispatcher with NO
+        terminal event emitted (silent loss; the all-tiers-failed HWM stayed 0).
+        Fail closed to explicit sentinel strings so a valid terminal event is
+        ALWAYS emitted; the failure reason carries the real cause.
+        """
+        model_used = workflow.inference_model_used or "none"
+        endpoint_url = (
+            workflow.routing_decision.endpoint_url
+            if workflow.routing_decision is not None
+            else "none"
+        )
+        content = workflow.inference_content if workflow.inference_content else ""
+        return model_used, endpoint_url, content
+
     def handle_gate_result(
         self,
         result: ModelQualityGateResult,

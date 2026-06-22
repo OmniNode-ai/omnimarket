@@ -77,6 +77,15 @@ class ModelResolvedDelegationBackend(BaseModel):
         ),
     )
     extra_headers: dict[str, str] = Field(default_factory=dict)
+    secret_ref: str | None = Field(
+        default=None,
+        description=(
+            "Logical secret reference (e.g. ``llm.glm.api_key``) the effect "
+            "boundary resolves to the literal API key via ProtocolSecretStore "
+            "(OMN-12824). Only the reference name is carried here; the value is "
+            "never resolved in the routing authority."
+        ),
+    )
 
 
 def load_bifrost_backends(
@@ -129,14 +138,31 @@ def _select_backend(
     return None
 
 
+def _select_backend_by_id(
+    backends: list[dict[str, Any]], backend_id: str
+) -> dict[str, Any] | None:
+    """Select the backend with ``backend_id`` that has a populated endpoint_url."""
+    for backend in backends:
+        if backend.get("backend_id") == backend_id and backend.get("endpoint_url"):
+            return backend
+    return None
+
+
 def resolve_delegation_backend(
     task_type: str,
     *,
+    backend_id: str | None = None,
     backends: list[dict[str, Any]] | None = None,
     config_path: Path = _BIFROST_CONFIG_PATH,
     overlay_path: Path = _OVERLAY_PATH,
 ) -> ModelResolvedDelegationBackend:
     """Resolve ``model_id`` + ``endpoint_ref`` for ``task_type`` from bifrost.
+
+    When ``backend_id`` is supplied the resolver targets that exact backend (it
+    must carry a populated COMPLETE ``endpoint_url``) instead of selecting by
+    ``task_type`` capability. This is the path the LLM-judge uses to pin a
+    concrete cloud backend with a committed verbatim endpoint URL — it never
+    passes a TIER name to the inference layer (OMN-13470).
 
     Fails closed when no backend carries a populated ``endpoint_url`` — the
     installer overlay is responsible for supplying COMPLETE local endpoint URLs.
@@ -146,13 +172,23 @@ def resolve_delegation_backend(
         if backends is not None
         else load_bifrost_backends(config_path=config_path, overlay_path=overlay_path)
     )
-    backend = _select_backend(merged, task_type)
-    if backend is None:
-        raise RuntimeError(
-            "No delegation backend with a populated endpoint_url found in the "
-            "bifrost config. Supply COMPLETE local endpoint URLs in the overlay "
-            f"({overlay_path})."
-        )
+    if backend_id is not None:
+        backend = _select_backend_by_id(merged, backend_id)
+        if backend is None:
+            raise RuntimeError(
+                f"No delegation backend {backend_id!r} with a populated "
+                "endpoint_url found in the bifrost config. Declare a COMPLETE "
+                "endpoint_url for it in the committed config or the overlay "
+                f"({overlay_path})."
+            )
+    else:
+        backend = _select_backend(merged, task_type)
+        if backend is None:
+            raise RuntimeError(
+                "No delegation backend with a populated endpoint_url found in the "
+                "bifrost config. Supply COMPLETE local endpoint URLs in the overlay "
+                f"({overlay_path})."
+            )
 
     endpoint_url = backend.get("endpoint_url")
     if not isinstance(endpoint_url, str) or not endpoint_url.strip():
@@ -205,6 +241,13 @@ def resolve_delegation_backend(
     raw_headers = backend.get("extra_headers") or {}
     extra_headers = {str(k): str(v) for k, v in raw_headers.items()}
 
+    raw_secret_ref = backend.get("secret_ref")
+    secret_ref = (
+        str(raw_secret_ref)
+        if isinstance(raw_secret_ref, str) and raw_secret_ref.strip()
+        else None
+    )
+
     return ModelResolvedDelegationBackend(
         backend_id=str(backend["backend_id"]),
         model_id=model_name,
@@ -213,6 +256,7 @@ def resolve_delegation_backend(
         max_tokens=raw_max_tokens,
         timeout_ms=raw_timeout_ms,
         extra_headers=extra_headers,
+        secret_ref=secret_ref,
     )
 
 
