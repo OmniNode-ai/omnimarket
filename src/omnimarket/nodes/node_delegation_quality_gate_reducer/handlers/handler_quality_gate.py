@@ -143,9 +143,47 @@ _FALLBACK_VERDICT_PREFIXES: tuple[str, ...] = (
 
 _ACCEPTANCE_VERSION = "delegation-deterministic-acceptance.v1"
 _DETERMINISTIC_SCORE_SOURCE = "deterministic_acceptance"
+# OMN-13470: when an LLM-judge adequacy score is combined with the deterministic
+# graded score, the result records ``score_source="combined"`` so downstream
+# experiment analysis and the orchestrator's required-bar gate can distinguish a
+# combined verdict from a deterministic-only one.
+_COMBINED_SCORE_SOURCE = "combined"
+# OMN-13470: relative weight of the deterministic graded band vs. the LLM-judge
+# semantic-adequacy band when both are present. The deterministic band still
+# carries more weight (it is the verifiable, replayable signal), but the judge
+# band supplies the semantic-adequacy authority the deterministic check set
+# cannot — lifting a good-but-mechanically-incomplete answer over the bar while a
+# refusal/empty stays blocked by the deterministic hard floor below.
+_COMBINED_DETERMINISTIC_WEIGHT: float = 0.6
+_COMBINED_JUDGE_WEIGHT: float = 0.4
 _VERIFIABLE_TASK_TYPES: frozenset[str] = frozenset(
     {"code_generation", "test", "validator_generation"}
 )
+
+
+def _combined_quality_score(
+    *,
+    deterministic_score: float,
+    judge_adequacy_score: float,
+) -> float:
+    """Combine the deterministic graded score with the LLM-judge adequacy score.
+
+    OMN-13470: the deterministic check set for verifiable classes
+    (code_generation/test) is a HARD FLOOR for refusals/empties (enforced before
+    this combine in ``delta``), but it is too strict to serve as the sole
+    adequacy authority — a correct answer that does not happen to carry every
+    declared marker (e.g. ``passes_existing_tests``) scores ~0.733 and fails the
+    0.85 bar. The judge supplies the missing semantic-adequacy signal. The
+    combined score is the weighted mean of the two bands and is what the
+    orchestrator applies ``required_bar`` to.
+    """
+    weighted = (
+        _COMBINED_DETERMINISTIC_WEIGHT * deterministic_score
+        + _COMBINED_JUDGE_WEIGHT * judge_adequacy_score
+    )
+    return round(
+        weighted / (_COMBINED_DETERMINISTIC_WEIGHT + _COMBINED_JUDGE_WEIGHT), 3
+    )
 
 
 def _recommends_fallback(failure_reasons: tuple[str, ...] | list[str]) -> bool:
@@ -1061,10 +1099,18 @@ def _run_legacy_checks(
     )
 
 
-def delta(gate_input: ModelQualityGateInput) -> ModelQualityGateResult:
+def delta(
+    gate_input: ModelQualityGateInput,
+    *,
+    judge_adequacy_score: float | None = None,
+) -> ModelQualityGateResult:
     """Evaluate LLM output quality for a delegation response.
 
-    Pure function: deterministic for given input, no I/O.
+    Pure function: deterministic for given input, no I/O. The LLM-judge call
+    itself is an EFFECT performed upstream (HandlerQualityGateIntent) on the
+    canonical inference path; its already-resolved 0.0-1.0 adequacy score is
+    passed in here, so this reducer stays pure and replay-safe (the recorded
+    judge verdict is read back, never re-called).
 
     When gate_input carries contract-declared DoD checks (dod_deterministic /
     dod_heuristic), those checks take precedence:
@@ -1073,10 +1119,21 @@ def delta(gate_input: ModelQualityGateInput) -> ModelQualityGateResult:
       - All checks pass without adequacy authority → fail_category="fail_heuristic"
       - All checks pass with adequacy authority → fail_category="pass"
 
+    OMN-13470: when ``judge_adequacy_score`` is supplied AND the path holds
+    deterministic acceptance authority, the deterministic graded score and the
+    judge adequacy score are COMBINED (the deterministic checks remain a hard
+    floor — any deterministic failure, including the refusal/empty pre-filters,
+    still hard-blocks before the combine). The combined score replaces
+    ``quality_score`` and ``score_source`` is recorded as ``"combined"`` so the
+    orchestrator applies ``required_bar`` to the combined value.
+
     Falls back to the legacy hardcoded checks when both DoD fields are empty.
 
     Args:
         gate_input: Quality gate input with LLM response and optional DoD checks.
+        judge_adequacy_score: Optional 0.0-1.0 LLM-judge semantic-adequacy score
+            resolved on the inference effect path. ``None`` preserves the prior
+            deterministic-only behavior.
 
     Returns:
         A quality gate result with pass/fail, fail_category, score, and reasons.
@@ -1131,9 +1188,13 @@ def delta(gate_input: ModelQualityGateInput) -> ModelQualityGateResult:
     )
 
     if det_failures:
-        # Deterministic failure blocks delegation. The score is still graded so
-        # downstream experiment analysis can distinguish a near-miss from a
-        # total failure even when the gate verdict is identical.
+        # Deterministic failure blocks delegation. The deterministic checks are a
+        # HARD FLOOR (OMN-13470): a deterministic failure — including the
+        # refusal/empty pre-filters routed through the deterministic band — hard-
+        # blocks BEFORE any judge combine, so a refusal or empty answer can never
+        # be lifted over the bar by a judge score. The score is still graded so
+        # downstream experiment analysis can distinguish a near-miss from a total
+        # failure even when the gate verdict is identical.
         return ModelQualityGateResult(
             correlation_id=gate_input.correlation_id,
             passed=False,
@@ -1144,6 +1205,39 @@ def delta(gate_input: ModelQualityGateInput) -> ModelQualityGateResult:
             **acceptance_evidence,
         )
 
+    # OMN-13470: the deterministic hard floor passed (no det_failures). On a
+    # verifiable-acceptance path with a resolved judge adequacy score, COMBINE the
+    # deterministic graded score with the judge score and record
+    # score_source="combined". The combine supplies the semantic-adequacy
+    # authority the deterministic check set lacks, lifting a good-but-mechanically-
+    # incomplete answer over the bar; refusals/empties never reach here (they
+    # hard-block in the det_failures branch above).
+    combined_acceptance_evidence: dict[str, object] = {}
+    if deterministic_acceptance_authority and judge_adequacy_score is not None:
+        # Combine against the DETERMINISTIC band fraction, not the mixed graded
+        # score: for a verifiable class the heuristic markers (no_refusal /
+        # follows_codebase_conventions / no_obvious_regressions) are reject-only
+        # and drag the mixed graded score down even on a clean answer. Here the
+        # deterministic floor has fully passed (no det_failures), so the
+        # deterministic fraction is 1.0 and the judge supplies the semantic-
+        # adequacy band that lifts a good-but-mechanically-incomplete answer over
+        # the bar. A refusal/empty never reaches this branch — it hard-blocks in
+        # the det_failures branch above.
+        deterministic_fraction = (
+            (deterministic_total - len(det_failures)) / deterministic_total
+            if deterministic_total > 0
+            else 1.0
+        )
+        quality_score = _combined_quality_score(
+            deterministic_score=deterministic_fraction,
+            judge_adequacy_score=judge_adequacy_score,
+        )
+        combined_acceptance_evidence = {
+            **acceptance_evidence,
+            "score_source": _COMBINED_SCORE_SOURCE,
+            "actual_score": quality_score,
+        }
+
     if deterministic_acceptance_authority:
         return ModelQualityGateResult(
             correlation_id=gate_input.correlation_id,
@@ -1152,7 +1246,7 @@ def delta(gate_input: ModelQualityGateInput) -> ModelQualityGateResult:
             quality_score=quality_score,
             failure_reasons=(),
             fallback_recommended=False,
-            **acceptance_evidence,
+            **(combined_acceptance_evidence or acceptance_evidence),
         )
 
     if heuristic_failures:

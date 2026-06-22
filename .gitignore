@@ -14,3 +14,4 @@ uv.toml
 
 # Local pytest log (context hygiene)
 .pytest.log
+.onex_full_suite.log
