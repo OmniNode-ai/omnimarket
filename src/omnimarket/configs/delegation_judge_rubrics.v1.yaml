@@ -13,6 +13,7 @@ rubrics:
     score_source: "reproducible_judge"
     terminology: "controlled_reproducible_auditable"
     temperature: 0.0
+    judge_model_version: "routing-contract:cheap_cloud"
     judge_node_version: "delegation-judge-verdict/1.0.0"
     applies_to_task_classes:
       - document
@@ -35,6 +36,43 @@ rubrics:
       - id: clarity
         weight: 0.10
         description: "The response is clear enough for downstream use."
+    verdict_thresholds:
+      pass_min_score: 0.80
+      borderline_min_score: 0.60
+      fail_below_score: 0.60
+    failure_semantics:
+      verdict: "judge_failed"
+      actual_score: null
+      required_fields:
+        - failure_kind
+        - failure_message
+  # OMN-13470: semantic-adequacy rubric for the verifiable code classes. The
+  # deterministic check set (compiles_without_errors / final_artifact_only /
+  # passes_existing_tests) remains the hard floor in the gate; this rubric
+  # supplies the semantic-adequacy signal that the deterministic checks cannot,
+  # so a good-but-mechanically-incomplete answer is lifted over required_bar
+  # while a refusal/empty still hard-blocks on the deterministic floor.
+  delegation_code_adequacy_v1:
+    rubric_hash: "sha256:f2ffc154eb8b2031ebf499fa12de0f64581b9500bdc955145ee642fac1250142"
+    score_source: "reproducible_judge"
+    terminology: "controlled_reproducible_auditable"
+    temperature: 0.0
+    judge_model_version: "routing-contract:cheap_cloud"
+    judge_node_version: "delegation-judge-verdict/1.0.0"
+    applies_to_task_classes:
+      - code_generation
+      - test
+      - validator_generation
+    dimensions:
+      - id: task_fulfillment
+        weight: 0.50
+        description: "The code answers the requested task and implements the asked-for behavior."
+      - id: correctness
+        weight: 0.30
+        description: "The logic is plausibly correct for the stated requirements and contains no obvious defects."
+      - id: completeness
+        weight: 0.20
+        description: "The artifact is complete (not truncated, not a stub) and does not evade material requirements."
     verdict_thresholds:
       pass_min_score: 0.80
       borderline_min_score: 0.60
