@@ -51,6 +51,9 @@ from omnimarket.models.delegation.quality_bar_evidence import (
     format_quality_bar_labels,
 )
 from omnimarket.nodes.contract_topics import contract_publish_topics
+from omnimarket.nodes.node_delegation_escalation_decision_compute.handlers.handler_escalation_decision import (
+    HandlerEscalationDecision,
+)
 from omnimarket.nodes.node_delegation_orchestrator.contract_topics import (
     TOPIC_ID_DELEGATION_COMPLETED,
     TOPIC_ID_DELEGATION_FAILED,
@@ -117,6 +120,12 @@ from omnimarket.pricing import (
     estimate_baseline_cost_usd,
     get_manifest_version_int,
     recompute_actual_cost_and_savings,
+)
+from omnimarket.routing.model_escalation_decision_request import (
+    ModelEscalationDecisionRequest,
+)
+from omnimarket.routing.model_escalation_decision_result import (
+    ModelEscalationDecisionResult,
 )
 
 # Max tier escalation attempts for infra errors (auth, timeout, connection refused).
@@ -531,6 +540,14 @@ class HandlerDelegationWorkflow:
 
     _shared_workflows: ClassVar[dict[UUID, DelegationWorkflowState]] = {}
 
+    # OMN-13476: the escalation/tier decision is owned by a stateless COMPUTE
+    # node. The orchestrator resolves the config-dependent inputs (next eligible
+    # tier + no-higher-tier reason, which read the routing contract+overlay) and
+    # delegates the deterministic verdict to this handler.
+    _escalation_decider: ClassVar[HandlerEscalationDecision] = (
+        HandlerEscalationDecision()
+    )
+
     def __init__(
         self,
         workflows: MutableMapping[UUID, DelegationWorkflowState] | None = None,
@@ -556,6 +573,71 @@ class HandlerDelegationWorkflow:
             )
             raise InvalidStateTransitionError(msg)
         workflow.state = target
+
+    def _decide_escalation(
+        self,
+        workflow: DelegationWorkflowState,
+        *,
+        max_escalation_attempts: int,
+        excluded_tiers: frozenset[str],
+        error_retryable: bool,
+        non_retryable_reason: str,
+        task_type: str | None,
+    ) -> ModelEscalationDecisionResult:
+        """Delegate the escalate-or-terminate verdict to the COMPUTE (OMN-13476).
+
+        The config-dependent inputs are resolved here — the orchestrator owns the
+        routing-contract I/O. ``next_eligible_tier`` /
+        ``describe_no_higher_tier_available`` read ``routing_tiers.yaml`` and the
+        task-class contract; their plain results are handed to the stateless
+        COMPUTE, which applies the deterministic decision precedence. The
+        relocation preserves behavior exactly: the COMPUTE checks retryability,
+        budget, current-tier identifiability, and ladder exhaustion in the same
+        order the inline branches did.
+
+        When ``task_type`` is None (the legacy task-unaware inference-error path)
+        the precise no-higher-tier diagnostic cannot be built, so the bare
+        ``NO_HIGHER_TIER_REASON_TOKEN`` is used — matching the prior inline
+        behavior. The quality-gate path always supplies a ``task_type``.
+        """
+        next_tier: str | None = None
+        no_higher_tier_reason: str | None = None
+
+        # Only resolve a next tier when the cheap pure preconditions allow it; the
+        # COMPUTE re-checks them, but resolving the tier here would be wasted I/O
+        # (and, for current_tier_name=None, impossible).
+        if (
+            error_retryable
+            and workflow.escalation_count < max_escalation_attempts
+            and workflow.current_tier_name is not None
+        ):
+            next_tier = next_eligible_tier(
+                workflow.current_tier_name,
+                excluded_tiers,
+                task_type=task_type,
+            )
+            if next_tier is None:
+                no_higher_tier_reason = (
+                    describe_no_higher_tier_available(
+                        workflow.current_tier_name,
+                        excluded_tiers,
+                        task_type=task_type,
+                    )
+                    if task_type is not None
+                    else NO_HIGHER_TIER_REASON_TOKEN
+                )
+
+        return self._escalation_decider.handle(
+            ModelEscalationDecisionRequest(
+                escalation_count=workflow.escalation_count,
+                max_escalation_attempts=max_escalation_attempts,
+                current_tier_name=workflow.current_tier_name,
+                error_retryable=error_retryable,
+                next_tier_name=next_tier,
+                non_retryable_reason=non_retryable_reason,
+                no_higher_tier_reason=no_higher_tier_reason,
+            )
+        )
 
     def handle_delegation_request(
         self,
@@ -731,51 +813,30 @@ class HandlerDelegationWorkflow:
                 )
             )
 
-            # Infra errors (auth failure, connection refused, timeout) are
-            # retryable at the next tier — attempt escalation before terminal FAILED.
-            terminal_failure_reason: str | None = None
-            next_tier: str | None = None
-
-            should_escalate_error = _should_escalate_inference_error(
-                response.error_message
+            # OMN-13476: the escalate-or-terminate decision is owned by the
+            # node_delegation_escalation_decision_compute COMPUTE. Infra errors
+            # (auth failure, connection refused, timeout) are retryable at the
+            # next tier; empty body / empty choices are not. The orchestrator
+            # resolves the routing-contract inputs inside ``_decide_escalation``
+            # and delegates the verdict — behavior identical to the prior inline
+            # branch (retryability → budget → current-tier → ladder precedence).
+            error_task_type = (
+                workflow.request.task_type if workflow.request is not None else None
             )
-            if not should_escalate_error:
-                terminal_failure_reason = "non_retryable_inference_response"
-            elif workflow.escalation_count >= _MAX_INFERENCE_ESCALATION_ATTEMPTS:
-                terminal_failure_reason = "max_escalation_attempts_reached"
-            elif workflow.current_tier_name is None:
-                terminal_failure_reason = "current_tier_unknown"
-            else:
-                error_task_type = (
-                    workflow.request.task_type if workflow.request is not None else None
-                )
-                next_tier = next_eligible_tier(
-                    workflow.current_tier_name,
-                    _INFERENCE_ERROR_EXCLUDED_TIERS,
-                    task_type=error_task_type,
-                )
-                if next_tier is None:
-                    # OMN-13167: precise reason naming the exhausted policy and
-                    # unusable higher tiers. task_type is required for the
-                    # diagnostic; without it (legacy task-unaware path) fall back
-                    # to the bare token.
-                    terminal_failure_reason = (
-                        describe_no_higher_tier_available(
-                            workflow.current_tier_name,
-                            _INFERENCE_ERROR_EXCLUDED_TIERS,
-                            task_type=error_task_type,
-                        )
-                        if error_task_type is not None
-                        else NO_HIGHER_TIER_REASON_TOKEN
-                    )
-
-            can_escalate = (
-                should_escalate_error
-                and terminal_failure_reason is None
-                and next_tier is not None
+            decision = self._decide_escalation(
+                workflow,
+                max_escalation_attempts=_MAX_INFERENCE_ESCALATION_ATTEMPTS,
+                excluded_tiers=_INFERENCE_ERROR_EXCLUDED_TIERS,
+                error_retryable=_should_escalate_inference_error(
+                    response.error_message
+                ),
+                non_retryable_reason="non_retryable_inference_response",
+                task_type=error_task_type,
             )
+            terminal_failure_reason = decision.terminal_failure_reason
+            next_tier = decision.next_tier_name
 
-            if can_escalate:
+            if decision.can_escalate:
                 assert next_tier is not None
                 # OMN-13140: a retryable inference error with a routable next tier
                 # is a real escalation — emit the typed escalation proof BEFORE the
@@ -1064,35 +1125,25 @@ class HandlerDelegationWorkflow:
             )
         )
 
-        # Determine why escalation cannot proceed (for audit trail).
-        terminal_failure_reason: str | None = None
-        next_tier: str | None = None
+        # OMN-13476: a sub-bar quality result is always retryable on a higher
+        # tier, so the decision reduces to budget / current-tier / ladder. The
+        # orchestrator resolves the routing-contract inputs inside
+        # ``_decide_escalation`` and delegates the verdict to the COMPUTE —
+        # behavior identical to the prior inline branch (OMN-13167 precise
+        # no-higher-tier reason still emitted, sourced from the same
+        # describe_no_higher_tier_available call).
+        decision = self._decide_escalation(
+            workflow,
+            max_escalation_attempts=max_escalation_attempts,
+            excluded_tiers=excluded_tiers,
+            error_retryable=True,
+            non_retryable_reason="non_retryable_quality_result",
+            task_type=workflow.request.task_type,
+        )
+        terminal_failure_reason = decision.terminal_failure_reason
+        next_tier = decision.next_tier_name
 
-        if workflow.escalation_count >= max_escalation_attempts:
-            terminal_failure_reason = "max_escalation_attempts_reached"
-        elif workflow.current_tier_name is None:
-            terminal_failure_reason = "current_tier_unknown"
-        else:
-            next_tier = next_eligible_tier(
-                workflow.current_tier_name,
-                excluded_tiers,
-                task_type=workflow.request.task_type,
-            )
-            if next_tier is None:
-                # OMN-13167: emit a precise reason that names the exhausted
-                # task-class escalation policy and the unusable higher tiers,
-                # not the bare token. `test`/`research` (and any task class)
-                # dead-ended here previously with no indication of which policy
-                # or missing tier caused it.
-                terminal_failure_reason = describe_no_higher_tier_available(
-                    workflow.current_tier_name,
-                    excluded_tiers,
-                    task_type=workflow.request.task_type,
-                )
-
-        can_escalate = terminal_failure_reason is None and next_tier is not None
-
-        if can_escalate:
+        if decision.can_escalate:
             assert next_tier is not None
             # OMN-13140: build the terminal escalation proof BEFORE the inference
             # state reset below clears inference_model_used. The quality gate
