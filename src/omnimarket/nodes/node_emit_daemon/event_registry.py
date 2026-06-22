@@ -116,12 +116,23 @@ class FanOutRule:
             registry fails fast on any fan-out rule with no declared tier.
         transform: Function to transform the payload before publishing.
         description: Human-readable description of what this rule does.
+        max_payload_bytes: OMN-13151 per-topic upper bound on the serialized
+            payload. Declared for duty-critical capture topics so the emit path
+            and contract tests can prove the bound is set and below the daemon
+            cap. ``None`` means "no per-topic bound declared".
+        schema_ref: OMN-13151 dotted path to the typed payload model for the
+            topic (e.g. ``pkg.module.ModelFoo``). ``None`` means unset.
+        transform_name: OMN-13151 raw declared transform name from the registry
+            (before mapping to a callable), retained for drift comparison.
     """
 
     topic: str
     tier: EnumDurabilityTier
     transform: PayloadTransform | None = None
     description: str = ""
+    max_payload_bytes: int | None = None
+    schema_ref: str | None = None
+    transform_name: str | None = None
 
     def apply_transform(self, payload: dict[str, object]) -> dict[str, object]:
         """Apply the transform to the payload."""
@@ -217,12 +228,28 @@ class EventRegistry:
                         f"declares unknown tier '{tier_raw}'. Valid tiers: {valid}."
                     ) from exc
 
+                # OMN-13151: optional per-topic metadata. max_payload is bounded
+                # below the daemon stream cap; the contract test enforces the
+                # bound, the loader just carries the declared value.
+                max_payload_raw = rule_def.get("max_payload")
+                max_payload_bytes: int | None = None
+                if max_payload_raw is not None:
+                    if not isinstance(max_payload_raw, int) or max_payload_raw <= 0:
+                        raise ValueError(
+                            f"Fan-out rule for event '{event_type}' -> '{topic}' "
+                            f"declares non-positive max_payload '{max_payload_raw}'."
+                        )
+                    max_payload_bytes = max_payload_raw
+
                 fan_out_rules.append(
                     FanOutRule(
                         topic=topic,
                         tier=tier,
                         transform=transform_fn,
                         description=rule_def.get("description", ""),
+                        max_payload_bytes=max_payload_bytes,
+                        schema_ref=rule_def.get("schema_ref"),
+                        transform_name=transform_name,
                     )
                 )
 
