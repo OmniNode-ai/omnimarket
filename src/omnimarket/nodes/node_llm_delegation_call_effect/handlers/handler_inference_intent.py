@@ -61,6 +61,54 @@ _MAX_PROVIDER_ERROR_BODY_CHARS = 1000
 _SUPPORTED_URL_SCHEMES = ("http://", "https://")
 
 
+class InferenceUsageError(RuntimeError):
+    """Provider returned a usable usage block but no acceptable content.
+
+    OMN-13408: ``finish_reason=length`` (truncation) and an empty message body
+    both fail the inference, but the provider STILL returns a real OpenAI-shaped
+    ``usage`` block reporting the prompt/completion tokens it metered (and, on a
+    reasoning model like ``gemini-2.5-flash``, the thinking tokens that pushed the
+    response past ``max_tokens``). Carry that served usage on the exception so the
+    error-path ``ModelInferenceResponseData`` reports the real tokens consumed
+    instead of defaulting them to 0 — the prior behaviour silently dropped the
+    metered usage, so the canonical ``delegation-failed.v1`` terminal recorded
+    0/0/0 tokens and $0 cost even though a multi-second metered cloud call ran.
+
+    A transport failure / non-2xx response (raised before any ``response.json()``)
+    carries no usage and remains a plain exception with zero-token fallback.
+    """
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        prompt_tokens: int,
+        completion_tokens: int,
+        total_tokens: int,
+    ) -> None:
+        super().__init__(message)
+        self.prompt_tokens = prompt_tokens
+        self.completion_tokens = completion_tokens
+        self.total_tokens = total_tokens
+
+
+def _parse_usage(data: dict[str, Any]) -> tuple[int, int, int]:
+    """Parse the OpenAI-compatible ``usage`` block into (prompt, completion, total).
+
+    Tolerant of a missing/blank usage block (zeros). ``total_tokens`` falls back
+    to ``prompt + completion`` when the provider omits it; for reasoning models
+    the provider-reported total can exceed ``prompt + completion`` (thinking
+    tokens) and is preserved as reported.
+    """
+    usage = data.get("usage") or {}
+    prompt_tokens = int(usage.get("prompt_tokens") or 0)
+    completion_tokens = int(usage.get("completion_tokens") or 0)
+    total_tokens = int(usage.get("total_tokens") or 0) or (
+        prompt_tokens + completion_tokens
+    )
+    return prompt_tokens, completion_tokens, total_tokens
+
+
 def _get_inference_response_topic() -> str:
     """Return the full inference-response publish topic from the contract.
 
@@ -209,12 +257,27 @@ class HandlerInferenceIntent:
                 intent.correlation_id,
                 error_msg,
             )
+            # OMN-13408: when the failure carries served usage (truncation /
+            # empty-content errors where the provider still metered + reported
+            # tokens), thread those real token counts onto the published
+            # ModelInferenceResponseData so the orchestrator's terminal
+            # delegation-failed.v1 (and its compat twin + the projection) record
+            # the metered tokens and priced cost instead of defaulting to 0/0/0.
+            # A transport failure carries no usage → zero fallback (unchanged).
+            prompt_tokens = completion_tokens = total_tokens = 0
+            if isinstance(exc, InferenceUsageError):
+                prompt_tokens = exc.prompt_tokens
+                completion_tokens = exc.completion_tokens
+                total_tokens = exc.total_tokens
             return ModelInferenceResponseData(
                 correlation_id=intent.correlation_id,
                 content="",
                 model_used=intent.model,
                 llm_call_id=call_id,
                 latency_ms=latency_ms,
+                prompt_tokens=prompt_tokens,
+                completion_tokens=completion_tokens,
+                total_tokens=total_tokens,
                 error_message=error_msg,
             )
 
@@ -277,26 +340,42 @@ class HandlerInferenceIntent:
                 raise RuntimeError(_provider_http_error_message(exc)) from exc
             data: dict[str, Any] = response.json()
 
+        # OMN-13408: parse the provider's served ``usage`` block FIRST, before any
+        # truncation / empty-content / empty-choices raise. The OpenAI-compatible
+        # shim returns a real usage block even when ``finish_reason=length`` or the
+        # message body is blank, so the failure paths below raise InferenceUsageError
+        # carrying these metered counts — the error-path response then reports the
+        # real tokens consumed instead of dropping them to 0.
+        prompt_tokens, completion_tokens, total_tokens = _parse_usage(data)
+
         choices = data.get("choices") or []
         if not choices:
-            raise ValueError("API returned empty choices array")
+            raise InferenceUsageError(
+                "API returned empty choices array",
+                prompt_tokens=prompt_tokens,
+                completion_tokens=completion_tokens,
+                total_tokens=total_tokens,
+            )
 
         choice = choices[0]
         finish_reason = choice.get("finish_reason")
         if finish_reason == "length":
-            raise ValueError("API response truncated: finish_reason=length")
+            raise InferenceUsageError(
+                "API response truncated: finish_reason=length",
+                prompt_tokens=prompt_tokens,
+                completion_tokens=completion_tokens,
+                total_tokens=total_tokens,
+            )
 
         content_raw = choice.get("message", {}).get("content")
         content = content_raw.strip() if isinstance(content_raw, str) else ""
         if not content:
-            raise ValueError("API returned empty message content")
-
-        usage = data.get("usage") or {}
-        prompt_tokens = int(usage.get("prompt_tokens") or 0)
-        completion_tokens = int(usage.get("completion_tokens") or 0)
-        total_tokens = int(usage.get("total_tokens") or 0) or (
-            prompt_tokens + completion_tokens
-        )
+            raise InferenceUsageError(
+                "API returned empty message content",
+                prompt_tokens=prompt_tokens,
+                completion_tokens=completion_tokens,
+                total_tokens=total_tokens,
+            )
 
         response_id: str = data.get("id") or call_id
 
@@ -320,4 +399,4 @@ class HandlerInferenceIntent:
         )
 
 
-__all__ = ["HandlerInferenceIntent"]
+__all__ = ["HandlerInferenceIntent", "InferenceUsageError"]
