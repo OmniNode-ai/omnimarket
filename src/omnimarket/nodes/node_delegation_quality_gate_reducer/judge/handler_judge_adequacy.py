@@ -46,9 +46,10 @@ from omnimarket.events.delegation_judge_verdict import (
     build_delegation_judge_verdict_event,
 )
 from omnimarket.inference.adapter_inference_bridge import (
-    AdapterInferenceBridge,
     ModelInferenceAdapter,
-    ModelInferenceBridgeConfig,
+)
+from omnimarket.nodes.node_delegation_quality_gate_reducer.judge.adapter_routing_resolved_judge import (
+    RoutingResolvedJudgeInferenceAdapter,
 )
 
 logger = logging.getLogger(__name__)
@@ -64,10 +65,15 @@ _RUBRIC_PATH = (
 # gate; this rubric is the supplemental adequacy band combined with it.
 _CODE_RUBRIC_ID = "delegation_code_adequacy_v1"
 
-# Default judge model_key. The concrete endpoint/model/key are resolved by the
-# inference bridge from the routing contract + overlay (model_configs), never an
-# env var in this module.
-_DEFAULT_JUDGE_MODEL_KEY = "cheap_cloud"
+# The judge resolves a CONCRETE model id from the routing contract via the
+# default ``RoutingResolvedJudgeInferenceAdapter`` — there is NO tier name passed
+# to the inference layer. The provenance ``model_key`` recorded on the verdict is
+# the resolved concrete model id, resolved lazily on first ``score`` so import
+# stays I/O-free. The old ``_DEFAULT_JUDGE_MODEL_KEY = "cheap_cloud"`` (a delegation
+# TIER name) was the OMN-13470 bug: it reached the inference bridge verbatim and
+# raised ``ValueError: Unknown model_key: 'cheap_cloud'`` on every real call, so
+# every judge verdict came back judge_failed.
+_UNRESOLVED_JUDGE_MODEL = "routing-resolved"
 _DEFAULT_JUDGE_TIMEOUT_SECONDS = 60.0
 
 _SYSTEM_PROMPT = (
@@ -171,16 +177,52 @@ class HandlerJudgeAdequacy:
     def __init__(
         self,
         inference_bridge: ModelInferenceAdapter | None = None,
-        judge_model_key: str = _DEFAULT_JUDGE_MODEL_KEY,
         judge_timeout_seconds: float = _DEFAULT_JUDGE_TIMEOUT_SECONDS,
         rubric_id: str = _CODE_RUBRIC_ID,
     ) -> None:
+        # PRODUCTION default: resolve a CONCRETE model + COMPLETE verbatim endpoint
+        # + secret_ref from the routing contract on every call. The bug this fixes
+        # was passing a delegation TIER name as the bridge model_key; the
+        # routing-resolved adapter cannot do that because it never receives a tier.
+        # An INJECTED adapter (golden-chain real-bus tests / recorded replay) is
+        # used verbatim.
         self._bridge: ModelInferenceAdapter = (
-            inference_bridge or AdapterInferenceBridge(ModelInferenceBridgeConfig())
+            inference_bridge or RoutingResolvedJudgeInferenceAdapter()
         )
-        self._judge_model_key = judge_model_key
+        # The concrete model id is resolved lazily on first ``score`` so import +
+        # construction stay I/O-free. ``routing-resolved`` is the placeholder until
+        # the first call resolves the concrete model id from the routing authority.
+        self._judge_model_key = _UNRESOLVED_JUDGE_MODEL
         self._judge_timeout_seconds = judge_timeout_seconds
         self._rubric_id = rubric_id
+
+    def _resolve_judge_model_key(self) -> str:
+        """Resolve the CONCRETE model id (never a tier) recorded as provenance.
+
+        The concrete model id is resolved from the routing authority — the same
+        resolution the production adapter rides — so the ``model_key`` handed to
+        the inference layer is ALWAYS a concrete model id, whether the production
+        routing-resolved adapter or an injected recorded-replay adapter is in use.
+        This is exactly what closes OMN-13470: a tier name can never reach the
+        inference layer as a model_key.
+
+        Resolution order: an injected adapter that exposes ``resolved_model_id``
+        wins (it knows its own concrete id); otherwise resolve from the routing
+        authority directly. If resolution itself fails the placeholder is kept —
+        the downstream call then fails closed to a JUDGE_FAILED verdict.
+        """
+        resolver = getattr(self._bridge, "resolved_model_id", None)
+        if callable(resolver):
+            try:
+                return str(resolver())
+            except (
+                Exception
+            ):  # pragma: no cover - provenance only; never blocks scoring
+                return self._judge_model_key
+        try:
+            return RoutingResolvedJudgeInferenceAdapter().resolved_model_id()
+        except Exception:  # pragma: no cover - provenance only; never blocks scoring
+            return self._judge_model_key
 
     async def score(
         self,
@@ -204,6 +246,9 @@ class HandlerJudgeAdequacy:
             candidate_output=candidate_output,
             acceptance_criteria=acceptance_criteria,
         )
+        # Resolve the CONCRETE model id provenance from the routing authority
+        # (e.g. ``glm-5.2``) — never a tier name. Recorded on the verdict event.
+        self._judge_model_key = self._resolve_judge_model_key()
 
         try:
             raw = await self._bridge.infer(
