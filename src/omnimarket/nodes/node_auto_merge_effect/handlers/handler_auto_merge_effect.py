@@ -22,6 +22,9 @@ from collections.abc import Callable
 from typing import Any, Literal
 from uuid import UUID
 
+from omnimarket.nodes.node_auto_merge_effect.models.model_auto_merge_input import (
+    ModelAutoMergeInput,
+)
 from omnimarket.nodes.node_auto_merge_effect.models.model_auto_merge_result import (
     ModelAutoMergeResult,
 )
@@ -55,30 +58,29 @@ class HandlerAutoMergeEffect:
         self._close_ticket = close_ticket_fn
         self._sleep = sleep_fn or time.sleep
 
-    async def handle(
-        self,
-        correlation_id: UUID,
-        pr_number: int,
-        repo: str,
-        strategy: str = "squash",
-        delete_branch: bool = True,
-        ticket_id: str | None = None,
-        gate_timeout_hours: float = 24.0,
-    ) -> ModelAutoMergeResult:
+    async def handle(self, payload: ModelAutoMergeInput) -> ModelAutoMergeResult:
         """Execute the auto-merge flow.
 
+        Accepts a single typed ``ModelAutoMergeInput`` payload so the RuntimeLocal
+        event-driven path can resolve the initial-payload model from this handler's
+        ``handle`` parameter annotation and dispatch the node headless (OMN-13530).
+
         Args:
-            correlation_id: Pipeline correlation ID.
-            pr_number: PR number to merge.
-            repo: GitHub repo slug (org/repo).
-            strategy: Merge strategy (squash | merge | rebase).
-            delete_branch: Delete source branch after merge.
-            ticket_id: Optional Linear ticket ID to close after merge.
-            gate_timeout_hours: Hours to poll for CI readiness before timing out.
+            payload: Typed auto-merge input
+                (correlation_id, pr_number, repo, strategy, delete_branch,
+                ticket_id, gate_timeout_hours).
 
         Returns:
             ModelAutoMergeResult with outcome fields.
         """
+        correlation_id: UUID = payload.correlation_id
+        pr_number: int = payload.pr_number
+        repo: str = payload.repo
+        strategy: str = payload.strategy
+        delete_branch: bool = payload.delete_branch
+        ticket_id: str | None = payload.ticket_id
+        gate_timeout_hours: float = payload.gate_timeout_hours
+
         logger.info(
             "auto-merge started (correlation_id=%s, pr=%s, repo=%s)",
             correlation_id,
