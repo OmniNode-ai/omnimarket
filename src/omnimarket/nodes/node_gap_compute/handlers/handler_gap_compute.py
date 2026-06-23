@@ -23,6 +23,11 @@ from omnimarket.nodes.node_gap_compute.models.model_gap_compute_result import (
     ModelGapFinding,
     ModelSkippedGapProbe,
 )
+from omnimarket.nodes.sweep_scope import (
+    DEFAULT_REPOS,
+    SweepScopeUnresolvedError,
+    resolve_omni_home,
+)
 
 _REPO_ROOT = Path(__file__).resolve().parents[5]
 _OMNI_HOME = _REPO_ROOT.parent
@@ -52,6 +57,19 @@ _ARCH_WORD_TO_NODE_TYPE = {
     "orchestrator": EnumNodeType.ORCHESTRATOR_GENERIC,
     "runtime_host": EnumNodeType.RUNTIME_HOST_GENERIC,
 }
+
+
+def _looks_like_omni_home(candidate: Path) -> bool:
+    """True when ``candidate`` looks like an omni_home checkout, not site-packages.
+
+    Guards the source-tree fallback so a deployed handler (loaded from
+    ``.../python3.12/site-packages``) never treats a version-token dir as the
+    omni_home root (OMN-13534). We require at least one canonical repo dir to be
+    present.
+    """
+    if not candidate.is_dir():
+        return False
+    return any((candidate / name).is_dir() for name in DEFAULT_REPOS)
 
 
 class HandlerGapCompute:
@@ -262,13 +280,43 @@ class HandlerGapCompute:
         )
 
     def _resolve_repo_roots(self, request: ModelGapComputeRequest) -> list[Path]:
+        """Resolve the repo roots to scan for deterministic gap detection.
+
+        On the ``onex skill gap`` (RuntimeLocal dispatch) path the handler
+        module is loaded from the installed package (e.g.
+        ``.../python3.12/site-packages``), so the old ``parents[5]`` fallback
+        resolved a scan root named ``python3.12`` — a version token, not a repo
+        — and the sweep false-cleaned (OMN-13534). When no explicit
+        ``repo_roots`` are supplied we now resolve ``$OMNI_HOME`` and enumerate
+        the canonical default repo set, identical to the other sweeps
+        (OMN-13538). When ``$OMNI_HOME`` is set but no default repo dir exists,
+        we return ``[]`` so ``_detect`` reports ``status=BLOCKED`` (non-clean)
+        rather than scanning a wrong root.
+        """
         if request.repo_roots:
             roots = [Path(item) for item in request.repo_roots]
         else:
-            roots = [_REPO_ROOT]
+            roots = self._default_repo_roots()
         if request.repo:
             roots = [path for path in roots if path.name == request.repo]
         return sorted(path for path in roots if path.is_dir())
+
+    def _default_repo_roots(self) -> list[Path]:
+        """Enumerate the canonical default repo roots under ``$OMNI_HOME``.
+
+        Resolves ``$OMNI_HOME`` from the environment first, falling back to the
+        source-tree-derived ``_OMNI_HOME`` only when the env var is unset AND
+        that fallback actually contains canonical repo dirs (i.e. we are running
+        from the omni_home source layout, not an installed site-packages copy).
+        Never returns a ``python3.x`` version-token root.
+        """
+        try:
+            omni_home = Path(resolve_omni_home())
+        except SweepScopeUnresolvedError:
+            if not _looks_like_omni_home(_OMNI_HOME):
+                return []
+            omni_home = _OMNI_HOME
+        return [omni_home / name for name in DEFAULT_REPOS]
 
     def _filter_findings(
         self, findings: list[ModelGapFinding], request: ModelGapComputeRequest

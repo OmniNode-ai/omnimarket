@@ -189,24 +189,33 @@ def test_gap_detect_skips_malformed_contract_and_continues(tmp_path: Path) -> No
 
 
 @pytest.mark.unit
-def test_gap_detect_defaults_to_current_repo_root(
+def test_gap_detect_defaults_to_omni_home_repo_set(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    repo = tmp_path / "omnimarket"
-    sibling = tmp_path / "sibling_repo"
+    """No-arg detect resolves the canonical ``$OMNI_HOME`` repo set (OMN-13534).
+
+    The prior behaviour defaulted to ``_REPO_ROOT`` (``parents[5]``), which on
+    the deployed ``onex skill gap`` path resolved a ``python3.12`` version-token
+    root and false-cleaned. The corrected contract enumerates the canonical
+    default repos under ``$OMNI_HOME`` so a no-arg dispatch scans the real repo
+    universe (OMN-13538).
+    """
+    from omnimarket.nodes.sweep_scope import DEFAULT_REPOS
+
+    omni_home = tmp_path / "omni_home"
+    for repo in DEFAULT_REPOS:
+        (omni_home / repo).mkdir(parents=True)
+    # Give one canonical repo a clean sample contract so detect has real input.
     _write_contract(
-        repo / "src/omnimarket/nodes/node_sample/contract.yaml",
+        omni_home / DEFAULT_REPOS[0] / "src/nodes/node_sample/contract.yaml",
         topic="onex.evt.omnimarket.sample-completed.v1",
     )
-    _write_contract(
-        sibling / "src/sibling/nodes/node_sample/contract.yaml",
-        topic="not-a-topic",
-    )
-    monkeypatch.setattr(handler_gap_compute, "_REPO_ROOT", repo)
+    monkeypatch.setenv("OMNI_HOME", str(omni_home))
 
     result = HandlerGapCompute().handle(ModelGapComputeRequest(dry_run=True))
 
-    assert result.repos_in_scope == ["omnimarket"]
+    assert set(result.repos_in_scope) == set(DEFAULT_REPOS)
+    assert "python3.12" not in result.repos_in_scope
     assert result.status == EnumGapStatus.CLEAN
 
 
