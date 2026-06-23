@@ -17,7 +17,8 @@ handler:
 
 handler_routing:
   handlers:
-    - handler:
+    - operation: skill_functional_audit
+      handler:
         name: HandlerSkillFunctionalAuditCompute
         module: omnimarket.nodes.node_skill_functional_audit_compute.handlers.handler_skill_functional_audit_compute
 

@@ -36,7 +36,8 @@ handler:
 handler_routing:
   routing_strategy: operation_match
   handlers:
-    - handler:
+    - operation: github_diff
+      handler:
         name: HandlerGithubDiffEffect
         module: omnimarket.nodes.node_github_diff_effect.handlers.handler_github_diff
 

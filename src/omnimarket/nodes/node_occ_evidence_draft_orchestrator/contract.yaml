@@ -15,7 +15,8 @@ description: >
 handler_routing:
   routing_strategy: operation_match
   handlers:
-    - handler:
+    - operation: occ_evidence_draft
+      handler:
         name: HandlerOccEvidenceDraftOrchestrator
         module: omnimarket.nodes.node_occ_evidence_draft_orchestrator.handlers.handler_occ_evidence_draft_orchestrator
 

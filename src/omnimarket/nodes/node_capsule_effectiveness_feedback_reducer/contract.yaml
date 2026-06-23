@@ -23,7 +23,8 @@ handler:
 handler_routing:
   routing_strategy: operation_match
   handlers:
-    - handler:
+    - operation: capsule_effectiveness_feedback
+      handler:
         name: HandlerCapsuleEffectivenessFeedback
         module: omnimarket.nodes.node_capsule_effectiveness_feedback_reducer.handlers.handler_capsule_effectiveness_feedback
       handler_module: omnimarket.nodes.node_capsule_effectiveness_feedback_reducer.handlers.handler_capsule_effectiveness_feedback

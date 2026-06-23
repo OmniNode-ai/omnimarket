@@ -14,14 +14,6 @@ handler:
   class: HandlerSessionPhaseEvaluator
   input_model: omnimarket.nodes.node_session_phase_evaluator.handlers.handler_session_phase_evaluator.ModelPhaseEvaluationRequest
 
-handler_routing:
-  routing_strategy: operation_match
-  handlers:
-    - operation: evaluate_session_phase
-      handler:
-        name: HandlerSessionPhaseEvaluator
-        module: omnimarket.nodes.node_session_phase_evaluator.handlers.handler_session_phase_evaluator
-
 descriptor:
   node_archetype: compute
   purity: pure
@@ -77,7 +69,8 @@ event_bus:
 handler_routing:
   routing_strategy: operation_match
   handlers:
-    - handler:
+    - operation: evaluate_session_phase
+      handler:
         name: HandlerSessionPhaseEvaluator
         module: omnimarket.nodes.node_session_phase_evaluator.handlers.handler_session_phase_evaluator
       event_model:

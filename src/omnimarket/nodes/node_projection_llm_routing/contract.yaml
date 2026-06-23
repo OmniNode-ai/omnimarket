@@ -17,7 +17,8 @@ handler:
 handler_routing:
   routing_strategy: topic_match
   handlers:
-    - topic: onex.evt.omniclaude.llm-routing-decision.v1
+    - operation: projection_llm_routing
+      topic: onex.evt.omniclaude.llm-routing-decision.v1
       event_model:
         name: ModelLlmRoutingDecisionEvent
         module: omnimarket.nodes.node_projection_llm_routing.handlers.handler_projection_llm_routing

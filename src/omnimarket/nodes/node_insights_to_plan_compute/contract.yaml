@@ -18,7 +18,8 @@ handler:
 
 handler_routing:
   handlers:
-    - handler:
+    - operation: insights_to_plan
+      handler:
         name: HandlerInsightsToPlanCompute
         module: omnimarket.nodes.node_insights_to_plan_compute.handlers.handler_insights_to_plan_compute
 

@@ -91,16 +91,19 @@ event_bus:
 handler_routing:
   routing_strategy: operation_match
   handlers:
-    - handler:
+    - operation: session_post_mortem
+      handler:
         name: HandlerSessionPostMortem
         module: omnimarket.nodes.node_session_post_mortem.handlers.handler_session_post_mortem
       event_model:
         name: ModelPostMortemCommand
         module: omnimarket.nodes.node_session_post_mortem.handlers.handler_session_post_mortem
-    - handler:
+    - operation: friction_reader
+      handler:
         name: AdapterFrictionReader
         module: omnimarket.nodes.node_session_post_mortem.handlers.adapter_friction_reader
-    - handler:
+    - operation: pr_collector
+      handler:
         name: AdapterPrCollector
         module: omnimarket.nodes.node_session_post_mortem.handlers.adapter_pr_collector
 

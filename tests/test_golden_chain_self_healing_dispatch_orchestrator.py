@@ -74,10 +74,11 @@ def test_self_healing_dispatch_orchestrator_contract_routing_surface() -> None:
     assert raw["handler_routing"]["routing_strategy"] == "operation_match"
     assert raw["handler_routing"]["handlers"] == [
         {
+            "operation": "self_healing_dispatch",
             "handler": {
                 "name": _HANDLER_CLASS,
                 "module": _HANDLER_MODULE,
-            }
+            },
         }
     ]
 

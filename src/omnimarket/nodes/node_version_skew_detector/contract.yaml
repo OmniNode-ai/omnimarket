@@ -17,7 +17,8 @@ handler:
 
 handler_routing:
   handlers:
-    - handler:
+    - operation: version_skew_detector
+      handler:
         name: NodeVersionSkewDetector
         module: omnimarket.nodes.node_version_skew_detector.handlers.handler_version_skew_detector
 

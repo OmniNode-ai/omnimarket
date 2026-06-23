@@ -16,7 +16,8 @@ handler:
 
 handler_routing:
   handlers:
-    - handler:
+    - operation: evidence_extractor
+      handler:
         name: HandlerEvidenceExtractorCompute
         module: omnimarket.nodes.node_evidence_extractor_compute.handlers.handler_evidence_extractor_compute
 

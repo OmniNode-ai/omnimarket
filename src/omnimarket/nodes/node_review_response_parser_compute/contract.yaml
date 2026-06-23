@@ -33,7 +33,8 @@ handler:
 handler_routing:
   routing_strategy: operation_match
   handlers:
-    - handler:
+    - operation: review_response_parser
+      handler:
         name: HandlerResponseParserCompute
         module: omnimarket.nodes.node_review_response_parser_compute.handlers.handler_response_parser_compute
 

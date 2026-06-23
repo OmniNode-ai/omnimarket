@@ -15,7 +15,8 @@ handler:
 
 handler_routing:
   handlers:
-    - handler:
+    - operation: gap_analyzer
+      handler:
         name: HandlerGapAnalyzerCompute
         module: omnimarket.nodes.node_gap_analyzer_compute.handlers.handler_gap_analyzer_compute
 

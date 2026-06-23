@@ -65,7 +65,8 @@ handler_routing:
     # before calling handle() AND type-scopes the dispatcher so only
     # ModelRoutingIntent payloads (not the orchestrator's ModelDelegationRequest)
     # reach this handler.
-    - event_model:
+    - operation: delegation_routing
+      event_model:
         name: "ModelRoutingIntent"
         module: "omnibase_core.models.delegation.wire"
       handler:

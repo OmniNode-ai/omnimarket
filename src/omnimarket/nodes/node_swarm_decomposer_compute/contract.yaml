@@ -29,7 +29,8 @@ handler:
 handler_routing:
   routing_strategy: operation_match
   handlers:
-    - handler:
+    - operation: swarm_decomposer
+      handler:
         name: HandlerSwarmDecomposer
         module: omnimarket.nodes.node_swarm_decomposer_compute.handlers.handler_swarm_decomposer
       event_model:

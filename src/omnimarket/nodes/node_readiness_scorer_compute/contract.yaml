@@ -15,7 +15,8 @@ handler:
 
 handler_routing:
   handlers:
-    - handler:
+    - operation: readiness_scorer
+      handler:
         name: HandlerReadinessScorerCompute
         module: omnimarket.nodes.node_readiness_scorer_compute.handlers.handler_readiness_scorer_compute
 

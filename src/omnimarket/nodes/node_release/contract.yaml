@@ -15,7 +15,8 @@ handler:
 
 handler_routing:
   handlers:
-    - handler:
+    - operation: release
+      handler:
         name: HandlerRelease
         module: omnimarket.nodes.node_release.handlers.handler_release
 

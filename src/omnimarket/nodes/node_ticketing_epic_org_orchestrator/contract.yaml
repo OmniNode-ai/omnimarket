@@ -29,7 +29,8 @@ handler:
 handler_routing:
   routing_strategy: operation_match
   handlers:
-    - handler:
+    - operation: ticketing_epic_org
+      handler:
         name: HandlerTicketingEpicOrg
         module: omnimarket.nodes.node_ticketing_epic_org_orchestrator.handlers.handler_ticketing_epic_org
 

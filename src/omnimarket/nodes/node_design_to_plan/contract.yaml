@@ -17,10 +17,12 @@ handler:
 handler_routing:
   routing_strategy: operation_match
   handlers:
-    - handler:
+    - operation: design_to_plan
+      handler:
         name: HandlerDesignToPlan
         module: omnimarket.nodes.node_design_to_plan.handlers.handler_design_to_plan
-    - handler:
+    - operation: design_to_plan_phase3_launch
+      handler:
         name: HandlerDesignToPlanPhase3Launch
         module: omnimarket.nodes.node_design_to_plan.handlers.handler_design_to_plan_phase3_launch
         operation: phase3_launch

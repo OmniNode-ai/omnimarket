@@ -69,10 +69,11 @@ def test_wave_scheduler_orchestrator_contract_routing_surface() -> None:
     assert raw["handler_routing"]["routing_strategy"] == "operation_match"
     assert raw["handler_routing"]["handlers"] == [
         {
+            "operation": "wave_scheduler",
             "handler": {
                 "name": _HANDLER_CLASS,
                 "module": _HANDLER_MODULE,
-            }
+            },
         }
     ]
 

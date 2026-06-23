@@ -16,7 +16,8 @@ handler:
 
 handler_routing:
   handlers:
-    - handler:
+    - operation: evidence_collector
+      handler:
         name: HandlerEvidenceCollectorEffect
         module: omnimarket.nodes.node_evidence_collector_effect.handlers.handler_evidence_collector_effect
 

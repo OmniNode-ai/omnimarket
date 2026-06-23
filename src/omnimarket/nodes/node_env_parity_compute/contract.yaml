@@ -15,7 +15,8 @@ handler:
 
 handler_routing:
   handlers:
-    - handler:
+    - operation: env_parity
+      handler:
         name: HandlerEnvParityCompute
         module: omnimarket.nodes.node_env_parity_compute.handlers.handler_env_parity_compute
 

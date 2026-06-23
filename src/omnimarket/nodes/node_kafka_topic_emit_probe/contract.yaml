@@ -16,7 +16,8 @@ handler:
 
 handler_routing:
   handlers:
-    - handler:
+    - operation: kafka_topic_emit_probe
+      handler:
         name: HandlerKafkaProbe
         module: omnimarket.nodes.node_kafka_topic_emit_probe.handlers.handler_kafka_probe
 

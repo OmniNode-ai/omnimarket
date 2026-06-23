@@ -19,7 +19,8 @@ handler:
 handler_routing:
   routing_strategy: operation_match
   handlers:
-    - handler:
+    - operation: ci_watch
+      handler:
         name: HandlerCiWatch
         module: omnimarket.nodes.node_ci_watch.handlers.handler_ci_watch
 

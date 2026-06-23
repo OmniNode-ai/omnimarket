@@ -19,7 +19,8 @@ handler:
 handler_routing:
   routing_strategy: operation_match
   handlers:
-    - handler:
+    - operation: model_router
+      handler:
         name: HandlerModelRouter
         module: omnimarket.nodes.node_model_router.handlers.handler_model_router
         handler_type: http
