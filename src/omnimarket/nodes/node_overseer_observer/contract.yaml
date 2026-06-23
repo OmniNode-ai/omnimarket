@@ -60,9 +60,10 @@ externally_consumed_topics:
 # Phase-0 stubs — no active bus subscription yet (Wave 3+). Declared here for
 # contract completeness so the compliance scanner can verify module paths (OMN-11907).
 #
-# Route to the CONCRETE Null* implementations, not the EvidenceEvaluator /
-# SideEffectObserver typing.Protocol interfaces. The runtime handler resolver
-# instantiates the routed class; a Protocol target raises
+# OMN-12951: EvidenceEvaluator and SideEffectObserver are now abstract base
+# classes (ABC), not typing.Protocol. The Null* concrete implementations are
+# the only wireable handler classes here. The runtime handler resolver
+# instantiates handler_cls zero-arg; a typing.Protocol target raises
 # "TypeError: Protocols cannot be instantiated" and crash-loops main-runtime
 # bootstrap on infra builds predating the OMN-12501 quarantine guard (OMN-12956).
 handler_routing:
@@ -101,8 +102,9 @@ dependencies:
 dod_evidence:
   - type: pytest
     description: >
-      SideEffectObserver and EvidenceEvaluator are importable and instances
-      pass isinstance checks against their Protocol types.
+      SideEffectObserver and EvidenceEvaluator are ABCs (not typing.Protocol),
+      their Null* implementations pass isinstance checks and are concrete
+      (not abstract). OMN-12951 crash-loop guard.
     check: uv run pytest tests/test_golden_chain_overseer_observer.py -v
   - type: bash_script
     description: >
