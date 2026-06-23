@@ -2,15 +2,17 @@
 # SPDX-License-Identifier: MIT
 
 # Copyright (c) 2026 OmniNode Team
-"""FSM reconciliation tests for node_delegation_orchestrator [OMN-13473].
+"""FSM reconciliation tests for node_delegation_orchestrator [OMN-13473/OMN-13477].
 
-The delegation orchestrator handler re-implements its FSM imperatively via
-``HandlerDelegationWorkflow._transition`` calls guarded by the
-``_VALID_TRANSITIONS`` table. The canonical FSM is declared in
-``contract.yaml`` under ``fsm.transitions``. These tests make the contract the
-single source of truth: every edge the handler can drive must be a declared
-contract transition (subset relation), and the documented 1:1 mapping of each
-``_transition`` call site to its contract entry must stay in sync.
+The delegation orchestrator handler drives its FSM through the single
+``HandlerDelegationWorkflow._advance`` surface, which resolves each edge from the
+contract-derived typed ``_DECLARED_TRANSITIONS`` projection (OMN-13477 removed the
+imperative ``_transition`` guard and its ``_VALID_TRANSITIONS`` set). The
+canonical FSM is declared in ``contract.yaml`` under ``fsm.transitions``. These
+tests make the contract the single source of truth: every edge the handler can
+drive must be a declared contract transition (subset relation), and the
+documented 1:1 mapping of each ``_advance`` call site to its contract entry must
+stay in sync.
 
 DoD (OMN-13473):
   * Documented 1:1 mapping of handler-driven transitions to contract entries
@@ -27,14 +29,14 @@ import yaml
 
 from omnimarket.nodes.node_delegation_orchestrator.enums import EnumDelegationState
 from omnimarket.nodes.node_delegation_orchestrator.handlers.handler_delegation_workflow import (
-    _VALID_TRANSITIONS,
+    _DECLARED_TRANSITIONS,
 )
 
 _CONTRACT_PATH = Path("src/omnimarket/nodes/node_delegation_orchestrator/contract.yaml")
 
 
 # ---------------------------------------------------------------------------
-# Documented 1:1 mapping: every ``self._transition(workflow, <to>)`` call site
+# Documented 1:1 mapping: every ``self._advance(workflow, <to>)`` call site
 # in handler_delegation_workflow.py, with the resolved ``from`` state and the
 # handler method that drives it. ``from`` is resolved from the call-site guard
 # (e.g. ``if workflow.state != ROUTED: return`` -> from == ROUTED) or the
@@ -165,11 +167,15 @@ def _load_contract_transitions() -> set[tuple[str, str]]:
 
 
 def _valid_transition_edges() -> set[tuple[str, str]]:
-    """Return the (from, to) edges encoded in the handler _VALID_TRANSITIONS."""
+    """Return the (from, to) edges encoded in the handler advance table.
+
+    OMN-13477: sourced from ``_DECLARED_TRANSITIONS`` (the typed contract-FSM
+    projection ``_advance`` resolves against), not the removed
+    ``_VALID_TRANSITIONS`` set.
+    """
     return {
         (from_state.value, to_state.value)
-        for from_state, targets in _VALID_TRANSITIONS.items()
-        for to_state in targets
+        for (from_state, to_state) in _DECLARED_TRANSITIONS
     }
 
 
@@ -178,12 +184,12 @@ class TestFsmReconciliation:
     """Contract FSM is the single source of truth for handler transitions."""
 
     def test_handler_valid_transitions_subset_of_contract(self) -> None:
-        """Every handler _VALID_TRANSITIONS edge is a declared contract edge."""
+        """Every handler advance-table edge is a declared contract edge."""
         contract_edges = _load_contract_transitions()
         handler_edges = _valid_transition_edges()
         undeclared = handler_edges - contract_edges
         assert not undeclared, (
-            "Handler _VALID_TRANSITIONS contains edges not declared in "
+            "Handler advance table contains edges not declared in "
             f"contract.yaml fsm.transitions: {sorted(undeclared)}. Add them to "
             "the contract (single source of truth) or remove them from the "
             "handler."
@@ -199,7 +205,7 @@ class TestFsmReconciliation:
         to_state: EnumDelegationState,
         handler_method: str,
     ) -> None:
-        """Each documented _transition call site maps to a contract entry."""
+        """Each documented _advance call site maps to a contract entry."""
         contract_edges = _load_contract_transitions()
         edge = (from_state.value, to_state.value)
         assert edge in contract_edges, (
@@ -210,22 +216,22 @@ class TestFsmReconciliation:
     def test_callsite_transition_is_valid_in_handler_table(
         self,
     ) -> None:
-        """Each documented call-site edge is permitted by _VALID_TRANSITIONS.
+        """Each documented call-site edge is permitted by the advance table.
 
-        Guards against the mapping fixture drifting from the actual imperative
-        guard table the handler enforces at runtime.
+        Guards against the mapping fixture drifting from the actual contract-FSM
+        advance table the handler enforces at runtime.
         """
         handler_edges = _valid_transition_edges()
         for from_state, to_state, handler_method in HANDLER_TRANSITION_CALLSITES:
             edge = (from_state.value, to_state.value)
             assert edge in handler_edges, (
-                f"{handler_method} maps {edge} but _VALID_TRANSITIONS does not "
-                "permit it; the imperative guard would raise "
+                f"{handler_method} maps {edge} but _DECLARED_TRANSITIONS does "
+                "not permit it; _advance would raise "
                 "InvalidStateTransitionError at runtime."
             )
 
     def test_documented_callsites_cover_all_handler_edges(self) -> None:
-        """The 1:1 mapping fixture covers every _VALID_TRANSITIONS edge.
+        """The 1:1 mapping fixture covers every advance-table edge.
 
         Ensures no handler-permitted transition is left undocumented.
         """
@@ -235,7 +241,7 @@ class TestFsmReconciliation:
         }
         missing = handler_edges - documented_edges
         assert not missing, (
-            "Handler _VALID_TRANSITIONS edges with no documented call site in "
+            "Handler advance-table edges with no documented call site in "
             f"HANDLER_TRANSITION_CALLSITES: {sorted(missing)}."
         )
 
@@ -249,6 +255,6 @@ class TestFsmReconciliation:
         handler_edges = _valid_transition_edges()
         unreachable = contract_edges - handler_edges
         assert not unreachable, (
-            "contract.yaml declares FSM edges the handler _VALID_TRANSITIONS "
+            "contract.yaml declares FSM edges the handler advance table "
             f"never permits (dead transitions): {sorted(unreachable)}."
         )

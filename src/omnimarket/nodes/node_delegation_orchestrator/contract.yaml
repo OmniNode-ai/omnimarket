@@ -150,11 +150,11 @@ fsm:
     - from: GATE_EVALUATED
       to: FAILED
       trigger: "quality gate failed"
-    # OMN-13473: reconciled handler-driven transitions. The imperative handler
-    # (handler_delegation_workflow.py _VALID_TRANSITIONS) drives these three
-    # ROUTED-origin edges that were previously undeclared. The contract is the
-    # single source of truth, so they are added here rather than removed from
-    # the handler — each is a real, reachable transition:
+    # OMN-13473/OMN-13477: reconciled handler-driven transitions. The handler
+    # (handler_delegation_workflow.py _advance, resolving _DECLARED_TRANSITIONS)
+    # drives these three ROUTED-origin edges that were previously undeclared. The
+    # contract is the single source of truth, so they are added here rather than
+    # removed from the handler — each is a real, reachable transition:
     - from: ROUTED
       to: ESCALATING
       trigger: "retryable inference infra-error on current tier with a routable next tier (OMN-13140; handle_inference_response)"
@@ -230,13 +230,16 @@ handler_routing:
 # PluginDelegation owns the Kafka subscription/result-applier lifecycle
 # (event_bus.plugin_managed=true), while generic contract auto-wiring owns the
 # dispatch route into HandlerDelegationWorkflow.handle(). All six subscribed
-# topics route through that handler, which performs payload-type dispatch into
-# the FSM methods declared by handler_routing. The legacy per-payload dispatcher
-# classes are retained only for backward-compatible tests and are no longer the
-# live wiring authority (OMN-12688, OMN-12724).
+# topics route through that handler. OMN-13477 (W5): handle() routes each
+# payload to its thin per-step FSM handler off the declarative _PER_STEP_DISPATCH
+# table — one entry per handler_routing event_model below — instead of a
+# hand-maintained isinstance ladder. There is no catch-all entry: every
+# handler_routing handler declares an event_model, so an undeclared payload type
+# fails closed rather than falling through to a generic bus route. The legacy
+# per-payload dispatcher classes are retained only for backward-compatible tests
+# and are no longer the live wiring authority (OMN-12688, OMN-12724).
 # HandlerComplianceLoop is intentionally omitted from handler_routing because it
-# is invoked in-process by HandlerDelegationWorkflow per inference attempt. A
-# handler_routing entry without an event_model becomes a catch-all bus route.
+# is invoked in-process by HandlerDelegationWorkflow per inference attempt.
 # Cross-repo topic ownership declarations.
 # Topics published by this node that are consumed by nodes in other repos.
 # The dependency-health sweep runs per-repo-root; these declarations suppress
