@@ -610,6 +610,15 @@ class TerminalEmissionInputs:
     quality_gates_failed: list[str]
     llm_call_id: str
     context_pack_hash: str
+    # OMN-13535: metered spend already banked on PRIOR attempted tiers (rejected /
+    # failed inference attempts that escalated). The terminal adds this to the
+    # final tier's measured cost so cost_usd reflects the TOTAL metered spend
+    # across every attempted tier — a metered tier that was attempted-but-rejected
+    # (escalated to a free tier) still contributes its real cost to the row.
+    # Defaulted so the A2A / non-escalating call sites are unaffected.
+    prior_attempt_cost_usd: float = 0.0
+    prior_attempt_prompt_tokens: int = 0
+    prior_attempt_completion_tokens: int = 0
 
 
 @dataclass
@@ -648,6 +657,17 @@ class DelegationWorkflowState:
     escalation_history: list[ModelDelegationEscalationAttempt] = field(
         default_factory=list
     )
+    # OMN-13535: cumulative metered spend across ALL attempted tiers (not just the
+    # final accepted one). Each attempt recorded into ``escalation_history`` adds
+    # its served tokens + measured metered cost here BEFORE the inference state is
+    # reset for the next tier. The terminal reports this cumulative spend so a
+    # metered tier that was attempted-but-rejected (escalated to a free tier)
+    # still contributes its real ``cost_usd`` to the projection — the prior
+    # behavior dropped it, leaving the row at ``cost_usd=0`` despite a real
+    # metered cloud call.
+    cumulative_attempt_cost_usd: float = 0.0
+    cumulative_attempt_prompt_tokens: int = 0
+    cumulative_attempt_completion_tokens: int = 0
 
 
 class HandlerDelegationWorkflow:
@@ -931,8 +951,13 @@ class HandlerDelegationWorkflow:
             model_used = response.model_used or workflow.routing_decision.selected_model
 
             # Record this tier's failed attempt in escalation history before
-            # deciding whether to escalate or terminate.
-            workflow.escalation_history.append(
+            # deciding whether to escalate or terminate. OMN-13535: the inference
+            # error still carries the served usage (OMN-13408 InferenceUsageError
+            # threads truncation/empty-content tokens through), so bank this
+            # attempt's metered spend into the cumulative accumulators before the
+            # state reset below overwrites workflow.inference_* for the next tier.
+            attempt_cost_usd = self._record_escalation_attempt(
+                workflow,
                 ModelDelegationEscalationAttempt(
                     tier_name=workflow.current_tier_name or "unknown",
                     model_used=model_used,
@@ -942,7 +967,9 @@ class HandlerDelegationWorkflow:
                     fallback_recommended=True,
                     attempted_at=datetime.now(UTC),
                     routing_decision_id=workflow.routing_decision.selected_backend_id,
-                )
+                ),
+                prompt_tokens=response.prompt_tokens,
+                completion_tokens=response.completion_tokens,
             )
 
             # OMN-13476: the escalate-or-terminate decision is owned by the
@@ -981,6 +1008,17 @@ class HandlerDelegationWorkflow:
                     ),
                     escalation_reason=response.error_message,
                     model_id=model_used,
+                )
+
+                # OMN-13535: this attempt ran and a NEXT tier will run, so bank its
+                # metered spend into the cumulative totals BEFORE the state reset
+                # below discards workflow.inference_*. The terminal then reports
+                # final-tier-cost + cumulative.
+                self._bank_attempt_spend(
+                    workflow,
+                    cost_usd=attempt_cost_usd,
+                    prompt_tokens=response.prompt_tokens,
+                    completion_tokens=response.completion_tokens,
                 )
 
                 self._advance(workflow, EnumDelegationState.ESCALATING)
@@ -1048,6 +1086,13 @@ class HandlerDelegationWorkflow:
                 quality_gates_failed=[response.error_message],
                 llm_call_id=response.llm_call_id,
                 context_pack_hash=_context_pack_hash_for_event(workflow.request),
+                # OMN-13535: metered spend banked on every PRIOR attempted tier.
+                # The CURRENT failing attempt is re-priced by _emit_terminal from
+                # cost_tier_name + the current tokens above, so it is not banked
+                # here (no double count) — cumulative holds only earlier tiers.
+                prior_attempt_cost_usd=workflow.cumulative_attempt_cost_usd,
+                prior_attempt_prompt_tokens=workflow.cumulative_attempt_prompt_tokens,
+                prior_attempt_completion_tokens=workflow.cumulative_attempt_completion_tokens,
             )
             self._advance(workflow, EnumDelegationState.FAILED)
             return self._emit_terminal(terminal_inputs)
@@ -1237,8 +1282,15 @@ class HandlerDelegationWorkflow:
 
         # --- FAILED: evaluate escalation (OMN-12254) ---
 
-        # Record this tier attempt in escalation history.
-        workflow.escalation_history.append(
+        # Record this tier attempt in escalation history. OMN-13535: this is the
+        # ATTEMPTED-but-rejected tier (e.g. metered GLM whose output the quality
+        # gate rejected). Its inference call really ran and incurred tokens/cost;
+        # price + stamp it into escalation_history now. If escalation proceeds
+        # (below), the spend is banked into the cumulative totals; if this is the
+        # terminal attempt, ``_emit_terminal`` re-prices it from the same
+        # current-tier tokens, so it is NOT double-counted.
+        rejected_attempt_cost_usd = self._record_escalation_attempt(
+            workflow,
             ModelDelegationEscalationAttempt(
                 tier_name=workflow.current_tier_name or "unknown",
                 model_used=workflow.inference_model_used or "unknown",
@@ -1254,7 +1306,9 @@ class HandlerDelegationWorkflow:
                 if hasattr(result, "evaluated_at") and result.evaluated_at is not None
                 else datetime.now(UTC),
                 routing_decision_id=workflow.routing_decision.selected_backend_id,
-            )
+            ),
+            prompt_tokens=workflow.inference_prompt_tokens,
+            completion_tokens=workflow.inference_completion_tokens,
         )
 
         # OMN-13476: a sub-bar quality result is always retryable on a higher
@@ -1290,6 +1344,17 @@ class HandlerDelegationWorkflow:
                     required_bar_authority,
                     pre_filter_rejected=pre_filter_rejected,
                 ),
+            )
+
+            # OMN-13535: the rejected tier ran and a NEXT tier will run, so bank
+            # its metered spend into the cumulative totals BEFORE the reset below
+            # discards workflow.inference_*. The terminal then reports
+            # final-tier-cost + cumulative.
+            self._bank_attempt_spend(
+                workflow,
+                cost_usd=rejected_attempt_cost_usd,
+                prompt_tokens=workflow.inference_prompt_tokens,
+                completion_tokens=workflow.inference_completion_tokens,
             )
 
             self._advance(workflow, EnumDelegationState.ESCALATING)
@@ -1399,6 +1464,66 @@ class HandlerDelegationWorkflow:
             return f"{detail}; failures={'; '.join(result.failure_reasons)}"
         return detail
 
+    def _record_escalation_attempt(
+        self,
+        workflow: DelegationWorkflowState,
+        attempt: ModelDelegationEscalationAttempt,
+        *,
+        prompt_tokens: int,
+        completion_tokens: int,
+    ) -> float:
+        """Price one attempt and append it to ``escalation_history``.
+
+        OMN-13535: the served tokens for an ATTEMPTED tier are about to be lost —
+        the inference state is reset for the next tier's call right after this, so
+        ``workflow.inference_*`` is overwritten. Price this attempt's served
+        tokens through its serving tier's typed cost model ONCE here (the same
+        ``recompute_actual_cost_and_savings`` the projection uses) and stamp the
+        priced cost + served tokens onto the typed attempt record so the per-tier
+        spend is durable in ``escalation_history``.
+
+        This appends history only. Banking into the workflow's cumulative
+        accumulators is done explicitly by the ESCALATION branches (via
+        ``_bank_attempt_spend``) — never here — so a TERMINAL-fail attempt (which
+        is re-priced by ``_emit_terminal`` from the same current-tier tokens) is
+        not double-counted. Returns the measured metered cost for the caller to
+        bank when it knows the attempt is non-terminal.
+        """
+        measurement = self._measure_terminal_cost(
+            tier_name=attempt.tier_name,
+            prompt_tokens=prompt_tokens,
+            completion_tokens=completion_tokens,
+            premium_counterfactual=None,
+        )
+        priced_attempt = attempt.model_copy(
+            update={
+                "prompt_tokens": prompt_tokens,
+                "completion_tokens": completion_tokens,
+                "cost_usd": measurement.cash_cost_usd,
+            }
+        )
+        workflow.escalation_history.append(priced_attempt)
+        return measurement.cash_cost_usd
+
+    @staticmethod
+    def _bank_attempt_spend(
+        workflow: DelegationWorkflowState,
+        *,
+        cost_usd: float,
+        prompt_tokens: int,
+        completion_tokens: int,
+    ) -> None:
+        """Add a non-terminal attempt's metered spend to the cumulative totals.
+
+        OMN-13535: called only on the ESCALATION branches (the attempt ran, was
+        rejected/failed, and a NEXT tier will run). The terminal reports
+        ``final_tier_cost + cumulative`` so a metered tier that was attempted then
+        escalated past still contributes its real cost to the projection row.
+        """
+        workflow.cumulative_attempt_cost_usd += cost_usd
+        workflow.cumulative_attempt_prompt_tokens += prompt_tokens
+        workflow.cumulative_attempt_completion_tokens += completion_tokens
+
     @staticmethod
     def _measure_terminal_cost(
         *,
@@ -1463,6 +1588,25 @@ class HandlerDelegationWorkflow:
             premium_counterfactual=inputs.premium_counterfactual,
         )
 
+        # OMN-13535: total metered spend = the FINAL tier's measured cost PLUS the
+        # metered cost already banked on every PRIOR attempted tier (rejected /
+        # failed inference attempts that escalated). Without this, a metered tier
+        # that ran and was rejected — escalating to a cheaper/free tier — would
+        # contribute $0 to the row because the terminal reflects only the final
+        # accepted tier (free → 0). The per-attempt costs are also carried in
+        # ``escalation_history`` so the projection can re-derive the same total.
+        total_cost_usd = cost.cash_cost_usd + inputs.prior_attempt_cost_usd
+        cumulative_input_tokens = (
+            inputs.prompt_tokens + inputs.prior_attempt_prompt_tokens
+        )
+        cumulative_output_tokens = (
+            inputs.completion_tokens + inputs.prior_attempt_completion_tokens
+        )
+        # Honest savings subtract the TOTAL spend across all tiers, not just the
+        # final tier's, so an escalation that burned metered budget before landing
+        # on a free tier does not overstate the saving.
+        total_savings_usd = cost.cost_savings_usd - inputs.prior_attempt_cost_usd
+
         delegation_result = ModelDelegationResult(
             correlation_id=inputs.correlation_id,
             task_type=inputs.task_type,
@@ -1485,10 +1629,11 @@ class HandlerDelegationWorkflow:
             routing_tiers_hash=inputs.routing_tiers_hash,
             escalation_config_hash=inputs.escalation_config_hash,
             attempts_count=inputs.attempts_count,
-            # Same measured cost the compat twin carries — measured once above.
-            cumulative_attempt_cost=cost.cash_cost_usd,
-            cumulative_input_tokens=inputs.prompt_tokens,
-            cumulative_output_tokens=inputs.completion_tokens,
+            # Cumulative spend across ALL attempted tiers (OMN-13535) — the final
+            # tier's measured cost plus the prior attempts' banked metered cost.
+            cumulative_attempt_cost=total_cost_usd,
+            cumulative_input_tokens=cumulative_input_tokens,
+            cumulative_output_tokens=cumulative_output_tokens,
             final_attempt_cost=cost.cash_cost_usd,
         )
 
@@ -1503,8 +1648,12 @@ class HandlerDelegationWorkflow:
             quality_gate_passed=inputs.quality_passed,
             quality_gates_checked=inputs.quality_gates_checked,
             quality_gates_failed=inputs.quality_gates_failed,
-            cost_usd=cost.cash_cost_usd,
-            cost_savings_usd=round(cost.cost_savings_usd, 6),
+            # OMN-13535: TOTAL metered spend (final tier + prior attempted tiers),
+            # and the saving against that total. The projection re-derives the same
+            # total by adding the per-attempt escalation_history costs to its
+            # re-priced final-tier cost, so both co-writers agree.
+            cost_usd=round(total_cost_usd, 6),
+            cost_savings_usd=round(total_savings_usd, 6),
             cost_tier_type=cost.cost_tier_type,
             cost_tier_name=cost.cost_tier_name,
             cost_measurement_source=cost.cost_measurement_source,
@@ -1622,6 +1771,11 @@ class HandlerDelegationWorkflow:
             quality_gates_failed=[] if completed else list(result.failure_reasons),
             llm_call_id=workflow.inference_llm_call_id,
             context_pack_hash=_context_pack_hash_for_event(workflow.request),
+            # OMN-13535: metered spend banked on every prior attempted tier so the
+            # terminal cost_usd reflects total spend, not just the final tier.
+            prior_attempt_cost_usd=workflow.cumulative_attempt_cost_usd,
+            prior_attempt_prompt_tokens=workflow.cumulative_attempt_prompt_tokens,
+            prior_attempt_completion_tokens=workflow.cumulative_attempt_completion_tokens,
         )
 
     def handle_agent_task_lifecycle(

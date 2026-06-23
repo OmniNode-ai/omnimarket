@@ -229,6 +229,14 @@ class ModelProjectionTaskDelegatedEvent(BaseModel):
     required_bar: float | None = Field(default=None, ge=0.0, le=1.0)
     actual_score: float | None = Field(default=None, ge=0.0, le=1.0)
     escalation_count: int = Field(default=0, ge=0)
+    # OMN-13535: per-tier escalation attempt records carried from the terminal
+    # event. Each entry that the orchestrator priced carries its own ``cost_usd``
+    # (the metered spend that attempted tier incurred). The actual-cost recompute
+    # adds these prior-attempt costs to the re-priced final-tier cost so a metered
+    # tier that was attempted-but-rejected (escalated to a free tier) still
+    # contributes its real cost to ``cost_usd`` — the recompute otherwise sees
+    # only the final (free) tier and zeroes the row.
+    escalation_history: tuple[dict[str, object], ...] = Field(default=())
     authority_source: str | None = Field(default=None)
     score_source: str | None = Field(default=None)
     request_override_applied: bool = Field(default=False)
@@ -607,6 +615,10 @@ def _canonical_result_to_task_delegated_payload(
         "required_bar": payload.get("required_bar"),
         "actual_score": payload.get("actual_score") or payload.get("quality_score"),
         "escalation_count": payload.get("escalation_count") or 0,
+        # OMN-13535: carry the per-tier attempt records (each with its priced
+        # cost_usd) so the actual-cost recompute can add the prior metered tiers'
+        # spend to the re-priced final tier on the completed path.
+        "escalation_history": payload.get("escalation_history") or (),
         "authority_source": payload.get("authority_source")
         or payload.get("required_bar_source"),
         "score_source": payload.get("score_source"),
@@ -635,6 +647,25 @@ class ModelActualCostProjection(BaseModel):
     cost_measurement_source: str = Field(default="")
 
 
+def _sum_escalation_attempt_costs(
+    escalation_history: tuple[dict[str, object], ...],
+) -> float:
+    """Sum the per-tier ``cost_usd`` recorded across escalation attempts (OMN-13535).
+
+    Each attempt record the orchestrator priced carries its own ``cost_usd`` (the
+    metered spend that attempted tier incurred). Attempts emitted before OMN-13535
+    (or non-priced records) default the field to absent/0.0, so the sum is 0.0 and
+    the recompute degrades to its prior single-tier behavior — no regression for
+    non-escalated rows.
+    """
+    total = 0.0
+    for attempt in escalation_history:
+        raw_cost = attempt.get("cost_usd") if isinstance(attempt, dict) else None
+        if isinstance(raw_cost, int | float):
+            total += float(raw_cost)
+    return total
+
+
 def _measure_actual_cost(
     event: ModelProjectionTaskDelegatedEvent,
 ) -> ModelActualCostProjection:
@@ -655,6 +686,9 @@ def _measure_actual_cost(
         cannot be resolved; keep the event values + carried provenance.
     """
     if event.premium_counterfactual is None or not event.cost_tier_name:
+        # OMN-13535: the failure/escalation-exhausted terminal already carries the
+        # TOTAL metered spend in ``cost_usd`` (final tier + prior attempted tiers,
+        # summed by the orchestrator), so keep it verbatim — no recompute.
         return ModelActualCostProjection(
             cost_usd=event.cost_usd,
             cost_savings_usd=event.cost_savings_usd,
@@ -669,9 +703,18 @@ def _measure_actual_cost(
         completion_tokens=event.tokens_output,
         premium_counterfactual=event.premium_counterfactual,
     )
+    # OMN-13535: the recompute prices only the FINAL accepted tier. On an
+    # escalated delegation, earlier metered tiers ran and were rejected before
+    # the final tier was accepted; their spend is carried per-tier in
+    # ``escalation_history``. Add it so an accepted-on-free escalation that burned
+    # metered budget reports the real total cost (and honest saving = counterfactual
+    # - total), instead of zeroing to the free final tier.
+    prior_attempt_cost_usd = _sum_escalation_attempt_costs(event.escalation_history)
+    total_cost_usd = measurement.cash_cost_usd + prior_attempt_cost_usd
+    total_savings_usd = measurement.cost_savings_usd - prior_attempt_cost_usd
     return ModelActualCostProjection(
-        cost_usd=measurement.cash_cost_usd,
-        cost_savings_usd=measurement.cost_savings_usd,
+        cost_usd=total_cost_usd,
+        cost_savings_usd=total_savings_usd,
         headroom_consumed_usd=measurement.headroom_consumed_usd,
         cost_tier_type=measurement.cost_tier_type,
         cost_tier_name=measurement.cost_tier_name,
