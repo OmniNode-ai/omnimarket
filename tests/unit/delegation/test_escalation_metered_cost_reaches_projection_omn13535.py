@@ -187,8 +187,18 @@ def _drive_metered_reject_then_free_accept(
 
 
 @pytest.mark.unit
+@pytest.mark.usefixtures("frontier_unconfigured_bifrost")
 class TestEscalationMeteredCostReachesProjectionOmn13535:
-    """The metered tier's spend survives escalation into the terminal + projection."""
+    """The metered tier's spend survives escalation into the terminal + projection.
+
+    Uses the shared ``frontier_unconfigured_bifrost`` fixture (conftest) so tier
+    routability is pinned to a deterministic bifrost contract — local + cheap_cloud
+    backends carry resolvable endpoints, the frontier ceiling does not. Without it
+    the ``local`` accepted tier's routability depended on ambient
+    ``BIFROST_LOCAL_*`` endpoint env vars: present on a developer machine (test
+    passed) but absent in CI, where the metered→free escalation found no routable
+    next tier and the workflow terminated FAILED instead of ROUTED (OMN-13535).
+    """
 
     def test_terminal_carries_cumulative_metered_cost_after_escalation(self) -> None:
         handler = HandlerDelegationWorkflow(workflows={})
