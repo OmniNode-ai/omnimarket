@@ -1,0 +1,265 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# corpus.yaml — Versioned delegation regression corpus (OMN-13540).
+#
+# A fixed, version-controlled set of delegation tasks with BEHAVIORAL
+# assertions that run repeatably so regressions are caught mechanically,
+# not by chance. Adding a regression test = adding a row here.
+#
+# Design principle (OMN-13540):
+#   Assert STRUCTURE / BEHAVIOR, never exact LLM output (output is
+#   non-deterministic). Test routing tier reached, quality-gate pass/fail,
+#   terminal state, token/cost recording, escalation/exhaustion behavior.
+#
+#   Each `expected` block encodes the INTENDED behavior per the delegation
+#   contract — NOT current (possibly-broken) behavior. A case that is broken
+#   today (e.g. metered cost_usd>0 on the escalation path, or
+#   code_generation passing quality) still asserts the CORRECT expectation;
+#   it will be RED until the real fix lands. That is the regression net
+#   working. Known-broken cases carry an `xfail` block naming the tracking
+#   ticket so the nightly is actionable, not perpetually-red noise.
+#
+# Two layers:
+#   layer: unit        — deterministic, runs in omnimarket's existing pytest
+#                        CI on every PR (no live model). Catches the
+#                        import / wiring / config regression class.
+#   layer: integration — live golden tasks, executed end-to-end through the
+#                        bus against the stability-test lane, asserted against
+#                        the delegation_events projection. NIGHTLY only.
+#
+# expected block schema (integration rows):
+#   tier_behavior: free_local_first | escalates_off_local | escalates_to_metered | all_tiers_exhaust
+#   quality_gate:  passes | fails | any
+#   terminal:      completed | failed
+#   cost:          zero | positive | any           # cost_usd in delegation_events
+#   escalation:    none | occurs | exhausts
+#   tokens:        positive | any                  # tokens_input/tokens_output > 0
+#
+# xfail block (optional, integration rows known-broken today):
+#   xfail:
+#     reason: <one-line why this is RED today>
+#     ticket: OMN-XXXX
+#
+# Calibration: docs/status/2026-06-23-dogfood-delegation-results.md was ABSENT
+# at authoring time, so xfail markers are set from the OMN-13540 known-gap list
+# (the regressions that motivated this suite): import break (OMN-13539),
+# metered cost never recorded (OMN-13408), escalation drops the completed event
+# so metered cost never reaches the projection (OMN-13535), cloud escalation
+# ladder never fires (OMN-13140).
+---
+schema_version: "1.0.0"
+corpus_version: "1.0.0"
+ticket: OMN-13540
+
+# ---------------------------------------------------------------------------
+# Layer 1 — contract / unit (deterministic, PRE-MERGE CI gate)
+# ---------------------------------------------------------------------------
+# These rows are documentation/scoreboard companions for the Layer-1 unit
+# tests in test_layer1_contract_unit.py. The assertions themselves live in
+# that test module (they exercise Python imports/config, not the live bus);
+# the rows here keep the full corpus self-describing in one file.
+cases:
+  - id: U1
+    layer: unit
+    task_type: code_generation
+    prompt: "(unit) orchestrator contract loads + handler imports cleanly"
+    acceptance_criteria:
+      - "node_delegate_skill_orchestrator/contract.yaml parses"
+      - "handler_delegate_skill imports without ImportError"
+    expected:
+      assertion: contract_loads_and_handler_imports
+      regression_for: OMN-13539  # ModelPremiumCounterfactual ImportError took the orchestrator down
+
+  - id: U2
+    layer: unit
+    task_type: code_generation
+    prompt: "(unit) every routing tier resolves to complete provider+endpoint+model+api_key_ref"
+    acceptance_criteria:
+      - "each tier model maps to a known backend"
+      - "each backend resolves endpoint (literal or *_env), model_name, and (cloud) secret_ref"
+    expected:
+      assertion: every_tier_resolves_complete_backend
+
+  - id: U3
+    layer: unit
+    task_type: code_generation
+    prompt: "(unit) ModelDelegateSkillRequest validates each allowed task_type, rejects unknown"
+    acceptance_criteria:
+      - "construct request for every contract allowed_task_type"
+      - "reject an unknown task_type with ValidationError"
+    expected:
+      assertion: request_model_task_type_validation
+
+  - id: U4
+    layer: unit
+    task_type: code_generation
+    prompt: "(unit) terminal/projection schema carries model_name + token + cost fields"
+    acceptance_criteria:
+      - "projection event model has model_name"
+      - "projection event model has tokens_input / tokens_output"
+      - "projection event model has cost_usd"
+    expected:
+      assertion: terminal_projection_schema_telemetry_fields
+      regression_for: OMN-13535  # telemetry-drop: terminal data was empty
+
+# ---------------------------------------------------------------------------
+# Layer 2 — live golden tasks (NIGHTLY against the stability lane)
+# ---------------------------------------------------------------------------
+  - id: I1
+    layer: integration
+    task_type: document
+    prompt: "Write a one-sentence description of what a JSON file is."
+    acceptance_criteria:
+      - "non_empty"
+    expected:
+      tier_behavior: free_local_first
+      quality_gate: passes
+      terminal: completed
+      cost: zero
+      escalation: none
+      tokens: positive
+
+  - id: I2
+    layer: integration
+    task_type: document
+    prompt: >
+      Write production-grade API reference documentation for a hypothetical
+      `delegate_skill(prompt, task_type, source)` function: include parameter
+      table, return schema, three worked examples, error semantics, and
+      thread-safety notes.
+    acceptance_criteria:
+      - "non_empty"
+      - "has_code_block"
+      - "min_length:1200"
+    expected:
+      tier_behavior: escalates_off_local
+      quality_gate: any
+      terminal: completed
+      cost: any
+      escalation: occurs
+      tokens: positive
+    xfail:
+      reason: "cloud escalation ladder never fires (escalation topic HWM=0); cloud tier unreached"
+      ticket: OMN-13140
+
+  - id: I3
+    layer: integration
+    task_type: code_generation
+    prompt: "Write a Python function `add(a, b)` that returns the sum of two integers."
+    acceptance_criteria:
+      - "non_empty"
+      - "has_code_block"
+    expected:
+      tier_behavior: free_local_first
+      quality_gate: any
+      terminal: completed
+      cost: any
+      escalation: none
+      tokens: positive
+
+  - id: I4
+    layer: integration
+    task_type: code_generation
+    prompt: >
+      Implement a thread-safe, async LRU cache decorator in Python with TTL
+      expiry, per-key locking, and a full pytest suite proving eviction order,
+      TTL expiry, and concurrent-access correctness. Production quality.
+    acceptance_criteria:
+      - "non_empty"
+      - "has_code_block"
+      - "min_length:2000"
+    expected:
+      tier_behavior: escalates_to_metered
+      quality_gate: any
+      terminal: completed
+      cost: positive   # metered tier MUST record cost_usd>0 — permanent metered-cost regression
+      escalation: occurs
+      tokens: positive
+    xfail:
+      reason: "terminal-path cost_usd still 0.0 on cloud escalation; metered cost never reaches delegation_events"
+      ticket: OMN-13408
+
+  - id: I5
+    layer: integration
+    task_type: research
+    prompt: "Summarize the tradeoffs between optimistic and pessimistic locking in two short paragraphs."
+    acceptance_criteria:
+      - "non_empty"
+    expected:
+      tier_behavior: free_local_first
+      quality_gate: any
+      terminal: completed
+      cost: any
+      escalation: none
+      tokens: positive
+
+  - id: I6
+    layer: integration
+    task_type: code_review
+    prompt: >
+      Review this Python snippet for correctness and security, list findings
+      by severity: `def run(cmd): import os; os.system(cmd)`
+    acceptance_criteria:
+      - "non_empty"
+    expected:
+      tier_behavior: free_local_first
+      quality_gate: any
+      terminal: completed
+      cost: any
+      escalation: none
+      tokens: positive
+
+  - id: I7
+    layer: integration
+    task_type: reasoning
+    prompt: "If a train leaves at 3pm going 60mph and another at 4pm going 80mph from the same point, when does the second catch the first? Show the steps."
+    acceptance_criteria:
+      - "non_empty"
+    expected:
+      tier_behavior: free_local_first
+      quality_gate: any
+      terminal: completed
+      cost: any
+      escalation: none
+      tokens: positive
+
+  - id: I8
+    layer: integration
+    task_type: code_generation
+    prompt: >
+      Produce a provably-correct, formally-verified implementation of a
+      general-purpose solver for the halting problem, with a machine-checked
+      Coq proof of total correctness.
+    acceptance_criteria:
+      - "non_empty"
+      - "has_code_block"
+      - "contains:Theorem halting_decidable"
+      - "contains:Qed."
+      - "min_length:5000"
+    expected:
+      tier_behavior: all_tiers_exhaust
+      quality_gate: fails
+      terminal: failed
+      cost: any
+      escalation: exhausts
+      tokens: any
+    xfail:
+      reason: "all-tiers-exhaust path crashes/ValidationError before graceful failed terminal + HWM advance"
+      ticket: OMN-13140
+
+  - id: I9
+    layer: integration
+    task_type: code_generation
+    prompt: "(cross-cutting) every completed row has non-empty model_name + tokens_input>0 + tokens_output>0"
+    acceptance_criteria:
+      - "applies to every completed integration row in this run"
+    expected:
+      # I9 is asserted by the runner as a cross-cutting invariant over all
+      # completed rows produced this run, not a single published task.
+      cross_cutting: completed_rows_have_model_and_tokens
+      terminal: completed
+      tokens: positive
+    xfail:
+      reason: "empty-terminal-data: completed rows can land with empty model_name and zero tokens"
+      ticket: OMN-13535
