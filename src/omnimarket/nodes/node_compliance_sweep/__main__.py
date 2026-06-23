@@ -16,37 +16,14 @@ import argparse
 import logging
 import os
 import sys
-from pathlib import Path
 
 from omnimarket.nodes.node_compliance_sweep.handlers.handler_compliance_sweep import (
     ComplianceSweepRequest,
     NodeComplianceSweep,
+    resolve_target_dirs,
 )
 
 _log = logging.getLogger(__name__)
-
-_DEFAULT_REPOS = [
-    "omnibase_infra",
-    "omniintelligence",
-    "omnimemory",
-    "omnibase_core",
-    "omniclaude",
-    "onex_change_control",
-    "omnibase_spi",
-]
-
-
-def _resolve_repo_dirs(repos: list[str], omni_home: str) -> list[str]:
-    """Resolve repo names to absolute paths under omni_home."""
-    root = Path(omni_home)
-    resolved: list[str] = []
-    for repo in repos:
-        p = root / repo
-        if p.is_dir():
-            resolved.append(str(p))
-        else:
-            _log.warning("repo dir not found: %s", p)
-    return resolved
 
 
 def main() -> None:
@@ -81,19 +58,22 @@ def main() -> None:
 
     args = parser.parse_args()
 
-    repos = [r.strip() for r in args.repos.split(",") if r.strip()] or _DEFAULT_REPOS
+    repos = [r.strip() for r in args.repos.split(",") if r.strip()]
     checks = [c.strip() for c in args.checks.split(",") if c.strip()] or None
 
-    target_dirs = _resolve_repo_dirs(repos, omni_home)
-    if not target_dirs:
-        _log.error("no valid repo directories resolved")
-        sys.exit(1)
-
+    # Build the request with bare repo names; the handler shares the same
+    # resolver so the CLI and the RuntimeLocal dispatch path scan identically
+    # (OMN-13514). We resolve here too purely to fail fast on an empty target
+    # set with a clear message before dispatching.
     request = ComplianceSweepRequest(
-        target_dirs=target_dirs,
+        repos=repos,
         checks=checks,
         dry_run=args.dry_run,
     )
+    target_dirs = resolve_target_dirs(request, omni_home)
+    if not target_dirs:
+        _log.error("no valid repo directories resolved")
+        sys.exit(1)
 
     handler = NodeComplianceSweep()
     result = handler.handle(request)
