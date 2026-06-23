@@ -50,10 +50,14 @@ jobs:
     timeout-minutes: 45
     env:
       ONEX_E2E_LANE: ${{ github.event.inputs.lane || 'stability-test' }}
-      # stability-test lane addresses (overridable via repo vars per lane move).
-      ONEX_E2E_KAFKA_BOOTSTRAP: ${{ vars.STABILITY_TEST_KAFKA_BOOTSTRAP || '192.168.86.201:39092' }}
-      ONEX_E2E_POSTGRES_HOST: ${{ vars.STABILITY_TEST_POSTGRES_HOST || '192.168.86.201' }}
-      ONEX_E2E_POSTGRES_PORT: ${{ vars.STABILITY_TEST_POSTGRES_PORT || '15436' }}
+      # Lane addresses come from repo vars (no IP literal in CI config). When a
+      # var is unset these resolve empty and the runner falls back to its own
+      # annotated stability-test defaults (tests/delegation_golden/runner.py).
+      # Set STABILITY_TEST_KAFKA_BOOTSTRAP / _POSTGRES_HOST / _POSTGRES_PORT repo
+      # vars to point the nightly at a different lane without editing this file.
+      ONEX_E2E_KAFKA_BOOTSTRAP: ${{ vars.STABILITY_TEST_KAFKA_BOOTSTRAP }}
+      ONEX_E2E_POSTGRES_HOST: ${{ vars.STABILITY_TEST_POSTGRES_HOST }}
+      ONEX_E2E_POSTGRES_PORT: ${{ vars.STABILITY_TEST_POSTGRES_PORT }}
       ONEX_E2E_POSTGRES_DB: omnidash_analytics
       ONEX_E2E_POSTGRES_USER: postgres
       ONEX_E2E_POSTGRES_PASSWORD: ${{ secrets.STABILITY_TEST_POSTGRES_PASSWORD || secrets.POSTGRES_PASSWORD }}

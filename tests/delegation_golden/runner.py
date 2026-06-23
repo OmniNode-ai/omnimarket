@@ -55,23 +55,35 @@ log = logging.getLogger(__name__)
 # Lane configuration (read from env; stability-test defaults).
 # ---------------------------------------------------------------------------
 
-_LANE = os.environ.get("ONEX_E2E_LANE", "stability-test")
+
+def _env_or(name: str, default: str) -> str:
+    """Read an env var, treating an unset OR empty value as 'use the default'.
+
+    The nightly CI workflow wires lane addresses from repo vars (no IP literal in
+    CI config); an unset var resolves to an empty string, which must fall back to
+    these annotated defaults rather than an empty host.
+    """
+    value = os.environ.get(name, "")
+    return value if value else default
+
+
+_LANE = _env_or("ONEX_E2E_LANE", "stability-test")
 
 _DEFAULT_KAFKA = "192.168.86.201:39092"  # onex-allow-internal-ip OMN-13540 reason="stability-test lab Redpanda default; overridden by ONEX_E2E_KAFKA_BOOTSTRAP at runtime"
 _DEFAULT_PG_HOST = "192.168.86.201"  # onex-allow-internal-ip OMN-13540 reason="stability-test lab Postgres host; overridden by ONEX_E2E_POSTGRES_HOST at runtime"
 _DEFAULT_PG_PORT_STABILITY = 15436
 _DEFAULT_PG_PORT_DEV = 5436
 
-KAFKA_BOOTSTRAP = os.environ.get("ONEX_E2E_KAFKA_BOOTSTRAP", _DEFAULT_KAFKA)
-PG_HOST = os.environ.get("ONEX_E2E_POSTGRES_HOST", _DEFAULT_PG_HOST)
+KAFKA_BOOTSTRAP = _env_or("ONEX_E2E_KAFKA_BOOTSTRAP", _DEFAULT_KAFKA)
+PG_HOST = _env_or("ONEX_E2E_POSTGRES_HOST", _DEFAULT_PG_HOST)
 PG_PORT = int(
-    os.environ.get(
+    _env_or(
         "ONEX_E2E_POSTGRES_PORT",
         str(_DEFAULT_PG_PORT_DEV if _LANE == "dev" else _DEFAULT_PG_PORT_STABILITY),
     )
 )
-PG_DB = os.environ.get("ONEX_E2E_POSTGRES_DB", "omnidash_analytics")
-PG_USER = os.environ.get("ONEX_E2E_POSTGRES_USER", "postgres")
+PG_DB = _env_or("ONEX_E2E_POSTGRES_DB", "omnidash_analytics")
+PG_USER = _env_or("ONEX_E2E_POSTGRES_USER", "postgres")
 PG_PASSWORD = os.environ.get(
     "ONEX_E2E_POSTGRES_PASSWORD", os.environ.get("POSTGRES_PASSWORD", "")
 )
