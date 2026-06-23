@@ -73,8 +73,10 @@ def test_operation_match_handlers_declare_operation(node_name: str) -> None:
     contract = yaml.safe_load((NODES_ROOT / node_name / "contract.yaml").read_text())
     routing = contract["handler_routing"]
     strategy = routing.get("routing_strategy", "")
-    if strategy == "payload_type_match":
-        pytest.skip(f"{node_name} routes by payload_type_match; operation not required")
+    if strategy not in ("", "operation_match"):
+        pytest.skip(
+            f"{node_name} routes by {strategy}; operation_match operation not required"
+        )
     handlers = routing.get("handlers") or []
     assert handlers, f"{node_name} declares no handlers"
     for index, handler in enumerate(handlers):

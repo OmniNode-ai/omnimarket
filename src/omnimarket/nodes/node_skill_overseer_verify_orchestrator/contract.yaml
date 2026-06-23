@@ -70,7 +70,7 @@ capabilities:
 
 # IO operations
 io_operations:
-  - operation: skill_requested
+  - operation: skill_overseer_verify
     description: Dispatch overseer_verify skill invocation to polymorphic agent
     handler_method: handle_skill_requested
     input_fields:
