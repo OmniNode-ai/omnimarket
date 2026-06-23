@@ -64,6 +64,7 @@ _TASK_TYPE_SYSTEM_PROMPTS: dict[str, str] = {
     "document": "You are a technical writer. Write clear, accurate documentation.",
     "research": "You are a senior software engineer. Analyze the topic thoroughly and provide a detailed, well-structured response.",
     "code_generation": "You are an expert software engineer. Write clean, production-quality code.",
+    "code_review": "You are a code review assistant. Identify bugs, style violations, and architectural issues in the provided code. Be specific and actionable.",
     "refactor": "You are an expert software engineer specializing in refactoring. Improve code quality while preserving behavior.",
     "reasoning": "You are an expert analyst. Think step-by-step and provide well-reasoned conclusions.",
     "review": "You are a senior code reviewer. Provide thorough, actionable feedback.",

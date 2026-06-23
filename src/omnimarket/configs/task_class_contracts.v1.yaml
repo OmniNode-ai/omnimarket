@@ -48,6 +48,9 @@ task_model_overrides:
   complex_reasoning: "Qwen3.6-35B-A3B"
   planning: "Qwen3.6-35B-A3B"
   review: "Qwen3.6-35B-A3B"
+  # OMN-13541: code_review is its own task class (distinct from the generic
+  # `review`); the local Qwen coder serves it, with cheap_cloud fallback.
+  code_review: "Qwen3.6-35B-A3B"
   research: "Qwen3.6-35B-A3B"
 task_classes:
   code_generation:
@@ -389,6 +392,36 @@ task_classes:
       heuristic:
         - cites_specific_lines
         - explains_tradeoffs
+    quality_gate:
+      score_source: quality_gate_graded_score
+      required_bar: 0.8
+      request_override_bounds:
+        min: 0.6
+        max: 1.0
+    escalation_policy:
+      max_escalations: 1
+      tier_order:
+        - local
+        - cheap_cloud
+  # OMN-13541: code_review is a first-class task class. It was accepted at the
+  # consumer-facing delegation surface (allowed_task_types + the claude/codex
+  # adapter) but had no task-class contract here and only the local-coder tier in
+  # routing_tiers.yaml `use_for`, so a missing local backend stranded it and the
+  # quality gate's required-bar authority had nothing to resolve. Mirrors `review`
+  # but with code-review-specific DoD heuristics and a cloud fallback ladder.
+  code_review:
+    required_capabilities:
+      - reasoning
+      - code_completion
+    pricing_ceiling_per_1k_tokens: 0.002
+    latency_sla_p99_ms: 60000
+    cloud_routing_policy: allowed
+    definition_of_done:
+      deterministic:
+        - response_non_empty
+      heuristic:
+        - cites_specific_lines
+        - no_obvious_regressions
     quality_gate:
       score_source: quality_gate_graded_score
       required_bar: 0.8
