@@ -145,9 +145,17 @@ def build_llm_call_metrics_row(data: dict[str, Any]) -> dict[str, Any]:
         _safe_float(latency_ms_raw) if latency_ms_raw is not None else None
     )
 
-    usage_source_raw = str(
-        data.get("usage_source") or data.get("usageSource") or "MISSING"
-    ).upper()
+    # OMN-12994: extract usage provenance from the event.  The infra
+    # ContractLlmCallMetrics wire format nests it as usage_normalized.source
+    # (values: "api" / "estimated" / "missing") — no top-level usage_source
+    # field.  Fall back to that nested path when the flat field is absent so
+    # exp0/generation-consumer rows are not silently written as MISSING.
+    _top_level = data.get("usage_source") or data.get("usageSource")
+    if not _top_level:
+        _normalized = data.get("usage_normalized")
+        if isinstance(_normalized, dict):
+            _top_level = _normalized.get("source")
+    usage_source_raw = str(_top_level or "MISSING").upper()
     usage_source = _USAGE_SOURCE_MAP.get(usage_source_raw, "MISSING")
     usage_is_estimated = usage_source != "API"
 
