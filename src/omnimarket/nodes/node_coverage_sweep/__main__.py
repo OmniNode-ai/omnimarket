@@ -20,38 +20,14 @@ import argparse
 import logging
 import os
 import sys
-from pathlib import Path
 
 from omnimarket.nodes.node_coverage_sweep.handlers.handler_coverage_sweep import (
     CoverageSweepRequest,
     NodeCoverageSweep,
 )
+from omnimarket.nodes.sweep_scope import resolve_default_target_dirs
 
 _log = logging.getLogger(__name__)
-
-_DEFAULT_REPOS = [
-    "omniclaude",
-    "omnibase_core",
-    "omnibase_infra",
-    "omnibase_spi",
-    "omniintelligence",
-    "omnimemory",
-    "onex_change_control",
-    "omnibase_compat",
-]
-
-
-def _resolve_repo_dirs(repos: list[str], omni_home: str) -> list[str]:
-    """Resolve repo names to absolute paths under omni_home."""
-    root = Path(omni_home)
-    resolved: list[str] = []
-    for repo in repos:
-        p = root / repo
-        if p.is_dir():
-            resolved.append(str(p))
-        else:
-            _log.warning("repo dir not found: %s", p)
-    return resolved
 
 
 def main() -> None:
@@ -89,18 +65,21 @@ def main() -> None:
 
     args = parser.parse_args()
 
-    repos = [r.strip() for r in args.repos.split(",") if r.strip()] or _DEFAULT_REPOS
+    repos = [r.strip() for r in args.repos.split(",") if r.strip()]
     recently_changed = [
         m.strip() for m in args.recently_changed.split(",") if m.strip()
     ]
 
-    target_dirs = _resolve_repo_dirs(repos, omni_home)
+    # Resolve here via the shared resolver purely to fail fast with a clear
+    # message before dispatching; the handler shares the same resolver so the
+    # CLI and RuntimeLocal dispatch paths scan identically (OMN-13538).
+    target_dirs = resolve_default_target_dirs([], repos, omni_home)
     if not target_dirs:
         _log.error("no valid repo directories resolved")
         sys.exit(1)
 
     request = CoverageSweepRequest(
-        target_dirs=target_dirs,
+        repos=repos,
         target_pct=args.target_pct,
         recently_changed_modules=recently_changed,
         dry_run=args.dry_run,

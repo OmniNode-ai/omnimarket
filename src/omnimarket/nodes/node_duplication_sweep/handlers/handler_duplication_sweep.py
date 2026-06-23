@@ -37,6 +37,13 @@ _KAFKA_BOUNDARY_RELATIVE_PATHS = (
 )
 _EXCLUDED_MIGRATION_REPO_DIRS = {"omni_worktrees"}
 
+# Wall-clock budget for the D3 ``check-migration-conflicts`` subprocess. The real
+# cross-repo scan takes ~110s; the prior 60s cap reliably tripped TimeoutExpired,
+# which the handler degraded to a quiet WARN(0) — making the OMN-13516
+# migration-dup check dead inside the node. Raise the budget AND treat a genuine
+# timeout as a FAIL (an indeterminate gate must never be a silent pass — Rule 5).
+_D3_SUBPROCESS_TIMEOUT_S = 240
+
 
 class ModelDuplicationFinding(BaseModel):
     """A single duplication finding."""
@@ -75,7 +82,7 @@ class DuplicationSweepResult(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     check_results: list[ModelDuplicationCheckResult] = Field(default_factory=list)
-    overall_status: str = "PASS"  # PASS | FAIL
+    overall_status: str = "PASS"  # PASS | FAIL | ERROR (unresolvable scope)
 
 
 # ---------------------------------------------------------------------------
@@ -306,15 +313,23 @@ def _check_d3_migration_prefixes(omni_home: str) -> ModelDuplicationCheckResult:
             capture_output=True,
             text=True,
             cwd=str(cwd),
-            timeout=60,
+            timeout=_D3_SUBPROCESS_TIMEOUT_S,
             check=False,
         )
         output = result.stdout + result.stderr
     except subprocess.TimeoutExpired:
+        # A real timeout is an indeterminate result, not a benign warning. The
+        # migration-conflict scan could not complete, so we cannot certify the
+        # absence of conflicts — FAIL the check rather than quietly WARN(0)
+        # (OMN-13538, Rule 5: a gate that silently passes is worse than no gate).
         return ModelDuplicationCheckResult(
             check_id="D3",
-            status="WARN",
-            detail="check-migration-conflicts timed out",
+            status="FAIL",
+            detail=(
+                "check-migration-conflicts timed out after "
+                f"{_D3_SUBPROCESS_TIMEOUT_S}s — migration-conflict scan could "
+                "not complete; absence of conflicts cannot be certified"
+            ),
         )
     except (OSError, FileNotFoundError) as exc:
         return ModelDuplicationCheckResult(
@@ -419,6 +434,25 @@ class NodeDuplicationSweep:
     def handle(self, request: DuplicationSweepRequest) -> DuplicationSweepResult:
         omni_home = request.omni_home or os.environ.get("OMNI_HOME", "")
         checks = request.checks or _ALL_CHECKS
+
+        # Fail loud when the scan root cannot be resolved. With an empty
+        # ``omni_home`` every check would resolve a non-existent dir and degrade
+        # to WARN, yielding overall=PASS — a false-clean (OMN-13538, Rule 5).
+        if not omni_home or not Path(omni_home).is_dir():
+            return DuplicationSweepResult(
+                check_results=[
+                    ModelDuplicationCheckResult(
+                        check_id="scope",
+                        status="FAIL",
+                        detail=(
+                            "OMNI_HOME is not set / not a directory — cannot "
+                            "resolve the scan root. Refusing to report PASS over "
+                            "an unresolvable scope."
+                        ),
+                    )
+                ],
+                overall_status="ERROR",
+            )
 
         check_results: list[ModelDuplicationCheckResult] = []
         for check_id in checks:
