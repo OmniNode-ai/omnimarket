@@ -31,6 +31,16 @@ from pathlib import Path
 from typing import Any, ClassVar
 from uuid import UUID, uuid4
 
+import yaml
+from omnibase_core.models.contracts.subcontracts.model_fsm_state_definition import (
+    ModelFSMStateDefinition,
+)
+from omnibase_core.models.contracts.subcontracts.model_fsm_state_transition import (
+    ModelFSMStateTransition,
+)
+from omnibase_core.models.contracts.subcontracts.model_fsm_subcontract import (
+    ModelFSMSubcontract,
+)
 from omnibase_core.models.delegation.model_agent_task_lifecycle_event import (
     ModelAgentTaskLifecycleEvent,
 )
@@ -40,6 +50,7 @@ from omnibase_core.models.delegation.model_invocation_command import (
 from omnibase_core.models.delegation.wire import ModelPremiumCounterfactual
 from omnibase_core.models.dispatch.model_handler_output import ModelHandlerOutput
 from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
+from omnibase_core.models.primitives.model_semver import ModelSemVer
 from pydantic import BaseModel
 
 from omnimarket.enums.enum_delegation_failure_class import EnumDelegationFailureClass
@@ -192,40 +203,116 @@ def _resolve_escalation_topic() -> str:
 TOPIC_DELEGATION_ESCALATION_TRIGGERED = _resolve_escalation_topic()
 
 
-# Valid state transitions: from_state -> set of valid to_states
-# Note: ROUTED -> ROUTED self-loop (OMN-10794) supports the schema-compliance
-# loop's repair re-prompts — when an inference response fails validation and
-# the budget allows another attempt, the orchestrator stays in ROUTED while
-# emitting a fresh ModelInferenceIntent carrying the repair prompt.
-_VALID_TRANSITIONS: dict[EnumDelegationState, frozenset[EnumDelegationState]] = {
-    EnumDelegationState.RECEIVED: frozenset({EnumDelegationState.ROUTED}),
-    EnumDelegationState.ROUTED: frozenset(
-        {
-            EnumDelegationState.ROUTED,  # OMN-10794 — schema-repair re-prompt
-            EnumDelegationState.EXECUTING,
-            EnumDelegationState.INFERENCE_COMPLETED,
-            EnumDelegationState.ESCALATING,  # infra error on current tier → try next
-            EnumDelegationState.COMPLETED,
-            EnumDelegationState.FAILED,
-        }
-    ),
-    EnumDelegationState.EXECUTING: frozenset(
-        {EnumDelegationState.COMPLETED, EnumDelegationState.FAILED}
-    ),
-    EnumDelegationState.INFERENCE_COMPLETED: frozenset(
-        {EnumDelegationState.GATE_EVALUATED}
-    ),
-    EnumDelegationState.GATE_EVALUATED: frozenset(
-        {
-            EnumDelegationState.ESCALATING,
-            EnumDelegationState.COMPLETED,
-            EnumDelegationState.FAILED,
-        }
-    ),
-    EnumDelegationState.ESCALATING: frozenset({EnumDelegationState.ROUTED}),
-    EnumDelegationState.COMPLETED: frozenset(),
-    EnumDelegationState.FAILED: frozenset(),
-}
+# OMN-13474 (W2 of the OMN-13471 delegation decomposition): the FSM transition
+# table is no longer a hardcoded Python literal. It is loaded from this node's
+# ``contract.yaml`` ``fsm.transitions`` block — reconciled in W1 (OMN-13473) to be
+# the single source of truth — and built into the typed, executor-bound
+# ``ModelFSMSubcontract`` (OMN-12835 typed contract-side workflow surface). The
+# imperative ``_transition`` guard validates against the contract-derived table,
+# so the declared contract table — not a parallel hand-maintained dict — is the
+# runtime execution authority. The per-call-site ``_transition(...)`` invocations
+# are reduced to zero by W5 (OMN-13477), which this ticket blocks.
+#
+# Note: the ``ROUTED -> ROUTED`` self-loop (OMN-10794) supports the
+# schema-compliance loop's repair re-prompts; it is a declared contract edge.
+
+_CONTRACT_FSM_VERSION = ModelSemVer(major=1, minor=0, patch=0)
+
+
+def _load_fsm_subcontract() -> ModelFSMSubcontract:
+    """Build the typed, executor-bound FSM from this node's contract.yaml.
+
+    OMN-13474: parses the contract ``fsm`` block (states / initial_state /
+    terminal_states / transitions) into a ``ModelFSMSubcontract`` — the typed
+    surface the core FSM executor (``omnibase_core.utils.util_fsm_executor``)
+    consumes. The contract is the single source of truth (reconciled in W1,
+    OMN-13473); constructing the typed subcontract here makes the declared table
+    the execution authority and structurally validates it (initial/terminal
+    state membership, transition-state membership, structural uniqueness,
+    no-outgoing-from-terminal) at import time. Fails fast on any drift.
+    """
+    contract_path = Path(__file__).parent.parent / "contract.yaml"
+    with contract_path.open(encoding="utf-8") as handle:
+        contract_data = yaml.safe_load(handle)
+
+    fsm_block = contract_data["fsm"]
+    declared_states: list[str] = list(fsm_block["states"])
+
+    # Validate every declared state is a known EnumDelegationState — fail fast
+    # rather than silently dropping an unmapped edge (Operating Rule #8).
+    enum_names = {state.value for state in EnumDelegationState}
+    unknown_states = set(declared_states) - enum_names
+    if unknown_states:
+        msg = (
+            f"contract.yaml fsm.states declares states with no "
+            f"EnumDelegationState member: {sorted(unknown_states)}"
+        )
+        raise ValueError(msg)
+
+    terminal_states: list[str] = list(fsm_block.get("terminal_states", []))
+    state_defs = [
+        ModelFSMStateDefinition(
+            version=_CONTRACT_FSM_VERSION,
+            state_name=state_name,
+            state_type="terminal" if state_name in terminal_states else "operational",
+            description=state_name,
+            is_terminal=state_name in terminal_states,
+            # Terminal states are non-recoverable by the FSM subcontract invariant.
+            is_recoverable=state_name not in terminal_states,
+        )
+        for state_name in declared_states
+    ]
+
+    transitions = [
+        ModelFSMStateTransition(
+            version=_CONTRACT_FSM_VERSION,
+            transition_name=f"{entry['from']}__to__{entry['to']}__{index}",
+            from_state=entry["from"],
+            to_state=entry["to"],
+            trigger=entry.get("trigger", f"{entry['from']}->{entry['to']}"),
+        )
+        for index, entry in enumerate(fsm_block["transitions"])
+    ]
+
+    return ModelFSMSubcontract(
+        version=_CONTRACT_FSM_VERSION,
+        state_machine_name="delegation_orchestrator",
+        state_machine_version=_CONTRACT_FSM_VERSION,
+        description="Delegation orchestrator FSM (contract-driven, OMN-13474)",
+        states=state_defs,
+        initial_state=fsm_block["initial_state"],
+        terminal_states=terminal_states,
+        transitions=transitions,
+    )
+
+
+def _build_valid_transitions(
+    fsm: ModelFSMSubcontract,
+) -> dict[EnumDelegationState, frozenset[EnumDelegationState]]:
+    """Project the typed FSM's declared edges into the runtime guard table.
+
+    Returns the same ``from_state -> {to_state, ...}`` shape the imperative
+    ``_transition`` guard consumes, but sourced from the contract-derived typed
+    FSM rather than a hardcoded literal. Terminal states map to an empty
+    frozenset (no outgoing edges, enforced by ModelFSMSubcontract).
+    """
+    edges: dict[EnumDelegationState, set[EnumDelegationState]] = {
+        EnumDelegationState(state.state_name): set() for state in fsm.states
+    }
+    for transition in fsm.transitions:
+        edges[EnumDelegationState(transition.from_state)].add(
+            EnumDelegationState(transition.to_state)
+        )
+    return {state: frozenset(targets) for state, targets in edges.items()}
+
+
+# Typed, executor-bound FSM built once at import from the contract (the single
+# source of truth). ``_VALID_TRANSITIONS`` is now a projection of it, not a
+# parallel hand-maintained dict.
+_FSM_SUBCONTRACT: ModelFSMSubcontract = _load_fsm_subcontract()
+_VALID_TRANSITIONS: dict[EnumDelegationState, frozenset[EnumDelegationState]] = (
+    _build_valid_transitions(_FSM_SUBCONTRACT)
+)
 
 
 def _record_inference_response(
