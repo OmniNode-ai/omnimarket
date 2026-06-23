@@ -28,7 +28,7 @@ from collections.abc import Callable, MutableMapping
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, ClassVar
+from typing import Any, ClassVar, cast
 from uuid import UUID, uuid4
 
 import yaml
@@ -207,11 +207,15 @@ TOPIC_DELEGATION_ESCALATION_TRIGGERED = _resolve_escalation_topic()
 # table is no longer a hardcoded Python literal. It is loaded from this node's
 # ``contract.yaml`` ``fsm.transitions`` block — reconciled in W1 (OMN-13473) to be
 # the single source of truth — and built into the typed, executor-bound
-# ``ModelFSMSubcontract`` (OMN-12835 typed contract-side workflow surface). The
-# imperative ``_transition`` guard validates against the contract-derived table,
-# so the declared contract table — not a parallel hand-maintained dict — is the
-# runtime execution authority. The per-call-site ``_transition(...)`` invocations
-# are reduced to zero by W5 (OMN-13477), which this ticket blocks.
+# ``ModelFSMSubcontract`` (OMN-12835 typed contract-side workflow surface).
+#
+# OMN-13477 (W5): state advancement is driven directly off that typed FSM via
+# ``_advance`` (the sole advance surface), resolving the declared
+# ``(from, to)`` transition object from ``_DECLARED_TRANSITIONS`` — the same
+# typed transitions the canonical core executor consumes. The imperative
+# ``_transition`` guard and its parallel ``_VALID_TRANSITIONS`` set are gone; the
+# contract FSM is the runtime advance authority and the per-call-site
+# ``_transition(...)`` invocation count is zero.
 #
 # Note: the ``ROUTED -> ROUTED`` self-loop (OMN-10794) supports the
 # schema-compliance loop's repair re-prompts; it is a declared contract edge.
@@ -286,33 +290,60 @@ def _load_fsm_subcontract() -> ModelFSMSubcontract:
     )
 
 
-def _build_valid_transitions(
+def _build_declared_transitions(
     fsm: ModelFSMSubcontract,
-) -> dict[EnumDelegationState, frozenset[EnumDelegationState]]:
-    """Project the typed FSM's declared edges into the runtime guard table.
+) -> dict[tuple[EnumDelegationState, EnumDelegationState], ModelFSMStateTransition]:
+    """Project the typed FSM's declared edges into a ``(from, to)`` lookup.
 
-    Returns the same ``from_state -> {to_state, ...}`` shape the imperative
-    ``_transition`` guard consumes, but sourced from the contract-derived typed
-    FSM rather than a hardcoded literal. Terminal states map to an empty
-    frozenset (no outgoing edges, enforced by ModelFSMSubcontract).
+    OMN-13477 (W5): the runtime no longer hand-drives the FSM through an
+    imperative ``_transition`` guard backed by a separate ``from -> {to,...}``
+    set. State advancement is driven directly off the typed, executor-bound
+    ``ModelFSMSubcontract`` (the W2/OMN-13474 contract binding) — the *same*
+    typed transition objects the canonical core executor
+    (``omnibase_core.utils.util_fsm_executor.execute_transition``) consumes.
+
+    ``(from_state, to_state)`` is the lookup key: every declared delegation edge
+    is unique by that pair (verified against the contract), so a target-keyed
+    ``_advance(workflow, target)`` resolves to exactly one declared transition
+    — preserving the prior call-site ergonomics (which named the target state)
+    while making the contract FSM, not a parallel guard dict, the advance
+    authority. Building over the typed transitions also keeps the declared
+    ``trigger`` available, so the resolved edge is the contract's own
+    executor-bound transition object.
     """
-    edges: dict[EnumDelegationState, set[EnumDelegationState]] = {
-        EnumDelegationState(state.state_name): set() for state in fsm.states
+    return {
+        (
+            EnumDelegationState(transition.from_state),
+            EnumDelegationState(transition.to_state),
+        ): transition
+        for transition in fsm.transitions
     }
-    for transition in fsm.transitions:
-        edges[EnumDelegationState(transition.from_state)].add(
-            EnumDelegationState(transition.to_state)
-        )
-    return {state: frozenset(targets) for state, targets in edges.items()}
 
 
 # Typed, executor-bound FSM built once at import from the contract (the single
-# source of truth). ``_VALID_TRANSITIONS`` is now a projection of it, not a
-# parallel hand-maintained dict.
+# source of truth, OMN-13474). ``_DECLARED_TRANSITIONS`` is a ``(from, to)``
+# projection of its typed transition objects — the runtime advance authority
+# (OMN-13477). There is no parallel hand-maintained guard table.
 _FSM_SUBCONTRACT: ModelFSMSubcontract = _load_fsm_subcontract()
-_VALID_TRANSITIONS: dict[EnumDelegationState, frozenset[EnumDelegationState]] = (
-    _build_valid_transitions(_FSM_SUBCONTRACT)
-)
+_DECLARED_TRANSITIONS: dict[
+    tuple[EnumDelegationState, EnumDelegationState], ModelFSMStateTransition
+] = _build_declared_transitions(_FSM_SUBCONTRACT)
+
+
+# OMN-13477 (W5): declarative per-step dispatch table. One entry per
+# ``handler_routing`` event_model the contract declares (routing_strategy
+# ``payload_type_match``), mapping the payload model class to its thin per-step
+# FSM handler. ``HandlerDelegationWorkflow.handle`` routes off this table instead
+# of a hand-maintained isinstance ladder — each payload type resolves to exactly
+# one per-step handler, with no catch-all branch (undeclared types fail closed).
+_PER_STEP_DISPATCH: dict[type, str] = {
+    ModelDelegationRequest: "handle_delegation_request",
+    ModelInvocationCommand: "handle_invocation_command",
+    ModelRoutingDecision: "handle_routing_decision",
+    ModelInferenceResponseData: "handle_inference_response",
+    ModelQualityGateResult: "handle_gate_result",
+    ModelAgentTaskLifecycleEvent: "handle_agent_task_lifecycle",
+}
 
 
 def _record_inference_response(
@@ -441,7 +472,9 @@ def _prompt_with_context_pack(request: ModelDelegationRequest, prompt: str) -> s
 def _evaluate_compliance(
     workflow: DelegationWorkflowState,
     response: ModelInferenceResponseData,
-    transition: Callable[[DelegationWorkflowState, EnumDelegationState], None],
+    advance: Callable[
+        [DelegationWorkflowState, EnumDelegationState], ModelFSMStateTransition
+    ],
 ) -> list[BaseModel]:
     """Run one compliance-loop iteration; emit repair intent or accept (OMN-10794).
 
@@ -475,7 +508,7 @@ def _evaluate_compliance(
 
     if result.compliant or result.repair_prompt == "":
         # Compliant or budget ABORT — record this attempt and forward to gate.
-        transition(workflow, EnumDelegationState.INFERENCE_COMPLETED)
+        advance(workflow, EnumDelegationState.INFERENCE_COMPLETED)
         _record_inference_response(workflow, response)
         return [
             ModelQualityGateIntent(
@@ -493,7 +526,7 @@ def _evaluate_compliance(
 
     # Non-compliant, budget allows another attempt — emit repair prompt.
     # ROUTED -> ROUTED self-loop: stay in ROUTED, increment attempt counter.
-    transition(workflow, EnumDelegationState.ROUTED)
+    advance(workflow, EnumDelegationState.ROUTED)
     workflow.compliance_attempts += 1
     workflow.inference_intent_in_flight = True
     temperature = _TASK_TEMPERATURE.get(workflow.request.task_type, 0.3)
@@ -646,20 +679,32 @@ class HandlerDelegationWorkflow:
         """Expose workflows for testing/observability."""
         return self._workflows
 
-    def _transition(
+    def _advance(
         self,
         workflow: DelegationWorkflowState,
         target: EnumDelegationState,
-    ) -> None:
-        """Transition workflow to target state, enforcing FSM validity."""
-        valid = _VALID_TRANSITIONS.get(workflow.state, frozenset())
-        if target not in valid:
+    ) -> ModelFSMStateTransition:
+        """Advance ``workflow`` to ``target`` through the typed contract FSM.
+
+        OMN-13477 (W5): the sole state-advance surface. It resolves the declared
+        ``(from_state, target)`` edge from the typed, executor-bound
+        ``_FSM_SUBCONTRACT`` (the OMN-13474 contract binding) — the same typed
+        transition object the canonical core FSM executor consumes — and rejects
+        any edge the contract does not declare. This replaces the imperative
+        ``_transition`` guard (and its parallel ``_VALID_TRANSITIONS`` set): the
+        contract FSM, not hand-maintained handler logic, is now the transition
+        authority. Returns the resolved typed transition so callers can assert
+        on the contract edge they drove.
+        """
+        transition = _DECLARED_TRANSITIONS.get((workflow.state, target))
+        if transition is None:
             msg = (
                 f"Invalid state transition: {workflow.state} -> {target} "
                 f"for correlation_id={workflow.correlation_id}"
             )
             raise InvalidStateTransitionError(msg)
         workflow.state = target
+        return transition
 
     def _decide_escalation(
         self,
@@ -767,7 +812,7 @@ class HandlerDelegationWorkflow:
         if workflow.state != EnumDelegationState.RECEIVED:
             return []
 
-        self._transition(workflow, EnumDelegationState.ROUTED)
+        self._advance(workflow, EnumDelegationState.ROUTED)
         workflow.invocation_command = command
         return [command]
 
@@ -791,7 +836,7 @@ class HandlerDelegationWorkflow:
             return []
 
         if workflow.state == EnumDelegationState.RECEIVED:
-            self._transition(workflow, EnumDelegationState.ROUTED)
+            self._advance(workflow, EnumDelegationState.ROUTED)
             workflow.routing_decision = decision
             workflow.current_tier_name = decision.tier_name or None
             workflow.compliance_attempts = 1
@@ -938,7 +983,7 @@ class HandlerDelegationWorkflow:
                     model_id=model_used,
                 )
 
-                self._transition(workflow, EnumDelegationState.ESCALATING)
+                self._advance(workflow, EnumDelegationState.ESCALATING)
                 workflow.escalation_count += 1
 
                 workflow.inference_content = None
@@ -946,7 +991,7 @@ class HandlerDelegationWorkflow:
                 workflow.inference_intent_in_flight = False
                 workflow.routing_decision = None
 
-                self._transition(workflow, EnumDelegationState.ROUTED)
+                self._advance(workflow, EnumDelegationState.ROUTED)
                 assert workflow.request is not None
                 return [
                     ModelRoutingIntent(
@@ -1004,12 +1049,12 @@ class HandlerDelegationWorkflow:
                 llm_call_id=response.llm_call_id,
                 context_pack_hash=_context_pack_hash_for_event(workflow.request),
             )
-            self._transition(workflow, EnumDelegationState.FAILED)
+            self._advance(workflow, EnumDelegationState.FAILED)
             return self._emit_terminal(terminal_inputs)
 
         # Legacy path: no compliance loop, single attempt.
         if workflow.request.output_schema_key is None:
-            self._transition(workflow, EnumDelegationState.INFERENCE_COMPLETED)
+            self._advance(workflow, EnumDelegationState.INFERENCE_COMPLETED)
             _record_inference_response(workflow, response)
             workflow.accumulated_tokens = response.total_tokens
             return [
@@ -1027,7 +1072,7 @@ class HandlerDelegationWorkflow:
             ]
 
         # Compliance-loop path.
-        return _evaluate_compliance(workflow, response, self._transition)
+        return _evaluate_compliance(workflow, response, self._advance)
 
     @staticmethod
     def _terminal_failed_fields(
@@ -1085,7 +1130,7 @@ class HandlerDelegationWorkflow:
         if workflow.state != EnumDelegationState.INFERENCE_COMPLETED:
             return []
 
-        self._transition(workflow, EnumDelegationState.GATE_EVALUATED)
+        self._advance(workflow, EnumDelegationState.GATE_EVALUATED)
         workflow.gate_result = result
 
         assert workflow.request is not None
@@ -1121,7 +1166,7 @@ class HandlerDelegationWorkflow:
                 terminal_failure_reason="required_bar_missing",
                 required_bar_authority=None,
             )
-            self._transition(workflow, EnumDelegationState.FAILED)
+            self._advance(workflow, EnumDelegationState.FAILED)
             return self._emit_terminal(terminal_inputs)
 
         actual_score = result.quality_score
@@ -1170,7 +1215,7 @@ class HandlerDelegationWorkflow:
                 premium_counterfactual=None,
             )
 
-            self._transition(workflow, EnumDelegationState.COMPLETED)
+            self._advance(workflow, EnumDelegationState.COMPLETED)
             # OMN-13475: terminal + compat come from the single builder; the
             # baseline intent is interleaved between them to preserve the prior
             # emission order ([completed, baseline, compat]).
@@ -1247,7 +1292,7 @@ class HandlerDelegationWorkflow:
                 ),
             )
 
-            self._transition(workflow, EnumDelegationState.ESCALATING)
+            self._advance(workflow, EnumDelegationState.ESCALATING)
             workflow.escalation_count += 1
 
             # Reset inference state for the new attempt.
@@ -1257,7 +1302,7 @@ class HandlerDelegationWorkflow:
             workflow.routing_decision = None
 
             # Transition to ROUTED and emit new routing intent with tier override.
-            self._transition(workflow, EnumDelegationState.ROUTED)
+            self._advance(workflow, EnumDelegationState.ROUTED)
             assert workflow.request is not None
             return [
                 ModelRoutingIntent(
@@ -1285,7 +1330,7 @@ class HandlerDelegationWorkflow:
             required_bar_authority=required_bar_authority,
         )
 
-        self._transition(workflow, EnumDelegationState.FAILED)
+        self._advance(workflow, EnumDelegationState.FAILED)
         events.extend(self._emit_terminal(terminal_inputs))
         return events
 
@@ -1592,7 +1637,7 @@ class HandlerDelegationWorkflow:
         next_state = next_state_from_lifecycle(lifecycle_event.lifecycle_type)
         if next_state is EnumDelegationState.EXECUTING:
             if workflow.state == EnumDelegationState.ROUTED:
-                self._transition(workflow, EnumDelegationState.EXECUTING)
+                self._advance(workflow, EnumDelegationState.EXECUTING)
             return []
 
         if workflow.state not in {
@@ -1602,7 +1647,7 @@ class HandlerDelegationWorkflow:
             return []
 
         if workflow.state != next_state:
-            self._transition(workflow, next_state)
+            self._advance(workflow, next_state)
 
         assert workflow.request is not None
 
@@ -1657,25 +1702,48 @@ class HandlerDelegationWorkflow:
         return self._emit_terminal(terminal_inputs)
 
     async def handle(self, payload: object) -> list[BaseModel]:
-        """Route supported workflow payloads through the canonical FSM methods."""
+        """Route a workflow payload to its per-step FSM handler by payload type.
+
+        OMN-13477 (W5): dispatch is driven by ``_PER_STEP_DISPATCH`` — a
+        declarative ``payload model class -> per-step handler method`` table,
+        one entry per ``handler_routing`` event_model the contract declares
+        (``payload_type_match``). This replaces the prior hand-maintained
+        isinstance ladder: each event model resolves to exactly one thin
+        per-step handler, and there is no catch-all branch — an undeclared
+        payload type fails closed (``ValueError``) rather than being silently
+        swallowed by a fallthrough.
+        """
         if isinstance(payload, ModelEventEnvelope) or hasattr(payload, "payload"):
             payload = payload.payload
         if isinstance(payload, dict):
             payload = self._coerce_payload_dict(payload)
-        if isinstance(payload, ModelDelegationRequest):
-            return list(self.handle_delegation_request(payload))
-        if isinstance(payload, ModelInvocationCommand):
-            return list(self.handle_invocation_command(payload))
-        if isinstance(payload, ModelRoutingDecision):
-            return list(self.handle_routing_decision(payload))
-        if isinstance(payload, ModelInferenceResponseData):
-            return list(self.handle_inference_response(payload))
-        if isinstance(payload, ModelQualityGateResult):
-            return list(self.handle_gate_result(payload))
-        if isinstance(payload, ModelAgentTaskLifecycleEvent):
-            return list(self.handle_agent_task_lifecycle(payload))
-        msg = f"Unsupported delegation workflow payload: {type(payload).__name__}"
-        raise ValueError(msg)
+
+        handler = self._resolve_per_step_handler(type(payload))
+        if handler is None:
+            msg = f"Unsupported delegation workflow payload: {type(payload).__name__}"
+            raise ValueError(msg)
+        return list(handler(payload))
+
+    def _resolve_per_step_handler(
+        self, payload_type: type
+    ) -> Callable[[Any], list[Any]] | None:
+        """Resolve the per-step FSM handler bound to ``payload_type``.
+
+        The lookup keys on the most-derived declared payload class first
+        (exact ``type`` match), then walks the declared base classes so a
+        subclass of a declared event model still routes — without re-introducing
+        an isinstance ladder. Returns ``None`` for an undeclared payload type so
+        ``handle`` can fail closed.
+        """
+        method_name = _PER_STEP_DISPATCH.get(payload_type)
+        if method_name is None:
+            for declared_type, declared_method in _PER_STEP_DISPATCH.items():
+                if issubclass(payload_type, declared_type):
+                    method_name = declared_method
+                    break
+        if method_name is None:
+            return None
+        return cast("Callable[[Any], list[Any]]", getattr(self, method_name))
 
     async def handle_async(self, payload: object) -> ModelHandlerOutput[None]:
         """Runtime auto-wiring entrypoint that returns publishable handler output."""

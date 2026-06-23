@@ -34,11 +34,26 @@ from omnibase_core.utils.util_fsm_executor import execute_transition
 
 from omnimarket.nodes.node_delegation_orchestrator.enums import EnumDelegationState
 from omnimarket.nodes.node_delegation_orchestrator.handlers.handler_delegation_workflow import (
+    _DECLARED_TRANSITIONS,
     _FSM_SUBCONTRACT,
-    _VALID_TRANSITIONS,
-    _build_valid_transitions,
+    _build_declared_transitions,
     _load_fsm_subcontract,
 )
+
+
+def _valid_transitions() -> dict[EnumDelegationState, frozenset[EnumDelegationState]]:
+    """Project ``_DECLARED_TRANSITIONS`` into the ``from -> {to,...}`` shape.
+
+    OMN-13477 (W5) removed the ``_VALID_TRANSITIONS`` guard set; the runtime now
+    advances directly off the typed ``(from, to)`` transition projection. These
+    W2 invariants still hold against the same contract-derived edges, re-derived
+    here from ``_DECLARED_TRANSITIONS``.
+    """
+    edges: dict[EnumDelegationState, set[EnumDelegationState]] = {}
+    for from_state, to_state in _DECLARED_TRANSITIONS:
+        edges.setdefault(from_state, set()).add(to_state)
+    return {state: frozenset(targets) for state, targets in edges.items()}
+
 
 _CONTRACT_PATH = Path("src/omnimarket/nodes/node_delegation_orchestrator/contract.yaml")
 
@@ -63,25 +78,28 @@ class TestContractBoundFsm:
         assert {s.state_name for s in _FSM_SUBCONTRACT.states} == set(block["states"])
         assert len(_FSM_SUBCONTRACT.transitions) == len(block["transitions"])
 
-    def test_valid_transitions_is_contract_derived_projection(self) -> None:
-        """``_VALID_TRANSITIONS`` is the projection of the typed contract FSM.
+    def test_declared_transitions_is_contract_derived_projection(self) -> None:
+        """``_DECLARED_TRANSITIONS`` is the projection of the typed contract FSM.
 
         Re-loading the contract from disk and re-projecting must reproduce the
-        in-memory guard table exactly — proving it is not a parallel literal.
+        in-memory ``(from, to) -> transition`` table exactly — proving it is not
+        a parallel literal.
         """
-        reloaded = _build_valid_transitions(_load_fsm_subcontract())
-        assert reloaded == _VALID_TRANSITIONS
+        reloaded = _build_declared_transitions(_load_fsm_subcontract())
+        assert reloaded.keys() == _DECLARED_TRANSITIONS.keys()
+        for key, transition in reloaded.items():
+            assert _DECLARED_TRANSITIONS[key].trigger == transition.trigger
 
-    def test_guard_table_equals_declared_contract_edges(self) -> None:
-        """Every guard edge is a declared contract edge and vice versa."""
+    def test_advance_table_equals_declared_contract_edges(self) -> None:
+        """Every advance edge is a declared contract edge and vice versa."""
         block = _contract_fsm_block()
         contract_edges = {(t["from"], t["to"]) for t in block["transitions"]}
-        guard_edges = {
+        advance_edges = {
             (frm.value, to.value)
-            for frm, targets in _VALID_TRANSITIONS.items()
+            for frm, targets in _valid_transitions().items()
             for to in targets
         }
-        assert guard_edges == contract_edges
+        assert advance_edges == contract_edges
 
     async def test_every_contract_edge_drivable_by_core_executor(self) -> None:
         """Each declared edge transitions to the same target via the core executor.
@@ -105,10 +123,10 @@ class TestContractBoundFsm:
                 f"{result.error}"
             )
             assert result.new_state == entry["to"]
-            # The guard table the imperative handler enforces must also permit it.
+            # The advance table the handler enforces must also permit it.
             assert (
                 EnumDelegationState(entry["to"])
-                in _VALID_TRANSITIONS[EnumDelegationState(entry["from"])]
+                in _valid_transitions()[EnumDelegationState(entry["from"])]
             )
 
     def test_unknown_state_would_be_unmappable(self) -> None:

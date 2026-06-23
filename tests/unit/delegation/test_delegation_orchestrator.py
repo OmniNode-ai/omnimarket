@@ -639,7 +639,7 @@ class TestFSMTransitions:
     def test_valid_transition_received_to_routed(self) -> None:
         handler = HandlerDelegationWorkflow()
         workflow = DelegationWorkflowState(correlation_id=uuid4())
-        handler._transition(workflow, EnumDelegationState.ROUTED)
+        handler._advance(workflow, EnumDelegationState.ROUTED)
         assert workflow.state == EnumDelegationState.ROUTED
 
     def test_invalid_transition_received_to_completed(self) -> None:
@@ -648,7 +648,7 @@ class TestFSMTransitions:
         with pytest.raises(
             InvalidStateTransitionError, match="Invalid state transition"
         ):
-            handler._transition(workflow, EnumDelegationState.COMPLETED)
+            handler._advance(workflow, EnumDelegationState.COMPLETED)
 
     def test_terminal_state_cannot_transition(self) -> None:
         handler = HandlerDelegationWorkflow()
@@ -656,7 +656,7 @@ class TestFSMTransitions:
             correlation_id=uuid4(), state=EnumDelegationState.COMPLETED
         )
         with pytest.raises(InvalidStateTransitionError):
-            handler._transition(workflow, EnumDelegationState.RECEIVED)
+            handler._advance(workflow, EnumDelegationState.RECEIVED)
 
     def test_failed_is_terminal(self) -> None:
         handler = HandlerDelegationWorkflow()
@@ -664,7 +664,7 @@ class TestFSMTransitions:
             correlation_id=uuid4(), state=EnumDelegationState.FAILED
         )
         with pytest.raises(InvalidStateTransitionError):
-            handler._transition(workflow, EnumDelegationState.RECEIVED)
+            handler._advance(workflow, EnumDelegationState.RECEIVED)
 
 
 # ---------------------------------------------------------------------------
