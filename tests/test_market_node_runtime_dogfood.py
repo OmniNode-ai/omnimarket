@@ -55,8 +55,9 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
     # OMN-13439 Phase 2b adds node_prod_promotion_grant_resolver_effect: 320 -> 321.
     # OMN-13476 W4 extracts the delegation escalation/tier decision into
     # node_delegation_escalation_decision_compute (COMPUTE): 321 -> 322.
-    assert summary["node_dirs"] == 322
-    assert summary["entry_points"] == 322
+    # OMN-12884 adds node_projection_replay_check_compute: 322 -> 323.
+    assert summary["node_dirs"] == 323
+    assert summary["entry_points"] == 323
     assert summary["missing_entry_points"] == []
     assert summary["dangling_entry_points"] == []
     assert summary["routable"] >= 297
@@ -123,6 +124,22 @@ def test_market_node_runtime_dogfood_proves_nested_contract_shapes() -> None:
     assert (
         routable["node_similarity_compute"]["command_topic"]
         == "onex.cmd.omnimemory.similarity-compute.v1"
+    )
+    assert (
+        routable["node_projection_replay_check_compute"]["command_topic"]
+        == "onex.cmd.omnimarket.projection-replay-check-start.v1"
+    )
+    assert (
+        routable["node_projection_replay_check_compute"]["terminal_topic"]
+        == "onex.evt.omnimarket.projection-replay-check-completed.v1"
+    )
+    assert (
+        routable["node_projection_replay_check_compute"]["input_model"]
+        == "omnimarket.nodes.node_projection_replay_check_compute.models.model_replay_check.ModelReplayCheckRequest"
+    )
+    assert (
+        routable["node_projection_replay_check_compute"]["handler"]
+        == "omnimarket.nodes.node_projection_replay_check_compute.handlers.handler_projection_replay_check.HandlerProjectionReplayCheck"
     )
     assert (
         routable["node_memory_storage_effect"]["command_topic"]
