@@ -13,10 +13,30 @@ ONEX node type: COMPUTE — pure, deterministic, no LLM calls.
 from __future__ import annotations
 
 import ast
+import logging
+import os
 import re
 from pathlib import Path
 
 from pydantic import BaseModel, ConfigDict, Field
+
+_log = logging.getLogger(__name__)
+
+# Default handler repos scanned when neither ``target_dirs`` nor ``repos`` is
+# supplied. Shared by the ``__main__`` CLI path and the RuntimeLocal dispatch
+# path so both produce identical scans (OMN-13514). Previously this list lived
+# only in ``__main__.py``, which the ``onex skill`` path never executes — making
+# the skill false-clean (0 handlers scanned, status=compliant).
+_DEFAULT_REPOS: tuple[str, ...] = (
+    "omnibase_infra",
+    "omniintelligence",
+    "omnimemory",
+    "omnibase_core",
+    "omniclaude",
+    "onex_change_control",
+    "omnibase_spi",
+)
+
 
 # ---------------------------------------------------------------------------
 # Models
@@ -38,11 +58,23 @@ class ModelComplianceViolation(BaseModel):
 
 
 class ComplianceSweepRequest(BaseModel):
-    """Input for the compliance sweep handler."""
+    """Input for the compliance sweep handler.
+
+    Two ways to specify scan targets (resolved by :func:`resolve_target_dirs`):
+
+    * ``target_dirs`` — explicit absolute directory paths (highest precedence).
+    * ``repos`` — bare repo names resolved against ``$OMNI_HOME`` to absolute
+      dirs. This is the field the ``onex skill compliance_sweep`` mapping and
+      the node ``contract.yaml`` supply (OMN-13514).
+
+    When BOTH are empty the handler falls back to :data:`_DEFAULT_REPOS`, so a
+    no-arg dispatch scans the real handler universe instead of zero handlers.
+    """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     target_dirs: list[str] = Field(default_factory=list)
+    repos: list[str] = Field(default_factory=list)
     checks: list[str] | None = None
     dry_run: bool = False
 
@@ -90,6 +122,15 @@ _EXCLUDED_DIRS = {
     "dist",
     "build",
     "migrations",
+    # Worktree copies of canonical src/ double-count every handler — exclude
+    # them so the $OMNI_HOME scan does not over-report (OMN-13514).
+    "omni_worktrees",
+    # Test trees and fixtures deliberately contain the patterns being detected
+    # (e.g. scripts/ci/tests/fixtures/compliance_repo/...). Excluding them keeps
+    # the scan focused on real handler code.
+    "tests",
+    "fixtures",
+    "test",
 }
 
 _HARDCODED_TOPIC_RE = re.compile(r'"onex\.[a-z]+\.[a-z]+\.[a-z]')
@@ -112,6 +153,41 @@ _LOGIC_INDICATORS = [
 
 
 # ---------------------------------------------------------------------------
+# Target resolution (shared by __main__ and the RuntimeLocal dispatch path)
+# ---------------------------------------------------------------------------
+
+
+def resolve_target_dirs(
+    request: ComplianceSweepRequest, omni_home: str | os.PathLike[str]
+) -> list[str]:
+    """Resolve the absolute scan directories for a request.
+
+    Precedence (OMN-13514 — identical for ``__main__`` and the dispatch path):
+
+    1. Explicit ``request.target_dirs`` (already absolute) — returned as-is.
+    2. ``request.repos`` (bare repo names) resolved against ``omni_home``.
+    3. :data:`_DEFAULT_REPOS` when both are empty.
+
+    Bare repo names are resolved to ``omni_home / <repo>``; only existing
+    directories are returned. Missing repos are logged, not silently dropped
+    into a wrong default.
+    """
+    if request.target_dirs:
+        return list(request.target_dirs)
+
+    repos = request.repos or list(_DEFAULT_REPOS)
+    root = Path(omni_home)
+    resolved: list[str] = []
+    for repo in repos:
+        candidate = root / repo
+        if candidate.is_dir():
+            resolved.append(str(candidate))
+        else:
+            _log.warning("repo dir not found: %s", candidate)
+    return resolved
+
+
+# ---------------------------------------------------------------------------
 # Handler
 # ---------------------------------------------------------------------------
 
@@ -130,13 +206,21 @@ class NodeComplianceSweep:
     ]
 
     def handle(self, request: ComplianceSweepRequest) -> ComplianceSweepResult:
-        """Execute the compliance sweep across target directories."""
+        """Execute the compliance sweep across target directories.
+
+        Resolves scan targets via :func:`resolve_target_dirs` so the dispatch
+        path (empty/`repos` payload) scans the default repo set exactly like
+        the ``__main__`` CLI path, instead of defaulting to zero handlers
+        (OMN-13514).
+        """
         checks = request.checks or self.ALL_CHECKS
         violations: list[ModelComplianceViolation] = []
         handlers_scanned = 0
         compliant_count = 0
 
-        for target_dir in request.target_dirs:
+        target_dirs = self._resolve_targets(request)
+
+        for target_dir in target_dirs:
             target = Path(target_dir)
             if not target.is_dir():
                 continue
@@ -166,7 +250,9 @@ class NodeComplianceSweep:
                     "node.py" in handler_file.name or handler_file.name == "__init__.py"
                 ):
                     handler_violations.extend(
-                        self._check_logic_in_node(repo_name, rel_path, node_name, lines)
+                        self._check_logic_in_node(
+                            repo_name, rel_path, node_name, lines, handler_file
+                        )
                     )
 
                 if handler_violations:
@@ -184,6 +270,25 @@ class NodeComplianceSweep:
             status=status,
             dry_run=request.dry_run,
         )
+
+    def _resolve_targets(self, request: ComplianceSweepRequest) -> list[str]:
+        """Resolve absolute scan dirs, reading ``$OMNI_HOME`` only when needed.
+
+        Explicit ``target_dirs`` never need ``$OMNI_HOME`` (the ``__main__``
+        path and direct callers already pass absolute paths). Repo-name
+        resolution does: fail fast with a clear error if ``OMNI_HOME`` is unset
+        rather than silently scanning zero handlers (OMN-13514, Rule 8).
+        """
+        if request.target_dirs:
+            return list(request.target_dirs)
+
+        omni_home = os.environ.get("OMNI_HOME")
+        if not omni_home:
+            raise ValueError(
+                "OMNI_HOME is not set — cannot resolve repo names to scan "
+                "directories. Set OMNI_HOME or pass explicit target_dirs."
+            )
+        return resolve_target_dirs(request, omni_home)
 
     def _find_handler_files(self, root: Path) -> list[Path]:
         """Find Python files in handler directories."""
@@ -271,10 +376,23 @@ class NodeComplianceSweep:
         return violations
 
     def _check_logic_in_node(
-        self, repo: str, path: str, node: str, lines: list[str]
+        self,
+        repo: str,
+        path: str,
+        node: str,
+        lines: list[str],
+        handler_file: Path,
     ) -> list[ModelComplianceViolation]:
+        # Lines wholly inside string literals (docstrings, multi-line string
+        # constants) are NOT business logic — they are documentation or code
+        # examples. Skip them so docstring snippets like
+        # ``class MyModel(BaseModel)...`` don't produce false LOGIC_IN_NODE
+        # findings (OMN-13514).
+        string_literal_lines = self._string_literal_line_numbers(handler_file)
         violations = []
         for i, line in enumerate(lines, 1):
+            if i in string_literal_lines:
+                continue
             for pattern in _LOGIC_INDICATORS:
                 if pattern.search(line):
                     violations.append(
@@ -289,3 +407,27 @@ class NodeComplianceSweep:
                         )
                     )
         return violations
+
+    def _string_literal_line_numbers(self, handler_file: Path) -> set[int]:
+        """Return the 1-based line numbers occupied by string-literal AST nodes.
+
+        Covers docstrings and any other ``ast.Constant`` string (multi-line or
+        single-line). On parse failure returns an empty set (the regex pass
+        then runs over every line, matching prior behaviour).
+        """
+        try:
+            source = handler_file.read_text(encoding="utf-8")
+            tree = ast.parse(source)
+        except (OSError, SyntaxError, UnicodeDecodeError):
+            return set()
+
+        covered: set[int] = set()
+        for ast_node in ast.walk(tree):
+            if (
+                isinstance(ast_node, ast.Constant)
+                and isinstance(ast_node.value, str)
+                and ast_node.lineno is not None
+            ):
+                end = ast_node.end_lineno or ast_node.lineno
+                covered.update(range(ast_node.lineno, end + 1))
+        return covered
