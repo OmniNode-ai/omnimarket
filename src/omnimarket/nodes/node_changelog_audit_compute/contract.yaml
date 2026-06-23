@@ -16,7 +16,8 @@ handler:
 
 handler_routing:
   handlers:
-    - handler:
+    - operation: changelog_audit
+      handler:
         name: HandlerChangelogAuditCompute
         module: omnimarket.nodes.node_changelog_audit_compute.handlers.handler_changelog_audit_compute
 

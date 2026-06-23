@@ -17,16 +17,20 @@ handler:
 
 handler_routing:
   handlers:
-    - handler:
+    - operation: process_watchdog
+      handler:
         name: HandlerProcessWatchdog
         module: omnimarket.nodes.node_process_watchdog.handlers.handler_process_watchdog
-    - handler:
+    - operation: daemon_health
+      handler:
         name: check_daemon_health
         module: omnimarket.nodes.node_process_watchdog.handlers.check_daemon_health
-    - handler:
+    - operation: socket
+      handler:
         name: check_socket
         module: omnimarket.nodes.node_process_watchdog.handlers.check_socket
-    - handler:
+    - operation: production
+      handler:
         name: checktargets_production
         module: omnimarket.nodes.node_process_watchdog.handlers.checktargets_production
 

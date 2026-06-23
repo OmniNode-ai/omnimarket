@@ -16,7 +16,8 @@ handler:
 
 handler_routing:
   handlers:
-    - handler:
+    - operation: occ_pr_writer
+      handler:
         name: HandlerOccPrWriterEffect
         module: omnimarket.nodes.node_occ_pr_writer_effect.handlers.handler_occ_pr_writer_effect
 

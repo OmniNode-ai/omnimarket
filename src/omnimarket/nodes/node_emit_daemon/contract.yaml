@@ -19,7 +19,8 @@ description: >
 
 handler_routing:
   handlers:
-    - handler:
+    - operation: emit_daemon
+      handler:
         name: HandlerEmitDaemon
         module: omnimarket.nodes.node_emit_daemon.handlers.handler_emit_daemon
 

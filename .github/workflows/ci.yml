@@ -113,6 +113,14 @@ jobs:
           src/omnimarket/configs/bifrost_delegation.yaml
           src/omnimarket/configs/routing_tiers.yaml
           src/omnimarket/data/model_registry/model_registry_v1.yaml
+      # OMN-13530: every operation_match (or absent-strategy) handler_routing
+      # entry must declare a non-empty 'operation' field. A missing operation
+      # makes the contract fail closed at RuntimeLocal startup ('handlers[i].
+      # operation is missing' / result=failed) — the 0.46.0 regression that
+      # took down the headless automation fleet. SYNC with pre-commit hook
+      # 'operation-match-requires-operation'.
+      - name: operation_match operation-field gate (enforce)
+        run: uv run python -m omnibase_core.validators.operation_match_requires_operation src/omnimarket
       # OMN-12972 (plan P2.7): Gemini registry/version hygiene. Every provider:google
       # registry entry + its bifrost backend must align with the live Vertex-served
       # model name PER ENVIRONMENT (Vertex = publisher-qualified, AI Studio = bare)

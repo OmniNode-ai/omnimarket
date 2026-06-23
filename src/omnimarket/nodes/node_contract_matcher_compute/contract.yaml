@@ -16,7 +16,8 @@ handler:
 
 handler_routing:
   handlers:
-    - handler:
+    - operation: contract_matcher
+      handler:
         name: HandlerContractMatcherCompute
         module: omnimarket.nodes.node_contract_matcher_compute.handlers.handler_contract_matcher_compute
 

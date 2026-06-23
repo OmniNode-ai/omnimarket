@@ -16,7 +16,8 @@ handler:
 
 handler_routing:
   handlers:
-    - handler:
+    - operation: checkpoint
+      handler:
         name: HandlerCheckpointCompute
         module: omnimarket.nodes.node_checkpoint_compute.handlers.handler_checkpoint_compute
 

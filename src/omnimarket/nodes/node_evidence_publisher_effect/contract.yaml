@@ -16,7 +16,8 @@ handler:
 
 handler_routing:
   handlers:
-    - handler:
+    - operation: evidence_publisher
+      handler:
         name: HandlerEvidencePublisherEffect
         module: omnimarket.nodes.node_evidence_publisher_effect.handlers.handler_evidence_publisher_effect
 

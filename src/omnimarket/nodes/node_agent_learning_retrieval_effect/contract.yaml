@@ -115,7 +115,8 @@ handler_routing:
     patch: 0
   routing_strategy: default
   handlers:
-    - routing_key: "retrieve"
+    - operation: agent_learning_retrieval
+      routing_key: "retrieve"
       handler_key: "HandlerAgentLearningRetrieval"
       priority: 0
       output_events: []

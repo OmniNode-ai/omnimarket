@@ -22,7 +22,8 @@ description: >
 handler_routing:
   routing_strategy: operation_match
   handlers:
-    - handler:
+    - operation: pr_lifecycle
+      handler:
         name: HandlerPrLifecycleOrchestrator
         module: omnimarket.nodes.node_pr_lifecycle_orchestrator.handlers.handler_pr_lifecycle_orchestrator
       event_model:

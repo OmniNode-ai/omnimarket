@@ -19,7 +19,8 @@ description: >
 handler_routing:
   routing_strategy: operation_match
   handlers:
-    - handler:
+    - operation: context_artifact_resolver
+      handler:
         name: HandlerArtifactResolver
         module: omnimarket.nodes.node_context_artifact_resolver_compute.handlers.handler_artifact_resolver
 

@@ -15,13 +15,15 @@ description: >
 handler_routing:
   routing_strategy: operation_match
   handlers:
-    - handler:
+    - operation: nightly_loop_controller
+      handler:
         name: HandlerNightlyLoopController
         module: omnimarket.nodes.node_nightly_loop_controller.handlers.handler_nightly_loop_controller
       event_model:
         name: ModelNightlyLoopConfig
         module: omnimarket.nodes.node_nightly_loop_controller.models.model_nightly_loop
-    - handler:
+    - operation: projection_nightly_loop
+      handler:
         name: HandlerProjectionNightlyLoop
         module: omnimarket.nodes.node_nightly_loop_controller.handlers.handler_projection_nightly_loop
 

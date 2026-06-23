@@ -18,12 +18,14 @@ handler:
 handler_routing:
   routing_strategy: operation_match
   handlers:
-    - handler:
+    - operation: projection_pattern_learning
+      handler:
         name: HandlerProjectionPatternLearning
         module: omnimarket.nodes.node_projection_pattern_learning.handlers.handler_projection_pattern_learning
       handler_module: omnimarket.nodes.node_projection_pattern_learning.handlers.handler_projection_pattern_learning
       event_model: omnimarket.nodes.node_projection_pattern_learning.handlers.handler_projection_pattern_learning.ModelPatternStoredEvent
-    - handler:
+    - operation: pattern_learning_projection_runner
+      handler:
         name: PatternLearningProjectionRunner
         module: omnimarket.nodes.node_projection_pattern_learning.handlers.handler_pattern_learning
       handler_module: omnimarket.nodes.node_projection_pattern_learning.handlers.handler_pattern_learning

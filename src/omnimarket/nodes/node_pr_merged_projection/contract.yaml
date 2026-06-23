@@ -46,7 +46,8 @@ handler:
 handler_routing:
   routing_strategy: operation_match
   handlers:
-    - handler:
+    - operation: pr_merged
+      handler:
         name: HandlerPrMergedProjection
         module: omnimarket.nodes.node_pr_merged_projection.handlers.handler_pr_merged_projection
 

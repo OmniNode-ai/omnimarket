@@ -22,7 +22,8 @@ handler:
 handler_routing:
   routing_strategy: direct
   handlers:
-    - handler:
+    - operation: delegation_ab_runner
+      handler:
         name: HandlerDelegationAbRunner
         module: omnimarket.nodes.node_delegation_ab_runner.handlers.handler_delegation_ab_runner
 

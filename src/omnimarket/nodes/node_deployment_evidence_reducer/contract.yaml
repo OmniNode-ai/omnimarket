@@ -16,7 +16,8 @@ handler:
 
 handler_routing:
   handlers:
-    - handler:
+    - operation: deployment_evidence
+      handler:
         name: HandlerDeploymentEvidenceReducer
         module: omnimarket.nodes.node_deployment_evidence_reducer.handlers.handler_deployment_evidence_reducer
 

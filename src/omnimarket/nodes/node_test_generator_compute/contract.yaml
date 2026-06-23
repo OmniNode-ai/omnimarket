@@ -11,7 +11,8 @@ description: >
 handler_routing:
   routing_strategy: operation_match
   handlers:
-    - handler:
+    - operation: test_generator
+      handler:
         name: HandlerTestGenerator
         module: omnimarket.nodes.node_test_generator_compute.handlers.handler_test_generator
 

@@ -87,7 +87,8 @@ externally_consumed_topics:
 handler_routing:
   routing_strategy: operation_match
   handlers:
-    - handler:
+    - operation: post_merge_knowledge_sync
+      handler:
         name: HandlerPostMergeSyncOrchestrator
         module: omnimarket.nodes.node_post_merge_knowledge_sync_orchestrator.handlers.handler_post_merge_sync
 

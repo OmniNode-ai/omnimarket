@@ -27,7 +27,8 @@ handler:
 handler_routing:
   routing_strategy: operation_match
   handlers:
-    - handler:
+    - operation: decision_store
+      handler:
         name: HandlerDecisionStoreOrchestrator
         module: omnimarket.nodes.node_decision_store_orchestrator.handlers.handler_decision_store_orchestrator
 

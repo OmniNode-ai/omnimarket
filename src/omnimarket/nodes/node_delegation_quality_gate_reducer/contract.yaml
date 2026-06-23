@@ -73,7 +73,8 @@ handler_routing:
     # ModelQualityGateIntent and this node consumes it. event_model makes the
     # runtime validate the payload to ModelQualityGateIntent before calling
     # handle() AND type-scopes the dispatcher.
-    - event_model:
+    - operation: delegation_quality_gate
+      event_model:
         name: "ModelQualityGateIntent"
         module: "omnibase_core.models.delegation.wire"
       handler:

@@ -23,7 +23,8 @@ output_model:
 handler_routing:
   routing_strategy: direct
   handlers:
-    - handler:
+    - operation: generate_node
+      handler:
         name: HandlerGenerateNode
         module: omnimarket.nodes.node_generate_node_effect.handlers.handler_generate_node
 

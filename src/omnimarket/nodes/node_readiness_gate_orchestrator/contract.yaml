@@ -17,7 +17,8 @@ handler:
 
 handler_routing:
   handlers:
-    - handler:
+    - operation: readiness_gate
+      handler:
         name: HandlerReadinessGateOrchestrator
         module: omnimarket.nodes.node_readiness_gate_orchestrator.handlers.handler_readiness_gate_orchestrator
 

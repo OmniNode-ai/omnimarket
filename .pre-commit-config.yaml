@@ -317,6 +317,22 @@ repos:
         pass_filenames: false
         stages: [pre-commit]
 
+      # OMN-13530: require an 'operation' field on every operation_match (or
+      # absent-strategy) handler_routing entry. A missing operation makes the
+      # contract fail closed at RuntimeLocal startup ('handlers[i].operation is
+      # missing' / result=failed) — the 0.46.0 regression that took down the
+      # headless automation fleet (merge_sweep, ci_watch, auto_merge, build_loop,
+      # coderabbit_triage, create_ticket). Canonical core validator; runs as a
+      # local hook against the installed omnibase_core. SYNC with ci.yml step
+      # "operation_match operation-field gate (enforce)".
+      - id: operation-match-requires-operation
+        name: operation_match handler operation-field gate (OMN-13530)
+        language: system
+        entry: uv run python -m omnibase_core.validators.operation_match_requires_operation
+        files: (^|/)contract\.yaml$
+        pass_filenames: true
+        stages: [pre-commit]
+
       # OMN-12972 (plan P2.7): Gemini registry/version hygiene gate. Enforces
       # that every provider:google registry entry + its bifrost backend align
       # with the live Vertex-served model name PER ENVIRONMENT (Vertex names are

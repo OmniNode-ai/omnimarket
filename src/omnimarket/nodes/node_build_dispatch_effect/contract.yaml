@@ -21,7 +21,8 @@ handler_routing:
       handler:
         name: HandlerBuildDispatch
         module: omnimarket.nodes.node_build_dispatch_effect.handlers.handler_build_dispatch
-    - handler:
+    - operation: dispatch_history_store
+      handler:
         name: DispatchHistoryStore
         module: omnimarket.nodes.node_build_dispatch_effect.handlers.dispatch_history_store
 

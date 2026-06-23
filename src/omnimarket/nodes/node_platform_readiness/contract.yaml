@@ -16,10 +16,12 @@ handler:
 
 handler_routing:
   handlers:
-    - handler:
+    - operation: platform_readiness
+      handler:
         name: NodePlatformReadiness
         module: omnimarket.nodes.node_platform_readiness.handlers.handler_platform_readiness
-    - handler:
+    - operation: dimension_checks
+      handler:
         name: dimension_checks
         module: omnimarket.nodes.node_platform_readiness.handlers.dimension_checks
 
