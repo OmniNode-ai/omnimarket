@@ -29,6 +29,9 @@ from omnimarket.nodes.node_generation_consumer.validator_corpora.corpus_hardcode
 from omnimarket.nodes.node_generation_consumer.validator_corpora.corpus_no_faked_boundary import (
     NO_FAKED_BOUNDARY_CORPUS,
 )
+from omnimarket.nodes.node_generation_consumer.validator_corpora.corpus_pin_hygiene import (
+    PIN_HYGIENE_CORPUS,
+)
 from omnimarket.nodes.node_generation_consumer.validator_corpora.corpus_todo_marker import (
     TODO_MARKER_CORPUS,
 )
@@ -39,6 +42,7 @@ __all__ = [
     "HARDCODED_LOCALHOST_URL_CORPUS",
     "HARDCODED_TOPIC_CORPUS",
     "NO_FAKED_BOUNDARY_CORPUS",
+    "PIN_HYGIENE_CORPUS",
     "TODO_MARKER_CORPUS",
 ]
 
@@ -51,4 +55,5 @@ CORPORA = {
     "hardcoded-topic-string": HARDCODED_TOPIC_CORPUS,
     "todo-fixme-marker": TODO_MARKER_CORPUS,
     "no-faked-boundary": NO_FAKED_BOUNDARY_CORPUS,
+    "pin-hygiene": PIN_HYGIENE_CORPUS,
 }

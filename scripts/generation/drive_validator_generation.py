@@ -157,6 +157,39 @@ _TASK_DESCRIPTIONS: dict[str, str] = {
         "the matched pattern. Use only the Python standard library (re). Do not read "
         "files, the network, env vars, or the clock."
     ),
+    "pin-hygiene": (
+        "Generate a Python validator handler that scans dependency-pin source text "
+        "for SIBLING git pins whose pinned commit is NOT an ancestor of that "
+        "sibling's dev line, and returns the violations. The handler must define "
+        "`def handle(input_data):` reading the source text from input_data['source']. "
+        "Scan line by line. A SIBLING is one of exactly these three package names: "
+        "omnibase-core, omnibase-spi, omnibase-compat (the hyphenated distribution "
+        "names; also accept the underscore repo form omnibase_core/omnibase_spi/"
+        "omnibase_compat that appears inside the git URL). A line is a sibling GIT "
+        "PIN when it names one of those siblings AND carries a git revision in ANY of "
+        'these three syntaxes: (a) pyproject [tool.uv.sources] form `rev = "<sha>"`, '
+        "(b) PEP-508 form `@<sha>` after a git+https URL, (c) uv.lock form "
+        '`?rev=<sha>`; OR it pins the sibling by a git `branch = "<name>"` (e.g. '
+        'branch = "main"). Each such pin line carries a trailing resolved-ancestry '
+        "annotation comment of the form `# pin-ancestry: <verdict>` where <verdict> "
+        "is one of: ancestor, orphan, unknown (this annotation is injected by the "
+        "caller after resolving git ancestry — the handler does NOT compute git "
+        "ancestry itself, it reads the annotation). FLAG the line when the verdict is "
+        "anything other than 'ancestor' — i.e. flag 'orphan' (the pinned commit "
+        "diverged / is off the dev line) and flag 'unknown' (ancestry could not be "
+        "resolved — fail CLOSED). A pin annotated `# pin-ancestry: ancestor` must NOT "
+        "be flagged. "
+        "Do NOT flag CLEAN lines: a git pin for a NON-sibling package (any package "
+        "name that is not one of the three siblings, e.g. some-thirdparty-lib) must "
+        "NOT be flagged even if annotated orphan — it is out of scope; a sibling "
+        "pinned by a published VERSION RANGE with no git rev at all (e.g. "
+        '`"omnibase-core>=0.44.0,<0.47.0"`) is not a git pin and must NOT be flagged; '
+        "and any sibling git pin annotated `# pin-ancestry: ancestor` must NOT be "
+        "flagged. "
+        "Return a dict {'findings': [...]} where each finding describes the line, the "
+        "sibling, and the resolved verdict. Use only the Python standard library "
+        "(re). Do not read files, the network, env vars, or the clock."
+    ),
 }
 
 
