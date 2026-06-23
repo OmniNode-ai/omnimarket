@@ -42,27 +42,58 @@ class TestDispatchPathResolution:
         request = ComplianceSweepRequest(repos=["omnibase_core"])
         assert request.repos == ["omnibase_core"]
 
-    def test_no_arg_request_scans_real_handlers(self) -> None:
+    def test_no_arg_request_scans_real_handlers(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """A no-arg dispatch (empty payload) must scan the default repo set.
 
         This is the core OMN-13514 regression: the skill returned
         ``handlers_scanned=0, status=compliant`` for a no-arg invocation.
-        """
-        # Empty request — exactly what `onex skill compliance_sweep` (no flags)
-        # produces through the RuntimeLocal dispatch path.
-        request = ComplianceSweepRequest()
-        result = NodeComplianceSweep().handle(request)
 
-        assert result.handlers_scanned > 0, (
+        Hermetic: a synthetic ``$OMNI_HOME`` is populated with every default
+        repo dir, each carrying one handler file, so the test does not depend
+        on the live multi-repo workspace (which CI does not check out).
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            omni_home = Path(tmp)
+            for repo in _DEFAULT_REPOS:
+                handlers = omni_home / repo / "src" / "nodes" / "node_a" / "handlers"
+                handlers.mkdir(parents=True)
+                (handlers / "handler_a.py").write_text("x = 1\n")
+            monkeypatch.setenv("OMNI_HOME", str(omni_home))
+
+            # Empty request — exactly what `onex skill compliance_sweep` (no
+            # flags) produces through the RuntimeLocal dispatch path.
+            result = NodeComplianceSweep().handle(ComplianceSweepRequest())
+
+        assert result.handlers_scanned == len(_DEFAULT_REPOS), (
             "no-arg dispatch must resolve the default repo set and scan the "
             "real handler universe, not silently scan zero handlers"
         )
 
-    def test_repos_request_scans_real_handlers(self) -> None:
-        """A ``repos`` payload (string repo names) must resolve and scan."""
-        request = ComplianceSweepRequest(repos=["omnibase_core"])
-        result = NodeComplianceSweep().handle(request)
-        assert result.handlers_scanned > 0
+    def test_no_arg_request_fails_fast_without_omni_home(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """An unset ``$OMNI_HOME`` must fail fast, never silently scan zero."""
+        monkeypatch.delenv("OMNI_HOME", raising=False)
+        with pytest.raises(ValueError, match="OMNI_HOME is not set"):
+            NodeComplianceSweep().handle(ComplianceSweepRequest())
+
+    def test_repos_request_scans_resolved_handlers(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A ``repos`` payload (bare names) must resolve against $OMNI_HOME."""
+        with tempfile.TemporaryDirectory() as tmp:
+            omni_home = Path(tmp)
+            handlers = omni_home / "omnibase_core" / "handlers"
+            handlers.mkdir(parents=True)
+            (handlers / "handler_x.py").write_text("x = 1\n")
+            monkeypatch.setenv("OMNI_HOME", str(omni_home))
+
+            result = NodeComplianceSweep().handle(
+                ComplianceSweepRequest(repos=["omnibase_core"])
+            )
+        assert result.handlers_scanned == 1
 
     def test_resolver_uses_default_repos_when_empty(self) -> None:
         """resolve_target_dirs falls back to _DEFAULT_REPOS for an empty request."""
