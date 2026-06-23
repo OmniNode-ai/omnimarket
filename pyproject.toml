@@ -158,6 +158,7 @@ node_projection_routing_decision = "omnimarket.nodes.node_projection_routing_dec
 node_projection_pattern_learning = "omnimarket.nodes.node_projection_pattern_learning"
 node_projection_llm_routing = "omnimarket.nodes.node_projection_llm_routing"
 node_projection_dep_health = "omnimarket.nodes.node_projection_dep_health"
+node_projection_replay_check_compute = "omnimarket.nodes.node_projection_replay_check_compute"
 node_emit_daemon = "omnimarket.nodes.node_emit_daemon"
 node_verify_effect = "omnimarket.nodes.node_verify_effect"
 node_build_loop_orchestrator = "omnimarket.nodes.node_build_loop_orchestrator"
