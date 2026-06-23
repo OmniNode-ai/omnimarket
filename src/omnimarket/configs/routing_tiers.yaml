@@ -109,6 +109,11 @@ tiers:
         max_context_tokens: 128000
         use_for:
           - code_generation
+          # OMN-13541: code_review added so the cheap_cloud tier is a real
+          # escalation fallback for code_review (its escalation_policy.tier_order
+          # is [local, cheap_cloud]). Without it code_review could only route to
+          # the single local-coder backend — a single point of failure.
+          - code_review
           - reasoning
           - research
           - test
