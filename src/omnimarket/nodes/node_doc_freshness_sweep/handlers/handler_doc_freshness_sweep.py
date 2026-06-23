@@ -70,7 +70,8 @@ _DEFAULT_REPOS = [
     "onex_change_control",
 ]
 
-# Directories to exclude from scanning
+# Substrings excluded from scanning (matched against the doc's repo-relative
+# path). "docs/history" is intentionally a multi-segment substring match.
 _EXCLUDE_DIRS = frozenset(
     {
         "docs/history",
@@ -78,6 +79,26 @@ _EXCLUDE_DIRS = frozenset(
         ".git",
         "__pycache__",
         ".venv",
+    }
+)
+
+# Path *segments* whose presence anywhere in the repo-relative path means the
+# doc lives inside a nested git worktree or a generated/dependency tree and is a
+# duplicate of the canonical source. Matched per-segment (not substring) so a
+# legitimately named file like ``docs/using_worktrees.md`` is NOT excluded —
+# only an actual ``worktrees`` directory segment is (OMN-13521).
+_EXCLUDE_PATH_SEGMENTS = frozenset(
+    {
+        ".claude",
+        "worktrees",
+        "omni_worktrees",
+        ".venv",
+        "node_modules",
+        "__pycache__",
+        ".git",
+        ".mypy_cache",
+        ".pytest_cache",
+        ".ruff_cache",
     }
 )
 
@@ -136,10 +157,15 @@ def _collect_md_files(repo_root: Path, claude_md_only: bool) -> list[Path]:
 
     results: list[Path] = []
     for p in matches:
-        rel = str(p.relative_to(repo_root))
-        excluded = any(excl in rel for excl in _EXCLUDE_DIRS)
-        if not excluded:
-            results.append(p)
+        rel_path = p.relative_to(repo_root)
+        rel = str(rel_path)
+        # Substring exclusions (e.g. multi-segment "docs/history").
+        if any(excl in rel for excl in _EXCLUDE_DIRS):
+            continue
+        # Per-segment exclusions: skip nested worktrees / generated trees.
+        if any(seg in _EXCLUDE_PATH_SEGMENTS for seg in rel_path.parts):
+            continue
+        results.append(p)
     return results
 
 
