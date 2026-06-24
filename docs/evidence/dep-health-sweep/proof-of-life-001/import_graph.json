@@ -1,5 +1,5 @@
 {
-  "graphify_version": "0.8.2",
+  "graphify_version": "ast-fallback",
   "nodes": [],
   "edges": [],
   "orphan_modules": []
