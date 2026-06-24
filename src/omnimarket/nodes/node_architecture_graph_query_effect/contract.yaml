@@ -48,8 +48,11 @@ config_fields:
     default: "memgraph"
     description: "Graph backend identifier (memgraph or neo4j-compatible)"
   bolt_uri:
-    default: "bolt://localhost:7687"
-    description: "Bolt protocol URI for the Memgraph instance"
+    default: "${env.ARCH_GRAPH_BOLT_URI}"
+    description: >
+      Bolt protocol URI for the Memgraph instance. Overlay-resolved via
+      ${env.ARCH_GRAPH_BOLT_URI} through the sanctioned overlay boundary;
+      bound per-lane (dev/stability/prod). Never read from os.environ directly.
   timeout_seconds:
     default: 30
     description: "Query timeout in seconds"
