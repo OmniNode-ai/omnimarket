@@ -56,8 +56,10 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
     # OMN-13476 W4 extracts the delegation escalation/tier decision into
     # node_delegation_escalation_decision_compute (COMPUTE): 321 -> 322.
     # OMN-12884 adds node_projection_replay_check_compute: 322 -> 323.
-    assert summary["node_dirs"] == 323
-    assert summary["entry_points"] == 323
+    # OMN-13583 adds node_repo_health_classify_compute (COMPUTE; keystone of the
+    # merge-sweep repo-health lane): 323 -> 324.
+    assert summary["node_dirs"] == 324
+    assert summary["entry_points"] == 324
     assert summary["missing_entry_points"] == []
     assert summary["dangling_entry_points"] == []
     assert summary["routable"] >= 297
