@@ -7,7 +7,7 @@ Mode: dry_run
 Status: blocked
 
 Input
-  ticket_id: OMN-9530
+  ticket_id: TICKET-001
 
 Execution
   - pre_flight: succeeded - validated command envelope
