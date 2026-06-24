@@ -133,22 +133,22 @@ class TestPatternLearningChainValidation:
         # OMN-12660 WS-G: sea_acceptance additional required fields
         projected_rows["sea_acceptance"]["task_type"] = "generate_onex_node"
         projected_rows["sea_acceptance"]["delegated_to"] = "claude-sonnet-4-6"
-        # OMN-12660 WS-G: d3_local_routing additional required fields
-        projected_rows["d3_local_routing"]["base_url"] = (
-            "http://192.168.86.201:8000"  # onex-allow-internal-ip OMN-12660 reason="D3 sweep fixture: reference local-first endpoint"
-        )
-        projected_rows["d3_local_routing"]["model"] = "qwen3-coder-30b"
-        # OMN-12660 WS-G: d1_d2_scaffold additional required fields
-        projected_rows["d1_d2_scaffold"]["node_name"] = "NodeExampleCompute"
-        projected_rows["d1_d2_scaffold"]["contract_passed"] = True
-        projected_rows["d1_d2_scaffold"]["content"] = "class HandlerExample: ..."
-        # OMN-12660 WS-G: d4_blank_content additional required fields
-        projected_rows["d4_blank_content"]["content"] = "Generated node code..."
-        projected_rows["d4_blank_content"]["model_used"] = "qwen3-coder-30b"
-        # OMN-12660 WS-G: d9_wheel_module additional required fields
-        projected_rows["d9_wheel_module"]["node_startup_ok"] = True
-        # OMN-12660 WS-G: f1_publish_loop additional required fields
-        projected_rows["f1_publish_loop"]["published_at"] = "2026-06-03T00:00:00Z"
+        # OMN-12660 WS-G / OMN-13544: d3_local_routing reconciled to real
+        # delegation_events columns (base_url/model were never columns).
+        projected_rows["d3_local_routing"]["model_name"] = "qwen3-coder-30b"
+        # OMN-12660 WS-G / OMN-13544: d1_d2_scaffold reconciled
+        # (node_name/contract_passed/content were never columns).
+        projected_rows["d1_d2_scaffold"]["quality_gate_passed"] = True
+        projected_rows["d1_d2_scaffold"]["response_text"] = "class HandlerExample: ..."
+        # OMN-12660 WS-G / OMN-13544: d4_blank_content reconciled
+        # (content/model_used were never columns).
+        projected_rows["d4_blank_content"]["response_text"] = "Generated node code..."
+        projected_rows["d4_blank_content"]["model_name"] = "qwen3-coder-30b"
+        # OMN-12660 WS-G / OMN-13544: d9_wheel_module reconciled
+        # (node_startup_ok was never a column).
+        # OMN-12660 WS-G / OMN-13544: f1_publish_loop reconciled
+        # (published_at was never a column; the event time column is timestamp).
+        projected_rows["f1_publish_loop"]["timestamp"] = "2026-06-03T00:00:00Z"
         # OMN-12687 WS I-A: inference request/response round-trip fields
         projected_rows["delegation_inference_round_trip"].update(
             {
