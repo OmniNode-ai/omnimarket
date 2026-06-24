@@ -349,7 +349,7 @@ class OccAutobindAdapter:
 
     @staticmethod
     def _detect_ticket(title: str, body: str) -> str | None:
-        """Detect the OMN-XXXX ticket id from PR title (preferred) then body."""
+        """Detect the OMN-NNNN ticket id from PR title (preferred) then body."""
         for source in (title, body):
             match = _TICKET_RE.search(source)
             if match is not None:
