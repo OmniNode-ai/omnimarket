@@ -1294,7 +1294,7 @@ class HandlerPrLifecycleOrchestrator:
 
         Returns a ``ModelOrgWideOpenPrInventory`` when available, or ``None`` if
         the wired inventory handler does not expose the census (e.g. a minimal
-        test stub) — in which case the sweep-done gate is treated as satisfied.
+        test double) — in which case the sweep-done gate is treated as satisfied.
         """
         self._ensure_sub_handlers()
         collector = getattr(self._inventory, "collect_org_wide_open_prs", None)
@@ -1722,7 +1722,7 @@ class HandlerPrLifecycleOrchestrator:
         exact PRs that still block it.
 
         A FAILED sweep is left untouched — its failure already blocks the report.
-        When no census is available (e.g. a minimal test stub that does not
+        When no census is available (e.g. a minimal test double that does not
         expose ``collect_org_wide_open_prs``), the gate is a no-op.
         """
         if state.fsm is not EnumOrchestratorState.COMPLETE:
