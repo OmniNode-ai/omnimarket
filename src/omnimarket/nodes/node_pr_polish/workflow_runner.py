@@ -51,6 +51,9 @@ from omnimarket.nodes.node_dispatch_worker_execution_effect.handlers.handler_dis
 from omnimarket.nodes.node_pr_polish.models.model_pr_polish_completed_event import (
     ModelPrPolishCompletedEvent,
 )
+from omnimarket.nodes.node_pr_polish.models.model_pr_polish_precommit_failure import (
+    ModelPrPolishPrecommitFailure,
+)
 from omnimarket.nodes.node_pr_polish.models.model_pr_polish_start_command import (
     ModelPrPolishStartCommand,
 )
@@ -59,6 +62,24 @@ from omnimarket.nodes.node_pr_polish.models.model_pr_polish_state import (
 )
 
 _REPO_ROOT = Path(__file__).resolve().parents[4]
+
+_PRECOMMIT_OUTPUT_TAIL_CHARS = 4000
+
+
+class PrecommitFailureError(RuntimeError):
+    """Raised when the worktree pre-commit run exits non-zero.
+
+    Carries the parsed structured signal so the live runner can attach it to the
+    emitted completed event instead of collapsing the failure into a one-line
+    error message.
+    """
+
+    def __init__(self, failure: ModelPrPolishPrecommitFailure) -> None:
+        super().__init__(
+            f"{failure.command} failed with exit {failure.exit_code}: "
+            f"hook_ids={list(failure.hook_ids)}"
+        )
+        self.failure = failure
 
 
 class RepairDispatchEvidence(TypedDict):
@@ -266,6 +287,9 @@ def run_live_pr_polish(
             }
         )
     except Exception as exc:
+        precommit_failure = (
+            exc.failure if isinstance(exc, PrecommitFailureError) else None
+        )
         completed = ModelPrPolishCompletedEvent(
             correlation_id=command.correlation_id,
             final_phase=EnumPrPolishPhase.FAILED,
@@ -274,6 +298,7 @@ def run_live_pr_polish(
             pr_number=command.pr_number,
             run_dir=str(run_dir),
             error_message=str(exc),
+            precommit_failure=precommit_failure,
         )
         payload.update(
             {
@@ -282,6 +307,8 @@ def run_live_pr_polish(
                 "completed_at": completed.completed_at.isoformat(),
             }
         )
+        if precommit_failure is not None:
+            payload["precommit_failure"] = precommit_failure.model_dump(mode="json")
 
     payload["completed_event"] = completed.model_dump(mode="json")
     (run_dir / "result.json").write_text(json.dumps(payload, indent=2))
@@ -606,11 +633,7 @@ def _run_market_polish_phases(
             }
         )
     else:
-        _run_checked(
-            ["uv", "run", "pre-commit", "run", "--all-files"],
-            cwd=worktree,
-            timeout=1800,
-        )
+        _run_precommit_all_files(worktree)
         results.append(
             {
                 "phase": "local_review",
@@ -620,6 +643,78 @@ def _run_market_polish_phases(
         )
 
     return results
+
+
+def _run_precommit_all_files(worktree: Path) -> None:
+    """Run ``pre-commit run --all-files`` in the worktree, capturing failures.
+
+    On a clean run this returns normally. On a non-zero exit it parses the
+    captured output into ``ModelPrPolishPrecommitFailure`` and raises
+    ``PrecommitFailureError`` carrying that signal so the live runner can attach
+    the failing hook ids and reported file paths to the completed event instead
+    of losing them inside a one-line error message.
+    """
+    argv = ["uv", "run", "pre-commit", "run", "--all-files"]
+    env = os.environ.copy()
+    proc = subprocess.run(
+        argv,
+        cwd=str(worktree),
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=1800,
+    )
+    if proc.returncode == 0:
+        return
+    combined = ((proc.stdout or "") + "\n" + (proc.stderr or "")).strip()
+    hook_ids, paths = _parse_precommit_failure(combined)
+    raise PrecommitFailureError(
+        ModelPrPolishPrecommitFailure(
+            command=" ".join(argv),
+            exit_code=proc.returncode,
+            hook_ids=hook_ids,
+            paths=paths,
+            output_tail=combined[-_PRECOMMIT_OUTPUT_TAIL_CHARS:],
+        )
+    )
+
+
+_PRECOMMIT_HOOK_ID_RE = re.compile(r"^\s*-\s*hook id:\s*(?P<hook_id>\S+)\s*$")
+# Path-like token: a slash-containing run of path characters, e.g.
+# ``src/omnimarket/foo.py`` (trailing ``:line:col`` diagnostic noise is stripped
+# off by the bounded character class below excluding ``:``).
+_PRECOMMIT_PATH_TOKEN_RE = re.compile(r"(?<![\w./])([\w.\-]+/[\w./\-]+)")
+
+
+def _parse_precommit_failure(output: str) -> tuple[tuple[str, ...], tuple[str, ...]]:
+    """Parse failing hook ids and reported file paths from pre-commit output.
+
+    ``pre-commit run --all-files`` prints, for each failing hook, a header line
+    ending in ``Failed`` followed by a ``- hook id: <id>`` line and a block that
+    frequently lists the files the hook touched or rejected (as bare paths, in
+    ``Fixing <path>`` lines, or as ``<path>:line:col: <diagnostic>`` lines).
+    Parsing is best-effort: when the structure does not match, the raw output
+    tail still carries the signal on the model.
+    """
+    hook_ids: list[str] = []
+    paths: list[str] = []
+    seen_hook_ids: set[str] = set()
+    seen_paths: set[str] = set()
+    for line in output.splitlines():
+        hook_match = _PRECOMMIT_HOOK_ID_RE.match(line)
+        if hook_match is not None:
+            hook_id = hook_match.group("hook_id")
+            if hook_id not in seen_hook_ids:
+                seen_hook_ids.add(hook_id)
+                hook_ids.append(hook_id)
+            continue
+        for path_match in _PRECOMMIT_PATH_TOKEN_RE.finditer(line):
+            candidate = path_match.group(1)
+            if candidate not in seen_paths:
+                seen_paths.add(candidate)
+                paths.append(candidate)
+    return tuple(hook_ids), tuple(paths)
 
 
 def _resolve_pr_head_branch(repo: str, pr_number: int) -> str:

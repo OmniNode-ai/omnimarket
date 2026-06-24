@@ -7,6 +7,9 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from omnimarket.nodes.node_pr_polish.models.model_pr_polish_precommit_failure import (
+    ModelPrPolishPrecommitFailure,
+)
 from omnimarket.nodes.node_pr_polish.models.model_pr_polish_state import (
     EnumPrPolishPhase,
 )
@@ -35,6 +38,13 @@ class ModelPrPolishCompletedEvent(BaseModel):
     repair_workers_skipped: int = Field(default=0, ge=0)
     delegation_publish_status: str | None = Field(default=None)
     error_message: str | None = Field(default=None)
+    precommit_failure: ModelPrPolishPrecommitFailure | None = Field(
+        default=None,
+        description=(
+            "Structured pre-commit failure signal (hook ids + paths); None when "
+            "the pre-commit step passed or did not run."
+        ),
+    )
 
 
 __all__: list[str] = ["ModelPrPolishCompletedEvent"]

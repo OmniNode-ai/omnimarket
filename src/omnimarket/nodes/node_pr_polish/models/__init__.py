@@ -6,6 +6,9 @@ from omnimarket.nodes.node_pr_polish.models.model_pr_polish_completed_event impo
 from omnimarket.nodes.node_pr_polish.models.model_pr_polish_phase_event import (
     ModelPrPolishPhaseEvent,
 )
+from omnimarket.nodes.node_pr_polish.models.model_pr_polish_precommit_failure import (
+    ModelPrPolishPrecommitFailure,
+)
 from omnimarket.nodes.node_pr_polish.models.model_pr_polish_start_command import (
     ModelPrPolishStartCommand,
 )
@@ -18,6 +21,7 @@ __all__ = [
     "EnumPrPolishPhase",
     "ModelPrPolishCompletedEvent",
     "ModelPrPolishPhaseEvent",
+    "ModelPrPolishPrecommitFailure",
     "ModelPrPolishStartCommand",
     "ModelPrPolishState",
 ]
