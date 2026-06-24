@@ -1,7 +1,7 @@
 # Delegation-Cost Projection Lane
 
 This is the local, startable lane for the delegation-cost demo projections. It
-does not deploy, restart, or mutate `.201`.
+does not deploy, restart, or mutate the runtime host.
 
 ## Scope
 
