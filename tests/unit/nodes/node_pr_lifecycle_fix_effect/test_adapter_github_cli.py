@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import pytest
 
+from omnimarket.github_api import GitHubApiError
 from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.adapter_github_cli import (
     GitHubCliAdapter,
     _run_id_from_details_url,
@@ -211,6 +212,184 @@ class TestGitHubCliAdapter:
         adapter = GitHubCliAdapter()
         with pytest.raises(RuntimeError, match="manual resolution"):
             await adapter.resolve_conflicts("OmniNode-ai/omnimarket", 42)
+
+    async def test_cancel_obsolete_runs_protects_current_head_run(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """F4 (OMN-13320): the current PR head run id must survive cleanup."""
+        head_sha = "headsha000"
+        cancel_calls: list[tuple[str, str]] = []
+
+        def fake_rest_json(
+            method: str,
+            path: str,
+            *,
+            body: dict[str, object] | None = None,
+            token: str | None = None,
+        ) -> dict[str, object]:
+            del body, token
+            if path.endswith("/pulls/77"):
+                return {"head": {"sha": head_sha, "ref": "feature/x"}}
+            # listing workflow runs
+            return {
+                "workflow_runs": [
+                    {"id": 9001, "head_sha": "oldsha111"},  # obsolete -> cancel
+                    {"id": 9002, "head_sha": head_sha},  # current head -> protect
+                    {"id": 9003, "head_sha": "oldsha222"},  # obsolete -> cancel
+                ]
+            }
+
+        def fake_rest_no_content(
+            method: str,
+            path: str,
+            *,
+            body: dict[str, object] | None = None,
+            token: str | None = None,
+        ) -> None:
+            del body, token
+            cancel_calls.append((method, path))
+
+        monkeypatch.setattr(
+            "omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.adapter_github_cli.rest_json",
+            fake_rest_json,
+        )
+        monkeypatch.setattr(
+            "omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.adapter_github_cli.rest_no_content",
+            fake_rest_no_content,
+        )
+        monkeypatch.setattr(
+            "omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.adapter_github_cli._resolve_github_token",
+            lambda: "fake-token",
+        )
+
+        adapter = GitHubCliAdapter()
+        result = await adapter.cancel_obsolete_runs("OmniNode-ai/omnimarket", 77)
+
+        # The current head run (9002) is never touched; both obsolete heads are
+        # force-cancelled.
+        assert cancel_calls == [
+            (
+                "POST",
+                "/repos/OmniNode-ai/omnimarket/actions/runs/9001/force-cancel",
+            ),
+            (
+                "POST",
+                "/repos/OmniNode-ai/omnimarket/actions/runs/9003/force-cancel",
+            ),
+        ]
+        cancelled_run_ids = {
+            path.split("/runs/")[1].split("/")[0] for _, path in cancel_calls
+        }
+        assert "9002" not in cancelled_run_ids
+        assert "force-cancelled 2 obsolete-head run(s)" in result
+        assert "head run protected" in result
+
+    async def test_cancel_obsolete_runs_skips_http_409_stale(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """HTTP 409 on force-cancel is stale metadata: skip, never retry/raise."""
+        head_sha = "headsha000"
+        cancel_calls: list[str] = []
+
+        def fake_rest_json(
+            method: str,
+            path: str,
+            *,
+            body: dict[str, object] | None = None,
+            token: str | None = None,
+        ) -> dict[str, object]:
+            del body, token
+            if path.endswith("/pulls/88"):
+                return {"head": {"sha": head_sha, "ref": "feature/y"}}
+            return {
+                "workflow_runs": [
+                    {"id": 5001, "head_sha": "stalesha"},  # 409 -> skip
+                    {"id": 5002, "head_sha": "oldsha"},  # cancels fine
+                    {"id": 5003, "head_sha": head_sha},  # current head -> protect
+                ]
+            }
+
+        def fake_rest_no_content(
+            method: str,
+            path: str,
+            *,
+            body: dict[str, object] | None = None,
+            token: str | None = None,
+        ) -> None:
+            del body, token
+            cancel_calls.append(path)
+            if "/runs/5001/" in path:
+                raise GitHubApiError(
+                    "Cannot cancel a workflow re-run that has not yet queued",
+                    status_code=409,
+                )
+
+        monkeypatch.setattr(
+            "omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.adapter_github_cli.rest_json",
+            fake_rest_json,
+        )
+        monkeypatch.setattr(
+            "omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.adapter_github_cli.rest_no_content",
+            fake_rest_no_content,
+        )
+        monkeypatch.setattr(
+            "omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.adapter_github_cli._resolve_github_token",
+            lambda: "fake-token",
+        )
+
+        adapter = GitHubCliAdapter()
+        result = await adapter.cancel_obsolete_runs("OmniNode-ai/omnimarket", 88)
+
+        # 409 is swallowed; the next obsolete run is still cancelled; head untouched.
+        assert any("/runs/5001/force-cancel" in p for p in cancel_calls)
+        assert any("/runs/5002/force-cancel" in p for p in cancel_calls)
+        assert not any("/runs/5003/" in p for p in cancel_calls)
+        assert "force-cancelled 1 obsolete-head run(s)" in result
+        assert "skipped 1 stale" in result
+
+    async def test_cancel_obsolete_runs_reraises_non_409(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A non-409 GitHub error during cancel must propagate (fail-loud)."""
+
+        def fake_rest_json(
+            method: str,
+            path: str,
+            *,
+            body: dict[str, object] | None = None,
+            token: str | None = None,
+        ) -> dict[str, object]:
+            del body, token
+            if path.endswith("/pulls/99"):
+                return {"head": {"sha": "headsha", "ref": "feature/z"}}
+            return {"workflow_runs": [{"id": 6001, "head_sha": "oldsha"}]}
+
+        def fake_rest_no_content(
+            method: str,
+            path: str,
+            *,
+            body: dict[str, object] | None = None,
+            token: str | None = None,
+        ) -> None:
+            del method, path, body, token
+            raise GitHubApiError("server exploded", status_code=500)
+
+        monkeypatch.setattr(
+            "omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.adapter_github_cli.rest_json",
+            fake_rest_json,
+        )
+        monkeypatch.setattr(
+            "omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.adapter_github_cli.rest_no_content",
+            fake_rest_no_content,
+        )
+        monkeypatch.setattr(
+            "omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.adapter_github_cli._resolve_github_token",
+            lambda: "fake-token",
+        )
+
+        adapter = GitHubCliAdapter()
+        with pytest.raises(GitHubApiError, match="server exploded"):
+            await adapter.cancel_obsolete_runs("OmniNode-ai/omnimarket", 99)
 
     def test_run_id_parser_handles_standard_urls(self) -> None:
         assert (
