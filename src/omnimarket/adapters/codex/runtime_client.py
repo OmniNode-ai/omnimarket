@@ -23,6 +23,7 @@ from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
 from omnibase_infra.enums import EnumInfraTransportType
 from omnibase_infra.errors import ModelInfraErrorContext, ProtocolConfigurationError
 from omnibase_infra.event_bus.event_bus_kafka import EventBusKafka
+from omnibase_infra.runtime.overlay.contract_env_ref import expand_contract_env_refs
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
 from omnimarket.adapters.codex.topics import (
@@ -44,6 +45,17 @@ from omnimarket.adapters.wrapper_base import (
 _DEFAULT_COMMAND_TOPIC = TOPIC_CODEX_PATTERN_B_DISPATCH_COMMAND
 _DEFAULT_RESPONSE_TOPIC = TOPIC_CODEX_PATTERN_B_DISPATCH_COMPLETED
 _DEFAULT_REQUESTER = "codex"
+# Contract-declared config references (OMN-13557 Wave-2 config -> overlay).
+# These topic/requester/api-version tunables resolve through the sanctioned
+# overlay boundary (``expand_contract_env_refs`` — the one env-reading surface)
+# instead of scattered direct ``os.environ`` reads. An unbound overlay var
+# expands to the empty string, in which case the canonical contract default
+# constant applies (topic/requester config legitimately carries a default,
+# unlike a fail-closed endpoint).
+_COMMAND_TOPIC_CONTRACT_REF = "${env.ONEX_PATTERN_B_COMMAND_TOPIC}"
+_RESPONSE_TOPIC_CONTRACT_REF = "${env.ONEX_PATTERN_B_RESPONSE_TOPIC}"
+_REQUESTER_CONTRACT_REF = "${env.ONEX_PATTERN_B_REQUESTER}"
+_API_VERSION_CONTRACT_REF = "${env.KAFKA_API_VERSION}"
 _DELEGATE_SKILL_COMMAND_TOPIC = TOPIC_CODEX_DELEGATE_SKILL_COMMAND
 _DELEGATE_SKILL_EVENT_TYPE = "omnimarket.delegate-skill"
 _DELEGATE_SKILL_COMMAND_NAMES = frozenset(
@@ -122,18 +134,37 @@ class _ContractDispatchRoute:
 
 
 def default_command_topic() -> str:
-    """Resolve the Codex adapter command topic."""
-    return str(os.environ.get("ONEX_PATTERN_B_COMMAND_TOPIC", _DEFAULT_COMMAND_TOPIC))
+    """Resolve the Codex adapter command topic via the overlay seam.
+
+    Routes the ``ONEX_PATTERN_B_COMMAND_TOPIC`` config read through the
+    sanctioned overlay boundary (the one env-reading surface). An unbound
+    overlay var expands to the empty string, in which case the canonical
+    contract default applies.
+    """
+    resolved = expand_contract_env_refs(_COMMAND_TOPIC_CONTRACT_REF)
+    return resolved or _DEFAULT_COMMAND_TOPIC
 
 
 def default_response_topic() -> str:
-    """Resolve the Codex adapter response topic."""
-    return str(os.environ.get("ONEX_PATTERN_B_RESPONSE_TOPIC", _DEFAULT_RESPONSE_TOPIC))
+    """Resolve the Codex adapter response topic via the overlay seam.
+
+    Routes the ``ONEX_PATTERN_B_RESPONSE_TOPIC`` config read through the
+    sanctioned overlay boundary; an unbound overlay var falls back to the
+    canonical contract default.
+    """
+    resolved = expand_contract_env_refs(_RESPONSE_TOPIC_CONTRACT_REF)
+    return resolved or _DEFAULT_RESPONSE_TOPIC
 
 
 def default_requester() -> str:
-    """Resolve the requester label attached to adapter commands."""
-    return str(os.environ.get("ONEX_PATTERN_B_REQUESTER", _DEFAULT_REQUESTER))
+    """Resolve the requester label attached to adapter commands via the overlay seam.
+
+    Routes the ``ONEX_PATTERN_B_REQUESTER`` config read through the sanctioned
+    overlay boundary; an unbound overlay var falls back to the canonical
+    contract default.
+    """
+    resolved = expand_contract_env_refs(_REQUESTER_CONTRACT_REF)
+    return resolved or _DEFAULT_REQUESTER
 
 
 def default_target_runtime_address() -> str | None:
@@ -176,9 +207,12 @@ def _direct_kafka_client_version_kwargs(
     if isinstance(api_version, str) and api_version.strip():
         return {"api_version": api_version.strip()}
 
-    env_value = os.environ.get("KAFKA_API_VERSION")
-    if env_value is not None and env_value.strip():
-        return {"api_version": env_value.strip()}
+    # Resolve the KAFKA_API_VERSION config tunable through the sanctioned overlay
+    # boundary instead of a direct os.environ read (OMN-13557 Wave-2). An unbound
+    # overlay var expands to the empty string -> no api_version kwarg.
+    overlay_value = expand_contract_env_refs(_API_VERSION_CONTRACT_REF)
+    if overlay_value.strip():
+        return {"api_version": overlay_value.strip()}
 
     return {}
 
