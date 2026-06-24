@@ -18,3 +18,8 @@ tags:
 pack: "data"
 display_name: "Projection: Savings"
 node_role: "effect"
+dependencies:
+  # OMN-13548 (D-03): the savings runner gained a lazy Kafka producer so its DLQ
+  # path has a publisher in the live runtime (it previously had none and could
+  # not signal a malformed event at all).
+  - "aiokafka>=0.10.0"

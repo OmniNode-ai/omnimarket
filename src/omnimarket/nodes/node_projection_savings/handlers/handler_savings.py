@@ -17,6 +17,12 @@ from omnimarket.models.delegation.wire.model_delegate_skill_terminal_projection 
     ModelDelegateSkillTerminalProjection,
 )
 from omnimarket.pricing import DEFAULT_BASELINE_MODEL
+from omnimarket.projection.dlq import (
+    PublishFn,
+    correlation_id_from_payload,
+    dlq_topics_from_contract,
+    route_to_dlq,
+)
 from omnimarket.projection.runner import (
     BaseProjectionRunner,
     MessageMeta,
@@ -24,6 +30,8 @@ from omnimarket.projection.runner import (
 )
 
 logger = logging.getLogger(__name__)
+
+HANDLER_ID_PROJECTION_SAVINGS = "node_projection_savings"
 
 KNOWN_PROJECTION_TABLES: frozenset[str] = frozenset(
     {
@@ -49,7 +57,12 @@ class SavingsProjectionRunner(BaseProjectionRunner):
     (session_id, event_timestamp, model_local, model_cloud_baseline) DO UPDATE.
     """
 
-    def __init__(self, contract_path: Path | None = None) -> None:
+    def __init__(
+        self,
+        contract_path: Path | None = None,
+        *,
+        publish_fn: PublishFn | None = None,
+    ) -> None:
         super().__init__()
         _path = contract_path or Path(__file__).parent.parent / "contract.yaml"
         with open(_path) as f:
@@ -82,6 +95,75 @@ class SavingsProjectionRunner(BaseProjectionRunner):
                 "delegate_skill_baseline_model", DEFAULT_BASELINE_MODEL
             )
         )
+        # OMN-13548 (D-03): contract-declared DLQ topic for malformed events. A
+        # ValidationError / failed required-field check now emits a DURABLE failure
+        # signal on the bus instead of being logged + dropped silently.
+        self._dlq_topics: list[str] = dlq_topics_from_contract(self._contract)
+        # Inject for testing; real producer is built lazily on first emit.
+        self._publish_fn: PublishFn | None = publish_fn
+        self._producer: Any = None  # AIOKafkaProducer, created on demand
+
+    async def _get_publish_fn(self) -> PublishFn | None:
+        """Return the publish callable, building a Kafka producer lazily if needed.
+
+        Mirrors DelegationProjectionRunner._get_publish_fn so the DLQ path has a
+        publisher in the live runtime (the savings runner had no producer before
+        OMN-13548 — malformed events were dropped with no bus trace at all).
+        """
+        if self._publish_fn is not None:
+            return self._publish_fn
+
+        brokers = self.kafka_bootstrap_servers
+        if not brokers:
+            return None
+
+        try:
+            from aiokafka import AIOKafkaProducer
+        except ImportError:
+            logger.warning("aiokafka not installed; DLQ events will not be published")
+            return None
+
+        if self._producer is None:
+            producer = AIOKafkaProducer(
+                bootstrap_servers=brokers,
+                value_serializer=lambda v: (
+                    v if isinstance(v, bytes) else v.encode("utf-8")
+                ),
+            )
+            try:
+                await producer.start()
+            except Exception as exc:
+                logger.warning("Kafka producer failed to start: %s", exc)
+                return None
+            self._producer = producer
+
+        producer = self._producer
+
+        async def _publish(topic: str, value: bytes) -> None:
+            await producer.send_and_wait(topic, value)
+
+        return _publish
+
+    async def _route_malformed_to_dlq(
+        self, data: dict[str, Any], reason: str, meta: MessageMeta | None = None
+    ) -> bool:
+        """Route a malformed savings event to the contract-declared DLQ topic.
+
+        OMN-13548 (D-03): replaces the prior silent-drop. Returns True so the
+        consumer still commits the offset (durably captured on the DLQ, not
+        reprocessed in a hot loop).
+        """
+        fallback = meta.fallback_id if meta is not None else ""
+        correlation_id = correlation_id_from_payload(data, fallback=fallback)
+        await route_to_dlq(
+            publish=await self._get_publish_fn(),
+            dlq_topics=self._dlq_topics,
+            original_message=data,
+            failure_reason=reason,
+            handler=HANDLER_ID_PROJECTION_SAVINGS,
+            correlation_id=correlation_id,
+        )
+        return True
 
     @property
     def subscribe_topics(self) -> list[str]:
@@ -117,8 +199,9 @@ class SavingsProjectionRunner(BaseProjectionRunner):
 
         session_id = str(data.get("session_id") or data.get("sessionId") or "").strip()
         if not session_id:
-            logger.warning("savings-estimated event missing session_id")
-            return True
+            return await self._route_malformed_to_dlq(
+                data, "savings-estimated event missing session_id", meta
+            )
 
         event_timestamp = safe_parse_date(
             data.get("event_timestamp")
@@ -128,8 +211,9 @@ class SavingsProjectionRunner(BaseProjectionRunner):
             or data.get("emitted_at")
         )
         if event_timestamp.tzinfo is None or event_timestamp.utcoffset() is None:
-            logger.warning("savings-estimated event has naive event_timestamp")
-            return True
+            return await self._route_malformed_to_dlq(
+                data, "savings-estimated event has naive event_timestamp", meta
+            )
         event_timestamp = event_timestamp.astimezone(UTC)
 
         model_local = str(
@@ -139,8 +223,9 @@ class SavingsProjectionRunner(BaseProjectionRunner):
             data.get("model_cloud_baseline") or data.get("modelCloudBaseline") or ""
         ).strip()
         if not model_local or not model_cloud_baseline:
-            logger.warning("savings-estimated event missing model identifiers")
-            return True
+            return await self._route_malformed_to_dlq(
+                data, "savings-estimated event missing model identifiers", meta
+            )
 
         local_cost_usd = _required_decimal(
             _first_present(data, "local_cost_usd", "localCostUsd"),
@@ -158,17 +243,22 @@ class SavingsProjectionRunner(BaseProjectionRunner):
             session_id=session_id,
         )
         if local_cost_usd is None or cloud_cost_usd is None or savings_usd is None:
-            return True
+            return await self._route_malformed_to_dlq(
+                data,
+                "savings-estimated event has missing or non-numeric cost fields",
+                meta,
+            )
 
         repo_name = _str_or_none(data.get("repo_name") or data.get("repoName"))
         machine_id = _str_or_none(data.get("machine_id") or data.get("machineId"))
 
         if savings_usd != cloud_cost_usd - local_cost_usd:
-            logger.warning(
-                "savings-estimated event has inconsistent savings for session %s",
-                session_id,
+            return await self._route_malformed_to_dlq(
+                data,
+                "savings-estimated event has inconsistent savings "
+                f"(savings_usd={savings_usd} != cloud-local={cloud_cost_usd - local_cost_usd})",
+                meta,
             )
-            return True
 
         await self._upsert_savings_estimate(
             event_timestamp=event_timestamp,
@@ -194,11 +284,11 @@ class SavingsProjectionRunner(BaseProjectionRunner):
         try:
             terminal = ModelDelegateSkillTerminalProjection.from_payload(data)
         except ValidationError as exc:
-            logger.warning(
-                "delegate-skill terminal event failed savings model validation: %s",
-                exc,
+            return await self._route_malformed_to_dlq(
+                data,
+                f"delegate-skill terminal event failed savings model validation: {exc}",
+                meta,
             )
-            return True
 
         projection = ModelDelegateSkillSavingsProjection.from_terminal_event(
             terminal,

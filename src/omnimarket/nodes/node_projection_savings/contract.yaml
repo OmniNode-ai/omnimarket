@@ -53,6 +53,11 @@ event_bus:
   publish_topics:
     - onex.evt.omnimarket.projection-savings-applied.v1
     - onex.snapshot.projection.cost.savings-overview.v1  # onex-topic-allow: projection snapshot topic
+  # OMN-13548 (D-03): malformed inbound events (ValidationError / failed
+  # required-field check) are routed here as a DURABLE failure signal carrying the
+  # offending envelope + correlation_id, instead of being logged + dropped silently.
+  dlq_topics:
+    - onex.dlq.omnimarket.projection-savings-malformed.v1
 
 externally_consumed_topics:
   - onex.evt.omnimarket.projection-savings-applied.v1
