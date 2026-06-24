@@ -58,8 +58,10 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
     # OMN-12884 adds node_projection_replay_check_compute: 322 -> 323.
     # OMN-13083 adds node_projection_traces (traces projection contract):
     # 323 -> 324.
-    assert summary["node_dirs"] == 324
-    assert summary["entry_points"] == 324
+    # OMN-13583 adds node_repo_health_classify_compute (COMPUTE; keystone of the
+    # merge-sweep repo-health lane): 324 -> 325.
+    assert summary["node_dirs"] == 325
+    assert summary["entry_points"] == 325
     assert summary["missing_entry_points"] == []
     assert summary["dangling_entry_points"] == []
     assert summary["routable"] >= 297

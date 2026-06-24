@@ -35,6 +35,11 @@ from omnimarket.events.knowledge_context import (
     ModelKnowledgeContextState,
 )
 from omnimarket.events.ledger import ModelLedgerAppendedEvent, ModelLedgerHashComputed
+from omnimarket.events.repo_health import (
+    EnumFailureOrigin,
+    ModelRepoHealthClassification,
+    ModelRepoHealthFailureEnvelope,
+)
 from omnimarket.events.runtime_deployment import (
     DEFAULT_PREVIOUS_IMAGE,
     EnumBuildSource,
@@ -71,6 +76,7 @@ __all__ = [
     "EnumBuildSource",
     "EnumBundleStatus",
     "EnumDelegationJudgeVerdict",
+    "EnumFailureOrigin",
     "EnumFragmentSource",
     "EnumGoldenChainGenerationStatus",
     "EnumOccGateState",
@@ -107,6 +113,8 @@ __all__ = [
     "ModelRedeployResult",
     "ModelRedeployRolledBackEvent",
     "ModelRedeployState",
+    "ModelRepoHealthClassification",
+    "ModelRepoHealthFailureEnvelope",
     "ModelRuntimeDeploymentProof",
     "ModelTestGenerationRequest",
     "ModelTestGenerationResult",
