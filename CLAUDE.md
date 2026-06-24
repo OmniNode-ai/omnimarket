@@ -34,7 +34,7 @@ uv run pytest tests/ -v --tb=short -m "not kafka"
 uv run ruff check src/ tests/
 uv run ruff format --check src/ tests/
 uv run mypy src/omnimarket/ --strict
-uv run python scripts/ci/run_runtime_sweep.py
+uv run python -m omnimarket.nodes.node_runtime_sweep --import-check
 uv run python scripts/ci/check_node_metadata_dependencies.py
 ```
 

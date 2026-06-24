@@ -29,7 +29,7 @@ find src/omnimarket/nodes -mindepth 1 -maxdepth 1 -type d -name 'node_*' | sort
 Verify every registered entry point has the expected package shape:
 
 ```bash
-uv run python scripts/ci/run_runtime_sweep.py
+uv run python -m omnimarket.nodes.node_runtime_sweep --import-check
 ```
 
 ## Node Families
@@ -64,6 +64,6 @@ Use these as reference implementations:
 5. Run:
 
 ```bash
-uv run python scripts/ci/run_runtime_sweep.py
+uv run python -m omnimarket.nodes.node_runtime_sweep --import-check
 uv run python scripts/ci/check_node_metadata_dependencies.py
 ```
