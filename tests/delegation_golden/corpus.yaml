@@ -42,11 +42,24 @@
 #     ticket: OMN-XXXX
 #
 # Calibration: docs/status/2026-06-23-dogfood-delegation-results.md was ABSENT
-# at authoring time, so xfail markers are set from the OMN-13540 known-gap list
+# at authoring time, so xfail markers were set from the OMN-13540 known-gap list
 # (the regressions that motivated this suite): import break (OMN-13539),
 # metered cost never recorded (OMN-13408), escalation drops the completed event
 # so metered cost never reaches the projection (OMN-13535), cloud escalation
 # ladder never fires (OMN-13140).
+#
+# Reconciliation 2026-06-24 (OMN-13540) against the redeploy dogfood
+# (docs/evidence/2026-06-24-redeploy-dogfood/results.md, verifier != runner):
+#   - I5 (research) + I6 (code_review): already expected-green; the dogfood
+#     CONFIRMED both terminalize with real model_name + tokens>0 (OMN-13541 fixed,
+#     OMN-13546 forwarder fix). No corpus change.
+#   - I9 (cross-cutting model_name+tokens on every completed row): FLIPPED to
+#     expected-green — all four completed rows carried non-empty model_name and
+#     tokens>0; the empty-terminal-data regression (OMN-13535) is no longer
+#     reproduced on the redeployed dev lane.
+#   - I8 (all-tiers-exhaust): STAYS xfail — the dogfood proved only the passing
+#     paths, never an exhaustion scenario; OMN-13543/OMN-13140 remain unproven.
+#   - I2 (OMN-13140) + I4 (OMN-13408): unchanged; not re-verified this pass.
 ---
 schema_version: "1.0.0"
 corpus_version: "1.0.0"
@@ -244,8 +257,13 @@ cases:
       cost: any
       escalation: exhausts
       tokens: any
+    # STILL xfail 2026-06-24: the redeploy dogfood proved the PASSING research +
+    # code_review paths only (a single happy-path terminal each) — it never
+    # exercised an all-tiers-exhaust scenario. The escalation-exhaustion terminal
+    # fix (OMN-13543) is still open and the graceful all-tiers-exhaust path
+    # (OMN-13140) remains unproven, so this case stays genuinely-unproven xfail.
     xfail:
-      reason: "all-tiers-exhaust path crashes/ValidationError before graceful failed terminal + HWM advance"
+      reason: "all-tiers-exhaust path unproven: escalation-exhaustion terminal (OMN-13543) open; graceful exhaust + HWM advance (OMN-13140) not yet live-proven"
       ticket: OMN-13140
 
   - id: I9
@@ -260,6 +278,9 @@ cases:
       cross_cutting: completed_rows_have_model_and_tokens
       terminal: completed
       tokens: positive
-    xfail:
-      reason: "empty-terminal-data: completed rows can land with empty model_name and zero tokens"
-      ticket: OMN-13535
+    # xfail removed 2026-06-24: the redeploy dogfood (verifier != runner,
+    # docs/evidence/2026-06-24-redeploy-dogfood/results.md) showed every
+    # completed delegation_events row — document, code_generation, review,
+    # research — landed with a non-empty model_name AND tokens_input/_output > 0.
+    # The empty-terminal-data regression (OMN-13535) is no longer reproduced on
+    # the redeployed dev lane, so the cross-cutting invariant is now expected-green.
