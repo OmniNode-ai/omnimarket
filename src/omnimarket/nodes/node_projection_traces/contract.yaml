@@ -1,0 +1,60 @@
+---
+name: node_projection_traces
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: REDUCER_GENERIC
+node_version: {major: 1, minor: 0, patch: 0}
+input_model: ModelTraceProjectionEvent
+description: >
+  Aggregates correlation-grouped log entries into repeatable trace snapshots for
+  the dashboard trace-explorer. One row per correlation_id with running/error
+  status and timeline bounds.
+
+handler:
+  module: omnimarket.nodes.node_projection_traces.handlers.handler_projection_traces
+  class: HandlerProjectionTraces
+
+handler_routing:
+  routing_strategy: payload_type_match
+  routes:
+    - input_model: omnimarket.nodes.node_projection_traces.models.model_trace_event.ModelTraceProjectionEvent
+      output_model: omnimarket.nodes.node_projection_traces.models.model_trace_event.ModelTraceSnapshot
+  handlers:
+    - handler:
+        name: HandlerProjectionTraces
+        module: omnimarket.nodes.node_projection_traces.handlers.handler_projection_traces
+      event_model: ModelTraceProjectionEvent
+
+idempotency:
+  enabled: true
+  strategy: snapshot_upsert
+  hash_fields:
+    - correlation_id
+
+event_bus:
+  consumer_group: local.omnibase_infra.node_projection_traces.consume.v1
+  subscribe_topics:
+    - onex.evt.platform.log-entry.v1
+  publish_topics:
+    - onex.evt.omnimarket.traces-snapshot.v1
+
+projection_api:
+  expose: true
+  topic: "onex.snapshot.projection.traces.v1" # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
+  table: "traces"
+  schema: "public"
+  columns:
+    - "correlation_id"
+    - "nodes_involved"
+    - "event_count"
+    - "first_event_at"
+    - "last_event_at"
+    - "duration_ms"
+    - "has_error"
+    - "is_running"
+    - "latest_message"
+  order_by: "last_event_at DESC"
+  freshness_column: "last_event_at"
+  limit: 100
+
+metadata:
+  transport_type: kafka
