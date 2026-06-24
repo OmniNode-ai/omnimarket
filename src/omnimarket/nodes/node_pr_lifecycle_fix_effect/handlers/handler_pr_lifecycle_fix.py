@@ -8,6 +8,8 @@ Routes fix actions:
   changes_requested              -> review-comment fix via pr_polish
   coderabbit                     -> CodeRabbit thread auto-reply via dispatch_coderabbit_reply
   deploy_gate_contract_not_found -> auto-create missing OCC contract via create_occ_contract
+  receipt_evidence_source_autobind -> bind OCC receipt evidence + rewrite Evidence-Source
+                                      via autobind_evidence_source (OMN-13317 F1)
 
 Protocol-injected adapters for GitHub operations and agent dispatch allow
 mock substitution in tests with zero infrastructure.
@@ -90,6 +92,29 @@ class ProtocolOccContractAdapter(Protocol):
         ...
 
 
+@runtime_checkable
+class ProtocolOccAutobindAdapter(Protocol):
+    """OCC Evidence-Source autobind adapter required by the fix effect.
+
+    Called when a PR fails the Receipt Gate because its ``Evidence-Source``
+    points at the product head SHA instead of an OCC source (OMN-13317 F1).
+    """
+
+    async def autobind_evidence_source(
+        self, repo: str, pr_number: int, ticket_id: str | None = None
+    ) -> str:
+        """Bind OCC receipt evidence for the PR and rewrite its Evidence-Source.
+
+        Detects the ticket, generates a receipt stamped with the real PR head
+        SHA and number, opens/syncs an OCC binding PR, recomputes
+        ``contract_sha256`` across all matching receipts, and PATCHes
+        ``Evidence-Source: OCC#<n>`` back onto the product PR body via REST.
+
+        Returns a human-readable action string describing what was bound.
+        """
+        ...
+
+
 # ---------------------------------------------------------------------------
 # Default no-op adapters (used in standalone / dry-run mode)
 # ---------------------------------------------------------------------------
@@ -126,6 +151,18 @@ class _NoopOccContractAdapter:
         return f"[noop] would create OCC contract for {ticket_id} on {repo}#{pr_number}"
 
 
+class _NoopOccAutobindAdapter:
+    """No-op OCC autobind adapter for dry_run and standalone execution."""
+
+    async def autobind_evidence_source(
+        self, repo: str, pr_number: int, ticket_id: str | None = None
+    ) -> str:
+        return (
+            f"[noop] would autobind Evidence-Source for "
+            f"{ticket_id or '<auto>'} on {repo}#{pr_number}"
+        )
+
+
 # ---------------------------------------------------------------------------
 # Handler
 # ---------------------------------------------------------------------------
@@ -143,6 +180,7 @@ class HandlerPrLifecycleFix:
         github_adapter: ProtocolGitHubAdapter | None = None,
         agent_dispatch_adapter: ProtocolAgentDispatchAdapter | None = None,
         occ_contract_adapter: ProtocolOccContractAdapter | None = None,
+        occ_autobind_adapter: ProtocolOccAutobindAdapter | None = None,
     ) -> None:
         self._github: ProtocolGitHubAdapter = github_adapter or _NoopGitHubAdapter()
         self._agent: ProtocolAgentDispatchAdapter = (
@@ -150,6 +188,9 @@ class HandlerPrLifecycleFix:
         )
         self._occ: ProtocolOccContractAdapter = (
             occ_contract_adapter or _NoopOccContractAdapter()
+        )
+        self._occ_autobind: ProtocolOccAutobindAdapter = (
+            occ_autobind_adapter or _NoopOccAutobindAdapter()
         )
 
     async def handle(
@@ -234,6 +275,15 @@ class HandlerPrLifecycleFix:
                 raise ValueError(msg)
             return await self._occ.create_occ_contract(repo, pr, command.ticket_id)
 
+        if reason == EnumPrBlockReason.RECEIPT_EVIDENCE_SOURCE_AUTOBIND:
+            # Receipt Gate failed: Evidence-Source points at the product head
+            # SHA instead of an OCC source. Bind OCC evidence and rewrite the
+            # PR body. ticket_id is optional — the adapter detects it from the
+            # PR title/body when absent (OMN-13317 F1).
+            return await self._occ_autobind.autobind_evidence_source(
+                repo, pr, command.ticket_id
+            )
+
         msg = f"Unhandled block_reason: {reason!r}"
         raise ValueError(msg)
 
@@ -263,5 +313,6 @@ __all__: list[str] = [
     "HandlerPrLifecycleFix",
     "ProtocolAgentDispatchAdapter",
     "ProtocolGitHubAdapter",
+    "ProtocolOccAutobindAdapter",
     "ProtocolOccContractAdapter",
 ]

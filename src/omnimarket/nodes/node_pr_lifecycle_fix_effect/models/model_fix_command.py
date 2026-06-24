@@ -20,6 +20,10 @@ class EnumPrBlockReason(StrEnum):
     coderabbit                     → CR thread auto-reply via dispatch_coderabbit_reply
     deploy_gate_contract_not_found → deploy-gate failed because OCC contract YAML is
                                      missing; auto-create it via create_occ_contract
+    receipt_evidence_source_autobind → Receipt Gate failed because the PR's
+                                     Evidence-Source points at the product head SHA
+                                     instead of an OCC source; autobind OCC receipt
+                                     evidence via autobind_evidence_source (OMN-13317)
     """
 
     CI_FAILURE = "ci_failure"
@@ -29,6 +33,7 @@ class EnumPrBlockReason(StrEnum):
     CHANGES_REQUESTED = "changes_requested"
     CODERABBIT = "coderabbit"
     DEPLOY_GATE_CONTRACT_NOT_FOUND = "deploy_gate_contract_not_found"
+    RECEIPT_EVIDENCE_SOURCE_AUTOBIND = "receipt_evidence_source_autobind"
 
 
 class ModelPrLifecycleFixCommand(BaseModel):
