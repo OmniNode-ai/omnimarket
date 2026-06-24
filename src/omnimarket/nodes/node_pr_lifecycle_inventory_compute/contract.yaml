@@ -8,15 +8,16 @@
 #
 # Related Tickets:
 #   - OMN-8082: Create pr_lifecycle_inventory_compute Node
+#   - OMN-13318: Org-wide open-PR census as mandatory sweep-done gate
 ---
 name: "node_pr_lifecycle_inventory_compute"
 node_type: "COMPUTE_GENERIC"
 contract_version:
   major: 1
-  minor: 0
+  minor: 1
   patch: 0
-node_version: "1.0.0"
-description: "Inventory layer of the pr_lifecycle domain — collects raw PR state (status, checks, reviews, conflicts) via gh CLI without classification or action logic."
+node_version: "1.1.0"
+description: "Inventory layer of the pr_lifecycle domain — collects raw PR state (status, checks, reviews, conflicts) via gh CLI without classification or action logic, plus an org-wide open-PR census (OMN-13318) used as the mandatory sweep-done precondition."
 input_model:
   name: "ModelPrInventoryInput"
   module: "omnimarket.nodes.node_pr_lifecycle_inventory_compute.models.model_pr_lifecycle_inventory"
@@ -24,7 +25,7 @@ input_model:
 output_model:
   name: "ModelPrInventoryOutput"
   module: "omnimarket.nodes.node_pr_lifecycle_inventory_compute.models.model_pr_lifecycle_inventory"
-  description: "Collected raw PR states with check runs, reviews, and conflict info."
+  description: "Collected raw PR states with check runs, reviews, conflict info, and the org-wide open-PR census (open_count + remainders)."
 handler_routing:
   routing_strategy: "operation_match"
   handlers:
@@ -47,5 +48,7 @@ metadata:
     - "pr-lifecycle"
     - "inventory"
     - "OMN-8082"
+    - "OMN-13318"
   related_tickets:
     - "OMN-8082"
+    - "OMN-13318"

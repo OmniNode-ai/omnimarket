@@ -78,6 +78,58 @@ class ModelStuckQueueEntry(BaseModel):
     merge_group_run_count: int | None = None
 
 
+class ModelOrgWideOpenPrRemainder(BaseModel):
+    """A single org-wide open PR that blocks a sweep-done report (OMN-13318)."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    repo: str = Field(..., description="Repo slug, e.g. OmniNode-ai/omnibase_infra.")
+    pr_number: int = Field(..., description="Open PR number.")
+    title: str = Field(default="", description="PR title for human-readable triage.")
+    url: str = Field(default="", description="HTML URL of the open PR.")
+
+
+class ModelOrgWideOpenPrInventory(BaseModel):
+    """Org-wide open-PR census used as the sweep-done precondition (OMN-13318).
+
+    The overnight sweep can falsely look complete when a repo-by-repo memory
+    misses an open PR (e.g. omnibase_infra#2043 still open after two merged).
+    This census is the single org-wide source of truth: ``open_count`` is the
+    hard precondition on the done-report, and ``remainders`` lists exactly which
+    PRs still block "sweep done".
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    open_count: int = Field(
+        ...,
+        ge=0,
+        description=(
+            "Org-wide count of open PRs from "
+            "'gh api /search/issues?q=org:OmniNode-ai is:pr is:open'."
+        ),
+    )
+    remainders: tuple[ModelOrgWideOpenPrRemainder, ...] = Field(
+        default_factory=tuple,
+        description="The open PRs that still block a sweep-done report.",
+    )
+    query_failed: bool = Field(
+        default=False,
+        description=(
+            "True if the org-wide search could not be executed. A failed query "
+            "must be treated as NOT_DONE — never silently reported as done."
+        ),
+    )
+
+    @property
+    def sweep_done(self) -> bool:
+        """The sweep may only report done when zero open PRs remain org-wide.
+
+        A failed query is fail-closed: it is never ``done``.
+        """
+        return self.open_count == 0 and not self.query_failed
+
+
 class ModelPrInventoryOutput(BaseModel):
     """Output of pr_lifecycle_inventory_compute.
 
@@ -96,5 +148,13 @@ class ModelPrInventoryOutput(BaseModel):
         description=(
             "PRs queued past a stuck threshold or AWAITING_CHECKS without "
             "merge_group runs past the dispatch-stall threshold."
+        ),
+    )
+    org_wide_open: ModelOrgWideOpenPrInventory | None = Field(
+        default=None,
+        description=(
+            "Org-wide open-PR census (OMN-13318). Populated on every full "
+            "inventory call; the orchestrator refuses to report sweep-done "
+            "while open_count > 0."
         ),
     )

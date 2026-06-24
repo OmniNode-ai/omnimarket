@@ -22,6 +22,7 @@ from omnimarket.nodes.node_pr_lifecycle_inventory_compute.handlers.handler_pr_li
     HandlerPrLifecycleInventory,
 )
 from omnimarket.nodes.node_pr_lifecycle_inventory_compute.models.model_pr_lifecycle_inventory import (
+    ModelOrgWideOpenPrInventory,
     ModelPrInventoryInput,
     ModelPrInventoryOutput,
     ModelPrState,
@@ -87,6 +88,11 @@ class TestHandlerPrLifecycleInventoryGoldenChain:
         handler = HandlerPrLifecycleInventory()
 
         def fake_run(cmd: list[str], capture_output: bool, text: bool) -> MagicMock:
+            joined = " ".join(cmd)
+            if "/search/issues" in joined:
+                return _make_subprocess_result(
+                    json.dumps({"total_count": 0, "items": []})
+                )
             if "checks" in cmd:
                 return _make_subprocess_result(json.dumps(check_runs))
             if "reviews" in cmd[-1]:
@@ -283,9 +289,15 @@ class TestHandlerPrLifecycleInventoryGoldenChain:
 
     def test_empty_pr_numbers_returns_empty_output(self) -> None:
         handler = HandlerPrLifecycleInventory()
-        result = handler.handle(
-            ModelPrInventoryInput(repo="OmniNode-ai/omnimarket", pr_numbers=())
-        )
+
+        def fake_run(cmd: list[str], capture_output: bool, text: bool) -> MagicMock:
+            # Only the org-wide census runs when no PR numbers are requested.
+            return _make_subprocess_result(json.dumps({"total_count": 0, "items": []}))
+
+        with patch("subprocess.run", side_effect=fake_run):
+            result = handler.handle(
+                ModelPrInventoryInput(repo="OmniNode-ai/omnimarket", pr_numbers=())
+            )
 
         assert isinstance(result, ModelPrInventoryOutput)
         assert result.total_collected == 0
@@ -379,6 +391,128 @@ class TestHandlerPrLifecycleInventoryGoldenChain:
             )
 
         assert result.stuck_queue_prs == []
+
+
+def _search_issues_payload(open_prs: list[dict[str, object]]) -> dict[str, object]:
+    """Build a /search/issues response body for the given open PRs."""
+    return {
+        "total_count": len(open_prs),
+        "items": [
+            {
+                "number": pr["number"],
+                "title": pr.get("title", f"PR #{pr['number']}"),
+                "html_url": pr.get(
+                    "html_url",
+                    f"https://github.com/{pr['repo']}/pull/{pr['number']}",
+                ),
+                "repository_url": (f"https://api.github.com/repos/{pr['repo']}"),
+            }
+            for pr in open_prs
+        ],
+    }
+
+
+@pytest.mark.unit
+class TestOrgWideOpenPrSweepGate:
+    """OMN-13318: org-wide open-PR census gates the sweep-done report.
+
+    DoD: seed one open PR → node reports NOT_DONE and lists the remainder;
+    close it → node reports done (sweep_done True, zero remainders).
+    """
+
+    def test_seed_one_open_pr_reports_not_done_with_remainder(self) -> None:
+        handler = HandlerPrLifecycleInventory()
+        open_prs = [
+            {
+                "number": 2043,
+                "repo": "OmniNode-ai/omnibase_infra",
+                "title": "feat: still open",
+            }
+        ]
+
+        def fake_run(cmd: list[str], capture_output: bool, text: bool) -> MagicMock:
+            assert "/search/issues" in " ".join(cmd)
+            assert any("org:OmniNode-ai is:pr is:open" in part for part in cmd)
+            return _make_subprocess_result(json.dumps(_search_issues_payload(open_prs)))
+
+        with patch("subprocess.run", side_effect=fake_run):
+            census = handler.collect_org_wide_open_prs()
+
+        assert isinstance(census, ModelOrgWideOpenPrInventory)
+        assert census.open_count == 1
+        assert census.sweep_done is False
+        assert len(census.remainders) == 1
+        remainder = census.remainders[0]
+        assert remainder.pr_number == 2043
+        assert remainder.repo == "OmniNode-ai/omnibase_infra"
+        assert remainder.url.endswith("/pull/2043")
+
+    def test_close_the_pr_reports_done(self) -> None:
+        handler = HandlerPrLifecycleInventory()
+
+        def fake_run(cmd: list[str], capture_output: bool, text: bool) -> MagicMock:
+            return _make_subprocess_result(json.dumps(_search_issues_payload([])))
+
+        with patch("subprocess.run", side_effect=fake_run):
+            census = handler.collect_org_wide_open_prs()
+
+        assert census.open_count == 0
+        assert census.remainders == ()
+        assert census.sweep_done is True
+
+    def test_query_failure_is_fail_closed_not_done(self) -> None:
+        handler = HandlerPrLifecycleInventory()
+
+        def fail_run(cmd: list[str], capture_output: bool, text: bool) -> MagicMock:
+            mock = MagicMock()
+            mock.returncode = 1
+            mock.stdout = ""
+            mock.stderr = "API rate limit exceeded"
+            return mock
+
+        with patch("subprocess.run", side_effect=fail_run):
+            census = handler.collect_org_wide_open_prs()
+
+        assert census.query_failed is True
+        assert census.sweep_done is False
+
+    def test_invalid_json_is_fail_closed_not_done(self) -> None:
+        handler = HandlerPrLifecycleInventory()
+
+        def bad_json_run(cmd: list[str], capture_output: bool, text: bool) -> MagicMock:
+            return _make_subprocess_result("not-json")
+
+        with patch("subprocess.run", side_effect=bad_json_run):
+            census = handler.collect_org_wide_open_prs()
+
+        assert census.query_failed is True
+        assert census.sweep_done is False
+
+    def test_handle_populates_org_wide_open(self) -> None:
+        handler = HandlerPrLifecycleInventory()
+        open_prs = [
+            {"number": 7, "repo": "OmniNode-ai/omnimarket", "title": "open one"}
+        ]
+
+        def fake_run(cmd: list[str], capture_output: bool, text: bool) -> MagicMock:
+            if "/search/issues" in " ".join(cmd):
+                return _make_subprocess_result(
+                    json.dumps(_search_issues_payload(open_prs))
+                )
+            mock = MagicMock()
+            mock.returncode = 1
+            mock.stdout = ""
+            mock.stderr = "not found"
+            return mock
+
+        with patch("subprocess.run", side_effect=fake_run):
+            result = handler.handle(
+                ModelPrInventoryInput(repo="OmniNode-ai/omnimarket", pr_numbers=())
+            )
+
+        assert result.org_wide_open is not None
+        assert result.org_wide_open.open_count == 1
+        assert result.org_wide_open.sweep_done is False
 
 
 @pytest.mark.unit

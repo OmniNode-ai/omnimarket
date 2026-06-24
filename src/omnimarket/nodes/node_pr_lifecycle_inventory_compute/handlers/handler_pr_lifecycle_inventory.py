@@ -18,6 +18,8 @@ from datetime import UTC, datetime
 from typing import Literal
 
 from omnimarket.nodes.node_pr_lifecycle_inventory_compute.models.model_pr_lifecycle_inventory import (
+    ModelOrgWideOpenPrInventory,
+    ModelOrgWideOpenPrRemainder,
     ModelPrCheckRun,
     ModelPrInventoryInput,
     ModelPrInventoryOutput,
@@ -28,6 +30,12 @@ from omnimarket.nodes.node_pr_lifecycle_inventory_compute.models.model_pr_lifecy
 
 _STUCK_QUEUE_THRESHOLD_MINUTES = 30
 _QUEUE_STALL_THRESHOLD_MINUTES = 15
+# OMN-13318: org-wide open-PR census is the hard precondition on a sweep-done
+# report. Mirrors the DoD command:
+#   gh api '/search/issues?q=org:OmniNode-ai is:pr is:open'
+_ORG_WIDE_OPEN_PR_ORG = "OmniNode-ai"
+_ORG_WIDE_OPEN_PR_QUERY = "org:OmniNode-ai is:pr is:open"
+_ORG_WIDE_REMAINDER_LIMIT = 100
 _CHECK_BUCKET_TO_CONCLUSION = {
     "pass": "success",
     "fail": "failure",
@@ -83,6 +91,7 @@ class HandlerPrLifecycleInventory:
                 errors.append(msg)
 
         stuck = self._detect_stuck_queue_prs(input_model.repo, pr_states)
+        org_wide_open = self.collect_org_wide_open_prs()
 
         return ModelPrInventoryOutput(
             repo=input_model.repo,
@@ -90,7 +99,114 @@ class HandlerPrLifecycleInventory:
             total_collected=len(pr_states),
             collection_errors=tuple(errors),
             stuck_queue_prs=stuck,
+            org_wide_open=org_wide_open,
         )
+
+    def collect_org_wide_open_prs(self) -> ModelOrgWideOpenPrInventory:
+        """Census every open PR across the whole org (OMN-13318).
+
+        Runs the GitHub search API equivalent of::
+
+            gh api '/search/issues?q=org:OmniNode-ai is:pr is:open'
+
+        and returns the org-wide open count plus the open-PR remainders. The
+        orchestrator uses ``open_count`` as a hard precondition on the
+        sweep-done report so a repo-by-repo memory can never falsely report
+        "done" while an open PR survives in another repo.
+
+        Overridable in tests so synthetic open/closed states can be injected
+        without real gh CLI calls. Fail-closed: any query error sets
+        ``query_failed=True`` so the sweep is never reported done on missing
+        evidence.
+        """
+        result = subprocess.run(
+            [
+                "gh",
+                "api",
+                "--paginate",
+                "-X",
+                "GET",
+                "/search/issues",
+                "-f",
+                f"q={_ORG_WIDE_OPEN_PR_QUERY}",
+                "-f",
+                f"per_page={_ORG_WIDE_REMAINDER_LIMIT}",
+            ],
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode != 0:
+            logger.warning(
+                "Org-wide open-PR search failed (exit %d): %s",
+                result.returncode,
+                result.stderr.strip(),
+            )
+            return ModelOrgWideOpenPrInventory(open_count=0, query_failed=True)
+
+        try:
+            payload = json.loads(result.stdout or "{}")
+        except json.JSONDecodeError:
+            logger.warning("Org-wide open-PR search returned invalid JSON")
+            return ModelOrgWideOpenPrInventory(open_count=0, query_failed=True)
+
+        return self._parse_org_wide_open_payload(payload)
+
+    @staticmethod
+    def _parse_org_wide_open_payload(
+        payload: object,
+    ) -> ModelOrgWideOpenPrInventory:
+        """Parse a ``/search/issues`` response into an org-wide open census.
+
+        ``--paginate`` may concatenate multiple JSON objects; we read
+        ``total_count`` from the first object and merge every ``items`` array so
+        the remainder list survives pagination.
+        """
+        objects: list[dict[str, object]]
+        if isinstance(payload, list):
+            objects = [obj for obj in payload if isinstance(obj, dict)]
+        elif isinstance(payload, dict):
+            objects = [payload]
+        else:
+            objects = []
+
+        if not objects:
+            return ModelOrgWideOpenPrInventory(open_count=0, query_failed=True)
+
+        total_raw = objects[0].get("total_count", 0)
+        open_count = total_raw if isinstance(total_raw, int) else 0
+
+        remainders: list[ModelOrgWideOpenPrRemainder] = []
+        for obj in objects:
+            items = obj.get("items", [])
+            if not isinstance(items, list):
+                continue
+            for item in items:
+                if not isinstance(item, dict):
+                    continue
+                remainders.append(
+                    ModelOrgWideOpenPrRemainder(
+                        repo=HandlerPrLifecycleInventory._repo_from_search_item(item),
+                        pr_number=int(item.get("number", 0) or 0),
+                        title=str(item.get("title", "") or ""),
+                        url=str(item.get("html_url", "") or ""),
+                    )
+                )
+
+        return ModelOrgWideOpenPrInventory(
+            open_count=open_count,
+            remainders=tuple(remainders),
+        )
+
+    @staticmethod
+    def _repo_from_search_item(item: dict[str, object]) -> str:
+        """Derive ``owner/repo`` from a search/issues item's repository_url."""
+        repo_url = str(item.get("repository_url", "") or "")
+        # repository_url looks like https://api.github.com/repos/OWNER/REPO
+        marker = "/repos/"
+        idx = repo_url.find(marker)
+        if idx == -1:
+            return _ORG_WIDE_OPEN_PR_ORG
+        return repo_url[idx + len(marker) :]
 
     def _detect_stuck_queue_prs(
         self, repo: str, pr_states: list[ModelPrState]
