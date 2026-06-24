@@ -270,7 +270,7 @@ def _do_start(args: argparse.Namespace) -> int:
     handler = HandlerEmitDaemon()
     queue = BoundedEventQueue(spool_dir=spool_dir, outbox_dir=outbox_dir)
 
-    # Create publisher loop with optional Kafka
+    # Create publisher loop with optional Kafka.
     async def _noop_publish(
         topic: str,
         key: bytes | None,
@@ -279,10 +279,41 @@ def _do_start(args: argparse.Namespace) -> int:
     ) -> None:
         logger.debug(f"[no-kafka] Would publish to {topic} ({len(value)} bytes)")
 
+    # Holder populated in _run() once the asyncio loop is active. Keeping the
+    # AIOKafkaProducer creation inside the running loop (not here in sync land)
+    # avoids "no running event loop" issues; _kafka_publish reads it lazily.
+    kafka_state: dict[str, object] = {"producer": None}
+
+    async def _kafka_publish(
+        topic: str,
+        key: bytes | None,
+        value: bytes,
+        headers: dict[str, str],
+    ) -> None:
+        producer = kafka_state["producer"]
+        if producer is None:
+            raise RuntimeError("Kafka producer not started")
+        kafka_headers = [
+            (h_key, str(h_val).encode("utf-8")) for h_key, h_val in headers.items()
+        ]
+        # send_and_wait raises on delivery failure; the publisher loop's circuit
+        # breaker catches it and applies retry/backoff/buffering.
+        await producer.send_and_wait(topic, value=value, key=key, headers=kafka_headers)
+
     publish_fn = _noop_publish
+    kafka_enabled = False
     if args.kafka_bootstrap_servers:
-        logger.info(f"Kafka publishing enabled: {args.kafka_bootstrap_servers}")
-        # Kafka integration will be wired here when available
+        try:
+            import aiokafka  # noqa: F401  (import probe; producer built in _run)
+
+            kafka_enabled = True
+            publish_fn = _kafka_publish
+            logger.info(f"Kafka publishing enabled: {args.kafka_bootstrap_servers}")
+        except ImportError:
+            logger.error(
+                "aiokafka is not installed — Kafka publishing disabled (no-op). "
+                "Install aiokafka to enable real publishing."
+            )
 
     publisher = KafkaPublisherLoop(queue=queue, publish_fn=publish_fn)
 
@@ -308,6 +339,19 @@ def _do_start(args: argparse.Namespace) -> int:
             # Restore pending duty-critical events from the durable outbox so
             # replay resumes after a crash or restart (truncate-on-ack).
             await queue.load_outbox()
+            # Start the Kafka producer before the publisher loop begins draining
+            # so the first dequeued event has a live producer to publish through.
+            if kafka_enabled:
+                from aiokafka import AIOKafkaProducer
+
+                producer = AIOKafkaProducer(
+                    bootstrap_servers=args.kafka_bootstrap_servers,
+                    enable_idempotence=True,
+                    acks="all",
+                )
+                await producer.start()
+                kafka_state["producer"] = producer
+                logger.info("Kafka producer started")
             await server.start()
             await publisher.start()
             handler.transition_to_listening()
@@ -325,6 +369,12 @@ def _do_start(args: argparse.Namespace) -> int:
         handler.transition_to_draining()
         await server.stop()
         await publisher.stop()
+
+        producer = kafka_state.get("producer")
+        if producer is not None:
+            # stop() flushes pending batches, then closes the producer.
+            await producer.stop()
+            logger.info("Kafka producer stopped")
 
         drained = await queue.drain_to_spool()
         if drained > 0:
