@@ -103,19 +103,31 @@ class TestResolveFlowsPrecedence:
             table_row_count=7,
             table_has_recent_data=True,
         )
-        with patch(
-            "omnimarket.nodes.node_data_flow_sweep.collector.collect_flow_metadata",
-            return_value=populated,
-        ) as mock_collect:
+        with (
+            patch(
+                "omnimarket.nodes.node_data_flow_sweep.collector.assert_lane_reachable",
+                return_value=None,
+            ),
+            patch(
+                "omnimarket.nodes.node_data_flow_sweep.collector.collect_flow_metadata",
+                return_value=populated,
+            ) as mock_collect,
+        ):
             resolved = resolve_flows(DataFlowSweepRequest(flows=[], collect=True))
         assert mock_collect.called
         assert all(f.producer_status == EnumProducerStatus.ACTIVE for f in resolved)
 
     def test_collect_per_flow_failure_falls_back_to_descriptor(self) -> None:
         """A single failing probe falls back to the descriptor, not an abort."""
-        with patch(
-            "omnimarket.nodes.node_data_flow_sweep.collector.collect_flow_metadata",
-            side_effect=RuntimeError("rpk unavailable"),
+        with (
+            patch(
+                "omnimarket.nodes.node_data_flow_sweep.collector.assert_lane_reachable",
+                return_value=None,
+            ),
+            patch(
+                "omnimarket.nodes.node_data_flow_sweep.collector.collect_flow_metadata",
+                side_effect=RuntimeError("rpk unavailable"),
+            ),
         ):
             resolved = resolve_flows(DataFlowSweepRequest(flows=[], collect=True))
         # All three descriptors returned (unpopulated) — sweep did not abort.
