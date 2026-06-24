@@ -62,6 +62,11 @@ jobs:
       # and inline `# onex-topic-allow` annotations (delegation thin-shim plan, Task 8).
       - name: Topic-literal guardrail (annotation allowlist)
         run: uv run python scripts/ci/check_no_hardcoded_topics.py
+      # OMN-13548 (D-03): a projection handler that catches ValidationError must
+      # route the malformed event to its contract-declared DLQ topic, not drop it
+      # silently. SYNC with pre-commit hook 'projection-dlq-path'.
+      - name: Projection-DLQ path gate
+        run: uv run python scripts/ci/check_projection_dlq_path.py
       - name: Reject node-level topics.py files
         run: |
           FOUND=$(find src/omnimarket/nodes -name "topics.py" -path "*/node_*/*" 2>/dev/null)

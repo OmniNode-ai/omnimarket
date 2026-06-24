@@ -233,6 +233,17 @@ repos:
         pass_filenames: false
         stages: [pre-commit]
 
+      # OMN-13548 (D-03): a projection handler that catches ValidationError must
+      # route the malformed event to its contract-declared DLQ topic, not drop it
+      # silently. SYNC with ci.yml step "Projection-DLQ path gate".
+      - id: projection-dlq-path
+        name: Projection-DLQ path gate (OMN-13548)
+        language: system
+        entry: uv run python scripts/ci/check_projection_dlq_path.py
+        files: ^(src/omnimarket/nodes/node_projection_.*/handlers/handler_.*\.py|scripts/ci/check_projection_dlq_path\.py)$
+        pass_filenames: false
+        stages: [pre-commit]
+
       # OMN-12856: Fail if any omnimarket source reads GH_PAT/GH_TOKEN/GITHUB_TOKEN
       # via os.environ/os.getenv. The canonical path after OMN-12856 is
       # contract_secret_ref + resolve_api_key. SYNC with ci.yml step

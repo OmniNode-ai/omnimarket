@@ -31,6 +31,11 @@ from omnimarket.nodes.node_projection_delegation.handlers.handler_projection_del
     _judge_verdict_projection_row,
     compute_generation_proof_fields,
 )
+from omnimarket.projection.dlq import (
+    correlation_id_from_payload,
+    dlq_topics_from_contract,
+    route_to_dlq,
+)
 from omnimarket.projection.runner import (
     BaseProjectionRunner,
     MessageMeta,
@@ -38,6 +43,8 @@ from omnimarket.projection.runner import (
 )
 
 logger = logging.getLogger(__name__)
+
+HANDLER_ID_PROJECTION_DELEGATION = "node_projection_delegation"
 
 KNOWN_PROJECTION_TABLES: frozenset[str] = frozenset(
     {
@@ -148,6 +155,11 @@ class DelegationProjectionRunner(BaseProjectionRunner):
             (t for t in _topics if "delegation-failed" in t), ""
         )
         self._terminal_topic: str | None = self._contract.get("terminal_event")
+        # OMN-13548 (D-03): contract-declared DLQ topic for malformed events. A
+        # ValidationError on an inbound event now emits a DURABLE failure signal on
+        # the bus (the offending envelope routed to this topic, carrying its
+        # correlation_id) instead of being logged + dropped silently.
+        self._dlq_topics: list[str] = dlq_topics_from_contract(self._contract)
         # Inject for testing; real producer is built lazily on first emit.
         self._publish_fn: PublishFn | None = publish_fn
         self._producer: Any = None  # AIOKafkaProducer, created on demand
@@ -257,6 +269,29 @@ class DelegationProjectionRunner(BaseProjectionRunner):
                 exc,
             )
 
+    async def _route_malformed_to_dlq(
+        self, data: dict[str, Any], reason: str, meta: MessageMeta | None = None
+    ) -> bool:
+        """Route a malformed inbound event to the contract-declared DLQ topic.
+
+        OMN-13548 (D-03): replaces the prior silent-drop on ValidationError. The
+        offending payload + failure reason + correlation_id are published to the
+        DLQ topic so the dropped event is durably recoverable on the bus. Returns
+        True so the consumer still commits the offset (the message is durably
+        captured on the DLQ, not reprocessed in a hot loop).
+        """
+        fallback = meta.fallback_id if meta is not None else ""
+        correlation_id = correlation_id_from_payload(data, fallback=fallback)
+        await route_to_dlq(
+            publish=await self._get_publish_fn(),
+            dlq_topics=self._dlq_topics,
+            original_message=data,
+            failure_reason=reason,
+            handler=HANDLER_ID_PROJECTION_DELEGATION,
+            correlation_id=correlation_id,
+        )
+        return True
+
     async def project_event(
         self, topic: str, data: dict[str, Any], meta: MessageMeta
     ) -> bool:
@@ -299,8 +334,9 @@ class DelegationProjectionRunner(BaseProjectionRunner):
         try:
             event = ModelDelegationJudgeVerdictEvent.model_validate(data)
         except ValidationError as exc:
-            logger.warning("judge verdict event failed model validation: %s", exc)
-            return True
+            return await self._route_malformed_to_dlq(
+                data, f"judge verdict event failed model validation: {exc}"
+            )
 
         row = _judge_verdict_projection_row(event)
         await self.db.execute(
@@ -588,11 +624,12 @@ class DelegationProjectionRunner(BaseProjectionRunner):
             or data.get("modelUsed")
         )
         if not task_type or not delegated_to:
-            logger.warning(
-                "task-delegated event missing required fields (correlation_id=%s)",
-                correlation_id,
+            return await self._route_malformed_to_dlq(
+                data,
+                "task-delegated event missing required fields "
+                f"(task_type={task_type!r}, delegated_to={delegated_to!r})",
+                meta,
             )
-            return True
 
         session_id = data.get("session_id") or data.get("sessionId") or None
         timestamp = safe_parse_date(data.get("timestamp") or data.get("emitted_at"))
@@ -772,11 +809,11 @@ class DelegationProjectionRunner(BaseProjectionRunner):
         try:
             terminal = ModelDelegateSkillTerminalProjection.from_payload(data)
         except ValidationError as exc:
-            logger.warning(
-                "delegate-skill terminal event failed model validation: %s",
-                exc,
+            return await self._route_malformed_to_dlq(
+                data,
+                f"delegate-skill terminal event failed model validation: {exc}",
+                meta,
             )
-            return True
 
         row = ModelDelegationEventProjectionRow.from_terminal_event(terminal)
         await self._upsert_delegate_skill_projection_row(row)
