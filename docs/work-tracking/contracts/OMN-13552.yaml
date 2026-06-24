@@ -1,0 +1,84 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-13552"
+title: "node_data_flow_sweep collector probes the targeted lane, not local Docker/psql"
+summary: >
+  node_data_flow_sweep's collector verified flows by running probes against
+  whatever host the CLI process was on (docker exec omnibase-infra-redpanda /
+  psql -h localhost), not the lane it was nominally verifying. Run from the
+  operator Mac against the HEALTHY .201 dev lane it reported all flows
+  PRODUCER_DOWN ("Topic does not exist") because there was no local container —
+  a false-broken verdict that reflected the probe host, not the target lane.
+  This adds a first-class lane/target parameter that resolves each lane to its
+  real broker + Postgres endpoints (the dev/stability-test/prod/judge lanes on
+  192.168.86.201) and probes the targeted lane over SSH + docker exec — the same
+  transport already proven in node_integration_sweep_orchestrator (OMN-7238
+  class fix). An unreachable/indeterminate target lane fails LOUD (status=error,
+  exit 2), never a false PRODUCER_DOWN or false-clean. Scope: collector.py
+  (probe transport + lane wiring), lane_target.py (new lane->endpoint resolver),
+  __main__.py (--lane/--runtime-host arg surface + fail-loud), contract.yaml
+  (lane/runtime_host input fields). Pure handler unchanged.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+evidence_requirements:
+  - kind: "manual"
+    description: "Focused node tests (lane resolution, remote SSH transport, fail-loud, collector classification) pass."
+    command: "uv run pytest tests/test_golden_chain_data_flow_sweep_collect.py tests/test_golden_chain_data_flow_sweep.py -q"
+  - kind: "manual"
+    description: "Full omnimarket suite (minus kafka marker) stays green; structural LAN-IP/hardcoded-literal gates pass."
+    command: "uv run pytest tests/ -q -m 'not kafka'"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-001"
+    description: >
+      Collection takes a lane/target and probes that lane's real broker + DB
+      endpoints. resolve_lane_target maps dev/stability-test/prod/judge to their
+      container names on the runtime host and the local lane to in-stack
+      docker/psql; the remote-transport regression test asserts a remote-lane
+      probe shells out to `ssh jonah@192.168.86.201 docker exec ...` and NEVER a
+      bare local docker (the OMN-13552 defect class).
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/test_golden_chain_data_flow_sweep_collect.py::TestLaneResolution tests/test_golden_chain_data_flow_sweep_collect.py::TestRemoteTransport -q"
+  - id: "dod-002"
+    description: >
+      LIVE proof against the HEALTHY .201 dev lane: the CLI verdict matches
+      rpk/psql ground truth on .201 (cross-checked via ssh jonah@192.168.86.201).
+      node-introspection.v1 => ACTIVE/FLOWING with 17 projection rows (HW=16,
+      table=17); pattern-learned.v1 and routing-decision.v1 => EMPTY (topic
+      present, 0 messages) with 0 rows. This is no longer the false
+      all-PRODUCER_DOWN "Topic does not exist" verdict the local-probe collector
+      produced; the introspection flow is correctly FLOWING.
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run python -m omnimarket.nodes.node_data_flow_sweep --collect --lane dev --dry-run"
+  - id: "dod-003"
+    description: >
+      Unreachable target lane fails LOUD. Pointing the dev lane at an unroutable
+      host (192.0.2.1, TEST-NET-1) yields status=error, broken=0, exit 2 — an
+      explicit error verdict, never a false PRODUCER_DOWN-as-broken or
+      false-clean for a lane that was never actually probed. Unit-covered by
+      TestReachabilityPreflight + the unreachable/unknown-lane main() exit-2 tests.
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/test_golden_chain_data_flow_sweep_collect.py::TestReachabilityPreflight 'tests/test_golden_chain_data_flow_sweep_collect.py::TestMainCollectFlag::test_main_collect_unreachable_lane_exits_two' 'tests/test_golden_chain_data_flow_sweep_collect.py::TestMainCollectFlag::test_main_collect_unknown_lane_exits_two' -q"
+  - id: "dod-deploy"
+    description: >
+      Deploy-gate evidence: change is to a CLI sweep tool (node_data_flow_sweep
+      collector + entry point + contract input fields) plus its test. The pure
+      compute handler is unchanged; no migration, schema, or env-for-model
+      change. The node's runtime registration is unchanged (runtime_sweep
+      323/323 entry points OK; node metadata dependency scope PASS). No live
+      runtime deploy/promotion performed by this PR — the sweep is an operator
+      verification tool run from the Mac against the lane over SSH.
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run python scripts/ci/run_runtime_sweep.py && uv run python scripts/ci/check_node_metadata_dependencies.py"
