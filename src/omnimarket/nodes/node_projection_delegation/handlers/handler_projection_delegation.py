@@ -680,15 +680,31 @@ def _measure_actual_cost(
     ``cost_savings_usd = counterfactual - measured_actual``.
 
     Fall-through (preserves the event's own values, no recompute):
-      * No premium_counterfactual — there is no auditable baseline to subtract
-        against, so honest savings cannot be computed; keep what the event carried.
       * No cost_tier_name — the serving tier is unknown, so the typed cost model
         cannot be resolved; keep the event values + carried provenance.
+
+    OMN-13408 (FAILED / escalation path, ``premium_counterfactual=None``): the
+    terminal's own ``cost_usd`` is the AUTHORITATIVE total — ``_emit_terminal``
+    already sums the final tier's measured cost plus the prior attempted tiers'
+    banked metered spend, counting the terminal attempt exactly once (its
+    escalation_history entry is NOT re-banked). So when the terminal carried a
+    non-zero ``cost_usd`` the projection trusts it verbatim (no re-add of
+    escalation_history, which would double-count the terminal tier). But when the
+    terminal carried ``cost_usd=0.0`` despite a metered serving tier with real
+    served tokens — the live defect (CID 21077717: FAILED, escalation_count=1,
+    metered ``cheap_cloud`` glm-5.2, served input=103/output=1777, but
+    ``cost_usd=0.0`` persisted while a savings number was quoted) — the projection
+    re-measures the served tokens through the SAME ``recompute_actual_cost_and_savings``
+    the completed/savings path uses, so ``cost_usd > 0`` whenever metered tokens
+    were served. The terminal cost is the source of truth; this re-measurement is
+    its honest floor, not a second estimate path. The saving stays 0 with no
+    counterfactual baseline, but the measured cost is honest — closing the
+    dual-path (tokens-carry, cost-does-not) inconsistency the ticket forbids.
     """
-    if event.premium_counterfactual is None or not event.cost_tier_name:
-        # OMN-13535: the failure/escalation-exhausted terminal already carries the
-        # TOTAL metered spend in ``cost_usd`` (final tier + prior attempted tiers,
-        # summed by the orchestrator), so keep it verbatim — no recompute.
+    if not event.cost_tier_name:
+        # Unknown serving tier (e.g. legacy zero-token golden-chain rows, or a
+        # remote-agent A2A terminal with no tier): the typed cost model cannot be
+        # resolved, so keep the event values + carried provenance verbatim.
         return ModelActualCostProjection(
             cost_usd=event.cost_usd,
             cost_savings_usd=event.cost_savings_usd,
@@ -697,18 +713,41 @@ def _measure_actual_cost(
             cost_tier_name=event.cost_tier_name,
             cost_measurement_source=event.cost_measurement_source,
         )
+
     measurement = recompute_actual_cost_and_savings(
         tier_name=event.cost_tier_name,
         prompt_tokens=event.tokens_input,
         completion_tokens=event.tokens_output,
         premium_counterfactual=event.premium_counterfactual,
     )
-    # OMN-13535: the recompute prices only the FINAL accepted tier. On an
-    # escalated delegation, earlier metered tiers ran and were rejected before
-    # the final tier was accepted; their spend is carried per-tier in
-    # ``escalation_history``. Add it so an accepted-on-free escalation that burned
-    # metered budget reports the real total cost (and honest saving = counterfactual
-    # - total), instead of zeroing to the free final tier.
+
+    if event.premium_counterfactual is None:
+        # FAILED / escalation terminal (OMN-13408). The terminal's ``cost_usd``
+        # is the authoritative total (final + prior, counted once). Trust it when
+        # it is already non-zero — re-adding escalation_history here would
+        # double-count the terminal tier (its own entry is in that history). Only
+        # when the terminal lost the cost (0.0) despite a metered serving tier
+        # with served tokens do we substitute the tier-priced floor so a row with
+        # real metered tokens can never persist ``cost_usd=0``.
+        floor_cost_usd = measurement.cash_cost_usd
+        total_cost_usd = event.cost_usd if event.cost_usd > 0.0 else floor_cost_usd
+        # No auditable counterfactual baseline on the failure path, so there is no
+        # honest saving to report — never quote ``counterfactual - 0``.
+        return ModelActualCostProjection(
+            cost_usd=total_cost_usd,
+            cost_savings_usd=0.0,
+            headroom_consumed_usd=measurement.headroom_consumed_usd,
+            cost_tier_type=measurement.cost_tier_type,
+            cost_tier_name=measurement.cost_tier_name,
+            cost_measurement_source=measurement.cost_measurement_source,
+        )
+
+    # COMPLETED / accepted path (OMN-13535): the recompute prices only the FINAL
+    # accepted tier. Earlier metered tiers that ran and were rejected before the
+    # final tier was accepted carry their per-tier spend in ``escalation_history``;
+    # add it so an accepted-on-free escalation that burned metered budget reports
+    # the real total cost (and honest saving = counterfactual - total), instead of
+    # zeroing to the free final tier.
     prior_attempt_cost_usd = _sum_escalation_attempt_costs(event.escalation_history)
     total_cost_usd = measurement.cash_cost_usd + prior_attempt_cost_usd
     total_savings_usd = measurement.cost_savings_usd - prior_attempt_cost_usd
