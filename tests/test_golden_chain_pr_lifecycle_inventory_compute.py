@@ -181,7 +181,7 @@ class TestHandlerPrLifecycleInventoryGoldenChain:
         with patch("subprocess.run", side_effect=fake_run):
             check_runs = handler._collect_check_runs("OmniNode-ai/omnimarket", 5)
 
-        assert "name,state,bucket" in commands[0]
+        assert "name,state,bucket,event" in commands[0]
         assert "conclusion" not in commands[0]
         assert [check.conclusion for check in check_runs] == ["success", "failure"]
         assert [check.status for check in check_runs] == ["completed", "completed"]
@@ -513,6 +513,150 @@ class TestOrgWideOpenPrSweepGate:
         assert result.org_wide_open is not None
         assert result.org_wide_open.open_count == 1
         assert result.org_wide_open.sweep_done is False
+
+
+@pytest.mark.unit
+class TestPrAssociatedRunsOnly:
+    """F3 (OMN-13319): only PR-associated runs count toward required contexts.
+
+    A green ``workflow_dispatch`` "CI Summary" must NOT make a PR green — branch
+    protection credits the PR-associated ``pull_request`` run conclusion, not
+    the (possibly stale or manually dispatched) statusCheckRollup row.
+    """
+
+    def _run(
+        self,
+        check_runs: list[dict[str, object]],
+        pr_number: int = 1,
+        repo: str = "OmniNode-ai/omnimarket",
+    ) -> ModelPrState:
+        handler = HandlerPrLifecycleInventory()
+
+        def fake_run(cmd: list[str], capture_output: bool, text: bool) -> MagicMock:
+            if "checks" in cmd:
+                return _make_subprocess_result(json.dumps(check_runs))
+            if "reviews" in cmd[-1]:
+                return _make_subprocess_result(json.dumps({"reviews": []}))
+            return _make_subprocess_result(
+                json.dumps(_fake_gh_pr_view(pr_number=pr_number))
+            )
+
+        with patch("subprocess.run", side_effect=fake_run):
+            result = handler.handle(
+                ModelPrInventoryInput(repo=repo, pr_numbers=(pr_number,))
+            )
+        return result.pr_states[0]
+
+    def test_collect_check_runs_requests_event_field(self) -> None:
+        handler = HandlerPrLifecycleInventory()
+        commands: list[list[str]] = []
+
+        def fake_run(cmd: list[str], capture_output: bool, text: bool) -> MagicMock:
+            commands.append(cmd)
+            return _make_subprocess_result(json.dumps([]))
+
+        with patch("subprocess.run", side_effect=fake_run):
+            handler._collect_check_runs("OmniNode-ai/omnimarket", 5)
+
+        assert "name,state,bucket,event" in commands[0]
+
+    def test_event_field_is_captured_on_check_run(self) -> None:
+        pr = self._run(
+            [
+                {
+                    "name": "CI Summary",
+                    "state": "completed",
+                    "conclusion": "success",
+                    "event": "pull_request",
+                },
+            ]
+        )
+        assert pr.check_runs[0].event == "pull_request"
+
+    def test_workflow_dispatch_green_does_not_satisfy_arm(self) -> None:
+        """DoD: a green workflow_dispatch CI Summary is the ONLY check whose
+        run is green, while no PR-associated run is green → not green.
+
+        The non-PR-associated green is dropped, leaving zero PR-associated
+        terminal checks → ci_passing stays None → arm refuses.
+        """
+        pr = self._run(
+            [
+                {
+                    "name": "CI Summary",
+                    "state": "completed",
+                    "conclusion": "success",
+                    "event": "workflow_dispatch",
+                },
+            ]
+        )
+        # The manual-dispatch green must not make the PR green.
+        assert pr.ci_passing is not True
+
+    def test_pr_associated_failure_wins_over_dispatch_green(self) -> None:
+        """DoD: PR-associated run is NOT green but a workflow_dispatch run is.
+
+        Trust the PR-associated `pull_request` run conclusion, not the rollup
+        row. The PR-associated failure stands → ci_passing is False → arm
+        refuses.
+        """
+        pr = self._run(
+            [
+                {
+                    "name": "CI Summary",
+                    "state": "completed",
+                    "conclusion": "failure",
+                    "event": "pull_request",
+                },
+                {
+                    "name": "CI Summary",
+                    "state": "completed",
+                    "conclusion": "success",
+                    "event": "workflow_dispatch",
+                },
+            ]
+        )
+        assert pr.ci_passing is False
+
+    def test_pr_associated_green_makes_pr_green(self) -> None:
+        pr = self._run(
+            [
+                {
+                    "name": "CI Summary",
+                    "state": "completed",
+                    "conclusion": "success",
+                    "event": "pull_request",
+                },
+            ]
+        )
+        assert pr.ci_passing is True
+
+    def test_eventless_status_context_still_counts(self) -> None:
+        """Legacy status contexts carry no `event` — treat as PR-associated."""
+        pr = self._run(
+            [
+                {
+                    "name": "legacy/status",
+                    "state": "completed",
+                    "conclusion": "success",
+                },
+            ]
+        )
+        assert pr.ci_passing is True
+
+    def test_merge_group_green_alone_does_not_arm(self) -> None:
+        """A merge_group run is not PR-associated; its green alone is dropped."""
+        pr = self._run(
+            [
+                {
+                    "name": "CI Summary",
+                    "state": "completed",
+                    "conclusion": "success",
+                    "event": "merge_group",
+                },
+            ]
+        )
+        assert pr.ci_passing is not True
 
 
 @pytest.mark.unit
