@@ -62,7 +62,10 @@ inputs:
     required: true
   block_reason:
     type: str
-    description: "Block reason: ci_failure | conflict | changes_requested | coderabbit"
+    description: >
+      Block reason: ci_failure | code_failure | receipt_failure | conflict |
+      changes_requested | coderabbit | deploy_gate_contract_not_found |
+      receipt_evidence_source_autobind
     required: true
   ticket_id:
     type: str
@@ -93,6 +96,10 @@ terminal_event: onex.evt.omnimarket.pr-lifecycle-fix-completed.v1
 event_bus:
   subscribe_topics:
     - onex.cmd.omnimarket.pr-lifecycle-fix-start.v1
+    # OMN-13317 F1: product-PR opened/synchronize thin-publishes the autobind
+    # command here; the fix effect routes it to the Evidence-Source autobind
+    # adapter (receipt_evidence_source_autobind block reason).
+    - onex.cmd.omnimarket.occ-autobind.v1
   publish_topics:
     - onex.evt.omnimarket.pr-lifecycle-fix-completed.v1
 

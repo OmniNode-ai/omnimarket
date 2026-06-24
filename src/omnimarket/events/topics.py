@@ -33,6 +33,16 @@ ROUTING_FEEDBACK_UPDATED_TOPIC_V1 = "onex.evt.omnimarket.routing-feedback-update
 # GET /projection/onex.evt.github.pr-merged.v1 on the .201 lane (:3002).
 PR_MERGED_TOPIC_V1 = "onex.evt.github.pr-merged.v1"  # onex-topic-allow: canonical topic registry; declared in node_pr_merged_projection contract.yaml subscribe_topics (OMN-13226/13227)
 
+# OCC Evidence-Source autobind command (OMN-13317 / F1). Thin-published by the
+# call-occ-autobind GHA workflow on product-PR opened/synchronize; consumed by
+# node_pr_lifecycle_fix_effect, which routes it to the OccAutobindAdapter under
+# the receipt_evidence_source_autobind block reason. The effect generates a
+# receipt stamped with the real PR head + number, opens/syncs the OCC binding
+# PR, recomputes contract_sha256 across all matching receipts, and PATCHes
+# Evidence-Source: OCC#<n> back onto the product PR so occ-preflight goes green
+# with zero manual edits.
+OCC_AUTOBIND_COMMAND_TOPIC_V1 = "onex.cmd.omnimarket.occ-autobind.v1"  # onex-topic-allow: canonical topic registry; declared in node_pr_lifecycle_fix_effect contract.yaml subscribe_topics (OMN-13317)
+
 # Typed FSM watchdog topics (OMN-12959). Canonical terminal-state-invariant
 # vocabulary: every workflow FSM reaches a declared terminal OR trips one of
 # these typed watchdogs. Consumed via omnimarket.events.watchdog, which maps the
