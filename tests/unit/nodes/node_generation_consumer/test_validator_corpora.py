@@ -182,6 +182,48 @@ def _reference_todo_handle(input_data):
     return {"findings": findings}
 
 
+def _reference_doc_content_handle(input_data):
+    import re
+
+    source = input_data.get("source", "")
+    findings = []
+    if "doc-content-file-ok" in source:
+        return {"findings": findings}
+    ipv4 = re.compile(r"\b(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})\b")
+    host_short = re.compile(r"(?<![\d.])\.(201|200)\b(?!\.\d)")
+    personal_path = re.compile(r"/(Users|home)/[A-Za-z0-9._-]+")
+    ssh = re.compile(r"\bssh\s+\S+@\S+")
+    email = re.compile(
+        r"\b[A-Za-z0-9._%+-]+@"
+        r"(gmail|yahoo|hotmail|outlook|icloud|protonmail|aol|mail|zoho|yandex|tutanota)"
+        r"\.[A-Za-z]{2,}\b"
+    )
+    omn = re.compile(r"(?<![A-Za-z0-9_])OMN-\d+\b")
+    for line in source.split("\n"):
+        if "doc-content-ok" in line:
+            continue
+        hit = None
+        for m in ipv4.finditer(line):
+            a = int(m.group(1))
+            b = int(m.group(2))
+            if a == 10 or (a == 172 and 16 <= b <= 31) or (a == 192 and b == 168):
+                hit = m.group()
+                break
+        if hit is None and host_short.search(line):
+            hit = host_short.search(line).group()
+        if hit is None and personal_path.search(line):
+            hit = personal_path.search(line).group()
+        if hit is None and ssh.search(line):
+            hit = ssh.search(line).group()
+        if hit is None and email.search(line):
+            hit = email.search(line).group()
+        if hit is None and omn.search(line):
+            hit = omn.search(line).group()
+        if hit is not None:
+            findings.append({"match": hit})
+    return {"findings": findings}
+
+
 def _scanner_source(fn: object) -> str:
     """Dedent a reference handler function to a sandbox-loadable `handle` source."""
     src = textwrap.dedent(inspect.getsource(fn))
@@ -193,6 +235,7 @@ _REFERENCE_SCANNERS = {
     "hardcoded-localhost-url": _scanner_source(_reference_localhost_url_handle),
     "hardcoded-topic-string": _scanner_source(_reference_topic_handle),
     "todo-fixme-marker": _scanner_source(_reference_todo_handle),
+    "doc-content-scan": _scanner_source(_reference_doc_content_handle),
 }
 
 
