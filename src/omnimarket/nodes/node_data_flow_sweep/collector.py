@@ -1,6 +1,7 @@
 # SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
 # onex-allow-file-internal-ip OMN-13552 reason="docstring documents the .201 runtime-lane host this collector probes over SSH; lane host is resolved by lane_target, not hardcoded here as a connection string"
+# onex-allow-file OMN-13552 reason="docstring documents the .201 runtime-lane host this collector probes over SSH; lane host is resolved by lane_target, not hardcoded here as a connection string"
 """LiveMetadataCollector — shell-out collection phase for node_data_flow_sweep.
 
 Runs rpk topic/group describe and psql row-count checks to populate

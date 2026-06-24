@@ -1,6 +1,7 @@
 # SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
 # onex-allow-file-internal-ip OMN-13552 reason="lane registry resolves the canonical .201 runtime-lane host; overridable via --runtime-host; not a shipping connection string"
+# onex-allow-file OMN-13552 reason="lane registry resolves the canonical .201 runtime-lane host; overridable via --runtime-host; not a shipping connection string"
 """Lane/target resolution for node_data_flow_sweep collection probes.
 
 OMN-13552: the collector previously probed *whatever host the CLI process is on*

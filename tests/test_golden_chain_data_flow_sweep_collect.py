@@ -1,6 +1,7 @@
 # SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
 # onex-allow-internal-ip OMN-13552 reason="tests assert lane->.201 host resolution and the ssh target argv; literal host is the assertion subject, not a shipping default"
+# onex-allow-file OMN-13552 reason="tests assert lane->.201 host resolution and the ssh target argv; literal host is the assertion subject, not a shipping default"
 """Tests for the data_flow_sweep --collect path and LiveMetadataCollector.
 
 OMN-12221: metadata collection (rpk/psql probes) moved from the skill into the

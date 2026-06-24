@@ -1,4 +1,5 @@
 ---
+# onex-allow-file OMN-13552 reason="work-tracking contract documents the .201 lane host + ssh probe command as DoD evidence; not shipping source"
 schema_version: "1.0.0"
 ticket_id: "OMN-13552"
 title: "node_data_flow_sweep collector probes the targeted lane, not local Docker/psql"
