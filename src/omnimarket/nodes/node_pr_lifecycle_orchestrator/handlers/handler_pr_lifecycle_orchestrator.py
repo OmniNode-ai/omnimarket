@@ -174,6 +174,17 @@ class ModelPrLifecycleStartCommand(BaseModel):
         return str(value or "")
 
 
+class OrgWideOpenPrRemainderRef(BaseModel):
+    """A single org-wide open PR still blocking the sweep-done report (OMN-13318)."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    repo: str = Field(...)
+    pr_number: int = Field(...)
+    title: str = Field(default="")
+    url: str = Field(default="")
+
+
 class ModelPrLifecycleResult(BaseModel):
     """Result returned by the orchestrator after a sweep run."""
 
@@ -187,6 +198,19 @@ class ModelPrLifecycleResult(BaseModel):
     prs_verified: int = Field(default=0, ge=0)
     final_state: str = Field(default="COMPLETE")
     error_message: str | None = Field(default=None)
+    # OMN-13318: org-wide open-PR census is a hard precondition on sweep-done.
+    org_wide_open_count: int = Field(
+        default=0,
+        ge=0,
+        description="Org-wide count of open PRs observed at sweep time.",
+    )
+    org_wide_open_remainders: tuple[OrgWideOpenPrRemainderRef, ...] = Field(
+        default_factory=tuple,
+        description=(
+            "The open PRs that prevented a sweep-done report. Non-empty whenever "
+            "final_state is NOT_DONE."
+        ),
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -211,6 +235,12 @@ class EnumOrchestratorState(StrEnum):
 
 
 _TERMINAL_STATES = {EnumOrchestratorState.COMPLETE, EnumOrchestratorState.FAILED}
+
+# OMN-13318: sweep-done is gated on an org-wide open-PR count of zero. When the
+# FSM reaches COMPLETE but open PRs survive org-wide, the reported final_state is
+# downgraded to NOT_DONE so the done-report is refused (and the remainders are
+# surfaced). This is a REPORT-level state, distinct from the FSM states above.
+_FINAL_STATE_NOT_DONE = "NOT_DONE"
 
 # OMN-12570: map each FSM state to the distinct CI-verification phase it
 # represents in the ledger. Branch checks, merge-group checks, and post-merge
@@ -258,6 +288,10 @@ class _SweepState:
     inventory_result: InventoryResult | None = None
     triage_result: PrTriageResult | None = None
     reducer_result: ReducerResult | None = None
+
+    # OMN-13318: org-wide open-PR census captured during INVENTORYING. The
+    # sweep-done report is refused while open_count > 0 (or the census failed).
+    org_wide_open: Any | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -879,9 +913,14 @@ class HandlerPrLifecycleOrchestrator:
             )
             state.inventory_result = inv_result
             state.prs_inventoried = inv_result.total_collected
+            # OMN-13318: capture the org-wide open-PR census now so the
+            # sweep-done report can be refused while open PRs survive in any
+            # repo (the repo-by-repo inventory above can miss them).
+            state.org_wide_open = self._collect_org_wide_open_prs()
             logger.info(
-                "[PR-LIFECYCLE-ORCH] inventory completed: %d PRs",
+                "[PR-LIFECYCLE-ORCH] inventory completed: %d PRs (org-wide open=%s)",
                 inv_result.total_collected,
+                getattr(state.org_wide_open, "open_count", "n/a"),
             )
             # Ledger (OMN-12569): record one PR_INVENTORIED source event per
             # collected PR so the projection captures run id + branch SHA from
@@ -1244,6 +1283,24 @@ class HandlerPrLifecycleOrchestrator:
         except Exception as exc:
             logger.warning("[PR-LIFECYCLE-ORCH] failed to enumerate org repos: %s", exc)
             return ()
+
+    def _collect_org_wide_open_prs(self) -> Any:
+        """Census every open PR across the org as the sweep-done precondition.
+
+        Delegates to the inventory handler's ``collect_org_wide_open_prs`` so the
+        org-wide search (``gh api /search/issues?q=org:OmniNode-ai is:pr is:open``)
+        lives in one place (OMN-13318). Overridable in tests to inject a
+        synthetic census without real gh calls.
+
+        Returns a ``ModelOrgWideOpenPrInventory`` when available, or ``None`` if
+        the wired inventory handler does not expose the census (e.g. a minimal
+        test double) — in which case the sweep-done gate is treated as satisfied.
+        """
+        self._ensure_sub_handlers()
+        collector = getattr(self._inventory, "collect_org_wide_open_prs", None)
+        if collector is None:
+            return None
+        return collector()
 
     async def _call_inventory(
         self,
@@ -1638,6 +1695,7 @@ class HandlerPrLifecycleOrchestrator:
     def _build_result(
         self, state: _SweepState, correlation_id: UUID
     ) -> ModelPrLifecycleResult:
+        final_state, remainders = self._apply_org_wide_done_gate(state)
         return ModelPrLifecycleResult(
             correlation_id=correlation_id,
             prs_inventoried=state.prs_inventoried,
@@ -1645,9 +1703,54 @@ class HandlerPrLifecycleOrchestrator:
             prs_fixed=state.prs_fixed,
             prs_skipped=state.prs_skipped,
             prs_verified=state.prs_verified,
-            final_state=state.fsm.value,
+            final_state=final_state,
             error_message=state.error_message,
+            org_wide_open_count=int(getattr(state.org_wide_open, "open_count", 0) or 0),
+            org_wide_open_remainders=remainders,
         )
+
+    @staticmethod
+    def _apply_org_wide_done_gate(
+        state: _SweepState,
+    ) -> tuple[str, tuple[OrgWideOpenPrRemainderRef, ...]]:
+        """Gate the reported final_state on the org-wide open-PR census (OMN-13318).
+
+        A sweep may only report COMPLETE when zero PRs remain open org-wide. If
+        the FSM reached COMPLETE but the census reports open PRs (or could not be
+        executed), the reported state is downgraded to NOT_DONE and the open-PR
+        remainders are surfaced so the sweep-done report is refused with the
+        exact PRs that still block it.
+
+        A FAILED sweep is left untouched — its failure already blocks the report.
+        When no census is available (e.g. a minimal test double that does not
+        expose ``collect_org_wide_open_prs``), the gate is a no-op.
+        """
+        if state.fsm is not EnumOrchestratorState.COMPLETE:
+            return state.fsm.value, ()
+
+        census = state.org_wide_open
+        if census is None:
+            return state.fsm.value, ()
+
+        if getattr(census, "sweep_done", True):
+            return state.fsm.value, ()
+
+        remainders = tuple(
+            OrgWideOpenPrRemainderRef(
+                repo=str(getattr(item, "repo", "")),
+                pr_number=int(getattr(item, "pr_number", 0) or 0),
+                title=str(getattr(item, "title", "") or ""),
+                url=str(getattr(item, "url", "") or ""),
+            )
+            for item in getattr(census, "remainders", ()) or ()
+        )
+        logger.warning(
+            "[PR-LIFECYCLE-ORCH] sweep-done REFUSED: %d org-wide open PR(s) "
+            "remain (query_failed=%s)",
+            int(getattr(census, "open_count", 0) or 0),
+            getattr(census, "query_failed", False),
+        )
+        return _FINAL_STATE_NOT_DONE, remainders
 
     def _sweep_run_dir(self, run_id: str) -> Path | None:
         state_dir = os.environ.get(
@@ -1717,9 +1820,19 @@ class HandlerPrLifecycleOrchestrator:
         out_path = out_dir / "result.json"
 
         is_failure = result.final_state == EnumOrchestratorState.FAILED.value
+        # OMN-13318: NOT_DONE is not a success — open PRs remain org-wide. The
+        # sweep-done report is refused; report it as a distinct not_done status
+        # carrying the blocking remainders.
+        is_not_done = result.final_state == _FINAL_STATE_NOT_DONE
+        if is_failure:
+            status = "error"
+        elif is_not_done:
+            status = "not_done"
+        else:
+            status = "success"
         payload: dict[str, Any] = {
             "skill_name": "merge-sweep",
-            "status": "error" if is_failure else "success",
+            "status": status,
             "run_id": run_id,
             "correlation_id": str(result.correlation_id),
             "final_state": result.final_state,
@@ -1728,6 +1841,11 @@ class HandlerPrLifecycleOrchestrator:
             "prs_fixed": result.prs_fixed,
             "prs_skipped": result.prs_skipped,
             "prs_verified": result.prs_verified,
+            "org_wide_open_count": result.org_wide_open_count,
+            "org_wide_open_remainders": [
+                remainder.model_dump(mode="json")
+                for remainder in result.org_wide_open_remainders
+            ],
             "error_message": result.error_message,
         }
 

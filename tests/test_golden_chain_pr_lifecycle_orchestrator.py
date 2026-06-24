@@ -1442,3 +1442,104 @@ class TestPrLifecycleOrchestratorLedger:
         rebuilt = reconstruct_pr_ledger(tuple(source_events))
         assert rebuilt.entries[0].conclusion.value == "merged"
         assert rebuilt.entries[0].head_sha == "cafe01"
+
+
+class _MockInventoryWithCensus(MockInventory):
+    """MockInventory that also exposes the org-wide open-PR census (OMN-13318)."""
+
+    def __init__(
+        self,
+        *,
+        prs: tuple[PrRecord, ...] = (),
+        census: Any,
+    ) -> None:
+        super().__init__(prs=prs)
+        self._census = census
+        self.census_call_count = 0
+
+    def collect_org_wide_open_prs(self) -> Any:
+        self.census_call_count += 1
+        return self._census
+
+
+def _census(open_count: int, remainders: tuple[Any, ...] = ()) -> Any:
+    from omnimarket.nodes.node_pr_lifecycle_inventory_compute.models.model_pr_lifecycle_inventory import (
+        ModelOrgWideOpenPrInventory,
+    )
+
+    return ModelOrgWideOpenPrInventory(
+        open_count=open_count,
+        remainders=remainders,
+    )
+
+
+def _remainder(repo: str, pr_number: int, title: str = "") -> Any:
+    from omnimarket.nodes.node_pr_lifecycle_inventory_compute.models.model_pr_lifecycle_inventory import (
+        ModelOrgWideOpenPrRemainder,
+    )
+
+    return ModelOrgWideOpenPrRemainder(
+        repo=repo,
+        pr_number=pr_number,
+        title=title,
+        url=f"https://github.com/{repo}/pull/{pr_number}",
+    )
+
+
+@pytest.mark.unit
+class TestOrgWideSweepDoneGate:
+    """OMN-13318: org-wide open-PR census is a mandatory sweep-done gate.
+
+    DoD: seed one open PR org-wide -> the orchestrator refuses sweep-done and
+    reports NOT_DONE listing the remainder; close it -> reports COMPLETE.
+    """
+
+    async def test_open_pr_remainder_blocks_sweep_done(self) -> None:
+        remainder = _remainder("OmniNode-ai/omnibase_infra", 2043, "still open")
+        inventory = _MockInventoryWithCensus(
+            prs=(),
+            census=_census(open_count=1, remainders=(remainder,)),
+        )
+        orch = await _make_orchestrator(inventory=inventory)
+        result = await orch.handle(_make_command())
+
+        assert result.final_state == "NOT_DONE"
+        assert result.org_wide_open_count == 1
+        assert len(result.org_wide_open_remainders) == 1
+        assert result.org_wide_open_remainders[0].pr_number == 2043
+        assert result.org_wide_open_remainders[0].repo == "OmniNode-ai/omnibase_infra"
+        assert inventory.census_call_count == 1
+
+    async def test_zero_open_prs_allows_sweep_done(self) -> None:
+        inventory = _MockInventoryWithCensus(
+            prs=(),
+            census=_census(open_count=0),
+        )
+        orch = await _make_orchestrator(inventory=inventory)
+        result = await orch.handle(_make_command())
+
+        assert result.final_state == "COMPLETE"
+        assert result.org_wide_open_count == 0
+        assert result.org_wide_open_remainders == ()
+
+    async def test_failed_census_is_fail_closed_not_done(self) -> None:
+        from omnimarket.nodes.node_pr_lifecycle_inventory_compute.models.model_pr_lifecycle_inventory import (
+            ModelOrgWideOpenPrInventory,
+        )
+
+        inventory = _MockInventoryWithCensus(
+            prs=(),
+            census=ModelOrgWideOpenPrInventory(open_count=0, query_failed=True),
+        )
+        orch = await _make_orchestrator(inventory=inventory)
+        result = await orch.handle(_make_command())
+
+        assert result.final_state == "NOT_DONE"
+
+    async def test_missing_census_does_not_block(self) -> None:
+        """A stub inventory without the census method leaves COMPLETE untouched."""
+        orch = await _make_orchestrator(inventory=MockInventory(prs=()))
+        result = await orch.handle(_make_command())
+
+        assert result.final_state == "COMPLETE"
+        assert result.org_wide_open_count == 0
