@@ -52,6 +52,25 @@ inputs:
       flows list. Default: false.
     required: false
     default: false
+  lane:
+    type: str
+    description: >
+      CLI-only target for --collect probes (OMN-13552). Selects which runtime
+      lane's real broker + DB the collector probes, resolving the lane to its
+      container names + runtime host (dev/stability-test/prod/judge run on .201
+      and are probed over SSH + docker exec; 'local' probes this host's in-stack
+      docker/psql). An unknown lane or an unreachable target lane fails LOUD with
+      status=error rather than a false PRODUCER_DOWN / false-clean verdict.
+      Default: dev.
+    required: false
+    default: dev
+  runtime_host:
+    type: str
+    description: >
+      CLI-only override (OMN-13552) for the SSH host of a remote lane; defaults
+      to the lane's canonical runtime host. Ignored for lane=local.
+    required: false
+    default: ""
 
 outputs:
   flow_results:

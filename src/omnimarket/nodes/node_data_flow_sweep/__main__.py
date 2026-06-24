@@ -5,20 +5,23 @@
 Verifies end-to-end data flows from Kafka topics through DB projections.
 
 Usage:
-    # Live collection — runs rpk/psql probes internally (recommended)
-    python -m omnimarket.nodes.node_data_flow_sweep --collect
+    # Live collection against a targeted lane — runs rpk/psql probes against the
+    # lane's real broker + DB (recommended). The dev/stability/prod/judge lanes
+    # run on .201 and are probed over SSH + docker exec (OMN-13552); --lane local
+    # keeps the legacy in-stack docker/psql probe path.
+    python -m omnimarket.nodes.node_data_flow_sweep --collect --lane dev
 
     # Live collection, single topic
-    python -m omnimarket.nodes.node_data_flow_sweep --collect --topic onex.evt.omniclaude.routing-decision.v1
+    python -m omnimarket.nodes.node_data_flow_sweep --collect --lane dev --topic onex.evt.omniclaude.routing-decision.v1
 
     # Pre-collected metadata passed in (legacy / testing)
     python -m omnimarket.nodes.node_data_flow_sweep --flows '[{"topic": "...", ...}]'
 
     # Dry-run (no ticket creation)
-    python -m omnimarket.nodes.node_data_flow_sweep --collect --dry-run
+    python -m omnimarket.nodes.node_data_flow_sweep --collect --lane dev --dry-run
 
 Outputs JSON to stdout: DataFlowSweepResult model.
-Exit 0 = healthy, exit 1 = issues found.
+Exit 0 = healthy, exit 1 = issues found, exit 2 = target lane unreachable.
 """
 
 from __future__ import annotations
@@ -32,8 +35,15 @@ from pydantic import ValidationError
 
 from omnimarket.nodes.node_data_flow_sweep.handlers.handler_data_flow_sweep import (
     DataFlowSweepRequest,
+    DataFlowSweepResult,
     ModelFlowInput,
     NodeDataFlowSweep,
+)
+from omnimarket.nodes.node_data_flow_sweep.lane_target import (
+    KNOWN_LANES,
+    LaneResolutionError,
+    ModelLaneTarget,
+    resolve_lane_target,
 )
 
 NODE_INTROSPECTION_TOPIC = "onex.evt.platform.node-introspection.v1"  # onex-topic-allow: pending contract auto-wiring
@@ -73,20 +83,33 @@ _DEFAULT_FLOW_STUBS = [
 _DEFAULT_FLOWS = _DEFAULT_FLOW_STUBS
 
 
-def _collect_live(descriptors: list[ModelFlowInput]) -> list[ModelFlowInput]:
-    """Populate live rpk/psql metadata for each flow descriptor.
+def _collect_live(
+    descriptors: list[ModelFlowInput], target: ModelLaneTarget
+) -> list[ModelFlowInput]:
+    """Populate live rpk/psql metadata for each flow descriptor against ``target``.
 
     Imported lazily so that tests importing only the handler never pull in
-    subprocess/shell dependencies.  Falls back to the original descriptor on
-    per-flow collection failure so a single unreachable topic does not abort
-    the entire sweep.
+    subprocess/shell dependencies. The target lane's broker reachability is
+    asserted up-front (``assert_lane_reachable``); if the lane is unreachable the
+    raised :class:`LaneUnreachableError` propagates so the caller fails LOUD
+    (status = error) rather than mislabelling every flow PRODUCER_DOWN for a lane
+    that was never actually probed (OMN-13552).
+
+    A per-flow collection failure on a *reachable* lane still falls back to the
+    original descriptor so one bad topic does not abort the whole sweep.
     """
-    from omnimarket.nodes.node_data_flow_sweep.collector import collect_flow_metadata
+    from omnimarket.nodes.node_data_flow_sweep.collector import (
+        assert_lane_reachable,
+        collect_flow_metadata,
+    )
+
+    # Fail LOUD before any per-flow classification when the lane is unreachable.
+    assert_lane_reachable(target)
 
     populated: list[ModelFlowInput] = []
     for descriptor in descriptors:
         try:
-            populated.append(collect_flow_metadata(descriptor))
+            populated.append(collect_flow_metadata(descriptor, target))
         except Exception as exc:
             _log.warning(
                 "collection failed for %s: %s — using descriptor", descriptor.topic, exc
@@ -126,6 +149,25 @@ def main() -> None:
         help="Filter to a single topic name.",
     )
     parser.add_argument(
+        "--lane",
+        default="dev",
+        help=(
+            "Lane to probe with --collect. One of: "
+            f"local, {', '.join(KNOWN_LANES)}. The non-local lanes run on the "
+            "runtime host (.201 by default) and are probed over SSH + docker "
+            "exec; 'local' probes this host's in-stack docker/psql. "
+            "Default: dev."
+        ),
+    )
+    parser.add_argument(
+        "--runtime-host",
+        default="",
+        help=(
+            "Override the SSH host for a remote lane (defaults to the lane's "
+            "canonical runtime host). Ignored for --lane local."
+        ),
+    )
+    parser.add_argument(
         "--dry-run",
         action="store_true",
         default=False,
@@ -142,6 +184,14 @@ def main() -> None:
     # Build the flow list
     # -----------------------------------------------------------------------
     if args.collect:
+        try:
+            target = resolve_lane_target(
+                args.lane, runtime_host=args.runtime_host or None
+            )
+        except LaneResolutionError as exc:
+            _log.error("%s", exc)
+            sys.exit(2)
+
         descriptors = list(_DEFAULT_FLOW_STUBS)
         if args.topic:
             descriptors = [d for d in descriptors if d.topic == args.topic]
@@ -150,7 +200,23 @@ def main() -> None:
                     "no default flow descriptor found for topic %s; nothing to collect",
                     args.topic,
                 )
-        flows = _collect_live(descriptors)
+        try:
+            flows = _collect_live(descriptors, target)
+        except Exception as exc:
+            # OMN-13552: an unreachable / indeterminate target lane fails LOUD
+            # as status=error (exit 2), never a false PRODUCER_DOWN or false-clean
+            # verdict for a lane that was never actually probed.
+            _log.error("lane %s unreachable: %s", target.lane, exc)
+            error_result = DataFlowSweepResult(
+                flow_results=[],
+                flows_checked=len(descriptors),
+                healthy=0,
+                broken=0,
+                status="error",
+                dry_run=args.dry_run,
+            )
+            sys.stdout.write(error_result.model_dump_json(indent=2) + "\n")
+            sys.exit(2)
 
     elif args.flows:
         try:
