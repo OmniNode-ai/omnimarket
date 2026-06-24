@@ -20,6 +20,14 @@ Usage:
     # Dry-run (no ticket creation)
     python -m omnimarket.nodes.node_data_flow_sweep --collect --lane dev --dry-run
 
+The CLI and the RuntimeLocal dispatch path share flow resolution: both build a
+``DataFlowSweepRequest`` whose ``collect`` field (when set, with an empty
+``flows`` list) makes the handler's ``resolve_flows`` live-collect the built-in
+critical-chain stubs. This is the OMN-13534 reconciliation — ``collect`` is a
+real request-model field, not a ``__main__``-only argparse flag, so
+``onex skill data_flow_sweep`` no longer crashes on a forbidden extra key and
+the dispatch path actually probes.
+
 Outputs JSON to stdout: DataFlowSweepResult model.
 Exit 0 = healthy, exit 1 = issues found, exit 2 = target lane unreachable.
 """
@@ -34,88 +42,20 @@ import sys
 from pydantic import ValidationError
 
 from omnimarket.nodes.node_data_flow_sweep.handlers.handler_data_flow_sweep import (
+    _DEFAULT_FLOW_STUBS,
     DataFlowSweepRequest,
     DataFlowSweepResult,
     ModelFlowInput,
     NodeDataFlowSweep,
+    _collect_live,
 )
 from omnimarket.nodes.node_data_flow_sweep.lane_target import (
     KNOWN_LANES,
     LaneResolutionError,
-    ModelLaneTarget,
     resolve_lane_target,
 )
 
-NODE_INTROSPECTION_TOPIC = "onex.evt.platform.node-introspection.v1"  # onex-topic-allow: pending contract auto-wiring
-PATTERN_LEARNED_TOPIC = "onex.evt.omniintelligence.pattern-learned.v1"  # onex-topic-allow: pending contract auto-wiring
-ROUTING_DECISION_TOPIC = "onex.evt.omniclaude.routing-decision.v1"  # onex-topic-allow: pending contract auto-wiring
-
 _log = logging.getLogger(__name__)
-
-# ---------------------------------------------------------------------------
-# Default flow stubs — topology only, no live metadata.
-# When --collect is set, each stub is populated via collector.collect_flow_metadata().
-# ---------------------------------------------------------------------------
-
-_DEFAULT_FLOW_STUBS = [
-    ModelFlowInput(
-        topic=NODE_INTROSPECTION_TOPIC,
-        handler_name="projectNodeIntrospection",
-        table_name="node_service_registry",
-        dashboard_route="/agents",
-    ),
-    ModelFlowInput(
-        topic=PATTERN_LEARNED_TOPIC,
-        handler_name="projectPatternLearned",
-        table_name="pattern_learning_artifacts",
-        dashboard_route="/intelligence",
-    ),
-    ModelFlowInput(
-        topic=ROUTING_DECISION_TOPIC,
-        handler_name="projectRoutingDecision",
-        table_name="agent_routing_decisions",
-        dashboard_route="/pipeline",
-    ),
-]
-
-# Keep _DEFAULT_FLOWS as a backwards-compatible alias (same objects — stubs
-# carry safe zero-value defaults so pure-compute tests keep passing).
-_DEFAULT_FLOWS = _DEFAULT_FLOW_STUBS
-
-
-def _collect_live(
-    descriptors: list[ModelFlowInput], target: ModelLaneTarget
-) -> list[ModelFlowInput]:
-    """Populate live rpk/psql metadata for each flow descriptor against ``target``.
-
-    Imported lazily so that tests importing only the handler never pull in
-    subprocess/shell dependencies. The target lane's broker reachability is
-    asserted up-front (``assert_lane_reachable``); if the lane is unreachable the
-    raised :class:`LaneUnreachableError` propagates so the caller fails LOUD
-    (status = error) rather than mislabelling every flow PRODUCER_DOWN for a lane
-    that was never actually probed (OMN-13552).
-
-    A per-flow collection failure on a *reachable* lane still falls back to the
-    original descriptor so one bad topic does not abort the whole sweep.
-    """
-    from omnimarket.nodes.node_data_flow_sweep.collector import (
-        assert_lane_reachable,
-        collect_flow_metadata,
-    )
-
-    # Fail LOUD before any per-flow classification when the lane is unreachable.
-    assert_lane_reachable(target)
-
-    populated: list[ModelFlowInput] = []
-    for descriptor in descriptors:
-        try:
-            populated.append(collect_flow_metadata(descriptor, target))
-        except Exception as exc:
-            _log.warning(
-                "collection failed for %s: %s — using descriptor", descriptor.topic, exc
-            )
-            populated.append(descriptor)
-    return populated
 
 
 def main() -> None:
@@ -181,7 +121,11 @@ def main() -> None:
         sys.exit(1)
 
     # -----------------------------------------------------------------------
-    # Build the flow list
+    # Build the flow list. The handler's resolve_flows() owns the empty-flows
+    # default + collect path (shared with the dispatch path, OMN-13534); the
+    # CLI only adds the --topic filter and explicit --flows parsing, then passes
+    # a concrete flow list so request.collect stays False (collection already
+    # happened here or is not requested).
     # -----------------------------------------------------------------------
     if args.collect:
         try:
@@ -201,7 +145,9 @@ def main() -> None:
                     args.topic,
                 )
         try:
-            flows = _collect_live(descriptors, target)
+            flows = _collect_live(
+                descriptors, lane=target.lane, runtime_host=target.runtime_host
+            )
         except Exception as exc:
             # OMN-13552: an unreachable / indeterminate target lane fails LOUD
             # as status=error (exit 2), never a false PRODUCER_DOWN or false-clean
@@ -233,7 +179,6 @@ def main() -> None:
             flows = [f for f in flows if f.topic == args.topic]
 
     else:
-        # Legacy / no-flag path: use descriptors as-is (zero-value defaults)
         flows = list(_DEFAULT_FLOW_STUBS)
         if args.topic:
             flows = [f for f in flows if f.topic == args.topic]
@@ -243,9 +188,6 @@ def main() -> None:
                     args.topic,
                 )
 
-    # -----------------------------------------------------------------------
-    # Run the pure compute handler
-    # -----------------------------------------------------------------------
     request = DataFlowSweepRequest(
         flows=flows,
         dry_run=args.dry_run,

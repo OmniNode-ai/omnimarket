@@ -46,10 +46,12 @@ inputs:
   collect:
     type: bool
     description: >
-      CLI-only flag. When true, the entry point runs live rpk/psql probes to
-      populate flow metadata for the built-in critical chain stubs before
-      passing them to the pure handler. Mutually exclusive with a non-empty
-      flows list. Default: false.
+      When true (and flows is empty), the handler runs live rpk/psql probes to
+      populate flow metadata for the built-in critical-chain stubs before
+      classifying them. This is a real DataFlowSweepRequest field (not a
+      CLI-only flag), so the onex skill data_flow_sweep dispatch path resolves
+      and probes identically to the --collect CLI path (OMN-13534). Mutually
+      exclusive with a non-empty flows list. Default: false.
     required: false
     default: false
   lane:
