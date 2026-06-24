@@ -26,7 +26,18 @@ _REQUEST_TIMEOUT = 30.0
 
 
 class GitHubApiError(RuntimeError):
-    """Raised when a GitHub API request fails."""
+    """Raised when a GitHub API request fails.
+
+    ``status_code`` carries the HTTP status when the failure originated from an
+    :class:`urllib.error.HTTPError` (``None`` for network/decode failures). Callers
+    that need to classify a specific status — e.g. HTTP 409 stale-metadata on a
+    workflow-run cancel — branch on ``status_code`` rather than string-matching the
+    message.
+    """
+
+    def __init__(self, message: str, *, status_code: int | None = None) -> None:
+        super().__init__(message)
+        self.status_code = status_code
 
 
 def split_repo(repo: str) -> tuple[str, str]:
@@ -85,7 +96,7 @@ def rest_json(
             raw = resp.read()
     except urllib.error.HTTPError as exc:
         detail = exc.read().decode("utf-8", errors="replace").strip()
-        raise GitHubApiError(detail or str(exc)) from exc
+        raise GitHubApiError(detail or str(exc), status_code=exc.code) from exc
     except (urllib.error.URLError, OSError) as exc:
         raise GitHubApiError(str(exc)) from exc
 
@@ -133,7 +144,7 @@ def rest_no_content(
             return
     except urllib.error.HTTPError as exc:
         detail = exc.read().decode("utf-8", errors="replace").strip()
-        raise GitHubApiError(detail or str(exc)) from exc
+        raise GitHubApiError(detail or str(exc), status_code=exc.code) from exc
     except (urllib.error.URLError, OSError) as exc:
         raise GitHubApiError(str(exc)) from exc
 
@@ -167,7 +178,7 @@ def graphql(
             body = json.loads(resp.read().decode("utf-8"))
     except urllib.error.HTTPError as exc:
         detail = exc.read().decode("utf-8", errors="replace").strip()
-        raise GitHubApiError(detail or str(exc)) from exc
+        raise GitHubApiError(detail or str(exc), status_code=exc.code) from exc
     except (urllib.error.URLError, OSError, json.JSONDecodeError) as exc:
         raise GitHubApiError(str(exc)) from exc
     if body.get("errors"):
