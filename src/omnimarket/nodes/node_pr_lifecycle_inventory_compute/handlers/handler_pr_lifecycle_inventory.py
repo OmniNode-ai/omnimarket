@@ -37,6 +37,16 @@ _CHECK_BUCKET_TO_CONCLUSION = {
 }
 _TERMINAL_CHECK_BUCKETS = {"pass", "fail", "skipping", "cancel"}
 
+# F3 (OMN-13319): only PR-associated runs count toward required contexts.
+# A green `workflow_dispatch` "CI Summary" must NOT satisfy arm — branch
+# protection only credits the PR-associated `pull_request` run conclusion, not
+# the (potentially stale, or manually dispatched) statusCheckRollup row.
+# `pull_request_target` is included because GitHub treats it as PR-associated.
+# Status contexts (legacy commit statuses) carry an empty `event`; those are
+# treated as PR-associated because they are not Actions runs and cannot be
+# manually re-triggered the way `workflow_dispatch` runs can.
+_PR_ASSOCIATED_EVENTS = {"pull_request", "pull_request_target"}
+
 logger = logging.getLogger(__name__)
 
 HandlerType = Literal["NODE_HANDLER"]
@@ -288,12 +298,21 @@ class HandlerPrLifecycleInventory:
             merge_state_status is not None and merge_state_status == "DIRTY"
         )
 
-        # CI passing: True if all terminal checks succeeded, False if any failed
+        # CI passing: True if all terminal checks succeeded, False if any failed.
+        # F3 (OMN-13319): count ONLY PR-associated runs toward required
+        # contexts. A green `workflow_dispatch` "CI Summary" row never satisfies
+        # arm — branch protection credits the PR-associated `pull_request` run
+        # conclusion, not the statusCheckRollup row (which can be a stale or
+        # manually dispatched green). Non-PR-associated rows are dropped from
+        # the CI-passing computation, so a PR whose ONLY green is a manual
+        # dispatch stays not-green (ci_passing None/False) and arm refuses.
         ci_passing: bool | None = None
         completed = [
             c
             for c in check_runs
-            if c.status.lower() == "completed" and c.conclusion is not None
+            if c.status.lower() == "completed"
+            and c.conclusion is not None
+            and self._is_pr_associated(c)
         ]
         if completed:
             ci_passing = all(
@@ -364,7 +383,7 @@ class HandlerPrLifecycleInventory:
             "--repo",
             repo,
             "--json",
-            "name,state,bucket",
+            "name,state,bucket,event",
         ]
         result = subprocess.run(cmd, capture_output=True, text=True)
         if result.returncode != 0:
@@ -382,6 +401,7 @@ class HandlerPrLifecycleInventory:
                     name=str(item.get("name", "")),
                     status=self._normalize_check_status(item),
                     conclusion=self._normalize_check_conclusion(item),
+                    event=self._normalize_check_event(item),
                 )
                 for item in raw
             ]
@@ -412,6 +432,35 @@ class HandlerPrLifecycleInventory:
             return str(conclusion).lower()
         bucket = str(item.get("bucket", "") or "").lower()
         return _CHECK_BUCKET_TO_CONCLUSION.get(bucket)
+
+    @staticmethod
+    def _normalize_check_event(item: dict[str, object]) -> str | None:
+        """Extract the run trigger event from a gh pr checks row.
+
+        `gh pr checks --json ... event` reports the workflow run trigger
+        (e.g. ``pull_request``, ``workflow_dispatch``, ``merge_group``). Status
+        contexts (legacy commit statuses) and older fixtures omit it; return
+        None so they are treated as PR-associated (not manually dispatched).
+        """
+        event = item.get("event")
+        if event is None:
+            return None
+        event_str = str(event).strip().lower()
+        return event_str or None
+
+    @staticmethod
+    def _is_pr_associated(check: ModelPrCheckRun) -> bool:
+        """Whether a check's conclusion may credit a required context (F3).
+
+        Only PR-associated runs (and eventless status contexts) count toward
+        CI status. A manually dispatched ``workflow_dispatch`` "CI Summary"
+        never satisfies arm — branch protection credits the PR-associated
+        ``pull_request`` run conclusion, not the statusCheckRollup row, which
+        can be green from a manual dispatch (OMN-13319 / handoff #4).
+        """
+        if check.event is None:
+            return True
+        return check.event in _PR_ASSOCIATED_EVENTS
 
     @staticmethod
     def _extract_review_author(review: dict[str, object]) -> str:

@@ -20,6 +20,9 @@ class ModelPrCheckRun(BaseModel):
     name: str
     status: str  # queued | in_progress | completed
     conclusion: str | None = None  # success | failure | cancelled | skipped | neutral
+    event: str | None = (
+        None  # GitHub run trigger: pull_request | workflow_dispatch | merge_group | ...
+    )
 
 
 class ModelPrReview(BaseModel):
