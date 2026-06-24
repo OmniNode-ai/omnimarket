@@ -89,13 +89,13 @@ DOC_CONTENT_SCAN_CORPUS = ModelValidatorCorpus(
         # --- adversarial mutation cases (must still flag) ---
         ModelCorpusFixture(
             fixture_id="v-mut-lan-ip-10-band",
-            source="The judge lane resolves its broker at 10.0.0.42 internally.",
+            source="The judge lane resolves its broker at 10.0.0.42 internally.",  # onex-allow-internal-ip OMN-13568 corpus fixture: the leak the scanner must flag
             description="mutated to the 10/8 RFC1918 band — must still flag",
             mutation_of="v-base-lan-ip",
         ),
         ModelCorpusFixture(
             fixture_id="v-mut-lan-ip-172-band",
-            source="Point the projection reader at 172.20.5.10 for the read replica.",
+            source="Point the projection reader at 172.20.5.10 for the read replica.",  # onex-allow-internal-ip OMN-13568 corpus fixture: the leak the scanner must flag
             description="mutated to the 172.16-31/12 RFC1918 band — must still flag",
             mutation_of="v-base-lan-ip",
         ),
@@ -198,7 +198,7 @@ DOC_CONTENT_SCAN_CORPUS = ModelValidatorCorpus(
         # --- suppression escape hatches ---
         ModelCorpusFixture(
             fixture_id="c-mut-line-suppressed",
-            source="Deployed to 192.168.86.201 for the demo.  <!-- doc-content-ok -->",
+            source="Deployed to 192.168.86.201 for the demo.  <!-- doc-content-ok -->",  # onex-allow-internal-ip OMN-13568 corpus fixture: the suppressed-line leak literal
             description=(
                 "LAN IP on a line carrying the `# doc-content-ok` suppression marker — "
                 "suppressed, must stay clean"

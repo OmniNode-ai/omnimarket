@@ -224,7 +224,8 @@ def _reference_doc_content_handle(input_data):
         if path_pat.search(line):
             flagged = True
         for em in email_pat.finditer(line):
-            if not em.group().endswith("example.com"):
+            domain = em.group().rsplit("@", 1)[1].lower()
+            if domain != "example.com" and not domain.endswith(".example.com"):
                 flagged = True
         if omn_pat.search(line):
             flagged = True
