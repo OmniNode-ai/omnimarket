@@ -22,31 +22,31 @@ handler_routing:
         module: omnimarket.nodes.node_environment_health_scanner.handlers.handler_environment_health_scanner
     - operation: containers
       handler:
-        name: prober_containers
+        name: probe_containers
         module: omnimarket.nodes.node_environment_health_scanner.handlers.prober_containers
     - operation: emit_daemon
       handler:
-        name: prober_emit_daemon
+        name: probe_emit_daemon
         module: omnimarket.nodes.node_environment_health_scanner.handlers.prober_emit_daemon
     - operation: entry_points
       handler:
-        name: prober_entry_points
+        name: probe_entry_points
         module: omnimarket.nodes.node_environment_health_scanner.handlers.prober_entry_points
     - operation: hooks
       handler:
-        name: prober_hooks
+        name: probe_hooks
         module: omnimarket.nodes.node_environment_health_scanner.handlers.prober_hooks
     - operation: kafka
       handler:
-        name: prober_kafka
+        name: probe_kafka
         module: omnimarket.nodes.node_environment_health_scanner.handlers.prober_kafka
     - operation: model_endpoints
       handler:
-        name: prober_model_endpoints
+        name: probe_model_endpoints
         module: omnimarket.nodes.node_environment_health_scanner.handlers.prober_model_endpoints
     - operation: projections
       handler:
-        name: prober_projections
+        name: probe_projections
         module: omnimarket.nodes.node_environment_health_scanner.handlers.prober_projections
 
 metadata:

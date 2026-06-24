@@ -23,15 +23,15 @@ handler_routing:
         module: omnimarket.nodes.node_process_watchdog.handlers.handler_process_watchdog
     - operation: daemon_health
       handler:
-        name: check_daemon_health
+        name: DaemonHealthCheckTarget
         module: omnimarket.nodes.node_process_watchdog.handlers.check_daemon_health
     - operation: socket
       handler:
-        name: check_socket
+        name: SocketCheckTarget
         module: omnimarket.nodes.node_process_watchdog.handlers.check_socket
     - operation: production
       handler:
-        name: checktargets_production
+        name: build_production_targets
         module: omnimarket.nodes.node_process_watchdog.handlers.checktargets_production
 
 descriptor:

@@ -91,7 +91,7 @@ handler_routing:
   handlers:
     - operation: skill_overseer_verify
       handler:
-        name: HandlerSkillRequested
+        name: handle_skill_requested
         module: omnimarket.nodes.node_skill_overseer_verify_orchestrator.handlers.handler_skill_requested
 
 # Dependencies

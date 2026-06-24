@@ -30,7 +30,7 @@ handler_routing:
         module: omnimarket.nodes.node_dispatch_worker.handlers.handler_dispatch_worker
     - operation: dispatch_record_writer
       handler:
-        name: DispatchRecordWriter
+        name: write_dispatch_record
         module: omnimarket.nodes.node_dispatch_worker.handlers.dispatch_record_writer
 
 descriptor:

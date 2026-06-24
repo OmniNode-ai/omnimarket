@@ -24,7 +24,7 @@ handler_routing:
         module: omnimarket.nodes.node_data_verification.handlers.handler_data_verification
     - operation: postgres
       handler:
-        name: datasource_postgres
+        name: PostgresDataSource
         module: omnimarket.nodes.node_data_verification.handlers.datasource_postgres
 
 descriptor:
