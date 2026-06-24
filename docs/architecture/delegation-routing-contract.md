@@ -11,7 +11,7 @@ The delegation routing contract is declared in two files under
 Site-local overrides are applied from `~/.omninode/delegation/bifrost_overrides.yaml`
 at load time and are never committed to the repo.
 
-## per-backend max_tokens (OMN-13161)
+## per-backend max_tokens
 
 Every backend entry in `bifrost_delegation.yaml` carries a `max_tokens` field.
 This is the per-backend output-token ceiling. The contract resolves the
@@ -42,7 +42,7 @@ Example backend entries (see `bifrost_delegation.yaml` for the live values):
   max_tokens: 32768   # Claude Haiku 4.5 up to 32k output tokens
 ```
 
-## Task-class tier escalation order (OMN-13158)
+## Task-class tier escalation order
 
 `routing_tiers.yaml` defines the escalation ladder. Tiers are tried in order,
 cheapest first. When a quality gate fails or a backend is unavailable, the
@@ -57,7 +57,7 @@ lower tiers that lack those capabilities. For example, a `code_generation`
 task may match `local-coder` (tier: local) first; if that fails quality
 gates it escalates to `cloud-sonnet` (tier: frontier_api).
 
-OMN-13158 fixed the escalation gate ordering so tiers are always evaluated in
+The escalation gate ordering was hardened so tiers are always evaluated in
 the declared order, not insertion order. Contributors adding task-class routing
 rules must declare them in the tier order they want the escalation to follow.
 

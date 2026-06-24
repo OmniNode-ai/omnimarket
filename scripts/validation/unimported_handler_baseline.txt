@@ -1,8 +1,8 @@
-# OMN-10821 / OMN-12693: documented legacy Handler* classes without external
-# Python imports. Keep this list small: new entries should either add a Python
+# Documented legacy Handler* classes without external Python imports.
+# Keep this list small: new entries should either add a Python
 # import or explain why the handler is intentionally dormant.
 src/omnimarket/nodes/node_pr_lifecycle_fix_effect/handlers/handler_auto_rebase.py:HandlerAutoRebase # Legacy PR lifecycle helper; not in contract routing yet.
-src/omnimarket/nodes/node_ticket_pipeline/handlers/handler_report_poster.py:HandlerReportPoster # OMN-13212: contract-wired (node_ticket_pipeline/contract.yaml handler_routing), no Python importer. Surfaced when B2 deleted node_pr_review_bot's same-named handler that coincidentally cross-referenced the name.
+src/omnimarket/nodes/node_ticket_pipeline/handlers/handler_report_poster.py:HandlerReportPoster # contract-wired (node_ticket_pipeline/contract.yaml handler_routing), no Python importer. Surfaced when B2 deleted node_pr_review_bot's same-named handler that coincidentally cross-referenced the name.
 src/omnimarket/nodes/node_pr_lifecycle_fix_effect/handlers/handler_comment_resolution.py:HandlerCommentResolution # Legacy PR lifecycle review-thread helper; not in contract routing yet.
 src/omnimarket/nodes/node_generation_consumer/handlers/handler_generated_executor.py:HandlerGeneratedExecutor # Dynamic generated-node executor pending explicit contract routing.
 src/omnimarket/nodes/node_hostile_reviewer/handlers/handler_convergence_reducer.py:HandlerConvergenceReducer # Hostile-reviewer internal helper pending explicit contract routing.
@@ -11,7 +11,7 @@ src/omnimarket/nodes/node_nightly_loop_controller/handlers/handler_projection_ni
 src/omnimarket/nodes/node_hostile_reviewer/handlers/handler_response_parser.py:HandlerResponseParser # Hostile-reviewer internal helper pending explicit contract routing.
 src/omnimarket/nodes/node_hostile_reviewer/handlers/handler_review_orchestrator.py:HandlerReviewOrchestrator # Hostile-reviewer orchestration helper pending explicit contract routing.
 src/omnimarket/nodes/node_knowledge_context_assembler_orchestrator/handlers/handler_knowledge_context_assembler_orchestrator.py:HandlerKnowledgeContextAssemblerOrchestrator # Knowledge context assembler orchestrator pending explicit contract routing wiring.
-src/omnimarket/nodes/node_generate_node_effect/handlers/handler_generate_node.py:HandlerGenerateNode # OMN-12230 contract-first codegen node; handler routing intentionally deferred.
+src/omnimarket/nodes/node_generate_node_effect/handlers/handler_generate_node.py:HandlerGenerateNode # contract-first codegen node; handler routing intentionally deferred.
 src/omnimarket/nodes/node_ab_compare_reducer/handlers/handler_ab_compare_reducer.py:HandlerAbCompareReducer # Legacy dormant handler; no external Python import yet.
 src/omnimarket/nodes/node_ab_inference_effect/handlers/handler_ab_inference_effect.py:HandlerAbInferenceEffect # Legacy dormant handler; no external Python import yet.
 src/omnimarket/nodes/node_adversarial_pipeline_orchestrator/handlers/handler_adversarial_pipeline_orchestrator.py:HandlerAdversarialPipelineOrchestrator # Legacy dormant handler; no external Python import yet.

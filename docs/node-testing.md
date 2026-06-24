@@ -40,7 +40,7 @@ Requirements for a node to be harness-compatible:
 
 The harness runs as part of the standard `pytest -m unit` suite in CI. No separate configuration required.
 
-## Dispatcher route-coverage gate (OMN-12880)
+## Dispatcher route-coverage gate
 
 Every node that subscribes to a command topic must declare a dispatcher route.
 A node that subscribes without a dispatcher route silently delivers messages to

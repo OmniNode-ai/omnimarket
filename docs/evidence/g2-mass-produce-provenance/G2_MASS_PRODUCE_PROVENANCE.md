@@ -1,11 +1,11 @@
-# G2 Mass-Produce — Mechanical Scanner Long-Tail Provenance (OMN-13294)
+# G2 Mass-Produce — Mechanical Scanner Long-Tail Provenance
 
 This document is the durable evidence for the G2 mass-production batch of the
 validator-standardization plan (§5 G2): mechanical single-file scanner validators
 produced through the **proven** `node_generation_consumer` generation path, each
 **corpus-accepted** against the live local model before any bake.
 
-G1 (OMN-13293) proved the generate→corpus-accept loop on one canary
+The G1 canary proved the generate→corpus-accept loop on one canary
 (hardcoded-absolute-path). The first G2 producer PR (#1312, merged to dev as
 `113ad6bb`) added the first mechanical scanner (hardcoded-private-ip) plus the
 reusable corpus registry + driver. This batch extends the registry with the
@@ -21,7 +21,7 @@ remaining mechanical scanner long-tail from the same proven invariants.
 
 Each corpus carries adversarial mutation cases (`ModelCorpusFixture.mutation_of`),
 so an all-curated corpus is rejected by `evaluate_corpus_acceptance` before the
-model is even called (OMN-13289 guard). The per-run provenance JSON is committed
+model is even called (the corpus guard). The per-run provenance JSON is committed
 alongside this file (`<validator>.generation.json`).
 
 ## Generation run facts (live, identical routing for all three)
@@ -74,7 +74,7 @@ validators are not blanket-blocked. Concretely:
   fleet requirement (the target end-state: pre_commit + ci_workflow required).
 - `architecture-handshakes/validator-requirements-baseline.yaml` records each as
   an accepted `backlog` (shadow) gap for omnimarket — the owner is omnibase_core,
-  consumed via OMN-9050 pin-bump propagation. The validator-requirements consumer
+  consumed via pin-bump propagation. The validator-requirements consumer
   confirms `baseline-clean` (the recorded gaps exactly match the live scan; no new
   unrecorded gap, no stale entry).
 

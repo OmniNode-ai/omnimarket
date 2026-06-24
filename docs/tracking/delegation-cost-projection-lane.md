@@ -13,7 +13,7 @@ The wrapper starts only these projection consumers:
 
 The existing `docker-compose.projection.yml` is intentionally broader: it
 defines six projection services and defaults `KAFKA_BROKERS` to
-`192.168.86.201:19092` when unset. For local demo work, use the wrapper below
+`${ONEX_HOST}:19092` when unset. For local demo work, use the wrapper below
 instead of the compose file.
 
 ## Required Local Environment
@@ -34,7 +34,7 @@ The wrapper fails before startup when:
 - the env file is missing
 - `OMNIDASH_ANALYTICS_DB_URL` is missing
 - both `KAFKA_BROKERS` and `KAFKA_BOOTSTRAP_SERVERS` are missing
-- any of those endpoints points at `192.168.86.201`
+- any of those endpoints points at the runtime host (`$ONEX_HOST`)
 
 ## Commands
 

@@ -1,25 +1,23 @@
-# OMN-13102 — pattern_learning golden chain: live materialization proof
+# pattern_learning golden chain: live materialization proof
 
-**Ticket:** OMN-13102 (parent OMN-12272) — pattern_learning golden chain broken: no
-projection consumer for `pattern-stored.v1`, `pattern_learning_artifacts` never
-materialized.
+**Topic:** pattern_learning golden chain broken — no projection consumer for
+`pattern-stored.v1`, `pattern_learning_artifacts` never materialized.
 
 **Date:** 2026-06-22
-**Lane:** stability-test (proof lane), `.201` — `omnibase-infra-stability-test-*`
-**Verifier:** OMN-13102 worker (subagent), distinct from the OMN-13124 author.
+**Lane:** stability-test (proof lane), runtime host — `omnibase-infra-stability-test-*`
+**Verifier:** subagent verifier, distinct from the consumer build author.
 
 ---
 
 ## Summary
 
-The 2026-06-12 diagnosis on OMN-13102 (decision-tree item 1) hit the "consumer already
-exists but is unwired / not yet built" branch. Between that diagnosis and this proof,
-**OMN-13124 (PR #1210, merged to dev)** built the canonical consumer and closed every
-structural gap the ticket called out. This evidence packet is the **live, end-to-end
-materialization proof** on the proof lane that OMN-13102's DoD requires, plus the
+The 2026-06-12 diagnosis hit the "consumer already exists but is unwired / not yet built"
+branch (decision-tree item 1). Between that diagnosis and this proof, **PR #1210 (merged
+to dev)** built the canonical consumer and closed every structural gap. This evidence
+packet is the **live, end-to-end materialization proof** on the proof lane, plus the
 decision-tree reconciliation audit.
 
-### Decision-tree outcome (per OMN-13102 / task brief)
+### Decision-tree outcome
 
 1. **Consumer exists** → wiring/verification, not a new build. A canonical projection
    node `node_projection_pattern_learning` (REDUCER) already exists in omnimarket,
@@ -79,7 +77,7 @@ Published a canonical `pattern-stored.v1` event to the proof-lane Redpanda topic
  "language":"python",
  "lifecycle_state":"candidate",
  "composite_score":0.91,
- "scoring_evidence":{"source":"OMN-13102 live proof"},
+ "scoring_evidence":{"source":"pattern_learning live proof"},
  "signature":{"shape":"proof"},
  "correlation_id":"22222222-2222-4222-8222-222222220001"}
 ```
@@ -129,10 +127,9 @@ onex.evt.omniintelligence.pattern-stored.v1  0         3              3         
 ## Provenance
 
 The omnimarket-side build (node + handler + migration + contract + `golden_chains.yaml`
-entry) and the infra-vendored migration landed via **OMN-13124 (PR #1210)** on dev.
-OMN-13102 is the originating diagnosis ticket; this PR supplies the missing
-**live materialization proof** on the proof lane and the decision-tree reconciliation
-audit. Unit suite for the node + golden-chain tests: 23 passed
+entry) and the infra-vendored migration landed via **PR #1210** on dev.
+This evidence file supplies the missing **live materialization proof** on the proof lane
+and the decision-tree reconciliation audit. Unit suite for the node + golden-chain tests: 23 passed
 (`src/omnimarket/nodes/node_projection_pattern_learning/tests/`,
 `tests/test_golden_chain_pattern_learning.py`,
 `tests/test_golden_chain_projection_pattern_learning.py`).

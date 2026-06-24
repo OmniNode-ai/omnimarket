@@ -1,12 +1,12 @@
-# OMN-11011 Migration Package Classification
+# Migration Package Classification
 
 Date: 2026-05-16
 
-Scope: classify the omnimarket package migrations for `nightly_loop_decisions`, `nightly_loop_iterations`, and `review_bot_bypass_log` after generated-tree exclusion. `node_service_registry` is intentionally out of scope for OMN-11011.
+Scope: classify the omnimarket package migrations for `nightly_loop_decisions`, `nightly_loop_iterations`, and `review_bot_bypass_log` after generated-tree exclusion. `node_service_registry` is intentionally out of scope.
 
 ## Result
 
-The three OMN-11011 tables are package-owned omnimarket migrations and do not require suppressions or repairs after generated-tree exclusion:
+The three classified tables are package-owned omnimarket migrations and do not require suppressions or repairs after generated-tree exclusion:
 
 | Table | Owner migration | Scanned definitions | Conflict status |
 | --- | --- | ---: | --- |
@@ -24,7 +24,7 @@ Raw standard-repo scan:
   --repos omnibase_core omnibase_infra omniclaude omnidash omniintelligence omnimarket omnimemory onex_change_control
 ```
 
-The raw scan reported 31 historical conflicts, none for the three OMN-11011 tables.
+The raw scan reported 31 historical conflicts, none for the three classified tables.
 
 Suppressions-aware standard-repo scan:
 
@@ -93,9 +93,9 @@ Suppressed 31 known conflict(s) via suppressions file.
 EXIT_CODE: 1
 ```
 
-Those remaining full-workspace conflicts are outside the OMN-11011 ownership
-fence. They are not `nightly_loop_decisions`, `nightly_loop_iterations`, or
-`review_bot_bypass_log`, and no OMN-11011 suppression is required.
+Those remaining full-workspace conflicts are outside the scope of this
+classification. They are not `nightly_loop_decisions`, `nightly_loop_iterations`, or
+`review_bot_bypass_log`, and no suppression is required for those tables.
 
 Target-table scan using the OCC scanner implementation:
 
