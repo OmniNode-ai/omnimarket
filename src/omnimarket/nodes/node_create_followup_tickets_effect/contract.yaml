@@ -37,7 +37,7 @@ descriptor:
   node_archetype: effect
   purity: effectful
   runtime_profiles: [effects]
-  idempotent: false
+  idempotent: true
   timeout_ms: 120000
 
 terminal_event: onex.evt.omnimarket.create-followup-tickets-completed.v1
@@ -59,6 +59,7 @@ side_effects:
   duplicate_key_fields:
     - correlation_id
     - source_review_id
+    - finding_title
 
 metadata:
   transport_type: kafka
