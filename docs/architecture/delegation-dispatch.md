@@ -3,7 +3,7 @@
 OmniMarket's delegation path routes a caller's prompt to the cheapest capable
 backend and escalates automatically when quality gates fail.
 
-## Dispatch path (canonical as of OMN-13160)
+## Dispatch path
 
 ```
 Caller (omniclaude skill / Codex adapter)
@@ -18,7 +18,7 @@ node_delegation_orchestrator  (orchestrator, owned by omnimarket)
   │
   ▼
 node_llm_delegation_call_effect  (effect handler)
-  │  dispatches via: DirectCurl posts endpoint_url VERBATIM (OMN-13159)
+  │  dispatches via: DirectCurl posts endpoint_url VERBATIM
   │
   ▼
 Backend (local vLLM / cloud API)
@@ -26,18 +26,18 @@ Backend (local vLLM / cloud API)
   ▼
 node_delegation_quality_gate_reducer  (reducer, FSM transition)
   │  on pass: onex.evt.omnibase-infra.delegation-completed.v1
-  │  on fail: triggers escalation emit (OMN-13140)
+  │  on fail: triggers escalation emit
   │
   ▼
 node_delegate_skill_orchestrator  collects terminal event and returns result
 ```
 
-Before OMN-13160, the dispatch path included bespoke port objects
+An earlier version of the dispatch path included bespoke port objects
 (`source_tool: delegate-skill-runtime-port`) that owned HTTP client lifecycle
-outside the canonical handler boundary. OMN-13160 deleted those ports; the
+outside the canonical handler boundary. Those ports were removed; the
 canonical effect handler now owns the full dispatch.
 
-## endpoint_url verbatim rule (OMN-13159)
+## endpoint_url verbatim rule
 
 Every backend in `src/omnimarket/configs/bifrost_delegation.yaml` carries a
 `endpoint_url` that is the **complete, final URL** including the full chat path
@@ -51,7 +51,7 @@ For site-local backends the `endpoint_url` is `null` in the repo default; the
 that must hold the **complete** URL. The overlay file is typically
 `~/.omninode/delegation/bifrost_overrides.yaml`.
 
-## Escalation gate sequence (OMN-13140 / OMN-13143)
+## Escalation gate sequence
 
 When a quality gate fails the orchestrator emits a
 `onex.evt.omnimarket.delegation-escalation-requested.v1` event. The escalation
@@ -66,11 +66,11 @@ Each tier is attempted at most once. If all tiers are exhausted without a
 passing quality gate the orchestrator emits
 `onex.evt.omnimarket.delegate-skill-failed.v1`.
 
-OMN-13143 wired the escalation emit publisher on the dispatch path so that
+The escalation emit publisher is wired on the dispatch path so that
 escalation events are visible to downstream projections
 (`node_llm_delegation_projection`) even when the final attempt succeeds.
 
-## per-backend max_tokens (OMN-13161)
+## per-backend max_tokens
 
 Each backend entry in `bifrost_delegation.yaml` carries a `max_tokens` field
 that caps the output-token budget for that backend. When the caller omits

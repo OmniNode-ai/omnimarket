@@ -1,7 +1,7 @@
-# OMN-12964 - Quality-gate calibration proof (P1.7)
+# Quality-gate calibration proof (P1.7)
 
-**Status:** quality scores now demonstrably discriminate. Experiments 1-3
-(OMN-12944 / P0.2) interpretation is unblocked.
+**Status:** quality scores now demonstrably discriminate. Experiment interpretation
+from Phase 0.2 is unblocked.
 
 > WARNING - experiment-validity prerequisite. Before this fix landed, the
 > delegation quality gate returned a degenerate `{0.0, 1.0}` verdict and applied

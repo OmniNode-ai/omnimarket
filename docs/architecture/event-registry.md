@@ -3,7 +3,7 @@
 OmniMarket maintains a single canonical event registry that is the source of
 truth for how omniclaude hook events map to Kafka topics.
 
-## Canonical source (OMN-13146)
+## Canonical source
 
 The canonical registry is the YAML file at:
 
@@ -18,12 +18,12 @@ This file is the single authoritative declaration of:
 - `partition_key_field` — the event field used as the Kafka message key
 - `required_fields` — fields that must be present in every published envelope
 
-Before OMN-13146 there were two surfaces: the emit-daemon YAML (authoritative
+Previously there were two surfaces: the emit-daemon YAML (authoritative
 at runtime) and a hand-maintained Python projection in omniclaude
 (`hooks/event_registry.py` + `hooks/topics.py`). The earlier drift validator
-(OMN-10127) compared only topic membership, so field-level divergence (e.g.
-a missing `required_fields` entry on the YAML side) passed silently. OMN-13146
-made the YAML the single canonical source and promoted the validator to a full
+compared only topic membership, so field-level divergence (e.g.
+a missing `required_fields` entry on the YAML side) passed silently. The YAML
+was then made the single canonical source and the validator was promoted to a full
 structural comparison.
 
 ## Drift gate

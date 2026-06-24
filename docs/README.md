@@ -13,12 +13,12 @@ the repo-level ownership boundary.
   scope, node metadata dependencies, and current isolation limits.
 - [Delegation dispatch](architecture/delegation-dispatch.md) - canonical
   delegation dispatch path, endpoint_url verbatim rule, and escalation gate
-  sequence (OMN-13160 / OMN-13159 / OMN-13140).
+  sequence.
 - [Delegation routing contract](architecture/delegation-routing-contract.md) -
   per-backend max_tokens, task-class tier escalation order, and codegen
-  fallback (OMN-13161 / OMN-13158).
+  fallback.
 - [Event registry](architecture/event-registry.md) - canonical event registry,
-  drift gate, and contributor compliance path (OMN-13146).
+  drift gate, and contributor compliance path.
 
 ## Reference
 

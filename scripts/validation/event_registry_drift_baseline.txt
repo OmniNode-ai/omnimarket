@@ -1,4 +1,4 @@
-# Known, intentional event-registry divergence (OMN-13146 unification).
+# Known, intentional event-registry divergence (unification pass).
 #
 # The canonical registry is
 # src/omnimarket/nodes/node_emit_daemon/registries/topics.yaml. The omniclaude
@@ -18,7 +18,7 @@ registry_only onex.evt.diagnostic.daemon-health.v1
 
 # --- Event-type-level carve-outs ----------------------------------------------
 # delegation.request is the legacy event the emit daemon still accepts; the hook
-# side renamed it to delegate.task in OMN-10050 and dropped the old key. It stays
+# side renamed it to delegate.task in an earlier pass and dropped the old key. It stays
 # registry-only until the legacy emit-daemon path is removed.
 event_registry_only delegation.request
 # daemon.health.probe is a synthetic round-trip the emit daemon emits to itself

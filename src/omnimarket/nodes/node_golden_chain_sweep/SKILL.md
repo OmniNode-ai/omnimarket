@@ -3,7 +3,7 @@
 Validates field-level correctness of **pre-collected** projection rows against
 chain definitions.
 
-> **Evidence scope (OMN-8724, OMN-13126).** This node is **pure compute over
+> **Evidence scope.** This node is **pure compute over
 > caller-supplied `projected_rows`** — it performs **zero live I/O**: no Kafka
 > publish, no DB poll, no `count(*)`, no row-count delta. A `pass` means only
 > that the rows the caller handed in contain the expected field keys. It does
@@ -14,8 +14,8 @@ chain definitions.
 > evidence.** It is a deterministic field-presence validator, suitable for
 > regression/diagnostic checks over rows you have already fetched by other means.
 > A real live-Postgres fetch + row-count-delta assertion (publish a head event,
-> read the tail-table row back, assert the delta) is tracked under OMN-8724 and
-> is **not** implemented here yet.
+> read the tail-table row back, assert the delta) is tracked as a follow-on task
+> and is **not** implemented here yet.
 
 ## Chain Registry
 

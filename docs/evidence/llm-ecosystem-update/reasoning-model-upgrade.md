@@ -1,10 +1,10 @@
-# OMN-11925 Reasoning Model Upgrade Note
+# Reasoning Model Upgrade Note
 
 Captured: 2026-05-24
 
 ## Why this patch exists
 
-OMN-11891 post-merge runtime proof showed the delegation path is live, but the selected local reasoning model timed out consistently:
+A post-merge runtime proof showed the delegation path is live, but the selected local reasoning model timed out consistently:
 
 - Selected model: legacy DeepSeek 14B local slot
 - Endpoint role: `local-deepseek-r1-14b`
@@ -12,7 +12,7 @@ OMN-11891 post-merge runtime proof showed the delegation path is live, but the s
 
 ## Change
 
-This patch updates the OMN-11925 registry/topology reconciliation so new reasoning/research routing prefers the newer Qwen3.6 local slot:
+This patch updates the registry/topology reconciliation so new reasoning/research routing prefers the newer Qwen3.6 local slot:
 
 - Adds canonical registry key `qwen3.6-35b`.
 - Binds it to `LLM_QWEN3_NEXT_URL` and served model name `mlx-community/Qwen3.6-35B-A3B-8bit`.
@@ -22,12 +22,12 @@ This patch updates the OMN-11925 registry/topology reconciliation so new reasoni
 
 ## Live topology caveat
 
-Read-only probes from this session confirmed `.201` currently serves only:
+Read-only probes from this session confirmed the runtime host currently serves only:
 
 - legacy Qwen3-Coder local slot on `:8000`
 - legacy DeepSeek 14B local slot on `:8001`
 
-SSH to `.200` was not available from this session, so `.200:8102` serving was not independently re-probed here. Runtime success-path proof still requires the stability overlay/runtime to resolve `local-qwen3-6-35b` to the newer served endpoint.
+The secondary inference host was not available from this session, so its `:8102` serving was not independently re-probed here. Runtime success-path proof still requires the stability overlay/runtime to resolve `local-qwen3-6-35b` to the newer served endpoint.
 
 ## Verification
 
