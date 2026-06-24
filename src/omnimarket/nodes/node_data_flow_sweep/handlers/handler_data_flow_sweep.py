@@ -8,9 +8,19 @@ ONEX node type: COMPUTE — pure, deterministic, no LLM calls.
 
 from __future__ import annotations
 
+import logging
 from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict, Field
+
+_log = logging.getLogger(__name__)
+
+# Built-in critical-chain topics. Declared here (not only in ``__main__``) so the
+# RuntimeLocal dispatch path resolves the same default stub set as the CLI
+# (OMN-13534). ``onex-topic-allow`` until contract auto-wiring lands.
+NODE_INTROSPECTION_TOPIC = "onex.evt.platform.node-introspection.v1"  # onex-topic-allow: pending contract auto-wiring
+PATTERN_LEARNED_TOPIC = "onex.evt.omniintelligence.pattern-learned.v1"  # onex-topic-allow: pending contract auto-wiring
+ROUTING_DECISION_TOPIC = "onex.evt.omniclaude.routing-decision.v1"  # onex-topic-allow: pending contract auto-wiring
 
 # ---------------------------------------------------------------------------
 # Enums
@@ -77,11 +87,29 @@ class ModelFlowResult(BaseModel):
 
 
 class DataFlowSweepRequest(BaseModel):
-    """Input for the data flow sweep handler."""
+    """Input for the data flow sweep handler.
+
+    Two ways to supply the flows that get verified (resolved by
+    :func:`resolve_flows`):
+
+    * ``flows`` — pre-collected flow descriptors (highest precedence). Passing a
+      non-empty list verifies exactly those flows and skips live collection.
+    * ``collect`` — when ``True`` and ``flows`` is empty, the handler runs the
+      live rpk/psql collector against the built-in critical-chain descriptors
+      before classifying them. This is the field the
+      ``onex skill data_flow_sweep`` mapping and the node ``contract.yaml``
+      supply; previously ``collect`` was a ``__main__``-only argparse flag
+      absent from this model, so the RuntimeLocal dispatch path crashed on the
+      forbidden extra key (OMN-13534).
+
+    When BOTH are empty/false the handler classifies the built-in critical-chain
+    descriptors with their zero-value defaults (topology-only, no live metadata).
+    """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     flows: list[ModelFlowInput] = Field(default_factory=list)
+    collect: bool = False
     dry_run: bool = False
 
 
@@ -106,6 +134,78 @@ class DataFlowSweepResult(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# Default flow stubs + shared flow resolution
+# ---------------------------------------------------------------------------
+
+# Built-in critical-chain stubs — topology only, no live metadata. When
+# ``collect`` is set, each stub is populated via
+# ``collector.collect_flow_metadata()``. Shared by the ``__main__`` CLI path and
+# the RuntimeLocal dispatch path so both resolve identically (OMN-13534).
+_DEFAULT_FLOW_STUBS: tuple[ModelFlowInput, ...] = (
+    ModelFlowInput(
+        topic=NODE_INTROSPECTION_TOPIC,
+        handler_name="projectNodeIntrospection",
+        table_name="node_service_registry",
+        dashboard_route="/agents",
+    ),
+    ModelFlowInput(
+        topic=PATTERN_LEARNED_TOPIC,
+        handler_name="projectPatternLearned",
+        table_name="pattern_learning_artifacts",
+        dashboard_route="/intelligence",
+    ),
+    ModelFlowInput(
+        topic=ROUTING_DECISION_TOPIC,
+        handler_name="projectRoutingDecision",
+        table_name="agent_routing_decisions",
+        dashboard_route="/pipeline",
+    ),
+)
+
+
+def _collect_live(descriptors: list[ModelFlowInput]) -> list[ModelFlowInput]:
+    """Populate live rpk/psql metadata for each flow descriptor.
+
+    The collector is imported lazily so tests/callers that exercise only the
+    pure classification logic never pull in subprocess/shell dependencies. Falls
+    back to the original descriptor on per-flow collection failure so a single
+    unreachable topic does not abort the entire sweep.
+    """
+    from omnimarket.nodes.node_data_flow_sweep.collector import collect_flow_metadata
+
+    populated: list[ModelFlowInput] = []
+    for descriptor in descriptors:
+        try:
+            populated.append(collect_flow_metadata(descriptor))
+        except Exception as exc:
+            _log.warning(
+                "collection failed for %s: %s — using descriptor", descriptor.topic, exc
+            )
+            populated.append(descriptor)
+    return populated
+
+
+def resolve_flows(request: DataFlowSweepRequest) -> list[ModelFlowInput]:
+    """Resolve the flow list to verify, shared by CLI and dispatch paths.
+
+    Precedence (OMN-13534):
+
+    * Explicit ``request.flows`` — verified as-is, no live collection.
+    * ``request.collect`` with empty ``flows`` — run the live rpk/psql collector
+      against the built-in critical-chain descriptors so the RuntimeLocal
+      dispatch path probes real infrastructure instead of classifying
+      zero-value descriptors (which false-cleaned).
+    * Neither — classify the built-in critical-chain descriptors with their
+      zero-value defaults (topology-only).
+    """
+    if request.flows:
+        return list(request.flows)
+    if request.collect:
+        return _collect_live(list(_DEFAULT_FLOW_STUBS))
+    return list(_DEFAULT_FLOW_STUBS)
+
+
+# ---------------------------------------------------------------------------
 # Handler
 # ---------------------------------------------------------------------------
 
@@ -113,16 +213,20 @@ class DataFlowSweepResult(BaseModel):
 class NodeDataFlowSweep:
     """Verify end-to-end data flows from Kafka to DB.
 
-    Pure compute handler — operates on pre-collected flow metadata.
+    Operates on pre-collected flow metadata. When ``request.collect`` is set the
+    handler runs the live rpk/psql collector (lazily imported) before
+    classifying — so the ``onex skill data_flow_sweep`` dispatch path probes
+    real infrastructure, identical to the ``--collect`` CLI path (OMN-13534).
     """
 
     def handle(self, request: DataFlowSweepRequest) -> DataFlowSweepResult:
         """Execute the data flow sweep across flow inputs."""
+        flows = resolve_flows(request)
         results: list[ModelFlowResult] = []
         healthy_count = 0
         broken_count = 0
 
-        for flow in request.flows:
+        for flow in flows:
             result = self._verify_flow(flow)
             results.append(result)
             if result.flow_status == EnumFlowStatus.FLOWING:
@@ -134,7 +238,7 @@ class NodeDataFlowSweep:
 
         return DataFlowSweepResult(
             flow_results=results,
-            flows_checked=len(request.flows),
+            flows_checked=len(flows),
             healthy=healthy_count,
             broken=broken_count,
             status=status,

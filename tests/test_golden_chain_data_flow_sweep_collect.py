@@ -196,12 +196,35 @@ class TestHandlerWithCollectedFlows:
         assert result.flow_results[0].flow_status == EnumFlowStatus.PRODUCER_DOWN
         assert result.status == "issues_found"
 
-    def test_handler_empty_flows_is_healthy(self) -> None:
-        """Handler with zero flows returns healthy (nothing broken)."""
+    def test_handler_empty_flows_resolves_default_stubs(self) -> None:
+        """Empty flows (no collect) resolves the built-in critical-chain stubs.
+
+        OMN-13534: previously ``flows=[]`` checked zero flows and returned
+        ``healthy`` — a false-clean for the no-arg dispatch path. The handler
+        now resolves the built-in stubs (zero-value defaults -> PRODUCER_DOWN),
+        so a no-arg dispatch reports ``issues_found`` over real topology instead
+        of silently passing over nothing.
+        """
         handler = NodeDataFlowSweep()
         result = handler.handle(DataFlowSweepRequest(flows=[]))
+        assert result.flows_checked == 3
+        assert result.status == "issues_found"
+
+    def test_handler_single_healthy_flow_is_healthy(self) -> None:
+        """A single explicitly-supplied healthy flow returns healthy."""
+        handler = NodeDataFlowSweep()
+        healthy = ModelFlowInput(
+            topic="onex.evt.test.ok.v1",
+            handler_name="projectOk",
+            table_name="ok_table",
+            producer_status=EnumProducerStatus.ACTIVE,
+            consumer_lag=0,
+            table_row_count=5,
+            table_has_recent_data=True,
+        )
+        result = handler.handle(DataFlowSweepRequest(flows=[healthy]))
         assert result.status == "healthy"
-        assert result.flows_checked == 0
+        assert result.flows_checked == 1
 
 
 # ---------------------------------------------------------------------------
