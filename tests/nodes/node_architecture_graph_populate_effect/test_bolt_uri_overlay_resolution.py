@@ -23,11 +23,13 @@ from omnimarket.nodes.node_architecture_graph_populate_effect.models import (
     ModelArchitectureGraphPopulateConfig,
 )
 
-# Representative per-lane values the existing deployment env injects.
+# Representative per-lane values the existing deployment env injects. Hostnames
+# only (no LAN IP literals — the equivalence assertion is value-agnostic: the
+# overlay must resolve whatever the lane binds, byte-for-byte).
 _LANE_BOLT_URIS = (
     "bolt://memgraph:7687",  # dev (compose service DNS)
-    "bolt://192.168.86.201:7687",  # stability-test (.201)
-    "bolt://192.168.86.201:7687",  # prod (.201)
+    "bolt://memgraph-stability:7687",  # stability-test lane host
+    "bolt://memgraph-prod:7687",  # prod lane host
 )
 
 
