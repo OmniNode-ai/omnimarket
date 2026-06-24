@@ -30,11 +30,11 @@ handler_routing:
         module: omnimarket.nodes.node_routing_policy_engine.handlers.handler_routing_policy
     - operation: retry_strategy
       handler:
-        name: HandlerRetryStrategy
+        name: determine_retry_type
         module: omnimarket.nodes.node_routing_policy_engine.handlers.handler_retry_strategy
     - operation: task_shape_extractor
       handler:
-        name: HandlerTaskShapeExtractor
+        name: extract_task_shape
         module: omnimarket.nodes.node_routing_policy_engine.handlers.handler_task_shape_extractor
     - operation: build_available_models_from_scores
       handler:

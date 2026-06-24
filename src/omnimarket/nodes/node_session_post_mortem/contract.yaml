@@ -100,11 +100,11 @@ handler_routing:
         module: omnimarket.nodes.node_session_post_mortem.handlers.handler_session_post_mortem
     - operation: friction_reader
       handler:
-        name: AdapterFrictionReader
+        name: read_friction_events
         module: omnimarket.nodes.node_session_post_mortem.handlers.adapter_friction_reader
     - operation: pr_collector
       handler:
-        name: AdapterPrCollector
+        name: collect_pr_status
         module: omnimarket.nodes.node_session_post_mortem.handlers.adapter_pr_collector
 
 metadata:

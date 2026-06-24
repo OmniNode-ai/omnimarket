@@ -23,27 +23,27 @@ handler_routing:
         module: omnimarket.nodes.node_baseline_capture.handlers.handler_baseline_capture
     - operation: db_row_counts
       handler:
-        name: probe_db_row_counts
+        name: ProbeDbRowCounts
         module: omnimarket.nodes.node_baseline_capture.handlers.probes.probe_db_row_counts
     - operation: git_branches
       handler:
-        name: probe_git_branches
+        name: ProbeGitBranches
         module: omnimarket.nodes.node_baseline_capture.handlers.probes.probe_git_branches
     - operation: github_prs
       handler:
-        name: probe_github_prs
+        name: ProbeGitHubPRs
         module: omnimarket.nodes.node_baseline_capture.handlers.probes.probe_github_prs
     - operation: kafka_topics
       handler:
-        name: probe_kafka_topics
+        name: ProbeKafkaTopics
         module: omnimarket.nodes.node_baseline_capture.handlers.probes.probe_kafka_topics
     - operation: linear_tickets
       handler:
-        name: probe_linear_tickets
+        name: ProbeLinearTickets
         module: omnimarket.nodes.node_baseline_capture.handlers.probes.probe_linear_tickets
     - operation: system_health
       handler:
-        name: probe_system_health
+        name: ProbeSystemHealth
         module: omnimarket.nodes.node_baseline_capture.handlers.probes.probe_system_health
 
 metadata:
