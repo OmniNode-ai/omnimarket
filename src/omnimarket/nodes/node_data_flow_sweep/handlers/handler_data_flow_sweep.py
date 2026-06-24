@@ -13,6 +13,12 @@ from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from omnimarket.nodes.node_data_flow_sweep.lane_target import (
+    LaneResolutionError,
+    ModelLaneTarget,
+    resolve_lane_target,
+)
+
 _log = logging.getLogger(__name__)
 
 # Built-in critical-chain topics. Declared here (not only in ``__main__``) so the
@@ -110,6 +116,8 @@ class DataFlowSweepRequest(BaseModel):
 
     flows: list[ModelFlowInput] = Field(default_factory=list)
     collect: bool = False
+    lane: str = "dev"
+    runtime_host: str = ""
     dry_run: bool = False
 
 
@@ -163,20 +171,35 @@ _DEFAULT_FLOW_STUBS: tuple[ModelFlowInput, ...] = (
 )
 
 
-def _collect_live(descriptors: list[ModelFlowInput]) -> list[ModelFlowInput]:
-    """Populate live rpk/psql metadata for each flow descriptor.
+def _collect_live(
+    descriptors: list[ModelFlowInput],
+    lane: str | ModelLaneTarget = "dev",
+    runtime_host: str = "",
+) -> list[ModelFlowInput]:
+    """Populate live rpk/psql metadata for each flow descriptor against a lane.
 
     The collector is imported lazily so tests/callers that exercise only the
-    pure classification logic never pull in subprocess/shell dependencies. Falls
-    back to the original descriptor on per-flow collection failure so a single
-    unreachable topic does not abort the entire sweep.
+    pure classification logic never pull in subprocess/shell dependencies.
+    Target-lane reachability is asserted up front (OMN-13552), while per-flow
+    collection failures still fall back to the original descriptor so one bad
+    topic does not abort the entire sweep.
     """
-    from omnimarket.nodes.node_data_flow_sweep.collector import collect_flow_metadata
+    from omnimarket.nodes.node_data_flow_sweep.collector import (
+        assert_lane_reachable,
+        collect_flow_metadata,
+    )
+
+    target = (
+        lane
+        if isinstance(lane, ModelLaneTarget)
+        else resolve_lane_target(lane, runtime_host=runtime_host or None)
+    )
+    assert_lane_reachable(target)
 
     populated: list[ModelFlowInput] = []
     for descriptor in descriptors:
         try:
-            populated.append(collect_flow_metadata(descriptor))
+            populated.append(collect_flow_metadata(descriptor, target))
         except Exception as exc:
             _log.warning(
                 "collection failed for %s: %s — using descriptor", descriptor.topic, exc
@@ -201,7 +224,11 @@ def resolve_flows(request: DataFlowSweepRequest) -> list[ModelFlowInput]:
     if request.flows:
         return list(request.flows)
     if request.collect:
-        return _collect_live(list(_DEFAULT_FLOW_STUBS))
+        return _collect_live(
+            list(_DEFAULT_FLOW_STUBS),
+            lane=request.lane,
+            runtime_host=request.runtime_host,
+        )
     return list(_DEFAULT_FLOW_STUBS)
 
 
@@ -221,7 +248,28 @@ class NodeDataFlowSweep:
 
     def handle(self, request: DataFlowSweepRequest) -> DataFlowSweepResult:
         """Execute the data flow sweep across flow inputs."""
-        flows = resolve_flows(request)
+        try:
+            flows = resolve_flows(request)
+        except LaneResolutionError as exc:
+            _log.error("invalid data_flow_sweep lane: %s", exc)
+            return DataFlowSweepResult(
+                flow_results=[],
+                flows_checked=0,
+                healthy=0,
+                broken=0,
+                status="error",
+                dry_run=request.dry_run,
+            )
+        except RuntimeError as exc:
+            _log.error("data_flow_sweep collection failed: %s", exc)
+            return DataFlowSweepResult(
+                flow_results=[],
+                flows_checked=0,
+                healthy=0,
+                broken=0,
+                status="error",
+                dry_run=request.dry_run,
+            )
         results: list[ModelFlowResult] = []
         healthy_count = 0
         broken_count = 0
