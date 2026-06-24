@@ -6,13 +6,16 @@ from __future__ import annotations
 
 import pytest
 
+from omnimarket.nodes.node_autopilot_orchestrator import consumer as autopilot_consumer
 from omnimarket.nodes.node_autopilot_orchestrator.consumer import (
     _DEFAULT_GROUP,
+    _GROUP_CONTRACT_REF,
     TOPIC_AUTOPILOT_COMPLETED,
     TOPIC_AUTOPILOT_FAILED,
     TOPIC_AUTOPILOT_START,
     _build_failure_payload,
     _parse_command,
+    _resolve_group_id,
 )
 
 
@@ -86,3 +89,53 @@ class TestAutopilotOrchestratorParseCommand:
         assert "phase" in failure
         assert "failed_at" in failure
         assert failure["phase"] == "autopilot_orchestrator"
+
+
+# ---------------------------------------------------------------------------
+# OMN-13557 Wave-2 (config -> overlay): the AUTOPILOT_ORCH_GROUP consumer-group
+# config read resolves through the sanctioned overlay seam
+# (``expand_contract_env_refs``) against a ``${env.VAR}`` contract ref, not a
+# scattered direct ``os.environ`` read. Same var, same value, now via the one
+# env-reading surface. Resolution-equivalence + fail-to-default coverage. The
+# consumer-group suffix legitimately carries a contract default (vs a
+# fail-closed endpoint), so an unbound overlay var falls back to the canonical
+# default constant rather than raising.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestAutopilotGroupOverlayResolution:
+    """Overlay resolution equivalence for the autopilot consumer-group config."""
+
+    def test_contract_ref_declares_env_overlay_convention(self) -> None:
+        """The consumer declares a ``${env.VAR}`` contract ref for the group id."""
+        assert _GROUP_CONTRACT_REF == "${env.AUTOPILOT_ORCH_GROUP}"
+
+    def test_group_resolves_via_overlay_seam(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """_resolve_group_id routes through expand_contract_env_refs."""
+        seen: list[str] = []
+        real = autopilot_consumer.expand_contract_env_refs
+
+        def _spy(value: str) -> str:
+            seen.append(value)
+            return real(value)
+
+        monkeypatch.setattr(autopilot_consumer, "expand_contract_env_refs", _spy)
+        monkeypatch.setenv(
+            "AUTOPILOT_ORCH_GROUP",
+            "stability.omnimarket.autopilot_orchestrator.consume.1.0.0",
+        )
+        assert (
+            _resolve_group_id()
+            == "stability.omnimarket.autopilot_orchestrator.consume.1.0.0"
+        )
+        assert "${env.AUTOPILOT_ORCH_GROUP}" in seen
+
+    def test_unbound_overlay_falls_back_to_contract_default(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """An unbound overlay var resolves to the contract default constant."""
+        monkeypatch.delenv("AUTOPILOT_ORCH_GROUP", raising=False)
+        assert _resolve_group_id() == _DEFAULT_GROUP
