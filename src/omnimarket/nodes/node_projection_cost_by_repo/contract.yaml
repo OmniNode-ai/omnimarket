@@ -36,5 +36,21 @@ event_bus:
   publish_topics:
     - onex.evt.omnimarket.cost-by-repo-snapshot.v1
 
+projection_api:
+  expose: true
+  topic: "onex.snapshot.projection.cost.by_repo.v1" # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
+  table: "cost_by_repo_snapshots"
+  schema: "public"
+  columns:
+    - "repo_name"
+    - "total_cost_usd"
+    - "total_tokens"
+    - "window"
+    - "snapshot_timestamp_minute"
+    - "updated_at"
+  order_by: "total_cost_usd DESC"
+  freshness_column: "updated_at"
+  limit: 100
+
 metadata:
   transport_type: kafka
