@@ -2981,3 +2981,151 @@ class TestBusTargetPreflightGuard:
             _default_event_bus_factory()
 
         assert _KAFKA_BOOTSTRAP_ENV_VAR in str(exc_info.value)
+
+
+# ---------------------------------------------------------------------------
+# OMN-13557 Wave-2 (config -> overlay): the Codex adapter topic/requester/api-
+# version config reads resolve through the sanctioned overlay seam
+# (``expand_contract_env_refs``) against contract refs, not scattered direct
+# ``os.environ`` reads. Same var, same value, now via the one env-reading
+# surface. Resolution-equivalence + fail-to-default coverage.
+# ---------------------------------------------------------------------------
+
+
+class TestCodexConfigOverlayResolution:
+    """Overlay resolution equivalence for the Codex adapter config cluster."""
+
+    @pytest.mark.unit
+    def test_contract_refs_declare_env_overlay_convention(self) -> None:
+        """The adapter declares ``${env.VAR}`` contract refs for each config var."""
+        from omnimarket.adapters.codex.runtime_client import (
+            _API_VERSION_CONTRACT_REF,
+            _COMMAND_TOPIC_CONTRACT_REF,
+            _REQUESTER_CONTRACT_REF,
+            _RESPONSE_TOPIC_CONTRACT_REF,
+        )
+
+        assert _COMMAND_TOPIC_CONTRACT_REF == "${env.ONEX_PATTERN_B_COMMAND_TOPIC}"
+        assert _RESPONSE_TOPIC_CONTRACT_REF == "${env.ONEX_PATTERN_B_RESPONSE_TOPIC}"
+        assert _REQUESTER_CONTRACT_REF == "${env.ONEX_PATTERN_B_REQUESTER}"
+        assert _API_VERSION_CONTRACT_REF == "${env.KAFKA_API_VERSION}"
+
+    @pytest.mark.unit
+    def test_command_topic_resolves_via_overlay_seam(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """default_command_topic routes through expand_contract_env_refs."""
+        seen: list[str] = []
+        real = runtime_client.expand_contract_env_refs
+
+        def _spy(value: str) -> str:
+            seen.append(value)
+            return real(value)
+
+        monkeypatch.setattr(runtime_client, "expand_contract_env_refs", _spy)
+        monkeypatch.setenv(
+            "ONEX_PATTERN_B_COMMAND_TOPIC",
+            "onex.cmd.omnibase-infra.custom-pattern-b-dispatch.v1",
+        )
+        assert (
+            default_command_topic()
+            == "onex.cmd.omnibase-infra.custom-pattern-b-dispatch.v1"
+        )
+        assert "${env.ONEX_PATTERN_B_COMMAND_TOPIC}" in seen
+
+    @pytest.mark.unit
+    def test_response_topic_resolves_via_overlay_seam(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """default_response_topic routes through expand_contract_env_refs."""
+        seen: list[str] = []
+        real = runtime_client.expand_contract_env_refs
+
+        def _spy(value: str) -> str:
+            seen.append(value)
+            return real(value)
+
+        monkeypatch.setattr(runtime_client, "expand_contract_env_refs", _spy)
+        monkeypatch.setenv(
+            "ONEX_PATTERN_B_RESPONSE_TOPIC",
+            "onex.evt.omnibase-infra.custom-pattern-b-dispatch-completed.v1",
+        )
+        assert (
+            default_response_topic()
+            == "onex.evt.omnibase-infra.custom-pattern-b-dispatch-completed.v1"
+        )
+        assert "${env.ONEX_PATTERN_B_RESPONSE_TOPIC}" in seen
+
+    @pytest.mark.unit
+    def test_requester_resolves_via_overlay_seam(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """default_requester routes through expand_contract_env_refs."""
+        seen: list[str] = []
+        real = runtime_client.expand_contract_env_refs
+
+        def _spy(value: str) -> str:
+            seen.append(value)
+            return real(value)
+
+        monkeypatch.setattr(runtime_client, "expand_contract_env_refs", _spy)
+        monkeypatch.setenv("ONEX_PATTERN_B_REQUESTER", "codex-overlay")
+        assert default_requester() == "codex-overlay"
+        assert "${env.ONEX_PATTERN_B_REQUESTER}" in seen
+
+    @pytest.mark.unit
+    def test_unbound_overlay_falls_back_to_contract_default(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """An unbound overlay var resolves to the contract default constant.
+
+        Topic/requester config legitimately carry a contract-declared default
+        (unlike a fail-closed endpoint), so an empty overlay expansion falls
+        back to the canonical default rather than raising.
+        """
+        monkeypatch.delenv("ONEX_PATTERN_B_COMMAND_TOPIC", raising=False)
+        monkeypatch.delenv("ONEX_PATTERN_B_RESPONSE_TOPIC", raising=False)
+        monkeypatch.delenv("ONEX_PATTERN_B_REQUESTER", raising=False)
+        assert default_command_topic() == "onex.cmd.omnimarket.pattern-b-dispatch.v1"
+        assert (
+            default_response_topic()
+            == "onex.evt.omnimarket.pattern-b-dispatch-completed.v1"
+        )
+        assert default_requester() == "codex"
+
+    @pytest.mark.unit
+    def test_api_version_kwargs_resolve_via_overlay_seam(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """_direct_kafka_client_version_kwargs routes the env read through the seam."""
+        from omnimarket.adapters.codex.runtime_client import (
+            _direct_kafka_client_version_kwargs,
+        )
+
+        seen: list[str] = []
+        real = runtime_client.expand_contract_env_refs
+
+        def _spy(value: str) -> str:
+            seen.append(value)
+            return real(value)
+
+        monkeypatch.setattr(runtime_client, "expand_contract_env_refs", _spy)
+        monkeypatch.setenv("KAFKA_API_VERSION", "2.6.0")
+        transport = SimpleNamespace(_config=None)
+        kwargs = _direct_kafka_client_version_kwargs(cast("object", transport))  # type: ignore[arg-type]
+        assert kwargs == {"api_version": "2.6.0"}
+        assert "${env.KAFKA_API_VERSION}" in seen
+
+    @pytest.mark.unit
+    def test_api_version_kwargs_empty_when_unbound(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """No api_version kwarg when neither transport config nor overlay binds it."""
+        from omnimarket.adapters.codex.runtime_client import (
+            _direct_kafka_client_version_kwargs,
+        )
+
+        monkeypatch.delenv("KAFKA_API_VERSION", raising=False)
+        transport = SimpleNamespace(_config=None)
+        kwargs = _direct_kafka_client_version_kwargs(cast("object", transport))  # type: ignore[arg-type]
+        assert kwargs == {}
