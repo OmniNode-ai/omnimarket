@@ -5,6 +5,14 @@ Defines chains (head topic -> tail table) and runs field-level assertions agains
 
 ONEX node type: COMPUTE — pure, deterministic, no LLM calls, **zero live I/O**.
 
+Chain set resolution (OMN-13553): when a caller dispatches with no ``chains``
+(the canonical ``onex skill golden_chain_sweep`` path supplies only the
+runtime-injected ``correlation_id``), the request defaults to the packaged
+``golden_chains.yaml`` registry. Reading the node's own packaged config is
+deterministic resolution, NOT live runtime I/O. An empty validated chain set is
+fail-closed: ``overall_status`` is ``fail``, NEVER ``pass`` — a sweep over zero
+chains is vacuous truth, not health.
+
 Evidence scope (OMN-8724, OMN-13126): this node does NOT perform any live I/O —
 no Kafka publish, no DB poll, no ``count(*)``, no row-count delta. A ``pass`` only
 asserts that the caller-supplied rows contain the expected field keys; it does NOT
@@ -85,6 +93,23 @@ class ModelChainResult(BaseModel):
     message: str = ""
 
 
+def _default_chains_from_registry() -> list[ModelChainDefinition]:
+    """Resolve the default chain set from the packaged ``golden_chains.yaml``.
+
+    Used when a caller dispatches with no ``chains`` (the canonical
+    ``onex skill golden_chain_sweep`` path supplies only ``correlation_id``).
+    Reading the node's own packaged registry is deterministic config
+    resolution, NOT live runtime I/O — no Kafka publish, no DB poll. The
+    handler stays a pure validator; this only ensures the validated chain set
+    is non-empty so the sweep cannot report a vacuous ``pass`` over zero chains
+    (OMN-13553). The lazy import avoids a module-level cycle with
+    ``registry`` (which imports ``ModelChainDefinition`` from this module).
+    """
+    from omnimarket.nodes.node_golden_chain_sweep.registry import load_registry
+
+    return load_registry()
+
+
 class GoldenChainSweepRequest(BaseModel):
     """Input for the golden chain sweep handler."""
 
@@ -96,7 +121,9 @@ class GoldenChainSweepRequest(BaseModel):
     # bus dispatch path — without it the runtime-injected field is rejected by
     # extra="forbid" before the handler ever runs.
     correlation_id: str = ""
-    chains: list[ModelChainDefinition] = Field(default_factory=list)
+    chains: list[ModelChainDefinition] = Field(
+        default_factory=lambda: _default_chains_from_registry()
+    )
     timeout_ms: int = 15000
     projected_rows: dict[str, dict[str, object]] = Field(default_factory=dict)
     idle_gate: bool = (
@@ -159,7 +186,13 @@ class NodeGoldenChainSweep:
             else:
                 failed += 1
 
-        if failed == 0 and gated == 0:
+        if not request.chains:
+            # Fail-closed: zero validated chains must NEVER report pass. A sweep
+            # over an empty chain set is vacuous truth, not health — an operator
+            # or CI gate reading `overall_status: pass` here would see "all
+            # golden chains healthy" when nothing was checked (OMN-13553).
+            overall = EnumSweepStatus.FAIL
+        elif failed == 0 and gated == 0:
             overall = EnumSweepStatus.PASS
         elif failed == 0 and gated > 0:
             overall = EnumSweepStatus.GATED

@@ -174,13 +174,19 @@ class TestGoldenChainSweepGoldenChain:
         await event_bus.close()
 
     async def test_empty_chains(self, event_bus: EventBusInmemory) -> None:
-        """Empty chains list should produce PASS with zero counts."""
+        """Empty chains list is fail-closed — NOT a vacuous pass (OMN-13553).
+
+        A sweep over zero validated chains is vacuous truth, not health. An
+        operator/CI gate reading ``overall_status: pass`` here would believe
+        "all golden chains healthy" while nothing was checked.
+        """
         handler = NodeGoldenChainSweep()
         request = GoldenChainSweepRequest(chains=[])
         result = handler.handle(request)
 
-        assert result.overall_status == EnumSweepStatus.PASS
         assert result.chains_total == 0
+        assert result.overall_status == EnumSweepStatus.FAIL
+        assert result.overall_status != EnumSweepStatus.PASS
 
     async def test_by_status_counts(self, event_bus: EventBusInmemory) -> None:
         """by_status should aggregate chain statuses correctly."""
@@ -235,10 +241,15 @@ class TestGoldenChainSweepGoldenChain:
         request = GoldenChainSweepRequest.model_validate(minimal_payload)
 
         assert request.correlation_id == minimal_payload["correlation_id"]
-        assert request.chains == []
+        # OMN-13553: no caller-supplied chains → default to the packaged
+        # registry so the skill-dispatch path validates a real, non-empty chain
+        # set instead of producing a vacuous chains_total:0 pass.
+        assert len(request.chains) > 0
 
         result = NodeGoldenChainSweep().handle(request)
-        # No chains supplied → nothing to validate → PASS with zero counts.
-        # This is an empty-input PASS, NOT live data-flow evidence.
-        assert result.overall_status == EnumSweepStatus.PASS
-        assert result.chains_total == 0
+        # Registry chains loaded but no projected_rows supplied → every chain
+        # TIMEOUTs → the sweep is FAIL, NOT a vacuous pass. Still not live
+        # data-flow evidence; it is honest about validating nothing live.
+        assert result.chains_total > 0
+        assert result.overall_status != EnumSweepStatus.PASS
+        assert result.chains_passed == 0
