@@ -182,6 +182,57 @@ def _reference_todo_handle(input_data):
     return {"findings": findings}
 
 
+def _reference_doc_content_handle(input_data):
+    import re
+
+    source = input_data.get("source", "")
+    lines = source.split("\n")
+    # Whole-file suppression: a `doc-content-file-ok` marker anywhere silences
+    # every leak in the file (historical-trace escape hatch).
+    for whole in lines:
+        if "doc-content-file-ok" in whole:
+            return {"findings": []}
+
+    # RFC1918 private bands (10/8, 172.16-31/12, 192.168/16). Doc-reserved ranges
+    # (192.0.2, 198.51.100, 203.0.113), loopback (127.0.0.1) and public IPs are
+    # NOT private and stay clean by octet parsing.
+    ip_pat = re.compile(r"\b(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})\b")
+    # `.201`/`.200` host shorthand NOT preceded by a digit (so `0.200`, `2.201.0`
+    # decimals/SemVer do not fire).
+    host_pat = re.compile(r"(?<!\d)\.20[01]\b")
+    # Personal home paths; `$OMNI_HOME` / `Path.home()` portable forms do not match.
+    path_pat = re.compile(r"/(Users|home)/[A-Za-z0-9_]")
+    # Email leak; the example.com reserved doc domain is excluded.
+    email_pat = re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b")
+    omn_pat = re.compile(r"\bOMN-\d+\b")
+
+    findings = []
+    for line in lines:
+        # Per-line suppression escape hatch.
+        if "doc-content-ok" in line:
+            continue
+        flagged = False
+        for m in ip_pat.finditer(line):
+            a = int(m.group(1))
+            b = int(m.group(2))
+            if a > 255 or b > 255 or int(m.group(3)) > 255 or int(m.group(4)) > 255:
+                continue
+            if a == 10 or (a == 172 and 16 <= b <= 31) or (a == 192 and b == 168):
+                flagged = True
+        if host_pat.search(line):
+            flagged = True
+        if path_pat.search(line):
+            flagged = True
+        for em in email_pat.finditer(line):
+            if not em.group().endswith("example.com"):
+                flagged = True
+        if omn_pat.search(line):
+            flagged = True
+        if flagged:
+            findings.append({"line": line})
+    return {"findings": findings}
+
+
 def _scanner_source(fn: object) -> str:
     """Dedent a reference handler function to a sandbox-loadable `handle` source."""
     src = textwrap.dedent(inspect.getsource(fn))
@@ -193,6 +244,7 @@ _REFERENCE_SCANNERS = {
     "hardcoded-localhost-url": _scanner_source(_reference_localhost_url_handle),
     "hardcoded-topic-string": _scanner_source(_reference_topic_handle),
     "todo-fixme-marker": _scanner_source(_reference_todo_handle),
+    "doc-content-scan": _scanner_source(_reference_doc_content_handle),
 }
 
 
@@ -205,3 +257,35 @@ def test_longtail_corpus_accepts_a_correct_reference_scanner(name: str) -> None:
     assert result.checked is True, name
     assert result.passed is True, f"{name}: reference scanner failed: {result.errors}"
     assert result.errors == [], name
+
+
+@pytest.mark.unit
+def test_doc_content_corpus_meets_fixture_density_dod() -> None:
+    # DoD (OMN-13568): >= the IP-validator fixture density, with >= 4 adversarial
+    # mutation cases on EACH side. The IP corpus is the explicit baseline.
+    doc = CORPORA["doc-content-scan"]
+    ip = CORPORA["hardcoded-private-ip"]
+    assert len(doc.violation_fixtures) >= len(ip.violation_fixtures)
+    assert len(doc.clean_fixtures) >= len(ip.clean_fixtures)
+    doc_violation_mutations = [f for f in doc.violation_fixtures if f.mutation_of]
+    doc_clean_mutations = [f for f in doc.clean_fixtures if f.mutation_of]
+    assert len(doc_violation_mutations) >= 4, "need >=4 adversarial violation mutations"
+    assert len(doc_clean_mutations) >= 4, "need >=4 adversarial clean mutations"
+
+
+@pytest.mark.unit
+def test_doc_content_corpus_rejects_an_omn_only_scanner() -> None:
+    # A scanner that only flags OMN-XXXX refs misses every local-env leak (LAN IP,
+    # host shorthand, personal path, ssh/email) — exactly the silent false-negative
+    # the corpus exists to catch. It must be rejected.
+    omn_only = (
+        "def handle(input_data):\n"
+        "    import re\n"
+        "    s = input_data.get('source', '')\n"
+        "    hits = [{'m': m.group()} for m in re.finditer(r'\\bOMN-\\d+\\b', s)]\n"
+        "    return {'findings': hits}\n"
+    )
+    result = evaluate_corpus_acceptance(omn_only, CORPORA["doc-content-scan"])
+    assert result.checked is True
+    assert result.passed is False
+    assert result.errors

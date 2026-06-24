@@ -17,6 +17,9 @@ generated scanner => same verdict.
 
 from __future__ import annotations
 
+from omnimarket.nodes.node_generation_consumer.validator_corpora.corpus_doc_content_scan import (
+    DOC_CONTENT_SCAN_CORPUS,
+)
 from omnimarket.nodes.node_generation_consumer.validator_corpora.corpus_hardcoded_ip import (
     HARDCODED_IP_CORPUS,
 )
@@ -38,6 +41,7 @@ from omnimarket.nodes.node_generation_consumer.validator_corpora.corpus_todo_mar
 
 __all__ = [
     "CORPORA",
+    "DOC_CONTENT_SCAN_CORPUS",
     "HARDCODED_IP_CORPUS",
     "HARDCODED_LOCALHOST_URL_CORPUS",
     "HARDCODED_TOPIC_CORPUS",
@@ -50,6 +54,7 @@ __all__ = [
 # driver iterates this map so adding a corpus here is the only edit needed to
 # enrol a new mechanical scanner in the G2 batch.
 CORPORA = {
+    "doc-content-scan": DOC_CONTENT_SCAN_CORPUS,
     "hardcoded-private-ip": HARDCODED_IP_CORPUS,
     "hardcoded-localhost-url": HARDCODED_LOCALHOST_URL_CORPUS,
     "hardcoded-topic-string": HARDCODED_TOPIC_CORPUS,
