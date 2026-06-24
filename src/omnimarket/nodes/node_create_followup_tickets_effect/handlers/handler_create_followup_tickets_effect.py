@@ -59,6 +59,8 @@ class HandlerCreateFollowupTicketsEffect:
         created: list[ModelCreatedTicketRef] = []
         failures: list[ModelTicketCreationFailure] = []
         skipped_nits = 0
+        skipped_duplicates = 0
+        seen_titles: set[str] = set()
 
         for index, finding in enumerate(command.findings):
             if finding.severity is EnumFindingSeverity.NIT and not command.include_nits:
@@ -66,6 +68,11 @@ class HandlerCreateFollowupTicketsEffect:
                 continue
 
             payload = _build_ticket_payload(command, finding, index)
+            title = payload["title"]
+            if title in seen_titles:
+                skipped_duplicates += 1
+                continue
+            seen_titles.add(title)
             if command.dry_run:
                 created.append(
                     ModelCreatedTicketRef(
@@ -115,6 +122,7 @@ class HandlerCreateFollowupTicketsEffect:
             created_tickets=tuple(created),
             failures=tuple(failures),
             skipped_nit_count=skipped_nits,
+            skipped_duplicate_count=skipped_duplicates,
             dry_run=command.dry_run,
         )
 
