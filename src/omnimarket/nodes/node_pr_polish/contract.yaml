@@ -130,6 +130,13 @@ outputs:
   delegation_publish_status:
     type: str
     description: "Runtime delegation publish status"
+  precommit_failure:
+    type: str
+    description: >-
+      Structured pre-commit failure signal (JSON object with hook_ids, paths,
+      command, exit_code, output_tail); absent when pre-commit passed or did
+      not run. Lets a downstream classifier route repo-baseline debt.
+    required: false
 
 terminal_event: onex.evt.omnimarket.pr-polish-completed.v1
 
