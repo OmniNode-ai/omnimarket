@@ -6,16 +6,16 @@ node_version: {major: 1, minor: 0, patch: 0}
 input_model: ModelCostByRepoProjectionEvent
 description: >
   Projects delegation-completed events into the cost_by_repo_snapshots table —
-  the read model the dashboard cost-by-repo widget reads via
-  onex.snapshot.projection.cost.by_repo.v1. OMN-13077 (Wave-5): this node
-  declared a projection_api but had NO writer; the deployed runtime entrypoint is
-  now handler_cost_by_repo.CostByRepoProjectionRunner, which materializes rows
-  from the LIVE metered-cost topic onex.evt.omnibase-infra.delegation-completed.v1.
-  The previous source onex.evt.omniintelligence.llm-call-completed.v1 was dead
-  (HWM=0). Repo dimension: read from the delegation terminal payload when present;
-  the upstream emitter does not populate repo today, so rows currently key on the
-  honest "unknown" sentinel (upstream follow-up: attach originating repo to the
-  delegation terminal event).
+  the read model the dashboard cost-by-repo widget reads via the cost.by_repo
+  projection snapshot topic (declared in projection_api below). OMN-13077
+  (Wave-5): this node declared a projection_api but had NO writer; the deployed
+  runtime entrypoint is now handler_cost_by_repo.CostByRepoProjectionRunner,
+  which materializes rows from the LIVE metered-cost delegation-completed topic
+  (declared in event_bus.subscribe_topics below). The previous llm-call-completed
+  source was dead (HWM=0). Repo dimension: read from the delegation terminal
+  payload when present; the upstream emitter does not populate repo today, so
+  rows currently key on the honest "unknown" sentinel (upstream follow-up: attach
+  originating repo to the delegation terminal event).
 
 handler:
   module: omnimarket.nodes.node_projection_cost_by_repo.handlers.handler_cost_by_repo
