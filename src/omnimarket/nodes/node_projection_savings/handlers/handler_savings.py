@@ -15,6 +15,7 @@ from pydantic import ValidationError
 from omnimarket.models.delegation.wire.model_delegate_skill_terminal_projection import (
     ModelDelegateSkillSavingsProjection,
     ModelDelegateSkillTerminalProjection,
+    ModelTaskDelegatedSavingsSource,
 )
 from omnimarket.pricing import DEFAULT_BASELINE_MODEL
 from omnimarket.projection.dlq import (
@@ -89,6 +90,16 @@ class SavingsProjectionRunner(BaseProjectionRunner):
         )
         self._topic_delegate_skill_failed: str = next(
             (t for t in _topics if "delegate-skill-failed" in t), ""
+        )
+        # OMN-13598: wire the canonical task-delegated.v1 SOURCE topic so the
+        # deployed runner (this class) materializes savings_estimates from the
+        # same stream that drives delegation_events.  Previously task-delegated.v1
+        # fell through to the savings-estimated branch, which requires
+        # session_id / model_local / cost fields that the task-delegated payload
+        # lacks — causing every event to be DLQ'd as malformed and zero rows to
+        # ever upsert.
+        self._topic_delegated: str = next(
+            (t for t in _topics if "task-delegated" in t), ""
         )
         self._delegate_skill_baseline_model = str(
             self._contract.get("metadata", {}).get(
@@ -197,6 +208,15 @@ class SavingsProjectionRunner(BaseProjectionRunner):
         }:
             return await self._project_delegate_skill_savings(data, meta)
 
+        # OMN-13598: canonical task-delegated.v1 SOURCE path -- premium
+        # counterfactual - measured actual cost -> savings_estimates row.
+        # This was the missing branch: previously these events fell through to
+        # the savings-estimated path below, which requires session_id /
+        # model_local / cost fields not present in the task-delegated payload,
+        # causing every event to be DLQ'd as malformed (zero rows written).
+        if self._topic_delegated and topic == self._topic_delegated:
+            return await self._project_task_delegated_savings(data, meta)
+
         session_id = str(data.get("session_id") or data.get("sessionId") or "").strip()
         if not session_id:
             return await self._route_malformed_to_dlq(
@@ -275,6 +295,61 @@ class SavingsProjectionRunner(BaseProjectionRunner):
             "Projected savings-estimated for session %s (total_savings=$%s)",
             session_id,
             savings_usd,
+        )
+        return True
+
+    async def _project_task_delegated_savings(
+        self, data: dict[str, Any], meta: MessageMeta
+    ) -> bool:
+        """Materialize a savings_estimates row from a canonical task-delegated
+        SOURCE event (OMN-13598 / OMN-12494).
+
+        Uses the measured actual cost (OMN-13355) and the pinned premium
+        counterfactual so the saving is a MEASUREMENT, not an estimate:
+
+            local_cost_usd  = cost_usd                (measured actual)
+            cloud_cost_usd  = counterfactual_cost_usd (pinned baseline)
+            savings_usd     = cloud_cost_usd - local_cost_usd
+
+        Returns True (truthful-empty) when there is no pinned counterfactual
+        or the saving is <= 0 — NO DLQ, because these are valid business states.
+        """
+        try:
+            source = ModelTaskDelegatedSavingsSource.from_payload(data)
+        except ValidationError as exc:
+            return await self._route_malformed_to_dlq(
+                data,
+                f"task-delegated event failed savings source model validation: {exc}",
+                meta,
+            )
+
+        projection = ModelDelegateSkillSavingsProjection.from_task_delegated_event(
+            source,
+            baseline_model=self._delegate_skill_baseline_model,
+        )
+        if projection is None:
+            # No counterfactual or saving <= 0: truthful-empty, not an error.
+            return True
+
+        await self._upsert_savings_estimate(
+            event_timestamp=projection.event_timestamp,
+            session_id=str(projection.session_id),
+            model_local=projection.model_local,
+            model_cloud_baseline=projection.model_cloud_baseline,
+            local_cost_usd=projection.local_cost_usd,
+            cloud_cost_usd=projection.cloud_cost_usd,
+            savings_usd=projection.savings_usd,
+            repo_name=projection.repo_name,
+            machine_id=(
+                str(projection.machine_id)
+                if projection.machine_id is not None
+                else None
+            ),
+        )
+        logger.info(
+            "Projected task-delegated savings for %s (savings=$%s)",
+            source.correlation_id,
+            projection.savings_usd,
         )
         return True
 
