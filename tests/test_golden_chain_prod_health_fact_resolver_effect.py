@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import urllib.error
 from datetime import UTC, datetime
+from email.message import Message
 from uuid import uuid4
 
 import pytest
@@ -156,8 +157,23 @@ async def test_unreachable_probe_resolves_unknown_not_unhealthy() -> None:
         )
     )
     health = output.events[0].health_fact.health
-    assert health is EnumProdHealth.UNKNOWN
     assert health is not EnumProdHealth.UNHEALTHY
+    assert health is EnumProdHealth.UNKNOWN
+
+
+@pytest.mark.asyncio
+async def test_raising_prober_resolves_unknown_not_unhealthy() -> None:
+    prober = _StubProber(None, exc=TimeoutError("probe timed out"))
+    handler = HandlerProdHealthFactResolver(prober=prober)
+    output = await handler.handle(
+        ModelProdHealthResolveCommand(
+            correlation_id=uuid4(), evaluated_at=_EVALUATED_AT
+        )
+    )
+    health = output.events[0].health_fact.health
+    assert health is not EnumProdHealth.UNHEALTHY
+    assert health is EnumProdHealth.UNKNOWN
+    assert output.events[0].health_fact.source == _PROD_HEALTH_URL
 
 
 @pytest.mark.asyncio
@@ -181,18 +197,18 @@ async def test_http_prober_maps_http_error_to_unhealthy() -> None:
             url="http://x/health",
             code=503,
             msg="down",
-            hdrs=None,
-            fp=None,  # type: ignore[arg-type]
+            hdrs=Message(),
+            fp=None,
         )
 
     import urllib.request as _urlreq
 
     orig = _urlreq.urlopen
-    _urlreq.urlopen = _raise  # type: ignore[assignment]
+    _urlreq.urlopen = _raise
     try:
         result = await prober.probe("http://x/health")
     finally:
-        _urlreq.urlopen = orig  # type: ignore[assignment]
+        _urlreq.urlopen = orig
     assert result.reachable is True
     assert result.status_code == 503
     assert classify_health(result) is EnumProdHealth.UNHEALTHY
@@ -284,7 +300,7 @@ async def test_golden_chain_resolved_fact_reaches_gate_command_not_start() -> No
     assert gate_command.prod_health is not None
     assert gate_command.prod_health.health is EnumProdHealth.UNHEALTHY
     # The forged "healthy" assertion never reached the gate.
-    assert gate_command.prod_health.health is not EnumProdHealth.HEALTHY
+    assert resolved.health_fact.health is not EnumProdHealth.HEALTHY
     assert (
         gate_command.prod_health.source
         == lane_target(EnumRuntimeLane.PROD).health_targets[0]

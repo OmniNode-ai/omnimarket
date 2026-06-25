@@ -28,6 +28,7 @@ The handler:
 
 from __future__ import annotations
 
+import asyncio
 import urllib.error
 import urllib.request
 from typing import Protocol
@@ -79,6 +80,9 @@ class HttpHealthProber:
         self._timeout = timeout
 
     async def probe(self, url: str) -> ModelProbeResult:
+        return await asyncio.to_thread(self._probe_sync, url)
+
+    def _probe_sync(self, url: str) -> ModelProbeResult:
         request = urllib.request.Request(url, method="GET")
         try:
             with urllib.request.urlopen(request, timeout=self._timeout) as response:
@@ -116,7 +120,14 @@ class HandlerProdHealthFactResolver:
         # The main runtime health endpoint is the canonical liveness signal.
         health_url = target.health_targets[0]
 
-        result = await prober.probe(health_url)
+        try:
+            result = await prober.probe(health_url)
+        except Exception as exc:
+            result = ModelProbeResult(
+                reachable=False,
+                status_code=None,
+                detail=type(exc).__name__,
+            )
         health = classify_health(result)
 
         fact = ModelProdHealthFact(
