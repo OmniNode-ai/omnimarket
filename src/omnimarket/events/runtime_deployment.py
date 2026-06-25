@@ -29,6 +29,7 @@ convenience (its authority lives in ``omnibase_core.models.runtime_deployment``)
 
 from __future__ import annotations
 
+import os
 from collections.abc import Mapping, Sequence
 from datetime import datetime
 from enum import StrEnum
@@ -357,43 +358,87 @@ class ModelLaneDeployTarget(BaseModel):
 
 _BASE_COMPOSE = "docker-compose.infra.yml"
 
-_LANE_TARGETS: dict[EnumRuntimeLane, ModelLaneDeployTarget] = {
-    EnumRuntimeLane.DEV: ModelLaneDeployTarget(
-        runtime_lane=EnumRuntimeLane.DEV,
-        compose_project="omnibase-infra",
-        compose_files=(_BASE_COMPOSE,),
-        health_targets=(
-            "http://omninode-runtime:8085/health",
-            "http://runtime-effects:8086/health",
-        ),
-        rebuilds_from_source=True,
+# ---------------------------------------------------------------------------
+# Contract-declared health URL env refs (OMN-12807).
+#
+# Health endpoint URLs for each lane are resolved from env vars bound by the
+# per-lane overlay rather than hardcoded in source.  The contract declares
+# these vars in the node_redeploy_orchestrator and node_redeploy_deploy_effect
+# config_fields; the overlay binds them per lane.
+#
+# Format for each lane: a semicolon-separated list of HTTP URLs to probe in
+# order (main runtime first, effects second).
+#   RUNTIME_DEV_HEALTH_URLS     → dev lane
+#   RUNTIME_STABILITY_HEALTH_URLS → stability-test lane
+#   RUNTIME_PROD_HEALTH_URLS    → prod lane
+# ---------------------------------------------------------------------------
+_HEALTH_ENV_VARS: dict[EnumRuntimeLane, str] = {
+    EnumRuntimeLane.DEV: "RUNTIME_DEV_HEALTH_URLS",
+    EnumRuntimeLane.STABILITY_TEST: "RUNTIME_STABILITY_HEALTH_URLS",
+    EnumRuntimeLane.PROD: "RUNTIME_PROD_HEALTH_URLS",
+}
+
+# Static (non-URL) per-lane configuration — compose project names and overlay
+# files are not network addresses and do not need overlay resolution.
+_LANE_STATIC: dict[
+    EnumRuntimeLane,
+    tuple[
+        str, tuple[str, ...], bool
+    ],  # (compose_project, compose_files, rebuilds_from_source)
+] = {
+    EnumRuntimeLane.DEV: (
+        "omnibase-infra",
+        (_BASE_COMPOSE,),
+        True,
     ),
-    EnumRuntimeLane.STABILITY_TEST: ModelLaneDeployTarget(
-        runtime_lane=EnumRuntimeLane.STABILITY_TEST,
-        compose_project="omnibase-infra-stability-test",
-        compose_files=(_BASE_COMPOSE, "docker-compose.stability-test.yml"),
-        health_targets=(
-            "http://omninode-runtime:18085/health",
-            "http://runtime-effects:18086/health",
-        ),
-        rebuilds_from_source=True,
+    EnumRuntimeLane.STABILITY_TEST: (
+        "omnibase-infra-stability-test",
+        (_BASE_COMPOSE, "docker-compose.stability-test.yml"),
+        True,
     ),
-    EnumRuntimeLane.PROD: ModelLaneDeployTarget(
-        runtime_lane=EnumRuntimeLane.PROD,
-        compose_project="omnibase-infra-prod",
-        compose_files=(_BASE_COMPOSE, "docker-compose.prod.yml"),
-        health_targets=(
-            "http://omninode-runtime:28085/health",
-            "http://runtime-effects:28086/health",
-        ),
-        rebuilds_from_source=False,
+    EnumRuntimeLane.PROD: (
+        "omnibase-infra-prod",
+        (_BASE_COMPOSE, "docker-compose.prod.yml"),
+        False,
     ),
 }
 
 
+def _resolve_health_targets(runtime_lane: EnumRuntimeLane) -> tuple[str, ...]:
+    """Resolve per-lane health endpoint URLs from the overlay env var — fail closed.
+
+    The env var (e.g. ``RUNTIME_DEV_HEALTH_URLS``) must be bound by the active
+    per-lane overlay to a semicolon-separated list of HTTP health-check URLs.
+    Raises ``KeyError`` when the var is absent so a misconfigured lane surfaces
+    immediately rather than silently probing a wrong host.
+    """
+    env_var = _HEALTH_ENV_VARS[runtime_lane]
+    raw = os.environ.get(env_var)
+    if not raw:
+        raise KeyError(
+            f"{env_var} is not bound by the active overlay; declare it in the "
+            "per-lane overlay file so the contract reference resolves to a "
+            "semicolon-separated list of health-check URLs "
+            "(e.g. 'http://omninode-runtime:8085/health;http://runtime-effects:8086/health')."
+        )
+    return tuple(u.strip() for u in raw.split(";") if u.strip())
+
+
 def lane_target(runtime_lane: EnumRuntimeLane) -> ModelLaneDeployTarget:
-    """Return the deploy target (project / overlays / health) for a lane."""
-    return _LANE_TARGETS[runtime_lane]
+    """Return the deploy target (project / overlays / health) for a lane.
+
+    Health endpoint URLs are resolved from per-lane overlay env vars
+    (``RUNTIME_{DEV,STABILITY,PROD}_HEALTH_URLS``) rather than hardcoded —
+    fails closed with ``KeyError`` when the overlay binding is absent.
+    """
+    compose_project, compose_files, rebuilds_from_source = _LANE_STATIC[runtime_lane]
+    return ModelLaneDeployTarget(
+        runtime_lane=runtime_lane,
+        compose_project=compose_project,
+        compose_files=compose_files,
+        health_targets=_resolve_health_targets(runtime_lane),
+        rebuilds_from_source=rebuilds_from_source,
+    )
 
 
 class ModelStabilityReadiness(BaseModel):

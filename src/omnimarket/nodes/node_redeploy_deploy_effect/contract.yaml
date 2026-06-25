@@ -75,6 +75,27 @@ event_bus:
     # the command is not target-bound to a verified prod-promotion grant.
     - onex.evt.omnimarket.redeploy-deploy-refused.v1
 
+config_fields:
+  # === Runtime lane health URLs (OMN-12807) ===
+  # Semicolon-separated HTTP health-check URLs probed after each deploy phase.
+  # Resolved from overlay env vars via lane_target() in runtime_deployment;
+  # fails closed when the var is absent.
+  runtime_dev_health_urls:
+    default: "${env.RUNTIME_DEV_HEALTH_URLS}"
+    description: >
+      Dev-lane runtime health-check URLs (semicolon-separated).
+      Overlay binds RUNTIME_DEV_HEALTH_URLS.
+  runtime_stability_health_urls:
+    default: "${env.RUNTIME_STABILITY_HEALTH_URLS}"
+    description: >
+      Stability-test-lane runtime health-check URLs (semicolon-separated).
+      Overlay binds RUNTIME_STABILITY_HEALTH_URLS.
+  runtime_prod_health_urls:
+    default: "${env.RUNTIME_PROD_HEALTH_URLS}"
+    description: >
+      Prod-lane runtime health-check URLs (semicolon-separated).
+      Overlay binds RUNTIME_PROD_HEALTH_URLS.
+
 dependencies:
   packages:
     - "omnibase_core>=0.39.0"
@@ -93,3 +114,4 @@ metadata:
     - "OMN-9579"
     - "OMN-12577"
     - "OMN-13440"
+    - "OMN-12807"

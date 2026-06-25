@@ -85,6 +85,30 @@ event_bus:
     # OMN-12577 readiness handoff: start the readiness gate scoring.
     - onex.cmd.omnimarket.readiness-gate-start.v1
 
+config_fields:
+  # === Runtime lane health URLs (OMN-12807) ===
+  # Semicolon-separated HTTP health-check URLs probed after each deploy phase.
+  # Resolved from overlay env vars; the orchestrator reads them via lane_target()
+  # which calls _resolve_health_targets() and fails closed when the var is absent.
+  runtime_dev_health_urls:
+    default: "${env.RUNTIME_DEV_HEALTH_URLS}"
+    description: >
+      Dev-lane runtime health-check URLs (semicolon-separated).
+      Overlay binds RUNTIME_DEV_HEALTH_URLS.
+      Example: "http://omninode-runtime:8085/health;http://runtime-effects:8086/health"
+  runtime_stability_health_urls:
+    default: "${env.RUNTIME_STABILITY_HEALTH_URLS}"
+    description: >
+      Stability-test-lane runtime health-check URLs (semicolon-separated).
+      Overlay binds RUNTIME_STABILITY_HEALTH_URLS.
+      Example: "http://omninode-runtime:18085/health;http://runtime-effects:18086/health"
+  runtime_prod_health_urls:
+    default: "${env.RUNTIME_PROD_HEALTH_URLS}"
+    description: >
+      Prod-lane runtime health-check URLs (semicolon-separated).
+      Overlay binds RUNTIME_PROD_HEALTH_URLS.
+      Example: "http://omninode-runtime:28085/health;http://runtime-effects:28086/health"
+
 dependencies:
   packages:
     - "omnibase_core>=0.39.0"
@@ -98,3 +122,4 @@ metadata:
     - "OMN-12577"
     - "OMN-12581"
     - "OMN-13439"
+    - "OMN-12807"
