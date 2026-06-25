@@ -175,6 +175,9 @@ event_bus:
     - onex.evt.omnimarket.pr-lifecycle-fix-dispatched.v1
     - onex.evt.omnimarket.pr-lifecycle-ledger-entry-projected.v1
     - onex.cmd.omnimarket.fixer-dispatch-start.v1
+    # OMN-13586 RH-4: repo-health classify/repair fan-out.
+    - onex.cmd.omnimarket.repo-health-classify.v1
+    - onex.cmd.omnimarket.repo-health-repair-start.v1
 
 # OMN-12569: durable, reconstructable PR-ledger projection.
 # The ledger is a DERIVED projection (not authoritative truth) materialized
