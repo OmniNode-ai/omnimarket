@@ -1665,8 +1665,21 @@ class HandlerDelegationWorkflow:
         )
         # Honest savings subtract the TOTAL spend across all tiers, not just the
         # final tier's, so an escalation that burned metered budget before landing
-        # on a free tier does not overstate the saving.
-        total_savings_usd = cost.cost_savings_usd - inputs.prior_attempt_cost_usd
+        # on a free tier does not overstate the saving. OMN-13335: when a metered
+        # prior tier's spend exceeds the final tier's counterfactual saving (e.g. a
+        # FAILED / escalation-exhausted terminal whose final tier carries no premium
+        # counterfactual, so ``cost.cost_savings_usd == 0.0``), this subtraction
+        # goes NEGATIVE. The core wire ``ModelTaskDelegatedEvent.cost_savings_usd``
+        # pins ``ge=0.0``, so a negative value crashes terminal construction with a
+        # ValidationError — the dispatcher then emits NO terminal at all (the silent
+        # terminal loss live-proven by CID 67d2bfc8: an escalated-to-ceiling
+        # delegation that never yields a passing terminal). Savings cannot be
+        # negative — an escalation that burned metered budget did not "save"
+        # negative money; that spend is already captured in ``cost_usd``. Clamp to
+        # the honest floor of 0.0 so a valid terminal is ALWAYS emitted.
+        total_savings_usd = max(
+            0.0, cost.cost_savings_usd - inputs.prior_attempt_cost_usd
+        )
 
         # The served tokens both events report. Defaults to the top-level inputs;
         # overridden by the hoist below on the residual null-top-level FAILED shape.
