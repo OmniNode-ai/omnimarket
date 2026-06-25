@@ -1,0 +1,17 @@
+name: node_projection_instruction_eval
+version: "1.0.0"
+description: "Project instruction-eval-result events into the instruction_eval_aggregate_snapshots table."
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: true
+  requires_secrets: true
+  side_effect_class: read_write
+tags:
+  - projection
+  - instruction-eval
+  - snapshot
+pack: "data"
+display_name: "Projection: Instruction Eval Aggregate"
+node_role: "reducer"
