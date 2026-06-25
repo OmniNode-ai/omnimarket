@@ -8,6 +8,51 @@
 # budget.
 schema_version: inference_protocols.v1
 profiles:
+  # OMN-13335: Gemini ceiling thinking-suppression for the code escalation path.
+  #
+  # The code_generation escalation ceiling routes to gemini-2.5-flash
+  # (routing_tiers.yaml `claude` slot -> bifrost backend cloud-gemini-pro). That
+  # model is a THINKING model: on the AI Studio OpenAI-compatibility endpoint its
+  # reasoning ("thinking") tokens are drawn from the SAME completion-token budget
+  # as the visible answer (the provider-reported usage.total_tokens exceeds
+  # prompt+completion by the thinking total). With thinking ON, a code_generation
+  # call spends the budget on hidden reasoning and returns a TRUNCATED visible
+  # completion — live CID ffa90b77 landed escalation_count=2 / gemini-2.5-flash
+  # with tokens_output=18, finish_reason length-shaped, judge adequacy 0.200, and
+  # a combined terminal score 0.680 < the 0.85 code_generation required_bar, so
+  # the OMN-13335 up-tier discriminator could never pass on a TRUNCATED ceiling
+  # answer. Live key-resolution probes on the dev lane confirmed the model is
+  # fully capable when thinking is OFF: at max_tokens=256 the default/`low`
+  # reasoning_effort returns finish_reason=length with 8-9 completion tokens (a
+  # truncated `def is_palindrome(`), while `reasoning_effort: none` returns
+  # finish_reason=stop with a complete 116-token function. Disabling thinking
+  # routes the full budget to the visible artifact so the cloud answer is complete
+  # enough to be judged fairly — it does NOT lower the bar or weaken the gate.
+  #
+  # Mirrors the local-qwen-no-think pattern below (thinking-off via a provider
+  # request option), swappable purely by contract: change request_options or
+  # disable this profile via overlay, no code change. The directive is a benign
+  # system_suffix reinforcement (the schema requires a directive); the
+  # load-bearing change is reasoning_effort: none in request_options.
+  - profile_id: cloud-gemini-flash-no-think-code
+    enabled: true
+    model_name_patterns:
+      - "*gemini-2.5-flash*"
+    task_types:
+      - "code_generation"
+      - "test"
+      - "validator_generation"
+      - "refactor"
+    directive:
+      placement: system_suffix
+      separator: "\n\n"
+      apply_once: true
+      text: >-
+        Return the complete, final code artifact only. Do not truncate; do not
+        emit chain-of-thought or analysis before the code.
+    request_options:
+      reasoning_effort: none
+
   - profile_id: local-qwen-no-think
     enabled: true
     model_name_patterns:
