@@ -706,10 +706,61 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
 
+  # ============================================================================
+  # AISLOP SWEEP GATE (OMN-13578) — failing-rollup sub-job (Model B, OMN-13574)
+  # Detection sweeps that are not pre-merge gates are advisory and get ignored
+  # (Operating Rule 5). aislop detection was ABSENT from omnimarket CI; this job
+  # makes it a required check by feeding the ci-summary rollup.
+  #
+  # SCOPE — PR diff only. The omnimarket tree carries pre-existing aislop debt
+  # (hardcoded topics, empty impls). A whole-tree hard gate would block every PR
+  # on that backlog. Instead this scans only the files a PR changes vs its base,
+  # exactly like omnibase_core's `ai-slop-check` and omniclaude's
+  # `ai-slop-check (strict, PR diff)` jobs: NEW slop blocks, existing debt does
+  # not. A planted violation in a touched file turns this job — and therefore
+  # the required CI Summary rollup — red.
+  #
+  # Uses the canonical scanner check_ai_slop.py from omnibase_core (cloned the
+  # same way the other omnimarket jobs clone it) so the rule set stays uniform
+  # across repos rather than forking a second omnimarket-local copy.
+  # ============================================================================
+  aislop-sweep:
+    name: Aislop Sweep (strict, PR diff)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Clone omnibase_core (canonical aislop scanner)
+        run: git clone --depth=1 https://github.com/OmniNode-ai/omnibase_core.git ../omnibase_core
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Compute changed Python/Markdown files vs PR base
+        id: changed
+        run: |
+          if [ -n "${{ github.base_ref }}" ]; then
+            git fetch origin "${{ github.base_ref }}" --no-tags --depth=1
+            FILES=$(git diff --name-only "origin/${{ github.base_ref }}"...HEAD -- '*.py' '*.md' | tr '\n' ' ')
+          else
+            FILES=$(git diff --name-only HEAD~1 -- '*.py' '*.md' 2>/dev/null | tr '\n' ' ')
+          fi
+          echo "files=$FILES" >> "$GITHUB_OUTPUT"
+      - name: Check changed files for AI-slop patterns (strict)
+        run: |
+          FILES="${{ steps.changed.outputs.files }}"
+          if [ -z "$FILES" ]; then
+            echo "No changed Python/Markdown files — nothing to scan."
+            exit 0
+          fi
+          # shellcheck disable=SC2086
+          python ../omnibase_core/scripts/validation/check_ai_slop.py --strict $FILES
+
   ci-summary:
     name: CI Summary
     runs-on: ubuntu-latest
-    needs: [zone-filter, lint, typecheck, detect-changes, test, topic-naming-lint, runtime-sweep, core-only-install, contract-compliance, e2e-workflow-runner, golden-chains, sea-e2e-chains, dep-health]
+    needs: [zone-filter, lint, typecheck, detect-changes, test, topic-naming-lint, runtime-sweep, core-only-install, contract-compliance, e2e-workflow-runner, golden-chains, sea-e2e-chains, dep-health, aislop-sweep]
     if: always()
     steps:
       - name: Check CI results
@@ -730,7 +781,8 @@ jobs:
             "e2e-workflow-runner=${{ needs.e2e-workflow-runner.result }}" \
             "golden-chains=${{ needs.golden-chains.result }}" \
             "sea-e2e-chains=${{ needs.sea-e2e-chains.result }}" \
-            "dep-health=${{ needs.dep-health.result }}"; do
+            "dep-health=${{ needs.dep-health.result }}" \
+            "aislop-sweep=${{ needs.aislop-sweep.result }}"; do
             NAME="${check%%=*}"
             RESULT="${check##*=}"
             if [ "$RESULT" != "success" ] && [ "$RESULT" != "skipped" ]; then

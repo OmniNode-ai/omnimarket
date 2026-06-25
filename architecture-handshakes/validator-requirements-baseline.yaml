@@ -108,9 +108,10 @@ classification:
     tracking: OMN-13294
 
 gaps:
-  - repo: omnimarket
-    validator: aislop-patterns
-    kind: MISSING_CI_WORKFLOW
+  # OMN-13578: aislop-patterns MISSING_CI_WORKFLOW gap closed — the `aislop-sweep`
+  # job in .github/workflows/ci.yml (strict PR-diff check_ai_slop scan, wired into
+  # the CI Summary failing rollup) now satisfies the ci_workflow requirement.
+  # The MISSING_PRE_COMMIT gap remains accepted (no pre-commit aislop hook yet).
   - repo: omnimarket
     validator: aislop-patterns
     kind: MISSING_PRE_COMMIT
