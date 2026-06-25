@@ -23,6 +23,7 @@ canonical surfaces (OMN-13160):
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import uuid
 from pathlib import Path
@@ -34,6 +35,7 @@ from omnibase_core.models.delegation.wire import (
     ModelQualityGateInput,
 )
 
+from omnimarket.enums.enum_delegation_failure_class import EnumDelegationFailureClass
 from omnimarket.inference.protocol_config import apply_inference_protocol
 
 # The reducer (``delta``) returns the omnimarket wire result DTO (it carries the
@@ -96,6 +98,12 @@ _TASK_TYPE_SYSTEM_PROMPTS: dict[str, str] = {
 }
 
 _DELEGATION_EVENTS_TABLE = "delegation_events"
+
+# OMN-13597: hard ceiling buffer (seconds) added to the contract-resolved
+# per-backend transport timeout when bounding the blocking effect call. Covers
+# the synchronous health probe that precedes the LLM POST so a stalled connect
+# can never hang the local CLI past ``transport_timeout + buffer``.
+_DISPATCH_TIMEOUT_BUFFER_SECONDS = 10.0
 
 
 class LocalDelegationDispatchPort:
@@ -195,7 +203,67 @@ class LocalDelegationDispatchPort:
             extra_headers=backend.extra_headers,
             provider_request_options=provider_request_options,
         )
-        result = self._effect_handler(call_request)
+        # OMN-13597: the effect handler is a synchronous blocking call (health
+        # probe + curl/httpx LLM POST). Awaiting it inline blocks the asyncio
+        # event loop the local runtime drives — the in-memory bus delivers the
+        # command synchronously inside ``bus.publish`` (``await callback(...)``),
+        # so the handler runs to completion *before* ``bus.publish`` returns and
+        # ``RuntimeLocal`` never reaches its terminal-wait timeout. On an
+        # unreachable endpoint (e.g. the local model host not routable from the
+        # CLI's container) a connect that stalls below the OS level defeats the
+        # transport's own ``--max-time``/httpx bound and the whole ``onex
+        # delegate`` CLI hangs forever — no output, no evidence row.
+        #
+        # Fix: (1) offload the blocking call to a worker thread so the loop stays
+        # responsive, and (2) wrap it in a hard ``asyncio.wait_for`` ceiling so
+        # the local path ALWAYS terminates and ALWAYS writes a trustworthy
+        # evidence row. The ceiling is the contract-resolved per-backend timeout
+        # plus a fixed buffer that covers the preceding health probe.
+        dispatch_deadline_seconds = timeout_seconds + _DISPATCH_TIMEOUT_BUFFER_SECONDS
+        try:
+            result = await asyncio.wait_for(
+                asyncio.to_thread(self._effect_handler, call_request),
+                timeout=dispatch_deadline_seconds,
+            )
+        except TimeoutError:
+            failure_message = (
+                f"delegation call did not return within "
+                f"{dispatch_deadline_seconds:.0f}s (endpoint {backend.endpoint_ref} "
+                f"unreachable or unresponsive)"
+            )
+            logger.warning(
+                "LocalDelegationDispatch: %s correlation=%s",
+                failure_message,
+                correlation_id,
+            )
+            # Build a canonical TIMEOUT failure result (public model surface) so
+            # the evidence row is materialized through the SAME projection path as
+            # a transport failure — never PASS, never silent.
+            timeout_result = ModelLlmDelegationCallResult(
+                request_id=call_request.request_id,
+                success=False,
+                failure_class=EnumDelegationFailureClass.TIMEOUT,
+                error_message=failure_message,
+                endpoint_healthy=False,
+            )
+            self._project_evidence(
+                correlation_id=correlation_id,
+                task_type=task_type,
+                endpoint_ref=backend.endpoint_ref,
+                model_id=backend.model_id,
+                result=timeout_result,
+                prompt=prompt,
+                source_session_id=source_session_id,
+                quality_passed=False,
+                failure_message=failure_message,
+            )
+            return {
+                "status": "failed",
+                "error_message": failure_message,
+                "correlation_id": str(correlation_id),
+                "delegated_to": backend.endpoint_ref,
+                "model_name": backend.model_id,
+            }
 
         if not result.success:
             failure_message = result.error_message or "delegation call failed"
