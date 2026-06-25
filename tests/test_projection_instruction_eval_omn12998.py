@@ -5,7 +5,7 @@
 Tests written BEFORE the implementation.  They pin:
 
   1. The contract declares the canonical projection topic
-     onex.snapshot.projection.omnimarket.instruction-eval-aggregate.v1
+     onex.evt.omnimarket.instruction-eval-aggregate-snapshot.v1
   2. The contract declares instruction_eval_aggregate_snapshots as a db_io
      write model
   3. The row builder maps an instruction-eval-result event to a snapshot row
@@ -31,7 +31,7 @@ CONTRACT_PATH = (
     / "src/omnimarket/nodes/node_projection_instruction_eval/contract.yaml"
 )
 
-PROJECTION_TOPIC = "onex.snapshot.projection.omnimarket.instruction-eval-aggregate.v1"
+PROJECTION_TOPIC = "onex.evt.omnimarket.instruction-eval-aggregate-snapshot.v1"
 INPUT_TOPIC = "onex.evt.omnimarket.instruction-eval-result.v1"
 TABLE = "instruction_eval_aggregate_snapshots"
 

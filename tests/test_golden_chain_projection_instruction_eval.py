@@ -5,7 +5,7 @@
 OMN-12998: this node materialises instruction-eval-result events into the
 instruction_eval_aggregate_snapshots table — the read model the omnidash
 InstructionEvalHeatmap panel reads via the canonical projection API at
-onex.snapshot.projection.omnimarket.instruction-eval-aggregate.v1.
+onex.evt.omnimarket.instruction-eval-aggregate-snapshot.v1.
 """
 
 from __future__ import annotations
@@ -156,9 +156,7 @@ class TestInstructionEvalProjectionGoldenChain:
         """Contract projection_api exposes the canonical snapshot topic."""
         with open(CONTRACT_PATH) as f:
             contract = yaml.safe_load(f)
-        projection_topic = (
-            "onex.snapshot.projection.omnimarket.instruction-eval-aggregate.v1"
-        )
+        projection_topic = "onex.evt.omnimarket.instruction-eval-aggregate-snapshot.v1"
         assert contract["projection_api"]["topic"] == projection_topic
 
     def test_contract_declares_write_table(self) -> None:

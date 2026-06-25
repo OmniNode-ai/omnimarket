@@ -9,7 +9,7 @@ instruction-eval runner / scorer (onex-self-extending-agent/eval/
 instruction-eval lineage) and materialises one per-(model, task, context_mode)
 aggregate row into instruction_eval_aggregate_snapshots — the read model the
 omnidash InstructionEvalHeatmap panel reads via
-onex.snapshot.projection.omnimarket.instruction-eval-aggregate.v1.
+onex.evt.omnimarket.instruction-eval-aggregate-snapshot.v1.
 
 Row builder (row_instruction_eval.build_instruction_eval_row) is the single
 write authority and column set. On conflict the most-recent values overwrite:
