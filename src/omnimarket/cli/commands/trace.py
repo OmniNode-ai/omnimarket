@@ -4,7 +4,11 @@
 
 Queries the projection API to render structured log entries with ANSI color.
 
-Base URL is read from OMNIDASH_API_URL (default: http://localhost:3002).
+Base URL is read from OMNIDASH_API_URL (required; no localhost default).
+Callers must bind this env var to the projection-API address for the active
+lane before invoking any trace command.  The command fails closed with a clear
+error when the variable is absent so misconfigured environments are caught at
+the CLI boundary rather than silently hitting a wrong host.
 The projection API topic for log entries is the log_projection snapshot topic;
 CLI uses the generic /projection/{topic} endpoint.
 """
@@ -23,7 +27,6 @@ import httpx
 from omnimarket.cli.market import market
 from omnimarket.logging.topics import LOG_ENTRY_TOPIC
 
-_DEFAULT_BASE_URL = "http://localhost:3002"
 _LOG_ENTRIES_TOPIC = LOG_ENTRY_TOPIC
 
 # ---------------------------------------------------------------------------
@@ -79,7 +82,23 @@ def _style_status(status: str) -> str:
 
 
 def _base_url() -> str:
-    return os.environ.get("OMNIDASH_API_URL", _DEFAULT_BASE_URL).rstrip("/")
+    """Resolve the projection-API base URL from OMNIDASH_API_URL — fail closed.
+
+    The env var must be set by the caller (or the active lane overlay) to the
+    projection-API address for the target lane.  There is no localhost default:
+    an unset var means the caller has not wired the projection address, which
+    should surface as an error rather than silently querying a wrong host.
+    """
+    raw = os.environ.get("OMNIDASH_API_URL")
+    if not raw:
+        raise click.ClickException(
+            "OMNIDASH_API_URL is not set. "
+            "Bind it to the projection-API address for the active lane "
+            "before running trace commands. "
+            "The value comes from the per-lane overlay (e.g. the dev lane "
+            "overlay binds it to the projection-API endpoint)."
+        )
+    return raw.rstrip("/")
 
 
 def _fetch_projection(

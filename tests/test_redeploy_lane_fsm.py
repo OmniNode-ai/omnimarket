@@ -34,6 +34,19 @@ from omnimarket.events.runtime_deployment import (
 _DIGEST_STABILITY = "sha256:aaaa1111"
 _DIGEST_PROD_DRIFT = "sha256:bbbb2222"
 
+# Representative per-lane health URLs injected by tests via monkeypatch.  These
+# match the compose service DNS names used in real lane deployments; the
+# contract reference resolves them from the overlay env var at call time.
+_DEV_HEALTH_URLS = (
+    "http://omninode-runtime:8085/health;http://runtime-effects:8086/health"
+)
+_STABILITY_HEALTH_URLS = (
+    "http://omninode-runtime:18085/health;http://runtime-effects:18086/health"
+)
+_PROD_HEALTH_URLS = (
+    "http://omninode-runtime:28085/health;http://runtime-effects:28086/health"
+)
+
 
 # ---------------------------------------------------------------------------
 # Lane policy
@@ -42,19 +55,22 @@ _DIGEST_PROD_DRIFT = "sha256:bbbb2222"
 
 @pytest.mark.unit
 class TestLanePolicy:
-    def test_dev_target(self) -> None:
+    def test_dev_target(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("RUNTIME_DEV_HEALTH_URLS", _DEV_HEALTH_URLS)
         target = lane_target(EnumRuntimeLane.DEV)
         assert target.compose_project == "omnibase-infra"
         assert target.rebuilds_from_source is True
         assert any("8085" in t for t in target.health_targets)
 
-    def test_stability_target(self) -> None:
+    def test_stability_target(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("RUNTIME_STABILITY_HEALTH_URLS", _STABILITY_HEALTH_URLS)
         target = lane_target(EnumRuntimeLane.STABILITY_TEST)
         assert target.compose_project == "omnibase-infra-stability-test"
         assert "docker-compose.stability-test.yml" in target.compose_files
         assert any("18085" in t for t in target.health_targets)
 
-    def test_prod_target_never_rebuilds(self) -> None:
+    def test_prod_target_never_rebuilds(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("RUNTIME_PROD_HEALTH_URLS", _PROD_HEALTH_URLS)
         target = lane_target(EnumRuntimeLane.PROD)
         assert target.compose_project == "omnibase-infra-prod"
         assert "docker-compose.prod.yml" in target.compose_files
@@ -62,9 +78,31 @@ class TestLanePolicy:
         # Production must never rebuild — it deploys a stability-proven digest.
         assert target.rebuilds_from_source is False
 
-    def test_all_lanes_have_distinct_projects(self) -> None:
+    def test_all_lanes_have_distinct_projects(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("RUNTIME_DEV_HEALTH_URLS", _DEV_HEALTH_URLS)
+        monkeypatch.setenv("RUNTIME_STABILITY_HEALTH_URLS", _STABILITY_HEALTH_URLS)
+        monkeypatch.setenv("RUNTIME_PROD_HEALTH_URLS", _PROD_HEALTH_URLS)
         projects = {lane_target(lane).compose_project for lane in EnumRuntimeLane}
         assert len(projects) == len(list(EnumRuntimeLane))
+
+    def test_health_targets_overlay_resolution(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """lane_target resolves health URLs from the overlay env var — not hardcoded."""
+        custom_url = "http://myhost:9999/health"
+        monkeypatch.setenv("RUNTIME_DEV_HEALTH_URLS", custom_url)
+        target = lane_target(EnumRuntimeLane.DEV)
+        assert target.health_targets == (custom_url,)
+
+    def test_lane_target_fails_closed_when_health_url_unset(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """lane_target raises KeyError when the overlay health URL var is unset."""
+        monkeypatch.delenv("RUNTIME_DEV_HEALTH_URLS", raising=False)
+        with pytest.raises(KeyError, match="RUNTIME_DEV_HEALTH_URLS"):
+            lane_target(EnumRuntimeLane.DEV)
 
 
 # ---------------------------------------------------------------------------
