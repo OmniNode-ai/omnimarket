@@ -590,11 +590,74 @@ def _is_delegate_skill_terminal_payload(payload: dict[str, object]) -> bool:
     )
 
 
+def _winning_metered_tier_name(escalation_history: object) -> str:
+    """Return the LAST escalation tier that recorded a positive metered ``cost_usd``.
+
+    OMN-13408 (canonical projection). The canonical ``delegation-failed.v1``
+    terminal (``ModelDelegationResult``) carries the real metered spend in
+    ``cumulative_attempt_cost`` / ``final_attempt_cost`` and in the per-tier
+    ``escalation_history`` records, but it has NO top-level ``cost_tier_name``.
+    Without a serving-tier name the projection's ``_measure_actual_cost`` takes the
+    "unknown serving tier" fall-through and persists the event's ``cost_usd``
+    (defaulted to 0.0) — flooring a row whose escalation_history holds real metered
+    spend.
+
+    The winning tier is the last attempt that actually incurred metered cost (the
+    free local tier records ``cost_usd=0.0`` and is skipped). Empty string when no
+    metered attempt is found — a free-only failed terminal honestly stays 0.
+    Accepts the raw ``payload.get("escalation_history")`` value (``object``) and
+    fails closed (empty string) on any non-iterable / malformed shape.
+    """
+    if not isinstance(escalation_history, list | tuple):
+        return ""
+    winner = ""
+    for attempt in escalation_history:
+        if not isinstance(attempt, dict):
+            continue
+        raw_cost = attempt.get("cost_usd")
+        tier_name = attempt.get("tier_name")
+        if (
+            isinstance(raw_cost, int | float)
+            and float(raw_cost) > 0.0
+            and isinstance(tier_name, str)
+            and tier_name
+        ):
+            winner = tier_name
+    return winner
+
+
 def _canonical_result_to_task_delegated_payload(
     payload: dict[str, object],
 ) -> dict[str, object]:
     quality_passed = bool(payload.get("quality_passed"))
     failure_reason = str(payload.get("failure_reason") or "")
+    escalation_history = payload.get("escalation_history") or ()
+
+    # OMN-13408 (canonical FAILED-terminal cost resolution): the canonical
+    # ``delegation-failed.v1`` event (``ModelDelegationResult``) co-writes the same
+    # ``delegation_events`` row as the compat ``task-delegated.v1`` event, but it
+    # has NO top-level ``cost_usd`` / ``cost_tier_name`` — the real metered spend
+    # lives in ``cumulative_attempt_cost`` / ``final_attempt_cost`` and in the
+    # winning ``escalation_history`` tier. Dropping those (the prior converter
+    # carried none of them) made the projection floor the canonical write to
+    # ``cost_usd=0.0`` with an empty serving tier, clobbering the compat event's
+    # honest cost (live STRIKE THREE, CID 5120dd9c: emitter said 0.01924, row 0.0).
+    #
+    # Carry the canonical cumulative spend as ``cost_usd`` and resolve the serving
+    # tier from the winning metered ``escalation_history`` entry so the projection's
+    # ``_measure_actual_cost`` trusts the metered total instead of flooring to 0.
+    # ``cumulative_attempt_cost`` is the total across all attempted tiers (counted
+    # once); fall back to ``final_attempt_cost`` for older emitters.
+    cumulative_cost = payload.get("cumulative_attempt_cost")
+    if not isinstance(cumulative_cost, int | float) or float(cumulative_cost) <= 0.0:
+        cumulative_cost = payload.get("final_attempt_cost")
+    cost_usd = (
+        float(cumulative_cost)
+        if isinstance(cumulative_cost, int | float) and float(cumulative_cost) > 0.0
+        else 0.0
+    )
+    winning_tier = _winning_metered_tier_name(escalation_history)
+
     return {
         "correlation_id": payload.get("correlation_id"),
         "task_type": payload.get("task_type") or "unknown",
@@ -615,10 +678,15 @@ def _canonical_result_to_task_delegated_payload(
         "required_bar": payload.get("required_bar"),
         "actual_score": payload.get("actual_score") or payload.get("quality_score"),
         "escalation_count": payload.get("escalation_count") or 0,
+        # OMN-13408: the metered total + serving tier carried from the canonical
+        # terminal. With cost_tier_name set, _measure_actual_cost re-prices/trusts
+        # the metered cost instead of taking the unknown-tier 0.0 fall-through.
+        "cost_usd": cost_usd,
+        "cost_tier_name": winning_tier,
         # OMN-13535: carry the per-tier attempt records (each with its priced
         # cost_usd) so the actual-cost recompute can add the prior metered tiers'
         # spend to the re-priced final tier on the completed path.
-        "escalation_history": payload.get("escalation_history") or (),
+        "escalation_history": escalation_history,
         "authority_source": payload.get("authority_source")
         or payload.get("required_bar_source"),
         "score_source": payload.get("score_source"),
