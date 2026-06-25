@@ -1114,3 +1114,253 @@ class TestNoBackfillMaterialization:
         assert "actual_score NUMERIC" in migration
         assert "escalation_count INT NOT NULL DEFAULT 0" in migration
         assert "authority_source TEXT" in migration
+
+
+class TestResponseTextTimeoutOnPass:
+    """OMN-13596 — response_text must never carry a timeout/error string on a PASS row.
+
+    Regression suite for the wrong-value bug: a metered PASS row (cost_usd > 0,
+    quality_gate_passed=True) was showing "Timed out…" in response_text instead
+    of the model's actual answer.
+
+    Two paths are tested:
+    1. delegate-skill-timeout terminal must never write its error_message into
+       response_text when quality_gate_passed=True.
+    2. When a canonical delegation-completed.v1 writes the correct answer first
+       and a later delegate-skill-timeout terminal upserts the same row, the
+       timeout string must not overwrite the already-correct response_text.
+    """
+
+    _CORR = "13596000-0000-0000-0000-000000000001"
+    _REAL_ANSWER = "The model's actual, useful answer."
+    _TIMEOUT_MSG = "timed out after 300s waiting for delegation result"
+
+    def _canonical_pass_payload(self) -> dict[str, object]:
+        return {
+            "_event_type": "onex.evt.omnibase-infra.delegation-completed.v1",
+            "correlation_id": self._CORR,
+            "task_type": "test",
+            "model_used": "glm-5.2",
+            "content": self._REAL_ANSWER,
+            "quality_passed": True,
+            "quality_score": 0.980,
+            "latency_ms": 5000,
+            "prompt_tokens": 100,
+            "completion_tokens": 200,
+            "total_tokens": 300,
+            "fallback_to_claude": False,
+            "cumulative_attempt_cost": 0.0017,
+        }
+
+    def _timeout_terminal_payload(self) -> dict[str, object]:
+        """Simulate a delegate-skill-timeout terminal event.
+
+        This is what the delegate-skill-orchestrator emits when its
+        RuntimeDelegationDispatchPort times out waiting for the Kafka result
+        even though the delegation orchestrator already produced a PASS.
+        """
+        return {
+            "_event_type": "delegate-skill-completed",
+            "status": "timeout",
+            "correlation_id": self._CORR,
+            "task_type": "test",
+            "provider": "glm-5.2",
+            "model_name": "glm-5.2",
+            "response": "",
+            "quality_gate_passed": False,
+            "quality_gates_failed": [],
+            "error_message": self._TIMEOUT_MSG,
+            "metrics": {
+                "input_tokens": 0,
+                "output_tokens": 0,
+                "total_tokens": 0,
+                "tokens_to_compliance": 0,
+                "compliance_attempts": 1,
+                "cost_usd": 0.0,
+                "cost_savings_usd": 0.0,
+                "latency_ms": 300000,
+            },
+        }
+
+    def test_pass_terminal_response_text_never_carries_error_message(self) -> None:
+        """A PASS delegate-skill terminal (quality_gate_passed=True) must not
+        write its error_message into response_text even if response is empty.
+
+        Regression: from_terminal_event used ``event.response or event.error_message``
+        which would write "timed out…" as response_text on a row that the downstream
+        compat event later marks as PASS.
+        """
+        from omnimarket.models.delegation.wire.model_delegate_skill_terminal_projection import (
+            ModelDelegateSkillTerminalProjection,
+            ModelDelegationEventProjectionRow,
+        )
+
+        # Build a PASS terminal where response is empty but error_message is set
+        # (edge case: could happen if a success comes through with a warning message).
+        payload: dict[str, object] = {
+            "status": "completed",
+            "correlation_id": self._CORR,
+            "task_type": "test",
+            "provider": "glm-5.2",
+            "model_name": "glm-5.2",
+            "response": "",
+            "quality_gate_passed": True,
+            "quality_gates_failed": [],
+            "error_message": self._TIMEOUT_MSG,
+            "metrics": {
+                "input_tokens": 100,
+                "output_tokens": 200,
+                "total_tokens": 300,
+                "tokens_to_compliance": 300,
+                "compliance_attempts": 1,
+                "cost_usd": 0.0017,
+                "cost_savings_usd": 0.0,
+                "latency_ms": 5000,
+            },
+        }
+        terminal = ModelDelegateSkillTerminalProjection.from_payload(payload)
+        row = ModelDelegationEventProjectionRow.from_terminal_event(terminal)
+        # A PASS terminal must never write the error_message into response_text.
+        assert row.response_text != self._TIMEOUT_MSG, (
+            "PASS terminal must not carry error_message in response_text; "
+            f"got {row.response_text!r}"
+        )
+        # When response is empty and quality_gate_passed=True, response_text is None.
+        assert row.response_text is None
+
+    def test_timeout_terminal_does_not_overwrite_correct_response_text(self) -> None:
+        """When delegation-completed.v1 arrives first (correct answer) and a
+        delegate-skill-timeout terminal arrives later, the timeout must not
+        overwrite the already-correct response_text.
+
+        This is the primary scenario that produced the live bug: the canonical
+        delegation-completed event wrote the real answer first; the timeout
+        terminal event then clobbered it.
+        """
+        db = InmemoryDatabaseAdapter()
+
+        # Step 1: canonical delegation-completed.v1 PASS event arrives first.
+        canonical = dict(self._canonical_pass_payload())
+        canonical["_db"] = db
+        HANDLER.handle(canonical)
+
+        row = db.query("delegation_events")[0]
+        assert row["response_text"] == self._REAL_ANSWER, (
+            f"canonical PASS should write real answer, got {row['response_text']!r}"
+        )
+        assert row["quality_gate_passed"] is True
+
+        # Step 2: delegate-skill-timeout terminal arrives later (race / ordering).
+        timeout_payload = dict(self._timeout_terminal_payload())
+        timeout_payload["_db"] = db
+        HANDLER.handle(timeout_payload)
+
+        row = db.query("delegation_events")[0]
+        # The timeout terminal must NOT overwrite the already-correct response_text.
+        assert row["response_text"] == self._REAL_ANSWER, (
+            "timeout terminal must not overwrite existing correct response_text; "
+            f"got {row['response_text']!r}"
+        )
+
+    def test_canonical_pass_after_timeout_terminal_writes_correct_answer(self) -> None:
+        """When the timeout terminal arrives first and delegation-completed.v1
+        arrives second, the canonical PASS event writes the correct answer and
+        the timeout error string is replaced.
+
+        This is the reverse-ordering scenario — the final PASS row must carry
+        the real model answer, never the timeout string.
+        """
+        db = InmemoryDatabaseAdapter()
+
+        # Step 1: timeout terminal arrives first (FAILED row, no real answer).
+        timeout_payload = dict(self._timeout_terminal_payload())
+        timeout_payload["_db"] = db
+        HANDLER.handle(timeout_payload)
+
+        # At this point the row is FAILED — intermediate state is acceptable.
+
+        # Step 2: canonical delegation-completed.v1 PASS event arrives.
+        canonical = dict(self._canonical_pass_payload())
+        canonical["_db"] = db
+        HANDLER.handle(canonical)
+
+        row = db.query("delegation_events")[0]
+        # Final state: the authoritative metered PASS row must carry the real answer.
+        assert row["quality_gate_passed"] is True
+        assert row["response_text"] == self._REAL_ANSWER, (
+            "canonical PASS must write real answer even when timeout arrived first; "
+            f"got {row['response_text']!r}"
+        )
+
+    def test_canonical_pass_with_timeout_string_in_content_suppresses_it(self) -> None:
+        """OMN-13596 primary defect (handler line ~680): the SINGLE canonical
+        delegation-completed.v1 PASS event whose own ``content`` field carries the
+        delegation timeout string must NOT project that string into response_text.
+
+        Distinct from the cross-event race above: here only one event exists, it is
+        a metered PASS (cost_usd>0, quality_gate_passed=True), and its ``content``
+        is the caller-side Kafka-wait timeout text. Projecting it would make a
+        success display a timeout string. The converter must suppress it (no
+        prior-row value exists, so response_text resolves to None rather than the
+        timeout string).
+        """
+        db = InmemoryDatabaseAdapter()
+
+        canonical = dict(self._canonical_pass_payload())
+        # The orchestrator's terminal carried the timeout text in content even on
+        # the row that resolves as a metered PASS (the live CID 281097f3 case).
+        canonical["content"] = self._TIMEOUT_MSG
+        canonical["_db"] = db
+        HANDLER.handle(canonical)
+
+        row = db.query("delegation_events")[0]
+        assert row["quality_gate_passed"] is True
+        assert row["response_text"] != self._TIMEOUT_MSG, (
+            "metered PASS row must never project the delegation timeout string into "
+            f"response_text; got {row['response_text']!r}"
+        )
+        assert row["response_text"] is None
+
+    def test_canonical_failed_terminal_still_surfaces_content(self) -> None:
+        """OMN-13596 must not over-reach: a FAILED canonical terminal still
+        surfaces its terminal ``content`` (the failure/timeout text is the honest
+        answer for a failure). Only PASS rows suppress the timeout string.
+        """
+        db = InmemoryDatabaseAdapter()
+
+        failed = dict(self._canonical_pass_payload())
+        failed["_event_type"] = "onex.evt.omnibase-infra.delegation-failed.v1"
+        failed["content"] = self._TIMEOUT_MSG
+        failed["quality_passed"] = False
+        failed["failure_reason"] = "runtime_timeout"
+        failed["_db"] = db
+        HANDLER.handle(failed)
+
+        row = db.query("delegation_events")[0]
+        assert row["quality_gate_passed"] is False
+        assert row["response_text"] == self._TIMEOUT_MSG, (
+            "FAILED terminal should still surface its content; "
+            f"got {row['response_text']!r}"
+        )
+
+    def test_is_delegation_timeout_string_unit(self) -> None:
+        """Direct coverage of the OMN-13596 sentinel matcher."""
+        from omnimarket.nodes.node_projection_delegation.handlers.handler_projection_delegation import (
+            _is_delegation_timeout_string,
+        )
+
+        assert _is_delegation_timeout_string(
+            "timed out after 300s waiting for delegation result"
+        )
+        assert _is_delegation_timeout_string(
+            "Delegation timed out before runtime completion"
+        )
+        # Wrapped / suffixed variant still matches (substring, case-insensitive).
+        assert _is_delegation_timeout_string(
+            "Delegation timed out before runtime completion (cid=abc)"
+        )
+        # A genuine model answer is never suppressed.
+        assert not _is_delegation_timeout_string(self._REAL_ANSWER)
+        assert not _is_delegation_timeout_string("")
+        assert not _is_delegation_timeout_string(None)
+        assert not _is_delegation_timeout_string(123)

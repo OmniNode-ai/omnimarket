@@ -467,6 +467,13 @@ class HandlerProjectionDelegation:
             "projection_version": row_model.projection_version,
             "reducer_version": row_model.reducer_version,
         }
+        # OMN-13596: preserve an already-correct response_text when this
+        # delegate-skill terminal event carries None/empty response_text.
+        # Without this guard, a late-arriving timeout terminal (status="timeout",
+        # response="") would clobber the real model answer written by an earlier
+        # delegation-completed.v1 canonical event. _preserve_existing_evidence
+        # retains the existing non-blank value when the incoming row has none.
+        _preserve_existing_evidence(db, row)
         ok = db.upsert(TABLE, CONFLICT_KEY, row)
         return ModelProjectionResult(rows_upserted=1 if ok else 0)
 
@@ -626,6 +633,60 @@ def _winning_metered_tier_name(escalation_history: object) -> str:
     return winner
 
 
+# OMN-13596: canonical delegation-timeout sentinel substrings. The orchestrator
+# contract emits ``"Delegation timed out before runtime completion"`` and the
+# runtime dispatch port (omnibase_infra ports/port_runtime_delegation_dispatch.py)
+# returns ``"timed out after <N>s waiting for delegation result"`` on the
+# caller-side Kafka-wait timeout. Either string can land in the canonical
+# terminal ``content`` field; it is NEVER a model answer and must not be
+# projected into ``response_text`` on a row the projection treats as a metered
+# PASS. Matched case-insensitively as substrings so a wrapped/prefixed variant
+# (e.g. "Delegation timed out before runtime completion (...)") is still caught.
+_DELEGATION_TIMEOUT_SENTINELS: tuple[str, ...] = (
+    "timed out before runtime completion",
+    "timed out after",
+)
+
+
+def _is_delegation_timeout_string(value: object) -> bool:
+    """Return True when ``value`` is a canonical delegation timeout/error string.
+
+    OMN-13596. On the canonical terminal path the ``content`` field can carry the
+    caller-side delegation-wait timeout text rather than the model's output. A
+    PASS row must never project that string into ``response_text`` (a customer
+    reading a successful, metered delegation would otherwise see a timeout
+    string). Fails closed (``False``) on any non-string shape so a genuine answer
+    is never suppressed.
+    """
+    if not isinstance(value, str):
+        return False
+    lowered = value.casefold()
+    return any(sentinel in lowered for sentinel in _DELEGATION_TIMEOUT_SENTINELS)
+
+
+def _canonical_response_text(
+    payload: dict[str, object],
+    *,
+    quality_passed: bool,
+) -> str | None:
+    """Resolve the canonical terminal's ``response_text`` projection value.
+
+    OMN-13596. The canonical ``delegation-completed.v1`` / ``delegation-failed.v1``
+    terminal carries the model output in ``content``. On the authoritative metered
+    PASS row that ``content`` must be the model's actual answer. When the terminal
+    instead carries a delegation timeout/error string in ``content`` (the
+    caller-side Kafka-wait timeout text), projecting it onto a PASS row makes a
+    success look like a failure. Suppress it to ``None`` on a PASS so the UPSERT's
+    COALESCE + ``_preserve_existing_evidence`` keep an already-written genuine
+    answer instead of clobbering it with the timeout string. The FAILED path is
+    unchanged: a failure honestly surfaces its terminal ``content``.
+    """
+    content = payload.get("content")
+    if quality_passed and _is_delegation_timeout_string(content):
+        return None
+    return content if isinstance(content, str) else None
+
+
 def _canonical_result_to_task_delegated_payload(
     payload: dict[str, object],
 ) -> dict[str, object]:
@@ -670,7 +731,14 @@ def _canonical_result_to_task_delegated_payload(
         "quality_gate_detail": failure_reason or None,
         "delegation_latency_ms": payload.get("latency_ms"),
         "prompt_text": payload.get("prompt_text"),
-        "response_text": payload.get("content"),
+        # OMN-13596: never project a delegation timeout/error string into
+        # response_text on a PASS row. _canonical_response_text suppresses the
+        # caller-side timeout string (returns None) when quality_passed is True,
+        # so the UPSERT COALESCE / _preserve_existing_evidence keep the real
+        # model answer instead of overwriting it with "Timed out…".
+        "response_text": _canonical_response_text(
+            payload, quality_passed=quality_passed
+        ),
         "tokens_input": payload.get("prompt_tokens") or 0,
         "tokens_output": payload.get("completion_tokens") or 0,
         "tokens_to_compliance": payload.get("tokens_to_compliance") or 0,
@@ -903,6 +971,17 @@ def _preserve_existing_evidence(
     for key in ("prompt_text", "response_text", "context_pack_hash"):
         if _is_blank(row.get(key)) and not _is_blank(existing.get(key)):
             row[key] = existing[key]
+    # OMN-13596: a confirmed PASS row's response_text must never be overwritten
+    # by a later FAILED/timeout terminal's error string. When the existing row
+    # has quality_gate_passed=True and the incoming row has quality_gate_passed=False,
+    # preserve the existing response_text (which carries the real model answer)
+    # regardless of whether the incoming row's response_text is blank.
+    if bool(existing.get("quality_gate_passed")) and not bool(
+        row.get("quality_gate_passed")
+    ):
+        existing_response = existing.get("response_text")
+        if not _is_blank(existing_response):
+            row["response_text"] = existing_response
     for key in (
         "tokens_input",
         "tokens_output",
