@@ -69,3 +69,9 @@ dod_evidence:
     checks:
       - check_type: "command"
         check_value: "uv run mypy src/omnimarket/nodes/node_delegation_orchestrator/handlers/handler_delegation_workflow.py --strict"
+  - id: "dod-deploy"
+    description: "The fix touches a runtime node handler (node_delegation_orchestrator), so the dev/stability lane is redeployed with the clamped image and a fresh escalation is re-run to prove the live close — an escalation that reaches the cloud ceiling and lands a passing terminal (escalation_count>=1, cloud model_name, quality_gate_passed=true). This deploy + escalation proof is the separate serialized live-close step (verifier != runner; rpk consume + psql projection capture)."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "bash omnibase_infra/deploy/deploy-runtime.sh stability-test && rpk topic consume onex.evt.omnibase-infra.delegation-completed.v1 -n 1"
