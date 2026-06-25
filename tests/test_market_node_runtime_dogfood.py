@@ -60,8 +60,10 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
     # 323 -> 324.
     # OMN-13583 adds node_repo_health_classify_compute (COMPUTE; keystone of the
     # merge-sweep repo-health lane): 324 -> 325.
-    assert summary["node_dirs"] == 325
-    assert summary["entry_points"] == 325
+    # OMN-13413 adds node_runtime_closeout_orchestrator (ORCHESTRATOR; one-dispatch
+    # runtime closeout, epic OMN-13410): 325 -> 326.
+    assert summary["node_dirs"] == 326
+    assert summary["entry_points"] == 326
     assert summary["missing_entry_points"] == []
     assert summary["dangling_entry_points"] == []
     assert summary["routable"] >= 297
