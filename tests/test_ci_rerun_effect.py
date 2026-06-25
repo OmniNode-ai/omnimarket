@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock, patch
 from uuid import UUID
 
 import pytest
-from pydantic import SecretStr
+from pydantic import SecretStr, ValidationError
 
 from omnimarket.nodes.node_ci_rerun_effect.handlers.handler_ci_rerun import (
     HandlerCiRerunEffect,
@@ -121,6 +121,7 @@ def _empty_commit_cmd() -> ModelCiRerunCommand:
         total_prs=1,
         retrigger_mode="empty_commit",
         head_branch="feat/wedged",
+        head_sha="abc123",
         missing_required_contexts=("Runtime Sweep",),
     )
 
@@ -162,3 +163,66 @@ async def test_empty_commit_mode_failure_surfaces_error() -> None:
     assert isinstance(evt, ModelCiRerunTriggeredEvent)
     assert evt.rerun_triggered is False
     assert evt.error == "push rejected"
+
+
+@pytest.mark.asyncio
+async def test_empty_commit_mode_requires_head_branch_before_github_call() -> None:
+    cmd = _empty_commit_cmd().model_copy(update={"head_branch": ""})
+    with patch.object(
+        HandlerCiRerunEffect,
+        "_empty_commit_sync",
+        side_effect=AssertionError("must not call GitHub without head_branch"),
+    ):
+        handler = HandlerCiRerunEffect()
+        output = await handler.handle(cmd)
+
+    evt = output.events[0]
+    assert isinstance(evt, ModelCiRerunTriggeredEvent)
+    assert evt.rerun_triggered is False
+    assert evt.error == "empty_commit requires head_branch"
+
+
+@pytest.mark.asyncio
+async def test_empty_commit_mode_requires_head_sha_before_github_call() -> None:
+    cmd = _empty_commit_cmd().model_copy(update={"head_sha": ""})
+    with patch.object(
+        HandlerCiRerunEffect,
+        "_empty_commit_sync",
+        side_effect=AssertionError("must not call GitHub without head_sha"),
+    ):
+        handler = HandlerCiRerunEffect()
+        output = await handler.handle(cmd)
+
+    evt = output.events[0]
+    assert isinstance(evt, ModelCiRerunTriggeredEvent)
+    assert evt.rerun_triggered is False
+    assert evt.error == "empty_commit requires head_sha"
+
+
+def test_ci_rerun_command_rejects_empty_rerun_failed_run_id() -> None:
+    with pytest.raises(ValidationError, match="rerun_failed requires run_id_github"):
+        ModelCiRerunCommand(
+            pr_number=700,
+            repo="OmniNode-ai/omni_home",
+            run_id_github="",
+            correlation_id=_CORR_ID,
+            run_id=_RUN_ID,
+            total_prs=1,
+        )
+
+
+def test_ci_rerun_command_rejects_empty_commit_with_run_id() -> None:
+    with pytest.raises(
+        ValidationError, match="empty_commit requires empty run_id_github"
+    ):
+        ModelCiRerunCommand(
+            pr_number=700,
+            repo="OmniNode-ai/omni_home",
+            run_id_github="123456",
+            correlation_id=_CORR_ID,
+            run_id=_RUN_ID,
+            total_prs=1,
+            retrigger_mode="empty_commit",
+            head_branch="feat/wedged",
+            head_sha="abc123",
+        )

@@ -458,7 +458,7 @@ class HandlerTriageOrchestrator:
             and pr.merge_state_status == "BLOCKED"
             and not _has_terminal_check_failure(classified)
         ):
-            missing, head_branch = await self._resolve_event_delivery_gap(
+            missing, head_branch, head_sha = await self._resolve_event_delivery_gap(
                 pr.repo, pr.number
             )
             if missing and head_branch:
@@ -478,6 +478,7 @@ class HandlerTriageOrchestrator:
                     total_prs=total_prs,
                     retrigger_mode="empty_commit",
                     head_branch=head_branch,
+                    head_sha=head_sha,
                     missing_required_contexts=tuple(missing),
                 )
 
@@ -655,23 +656,19 @@ class HandlerTriageOrchestrator:
             return None
 
     async def _resolve_event_delivery_gap(
-        self, repo: str, pr_number: int, base_branch: str = "dev"
-    ) -> tuple[tuple[str, ...], str]:
+        self, repo: str, pr_number: int, base_branch: str | None = None
+    ) -> tuple[tuple[str, ...], str, str]:
         """Detect a CI event-delivery gap for a BLOCKED PR (OMN-13416).
 
         Compares the base branch's *required* status-check contexts against the
         contexts actually present in the PR's ``statusCheckRollup`` on HEAD. Any
         required context missing from the rollup produced ZERO runs on HEAD —
         the workflow-dispatch event was dropped. Returns
-        ``(missing_required_contexts, head_branch)``.
+        ``(missing_required_contexts, head_branch, head_sha)``.
 
-        Fail-soft: any gh error or unknown required set returns ``((), "")`` so
-        the caller never re-triggers blindly.
+        Fail-soft: any gh error or unknown required set returns
+        ``((), "", "")`` so the caller never re-triggers blindly.
         """
-        required = await self._fetch_required_contexts(repo, base_branch)
-        if not required:
-            return (), ""
-
         proc = await asyncio.create_subprocess_exec(
             "gh",
             "pr",
@@ -680,7 +677,7 @@ class HandlerTriageOrchestrator:
             "--repo",
             repo,
             "--json",
-            "statusCheckRollup,headRefName",
+            "statusCheckRollup,headRefName,headRefOid,baseRefName",
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )
@@ -690,7 +687,7 @@ class HandlerTriageOrchestrator:
             with contextlib.suppress(ProcessLookupError):
                 proc.kill()
             _log.error("gh pr view gap-probe timed out for %s#%s", repo, pr_number)
-            return (), ""
+            return (), "", ""
         if proc.returncode != 0:
             _log.info(
                 "gh pr view gap-probe failed for %s#%s: %s",
@@ -698,21 +695,31 @@ class HandlerTriageOrchestrator:
                 pr_number,
                 stderr.decode(errors="replace")[:160],
             )
-            return (), ""
+            return (), "", ""
         try:
             data: dict[str, Any] = json.loads(stdout)
         except json.JSONDecodeError:
-            return (), ""
+            return (), "", ""
+        if not isinstance(data, dict):
+            return (), "", ""
 
         head_branch = str(data.get("headRefName") or "")
+        head_sha = str(data.get("headRefOid") or "")
+        resolved_base_branch = base_branch or str(data.get("baseRefName") or "")
+        if not resolved_base_branch:
+            return (), "", ""
+        required = await self._fetch_required_contexts(repo, resolved_base_branch)
+        if not required:
+            return (), "", ""
+
         rollup = data.get("statusCheckRollup") or []
         reported = {
-            str(entry.get("name"))
+            str(entry.get("name") or entry.get("context"))
             for entry in rollup
-            if isinstance(entry, dict) and entry.get("name")
+            if isinstance(entry, dict) and (entry.get("name") or entry.get("context"))
         }
         missing = tuple(c for c in required if c not in reported)
-        return missing, head_branch
+        return missing, head_branch, head_sha
 
     async def _fetch_required_contexts(
         self, repo: str, base_branch: str

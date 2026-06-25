@@ -69,9 +69,10 @@ inputs:
       When true, detect a CI event-delivery gap (a required workflow that
       produced 0 runs on HEAD while the PR sits BLOCKED) and perform ONE safe
       empty-commit re-trigger to re-deliver the dropped workflow events
-      (OMN-13416).
+      (OMN-13416). Defaults false because this compute node is read-only unless
+      an operator explicitly opts into the GitHub branch mutation.
     required: false
-    default: true
+    default: false
   max_retriggers:
     type: int
     description: "Max safe re-triggers per run before giving up (default 1)"

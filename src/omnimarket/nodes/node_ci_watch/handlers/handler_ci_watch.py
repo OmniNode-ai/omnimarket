@@ -66,7 +66,7 @@ class ModelCiWatchCommand(BaseModel):
     # When a BLOCKED PR has no failing checks but one or more *required*
     # workflow contexts produced ZERO runs on HEAD (GitHub dropped the
     # workflow-dispatch event), perform ONE safe empty-commit re-trigger.
-    auto_retrigger: bool = True
+    auto_retrigger: bool = False
     max_retriggers: int = 1
     base_branch: str = "dev"
 
@@ -466,6 +466,21 @@ class HandlerCiWatch:
             gap.head_sha[:12],
         )
 
+        retrigger_count = self._record_retrigger_attempt(
+            repo=command.repo,
+            pr_number=command.pr_number,
+            head_sha=gap.head_sha,
+        )
+        if retrigger_count > command.max_retriggers:
+            return self._error_result(
+                command=command,
+                failure_summary=(
+                    f"CI event-delivery gap persists for HEAD {gap.head_sha[:12]}, "
+                    f"but max_retriggers={command.max_retriggers} is exhausted."
+                ),
+                started_at=started_at,
+            )
+
         ok, error = self._retrigger_via_empty_commit(
             repo=command.repo,
             pr_number=command.pr_number,
@@ -669,9 +684,9 @@ class HandlerCiWatch:
                 "--repo",
                 repo,
                 "--json",
-                "headRefName",
+                "headRefName,headRefOid",
                 "--jq",
-                ".headRefName",
+                "{headRefName, headRefOid}",
             ],
             capture_output=True,
             text=True,
@@ -680,9 +695,21 @@ class HandlerCiWatch:
             return False, (
                 f"could not resolve head branch: {branch_result.stderr.strip()[:160]}"
             )
-        head_branch = branch_result.stdout.strip()
+        try:
+            branch_data = json.loads(branch_result.stdout)
+        except json.JSONDecodeError:
+            return False, "could not parse head branch response"
+        if not isinstance(branch_data, dict):
+            return False, "invalid head branch response"
+        head_branch = str(branch_data.get("headRefName") or "")
+        current_head_sha = str(branch_data.get("headRefOid") or "")
         if not head_branch:
             return False, "empty head branch name"
+        if current_head_sha != head_sha:
+            return (
+                False,
+                f"head branch moved: expected {head_sha}, got {current_head_sha}",
+            )
 
         with tempfile.TemporaryDirectory(prefix="ci-watch-retrigger-") as tmp:
             clone_dir = Path(tmp) / "repo"
@@ -705,11 +732,31 @@ class HandlerCiWatch:
             if clone.returncode != 0:
                 return False, f"clone failed: {clone.stderr.strip()[:160]}"
 
+            rev_parse = subprocess.run(
+                ["git", "-C", str(clone_dir), "rev-parse", "HEAD"],
+                capture_output=True,
+                text=True,
+            )
+            if rev_parse.returncode != 0:
+                return False, (
+                    f"head verification failed: {rev_parse.stderr.strip()[:160]}"
+                )
+            cloned_head_sha = rev_parse.stdout.strip()
+            if cloned_head_sha != head_sha:
+                return (
+                    False,
+                    f"cloned head moved: expected {head_sha}, got {cloned_head_sha}",
+                )
+
             commit = subprocess.run(
                 [
                     "git",
                     "-C",
                     str(clone_dir),
+                    "-c",
+                    "user.name=omnimarket-ci",
+                    "-c",
+                    "user.email=omnimarket-ci@users.noreply.github.com",
                     "commit",
                     "--allow-empty",
                     "-m",
@@ -736,6 +783,42 @@ class HandlerCiWatch:
             head_branch,
         )
         return True, ""
+
+    def _record_retrigger_attempt(
+        self, *, repo: str, pr_number: int, head_sha: str
+    ) -> int:
+        """Persist a re-trigger count keyed by repo, PR, and exact HEAD SHA."""
+        marker_dir = (
+            _resolve_state_dir()
+            / "ci-watch"
+            / "event-delivery-gap-retriggers"
+            / _safe_segment(repo)
+            / str(pr_number)
+        )
+        marker_dir.mkdir(parents=True, exist_ok=True)
+        marker_path = marker_dir / f"{head_sha}.json"
+        count = 0
+        if marker_path.exists():
+            try:
+                data = json.loads(marker_path.read_text(encoding="utf-8"))
+                count = int(data.get("count") or 0) if isinstance(data, dict) else 0
+            except (OSError, ValueError, json.JSONDecodeError):
+                count = 0
+        count += 1
+        marker_path.write_text(
+            json.dumps(
+                {
+                    "repo": repo,
+                    "pr_number": pr_number,
+                    "head_sha": head_sha,
+                    "count": count,
+                    "updated_at": datetime.now(tz=UTC).isoformat(),
+                },
+                sort_keys=True,
+            ),
+            encoding="utf-8",
+        )
+        return count
 
     def _dispatch_fix_worker(
         self,

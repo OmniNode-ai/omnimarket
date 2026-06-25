@@ -14,10 +14,10 @@ Contains:
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal, Self
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from omnimarket.nodes.node_merge_sweep_compute.handlers.handler_merge_sweep import (
     ModelMergeSweepResult,
@@ -103,9 +103,25 @@ class ModelCiRerunCommand(BaseModel):
     correlation_id: UUID
     run_id: UUID
     total_prs: int
-    retrigger_mode: str = "rerun_failed"  # rerun_failed | empty_commit
+    retrigger_mode: Literal["rerun_failed", "empty_commit"] = "rerun_failed"
     head_branch: str = ""  # required when retrigger_mode == empty_commit
+    head_sha: str = ""  # required when retrigger_mode == empty_commit
     missing_required_contexts: tuple[str, ...] = ()
+
+    @model_validator(mode="after")
+    def validate_retrigger_variant(self) -> Self:
+        """Enforce the required fields for each CI re-trigger variant."""
+        if self.retrigger_mode == "rerun_failed":
+            if not self.run_id_github:
+                raise ValueError("rerun_failed requires run_id_github")
+            return self
+        if self.run_id_github:
+            raise ValueError("empty_commit requires empty run_id_github")
+        if not self.head_branch:
+            raise ValueError("empty_commit requires head_branch")
+        if not self.head_sha:
+            raise ValueError("empty_commit requires head_sha")
+        return self
 
 
 # ---------------------------------------------------------------------------

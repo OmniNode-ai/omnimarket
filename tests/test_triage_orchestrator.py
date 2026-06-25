@@ -347,7 +347,7 @@ async def test_blocked_no_failing_run_with_gap_emits_empty_commit_retrigger() ->
     with patch.object(
         handler,
         "_resolve_event_delivery_gap",
-        new=AsyncMock(return_value=(("Runtime Sweep",), "feat/wedged")),
+        new=AsyncMock(return_value=(("Runtime Sweep",), "feat/wedged", "abc123")),
     ):
         output = await handler.handle(request)
 
@@ -355,6 +355,7 @@ async def test_blocked_no_failing_run_with_gap_emits_empty_commit_retrigger() ->
     assert rerun.pr_number == 700
     assert rerun.retrigger_mode == "empty_commit"
     assert rerun.head_branch == "feat/wedged"
+    assert rerun.head_sha == "abc123"
     assert rerun.run_id_github == ""
     assert rerun.missing_required_contexts == ("Runtime Sweep",)
 
@@ -370,11 +371,38 @@ async def test_blocked_no_failing_run_no_gap_skips() -> None:
     with patch.object(
         handler,
         "_resolve_event_delivery_gap",
-        new=AsyncMock(return_value=((), "feat/clean")),
+        new=AsyncMock(return_value=((), "feat/clean", "abc123")),
     ):
         output = await handler.handle(request)
 
     assert not any(isinstance(e, ModelCiRerunCommand) for e in output.events)
+
+
+@pytest.mark.asyncio
+async def test_event_delivery_gap_uses_context_fallback_for_reported_checks() -> None:
+    """StatusContext rollup entries expose required check names as context."""
+    handler = HandlerTriageOrchestrator()
+
+    mock_pr = _mock_proc(
+        {
+            "baseRefName": "release",
+            "headRefName": "feat/wedged",
+            "headRefOid": "abc123",
+            "statusCheckRollup": [{"context": "Runtime Sweep"}],
+        }
+    )
+    mock_required = _mock_proc(["Runtime Sweep"])
+    with patch(
+        "asyncio.create_subprocess_exec",
+        side_effect=[mock_pr, mock_required],
+    ):
+        missing, head_branch, head_sha = await handler._resolve_event_delivery_gap(
+            "OmniNode-ai/omni_home", 701
+        )
+
+    assert missing == ()
+    assert head_branch == "feat/wedged"
+    assert head_sha == "abc123"
 
 
 @pytest.mark.asyncio

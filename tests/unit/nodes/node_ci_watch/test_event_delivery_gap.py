@@ -143,6 +143,7 @@ class TestHandleRetrigger:
         with (
             patch.object(handler, "_fetch_ci_status", return_value=clean_fetch),
             patch.object(handler, "_probe_event_delivery_gap", return_value=gap),
+            patch.object(handler, "_record_retrigger_attempt", return_value=1),
             patch.object(
                 handler, "_retrigger_via_empty_commit", return_value=(True, "")
             ) as retrigger,
@@ -248,6 +249,35 @@ class TestHandleRetrigger:
                 _make_command(auto_retrigger=True, max_retriggers=0)
             )
         assert result.terminal_status != EnumCiTerminalStatus.RETRIGGERED
+
+    def test_retrigger_cap_exhaustion_does_not_push_again(self) -> None:
+        handler = HandlerCiWatch()
+        clean_fetch = ModelCiStatusFetch(
+            failed_checks=[], failure_summary="", query_error=None
+        )
+        gap = ModelEventDeliveryGap(
+            detected=True,
+            missing_required_contexts=["Runtime Sweep"],
+            head_sha="abc123",
+            merge_state_status="BLOCKED",
+            reason="gap",
+        )
+        with (
+            patch.object(handler, "_fetch_ci_status", return_value=clean_fetch),
+            patch.object(handler, "_probe_event_delivery_gap", return_value=gap),
+            patch.object(handler, "_record_retrigger_attempt", return_value=2),
+            patch.object(
+                handler,
+                "_retrigger_via_empty_commit",
+                side_effect=AssertionError("must not push after cap exhaustion"),
+            ),
+        ):
+            result = handler.handle(
+                _make_command(auto_retrigger=True, max_retriggers=1)
+            )
+
+        assert result.terminal_status == EnumCiTerminalStatus.ERROR
+        assert "max_retriggers=1 is exhausted" in result.failure_summary
 
 
 # ---------------------------------------------------------------------------

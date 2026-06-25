@@ -59,17 +59,31 @@ class HandlerCiRerunEffect:
         token = github_secret.get_secret_value()
 
         t0 = time.monotonic()
+        triggered: bool
+        error: str | None
         if request.retrigger_mode == "empty_commit":
             # OMN-13416 — a required workflow produced 0 runs on HEAD (GitHub
             # dropped the dispatch event). There is no run to rerun; push an
             # empty commit on the head branch to re-fire the dropped events.
-            triggered, error = await self._empty_commit(
-                request.repo, request.head_branch, request.pr_number, token
-            )
+            if not request.head_branch:
+                triggered, error = False, "empty_commit requires head_branch"
+            elif not request.head_sha:
+                triggered, error = False, "empty_commit requires head_sha"
+            else:
+                triggered, error = await self._empty_commit(
+                    request.repo,
+                    request.head_branch,
+                    request.head_sha,
+                    request.pr_number,
+                    token,
+                )
         else:
-            triggered, error = await self._rerun(
-                request.run_id_github, request.repo, token
-            )
+            if not request.run_id_github:
+                triggered, error = False, "rerun_failed requires run_id_github"
+            else:
+                triggered, error = await self._rerun(
+                    request.run_id_github, request.repo, token
+                )
         elapsed = time.monotonic() - t0
 
         if triggered:
@@ -153,15 +167,30 @@ class HandlerCiRerunEffect:
             return False, str(exc)
 
     async def _empty_commit(
-        self, repo: str, head_branch: str, pr_number: int, token: str
+        self,
+        repo: str,
+        head_branch: str,
+        expected_head_sha: str,
+        pr_number: int,
+        token: str,
     ) -> tuple[bool, str | None]:
         """Push an empty commit on ``head_branch`` to re-trigger CI (OMN-13416)."""
         return await asyncio.to_thread(
-            self._empty_commit_sync, repo, head_branch, pr_number, token
+            self._empty_commit_sync,
+            repo,
+            head_branch,
+            expected_head_sha,
+            pr_number,
+            token,
         )
 
     def _empty_commit_sync(
-        self, repo: str, head_branch: str, pr_number: int, token: str
+        self,
+        repo: str,
+        head_branch: str,
+        expected_head_sha: str,
+        pr_number: int,
+        token: str,
     ) -> tuple[bool, str | None]:
         """Create an empty commit on the head branch via the Git Data API.
 
@@ -174,6 +203,8 @@ class HandlerCiRerunEffect:
             return False, f"invalid repo slug: {repo!r}"
         if not head_branch:
             return False, "empty head_branch for empty_commit re-trigger"
+        if not expected_head_sha:
+            return False, "empty expected_head_sha for empty_commit re-trigger"
 
         base = f"https://api.github.com/repos/{owner}/{repo_name}"  # url-authority-ok: GitHub control-plane REST host, same as rerun-failed-jobs call above
         headers = {
@@ -191,6 +222,11 @@ class HandlerCiRerunEffect:
             head_sha = ref_object.get("sha") if isinstance(ref_object, dict) else None
             if not head_sha:
                 return False, f"could not resolve head SHA for {head_branch}"
+            if head_sha != expected_head_sha:
+                return (
+                    False,
+                    f"head branch moved: expected {expected_head_sha}, got {head_sha}",
+                )
 
             # 2. Read the head commit to reuse its tree (empty diff).
             head_commit = self._api_json(
