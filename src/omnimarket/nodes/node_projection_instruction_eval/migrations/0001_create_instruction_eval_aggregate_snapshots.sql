@@ -3,7 +3,7 @@
 -- WHY THIS EXISTS
 --   node_projection_instruction_eval declares projection_api over
 --   instruction_eval_aggregate_snapshots (topic
---   onex.evt.omnimarket.instruction-eval-aggregate-snapshot.v1).
+--   onex.snapshot.projection.omnimarket.instruction-eval-aggregate.v1).
 --   The omnidash InstructionEvalHeatmap panel reads this topic via
 --   useProjectionQuery; rows materialise as the instruction-eval runner emits
 --   onex.evt.omnimarket.instruction-eval-result.v1 events.

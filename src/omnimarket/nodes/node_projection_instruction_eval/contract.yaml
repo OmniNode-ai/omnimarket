@@ -9,7 +9,7 @@ description: >
   instruction_eval_aggregate_snapshots table — a (model, task, context_mode)
   pass-rate / output-tokens / runs aggregate read by the omnidash
   InstructionEvalHeatmap panel via the canonical projection API at
-  onex.evt.omnimarket.instruction-eval-aggregate-snapshot.v1.
+  onex.snapshot.projection.omnimarket.instruction-eval-aggregate.v1.
 
   OMN-12998: replaces the hardcoded fixture (instruction-eval.fixtures.ts,
   run 20260526-170241) with a live, contract-declared projection so the panel
@@ -59,7 +59,7 @@ event_bus:
 
 projection_api:
   expose: true
-  topic: "onex.evt.omnimarket.instruction-eval-aggregate-snapshot.v1"
+  topic: "onex.snapshot.projection.omnimarket.instruction-eval-aggregate.v1" # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
   table: "instruction_eval_aggregate_snapshots"
   schema: "public"
   columns:
