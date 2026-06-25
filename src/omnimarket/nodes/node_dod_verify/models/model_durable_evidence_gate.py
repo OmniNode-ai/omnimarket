@@ -19,11 +19,31 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 class EnumDurableEvidenceCheck(StrEnum):
-    """Identifiers for the three durable-evidence checks the gate runs."""
+    """Identifiers for the durable-evidence checks the gate runs."""
 
     RECEIPT_TRACKED = "receipt_tracked"
     CONTRACT_CITES_MERGE_COMMIT = "contract_cites_merge_commit"
     CONTRACT_ON_OCC_MAIN = "contract_on_occ_main"
+    DEFECT_PREVENTION_GATE = "defect_prevention_gate"
+
+
+class EnumDefectLabel(StrEnum):
+    """Defect-class labels that trigger the repair-to-ratchet rule (OMN-13339).
+
+    A ticket carrying any of these labels is a *defect* repair: it cannot close
+    without either a linked prevention gate (CI workflow / pre-commit hook path
+    or a PR) OR a structured non-recurrence note. This converts repairs into
+    ratchets per Rule 5 so the same failure class does not return.
+    """
+
+    BUG = "bug"
+    DEFECT = "defect"
+    REGRESSION = "regression"
+
+    @classmethod
+    def values(cls) -> frozenset[str]:
+        """Return the defect-class label string values."""
+        return frozenset(member.value for member in cls)
 
 
 class EnumDurableEvidenceStatus(StrEnum):
@@ -85,6 +105,7 @@ class ModelCitedMergeCommit(BaseModel):
 
 
 __all__: list[str] = [
+    "EnumDefectLabel",
     "EnumDurableEvidenceCheck",
     "EnumDurableEvidenceStatus",
     "ModelCitedMergeCommit",

@@ -33,6 +33,7 @@ from __future__ import annotations
 import pytest
 
 from omnimarket.nodes.node_dod_verify.models.model_durable_evidence_gate import (
+    EnumDefectLabel,
     EnumDurableEvidenceCheck,
     EnumDurableEvidenceStatus,
 )
@@ -295,7 +296,154 @@ class TestDurableEvidenceGate:
             EnumDurableEvidenceCheck.RECEIPT_TRACKED,
             EnumDurableEvidenceCheck.CONTRACT_CITES_MERGE_COMMIT,
             EnumDurableEvidenceCheck.CONTRACT_ON_OCC_MAIN,
+            EnumDurableEvidenceCheck.DEFECT_PREVENTION_GATE,
         }
+
+    def _all_green_gate(self) -> DurableEvidenceGate:
+        """A gate whose three durable checks all pass (defect tests vary labels)."""
+        return _make_gate(
+            tracked={(_OCC_REPO, _DEV_REF, _RECEIPT_DIR): True},
+            pr_view={
+                ("OmniNode-ai/omnibase_core", 949): (
+                    "MERGED",
+                    "abcdef1234567890abcdef1234567890abcdef12",
+                ),
+            },
+            contract_on_main=_ticket_contract(),
+            receipts_on_ref=[_receipt()],
+        )
+
+    def test_defect_ticket_without_prevention_hard_fails(self) -> None:
+        """A defect-labelled ticket with no prevention gate / note → HARD FAIL.
+
+        OMN-13339 (retro R4 — repair-to-ratchet): a defect cannot close without
+        a linked prevention gate or a structured non-recurrence note.
+        """
+        contract = _ticket_contract()  # no prevention_gate / non_recurrence_note
+        gate = self._all_green_gate()
+
+        result = gate.evaluate(
+            ticket_id=_TICKET,
+            contract=contract,
+            receipt_dir=_RECEIPT_DIR,
+            contract_rel_path=_CONTRACT_PATH,
+            ticket_labels=frozenset({EnumDefectLabel.BUG.value}),
+        )
+
+        assert result.status == EnumDurableEvidenceStatus.FAIL
+        defect = next(
+            c
+            for c in result.checks
+            if c.check == EnumDurableEvidenceCheck.DEFECT_PREVENTION_GATE
+        )
+        assert defect.passed is False
+        assert "cannot close" in defect.message
+        # The three durable checks still pass — only the ratchet check fails.
+        assert all(
+            c.passed
+            for c in result.checks
+            if c.check != EnumDurableEvidenceCheck.DEFECT_PREVENTION_GATE
+        )
+
+    def test_defect_ticket_with_prevention_gate_passes(self) -> None:
+        """A defect ticket that links a prevention gate → PASS."""
+        contract = dict(_ticket_contract())
+        contract["prevention_gate"] = (
+            ".github/workflows/validator-no-except-swallow.yml"
+        )
+        gate = self._all_green_gate()
+
+        result = gate.evaluate(
+            ticket_id=_TICKET,
+            contract=contract,
+            receipt_dir=_RECEIPT_DIR,
+            contract_rel_path=_CONTRACT_PATH,
+            ticket_labels=frozenset({EnumDefectLabel.REGRESSION.value}),
+        )
+
+        assert result.status == EnumDurableEvidenceStatus.PASS
+        defect = next(
+            c
+            for c in result.checks
+            if c.check == EnumDurableEvidenceCheck.DEFECT_PREVENTION_GATE
+        )
+        assert defect.passed is True
+        assert "prevention_gate" in defect.message
+
+    def test_defect_ticket_with_non_recurrence_note_passes(self) -> None:
+        """A defect ticket that carries a non-recurrence note → PASS."""
+        contract = dict(_ticket_contract())
+        contract["non_recurrence_note"] = (
+            "One-off data-entry typo in a fixture; no code path can reproduce it, "
+            "so no automated gate is feasible."
+        )
+        gate = self._all_green_gate()
+
+        result = gate.evaluate(
+            ticket_id=_TICKET,
+            contract=contract,
+            receipt_dir=_RECEIPT_DIR,
+            contract_rel_path=_CONTRACT_PATH,
+            ticket_labels=frozenset({EnumDefectLabel.DEFECT.value}),
+        )
+
+        assert result.status == EnumDurableEvidenceStatus.PASS
+        defect = next(
+            c
+            for c in result.checks
+            if c.check == EnumDurableEvidenceCheck.DEFECT_PREVENTION_GATE
+        )
+        assert defect.passed is True
+        assert "non_recurrence_note" in defect.message
+
+    def test_blank_prevention_fields_do_not_satisfy(self) -> None:
+        """Whitespace-only prevention fields are treated as absent → HARD FAIL."""
+        contract = dict(_ticket_contract())
+        contract["prevention_gate"] = "   "
+        contract["non_recurrence_note"] = ""
+        gate = self._all_green_gate()
+
+        result = gate.evaluate(
+            ticket_id=_TICKET,
+            contract=contract,
+            receipt_dir=_RECEIPT_DIR,
+            contract_rel_path=_CONTRACT_PATH,
+            ticket_labels=frozenset({EnumDefectLabel.BUG.value}),
+        )
+
+        assert result.status == EnumDurableEvidenceStatus.FAIL
+        defect = next(
+            c
+            for c in result.checks
+            if c.check == EnumDurableEvidenceCheck.DEFECT_PREVENTION_GATE
+        )
+        assert defect.passed is False
+
+    def test_non_defect_ticket_is_exempt_from_ratchet(self) -> None:
+        """A non-defect ticket passes the ratchet check N/A even with no fields."""
+        contract = _ticket_contract()
+        gate = self._all_green_gate()
+
+        result = gate.evaluate(
+            ticket_id=_TICKET,
+            contract=contract,
+            receipt_dir=_RECEIPT_DIR,
+            contract_rel_path=_CONTRACT_PATH,
+            ticket_labels=frozenset({"enhancement"}),
+        )
+
+        assert result.status == EnumDurableEvidenceStatus.PASS
+        defect = next(
+            c
+            for c in result.checks
+            if c.check == EnumDurableEvidenceCheck.DEFECT_PREVENTION_GATE
+        )
+        assert defect.passed is True
+        assert "does not apply" in defect.message
+
+    def test_defect_label_values_are_canonical(self) -> None:
+        """The defect-class label set is exactly the three canonical labels."""
+        assert EnumDefectLabel.values() == frozenset({"bug", "defect", "regression"})
 
     def test_stale_occ_governance_ref_hard_fails(self) -> None:
         """OCC dev still has a stale contract missing the receipt-bound check."""
@@ -566,6 +714,7 @@ class TestDefaultInvocation:
             EnumDurableEvidenceCheck.RECEIPT_TRACKED,
             EnumDurableEvidenceCheck.CONTRACT_CITES_MERGE_COMMIT,
             EnumDurableEvidenceCheck.CONTRACT_ON_OCC_MAIN,
+            EnumDurableEvidenceCheck.DEFECT_PREVENTION_GATE,
         }
         receipt_check = next(
             c
