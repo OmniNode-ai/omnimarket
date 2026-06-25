@@ -23,10 +23,15 @@ canonical surfaces (OMN-13160):
 
 from __future__ import annotations
 
+import asyncio
 import logging
+import multiprocessing
+import queue
+import time
 import uuid
+from collections.abc import Callable
 from pathlib import Path
-from typing import cast
+from typing import Any, Literal, cast
 from uuid import UUID
 
 from omnibase_core.models.delegation.wire import (
@@ -34,6 +39,7 @@ from omnibase_core.models.delegation.wire import (
     ModelQualityGateInput,
 )
 
+from omnimarket.enums.enum_delegation_failure_class import EnumDelegationFailureClass
 from omnimarket.inference.protocol_config import apply_inference_protocol
 
 # The reducer (``delta``) returns the omnimarket wire result DTO (it carries the
@@ -97,6 +103,107 @@ _TASK_TYPE_SYSTEM_PROMPTS: dict[str, str] = {
 
 _DELEGATION_EVENTS_TABLE = "delegation_events"
 
+# OMN-13597: hard ceiling buffer (seconds) added to the contract-resolved
+# per-backend transport timeout when bounding the blocking effect call. Covers
+# the synchronous health probe that precedes the LLM POST so a stalled connect
+# can never hang the local CLI past ``transport_timeout + buffer``.
+_DISPATCH_TIMEOUT_BUFFER_SECONDS = 10.0
+_EFFECT_PROCESS_POLL_INTERVAL_SECONDS = 0.05
+_EFFECT_PROCESS_TERMINATE_GRACE_SECONDS = 1.0
+
+type _EffectHandler = Callable[
+    [ModelLlmDelegationCallRequest], ModelLlmDelegationCallResult
+]
+type _EffectWorkerMessage = (
+    tuple[Literal["ok"], ModelLlmDelegationCallResult]
+    | tuple[Literal["error"], str, str]
+)
+
+
+def _effect_handler_worker(
+    effect_handler: _EffectHandler,
+    request: ModelLlmDelegationCallRequest,
+    result_queue: Any,
+) -> None:
+    """Run the sync effect in a child process and return exactly one message."""
+    try:
+        result = effect_handler(request)
+        result_queue.put(("ok", result))
+    except Exception as exc:
+        result_queue.put(("error", type(exc).__name__, str(exc)))
+
+
+def _read_effect_worker_message(result_queue: Any) -> _EffectWorkerMessage | None:
+    try:
+        return cast(_EffectWorkerMessage, result_queue.get_nowait())
+    except queue.Empty:
+        return None
+
+
+def _terminate_effect_process(process: Any) -> None:
+    if not process.is_alive():
+        process.join(timeout=0)
+        return
+    process.terminate()
+    process.join(timeout=_EFFECT_PROCESS_TERMINATE_GRACE_SECONDS)
+    if process.is_alive():
+        process.kill()
+        process.join(timeout=_EFFECT_PROCESS_TERMINATE_GRACE_SECONDS)
+
+
+async def _run_effect_handler_with_killable_timeout(
+    effect_handler: _EffectHandler,
+    request: ModelLlmDelegationCallRequest,
+    *,
+    timeout_seconds: float,
+) -> ModelLlmDelegationCallResult:
+    """Run the blocking sync effect behind a process boundary with a hard kill."""
+    context: Any
+    try:
+        context = multiprocessing.get_context("fork")
+    except ValueError:
+        context = multiprocessing.get_context("spawn")
+    result_queue = context.Queue()
+    process = context.Process(
+        target=_effect_handler_worker,
+        args=(effect_handler, request, result_queue),
+        daemon=True,
+    )
+    process.start()
+
+    deadline = time.monotonic() + timeout_seconds
+    try:
+        while True:
+            message = _read_effect_worker_message(result_queue)
+            if message is not None:
+                process.join(timeout=_EFFECT_PROCESS_TERMINATE_GRACE_SECONDS)
+                if message[0] == "ok":
+                    return message[1]
+                raise RuntimeError(f"{message[1]}: {message[2]}")
+
+            if not process.is_alive():
+                process.join(timeout=_EFFECT_PROCESS_TERMINATE_GRACE_SECONDS)
+                message = _read_effect_worker_message(result_queue)
+                if message is not None:
+                    if message[0] == "ok":
+                        return message[1]
+                    raise RuntimeError(f"{message[1]}: {message[2]}")
+                raise RuntimeError(
+                    "delegation effect process exited without returning a result "
+                    f"(exitcode={process.exitcode})"
+                )
+
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                _terminate_effect_process(process)
+                raise TimeoutError
+            await asyncio.sleep(min(_EFFECT_PROCESS_POLL_INTERVAL_SECONDS, remaining))
+    finally:
+        if process.is_alive():
+            _terminate_effect_process(process)
+        result_queue.close()
+        result_queue.join_thread()
+
 
 class LocalDelegationDispatchPort:
     """Resolve routing, run the canonical effect, and project evidence in-process.
@@ -108,16 +215,18 @@ class LocalDelegationDispatchPort:
     def __init__(
         self,
         *,
-        effect_handler: HandlerLlmDelegationCall | None = None,
+        effect_handler: _EffectHandler | None = None,
         projection_handler: HandlerProjectionDelegation | None = None,
         evidence_db: DatabaseAdapter | None = None,
         evidence_db_path: Path | None = None,
+        effect_process_boundary: bool = True,
     ) -> None:
         self._effect_handler = effect_handler or HandlerLlmDelegationCall()
         self._projection_handler = projection_handler or HandlerProjectionDelegation()
         self._evidence_db: DatabaseAdapter = evidence_db or SqliteDatabaseAdapter(
             evidence_db_path or default_evidence_db_path()
         )
+        self._effect_process_boundary = effect_process_boundary
 
     async def dispatch(
         self,
@@ -195,7 +304,70 @@ class LocalDelegationDispatchPort:
             extra_headers=backend.extra_headers,
             provider_request_options=provider_request_options,
         )
-        result = self._effect_handler(call_request)
+        # OMN-13597: the effect handler is a synchronous blocking call (health
+        # probe + curl/httpx LLM POST). Awaiting it inline blocks the asyncio
+        # event loop the local runtime drives — the in-memory bus delivers the
+        # command synchronously inside ``bus.publish`` (``await callback(...)``),
+        # so the handler runs to completion *before* ``bus.publish`` returns and
+        # ``RuntimeLocal`` never reaches its terminal-wait timeout. On an
+        # unreachable endpoint (e.g. the local model host not routable from the
+        # CLI's container) a connect that stalls below the OS level defeats the
+        # transport's own ``--max-time``/httpx bound and the whole ``onex
+        # delegate`` CLI hangs forever — no output, no evidence row.
+        #
+        # Fix: run the blocking sync effect behind a supervised child-process
+        # boundary and poll it from the loop. The process boundary is intentionally
+        # stronger than ``asyncio.to_thread``: when the hard deadline expires, the
+        # worker can be terminated so ``asyncio.run`` has no orphaned thread to join.
+        dispatch_deadline_seconds = timeout_seconds + _DISPATCH_TIMEOUT_BUFFER_SECONDS
+        try:
+            if self._effect_process_boundary:
+                result = await _run_effect_handler_with_killable_timeout(
+                    self._effect_handler,
+                    call_request,
+                    timeout_seconds=dispatch_deadline_seconds,
+                )
+            else:
+                result = self._effect_handler(call_request)
+        except TimeoutError:
+            failure_message = (
+                f"delegation call did not return within "
+                f"{dispatch_deadline_seconds:.0f}s (endpoint {backend.endpoint_ref} "
+                f"unreachable or unresponsive)"
+            )
+            logger.warning(
+                "LocalDelegationDispatch: %s correlation=%s",
+                failure_message,
+                correlation_id,
+            )
+            # Build a canonical TIMEOUT failure result (public model surface) so
+            # the evidence row is materialized through the SAME projection path as
+            # a transport failure — never PASS, never silent.
+            timeout_result = ModelLlmDelegationCallResult(
+                request_id=call_request.request_id,
+                success=False,
+                failure_class=EnumDelegationFailureClass.TIMEOUT,
+                error_message=failure_message,
+                endpoint_healthy=False,
+            )
+            self._project_evidence(
+                correlation_id=correlation_id,
+                task_type=task_type,
+                endpoint_ref=backend.endpoint_ref,
+                model_id=backend.model_id,
+                result=timeout_result,
+                prompt=prompt,
+                source_session_id=source_session_id,
+                quality_passed=False,
+                failure_message=failure_message,
+            )
+            return {
+                "status": "failed",
+                "error_message": failure_message,
+                "correlation_id": str(correlation_id),
+                "delegated_to": backend.endpoint_ref,
+                "model_name": backend.model_id,
+            }
 
         if not result.success:
             failure_message = result.error_message or "delegation call failed"
