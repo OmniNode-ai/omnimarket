@@ -10,9 +10,16 @@ Entry flags control transition availability:
   - inventory_only: stops after INVENTORYING (no FIXING or MERGING)
   - fix_only: only TRIAGED -> FIXING allowed (skips MERGING)
 
+Repo-health fold functions (OMN-13585):
+  - fold_repo_health_classified: folds repo-health-classified.v1 events into
+    ModelPrLifecycleState.repo_health only; all PR-lane fields are untouched.
+  - fold_repo_health_repair_emitted: folds repo-health-repair-emitted.v1 events
+    into ModelPrLifecycleState.repo_health only; all PR-lane fields are untouched.
+
 Related:
     - OMN-8086: Create pr_lifecycle_state_reducer Node
     - OMN-8070: PR Lifecycle Domain epic
+    - OMN-13585: RH-3: Extend pr_lifecycle reducer state with additive repo_health sub-record
 """
 
 from __future__ import annotations
@@ -210,6 +217,98 @@ def _is_transition_allowed(
     return True
 
 
+# ---------------------------------------------------------------------------
+# Repo-health fold functions (OMN-13585)
+#
+# These are pure functions that fold repo-health domain events into the
+# ModelPrLifecycleState.repo_health sub-record ONLY.  The PR-lane FSM fields
+# (phase, prs_*, started_at, etc.) are never touched by these folds.
+# ---------------------------------------------------------------------------
+
+#: Topics that route to repo-health fold functions instead of the FSM delta.
+#: Both are declared in contract.yaml event_bus.subscribe_topics (OMN-13585).
+_REPO_HEALTH_CLASSIFIED_TOPIC = "onex.evt.omnimarket.repo-health-classified.v1"  # onex-topic-allow: contract-declared subscribe topic, used as routing key in handle_dict
+_REPO_HEALTH_REPAIR_EMITTED_TOPIC = "onex.evt.omnimarket.repo-health-repair-emitted.v1"  # onex-topic-allow: contract-declared subscribe topic, used as routing key in handle_dict
+
+#: Classification values and their target counter field names.
+_CLASSIFICATION_FIELD: dict[str, str] = {
+    "pr_scoped": "pr_scoped_count",
+    "repo_baseline": "repo_baseline_count",
+    "external_dependency": "external_dependency_count",
+    "unknown": "unknown_count",
+}
+
+
+def fold_repo_health_classified(
+    state: ModelPrLifecycleState,
+    *,
+    classification: str,
+    ticket_ref: str | None,
+) -> ModelPrLifecycleState:
+    """Fold a repo-health-classified event into the repo_health sub-record.
+
+    Only ModelPrLifecycleState.repo_health is updated; all PR-lane FSM fields
+    are byte-identical in the returned state.
+
+    Args:
+        state: Current PR lifecycle state.
+        classification: Classification label from the event.
+            One of: 'pr_scoped', 'repo_baseline', 'external_dependency', 'unknown'.
+            Unknown labels increment unknown_count.
+        ticket_ref: Optional ticket reference string (unused here; reserved for
+            future sub-classification linking).
+
+    Returns:
+        New ModelPrLifecycleState with updated repo_health only.
+    """
+    rh = state.repo_health
+    counter_field = _CLASSIFICATION_FIELD.get(classification, "unknown_count")
+    current_counter: int = getattr(rh, counter_field)
+    rh_update: dict[str, object] = {
+        "classified_count": rh.classified_count + 1,
+        counter_field: current_counter + 1,
+    }
+    new_rh = rh.model_copy(update=rh_update)
+    return state.model_copy(update={"repo_health": new_rh})
+
+
+def fold_repo_health_repair_emitted(
+    state: ModelPrLifecycleState,
+    *,
+    ticket_ref: str | None,
+) -> ModelPrLifecycleState:
+    """Fold a repo-health-repair-emitted event into the repo_health sub-record.
+
+    Only ModelPrLifecycleState.repo_health is updated; all PR-lane FSM fields
+    are byte-identical in the returned state.
+
+    Duplicate ticket_refs are deduplicated in repair_task_refs.
+
+    Args:
+        state: Current PR lifecycle state.
+        ticket_ref: Ticket reference string for the emitted repair task,
+            or None if no ticket was generated.
+
+    Returns:
+        New ModelPrLifecycleState with updated repo_health only.
+    """
+    rh = state.repo_health
+    if ticket_ref is not None:
+        # Deduplicate: preserve insertion order via dict.fromkeys
+        new_refs: tuple[str, ...] = tuple(
+            dict.fromkeys((*rh.repair_task_refs, ticket_ref))
+        )
+    else:
+        new_refs = rh.repair_task_refs
+    new_rh = rh.model_copy(
+        update={
+            "repair_tasks_emitted": rh.repair_tasks_emitted + 1,
+            "repair_task_refs": new_refs,
+        }
+    )
+    return state.model_copy(update={"repo_health": new_rh})
+
+
 class HandlerPrLifecycleStateReducer:
     """Pure reducer: delta(state, event) -> (new_state, intents).
 
@@ -228,12 +327,42 @@ class HandlerPrLifecycleStateReducer:
     def handle_dict(self, input_data: dict[str, Any]) -> dict[str, Any]:
         """RuntimeLocal handler protocol shim.
 
-        Delegates to delta() with ModelPrLifecycleState and ModelPrLifecycleEvent
-        constructed from input_data.
+        Dispatches to the appropriate fold function based on the event_topic key,
+        or delegates to delta() for standard PR-lifecycle FSM events.
+
+        Repo-health events (OMN-13585):
+          - onex.evt.omnimarket.repo-health-classified.v1 → fold_repo_health_classified
+          - onex.evt.omnimarket.repo-health-repair-emitted.v1 → fold_repo_health_repair_emitted
+
+        All other events → delta() (FSM state transition).
         """
+        event_topic: str = input_data.get("event_topic", "")
         state_data = input_data.get("state", {})
         event_data = input_data.get("event", {})
         state = ModelPrLifecycleState(**state_data)
+
+        if event_topic == _REPO_HEALTH_CLASSIFIED_TOPIC:
+            new_state = fold_repo_health_classified(
+                state,
+                classification=event_data.get("classification", "unknown"),
+                ticket_ref=event_data.get("ticket_ref"),
+            )
+            return {
+                "state": new_state.model_dump(mode="json"),
+                "intents": [],
+            }
+
+        if event_topic == _REPO_HEALTH_REPAIR_EMITTED_TOPIC:
+            new_state = fold_repo_health_repair_emitted(
+                state,
+                ticket_ref=event_data.get("ticket_ref"),
+            )
+            return {
+                "state": new_state.model_dump(mode="json"),
+                "intents": [],
+            }
+
+        # Default: FSM delta path
         event = ModelPrLifecycleEvent(**event_data)
         new_state, intents = self.delta(state, event)
         return {
