@@ -133,6 +133,9 @@ event_bus:
     - onex.evt.omnimarket.pr-lifecycle-fix-completed.v1
     - onex.evt.omnimarket.pr-lifecycle-merge-completed.v1
     - onex.evt.omnimarket.pr-lifecycle-failed.v1
+    # Repo-health lane (OMN-13585): additive fold only — does not drive FSM transitions
+    - onex.evt.omnimarket.repo-health-classified.v1
+    - onex.evt.omnimarket.repo-health-repair-emitted.v1
   publish_topics:
     - onex.evt.omnimarket.pr-lifecycle-state-reduced.v1
 
@@ -149,3 +152,4 @@ metadata:
   related_tickets:
     - OMN-8086
     - OMN-8070
+    - OMN-13585

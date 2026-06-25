@@ -14,6 +14,7 @@ from omnimarket.nodes.node_pr_lifecycle_state_reducer.models.model_pr_lifecycle_
 from omnimarket.nodes.node_pr_lifecycle_state_reducer.models.model_pr_lifecycle_state import (
     ModelPrLifecycleEntryFlags,
     ModelPrLifecycleState,
+    ModelRepoHealthLaneState,
 )
 
 __all__ = [
@@ -24,4 +25,5 @@ __all__ = [
     "ModelPrLifecycleEvent",
     "ModelPrLifecycleIntent",
     "ModelPrLifecycleState",
+    "ModelRepoHealthLaneState",
 ]

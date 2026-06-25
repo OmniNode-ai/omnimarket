@@ -64,8 +64,10 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
     # runtime closeout, epic OMN-13410): 325 -> 326.
     # OMN-12998 adds node_projection_instruction_eval (instruction-eval aggregate
     # projection; replaces hardcoded fixture with contract-declared projection): 326 -> 327.
-    assert summary["node_dirs"] == 327
-    assert summary["entry_points"] == 327
+    # OMN-13584 adds node_repo_health_repair_effect (EFFECT; durable repo-health
+    # repair ticket emission): 327 -> 328.
+    assert summary["node_dirs"] == 328
+    assert summary["entry_points"] == 328
     assert summary["missing_entry_points"] == []
     assert summary["dangling_entry_points"] == []
     assert summary["routable"] >= 297
