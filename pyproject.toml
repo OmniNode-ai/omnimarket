@@ -144,6 +144,7 @@ node_projection_session_outcome = "omnimarket.nodes.node_projection_session_outc
 node_projection_swarm = "omnimarket.nodes.node_projection_swarm"
 node_projection_llm_cost = "omnimarket.nodes.node_projection_llm_cost"
 node_projection_cost_by_repo = "omnimarket.nodes.node_projection_cost_by_repo"
+node_projection_instruction_eval = "omnimarket.nodes.node_projection_instruction_eval"
 node_projection_cost_summary = "omnimarket.nodes.node_projection_cost_summary"
 node_projection_cost_token_usage = "omnimarket.nodes.node_projection_cost_token_usage"
 node_projection_savings = "omnimarket.nodes.node_projection_savings"
