@@ -655,6 +655,22 @@ class ModelProdPromotionGrant(BaseModel):
         ...,
         description="Approver-set ABSOLUTE expiry; the gate fails closed once past it.",
     )
+    consumed_at: datetime | None = Field(
+        default=None,
+        description=(
+            "When the grant was consumed by a terminal prod promotion (OMN-13424). "
+            "A grant carrying this marker is single-use spent and the resolver "
+            "treats it as absent — no replay. None == not yet consumed."
+        ),
+    )
+    consumed_by_correlation_id: UUID | None = Field(
+        default=None,
+        description=(
+            "Correlation ID of the redeploy run that consumed this grant "
+            "(OMN-13424). Pairs with consumed_at for single-use audit provenance. "
+            "None == not yet consumed."
+        ),
+    )
 
 
 class ModelDeployRefusedEvent(BaseModel):

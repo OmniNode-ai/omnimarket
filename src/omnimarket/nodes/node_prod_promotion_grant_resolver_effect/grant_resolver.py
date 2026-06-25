@@ -31,6 +31,7 @@ import hashlib
 from collections.abc import Mapping, Sequence
 from datetime import datetime
 from typing import Any
+from uuid import UUID
 
 import yaml
 from pydantic import BaseModel, ConfigDict
@@ -41,8 +42,9 @@ from omnimarket.events.runtime_deployment import (
     ModelProdPromotionGrant,
 )
 
-# Required fields per the OMN-13437 grant-file schema. ``consumed`` is an OPTIONAL
-# lifecycle marker (absent == not consumed); every other field is mandatory.
+# Required fields per the OMN-13437 grant-file schema. ``consumed``, ``consumed_at``
+# and ``consumed_by_correlation_id`` are OPTIONAL lifecycle markers (OMN-13424;
+# absent == not consumed); every other field is mandatory.
 _REQUIRED_ENTRY_FIELDS: frozenset[str] = frozenset(
     {
         "grant_id",
@@ -121,8 +123,12 @@ def _materialize_grant(entry: Mapping[str, Any]) -> ModelProdPromotionGrant:
     """Materialize a matched entry into the canonical grant DTO.
 
     Maps the OMN-13437 file field names onto the ``ModelProdPromotionGrant``
-    field names (``runtime_lane`` -> ``approved_lane`` etc.).
+    field names (``runtime_lane`` -> ``approved_lane`` etc.). The optional
+    single-use lifecycle markers (``consumed_at``, ``consumed_by_correlation_id``,
+    OMN-13424) carry through when present; absent markers stay ``None``.
     """
+    consumed_at_raw = entry.get("consumed_at")
+    consumed_corr_raw = entry.get("consumed_by_correlation_id")
     return ModelProdPromotionGrant(
         grant_id=str(entry["grant_id"]),
         approved_lane=EnumRuntimeLane(str(entry["runtime_lane"])),
@@ -131,6 +137,12 @@ def _materialize_grant(entry: Mapping[str, Any]) -> ModelProdPromotionGrant:
         approved_by=str(entry["approved_by"]),
         created_at=_coerce_datetime(entry["created_at"]),
         expires_at=_coerce_datetime(entry["expires_at"]),
+        consumed_at=(
+            _coerce_datetime(consumed_at_raw) if consumed_at_raw is not None else None
+        ),
+        consumed_by_correlation_id=(
+            UUID(str(consumed_corr_raw)) if consumed_corr_raw is not None else None
+        ),
     )
 
 
@@ -217,8 +229,72 @@ def resolve_grant(
     return ModelGrantResolution(outcome=EnumGrantResolution.ABSENT)
 
 
+class ModelPruneResult(BaseModel):
+    """Result of pruning expired/consumed entries from the grant anchor.
+
+    ``raw`` is the re-serialized grant file with only the still-live entries kept
+    (single-key ``entries`` mapping). ``pruned_grant_ids`` names every dropped
+    entry so the prune action carries audit provenance. ``had_expired`` is the
+    lint signal: a CI prune job FAILs when ``True``, since at-rest state requires
+    ``entries: []`` of expired/consumed grants.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    raw: bytes
+    pruned_grant_ids: tuple[str, ...] = ()
+    had_expired: bool = False
+
+
+def _is_entry_expired(entry: Mapping[str, Any], *, evaluated_at: datetime) -> bool:
+    """Whether an entry is past its absolute expiry at ``evaluated_at``.
+
+    Inclusive boundary matches ``resolve_grant``: an entry is expired only when
+    ``evaluated_at`` strictly exceeds ``expires_at``.
+    """
+    return evaluated_at > _coerce_datetime(entry["expires_at"])
+
+
+def prune_expired(raw: bytes, *, evaluated_at: datetime) -> ModelPruneResult:
+    """Drop expired and consumed entries from the grant anchor, deterministically.
+
+    A grant is single-use and time-bound (OMN-13424): once it is consumed by a
+    terminal promotion or its absolute ``expires_at`` has passed, it must not
+    linger in the trust anchor where it could be replayed or accumulate. This pure
+    function re-serializes the file keeping only still-live, unconsumed entries and
+    reports which grant_ids were dropped.
+
+    Pure + deterministic: it performs ZERO I/O. The fetch + write-back PR lives in
+    the handler / CI boundary. A corrupt anchor raises (via ``_parse_entries``)
+    rather than silently pruning everything.
+    """
+    entries = _parse_entries(raw)
+    kept: list[Mapping[str, Any]] = []
+    pruned: list[str] = []
+    had_expired = False
+    for entry in entries:
+        expired = _is_entry_expired(entry, evaluated_at=evaluated_at)
+        if expired:
+            had_expired = True
+        if expired or _is_consumed(entry):
+            pruned.append(str(entry["grant_id"]))
+            continue
+        kept.append(entry)
+    serialized = yaml.safe_dump(
+        {"entries": [dict(entry) for entry in kept]},
+        sort_keys=False,
+    ).encode("utf-8")
+    return ModelPruneResult(
+        raw=serialized,
+        pruned_grant_ids=tuple(pruned),
+        had_expired=had_expired,
+    )
+
+
 __all__: list[str] = [
     "ModelGrantResolution",
+    "ModelPruneResult",
     "file_sha256",
+    "prune_expired",
     "resolve_grant",
 ]

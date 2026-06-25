@@ -50,7 +50,9 @@ from omnimarket.nodes.node_prod_promotion_gate_compute.handlers.handler_prod_pro
     HandlerProdPromotionGate,
 )
 from omnimarket.nodes.node_prod_promotion_grant_resolver_effect.grant_resolver import (
+    ModelPruneResult,
     file_sha256,
+    prune_expired,
     resolve_grant,
 )
 from omnimarket.nodes.node_prod_promotion_grant_resolver_effect.handlers.handler_prod_promotion_grant_resolver import (
@@ -89,6 +91,8 @@ def _grant_entry(
     created_at: datetime = _EVALUATED_AT - timedelta(minutes=5),
     expires_at: datetime = _EVALUATED_AT + timedelta(hours=2),
     consumed: bool | None = None,
+    consumed_at: datetime | None = None,
+    consumed_by_correlation_id: str | None = None,
 ) -> dict[str, object]:
     entry: dict[str, object] = {
         "grant_id": grant_id,
@@ -102,6 +106,10 @@ def _grant_entry(
     }
     if consumed is not None:
         entry["consumed"] = consumed
+    if consumed_at is not None:
+        entry["consumed_at"] = consumed_at.isoformat().replace("+00:00", "Z")
+    if consumed_by_correlation_id is not None:
+        entry["consumed_by_correlation_id"] = consumed_by_correlation_id
     return entry
 
 
@@ -225,6 +233,91 @@ class TestResolveGrant:
         del entry["approved_by"]
         with pytest.raises(ValueError, match="missing required fields"):
             _resolve(_grant_file(entry))
+
+
+# ---------------------------------------------------------------------------
+# Single-use lifecycle: consumed-marker carry-through + expire/prune (OMN-13424)
+# ---------------------------------------------------------------------------
+
+
+_CONSUMED_CORR = "0a1b2c3d-4e5f-6789-abcd-ef0123456789"
+
+
+@pytest.mark.unit
+class TestGrantSingleUseLifecycle:
+    """OMN-13424 — single-use consume + expire + prune lifecycle on the resolver."""
+
+    def test_consumed_at_and_correlation_carry_through_when_resolved(self) -> None:
+        # A still-live grant (consumed marker absent) that nonetheless carries the
+        # optional consumed_at / consumed_by_correlation_id provenance fields
+        # materializes them onto the typed grant DTO.
+        consumed_at = _EVALUATED_AT - timedelta(minutes=1)
+        entry = _grant_entry(
+            consumed_at=consumed_at,
+            consumed_by_correlation_id=_CONSUMED_CORR,
+        )
+        result = _resolve(_grant_file(entry))
+        assert result.outcome is EnumGrantResolution.RESOLVED
+        assert result.grant is not None
+        assert result.grant.consumed_at == consumed_at
+        assert str(result.grant.consumed_by_correlation_id) == _CONSUMED_CORR
+
+    def test_consumed_fields_default_none_when_absent(self) -> None:
+        result = _resolve(_grant_file(_grant_entry()))
+        assert result.grant is not None
+        assert result.grant.consumed_at is None
+        assert result.grant.consumed_by_correlation_id is None
+
+    def test_consumed_marker_takes_precedence_over_provenance(self) -> None:
+        # consumed: true is single-use spent regardless of carried provenance.
+        entry = _grant_entry(
+            consumed=True,
+            consumed_at=_EVALUATED_AT - timedelta(minutes=1),
+            consumed_by_correlation_id=_CONSUMED_CORR,
+        )
+        result = _resolve(_grant_file(entry))
+        assert result.outcome is EnumGrantResolution.CONSUMED
+        assert result.grant is None
+
+    def test_prune_drops_expired_entry(self) -> None:
+        live = _grant_entry()
+        expired = _grant_entry(
+            grant_id="grant-1111aaaa-2222-3333-4444-555566667777",
+            expires_at=_EVALUATED_AT - timedelta(seconds=1),
+        )
+        result = prune_expired(_grant_file(live, expired), evaluated_at=_EVALUATED_AT)
+        assert isinstance(result, ModelPruneResult)
+        assert result.had_expired is True
+        assert result.pruned_grant_ids == (
+            "grant-1111aaaa-2222-3333-4444-555566667777",
+        )
+        kept = yaml.safe_load(result.raw.decode("utf-8"))["entries"]
+        assert [e["grant_id"] for e in kept] == [_GRANT_ID]
+
+    def test_prune_drops_consumed_entry_not_flagged_expired(self) -> None:
+        consumed = _grant_entry(consumed=True)
+        result = prune_expired(_grant_file(consumed), evaluated_at=_EVALUATED_AT)
+        # Consumed entries are pruned but do NOT trip the expired lint signal.
+        assert result.had_expired is False
+        assert result.pruned_grant_ids == (_GRANT_ID,)
+        assert yaml.safe_load(result.raw.decode("utf-8"))["entries"] == []
+
+    def test_prune_keeps_fresh_unconsumed_entry(self) -> None:
+        result = prune_expired(_grant_file(_grant_entry()), evaluated_at=_EVALUATED_AT)
+        assert result.had_expired is False
+        assert result.pruned_grant_ids == ()
+        kept = yaml.safe_load(result.raw.decode("utf-8"))["entries"]
+        assert [e["grant_id"] for e in kept] == [_GRANT_ID]
+
+    def test_prune_at_rest_empty_file_is_noop(self) -> None:
+        result = prune_expired(b"entries: []\n", evaluated_at=_EVALUATED_AT)
+        assert result.had_expired is False
+        assert result.pruned_grant_ids == ()
+        assert yaml.safe_load(result.raw.decode("utf-8"))["entries"] == []
+
+    def test_prune_corrupt_anchor_raises_not_silent(self) -> None:
+        with pytest.raises(ValueError, match="entries"):
+            prune_expired(b"not: a grant file\n", evaluated_at=_EVALUATED_AT)
 
 
 # ---------------------------------------------------------------------------
