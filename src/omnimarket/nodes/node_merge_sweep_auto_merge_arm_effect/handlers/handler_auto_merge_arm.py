@@ -31,6 +31,9 @@ from omnimarket.nodes.contract_topics import contract_secret_ref
 from omnimarket.nodes.node_merge_sweep_auto_merge_arm_effect.models.model_auto_merge_armed_event import (
     ModelAutoMergeArmedEvent,
 )
+from omnimarket.nodes.node_merge_sweep_auto_merge_arm_effect.models.model_auto_merge_unarmed_clean_alert_event import (
+    ModelAutoMergeUnarmedCleanAlertEvent,
+)
 from omnimarket.nodes.node_merge_sweep_triage_orchestrator.models.model_triage_request import (
     ModelAutoMergeArmCommand,
 )
@@ -100,11 +103,36 @@ class HandlerAutoMergeArmEffect:
             error=error,
             elapsed_seconds=elapsed,
         )
+
+        # The arm command is published by triage only for CLEAN PRs (Rule 2),
+        # so an arm failure here is exactly the "CLEAN but auto-merge not armed"
+        # case (omnibase_core#1280). Emit a dedicated alert event alongside the
+        # completion so the failed-to-arm case is observable on its own topic —
+        # the completion event proves the effect ran; the alert names the failure
+        # (OMN-13322). A missing OCC preflight (OMN-10485) surfaces here as the
+        # GraphQL/arm error string.
+        events: tuple[
+            ModelAutoMergeArmedEvent | ModelAutoMergeUnarmedCleanAlertEvent, ...
+        ]
+        if armed:
+            events = (completion,)
+        else:
+            alert = ModelAutoMergeUnarmedCleanAlertEvent(
+                pr_number=request.pr_number,
+                repo=request.repo,
+                correlation_id=request.correlation_id,
+                run_id=request.run_id,
+                total_prs=request.total_prs,
+                reason=error or "auto-merge arm failed with no error detail",
+                elapsed_seconds=elapsed,
+            )
+            events = (completion, alert)
+
         return ModelHandlerOutput.for_effect(
             input_envelope_id=uuid4(),
             correlation_id=request.correlation_id,
             handler_id="node_merge_sweep_auto_merge_arm_effect",
-            events=(completion,),
+            events=events,
         )
 
     async def _arm(

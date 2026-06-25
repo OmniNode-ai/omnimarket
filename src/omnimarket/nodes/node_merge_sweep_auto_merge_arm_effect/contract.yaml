@@ -47,8 +47,24 @@ event_bus:
     - onex.cmd.omnimarket.pr-auto-merge-arm.v1
   publish_topics:
     - onex.evt.omnimarket.pr-auto-merge-armed.v1
+    - onex.evt.omnimarket.pr-auto-merge-unarmed-clean-alert.v1
   dlq_topics:
     - onex.dlq.omnimarket.pr-auto-merge-arm.v1
+
+# Per-event-class topic routing (OMN-13322). The runtime topic router maps the
+# emitted event's class name ("Model" + event_type) to its declared topic, so
+# the completion and the unarmed-CLEAN alert each land on their own topic.
+published_events:
+  - topic_suffix: "onex.evt.omnimarket.pr-auto-merge-armed.v1"
+    full_topic_pattern: "{env}.onex.evt.omnimarket.pr-auto-merge-armed.v1"
+    event_type: "AutoMergeArmedEvent"
+    trigger: "Auto-merge arm attempted (armed=True or armed=False)"
+    description: "Completion event proving the arm effect ran for a CLEAN PR."
+  - topic_suffix: "onex.evt.omnimarket.pr-auto-merge-unarmed-clean-alert.v1"
+    full_topic_pattern: "{env}.onex.evt.omnimarket.pr-auto-merge-unarmed-clean-alert.v1"
+    event_type: "AutoMergeUnarmedCleanAlertEvent"
+    trigger: "CLEAN PR could not be armed for auto-merge"
+    description: "Alert naming the failed-to-arm case (closes never-ran vs failed-to-arm ambiguity, omnibase_core#1280)."
 
 metadata:
   transport_type: kafka
