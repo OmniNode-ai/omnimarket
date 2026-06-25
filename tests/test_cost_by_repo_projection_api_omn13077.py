@@ -61,11 +61,17 @@ def test_node_owned_migration_creates_backing_table() -> None:
 
 
 def test_event_topic_still_declared() -> None:
-    """projection_api must be additive — the event topic stays wired."""
+    """projection_api stays additive; the writer subscribes to the LIVE topic.
+
+    OMN-13077 (Wave-5): the source was re-pointed from the dead
+    onex.evt.omniintelligence.llm-call-completed.v1 (HWM=0) to the live
+    metered-cost topic onex.evt.omnibase-infra.delegation-completed.v1. The
+    publish (snapshot) terminal stays wired.
+    """
     event_bus = _contract()["event_bus"]
     assert event_bus["publish_topics"] == [
         "onex.evt.omnimarket.cost-by-repo-snapshot.v1"
     ]
     assert event_bus["subscribe_topics"] == [
-        "onex.evt.omniintelligence.llm-call-completed.v1"
+        "onex.evt.omnibase-infra.delegation-completed.v1"
     ]

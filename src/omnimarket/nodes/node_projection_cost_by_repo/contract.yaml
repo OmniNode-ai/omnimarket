@@ -5,34 +5,54 @@ node_type: REDUCER_GENERIC
 node_version: {major: 1, minor: 0, patch: 0}
 input_model: ModelCostByRepoProjectionEvent
 description: >
-  Emits repeatable cost-by-repository snapshots for downstream dashboard consumers.
+  Projects delegation-completed events into the cost_by_repo_snapshots table —
+  the read model the dashboard cost-by-repo widget reads via the cost.by_repo
+  projection snapshot topic (declared in projection_api below). OMN-13077
+  (Wave-5): this node declared a projection_api but had NO writer; the deployed
+  runtime entrypoint is now handler_cost_by_repo.CostByRepoProjectionRunner,
+  which materializes rows from the LIVE metered-cost delegation-completed topic
+  (declared in event_bus.subscribe_topics below). The previous llm-call-completed
+  source was dead (HWM=0). Repo dimension: read from the delegation terminal
+  payload when present; the upstream emitter does not populate repo today, so
+  rows currently key on the honest "unknown" sentinel (upstream follow-up: attach
+  originating repo to the delegation terminal event).
 
 handler:
-  module: omnimarket.nodes.node_projection_cost_by_repo.handlers.handler_projection_cost_by_repo
-  class: HandlerProjectionCostByRepo
+  module: omnimarket.nodes.node_projection_cost_by_repo.handlers.handler_cost_by_repo
+  class: CostByRepoProjectionRunner
 
 handler_routing:
-  routing_strategy: payload_type_match
-  routes:
-    - input_model: omniintelligence.models.events.ModelLLMCallCompletedEvent
-      output_model: omniintelligence.models.events.ModelCostByRepoSnapshot
+  routing_strategy: operation_match
   handlers:
-    - handler:
-        name: HandlerProjectionCostByRepo
-        module: omnimarket.nodes.node_projection_cost_by_repo.handlers.handler_projection_cost_by_repo
+    - operation: projection_cost_by_repo
+      handler:
+        name: CostByRepoProjectionRunner
+        module: omnimarket.nodes.node_projection_cost_by_repo.handlers.handler_cost_by_repo
+      handler_module: omnimarket.nodes.node_projection_cost_by_repo.handlers.handler_cost_by_repo
       event_model: ModelCostByRepoProjectionEvent
 
 idempotency:
   enabled: true
   strategy: snapshot_upsert
   hash_fields:
+    - repo_name
     - window
     - snapshot_timestamp_minute
+
+terminal_event: onex.evt.omnimarket.cost-by-repo-snapshot.v1
+
+db_io:
+  db_tables:
+    - name: cost_by_repo_snapshots
+      migration: "0001_create_cost_by_repo_snapshots.sql"
+      access: write
+      database: omnidash_analytics
+      role: cost_by_repo_aggregate
 
 event_bus:
   consumer_group: local.omnibase_infra.node_projection_cost_by_repo.consume.v1
   subscribe_topics:
-    - onex.evt.omniintelligence.llm-call-completed.v1
+    - onex.evt.omnibase-infra.delegation-completed.v1
   publish_topics:
     - onex.evt.omnimarket.cost-by-repo-snapshot.v1
 
