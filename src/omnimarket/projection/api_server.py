@@ -99,7 +99,32 @@ def topic_supports_correlation_id_filter(cfg: ProjectionTableConfig) -> bool:
     return "correlation_id" in bare_columns
 
 
-def compute_freshness(latest_ts: str | None) -> str:
+def compute_freshness(
+    latest_ts: str | None,
+    expected_event_interval_seconds: int | None = None,
+) -> str:
+    """Classify projection freshness against the contract-declared cadence.
+
+    Honest tri-state freshness (OMN-13035 / retro B-7) — silence is no longer
+    treated as a failure for topics that are not expected to emit on a fixed
+    cadence:
+
+    * ``degraded`` — ``latest_ts is None``: the projection has no rows at all
+      (a genuine query / materialization problem, NOT mere quiet).
+    * On-demand topics (``expected_event_interval_seconds is None``): a topic
+      that emits only when triggered. Silence is a normal, honest state, so it
+      NEVER reports ``stale`` from no traffic. Returns ``fresh`` when a row
+      arrived within ``_FRESH_THRESHOLD``, otherwise ``idle``.
+    * Cadenced topics (``expected_event_interval_seconds > 0``): the contract
+      declares an expected inter-event interval. Returns ``fresh`` while inside
+      one interval, ``idle`` for one missed beat (``interval <= age <
+      2*interval`` — quiet but not yet alarming), and ``stale`` only once the
+      projection is genuinely behind its declared cadence (``age >=
+      2*interval``).
+
+    ``idle`` is a first-class state distinct from ``stale``: it means "no recent
+    traffic, and that is expected", retiring the cry-wolf staleness label.
+    """
     if latest_ts is None:
         return "degraded"
     try:
@@ -112,11 +137,15 @@ def compute_freshness(latest_ts: str | None) -> str:
         if ts.tzinfo is None:
             ts = ts.replace(tzinfo=UTC)
         age = datetime.now(UTC) - ts
-        if age < _FRESH_THRESHOLD:
+        if expected_event_interval_seconds is None:
+            # On-demand: silence is honest, never stale.
+            return "fresh" if age < _FRESH_THRESHOLD else "idle"
+        interval = timedelta(seconds=expected_event_interval_seconds)
+        if age < interval:
             return "fresh"
-        if age < _STALE_THRESHOLD:
-            return "stale"
-        return "degraded"
+        if age < 2 * interval:
+            return "idle"
+        return "stale"
     except (ValueError, TypeError):
         return "degraded"
 
@@ -778,7 +807,11 @@ async def projection_query(
         )
 
     # Freshness: "unknown" when freshness_column not declared in contract.
-    freshness = "unknown" if freshness_col is None else compute_freshness(latest_ts)
+    freshness = (
+        "unknown"
+        if freshness_col is None
+        else compute_freshness(latest_ts, cfg.expected_event_interval_seconds)
+    )
 
     serialisable_rows: list[dict[str, Any]] = []
     for row in rows:
@@ -1034,7 +1067,9 @@ async def _evidence_projection_response(
     computed_freshness = (
         "DEGRADED"
         if cfg.freshness_column is None
-        else compute_freshness(str(latest_ts)).upper()
+        else compute_freshness(
+            str(latest_ts), cfg.expected_event_interval_seconds
+        ).upper()
     )
 
     # A content filter that matched no rows is healthy-but-empty, not degraded.
