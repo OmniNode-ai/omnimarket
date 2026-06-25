@@ -56,6 +56,7 @@ import re
 from typing import Protocol
 
 from omnimarket.nodes.node_dod_verify.models.model_durable_evidence_gate import (
+    EnumDefectLabel,
     EnumDurableEvidenceCheck,
     EnumDurableEvidenceStatus,
     ModelCitedMergeCommit,
@@ -213,6 +214,29 @@ def extract_contract_check_keys(contract: dict[str, object]) -> set[tuple[str, s
     return keys
 
 
+def extract_defect_prevention(
+    contract: dict[str, object],
+) -> tuple[str | None, str | None]:
+    """Extract the repair-to-ratchet fields from a defect contract (OMN-13339).
+
+    Returns ``(prevention_gate, non_recurrence_note)`` where each is the
+    stripped non-empty string value or ``None`` when absent/blank.
+
+    ``prevention_gate`` links a CI workflow / pre-commit hook path or a PR that
+    prevents recurrence of the defect class. ``non_recurrence_note`` is a
+    structured explanation of why no automated gate is feasible. A defect
+    ticket satisfies the rule when at least one is present.
+    """
+
+    def _nonblank(key: str) -> str | None:
+        value = contract.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+        return None
+
+    return _nonblank("prevention_gate"), _nonblank("non_recurrence_note")
+
+
 def extract_receipt_merge_commits(
     receipts: list[dict[str, object]],
 ) -> list[ModelCitedMergeCommit]:
@@ -360,6 +384,7 @@ class DurableEvidenceGate:
         *,
         ticket_id: str,
         contract: dict[str, object],
+        ticket_labels: frozenset[str] = frozenset(),
     ) -> ModelDurableEvidenceGateResult:
         """Run the gate against the canonical platform layout for ``ticket_id``.
 
@@ -384,6 +409,7 @@ class DurableEvidenceGate:
             contract=contract,
             receipt_dir=default_receipt_dir(ticket_id),
             contract_rel_path=default_contract_path(ticket_id),
+            ticket_labels=ticket_labels,
         )
 
     def evaluate(
@@ -393,6 +419,7 @@ class DurableEvidenceGate:
         contract: dict[str, object],
         receipt_dir: str,
         contract_rel_path: str,
+        ticket_labels: frozenset[str] = frozenset(),
     ) -> ModelDurableEvidenceGateResult:
         """Run the three durable-evidence checks and return an aggregate result.
 
@@ -550,6 +577,59 @@ class DurableEvidenceGate:
                         message=(
                             f"Contract on {self._occ_governance_ref} contains "
                             "the receipt-bound evidence checks."
+                        ),
+                    )
+                )
+
+        # Check 4 (OMN-13339, retro R4 — repair-to-ratchet): a defect-labelled
+        # ticket cannot close without a linked prevention gate (CI workflow /
+        # pre-commit hook path or PR) OR a structured non-recurrence note. This
+        # converts repairs into ratchets per Rule 5 so the same failure class
+        # does not return. Non-defect tickets are exempt (the check passes N/A).
+        defect_labels = EnumDefectLabel.values()
+        present_defect_labels = sorted(ticket_labels & defect_labels)
+        if not present_defect_labels:
+            checks.append(
+                ModelDurableEvidenceCheckResult(
+                    check=EnumDurableEvidenceCheck.DEFECT_PREVENTION_GATE,
+                    passed=True,
+                    message=(
+                        "Not a defect-class ticket — repair-to-ratchet rule does "
+                        "not apply."
+                    ),
+                )
+            )
+        else:
+            prevention_gate, non_recurrence_note = extract_defect_prevention(contract)
+            if prevention_gate is not None or non_recurrence_note is not None:
+                satisfied_by = (
+                    f"prevention_gate={prevention_gate!r}"
+                    if prevention_gate is not None
+                    else f"non_recurrence_note={non_recurrence_note!r}"
+                )
+                checks.append(
+                    ModelDurableEvidenceCheckResult(
+                        check=EnumDurableEvidenceCheck.DEFECT_PREVENTION_GATE,
+                        passed=True,
+                        message=(
+                            f"Defect ticket (label(s) {present_defect_labels}) "
+                            f"satisfies repair-to-ratchet via {satisfied_by}."
+                        ),
+                    )
+                )
+            else:
+                checks.append(
+                    ModelDurableEvidenceCheckResult(
+                        check=EnumDurableEvidenceCheck.DEFECT_PREVENTION_GATE,
+                        passed=False,
+                        message=(
+                            f"Defect ticket (label(s) {present_defect_labels}) "
+                            "cannot close: the contract links no prevention gate "
+                            "and carries no non-recurrence note. Add a top-level "
+                            "'prevention_gate' (CI workflow / pre-commit hook path "
+                            "or PR URL) OR a 'non_recurrence_note' explaining why "
+                            "no automated gate is feasible before transitioning "
+                            "Linear to Done (OMN-13339, Rule 5)."
                         ),
                     )
                 )
