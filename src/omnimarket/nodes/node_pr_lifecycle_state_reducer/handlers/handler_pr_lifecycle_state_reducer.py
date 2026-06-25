@@ -225,10 +225,11 @@ def _is_transition_allowed(
 # (phase, prs_*, started_at, etc.) are never touched by these folds.
 # ---------------------------------------------------------------------------
 
-#: Topics that route to repo-health fold functions instead of the FSM delta.
-#: Both are declared in contract.yaml event_bus.subscribe_topics (OMN-13585).
-_REPO_HEALTH_CLASSIFIED_TOPIC = "onex.evt.omnimarket.repo-health-classified.v1"  # onex-topic-allow: contract-declared subscribe topic, used as routing key in handle_dict
-_REPO_HEALTH_REPAIR_EMITTED_TOPIC = "onex.evt.omnimarket.repo-health-repair-emitted.v1"  # onex-topic-allow: contract-declared subscribe topic, used as routing key in handle_dict
+
+#: Topic suffixes that route to repo-health fold functions instead of the FSM delta.
+#: Full subscribed topics are declared in contract.yaml event_bus.subscribe_topics.
+_REPO_HEALTH_CLASSIFIED_TOPIC_SUFFIX = "repo-health-classified.v1"
+_REPO_HEALTH_REPAIR_EMITTED_TOPIC_SUFFIX = "repo-health-repair-emitted.v1"
 
 #: Classification values and their target counter field names.
 _CLASSIFICATION_FIELD: dict[str, str] = {
@@ -341,7 +342,7 @@ class HandlerPrLifecycleStateReducer:
         event_data = input_data.get("event", {})
         state = ModelPrLifecycleState(**state_data)
 
-        if event_topic == _REPO_HEALTH_CLASSIFIED_TOPIC:
+        if event_topic.endswith(_REPO_HEALTH_CLASSIFIED_TOPIC_SUFFIX):
             new_state = fold_repo_health_classified(
                 state,
                 classification=event_data.get("classification", "unknown"),
@@ -352,7 +353,7 @@ class HandlerPrLifecycleStateReducer:
                 "intents": [],
             }
 
-        if event_topic == _REPO_HEALTH_REPAIR_EMITTED_TOPIC:
+        if event_topic.endswith(_REPO_HEALTH_REPAIR_EMITTED_TOPIC_SUFFIX):
             new_state = fold_repo_health_repair_emitted(
                 state,
                 ticket_ref=event_data.get("ticket_ref"),
