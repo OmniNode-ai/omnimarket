@@ -173,7 +173,18 @@ class ModelDelegationEventProjectionRow(BaseModel):
             latency_ms=metrics.latency_ms,
             repo_name=event.repo_name,
             prompt_text=event.prompt_text,
-            response_text=event.response or event.error_message or None,
+            # OMN-13596: never write a timeout/error string into response_text
+            # for a PASS terminal. The ``error_message`` fallback is intentional
+            # on the FAILED path (no ``response`` but there is a useful failure
+            # reason). On the PASS path, ``error_message`` carries a stale
+            # timeout string from the caller's Kafka-wait timeout, not the
+            # model's answer. Guard: only fall through to error_message when
+            # quality_gate_passed is False.
+            response_text=(
+                event.response
+                or (event.error_message if not event.quality_gate_passed else None)
+                or None
+            ),
             context_pack_hash=event.context_pack_hash,
             tokens_input=metrics.input_tokens,
             tokens_output=metrics.output_tokens,
