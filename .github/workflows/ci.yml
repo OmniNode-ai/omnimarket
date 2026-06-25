@@ -421,7 +421,7 @@ jobs:
       - name: Install dependencies
         run: uv sync --locked --all-extras
       - name: Verify entry point wiring
-        run: uv run python scripts/ci/run_runtime_sweep.py --import-check
+        run: uv run python -m omnimarket.nodes.node_runtime_sweep --import-check
 
   # ============================================================================
   # CORE-ONLY-INSTALL GATE (OMN-13446, Phase 5, epic OMN-13442)

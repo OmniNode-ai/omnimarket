@@ -149,7 +149,7 @@ declared dependencies match what the handler actually imports.
 7. **Run validation gates**:
 
    ```bash
-   uv run python scripts/ci/run_runtime_sweep.py
+   uv run python -m omnimarket.nodes.node_runtime_sweep --import-check
    uv run python scripts/ci/check_node_metadata_dependencies.py
    ```
 
@@ -260,7 +260,7 @@ uv run ruff format --check src/ tests/
 uv run mypy src/omnimarket/ --strict
 
 # CI gates
-uv run python scripts/ci/run_runtime_sweep.py
+uv run python -m omnimarket.nodes.node_runtime_sweep --import-check
 uv run python scripts/ci/check_node_metadata_dependencies.py
 ```
 
