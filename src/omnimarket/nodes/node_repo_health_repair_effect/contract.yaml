@@ -64,6 +64,10 @@ secrets:
     description: "Linear API key for creating repair tasks under the parent epic."
     required: true
 
+integrations:
+  linear:
+    graphql_url: "https://api.linear.app/graphql"
+
 event_bus:
   consumer_group: omnimarket.repo_health_repair_effect.consume.v1
   subscribe_topics:

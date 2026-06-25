@@ -33,6 +33,8 @@ import logging
 from pathlib import Path
 from typing import Any, Protocol, runtime_checkable
 
+import yaml
+
 from omnimarket.inference.secret_store_resolver import resolve_api_key
 from omnimarket.nodes.contract_topics import contract_secret_ref
 from omnimarket.nodes.node_repo_health_repair_effect.models.model_repair_command import (
@@ -46,11 +48,28 @@ logger = logging.getLogger(__name__)
 
 _CONTRACT_PATH = Path(__file__).resolve().parents[1] / "contract.yaml"
 
-# Linear GraphQL endpoint
-_LINEAR_GRAPHQL_URL = "https://api.linear.app/graphql"
-
 # Label applied to all content-key-indexed tickets for search-by-key
 _CONTENT_KEY_LABEL_PREFIX = "onex-repair-key:"
+
+
+def _contract_linear_graphql_url(contract_path: Path) -> str:
+    """Return the contract-declared Linear GraphQL endpoint."""
+    raw = yaml.safe_load(contract_path.read_text(encoding="utf-8"))
+    if not isinstance(raw, dict):
+        raise ValueError(f"{contract_path} must contain a mapping")
+    integrations = raw.get("integrations")
+    if not isinstance(integrations, dict):
+        raise ValueError(f"{contract_path} missing integrations mapping")
+    linear = integrations.get("linear")
+    if not isinstance(linear, dict):
+        raise ValueError(f"{contract_path} missing integrations.linear mapping")
+    graphql_url = linear.get("graphql_url")
+    if not isinstance(graphql_url, str) or not graphql_url.strip():
+        raise ValueError(f"{contract_path} integrations.linear.graphql_url must be set")
+    return graphql_url
+
+
+_LINEAR_GRAPHQL_URL = _contract_linear_graphql_url(_CONTRACT_PATH)
 
 
 # ---------------------------------------------------------------------------
