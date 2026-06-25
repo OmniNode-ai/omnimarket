@@ -302,6 +302,36 @@ class TestDurableEvidenceGate:
             EnumDurableEvidenceCheck.DONE_CLASS_LABEL,
         }
 
+    def test_enforce_threads_done_class_labels(self) -> None:
+        """enforce() passes label context through to the hard-fail gate."""
+        contract = _ticket_contract()
+        gate = _make_gate(
+            tracked={(_OCC_REPO, _DEV_REF, _RECEIPT_DIR): True},
+            pr_view={
+                ("OmniNode-ai/omnibase_core", 949): (
+                    "MERGED",
+                    "abcdef1234567890abcdef1234567890abcdef12",
+                ),
+            },
+            contract_on_main=contract,
+            receipts_on_ref=[_receipt()],
+        )
+
+        result = gate.enforce(
+            ticket_id=_TICKET,
+            contract=contract,
+            receipt_dir=_RECEIPT_DIR,
+            contract_rel_path=_CONTRACT_PATH,
+            ticket_labels=frozenset({EnumDoneClassLabel.SOURCE_DONE.value}),
+        )
+
+        done_class = next(
+            c
+            for c in result.checks
+            if c.check == EnumDurableEvidenceCheck.DONE_CLASS_LABEL
+        )
+        assert done_class.passed is True
+
     def _all_green_gate(self) -> DurableEvidenceGate:
         """A gate whose durable checks all pass; label tests vary labels/contract."""
         return _make_gate(
@@ -1010,6 +1040,56 @@ class TestDefaultInvocation:
 
         assert exc_info.value.result.status == EnumDurableEvidenceStatus.FAIL
         assert "receipt_tracked" in str(exc_info.value)
+
+    def test_enforce_default_threads_done_class_labels(self) -> None:
+        """enforce_default() passes label context through canonical path checks."""
+        ticket = "OMN-12574"
+        contract: dict[str, object] = {
+            "schema_version": "1.0.0",
+            "ticket_id": ticket,
+            "dod_evidence": [
+                {
+                    "id": "dod-boundary-clone-retry-pr",
+                    "checks": [{"check_type": "command"}],
+                }
+            ],
+        }
+        gate = _make_gate(
+            tracked={
+                (
+                    _OCC_REPO,
+                    DEFAULT_OCC_GOVERNANCE_REF,
+                    default_receipt_dir(ticket),
+                ): True,
+            },
+            pr_view={
+                ("OmniNode-ai/onex_change_control", 2083): (
+                    "MERGED",
+                    "abcdef1234567890abcdef1234567890abcdef12",
+                )
+            },
+            contract_on_main=contract,
+            receipts_on_ref=[
+                _receipt(
+                    repo="OmniNode-ai/onex_change_control",
+                    pr_number=2083,
+                    evidence_id="dod-boundary-clone-retry-pr",
+                )
+            ],
+        )
+
+        result = gate.enforce_default(
+            ticket_id=ticket,
+            contract=contract,
+            ticket_labels=frozenset({EnumDoneClassLabel.SOURCE_DONE.value}),
+        )
+
+        done_class = next(
+            c
+            for c in result.checks
+            if c.check == EnumDurableEvidenceCheck.DONE_CLASS_LABEL
+        )
+        assert done_class.passed is True
 
 
 @pytest.mark.unit

@@ -702,6 +702,7 @@ class DurableEvidenceGate:
         contract: dict[str, object],
         receipt_dir: str,
         contract_rel_path: str,
+        ticket_labels: frozenset[str] = frozenset(),
     ) -> ModelDurableEvidenceGateResult:
         """Run :meth:`evaluate` and raise on failure.
 
@@ -713,6 +714,7 @@ class DurableEvidenceGate:
             contract=contract,
             receipt_dir=receipt_dir,
             contract_rel_path=contract_rel_path,
+            ticket_labels=ticket_labels,
         )
         if result.status != EnumDurableEvidenceStatus.PASS:
             raise DurableEvidenceGateError(result)
@@ -723,6 +725,7 @@ class DurableEvidenceGate:
         *,
         ticket_id: str,
         contract: dict[str, object],
+        ticket_labels: frozenset[str] = frozenset(),
     ) -> ModelDurableEvidenceGateResult:
         """Run :meth:`evaluate_default` and raise on failure.
 
@@ -731,7 +734,11 @@ class DurableEvidenceGate:
         :class:`DurableEvidenceGateError` carrying the structured result. On
         success returns the result.
         """
-        result = self.evaluate_default(ticket_id=ticket_id, contract=contract)
+        result = self.evaluate_default(
+            ticket_id=ticket_id,
+            contract=contract,
+            ticket_labels=ticket_labels,
+        )
         if result.status != EnumDurableEvidenceStatus.PASS:
             raise DurableEvidenceGateError(result)
         return result
