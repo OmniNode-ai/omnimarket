@@ -158,7 +158,11 @@ async def _run_effect_handler_with_killable_timeout(
     timeout_seconds: float,
 ) -> ModelLlmDelegationCallResult:
     """Run the blocking sync effect behind a process boundary with a hard kill."""
-    context = multiprocessing.get_context("spawn")
+    context: Any
+    try:
+        context = multiprocessing.get_context("fork")
+    except ValueError:
+        context = multiprocessing.get_context("spawn")
     result_queue = context.Queue()
     process = context.Process(
         target=_effect_handler_worker,
@@ -215,12 +219,14 @@ class LocalDelegationDispatchPort:
         projection_handler: HandlerProjectionDelegation | None = None,
         evidence_db: DatabaseAdapter | None = None,
         evidence_db_path: Path | None = None,
+        effect_process_boundary: bool = True,
     ) -> None:
         self._effect_handler = effect_handler or HandlerLlmDelegationCall()
         self._projection_handler = projection_handler or HandlerProjectionDelegation()
         self._evidence_db: DatabaseAdapter = evidence_db or SqliteDatabaseAdapter(
             evidence_db_path or default_evidence_db_path()
         )
+        self._effect_process_boundary = effect_process_boundary
 
     async def dispatch(
         self,
@@ -315,11 +321,14 @@ class LocalDelegationDispatchPort:
         # worker can be terminated so ``asyncio.run`` has no orphaned thread to join.
         dispatch_deadline_seconds = timeout_seconds + _DISPATCH_TIMEOUT_BUFFER_SECONDS
         try:
-            result = await _run_effect_handler_with_killable_timeout(
-                self._effect_handler,
-                call_request,
-                timeout_seconds=dispatch_deadline_seconds,
-            )
+            if self._effect_process_boundary:
+                result = await _run_effect_handler_with_killable_timeout(
+                    self._effect_handler,
+                    call_request,
+                    timeout_seconds=dispatch_deadline_seconds,
+                )
+            else:
+                result = self._effect_handler(call_request)
         except TimeoutError:
             failure_message = (
                 f"delegation call did not return within "

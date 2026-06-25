@@ -108,7 +108,10 @@ def test_local_dispatch_materializes_evidence_row(
     _patch_routing(monkeypatch, fake_backends)
     _patch_transport(monkeypatch)
 
-    port = LocalDelegationDispatchPort(evidence_db_path=db_path)
+    port = LocalDelegationDispatchPort(
+        evidence_db_path=db_path,
+        effect_process_boundary=False,
+    )
     correlation_id = uuid4()
     result = asyncio.run(
         port.dispatch(
@@ -170,7 +173,10 @@ def test_local_dispatch_evidence_is_idempotent(
     _patch_routing(monkeypatch, fake_backends)
     _patch_transport(monkeypatch)
 
-    port = LocalDelegationDispatchPort(evidence_db_path=db_path)
+    port = LocalDelegationDispatchPort(
+        evidence_db_path=db_path,
+        effect_process_boundary=False,
+    )
     correlation_id = uuid4()
     for _ in range(2):
         asyncio.run(
@@ -212,7 +218,10 @@ def test_local_dispatch_evidence_failure_does_not_break_response(
     _patch_routing(monkeypatch, fake_backends)
     _patch_transport(monkeypatch)
 
-    port = LocalDelegationDispatchPort(evidence_db_path=db_path)
+    port = LocalDelegationDispatchPort(
+        evidence_db_path=db_path,
+        effect_process_boundary=False,
+    )
     result = asyncio.run(
         port.dispatch(
             prompt="reverse a string",
@@ -274,7 +283,10 @@ def test_local_dispatch_reaches_lan_endpoint_via_curl_on_macos_profile(
 
     monkeypatch.setattr(subprocess, "run", fake_run)
 
-    port = LocalDelegationDispatchPort(evidence_db_path=db_path)
+    port = LocalDelegationDispatchPort(
+        evidence_db_path=db_path,
+        effect_process_boundary=False,
+    )
     result = asyncio.run(
         port.dispatch(
             prompt="reverse a string",
@@ -317,7 +329,10 @@ def test_local_dispatch_unset_max_tokens_uses_backend_ceiling(
     _patch_routing(monkeypatch, fake_backends)
     captured = _patch_transport(monkeypatch)
 
-    port = LocalDelegationDispatchPort(evidence_db_path=db_path)
+    port = LocalDelegationDispatchPort(
+        evidence_db_path=db_path,
+        effect_process_boundary=False,
+    )
     result = asyncio.run(
         port.dispatch(
             prompt="reverse a string",
@@ -349,7 +364,10 @@ def test_local_dispatch_explicit_max_tokens_capped_at_backend_ceiling(
     _patch_routing(monkeypatch, fake_backends)
     captured = _patch_transport(monkeypatch)
 
-    port = LocalDelegationDispatchPort(evidence_db_path=db_path)
+    port = LocalDelegationDispatchPort(
+        evidence_db_path=db_path,
+        effect_process_boundary=False,
+    )
     result = asyncio.run(
         port.dispatch(
             prompt="reverse a string",
@@ -378,7 +396,10 @@ def test_local_dispatch_explicit_max_tokens_below_ceiling_passes_through(
     _patch_routing(monkeypatch, fake_backends)
     captured = _patch_transport(monkeypatch)
 
-    port = LocalDelegationDispatchPort(evidence_db_path=db_path)
+    port = LocalDelegationDispatchPort(
+        evidence_db_path=db_path,
+        effect_process_boundary=False,
+    )
     result = asyncio.run(
         port.dispatch(
             prompt="reverse a string",
@@ -412,7 +433,10 @@ def test_local_dispatch_threads_backend_timeout_to_transport(
     _patch_routing(monkeypatch, fake_backends)
     captured = _patch_transport(monkeypatch)
 
-    port = LocalDelegationDispatchPort(evidence_db_path=db_path)
+    port = LocalDelegationDispatchPort(
+        evidence_db_path=db_path,
+        effect_process_boundary=False,
+    )
     result = asyncio.run(
         port.dispatch(
             prompt="reverse a string",
@@ -506,7 +530,10 @@ def test_local_dispatch_refusal_fails_quality_gate(
         "I'm sorry, but I cannot help with that request. I refuse to answer.",
     )
 
-    port = LocalDelegationDispatchPort(evidence_db_path=db_path)
+    port = LocalDelegationDispatchPort(
+        evidence_db_path=db_path,
+        effect_process_boundary=False,
+    )
     correlation_id = uuid4()
     result = asyncio.run(
         port.dispatch(
@@ -565,7 +592,10 @@ def test_local_dispatch_good_answer_passes_with_real_score(
         ),
     )
 
-    port = LocalDelegationDispatchPort(evidence_db_path=db_path)
+    port = LocalDelegationDispatchPort(
+        evidence_db_path=db_path,
+        effect_process_boundary=False,
+    )
     correlation_id = uuid4()
     result = asyncio.run(
         port.dispatch(

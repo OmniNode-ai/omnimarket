@@ -194,7 +194,10 @@ class TestDelegateSkillGoldenChain:
         )
 
         db_path = tmp_path / "delegation.sqlite"
-        port = LocalDelegationDispatchPort(evidence_db_path=db_path)
+        port = LocalDelegationDispatchPort(
+            evidence_db_path=db_path,
+            effect_process_boundary=False,
+        )
         handler = HandlerDelegateSkill(dispatch_port=port)
         correlation_id = uuid4()
         original_prompt = "Write pytest unit tests for normalize_status."
