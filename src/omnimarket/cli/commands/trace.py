@@ -89,7 +89,9 @@ def _base_url() -> str:
     an unset var means the caller has not wired the projection address, which
     should surface as an error rather than silently querying a wrong host.
     """
-    raw = os.environ.get("OMNIDASH_API_URL")
+    raw = os.environ.get(
+        "OMNIDASH_API_URL"
+    )  # url-authority-ok: OMN-12807 required lane overlay binding; no literal endpoint or fallback
     if not raw:
         raise click.ClickException(
             "OMNIDASH_API_URL is not set. "
