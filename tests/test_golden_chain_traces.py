@@ -102,8 +102,16 @@ class TestTracesProjectionChain:
         assert result.rows_upserted == 4
         assert len(db.query(_TABLE)) == 4
 
-    def test_handle_emits_snapshot_shape(self) -> None:
-        """The runtime publish leg still emits the dashboard snapshot shape."""
+    def test_handle_materializes_via_injected_db(self) -> None:
+        """OMN-13083: handle() is the REAL runtime materialization leg.
+
+        The runtime auto-wiring projection callback calls handle(input_data)
+        with a DatabaseAdapter at input_data['_db'] and gates row materialization
+        on the returned rows_upserted. Assert handle() writes one row through the
+        injected adapter and reports the write (the previous snapshot-only return
+        never touched the DB, which is why the table stayed at row_count=0).
+        """
+        db = InmemoryDatabaseAdapter()
         result = HANDLER.handle(
             {
                 "correlation_id": _CORR,
@@ -111,10 +119,16 @@ class TestTracesProjectionChain:
                 "level": "INFO",
                 "message": "started",
                 "timestamp": "2026-06-24T12:00:00Z",
+                "is_terminal": False,
+                "_db": db,
+                "_event_type": "log-entry",
             }
         )
-        assert result["snapshot_type"] == "traces"
-        assert result["traces"][0]["correlation_id"] == _CORR
+        assert result["rows_upserted"] == 1
+        rows = db.query(_TABLE, {"correlation_id": _CORR})
+        assert len(rows) == 1
+        assert rows[0]["correlation_id"] == _CORR
+        assert rows[0]["latest_message"] == "started"
 
 
 class TestTracesContractWiring:
