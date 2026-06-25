@@ -87,22 +87,30 @@ def test_node_is_discoverable_as_entry_point() -> None:
 
 
 def test_handler_emits_dashboard_required_row_fields() -> None:
+    from omnimarket.projection.protocol_database import InmemoryDatabaseAdapter
+
     module = import_module(
         "omnimarket.nodes.node_projection_traces.handlers.handler_projection_traces"
     )
+    db = InmemoryDatabaseAdapter()
     handler = module.HandlerProjectionTraces()
-    result = handler.handle(
+    handler.handle(
         {
             "correlation_id": "corr-abc",
             "node_name": "node_delegate",
             "level": "INFO",
             "message": "started",
             "timestamp": "2026-06-24T12:00:00Z",
+            "is_terminal": False,
+            "_db": db,
+            "_event_type": "log-entry",
         }
     )
-    row = result["traces"][0]
+    rows = db.query(TABLE, {"correlation_id": "corr-abc"})
+    assert len(rows) == 1
+    row = rows[0]
     for field in REQUIRED_ROW_FIELDS:
-        assert field in row, f"handler row missing dashboard field {field}"
+        assert field in row, f"materialized row missing dashboard field {field}"
     assert row["correlation_id"] == "corr-abc"
     assert row["nodes_involved"] == ["node_delegate"]
     assert row["event_count"] == 1
@@ -112,21 +120,28 @@ def test_handler_emits_dashboard_required_row_fields() -> None:
 
 
 def test_handler_marks_error_when_level_error() -> None:
+    from omnimarket.projection.protocol_database import InmemoryDatabaseAdapter
+
     module = import_module(
         "omnimarket.nodes.node_projection_traces.handlers.handler_projection_traces"
     )
+    db = InmemoryDatabaseAdapter()
     handler = module.HandlerProjectionTraces()
-    result = handler.handle(
+    handler.handle(
         {
             "correlation_id": "corr-err",
             "node_name": "node_x",
             "level": "ERROR",
             "message": "boom",
             "timestamp": "2026-06-24T12:00:00Z",
+            "is_terminal": False,
+            "_db": db,
+            "_event_type": "log-entry",
         }
     )
-    row = result["traces"][0]
-    assert row["has_error"] is True
+    rows = db.query(TABLE, {"correlation_id": "corr-err"})
+    assert len(rows) == 1
+    assert rows[0]["has_error"] is True
 
 
 def test_handler_topics_are_contract_derived_no_literals() -> None:
@@ -148,3 +163,127 @@ def test_node_owned_migration_creates_backing_table() -> None:
     assert "correlation_id" in sql
     assert "last_event_at" in sql
     assert "nodes_involved" in sql
+
+
+def test_contract_declares_db_io_so_runtime_wires_materialization() -> None:
+    """OMN-13083 root cause: the runtime auto-wiring projection callback only
+    fires for contracts that declare ``db_io.db_tables`` (see
+    omnibase_infra.runtime.auto_wiring.handler_wiring._contract_declares_db_io).
+    A ``projection_api`` block alone is read-side only; without ``db_io`` the
+    runtime never injects ``_db`` nor calls the handler, so the table stays at
+    row_count=0. Pin the write-side declaration the materialization path requires.
+    """
+    db_io = _contract()["db_io"]
+    db_tables = db_io["db_tables"]
+    traces_tables = [t for t in db_tables if t["name"] == TABLE]
+    assert len(traces_tables) == 1, "db_io must declare the traces table"
+    table = traces_tables[0]
+    assert table["access"] == "write"
+    assert table["database"] == "omnidash_analytics"
+    assert table["migration"] == "0001_create_traces.sql"
+
+
+def test_handle_with_injected_db_materializes_a_trace_row() -> None:
+    """OMN-13083: prove the REAL runtime-path contract.
+
+    The runtime calls ``handle(input_data)`` with a DatabaseAdapter at
+    ``input_data['_db']`` and gates the projection terminal + row materialization
+    on the returned ``rows_upserted``. The previous handle() returned a snapshot
+    dict with no ``rows_upserted`` and never touched ``_db``, so the runtime
+    extracted 0 rows and nothing materialized. This asserts handle() upserts via
+    the injected adapter and reports the write.
+    """
+    from omnimarket.projection.protocol_database import InmemoryDatabaseAdapter
+
+    module = import_module(
+        "omnimarket.nodes.node_projection_traces.handlers.handler_projection_traces"
+    )
+    db = InmemoryDatabaseAdapter()
+    handler = module.HandlerProjectionTraces()
+    result = handler.handle(
+        {
+            "correlation_id": "corr-runtime-1",
+            "node_name": "node_delegate",
+            "level": "INFO",
+            "message": "started",
+            "timestamp": "2026-06-24T12:00:00Z",
+            "is_terminal": False,
+            "_db": db,
+            "_event_type": "log-entry",
+        }
+    )
+    assert result["rows_upserted"] == 1
+    rows = db.query(TABLE, {"correlation_id": "corr-runtime-1"})
+    assert len(rows) == 1
+    row = rows[0]
+    assert row["correlation_id"] == "corr-runtime-1"
+    assert row["nodes_involved"] == ["node_delegate"]
+    assert row["event_count"] == 1
+    assert row["is_running"] is True
+    assert row["has_error"] is False
+    assert row["latest_message"] == "started"
+
+
+def test_handle_without_db_raises_typeerror() -> None:
+    """The runtime injects ``_db``; a missing adapter is a wiring defect that must
+    fail loud (matches HandlerProjectionDelegation.handle), not silently no-op."""
+    import pytest
+
+    module = import_module(
+        "omnimarket.nodes.node_projection_traces.handlers.handler_projection_traces"
+    )
+    handler = module.HandlerProjectionTraces()
+    with pytest.raises(TypeError):
+        handler.handle(
+            {
+                "correlation_id": "corr-no-db",
+                "node_name": "node_x",
+                "message": "no db",
+                "timestamp": "2026-06-24T12:00:00Z",
+            }
+        )
+
+
+def test_handle_aggregates_across_entries_for_same_correlation() -> None:
+    """Second entry for the same correlation_id increments event_count, unions
+    nodes, and clears is_running on a terminal entry — proving the runtime-path
+    handle() drives the aggregating project() across calls via the injected DB."""
+    from omnimarket.projection.protocol_database import InmemoryDatabaseAdapter
+
+    module = import_module(
+        "omnimarket.nodes.node_projection_traces.handlers.handler_projection_traces"
+    )
+    db = InmemoryDatabaseAdapter()
+    handler = module.HandlerProjectionTraces()
+    handler.handle(
+        {
+            "correlation_id": "corr-agg",
+            "node_name": "node_a",
+            "level": "INFO",
+            "message": "first",
+            "timestamp": "2026-06-24T12:00:00Z",
+            "is_terminal": False,
+            "_db": db,
+            "_event_type": "log-entry",
+        }
+    )
+    handler.handle(
+        {
+            "correlation_id": "corr-agg",
+            "node_name": "node_b",
+            "level": "INFO",
+            "message": "second",
+            "timestamp": "2026-06-24T12:00:05Z",
+            "is_terminal": True,
+            "_db": db,
+            "_event_type": "log-entry",
+        }
+    )
+    rows = db.query(TABLE, {"correlation_id": "corr-agg"})
+    assert len(rows) == 1
+    row = rows[0]
+    assert row["event_count"] == 2
+    assert set(row["nodes_involved"]) == {"node_a", "node_b"}
+    assert row["is_running"] is False
+    assert row["latest_message"] == "second"
+    assert row["duration_ms"] == 5000

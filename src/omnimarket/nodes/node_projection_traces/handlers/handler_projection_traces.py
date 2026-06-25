@@ -1,10 +1,16 @@
-"""Handler for correlation-grouped trace projection snapshots.
+"""Handler for correlation-grouped trace projection materialization.
 
-Builds a deterministic single-event trace snapshot: one log entry in, one trace
-row out (correlation-grouped). Durable aggregation across many entries for a
-correlation_id is performed downstream by the projection upsert (conflict key =
-correlation_id), so this stateless reducer emits the per-entry contribution in
-the dashboard trace-explorer row shape.
+One log entry in, one durable ``traces`` row out (correlation-grouped). The
+runtime auto-wiring projection path (omnibase_infra.runtime.auto_wiring.
+handler_wiring._make_projection_dispatch_callback) invokes ``handle(input_data)``
+with a synchronous ``ProtocolProjectionDatabaseSync`` adapter injected at
+``input_data['_db']`` and gates row materialization + the projection terminal
+event on the returned ``rows_upserted`` count. ``handle()`` therefore reads the
+adapter, builds the typed ``ModelTraceProjectionEvent`` from the payload, and
+delegates to ``project()`` which performs the aggregating UPSERT (event_count
+increments, nodes union, monotonic last_event_at, sticky has_error, is_running
+cleared on terminal). Aggregation across many entries for a correlation_id is
+durable via the upsert (conflict key = correlation_id).
 """
 
 from __future__ import annotations
@@ -46,70 +52,32 @@ class ModelTraceProjectionResult(BaseModel):
 
 
 class HandlerProjectionTraces:
-    """Build a deterministic single-entry trace snapshot row."""
+    """Materialize correlation-grouped log entries into the traces table."""
 
     def handle(self, input_data: dict[str, Any]) -> dict[str, Any]:
-        """Return a trace-explorer-shaped snapshot payload."""
+        """RuntimeLocal handler protocol shim — materialize one log entry.
 
-        correlation_id = _text(
-            _first_present(
-                input_data,
-                "correlation_id",
-                "correlationId",
-                "trace_id",
-                "traceId",
-                default="unknown",
+        The runtime auto-wiring projection callback injects a
+        ``ProtocolProjectionDatabaseSync`` adapter at ``input_data['_db']`` and a
+        derived ``input_data['_event_type']`` string, then gates row
+        materialization on the returned ``rows_upserted``. Build the typed event
+        from the payload (envelope-stripped by the runtime), delegate to
+        ``project()`` for the aggregating UPSERT, and return the
+        ``ModelTraceProjectionResult`` mapping (carrying ``rows_upserted``).
+        """
+        payload = dict(input_data)
+        db_raw = payload.pop("_db", None)
+        if not isinstance(db_raw, ProtocolProjectionDatabaseSync):
+            raise TypeError(
+                "handle() requires a ProtocolProjectionDatabaseSync in "
+                "input_data['_db']"
             )
-        )
-        node_name = _text(
-            _first_present(
-                input_data,
-                "node_name",
-                "nodeName",
-                "node",
-                "source",
-                "logger",
-                default="unknown",
-            )
-        )
-        level = _text(
-            _first_present(
-                input_data, "level", "log_level", "logLevel", "severity", default="INFO"
-            )
-        ).upper()
-        message = _text(
-            _first_present(input_data, "message", "msg", "text", default="")
-        )
-        event_at = _event_timestamp(input_data)
-        is_terminal = _bool_value(
-            _first_present(
-                input_data,
-                "is_terminal",
-                "isTerminal",
-                "terminal",
-                "is_final",
-                default=False,
-            )
-        )
-        has_error = level in _ERROR_LEVELS
-
-        return {
-            "snapshot_type": "traces",
-            "traces": [
-                {
-                    "correlation_id": correlation_id,
-                    "nodes_involved": [node_name],
-                    "event_count": 1,
-                    "first_event_at": event_at,
-                    "last_event_at": event_at,
-                    "duration_ms": 0,
-                    "has_error": has_error,
-                    "is_running": not is_terminal,
-                    "latest_message": message,
-                }
-            ],
-            "source_event_count": 1,
-        }
+        # _event_type is supplied by the runtime; this handler routes a single
+        # log-entry source, so it is consumed (popped) but not branched on.
+        payload.pop("_event_type", None)
+        event = ModelTraceProjectionEvent.model_validate(payload)
+        result = self.project(event, db_raw)
+        return result.model_dump(mode="json")
 
     def project(
         self,
@@ -186,18 +154,6 @@ class NodeProjectionTraces(HandlerProjectionTraces):
     """ONEX entry-point wrapper for HandlerProjectionTraces."""
 
 
-def _event_timestamp(payload: dict[str, Any]) -> str:
-    raw = _first_present(
-        payload,
-        "timestamp",
-        "event_timestamp",
-        "eventTimestamp",
-        "emitted_at",
-        "ts",
-    )
-    return _parse_datetime(raw).astimezone(UTC).isoformat()
-
-
 def _parse_datetime(value: Any) -> datetime:
     if isinstance(value, datetime):
         dt = value
@@ -224,25 +180,6 @@ def _str_list(value: Any) -> list[str]:
     if isinstance(value, list):
         return [str(item) for item in value]
     return []
-
-
-def _bool_value(value: Any) -> bool:
-    if isinstance(value, bool):
-        return value
-    if isinstance(value, str):
-        return value.strip().lower() in {"true", "1", "yes"}
-    return bool(value)
-
-
-def _text(value: Any) -> str:
-    return str(value).strip()
-
-
-def _first_present(payload: dict[str, Any], *keys: str, default: Any = None) -> Any:
-    for key in keys:
-        if key in payload and payload[key] is not None:
-            return payload[key]
-    return default
 
 
 __all__ = [
