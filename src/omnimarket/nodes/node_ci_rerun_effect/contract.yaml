@@ -8,8 +8,11 @@ node_type: effect
 node_version: {major: 1, minor: 0, patch: 0}
 
 description: >
-  Triggers gh run rerun --failed for the PR's most recent failed workflow run.
-  Only reruns FAILED checks; does not retrigger successful ones.
+  Re-triggers CI on a PR. Default mode reruns the most recent FAILED workflow
+  run (rerun-failed-jobs); does not retrigger successful ones. In empty_commit
+  mode (OMN-13416) it pushes an empty commit on the PR head branch to re-fire
+  workflow-dispatch events that GitHub dropped, when a required workflow
+  produced ZERO runs on HEAD and there is no failed run to rerun.
   Serial-in-handler execution per Phase 1 audit. Idempotent per gh behavior.
 
 handler:

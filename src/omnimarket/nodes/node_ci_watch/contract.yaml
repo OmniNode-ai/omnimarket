@@ -63,15 +63,37 @@ inputs:
     description: "Run without side effects"
     required: false
     default: false
+  auto_retrigger:
+    type: bool
+    description: >
+      When true, detect a CI event-delivery gap (a required workflow that
+      produced 0 runs on HEAD while the PR sits BLOCKED) and perform ONE safe
+      empty-commit re-trigger to re-deliver the dropped workflow events
+      (OMN-13416). Defaults false because this compute node is read-only unless
+      an operator explicitly opts into the GitHub branch mutation.
+    required: false
+    default: false
+  max_retriggers:
+    type: int
+    description: "Max safe re-triggers per run before giving up (default 1)"
+    required: false
+    default: 1
+  base_branch:
+    type: str
+    description: "Base branch whose required status checks define the gap set"
+    required: false
+    default: dev
 
 outputs:
   terminal_status:
     type: str
     description: >
-      passed | failed | timeout | error | fixed | unfixable.
+      passed | failed | timeout | error | fixed | unfixable | retriggered.
       `error` is emitted when the gh query itself fails (CLI error, transport
       failure, or unparseable output) — an UNKNOWN CI state that MUST NOT be
       coerced into `passed` (OMN-12428 fail-loud guarantee).
+      `retriggered` is emitted when a CI event-delivery gap was detected and a
+      safe empty-commit re-trigger was performed (OMN-13416).
   failed_checks:
     type: list
     description: "Names of failed CI checks"

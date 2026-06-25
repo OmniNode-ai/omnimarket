@@ -448,6 +448,40 @@ class HandlerTriageOrchestrator:
                 total_prs=total_prs,
             )
 
+        # Rule 6b (OMN-13416): MERGEABLE + BLOCKED + NO terminal check failure
+        # but a required workflow produced 0 runs on HEAD → CI event-delivery
+        # gap. There is no failing run to rerun; re-trigger via an empty commit
+        # so GitHub re-delivers the dropped workflow-dispatch events. Without
+        # this rule the PR falls through to a silent SKIP and stalls forever.
+        if (
+            pr.mergeable == "MERGEABLE"
+            and pr.merge_state_status == "BLOCKED"
+            and not _has_terminal_check_failure(classified)
+        ):
+            missing, head_branch, head_sha = await self._resolve_event_delivery_gap(
+                pr.repo, pr.number
+            )
+            if missing and head_branch:
+                _log.warning(
+                    "PR %s/%s: CI event-delivery gap — %s produced 0 runs on "
+                    "HEAD; re-triggering via empty commit",
+                    pr.repo,
+                    pr.number,
+                    ", ".join(missing),
+                )
+                return ModelCiRerunCommand(
+                    pr_number=pr.number,
+                    repo=pr.repo,
+                    run_id_github="",
+                    correlation_id=correlation_id,
+                    run_id=run_id,
+                    total_prs=total_prs,
+                    retrigger_mode="empty_commit",
+                    head_branch=head_branch,
+                    head_sha=head_sha,
+                    missing_required_contexts=tuple(missing),
+                )
+
         # Rule 8: MERGEABLE + BEHIND + checks failing → rebase first
         if (
             pr.mergeable == "MERGEABLE"
@@ -620,6 +654,111 @@ class HandlerTriageOrchestrator:
                 "Failed to parse statusCheckRollup for %s#%s: %s", repo, pr_number, exc
             )
             return None
+
+    async def _resolve_event_delivery_gap(
+        self, repo: str, pr_number: int, base_branch: str | None = None
+    ) -> tuple[tuple[str, ...], str, str]:
+        """Detect a CI event-delivery gap for a BLOCKED PR (OMN-13416).
+
+        Compares the base branch's *required* status-check contexts against the
+        contexts actually present in the PR's ``statusCheckRollup`` on HEAD. Any
+        required context missing from the rollup produced ZERO runs on HEAD —
+        the workflow-dispatch event was dropped. Returns
+        ``(missing_required_contexts, head_branch, head_sha)``.
+
+        Fail-soft: any gh error or unknown required set returns
+        ``((), "", "")`` so the caller never re-triggers blindly.
+        """
+        proc = await asyncio.create_subprocess_exec(
+            "gh",
+            "pr",
+            "view",
+            str(pr_number),
+            "--repo",
+            repo,
+            "--json",
+            "statusCheckRollup,headRefName,headRefOid,baseRefName",
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        try:
+            stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=30.0)
+        except TimeoutError:
+            with contextlib.suppress(ProcessLookupError):
+                proc.kill()
+            _log.error("gh pr view gap-probe timed out for %s#%s", repo, pr_number)
+            return (), "", ""
+        if proc.returncode != 0:
+            _log.info(
+                "gh pr view gap-probe failed for %s#%s: %s",
+                repo,
+                pr_number,
+                stderr.decode(errors="replace")[:160],
+            )
+            return (), "", ""
+        try:
+            data: dict[str, Any] = json.loads(stdout)
+        except json.JSONDecodeError:
+            return (), "", ""
+        if not isinstance(data, dict):
+            return (), "", ""
+
+        head_branch = str(data.get("headRefName") or "")
+        head_sha = str(data.get("headRefOid") or "")
+        resolved_base_branch = base_branch or str(data.get("baseRefName") or "")
+        if not resolved_base_branch:
+            return (), "", ""
+        required = await self._fetch_required_contexts(repo, resolved_base_branch)
+        if not required:
+            return (), "", ""
+
+        rollup = data.get("statusCheckRollup") or []
+        reported = {
+            str(entry.get("name") or entry.get("context"))
+            for entry in rollup
+            if isinstance(entry, dict) and (entry.get("name") or entry.get("context"))
+        }
+        missing = tuple(c for c in required if c not in reported)
+        return missing, head_branch, head_sha
+
+    async def _fetch_required_contexts(
+        self, repo: str, base_branch: str
+    ) -> tuple[str, ...]:
+        """Fetch required status-check contexts for the base branch.
+
+        Fail-soft: returns ``()`` on any gh error (a fabricated gap would
+        re-trigger blindly).
+        """
+        proc = await asyncio.create_subprocess_exec(
+            "gh",
+            "api",
+            f"repos/{repo}/branches/{base_branch}/protection/required_status_checks",
+            "--jq",
+            ".contexts",
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        try:
+            stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=30.0)
+        except TimeoutError:
+            with contextlib.suppress(ProcessLookupError):
+                proc.kill()
+            return ()
+        if proc.returncode != 0:
+            _log.info(
+                "could not read required contexts for %s@%s: %s",
+                repo,
+                base_branch,
+                stderr.decode(errors="replace")[:160],
+            )
+            return ()
+        try:
+            contexts = json.loads(stdout)
+        except json.JSONDecodeError:
+            return ()
+        if not isinstance(contexts, list):
+            return ()
+        return tuple(str(c) for c in contexts)
 
     async def _resolve_failing_job_name(self, repo: str, pr_number: int) -> str | None:
         """Find the name of the first failing CI job for a PR.
