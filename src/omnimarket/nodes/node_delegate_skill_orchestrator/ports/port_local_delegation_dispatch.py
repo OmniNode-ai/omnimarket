@@ -26,9 +26,34 @@ from __future__ import annotations
 import logging
 import uuid
 from pathlib import Path
+from typing import cast
 from uuid import UUID
 
+from omnibase_core.models.delegation.wire import (
+    EnumQualityContractMode,
+    ModelQualityGateInput,
+)
+
 from omnimarket.inference.protocol_config import apply_inference_protocol
+
+# The reducer (``delta``) returns the omnimarket wire result DTO (it carries the
+# P1 deterministic-acceptance evidence fields not yet promoted to core), so the
+# port annotates against that surface rather than the core re-export.
+from omnimarket.models.delegation.wire.model_quality_gate import (
+    ModelQualityGateResult,
+)
+
+# Canonical quality-gate reducer (OMN-13597): the SAME gate the bus path runs.
+# ``delta`` is the pure reducer; ``resolve_task_class_dod_checks`` is the routing
+# authority's public DoD resolver. Composing both here makes the local CLI path
+# run the real gate instead of recording a hardcoded PASS — a refusal or empty
+# answer now projects ``quality_gate_passed=false``.
+from omnimarket.nodes.node_delegation_quality_gate_reducer.handlers.handler_quality_gate import (
+    delta as evaluate_quality_gate,
+)
+from omnimarket.nodes.node_delegation_routing_reducer.handlers.handler_delegation_routing import (
+    resolve_task_class_dod_checks,
+)
 
 # Import the canonical effect via its public package surface (not its internal
 # models package) so this composition stays on the node boundary (OMN-13160).
@@ -193,7 +218,26 @@ class LocalDelegationDispatchPort:
                 "model_name": backend.model_id,
             }
 
-        # 4. PROJECTION — materialize the local evidence row from the terminal.
+        # 4. CANONICAL QUALITY GATE (OMN-13597) — run the SAME reducer the bus
+        #    path runs. HTTP/transport success is NOT a quality verdict: a model
+        #    refusal or empty answer returns success here but must NOT be recorded
+        #    as a gate PASS. Resolve the task-class DoD checks from the routing
+        #    authority and evaluate the real verdict + graded score.
+        gate_result = self._evaluate_quality_gate(
+            correlation_id=correlation_id,
+            task_type=task_type,
+            content=result.content or "",
+            quality_contract_mode=quality_contract_mode,
+            acceptance_criteria=acceptance_criteria,
+        )
+        quality_passed = gate_result.passed
+        quality_score = gate_result.quality_score
+        gate_failure_message = (
+            "; ".join(gate_result.failure_reasons) if not quality_passed else ""
+        )
+
+        # 5. PROJECTION — materialize the local evidence row from the terminal,
+        #    carrying the REAL gate verdict (never a hardcoded PASS).
         self._project_evidence(
             correlation_id=correlation_id,
             task_type=task_type,
@@ -202,23 +246,55 @@ class LocalDelegationDispatchPort:
             result=result,
             prompt=prompt,
             source_session_id=source_session_id,
-            quality_passed=True,
-            failure_message="",
+            quality_passed=quality_passed,
+            failure_message=gate_failure_message,
         )
 
         return {
-            "status": "completed",
+            "status": "completed" if quality_passed else "failed",
             "content": result.content or "",
             "delegated_to": backend.endpoint_ref,
             "model_name": backend.model_id,
-            "quality_gate_passed": True,
-            "quality_score": 1.0,
+            "quality_gate_passed": quality_passed,
+            "quality_score": quality_score,
+            "quality_gates_failed": list(gate_result.failure_reasons),
             "delegation_latency_ms": result.latency_ms,
             "input_tokens": result.tokens_in,
             "output_tokens": result.tokens_out,
             "total_tokens": result.tokens_in + result.tokens_out,
             "correlation_id": str(correlation_id),
         }
+
+    def _evaluate_quality_gate(
+        self,
+        *,
+        correlation_id: UUID,
+        task_type: str,
+        content: str,
+        quality_contract_mode: str,
+        acceptance_criteria: tuple[str, ...],
+    ) -> ModelQualityGateResult:
+        """Run the canonical quality-gate reducer for a successful local call.
+
+        Resolves the task-class DoD checks (``dod_deterministic`` /
+        ``dod_heuristic``) from the routing authority — the SAME contract the bus
+        routing reducer feeds into the gate — then evaluates the canonical
+        ``delta`` reducer. When the task class declares no DoD, the reducer falls
+        back to its legacy heuristic checks (refusal/empty/length), so a refusal
+        still fails the gate. No judge adequacy score is available on the local
+        path, so it is omitted (deterministic + heuristic checks still apply).
+        """
+        dod_deterministic, dod_heuristic = resolve_task_class_dod_checks(task_type)
+        gate_input = ModelQualityGateInput(
+            correlation_id=correlation_id,
+            task_type=task_type,
+            llm_response_content=content,
+            dod_deterministic=dod_deterministic,
+            dod_heuristic=dod_heuristic,
+            quality_contract_mode=cast(EnumQualityContractMode, quality_contract_mode),
+            acceptance_criteria=acceptance_criteria,
+        )
+        return evaluate_quality_gate(gate_input)
 
     def _project_evidence(
         self,
