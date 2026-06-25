@@ -125,3 +125,59 @@ def test_gemini_thinking_off_not_applied_to_non_code_task() -> None:
         "the code-scoped Gemini thinking-off profile must not apply to research; "
         f"resolved request_options={request_options!r}"
     )
+
+
+@pytest.mark.unit
+def test_gemini_ceiling_injects_final_artifact_only_directive() -> None:
+    """The code tier must receive a final-artifact-only system directive.
+
+    The OMN-13335 discriminator residual: at the gemini-2.5-flash code ceiling
+    the answer is correct (judge_score=1.0) but the deterministic
+    ``final_artifact_only`` DoD vetoes it because the model wraps its code in
+    prose OUTSIDE the fenced block (``_check_final_artifact_only`` fails on ANY
+    non-whitespace text outside the fence, before OR after). The fix is a
+    prompt-level instruction — NOT a gate change — telling the model to emit
+    only the fenced artifact so it legitimately satisfies the DoD. This pins
+    that the code-scoped profile injects that instruction into the outbound
+    system prompt for the discriminator's (model, task_type).
+    """
+    base_system_prompt = "You are a code generation assistant."
+    next_system_prompt, _prompt, _request_options = apply_inference_protocol(
+        system_prompt=base_system_prompt,
+        prompt="Implement is_palindrome(s: str) -> bool.",
+        model=_CEILING_MODEL,
+        task_type=_CODE_TASK_TYPE,
+        backend_id="cloud-gemini-pro",
+    )
+    appended = next_system_prompt[len(base_system_prompt) :].lower()
+    assert "final code artifact only" in appended, (
+        "the code ceiling system prompt must instruct final-artifact-only output "
+        f"so the model satisfies the final_artifact_only DoD; got={appended!r}"
+    )
+    assert "before or after" in appended, (
+        "the directive must forbid prose on BOTH sides of the fence (the "
+        "final_artifact_only check rejects any non-whitespace text outside the "
+        f"code block, before or after); got={appended!r}"
+    )
+
+
+@pytest.mark.unit
+def test_final_artifact_only_directive_not_applied_to_non_code_task() -> None:
+    """The final-artifact-only directive must stay scoped to the code path.
+
+    A prose task must NOT receive the artifact-only instruction, otherwise the
+    prose escalation classes would be told to emit only fenced code. Scoping
+    keeps the OMN-13335 fix from perturbing other task classes.
+    """
+    base_system_prompt = "You are a code research assistant."
+    next_system_prompt, _prompt, _request_options = apply_inference_protocol(
+        system_prompt=base_system_prompt,
+        prompt="Explain the time complexity of mergesort.",
+        model=_CEILING_MODEL,
+        task_type="research",
+        backend_id="cloud-gemini-pro",
+    )
+    assert "final code artifact only" not in next_system_prompt.lower(), (
+        "the final-artifact-only directive must not be injected for prose tasks; "
+        f"got system_prompt={next_system_prompt!r}"
+    )

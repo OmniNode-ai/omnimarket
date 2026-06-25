@@ -48,8 +48,10 @@ profiles:
       separator: "\n\n"
       apply_once: true
       text: >-
-        Return the complete, final code artifact only. Do not truncate; do not
-        emit chain-of-thought or analysis before the code.
+        Return the complete, final code artifact only, as a single fenced code
+        block. Do not truncate. Emit nothing outside that fenced block: no
+        chain-of-thought, no analysis, no explanation, no preamble, and no
+        trailing commentary either before or after the code.
     request_options:
       reasoning_effort: none
 
