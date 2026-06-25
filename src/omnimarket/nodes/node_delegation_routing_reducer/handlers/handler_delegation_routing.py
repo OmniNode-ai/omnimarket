@@ -582,6 +582,25 @@ def _definition_of_done_checks(
     )
 
 
+def resolve_task_class_dod_checks(
+    task_type: str,
+) -> tuple[tuple[str, ...], tuple[str, ...]]:
+    """Resolve the task-class DoD checks for ``task_type`` (OMN-13597).
+
+    Public routing-authority surface: returns the ``(dod_deterministic,
+    dod_heuristic)`` tuples declared for ``task_type`` in
+    ``task_class_contracts.v1.yaml`` — the SAME resolution the bus routing reducer
+    feeds into the quality gate. When the contract file is absent or declares no
+    DoD for the task class, both tuples are empty and the gate falls back to its
+    legacy heuristic checks. This lets the bus-less local CLI dispatch path run
+    the canonical gate without reaching into the routing reducer's private
+    helpers or re-deriving the contract read.
+    """
+    contract = _get_task_class_contract()
+    entry = _task_class_entry(contract, task_type)
+    return _definition_of_done_checks(entry)
+
+
 def _tier_can_route_task(
     tier: ModelRoutingTier,
     task_type: str,
@@ -955,6 +974,7 @@ __all__: list[str] = [
     "delta",
     "describe_no_higher_tier_available",
     "next_eligible_tier",
+    "resolve_task_class_dod_checks",
     "tier_for_backend",
     "tier_max_retries",
 ]

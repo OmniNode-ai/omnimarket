@@ -119,7 +119,7 @@ def test_local_dispatch_materializes_evidence_row(
             source_file_path=None,
             source_session_id=None,
             wait=True,
-            quality_contract_mode="lenient",
+            quality_contract_mode="extend_task_class",
             acceptance_criteria=(),
         )
     )
@@ -146,6 +146,13 @@ def test_local_dispatch_materializes_evidence_row(
     assert row["task_type"] == "code_generation"
     assert row["model_name"] == "Qwen3.6-35B-A3B"
     assert bool(row["quality_gate_passed"]) is True
+    # OMN-13597: the verdict is the REAL canonical-gate verdict, and the score is
+    # the reducer's graded score (NOT a hardcoded 1.0). A clean code answer passes
+    # the code_generation DoD; its graded score reflects partial heuristic credit.
+    assert isinstance(result["quality_score"], float)
+    assert 0.0 < float(result["quality_score"]) <= 1.0
+    assert float(result["quality_score"]) != 1.0
+    assert result["quality_gate_passed"] is True
     assert row["tokens_input"] == 11
     assert row["tokens_output"] == 22
     assert row["prompt_text"] == "reverse a string"
@@ -175,7 +182,7 @@ def test_local_dispatch_evidence_is_idempotent(
                 source_file_path=None,
                 source_session_id=None,
                 wait=True,
-                quality_contract_mode="lenient",
+                quality_contract_mode="extend_task_class",
                 acceptance_criteria=(),
             )
         )
@@ -215,7 +222,7 @@ def test_local_dispatch_evidence_failure_does_not_break_response(
             source_file_path=None,
             source_session_id=None,
             wait=True,
-            quality_contract_mode="lenient",
+            quality_contract_mode="extend_task_class",
             acceptance_criteria=(),
         )
     )
@@ -277,7 +284,7 @@ def test_local_dispatch_reaches_lan_endpoint_via_curl_on_macos_profile(
             source_file_path=None,
             source_session_id=None,
             wait=True,
-            quality_contract_mode="lenient",
+            quality_contract_mode="extend_task_class",
             acceptance_criteria=(),
         )
     )
@@ -320,7 +327,7 @@ def test_local_dispatch_unset_max_tokens_uses_backend_ceiling(
             source_file_path=None,
             source_session_id=None,
             wait=True,
-            quality_contract_mode="lenient",
+            quality_contract_mode="extend_task_class",
             acceptance_criteria=(),
         )
     )
@@ -352,7 +359,7 @@ def test_local_dispatch_explicit_max_tokens_capped_at_backend_ceiling(
             source_file_path=None,
             source_session_id=None,
             wait=True,
-            quality_contract_mode="lenient",
+            quality_contract_mode="extend_task_class",
             acceptance_criteria=(),
         )
     )
@@ -381,7 +388,7 @@ def test_local_dispatch_explicit_max_tokens_below_ceiling_passes_through(
             source_file_path=None,
             source_session_id=None,
             wait=True,
-            quality_contract_mode="lenient",
+            quality_contract_mode="extend_task_class",
             acceptance_criteria=(),
         )
     )
@@ -415,7 +422,7 @@ def test_local_dispatch_threads_backend_timeout_to_transport(
             source_file_path=None,
             source_session_id=None,
             wait=True,
-            quality_contract_mode="lenient",
+            quality_contract_mode="extend_task_class",
             acceptance_criteria=(),
         )
     )
@@ -423,3 +430,171 @@ def test_local_dispatch_threads_backend_timeout_to_transport(
     assert result["status"] == "completed"
     assert captured["timeout_seconds"] == 300.0
     assert captured["timeout_seconds"] > 120.0
+
+
+def _patch_transport_with_content(
+    monkeypatch: pytest.MonkeyPatch, content: str
+) -> None:
+    """Patch the effect transport to return a fixed assistant ``content`` body.
+
+    HTTP success (status 200) is forced regardless of ``content`` so the test
+    exercises the QUALITY gate, not transport failure: a model refusal is still a
+    200 OK at the transport boundary.
+    """
+
+    def fake_probe_health(endpoint_url: str, **_: Any) -> bool:
+        return True
+
+    def fake_post(
+        *,
+        endpoint_url: str,
+        payload: dict[str, Any],
+        timeout_seconds: float,
+        extra_headers: dict[str, str] | None = None,
+        runtime_profile: str | None = None,
+    ) -> transport.ModelTransportResponse:
+        return transport.ModelTransportResponse(
+            status_code=200,
+            json_body={
+                "choices": [{"message": {"content": content}}],
+                "model": "Qwen3.6-35B-A3B",
+                "usage": {
+                    "prompt_tokens": 11,
+                    "completion_tokens": 22,
+                    "total_tokens": 33,
+                },
+            },
+            latency_ms=42,
+        )
+
+    monkeypatch.setattr(transport, "probe_health", fake_probe_health)
+    monkeypatch.setattr(transport, "post_chat_completion", fake_post)
+
+
+@pytest.fixture
+def research_backend() -> list[dict[str, object]]:
+    return [
+        {
+            "backend_id": "local-research",
+            "endpoint_url": "http://inference.example:8000/v1/chat/completions",
+            "model_name": "Qwen3.6-35B-A3B",
+            "tier": "local",
+            "max_tokens": 65536,
+            "timeout_ms": 300000,
+            "capabilities": ["research"],
+        }
+    ]
+
+
+def test_local_dispatch_refusal_fails_quality_gate(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    research_backend: list[dict[str, object]],
+) -> None:
+    """OMN-13597: a model refusal (HTTP 200) is recorded quality_gate_passed=false.
+
+    The bus-less local path previously hardcoded quality_gate_passed=true on any
+    transport success, so a refusal was recorded as a PASS. With the canonical
+    gate wired, the task-class DoD (research: no_refusal + response_non_empty)
+    rejects the refusal: the response is "failed" and the evidence row is written
+    quality_gate_passed=false — never PASS.
+    """
+    db_path = tmp_path / "delegation.sqlite"
+    _patch_routing(monkeypatch, research_backend)
+    _patch_transport_with_content(
+        monkeypatch,
+        "I'm sorry, but I cannot help with that request. I refuse to answer.",
+    )
+
+    port = LocalDelegationDispatchPort(evidence_db_path=db_path)
+    correlation_id = uuid4()
+    result = asyncio.run(
+        port.dispatch(
+            prompt="explain the halting problem",
+            task_type="research",
+            correlation_id=correlation_id,
+            max_tokens=256,
+            source_file_path=None,
+            source_session_id=None,
+            wait=True,
+            quality_contract_mode="extend_task_class",
+            acceptance_criteria=(),
+        )
+    )
+
+    # The transport call SUCCEEDED (HTTP 200) but the quality gate FAILED.
+    assert result["quality_gate_passed"] is False
+    assert result["status"] == "failed"
+
+    conn = sqlite3.connect(str(db_path))
+    try:
+        conn.row_factory = sqlite3.Row
+        row = conn.execute(
+            "SELECT * FROM delegation_events WHERE correlation_id = ?",
+            (str(correlation_id),),
+        ).fetchone()
+    finally:
+        conn.close()
+
+    assert row is not None
+    # The evidence row carries the HONEST failed verdict — never a hardcoded PASS.
+    assert bool(row["quality_gate_passed"]) is False
+
+
+def test_local_dispatch_good_answer_passes_with_real_score(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    research_backend: list[dict[str, object]],
+) -> None:
+    """OMN-13597: a genuine good answer passes with the real reducer score.
+
+    A substantive, attributed research answer satisfies the research DoD
+    (no_refusal, cites_sources, methodical_analysis, response_non_empty). The
+    gate verdict is true and the projected score is the reducer's graded score —
+    proving the path runs the real gate rather than stamping a hardcoded 1.0.
+    """
+    db_path = tmp_path / "delegation.sqlite"
+    _patch_routing(monkeypatch, research_backend)
+    _patch_transport_with_content(
+        monkeypatch,
+        (
+            "According to Smith (2020) and the theorem in section 3, the tradeoff "
+            "is significant because the evidence shows X; therefore we conclude Y. "
+            "See references [12] for the methodical analysis and the risk profile "
+            "this approach carries in practice."
+        ),
+    )
+
+    port = LocalDelegationDispatchPort(evidence_db_path=db_path)
+    correlation_id = uuid4()
+    result = asyncio.run(
+        port.dispatch(
+            prompt="explain the tradeoff",
+            task_type="research",
+            correlation_id=correlation_id,
+            max_tokens=256,
+            source_file_path=None,
+            source_session_id=None,
+            wait=True,
+            quality_contract_mode="extend_task_class",
+            acceptance_criteria=(),
+        )
+    )
+
+    assert result["quality_gate_passed"] is True
+    assert result["status"] == "completed"
+    assert isinstance(result["quality_score"], float)
+    assert 0.0 < float(result["quality_score"]) <= 1.0
+
+    conn = sqlite3.connect(str(db_path))
+    try:
+        conn.row_factory = sqlite3.Row
+        row = conn.execute(
+            "SELECT * FROM delegation_events WHERE correlation_id = ?",
+            (str(correlation_id),),
+        ).fetchone()
+    finally:
+        conn.close()
+
+    assert row is not None
+    assert bool(row["quality_gate_passed"]) is True
