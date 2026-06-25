@@ -8,8 +8,8 @@ description: >
   Projects instruction-eval-result events into the
   instruction_eval_aggregate_snapshots table — a (model, task, context_mode)
   pass-rate / output-tokens / runs aggregate read by the omnidash
-  InstructionEvalHeatmap panel via the canonical projection API at
-  onex.snapshot.projection.omnimarket.instruction-eval-aggregate.v1.
+  InstructionEvalHeatmap panel via the canonical projection API
+  (projection_api.topic below).
 
   OMN-12998: replaces the hardcoded fixture (instruction-eval.fixtures.ts,
   run 20260526-170241) with a live, contract-declared projection so the panel
