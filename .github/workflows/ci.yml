@@ -739,17 +739,27 @@ jobs:
           python-version: "3.12"
       - name: Compute changed Python/Markdown files vs PR base
         id: changed
+        # BASE_REF is passed via env (not spliced into the script body) so an
+        # attacker-controlled ref/filename cannot be expanded as shell code.
+        # No --depth on the base fetch: a shallow tip can miss the merge-base on
+        # a diverged branch, making the `...` diff over-report files. A full
+        # fetch resolves the true merge-base.
+        env:
+          BASE_REF: ${{ github.base_ref }}
         run: |
-          if [ -n "${{ github.base_ref }}" ]; then
-            git fetch origin "${{ github.base_ref }}" --no-tags --depth=1
-            FILES=$(git diff --name-only "origin/${{ github.base_ref }}"...HEAD -- '*.py' '*.md' | tr '\n' ' ')
+          if [ -n "$BASE_REF" ]; then
+            git fetch origin "$BASE_REF" --no-tags
+            FILES=$(git diff --name-only "origin/$BASE_REF"...HEAD -- '*.py' '*.md' | tr '\n' ' ')
           else
             FILES=$(git diff --name-only HEAD~1 -- '*.py' '*.md' 2>/dev/null | tr '\n' ' ')
           fi
           echo "files=$FILES" >> "$GITHUB_OUTPUT"
       - name: Check changed files for AI-slop patterns (strict)
+        # FILES is passed via env so attacker-controlled filenames (backticks,
+        # $(...)) are never spliced into the script source.
+        env:
+          FILES: ${{ steps.changed.outputs.files }}
         run: |
-          FILES="${{ steps.changed.outputs.files }}"
           if [ -z "$FILES" ]; then
             echo "No changed Python/Markdown files — nothing to scan."
             exit 0
