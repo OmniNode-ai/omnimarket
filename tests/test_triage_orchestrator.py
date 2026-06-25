@@ -331,6 +331,53 @@ async def test_track_b_non_dry_run_emits_live_pr_polish_start() -> None:
 
 
 @pytest.mark.asyncio
+async def test_blocked_no_failing_run_with_gap_emits_empty_commit_retrigger() -> None:
+    """OMN-13416: BLOCKED + no failing run + required-context gap → empty-commit re-trigger.
+
+    A required workflow that produced 0 runs on HEAD leaves the PR BLOCKED with
+    no failing run to rerun. Without this rule the PR falls through to a silent
+    SKIP and stalls forever. The triage must instead emit a ModelCiRerunCommand
+    in empty_commit mode so the dropped workflow events get re-delivered.
+    """
+    pr = _pr(700, merge_state_status="BLOCKED", required_checks_pass=True)
+    classified = [_classified(pr, EnumPRTrack.B_POLISH)]
+    request = _make_request(classified)
+
+    handler = HandlerTriageOrchestrator()
+    with patch.object(
+        handler,
+        "_resolve_event_delivery_gap",
+        new=AsyncMock(return_value=(("Runtime Sweep",), "feat/wedged")),
+    ):
+        output = await handler.handle(request)
+
+    rerun = next(e for e in output.events if isinstance(e, ModelCiRerunCommand))
+    assert rerun.pr_number == 700
+    assert rerun.retrigger_mode == "empty_commit"
+    assert rerun.head_branch == "feat/wedged"
+    assert rerun.run_id_github == ""
+    assert rerun.missing_required_contexts == ("Runtime Sweep",)
+
+
+@pytest.mark.asyncio
+async def test_blocked_no_failing_run_no_gap_skips() -> None:
+    """OMN-13416: BLOCKED + no failing run + NO gap → SKIP (do not re-trigger blindly)."""
+    pr = _pr(701, merge_state_status="BLOCKED", required_checks_pass=True)
+    classified = [_classified(pr, EnumPRTrack.B_POLISH)]
+    request = _make_request(classified)
+
+    handler = HandlerTriageOrchestrator()
+    with patch.object(
+        handler,
+        "_resolve_event_delivery_gap",
+        new=AsyncMock(return_value=((), "feat/clean")),
+    ):
+        output = await handler.handle(request)
+
+    assert not any(isinstance(e, ModelCiRerunCommand) for e in output.events)
+
+
+@pytest.mark.asyncio
 async def test_track_b_without_failing_run_does_not_emit_pr_polish_start() -> None:
     """Queued/pending checks without a failing run must not trigger live polish."""
     pr = _pr(603, merge_state_status="BLOCKED", required_checks_pass=False)

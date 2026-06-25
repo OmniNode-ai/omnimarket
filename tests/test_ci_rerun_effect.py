@@ -104,3 +104,61 @@ async def test_completion_event_carries_correct_metadata() -> None:
     assert evt.run_id == _RUN_ID
     assert evt.total_prs == 3
     assert evt.run_id_github == "12345678"
+
+
+# ---------------------------------------------------------------------------
+# OMN-13416 — empty-commit re-trigger mode (CI event-delivery gap)
+# ---------------------------------------------------------------------------
+
+
+def _empty_commit_cmd() -> ModelCiRerunCommand:
+    return ModelCiRerunCommand(
+        pr_number=700,
+        repo="OmniNode-ai/omni_home",
+        run_id_github="",
+        correlation_id=_CORR_ID,
+        run_id=_RUN_ID,
+        total_prs=1,
+        retrigger_mode="empty_commit",
+        head_branch="feat/wedged",
+        missing_required_contexts=("Runtime Sweep",),
+    )
+
+
+@pytest.mark.asyncio
+async def test_empty_commit_mode_uses_empty_commit_path_not_rerun() -> None:
+    """empty_commit mode must NOT call rerun-failed-jobs (no run to rerun)."""
+    with (
+        patch.object(
+            HandlerCiRerunEffect,
+            "_rerun_sync",
+            side_effect=AssertionError("must not rerun in empty_commit mode"),
+        ),
+        patch.object(
+            HandlerCiRerunEffect, "_empty_commit_sync", return_value=(True, None)
+        ),
+    ):
+        handler = HandlerCiRerunEffect()
+        output = await handler.handle(_empty_commit_cmd())
+
+    evt = output.events[0]
+    assert isinstance(evt, ModelCiRerunTriggeredEvent)
+    assert evt.rerun_triggered is True
+    assert evt.error is None
+    assert evt.pr_number == 700
+
+
+@pytest.mark.asyncio
+async def test_empty_commit_mode_failure_surfaces_error() -> None:
+    with patch.object(
+        HandlerCiRerunEffect,
+        "_empty_commit_sync",
+        return_value=(False, "push rejected"),
+    ):
+        handler = HandlerCiRerunEffect()
+        output = await handler.handle(_empty_commit_cmd())
+
+    evt = output.events[0]
+    assert isinstance(evt, ModelCiRerunTriggeredEvent)
+    assert evt.rerun_triggered is False
+    assert evt.error == "push rejected"

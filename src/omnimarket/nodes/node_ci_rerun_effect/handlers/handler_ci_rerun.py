@@ -19,6 +19,7 @@ import time
 import urllib.error
 import urllib.request
 from pathlib import Path
+from typing import Any
 from uuid import uuid4
 
 from omnibase_core.models.dispatch.model_handler_output import ModelHandlerOutput
@@ -58,23 +59,38 @@ class HandlerCiRerunEffect:
         token = github_secret.get_secret_value()
 
         t0 = time.monotonic()
-        triggered, error = await self._rerun(request.run_id_github, request.repo, token)
+        if request.retrigger_mode == "empty_commit":
+            # OMN-13416 — a required workflow produced 0 runs on HEAD (GitHub
+            # dropped the dispatch event). There is no run to rerun; push an
+            # empty commit on the head branch to re-fire the dropped events.
+            triggered, error = await self._empty_commit(
+                request.repo, request.head_branch, request.pr_number, token
+            )
+        else:
+            triggered, error = await self._rerun(
+                request.run_id_github, request.repo, token
+            )
         elapsed = time.monotonic() - t0
 
         if triggered:
             _log.info(
-                "CI rerun triggered: %s#%s run=%s (elapsed=%.2fs)",
+                "CI re-trigger (%s): %s#%s run=%s branch=%s (elapsed=%.2fs)",
+                request.retrigger_mode,
                 request.repo,
                 request.pr_number,
                 request.run_id_github,
+                request.head_branch,
                 elapsed,
             )
         else:
             _log.error(
-                "CI rerun failed: %s#%s run=%s error=%r (elapsed=%.2fs)",
+                "CI re-trigger (%s) FAILED: %s#%s run=%s branch=%s error=%r "
+                "(elapsed=%.2fs)",
+                request.retrigger_mode,
                 request.repo,
                 request.pr_number,
                 request.run_id_github,
+                request.head_branch,
                 error,
                 elapsed,
             )
@@ -135,3 +151,106 @@ class HandlerCiRerunEffect:
             return False, detail or str(exc)
         except (urllib.error.URLError, OSError) as exc:
             return False, str(exc)
+
+    async def _empty_commit(
+        self, repo: str, head_branch: str, pr_number: int, token: str
+    ) -> tuple[bool, str | None]:
+        """Push an empty commit on ``head_branch`` to re-trigger CI (OMN-13416)."""
+        return await asyncio.to_thread(
+            self._empty_commit_sync, repo, head_branch, pr_number, token
+        )
+
+    def _empty_commit_sync(
+        self, repo: str, head_branch: str, pr_number: int, token: str
+    ) -> tuple[bool, str | None]:
+        """Create an empty commit on the head branch via the Git Data API.
+
+        Reuses HEAD's tree (zero file change) with HEAD as the single parent,
+        then fast-forwards the branch ref. This re-fires the workflow-dispatch
+        events that GitHub dropped without altering any content.
+        """
+        owner, _, repo_name = repo.partition("/")
+        if not owner or not repo_name:
+            return False, f"invalid repo slug: {repo!r}"
+        if not head_branch:
+            return False, "empty head_branch for empty_commit re-trigger"
+
+        base = f"https://api.github.com/repos/{owner}/{repo_name}"  # url-authority-ok: GitHub control-plane REST host, same as rerun-failed-jobs call above
+        headers = {
+            "Authorization": f"Bearer {token}",
+            "Accept": "application/vnd.github+json",
+            "X-GitHub-Api-Version": _GITHUB_API_VERSION,
+        }
+
+        try:
+            # 1. Resolve the branch's current commit SHA.
+            ref = self._api_json(
+                f"{base}/git/ref/heads/{head_branch}", headers, method="GET"
+            )
+            ref_object = ref.get("object")
+            head_sha = ref_object.get("sha") if isinstance(ref_object, dict) else None
+            if not head_sha:
+                return False, f"could not resolve head SHA for {head_branch}"
+
+            # 2. Read the head commit to reuse its tree (empty diff).
+            head_commit = self._api_json(
+                f"{base}/git/commits/{head_sha}", headers, method="GET"
+            )
+            commit_tree = head_commit.get("tree")
+            tree_sha = commit_tree.get("sha") if isinstance(commit_tree, dict) else None
+            if not tree_sha:
+                return False, f"could not resolve tree SHA for {head_sha}"
+
+            # 3. Create a new commit pointing at the same tree, parent=HEAD.
+            new_commit = self._api_json(
+                f"{base}/git/commits",
+                headers,
+                method="POST",
+                payload={
+                    "message": (
+                        f"ci: re-trigger dropped required workflows on "
+                        f"#{pr_number} (OMN-13416)"
+                    ),
+                    "tree": tree_sha,
+                    "parents": [head_sha],
+                },
+            )
+            new_sha = new_commit.get("sha")
+            if not new_sha:
+                return False, "commit creation returned no sha"
+
+            # 4. Fast-forward the branch ref to the new commit.
+            self._api_json(
+                f"{base}/git/refs/heads/{head_branch}",
+                headers,
+                method="PATCH",
+                payload={"sha": new_sha, "force": False},
+            )
+            return True, None
+        except urllib.error.HTTPError as exc:
+            detail = exc.read().decode("utf-8", errors="replace").strip()
+            try:
+                message = json.loads(detail).get("message")
+                if isinstance(message, str) and message:
+                    return False, message
+            except json.JSONDecodeError:
+                pass
+            return False, detail or str(exc)
+        except (urllib.error.URLError, OSError) as exc:
+            return False, str(exc)
+
+    def _api_json(
+        self,
+        url: str,
+        headers: dict[str, str],
+        *,
+        method: str,
+        payload: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Issue a GitHub REST call and return the parsed JSON body."""
+        data = json.dumps(payload).encode() if payload is not None else None
+        req = urllib.request.Request(url, headers=headers, method=method, data=data)
+        with urllib.request.urlopen(req, timeout=_REQUEST_TIMEOUT) as resp:
+            body = resp.read().decode("utf-8", errors="replace")
+        parsed: dict[str, Any] = json.loads(body) if body else {}
+        return parsed

@@ -82,9 +82,17 @@ class ModelRebaseCommand(BaseModel):
 
 
 class ModelCiRerunCommand(BaseModel):
-    """Command to rerun failed CI checks on a PR.
+    """Command to re-trigger CI on a PR.
 
-    Emitted for PRs: Track B, MERGEABLE, BLOCKED, checks failing (stale-CI hypothesis).
+    Two emit conditions (both Track B, MERGEABLE, BLOCKED):
+
+    * ``retrigger_mode="rerun_failed"`` (default) — checks are *failing*; rerun
+      the most recent failed workflow run (stale-CI hypothesis). ``run_id_github``
+      identifies that run.
+    * ``retrigger_mode="empty_commit"`` — a required workflow produced ZERO runs
+      on HEAD (GitHub dropped the workflow-dispatch event), so there is nothing
+      to rerun. The effect pushes an empty commit on ``head_branch`` to re-fire
+      the dropped events (OMN-13416). ``run_id_github`` is empty in this mode.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -95,6 +103,9 @@ class ModelCiRerunCommand(BaseModel):
     correlation_id: UUID
     run_id: UUID
     total_prs: int
+    retrigger_mode: str = "rerun_failed"  # rerun_failed | empty_commit
+    head_branch: str = ""  # required when retrigger_mode == empty_commit
+    missing_required_contexts: tuple[str, ...] = ()
 
 
 # ---------------------------------------------------------------------------
