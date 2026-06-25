@@ -673,6 +673,65 @@ class ModelProdPromotionGrant(BaseModel):
     )
 
 
+class EnumProdHealth(StrEnum):
+    """Tri-state prod-lane health the gate consults for the recovery waiver (OMN-13441).
+
+    Resolved by the prod-health fact resolver EFFECT from a live prod-lane health
+    probe — NEVER asserted by the caller. The three states are deliberately NOT a
+    boolean: ``UNKNOWN`` is its own value so an indeterminate probe (error /
+    timeout / unreachable) fails CLOSED — the gate treats ``UNKNOWN`` exactly like
+    a request that needs an approver grant, so an attacker who merely breaks the
+    health probe cannot induce the recovery-waiver path. Only a CONFIRMED healthy
+    result is ``HEALTHY``; only a CONFIRMED down/failed result is ``UNHEALTHY``.
+    """
+
+    HEALTHY = "healthy"
+    UNHEALTHY = "unhealthy"
+    UNKNOWN = "unknown"
+
+
+class ModelProdHealthFact(BaseModel):
+    """Deterministic prod-lane health fact resolved at evaluation time (OMN-13441).
+
+    The un-forgeable input that makes the prod-promotion grant requirement
+    health-conditional WITHOUT opening a bypass. The resolver EFFECT probes the
+    live prod-lane health endpoint and stamps this fact onto the gate command —
+    the caller cannot assert health (the gate consumes this fact, never a
+    caller-supplied value, and never ``start.*``).
+
+    ``health`` fails closed: a probe error / timeout / unreachable / indeterminate
+    result resolves to ``EnumProdHealth.UNKNOWN`` (which the gate treats as
+    "grant required"), NOT ``UNHEALTHY``. ``source`` + ``probed_at`` are recorded
+    on the decision for audit, especially when a recovery waiver is granted.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    lane: Literal[EnumRuntimeLane.PROD] = Field(
+        default=EnumRuntimeLane.PROD,
+        description="Lane the health fact describes; always PROD for this resolver.",
+    )
+    health: EnumProdHealth = Field(
+        ...,
+        description=(
+            "Tri-state probed health; UNKNOWN on any indeterminate probe so the "
+            "gate fails closed (grant still required)."
+        ),
+    )
+    probed_at: datetime = Field(
+        ...,
+        description="Deterministic timestamp the prod-lane health was probed at.",
+    )
+    source: str = Field(
+        ...,
+        min_length=1,
+        description=(
+            "Un-forgeable provenance of the probe (the prod health endpoint URL or "
+            "reducer-owned liveness projection), recorded on the decision for audit."
+        ),
+    )
+
+
 class ModelDeployRefusedEvent(BaseModel):
     """Emitted when the deploy EFFECT refuses a prod command at its own boundary.
 
@@ -1315,6 +1374,16 @@ class ModelProdPromotionGateCommand(BaseModel):
             "datetime.now(). Required for the prod grant expiry check."
         ),
     )
+    prod_health: ModelProdHealthFact | None = Field(
+        default=None,
+        description=(
+            "Un-forgeable prod-lane health fact resolved by the prod-health "
+            "resolver EFFECT (OMN-13441). The gate consults this for the "
+            "health-conditional recovery waiver; it is NEVER sourced from the "
+            "caller / start event. None means health was not resolved, so the "
+            "gate fails closed exactly as if UNKNOWN (grant still required)."
+        ),
+    )
 
 
 class ModelDeployPublishCommand(BaseModel):
@@ -1537,6 +1606,64 @@ class ModelProdPromotionGrantResolvedEvent(BaseModel):
     )
 
 
+# ---------------------------------------------------------------------------
+# Prod-health fact resolution (Phase 1.3 resolver EFFECT, OMN-13441)
+# ---------------------------------------------------------------------------
+
+
+class ModelProdHealthResolveCommand(BaseModel):
+    """Command the orchestrator emits to the prod-health resolver EFFECT.
+
+    Carries only the correlation id and the deterministic ``evaluated_at`` the
+    resolver stamps as ``probed_at``. It does NOT carry a caller-supplied health
+    value — the resolver probes the live prod-lane health endpoint at evaluation
+    time, so a request cannot assert its own health (un-forgeable source).
+
+    The redeploy ORCHESTRATOR builds this command and the prod-health resolver
+    EFFECT consumes it, so it lives in this shared owner module.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    correlation_id: UUID = Field(..., description="Redeploy run correlation ID.")
+    runtime_lane: Literal[EnumRuntimeLane.PROD] = Field(
+        default=EnumRuntimeLane.PROD,
+        description="Lane whose health is probed; the resolver keys on lane=prod.",
+    )
+    evaluated_at: datetime = Field(
+        ...,
+        description=(
+            "Deterministic evaluation timestamp stamped by the orchestrator; the "
+            "resolver records it as the fact's probed_at and threads it into the "
+            "gate command so the compute never calls datetime.now()."
+        ),
+    )
+
+
+class ModelProdHealthResolvedEvent(BaseModel):
+    """The prod-health resolver EFFECT's emitted fact: the resolved health fact.
+
+    The orchestrator consumes this to stamp ``prod_health`` onto the gate command.
+    ``health_fact.health`` fails closed to ``UNKNOWN`` on any indeterminate probe
+    so the gate still requires a grant; only a CONFIRMED probe yields HEALTHY /
+    UNHEALTHY. The fact is NEVER taken from the start event.
+
+    The prod-health resolver EFFECT emits this and the redeploy ORCHESTRATOR
+    consumes it, so it lives in this shared owner module.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    correlation_id: UUID = Field(..., description="Redeploy run correlation ID.")
+    health_fact: ModelProdHealthFact = Field(
+        ...,
+        description=(
+            "Resolved prod-lane health fact (value + probe source + probed_at); "
+            "UNKNOWN on any indeterminate probe so the gate fails closed."
+        ),
+    )
+
+
 __all__ = [
     "DEFAULT_PREVIOUS_IMAGE",
     "GRANT_FETCH_REF",
@@ -1549,6 +1676,7 @@ __all__ = [
     "EnumOccGateState",
     "EnumPhaseResult",
     "EnumProdGrantReason",
+    "EnumProdHealth",
     "EnumRedeployPhase",
     "EnumRedeployScope",
     "EnumRedeployStatus",
@@ -1562,6 +1690,9 @@ __all__ = [
     "ModelHealthCheck",
     "ModelLaneDeployTarget",
     "ModelProdGateDecision",
+    "ModelProdHealthFact",
+    "ModelProdHealthResolveCommand",
+    "ModelProdHealthResolvedEvent",
     "ModelProdPromotionGateCommand",
     "ModelProdPromotionGateDecision",
     "ModelProdPromotionGrant",

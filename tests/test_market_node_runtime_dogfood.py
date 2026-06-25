@@ -66,8 +66,10 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
     # projection; replaces hardcoded fixture with contract-declared projection): 326 -> 327.
     # OMN-13584 adds node_repo_health_repair_effect (EFFECT; durable repo-health
     # repair ticket emission): 327 -> 328.
-    assert summary["node_dirs"] == 328
-    assert summary["entry_points"] == 328
+    # OMN-13441 Phase 1.3 adds node_prod_health_fact_resolver_effect (EFFECT;
+    # un-forgeable prod-health fact for the prod-promotion gate): 328 -> 329.
+    assert summary["node_dirs"] == 329
+    assert summary["entry_points"] == 329
     assert summary["missing_entry_points"] == []
     assert summary["dangling_entry_points"] == []
     assert summary["routable"] >= 297
