@@ -621,6 +621,23 @@ class TerminalEmissionInputs:
     prior_attempt_completion_tokens: int = 0
 
 
+@dataclass(frozen=True)
+class _HoistedTierCost:
+    """The metered ``escalation_history`` tier hoisted onto a residual
+    null-top-level FAILED terminal (OMN-13408 emitter hoist).
+
+    ``measurement`` is re-derived from the tier name + served tokens through the
+    SAME ``recompute_actual_cost_and_savings`` the completed/projection paths use
+    — the per-attempt ``cost_usd`` stamped in history is the audit copy, but the
+    authoritative top-level cost is re-priced here so a single canonical formula
+    owns it (no trust of a stale stamped value).
+    """
+
+    measurement: ModelActualCostMeasurement
+    prompt_tokens: int
+    completion_tokens: int
+
+
 @dataclass
 class DelegationWorkflowState:
     """Mutable workflow state for a single delegation correlation_id."""
@@ -1568,6 +1585,50 @@ class HandlerDelegationWorkflow:
         content = config_path.read_bytes()
         return hashlib.sha256(content).hexdigest()
 
+    @staticmethod
+    def _hoist_metered_history_tier(
+        escalation_history: tuple[dict[str, object], ...],
+    ) -> _HoistedTierCost | None:
+        """Find the winning (last) metered ``escalation_history`` tier and re-price it.
+
+        OMN-13408 emitter hoist. Scans ``escalation_history`` from the END
+        (the winning/last attempt the FAILED terminal exhausted on) for the first
+        entry whose tier name + served tokens re-price to a metered cost > 0
+        through the canonical ``recompute_actual_cost_and_savings``. Returns the
+        re-priced measurement plus the served tokens, or ``None`` when no metered
+        tier with served tokens exists (e.g. a free_local-only ladder — the
+        terminal honestly stays 0).
+
+        The per-attempt ``cost_usd`` stamped in history is NOT trusted as the
+        top-level value; the cost is re-derived from tier + tokens so one
+        canonical formula owns the authoritative top-level cost.
+        """
+        for entry in reversed(escalation_history):
+            tier_name = entry.get("tier_name")
+            if not isinstance(tier_name, str) or not tier_name:
+                continue
+            prompt_tokens = entry.get("prompt_tokens")
+            completion_tokens = entry.get("completion_tokens")
+            if not isinstance(prompt_tokens, int) or not isinstance(
+                completion_tokens, int
+            ):
+                continue
+            if prompt_tokens <= 0 and completion_tokens <= 0:
+                continue
+            measurement = recompute_actual_cost_and_savings(
+                tier_name=tier_name,
+                prompt_tokens=prompt_tokens,
+                completion_tokens=completion_tokens,
+                premium_counterfactual=None,
+            )
+            if measurement.cash_cost_usd > 0.0:
+                return _HoistedTierCost(
+                    measurement=measurement,
+                    prompt_tokens=prompt_tokens,
+                    completion_tokens=completion_tokens,
+                )
+        return None
+
     def _emit_terminal(self, inputs: TerminalEmissionInputs) -> list[BaseModel]:
         """ONE builder for BOTH terminal events (OMN-13475).
 
@@ -1607,6 +1668,51 @@ class HandlerDelegationWorkflow:
         # on a free tier does not overstate the saving.
         total_savings_usd = cost.cost_savings_usd - inputs.prior_attempt_cost_usd
 
+        # The served tokens both events report. Defaults to the top-level inputs;
+        # overridden by the hoist below on the residual null-top-level FAILED shape.
+        served_input_tokens = inputs.prompt_tokens
+        served_output_tokens = inputs.completion_tokens
+        served_total_tokens = inputs.total_tokens
+
+        # OMN-13408 (emitter hoist): on a FAILED terminal whose TOP-LEVEL cost,
+        # tokens, and serving tier all resolved to null/zero — the residual shape
+        # live-proven by clean-room CID 1f969398 (dev lane 2026-06-24), where the
+        # real metered spend survived ONLY in ``escalation_history`` because the
+        # workflow's ``current_tier_name`` / ``inference_*`` were not intact at
+        # terminal-build time — hoist the winning (last) metered escalation_history
+        # tier's measured cost + serving tier + served tokens into the top-level.
+        #
+        # This REPLACES the zero with the already-priced authoritative value once;
+        # it never re-adds, so the OMN-13535 no-double-count invariant holds. It
+        # only fires when the measured top-level total is 0 AND no served tokens
+        # were carried up — i.e. exactly the bug condition. When the intact path
+        # already populated the top level (cost > 0 or tokens > 0), the hoist is a
+        # no-op and the authoritative summed total is preserved verbatim. A
+        # free_local-only history has no metered winner to hoist, so the terminal
+        # honestly stays 0 by the cost model.
+        if (
+            not inputs.completed
+            and total_cost_usd <= 0.0
+            and cumulative_input_tokens == 0
+            and cumulative_output_tokens == 0
+        ):
+            hoisted = self._hoist_metered_history_tier(inputs.escalation_history)
+            if hoisted is not None:
+                cost = hoisted.measurement
+                total_cost_usd = cost.cash_cost_usd
+                served_input_tokens = hoisted.prompt_tokens
+                served_output_tokens = hoisted.completion_tokens
+                # Reconcile the canonical wire invariant (total == prompt +
+                # completion) against the hoisted served tokens — the residual
+                # shape carried total_tokens=0, which would violate the DTO.
+                served_total_tokens = served_input_tokens + served_output_tokens
+                cumulative_input_tokens = served_input_tokens
+                cumulative_output_tokens = served_output_tokens
+                # No counterfactual on the failure path -> savings stays 0 (never
+                # counterfactual-minus-0); the hoisted measurement already has
+                # cost_savings_usd == 0.0 (premium_counterfactual=None below).
+                total_savings_usd = cost.cost_savings_usd
+
         delegation_result = ModelDelegationResult(
             correlation_id=inputs.correlation_id,
             task_type=inputs.task_type,
@@ -1616,9 +1722,9 @@ class HandlerDelegationWorkflow:
             quality_passed=inputs.quality_passed,
             quality_score=inputs.quality_score,
             latency_ms=inputs.latency_ms,
-            prompt_tokens=inputs.prompt_tokens,
-            completion_tokens=inputs.completion_tokens,
-            total_tokens=inputs.total_tokens,
+            prompt_tokens=served_input_tokens,
+            completion_tokens=served_output_tokens,
+            total_tokens=served_total_tokens,
             fallback_to_claude=inputs.fallback_to_claude,
             failure_reason=inputs.failure_reason,
             tokens_to_compliance=inputs.tokens_to_compliance,
@@ -1662,9 +1768,10 @@ class HandlerDelegationWorkflow:
             llm_call_id=inputs.llm_call_id,
             tokens_to_compliance=inputs.tokens_to_compliance,
             compliance_attempts=inputs.compliance_attempts,
-            # Served tokens — identical to the canonical terminal above.
-            tokens_input=inputs.prompt_tokens,
-            tokens_output=inputs.completion_tokens,
+            # Served tokens — identical to the canonical terminal above (and the
+            # hoisted metered-history tokens on the residual null-top-level shape).
+            tokens_input=served_input_tokens,
+            tokens_output=served_output_tokens,
             pricing_manifest_version=get_manifest_version_int(),
             context_pack_hash=inputs.context_pack_hash,
             escalation_count=inputs.escalation_count,
