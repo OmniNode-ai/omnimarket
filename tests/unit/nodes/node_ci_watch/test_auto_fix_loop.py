@@ -16,6 +16,7 @@ from omnimarket.nodes.node_ci_watch.handlers.handler_ci_watch import (
     EnumCiTerminalStatus,
     HandlerCiWatch,
     ModelCiFixCycle,
+    ModelCiStatusFetch,
     ModelCiWatchCommand,
     ModelCiWatchResult,
     ModelFailedCheck,
@@ -47,6 +48,13 @@ def _failed_checks(names: list[str]) -> list[ModelFailedCheck]:
     return [ModelFailedCheck(name=n, conclusion="failure") for n in names]
 
 
+def _fetch(checks: list[ModelFailedCheck], summary: str = "") -> ModelCiStatusFetch:
+    """Build a clean (no-query-error) CI status fetch result for mocking."""
+    return ModelCiStatusFetch(
+        failed_checks=checks, failure_summary=summary, query_error=None
+    )
+
+
 # ---------------------------------------------------------------------------
 # auto_fix=False — unchanged path
 # ---------------------------------------------------------------------------
@@ -63,7 +71,7 @@ class TestAutoFixDisabled:
         with patch.object(
             handler,
             "_fetch_ci_status",
-            return_value=(checks, "lint failed"),
+            return_value=_fetch(checks, "lint failed"),
         ):
             result = handler.handle(_make_command(auto_fix=False))
 
@@ -78,7 +86,7 @@ class TestAutoFixDisabled:
         with patch.object(
             handler,
             "_fetch_ci_status",
-            return_value=([], ""),
+            return_value=_fetch([], ""),
         ):
             result = handler.handle(_make_command(auto_fix=False))
 
@@ -105,9 +113,9 @@ class TestAutoFixFixed:
             "",
         )
 
-        fetch_calls: list[tuple[list[ModelFailedCheck], str]] = [
-            (failing, "mypy error"),  # initial fetch
-            ([], ""),  # re-poll after fixer
+        fetch_calls: list[ModelCiStatusFetch] = [
+            _fetch(failing, "mypy error"),  # initial fetch
+            _fetch([], ""),  # re-poll after fixer
         ]
 
         with (
@@ -124,7 +132,7 @@ class TestAutoFixFixed:
             patch.object(
                 handler,
                 "_wait_and_repoll",
-                return_value=([], ""),
+                return_value=_fetch([], ""),
             ),
         ):
             result = handler.handle(_make_command(auto_fix=True, max_fix_cycles=3))
@@ -145,15 +153,15 @@ class TestAutoFixFixed:
 
         dispatch_return: tuple[str, str, str] = ("worker", "delegated:1", "")
         repoll_side_effects = [
-            (failing2, "mypy error"),  # cycle 1: still failing
-            ([], ""),  # cycle 2: green
+            _fetch(failing2, "mypy error"),  # cycle 1: still failing
+            _fetch([], ""),  # cycle 2: green
         ]
 
         with (
             patch.object(
                 handler,
                 "_fetch_ci_status",
-                return_value=(failing1, "lint error"),
+                return_value=_fetch(failing1, "lint error"),
             ),
             patch.object(
                 handler,
@@ -189,13 +197,13 @@ class TestAutoFixUnfixable:
         failing = _failed_checks(["test / run"])
 
         dispatch_return: tuple[str, str, str] = ("worker", "delegated:1", "")
-        repoll_always_failing = (failing, "tests still failing")
+        repoll_always_failing = _fetch(failing, "tests still failing")
 
         with (
             patch.object(
                 handler,
                 "_fetch_ci_status",
-                return_value=(failing, "test error"),
+                return_value=_fetch(failing, "test error"),
             ),
             patch.object(
                 handler,
@@ -224,7 +232,7 @@ class TestAutoFixUnfixable:
             patch.object(
                 handler,
                 "_fetch_ci_status",
-                return_value=(failing, "build error"),
+                return_value=_fetch(failing, "build error"),
             ),
             patch.object(
                 handler,
@@ -234,7 +242,7 @@ class TestAutoFixUnfixable:
             patch.object(
                 handler,
                 "_wait_and_repoll",
-                return_value=(failing, "still failing"),
+                return_value=_fetch(failing, "still failing"),
             ),
         ):
             result = handler.handle(_make_command(auto_fix=True, max_fix_cycles=1))
@@ -260,7 +268,7 @@ class TestAutoFixDispatchError:
             patch.object(
                 handler,
                 "_fetch_ci_status",
-                return_value=(failing, "lint error"),
+                return_value=_fetch(failing, "lint error"),
             ),
             patch.object(
                 handler,

@@ -67,7 +67,11 @@ inputs:
 outputs:
   terminal_status:
     type: str
-    description: "passed | failed | timeout | error | fixed | unfixable"
+    description: >
+      passed | failed | timeout | error | fixed | unfixable.
+      `error` is emitted when the gh query itself fails (CLI error, transport
+      failure, or unparseable output) — an UNKNOWN CI state that MUST NOT be
+      coerced into `passed` (OMN-12428 fail-loud guarantee).
   failed_checks:
     type: list
     description: "Names of failed CI checks"

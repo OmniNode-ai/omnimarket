@@ -70,6 +70,28 @@ class ModelFailedCheck(BaseModel):
     url: str = ""
 
 
+class ModelCiStatusFetch(BaseModel):
+    """Outcome of a single CI-status fetch via the gh CLI.
+
+    Distinguishes three states that ``(list, str)`` tuples conflated:
+
+    * green     — ``failed_checks == []`` and ``query_error is None``
+    * failing   — ``failed_checks`` non-empty, ``query_error is None``
+    * query err — ``query_error`` set (gh CLI/transport/parse failure)
+
+    The query-error state MUST NOT be read as green. Collapsing a gh query
+    error into an empty ``failed_checks`` list is the OMN-12428 false-positive:
+    a CI watcher that reports PASSED on its own query error would green-light a
+    PR whose CI is actually red or unknown.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    failed_checks: list[ModelFailedCheck] = Field(default_factory=list)
+    failure_summary: str = ""
+    query_error: str | None = None
+
+
 class ModelCiFixCycle(BaseModel):
     """Record for a single auto-fix cycle attempt."""
 
@@ -114,10 +136,12 @@ class HandlerCiWatch:
     dry_run=True returns a synthetic passed result for golden chain tests.
     """
 
-    # Check conclusions that indicate terminal failure
-    FAILED_CONCLUSIONS = frozenset(
-        {"failure", "timed_out", "cancelled", "action_required"}
-    )
+    # gh `pr checks --json bucket` categorizes each check's `state` into one of
+    # pass | fail | pending | skipping | cancel. A failing-terminal check is in
+    # the `fail` or `cancel` bucket. Keying on `bucket` is provider-agnostic and
+    # avoids the gh-version-specific `conclusion`/`state` enumeration that
+    # triggered the OMN-12428 "Unknown JSON field" path.
+    FAILED_BUCKETS = frozenset({"fail", "cancel"})
 
     # Seconds to wait after dispatching a fixer before re-polling
     _POST_DISPATCH_POLL_INTERVAL = 30
@@ -140,11 +164,19 @@ class HandlerCiWatch:
                 completed_at=datetime.now(tz=UTC),
             )
 
-        failed_checks, failure_summary = self._fetch_ci_status(
-            command.repo, command.pr_number
-        )
+        fetch = self._fetch_ci_status(command.repo, command.pr_number)
 
-        if not failed_checks:
+        # FAIL LOUD: a gh query/transport/parse error is an UNKNOWN CI state,
+        # never a green PASS (OMN-12428). Coercing it into PASSED would
+        # green-light a PR whose CI is actually red or unknown.
+        if fetch.query_error is not None:
+            return self._error_result(
+                command=command,
+                failure_summary=fetch.failure_summary,
+                started_at=started_at,
+            )
+
+        if not fetch.failed_checks:
             return ModelCiWatchResult(
                 correlation_id=command.correlation_id,
                 pr_number=command.pr_number,
@@ -164,8 +196,8 @@ class HandlerCiWatch:
                 pr_number=command.pr_number,
                 repo=command.repo,
                 terminal_status=EnumCiTerminalStatus.FAILED,
-                failed_checks=failed_checks,
-                failure_summary=failure_summary,
+                failed_checks=fetch.failed_checks,
+                failure_summary=fetch.failure_summary,
                 dry_run=False,
                 started_at=started_at,
                 completed_at=datetime.now(tz=UTC),
@@ -173,8 +205,8 @@ class HandlerCiWatch:
 
         return self._run_auto_fix_loop(
             command=command,
-            initial_failed_checks=failed_checks,
-            initial_failure_summary=failure_summary,
+            initial_failed_checks=fetch.failed_checks,
+            initial_failure_summary=fetch.failure_summary,
             started_at=started_at,
         )
 
@@ -227,10 +259,36 @@ class HandlerCiWatch:
                 break
 
             # Wait for fixer worker to push changes, then re-poll
-            post_checks, post_summary = self._wait_and_repoll(
-                command.repo, command.pr_number
-            )
+            post_fetch = self._wait_and_repoll(command.repo, command.pr_number)
 
+            # FAIL LOUD: a query error during re-poll is UNKNOWN, not green.
+            # Without this guard an empty failed_checks from a gh error would be
+            # read as ci_green and reported FIXED (OMN-12428 false-positive).
+            if post_fetch.query_error is not None:
+                cycle_record = ModelCiFixCycle(
+                    cycle_number=cycle_num,
+                    failed_checks_before=current_failed,
+                    failure_summary_before=current_summary,
+                    dispatch_worker_name=worker_name,
+                    dispatch_status=dispatch_status,
+                    ci_green_after=False,
+                    error=post_fetch.query_error,
+                )
+                cycles.append(cycle_record)
+                logger.warning(
+                    "ci_watch auto-fix cycle %d re-poll query error: %s",
+                    cycle_num,
+                    post_fetch.query_error,
+                )
+                return self._error_result(
+                    command=command,
+                    failure_summary=post_fetch.failure_summary,
+                    started_at=started_at,
+                    cycles=cycles,
+                )
+
+            post_checks = post_fetch.failed_checks
+            post_summary = post_fetch.failure_summary
             ci_green = len(post_checks) == 0
             cycle_record = ModelCiFixCycle(
                 cycle_number=cycle_num,
@@ -283,6 +341,39 @@ class HandlerCiWatch:
             failure_summary=current_summary,
             auto_fix_status=f"unfixable_after_{command.max_fix_cycles}_cycle(s)",
             cycles=cycles,
+            dry_run=False,
+            started_at=started_at,
+            completed_at=datetime.now(tz=UTC),
+        )
+
+    def _error_result(
+        self,
+        *,
+        command: ModelCiWatchCommand,
+        failure_summary: str,
+        started_at: datetime,
+        cycles: list[ModelCiFixCycle] | None = None,
+    ) -> ModelCiWatchResult:
+        """Build an ERROR terminal result for an UNKNOWN CI state.
+
+        Emitted when the gh query itself errors (CLI error, transport failure,
+        or unparseable output). This is the fail-loud path that replaces the
+        OMN-12428 false-positive where a query error was coerced into PASSED.
+        """
+        logger.error(
+            "ci_watch query error for %s#%d — reporting ERROR (not passed): %s",
+            command.repo,
+            command.pr_number,
+            failure_summary[:200],
+        )
+        return ModelCiWatchResult(
+            correlation_id=command.correlation_id,
+            pr_number=command.pr_number,
+            repo=command.repo,
+            terminal_status=EnumCiTerminalStatus.ERROR,
+            failed_checks=[],
+            failure_summary=failure_summary,
+            cycles=cycles or [],
             dry_run=False,
             started_at=started_at,
             completed_at=datetime.now(tz=UTC),
@@ -425,35 +516,42 @@ class HandlerCiWatch:
         )
         return worker_name, dispatch_status, ""
 
-    def _wait_and_repoll(
-        self, repo: str, pr_number: int
-    ) -> tuple[list[ModelFailedCheck], str]:
+    def _wait_and_repoll(self, repo: str, pr_number: int) -> ModelCiStatusFetch:
         """Wait for fixer worker, then re-poll CI checks.
 
         Polls every _POST_DISPATCH_POLL_INTERVAL seconds for up to
-        _POST_DISPATCH_POLL_MAX_WAIT seconds. Returns as soon as CI is green
-        or the timeout is reached.
+        _POST_DISPATCH_POLL_MAX_WAIT seconds. Returns as soon as CI is green,
+        a query error occurs, or the timeout is reached. A query error is
+        surfaced immediately (not retried into a false green).
         """
         deadline = time.monotonic() + self._POST_DISPATCH_POLL_MAX_WAIT
         interval = self._POST_DISPATCH_POLL_INTERVAL
 
         while True:
             time.sleep(interval)
-            failed_checks, failure_summary = self._fetch_ci_status(repo, pr_number)
-            if not failed_checks:
-                return [], ""
+            fetch = self._fetch_ci_status(repo, pr_number)
+            if fetch.query_error is not None:
+                # Surface the error to the caller immediately — do not keep
+                # polling, which could mask it behind a later transient green.
+                return fetch
+            if not fetch.failed_checks:
+                return fetch
             if time.monotonic() >= deadline:
                 logger.info(
                     "ci_watch re-poll timeout after %ds: still %d failing checks",
                     self._POST_DISPATCH_POLL_MAX_WAIT,
-                    len(failed_checks),
+                    len(fetch.failed_checks),
                 )
-                return failed_checks, failure_summary
+                return fetch
 
-    def _fetch_ci_status(
-        self, repo: str, pr_number: int
-    ) -> tuple[list[ModelFailedCheck], str]:
-        """Fetch CI check status via gh CLI. Returns (failed_checks, failure_summary)."""
+    def _fetch_ci_status(self, repo: str, pr_number: int) -> ModelCiStatusFetch:
+        """Fetch CI check status via gh CLI.
+
+        Returns a ``ModelCiStatusFetch``. A gh CLI / transport / parse failure
+        sets ``query_error`` (non-None) — the caller MUST treat that as an
+        UNKNOWN/ERROR terminal state, never as a green PASS. An empty
+        ``failed_checks`` with ``query_error is None`` is the only true green.
+        """
         result = subprocess.run(
             [
                 "gh",
@@ -463,35 +561,49 @@ class HandlerCiWatch:
                 "--repo",
                 repo,
                 "--json",
-                "name,conclusion,status,link",
+                "name,state,bucket,link",
             ],
             capture_output=True,
             text=True,
         )
 
         if result.returncode != 0:
+            error_text = f"gh pr checks error: {result.stderr.strip()[:200]}"
             logger.warning(
                 "gh pr checks failed for %s#%d: %s",
                 repo,
                 pr_number,
                 result.stderr.strip(),
             )
-            return [], f"gh pr checks error: {result.stderr.strip()[:200]}"
+            return ModelCiStatusFetch(
+                failed_checks=[],
+                failure_summary=error_text,
+                query_error=error_text,
+            )
 
         try:
             checks = json.loads(result.stdout)
         except json.JSONDecodeError as exc:
+            error_text = f"gh pr checks JSON parse error: {exc}"
             logger.warning("failed to parse gh pr checks output: %s", exc)
-            return [], "JSON parse error from gh pr checks"
+            return ModelCiStatusFetch(
+                failed_checks=[],
+                failure_summary=error_text,
+                query_error=error_text,
+            )
 
         failed: list[ModelFailedCheck] = []
         for check in checks:
-            conclusion = (check.get("conclusion") or "").lower()
-            if conclusion in self.FAILED_CONCLUSIONS:
+            # gh 2.68.x `pr checks --json bucket` categorizes each check's
+            # `state` into pass | fail | pending | skipping | cancel. There is
+            # no `conclusion` field at this level — querying it raises "Unknown
+            # JSON field" (the original OMN-12428 trigger). Key on `bucket`.
+            bucket = (check.get("bucket") or "").lower()
+            if bucket in self.FAILED_BUCKETS:
                 failed.append(
                     ModelFailedCheck(
                         name=check.get("name", "unknown"),
-                        conclusion=conclusion,
+                        conclusion=(check.get("state") or bucket).lower(),
                         url=check.get("link", ""),
                     )
                 )
@@ -500,7 +612,11 @@ class HandlerCiWatch:
         if failed:
             failure_summary = self._fetch_failure_log(repo, pr_number)
 
-        return failed, failure_summary
+        return ModelCiStatusFetch(
+            failed_checks=failed,
+            failure_summary=failure_summary,
+            query_error=None,
+        )
 
     def _fetch_failure_log(self, repo: str, pr_number: int) -> str:
         """Fetch truncated failure log via gh run view --log-failed."""
@@ -618,6 +734,7 @@ __all__: list[str] = [
     "EnumCiTerminalStatus",
     "HandlerCiWatch",
     "ModelCiFixCycle",
+    "ModelCiStatusFetch",
     "ModelCiWatchCommand",
     "ModelCiWatchResult",
     "ModelFailedCheck",
