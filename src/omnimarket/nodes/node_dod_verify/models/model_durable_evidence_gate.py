@@ -25,6 +25,7 @@ class EnumDurableEvidenceCheck(StrEnum):
     CONTRACT_CITES_MERGE_COMMIT = "contract_cites_merge_commit"
     CONTRACT_ON_OCC_MAIN = "contract_on_occ_main"
     DEFECT_PREVENTION_GATE = "defect_prevention_gate"
+    DONE_CLASS_LABEL = "done_class_label"
 
 
 class EnumDefectLabel(StrEnum):
@@ -43,6 +44,28 @@ class EnumDefectLabel(StrEnum):
     @classmethod
     def values(cls) -> frozenset[str]:
         """Return the defect-class label string values."""
+        return frozenset(member.value for member in cls)
+
+
+class EnumDoneClassLabel(StrEnum):
+    """Approved done-class labels (OMN-13337, retro enforcement R2).
+
+    A Linear ticket may transition to Done only when it carries at least one of
+    these labels AND the label is backed by durable evidence. The set encodes
+    *how* a ticket was proven Done so that done-detection is reliable; a
+    plain-Done ticket with no class is rejected at the gate boundary.
+    """
+
+    SOURCE_DONE = "source-done"
+    RUNTIME_OBSERVED = "runtime-observed"
+    PROJECTION_BACKED = "projection-backed"
+    REPLAY_PROVEN = "replay-proven"
+    DEMO_VISIBLE = "demo-visible"
+    PROD_PROVEN = "prod-proven"
+
+    @classmethod
+    def values(cls) -> frozenset[str]:
+        """Return the approved done-class label string values."""
         return frozenset(member.value for member in cls)
 
 
@@ -106,6 +129,7 @@ class ModelCitedMergeCommit(BaseModel):
 
 __all__: list[str] = [
     "EnumDefectLabel",
+    "EnumDoneClassLabel",
     "EnumDurableEvidenceCheck",
     "EnumDurableEvidenceStatus",
     "ModelCitedMergeCommit",

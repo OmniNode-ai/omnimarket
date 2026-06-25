@@ -57,6 +57,7 @@ from typing import Protocol
 
 from omnimarket.nodes.node_dod_verify.models.model_durable_evidence_gate import (
     EnumDefectLabel,
+    EnumDoneClassLabel,
     EnumDurableEvidenceCheck,
     EnumDurableEvidenceStatus,
     ModelCitedMergeCommit,
@@ -633,6 +634,55 @@ class DurableEvidenceGate:
                         ),
                     )
                 )
+
+        # Check 4 (OMN-13337, retro R2): the ticket must carry at least one
+        # approved done-class label, and the label must be backed by durable
+        # evidence. A plain-Done ticket with no class label — or a labelled
+        # ticket whose receipt is not tracked on the governance ref — is
+        # rejected here so done-detection cannot be gamed with a bare Done.
+        approved_labels = EnumDoneClassLabel.values()
+        present_done_classes = sorted(ticket_labels & approved_labels)
+        if not present_done_classes:
+            checks.append(
+                ModelDurableEvidenceCheckResult(
+                    check=EnumDurableEvidenceCheck.DONE_CLASS_LABEL,
+                    passed=False,
+                    message=(
+                        "Ticket carries no approved done-class label. Add exactly "
+                        "one of "
+                        f"{sorted(approved_labels)} that reflects how the work was "
+                        "proven Done (backed by RECEIPT_TRACKED / "
+                        "CONTRACT_CITES_MERGE_COMMIT / CONTRACT_ON_OCC_MAIN) "
+                        "before transitioning Linear to Done. A plain Done with no "
+                        "done-class label is rejected (OMN-13337)."
+                    ),
+                )
+            )
+        elif not receipt_tracked:
+            checks.append(
+                ModelDurableEvidenceCheckResult(
+                    check=EnumDurableEvidenceCheck.DONE_CLASS_LABEL,
+                    passed=False,
+                    message=(
+                        f"Ticket carries done-class label(s) {present_done_classes} "
+                        "but no durable receipt is tracked on "
+                        f"{self._occ_governance_ref}. A done-class label must be "
+                        "backed by a tracked receipt (RECEIPT_TRACKED) — the label "
+                        "alone is not evidence (OMN-13337)."
+                    ),
+                )
+            )
+        else:
+            checks.append(
+                ModelDurableEvidenceCheckResult(
+                    check=EnumDurableEvidenceCheck.DONE_CLASS_LABEL,
+                    passed=True,
+                    message=(
+                        f"Done-class label(s) {present_done_classes} present and "
+                        "backed by a tracked durable receipt."
+                    ),
+                )
+            )
 
         all_pass = all(c.passed for c in checks)
         return ModelDurableEvidenceGateResult(
