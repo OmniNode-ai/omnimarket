@@ -44,6 +44,7 @@ from uuid import UUID
 from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from omnimarket.events.repo_health import EnumFailureOrigin
 from omnimarket.nodes.node_pr_lifecycle_orchestrator.protocols.protocol_sub_handlers import (
     EnumPrCategory,
     EnumReducerIntent,
@@ -93,6 +94,11 @@ EVENT_TYPE_FIXER_DISPATCH_START = "omnimarket.fixer-dispatch-start"
 TOPIC_PR_LIFECYCLE_START = "onex.cmd.omnimarket.pr-lifecycle-orchestrator-start.v1"  # onex-topic-allow: contract-declared
 TOPIC_PR_LIFECYCLE_COMPLETED = "onex.evt.omnimarket.pr-lifecycle-orchestrator-completed.v1"  # onex-topic-allow: contract-declared
 TOPIC_PR_LIFECYCLE_FAILED = "onex.evt.omnimarket.pr-lifecycle-orchestrator-failed.v1"  # onex-topic-allow: contract-declared
+# OMN-13586 RH-4: repo-health classify/repair fan-out topics.
+TOPIC_REPO_HEALTH_CLASSIFY = (
+    "onex.cmd.omnimarket.repo-health-classify.v1"  # onex-topic-allow: contract-declared
+)
+TOPIC_REPO_HEALTH_REPAIR_START = "onex.cmd.omnimarket.repo-health-repair-start.v1"  # onex-topic-allow: contract-declared
 
 
 # ---------------------------------------------------------------------------
@@ -1130,6 +1136,12 @@ class HandlerPrLifecycleOrchestrator:
                 await self._publish_fixer_dispatch_start(
                     fix_prs, command.correlation_id
                 )
+                # OMN-13586 RH-4: fan-out to repo-health classify/repair lane.
+                # Publishes classify cmd for all fix_prs that have a
+                # validation_failure_origin set; additionally publishes
+                # repair-start only for REPO_BASELINE origins.
+                # Best-effort — a publish error must never abort the sweep.
+                await self._publish_repo_health_fanout(fix_prs, command.correlation_id)
 
                 assert self._fix is not None
                 fix_results = await self._dispatch_fix_parallel(
@@ -1927,6 +1939,94 @@ class HandlerPrLifecycleOrchestrator:
                 key=None,
                 value=encoded,
             )
+
+    async def _publish_repo_health_fanout(
+        self,
+        fix_prs: tuple[TriageRecord, ...],
+        correlation_id: UUID,
+    ) -> None:
+        """RH-4 fan-out: publish repo-health classify/repair commands.
+
+        For each fix_pr with a ``validation_failure_origin`` set:
+          - Publish ``onex.cmd.omnimarket.repo-health-classify.v1`` (all non-None
+            origins) so node_repo_health_classify_compute can record the origin.
+          - Additionally publish ``onex.cmd.omnimarket.repo-health-repair-start.v1``
+            only when origin is REPO_BASELINE (the repair lane is triggered).
+
+        Decision rules per plan §3.3 (OMN-13586):
+          - repo_baseline  → classify cmd + repair-start cmd
+          - pr_scoped      → classify cmd only (stays in existing fix lane)
+          - unknown        → classify cmd only (surface evidence, no auto repair)
+          - external_dependency → classify cmd only (surfaced, no code repair task)
+          - None           → no commands (no validation failure observed)
+
+        Guardrail: these publishes are best-effort notifications — a publish
+        failure must never abort a sweep. Repo-baseline debt must NOT become a
+        new hard block on auto-merge arming (plan facts #9/#10).
+
+        Related: OMN-13586 RH-4, OMN-13316 epic.
+        """
+        for pr in fix_prs:
+            origin = pr.validation_failure_origin
+            if origin is None:
+                continue
+
+            # Emit the classify command for all non-None origins.
+            classify_payload = json.dumps(
+                {
+                    "pr_number": pr.pr_number,
+                    "repo": pr.repo,
+                    "failure_origin": origin.value,
+                    "block_reason": pr.block_reason or "",
+                    "failed_check_names": list(pr.failed_check_names),
+                    "correlation_id": str(correlation_id),
+                }
+            ).encode()
+            try:
+                await self._event_bus.publish(
+                    topic=TOPIC_REPO_HEALTH_CLASSIFY,
+                    key=None,
+                    value=classify_payload,
+                )
+            except Exception as exc:
+                logger.warning(
+                    "[PR-LIFECYCLE-ORCH] failed to publish repo-health-classify "
+                    "pr=%s repo=%s origin=%s: %s",
+                    pr.pr_number,
+                    pr.repo,
+                    origin,
+                    exc,
+                )
+
+            # Emit repair-start only for repo_baseline — pr_scoped and unknown
+            # do not trigger an automated repair task.
+            if origin is not EnumFailureOrigin.REPO_BASELINE:
+                continue
+
+            repair_payload = json.dumps(
+                {
+                    "pr_number": pr.pr_number,
+                    "repo": pr.repo,
+                    "failure_origin": origin.value,
+                    "block_reason": pr.block_reason or "",
+                    "failed_check_names": list(pr.failed_check_names),
+                    "correlation_id": str(correlation_id),
+                }
+            ).encode()
+            try:
+                await self._event_bus.publish(
+                    topic=TOPIC_REPO_HEALTH_REPAIR_START,
+                    key=None,
+                    value=repair_payload,
+                )
+            except Exception as exc:
+                logger.warning(
+                    "[PR-LIFECYCLE-ORCH] failed to publish repo-health-repair-start "
+                    "pr=%s repo=%s: %s",
+                    pr.pr_number,
+                    pr.repo,
+                    exc,
+                )
 
 
 __all__: list[str] = [
