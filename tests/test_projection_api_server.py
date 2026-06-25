@@ -339,17 +339,55 @@ class TestCorsConfiguration:
 
 
 class TestComputeFreshness:
-    def test_fresh_within_5_min(self) -> None:
-        assert compute_freshness(_ts(timedelta(minutes=2))) == "fresh"
-
-    def test_stale_between_5_and_60_min(self) -> None:
-        assert compute_freshness(_ts(timedelta(minutes=30))) == "stale"
-
-    def test_degraded_older_than_60_min(self) -> None:
-        assert compute_freshness(_ts(timedelta(hours=2))) == "degraded"
+    """Freshness classification, including contract-cadence + idle (OMN-13035)."""
 
     def test_none_returns_degraded(self) -> None:
+        # No rows at all is a genuine projection problem, distinct from idle.
         assert compute_freshness(None) == "degraded"
+        assert compute_freshness(None, expected_event_interval_seconds=60) == "degraded"
+
+    # --- On-demand topics (no declared cadence): silence is never stale -----
+
+    def test_on_demand_recent_is_fresh(self) -> None:
+        assert compute_freshness(_ts(timedelta(minutes=2))) == "fresh"
+
+    def test_on_demand_quiet_is_idle_not_stale(self) -> None:
+        # DoD: an on-demand topic must NEVER report "stale" from silence.
+        assert compute_freshness(_ts(timedelta(minutes=30))) == "idle"
+
+    def test_on_demand_long_silence_is_still_idle_not_degraded(self) -> None:
+        # The cry-wolf "degraded from silence" label is retired for on-demand.
+        result = compute_freshness(_ts(timedelta(hours=6)))
+        assert result == "idle"
+        assert result not in {"stale", "degraded"}
+
+    # --- Cadenced topics (contract declares expected_event_interval_seconds) -
+
+    def test_cadenced_within_interval_is_fresh(self) -> None:
+        assert (
+            compute_freshness(
+                _ts(timedelta(seconds=30)), expected_event_interval_seconds=60
+            )
+            == "fresh"
+        )
+
+    def test_cadenced_one_missed_beat_is_idle(self) -> None:
+        # interval <= age < 2*interval -> idle (quiet, not yet alarming).
+        assert (
+            compute_freshness(
+                _ts(timedelta(seconds=90)), expected_event_interval_seconds=60
+            )
+            == "idle"
+        )
+
+    def test_cadenced_behind_two_intervals_is_stale(self) -> None:
+        # age >= 2*interval -> genuinely behind the declared cadence.
+        assert (
+            compute_freshness(
+                _ts(timedelta(seconds=180)), expected_event_interval_seconds=60
+            )
+            == "stale"
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -629,17 +667,34 @@ class TestProjectionRoutes:
             resp = client.get("/projection/onex.snapshot.projection.cost.summary.v1")
         assert resp.json()["data_freshness"] == "fresh"
 
-    def test_freshness_stale(self) -> None:
+    def test_on_demand_quiet_reports_idle_not_stale(self) -> None:
+        # OMN-13035 / retro B-7: cost.summary declares no cadence, so it is an
+        # on-demand topic. 30-minute silence is honest "idle", NOT the cry-wolf
+        # "stale" the projection API used to emit from mere quiet.
         pool = _make_pool([], latest_ts=_ts(timedelta(minutes=30)))
         with _with_pool(pool) as client:
             resp = client.get("/projection/onex.snapshot.projection.cost.summary.v1")
-        assert resp.json()["data_freshness"] == "stale"
+        assert resp.json()["data_freshness"] == "idle"
 
-    def test_freshness_degraded(self) -> None:
+    def test_on_demand_long_silence_still_idle_not_degraded(self) -> None:
+        # On-demand topics never degrade from silence alone (only None rows do).
         pool = _make_pool([], latest_ts=_ts(timedelta(hours=2)))
         with _with_pool(pool) as client:
             resp = client.get("/projection/onex.snapshot.projection.cost.summary.v1")
-        assert resp.json()["data_freshness"] == "degraded"
+        assert resp.json()["data_freshness"] == "idle"
+
+    def test_cadenced_topic_behind_cadence_reports_stale(self) -> None:
+        # A topic that DOES declare expected_event_interval_seconds is genuinely
+        # stale once it falls 2x past its cadence — the honest-staleness signal
+        # is preserved for streaming projections.
+        topic = "onex.snapshot.projection.cost.summary.v1"
+        cadenced = _PROJECTION_TOPIC_MAP[topic].model_copy(
+            update={"expected_event_interval_seconds": 60}
+        )
+        pool = _make_pool([], latest_ts=_ts(timedelta(minutes=30)))
+        with _with_pool(pool, topic_map={topic: cadenced}) as client:
+            resp = client.get(f"/projection/{topic}")
+        assert resp.json()["data_freshness"] == "stale"
 
     def test_upstream_unavailable_returns_503(self) -> None:
         pool = _make_broken_pool()
@@ -780,7 +835,13 @@ def _assert_envelope(body: dict[str, Any], topic: str) -> None:
     assert "projection_version" in body
     assert "generated_at" in body
     assert "data_freshness" in body
-    assert body["data_freshness"] in {"fresh", "stale", "degraded", "unknown"}
+    assert body["data_freshness"] in {
+        "fresh",
+        "idle",
+        "stale",
+        "degraded",
+        "unknown",
+    }
     assert "row_count" in body
     assert "rows" in body
     assert isinstance(body["rows"], list)

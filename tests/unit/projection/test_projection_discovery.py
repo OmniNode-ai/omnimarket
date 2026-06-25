@@ -211,6 +211,33 @@ class TestParseProjectionApiSection:
         assert cfg is not None
         assert cfg.freshness_column is None
 
+    def test_absent_cadence_is_on_demand_none(self, tmp_path: Path) -> None:
+        """Absent expected_event_interval_seconds => on-demand (None) (OMN-13035)."""
+        section = self._valid_section()
+        assert "expected_event_interval_seconds" not in section
+        p = tmp_path / "contract.yaml"
+        cfg = _parse_projection_api_section(section, "node_test", p)
+        assert cfg is not None
+        assert cfg.expected_event_interval_seconds is None
+
+    def test_declared_cadence_is_parsed(self, tmp_path: Path) -> None:
+        """A positive expected_event_interval_seconds is carried verbatim."""
+        section = self._valid_section()
+        section["expected_event_interval_seconds"] = 300
+        p = tmp_path / "contract.yaml"
+        cfg = _parse_projection_api_section(section, "node_test", p)
+        assert cfg is not None
+        assert cfg.expected_event_interval_seconds == 300
+
+    def test_non_positive_cadence_excludes_contract(self, tmp_path: Path) -> None:
+        """A zero/negative/non-int cadence is invalid and excludes the contract."""
+        for bad in (0, -1, "fast"):
+            section = self._valid_section()
+            section["expected_event_interval_seconds"] = bad
+            p = tmp_path / "contract.yaml"
+            cfg = _parse_projection_api_section(section, "node_test", p)
+            assert cfg is None, f"cadence={bad!r} should be rejected"
+
     def test_schema_whitelist_enforced(self, tmp_path: Path) -> None:
         """A non-whitelisted schema must cause the contract to be excluded."""
         section = self._valid_section()

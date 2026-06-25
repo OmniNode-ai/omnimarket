@@ -72,6 +72,7 @@ def _make_cfg(
     freshness_state_column: str | None = None,
     degraded_reason_column: str | None = None,
     observed_at_column: str | None = None,
+    expected_event_interval_seconds: int | None = None,
     status: ProjectionStatus = ProjectionStatus.OK,
     degraded_reason: str = "",
 ) -> ProjectionTableConfig:
@@ -82,6 +83,7 @@ def _make_cfg(
         columns=columns,
         order_by=order_by,
         freshness_column=freshness_column,
+        expected_event_interval_seconds=expected_event_interval_seconds,
         cursor_column=cursor_column,
         last_event_id_column=last_event_id_column,
         last_ingest_sequence_column=last_ingest_sequence_column,
@@ -319,12 +321,16 @@ class TestProjectionEndpointDynamic:
             == "onex.snapshot.projection.delegation.correlation-trace.v1"
         )
 
-    def test_evidence_pipeline_genuinely_stale_table_still_degraded(self) -> None:
-        """A populated-but-stale table (no filter) keeps the DEGRADED signal.
+    def test_evidence_pipeline_genuinely_stale_table_surfaces_stale(self) -> None:
+        """A populated-but-stale table (no filter) keeps a genuine-staleness signal.
 
         EMPTY must only apply when a filter returned zero rows; an unfiltered
-        read of a stale projection must continue to surface DEGRADED so real
-        staleness is not masked.
+        read of a stale projection must continue to surface a non-fresh,
+        non-empty signal so real staleness is not masked. The evidence-pipeline
+        correlation-trace projection is an actively-streaming projection, so it
+        declares an expected cadence (OMN-13035): a 2h-old row is far past 2x the
+        interval and therefore genuinely STALE — NOT the honest "idle" reserved
+        for on-demand topics that have simply gone quiet, and NOT EMPTY.
         """
         cfg = _make_cfg(
             topic="onex.snapshot.projection.evidence_pipeline.correlations.v1",
@@ -340,6 +346,7 @@ class TestProjectionEndpointDynamic:
             cursor_column="projection_cursor",
             freshness_state_column="freshness_state",
             observed_at_column="observed_at",
+            expected_event_interval_seconds=300,
         )
         stale_ts = _ts(timedelta(hours=2))
         rows = [
@@ -358,7 +365,9 @@ class TestProjectionEndpointDynamic:
         assert resp.status_code == 200
         body = resp.json()
         assert body["row_count"] == 1
-        assert body["freshness_state"] == "DEGRADED"
+        # Non-fresh, non-EMPTY: real staleness is not masked (the cry-wolf-free
+        # signal for a cadenced projection that has fallen behind its cadence).
+        assert body["freshness_state"] == "STALE"
 
     def test_query_failure_returns_503_degraded(self) -> None:
         """A DB query error during serving returns 503 with reason, not 500."""
