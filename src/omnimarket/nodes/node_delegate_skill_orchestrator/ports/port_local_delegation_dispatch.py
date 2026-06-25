@@ -216,9 +216,20 @@ class LocalDelegationDispatchPort:
         #
         # Fix: (1) offload the blocking call to a worker thread so the loop stays
         # responsive, and (2) wrap it in a hard ``asyncio.wait_for`` ceiling so
-        # the local path ALWAYS terminates and ALWAYS writes a trustworthy
-        # evidence row. The ceiling is the contract-resolved per-backend timeout
-        # plus a fixed buffer that covers the preceding health probe.
+        # ``dispatch`` ALWAYS returns and ALWAYS writes a trustworthy evidence row
+        # within ``transport_timeout + buffer``. The ceiling is the
+        # contract-resolved per-backend timeout plus a fixed buffer that covers
+        # the preceding health probe.
+        #
+        # Note on process exit (CodeRabbit, OMN-13597): ``asyncio.wait_for``
+        # cannot cancel an already-running ``to_thread`` worker, so ``asyncio.run``
+        # still joins that worker at loop shutdown. That join is bounded — once the
+        # loop is no longer frozen, the transport's OWN timeout (curl ``--max-time``
+        # / httpx ``timeout``, threaded from ``timeout_seconds``) terminates the
+        # call. The pre-fix infinite hang was the FROZEN loop preventing BOTH
+        # timers from ever firing; with the loop responsive the worst case is one
+        # bounded ``timeout_seconds`` join after ``dispatch`` has already returned
+        # its failed verdict and written the evidence row.
         dispatch_deadline_seconds = timeout_seconds + _DISPATCH_TIMEOUT_BUFFER_SECONDS
         try:
             result = await asyncio.wait_for(
