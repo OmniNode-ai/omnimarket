@@ -1,0 +1,61 @@
+{
+  "chain_name": "regression_replay_positive_all_pass",
+  "start": {
+    "experiment_id": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+    "run_id": "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
+    "correlation_id": "cccccccc-cccc-cccc-cccc-cccccccccccc",
+    "runtime_identity": "replay/golden-chain",
+    "samples_per_task": 3,
+    "tasks": [
+      {
+        "task_id": "reg-001",
+        "description": "Generate a compute node that converts Celsius to Fahrenheit",
+        "expected_difficulty": "simple",
+        "baseline_pass_rate": 1.0,
+        "baseline_avg_attempts": 1.0,
+        "source_experiment_id": "OMN-11241-ctx-matrix",
+        "source_ticket_id": "OMN-11241",
+        "baseline_source_path": ".onex_state/hackathon/context_matrix/baseline.json",
+        "baseline_captured_at": "2026-05-20T00:00:00Z"
+      },
+      {
+        "task_id": "reg-002",
+        "description": "Generate a compute node that reverses a string input",
+        "expected_difficulty": "simple",
+        "baseline_pass_rate": 1.0,
+        "baseline_avg_attempts": 1.0,
+        "source_experiment_id": "OMN-11241-ctx-matrix",
+        "source_ticket_id": "OMN-11241",
+        "baseline_source_path": ".onex_state/hackathon/context_matrix/baseline.json",
+        "baseline_captured_at": "2026-05-20T00:00:00Z"
+      },
+      {
+        "task_id": "reg-003",
+        "description": "Generate a compute node that deduplicates a list while preserving order",
+        "expected_difficulty": "simple",
+        "baseline_pass_rate": 0.9,
+        "baseline_avg_attempts": 1.2,
+        "source_experiment_id": "OMN-11241-ctx-matrix",
+        "source_ticket_id": "OMN-11241",
+        "baseline_source_path": ".onex_state/hackathon/context_matrix/baseline.json",
+        "baseline_captured_at": "2026-05-20T00:00:00Z"
+      }
+    ],
+    "replay_corpus": [
+      {"task_id": "reg-001", "attempt": 1, "output": "def c2f(c): return c * 9/5 + 32"},
+      {"task_id": "reg-002", "attempt": 1, "output": "def rev(s): return s[::-1]"},
+      {"task_id": "reg-003", "attempt": 1, "output": "def dedup(xs): return list(dict.fromkeys(xs))"}
+    ]
+  },
+  "expected_result": {
+    "experiment_id": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+    "experiment_type": "regression_test",
+    "run_id": "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
+    "correlation_id": "cccccccc-cccc-cccc-cccc-cccccccccccc",
+    "runtime_identity": "replay/golden-chain",
+    "score": {"value": 1.0, "scale_max": 1.0},
+    "cost": {"cost_usd": "0.0"},
+    "status": "completed",
+    "evidence_ref": {"evidence_id": "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb", "artifact_ref": null}
+  }
+}
