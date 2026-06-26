@@ -70,8 +70,10 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
     # un-forgeable prod-health fact for the prod-promotion gate): 328 -> 329.
     # OMN-13606 SEA Phase 0.2 adds node_generated_node_publish_effect (EFFECT;
     # auto-PR publish step of the SEA self-extension loop): 329 -> 330.
-    assert summary["node_dirs"] == 330
-    assert summary["entry_points"] == 330
+    # OMN-13615 SEA Phase 3.2 adds node_model_eval_orchestrator (ORCHESTRATOR;
+    # canonical model-eval experiment home migrated from SEA): 330 -> 331.
+    assert summary["node_dirs"] == 331
+    assert summary["entry_points"] == 331
     assert summary["missing_entry_points"] == []
     assert summary["dangling_entry_points"] == []
     assert summary["routable"] >= 297

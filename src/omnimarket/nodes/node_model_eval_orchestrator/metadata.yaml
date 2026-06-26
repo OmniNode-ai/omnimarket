@@ -1,0 +1,25 @@
+name: node_model_eval_orchestrator
+version: "1.0.0"
+description: "Model-eval experiment orchestrator — scores N endpoints, emits ModelExperimentResult"
+omnibase_core_compat: ">=0.46.0,<0.47.0"
+entry_points:
+  onex.nodes:
+    node_model_eval_orchestrator: "omnimarket.nodes.node_model_eval_orchestrator"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: true
+  requires_repo: false
+  requires_secrets: true
+  requires_docker: false
+  side_effect_class: effectful
+dependencies:
+  - "omnibase_core>=0.46.0"
+  - "omnibase-infra>=0.1.0"
+  - "pyyaml>=6.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["experiment", "model-eval", "orchestrator", "sea-migration", "OMN-13615", "OMN-13613"]
+pack: "experiment"
+display_name: "Model Eval Orchestrator"
+node_role: "orchestrator"
