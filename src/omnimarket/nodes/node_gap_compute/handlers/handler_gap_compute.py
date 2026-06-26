@@ -47,6 +47,33 @@ _TOPIC_RE = re.compile(
 # nodes must touch the bus, so a missing event_bus on those remains a finding.
 _BUS_OPTIONAL_NODE_KINDS = frozenset({EnumNodeKind.COMPUTE, EnumNodeKind.RUNTIME_HOST})
 
+# Path *segments* whose presence anywhere in a discovered contract.yaml path
+# means the contract lives inside a nested git worktree or a generated/dependency
+# tree — a frozen duplicate of a canonical contract, not a canonical clone. The
+# walk prunes these so the sweep scans canonical clones only (OMN-13638).
+#
+# Matched per-segment (not substring) so a legitimately named directory like
+# ``docs/using_worktrees/`` is NOT excluded — only an actual ``worktrees`` /
+# ``omni_worktrees`` directory segment is. ``.claude/worktrees`` is covered by
+# the bare ``worktrees`` segment; ``omni_worktrees`` is the sibling per-ticket
+# clone convention. The 2026-06-26 dev sweep showed 48% of findings (and its
+# sole phantom CRITICAL) came from these duplicate trees. Sibling-class fix to
+# OMN-13521 (node_doc_freshness_sweep), whose exclusion set this mirrors.
+_WORKTREE_EXCLUDED_SEGMENTS = frozenset(
+    {
+        ".claude",
+        "worktrees",
+        "omni_worktrees",
+        ".venv",
+        "node_modules",
+        "__pycache__",
+        ".git",
+        ".mypy_cache",
+        ".pytest_cache",
+        ".ruff_cache",
+    }
+)
+
 # Bare lowercase archetype words used in contracts map to the canonical
 # ``*_GENERIC`` EnumNodeType (same mapping omnibase_core uses in
 # MixinNodeTypeValidator / ContractMergeEngine).
@@ -117,10 +144,18 @@ class HandlerGapCompute:
         for repo_root in repo_roots:
             repo_name = repo_root.name
             for contract_path in sorted(repo_root.rglob("contract.yaml")):
-                if (
-                    ".venv" in contract_path.parts
-                    or "node_modules" in contract_path.parts
-                ):
+                # Prune nested worktree snapshots and generated/dependency trees
+                # so only canonical clones are scanned (OMN-13638). Per-segment
+                # match against _WORKTREE_EXCLUDED_SEGMENTS on the path *below*
+                # the repo root — a single .claude / worktrees / omni_worktrees
+                # directory segment inside the clone excludes the contract.
+                # Scoping to the repo-relative parts (not the absolute path)
+                # avoids false-pruning every contract when the repo root itself
+                # is resolved under such a segment (e.g. an explicit worktree
+                # root); that whole-worktree case is handled by canonical-root
+                # resolution, not this per-contract filter.
+                walk_parts = _repo_relative_parts(contract_path, repo_root)
+                if _WORKTREE_EXCLUDED_SEGMENTS.intersection(walk_parts):
                     continue
                 rel_path = _relative_to_repo(contract_path, repo_root)
                 try:
@@ -445,6 +480,20 @@ def _relative_to_repo(path: Path, repo_root: Path) -> str:
         return str(path.relative_to(repo_root))
     except ValueError:
         return str(path)
+
+
+def _repo_relative_parts(path: Path, repo_root: Path) -> tuple[str, ...]:
+    """Return ``path``'s segments relative to ``repo_root``.
+
+    Used for worktree-exclusion matching so the per-segment filter ignores any
+    excluded segment that appears in the repo root's *own* ancestor path (e.g.
+    a clone resolved under ``omni_worktrees/``). Falls back to the full parts
+    when ``path`` is not under ``repo_root``.
+    """
+    try:
+        return path.relative_to(repo_root).parts
+    except ValueError:
+        return path.parts
 
 
 def _dispatch_class(boundary_kind: str, rule_name: str) -> str:
