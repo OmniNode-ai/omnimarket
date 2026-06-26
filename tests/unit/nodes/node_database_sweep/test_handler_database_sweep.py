@@ -440,3 +440,41 @@ class TestNodeMigrationApplicationGap:
         assert node_mig.status == "PENDING"
         assert result.migrations_pending >= 1
         assert result.status == "issues_found"
+
+    @pytest.mark.parametrize("node_status", ["ERROR", "NO_TABLE"])
+    def test_handler_fails_on_node_migration_verification_gap(
+        self, tmp_path: Path, node_status: str
+    ) -> None:
+        """Handler treats unverifiable node migrations as issues_found."""
+        handler = NodeDatabaseSweep()
+
+        with (
+            patch(
+                "omnimarket.nodes.node_database_sweep.handlers.handler_database_sweep._get_all_tables",
+                return_value=[],
+            ),
+            patch(
+                "omnimarket.nodes.node_database_sweep.handlers.handler_database_sweep._get_drizzle_tables",
+                return_value=set(),
+            ),
+        ):
+            from omnimarket.nodes.node_database_sweep.handlers import (
+                handler_database_sweep as hmod,
+            )
+
+            node_result = hmod.ModelMigrationStateResult(
+                database="omnidash_analytics",
+                repo="omnimarket",
+                migration_tool="node-vendored",
+                status=node_status,
+                message="node migration verification unavailable",
+            )
+            with (
+                patch.object(hmod, "_ALEMBIC_REPOS", []),
+                patch.object(hmod, "_DRIZZLE_REPOS", []),
+                patch.object(hmod, "_check_node_migrations", return_value=node_result),
+            ):
+                request = DatabaseSweepRequest(omni_home=str(tmp_path))
+                result = handler.handle(request)
+
+        assert result.status == "issues_found"
