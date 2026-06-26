@@ -76,6 +76,12 @@ event_bus:
   publish_topics:
     - onex.evt.omnimarket.regression-suite-completed.v1
 
+# The terminal experiment result is consumed externally by the experiment
+# projection / dashboard read surface (projection-backed, not an in-repo node),
+# mirroring node_runtime_closeout_orchestrator's closeout-completed terminal.
+externally_consumed_topics:
+  - onex.evt.omnimarket.regression-suite-completed.v1
+
 metadata:
   transport_type: kafka
   description: "Regression-test orchestrator — deterministic replay, emits canonical experiment result"
