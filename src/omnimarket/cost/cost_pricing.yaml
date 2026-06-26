@@ -1,0 +1,82 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# Canonical contract-sourced model pricing (OMN-13621).
+#
+# Routed from the SEA hackathon repo (onex-self-extending-agent/src/contracts/
+# cost_pricing.yaml). This is the SINGLE source of per-model pricing for the
+# omnimarket cost surface: prices are USD per token and are NEVER hardcoded in
+# handler source. usage_source / cost_basis use the canonical lowercase
+# omnimarket enum values (EnumUsageSource / EnumCostBasis).
+#
+# cost_basis semantics:
+#   - zero_marginal_api_cost: local / owned-GPU; no per-call API charge. Both
+#     token prices MUST be 0. Provenance must document "marginal api cost" and
+#     "not total infra cost".
+#   - cloud_api_cost: metered cloud API; both prices MUST NOT be silently zero.
+#   - unknown: no pricing known; both prices null (used for explicit unknowns).
+schema_version: "1.0.0"
+price_unit: USD_PER_TOKEN
+entries:
+  # --- Local / owned-GPU backends (zero marginal API cost) -----------------
+  - provider: local
+    model_id: Qwen3.6-35B-A3B
+    input_token_price: "0"
+    output_token_price: "0"
+    currency: USD
+    provenance: "Local vLLM on owned GPU; zero marginal api cost means marginal API cost only, not total infra cost."
+    usage_source: estimated
+    cost_basis: zero_marginal_api_cost
+  - provider: local-vllm
+    model_id: Qwen3-Coder-30B
+    input_token_price: "0"
+    output_token_price: "0"
+    currency: USD
+    provenance: "Local vLLM on owned GPU; zero marginal api cost means marginal API cost only, not total infra cost."
+    usage_source: estimated
+    cost_basis: zero_marginal_api_cost
+  - provider: local-vllm
+    model_id: DeepSeek-R1-14B
+    input_token_price: "0"
+    output_token_price: "0"
+    currency: USD
+    provenance: "Local vLLM on owned GPU; zero marginal api cost means marginal API cost only, not total infra cost."
+    usage_source: estimated
+    cost_basis: zero_marginal_api_cost
+  # --- Cloud (Gemini) backends (metered cloud API cost) --------------------
+  # Pricing: Google Gemini Developer API, Standard paid tier, USD per 1M tokens
+  # converted to per-token rates. The generation consumer escalates from local
+  # to cheap_cloud (provider="cloud") on quality-gate failure; the escalated
+  # route's served_model_id is one of these Gemini ids.
+  - provider: cloud
+    model_id: gemini-2.5-flash
+    input_token_price: "0.00000010"
+    output_token_price: "0.00000040"
+    currency: USD
+    provenance: "Google Gemini Developer API pricing, Standard paid tier, USD per 1M tokens converted to per-token rates."
+    usage_source: estimated
+    cost_basis: cloud_api_cost
+  - provider: cloud
+    model_id: gemini-2.5-flash-lite
+    input_token_price: "0.000000075"
+    output_token_price: "0.00000030"
+    currency: USD
+    provenance: "Google Gemini Developer API pricing, Standard paid tier, USD per 1M tokens converted to per-token rates."
+    usage_source: estimated
+    cost_basis: cloud_api_cost
+  - provider: google
+    model_id: gemini-2.5-flash
+    input_token_price: "0.00000010"
+    output_token_price: "0.00000040"
+    currency: USD
+    provenance: "Google Gemini Developer API pricing, Standard paid tier, USD per 1M tokens converted to per-token rates."
+    usage_source: estimated
+    cost_basis: cloud_api_cost
+  - provider: cloud_gemini
+    model_id: gemini-2.5-flash
+    input_token_price: "0.00000010"
+    output_token_price: "0.00000040"
+    currency: USD
+    provenance: "Google Gemini Developer API pricing, Standard paid tier, USD per 1M tokens converted to per-token rates."
+    usage_source: estimated
+    cost_basis: cloud_api_cost

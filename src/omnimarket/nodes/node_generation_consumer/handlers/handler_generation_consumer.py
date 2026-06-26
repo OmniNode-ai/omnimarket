@@ -43,6 +43,13 @@ from pydantic import BaseModel, ConfigDict, Field
 from omnimarket.adapters.llm.bifrost.config_loader_bifrost_delegation import (
     load_bifrost_delegation_config,
 )
+from omnimarket.cost.cost_pricing import (
+    MissingCostPricingError,
+    calculate_inference_cost,
+    load_cost_pricing,
+    lookup_cost_pricing,
+)
+from omnimarket.enums.enum_cost_basis import EnumCostBasis
 from omnimarket.enums.enum_usage_source import EnumUsageSource
 from omnimarket.inference.delegation_config_provenance import (
     resolve_optional_path_config,
@@ -144,8 +151,10 @@ _DEFAULT_SYSTEM_PROMPT = (
     "No hardcoded absolute paths. No hardcoded topic strings."
 )
 
-_GEMINI_INPUT_COST_PER_TOKEN = 0.075 / 1_000_000
-_GEMINI_OUTPUT_COST_PER_TOKEN = 0.30 / 1_000_000
+# OMN-13621: per-model pricing is sourced from the canonical contract
+# (omnimarket/cost/cost_pricing.yaml) via omnimarket.cost.cost_pricing — it is
+# no longer a hardcoded source constant. _calculate_cost resolves the priced
+# entry for (provider, model_id) and prices the measured tokens through it.
 
 # OMN-13467: EventPublisher accepts both sync and async callables so the
 # runtime can supply an awaitable publisher (async publish → broker-ack) while
@@ -643,13 +652,35 @@ def _validate_generation(
     return {"valid": len(errors) == 0, "errors": errors, "checks_passed": checks_passed}
 
 
-def _calculate_cost(provider: str, input_tokens: int, output_tokens: int) -> float:
-    if provider == "local":
+def _calculate_cost(
+    provider: str, model_id: str, input_tokens: int, output_tokens: int
+) -> float:
+    """Compute inference cost (USD) from contract-sourced pricing (OMN-13621).
+
+    Pricing is resolved from the canonical cost-pricing contract
+    (omnimarket/cost/cost_pricing.yaml) for (provider, model_id) — never a
+    hardcoded source constant. The contract's zero_marginal_api_cost entries
+    (local / owned-GPU) price to 0.0; cloud_api_cost entries price the measured
+    tokens through the per-token rates. A model with no contract entry resolves
+    to an explicit UNKNOWN entry (allow_unknown=True) and costs 0.0 rather than
+    crashing the generation run — UNKNOWN is honest absence, not a silent
+    mispricing (the usage_source provenance carried alongside records that the
+    cost was not measured against a known rate).
+    """
+    contract = load_cost_pricing()
+    entry = lookup_cost_pricing(contract, provider, model_id, allow_unknown=True)
+    if entry.cost_basis in (
+        EnumCostBasis.UNKNOWN,
+        EnumCostBasis.ZERO_MARGINAL_API_COST,
+    ):
         return 0.0
-    return (
-        input_tokens * _GEMINI_INPUT_COST_PER_TOKEN
-        + output_tokens * _GEMINI_OUTPUT_COST_PER_TOKEN
-    )
+    try:
+        cost = calculate_inference_cost(
+            entry, input_tokens=input_tokens, output_tokens=output_tokens
+        )
+    except MissingCostPricingError:
+        return 0.0
+    return float(cost)
 
 
 def _map_response_usage_source(response_usage: Any) -> EnumUsageSource:
@@ -1334,7 +1365,12 @@ class HandlerGenerationConsumer:
         run_endpoint_class = (
             attempts[-1].endpoint_class if attempts else self._endpoint_ref
         )
-        cost_usd = _calculate_cost(run_provider, total_input, total_output)
+        # OMN-13621: price the measured tokens for the FINAL route's
+        # (provider, model_id) through the contract-sourced pricing surface so
+        # cost_inference_usd is contract-priced (not a hardcoded Gemini rate).
+        cost_usd = _calculate_cost(
+            run_provider, run_model_id, total_input, total_output
+        )
         # OMN-12996: honest run-level provenance aggregated from the attempts'
         # provider-reported usage_source — never the old hardcoded ESTIMATED.
         usage_source = _aggregate_usage_source(attempts)
