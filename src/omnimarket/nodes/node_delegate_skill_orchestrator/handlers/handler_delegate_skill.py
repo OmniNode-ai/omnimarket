@@ -25,7 +25,6 @@ from omnimarket.nodes.node_delegate_skill_orchestrator.models.model_delegate_ski
 )
 from omnimarket.nodes.node_delegate_skill_orchestrator.ports.port_runtime_delegation_dispatch import (
     ProtocolDelegationEventBus,
-    RuntimeDelegationDispatchPort,
 )
 from omnimarket.pricing import (
     DEFAULT_BASELINE_MODEL,
@@ -216,18 +215,19 @@ class HandlerDelegateSkill:
     ) -> None:
         if dispatch_port is not None:
             self._dispatch_port: ProtocolDelegationDispatchPort = dispatch_port
-        elif event_bus is not None:
-            self._dispatch_port = RuntimeDelegationDispatchPort(event_bus=event_bus)
         else:
-            # Standalone CLI (no broker): the in-process local port composes the
-            # routing authority, the canonical effect handler (curl on the macOS
-            # LAN profile, httpx elsewhere), and the canonical projection that
-            # materializes the local evidence row (OMN-13160).
-            from omnimarket.nodes.node_delegate_skill_orchestrator.ports.port_local_delegation_dispatch import (
-                LocalDelegationDispatchPort,
+            # Transport-aware port selection is owned by the ports package, not
+            # this domain handler. A bus-less or in-memory single-process runtime
+            # resolves to the in-process local port (routing + canonical effect +
+            # quality gate + sqlite evidence row, OMN-13160/OMN-13601); an external
+            # broker bus resolves to the runtime publish/await port. Imported
+            # lazily to avoid a construction-time import cycle with the ports
+            # package, which references this handler's port protocol.
+            from omnimarket.nodes.node_delegate_skill_orchestrator.ports.port_selection import (
+                select_delegation_dispatch_port,
             )
 
-            self._dispatch_port = LocalDelegationDispatchPort()
+            self._dispatch_port = select_delegation_dispatch_port(event_bus)
 
     async def handle(
         self, request: ModelDelegateSkillRequest

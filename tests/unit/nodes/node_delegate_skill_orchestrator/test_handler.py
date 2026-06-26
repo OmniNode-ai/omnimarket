@@ -382,3 +382,57 @@ async def test_handler_with_no_port_uses_local_in_process_dispatch() -> None:
 
     handler = HandlerDelegateSkill()
     assert isinstance(handler._dispatch_port, LocalDelegationDispatchPort)
+
+
+@pytest.mark.unit
+def test_handler_with_inmemory_bus_uses_local_in_process_dispatch() -> None:
+    """In-memory single-process runtime (`onex delegate --bus inmemory`) → local port.
+
+    OMN-13601: when the orchestrator runs on an in-memory bus there is no
+    co-deployed downstream delegation consumer of the runtime command topic. The
+    RuntimeDelegationDispatchPort would publish into the void and the orchestrator
+    terminal-wait times out at 300s with no evidence row. The in-memory CLI path
+    must route to LocalDelegationDispatchPort, which runs the real LLM effect, the
+    canonical quality gate, and writes the sqlite evidence row in-process.
+    """
+    from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
+
+    from omnimarket.nodes.node_delegate_skill_orchestrator.ports.port_local_delegation_dispatch import (
+        LocalDelegationDispatchPort,
+    )
+
+    handler = HandlerDelegateSkill(EventBusInmemory(environment="local", group="test"))
+    assert isinstance(handler._dispatch_port, LocalDelegationDispatchPort)
+
+
+@pytest.mark.unit
+def test_handler_with_external_broker_bus_uses_runtime_dispatch() -> None:
+    """A non-in-memory broker bus → RuntimeDelegationDispatchPort (OMN-13601).
+
+    On a real broker the full multi-node runtime (incl. the downstream delegation
+    consumer) is co-deployed, so the orchestrator publishes the runtime command
+    and awaits the terminal event over the bus.
+    """
+    from omnimarket.nodes.node_delegate_skill_orchestrator.ports.port_runtime_delegation_dispatch import (
+        RuntimeDelegationDispatchPort,
+    )
+
+    class _ExternalBrokerBus:
+        async def publish(
+            self,
+            topic: str,
+            key: bytes | None,
+            value: bytes,
+            headers: object = None,
+        ) -> None: ...
+
+        async def subscribe(
+            self,
+            topic: str,
+            node_identity: object | None = None,
+            on_message: object | None = None,
+            **kwargs: object,
+        ) -> object: ...
+
+    handler = HandlerDelegateSkill(_ExternalBrokerBus())
+    assert isinstance(handler._dispatch_port, RuntimeDelegationDispatchPort)
