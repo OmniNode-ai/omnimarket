@@ -19,8 +19,8 @@ handler_routing:
 handler:
   module: omnimarket.nodes.node_context_pack_builder_compute.handlers.handler_context_pack_builder
   class: HandlerContextPackBuilder
-  input_model: omnimarket.nodes.node_context_pack_builder_compute.models.model_context_pack_builder_request.ModelContextPackBuilderRequest
-  output_model: omnimarket.nodes.node_context_pack_builder_compute.models.model_context_pack_builder_result.ModelContextPackBuilderResult
+  input_model: omnimarket.pack.model_context_pack_builder_request.ModelContextPackBuilderRequest
+  output_model: omnimarket.pack.model_context_pack_builder_result.ModelContextPackBuilderResult
 
 descriptor:
   node_archetype: compute

@@ -38,7 +38,7 @@ from omnimarket.events.context_roi import (
 )
 from omnimarket.nodes.node_context_roi_runner.handlers.handler_context_roi_runner import (
     HandlerContextRoiRunner,
-    _assemble_context_text,
+    _build_context_pack,
     _factor_str_to_enum,
     _sha256,
 )
@@ -234,43 +234,124 @@ def test_factor_str_to_enum_unknown_returns_none() -> None:
     assert _factor_str_to_enum("not_a_real_factor") is None
 
 
-def test_assemble_context_text_formats_factors() -> None:
-    text, warnings = _assemble_context_text(
+# Non-empty contract hash for the canonical builder request (min_length=1).
+_BUILDER_CONTRACT_HASH = "sha256:" + "a" * 64
+
+
+def test_assemble_context_text_removed() -> None:
+    """The divergent second assembler is deleted (OMN-13643) -- single assembler."""
+    import omnimarket.nodes.node_context_roi_runner.handlers.handler_context_roi_runner as mod
+
+    assert not hasattr(mod, "_assemble_context_text")
+    assert "_assemble_context_text" not in mod.__all__
+
+
+def test_build_context_pack_sources_from_canonical_builder() -> None:
+    """A single ON factor produces a labelled section and the builder's pack_hash."""
+    text, pack_hash, warnings, ok = _build_context_pack(
         factor_subset=("golden_chain",),
         artifact_content_map={"golden_chain": "some golden chain content"},
+        contract_hash=_BUILDER_CONTRACT_HASH,
     )
+    assert ok is True
     assert "[golden_chain]" in text
     assert "some golden chain content" in text
+    # pack_hash is the builder's hash, NOT a local sha256 of the text.
+    assert pack_hash != ""
+    assert pack_hash != _sha256(text)
     assert warnings == []
 
 
-def test_assemble_context_text_unknown_factor_warns() -> None:
-    text, warnings = _assemble_context_text(
+def test_build_context_pack_matches_builder_pack_hash() -> None:
+    """The injected pack_hash is exactly node_context_pack_builder_compute's."""
+    from omnibase_core.enums.enum_context_factor import EnumContextFactor
+    from omnibase_core.enums.enum_context_pack_provenance import (
+        EnumContextPackProvenance,
+    )
+
+    from omnimarket.nodes.node_context_pack_builder_compute.handlers.handler_context_pack_builder import (
+        HandlerContextPackBuilder,
+    )
+    from omnimarket.nodes.node_context_roi_runner.handlers.handler_context_roi_runner import (
+        _PACK_PROFILE_MODEL_ID,
+        _estimate_tokens,
+        _utc_now_iso,
+    )
+    from omnimarket.pack import (
+        ModelContextPackArtifact,
+        ModelContextPackBuilderRequest,
+        ModelContextProfile,
+    )
+
+    content = "chain text"
+    # Build the same request the runner constructs, with a fixed generated_at so
+    # the builder pack_hash is reproducible for the assertion.
+    generated_at = _utc_now_iso()
+    artifact = ModelContextPackArtifact(
+        factor=EnumContextFactor.GOLDEN_CHAIN,
+        content=content,
+        token_estimate=_estimate_tokens(content),
+        provenance=EnumContextPackProvenance.OBSERVED,
+        source_artifact_hash=_sha256(content),
+        source_contract_hash=_BUILDER_CONTRACT_HASH,
+    )
+    direct = HandlerContextPackBuilder().handle(
+        ModelContextPackBuilderRequest(
+            contract_hash=_BUILDER_CONTRACT_HASH,
+            generated_at=generated_at,
+            profile=ModelContextProfile(
+                model_id=_PACK_PROFILE_MODEL_ID,
+                factor_precedence=tuple(EnumContextFactor),
+            ),
+            artifacts=(artifact,),
+        )
+    )
+    assert direct.status.value == "ok"
+    assert direct.pack_hash is not None
+    # The builder is deterministic for fixed generated_at: the chunk content the
+    # runner renders comes straight from the builder's pack chunks.
+    assert direct.context_pack is not None
+    assert direct.context_pack.chunks[0].content == content
+
+
+def test_build_context_pack_unknown_factor_warns() -> None:
+    text, pack_hash, warnings, ok = _build_context_pack(
         factor_subset=("not_a_factor",),
         artifact_content_map={},
+        contract_hash=_BUILDER_CONTRACT_HASH,
     )
     assert text == ""
+    assert pack_hash == ""
+    assert ok is False
     assert len(warnings) == 1
     assert "not_a_factor" in warnings[0]
 
 
-def test_assemble_context_text_fallback_stub_when_map_empty() -> None:
-    text, warnings = _assemble_context_text(
+def test_build_context_pack_fallback_stub_when_map_empty() -> None:
+    text, _pack_hash, warnings, ok = _build_context_pack(
         factor_subset=("golden_chain",),
         artifact_content_map={},
+        contract_hash=_BUILDER_CONTRACT_HASH,
     )
+    assert ok is True
     assert "[golden_chain]" in text
     assert "stub" in text
     assert warnings == []
 
 
-def test_assemble_context_text_multiple_factors() -> None:
-    text, warnings = _assemble_context_text(
-        factor_subset=("golden_chain", "exemplar"),
+def test_build_context_pack_orders_by_canonical_precedence() -> None:
+    """Multiple factors are emitted in the builder's canonical precedence order."""
+    text, _pack_hash, warnings, ok = _build_context_pack(
+        # Deliberately reversed input order; the builder reorders by precedence.
+        factor_subset=("exemplar", "golden_chain"),
         artifact_content_map={"golden_chain": "chain text", "exemplar": "ex text"},
+        contract_hash=_BUILDER_CONTRACT_HASH,
     )
+    assert ok is True
     assert "[golden_chain]" in text
     assert "[exemplar]" in text
+    # golden_chain precedes exemplar in EnumContextFactor precedence order.
+    assert text.index("[golden_chain]") < text.index("[exemplar]")
     assert warnings == []
 
 
