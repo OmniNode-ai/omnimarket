@@ -1,0 +1,100 @@
+---
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: regression_test_orchestrator
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: orchestrator
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  Replays a recorded regression event corpus deterministically (replay mode only,
+  no live generation, no I/O) and emits the canonical ModelExperimentResult
+  (OMN-13613) on the terminal topic. Canonical home for the SEA regression suite
+  (regression/runner.py, tasks.py, results.py) under the SEA -> canonical
+  migration epic OMN-13604.
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: regression_test
+      handler:
+        name: HandlerRegressionTestOrchestrator
+        module: omnimarket.nodes.node_regression_test_orchestrator.handlers.handler_regression_test_orchestrator
+      event_model:
+        name: ModelRegressionSuiteStart
+        module: omnimarket.nodes.node_regression_test_orchestrator.models.model_regression_suite_start
+
+descriptor:
+  node_archetype: orchestrator
+  purity: pure
+  idempotent: true
+  timeout_ms: 120000
+  runtime_profiles:
+    - effects
+
+inputs:
+  experiment_id:
+    type: uuid
+    description: "Unique identifier for this experiment"
+    required: false
+  run_id:
+    type: uuid
+    description: "Identifier for this specific replay run"
+    required: false
+  correlation_id:
+    type: uuid
+    description: "Correlation ID linking run events"
+    required: false
+  runtime_identity:
+    type: str
+    description: "Runtime lane/service identity executing the replay"
+    required: false
+  samples_per_task:
+    type: int
+    description: "Samples represented per task (1 marks provisional)"
+    required: false
+    default: 1
+  tasks:
+    type: list
+    description: "Regression task suite to replay (defaults to REGRESSION_TASKS)"
+    required: false
+  replay_corpus:
+    type: list
+    description: "Recorded (task_id, attempt, output) replay entries"
+    required: false
+
+outputs:
+  experiment_result:
+    type: ModelExperimentResult
+    description: "Canonical experiment result (OMN-13613) carried on the terminal event"
+
+terminal_event: onex.evt.omnimarket.regression-suite-completed.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.regression-suite-start.v1
+  publish_topics:
+    - onex.evt.omnimarket.regression-suite-completed.v1
+
+# The terminal experiment result is consumed externally by the experiment
+# projection / dashboard read surface (projection-backed, not an in-repo node),
+# mirroring node_runtime_closeout_orchestrator's closeout-completed terminal.
+externally_consumed_topics:
+  - onex.evt.omnimarket.regression-suite-completed.v1
+
+metadata:
+  transport_type: kafka
+  description: "Regression-test orchestrator — deterministic replay, emits canonical experiment result"
+  author: "OmniNode Platform Team"
+  created: "2026-06-26"
+  tags:
+    - "orchestrator"
+    - "regression"
+    - "experiment"
+    - "replay"
+    - "sea-canonical"
+    - "OMN-13616"
+  related_tickets:
+    - "OMN-13616"
+    - "OMN-13613"
+    - "OMN-13604"
