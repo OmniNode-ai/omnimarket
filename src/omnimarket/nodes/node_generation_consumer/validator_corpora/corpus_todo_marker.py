@@ -99,9 +99,9 @@ TODO_MARKER_CORPUS = ModelValidatorCorpus(
         # --- adversarial clean mutation: 'hack' inside an unrelated lowercase word ---
         ModelCorpusFixture(
             fixture_id="c-mut-hack-substring",
-            source='dataset = "mastodon-hackathon-corpus"',
+            source='dataset = "mastodon-hacksaw-corpus"',
             description=(
-                "the letters of the marker appear lowercase inside 'hackathon' "
+                "the letters of the marker appear lowercase inside 'hacksaw' "
                 "(no uppercase word-boundary marker) — must stay clean"
             ),
             mutation_of="c-base-clean-code",

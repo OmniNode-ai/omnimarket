@@ -71,10 +71,10 @@ _CONTRACT_PATH = Path(__file__).parent.parent / "contract.yaml"
 # ONEX_STATE_ROOT) and FAILS FAST when unset — no silent relative fallback
 # (CLAUDE.md Rule 6/8: no hardcoded paths, no silent defaults).
 #
-# OMN-13605 (Phase 0.1): the prior sandbox subdir was the hackathon-tagged
-# ("hackathon", "generated"). The node is now a permanent canonical artifact, so
-# the sandbox lives under a node-scoped, hackathon-free subdir. The full
-# canonical package is scaffolded separately under the staging root below.
+# OMN-13605 (Phase 0.1) + OMN-13607 (Phase 0.3): the node is a permanent
+# canonical artifact, so the sandbox lives under a node-scoped subdir rather
+# than the prototype-era marker subdir. The full canonical package is
+# scaffolded separately under the staging root below.
 _SANDBOX_SUBDIR = ("node_generation_consumer", "sandbox")
 _STATE_ROOT_ENV_KEYS = ("ONEX_STATE_DIR", "ONEX_STATE_ROOT")
 _REPLAY_STATE_SUBDIR = ("node_generation_consumer", "generated_executor_replay")
