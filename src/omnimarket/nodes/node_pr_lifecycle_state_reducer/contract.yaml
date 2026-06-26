@@ -141,6 +141,11 @@ event_bus:
     # OMN-13321 / F5: per-iteration durable PR ledger projection snapshot.
     - onex.snapshot.projection.pr-lifecycle-ledger.v1  # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
 
+externally_consumed_topics:
+  # Exposed through the generic projection API instead of consumed by another
+  # Kafka node.
+  - onex.snapshot.projection.pr-lifecycle-ledger.v1  # onex-topic-allow: projection snapshot topic
+
 # OMN-13321 / F5 (hardens OMN-12569): durable, user-readable per-PR ledger
 # row emitted EVERY sweep iteration -- not only at sweep end. One row per PR
 # per iteration, keyed by (sweep_id, repo, pr_number, iteration). Answers the
