@@ -214,6 +214,8 @@ def test_validate_generation_fails_on_syntax_error() -> None:
     result = _validate_generation(_VALID_CONTRACT_YAML, bad_python)
     assert result["valid"] is False
     assert any("syntax error" in e for e in result["errors"])
+    assert "model_classes" not in result["checks_passed"]
+    assert not any(e.startswith("model_classes:") for e in result["errors"])
 
 
 @pytest.mark.unit

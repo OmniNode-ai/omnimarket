@@ -656,11 +656,12 @@ def _validate_generation(
     # canonical validator platform (omnibase_core.validation). This node invokes
     # it rather than re-implementing the SEA model_types logic locally. Only runs
     # on a parseable contract + handler (schema/syntax checks own those errors).
-    model_class_errors = _check_model_class_existence(contract_yaml, handler_source)
-    if model_class_errors:
-        errors.extend(model_class_errors)
-    else:
-        checks_passed.append("model_classes")
+    if schema_ok and syntax_ok:
+        model_class_errors = _check_model_class_existence(contract_yaml, handler_source)
+        if model_class_errors:
+            errors.extend(model_class_errors)
+        else:
+            checks_passed.append("model_classes")
 
     return {"valid": len(errors) == 0, "errors": errors, "checks_passed": checks_passed}
 
