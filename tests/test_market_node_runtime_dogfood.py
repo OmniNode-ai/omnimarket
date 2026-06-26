@@ -68,8 +68,10 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
     # repair ticket emission): 327 -> 328.
     # OMN-13441 Phase 1.3 adds node_prod_health_fact_resolver_effect (EFFECT;
     # un-forgeable prod-health fact for the prod-promotion gate): 328 -> 329.
-    assert summary["node_dirs"] == 329
-    assert summary["entry_points"] == 329
+    # OMN-13606 SEA Phase 0.2 adds node_generated_node_publish_effect (EFFECT;
+    # auto-PR publish step of the SEA self-extension loop): 329 -> 330.
+    assert summary["node_dirs"] == 330
+    assert summary["entry_points"] == 330
     assert summary["missing_entry_points"] == []
     assert summary["dangling_entry_points"] == []
     assert summary["routable"] >= 297

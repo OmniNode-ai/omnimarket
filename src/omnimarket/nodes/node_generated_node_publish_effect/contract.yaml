@@ -1,0 +1,132 @@
+---
+name: node_generated_node_publish_effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: effect
+node_version: {major: 1, minor: 0, patch: 0}
+node_not_implemented: false
+
+description: >
+  SEA Phase 0.2 publish effect. Takes the full canonical node package staged by
+  the Phase 0.1 generation spine, creates a fresh git worktree branch, commits
+  the package, pushes it, opens a PR carrying the OMN ticket reference and
+  dod_evidence, and emits the resulting PR URL on the bus. This is the auto-PR /
+  publish step of the SEA self-extension loop.
+
+# OMN-13530 pattern: top-level input_model so RuntimeLocal resolves the
+# initial-payload model (contract.input_model is the first resolver source) and
+# the EFFECT dispatches headless. The handler's
+# handle(payload: ModelGeneratedNodePublishInput) param annotation is the
+# equivalent fallback; both point at the same model.
+input_model: omnimarket.nodes.node_generated_node_publish_effect.models.model_generated_node_publish_input.ModelGeneratedNodePublishInput
+
+handler:
+  module: omnimarket.nodes.node_generated_node_publish_effect.handlers.handler_generated_node_publish_effect
+  class: HandlerGeneratedNodePublishEffect
+  input_model: omnimarket.nodes.node_generated_node_publish_effect.models.model_generated_node_publish_input.ModelGeneratedNodePublishInput
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    # OMN-13530: operation_match entries require a non-empty `operation`;
+    # RuntimeLocal rejects the contract without it.
+    - operation: publish_generated_node
+      handler:
+        name: HandlerGeneratedNodePublishEffect
+        module: omnimarket.nodes.node_generated_node_publish_effect.handlers.handler_generated_node_publish_effect
+      event_model:
+        name: ModelGeneratedNodePublishInput
+        module: omnimarket.nodes.node_generated_node_publish_effect.models.model_generated_node_publish_input
+
+descriptor:
+  node_archetype: effect
+  purity: impure
+  idempotent: false
+  timeout_ms: 600000
+  runtime_profiles:
+    - effects
+
+inputs:
+  correlation_id:
+    type: uuid
+    description: "Correlation ID flowing through the generation chain"
+    required: true
+  node_name:
+    type: str
+    description: "Snake-case generated node name (node_*)"
+    required: true
+  staging_dir:
+    type: str
+    description: "Absolute path to the staged canonical package directory"
+    required: true
+  repo:
+    type: str
+    description: "Target GitHub repo slug (org/repo)"
+    required: true
+  ticket:
+    type: str
+    description: "Linear ticket reference for the PR title + body (OMN-XXXX)"
+    required: true
+  dod_evidence:
+    type: str
+    description: "Definition-of-Done evidence text embedded in the PR body"
+    required: true
+  base_branch:
+    type: str
+    description: "Branch the PR targets (feature -> dev)"
+    required: false
+    default: "dev"
+  node_subdir:
+    type: str
+    description: "Repo-relative directory the generated package is placed under"
+    required: false
+    default: "src/omnimarket/nodes"
+
+outputs:
+  published:
+    type: bool
+    description: "Whether a PR was successfully opened for the package"
+  pr_url:
+    type: str
+    description: "URL of the opened PR, or null when blocked"
+    nullable: true
+  branch:
+    type: str
+    description: "Branch the package was committed to, or null when blocked"
+    nullable: true
+  blocked_reason:
+    type: str
+    description: "Human-readable reason publish was blocked, or null on success"
+    nullable: true
+
+terminal_event: onex.evt.omnimarket.generated-node-published.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.generated-node-publish-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.generated-node-published.v1
+
+side_effects:
+  reads:
+    - filesystem
+  writes:
+    - filesystem
+    - github
+  duplicate_key_fields:
+    - correlation_id
+    - node_name
+
+dod_evidence:
+  phase: 1
+  artifacts:
+    - tests/nodes/node_generated_node_publish_effect/test_handler_generated_node_publish_effect.py
+    - tests/test_golden_chain_generated_node_publish_effect.py
+  validation_notes: >
+    Phase 1: deterministic publish happy path (worktree + commit + push +
+    gh pr create + bus emit) plus block branches (missing staging dir, push
+    failure, gh pr create failure). All git/gh I/O exercised via the injected
+    run_fn -- no real subprocess.
+
+metadata:
+  transport_type: kafka
+  related_tickets: ["OMN-13606", "OMN-13604"]
