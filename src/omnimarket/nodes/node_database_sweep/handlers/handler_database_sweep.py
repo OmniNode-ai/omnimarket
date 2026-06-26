@@ -582,6 +582,8 @@ class NodeDatabaseSweep:
             or status_counts.get("MISSING", 0) > 0
             or mig_status_counts.get("PENDING", 0) > 0
             or mig_status_counts.get("FAILED", 0) > 0
+            or mig_status_counts.get("NO_TABLE", 0) > 0
+            or mig_status_counts.get("ERROR", 0) > 0
         )
 
         return DatabaseSweepResult(
