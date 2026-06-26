@@ -78,8 +78,11 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
     # OMN-13616 SEA Phase 3.3 adds node_regression_test_orchestrator (ORCHESTRATOR;
     # deterministic regression replay emitting the canonical experiment result,
     # epic OMN-13604): 332 -> 333.
-    assert summary["node_dirs"] == 333
-    assert summary["entry_points"] == 333
+    # OMN-13620 WS-C Phase 5.1 adds node_projection_event_chain (REDUCER; canonical
+    # replayable per-event chain projection replacing the SEA event-chain ledger,
+    # epic OMN-13604): 333 -> 334.
+    assert summary["node_dirs"] == 334
+    assert summary["entry_points"] == 334
     assert summary["missing_entry_points"] == []
     assert summary["dangling_entry_points"] == []
     assert summary["routable"] >= 297
