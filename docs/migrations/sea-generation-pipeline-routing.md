@@ -26,7 +26,7 @@ transport/lifecycle is owned by the runtime, not by a hand-rolled daemon.
 | Cloud tier (the former `kafka_runner.py` daemon / Track A) | The cloud backend (e.g. `cloud-gemini-flash`) is resolved from the same routing-authority overlay when the escalation ladder advances. Transport/lifecycle (consume, produce, offset commit, graceful shutdown) is owned by the node runtime; the node only declares its topics in `contract.yaml` and implements `handle`. There is no raw `KafkaConsumer`/`KafkaProducer` and no signal handler in the node. |
 | Endpoint + api-key resolution | `resolve_generation_endpoint` resolves `endpoint_url + provider + served_model_id + api_key_ref` per-model from the bifrost delegation contract overlay keyed by the contract `endpoint_ref`. Endpoints are never read from an `LLM_*` environment variable; a shared bare env cannot serve multiple providers. Fail-closed on any missing field. |
 | Per-run inference cost | `_calculate_cost` prices measured tokens through the canonical cost-pricing contract (`omnimarket/cost/cost_pricing.yaml`) for `(provider, served_model_id)` — no hardcoded source constant. |
-| Usage-source provenance | `_aggregate_usage_source` keeps the MEASURED-only-when-every-attempt-is-MEASURED discipline; no silent ESTIMATED downgrade. |
+| Usage-source provenance | `_aggregate_usage_source` returns MEASURED when any attempt carries provider-reported usage, otherwise ESTIMATED when any attempt is locally estimated, otherwise UNKNOWN; no silent ESTIMATED downgrade. |
 | Lifecycle / topics | Subscribe + publish topics are declared in `node_generation_consumer/contract.yaml` (`event_bus.subscribe_topics` / `publish_topics`); the node owns no transport literals. |
 
 ## What Market owns

@@ -32,12 +32,16 @@ from pathlib import Path
 
 import pytest
 
+from omnimarket.enums.enum_usage_source import EnumUsageSource
 from omnimarket.nodes.node_generation_consumer.handlers import (
     handler_generation_consumer as handler_mod,
 )
 from omnimarket.nodes.node_generation_consumer.handlers.handler_generation_consumer import (
     HandlerGenerationConsumer,
     resolve_generation_endpoint,
+)
+from omnimarket.nodes.node_generation_consumer.models.model_generation import (
+    ModelGenerationAttempt,
 )
 
 _HANDLER_SRC = Path(handler_mod.__file__).read_text()
@@ -97,13 +101,56 @@ def test_canonical_handler_covers_cost_calculation_capability() -> None:
 
 @pytest.mark.unit
 def test_canonical_handler_aggregates_usage_provenance() -> None:
-    """Parity: usage-source provenance aggregation (MEASURED vs UNKNOWN).
+    """Parity: usage-source provenance aggregation preserves honest strength.
 
-    SEA's ``_aggregate_usage_source`` returned MEASURED only when every attempt
-    was MEASURED. The canonical node keeps the same provenance discipline (no
-    silent ESTIMATED downgrade).
+    The canonical node returns MEASURED when any attempt is provider-measured,
+    otherwise ESTIMATED when any attempt is locally estimated, otherwise UNKNOWN.
     """
-    assert hasattr(handler_mod, "_aggregate_usage_source")
+    assert (
+        handler_mod._aggregate_usage_source(
+            [
+                ModelGenerationAttempt(
+                    attempt_number=1,
+                    usage_source=EnumUsageSource.UNKNOWN,
+                ),
+                ModelGenerationAttempt(
+                    attempt_number=2,
+                    usage_source=EnumUsageSource.MEASURED,
+                ),
+            ]
+        )
+        == EnumUsageSource.MEASURED
+    )
+    assert (
+        handler_mod._aggregate_usage_source(
+            [
+                ModelGenerationAttempt(
+                    attempt_number=1,
+                    usage_source=EnumUsageSource.UNKNOWN,
+                ),
+                ModelGenerationAttempt(
+                    attempt_number=2,
+                    usage_source=EnumUsageSource.ESTIMATED,
+                ),
+            ]
+        )
+        == EnumUsageSource.ESTIMATED
+    )
+    assert (
+        handler_mod._aggregate_usage_source(
+            [
+                ModelGenerationAttempt(
+                    attempt_number=1,
+                    usage_source=EnumUsageSource.UNKNOWN,
+                ),
+                ModelGenerationAttempt(
+                    attempt_number=2,
+                    usage_source=EnumUsageSource.UNKNOWN,
+                ),
+            ]
+        )
+        == EnumUsageSource.UNKNOWN
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -140,7 +187,7 @@ def test_no_llm_endpoint_env_in_canonical_handler() -> None:
     #   os.environ["LLM_CODER_URL"]  or  os.environ.get("LLM_CODER_URL")
     # Prose mentions of LLM_CODER_URL in docstrings/comments (explaining the
     # design intentionally does NOT read such a var) are allowed.
-    env_read = re.compile(r"""os\.environ(?:\.get)?\(\s*['"]LLM_""")
+    env_read = re.compile(r"""os\.environ(?:\.get\(\s*|(?:\[\s*))['"]LLM_""")
     assert not env_read.search(_HANDLER_SRC), (
         "canonical handler must not read an LLM_* endpoint env var; "
         "endpoints resolve from the routing-authority contract"
