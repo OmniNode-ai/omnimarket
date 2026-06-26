@@ -1,0 +1,131 @@
+---
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Entropy Experiment Orchestrator (OMN-13614)
+#
+# ORCHESTRATOR node (Phase 3.1, epic OMN-13604). Absorbs the SEA
+# entropy-comparison harness / failure-taxonomy / coverage logic and aggregates
+# completed framework tracks into the canonical ModelExperimentResult contract
+# from omnibase_core (OMN-13613). Deterministic, stateless, no I/O in the handler.
+name: node_entropy_experiment_orchestrator
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: orchestrator
+node_version: {major: 1, minor: 0, patch: 0}
+node_not_implemented: false
+
+description: >
+  Aggregates the completed framework tracks of an entropy-comparison experiment
+  into the canonical shared ModelExperimentResult (omnibase_core, OMN-13613).
+  Per-track evidence (success, cost, latency, coverage, closed failure classes)
+  is supplied by the caller in fixture/replay mode, so the handler is fully
+  deterministic and performs no I/O. Computes an aggregate success-fraction score,
+  a Decimal total cost, and a terminal status (COMPLETED when any track succeeds,
+  FAILED otherwise). Absorbs the SEA entropy failure taxonomy and coverage parsing.
+
+handler:
+  module: omnimarket.nodes.node_entropy_experiment_orchestrator.handlers.handler_entropy_experiment_orchestrator
+  class: HandlerEntropyExperimentOrchestrator
+  input_model: omnimarket.nodes.node_entropy_experiment_orchestrator.models.model_entropy_experiment_request.ModelEntropyExperimentRequest
+  output_model: omnibase_core.models.experiment.model_experiment_result.ModelExperimentResult
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: aggregate_entropy_experiment
+      handler:
+        name: HandlerEntropyExperimentOrchestrator
+        module: omnimarket.nodes.node_entropy_experiment_orchestrator.handlers.handler_entropy_experiment_orchestrator
+      event_model:
+        name: ModelEntropyExperimentRequest
+        module: omnimarket.nodes.node_entropy_experiment_orchestrator.models.model_entropy_experiment_request
+
+descriptor:
+  node_archetype: orchestrator
+  purity: pure
+  idempotent: true
+  timeout_ms: 5000
+  runtime_profiles:
+    - effects
+
+inputs:
+  experiment_id:
+    type: uuid
+    required: true
+    description: "Unique identifier for this experiment"
+  run_id:
+    type: uuid
+    required: true
+    description: "Identifier of the specific run that produced these tracks"
+  correlation_id:
+    type: uuid
+    required: true
+    description: "Correlation identifier linking events across the run"
+  runtime_identity:
+    type: str
+    required: true
+    description: "Runtime lane/service identity that executed the experiment"
+  evidence_id:
+    type: uuid
+    required: true
+    description: "Canonical UUID of the durable evidence record for this run"
+  artifact_ref:
+    type: str
+    required: false
+    description: "Optional content-addressed artifact reference (sha256:<64 hex>)"
+  tracks:
+    type: array
+    required: true
+    description: "Completed framework tracks to aggregate (at least one)"
+
+outputs:
+  experiment_id:
+    type: uuid
+    description: "Echo of the experiment identifier"
+  experiment_type:
+    type: str
+    description: "Always 'entropy' for this orchestrator"
+  run_id:
+    type: uuid
+  correlation_id:
+    type: uuid
+  runtime_identity:
+    type: str
+  score:
+    type: ModelExperimentScore
+    description: "Success-fraction score in [0.0, 1.0]"
+  cost:
+    type: ModelExperimentCost
+    description: "Decimal sum of per-track costs"
+  status:
+    type: str
+    enum: [pending, running, completed, failed, cancelled]
+  evidence_ref:
+    type: ModelExperimentEvidenceRef
+
+terminal_event: onex.evt.omnimarket.entropy-experiment-completed.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.entropy-experiment-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.entropy-experiment-completed.v1
+    - onex.evt.omnimarket.entropy-experiment-failed.v1
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.entropy-experiment-completed.v1
+  - onex.evt.omnimarket.entropy-experiment-failed.v1
+
+metadata:
+  transport_type: kafka
+  description: "Entropy experiment orchestrator — aggregates framework tracks into the shared ModelExperimentResult"
+  author: "OmniNode Platform Team"
+  implementation_wave: 13
+  tags:
+    - "orchestrator"
+    - "experiment"
+    - "entropy"
+    - "sea-canonicalization"
+  related_tickets:
+    - "OMN-13614"
+    - "OMN-13613"
+    - "OMN-13604"

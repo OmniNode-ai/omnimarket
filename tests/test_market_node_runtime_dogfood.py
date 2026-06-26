@@ -70,8 +70,11 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
     # un-forgeable prod-health fact for the prod-promotion gate): 328 -> 329.
     # OMN-13606 SEA Phase 0.2 adds node_generated_node_publish_effect (EFFECT;
     # auto-PR publish step of the SEA self-extension loop): 329 -> 330.
-    assert summary["node_dirs"] == 330
-    assert summary["entry_points"] == 330
+    # OMN-13614 WS-C Phase 3.1 adds node_entropy_experiment_orchestrator
+    # (ORCHESTRATOR; SEA->canonical entropy experiment aggregation emitting the
+    # shared core ModelExperimentResult): 330 -> 331.
+    assert summary["node_dirs"] == 331
+    assert summary["entry_points"] == 331
     assert summary["missing_entry_points"] == []
     assert summary["dangling_entry_points"] == []
     assert summary["routable"] >= 297
