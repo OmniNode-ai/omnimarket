@@ -649,6 +649,13 @@ class DelegationWorkflowState:
     inference_completion_tokens: int = 0
     inference_total_tokens: int = 0
     inference_llm_call_id: str = ""
+    # OMN-13644: context-pack hash captured ONCE at request acceptance so it
+    # persists onto EVERY terminal (COMPLETED and FAILED/ESCALATED) — escalation
+    # re-routing or prompt-text loss between attempts must NOT drop it. Reading it
+    # off ``request`` at terminal-build time would re-derive a value that can be
+    # lost if the request is not intact; storing it here pins the OFF/ON-arm value
+    # from acceptance. Defaults to '' (OFF-arm: no context pack supplied).
+    context_pack_hash: str = ""
     gate_result: ModelQualityGateResult | None = None
     started_at_ns: int = field(default_factory=time.monotonic_ns)
     # Compliance-loop counters (OMN-10794). The orchestrator owns the loop,
@@ -828,6 +835,9 @@ class HandlerDelegationWorkflow:
         workflow = DelegationWorkflowState(
             correlation_id=cid,
             request=request,
+            # OMN-13644: pin the context-pack hash from acceptance so every
+            # terminal carries it regardless of later escalation / request loss.
+            context_pack_hash=_context_pack_hash_for_event(request),
         )
         self._workflows[cid] = workflow
 
@@ -1097,7 +1107,7 @@ class HandlerDelegationWorkflow:
                 quality_gates_checked=["length", "refusal", "markers"],
                 quality_gates_failed=[response.error_message],
                 llm_call_id=response.llm_call_id,
-                context_pack_hash=_context_pack_hash_for_event(workflow.request),
+                context_pack_hash=workflow.context_pack_hash,
                 # OMN-13535: metered spend banked on every PRIOR attempted tier.
                 # The CURRENT failing attempt is re-priced by _emit_terminal from
                 # cost_tier_name + the current tokens above, so it is not banked
@@ -1762,6 +1772,11 @@ class HandlerDelegationWorkflow:
             cumulative_input_tokens=cumulative_input_tokens,
             cumulative_output_tokens=cumulative_output_tokens,
             final_attempt_cost=cost.cash_cost_usd,
+            # OMN-13644: persist the context-pack hash (captured at acceptance,
+            # threaded through TerminalEmissionInputs) onto the canonical terminal
+            # so COMPLETED and FAILED/ESCALATED rows both carry it. '' is the
+            # honest OFF-arm default (no context pack supplied).
+            context_pack_hash=inputs.context_pack_hash,
         )
 
         # OMN-13629 (WS-F Phase 1): the legacy compat ``ModelTaskDelegatedEvent``
@@ -1868,7 +1883,7 @@ class HandlerDelegationWorkflow:
             quality_gates_checked=quality_gates_checked,
             quality_gates_failed=[] if completed else list(result.failure_reasons),
             llm_call_id=workflow.inference_llm_call_id,
-            context_pack_hash=_context_pack_hash_for_event(workflow.request),
+            context_pack_hash=workflow.context_pack_hash,
             # OMN-13535: metered spend banked on every prior attempted tier so the
             # terminal cost_usd reflects total spend, not just the final tier.
             prior_attempt_cost_usd=workflow.cumulative_attempt_cost_usd,
@@ -1949,7 +1964,7 @@ class HandlerDelegationWorkflow:
             quality_gates_checked=["agent-task-lifecycle"],
             quality_gates_failed=[failure_reason] if failure_reason else [],
             llm_call_id=lifecycle_event.remote_task_handle or "",
-            context_pack_hash=_context_pack_hash_for_event(workflow.request),
+            context_pack_hash=workflow.context_pack_hash,
         )
         return self._emit_terminal(terminal_inputs)
 

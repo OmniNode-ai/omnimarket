@@ -730,6 +730,11 @@ def _canonical_result_to_task_delegated_payload(
         else [],
         "quality_gate_detail": failure_reason or None,
         "delegation_latency_ms": payload.get("latency_ms"),
+        # OMN-13644: carry the canonical terminal's context-pack hash through the
+        # converter so the row mapping reads the real value (non-empty when the
+        # request carried a context pack) instead of the '' field default. The
+        # orchestrator now persists this on COMPLETED and FAILED/ESCALATED terminals.
+        "context_pack_hash": payload.get("context_pack_hash") or "",
         "prompt_text": payload.get("prompt_text"),
         # OMN-13596: never project a delegation timeout/error string into
         # response_text on a PASS row. _canonical_response_text suppresses the
