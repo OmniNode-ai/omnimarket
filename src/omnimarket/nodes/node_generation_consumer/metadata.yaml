@@ -18,7 +18,7 @@ dependencies:
   - "omnibase-infra>=0.1.0"
 authors: ["OmniNode Platform Team"]
 license: "MIT"
-tags: ["generation", "llm", "node-creation", "hackathon", "mcp"]
+tags: ["generation", "llm", "node-creation", "mcp"]
 pack: "generation"
 display_name: "Node Generation Consumer"
 node_role: "orchestrator"
