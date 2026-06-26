@@ -81,6 +81,9 @@ event_bus:
   publish_topics:
     - onex.evt.omnimarket.model-eval-completed.v1
 
+externally_consumed_topics:
+  - onex.evt.omnimarket.model-eval-completed.v1
+
 metadata:
   transport_type: kafka
   description: "Model-eval experiment orchestrator emitting the canonical ModelExperimentResult"
