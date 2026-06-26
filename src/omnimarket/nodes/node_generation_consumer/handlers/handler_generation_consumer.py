@@ -38,6 +38,9 @@ from uuid import uuid4
 
 import yaml
 from omnibase_core.models.delegation.wire import ModelDelegationRequest
+from omnibase_core.validation.validator_contract_linter import (
+    validate_model_class_existence,
+)
 from pydantic import BaseModel, ConfigDict, Field
 
 from omnimarket.adapters.llm.bifrost.config_loader_bifrost_delegation import (
@@ -649,7 +652,45 @@ def _validate_generation(
     else:
         checks_passed.append("security")
 
+    # OMN-13609 (WS-C Phase 1.1): the model-class-existence check is owned by the
+    # canonical validator platform (omnibase_core.validation). This node invokes
+    # it rather than re-implementing the SEA model_types logic locally. Only runs
+    # on a parseable contract + handler (schema/syntax checks own those errors).
+    if schema_ok and syntax_ok:
+        model_class_errors = _check_model_class_existence(contract_yaml, handler_source)
+        if model_class_errors:
+            errors.extend(model_class_errors)
+        else:
+            checks_passed.append("model_classes")
+
     return {"valid": len(errors) == 0, "errors": errors, "checks_passed": checks_passed}
+
+
+def _check_model_class_existence(contract_yaml: str, handler_source: str) -> list[str]:
+    """Invoke the canonical model-class-existence validator (OMN-13609).
+
+    Delegates to ``omnibase_core.validation.validator_contract_linter.validate_model_class_existence``
+    — the platform authority for the check ported from the SEA pipeline. This
+    node does NOT own the logic; it adapts the platform's typed
+    ``ModelValidationIssue`` results into the local string-error verdict.
+
+    Returns a list of error strings (empty when the contract/handler are not both
+    parseable, no inline model is declared, or all inline models are bound).
+    """
+    try:
+        data = yaml.safe_load(contract_yaml)
+    except yaml.YAMLError:
+        # YAML parse errors are surfaced by the schema check; do not double-report.
+        return []
+    if not isinstance(data, dict):
+        return []
+
+    issues = validate_model_class_existence(
+        data,
+        handler_source,
+        path=Path("contract.yaml"),
+    )
+    return [f"model_classes: {issue.message}" for issue in issues]
 
 
 def _calculate_cost(
