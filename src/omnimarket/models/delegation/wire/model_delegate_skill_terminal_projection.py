@@ -7,7 +7,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from datetime import UTC, datetime
 from decimal import Decimal
-from typing import Self
+from typing import Protocol, Self
 from uuid import UUID
 
 from omnibase_core.models.delegation.wire import ModelPremiumCounterfactual
@@ -24,6 +24,35 @@ from pydantic import (
 from omnimarket.models.delegation.wire.model_delegate_skill_response import (
     ModelDelegateSkillResponse,
 )
+
+
+class CounterfactualBuilder(Protocol):
+    """Builds a pinned premium counterfactual from served token counts.
+
+    OMN-13629: the canonical ``ModelDelegationResult`` terminal does not carry a
+    pinned counterfactual, so the savings source re-derives it from the served
+    tokens. The builder is injected (rather than importing ``omnimarket.pricing``
+    here) to keep this model module free of pricing-manifest I/O and circular
+    imports. ``omnimarket.pricing.build_premium_counterfactual`` satisfies this
+    Protocol.
+    """
+
+    def __call__(
+        self, *, prompt_tokens: int, completion_tokens: int
+    ) -> ModelPremiumCounterfactual | None: ...
+
+
+def _coerce_int(*candidates: object) -> int:
+    """Return the first candidate coercible to a non-negative int, else 0."""
+    for candidate in candidates:
+        if isinstance(candidate, bool):
+            continue
+        if isinstance(candidate, int):
+            return candidate if candidate >= 0 else 0
+        if isinstance(candidate, float) and candidate.is_integer() and candidate >= 0:
+            return int(candidate)
+    return 0
+
 
 # Materializer provenance versions (OMN-12606 / OMN-12488 acceptance-extension).
 # PROJECTION_VERSION identifies the projection/schema contract of the
@@ -336,6 +365,100 @@ class ModelTaskDelegatedSavingsSource(BaseModel):
         payload: Mapping[str, object],
     ) -> ModelTaskDelegatedSavingsSource:
         return cls.model_validate(_payload_with_envelope_timestamp(payload))
+
+    @classmethod
+    def from_canonical_payload(
+        cls,
+        payload: Mapping[str, object],
+        *,
+        counterfactual_builder: CounterfactualBuilder,
+    ) -> ModelTaskDelegatedSavingsSource:
+        """Build the savings source from a canonical ``ModelDelegationResult``
+        terminal payload (``delegation-{completed,failed}.v1``).
+
+        OMN-13629 (WS-F Phase 1): the savings projection was repointed off the
+        legacy compat ``task-delegated.v1`` event onto the single canonical
+        terminal. The canonical ``ModelDelegationResult`` wire DTO uses different
+        field names and — unlike the compat event — does NOT carry a pinned
+        ``premium_counterfactual``. The cloud-baseline counterfactual is instead
+        re-derived from the served tokens via ``counterfactual_builder`` (the same
+        ``omnimarket.pricing.build_premium_counterfactual`` the orchestrator used
+        to pin it originally), so the saving stays a deterministic, auditable
+        MEASUREMENT recomputed from the same authoritative cost/token figures —
+        not an estimate and not fixture data.
+
+        Field mapping (canonical -> savings source):
+          * ``model_used``                 -> ``model_name`` / ``delegated_to``
+          * ``cumulative_attempt_cost``    -> ``cost_usd`` (total metered spend
+            across all attempted tiers; falls back to ``final_attempt_cost``)
+          * ``cumulative_input_tokens`` /
+            ``cumulative_output_tokens``   -> counterfactual token basis (falls
+            back to ``prompt_tokens`` / ``completion_tokens``)
+
+        A saving is only banked on a SUCCEEDED delegation (``quality_passed`` is
+        True): a FAILED terminal delivered no useful work, so claiming a saving
+        against it would overstate savings. This mirrors the pre-OMN-13629 emitter
+        semantic, where the orchestrator pinned ``premium_counterfactual=None`` on
+        every failure path. A failed terminal therefore yields
+        ``premium_counterfactual=None`` -> truthful no-row.
+
+        Returns a source with ``premium_counterfactual=None`` when the terminal
+        failed, or when no counterfactual can be derived (e.g. zero served tokens,
+        or the baseline model is absent from the pricing manifest) — the
+        projection then yields a truthful no-row, never a placeholder.
+        """
+        correlation_id = payload.get("correlation_id")
+        task_type = payload.get("task_type") or "unknown"
+        model_used = str(payload.get("model_used") or "")
+        quality_passed = bool(payload.get("quality_passed"))
+
+        cumulative_cost = payload.get("cumulative_attempt_cost")
+        if (
+            not isinstance(cumulative_cost, int | float)
+            or isinstance(cumulative_cost, bool)
+            or float(cumulative_cost) < 0.0
+        ):
+            cumulative_cost = payload.get("final_attempt_cost")
+        cost_usd = (
+            float(cumulative_cost)
+            if isinstance(cumulative_cost, int | float)
+            and not isinstance(cumulative_cost, bool)
+            and float(cumulative_cost) >= 0.0
+            else 0.0
+        )
+
+        prompt_tokens = _coerce_int(
+            payload.get("cumulative_input_tokens"), payload.get("prompt_tokens")
+        )
+        completion_tokens = _coerce_int(
+            payload.get("cumulative_output_tokens"), payload.get("completion_tokens")
+        )
+
+        counterfactual = (
+            counterfactual_builder(
+                prompt_tokens=prompt_tokens,
+                completion_tokens=completion_tokens,
+            )
+            if quality_passed
+            else None
+        )
+
+        source_payload: dict[str, object] = {
+            "correlation_id": correlation_id,
+            "task_type": task_type,
+            "delegated_to": model_used,
+            "model_name": model_used,
+            "cost_usd": cost_usd,
+            "premium_counterfactual": (
+                counterfactual.model_dump(mode="json")
+                if counterfactual is not None
+                else None
+            ),
+        }
+        timestamp = payload.get("timestamp") or payload.get("emitted_at")
+        if timestamp is not None:
+            source_payload["timestamp"] = timestamp
+        return cls.from_payload(source_payload)
 
 
 def _payload_with_envelope_timestamp(

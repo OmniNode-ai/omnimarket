@@ -20,6 +20,7 @@ from pydantic import ValidationError
 from omnimarket.events.delegation_judge_verdict import (
     ModelDelegationJudgeVerdictEvent,
 )
+from omnimarket.events.topics import TASK_DELEGATED_TOPIC_V1
 from omnimarket.models.delegation.quality_bar_evidence import (
     extract_quality_bar_evidence,
 )
@@ -124,9 +125,17 @@ class DelegationProjectionRunner(BaseProjectionRunner):
         _topics: list[str] = self._contract.get("event_bus", {}).get(
             "subscribe_topics", []
         )
-        self._topic_delegated: str = next(
-            (t for t in _topics if "task-delegated" in t), ""
-        )
+        # OMN-13629 (WS-F Phase 1): the legacy compat task-delegated.v1 was
+        # dropped from this node's contract subscribe_topics — the orchestrator no
+        # longer emits it and the bus no longer routes it here (the canonical
+        # delegation-{completed,failed}.v1 pair below is the live source, converted
+        # internally). The legacy direct-recognition is retained ONLY for the
+        # still-live e2e-probe harness (tests/integration/e2e_probe), which
+        # thin-publishes a task-delegated-shaped probe payload; resolved from the
+        # registry constant rather than subscribe_topics so it is not a phantom
+        # bus subscription. Remove once the probe harness is migrated to the
+        # canonical terminal (follow-up to OMN-13632).
+        self._topic_delegated: str = TASK_DELEGATED_TOPIC_V1
         self._topic_shadow: str = next(
             (t for t in _topics if "delegation-shadow-comparison" in t), ""
         )

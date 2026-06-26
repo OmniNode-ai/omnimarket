@@ -75,9 +75,10 @@ TOPIC_ID_DELEGATION_COMPLETED: Final[str] = _single_topic(
 TOPIC_ID_DELEGATION_FAILED: Final[str] = _single_topic(
     _PUBLISH_TOPICS, "delegation-failed.v1", section="publish_topics"
 )
-TOPIC_ID_TASK_DELEGATED: Final[str] = _single_topic(
-    _PUBLISH_TOPICS, "task-delegated.v1", section="publish_topics"
-)
+# OMN-13629 (WS-F Phase 1): TOPIC_ID_TASK_DELEGATED was removed. The legacy
+# compat task-delegated.v1 event is no longer published by this orchestrator;
+# the terminal collapses to the single canonical delegation-{completed,failed}.v1
+# pair above.
 
 __all__ = [
     "TOPIC_ID_AGENT_TASK_LIFECYCLE",
@@ -89,5 +90,4 @@ __all__ = [
     "TOPIC_ID_INVOCATION_COMMAND",
     "TOPIC_ID_QUALITY_GATE_REQUEST",
     "TOPIC_ID_ROUTING_REQUEST",
-    "TOPIC_ID_TASK_DELEGATED",
 ]

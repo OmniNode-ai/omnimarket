@@ -118,7 +118,9 @@ class TestDelegationProjection:
         )
         assert contract["handler"]["class"] == "HandlerProjectionDelegation"
         topics = contract["event_bus"]["subscribe_topics"]
-        assert "onex.evt.omniclaude.task-delegated.v1" in topics
+        # OMN-13629: the legacy compat task-delegated.v1 secondary path was dropped;
+        # the canonical delegation pair is the live source.
+        assert "onex.evt.omniclaude.task-delegated.v1" not in topics
         assert "onex.evt.omnimarket.node-generation-completed.v1" in topics
         assert "onex.evt.omnimarket.delegate-skill-completed.v1" in topics
         assert "onex.evt.omnimarket.delegate-skill-failed.v1" in topics

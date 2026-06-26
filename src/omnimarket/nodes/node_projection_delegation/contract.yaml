@@ -6,9 +6,11 @@ node_version: {major: 1, minor: 0, patch: 0}
 input_model: omnimarket.nodes.node_projection_delegation.handlers.handler_projection_delegation.ModelProjectionTaskDelegatedEvent
 description: >
   Projects delegation terminal events into the delegation_events table.
-  Dedup by correlation_id. Sources include legacy task-delegated events,
-  shadow comparisons, node generation completions, and delegate-skill
-  terminal events.
+  Dedup by correlation_id. Sources are the canonical delegation terminal pair
+  (delegation-completed/failed.v1), shadow comparisons, node generation
+  completions, and delegate-skill terminal events. (OMN-13629: the legacy compat
+  task-delegated.v1 secondary path was dropped; the canonical terminal is
+  converted internally.)
 
 handler:
   module: omnimarket.nodes.node_projection_delegation.handlers.handler_projection_delegation
@@ -72,7 +74,12 @@ db_io:
 
 event_bus:
   subscribe_topics:
-    - onex.evt.omniclaude.task-delegated.v1
+    # OMN-13629 (WS-F Phase 1): dropped the legacy compat
+    # onex.evt.omniclaude.task-delegated.v1 secondary path. The orchestrator now
+    # emits a SINGLE canonical terminal; the canonical
+    # delegation-{completed,failed}.v1 pair below is converted internally via
+    # _canonical_result_to_task_delegated_payload, so the legacy co-writer that
+    # caused the OMN-13408/13475 divergence is gone.
     - onex.evt.omniclaude.delegation-shadow-comparison.v1
     - onex.evt.omnimarket.node-generation-completed.v1
     # OMN-13468: the failure terminal was absent, making failed runs invisible

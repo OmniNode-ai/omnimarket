@@ -254,12 +254,9 @@ class TestServedUsageUpstreamOmn13408:
             expected_cost.cash_cost_usd
         )
 
-        # The compat twin must agree (tokens_input/output + cost_usd > 0).
+        # OMN-13629: there is NO compat twin — the canonical terminal above is the
+        # single source the projection row reads.
         compat_events = [
             e for e in terminal_events if isinstance(e, ModelTaskDelegatedEvent)
         ]
-        assert len(compat_events) == 1
-        compat = compat_events[0]
-        assert compat.tokens_input == _PROMPT_TOKENS
-        assert compat.tokens_output == _COMPLETION_TOKENS
-        assert compat.cost_usd > 0.0
+        assert compat_events == []

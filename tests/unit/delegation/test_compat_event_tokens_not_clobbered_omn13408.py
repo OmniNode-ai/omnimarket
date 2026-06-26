@@ -1,31 +1,23 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
 
-"""OMN-13408: the delegation compat event carries the served tokens.
+"""OMN-13408 / OMN-13629: the canonical delegation terminal carries served tokens.
 
-Regression coverage for the projection token-clobber gap closed in OMN-13408.
+Regression coverage for the projection token-clobber gap closed in OMN-13408 and
+permanently eliminated in OMN-13629.
 
-The omnidash delegation projection upserts a single row per ``correlation_id``
-from BOTH the canonical typed event (``delegation-failed.v1`` /
-``delegation-completed.v1``, which carry real ``prompt_tokens`` /
-``completion_tokens``) and the backward-compat ``task-delegated.v1`` event
-(``ModelTaskDelegatedEvent``). Before the fix the compat event left
-``tokens_input`` / ``tokens_output`` at their model default of ``0`` on BOTH
-terminal paths, so whichever event landed last clobbered the row's token
-columns back to ``0`` — the dashboard then rendered zero tokens even though the
-inference had served thousands.
+History: the delegation projection used to upsert a single row per
+``correlation_id`` from BOTH the canonical typed event and a backward-compat
+``task-delegated.v1`` twin. Before OMN-13408 the compat event left its token
+columns at the model default of ``0``, so whichever event landed last clobbered
+the row's tokens back to ``0``. OMN-13629 deleted the compat twin outright: the
+canonical ``ModelDelegationResult`` (``delegation-completed.v1`` /
+``delegation-failed.v1``) is now the SINGLE writer, so a clobbering twin can no
+longer exist.
 
-The fix populates the compat event's ``tokens_input`` / ``tokens_output`` from
-the same served token counts the typed event uses:
-
-  * failed terminal path -> ``response.prompt_tokens`` / ``.completion_tokens``
-  * completed path (``_build_compat_event``) ->
-    ``workflow.inference_prompt_tokens`` / ``.inference_completion_tokens``
-
-These tests drive the success path and a terminal-failed path and assert the
-emitted ``ModelTaskDelegatedEvent`` carries the served tokens (>0 when the
-inference returned tokens). They FAIL on pre-fix code (compat event tokens == 0)
-and PASS after the fix.
+These tests drive the success and terminal-failed paths and assert the canonical
+``ModelDelegationResult`` carries the served tokens (>0 when the inference
+returned tokens) — the single source the projection row now reads.
 """
 
 from __future__ import annotations
@@ -39,14 +31,17 @@ from omnimarket.nodes.node_delegation_orchestrator.enums import EnumDelegationSt
 from omnimarket.nodes.node_delegation_orchestrator.handlers.handler_delegation_workflow import (
     HandlerDelegationWorkflow,
 )
+from omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_event import (
+    ModelDelegationEvent,
+)
 from omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_request import (
     ModelDelegationRequest,
 )
+from omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_result import (
+    ModelDelegationResult,
+)
 from omnimarket.nodes.node_delegation_orchestrator.models.model_inference_response_data import (
     ModelInferenceResponseData,
-)
-from omnimarket.nodes.node_delegation_orchestrator.models.model_task_delegated_event import (
-    ModelTaskDelegatedEvent,
 )
 from omnimarket.nodes.node_delegation_quality_gate_reducer.models.model_quality_gate_result import (
     ModelQualityGateResult,
@@ -136,8 +131,8 @@ def _make_gate_result(correlation_id: UUID) -> ModelQualityGateResult:
     )
 
 
-def _drive_success_to_terminal() -> ModelTaskDelegatedEvent:
-    """Run request->route->infer->gate-pass; return the compat task-delegated.v1."""
+def _drive_success_to_terminal() -> ModelDelegationResult:
+    """Run request->route->infer->gate-pass; return the canonical terminal result."""
     handler = HandlerDelegationWorkflow()
     cid = uuid4()
     handler.handle_delegation_request(_make_request(cid))
@@ -145,60 +140,67 @@ def _drive_success_to_terminal() -> ModelTaskDelegatedEvent:
     handler.handle_inference_response(_make_success_response(cid))
     intents = handler.handle_gate_result(_make_gate_result(cid))
     assert handler.workflows[cid].state == EnumDelegationState.COMPLETED
-    return next(e for e in intents if isinstance(e, ModelTaskDelegatedEvent))
+    return next(
+        e.payload
+        for e in intents
+        if isinstance(e, ModelDelegationEvent)
+        and isinstance(e.payload, ModelDelegationResult)
+    )
 
 
-def _drive_failure_to_terminal() -> ModelTaskDelegatedEvent:
-    """Run request->route->infer-with-nonretryable-error; return the compat event."""
+def _drive_failure_to_terminal() -> ModelDelegationResult:
+    """Run request->route->infer-with-nonretryable-error; return the terminal."""
     handler = HandlerDelegationWorkflow()
     cid = uuid4()
     handler.handle_delegation_request(_make_request(cid))
     handler.handle_routing_decision(_make_routing_decision(cid, tier_name="local"))
     events = handler.handle_inference_response(_make_failed_response(cid))
     assert handler.workflows[cid].state == EnumDelegationState.FAILED
-    # The terminal-failed path returns [delegation-failed.v1, compat task-delegated.v1].
-    compat = [e for e in events if isinstance(e, ModelTaskDelegatedEvent)]
-    assert len(compat) == 1, f"expected exactly one compat event, got {events!r}"
-    return compat[0]
+    # OMN-13629: the terminal-failed path returns a single canonical event.
+    terminals = [
+        e.payload
+        for e in events
+        if isinstance(e, ModelDelegationEvent)
+        and isinstance(e.payload, ModelDelegationResult)
+    ]
+    assert len(terminals) == 1, (
+        f"expected exactly one canonical terminal, got {events!r}"
+    )
+    return terminals[0]
 
 
 @pytest.mark.unit
 class TestCompatEventTokensNotClobberedOmn13408:
-    """The compat task-delegated.v1 event carries the served tokens, not 0."""
+    """The canonical delegation terminal carries the served tokens, not 0."""
 
-    def test_completed_path_compat_event_carries_served_tokens(self) -> None:
-        """``_build_compat_event`` (completed path) must set tokens_input/output
-        to the served inference tokens — NOT leave them at the 0 default that
-        would clobber the projection row."""
-        compat = _drive_success_to_terminal()
+    def test_completed_path_terminal_carries_served_tokens(self) -> None:
+        """The completed-path canonical terminal carries the served inference
+        tokens — the single source the projection row reads."""
+        terminal = _drive_success_to_terminal()
 
-        # The bug-fix invariant: served tokens are carried, strictly positive.
-        assert compat.tokens_input == _PROMPT_TOKENS
-        assert compat.tokens_output == _COMPLETION_TOKENS
-        assert compat.tokens_input > 0
-        assert compat.tokens_output > 0
+        assert terminal.prompt_tokens == _PROMPT_TOKENS
+        assert terminal.completion_tokens == _COMPLETION_TOKENS
+        assert terminal.prompt_tokens > 0
+        assert terminal.completion_tokens > 0
 
-    def test_failed_path_compat_event_carries_served_tokens(self) -> None:
-        """The terminal-failed compat event must carry the tokens the upstream
-        model served before failing — the canonical delegation-failed.v1 event
-        co-writes the same projection row with those same tokens, so the compat
-        event must match rather than zero them."""
-        compat = _drive_failure_to_terminal()
+    def test_failed_path_terminal_carries_served_tokens(self) -> None:
+        """The terminal-failed canonical event must carry the tokens the upstream
+        model served before failing — the single source for the projection row."""
+        terminal = _drive_failure_to_terminal()
 
-        assert compat.quality_gate_passed is False
-        assert compat.tokens_input == _PROMPT_TOKENS
-        assert compat.tokens_output == _COMPLETION_TOKENS
-        assert compat.tokens_input > 0
-        assert compat.tokens_output > 0
+        assert terminal.quality_passed is False
+        assert terminal.prompt_tokens == _PROMPT_TOKENS
+        assert terminal.completion_tokens == _COMPLETION_TOKENS
+        assert terminal.prompt_tokens > 0
+        assert terminal.completion_tokens > 0
 
     def test_both_terminal_paths_carry_nonzero_tokens(self) -> None:
-        """Cross-check: neither terminal path emits a tokens-clobbering 0 when
-        the inference served tokens. This is the exact regression: pre-fix BOTH
-        paths emitted tokens_input == tokens_output == 0."""
+        """Cross-check: neither terminal path zeroes tokens when the inference
+        served tokens."""
         completed = _drive_success_to_terminal()
         failed = _drive_failure_to_terminal()
 
-        for event in (completed, failed):
-            assert event.tokens_input == _PROMPT_TOKENS
-            assert event.tokens_output == _COMPLETION_TOKENS
-            assert (event.tokens_input, event.tokens_output) != (0, 0)
+        for terminal in (completed, failed):
+            assert terminal.prompt_tokens == _PROMPT_TOKENS
+            assert terminal.completion_tokens == _COMPLETION_TOKENS
+            assert (terminal.prompt_tokens, terminal.completion_tokens) != (0, 0)

@@ -1,28 +1,26 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
 
-"""OMN-13475: one contract-owned builder produces BOTH terminal events.
+"""OMN-13475 / OMN-13629: one contract-owned builder produces ONE terminal event.
 
 This is the permanent kill of the OMN-13408 telemetry-zeroing bug *class*.
 
-Before this work the delegation orchestrator built the canonical terminal event
+History: the delegation orchestrator used to build the canonical terminal event
 (``delegation-completed.v1`` / ``delegation-failed.v1`` carrying a
-``ModelDelegationResult``) AND the backward-compat twin
-(``task-delegated.v1`` carrying a ``ModelTaskDelegatedEvent``) in **separate
-ad-hoc code paths** at five distinct terminal sites. The two were constructed
-from independently-read fields and independently-measured costs, so nothing
-structurally guaranteed they agreed. They co-write the same delegation
+``ModelDelegationResult``) AND a backward-compat twin (``task-delegated.v1``
+carrying a ``ModelTaskDelegatedEvent``) at five distinct terminal sites. The two
+were constructed from independently-read fields and independently-measured costs,
+so nothing structurally guaranteed they agreed. They co-write the same delegation
 projection row, so a drifted/zeroed twin clobbered the row's tokens/cost back to
-``0`` (OMN-13408). Patching each site to "also carry the tokens" left the
-divergence possible at every future edit.
+``0`` (OMN-13408). OMN-13475 collapsed every emission onto ONE builder
+(``HandlerDelegationWorkflow._emit_terminal``) that measured cost ONCE; OMN-13629
+(WS-F Phase 1) then DELETED the compat twin outright, collapsing the terminal to
+a SINGLE canonical event. With exactly one writer the divergence is not merely
+constrained — it is structurally impossible.
 
-The fix collapses every terminal emission onto ONE builder
-(``HandlerDelegationWorkflow._emit_terminal``) that measures cost ONCE and reads
-the token counts ONCE, then emits BOTH events from that single source. These
-tests assert the *parity invariant* directly: for every terminal path the
-canonical ``ModelDelegationResult`` and the compat ``ModelTaskDelegatedEvent``
-carry the SAME served tokens and the SAME measured cost. They FAIL on any future
-re-introduction of an independent second construction path.
+These tests assert the post-13629 invariant directly: every terminal path emits
+EXACTLY ONE canonical ``ModelDelegationResult`` terminal and ZERO compat events.
+They FAIL on any re-introduction of a second terminal construction path.
 """
 
 from __future__ import annotations
@@ -132,14 +130,13 @@ def _make_gate_result(correlation_id: UUID) -> ModelQualityGateResult:
     )
 
 
-def _split(
-    events: list[object],
-) -> tuple[ModelDelegationResult, ModelTaskDelegatedEvent]:
-    """Pull the canonical terminal payload + the compat twin out of one emission.
+def _single_canonical(events: list[object]) -> ModelDelegationResult:
+    """Pull THE single canonical terminal payload out of one emission.
 
-    Asserts the two events are co-emitted from the SAME terminal builder call:
-    exactly one canonical ``ModelDelegationEvent`` (carrying
-    ``ModelDelegationResult``) and exactly one ``ModelTaskDelegatedEvent``.
+    OMN-13629: asserts the terminal is a SINGLE canonical
+    ``ModelDelegationEvent`` (carrying ``ModelDelegationResult``) and that NO
+    compat ``ModelTaskDelegatedEvent`` twin is co-emitted — the legacy co-writer
+    that drove the OMN-13408 divergence is gone.
     """
     canonical = [
         e.payload
@@ -148,9 +145,11 @@ def _split(
         and isinstance(e.payload, ModelDelegationResult)
     ]
     compat = [e for e in events if isinstance(e, ModelTaskDelegatedEvent)]
-    assert len(canonical) == 1, f"expected one canonical terminal, got {events!r}"
-    assert len(compat) == 1, f"expected one compat twin, got {events!r}"
-    return canonical[0], compat[0]
+    assert len(canonical) == 1, (
+        f"expected exactly one canonical terminal, got {events!r}"
+    )
+    assert compat == [], f"expected ZERO compat twins (OMN-13629), got {compat!r}"
+    return canonical[0]
 
 
 def _drive_completed() -> list[object]:
@@ -190,61 +189,41 @@ def _count_constructions(model_name: str) -> int:
 
 
 @pytest.mark.unit
-class TestSingleBuilderStructureOmn13475:
-    """The dual ad-hoc construction is gone: each terminal model is built once.
+class TestSingleBuilderStructureOmn13629:
+    """The terminal collapses to ONE canonical construction; the compat twin is gone.
 
-    This is the structural guarantee behind the parity tests below. If anyone
-    re-introduces a second independent ``ModelDelegationResult(...)`` or
-    ``ModelTaskDelegatedEvent(...)`` construction site, the OMN-13408 divergence
-    becomes possible again — and this test fails immediately, at edit time,
-    before any projection can be clobbered.
+    If anyone re-introduces a second ``ModelDelegationResult(...)`` or a
+    ``ModelTaskDelegatedEvent(...)`` construction in the workflow handler, the
+    OMN-13408 divergence becomes possible again — and this test fails immediately,
+    at edit time, before any projection can be clobbered.
     """
 
     def test_canonical_terminal_result_built_exactly_once(self) -> None:
         assert _count_constructions("ModelDelegationResult") == 1
 
-    def test_compat_event_built_exactly_once(self) -> None:
-        assert _count_constructions("ModelTaskDelegatedEvent") == 1
+    def test_compat_event_no_longer_constructed(self) -> None:
+        # OMN-13629: the legacy ModelTaskDelegatedEvent co-writer was deleted.
+        assert _count_constructions("ModelTaskDelegatedEvent") == 0
 
 
 @pytest.mark.unit
-class TestTerminalBuilderSingleSourceOmn13475:
-    """Canonical terminal and compat twin agree because ONE builder makes both."""
+class TestSingleTerminalEmissionOmn13629:
+    """Every terminal path emits EXACTLY ONE canonical terminal, ZERO compat."""
 
-    def test_completed_path_terminal_and_compat_token_parity(self) -> None:
-        canonical, compat = _split(_drive_completed())
-        # Single-source invariant: the served tokens on the canonical terminal
-        # equal the served tokens on the compat twin (not independently read).
-        assert canonical.prompt_tokens == compat.tokens_input == _PROMPT_TOKENS
-        assert canonical.completion_tokens == compat.tokens_output == _COMPLETION_TOKENS
-        assert compat.tokens_input > 0
-        assert compat.tokens_output > 0
+    def test_completed_path_emits_single_canonical_terminal(self) -> None:
+        canonical = _single_canonical(_drive_completed())
+        assert canonical.quality_passed is True
+        assert canonical.prompt_tokens == _PROMPT_TOKENS
+        assert canonical.completion_tokens == _COMPLETION_TOKENS
 
-    def test_completed_path_terminal_and_compat_cost_parity(self) -> None:
-        canonical, compat = _split(_drive_completed())
-        # cost_usd on the compat twin is the SAME measured actual cost banked on
-        # the canonical terminal's final_attempt_cost — measured exactly once.
-        assert compat.cost_usd == canonical.final_attempt_cost
-        assert compat.cost_usd == canonical.cumulative_attempt_cost
-
-    def test_failed_path_terminal_and_compat_token_parity(self) -> None:
-        canonical, compat = _split(_drive_failed_inference())
+    def test_failed_path_emits_single_canonical_terminal(self) -> None:
+        canonical = _single_canonical(_drive_failed_inference())
         assert canonical.quality_passed is False
-        assert compat.quality_gate_passed is False
-        assert canonical.prompt_tokens == compat.tokens_input == _PROMPT_TOKENS
-        assert canonical.completion_tokens == compat.tokens_output == _COMPLETION_TOKENS
-        assert compat.tokens_input > 0
-        assert compat.tokens_output > 0
+        assert canonical.prompt_tokens == _PROMPT_TOKENS
+        assert canonical.completion_tokens == _COMPLETION_TOKENS
 
-    def test_failed_path_terminal_and_compat_cost_parity(self) -> None:
-        canonical, compat = _split(_drive_failed_inference())
-        assert compat.cost_usd == canonical.final_attempt_cost
-        assert compat.cost_usd == canonical.cumulative_attempt_cost
-
-    def test_both_paths_correlation_and_model_parity(self) -> None:
+    def test_both_paths_carry_correlation_and_model(self) -> None:
         for events in (_drive_completed(), _drive_failed_inference()):
-            canonical, compat = _split(events)
-            assert canonical.correlation_id == compat.correlation_id
-            assert canonical.task_type == compat.task_type
-            # The twin's delegated_to is the same model the canonical used.
-            assert canonical.model_used == compat.delegated_to
+            canonical = _single_canonical(events)
+            assert canonical.task_type == "test"
+            assert canonical.model_used == "qwen3-coder-30b"
