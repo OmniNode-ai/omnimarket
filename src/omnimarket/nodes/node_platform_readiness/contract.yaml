@@ -20,10 +20,9 @@ handler_routing:
       handler:
         name: NodePlatformReadiness
         module: omnimarket.nodes.node_platform_readiness.handlers.handler_platform_readiness
-    - operation: dimension_checks
-      handler:
-        name: run_all_dimensions
-        module: omnimarket.nodes.node_platform_readiness.handlers.dimension_checks
+    # OMN-13551: run_all_dimensions is an internal async helper (takes a
+    # CheckContext), not a runtime-dispatched handler. It quarantined at boot
+    # (requires `ctx`). Removed from handler_routing; still called internally.
 
 descriptor:
   node_archetype: compute

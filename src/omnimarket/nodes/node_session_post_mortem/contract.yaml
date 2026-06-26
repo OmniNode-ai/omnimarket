@@ -98,14 +98,11 @@ handler_routing:
       event_model:
         name: ModelPostMortemCommand
         module: omnimarket.nodes.node_session_post_mortem.handlers.handler_session_post_mortem
-    - operation: friction_reader
-      handler:
-        name: read_friction_events
-        module: omnimarket.nodes.node_session_post_mortem.handlers.adapter_friction_reader
-    - operation: pr_collector
-      handler:
-        name: collect_pr_status
-        module: omnimarket.nodes.node_session_post_mortem.handlers.adapter_pr_collector
+    # OMN-13551: read_friction_events / collect_pr_status are adapter helpers
+    # injected into HandlerSessionPostMortem (default-wired in its __init__), not
+    # runtime-dispatched handlers. They take domain args (friction_dir,
+    # friction_events) with no injectable provider, so they quarantined at boot.
+    # Removed from handler_routing; still used internally by the post-mortem handler.
 
 metadata:
   transport_type: kafka
