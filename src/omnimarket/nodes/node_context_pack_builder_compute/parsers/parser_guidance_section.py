@@ -15,7 +15,7 @@ from omnibase_core.enums.enum_context_pack_provenance import (
     EnumContextPackProvenance,
 )
 
-from omnimarket.nodes.node_context_pack_builder_compute.models.model_context_pack_artifact import (
+from omnimarket.pack.model_context_pack_artifact import (
     ModelContextPackArtifact,
 )
 

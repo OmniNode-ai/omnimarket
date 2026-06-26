@@ -2,10 +2,12 @@
 # SPDX-License-Identifier: MIT
 """Wiring test: resolver output drives the ROI runner's context assembly.
 
-Proves the resolved artifact_content_map, fed into the runner's
-ModelContextRoiRunRequest, makes _assemble_context_text emit REAL per-factor
-text (never the [stub content for ...] placeholder) for every canonical ON arm.
-This is the seam OMN-12948 closes for OMN-12798.
+Proves the resolved artifact_content_map, fed into the runner's canonical
+context-pack assembly (_build_context_pack, which sources the pack from
+node_context_pack_builder_compute), emits REAL per-factor text (never the
+[stub content for ...] placeholder) for every canonical ON arm. This is the
+seam OMN-12948 closes for OMN-12798; OMN-13643 routes it through the single
+canonical assembler.
 """
 
 from __future__ import annotations
@@ -15,6 +17,7 @@ from omnibase_core.enums.enum_context_pack_provenance import (
     EnumContextPackProvenance,
 )
 
+from omnimarket.events.context_roi import EnumFailureStage
 from omnimarket.nodes.node_context_artifact_resolver_compute.handlers.handler_artifact_resolver import (
     HandlerArtifactResolver,
 )
@@ -34,7 +37,7 @@ from omnimarket.nodes.node_context_roi_compute.models.model_factor_matrix import
     build_canonical_factor_matrix,
 )
 from omnimarket.nodes.node_context_roi_runner.handlers.handler_context_roi_runner import (
-    _assemble_context_text,
+    _build_context_pack,
 )
 
 _GENERATED_AT = "2026-06-11T00:00:00+00:00"
@@ -92,10 +95,16 @@ def test_every_on_arm_gets_real_content_no_stub() -> None:
         if arm.label == EnumArmLabel.OFF:
             continue
         factor_subset = tuple(f.value for f in arm.factors)
-        text, warnings = _assemble_context_text(
+        text, pack_hash, warnings, failure_stage = _build_context_pack(
             factor_subset=factor_subset,
             artifact_content_map=content_map,
+            contract_hash=_CONTRACT_HASH,
         )
+        # Canonical builder accepted the pack and produced a hash.
+        assert failure_stage == EnumFailureStage.NONE, (
+            f"arm {arm.label} pack build failed: {warnings}"
+        )
+        assert pack_hash != ""
         # No factor of any ON arm falls back to the stub placeholder.
         assert "[stub content for" not in text, f"arm {arm.label} got stub text"
         # Each factor in the arm contributes a real labelled section.
@@ -107,9 +116,13 @@ def test_every_on_arm_gets_real_content_no_stub() -> None:
 
 def test_off_arm_assembles_empty() -> None:
     content_map = _resolve_all_factors()
-    text, warnings = _assemble_context_text(
+    # Empty factor subset → no artifacts → no pack built (off arm injects nothing).
+    text, pack_hash, warnings, failure_stage = _build_context_pack(
         factor_subset=(),
         artifact_content_map=content_map,
+        contract_hash=_CONTRACT_HASH,
     )
     assert text == ""
+    assert pack_hash == ""
+    assert failure_stage == EnumFailureStage.PACK_BUILD
     assert warnings == []

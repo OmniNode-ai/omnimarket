@@ -8,12 +8,13 @@ hardcoded topic literals.  Topics are read from contract.yaml at construction
 time.
 
 Flow per (task x arm x trial):
-  1. Assemble context pack text for the arm (off arm = empty string).
-     Context text is assembled directly from EnumContextFactor labels and
-     stub content -- no cross-node import of pack builder private models.
-     In production the content resolver populates real artifact text via
-     the request's artifact_content_map before calling this handler.
-  2. Serialise pack text; compute SHA-256 hash.
+  1. Assemble the arm's context pack (off arm = empty string) by invoking the
+     single canonical assembler, node_context_pack_builder_compute (OMN-13643).
+     The builder owns factor precedence and the 16k token budget; the runner
+     never re-implements them. In production the content resolver populates real
+     artifact text via the request's artifact_content_map before this handler
+     is called.
+  2. Use the builder's pack_hash as the injected pack's context_pack_hash.
   3. Publish a generation command on the generation command topic
      (read from contract via generation_pipeline.command_topic).
   4. Wait for the terminal generation event, racing correlated waits across
@@ -36,8 +37,9 @@ Statistical validity:
 
 Architecture conformance:
   - EFFECT: contract + handler, all I/O here.
-  - No cross-node model imports -- all shared types come from omnibase_core
-    or this node's own models package.
+  - Context-pack assembly is sourced from the single canonical assembler,
+    node_context_pack_builder_compute, via its shared I/O models in
+    omnimarket.pack (no cross-node reach-in into a sibling's private models).
   - Bus publish/consume is the only cross-service I/O channel.
   - Model/provider/endpoint identity comes from the routing authority
     (contract model_routing fields on the generation contract), echoed back
@@ -61,6 +63,10 @@ from typing import Any, Protocol, runtime_checkable
 
 import yaml
 from omnibase_core.enums.enum_context_factor import EnumContextFactor
+from omnibase_core.enums.enum_context_pack_failure import EnumContextPackFailure
+from omnibase_core.enums.enum_context_pack_provenance import (
+    EnumContextPackProvenance,
+)
 
 from omnimarket.enums.enum_proof_class import EnumProofClass
 from omnimarket.events.context_roi import (
@@ -68,10 +74,19 @@ from omnimarket.events.context_roi import (
     ModelAttemptReductionRow,
     ModelContextRoiRunResult,
 )
+from omnimarket.nodes.node_context_pack_builder_compute.handlers.handler_context_pack_builder import (
+    HandlerContextPackBuilder,
+)
 from omnimarket.nodes.node_context_roi_runner.models.model_context_roi_run_request import (
     ModelContextRoiArmSpec,
     ModelContextRoiRunRequest,
     ModelContextRoiTask,
+)
+from omnimarket.pack import (
+    EnumContextPackBuilderStatus,
+    ModelContextPackArtifact,
+    ModelContextPackBuilderRequest,
+    ModelContextProfile,
 )
 
 logger = logging.getLogger(__name__)
@@ -179,33 +194,113 @@ def _factor_str_to_enum(label: str) -> EnumContextFactor | None:
     return None
 
 
-def _assemble_context_text(
+# heuristic_chars token estimation: ~4 chars per token, matching the pack
+# builder profile default token_estimation_method="heuristic_chars". A non-empty
+# body always estimates at least one token so a section is never silently dropped.
+_CHARS_PER_TOKEN = 4
+
+# Provenance label for the context-ROI pack profile. This is pack metadata
+# (pack_id / pack_hash provenance), NOT model routing — the real model is
+# resolved downstream by the generation consumer's routing authority. OMN-13644
+# (B2) replaces this harness default with the ROI-resolved policy.
+_PACK_PROFILE_MODEL_ID = "context-roi-experiment"
+
+
+def _estimate_tokens(content: str) -> int:
+    """heuristic_chars token estimate (≥1 for any non-empty content)."""
+    return max(1, (len(content) + _CHARS_PER_TOKEN - 1) // _CHARS_PER_TOKEN)
+
+
+def _map_builder_failure_stage(
+    failure_class: EnumContextPackFailure | None,
+) -> EnumFailureStage:
+    if failure_class is EnumContextPackFailure.TOKEN_BUDGET_EXCEEDED:
+        return EnumFailureStage.BUDGET_FAIL
+    return EnumFailureStage.PACK_BUILD
+
+
+def _build_context_pack(
     factor_subset: tuple[str, ...],
     artifact_content_map: dict[str, str],
-) -> tuple[str, list[str]]:
-    """Assemble context pack text from factor labels and resolved content.
+    contract_hash: str,
+) -> tuple[str, str, list[str], EnumFailureStage]:
+    """Assemble the arm's context pack via the single canonical assembler.
 
-    Returns (context_text, warnings).  Unknown factor labels produce a
-    warning and are skipped.  In production the artifact_content_map is
-    populated by the content-resolver effect before this handler is called.
-    When the map is empty (offline test runs), each factor falls back to a
-    minimal synthetic section so the assembly path stays exercisable.
+    Sources the pack from node_context_pack_builder_compute (the one canonical
+    context assembler) so the ROI runner never re-implements factor precedence
+    or the 16k token budget. Returns
+    ``(context_text, pack_hash, warnings, failure_stage)``:
 
-    Context text format: one labelled section per factor, separated by
-    blank lines -- the same shape the generation prompt expects.
+    - ``context_text`` is one labelled ``[factor]\\ncontent`` section per chunk,
+      in the builder's canonical precedence order
+      (golden_chain > exemplar > local_failures > architecture_patterns >
+      claude_md), joined by blank lines -- the shape the generation prompt
+      expects.
+    - ``pack_hash`` is the builder's ``pack_hash`` (NOT a local sha256 of the
+      text), so the injected pack carries the canonical pack identity.
+    - ``failure_stage`` is ``NONE`` on success; otherwise it preserves the
+      builder's failure class so budget rejects remain ``BUDGET_FAIL``.
+
+    Unknown factor labels are skipped with a warning. A selected factor without
+    resolved content fails closed so upstream resolver gaps are not masked.
     """
     warnings: list[str] = []
-    parts: list[str] = []
+    artifacts: list[ModelContextPackArtifact] = []
 
     for label in factor_subset:
         factor = _factor_str_to_enum(label)
         if factor is None:
             warnings.append(f"unknown factor label '{label}' -- skipped")
             continue
-        content = artifact_content_map.get(label, f"[stub content for {label}]")
-        parts.append(f"[{label}]\n{content}")
+        if label not in artifact_content_map:
+            warnings.append(
+                f"missing resolved content for factor '{label}' -- pack build failed"
+            )
+            return "", "", warnings, EnumFailureStage.PACK_BUILD
+        content = artifact_content_map[label]
+        artifacts.append(
+            ModelContextPackArtifact(
+                factor=factor,
+                content=content,
+                token_estimate=_estimate_tokens(content),
+                provenance=EnumContextPackProvenance.OBSERVED,
+                source_artifact_hash=_sha256(content),
+                source_contract_hash=contract_hash,
+            )
+        )
 
-    return "\n\n".join(parts), warnings
+    if not artifacts:
+        return "", "", warnings, EnumFailureStage.PACK_BUILD
+
+    profile = ModelContextProfile(
+        model_id=_PACK_PROFILE_MODEL_ID,
+        factor_precedence=tuple(EnumContextFactor),
+    )
+    request = ModelContextPackBuilderRequest(
+        contract_hash=contract_hash,
+        generated_at=_utc_now_iso(),
+        profile=profile,
+        artifacts=tuple(artifacts),
+    )
+    result = HandlerContextPackBuilder().handle(request)
+
+    if (
+        result.status is not EnumContextPackBuilderStatus.OK
+        or result.context_pack is None
+        or result.pack_hash is None
+    ):
+        failure_stage = _map_builder_failure_stage(result.failure_class)
+        warnings.append(
+            f"context-pack builder rejected pack (failure_class="
+            f"{failure_stage}): {'; '.join(result.errors)}"
+        )
+        return "", "", warnings, failure_stage
+
+    context_text = "\n\n".join(
+        f"[{chunk.factor.value}]\n{chunk.content}"
+        for chunk in result.context_pack.chunks
+    )
+    return context_text, result.pack_hash, warnings, EnumFailureStage.NONE
 
 
 class HandlerContextRoiRunner:
@@ -214,11 +309,12 @@ class HandlerContextRoiRunner:
     The event_publisher and event_consumer are injected for testing.  In
     production the runtime injects the Kafka adapter implementations.
 
-    Architecture note: context text is assembled directly from factor labels
-    and resolved artifact content -- no cross-node import of pack builder
-    private models.  The pack builder contract is the source of truth for
-    factor ordering and budget policy; this handler implements a simplified
-    assembly path suitable for experiment runs.
+    Architecture note: the context pack is sourced from the single canonical
+    assembler, node_context_pack_builder_compute, invoked in-process via its
+    handler (OMN-13643). Its shared I/O models live in ``omnimarket.pack`` (not
+    the builder node's private models package), so this is not a cross-node
+    reach-in. The builder owns factor precedence and the 16k token budget; this
+    handler never re-implements that policy.
     """
 
     def __init__(
@@ -512,23 +608,22 @@ class HandlerContextRoiRunner:
                 pack_failure_stage = EnumFailureStage.PACK_BUILD
 
             if pack_failure_stage == EnumFailureStage.NONE:
-                context_pack_text, assemble_warnings = _assemble_context_text(
+                # Source the pack from the canonical builder. Failure stage
+                # preserves the builder's class, including BUDGET_FAIL.
+                (
+                    context_pack_text,
+                    context_pack_hash,
+                    assemble_warnings,
+                    pack_result_stage,
+                ) = _build_context_pack(
                     factor_subset=arm.factor_subset,
                     artifact_content_map=request.artifact_content_map,
+                    contract_hash=factor_subset_hash,
                 )
                 warnings.extend(assemble_warnings)
 
-                # If every factor label was unknown, record pack_build failure.
-                valid_factors = [
-                    label
-                    for label in arm.factor_subset
-                    if _factor_str_to_enum(label) is not None
-                ]
-                if not valid_factors:
-                    pack_failure_stage = EnumFailureStage.PACK_BUILD
-
-                if context_pack_text:
-                    context_pack_hash = _sha256(context_pack_text)
+                if pack_result_stage != EnumFailureStage.NONE:
+                    pack_failure_stage = pack_result_stage
 
         if pack_failure_stage != EnumFailureStage.NONE:
             # Pack assembly failed -- record row without attempting generation.
@@ -818,7 +913,7 @@ class HandlerContextRoiRunner:
 
 __all__ = [
     "HandlerContextRoiRunner",
-    "_assemble_context_text",
+    "_build_context_pack",
     "_factor_str_to_enum",
     "_factor_subset_hash",
     "_sha256",

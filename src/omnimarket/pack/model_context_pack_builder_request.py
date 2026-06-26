@@ -4,10 +4,10 @@ from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from omnimarket.nodes.node_context_pack_builder_compute.models.model_context_pack_artifact import (
+from omnimarket.pack.model_context_pack_artifact import (
     ModelContextPackArtifact,
 )
-from omnimarket.nodes.node_context_pack_builder_compute.models.model_context_profile import (
+from omnimarket.pack.model_context_profile import (
     ModelContextProfile,
 )
 
