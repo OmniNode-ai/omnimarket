@@ -17,6 +17,7 @@ from omnibase_core.enums.enum_context_pack_provenance import (
     EnumContextPackProvenance,
 )
 
+from omnimarket.events.context_roi import EnumFailureStage
 from omnimarket.nodes.node_context_artifact_resolver_compute.handlers.handler_artifact_resolver import (
     HandlerArtifactResolver,
 )
@@ -94,13 +95,15 @@ def test_every_on_arm_gets_real_content_no_stub() -> None:
         if arm.label == EnumArmLabel.OFF:
             continue
         factor_subset = tuple(f.value for f in arm.factors)
-        text, pack_hash, warnings, ok = _build_context_pack(
+        text, pack_hash, warnings, failure_stage = _build_context_pack(
             factor_subset=factor_subset,
             artifact_content_map=content_map,
             contract_hash=_CONTRACT_HASH,
         )
         # Canonical builder accepted the pack and produced a hash.
-        assert ok is True, f"arm {arm.label} pack build failed: {warnings}"
+        assert failure_stage == EnumFailureStage.NONE, (
+            f"arm {arm.label} pack build failed: {warnings}"
+        )
         assert pack_hash != ""
         # No factor of any ON arm falls back to the stub placeholder.
         assert "[stub content for" not in text, f"arm {arm.label} got stub text"
@@ -114,12 +117,12 @@ def test_every_on_arm_gets_real_content_no_stub() -> None:
 def test_off_arm_assembles_empty() -> None:
     content_map = _resolve_all_factors()
     # Empty factor subset → no artifacts → no pack built (off arm injects nothing).
-    text, pack_hash, warnings, ok = _build_context_pack(
+    text, pack_hash, warnings, failure_stage = _build_context_pack(
         factor_subset=(),
         artifact_content_map=content_map,
         contract_hash=_CONTRACT_HASH,
     )
     assert text == ""
     assert pack_hash == ""
-    assert ok is False
+    assert failure_stage == EnumFailureStage.PACK_BUILD
     assert warnings == []

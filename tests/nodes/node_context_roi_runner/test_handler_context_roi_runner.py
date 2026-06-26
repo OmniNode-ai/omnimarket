@@ -126,6 +126,7 @@ def _make_request(
     arms: tuple[ModelContextRoiArmSpec, ...] | None = None,
     tasks: tuple[ModelContextRoiTask, ...] | None = None,
     trials_per_cell: int = 1,
+    artifact_content_map: dict[str, str] | None = None,
 ) -> ModelContextRoiRunRequest:
     return ModelContextRoiRunRequest(
         run_id="run-test-001",
@@ -136,6 +137,8 @@ def _make_request(
         arm_order_seed=42,
         generation_timeout_seconds=5.0,
         contract_hash="test-hash-abc",
+        artifact_content_map=artifact_content_map
+        or {"golden_chain": "resolved golden chain context"},
     )
 
 
@@ -248,12 +251,12 @@ def test_assemble_context_text_removed() -> None:
 
 def test_build_context_pack_sources_from_canonical_builder() -> None:
     """A single ON factor produces a labelled section and the builder's pack_hash."""
-    text, pack_hash, warnings, ok = _build_context_pack(
+    text, pack_hash, warnings, failure_stage = _build_context_pack(
         factor_subset=("golden_chain",),
         artifact_content_map={"golden_chain": "some golden chain content"},
         contract_hash=_BUILDER_CONTRACT_HASH,
     )
-    assert ok is True
+    assert failure_stage == EnumFailureStage.NONE
     assert "[golden_chain]" in text
     assert "some golden chain content" in text
     # pack_hash is the builder's hash, NOT a local sha256 of the text.
@@ -262,13 +265,16 @@ def test_build_context_pack_sources_from_canonical_builder() -> None:
     assert warnings == []
 
 
-def test_build_context_pack_matches_builder_pack_hash() -> None:
+def test_build_context_pack_matches_builder_pack_hash(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """The injected pack_hash is exactly node_context_pack_builder_compute's."""
     from omnibase_core.enums.enum_context_factor import EnumContextFactor
     from omnibase_core.enums.enum_context_pack_provenance import (
         EnumContextPackProvenance,
     )
 
+    import omnimarket.nodes.node_context_roi_runner.handlers.handler_context_roi_runner as runner_module
     from omnimarket.nodes.node_context_pack_builder_compute.handlers.handler_context_pack_builder import (
         HandlerContextPackBuilder,
     )
@@ -287,6 +293,7 @@ def test_build_context_pack_matches_builder_pack_hash() -> None:
     # Build the same request the runner constructs, with a fixed generated_at so
     # the builder pack_hash is reproducible for the assertion.
     generated_at = _utc_now_iso()
+    monkeypatch.setattr(runner_module, "_utc_now_iso", lambda: generated_at)
     artifact = ModelContextPackArtifact(
         factor=EnumContextFactor.GOLDEN_CHAIN,
         content=content,
@@ -313,41 +320,53 @@ def test_build_context_pack_matches_builder_pack_hash() -> None:
     assert direct.context_pack is not None
     assert direct.context_pack.chunks[0].content == content
 
+    text, pack_hash, warnings, failure_stage = _build_context_pack(
+        factor_subset=("golden_chain",),
+        artifact_content_map={"golden_chain": content},
+        contract_hash=_BUILDER_CONTRACT_HASH,
+    )
+    assert failure_stage == EnumFailureStage.NONE
+    assert pack_hash == direct.pack_hash
+    assert text == "[golden_chain]\nchain text"
+    assert warnings == []
+
 
 def test_build_context_pack_unknown_factor_warns() -> None:
-    text, pack_hash, warnings, ok = _build_context_pack(
+    text, pack_hash, warnings, failure_stage = _build_context_pack(
         factor_subset=("not_a_factor",),
         artifact_content_map={},
         contract_hash=_BUILDER_CONTRACT_HASH,
     )
     assert text == ""
     assert pack_hash == ""
-    assert ok is False
+    assert failure_stage == EnumFailureStage.PACK_BUILD
     assert len(warnings) == 1
     assert "not_a_factor" in warnings[0]
 
 
-def test_build_context_pack_fallback_stub_when_map_empty() -> None:
-    text, _pack_hash, warnings, ok = _build_context_pack(
+def test_build_context_pack_missing_content_fails_closed() -> None:
+    text, pack_hash, warnings, failure_stage = _build_context_pack(
         factor_subset=("golden_chain",),
         artifact_content_map={},
         contract_hash=_BUILDER_CONTRACT_HASH,
     )
-    assert ok is True
-    assert "[golden_chain]" in text
-    assert "stub" in text
-    assert warnings == []
+    assert text == ""
+    assert pack_hash == ""
+    assert failure_stage == EnumFailureStage.PACK_BUILD
+    assert warnings == [
+        "missing resolved content for factor 'golden_chain' -- pack build failed"
+    ]
 
 
 def test_build_context_pack_orders_by_canonical_precedence() -> None:
     """Multiple factors are emitted in the builder's canonical precedence order."""
-    text, _pack_hash, warnings, ok = _build_context_pack(
+    text, _pack_hash, warnings, failure_stage = _build_context_pack(
         # Deliberately reversed input order; the builder reorders by precedence.
         factor_subset=("exemplar", "golden_chain"),
         artifact_content_map={"golden_chain": "chain text", "exemplar": "ex text"},
         contract_hash=_BUILDER_CONTRACT_HASH,
     )
-    assert ok is True
+    assert failure_stage == EnumFailureStage.NONE
     assert "[golden_chain]" in text
     assert "[exemplar]" in text
     # golden_chain precedes exemplar in EnumContextFactor precedence order.

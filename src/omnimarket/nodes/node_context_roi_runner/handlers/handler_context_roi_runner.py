@@ -37,8 +37,9 @@ Statistical validity:
 
 Architecture conformance:
   - EFFECT: contract + handler, all I/O here.
-  - No cross-node model imports -- all shared types come from omnibase_core
-    or this node's own models package.
+  - Context-pack assembly is sourced from the single canonical assembler,
+    node_context_pack_builder_compute, via its shared I/O models in
+    omnimarket.pack (no cross-node reach-in into a sibling's private models).
   - Bus publish/consume is the only cross-service I/O channel.
   - Model/provider/endpoint identity comes from the routing authority
     (contract model_routing fields on the generation contract), echoed back
@@ -62,6 +63,7 @@ from typing import Any, Protocol, runtime_checkable
 
 import yaml
 from omnibase_core.enums.enum_context_factor import EnumContextFactor
+from omnibase_core.enums.enum_context_pack_failure import EnumContextPackFailure
 from omnibase_core.enums.enum_context_pack_provenance import (
     EnumContextPackProvenance,
 )
@@ -206,20 +208,28 @@ _PACK_PROFILE_MODEL_ID = "context-roi-experiment"
 
 def _estimate_tokens(content: str) -> int:
     """heuristic_chars token estimate (≥1 for any non-empty content)."""
-    return max(1, len(content) // _CHARS_PER_TOKEN)
+    return max(1, (len(content) + _CHARS_PER_TOKEN - 1) // _CHARS_PER_TOKEN)
+
+
+def _map_builder_failure_stage(
+    failure_class: EnumContextPackFailure | None,
+) -> EnumFailureStage:
+    if failure_class is EnumContextPackFailure.TOKEN_BUDGET_EXCEEDED:
+        return EnumFailureStage.BUDGET_FAIL
+    return EnumFailureStage.PACK_BUILD
 
 
 def _build_context_pack(
     factor_subset: tuple[str, ...],
     artifact_content_map: dict[str, str],
     contract_hash: str,
-) -> tuple[str, str, list[str], bool]:
+) -> tuple[str, str, list[str], EnumFailureStage]:
     """Assemble the arm's context pack via the single canonical assembler.
 
     Sources the pack from node_context_pack_builder_compute (the one canonical
     context assembler) so the ROI runner never re-implements factor precedence
     or the 16k token budget. Returns
-    ``(context_text, pack_hash, warnings, ok)``:
+    ``(context_text, pack_hash, warnings, failure_stage)``:
 
     - ``context_text`` is one labelled ``[factor]\\ncontent`` section per chunk,
       in the builder's canonical precedence order
@@ -228,13 +238,11 @@ def _build_context_pack(
       expects.
     - ``pack_hash`` is the builder's ``pack_hash`` (NOT a local sha256 of the
       text), so the injected pack carries the canonical pack identity.
-    - ``ok`` is False when no valid factor produced an artifact or the builder
-      rejected the pack (e.g. token budget exceeded); the caller records the
-      row as ``failure_stage=PACK_BUILD`` without attempting generation.
+    - ``failure_stage`` is ``NONE`` on success; otherwise it preserves the
+      builder's failure class so budget rejects remain ``BUDGET_FAIL``.
 
-    Unknown factor labels are skipped with a warning. When the
-    artifact_content_map omits a factor (offline test runs), that factor falls
-    back to a minimal synthetic section so the assembly path stays exercisable.
+    Unknown factor labels are skipped with a warning. A selected factor without
+    resolved content fails closed so upstream resolver gaps are not masked.
     """
     warnings: list[str] = []
     artifacts: list[ModelContextPackArtifact] = []
@@ -244,7 +252,12 @@ def _build_context_pack(
         if factor is None:
             warnings.append(f"unknown factor label '{label}' -- skipped")
             continue
-        content = artifact_content_map.get(label, f"[stub content for {label}]")
+        if label not in artifact_content_map:
+            warnings.append(
+                f"missing resolved content for factor '{label}' -- pack build failed"
+            )
+            return "", "", warnings, EnumFailureStage.PACK_BUILD
+        content = artifact_content_map[label]
         artifacts.append(
             ModelContextPackArtifact(
                 factor=factor,
@@ -257,7 +270,7 @@ def _build_context_pack(
         )
 
     if not artifacts:
-        return "", "", warnings, False
+        return "", "", warnings, EnumFailureStage.PACK_BUILD
 
     profile = ModelContextProfile(
         model_id=_PACK_PROFILE_MODEL_ID,
@@ -276,17 +289,18 @@ def _build_context_pack(
         or result.context_pack is None
         or result.pack_hash is None
     ):
+        failure_stage = _map_builder_failure_stage(result.failure_class)
         warnings.append(
             f"context-pack builder rejected pack (failure_class="
-            f"{result.failure_class}): {'; '.join(result.errors)}"
+            f"{failure_stage}): {'; '.join(result.errors)}"
         )
-        return "", "", warnings, False
+        return "", "", warnings, failure_stage
 
     context_text = "\n\n".join(
         f"[{chunk.factor.value}]\n{chunk.content}"
         for chunk in result.context_pack.chunks
     )
-    return context_text, result.pack_hash, warnings, True
+    return context_text, result.pack_hash, warnings, EnumFailureStage.NONE
 
 
 class HandlerContextRoiRunner:
@@ -594,14 +608,13 @@ class HandlerContextRoiRunner:
                 pack_failure_stage = EnumFailureStage.PACK_BUILD
 
             if pack_failure_stage == EnumFailureStage.NONE:
-                # Source the pack from the canonical builder. pack_ok=False means
-                # no valid factor produced an artifact OR the builder rejected
-                # the pack (e.g. token budget exceeded) -- a pack_build failure.
+                # Source the pack from the canonical builder. Failure stage
+                # preserves the builder's class, including BUDGET_FAIL.
                 (
                     context_pack_text,
                     context_pack_hash,
                     assemble_warnings,
-                    pack_ok,
+                    pack_result_stage,
                 ) = _build_context_pack(
                     factor_subset=arm.factor_subset,
                     artifact_content_map=request.artifact_content_map,
@@ -609,8 +622,8 @@ class HandlerContextRoiRunner:
                 )
                 warnings.extend(assemble_warnings)
 
-                if not pack_ok:
-                    pack_failure_stage = EnumFailureStage.PACK_BUILD
+                if pack_result_stage != EnumFailureStage.NONE:
+                    pack_failure_stage = pack_result_stage
 
         if pack_failure_stage != EnumFailureStage.NONE:
             # Pack assembly failed -- record row without attempting generation.
