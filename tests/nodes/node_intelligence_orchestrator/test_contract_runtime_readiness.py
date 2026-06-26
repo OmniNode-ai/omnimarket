@@ -50,17 +50,43 @@ def test_intelligence_orchestrator_handler_entries_have_autowiring_names() -> No
     for entry in handlers:
         handler_ref = entry["handler"]
         assert handler_ref["name"]
-        assert handler_ref["name"] == handler_ref["function"]
         assert "intelligence" not in contract["runtime_profiles"]
 
 
-def test_intelligence_orchestrator_function_handlers_resolve() -> None:
+def test_intelligence_orchestrator_handlers_are_boot_resolvable() -> None:
+    """OMN-13551: handler_routing must target the envelope-shaped wrapper classes
+    (HandlerReceiveIntent / HandlerReceiveIntents), not the raw
+    handle_receive_intent(intent) functions. The bare functions take a domain
+    ModelIntent (not an envelope) and could not be boot-resolved, so the runtime
+    quarantined the handlers. The wrappers are zero-arg with async handle()."""
+    import inspect
+
     contract = _load_contract("node_intelligence_orchestrator")
 
     for entry in contract["handler_routing"]["handlers"]:
         handler_ref = entry["handler"]
         module = importlib.import_module(handler_ref["module"])
+        handler_cls = getattr(module, handler_ref["name"])
 
-        assert getattr(module, handler_ref["name"]) is getattr(
-            module, handler_ref["function"]
+        # Envelope-shaped handler: a class with a handle() method.
+        assert inspect.isclass(handler_cls), (
+            f"{handler_ref['name']} must be a handler class, not a bare function"
+        )
+        assert hasattr(handler_cls, "handle")
+
+        # Boot-resolvable: zero required, non-injectable constructor params.
+        required = [
+            name
+            for name, param in inspect.signature(handler_cls).parameters.items()
+            if name not in ("self", "event_bus", "container", "ownership_query")
+            and param.default is inspect.Parameter.empty
+            and param.kind
+            in (
+                inspect.Parameter.POSITIONAL_OR_KEYWORD,
+                inspect.Parameter.KEYWORD_ONLY,
+            )
+        ]
+        assert not required, (
+            f"{handler_ref['name']} has unresolvable required ctor params "
+            f"{required} — would quarantine at boot"
         )

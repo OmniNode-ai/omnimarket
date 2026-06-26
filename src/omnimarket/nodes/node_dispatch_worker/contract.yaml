@@ -28,10 +28,10 @@ handler_routing:
       handler:
         name: HandlerDispatchWorker
         module: omnimarket.nodes.node_dispatch_worker.handlers.handler_dispatch_worker
-    - operation: dispatch_record_writer
-      handler:
-        name: write_dispatch_record
-        module: omnimarket.nodes.node_dispatch_worker.handlers.dispatch_record_writer
+    # OMN-13551: write_dispatch_record is an internal helper called by
+    # HandlerDispatchWorker (handler_dispatch_worker.py), not a runtime-dispatched
+    # handler. It was misclassified here and quarantined at boot (requires a
+    # `record` arg). Removed from handler_routing; still invoked internally.
 
 descriptor:
   node_archetype: compute

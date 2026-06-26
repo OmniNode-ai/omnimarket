@@ -108,10 +108,13 @@ workflow_coordination:
 handler_routing:
   routing_strategy: "intent_type_match"
   handlers:
+    # OMN-13551: route at the envelope-shaped wrapper classes (zero-arg,
+    # async handle(envelope)) rather than the raw handle_receive_intent(intent)
+    # functions. The bare functions take a domain ModelIntent, not an envelope,
+    # so the runtime could not boot-resolve them and quarantined the handler.
     - operation: "receive_intent"
       handler:
-        name: "handle_receive_intent"
-        function: "handle_receive_intent"
+        name: "HandlerReceiveIntent"
         module: "omnimarket.nodes.node_intelligence_orchestrator.handlers.handler_receive_intent"
         type: "sync"
       event_model:
@@ -122,8 +125,7 @@ handler_routing:
       description: "Receive and log a single intent from the reducer"
     - operation: "receive_intents"
       handler:
-        name: "handle_receive_intents"
-        function: "handle_receive_intents"
+        name: "HandlerReceiveIntents"
         module: "omnimarket.nodes.node_intelligence_orchestrator.handlers.handler_receive_intent"
         type: "sync"
       event_type: "omnimarket.intent-received-batch"

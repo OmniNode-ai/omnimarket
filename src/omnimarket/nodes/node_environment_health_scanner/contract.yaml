@@ -20,34 +20,12 @@ handler_routing:
       handler:
         name: NodeEnvironmentHealthScanner
         module: omnimarket.nodes.node_environment_health_scanner.handlers.handler_environment_health_scanner
-    - operation: containers
-      handler:
-        name: probe_containers
-        module: omnimarket.nodes.node_environment_health_scanner.handlers.prober_containers
-    - operation: emit_daemon
-      handler:
-        name: probe_emit_daemon
-        module: omnimarket.nodes.node_environment_health_scanner.handlers.prober_emit_daemon
-    - operation: entry_points
-      handler:
-        name: probe_entry_points
-        module: omnimarket.nodes.node_environment_health_scanner.handlers.prober_entry_points
-    - operation: hooks
-      handler:
-        name: probe_hooks
-        module: omnimarket.nodes.node_environment_health_scanner.handlers.prober_hooks
-    - operation: kafka
-      handler:
-        name: probe_kafka
-        module: omnimarket.nodes.node_environment_health_scanner.handlers.prober_kafka
-    - operation: model_endpoints
-      handler:
-        name: probe_model_endpoints
-        module: omnimarket.nodes.node_environment_health_scanner.handlers.prober_model_endpoints
-    - operation: projections
-      handler:
-        name: probe_projections
-        module: omnimarket.nodes.node_environment_health_scanner.handlers.prober_projections
+    # OMN-13551: the per-domain probe_* functions (containers, emit_daemon,
+    # entry_points, hooks, kafka, model_endpoints, projections) are internal
+    # helpers invoked directly by NodeEnvironmentHealthScanner, not
+    # runtime-dispatched handlers. Several required domain args (log_dir,
+    # ssh_target, specs, ...) with no injectable provider, so they quarantined
+    # at boot. Removed from handler_routing; still called internally.
 
 metadata:
   transport_type: httpx

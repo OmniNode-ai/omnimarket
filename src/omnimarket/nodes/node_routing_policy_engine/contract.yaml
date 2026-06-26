@@ -28,18 +28,12 @@ handler_routing:
       handler:
         name: HandlerRoutingPolicy
         module: omnimarket.nodes.node_routing_policy_engine.handlers.handler_routing_policy
-    - operation: retry_strategy
-      handler:
-        name: determine_retry_type
-        module: omnimarket.nodes.node_routing_policy_engine.handlers.handler_retry_strategy
-    - operation: task_shape_extractor
-      handler:
-        name: extract_task_shape
-        module: omnimarket.nodes.node_routing_policy_engine.handlers.handler_task_shape_extractor
-    - operation: build_available_models_from_scores
-      handler:
-        name: build_available_models_from_scores
-        module: omnimarket.nodes.node_routing_policy_engine.handlers.handler_score_lookup
+    # OMN-13551: determine_retry_type / extract_task_shape /
+    # build_available_models_from_scores are pure helper functions called by
+    # HandlerRoutingPolicy, not runtime-dispatched handlers. They take domain
+    # args (failure_class, attempt_count, context, capability_rows, cost_map)
+    # with no injectable provider, so they quarantined at boot. Removed from
+    # handler_routing; still called internally by the routing policy handler.
 
 descriptor:
   node_archetype: compute
