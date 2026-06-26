@@ -31,21 +31,40 @@ descriptor:
 inputs:
   chains:
     type: list[ChainDefinition]
-    description: "Chain definitions with head topic, tail table, and expected fields"
+    description: >
+      Chain definitions with head topic, tail table, and expected fields. Each
+      chain may optionally declare max_row_age_seconds + timestamp_field for a
+      per-chain recency assertion (OMN-13639).
     required: true
   timeout_ms:
     type: int
     description: "Timeout per chain validation in milliseconds"
     required: false
     default: 15000
+  now_iso:
+    type: string
+    description: >
+      ISO-8601 reference clock for the per-chain freshness check (OMN-13639).
+      Injected by the caller so the compute stays pure and deterministic; the
+      handler never reads the system clock. Required when any selected chain
+      declares max_row_age_seconds — a freshness-gated chain dispatched without
+      it surfaces as ERROR (fail-fast), never a silent pass.
+    required: false
 
 outputs:
   chain_results:
     type: list[ChainResult]
-    description: "Per-chain validation results with timing and field assertions"
+    description: >
+      Per-chain validation results with timing, field assertions, and
+      row_age_seconds when a freshness threshold is configured. A field-complete
+      row older than max_row_age_seconds is reported as status STALE (a distinct
+      non-PASS tri-state), not PASS (OMN-13639).
   summary:
     type: object
-    description: "Overall sweep status (pass/partial/fail) with chain counts"
+    description: >
+      Overall sweep status (pass/partial/fail/gated/warn) with chain counts. WARN
+      means all non-passing chains are stale-only (non-blocking recency warning);
+      green PASS requires recent flow, not merely a matching historical row.
 
 terminal_event: onex.evt.omnimarket.golden-chain-sweep-completed.v1
 

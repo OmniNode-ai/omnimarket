@@ -130,6 +130,12 @@ class TestPatternLearningChainValidation:
         projected_rows["delegation"]["compliance_attempts"] = 1
         # evaluation chain expects session_id (not correlation_id) per contract.yaml
         projected_rows["evaluation"]["session_id"] = "test-evaluation"
+        # OMN-13639: pattern_learning + evaluation now carry a per-chain freshness
+        # threshold — a field-complete row must also be recent to PASS. Supply a
+        # fresh created_at and inject the reference clock below.
+        _now_iso = "2026-06-26T12:00:00+00:00"
+        projected_rows["pattern_learning"]["created_at"] = "2026-06-26T11:59:00+00:00"
+        projected_rows["evaluation"]["created_at"] = "2026-06-26T11:59:00+00:00"
         # OMN-12660 WS-G: sea_acceptance additional required fields
         projected_rows["sea_acceptance"]["task_type"] = "generate_onex_node"
         projected_rows["sea_acceptance"]["delegated_to"] = "claude-sonnet-4-6"
@@ -178,6 +184,7 @@ class TestPatternLearningChainValidation:
         request = GoldenChainSweepRequest(
             chains=chains,
             projected_rows=projected_rows,
+            now_iso=_now_iso,
         )
         result = _HANDLER.handle(request)
 

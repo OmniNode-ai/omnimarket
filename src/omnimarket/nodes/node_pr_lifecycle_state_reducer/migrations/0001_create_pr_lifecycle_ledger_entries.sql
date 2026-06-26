@@ -60,3 +60,50 @@ CREATE INDEX IF NOT EXISTS idx_pr_lifecycle_ledger_sweep_iter
 -- Projection-API read ordering (order_by found_at DESC).
 CREATE INDEX IF NOT EXISTS idx_pr_lifecycle_ledger_found_at
     ON public.pr_lifecycle_ledger_entries (found_at DESC);
+
+-- Warm-table reconciliation (OMN-13321 / CodeRabbit Major):
+-- CREATE TABLE IF NOT EXISTS skips the entire body — including the inline
+-- UNIQUE (sweep_id, repo, pr_number, iteration) — when the table already
+-- exists. The reducer UPSERT relies on that conflict target, so on a warm
+-- omnidash_analytics where the table was created without it (e.g. a prior
+-- partial/hand-create), the ON CONFLICT would fail. Add the unique constraint
+-- idempotently so the conflict target is guaranteed regardless of how the
+-- table came to exist. (On a fresh DB the inline UNIQUE already created an
+-- equivalent auto-named constraint; this DO block is a no-op there.)
+DO $$
+DECLARE
+    target_cols  smallint[];
+    has_unique   boolean;
+BEGIN
+    -- Resolve the attnums of the four conflict-key columns (set, sorted).
+    SELECT array_agg(a.attnum ORDER BY a.attnum)
+    INTO   target_cols
+    FROM   pg_attribute a
+    JOIN   pg_class t ON t.oid = a.attrelid
+    JOIN   pg_namespace n ON n.oid = t.relnamespace
+    WHERE  n.nspname = 'public'
+      AND  t.relname = 'pr_lifecycle_ledger_entries'
+      AND  a.attname IN ('sweep_id', 'repo', 'pr_number', 'iteration')
+      AND  NOT a.attisdropped;
+
+    -- Does any UNIQUE constraint already cover exactly those columns
+    -- (order-independent — the inline UNIQUE auto-named constraint counts)?
+    SELECT EXISTS (
+        SELECT 1
+        FROM   pg_constraint c
+        JOIN   pg_class t ON t.oid = c.conrelid
+        JOIN   pg_namespace n ON n.oid = t.relnamespace
+        WHERE  n.nspname = 'public'
+          AND  t.relname = 'pr_lifecycle_ledger_entries'
+          AND  c.contype = 'u'
+          AND  (SELECT array_agg(k ORDER BY k) FROM unnest(c.conkey) AS k) = target_cols
+    )
+    INTO   has_unique;
+
+    IF NOT has_unique THEN
+        ALTER TABLE public.pr_lifecycle_ledger_entries
+            ADD CONSTRAINT uq_pr_lifecycle_ledger_sweep_repo_pr_iter
+            UNIQUE (sweep_id, repo, pr_number, iteration);
+    END IF;
+END
+$$;
