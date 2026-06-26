@@ -40,6 +40,9 @@ event_bus:
   publish_topics:
     - onex.evt.omnimarket.event-chain-applied.v1
 
+externally_consumed_topics:
+  - onex.evt.omnimarket.event-chain-applied.v1
+
 # db_io.db_tables is the WRITE-side declaration the runtime auto-wiring
 # materialization path requires: omnibase_infra.runtime.auto_wiring.handler_wiring
 # only injects the projection DB adapter (_make_projection_dispatch_callback) for
