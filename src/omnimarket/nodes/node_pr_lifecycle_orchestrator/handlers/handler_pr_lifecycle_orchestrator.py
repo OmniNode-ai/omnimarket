@@ -75,6 +75,10 @@ from omnimarket.nodes.pr_ledger_native import (
     apply_pr_ledger_event,
     record_phase_transition,
 )
+from omnimarket.projection.pr_ledger_projection import (
+    PR_LEDGER_PROJECTION_TABLE,
+)
+from omnimarket.projection.protocol_database import ProtocolProjectionDatabaseSync
 
 if TYPE_CHECKING:
     from omnibase_core.protocols.event_bus.protocol_event_bus_publisher import (
@@ -499,6 +503,7 @@ class HandlerPrLifecycleOrchestrator:
         fix: ProtocolFixHandler | None = None,
         event_bus: ProtocolEventBusPublisher,
         ledger_store: ProtocolPrLedgerStore | None = None,
+        projection_db: ProtocolProjectionDatabaseSync | None = None,
     ) -> None:
         self._topic_phase_transition = TOPIC_PHASE_TRANSITION
         self._topic_completed = TOPIC_COMPLETED
@@ -518,6 +523,12 @@ class HandlerPrLifecycleOrchestrator:
         self._ledger_store: ProtocolPrLedgerStore = (
             ledger_store if ledger_store is not None else InMemoryPrLedgerStore()
         )
+        # OMN-13321 / F5: raw projection database for the per-iteration,
+        # user-readable PR ledger emitted by the state reducer. None in
+        # local/test runs (the reducer then stays a pure classifier); the
+        # runtime injects the control-plane projection database so a clean
+        # ledger row lands per PR per iteration.
+        self._projection_db: ProtocolProjectionDatabaseSync | None = projection_db
 
     def _record_ledger_event(
         self,
@@ -625,6 +636,26 @@ class HandlerPrLifecycleOrchestrator:
         await self._publish_phase_event(
             from_state.value, to_state.value, correlation_id
         )
+
+    def _next_iteration(self, sweep_id: str) -> int:
+        """Resolve the next per-sweep ledger iteration index (OMN-13321 / F5).
+
+        Queries the durable ledger projection for the highest iteration
+        already recorded for this ``sweep_id`` and returns max+1, so two
+        consecutive orchestrator passes that share a sweep_id append distinct
+        row sets (iteration 0, 1, ...) rather than overwriting each other.
+        Returns 0 when no projection database is wired or no rows exist yet.
+        """
+        if self._projection_db is None:
+            return 0
+        rows = self._projection_db.query(
+            PR_LEDGER_PROJECTION_TABLE, {"sweep_id": sweep_id}
+        )
+        if not rows:
+            return 0
+        # Projection rows are dict[str, object]; iteration is stored as an int
+        # (or its serialized form). str() round-trips both safely for int().
+        return max(int(str(row["iteration"])) for row in rows) + 1
 
     def ledger(self, run_id: str) -> ModelPrLedger:
         """Return the durable PR-ledger projection for a sweep run.
@@ -981,6 +1012,11 @@ class HandlerPrLifecycleOrchestrator:
 
             # Reducer: compute intents from triage result + flags
             assert self._reducer is not None
+            # OMN-13321 / F5: emit one durable, user-readable ledger row per
+            # PR for THIS iteration through the state reducer. iteration is
+            # resolved from the durable projection so consecutive passes that
+            # share a sweep_id (== run_id) append distinct rows.
+            ledger_iteration = self._next_iteration(command.run_id)
             reducer_result = await self._reducer.handle(
                 correlation_id=command.correlation_id,
                 classified=triage_result.classified,
@@ -988,6 +1024,9 @@ class HandlerPrLifecycleOrchestrator:
                 inventory_only=command.inventory_only,
                 fix_only=command.fix_only,
                 merge_only=command.merge_only,
+                projection_db=self._projection_db,
+                sweep_id=command.run_id if self._projection_db is not None else None,
+                iteration=ledger_iteration,
             )
             state.reducer_result = reducer_result
             self._write_occ_dependency_edges_file(
