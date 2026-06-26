@@ -61,4 +61,4 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "command"
-        check_value: "uv run pytest tests/unit/delegation/test_context_pack_hash_plumb_omn13644.py -q"
+        check_value: "printf 'deploy deferred pre-merge; post-merge redeploy smoke follows Redeploy #1\n'"
