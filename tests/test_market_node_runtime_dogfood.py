@@ -73,8 +73,11 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
     # OMN-13614 WS-C Phase 3.1 adds node_entropy_experiment_orchestrator
     # (ORCHESTRATOR; SEA->canonical entropy experiment aggregation emitting the
     # shared core ModelExperimentResult): 330 -> 331.
-    assert summary["node_dirs"] == 331
-    assert summary["entry_points"] == 331
+    # OMN-13616 SEA Phase 3.3 adds node_regression_test_orchestrator (ORCHESTRATOR;
+    # deterministic regression replay emitting the canonical experiment result,
+    # epic OMN-13604): 331 -> 332.
+    assert summary["node_dirs"] == 332
+    assert summary["entry_points"] == 332
     assert summary["missing_entry_points"] == []
     assert summary["dangling_entry_points"] == []
     assert summary["routable"] >= 297
