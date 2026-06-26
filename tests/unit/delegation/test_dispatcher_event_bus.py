@@ -39,9 +39,6 @@ from omnimarket.nodes.node_delegation_orchestrator.contract_topics import (
 from omnimarket.nodes.node_delegation_orchestrator.contract_topics import (
     TOPIC_ID_INFERENCE_REQUEST as TOPIC_DELEGATION_INFERENCE_REQUEST,
 )
-from omnimarket.nodes.node_delegation_orchestrator.contract_topics import (
-    TOPIC_ID_TASK_DELEGATED as TOPIC_DELEGATION_TASK_DELEGATED,
-)
 from omnimarket.nodes.node_delegation_orchestrator.dispatchers.dispatcher_agent_task_lifecycle import (
     DispatcherAgentTaskLifecycle,
 )
@@ -75,6 +72,12 @@ from omnimarket.nodes.node_delegation_routing_reducer.models.model_routing_decis
 # ---------------------------------------------------------------------------
 
 TEST_ENDPOINT_URL = "http://delegation-llm.test:8000"
+
+# OMN-13629: the legacy compat task-delegated.v1 topic is no longer published by
+# the orchestrator. Tests assert its ABSENCE from published topics.
+_LEGACY_TASK_DELEGATED_TOPIC = (
+    "onex.evt.omniclaude.task-delegated.v1"  # onex-topic-allow: negative proof
+)
 
 
 def _make_mock_bus() -> MagicMock:
@@ -203,7 +206,8 @@ class TestDispatcherDelegationWorkflowBusPublish:
             c.kwargs["topic"] for c in bus.publish_envelope.call_args_list
         ]
         assert TOPIC_DELEGATION_COMPLETED in published_topics
-        assert TOPIC_DELEGATION_TASK_DELEGATED in published_topics
+        # OMN-13629: the legacy compat task-delegated.v1 is no longer published.
+        assert _LEGACY_TASK_DELEGATED_TOPIC not in published_topics
         for event in result.output_events:
             assert not hasattr(event, "topic") or event.topic is None  # type: ignore[union-attr]
 
@@ -228,7 +232,7 @@ class TestDispatcherDelegationWorkflowBusPublish:
             c.kwargs["topic"] for c in bus.publish_envelope.call_args_list
         ]
         assert TOPIC_DELEGATION_COMPLETED in published_topics
-        assert TOPIC_DELEGATION_TASK_DELEGATED in published_topics
+        assert _LEGACY_TASK_DELEGATED_TOPIC not in published_topics
 
     async def test_routing_decision_returns_inference_intent_for_applier(self) -> None:
         handler = HandlerDelegationWorkflow()
@@ -385,7 +389,7 @@ class TestDispatcherQualityGateResultBusPublish:
             c.kwargs["topic"] for c in bus.publish_envelope.call_args_list
         ]
         assert TOPIC_DELEGATION_COMPLETED in published_topics
-        assert TOPIC_DELEGATION_TASK_DELEGATED in published_topics
+        assert _LEGACY_TASK_DELEGATED_TOPIC not in published_topics
 
 
 @pytest.mark.unit
@@ -485,7 +489,7 @@ class TestDispatcherQualityGateResultOutputEvents:
             c.kwargs["topic"] for c in bus.publish_envelope.call_args_list
         ]
         assert TOPIC_DELEGATION_FAILED in published_topics
-        assert TOPIC_DELEGATION_TASK_DELEGATED in published_topics
+        assert _LEGACY_TASK_DELEGATED_TOPIC not in published_topics
 
     async def test_envelope_payload_matches_expected_topic(self) -> None:
         """Each publish_envelope call carries the correct event in the envelope payload."""
@@ -506,10 +510,8 @@ class TestDispatcherQualityGateResultOutputEvents:
             topic_to_payload_type.get(TOPIC_DELEGATION_COMPLETED)
             == "ModelDelegationEventEnvelope"
         )
-        assert (
-            topic_to_payload_type.get(TOPIC_DELEGATION_TASK_DELEGATED)
-            == "ModelTaskDelegatedEvent"
-        )
+        # OMN-13629: no legacy compat event is published, so the topic is absent.
+        assert _LEGACY_TASK_DELEGATED_TOPIC not in topic_to_payload_type
 
     async def test_direct_publish_infra_failure_records_circuit_failure(
         self,

@@ -18,7 +18,19 @@ NODE_GENERATION_REQUESTED_TOPIC_V1 = "onex.cmd.omnimarket.node-generation-reques
 NODE_GENERATION_COMPLETED_TOPIC_V1 = "onex.evt.omnimarket.node-generation-completed.v1"  # onex-topic-allow: canonical topic registry; declared in node_generation_consumer contract.yaml publish_topics + node_projection_delegation subscribe_topics (OMN-13468)
 NODE_GENERATION_FAILED_TOPIC_V1 = "onex.evt.omnimarket.node-generation-failed.v1"  # onex-topic-allow: canonical topic registry; declared in node_generation_consumer contract.yaml publish_topics + node_projection_delegation subscribe_topics (OMN-13468)
 
-TASK_DELEGATED_TOPIC_V1 = "onex.evt.omniclaude.task-delegated.v1"  # onex-topic-allow: canonical topic registry; declared in node_delegation_orchestrator contract.yaml publish_topics
+# OMN-13629 (WS-F Phase 1): the legacy compat task-delegated.v1 event is no
+# longer published by node_delegation_orchestrator nor subscribed by the
+# delegation/savings projections — the terminal collapsed to the single
+# canonical delegation-{completed,failed}.v1 pair below. The constant is retained
+# only as a registry reference for the in-process RuntimeLocal discriminator and
+# legacy tests; it is no longer a live wired topic.
+TASK_DELEGATED_TOPIC_V1 = "onex.evt.omniclaude.task-delegated.v1"  # onex-topic-allow: canonical topic registry; legacy compat topic, no live producer/consumer after OMN-13629
+
+# OMN-13629: canonical single delegation terminal pair. Emitted by
+# node_delegation_orchestrator _emit_terminal; consumed by
+# node_projection_delegation + node_projection_savings.
+DELEGATION_COMPLETED_TOPIC_V1 = "onex.evt.omnibase-infra.delegation-completed.v1"  # onex-topic-allow: canonical topic registry; declared in node_delegation_orchestrator contract.yaml publish_topics (OMN-13629)
+DELEGATION_FAILED_TOPIC_V1 = "onex.evt.omnibase-infra.delegation-failed.v1"  # onex-topic-allow: canonical topic registry; declared in node_delegation_orchestrator contract.yaml publish_topics (OMN-13629)
 DELEGATE_SKILL_COMPLETED_TOPIC_V1 = "onex.evt.omnimarket.delegate-skill-completed.v1"  # onex-topic-allow: canonical topic registry; declared in node_delegate_skill_orchestrator contract.yaml terminal events
 DELEGATE_SKILL_FAILED_TOPIC_V1 = "onex.evt.omnimarket.delegate-skill-failed.v1"  # onex-topic-allow: canonical topic registry; declared in node_delegate_skill_orchestrator contract.yaml terminal events
 DELEGATION_CALL_COMPLETED_TOPIC_V1 = "onex.evt.omnimarket.delegation-call-completed.v1"  # onex-topic-allow: canonical topic registry; declared in node_llm_delegation_projection contract.yaml subscribe_topics

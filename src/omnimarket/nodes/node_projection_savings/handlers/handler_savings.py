@@ -17,7 +17,7 @@ from omnimarket.models.delegation.wire.model_delegate_skill_terminal_projection 
     ModelDelegateSkillTerminalProjection,
     ModelTaskDelegatedSavingsSource,
 )
-from omnimarket.pricing import DEFAULT_BASELINE_MODEL
+from omnimarket.pricing import DEFAULT_BASELINE_MODEL, build_premium_counterfactual
 from omnimarket.projection.dlq import (
     PublishFn,
     correlation_id_from_payload,
@@ -91,15 +91,18 @@ class SavingsProjectionRunner(BaseProjectionRunner):
         self._topic_delegate_skill_failed: str = next(
             (t for t in _topics if "delegate-skill-failed" in t), ""
         )
-        # OMN-13598: wire the canonical task-delegated.v1 SOURCE topic so the
-        # deployed runner (this class) materializes savings_estimates from the
-        # same stream that drives delegation_events.  Previously task-delegated.v1
-        # fell through to the savings-estimated branch, which requires
-        # session_id / model_local / cost fields that the task-delegated payload
-        # lacks — causing every event to be DLQ'd as malformed and zero rows to
-        # ever upsert.
-        self._topic_delegated: str = next(
-            (t for t in _topics if "task-delegated" in t), ""
+        # OMN-13629 (WS-F Phase 1): the deployed runner now materializes
+        # savings_estimates from the SINGLE canonical delegation terminal pair
+        # (delegation-{completed,failed}.v1), repointed off the legacy compat
+        # task-delegated.v1 (OMN-13598 stopgap superseded). The canonical
+        # ModelDelegationResult carries the cumulative metered cost + served
+        # tokens; the cloud-baseline counterfactual is re-derived from those
+        # served tokens, so savings stays a measurement, not an estimate.
+        self._topic_delegation_completed: str = next(
+            (t for t in _topics if "delegation-completed" in t), ""
+        )
+        self._topic_delegation_failed: str = next(
+            (t for t in _topics if "delegation-failed" in t), ""
         )
         self._delegate_skill_baseline_model = str(
             self._contract.get("metadata", {}).get(
@@ -208,14 +211,17 @@ class SavingsProjectionRunner(BaseProjectionRunner):
         }:
             return await self._project_delegate_skill_savings(data, meta)
 
-        # OMN-13598: canonical task-delegated.v1 SOURCE path -- premium
-        # counterfactual - measured actual cost -> savings_estimates row.
-        # This was the missing branch: previously these events fell through to
-        # the savings-estimated path below, which requires session_id /
-        # model_local / cost fields not present in the task-delegated payload,
-        # causing every event to be DLQ'd as malformed (zero rows written).
-        if self._topic_delegated and topic == self._topic_delegated:
-            return await self._project_task_delegated_savings(data, meta)
+        # OMN-13629 (WS-F Phase 1): canonical delegation terminal SOURCE path --
+        # cloud-baseline counterfactual (re-derived from served tokens) minus the
+        # measured actual cost -> savings_estimates row. Repointed off the legacy
+        # compat task-delegated.v1 (OMN-13598). Both completed + failed terminals
+        # route here; a failed terminal carries no counterfactual and yields a
+        # truthful no-row (savings cannot be banked on a failure).
+        if topic and topic in {
+            self._topic_delegation_completed,
+            self._topic_delegation_failed,
+        }:
+            return await self._project_canonical_delegation_savings(data, meta)
 
         session_id = str(data.get("session_id") or data.get("sessionId") or "").strip()
         if not session_id:
@@ -298,28 +304,38 @@ class SavingsProjectionRunner(BaseProjectionRunner):
         )
         return True
 
-    async def _project_task_delegated_savings(
+    async def _project_canonical_delegation_savings(
         self, data: dict[str, Any], meta: MessageMeta
     ) -> bool:
-        """Materialize a savings_estimates row from a canonical task-delegated
-        SOURCE event (OMN-13598 / OMN-12494).
+        """Materialize a savings_estimates row from a canonical delegation
+        terminal event (OMN-13629; ``delegation-{completed,failed}.v1``).
 
-        Uses the measured actual cost (OMN-13355) and the pinned premium
-        counterfactual so the saving is a MEASUREMENT, not an estimate:
+        The canonical ``ModelDelegationResult`` carries the measured actual cost
+        (cumulative metered spend across all attempted tiers) + the served
+        tokens. The cloud-baseline counterfactual is re-derived from those served
+        tokens via the pricing manifest, so the saving is a MEASUREMENT, not an
+        estimate:
 
-            local_cost_usd  = cost_usd                (measured actual)
-            cloud_cost_usd  = counterfactual_cost_usd (pinned baseline)
+            local_cost_usd  = cumulative_attempt_cost     (measured actual)
+            cloud_cost_usd  = counterfactual_cost_usd      (re-derived baseline)
             savings_usd     = cloud_cost_usd - local_cost_usd
 
-        Returns True (truthful-empty) when there is no pinned counterfactual
-        or the saving is <= 0 — NO DLQ, because these are valid business states.
+        Returns True (truthful-empty, NO DLQ) when no counterfactual can be
+        derived (e.g. a FAILED terminal, zero served tokens, or a baseline model
+        absent from the manifest) or the saving is <= 0 — these are valid
+        business states, not malformed events. Repoints the OMN-13598 stopgap
+        onto the single canonical stream (OMN-13629).
         """
         try:
-            source = ModelTaskDelegatedSavingsSource.from_payload(data)
+            source = ModelTaskDelegatedSavingsSource.from_canonical_payload(
+                data,
+                counterfactual_builder=build_premium_counterfactual,
+            )
         except ValidationError as exc:
             return await self._route_malformed_to_dlq(
                 data,
-                f"task-delegated event failed savings source model validation: {exc}",
+                "canonical delegation terminal failed savings source model "
+                f"validation: {exc}",
                 meta,
             )
 
@@ -347,7 +363,7 @@ class SavingsProjectionRunner(BaseProjectionRunner):
             ),
         )
         logger.info(
-            "Projected task-delegated savings for %s (savings=$%s)",
+            "Projected canonical delegation savings for %s (savings=$%s)",
             source.correlation_id,
             projection.savings_usd,
         )

@@ -34,14 +34,17 @@ from omnimarket.nodes.node_delegation_orchestrator.handlers.handler_delegation_w
 from omnimarket.nodes.node_delegation_orchestrator.models.model_baseline_intent import (
     ModelBaselineIntent,
 )
+from omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_event import (
+    ModelDelegationEvent,
+)
 from omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_request import (
     ModelDelegationRequest,
 )
+from omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_result import (
+    ModelDelegationResult,
+)
 from omnimarket.nodes.node_delegation_orchestrator.models.model_inference_response_data import (
     ModelInferenceResponseData,
-)
-from omnimarket.nodes.node_delegation_orchestrator.models.model_task_delegated_event import (
-    ModelTaskDelegatedEvent,
 )
 from omnimarket.nodes.node_delegation_quality_gate_reducer.models.model_quality_gate_result import (
     ModelQualityGateResult,
@@ -49,7 +52,21 @@ from omnimarket.nodes.node_delegation_quality_gate_reducer.models.model_quality_
 from omnimarket.nodes.node_delegation_routing_reducer.models.model_routing_decision import (
     ModelRoutingDecision,
 )
+from omnimarket.nodes.node_projection_delegation.handlers.handler_projection_delegation import (
+    ModelActualCostProjection,
+    ModelTaskDelegatedEvent,
+    _canonical_result_to_task_delegated_payload,
+    _measure_actual_cost,
+)
 from omnimarket.pricing import recompute_actual_cost_and_savings
+
+
+def _measure_canonical(canonical: ModelDelegationResult) -> ModelActualCostProjection:
+    """The projection's actual-cost measurement from the canonical terminal."""
+    converted = _canonical_result_to_task_delegated_payload(
+        canonical.model_dump(mode="json")
+    )
+    return _measure_actual_cost(ModelTaskDelegatedEvent(**converted))
 
 
 def _make_request(correlation_id: UUID) -> ModelDelegationRequest:
@@ -117,8 +134,8 @@ def _drive_success_to_terminal(
     tier_name: str,
     prompt_tokens: int,
     completion_tokens: int,
-) -> tuple[ModelTaskDelegatedEvent, ModelBaselineIntent]:
-    """Run request->route->infer->gate-pass and return (compat event, baseline)."""
+) -> tuple[ModelDelegationResult, ModelBaselineIntent]:
+    """Run request->route->infer->gate-pass; return (canonical terminal, baseline)."""
     handler = HandlerDelegationWorkflow()
     cid = uuid4()
     handler.handle_delegation_request(_make_request(cid))
@@ -131,9 +148,14 @@ def _drive_success_to_terminal(
     intents = handler.handle_gate_result(_make_gate_result(cid))
     assert handler.workflows[cid].state == EnumDelegationState.COMPLETED
 
-    compat = next(e for e in intents if isinstance(e, ModelTaskDelegatedEvent))
+    canonical = next(
+        e.payload
+        for e in intents
+        if isinstance(e, ModelDelegationEvent)
+        and isinstance(e.payload, ModelDelegationResult)
+    )
     baseline = next(e for e in intents if isinstance(e, ModelBaselineIntent))
-    return compat, baseline
+    return canonical, baseline
 
 
 @pytest.mark.unit
@@ -141,44 +163,30 @@ class TestTerminalPathCostUsdOmn13396:
     """The terminal path emits measured cost, not a hardcoded 0.0."""
 
     def test_metered_tier_emits_nonzero_measured_cost(self) -> None:
-        """A metered (cheap_cloud) route must emit cost_usd == rate x tokens, and
-        cost_savings_usd == counterfactual - measured (NOT counterfactual - 0)."""
+        """A metered (cheap_cloud) route emits a measured final_attempt_cost ==
+        rate x tokens on the canonical terminal (NOT a hardcoded 0.0)."""
         prompt_tokens, completion_tokens = 1000, 500
-        compat, baseline = _drive_success_to_terminal(
+        canonical, baseline = _drive_success_to_terminal(
             tier_name="cheap_cloud",
             prompt_tokens=prompt_tokens,
             completion_tokens=completion_tokens,
         )
 
-        # Authoritative expectation: the SAME computation the projection uses.
-        from omnimarket.pricing import build_premium_counterfactual
-
-        premium = build_premium_counterfactual(
-            prompt_tokens=prompt_tokens, completion_tokens=completion_tokens
-        )
+        # Authoritative expectation: the SAME computation the orchestrator uses.
         expected = recompute_actual_cost_and_savings(
             tier_name="cheap_cloud",
             prompt_tokens=prompt_tokens,
             completion_tokens=completion_tokens,
-            premium_counterfactual=premium,
+            premium_counterfactual=None,
         )
 
         # The measured metered cost is strictly positive — the bug-fix invariant.
         assert expected.cash_cost_usd > 0.0
-        assert compat.cost_usd == pytest.approx(expected.cash_cost_usd)
-        assert compat.cost_usd > 0.0
-        assert compat.cost_tier_type == "metered"
-        assert compat.cost_tier_name == "cheap_cloud"
-        assert compat.cost_measurement_source == "metered"
-
-        # Savings is counterfactual MINUS the measured actual, not the full
-        # counterfactual. cost_usd > 0 => savings strictly less than counterfactual.
-        assert premium is not None
-        counterfactual = float(premium.counterfactual_cost_usd)
-        assert compat.cost_savings_usd == pytest.approx(
-            round(expected.cost_savings_usd, 6)
+        assert canonical.final_attempt_cost == pytest.approx(expected.cash_cost_usd)
+        assert canonical.final_attempt_cost > 0.0
+        assert canonical.cumulative_attempt_cost == pytest.approx(
+            expected.cash_cost_usd
         )
-        assert compat.cost_savings_usd < counterfactual
 
         # The baseline intent's candidate (delegated tier) cost is the measured
         # metered cost, not a hardcoded 0.0.
@@ -186,34 +194,18 @@ class TestTerminalPathCostUsdOmn13396:
         assert baseline.candidate_cost_usd > 0.0
 
     def test_free_local_tier_emits_zero_measured_cost(self) -> None:
-        """A free_local (local) route legitimately measures cost_usd == 0.0 — but
-        proven by the typed cost model (free_local provenance), not a bare 0.0."""
+        """A free_local (local) route legitimately measures cost == 0.0 — proven by
+        the typed cost model, not a bare 0.0."""
         prompt_tokens, completion_tokens = 1000, 500
-        compat, baseline = _drive_success_to_terminal(
+        canonical, baseline = _drive_success_to_terminal(
             tier_name="local",
             prompt_tokens=prompt_tokens,
             completion_tokens=completion_tokens,
         )
 
-        assert compat.cost_usd == pytest.approx(0.0)
-        assert compat.cost_tier_type == "free_local"
-        assert compat.cost_tier_name == "local"
-        # Provenance proves the zero was MEASURED (free_local), closing the
-        # "savings computed against a hardcoded 0.0" gap.
-        assert compat.cost_measurement_source == "free_local"
+        assert canonical.final_attempt_cost == pytest.approx(0.0)
+        assert canonical.cumulative_attempt_cost == pytest.approx(0.0)
         assert baseline.candidate_cost_usd == pytest.approx(0.0)
-
-        # free_local actual is 0 => the saving genuinely equals the full
-        # counterfactual (local is ~free), but it is now an AUDITED zero.
-        from omnimarket.pricing import build_premium_counterfactual
-
-        premium = build_premium_counterfactual(
-            prompt_tokens=prompt_tokens, completion_tokens=completion_tokens
-        )
-        assert premium is not None
-        assert compat.cost_savings_usd == pytest.approx(
-            round(float(premium.counterfactual_cost_usd), 6)
-        )
 
     def test_metered_and_free_local_diverge(self) -> None:
         """Cross-check: the same token counts produce a non-zero metered cost and a
@@ -229,5 +221,5 @@ class TestTerminalPathCostUsdOmn13396:
             prompt_tokens=prompt_tokens,
             completion_tokens=completion_tokens,
         )
-        assert metered.cost_usd > free_local.cost_usd
-        assert free_local.cost_usd == pytest.approx(0.0)
+        assert metered.final_attempt_cost > free_local.final_attempt_cost
+        assert free_local.final_attempt_cost == pytest.approx(0.0)

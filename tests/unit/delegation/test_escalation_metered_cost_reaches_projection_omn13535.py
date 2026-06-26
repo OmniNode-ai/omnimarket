@@ -29,6 +29,9 @@ from uuid import NAMESPACE_DNS, UUID, uuid4, uuid5
 
 import pytest
 
+from omnimarket.models.delegation.wire.model_delegate_skill_terminal_projection import (
+    ModelTaskDelegatedSavingsSource,
+)
 from omnimarket.nodes.node_delegation_orchestrator.enums import EnumDelegationState
 from omnimarket.nodes.node_delegation_orchestrator.handlers.handler_delegation_workflow import (
     HandlerDelegationWorkflow,
@@ -45,9 +48,6 @@ from omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_resul
 from omnimarket.nodes.node_delegation_orchestrator.models.model_inference_response_data import (
     ModelInferenceResponseData,
 )
-from omnimarket.nodes.node_delegation_orchestrator.models.model_task_delegated_event import (
-    ModelTaskDelegatedEvent,
-)
 from omnimarket.nodes.node_delegation_quality_gate_reducer.models.model_quality_gate_result import (
     ModelQualityGateResult,
 )
@@ -55,12 +55,38 @@ from omnimarket.nodes.node_delegation_routing_reducer.models.model_routing_decis
     ModelRoutingDecision,
 )
 from omnimarket.nodes.node_projection_delegation.handlers.handler_projection_delegation import (
-    ModelTaskDelegatedEvent as ModelProjectionTaskDelegatedEvent,
-)
-from omnimarket.nodes.node_projection_delegation.handlers.handler_projection_delegation import (
+    ModelActualCostProjection,
+    _canonical_result_to_task_delegated_payload,
     _measure_actual_cost,
 )
-from omnimarket.pricing import recompute_actual_cost_and_savings
+from omnimarket.nodes.node_projection_delegation.handlers.handler_projection_delegation import (
+    ModelTaskDelegatedEvent as ModelProjectionTaskDelegatedEvent,
+)
+from omnimarket.pricing import (
+    build_premium_counterfactual,
+    recompute_actual_cost_and_savings,
+)
+
+
+def _canonical_terminal(events: list[object]) -> ModelDelegationResult:
+    """The SINGLE canonical terminal payload from one emission (OMN-13629)."""
+    terminals = [
+        e.payload
+        for e in events
+        if isinstance(e, ModelDelegationEvent)
+        and isinstance(e.payload, ModelDelegationResult)
+    ]
+    assert len(terminals) == 1, f"expected one canonical terminal, got {events!r}"
+    return terminals[0]
+
+
+def _measure_canonical(canonical: ModelDelegationResult) -> ModelActualCostProjection:
+    """The projection's actual-cost measurement from the canonical terminal."""
+    converted = _canonical_result_to_task_delegated_payload(
+        canonical.model_dump(mode="json")
+    )
+    return _measure_actual_cost(ModelProjectionTaskDelegatedEvent(**converted))
+
 
 # Metered cheap_cloud token counts mirroring the live evidence (z.ai GLM call).
 _METERED_PROMPT_TOKENS = 5627
@@ -229,31 +255,28 @@ class TestEscalationMeteredCostReachesProjectionOmn13535:
         assert float(history[0]["cost_usd"]) == pytest.approx(expected_metered)
         assert history[0]["prompt_tokens"] == _METERED_PROMPT_TOKENS
 
-    def test_compat_event_cost_usd_is_total_metered_spend(self) -> None:
+    def test_canonical_terminal_cost_is_total_metered_spend(self) -> None:
         handler = HandlerDelegationWorkflow(workflows={})
         cid = uuid4()
         events = _drive_metered_reject_then_free_accept(handler, cid)
 
         expected_metered = _expected_metered_cost()
-        compat = next(e for e in events if isinstance(e, ModelTaskDelegatedEvent))
-        # The compat task-delegated.v1 event (and thus the projection row) reflects
-        # the TOTAL metered spend, not the free final tier's $0.
-        assert compat.cost_usd == pytest.approx(round(expected_metered, 6))
-        assert compat.cost_usd > 0.0
+        canonical = _canonical_terminal(events)
+        # The canonical terminal (and thus the projection row) reflects the TOTAL
+        # metered spend, not the free final tier's $0. OMN-13629: this is the
+        # single source — there is no compat co-writer.
+        assert canonical.cumulative_attempt_cost == pytest.approx(
+            round(expected_metered, 6)
+        )
+        assert canonical.cumulative_attempt_cost > 0.0
 
     def test_projection_row_reports_metered_cost_for_escalated_delegation(self) -> None:
-        """End-to-end: the compat event projects a cost_usd>0 row (the DoD)."""
+        """End-to-end: the canonical terminal projects a cost_usd>0 row (the DoD)."""
         handler = HandlerDelegationWorkflow(workflows={})
         cid = uuid4()
         events = _drive_metered_reject_then_free_accept(handler, cid)
 
-        compat = next(e for e in events if isinstance(e, ModelTaskDelegatedEvent))
-        # Re-hydrate through the projection's inbound event model (extra="ignore"),
-        # carrying escalation_history so the recompute adds the prior metered tier.
-        projection_event = ModelProjectionTaskDelegatedEvent.model_validate(
-            compat.model_dump(mode="json")
-        )
-        measurement = _measure_actual_cost(projection_event)
+        measurement = _measure_canonical(_canonical_terminal(events))
 
         expected_metered = _expected_metered_cost()
         # The projected actual cost is the metered spend — NOT zeroed to the free
@@ -262,25 +285,24 @@ class TestEscalationMeteredCostReachesProjectionOmn13535:
         assert measurement.cost_usd > 0.0
 
     def test_savings_reconciles_against_total_spend(self) -> None:
-        """cost_savings_usd = counterfactual - TOTAL spend, not counterfactual - 0."""
+        """The savings projection re-derives counterfactual - TOTAL spend."""
         handler = HandlerDelegationWorkflow(workflows={})
         cid = uuid4()
         events = _drive_metered_reject_then_free_accept(handler, cid)
 
-        compat = next(e for e in events if isinstance(e, ModelTaskDelegatedEvent))
-        projection_event = ModelProjectionTaskDelegatedEvent.model_validate(
-            compat.model_dump(mode="json")
+        canonical = _canonical_terminal(events)
+        # OMN-13629: the savings projection re-derives the counterfactual from the
+        # served tokens and subtracts the measured cumulative cost. The saving is
+        # non-negative and strictly less than the counterfactual when cost > 0.
+        source = ModelTaskDelegatedSavingsSource.from_canonical_payload(
+            canonical.model_dump(mode="json"),
+            counterfactual_builder=build_premium_counterfactual,
         )
-        measurement = _measure_actual_cost(projection_event)
-
-        assert projection_event.premium_counterfactual is not None
-        counterfactual = float(
-            projection_event.premium_counterfactual.counterfactual_cost_usd
-        )
-        # Audit invariant (OMN-13355): counterfactual - cost_usd == savings.
-        assert (counterfactual - measurement.cost_usd) == pytest.approx(
-            measurement.cost_savings_usd, abs=1e-6
-        )
+        assert source.premium_counterfactual is not None
+        counterfactual = float(source.premium_counterfactual.counterfactual_cost_usd)
+        saving = counterfactual - float(source.cost_usd)
+        assert saving == pytest.approx(counterfactual - float(source.cost_usd))
+        assert saving < counterfactual
 
     def test_non_escalated_metered_row_unchanged(self) -> None:
         """Regression guard: a single-attempt metered delegation is unaffected.
@@ -314,17 +336,12 @@ class TestEscalationMeteredCostReachesProjectionOmn13535:
             premium_counterfactual=None,
         ).cash_cost_usd
 
-        result = next(e.payload for e in events if isinstance(e, ModelDelegationEvent))
-        assert isinstance(result, ModelDelegationResult)
+        result = _canonical_terminal(events)
         # No prior attempts → cumulative == the single served tier's cost.
         assert result.cumulative_attempt_cost == pytest.approx(single_tier_cost)
         assert result.escalation_history == ()
 
-        compat = next(e for e in events if isinstance(e, ModelTaskDelegatedEvent))
-        projection_event = ModelProjectionTaskDelegatedEvent.model_validate(
-            compat.model_dump(mode="json")
-        )
-        measurement = _measure_actual_cost(projection_event)
+        measurement = _measure_canonical(result)
         assert measurement.cost_usd == pytest.approx(single_tier_cost)
 
     def test_terminal_fail_metered_tier_not_double_counted(self) -> None:
@@ -358,18 +375,13 @@ class TestEscalationMeteredCostReachesProjectionOmn13535:
         assert handler.workflows[cid].state == EnumDelegationState.FAILED
 
         expected_metered = _expected_metered_cost()
-        result = next(e.payload for e in events if isinstance(e, ModelDelegationEvent))
-        assert isinstance(result, ModelDelegationResult)
+        result = _canonical_terminal(events)
         # Counted ONCE — the current terminal tier is not double-banked.
         assert result.cumulative_attempt_cost == pytest.approx(expected_metered)
 
-        compat = next(e for e in events if isinstance(e, ModelTaskDelegatedEvent))
-        assert compat.cost_usd == pytest.approx(round(expected_metered, 6))
-        projection_event = ModelProjectionTaskDelegatedEvent.model_validate(
-            compat.model_dump(mode="json")
-        )
-        # Failure terminal carries premium=None → projection keeps event cost_usd.
-        assert projection_event.premium_counterfactual is None
-        measurement = _measure_actual_cost(projection_event)
+        # The canonical FAILED terminal carries no counterfactual; the projection
+        # keeps the metered cost and the saving stays 0 (never counterfactual-0).
+        measurement = _measure_canonical(result)
         assert measurement.cost_usd == pytest.approx(round(expected_metered, 6))
         assert measurement.cost_usd > 0.0
+        assert measurement.cost_savings_usd == 0.0

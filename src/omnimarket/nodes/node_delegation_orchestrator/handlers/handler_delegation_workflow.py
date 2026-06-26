@@ -68,7 +68,6 @@ from omnimarket.nodes.node_delegation_escalation_decision_compute.handlers.handl
 from omnimarket.nodes.node_delegation_orchestrator.contract_topics import (
     TOPIC_ID_DELEGATION_COMPLETED,
     TOPIC_ID_DELEGATION_FAILED,
-    TOPIC_ID_TASK_DELEGATED,
 )
 from omnimarket.nodes.node_delegation_orchestrator.enums import (
     EnumDelegationState,
@@ -103,9 +102,6 @@ from omnimarket.nodes.node_delegation_orchestrator.models.model_quality_gate_int
 from omnimarket.nodes.node_delegation_orchestrator.models.model_routing_intent import (
     ModelRoutingIntent,
 )
-from omnimarket.nodes.node_delegation_orchestrator.models.model_task_delegated_event import (
-    ModelTaskDelegatedEvent,
-)
 from omnimarket.nodes.node_delegation_orchestrator.quality_bar_authority import (
     RequiredBarAuthority,
     RequiredBarAuthorityError,
@@ -129,7 +125,6 @@ from omnimarket.pricing import (
     ModelActualCostMeasurement,
     build_premium_counterfactual,
     estimate_baseline_cost_usd,
-    get_manifest_version_int,
     recompute_actual_cost_and_savings,
 )
 from omnimarket.routing.model_escalation_decision_request import (
@@ -353,10 +348,10 @@ def _record_inference_response(
     """Persist a single inference attempt's data onto the workflow.
 
     OMN-13365: ``ModelInferenceResponseData`` carries the three token counts the
-    provider reported with no sum constraint between them. Every terminal event
-    the orchestrator emits (``ModelDelegationResult`` on the completed/failed/
-    all-tiers-exhausted paths and the omnidash compat event) is built from these
-    fields, and the canonical ``ModelDelegationResult`` wire DTO enforces
+    provider reported with no sum constraint between them. The single canonical
+    terminal event the orchestrator emits (``ModelDelegationResult`` on the
+    completed / failed / all-tiers-exhausted paths) is built from these fields,
+    and the canonical ``ModelDelegationResult`` wire DTO enforces
     ``total_tokens == prompt_tokens + completion_tokens``. Reasoning-model
     providers (e.g. ``gemini-2.5-flash``) report a ``total_tokens`` that bundles
     thinking/reasoning tokens NOT split into prompt+completion, so a verbatim
@@ -565,16 +560,16 @@ class TerminalEmissionInputs:
 
     Every terminal site resolves its outcome into ONE of these and hands it to
     ``HandlerDelegationWorkflow._emit_terminal``. That builder is the *only*
-    construction site for the canonical ``ModelDelegationResult`` and the compat
-    ``ModelTaskDelegatedEvent``: it measures cost ONCE and reads the served
-    tokens ONCE, then derives BOTH events from these identical values. Because
-    the two events can no longer be assembled from independently-read fields,
-    the OMN-13408 token/cost-zeroing divergence is structurally impossible — the
-    two events that co-write the same projection row always agree.
+    construction site for the canonical ``ModelDelegationResult``: it measures
+    cost ONCE and reads the served tokens ONCE. OMN-13629 (WS-F Phase 1)
+    collapsed the terminal to a SINGLE canonical event — the legacy compat
+    ``ModelTaskDelegatedEvent`` co-writer was deleted, so the OMN-13408
+    token/cost-zeroing divergence (two co-writers of one row) is structurally
+    impossible: there is now exactly one writer.
 
     ``premium_counterfactual`` is supplied only when a saving should be banked
-    (the accepted/completed path); on failure/agent paths it is ``None`` so
-    ``cost_savings_usd`` is 0.0 by construction.
+    (the accepted/completed path); on failure/agent paths it is ``None`` so the
+    derived saving is 0.0 by construction.
     """
 
     completed: bool
@@ -596,7 +591,7 @@ class TerminalEmissionInputs:
     # Cost-measurement inputs (priced once inside _emit_terminal).
     cost_tier_name: str
     premium_counterfactual: ModelPremiumCounterfactual | None
-    # Escalation / audit metadata (shared by both events).
+    # Escalation / audit metadata (carried on the canonical terminal).
     escalation_count: int
     escalation_history: tuple[dict[str, object], ...]
     terminal_failure_reason: str | None
@@ -660,7 +655,7 @@ class DelegationWorkflowState:
     # ``compliance_attempts`` counts the inference attempts it has issued so
     # far (1 = first attempt) and ``accumulated_tokens`` is the running sum
     # of tokens across all attempts. Both are forwarded onto the terminal
-    # ModelDelegationResult / ModelTaskDelegatedEvent.
+    # canonical ModelDelegationResult.
     compliance_attempts: int = 0
     accumulated_tokens: int = 0
     inference_intent_in_flight: bool = False
@@ -1180,9 +1175,10 @@ class HandlerDelegationWorkflow:
         - Failed + escalation impossible -> FAILED (with terminal_failure_reason)
 
         Returns:
-        1. The delegation result event (completed or failed)
-        2. A backward-compatible task-delegated.v1 event for omnidash
-        3. A baseline comparison intent for savings computation (pass only)
+        1. The single canonical delegation terminal event (completed or failed)
+        2. A baseline comparison intent for savings computation (pass only)
+
+        OMN-13629: the legacy task-delegated.v1 compat event is no longer emitted.
         """
         cid = result.correlation_id
         workflow = self._workflows.get(cid)
@@ -1278,11 +1274,11 @@ class HandlerDelegationWorkflow:
             )
 
             self._advance(workflow, EnumDelegationState.COMPLETED)
-            # OMN-13475: terminal + compat come from the single builder; the
-            # baseline intent is interleaved between them to preserve the prior
-            # emission order ([completed, baseline, compat]).
-            terminal_events = self._emit_terminal(terminal_inputs)
-            events.append(terminal_events[0])
+            # OMN-13629 (WS-F Phase 1): the terminal is now a single canonical
+            # event from the one builder. Emission order is
+            # [completed-terminal, baseline-intent]; the legacy compat twin that
+            # previously trailed the baseline intent is gone.
+            events.extend(self._emit_terminal(terminal_inputs))
             events.append(
                 ModelBaselineIntent(
                     correlation_id=cid,
@@ -1294,7 +1290,6 @@ class HandlerDelegationWorkflow:
                     total_tokens=workflow.inference_total_tokens,
                 )
             )
-            events.append(terminal_events[1])
             return events
 
         # --- FAILED: evaluate escalation (OMN-12254) ---
@@ -1630,17 +1625,28 @@ class HandlerDelegationWorkflow:
         return None
 
     def _emit_terminal(self, inputs: TerminalEmissionInputs) -> list[BaseModel]:
-        """ONE builder for BOTH terminal events (OMN-13475).
+        """ONE builder for the single canonical terminal event (OMN-13629).
 
         This is the sole construction site for the canonical
         ``ModelDelegationResult`` (wrapped in a ``ModelDelegationEvent`` on the
-        completed/failed topic) and the compat ``ModelTaskDelegatedEvent``. Cost
-        is measured exactly once here from the inputs' token counts + serving
-        tier; both events are derived from that single measurement and the same
-        token values. There is no second path that could read a different token
-        count or a different cost — so the two events that co-write the same
-        delegation projection row can never diverge (the permanent fix for the
-        OMN-13408 telemetry-zeroing bug class).
+        completed/failed topic). Cost is measured exactly once here from the
+        inputs' token counts + serving tier.
+
+        OMN-13629 (WS-F Phase 1): the legacy compat ``ModelTaskDelegatedEvent``
+        co-writer (``task-delegated.v1``) was DELETED. A single terminal outcome
+        now emits a single canonical event — collapsing the two-co-writers-of-one
+        -row shim that drove the OMN-13408 / 13335 / 13475 / 13535 divergence bug
+        class. The savings + delegation projections consume the canonical
+        ``delegation-{completed,failed}.v1`` directly (no compat hop), so there is
+        no second wire path that could carry a divergent cost or token count.
+
+        The OMN-13335 ``max(0.0, …)`` clamp below is retained as an HONEST VALUE
+        FLOOR, not a crash-avoidance shim: ``ModelDelegationResult`` does not
+        surface a ``ge=0`` savings field, so a negative subtraction no longer
+        crashes terminal construction. The clamp now only keeps a derived saving
+        from going negative on an escalation that burned metered budget — that
+        spend is already captured in ``cumulative_attempt_cost``; a negative
+        "saving" would be dishonest, never terminal-suppressing.
         """
         cost = self._measure_terminal_cost(
             tier_name=inputs.cost_tier_name,
@@ -1665,24 +1671,26 @@ class HandlerDelegationWorkflow:
         )
         # Honest savings subtract the TOTAL spend across all tiers, not just the
         # final tier's, so an escalation that burned metered budget before landing
-        # on a free tier does not overstate the saving. OMN-13335: when a metered
-        # prior tier's spend exceeds the final tier's counterfactual saving (e.g. a
-        # FAILED / escalation-exhausted terminal whose final tier carries no premium
-        # counterfactual, so ``cost.cost_savings_usd == 0.0``), this subtraction
-        # goes NEGATIVE. The core wire ``ModelTaskDelegatedEvent.cost_savings_usd``
-        # pins ``ge=0.0``, so a negative value crashes terminal construction with a
-        # ValidationError — the dispatcher then emits NO terminal at all (the silent
-        # terminal loss live-proven by CID 67d2bfc8: an escalated-to-ceiling
-        # delegation that never yields a passing terminal). Savings cannot be
-        # negative — an escalation that burned metered budget did not "save"
-        # negative money; that spend is already captured in ``cost_usd``. Clamp to
-        # the honest floor of 0.0 so a valid terminal is ALWAYS emitted.
+        # on a free tier does not overstate the saving. OMN-13335 / OMN-13629: when
+        # a metered prior tier's spend exceeds the final tier's counterfactual
+        # saving (e.g. a FAILED / escalation-exhausted terminal whose final tier
+        # carries no premium counterfactual, so ``cost.cost_savings_usd == 0.0``),
+        # this subtraction goes NEGATIVE. Savings cannot be negative — an
+        # escalation that burned metered budget did not "save" negative money; that
+        # spend is already captured in ``cumulative_attempt_cost``. Clamp to the
+        # honest floor of 0.0 so the derived saving is an honest non-negative
+        # value. (Pre-OMN-13629 the legacy ``ModelTaskDelegatedEvent.cost_savings_usd``
+        # pinned ``ge=0.0`` and a negative value crashed terminal construction,
+        # suppressing the whole terminal — the silent loss live-proven by CID
+        # 67d2bfc8. The compat event is gone, so the clamp is now a value floor,
+        # never terminal-suppressing.)
         total_savings_usd = max(
             0.0, cost.cost_savings_usd - inputs.prior_attempt_cost_usd
         )
 
-        # The served tokens both events report. Defaults to the top-level inputs;
-        # overridden by the hoist below on the residual null-top-level FAILED shape.
+        # The served tokens the canonical terminal reports. Defaults to the
+        # top-level inputs; overridden by the hoist below on the residual
+        # null-top-level FAILED shape.
         served_input_tokens = inputs.prompt_tokens
         served_output_tokens = inputs.completion_tokens
         served_total_tokens = inputs.total_tokens
@@ -1756,44 +1764,15 @@ class HandlerDelegationWorkflow:
             final_attempt_cost=cost.cash_cost_usd,
         )
 
-        compat_event = ModelTaskDelegatedEvent(
-            topic=TOPIC_ID_TASK_DELEGATED,
-            timestamp=datetime.now(UTC).isoformat(),
-            correlation_id=inputs.correlation_id,
-            session_id=inputs.session_id,
-            task_type=inputs.task_type,
-            delegated_to=inputs.model_used,
-            model_name=inputs.model_name,
-            quality_gate_passed=inputs.quality_passed,
-            quality_gates_checked=inputs.quality_gates_checked,
-            quality_gates_failed=inputs.quality_gates_failed,
-            # OMN-13535: TOTAL metered spend (final tier + prior attempted tiers),
-            # and the saving against that total. The projection re-derives the same
-            # total by adding the per-attempt escalation_history costs to its
-            # re-priced final-tier cost, so both co-writers agree.
-            cost_usd=round(total_cost_usd, 6),
-            cost_savings_usd=round(total_savings_usd, 6),
-            cost_tier_type=cost.cost_tier_type,
-            cost_tier_name=cost.cost_tier_name,
-            cost_measurement_source=cost.cost_measurement_source,
-            budget_headroom_consumed_usd=cost.headroom_consumed_usd,
-            delegation_latency_ms=inputs.latency_ms,
-            llm_call_id=inputs.llm_call_id,
-            tokens_to_compliance=inputs.tokens_to_compliance,
-            compliance_attempts=inputs.compliance_attempts,
-            # Served tokens — identical to the canonical terminal above (and the
-            # hoisted metered-history tokens on the residual null-top-level shape).
-            tokens_input=served_input_tokens,
-            tokens_output=served_output_tokens,
-            pricing_manifest_version=get_manifest_version_int(),
-            context_pack_hash=inputs.context_pack_hash,
-            escalation_count=inputs.escalation_count,
-            escalation_history=inputs.escalation_history,
-            routing_tiers_hash=inputs.routing_tiers_hash,
-            escalation_config_hash=inputs.escalation_config_hash,
-            attempts_count=inputs.attempts_count,
-            premium_counterfactual=inputs.premium_counterfactual,
-        )
+        # OMN-13629 (WS-F Phase 1): the legacy compat ``ModelTaskDelegatedEvent``
+        # (``task-delegated.v1``) is no longer constructed. ``total_savings_usd``
+        # remains the honest non-negative derived saving for documentation /
+        # invariants but is no longer carried on a wire event — the canonical
+        # ``ModelDelegationResult`` carries the cumulative spend
+        # (``cumulative_attempt_cost``) + the pinned counterfactual is rebuilt by
+        # the savings projection from the served tokens, so the saving is
+        # re-derived downstream from the same authoritative cost/token figures.
+        assert total_savings_usd >= 0.0  # honest floor invariant (OMN-13335)
 
         topic = (
             TOPIC_ID_DELEGATION_COMPLETED
@@ -1802,7 +1781,6 @@ class HandlerDelegationWorkflow:
         )
         return [
             ModelDelegationEvent(topic=topic, payload=delegation_result),
-            compat_event,
         ]
 
     def _gate_terminal_inputs(
@@ -1821,11 +1799,11 @@ class HandlerDelegationWorkflow:
     ) -> TerminalEmissionInputs:
         """Resolve a quality-gate terminal outcome into the single-source inputs.
 
-        OMN-13475: the gate paths (completed-pass, required_bar_missing, and
-        gate-failed-escalation-exhausted) all funnel through here so the one
-        ``_emit_terminal`` builder produces BOTH terminal events from these
-        identical values — no separate ``ModelDelegationResult`` /
-        ``ModelTaskDelegatedEvent`` construction.
+        OMN-13475 / OMN-13629: the gate paths (completed-pass,
+        required_bar_missing, and gate-failed-escalation-exhausted) all funnel
+        through here so the one ``_emit_terminal`` builder produces the single
+        canonical ``ModelDelegationResult`` terminal from these identical values
+        — no separate or duplicate terminal construction.
         """
         assert workflow.request is not None
         assert workflow.routing_decision is not None

@@ -42,15 +42,20 @@ from datetime import UTC, datetime
 from uuid import NAMESPACE_DNS, UUID, uuid4, uuid5
 
 import pytest
-from omnibase_core.models.delegation.wire import ModelTaskDelegatedEvent
 
 from omnimarket.nodes.node_delegation_orchestrator.enums import EnumDelegationState
 from omnimarket.nodes.node_delegation_orchestrator.handlers.handler_delegation_workflow import (
     HandlerDelegationWorkflow,
     TerminalEmissionInputs,
 )
+from omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_event import (
+    ModelDelegationEvent,
+)
 from omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_request import (
     ModelDelegationRequest,
+)
+from omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_result import (
+    ModelDelegationResult,
 )
 from omnimarket.nodes.node_delegation_orchestrator.models.model_inference_response_data import (
     ModelInferenceResponseData,
@@ -128,30 +133,44 @@ class TestEmitTerminalClampsNegativeSavingsOmn13335:
         handler = HandlerDelegationWorkflow(workflows={})
         cid = uuid4()
 
-        # Must NOT raise — the live gap raised ValidationError here (negative
-        # cost_savings_usd against the core wire DTO's ge=0.0), losing the
-        # terminal entirely.
+        # Must NOT raise — the live gap raised ValidationError on the legacy compat
+        # event's ge=0.0 cost_savings_usd, losing the terminal entirely. OMN-13629
+        # removed that event; the savings clamp is now an internal honest floor.
         events = handler._emit_terminal(_terminal_inputs_with_metered_prior(cid))
 
-        compat_events = [e for e in events if isinstance(e, ModelTaskDelegatedEvent)]
-        assert len(compat_events) == 1, (
-            "the terminal builder must emit exactly one compat event (the live gap "
-            "crashed here on negative savings, emitting none)"
+        terminals = [
+            e.payload
+            for e in events
+            if isinstance(e, ModelDelegationEvent)
+            and isinstance(e.payload, ModelDelegationResult)
+        ]
+        assert len(terminals) == 1, (
+            "the terminal builder must emit exactly one canonical terminal (the "
+            "live gap crashed here on negative savings, emitting none)"
         )
-        compat = compat_events[0]
-        assert compat.cost_savings_usd >= 0.0, (
-            "cost_savings_usd must be clamped to its honest floor (>= 0) — a "
-            "metered prior tier cannot produce negative savings"
-        )
-        # The metered spend still surfaces as positive terminal cost, and the
-        # escalation that occurred is recorded.
-        assert compat.cost_usd > 0.0, (
+        terminal = terminals[0]
+        # The metered spend still surfaces as positive cumulative terminal cost,
+        # and the escalation that occurred is recorded.
+        assert terminal.cumulative_attempt_cost > 0.0, (
             "the metered escalation spend must surface as positive terminal cost"
         )
-        assert compat.escalation_count == 1, (
+        assert terminal.escalation_count == 1, (
             "the terminal must carry the escalation_count it was given"
         )
-        assert compat.quality_gate_passed is True
+        assert terminal.quality_passed is True
+        # The derived saving the projection materializes is non-negative (the
+        # honest floor) — never negative, never a terminal-suppressing crash.
+        from omnimarket.nodes.node_projection_delegation.handlers.handler_projection_delegation import (
+            ModelTaskDelegatedEvent,
+            _canonical_result_to_task_delegated_payload,
+            _measure_actual_cost,
+        )
+
+        converted = _canonical_result_to_task_delegated_payload(
+            terminal.model_dump(mode="json")
+        )
+        measurement = _measure_actual_cost(ModelTaskDelegatedEvent(**converted))
+        assert measurement.cost_savings_usd >= 0.0
 
 
 def _make_request(cid: UUID) -> ModelDelegationRequest:
@@ -258,18 +277,30 @@ class TestEscalatedTerminalEmitsOmn13335:
         )
 
         assert handler.workflows[cid].state == EnumDelegationState.COMPLETED
-        compat_events = [
-            e for e in terminal_events if isinstance(e, ModelTaskDelegatedEvent)
+        terminals = [
+            e.payload
+            for e in terminal_events
+            if isinstance(e, ModelDelegationEvent)
+            and isinstance(e.payload, ModelDelegationResult)
         ]
-        assert len(compat_events) == 1, (
-            "an escalated delegation must emit exactly one terminal compat event"
+        assert len(terminals) == 1, (
+            "an escalated delegation must emit exactly one canonical terminal"
         )
-        compat = compat_events[0]
-        assert compat.escalation_count >= 1, (
+        terminal = terminals[0]
+        assert terminal.escalation_count >= 1, (
             "an escalation terminal must carry escalation_count >= 1"
         )
-        assert compat.cost_savings_usd >= 0.0, (
-            "terminal cost_savings_usd must be clamped to its honest floor (>= 0)"
+        # The metered prior tier's spend still surfaces in the cumulative cost.
+        assert terminal.cumulative_attempt_cost > 0.0
+        # The derived saving the projection materializes is non-negative.
+        from omnimarket.nodes.node_projection_delegation.handlers.handler_projection_delegation import (
+            ModelTaskDelegatedEvent,
+            _canonical_result_to_task_delegated_payload,
+            _measure_actual_cost,
         )
-        # The metered prior tier's spend still surfaces in the terminal cost.
-        assert compat.cost_usd > 0.0
+
+        converted = _canonical_result_to_task_delegated_payload(
+            terminal.model_dump(mode="json")
+        )
+        measurement = _measure_actual_cost(ModelTaskDelegatedEvent(**converted))
+        assert measurement.cost_savings_usd >= 0.0

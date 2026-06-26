@@ -45,11 +45,17 @@ event_bus:
     - onex.evt.omnibase-infra.savings-estimated.v1
     - onex.evt.omnimarket.delegate-skill-completed.v1
     - onex.evt.omnimarket.delegate-skill-failed.v1
-    # OMN-12494: materialize savings_estimates from the canonical task-delegated
-    # SOURCE stream (the same stream that drives delegation_events) so savings is
-    # a measurement, not an estimate, and the Delegation Savings widget leaves
-    # truthful-empty when a real delegation with a pinned counterfactual lands.
-    - onex.evt.omniclaude.task-delegated.v1
+    # OMN-13629 (WS-F Phase 1): repointed from the legacy compat
+    # onex.evt.omniclaude.task-delegated.v1 to the canonical delegation terminal
+    # pair. The orchestrator now emits a SINGLE canonical terminal
+    # (ModelDelegationResult on delegation-{completed,failed}.v1); the savings
+    # runner materializes savings_estimates from that same stream that drives
+    # delegation_events, so savings is a measurement, not an estimate. The
+    # Delegation Savings widget stays truthful-empty when a real delegation with
+    # a derivable counterfactual lands. (OMN-12494 origin; OMN-13598 stopgap on
+    # task-delegated.v1 superseded architecturally.)
+    - onex.evt.omnibase-infra.delegation-completed.v1
+    - onex.evt.omnibase-infra.delegation-failed.v1
   publish_topics:
     - onex.evt.omnimarket.projection-savings-applied.v1
     - onex.snapshot.projection.cost.savings-overview.v1  # onex-topic-allow: projection snapshot topic

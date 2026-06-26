@@ -86,31 +86,70 @@ class TestSavingsSourceBuilder:
         )
 
 
+def _canonical_source_payload(
+    *, cost_usd: float = 0.003, quality_passed: bool = True
+) -> dict[str, object]:
+    """OMN-13629: canonical ModelDelegationResult source (delegation-completed.v1).
+
+    The cloud baseline is re-derived from the served tokens (1000/500) — the
+    canonical terminal carries no pinned counterfactual.
+    """
+    return {
+        "_event_type": "onex.evt.omnibase-infra.delegation-completed.v1",
+        "correlation_id": CORR,
+        "task_type": "code_generation",
+        "model_used": "glm-5.2",
+        "quality_passed": quality_passed,
+        "cumulative_attempt_cost": cost_usd,
+        "final_attempt_cost": cost_usd,
+        "cumulative_input_tokens": 1000,
+        "cumulative_output_tokens": 500,
+        "prompt_tokens": 1000,
+        "completion_tokens": 500,
+        "timestamp": "2026-06-20T12:00:00+00:00",
+    }
+
+
 @pytest.mark.unit
 class TestHandlerMaterializesFromSource:
+    """OMN-13629: HandlerProjectionSavings materializes from the canonical source.
+
+    The cloud baseline is re-derived from the served tokens; the expected values
+    are computed from ``build_premium_counterfactual`` so they track the manifest.
+    """
+
+    @staticmethod
+    def _expected_cloud() -> Decimal:
+        cf = build_premium_counterfactual(prompt_tokens=1000, completion_tokens=500)
+        assert cf is not None
+        return cf.counterfactual_cost_usd
+
     def test_source_event_writes_savings_row(self) -> None:
         db = InmemoryDatabaseAdapter()
-        result = HANDLER.handle({**_source_payload(), "_db": db})
+        result = HANDLER.handle({**_canonical_source_payload(), "_db": db})
         assert result["rows_upserted"] == 1
         rows = db.query("savings_estimates", {"session_id": CORR})
         assert len(rows) == 1
+        cloud = self._expected_cloud()
         assert Decimal(str(rows[0]["local_cost_usd"])) == Decimal("0.003")
-        assert Decimal(str(rows[0]["cloud_cost_usd"])) == Decimal("0.0525")
-        assert Decimal(str(rows[0]["savings_usd"])) == Decimal("0.0495")
+        assert Decimal(str(rows[0]["cloud_cost_usd"])) == cloud
+        assert Decimal(str(rows[0]["savings_usd"])) == cloud - Decimal("0.003")
         assert rows[0]["model_local"] == "glm-5.2"
-        assert rows[0]["repo_name"] == "omnimarket"
 
-    def test_source_event_without_counterfactual_is_truthful_empty(self) -> None:
+    def test_failed_terminal_is_truthful_empty(self) -> None:
         db = InmemoryDatabaseAdapter()
-        result = HANDLER.handle({**_source_payload(with_cf=False), "_db": db})
+        result = HANDLER.handle(
+            {**_canonical_source_payload(quality_passed=False), "_db": db}
+        )
         assert result["rows_upserted"] == 0
         assert db.query("savings_estimates", {"session_id": CORR}) == []
 
     def test_replay_is_idempotent(self) -> None:
         # Same source event applied twice yields exactly one row (identity index).
         db = InmemoryDatabaseAdapter()
-        HANDLER.handle({**_source_payload(), "_db": db})
-        HANDLER.handle({**_source_payload(), "_db": db})
+        HANDLER.handle({**_canonical_source_payload(), "_db": db})
+        HANDLER.handle({**_canonical_source_payload(), "_db": db})
         rows = db.query("savings_estimates", {"session_id": CORR})
         assert len(rows) == 1
-        assert Decimal(str(rows[0]["savings_usd"])) == Decimal("0.0495")
+        cloud = self._expected_cloud()
+        assert Decimal(str(rows[0]["savings_usd"])) == cloud - Decimal("0.003")

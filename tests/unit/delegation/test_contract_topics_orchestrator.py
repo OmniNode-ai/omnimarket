@@ -64,13 +64,14 @@ def test_publish_topic_constants_match_contract() -> None:
     # omnibase_infra.event_bus.topic_constants literals; if contract.yaml and the
     # resolver drift together, membership-only checks would still pass — the
     # fixed values catch a cross-service topic-contract change. (CodeRabbit 1241.)
+    # OMN-13629: TOPIC_ID_TASK_DELEGATED was removed — the orchestrator no longer
+    # publishes the legacy compat task-delegated.v1.
     expected = {
         "inference": contract_topics.TOPIC_ID_INFERENCE_REQUEST,
         "quality_gate": contract_topics.TOPIC_ID_QUALITY_GATE_REQUEST,
         "routing": contract_topics.TOPIC_ID_ROUTING_REQUEST,
         "completed": contract_topics.TOPIC_ID_DELEGATION_COMPLETED,
         "failed": contract_topics.TOPIC_ID_DELEGATION_FAILED,
-        "task_delegated": contract_topics.TOPIC_ID_TASK_DELEGATED,
     }
     assert (
         expected["inference"]
@@ -102,11 +103,13 @@ def test_publish_topic_constants_match_contract() -> None:
             "onex.evt.omnibase-infra.delegation-failed.v1"  # onex-topic-allow: equality proof
         )
     )
-    assert expected["task_delegated"] == (
-        "onex.evt.omniclaude.task-delegated.v1"  # onex-topic-allow: equality proof
-    )
     for resolved in expected.values():
         assert resolved in publish_topics
+    # OMN-13629: the legacy compat topic must NOT be in publish_topics.
+    assert (
+        "onex.evt.omniclaude.task-delegated.v1"  # onex-topic-allow: negative proof
+        not in publish_topics
+    )
 
 
 @pytest.mark.unit

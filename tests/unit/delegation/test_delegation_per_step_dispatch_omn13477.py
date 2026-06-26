@@ -128,9 +128,8 @@ def _make_gate_result(
     )
 
 
-def _split(
-    events: list[object],
-) -> tuple[ModelDelegationResult, ModelTaskDelegatedEvent]:
+def _canonical_terminal(events: list[object]) -> ModelDelegationResult:
+    """OMN-13629: the terminal is a SINGLE canonical event, no compat twin."""
     canonical = [
         e.payload
         for e in events
@@ -139,8 +138,8 @@ def _split(
     ]
     compat = [e for e in events if isinstance(e, ModelTaskDelegatedEvent)]
     assert len(canonical) == 1, f"expected one canonical terminal, got {events!r}"
-    assert len(compat) == 1, f"expected one compat twin, got {events!r}"
-    return canonical[0], compat[0]
+    assert compat == [], f"expected ZERO compat twins (OMN-13629), got {compat!r}"
+    return canonical[0]
 
 
 # ---------------------------------------------------------------------------
@@ -278,7 +277,7 @@ class TestRealDispatchPathParity:
         ref.handle_routing_decision(_make_routing_decision(cid))
         ref.handle_inference_response(_make_success_response(cid))
         ref_events = list(ref.handle_gate_result(_make_gate_result(cid)))
-        ref_canonical, ref_compat = _split(ref_events)
+        ref_canonical = _canonical_terminal(ref_events)
         assert ref.workflows[cid].state == EnumDelegationState.COMPLETED
 
         # Real dispatch path: every step through the async handle() ladder
@@ -288,15 +287,14 @@ class TestRealDispatchPathParity:
         await live.handle(_make_routing_decision(cid))
         await live.handle(_make_success_response(cid))
         live_events = list(await live.handle(_make_gate_result(cid)))
-        live_canonical, live_compat = _split(live_events)
+        live_canonical = _canonical_terminal(live_events)
 
         assert live.workflows[cid].state == EnumDelegationState.COMPLETED
-        # Identical terminal: same canonical topic/quality + same compat tokens.
+        # Identical canonical terminal: same quality + same served tokens.
         assert live_canonical.quality_passed is True
         assert live_canonical.quality_passed == ref_canonical.quality_passed
-        assert live_compat.tokens_input == ref_compat.tokens_input
-        assert live_compat.tokens_output == ref_compat.tokens_output
-        assert live_compat.quality_gate_passed == ref_compat.quality_gate_passed
+        assert live_canonical.prompt_tokens == ref_canonical.prompt_tokens
+        assert live_canonical.completion_tokens == ref_canonical.completion_tokens
 
     async def test_failed_gate_chain_via_handle_matches_per_step(self) -> None:
         """A non-escalatable gate failure terminates FAILED through handle()."""
@@ -309,10 +307,9 @@ class TestRealDispatchPathParity:
         live_events = list(
             await live.handle(_make_gate_result(cid, passed=False, quality_score=0.1))
         )
-        canonical, compat = _split(live_events)
+        canonical = _canonical_terminal(live_events)
         assert live.workflows[cid].state == EnumDelegationState.FAILED
         assert canonical.quality_passed is False
-        assert compat.quality_gate_passed is False
         # Served tokens still propagate on the failure path (OMN-13408 invariant).
-        assert compat.tokens_input == _PROMPT_TOKENS
-        assert compat.tokens_output == _COMPLETION_TOKENS
+        assert canonical.prompt_tokens == _PROMPT_TOKENS
+        assert canonical.completion_tokens == _COMPLETION_TOKENS

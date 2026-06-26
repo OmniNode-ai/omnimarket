@@ -334,11 +334,13 @@ class TestHappyPath:
         assert intents[0].intent == "quality_gate"
         assert handler.workflows[cid].state == EnumDelegationState.INFERENCE_COMPLETED
 
-        # Step 4: Handle gate result (pass) -> emits completed + baseline + compat
+        # Step 4: Handle gate result (pass) -> emits single canonical terminal +
+        # baseline intent. OMN-13629: the legacy compat task-delegated.v1 twin is
+        # no longer emitted, so the completed path is 2 events, not 3.
         gate = _make_gate_result(cid, passed=True, quality_score=0.9)
         intents = handler.handle_gate_result(gate)
-        # 3 events: delegation-completed, baseline intent, backward-compat task-delegated
-        assert len(intents) == 3
+        # 2 events: delegation-completed terminal, baseline intent.
+        assert len(intents) == 2
         assert isinstance(intents[0], ModelDelegationEvent)
         assert intents[0].topic == "onex.evt.omnibase-infra.delegation-completed.v1"
         assert handler.workflows[cid].state == EnumDelegationState.COMPLETED
@@ -366,32 +368,12 @@ class TestHappyPath:
         assert intents[1].baseline_cost_usd > 0
         assert intents[1].candidate_cost_usd == pytest.approx(0.0)
 
-        # Backward-compatible task-delegated.v1 event (Task 12)
+        # OMN-13629: NO compat ModelTaskDelegatedEvent is emitted.
         from omnimarket.nodes.node_delegation_orchestrator.models.model_task_delegated_event import (
             ModelTaskDelegatedEvent,
         )
 
-        assert isinstance(intents[2], ModelTaskDelegatedEvent)
-        assert intents[2].correlation_id == cid
-        assert intents[2].quality_gate_passed is True
-        assert intents[2].llm_call_id == "chatcmpl-abc123"
-        from omnimarket.pricing import (
-            estimate_baseline_cost_usd,
-            get_manifest_version_int,
-        )
-
-        expected_savings = estimate_baseline_cost_usd(
-            prompt_tokens=100,
-            completion_tokens=50,
-        )
-        assert intents[2].cost_savings_usd == pytest.approx(expected_savings)
-        assert intents[2].pricing_manifest_version == get_manifest_version_int()
-        assert intents[2].pricing_manifest_version > 0
-        from omnimarket.nodes.node_delegation_orchestrator.contract_topics import (
-            TOPIC_ID_TASK_DELEGATED as TOPIC_DELEGATION_TASK_DELEGATED,
-        )
-
-        assert intents[2].topic == TOPIC_DELEGATION_TASK_DELEGATED
+        assert not any(isinstance(e, ModelTaskDelegatedEvent) for e in intents)
 
     def test_completed_result_has_positive_latency(self) -> None:
         handler = HandlerDelegationWorkflow()
@@ -439,8 +421,9 @@ class TestGateFailure:
         )
         intents = handler.handle_gate_result(gate)
 
-        # 2 events: delegation-failed + backward-compat task-delegated (no baseline on failure)
-        assert len(intents) == 2
+        # OMN-13629: single canonical delegation-failed terminal (no baseline on
+        # failure, no compat twin).
+        assert len(intents) == 1
         assert isinstance(intents[0], ModelDelegationEvent)
         assert intents[0].topic == "onex.evt.omnibase-infra.delegation-failed.v1"
         assert handler.workflows[cid].state == EnumDelegationState.FAILED
@@ -450,13 +433,12 @@ class TestGateFailure:
         assert result.fallback_to_claude is True
         assert "REFUSAL" in result.failure_reason
 
-        # Backward-compat event still emitted on failure
+        # OMN-13629: NO compat ModelTaskDelegatedEvent is emitted on failure.
         from omnimarket.nodes.node_delegation_orchestrator.models.model_task_delegated_event import (
             ModelTaskDelegatedEvent,
         )
 
-        assert isinstance(intents[1], ModelTaskDelegatedEvent)
-        assert intents[1].quality_gate_passed is False
+        assert not any(isinstance(e, ModelTaskDelegatedEvent) for e in intents)
 
     def test_gate_fail_without_fallback(self) -> None:
         handler = HandlerDelegationWorkflow()
@@ -716,16 +698,14 @@ class TestConcurrentWorkflows:
 
 @pytest.mark.unit
 class TestTaskDelegatedEventTopicRouting:
-    """Verify ModelTaskDelegatedEvent carries the correct topic field.
+    """OMN-13629: the orchestrator no longer emits the legacy compat event.
 
-    The runtime kernel routes output_events by inspecting event.topic.
-    Without it, the compat event is silently dropped.
+    The terminal collapsed to a single canonical ModelDelegationEvent. These
+    tests prove the compat ModelTaskDelegatedEvent is NOT in the emitted output
+    on either the pass or the fail path — the divergence-prone co-writer is gone.
     """
 
-    def test_compat_event_has_topic_on_gate_pass(self) -> None:
-        from omnimarket.nodes.node_delegation_orchestrator.contract_topics import (
-            TOPIC_ID_TASK_DELEGATED as TOPIC_DELEGATION_TASK_DELEGATED,
-        )
+    def test_no_compat_event_on_gate_pass(self) -> None:
         from omnimarket.nodes.node_delegation_orchestrator.models.model_task_delegated_event import (
             ModelTaskDelegatedEvent,
         )
@@ -740,14 +720,9 @@ class TestTaskDelegatedEventTopicRouting:
         )
         events = handler.handle_gate_result(_make_gate_result(cid, passed=True))
 
-        compat_events = [e for e in events if isinstance(e, ModelTaskDelegatedEvent)]
-        assert len(compat_events) == 1
-        assert compat_events[0].topic == TOPIC_DELEGATION_TASK_DELEGATED
+        assert not any(isinstance(e, ModelTaskDelegatedEvent) for e in events)
 
-    def test_compat_event_has_topic_on_gate_fail(self) -> None:
-        from omnimarket.nodes.node_delegation_orchestrator.contract_topics import (
-            TOPIC_ID_TASK_DELEGATED as TOPIC_DELEGATION_TASK_DELEGATED,
-        )
+    def test_no_compat_event_on_gate_fail(self) -> None:
         from omnimarket.nodes.node_delegation_orchestrator.models.model_task_delegated_event import (
             ModelTaskDelegatedEvent,
         )
@@ -764,26 +739,7 @@ class TestTaskDelegatedEventTopicRouting:
             _make_gate_result(cid, passed=False, failure_reasons=("REFUSAL",))
         )
 
-        compat_events = [e for e in events if isinstance(e, ModelTaskDelegatedEvent)]
-        assert len(compat_events) == 1
-        assert compat_events[0].topic == TOPIC_DELEGATION_TASK_DELEGATED
-
-    def test_model_task_delegated_event_default_topic(self) -> None:
-        from omnimarket.nodes.node_delegation_orchestrator.contract_topics import (
-            TOPIC_ID_TASK_DELEGATED as TOPIC_DELEGATION_TASK_DELEGATED,
-        )
-        from omnimarket.nodes.node_delegation_orchestrator.models.model_task_delegated_event import (
-            ModelTaskDelegatedEvent,
-        )
-
-        event = ModelTaskDelegatedEvent(
-            timestamp="2026-04-12T00:00:00Z",
-            correlation_id=uuid4(),
-            task_type="test",
-            delegated_to="qwen3-coder",
-            quality_gate_passed=True,
-        )
-        assert event.topic == TOPIC_DELEGATION_TASK_DELEGATED
+        assert not any(isinstance(e, ModelTaskDelegatedEvent) for e in events)
 
 
 # ---------------------------------------------------------------------------
@@ -1066,7 +1022,8 @@ class TestInferenceErrorEscalation:
             _make_error_inference_response(cid, "401 Unauthorized: missing API key")
         )
 
-        assert len(intents) == 2
+        # OMN-13629: a single canonical FAILED terminal (no compat twin).
+        assert len(intents) == 1
         failure_event = next(e for e in intents if isinstance(e, ModelDelegationEvent))
         assert failure_event.topic == "onex.evt.omnibase-infra.delegation-failed.v1"
         assert handler.workflows[cid].state == EnumDelegationState.FAILED

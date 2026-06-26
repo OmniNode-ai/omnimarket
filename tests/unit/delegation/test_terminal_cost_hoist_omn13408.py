@@ -40,10 +40,27 @@ from omnimarket.nodes.node_delegation_orchestrator.handlers.handler_delegation_w
 from omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_event import (
     ModelDelegationEvent,
 )
-from omnimarket.nodes.node_delegation_orchestrator.models.model_task_delegated_event import (
+from omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_result import (
+    ModelDelegationResult,
+)
+from omnimarket.nodes.node_projection_delegation.handlers.handler_projection_delegation import (
+    ModelActualCostProjection,
     ModelTaskDelegatedEvent,
+    _canonical_result_to_task_delegated_payload,
+    _measure_actual_cost,
 )
 from omnimarket.pricing import recompute_actual_cost_and_savings
+
+
+def _measure_canonical(canonical: ModelDelegationResult) -> ModelActualCostProjection:
+    """Re-derive the projection's actual-cost measurement from the canonical
+    terminal — the cost dimensions the delegation_events row persists (OMN-13629).
+    """
+    converted = _canonical_result_to_task_delegated_payload(
+        canonical.model_dump(mode="json")
+    )
+    return _measure_actual_cost(ModelTaskDelegatedEvent(**converted))
+
 
 # The live 1f969398 escalation_history shape: a free local attempt that failed
 # QG and escalated, then the metered cheap_cloud (glm-5.2) attempt that itself
@@ -150,7 +167,6 @@ class TestTerminalCostHoistOmn13408:
         history = _metered_history()
         events = handler._emit_terminal(_null_top_level_failed_inputs(history=history))
 
-        compat = next(e for e in events if isinstance(e, ModelTaskDelegatedEvent))
         canonical = next(
             e.payload for e in events if isinstance(e, ModelDelegationEvent)
         )
@@ -163,22 +179,24 @@ class TestTerminalCostHoistOmn13408:
         )
         assert expected.cash_cost_usd > 0.0
 
-        # Compat ModelTaskDelegatedEvent (co-writer of the projection row).
-        assert Decimal(str(compat.cost_usd)) == Decimal(str(expected.cash_cost_usd))
-        assert compat.cost_usd > 0.0
-        assert compat.cost_tier_name == _CHEAP_CLOUD
-        assert compat.cost_tier_type == "metered"
-        assert compat.tokens_input == _PROMPT_TOKENS
-        assert compat.tokens_output == _COMPLETION_TOKENS
-        # No counterfactual on the failure path -> saving stays 0 (never
-        # counterfactual-minus-0).
-        assert Decimal(str(compat.cost_savings_usd)) == Decimal("0")
-
-        # Canonical ModelDelegationResult must agree (single-source builder).
+        # OMN-13629: the single canonical ModelDelegationResult carries the hoisted
+        # metered cost + served tokens (the row's single source).
         assert canonical.cumulative_attempt_cost > 0.0
         assert canonical.final_attempt_cost == pytest.approx(expected.cash_cost_usd)
         assert canonical.cumulative_input_tokens == _PROMPT_TOKENS
         assert canonical.cumulative_output_tokens == _COMPLETION_TOKENS
+
+        # The projection re-derives the metered cost, serving tier, and zero saving
+        # from the canonical terminal (the cost dimensions the row persists).
+        measurement = _measure_canonical(canonical)
+        assert Decimal(str(measurement.cost_usd)) == Decimal(
+            str(expected.cash_cost_usd)
+        )
+        assert measurement.cost_usd > 0.0
+        assert measurement.cost_tier_name == _CHEAP_CLOUD
+        assert measurement.cost_tier_type == "metered"
+        # No counterfactual on the failure path -> saving stays 0.
+        assert Decimal(str(measurement.cost_savings_usd)) == Decimal("0")
 
     def test_no_double_count_when_top_level_already_populated(self) -> None:
         """OMN-13535 invariant: when the top-level cost is ALREADY non-zero (the
@@ -200,7 +218,9 @@ class TestTerminalCostHoistOmn13408:
             }
         )
         events = handler._emit_terminal(populated)
-        compat = next(e for e in events if isinstance(e, ModelTaskDelegatedEvent))
+        canonical = next(
+            e.payload for e in events if isinstance(e, ModelDelegationEvent)
+        )
 
         expected = recompute_actual_cost_and_savings(
             tier_name=_CHEAP_CLOUD,
@@ -210,9 +230,12 @@ class TestTerminalCostHoistOmn13408:
         )
         # final-tier cost (priced from the top-level tokens) + prior(0) = final.
         # NOT final + escalation_history(final) = double count.
-        assert Decimal(str(compat.cost_usd)) == Decimal(str(expected.cash_cost_usd))
-        assert compat.tokens_input == _PROMPT_TOKENS
-        assert compat.tokens_output == _COMPLETION_TOKENS
+        measurement = _measure_canonical(canonical)
+        assert Decimal(str(measurement.cost_usd)) == Decimal(
+            str(expected.cash_cost_usd)
+        )
+        assert canonical.cumulative_input_tokens == _PROMPT_TOKENS
+        assert canonical.cumulative_output_tokens == _COMPLETION_TOKENS
 
     def test_failed_free_local_terminal_stays_zero(self) -> None:
         """A FAILED terminal with NO metered tier in escalation_history (free
@@ -235,6 +258,9 @@ class TestTerminalCostHoistOmn13408:
         events = handler._emit_terminal(
             _null_top_level_failed_inputs(history=free_only_history)
         )
-        compat = next(e for e in events if isinstance(e, ModelTaskDelegatedEvent))
-        assert Decimal(str(compat.cost_usd)) == Decimal("0")
-        assert Decimal(str(compat.cost_savings_usd)) == Decimal("0")
+        canonical = next(
+            e.payload for e in events if isinstance(e, ModelDelegationEvent)
+        )
+        measurement = _measure_canonical(canonical)
+        assert Decimal(str(measurement.cost_usd)) == Decimal("0")
+        assert Decimal(str(measurement.cost_savings_usd)) == Decimal("0")
