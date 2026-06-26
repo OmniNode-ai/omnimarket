@@ -33,6 +33,18 @@ _DRIZZLE_REPOS = [
     ("omnidash", "omnidash_analytics", "migrations"),
 ]
 
+# Node-owned (vendored) migrations live under omnimarket's own source tree at
+# src/omnimarket/nodes/<node>/migrations/*.sql (OMN-12559). The
+# omnibase_infra forward-migration runner mirrors these and applies each under a
+# namespaced id  node:<node>:<filename>  in public.schema_migrations of the node
+# projection database. The repo, projection database, and namespaced id space
+# are fixed by that runner contract; this sweep is the detection path for a file
+# that was vendored but never applied (OMN-13636 — WS-F Phase 4 application gap).
+_NODE_MIGRATION_REPO = "omnimarket"
+_NODE_MIGRATION_DB = "omnidash_analytics"
+_NODE_MIGRATION_GLOB = "src/omnimarket/nodes/*/migrations/*.sql"
+_NODE_MIGRATION_ID_PREFIX = "node:"
+
 _TIMESTAMP_COLUMNS = (
     "created_at",
     "timestamp",
@@ -62,7 +74,7 @@ class ModelMigrationStateResult(BaseModel):
 
     database: str
     repo: str
-    migration_tool: str  # alembic | drizzle
+    migration_tool: str  # alembic | drizzle | node-vendored
     disk_migrations: int = 0
     applied_migrations: int = 0
     current_head: str | None = None
@@ -387,6 +399,101 @@ def _check_drizzle_migration(
     )
 
 
+def _discover_node_migration_ids(omni_home: str) -> set[str]:
+    """Enumerate namespaced ids for every vendored node-owned migration on disk.
+
+    Walks ``<omni_home>/omnimarket/src/omnimarket/nodes/<node>/migrations/*.sql``
+    and returns the set of ids the forward-migration runner records in
+    ``public.schema_migrations`` (``node:<node>:<filename>``). When omni_home IS
+    the omnimarket repo root (running in-tree), the embedded ``omnimarket/``
+    segment is absent — both layouts are probed.
+    """
+    roots = (
+        Path(omni_home) / _NODE_MIGRATION_REPO,
+        Path(omni_home),
+    )
+    ids: set[str] = set()
+    for root in roots:
+        for sql_file in sorted(root.glob(_NODE_MIGRATION_GLOB)):
+            node_name = sql_file.parent.parent.name
+            ids.add(f"{_NODE_MIGRATION_ID_PREFIX}{node_name}:{sql_file.name}")
+        if ids:
+            break
+    return ids
+
+
+def _check_node_migrations(database: str, omni_home: str) -> ModelMigrationStateResult:
+    """Detect vendored node migrations that were never applied to a lane.
+
+    OMN-13636 (WS-F Phase 4): node-owned SQL is vendored into the deploy tree but
+    a warm-volume forward-migration run can silently skip a new file (the
+    one-shot runner never re-ran, or the sentinel stayed TRUE from a prior run).
+    The result is a file on disk with no row in ``public.schema_migrations`` and
+    a projection node writing to a stale schema (``UndefinedColumn``). This check
+    compares the on-disk vendored set against the applied set and reports PENDING
+    — naming the exact missing files — so the gap fails loud instead of silent.
+    """
+    disk_ids = _discover_node_migration_ids(omni_home)
+    if not disk_ids:
+        return ModelMigrationStateResult(
+            database=database,
+            repo=_NODE_MIGRATION_REPO,
+            migration_tool="node-vendored",
+            status="ERROR",
+            message=(
+                "no node-owned migration source tree resolvable under "
+                f"{omni_home!r}: cannot verify application gap"
+            ),
+        )
+
+    rc, out, err = _psql(
+        "SELECT migration_id FROM public.schema_migrations "
+        f"WHERE migration_id LIKE '{_NODE_MIGRATION_ID_PREFIX}%';",
+        database,
+    )
+    if rc != 0:
+        return ModelMigrationStateResult(
+            database=database,
+            repo=_NODE_MIGRATION_REPO,
+            migration_tool="node-vendored",
+            disk_migrations=len(disk_ids),
+            status="NO_TABLE",
+            message=err[:200]
+            if err
+            else "schema_migrations table missing or query failed",
+        )
+
+    applied_ids = {line.strip() for line in out.splitlines() if line.strip()}
+    missing = sorted(disk_ids - applied_ids)
+    applied_count = len(disk_ids & applied_ids)
+
+    if missing:
+        preview = ", ".join(missing[:5])
+        if len(missing) > 5:
+            preview += f", … (+{len(missing) - 5} more)"
+        return ModelMigrationStateResult(
+            database=database,
+            repo=_NODE_MIGRATION_REPO,
+            migration_tool="node-vendored",
+            disk_migrations=len(disk_ids),
+            applied_migrations=applied_count,
+            status="PENDING",
+            message=(
+                f"{len(missing)} vendored node migration(s) on disk with no "
+                f"schema_migrations row (never applied): {preview}"
+            ),
+        )
+
+    return ModelMigrationStateResult(
+        database=database,
+        repo=_NODE_MIGRATION_REPO,
+        migration_tool="node-vendored",
+        disk_migrations=len(disk_ids),
+        applied_migrations=applied_count,
+        status="CURRENT",
+    )
+
+
 # ---------------------------------------------------------------------------
 # Handler
 # ---------------------------------------------------------------------------
@@ -454,6 +561,11 @@ class NodeDatabaseSweep:
             migration_results.append(
                 _check_drizzle_migration(repo, database, path, omni_home)
             )
+        # Node-owned vendored migrations (OMN-12559 / OMN-13636 application-gap
+        # detection): a file vendored into the deploy tree but never recorded in
+        # schema_migrations is the silent-skip failure mode that left
+        # delegation_events without context_pack_hash. Surface it as PENDING.
+        migration_results.append(_check_node_migrations(_NODE_MIGRATION_DB, omni_home))
 
         # Aggregation
         status_counts: dict[str, int] = {}

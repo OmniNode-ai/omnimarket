@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from unittest.mock import patch
 
 import pytest
@@ -11,7 +12,9 @@ import pytest
 from omnimarket.nodes.node_database_sweep.handlers.handler_database_sweep import (
     DatabaseSweepRequest,
     NodeDatabaseSweep,
+    _check_node_migrations,
     _check_table,
+    _discover_node_migration_ids,
 )
 
 
@@ -266,3 +269,174 @@ class TestCheckTableEdgeCases:
 
         assert result.status == "HEALTHY"
         assert result.drizzle_defined is False
+
+
+@pytest.mark.unit
+class TestNodeMigrationApplicationGap:
+    """_check_node_migrations detects vendored node migrations that never applied.
+
+    OMN-13636 (WS-F Phase 4): a node-owned migration file present on disk
+    (vendored under src/omnimarket/nodes/<node>/migrations/*.sql, mirrored into
+    omnibase_infra docker/migrations/forward/nodes/) but with no row in
+    public.schema_migrations is the silent-skip failure mode that left
+    delegation_events without context_pack_hash. The sweep must surface it as
+    PENDING (a fail-loud detection path), never silently report CURRENT.
+    """
+
+    def test_discover_node_migration_ids_namespaces_filenames(
+        self, tmp_path: Path
+    ) -> None:
+        """Discovery walks <node>/migrations/*.sql and namespaces each id."""
+        node_a = tmp_path / "src" / "omnimarket" / "nodes" / "node_alpha" / "migrations"
+        node_a.mkdir(parents=True)
+        (node_a / "0001_one.sql").write_text("SELECT 1;")
+        (node_a / "0002_two.sql").write_text("SELECT 2;")
+        node_b = tmp_path / "src" / "omnimarket" / "nodes" / "node_beta" / "migrations"
+        node_b.mkdir(parents=True)
+        (node_b / "0001_b.sql").write_text("SELECT 3;")
+
+        ids = _discover_node_migration_ids(str(tmp_path))
+
+        assert ids == {
+            "node:node_alpha:0001_one.sql",
+            "node:node_alpha:0002_two.sql",
+            "node:node_beta:0001_b.sql",
+        }
+
+    def test_discover_returns_empty_when_no_source_tree(self, tmp_path: Path) -> None:
+        """No src/omnimarket/nodes tree → empty set (not an exception)."""
+        assert _discover_node_migration_ids(str(tmp_path)) == set()
+
+    def test_pending_when_disk_file_has_no_applied_row(self, tmp_path: Path) -> None:
+        """A vendored migration with no schema_migrations row → PENDING (the gap)."""
+        node_dir = (
+            tmp_path
+            / "src"
+            / "omnimarket"
+            / "nodes"
+            / "node_projection_delegation"
+            / "migrations"
+        )
+        node_dir.mkdir(parents=True)
+        (node_dir / "0019_delegation_budget_state.sql").write_text("SELECT 1;")
+        (node_dir / "0020_delegation_context_pack_hash.sql").write_text("SELECT 2;")
+
+        with patch(
+            "omnimarket.nodes.node_database_sweep.handlers.handler_database_sweep._psql"
+        ) as mock_psql:
+            # schema_migrations exists; only 0019 was actually applied.
+            mock_psql.return_value = (
+                0,
+                "node:node_projection_delegation:0019_delegation_budget_state.sql",
+                "",
+            )
+            result = _check_node_migrations("omnidash_analytics", str(tmp_path))
+
+        assert result.status == "PENDING"
+        assert result.disk_migrations == 2
+        assert result.applied_migrations == 1
+        # The specific missing file must be named so triage is actionable.
+        assert "0020_delegation_context_pack_hash.sql" in result.message
+
+    def test_current_when_all_applied(self, tmp_path: Path) -> None:
+        """Every vendored migration has an applied row → CURRENT."""
+        node_dir = (
+            tmp_path / "src" / "omnimarket" / "nodes" / "node_alpha" / "migrations"
+        )
+        node_dir.mkdir(parents=True)
+        (node_dir / "0001_one.sql").write_text("SELECT 1;")
+
+        with patch(
+            "omnimarket.nodes.node_database_sweep.handlers.handler_database_sweep._psql"
+        ) as mock_psql:
+            mock_psql.return_value = (0, "node:node_alpha:0001_one.sql", "")
+            result = _check_node_migrations("omnidash_analytics", str(tmp_path))
+
+        assert result.status == "CURRENT"
+        assert result.disk_migrations == 1
+        assert result.applied_migrations == 1
+        assert result.message == ""
+
+    def test_no_table_when_schema_migrations_query_fails(self, tmp_path: Path) -> None:
+        """schema_migrations table missing → NO_TABLE, not CURRENT."""
+        node_dir = (
+            tmp_path / "src" / "omnimarket" / "nodes" / "node_alpha" / "migrations"
+        )
+        node_dir.mkdir(parents=True)
+        (node_dir / "0001_one.sql").write_text("SELECT 1;")
+
+        with patch(
+            "omnimarket.nodes.node_database_sweep.handlers.handler_database_sweep._psql"
+        ) as mock_psql:
+            mock_psql.return_value = (
+                1,
+                "",
+                "relation schema_migrations does not exist",
+            )
+            result = _check_node_migrations("omnidash_analytics", str(tmp_path))
+
+        assert result.status == "NO_TABLE"
+        assert result.disk_migrations == 1
+
+    def test_error_when_no_source_tree(self, tmp_path: Path) -> None:
+        """No node migration source tree resolvable → ERROR (cannot verify)."""
+        with patch(
+            "omnimarket.nodes.node_database_sweep.handlers.handler_database_sweep._psql"
+        ) as mock_psql:
+            result = _check_node_migrations("omnidash_analytics", str(tmp_path))
+
+        assert result.status == "ERROR"
+        mock_psql.assert_not_called()
+
+    def test_handler_counts_pending_node_migration(self, tmp_path: Path) -> None:
+        """Handler surfaces a node-migration PENDING in the aggregate result."""
+        node_dir = (
+            tmp_path / "src" / "omnimarket" / "nodes" / "node_alpha" / "migrations"
+        )
+        node_dir.mkdir(parents=True)
+        (node_dir / "0001_one.sql").write_text("SELECT 1;")
+
+        handler = NodeDatabaseSweep()
+
+        with (
+            patch(
+                "omnimarket.nodes.node_database_sweep.handlers.handler_database_sweep._get_all_tables",
+                return_value=[],
+            ),
+            patch(
+                "omnimarket.nodes.node_database_sweep.handlers.handler_database_sweep._get_drizzle_tables",
+                return_value=set(),
+            ),
+        ):
+            from omnimarket.nodes.node_database_sweep.handlers import (
+                handler_database_sweep as hmod,
+            )
+
+            with (
+                patch.object(hmod, "_ALEMBIC_REPOS", []),
+                patch.object(hmod, "_DRIZZLE_REPOS", []),
+                patch.object(
+                    hmod,
+                    "_psql",
+                    return_value=(
+                        0,
+                        "",
+                        "",
+                    ),  # schema_migrations empty: nothing applied
+                ),
+            ):
+                request = DatabaseSweepRequest(omni_home=str(tmp_path))
+                result = handler.handle(request)
+
+        node_mig = next(
+            (
+                m
+                for m in result.migration_results
+                if m.migration_tool == "node-vendored"
+            ),
+            None,
+        )
+        assert node_mig is not None
+        assert node_mig.status == "PENDING"
+        assert result.migrations_pending >= 1
+        assert result.status == "issues_found"
