@@ -193,6 +193,15 @@ model_routing:
   auth:
     shared_secret_env: LOCAL_LLM_SHARED_SECRET
     cidr_allowlist_env: LLM_ENDPOINT_CIDR_ALLOWLIST
+  # OMN-13621: per-model inference pricing is sourced from the canonical
+  # cost-pricing contract (omnimarket/cost/cost_pricing.yaml), NOT a hardcoded
+  # source constant. _calculate_cost resolves the priced entry for the run's
+  # (provider, served_model_id) and prices the measured tokens through it; the
+  # resulting cost_inference_usd lands in the canonical cost projection
+  # (generation_events.cost_inference_usd) via node_projection_delegation.
+  cost_pricing:
+    source: contract
+    contract_path: omnimarket/cost/cost_pricing.yaml
 
 dependencies:
   - name: llm_shared_secret
