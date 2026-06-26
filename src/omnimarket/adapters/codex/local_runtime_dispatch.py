@@ -260,6 +260,7 @@ class LocalRuntimeDispatch:
                 route.handler_class,
                 event_bus=self._bus,
                 state_store=self._state_store,
+                dispatch_port=self._delegation_dispatch_port_for(route),
             )
             payload = payload_model.model_validate(_extract_envelope_payload(message))
             result = await _invoke_handler(handler, payload)
@@ -371,6 +372,31 @@ class LocalRuntimeDispatch:
             contract_fingerprint=fingerprint,
         )
         await self._state_store.put(envelope)
+
+    def _delegation_dispatch_port_for(self, route: _NodeRoute) -> object | None:
+        """Bind the delegate-skill handler to a runtime port on this driver's bus.
+
+        OMN-13601: the delegate-skill handler now defaults to an in-process local
+        dispatch port whenever it is constructed with an in-memory bus. This
+        driver, however, deliberately round-trips the delegation command over its
+        own in-memory bus (where ``_install_local_delegation_effect`` installs the
+        downstream consumer). For that node only, supply the runtime port bound to
+        this bus so the handler keeps publishing onto it instead of switching to
+        the in-process path. All other nodes get ``None`` (no override).
+        """
+        if route.node_name != "node_delegate_skill_orchestrator":
+            return None
+        from omnimarket.nodes.node_delegate_skill_orchestrator.ports.port_runtime_delegation_dispatch import (
+            ProtocolDelegationEventBus,
+            RuntimeDelegationDispatchPort,
+        )
+
+        # EventBusInmemory satisfies the publish/subscribe surface the port needs;
+        # the protocol's headers arg is intentionally wider (object) than the
+        # concrete's typed ModelEventHeaders, so structural typing needs the cast.
+        return RuntimeDelegationDispatchPort(
+            event_bus=cast(ProtocolDelegationEventBus, self._bus)
+        )
 
     def _build_evidence(
         self,
@@ -666,6 +692,7 @@ def _instantiate_handler(
     *,
     event_bus: EventBusInmemory,
     state_store: _LocalRuntimeStateStore,
+    dispatch_port: object | None = None,
 ) -> Any:
     cls = _import_attr(module_name, class_name)
     kwargs: dict[str, object] = {}
@@ -678,6 +705,13 @@ def _instantiate_handler(
             kwargs["event_bus"] = event_bus
         if "state_store" in signature.parameters:
             kwargs["state_store"] = state_store
+        # OMN-13601: this driver round-trips the delegation command over its own
+        # in-memory bus, where it installs a downstream delegation consumer. When
+        # the handler exposes a ``dispatch_port`` seam, pin the supplied runtime
+        # port so the handler keeps publishing onto this bus instead of switching
+        # to its in-process default for an in-memory bus.
+        if dispatch_port is not None and "dispatch_port" in signature.parameters:
+            kwargs["dispatch_port"] = dispatch_port
     return cls(**kwargs)
 
 
