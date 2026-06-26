@@ -31,6 +31,8 @@ includes it in sweep coverage without touching any Python code.
 | `head_topic` | yes | Kafka topic that initiates the chain |
 | `tail_table` | yes | DB projection table that should receive the event |
 | `expected_fields` | no | Fields that must be present in the projected row |
+| `timestamp_field` | no | Tail-row column holding the row's event/ingest time (default `created_at`). Read only when `max_row_age_seconds` is set. |
+| `max_row_age_seconds` | no | Per-chain recency threshold (OMN-13639). When set, a field-complete row older than this many seconds is downgraded to **STALE** (a distinct non-PASS tri-state) instead of reading green. Omit to disable the freshness check. |
 
 **Example:**
 
@@ -42,7 +44,23 @@ chains:
     expected_fields:
       - correlation_id
       - selected_agent
+
+  - name: pattern_learning
+    head_topic: onex.evt.omniintelligence.pattern-stored.v1
+    tail_table: pattern_learning_artifacts
+    timestamp_field: created_at
+    max_row_age_seconds: 86400   # STALE if the latest row is > 24h old
+    expected_fields:
+      - correlation_id
 ```
+
+> **Freshness (OMN-13639).** Field-presence alone reads green on a weeks-old
+> fixture row even when the producer is idle. A chain with `max_row_age_seconds`
+> additionally asserts the latest tail row is recent: a field-complete but
+> stale row is reported as `STALE` (overall sweep status `warn` — non-blocking)
+> with the row age, so a green verdict requires recent flow, not merely a
+> matching historical row. The reference clock is supplied via `--now-iso`
+> (CLI) / `now_iso` (request) — the compute never reads the system clock.
 
 If `golden_chains.yaml` is missing or unreadable, the node falls back to an
 empty chain list and logs a warning.
