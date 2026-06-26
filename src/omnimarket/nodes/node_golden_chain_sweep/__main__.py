@@ -70,6 +70,16 @@ def main() -> None:
             "Use when consumers are healthy but no events have flowed yet."
         ),
     )
+    parser.add_argument(
+        "--now-iso",
+        default=None,
+        help=(
+            "ISO-8601 reference clock for the per-chain freshness check (OMN-13639). "
+            "Required when any selected chain declares max_row_age_seconds — the "
+            "compute is pure and never reads the system clock. A freshness-gated "
+            "chain run without it surfaces as ERROR, not a silent pass."
+        ),
+    )
 
     args = parser.parse_args()
 
@@ -92,6 +102,7 @@ def main() -> None:
             timeout_ms=args.timeout_ms,
             projected_rows=projected_rows,
             idle_gate=args.idle_gate,
+            now_iso=args.now_iso,
         )
     except ValidationError as exc:
         _log.error("invalid --projected-rows content: %s", exc)
@@ -102,8 +113,11 @@ def main() -> None:
 
     sys.stdout.write(result.model_dump_json(indent=2) + "\n")
 
-    # GATED is non-blocking: consumers are healthy but idle, not broken
-    if result.status not in ("pass", "gated"):
+    # GATED (idle, non-blocking) and WARN (stale, non-blocking) do not fail the
+    # run — both are advisory: consumers/producers are healthy in shape but
+    # have not flowed recently. Only blocking states (fail/partial/error/timeout)
+    # exit non-zero.
+    if result.status not in ("pass", "gated", "warn"):
         sys.exit(1)
 
 

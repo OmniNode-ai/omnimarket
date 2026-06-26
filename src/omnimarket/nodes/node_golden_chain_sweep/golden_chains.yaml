@@ -14,6 +14,13 @@ chains:
   - name: pattern_learning
     head_topic: onex.evt.omniintelligence.pattern-stored.v1
     tail_table: pattern_learning_artifacts
+    # OMN-13639: recency assertion. Field-presence alone reads green on a
+    # weeks-old fixture row even when the producer is idle. A row older than
+    # this window downgrades the chain to STALE (a distinct non-PASS tri-state),
+    # so green requires recent flow. 86400s == 24h: a healthy producer projects
+    # at least daily.
+    timestamp_field: created_at
+    max_row_age_seconds: 86400
     expected_fields:
       - correlation_id
 
@@ -34,6 +41,11 @@ chains:
   - name: evaluation
     head_topic: onex.evt.omniclaude.session-outcome.v1
     tail_table: session_outcomes
+    # OMN-13639: recency assertion (see pattern_learning above). The session_id
+    # fixture row (sess-001) is ~4 weeks old; without this a green verdict masks
+    # an idle session-outcome producer. 86400s == 24h freshness window.
+    timestamp_field: created_at
+    max_row_age_seconds: 86400
     expected_fields:
       - session_id
 

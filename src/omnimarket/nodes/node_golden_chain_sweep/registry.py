@@ -34,6 +34,8 @@ class ChainRegistryEntry:
     proof_classification: str = "diagnostic"
     replay_status: str = "replay-not-applicable"
     stages: list[dict[str, object]] = field(default_factory=list)
+    timestamp_field: str = "created_at"
+    max_row_age_seconds: int | None = None
 
     def to_model(self) -> ModelChainDefinition:
         return ModelChainDefinition(
@@ -44,6 +46,8 @@ class ChainRegistryEntry:
             proof_classification=self.proof_classification,
             replay_status=self.replay_status,
             stages=self.stages,
+            timestamp_field=self.timestamp_field,
+            max_row_age_seconds=self.max_row_age_seconds,
         )
 
 
@@ -85,6 +89,8 @@ def load_registry(
                 proof_classification=item.get("proof_classification", "diagnostic"),
                 replay_status=item.get("replay_status", "replay-not-applicable"),
                 stages=item.get("stages", []),
+                timestamp_field=item.get("timestamp_field", "created_at"),
+                max_row_age_seconds=item.get("max_row_age_seconds"),
             )
             chains.append(entry.to_model())
         except (KeyError, TypeError) as exc:
