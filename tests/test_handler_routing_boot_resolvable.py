@@ -51,19 +51,22 @@ _CONCRETE_PARAM_KINDS = (
 # container. These are the ONLY permitted boot-quarantines. Format:
 # "module.attr" -> reason. Wiring the backing adapter into boot is follow-up
 # provisioning work, not a handler-prep defect.
-_UNWIRED_DEPENDENCY_ALLOWLIST: dict[str, str] = {
-    "omnimarket.nodes.node_ticket_query.handlers.handler_ticket_query.HandlerTicketQuery": (
-        "needs ProtocolProjectTracker adapter registered in boot container"
-    ),
-    "omnimarket.nodes.node_tool_reuse_matcher_compute.handlers."
-    "handler_tool_reuse_matcher.HandlerToolReuseMatcher": (
-        "needs ProtocolGeneratedToolRegistry adapter registered in boot container"
-    ),
-    "omnimarket.nodes.node_skill_overseer_verify_orchestrator.handlers."
-    "handler_skill_requested.handle_skill_requested": (
-        "needs an injected TaskDispatcher provider in boot container"
-    ),
-}
+#
+# OMN-13603 closed this carve-out by converting all three handlers to the
+# canonical container-driven (or known-param-injectable) shape so the boot
+# resolver constructs each one from injectable params alone:
+#   * HandlerTicketQuery (EFFECT) and HandlerToolReuseMatcher (COMPUTE) now take
+#     the injectable ``container`` and resolve their protocol dependency
+#     (ProtocolProjectTracker / ProtocolGeneratedToolRegistry) from the
+#     container at the effect boundary.
+#   * node_skill_overseer_verify_orchestrator's function-form handler was
+#     replaced by a class ``HandlerSkillRequested(container)`` (mirroring the
+#     sibling node_skill_dispatch_engine_orchestrator scaffold); its
+#     polymorphic-agent TaskDispatcher is resolved at the dispatch boundary, and
+#     it returns a structured FAILED result until a real dispatcher is wired.
+# The allowlist is now empty and the guard fails closed on any new misclassified
+# or unwired entry.
+_UNWIRED_DEPENDENCY_ALLOWLIST: dict[str, str] = {}
 
 _NODES_DIR = Path(__file__).parent.parent / "src" / "omnimarket" / "nodes"
 

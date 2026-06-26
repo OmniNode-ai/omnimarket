@@ -9,6 +9,7 @@ verdict selection, registry-failure handling, and replay determinism.
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from unittest.mock import MagicMock
 from uuid import uuid4
 
 import pytest
@@ -111,9 +112,22 @@ class _RaisingRegistry:
         raise RuntimeError("registry connection refused")
 
 
+def _matcher_with_registry(
+    registry: ProtocolGeneratedToolRegistry,
+) -> HandlerToolReuseMatcher:
+    """Build a container-driven matcher that resolves *registry* (OMN-13603).
+
+    Mirrors the runtime resolver path: the handler takes the injectable
+    container and resolves ProtocolGeneratedToolRegistry from it at match time.
+    """
+    container = MagicMock()
+    container.get_service.return_value = registry
+    return HandlerToolReuseMatcher(container=container)
+
+
 def _matcher(*tools: ModelGeneratedToolRecord) -> HandlerToolReuseMatcher:
     registry: ProtocolGeneratedToolRegistry = InMemoryGeneratedToolRegistry(tools)
-    return HandlerToolReuseMatcher(registry)
+    return _matcher_with_registry(registry)
 
 
 @pytest.mark.unit
@@ -240,7 +254,7 @@ class TestHybridStrategy:
 @pytest.mark.unit
 class TestFailureAndContract:
     def test_registry_failure_returns_registry_unavailable(self) -> None:
-        matcher = HandlerToolReuseMatcher(_RaisingRegistry())
+        matcher = _matcher_with_registry(_RaisingRegistry())
         result = matcher.handle(_request())
         assert result.verdict == EnumToolReuseVerdict.REGISTRY_UNAVAILABLE
         assert result.failure_reason is not None
