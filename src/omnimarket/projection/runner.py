@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import hashlib
+import json
 import logging
 import os
 import signal
@@ -28,7 +29,15 @@ from pydantic import (
 
 from omnimarket.adapters.asyncpg_adapter import AsyncpgAdapter
 from omnimarket.config.settings import Settings
+from omnimarket.projection.dlq import (
+    build_dlq_envelope,
+    correlation_id_from_payload,
+)
 from omnimarket.projection.envelope import unwrap_envelope
+from omnimarket.projection.error_classification import (
+    ProjectionErrorClass,
+    classify_projection_error,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -323,6 +332,27 @@ class BaseProjectionRunner(ABC):
         ...
 
     @property
+    def poison_dlq_topics(self) -> list[str]:
+        """Contract-declared DLQ topic(s) for POISON (malformed) events.
+
+        OMN-13634: a subclass that consumes inbound bus events overrides this to
+        return its ``event_bus.dlq_topics``. The default empty list means a
+        subclass declared no DLQ; an uncatchable POISON error then re-raises
+        loudly (fail-loud) rather than being silently dropped.
+        """
+        return []
+
+    async def publish_dlq(self, topic: str, value: bytes) -> None:
+        """Publish a DLQ envelope. Default no-op; subclasses override.
+
+        OMN-13634: a subclass with a Kafka producer overrides this so the unified
+        classifier in ``_handle_message`` can route a POISON event to the
+        contract-declared DLQ topic. The default is a no-op so the base class
+        stays usable in tests without a producer.
+        """
+        return
+
+    @property
     def db(self) -> AsyncpgAdapter:
         return self._db
 
@@ -436,22 +466,45 @@ class BaseProjectionRunner(ABC):
         disabled. This method commits the offset ONLY when the message is fully
         accounted for — either successfully projected, or a genuine non-event
         (empty value / un-unwrappable envelope) that carries no row to persist.
-        A projection error (e.g. an ``UndefinedColumn`` from a schema-drifted
-        table) is counted, logged, and **re-raised** so the offset is NOT
-        committed. The outer run loop restarts the consumer and the uncommitted
-        message is re-read on the next poll — the failure surfaces and the data
-        is never committed-and-dropped while the group reports Stable.
+
+        Error classification (OMN-13634 / WS-F Phase 2): a projection error is
+        classified via :func:`classify_projection_error` so POISON and
+        RECOVERABLE failures get the right policy — the same policy the infra
+        ``handler_wiring`` path applies:
+
+        * RECOVERABLE (e.g. an ``UndefinedColumn`` from a not-yet-applied
+          migration, an ``OperationalError``, a dropped connection) is counted,
+          logged, and **re-raised** so the offset is NOT committed. The outer run
+          loop restarts the consumer and the uncommitted message is re-read on
+          the next poll — the failure surfaces loudly and the data is never
+          committed-and-dropped while the group reports Stable. A migration gap
+          lands here, never quarantined as malformed.
+        * POISON (a malformed payload ``ValidationError`` / ``PoisonEventError``
+          that will never project no matter how often it is retried) is routed to
+          the contract-declared poison DLQ and the offset IS committed, so it is
+          captured durably (recoverable by correlation_id) instead of retried in
+          a hot loop forever.
+
+        Most handlers catch their own ``ValidationError`` inside ``project_event``
+        and route to the DLQ before returning (the OMN-13548 path); this method
+        is the safety net for a POISON error that escapes a handler and the
+        re-read/no-commit guarantee for every RECOVERABLE error.
         """
         topic = msg.topic
+        # Bound before the try so the except block always has a dict to attach to
+        # a DLQ envelope, even if a poison error somehow surfaces before
+        # project_event (it does not today — handlers raise inside project_event).
+        data: dict[str, Any] = {}
         try:
             if msg.value is None:
                 await self._commit_message(msg)
                 return
 
-            data = unwrap_envelope(msg.value)
-            if data is None:
+            unwrapped = unwrap_envelope(msg.value)
+            if unwrapped is None:
                 await self._commit_message(msg)
                 return
+            data = unwrapped
 
             fallback_id = deterministic_correlation_id(topic, msg.partition, msg.offset)
             meta = MessageMeta(
@@ -462,15 +515,35 @@ class BaseProjectionRunner(ABC):
 
             projected = await self.project_event(topic, data, meta)
         except Exception as err:
-            # Fail-loud: a projection error must NOT advance the offset. Count it,
-            # log it, and propagate so the run loop tears the consumer down with
-            # the offset uncommitted; the message is re-read, never dropped.
+            # OMN-13634: classify before deciding offset policy.
             self._stats.errors_count += 1
             ts = self._stats.topic_stats.setdefault(
                 topic, {"projected": 0, "errors": 0}
             )
             ts["errors"] += 1
-            logger.error("Error projecting %s (offset uncommitted): %s", topic, err)
+            error_class = classify_projection_error(err)
+            if error_class is ProjectionErrorClass.POISON:
+                # The payload is bad and will never project. Route it to the
+                # poison DLQ (durably recoverable by correlation_id) and commit so
+                # it is not retried in a hot loop forever.
+                routed = await self._route_poison_to_dlq(topic, data, err, meta)
+                logger.error(
+                    "POISON event on %s routed to DLQ=%s (offset committed): %s",
+                    topic,
+                    routed,
+                    err,
+                )
+                await self._commit_message(msg)
+                return
+            # RECOVERABLE: a missing column / server error / dropped connection.
+            # Do NOT advance the offset; re-raise so the run loop tears the
+            # consumer down with the offset uncommitted; the message is re-read,
+            # never dropped, until the infra catches up.
+            logger.error(
+                "RECOVERABLE error projecting %s (offset uncommitted, will retry): %s",
+                topic,
+                err,
+            )
             raise
 
         if projected:
@@ -487,6 +560,52 @@ class BaseProjectionRunner(ABC):
         # project): both are fully accounted for, so the offset may advance. The
         # only path that does NOT reach here is a raised projection error above.
         await self._commit_message(msg)
+
+    async def _route_poison_to_dlq(
+        self,
+        topic: str,
+        data: dict[str, Any],
+        err: BaseException,
+        meta: MessageMeta,
+    ) -> bool:
+        """Publish a POISON event to the contract-declared poison DLQ topic.
+
+        OMN-13634: the base-class safety net for a POISON ``project_event`` error
+        that escaped a handler. Returns ``True`` when an envelope was published,
+        ``False`` when the subclass declared no ``poison_dlq_topics`` (the caller
+        still commits — the alternative is an unprocessable message wedging the
+        partition forever; the loud ERROR log is the durable signal). Best-effort:
+        a DLQ publish failure is logged, not raised.
+        """
+        dlq_topics = self.poison_dlq_topics
+        if not dlq_topics:
+            logger.error(
+                "POISON event on %s has NO poison DLQ topic declared "
+                "(committing to avoid a wedged partition): %s",
+                topic,
+                err,
+            )
+            return False
+        correlation_id = correlation_id_from_payload(data, fallback=meta.fallback_id)
+        envelope = build_dlq_envelope(
+            original_message=data,
+            failure_reason=f"poison projection error: {err}",
+            handler=type(self).__name__,
+            correlation_id=correlation_id,
+        )
+        value = json.dumps(envelope, default=str).encode("utf-8")
+        try:
+            await self.publish_dlq(dlq_topics[0], value)
+        except Exception as publish_err:
+            logger.error(
+                "Failed to route POISON event on %s to DLQ %s (correlation_id=%s): %s",
+                topic,
+                dlq_topics[0],
+                correlation_id,
+                publish_err,
+            )
+            return False
+        return True
 
     async def _commit_message(self, msg: Any) -> None:
         """Explicitly commit the offset for a fully-accounted-for message.

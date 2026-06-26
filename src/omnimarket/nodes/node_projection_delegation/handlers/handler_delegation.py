@@ -174,6 +174,22 @@ class DelegationProjectionRunner(BaseProjectionRunner):
         self._producer: Any = None  # AIOKafkaProducer, created on demand
 
     @property
+    def poison_dlq_topics(self) -> list[str]:
+        """OMN-13634: base-class safety net routes escaped POISON errors here."""
+        return self._dlq_topics
+
+    async def publish_dlq(self, topic: str, value: bytes) -> None:
+        """OMN-13634: supply the lazy Kafka producer to the base-class DLQ path."""
+        publish = await self._get_publish_fn()
+        if publish is None:
+            logger.error(
+                "node_projection_delegation: no publisher for POISON DLQ topic %s",
+                topic,
+            )
+            return
+        await publish(topic, value)
+
+    @property
     def subscribe_topics(self) -> list[str]:
         return list(self._contract.get("event_bus", {}).get("subscribe_topics", []))
 
