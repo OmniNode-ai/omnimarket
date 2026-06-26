@@ -20,11 +20,13 @@ Related:
     - OMN-8086: Create pr_lifecycle_state_reducer Node
     - OMN-8070: PR Lifecycle Domain epic
     - OMN-13585: RH-3: Extend pr_lifecycle reducer state with additive repo_health sub-record
+    - OMN-13321: F5: emit durable per-PR ledger projection every sweep iteration
 """
 
 from __future__ import annotations
 
 import logging
+from datetime import UTC, datetime
 from typing import Any, Literal
 from uuid import UUID
 
@@ -41,6 +43,12 @@ from omnimarket.nodes.node_pr_lifecycle_state_reducer.models.model_pr_lifecycle_
     ModelPrLifecycleEntryFlags,
     ModelPrLifecycleState,
 )
+from omnimarket.projection.pr_ledger_projection import (
+    PR_LEDGER_PROJECTION_CONFLICT_KEY,
+    PR_LEDGER_PROJECTION_TABLE,
+    build_ledger_rows,
+)
+from omnimarket.projection.protocol_database import ProtocolProjectionDatabaseSync
 
 logger = logging.getLogger(__name__)
 
@@ -380,6 +388,10 @@ class HandlerPrLifecycleStateReducer:
         inventory_only: bool = False,
         fix_only: bool = False,
         merge_only: bool = False,
+        projection_db: ProtocolProjectionDatabaseSync | None = None,
+        sweep_id: str | None = None,
+        iteration: int = 0,
+        found_at: datetime | None = None,
         **_kwargs: Any,
     ) -> Any:
         """Unified entry point: dispatches to orchestrator or RuntimeLocal shim.
@@ -396,6 +408,14 @@ class HandlerPrLifecycleStateReducer:
           - fix_only: only FIX intents, no MERGE
           - merge_only: only MERGE intents, no FIX
           - dry_run: compute and return intents, orchestrator will not execute them
+
+        Per-iteration ledger projection (OMN-13321 / F5):
+          - projection_db + sweep_id: emit one durable ledger row per PR for
+            this iteration into pr_lifecycle_ledger_entries. Both must be
+            supplied together; supplying one without the other fails fast.
+          - iteration: monotonic per-sweep index (part of the conflict key,
+            so two consecutive iterations produce distinct rows).
+          - found_at: observation timestamp for the row; defaults to now().
         """
         # RuntimeLocal shim: positional dict argument
         if args:
@@ -456,11 +476,76 @@ class HandlerPrLifecycleStateReducer:
             merge_only,
         )
 
+        # OMN-13321 / F5: emit one durable, user-readable ledger row per PR
+        # EVERY iteration (not only at sweep end). The reducer is the named
+        # surface; rows land in the control-plane projection database keyed by
+        # (sweep_id, repo, pr_number, iteration), so two consecutive
+        # iterations both produce rows and neither overwrites the other.
+        self._emit_ledger_rows(
+            classified=classified_prs,
+            intents=intents,
+            projection_db=projection_db,
+            sweep_id=sweep_id,
+            iteration=iteration,
+            found_at=found_at,
+        )
+
         return ReducerResult(
             intents=tuple(intents),
             merge_count=merge_count,
             fix_count=fix_count,
             skip_count=skip_count,
+        )
+
+    def _emit_ledger_rows(
+        self,
+        *,
+        classified: tuple[Any, ...],
+        intents: list[Any],
+        projection_db: ProtocolProjectionDatabaseSync | None,
+        sweep_id: str | None,
+        iteration: int,
+        found_at: datetime | None,
+    ) -> None:
+        """Materialize per-iteration ledger rows into the projection database.
+
+        OMN-13321 / F5. When no projection_db AND no sweep_id are supplied the
+        reducer is the pure classifier (local/test path) and nothing is
+        emitted. Supplying one without the other is a wiring bug and fails
+        fast -- a half-configured durable surface silently dropping rows is
+        exactly the OMN-12569 failure mode this ticket hardens against.
+
+        ``found_at`` defaults to wall-clock now when the durable path is
+        active; ``next_check_at`` is derived from the contract freshness SLA
+        inside ``build_ledger_rows``.
+        """
+        if projection_db is None and sweep_id is None:
+            return
+        if projection_db is None or sweep_id is None:
+            raise ValueError(
+                "per-iteration ledger projection requires BOTH projection_db "
+                "and sweep_id; got projection_db="
+                f"{projection_db is not None}, sweep_id={sweep_id!r}"
+            )
+        observed_at = found_at if found_at is not None else datetime.now(tz=UTC)
+        rows = build_ledger_rows(
+            sweep_id=sweep_id,
+            iteration=iteration,
+            found_at=observed_at,
+            classified=classified,
+            intents=intents,
+        )
+        for row in rows:
+            projection_db.upsert(
+                PR_LEDGER_PROJECTION_TABLE,
+                PR_LEDGER_PROJECTION_CONFLICT_KEY,
+                row.to_row(),
+            )
+        logger.info(
+            "[STATE-REDUCER] ledger projection: sweep_id=%s iteration=%d rows=%d",
+            sweep_id,
+            iteration,
+            len(rows),
         )
 
     def delta(

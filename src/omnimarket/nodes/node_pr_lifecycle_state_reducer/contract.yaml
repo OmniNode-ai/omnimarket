@@ -138,6 +138,65 @@ event_bus:
     - onex.evt.omnimarket.repo-health-repair-emitted.v1
   publish_topics:
     - onex.evt.omnimarket.pr-lifecycle-state-reduced.v1
+    # OMN-13321 / F5: per-iteration durable PR ledger projection snapshot.
+    - onex.snapshot.projection.pr-lifecycle-ledger.v1  # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
+
+# OMN-13321 / F5 (hardens OMN-12569): durable, user-readable per-PR ledger
+# row emitted EVERY sweep iteration -- not only at sweep end. One row per PR
+# per iteration, keyed by (sweep_id, repo, pr_number, iteration). Answers the
+# operator question "what does the ledger say right now?" with a clean line:
+#   found_at . repo/pr . initial_state . action_taken . evidence .
+#   final_state . next_check_at
+# DoD probe:
+#   select count(*) from pr_lifecycle_ledger_entries where sweep_id='<id>';
+db_io:
+  db_tables:
+    - name: pr_lifecycle_ledger_entries
+      migration: "0001_create_pr_lifecycle_ledger_entries.sql"
+      access: write
+      database: omnidash_analytics
+      role: pr_lifecycle_ledger_entries
+
+projection:
+  name: pr_lifecycle_ledger_entries
+  provenance_kind: derived_projection            # DT-005 provenance declaration
+  freshness_sla_seconds: 900                      # DT-003 freshness SLA (== next_check_at window)
+  durable_store: projection_database
+  conflict_key: sweep_id,repo,pr_number,iteration
+  entry_fields:
+    - sweep_id
+    - iteration
+    - found_at
+    - repo
+    - pr_number
+    - initial_state
+    - action_taken
+    - evidence
+    - final_state
+    - next_check_at
+
+projection_api:
+  expose: true
+  exposures:
+    # Read path for the operator ledger view. The generic projection API
+    # serves GET /projection/onex.snapshot.projection.pr-lifecycle-ledger.v1.
+    - topic: onex.snapshot.projection.pr-lifecycle-ledger.v1  # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
+      table: pr_lifecycle_ledger_entries
+      schema: public
+      columns:
+        - sweep_id
+        - iteration
+        - found_at
+        - repo
+        - pr_number
+        - initial_state
+        - action_taken
+        - evidence
+        - final_state
+        - next_check_at
+      order_by: found_at DESC
+      freshness_column: found_at
+      limit: 500
 
 metadata:
   transport_type: kafka
