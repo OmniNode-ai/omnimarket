@@ -72,7 +72,7 @@ capabilities:
 io_operations:
   - operation: skill_overseer_verify
     description: Dispatch overseer_verify skill invocation to polymorphic agent
-    handler_method: handle_skill_requested
+    handler_method: handle
     input_fields:
       - skill_name: str
       - skill_path: str
@@ -86,19 +86,29 @@ io_operations:
       - correlation_id: UUID
     idempotent: false
 
+# handler_routing targets the class-based HandlerSkillRequested (OMN-13603).
+#
+# Previously this routed at a FUNCTION-form handler, handle_skill_requested,
+# whose required params (request, task_dispatcher) the boot resolver could not
+# satisfy from event_bus/container/ownership_query — producing a handler-prep
+# boot quarantine. The handler is now a class whose constructor takes the
+# injectable container (resolver known-param injection), so it resolves cleanly
+# at boot. The polymorphic-agent TaskDispatcher is resolved at the dispatch
+# boundary inside handle(); until a real bus-backed dispatcher is registered the
+# handler returns a structured FAILED result rather than crashing — matching the
+# sibling node_skill_dispatch_engine_orchestrator scaffold semantics.
 handler_routing:
   routing_strategy: operation_match
   handlers:
     - operation: skill_overseer_verify
       handler:
-        name: handle_skill_requested
+        name: HandlerSkillRequested
         module: omnimarket.nodes.node_skill_overseer_verify_orchestrator.handlers.handler_skill_requested
 
 # Dependencies
 dependencies:
-  - name: handler_skill_requested
+  - name: HandlerSkillRequested
     type: handler
-    function: handle_skill_requested
     module: omnimarket.nodes.node_skill_overseer_verify_orchestrator.handlers
     pluggable: false
 

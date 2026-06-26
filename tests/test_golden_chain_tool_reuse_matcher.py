@@ -22,6 +22,7 @@ results.
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from unittest.mock import MagicMock
 from uuid import uuid4
 
 import pytest
@@ -64,6 +65,17 @@ _TASK_FIRST = "Lint a Python source file and report style violations with a pass
 _TASK_SECOND = "Lint Python source and report style violations plus a pass flag"
 
 
+def _matcher(registry: InMemoryGeneratedToolRegistry) -> HandlerToolReuseMatcher:
+    """Build a container-driven matcher resolving *registry* (OMN-13603).
+
+    Mirrors the runtime resolver path: the handler takes the injectable
+    container and resolves ProtocolGeneratedToolRegistry from it at match time.
+    """
+    container = MagicMock()
+    container.get_service.return_value = registry
+    return HandlerToolReuseMatcher(container=container)
+
+
 def _request(task: str) -> ModelToolReuseRequest:
     return ModelToolReuseRequest(
         correlation_id=uuid4(),
@@ -96,14 +108,14 @@ def _registered_tool() -> ModelGeneratedToolRecord:
 class TestToolReuseGoldenChain:
     def test_miss_then_hit_chain(self) -> None:
         # --- request #1: cold registry -> MISS (generation would run) ---
-        cold_matcher = HandlerToolReuseMatcher(InMemoryGeneratedToolRegistry([]))
+        cold_matcher = _matcher(InMemoryGeneratedToolRegistry([]))
         first = cold_matcher.handle(_request(_TASK_FIRST))
         assert first.verdict == EnumToolReuseVerdict.NO_MATCH
         assert first.matched_tool is None
 
         # --- generation completes; the tool is registered ---
         warm_registry = InMemoryGeneratedToolRegistry([_registered_tool()])
-        warm_matcher = HandlerToolReuseMatcher(warm_registry)
+        warm_matcher = _matcher(warm_registry)
 
         # --- request #2: similar request -> HIT (route to existing tool) ---
         second = warm_matcher.handle(_request(_TASK_SECOND))
@@ -115,9 +127,7 @@ class TestToolReuseGoldenChain:
         assert second.matched_tool.tool.handler_module.endswith("lint_py_001.handler")
 
     def test_chain_is_replay_deterministic(self) -> None:
-        warm_matcher = HandlerToolReuseMatcher(
-            InMemoryGeneratedToolRegistry([_registered_tool()])
-        )
+        warm_matcher = _matcher(InMemoryGeneratedToolRegistry([_registered_tool()]))
         req = _request(_TASK_SECOND)
         assert warm_matcher.handle(req) == warm_matcher.handle(req)
 
@@ -127,7 +137,7 @@ class TestToolReuseGoldenChain:
         Forces the SEMANTIC strategy so the hit rides lexical similarity alone,
         guarding against the hit being an artifact of identical signatures.
         """
-        cold = HandlerToolReuseMatcher(InMemoryGeneratedToolRegistry([]))
+        cold = _matcher(InMemoryGeneratedToolRegistry([]))
         miss = cold.handle(
             ModelToolReuseRequest(
                 correlation_id=uuid4(),
@@ -139,9 +149,7 @@ class TestToolReuseGoldenChain:
         )
         assert miss.verdict == EnumToolReuseVerdict.NO_MATCH
 
-        warm = HandlerToolReuseMatcher(
-            InMemoryGeneratedToolRegistry([_registered_tool()])
-        )
+        warm = _matcher(InMemoryGeneratedToolRegistry([_registered_tool()]))
         hit = warm.handle(
             ModelToolReuseRequest(
                 correlation_id=uuid4(),

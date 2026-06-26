@@ -6,15 +6,23 @@ Routes an incoming tool-generation request to an already-generated tool so the
 LLM generation flow can be short-circuited. The match path is explicitly
 non-LLM: signature matching is hash equality; the semantic fallback is a
 deterministic token-set Jaccard similarity over the task description and each
-candidate tool's stored description. No I/O beyond the injected registry query;
+candidate tool's stored description. No I/O beyond the resolved registry query;
 the same request against the same registry snapshot always yields the same
 result (replay-deterministic).
+
+Container-driven pattern (OMN-13603): the handler takes the injectable
+``container`` so the runtime resolver constructs it at boot via known-param
+injection. The ``ProtocolGeneratedToolRegistry`` is resolved from the container
+when a match runs — never stored at construction — so an unregistered registry
+no longer quarantines the handler at boot. The match comparison itself stays
+pure and deterministic over the registry snapshot the container provides.
 """
 
 from __future__ import annotations
 
 import re
 from collections.abc import Mapping
+from typing import TYPE_CHECKING
 
 from omnimarket.nodes.node_tool_reuse_matcher_compute.models.model_tool_reuse_enums import (
     EnumToolReuseMatchStrategy,
@@ -30,6 +38,9 @@ from omnimarket.nodes.node_tool_reuse_matcher_compute.models.model_tool_reuse_re
 from omnimarket.nodes.node_tool_reuse_matcher_compute.protocols.protocol_generated_tool_registry import (
     ProtocolGeneratedToolRegistry,
 )
+
+if TYPE_CHECKING:
+    from omnibase_core.container import ModelONEXContainer
 
 # Confidence assigned to an exact input+output signature match. A structural
 # signature match is the strongest deterministic reuse signal available.
@@ -56,13 +67,28 @@ def _jaccard(left: frozenset[str], right: frozenset[str]) -> float:
 class HandlerToolReuseMatcher:
     """Pure deterministic tool-reuse matcher.
 
-    The registry is injected so the handler has no embedded I/O. The handler
-    performs only deterministic comparison; the orchestrator owns publishing the
-    resulting ``tool-reuse-matched`` / ``tool-reuse-no-match`` event.
+    The registry is resolved from the injected ``container`` at match time so
+    the handler has no embedded I/O and no construction-time dependency. The
+    handler performs only deterministic comparison; the orchestrator owns
+    publishing the resulting ``tool-reuse-matched`` / ``tool-reuse-no-match``
+    event.
     """
 
-    def __init__(self, registry: ProtocolGeneratedToolRegistry) -> None:
-        self._registry = registry
+    def __init__(self, container: ModelONEXContainer) -> None:
+        self._container = container
+
+    def _resolve_registry(self) -> ProtocolGeneratedToolRegistry:
+        """Resolve ProtocolGeneratedToolRegistry from the container.
+
+        Resolution failure surfaces as ``REGISTRY_UNAVAILABLE`` (handled by the
+        caller's try/except) rather than crashing dispatch — an absent registry
+        is a recoverable verdict, not a handler defect.
+        """
+        # NOTE(OMN-13603): mypy false-positive — a Protocol is the canonical DI
+        # key for get_service; it is never instantiated here.
+        return self._container.get_service(
+            ProtocolGeneratedToolRegistry  # type: ignore[type-abstract]  # Protocol used as DI key
+        )
 
     def handle(
         self, request: ModelToolReuseRequest | Mapping[str, object]
@@ -71,7 +97,8 @@ class HandlerToolReuseMatcher:
             request = ModelToolReuseRequest.model_validate(request)
 
         try:
-            candidates = self._candidates_for_strategy(request)
+            registry = self._resolve_registry()
+            candidates = self._candidates_for_strategy(request, registry)
         except Exception as exc:  # registry query failure — fail loud, not silent
             return ModelToolReuseMatchResult(
                 correlation_id=request.correlation_id,
@@ -98,19 +125,23 @@ class HandlerToolReuseMatcher:
     # Strategy dispatch
     # ------------------------------------------------------------------ #
     def _candidates_for_strategy(
-        self, request: ModelToolReuseRequest
+        self,
+        request: ModelToolReuseRequest,
+        registry: ProtocolGeneratedToolRegistry,
     ) -> list[ModelToolReuseCandidate]:
         if request.match_strategy == EnumToolReuseMatchStrategy.SIGNATURE:
-            return self._match_by_signature(request)
+            return self._match_by_signature(request, registry)
         if request.match_strategy == EnumToolReuseMatchStrategy.SEMANTIC:
-            return self._match_by_lexical_similarity(request)
-        return self._match_hybrid(request)
+            return self._match_by_lexical_similarity(request, registry)
+        return self._match_hybrid(request, registry)
 
     def _match_by_signature(
-        self, request: ModelToolReuseRequest
+        self,
+        request: ModelToolReuseRequest,
+        registry: ProtocolGeneratedToolRegistry,
     ) -> list[ModelToolReuseCandidate]:
         sig = request.requested_signature
-        records = self._registry.query_by_signature(
+        records = registry.query_by_signature(
             input_fields_hash=sig.input_fields_hash,
             output_fields_hash=sig.output_fields_hash,
         )
@@ -128,11 +159,13 @@ class HandlerToolReuseMatcher:
         ]
 
     def _match_by_lexical_similarity(
-        self, request: ModelToolReuseRequest
+        self,
+        request: ModelToolReuseRequest,
+        registry: ProtocolGeneratedToolRegistry,
     ) -> list[ModelToolReuseCandidate]:
         request_tokens = _tokenize(request.task_description)
         scored: list[ModelToolReuseCandidate] = []
-        for record in self._registry.list_active():
+        for record in registry.list_active():
             similarity = _jaccard(
                 request_tokens, _tokenize(record.semantic_description)
             )
@@ -148,15 +181,17 @@ class HandlerToolReuseMatcher:
         return scored
 
     def _match_hybrid(
-        self, request: ModelToolReuseRequest
+        self,
+        request: ModelToolReuseRequest,
+        registry: ProtocolGeneratedToolRegistry,
     ) -> list[ModelToolReuseCandidate]:
         # Signature match is the strongest, 0-latency, deterministic signal —
         # prefer it whenever present.
-        signature_candidates = self._match_by_signature(request)
+        signature_candidates = self._match_by_signature(request, registry)
         if signature_candidates:
             return signature_candidates
         # Otherwise fall back to lexical similarity over the description.
-        return self._match_by_lexical_similarity(request)
+        return self._match_by_lexical_similarity(request, registry)
 
     # ------------------------------------------------------------------ #
     # Verdict selection

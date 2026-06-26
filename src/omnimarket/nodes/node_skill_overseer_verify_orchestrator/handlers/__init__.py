@@ -2,6 +2,6 @@
 # SPDX-License-Identifier: MIT
 """Handlers for node_skill_overseer_verify_orchestrator."""
 
-from .handler_skill_requested import handle_skill_requested
+from .handler_skill_requested import HandlerSkillRequested
 
-__all__ = ["handle_skill_requested"]
+__all__ = ["HandlerSkillRequested"]

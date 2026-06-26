@@ -41,6 +41,7 @@ from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+from unittest.mock import MagicMock
 
 import pytest
 import yaml
@@ -176,7 +177,14 @@ async def _wire_matcher(
     matched_topic = _single(matcher_topics["publish_topics"], "tool-reuse-matched")
     no_match_topic = _single(matcher_topics["publish_topics"], "tool-reuse-no-match")
 
-    matcher = HandlerToolReuseMatcher(InMemoryGeneratedToolRegistry(registry_tools))
+    # Container-driven matcher (OMN-13603): the handler resolves
+    # ProtocolGeneratedToolRegistry from the injected container at match time,
+    # mirroring the runtime resolver path.
+    matcher_container = MagicMock()
+    matcher_container.get_service.return_value = InMemoryGeneratedToolRegistry(
+        registry_tools
+    )
+    matcher = HandlerToolReuseMatcher(container=matcher_container)
 
     async def on_message(message: Any) -> None:
         payload = json.loads(message.value.decode("utf-8"))
