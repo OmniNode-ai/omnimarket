@@ -4,11 +4,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from omnimarket.nodes.node_generate_node_effect.models.model_generate_node_command import (
+from omnimarket.models.model_generate_node import (
     EnumNodeType,
     ModelGenerateNodeCommand,
-)
-from omnimarket.nodes.node_generate_node_effect.models.model_generate_node_result import (
     ModelGenerateNodeResult,
 )
 

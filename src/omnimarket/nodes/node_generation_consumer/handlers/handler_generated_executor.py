@@ -4,13 +4,19 @@
 
 Pre-wired at runtime startup. Responsibilities:
 
-on_deploy_event(payload, input_data) — B1 (OMN-12826):
-    Consumer entrypoint wired onto onex.cmd.omnimarket.node-deploy.v1. Deploys
-    the generated source to the sandbox, invokes the handler via importlib, and
-    returns/emits the terminal result in the SAME shape future runtime dispatch
-    (NodeInvocationAdapter.dispatch) produces — explicitly labelled non-hot-load
-    (_runtime_backend="sandbox", hot_load=False). This is sandbox importlib
-    invoke, NOT runtime dynamic dispatch or image mutation.
+on_deploy_event(payload, input_data) — B1 (OMN-12826) + Phase 0.1 (OMN-13605):
+    Consumer entrypoint wired onto onex.cmd.omnimarket.node-deploy.v1. Performs
+    BOTH halves of the generation spine:
+      (a) hot-load: deploys the generated handler to the sandbox, invokes it via
+          importlib, and emits the terminal result in the SAME shape future
+          runtime dispatch (NodeInvocationAdapter.dispatch) produces — explicitly
+          labelled non-hot-load today (_runtime_backend="sandbox",
+          hot_load=False). This is sandbox importlib invoke, NOT runtime dynamic
+          dispatch or image mutation.
+      (b) full-package scaffold: invokes the node_generate_node_effect scaffolder
+          to write the full 10-file canonical node package into a worktree
+          staging directory, so the generated node has a real, PR-able canonical
+          source tree (consumed downstream by the Phase 0.2 publish effect).
 
 deploy(payload):
     Receives a node-deploy event payload, writes contract.yaml + handler.py to
@@ -21,10 +27,17 @@ execute(node_name, input_data):
     Re-imports on each call so hot-written updates are picked up without restart.
     Called when an MCP tool (exposed by ServiceMCPToolSync) is invoked.
 
+scaffold_package(node_name, contract_yaml, correlation_id):
+    Invokes the node_generate_node_effect scaffolder through its contract-declared
+    public handler to materialize the full 10-file canonical package under the
+    worktree staging root. Returns the staging directory and the created-file
+    manifest.
+
 Full flow (no runtime restart):
   1. node_generation_consumer emits onex.cmd.omnimarket.node-deploy.v1
-  2. on_deploy_event() deploys source to sandbox, invokes, emits the terminal
-     result on onex.evt.omnimarket.generated-node-invoked.v1
+  2. on_deploy_event() deploys source to sandbox, invokes it, scaffolds the full
+     canonical package into the staging dir, and emits the terminal result on
+     onex.evt.omnimarket.generated-node-invoked.v1
   3. ServiceMCPToolSync receives the platform.node-registration.v1 event, hot-reloads tool metadata
   4. Next MCP call to that tool → execute() loads handler from disk → runs it
 """
@@ -36,9 +49,11 @@ import importlib.util
 import json
 import logging
 import os
+import re
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any, cast
+from uuid import NAMESPACE_URL, UUID, uuid5
 
 import yaml
 
@@ -55,9 +70,27 @@ _CONTRACT_PATH = Path(__file__).parent.parent / "contract.yaml"
 # resolved from the runtime-provided env (ONEX_STATE_DIR preferred, then
 # ONEX_STATE_ROOT) and FAILS FAST when unset — no silent relative fallback
 # (CLAUDE.md Rule 6/8: no hardcoded paths, no silent defaults).
-_SANDBOX_SUBDIR = ("hackathon", "generated")
+#
+# OMN-13605 (Phase 0.1): the prior sandbox subdir was the hackathon-tagged
+# ("hackathon", "generated"). The node is now a permanent canonical artifact, so
+# the sandbox lives under a node-scoped, hackathon-free subdir. The full
+# canonical package is scaffolded separately under the staging root below.
+_SANDBOX_SUBDIR = ("node_generation_consumer", "sandbox")
 _STATE_ROOT_ENV_KEYS = ("ONEX_STATE_DIR", "ONEX_STATE_ROOT")
 _REPLAY_STATE_SUBDIR = ("node_generation_consumer", "generated_executor_replay")
+
+# OMN-13605 (Phase 0.1): worktree staging root for the full 10-file canonical
+# package. Resolved fail-fast from a dedicated env var (preferred) or the runtime
+# state root — never a hardcoded path. The full package is written here so the
+# Phase 0.2 publish effect has a real canonical source tree to commit + PR.
+_STAGING_DIR_ENV_KEYS = ("ONEX_GENERATED_STAGING_DIR",)
+_STAGING_SUBDIR = ("node_generation_consumer", "staging")
+
+# A scaffold-able node name must satisfy the scaffolder's own pattern
+# (^node_[a-z][a-z0-9_]*$). Generated contracts occasionally carry a name that
+# does not (e.g. "unknown"); we detect that here and skip scaffolding rather than
+# raising a ValidationError mid-invoke.
+_SCAFFOLD_NODE_NAME_RE = re.compile(r"^node_[a-z][a-z0-9_]*$")
 
 
 def _resolve_sandbox_dir() -> Path:
@@ -77,6 +110,28 @@ def _resolve_sandbox_dir() -> Path:
     )
 
 
+def _resolve_staging_dir() -> Path:
+    """Resolve the worktree staging root for the full canonical package.
+
+    Prefers the dedicated ONEX_GENERATED_STAGING_DIR. Falls back to the runtime
+    state root + staging subdir. FAILS FAST when neither a dedicated staging dir
+    nor a state root is configured — no hardcoded relative fallback
+    (CLAUDE.md Rule 6/8).
+    """
+    for key in _STAGING_DIR_ENV_KEYS:
+        value = os.environ.get(key, "").strip()
+        if value:
+            return Path(value)
+    state_root = _resolve_state_root()
+    if state_root is not None:
+        return state_root.joinpath(*_STAGING_SUBDIR)
+    raise RuntimeError(
+        "HandlerGeneratedExecutor requires a writable staging root: set "
+        f"one of {_STAGING_DIR_ENV_KEYS} or one of {_STATE_ROOT_ENV_KEYS} "
+        "(no hardcoded relative staging fallback)."
+    )
+
+
 def _resolve_state_root() -> Path | None:
     for key in _STATE_ROOT_ENV_KEYS:
         value = os.environ.get(key, "").strip()
@@ -91,6 +146,39 @@ def _replay_state_path(correlation_id: str) -> Path | None:
         return None
     digest = hashlib.sha256(correlation_id.encode("utf-8")).hexdigest()
     return state_root.joinpath(*_REPLAY_STATE_SUBDIR) / f"{digest}.json"
+
+
+def _coerce_correlation_uuid(correlation_id: str) -> UUID:
+    """Coerce a correlation_id string into a UUID for the scaffolder command.
+
+    The deploy payload's correlation_id is a free-form string (e.g. "corr-1"),
+    but the scaffolder command requires a UUID. A non-UUID string is mapped
+    deterministically via uuid5 so the same correlation_id always yields the
+    same scaffold correlation — preserving replay determinism.
+    """
+    try:
+        return UUID(correlation_id)
+    except (ValueError, AttributeError, TypeError):
+        return uuid5(NAMESPACE_URL, correlation_id or "")
+
+
+def _node_type_from_contract(contract_yaml: str) -> str:
+    """Extract the declared node_type from a generated contract.yaml.
+
+    Returns the lower-cased node_type value, defaulting to "compute" — the
+    generation consumer's stated purpose is generating COMPUTE nodes — when the
+    contract is empty/unparseable or omits node_type.
+    """
+    if not contract_yaml.strip():
+        return "compute"
+    try:
+        data = yaml.safe_load(contract_yaml)
+    except yaml.YAMLError:
+        return "compute"
+    if not isinstance(data, dict):
+        return "compute"
+    node_type = data.get("node_type", "")
+    return str(node_type).strip().lower() or "compute"
 
 
 # Sync (topic, bytes) -> None publisher injected by the runtime's Kafka adapter,
@@ -152,6 +240,7 @@ class HandlerGeneratedExecutor:
         sandbox_dir: Path | None = None,
         event_publisher: EventPublisher | None = None,
         contract_path: Path | None = None,
+        staging_dir: Path | None = None,
     ) -> None:
         # OMN-12854: an explicit sandbox_dir (tests) wins; otherwise resolve from
         # the runtime writable state root, fail-fast if unset — never a relative
@@ -159,6 +248,11 @@ class HandlerGeneratedExecutor:
         self.sandbox_dir = (
             sandbox_dir if sandbox_dir is not None else _resolve_sandbox_dir()
         )
+        # OMN-13605 (Phase 0.1): worktree staging root for the full 10-file
+        # canonical package. An explicit staging_dir (tests) wins; otherwise it is
+        # resolved lazily on first scaffold so construction does not require a
+        # staging root to be configured for the sandbox-only paths.
+        self._staging_dir_override = staging_dir
         self._event_publisher: EventPublisher | None = event_publisher
         # node_name → handler_path, populated by deploy()
         self._registry: dict[str, Path] = {}
@@ -189,9 +283,115 @@ class HandlerGeneratedExecutor:
         """Terminal result topic this executor emits (contract-resolved)."""
         return self._terminal_topic
 
+    @property
+    def staging_dir(self) -> Path:
+        """Worktree staging root for the full canonical package (resolved lazily).
+
+        OMN-13605 (Phase 0.1): an explicit override (tests) wins; otherwise it is
+        resolved fail-fast from the dedicated staging env or the runtime state
+        root. Never a hardcoded relative path.
+        """
+        if self._staging_dir_override is not None:
+            return self._staging_dir_override
+        return _resolve_staging_dir()
+
     def handle(self, payload: object) -> dict[str, Any]:
         """Runtime dispatch entrypoint for the node-deploy command."""
         return self.on_deploy_event(payload)
+
+    def scaffold_package(
+        self,
+        node_name: str,
+        contract_yaml: str,
+        correlation_id: str,
+    ) -> dict[str, Any]:
+        """Scaffold the full 10-file canonical package into the staging dir.
+
+        OMN-13605 (Phase 0.1): invokes the ``node_generate_node_effect``
+        scaffolder through its contract-declared public handler
+        (``HandlerGenerateNode``) to materialize the full canonical node package
+        — contract.yaml, metadata.yaml, package + handler + model + test modules
+        — under ``{staging_dir}/{node_name}``. This is the canonical, PR-able
+        source tree the Phase 0.2 publish effect commits and opens a PR for.
+
+        The node archetype is taken from the generated contract's ``node_type``
+        (default ``compute`` — the generation consumer generates COMPUTE nodes).
+        Returns ``{"status": "ok", "staging_dir": ..., "created_files": [...]}``
+        on success, or ``{"error": ...}`` when the package cannot be scaffolded.
+        The scaffold step is best-effort relative to the hot-load path: a scaffold
+        failure does not fail the in-session invocation, it is surfaced as an
+        ``error`` field in the terminal result's ``scaffold`` block.
+        """
+        # node_name must satisfy the scaffolder's own pattern; an "unknown" or
+        # malformed name (e.g. an unparseable generated contract) is skipped
+        # rather than raising mid-invoke.
+        if not _SCAFFOLD_NODE_NAME_RE.match(node_name):
+            return {
+                "error": (
+                    f"node_name {node_name!r} does not match the scaffolder "
+                    "pattern ^node_[a-z][a-z0-9_]*$; skipping full-package scaffold"
+                )
+            }
+
+        # Invoke the scaffolder through its contract-declared public handler. The
+        # command/result models live in the shared omnimarket.models package (not
+        # the scaffolder's node-local models), so importing them here is NOT a
+        # cross-node reach-in (test_no_cross_node_reach_in.py / OMN-9263). Imported
+        # lazily so the sandbox-only paths never pay the import cost.
+        try:
+            from omnimarket.models.model_generate_node import (
+                EnumNodeType,
+                ModelGenerateNodeCommand,
+            )
+            from omnimarket.nodes.node_generate_node_effect.handlers.handler_generate_node import (
+                HandlerGenerateNode,
+            )
+        except ImportError as exc:
+            return {"error": f"node_generate_node_effect scaffolder unavailable: {exc}"}
+
+        node_type_value = _node_type_from_contract(contract_yaml)
+        try:
+            node_type = EnumNodeType(node_type_value)
+        except ValueError:
+            # An unrecognised node_type (e.g. EFFECT_GENERIC) falls back to the
+            # generation consumer's default archetype, COMPUTE.
+            node_type = EnumNodeType.COMPUTE
+
+        try:
+            staging_root = self.staging_dir
+        except RuntimeError as exc:
+            return {"error": f"staging root unresolved: {exc}"}
+
+        output_dir = staging_root / node_name
+        try:
+            command = ModelGenerateNodeCommand(
+                correlation_id=_coerce_correlation_uuid(correlation_id),
+                node_name=node_name,
+                node_type=node_type,
+                output_dir=str(output_dir),
+                dry_run=False,
+            )
+            result = HandlerGenerateNode().handle(command)
+        except Exception as exc:
+            logger.warning(
+                "[generated-executor] scaffold of %s into %s failed: %s",
+                node_name,
+                output_dir,
+                exc,
+            )
+            return {"error": f"scaffold failed: {exc}"}
+
+        logger.info(
+            "[generated-executor] scaffolded %d-file canonical package for %s → %s",
+            len(result.created_files),
+            node_name,
+            output_dir,
+        )
+        return {
+            "status": "ok",
+            "staging_dir": result.output_dir,
+            "created_files": list(result.created_files),
+        }
 
     def deploy(self, payload: object) -> dict[str, Any]:
         """Receive a node-deploy event, write sandbox files, register for execution.
@@ -355,11 +555,20 @@ class HandlerGeneratedExecutor:
                 error=str(output["error"]),
             )
 
+        # OMN-13605 (Phase 0.1): after the hot-load invoke proves the generated
+        # node is invokable in-session, scaffold the full 10-file canonical
+        # package into the worktree staging dir. The scaffold is reported in the
+        # terminal's ``scaffold`` block but does NOT fail the in-session
+        # invocation — the hot-load and full-package halves are independent.
+        contract_yaml = str(data.get("contract_yaml", ""))
+        scaffold = self.scaffold_package(node_name, contract_yaml, correlation_id)
+
         return self._terminal(
             status="completed",
             correlation_id=correlation_id,
             node_name=node_name,
             output=output,
+            scaffold=scaffold,
         )
 
     def _load_replay_terminal(self, correlation_id: str) -> dict[str, Any] | None:
@@ -411,6 +620,7 @@ class HandlerGeneratedExecutor:
         node_name: str,
         output: dict[str, Any] | None = None,
         error: str = "",
+        scaffold: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """Build (and emit) the terminal result in the future-dispatch shape.
 
@@ -420,6 +630,11 @@ class HandlerGeneratedExecutor:
         hot-load path can replace the sandbox path without changing the result
         contract. ``_runtime_backend="sandbox"`` + ``hot_load=False`` mark this
         as the non-hot-load today path.
+
+        OMN-13605 (Phase 0.1): when a full-package scaffold ran, its outcome
+        (``staging_dir`` + ``created_files`` on success, or ``error``) is carried
+        in the ``scaffold`` block so a consumer can locate the canonical package
+        the Phase 0.2 publish effect commits and PRs.
         """
         result: dict[str, Any] = {
             "status": status,
@@ -434,6 +649,8 @@ class HandlerGeneratedExecutor:
         }
         if output is not None:
             result["output"] = output
+        if scaffold is not None:
+            result["scaffold"] = scaffold
         if error:
             result["error"] = error
 

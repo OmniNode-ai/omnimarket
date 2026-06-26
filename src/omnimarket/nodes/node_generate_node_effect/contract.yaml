@@ -12,12 +12,12 @@ description: >
 
 input_model:
   name: ModelGenerateNodeCommand
-  module: omnimarket.nodes.node_generate_node_effect.models.model_generate_node_command
+  module: omnimarket.models.model_generate_node
   description: "Command specifying the node to generate: name, type, and template args."
 
 output_model:
   name: ModelGenerateNodeResult
-  module: omnimarket.nodes.node_generate_node_effect.models.model_generate_node_result
+  module: omnimarket.models.model_generate_node
   description: "Result listing created files and their paths."
 
 handler_routing:
