@@ -122,6 +122,7 @@ class HandlerQualityGateIntent:
         gate_input = intent.payload
         judge_verdict: ModelDelegationJudgeVerdictEvent | None = None
         judge_score: float | None = None
+        judge_verdict_value: EnumDelegationJudgeVerdict | None = None
 
         if gate_input.task_type in _JUDGE_COMBINABLE_TASK_TYPES:
             # ModelQualityGateInput (canonical core DTO) does not carry the
@@ -140,11 +141,18 @@ class HandlerQualityGateIntent:
             )
             # A judge_failed verdict carries no score — fall back to deterministic
             # only; never coerce a judge failure into a silent zero (which would
-            # tank an otherwise-acceptable answer).
+            # tank an otherwise-acceptable answer). OMN-13642: thread the verdict
+            # itself (alongside the score) so a FAIL verdict vetoes acceptance in
+            # the reducer even when the combined score would clear the bar.
             if judge_verdict.verdict is not EnumDelegationJudgeVerdict.JUDGE_FAILED:
                 judge_score = judge_verdict.actual_score
+                judge_verdict_value = judge_verdict.verdict
 
-        result = quality_gate_delta(gate_input, judge_adequacy_score=judge_score)
+        result = quality_gate_delta(
+            gate_input,
+            judge_adequacy_score=judge_score,
+            judge_verdict=judge_verdict_value,
+        )
         logger.info(
             "HandlerQualityGateIntent resolved: passed=%s score=%.3f "
             "score_source=%s judge_score=%s correlation_id=%s",

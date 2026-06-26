@@ -39,6 +39,7 @@ import json
 import re
 from collections.abc import Callable
 
+from omnimarket.events.delegation_judge_verdict import EnumDelegationJudgeVerdict
 from omnimarket.nodes.node_delegation_quality_gate_reducer.models.model_quality_contract import (
     MAX_WORDS_PER_SENTENCE_RE,
 )
@@ -158,6 +159,15 @@ _COMBINED_DETERMINISTIC_WEIGHT: float = 0.6
 _COMBINED_JUDGE_WEIGHT: float = 0.4
 _VERIFIABLE_TASK_TYPES: frozenset[str] = frozenset(
     {"code_generation", "test", "validator_generation"}
+)
+# OMN-13642: a FAIL judge verdict VETOES acceptance on the verifiable path even
+# when the weighted combined score clears the required_bar. The deterministic
+# floor (already passed before the veto) must never mask a judge FAIL: acceptance
+# is deterministic_gate AND judge_verdict, not a weighted average that a perfect
+# deterministic floor can lift over the bar.
+_JUDGE_FAIL_REASON = (
+    "JUDGE_FAIL: llm-judge adequacy verdict=fail vetoes acceptance "
+    "(deterministic floor passed but judge rejected the candidate)"
 )
 
 
@@ -1103,6 +1113,7 @@ def delta(
     gate_input: ModelQualityGateInput,
     *,
     judge_adequacy_score: float | None = None,
+    judge_verdict: EnumDelegationJudgeVerdict | None = None,
 ) -> ModelQualityGateResult:
     """Evaluate LLM output quality for a delegation response.
 
@@ -1129,11 +1140,24 @@ def delta(
 
     Falls back to the legacy hardcoded checks when both DoD fields are empty.
 
+    OMN-13642: when ``judge_verdict`` is ``EnumDelegationJudgeVerdict.FAIL`` on the
+    verifiable path, acceptance is VETOED (``passed=False``,
+    ``fail_category="fail_heuristic"``, ``fallback_recommended=True``) even when the
+    weighted combined score clears the bar — the judge verdict is a co-required
+    acceptance authority, not merely a score nudge a strong deterministic floor can
+    mask. ``JUDGE_FAILED`` carries no score (``judge_adequacy_score is None``) and
+    falls through to the deterministic-only acceptance (fail-open, never a silent
+    zero). ``PASS``/``BORDERLINE``/``None`` keep the combined-score behavior.
+
     Args:
         gate_input: Quality gate input with LLM response and optional DoD checks.
         judge_adequacy_score: Optional 0.0-1.0 LLM-judge semantic-adequacy score
             resolved on the inference effect path. ``None`` preserves the prior
             deterministic-only behavior.
+        judge_verdict: Optional LLM-judge verdict resolved on the inference effect
+            path. A ``FAIL`` verdict vetoes acceptance on the verifiable path
+            regardless of the combined score (OMN-13642). ``None`` preserves the
+            prior score-only behavior.
 
     Returns:
         A quality gate result with pass/fail, fail_category, score, and reasons.
@@ -1239,6 +1263,22 @@ def delta(
         }
 
     if deterministic_acceptance_authority:
+        # OMN-13642: the LLM-judge verdict is a co-required acceptance authority on
+        # the verifiable path. A FAIL verdict VETOES acceptance even when the
+        # weighted combined score cleared the bar above — the deterministic floor
+        # (already passed) must never mask a judge FAIL. The combined score is
+        # still recorded for telemetry so analysis sees the score that WOULD have
+        # been accepted under the old score-only logic.
+        if judge_verdict is EnumDelegationJudgeVerdict.FAIL:
+            return ModelQualityGateResult(
+                correlation_id=gate_input.correlation_id,
+                passed=False,
+                fail_category="fail_heuristic",
+                quality_score=quality_score,
+                failure_reasons=(_JUDGE_FAIL_REASON,),
+                fallback_recommended=True,
+                **(combined_acceptance_evidence or acceptance_evidence),
+            )
         return ModelQualityGateResult(
             correlation_id=gate_input.correlation_id,
             passed=True,
