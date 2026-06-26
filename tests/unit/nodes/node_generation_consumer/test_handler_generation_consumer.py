@@ -1551,3 +1551,66 @@ async def test_no_corpus_run_is_not_corpus_checked() -> None:
     # Deploy still happens on the normal path (no corpus gate to block it).
     topics = [t for t, _ in published]
     assert any("node-deploy" in t for t in topics)
+
+
+# ---------------------------------------------------------------------------
+# Model-class-existence: node invokes the canonical validator platform
+# (OMN-13609, WS-C Phase 1.1)
+# ---------------------------------------------------------------------------
+
+_INLINE_CONTRACT_YAML = """\
+name: node_inline_compute
+contract_version: "1.0.0"
+node_type: compute
+input_model:
+  name: ModelInlineInput
+  module: generated.models
+output_model:
+  name: ModelInlineOutput
+  module: generated.models
+"""
+
+
+def test_validate_generation_passes_when_inline_model_classes_present() -> None:
+    """Generated handler defining both inline model classes passes model_classes."""
+    handler = (
+        "from pydantic import BaseModel\n"
+        "\n"
+        "class ModelInlineInput(BaseModel):\n"
+        "    value: int\n"
+        "\n"
+        "class ModelInlineOutput(BaseModel):\n"
+        "    result: int\n"
+        "\n"
+        "def handle(input_data):\n"
+        "    return {'result': 0}\n"
+    )
+    result = _validate_generation(_INLINE_CONTRACT_YAML, handler)
+    assert result["valid"] is True
+    assert "model_classes" in result["checks_passed"]
+
+
+def test_validate_generation_rejects_missing_inline_model_class() -> None:
+    """Contract declaring an inline model absent from the handler is rejected.
+
+    The verdict comes from the canonical platform check
+    (omnibase_core.validation.validate_model_class_existence) — the node invokes
+    it rather than owning the model_types logic locally.
+    """
+    handler = (
+        "from pydantic import BaseModel\n"
+        "\n"
+        "class ModelWrongInput(BaseModel):\n"
+        "    value: int\n"
+        "\n"
+        "class ModelInlineOutput(BaseModel):\n"
+        "    result: int\n"
+        "\n"
+        "def handle(input_data):\n"
+        "    return {'result': 0}\n"
+    )
+    result = _validate_generation(_INLINE_CONTRACT_YAML, handler)
+    assert result["valid"] is False
+    assert "model_classes" not in result["checks_passed"]
+    assert any("ModelInlineInput" in e for e in result["errors"])
+    assert any(e.startswith("model_classes:") for e in result["errors"])
