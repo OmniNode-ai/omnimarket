@@ -898,10 +898,23 @@ class HandlerContextRoiRunner:
     # ------------------------------------------------------------------
 
     def _emit_result(self, result: ModelContextRoiRunResult) -> None:
-        topic = self._topic_completed
+        # Route the run to the matching terminal: a run where every cell failed
+        # (or that produced no cells at all) is a whole-run failure and is
+        # published on the FAILED terminal topic; otherwise the run carries at
+        # least one usable row and is published on the COMPLETED terminal topic.
+        # Both terminals carry the same ModelContextRoiRunResult payload, so the
+        # projection reducer (node_projection_context_roi) materialises rows from
+        # either terminal. Without this routing the declared FAILED topic was
+        # dead and a fully-failed run was never projected, wedging the N-arm
+        # battery with zero usable rows for failed runs (OMN-13645).
+        run_failed = (
+            result.total_trials == 0 or result.failed_trials == result.total_trials
+        )
+        topic = self._topic_failed if run_failed else self._topic_completed
         if not topic:
             logger.warning(
-                "[roi-runner] no completed topic configured; result not emitted"
+                "[roi-runner] no %s topic configured; result not emitted",
+                "failed" if run_failed else "completed",
             )
             return
         try:

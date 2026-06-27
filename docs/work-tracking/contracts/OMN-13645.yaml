@@ -1,0 +1,73 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-13645"
+title: "Context-ROI terminal-topic flip — project failed roi-runs (un-wedge the experiment battery)"
+summary: >
+  Track C, Deliverable 1. node_context_roi_runner declared BOTH terminals in its
+  contract publish_topics (onex.evt.omnimarket.context-roi-run-completed.v1 AND
+  onex.evt.omnimarket.context-roi-run-failed.v1) but _emit_result only ever
+  published to the completed topic, so the failed terminal was declared-but-dead.
+  Worse, node_projection_context_roi subscribed ONLY to the completed terminal,
+  so a fully-failed roi-run was never materialised into context_roi_scores — the
+  N-arm experiment battery wedged with zero usable rows for failed runs (the
+  never-implemented fix that closed the experiment epic while broken). This change
+  makes the declared failed terminal real and consumes it: (1) the runner routes a
+  whole-run failure (every cell failed, or no cells) to the FAILED terminal and an
+  at-least-one-usable-row run to the COMPLETED terminal — both carry the same
+  ModelContextRoiRunResult payload; (2) node_projection_context_roi subscribes to
+  BOTH terminals so a failed run materialises rows (final_success=False /
+  failure_stage) through the same projection path. The projection handler is
+  terminal-agnostic by construction (the failure outcome is encoded on each row),
+  mirroring node_projection_delegation which already folds both the completed and
+  failed delegation/generation terminals through one operation_match handler.
+  Topics stay contract-sourced; no Plugin*, no new REST, event-bus is the
+  transport. Dev lane only.
+
+  Deliverable 2 (feedback publisher to onex.evt.omnimarket.context-roi-runtime-row-scored.v1)
+  is split out as a documented follow-up: the consumer
+  node_capsule_effectiveness_feedback_reducer requires a per-capsule
+  ModelScoredRuntimeRow (factor, content, source_artifact, source_commit,
+  validity_scope) that the arm-level ROI scores do not carry, and no materialised
+  pack->capsule membership exists keyed by context_pack_hash. Producing a valid
+  scored row today would require fabricating capsule provenance (forbidden), so D2
+  is blocked on a pack-membership materialisation seam that overlaps OMN-13647.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched:
+  - "events"
+evidence_requirements:
+  - kind: "tests"
+    description: "A fully-failed roi-run publishes on the FAILED terminal and the projection materialises its rows (final_success=False); the projection contract subscribes to both terminals."
+    command: "uv run pytest tests/test_golden_chain_projection_context_roi.py tests/nodes/node_context_roi_runner/test_handler_context_roi_runner.py -q"
+  - kind: "ci"
+    description: "Full suite green (no -k); mypy --strict clean on the two touched handlers; ruff + pre-commit clean."
+    command: "uv run pytest tests/ -q -m 'not kafka'"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-001"
+    description: "Runner routes a whole-run failure (failed_trials == total_trials, or zero cells) to the FAILED terminal and a usable run to the COMPLETED terminal; both carry the same ModelContextRoiRunResult."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/nodes/node_context_roi_runner/test_handler_context_roi_runner.py::test_fully_failed_run_emitted_on_failed_topic tests/nodes/node_context_roi_runner/test_handler_context_roi_runner.py::test_result_emitted_on_completed_topic -q"
+  - id: "dod-002"
+    description: "node_projection_context_roi subscribes to both terminals and materialises a failed run's rows (final_success=False, failure_stage) into context_roi_scores via the same projection path."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest 'tests/test_golden_chain_projection_context_roi.py::TestContextRoiProjection::test_failed_terminal_run_materialises_rows' 'tests/test_golden_chain_projection_context_roi.py::TestContextRoiProjection::test_handle_projects_failed_terminal_payload' 'tests/test_golden_chain_projection_context_roi.py::TestContextRoiContractWiring::test_event_bus_wiring' -q"
+  - id: "dod-mypy"
+    description: "mypy --strict clean on the touched runner + projection handlers."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run mypy src/omnimarket/nodes/node_context_roi_runner/handlers/handler_context_roi_runner.py src/omnimarket/nodes/node_projection_context_roi/handlers/handler_projection_context_roi.py --strict"
+  - id: "dod-deploy"
+    description: "No runtime deploy in this PR — pure handler-logic + contract-topic change. The serialized dev redeploy and live full-cycle proof (failed roi-run -> projection row) is run separately by the orchestrator (Redeploy #2)."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "printf 'deploy deferred pre-merge; post-merge redeploy + full-cycle proof follows Redeploy #2\n'"

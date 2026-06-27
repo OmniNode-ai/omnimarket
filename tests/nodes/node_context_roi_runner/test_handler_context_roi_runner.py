@@ -566,6 +566,35 @@ def test_result_emitted_on_completed_topic() -> None:
 
     completed = [t for t, _ in published if "context-roi-run-completed" in t]
     assert len(completed) == 1
+    # A run with usable rows must NOT also land on the failed terminal.
+    failed = [t for t, _ in published if "context-roi-run-failed" in t]
+    assert failed == []
+
+
+def test_fully_failed_run_emitted_on_failed_topic() -> None:
+    """A run where every cell fails lands on the FAILED terminal (OMN-13645).
+
+    consumer_payload=None simulates a terminal-event timeout on every trial, so
+    failure_stage != NONE on every row and failed_trials == total_trials. The
+    declared-but-previously-dead failed terminal must now receive the result so
+    node_projection_context_roi can materialise the failed run's rows instead of
+    the N-arm battery wedging with zero usable rows.
+    """
+    published: list[tuple[str, bytes]] = []
+    handler = _make_handler(published=published, consumer_payload=None)
+    request = _make_request(
+        arms=(_off_arm(), _golden_only_arm()),
+        trials_per_cell=2,
+    )
+    result = handler.handle(request)
+
+    assert result.failed_trials == result.total_trials
+    failed = [t for t, _ in published if "context-roi-run-failed" in t]
+    completed = [t for t, _ in published if "context-roi-run-completed" in t]
+    assert len(failed) == 1, "fully-failed run must publish on the failed terminal"
+    assert completed == [], (
+        "fully-failed run must NOT publish on the completed terminal"
+    )
 
 
 def test_result_run_id_echoed() -> None:
