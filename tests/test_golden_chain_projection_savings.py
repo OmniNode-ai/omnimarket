@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta, timezone
 from decimal import Decimal
 from pathlib import Path
@@ -16,6 +17,9 @@ from omnimarket.nodes.node_projection_savings.handlers.handler_projection_saving
     ModelSavingsEstimatedEvent,
 )
 from omnimarket.projection.protocol_database import InmemoryDatabaseAdapter
+from omnimarket.projection.validation import (
+    validate_projection_materialization_contracts,
+)
 from tests.constants import MODEL_CLAUDE_OPUS_4_6, MODEL_QWEN3_CODER_30B
 
 HANDLER = HandlerProjectionSavings()
@@ -358,3 +362,100 @@ class TestProjectionSavingsContractConfig:
             "savings_estimates must target omnidash_analytics (not omnibase_infra); "
             "migration 075 applied updated_at to omnidash_analytics only"
         )
+
+
+_CONTRACT_PATH = Path("src/omnimarket/nodes/node_projection_savings/contract.yaml")
+_SERIES_MIGRATION = Path(
+    "src/omnimarket/nodes/node_projection_savings/migrations/"
+    "078_create_delegation_savings_series_projection_view.sql"
+)
+_SERIES_TOPIC = "onex.snapshot.projection.delegation.savings-series.v1"
+_SERIES_TABLE = "projection_delegation_savings_series"
+_SERIES_COLUMNS = [
+    "bucket",
+    "actual_cost_usd",
+    "baseline_cost_usd",
+    "savings_usd",
+    "task_count",
+]
+
+
+@dataclass(frozen=True)
+class _ContractStub:
+    name: str
+    contract_path: Path
+
+
+@dataclass(frozen=True)
+class _ManifestStub:
+    contracts: tuple[_ContractStub, ...]
+
+
+def _series_exposure() -> dict[str, object]:
+    contract = yaml.safe_load(_CONTRACT_PATH.read_text())
+    for exposure in contract["projection_api"]["exposures"]:
+        if exposure["topic"] == _SERIES_TOPIC:
+            return exposure
+    raise AssertionError(f"No projection_api exposure declared for {_SERIES_TOPIC!r}")
+
+
+@pytest.mark.unit
+class TestDelegationSavingsSeriesProjection:
+    """OMN-13648 (G1): time-bucketed savings-over-time series exposure."""
+
+    def test_migration_078_creates_series_view(self) -> None:
+        sql = _SERIES_MIGRATION.read_text()
+        # The view is a single CREATE OR REPLACE VIEW over the bus-fed source.
+        assert f"CREATE OR REPLACE VIEW {_SERIES_TABLE}" in sql
+        # Re-derives the same UNION source as migration 076 (does NOT depend on
+        # 076's internal CTEs): both base relations are read directly.
+        assert "FROM savings_estimates" in sql
+        assert "FROM delegation_events" in sql
+        assert "combined_sessions AS" in sql
+        # One row per UTC day with SUM/COUNT aggregates.
+        assert "date_trunc('day', created_at) AS bucket" in sql
+        assert "SUM(local_cost_usd)" in sql
+        assert "SUM(cloud_cost_usd)" in sql
+        assert "SUM(savings_usd)" in sql
+        assert "COUNT(*)::int AS task_count" in sql
+        assert "GROUP BY 1" in sql
+        assert "ORDER BY 1" in sql
+        # Negative assertions run against executable SQL only (strip -- comments
+        # so the explanatory header doesn't satisfy the checks).
+        sql_body = "\n".join(line.split("--", 1)[0] for line in sql.splitlines())
+        # Aggregates over ALL sessions: the LIMIT 500 cap from 076 must NOT leak
+        # into the series view.
+        assert "LIMIT 500" not in sql_body
+        # Tier-mix columns are deferred to OMN-13649; they must not ship here.
+        for tier_col in ("local_pct", "cheap_pct", "prem_pct"):
+            assert tier_col not in sql_body
+
+    def test_contract_exposes_savings_series(self) -> None:
+        exposure = _series_exposure()
+        assert exposure["table"] == _SERIES_TABLE
+        assert exposure["schema"] == "public"
+        assert list(exposure["columns"]) == _SERIES_COLUMNS
+        assert exposure["order_by"] == "bucket ASC"
+        assert exposure["freshness_column"] == "bucket"
+        # A year of daily buckets is the sensible upper bound for the series.
+        assert exposure["limit"] == 365
+
+    def test_series_topic_in_externally_consumed(self) -> None:
+        contract = yaml.safe_load(_CONTRACT_PATH.read_text())
+        assert _SERIES_TOPIC in contract["externally_consumed_topics"]
+
+    def test_series_exposure_passes_materialization_ratchet(self) -> None:
+        # Proves the exposure carries a node-local migration that creates the
+        # view (materialization authority + cold DDL proof). Without migration
+        # 078 the projection API would mark the topic DEGRADED at startup.
+        manifest = _ManifestStub((_ContractStub("projection_savings", _CONTRACT_PATH),))
+        issues = validate_projection_materialization_contracts(manifest)
+        series_issues = [
+            issue for issue in issues if issue.table_or_view == _SERIES_TABLE
+        ]
+        assert series_issues == [], (
+            "series exposure failed materialization ratchet: "
+            + "; ".join(issue.format() for issue in series_issues)
+        )
+        # The whole contract must stay clean too.
+        assert issues == ()

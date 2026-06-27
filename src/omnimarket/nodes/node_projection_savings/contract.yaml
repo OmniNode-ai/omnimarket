@@ -68,6 +68,7 @@ event_bus:
 externally_consumed_topics:
   - onex.evt.omnimarket.projection-savings-applied.v1
   - onex.snapshot.projection.cost.savings-overview.v1  # onex-topic-allow: projection snapshot topic
+  - onex.snapshot.projection.delegation.savings-series.v1  # onex-topic-allow: projection snapshot topic
 
 projection_api:
   expose: true
@@ -109,6 +110,23 @@ projection_api:
         - sessions
       freshness_column: latest_projection_updated_at
       limit: 1
+    # OMN-13648 (G1): time-bucketed savings-over-time series for the new omnidash
+    # delegation dashboard depth view (OMN-13602). Aggregates the same bus-fed
+    # savings_estimates + delegation_events source as the delegation.savings.v1
+    # exposure into one row per UTC day (view migration 078). Tier-mix columns
+    # (local_pct/cheap_pct/prem_pct) are deferred to OMN-13649.
+    - topic: onex.snapshot.projection.delegation.savings-series.v1 # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
+      table: projection_delegation_savings_series
+      schema: public
+      columns:
+        - bucket
+        - actual_cost_usd
+        - baseline_cost_usd
+        - savings_usd
+        - task_count
+      order_by: bucket ASC
+      freshness_column: bucket
+      limit: 365
     - topic: onex.snapshot.projection.cost.savings-overview.v1 # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
       table: projection_cost_savings_overview
       schema: public
