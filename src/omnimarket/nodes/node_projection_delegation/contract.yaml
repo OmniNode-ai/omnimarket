@@ -208,6 +208,12 @@ projection_api:
         - escalation_count
         - authority_source
         - score_source
+        # OMN-13649: the authoritative routing/cost tier (local | cheap_cloud |
+        # cheap_frontier | claude) + its typed cost regime. Carried from the
+        # delegation terminal, persisted on the row, exposed here so the dashboard
+        # Tier Distribution reads tier from the projection (deletes modelTier.ts).
+        - cost_tier_name
+        - cost_tier_type
         - created_at
       order_by: created_at DESC
       freshness_column: created_at
@@ -247,6 +253,10 @@ projection_api:
         - override_within_bounds
         - cost_usd
         - cost_savings_usd
+        # OMN-13649: authoritative serving tier + typed cost regime on the
+        # per-correlation detail surface.
+        - cost_tier_name
+        - cost_tier_type
         - pricing_manifest_version
         - prompt_text
         - response_text

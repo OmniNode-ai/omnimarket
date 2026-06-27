@@ -275,6 +275,98 @@ class TestDelegationProjection:
         assert row["authority_source"] == "task_class:test"
         assert row["score_source"] == "quality_gate_graded_score"
 
+    def test_canonical_terminal_carries_authoritative_cost_tier(self) -> None:
+        """OMN-13649: the authoritative serving tier on the canonical terminal is
+        persisted on the row, and its typed cost regime is derived from it.
+
+        A COMPLETED local/free delegation has no metered escalation_history
+        winner, so before this change the projection wrote an empty tier for the
+        most common path. The terminal now carries ``cost_tier_name`` from the
+        routing decision; the projection persists it and resolves
+        ``cost_tier_type`` from the typed tier cost model.
+        """
+        db = InmemoryDatabaseAdapter()
+        payload: dict[str, object] = {
+            "_db": db,
+            "_event_type": "onex.evt.omnibase-infra.delegation-completed.v1",
+            "correlation_id": "corr-tier-local",
+            "task_type": "test",
+            "model_used": "Qwen3-Coder-30B-A3B",
+            "content": "tier proof",
+            "quality_passed": True,
+            "quality_score": 0.98,
+            "latency_ms": 1200,
+            "prompt_tokens": 144,
+            "completion_tokens": 593,
+            "total_tokens": 737,
+            "fallback_to_claude": False,
+            # The authoritative serving tier carried from the routing decision.
+            "cost_tier_name": "local",
+        }
+
+        result = HANDLER.handle(payload)
+
+        assert result["rows_upserted"] == 1
+        row = db.query("delegation_events")[0]
+        assert row["cost_tier_name"] == "local"
+        # cost_tier_type is DERIVED from the tier name via the typed cost model,
+        # not carried on the wire — "local" is a free_local tier.
+        assert row["cost_tier_type"] == "free_local"
+
+    def test_canonical_terminal_without_tier_falls_back_to_metered_winner(
+        self,
+    ) -> None:
+        """OMN-13649 back-compat: a terminal predating the cost_tier_name field
+        still resolves the serving tier from the metered escalation winner."""
+        db = InmemoryDatabaseAdapter()
+        payload: dict[str, object] = {
+            "_db": db,
+            "_event_type": "onex.evt.omnibase-infra.delegation-failed.v1",
+            "correlation_id": "corr-tier-fallback",
+            "task_type": "test",
+            "model_used": "glm-4.6",
+            "content": "fail",
+            "quality_passed": False,
+            "quality_score": 0.2,
+            "latency_ms": 900,
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "total_tokens": 0,
+            "fallback_to_claude": True,
+            # No top-level cost_tier_name (old terminal); the metered escalation
+            # winner supplies the serving tier.
+            "cumulative_attempt_cost": 0.02,
+            "escalation_history": [
+                {
+                    "tier_name": "cheap_cloud",
+                    "model_used": "glm-4.6",
+                    "cost_usd": 0.02,
+                    "prompt_tokens": 103,
+                    "completion_tokens": 1777,
+                },
+            ],
+        }
+
+        result = HANDLER.handle(payload)
+
+        assert result["rows_upserted"] == 1
+        row = db.query("delegation_events")[0]
+        assert row["cost_tier_name"] == "cheap_cloud"
+
+    def test_decisions_exposure_declares_cost_tier_columns(self) -> None:
+        """OMN-13649: the decisions.v1 + correlation-trace.v1 projection-API
+        exposures expose the tier so the dashboard reads it from the projection."""
+        contract_path = "src/omnimarket/nodes/node_projection_delegation/contract.yaml"
+        with open(contract_path) as f:
+            contract = yaml.safe_load(f)
+        exposures = {e["topic"]: e for e in contract["projection_api"]["exposures"]}
+        decisions = exposures["onex.snapshot.projection.delegation.decisions.v1"]
+        assert "cost_tier_name" in decisions["columns"]
+        assert "cost_tier_type" in decisions["columns"]
+        trace = exposures["onex.snapshot.projection.delegation.correlation-trace.v1"]
+        assert "cost_tier_name" in trace["columns"]
+        assert "cost_tier_type" in trace["columns"]
+
     def test_task_delegated_labels_project_quality_bar_evidence(self) -> None:
         db = InmemoryDatabaseAdapter()
         payload: dict[str, object] = {
