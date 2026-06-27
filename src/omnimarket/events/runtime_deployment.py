@@ -570,6 +570,24 @@ class EnumProdGrantReason(StrEnum):
     GRANT_DIGEST_MISMATCH = "grant_digest_mismatch"
     GRANT_BATCH_MISMATCH = "grant_batch_mismatch"
     SELF_GRANTED = "self_granted"
+    # OMN-13656: a stability-candidate / non-main-lineage image was offered to the
+    # prod lane but the grant does not authorize the candidate class.
+    CANDIDATE_NOT_AUTHORIZED = "candidate_not_authorized"
+
+
+class EnumPromotionClass(StrEnum):
+    """Provenance class an image is allowed to be promoted as (OMN-13656).
+
+    The build path stamps this onto the image's build-manifest / OCI label. The
+    prod-promotion gate consults it: a ``CLEAN_MAIN`` image is the only class that
+    can reach prod by default; a ``STABILITY_CANDIDATE`` image (built in workspace
+    mode from staged dev-HEAD siblings, NON-main lineage) is pinnable to the
+    dev / stability lanes ONLY and is REFUSED for prod unless an explicit
+    candidate-authorizing grant exists.
+    """
+
+    CLEAN_MAIN = "clean-main"
+    STABILITY_CANDIDATE = "stability-candidate"
 
 
 class ModelReadinessProjectionFact(BaseModel):
@@ -669,6 +687,15 @@ class ModelProdPromotionGrant(BaseModel):
             "Correlation ID of the redeploy run that consumed this grant "
             "(OMN-13424). Pairs with consumed_at for single-use audit provenance. "
             "None == not yet consumed."
+        ),
+    )
+    authorizes_candidate: bool = Field(
+        default=False,
+        description=(
+            "OMN-13656: whether this grant explicitly authorizes promoting a "
+            "stability-candidate / non-main-lineage image to prod. Defaults to "
+            "False so a standard prod grant NEVER silently launders a workspace-"
+            "built candidate into prod; an approver must opt in deliberately."
         ),
     )
 
@@ -877,6 +904,22 @@ class ModelProdPromotionInputs(BaseModel):
         default=None,
         description="Approver-issued authorization grant; None means the prod gate fails closed.",
     )
+    promotion_class: EnumPromotionClass = Field(
+        default=EnumPromotionClass.CLEAN_MAIN,
+        description=(
+            "OMN-13656: provenance class of the requested image, read from its "
+            "build-manifest / OCI label. STABILITY_CANDIDATE images are refused "
+            "for prod unless the grant authorizes the candidate class."
+        ),
+    )
+    non_main_lineage: bool = Field(
+        default=False,
+        description=(
+            "OMN-13656: True when the image was built off a non-main ref (e.g. a "
+            "workspace build staging dev-HEAD siblings). Such an image can never "
+            "masquerade as a clean-main build; the prod gate refuses it by default."
+        ),
+    )
     evaluated_at: datetime = Field(
         ...,
         description=(
@@ -923,6 +966,15 @@ def evaluate_prod_promotion_gate(
     Returns a decision rather than raising so the FSM can route to BLOCKED with a
     reason instead of crashing the workflow.
     """
+    # OMN-13656: lineage gate runs FIRST. A stability-candidate / non-main-lineage
+    # image is refused for prod before any readiness/OCC/grant evaluation unless an
+    # explicit candidate-authorizing grant exists. This is the first-class guard
+    # that a workspace-built (dev-HEAD-sibling) candidate cannot reach prod by
+    # default — it is pinnable to dev/stability only.
+    candidate_block = _evaluate_candidate_lineage(inputs)
+    if candidate_block is not None:
+        return candidate_block
+
     projection = inputs.readiness_projection
     if projection is None:
         return ModelProdPromotionGateDecision(
@@ -1009,6 +1061,47 @@ def evaluate_prod_promotion_gate(
             "readiness projection READY for matching digest and batch, OCC "
             "evidence durable, rollback target known, promotion grant authorized; "
             "prod reuses the stability digest (no rebuild)"
+        ),
+    )
+
+
+def _evaluate_candidate_lineage(
+    inputs: ModelProdPromotionInputs,
+) -> ModelProdPromotionGateDecision | None:
+    """Refuse a stability-candidate / non-main-lineage image for prod (OMN-13656).
+
+    A workspace-built image (staged dev-HEAD siblings, NON-main lineage) carries
+    ``promotion_class == STABILITY_CANDIDATE`` and/or ``non_main_lineage == True``
+    on its build-manifest / OCI label. Such an image is pinnable to dev / stability
+    ONLY: it is REFUSED for prod here, before any readiness/OCC/grant check, UNLESS
+    an explicit grant authorizes the candidate class (``authorizes_candidate``).
+
+    Returns a BLOCKED decision when the candidate is not authorized; ``None`` when
+    the image is a clean-main build or an authorizing grant is present, so the
+    caller proceeds with the normal gate.
+    """
+    is_candidate = (
+        inputs.promotion_class is EnumPromotionClass.STABILITY_CANDIDATE
+        or inputs.non_main_lineage
+    )
+    if not is_candidate:
+        return None
+
+    grant = inputs.promotion_grant
+    if grant is not None and grant.authorizes_candidate:
+        # Approver explicitly opted in to promoting a candidate; the remaining
+        # grant fields are still enforced by _evaluate_promotion_grant downstream.
+        return None
+
+    return _grant_blocked(
+        inputs,
+        EnumProdGrantReason.CANDIDATE_NOT_AUTHORIZED,
+        (
+            "image is a stability-candidate / non-main-lineage build "
+            f"(promotion_class={inputs.promotion_class.value!r}, "
+            f"non_main_lineage={inputs.non_main_lineage}); it is pinnable to "
+            "dev/stability only and is refused for prod absent a grant that "
+            "explicitly authorizes the candidate class"
         ),
     )
 
@@ -1355,6 +1448,21 @@ class ModelProdPromotionGateCommand(BaseModel):
         default=None,
         description="Previous known-good image used as the rollback target fallback.",
     )
+    promotion_class: EnumPromotionClass = Field(
+        default=EnumPromotionClass.CLEAN_MAIN,
+        description=(
+            "OMN-13656: provenance class of the requested image, read from its "
+            "build-manifest / OCI label. STABILITY_CANDIDATE images are refused "
+            "for prod unless the grant authorizes the candidate class."
+        ),
+    )
+    non_main_lineage: bool = Field(
+        default=False,
+        description=(
+            "OMN-13656: True when the image was built off a non-main ref (e.g. a "
+            "workspace build staging dev-HEAD siblings). Refused for prod by default."
+        ),
+    )
     requested_by: str = Field(
         default="node_redeploy_orchestrator",
         description="Identity that requested the promotion; gated against the grant approver.",
@@ -1677,6 +1785,7 @@ __all__ = [
     "EnumPhaseResult",
     "EnumProdGrantReason",
     "EnumProdHealth",
+    "EnumPromotionClass",
     "EnumRedeployPhase",
     "EnumRedeployScope",
     "EnumRedeployStatus",

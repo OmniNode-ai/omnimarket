@@ -31,6 +31,8 @@ from omnibase_core.models.dispatch.model_handler_output import ModelHandlerOutpu
 from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
 
 from omnimarket.events.runtime_deployment import (
+    EnumProdGrantReason,
+    EnumPromotionClass,
     EnumRuntimeLane,
     ModelProdPromotionGateDecision,
     ModelProdPromotionInputs,
@@ -62,6 +64,33 @@ def evaluate_gate(
             reason=f"{command.runtime_lane.value} lane is not gated; deploy may proceed",
         )
 
+    # OMN-13656: a stability-candidate / non-main-lineage image is refused for
+    # prod BEFORE the no-projection same-digest fallback, so a workspace-built
+    # candidate can never slip through the legacy un-gated path either. Authorized
+    # only when an explicit candidate-authorizing grant is present.
+    is_candidate = (
+        command.promotion_class is EnumPromotionClass.STABILITY_CANDIDATE
+        or command.non_main_lineage
+    )
+    candidate_authorized = (
+        command.promotion_grant is not None
+        and command.promotion_grant.authorizes_candidate
+    )
+    if is_candidate and not candidate_authorized:
+        return ModelProdPromotionGateDecision(
+            allowed=False,
+            image_digest=None,
+            rollback_target=rollback_target,
+            reason=(
+                f"{EnumProdGrantReason.CANDIDATE_NOT_AUTHORIZED.value}: image is a "
+                "stability-candidate / non-main-lineage build "
+                f"(promotion_class={command.promotion_class.value!r}, "
+                f"non_main_lineage={command.non_main_lineage}); it is pinnable to "
+                "dev/stability only and is refused for prod absent a grant that "
+                "explicitly authorizes the candidate class"
+            ),
+        )
+
     if command.readiness_projection is None:
         digest_gate = evaluate_prod_digest_gate(
             requested_digest=command.requested_image_digest,
@@ -89,6 +118,8 @@ def evaluate_gate(
             rollback_target=rollback_target,
             requested_by=command.requested_by,
             promotion_grant=command.promotion_grant,
+            promotion_class=command.promotion_class,
+            non_main_lineage=command.non_main_lineage,
             evaluated_at=command.evaluated_at,
         )
     )
