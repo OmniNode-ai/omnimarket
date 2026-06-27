@@ -94,3 +94,13 @@ CAPSULE_STORE_APPLIED_TOPIC_V1 = "onex.evt.omnimarket.capsule-store-applied.v1" 
 # no-hardcoded-topics gate stays green; each node's contract.yaml declares them.
 CONTEXT_ROI_RUNTIME_ROW_SCORED_TOPIC_V1 = "onex.evt.omnimarket.context-roi-runtime-row-scored.v1"  # onex-topic-allow: canonical topic registry; declared in node_capsule_effectiveness_feedback_reducer contract.yaml subscribe_topics (OMN-12845)
 CAPSULE_EFFECTIVENESS_HYPOTHESIS_TOPIC_V1 = "onex.evt.omnimarket.capsule-effectiveness-hypothesis.v1"  # onex-topic-allow: canonical topic registry; declared in node_capsule_effectiveness_feedback_reducer contract.yaml publish_topics (OMN-12845)
+
+# OMN-13655: canonical redeploy bus path. The CI pipeline (or a thin agent shim)
+# emits a ModelRuntimeImageBuilt onto RUNTIME_IMAGE_BUILT_TOPIC_V1 once an image
+# has been pushed to the registry; the redeploy orchestrator subscribes and routes
+# the event through the prod-promotion gate (replacing the prior imperative deploy
+# script path). REDEPLOY_START_CMD_TOPIC_V1 is the original trigger topic exposed
+# here so handler/model code references the constant (never the literal) and the
+# no-hardcoded-topics gate stays green.
+RUNTIME_IMAGE_BUILT_TOPIC_V1 = "onex.evt.omnimarket.runtime-image-built.v1"  # onex-topic-allow: canonical topic registry; declared in node_redeploy_orchestrator contract.yaml subscribe_topics (OMN-13655)
+REDEPLOY_START_CMD_TOPIC_V1 = "onex.cmd.omnimarket.redeploy-start.v1"  # onex-topic-allow: canonical topic registry; declared in node_redeploy_orchestrator contract.yaml subscribe_topics (OMN-13655)
