@@ -32,6 +32,8 @@ from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
 
 from omnimarket.events.runtime_deployment import (
     EnumOccGateState,
+    EnumProdGrantReason,
+    EnumPromotionClass,
     EnumRuntimeLane,
     ModelProdPromotionGateDecision,
     ModelProdPromotionGrant,
@@ -284,3 +286,155 @@ class TestProdPromotionGateCompute:
         output = await handler.handle(envelope)
         assert isinstance(output.result, ModelProdPromotionGateDecision)
         assert output.result.allowed is True
+
+
+# ---------------------------------------------------------------------------
+# OMN-13656 — stability-candidate / non-main-lineage refusal for prod
+#
+# A workspace-built (dev-HEAD-sibling) runtime image is stamped
+# promotion_class=stability-candidate + non_main_lineage=true on its build
+# manifest / OCI label. The prod-promotion gate REFUSES such an image for the
+# prod lane absent an explicit candidate-authorizing grant. The refusal is a
+# pure gate decision (a rejection) — provable with NO prod mutation.
+# ---------------------------------------------------------------------------
+
+
+def _candidate_grant(
+    *,
+    digest: str = _DIGEST_STABILITY,
+    batch: str = _BATCH,
+    authorizes_candidate: bool = True,
+) -> ModelProdPromotionGrant:
+    """A grant that (optionally) authorizes promoting a candidate image."""
+    return ModelProdPromotionGrant(
+        grant_id="grant-omn-13656-candidate",
+        approved_lane=EnumRuntimeLane.PROD,
+        approved_image_digest=digest,
+        approved_promotion_batch_id=batch,
+        approved_by=_APPROVER,
+        created_at=_EVALUATED_AT - timedelta(minutes=5),
+        expires_at=_EVALUATED_AT + timedelta(hours=2),
+        authorizes_candidate=authorizes_candidate,
+    )
+
+
+@pytest.mark.unit
+class TestStabilityCandidateProdRefusal:
+    def test_candidate_class_refused_for_prod_without_grant(self) -> None:
+        # Full readiness/OCC/rollback satisfied, default (non-candidate) grant —
+        # a stability-candidate image is STILL refused for prod.
+        decision = evaluate_prod_promotion_gate(
+            _inputs().model_copy(
+                update={"promotion_class": EnumPromotionClass.STABILITY_CANDIDATE}
+            )
+        )
+        assert decision.allowed is False
+        assert EnumProdGrantReason.CANDIDATE_NOT_AUTHORIZED.value in decision.reason
+        assert "dev/stability only" in decision.reason
+        assert decision.image_digest is None
+
+    def test_non_main_lineage_refused_for_prod_without_grant(self) -> None:
+        decision = evaluate_prod_promotion_gate(
+            _inputs().model_copy(update={"non_main_lineage": True})
+        )
+        assert decision.allowed is False
+        assert EnumProdGrantReason.CANDIDATE_NOT_AUTHORIZED.value in decision.reason
+
+    def test_candidate_refused_even_without_readiness_projection(self) -> None:
+        # Lineage gate runs FIRST: refusal does not depend on a readiness
+        # projection being present (legacy un-gated path is also closed).
+        decision = evaluate_prod_promotion_gate(
+            ModelProdPromotionInputs(
+                requested_image_digest=_DIGEST_STABILITY,
+                promotion_batch_id=_BATCH,
+                readiness_projection=None,
+                occ_gate_state=EnumOccGateState.MERGED,
+                rollback_target=_ROLLBACK_TARGET,
+                requested_by=_REQUESTER,
+                promotion_grant=_valid_grant(),
+                promotion_class=EnumPromotionClass.STABILITY_CANDIDATE,
+                non_main_lineage=True,
+                evaluated_at=_EVALUATED_AT,
+            )
+        )
+        assert decision.allowed is False
+        assert EnumProdGrantReason.CANDIDATE_NOT_AUTHORIZED.value in decision.reason
+
+    def test_candidate_allowed_with_explicit_candidate_grant(self) -> None:
+        # An approver may opt in: a grant carrying authorizes_candidate=True lets
+        # a candidate image through (the rest of the gate still applies).
+        decision = evaluate_prod_promotion_gate(
+            _inputs(grant=_candidate_grant()).model_copy(
+                update={
+                    "promotion_class": EnumPromotionClass.STABILITY_CANDIDATE,
+                    "non_main_lineage": True,
+                }
+            )
+        )
+        assert decision.allowed is True
+        assert decision.image_digest == _DIGEST_STABILITY
+
+    def test_clean_main_unaffected_by_lineage_gate(self) -> None:
+        # Default promotion_class is clean-main; existing behavior is unchanged.
+        decision = evaluate_prod_promotion_gate(_inputs())
+        assert decision.allowed is True
+
+    def test_compute_handler_refuses_candidate_for_prod(self) -> None:
+        command = _command(projection=_ready_projection()).model_copy(
+            update={"promotion_class": EnumPromotionClass.STABILITY_CANDIDATE}
+        )
+        decision = evaluate_gate(command)
+        assert decision.allowed is False
+        assert EnumProdGrantReason.CANDIDATE_NOT_AUTHORIZED.value in decision.reason
+
+    def test_compute_handler_refuses_candidate_no_projection(self) -> None:
+        # The no-projection same-digest fallback path also refuses a candidate.
+        command = _command(projection=None).model_copy(
+            update={"non_main_lineage": True}
+        )
+        decision = evaluate_gate(command)
+        assert decision.allowed is False
+        assert EnumProdGrantReason.CANDIDATE_NOT_AUTHORIZED.value in decision.reason
+
+    def test_compute_handler_allows_candidate_to_dev_lane(self) -> None:
+        # A candidate image is pinnable to dev/stability: the dev lane is not
+        # gated, so the candidate deploys there unconditionally.
+        for lane in (EnumRuntimeLane.DEV, EnumRuntimeLane.STABILITY_TEST):
+            command = _command(
+                runtime_lane=lane, projection=None, rollback_target=None
+            ).model_copy(
+                update={
+                    "promotion_class": EnumPromotionClass.STABILITY_CANDIDATE,
+                    "non_main_lineage": True,
+                }
+            )
+            decision = evaluate_gate(command)
+            assert decision.allowed is True
+
+    async def test_handle_emits_candidate_refusal_decision(self) -> None:
+        # The refusal is observable as the COMPUTE node's decision result — the
+        # gate-rejection "event" — with NO prod mutation involved.
+        handler = HandlerProdPromotionGate()
+        command = _command(projection=_ready_projection()).model_copy(
+            update={
+                "promotion_class": EnumPromotionClass.STABILITY_CANDIDATE,
+                "non_main_lineage": True,
+            }
+        )
+        envelope: ModelEventEnvelope[ModelProdPromotionGateCommand] = (
+            ModelEventEnvelope(
+                payload=command,
+                correlation_id=command.correlation_id,
+                event_type="onex.cmd.omnimarket.prod-promotion-gate-evaluate.v1",
+            )
+        )
+        output = await handler.handle(envelope)
+        assert isinstance(output.result, ModelProdPromotionGateDecision)
+        assert output.result.allowed is False
+        assert (
+            EnumProdGrantReason.CANDIDATE_NOT_AUTHORIZED.value in output.result.reason
+        )
+        # COMPUTE purity preserved.
+        assert output.events == ()
+        assert output.intents == ()
+        assert output.projections == ()

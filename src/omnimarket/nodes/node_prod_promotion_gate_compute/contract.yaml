@@ -20,7 +20,11 @@ description: >
   unconditionally; prod runs the full promotion gate (readiness READY for matching
   digest and batch, OCC merged or Receipt-Gate-PASS, known rollback target) or,
   when no readiness projection is threaded through, the OMN-12577 same-digest gate
-  which fails closed. No I/O, no bus, no DB, no model calls.
+  which fails closed. OMN-13656: a stability-candidate / non-main-lineage image
+  (promotion_class=stability-candidate or non_main_lineage=true, stamped by the
+  workspace ECR build) is REFUSED for the prod lane before any other check unless
+  an explicit candidate-authorizing grant exists; such an image is pinnable to
+  dev/stability only. No I/O, no bus, no DB, no model calls.
 
 handler_routing:
   routing_strategy: operation_match
@@ -78,3 +82,4 @@ metadata:
     - "OMN-13211"
     - "OMN-12581"
     - "OMN-12577"
+    - "OMN-13656"
