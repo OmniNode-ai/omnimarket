@@ -128,6 +128,30 @@ repos:
           - --baseline
           - architecture-handshakes/validator-requirements-baseline.yaml
 
+  # OMN-13663 (T4, epic OMN-13659): projection exposure⇄column drift gate.
+  # Reconciles every projection node contract.yaml's projection_api.exposures
+  # against the materialized columns of the table/view each exposure reads from
+  # (DDL extracted from the node's own migrations: CREATE TABLE / ALTER TABLE ADD
+  # COLUMN / CREATE [OR REPLACE] VIEW). EXISTENCE drift (an exposure references a
+  # column its table/view does not materialize → the projection query fails at
+  # runtime) is ALWAYS blocking and is not allowlistable. OMISSION drift (a
+  # materialized identity/tier/cost column surfaced by no exposure — the
+  # cost_tier_name silent-boundary-drop class, OMN-13649) is ENFORCED via
+  # --fail-on-omission against the annotated ratchet baseline in
+  # .projection-exposure-allowlist.yaml; a new unannotated omission of such a
+  # column blocks. The hook (pass_filenames: false) re-reconciles the whole src
+  # tree whenever a projection contract.yaml or a migration .sql changes.
+  # Re-pin rev to the merged-dev SHA once omnibase_core#1350 lands.
+  - repo: https://github.com/OmniNode-ai/omnibase_core
+    rev: 5bf8592ec3e222ae196ac75292ba0d01caf78dfd # pragma: allowlist secret
+    hooks:
+      - id: check-projection-exposure-drift
+        args:
+          - src
+          - --fail-on-omission
+          - --allowlist
+          - .projection-exposure-allowlist.yaml
+
   # Shared ONEX governance hooks (onex_change_control)
   - repo: https://github.com/OmniNode-ai/onex_change_control
     rev: 8d7e85bc00e7f1b1306d1cb40949be1ab6e7e91a  # pragma: allowlist secret
