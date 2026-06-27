@@ -411,6 +411,24 @@ repos:
         pass_filenames: false
         stages: [pre-commit]
 
+      # OMN-13624 (WS-C SEA Phase 7.1): generated-node golden-chain gate.
+      # Executes the two canonical self-extension loop proofs when generation
+      # node source or the golden-chain test files themselves change.
+      # SYNC with ci.yml job "generated-node-golden-chain" (Operating Rule #5).
+      #   - test_golden_chain_generation_self_extension.py  (§D2 loop proof)
+      #   - test_golden_chain_generated_node_publish_effect.py  (§publish chain)
+      - id: generated-node-golden-chain-gate
+        name: Generated-node golden-chain gate (OMN-13624)
+        language: system
+        entry: uv run pytest tests/test_golden_chain_generation_self_extension.py tests/test_golden_chain_generated_node_publish_effect.py -q -m "not kafka"
+        files: >-
+          ^(src/omnimarket/nodes/node_generation_consumer/|
+          src/omnimarket/nodes/node_generated_node_publish_effect/|
+          tests/test_golden_chain_generation_self_extension\.py|
+          tests/test_golden_chain_generated_node_publish_effect\.py)
+        pass_filenames: false
+        stages: [pre-commit]
+
       - id: normalization-symmetry
         name: normalization-symmetry
         entry: uv run python -m omnibase_core.validation.checker_normalization_symmetry
