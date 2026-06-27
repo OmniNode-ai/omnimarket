@@ -27,8 +27,8 @@
 #
 # The validator ships in omnibase_core (the canonical validator repo) and is
 # installed here via a pinned git dependency — the same cross-repo pattern used by
-# the Canonical Inference Gate and URL Authority Gate. Re-pin the @<sha> to the
-# merged-dev SHA once omnibase_core#1350 lands.
+# the Canonical Inference Gate and URL Authority Gate. Pinned to the omnibase_core
+# dev merge SHA from #1350 (OMN-13663).
 #
 # This job is a REQUIRED STATUS CHECK. The job name "Projection Exposure Drift
 # Gate" must match branch protection rules.
@@ -59,7 +59,7 @@ jobs:
 
       - name: Run projection exposure⇄column drift gate (full src tree, fail-on-omission)
         run: |
-          uv run --with "omnibase-core @ git+https://github.com/OmniNode-ai/omnibase_core.git@5bf8592ec3e222ae196ac75292ba0d01caf78dfd" \
+          uv run --with "omnibase-core @ git+https://github.com/OmniNode-ai/omnibase_core.git@0c69dff015b6f83365d4b0247d8b3230516276ae" \
             python -m omnibase_core.validators.projection_exposure_drift \
             src \
             --fail-on-omission \
