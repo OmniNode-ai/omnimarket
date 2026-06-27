@@ -48,6 +48,10 @@ from omnimarket.nodes.node_pr_lifecycle_orchestrator.protocols.protocol_sub_hand
     ReducerResult,
     TriageRecord,
 )
+from omnimarket.nodes.node_pr_lifecycle_orchestrator.verify_target_mapping import (
+    EnumVerificationOutcome,
+    EnumVerificationTarget,
+)
 
 TOPIC_PHASE_TRANSITION = (
     "onex.evt.omnimarket.pr-lifecycle-orchestrator-phase-transition.v1"
@@ -273,11 +277,19 @@ class _TestOrchestrator(HandlerPrLifecycleOrchestrator):
     """
 
     def __init__(
-        self, *, _mock_inventory_prs: tuple[PrRecord, ...] = (), **kwargs: Any
+        self,
+        *,
+        _mock_inventory_prs: tuple[PrRecord, ...] = (),
+        _changed_files_by_pr: dict[tuple[str, int], list[str]] | None = None,
+        _probe_outcome: EnumVerificationOutcome = EnumVerificationOutcome.MERGED,
+        **kwargs: Any,
     ) -> None:
         super().__init__(**kwargs)
         self._mock_prs = _mock_inventory_prs
         self.queue_stall_adapter = MockQueueStallAdapter()
+        # OMN-13673: deterministic verification hooks — no live gh/docker.
+        self._changed_files_by_pr = _changed_files_by_pr or {}
+        self._probe_outcome = _probe_outcome
 
     def _enumerate_repos(self) -> tuple[str, ...]:
         """Return repos from the mock PR fixture, deduplicated."""
@@ -290,6 +302,17 @@ class _TestOrchestrator(HandlerPrLifecycleOrchestrator):
     def _make_merge_queue_adapter(self) -> MockQueueStallAdapter:
         return self.queue_stall_adapter
 
+    # OMN-13673: override the verify hooks so the gate never touches live
+    # gh / docker. Default to an unmapped path (neutral SKIPPED_NO_MAPPING)
+    # unless a test injects changed files for a PR.
+    def _pr_changed_files(self, repo: str, pr_number: int) -> list[str]:
+        return list(self._changed_files_by_pr.get((repo, pr_number), ["README.md"]))
+
+    async def _execute_verification_probe(
+        self, *, target: EnumVerificationTarget, timeout_seconds: int
+    ) -> EnumVerificationOutcome:
+        return self._probe_outcome
+
 
 async def _make_orchestrator(
     *,
@@ -299,6 +322,8 @@ async def _make_orchestrator(
     merge: MockMerge | None = None,
     fix: MockFix | None = None,
     event_bus: EventBusInmemory | None = None,
+    changed_files_by_pr: dict[tuple[str, int], list[str]] | None = None,
+    probe_outcome: EnumVerificationOutcome = EnumVerificationOutcome.MERGED,
 ) -> _TestOrchestrator:
     from typing import cast
 
@@ -315,6 +340,8 @@ async def _make_orchestrator(
     bus = cast(ProtocolEventBusPublisher, raw_bus)
     return _TestOrchestrator(
         _mock_inventory_prs=mock_prs,
+        _changed_files_by_pr=changed_files_by_pr,
+        _probe_outcome=probe_outcome,
         inventory=inv,
         triage=triage or MockTriage(),
         reducer=reducer or MockReducer(),
@@ -1020,10 +1047,14 @@ class TestPrLifecycleOrchestratorVerifyWiring:
         assert "prs_verified" in payload
         assert payload["prs_verified"] == 0
 
-    async def test_verify_true_fails_closed_via_verifying_state(
+    async def test_verify_true_pass_proceeds_through_verifying_to_merging(
         self, event_bus: EventBusInmemory
     ) -> None:
-        """verify=True transitions TRIAGING->VERIFYING->FAILED; merge never runs."""
+        """verify=True + verification PASS: TRIAGING->VERIFYING->MERGING; merge runs.
+
+        OMN-13673: replaces the prior fail-closed-raise behavior. A green PR
+        whose verification passes (MERGED) is cleared and proceeds to MERGING.
+        """
         await event_bus.start()
 
         inventory = MockInventory(prs=(_PR_GREEN,))
@@ -1039,53 +1070,80 @@ class TestPrLifecycleOrchestratorVerifyWiring:
             merge=merge,
             fix=fix,
             event_bus=event_bus,
+            # A handler-touching change maps to RUNTIME_HEALTH; the injected
+            # probe returns MERGED (pass) so the PR clears the gate.
+            changed_files_by_pr={
+                ("OmniNode-ai/omnimarket", 101): ["src/foo/handlers/handler_x.py"]
+            },
+            probe_outcome=EnumVerificationOutcome.MERGED,
         )
         result = await orch.handle(_make_command(verify=True))
 
-        assert result.final_state == "FAILED"
-        assert result.error_message is not None
-        assert "VERIFYING phase dispatch is not wired yet" in result.error_message
-        # Merge must NOT have run when verify=True and verify phase is unwired.
-        assert merge.call_count == 0
+        assert result.final_state == "COMPLETE"
+        assert result.error_message is None
+        # The cleared PR proceeded to merge.
+        assert merge.call_count == 1
+        assert result.prs_verified == 1
+        assert result.prs_verification_blocked == 0
+        assert result.verification_breakdown["MERGED"] == 1
 
-        # FSM contract: TRIAGING -> VERIFYING, then VERIFYING -> FAILED.
+        # FSM contract: TRIAGING -> VERIFYING, then VERIFYING -> MERGING.
         history = await event_bus.get_event_history(topic=TOPIC_PHASE_TRANSITION)
         transitions = [
             (json.loads(evt.value)["from_phase"], json.loads(evt.value)["to_phase"])
             for evt in history
         ]
         assert ("triaging", "verifying") in transitions
-        assert ("verifying", "failed") in transitions
+        assert ("verifying", "merging") in transitions
+        # The old fail-closed transition must never occur.
+        assert ("verifying", "failed") not in transitions
 
         await event_bus.close()
 
-    async def test_verify_true_failure_is_persisted(
+    async def test_verify_true_failure_blocks_pr_but_completes_sweep(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """A failed verify-gated sweep still writes durable pollable evidence."""
+        """A verification_failed PR stays open (no merge); the sweep still COMPLETEs.
+
+        OMN-13673: VERIFICATION_FAILED is the only blocking outcome — it removes
+        the PR from the merge set without raising or failing the whole sweep, and
+        the durable result.json records the 7-category breakdown.
+        """
         monkeypatch.setenv("ONEX_STATE_DIR", str(tmp_path))
         inventory = MockInventory(prs=(_PR_GREEN,))
         triage = MockTriage(classified=(_TRIAGE_GREEN,))
         reducer = MockReducer(intents=(_INTENT_MERGE,))
+        merge = MockMerge(prs_merged=1)
         orch = await _make_orchestrator(
             inventory=inventory,
             triage=triage,
             reducer=reducer,
-            merge=MockMerge(prs_merged=1),
+            merge=merge,
             fix=MockFix(),
+            changed_files_by_pr={
+                ("OmniNode-ai/omnimarket", 101): ["src/foo/handlers/handler_x.py"]
+            },
+            probe_outcome=EnumVerificationOutcome.VERIFICATION_FAILED,
         )
 
         result = await orch.handle(
             _make_command(run_id="20260521-verify-failed", verify=True)
         )
 
+        # Verification failed → PR excluded from merge, stays open. The sweep is
+        # NOT failed by the per-PR block.
+        assert result.final_state == "COMPLETE"
+        assert merge.call_count == 0
+        assert result.prs_verification_blocked == 1
+        assert result.prs_verified == 0
+
         result_path = (
             tmp_path / "merge-sweep" / "20260521-verify-failed" / "result.json"
         )
         payload = json.loads(result_path.read_text())
-        assert result.final_state == "FAILED"
-        assert payload["final_state"] == "FAILED"
-        assert "VERIFYING phase dispatch is not wired yet" in payload["error_message"]
+        assert payload["final_state"] == "COMPLETE"
+        assert payload["prs_verification_blocked"] == 1
+        assert payload["verification_breakdown"]["VERIFICATION_FAILED"] == 1
 
 
 @pytest.mark.unit
