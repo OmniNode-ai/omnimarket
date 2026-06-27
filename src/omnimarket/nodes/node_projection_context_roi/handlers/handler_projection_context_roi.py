@@ -2,14 +2,24 @@
 # SPDX-License-Identifier: MIT
 """HandlerProjectionContextRoi — project context-ROI runner output to DB.
 
-Consumes the runner terminal event on
-``onex.evt.omnimarket.context-roi-run-completed.v1`` whose payload is a
+Consumes BOTH runner terminal events —
+``onex.evt.omnimarket.context-roi-run-completed.v1`` AND
+``onex.evt.omnimarket.context-roi-run-failed.v1`` — whose payload is the same
 :class:`ModelContextRoiRunResult` carrying one
 :class:`ModelAttemptReductionRow` per (task x arm x trial) cell. Each row is
 upserted into the ``context_roi_scores`` table by its runner-minted
 ``correlation_id``. The table backs the projection-API topic
 ``onex.snapshot.projection.context.experiment-scores.v1`` consumed by the
 omnidash /experiments panels.
+
+The handler is terminal-agnostic by construction: the failure outcome is
+already encoded on each row (``final_success`` / ``failure_stage``), so a
+fully-failed run delivered on the failed terminal materialises rows with
+``final_success=False`` through the exact same projection path. Subscribing to
+the failed terminal (contract.yaml) is what keeps a failed run from wedging the
+N-arm experiment battery with zero usable rows (OMN-13645). Mirrors
+node_projection_delegation, which likewise folds both the completed and failed
+delegation/generation terminals through one operation_match handler.
 """
 
 from __future__ import annotations

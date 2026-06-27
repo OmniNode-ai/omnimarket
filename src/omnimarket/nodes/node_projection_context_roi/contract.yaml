@@ -16,12 +16,16 @@ node_version: {major: 1, minor: 0, patch: 0}
 input_model: omnimarket.nodes.node_projection_context_roi.handlers.handler_projection_context_roi.ModelContextRoiRunCompletedEvent
 description: >
   Projects context-ROI experiment runner output into the context_roi_scores
-  table. Source topic: onex.evt.omnimarket.context-roi-run-completed.v1, whose
-  payload carries one ModelAttemptReductionRow per (task x arm x trial) cell.
-  Each row is upserted by its runner-minted correlation_id. The table is exposed
-  through the projection API as the context experiment-scores snapshot topic
-  (declared under projection_api.exposures below) for the /experiments hero +
-  heatmap panels.
+  table. Source topics: onex.evt.omnimarket.context-roi-run-completed.v1 AND
+  onex.evt.omnimarket.context-roi-run-failed.v1 — both carry a
+  ModelContextRoiRunResult whose rows are one ModelAttemptReductionRow per
+  (task x arm x trial) cell. A fully-failed run lands on the failed terminal and
+  is projected exactly the same way (its rows carry final_success=False /
+  failure_stage), so failed runs still materialise rows instead of wedging the
+  N-arm battery (OMN-13645). Each row is upserted by its runner-minted
+  correlation_id. The table is exposed through the projection API as the context
+  experiment-scores snapshot topic (declared under projection_api.exposures
+  below) for the /experiments hero + heatmap panels.
 
 handler:
   module: omnimarket.nodes.node_projection_context_roi.handlers.handler_projection_context_roi
@@ -49,8 +53,17 @@ db_io:
 
 event_bus:
   consumer_group: local.omnimarket.node_projection_context_roi.consume.v1
+  # Both runner terminals carry the same ModelContextRoiRunResult payload. The
+  # runner publishes a fully-failed run (every cell failed / no cells) on the
+  # FAILED terminal and an at-least-one-usable-row run on the COMPLETED terminal
+  # (node_context_roi_runner._emit_result, OMN-13645). Subscribing to BOTH so a
+  # failed run still materialises rows (final_success=False) into
+  # context_roi_scores — otherwise the N-arm battery wedges with zero usable
+  # rows for failed runs. Mirrors node_projection_delegation, which likewise
+  # consumes both the completed and failed generation/delegation terminals.
   subscribe_topics:
     - onex.evt.omnimarket.context-roi-run-completed.v1
+    - onex.evt.omnimarket.context-roi-run-failed.v1
   publish_topics:
     - onex.evt.omnimarket.projection-context-roi-applied.v1
 
