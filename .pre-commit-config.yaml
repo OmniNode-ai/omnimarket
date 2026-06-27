@@ -143,7 +143,7 @@ repos:
   # tree whenever a projection contract.yaml or a migration .sql changes.
   # Re-pin rev to the merged-dev SHA once omnibase_core#1350 lands.
   - repo: https://github.com/OmniNode-ai/omnibase_core
-    rev: 5bf8592ec3e222ae196ac75292ba0d01caf78dfd # pragma: allowlist secret
+    rev: 0c69dff015b6f83365d4b0247d8b3230516276ae # pragma: allowlist secret
     hooks:
       - id: check-projection-exposure-drift
         args:

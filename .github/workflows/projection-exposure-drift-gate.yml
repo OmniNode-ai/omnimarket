@@ -59,7 +59,7 @@ jobs:
 
       - name: Run projection exposure⇄column drift gate (full src tree, fail-on-omission)
         run: |
-          uv run --with "omnibase-core @ git+https://github.com/OmniNode-ai/omnibase_core.git@5bf8592ec3e222ae196ac75292ba0d01caf78dfd" \
+          uv run --with "omnibase-core @ git+https://github.com/OmniNode-ai/omnibase_core.git@0c69dff015b6f83365d4b0247d8b3230516276ae" \
             python -m omnibase_core.validators.projection_exposure_drift \
             src \
             --fail-on-omission \
