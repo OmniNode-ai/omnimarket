@@ -718,6 +718,16 @@ def _canonical_result_to_task_delegated_payload(
         else 0.0
     )
     winning_tier = _winning_metered_tier_name(escalation_history)
+    # OMN-13649: prefer the AUTHORITATIVE serving tier carried on the canonical
+    # terminal (``cost_tier_name`` = ``workflow.current_tier_name`` from the
+    # routing decision). This is the tier-drop fix: a COMPLETED local/free
+    # delegation has no metered escalation_history winner, so the prior
+    # ``_winning_metered_tier_name`` fallback resolved to '' and the projection
+    # wrote an empty tier for the most common path. Fall back to the metered
+    # winner only when the terminal predates this field (back-compat).
+    raw_terminal_tier = payload.get("cost_tier_name")
+    terminal_tier = raw_terminal_tier if isinstance(raw_terminal_tier, str) else ""
+    resolved_tier = terminal_tier or winning_tier
 
     return {
         "correlation_id": payload.get("correlation_id"),
@@ -754,8 +764,12 @@ def _canonical_result_to_task_delegated_payload(
         # OMN-13408: the metered total + serving tier carried from the canonical
         # terminal. With cost_tier_name set, _measure_actual_cost re-prices/trusts
         # the metered cost instead of taking the unknown-tier 0.0 fall-through.
+        # OMN-13649: cost_tier_name is now the AUTHORITATIVE serving tier from the
+        # terminal (falling back to the metered escalation winner for pre-OMN-13649
+        # terminals), so a COMPLETED free/local row carries its real tier instead
+        # of '' — and _measure_actual_cost derives cost_tier_type from it.
         "cost_usd": cost_usd,
-        "cost_tier_name": winning_tier,
+        "cost_tier_name": resolved_tier,
         # OMN-13535: carry the per-tier attempt records (each with its priced
         # cost_usd) so the actual-cost recompute can add the prior metered tiers'
         # spend to the re-priced final tier on the completed path.

@@ -1777,6 +1777,14 @@ class HandlerDelegationWorkflow:
             # so COMPLETED and FAILED/ESCALATED rows both carry it. '' is the
             # honest OFF-arm default (no context pack supplied).
             context_pack_hash=inputs.context_pack_hash,
+            # OMN-13649: carry the AUTHORITATIVE serving tier onto the canonical
+            # terminal. ``cost.cost_tier_name`` is the tier the cost was measured
+            # against — ``inputs.cost_tier_name`` (= ``workflow.current_tier_name``)
+            # on the normal path, or the hoisted metered tier on the residual
+            # null-top-level FAILED shape. The projection persists this directly
+            # instead of reconstructing the tier from the model name, so the
+            # dashboard reads tier from the projection (deletes modelTier.ts).
+            cost_tier_name=cost.cost_tier_name,
         )
 
         # OMN-13629 (WS-F Phase 1): the legacy compat ``ModelTaskDelegatedEvent``
