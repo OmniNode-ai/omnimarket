@@ -300,10 +300,17 @@ projection_api:
         - captured_at
         - provisioned
         - latest_projection_updated_at
+        # OMN-13662: tier distribution with explicit not_tier_routed
+        # classification. Maps empty cost_tier_name (delegate-skill terminals)
+        # to 'not_tier_routed', excludes those rows from the tier-% denominator
+        # (tier_routed_total), and surfaces total_tasks + not_tier_routed_count
+        # so the dashboard reads the classification instead of re-deriving it.
+        - by_tier
       json_columns:
         - rows
         - by_model
         - decision_traces
+        - by_tier
       freshness_column: latest_projection_updated_at
       limit: 1
     - topic: onex.snapshot.projection.delegation.quality-gate.v1 # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention

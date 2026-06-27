@@ -633,9 +633,10 @@ class TestProjectionRoutes:
                 "rows",
                 "by_model",
                 "decision_traces",
+                "by_tier",
                 "latest_projection_updated_at",
             ),
-            json_columns=("rows", "by_model", "decision_traces"),
+            json_columns=("rows", "by_model", "decision_traces", "by_tier"),
             freshness_column="latest_projection_updated_at",
             limit=1,
             source_contract="projection_delegation",
@@ -646,6 +647,17 @@ class TestProjectionRoutes:
                 "rows": '[{"model_name":"qwen","task_type":"test","count":1}]',
                 "by_model": '[{"model_name":"qwen","total_count":1}]',
                 "decision_traces": '[{"correlation_id":"corr-json"}]',
+                # OMN-13662: tier distribution with explicit not_tier_routed
+                # classification; the projection-API must return it decoded so
+                # the dashboard reads the classification instead of re-deriving.
+                "by_tier": (
+                    '{"total_tasks":3,"tier_routed_total":1,'
+                    '"not_tier_routed_count":2,"tiers":['
+                    '{"cost_tier_name":"local","count":1,"tier_routed":true,'
+                    '"pct_of_tier_routed":1.0},'
+                    '{"cost_tier_name":"not_tier_routed","count":2,'
+                    '"tier_routed":false,"pct_of_tier_routed":0}]}'
+                ),
                 "latest_projection_updated_at": _ts(timedelta(minutes=1)),
             }
         ]
@@ -660,6 +672,14 @@ class TestProjectionRoutes:
         assert body["rows"][0]["rows"][0]["model_name"] == "qwen"
         assert body["rows"][0]["by_model"][0]["total_count"] == 1
         assert body["rows"][0]["decision_traces"][0]["correlation_id"] == "corr-json"
+        by_tier = body["rows"][0]["by_tier"]
+        assert by_tier["total_tasks"] == 3
+        assert by_tier["not_tier_routed_count"] == 2
+        not_routed = next(
+            t for t in by_tier["tiers"] if t["cost_tier_name"] == "not_tier_routed"
+        )
+        assert not_routed["tier_routed"] is False
+        assert not_routed["pct_of_tier_routed"] == 0
 
     def test_freshness_fresh(self) -> None:
         pool = _make_pool([], latest_ts=_ts(timedelta(minutes=1)))
