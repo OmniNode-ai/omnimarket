@@ -16,12 +16,13 @@
 --     'claude'                        -> premium (ceiling tier slot)
 --     '' / NULL / unrecognized        -> not_tier_routed (no cost_tier_name)
 --
--- not_tier_routed rows (every savings_estimates-sourced row, plus any
--- delegation_events terminal that predates OMN-13649 and never carried a tier)
--- are EXCLUDED from the tier-% denominator but still counted in task_count, per
--- the T3/OMN-13662 rule. Each pct = count(bucket rows) / count(tier-routed rows)
--- within the day; the three pcts therefore sum to 1.0 for any bucket that has at
--- least one tier-routed row, and are 0 when a bucket has none.
+-- not_tier_routed rows (savings_estimates rows without a matching tier-routed
+-- delegation event, plus any delegation_events terminal that predates
+-- OMN-13649 and never carried a tier) are EXCLUDED from the tier-% denominator
+-- but still counted in task_count, per the T3/OMN-13662 rule. Each pct =
+-- count(bucket rows) / count(tier-routed rows) within the day; the three pcts
+-- therefore sum to 1.0 for any bucket that has at least one tier-routed row, and
+-- are 0 when a bucket has none.
 --
 -- CREATE OR REPLACE keeps the existing five columns (bucket, actual_cost_usd,
 -- baseline_cost_usd, savings_usd, task_count) in the same order and type and
@@ -79,8 +80,37 @@ event_sessions AS (
         NULLIF(cost_tier_name, '') AS cost_tier_name
     FROM delegation_events
 ),
+event_tiers AS (
+    SELECT
+        session_id,
+        (array_agg(cost_tier_name ORDER BY created_at DESC)
+            FILTER (WHERE cost_tier_name IS NOT NULL))[1] AS cost_tier_name
+    FROM event_sessions
+    GROUP BY session_id
+),
 combined_sessions AS (
-    SELECT * FROM savings_sessions
+    SELECT
+        savings_sessions.session_id,
+        savings_sessions.task_type,
+        savings_sessions.model_name,
+        savings_sessions.local_cost_usd,
+        savings_sessions.cloud_cost_usd,
+        savings_sessions.savings_usd,
+        savings_sessions.baseline_model,
+        savings_sessions.pricing_manifest_version,
+        savings_sessions.savings_method,
+        savings_sessions.usage_source,
+        savings_sessions.prompt_tokens,
+        savings_sessions.completion_tokens,
+        savings_sessions.tokens_to_compliance,
+        savings_sessions.latency_ms,
+        savings_sessions.created_at,
+        savings_sessions.prompt_text,
+        savings_sessions.response_text,
+        COALESCE(event_tiers.cost_tier_name, savings_sessions.cost_tier_name)
+            AS cost_tier_name
+    FROM savings_sessions
+    LEFT JOIN event_tiers USING (session_id)
     UNION ALL
     SELECT event_sessions.*
     FROM event_sessions
