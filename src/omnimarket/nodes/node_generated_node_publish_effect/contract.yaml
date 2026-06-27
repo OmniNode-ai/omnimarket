@@ -85,11 +85,10 @@ inputs:
     type: bool
     description: >
       When true (default) the publish effect patches the target repo's
-      pyproject.toml to add the generated node under
-      [project.entry-points."onex.nodes"] before committing, making the node
-      immediately discoverable by the runtime entry-point loader. Set to false
-      only for repos that use a different discovery mechanism. (SEA Phase 7.2,
-      OMN-13625)
+      pyproject.toml to register the generated node under its canonical
+      entry-points group before committing, making the node immediately
+      discoverable by the runtime entry-point loader. Set to false only for
+      repos that use a different discovery mechanism. (SEA Phase 7.2, OMN-13625)
     required: false
     default: true
 
@@ -112,11 +111,11 @@ outputs:
   entry_point_registered:
     type: bool
     description: >
-      True when the node was successfully added to pyproject.toml's
-      [project.entry-points."onex.nodes"] section during this publish run (or
-      was already present). False when registration was skipped
-      (register_entry_point=false) or publish was blocked before registration
-      could complete. (SEA Phase 7.2, OMN-13625)
+      True when the node was successfully added to the canonical entry-points
+      group in pyproject.toml during this publish run (or was already present).
+      False when registration was skipped (register_entry_point=false) or
+      publish was blocked before registration could complete.
+      (SEA Phase 7.2, OMN-13625)
 
 terminal_event: onex.evt.omnimarket.generated-node-published.v1
 
