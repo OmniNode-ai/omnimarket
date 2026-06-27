@@ -8,9 +8,10 @@ node_not_implemented: false
 description: >
   SEA Phase 0.2 publish effect. Takes the full canonical node package staged by
   the Phase 0.1 generation spine, creates a fresh git worktree branch, commits
-  the package, pushes it, opens a PR carrying the OMN ticket reference and
-  dod_evidence, and emits the resulting PR URL on the bus. This is the auto-PR /
-  publish step of the SEA self-extension loop.
+  the package (including an auto-patched pyproject.toml entry-point registration
+  per Phase 7.2 / OMN-13625), pushes it, opens a PR carrying the OMN ticket
+  reference and dod_evidence, and emits the resulting PR URL on the bus. This is
+  the auto-PR / publish step of the SEA self-extension loop.
 
 # OMN-13530 pattern: top-level input_model so RuntimeLocal resolves the
 # initial-payload model (contract.input_model is the first resolver source) and
@@ -80,6 +81,17 @@ inputs:
     description: "Repo-relative directory the generated package is placed under"
     required: false
     default: "src/omnimarket/nodes"
+  register_entry_point:
+    type: bool
+    description: >
+      When true (default) the publish effect patches the target repo's
+      pyproject.toml to add the generated node under
+      [project.entry-points."onex.nodes"] before committing, making the node
+      immediately discoverable by the runtime entry-point loader. Set to false
+      only for repos that use a different discovery mechanism. (SEA Phase 7.2,
+      OMN-13625)
+    required: false
+    default: true
 
 outputs:
   published:
@@ -97,6 +109,14 @@ outputs:
     type: str
     description: "Human-readable reason publish was blocked, or null on success"
     nullable: true
+  entry_point_registered:
+    type: bool
+    description: >
+      True when the node was successfully added to pyproject.toml's
+      [project.entry-points."onex.nodes"] section during this publish run (or
+      was already present). False when registration was skipped
+      (register_entry_point=false) or publish was blocked before registration
+      could complete. (SEA Phase 7.2, OMN-13625)
 
 terminal_event: onex.evt.omnimarket.generated-node-published.v1
 
@@ -117,16 +137,20 @@ side_effects:
     - node_name
 
 dod_evidence:
-  phase: 1
+  phase: 2
   artifacts:
     - tests/nodes/node_generated_node_publish_effect/test_handler_generated_node_publish_effect.py
     - tests/test_golden_chain_generated_node_publish_effect.py
   validation_notes: >
-    Phase 1: deterministic publish happy path (worktree + commit + push +
-    gh pr create + bus emit) plus block branches (missing staging dir, push
-    failure, gh pr create failure). All git/gh I/O exercised via the injected
-    run_fn -- no real subprocess.
+    Phase 1 (OMN-13606): deterministic publish happy path (worktree + commit +
+    push + gh pr create + bus emit) plus block branches (missing staging dir,
+    push failure, gh pr create failure). All git/gh I/O exercised via the
+    injected run_fn -- no real subprocess.
+    Phase 2 (OMN-13625): entry-point auto-registration -- _patch_pyproject_entry_point
+    patches worktree pyproject.toml, entry appears in result.entry_point_registered,
+    idempotent (second registration skips the write), register_entry_point=false
+    skips the step, missing pyproject.toml blocks publish.
 
 metadata:
   transport_type: kafka
-  related_tickets: ["OMN-13606", "OMN-13604"]
+  related_tickets: ["OMN-13606", "OMN-13604", "OMN-13625"]

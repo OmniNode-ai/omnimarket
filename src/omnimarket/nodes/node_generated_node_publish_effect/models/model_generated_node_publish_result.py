@@ -1,7 +1,12 @@
 # SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
 
-"""ModelGeneratedNodePublishResult -- output contract for the publish effect."""
+"""ModelGeneratedNodePublishResult -- output contract for the publish effect.
+
+SEA Phase 7.2 (OMN-13625): adds ``entry_point_registered`` to record whether the
+node was successfully added to pyproject.toml's [project.entry-points."onex.nodes"]
+section during the publish run.
+"""
 
 from __future__ import annotations
 
@@ -32,6 +37,16 @@ class ModelGeneratedNodePublishResult(BaseModel):
     blocked_reason: str | None = Field(
         default=None,
         description="Human-readable reason publish was blocked, or None on success.",
+    )
+    entry_point_registered: bool = Field(
+        default=False,
+        description=(
+            "True when the node was successfully added to pyproject.toml's "
+            '[project.entry-points."onex.nodes"] section during this publish run '
+            "(or was already present). False when registration was skipped "
+            "(register_entry_point=False) or publish was blocked before registration "
+            "could complete. (SEA Phase 7.2, OMN-13625)"
+        ),
     )
 
 
