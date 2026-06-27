@@ -360,9 +360,12 @@ class TestBuildProjectionTopicMap:
             topic_map["onex.snapshot.projection.delegation.savings.v1"].table
             == "projection_delegation_savings"
         )
+        # OMN-13662: by_tier added — tier distribution with explicit
+        # not_tier_routed classification (delegate-skill terminals excluded from
+        # the tier-% denominator, included in totals).
         assert topic_map[
             "onex.snapshot.projection.delegation.model-routing.v1"
-        ].json_columns == ("rows", "by_model", "decision_traces")
+        ].json_columns == ("rows", "by_model", "decision_traces", "by_tier")
 
     def test_savings_reducer_exposes_cost_savings_overview_snapshot(self) -> None:
         topic_map = build_projection_topic_map()

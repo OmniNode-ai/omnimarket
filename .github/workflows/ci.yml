@@ -622,6 +622,53 @@ jobs:
           path: sea-e2e-chain-results.xml
 
   # ============================================================================
+  # GENERATED-NODE GOLDEN-CHAIN GATE (OMN-13624)
+  # Dedicated required gate for the self-extension loop golden-chain tests.
+  # Runs the two canonical proofs for the node-generation pipeline:
+  #   - test_golden_chain_generation_self_extension.py  (§D2 loop proof)
+  #   - test_golden_chain_generated_node_publish_effect.py  (§publish chain)
+  # Separate from the broad golden-chains job so failures surface explicitly
+  # against the generation/SEA nodes rather than buried in the full suite.
+  # Zero infra required — all assertions use injected fakes and sandbox exec.
+  # Wired as: ci.yml BLOCKING gate + pre-commit hook (Operating Rule #5).
+  # ============================================================================
+
+  generated-node-golden-chain:
+    name: Generated-Node Golden Chain Gate (OMN-13624)
+    needs: zone-filter
+    if: needs.zone-filter.outputs.docs_only != 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Clone omnibase_core
+        run: git clone --depth=1 https://github.com/OmniNode-ai/omnibase_core.git ../omnibase_core
+      - name: Clone omnibase_compat
+        run: git clone --depth=1 https://github.com/OmniNode-ai/omnibase_compat.git ../omnibase_compat
+      - name: Clone omnimemory
+        run: git clone --depth=1 https://github.com/OmniNode-ai/omnimemory.git ../omnimemory
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+      - name: Set up Python 3.12
+        run: uv python install 3.12
+      - name: Install dependencies
+        run: uv sync --locked --all-extras
+      - name: Run generated-node golden-chain tests
+        run: |
+          uv run pytest \
+            tests/test_golden_chain_generation_self_extension.py \
+            tests/test_golden_chain_generated_node_publish_effect.py \
+            -v --tb=short -m "not kafka" \
+            --junit-xml=generated-node-golden-chain-results.xml
+      - name: Upload generated-node golden-chain results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: generated-node-golden-chain-results
+          path: generated-node-golden-chain-results.xml
+
+  # ============================================================================
   # GATE AGGREGATOR
   # Required status check for branch protection and merge queue.
   # ============================================================================
@@ -770,7 +817,7 @@ jobs:
   ci-summary:
     name: CI Summary
     runs-on: ubuntu-latest
-    needs: [zone-filter, lint, typecheck, detect-changes, test, topic-naming-lint, runtime-sweep, core-only-install, contract-compliance, e2e-workflow-runner, golden-chains, sea-e2e-chains, dep-health, aislop-sweep]
+    needs: [zone-filter, lint, typecheck, detect-changes, test, topic-naming-lint, runtime-sweep, core-only-install, contract-compliance, e2e-workflow-runner, golden-chains, sea-e2e-chains, generated-node-golden-chain, dep-health, aislop-sweep]
     if: always()
     steps:
       - name: Check CI results
@@ -791,6 +838,7 @@ jobs:
             "e2e-workflow-runner=${{ needs.e2e-workflow-runner.result }}" \
             "golden-chains=${{ needs.golden-chains.result }}" \
             "sea-e2e-chains=${{ needs.sea-e2e-chains.result }}" \
+            "generated-node-golden-chain=${{ needs.generated-node-golden-chain.result }}" \
             "dep-health=${{ needs.dep-health.result }}" \
             "aislop-sweep=${{ needs.aislop-sweep.result }}"; do
             NAME="${check%%=*}"

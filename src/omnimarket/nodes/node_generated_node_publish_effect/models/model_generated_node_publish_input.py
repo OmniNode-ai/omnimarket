@@ -8,6 +8,11 @@ SEA Phase 0.2 (OMN-13606): the command to publish a generated node package. The
 generation spine (``handler_generated_executor.scaffold_package``); this effect
 copies it into the target repo's node tree, commits it on a fresh worktree
 branch, and opens a PR.
+
+SEA Phase 7.2 (OMN-13625): adds ``register_entry_point`` (default ``True``).
+When True the publish effect also patches the target repo's ``pyproject.toml``
+to add the generated node under ``[project.entry-points."onex.nodes"]`` so the
+runtime discovers it by standard entry-point lookup without any manual edit.
 """
 
 from __future__ import annotations
@@ -63,6 +68,15 @@ class ModelGeneratedNodePublishInput(BaseModel):
             "placed before commit."
         ),
         min_length=1,
+    )
+    register_entry_point: bool = Field(
+        default=True,
+        description=(
+            "When True (default) the publish effect automatically adds the generated "
+            'node to [project.entry-points."onex.nodes"] in the target repo\'s '
+            "pyproject.toml so the runtime can discover it by standard entry-point "
+            "lookup without any manual edit (SEA Phase 7.2, OMN-13625)."
+        ),
     )
 
 

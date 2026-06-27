@@ -128,6 +128,30 @@ repos:
           - --baseline
           - architecture-handshakes/validator-requirements-baseline.yaml
 
+  # OMN-13663 (T4, epic OMN-13659): projection exposure⇄column drift gate.
+  # Reconciles every projection node contract.yaml's projection_api.exposures
+  # against the materialized columns of the table/view each exposure reads from
+  # (DDL extracted from the node's own migrations: CREATE TABLE / ALTER TABLE ADD
+  # COLUMN / CREATE [OR REPLACE] VIEW). EXISTENCE drift (an exposure references a
+  # column its table/view does not materialize → the projection query fails at
+  # runtime) is ALWAYS blocking and is not allowlistable. OMISSION drift (a
+  # materialized identity/tier/cost column surfaced by no exposure — the
+  # cost_tier_name silent-boundary-drop class, OMN-13649) is ENFORCED via
+  # --fail-on-omission against the annotated ratchet baseline in
+  # .projection-exposure-allowlist.yaml; a new unannotated omission of such a
+  # column blocks. The hook (pass_filenames: false) re-reconciles the whole src
+  # tree whenever a projection contract.yaml or a migration .sql changes.
+  # Re-pin rev to the merged-dev SHA once omnibase_core#1350 lands.
+  - repo: https://github.com/OmniNode-ai/omnibase_core
+    rev: 0c69dff015b6f83365d4b0247d8b3230516276ae # pragma: allowlist secret
+    hooks:
+      - id: check-projection-exposure-drift
+        args:
+          - src
+          - --fail-on-omission
+          - --allowlist
+          - .projection-exposure-allowlist.yaml
+
   # Shared ONEX governance hooks (onex_change_control)
   - repo: https://github.com/OmniNode-ai/onex_change_control
     rev: 8d7e85bc00e7f1b1306d1cb40949be1ab6e7e91a  # pragma: allowlist secret
@@ -408,6 +432,24 @@ repos:
         language: system
         entry: uv run pytest tests/unit/nodes/node_dod_verify/test_durable_evidence_gate.py -q -m unit
         files: ^(src/omnimarket/nodes/node_dod_verify/(services/durable_evidence_gate|models/model_durable_evidence_gate)\.py|tests/unit/nodes/node_dod_verify/test_durable_evidence_gate\.py)$
+        pass_filenames: false
+        stages: [pre-commit]
+
+      # OMN-13624 (WS-C SEA Phase 7.1): generated-node golden-chain gate.
+      # Executes the two canonical self-extension loop proofs when generation
+      # node source or the golden-chain test files themselves change.
+      # SYNC with ci.yml job "generated-node-golden-chain" (Operating Rule #5).
+      #   - test_golden_chain_generation_self_extension.py  (§D2 loop proof)
+      #   - test_golden_chain_generated_node_publish_effect.py  (§publish chain)
+      - id: generated-node-golden-chain-gate
+        name: Generated-node golden-chain gate (OMN-13624)
+        language: system
+        entry: uv run pytest tests/test_golden_chain_generation_self_extension.py tests/test_golden_chain_generated_node_publish_effect.py -q -m "not kafka"
+        files: >-
+          ^(src/omnimarket/nodes/node_generation_consumer/|
+          src/omnimarket/nodes/node_generated_node_publish_effect/|
+          tests/test_golden_chain_generation_self_extension\.py|
+          tests/test_golden_chain_generated_node_publish_effect\.py)
         pass_filenames: false
         stages: [pre-commit]
 

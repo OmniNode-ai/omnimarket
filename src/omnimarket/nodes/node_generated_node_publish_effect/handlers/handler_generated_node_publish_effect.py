@@ -14,20 +14,31 @@ Flow (all git/gh I/O via the injected ``run_fn`` -- no real subprocess in tests)
     1. Resolve the target repo's canonical clone root (fail-fast from OMNI_HOME).
     2. Create a fresh git worktree + branch off the base branch.
     3. Copy the staged canonical package into the repo node subdir.
-    4. ``git add`` + ``git commit`` the package.
-    5. ``git push`` the branch.
-    6. ``gh pr create`` with a title + body carrying the OMN ticket + dod_evidence.
-    7. Emit the resulting PR URL on the contract-declared publish topic.
+    4. Register the entry point in pyproject.toml (Phase 7.2, OMN-13625).
+    5. ``git add`` + ``git commit`` the package + pyproject.toml change.
+    6. ``git push`` the branch.
+    7. ``gh pr create`` with a title + body carrying the OMN ticket + dod_evidence.
+    8. Emit the resulting PR URL on the contract-declared publish topic.
 
 Topics are read from contract.yaml (never hardcoded in the handler). Endpoints
 are not used -- gh resolves the GitHub host from ambient auth; there are no
 env-encoded endpoints in this node.
+
+Phase 7.2 (OMN-13625) adds automatic entry-point registration: when
+``payload.register_entry_point`` is True (the default), the handler patches the
+worktree's ``pyproject.toml`` to add the generated node under
+``[project.entry-points."onex.nodes"]`` before committing. The module prefix is
+derived from ``node_subdir`` by stripping a leading ``src/`` layout prefix and
+converting path separators to dots (e.g. ``src/omnimarket/nodes`` →
+``omnimarket.nodes``). Registration is idempotent -- if the entry line already
+exists in pyproject.toml the step is a no-op.
 """
 
 from __future__ import annotations
 
 import logging
 import os
+import re
 import shutil
 import subprocess
 import tempfile
@@ -74,6 +85,71 @@ def _default_repo_root(repo: str) -> Path:
     omni_home = Path(os.environ["OMNI_HOME"])
     short_name = repo.split("/")[-1]
     return omni_home / short_name
+
+
+_ONEX_NODES_SECTION = '[project.entry-points."onex.nodes"]'
+
+
+def _derive_module_prefix(node_subdir: str) -> str:
+    """Derive Python import prefix from a repo-relative node_subdir path.
+
+    Strips a leading ``src`` layout segment (if present) and converts remaining
+    path separators to dots:
+
+        ``src/omnimarket/nodes`` → ``omnimarket.nodes``
+        ``omnimarket/nodes``     → ``omnimarket.nodes``
+    """
+    parts = Path(node_subdir).parts
+    if parts and parts[0] == "src":
+        parts = parts[1:]
+    return ".".join(parts)
+
+
+def _patch_pyproject_entry_point(
+    pyproject_path: Path,
+    node_name: str,
+    module_prefix: str,
+) -> tuple[bool, str | None]:
+    """Add *node_name* to the onex.nodes entry-point section in pyproject.toml.
+
+    Returns ``(registered, blocked_reason)``:
+    - ``(True, None)``   — line was added (or was already present).
+    - ``(False, reason)`` — pyproject.toml missing or section header not found.
+
+    The patch is idempotent: if the exact entry line already appears in the file
+    the function returns ``(True, None)`` without writing anything.
+    """
+    if not pyproject_path.is_file():
+        return False, f"pyproject.toml not found: {pyproject_path}"
+
+    content = pyproject_path.read_text(encoding="utf-8")
+
+    entry_line = f'{node_name} = "{module_prefix}.{node_name}"'
+
+    # Idempotent: skip if already registered
+    if entry_line in content:
+        return True, None
+
+    if _ONEX_NODES_SECTION not in content:
+        return False, (
+            f"section {_ONEX_NODES_SECTION!r} not found in pyproject.toml; "
+            "cannot auto-register entry point"
+        )
+
+    # Find where this section ends: next bare `[` at the start of a line, or EOF.
+    header_idx = content.index(_ONEX_NODES_SECTION)
+    after_header = content[header_idx + len(_ONEX_NODES_SECTION) :]
+    next_section = re.search(r"\n\[", after_header)
+    if next_section:
+        insert_pos = header_idx + len(_ONEX_NODES_SECTION) + next_section.start()
+        # Insert before the blank line that separates sections (keep blank line).
+        new_content = content[:insert_pos] + "\n" + entry_line + content[insert_pos:]
+    else:
+        # The onex.nodes section runs to the end of the file.
+        new_content = content.rstrip("\n") + "\n" + entry_line + "\n"
+
+    pyproject_path.write_text(new_content, encoding="utf-8")
+    return True, None
 
 
 def _load_publish_topic(contract_path: Path | None = None) -> str:
@@ -173,6 +249,21 @@ class HandlerGeneratedNodePublishEffect:
                     blocked_reason=f"failed to copy staged package: {exc}",
                 )
 
+            # Phase 7.2 (OMN-13625): auto-register the entry point in pyproject.toml
+            # before committing so the merged node is immediately discoverable by the
+            # runtime entry-point loader without any manual pyproject edit.
+            ep_registered = False
+            if payload.register_entry_point:
+                ep_registered, ep_blocked = self._register_entry_point(
+                    worktree_dir, node_name, payload.node_subdir
+                )
+                if ep_blocked is not None:
+                    return self._terminal(
+                        payload,
+                        published=False,
+                        blocked_reason=ep_blocked,
+                    )
+
             blocked = self._commit_and_push(worktree_dir, branch, payload)
             if blocked is not None:
                 return self._terminal(payload, published=False, blocked_reason=blocked)
@@ -187,6 +278,7 @@ class HandlerGeneratedNodePublishEffect:
             published=True,
             pr_url=pr_url,
             branch=branch,
+            entry_point_registered=ep_registered,
         )
 
     def _create_worktree(
@@ -283,6 +375,29 @@ class HandlerGeneratedNodePublishEffect:
             return None, "gh pr create returned no PR URL"
         return pr_url, None
 
+    def _register_entry_point(
+        self,
+        worktree_dir: Path,
+        node_name: str,
+        node_subdir: str,
+    ) -> tuple[bool, str | None]:
+        """Patch pyproject.toml in the worktree to add the node entry point.
+
+        Phase 7.2 (OMN-13625). Returns ``(registered, blocked_reason)``.
+        Delegates to the module-level ``_patch_pyproject_entry_point`` helper
+        so the logic is testable without constructing a full handler instance.
+        """
+        pyproject_path = worktree_dir / "pyproject.toml"
+        module_prefix = _derive_module_prefix(node_subdir)
+        logger.debug(
+            "[generated-publish] registering entry point %s = %s.%s in %s",
+            node_name,
+            module_prefix,
+            node_name,
+            pyproject_path,
+        )
+        return _patch_pyproject_entry_point(pyproject_path, node_name, module_prefix)
+
     @staticmethod
     def _build_pr_body(payload: ModelGeneratedNodePublishInput, branch: str) -> str:
         """Build a PR body carrying the OMN ticket reference + dod_evidence."""
@@ -303,6 +418,7 @@ class HandlerGeneratedNodePublishEffect:
         pr_url: str | None = None,
         branch: str | None = None,
         blocked_reason: str | None = None,
+        entry_point_registered: bool = False,
     ) -> ModelGeneratedNodePublishResult:
         """Build the typed result and emit it on the contract-declared topic."""
         result = ModelGeneratedNodePublishResult(
@@ -313,6 +429,7 @@ class HandlerGeneratedNodePublishEffect:
             pr_url=pr_url,
             branch=branch,
             blocked_reason=blocked_reason,
+            entry_point_registered=entry_point_registered,
         )
         if self._event_publisher is not None:
             try:
