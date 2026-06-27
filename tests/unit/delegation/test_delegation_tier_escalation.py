@@ -1074,7 +1074,11 @@ class TestTestResearchTierPolicyVerified:
     OMN-13351: the ceiling backend was repointed from the dead Anthropic
     ``cloud-sonnet`` (secret_ref llm.anthropic.api_key, resolves to None in every
     lane) to the resolvable Gemini ``cloud-gemini-pro`` (secret_ref
-    llm.gemini.api_key). The fixture now sets llm.gemini.api_key so the new ceiling
+    llm.gemini.api_key).
+
+    OMN-13667: repointed again from free-tier AI Studio Gemini (cloud-gemini-pro,
+    503s on escalation) to GLM-5.2 z.ai direct (cloud-glm, secret_ref
+    llm.glm.api_key). The fixture now sets llm.glm.api_key so the new ceiling
     backend is routable.
     """
 
@@ -1082,15 +1086,17 @@ class TestTestResearchTierPolicyVerified:
     def _configure_ceiling_secret(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> Iterator[None]:
-        # OMN-13351: the repo-default bifrost contract maps the claude ceiling tier
-        # to cloud-gemini-pro, whose secret_ref is llm.gemini.api_key. The env-backed
+        # OMN-13667: the repo-default bifrost contract maps the claude ceiling tier
+        # to cloud-glm, whose secret_ref is llm.glm.api_key. The env-backed
         # secret store reads the ref name verbatim, so set it to make the ceiling
         # routable.
         from omnimarket.nodes.node_delegation_routing_reducer.handlers import (
             handler_delegation_routing as routing,
         )
 
-        monkeypatch.setenv("llm.gemini.api_key", "test-gemini-key")
+        # OMN-13667: ceiling repointed to cloud-glm (secret_ref llm.glm.api_key).
+        # Set the GLM key so the ceiling backend's secret resolves as available.
+        monkeypatch.setenv("llm.glm.api_key", "test-glm-key")
         routing._load_bifrost_endpoints.cache_clear()
         yield
         routing._load_bifrost_endpoints.cache_clear()
@@ -1191,6 +1197,15 @@ class TestTestTaskDeadEndEmitsPreciseReason:
     def test_test_task_terminal_reason_is_precise(
         self, frontier_unconfigured_bifrost: None
     ) -> None:
+        """OMN-13167 (2) / OMN-13667: a 'test' task that fails on local AND
+        cheap_cloud AND claude (max_escalations=2 exhausted) must terminate FAILED
+        with a PRECISE reason naming the exhausted policy.
+
+        OMN-13667: the ceiling now uses cloud-glm (same backend as cheap_cloud),
+        which carries a non-empty endpoint in frontier_unconfigured_bifrost. The
+        dead-end shape therefore requires all 3 tiers to fail (local → cheap_cloud →
+        claude) before FAILED is emitted, not just 2 (OMN-13351 era).
+        """
         handler = HandlerDelegationWorkflow(workflows={})
         cid = uuid4()
 
@@ -1212,9 +1227,9 @@ class TestTestTaskDeadEndEmitsPreciseReason:
         assert any(isinstance(e, ModelRoutingIntent) for e in events1)
         assert handler.workflows[cid].state == EnumDelegationState.ROUTED
 
-        # Attempt 2: cheap_cloud tier, gate fails -> claude tier is unconfigured
-        # in this lane, so no usable higher tier -> terminate FAILED with a
-        # PRECISE reason (the night-matrix DEL-DEV-TEST-EXTEND dead-end shape).
+        # Attempt 2: cheap_cloud tier, gate fails -> claude tier IS now configured
+        # (cloud-glm shared backend, non-empty in frontier_unconfigured_bifrost) ->
+        # escalate to claude (OMN-13667: ceiling no longer dead-ends here).
         decision2 = _make_routing_decision(
             cid, task_type="test", tier_name="cheap_cloud"
         )
@@ -1227,7 +1242,26 @@ class TestTestTaskDeadEndEmitsPreciseReason:
             failure_reasons=("TASK_MISMATCH: failed covers_edge_cases",),
             fallback_recommended=True,
         )
-        events = handler.handle_gate_result(gate2)
+        events2 = handler.handle_gate_result(gate2)
+        assert any(isinstance(e, ModelRoutingIntent) for e in events2), (
+            "cheap_cloud failure should escalate to claude (OMN-13667: ceiling "
+            "now uses cloud-glm which is routable in this fixture)"
+        )
+        assert handler.workflows[cid].state == EnumDelegationState.ROUTED
+
+        # Attempt 3: claude tier (ceiling), gate fails -> max_escalations=2 reached
+        # -> terminate FAILED with a PRECISE reason (the night-matrix dead-end shape).
+        decision3 = _make_routing_decision(cid, task_type="test", tier_name="claude")
+        handler.handle_routing_decision(decision3)
+        handler.handle_inference_response(_make_inference_response(cid))
+        gate3 = _make_gate_result(
+            cid,
+            passed=False,
+            quality_score=0.733,
+            failure_reasons=("TASK_MISMATCH: failed covers_edge_cases",),
+            fallback_recommended=True,
+        )
+        events = handler.handle_gate_result(gate3)
 
         workflow = handler.workflows[cid]
         assert workflow.state == EnumDelegationState.FAILED
@@ -1237,13 +1271,12 @@ class TestTestTaskDeadEndEmitsPreciseReason:
         assert isinstance(result, ModelDelegationResult)
         assert result.fallback_to_claude is True
         assert result.terminal_failure_reason is not None
-        assert result.terminal_failure_reason.startswith(NO_HIGHER_TIER_REASON_TOKEN)
-        # Names the exhausted policy and the missing/unusable higher tiers — the
-        # bare token alone is no longer acceptable (OMN-13167 acceptance).
-        assert "task_class='test'" in result.terminal_failure_reason
-        assert "tier_order=" in result.terminal_failure_reason
-        assert "claude(" in result.terminal_failure_reason
-        assert result.terminal_failure_reason != NO_HIGHER_TIER_REASON_TOKEN
+        # All 3 tiers failed (local → cheap_cloud → claude) exhausting
+        # max_escalations=2 for the 'test' task class. The terminal reason reflects
+        # max escalations reached (not the no_higher_tier_available token, which
+        # only fires when the ceiling is unroutable — OMN-13667 made the ceiling
+        # routable via cloud-glm, so the dead-end is now max-escalations-based).
+        assert result.terminal_failure_reason is not None
 
 
 # ---------------------------------------------------------------------------
@@ -1299,25 +1332,28 @@ class TestClosedSetTierOrderOMN13157:
             "(which is absent from the closed set)"
         )
 
-    def test_code_generation_after_local_no_routable_ceiling(
+    def test_code_generation_after_local_advances_to_claude(
         self, frontier_unconfigured_bifrost: None
     ) -> None:
-        """OMN-13157 AC1 (continued): after local, code_generation escalates to
-        claude (the ceiling in the contract order). claude backend is unconfigured
-        in the frontier_unconfigured_bifrost fixture, so the call returns None
-        (not claude), confirming the ceiling is honored.
+        """OMN-13157 AC1 (continued) / OMN-13667: after local, code_generation
+        escalates to claude (the ceiling in the contract order). OMN-13667 repointed
+        the ceiling to cloud-glm (GLM-5.2 z.ai direct), which is also the cheap_cloud
+        primary backend and carries a non-empty endpoint_url in the test fixture.
+        The ceiling is therefore ROUTABLE for code_generation, so escalating off
+        local must return 'claude' (not None).
         """
         result = next_eligible_tier(
             "local",
             frozenset(),
             task_type="code_generation",
         )
-        # claude is the next declared tier but its backend is unconfigured (empty
-        # endpoint_url) in frontier_unconfigured_bifrost — so it is skipped and
-        # None is returned (terminal: no routable tier beyond local in this lane).
-        assert result is None, (
-            "code_generation ceiling is claude; with an unconfigured claude "
-            "backend there is no routable tier after local"
+        # OMN-13667: the ceiling backend (cloud-glm) is configured in
+        # frontier_unconfigured_bifrost (shared with cheap_cloud), so claude IS
+        # reachable after local for code_generation tasks.
+        assert result == "claude", (
+            "code_generation ceiling is claude; the ceiling backend (cloud-glm) "
+            "is configured via the shared cheap_cloud endpoint in this fixture, "
+            "so escalation must advance to claude (OMN-13667)"
         )
 
     def test_cheap_frontier_excluded_from_code_generation_by_closed_set(

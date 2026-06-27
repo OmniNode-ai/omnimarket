@@ -150,8 +150,11 @@ class TestRoutingTiersTypedCost:
         assert cheap.cost_type is EnumTierCostType.METERED
         assert cheap.rate_per_1k_usd == pytest.approx(0.002)
 
-    def test_ceiling_tier_is_free_local(self) -> None:
-        """OMN-13351: ceiling routes to free-tier Gemini -> zero marginal cost."""
+    def test_ceiling_tier_is_metered(self) -> None:
+        """OMN-13667: ceiling repointed to GLM-5.2 z.ai direct (billed key) ->
+        metered at the same 0.002/1k rate as cheap_cloud."""
         config = self._config()
         by_name = {t.name: t for t in config.tiers}  # type: ignore[attr-defined]
-        assert by_name["claude"].cost.cost_type is EnumTierCostType.FREE_LOCAL
+        ceiling = by_name["claude"].cost
+        assert ceiling.cost_type is EnumTierCostType.METERED
+        assert ceiling.rate_per_1k_usd == pytest.approx(0.002)
