@@ -5,21 +5,23 @@
 
 Provides a bifrost-delegation config that mirrors the deployed stability-test
 regression shape from OMN-12939: local and cheap_cloud tiers carry resolvable
-endpoints, while the claude/frontier_api tier ceiling backend has an empty
-endpoint_url value. This lets escalation tests exercise the real routing-reducer
-eligibility path — including the case where escalation past cheap_cloud has no
-routable higher tier and the orchestrator must terminate (delegation-failed)
-rather than strand the FSM.
+endpoints; some tests verify the eligibility path when the ceiling is unavailable.
 
 OMN-13215: the shelled ``cli_agents`` backends were removed from this fixture
 along with the tier itself; the ceiling is the HTTP-backed ``claude`` tier.
 
-OMN-13351: the claude-tier ceiling backend in routing_tiers.yaml was repointed
-from the dead Anthropic ``cloud-sonnet`` (llm.anthropic.api_key resolves to None
-in every lane) to the resolvable Gemini ``cloud-gemini-pro``. This fixture's
-unconfigured-ceiling stub is therefore ``cloud-gemini-pro`` with an empty
-endpoint_url (so the claude tier referenced by routing_tiers.yaml is the one left
-unroutable). The dead Anthropic ``cloud-sonnet``/``cloud-haiku`` stubs were removed.
+OMN-13351: the claude-tier ceiling backend was repointed from the dead Anthropic
+``cloud-sonnet`` to ``cloud-gemini-pro`` (empty endpoint_url here → ceiling
+unroutable in tests that specifically need that shape).
+
+OMN-13667: the ceiling was repointed again to GLM-5.2 z.ai direct (cloud-glm)
++ fallback openrouter-qwen3-coder-480b. BOTH ceiling backends carry NON-EMPTY
+endpoints in this fixture because ``cloud-glm`` is also the primary model for the
+``cheap_cloud`` tier (test/research tasks) — making it empty would silently break
+cheap_cloud routability. ``cloud-gemini-pro`` is kept (empty) for contract
+completeness; tests that still need an entirely-unroutable ceiling for a specific
+task type must use a task class whose tier_order ends at cheap_cloud (e.g. document)
+or supply their own fixture.
 """
 
 from __future__ import annotations
@@ -31,9 +33,11 @@ from pathlib import Path
 import pytest
 
 # Bifrost config covering every backend_id referenced by routing_tiers.yaml.
-# cloud-gemini-pro (claude ceiling tier, OMN-13351) carries an empty endpoint_url —
-# so escalating to that tier yields no routable backend, matching the deployed
-# regression.
+# OMN-13667: the claude ceiling now uses cloud-glm (primary) +
+# openrouter-qwen3-coder-480b (fallback). Both carry empty endpoint_url here so
+# escalating to the ceiling tier yields no routable backend, preserving the
+# deployed-regression shape. cloud-gemini-pro kept (empty) for contract
+# completeness; it is no longer the ceiling backend.
 BIFROST_FRONTIER_UNCONFIGURED = textwrap.dedent(
     """\
     config_version: "1.2.0"
@@ -71,10 +75,10 @@ BIFROST_FRONTIER_UNCONFIGURED = textwrap.dedent(
         capabilities: [reasoning]
       - backend_id: cloud-glm
         endpoint_url: "https://cloud.test/glm/v4/chat/completions"
-        model_name: glm-z-ai
+        model_name: glm-5.2
         tier: cheap_cloud
         timeout_ms: 30000
-        capabilities: [documentation]
+        capabilities: [code_generation]
       - backend_id: cloud-gemini-flash
         endpoint_url: "https://cloud.test/gemini/v1/chat/completions"
         model_name: gemini-2.5-flash-lite
@@ -135,13 +139,17 @@ BIFROST_FRONTIER_UNCONFIGURED = textwrap.dedent(
 def frontier_unconfigured_bifrost(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> Iterator[None]:
-    """Point the routing reducer at a bifrost config where the claude/frontier
-    tier endpoints are empty (the deployed stability-test regression shape).
+    """Point the routing reducer at a bifrost config used by delegation escalation
+    tests (the deployed stability-test regression shape from OMN-12939).
 
-    Local and cheap_cloud backends carry resolvable endpoints; cloud-gemini-pro
-    (the claude ceiling tier, OMN-13351) does not. Backends here declare no
-    api_key_ref, so they are usable in unit context purely on a non-empty
-    endpoint_url — exactly the eligibility delta() applies.
+    Local, cheap_cloud, and cheap_frontier backends carry resolvable endpoints.
+    cloud-gemini-pro (the old ceiling backend) has an empty endpoint_url.
+    OMN-13667: the new ceiling backends (cloud-glm + openrouter-qwen3-coder-480b)
+    have NON-EMPTY endpoints because cloud-glm is shared with cheap_cloud — tests
+    that specifically require the ceiling to be unroutable must use a task class
+    whose tier_order ends at cheap_cloud (e.g. document) or add a local fixture.
+    Backends here declare no api_key_ref, so they are usable in unit context
+    purely on a non-empty endpoint_url — exactly the eligibility delta() applies.
     """
     from omnimarket.nodes.node_delegation_routing_reducer.handlers import (
         handler_delegation_routing as routing,
