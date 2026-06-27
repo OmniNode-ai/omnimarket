@@ -1772,6 +1772,100 @@ class ModelProdHealthResolvedEvent(BaseModel):
     )
 
 
+# ---------------------------------------------------------------------------
+# Cloud build-complete event (OMN-13655)
+# ---------------------------------------------------------------------------
+
+
+class ModelRuntimeImageBuilt(BaseModel):
+    """Emitted when a cloud CI build produces a deployable runtime image (OMN-13655).
+
+    This event is the contract-sourced entrypoint for the canonical redeploy
+    node path. A CI pipeline (or a thin agent shim) emits it on
+    ``onex.evt.omnimarket.runtime-image-built.v1`` once an image has been
+    built and pushed to the registry. The redeploy ORCHESTRATOR subscribes to
+    this topic and coerces the event into a ``ModelRedeployStartCommand`` for
+    the prod-promotion gate — replacing the previous imperative git/gh/docker
+    driven path.
+
+    Fields follow the task §4.2 specification exactly:
+
+    * ``digest`` — immutable OCI image digest (sha256:...) of the built image.
+    * ``source_sha`` — git commit SHA the image was built from.
+    * ``build_source`` — artifact source class (WORKSPACE or RELEASE).
+    * ``promotion_class`` — provenance class; STABILITY_CANDIDATE images are
+      refused for prod by the gate unless an explicit grant authorizes the
+      candidate class (OMN-13656).
+    * ``provenance`` — opaque provenance string recorded on the emitting CI run
+      (e.g. "ci:build-runtime.yml:run_id=<id>"); audit trail only.
+
+    The event does NOT carry a promotion grant (a build event cannot authorize
+    its own promotion). The prod-promotion gate receives the grant from the
+    out-of-band resolver EFFECT (Phase-2b, OMN-13439).
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    correlation_id: UUID = Field(
+        ...,
+        description="Redeploy run correlation ID threaded through the bus path.",
+    )
+    digest: str = Field(
+        ...,
+        min_length=1,
+        description="Immutable OCI image digest (sha256:...) of the built image.",
+    )
+    source_sha: str = Field(
+        ...,
+        min_length=1,
+        description="Git commit SHA the image was built from.",
+    )
+    build_source: EnumBuildSource = Field(
+        ...,
+        description=(
+            "Artifact source class: WORKSPACE for staged dev-HEAD sibling builds; "
+            "RELEASE for main-lineage tagged releases."
+        ),
+    )
+    promotion_class: EnumPromotionClass = Field(
+        default=EnumPromotionClass.CLEAN_MAIN,
+        description=(
+            "Provenance class stamped by the build pipeline. STABILITY_CANDIDATE "
+            "images are refused for prod unless the grant authorizes the candidate "
+            "class (OMN-13656). Defaults to CLEAN_MAIN for main-lineage CI builds."
+        ),
+    )
+    provenance: str = Field(
+        ...,
+        min_length=1,
+        description=(
+            "Opaque provenance string from the emitting CI run "
+            "(e.g. 'ci:build-runtime.yml:run_id=<id>'). Audit trail only."
+        ),
+    )
+    runtime_lane: EnumRuntimeLane = Field(
+        default=EnumRuntimeLane.DEV,
+        description=(
+            "Target runtime lane for this image. The orchestrator routes the "
+            "promotion decision through the prod-promotion gate when lane=PROD."
+        ),
+    )
+    promotion_batch_id: str | None = Field(
+        default=None,
+        description=(
+            "Promotion batch identifier shared with OCC evidence. Required when "
+            "targeting the prod lane; None is valid for dev / stability."
+        ),
+    )
+    image_ref: str | None = Field(
+        default=None,
+        description=(
+            "Mutable image reference (registry/name:tag). The digest is the "
+            "authority; this field is carried for human-readable audit."
+        ),
+    )
+
+
 __all__ = [
     "DEFAULT_PREVIOUS_IMAGE",
     "GRANT_FETCH_REF",
@@ -1816,6 +1910,7 @@ __all__ = [
     "ModelRedeployRolledBackEvent",
     "ModelRedeployState",
     "ModelRuntimeDeploymentProof",
+    "ModelRuntimeImageBuilt",
     "ModelStabilityReadiness",
     "RuntimeLaneLike",
     "evaluate_prod_digest_gate",

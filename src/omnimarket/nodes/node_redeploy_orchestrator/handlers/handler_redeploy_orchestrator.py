@@ -51,6 +51,7 @@ from omnimarket.events.runtime_deployment import (
     ModelProdPromotionGrantResolvedEvent,
     ModelRedeployCommand,
     ModelRedeployCompletedEvent,
+    ModelRuntimeImageBuilt,
 )
 from omnimarket.nodes.contract_topics import contract_publish_topics
 from omnimarket.nodes.node_redeploy_orchestrator.models.model_redeploy_start_command import (
@@ -102,6 +103,11 @@ class HandlerRedeployOrchestrator:
             events = self._on_grant_resolved(envelope, correlation_id)
         elif event_type.endswith("prod-promotion-gate-evaluated.v1"):
             events = self._on_gate_evaluated(envelope, correlation_id)
+        elif event_type.endswith("runtime-image-built.v1"):
+            # OMN-13655: cloud CI build-complete event — coerce into a start command
+            # and route through the prod-promotion gate. This is the canonical path
+            # that replaces the imperative git/gh/docker-driven cloud-redeploy skill.
+            events = self._on_image_built(envelope, correlation_id)
         else:
             # Default entrypoint: the redeploy-start command.
             events = self._on_start(envelope, correlation_id)
@@ -280,6 +286,37 @@ class HandlerRedeployOrchestrator:
             )
         ]
 
+    def _on_image_built(
+        self, envelope: ModelEventEnvelope[Any], correlation_id: UUID
+    ) -> list[ModelEventEnvelope[Any]]:
+        """Route a cloud CI build-complete event to the next command (OMN-13655).
+
+        The ``runtime-image-built.v1`` event is the contract-sourced entrypoint
+        for the canonical cloud redeploy path. It replaces the imperative
+        git/gh/docker-driven skill. The orchestrator coerces it into a
+        ``ModelRedeployStartCommand`` and routes identically to ``_on_start`` so
+        the prod-promotion gate, deploy-publish EFFECT, and FSM reducer all run
+        on the same proven bus path regardless of the entrypoint event type.
+
+        Prod-lane builds route through the grant-resolver EFFECT first; non-prod
+        builds proceed straight to the gate (which trivially allows them).
+        """
+        built = _coerce_image_built(envelope.payload, correlation_id)
+        start = ModelRedeployStartCommand(
+            correlation_id=built.correlation_id,
+            runtime_lane=built.runtime_lane,
+            image_digest=built.digest,
+            image_ref=built.image_ref,
+            promotion_batch_id=built.promotion_batch_id,
+            build_source=built.build_source,
+            # promotion_class and non_main_lineage are inferred from build_source;
+            # the gate reads promotion_class from the gate command (OMN-13656).
+            requested_by="node_redeploy_orchestrator[image-built]",
+        )
+        if start.runtime_lane is EnumRuntimeLane.PROD:
+            return self._emit_grant_resolve(start)
+        return self._emit_gate_evaluate(start, grant=None, evaluated_at=None)
+
 
 def _coerce_start(payload: Any, correlation_id: UUID) -> ModelRedeployStartCommand:
     """Coerce the start payload into a ``ModelRedeployStartCommand``."""
@@ -392,6 +429,26 @@ def _coerce_grant_resolved(
             ),
         )
     return resolved, start
+
+
+def _coerce_image_built(payload: Any, correlation_id: UUID) -> ModelRuntimeImageBuilt:
+    """Coerce the runtime-image-built payload into a ``ModelRuntimeImageBuilt``.
+
+    The event may arrive as a model instance, a mapping, or any object with a
+    ``model_dump`` method. Falls closed with ``TypeError`` on unknown shapes.
+    """
+    if isinstance(payload, ModelRuntimeImageBuilt):
+        return payload
+    if isinstance(payload, Mapping):
+        data = dict(payload)
+        data.setdefault("correlation_id", str(correlation_id))
+        return ModelRuntimeImageBuilt.model_validate(data)
+    if hasattr(payload, "model_dump"):
+        return ModelRuntimeImageBuilt.model_validate(payload.model_dump())
+    raise TypeError(
+        f"runtime-image-built payload must be ModelRuntimeImageBuilt or a mapping; "
+        f"got {type(payload).__name__}"
+    )
 
 
 def _as_mapping(candidate: Any) -> Mapping[str, Any] | None:

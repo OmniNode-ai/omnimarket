@@ -64,6 +64,9 @@ terminal_event: onex.evt.omnimarket.redeploy-completed.v1
 event_bus:
   subscribe_topics:
     - onex.cmd.omnimarket.redeploy-start.v1
+    # OMN-13655: build-complete event from cloud CI; orchestrator coerces it into
+    # a ModelRedeployStartCommand and routes through the prod-promotion gate path.
+    - onex.evt.omnimarket.runtime-image-built.v1
     # OMN-13439 Phase 2b: consume the out-of-band grant resolution before the gate.
     - onex.evt.omnimarket.prod-promotion-grant-resolved.v1
     - onex.evt.omnimarket.prod-promotion-gate-evaluated.v1
@@ -123,3 +126,4 @@ metadata:
     - "OMN-12581"
     - "OMN-13439"
     - "OMN-12807"
+    - "OMN-13655"
