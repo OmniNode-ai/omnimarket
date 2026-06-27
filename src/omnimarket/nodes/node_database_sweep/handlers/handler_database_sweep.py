@@ -12,9 +12,19 @@ from __future__ import annotations
 
 import os
 import subprocess
+from collections.abc import Callable
 from pathlib import Path
 
 from pydantic import BaseModel, ConfigDict, Field
+
+# Injectable probe seam (OMN-13676). The database sweep collects every signal it
+# classifies by shelling ``psql`` against live projection databases. To make the
+# pure classification logic deterministically testable without a live DB — and
+# without monkeypatching ``subprocess`` — the psql boundary is a constructor-
+# injected collaborator: a callable ``(query, database) -> (returncode, stdout,
+# stderr)``. Production wiring leaves it ``None`` and the module default ``_psql``
+# (real subprocess) is used; tests inject a fake that returns synthetic rows.
+PsqlRunner = Callable[[str, str], tuple[int, str, str]]
 
 # ---------------------------------------------------------------------------
 # Models
@@ -193,8 +203,12 @@ def _check_table(
     staleness_hours: int,
     drizzle_tables: set[str],
     staleness_thresholds: dict[str, float] | None = None,
+    psql: PsqlRunner | None = None,
 ) -> ModelTableHealthResult:
     """Check a single table's health."""
+    # Resolve the probe seam at call time so that patching the module ``_psql``
+    # (existing golden-chain tests) keeps working when no runner is injected.
+    psql = psql or _psql
     drizzle_defined = table in drizzle_tables
 
     # Tables not known to Drizzle and not in per-table thresholds have no freshness metadata
@@ -223,7 +237,7 @@ def _check_table(
 
     # Try each timestamp column in priority order
     for ts_col in _TIMESTAMP_COLUMNS:
-        has_ts_col_rc, has_ts_col_out, _ = _psql(
+        has_ts_col_rc, has_ts_col_out, _ = psql(
             f"SELECT 1 FROM information_schema.columns "
             f"WHERE table_name='{table}' AND column_name='{ts_col}' LIMIT 1;",
             database,
@@ -239,7 +253,7 @@ def _check_table(
                 f"END "
                 f"FROM {table};"
             )
-            rc, out, err = _psql(query, database)
+            rc, out, err = psql(query, database)
             if rc != 0:
                 return ModelTableHealthResult(
                     table_name=table,
@@ -278,9 +292,10 @@ def _check_table(
     )
 
 
-def _get_all_tables(database: str) -> list[str]:
+def _get_all_tables(database: str, psql: PsqlRunner | None = None) -> list[str]:
     """Return all user table names in the public schema."""
-    rc, out, _ = _psql(
+    psql = psql or _psql
+    rc, out, _ = psql(
         "SELECT tablename FROM pg_tables WHERE schemaname = 'public' ORDER BY tablename;",
         database,
     )
@@ -290,9 +305,14 @@ def _get_all_tables(database: str) -> list[str]:
 
 
 def _check_alembic_migration(
-    repo: str, database: str, versions_path: str, omni_home: str
+    repo: str,
+    database: str,
+    versions_path: str,
+    omni_home: str,
+    psql: PsqlRunner | None = None,
 ) -> ModelMigrationStateResult:
     """Check Alembic migration state for a repo."""
+    psql = psql or _psql
     versions_dir = Path(omni_home) / repo / versions_path
     if not versions_dir.is_dir():
         return ModelMigrationStateResult(
@@ -304,7 +324,7 @@ def _check_alembic_migration(
         )
     disk_count = len(list(versions_dir.glob("*.py")))
 
-    rc, out, err = _psql(
+    rc, out, err = psql(
         "SELECT count(*), version_num FROM alembic_version GROUP BY version_num;",
         database,
     )
@@ -350,9 +370,14 @@ def _check_alembic_migration(
 
 
 def _check_drizzle_migration(
-    repo: str, database: str, migrations_path: str, omni_home: str
+    repo: str,
+    database: str,
+    migrations_path: str,
+    omni_home: str,
+    psql: PsqlRunner | None = None,
 ) -> ModelMigrationStateResult:
     """Check Drizzle migration state for a repo."""
+    psql = psql or _psql
     migrations_dir = Path(omni_home) / repo / migrations_path
     if not migrations_dir.is_dir():
         return ModelMigrationStateResult(
@@ -364,7 +389,7 @@ def _check_drizzle_migration(
         )
     disk_count = len(list(migrations_dir.glob("*.sql")))
 
-    rc, out, err = _psql(
+    rc, out, err = psql(
         "SELECT count(*) FROM drizzle.__drizzle_migrations;",
         database,
     )
@@ -422,7 +447,9 @@ def _discover_node_migration_ids(omni_home: str) -> set[str]:
     return ids
 
 
-def _check_node_migrations(database: str, omni_home: str) -> ModelMigrationStateResult:
+def _check_node_migrations(
+    database: str, omni_home: str, psql: PsqlRunner | None = None
+) -> ModelMigrationStateResult:
     """Detect vendored node migrations that were never applied to a lane.
 
     OMN-13636 (WS-F Phase 4): node-owned SQL is vendored into the deploy tree but
@@ -433,6 +460,7 @@ def _check_node_migrations(database: str, omni_home: str) -> ModelMigrationState
     compares the on-disk vendored set against the applied set and reports PENDING
     — naming the exact missing files — so the gap fails loud instead of silent.
     """
+    psql = psql or _psql
     disk_ids = _discover_node_migration_ids(omni_home)
     if not disk_ids:
         return ModelMigrationStateResult(
@@ -446,7 +474,7 @@ def _check_node_migrations(database: str, omni_home: str) -> ModelMigrationState
             ),
         )
 
-    rc, out, err = _psql(
+    rc, out, err = psql(
         "SELECT migration_id FROM public.schema_migrations "
         f"WHERE migration_id LIKE '{_NODE_MIGRATION_ID_PREFIX}%';",
         database,
@@ -502,6 +530,18 @@ def _check_node_migrations(database: str, omni_home: str) -> ModelMigrationState
 class NodeDatabaseSweep:
     """Scan projection tables and migration state across all ONEX databases."""
 
+    def __init__(self, psql_runner: PsqlRunner | None = None) -> None:
+        """Wire the psql probe collaborator.
+
+        Production leaves ``psql_runner`` None → the helpers resolve the live
+        module-level ``_psql`` at call time (so existing tests that ``patch`` the
+        module global keep working). Tests may inject a fake here that returns
+        synthetic rows instead (OMN-13676 seam). The runner is stored as-is —
+        NOT eagerly resolved to ``_psql`` — so a post-construction patch of the
+        module global is still honored.
+        """
+        self._psql_runner: PsqlRunner | None = psql_runner
+
     def handle(self, request: DatabaseSweepRequest) -> DatabaseSweepResult:
         omni_home = request.omni_home or os.environ.get("OMNI_HOME", "")
         analytics_db = "omnidash_analytics"
@@ -513,7 +553,7 @@ class NodeDatabaseSweep:
         if request.table:
             scan_tables = [request.table]
         else:
-            scan_tables = _get_all_tables(analytics_db)
+            scan_tables = _get_all_tables(analytics_db, self._psql_runner)
 
         for tbl in scan_tables:
             result = _check_table(
@@ -522,6 +562,7 @@ class NodeDatabaseSweep:
                 request.staleness_threshold_hours,
                 drizzle_tables,
                 request.staleness_thresholds,
+                self._psql_runner,
             )
             table_results.append(result)
 
@@ -555,17 +596,23 @@ class NodeDatabaseSweep:
         migration_results: list[ModelMigrationStateResult] = []
         for repo, database, path in _ALEMBIC_REPOS:
             migration_results.append(
-                _check_alembic_migration(repo, database, path, omni_home)
+                _check_alembic_migration(
+                    repo, database, path, omni_home, self._psql_runner
+                )
             )
         for repo, database, path in _DRIZZLE_REPOS:
             migration_results.append(
-                _check_drizzle_migration(repo, database, path, omni_home)
+                _check_drizzle_migration(
+                    repo, database, path, omni_home, self._psql_runner
+                )
             )
         # Node-owned vendored migrations (OMN-12559 / OMN-13636 application-gap
         # detection): a file vendored into the deploy tree but never recorded in
         # schema_migrations is the silent-skip failure mode that left
         # delegation_events without context_pack_hash. Surface it as PENDING.
-        migration_results.append(_check_node_migrations(_NODE_MIGRATION_DB, omni_home))
+        migration_results.append(
+            _check_node_migrations(_NODE_MIGRATION_DB, omni_home, self._psql_runner)
+        )
 
         # Aggregation
         status_counts: dict[str, int] = {}
