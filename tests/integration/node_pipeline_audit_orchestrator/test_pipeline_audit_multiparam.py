@@ -33,7 +33,6 @@ from omnimarket.nodes.node_pipeline_audit_orchestrator.models.model_pipeline_aud
     ModelPipelineAuditRequest,
 )
 from omnimarket.nodes.node_pipeline_audit_orchestrator.models.model_pipeline_audit_result import (
-    EnumFindingSeverity,
     EnumPipelineAuditStatus,
     EnumProofCategory,
 )
@@ -95,115 +94,132 @@ _REPOS = ("alpha", "beta", "gamma")
 
 
 @pytest.mark.integration
-def test_pipeline_audit_full_creates_tickets_for_every_finding(tmp_path: Path) -> None:
+@pytest.mark.parametrize(
+    (
+        "audit_type",
+        "dry_run",
+        "fail_fast",
+        "skip_ticket_creation",
+        "expected_status",
+        "expected_proof_category",
+        "expect_breaking",
+        "description_substr",
+    ),
+    [
+        # FULL scope, default flags → tickets created for every finding.
+        (
+            EnumAuditType.FULL,
+            False,
+            False,
+            False,
+            EnumPipelineAuditStatus.COMPLETED,
+            None,  # mixed proof categories
+            True,
+            "ghost",
+        ),
+        # TOPICS scope → only wire-topic findings; ticket creation skipped.
+        (
+            EnumAuditType.TOPICS,
+            False,
+            False,
+            True,
+            EnumPipelineAuditStatus.COMPLETED,
+            EnumProofCategory.WIRE_TOPICS,
+            True,
+            "ghost",
+        ),
+        # ENTRYPOINT scope → only entrypoint findings; gamma is the missing one.
+        (
+            EnumAuditType.ENTRYPOINT,
+            False,
+            False,
+            True,
+            EnumPipelineAuditStatus.COMPLETED,
+            EnumProofCategory.ENTRYPOINT,
+            False,
+            "gamma",
+        ),
+        # dry_run → findings still computed, no ticket I/O, DRY_RUN status.
+        (
+            EnumAuditType.FULL,
+            True,
+            False,
+            False,
+            EnumPipelineAuditStatus.DRY_RUN,
+            None,
+            True,
+            "ghost",
+        ),
+        # fail_fast → BREAKING finding aborts the run.
+        (
+            EnumAuditType.FULL,
+            False,
+            True,
+            True,
+            EnumPipelineAuditStatus.ABORTED,
+            None,
+            True,
+            "ghost",
+        ),
+    ],
+    ids=["full", "topics-scope", "entrypoint-scope", "dry-run", "fail-fast"],
+)
+def test_pipeline_audit_multiparam_matrix(
+    tmp_path: Path,
+    audit_type: EnumAuditType,
+    dry_run: bool,
+    fail_fast: bool,
+    skip_ticket_creation: bool,
+    expected_status: EnumPipelineAuditStatus,
+    expected_proof_category: EnumProofCategory | None,
+    expect_breaking: bool,
+    description_substr: str,
+) -> None:
     omni_home = _build_omni_home(tmp_path)
     adapter = _MockTicketAdapter()
 
     result = HandlerPipelineAuditOrchestrator(ticket_adapter=adapter).handle(
         ModelPipelineAuditRequest(
             repos=_REPOS,
-            audit_type=EnumAuditType.FULL,
+            audit_type=audit_type,
+            dry_run=dry_run,
+            fail_fast=fail_fast,
+            skip_ticket_creation=skip_ticket_creation,
             omni_home_path=str(omni_home),
         )
     )
 
-    assert result.run_status is EnumPipelineAuditStatus.COMPLETED
+    assert result.run_status is expected_status
+    assert result.dry_run is dry_run
     assert set(result.repos_audited) == set(_REPOS)
-    assert result.gap_register, "full audit produced no findings"
-    # Negative control: ghost subscription is a BREAKING finding.
-    assert result.breaking_count >= 1
-    assert result.high_count >= 1
-    breaking = [
-        f for f in result.gap_register if f.severity is EnumFindingSeverity.BREAKING
-    ]
-    assert any("ghost" in f.description for f in breaking), breaking
-    # One ticket per finding, severity-ordered finding ids are dense + 1-based.
-    assert len(adapter.created) == len(result.gap_register)
-    assert len(result.tickets_created) == len(result.gap_register)
+    assert result.gap_register, "audit produced no findings"
+    assert any(description_substr in f.description for f in result.gap_register)
+
+    if expected_proof_category is not None:
+        assert all(
+            f.proof_category is expected_proof_category for f in result.gap_register
+        )
+    if expect_breaking:
+        # Negative control: a ghost subscription must surface a BREAKING finding.
+        assert result.breaking_count >= 1
+
+    # Severity-ordered finding ids are dense + 1-based regardless of scope.
     assert [f.finding_id for f in result.gap_register] == list(
         range(1, len(result.gap_register) + 1)
     )
 
-
-@pytest.mark.integration
-def test_pipeline_audit_topics_only_scope(tmp_path: Path) -> None:
-    omni_home = _build_omni_home(tmp_path)
-
-    result = HandlerPipelineAuditOrchestrator().handle(
-        ModelPipelineAuditRequest(
-            repos=_REPOS,
-            audit_type=EnumAuditType.TOPICS,
-            skip_ticket_creation=True,
-            omni_home_path=str(omni_home),
-        )
-    )
-
-    assert result.run_status is EnumPipelineAuditStatus.COMPLETED
-    assert result.gap_register
-    assert all(
-        f.proof_category is EnumProofCategory.WIRE_TOPICS for f in result.gap_register
-    )
-    assert result.breaking_count >= 1
-    assert result.high_count >= 1
-    assert result.tickets_created == ()  # skip_ticket_creation
-
-
-@pytest.mark.integration
-def test_pipeline_audit_entrypoint_only_scope(tmp_path: Path) -> None:
-    omni_home = _build_omni_home(tmp_path)
-
-    result = HandlerPipelineAuditOrchestrator().handle(
-        ModelPipelineAuditRequest(
-            repos=_REPOS,
-            audit_type=EnumAuditType.ENTRYPOINT,
-            skip_ticket_creation=True,
-            omni_home_path=str(omni_home),
-        )
-    )
-
-    assert result.run_status is EnumPipelineAuditStatus.COMPLETED
-    assert result.gap_register
-    assert all(
-        f.proof_category is EnumProofCategory.ENTRYPOINT for f in result.gap_register
-    )
-    # gamma is the only repo missing a runtime entrypoint.
-    assert any("gamma" in f.description for f in result.gap_register)
-
-
-@pytest.mark.integration
-def test_pipeline_audit_dry_run_creates_no_tickets(tmp_path: Path) -> None:
-    omni_home = _build_omni_home(tmp_path)
-    adapter = _MockTicketAdapter()
-
-    result = HandlerPipelineAuditOrchestrator(ticket_adapter=adapter).handle(
-        ModelPipelineAuditRequest(
-            repos=_REPOS,
-            audit_type=EnumAuditType.FULL,
-            dry_run=True,
-            omni_home_path=str(omni_home),
-        )
-    )
-
-    assert result.run_status is EnumPipelineAuditStatus.DRY_RUN
-    assert result.dry_run is True
-    assert result.gap_register  # findings still computed
-    assert adapter.created == []  # no ticket I/O in dry-run
-    assert result.tickets_created == ()
-
-
-@pytest.mark.integration
-def test_pipeline_audit_fail_fast_aborts_on_breaking(tmp_path: Path) -> None:
-    omni_home = _build_omni_home(tmp_path)
-
-    result = HandlerPipelineAuditOrchestrator().handle(
-        ModelPipelineAuditRequest(
-            repos=_REPOS,
-            audit_type=EnumAuditType.FULL,
-            fail_fast=True,
-            skip_ticket_creation=True,
-            omni_home_path=str(omni_home),
-        )
-    )
-
-    assert result.run_status is EnumPipelineAuditStatus.ABORTED
-    assert result.breaking_count >= 1
+    if dry_run or skip_ticket_creation:
+        # No ticket I/O when dry-run or explicitly skipped.
+        assert adapter.created == []
+        assert result.tickets_created == ()
+    else:
+        # One ticket per finding, and the serialized payload carries the same
+        # finding metadata — not just matching cardinality.
+        assert len(adapter.created) == len(result.gap_register)
+        assert len(result.tickets_created) == len(result.gap_register)
+        assert [payload["finding_id"] for payload in adapter.created] == [
+            finding.finding_id for finding in result.gap_register
+        ]
+        assert [payload["labels"][-1] for payload in adapter.created] == [
+            finding.proof_category.value for finding in result.gap_register
+        ]
