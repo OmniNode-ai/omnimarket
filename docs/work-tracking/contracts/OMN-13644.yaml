@@ -1,0 +1,64 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-13644"
+title: "Plumb context_pack_hash through delegation orchestrator + projection on all terminals"
+summary: >
+  ModelDelegationResult gained a context_pack_hash field upstream (OMN-13646,
+  omnibase_core 0.46.1 @ 52ee18b4c8fcc517996084437266f0738caf1cb5) but omnimarket
+  never set it: the delegation orchestrator collected the hash into
+  TerminalEmissionInputs.context_pack_hash at the three terminal sites yet built
+  ModelDelegationResult WITHOUT it (dead field), and the projection converter
+  dropped it, so every projection row read the '' default regardless of arm. This
+  change pins the context_pack_hash ONCE at request acceptance into
+  DelegationWorkflowState (handle_delegation_request) and threads it through the
+  single terminal builder (_emit_terminal) onto the canonical
+  ModelDelegationResult, so it persists identically on COMPLETED and
+  FAILED/ESCALATED terminals — escalation re-routing or prompt-text loss between
+  attempts can no longer drop it (the terminals read the pinned state value, not
+  the live request). The projection converter
+  (_canonical_result_to_task_delegated_payload) now carries the hash into
+  ModelTaskDelegatedEvent so the row mapping reads a real value. The hash is only
+  non-empty when an actual context pack was injected (the ON arm); the '' OFF-arm
+  default is preserved verbatim. No bespoke co-writer event (OMN-13629
+  anti-pattern), no Plugin*, no new REST, topics stay contract-sourced; the pin
+  bump (pyproject.toml + uv.lock) adopts the upstream field. Dev lane only.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched:
+  - "events"
+evidence_requirements:
+  - kind: "tests"
+    description: "New unit tests prove the acceptance-pinned hash reaches the COMPLETED and FAILED canonical terminals and the projection converter (non-empty on the ON arm, '' preserved on the OFF arm / missing-field)."
+    command: "uv run pytest tests/unit/delegation/test_context_pack_hash_plumb_omn13644.py -q"
+  - kind: "ci"
+    description: "Full suite green except pre-existing live-Kafka integration tests (no broker locally); mypy --strict clean on the two touched handlers; ruff + pre-commit clean."
+    command: "uv run pytest tests/ -q"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-001"
+    description: "context_pack_hash captured at acceptance and set on the canonical ModelDelegationResult inside the single terminal builder; both COMPLETED and FAILED terminals carry it; OFF-arm '' preserved."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/unit/delegation/test_context_pack_hash_plumb_omn13644.py::TestContextPackHashOnTerminals -q"
+  - id: "dod-002"
+    description: "Projection converter carries the canonical context_pack_hash into ModelTaskDelegatedEvent so the row mapping reads a real value rather than the '' default; missing field falls back to '' honestly."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/unit/delegation/test_context_pack_hash_plumb_omn13644.py::TestContextPackHashProjectionConverter -q"
+  - id: "dod-mypy"
+    description: "mypy --strict clean on the touched delegation orchestrator + projection handlers."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run mypy src/omnimarket/nodes/node_delegation_orchestrator/handlers/handler_delegation_workflow.py src/omnimarket/nodes/node_projection_delegation/handlers/handler_projection_delegation.py --strict"
+  - id: "dod-deploy"
+    description: "No runtime deploy in this PR — pure handler-logic plumb + dependency pin bump. The serialized dev redeploy and live psql proof (hash non-empty on COMPLETED and FAILED rows) is run separately by the orchestrator (Redeploy #1)."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "printf 'deploy deferred pre-merge; post-merge redeploy smoke follows Redeploy #1\n'"
