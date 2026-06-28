@@ -19,7 +19,6 @@ from omnimarket.models.delegation.wire.model_delegate_skill_terminal_projection 
 )
 from omnimarket.pricing import DEFAULT_BASELINE_MODEL, build_premium_counterfactual
 from omnimarket.projection.dlq import (
-    PublishFn,
     correlation_id_from_payload,
     dlq_topics_from_contract,
     route_to_dlq,
@@ -27,6 +26,7 @@ from omnimarket.projection.dlq import (
 from omnimarket.projection.runner import (
     BaseProjectionRunner,
     MessageMeta,
+    PublishFn,
     safe_parse_date,
 )
 
@@ -64,7 +64,7 @@ class SavingsProjectionRunner(BaseProjectionRunner):
         *,
         publish_fn: PublishFn | None = None,
     ) -> None:
-        super().__init__()
+        super().__init__(publish_fn=publish_fn)
         _path = contract_path or Path(__file__).parent.parent / "contract.yaml"
         with open(_path) as f:
             self._contract: dict[str, Any] = yaml.safe_load(f)
@@ -113,50 +113,6 @@ class SavingsProjectionRunner(BaseProjectionRunner):
         # ValidationError / failed required-field check now emits a DURABLE failure
         # signal on the bus instead of being logged + dropped silently.
         self._dlq_topics: list[str] = dlq_topics_from_contract(self._contract)
-        # Inject for testing; real producer is built lazily on first emit.
-        self._publish_fn: PublishFn | None = publish_fn
-        self._producer: Any = None  # AIOKafkaProducer, created on demand
-
-    async def _get_publish_fn(self) -> PublishFn | None:
-        """Return the publish callable, building a Kafka producer lazily if needed.
-
-        Mirrors DelegationProjectionRunner._get_publish_fn so the DLQ path has a
-        publisher in the live runtime (the savings runner had no producer before
-        OMN-13548 — malformed events were dropped with no bus trace at all).
-        """
-        if self._publish_fn is not None:
-            return self._publish_fn
-
-        brokers = self.kafka_bootstrap_servers
-        if not brokers:
-            return None
-
-        try:
-            from aiokafka import AIOKafkaProducer
-        except ImportError:
-            logger.warning("aiokafka not installed; DLQ events will not be published")
-            return None
-
-        if self._producer is None:
-            producer = AIOKafkaProducer(
-                bootstrap_servers=brokers,
-                value_serializer=lambda v: (
-                    v if isinstance(v, bytes) else v.encode("utf-8")
-                ),
-            )
-            try:
-                await producer.start()
-            except Exception as exc:
-                logger.warning("Kafka producer failed to start: %s", exc)
-                return None
-            self._producer = producer
-
-        producer = self._producer
-
-        async def _publish(topic: str, value: bytes) -> None:
-            await producer.send_and_wait(topic, value)
-
-        return _publish
 
     async def _route_malformed_to_dlq(
         self, data: dict[str, Any], reason: str, meta: MessageMeta | None = None
@@ -170,7 +126,7 @@ class SavingsProjectionRunner(BaseProjectionRunner):
         fallback = meta.fallback_id if meta is not None else ""
         correlation_id = correlation_id_from_payload(data, fallback=fallback)
         await route_to_dlq(
-            publish=await self._get_publish_fn(),
+            publish=await self.get_publish_fn(),
             dlq_topics=self._dlq_topics,
             original_message=data,
             failure_reason=reason,
@@ -185,8 +141,8 @@ class SavingsProjectionRunner(BaseProjectionRunner):
         return self._dlq_topics
 
     async def publish_dlq(self, topic: str, value: bytes) -> None:
-        """OMN-13634: supply the lazy Kafka producer to the base-class DLQ path."""
-        publish = await self._get_publish_fn()
+        """OMN-13634: supply the runtime-owned publisher to the base-class DLQ path."""
+        publish = await self.get_publish_fn()
         if publish is None:
             logger.error(
                 "node_projection_savings: no publisher for POISON DLQ topic %s",
