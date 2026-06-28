@@ -22,3 +22,10 @@ DELEGATION_PROJECTION_SNAPSHOT_TOPIC_V1 = "onex.evt.omnimarket.delegation-projec
 TOPIC_WORKFLOW_TIMEOUT = "onex.evt.omnimarket.workflow-timeout.v1"  # onex-topic-allow: canonical typed-watchdog topic registry (OMN-12959)
 TOPIC_WORKFLOW_UNROUTABLE = "onex.evt.omnimarket.workflow-unroutable.v1"  # onex-topic-allow: canonical typed-watchdog topic registry (OMN-12959)
 TOPIC_WORKFLOW_STALLED = "onex.evt.omnimarket.workflow-stalled.v1"  # onex-topic-allow: canonical typed-watchdog topic registry (OMN-12959)
+
+# Namespace prefix for all omniclaude event topics (OMN-13694). Used by
+# node_bus_audit_compute to detect CONTRACT_TOPIC_UNREGISTERED violations
+# scoped to the omniclaude namespace. Declared here so that any namespace
+# rename surfaces as a compile-time import error rather than a silent audit
+# regression. This is a prefix string, not a versioned topic identifier.
+OMNICLAUDE_EVT_TOPIC_PREFIX = "onex.evt.omniclaude."  # onex-topic-allow: canonical namespace prefix; referenced by node_bus_audit_compute handler for omniclaude-scoped unregistered-topic detection (OMN-13694)

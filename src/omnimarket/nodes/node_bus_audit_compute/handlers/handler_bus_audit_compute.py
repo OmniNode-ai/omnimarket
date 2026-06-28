@@ -7,6 +7,7 @@ from uuid import NAMESPACE_URL, uuid5
 
 import yaml
 
+from omnimarket.events.topics import OMNICLAUDE_EVT_TOPIC_PREFIX
 from omnimarket.nodes.node_bus_audit_compute.models.model_bus_audit_compute_request import (
     ModelBusAuditComputeRequest,
 )
@@ -260,7 +261,7 @@ class HandlerBusAuditCompute:
                     )
                 )
             elif (
-                topic.startswith("onex.evt.omniclaude.")
+                topic.startswith(OMNICLAUDE_EVT_TOPIC_PREFIX)
                 and topic not in registry_topics
             ):
                 findings.append(
