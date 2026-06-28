@@ -26,9 +26,14 @@ import logging
 import os
 import signal
 import sys
+from pathlib import Path
 from typing import Any
 from uuid import UUID
 
+from omnimarket.nodes.contract_topics import (
+    contract_publish_topics,
+    contract_subscribe_topics,
+)
 from omnimarket.nodes.node_slack_publish_effect.handlers.handler_slack_publish_effect import (
     HandlerSlackPublishEffect,
 )
@@ -38,10 +43,33 @@ from omnimarket.nodes.node_slack_publish_effect.models.model_slack_publish impor
 
 _log = logging.getLogger(__name__)
 
-_TOPIC_CMD = "onex.cmd.omnimarket.slack-publish.v1"
-_TOPIC_PUBLISHED = "onex.evt.omnimarket.slack-published.v1"
-_TOPIC_FAILED = "onex.evt.omnimarket.slack-publish-failed.v1"
-_TOPIC_DEDUPED = "onex.evt.omnimarket.slack-publish-deduped.v1"
+_CONTRACT_PATH = Path(__file__).resolve().parent / "contract.yaml"
+
+
+def _resolve_topics() -> tuple[str, str, str, str]:
+    """Resolve (cmd, published, failed, deduped) topics from the contract.
+
+    Topics are declared only in ``contract.yaml`` (event_bus.subscribe_topics /
+    publish_topics); the consumer reads them at runtime so no topic literal lives
+    in source. Fails fast if the contract does not declare the expected topics.
+    """
+    subscribe = contract_subscribe_topics(_CONTRACT_PATH)
+    publish = contract_publish_topics(_CONTRACT_PATH)
+    if not subscribe:
+        raise ValueError(f"{_CONTRACT_PATH} declares no subscribe_topics")
+    cmd_topic = subscribe[0]
+
+    failed = next((t for t in publish if "failed" in t), None)
+    deduped = next((t for t in publish if "deduped" in t), None)
+    published = next(
+        (t for t in publish if "failed" not in t and "deduped" not in t), None
+    )
+    if published is None or failed is None or deduped is None:
+        raise ValueError(
+            f"{_CONTRACT_PATH} event_bus.publish_topics must declare published, "
+            f"failed and deduped outcome topics; got {publish!r}"
+        )
+    return cmd_topic, published, failed, deduped
 
 
 async def _run_consumer(broker: str, group_id: str) -> None:
@@ -56,8 +84,10 @@ async def _run_consumer(broker: str, group_id: str) -> None:
 
     handler = HandlerSlackPublishEffect()
 
+    topic_cmd, topic_published, topic_failed, topic_deduped = _resolve_topics()
+
     consumer = AIOKafkaConsumer(
-        _TOPIC_CMD,
+        topic_cmd,
         bootstrap_servers=broker,
         group_id=group_id,
         value_deserializer=lambda b: json.loads(b.decode("utf-8")),
@@ -75,7 +105,7 @@ async def _run_consumer(broker: str, group_id: str) -> None:
         "slack-publish-effect consumer started — broker=%s group=%s topic=%s",
         broker,
         group_id,
-        _TOPIC_CMD,
+        topic_cmd,
     )
 
     stop_event = asyncio.Event()
@@ -115,13 +145,13 @@ async def _run_consumer(broker: str, group_id: str) -> None:
                 if result_event is not None:
                     result_dict = result_event.model_dump()
                     if result_dict.get("deduped"):
-                        topic = _TOPIC_DEDUPED
+                        topic = topic_deduped
                     elif result_dict.get("success"):
-                        topic = _TOPIC_PUBLISHED
+                        topic = topic_published
                     else:
-                        topic = _TOPIC_FAILED
+                        topic = topic_failed
                 else:
-                    topic = _TOPIC_PUBLISHED
+                    topic = topic_published
                     result_dict = {
                         "correlation_id": str(correlation_id_raw),
                         "success": True,
@@ -142,7 +172,7 @@ async def _run_consumer(broker: str, group_id: str) -> None:
                 )
                 with contextlib.suppress(Exception):
                     await producer.send_and_wait(
-                        _TOPIC_FAILED,
+                        topic_failed,
                         {
                             "correlation_id": str(correlation_id_raw),
                             "success": False,
