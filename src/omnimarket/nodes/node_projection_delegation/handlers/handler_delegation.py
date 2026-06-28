@@ -374,16 +374,14 @@ class DelegationProjectionRunner(BaseProjectionRunner):
         terminal result arrives. Terminal results therefore update missing row
         evidence instead of using the task-delegated insert-only conflict policy.
         """
-        correlation_id = (
-            data.get("correlation_id") or data.get("correlationId") or meta.fallback_id
-        )
-        task_type = data.get("task_type") or data.get("taskType")
-        delegated_to = (
-            data.get("delegated_to")
-            or data.get("delegatedTo")
-            or data.get("model_used")
-            or data.get("modelUsed")
-        )
+        # OMN-12811: ``data`` is the snake_case output of
+        # ``_canonical_result_to_task_delegated_payload`` (the canonical
+        # ``ModelDelegationResult`` terminal, ``extra='forbid'``). The legacy
+        # camelCase coalescing aliases were dead and are dropped; the remaining
+        # multi-key reads are snake_case field-name fallbacks within the one schema.
+        correlation_id = data.get("correlation_id") or meta.fallback_id
+        task_type = data.get("task_type")
+        delegated_to = data.get("delegated_to") or data.get("model_used")
         if not task_type or not delegated_to:
             logger.warning(
                 "delegation terminal event missing required fields (correlation_id=%s)",
@@ -392,78 +390,42 @@ class DelegationProjectionRunner(BaseProjectionRunner):
             return True
 
         timestamp = safe_parse_date(data.get("timestamp") or data.get("emitted_at"))
-        model_name = data.get("model_name") or data.get("modelName") or delegated_to
-        quality_gates_checked = data.get("quality_gates_checked") or data.get(
-            "qualityGatesChecked"
-        )
-        quality_gates_failed = data.get("quality_gates_failed") or data.get(
-            "qualityGatesFailed"
-        )
+        model_name = data.get("model_name") or delegated_to
+        quality_gates_checked = data.get("quality_gates_checked")
+        quality_gates_failed = data.get("quality_gates_failed")
         qgc_labels = _coerce_gate_labels(quality_gates_checked)
         qgf_labels = _coerce_gate_labels(quality_gates_failed)
         qgc_json = json.dumps(qgc_labels) if qgc_labels else None
         qgf_json = json.dumps(qgf_labels) if qgf_labels else None
-        quality_gate_detail = (
-            data.get("quality_gate_detail") or data.get("qualityGateDetail") or None
-        )
+        quality_gate_detail = data.get("quality_gate_detail") or None
         quality_bar_evidence = extract_quality_bar_evidence(
             data,
             checked_labels=qgc_labels,
         )
-        cost_usd = _safe_numeric_str(data.get("cost_usd") or data.get("costUsd"))
+        cost_usd = _safe_numeric_str(data.get("cost_usd"))
         cost_savings_usd = _safe_numeric_str(
-            data.get("cost_savings_usd")
-            or data.get("costSavingsUsd")
-            or data.get("estimated_savings_usd")
-            or data.get("estimatedSavingsUsd")
+            data.get("cost_savings_usd") or data.get("estimated_savings_usd")
         )
         pricing_manifest_version = (
-            _safe_int_or_none(
-                data.get("pricing_manifest_version")
-                or data.get("pricingManifestVersion"),
-            )
-            or 0
+            _safe_int_or_none(data.get("pricing_manifest_version")) or 0
         )
         delegation_latency_ms = _safe_int_or_none(
-            data.get("delegation_latency_ms")
-            or data.get("delegationLatencyMs")
-            or data.get("latency_ms")
-            or data.get("latencyMs")
+            data.get("delegation_latency_ms") or data.get("latency_ms")
         )
         tokens_input = (
-            _safe_int_or_none(
-                data.get("tokens_input")
-                or data.get("tokensInput")
-                or data.get("prompt_tokens")
-                or data.get("promptTokens")
-            )
+            _safe_int_or_none(data.get("tokens_input") or data.get("prompt_tokens"))
             or 0
         )
         tokens_output = (
             _safe_int_or_none(
-                data.get("tokens_output")
-                or data.get("tokensOutput")
-                or data.get("completion_tokens")
-                or data.get("completionTokens")
+                data.get("tokens_output") or data.get("completion_tokens")
             )
             or 0
         )
-        tokens_to_compliance = (
-            _safe_int_or_none(
-                data.get("tokens_to_compliance") or data.get("tokensToCompliance")
-            )
-            or 0
-        )
-        compliance_attempts = (
-            _safe_int_or_none(
-                data.get("compliance_attempts") or data.get("complianceAttempts")
-            )
-            or 1
-        )
-        prompt_text = _blank_to_none(data.get("prompt_text") or data.get("promptText"))
-        response_text = _blank_to_none(
-            data.get("response_text") or data.get("responseText")
-        )
+        tokens_to_compliance = _safe_int_or_none(data.get("tokens_to_compliance")) or 0
+        compliance_attempts = _safe_int_or_none(data.get("compliance_attempts")) or 1
+        prompt_text = _blank_to_none(data.get("prompt_text"))
+        response_text = _blank_to_none(data.get("response_text"))
 
         await self.db.execute(
             f"""
@@ -541,21 +503,13 @@ class DelegationProjectionRunner(BaseProjectionRunner):
               override_within_bounds = EXCLUDED.override_within_bounds AND {self._table_delegation}.override_within_bounds
             """,
             str(correlation_id),
-            str(data.get("session_id") or data.get("sessionId"))
-            if data.get("session_id") or data.get("sessionId")
-            else None,
+            str(data.get("session_id")) if data.get("session_id") else None,
             timestamp,
             str(task_type),
             str(delegated_to),
             str(model_name) if model_name else "",
-            str(data.get("delegated_by") or data.get("delegatedBy"))
-            if data.get("delegated_by") or data.get("delegatedBy")
-            else None,
-            bool(
-                data.get("quality_gate_passed")
-                if data.get("quality_gate_passed") is not None
-                else data.get("qualityGatePassed") or False
-            ),
+            str(data.get("delegated_by")) if data.get("delegated_by") else None,
+            bool(data.get("quality_gate_passed")),
             len(qgc_labels),
             len(qgf_labels),
             qgc_json,
@@ -565,11 +519,7 @@ class DelegationProjectionRunner(BaseProjectionRunner):
             cost_savings_usd,
             delegation_latency_ms,
             str(data.get("repo")) if data.get("repo") else None,
-            bool(
-                data.get("is_shadow")
-                if data.get("is_shadow") is not None
-                else data.get("isShadow") or False
-            ),
+            bool(data.get("is_shadow")),
             prompt_text,
             response_text,
             tokens_input,
@@ -1188,125 +1138,82 @@ def _first_mapping(data: Mapping[str, Any], *keys: str) -> Mapping[str, Any]:
 def _canonical_result_to_task_delegated_payload(
     data: dict[str, Any],
 ) -> dict[str, Any]:
-    """Normalize canonical delegation terminal results to the projection row shape."""
+    """Normalize canonical delegation terminal results to the projection row shape.
+
+    OMN-12811: the canonical delegation terminal (``delegation-completed.v1`` /
+    ``delegation-failed.v1``) is a single snake_case ``ModelDelegationResult``
+    schema declared ``extra='forbid'`` — the legacy ``task-delegated.v1`` camelCase
+    co-writer was deleted (OMN-13629). Every read here is therefore snake_case; the
+    prior dual-shape camel/snake coalescing aliases were dead and are dropped. The
+    remaining multi-key reads are snake_case field-name fallbacks within the one
+    canonical schema (e.g. ``content`` -> ``response_text``,
+    ``final_attempt_cost`` -> ``cost_usd``), not dual-shape shims.
+    """
     result = _canonical_terminal_result_payload(data)
-    usage = _first_mapping(result, "usage", "metrics", "token_usage", "tokenUsage")
+    usage = _first_mapping(result, "usage", "metrics", "token_usage")
     quality_passed = bool(
-        _first_present(
-            result,
-            "quality_passed",
-            "qualityPassed",
-            "quality_gate_passed",
-            "qualityGatePassed",
-        )
+        _first_present(result, "quality_passed", "quality_gate_passed")
     )
-    failure_reason = (
-        _first_present(result, "failure_reason", "failureReason", "error_message") or ""
-    )
+    failure_reason = _first_present(result, "failure_reason", "error_message") or ""
     quality_failures = (
         [str(failure_reason)] if failure_reason and not quality_passed else []
     )
-    model_used = _first_present(
-        result, "model_used", "modelUsed", "model_name", "modelName"
-    )
-    prompt_text = _first_present(result, "prompt_text", "promptText", "prompt")
+    model_used = _first_present(result, "model_used", "model_name")
+    prompt_text = _first_present(result, "prompt_text", "prompt")
     response_text = _first_present(
-        result, "content", "response_text", "responseText", "response", "output"
+        result, "content", "response_text", "response", "output"
     )
-    prompt_tokens = _first_present(
-        result,
-        "prompt_tokens",
-        "promptTokens",
-        "input_tokens",
-        "inputTokens",
-    )
+    prompt_tokens = _first_present(result, "prompt_tokens", "input_tokens")
     if prompt_tokens is None:
-        prompt_tokens = _first_present(
-            usage,
-            "prompt_tokens",
-            "promptTokens",
-            "input_tokens",
-            "inputTokens",
-        )
-    completion_tokens = _first_present(
-        result,
-        "completion_tokens",
-        "completionTokens",
-        "output_tokens",
-        "outputTokens",
-    )
+        prompt_tokens = _first_present(usage, "prompt_tokens", "input_tokens")
+    completion_tokens = _first_present(result, "completion_tokens", "output_tokens")
     if completion_tokens is None:
-        completion_tokens = _first_present(
-            usage,
-            "completion_tokens",
-            "completionTokens",
-            "output_tokens",
-            "outputTokens",
-        )
+        completion_tokens = _first_present(usage, "completion_tokens", "output_tokens")
     return {
         "correlation_id": (
-            _first_present(result, "correlation_id", "correlationId")
-            or _first_present(data, "correlation_id", "correlationId")
+            _first_present(result, "correlation_id")
+            or _first_present(data, "correlation_id")
         ),
-        "session_id": _first_present(result, "session_id", "sessionId"),
-        "task_type": _first_present(result, "task_type", "taskType") or "unknown",
+        "session_id": _first_present(result, "session_id"),
+        "task_type": _first_present(result, "task_type") or "unknown",
         "delegated_to": (
-            model_used
-            or _first_present(result, "delegated_to", "delegatedTo")
-            or "unknown"
+            model_used or _first_present(result, "delegated_to") or "unknown"
         ),
         "model_name": model_used or "",
         "quality_gate_passed": quality_passed,
         "quality_gates_failed": quality_failures,
         "quality_gate_detail": str(failure_reason) if failure_reason else None,
         "delegation_latency_ms": _first_present(
-            result, "latency_ms", "latencyMs", "delegation_latency_ms"
+            result, "latency_ms", "delegation_latency_ms"
         ),
-        "latency_ms": _first_present(result, "latency_ms", "latencyMs"),
+        "latency_ms": _first_present(result, "latency_ms"),
         "prompt_text": prompt_text,
         "response_text": response_text,
         "tokens_input": prompt_tokens or 0,
         "tokens_output": completion_tokens or 0,
-        "tokens_to_compliance": (
-            _first_present(result, "tokens_to_compliance", "tokensToCompliance") or 0
-        ),
-        "compliance_attempts": (
-            _first_present(result, "compliance_attempts", "complianceAttempts") or 1
-        ),
-        "cost_usd": (
-            _first_present(result, "cost_usd", "costUsd", "final_attempt_cost") or 0
-        ),
-        "cost_savings_usd": (
-            _first_present(result, "cost_savings_usd", "costSavingsUsd") or 0
-        ),
+        "tokens_to_compliance": _first_present(result, "tokens_to_compliance") or 0,
+        "compliance_attempts": _first_present(result, "compliance_attempts") or 1,
+        "cost_usd": _first_present(result, "cost_usd", "final_attempt_cost") or 0,
+        "cost_savings_usd": _first_present(result, "cost_savings_usd") or 0,
         "pricing_manifest_version": (
-            _first_present(result, "pricing_manifest_version", "pricingManifestVersion")
-            or 0
+            _first_present(result, "pricing_manifest_version") or 0
         ),
-        "required_bar": _first_present(result, "required_bar", "requiredBar"),
+        "required_bar": _first_present(result, "required_bar"),
         "actual_score": (
-            _first_present(result, "actual_score", "actualScore")
-            or _first_present(result, "quality_score", "qualityScore")
+            _first_present(result, "actual_score")
+            or _first_present(result, "quality_score")
         ),
-        "escalation_count": (
-            _first_present(result, "escalation_count", "escalationCount") or 0
-        ),
+        "escalation_count": _first_present(result, "escalation_count") or 0,
         "authority_source": (
-            _first_present(result, "authority_source", "authoritySource")
-            or _first_present(result, "required_bar_source", "requiredBarSource")
+            _first_present(result, "authority_source")
+            or _first_present(result, "required_bar_source")
         ),
-        "score_source": _first_present(result, "score_source", "scoreSource"),
+        "score_source": _first_present(result, "score_source"),
         "request_override_applied": (
-            _first_present(
-                result,
-                "request_override_applied",
-                "requestOverrideApplied",
-            )
-            or False
+            _first_present(result, "request_override_applied") or False
         ),
         "override_within_bounds": (
-            _first_present(result, "override_within_bounds", "overrideWithinBounds")
-            is not False
+            _first_present(result, "override_within_bounds") is not False
         ),
     }
 
