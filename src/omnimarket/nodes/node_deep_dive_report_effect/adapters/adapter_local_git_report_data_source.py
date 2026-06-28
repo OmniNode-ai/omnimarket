@@ -15,8 +15,12 @@ from __future__ import annotations
 import datetime as dt
 from pathlib import Path
 
-from omnibase_infra.deep_dive import ActiveWorktree, DriftReport, RepoDay
-from omnibase_infra.deep_dive import scan as _scan
+from omnimarket.nodes.node_deep_dive_report_effect.deep_dive import (
+    ActiveWorktree,
+    DriftReport,
+    RepoDay,
+)
+from omnimarket.nodes.node_deep_dive_report_effect.deep_dive import scan as _scan
 
 
 def _day_window(date: dt.date) -> tuple[str, str]:

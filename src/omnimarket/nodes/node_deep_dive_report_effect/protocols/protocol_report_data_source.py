@@ -21,7 +21,11 @@ import datetime as dt
 from pathlib import Path
 from typing import Protocol, runtime_checkable
 
-from omnibase_infra.deep_dive import ActiveWorktree, DriftReport, RepoDay
+from omnimarket.nodes.node_deep_dive_report_effect.deep_dive import (
+    ActiveWorktree,
+    DriftReport,
+    RepoDay,
+)
 
 
 @runtime_checkable

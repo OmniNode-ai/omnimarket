@@ -18,17 +18,17 @@ from pathlib import Path
 from uuid import uuid4
 
 from omnibase_core.models.dispatch.model_handler_output import ModelHandlerOutput
-from omnibase_infra.deep_dive import (
+
+from omnimarket.nodes.node_deep_dive_report_effect.adapters.adapter_local_git_report_data_source import (
+    AdapterLocalGitReportDataSource,
+)
+from omnimarket.nodes.node_deep_dive_report_effect.deep_dive import (
     GitHubMergedPR,
     collect_all_ticket_ids,
     effectiveness_score_v2,
     sectionize_highlights,
     unique_commit_entries,
     velocity_score_v2,
-)
-
-from omnimarket.nodes.node_deep_dive_report_effect.adapters.adapter_local_git_report_data_source import (
-    AdapterLocalGitReportDataSource,
 )
 from omnimarket.nodes.node_deep_dive_report_effect.models.model_deep_dive_report_io import (
     ModelDeepDiveMetrics,

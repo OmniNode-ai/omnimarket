@@ -16,14 +16,14 @@ from uuid import uuid4
 
 import pytest
 from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
-from omnibase_infra.deep_dive import (
+
+from omnimarket.nodes.node_deep_dive_report_effect.deep_dive import (
     ActiveWorktree,
     CommitEntry,
     DriftReport,
     GitHubMergedPR,
     RepoDay,
 )
-
 from omnimarket.nodes.node_deep_dive_report_effect.handlers.handler_deep_dive_report_effect import (
     HandlerDeepDiveReportEffect,
 )
