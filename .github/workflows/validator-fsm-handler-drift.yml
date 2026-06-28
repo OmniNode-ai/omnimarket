@@ -72,14 +72,14 @@ jobs:
         with:
           version: ${{ env.UV_VERSION }}
 
-      - name: Install omnibase_compat
-        run: uv pip install --python $(which python) -e ../omnibase_compat
-
-      - name: Install omnibase_core (includes check-fsm-handler-drift validator)
-        run: uv pip install --python $(which python) -e ../omnibase_core
-
       - name: Install omnimarket
         run: uv sync --all-extras
+
+      - name: Install omnibase_compat
+        run: uv pip install --python .venv/bin/python -e ../omnibase_compat
+
+      - name: Install omnibase_core (includes check-fsm-handler-drift validator)
+        run: uv pip install --python .venv/bin/python -e ../omnibase_core
 
       - name: Run fsm-handler-drift integration tests
         run: |
