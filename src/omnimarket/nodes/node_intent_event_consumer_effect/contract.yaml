@@ -13,6 +13,18 @@ runtime_profiles:
   - effects
 input_model: "omnimemory.models.events.ModelIntentClassifiedEvent"
 output_model: "ModelIntentStoredEvent"
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: intent.event.consume
+      handler:
+        name: HandlerIntentEventConsumer
+        module: omnimarket.nodes.node_intent_event_consumer_effect.handler_intent_event_consumer
+      event_model:
+        name: ModelIntentClassifiedEvent
+        module: omnimemory.models.events.model_intent_classified_event
+
+# Retained for legacy resolution; canonical dispatch uses handler_routing above.
 handler:
   module: omnimarket.nodes.node_intent_event_consumer_effect.handler_intent_event_consumer
   class: HandlerIntentEventConsumer

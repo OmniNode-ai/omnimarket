@@ -9,6 +9,18 @@ description: >
   (recall, precision, fidelity, format_compliance) into the capability_scores
   table, closing the feedback loop between canary runs and routing decisions.
 
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: canary_score_reducer.accumulate
+      handler:
+        name: HandlerCanaryScoreReducer
+        module: omnimarket.nodes.node_canary_score_reducer.handlers.handler_canary_score_reducer
+      event_model:
+        name: ModelScoreReducerState
+        module: omnimarket.nodes.node_canary_score_reducer.models.model_score_reducer_state
+
+# Retained for legacy resolution; canonical dispatch uses handler_routing above.
 handler:
   module: omnimarket.nodes.node_canary_score_reducer.handlers.handler_canary_score_reducer
   class: HandlerCanaryScoreReducer
