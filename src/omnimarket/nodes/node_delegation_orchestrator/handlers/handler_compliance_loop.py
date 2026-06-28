@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import json
 
+from omnibase_core.enums.enum_budget_action import EnumBudgetAction
 from omnibase_infra.enums import EnumHandlerType, EnumHandlerTypeCategory
 
 from omnimarket.nodes.node_budget_policy_compute.handlers.handler_budget_policy import (
@@ -29,7 +30,6 @@ from omnimarket.nodes.node_budget_policy_compute.models.model_budget_limits impo
     ModelBudgetLimits,
 )
 from omnimarket.nodes.node_budget_policy_compute.models.model_budget_policy_enums import (
-    EnumBudgetAction,
     EnumTaskPriority,
 )
 from omnimarket.nodes.node_budget_policy_compute.models.model_budget_policy_request import (
