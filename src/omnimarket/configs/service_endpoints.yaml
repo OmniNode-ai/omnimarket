@@ -17,3 +17,7 @@ github:
 
 linear:
   graphql_url: "https://api.linear.app/graphql"
+
+slack:
+  # Complete Slack Web API URL for chat.postMessage (verbatim per contract endpoint).
+  chat_post_message_url: "https://slack.com/api/chat.postMessage"
