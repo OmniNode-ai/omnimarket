@@ -42,3 +42,96 @@ event_bus:
 
 metadata:
   transport_type: kafka
+
+# OMN-13734: machine-readable FSM (transcribed from authoritative handler/model logic).
+state_machine:
+  state_machine_name: merge_sweep_state_fsm
+  initial_state: pending
+  states:
+    - state_name: pending
+      description: "PR seen; awaiting first classified sweep outcome."
+      required_data: []
+    - state_name: armed
+      description: "PR auto-merge armed (transitional)."
+      required_data: []
+    - state_name: rebased
+      description: "PR rebased (transitional)."
+      required_data: []
+    - state_name: ci_rerun_triggered
+      description: "PR CI rerun triggered (transitional)."
+      required_data: []
+    - state_name: merged
+      description: "PR merged (terminal)."
+      is_terminal: true
+      required_data: []
+    - state_name: failed
+      description: "PR sweep failed (terminal)."
+      is_terminal: true
+      required_data: []
+    - state_name: stuck
+      description: "PR stuck (terminal)."
+      is_terminal: true
+      required_data: []
+  transitions:
+    - from_state: pending
+      to_state: armed
+      trigger: outcome_armed
+      description: "Classified ARMED."
+    - from_state: pending
+      to_state: rebased
+      trigger: outcome_rebased
+      description: "Classified REBASED."
+    - from_state: pending
+      to_state: ci_rerun_triggered
+      trigger: outcome_ci_rerun
+      description: "Classified CI_RERUN_TRIGGERED."
+    - from_state: pending
+      to_state: merged
+      trigger: outcome_merged
+      description: "Classified MERGED."
+    - from_state: pending
+      to_state: failed
+      trigger: outcome_failed
+      description: "Classified FAILED."
+    - from_state: pending
+      to_state: stuck
+      trigger: outcome_stuck
+      description: "Classified STUCK."
+    - from_state: armed
+      to_state: merged
+      trigger: outcome_merged
+      description: "Armed PR merged."
+    - from_state: armed
+      to_state: failed
+      trigger: outcome_failed
+      description: "Armed PR failed."
+    - from_state: armed
+      to_state: stuck
+      trigger: outcome_stuck
+      description: "Armed PR stuck."
+    - from_state: rebased
+      to_state: merged
+      trigger: outcome_merged
+      description: "Rebased PR merged."
+    - from_state: rebased
+      to_state: failed
+      trigger: outcome_failed
+      description: "Rebased PR failed."
+    - from_state: rebased
+      to_state: stuck
+      trigger: outcome_stuck
+      description: "Rebased PR stuck."
+    - from_state: ci_rerun_triggered
+      to_state: merged
+      trigger: outcome_merged
+      description: "Rerun PR merged."
+    - from_state: ci_rerun_triggered
+      to_state: failed
+      trigger: outcome_failed
+      description: "Rerun PR failed."
+    - from_state: ci_rerun_triggered
+      to_state: stuck
+      trigger: outcome_stuck
+      description: "Rerun PR stuck."
+  terminal_states: [merged, failed, stuck]
+  persistence_enabled: false

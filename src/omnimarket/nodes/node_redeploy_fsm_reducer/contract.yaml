@@ -72,3 +72,112 @@ metadata:
   related_tickets:
     - "OMN-13211"
     - "OMN-12577"
+
+# OMN-13734: machine-readable FSM transcribed from handler/model logic.
+state_machine:
+  state_machine_name: redeploy_fsm_reducer
+  initial_state: idle
+  states:
+    - state_name: idle
+      description: "Awaiting a redeploy phase advance."
+      required_data: []
+    - state_name: sync_clones
+      description: "Sync canonical repo clones."
+      required_data: []
+    - state_name: update_pins
+      description: "Update runtime package pins."
+      required_data: []
+    - state_name: rebuild
+      description: "Rebuild runtime artifacts."
+      required_data: []
+    - state_name: seed_infisical
+      description: "Seed Infisical runtime secrets."
+      required_data: []
+    - state_name: verify_health
+      description: "Verify runtime health."
+      required_data: []
+    - state_name: done
+      description: "Base deploy sequence completed."
+      is_terminal: true
+      required_data: []
+    - state_name: failed
+      description: "Circuit breaker tripped after consecutive phase failures."
+      is_terminal: true
+      required_data: []
+  transitions:
+    - from_state: idle
+      to_state: sync_clones
+      trigger: phase_success
+      description: "Start phase sequence."
+    - from_state: sync_clones
+      to_state: update_pins
+      trigger: phase_success
+      description: "Clone sync succeeded."
+    - from_state: update_pins
+      to_state: rebuild
+      trigger: phase_success
+      description: "Pin update succeeded."
+    - from_state: rebuild
+      to_state: seed_infisical
+      trigger: phase_success
+      description: "Runtime rebuild succeeded."
+    - from_state: seed_infisical
+      to_state: verify_health
+      trigger: phase_success
+      description: "Infisical seed succeeded."
+    - from_state: verify_health
+      to_state: done
+      trigger: phase_success
+      description: "Runtime health verified."
+    - from_state: idle
+      to_state: idle
+      trigger: phase_failure_retry
+      description: "Retry current phase below failure threshold."
+    - from_state: sync_clones
+      to_state: sync_clones
+      trigger: phase_failure_retry
+      description: "Retry current phase below failure threshold."
+    - from_state: update_pins
+      to_state: update_pins
+      trigger: phase_failure_retry
+      description: "Retry current phase below failure threshold."
+    - from_state: rebuild
+      to_state: rebuild
+      trigger: phase_failure_retry
+      description: "Retry current phase below failure threshold."
+    - from_state: seed_infisical
+      to_state: seed_infisical
+      trigger: phase_failure_retry
+      description: "Retry current phase below failure threshold."
+    - from_state: verify_health
+      to_state: verify_health
+      trigger: phase_failure_retry
+      description: "Retry current phase below failure threshold."
+    - from_state: idle
+      to_state: failed
+      trigger: circuit_breaker
+      description: "Failure threshold reached."
+    - from_state: sync_clones
+      to_state: failed
+      trigger: circuit_breaker
+      description: "Failure threshold reached."
+    - from_state: update_pins
+      to_state: failed
+      trigger: circuit_breaker
+      description: "Failure threshold reached."
+    - from_state: rebuild
+      to_state: failed
+      trigger: circuit_breaker
+      description: "Failure threshold reached."
+    - from_state: seed_infisical
+      to_state: failed
+      trigger: circuit_breaker
+      description: "Failure threshold reached."
+    - from_state: verify_health
+      to_state: failed
+      trigger: circuit_breaker
+      description: "Failure threshold reached."
+  terminal_states:
+    - done
+    - failed
+  persistence_enabled: true
