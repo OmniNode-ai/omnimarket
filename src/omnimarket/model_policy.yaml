@@ -59,7 +59,7 @@ policies:
 
   openai:
     tier: cloud_openai
-    env_var: LLM_OPENAI_URL
+    endpoint_ref: env:LLM_OPENAI_URL
     api_key_env_var: OPENAI_API_KEY
     model_id_env_var: LLM_OPENAI_MODEL_NAME
     max_tokens: 4096
@@ -69,7 +69,7 @@ policies:
 
   google:
     tier: cloud_google
-    env_var: LLM_GOOGLE_URL
+    endpoint_ref: env:LLM_GOOGLE_URL
     api_key_env_var: GOOGLE_API_KEY
     model_id_env_var: LLM_GOOGLE_MODEL_NAME
     max_tokens: 8192

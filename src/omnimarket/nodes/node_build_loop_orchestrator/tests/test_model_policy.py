@@ -315,7 +315,10 @@ class TestAssembleLiveUsesModelPolicyLoader:
             "Add it with env_var, api_key_env_var, and model_id_env_var."
         )
         policy = policies["openai"]
-        assert "env_var" in policy, "openai policy must declare env_var"
+        assert policy.get("endpoint_ref") == "env:LLM_OPENAI_URL"
+        assert "env_var" not in policy, (
+            "openai policy must not add a legacy env_var residue entry"
+        )
         assert "api_key_env_var" in policy, "openai policy must declare api_key_env_var"
         assert "model_id_env_var" in policy, (
             "openai policy must declare model_id_env_var"
@@ -333,7 +336,10 @@ class TestAssembleLiveUsesModelPolicyLoader:
             "Add it with env_var, api_key_env_var, and model_id_env_var."
         )
         policy = policies["google"]
-        assert "env_var" in policy, "google policy must declare env_var"
+        assert policy.get("endpoint_ref") == "env:LLM_GOOGLE_URL"
+        assert "env_var" not in policy, (
+            "google policy must not add a legacy env_var residue entry"
+        )
         assert "api_key_env_var" in policy, "google policy must declare api_key_env_var"
         assert "model_id_env_var" in policy, (
             "google policy must declare model_id_env_var"
