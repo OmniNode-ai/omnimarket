@@ -24,7 +24,6 @@ import argparse
 import asyncio
 import logging
 import sys
-from concurrent.futures import ThreadPoolExecutor
 
 from omnimarket.nodes.node_linear_triage.handlers.handler_linear_triage import (
     HandlerLinearTriage,
@@ -42,12 +41,16 @@ async def _run_with_timeout(
     command: ModelLinearTriageStartCommand,
     timeout: int,
 ) -> ModelLinearTriageResult:
-    loop = asyncio.get_running_loop()
-    with ThreadPoolExecutor(max_workers=1) as pool:
-        return await asyncio.wait_for(
-            loop.run_in_executor(pool, handler.handle, command),
-            timeout=float(timeout),
-        )
+    """Run handler.handle with a wall-clock timeout.
+
+    ``handle`` is now ``async def`` (OMN-13710: resolved via ``resolve_api_key_async``),
+    so we can await it directly inside ``asyncio.wait_for``.  The old
+    ``run_in_executor`` indirection is no longer needed.
+    """
+    return await asyncio.wait_for(
+        handler.handle(command),
+        timeout=float(timeout),
+    )
 
 
 def main() -> None:

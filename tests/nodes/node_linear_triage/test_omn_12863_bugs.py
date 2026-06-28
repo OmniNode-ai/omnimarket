@@ -194,7 +194,7 @@ class TestBugASaveIssueUsesStateId:
 
 @pytest.mark.unit
 class TestBugBOccReceiptPrsExcluded:
-    def test_occ_only_merged_pr_does_not_mark_done(self) -> None:
+    async def test_occ_only_merged_pr_does_not_mark_done(self) -> None:
         """A ticket whose ONLY merged PR match is from onex_change_control must NOT
         be marked done — OCC PRs are receipts, not implementation work."""
         occ_pr = _make_merged_pr(number="2391", repo="onex_change_control")
@@ -210,7 +210,7 @@ class TestBugBOccReceiptPrsExcluded:
         )
 
         handler = HandlerLinearTriage(client=client, github_client=gh)
-        result = handler.handle(ModelLinearTriageStartCommand())
+        result = await handler.handle(ModelLinearTriageStartCommand())
 
         assert result.marked_done == 0, (
             "OCC-only merged PR must not trigger mark_done; "
@@ -218,7 +218,7 @@ class TestBugBOccReceiptPrsExcluded:
         )
         client.save_issue.assert_not_called()
 
-    def test_real_repo_merged_pr_still_marks_done(self) -> None:
+    async def test_real_repo_merged_pr_still_marks_done(self) -> None:
         """A ticket with a merged PR from a real implementation repo IS marked done
         when flag_only=False (the approved-close path)."""
         real_pr = _make_merged_pr(number="99", repo="omniclaude")
@@ -232,7 +232,7 @@ class TestBugBOccReceiptPrsExcluded:
 
         handler = HandlerLinearTriage(client=client, github_client=gh)
         # flag_only=False: this test exercises the approved-close path
-        result = handler.handle(ModelLinearTriageStartCommand(flag_only=False))
+        result = await handler.handle(ModelLinearTriageStartCommand(flag_only=False))
 
         assert result.marked_done == 1, (
             "Merged PR in real repo must trigger mark_done; "
@@ -240,7 +240,7 @@ class TestBugBOccReceiptPrsExcluded:
         )
         client.save_issue.assert_called_once_with(issue_id="abc", state="Done")
 
-    def test_mixed_occ_and_real_merged_pr_marks_done(self) -> None:
+    async def test_mixed_occ_and_real_merged_pr_marks_done(self) -> None:
         """If both an OCC PR and a real PR are matched, the ticket is still marked done
         when flag_only=False (real PR is the implementation signal)."""
         occ_pr = _make_merged_pr(number="2391", repo="onex_change_control")
@@ -257,13 +257,13 @@ class TestBugBOccReceiptPrsExcluded:
 
         handler = HandlerLinearTriage(client=client, github_client=gh)
         # flag_only=False: this test exercises the approved-close path
-        result = handler.handle(ModelLinearTriageStartCommand(flag_only=False))
+        result = await handler.handle(ModelLinearTriageStartCommand(flag_only=False))
 
         assert result.marked_done == 1, (
             "Mixed OCC+real merged PRs: the real PR should still trigger mark_done"
         )
 
-    def test_occ_repo_excluded_from_repo_scoped_search(self) -> None:
+    async def test_occ_repo_excluded_from_repo_scoped_search(self) -> None:
         """Even when a ticket's inferred repo IS onex_change_control, its merged PRs
         must not trigger mark_done (no implementation PRs come from OCC)."""
         # Branch name that would infer repo as onex_change_control
@@ -282,7 +282,7 @@ class TestBugBOccReceiptPrsExcluded:
         )
 
         handler = HandlerLinearTriage(client=client, github_client=gh)
-        result = handler.handle(ModelLinearTriageStartCommand())
+        result = await handler.handle(ModelLinearTriageStartCommand())
 
         assert result.marked_done == 0, (
             "OCC-repo PR from repo-scoped search must not mark done"
