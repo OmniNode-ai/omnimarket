@@ -25,7 +25,6 @@ RELEASE_TOUCHED_NODES = (
     "node_deployment_evidence_reducer",
     "node_dirty_canonical_sweep",
     "node_dispatch_queue_drainer",
-    "node_dispatch_request_handler",
     "node_monitor_alert_responder",
     "node_e2e_orchestrator",
     "node_evidence_collector_effect",
