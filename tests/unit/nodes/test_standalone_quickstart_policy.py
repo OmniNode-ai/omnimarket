@@ -29,55 +29,55 @@ _INFRA_STEPS = {
 class TestStandaloneQuickstartPolicy:
     """Tests for the standalone_quickstart onboarding policy."""
 
-    def test_loading_does_not_raise(self) -> None:
+    async def test_loading_does_not_raise(self) -> None:
         """standalone_quickstart resolves without ValueError."""
         handler = HandlerOnboarding()
         cmd = ModelOnboardingStartCommand(
             policy_name="standalone_quickstart",
             dry_run=True,
         )
-        result = handler.handle(cmd)
+        result = await handler.handle(cmd)
         assert result["dry_run"] is True
 
-    def test_step_count_in_range(self) -> None:
+    async def test_step_count_in_range(self) -> None:
         """Resolved plan contains between 1 and 5 steps inclusive."""
         handler = HandlerOnboarding()
         cmd = ModelOnboardingStartCommand(
             policy_name="standalone_quickstart",
             dry_run=True,
         )
-        result = handler.handle(cmd)
+        result = await handler.handle(cmd)
         steps = result["resolved_steps"]
         assert 1 <= len(steps) <= 5, f"Expected 1-5 steps, got {len(steps)}: {steps}"
 
-    def test_no_infra_steps_included(self) -> None:
+    async def test_no_infra_steps_included(self) -> None:
         """Resolved plan does not contain docker/kafka/postgres/secrets steps."""
         handler = HandlerOnboarding()
         cmd = ModelOnboardingStartCommand(
             policy_name="standalone_quickstart",
             dry_run=True,
         )
-        result = handler.handle(cmd)
+        result = await handler.handle(cmd)
         steps = set(result["resolved_steps"])
         infra_found = steps & _INFRA_STEPS
         assert not infra_found, f"Infra steps must not appear: {infra_found}"
 
-    def test_core_installed_capability_achieved(self) -> None:
+    async def test_core_installed_capability_achieved(self) -> None:
         """Resolved plan includes install_core (produces core_installed)."""
         handler = HandlerOnboarding()
         cmd = ModelOnboardingStartCommand(
             policy_name="standalone_quickstart",
             dry_run=True,
         )
-        result = handler.handle(cmd)
+        result = await handler.handle(cmd)
         assert "install_core" in result["resolved_steps"]
 
-    def test_run_standalone_node_not_included(self) -> None:
+    async def test_run_standalone_node_not_included(self) -> None:
         """Standalone quickstart now targets core_installed, not first_node_running."""
         handler = HandlerOnboarding()
         cmd = ModelOnboardingStartCommand(
             policy_name="standalone_quickstart",
             dry_run=True,
         )
-        result = handler.handle(cmd)
+        result = await handler.handle(cmd)
         assert "run_standalone_node" not in result["resolved_steps"]
