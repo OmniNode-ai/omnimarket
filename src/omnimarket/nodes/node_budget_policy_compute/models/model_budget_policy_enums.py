@@ -5,13 +5,6 @@ from __future__ import annotations
 from enum import StrEnum
 
 
-class EnumBudgetAction(StrEnum):
-    CONTINUE = "CONTINUE"
-    WARN = "WARN"
-    THROTTLE = "THROTTLE"
-    ABORT = "ABORT"
-
-
 class EnumTaskPriority(StrEnum):
     LOW = "LOW"
     NORMAL = "NORMAL"
@@ -19,4 +12,4 @@ class EnumTaskPriority(StrEnum):
     CRITICAL = "CRITICAL"
 
 
-__all__ = ["EnumBudgetAction", "EnumTaskPriority"]
+__all__ = ["EnumTaskPriority"]
