@@ -4,24 +4,16 @@
 """Compute handler for node_onboarding (OMN-8273).
 
 Resolves a policy name to target_capabilities, constructs ModelOnboardingInput,
-and delegates to handle_onboarding via asyncio.run().
+and delegates to handle_onboarding via await.
 
 Architecture note:
     This handler wraps the omnibase_infra onboarding library and orchestrator
     logic directly via imported handler functions and models. It does NOT invoke
     the node_onboarding_orchestrator as an external runtime dependency.
-
-asyncio.run() caveat:
-    asyncio.run(handle_onboarding(input_model)) is correct for the current
-    synchronous compute-node invocation path. This will break if the compute
-    node is ever invoked inside an existing event loop context (e.g., from an
-    async caller or under pytest-asyncio with asyncio_mode=auto). This is a
-    known limitation for future async invocation paths.
 """
 
 from __future__ import annotations
 
-import asyncio
 from pathlib import Path
 from typing import Any, cast
 
@@ -72,10 +64,10 @@ class HandlerOnboarding:
     """Compute handler for node_onboarding.
 
     Resolves policy name → target_capabilities, constructs ModelOnboardingInput,
-    and delegates to handle_onboarding via asyncio.run().
+    and delegates to handle_onboarding via await.
     """
 
-    def handle(self, command: ModelOnboardingStartCommand) -> dict[str, Any]:
+    async def handle(self, command: ModelOnboardingStartCommand) -> dict[str, Any]:
         """Execute onboarding with the given command.
 
         Args:
@@ -129,9 +121,7 @@ class HandlerOnboarding:
             skip_steps=command.skip_steps or [],
             continue_on_failure=command.continue_on_failure,
         )
-        output = cast(
-            ModelOnboardingOutput, asyncio.run(handle_onboarding(input_model))
-        )
+        output = cast(ModelOnboardingOutput, await handle_onboarding(input_model))
         return cast(dict[str, Any], output.model_dump())
 
 

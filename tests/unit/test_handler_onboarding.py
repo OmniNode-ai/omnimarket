@@ -1,14 +1,15 @@
 # SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
 
-"""Unit tests for HandlerOnboarding (OMN-8279).
+"""Unit tests for HandlerOnboarding (OMN-8279, OMN-13714).
 
 Tests mock handle_onboarding to avoid executing real verification probes.
+handle() is async; asyncio_mode=auto handles awaiting.
 """
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from omnimarket.nodes.node_onboarding.handlers.handler_onboarding import (
     HandlerOnboarding,
@@ -26,7 +27,7 @@ class TestHandlerOnboarding:
         cmd = ModelOnboardingStartCommand()
         assert cmd.policy_name == "setup"
 
-    def test_policy_lookup_called_when_no_target_capabilities(self) -> None:
+    async def test_policy_lookup_called_when_no_target_capabilities(self) -> None:
         """load_builtin_policies() is called when target_capabilities is empty."""
         mock_policy_data = {
             "target_capabilities": ["python_installed"],
@@ -53,7 +54,7 @@ class TestHandlerOnboarding:
         ):
             handler = HandlerOnboarding()
             cmd = ModelOnboardingStartCommand(policy_name="new_employee", dry_run=True)
-            result = handler.handle(cmd)
+            result = await handler.handle(cmd)
             mock_load.assert_called_once()
             assert result["dry_run"] is True
             assert result["execution_mode"] == "verify-only"
@@ -62,8 +63,14 @@ class TestHandlerOnboarding:
                 "check_python": ["python_installed"]
             }
 
-    def test_asyncio_run_called_with_model_onboarding_input(self) -> None:
-        """asyncio.run() is called with a ModelOnboardingInput instance."""
+    async def test_handle_onboarding_awaited_with_model_onboarding_input(
+        self,
+    ) -> None:
+        """handle_onboarding coroutine is awaited directly (not via asyncio.run).
+
+        Reproduces OMN-13714: asyncio.run() inside an already-running event loop
+        raised RuntimeError. Fix: make handle() async and await the coroutine.
+        """
         from omnibase_infra.nodes.node_onboarding_orchestrator.models.model_onboarding_output import (
             ModelOnboardingOutput,
         )
@@ -81,15 +88,13 @@ class TestHandlerOnboarding:
             rendered_output="# Done",
         )
 
-        def fake_asyncio_run(coro):
-            # We can't await here, so just return the mock output
-            return mock_output
+        mock_handle_onboarding = AsyncMock(return_value=mock_output)
 
         with (
             patch(
-                "omnimarket.nodes.node_onboarding.handlers.handler_onboarding.asyncio.run",
-                side_effect=fake_asyncio_run,
-            ) as mock_run,
+                "omnimarket.nodes.node_onboarding.handlers.handler_onboarding.handle_onboarding",
+                mock_handle_onboarding,
+            ),
             patch(
                 "omnimarket.nodes.node_onboarding.handlers.handler_onboarding.load_builtin_policies",
                 return_value={
@@ -104,16 +109,20 @@ class TestHandlerOnboarding:
                 policy_name="standalone_quickstart",
                 dry_run=False,
             )
-            result = handler.handle(cmd)
-            mock_run.assert_called_once()
+            # This must NOT raise RuntimeError (OMN-13714: asyncio.run inside loop)
+            result = await handler.handle(cmd)
+            mock_handle_onboarding.assert_awaited_once()
             assert result["success"] is True
 
-    def test_dry_run_skips_asyncio_run(self) -> None:
-        """dry_run=True skips asyncio.run() entirely."""
+    async def test_dry_run_does_not_call_handle_onboarding(self) -> None:
+        """dry_run=True skips calling handle_onboarding entirely."""
+        mock_handle_onboarding = AsyncMock()
+
         with (
             patch(
-                "omnimarket.nodes.node_onboarding.handlers.handler_onboarding.asyncio.run"
-            ) as mock_run,
+                "omnimarket.nodes.node_onboarding.handlers.handler_onboarding.handle_onboarding",
+                mock_handle_onboarding,
+            ),
             patch(
                 "omnimarket.nodes.node_onboarding.handlers.handler_onboarding.load_builtin_policies",
                 return_value={
@@ -130,11 +139,11 @@ class TestHandlerOnboarding:
         ):
             handler = HandlerOnboarding()
             cmd = ModelOnboardingStartCommand(policy_name="new_employee", dry_run=True)
-            result = handler.handle(cmd)
-            mock_run.assert_not_called()
+            result = await handler.handle(cmd)
+            mock_handle_onboarding.assert_not_awaited()
             assert result["dry_run"] is True
 
-    def test_skip_steps_passed_as_none_when_empty(self) -> None:
+    async def test_skip_steps_passed_as_none_when_empty(self) -> None:
         """Empty skip_steps is passed as None (not empty list) to resolve_policy."""
         with (
             patch(
@@ -157,7 +166,7 @@ class TestHandlerOnboarding:
                 skip_steps=[],  # Empty list
                 dry_run=True,
             )
-            handler.handle(cmd)
+            await handler.handle(cmd)
             # resolve_policy should receive None (not []) for skip_steps
             call_args = mock_resolve.call_args
             # Third positional arg is skip_steps
