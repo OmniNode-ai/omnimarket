@@ -214,7 +214,13 @@ class TestLogProjectionGoldenChain:
     async def test_structured_event_logger_emits(
         self, event_bus: EventBusInmemory
     ) -> None:
-        """StructuredEventLogger emits correct events to the bus."""
+        """StructuredEventLogger emits schema-valid ModelStructuredLogEntry events (OMN-13703)."""
+        from uuid import UUID
+
+        from omnibase_core.models.logging.model_structured_log_entry import (
+            ModelStructuredLogEntry,
+        )
+
         received: list[dict[str, object]] = []
 
         async def on_log_entry(message: object) -> None:
@@ -228,30 +234,36 @@ class TestLogProjectionGoldenChain:
             group_id="test-structured-logger",
         )
 
+        cid = str(UUID("12345678-1234-5678-1234-567812345678"))
         logger = StructuredEventLogger("node_test", event_bus=event_bus)
         await logger.info(
             "Test message",
-            function_name="test_fn",
-            correlation_id="cid-123",
+            operation="test_fn",
+            correlation_id=cid,
             duration_ms=42.5,
             extra_key="extra_val",
         )
-        await logger.error("Error message", function_name="err_fn")
+        await logger.error("Error message", operation="err_fn")
 
         assert len(received) == 2
 
+        # Verify each emitted payload is schema-valid against ModelStructuredLogEntry
+        for raw in received:
+            entry = ModelStructuredLogEntry.model_validate(raw)
+            assert entry.source_system == "node_test"
+
         info_evt = received[0]
-        assert info_evt["node_name"] == "node_test"
-        assert info_evt["function_name"] == "test_fn"
+        assert info_evt["source_system"] == "node_test"
+        assert info_evt["operation"] == "test_fn"
         assert info_evt["level"] == "info"
         assert info_evt["message"] == "Test message"
-        assert info_evt["correlation_id"] == "cid-123"
-        assert info_evt["duration_ms"] == 42.5
-        assert info_evt["metadata"]["extra_key"] == "extra_val"
+        assert info_evt["correlation_id"] == cid
+        assert info_evt["metadata"]["duration_ms"] == "42.5"  # type: ignore[index]
+        assert info_evt["metadata"]["extra_key"] == "extra_val"  # type: ignore[index]
 
         error_evt = received[1]
         assert error_evt["level"] == "error"
-        assert error_evt["node_name"] == "node_test"
+        assert error_evt["source_system"] == "node_test"
 
         await event_bus.close()
 
