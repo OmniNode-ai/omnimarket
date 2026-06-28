@@ -104,82 +104,105 @@ def _check_receipt_exists(
     )
 
 
-def _gh_find_merged_pr(ticket_id: str, repo: str) -> dict[str, str]:
+def _gh_find_merged_pr(ticket_id: str, repos: tuple[str, ...]) -> dict[str, str]:
     """Return {'number': '123', 'repo': 'owner/repo'} for the most-recent merged PR.
 
     Returns an empty dict when no merged PR is found or gh fails.
-    repo may be empty — gh then uses the current working directory's remote.
+
+    ``repos`` is an ordered list of GitHub repositories to search.  The function
+    tries each repo in turn and returns the first hit.  An empty string entry
+    means "use the current working directory's remote" (default gh behaviour).
+    When repos is empty, falls back to a single CWD-remote search.
+
+    Bug-fix (OMN-13702 Bug 1): jq ``.[0] | {number: (.number|tostring), ...}``
+    applied to an empty array produces ``{"number":"null","repo":""}`` instead
+    of ``null``.  The guard now explicitly rejects the string ``"null"`` as a
+    valid PR number.
     """
     jq = '.[0] | {number: (.number | tostring), repo: (.headRepository.nameWithOwner // "")}'
-    if repo:
-        cmd = [
-            "gh",
-            "pr",
-            "list",
-            "--repo",
-            repo,
-            "--search",
-            ticket_id,
-            "--state",
-            "merged",
-            "--json",
-            "number,headRepository",
-            "--jq",
-            jq,
-        ]
-    else:
-        cmd = [
-            "gh",
-            "pr",
-            "list",
-            "--search",
-            ticket_id,
-            "--state",
-            "merged",
-            "--json",
-            "number,headRepository",
-            "--jq",
-            jq,
-        ]
-    try:
-        result = subprocess.run(
-            cmd,
-            capture_output=True,
-            text=True,
-            timeout=_GH_TIMEOUT,
-        )
-    except subprocess.TimeoutExpired:
-        logger.warning("gh pr list timed out for %s", ticket_id)
-        return {}
-    except Exception as exc:
-        logger.warning("gh pr list error for %s: %s", ticket_id, exc)
-        return {}
+    targets: tuple[str, ...] = repos if repos else ("",)
+    for repo in targets:
+        if repo:
+            cmd = [
+                "gh",
+                "pr",
+                "list",
+                "--repo",
+                repo,
+                "--search",
+                ticket_id,
+                "--state",
+                "merged",
+                "--json",
+                "number,headRepository",
+                "--jq",
+                jq,
+            ]
+        else:
+            cmd = [
+                "gh",
+                "pr",
+                "list",
+                "--search",
+                ticket_id,
+                "--state",
+                "merged",
+                "--json",
+                "number,headRepository",
+                "--jq",
+                jq,
+            ]
+        try:
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=_GH_TIMEOUT,
+            )
+        except subprocess.TimeoutExpired:
+            logger.warning("gh pr list timed out for %s (repo=%r)", ticket_id, repo)
+            continue
+        except Exception as exc:
+            logger.warning(
+                "gh pr list error for %s (repo=%r): %s", ticket_id, repo, exc
+            )
+            continue
 
-    if result.returncode != 0:
-        logger.debug("gh pr list non-zero for %s: %s", ticket_id, result.stderr.strip())
-        return {}
+        if result.returncode != 0:
+            logger.debug(
+                "gh pr list non-zero for %s (repo=%r): %s",
+                ticket_id,
+                repo,
+                result.stderr.strip(),
+            )
+            continue
 
-    raw = result.stdout.strip()
-    if not raw or raw == "null":
-        return {}
-    try:
-        parsed = json.loads(raw)
-        if isinstance(parsed, dict) and parsed.get("number"):
-            return {
-                "number": str(parsed["number"]),
-                "repo": str(parsed.get("repo", "")),
-            }
-    except json.JSONDecodeError:
-        pass
+        raw = result.stdout.strip()
+        if not raw or raw == "null":
+            continue
+        try:
+            parsed = json.loads(raw)
+            # Guard against jq null-expansion: .[0] on [] → {"number":"null",...}
+            if (
+                isinstance(parsed, dict)
+                and parsed.get("number")
+                and str(parsed["number"]) != "null"
+            ):
+                return {
+                    "number": str(parsed["number"]),
+                    "repo": str(parsed.get("repo", "")),
+                }
+        except json.JSONDecodeError:
+            pass
     return {}
 
 
 def _check_pr_merged(
     ticket_id: str,
-    repo: str,
+    repos: tuple[str, ...],
 ) -> tuple[ModelDodCheckResult, dict[str, str]]:
     """Return (check_result, pr_info). pr_info carries number/repo for CI check."""
-    pr_info = _gh_find_merged_pr(ticket_id, repo)
+    pr_info = _gh_find_merged_pr(ticket_id, repos)
     if pr_info:
         return (
             ModelDodCheckResult(
@@ -203,7 +226,15 @@ def _check_pr_merged(
 
 
 def _gh_pr_checks_pass(pr_number: str, repo: str) -> tuple[bool, str]:
-    """Return (all_green, detail_message) for a given PR number."""
+    """Return (all_green, detail_message) for a given PR number.
+
+    Bug-fix (OMN-13702 Bug 2): the previous implementation requested
+    ``--json name,state,conclusion``.  The ``conclusion`` field does not exist
+    in ``gh pr checks --json``; the gh CLI exits 1 with "Unknown JSON field:
+    conclusion", so this function ALWAYS returned False regardless of CI status.
+    The fix uses ``--json name,state`` only and evaluates pass/fail via the
+    ``state`` field (``SUCCESS`` / ``SKIPPED`` / ``NEUTRAL`` are passing values).
+    """
     if repo:
         cmd = [
             "gh",
@@ -213,7 +244,7 @@ def _gh_pr_checks_pass(pr_number: str, repo: str) -> tuple[bool, str]:
             "--repo",
             repo,
             "--json",
-            "name,state,conclusion",
+            "name,state",
         ]
     else:
         cmd = [
@@ -222,7 +253,7 @@ def _gh_pr_checks_pass(pr_number: str, repo: str) -> tuple[bool, str]:
             "checks",
             pr_number,
             "--json",
-            "name,state,conclusion",
+            "name,state",
         ]
     try:
         result = subprocess.run(
@@ -255,11 +286,7 @@ def _gh_pr_checks_pass(pr_number: str, repo: str) -> tuple[bool, str]:
 
     _passing = {"SUCCESS", "NEUTRAL", "SKIPPED"}
     failed_names = [
-        str(c.get("name", "unknown"))
-        for c in checks
-        if c.get("conclusion") not in _passing
-        and c.get("state") not in _passing
-        and c.get("conclusion") is not None
+        str(c.get("name", "unknown")) for c in checks if c.get("state") not in _passing
     ]
     if failed_names:
         return False, f"failed_checks: {', '.join(failed_names[:5])}"
@@ -355,7 +382,7 @@ def _run_ticket_checks(
     contract_root: Path,
     evidence_root: Path,
     enabled_checks: tuple[str, ...],
-    gh_repo: str,
+    gh_repos: tuple[str, ...],
     dry_run: bool,
 ) -> ModelDodTicketResult:
     """Run all enabled checks for one ticket and return a ModelDodTicketResult."""
@@ -372,7 +399,7 @@ def _run_ticket_checks(
         checks.append(_check_receipt_exists(ticket_id, contract_path))
 
     if "pr_merged" in enabled_checks:
-        pr_check, pr_info = _check_pr_merged(ticket_id, gh_repo)
+        pr_check, pr_info = _check_pr_merged(ticket_id, gh_repos)
         checks.append(pr_check)
 
     if "ci_green" in enabled_checks:
@@ -457,6 +484,20 @@ class HandlerDodSweepOrchestrator:
     # Targeted mode
     # ------------------------------------------------------------------
 
+    @staticmethod
+    def _effective_repos(request: ModelDodSweepOrchestratorRequest) -> tuple[str, ...]:
+        """Resolve the ordered repo list to search for merged PRs.
+
+        gh_repos (plural) takes precedence when non-empty.  Falls back to
+        (gh_repo,) when only the singular field is set, or () (CWD remote) when
+        neither is set.
+        """
+        if request.gh_repos:
+            return request.gh_repos
+        if request.gh_repo:
+            return (request.gh_repo,)
+        return ()
+
     def _targeted(
         self,
         ticket_id: str,
@@ -469,7 +510,7 @@ class HandlerDodSweepOrchestrator:
             contract_root=contract_root,
             evidence_root=evidence_root,
             enabled_checks=request.enabled_checks,
-            gh_repo=request.gh_repo,
+            gh_repos=self._effective_repos(request),
             dry_run=request.dry_run,
         )
 
@@ -535,6 +576,7 @@ class HandlerDodSweepOrchestrator:
                 },
             )
 
+        gh_repos = self._effective_repos(request)
         results: list[ModelDodTicketResult] = []
         for tid in valid_ids:
             tr = _run_ticket_checks(
@@ -542,7 +584,7 @@ class HandlerDodSweepOrchestrator:
                 contract_root=contract_root,
                 evidence_root=evidence_root,
                 enabled_checks=request.enabled_checks,
-                gh_repo=request.gh_repo,
+                gh_repos=gh_repos,
                 dry_run=request.dry_run,
             )
             results.append(tr)
