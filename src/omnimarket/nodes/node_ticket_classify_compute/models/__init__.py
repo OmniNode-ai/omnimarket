@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 """Models for the ticket classify compute node."""
 
-from omnimarket.nodes.node_ticket_classify_compute.models.enum_buildability import (
+from omnimarket.enums.enum_buildability import (
     EnumBuildability,
 )
 from omnimarket.nodes.node_ticket_classify_compute.models.model_ticket_classification import (

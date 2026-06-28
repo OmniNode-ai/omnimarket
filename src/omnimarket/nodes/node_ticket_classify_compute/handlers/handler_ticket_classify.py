@@ -19,7 +19,7 @@ from uuid import UUID
 
 import yaml
 
-from omnimarket.nodes.node_ticket_classify_compute.models.enum_buildability import (
+from omnimarket.enums.enum_buildability import (
     EnumBuildability,
 )
 from omnimarket.nodes.node_ticket_classify_compute.models.model_seam_boundaries import (

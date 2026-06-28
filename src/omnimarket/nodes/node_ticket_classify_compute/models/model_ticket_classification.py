@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from omnimarket.nodes.node_ticket_classify_compute.models.enum_buildability import (
+from omnimarket.enums.enum_buildability import (
     EnumBuildability,
 )
 
