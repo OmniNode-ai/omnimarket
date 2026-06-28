@@ -104,8 +104,11 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
     # 342 -> 343.
     # OMN-13086 adds node_projection_voice_sessions (REDUCER; voice session
     # projection for the omnidash voice.sessions widget): 343 -> 344.
-    assert summary["node_dirs"] == 344
-    assert summary["entry_points"] == 344
+    # OMN-13085 NC-12 adds node_projection_sandbox_decisions (REDUCER; sandbox
+    # decisions projection contract for the omnidash sandbox-decisions widget):
+    # 344 -> 345.
+    assert summary["node_dirs"] == 345
+    assert summary["entry_points"] == 345
     assert summary["missing_entry_points"] == []
     assert summary["dangling_entry_points"] == []
     assert summary["routable"] >= 299
