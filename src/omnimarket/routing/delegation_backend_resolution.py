@@ -137,7 +137,7 @@ async def _load_store_overlay_async(
 
         backends:
           - backend_id: local-coder
-            endpoint_url: "https://lane.example:8000/v1/chat/completions"
+            endpoint_url: "<store-provided chat-completions URL>"
 
     Endpoint URLs in the store MUST be COMPLETE — no path construction is
     performed here; a bare-base entry is carried verbatim and will fail closed
