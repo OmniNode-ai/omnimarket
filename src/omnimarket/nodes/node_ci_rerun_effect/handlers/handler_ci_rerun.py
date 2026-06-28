@@ -24,6 +24,7 @@ from uuid import uuid4
 
 from omnibase_core.models.dispatch.model_handler_output import ModelHandlerOutput
 
+from omnimarket.config.service_endpoints import GITHUB_REST_URL
 from omnimarket.inference.secret_store_resolver import resolve_api_key_async
 from omnimarket.nodes.contract_topics import contract_secret_ref
 from omnimarket.nodes.node_ci_rerun_effect.models.model_ci_rerun_triggered_event import (
@@ -141,7 +142,7 @@ class HandlerCiRerunEffect:
             return False, f"invalid repo slug: {repo!r}"
 
         req = urllib.request.Request(
-            f"https://api.github.com/repos/{owner}/{repo_name}/actions/runs/{run_id_github}/rerun-failed-jobs",
+            f"{GITHUB_REST_URL}/repos/{owner}/{repo_name}/actions/runs/{run_id_github}/rerun-failed-jobs",
             headers={
                 "Authorization": f"Bearer {token}",
                 "Accept": "application/vnd.github+json",
@@ -206,7 +207,7 @@ class HandlerCiRerunEffect:
         if not expected_head_sha:
             return False, "empty expected_head_sha for empty_commit re-trigger"
 
-        base = f"https://api.github.com/repos/{owner}/{repo_name}"  # url-authority-ok: GitHub control-plane REST host, same as rerun-failed-jobs call above
+        base = f"{GITHUB_REST_URL}/repos/{owner}/{repo_name}"
         headers = {
             "Authorization": f"Bearer {token}",
             "Accept": "application/vnd.github+json",

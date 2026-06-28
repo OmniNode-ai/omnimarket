@@ -31,6 +31,7 @@ from uuid import uuid4
 from omnibase_core.models.dispatch.model_handler_output import ModelHandlerOutput
 from pydantic import BaseModel, ConfigDict, Field
 
+from omnimarket.config.service_endpoints import GITHUB_REST_URL
 from omnimarket.inference.secret_store_resolver import resolve_api_key_async
 from omnimarket.nodes.contract_topics import contract_secret_ref
 from omnimarket.review.pr_review_io import (
@@ -71,7 +72,7 @@ _SEVERITY_ORDER: tuple[EnumFindingSeverity, ...] = (
     EnumFindingSeverity.NIT,
 )
 
-_GITHUB_API_BASE = "https://api.github.com"
+_GITHUB_API_BASE = GITHUB_REST_URL
 _GITHUB_API_VERSION = "2022-11-28"
 _RATE_LIMIT_THRESHOLD = 50
 _MAX_RETRIES = 3

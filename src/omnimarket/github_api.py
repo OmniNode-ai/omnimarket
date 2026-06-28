@@ -19,8 +19,10 @@ import urllib.error
 import urllib.request
 from typing import Any
 
-_GITHUB_REST = "https://api.github.com"
-_GITHUB_GRAPHQL = "https://api.github.com/graphql"
+from omnimarket.config.service_endpoints import GITHUB_GRAPHQL_URL, GITHUB_REST_URL
+
+_GITHUB_REST = GITHUB_REST_URL
+_GITHUB_GRAPHQL = GITHUB_GRAPHQL_URL
 _GITHUB_API_VERSION = "2026-03-10"
 _REQUEST_TIMEOUT = 30.0
 
