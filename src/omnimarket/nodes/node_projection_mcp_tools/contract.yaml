@@ -1,0 +1,78 @@
+---
+name: node_projection_mcp_tools
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: reducer
+node_version: {major: 1, minor: 0, patch: 0}
+description: >
+  Reducer node for MCP tool projection. Consumes node-registration.v1 events
+  from node_contract_registry, filters for mcp_eligible nodes, and UPSERTs
+  into the mcp_tools snapshot table. The projection API exposure declared below
+  drives the omnidash mcp-tools widget (palette-hidden, NC-07).
+
+handler:
+  name: HandlerProjectionMcpTools
+  module: omnimarket.nodes.node_projection_mcp_tools.handlers.handler_projection_mcp_tools
+  class: HandlerProjectionMcpTools
+
+handler_routing:
+  routing_strategy: topic_match
+  handlers:
+    - topic: onex.evt.platform.node-registration.v1
+      operation: mcp_tool_registered
+      event_model:
+        name: ModelMcpToolRegistrationEvent
+        module: omnimarket.nodes.node_projection_mcp_tools.handlers.handler_projection_mcp_tools
+      handler:
+        name: HandlerProjectionMcpTools
+        module: omnimarket.nodes.node_projection_mcp_tools.handlers.handler_projection_mcp_tools
+
+descriptor:
+  node_archetype: reducer
+  purity: effectful
+  idempotent: true
+  timeout_ms: 30000
+  runtime_profiles: [effects]
+
+event_bus:
+  subscribe_topics:
+    - onex.evt.platform.node-registration.v1
+  publish_topics:
+    - onex.evt.omnimarket.projection-mcp-tools-applied.v1
+
+terminal_event: onex.evt.omnimarket.projection-mcp-tools-applied.v1
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.projection-mcp-tools-applied.v1
+
+freshness_sla:
+  max_lag_seconds: 60
+  degraded_after_seconds: 120
+
+db_io:
+  db_tables:
+    - name: mcp_tools
+      access: write
+      database: omnidash_analytics
+      role: projection
+
+projection_api:
+  expose: true
+  topic: "onex.snapshot.projection.mcp-tools.v1"  # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
+  table: "mcp_tools"
+  schema: "public"
+  columns:
+    - "tool_name"
+    - "description"
+    - "model_id"
+    - "correlation_id"
+    - "status"
+    - "is_active"
+    - "mcp_tags"
+    - "registered_at"
+    - "projected_at"
+  order_by: "registered_at DESC"
+  freshness_column: "projected_at"
+  limit: 500
+
+metadata:
+  transport_type: kafka
