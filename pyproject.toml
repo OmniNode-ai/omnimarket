@@ -417,6 +417,9 @@ omnimarket-projection-api = "omnimarket.projection.api_server:main"
 [project.entry-points."onex.cli"]
 market = "omnimarket.cli.market:market"
 
+[project.entry-points."onex.domain_plugins"]
+delegation = "omnimarket.nodes.node_delegation_orchestrator.plugin:PluginDelegation"
+
 [project.entry-points."onex.node_package"]
 omnimarket = "omnimarket.nodes"
 
