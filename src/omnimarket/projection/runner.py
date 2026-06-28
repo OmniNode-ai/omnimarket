@@ -10,13 +10,14 @@ import logging
 import os
 import signal
 from abc import ABC, abstractmethod
+from collections.abc import Callable, Coroutine
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 import yaml
-from aiokafka import AIOKafkaConsumer, TopicPartition
+from aiokafka import AIOKafkaConsumer, AIOKafkaProducer, TopicPartition
 from pydantic import (
     BaseModel,
     ConfigDict,
@@ -48,6 +49,9 @@ DEFAULT_CLIENT_ID = "omnimarket-projection"
 RETRY_BASE_DELAY = 2.0
 RETRY_MAX_DELAY = 30.0
 MAX_RETRY_ATTEMPTS = 10
+
+# Async publish callable injected into projection handlers: (topic, value_bytes) -> None.
+PublishFn = Callable[[str, bytes], Coroutine[Any, Any, None]]
 
 
 @dataclass
@@ -282,6 +286,7 @@ class BaseProjectionRunner(ABC):
         client_id: str | None = None,
         runtime_binding: ModelProjectionRuntimeBinding | None = None,
         runtime_binding_overlay_path: str | Path | None = None,
+        publish_fn: PublishFn | None = None,
     ) -> None:
         resolved_binding = runtime_binding
         if resolved_binding is None and runtime_binding_overlay_path is not None:
@@ -314,6 +319,11 @@ class BaseProjectionRunner(ABC):
         self._stats = ProjectionStats()
         self._running = False
         self._consumer: AIOKafkaConsumer | None = None
+        # The projection runtime owns the producer lifecycle (OMN-12810); handlers
+        # never construct transport clients themselves. An injected publish_fn
+        # (tests or a DI container) takes precedence over the lazily-built producer.
+        self._publish_fn: PublishFn | None = publish_fn
+        self._producer: AIOKafkaProducer | None = None
 
     @property
     @abstractmethod
@@ -374,6 +384,52 @@ class BaseProjectionRunner(ABC):
             if self._runtime_binding is not None
             else "legacy-env-settings"
         )
+
+    async def get_publish_fn(self) -> PublishFn | None:
+        """Return the runtime-owned publish callable, building a producer if needed.
+
+        The projection runtime owns the Kafka producer lifecycle (OMN-12810):
+        an injected ``publish_fn`` is used as-is; otherwise a single
+        ``AIOKafkaProducer`` is built lazily from the resolved bootstrap servers
+        and reused for the runner's lifetime. Returns ``None`` when no brokers are
+        configured so handlers can skip best-effort emission gracefully. The
+        producer is stopped in :meth:`shutdown`.
+        """
+        if self._publish_fn is not None:
+            return self._publish_fn
+
+        brokers = self.kafka_bootstrap_servers
+        if not brokers:
+            return None
+
+        if self._producer is None:
+            producer = AIOKafkaProducer(
+                bootstrap_servers=brokers,
+                value_serializer=lambda v: (
+                    v if isinstance(v, bytes) else v.encode("utf-8")
+                ),
+            )
+            try:
+                await producer.start()
+            except Exception as exc:
+                logger.warning("Kafka producer failed to start: %s", exc)
+                return None
+            self._producer = producer
+
+        producer = self._producer
+
+        async def _publish(topic: str, value: bytes) -> None:
+            await producer.send_and_wait(topic, value)
+
+        self._publish_fn = _publish
+        return self._publish_fn
+
+    async def _stop_producer(self) -> None:
+        """Stop the runtime-owned producer, if one was built."""
+        if self._producer is not None:
+            with contextlib.suppress(Exception):
+                await self._producer.stop()
+            self._producer = None
 
     @property
     def stats(self) -> ProjectionStats:
@@ -448,6 +504,7 @@ class BaseProjectionRunner(ABC):
                 await asyncio.sleep(delay)
 
         logger.error("Consumer failed after %d retries", MAX_RETRY_ATTEMPTS)
+        await self._stop_producer()
         await self._db.close()
 
     async def shutdown(self) -> None:
@@ -457,6 +514,7 @@ class BaseProjectionRunner(ABC):
         if self._consumer:
             with contextlib.suppress(Exception):
                 await self._consumer.stop()
+        await self._stop_producer()
         await self._db.close()
 
     async def _handle_message(self, msg: Any) -> None:

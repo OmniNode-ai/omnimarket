@@ -8,7 +8,7 @@ import asyncio
 import json
 import logging
 import math
-from collections.abc import Callable, Coroutine, Mapping
+from collections.abc import Mapping
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -40,6 +40,7 @@ from omnimarket.projection.dlq import (
 from omnimarket.projection.runner import (
     BaseProjectionRunner,
     MessageMeta,
+    PublishFn,
     safe_parse_date,
 )
 
@@ -67,9 +68,6 @@ KNOWN_PROJECTION_TABLES: frozenset[str] = frozenset(
     }
 )
 
-# Type alias for an async publish callable: (topic, value_bytes) -> None
-PublishFn = Callable[[str, bytes], Coroutine[Any, Any, None]]
-
 
 class DelegationProjectionRunner(BaseProjectionRunner):
     """Projects task-delegated and delegation-shadow-comparison events.
@@ -90,7 +88,7 @@ class DelegationProjectionRunner(BaseProjectionRunner):
         *,
         publish_fn: PublishFn | None = None,
     ) -> None:
-        super().__init__()
+        super().__init__(publish_fn=publish_fn)
         _path = contract_path or Path(__file__).parent.parent / "contract.yaml"
         with open(_path) as f:
             self._contract: dict[str, Any] = yaml.safe_load(f)
@@ -169,9 +167,6 @@ class DelegationProjectionRunner(BaseProjectionRunner):
         # the bus (the offending envelope routed to this topic, carrying its
         # correlation_id) instead of being logged + dropped silently.
         self._dlq_topics: list[str] = dlq_topics_from_contract(self._contract)
-        # Inject for testing; real producer is built lazily on first emit.
-        self._publish_fn: PublishFn | None = publish_fn
-        self._producer: Any = None  # AIOKafkaProducer, created on demand
 
     @property
     def poison_dlq_topics(self) -> list[str]:
@@ -179,8 +174,8 @@ class DelegationProjectionRunner(BaseProjectionRunner):
         return self._dlq_topics
 
     async def publish_dlq(self, topic: str, value: bytes) -> None:
-        """OMN-13634: supply the lazy Kafka producer to the base-class DLQ path."""
-        publish = await self._get_publish_fn()
+        """OMN-13634: supply the runtime-owned publisher to the base-class DLQ path."""
+        publish = await self.get_publish_fn()
         if publish is None:
             logger.error(
                 "node_projection_delegation: no publisher for POISON DLQ topic %s",
@@ -212,44 +207,6 @@ class DelegationProjectionRunner(BaseProjectionRunner):
     def topics(self) -> list[str]:
         return self.subscribe_topics
 
-    async def _get_publish_fn(self) -> PublishFn | None:
-        """Return the publish callable, building a Kafka producer lazily if needed."""
-        if self._publish_fn is not None:
-            return self._publish_fn
-
-        brokers = self.kafka_bootstrap_servers
-        if not brokers:
-            return None
-
-        try:
-            from aiokafka import AIOKafkaProducer
-        except ImportError:
-            logger.warning(
-                "aiokafka not installed; terminal events will not be published"
-            )
-            return None
-
-        if self._producer is None:
-            producer = AIOKafkaProducer(
-                bootstrap_servers=brokers,
-                value_serializer=lambda v: (
-                    v if isinstance(v, bytes) else v.encode("utf-8")
-                ),
-            )
-            try:
-                await producer.start()
-            except Exception as exc:
-                logger.warning("Kafka producer failed to start: %s", exc)
-                return None
-            self._producer = producer
-
-        producer = self._producer
-
-        async def _publish(topic: str, value: bytes) -> None:
-            await producer.send_and_wait(topic, value)
-
-        return _publish
-
     async def _emit_terminal_event(
         self,
         correlation_id: str,
@@ -257,7 +214,7 @@ class DelegationProjectionRunner(BaseProjectionRunner):
         terminal_topic: str,
     ) -> None:
         """Publish a terminal confirmation envelope to the declared terminal topic."""
-        publish = await self._get_publish_fn()
+        publish = await self.get_publish_fn()
         if publish is None:
             logger.debug(
                 "Terminal event skipped (no publish_fn/projection runtime binding): topic=%s correlation_id=%s",
@@ -308,7 +265,7 @@ class DelegationProjectionRunner(BaseProjectionRunner):
         fallback = meta.fallback_id if meta is not None else ""
         correlation_id = correlation_id_from_payload(data, fallback=fallback)
         await route_to_dlq(
-            publish=await self._get_publish_fn(),
+            publish=await self.get_publish_fn(),
             dlq_topics=self._dlq_topics,
             original_message=data,
             failure_reason=reason,
