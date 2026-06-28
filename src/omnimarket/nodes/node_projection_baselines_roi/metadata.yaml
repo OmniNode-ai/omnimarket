@@ -1,0 +1,21 @@
+name: projection_baselines_roi
+version: "1.0.0"
+description: >
+  Aggregates baselines-computed events into a single per-snapshot ROI summary row.
+  Exposes the table via projection API as onex.snapshot.projection.baselines.roi.v1
+  for the omnidash BaselinesROICard widget.
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: true
+  requires_secrets: true
+  side_effect_class: write_db
+tags:
+  - projection
+  - baselines
+  - reducer
+  - roi
+pack: "data"
+display_name: "Projection: Baselines ROI"
+node_role: "effect"
