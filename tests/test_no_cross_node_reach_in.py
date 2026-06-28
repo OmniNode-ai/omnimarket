@@ -100,7 +100,7 @@ _KNOWN_VIOLATIONS: frozenset[str] = frozenset(
         "omnimarket.nodes.node_delegation_orchestrator.delegation_intent_bridge:omnimarket.nodes.node_delegation_quality_gate_reducer.models.model_quality_gate_result:ModelQualityGateResult",
         "omnimarket.nodes.node_delegation_orchestrator.delegation_intent_bridge:omnimarket.nodes.node_delegation_routing_reducer.models.model_routing_decision:ModelRoutingDecision",
         "omnimarket.nodes.node_delegation_orchestrator.handlers.handler_compliance_loop:omnimarket.nodes.node_budget_policy_compute.models.model_budget_limits:ModelBudgetLimits",
-        "omnimarket.nodes.node_delegation_orchestrator.handlers.handler_compliance_loop:omnimarket.nodes.node_budget_policy_compute.models.model_budget_policy_enums:EnumBudgetAction",
+        # EnumBudgetAction reach-in resolved (OMN-13720): import moved to omnibase_core.enums.enum_budget_action
         "omnimarket.nodes.node_delegation_orchestrator.handlers.handler_compliance_loop:omnimarket.nodes.node_budget_policy_compute.models.model_budget_policy_enums:EnumTaskPriority",
         "omnimarket.nodes.node_delegation_orchestrator.handlers.handler_compliance_loop:omnimarket.nodes.node_budget_policy_compute.models.model_budget_policy_request:ModelBudgetPolicyRequest",
         "omnimarket.nodes.node_delegation_orchestrator.handlers.handler_compliance_loop:omnimarket.nodes.node_budget_policy_compute.models.model_budget_usage:ModelBudgetUsage",
@@ -261,7 +261,7 @@ def test_known_violations_not_grown() -> None:
     underlying reach-in. The count is the source of truth; update it only
     when violations are *fixed* (count decreases) — never when adding new ones.
     """
-    baseline = 84
+    baseline = 83
     assert len(_KNOWN_VIOLATIONS) <= baseline, (
         f"_KNOWN_VIOLATIONS grew from {baseline} to {len(_KNOWN_VIOLATIONS)}. "
         "Fix a reach-in to reduce it — do not add new entries."

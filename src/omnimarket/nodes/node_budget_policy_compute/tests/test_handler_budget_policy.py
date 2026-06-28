@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import pytest
+from omnibase_core.enums.enum_budget_action import EnumBudgetAction
 
 from omnimarket.nodes.node_budget_policy_compute.handlers.handler_budget_policy import (
     HandlerBudgetPolicy,
@@ -11,7 +12,6 @@ from omnimarket.nodes.node_budget_policy_compute.models.model_budget_limits impo
     ModelBudgetLimits,
 )
 from omnimarket.nodes.node_budget_policy_compute.models.model_budget_policy_enums import (
-    EnumBudgetAction,
     EnumTaskPriority,
 )
 from omnimarket.nodes.node_budget_policy_compute.models.model_budget_policy_request import (
