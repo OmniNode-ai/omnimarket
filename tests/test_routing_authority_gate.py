@@ -24,10 +24,27 @@ from pathlib import Path
 
 import pytest
 from omnibase_core.nodes.node_routing_authority_check_compute.handler import (
+    ModelResidueEntry,
     check_routing_authority_at_path,
 )
 from omnibase_core.validation.validator_routing_authority import (
     main,
+)
+
+# OMN-13695: baseline bumped from 6 → 8 to accommodate openai + google policy entries
+# added to model_policy.yaml as part of migrating raw os.environ.get reads to
+# ModelPolicyLoader routing authority.
+_YAML_RESIDUE_BASELINE = 8
+_YAML_POLICY_RESIDUE: tuple[ModelResidueEntry, ...] = (
+    ModelResidueEntry(
+        file_rel="src/omnimarket/model_policy.yaml",
+        baseline_count=_YAML_RESIDUE_BASELINE,
+        debt_ticket="OMN-12877",
+        description=(
+            f"model_policy.yaml carries {_YAML_RESIDUE_BASELINE} env_var declarations "
+            "pending bifrost authority migration"
+        ),
+    ),
 )
 
 _REPO_ROOT = Path(__file__).parent.parent
@@ -68,8 +85,27 @@ class TestLiveDemoPathPasses:
         report = _run_gate()
         assert report.passed, report.model_dump()
 
+    def test_yaml_residue_passes_with_current_baseline(self) -> None:
+        """Assert model_policy.yaml env_var count does not exceed the tracked baseline.
+
+        Baseline is managed here (not in omnibase_core) to allow per-PR bumps when
+        canonical policies are added (OMN-13695). Decrease-only ratchet applies:
+        do NOT increase _YAML_RESIDUE_BASELINE without a corresponding new policy entry.
+        """
+        report = check_routing_authority_at_path(
+            repo_root=_REPO_ROOT,
+            demo_path_contracts=_DEFAULT_CONTRACTS,
+            demo_path_sources=_DEFAULT_SOURCES,
+            bifrost_config_rel=_DEFAULT_BIFROST,
+            yaml_policy_residue=_YAML_POLICY_RESIDUE,
+        )
+        assert report.passed, report.model_dump()
+
     def test_cli_exit_zero_on_live_tree(self) -> None:
-        rc = main(["--repo-root", str(_REPO_ROOT)])
+        # Pass --no-default-residue so the CLI doesn't use the omnibase_core-internal
+        # baseline (which may be stale when new canonical policies are added).
+        # The yaml residue check is covered by test_yaml_residue_passes_with_current_baseline.
+        rc = main(["--repo-root", str(_REPO_ROOT), "--no-default-residue"])
         assert rc == 0
 
     def test_demo_path_artifacts_present(self) -> None:
