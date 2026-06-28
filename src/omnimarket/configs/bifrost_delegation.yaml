@@ -75,10 +75,11 @@ backends:
     # OMN-12815 requires the complete /chat/completions form here. The frontier tier
     # was orphaned (empty endpoint_url, no secret_ref) when OMN-12815 (#1118) moved
     # cloud backends to complete-verbatim URLs but skipped cloud-sonnet/cloud-haiku.
+    # OMN-13233: api_key_env removed — ceiling tier resolves auth via secret_ref
+    # (per-tenant store path) identical to every other tier.
     endpoint_url: "https://api.anthropic.com/v1/chat/completions"
     model_name: claude-sonnet-4-6
     secret_ref: llm.anthropic.api_key
-    api_key_env: ANTHROPIC_API_KEY
     tier: frontier_api
     timeout_ms: 60000
     capabilities:
@@ -89,10 +90,11 @@ backends:
   - backend_id: cloud-haiku
     # OMN-12939: COMPLETE endpoint URL incl. the full chat path, posted VERBATIM.
     # Claude Haiku — cheapest frontier model for documentation/simple tasks.
+    # OMN-13233: api_key_env removed — ceiling tier resolves auth via secret_ref
+    # (per-tenant store path) identical to every other tier.
     endpoint_url: "https://api.anthropic.com/v1/chat/completions"
     model_name: claude-haiku-4-5-20251001
     secret_ref: llm.anthropic.api_key
-    api_key_env: ANTHROPIC_API_KEY
     tier: frontier_api
     timeout_ms: 30000
     capabilities:
