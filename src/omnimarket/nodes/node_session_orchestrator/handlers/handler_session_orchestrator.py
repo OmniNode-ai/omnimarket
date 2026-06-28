@@ -42,6 +42,7 @@ from typing import Any
 import yaml
 from pydantic import BaseModel, ConfigDict, Field
 
+from omnimarket.config.service_endpoints import LINEAR_GRAPHQL_URL
 from omnimarket.nodes.node_dispatch_worker import (
     EnumWorkerRole,
     ModelDispatchWorkerCommand,
@@ -1137,7 +1138,7 @@ class HandlerSessionOrchestrator:
         try:
             payload = json.dumps({"query": query}).encode()
             req = urllib.request.Request(
-                "https://api.linear.app/graphql",
+                LINEAR_GRAPHQL_URL,
                 data=payload,
                 headers={
                     "Content-Type": "application/json",

@@ -1,0 +1,19 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# service_endpoints.yaml — Canonical authority for external service base URLs.
+#
+# All GitHub and Linear API base URLs used across omnimarket must be resolved
+# from this file.  No handler, adapter, or model module may hardcode these
+# URL strings as literals — import from omnimarket.config.service_endpoints
+# instead (OMN-12806).
+#
+# Loaded by omnimarket.config.service_endpoints at import time.
+# Fail-closed: any missing required key raises KeyError at startup.
+
+github:
+  rest_url: "https://api.github.com"
+  graphql_url: "https://api.github.com/graphql"
+
+linear:
+  graphql_url: "https://api.linear.app/graphql"

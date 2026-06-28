@@ -26,6 +26,7 @@ from uuid import uuid4
 
 from omnibase_core.models.dispatch.model_handler_output import ModelHandlerOutput
 
+from omnimarket.config.service_endpoints import GITHUB_GRAPHQL_URL
 from omnimarket.inference.secret_store_resolver import resolve_api_key_async
 from omnimarket.nodes.contract_topics import contract_secret_ref
 from omnimarket.nodes.node_merge_sweep_auto_merge_arm_effect.models.model_auto_merge_armed_event import (
@@ -48,7 +49,7 @@ _GRAPHQL_MUTATION = (
     "  }"
     "}"
 )
-_GITHUB_GRAPHQL = "https://api.github.com/graphql"
+_GITHUB_GRAPHQL = GITHUB_GRAPHQL_URL
 _GITHUB_API_VERSION = "2026-03-10"
 _REQUEST_TIMEOUT = 30.0
 

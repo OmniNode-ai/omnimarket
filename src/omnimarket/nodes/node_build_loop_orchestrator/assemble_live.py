@@ -40,6 +40,7 @@ from omnibase_core.protocols.event_bus.protocol_event_bus_publisher import (
     ProtocolEventBusPublisher,
 )
 
+from omnimarket.config.service_endpoints import LINEAR_GRAPHQL_URL
 from omnimarket.config.settings import Settings, get_settings
 from omnimarket.enums.enum_usage_source import EnumUsageSource
 from omnimarket.nodes.node_build_loop.models.model_loop_start_command import (
@@ -72,7 +73,7 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
-LINEAR_API_URL = "https://api.linear.app/graphql"
+LINEAR_API_URL = LINEAR_GRAPHQL_URL
 LINEAR_TEAM_ID = "9bdff6a3-f4ef-4ff7-b29a-6c4cf44371e6"
 
 OMNI_HOME = Path(os.environ["OMNI_HOME"])

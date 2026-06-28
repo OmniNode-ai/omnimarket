@@ -22,6 +22,7 @@ from uuid import uuid4
 
 from omnibase_core.models.dispatch.model_handler_output import ModelHandlerOutput
 
+from omnimarket.config.service_endpoints import GITHUB_REST_URL
 from omnimarket.inference.secret_store_resolver import resolve_api_key_async
 from omnimarket.nodes.contract_topics import contract_secret_ref
 from omnimarket.nodes.node_github_diff_effect.models.model_github_diff import (
@@ -90,7 +91,7 @@ class HandlerGithubDiffEffect:
             raise ValueError(f"invalid repo slug: {repo!r}")
 
         req = urllib.request.Request(
-            f"https://api.github.com/repos/{owner}/{repo_name}/pulls/{pr_number}",
+            f"{GITHUB_REST_URL}/repos/{owner}/{repo_name}/pulls/{pr_number}",
             headers={
                 "Authorization": f"Bearer {token}",
                 "Accept": "application/vnd.github.v3.diff",

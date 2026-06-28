@@ -20,6 +20,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Protocol, runtime_checkable
 
+from omnimarket.config.service_endpoints import GITHUB_REST_URL, LINEAR_GRAPHQL_URL
 from omnimarket.inference.secret_store_resolver import resolve_api_key
 from omnimarket.nodes.contract_topics import contract_secret_ref
 from omnimarket.nodes.node_linear_triage.models.model_linear_triage_state import (
@@ -94,7 +95,7 @@ class LinearHttpClient:
     that touches the network — all other code works against the Protocol.
     """
 
-    _BASE = "https://api.linear.app/graphql"
+    _BASE = LINEAR_GRAPHQL_URL
 
     def __init__(self, api_key: str) -> None:
         self._api_key = api_key
@@ -315,7 +316,7 @@ class GitHubHttpClient:
     the token from the contract-declared ``api_key_ref`` before construction.
     """
 
-    _BASE = "https://api.github.com"
+    _BASE = GITHUB_REST_URL
 
     def __init__(self, token: str) -> None:
         if not token:
