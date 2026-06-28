@@ -18,6 +18,9 @@ from typing import Any, Protocol
 
 import yaml
 
+from omnimarket.nodes.node_pipeline_audit_orchestrator.constants import (
+    DLQ_TOPIC_PREFIX,
+)
 from omnimarket.nodes.node_pipeline_audit_orchestrator.models.model_pipeline_audit_request import (
     EnumAuditType,
     ModelPipelineAuditRequest,
@@ -330,7 +333,7 @@ def _topic_findings(
     }
     findings: list[ModelGapFinding] = []
     for topic, repo in sorted(produced.items()):
-        if topic not in consumed and not topic.startswith("onex.dlq."):
+        if topic not in consumed and not topic.startswith(DLQ_TOPIC_PREFIX):
             findings.append(
                 _finding(
                     EnumFindingSeverity.HIGH,
