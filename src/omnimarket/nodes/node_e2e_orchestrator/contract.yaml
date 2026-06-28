@@ -9,21 +9,18 @@ node_type: orchestrator
 contract_version: {major: 1, minor: 0, patch: 0}
 node_version: {major: 1, minor: 0, patch: 0}
 
-topics:
-  subscribes:
-    - name: onex.evt.omnimarket.build-loop-orchestrator-completed.v1
-      description: Fired when build loop completes; triggers CI poll + merge sweep
-    - name: onex.evt.omnimarket.pr-lifecycle-orchestrator-completed.v1
-      description: Fired when merge sweep completes; triggers evidence bundle write
-  publishes:
-    - name: onex.cmd.omnimarket.pr-lifecycle-orchestrator-start.v1
-      description: Triggers the PR lifecycle / merge sweep
+event_bus:
+  subscribe_topics:
+    - onex.evt.omnimarket.build-loop-orchestrator-completed.v1
+    - onex.evt.omnimarket.pr-lifecycle-orchestrator-completed.v1
+  publish_topics:
+    - onex.cmd.omnimarket.pr-lifecycle-orchestrator-start.v1
 
 descriptor:
   node_archetype: orchestrator
   purity: effectful
   runtime_profiles:
-    - main
+    - workers
 
 runtime_dispatch:
   addressable: false
