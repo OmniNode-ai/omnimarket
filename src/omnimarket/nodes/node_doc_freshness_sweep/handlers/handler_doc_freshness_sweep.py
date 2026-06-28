@@ -10,10 +10,12 @@ ONEX node type: COMPUTE — deterministic scan, no LLM calls.
 
 from __future__ import annotations
 
+import concurrent.futures
 import logging
 import os
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -118,6 +120,10 @@ class DocFreshnessSweepRequest(BaseModel):
     claude_md_only: bool = False
     broken_only: bool = False
     dry_run: bool = False
+    # Per-repo scan timeout in seconds.  When a repo's scan exceeds this limit
+    # it is skipped with a warning so that unscoped (full-workspace) invocations
+    # complete in bounded time.  Pass None to disable the timeout.
+    per_repo_timeout_s: float | None = Field(default=30.0, gt=0)
 
 
 class DocFreshnessSweepResult(BaseModel):
@@ -143,6 +149,50 @@ class DocFreshnessSweepResult(BaseModel):
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+
+def _scan_repo_docs(
+    repo: str,
+    repo_path: Path,
+    all_repo_roots: list[str],
+    claude_md_only: bool,
+    broken_only: bool,
+) -> list[Any]:
+    """Scan a single repo's docs.  Returns a list of freshness results.
+
+    Extracted as a standalone function so it can be submitted to a thread
+    executor and cancelled via a timeout (OMN-13716).
+
+    Return type is ``list[Any]`` because the element type (ModelDocFreshnessResult
+    from onex_change_control) is an optional import; using Any preserves
+    the same typing posture as the rest of this module.
+    """
+    md_files = _collect_md_files(repo_path, claude_md_only)
+    if not md_files:
+        return []
+
+    results: list[Any] = []
+    recently_changed = get_recently_changed_files(str(repo_path), days=30)
+
+    for md_file in md_files:
+        doc_path = str(md_file)
+        try:
+            refs = extract_all_references(doc_path)
+            resolved = resolve_references(refs, all_repo_roots)
+            result = build_freshness_result(
+                doc_path=doc_path,
+                repo=repo,
+                repo_root=str(repo_path),
+                resolved_references=resolved,
+                recently_changed=recently_changed,
+            )
+            if broken_only and result.verdict != EnumDocStalenessVerdict.BROKEN:
+                continue
+            results.append(result)
+        except Exception as exc:
+            _log.warning("error processing %s: %s", doc_path, exc)
+
+    return results
 
 
 def _collect_md_files(repo_root: Path, claude_md_only: bool) -> list[Path]:
@@ -204,38 +254,55 @@ class NodeDocFreshnessSweep:
             )
 
         all_repo_roots = [str(rp) for _, rp in repo_roots]
-        all_results = []
-        repos_scanned = []
+        all_results: list[Any] = []
+        repos_scanned: list[str] = []
 
         for repo, repo_path in repo_roots:
-            md_files = _collect_md_files(repo_path, request.claude_md_only)
-            if not md_files:
+            # Guard: check if the repo has any docs before submitting to executor.
+            if not _collect_md_files(repo_path, request.claude_md_only):
                 continue
 
-            repos_scanned.append(repo)
-            recently_changed = get_recently_changed_files(str(repo_path), days=30)
-
-            for md_file in md_files:
-                doc_path = str(md_file)
+            if request.per_repo_timeout_s is not None:
+                # Use explicit shutdown(wait=False) so that a timed-out thread
+                # does NOT block the main loop — it completes in the background
+                # while we move on to the next repo.  Using ``with executor``
+                # would call shutdown(wait=True) on exit and re-introduce the hang.
+                executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+                future = executor.submit(
+                    _scan_repo_docs,
+                    repo,
+                    repo_path,
+                    all_repo_roots,
+                    request.claude_md_only,
+                    request.broken_only,
+                )
                 try:
-                    refs = extract_all_references(doc_path)
-                    resolved = resolve_references(refs, all_repo_roots)
-                    result = build_freshness_result(
-                        doc_path=doc_path,
-                        repo=repo,
-                        repo_root=str(repo_path),
-                        resolved_references=resolved,
-                        recently_changed=recently_changed,
+                    repo_results = future.result(timeout=request.per_repo_timeout_s)
+                    repos_scanned.append(repo)
+                    all_results.extend(repo_results)
+                except concurrent.futures.TimeoutError:
+                    _log.warning(
+                        "repo scan timed out after %.1fs, skipping: %s "
+                        "(pass --repos to scope or increase per_repo_timeout_s)",
+                        request.per_repo_timeout_s,
+                        repo,
                     )
-                    # In broken_only mode, skip non-broken docs
-                    if (
-                        request.broken_only
-                        and result.verdict != EnumDocStalenessVerdict.BROKEN
-                    ):
-                        continue
-                    all_results.append(result)
                 except Exception as exc:
-                    _log.warning("error processing %s: %s", doc_path, exc)
+                    _log.warning("repo scan failed (%s): %s", repo, exc)
+                finally:
+                    # Non-blocking shutdown — timed-out threads finish in background.
+                    executor.shutdown(wait=False)
+            else:
+                repo_results = _scan_repo_docs(
+                    repo,
+                    repo_path,
+                    all_repo_roots,
+                    request.claude_md_only,
+                    request.broken_only,
+                )
+                if repo_results is not None:
+                    repos_scanned.append(repo)
+                    all_results.extend(repo_results)
 
         # Aggregate
         total_docs = len(all_results)

@@ -1,0 +1,66 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-13716"
+title: "Fix sweep input-default gaps: shim_audit paths + doc_freshness_sweep hang"
+summary: >-
+  Two CONVERGED sweep nodes whose no-arg invocations were broken:
+  (a) shim_audit: ModelShimScanRequest.paths was required with no default, so
+  onex skill shim_audit (no-arg) crashed with ValidationError paths Field
+  required. Fixed: paths defaults to None; handler resolves workspace repo
+  src dirs from OMNI_HOME env var (matching the established pattern in
+  DocFreshnessSweepRequest.omni_home). (b) doc_freshness_sweep: no-scope
+  full-repo scan hung >9min because scanning all 11 default repos via
+  resolve_references had unbounded runtime. Fixed: DocFreshnessSweepRequest
+  gains per_repo_timeout_s (default 30s); each repo is scanned in a
+  ThreadPoolExecutor thread; timed-out repos are skipped with a warning and
+  the scan proceeds, completing in bounded time. Both fixes are in the node
+  input model / handler layer only (no skill_mapping.yaml change).
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-shim-audit-no-arg-validation-error-reproduced-and-fixed"
+    description: >-
+      Before the fix, ModelShimScanRequest() raised ValidationError paths
+      Field required. After the fix, it instantiates with paths=None and
+      the handler resolves workspace repo roots. Reproducing test:
+      test_model_instantiates_without_paths (was impossible before fix).
+    source: "local"
+    evidence_source_sha: "5face2e871d3b0b383a570fcd2b59746d7a3d410"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          uv run pytest
+          tests/nodes/node_shim_scanner/test_shim_scanner_no_arg_default.py
+          -q
+  - id: "dod-doc-freshness-timeout-enforced"
+    description: >-
+      Before the fix, the no-scope scan hung for >9min. After the fix,
+      a simulated slow-repo scan is timed out and skipped; the overall call
+      completes well within the timeout budget. Verified by patching
+      _scan_repo_docs to sleep 10s with per_repo_timeout_s=0.5s and
+      asserting elapsed < 5s.
+    source: "local"
+    evidence_source_sha: "5face2e871d3b0b383a570fcd2b59746d7a3d410"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          uv run pytest
+          tests/integration/node_doc_freshness_sweep/test_doc_freshness_sweep_timeout.py
+          -q
+  - id: "dod-no-regression"
+    description: >-
+      All pre-existing shim_scanner and doc_freshness_sweep tests still
+      pass (25 + 11 = 36 tests), plus 1153 node tests pass with no
+      regressions introduced.
+    source: "local"
+    evidence_source_sha: "5face2e871d3b0b383a570fcd2b59746d7a3d410"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          uv run pytest tests/nodes/ tests/integration/node_shim_scanner/
+          tests/integration/node_doc_freshness_sweep/ -q
