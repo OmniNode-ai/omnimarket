@@ -65,12 +65,14 @@ _CASES: list[tuple[str, dict[str, object], dict[str, object]]] = [
     _CASES,
     ids=[c[0] for c in _CASES],
 )
-def test_onboarding_dry_run_resolution(
+async def test_onboarding_dry_run_resolution(
     case_id: str,
     command_kwargs: dict[str, object],
     expect: dict[str, object],
 ) -> None:
-    result = HandlerOnboarding().handle(ModelOnboardingStartCommand(**command_kwargs))
+    result = await HandlerOnboarding().handle(
+        ModelOnboardingStartCommand(**command_kwargs)
+    )
 
     assert result["success"] is True
     assert result["dry_run"] is True
@@ -93,13 +95,13 @@ def test_onboarding_dry_run_resolution(
         assert len(steps) >= expect["min_steps"]
 
 
-def test_new_employee_plan_is_superset_of_quickstart() -> None:
+async def test_new_employee_plan_is_superset_of_quickstart() -> None:
     """Cross-case structural truth: the broader policy resolves a superset chain."""
     handler = HandlerOnboarding()
-    quickstart = handler.handle(
+    quickstart = await handler.handle(
         ModelOnboardingStartCommand(policy_name="standalone_quickstart", dry_run=True)
     )
-    new_employee = handler.handle(
+    new_employee = await handler.handle(
         ModelOnboardingStartCommand(policy_name="new_employee", dry_run=True)
     )
     assert set(quickstart["resolved_steps"]).issubset(
@@ -109,9 +111,9 @@ def test_new_employee_plan_is_superset_of_quickstart() -> None:
 
 
 @pytest.mark.integration
-def test_onboarding_unknown_policy_raises() -> None:
+async def test_onboarding_unknown_policy_raises() -> None:
     """NEGATIVE CONTROL: an unknown policy name must raise, not silently no-op."""
     with pytest.raises(ValueError, match="Unknown policy"):
-        HandlerOnboarding().handle(
+        await HandlerOnboarding().handle(
             ModelOnboardingStartCommand(policy_name="does_not_exist", dry_run=True)
         )
