@@ -55,9 +55,13 @@ class ModelPolicyLoader:
                 f"Known policies: {list(policies.keys())}"
             )
         env_var: str = policy.get("env_var", "")
+        endpoint_ref: str = policy.get("endpoint_ref", "")
+        if not env_var and endpoint_ref.startswith("env:"):
+            env_var = endpoint_ref.removeprefix("env:")
         if not env_var:
             raise RuntimeError(
-                f"Policy {policy_id!r} has no env_var declared in model_policy.yaml."
+                f"Policy {policy_id!r} has no env_var or env: endpoint_ref declared "
+                "in model_policy.yaml."
             )
         url = os.environ.get(env_var, "")
         if not url:

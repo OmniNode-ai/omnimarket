@@ -79,32 +79,31 @@ LINEAR_TEAM_ID = "9bdff6a3-f4ef-4ff7-b29a-6c4cf44371e6"
 OMNI_HOME = Path(os.environ["OMNI_HOME"])
 WORKTREE_ROOT = Path(os.environ.get("OMNI_WORKTREES_ROOT", ""))
 
-# LLM endpoints — resolved from env vars only, no hardcoded IP fallbacks (OMN-8782)
-LLM_FAST_URL = os.environ.get("LLM_CODER_FAST_URL", "")
-LLM_FAST_MODEL_NAME = os.environ.get("LLM_CODER_FAST_MODEL_NAME", "")
-
-# Local coder endpoint/profile resolved through the routing authority
-# (model_policy.yaml "coder" policy) rather than a raw env read (OMN-12805).
-# resolve_optional / resolve_model_id_optional return None when the policy is
-# not configured, preserving the tiered-fallback skip semantics below.
+# All LLM endpoints and API keys are resolved through ModelPolicyLoader (model_policy.yaml)
+# rather than raw os.environ.get with silent empty-string fallbacks (OMN-13695).
+# resolve_optional / resolve_model_id_optional return None when the policy is not configured,
+# preserving tiered-fallback skip semantics. resolve_api_key returns "" for local/keyless models.
 _POLICY_LOADER = ModelPolicyLoader()
+
+# Fast local classifier (coder_fast policy).
 LOCAL_CODER_URL = _POLICY_LOADER.resolve_optional("coder")
 LOCAL_CODER_MODEL_NAME = _POLICY_LOADER.resolve_model_id_optional("coder")
 
-# Frontier GLM endpoint/profile resolved from runtime overlay.
-LLM_GLM_API_KEY = os.environ.get("LLM_GLM_API_KEY", "")
-LLM_GLM_URL = os.environ.get("LLM_GLM_URL", "")
-LLM_GLM_MODEL_NAME = os.environ.get("LLM_GLM_MODEL_NAME", "")
+LLM_FAST_URL = _POLICY_LOADER.resolve_optional("coder_fast")
+LLM_FAST_MODEL_NAME = _POLICY_LOADER.resolve_model_id_optional("coder_fast")
 
-# Frontier OpenAI endpoint/profile resolved from runtime overlay.
-OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
-OPENAI_BASE_URL = os.environ.get("LLM_OPENAI_URL", "")
-OPENAI_MODEL_NAME = os.environ.get("LLM_OPENAI_MODEL_NAME", "")
+# Frontier GLM endpoint/profile (delegation policy).
+LLM_GLM_API_KEY: str = _POLICY_LOADER.resolve_api_key("delegation")
+LLM_GLM_URL: str | None = _POLICY_LOADER.resolve_optional("delegation")
+LLM_GLM_MODEL_NAME: str | None = _POLICY_LOADER.resolve_model_id_optional("delegation")
 
-# Frontier: Google (Gemini via OpenAI-compat endpoint)
-GOOGLE_API_KEY = os.environ.get("GOOGLE_API_KEY", "") or os.environ.get(
-    "GEMINI_API_KEY", ""
-)
+# Frontier OpenAI-compatible endpoint/profile (openai policy).
+OPENAI_API_KEY: str = _POLICY_LOADER.resolve_api_key("openai")
+OPENAI_BASE_URL: str | None = _POLICY_LOADER.resolve_optional("openai")
+OPENAI_MODEL_NAME: str | None = _POLICY_LOADER.resolve_model_id_optional("openai")
+
+# Frontier Google/Gemini endpoint/profile (google policy).
+GOOGLE_API_KEY: str = _POLICY_LOADER.resolve_api_key("google")
 
 LINEAR_API_KEY = os.environ.get("LINEAR_API_KEY", "")
 
@@ -428,7 +427,7 @@ class LiveTicketClassifyHandler:
                     ticket_id=ticket.ticket_id,
                     buildability=buildability,
                     source=source,
-                    model_used=LLM_FAST_MODEL_NAME
+                    model_used=(LLM_FAST_MODEL_NAME or "")
                     if source == "llm_classifier"
                     else "",
                     raw_response=raw_resp[:200],

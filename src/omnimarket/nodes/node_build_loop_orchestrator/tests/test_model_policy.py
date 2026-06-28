@@ -250,3 +250,131 @@ class TestNoHardcodedIpsInHandlers:
         estimate_cost = module.__dict__["_estimate_cost"]
 
         assert estimate_cost("unpriced-runtime-model", 1000) is None
+
+
+class TestAssembleLiveUsesModelPolicyLoader:
+    """OMN-13695: assemble_live.py must resolve all frontier LLM endpoints/keys via
+    ModelPolicyLoader — no raw os.environ.get with silent empty-string fallbacks."""
+
+    _ASSEMBLE_LIVE = Path(__file__).parents[1] / "assemble_live.py"
+
+    def _content(self) -> str:
+        if not self._ASSEMBLE_LIVE.exists():
+            pytest.skip("assemble_live.py not found")
+        return self._ASSEMBLE_LIVE.read_text()
+
+    def test_no_direct_glm_env_reads(self) -> None:
+        """GLM tier vars must be resolved via ModelPolicyLoader, not raw os.environ.get."""
+        content = self._content()
+        forbidden = [
+            'os.environ.get("LLM_GLM_API_KEY"',
+            'os.environ.get("LLM_GLM_URL"',
+            'os.environ.get("LLM_GLM_MODEL_NAME"',
+        ]
+        violations = [f for f in forbidden if f in content]
+        assert not violations, (
+            f"Direct env reads bypass ModelPolicyLoader routing authority: {violations}. "
+            "Use _POLICY_LOADER.resolve_api_key/resolve_optional/resolve_model_id_optional."
+        )
+
+    def test_no_direct_openai_env_reads(self) -> None:
+        """OpenAI tier vars must be resolved via ModelPolicyLoader, not raw os.environ.get."""
+        content = self._content()
+        forbidden = [
+            'os.environ.get("OPENAI_API_KEY"',
+            'os.environ.get("LLM_OPENAI_URL"',
+            'os.environ.get("LLM_OPENAI_MODEL_NAME"',
+        ]
+        violations = [f for f in forbidden if f in content]
+        assert not violations, (
+            f"Direct env reads bypass ModelPolicyLoader routing authority: {violations}. "
+            "Use _POLICY_LOADER.resolve_api_key/resolve_optional/resolve_model_id_optional."
+        )
+
+    def test_no_direct_google_env_reads(self) -> None:
+        """Google/Gemini API key must be resolved via ModelPolicyLoader, not raw os.environ.get."""
+        content = self._content()
+        assert 'os.environ.get("GOOGLE_API_KEY"' not in content, (
+            "GOOGLE_API_KEY must be resolved via ModelPolicyLoader, not raw os.environ.get. "
+            "Use _POLICY_LOADER.resolve_api_key('google')."
+        )
+        assert 'os.environ.get("GEMINI_API_KEY"' not in content, (
+            "GEMINI_API_KEY must be resolved via ModelPolicyLoader, not raw os.environ.get. "
+            "Consolidate under GOOGLE_API_KEY via the 'google' policy."
+        )
+
+    def test_model_policy_has_openai_policy(self) -> None:
+        """model_policy.yaml must declare an 'openai' policy for the OpenAI-compatible tier."""
+        import yaml
+
+        path = _find_model_policy()
+        data = yaml.safe_load(path.read_text())
+        policies = data.get("policies", {})
+        assert "openai" in policies, (
+            "model_policy.yaml is missing the 'openai' policy. "
+            "Add it with env_var, api_key_env_var, and model_id_env_var."
+        )
+        policy = policies["openai"]
+        assert policy.get("endpoint_ref") == "env:LLM_OPENAI_URL"
+        assert "env_var" not in policy, (
+            "openai policy must not add a legacy env_var residue entry"
+        )
+        assert "api_key_env_var" in policy, "openai policy must declare api_key_env_var"
+        assert "model_id_env_var" in policy, (
+            "openai policy must declare model_id_env_var"
+        )
+
+    def test_model_policy_has_google_policy(self) -> None:
+        """model_policy.yaml must declare a 'google' policy for the Google/Gemini tier."""
+        import yaml
+
+        path = _find_model_policy()
+        data = yaml.safe_load(path.read_text())
+        policies = data.get("policies", {})
+        assert "google" in policies, (
+            "model_policy.yaml is missing the 'google' policy. "
+            "Add it with env_var, api_key_env_var, and model_id_env_var."
+        )
+        policy = policies["google"]
+        assert policy.get("endpoint_ref") == "env:LLM_GOOGLE_URL"
+        assert "env_var" not in policy, (
+            "google policy must not add a legacy env_var residue entry"
+        )
+        assert "api_key_env_var" in policy, "google policy must declare api_key_env_var"
+        assert "model_id_env_var" in policy, (
+            "google policy must declare model_id_env_var"
+        )
+
+    def test_policy_loader_resolves_openai_url(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """ModelPolicyLoader must resolve 'openai' policy URL from LLM_OPENAI_URL."""
+        monkeypatch.setenv("LLM_OPENAI_URL", "https://api.openai.com/v1")
+        from omnimarket.nodes.node_build_loop_orchestrator.handlers.model_policy_loader import (
+            ModelPolicyLoader,
+            _load_policy_file,
+        )
+
+        _load_policy_file.cache_clear()
+        loader = ModelPolicyLoader()
+        result = loader.resolve_optional("openai")
+        assert result == "https://api.openai.com/v1", (
+            f"Expected 'https://api.openai.com/v1', got {result!r}"
+        )
+
+    def test_policy_loader_resolves_google_api_key(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """ModelPolicyLoader must resolve 'google' policy API key from GOOGLE_API_KEY."""
+        monkeypatch.setenv("GOOGLE_API_KEY", "test-google-key-abc")
+        from omnimarket.nodes.node_build_loop_orchestrator.handlers.model_policy_loader import (
+            ModelPolicyLoader,
+            _load_policy_file,
+        )
+
+        _load_policy_file.cache_clear()
+        loader = ModelPolicyLoader()
+        result = loader.resolve_api_key("google")
+        assert result == "test-google-key-abc", (
+            f"Expected 'test-google-key-abc', got {result!r}"
+        )
