@@ -99,11 +99,14 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
     # snapshot projection for the omnidash Session Replay widget): 340 -> 341.
     # OMN-13081 adds node_projection_receipt_gate (REDUCER; OCC/DoD
     # receipt-gate projection for the NC-08 dashboard widget): 341 -> 342.
-    assert summary["node_dirs"] == 342
-    assert summary["entry_points"] == 342
+    # OMN-13079 NC-06 adds node_projection_live_events (REDUCER; live-events
+    # stream projection contract for the omnidash live-event-stream widget):
+    # 342 -> 343.
+    assert summary["node_dirs"] == 343
+    assert summary["entry_points"] == 343
     assert summary["missing_entry_points"] == []
     assert summary["dangling_entry_points"] == []
-    assert summary["routable"] >= 297
+    assert summary["routable"] >= 299
     assert summary["skipped"] == 4
     assert summary["failed"] == 0
     assert summary["failure_buckets"] == {}

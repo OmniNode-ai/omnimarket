@@ -1,0 +1,88 @@
+---
+name: projection_live_events
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: reducer
+node_version: {major: 1, minor: 0, patch: 0}
+input_model: omnimarket.nodes.node_projection_live_events.handlers.handler_projection_live_events.ModelLiveEvent
+description: >
+  Projects platform-wide bus events into the live_events table.
+  Provides a real-time event feed for the omnidash live-event-stream widget.
+  Deduplicates by event_id. Retains the most recent 1000 events.
+  Source topics: platform log entries, node heartbeats, node introspection,
+  node state changes, and delegation terminal events.
+
+handler:
+  module: omnimarket.nodes.node_projection_live_events.handlers.handler_projection_live_events
+  class: HandlerProjectionLiveEvents
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: projection_live_events
+      handler:
+        name: HandlerProjectionLiveEvents
+        module: omnimarket.nodes.node_projection_live_events.handlers.handler_projection_live_events
+      handler_module: omnimarket.nodes.node_projection_live_events.handlers.handler_projection_live_events
+      event_model: omnimarket.nodes.node_projection_live_events.handlers.handler_projection_live_events.ModelLiveEvent
+
+terminal_event: onex.evt.omnimarket.projection-live-events-applied.v1
+
+golden_path:
+  - "Consume platform event from any declared subscribe_topic"
+  - "Normalise into ModelLiveEvent (id, type, timestamp, source, topic, summary, payload, correlation_id)"
+  - "UPSERT row into live_events table keyed on event_id"
+  - "Trim table to retain only the most recent 1000 rows"
+  - "Emit projection-applied event to terminal_event topic"
+  - "Verify row exists in live_events with correct topic, source, and summary"
+  - "Projection-API serves the live-events snapshot exposure from the table"
+
+db_io:
+  db_tables:
+    - name: live_events
+      migration: "0000_create_live_events.sql"
+      access: write
+      database: omnidash_analytics
+      role: live_events
+
+event_bus:
+  subscribe_topics:
+    - onex.evt.platform.log-entry.v1
+    - onex.evt.platform.node-heartbeat.v1
+    - onex.evt.platform.node-introspection.v1
+    - onex.evt.platform.node-state-change.v1
+    - onex.evt.omnibase-infra.delegation-completed.v1
+    - onex.evt.omnibase-infra.delegation-failed.v1
+  publish_topics:
+    - onex.evt.omnimarket.projection-live-events-applied.v1
+    - onex.snapshot.projection.live-events.v1  # onex-topic-allow: projection snapshot topic
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.projection-live-events-applied.v1
+  - onex.snapshot.projection.live-events.v1  # onex-topic-allow: projection snapshot topic
+
+projection_api:
+  expose: true
+  exposures:
+    - topic: onex.snapshot.projection.live-events.v1  # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
+      table: live_events
+      schema: public
+      columns:
+        - id
+        - event_id
+        - type
+        - timestamp
+        - source
+        - topic
+        - summary
+        - payload
+        - correlation_id
+        - created_at
+      order_by: created_at DESC
+      freshness_column: created_at
+      limit: 100
+
+metadata:
+  transport_type: kafka
+  demo_path: true
+  widget_topics:
+    - onex.snapshot.projection.live-events.v1  # onex-topic-allow: projection snapshot topic
