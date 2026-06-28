@@ -1,0 +1,21 @@
+name: node_projection_voice_sessions
+version: "1.0.0"
+description: >
+  Projects voice session events (started, turn, ended) into the
+  voice_sessions table. UPSERT by session_id; queryable via
+  onex.snapshot.projection.voice.sessions.v1.
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: true
+  requires_secrets: true
+  side_effect_class: write_db
+tags:
+  - projection
+  - voice
+  - reducer
+  - session
+pack: "data"
+display_name: "Projection: Voice Sessions"
+node_role: "effect"
