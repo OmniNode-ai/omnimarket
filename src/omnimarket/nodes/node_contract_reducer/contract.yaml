@@ -73,3 +73,42 @@ externally_consumed_topics:
 
 metadata:
   transport_type: kafka
+
+# OMN-13734: machine-readable FSM (transcribed from authoritative handler/model logic).
+state_machine:
+  state_machine_name: contract_reducer_fsm
+  initial_state: idle
+  states:
+    - state_name: idle
+      description: "No contract reduction folded yet."
+      required_data: []
+    - state_name: reduced
+      description: "Contract state projection materialized."
+      required_data: []
+    - state_name: failed
+      description: "Contract reduction failed (terminal)."
+      is_terminal: true
+      required_data: []
+  transitions:
+    - from_state: idle
+      to_state: reduced
+      trigger: contract_reducer_request
+      description: "Reduction requested."
+    - from_state: reduced
+      to_state: reduced
+      trigger: contract_reducer_request
+      description: "Fold another reduction request."
+    - from_state: reduced
+      to_state: reduced
+      trigger: contract_reducer_completed
+      description: "Re-observe own projection (idempotent)."
+    - from_state: idle
+      to_state: failed
+      trigger: contract_reducer_failed
+      description: "Reduction failed before any projection."
+    - from_state: reduced
+      to_state: failed
+      trigger: contract_reducer_failed
+      description: "Reduction failed."
+  terminal_states: [failed]
+  persistence_enabled: false
