@@ -410,6 +410,7 @@ node_skill_functional_audit_compute = "omnimarket.nodes.node_skill_functional_au
 node_dispatch_outcome_bridge_effect = "omnimarket.nodes.node_dispatch_outcome_bridge_effect"
 node_repo_health_classify_compute = "omnimarket.nodes.node_repo_health_classify_compute"
 node_repo_health_repair_effect = "omnimarket.nodes.node_repo_health_repair_effect"
+node_projection_sandbox_decisions = "omnimarket.nodes.node_projection_sandbox_decisions"
 
 [project.scripts]
 onex-integration-test-runner = "omnimarket.nodes.node_integration_test_runner.cli:main"

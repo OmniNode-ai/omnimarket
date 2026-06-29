@@ -1,0 +1,23 @@
+---
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_projection_sandbox_decisions
+version: "1.0.0"
+description: >
+  Projects generated-node-invoked sandbox invocation decisions into
+  sandbox_decisions table (OMN-13085). Closes NC-12 projection debt.
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: true
+  requires_secrets: true
+  side_effect_class: write_db
+tags:
+  - projection
+  - sandbox
+  - reducer
+  - generation
+pack: "data"
+display_name: "Projection: Sandbox Decisions"
+node_role: "effect"

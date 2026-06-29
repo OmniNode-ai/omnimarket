@@ -1,0 +1,99 @@
+---
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_projection_sandbox_decisions
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: reducer
+node_version: {major: 1, minor: 0, patch: 0}
+input_model: omnimarket.nodes.node_projection_sandbox_decisions.handlers.handler_projection_sandbox_decisions.ModelSandboxDecisionEvent
+description: >
+  Projects generated-node-invoked sandbox invocation results into the
+  sandbox_decisions table. Append-only dedup by correlation_id
+  (INSERT ... ON CONFLICT (correlation_id) DO NOTHING). Source topic:
+  onex.evt.omnimarket.generated-node-invoked.v1. Closes the NC-12 debt
+  item (OMN-13085): omnidash declared the sandbox decisions snapshot topic but
+  no contract or matching projection node existed.
+
+handler:
+  module: omnimarket.nodes.node_projection_sandbox_decisions.handlers.handler_projection_sandbox_decisions
+  class: HandlerProjectionSandboxDecisions
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: projection_sandbox_decisions
+      handler:
+        name: HandlerProjectionSandboxDecisions
+        module: omnimarket.nodes.node_projection_sandbox_decisions.handlers.handler_projection_sandbox_decisions
+      handler_module: omnimarket.nodes.node_projection_sandbox_decisions.handlers.handler_projection_sandbox_decisions
+      event_model: omnimarket.nodes.node_projection_sandbox_decisions.handlers.handler_projection_sandbox_decisions.ModelSandboxDecisionEvent
+
+terminal_event: onex.evt.omnimarket.projection-sandbox-decisions-applied.v1
+
+# Golden path: sandbox invocation decision -> sandbox_decisions table
+golden_path:
+  - "Consume generated-node-invoked event from onex.evt.omnimarket.generated-node-invoked.v1"
+  - "Projection handler inserts row into sandbox_decisions table"
+  - "Append-only dedup by correlation_id (INSERT ... ON CONFLICT (correlation_id) DO NOTHING)"
+  - "Emit projection-applied event to onex.evt.omnimarket.projection-sandbox-decisions-applied.v1"
+  - "Verify row exists with correlation_id, node_name, status, runtime_backend fields"
+  - "Golden chain test: tests/test_golden_chain_projection_sandbox_decisions.py"
+
+dod_evidence:
+  - test: tests/test_golden_chain_projection_sandbox_decisions.py::TestSandboxDecisionsProjection::test_project_single_event
+    description: generated-node-invoked event lands one row in sandbox_decisions
+  - test: tests/test_golden_chain_projection_sandbox_decisions.py::TestSandboxDecisionsProjection::test_row_delta_before_zero_after_one
+    description: row-delta proof -- before=0, after project=1 row
+  - test: tests/test_golden_chain_projection_sandbox_decisions.py::TestSandboxDecisionsProjection::test_dedup_by_correlation_id
+    description: append-only dedup on correlation_id (ON CONFLICT DO NOTHING)
+
+db_io:
+  db_tables:
+    - name: sandbox_decisions
+      migration: "0001_create_sandbox_decisions.sql"
+      access: write
+      database: omnidash_analytics
+      role: decisions
+
+event_bus:
+  subscribe_topics:
+    - onex.evt.omnimarket.generated-node-invoked.v1
+  publish_topics:
+    - onex.evt.omnimarket.projection-sandbox-decisions-applied.v1
+    - onex.snapshot.projection.sandbox.decisions.v1  # onex-topic-allow: projection snapshot topic
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.projection-sandbox-decisions-applied.v1
+  - onex.snapshot.projection.sandbox.decisions.v1  # onex-topic-allow: projection snapshot topic
+
+projection_api:
+  expose: true
+  exposures:
+    - topic: onex.snapshot.projection.sandbox.decisions.v1  # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
+      table: sandbox_decisions
+      schema: public
+      columns:
+        - correlation_id
+        - node_name
+        - status
+        - runtime_backend
+        - hot_load
+        - error
+        - created_at
+      order_by: created_at
+      freshness_column: created_at
+      limit: 100
+
+metadata:
+  transport_type: kafka
+  description: "Sandbox decisions projection reducer -- projects sandbox invocation outcomes into queryable snapshot"
+  author: "OmniNode Platform Team"
+  created: "2026-06-28"
+  tags:
+    - "reducer"
+    - "projection"
+    - "sandbox"
+    - "generation"
+    - "OMN-13085"
+  related_tickets:
+    - "OMN-13085"
