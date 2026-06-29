@@ -89,8 +89,10 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
     # Slack publish primitive for the morning deep-dive skill epic): 335 -> 336.
     # OMN-13724 adds node_report_format_compute (COMPUTE; md+metrics -> Slack
     # Block Kit payload for the morning-report pipeline): 336 -> 337.
-    assert summary["node_dirs"] == 337
-    assert summary["entry_points"] == 337
+    # OMN-13725 adds node_deep_dive_report_effect (EFFECT; git/gh/Linear I/O owner
+    # for the daily deep-dive report): 337 -> 338.
+    assert summary["node_dirs"] == 338
+    assert summary["entry_points"] == 338
     assert summary["missing_entry_points"] == []
     assert summary["dangling_entry_points"] == []
     assert summary["routable"] >= 297

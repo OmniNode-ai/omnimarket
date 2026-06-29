@@ -11,7 +11,10 @@ ONEX node type: ORCHESTRATOR — impure (network I/O, filesystem writes).
 
 from __future__ import annotations
 
+import hashlib
+import json
 from collections.abc import Mapping, Sequence
+from pathlib import Path
 from typing import Any, Protocol
 
 from omnimarket.nodes.node_verification_sweep_orchestrator.models.model_verification_sweep_orchestrator_request import (
@@ -67,6 +70,30 @@ class ProtocolVerificationLinearCommenter(Protocol):
     def post_verification_comment(self, ticket_id: str, body: str) -> str: ...
 
 
+class LocalReceiptWriter:
+    """Local default receipt writer — the contract default when no remote OCC
+    receipt-writer adapter is injected.
+
+    The local runtime is always present; durable OCC receipt persistence is an
+    override. Absent the override (the default local bus), the verification
+    receipt is written to a deterministic local state path so the orchestrator
+    runs to completion and produces durable local evidence rather than crashing.
+    """
+
+    def __init__(self, state_dir: Path | None = None) -> None:
+        self._state_dir = state_dir or (
+            Path.cwd() / ".onex_state" / "verification_receipts"
+        )
+
+    def write_receipt(self, payload: Mapping[str, Any]) -> str:
+        self._state_dir.mkdir(parents=True, exist_ok=True)
+        serialized = json.dumps(payload, sort_keys=True, default=str)
+        digest = hashlib.sha256(serialized.encode("utf-8")).hexdigest()[:16]
+        receipt_path = self._state_dir / f"verification_receipt_{digest}.json"
+        receipt_path.write_text(serialized, encoding="utf-8")
+        return str(receipt_path)
+
+
 class HandlerVerificationSweepOrchestrator:
     """Orchestrate post-orchestration verification via injected native adapters."""
 
@@ -78,7 +105,12 @@ class HandlerVerificationSweepOrchestrator:
         linear_commenter: ProtocolVerificationLinearCommenter | None = None,
     ) -> None:
         self._probe_adapter = probe_adapter
-        self._receipt_writer = receipt_writer
+        # The local receipt writer is the contract default. A remote OCC
+        # receipt-writer is an override supplied by runtime wiring; absent it the
+        # sweep writes durable local evidence rather than failing.
+        self._receipt_writer: ProtocolVerificationReceiptWriter = (
+            receipt_writer if receipt_writer is not None else LocalReceiptWriter()
+        )
         self._linear_commenter = linear_commenter
 
     def handle(
@@ -276,15 +308,6 @@ class HandlerVerificationSweepOrchestrator:
         targets: tuple[str, ...],
         adapter_errors: list[ModelVerificationAdapterError],
     ) -> str:
-        if self._receipt_writer is None:
-            adapter_errors.append(
-                ModelVerificationAdapterError(
-                    phase="receipt_write",
-                    adapter="ProtocolVerificationReceiptWriter",
-                    error="receipt_writer adapter required when dry_run is false",
-                )
-            )
-            return ""
         payload = {
             "request": request.model_dump(mode="json"),
             "targets": list(targets),

@@ -511,4 +511,4 @@ def test_untested_handler_fires_for_routing_contract_handler(tmp_path: Path) -> 
     ]
     assert len(untested) >= 1
     assert untested[0].severity == EnumDepHealthSeverity.MAJOR
-    assert untested[0].file_path == str(handler_file)
+    assert untested[0].file_path == "src/mynode/handlers/handler_workflow.py"

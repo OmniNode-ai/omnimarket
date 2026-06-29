@@ -1,0 +1,99 @@
+---
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Deep Dive Report Effect (OMN-13725 / T4a)
+#
+# EFFECT: the sole owner of git/gh/Linear I/O for the daily deep-dive report.
+# All reads are routed through an injected ProtocolReportDataSource (DI,
+# mirroring ProtocolSecretStore); the handler body performs no subprocess /
+# httpx. Pure scoring + rendering reuse omnibase_infra.deep_dive so the logic
+# is one source of truth with scripts/generate_deep_dive.py.
+name: node_deep_dive_report_effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: effect
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  EFFECT: scan a workspace's direct-child git repos for a given day and emit
+  the deep-dive report markdown plus structured metrics (effectiveness/velocity
+  V2 scores, drift level, 6-bucket PR category counts, ticket ids). All git and
+  gh reads are performed through the injected ProtocolReportDataSource adapter
+  (host = per-lane config, never a baked-in choice). A GitHub token, when the
+  lane's adapter needs one, is resolved at the effect boundary from the
+  contract-declared api_key_ref via the canonical secret-store resolver.
+
+input_model:
+  name: ModelDeepDiveReportCommand
+  module: omnimarket.nodes.node_deep_dive_report_effect.models.model_deep_dive_report_io
+  description: "Workspace root + date + repo prefixes + include_dirty/dry_run."
+
+output_model:
+  name: ModelDeepDiveReportResultEvent
+  module: omnimarket.nodes.node_deep_dive_report_effect.models.model_deep_dive_report_io
+  description: "Report markdown + structured deep-dive metrics."
+
+handler:
+  module: omnimarket.nodes.node_deep_dive_report_effect.handlers.handler_deep_dive_report_effect
+  class: HandlerDeepDiveReportEffect
+  input_model: omnimarket.nodes.node_deep_dive_report_effect.models.model_deep_dive_report_io.ModelDeepDiveReportCommand
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: deep_dive_report
+      handler:
+        name: HandlerDeepDiveReportEffect
+        module: omnimarket.nodes.node_deep_dive_report_effect.handlers.handler_deep_dive_report_effect
+
+descriptor:
+  node_archetype: effect
+  purity: impure
+  idempotent: true
+  timeout_ms: 180000
+  runtime_profiles:
+    - effects
+
+secrets:
+  # GitHub token ref is contract-declared so the data-source adapter reads the
+  # ref NAME here — never a bare literal. Value is resolved at the effect
+  # boundary via the canonical secret-store resolver when a lane's adapter
+  # performs authenticated gh reads.
+  GITHUB_TOKEN:
+    description: "GitHub token for gh PR/merge reads during the workspace scan."
+    required: false
+
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.deep-dive-report.v1
+  terminal_events:
+    success: onex.evt.omnimarket.deep-dive-report-completed.v1
+    failure: onex.evt.omnimarket.deep-dive-report-failed.v1
+
+event_bus:
+  consumer_group: omnimarket.deep_dive_report_effect.consume.v1
+  subscribe_topics:
+    - onex.cmd.omnimarket.deep-dive-report.v1
+  publish_topics:
+    - onex.evt.omnimarket.deep-dive-report-completed.v1
+    - onex.evt.omnimarket.deep-dive-report-failed.v1
+  dlq_topics:
+    - onex.dlq.omnimarket.deep-dive-report.v1
+
+terminal_event: onex.evt.omnimarket.deep-dive-report-completed.v1
+
+dependencies:
+  packages:
+    - "omnibase_core>=0.45.0"
+    - "omnibase-infra>=0.38.3"
+
+metadata:
+  transport_type: kafka
+  description: "Daily deep-dive report effect node"
+  author: "OmniNode Team"
+  tags:
+    - "effect"
+    - "deep-dive"
+    - "report"
+    - "git"
+  related_tickets:
+    - "OMN-13725"
+    - "OMN-13722"

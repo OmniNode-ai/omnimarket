@@ -1,0 +1,65 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-13711"
+title: "Handler handle() signatures reject runtime correlation_id kwarg"
+summary: >-
+  Repo-local deploy-gate / receipt evidence carrier for omnimarket PR. Systemic
+  Finding #4: the RuntimeLocal LocalRuntimeBusAdapter dispatches a contract-
+  declared entry handler by introspecting its handle() signature
+  (omnibase_core.runtime.runtime_local_adapter._invoke_handle_method). When a
+  typed-command handler declares ADDITIONAL positional parameters after its
+  command (e.g. an optional phase_results second positional), the adapter falls
+  through to its handle_method(**payload_dict) branch and raises
+  "TypeError: Handler<X>.handle() got an unexpected keyword argument
+  'correlation_id'" because correlation_id is a field of the command payload,
+  not a parameter of handle(). This crashed two user-facing mapped skills
+  (build_loop -> HandlerBuildLoop, design_to_plan -> HandlerDesignToPlan). The
+  fix makes every secondary handle() parameter keyword-only (insert '*,') across
+  the eight affected typed-command entry handlers so the adapter dispatches the
+  command model positionally. Pure signature change; no event-bus topic, REST
+  endpoint, node contract, image dependency, or live runtime mutation.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-reproduce-and-regress"
+    description: >-
+      The reproducing + conformance test fails before the fix (10 failures
+      including the exact correlation_id TypeError via the real adapter) and
+      passes after. Asserts every contract-declared typed-command entry handler
+      exposes exactly one positional handle() parameter, and that the adapter
+      dispatches build_loop and design_to_plan without raising.
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          uv run pytest tests/test_handler_handle_signature_conformance.py -q
+  - id: "dod-affected-node-suites"
+    description: >-
+      The eight modified node handler test suites pass after making the
+      secondary handle() parameters keyword-only (callers already pass them by
+      keyword).
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          uv run pytest tests/ -q -m "not kafka" -k "build_loop or design_to_plan
+          or data_verification or overnight or process_watchdog or release or
+          ticket_work or ticket_research or signature_conformance"
+  - id: "dod-no-runtime-mutation"
+    description: >-
+      Pure handler signature change (positional -> keyword-only) plus a new
+      CI conformance test; no live deploy, restart, .201 mutation, production
+      data mutation, new REST endpoint, or event-bus topic change performed.
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          printf '%s\n' 'deploy gate: OMN-13711 is a handler handle() signature
+          change (keyword-only secondary params) plus a conformance test; no live
+          deploy, restart, .201 mutation, production data mutation, REST
+          endpoint, or topic change performed'

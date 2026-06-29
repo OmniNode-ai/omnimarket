@@ -238,6 +238,12 @@ class RuntimeSweepRequest(BaseModel):
     # how the single-repo CI import-probe avoids the cross-repo symmetry and
     # durability invariants.
     enabled_checks: list[EnumSweepCheck] | None = None
+    # OMN-13715: scope hint surfaced via `onex skill runtime_sweep --scope`.
+    # Accepted values (by convention): "all-repos" (default, full sweep) or
+    # "omnidash-only" (limit sweep to the omnidash repo context). The handler
+    # currently does not filter by scope — wiring the CLI arg is the OMN-13715
+    # deliverable; behavior gating is tracked separately. None ⇒ full sweep.
+    scope: str | None = None
     dry_run: bool = False
 
 
@@ -251,7 +257,7 @@ class RuntimeSweepResult(BaseModel):
     topics_checked: int = 0
     workflows_checked: int = 0
     entry_points_checked: int = 0
-    status: str = "clean"  # clean | findings | error
+    status: str = "clean"  # clean | findings | error | no_input
     dry_run: bool = False
 
     @property
@@ -378,7 +384,22 @@ class NodeRuntimeSweep:
                 )
             )
 
-        status = "clean" if not findings else "findings"
+        entities_checked = (
+            len(request.contracts)
+            + len(all_topics)
+            + len(request.workflow_observations)
+            + len(request.entry_point_probes)
+        )
+        # OMN-13708: 0 entities checked is NOT a clean pass — it is a vacuous run
+        # that verified nothing. The local runtime is always present and is the
+        # default check target; an empty sweep must report ``no_input`` (not
+        # ``clean``) so callers never mistake "checked nothing" for "all healthy".
+        if entities_checked == 0:
+            status = "no_input"
+        elif findings:
+            status = "findings"
+        else:
+            status = "clean"
 
         return RuntimeSweepResult(
             findings=findings,

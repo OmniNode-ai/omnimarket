@@ -21,7 +21,7 @@ from pathlib import Path
 from typing import Any, Protocol, runtime_checkable
 
 from omnimarket.config.service_endpoints import GITHUB_REST_URL, LINEAR_GRAPHQL_URL
-from omnimarket.inference.secret_store_resolver import resolve_api_key
+from omnimarket.inference.secret_store_resolver import resolve_api_key_async
 from omnimarket.nodes.contract_topics import contract_secret_ref
 from omnimarket.nodes.node_linear_triage.models.model_linear_triage_state import (
     EnumTriageAction,
@@ -561,12 +561,12 @@ class HandlerLinearTriage:
             )
         return LinearHttpClient(api_key)
 
-    def _get_github_client(self) -> GitHubClientProtocol:
+    async def _get_github_client(self) -> GitHubClientProtocol:
         if self._github_client is not None:
             return self._github_client
         # Ref-name sourced from contract (OMN-12856) — not a bare source literal.
         _github_ref = contract_secret_ref(_CONTRACT_PATH, "GITHUB_TOKEN")
-        secret = resolve_api_key(_github_ref)
+        secret = await resolve_api_key_async(_github_ref)
         if secret is None:
             raise RuntimeError(
                 f"api_key_ref {_github_ref!r} resolved to None — "
@@ -574,7 +574,9 @@ class HandlerLinearTriage:
             )
         return GitHubHttpClient(secret.get_secret_value())
 
-    def handle(self, request: ModelLinearTriageStartCommand) -> ModelLinearTriageResult:
+    async def handle(
+        self, request: ModelLinearTriageStartCommand
+    ) -> ModelLinearTriageResult:
         """Run the full triage pipeline.
 
         When ``request.flag_only`` is True (the default), the node NEVER writes
@@ -582,9 +584,16 @@ class HandlerLinearTriage:
         instead.  This is the safe operating mode until auto-close precision
         exceeds a human-approved threshold (current precision: ~17%, OMN-12869).
         Set ``flag_only=False`` only after precision has been validated.
+
+        The ``handle`` method is async so that ``resolve_api_key_async`` can be
+        awaited directly — the RuntimeLocal adapter dispatches handlers from
+        within a running event loop, so the sync ``resolve_api_key`` would raise
+        ("sync-only; call resolve_api_key_async from an async context").
+        ``LocalRuntimeBusAdapter`` detects the awaitable return and ``await``s it
+        automatically (OMN-13710).
         """
         client = self._get_client()
-        gh = self._get_github_client()
+        gh = await self._get_github_client()
         threshold = request.threshold_days
         dry_run = request.dry_run
         flag_only = request.flag_only
