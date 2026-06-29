@@ -1,0 +1,24 @@
+name: node_deep_dive_report_effect
+version: "1.0.0"
+description: "Daily deep-dive report EFFECT — workspace git/gh scan to markdown + metrics."
+omnibase_core_compat: ">=0.45.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_deep_dive_report_effect: "omnimarket.nodes.node_deep_dive_report_effect"
+capabilities:
+  standalone: false
+  full_runtime: true
+  requires_network: true
+  requires_repo: true
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: read_only
+dependencies:
+  - "omnibase_core>=0.45.0"
+  - "omnibase-infra>=0.38.3"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["effect", "deep-dive", "report", "git", "OMN-13725"]
+pack: "morning_report"
+display_name: "Deep Dive Report Effect"
+node_role: "effect"
