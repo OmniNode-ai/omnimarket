@@ -1,6 +1,6 @@
 May 3 AB Compare Suite - All Registry Models + GLM Cloud Baseline
 Generated: 2026-05-03T09:37:29-04:00
-Worktree: <omnimarket OMN-10457 worktree>
+Worktree: <omnimarket ab-compare worktree>
 
 $ uv run ab-compare-suite --models all --transport direct --output table
 MULTI-RUN AB MODEL COMPARISON

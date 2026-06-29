@@ -31,7 +31,15 @@ descriptor:
 inputs:
   target_dirs:
     type: list[str]
-    description: "List of repository directories to scan"
+    description: "Explicit absolute directory paths to scan (overrides repos)"
+    required: false
+    default: []
+  repos:
+    type: list[str]
+    description: >
+      Bare repository names resolved against $OMNI_HOME to absolute scan dirs.
+      Defaults to the canonical repo set when both repos and target_dirs are
+      empty, so a no-arg dispatch scans the real repo universe (OMN-13538).
     required: false
     default: []
   checks:

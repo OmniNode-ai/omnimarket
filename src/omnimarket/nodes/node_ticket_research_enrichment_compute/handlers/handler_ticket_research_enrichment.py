@@ -65,6 +65,7 @@ class HandlerTicketResearchEnrichment:
     def handle(
         self,
         request: ModelTicketResearchEnrichmentRequest,
+        *,
         onex_state_dir: Path | None = None,
     ) -> ModelTicketResearchEnrichmentResult:
         """Run enrichment: query assembler, write context file, return result."""

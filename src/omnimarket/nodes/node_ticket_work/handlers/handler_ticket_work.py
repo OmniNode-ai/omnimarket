@@ -711,6 +711,7 @@ class HandlerTicketWork:
     def handle(
         self,
         command: ModelTicketWorkCommand,
+        *,
         phase_results: dict[EnumTicketWorkPhase, bool] | None = None,
     ) -> tuple[
         ModelTicketWorkState,

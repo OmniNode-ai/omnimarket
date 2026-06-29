@@ -1,0 +1,102 @@
+---
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: model_eval_orchestrator
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: orchestrator
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  Canonical model-evaluation experiment orchestrator (SEA -> omnimarket
+  permanent home, OMN-13615). Fans the same generation prompt out to N LLM
+  endpoints via an injectable effect handler (no I/O in the handler), scores
+  each generation against the deterministic validation gate (schema + syntax +
+  security), selects the best model by a contract-configured weighted score
+  (quality_weight * schema + cost_efficiency_weight * cost_efficiency), and
+  emits the canonical ModelExperimentResult (OMN-13613).
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: model_eval
+      handler:
+        name: HandlerModelEvalOrchestrator
+        module: omnimarket.nodes.node_model_eval_orchestrator.handlers.handler_model_eval_orchestrator
+      event_model:
+        name: ModelModelEvalStart
+        module: omnimarket.nodes.node_model_eval_orchestrator.models.model_model_eval_start
+
+descriptor:
+  node_archetype: orchestrator
+  purity: effectful
+  idempotent: false
+  timeout_ms: 300000
+  runtime_profiles:
+    - effects
+
+config:
+  quality_weight:
+    default: 0.7
+    description: "Weight applied to the deterministic schema/quality score in [0,1]."
+  cost_efficiency_weight:
+    default: 0.3
+    description: "Weight applied to the cost-efficiency score in [0,1]."
+  runtime_identity:
+    default: "runtime-local"
+    description: "Runtime lane/service identity recorded on the emitted result."
+
+inputs:
+  prompt:
+    type: str
+    description: "Generation prompt sent identically to every endpoint."
+    required: true
+  endpoints:
+    type: list
+    description: "Endpoint configs (model_id, endpoint, api_key, provider)."
+    required: true
+  correlation_id:
+    type: uuid
+    description: "Correlation identifier linking events across the run."
+    required: true
+
+outputs:
+  experiment_id:
+    type: uuid
+    description: "Unique identifier for this experiment."
+  experiment_type:
+    type: str
+    description: "Always 'model_eval' for this orchestrator."
+  score:
+    type: float
+    description: "Best weighted score across all endpoints."
+  status:
+    type: str
+    description: "Terminal status (completed or failed)."
+
+terminal_event: onex.evt.omnimarket.model-eval-completed.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.model-eval-start.v1
+  publish_topics:
+    - onex.evt.omnimarket.model-eval-completed.v1
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.model-eval-completed.v1
+
+metadata:
+  transport_type: kafka
+  description: "Model-eval experiment orchestrator emitting the canonical ModelExperimentResult"
+  author: "OmniNode Platform Team"
+  created: "2026-06-26"
+  tags:
+    - "orchestrator"
+    - "experiment"
+    - "model-eval"
+    - "sea-migration"
+    - "OMN-13615"
+  related_tickets:
+    - "OMN-13615"
+    - "OMN-13613"
+    - "OMN-13604"
+    - "OMN-12473"

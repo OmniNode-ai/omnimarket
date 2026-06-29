@@ -7,10 +7,12 @@ duplicate ID detection, and EventBusInmemory wiring.
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 import pytest
 from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
 
+from omnimarket.events.design_to_plan import ModelPlanToTicketsStartCommand
 from omnimarket.nodes.node_plan_to_tickets.handlers.handler_plan_to_tickets import (
     HandlerPlanToTickets,
     ModelPlanToTicketsRequest,
@@ -220,3 +222,74 @@ Implementation details.
         assert result.status == "parsed"
         assert "OMN-1234" in result.entries[0].dependencies
         assert "OMN-5678" in result.entries[0].dependencies
+
+
+@pytest.mark.unit
+class TestPlanToTicketsDispatchBoundary:
+    """OMN-12460: handle() must accept the raw dispatch-boundary payload.
+
+    RuntimeLocal delivers the contract ``input_model``
+    (``ModelPlanToTicketsStartCommand``) either as a raw ``dict`` (operation_match
+    handlers) or as a ``ModelPlanToTicketsStartCommand`` instance (single-handler
+    path) — not the ``ModelPlanToTicketsRequest`` the handler operates on. Before
+    the fix, ``handle`` accessed ``request.plan_content`` directly and crashed with
+    ``AttributeError`` on the dict/StartCommand payload, producing the live 30s
+    ``onex run-node`` timeout.
+    """
+
+    def _write_plan(self, tmp_path: Path) -> Path:
+        plan_file = tmp_path / "plan.md"
+        plan_file.write_text(_SIMPLE_PLAN, encoding="utf-8")
+        return plan_file
+
+    def test_raw_dict_payload_deserialized(self, tmp_path: Path) -> None:
+        """A raw dict payload (StartCommand shape) is validated and parsed."""
+        plan_file = self._write_plan(tmp_path)
+        payload: dict[str, object] = {
+            "correlation_id": "corr-1",
+            "plan_path": str(plan_file),
+            "dry_run": True,
+        }
+
+        handler = HandlerPlanToTickets()
+        result = handler.handle(payload)
+
+        assert result.status == "parsed"
+        assert result.structure_type == "task_sections"
+        assert result.entry_count == 3
+        assert result.dry_run is True
+
+    def test_start_command_instance_payload(self, tmp_path: Path) -> None:
+        """A ModelPlanToTicketsStartCommand instance (single-handler path) parses."""
+        plan_file = self._write_plan(tmp_path)
+        command = ModelPlanToTicketsStartCommand(plan_path=str(plan_file))
+
+        handler = HandlerPlanToTickets()
+        result = handler.handle(command)
+
+        assert result.status == "parsed"
+        assert result.entry_count == 3
+        assert result.epic_title == "Feature Implementation Plan"
+
+    def test_model_validate_request_path(self, tmp_path: Path) -> None:
+        """ModelPlanToTicketsRequest.model_validate(dict) accepts a content dict."""
+        request = ModelPlanToTicketsRequest.model_validate(
+            {"plan_content": _SIMPLE_PLAN, "dry_run": False}
+        )
+
+        handler = HandlerPlanToTickets()
+        result = handler.handle(request)
+
+        assert result.status == "parsed"
+        assert result.entry_count == 3
+
+    def test_dict_payload_does_not_raise_attribute_error(self, tmp_path: Path) -> None:
+        """Regression: dict payload must not raise AttributeError (the 30s-timeout bug)."""
+        plan_file = self._write_plan(tmp_path)
+        payload: dict[str, object] = {"plan_path": str(plan_file)}
+
+        handler = HandlerPlanToTickets()
+        # Before OMN-12460 this raised AttributeError on request.plan_content.
+        result = handler.handle(payload)
+
+        assert result.status == "parsed"

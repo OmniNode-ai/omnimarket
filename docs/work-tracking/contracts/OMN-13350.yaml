@@ -1,0 +1,50 @@
+---
+schema_version: "1.0.0"
+ticket_id: OMN-13350
+title: "SEA generation-completed projection silently drops every event (UndefinedColumn) + missing corpus columns"
+summary: >-
+  The omnimarket 0.4.3 generation handler emits ModelGenerationBenchmark with
+  corpus_checked/corpus_passed/corpus_errors (OMN-13289) on
+  node-generation-completed.v1, but generation_events had no such columns, so the
+  projection INSERT raised UndefinedColumn and every completion event was dropped.
+  The runner committed the offset anyway (enable_auto_commit + swallowed
+  exception), so the consumer group reported Stable/LAG=0 while projecting zero
+  rows. This adds migration 0015 (corpus columns), persists the corpus verdict in
+  both write paths, exposes it on the projection_api, and makes BaseProjectionRunner
+  fail-loud (no commit-and-drop on a projection error).
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+evidence_requirements:
+  - kind: tests
+    description: "Targeted projection + runner tests pass (corpus projection + fail-loud)"
+    command: "uv run pytest tests/test_generation_corpus_projection_omn13350.py tests/test_projection_runner.py tests/test_generation_semantic_pass_projection_omn13166.py tests/test_generation_events_proof_fields.py tests/test_projection_handlers.py tests/test_golden_chain_projection_delegation.py -m 'not kafka' -q"
+  - kind: ci
+    description: "CI pipeline green on the omnimarket PR"
+    command: "gh pr checks <PR> --repo OmniNode-ai/omnimarket"
+  - kind: manual
+    description: >-
+      Schema migration + projection-handler change. Live deploy of migration 0015
+      to stability-test is user-gated (vendored migration applies on next forward
+      migration run); no docker exec or rpk topic produce performed in this PR.
+    command: "printf '%s\\n' 'deploy gate: generation_events corpus columns + fail-loud runner; migration vendored, live apply is user-gated'"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: dod-tests
+    description: "Targeted projection + runner tests pass (non-kafka)"
+    source: manual
+    checks:
+      - check_type: command
+        check_value: "uv run pytest tests/test_generation_corpus_projection_omn13350.py tests/test_projection_runner.py tests/test_generation_semantic_pass_projection_omn13166.py tests/test_generation_events_proof_fields.py tests/test_projection_handlers.py tests/test_golden_chain_projection_delegation.py -m 'not kafka' -q"
+  - id: dod-deploy
+    description: >-
+      Migration vendored to omnibase_infra forward tree; live apply to
+      stability-test/prod is user-gated. No runtime restart or Kafka topic change
+      performed in this PR.
+    source: manual
+    checks:
+      - check_type: command
+        check_value: "printf '%s\\n' 'deploy gate: generation_events corpus columns + fail-loud runner; migration vendored, live apply is user-gated'"

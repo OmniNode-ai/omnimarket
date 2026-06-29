@@ -304,7 +304,7 @@ def _collapse_to_map(
 
     Multiple chunks for the same factor (e.g. several selected guidance
     sections) join in precedence order with a blank line between them -- the
-    shape the runner's _assemble_context_text expects for a single factor.
+    shape the runner's _build_context_pack expects for a single factor.
     """
     per_factor: dict[str, list[str]] = {}
     factor_order: list[str] = []

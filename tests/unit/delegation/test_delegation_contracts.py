@@ -113,7 +113,9 @@ class TestOrchestratorContract:
             "ModelAgentTaskLifecycleEvent": (
                 "omnibase_core.models.delegation.model_agent_task_lifecycle_event"
             ),
-            "ModelQualityGateResult": "omnibase_core.models.delegation.wire",
+            "ModelQualityGateResult": (
+                "omnimarket.nodes.node_delegation_quality_gate_reducer.models"
+            ),
         }
         assert categories == {
             "ModelDelegationRequest": "command",
@@ -123,6 +125,32 @@ class TestOrchestratorContract:
             "ModelAgentTaskLifecycleEvent": "event",
             "ModelQualityGateResult": "event",
         }
+
+    def test_orchestrator_quality_gate_result_model_matches_reducer_output(
+        self,
+    ) -> None:
+        orchestrator = self._load()
+        quality_gate_path = (
+            NODES_DIR / "node_delegation_quality_gate_reducer" / "contract.yaml"
+        )
+        with quality_gate_path.open() as f:
+            quality_gate = yaml.safe_load(f)
+
+        quality_routes = [
+            item
+            for item in orchestrator["handler_routing"]["handlers"]
+            if item["event_type"] == "omnibase-infra.quality-gate-result"
+        ]
+
+        assert len(quality_routes) == 1
+        assert (
+            quality_routes[0]["event_model"]["name"]
+            == quality_gate["output_model"]["name"]
+        )
+        assert (
+            quality_routes[0]["event_model"]["module"]
+            == quality_gate["output_model"]["module"]
+        )
 
     def test_orchestrator_bus_routes_are_not_catch_all(self) -> None:
         data = self._load()

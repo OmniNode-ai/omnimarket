@@ -1,0 +1,83 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# OMN-13367 — calibration corpus for reproducible judge verdict events.
+# The corpus is intentionally static. It proves the contract can represent
+# known-good, known-bad, borderline, marker-rich-wrong, and marker-light-correct
+# non-verifiable outputs without relying on marker heuristics as the authority.
+
+rubric_id: delegation_non_verifiable_v1
+rubric_hash: "sha256:321240472e3b52d21fd8cb9b9b7639bb73161a2945adf580948e86275ce20681"
+judge_provider: fixture
+judge_model: fixture-judge
+judge_model_version: "2026-06-20"
+temperature: 0.0
+judge_node_version: "delegation-judge-verdict/1.0.0"
+
+cases:
+  - id: research_known_good
+    task_type: research
+    label: known_good
+    expected_verdict: pass
+    expected_score: 0.92
+    prompt: "Explain why compact self-adjoint operators have spectral decompositions."
+    input: >-
+      The spectral theorem for compact self-adjoint operators states that the
+      non-zero spectrum consists of eigenvalues with finite multiplicity and
+      only possible accumulation at zero.
+    response: >-
+      By the compact self-adjoint spectral theorem, the non-zero spectrum is a
+      countable set of real eigenvalues with finite-dimensional eigenspaces.
+      Because the only accumulation point is zero, the operator is the norm
+      limit of finite-rank spectral projections, so the requested decomposition
+      follows from the provided theorem.
+    reasoning: "Grounded in the provided theorem, complete, and directly answers the task."
+
+  - id: research_known_bad
+    task_type: research
+    label: known_bad
+    expected_verdict: fail
+    expected_score: 0.21
+    prompt: "Explain why compact self-adjoint operators have spectral decompositions."
+    input: "Use only the supplied theorem statement."
+    response: >-
+      It works because all operators are diagonal matrices and every matrix has
+      finitely many eigenvalues. References, theorem, evidence, therefore.
+    reasoning: "Marker-rich but contradicts the compact-operator statement and invents finite-dimensional assumptions."
+
+  - id: summary_borderline
+    task_type: summarization
+    label: borderline
+    expected_verdict: borderline
+    expected_score: 0.64
+    prompt: "Summarize the migration risk."
+    input: >-
+      The migration adds nullable columns and a new projection view. It does not
+      rewrite existing rows, but old consumers will not read the new view until
+      their contracts update.
+    response: >-
+      The migration is mostly additive and should not rewrite existing rows, but
+      consumers may need contract updates.
+    reasoning: "Mostly correct but omits the new projection view and old-consumer behavior."
+
+  - id: document_marker_rich_wrong
+    task_type: document
+    label: marker_rich_wrong
+    expected_verdict: fail
+    expected_score: 0.34
+    prompt: "Describe what the reducer does."
+    input: "The reducer validates quality gate results and emits a verdict event."
+    response: >-
+      Args: reducer. Returns: success. Raises: nothing. This function uploads
+      files to S3, sends email, and rewrites production data.
+    reasoning: "Contains familiar documentation markers but materially contradicts the supplied input."
+
+  - id: summary_marker_light_correct
+    task_type: summarization
+    label: marker_light_correct
+    expected_verdict: pass
+    expected_score: 0.88
+    prompt: "Summarize the result."
+    input: "The tests passed and the projection wrote one judge verdict row."
+    response: "Tests passed; one judge verdict row was projected."
+    reasoning: "Short and marker-light, but accurate and complete for the supplied input."

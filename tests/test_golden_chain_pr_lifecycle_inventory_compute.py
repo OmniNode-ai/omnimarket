@@ -22,6 +22,7 @@ from omnimarket.nodes.node_pr_lifecycle_inventory_compute.handlers.handler_pr_li
     HandlerPrLifecycleInventory,
 )
 from omnimarket.nodes.node_pr_lifecycle_inventory_compute.models.model_pr_lifecycle_inventory import (
+    ModelOrgWideOpenPrInventory,
     ModelPrInventoryInput,
     ModelPrInventoryOutput,
     ModelPrState,
@@ -87,6 +88,11 @@ class TestHandlerPrLifecycleInventoryGoldenChain:
         handler = HandlerPrLifecycleInventory()
 
         def fake_run(cmd: list[str], capture_output: bool, text: bool) -> MagicMock:
+            joined = " ".join(cmd)
+            if "/search/issues" in joined:
+                return _make_subprocess_result(
+                    json.dumps({"total_count": 0, "items": []})
+                )
             if "checks" in cmd:
                 return _make_subprocess_result(json.dumps(check_runs))
             if "reviews" in cmd[-1]:
@@ -175,7 +181,7 @@ class TestHandlerPrLifecycleInventoryGoldenChain:
         with patch("subprocess.run", side_effect=fake_run):
             check_runs = handler._collect_check_runs("OmniNode-ai/omnimarket", 5)
 
-        assert "name,state,bucket" in commands[0]
+        assert "name,state,bucket,event" in commands[0]
         assert "conclusion" not in commands[0]
         assert [check.conclusion for check in check_runs] == ["success", "failure"]
         assert [check.status for check in check_runs] == ["completed", "completed"]
@@ -283,9 +289,15 @@ class TestHandlerPrLifecycleInventoryGoldenChain:
 
     def test_empty_pr_numbers_returns_empty_output(self) -> None:
         handler = HandlerPrLifecycleInventory()
-        result = handler.handle(
-            ModelPrInventoryInput(repo="OmniNode-ai/omnimarket", pr_numbers=())
-        )
+
+        def fake_run(cmd: list[str], capture_output: bool, text: bool) -> MagicMock:
+            # Only the org-wide census runs when no PR numbers are requested.
+            return _make_subprocess_result(json.dumps({"total_count": 0, "items": []}))
+
+        with patch("subprocess.run", side_effect=fake_run):
+            result = handler.handle(
+                ModelPrInventoryInput(repo="OmniNode-ai/omnimarket", pr_numbers=())
+            )
 
         assert isinstance(result, ModelPrInventoryOutput)
         assert result.total_collected == 0
@@ -379,6 +391,272 @@ class TestHandlerPrLifecycleInventoryGoldenChain:
             )
 
         assert result.stuck_queue_prs == []
+
+
+def _search_issues_payload(open_prs: list[dict[str, object]]) -> dict[str, object]:
+    """Build a /search/issues response body for the given open PRs."""
+    return {
+        "total_count": len(open_prs),
+        "items": [
+            {
+                "number": pr["number"],
+                "title": pr.get("title", f"PR #{pr['number']}"),
+                "html_url": pr.get(
+                    "html_url",
+                    f"https://github.com/{pr['repo']}/pull/{pr['number']}",
+                ),
+                "repository_url": (f"https://api.github.com/repos/{pr['repo']}"),
+            }
+            for pr in open_prs
+        ],
+    }
+
+
+@pytest.mark.unit
+class TestOrgWideOpenPrSweepGate:
+    """OMN-13318: org-wide open-PR census gates the sweep-done report.
+
+    DoD: seed one open PR → node reports NOT_DONE and lists the remainder;
+    close it → node reports done (sweep_done True, zero remainders).
+    """
+
+    def test_seed_one_open_pr_reports_not_done_with_remainder(self) -> None:
+        handler = HandlerPrLifecycleInventory()
+        open_prs = [
+            {
+                "number": 2043,
+                "repo": "OmniNode-ai/omnibase_infra",
+                "title": "feat: still open",
+            }
+        ]
+
+        def fake_run(cmd: list[str], capture_output: bool, text: bool) -> MagicMock:
+            assert "/search/issues" in " ".join(cmd)
+            assert any("org:OmniNode-ai is:pr is:open" in part for part in cmd)
+            return _make_subprocess_result(json.dumps(_search_issues_payload(open_prs)))
+
+        with patch("subprocess.run", side_effect=fake_run):
+            census = handler.collect_org_wide_open_prs()
+
+        assert isinstance(census, ModelOrgWideOpenPrInventory)
+        assert census.open_count == 1
+        assert census.sweep_done is False
+        assert len(census.remainders) == 1
+        remainder = census.remainders[0]
+        assert remainder.pr_number == 2043
+        assert remainder.repo == "OmniNode-ai/omnibase_infra"
+        assert remainder.url.endswith("/pull/2043")
+
+    def test_close_the_pr_reports_done(self) -> None:
+        handler = HandlerPrLifecycleInventory()
+
+        def fake_run(cmd: list[str], capture_output: bool, text: bool) -> MagicMock:
+            return _make_subprocess_result(json.dumps(_search_issues_payload([])))
+
+        with patch("subprocess.run", side_effect=fake_run):
+            census = handler.collect_org_wide_open_prs()
+
+        assert census.open_count == 0
+        assert census.remainders == ()
+        assert census.sweep_done is True
+
+    def test_query_failure_is_fail_closed_not_done(self) -> None:
+        handler = HandlerPrLifecycleInventory()
+
+        def fail_run(cmd: list[str], capture_output: bool, text: bool) -> MagicMock:
+            mock = MagicMock()
+            mock.returncode = 1
+            mock.stdout = ""
+            mock.stderr = "API rate limit exceeded"
+            return mock
+
+        with patch("subprocess.run", side_effect=fail_run):
+            census = handler.collect_org_wide_open_prs()
+
+        assert census.query_failed is True
+        assert census.sweep_done is False
+
+    def test_invalid_json_is_fail_closed_not_done(self) -> None:
+        handler = HandlerPrLifecycleInventory()
+
+        def bad_json_run(cmd: list[str], capture_output: bool, text: bool) -> MagicMock:
+            return _make_subprocess_result("not-json")
+
+        with patch("subprocess.run", side_effect=bad_json_run):
+            census = handler.collect_org_wide_open_prs()
+
+        assert census.query_failed is True
+        assert census.sweep_done is False
+
+    def test_handle_populates_org_wide_open(self) -> None:
+        handler = HandlerPrLifecycleInventory()
+        open_prs = [
+            {"number": 7, "repo": "OmniNode-ai/omnimarket", "title": "open one"}
+        ]
+
+        def fake_run(cmd: list[str], capture_output: bool, text: bool) -> MagicMock:
+            if "/search/issues" in " ".join(cmd):
+                return _make_subprocess_result(
+                    json.dumps(_search_issues_payload(open_prs))
+                )
+            mock = MagicMock()
+            mock.returncode = 1
+            mock.stdout = ""
+            mock.stderr = "not found"
+            return mock
+
+        with patch("subprocess.run", side_effect=fake_run):
+            result = handler.handle(
+                ModelPrInventoryInput(repo="OmniNode-ai/omnimarket", pr_numbers=())
+            )
+
+        assert result.org_wide_open is not None
+        assert result.org_wide_open.open_count == 1
+        assert result.org_wide_open.sweep_done is False
+
+
+@pytest.mark.unit
+class TestPrAssociatedRunsOnly:
+    """F3 (OMN-13319): only PR-associated runs count toward required contexts.
+
+    A green ``workflow_dispatch`` "CI Summary" must NOT make a PR green — branch
+    protection credits the PR-associated ``pull_request`` run conclusion, not
+    the (possibly stale or manually dispatched) statusCheckRollup row.
+    """
+
+    def _run(
+        self,
+        check_runs: list[dict[str, object]],
+        pr_number: int = 1,
+        repo: str = "OmniNode-ai/omnimarket",
+    ) -> ModelPrState:
+        handler = HandlerPrLifecycleInventory()
+
+        def fake_run(cmd: list[str], capture_output: bool, text: bool) -> MagicMock:
+            if "checks" in cmd:
+                return _make_subprocess_result(json.dumps(check_runs))
+            if "reviews" in cmd[-1]:
+                return _make_subprocess_result(json.dumps({"reviews": []}))
+            return _make_subprocess_result(
+                json.dumps(_fake_gh_pr_view(pr_number=pr_number))
+            )
+
+        with patch("subprocess.run", side_effect=fake_run):
+            result = handler.handle(
+                ModelPrInventoryInput(repo=repo, pr_numbers=(pr_number,))
+            )
+        return result.pr_states[0]
+
+    def test_collect_check_runs_requests_event_field(self) -> None:
+        handler = HandlerPrLifecycleInventory()
+        commands: list[list[str]] = []
+
+        def fake_run(cmd: list[str], capture_output: bool, text: bool) -> MagicMock:
+            commands.append(cmd)
+            return _make_subprocess_result(json.dumps([]))
+
+        with patch("subprocess.run", side_effect=fake_run):
+            handler._collect_check_runs("OmniNode-ai/omnimarket", 5)
+
+        assert "name,state,bucket,event" in commands[0]
+
+    def test_event_field_is_captured_on_check_run(self) -> None:
+        pr = self._run(
+            [
+                {
+                    "name": "CI Summary",
+                    "state": "completed",
+                    "conclusion": "success",
+                    "event": "pull_request",
+                },
+            ]
+        )
+        assert pr.check_runs[0].event == "pull_request"
+
+    def test_workflow_dispatch_green_does_not_satisfy_arm(self) -> None:
+        """DoD: a green workflow_dispatch CI Summary is the ONLY check whose
+        run is green, while no PR-associated run is green → not green.
+
+        The non-PR-associated green is dropped, leaving zero PR-associated
+        terminal checks → ci_passing stays None → arm refuses.
+        """
+        pr = self._run(
+            [
+                {
+                    "name": "CI Summary",
+                    "state": "completed",
+                    "conclusion": "success",
+                    "event": "workflow_dispatch",
+                },
+            ]
+        )
+        # The manual-dispatch green must not make the PR green.
+        assert pr.ci_passing is not True
+
+    def test_pr_associated_failure_wins_over_dispatch_green(self) -> None:
+        """DoD: PR-associated run is NOT green but a workflow_dispatch run is.
+
+        Trust the PR-associated `pull_request` run conclusion, not the rollup
+        row. The PR-associated failure stands → ci_passing is False → arm
+        refuses.
+        """
+        pr = self._run(
+            [
+                {
+                    "name": "CI Summary",
+                    "state": "completed",
+                    "conclusion": "failure",
+                    "event": "pull_request",
+                },
+                {
+                    "name": "CI Summary",
+                    "state": "completed",
+                    "conclusion": "success",
+                    "event": "workflow_dispatch",
+                },
+            ]
+        )
+        assert pr.ci_passing is False
+
+    def test_pr_associated_green_makes_pr_green(self) -> None:
+        pr = self._run(
+            [
+                {
+                    "name": "CI Summary",
+                    "state": "completed",
+                    "conclusion": "success",
+                    "event": "pull_request",
+                },
+            ]
+        )
+        assert pr.ci_passing is True
+
+    def test_eventless_status_context_still_counts(self) -> None:
+        """Legacy status contexts carry no `event` — treat as PR-associated."""
+        pr = self._run(
+            [
+                {
+                    "name": "legacy/status",
+                    "state": "completed",
+                    "conclusion": "success",
+                },
+            ]
+        )
+        assert pr.ci_passing is True
+
+    def test_merge_group_green_alone_does_not_arm(self) -> None:
+        """A merge_group run is not PR-associated; its green alone is dropped."""
+        pr = self._run(
+            [
+                {
+                    "name": "CI Summary",
+                    "state": "completed",
+                    "conclusion": "success",
+                    "event": "merge_group",
+                },
+            ]
+        )
+        assert pr.ci_passing is not True
 
 
 @pytest.mark.unit

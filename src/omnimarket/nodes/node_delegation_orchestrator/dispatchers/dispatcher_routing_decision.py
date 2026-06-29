@@ -25,9 +25,6 @@ from omnibase_infra.enums import (
     EnumMessageCategory,
 )
 from omnibase_infra.errors import InfraUnavailableError
-from omnibase_infra.event_bus.topic_constants import (
-    TOPIC_DELEGATION_INFERENCE_REQUEST,
-)
 from omnibase_infra.mixins import MixinAsyncCircuitBreaker
 from omnibase_infra.models.dispatch.model_dispatch_result import ModelDispatchResult
 from omnibase_infra.nodes.node_registration_orchestrator.dispatchers._util_envelope_extract import (
@@ -36,6 +33,9 @@ from omnibase_infra.nodes.node_registration_orchestrator.dispatchers._util_envel
 from omnibase_infra.utils import sanitize_error_message
 from pydantic import BaseModel, ValidationError
 
+from omnimarket.nodes.node_delegation_orchestrator.contract_topics import (
+    TOPIC_ID_INFERENCE_REQUEST,
+)
 from omnimarket.nodes.node_delegation_orchestrator.dispatchers.topic_utils import (
     derive_event_type_from_topic,
 )
@@ -131,7 +131,7 @@ class DispatcherRoutingDecision(MixinAsyncCircuitBreaker):  # type: ignore[misc]
                 for idx, event in enumerate(output_events):
                     topic = getattr(event, "topic", None)
                     if topic is None and isinstance(event, ModelInferenceIntent):
-                        topic = TOPIC_DELEGATION_INFERENCE_REQUEST
+                        topic = TOPIC_ID_INFERENCE_REQUEST
                     if topic is None:
                         unpublished.append(event)
                         continue

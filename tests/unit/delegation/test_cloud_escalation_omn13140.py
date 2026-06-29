@@ -101,12 +101,6 @@ _BIFROST_CODE_GEN_CLOUD_ROUTABLE = textwrap.dedent(
         tier: frontier_api
         timeout_ms: 60000
         capabilities: [code_generation]
-      - backend_id: cli-claude
-        endpoint_url: ""
-        model_name: claude-cli
-        tier: cli_agents
-        timeout_ms: 60000
-        capabilities: [agent_delegation]
     routing_rules:
       - rule_id: "d4e5f6a7-0001-4000-8000-000000000001"
         priority: 10
@@ -140,7 +134,8 @@ _BIFROST_CODE_GEN_CLOUD_ROUTABLE = textwrap.dedent(
 
 # A task-class contract that selects cloud-gemini-flash for code_generation so the
 # escalation lands on the canonical Gemini target (overriding the repo default
-# task_model_overrides which prefers openrouter-glm-flash, absent in this fixture).
+# task_model_overrides which prefers the direct z.ai glm-5.2, absent in this
+# fixture — OMN-13380).
 _TASK_CLASS_CONTRACT_GEMINI = textwrap.dedent(
     """\
     schema_version: "task_class_contracts.v1"
@@ -157,11 +152,25 @@ _TASK_CLASS_CONTRACT_GEMINI = textwrap.dedent(
         definition_of_done:
           deterministic: []
           heuristic: [min_length_chars_400]
+        quality_gate:
+          score_source: quality_gate_graded_score
+          required_bar: 0.85
+          request_override_bounds:
+            min: 0.6
+            max: 1.0
     """
 )
 
 _CANONICAL_GEMINI_BACKEND_ID = "cloud-gemini-flash"
 _CANONICAL_VERTEX_BACKEND_ID = "cloud-vertex-gemini"
+# OMN-13215: the ceiling tier is an HTTP frontier backend (no shelled CLI).
+# OMN-13351: repointed from the dead Anthropic cloud-sonnet (llm.anthropic.api_key
+# resolves to None in every lane) to the resolvable Gemini cloud-gemini-pro
+# (secret_ref llm.gemini.api_key, model gemini-2.5-flash).
+# OMN-13667: repointed again from free-tier AI Studio Gemini (cloud-gemini-pro,
+# 503s on every escalation) to GLM-5.2 z.ai direct (cloud-glm,
+# secret_ref llm.glm.api_key) — the proven backend the judge already runs on.
+_TERMINAL_CEILING_BACKEND_ID = "cloud-glm"
 
 
 @pytest.fixture
@@ -274,7 +283,7 @@ class TestQualityGateVerdictRecommendsFallback:
         assert result.passed is False
         assert result.fallback_recommended is True
 
-    def test_passing_output_does_not_recommend_fallback(self) -> None:
+    def test_length_only_passing_output_still_recommends_fallback(self) -> None:
         result = handler_quality_gate.delta(
             handler_quality_gate.ModelQualityGateInput(
                 correlation_id=uuid4(),
@@ -283,20 +292,46 @@ class TestQualityGateVerdictRecommendsFallback:
                 dod_heuristic=("min_length_chars_5",),
             )
         )
-        assert result.passed is True
-        assert result.fallback_recommended is False
+        assert result.passed is False
+        assert result.quality_score == pytest.approx(1.0)
+        assert any("reject-only" in r for r in result.failure_reasons)
+        assert result.fallback_recommended is True
 
 
 @pytest.mark.unit
 @pytest.mark.parametrize(
-    ("task_type", "content", "dod_heuristic", "expected_prefix"),
+    (
+        "task_type",
+        "content",
+        "dod_heuristic",
+        "expected_prefix",
+        "start_tier",
+        "expected_min_tier",
+    ),
     [
-        ("code_generation", "x = 1", ("min_length_chars_400",), "WEAK_OUTPUT"),
+        # OMN-13140 closed-set tier_order: code_generation declares
+        # [cheap_cloud, local, claude]. A gate failure on cheap_cloud escalates
+        # forward to the next declared tier (local), which is routable in the
+        # fixture. (Previously this case started on local and relied on the
+        # append-unlisted bug to reach cheap_frontier — a tier code_generation's
+        # tier_order does not list, so it is excluded under closed-set semantics.)
+        (
+            "code_generation",
+            "x = 1",
+            ("min_length_chars_400",),
+            "WEAK_OUTPUT",
+            "cheap_cloud",
+            "local",
+        ),
+        # research declares [local, cheap_cloud, claude]: a gate failure on local
+        # escalates forward to cheap_cloud (routable in the fixture).
         (
             "research",
             "The function returns a value to the caller without line refs.",
             ("cites_specific_lines",),
             "TASK_MISMATCH",
+            "local",
+            "cheap_cloud",
         ),
     ],
 )
@@ -312,6 +347,8 @@ class TestWeakAndMismatchProduceEscalationCandidate:
         content: str,
         dod_heuristic: tuple[str, ...],
         expected_prefix: str,
+        start_tier: str,
+        expected_min_tier: str,
         frontier_unconfigured_bifrost: None,
     ) -> None:
         handler = HandlerDelegationWorkflow(workflows={})
@@ -338,9 +375,10 @@ class TestWeakAndMismatchProduceEscalationCandidate:
             endpoint_url="http://local.test:8000/v1/chat/completions",
             cost_tier="low",
             max_context_tokens=65536,
+            max_tokens=65536,  # OMN-13345: contract backend output ceiling
             system_prompt="sp",
             rationale="r",
-            tier_name="local",
+            tier_name=start_tier,
             dod_heuristic=dod_heuristic,
         )
         handler.handle_routing_decision(decision)
@@ -367,8 +405,7 @@ class TestWeakAndMismatchProduceEscalationCandidate:
         assert len(routing_intents) == 1, (
             f"{expected_prefix} verdict must produce an escalation candidate"
         )
-        assert routing_intents[0].min_tier_name is not None
-        assert routing_intents[0].min_tier_name != "local"
+        assert routing_intents[0].min_tier_name == expected_min_tier
         assert handler.workflows[cid].state == EnumDelegationState.ROUTED
         assert handler.workflows[cid].escalation_count == 1
 
@@ -404,7 +441,7 @@ class TestNextEligibleTierCodeGeneration:
     ) -> None:
         result = next_eligible_tier(
             "local",
-            frozenset({"cli_agents"}),
+            frozenset(),
             task_type="code_generation",
         )
         assert result == "cheap_cloud"
@@ -462,6 +499,40 @@ class TestCanonicalCloudTargetCapability:
             "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
         )
         assert gemini["secret_ref"] == "llm.gemini.api_key"
+
+    def test_terminal_claude_tier_routes_to_http_frontier_backend(self) -> None:
+        """OMN-13215/OMN-13351/OMN-13667: the ceiling tier executes via the canonical
+        HTTP path.
+
+        OMN-13667: the claude ceiling tier maps to the HTTP cloud-glm backend (GLM-5.2
+        z.ai direct, complete verbatim endpoint_url + secret_ref llm.glm.api_key),
+        NOT a shelled CLI and NOT the dead Anthropic cloud-sonnet (llm.anthropic.api_key
+        resolves to None in every lane). The prior cloud-gemini-pro Gemini backend
+        was replaced because free-tier AI Studio Gemini 503s on every escalation.
+        """
+        tiers = {t["name"]: t for t in self._routing_tiers()["tiers"]}
+        terminal = tiers["claude"]
+        assert terminal["models"][0]["backend_id"] == _TERMINAL_CEILING_BACKEND_ID
+        assert terminal["models"][0]["id"] == "glm-5.2"
+
+        backends = self._bifrost()["backends"]
+        by_id = {b["backend_id"]: b for b in backends}
+        ceiling = by_id[_TERMINAL_CEILING_BACKEND_ID]
+        # Complete verbatim HTTP chat-completions URL (OMN-12815 shape).
+        assert ceiling["endpoint_url"].endswith("/chat/completions")
+        assert ceiling["endpoint_url"].startswith("https://")
+        # Secret resolved at the effect boundary via api_key_ref (not a literal),
+        # and it is the RESOLVABLE GLM ref — not the dead Anthropic ref.
+        assert ceiling["secret_ref"] == "llm.glm.api_key"
+
+        # OMN-13351: the dead Anthropic backends were deleted; nothing routes to them.
+        assert "cloud-sonnet" not in by_id
+        assert "cloud-haiku" not in by_id
+
+        # The shelled-CLI backends were removed entirely.
+        for b in backends:
+            assert not str(b["backend_id"]).startswith("cli-")
+            assert not str(b.get("endpoint_url") or "").lower().startswith("cli://")
 
 
 # ---------------------------------------------------------------------------

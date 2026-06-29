@@ -73,7 +73,7 @@ def test_vertex_backend_uses_secret_ref_bearer_path() -> None:
     assert "api_key_env" not in vertex
     # endpoint_url must be null in the repo default (overlay supplies complete URL).
     assert vertex.get("endpoint_url") is None
-    assert vertex.get("base_url_env") == "BIFROST_VERTEX_GEMINI_ENDPOINT_URL"
+    assert vertex.get("endpoint_url_env") == "BIFROST_VERTEX_GEMINI_ENDPOINT_URL"
 
 
 @pytest.mark.unit

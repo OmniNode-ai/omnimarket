@@ -17,7 +17,8 @@ handler:
 
 handler_routing:
   handlers:
-    - handler:
+    - operation: feature_dashboard
+      handler:
         name: HandlerFeatureDashboardCompute
         module: omnimarket.nodes.node_feature_dashboard_compute.handlers.handler_feature_dashboard_compute
 

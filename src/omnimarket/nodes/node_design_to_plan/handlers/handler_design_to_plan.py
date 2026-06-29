@@ -162,6 +162,7 @@ class HandlerDesignToPlan:
     def handle(
         self,
         command: ModelDesignToPlanCommand,
+        *,
         phase_results: dict[EnumDesignToPlanPhase, bool] | None = None,
     ) -> tuple[
         ModelDesignToPlanState,

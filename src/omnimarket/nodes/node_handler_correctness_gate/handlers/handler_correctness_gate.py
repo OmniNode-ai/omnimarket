@@ -32,8 +32,12 @@ def _score_entry(entry: ModelEvalEntry, actual: str) -> bool:
 
 class HandlerCorrectnessGate:
     def handle(
-        self, request: ModelCorrectnessCheckRequest
+        self, payload: ModelCorrectnessCheckRequest
     ) -> ModelCorrectnessCheckResult:
+        # OMN-13276: first parameter is named ``payload`` so the RuntimeLocal
+        # adapter's single-parameter dispatch passes the validated request
+        # positionally instead of keyword-fanning the model fields.
+        request = payload
         entries = request.eval_set.entries
         total = len(entries)
 

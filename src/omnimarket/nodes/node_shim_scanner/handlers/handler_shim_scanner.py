@@ -10,6 +10,8 @@ from __future__ import annotations
 
 import ast
 import datetime
+import logging
+import os
 from pathlib import Path
 
 from omnimarket.nodes.node_shim_scanner.models.model_shim_finding import (
@@ -25,7 +27,20 @@ from omnimarket.nodes.node_shim_scanner.models.model_shim_scan_result import (
 
 __all__ = ["HandlerShimScanner"]
 
+_log = logging.getLogger(__name__)
 _SHIM_DECORATOR_NAME = "shim"
+
+# Repo directories under OMNI_HOME that are scanned when no explicit paths are given.
+_DEFAULT_SCAN_REPOS = [
+    "omnibase_compat",
+    "omnibase_core",
+    "omnibase_spi",
+    "omnibase_infra",
+    "omniclaude",
+    "omnimarket",
+    "omniintelligence",
+    "omnimemory",
+]
 
 
 class HandlerShimScanner:
@@ -38,7 +53,8 @@ class HandlerShimScanner:
             else datetime.date.today()
         )
 
-        py_files = _collect_python_files(request.paths)
+        paths = _resolve_paths(request.paths)
+        py_files = _collect_python_files(paths)
         findings: list[ModelShimFinding] = []
 
         for file_path in py_files:
@@ -59,6 +75,32 @@ class HandlerShimScanner:
             expiring_count=expiring,
             total_count=len(findings),
         )
+
+
+def _resolve_paths(paths: list[str] | None) -> list[str]:
+    """Return *paths* as-is, or derive workspace repo roots from OMNI_HOME when None."""
+    if paths is not None:
+        return paths
+    omni_home = os.environ.get("OMNI_HOME", "")
+    if not omni_home:
+        _log.warning(
+            "HandlerShimScanner: no paths supplied and OMNI_HOME is unset; "
+            "returning empty scan (pass --paths to scope the sweep)"
+        )
+        return []
+    root = Path(omni_home)
+    resolved: list[str] = []
+    for repo in _DEFAULT_SCAN_REPOS:
+        rp = root / repo
+        if rp.is_dir():
+            resolved.append(str(rp / "src"))
+        else:
+            _log.debug("HandlerShimScanner: repo not found, skipping: %s", rp)
+    _log.info(
+        "HandlerShimScanner: no paths supplied; defaulting to %d repo src dirs",
+        len(resolved),
+    )
+    return resolved
 
 
 def _collect_python_files(paths: list[str]) -> list[Path]:

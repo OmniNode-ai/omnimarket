@@ -5,6 +5,7 @@
 Related:
     - OMN-8086: Create pr_lifecycle_state_reducer Node
     - OMN-8070: PR Lifecycle Domain epic
+    - OMN-13585: RH-3: Extend pr_lifecycle reducer state with additive repo_health sub-record
 """
 
 from __future__ import annotations
@@ -41,6 +42,57 @@ class ModelPrLifecycleEntryFlags(BaseModel):
     )
 
 
+class ModelRepoHealthLaneState(BaseModel):
+    """Additive sub-record tracking repo-health classification and repair state.
+
+    Folded from:
+      - onex.evt.omnimarket.repo-health-classified.v1
+      - onex.evt.omnimarket.repo-health-repair-emitted.v1
+
+    This sub-record is isolated from the PR-lane FSM fields — folds into
+    repo_health only; all existing ModelPrLifecycleState fields are untouched.
+
+    Related: OMN-13585
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    classified_count: int = Field(
+        default=0,
+        ge=0,
+        description="Total repo-health events classified.",
+    )
+    pr_scoped_count: int = Field(
+        default=0,
+        ge=0,
+        description="Count of PR-scoped health issues.",
+    )
+    repo_baseline_count: int = Field(
+        default=0,
+        ge=0,
+        description="Count of repo-baseline health issues.",
+    )
+    external_dependency_count: int = Field(
+        default=0,
+        ge=0,
+        description="Count of external-dependency health issues.",
+    )
+    unknown_count: int = Field(
+        default=0,
+        ge=0,
+        description="Count of unclassified health events.",
+    )
+    repair_tasks_emitted: int = Field(
+        default=0,
+        ge=0,
+        description="Number of repair tasks emitted for repo-health issues.",
+    )
+    repair_task_refs: tuple[str, ...] = Field(
+        default=(),
+        description="Deduplicated ticket refs for emitted repair tasks.",
+    )
+
+
 class ModelPrLifecycleState(BaseModel):
     """Frozen FSM state for the PR lifecycle sweep.
 
@@ -48,6 +100,9 @@ class ModelPrLifecycleState(BaseModel):
     All phase transitions go through the reducer's delta function.
 
     Entry flags (dry_run, inventory_only, fix_only) control transition availability.
+
+    The repo_health sub-record is additive: folds from repo-health domain events
+    without touching any of the PR-lane FSM fields above.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -89,6 +144,18 @@ class ModelPrLifecycleState(BaseModel):
     prs_processed: int = Field(
         default=0, ge=0, description="Total PRs processed in this sweep cycle."
     )
+    repo_health: ModelRepoHealthLaneState = Field(
+        default_factory=ModelRepoHealthLaneState,
+        description=(
+            "Additive repo-health sub-record. Folded from repo-health-classified "
+            "and repo-health-repair-emitted events only. Never modified by PR-lane "
+            "FSM transitions."
+        ),
+    )
 
 
-__all__: list[str] = ["ModelPrLifecycleEntryFlags", "ModelPrLifecycleState"]
+__all__: list[str] = [
+    "ModelPrLifecycleEntryFlags",
+    "ModelPrLifecycleState",
+    "ModelRepoHealthLaneState",
+]

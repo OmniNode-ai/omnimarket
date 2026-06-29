@@ -1,6 +1,6 @@
 # Manifest Validation Report — 2026-05-23
 
-**Ticket**: OMN-11838 (Phase 2D: Spot-check and manifest validation)
+**Phase**: Phase 2D — Spot-check and manifest validation
 **Manifest**: `docs/adr-canary/ground_truth_manifest.yaml`
 **Validator**: `scripts/validate_manifest.py`
 **Run date**: 2026-05-23

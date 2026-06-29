@@ -38,6 +38,13 @@ class ProjectionTableConfig(BaseModel):
     json_columns: tuple[str, ...] = ()
     order_by: str | None = None  # None means ordering is undefined
     freshness_column: str | None = None  # None means freshness is unknown
+    # Contract-declared expected cadence between events for this projection
+    # (OMN-13035 / retro B-7). None means the topic is on-demand: it emits only
+    # when triggered, so silence is a normal "idle" state and must never be
+    # reported as "stale". A positive value declares the inter-event interval in
+    # seconds; freshness degrades to "stale" only once the projection is behind
+    # twice that interval.
+    expected_event_interval_seconds: int | None = None
     cursor_column: str | None = None
     last_event_id_column: str | None = None
     last_ingest_sequence_column: str | None = None

@@ -1,0 +1,48 @@
+# Projection exposure⇄column drift — omission allowlist (OMN-13663)
+#
+# Consumed by the omnibase_core validator `check-projection-exposure-drift`
+# (module: omnibase_core.validators.projection_exposure_drift), wired as a
+# pre-commit hook + the "Projection Exposure Drift Gate" required CI job.
+#
+# The validator's EXISTENCE check (an exposure references a column its table/view
+# does not materialize) is ALWAYS blocking and is NOT allowlistable here — fix the
+# exposure or the DDL. This file only annotates the OMISSION heuristic: a
+# materialized identity/tier/cost column (cost_tier, tier, *_id, correlation_id,
+# cost_*, savings_*, tokens_*) that is intentionally NOT surfaced by any exposure.
+#
+# This is the cost_tier_name class of bug (OMN-13649): the column existed in DDL
+# (migration 0018) but was dropped at the projection boundary. With the gate run
+# in --fail-on-omission mode, an unannotated omission of such a column BLOCKS
+# merge. Each entry below is a ratchet baseline grandfathered at gate introduction
+# — a pre-existing omission, not a regression introduced by the gate. Only entries
+# with a non-empty `reason` are honored; an unannotated entry is ignored so
+# intentional omissions stay explicit, never silent.
+#
+# To clear an entry: surface the column in a projection_api exposure (and delete
+# the entry), or confirm the omission is correct and keep the documented reason.
+omissions:
+  - node: node_projection_delegation
+    table: delegation_events
+    column: cost_measurement_source
+    reason: >-
+      Cost-provenance enum (metered vs estimated) added in OMN-13234. The
+      dashboard reads cost_usd + cost_tier_name/cost_tier_type from the
+      decisions.v1 / correlation-trace.v1 exposures; the provenance flag is not a
+      rendered surface. Grandfathered ratchet baseline at OMN-13663 gate
+      introduction — surface it in an exposure if it later becomes a display need.
+  - node: node_projection_delegation
+    table: delegation_events
+    column: llm_call_id
+    reason: >-
+      Internal LLM-call correlation FK used for server-side joins, not a
+      projection/dashboard surface (correlation_id is the public correlation key,
+      already exposed). Grandfathered ratchet baseline at OMN-13663 gate
+      introduction.
+  - node: node_projection_delegation
+    table: delegation_budget_state
+    column: last_correlation_id
+    reason: >-
+      Internal bookkeeping pointer to the most recent correlation that mutated the
+      budget-state row; not a rendered surface (the budget exposure serves
+      tenant_id/cost_tier_name/period aggregates). Grandfathered ratchet baseline
+      at OMN-13663 gate introduction.

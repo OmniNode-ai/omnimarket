@@ -15,15 +15,24 @@ from pydantic import ValidationError
 from omnimarket.models.delegation.wire.model_delegate_skill_terminal_projection import (
     ModelDelegateSkillSavingsProjection,
     ModelDelegateSkillTerminalProjection,
+    ModelTaskDelegatedSavingsSource,
 )
-from omnimarket.pricing import DEFAULT_BASELINE_MODEL
+from omnimarket.pricing import DEFAULT_BASELINE_MODEL, build_premium_counterfactual
+from omnimarket.projection.dlq import (
+    correlation_id_from_payload,
+    dlq_topics_from_contract,
+    route_to_dlq,
+)
 from omnimarket.projection.runner import (
     BaseProjectionRunner,
     MessageMeta,
+    PublishFn,
     safe_parse_date,
 )
 
 logger = logging.getLogger(__name__)
+
+HANDLER_ID_PROJECTION_SAVINGS = "node_projection_savings"
 
 KNOWN_PROJECTION_TABLES: frozenset[str] = frozenset(
     {
@@ -49,8 +58,13 @@ class SavingsProjectionRunner(BaseProjectionRunner):
     (session_id, event_timestamp, model_local, model_cloud_baseline) DO UPDATE.
     """
 
-    def __init__(self, contract_path: Path | None = None) -> None:
-        super().__init__()
+    def __init__(
+        self,
+        contract_path: Path | None = None,
+        *,
+        publish_fn: PublishFn | None = None,
+    ) -> None:
+        super().__init__(publish_fn=publish_fn)
         _path = contract_path or Path(__file__).parent.parent / "contract.yaml"
         with open(_path) as f:
             self._contract: dict[str, Any] = yaml.safe_load(f)
@@ -77,11 +91,65 @@ class SavingsProjectionRunner(BaseProjectionRunner):
         self._topic_delegate_skill_failed: str = next(
             (t for t in _topics if "delegate-skill-failed" in t), ""
         )
+        # OMN-13629 (WS-F Phase 1): the deployed runner now materializes
+        # savings_estimates from the SINGLE canonical delegation terminal pair
+        # (delegation-{completed,failed}.v1), repointed off the legacy compat
+        # task-delegated.v1 (OMN-13598 stopgap superseded). The canonical
+        # ModelDelegationResult carries the cumulative metered cost + served
+        # tokens; the cloud-baseline counterfactual is re-derived from those
+        # served tokens, so savings stays a measurement, not an estimate.
+        self._topic_delegation_completed: str = next(
+            (t for t in _topics if "delegation-completed" in t), ""
+        )
+        self._topic_delegation_failed: str = next(
+            (t for t in _topics if "delegation-failed" in t), ""
+        )
         self._delegate_skill_baseline_model = str(
             self._contract.get("metadata", {}).get(
                 "delegate_skill_baseline_model", DEFAULT_BASELINE_MODEL
             )
         )
+        # OMN-13548 (D-03): contract-declared DLQ topic for malformed events. A
+        # ValidationError / failed required-field check now emits a DURABLE failure
+        # signal on the bus instead of being logged + dropped silently.
+        self._dlq_topics: list[str] = dlq_topics_from_contract(self._contract)
+
+    async def _route_malformed_to_dlq(
+        self, data: dict[str, Any], reason: str, meta: MessageMeta | None = None
+    ) -> bool:
+        """Route a malformed savings event to the contract-declared DLQ topic.
+
+        OMN-13548 (D-03): replaces the prior silent-drop. Returns True so the
+        consumer still commits the offset (durably captured on the DLQ, not
+        reprocessed in a hot loop).
+        """
+        fallback = meta.fallback_id if meta is not None else ""
+        correlation_id = correlation_id_from_payload(data, fallback=fallback)
+        await route_to_dlq(
+            publish=await self.get_publish_fn(),
+            dlq_topics=self._dlq_topics,
+            original_message=data,
+            failure_reason=reason,
+            handler=HANDLER_ID_PROJECTION_SAVINGS,
+            correlation_id=correlation_id,
+        )
+        return True
+
+    @property
+    def poison_dlq_topics(self) -> list[str]:
+        """OMN-13634: base-class safety net routes escaped POISON errors here."""
+        return self._dlq_topics
+
+    async def publish_dlq(self, topic: str, value: bytes) -> None:
+        """OMN-13634: supply the runtime-owned publisher to the base-class DLQ path."""
+        publish = await self.get_publish_fn()
+        if publish is None:
+            logger.error(
+                "node_projection_savings: no publisher for POISON DLQ topic %s",
+                topic,
+            )
+            return
+        await publish(topic, value)
 
     @property
     def subscribe_topics(self) -> list[str]:
@@ -115,10 +183,23 @@ class SavingsProjectionRunner(BaseProjectionRunner):
         }:
             return await self._project_delegate_skill_savings(data, meta)
 
+        # OMN-13629 (WS-F Phase 1): canonical delegation terminal SOURCE path --
+        # cloud-baseline counterfactual (re-derived from served tokens) minus the
+        # measured actual cost -> savings_estimates row. Repointed off the legacy
+        # compat task-delegated.v1 (OMN-13598). Both completed + failed terminals
+        # route here; a failed terminal carries no counterfactual and yields a
+        # truthful no-row (savings cannot be banked on a failure).
+        if topic and topic in {
+            self._topic_delegation_completed,
+            self._topic_delegation_failed,
+        }:
+            return await self._project_canonical_delegation_savings(data, meta)
+
         session_id = str(data.get("session_id") or data.get("sessionId") or "").strip()
         if not session_id:
-            logger.warning("savings-estimated event missing session_id")
-            return True
+            return await self._route_malformed_to_dlq(
+                data, "savings-estimated event missing session_id", meta
+            )
 
         event_timestamp = safe_parse_date(
             data.get("event_timestamp")
@@ -128,8 +209,9 @@ class SavingsProjectionRunner(BaseProjectionRunner):
             or data.get("emitted_at")
         )
         if event_timestamp.tzinfo is None or event_timestamp.utcoffset() is None:
-            logger.warning("savings-estimated event has naive event_timestamp")
-            return True
+            return await self._route_malformed_to_dlq(
+                data, "savings-estimated event has naive event_timestamp", meta
+            )
         event_timestamp = event_timestamp.astimezone(UTC)
 
         model_local = str(
@@ -139,8 +221,9 @@ class SavingsProjectionRunner(BaseProjectionRunner):
             data.get("model_cloud_baseline") or data.get("modelCloudBaseline") or ""
         ).strip()
         if not model_local or not model_cloud_baseline:
-            logger.warning("savings-estimated event missing model identifiers")
-            return True
+            return await self._route_malformed_to_dlq(
+                data, "savings-estimated event missing model identifiers", meta
+            )
 
         local_cost_usd = _required_decimal(
             _first_present(data, "local_cost_usd", "localCostUsd"),
@@ -158,17 +241,22 @@ class SavingsProjectionRunner(BaseProjectionRunner):
             session_id=session_id,
         )
         if local_cost_usd is None or cloud_cost_usd is None or savings_usd is None:
-            return True
+            return await self._route_malformed_to_dlq(
+                data,
+                "savings-estimated event has missing or non-numeric cost fields",
+                meta,
+            )
 
         repo_name = _str_or_none(data.get("repo_name") or data.get("repoName"))
         machine_id = _str_or_none(data.get("machine_id") or data.get("machineId"))
 
         if savings_usd != cloud_cost_usd - local_cost_usd:
-            logger.warning(
-                "savings-estimated event has inconsistent savings for session %s",
-                session_id,
+            return await self._route_malformed_to_dlq(
+                data,
+                "savings-estimated event has inconsistent savings "
+                f"(savings_usd={savings_usd} != cloud-local={cloud_cost_usd - local_cost_usd})",
+                meta,
             )
-            return True
 
         await self._upsert_savings_estimate(
             event_timestamp=event_timestamp,
@@ -188,17 +276,82 @@ class SavingsProjectionRunner(BaseProjectionRunner):
         )
         return True
 
+    async def _project_canonical_delegation_savings(
+        self, data: dict[str, Any], meta: MessageMeta
+    ) -> bool:
+        """Materialize a savings_estimates row from a canonical delegation
+        terminal event (OMN-13629; ``delegation-{completed,failed}.v1``).
+
+        The canonical ``ModelDelegationResult`` carries the measured actual cost
+        (cumulative metered spend across all attempted tiers) + the served
+        tokens. The cloud-baseline counterfactual is re-derived from those served
+        tokens via the pricing manifest, so the saving is a MEASUREMENT, not an
+        estimate:
+
+            local_cost_usd  = cumulative_attempt_cost     (measured actual)
+            cloud_cost_usd  = counterfactual_cost_usd      (re-derived baseline)
+            savings_usd     = cloud_cost_usd - local_cost_usd
+
+        Returns True (truthful-empty, NO DLQ) when no counterfactual can be
+        derived (e.g. a FAILED terminal, zero served tokens, or a baseline model
+        absent from the manifest) or the saving is <= 0 — these are valid
+        business states, not malformed events. Repoints the OMN-13598 stopgap
+        onto the single canonical stream (OMN-13629).
+        """
+        try:
+            source = ModelTaskDelegatedSavingsSource.from_canonical_payload(
+                data,
+                counterfactual_builder=build_premium_counterfactual,
+            )
+        except ValidationError as exc:
+            return await self._route_malformed_to_dlq(
+                data,
+                "canonical delegation terminal failed savings source model "
+                f"validation: {exc}",
+                meta,
+            )
+
+        projection = ModelDelegateSkillSavingsProjection.from_task_delegated_event(
+            source,
+            baseline_model=self._delegate_skill_baseline_model,
+        )
+        if projection is None:
+            # No counterfactual or saving <= 0: truthful-empty, not an error.
+            return True
+
+        await self._upsert_savings_estimate(
+            event_timestamp=projection.event_timestamp,
+            session_id=str(projection.session_id),
+            model_local=projection.model_local,
+            model_cloud_baseline=projection.model_cloud_baseline,
+            local_cost_usd=projection.local_cost_usd,
+            cloud_cost_usd=projection.cloud_cost_usd,
+            savings_usd=projection.savings_usd,
+            repo_name=projection.repo_name,
+            machine_id=(
+                str(projection.machine_id)
+                if projection.machine_id is not None
+                else None
+            ),
+        )
+        logger.info(
+            "Projected canonical delegation savings for %s (savings=$%s)",
+            source.correlation_id,
+            projection.savings_usd,
+        )
+        return True
+
     async def _project_delegate_skill_savings(
         self, data: dict[str, Any], meta: MessageMeta
     ) -> bool:
         try:
             terminal = ModelDelegateSkillTerminalProjection.from_payload(data)
         except ValidationError as exc:
-            logger.warning(
-                "delegate-skill terminal event failed savings model validation: %s",
-                exc,
+            return await self._route_malformed_to_dlq(
+                data,
+                f"delegate-skill terminal event failed savings model validation: {exc}",
+                meta,
             )
-            return True
 
         projection = ModelDelegateSkillSavingsProjection.from_terminal_event(
             terminal,

@@ -1,0 +1,57 @@
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 OmniNode Team
+#
+# adk_invoke.yaml — Contract-declared configuration for the invocation-only
+# ADK adapter (adapter_adk_invoke.py, OMN-13611, WS-C Phase 2.1).
+#
+# AUTHORITY BOUNDARY (operator mandate, OMN-13611):
+#   This file declares ONLY the invocation transport binding for the ADK agent
+#   protocol. It does NOT encode provider/model/tier/escalation SELECTION logic.
+#   Routing authority (which tier, which model, which provider) lives in:
+#     - node_delegation_routing_reducer (routing_tiers.yaml)
+#     - node_delegation_orchestrator   (delegation FSM)
+#   The adapter consumes an already-routed ModelInvocationCommand. The fields
+#   below bind the resolved invocation to the canonical invoke transport; they
+#   are not a routing table.
+#
+# CREDENTIALS:
+#   Declared by reference (secret_ref) only. The literal secret value is
+#   resolved from the secret store at the effect boundary (HandlerA2ATask /
+#   node_remote_agent_invoke_effect), never read from os.environ in this adapter.
+#   No GOOGLE_* / ADK_* environment variables are read by the adapter.
+#
+# OVERLAY:
+#   Endpoint-bearing local state is deep-merged from
+#   ~/.omninode/delegation/adk_invoke_overrides.yaml when present, mirroring
+#   the bifrost_delegation.yaml overlay semantics (OMN-10717).
+#
+# Related Tickets:
+#   - OMN-13611: WS-C Phase 2.1 — invocation-only ADK adapter
+#   - OMN-12475: SEA-internal ADK routing node (superseded provenance)
+#   - OMN-10717: default-contract + overlay deep-merge semantics
+
+config_version: "1.0.0"
+
+# Agent-level protocol this adapter binds to. Meaningful only for AGENT-kind
+# invocation commands. Must match a member of EnumAgentProtocol.
+agent_protocol: "A2A"
+
+# Canonical invoke transport binding is NOT recorded here. The topic is the sole
+# property of the node_delegation_orchestrator contract (its published
+# InvocationCommand event). The adapter resolves it from that contract at load
+# time, so there is exactly one source of truth and no topic literal to drift.
+
+# ADK runner binding (O4 probe: SUPPORTED — google-adk 1.33.0 accepts a
+# constructor-injected model on LlmAgent.model and a constructor-injected
+# credential_service on Runner; neither is sourced from env). These values
+# describe the transport target the routing authority resolved into the
+# ModelInvocationCommand. The adapter reads them; it does not select among them.
+adk_runner:
+  # Reference to the secret holding the ADK credential. Value resolved from the
+  # secret store at the effect boundary, never embedded here and never read from
+  # os.environ by the adapter.
+  credential_secret_ref: "llm.gemini.api_key"
+  # Endpoint base for the ADK transport. Overridable via the overlay file; never
+  # an env var (all URLs from contracts only — OMN-12803).
+  endpoint_url: "https://generativelanguage.googleapis.com"

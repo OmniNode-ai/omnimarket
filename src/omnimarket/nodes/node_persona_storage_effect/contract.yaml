@@ -12,6 +12,18 @@ description: >
 node_type: effect
 input_model: "ModelPersonaStorageRequest"
 output_model: "ModelPersonaStorageResponse"
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: persona.storage
+      handler:
+        name: NodePersonaStorageEffect
+        module: omnimarket.nodes.node_persona_storage_effect
+      event_model:
+        name: ModelPersonaStorageRequest
+        module: omnimarket.nodes.node_persona_storage_effect.models.model_persona_storage_request
+
+# Retained for legacy resolution; canonical dispatch uses handler_routing above.
 handler:
   module: omnimarket.nodes.node_persona_storage_effect
   class: NodePersonaStorageEffect

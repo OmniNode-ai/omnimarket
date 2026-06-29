@@ -17,7 +17,8 @@ handler:
 
 handler_routing:
   handlers:
-    - handler:
+    - operation: evidence_pipeline
+      handler:
         name: HandlerEvidencePipelineOrchestrator
         module: omnimarket.nodes.node_evidence_pipeline_orchestrator.handlers.handler_evidence_pipeline_orchestrator
 

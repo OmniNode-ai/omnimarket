@@ -11,7 +11,8 @@ description: >
 handler_routing:
   routing_strategy: operation_match
   handlers:
-    - handler:
+    - operation: gap
+      handler:
         name: HandlerGapCompute
         module: omnimarket.nodes.node_gap_compute.handlers.handler_gap_compute
 

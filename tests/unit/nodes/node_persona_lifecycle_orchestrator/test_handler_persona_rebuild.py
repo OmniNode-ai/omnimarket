@@ -83,10 +83,13 @@ def test_contract_routes_resolve_to_real_handler_methods() -> None:
 
 
 def test_contract_declares_memory_runtime_ownership() -> None:
+    """OMN-12982 B1: runtime_profiles [memory] was nonexistent → corrected to [main].
+    metadata.runtime_owner remains "memory" (domain ownership, not lane assignment).
+    """
     contract = _load_contract()
 
     assert contract["node_type"] == "orchestrator"
-    assert contract["runtime_profiles"] == ["memory"]
+    assert contract["runtime_profiles"] == ["main"]
 
     metadata = contract["metadata"]
     assert isinstance(metadata, dict)

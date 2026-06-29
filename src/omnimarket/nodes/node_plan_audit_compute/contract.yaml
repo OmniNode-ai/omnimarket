@@ -20,7 +20,8 @@ handler:
 
 handler_routing:
   handlers:
-    - handler:
+    - operation: plan_audit
+      handler:
         name: HandlerPlanAuditCompute
         module: omnimarket.nodes.node_plan_audit_compute.handlers.handler_plan_audit_compute
 

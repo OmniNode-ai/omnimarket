@@ -1,0 +1,65 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-12337"
+title: "OMN-12279j: implement runtime handler for node_create_followup_tickets_effect"
+summary: >-
+  Repo-local deploy-gate evidence carrier for the omnimarket PR completing the
+  runtime handler for node_create_followup_tickets_effect (EFFECT archetype:
+  review findings -> Linear follow-up tickets). The node scaffold (contract,
+  models, dry-run/adapter handler, golden-chain skeleton) already landed on dev
+  via PR #901/#949 with node_not_implemented already false; this PR closes the
+  two unmet ticket requirements: (1) title-match idempotency -- duplicate
+  findings producing an identical ticket title are skipped within a batch and
+  reported via a new skipped_duplicate_count field, contract descriptor flipped
+  idempotent:false -> true and duplicate_key_fields extended with finding_title;
+  (2) a golden-chain test that creates two follow-up tickets from two mock
+  findings through an injected recording adapter, plus dedup coverage in live
+  and dry-run modes. No live deploy, no event-bus topic change, no REST endpoint,
+  no .201 or production mutation.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-node-tests-pass"
+    description: >-
+      The node golden-chain suite passes, including the new 2-ticket creation
+      test and the title-match idempotency tests (12 tests).
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          uv run pytest
+          tests/test_golden_chain_create_followup_tickets_effect.py -q
+  - id: "dod-mypy-strict"
+    description: >-
+      The node package type-checks clean under mypy --strict.
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          uv run mypy
+          src/omnimarket/nodes/node_create_followup_tickets_effect/ --strict
+  - id: "dod-runtime-sweep"
+    description: >-
+      The runtime sweep resolves all entry points including this node's handler.
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run python scripts/ci/run_runtime_sweep.py"
+  - id: "dod-no-runtime-mutation"
+    description: >-
+      Code + test change to a single omnimarket node; no live deploy, restart,
+      .201 mutation, production data mutation, new REST endpoint, or event-bus
+      topic change was performed for this PR.
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          printf '%s\n' 'deploy gate: OMN-12337 is a code/test change to
+          node_create_followup_tickets_effect; no live deploy, restart, .201
+          mutation, production data mutation, REST endpoint, or topic change
+          performed'

@@ -28,6 +28,7 @@ from uuid import UUID
 
 import yaml
 
+from omnimarket.config.service_endpoints import LINEAR_GRAPHQL_URL
 from omnimarket.nodes.node_pipeline_fill.models.model_pipeline_fill_command import (
     ModelPipelineFillCommand,
 )
@@ -59,7 +60,7 @@ _UNSTARTED_STATES = frozenset({"Backlog", "Todo"})
 HANDLER_TYPE: HandlerType = "NODE_HANDLER"
 HANDLER_CATEGORY: HandlerCategory = "effect"
 
-_LINEAR_API_URL = "https://api.linear.app/graphql"
+_LINEAR_API_URL = LINEAR_GRAPHQL_URL
 
 _QUERY_ACTIVE_SPRINT_UNSTARTED = """
 query ActiveSprintUnstarted($projectId: ID!, $first: Int!) {

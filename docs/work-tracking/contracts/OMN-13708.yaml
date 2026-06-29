@@ -1,0 +1,78 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-13708"
+title: "[Systemic] Adapter DI defaults — nodes require Kafka/remote instead of contract-driven local default"
+summary: >-
+  Repo-local deploy-gate evidence carrier for the omnimarket PR. Systemic
+  Finding #2: eight nodes crashed or emitted vacuous "clean"/epoch-0 data when
+  run over the canonical in-memory/local event bus because they required a
+  Kafka/remote adapter instead of defaulting to a local impl (remote as
+  override). The fix DI-resolves a local default adapter for each node and
+  refuses to report a vacuous false-green:
+  node_observability_sink_effect (in-memory sink default),
+  node_pipeline_audit_orchestrator (local ticket store default),
+  node_verification_sweep_orchestrator (local receipt writer default),
+  node_tech_debt_sweep_orchestrator (local Linear adapter default),
+  node_dep_cascade_dedup_orchestrator (local GitHub adapter default),
+  node_ticketing_insights_compute (fail loud instead of fabricating epoch-0
+  dates), node_runtime_sweep and node_dashboard_sweep (0 entities checked now
+  reports no_input/no_targets, not clean). Kafka/remote remain opt-in overrides.
+  No event-bus topic, REST endpoint, image dependency, or live runtime mutation
+  is changed; handlers stay stateless and contract-driven.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-reproducing-test-local-defaults"
+    description: >-
+      The OMN-13708 reproducing test exercises all eight handlers over the
+      default local bus (no remote adapter injected) and asserts each degrades
+      honestly instead of crashing or reporting a vacuous false-green.
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          uv run pytest tests/nodes/test_omn_13708_adapter_di_local_defaults.py -q
+  - id: "dod-touched-node-regression"
+    description: >-
+      Existing tests for every touched node (observability sink, pipeline audit,
+      tech debt sweep, runtime sweep, dashboard sweep, ticketing insights) plus
+      the two updated golden-chain adapter tests pass after the local-default
+      change.
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          uv run pytest tests/nodes/node_observability_sink_effect/
+          tests/integration/node_pipeline_audit_orchestrator/
+          tests/integration/node_tech_debt_sweep_orchestrator/
+          tests/integration/node_runtime_sweep/
+          tests/integration/node_dashboard_sweep/
+          tests/test_node_ticketing_insights_compute.py
+          tests/test_golden_chain_pipeline_audit_orchestrator.py
+          tests/test_golden_chain_tech_debt_sweep_orchestrator.py -q
+  - id: "dod-typecheck-clean"
+    description: >-
+      mypy --strict passes on the omnimarket source after the change (the local
+      default adapters are strongly typed against their node-private protocols).
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          uv run mypy src/omnimarket --strict
+  - id: "dod-no-runtime-mutation"
+    description: >-
+      Handler-internal DI-default change only; no live deploy, restart, .201
+      mutation, production data mutation, new REST endpoint, or event-bus topic
+      change was performed for this PR.
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          printf '%s\n' 'deploy gate: OMN-13708 is a handler DI-default change;
+          no live deploy, restart, .201 mutation, production data mutation, REST
+          endpoint, or topic change performed'

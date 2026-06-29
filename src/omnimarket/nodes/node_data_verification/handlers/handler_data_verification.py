@@ -258,6 +258,7 @@ class HandlerDataVerification:
     def handle(
         self,
         command: ModelDataVerificationStartCommand,
+        *,
         data_source: DataSource | None = None,
         event_landed: bool | None = None,
         latency_ms: float | None = None,

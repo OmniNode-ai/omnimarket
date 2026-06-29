@@ -47,6 +47,7 @@ class HandlerBuildLoop:
     def handle(
         self,
         command: ModelLoopStartCommand,
+        *,
         phase_results: dict[EnumBuildLoopPhase, bool] | None = None,
     ) -> tuple[
         ModelLoopState, list[ModelPhaseTransitionEvent], ModelLoopCompletedEvent

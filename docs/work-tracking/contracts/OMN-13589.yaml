@@ -1,0 +1,80 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-13589"
+title: "Route runtime_sweep CI gate through canonical node_runtime_sweep; delete freestanding script"
+summary: >
+  omnimarket CI ran a 184-line freestanding imperative script
+  (scripts/ci/run_runtime_sweep.py --import-check) that self-described as "the
+  entry-point validation subset of runtime_sweep" yet bypassed the canonical
+  COMPUTE node it claimed to be a subset of — architectural drift against the
+  everything-is-nodes / contract-native doctrine. This change absorbs the
+  single-repo "do the entry points load?" import probe into the canonical
+  node_runtime_sweep, splitting facts from decisions: the harness (the I/O
+  boundary, __main__.collect_entry_point_probes) walks this repo's pyproject
+  [project.entry-points."onex.nodes"], runs the structural + import checks per
+  node, and emits one typed ModelEntryPointProbe each; the PURE NodeRuntimeSweep
+  handler turns ok=False probes into BROKEN_ENTRY_POINT findings via a new
+  REGISTRATION phase. RuntimeSweepRequest gains entry_point_probes and an
+  enabled_checks selector (None = all phases run exactly as before, so existing
+  cross-repo/skill callers are byte-for-byte unaffected); the single-repo CI
+  request scopes to enabled_checks=[REGISTRATION] so the cross-repo symmetry /
+  durability / stranded-workflow / profile-consumer phases cannot false-positive
+  in a single-repo checkout. CI (ci.yml:424) now invokes
+  `uv run python -m omnimarket.nodes.node_runtime_sweep --import-check`; the
+  freestanding script is DELETED (no shim, no re-export). Live references in
+  CLAUDE.md, CONTRIBUTING.md, README.md, and docs/reference/node-catalog.md are
+  repointed at the canonical command. Frozen historical DoD/OCC receipts under
+  docs/work-tracking/contracts/ are intentionally left untouched — they recorded
+  the command that was true when written.
+is_seam_ticket: false
+interface_change: true
+interfaces_touched:
+  - "events"
+evidence_requirements:
+  - kind: "tests"
+    description: "Migrated CI-helper tests (collect_entry_point_probes structural/import probes + probe->BROKEN_ENTRY_POINT finding) and extended runtime-sweep golden chain (REGISTRATION phase; registration-only scope suppresses symmetry/description; default None runs all phases)."
+    command: "uv run pytest tests/ci/test_runtime_sweep_import_check.py tests/test_golden_chain_runtime_sweep.py -q -m 'not kafka'"
+  - kind: "ci"
+    description: "Full suite green (no -k); mypy --strict clean; ruff clean; pre-commit --all-files clean; the rewired runtime-sweep gate proves itself in CI."
+    command: "uv run python -m omnimarket.nodes.node_runtime_sweep --import-check"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-001"
+    description: "git grep run_runtime_sweep over LIVE surfaces (everything except docs/work-tracking/contracts/) returns zero hits and the script file is deleted."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "git grep run_runtime_sweep -- . ':!docs/work-tracking/contracts/'"
+  - id: "dod-002"
+    description: "Canonical gate proven both ways: clean tree exits 0 (324/324 entry points OK); a deliberately broken entry point exits 1 with a CRITICAL BROKEN_ENTRY_POINT finding in the JSON, then revert restores exit 0. Pasted in PR body."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run python -m omnimarket.nodes.node_runtime_sweep --import-check"
+  - id: "dod-003"
+    description: "Migrated coverage: collect_entry_point_probes structural+import probes (missing dir/__init__/contract/description, no entry points), probe->BROKEN_ENTRY_POINT finding (broken->finding, clean->none), and registration-only scope does NOT emit symmetry/description findings in single-repo mode."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/ci/test_runtime_sweep_import_check.py -q -m 'not kafka'"
+  - id: "dod-004"
+    description: "Golden chain extended to drive REGISTRATION through NodeRuntimeSweep, and a default-enabled_checks=None test proves all phases still run (existing behavior preserved byte-for-byte for cross-repo/skill callers)."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/test_golden_chain_runtime_sweep.py -q -m 'not kafka'"
+  - id: "dod-mypy"
+    description: "mypy --strict green across omnimarket including the extended handler + harness; the pure node stays pure (imports happen only in the harness/helper)."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run mypy src/omnimarket/ --strict"
+  - id: "dod-deploy"
+    description: "No runtime deploy in this PR — the change is a CI-gate rewire plus a pure-node phase addition; it ships no runtime contract/topic/migration change and requires no image rebuild. The rewired gate is self-proving (it runs in CI on this PR)."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run python -m omnimarket.nodes.node_runtime_sweep --import-check"

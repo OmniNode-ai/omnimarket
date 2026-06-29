@@ -61,6 +61,16 @@ _EVIDENCE_STAGES_TOPIC = "onex.snapshot.projection.evidence_pipeline.stages.v1"
 _EVIDENCE_TRACE_TOPIC = "onex.snapshot.projection.evidence_pipeline.correlations.v1"
 _EVIDENCE_READINESS_TOPIC = "onex.snapshot.projection.evidence_pipeline.readiness.v1"
 _EVIDENCE_EVENTS_TOPIC = "onex.snapshot.projection.evidence_pipeline.live_events.v1"
+# The /v1/evidence-pipeline/* endpoints serve only the OCC/deployment evidence
+# pipeline projection — they are NOT a per-correlation surface for delegation
+# runs. A delegation correlation_id legitimately has zero rows here and must be
+# read from the authoritative delegation correlation-trace projection instead
+# (OMN-12748). Surfaced on filtered/empty responses so callers are not misled
+# into reading the empty result as a broken projection (OMN-13168).
+_EVIDENCE_QUERY_SCOPE = "evidence_pipeline"
+_DELEGATION_CORRELATION_TRACE_TOPIC = (
+    "onex.snapshot.projection.delegation.correlation-trace.v1"
+)
 PROJECTION_DATABASE_BINDING_OVERLAY_ENV = (
     "OMNIMARKET_PROJECTION_DATABASE_BINDING_OVERLAY"
 )
@@ -71,7 +81,50 @@ PROJECTION_DATABASE_BINDING_OVERLAY_ENV = (
 # ---------------------------------------------------------------------------
 
 
-def compute_freshness(latest_ts: str | None) -> str:
+def topic_supports_correlation_id_filter(cfg: ProjectionTableConfig) -> bool:
+    """Return True when the topic's declared columns include ``correlation_id``.
+
+    ``("*",)`` (SELECT *) is treated as supporting all filters because the
+    underlying table may expose that column even if it is not enumerated.
+    For an explicit column list, ``correlation_id`` must appear verbatim — the
+    summary/aggregate topics (e.g. ``delegation.summary.v1``) use views without
+    a per-row ``correlation_id`` column and must not receive a WHERE filter on
+    that column (OMN-13165).
+    """
+    if cfg.columns == ("*",):
+        return True
+    # Strip surrounding double-quotes used for camelCase aliases before
+    # comparing, e.g. '"totalDelegations"' → 'totalDelegations'.
+    bare_columns = {col.strip('"') for col in cfg.columns}
+    return "correlation_id" in bare_columns
+
+
+def compute_freshness(
+    latest_ts: str | None,
+    expected_event_interval_seconds: int | None = None,
+) -> str:
+    """Classify projection freshness against the contract-declared cadence.
+
+    Honest tri-state freshness (OMN-13035 / retro B-7) — silence is no longer
+    treated as a failure for topics that are not expected to emit on a fixed
+    cadence:
+
+    * ``degraded`` — ``latest_ts is None``: the projection has no rows at all
+      (a genuine query / materialization problem, NOT mere quiet).
+    * On-demand topics (``expected_event_interval_seconds is None``): a topic
+      that emits only when triggered. Silence is a normal, honest state, so it
+      NEVER reports ``stale`` from no traffic. Returns ``fresh`` when a row
+      arrived within ``_FRESH_THRESHOLD``, otherwise ``idle``.
+    * Cadenced topics (``expected_event_interval_seconds > 0``): the contract
+      declares an expected inter-event interval. Returns ``fresh`` while inside
+      one interval, ``idle`` for one missed beat (``interval <= age <
+      2*interval`` — quiet but not yet alarming), and ``stale`` only once the
+      projection is genuinely behind its declared cadence (``age >=
+      2*interval``).
+
+    ``idle`` is a first-class state distinct from ``stale``: it means "no recent
+    traffic, and that is expected", retiring the cry-wolf staleness label.
+    """
     if latest_ts is None:
         return "degraded"
     try:
@@ -84,11 +137,15 @@ def compute_freshness(latest_ts: str | None) -> str:
         if ts.tzinfo is None:
             ts = ts.replace(tzinfo=UTC)
         age = datetime.now(UTC) - ts
-        if age < _FRESH_THRESHOLD:
+        if expected_event_interval_seconds is None:
+            # On-demand: silence is honest, never stale.
+            return "fresh" if age < _FRESH_THRESHOLD else "idle"
+        interval = timedelta(seconds=expected_event_interval_seconds)
+        if age < interval:
             return "fresh"
-        if age < _STALE_THRESHOLD:
-            return "stale"
-        return "degraded"
+        if age < 2 * interval:
+            return "idle"
+        return "stale"
     except (ValueError, TypeError):
         return "degraded"
 
@@ -592,6 +649,7 @@ async def list_projections(
 async def projection_query(
     topic: str,
     correlation_id: str | None = Query(default=None),
+    since: str | None = Query(default=None),
     limit: int | None = Query(default=None, ge=1),
     order: str | None = Query(default=None, pattern="^(?i:asc|desc)$"),
     pool: asyncpg.Pool = Depends(get_pool),  # noqa: B008
@@ -636,6 +694,48 @@ async def projection_query(
     col_list = build_select_column_list(columns)
     generated_at = datetime.now(UTC).isoformat()
 
+    # Guard: reject correlation_id filter before issuing SQL when the topic's
+    # declared column list does not include that column.  Aggregate/summary
+    # topics (e.g. delegation.summary.v1) back a view with no per-row
+    # correlation_id; a WHERE filter on that column would raise a Postgres error
+    # that the caller then sees as a 503 "degraded" response.  Return a typed
+    # 422 instead so callers know the filter is unsupported for this topic,
+    # rather than being led to believe the projection itself is broken (OMN-13165).
+    if correlation_id is not None and not topic_supports_correlation_id_filter(cfg):
+        return JSONResponse(
+            status_code=422,
+            content={
+                "error": "unsupported_filter",
+                "filter": "correlation_id",
+                "topic": topic,
+                "detail": (
+                    f"Topic '{topic}' does not expose a 'correlation_id' column "
+                    "and cannot be filtered by it. "
+                    "Use the correlation-trace topic for per-correlation queries."
+                ),
+            },
+        )
+
+    # Generic monotonic-cursor pagination (OMN-13227): when the topic declares a
+    # cursor_column, `?since=<cursor>` returns only rows with cursor_column >
+    # since and the response carries next_cursor. Reject `since` on topics that
+    # do not declare a cursor_column so callers do not silently get an unpaged
+    # full scan. The cursor_column identifier is contract-trusted; the since
+    # value is always a bound parameter.
+    if since is not None and cfg.cursor_column is None:
+        return JSONResponse(
+            status_code=422,
+            content={
+                "error": "unsupported_filter",
+                "filter": "since",
+                "topic": topic,
+                "detail": (
+                    f"Topic '{topic}' does not declare a 'cursor_column' and "
+                    "cannot be paginated by 'since'."
+                ),
+            },
+        )
+
     try:
         async with pool.acquire() as conn:
             order_clause = resolve_order_clause(order_by, order)
@@ -652,6 +752,22 @@ async def projection_query(
                         f"SELECT MAX({freshness_col}) FROM {qualified_table}"
                         f" WHERE correlation_id = $1",
                         correlation_id,
+                    )
+                    if freshness_col is not None
+                    else None
+                )
+            elif since is not None:
+                # cfg.cursor_column is contract-trusted (validated by discovery);
+                # since is a bound parameter. Guarded above to be non-None here.
+                sql = (
+                    f"SELECT {col_list} FROM {qualified_table}"
+                    f" WHERE {cfg.cursor_column} > $1"
+                    f"{order_clause} LIMIT {effective_limit}"
+                )
+                raw_rows = await conn.fetch(sql, since)
+                latest_ts_val = (
+                    await conn.fetchval(
+                        f"SELECT MAX({freshness_col}) FROM {qualified_table}"
                     )
                     if freshness_col is not None
                     else None
@@ -691,7 +807,11 @@ async def projection_query(
         )
 
     # Freshness: "unknown" when freshness_column not declared in contract.
-    freshness = "unknown" if freshness_col is None else compute_freshness(latest_ts)
+    freshness = (
+        "unknown"
+        if freshness_col is None
+        else compute_freshness(latest_ts, cfg.expected_event_interval_seconds)
+    )
 
     serialisable_rows: list[dict[str, Any]] = []
     for row in rows:
@@ -706,6 +826,15 @@ async def projection_query(
         "undefined" if not order_clause else order_clause.removeprefix(" ORDER BY ")
     )
 
+    # Monotonic-cursor pagination (OMN-13227): when the topic declares a
+    # cursor_column, the last returned row's cursor is the caller's next `since`.
+    # None when the topic has no cursor_column or the page is empty.
+    next_cursor: str | None = None
+    if cfg.cursor_column is not None and serialisable_rows:
+        last_cursor_val = serialisable_rows[-1].get(cfg.cursor_column)
+        if last_cursor_val is not None:
+            next_cursor = str(last_cursor_val)
+
     return JSONResponse(
         {
             "topic": topic,
@@ -717,6 +846,7 @@ async def projection_query(
             "latest_event_at": latest_ts,
             "latest_projection_updated_at": latest_ts,
             "row_count": len(serialisable_rows),
+            "next_cursor": next_cursor,
             "rows": serialisable_rows,
         }
     )
@@ -878,6 +1008,15 @@ async def _evidence_projection_response(
     columns = cfg.columns
     col_list = build_select_column_list(columns)
 
+    # A content filter selects a subset of rows by identity (correlation/ticket/
+    # repo/PR). The cursor is pagination, not a content filter, so it does not
+    # count: an empty page on a healthy projection is still EMPTY, not a content
+    # match failure. Used below to distinguish "healthy projection, no rows for
+    # this filter" (EMPTY) from "projection itself stale/degraded" (OMN-13168).
+    row_filtered = any(
+        v is not None for v in (correlation_id, ticket_id, repo, pr_number)
+    )
+
     clauses: list[str] = []
     args: list[object] = []
     _append_filter(clauses, args, cfg.cursor_column, ">", cursor)
@@ -928,7 +1067,24 @@ async def _evidence_projection_response(
     computed_freshness = (
         "DEGRADED"
         if cfg.freshness_column is None
-        else compute_freshness(str(latest_ts)).upper()
+        else compute_freshness(
+            str(latest_ts), cfg.expected_event_interval_seconds
+        ).upper()
+    )
+
+    # A content filter that matched no rows is healthy-but-empty, not degraded.
+    # The query succeeded; the requested correlation simply is not an evidence-
+    # pipeline correlation (e.g. a delegation id, whose authoritative trace lives
+    # on _DELEGATION_CORRELATION_TRACE_TOPIC). Reporting DEGRADED here falsely
+    # flags the projection as broken, which is what OMN-13168 observed during the
+    # 2026-06-16 runtime matrix. Reserve DEGRADED for genuine staleness/upstream
+    # failure (the 503 branches above plus a populated-but-stale read).
+    freshness_state: str = (
+        "EMPTY"
+        if (row_filtered and not serialisable_rows)
+        else (
+            _column_value(latest_row, cfg.freshness_state_column) or computed_freshness
+        )
     )
 
     return JSONResponse(
@@ -936,14 +1092,15 @@ async def _evidence_projection_response(
             "topic": topic,
             "version": _PROJECTION_VERSION,
             "generated_at": generated_at,
+            "query_scope": _EVIDENCE_QUERY_SCOPE,
+            "authoritative_correlation_source": _DELEGATION_CORRELATION_TRACE_TOPIC,
             "projection_cursor": latest_row.get(cfg.cursor_column),
             "next_cursor": next_cursor,
             "last_event_id": _column_value(latest_row, cfg.last_event_id_column),
             "last_ingest_sequence": _column_value(
                 latest_row, cfg.last_ingest_sequence_column
             ),
-            "freshness_state": _column_value(latest_row, cfg.freshness_state_column)
-            or computed_freshness,
+            "freshness_state": freshness_state,
             "degraded_reason": _column_value(latest_row, cfg.degraded_reason_column),
             "observed_at": _column_value(latest_row, cfg.observed_at_column)
             or latest_ts,

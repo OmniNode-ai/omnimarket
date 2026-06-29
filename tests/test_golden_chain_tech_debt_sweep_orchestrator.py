@@ -116,10 +116,11 @@ def test_contract_declares_event_bus_surfaces() -> None:
     assert raw["handler_routing"]["routing_strategy"] == "operation_match"
     assert raw["handler_routing"]["handlers"] == [
         {
+            "operation": "tech_debt_sweep",
             "handler": {
                 "name": HANDLER_CLASS,
                 "module": HANDLER_MODULE,
-            }
+            },
         }
     ]
     eb = raw["event_bus"]
@@ -293,18 +294,24 @@ def _type_ignore_key() -> set[str]:
 
 
 @pytest.mark.unit
-def test_handler_requires_linear_adapter_for_live_new_findings(tmp_path: Path) -> None:
+def test_handler_defaults_to_local_linear_adapter_for_live_new_findings(
+    tmp_path: Path,
+) -> None:
+    """OMN-13708: with no remote Linear adapter (the default local bus), live new
+    findings are recorded via the local Linear adapter rather than crashing."""
     _write_repo(tmp_path)
 
-    with pytest.raises(RuntimeError, match="linear adapter required"):
-        HandlerTechDebtSweepOrchestrator().handle(
-            ModelTechDebtSweepRequest(
-                omni_home=str(tmp_path),
-                repos=("sample_repo",),
-                categories=("type-ignore",),
-                dry_run=False,
-            )
+    result = HandlerTechDebtSweepOrchestrator().handle(
+        ModelTechDebtSweepRequest(
+            omni_home=str(tmp_path),
+            repos=("sample_repo",),
+            categories=("type-ignore",),
+            dry_run=False,
         )
+    )
+
+    assert result.total_new_findings >= 1
+    assert result.total_tickets_created >= 1
 
 
 @pytest.mark.unit
