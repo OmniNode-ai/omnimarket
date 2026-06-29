@@ -1,5 +1,5 @@
 {
-  "captured_at": "2026-06-28T22:01:27Z",
+  "captured_at": "2026-06-29T01:45:05Z",
   "findings": [
     {
       "finding_type": "UNTESTED_HANDLER",
@@ -1658,6 +1658,16 @@
       "file_path": "src/omnimarket/nodes/node_plan_to_tickets/handlers/handler_plan_to_tickets.py",
       "symbol": "handler_plan_to_tickets",
       "detail": "Contract-referenced handler 'handler_plan_to_tickets' has no test file and no golden-chain fixture coverage.",
+      "rule_id": "UNTESTED_HANDLER",
+      "rule_version": "v1"
+    },
+    {
+      "finding_type": "UNTESTED_HANDLER",
+      "severity": "MAJOR",
+      "repo": "omnimarket",
+      "file_path": "src/omnimarket/nodes/node_deep_dive_report_effect/handlers/handler_deep_dive_report_effect.py",
+      "symbol": "handler_deep_dive_report_effect",
+      "detail": "Contract-referenced handler 'handler_deep_dive_report_effect' has no test file and no golden-chain fixture coverage.",
       "rule_id": "UNTESTED_HANDLER",
       "rule_version": "v1"
     },
@@ -3588,6 +3598,26 @@
       "file_path": "src/omnimarket/nodes/node_decision_store_orchestrator/contract.yaml",
       "symbol": "onex.evt.omnimarket.decision-stored.v1",
       "detail": "Topic 'onex.evt.omnimarket.decision-stored.v1' is published but has no subscriber and is not declared as externally consumed.",
+      "rule_id": "MISSING_TOPIC_EDGE",
+      "rule_version": "v1"
+    },
+    {
+      "finding_type": "MISSING_TOPIC_EDGE",
+      "severity": "MAJOR",
+      "repo": "omnimarket",
+      "file_path": "src/omnimarket/nodes/node_deep_dive_report_effect/contract.yaml",
+      "symbol": "onex.evt.omnimarket.deep-dive-report-completed.v1",
+      "detail": "Topic 'onex.evt.omnimarket.deep-dive-report-completed.v1' is published but has no subscriber and is not declared as externally consumed.",
+      "rule_id": "MISSING_TOPIC_EDGE",
+      "rule_version": "v1"
+    },
+    {
+      "finding_type": "MISSING_TOPIC_EDGE",
+      "severity": "MAJOR",
+      "repo": "omnimarket",
+      "file_path": "src/omnimarket/nodes/node_deep_dive_report_effect/contract.yaml",
+      "symbol": "onex.evt.omnimarket.deep-dive-report-failed.v1",
+      "detail": "Topic 'onex.evt.omnimarket.deep-dive-report-failed.v1' is published but has no subscriber and is not declared as externally consumed.",
       "rule_id": "MISSING_TOPIC_EDGE",
       "rule_version": "v1"
     },

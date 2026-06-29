@@ -112,7 +112,7 @@ class ActiveWorktree:
 
 
 def extract_ticket_ids(subject: str) -> list[str]:
-    """Extract unique OMN-XXXX ticket IDs from a commit subject."""
+    """Extract unique OMN ticket IDs from a commit subject."""
     return sorted(set(TICKET_RE.findall(subject)))
 
 
