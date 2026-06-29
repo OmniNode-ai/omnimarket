@@ -7,7 +7,7 @@ input_model: ModelReceiptGateProjectionInput
 description: >
   Projects OCC/DoD receipt-gate outcomes (verification receipt completions and
   OCC evidence validations) into a queryable snapshot consumed by the omnidash
-  receipt-gate widget (topic: onex.snapshot.projection.receipt-gate.v1).
+  receipt-gate widget.
 
 handler:
   module: omnimarket.nodes.node_projection_receipt_gate.handlers.handler_projection_receipt_gate
