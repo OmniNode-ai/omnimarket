@@ -1,21 +1,29 @@
-"""StructuredEventLogger — drop-in logger that emits log events to the event bus.
+"""StructuredEventLogger — drop-in logger that emits ModelStructuredLogEntry events.
 
 Any ONEX handler can instantiate this logger to publish structured log entries
 as onex.evt.platform.log-entry.v1 events, which node_log_projection consumes.
+
+Schema aligned to ModelStructuredLogEntry (omnibase_core) per OMN-13703.
 """
 
 from __future__ import annotations
 
 import json
-from datetime import UTC, datetime
 from typing import Protocol
-from uuid import uuid4
+from uuid import UUID, uuid4
+
+from omnibase_core.enums.enum_log_entry_status import EnumLogEntryStatus
+from omnibase_core.enums.enum_log_level import EnumLogLevel
+from omnibase_core.enums.enum_redaction_state import EnumRedactionState
+from omnibase_core.enums.enum_suppression_decision import EnumSuppressionDecision
+from omnibase_core.models.logging.model_structured_log_entry import (
+    ModelStructuredLogEntry,
+)
 
 from omnimarket.logging.topics import LOG_ENTRY_TOPIC
-from omnimarket.nodes.node_log_projection.handlers.handler_log_projection import (
-    EnumLogLevel,
-    ModelLogEntry,
-)
+
+# Re-export LOG_ENTRY_TOPIC so existing callers that import it from here still work.
+__all__ = ["LOG_ENTRY_TOPIC", "StructuredEventLogger"]
 
 
 class EventBusProtocol(Protocol):
@@ -24,18 +32,38 @@ class EventBusProtocol(Protocol):
     async def publish(self, topic: str, *, key: bytes | None, value: bytes) -> None: ...
 
 
+def _coerce_uuid(value: str | UUID | None) -> UUID | None:
+    """Convert a string correlation/session/node id to UUID, or return None.
+
+    Callers may pass raw UUID strings for convenience.
+    Non-UUID strings silently become None — they cannot round-trip through the
+    typed ModelStructuredLogEntry.correlation_id field.
+    """
+    if value is None:
+        return None
+    if isinstance(value, UUID):
+        return value
+    try:
+        return UUID(value)
+    except ValueError:
+        return None
+
+
 class StructuredEventLogger:
-    """Drop-in logger that emits log events to the event bus.
+    """Drop-in logger that emits ModelStructuredLogEntry events to the event bus.
+
+    Emitted payloads are always schema-valid against
+    ``omnibase_core.models.logging.model_structured_log_entry.ModelStructuredLogEntry``.
 
     Usage:
         logger = StructuredEventLogger("node_build_loop", event_bus=bus)
-        await logger.info("Phase transition complete", function_name="advance")
+        await logger.info("Phase transition complete", operation="advance")
     """
 
     def __init__(
-        self, node_name: str, event_bus: EventBusProtocol | None = None
+        self, source_system: str, event_bus: EventBusProtocol | None = None
     ) -> None:
-        self._node_name = node_name
+        self._source_system = source_system
         self._event_bus = event_bus
 
     def _build_entry(
@@ -43,24 +71,61 @@ class StructuredEventLogger:
         level: EnumLogLevel,
         message: str,
         *,
-        function_name: str = "",
-        correlation_id: str | None = None,
+        operation: str = "",
+        correlation_id: str | UUID | None = None,
         duration_ms: float | None = None,
-        **metadata: str,
-    ) -> ModelLogEntry:
-        return ModelLogEntry(
-            entry_id=str(uuid4()),
-            timestamp=datetime.now(tz=UTC).isoformat(),
-            node_name=self._node_name,
-            function_name=function_name,
+        node_id: str | UUID | None = None,
+        session_id: str | UUID | None = None,
+        artifact_refs: list[str] | None = None,
+        extra_metadata: dict[str, str] | None = None,
+    ) -> ModelStructuredLogEntry:
+        """Build a schema-valid ModelStructuredLogEntry.
+
+        Parameters
+        ----------
+        level:
+            Severity level for this entry.
+        message:
+            Human-readable log message.
+        operation:
+            The function or operation within ``source_system`` that emitted
+            this entry.
+        correlation_id:
+            Cross-boundary correlation ID; str is accepted for convenience and
+            coerced to UUID.  Non-UUID strings become None.
+        duration_ms:
+            Execution duration; serialised into ``metadata["duration_ms"]``
+            when provided.
+        node_id:
+            ONEX node UUID; coerced from str where possible.
+        session_id:
+            Session UUID; coerced from str where possible.
+        artifact_refs:
+            List of opaque artifact ID strings.
+        extra_metadata:
+            Additional string key-value pairs appended to ``metadata``.
+        """
+        meta: dict[str, str] = dict(extra_metadata or {})
+        if duration_ms is not None:
+            meta["duration_ms"] = str(duration_ms)
+
+        return ModelStructuredLogEntry(
+            entry_id=uuid4(),
+            source_system=self._source_system,
+            operation=operation,
             level=level,
             message=message,
-            correlation_id=correlation_id,
-            duration_ms=duration_ms,
-            metadata=metadata,
+            status=EnumLogEntryStatus.EMITTED,
+            redaction_state=EnumRedactionState.NONE,
+            suppression_decision=EnumSuppressionDecision.EMIT,
+            correlation_id=_coerce_uuid(correlation_id),
+            node_id=_coerce_uuid(node_id),
+            session_id=_coerce_uuid(session_id),
+            artifact_refs=artifact_refs or [],
+            metadata=meta,
         )
 
-    async def _emit(self, entry: ModelLogEntry) -> ModelLogEntry:
+    async def _emit(self, entry: ModelStructuredLogEntry) -> ModelStructuredLogEntry:
         if self._event_bus is not None:
             payload = json.dumps(entry.model_dump(mode="json")).encode()
             await self._event_bus.publish(LOG_ENTRY_TOPIC, key=None, value=payload)
@@ -70,18 +135,18 @@ class StructuredEventLogger:
         self,
         message: str,
         *,
-        function_name: str = "",
-        correlation_id: str | None = None,
+        operation: str = "",
+        correlation_id: str | UUID | None = None,
         duration_ms: float | None = None,
         **metadata: str,
-    ) -> ModelLogEntry:
+    ) -> ModelStructuredLogEntry:
         entry = self._build_entry(
             EnumLogLevel.DEBUG,
             message,
-            function_name=function_name,
+            operation=operation,
             correlation_id=correlation_id,
             duration_ms=duration_ms,
-            **metadata,
+            extra_metadata=metadata,
         )
         return await self._emit(entry)
 
@@ -89,18 +154,18 @@ class StructuredEventLogger:
         self,
         message: str,
         *,
-        function_name: str = "",
-        correlation_id: str | None = None,
+        operation: str = "",
+        correlation_id: str | UUID | None = None,
         duration_ms: float | None = None,
         **metadata: str,
-    ) -> ModelLogEntry:
+    ) -> ModelStructuredLogEntry:
         entry = self._build_entry(
             EnumLogLevel.INFO,
             message,
-            function_name=function_name,
+            operation=operation,
             correlation_id=correlation_id,
             duration_ms=duration_ms,
-            **metadata,
+            extra_metadata=metadata,
         )
         return await self._emit(entry)
 
@@ -108,18 +173,18 @@ class StructuredEventLogger:
         self,
         message: str,
         *,
-        function_name: str = "",
-        correlation_id: str | None = None,
+        operation: str = "",
+        correlation_id: str | UUID | None = None,
         duration_ms: float | None = None,
         **metadata: str,
-    ) -> ModelLogEntry:
+    ) -> ModelStructuredLogEntry:
         entry = self._build_entry(
             EnumLogLevel.WARNING,
             message,
-            function_name=function_name,
+            operation=operation,
             correlation_id=correlation_id,
             duration_ms=duration_ms,
-            **metadata,
+            extra_metadata=metadata,
         )
         return await self._emit(entry)
 
@@ -127,18 +192,18 @@ class StructuredEventLogger:
         self,
         message: str,
         *,
-        function_name: str = "",
-        correlation_id: str | None = None,
+        operation: str = "",
+        correlation_id: str | UUID | None = None,
         duration_ms: float | None = None,
         **metadata: str,
-    ) -> ModelLogEntry:
+    ) -> ModelStructuredLogEntry:
         entry = self._build_entry(
             EnumLogLevel.ERROR,
             message,
-            function_name=function_name,
+            operation=operation,
             correlation_id=correlation_id,
             duration_ms=duration_ms,
-            **metadata,
+            extra_metadata=metadata,
         )
         return await self._emit(entry)
 
@@ -146,17 +211,17 @@ class StructuredEventLogger:
         self,
         message: str,
         *,
-        function_name: str = "",
-        correlation_id: str | None = None,
+        operation: str = "",
+        correlation_id: str | UUID | None = None,
         duration_ms: float | None = None,
         **metadata: str,
-    ) -> ModelLogEntry:
+    ) -> ModelStructuredLogEntry:
         entry = self._build_entry(
             EnumLogLevel.CRITICAL,
             message,
-            function_name=function_name,
+            operation=operation,
             correlation_id=correlation_id,
             duration_ms=duration_ms,
-            **metadata,
+            extra_metadata=metadata,
         )
         return await self._emit(entry)
