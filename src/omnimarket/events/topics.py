@@ -26,6 +26,13 @@ NODE_GENERATION_FAILED_TOPIC_V1 = "onex.evt.omnimarket.node-generation-failed.v1
 # legacy tests; it is no longer a live wired topic.
 TASK_DELEGATED_TOPIC_V1 = "onex.evt.omniclaude.task-delegated.v1"  # onex-topic-allow: canonical topic registry; legacy compat topic, no live producer/consumer after OMN-13629
 
+# Namespace prefix for all omniclaude event topics (OMN-13694). Used by
+# node_bus_audit_compute to detect CONTRACT_TOPIC_UNREGISTERED violations
+# scoped to the omniclaude namespace. Declared here so that any namespace
+# rename surfaces as a compile-time import error rather than a silent audit
+# regression. This is a prefix string, not a versioned topic identifier.
+OMNICLAUDE_EVT_TOPIC_PREFIX = "onex.evt.omniclaude."  # onex-topic-allow: canonical namespace prefix; referenced by node_bus_audit_compute handler for omniclaude-scoped unregistered-topic detection (OMN-13694)
+
 # OMN-13629: canonical single delegation terminal pair. Emitted by
 # node_delegation_orchestrator _emit_terminal; consumed by
 # node_projection_delegation + node_projection_savings.

@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 import yaml
 
+from omnimarket.events.topics import OMNICLAUDE_EVT_TOPIC_PREFIX
 from omnimarket.nodes.node_bus_audit_compute.handlers.handler_bus_audit_compute import (
     HandlerBusAuditCompute,
 )
@@ -135,3 +136,82 @@ def test_bus_audit_cli_outputs_result_model(tmp_path: Path) -> None:
     result = ModelBusAuditComputeResult.model_validate(json.loads(completed.stdout))
     assert result.status == EnumBusAuditStatus.CLEAN
     assert result.dry_run is True
+
+
+@pytest.mark.unit
+def test_omniclaude_evt_topic_prefix_constant_value() -> None:
+    """OMNICLAUDE_EVT_TOPIC_PREFIX must be the canonical prefix for omniclaude event topics.
+
+    This test pins the constant value so that any rename surfaces as a
+    compile-time failure rather than a silent audit regression.
+    """
+    assert OMNICLAUDE_EVT_TOPIC_PREFIX == "onex.evt.omniclaude."
+
+
+@pytest.mark.unit
+def test_bus_audit_detects_unregistered_omniclaude_topic(tmp_path: Path) -> None:
+    """CONTRACT_TOPIC_UNREGISTERED is raised for an omniclaude topic absent from the registry.
+
+    The handler must use OMNICLAUDE_EVT_TOPIC_PREFIX (not a literal) to match
+    omniclaude namespace topics. Verifies the detection logic remains correct
+    after the constant-extraction refactor.
+    """
+    registry = tmp_path / "topics.yaml"
+    contract = tmp_path / "nodes/node_sample/contract.yaml"
+
+    registered_topic = "onex.evt.omniclaude.session-started.v1"
+    unregistered_topic = "onex.evt.omniclaude.session-ended.v1"
+
+    # Registry contains only one of the two omniclaude topics declared in the contract.
+    registry.write_text(
+        yaml.safe_dump(
+            {
+                "events": {
+                    "session.started": {
+                        "fan_out": [
+                            {
+                                "topic": registered_topic,
+                                "description": "Session started.",
+                            }
+                        ],
+                        "partition_key_field": "session_id",
+                        "required_fields": ["session_id"],
+                    }
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    contract.parent.mkdir(parents=True, exist_ok=True)
+    contract.write_text(
+        yaml.safe_dump(
+            {
+                "name": "node_sample",
+                "node_type": "compute",
+                "terminal_event": registered_topic,
+                "event_bus": {
+                    "subscribe_topics": ["onex.cmd.omnimarket.sample-start.v1"],
+                    "publish_topics": [registered_topic, unregistered_topic],
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    result = HandlerBusAuditCompute().handle(
+        ModelBusAuditComputeRequest(
+            registry_path=str(registry),
+            contract_roots=[str(tmp_path / "nodes")],
+            dry_run=True,
+        )
+    )
+
+    unregistered_findings = [
+        f
+        for f in result.findings
+        if f.finding_type == EnumBusAuditFindingType.CONTRACT_TOPIC_UNREGISTERED
+    ]
+    assert len(unregistered_findings) == 1, (
+        f"Expected exactly one CONTRACT_TOPIC_UNREGISTERED finding; got {result.findings}"
+    )
+    assert unregistered_findings[0].subject == unregistered_topic
