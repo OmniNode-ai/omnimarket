@@ -67,4 +67,12 @@ GITHUB_GRAPHQL_URL: str = _require(_cfg, "github", "graphql_url")
 #: Linear GraphQL endpoint — e.g. ``https://api.linear.app/graphql``
 LINEAR_GRAPHQL_URL: str = _require(_cfg, "linear", "graphql_url")
 
-__all__ = ["GITHUB_GRAPHQL_URL", "GITHUB_REST_URL", "LINEAR_GRAPHQL_URL"]
+#: Slack Web API chat.postMessage endpoint (complete, verbatim).
+SLACK_CHAT_POST_MESSAGE_URL: str = _require(_cfg, "slack", "chat_post_message_url")
+
+__all__ = [
+    "GITHUB_GRAPHQL_URL",
+    "GITHUB_REST_URL",
+    "LINEAR_GRAPHQL_URL",
+    "SLACK_CHAT_POST_MESSAGE_URL",
+]

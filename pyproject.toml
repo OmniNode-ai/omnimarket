@@ -182,6 +182,7 @@ node_pr_health_monitor = "omnimarket.nodes.node_pr_health_monitor"
 node_pr_review_orchestrator = "omnimarket.nodes.node_pr_review_orchestrator"
 node_pr_review_fsm_reducer = "omnimarket.nodes.node_pr_review_fsm_reducer"
 node_github_review_effect = "omnimarket.nodes.node_github_review_effect"
+node_slack_publish_effect = "omnimarket.nodes.node_slack_publish_effect"
 node_judge_verdict_parse_compute = "omnimarket.nodes.node_judge_verdict_parse_compute"
 node_review_thread_reconciler = "omnimarket.nodes.node_review_thread_reconciler"
 node_design_to_plan = "omnimarket.nodes.node_design_to_plan"
@@ -336,6 +337,7 @@ node_multi_agent_orchestrator = "omnimarket.nodes.node_multi_agent_orchestrator"
 node_refill_sprint_orchestrator = "omnimarket.nodes.node_refill_sprint_orchestrator"
 node_ticketing_epic_org_orchestrator = "omnimarket.nodes.node_ticketing_epic_org_orchestrator"
 node_ticketing_insights_compute = "omnimarket.nodes.node_ticketing_insights_compute"
+node_report_format_compute = "omnimarket.nodes.node_report_format_compute"
 node_env_parity_compute = "omnimarket.nodes.node_env_parity_compute"
 node_friction_triage_orchestrator = "omnimarket.nodes.node_friction_triage_orchestrator"
 node_tech_debt_sweep_orchestrator = "omnimarket.nodes.node_tech_debt_sweep_orchestrator"
@@ -415,11 +417,14 @@ omnimarket-projection-api = "omnimarket.projection.api_server:main"
 [project.entry-points."onex.cli"]
 market = "omnimarket.cli.market:market"
 
+[project.entry-points."onex.domain_plugins"]
+delegation = "omnimarket.nodes.node_delegation_orchestrator.plugin:PluginDelegation"
+
 [project.entry-points."onex.node_package"]
 omnimarket = "omnimarket.nodes"
 
 [tool.uv.sources]
-omnibase-core = { git = "https://github.com/OmniNode-ai/omnibase_core.git", rev = "ae403176f17e9d82f09e6af4e11a12cbe27afd46" }
+omnibase-core = { git = "https://github.com/OmniNode-ai/omnibase_core.git", rev = "0d56b4c9a58d2906c71443a46f2253effec88cae" }
 omnibase-compat = { git = "https://github.com/OmniNode-ai/omnibase_compat.git", rev = "331a9de450c7d4349825cb8933c5d2f663ba685b" }
 omnibase-infra = { git = "https://github.com/OmniNode-ai/omnibase_infra.git", rev = "7e52d5b0046c394b38454b97157e7a7191e6f008" }
 omninode-memory = { git = "https://github.com/OmniNode-ai/omnimemory.git", rev = "9843dd18cedaa4f5939289ba527532262b87003c" }
@@ -427,7 +432,7 @@ onex-change-control = { git = "https://github.com/OmniNode-ai/onex_change_contro
 
 [tool.uv]
 override-dependencies = [
-    "omnibase-core @ git+https://github.com/OmniNode-ai/omnibase_core.git@ae403176f17e9d82f09e6af4e11a12cbe27afd46",
+    "omnibase-core @ git+https://github.com/OmniNode-ai/omnibase_core.git@0d56b4c9a58d2906c71443a46f2253effec88cae",
     "omnibase-spi>=0.22.0,<0.23.0",
     "omnibase-infra @ git+https://github.com/OmniNode-ai/omnibase_infra.git@7e52d5b0046c394b38454b97157e7a7191e6f008",
     "omnibase-compat @ git+https://github.com/OmniNode-ai/omnibase_compat.git@331a9de450c7d4349825cb8933c5d2f663ba685b",
