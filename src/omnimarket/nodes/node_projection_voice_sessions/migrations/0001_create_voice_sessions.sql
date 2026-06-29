@@ -9,12 +9,15 @@ CREATE TABLE IF NOT EXISTS voice_sessions (
     started_at          TIMESTAMPTZ NOT NULL,
     ended_at            TIMESTAMPTZ,
     is_active           BOOLEAN NOT NULL DEFAULT TRUE,
-    total_turns         INTEGER NOT NULL DEFAULT 0,
-    total_duration_ms   BIGINT NOT NULL DEFAULT 0,
+    total_turns         INTEGER NOT NULL DEFAULT 0 CHECK (total_turns >= 0),
+    total_duration_ms   BIGINT NOT NULL DEFAULT 0 CHECK (total_duration_ms >= 0),
     agent_name          TEXT NOT NULL DEFAULT '',
-    transcript_turns    JSONB NOT NULL DEFAULT '[]',
+    transcript_turns    JSONB NOT NULL DEFAULT '[]'::jsonb
+        CHECK (jsonb_typeof(transcript_turns) = 'array'),
     ingested_at         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+    CHECK (ended_at IS NULL OR ended_at >= started_at)
 );
 
 CREATE INDEX IF NOT EXISTS idx_voice_sessions_started_at
