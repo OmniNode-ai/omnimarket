@@ -2,12 +2,12 @@
 
 import json
 
-from omnimarket.nodes.node_hostile_reviewer.handlers.handler_response_parser import (
+from omnimarket.models.model_review_finding import (
+    EnumFindingCategory,
+)
+from omnimarket.review.response_parser import (
     EnumParseStatus,
     parse_model_response,
-)
-from omnimarket.nodes.node_hostile_reviewer.models.model_review_finding import (
-    EnumFindingCategory,
 )
 
 

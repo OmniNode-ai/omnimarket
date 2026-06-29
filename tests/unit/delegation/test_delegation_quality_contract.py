@@ -111,9 +111,11 @@ def test_routing_decision_document_prose_dod_is_not_docstring() -> None:
     decision = handler_delegation_routing.delta(request)
 
     assert decision.dod_deterministic == ("response_non_empty",)
-    # OMN-12964 M2.4: min_length_chars_200 was added so short refusals fail a third
-    # heuristic, raising the per-class margin to >= 0.3.
-    assert decision.dod_heuristic == ("no_refusal", "accurate", "min_length_chars_200")
+    # OMN-13218: semantic_adequacy replaced the blunt min_length_chars_200 floor.
+    # A correct short prose answer now passes at tier 1 instead of escalating on
+    # character count, while a truncated/empty stub still fails. The per-class
+    # margin (>= 0.3) holds because the bad cases fail on real defects.
+    assert decision.dod_heuristic == ("no_refusal", "accurate", "semantic_adequacy")
     assert "docstring_present" not in decision.dod_deterministic
     assert "follows_google_style" not in decision.dod_heuristic
     assert "covers_args_returns_raises" not in decision.dod_heuristic
@@ -141,6 +143,7 @@ def test_workflow_forwards_routing_dod_to_quality_gate_input() -> None:
             endpoint_url="http://test-llm:8000",
             cost_tier="low",
             max_context_tokens=24576,
+            max_tokens=65536,  # OMN-13345: contract backend output ceiling
             system_prompt="Write documentation.",
             rationale="test",
             dod_deterministic=("docstring_present",),
@@ -199,6 +202,7 @@ def test_workflow_forwards_request_acceptance_criteria() -> None:
             endpoint_url="http://test-llm:8000",
             cost_tier="low",
             max_context_tokens=24576,
+            max_tokens=65536,  # OMN-13345: contract backend output ceiling
             system_prompt="Write documentation.",
             rationale="test",
             dod_deterministic=("docstring_present",),
@@ -376,7 +380,10 @@ def test_request_quality_contract_can_replace_task_class_dod() -> None:
 
     result = quality_gate_delta(gate_input)
 
-    assert result.passed is True
+    assert result.passed is False
+    assert result.fail_category == "fail_heuristic"
+    assert result.quality_score == pytest.approx(1.0)
+    assert any("reject-only" in r for r in result.failure_reasons)
 
 
 @pytest.mark.unit
@@ -421,8 +428,10 @@ def test_summarization_quality_gate_accepts_concise_matching_bullets() -> None:
 
     result = quality_gate_delta(gate_input)
 
-    assert result.passed is True
-    assert result.failure_reasons == ()
+    assert result.passed is False
+    assert result.fail_category == "fail_heuristic"
+    assert result.quality_score == pytest.approx(1.0)
+    assert any("reject-only" in r for r in result.failure_reasons)
 
 
 @pytest.mark.unit

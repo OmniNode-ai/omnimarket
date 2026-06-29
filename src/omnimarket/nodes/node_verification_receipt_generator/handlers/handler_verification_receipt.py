@@ -271,10 +271,33 @@ class HandlerVerificationReceiptGenerator:
         self._pytest_runner = pytest_runner
         self._mechanical_check_runner = mechanical_check_runner
 
-    def _get_gh_client(self, token: str) -> GhClientProtocol:
+    def _get_gh_client(self) -> GhClientProtocol:
+        """Return the injected client, or build the real one.
+
+        The GitHub token is resolved ONLY when the real ``GhClient`` is built
+        (i.e. no client was injected). An injected client never needs a token,
+        so token resolution must not run on that path — otherwise a test/DI
+        caller that supplied a client would still fail when ``GITHUB_TOKEN`` is
+        absent from the secret store (e.g. in CI).
+        """
         if self._gh_client is not None:
             return self._gh_client
-        return GhClient(token)
+        return GhClient(self._resolve_github_token())
+
+    def _resolve_github_token(self) -> str:
+        """Resolve the GitHub bearer token at the effect boundary.
+
+        Ref-name sourced from the contract (OMN-12856); value resolved via the
+        secret store. Never reads ``os.environ`` for the token directly.
+        """
+        github_ref = contract_secret_ref(_CONTRACT_PATH, "GITHUB_TOKEN")
+        github_secret = resolve_api_key(github_ref)
+        if github_secret is None:
+            raise RuntimeError(
+                f"api_key_ref {github_ref!r} resolved to None — "
+                "ensure GITHUB_TOKEN is set in the secret store."
+            )
+        return github_secret.get_secret_value()
 
     def _get_pytest_runner(self) -> PytestRunnerProtocol:
         if self._pytest_runner is not None:
@@ -321,18 +344,9 @@ class HandlerVerificationReceiptGenerator:
         # Dimension 1: CI checks
         if request.verify_ci:
             if request.repo and request.pr_number is not None:
-                # Ref-name sourced from contract (OMN-12856); value resolved via store.
-                _github_ref = contract_secret_ref(_CONTRACT_PATH, "GITHUB_TOKEN")
-                github_secret = resolve_api_key(_github_ref)
-                if github_secret is None:
-                    raise RuntimeError(
-                        f"api_key_ref {_github_ref!r} resolved to None — "
-                        "ensure GITHUB_TOKEN is set in the secret store."
-                    )
-                gh_token = github_secret.get_secret_value()
-                checks.append(
-                    self._verify_ci(request.repo, request.pr_number, gh_token)
-                )
+                # Token is resolved lazily inside _get_gh_client, only when the
+                # real GhClient must be built (no injected client).
+                checks.append(self._verify_ci(request.repo, request.pr_number))
             else:
                 checks.append(
                     ModelCheckEvidence(
@@ -418,9 +432,9 @@ class HandlerVerificationReceiptGenerator:
             },
         )
 
-    def _verify_ci(self, repo: str, pr_number: int, token: str) -> ModelCheckEvidence:
+    def _verify_ci(self, repo: str, pr_number: int) -> ModelCheckEvidence:
         """Verify CI checks via gh."""
-        client = self._get_gh_client(token)
+        client = self._get_gh_client()
         checks_data = client.get_pr_checks(repo, pr_number)
 
         if not checks_data:

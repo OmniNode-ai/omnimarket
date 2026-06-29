@@ -97,6 +97,7 @@ def _make_routing_decision(
         endpoint_url="http://local.test:8000/v1/chat/completions",
         cost_tier="low",
         max_context_tokens=65536,
+        max_tokens=65536,  # OMN-13345: contract backend output ceiling
         system_prompt="You are a test generation assistant.",
         rationale=f"Task '{task_type}' routed to {selected_model}.",
         tier_name=tier_name,

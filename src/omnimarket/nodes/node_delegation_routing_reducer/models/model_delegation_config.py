@@ -7,10 +7,34 @@ from __future__ import annotations
 
 import yaml
 from omnibase_core.models.delegation.wire import (
+    EnumTierCostType,
     ModelDelegationConfig,
     ModelRoutingTier,
+    ModelTierCost,
     ModelTierModel,
 )
+
+
+def _parse_tier_cost(raw_cost: object) -> ModelTierCost | None:
+    """Parse the optional typed per-tier `cost` block (OMN-13234).
+
+    None / absent means the tier has not been migrated to the typed cost model;
+    the caller falls back to the legacy flat ``cost_per_1k_tokens`` field.
+    """
+    if raw_cost is None:
+        return None
+    if not isinstance(raw_cost, dict):
+        raise ValueError("routing_tiers.yaml tier 'cost' must be a mapping")
+    raw_type = raw_cost.get("cost_type")
+    if not isinstance(raw_type, str):
+        raise ValueError("routing_tiers.yaml tier 'cost.cost_type' must be a string")
+    raw_cap = raw_cost.get("monthly_cap_usd")
+    return ModelTierCost(
+        cost_type=EnumTierCostType(raw_type),
+        rate_per_1k_usd=float(raw_cost.get("rate_per_1k_usd", 0.0)),
+        monthly_cap_usd=None if raw_cap is None else float(raw_cap),
+        overage_rate_per_1k_usd=float(raw_cost.get("overage_rate_per_1k_usd", 0.0)),
+    )
 
 
 def parse_delegation_config_yaml(yaml_text: str) -> ModelDelegationConfig:
@@ -73,6 +97,7 @@ def parse_delegation_config_yaml(yaml_text: str) -> ModelDelegationConfig:
                 eval_model=tier_data.get("eval_model"),
                 max_retries=tier_data.get("max_retries", 0),
                 cost_per_1k_tokens=float(tier_data.get("cost_per_1k_tokens", 0.0)),
+                cost=_parse_tier_cost(tier_data.get("cost")),
             )
         )
     return ModelDelegationConfig(tiers=tuple(tiers))

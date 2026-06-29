@@ -63,12 +63,11 @@ Before returning the typed result, the handler persists a `ModelDispatchRecord`
 to `$ONEX_STATE_DIR/dispatches/<agent_id>.yaml`.
 
 Implementation note: import the writer via
-`from omniclaude.hooks.lib.dispatch_record_writer import write_dispatch_record`
+`from omnimarket.nodes.node_dispatch_worker.handlers.dispatch_record_writer import write_dispatch_record`
 and the model via
-`from omniclaude.hooks.model_dispatch_record import ModelDispatchRecord`. The
-writer + model live in `omniclaude` for Phase 1; a follow-up phase relocates
-both into `omnibase_core` as the canonical home (see master plan known
-boundary violation note).
+`from omnimarket.nodes.node_dispatch_worker.models.model_dispatch_record import ModelDispatchRecord`.
+Both live in `omnimarket.nodes.node_dispatch_worker` — the Phase-1 omniclaude
+home was a temporary staging location and has been removed.
 
 The handler MUST fail loud (raise `RuntimeError`) if the import chain breaks.
 Never silently skip persistence — the dispatch record is the audit trail that

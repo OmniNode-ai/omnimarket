@@ -7,8 +7,11 @@ node_version: {major: 1, minor: 0, patch: 0}
 description: >
   Projection table health and migration tracking — checks row count and staleness
   for every table in omnidash_analytics, plus migration state across all ONEX
-  databases (Alembic + Drizzle). Reports HEALTHY/STALE/EMPTY/MISSING/ORPHAN/UNKNOWN
-  status per table and CURRENT/PENDING/AHEAD/FAILED/NO_TABLE per database.
+  databases (Alembic + Drizzle + node-vendored). Reports
+  HEALTHY/STALE/EMPTY/MISSING/ORPHAN/UNKNOWN status per table and
+  CURRENT/PENDING/AHEAD/FAILED/NO_TABLE per database. The node-vendored check
+  (OMN-13636) detects node-owned migrations vendored into the deploy tree but
+  never recorded in schema_migrations — the silent application-gap failure mode.
   Supports per-table staleness thresholds with fallback to a global default.
 
 handler:

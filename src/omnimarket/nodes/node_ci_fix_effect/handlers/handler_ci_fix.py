@@ -40,6 +40,7 @@ from omnibase_infra.errors import (
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from pydantic import ValidationError as _PydanticValidationError
 
+from omnimarket.config.service_endpoints import GITHUB_REST_URL
 from omnimarket.github_api import GitHubApiError, rest_json, split_repo
 from omnimarket.nodes.node_ci_fix_effect.models.model_ci_fix_command import (
     ModelCiFixCommand,
@@ -606,7 +607,7 @@ async def _fetch_ci_log(
 
     def _download_job_log(job_id: int) -> str:
         req = urllib.request.Request(
-            f"https://api.github.com/repos/{owner}/{repo_name}/actions/jobs/{job_id}/logs",
+            f"{GITHUB_REST_URL}/repos/{owner}/{repo_name}/actions/jobs/{job_id}/logs",
             headers={
                 "Authorization": f"Bearer {token}",
                 "Accept": "application/vnd.github+json",

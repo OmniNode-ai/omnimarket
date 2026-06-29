@@ -39,12 +39,64 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
     report = build_report()
     summary = report["summary"]
 
-    assert summary["node_dirs"] == 302
-    assert summary["entry_points"] == 302
+    # OMN-13210 B1, OMN-13211 B3, and OMN-13212 B2 each decompose a legacy
+    # workflow node into canonical nodes; B2 nets +3 (4 new canonical nodes minus
+    # the deleted node_pr_review_bot shell): 308 -> 311.
+    # OMN-13226 T2 adds node_pr_merged_projection stub: 311 -> 312.
+    # OMN-13131 W5 adds node_renderer_capability_projection reducer: 312 -> 313.
+    # OMN-13356 adds node_tool_reuse_matcher_compute: 313 -> 314.
+    # OMN-12842 M2 adds node_projection_capsule_store reducer: 314 -> 315.
+    # OMN-12846 adds node_user_correction_observer_effect: 315 -> 316.
+    # OMN-12844 M4 adds node_context_exploration_policy_compute: 316 -> 317.
+    # OMN-12843 M3 adds node_context_selection_policy_compute: 317 -> 318.
+    # OMN-13385 adds node_contract_graph_ir_compute (read-only IR GET surface):
+    # 318 -> 319.
+    # OMN-12845 M5 adds node_capsule_effectiveness_feedback_reducer: 319 -> 320.
+    # OMN-13439 Phase 2b adds node_prod_promotion_grant_resolver_effect: 320 -> 321.
+    # OMN-13476 W4 extracts the delegation escalation/tier decision into
+    # node_delegation_escalation_decision_compute (COMPUTE): 321 -> 322.
+    # OMN-12884 adds node_projection_replay_check_compute: 322 -> 323.
+    # OMN-13083 adds node_projection_traces (traces projection contract):
+    # 323 -> 324.
+    # OMN-13583 adds node_repo_health_classify_compute (COMPUTE; keystone of the
+    # merge-sweep repo-health lane): 324 -> 325.
+    # OMN-13413 adds node_runtime_closeout_orchestrator (ORCHESTRATOR; one-dispatch
+    # runtime closeout, epic OMN-13410): 325 -> 326.
+    # OMN-12998 adds node_projection_instruction_eval (instruction-eval aggregate
+    # projection; replaces hardcoded fixture with contract-declared projection): 326 -> 327.
+    # OMN-13584 adds node_repo_health_repair_effect (EFFECT; durable repo-health
+    # repair ticket emission): 327 -> 328.
+    # OMN-13441 Phase 1.3 adds node_prod_health_fact_resolver_effect (EFFECT;
+    # un-forgeable prod-health fact for the prod-promotion gate): 328 -> 329.
+    # OMN-13606 SEA Phase 0.2 adds node_generated_node_publish_effect (EFFECT;
+    # auto-PR publish step of the SEA self-extension loop): 329 -> 330.
+    # OMN-13614 WS-C Phase 3.1 adds node_entropy_experiment_orchestrator
+    # (ORCHESTRATOR; SEA->canonical entropy experiment aggregation emitting the
+    # shared core ModelExperimentResult): 330 -> 331.
+    # OMN-13615 SEA Phase 3.2 adds node_model_eval_orchestrator (ORCHESTRATOR;
+    # canonical model-eval experiment home migrated from SEA): 331 -> 332.
+    # OMN-13616 SEA Phase 3.3 adds node_regression_test_orchestrator (ORCHESTRATOR;
+    # deterministic regression replay emitting the canonical experiment result,
+    # epic OMN-13604): 332 -> 333.
+    # OMN-13620 WS-C Phase 5.1 adds node_projection_event_chain (REDUCER; canonical
+    # replayable per-event chain projection replacing the SEA event-chain ledger,
+    # epic OMN-13604): 333 -> 334.
+    # OMN-12809 retires node_dispatch_request_handler: 334 -> 333.
+    # OMN-13075 adds node_projection_baselines_roi: 333 -> 334.
+    # OMN-13076 NC-03 adds node_projection_baselines_quality (REDUCER; quality
+    # snapshot projection for the omnidash quality-baseline-panel widget): 334 -> 335.
+    # OMN-13723 adds node_slack_publish_effect (EFFECT; generic secret-store-backed
+    # Slack publish primitive for the morning deep-dive skill epic): 335 -> 336.
+    # OMN-13724 adds node_report_format_compute (COMPUTE; md+metrics -> Slack
+    # Block Kit payload for the morning-report pipeline): 336 -> 337.
+    # OMN-13725 adds node_deep_dive_report_effect (EFFECT; git/gh/Linear I/O owner
+    # for the daily deep-dive report): 337 -> 338.
+    assert summary["node_dirs"] == 338
+    assert summary["entry_points"] == 338
     assert summary["missing_entry_points"] == []
     assert summary["dangling_entry_points"] == []
-    assert summary["routable"] >= 294
-    assert summary["skipped"] == 3
+    assert summary["routable"] >= 297
+    assert summary["skipped"] == 4
     assert summary["failed"] == 0
     assert summary["failure_buckets"] == {}
     assert {
@@ -55,6 +107,7 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
         "node_e2e_orchestrator",
         "node_navigation_history_reducer",
         "node_projection_dep_health",
+        "node_pr_merged_projection",  # OMN-13226 T2 stub; handler pending T3
     }
     assert not {
         item["node_name"]
@@ -96,10 +149,6 @@ def test_market_node_runtime_dogfood_proves_nested_contract_shapes() -> None:
         == "omnimarket.nodes.node_code_embedding_effect.models.model_code_embedding_request.ModelCodeEmbeddingRequest"
     )
     assert (
-        routable["node_projection_query"]["input_model"]
-        == "omnimarket.nodes.node_projection_query.models.model_projection_query_request.ModelProjectionQueryRequest"
-    )
-    assert (
         routable["node_emit_daemon"]["input_model"]
         == "omnimarket.nodes.node_emit_daemon.models.model_daemon_state.ModelEmitDaemonCommand"
     )
@@ -110,6 +159,22 @@ def test_market_node_runtime_dogfood_proves_nested_contract_shapes() -> None:
     assert (
         routable["node_similarity_compute"]["command_topic"]
         == "onex.cmd.omnimemory.similarity-compute.v1"
+    )
+    assert (
+        routable["node_projection_replay_check_compute"]["command_topic"]
+        == "onex.cmd.omnimarket.projection-replay-check-start.v1"
+    )
+    assert (
+        routable["node_projection_replay_check_compute"]["terminal_topic"]
+        == "onex.evt.omnimarket.projection-replay-check-completed.v1"
+    )
+    assert (
+        routable["node_projection_replay_check_compute"]["input_model"]
+        == "omnimarket.nodes.node_projection_replay_check_compute.models.model_replay_check.ModelReplayCheckRequest"
+    )
+    assert (
+        routable["node_projection_replay_check_compute"]["handler"]
+        == "omnimarket.nodes.node_projection_replay_check_compute.handlers.handler_projection_replay_check.HandlerProjectionReplayCheck"
     )
     assert (
         routable["node_memory_storage_effect"]["command_topic"]

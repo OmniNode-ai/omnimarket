@@ -14,6 +14,13 @@ chains:
   - name: pattern_learning
     head_topic: onex.evt.omniintelligence.pattern-stored.v1
     tail_table: pattern_learning_artifacts
+    # OMN-13639: recency assertion. Field-presence alone reads green on a
+    # weeks-old fixture row even when the producer is idle. A row older than
+    # this window downgrades the chain to STALE (a distinct non-PASS tri-state),
+    # so green requires recent flow. 86400s == 24h: a healthy producer projects
+    # at least daily.
+    timestamp_field: created_at
+    max_row_age_seconds: 86400
     expected_fields:
       - correlation_id
 
@@ -34,6 +41,11 @@ chains:
   - name: evaluation
     head_topic: onex.evt.omniclaude.session-outcome.v1
     tail_table: session_outcomes
+    # OMN-13639: recency assertion (see pattern_learning above). The session_id
+    # fixture row (sess-001) is ~4 weeks old; without this a green verdict masks
+    # an idle session-outcome producer. 86400s == 24h freshness window.
+    timestamp_field: created_at
+    max_row_age_seconds: 86400
     expected_fields:
       - session_id
 
@@ -59,48 +71,55 @@ chains:
         topic: onex.evt.omnibase-infra.delegation-completed.v1
 
   # OMN-12660: WS-G — Error chain D3 (cloud tier routing regression guard)
+  # OMN-13544: base_url/model never existed as delegation_events columns; the
+  # resolved model lands in the projection column model_name.
   - name: d3_local_routing
     head_topic: onex.cmd.omnibase-infra.delegation-inference-request.v1
     tail_table: delegation_events
     expected_fields:
       - correlation_id
-      - base_url
-      - model
+      - model_name
 
   # OMN-12660: WS-G — Error chain D1/D2 (scaffold stub / registration truth regression guard)
+  # OMN-13544: node_name/contract_passed/content never existed as columns; the
+  # contract-pass signal is quality_gate_passed and the body is response_text.
   - name: d1_d2_scaffold
     head_topic: onex.evt.omnibase-infra.delegation-completed.v1
     tail_table: delegation_events
     expected_fields:
       - correlation_id
-      - node_name
-      - contract_passed
-      - content
+      - quality_gate_passed
+      - response_text
 
   # OMN-12660: WS-G — Error chain D4 (blank content as success regression guard)
+  # OMN-13544: content/model_used never existed as columns; the projected body
+  # is response_text and the model column is model_name.
   - name: d4_blank_content
     head_topic: onex.evt.omnibase-infra.inference-response.v1
     tail_table: delegation_events
     expected_fields:
       - correlation_id
-      - content
-      - model_used
+      - response_text
+      - model_name
 
   # OMN-12660: WS-G — Error chain D9 (missing wheel module regression guard)
+  # OMN-13544: node_startup_ok never existed as a column; presence of the
+  # projected row keyed on correlation_id is the real terminal-projection guard.
   - name: d9_wheel_module
     head_topic: onex.cmd.omnibase-infra.delegation-request.v1
     tail_table: delegation_events
     expected_fields:
       - correlation_id
-      - node_startup_ok
 
   # OMN-12660: WS-G — Error chain F1 (publish_and_wait from running loop regression guard)
+  # OMN-13544: published_at never existed as a column; the projected event time
+  # column is timestamp.
   - name: f1_publish_loop
     head_topic: onex.cmd.omnibase-infra.delegation-request.v1
     tail_table: delegation_events
     expected_fields:
       - correlation_id
-      - published_at
+      - timestamp
 
   # OMN-12687: WS I-A — inference request/response behavioral chain
   - name: delegation_inference_round_trip

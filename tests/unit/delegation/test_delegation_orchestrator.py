@@ -20,6 +20,7 @@ from __future__ import annotations
 import asyncio
 import inspect
 from datetime import UTC, datetime
+from pathlib import Path
 from uuid import UUID, uuid4
 
 import pytest
@@ -88,6 +89,7 @@ def _make_routing_decision(
     correlation_id: UUID,
     task_type: str = "test",
     api_key_ref: str | None = None,
+    max_tokens: int = 65536,
 ) -> ModelRoutingDecision:
     from uuid import NAMESPACE_DNS, uuid5
 
@@ -102,6 +104,10 @@ def _make_routing_decision(
         api_key_ref=api_key_ref,
         cost_tier="low",
         max_context_tokens=65536,
+        # OMN-13345: contract-declared per-backend output ceiling carried onto
+        # the decision; the orchestrator must post THIS on the wire, not the
+        # request's 8192 default.
+        max_tokens=max_tokens,
         system_prompt="You are a test generation assistant.",
         rationale="Task 'test' routed to qwen3-coder-30b.",
     )
@@ -143,6 +149,100 @@ def _make_gate_result(
         failure_reasons=failure_reasons,
         fallback_recommended=fallback_recommended,
     )
+
+
+# ---------------------------------------------------------------------------
+# Tests: Contract backend max_tokens threading (OMN-13345)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestContractBackendMaxTokens:
+    """Regression: the orchestrator posts the contract-declared per-backend
+    output ceiling carried on the routing decision, NOT the delegation request's
+    max_tokens (hard-capped at the 8192 ``DELEGATION_MAX_TOKENS_HARD_LIMIT``
+    default).
+
+    Same defect class as OMN-13342/#1282 (generation path): without this the
+    request value truncates cloud GLM (finish_reason=length) and the quality
+    gate scores low on every escalated cloud up-tier. This is the bus-native
+    delegation-request command path the live prober exercised, plus the
+    escalation re-dispatch to the next tier.
+    """
+
+    def test_initial_routing_decision_posts_backend_ceiling_not_request_default(
+        self,
+    ) -> None:
+        handler = HandlerDelegationWorkflow()
+        cid = uuid4()
+        request = _make_request(correlation_id=cid)
+        # The live bus request carries a small default ceiling that previously
+        # was posted verbatim (truncating cloud GLM). It is well below the
+        # contract backend ceiling of 65536.
+        assert request.max_tokens < 65536
+        handler.handle_delegation_request(request)
+
+        # Production cloud-glm declares max_tokens: 65536 in bifrost_delegation.yaml.
+        decision = _make_routing_decision(cid, max_tokens=65536)
+        intents = handler.handle_routing_decision(decision)
+
+        assert len(intents) == 1
+        intent = intents[0]
+        assert isinstance(intent, ModelInferenceIntent)
+        # The wire ceiling MUST be the contract backend value, not the 8192
+        # request default that previously truncated cloud GLM.
+        assert intent.max_tokens == 65536
+        assert intent.max_tokens != request.max_tokens
+
+    def test_initial_routing_decision_threads_explicit_non_default_ceiling(
+        self,
+    ) -> None:
+        handler = HandlerDelegationWorkflow()
+        cid = uuid4()
+        handler.handle_delegation_request(_make_request(correlation_id=cid))
+
+        # An explicit non-default, non-production ceiling proves the value is
+        # threaded from the decision rather than hardcoded.
+        decision = _make_routing_decision(cid, max_tokens=12345)
+        intents = handler.handle_routing_decision(decision)
+
+        assert len(intents) == 1
+        assert isinstance(intents[0], ModelInferenceIntent)
+        assert intents[0].max_tokens == 12345
+
+    def test_escalation_re_dispatch_posts_next_tier_backend_ceiling(self) -> None:
+        """Escalation re-entry (ESCALATING -> ROUTED with a fresh decision) must
+        post the NEW tier's contract ceiling — the exact path the live prober
+        re-dispatched through the routing reducer."""
+        handler = HandlerDelegationWorkflow()
+        cid = uuid4()
+        request = _make_request(correlation_id=cid)
+        handler.handle_delegation_request(request)
+
+        # Tier 1 routes with a small ceiling.
+        first = _make_routing_decision(cid, max_tokens=8192)
+        first_intents = handler.handle_routing_decision(first)
+        assert isinstance(first_intents[0], ModelInferenceIntent)
+        assert first_intents[0].max_tokens == 8192
+
+        # Drive into the documented escalation re-entry condition: state ROUTED
+        # with routing_decision cleared and the in-flight intent reset, so the
+        # next routing decision is processed as the up-tier re-dispatch.
+        workflow = handler.workflows[cid]
+        workflow.state = EnumDelegationState.ROUTED
+        workflow.routing_decision = None
+        workflow.inference_intent_in_flight = False
+
+        # The escalated tier (e.g. cloud-glm) carries the larger 65536 ceiling.
+        second = _make_routing_decision(cid, max_tokens=65536)
+        second_intents = handler.handle_routing_decision(second)
+
+        assert len(second_intents) == 1
+        assert isinstance(second_intents[0], ModelInferenceIntent)
+        # The re-dispatch posts the escalated backend's contract ceiling, not the
+        # request default and not the prior tier's smaller value.
+        assert second_intents[0].max_tokens == 65536
+        assert second_intents[0].max_tokens != request.max_tokens
 
 
 # ---------------------------------------------------------------------------
@@ -234,11 +334,13 @@ class TestHappyPath:
         assert intents[0].intent == "quality_gate"
         assert handler.workflows[cid].state == EnumDelegationState.INFERENCE_COMPLETED
 
-        # Step 4: Handle gate result (pass) -> emits completed + baseline + compat
+        # Step 4: Handle gate result (pass) -> emits single canonical terminal +
+        # baseline intent. OMN-13629: the legacy compat task-delegated.v1 twin is
+        # no longer emitted, so the completed path is 2 events, not 3.
         gate = _make_gate_result(cid, passed=True, quality_score=0.9)
         intents = handler.handle_gate_result(gate)
-        # 3 events: delegation-completed, baseline intent, backward-compat task-delegated
-        assert len(intents) == 3
+        # 2 events: delegation-completed terminal, baseline intent.
+        assert len(intents) == 2
         assert isinstance(intents[0], ModelDelegationEvent)
         assert intents[0].topic == "onex.evt.omnibase-infra.delegation-completed.v1"
         assert handler.workflows[cid].state == EnumDelegationState.COMPLETED
@@ -266,32 +368,12 @@ class TestHappyPath:
         assert intents[1].baseline_cost_usd > 0
         assert intents[1].candidate_cost_usd == pytest.approx(0.0)
 
-        # Backward-compatible task-delegated.v1 event (Task 12)
+        # OMN-13629: NO compat ModelTaskDelegatedEvent is emitted.
         from omnimarket.nodes.node_delegation_orchestrator.models.model_task_delegated_event import (
             ModelTaskDelegatedEvent,
         )
 
-        assert isinstance(intents[2], ModelTaskDelegatedEvent)
-        assert intents[2].correlation_id == cid
-        assert intents[2].quality_gate_passed is True
-        assert intents[2].llm_call_id == "chatcmpl-abc123"
-        from omnimarket.pricing import (
-            estimate_baseline_cost_usd,
-            get_manifest_version_int,
-        )
-
-        expected_savings = estimate_baseline_cost_usd(
-            prompt_tokens=100,
-            completion_tokens=50,
-        )
-        assert intents[2].cost_savings_usd == pytest.approx(expected_savings)
-        assert intents[2].pricing_manifest_version == get_manifest_version_int()
-        assert intents[2].pricing_manifest_version > 0
-        from omnibase_infra.event_bus.topic_constants import (
-            TOPIC_DELEGATION_TASK_DELEGATED,
-        )
-
-        assert intents[2].topic == TOPIC_DELEGATION_TASK_DELEGATED
+        assert not any(isinstance(e, ModelTaskDelegatedEvent) for e in intents)
 
     def test_completed_result_has_positive_latency(self) -> None:
         handler = HandlerDelegationWorkflow()
@@ -339,8 +421,9 @@ class TestGateFailure:
         )
         intents = handler.handle_gate_result(gate)
 
-        # 2 events: delegation-failed + backward-compat task-delegated (no baseline on failure)
-        assert len(intents) == 2
+        # OMN-13629: single canonical delegation-failed terminal (no baseline on
+        # failure, no compat twin).
+        assert len(intents) == 1
         assert isinstance(intents[0], ModelDelegationEvent)
         assert intents[0].topic == "onex.evt.omnibase-infra.delegation-failed.v1"
         assert handler.workflows[cid].state == EnumDelegationState.FAILED
@@ -350,13 +433,12 @@ class TestGateFailure:
         assert result.fallback_to_claude is True
         assert "REFUSAL" in result.failure_reason
 
-        # Backward-compat event still emitted on failure
+        # OMN-13629: NO compat ModelTaskDelegatedEvent is emitted on failure.
         from omnimarket.nodes.node_delegation_orchestrator.models.model_task_delegated_event import (
             ModelTaskDelegatedEvent,
         )
 
-        assert isinstance(intents[1], ModelTaskDelegatedEvent)
-        assert intents[1].quality_gate_passed is False
+        assert not any(isinstance(e, ModelTaskDelegatedEvent) for e in intents)
 
     def test_gate_fail_without_fallback(self) -> None:
         handler = HandlerDelegationWorkflow()
@@ -382,8 +464,9 @@ class TestGateFailure:
 
         assert isinstance(intents[0], ModelDelegationEvent)
         result: ModelDelegationResult = intents[0].payload
-        assert result.fallback_to_claude is False
+        assert result.fallback_to_claude is True
         assert result.quality_passed is False
+        assert "score_below_required_bar" in result.failure_reason
 
 
 # ---------------------------------------------------------------------------
@@ -538,7 +621,7 @@ class TestFSMTransitions:
     def test_valid_transition_received_to_routed(self) -> None:
         handler = HandlerDelegationWorkflow()
         workflow = DelegationWorkflowState(correlation_id=uuid4())
-        handler._transition(workflow, EnumDelegationState.ROUTED)
+        handler._advance(workflow, EnumDelegationState.ROUTED)
         assert workflow.state == EnumDelegationState.ROUTED
 
     def test_invalid_transition_received_to_completed(self) -> None:
@@ -547,7 +630,7 @@ class TestFSMTransitions:
         with pytest.raises(
             InvalidStateTransitionError, match="Invalid state transition"
         ):
-            handler._transition(workflow, EnumDelegationState.COMPLETED)
+            handler._advance(workflow, EnumDelegationState.COMPLETED)
 
     def test_terminal_state_cannot_transition(self) -> None:
         handler = HandlerDelegationWorkflow()
@@ -555,7 +638,7 @@ class TestFSMTransitions:
             correlation_id=uuid4(), state=EnumDelegationState.COMPLETED
         )
         with pytest.raises(InvalidStateTransitionError):
-            handler._transition(workflow, EnumDelegationState.RECEIVED)
+            handler._advance(workflow, EnumDelegationState.RECEIVED)
 
     def test_failed_is_terminal(self) -> None:
         handler = HandlerDelegationWorkflow()
@@ -563,7 +646,7 @@ class TestFSMTransitions:
             correlation_id=uuid4(), state=EnumDelegationState.FAILED
         )
         with pytest.raises(InvalidStateTransitionError):
-            handler._transition(workflow, EnumDelegationState.RECEIVED)
+            handler._advance(workflow, EnumDelegationState.RECEIVED)
 
 
 # ---------------------------------------------------------------------------
@@ -615,17 +698,14 @@ class TestConcurrentWorkflows:
 
 @pytest.mark.unit
 class TestTaskDelegatedEventTopicRouting:
-    """Verify ModelTaskDelegatedEvent carries the correct topic field.
+    """OMN-13629: the orchestrator no longer emits the legacy compat event.
 
-    The runtime kernel routes output_events by inspecting event.topic.
-    Without it, the compat event is silently dropped.
+    The terminal collapsed to a single canonical ModelDelegationEvent. These
+    tests prove the compat ModelTaskDelegatedEvent is NOT in the emitted output
+    on either the pass or the fail path — the divergence-prone co-writer is gone.
     """
 
-    def test_compat_event_has_topic_on_gate_pass(self) -> None:
-        from omnibase_infra.event_bus.topic_constants import (
-            TOPIC_DELEGATION_TASK_DELEGATED,
-        )
-
+    def test_no_compat_event_on_gate_pass(self) -> None:
         from omnimarket.nodes.node_delegation_orchestrator.models.model_task_delegated_event import (
             ModelTaskDelegatedEvent,
         )
@@ -640,15 +720,9 @@ class TestTaskDelegatedEventTopicRouting:
         )
         events = handler.handle_gate_result(_make_gate_result(cid, passed=True))
 
-        compat_events = [e for e in events if isinstance(e, ModelTaskDelegatedEvent)]
-        assert len(compat_events) == 1
-        assert compat_events[0].topic == TOPIC_DELEGATION_TASK_DELEGATED
+        assert not any(isinstance(e, ModelTaskDelegatedEvent) for e in events)
 
-    def test_compat_event_has_topic_on_gate_fail(self) -> None:
-        from omnibase_infra.event_bus.topic_constants import (
-            TOPIC_DELEGATION_TASK_DELEGATED,
-        )
-
+    def test_no_compat_event_on_gate_fail(self) -> None:
         from omnimarket.nodes.node_delegation_orchestrator.models.model_task_delegated_event import (
             ModelTaskDelegatedEvent,
         )
@@ -665,27 +739,7 @@ class TestTaskDelegatedEventTopicRouting:
             _make_gate_result(cid, passed=False, failure_reasons=("REFUSAL",))
         )
 
-        compat_events = [e for e in events if isinstance(e, ModelTaskDelegatedEvent)]
-        assert len(compat_events) == 1
-        assert compat_events[0].topic == TOPIC_DELEGATION_TASK_DELEGATED
-
-    def test_model_task_delegated_event_default_topic(self) -> None:
-        from omnibase_infra.event_bus.topic_constants import (
-            TOPIC_DELEGATION_TASK_DELEGATED,
-        )
-
-        from omnimarket.nodes.node_delegation_orchestrator.models.model_task_delegated_event import (
-            ModelTaskDelegatedEvent,
-        )
-
-        event = ModelTaskDelegatedEvent(
-            timestamp="2026-04-12T00:00:00Z",
-            correlation_id=uuid4(),
-            task_type="test",
-            delegated_to="qwen3-coder",
-            quality_gate_passed=True,
-        )
-        assert event.topic == TOPIC_DELEGATION_TASK_DELEGATED
+        assert not any(isinstance(e, ModelTaskDelegatedEvent) for e in events)
 
 
 # ---------------------------------------------------------------------------
@@ -723,6 +777,7 @@ def _make_routing_decision_with_tier(
     correlation_id: UUID,
     tier_name: str = "local",
     task_type: str = "test",
+    max_tokens: int = 65536,
 ) -> ModelRoutingDecision:
     from uuid import NAMESPACE_DNS, uuid5
 
@@ -736,6 +791,8 @@ def _make_routing_decision_with_tier(
         endpoint_url="http://192.168.86.201:8000",  # onex-allow-internal-ip OMN-10865 reason="delegation test fixture for local AIPC LLM endpoint"
         cost_tier="low",
         max_context_tokens=65536,
+        # OMN-13345: contract-declared per-backend output ceiling.
+        max_tokens=max_tokens,
         system_prompt="You are a test generation assistant.",
         rationale=f"Task 'test' routed via tier '{tier_name}'.",
         tier_name=tier_name,
@@ -965,7 +1022,8 @@ class TestInferenceErrorEscalation:
             _make_error_inference_response(cid, "401 Unauthorized: missing API key")
         )
 
-        assert len(intents) == 2
+        # OMN-13629: a single canonical FAILED terminal (no compat twin).
+        assert len(intents) == 1
         failure_event = next(e for e in intents if isinstance(e, ModelDelegationEvent))
         assert failure_event.topic == "onex.evt.omnibase-infra.delegation-failed.v1"
         assert handler.workflows[cid].state == EnumDelegationState.FAILED
@@ -974,22 +1032,91 @@ class TestInferenceErrorEscalation:
         assert result.quality_passed is False
         assert "401" in result.failure_reason
 
-    def test_max_escalation_attempts_reached_produces_terminal_failed(self) -> None:
-        """After _MAX_INFERENCE_ESCALATION_ATTEMPTS escalations, emit terminal FAILED."""
+    def test_max_escalation_attempts_reached_produces_terminal_failed(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Path,
+    ) -> None:
+        """After _MAX_INFERENCE_ESCALATION_ATTEMPTS escalations, emit terminal FAILED.
+
+        OMN-13140: the `test` task class declares the closed tier_order
+        [local, cheap_cloud, claude]. To exercise the max-escalation ceiling
+        (2 real escalations) this test needs all three of those tiers routable;
+        the autouse `frontier_unconfigured_bifrost` fixture leaves the claude-tier
+        backend with an empty endpoint_url. We therefore bind a bifrost config
+        where local, cheap_cloud, AND the claude-named HTTP ceiling backend carry
+        resolvable `test` transports, so the chain escalates twice
+        (local -> cheap_cloud -> claude) and the third attempt hits the escalation
+        ceiling.
+
+        OMN-13215/OMN-13351: the ceiling tier is the canonical HTTP cloud-gemini-pro
+        backend (no shelled CLI; repointed off the dead Anthropic cloud-sonnet —
+        llm.anthropic.api_key resolves to None in every lane). Routability requires
+        its secret_ref (llm.gemini.api_key) to resolve, so the env-mapped secret is
+        set. The synthetic ceiling backend_id MUST match the claude-tier backend_id
+        in the real routing_tiers.yaml (cloud-gemini-pro), which is not overridden
+        here.
+        """
         from omnimarket.nodes.node_delegation_orchestrator.handlers.handler_delegation_workflow import (
             _MAX_INFERENCE_ESCALATION_ATTEMPTS,
         )
+        from omnimarket.nodes.node_delegation_routing_reducer.handlers import (
+            handler_delegation_routing as routing,
+        )
+
+        from .conftest import BIFROST_FRONTIER_UNCONFIGURED
+
+        # All three declared `test` tiers (local, cheap_cloud, claude) must be
+        # routable so two real escalations (local -> cheap_cloud -> claude) occur
+        # before the ceiling is reached. Reuse the shared frontier-unconfigured
+        # bifrost shape, then add the HTTP cloud-gemini-pro ceiling backend (complete
+        # verbatim URL + secret_ref) referenced by the claude tier in
+        # routing_tiers.yaml.
+        routing_rules_marker = "routing_rules:\n"
+        ceiling_backend = (
+            "  - backend_id: cloud-gemini-pro\n"
+            '    endpoint_url: "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"\n'
+            "    model_name: gemini-2.5-flash\n"
+            "    secret_ref: llm.gemini.api_key\n"
+            "    tier: claude\n"
+            "    timeout_ms: 60000\n"
+            "    capabilities: [code_generation, reasoning, test]\n"
+        )
+        assert routing_rules_marker in BIFROST_FRONTIER_UNCONFIGURED, (
+            "expected shared fixture to contain routing_rules marker"
+        )
+        # Remove the empty-endpoint cloud-gemini-pro stub from the shared fixture so
+        # the complete-URL ceiling backend is the single ceiling definition.
+        base_contract = BIFROST_FRONTIER_UNCONFIGURED.replace(
+            "      - backend_id: cloud-gemini-pro\n"
+            '        endpoint_url: ""\n'
+            "        model_name: gemini-2.5-flash\n"
+            "        tier: frontier_api\n"
+            "        timeout_ms: 60000\n"
+            "        capabilities: [documentation]\n",
+            "",
+        )
+        all_tiers_routable = base_contract.replace(
+            routing_rules_marker, ceiling_backend + routing_rules_marker
+        )
+        contract_path = tmp_path / "all_tiers_routable.yaml"
+        contract_path.write_text(all_tiers_routable)
+        monkeypatch.setenv("BIFROST_CONTRACT_PATH", str(contract_path))
+        monkeypatch.setenv("llm.gemini.api_key", "test-gemini-key")
+        monkeypatch.delenv("BIFROST_OVERLAY_PATH", raising=False)
+        routing._load_bifrost_endpoints.cache_clear()
 
         handler = HandlerDelegationWorkflow()
         cid = uuid4()
 
         handler.handle_delegation_request(_make_request(correlation_id=cid))
 
-        # Exhaust max attempts via successive infra errors
+        # Exhaust max attempts via successive infra errors. `test` tier_order is
+        # [local, cheap_cloud, claude]: local -> cheap_cloud -> claude.
+        tiers_in_order = ("local", "cheap_cloud")
         for i in range(_MAX_INFERENCE_ESCALATION_ATTEMPTS):
-            tier = "local" if i == 0 else "cheap_cloud"
             handler.handle_routing_decision(
-                _make_routing_decision_with_tier(cid, tier_name=tier)
+                _make_routing_decision_with_tier(cid, tier_name=tiers_in_order[i])
             )
             result = handler.handle_inference_response(
                 _make_error_inference_response(cid, f"502 Bad Gateway attempt {i + 1}")
@@ -1010,3 +1137,7 @@ class TestInferenceErrorEscalation:
         failure_event = next(e for e in final if isinstance(e, ModelDelegationEvent))
         assert failure_event.topic == "onex.evt.omnibase-infra.delegation-failed.v1"
         assert handler.workflows[cid].state == EnumDelegationState.FAILED
+        result_payload: ModelDelegationResult = failure_event.payload
+        assert (
+            result_payload.terminal_failure_reason == "max_escalation_attempts_reached"
+        )

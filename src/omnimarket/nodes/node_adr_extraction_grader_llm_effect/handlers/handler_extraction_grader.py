@@ -21,17 +21,17 @@ import re
 import time
 from typing import Any, Literal
 
+from omnimarket.inference.adapter_inference_bridge import (
+    AdapterInferenceBridge,
+    ModelInferenceAdapter,
+    ModelInferenceBridgeConfig,
+)
 from omnimarket.nodes.node_adr_extraction_grader_llm_effect.models.model_grading_request import (
     ModelGradingRequest,
 )
 from omnimarket.nodes.node_adr_extraction_grader_llm_effect.models.model_grading_result import (
     ModelGradingResult,
     ModelLLMCallEvidence,
-)
-from omnimarket.nodes.node_hostile_reviewer.handlers.adapter_inference_bridge import (
-    AdapterInferenceBridge,
-    ModelInferenceAdapter,
-    ModelInferenceBridgeConfig,
 )
 
 logger = logging.getLogger(__name__)

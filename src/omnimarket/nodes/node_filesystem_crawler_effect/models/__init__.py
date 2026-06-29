@@ -3,6 +3,7 @@
 """Models for node_filesystem_crawler_effect."""
 
 from omnimarket.nodes.node_filesystem_crawler_effect.models.model_content_discovered_event import (
+    EnumContentSourceType,
     ModelContentDiscoveredEvent,
 )
 from omnimarket.nodes.node_filesystem_crawler_effect.models.model_crawl_filesystem_request import (
@@ -19,6 +20,7 @@ from omnimarket.nodes.node_filesystem_crawler_effect.models.model_filesystem_cra
 )
 
 __all__ = [
+    "EnumContentSourceType",
     "ModelContentDiscoveredEvent",
     "ModelCrawlFilesystemRequest",
     "ModelCrawlFilesystemResult",

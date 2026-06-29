@@ -40,6 +40,22 @@ def _openrouter_models_body(model_ids: list[str]) -> bytes:
     return json.dumps({"data": [{"id": mid} for mid in model_ids]}).encode()
 
 
+_OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
+
+
+@pytest.fixture
+def openrouter_base_url_env(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Configure the OpenRouter base URL via routing config for discovery tests.
+
+    The handler resolves the base URL from ``OPENROUTER_BASE_URL`` and fails
+    closed when it is unset (OMN-12805), so OpenRouter-path tests must declare
+    it explicitly rather than rely on a hardcoded in-code literal.
+    """
+    monkeypatch.setenv("OPENROUTER_BASE_URL", _OPENROUTER_BASE_URL)
+
+
 _REGISTRY_PATH = (
     Path(__file__).parent.parent.parent
     / "node_swarm_registry_compute"
@@ -118,6 +134,7 @@ async def test_local_unhealthy_fallback() -> None:
         assert ep.error is not None
 
 
+@pytest.mark.usefixtures("openrouter_base_url_env")
 @pytest.mark.unit
 @pytest.mark.asyncio
 async def test_openrouter_discovery_live_models() -> None:
@@ -166,6 +183,7 @@ async def test_openrouter_discovery_live_models() -> None:
         assert ep.base_url == "https://openrouter.ai/api/v1"
 
 
+@pytest.mark.usefixtures("openrouter_base_url_env")
 @pytest.mark.unit
 @pytest.mark.asyncio
 async def test_openrouter_api_failure_all_unhealthy() -> None:
@@ -194,6 +212,7 @@ async def test_openrouter_api_failure_all_unhealthy() -> None:
         assert ep.status == EnumDiscoveryEndpointStatus.unhealthy
 
 
+@pytest.mark.usefixtures("openrouter_base_url_env")
 @pytest.mark.unit
 @pytest.mark.asyncio
 async def test_combined_local_and_openrouter_meets_threshold() -> None:
@@ -235,6 +254,7 @@ async def test_combined_local_and_openrouter_meets_threshold() -> None:
     assert result.openrouter_count == 12
 
 
+@pytest.mark.usefixtures("openrouter_base_url_env")
 @pytest.mark.unit
 @pytest.mark.asyncio
 async def test_openrouter_partial_availability() -> None:
@@ -268,6 +288,7 @@ async def test_openrouter_partial_availability() -> None:
     assert result.meets_threshold is False
 
 
+@pytest.mark.usefixtures("openrouter_base_url_env")
 @pytest.mark.unit
 @pytest.mark.asyncio
 async def test_result_fields_populated() -> None:
@@ -299,3 +320,31 @@ async def test_result_fields_populated() -> None:
     )
     assert ep.model_id == "nvidia/llama-3.1-nemotron-nano-8b-v1:free"
     assert "general" in ep.capabilities
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_openrouter_base_url_unset_fails_closed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """OpenRouter discovery fails closed when OPENROUTER_BASE_URL is unset.
+
+    No hardcoded provider URL default may substitute for the routing-config
+    value (OMN-12805 / epic OMN-12803).
+    """
+    monkeypatch.delenv("OPENROUTER_BASE_URL", raising=False)
+
+    handler = HandlerSwarmFleetDiscovery(
+        http_get_fn=_make_http_get({}),
+        registry_path=_REGISTRY_PATH,
+        openrouter_api_key="test-key",
+    )
+    req = ModelFleetDiscoveryRequest(
+        correlation_id="test-fail-closed",
+        include_local=False,
+        include_openrouter=True,
+        min_healthy_endpoints=1,
+    )
+
+    with pytest.raises(ValueError, match="OPENROUTER_BASE_URL"):
+        await handler.handle(req)

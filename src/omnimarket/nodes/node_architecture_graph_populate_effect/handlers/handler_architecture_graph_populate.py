@@ -265,10 +265,12 @@ class HandlerArchitectureGraphPopulate:
                 deduped_edges.append(e)
 
         snapshot_id = str(uuid4())
-        schema_version = (
-            self._config
-            or ModelArchitectureGraphPopulateConfig(bolt_uri="bolt://localhost")
-        ).graph_schema_version
+        if self._config is None:
+            raise RuntimeError(
+                "HandlerArchitectureGraphPopulate.handle() called before initialize(); "
+                "call initialize() first so the overlay-resolved config is available"
+            )
+        schema_version = self._config.graph_schema_version
 
         snapshot_meta = ModelGraphSnapshotMeta(
             graph_schema_version=schema_version,
@@ -541,10 +543,12 @@ class HandlerArchitectureGraphPopulate:
     ) -> None:
         """Execute MERGE statements against Memgraph in batches."""
         assert self._driver is not None
-        config = self._config or ModelArchitectureGraphPopulateConfig(
-            bolt_uri="bolt://localhost"
-        )
-        batch_size = config.batch_size
+        if self._config is None:
+            raise RuntimeError(
+                "HandlerArchitectureGraphPopulate._write_to_graph() called before "
+                "initialize(); the overlay-resolved config must be set"
+            )
+        batch_size = self._config.batch_size
 
         async with _open_session(self._driver) as session:
             # Write nodes in batches

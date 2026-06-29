@@ -1,0 +1,78 @@
+---
+name: node_projection_instruction_eval
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: REDUCER_GENERIC
+node_version: {major: 1, minor: 0, patch: 0}
+input_model: ModelInstructionEvalProjectionEvent
+description: >
+  Projects instruction-eval-result events into the
+  instruction_eval_aggregate_snapshots table — a (model, task, context_mode)
+  pass-rate / output-tokens / runs aggregate read by the omnidash
+  InstructionEvalHeatmap panel via the canonical projection API
+  (projection_api.topic below).
+
+  OMN-12998: replaces the hardcoded fixture (instruction-eval.fixtures.ts,
+  run 20260526-170241) with a live, contract-declared projection so the panel
+  can display honest empty/degraded states until rows exist rather than a
+  permanently-recorded view. The instruction-eval runner / scorer
+  (onex-self-extending-agent/eval/instruction-eval lineage) is the upstream
+  producer; this node consumes the emitted events and materializes the aggregate.
+
+handler:
+  module: omnimarket.nodes.node_projection_instruction_eval.handlers.handler_instruction_eval
+  class: InstructionEvalProjectionRunner
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: projection_instruction_eval
+      handler:
+        name: InstructionEvalProjectionRunner
+        module: omnimarket.nodes.node_projection_instruction_eval.handlers.handler_instruction_eval
+      handler_module: omnimarket.nodes.node_projection_instruction_eval.handlers.handler_instruction_eval
+      event_model: ModelInstructionEvalProjectionEvent
+
+idempotency:
+  enabled: true
+  strategy: snapshot_upsert
+  hash_fields:
+    - model
+    - task
+    - context_mode
+
+terminal_event: onex.evt.omnimarket.instruction-eval-aggregate-snapshot.v1
+
+db_io:
+  db_tables:
+    - name: instruction_eval_aggregate_snapshots
+      migration: "0001_create_instruction_eval_aggregate_snapshots.sql"
+      access: write
+      database: omnidash_analytics
+      role: instruction_eval_aggregate
+
+event_bus:
+  consumer_group: local.omnibase_infra.node_projection_instruction_eval.consume.v1
+  subscribe_topics:
+    - onex.evt.omnimarket.instruction-eval-result.v1
+  publish_topics:
+    - onex.evt.omnimarket.instruction-eval-aggregate-snapshot.v1
+
+projection_api:
+  expose: true
+  topic: "onex.snapshot.projection.omnimarket.instruction-eval-aggregate.v1" # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
+  table: "instruction_eval_aggregate_snapshots"
+  schema: "public"
+  columns:
+    - "model"
+    - "task"
+    - "context_mode"
+    - "pass_rate"
+    - "output_tokens"
+    - "runs"
+    - "updated_at"
+  order_by: "model ASC, task ASC, context_mode ASC"
+  freshness_column: "updated_at"
+  limit: 500
+
+metadata:
+  transport_type: kafka

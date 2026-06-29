@@ -15,7 +15,7 @@ import inspect
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from typing import Literal, Protocol
-from uuid import UUID
+from uuid import NAMESPACE_URL, UUID, uuid5
 
 from omnimarket.nodes.node_observability_sink_effect.models.model_observability_sink_input import (
     ModelActionEvent,
@@ -50,6 +50,42 @@ class ProtocolObservabilityPostgresSink(Protocol):
     ) -> UUID | Awaitable[UUID]: ...
 
 
+class InMemoryObservabilitySink:
+    """Local default sink — the contract default when no remote adapter is injected.
+
+    The in-memory/local bus is always present; Kafka and PostgreSQL persistence
+    are runtime overrides. When neither override is wired (the default local
+    runtime), observability events are recorded in memory so the effect runs
+    over the local bus instead of crashing. Trace ids are prefixed ``inmemory:``
+    and row ids are deterministic (uuid5 of the event id) so the output honestly
+    signals that local persistence was used, not a remote backend.
+    """
+
+    def __init__(self) -> None:
+        self.kafka_events: list[ModelActionEvent] = []
+        self.postgres_events: list[ModelActionEvent] = []
+
+    def publish_action_event(
+        self,
+        *,
+        correlation_id: UUID,
+        session_id: UUID,
+        event: ModelActionEvent,
+    ) -> str:
+        self.kafka_events.append(event)
+        return f"inmemory:{event.event_id}"
+
+    def insert_action_event(
+        self,
+        *,
+        correlation_id: UUID,
+        session_id: UUID,
+        event: ModelActionEvent,
+    ) -> UUID:
+        self.postgres_events.append(event)
+        return uuid5(NAMESPACE_URL, f"observability-inmemory:{event.event_id}")
+
+
 class HandlerObservabilitySinkEffect:
     """EFFECT: persist observability events through injected runtime adapters."""
 
@@ -63,31 +99,26 @@ class HandlerObservabilitySinkEffect:
         postgres_sink: ProtocolObservabilityPostgresSink | None = None,
         clock: Callable[[], datetime] | None = None,
     ) -> None:
-        self._kafka_sink = kafka_sink
-        self._postgres_sink = postgres_sink
+        # The in-memory/local sink is the contract default. Kafka/Postgres
+        # adapters are overrides supplied by runtime wiring; absent them the
+        # effect degrades to local persistence rather than raising.
+        local_default = InMemoryObservabilitySink()
+        self._kafka_sink: ProtocolObservabilityKafkaSink = (
+            kafka_sink if kafka_sink is not None else local_default
+        )
+        self._postgres_sink: ProtocolObservabilityPostgresSink = (
+            postgres_sink if postgres_sink is not None else local_default
+        )
         self._clock = clock or (lambda: datetime.now(UTC))
 
     async def handle(
         self, request: ModelObservabilitySinkInput
     ) -> ModelObservabilitySinkOutput:
-        if request.sink_kafka and self._kafka_sink is None:
-            raise RuntimeError(
-                "observability sink requested Kafka persistence, but no "
-                "ProtocolObservabilityKafkaSink adapter was injected"
-            )
-        if request.sink_postgres and self._postgres_sink is None:
-            raise RuntimeError(
-                "observability sink requested PostgreSQL persistence, but no "
-                "ProtocolObservabilityPostgresSink adapter was injected"
-            )
-
         kafka_trace_ids: list[str] = []
         postgres_row_ids: list[UUID] = []
 
         for event in request.events:
             if request.sink_kafka:
-                if self._kafka_sink is None:  # pragma: no cover - guarded above
-                    raise RuntimeError("Kafka sink adapter is not configured")
                 kafka_trace_ids.append(
                     await _maybe_await(
                         self._kafka_sink.publish_action_event(
@@ -98,8 +129,6 @@ class HandlerObservabilitySinkEffect:
                     )
                 )
             if request.sink_postgres:
-                if self._postgres_sink is None:  # pragma: no cover - guarded above
-                    raise RuntimeError("PostgreSQL sink adapter is not configured")
                 postgres_row_ids.append(
                     await _maybe_await(
                         self._postgres_sink.insert_action_event(
@@ -131,6 +160,7 @@ async def _maybe_await[T](value: T | Awaitable[T]) -> T:
 
 __all__: list[str] = [
     "HandlerObservabilitySinkEffect",
+    "InMemoryObservabilitySink",
     "ProtocolObservabilityKafkaSink",
     "ProtocolObservabilityPostgresSink",
 ]

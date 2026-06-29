@@ -307,6 +307,72 @@ class TestBuildRow:
         assert row["prompt_tokens"] == 80
         assert row["completion_tokens"] == 20
 
+    # --- OMN-12994: usage_normalized.source fallback ---
+
+    def test_usage_normalized_source_api_maps_to_api_when_no_top_level(self) -> None:
+        """ContractLlmCallMetrics wire shape: usage_normalized.source='api', no top-level usage_source."""
+        data: dict[str, Any] = {
+            "model_id": "Qwen3.6-35B-A3B",
+            "prompt_tokens": 512,
+            "completion_tokens": 128,
+            "total_tokens": 640,
+            "usage_normalized": {"source": "api"},
+        }
+        row = _build_row(data)
+        assert row["usage_source"] == "API", (
+            "usage_normalized.source='api' must resolve to API (MEASURED), not MISSING"
+        )
+        assert row["usage_is_estimated"] is False
+
+    def test_usage_normalized_source_estimated_maps_to_estimated_when_no_top_level(
+        self,
+    ) -> None:
+        data: dict[str, Any] = {
+            "model_id": "some-model",
+            "prompt_tokens": 100,
+            "completion_tokens": 50,
+            "total_tokens": 150,
+            "usage_normalized": {"source": "estimated"},
+        }
+        row = _build_row(data)
+        assert row["usage_source"] == "ESTIMATED"
+        assert row["usage_is_estimated"] is True
+
+    def test_usage_normalized_source_missing_maps_to_missing_when_no_top_level(
+        self,
+    ) -> None:
+        data: dict[str, Any] = {
+            "model_id": "some-model",
+            "total_tokens": 100,
+            "usage_normalized": {"source": "missing"},
+        }
+        row = _build_row(data)
+        assert row["usage_source"] == "MISSING"
+
+    def test_top_level_usage_source_takes_priority_over_usage_normalized(self) -> None:
+        """Top-level usage_source wins over usage_normalized.source."""
+        data: dict[str, Any] = {
+            "model_id": "some-model",
+            "prompt_tokens": 100,
+            "completion_tokens": 50,
+            "total_tokens": 150,
+            "usage_source": "MEASURED",
+            "usage_normalized": {"source": "missing"},
+        }
+        row = _build_row(data)
+        assert row["usage_source"] == "API"  # MEASURED → API from top-level
+
+    def test_usage_normalized_absent_falls_back_to_missing(self) -> None:
+        """No top-level usage_source and no usage_normalized → MISSING (unchanged)."""
+        data: dict[str, Any] = {
+            "model_id": "some-model",
+            "prompt_tokens": 100,
+            "completion_tokens": 50,
+            "total_tokens": 150,
+        }
+        row = _build_row(data)
+        assert row["usage_source"] == "MISSING"
+
 
 # ---------------------------------------------------------------------------
 # _insert_row — mock DB

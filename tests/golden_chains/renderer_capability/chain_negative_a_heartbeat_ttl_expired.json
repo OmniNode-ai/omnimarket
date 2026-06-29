@@ -1,0 +1,55 @@
+{
+  "chain_name": "renderer_capability_negative_a_ttl_expired",
+  "description": "NEGATIVE chain (a): a renderer declares a capability heartbeat at T0, but the projection is observed past the heartbeat TTL (DEFAULT_HEARTBEAT_TTL_SECONDS + 1). The fold re-derives freshness against the observer clock -> the row flips to is_degraded=true and carries the typed EnumEmptyStateReason.UPSTREAM_BLOCKED. The consumer surfaces the capability gate instead of rendering a stale capability blind.",
+  "subscribe_topic": "onex.cmd.ui.renderer-capability-declared.v1",
+  "ttl_seconds": 90,
+  "events": [
+    {
+      "operation": "ui.renderer_capability.declare",
+      "observed_at": "2026-06-18T12:01:31Z",
+      "payload": {
+        "capability": {
+          "renderer_id": "ui.effect.web",
+          "platform": "web",
+          "supported_component_kinds": ["chart", "table"],
+          "interaction_model": "pointer",
+          "accessibility_tier": "aa",
+          "contract_version": {
+            "major": 1,
+            "minor": 0,
+            "patch": 0,
+            "prerelease": null,
+            "build": null
+          },
+          "supports_interaction": true,
+          "supports_streaming": false,
+          "supports_theming": false
+        },
+        "declared_at": "2026-06-18T12:00:00Z"
+      }
+    }
+  ],
+  "dispatcher_request": null,
+  "expected_state": {
+    "rows": [
+      {
+        "renderer_id": "ui.effect.web",
+        "platform": "web",
+        "supported_component_kinds": ["chart", "table"],
+        "interaction_model": "pointer",
+        "accessibility_tier": "aa",
+        "contract_version": {
+          "major": 1,
+          "minor": 0,
+          "patch": 0,
+          "prerelease": null,
+          "build": null
+        },
+        "declared_at": "2026-06-18T12:00:00Z",
+        "last_heartbeat": "2026-06-18T12:00:00Z",
+        "is_degraded": true,
+        "empty_state_reason": "upstream-blocked"
+      }
+    ]
+  }
+}

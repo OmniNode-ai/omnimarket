@@ -1,0 +1,139 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# P4 graded delegation benchmark fixture (OMN-13369).
+#
+# This fixture extends the OMN-12964 calibration surface: every attempt is scored
+# by the real node_delegation_quality_gate_reducer delta() against the shipped
+# task_class_contracts.v1.yaml DoD. The fixture is an offline golden-chain replay
+# of the canonical bus path: quality-gate request -> quality-gate result ->
+# optional delegation-escalation-triggered -> terminal delegation event ->
+# projection snapshot rows. It is not a REST or dashboard authority.
+
+version: "1.0"
+ticket: OMN-13369
+quality_gate_request_topic: onex.cmd.omnibase-infra.delegation-quality-gate-request.v1
+quality_gate_result_topic: onex.evt.omnibase-infra.quality-gate-result.v1
+escalation_event_topic: onex.evt.omnimarket.delegation-escalation-triggered.v1
+terminal_success_topic: onex.evt.omnibase-infra.delegation-completed.v1
+terminal_failure_topic: onex.evt.omnibase-infra.delegation-failed.v1
+projection_topics:
+  correlation_trace: onex.snapshot.projection.delegation.correlation-trace.v1
+  quality_gate: onex.snapshot.projection.delegation.quality-gate.v1
+  model_routing: onex.snapshot.projection.delegation.model-routing.v1
+
+cases:
+  - id: easy_local_summary_passes
+    benchmark_class: easy
+    task_class: summarization
+    required_bar: 0.95
+    required_bar_source: benchmark_fixture
+    expected_terminal_status: completed
+    expected_escalations: 0
+    expected_terminal_tier: local
+    expected_terminal_model: Qwen3.6-35B-A3B
+    negative_control: false
+    notes: Easy local task clears the bar at tier one.
+    attempts:
+      - tier: local
+        model: Qwen3.6-35B-A3B
+        content: The gate scores short correct summaries as adequate at tier one.
+
+  - id: medium_summary_escalates_once
+    benchmark_class: medium
+    task_class: summarization
+    required_bar: 0.95
+    required_bar_source: benchmark_fixture
+    expected_terminal_status: completed
+    expected_escalations: 1
+    expected_terminal_tier: cheap_cloud
+    expected_terminal_model: openrouter-glm-flash
+    negative_control: false
+    notes: Local output is a near miss; cheap_cloud clears the bar.
+    attempts:
+      - tier: local
+        model: Qwen3.6-35B-A3B
+        content: The benchmark identifies the behavior because
+      - tier: cheap_cloud
+        model: openrouter-glm-flash
+        content: The benchmark proves that local near misses escalate once and pass at the cheap cloud tier.
+
+  - id: hard_research_reaches_ceiling
+    benchmark_class: hard
+    task_class: research
+    required_bar: 0.95
+    required_bar_source: benchmark_fixture
+    expected_terminal_status: completed
+    expected_escalations: 2
+    expected_terminal_tier: claude
+    expected_terminal_model: cloud-gemini-pro
+    negative_control: false
+    notes: Research requires the ceiling tier to satisfy source and reasoning checks.
+    attempts:
+      - tier: local
+        model: Qwen3.6-35B-A3B
+        content: I cannot answer that. It is just true.
+      - tier: cheap_cloud
+        model: openrouter-glm-flash
+        content: Theorem 2 says the claim holds.
+      - tier: claude
+        model: cloud-gemini-pro
+        content: >-
+          Theorem 2 in the cited references gives the compactness condition.
+          According to (Smith, 2021), the proof works because the operator is
+          approximated by finite-rank projections; therefore the evidence in
+          Section 4 supports the claimed bound.
+
+  - id: negative_document_local_adequate
+    benchmark_class: easy
+    task_class: document
+    required_bar: 0.95
+    required_bar_source: benchmark_fixture
+    expected_terminal_status: completed
+    expected_escalations: 0
+    expected_terminal_tier: local
+    expected_terminal_model: Qwen3.6-35B-A3B
+    negative_control: true
+    notes: Local adequate prose must not waste an escalation.
+    attempts:
+      - tier: local
+        model: Qwen3.6-35B-A3B
+        content: This module validates each input row and returns a typed projection summary.
+
+  - id: negative_correct_marker_light_passes
+    benchmark_class: easy
+    task_class: document
+    required_bar: 0.95
+    required_bar_source: benchmark_fixture
+    expected_terminal_status: completed
+    expected_escalations: 0
+    expected_terminal_tier: local
+    expected_terminal_model: Qwen3.6-35B-A3B
+    negative_control: true
+    notes: Correct marker-light output passes because adequacy does not require marker stuffing.
+    attempts:
+      - tier: local
+        model: Qwen3.6-35B-A3B
+        content: Done.
+
+  - id: marker_rich_wrong_fails
+    benchmark_class: hard
+    task_class: research
+    required_bar: 0.95
+    required_bar_source: benchmark_fixture
+    expected_terminal_status: failed
+    expected_escalations: 2
+    expected_terminal_tier: claude
+    expected_terminal_model: cloud-gemini-pro
+    negative_control: false
+    notes: Marker-rich but self-disclaimed output must not be classified as adequate.
+    attempts:
+      - tier: local
+        model: Qwen3.6-35B-A3B
+        content: I cannot verify this. According to Theorem 2 and [12], evidence exists because it does.
+      - tier: cheap_cloud
+        model: openrouter-glm-flash
+        content: I cannot verify this. According to Theorem 2 and [12], evidence exists because it does.
+      - tier: claude
+        model: cloud-gemini-pro
+        content: I cannot verify this. According to Theorem 2 and [12], evidence exists because it does.

@@ -21,6 +21,7 @@ from uuid import UUID
 
 import httpx
 
+from omnimarket.config.service_endpoints import LINEAR_GRAPHQL_URL
 from omnimarket.nodes.node_build_dispatch_effect.handlers.dispatch_history_store import (
     MAX_DISPATCH_ATTEMPTS,
     STALL_WINDOW_MINUTES,
@@ -34,7 +35,7 @@ from omnimarket.nodes.node_build_loop_orchestrator.protocols.protocol_sub_handle
 logger = logging.getLogger(__name__)
 
 # Linear GraphQL endpoint
-_LINEAR_API_URL = "https://api.linear.app/graphql"
+_LINEAR_API_URL = LINEAR_GRAPHQL_URL
 
 # Priority mapping: Linear uses 0=none, 1=urgent, 2=high, 3=medium, 4=low
 # RSD score inversely correlates with priority number (urgent = highest score)

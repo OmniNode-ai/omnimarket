@@ -25,15 +25,12 @@ CASES = [
         "local.omnibase_infra.node_projection_cost_summary.consume.v1",
         "ModelCostSummarySnapshot",
     ),
-    (
-        "node_projection_cost_by_repo",
-        "omnimarket.nodes.node_projection_cost_by_repo.handlers.handler_projection_cost_by_repo",
-        "HandlerProjectionCostByRepo",
-        ["onex.evt.omniintelligence.llm-call-completed.v1"],
-        "onex.evt.omnimarket.cost-by-repo-snapshot.v1",
-        "local.omnibase_infra.node_projection_cost_by_repo.consume.v1",
-        "ModelCostByRepoSnapshot",
-    ),
+    # node_projection_cost_by_repo is intentionally NOT in this homogeneous group:
+    # OMN-13077 turned it into a real DB writer (CostByRepoProjectionRunner) that
+    # subscribes to the LIVE onex.evt.omnibase-infra.delegation-completed.v1 topic
+    # and persists rows into cost_by_repo_snapshots via operation_match routing.
+    # Its contract + writer are pinned by test_cost_by_repo_projection_api_omn13077.py
+    # and test_cost_by_repo_writer_omn13077.py instead.
     (
         "node_projection_cost_token_usage",
         "omnimarket.nodes.node_projection_cost_token_usage.handlers.handler_projection_cost_token_usage",

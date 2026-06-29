@@ -8,8 +8,7 @@ Exit codes:
   1 — findings at or above threshold (when --exit-nonzero-on-findings is set)
   2 — AST fallback itself failed (unparseable Python or critical engine error)
 
-Mirrors the structure of run_runtime_sweep.py. Designed for plain-Python CI
-execution without the Claude Code harness.
+Designed for plain-Python CI execution without the Claude Code harness.
 """
 
 from __future__ import annotations

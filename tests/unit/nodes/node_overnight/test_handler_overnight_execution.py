@@ -69,7 +69,7 @@ def test_dispatch_phases_invokes_each_registered_dispatcher() -> None:
         return _d
 
     handler = HandlerOvernight(
-        event_bus=MagicMock(),
+        event_bus=MagicMock(),  # transport-mock-ok: EventPublisher is a Callable type alias, not a Protocol class — spec= cannot be applied
         dispatchers={
             EnumPhase.NIGHTLY_LOOP: make(EnumPhase.NIGHTLY_LOOP),
             EnumPhase.BUILD_LOOP: make(EnumPhase.BUILD_LOOP),
@@ -114,7 +114,7 @@ def test_dispatch_phase_failure_on_critical_phase_halts_pipeline() -> None:
         return False, "simulated build loop failure"
 
     handler = HandlerOvernight(
-        event_bus=MagicMock(),
+        event_bus=MagicMock(),  # transport-mock-ok: EventPublisher is a Callable type alias, not a Protocol class — spec= cannot be applied
         dispatchers={
             EnumPhase.NIGHTLY_LOOP: ok(EnumPhase.NIGHTLY_LOOP),
             EnumPhase.BUILD_LOOP: boom,
@@ -148,7 +148,7 @@ def test_dispatch_phase_exception_is_captured_as_failure() -> None:
         return True, None
 
     handler = HandlerOvernight(
-        event_bus=MagicMock(),
+        event_bus=MagicMock(),  # transport-mock-ok: EventPublisher is a Callable type alias, not a Protocol class — spec= cannot be applied
         dispatchers={
             EnumPhase.NIGHTLY_LOOP: ok,
             EnumPhase.BUILD_LOOP: ok,
@@ -183,7 +183,7 @@ def test_overrides_take_precedence_over_dispatchers() -> None:
         return _d
 
     handler = HandlerOvernight(
-        event_bus=MagicMock(),
+        event_bus=MagicMock(),  # transport-mock-ok: EventPublisher is a Callable type alias, not a Protocol class — spec= cannot be applied
         dispatchers={
             EnumPhase.NIGHTLY_LOOP: never(EnumPhase.NIGHTLY_LOOP),
             EnumPhase.BUILD_LOOP: never(EnumPhase.BUILD_LOOP),
@@ -218,7 +218,8 @@ def test_pure_fsm_mode_unchanged_when_dispatch_phases_false() -> None:
         return True, None
 
     handler = HandlerOvernight(
-        event_bus=MagicMock(), dispatchers={EnumPhase.BUILD_LOOP: _d}
+        event_bus=MagicMock(),  # transport-mock-ok: EventPublisher is a Callable type alias, not a Protocol class — spec= cannot be applied
+        dispatchers={EnumPhase.BUILD_LOOP: _d},
     )
 
     result = handler.handle(
@@ -243,7 +244,7 @@ def test_skipped_dispatcher_not_counted_as_failed() -> None:
         return True, None
 
     handler = HandlerOvernight(
-        event_bus=MagicMock(),
+        event_bus=MagicMock(),  # transport-mock-ok: EventPublisher is a Callable type alias, not a Protocol class — spec= cannot be applied
         dispatchers={
             EnumPhase.NIGHTLY_LOOP: ok,
             EnumPhase.BUILD_LOOP: ok,

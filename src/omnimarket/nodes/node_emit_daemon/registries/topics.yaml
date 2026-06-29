@@ -589,6 +589,13 @@ events:
     fan_out:
       - topic: "onex.evt.omnimarket.artifact-captured.v1"
         tier: duty_critical
+        # OMN-13151: per-topic metadata. transform=passthrough (no redaction on
+        # capture evidence). max_payload is bounded < daemon cap (1_048_576) so
+        # the outbox never accepts a record the daemon would reject. schema_ref
+        # names the typed payload model for the durable-content envelope.
+        transform: passthrough
+        max_payload: 524288
+        schema_ref: "omnimarket.nodes.node_filesystem_crawler_effect.models.model_content_discovered_event.ModelContentDiscoveredEvent"
         description: "Content-addressed artifact captured in the artifact store"
     partition_key_field: correlation_id
     required_fields:
@@ -605,6 +612,10 @@ events:
     fan_out:
       - topic: "onex.evt.omnimarket.tool-output-captured.v1"
         tier: duty_critical
+        # OMN-13151: per-topic metadata mirroring artifact.captured.
+        transform: passthrough
+        max_payload: 524288
+        schema_ref: "omnimarket.nodes.node_filesystem_crawler_effect.models.model_content_discovered_event.ModelContentDiscoveredEvent"
         description: "Tool output captured with artifact refs and suppression decision"
     partition_key_field: correlation_id
     required_fields: [tool_name, suppression_decision, correlation_id]

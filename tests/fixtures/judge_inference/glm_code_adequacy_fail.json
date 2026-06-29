@@ -1,0 +1,7 @@
+{
+  "captured_from": "real z.ai GLM call (cloud-glm backend, routing-contract resolved) — low-adequacy candidate",
+  "resolved_model_id": "glm-5.2",
+  "task_type": "test",
+  "candidate_output": "```python\ndef add(a: int, b: int) -> int:\n    return a + b\n```",
+  "raw_response": "{\"adequacy_score\": 0.55, \"reasoning\": \"The candidate compiles and is a single artifact, but it does not satisfy the substantive task requirement: no test was written, no edge cases or error paths are covered. The mechanical floor is met while the semantic adequacy is inadequate.\"}"
+}

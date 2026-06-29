@@ -14,6 +14,11 @@ from pathlib import Path
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from omnimarket.nodes.sweep_scope import (
+    SweepScopeUnresolvedError,
+    require_target_dirs,
+)
+
 # ---------------------------------------------------------------------------
 # Models
 # ---------------------------------------------------------------------------
@@ -34,11 +39,23 @@ class ModelCoverageGap(BaseModel):
 
 
 class CoverageSweepRequest(BaseModel):
-    """Input for the coverage sweep handler."""
+    """Input for the coverage sweep handler.
+
+    Two ways to specify scan targets (resolved by the shared
+    :mod:`omnimarket.nodes.sweep_scope` resolver):
+
+    * ``target_dirs`` — explicit absolute directory paths (highest precedence).
+    * ``repos`` — bare repo names resolved against ``$OMNI_HOME``. This is the
+      field the ``onex skill coverage_sweep`` mapping supplies (OMN-13538).
+
+    When BOTH are empty the handler resolves :data:`sweep_scope.DEFAULT_REPOS`,
+    so a no-arg dispatch scans the real repo universe instead of zero repos.
+    """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     target_dirs: list[str] = Field(default_factory=list)
+    repos: list[str] = Field(default_factory=list)
     target_pct: float = 50.0
     recently_changed_modules: list[str] = Field(default_factory=list)
     dry_run: bool = False
@@ -82,7 +99,22 @@ class NodeCoverageSweep:
     """
 
     def handle(self, request: CoverageSweepRequest) -> CoverageSweepResult:
-        """Execute the coverage sweep across target directories."""
+        """Execute the coverage sweep across target directories.
+
+        Resolves scan targets via the shared
+        :mod:`omnimarket.nodes.sweep_scope` resolver so the RuntimeLocal
+        dispatch path (empty/`repos` payload) scans the default repo set
+        exactly like the ``__main__`` CLI path, instead of defaulting to zero
+        repos and reporting a false-clean (OMN-13538).
+
+        Fails loud (status=error) when scope is empty AND no default can be
+        resolved — never returns ``clean`` over zero repos (Rule 5).
+        """
+        try:
+            target_dirs = require_target_dirs(request.target_dirs, request.repos)
+        except SweepScopeUnresolvedError:
+            return CoverageSweepResult(status="error", dry_run=request.dry_run)
+
         gaps: list[ModelCoverageGap] = []
         repos_scanned = 0
         total_modules = 0
@@ -90,7 +122,7 @@ class NodeCoverageSweep:
 
         recently_changed = set(request.recently_changed_modules)
 
-        for target_dir in request.target_dirs:
+        for target_dir in target_dirs:
             target = Path(target_dir)
             if not target.is_dir():
                 continue

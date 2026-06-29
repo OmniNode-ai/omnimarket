@@ -30,6 +30,10 @@ from omnibase_compat.contracts.evidence_pipeline.wire.model_evidence_validation_
     ModelEvidenceValidationResult,
 )
 
+from omnimarket.events.occ_evidence import (
+    EnumRuntimeLane,
+    ModelRuntimeDeploymentProof,
+)
 from omnimarket.nodes.evidence_pipeline_native import (
     DeploymentProofEvidenceCollectorAdapter,
     collect_evidence,
@@ -43,12 +47,6 @@ from omnimarket.nodes.node_evidence_extractor_compute import (
     HandlerEvidenceExtractorCompute,
 )
 from omnimarket.nodes.node_occ_pr_writer_effect import HandlerOccPrWriterEffect
-from omnimarket.nodes.node_redeploy.models.model_redeploy_command import (
-    EnumRuntimeLane,
-)
-from omnimarket.nodes.node_redeploy.models.model_runtime_deployment import (
-    ModelRuntimeDeploymentProof,
-)
 
 _DEPLOYMENT_ID = UUID("11111111-1111-4111-8111-111111111111")
 _CORRELATION_ID = UUID("22222222-2222-4222-8222-222222222222")

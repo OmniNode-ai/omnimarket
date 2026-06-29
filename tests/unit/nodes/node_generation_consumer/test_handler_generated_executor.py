@@ -195,12 +195,22 @@ def test_execute_picks_up_updated_handler_without_reinit() -> None:
 def test_default_sandbox_resolves_from_onex_state_dir(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """OMN-12854: the sandbox resolves under ONEX_STATE_DIR (preferred)."""
+    """OMN-12854: the sandbox resolves under ONEX_STATE_DIR (preferred).
+
+    OMN-13605 (Phase 0.1): the hackathon-tagged ("hackathon","generated") subdir
+    is removed — the node is now a permanent canonical artifact, so the sandbox
+    lives under a node-scoped, hackathon-free subdir.
+    """
     monkeypatch.delenv("ONEX_STATE_ROOT", raising=False)
     monkeypatch.setenv("ONEX_STATE_DIR", str(tmp_path / "state-dir"))
     executor = HandlerGeneratedExecutor()
-    assert executor.sandbox_dir == tmp_path / "state-dir" / "hackathon" / "generated"
+    assert (
+        executor.sandbox_dir
+        == tmp_path / "state-dir" / "node_generation_consumer" / "sandbox"
+    )
     assert executor.sandbox_dir.is_absolute()
+    # The hackathon hack is gone — assert it never appears in the resolved path.
+    assert "hackathon" not in str(executor.sandbox_dir)
 
 
 @pytest.mark.unit
@@ -211,7 +221,10 @@ def test_default_sandbox_falls_back_to_onex_state_root(
     monkeypatch.delenv("ONEX_STATE_DIR", raising=False)
     monkeypatch.setenv("ONEX_STATE_ROOT", str(tmp_path / "state-root"))
     executor = HandlerGeneratedExecutor()
-    assert executor.sandbox_dir == tmp_path / "state-root" / "hackathon" / "generated"
+    assert (
+        executor.sandbox_dir
+        == tmp_path / "state-root" / "node_generation_consumer" / "sandbox"
+    )
 
 
 @pytest.mark.unit
@@ -604,3 +617,197 @@ def test_terminal_topic_resolved_from_contract_not_hardcoded(
     executor = HandlerGeneratedExecutor(sandbox_dir=tmp_path)
     assert executor.terminal_topic == _TERMINAL_TOPIC
     assert executor.deploy_topic == _DEPLOY_TOPIC
+
+
+# ---------------------------------------------------------------------------
+# OMN-13605 (Phase 0.1): hot-load + full-package scaffold spine.
+#   A node-deploy must (a) hot-load + invoke the generated node in-session AND
+#   (b) scaffold the full 10-file canonical package into the worktree staging
+#   dir. The hackathon-tagged sandbox subdir hack is removed; the staging path is
+#   resolved fail-fast from env (no hardcoded paths).
+# ---------------------------------------------------------------------------
+
+# The 10 files the node_generate_node_effect scaffolder writes for a canonical
+# node package (see HandlerGenerateNode._render_files). The full-package half of
+# the spine must materialize exactly these.
+_CANONICAL_PACKAGE_FILES = {
+    "contract.yaml",
+    "metadata.yaml",
+    "__init__.py",
+    "handlers/__init__.py",
+    "handlers/handler_sentiment.py",
+    "models/__init__.py",
+    "models/model_sentiment_request.py",
+    "models/model_sentiment_result.py",
+    "tests/__init__.py",
+    "tests/test_golden_chain.py",
+}
+
+
+def _generated_contract_yaml(node_name: str, node_type: str = "compute") -> str:
+    return f"name: {node_name}\nnode_type: {node_type}\n"
+
+
+def _scaffoldable_deploy_payload(
+    node_name: str, source: str, correlation_id: str, node_type: str = "compute"
+) -> dict[str, str]:
+    payload = _deploy_payload(node_name, source, correlation_id)
+    payload["contract_yaml"] = _generated_contract_yaml(node_name, node_type)
+    return payload
+
+
+@pytest.mark.unit
+def test_staging_dir_resolves_from_dedicated_env(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """OMN-13605: the staging root prefers ONEX_GENERATED_STAGING_DIR."""
+    monkeypatch.setenv("ONEX_GENERATED_STAGING_DIR", str(tmp_path / "staging"))
+    executor = HandlerGeneratedExecutor(sandbox_dir=tmp_path)
+    assert executor.staging_dir == tmp_path / "staging"
+    assert "hackathon" not in str(executor.staging_dir)
+
+
+@pytest.mark.unit
+def test_staging_dir_falls_back_to_state_root(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """OMN-13605: without a dedicated staging dir, fall back to the state root."""
+    monkeypatch.delenv("ONEX_GENERATED_STAGING_DIR", raising=False)
+    monkeypatch.setenv("ONEX_STATE_DIR", str(tmp_path / "state"))
+    executor = HandlerGeneratedExecutor(sandbox_dir=tmp_path)
+    assert (
+        executor.staging_dir
+        == tmp_path / "state" / "node_generation_consumer" / "staging"
+    )
+
+
+@pytest.mark.unit
+def test_staging_dir_fails_fast_when_unresolvable(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """OMN-13605: no hardcoded relative staging fallback — fail fast."""
+    monkeypatch.delenv("ONEX_GENERATED_STAGING_DIR", raising=False)
+    monkeypatch.delenv("ONEX_STATE_DIR", raising=False)
+    monkeypatch.delenv("ONEX_STATE_ROOT", raising=False)
+    executor = HandlerGeneratedExecutor(sandbox_dir=tmp_path)
+    with pytest.raises(RuntimeError, match="staging root"):
+        _ = executor.staging_dir
+
+
+@pytest.mark.unit
+def test_scaffold_package_writes_full_canonical_package(tmp_path: Path) -> None:
+    """OMN-13605: the scaffolder materializes the full 10-file canonical package."""
+    staging = tmp_path / "staging"
+    executor = HandlerGeneratedExecutor(
+        sandbox_dir=tmp_path / "sandbox", staging_dir=staging
+    )
+
+    result = executor.scaffold_package(
+        "node_sentiment", _generated_contract_yaml("node_sentiment"), "corr-scaffold-1"
+    )
+
+    assert result["status"] == "ok"
+    package_dir = staging / "node_sentiment"
+    written = {
+        str(p.relative_to(package_dir)) for p in package_dir.rglob("*") if p.is_file()
+    }
+    assert written == _CANONICAL_PACKAGE_FILES
+    assert len(result["created_files"]) == len(_CANONICAL_PACKAGE_FILES)
+    # The scaffolded contract is real (parses, names the node).
+    assert "node_sentiment" in (package_dir / "contract.yaml").read_text()
+
+
+@pytest.mark.unit
+def test_scaffold_package_skips_unscaffoldable_node_name(tmp_path: Path) -> None:
+    """A malformed/unknown node name is skipped, not raised mid-invoke."""
+    executor = HandlerGeneratedExecutor(
+        sandbox_dir=tmp_path / "sandbox", staging_dir=tmp_path / "staging"
+    )
+    result = executor.scaffold_package("unknown", "name: unknown\n", "corr-skip-1")
+    assert "error" in result
+    assert "scaffolder pattern" in result["error"]
+
+
+@pytest.mark.unit
+def test_on_deploy_event_hot_loads_and_writes_full_package(tmp_path: Path) -> None:
+    """OMN-13605 golden chain: a single node-deploy proves BOTH halves.
+
+    (a) the generated node is hot-loaded + invoked in-session (terminal carries
+        the invocation output), AND
+    (b) the full 10-file canonical package is written to the worktree staging
+        dir (terminal.scaffold carries the staging_dir + created_files).
+    """
+    sandbox = tmp_path / "sandbox"
+    staging = tmp_path / "staging"
+    executor = HandlerGeneratedExecutor(sandbox_dir=sandbox, staging_dir=staging)
+
+    result = executor.on_deploy_event(
+        _scaffoldable_deploy_payload("node_sentiment", _VALID_HANDLER, "corr-spine-1"),
+        input_data={"value": "spine"},
+    )
+
+    # (a) hot-load + invoke in-session.
+    assert result["status"] == "completed"
+    assert result["node_name"] == "node_sentiment"
+    assert result["output"] == {"echo": "spine"}
+    assert result["_runtime_backend"] == "sandbox"
+    assert result["hot_load"] is False
+    # The sandbox handler was actually written + is importable on disk.
+    assert (sandbox / "node_sentiment" / "handler.py").exists()
+
+    # (b) full 10-file canonical package on disk in the staging dir.
+    scaffold = result["scaffold"]
+    assert scaffold["status"] == "ok"
+    package_dir = staging / "node_sentiment"
+    written = {
+        str(p.relative_to(package_dir)) for p in package_dir.rglob("*") if p.is_file()
+    }
+    assert written == _CANONICAL_PACKAGE_FILES
+    assert Path(scaffold["staging_dir"]) == package_dir
+
+
+@pytest.mark.unit
+def test_on_deploy_event_scaffold_failure_does_not_fail_invocation(
+    tmp_path: Path,
+) -> None:
+    """The hot-load and full-package halves are independent.
+
+    An unscaffoldable node name (no canonical package) must still hot-load +
+    invoke in-session; the scaffold outcome is surfaced as an error in the
+    scaffold block, not as an invocation failure.
+    """
+    executor = HandlerGeneratedExecutor(
+        sandbox_dir=tmp_path / "sandbox", staging_dir=tmp_path / "staging"
+    )
+    # _deploy_payload writes contract_yaml "name: node_echo\n" — node_echo IS a
+    # valid name, so force an unscaffoldable name via a separate payload.
+    payload = _deploy_payload("node_echo", _VALID_HANDLER, "corr-indep-1")
+    payload["contract_yaml"] = "name: node_echo\nnode_type: not_a_real_type\n"
+
+    result = executor.on_deploy_event(payload, input_data={"value": "indep"})
+
+    # Invocation still completes even though the contract node_type is bogus.
+    assert result["status"] == "completed"
+    assert result["output"] == {"echo": "indep"}
+    # node_type fell back to COMPUTE, so the scaffold still succeeds here.
+    assert result["scaffold"]["status"] == "ok"
+
+
+@pytest.mark.unit
+def test_on_deploy_event_node_type_drives_archetype_from_contract(
+    tmp_path: Path,
+) -> None:
+    """The scaffolded contract's archetype is taken from the generated contract."""
+    executor = HandlerGeneratedExecutor(
+        sandbox_dir=tmp_path / "sandbox", staging_dir=tmp_path / "staging"
+    )
+    result = executor.on_deploy_event(
+        _scaffoldable_deploy_payload(
+            "node_router", _VALID_HANDLER, "corr-reducer-1", node_type="reducer"
+        ),
+        input_data={},
+    )
+    assert result["status"] == "completed"
+    assert result["scaffold"]["status"] == "ok"
+    contract_text = (tmp_path / "staging" / "node_router" / "contract.yaml").read_text()
+    assert "node_type: reducer" in contract_text

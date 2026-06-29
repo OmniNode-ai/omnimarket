@@ -1,0 +1,65 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-13083"
+title: "Contract-declared projections for traces (NC-10) and cost.by_repo (NC-04)"
+summary: >
+  Two dashboard-declared topics gained backing contracts in omnimarket following
+  the proven NC-* projection pattern (contract projection_api + handler + typed
+  model + node-owned migration). OMN-13083 (NC-10): a new node_projection_traces
+  REDUCER subscribes to onex.evt.platform.log-entry.v1, aggregates entries by
+  correlation_id, exposes onex.snapshot.projection.traces.v1 over a node-owned
+  `traces` table carrying the trace-explorer's 9-field row shape (correlation_id,
+  nodes_involved, event_count, first_event_at, last_event_at, duration_ms,
+  has_error, is_running, latest_message), ordered last_event_at DESC. OMN-13077
+  (NC-04): the existing node_projection_cost_by_repo gains the missing
+  projection_api block exposing onex.snapshot.projection.cost.by_repo.v1 over a
+  new node-owned cost_by_repo_snapshots table that carries the repo dimension
+  (repo_name, total_cost_usd, window) the shared llm_cost_aggregates lacked,
+  removing the dashboard "upstream-blocked" state. Both migrations are idempotent
+  CREATE TABLE IF NOT EXISTS, discovered by scripts/run-projection-migrations.py.
+is_seam_ticket: false
+interface_change: true
+interfaces_touched:
+  - "events"
+evidence_requirements:
+  - kind: "tests"
+    description: "traces golden chain (row-delta before=0/after=1, cross-event aggregation, sticky error, terminal clears running, batch); traces contract+projection_api pins; cost.by_repo projection_api+migration pins."
+    command: "uv run pytest tests/test_golden_chain_traces.py tests/test_traces_projection_omn13083.py tests/test_cost_by_repo_projection_api_omn13077.py tests/test_cost_projection_snapshot_contracts.py -q"
+  - kind: "ci"
+    description: "mypy --strict green on the new traces node; ruff clean; pre-commit (golden-chain-coverage-gate, topic-naming, migration ownership) green; runtime sweep 324/324 entry points OK."
+    command: "uv run mypy src/omnimarket/nodes/node_projection_traces/ --strict"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-001"
+    description: "traces projection materializes correlation-grouped rows: row-delta proof (before=0, project one log entry, after=exactly 1 row) plus cross-event aggregation (event_count increments, nodes_involved union, last_event_at monotonic, duration recomputed)."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/test_golden_chain_traces.py::TestTracesProjectionChain -q"
+  - id: "dod-002"
+    description: "traces contract exposes onex.snapshot.projection.traces.v1 over the `traces` table with the dashboard trace-explorer 9-field row shape, ordered last_event_at DESC; node-owned idempotent migration creates the table."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/test_traces_projection_omn13083.py -q"
+  - id: "dod-003"
+    description: "OMN-13077 NC-04: node_projection_cost_by_repo exposes onex.snapshot.projection.cost.by_repo.v1 over a node-owned cost_by_repo_snapshots table carrying repo_name/total_cost_usd/window; event topic stays wired (additive)."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/test_cost_by_repo_projection_api_omn13077.py -q"
+  - id: "dod-mypy"
+    description: "mypy --strict green on the new traces node modules."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run mypy src/omnimarket/nodes/node_projection_traces/ --strict"
+  - id: "dod-deploy"
+    description: "Deploy-gate evidence: both migrations (0001_create_traces.sql, 0001_create_cost_by_repo_snapshots.sql) are idempotent CREATE TABLE IF NOT EXISTS discovered by scripts/run-projection-migrations.py and vendored to the omnidash_analytics projection DB the projection API binds to. No bespoke endpoint (OMN-12822 removed the bespoke :8765 traces server; this is the canonical contract-declared replacement). No runtime deploy in this PR — proven at reducer + contract level; live readback deferred to the redeploy step."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run python scripts/ci/run_runtime_sweep.py"

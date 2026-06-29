@@ -1,0 +1,55 @@
+{
+  "chain_name": "renderer_capability_positive_fresh",
+  "description": "POSITIVE chain: a renderer declares a capability heartbeat (onex.cmd.ui.renderer-capability-declared.v1) -> the sole-writer reducer folds it -> the projection materializes one row -> the heartbeat is fresh -> is_degraded=false and no empty_state_reason. This is the happy-path capability gate: a consumer reading the projection sees a fresh, non-degraded row and renders.",
+  "subscribe_topic": "onex.cmd.ui.renderer-capability-declared.v1",
+  "ttl_seconds": 90,
+  "events": [
+    {
+      "operation": "ui.renderer_capability.declare",
+      "observed_at": "2026-06-18T12:00:00Z",
+      "payload": {
+        "capability": {
+          "renderer_id": "ui.effect.web",
+          "platform": "web",
+          "supported_component_kinds": ["chart", "table"],
+          "interaction_model": "pointer",
+          "accessibility_tier": "aa",
+          "contract_version": {
+            "major": 1,
+            "minor": 0,
+            "patch": 0,
+            "prerelease": null,
+            "build": null
+          },
+          "supports_interaction": true,
+          "supports_streaming": false,
+          "supports_theming": false
+        },
+        "declared_at": "2026-06-18T12:00:00Z"
+      }
+    }
+  ],
+  "dispatcher_request": null,
+  "expected_state": {
+    "rows": [
+      {
+        "renderer_id": "ui.effect.web",
+        "platform": "web",
+        "supported_component_kinds": ["chart", "table"],
+        "interaction_model": "pointer",
+        "accessibility_tier": "aa",
+        "contract_version": {
+          "major": 1,
+          "minor": 0,
+          "patch": 0,
+          "prerelease": null,
+          "build": null
+        },
+        "declared_at": "2026-06-18T12:00:00Z",
+        "last_heartbeat": "2026-06-18T12:00:00Z",
+        "is_degraded": false,
+        "empty_state_reason": null
+      }
+    ]
+  }
+}

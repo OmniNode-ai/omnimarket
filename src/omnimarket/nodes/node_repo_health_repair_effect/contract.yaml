@@ -1,0 +1,92 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Repo Health Repair Effect (OMN-13584)
+#
+# EFFECT node: receives a REPO_BASELINE classification and emits a durable
+# Linear repair task (under parent epic OMN-13316) carrying the failing command,
+# baseline evidence, and the reason the failure is repo-baseline not PR-scoped.
+# Idempotent on content hash of (failing_command + path-set).
+#
+# Related Tickets:
+#   - OMN-13584: this node
+#   - OMN-13316: parent epic (repair tasks attach here)
+#   - OMN-13583: node_repo_health_classify_compute (upstream producer)
+---
+name: "node_repo_health_repair_effect"
+node_type: "effect"
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_version:
+  major: 1
+  minor: 0
+  patch: 0
+
+description: >
+  EFFECT node: for a REPO_BASELINE failure classification, emits a durable
+  Linear repair task under the parent epic with the failing command, baseline
+  evidence, and the classification reason. Idempotent on a content key
+  (SHA-256 of failing_command + sorted failing_paths) so repeated sweep
+  iterations do not create duplicate tickets.
+
+input_model: omnimarket.nodes.node_repo_health_repair_effect.models.model_repair_command.ModelRepoHealthRepairCommand
+
+handler:
+  module: omnimarket.nodes.node_repo_health_repair_effect.handlers.handler_repo_health_repair
+  class: HandlerRepoHealthRepairEffect
+  input_model: omnimarket.nodes.node_repo_health_repair_effect.models.model_repair_command.ModelRepoHealthRepairCommand
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: emit_repair_task
+      handler:
+        name: HandlerRepoHealthRepairEffect
+        module: omnimarket.nodes.node_repo_health_repair_effect.handlers.handler_repo_health_repair
+      event_model:
+        name: ModelRepoHealthRepairCommand
+        module: omnimarket.nodes.node_repo_health_repair_effect.models.model_repair_command
+
+descriptor:
+  node_archetype: effect
+  purity: impure
+  idempotent: true
+  timeout_ms: 30000
+  runtime_profiles:
+    - effects
+
+secrets:
+  # Linear API key is contract-declared so the handler reads the ref name from
+  # here — not a bare source literal. Value is resolved at the effect boundary
+  # via the canonical secret-store resolver (omnimarket.inference.secret_store_resolver).
+  LINEAR_API_KEY:
+    description: "Linear API key for creating repair tasks under the parent epic."
+    required: true
+
+integrations:
+  linear:
+    graphql_url: "https://api.linear.app/graphql"
+
+event_bus:
+  consumer_group: omnimarket.repo_health_repair_effect.consume.v1
+  subscribe_topics:
+    - onex.cmd.omnimarket.repo-health-repair-start.v1
+  publish_topics:
+    - onex.evt.omnimarket.repo-health-repair-emitted.v1
+  dlq_topics:
+    - onex.dlq.omnimarket.repo-health-repair.v1
+
+dod_evidence:
+  phase: 1
+  artifacts:
+    - tests/nodes/node_repo_health_repair_effect/test_handler_repo_health_repair_effect.py
+  validation_notes: >
+    Phase 1: idempotency test (two identical inputs → one ticket ref),
+    payload-assertion test (failing_command + classification_reason in event),
+    dry_run test (no ticket created), content-key determinism test,
+    no-literal-api-key grep test, missing-api-key raises test.
+    All pass with mocked Linear client; no network required.
+
+metadata:
+  transport_type: kafka

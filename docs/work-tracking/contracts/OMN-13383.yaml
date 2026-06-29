@@ -1,0 +1,56 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-13383"
+title: "Fix wrong stability-test broker port (39092) in e2e harness docs"
+summary: >-
+  Repo-local deploy-gate evidence carrier for omnimarket PR. The PR corrects the
+  documented Kafka bootstrap port for the stability-test lane in the e2e-probe
+  harness and the delegation golden-chain integration test. Stability-test
+  Redpanda is on 39092 (cluster ae26157e); dev is 19092 (cluster a54e5d22). The
+  mislabeling caused a contractor to publish synthetic events to dev while
+  querying stability-test, producing a Gate-Zero false alarm (OMN-13363).
+  Documentation/default-correctness only: the harness reads
+  ONEX_E2E_KAFKA_BOOTSTRAP from env; only documented defaults and examples for
+  the stability-test lane were wrong. No event-bus topic, REST endpoint, node
+  contract, image dependency, or live runtime mutation is changed.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-changed-tests-collect"
+    description: >-
+      The three changed integration test modules import and collect cleanly
+      after the port correction (they skip without the live-bus flag).
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          uv run pytest tests/integration/e2e_probe/test_delegation_e2e_probe.py
+          tests/integration/e2e_probe/test_leg_probe.py
+          tests/integration/golden_chain/test_delegation_e2e.py --collect-only -q
+  - id: "dod-reference-authority-unit-test"
+    description: >-
+      The reference-authority unit test that documents the correct port mapping
+      (dev 19092, stability-test 39092) still passes.
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          uv run pytest tests/unit/nodes/node_design_to_plan/test_kafka_bootstrap.py -q
+  - id: "dod-no-runtime-mutation"
+    description: >-
+      Documentation/default-correctness change to test files only; no live
+      deploy, restart, .201 mutation, production data mutation, new REST
+      endpoint, or event-bus topic change was performed for this PR.
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          printf '%s\n' 'deploy gate: OMN-13383 is a docs/default-correctness
+          change to integration test files; no live deploy, restart, .201
+          mutation, production data mutation, REST endpoint, or topic change
+          performed'

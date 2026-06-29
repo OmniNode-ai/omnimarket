@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+from omnibase_core.enums.enum_budget_action import EnumBudgetAction
+
 from omnimarket.nodes.node_budget_policy_compute.models.model_budget_policy_enums import (
-    EnumBudgetAction,
     EnumTaskPriority,
 )
 from omnimarket.nodes.node_budget_policy_compute.models.model_budget_policy_request import (

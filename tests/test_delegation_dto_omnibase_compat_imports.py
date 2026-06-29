@@ -37,11 +37,13 @@ DTO_IMPORTS = {
     "omnimarket.nodes.node_delegation_orchestrator.models.ModelRoutingIntent": "omnibase_core.models.delegation.wire.model_orchestrator_intents.ModelRoutingIntent",
     "omnimarket.nodes.node_delegation_orchestrator.models.ModelTaskDelegatedEvent": "omnibase_core.models.delegation.wire.model_task_delegated_event.ModelTaskDelegatedEvent",
     "omnimarket.nodes.node_delegation_quality_gate_reducer.models.ModelQualityGateInput": "omnibase_core.models.delegation.wire.model_quality_gate.ModelQualityGateInput",
-    "omnimarket.nodes.node_delegation_quality_gate_reducer.models.ModelQualityGateResult": "omnibase_core.models.delegation.wire.model_quality_gate.ModelQualityGateResult",
     "omnimarket.nodes.node_delegation_routing_reducer.models.ModelDelegationConfig": "omnibase_core.models.delegation.wire.model_routing_config.ModelDelegationConfig",
     "omnimarket.nodes.node_delegation_routing_reducer.models.ModelRoutingTier": "omnibase_core.models.delegation.wire.model_routing_config.ModelRoutingTier",
     "omnimarket.nodes.node_delegation_routing_reducer.models.ModelTierModel": "omnibase_core.models.delegation.wire.model_routing_config.ModelTierModel",
     "omnimarket.nodes.node_budget_policy_compute.models.model_budget_limits.ModelBudgetLimits": "omnibase_core.models.delegation.wire.model_budget.ModelBudgetLimits",
+}
+OMNIMARKET_OWNED_DTO_IMPORTS = {
+    "omnimarket.nodes.node_delegation_quality_gate_reducer.models.ModelQualityGateResult": "omnimarket.models.delegation.wire.model_quality_gate.ModelQualityGateResult",
 }
 
 DELEGATION_CONTRACTS = [
@@ -123,7 +125,8 @@ def test_delegation_contract_model_refs_resolve_to_core_paths(
         for ref in _model_refs(contract)
         if ref.startswith("omnimarket.") and not ref.endswith(".ModelRoutingDecision")
     ]
-    unmapped_refs = sorted({ref for ref in omnimarket_refs if ref not in DTO_IMPORTS})
+    allowed_refs = DTO_IMPORTS | OMNIMARKET_OWNED_DTO_IMPORTS
+    unmapped_refs = sorted({ref for ref in omnimarket_refs if ref not in allowed_refs})
 
     assert not unmapped_refs
     model_refs = [ref for ref in omnimarket_refs if ref in DTO_IMPORTS]
@@ -134,3 +137,18 @@ def test_delegation_contract_model_refs_resolve_to_core_paths(
         )
         for model_ref in model_refs
     )
+
+
+@pytest.mark.unit
+def test_quality_gate_result_is_omnimarket_owned_until_core_evidence_promotion() -> (
+    None
+):
+    market_model = _resolve(
+        "omnimarket.nodes.node_delegation_quality_gate_reducer.models.ModelQualityGateResult"
+    )
+    local_model = _resolve(
+        "omnimarket.models.delegation.wire.model_quality_gate.ModelQualityGateResult"
+    )
+
+    assert market_model is local_model
+    assert market_model.__module__.startswith("omnimarket.models.delegation.wire.")

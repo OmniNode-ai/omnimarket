@@ -43,7 +43,12 @@ _HttpGetFn = Callable[
 ]
 
 _DEFAULT_TIMEOUT_SECONDS = 10.0
-_OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
+# OpenRouter base URL is resolved from the ``OPENROUTER_BASE_URL`` routing-config
+# value — there is NO hardcoded in-code provider URL default (OMN-12805 / epic
+# OMN-12803). When OpenRouter discovery is requested but the base URL is not
+# configured, resolution fails closed with a ``ValueError`` rather than
+# substituting a baked-in literal.
+_OPENROUTER_URL_ENV_KEY = "OPENROUTER_BASE_URL"  # contract-config-ok: config
 _OPENROUTER_MODELS_PATH = "/models"
 
 # Capability mapping from OpenRouter model characteristics
@@ -55,6 +60,22 @@ _DEFAULT_REGISTRY_PATH = (
     / "contracts"
     / "endpoint_registry.yaml"
 )
+
+
+def _resolve_openrouter_base_url() -> str:
+    """Return the OpenRouter base URL from routing config.
+
+    Fail-closed: raises ``ValueError`` when ``OPENROUTER_BASE_URL`` is unset, so
+    OpenRouter discovery never falls back to a hardcoded provider literal.
+    """
+    base_url = os.environ.get(_OPENROUTER_URL_ENV_KEY, "").strip()
+    if not base_url:
+        raise ValueError(
+            "OpenRouter discovery requested but OPENROUTER_BASE_URL is not "
+            "configured. Declare the OpenRouter base URL in routing config — "
+            "no hardcoded provider URL default is permitted (OMN-12805)."
+        )
+    return base_url.rstrip("/")
 
 
 async def _default_http_get(
@@ -200,7 +221,8 @@ class HandlerSwarmFleetDiscovery:
 
     async def _discover_openrouter(self) -> list[ModelDiscoveredEndpoint]:
         """Probe OpenRouter /models, intersect with our free catalog, return healthy entries."""
-        live_model_ids = await self._fetch_openrouter_live_models()
+        base_url = _resolve_openrouter_base_url()
+        live_model_ids = await self._fetch_openrouter_live_models(base_url)
 
         catalog: tuple[ModelOpenRouterModelConfig, ...] = get_openrouter_models()
         results: list[ModelDiscoveredEndpoint] = []
@@ -224,7 +246,7 @@ class HandlerSwarmFleetDiscovery:
             results.append(
                 ModelDiscoveredEndpoint(
                     id=ep_id,
-                    base_url=_OPENROUTER_BASE_URL,
+                    base_url=base_url,
                     model_id=model_cfg.model_id,
                     provider="openrouter",
                     capabilities=_OPENROUTER_CAPABILITIES,
@@ -238,9 +260,13 @@ class HandlerSwarmFleetDiscovery:
 
         return results
 
-    async def _fetch_openrouter_live_models(self) -> frozenset[str]:
-        """Return the set of model IDs currently listed on OpenRouter."""
-        url = f"{_OPENROUTER_BASE_URL}{_OPENROUTER_MODELS_PATH}"
+    async def _fetch_openrouter_live_models(self, base_url: str) -> frozenset[str]:
+        """Return the set of model IDs currently listed on OpenRouter.
+
+        ``base_url`` is the routing-config-resolved OpenRouter base URL (see
+        :func:`_resolve_openrouter_base_url`).
+        """
+        url = f"{base_url}{_OPENROUTER_MODELS_PATH}"
         headers: dict[str, str] = {}
         if self._api_key:
             headers["Authorization"] = f"Bearer {self._api_key}"

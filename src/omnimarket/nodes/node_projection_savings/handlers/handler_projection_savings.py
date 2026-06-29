@@ -13,12 +13,15 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 from omnimarket.events.topics import (
     DELEGATE_SKILL_COMPLETED_TOPIC_V1,
     DELEGATE_SKILL_FAILED_TOPIC_V1,
+    DELEGATION_COMPLETED_TOPIC_V1,
+    DELEGATION_FAILED_TOPIC_V1,
 )
 from omnimarket.models.delegation.wire.model_delegate_skill_terminal_projection import (
     ModelDelegateSkillSavingsProjection,
     ModelDelegateSkillTerminalProjection,
+    ModelTaskDelegatedSavingsSource,
 )
-from omnimarket.pricing import DEFAULT_BASELINE_MODEL
+from omnimarket.pricing import DEFAULT_BASELINE_MODEL, build_premium_counterfactual
 from omnimarket.projection.protocol_database import DatabaseAdapter
 
 TABLE = "savings_estimates"
@@ -112,6 +115,31 @@ class HandlerProjectionSavings:
             result = self.project_delegate_skill_savings(projection, db_raw)
             return result.model_dump(mode="json")
 
+        # OMN-13629 (WS-F Phase 1): canonical delegation terminal SOURCE event
+        # (delegation-{completed,failed}.v1) -> savings_estimates. Repointed off
+        # the legacy compat task-delegated.v1 (OMN-12494 / OMN-13598 stopgap). The
+        # canonical ModelDelegationResult carries the measured cumulative cost +
+        # served tokens; the cloud-baseline counterfactual is re-derived from
+        # those served tokens so the saving stays a measurement, not an estimate.
+        if (
+            event_type in {DELEGATION_COMPLETED_TOPIC_V1, DELEGATION_FAILED_TOPIC_V1}
+            or "delegation-completed" in event_type
+            or "delegation-failed" in event_type
+            or _is_canonical_delegation_source_payload(payload)
+        ):
+            source = ModelTaskDelegatedSavingsSource.from_canonical_payload(
+                payload,
+                counterfactual_builder=build_premium_counterfactual,
+            )
+            projection = ModelDelegateSkillSavingsProjection.from_task_delegated_event(
+                source,
+                baseline_model=self._delegate_skill_baseline_model,
+            )
+            if projection is None:
+                return ModelProjectionResult(rows_upserted=0).model_dump(mode="json")
+            result = self.project_delegate_skill_savings(projection, db_raw)
+            return result.model_dump(mode="json")
+
         event_data = {
             key: value
             for key, value in payload.items()
@@ -198,4 +226,26 @@ def _is_delegate_skill_terminal_payload(payload: dict[str, object]) -> bool:
         payload.get("correlation_id") is not None
         and payload.get("status") is not None
         and isinstance(payload.get("metrics"), dict)
+    )
+
+
+def _is_canonical_delegation_source_payload(payload: dict[str, object]) -> bool:
+    """Discriminate a canonical delegation terminal SOURCE payload (OMN-13629).
+
+    The canonical ``ModelDelegationResult`` terminal carries ``correlation_id`` +
+    ``task_type`` + ``model_used`` but neither the delegate-skill terminal
+    ``status``/``metrics`` shape nor the savings-estimated
+    ``local_cost_usd``/``cloud_cost_usd`` shape. Unlike the legacy compat
+    task-delegated event, it does NOT carry a pinned ``premium_counterfactual``
+    — that baseline is re-derived from the served tokens downstream. The positive
+    signal is ``model_used`` (the canonical terminal's model field) together with
+    the absence of the other two shapes.
+    """
+    return (
+        payload.get("correlation_id") is not None
+        and payload.get("task_type") is not None
+        and payload.get("model_used") is not None
+        and payload.get("status") is None
+        and "metrics" not in payload
+        and "local_cost_usd" not in payload
     )

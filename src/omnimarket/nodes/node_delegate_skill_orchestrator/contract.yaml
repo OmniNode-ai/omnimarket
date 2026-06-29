@@ -122,10 +122,17 @@ inputs:
   max_tokens:
     type: int
     required: false
-    default: 8192
     minimum: 1
-    maximum: 8192
-    description: Maximum tokens for the delegated response.
+    # OMN-13161: no contract-level default and no 8192 hardcap. When the request
+    # omits max_tokens the orchestrator resolves the effective value from the
+    # selected backend's per-backend ceiling in the routing contract
+    # (bifrost_delegation.yaml + overlay); an explicit value is capped at that
+    # backend ceiling. The absolute schema bound mirrors the backend model.
+    maximum: 200000
+    description: >
+      Optional output-token budget. Omit to resolve the effective value from the
+      selected backend's per-backend ceiling; an explicit value is capped at that
+      ceiling.
   metadata:
     type: object
     required: false

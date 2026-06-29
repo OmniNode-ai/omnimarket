@@ -2,11 +2,8 @@
 
 from __future__ import annotations
 
+from omnibase_core.enums.enum_budget_action import EnumBudgetAction
 from pydantic import BaseModel, ConfigDict
-
-from omnimarket.nodes.node_budget_policy_compute.models.model_budget_policy_enums import (
-    EnumBudgetAction,
-)
 
 
 class ModelBudgetPolicyResult(BaseModel):

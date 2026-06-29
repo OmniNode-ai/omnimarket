@@ -89,28 +89,32 @@ handler_routing:
   routing_strategy: operation_match
   handlers:
     # Register an agent's subscription to a memory topic
-    - routing_key: "subscribe"
+    - operation: subscribe
+      routing_key: "subscribe"
       handler_module: "omnimemory.handlers.handler_subscription"
       handler_class: "HandlerSubscription"
       handler_key: "HandlerSubscription.subscribe"
       priority: 0
       output_events: []
     # Remove an agent's subscription from a memory topic
-    - routing_key: "unsubscribe"
+    - operation: unsubscribe
+      routing_key: "unsubscribe"
       handler_module: "omnimemory.handlers.handler_subscription"
       handler_class: "HandlerSubscription"
       handler_key: "HandlerSubscription.unsubscribe"
       priority: 0
       output_events: []
     # List all subscriptions for a given agent
-    - routing_key: "list_subscriptions"
+    - operation: list_subscriptions
+      routing_key: "list_subscriptions"
       handler_module: "omnimemory.handlers.handler_subscription"
       handler_class: "HandlerSubscription"
       handler_key: "HandlerSubscription.list_subscriptions"
       priority: 0
       output_events: []
     # Publish notification event to Kafka for subscriber consumption
-    - routing_key: "notify"
+    - operation: notify
+      routing_key: "notify"
       handler_module: "omnimemory.handlers.handler_subscription"
       handler_class: "HandlerSubscription"
       handler_key: "HandlerSubscription.notify"

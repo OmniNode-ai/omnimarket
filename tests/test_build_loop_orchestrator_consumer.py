@@ -6,12 +6,18 @@ from __future__ import annotations
 
 import pytest
 
+from omnimarket.nodes.node_build_loop_orchestrator import (
+    consumer as build_loop_consumer,
+)
 from omnimarket.nodes.node_build_loop_orchestrator.consumer import (
+    _DEFAULT_GROUP,
+    _GROUP_CONTRACT_REF,
     TOPIC_BUILD_LOOP_COMPLETED,
     TOPIC_BUILD_LOOP_FAILED,
     TOPIC_BUILD_LOOP_START,
     _build_failure_payload,
     _parse_command,
+    _resolve_group_id,
 )
 
 
@@ -89,3 +95,58 @@ class TestBuildLoopParseCommand:
         assert "error" in failure
         assert "phase" in failure
         assert "failed_at" in failure
+
+
+# ---------------------------------------------------------------------------
+# OMN-13557 Wave-2 (config -> overlay): the BUILD_LOOP_GROUP consumer-group
+# config read resolves through the sanctioned overlay seam
+# (``expand_contract_env_refs``) against a ``${env.VAR}`` contract ref, not a
+# scattered direct ``os.environ`` read. Same var, same value, now via the one
+# env-reading surface. Resolution-equivalence + fail-to-default coverage. The
+# consumer-group suffix legitimately carries a contract default (vs a
+# fail-closed endpoint), so an unbound overlay var falls back to the canonical
+# default constant rather than raising.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestBuildLoopGroupOverlayResolution:
+    """Overlay resolution equivalence for the build-loop consumer-group config."""
+
+    def test_contract_ref_declares_env_overlay_convention(self) -> None:
+        """The consumer declares a ``${env.VAR}`` contract ref for the group id."""
+        assert _GROUP_CONTRACT_REF == "${env.BUILD_LOOP_GROUP}"
+
+    def test_default_consumer_group_constant(self) -> None:
+        assert (
+            _DEFAULT_GROUP == "local.omnimarket.build_loop_orchestrator.consume.1.0.0"
+        )
+
+    def test_group_resolves_via_overlay_seam(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """_resolve_group_id routes through expand_contract_env_refs."""
+        seen: list[str] = []
+        real = build_loop_consumer.expand_contract_env_refs
+
+        def _spy(value: str) -> str:
+            seen.append(value)
+            return real(value)
+
+        monkeypatch.setattr(build_loop_consumer, "expand_contract_env_refs", _spy)
+        monkeypatch.setenv(
+            "BUILD_LOOP_GROUP",
+            "stability.omnimarket.build_loop_orchestrator.consume.1.0.0",
+        )
+        assert (
+            _resolve_group_id()
+            == "stability.omnimarket.build_loop_orchestrator.consume.1.0.0"
+        )
+        assert "${env.BUILD_LOOP_GROUP}" in seen
+
+    def test_unbound_overlay_falls_back_to_contract_default(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """An unbound overlay var resolves to the contract default constant."""
+        monkeypatch.delenv("BUILD_LOOP_GROUP", raising=False)
+        assert _resolve_group_id() == _DEFAULT_GROUP

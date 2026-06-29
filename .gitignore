@@ -11,3 +11,7 @@ tmp/
 uv.toml
 .onex_state/*
 !.onex_state/dep_health_baseline.json
+
+# Local pytest log (context hygiene)
+.pytest.log
+.onex_full_suite.log

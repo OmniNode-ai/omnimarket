@@ -1,0 +1,72 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-13710"
+title: "Fix: HandlerLinearTriage.handle() async — await resolve_api_key_async"
+summary: >-
+  Systemic Finding #3. HandlerLinearTriage.handle() was a sync method calling
+  _get_github_client(), which called the sync resolve_api_key(). The
+  LocalRuntimeBusAdapter dispatches handlers from within a running event loop
+  (on_message is async def), so resolve_api_key() detected the running loop
+  and raised RuntimeError: resolve_api_key() is sync-only. This crashed every
+  Linear-dependent skill (linear_housekeeping, ticketing_triage, create_ticket
+  live path, decompose_epic, refill_sprint, friction_triage, etc.).
+
+  Fix: make _get_github_client() async def and await resolve_api_key_async()
+  (the async resolver already existed in secret_store_resolver.py). Make
+  handle() async def so it can await _get_github_client(). The RuntimeLocal
+  adapter already supports async handlers via inspect.isawaitable(). Also
+  updated __main__.py _run_with_timeout to directly await the async coroutine
+  (dropped ThreadPoolExecutor). Updated all test callers to async def + await.
+
+is_seam_ticket: false
+interface_change: false
+interfaces_touched:
+  - "omnimarket.nodes.node_linear_triage.handlers.handler_linear_triage.HandlerLinearTriage.handle"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-regression-test-passes"
+    description: >-
+      New test test_omn_13710_handle_is_awaitable_and_runs_without_sync_only_error
+      asserts handle() is a coroutine function and awaiting it with injected
+      stubs no longer raises the sync-only RuntimeError. Both OMN-13710 tests
+      pass in 0.29s.
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          uv run pytest -q
+          tests/nodes/node_linear_triage/test_omn_13710_async_resolve.py
+  - id: "dod-existing-tests-pass"
+    description: >-
+      All 38 existing golden-chain, unit, and integration tests for
+      node_linear_triage continue to pass after converting handler.handle()
+      callers to async def + await.
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          uv run pytest -q tests/test_golden_chain_linear_triage.py
+          tests/nodes/node_linear_triage/ tests/integration/node_linear_triage/
+  - id: "dod-full-unit-suite"
+    description: >-
+      Full unit test suite (6707 unit tests) passes with 0 failures after the
+      async handle() change.
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          uv run pytest -q -m unit
+  - id: "dod-no-runtime-mutation"
+    description: >-
+      Handler logic change only; no live deploy, restart, .201 mutation,
+      production data mutation, new REST endpoint, or event-bus topic change
+      performed.
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          printf '%s\n' 'deploy gate: OMN-13710 is a handler async fix;
+          no live deploy, .201 mutation, topic change, or REST endpoint added'

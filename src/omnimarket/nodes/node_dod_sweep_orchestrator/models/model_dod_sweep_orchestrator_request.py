@@ -31,7 +31,17 @@ class ModelDodSweepOrchestratorRequest(BaseModel):
         default="",
         description=(
             "GitHub repository (owner/repo) used for PR and CI checks. Defaults to "
-            "the repo inferred by the gh CLI from the current working directory."
+            "the repo inferred by the gh CLI from the current working directory. "
+            "Prefer gh_repos for multi-repo tickets."
+        ),
+    )
+    gh_repos: tuple[str, ...] = Field(
+        default=(),
+        description=(
+            "Ordered list of GitHub repositories (owner/repo) to search for merged "
+            "PRs. The handler tries each repo in turn and returns the first match. "
+            "When non-empty, takes precedence over gh_repo for the PR search. "
+            "Use this for tickets whose code PRs span multiple repositories."
         ),
     )
     evidence_root: str = Field(

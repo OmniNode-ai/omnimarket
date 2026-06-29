@@ -9,6 +9,7 @@ import logging
 from pathlib import Path
 
 from omnimarket.github_api import (
+    GitHubApiError,
     graphql,
     rest_json,
     rest_no_content,
@@ -23,6 +24,12 @@ from omnimarket.nodes.contract_topics import contract_secret_ref
 logger = logging.getLogger(__name__)
 
 _CONTRACT_PATH = Path(__file__).resolve().parents[1] / "contract.yaml"
+
+# GitHub returns 409 when force-cancelling a workflow re-run that has not yet
+# queued ("Cannot cancel a workflow re-run that has not yet queued"). The run is
+# already terminal/stale from the cleanup's point of view, so a 409 is classified
+# as stale metadata and skipped — never retried, never treated as a failure.
+_HTTP_CONFLICT = 409
 
 
 def _resolve_github_token() -> str:
@@ -102,6 +109,85 @@ class GitHubCliAdapter:
                 token=token,
             )
         return f"rerequested {len(run_ids)} failed run(s) on {repo}#{pr_number}"
+
+    async def cancel_obsolete_runs(self, repo: str, pr_number: int) -> str:
+        """Force-cancel ``pull_request`` workflow runs on obsolete heads only.
+
+        Stale-run cleanup (F4, OMN-13320). When a PR is pushed multiple times,
+        GitHub leaves in-flight workflow runs queued against the now-superseded
+        head SHAs. Those obsolete runs hold merge-queue slots and add latency, so
+        cleanup force-cancels them via the ``force-cancel`` endpoint.
+
+        The run tied to the **current** PR head SHA is never cancelled — cancelling
+        it would re-trigger the very checks the merge is waiting on (the extra
+        delay this fix exists to remove). Ancient re-runs that have not yet queued
+        return HTTP 409; that is classified as stale metadata and skipped (not
+        retried, not surfaced as an error).
+        """
+        return await asyncio.to_thread(self._cancel_obsolete_runs_sync, repo, pr_number)
+
+    def _cancel_obsolete_runs_sync(self, repo: str, pr_number: int) -> str:
+        token = _resolve_github_token()
+        owner, repo_name = split_repo(repo)
+
+        pr = rest_json(
+            "GET", f"/repos/{owner}/{repo_name}/pulls/{pr_number}", token=token
+        )
+        head = pr.get("head") or {}
+        head_sha = head.get("sha")
+        head_ref = head.get("ref")
+        if not isinstance(head_sha, str) or not head_sha:
+            raise RuntimeError(
+                f"cancel-obsolete-runs failed on {repo}#{pr_number}: missing head sha"
+            )
+
+        runs_path = f"/repos/{owner}/{repo_name}/actions/runs?event=pull_request"
+        if isinstance(head_ref, str) and head_ref:
+            runs_path += f"&branch={head_ref}"
+        runs = rest_json("GET", runs_path, token=token)
+        workflow_runs = runs.get("workflow_runs") or []
+
+        cancelled = 0
+        skipped_stale = 0
+        protected_head = False
+        for run in workflow_runs:
+            if not isinstance(run, dict):
+                continue
+            run_id = run.get("id")
+            run_head_sha = run.get("head_sha")
+            if run_id is None or not isinstance(run_head_sha, str):
+                continue
+            # Never cancel the run tied to the current PR head — that is the run
+            # the merge is waiting on; cancelling it just re-triggers the checks.
+            if run_head_sha == head_sha:
+                protected_head = True
+                continue
+            try:
+                rest_no_content(
+                    "POST",
+                    f"/repos/{owner}/{repo_name}/actions/runs/{run_id}/force-cancel",
+                    token=token,
+                )
+                cancelled += 1
+            except GitHubApiError as exc:
+                if exc.status_code == _HTTP_CONFLICT:
+                    # Stale metadata: re-run that never queued. Skip, do not retry.
+                    skipped_stale += 1
+                    logger.info(
+                        "cancel-obsolete-runs: skipping stale run %s on %s#%s "
+                        "(HTTP 409, never queued)",
+                        run_id,
+                        repo,
+                        pr_number,
+                    )
+                    continue
+                raise
+
+        return (
+            f"force-cancelled {cancelled} obsolete-head run(s) on {repo}#{pr_number} "
+            f"(skipped {skipped_stale} stale, "
+            f"head run {'protected' if protected_head else 'absent'})"
+        )
 
     async def resolve_conflicts(self, repo: str, pr_number: int) -> str:
         return await asyncio.to_thread(self._resolve_conflicts_sync, repo, pr_number)

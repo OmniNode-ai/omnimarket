@@ -406,7 +406,7 @@ def _parse_date(value: object) -> date | None:
 
 
 def _analysis_end_date(request: TicketingInsightsRequest) -> date:
-    explicit_date = _parse_date(request.date_to)
+    explicit_date = _parse_date(request.date_to) or _parse_date(request.date_from)
     if explicit_date is not None:
         return explicit_date
 
@@ -425,7 +425,19 @@ def _analysis_end_date(request: TicketingInsightsRequest) -> date:
         )
         if parsed is not None
     ]
-    return max(candidate_dates) if candidate_dates else date(1970, 1, 1)
+    if candidate_dates:
+        return max(candidate_dates)
+    # OMN-13708: refuse to fabricate an epoch-0 (1970) analysis window. A pure
+    # compute cannot read the wall clock; with no dated input and no explicit
+    # date_to/date_from the analysis window is undefined. Fail loud instead of
+    # silently emitting all-zero velocity anchored at 1969-12-26 dates — the
+    # caller (the Linear data source) must be wired, mirroring
+    # node_recall_compute's honest refusal to fabricate over an absent backend.
+    raise ValueError(
+        "ticketing insights requires dated ticket/PR/commit data or an explicit "
+        "date_to/date_from to anchor the analysis window; none supplied — "
+        "refusing to emit a fabricated epoch-0 (1970) report"
+    )
 
 
 def _cycle_hours(ticket: dict[str, Any]) -> float | None:
