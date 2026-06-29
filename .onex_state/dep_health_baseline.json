@@ -1,7 +1,7 @@
 {
   "graphify_version": "0.8.2",
   "rule_version": "v1",
-  "captured_at": "2026-06-28T23:12:24.109900Z",
+  "captured_at": "2026-06-29T00:37:00Z",
   "findings": [
     {
       "finding_type": "UNTESTED_HANDLER",
@@ -5851,6 +5851,16 @@
       "symbol": "onex.evt.omniclaude.task-delegated.v1",
       "detail": "Topic literal 'onex.evt.omniclaude.task-delegated.v1' appears in source code but is not declared in any contract.yaml file.",
       "rule_id": "UNDECLARED_TOPIC",
+      "rule_version": "v1"
+    },
+    {
+      "finding_type": "UNTESTED_HANDLER",
+      "severity": "MAJOR",
+      "repo": "omnimarket",
+      "file_path": "src/omnimarket/nodes/node_agent_learning_retrieval_effect/handlers/handler_agent_learning_retrieval.py",
+      "symbol": "handler_agent_learning_retrieval",
+      "detail": "Contract-referenced handler 'handler_agent_learning_retrieval' has no test file and no golden-chain fixture coverage.",
+      "rule_id": "UNTESTED_HANDLER",
       "rule_version": "v1"
     }
   ]
