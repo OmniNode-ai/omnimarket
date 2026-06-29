@@ -79,7 +79,7 @@ jobs:
         run: uv pip install --python .venv/bin/python -e ../omnibase_compat
 
       - name: Install omnibase_core (includes check-fsm-handler-drift validator)
-        run: uv pip install --python .venv/bin/python -e ../omnibase_core
+        run: uv pip install --python .venv/bin/python --force-reinstall --no-deps -e ../omnibase_core
 
       - name: Run fsm-handler-drift integration tests
         run: |
