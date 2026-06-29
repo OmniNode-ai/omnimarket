@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""Golden-chain tests for node_slack_publish_effect (OMN-13723).
+"""Golden-chain tests for node_slack_publish_effect (OMN-13723, OMN-13727).
 
 Tests run on EventBusInmemory (no Kafka, no network, no Infisical).
 Coverage:
@@ -11,12 +11,14 @@ Coverage:
 - Fail-closed on missing channel: ValueError raised by handler.
 - Fail-closed on missing blocks+text: ValueError raised by handler.
 - Slack API error: transport returns (False, None, error_code) -> result.success=False.
+- Fail-closed on missing SLACK_BOT_TOKEN: RuntimeError raised, no POST made (OMN-13727).
 """
 
 from __future__ import annotations
 
 from pathlib import Path
 from typing import Any
+from unittest.mock import AsyncMock, patch
 from uuid import UUID, uuid4
 
 import pytest
@@ -359,3 +361,46 @@ class TestSlackPublishModelValidation:
                 idempotency_key=_IDEM_KEY,
                 correlation_id="not-a-uuid",  # type: ignore[arg-type]
             )
+
+
+# ---------------------------------------------------------------------------
+# Secret fail-closed tests (OMN-13727)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestSlackPublishSecretFailClosed:
+    """Handler is fail-closed when SLACK_BOT_TOKEN is absent from the secret store.
+
+    This class tests the transport-resolution path (no injected transport) by
+    mocking ``resolve_api_key_async`` to simulate a missing secret.  No HTTP
+    POST is attempted when the secret is unresolved.
+    """
+
+    @pytest.mark.asyncio
+    async def test_missing_token_raises_runtime_error_no_post(self) -> None:
+        """RuntimeError is raised and no POST is attempted when the secret is None."""
+        stub = _StubTransport()
+
+        # Build the handler WITHOUT injecting a transport so _resolve_transport
+        # actually calls resolve_api_key_async at handle() time.
+        handler = HandlerSlackPublishEffect(
+            transport=None,
+            ledger_lookup=lambda _k: None,
+            ledger_write=lambda _k, _ts: None,
+        )
+
+        _mock_target = (
+            "omnimarket.nodes.node_slack_publish_effect"
+            ".handlers.handler_slack_publish_effect.resolve_api_key_async"
+        )
+        with (
+            patch(_mock_target, new=AsyncMock(return_value=None)),
+            pytest.raises(RuntimeError, match="SLACK_BOT_TOKEN"),
+        ):
+            await handler.handle(_cmd())
+
+        # Stub was never touched — no POST was made.
+        assert stub.call_count == 0, (
+            "No HTTP POST must be attempted when the secret is unresolved"
+        )

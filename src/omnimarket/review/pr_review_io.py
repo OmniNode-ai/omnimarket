@@ -117,14 +117,21 @@ class ReviewRequest(BaseModel):
     pr_number: int = Field(..., ge=1, description="GitHub PR number.")
     repo: str = Field(..., description="GitHub repo in owner/repo format.")
     reviewer_models: list[str] = Field(
-        ...,
+        default_factory=lambda: ["local"],
         min_length=1,
-        description="Required reviewer logical model keys.",
+        description=(
+            "Reviewer logical model keys. Defaults local-first so the "
+            "declarative `onex skill pr_review` CLI path (which supplies only "
+            "repo/pr_number) builds a valid payload; explicit callers override."
+        ),
     )
     judge_model: str = Field(
-        ...,
+        default="local",
         min_length=1,
-        description="Required judge logical model key.",
+        description=(
+            "Judge logical model key. Defaults local-first for the declarative "
+            "CLI path; explicit callers override."
+        ),
     )
     severity_threshold: EnumFindingSeverity = Field(
         default=EnumFindingSeverity.MAJOR,
