@@ -64,6 +64,33 @@ class ProtocolStaleIgnoreAdapter(Protocol):
     def find_stale_type_ignores(self, repo_path: Path) -> list[Mapping[str, Any]]: ...
 
 
+class LocalLinearAdapter:
+    """Local default Linear adapter — the contract default when no remote Linear
+    adapter is injected.
+
+    The local runtime is always present; remote Linear mutation is an override.
+    Absent the override (the default local bus), the sweep records grouped
+    findings locally and assigns deterministic ``local-epic-NNNN`` /
+    ``local-ticket-NNNN`` ids so the orchestrator runs to completion and the
+    result honestly reports local recording rather than crashing.
+    """
+
+    def __init__(self) -> None:
+        self.epics: list[dict[str, Any]] = []
+        self.tickets: list[dict[str, Any]] = []
+
+    def open_dedup_keys(self) -> set[str]:
+        return set()
+
+    def create_epic(self, payload: dict[str, Any]) -> str:
+        self.epics.append(payload)
+        return f"local-epic-{len(self.epics):04d}"
+
+    def create_ticket(self, payload: dict[str, Any]) -> str:
+        self.tickets.append(payload)
+        return f"local-ticket-{len(self.tickets):04d}"
+
+
 class HandlerTechDebtSweepOrchestrator:
     """Scan repos, deduplicate findings, and create grouped Linear tickets."""
 
@@ -72,16 +99,16 @@ class HandlerTechDebtSweepOrchestrator:
         linear_adapter: ProtocolTechDebtLinearAdapter | None = None,
         stale_ignore_adapter: ProtocolStaleIgnoreAdapter | None = None,
     ) -> None:
-        self._linear_adapter = linear_adapter
+        self._linear_adapter: ProtocolTechDebtLinearAdapter = (
+            linear_adapter if linear_adapter is not None else LocalLinearAdapter()
+        )
         self._stale_ignore_adapter = stale_ignore_adapter
 
     def handle(self, request: ModelTechDebtSweepRequest) -> ModelTechDebtSweepResult:
         omni_home = _resolve_omni_home(request)
         categories = request.categories or ALL_CATEGORIES
         repo_paths = _resolve_repos(omni_home, request.repos)
-        existing_dedup_keys = (
-            self._linear_adapter.open_dedup_keys() if self._linear_adapter else set()
-        )
+        existing_dedup_keys = self._linear_adapter.open_dedup_keys()
 
         findings_by_category: dict[str, list[_Finding]] = {
             category: [] for category in categories
@@ -121,8 +148,6 @@ class HandlerTechDebtSweepOrchestrator:
             groups = _group_findings(new_findings)
 
             if groups and not request.dry_run:
-                if self._linear_adapter is None:
-                    raise RuntimeError("linear adapter required when dry_run is false")
                 epic_id = self._linear_adapter.create_epic(
                     _epic_payload(category, request, groups)
                 )

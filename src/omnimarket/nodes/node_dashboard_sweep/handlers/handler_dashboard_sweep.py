@@ -167,7 +167,7 @@ class DashboardSweepResult(BaseModel):
     domains: list[ModelProblemDomain] = Field(default_factory=list)
     recon_results: list[ModelReconResult] = Field(default_factory=list)
     pages_total: int = 0
-    status: str = "clean"  # clean | issues_found | error
+    status: str = "clean"  # clean | issues_found | error | no_targets
     dry_run: bool = False
 
     @property
@@ -291,7 +291,16 @@ class NodeDashboardSweep:
 
         domains = self._triage_domains(broken_pages, merged)
 
-        overall = "clean" if not broken_pages else "issues_found"
+        # OMN-13708: 0 pages examined is NOT a clean pass — it is a vacuous run
+        # that classified nothing (no base_url and no pre-supplied pages). Report
+        # ``no_targets`` (not ``clean``) so callers never mistake "examined
+        # nothing" for "all healthy".
+        if not merged:
+            overall = "no_targets"
+        elif broken_pages:
+            overall = "issues_found"
+        else:
+            overall = "clean"
 
         return DashboardSweepResult(
             page_statuses=page_statuses,

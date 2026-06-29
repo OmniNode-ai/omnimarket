@@ -107,22 +107,33 @@ async def test_handler_no_sink_runtime_smoke_has_no_side_effects() -> None:
 
 @pytest.mark.asyncio
 @pytest.mark.unit
-async def test_handler_refuses_kafka_without_injected_adapter() -> None:
-    handler = HandlerObservabilitySinkEffect()
+async def test_handler_kafka_defaults_to_inmemory_sink_over_local_bus() -> None:
+    """OMN-13708: with no Kafka adapter injected (the default local bus), the
+    effect persists to the in-memory sink instead of raising."""
+    handler = HandlerObservabilitySinkEffect(clock=lambda: _NOW)
     request = _make_input().model_copy(update={"sink_postgres": False})
 
-    with pytest.raises(RuntimeError, match="Kafka persistence"):
-        await handler.handle(request)
+    result = await handler.handle(request)
+
+    assert result.persisted_event_count == 1
+    assert len(result.kafka_trace_ids) == 1
+    assert result.kafka_trace_ids[0].startswith("inmemory:")
+    assert result.postgres_row_ids == ()
 
 
 @pytest.mark.asyncio
 @pytest.mark.unit
-async def test_handler_refuses_postgres_without_injected_adapter() -> None:
-    handler = HandlerObservabilitySinkEffect()
+async def test_handler_postgres_defaults_to_inmemory_sink_over_local_bus() -> None:
+    """OMN-13708: with no Postgres adapter injected (the default local bus), the
+    effect persists to the in-memory sink instead of raising."""
+    handler = HandlerObservabilitySinkEffect(clock=lambda: _NOW)
     request = _make_input().model_copy(update={"sink_kafka": False})
 
-    with pytest.raises(RuntimeError, match="PostgreSQL persistence"):
-        await handler.handle(request)
+    result = await handler.handle(request)
+
+    assert result.persisted_event_count == 1
+    assert len(result.postgres_row_ids) == 1
+    assert result.kafka_trace_ids == ()
 
 
 class _KafkaSink:
