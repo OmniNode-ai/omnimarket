@@ -82,7 +82,10 @@ def test_standing_orders_logged_at_session_start(
     contract = _make_contract(
         standing_orders=("fix all P0 tickets", "no force-pushes to main")
     )
-    handler = HandlerOvernight(event_bus=MagicMock(), state_root=tmp_path)
+    handler = HandlerOvernight(
+        event_bus=MagicMock(),  # transport-mock-ok: EventPublisher is a Callable type alias, not a Protocol class — spec= cannot be applied
+        state_root=tmp_path,  # transport-mock-ok: EventPublisher is a Callable type alias, not a Protocol class — spec= cannot be applied
+    )  # transport-mock-ok: EventPublisher is a Callable type alias, not a Protocol class — spec= cannot be applied
     with caplog.at_level("INFO"):
         result = handler.handle(
             ModelOvernightCommand(
@@ -101,7 +104,10 @@ def test_standing_orders_logged_at_session_start(
 def test_standing_orders_empty_does_not_error(tmp_path: Path) -> None:
     """Empty standing_orders tuple produces no log noise and succeeds."""
     contract = _make_contract(standing_orders=())
-    handler = HandlerOvernight(event_bus=MagicMock(), state_root=tmp_path)
+    handler = HandlerOvernight(
+        event_bus=MagicMock(),  # transport-mock-ok: EventPublisher is a Callable type alias, not a Protocol class — spec= cannot be applied
+        state_root=tmp_path,  # transport-mock-ok: EventPublisher is a Callable type alias, not a Protocol class — spec= cannot be applied
+    )  # transport-mock-ok: EventPublisher is a Callable type alias, not a Protocol class — spec= cannot be applied
     result = handler.handle(
         ModelOvernightCommand(
             correlation_id="test-no-orders",
@@ -117,7 +123,10 @@ def test_standing_orders_in_result_envelope(tmp_path: Path) -> None:
     """standing_orders are surfaced in ModelOvernightResult."""
     orders = ("merge all green PRs", "run platform readiness gate")
     contract = _make_contract(standing_orders=orders)
-    handler = HandlerOvernight(event_bus=MagicMock(), state_root=tmp_path)
+    handler = HandlerOvernight(
+        event_bus=MagicMock(),  # transport-mock-ok: EventPublisher is a Callable type alias, not a Protocol class — spec= cannot be applied
+        state_root=tmp_path,  # transport-mock-ok: EventPublisher is a Callable type alias, not a Protocol class — spec= cannot be applied
+    )  # transport-mock-ok: EventPublisher is a Callable type alias, not a Protocol class — spec= cannot be applied
     result = handler.handle(
         ModelOvernightCommand(
             correlation_id="test-orders-result",
@@ -140,7 +149,7 @@ def test_session_required_outcomes_all_satisfied_passes(tmp_path: Path) -> None:
         required_outcomes=("merge_sweep_completed", "platform_readiness_gate_passed")
     )
     handler = HandlerOvernight(
-        event_bus=MagicMock(),
+        event_bus=MagicMock(),  # transport-mock-ok: EventPublisher is a Callable type alias, not a Protocol class — spec= cannot be applied
         state_root=tmp_path,
         outcome_probe=lambda _: True,
     )
@@ -163,7 +172,7 @@ def test_session_required_outcomes_missing_fails_session(tmp_path: Path) -> None
     )
     # Probe always returns False — no outcomes satisfied
     handler = HandlerOvernight(
-        event_bus=MagicMock(),
+        event_bus=MagicMock(),  # transport-mock-ok: EventPublisher is a Callable type alias, not a Protocol class — spec= cannot be applied
         state_root=tmp_path,
         outcome_probe=lambda _: False,
     )
@@ -189,7 +198,7 @@ def test_session_required_outcomes_partial_missing_fails(tmp_path: Path) -> None
         required_outcomes=("merge_sweep_completed", "platform_readiness_gate_passed")
     )
     handler = HandlerOvernight(
-        event_bus=MagicMock(),
+        event_bus=MagicMock(),  # transport-mock-ok: EventPublisher is a Callable type alias, not a Protocol class — spec= cannot be applied
         state_root=tmp_path,
         outcome_probe=lambda name: name in satisfied,
     )
@@ -210,7 +219,7 @@ def test_session_no_required_outcomes_always_passes(tmp_path: Path) -> None:
     """When required_outcomes is empty, the session-end check is skipped."""
     contract = _make_contract(required_outcomes=())
     handler = HandlerOvernight(
-        event_bus=MagicMock(),
+        event_bus=MagicMock(),  # transport-mock-ok: EventPublisher is a Callable type alias, not a Protocol class — spec= cannot be applied
         state_root=tmp_path,
         outcome_probe=lambda _: False,
     )
@@ -234,7 +243,10 @@ def test_session_no_required_outcomes_always_passes(tmp_path: Path) -> None:
 def test_max_duration_exceeded_halts_session(tmp_path: Path) -> None:
     """Session halts when wall-clock time exceeds max_duration_seconds."""
     contract = _make_contract(max_duration_seconds=0)  # 0 seconds → always exceeded
-    handler = HandlerOvernight(event_bus=MagicMock(), state_root=tmp_path)
+    handler = HandlerOvernight(
+        event_bus=MagicMock(),  # transport-mock-ok: EventPublisher is a Callable type alias, not a Protocol class — spec= cannot be applied
+        state_root=tmp_path,  # transport-mock-ok: EventPublisher is a Callable type alias, not a Protocol class — spec= cannot be applied
+    )  # transport-mock-ok: EventPublisher is a Callable type alias, not a Protocol class — spec= cannot be applied
     result = handler.handle(
         ModelOvernightCommand(
             correlation_id="test-max-duration",
@@ -251,7 +263,10 @@ def test_max_duration_exceeded_halts_session(tmp_path: Path) -> None:
 def test_max_duration_not_exceeded_continues(tmp_path: Path) -> None:
     """Session proceeds normally when max_duration_seconds has not been hit."""
     contract = _make_contract(max_duration_seconds=86400)  # 24 hours → never hit
-    handler = HandlerOvernight(event_bus=MagicMock(), state_root=tmp_path)
+    handler = HandlerOvernight(
+        event_bus=MagicMock(),  # transport-mock-ok: EventPublisher is a Callable type alias, not a Protocol class — spec= cannot be applied
+        state_root=tmp_path,  # transport-mock-ok: EventPublisher is a Callable type alias, not a Protocol class — spec= cannot be applied
+    )  # transport-mock-ok: EventPublisher is a Callable type alias, not a Protocol class — spec= cannot be applied
     result = handler.handle(
         ModelOvernightCommand(
             correlation_id="test-max-duration-ok",
@@ -293,7 +308,7 @@ def test_phase_timeout_exceeded_fails_phase(tmp_path: Path) -> None:
     )
     contract = _make_contract(phases=phases)
     handler = HandlerOvernight(
-        event_bus=MagicMock(),
+        event_bus=MagicMock(),  # transport-mock-ok: EventPublisher is a Callable type alias, not a Protocol class — spec= cannot be applied
         state_root=tmp_path,
         dispatchers={
             EnumPhase.NIGHTLY_LOOP: slow_dispatcher,
@@ -332,7 +347,10 @@ def test_phase_timeout_not_exceeded_succeeds(tmp_path: Path) -> None:
         ModelOvernightPhaseSpec(phase_name="platform_readiness", timeout_seconds=3600),
     )
     contract = _make_contract(phases=phases)
-    handler = HandlerOvernight(event_bus=MagicMock(), state_root=tmp_path)
+    handler = HandlerOvernight(
+        event_bus=MagicMock(),  # transport-mock-ok: EventPublisher is a Callable type alias, not a Protocol class — spec= cannot be applied
+        state_root=tmp_path,  # transport-mock-ok: EventPublisher is a Callable type alias, not a Protocol class — spec= cannot be applied
+    )  # transport-mock-ok: EventPublisher is a Callable type alias, not a Protocol class — spec= cannot be applied
     result = handler.handle(
         ModelOvernightCommand(
             correlation_id="test-phase-timeout-ok",
@@ -363,7 +381,7 @@ def test_phase_success_criteria_all_met_passes(tmp_path: Path) -> None:
     )
     contract = _make_contract(phases=phases)
     handler = HandlerOvernight(
-        event_bus=MagicMock(),
+        event_bus=MagicMock(),  # transport-mock-ok: EventPublisher is a Callable type alias, not a Protocol class — spec= cannot be applied
         state_root=tmp_path,
         outcome_probe=lambda _: True,
     )
@@ -394,7 +412,7 @@ def test_phase_success_criteria_unmet_fails_phase(tmp_path: Path) -> None:
     )
     contract = _make_contract(phases=phases)
     handler = HandlerOvernight(
-        event_bus=MagicMock(),
+        event_bus=MagicMock(),  # transport-mock-ok: EventPublisher is a Callable type alias, not a Protocol class — spec= cannot be applied
         state_root=tmp_path,
         outcome_probe=lambda name: name != "no_blocked_prs",
     )
@@ -432,7 +450,7 @@ def test_evidence_collected_in_result_envelope(tmp_path: Path) -> None:
     contract = _make_contract(phases=phases)
     evidence_items: dict[str, bool] = {"delegation_pipeline_active": True}
     handler = HandlerOvernight(
-        event_bus=MagicMock(),
+        event_bus=MagicMock(),  # transport-mock-ok: EventPublisher is a Callable type alias, not a Protocol class — spec= cannot be applied
         state_root=tmp_path,
         outcome_probe=lambda name: evidence_items.get(name, False),
     )
@@ -453,7 +471,10 @@ def test_evidence_collected_in_result_envelope(tmp_path: Path) -> None:
 def test_evidence_empty_when_no_required_outcomes(tmp_path: Path) -> None:
     """When phases have no required_outcomes, evidence dict is empty but present."""
     contract = _make_contract()
-    handler = HandlerOvernight(event_bus=MagicMock(), state_root=tmp_path)
+    handler = HandlerOvernight(
+        event_bus=MagicMock(),  # transport-mock-ok: EventPublisher is a Callable type alias, not a Protocol class — spec= cannot be applied
+        state_root=tmp_path,  # transport-mock-ok: EventPublisher is a Callable type alias, not a Protocol class — spec= cannot be applied
+    )  # transport-mock-ok: EventPublisher is a Callable type alias, not a Protocol class — spec= cannot be applied
     result = handler.handle(
         ModelOvernightCommand(
             correlation_id="test-evidence-empty",
@@ -491,7 +512,7 @@ def test_full_contract_enforcement_all_fields(tmp_path: Path) -> None:
         max_duration_seconds=86400,
     )
     handler = HandlerOvernight(
-        event_bus=MagicMock(),
+        event_bus=MagicMock(),  # transport-mock-ok: EventPublisher is a Callable type alias, not a Protocol class — spec= cannot be applied
         state_root=tmp_path,
         outcome_probe=lambda _: True,
     )

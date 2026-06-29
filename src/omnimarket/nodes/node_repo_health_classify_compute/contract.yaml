@@ -1,0 +1,56 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Repo Health Classify Compute
+#
+# Pure computation: classifies a validation/CI/pre-commit failure into a
+# failure-origin bucket (pr_scoped / repo_baseline / external_dependency /
+# unknown) with explicit evidence and zero I/O. Keystone of the merge-sweep
+# repo-health repair lane.
+#
+# Related Tickets:
+#   - OMN-13583: node_repo_health_classify_compute (keystone of the lane)
+#   - OMN-13316: Epic — merge-sweep & evidence-automation hardening
+#   - OMN-13027: dev-baseline ratchet (source of dev_baseline_paths)
+name: "node_repo_health_classify_compute"
+node_type: "COMPUTE_GENERIC"
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_version: "1.0.0"
+description: "Pure computation: classifies a CI/pre-commit failure into a failure-origin bucket (pr_scoped/repo_baseline/external_dependency/unknown) with explicit evidence and zero I/O."
+runtime_profiles:
+  - main
+event_bus:
+  subscribe_topics:
+    - "onex.cmd.omnimarket.repo-health-classify.v1"
+  publish_topics:
+    - "onex.evt.omnimarket.repo-health-classified.v1"
+input_model:
+  name: "ModelRepoHealthFailureEnvelope"
+  module: "omnimarket.events.repo_health"
+  description: "The validation/CI/pre-commit failure to classify by origin."
+output_model:
+  name: "ModelRepoHealthClassification"
+  module: "omnimarket.events.repo_health"
+  description: "Failure-origin classification with evidence reason and matched paths."
+handler_routing:
+  routing_strategy: "operation_match"
+  handlers:
+    - operation: "classify_failure"
+      handler:
+        name: "HandlerRepoHealthClassify"
+        module: "omnimarket.nodes.node_repo_health_classify_compute.handlers.handler_repo_health_classify"
+metadata:
+  transport_type: kafka
+  description: "Repo-health failure-origin classifier for the merge-sweep repo-health lane"
+  author: "OmniNode Team"
+  created: "2026-06-24"
+  tags:
+    - "compute"
+    - "repo-health"
+    - "classify"
+    - "OMN-13583"
+  related_tickets:
+    - "OMN-13583"
+    - "OMN-13316"

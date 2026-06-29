@@ -21,7 +21,8 @@ handler:
 
 handler_routing:
   handlers:
-    - handler:
+    - operation: retention_cleanup
+      handler:
         name: NodeRetentionCleanup
         module: omnimarket.nodes.node_retention_cleanup.handlers.handler_retention_cleanup
 descriptor:

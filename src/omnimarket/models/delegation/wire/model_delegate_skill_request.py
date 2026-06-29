@@ -25,10 +25,6 @@ from omnimarket.events.delegation import (
     EnumQualityContractMode,
     validate_acceptance_criteria,
 )
-from omnimarket.models.delegation.wire.model_token_limits import (
-    DELEGATION_DEFAULT_MAX_TOKENS,
-    DELEGATION_MAX_TOKENS_HARD_LIMIT,
-)
 
 
 class ModelDelegateSkillRequest(BaseModel):
@@ -83,10 +79,15 @@ class ModelDelegateSkillRequest(BaseModel):
         description="Codex sandbox mode requested by the caller.",
     )
     wait: bool = Field(default=True, description="Wait for synchronous result.")
-    max_tokens: int = Field(
-        default=DELEGATION_DEFAULT_MAX_TOKENS,
+    max_tokens: int | None = Field(
+        default=None,
         gt=0,
-        le=DELEGATION_MAX_TOKENS_HARD_LIMIT,
+        description=(
+            "Optional explicit output-token budget. When omitted (None) the "
+            "orchestrator resolves the effective value from the selected backend's "
+            "per-backend ceiling in the routing contract; when supplied it is "
+            "capped at that backend ceiling (OMN-13161)."
+        ),
     )
     correlation_id: UUID = Field(default_factory=uuid4)
     metadata: dict[str, str] = Field(default_factory=dict)
@@ -113,8 +114,6 @@ class ModelDelegateSkillRequest(BaseModel):
 
 
 __all__: list[str] = [
-    "DELEGATION_DEFAULT_MAX_TOKENS",
-    "DELEGATION_MAX_TOKENS_HARD_LIMIT",
     "EnumQualityContractMode",
     "ModelDelegateSkillRequest",
 ]

@@ -78,10 +78,11 @@ def test_pipeline_audit_orchestrator_contract_routing_surface() -> None:
     assert raw["handler_routing"]["routing_strategy"] == "operation_match"
     assert raw["handler_routing"]["handlers"] == [
         {
+            "operation": "pipeline_audit",
             "handler": {
                 "name": _HANDLER_CLASS,
                 "module": _HANDLER_MODULE,
-            }
+            },
         }
     ]
 
@@ -460,9 +461,11 @@ event_bus:
 
 
 @pytest.mark.unit
-def test_pipeline_audit_orchestrator_requires_ticket_adapter_for_live_findings(
+def test_pipeline_audit_orchestrator_defaults_to_local_ticket_store(
     tmp_path: Path,
 ) -> None:
+    """OMN-13708: with no remote ticket adapter (the default local bus), live
+    findings are recorded in the local ticket store rather than crashing."""
     _write_repo(
         tmp_path,
         "producer",
@@ -475,14 +478,17 @@ event_bus:
 """,
     )
 
-    with pytest.raises(RuntimeError, match="ticket adapter required"):
-        HandlerPipelineAuditOrchestrator().handle(
-            ModelPipelineAuditRequest(
-                repos=("producer",),
-                audit_type=EnumAuditType.TOPICS,
-                omni_home_path=str(tmp_path),
-            )
+    result = HandlerPipelineAuditOrchestrator().handle(
+        ModelPipelineAuditRequest(
+            repos=("producer",),
+            audit_type=EnumAuditType.TOPICS,
+            omni_home_path=str(tmp_path),
         )
+    )
+
+    assert result.high_count == 1
+    assert result.tickets_created
+    assert all(tid.startswith("local-ticket-") for tid in result.tickets_created)
 
 
 @pytest.mark.unit

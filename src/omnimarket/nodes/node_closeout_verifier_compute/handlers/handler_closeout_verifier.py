@@ -46,7 +46,11 @@ def _chain_failure_class(chain_diff: ModelChainDiff) -> EnumCloseoutFailure:
 class HandlerCloseoutVerifier:
     """Verify closeout truth from observed chain, evidence, tests, and identity."""
 
-    def handle(self, request: ModelCloseoutVerifyRequest) -> ModelCloseoutResult:
+    def handle(self, payload: ModelCloseoutVerifyRequest) -> ModelCloseoutResult:
+        # OMN-13276: first parameter is named ``payload`` so the RuntimeLocal
+        # adapter's single-parameter dispatch passes the validated request
+        # positionally instead of keyword-fanning the model fields.
+        request = payload
         if request.observed_chain is None:
             return ModelCloseoutResult(
                 passed=False,

@@ -241,7 +241,13 @@ class TestGoldenChain:
     def test_on_arm_rows_have_pack_hash(self, result: ModelContextRoiRunResult) -> None:
         on_rows = [r for r in result.rows if r.context_factor_subset == "golden_only"]
         assert len(on_rows) == 4
-        assert all(r.context_pack_hash.startswith("sha256:") for r in on_rows)
+        # OMN-13643: context_pack_hash is now the canonical builder's pack_hash
+        # (a bare 64-char sha256 hex), not the runner's old "sha256:"-prefixed
+        # hash of the assembled text.
+        assert all(
+            len(r.context_pack_hash) == 64 and r.context_pack_hash != ""
+            for r in on_rows
+        )
 
     def test_on_arm_first_pass_success(self, result: ModelContextRoiRunResult) -> None:
         on_rows = [r for r in result.rows if r.context_factor_subset == "golden_only"]

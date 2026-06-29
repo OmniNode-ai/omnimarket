@@ -14,6 +14,8 @@ from __future__ import annotations
 from typing import Literal, Protocol
 from uuid import UUID
 
+from omnibase_core.models.delegation.wire import ModelPremiumCounterfactual
+
 from omnimarket.nodes.node_delegate_skill_orchestrator.models.model_delegate_skill_request import (
     ModelDelegateSkillRequest,
 )
@@ -23,10 +25,10 @@ from omnimarket.nodes.node_delegate_skill_orchestrator.models.model_delegate_ski
 )
 from omnimarket.nodes.node_delegate_skill_orchestrator.ports.port_runtime_delegation_dispatch import (
     ProtocolDelegationEventBus,
-    RuntimeDelegationDispatchPort,
 )
 from omnimarket.pricing import (
     DEFAULT_BASELINE_MODEL,
+    build_premium_counterfactual,
     estimate_baseline_cost_usd,
     estimate_frontier_costs_usd,
     get_manifest_version_int,
@@ -36,30 +38,11 @@ _TERMINAL_STATUSES = frozenset({"completed", "failed", "timeout"})
 
 
 class ProtocolDelegationDispatchPort(Protocol):
-    """Injected port for delegation dispatch. Implementation is runtime-owned."""
+    """Injected port for delegation dispatch. Implementation is runtime-owned.
 
-    async def dispatch(
-        self,
-        *,
-        prompt: str,
-        task_type: str,
-        correlation_id: UUID,
-        max_tokens: int,
-        source_file_path: str | None,
-        source_session_id: str | None,
-        wait: bool,
-        quality_contract_mode: str,
-        acceptance_criteria: tuple[str, ...],
-    ) -> dict[str, object]: ...
-
-
-class _UnwiredDelegationDispatchPort:
-    """Fail-closed default port used when the runtime has not wired a real port.
-
-    The auto-wiring resolver constructs handlers zero-arg when no explicit
-    dependency map is provided. A handler that crashed on construction would
-    break runtime boot for every other co-located node, so this default lets
-    the handler load but raises a clear error on first dispatch attempt.
+    OMN-13161: ``max_tokens`` is ``int | None``. ``None`` means the request
+    omitted an explicit budget; the dispatch implementation resolves the effective
+    value from the selected backend's per-backend ceiling in the routing contract.
     """
 
     async def dispatch(
@@ -68,18 +51,13 @@ class _UnwiredDelegationDispatchPort:
         prompt: str,
         task_type: str,
         correlation_id: UUID,
-        max_tokens: int,
+        max_tokens: int | None,
         source_file_path: str | None,
         source_session_id: str | None,
         wait: bool,
         quality_contract_mode: str,
         acceptance_criteria: tuple[str, ...],
-    ) -> dict[str, object]:
-        raise RuntimeError(
-            "HandlerDelegateSkill has no dispatch port wired. Construct the "
-            "handler with dispatch_port=<ProtocolDelegationDispatchPort impl> "
-            "or register one in the runtime DI container before invoking."
-        )
+    ) -> dict[str, object]: ...
 
 
 def _as_int(value: object, default: int = 0) -> int:
@@ -141,6 +119,26 @@ def _frontier_cost_estimates(result: dict[str, object]) -> dict[str, float]:
     )
 
 
+def _premium_counterfactual(
+    result: dict[str, object],
+) -> ModelPremiumCounterfactual | None:
+    """Build the pinned premium counterfactual from measured tokens (OMN-13355)."""
+    prompt_tokens = _as_int(result.get("input_tokens", result.get("prompt_tokens", 0)))
+    completion_tokens = _as_int(
+        result.get("output_tokens", result.get("completion_tokens", 0))
+    )
+    premium_model = str(
+        result.get("model_cloud_baseline")
+        or result.get("baseline_model")
+        or DEFAULT_BASELINE_MODEL
+    )
+    return build_premium_counterfactual(
+        prompt_tokens=prompt_tokens,
+        completion_tokens=completion_tokens,
+        premium_model=premium_model,
+    )
+
+
 def _response_from_result(
     request: ModelDelegateSkillRequest, result: dict[str, object]
 ) -> ModelDelegateSkillResponse:
@@ -198,6 +196,7 @@ def _response_from_result(
                 default=_estimate_claude_cost_savings(result),
             ),
             frontier_costs_usd=_frontier_cost_estimates(result),
+            premium_counterfactual=_premium_counterfactual(result),
             latency_ms=_as_int(
                 result.get("delegation_latency_ms", result.get("latency_ms", 0))
             ),
@@ -216,14 +215,19 @@ class HandlerDelegateSkill:
     ) -> None:
         if dispatch_port is not None:
             self._dispatch_port: ProtocolDelegationDispatchPort = dispatch_port
-        elif event_bus is not None:
-            self._dispatch_port = RuntimeDelegationDispatchPort(event_bus=event_bus)
         else:
-            from omnimarket.nodes.node_delegate_skill_orchestrator.ports.port_direct_curl_dispatch import (
-                DirectCurlDelegationDispatchPort,
+            # Transport-aware port selection is owned by the ports package, not
+            # this domain handler. A bus-less or in-memory single-process runtime
+            # resolves to the in-process local port (routing + canonical effect +
+            # quality gate + sqlite evidence row, OMN-13160/OMN-13601); an external
+            # broker bus resolves to the runtime publish/await port. Imported
+            # lazily to avoid a construction-time import cycle with the ports
+            # package, which references this handler's port protocol.
+            from omnimarket.nodes.node_delegate_skill_orchestrator.ports.port_selection import (
+                select_delegation_dispatch_port,
             )
 
-            self._dispatch_port = DirectCurlDelegationDispatchPort()
+            self._dispatch_port = select_delegation_dispatch_port(event_bus)
 
     async def handle(
         self, request: ModelDelegateSkillRequest

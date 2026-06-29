@@ -43,18 +43,40 @@ class ProtocolDepCascadeGithubAdapter(Protocol):
     def close_pr(self, repo: str, pr_number: int, comment: str) -> None: ...
 
 
+class LocalGithubAdapter:
+    """Local default GitHub adapter — the contract default when no remote GitHub
+    adapter is injected.
+
+    The local runtime is always present; remote GitHub discovery/mutation is an
+    override. Absent the override (the default local bus), there is no GitHub
+    data source to read, so discovery returns empty and ``close_pr`` is a no-op.
+    The orchestrator runs to completion and honestly reports zero repos/groups
+    rather than crashing.
+    """
+
+    def list_repos(self) -> tuple[str, ...]:
+        return ()
+
+    def list_dependency_prs(
+        self, repo: str, *, label: str, dependency_type: str
+    ) -> list[Mapping[str, Any]]:
+        return []
+
+    def close_pr(self, repo: str, pr_number: int, comment: str) -> None:
+        return None
+
+
 class HandlerDepCascadeDedupOrchestrator:
     """Deduplicate dependency bump cascades using an injected GitHub adapter."""
 
     def __init__(self, adapter: ProtocolDepCascadeGithubAdapter | None = None) -> None:
-        self._adapter = adapter
+        self._adapter: ProtocolDepCascadeGithubAdapter = (
+            adapter if adapter is not None else LocalGithubAdapter()
+        )
 
     def handle(
         self, request: ModelDepCascadeDedupRequest
     ) -> ModelDepCascadeDedupResult:
-        if self._adapter is None:
-            raise RuntimeError("github adapter required for dep cascade dedup")
-
         repos = request.repos or self._adapter.list_repos()
         records: list[ModelPRRecord] = []
         groups: list[ModelPackageGroup] = []

@@ -3,11 +3,11 @@
 from datetime import UTC, datetime
 from uuid import uuid4
 
-from omnimarket.nodes.node_hostile_reviewer.models.model_review_finding import (
+from omnimarket.models.model_review_finding import (
     EnumFindingCategory,
     EnumFindingSeverity,
 )
-from omnimarket.nodes.node_hostile_reviewer.models.model_training_data import (
+from omnimarket.models.model_review_training_data import (
     EnumLabelSource,
     ModelTrainingDataRecord,
 )

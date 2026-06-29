@@ -16,7 +16,8 @@ description: >
 handler_routing:
   routing_strategy: operation_match
   handlers:
-    - handler:
+    - operation: swarm_supervisor
+      handler:
         name: HandlerSwarmSupervisorOrchestrator
         module: omnimarket.nodes.node_swarm_supervisor_orchestrator.handlers.handler_swarm_supervisor_orchestrator
       event_model:

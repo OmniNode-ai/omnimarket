@@ -69,7 +69,13 @@ class ModelQualityGateInput(BaseModel):
 class ModelQualityGateResult(BaseModel):
     """Gate output: pass/fail verdict, score, failure reasons, and fallback flag."""
 
-    model_config = ConfigDict(frozen=True, extra="forbid", from_attributes=True)
+    model_config = ConfigDict(
+        frozen=True,
+        extra="forbid",
+        from_attributes=True,
+        populate_by_name=True,
+        serialize_by_alias=True,
+    )
 
     correlation_id: UUID = Field(
         ...,
@@ -93,6 +99,41 @@ class ModelQualityGateResult(BaseModel):
     fallback_recommended: bool = Field(
         default=False,
         description="Whether fallback to Claude is recommended.",
+    )
+    score_source: str = Field(
+        default="",
+        description="Authority that produced actual_score when applicable.",
+    )
+    acceptance_version: str = Field(
+        default="",
+        description="Deterministic acceptance evaluator version when applicable.",
+    )
+    corpus_hash: str = Field(
+        default="",
+        description="Stable hash of the deterministic acceptance corpus/check set.",
+    )
+    validator_or_artifact_hash: str = Field(
+        default="",
+        description="Stable hash of the validator or delegated artifact evaluated.",
+    )
+    acceptance_command: str = Field(
+        default="",
+        description="Replay command or command identity for deterministic acceptance.",
+    )
+    actual_score: float | None = Field(
+        default=None,
+        ge=0.0,
+        le=1.0,
+        description="Authority score produced by the acceptance source.",
+    )
+    pass_: bool | None = Field(
+        default=None,
+        alias="pass",
+        description="Authority pass/fail verdict produced by the acceptance source.",
+    )
+    failure_cases: tuple[str, ...] = Field(
+        default=(),
+        description="Deterministic acceptance failure cases.",
     )
 
 

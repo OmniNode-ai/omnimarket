@@ -10,12 +10,19 @@ Evaluates LLM output quality using checks declared in the task-class contract
 Check semantics:
   - Deterministic checks (dod_deterministic): BLOCK delegation result injection on failure.
     Supported: the DoD names declared in task_class_contracts.v1.yaml.
-  - Heuristic checks (dod_heuristic): escalate per contract policy on failure.
-    Supported: "no_refusal", "min_length_chars_N" (N is the char threshold)
-    and the task-class heuristic checks declared in task_class_contracts.v1.yaml.
+  - Heuristic checks (dod_heuristic): reject/escalate per contract policy on failure.
+    Supported: "no_refusal", "semantic_adequacy" (complete-answer check used by
+    short-output task classes, OMN-13218), "min_length_chars_N" (N is the char
+    threshold; retained for explicit opt-in, no longer used by short-output
+    classes) and the task-class heuristic checks declared in
+    task_class_contracts.v1.yaml.
+
+Heuristic checks, length floors, refusal checks, and structural/schema-only checks are
+reject-only. They may fail an invalid output, but passing them is not adequacy authority
+and cannot by itself return passed=true (OMN-13370).
 
 When no contract DoD is provided (both dod_deterministic and dod_heuristic are empty),
-falls back to the legacy hardcoded checks: length, refusal detection, marker presence.
+falls back to the legacy hardcoded checks as reject-only diagnostics.
 
 Failure categories: REFUSAL, MALFORMED, WEAK_OUTPUT, TASK_MISMATCH.
 
@@ -27,10 +34,12 @@ Related:
 from __future__ import annotations
 
 import ast
-import math
+import hashlib
+import json
 import re
 from collections.abc import Callable
 
+from omnimarket.events.delegation_judge_verdict import EnumDelegationJudgeVerdict
 from omnimarket.nodes.node_delegation_quality_gate_reducer.models.model_quality_contract import (
     MAX_WORDS_PER_SENTENCE_RE,
 )
@@ -42,13 +51,80 @@ from omnimarket.nodes.node_delegation_quality_gate_reducer.models.model_quality_
     ModelQualityGateResult,
 )
 
-# Error phrases that indicate LLM refusal or malformed output
+# Error phrases that indicate LLM refusal or malformed output.
+# OMN-13409: extended to cover common soft-refusal patterns missed before
+# (e.g. "cannot be fulfilled", "unable to complete", "not possible",
+# "i refuse", "this is not possible"). The original five phrases are retained;
+# the additions close the gap where a model replies with a polite declination
+# that contains none of the original markers and passes the gate undetected.
 _REFUSAL_PHRASES: tuple[str, ...] = (
+    # Original phrase set
     "i cannot",
     "i'm sorry",
     "as an ai",
     "error:",
     "traceback",
+    # OMN-13409: additional common refusal patterns
+    "cannot be fulfilled",
+    "cannot be completed",
+    "unable to complete",
+    "unable to fulfill",
+    "unable to process",
+    "not able to",
+    "not possible",
+    "i refuse",
+    "i will not",
+    "i won't",
+    "i am unable",
+    "i'm unable",
+    "this is not something",
+    "that is not something",
+    "i don't have the ability",
+    "i do not have the ability",
+    "cannot assist",
+    "can't assist",
+)
+
+# Ultra-short response word threshold for the refusal pre-pass (OMN-13409).
+# A response of _REFUSAL_SHORT_WORD_THRESHOLD words or fewer that contains no
+# task-relevant content is classified as a content-free response (REFUSAL).
+# This catches dogfood repro cases like "NO" (1 word) and "No." (1 word) that
+# do not match any phrase in _REFUSAL_PHRASES. The threshold is conservative
+# (5 words) so short but correct answers (e.g. a classification label "positive"
+# followed by brief reasoning) are not misflagged.
+_REFUSAL_SHORT_WORD_THRESHOLD: int = 5
+
+# Words that indicate the response is a pure negation / content-free declination
+# rather than a meaningful answer. Used in the ultra-short refusal pre-pass.
+# These are matched as whole words (case-insensitive) on the stripped response.
+_NEGATION_TOKENS: frozenset[str] = frozenset(
+    {
+        "no",
+        "nope",
+        "nah",
+        "n/a",
+        "na",
+        "none",
+        "never",
+        "nothing",
+        "not",
+        "cannot",
+        "cant",
+        "impossible",
+        "unavailable",
+        "unknown",
+        "undefined",
+        "null",
+        "nil",
+        "void",
+        "false",
+        "negative",
+        "declined",
+        "denied",
+        "refused",
+        "skip",
+        "skipped",
+    }
 )
 
 # Failure-reason verdict prefixes that recommend escalation to a higher tier
@@ -65,6 +141,59 @@ _FALLBACK_VERDICT_PREFIXES: tuple[str, ...] = (
     "WEAK_OUTPUT",
     "TASK_MISMATCH",
 )
+
+_ACCEPTANCE_VERSION = "delegation-deterministic-acceptance.v1"
+_DETERMINISTIC_SCORE_SOURCE = "deterministic_acceptance"
+# OMN-13470: when an LLM-judge adequacy score is combined with the deterministic
+# graded score, the result records ``score_source="combined"`` so downstream
+# experiment analysis and the orchestrator's required-bar gate can distinguish a
+# combined verdict from a deterministic-only one.
+_COMBINED_SCORE_SOURCE = "combined"
+# OMN-13470: relative weight of the deterministic graded band vs. the LLM-judge
+# semantic-adequacy band when both are present. The deterministic band still
+# carries more weight (it is the verifiable, replayable signal), but the judge
+# band supplies the semantic-adequacy authority the deterministic check set
+# cannot — lifting a good-but-mechanically-incomplete answer over the bar while a
+# refusal/empty stays blocked by the deterministic hard floor below.
+_COMBINED_DETERMINISTIC_WEIGHT: float = 0.6
+_COMBINED_JUDGE_WEIGHT: float = 0.4
+_VERIFIABLE_TASK_TYPES: frozenset[str] = frozenset(
+    {"code_generation", "test", "validator_generation"}
+)
+# OMN-13642: a FAIL judge verdict VETOES acceptance on the verifiable path even
+# when the weighted combined score clears the required_bar. The deterministic
+# floor (already passed before the veto) must never mask a judge FAIL: acceptance
+# is deterministic_gate AND judge_verdict, not a weighted average that a perfect
+# deterministic floor can lift over the bar.
+_JUDGE_FAIL_REASON = (
+    "JUDGE_FAIL: llm-judge adequacy verdict=fail vetoes acceptance "
+    "(deterministic floor passed but judge rejected the candidate)"
+)
+
+
+def _combined_quality_score(
+    *,
+    deterministic_score: float,
+    judge_adequacy_score: float,
+) -> float:
+    """Combine the deterministic graded score with the LLM-judge adequacy score.
+
+    OMN-13470: the deterministic check set for verifiable classes
+    (code_generation/test) is a HARD FLOOR for refusals/empties (enforced before
+    this combine in ``delta``), but it is too strict to serve as the sole
+    adequacy authority — a correct answer that does not happen to carry every
+    declared marker (e.g. ``passes_existing_tests``) scores ~0.733 and fails the
+    0.85 bar. The judge supplies the missing semantic-adequacy signal. The
+    combined score is the weighted mean of the two bands and is what the
+    orchestrator applies ``required_bar`` to.
+    """
+    weighted = (
+        _COMBINED_DETERMINISTIC_WEIGHT * deterministic_score
+        + _COMBINED_JUDGE_WEIGHT * judge_adequacy_score
+    )
+    return round(
+        weighted / (_COMBINED_DETERMINISTIC_WEIGHT + _COMBINED_JUDGE_WEIGHT), 3
+    )
 
 
 def _recommends_fallback(failure_reasons: tuple[str, ...] | list[str]) -> bool:
@@ -105,7 +234,56 @@ _MIN_LENGTH_CHECK_RE = re.compile(r"^min_length_chars_(\d+)$")
 _LINE_CITATION_RE = re.compile(
     r"(?i)(?:\bline\s+\d+\b|\blines\s+\d+(?:-\d+)?\b|\bL\d+\b|:[1-9]\d*)"
 )
+# General source/reference citation detection for RESEARCH outputs (OMN-13354).
+# Research answers cite theorems, papers, sections, pages, URLs, and authors —
+# NOT code line numbers. ``cites_specific_lines`` (the code-line regex above) is
+# a CODE-REVIEW check and must not be applied to research; the research task
+# class declares ``cites_sources`` instead, which matches any of:
+#   * a reference / citation / source / bibliography keyword,
+#   * a "see"/"according to"/"per"/"cf." attribution lead-in,
+#   * a named result form (theorem / lemma / corollary / proposition / proof /
+#     equation / figure / table / appendix / chapter / section / page N),
+#   * a bracketed numeric citation ``[12]`` or author-year ``(Smith, 2020)``,
+#   * an http(s) URL or a DOI.
+# This is a presence check (at least one marker), not a count: it discriminates a
+# substantive, attributed research answer from a thin/unsupported one without
+# demanding the code-line markers a legitimate research answer cannot supply.
+_SOURCE_CITATION_RE = re.compile(
+    r"(?ix)"
+    r"\breferences?\b | \bcitations?\b | \bbibliograph | \bsources?\b"
+    r"| \bsee\s+(?:also|section|chapter|appendix|figure|table|eq) "
+    r"| \baccording\s+to\b | \bas\s+shown\s+in\b | \bcf\.\s | \bper\s+\["
+    r"| \b(?:theorem|lemma|corollary|proposition|proof|equation|figure"
+    r"|table|appendix|chapter|section|page)\s+\d"
+    r"| \[\s*\d+\s*\]"  # bracketed numeric citation: [12]
+    r"| \(\s*[A-Z][A-Za-z.'-]+(?:\s+(?:et\s+al\.?|and|&)\s+[A-Z][A-Za-z.'-]+)?"
+    r"\s*,?\s*\d{4}[a-z]?\s*\)"  # author-year: (Smith, 2020) / (Smith et al., 2020)
+    r"| https?://\S | \bdoi:\s*\S"
+)
 _SENTENCE_RE = re.compile(r"[^.!?]+[.!?]")
+
+# Deterministic checks in this set are structural pre-filters only. They are useful
+# rejection signals, but OMN-13370 forbids treating them as adequacy authority.
+_REJECT_ONLY_DETERMINISTIC_CHECKS: frozenset[str] = frozenset(
+    {
+        "output_parses",
+        "signature_preserved",
+        "response_non_empty",
+        "task_completed",
+        "exactly_two_sentences",
+        "plain_text_only",
+        # OMN-13373: ``no_refusal`` flows into the deterministic band when supplied
+        # as request-level acceptance_criteria. It is a reject-only refusal
+        # pre-filter — it can fail a refusal but, per OMN-13370, never grants
+        # adequacy authority on a clean output.
+        "no_refusal",
+    }
+)
+
+_NO_ADEQUACY_AUTHORITY_REASON = (
+    "TASK_MISMATCH: no deterministic acceptance or judge adequacy authority; "
+    "schema/length/no-refusal/marker checks are reject-only"
+)
 
 # Heuristic checks that delegate to _check_contains_any with fixed marker sets
 _HEURISTIC_CONTAINS_ANY_CHECKS: dict[str, tuple[str, tuple[str, ...]]] = {
@@ -219,18 +397,173 @@ def _check_signature_preserved(content: str) -> str | None:
 
 
 def _check_no_refusal(content: str) -> str | None:
-    """Heuristic: no refusal phrases in first 200 chars."""
-    first_200 = content[:200].lower()
+    """Heuristic: no refusal phrases and no ultra-short content-free response.
+
+    Two-pass refusal pre-filter (OMN-13409):
+
+    Pass 1 — ultra-short content-free detection: when the response is
+    _REFUSAL_SHORT_WORD_THRESHOLD words or fewer AND every non-punctuation
+    token resolves to a negation/declination word (from _NEGATION_TOKENS), the
+    response carries no task content and is classified as a REFUSAL. This catches
+    dogfood repro cases like "NO" (1 word) or "No." (1 word) that do not match
+    any phrase in _REFUSAL_PHRASES. The threshold is conservative (5 words) so
+    short but meaningful answers (a classification label, a short extraction) are
+    not misflagged; a genuine short answer contains at least one non-negation token
+    (a noun, a verb, a number, a named entity).
+
+    Pass 2 — extended phrase detection: check the first 200 chars against
+    _REFUSAL_PHRASES, which includes both the original set ("i cannot", "i'm sorry",
+    "as an ai", "error:", "traceback") and the OMN-13409 additions that cover
+    common model soft-refusal patterns ("cannot be fulfilled", "unable to complete",
+    "not possible", etc.).
+    """
+    stripped = content.strip()
+
+    # Pass 1: ultra-short content-free response pre-pass.
+    words = stripped.split()
+    if 0 < len(words) <= _REFUSAL_SHORT_WORD_THRESHOLD:
+        # Normalize each token: lowercase, strip surrounding punctuation.
+        normalized_tokens = [word.lower().strip(".,;:!?\"'()[]{}`-") for word in words]
+        # A response whose every token is a negation word (or empty after stripping)
+        # contains no task content — it is a content-free declination.
+        if all(not token or token in _NEGATION_TOKENS for token in normalized_tokens):
+            joined = " ".join(normalized_tokens)
+            return f"REFUSAL: ultra-short content-free response (no task content): {joined!r}"
+
+    # Pass 2: extended phrase detection on the first 200 chars.
+    first_200 = stripped[:200].lower()
     detected = [p for p in _REFUSAL_PHRASES if p in first_200]
     if detected:
         return f"REFUSAL: detected refusal phrases: {', '.join(detected)}"
+
     return None
 
 
 def _check_min_length(content: str, threshold: int) -> str | None:
-    """Heuristic: response must meet minimum character count."""
+    """Heuristic: response must meet minimum character count.
+
+    A blunt absolute character floor. Retained for contracts/acceptance criteria
+    that explicitly opt into a length minimum, but NOT used by short-output task
+    classes (summarization / document / documentation) — those use
+    ``semantic_adequacy`` instead so a correct short answer is not rejected on
+    length alone (OMN-13218).
+    """
     if len(content) < threshold:
         return f"WEAK_OUTPUT: response length {len(content)} below minimum {threshold}"
+    return None
+
+
+# Trailing tokens that mark a mid-token / mid-clause truncation (OMN-13218):
+# an opening bracket, or a clause-internal punctuation mark that no complete
+# answer ends on.
+_TRUNCATION_TRAILING_TOKENS: tuple[str, ...] = ("(", ",", "=", "[", "{", "-", ":", ";")
+
+# Terminal punctuation that marks a complete sentence (OMN-13218).
+_TERMINAL_PUNCTUATION: tuple[str, ...] = (".", "!", "?", '"', "'", ")", "]", "}", "`")
+
+# Function words a complete answer does not end on. A response whose final word
+# is one of these AND that lacks terminal punctuation is a truncated clause
+# ("...the change adds a graded score so the"), not a complete answer
+# (OMN-13218). This is the truncation signal that survives long fragments, where
+# a raw word-count floor cannot tell a long truncated clause from a real answer.
+_DANGLING_TRAILING_WORDS: frozenset[str] = frozenset(
+    {
+        "a",
+        "an",
+        "the",
+        "and",
+        "or",
+        "but",
+        "nor",
+        "so",
+        "yet",
+        "for",
+        "of",
+        "to",
+        "in",
+        "on",
+        "at",
+        "by",
+        "with",
+        "from",
+        "as",
+        "is",
+        "are",
+        "was",
+        "were",
+        "be",
+        "been",
+        "that",
+        "which",
+        "this",
+        "these",
+        "those",
+        "if",
+        "when",
+        "while",
+        "because",
+        "into",
+        "onto",
+        "than",
+        "then",
+    }
+)
+
+
+def _check_semantic_adequacy(content: str) -> str | None:
+    """Heuristic: response must be a complete answer, not a truncated fragment.
+
+    Replaces the blunt ``min_length_chars_N`` floor for short-output task classes
+    (OMN-13218). The floor rejected behaviorally-correct short answers
+    (a correct one-sentence summary, a short prose document) purely on character
+    count, forcing wasteful escalation to the ceiling tier.
+
+    Adequacy is length-independent. A response is INADEQUATE — and only then —
+    when it is:
+      * empty / whitespace-only,
+      * truncated mid-token (ends on an opening bracket, comma, ``=`` etc.),
+      * a truncated clause: lacks terminal punctuation AND ends on a dangling
+        function word ("...adds a graded score so the"),
+      * a bare single-word fragment with no terminal punctuation.
+
+    A complete short sentence ("The gate scores short summaries adequately."), a
+    multi-word phrase that does not dangle, and a fenced / docstring code
+    artifact all pass; a truncated fragment ("The change adds a"), a clause that
+    dangles on a function word, and an empty string all fail.
+    """
+    stripped = content.strip()
+    if not stripped:
+        return "WEAK_OUTPUT: response is empty, fails semantic_adequacy"
+
+    if stripped[-1] in _TRUNCATION_TRAILING_TOKENS:
+        return "WEAK_OUTPUT: response truncated mid-token, fails semantic_adequacy"
+
+    # A complete structured / code artifact is a complete answer regardless of
+    # prose sentence shape.
+    if _extract_fenced_code_blocks(content) or '"""' in stripped or "'''" in stripped:
+        return None
+
+    if stripped[-1] in _TERMINAL_PUNCTUATION:
+        return None
+
+    words = stripped.split()
+    last_word = words[-1].lower().strip(".,;:!?\"'()[]{}`-")
+
+    if last_word in _DANGLING_TRAILING_WORDS:
+        return (
+            "WEAK_OUTPUT: response truncated mid-clause "
+            f"(ends on '{last_word}'), fails semantic_adequacy"
+        )
+
+    # A single bare token with no terminal punctuation is a fragment, not an
+    # answer. A multi-word phrase that does not dangle is treated as complete —
+    # short correct answers (classification labels, extractions) live here.
+    if len(words) < 2:
+        return (
+            "WEAK_OUTPUT: response is a bare single-word fragment, "
+            "fails semantic_adequacy"
+        )
+
     return None
 
 
@@ -339,9 +672,35 @@ def _check_covers_args_returns_raises(content: str) -> str | None:
 
 
 def _check_cites_specific_lines(content: str) -> str | None:
-    """Heuristic: response must cite specific line numbers."""
+    """Heuristic: response must cite specific CODE line numbers.
+
+    A code-review check. The line-citation regex matches ``line N`` / ``Lnn`` /
+    ``:nn`` forms a code reviewer uses when pointing at a diff. This check stays
+    bound to the ``review`` (code-review) task class only — it is NOT a research
+    check. The research task class declares ``cites_sources`` instead
+    (OMN-13354), because a legitimate research answer cites theorems / papers /
+    sections, never code line numbers, and could never satisfy this regex.
+    """
     if not _LINE_CITATION_RE.search(content):
         return "TASK_MISMATCH: missing specific line citations"
+    return None
+
+
+def _check_cites_sources(content: str) -> str | None:
+    """Heuristic: a research response must attribute claims to sources.
+
+    The research-appropriate replacement for ``cites_specific_lines`` (OMN-13354).
+    A substantive research answer grounds its claims in references — named
+    results (theorem / lemma / section / page N), bibliographic markers
+    (references / citations / sources), attribution lead-ins (see, according to,
+    cf.), bracketed numeric citations ``[12]``, author-year ``(Smith, 2020)``,
+    URLs, or DOIs. A thin, unsupported answer carries none of these and fails.
+    This is a presence check (at least one source marker), so it discriminates an
+    attributed research answer from an unsupported one WITHOUT demanding the
+    code-line markers a research answer cannot legitimately supply.
+    """
+    if not _SOURCE_CITATION_RE.search(content):
+        return "TASK_MISMATCH: missing source citations or references"
     return None
 
 
@@ -394,6 +753,16 @@ def _evaluate_deterministic_checks(
             reason = _check_exactly_two_sentences(content)
         elif check == "plain_text_only":
             reason = _check_plain_text_only(content)
+        elif check == "no_refusal":
+            # Reject-only pre-filter (OMN-13373). ``no_refusal`` is a
+            # SUPPORTED_ACCEPTANCE_CRITERIA value that the orchestrator merges into
+            # ``dod_deterministic`` via ``acceptance_criteria``, so it must resolve
+            # here rather than fall through to the MALFORMED branch below. It
+            # rejects a refusal (REFUSAL: prefix, escalation-worthy) but, per
+            # OMN-13370, cannot promote a clean output to adequate — ``no_refusal``
+            # is in _REJECT_ONLY_DETERMINISTIC_CHECKS so it grants no adequacy
+            # authority.
+            reason = _check_no_refusal(content)
         else:
             m = MAX_WORDS_PER_SENTENCE_RE.match(check)
             if m:
@@ -410,9 +779,23 @@ _HEURISTIC_SIMPLE_CHECKS: dict[str, Callable[[str], str | None]] = {
     "no_refusal": _check_no_refusal,
     "covers_args_returns_raises": _check_covers_args_returns_raises,
     "cites_specific_lines": _check_cites_specific_lines,
+    "cites_sources": _check_cites_sources,
     "concise": _check_concise,
     "accurate": _check_accurate,
+    "semantic_adequacy": _check_semantic_adequacy,
 }
+
+_REJECT_ONLY_HEURISTIC_CHECKS: frozenset[str] = frozenset(
+    {
+        "no_refusal",
+        "accurate",
+        "concise",
+        "covers_args_returns_raises",
+        "cites_specific_lines",
+        "cites_sources",
+        *_HEURISTIC_CONTAINS_ANY_CHECKS,
+    }
+)
 
 
 def _apply_heuristic_check(check: str, content: str) -> str | None:
@@ -476,6 +859,87 @@ def _run_contract_checks(
     )
     det_failures.extend(extra_det_failures)
     return det_failures, heuristic_failures
+
+
+def _stable_hash(value: object) -> str:
+    """Return a stable sha256 hash for acceptance replay identity."""
+    encoded = json.dumps(value, sort_keys=True, separators=(",", ":")).encode()
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def _artifact_hash(content: str) -> str:
+    """Return the stable hash of the evaluated delegated artifact."""
+    return hashlib.sha256(content.encode()).hexdigest()
+
+
+def _deterministic_acceptance_score(
+    deterministic_total: int,
+    deterministic_failures: int,
+) -> float:
+    """Score deterministic acceptance by passed checks over total checks."""
+    if deterministic_total <= 0:
+        return 0.0
+    passed = max(0, deterministic_total - deterministic_failures)
+    return round(passed / deterministic_total, 3)
+
+
+def _deterministic_acceptance_evidence(
+    *,
+    task_type: str,
+    content: str,
+    dod_deterministic: tuple[str, ...],
+    deterministic_failures: list[str],
+) -> dict[str, object]:
+    """Build deterministic acceptance evidence for verifiable task classes."""
+    deterministic_total = max(len(dod_deterministic), len(deterministic_failures))
+    actual_score = _deterministic_acceptance_score(
+        deterministic_total, len(deterministic_failures)
+    )
+    passed = deterministic_total > 0 and not deterministic_failures
+    corpus_identity = {
+        "acceptance_version": _ACCEPTANCE_VERSION,
+        "score_source": _DETERMINISTIC_SCORE_SOURCE,
+        "task_type": task_type,
+        "checks": dod_deterministic,
+    }
+    acceptance_command = (
+        "uv run python -m "
+        "omnimarket.nodes.node_delegation_quality_gate_reducer "
+        f"--score-source={_DETERMINISTIC_SCORE_SOURCE} "
+        f"--task-type={task_type}"
+    )
+    return {
+        "score_source": _DETERMINISTIC_SCORE_SOURCE,
+        "acceptance_version": _ACCEPTANCE_VERSION,
+        "corpus_hash": _stable_hash(corpus_identity),
+        "validator_or_artifact_hash": _artifact_hash(content),
+        "acceptance_command": acceptance_command,
+        "actual_score": actual_score,
+        "pass_": passed,
+        "failure_cases": tuple(deterministic_failures),
+    }
+
+
+def _is_verifiable_deterministic_acceptance(
+    gate_input: ModelQualityGateInput,
+    dod_deterministic: tuple[str, ...],
+) -> bool:
+    """Return whether this contract path holds deterministic acceptance authority.
+
+    Authority requires a verifiable task type AND at least one NON-reject-only
+    deterministic check. A ``dod_deterministic`` set composed solely of
+    reject-only structural pre-filters (OMN-13370/OMN-13373:
+    ``no_refusal``/``response_non_empty``/``output_parses``/...) can still
+    *reject* bad output, but per OMN-13370 it must never *promote* a clean
+    output to adequate — so it confers no acceptance authority here. Without
+    this guard, ``task_type=code_generation`` + ``acceptance_criteria=
+    ["no_refusal"]`` + a clean output leaked to ``passed=True`` (OMN-13375).
+    """
+    if gate_input.task_type not in _VERIFIABLE_TASK_TYPES:
+        return False
+    return any(
+        not _is_reject_only_deterministic_check(check) for check in dod_deterministic
+    )
 
 
 # Relative weighting of the two DoD bands when computing the graded quality
@@ -544,10 +1008,41 @@ def _graded_quality_score(
     return round(weighted_sum / active_weight, 3)
 
 
+def _is_reject_only_deterministic_check(check: str) -> bool:
+    """Return whether a deterministic check is only a structural pre-filter."""
+    return check in _REJECT_ONLY_DETERMINISTIC_CHECKS or bool(
+        MAX_WORDS_PER_SENTENCE_RE.match(check)
+    )
+
+
+def _is_reject_only_heuristic_check(check: str) -> bool:
+    """Return whether a heuristic check is only a pre-filter/marker diagnostic."""
+    return check in _REJECT_ONLY_HEURISTIC_CHECKS or bool(
+        _MIN_LENGTH_CHECK_RE.match(check)
+    )
+
+
+def _has_adequacy_authority(
+    dod_deterministic: tuple[str, ...],
+    dod_heuristic: tuple[str, ...],
+) -> bool:
+    """Return whether any declared check can serve as adequacy authority.
+
+    Structural deterministic checks and marker/refusal/length heuristics can
+    reject invalid output and keep contributing diagnostics/score, but OMN-13370
+    bars them from promoting an output to adequate by themselves.
+    """
+    if any(
+        not _is_reject_only_deterministic_check(check) for check in dod_deterministic
+    ):
+        return True
+    return any(not _is_reject_only_heuristic_check(check) for check in dod_heuristic)
+
+
 def _run_legacy_checks(
     gate_input: ModelQualityGateInput,
 ) -> ModelQualityGateResult:
-    """Fallback: run the original hardcoded heuristic checks."""
+    """Fallback: run the original hardcoded checks as reject-only diagnostics."""
     content = _strip_thinking_traces(gate_input.llm_response_content)
     task_type = gate_input.task_type
     failure_reasons: list[str] = []
@@ -591,19 +1086,18 @@ def _run_legacy_checks(
         + scores["markers"] * _WEIGHT_MARKERS
     )
 
-    no_refusal_score = scores["no_refusal"]
-    passed = quality_score >= 0.6 and math.isclose(no_refusal_score, 1.0)
+    # OMN-13370: legacy length/refusal/marker checks are never adequacy authority.
+    if not failure_reasons:
+        failure_reasons.append(_NO_ADEQUACY_AUTHORITY_REASON)
+
+    passed = False
     # OMN-13140: recommend fallback whenever an unpassed legacy result carries a
     # REFUSAL / WEAK_OUTPUT / TASK_MISMATCH verdict. The legacy checks emit those
     # same prefixes (see failure_reasons above), so WEAK_OUTPUT (length miss) and
     # TASK_MISMATCH (missing markers) now escalate instead of terminating — the
     # prior score-threshold gate (quality_score < 0.3) silently dropped them.
     fallback_recommended = not passed and _recommends_fallback(failure_reasons)
-    fail_category: EnumQualityGateCategory = (
-        EnumQualityGateCategory.PASS
-        if passed
-        else EnumQualityGateCategory.FAIL_HEURISTIC
-    )
+    fail_category: EnumQualityGateCategory = "pass" if passed else "fail_heuristic"
 
     return ModelQualityGateResult(
         correlation_id=gate_input.correlation_id,
@@ -615,21 +1109,55 @@ def _run_legacy_checks(
     )
 
 
-def delta(gate_input: ModelQualityGateInput) -> ModelQualityGateResult:
+def delta(
+    gate_input: ModelQualityGateInput,
+    *,
+    judge_adequacy_score: float | None = None,
+    judge_verdict: EnumDelegationJudgeVerdict | None = None,
+) -> ModelQualityGateResult:
     """Evaluate LLM output quality for a delegation response.
 
-    Pure function: deterministic for given input, no I/O.
+    Pure function: deterministic for given input, no I/O. The LLM-judge call
+    itself is an EFFECT performed upstream (HandlerQualityGateIntent) on the
+    canonical inference path; its already-resolved 0.0-1.0 adequacy score is
+    passed in here, so this reducer stays pure and replay-safe (the recorded
+    judge verdict is read back, never re-called).
 
     When gate_input carries contract-declared DoD checks (dod_deterministic /
     dod_heuristic), those checks take precedence:
       - Deterministic failures → fail_category="fail_deterministic" (hard block)
       - Heuristic-only failures → fail_category="fail_heuristic" (escalate)
-      - All pass → fail_category="pass"
+      - All checks pass without adequacy authority → fail_category="fail_heuristic"
+      - All checks pass with adequacy authority → fail_category="pass"
+
+    OMN-13470: when ``judge_adequacy_score`` is supplied AND the path holds
+    deterministic acceptance authority, the deterministic graded score and the
+    judge adequacy score are COMBINED (the deterministic checks remain a hard
+    floor — any deterministic failure, including the refusal/empty pre-filters,
+    still hard-blocks before the combine). The combined score replaces
+    ``quality_score`` and ``score_source`` is recorded as ``"combined"`` so the
+    orchestrator applies ``required_bar`` to the combined value.
 
     Falls back to the legacy hardcoded checks when both DoD fields are empty.
 
+    OMN-13642: when ``judge_verdict`` is ``EnumDelegationJudgeVerdict.FAIL`` on the
+    verifiable path, acceptance is VETOED (``passed=False``,
+    ``fail_category="fail_heuristic"``, ``fallback_recommended=True``) even when the
+    weighted combined score clears the bar — the judge verdict is a co-required
+    acceptance authority, not merely a score nudge a strong deterministic floor can
+    mask. ``JUDGE_FAILED`` carries no score (``judge_adequacy_score is None``) and
+    falls through to the deterministic-only acceptance (fail-open, never a silent
+    zero). ``PASS``/``BORDERLINE``/``None`` keep the combined-score behavior.
+
     Args:
         gate_input: Quality gate input with LLM response and optional DoD checks.
+        judge_adequacy_score: Optional 0.0-1.0 LLM-judge semantic-adequacy score
+            resolved on the inference effect path. ``None`` preserves the prior
+            deterministic-only behavior.
+        judge_verdict: Optional LLM-judge verdict resolved on the inference effect
+            path. A ``FAIL`` verdict vetoes acceptance on the verifiable path
+            regardless of the combined score (OMN-13642). ``None`` preserves the
+            prior score-only behavior.
 
     Returns:
         A quality gate result with pass/fail, fail_category, score, and reasons.
@@ -652,6 +1180,19 @@ def delta(gate_input: ModelQualityGateInput) -> ModelQualityGateResult:
     det_failures, heuristic_failures = _run_contract_checks(
         content, dod_deterministic, dod_heuristic
     )
+    deterministic_acceptance_authority = _is_verifiable_deterministic_acceptance(
+        gate_input, dod_deterministic
+    )
+    acceptance_evidence = (
+        _deterministic_acceptance_evidence(
+            task_type=gate_input.task_type,
+            content=content,
+            dod_deterministic=dod_deterministic,
+            deterministic_failures=det_failures,
+        )
+        if deterministic_acceptance_authority
+        else {}
+    )
 
     all_failures = det_failures + heuristic_failures
 
@@ -671,9 +1212,13 @@ def delta(gate_input: ModelQualityGateInput) -> ModelQualityGateResult:
     )
 
     if det_failures:
-        # Deterministic failure blocks delegation. The score is still graded so
-        # downstream experiment analysis can distinguish a near-miss from a
-        # total failure even when the gate verdict is identical.
+        # Deterministic failure blocks delegation. The deterministic checks are a
+        # HARD FLOOR (OMN-13470): a deterministic failure — including the
+        # refusal/empty pre-filters routed through the deterministic band — hard-
+        # blocks BEFORE any judge combine, so a refusal or empty answer can never
+        # be lifted over the bar by a judge score. The score is still graded so
+        # downstream experiment analysis can distinguish a near-miss from a total
+        # failure even when the gate verdict is identical.
         return ModelQualityGateResult(
             correlation_id=gate_input.correlation_id,
             passed=False,
@@ -681,6 +1226,67 @@ def delta(gate_input: ModelQualityGateInput) -> ModelQualityGateResult:
             quality_score=quality_score,
             failure_reasons=tuple(all_failures),
             fallback_recommended=True,
+            **acceptance_evidence,
+        )
+
+    # OMN-13470: the deterministic hard floor passed (no det_failures). On a
+    # verifiable-acceptance path with a resolved judge adequacy score, COMBINE the
+    # deterministic graded score with the judge score and record
+    # score_source="combined". The combine supplies the semantic-adequacy
+    # authority the deterministic check set lacks, lifting a good-but-mechanically-
+    # incomplete answer over the bar; refusals/empties never reach here (they
+    # hard-block in the det_failures branch above).
+    combined_acceptance_evidence: dict[str, object] = {}
+    if deterministic_acceptance_authority and judge_adequacy_score is not None:
+        # Combine against the DETERMINISTIC band fraction, not the mixed graded
+        # score: for a verifiable class the heuristic markers (no_refusal /
+        # follows_codebase_conventions / no_obvious_regressions) are reject-only
+        # and drag the mixed graded score down even on a clean answer. Here the
+        # deterministic floor has fully passed (no det_failures), so the
+        # deterministic fraction is 1.0 and the judge supplies the semantic-
+        # adequacy band that lifts a good-but-mechanically-incomplete answer over
+        # the bar. A refusal/empty never reaches this branch — it hard-blocks in
+        # the det_failures branch above.
+        deterministic_fraction = (
+            (deterministic_total - len(det_failures)) / deterministic_total
+            if deterministic_total > 0
+            else 1.0
+        )
+        quality_score = _combined_quality_score(
+            deterministic_score=deterministic_fraction,
+            judge_adequacy_score=judge_adequacy_score,
+        )
+        combined_acceptance_evidence = {
+            **acceptance_evidence,
+            "score_source": _COMBINED_SCORE_SOURCE,
+            "actual_score": quality_score,
+        }
+
+    if deterministic_acceptance_authority:
+        # OMN-13642: the LLM-judge verdict is a co-required acceptance authority on
+        # the verifiable path. A FAIL verdict VETOES acceptance even when the
+        # weighted combined score cleared the bar above — the deterministic floor
+        # (already passed) must never mask a judge FAIL. The combined score is
+        # still recorded for telemetry so analysis sees the score that WOULD have
+        # been accepted under the old score-only logic.
+        if judge_verdict is EnumDelegationJudgeVerdict.FAIL:
+            return ModelQualityGateResult(
+                correlation_id=gate_input.correlation_id,
+                passed=False,
+                fail_category="fail_heuristic",
+                quality_score=quality_score,
+                failure_reasons=(_JUDGE_FAIL_REASON,),
+                fallback_recommended=True,
+                **(combined_acceptance_evidence or acceptance_evidence),
+            )
+        return ModelQualityGateResult(
+            correlation_id=gate_input.correlation_id,
+            passed=True,
+            fail_category="pass",
+            quality_score=quality_score,
+            failure_reasons=(),
+            fallback_recommended=False,
+            **(combined_acceptance_evidence or acceptance_evidence),
         )
 
     if heuristic_failures:
@@ -696,6 +1302,17 @@ def delta(gate_input: ModelQualityGateInput) -> ModelQualityGateResult:
             quality_score=quality_score,
             failure_reasons=tuple(heuristic_failures),
             fallback_recommended=fallback_recommended,
+            **acceptance_evidence,
+        )
+
+    if not _has_adequacy_authority(dod_deterministic, dod_heuristic):
+        return ModelQualityGateResult(
+            correlation_id=gate_input.correlation_id,
+            passed=False,
+            fail_category="fail_heuristic",
+            quality_score=quality_score,
+            failure_reasons=(_NO_ADEQUACY_AUTHORITY_REASON,),
+            fallback_recommended=True,
         )
 
     return ModelQualityGateResult(
@@ -705,6 +1322,7 @@ def delta(gate_input: ModelQualityGateInput) -> ModelQualityGateResult:
         quality_score=quality_score,
         failure_reasons=(),
         fallback_recommended=False,
+        **acceptance_evidence,
     )
 
 

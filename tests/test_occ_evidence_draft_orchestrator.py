@@ -22,6 +22,13 @@ from omnibase_compat.contracts.evidence_pipeline.wire.model_evidence_validation_
     ModelEvidenceValidationResult,
 )
 
+from omnimarket.events.occ_evidence import (
+    EnumEvidenceLifecycleState,
+    EnumRuntimeLane,
+    ModelOccEvidenceDraft,
+    ModelOccEvidenceDraftRequest,
+    ModelRuntimeDeploymentProof,
+)
 from omnimarket.nodes.evidence_pipeline_native import coerce_validation, write_occ_pr
 from omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_request import (
     ModelDelegationRequest,
@@ -41,17 +48,6 @@ from omnimarket.nodes.node_occ_evidence_validator_compute.handlers.handler_occ_e
 )
 from omnimarket.nodes.node_occ_evidence_validator_compute.models.model_occ_evidence_validate_command import (
     ModelOccEvidenceValidateCommand,
-)
-from omnimarket.nodes.node_redeploy.models.model_occ_evidence_draft import (
-    EnumEvidenceLifecycleState,
-    ModelOccEvidenceDraft,
-    ModelOccEvidenceDraftRequest,
-)
-from omnimarket.nodes.node_redeploy.models.model_redeploy_command import (
-    EnumRuntimeLane,
-)
-from omnimarket.nodes.node_redeploy.models.model_runtime_deployment import (
-    ModelRuntimeDeploymentProof,
 )
 
 CORRELATION_ID = UUID("11111111-1111-1111-1111-111111111111")

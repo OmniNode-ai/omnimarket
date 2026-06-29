@@ -120,7 +120,7 @@ async def wire_delegation_dispatchers(
     Returns:
         Summary dict with dispatchers, routes, and status.
     """
-    from omnibase_infra.models.dispatch.model_dispatch_route import ModelDispatchRoute
+    from omnibase_core.models.dispatch.model_dispatch_route import ModelDispatchRoute
 
     from omnimarket.nodes.node_delegation_orchestrator.dispatchers.dispatcher_delegation_workflow import (
         DispatcherDelegationWorkflow,
@@ -177,7 +177,7 @@ async def wire_delegation_dispatchers(
         route_id=ROUTE_ID_DELEGATION_REQUEST,
         topic_pattern="*.cmd.*.delegation-request.*",
         message_category=EnumMessageCategory.COMMAND,
-        dispatcher_id=command_dispatcher_id,
+        handler_id=command_dispatcher_id,
         message_type="omnibase-infra.delegation-request",
     )
     engine.register_route(route_delegation_request)
@@ -187,7 +187,7 @@ async def wire_delegation_dispatchers(
         route_id=ROUTE_ID_INVOCATION_COMMAND,
         topic_pattern="*.cmd.*.invocation.*",
         message_category=EnumMessageCategory.COMMAND,
-        dispatcher_id=command_dispatcher_id,
+        handler_id=command_dispatcher_id,
         message_type="omnibase-infra.invocation",
     )
     engine.register_route(route_invocation_command)
@@ -197,7 +197,7 @@ async def wire_delegation_dispatchers(
         route_id=ROUTE_ID_ROUTING_DECISION,
         topic_pattern="*.evt.*.routing-decision.*",
         message_category=EnumMessageCategory.EVENT,
-        dispatcher_id=event_dispatcher_id,
+        handler_id=event_dispatcher_id,
         message_type="omnibase-infra.routing-decision",
     )
     engine.register_route(route_routing_decision)
@@ -207,7 +207,7 @@ async def wire_delegation_dispatchers(
         route_id=ROUTE_ID_INFERENCE_RESPONSE,
         topic_pattern="*.evt.*.inference-response.*",
         message_category=EnumMessageCategory.EVENT,
-        dispatcher_id=event_dispatcher_id,
+        handler_id=event_dispatcher_id,
         message_type="omnibase-infra.inference-response",
     )
     engine.register_route(route_inference_response)
@@ -217,7 +217,7 @@ async def wire_delegation_dispatchers(
         route_id=ROUTE_ID_QUALITY_GATE_RESULT,
         topic_pattern="*.evt.*.quality-gate-result.*",
         message_category=EnumMessageCategory.EVENT,
-        dispatcher_id=event_dispatcher_id,
+        handler_id=event_dispatcher_id,
         message_type="omnibase-infra.quality-gate-result",
     )
     engine.register_route(route_quality_gate)
@@ -227,7 +227,7 @@ async def wire_delegation_dispatchers(
         route_id=ROUTE_ID_AGENT_TASK_LIFECYCLE,
         topic_pattern="*.evt.*.agent-task-lifecycle.*",
         message_category=EnumMessageCategory.EVENT,
-        dispatcher_id=event_dispatcher_id,
+        handler_id=event_dispatcher_id,
         message_type="omnibase-infra.agent-task-lifecycle",
     )
     engine.register_route(route_agent_task_lifecycle)

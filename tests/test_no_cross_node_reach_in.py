@@ -100,7 +100,7 @@ _KNOWN_VIOLATIONS: frozenset[str] = frozenset(
         "omnimarket.nodes.node_delegation_orchestrator.delegation_intent_bridge:omnimarket.nodes.node_delegation_quality_gate_reducer.models.model_quality_gate_result:ModelQualityGateResult",
         "omnimarket.nodes.node_delegation_orchestrator.delegation_intent_bridge:omnimarket.nodes.node_delegation_routing_reducer.models.model_routing_decision:ModelRoutingDecision",
         "omnimarket.nodes.node_delegation_orchestrator.handlers.handler_compliance_loop:omnimarket.nodes.node_budget_policy_compute.models.model_budget_limits:ModelBudgetLimits",
-        "omnimarket.nodes.node_delegation_orchestrator.handlers.handler_compliance_loop:omnimarket.nodes.node_budget_policy_compute.models.model_budget_policy_enums:EnumBudgetAction",
+        # EnumBudgetAction reach-in resolved (OMN-13720): import moved to omnibase_core.enums.enum_budget_action
         "omnimarket.nodes.node_delegation_orchestrator.handlers.handler_compliance_loop:omnimarket.nodes.node_budget_policy_compute.models.model_budget_policy_enums:EnumTaskPriority",
         "omnimarket.nodes.node_delegation_orchestrator.handlers.handler_compliance_loop:omnimarket.nodes.node_budget_policy_compute.models.model_budget_policy_request:ModelBudgetPolicyRequest",
         "omnimarket.nodes.node_delegation_orchestrator.handlers.handler_compliance_loop:omnimarket.nodes.node_budget_policy_compute.models.model_budget_usage:ModelBudgetUsage",
@@ -141,15 +141,30 @@ _KNOWN_VIOLATIONS: frozenset[str] = frozenset(
         "omnimarket.nodes.node_pr_lifecycle_orchestrator.handlers.handler_pr_lifecycle_orchestrator:omnimarket.nodes.node_pr_lifecycle_merge_effect.models.model_merge_command:ModelPrMergeCommand",
         "omnimarket.nodes.node_pr_lifecycle_orchestrator.handlers.handler_pr_lifecycle_orchestrator:omnimarket.nodes.node_pr_lifecycle_fix_effect.models.model_fix_command:EnumPrBlockReason",
         "omnimarket.nodes.node_pr_lifecycle_orchestrator.handlers.handler_pr_lifecycle_orchestrator:omnimarket.nodes.node_pr_lifecycle_fix_effect.models.model_fix_command:ModelPrLifecycleFixCommand",
-        # node_pr_review_bot → node_hostile_reviewer
-        "omnimarket.nodes.node_pr_review_bot.models.models:omnimarket.nodes.node_hostile_reviewer.models.model_review_finding:EnumFindingCategory",
-        "omnimarket.nodes.node_pr_review_bot.models.models:omnimarket.nodes.node_hostile_reviewer.models.model_review_finding:EnumFindingSeverity",
-        "omnimarket.nodes.node_pr_review_bot.models.models:omnimarket.nodes.node_hostile_reviewer.models.model_review_finding:EnumReviewConfidence",
-        "omnimarket.nodes.node_pr_review_bot.models.models:omnimarket.nodes.node_hostile_reviewer.models.model_review_finding:ModelReviewFinding",
+        # OMN-13208 (A1): node_pr_review_bot → node_hostile_reviewer review-finding
+        # reach-ins removed — ModelReviewFinding/enums re-homed to the shared
+        # omnimarket.models package, so the import is no longer a cross-node reach-in.
         # node_rebase_effect → node_merge_sweep_triage_orchestrator
         "omnimarket.nodes.node_rebase_effect.handlers.handler_rebase:omnimarket.nodes.node_merge_sweep_triage_orchestrator.models.model_triage_request:ModelRebaseCommand",
         # node_thread_reply_effect → node_model_router
         "omnimarket.nodes.node_thread_reply_effect.handlers.handler_thread_reply:omnimarket.nodes.node_model_router.models.model_routing_request:ModelRoutingRequest",
+        # OMN-13210 (B1): node_hostile_reviewer_orchestrator → node_finding_aggregator_compute.
+        # The orchestrator dispatches the canonical finding aggregator COMPUTE and must
+        # construct its input; the aggregator pre-dates this rebuild and keeps its
+        # node-local input model. All other review node I/O is shared via
+        # omnimarket.review.node_io (no reach-in). Track follow-up to promote the
+        # aggregator input to omnimarket.review if a second consumer appears.
+        "omnimarket.nodes.node_hostile_reviewer_orchestrator.handlers.handler_hostile_reviewer_orchestrator:omnimarket.nodes.node_finding_aggregator_compute.models.model_finding_aggregator_input:ModelFindingAggregatorInput",
+        "omnimarket.nodes.node_hostile_reviewer_orchestrator.handlers.handler_hostile_reviewer_orchestrator:omnimarket.nodes.node_finding_aggregator_compute.models.model_finding_aggregator_input:ModelSourceFindings",
+        # OMN-13212 (B2): node_pr_review_orchestrator → node_finding_aggregator_compute.
+        # The orchestrator dispatches the canonical finding aggregator COMPUTE and must
+        # construct its input; the aggregator pre-dates this rebuild and keeps its
+        # node-local input model (same exception as the B1 hostile_reviewer orchestrator).
+        # All other review node I/O is shared via omnimarket.review (no reach-in). Track
+        # follow-up to promote the aggregator input to omnimarket.review if a second
+        # consumer appears.
+        "omnimarket.nodes.node_pr_review_orchestrator.handlers.handler_pr_review_orchestrator:omnimarket.nodes.node_finding_aggregator_compute.models.model_finding_aggregator_input:ModelFindingAggregatorInput",
+        "omnimarket.nodes.node_pr_review_orchestrator.handlers.handler_pr_review_orchestrator:omnimarket.nodes.node_finding_aggregator_compute.models.model_finding_aggregator_input:ModelSourceFindings",
     ]
 )
 
@@ -246,7 +261,7 @@ def test_known_violations_not_grown() -> None:
     underlying reach-in. The count is the source of truth; update it only
     when violations are *fixed* (count decreases) — never when adding new ones.
     """
-    baseline = 84
+    baseline = 83
     assert len(_KNOWN_VIOLATIONS) <= baseline, (
         f"_KNOWN_VIOLATIONS grew from {baseline} to {len(_KNOWN_VIOLATIONS)}. "
         "Fix a reach-in to reduce it — do not add new entries."

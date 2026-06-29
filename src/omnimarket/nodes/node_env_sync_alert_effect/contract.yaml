@@ -17,7 +17,8 @@ handler:
 
 handler_routing:
   handlers:
-    - handler:
+    - operation: env_sync_alert
+      handler:
         name: HandlerEnvSyncAlertEffect
         module: omnimarket.nodes.node_env_sync_alert_effect.handlers.handler_env_sync_alert_effect
 

@@ -16,6 +16,7 @@ from uuid import uuid4
 
 import pytest
 from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
+from omnibase_infra.errors import ProtocolConfigurationError
 from omnibase_infra.event_bus.event_bus_inmemory import EventBusInmemory
 from omnibase_infra.event_bus.models import (
     ModelEventBusReadiness,
@@ -25,9 +26,11 @@ from omnibase_infra.event_bus.models import (
 
 from omnimarket.adapters.codex import runtime_client
 from omnimarket.adapters.codex.runtime_client import (
+    _KAFKA_BOOTSTRAP_ENV_VAR,
     CodexRuntimeRequestAdapter,
     ModelDispatchBusCommand,
     ModelDispatchBusTerminalResult,
+    _check_bus_target_configured,
     default_command_topic,
     default_requester,
     default_response_topic,
@@ -43,7 +46,6 @@ from omnimarket.nodes.node_coderabbit_triage.handlers.handler_coderabbit_triage 
     ModelCoderabbitTriageCommand,
 )
 from omnimarket.nodes.node_delegate_skill_orchestrator.models.model_delegate_skill_request import (
-    DELEGATION_DEFAULT_MAX_TOKENS,
     ModelDelegateSkillRequest,
 )
 from omnimarket.nodes.node_delegate_skill_orchestrator.models.model_delegate_skill_response import (
@@ -1592,7 +1594,9 @@ async def test_delegate_skill_direct_dispatch_publishes_contract_payload() -> No
     assert raw["payload"]["task_type"] == "test"
     assert raw["payload"]["source"] == "codex"
     assert raw["payload"]["correlation_id"] == str(cid)
-    assert raw["payload"]["max_tokens"] == DELEGATION_DEFAULT_MAX_TOKENS
+    # OMN-13161: max_tokens is unset (None) and excluded from the serialized
+    # payload; the effective value is resolved from the backend ceiling downstream.
+    assert "max_tokens" not in raw["payload"]
     assert "command_name" not in raw["payload"]
     assert "response_topic" not in raw["payload"]
     assert (
@@ -2904,3 +2908,224 @@ async def test_delegate_skill_subscribes_to_contract_terminal_topics_when_defaul
         "onex.evt.omnimarket.delegate-skill-completed.v1",
         "onex.evt.omnimarket.delegate-skill-failed.v1",
     ]
+
+
+# ---------------------------------------------------------------------------
+# OMN-13164: bus-target preflight guard tests
+# ---------------------------------------------------------------------------
+
+
+class TestBusTargetPreflightGuard:
+    """Verify that _check_bus_target_configured() fails fast before the
+    aiokafka producer bootstrap loop when KAFKA_BOOTSTRAP_SERVERS is absent.
+    """
+
+    def test_raises_protocol_configuration_error_when_env_var_missing(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Missing KAFKA_BOOTSTRAP_SERVERS must raise ProtocolConfigurationError
+        immediately, not enter the Kafka connection-retry loop."""
+        monkeypatch.delenv(_KAFKA_BOOTSTRAP_ENV_VAR, raising=False)
+
+        with pytest.raises(ProtocolConfigurationError) as exc_info:
+            _check_bus_target_configured()
+
+        msg = str(exc_info.value)
+        assert _KAFKA_BOOTSTRAP_ENV_VAR in msg
+        assert "not configured" in msg.lower()
+
+    def test_raises_protocol_configuration_error_when_env_var_empty(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """An empty KAFKA_BOOTSTRAP_SERVERS must also raise before dialling."""
+        monkeypatch.setenv(_KAFKA_BOOTSTRAP_ENV_VAR, "   ")
+
+        with pytest.raises(ProtocolConfigurationError) as exc_info:
+            _check_bus_target_configured()
+
+        assert _KAFKA_BOOTSTRAP_ENV_VAR in str(exc_info.value)
+
+    def test_passes_when_env_var_is_set(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """A non-empty KAFKA_BOOTSTRAP_SERVERS must not raise."""
+        monkeypatch.setenv(_KAFKA_BOOTSTRAP_ENV_VAR, "redpanda:19092")
+        # Should return None without raising.
+        result = _check_bus_target_configured()
+        assert result is None
+
+    def test_cli_main_returns_typed_blocker_packet_when_env_var_missing(
+        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """CLI main() must emit a JSON blocker packet with code
+        'bus_target_not_configured' instead of hanging for 30 s."""
+        monkeypatch.delenv(_KAFKA_BOOTSTRAP_ENV_VAR, raising=False)
+
+        exit_code = main(["--command-name", "merge_sweep"])
+
+        assert exit_code != 0
+        captured = capsys.readouterr()
+        parsed = json.loads(captured.out)
+        assert parsed["ok"] is False
+        assert parsed["error"]["code"] == "bus_target_not_configured"
+        assert _KAFKA_BOOTSTRAP_ENV_VAR in parsed["error"]["message"]
+
+    def test_default_event_bus_factory_raises_when_no_bootstrap_servers(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """_default_event_bus_factory must raise ProtocolConfigurationError
+        before constructing EventBusKafka when env var is absent."""
+        from omnimarket.adapters.codex.runtime_client import _default_event_bus_factory
+
+        monkeypatch.delenv(_KAFKA_BOOTSTRAP_ENV_VAR, raising=False)
+
+        with pytest.raises(ProtocolConfigurationError) as exc_info:
+            _default_event_bus_factory()
+
+        assert _KAFKA_BOOTSTRAP_ENV_VAR in str(exc_info.value)
+
+
+# ---------------------------------------------------------------------------
+# OMN-13557 Wave-2 (config -> overlay): the Codex adapter topic/requester/api-
+# version config reads resolve through the sanctioned overlay seam
+# (``expand_contract_env_refs``) against contract refs, not scattered direct
+# ``os.environ`` reads. Same var, same value, now via the one env-reading
+# surface. Resolution-equivalence + fail-to-default coverage.
+# ---------------------------------------------------------------------------
+
+
+class TestCodexConfigOverlayResolution:
+    """Overlay resolution equivalence for the Codex adapter config cluster."""
+
+    @pytest.mark.unit
+    def test_contract_refs_declare_env_overlay_convention(self) -> None:
+        """The adapter declares ``${env.VAR}`` contract refs for each config var."""
+        from omnimarket.adapters.codex.runtime_client import (
+            _API_VERSION_CONTRACT_REF,
+            _COMMAND_TOPIC_CONTRACT_REF,
+            _REQUESTER_CONTRACT_REF,
+            _RESPONSE_TOPIC_CONTRACT_REF,
+        )
+
+        assert _COMMAND_TOPIC_CONTRACT_REF == "${env.ONEX_PATTERN_B_COMMAND_TOPIC}"
+        assert _RESPONSE_TOPIC_CONTRACT_REF == "${env.ONEX_PATTERN_B_RESPONSE_TOPIC}"
+        assert _REQUESTER_CONTRACT_REF == "${env.ONEX_PATTERN_B_REQUESTER}"
+        assert _API_VERSION_CONTRACT_REF == "${env.KAFKA_API_VERSION}"
+
+    @pytest.mark.unit
+    def test_command_topic_resolves_via_overlay_seam(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """default_command_topic routes through expand_contract_env_refs."""
+        seen: list[str] = []
+        real = runtime_client.expand_contract_env_refs
+
+        def _spy(value: str) -> str:
+            seen.append(value)
+            return real(value)
+
+        monkeypatch.setattr(runtime_client, "expand_contract_env_refs", _spy)
+        monkeypatch.setenv(
+            "ONEX_PATTERN_B_COMMAND_TOPIC",
+            "onex.cmd.omnibase-infra.custom-pattern-b-dispatch.v1",
+        )
+        assert (
+            default_command_topic()
+            == "onex.cmd.omnibase-infra.custom-pattern-b-dispatch.v1"
+        )
+        assert "${env.ONEX_PATTERN_B_COMMAND_TOPIC}" in seen
+
+    @pytest.mark.unit
+    def test_response_topic_resolves_via_overlay_seam(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """default_response_topic routes through expand_contract_env_refs."""
+        seen: list[str] = []
+        real = runtime_client.expand_contract_env_refs
+
+        def _spy(value: str) -> str:
+            seen.append(value)
+            return real(value)
+
+        monkeypatch.setattr(runtime_client, "expand_contract_env_refs", _spy)
+        monkeypatch.setenv(
+            "ONEX_PATTERN_B_RESPONSE_TOPIC",
+            "onex.evt.omnibase-infra.custom-pattern-b-dispatch-completed.v1",
+        )
+        assert (
+            default_response_topic()
+            == "onex.evt.omnibase-infra.custom-pattern-b-dispatch-completed.v1"
+        )
+        assert "${env.ONEX_PATTERN_B_RESPONSE_TOPIC}" in seen
+
+    @pytest.mark.unit
+    def test_requester_resolves_via_overlay_seam(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """default_requester routes through expand_contract_env_refs."""
+        seen: list[str] = []
+        real = runtime_client.expand_contract_env_refs
+
+        def _spy(value: str) -> str:
+            seen.append(value)
+            return real(value)
+
+        monkeypatch.setattr(runtime_client, "expand_contract_env_refs", _spy)
+        monkeypatch.setenv("ONEX_PATTERN_B_REQUESTER", "codex-overlay")
+        assert default_requester() == "codex-overlay"
+        assert "${env.ONEX_PATTERN_B_REQUESTER}" in seen
+
+    @pytest.mark.unit
+    def test_unbound_overlay_falls_back_to_contract_default(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """An unbound overlay var resolves to the contract default constant.
+
+        Topic/requester config legitimately carry a contract-declared default
+        (unlike a fail-closed endpoint), so an empty overlay expansion falls
+        back to the canonical default rather than raising.
+        """
+        monkeypatch.delenv("ONEX_PATTERN_B_COMMAND_TOPIC", raising=False)
+        monkeypatch.delenv("ONEX_PATTERN_B_RESPONSE_TOPIC", raising=False)
+        monkeypatch.delenv("ONEX_PATTERN_B_REQUESTER", raising=False)
+        assert default_command_topic() == "onex.cmd.omnimarket.pattern-b-dispatch.v1"
+        assert (
+            default_response_topic()
+            == "onex.evt.omnimarket.pattern-b-dispatch-completed.v1"
+        )
+        assert default_requester() == "codex"
+
+    @pytest.mark.unit
+    def test_api_version_kwargs_resolve_via_overlay_seam(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """_direct_kafka_client_version_kwargs routes the env read through the seam."""
+        from omnimarket.adapters.codex.runtime_client import (
+            _direct_kafka_client_version_kwargs,
+        )
+
+        seen: list[str] = []
+        real = runtime_client.expand_contract_env_refs
+
+        def _spy(value: str) -> str:
+            seen.append(value)
+            return real(value)
+
+        monkeypatch.setattr(runtime_client, "expand_contract_env_refs", _spy)
+        monkeypatch.setenv("KAFKA_API_VERSION", "2.6.0")
+        transport = SimpleNamespace(_config=None)
+        kwargs = _direct_kafka_client_version_kwargs(cast("object", transport))  # type: ignore[arg-type]
+        assert kwargs == {"api_version": "2.6.0"}
+        assert "${env.KAFKA_API_VERSION}" in seen
+
+    @pytest.mark.unit
+    def test_api_version_kwargs_empty_when_unbound(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """No api_version kwarg when neither transport config nor overlay binds it."""
+        from omnimarket.adapters.codex.runtime_client import (
+            _direct_kafka_client_version_kwargs,
+        )
+
+        monkeypatch.delenv("KAFKA_API_VERSION", raising=False)
+        transport = SimpleNamespace(_config=None)
+        kwargs = _direct_kafka_client_version_kwargs(cast("object", transport))  # type: ignore[arg-type]
+        assert kwargs == {}

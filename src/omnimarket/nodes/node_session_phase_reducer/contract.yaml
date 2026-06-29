@@ -72,3 +72,34 @@ metadata:
   related_tickets:
     - OMN-11230
     - OMN-11224
+
+# OMN-13734: machine-readable FSM (transcribed from authoritative handler/model logic).
+state_machine:
+  state_machine_name: session_phase_fsm
+  initial_state: idle
+  states:
+    - state_name: idle
+      description: "No active session."
+      required_data: []
+    - state_name: active
+      description: "Session active; phase state materialized."
+      required_data: []
+    - state_name: ended
+      description: "Session ended (terminal)."
+      is_terminal: true
+      required_data: []
+  transitions:
+    - from_state: idle
+      to_state: active
+      trigger: session_started
+      description: "Session started."
+    - from_state: active
+      to_state: active
+      trigger: session_phase_state
+      description: "Phase-state event folded (evaluation updated)."
+    - from_state: active
+      to_state: ended
+      trigger: session_ended
+      description: "Session ended."
+  terminal_states: [ended]
+  persistence_enabled: false

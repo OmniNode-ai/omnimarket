@@ -15,9 +15,6 @@ from omnimarket.adapters.claude_code.delegate import (
     main,
     resolve_topics_from_contract,
 )
-from omnimarket.models.delegation.wire.model_token_limits import (
-    DELEGATION_DEFAULT_MAX_TOKENS,
-)
 
 
 @pytest.mark.unit
@@ -58,11 +55,36 @@ def test_build_delegation_payload_includes_all_fields() -> None:
     assert payload["codex_sandbox_mode"] == "workspace-write"
     assert payload["quality_contract_mode"] == "replace_task_class"
     assert payload["acceptance_criteria"] == ("exactly_two_sentences",)
-    assert payload["max_tokens"] == DELEGATION_DEFAULT_MAX_TOKENS
+    # OMN-13161: max_tokens omitted by default → not in the payload so the
+    # orchestrator resolves the per-backend ceiling from the routing contract.
+    assert "max_tokens" not in payload
     assert payload["metadata"] == {"ticket": "OMN-11623"}
     assert "correlation_id" in payload
     # correlation_id must be a valid UUID string
     UUID(str(payload["correlation_id"]))
+
+
+@pytest.mark.unit
+def test_build_delegation_payload_omits_max_tokens_when_unset() -> None:
+    """OMN-13161: an unset (None) max_tokens is excluded from the payload."""
+    payload = build_delegation_payload(
+        prompt="Test",
+        task_type="test",
+        source="claude-code",
+    )
+    assert "max_tokens" not in payload
+
+
+@pytest.mark.unit
+def test_build_delegation_payload_includes_explicit_max_tokens() -> None:
+    """OMN-13161: an explicit max_tokens is carried through verbatim (no hardcap)."""
+    payload = build_delegation_payload(
+        prompt="Test",
+        task_type="test",
+        source="claude-code",
+        max_tokens=65536,
+    )
+    assert payload["max_tokens"] == 65536
 
 
 @pytest.mark.unit
@@ -112,14 +134,15 @@ def test_build_delegation_payload_rejects_non_positive_max_tokens(
 
 
 @pytest.mark.unit
-def test_build_delegation_payload_rejects_max_tokens_above_hard_limit() -> None:
-    with pytest.raises(ValueError, match="max_tokens"):
-        build_delegation_payload(
-            prompt="Test",
-            task_type="test",
-            source="claude-code",
-            max_tokens=8193,
-        )
+def test_build_delegation_payload_accepts_max_tokens_above_legacy_hard_limit() -> None:
+    """OMN-13161: the 8192 request hardcap is removed; the backend caps instead."""
+    payload = build_delegation_payload(
+        prompt="Test",
+        task_type="test",
+        source="claude-code",
+        max_tokens=8193,
+    )
+    assert payload["max_tokens"] == 8193
 
 
 @pytest.mark.unit

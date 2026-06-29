@@ -15,9 +15,12 @@
 # pricing_ceiling_per_1k_tokens: maximum acceptable cost per 1000 tokens (USD).
 #   local tier ≈ $0.000, cheap_cloud ≈ $0.002, claude ≈ $0.015
 #
-# escalation_policy.tier_order: override the default tier iteration order
-#   (local → cheap_cloud → claude). Only tiers named here are tried first;
-#   remaining tiers from routing_tiers.yaml are appended in config order.
+# escalation_policy.tier_order: the COMPLETE, CLOSED, ORDERED set of tiers
+#   eligible for this task class. Only the tiers named here are tried, in this
+#   order. Tiers NOT listed are excluded for this task class (they are not
+#   appended after the declared order) — the listed ceiling tier is the final
+#   tier tried. When tier_order is absent, the routing_tiers.yaml declaration
+#   order is used instead; that file is the source of truth for fallback order.
 #
 # default_task_model_ref: model ID used when no per-task override is declared.
 #   Maps to the model `id` field in routing_tiers.yaml (e.g. "qwen3-coder-30b").
@@ -32,18 +35,37 @@
 version: "1.0"
 default_task_model_ref: "Qwen3.6-35B-A3B"
 task_model_overrides:
-  # OMN-7980: OpenRouter GLM Flash is the primary code-gen backend (preferred in cheap_cloud tier).
-  # Local .201 served models are the fallback when OPENROUTER_API_KEY is absent.
-  code_generation: "openrouter-glm-flash"
-  test: "openrouter-glm-flash"
-  refactor: "openrouter-glm-flash"
+  # OMN-13380: Direct z.ai GLM-5.2 is the primary code-gen backend (preferred in
+  # the cheap_cloud tier, backend cloud-glm, secret_ref llm.glm.api_key). The
+  # former openrouter-glm-flash override was repointed here: we hold a direct GLM
+  # key, so GLM routes direct to z.ai rather than through the OpenRouter
+  # aggregator (routing-cost principle — OpenRouter is for FREE models only). The
+  # model id "glm-5.2" matches the cheap_cloud tier model id in routing_tiers.yaml.
+  code_generation: "glm-5.2"
+  test: "glm-5.2"
+  refactor: "glm-5.2"
   reasoning: "Qwen3.6-35B-A3B"
   complex_reasoning: "Qwen3.6-35B-A3B"
   planning: "Qwen3.6-35B-A3B"
   review: "Qwen3.6-35B-A3B"
+  # OMN-13541: code_review is its own task class (distinct from the generic
+  # `review`); the local Qwen coder serves it, with cheap_cloud fallback.
+  code_review: "Qwen3.6-35B-A3B"
   research: "Qwen3.6-35B-A3B"
 task_classes:
   code_generation:
+    score_source: deterministic_acceptance
+    acceptance_authority:
+      type: deterministic_acceptance
+      acceptance_version: delegation-deterministic-acceptance.v1
+      evidence_fields:
+        - acceptance_version
+        - corpus_hash
+        - validator_or_artifact_hash
+        - acceptance_command
+        - actual_score
+        - pass
+        - failure_cases
     required_capabilities:
       - code_completion
       - context_window_large
@@ -59,9 +81,16 @@ task_classes:
         - no_refusal
         - follows_codebase_conventions
         - no_obvious_regressions
+    quality_gate:
+      score_source: quality_gate_graded_score
+      required_bar: 0.85
+      request_override_bounds:
+        min: 0.6
+        max: 1.0
     escalation_policy:
       max_escalations: 2
-      # OMN-7980: OpenRouter (cheap_cloud) is primary; local is fallback when key absent.
+      # OMN-13380: cheap_cloud is primary (direct z.ai GLM-5.2 via cloud-glm);
+      # local is the fallback when the GLM key is absent.
       tier_order:
         - cheap_cloud
         - local
@@ -79,9 +108,18 @@ task_classes:
         - no_refusal
         - follows_google_style
         - covers_args_returns_raises
-        # OMN-12964: min_length ensures a single-line summary (e.g. docstring_summary_only)
-        # fails a third heuristic so the per-class margin (min_good - max_bad) reaches >= 0.3.
-        - min_length_chars_50
+        # OMN-13218: semantic_adequacy replaces the blunt min_length_chars_50 floor.
+        # A complete docstring passes; an empty/truncated stub fails. A correct
+        # short docstring is no longer rejected on character count, while the
+        # bad docstring cases still fail on real defects (google-style /
+        # covers_args_returns_raises) so the per-class margin holds.
+        - semantic_adequacy
+    quality_gate:
+      score_source: quality_gate_graded_score
+      required_bar: 0.8
+      request_override_bounds:
+        min: 0.6
+        max: 1.0
     escalation_policy:
       max_escalations: 1
       tier_order:
@@ -105,10 +143,24 @@ task_classes:
       heuristic:
         - no_refusal
         - accurate
-        # OMN-12964: min_length_chars_200 ensures a short refusal or uncertain stub
-        # fails a third heuristic so the per-class margin (min_good - max_bad) reaches >= 0.3.
-        # A well-formed prose document (the only accepted good output) comfortably exceeds 200 chars.
-        - min_length_chars_200
+        # OMN-13218: semantic_adequacy replaces the blunt min_length_chars_200 floor.
+        # A complete prose answer passes at any length; an empty/truncated stub
+        # fails. A correct short document is no longer rejected on character
+        # count. The bad prose cases still fail on real defects (refusal /
+        # accuracy disclaimer) so the per-class margin holds.
+        - semantic_adequacy
+    quality_gate:
+      score_source: quality_gate_graded_score
+      required_bar: 0.8
+      request_override_bounds:
+        min: 0.6
+        max: 1.0
+    adequacy_authority:
+      score_source: reproducible_judge
+      rubric_id: delegation_non_verifiable_v1
+      rubric_hash: "sha256:321240472e3b52d21fd8cb9b9b7639bb73161a2945adf580948e86275ce20681"
+      event_topic_ref: delegation_judge_verdict_v1
+      terminology: controlled_reproducible_auditable
     escalation_policy:
       max_escalations: 1
       tier_order:
@@ -118,7 +170,14 @@ task_classes:
     required_capabilities:
       - context_window_large
       - reasoning
-    pricing_ceiling_per_1k_tokens: 0.002
+    # OMN-13215: research declares ``claude`` as its escalation ceiling tier, which
+    # is the HTTP frontier ceiling backend. OMN-13351 repointed that backend off the
+    # dead Anthropic cloud-sonnet to the resolvable Gemini cloud-gemini-pro
+    # (gemini-2.5-flash, served on the AI Studio free-tier key → ceiling tier cost
+    # 0.0). This 0.015 cap stays as a generous ceiling-cap headroom (the 0.0 ceiling
+    # tier is well under it); the prior $0.002 ceiling contradicted the tier_order —
+    # it only "worked" while the ceiling was the free codex-cli OAuth tier.
+    pricing_ceiling_per_1k_tokens: 0.015
     latency_sla_p99_ms: 60000
     cloud_routing_policy: allowed
     definition_of_done:
@@ -126,8 +185,35 @@ task_classes:
         - response_non_empty
       heuristic:
         - no_refusal
-        - cites_specific_lines
-        - explains_tradeoffs
+        # OMN-13354: research is a PROSE research task (cites theorems / papers /
+        # sections), NOT a code review. The prior `cites_specific_lines` +
+        # `explains_tradeoffs` pair was a catch-22: `cites_specific_lines` is a
+        # CODE-line-citation regex (`line N` / `Lnn` / `:nn`) that a legitimate
+        # research answer cannot satisfy, so every research output failed the gate
+        # at every tier with `TASK_MISMATCH: missing specific line citations`
+        # (live 2026-06-19 reprove, score 0.733). `cites_sources` is the
+        # research-appropriate citation check (references / theorem N / [12] /
+        # (Author, 2020) / URL / DOI); `methodical_analysis` replaces the narrow
+        # `explains_tradeoffs` keyword form with a reasoning-structure check
+        # (because / therefore / evidence / risk). A substantive, attributed
+        # research answer passes; a thin/empty answer still fails. The
+        # `cites_specific_lines` / `explains_tradeoffs` code-review checks stay on
+        # the `review` task class below.
+        - cites_sources
+        - methodical_analysis
+        - semantic_adequacy
+    quality_gate:
+      score_source: quality_gate_graded_score
+      required_bar: 0.8
+      request_override_bounds:
+        min: 0.6
+        max: 1.0
+    adequacy_authority:
+      score_source: reproducible_judge
+      rubric_id: delegation_non_verifiable_v1
+      rubric_hash: "sha256:321240472e3b52d21fd8cb9b9b7639bb73161a2945adf580948e86275ce20681"
+      event_topic_ref: delegation_judge_verdict_v1
+      terminology: controlled_reproducible_auditable
     escalation_policy:
       max_escalations: 2
       tier_order:
@@ -135,6 +221,18 @@ task_classes:
         - cheap_cloud
         - claude
   test:
+    score_source: deterministic_acceptance
+    acceptance_authority:
+      type: deterministic_acceptance
+      acceptance_version: delegation-deterministic-acceptance.v1
+      evidence_fields:
+        - acceptance_version
+        - corpus_hash
+        - validator_or_artifact_hash
+        - acceptance_command
+        - actual_score
+        - pass
+        - failure_cases
     required_capabilities:
       - code_completion
     pricing_ceiling_per_1k_tokens: 0.015
@@ -149,6 +247,43 @@ task_classes:
         - no_refusal
         - covers_edge_cases
         - covers_error_paths
+    quality_gate:
+      score_source: quality_gate_graded_score
+      required_bar: 0.8
+      request_override_bounds:
+        min: 0.6
+        max: 1.0
+    escalation_policy:
+      max_escalations: 2
+      tier_order:
+        - local
+        - cheap_cloud
+        - claude
+  validator_generation:
+    score_source: deterministic_acceptance
+    acceptance_authority:
+      type: deterministic_acceptance
+      acceptance_version: node_generation_consumer.corpus_acceptance.v1
+      evidence_fields:
+        - acceptance_version
+        - corpus_hash
+        - validator_or_artifact_hash
+        - acceptance_command
+        - actual_score
+        - pass
+        - failure_cases
+    required_capabilities:
+      - code_completion
+    pricing_ceiling_per_1k_tokens: 0.015
+    latency_sla_p99_ms: 30000
+    cloud_routing_policy: allowed
+    definition_of_done:
+      deterministic:
+        - compiles_without_errors
+        - final_artifact_only
+        - passes_existing_tests
+      heuristic:
+        - no_refusal
     escalation_policy:
       max_escalations: 2
       tier_order:
@@ -167,6 +302,18 @@ task_classes:
       heuristic:
         - no_refusal
         - step_by_step_explanation
+    quality_gate:
+      score_source: quality_gate_graded_score
+      required_bar: 0.8
+      request_override_bounds:
+        min: 0.6
+        max: 1.0
+    adequacy_authority:
+      score_source: reproducible_judge
+      rubric_id: delegation_non_verifiable_v1
+      rubric_hash: "sha256:321240472e3b52d21fd8cb9b9b7639bb73161a2945adf580948e86275ce20681"
+      event_topic_ref: delegation_judge_verdict_v1
+      terminology: controlled_reproducible_auditable
     escalation_policy:
       max_escalations: 1
       tier_order:
@@ -185,6 +332,18 @@ task_classes:
       heuristic:
         - step_by_step_explanation
         - methodical_analysis
+    quality_gate:
+      score_source: quality_gate_graded_score
+      required_bar: 0.8
+      request_override_bounds:
+        min: 0.6
+        max: 1.0
+    adequacy_authority:
+      score_source: reproducible_judge
+      rubric_id: delegation_non_verifiable_v1
+      rubric_hash: "sha256:321240472e3b52d21fd8cb9b9b7639bb73161a2945adf580948e86275ce20681"
+      event_topic_ref: delegation_judge_verdict_v1
+      terminology: controlled_reproducible_auditable
     escalation_policy:
       max_escalations: 2
       tier_order:
@@ -203,6 +362,18 @@ task_classes:
       heuristic:
         - structured_output
         - covers_dependencies
+    quality_gate:
+      score_source: quality_gate_graded_score
+      required_bar: 0.8
+      request_override_bounds:
+        min: 0.6
+        max: 1.0
+    adequacy_authority:
+      score_source: reproducible_judge
+      rubric_id: delegation_non_verifiable_v1
+      rubric_hash: "sha256:321240472e3b52d21fd8cb9b9b7639bb73161a2945adf580948e86275ce20681"
+      event_topic_ref: delegation_judge_verdict_v1
+      terminology: controlled_reproducible_auditable
     escalation_policy:
       max_escalations: 1
       tier_order:
@@ -221,6 +392,42 @@ task_classes:
       heuristic:
         - cites_specific_lines
         - explains_tradeoffs
+    quality_gate:
+      score_source: quality_gate_graded_score
+      required_bar: 0.8
+      request_override_bounds:
+        min: 0.6
+        max: 1.0
+    escalation_policy:
+      max_escalations: 1
+      tier_order:
+        - local
+        - cheap_cloud
+  # OMN-13541: code_review is a first-class task class. It was accepted at the
+  # consumer-facing delegation surface (allowed_task_types + the claude/codex
+  # adapter) but had no task-class contract here and only the local-coder tier in
+  # routing_tiers.yaml `use_for`, so a missing local backend stranded it and the
+  # quality gate's required-bar authority had nothing to resolve. Mirrors `review`
+  # but with code-review-specific DoD heuristics and a cloud fallback ladder.
+  code_review:
+    required_capabilities:
+      - reasoning
+      - code_completion
+    pricing_ceiling_per_1k_tokens: 0.002
+    latency_sla_p99_ms: 60000
+    cloud_routing_policy: allowed
+    definition_of_done:
+      deterministic:
+        - response_non_empty
+      heuristic:
+        - cites_specific_lines
+        - no_obvious_regressions
+    quality_gate:
+      score_source: quality_gate_graded_score
+      required_bar: 0.8
+      request_override_bounds:
+        min: 0.6
+        max: 1.0
     escalation_policy:
       max_escalations: 1
       tier_order:
@@ -239,10 +446,24 @@ task_classes:
         - no_refusal
         - concise
         - accurate
-        # OMN-12964: min_length_chars_100 ensures a short uncertain stub fails a third
-        # heuristic so the per-class margin (min_good - max_bad) reaches >= 0.3.
-        # A useful summary must be at least one full sentence (~100 chars minimum).
-        - min_length_chars_100
+        # OMN-13218: semantic_adequacy replaces the blunt min_length_chars_100 floor.
+        # A correct short summary (one complete sentence) passes at tier 1 instead
+        # of escalating on a length floor; an empty/truncated stub still fails.
+        # The bad summary cases fail on real defects (refusal / accuracy disclaimer /
+        # truncation) so the per-class margin (min_good - max_bad >= 0.3) holds.
+        - semantic_adequacy
+    quality_gate:
+      score_source: quality_gate_graded_score
+      required_bar: 0.8
+      request_override_bounds:
+        min: 0.6
+        max: 1.0
+    adequacy_authority:
+      score_source: reproducible_judge
+      rubric_id: delegation_non_verifiable_v1
+      rubric_hash: "sha256:321240472e3b52d21fd8cb9b9b7639bb73161a2945adf580948e86275ce20681"
+      event_topic_ref: delegation_judge_verdict_v1
+      terminology: controlled_reproducible_auditable
     escalation_policy:
       max_escalations: 1
       tier_order:
@@ -260,10 +481,20 @@ task_classes:
       heuristic:
         - no_refusal
         - sub_tasks_verified
+    quality_gate:
+      score_source: quality_gate_graded_score
+      required_bar: 0.8
+      request_override_bounds:
+        min: 0.6
+        max: 1.0
+    # OMN-13215: the former shelled ``cli_agents`` tier was removed. Agent
+    # delegation now escalates local → cheap_cloud → the canonical HTTP ceiling
+    # (claude), all of which execute over the bus/inference-effect HTTP path.
     escalation_policy:
-      max_escalations: 1
+      max_escalations: 2
       tier_order:
-        - cli_agents
+        - local
+        - cheap_cloud
         - claude
   escalation:
     required_capabilities:
@@ -278,6 +509,18 @@ task_classes:
       heuristic:
         - no_refusal
         - methodical_analysis
+    quality_gate:
+      score_source: quality_gate_graded_score
+      required_bar: 0.8
+      request_override_bounds:
+        min: 0.6
+        max: 1.0
+    adequacy_authority:
+      score_source: reproducible_judge
+      rubric_id: delegation_non_verifiable_v1
+      rubric_hash: "sha256:321240472e3b52d21fd8cb9b9b7639bb73161a2945adf580948e86275ce20681"
+      event_topic_ref: delegation_judge_verdict_v1
+      terminology: controlled_reproducible_auditable
     escalation_policy:
       max_escalations: 1
       tier_order:

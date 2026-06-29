@@ -17,7 +17,8 @@ handler:
 
 handler_routing:
   handlers:
-    - handler:
+    - operation: baseline_compare
+      handler:
         name: HandlerBaselineCompare
         module: omnimarket.nodes.node_baseline_compare.handlers.handler_baseline_compare
 

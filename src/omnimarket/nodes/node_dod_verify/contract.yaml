@@ -4,6 +4,11 @@ contract_version: {major: 1, minor: 0, patch: 0}
 node_type: compute
 node_version: {major: 1, minor: 0, patch: 0}
 
+# OMN-13253: top-level input_model is the source the RuntimeLocal event-driven
+# path uses to seed the initial command. Without it the seeded command omitted
+# the required ticket_id and ModelDodVerifyStartCommand validation failed.
+input_model: omnimarket.nodes.node_dod_verify.models.model_dod_verify_start_command.ModelDodVerifyStartCommand
+
 description: >
   DoD evidence verification compute node. Loads a ticket contract, runs
   evidence checks against it, and emits a structured verification report.
@@ -26,7 +31,10 @@ handler:
 handler_routing:
   routing_strategy: operation_match
   handlers:
-    - handler:
+    # OMN-13253: operation_match entries require an `operation`; runtime_local
+    # rejects the contract without it ("handlers[0].operation is missing").
+    - operation: verify
+      handler:
         name: HandlerDodVerify
         module: omnimarket.nodes.node_dod_verify.handlers.handler_dod_verify
       event_model:

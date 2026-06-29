@@ -36,6 +36,8 @@ from __future__ import annotations
 import os
 from typing import Final
 
+from pydantic import SecretStr
+
 from omnimarket.inference.adapter_inference_bridge import (
     ModelInferenceBridgeConfig,
 )
@@ -46,7 +48,10 @@ from omnimarket.inference.openrouter_models import (
 from omnimarket.inference.registry_context_windows import (
     get_context_window_for_endpoint_env,
 )
-from omnimarket.inference.secret_store_resolver import resolve_api_key
+from omnimarket.inference.secret_store_resolver import (
+    resolve_api_key,
+    resolve_api_key_async,
+)
 
 # key -> (url env var, model_id env var)
 # Context windows are resolved from the model registry at load time via
@@ -76,6 +81,12 @@ _DEFAULT_TIMEOUT_SECONDS: Final[float] = 120.0
 def load_inference_bridge_config_from_env() -> ModelInferenceBridgeConfig:
     """Return a ``ModelInferenceBridgeConfig`` populated from env vars.
 
+    Sync entry point. The OpenRouter key is resolved via the sync
+    ``resolve_api_key`` and therefore MUST NOT be called from inside a running
+    event loop — the sync resolver fails closed there. Async callers (and the
+    runtime auto-wiring boot path) must use
+    :func:`load_inference_bridge_config_from_env_async` instead.
+
     For each registry entry: if the URL env var is set, register the key
     with ``base_url``, ``model_id`` (from the model-name env var, empty string
     if unset), ``transport="http"``, ``context_window``, and ``timeout_seconds``.
@@ -84,6 +95,32 @@ def load_inference_bridge_config_from_env() -> ModelInferenceBridgeConfig:
     OpenRouter models are registered as ``openrouter/<model_id>`` keys when
     OPENROUTER_API_KEY is set. Each entry carries the OpenRouter base URL,
     model_id, and required HTTP-Referer / X-Title headers.
+    """
+    model_configs = _build_static_model_configs()
+    openrouter_key = resolve_api_key("OPENROUTER_API_KEY", required=False)
+    _register_openrouter_models(model_configs, openrouter_key)
+    return ModelInferenceBridgeConfig(model_configs=model_configs)
+
+
+async def load_inference_bridge_config_from_env_async() -> ModelInferenceBridgeConfig:
+    """Async variant of :func:`load_inference_bridge_config_from_env`.
+
+    Identical wiring, but resolves the OpenRouter key through
+    ``resolve_api_key_async`` so it is safe to call from inside a running event
+    loop (the runtime auto-wiring boot path, ``HandlerSegmentation.handle``).
+    The static ``LLM_*`` env reads are pure and shared with the sync loader.
+    """
+    model_configs = _build_static_model_configs()
+    openrouter_key = await resolve_api_key_async("OPENROUTER_API_KEY", required=False)
+    _register_openrouter_models(model_configs, openrouter_key)
+    return ModelInferenceBridgeConfig(model_configs=model_configs)
+
+
+def _build_static_model_configs() -> dict[str, dict[str, object]]:
+    """Build the env-driven static model configs (no secret-store resolution).
+
+    Pure with respect to the secret store — only reads ``LLM_*`` env vars — so
+    it is shared verbatim by the sync and async loaders.
     """
     model_configs: dict[str, dict[str, object]] = {}
 
@@ -111,23 +148,24 @@ def load_inference_bridge_config_from_env() -> ModelInferenceBridgeConfig:
 
         model_configs[key] = cfg
 
-    _register_openrouter_models(model_configs)
-
-    return ModelInferenceBridgeConfig(model_configs=model_configs)
+    return model_configs
 
 
-def _register_openrouter_models(model_configs: dict[str, dict[str, object]]) -> None:
+def _register_openrouter_models(
+    model_configs: dict[str, dict[str, object]],
+    openrouter_key: SecretStr | None,
+) -> None:
     """Populate model_configs with OpenRouter free-tier entries.
 
-    Skips silently when ``OPENROUTER_API_KEY`` is absent so callers never fail
-    on hosts that don't have OpenRouter configured. When the key IS present but
+    ``openrouter_key`` is the already-resolved secret (sync or async). Skips
+    silently when it is ``None`` (or empty) so callers never fail on hosts that
+    don't have OpenRouter configured. When the key IS present but
     ``OPENROUTER_BASE_URL`` is missing, registration fails closed (OMN-12824):
     there is no hardcoded in-code provider URL default to fall back to.
     """
-    resolved_key = resolve_api_key("OPENROUTER_API_KEY", required=False)
-    if resolved_key is None:
+    if openrouter_key is None:
         return
-    api_key = resolved_key.get_secret_value().strip()
+    api_key = openrouter_key.get_secret_value().strip()
     if not api_key:
         return
 
@@ -160,4 +198,7 @@ def _register_openrouter_models(model_configs: dict[str, dict[str, object]]) -> 
         }
 
 
-__all__: list[str] = ["load_inference_bridge_config_from_env"]
+__all__: list[str] = [
+    "load_inference_bridge_config_from_env",
+    "load_inference_bridge_config_from_env_async",
+]

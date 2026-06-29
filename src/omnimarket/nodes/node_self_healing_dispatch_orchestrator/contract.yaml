@@ -31,7 +31,8 @@ handler:
 handler_routing:
   routing_strategy: operation_match
   handlers:
-    - handler:
+    - operation: self_healing_dispatch
+      handler:
         name: HandlerSelfHealingDispatchOrchestrator
         module: omnimarket.nodes.node_self_healing_dispatch_orchestrator.handlers.handler_self_healing_dispatch_orchestrator
 

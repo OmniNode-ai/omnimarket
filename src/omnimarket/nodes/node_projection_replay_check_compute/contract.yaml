@@ -1,0 +1,70 @@
+---
+name: node_projection_replay_check_compute
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: compute
+node_version: {major: 1, minor: 0, patch: 0}
+description: >
+  Deterministic compute node that classifies projection events by
+  replay/idempotence status (OMN-12884). Given a list of projection events
+  (correlation_id + topic + table), each (correlation_id, table) pair is
+  classified as: replay-proven, runtime-observed, blocked, or superseded.
+  Pure function; no I/O.
+
+handler:
+  module: omnimarket.nodes.node_projection_replay_check_compute.handlers.handler_projection_replay_check
+  class: HandlerProjectionReplayCheck
+  input_model: omnimarket.nodes.node_projection_replay_check_compute.models.model_replay_check.ModelReplayCheckRequest
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: check
+      handler:
+        name: HandlerProjectionReplayCheck
+        module: omnimarket.nodes.node_projection_replay_check_compute.handlers.handler_projection_replay_check
+
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 5000
+
+inputs:
+  events:
+    type: list
+    required: true
+    description: >
+      List of projection events to classify. Each event carries
+      correlation_id, source_topic, partition, offset, and table.
+
+outputs:
+  status:
+    type: str
+    enum: [clean, findings, error]
+  total_correlations:
+    type: int
+  replay_proven:
+    type: int
+  runtime_observed:
+    type: int
+  blocked:
+    type: int
+  superseded:
+    type: int
+  findings:
+    type: list
+    description: >
+      Non-clean correlations (blocked or superseded). Empty list when status=clean.
+
+terminal_event: onex.evt.omnimarket.projection-replay-check-completed.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.projection-replay-check-start.v1
+  publish_topics:
+    - onex.evt.omnimarket.projection-replay-check-completed.v1
+
+runtime_profiles: [main]
+
+metadata:
+  transport_type: kafka

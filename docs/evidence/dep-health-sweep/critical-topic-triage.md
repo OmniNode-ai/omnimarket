@@ -25,7 +25,7 @@ omnibase_core). This document triages each finding by searching ALL repos under 
 | `onex.cmd.omnibase-infra.consumer-restart.v1` | `node_consumer_health_triage_effect` (omnibase_infra) | NO — runtime-worker uses process-level restart (`util_consumer_restart`), not a Kafka node | `genuinely_unwired` | Allowlisted in omnibase_infra with expiry 2026-08-15 |
 | `onex.cmd.omnimarket.alert-fix-requested.v1` | `node_monitor_alert_responder` (omnimarket) | NO — auto-remediation dispatch node not yet implemented | `genuinely_unwired` | Allowlisted with expiry 2026-08-15 |
 | `onex.cmd.omnimarket.build-dispatch-effect-start.v1` | `node_swarm_supervisor_orchestrator` (omnimarket) | NO — `node_build_dispatch_effect` subscribes to `build-loop-build.v1` (different topic) | `genuinely_unwired` (topic mismatch) | Allowlisted with expiry 2026-08-15 |
-| `onex.cmd.omnimarket.cross-cli-delegation-requested.v1` | `node_cross_cli_originator` (omnimarket, OMN-10143, 2026-05-09) | NO — new node, subscriber not yet wired | `genuinely_unwired` | Allowlisted with expiry 2026-08-15 |
+| `onex.cmd.omnimarket.cross-cli-delegation-requested.v1` | `node_cross_cli_originator` (omnimarket, 2026-05-09) | NO — new node, subscriber not yet wired | `genuinely_unwired` | Allowlisted with expiry 2026-08-15 |
 | `onex.cmd.omnimarket.delegation-request.v1` | `node_dispatch_worker_execution_effect`, `node_build_dispatch_effect` (omnimarket) | NO — delegation orchestrators subscribe to `omnibase-infra` prefix, not `omnimarket` prefix | `genuinely_unwired` (prefix inconsistency) | Allowlisted with expiry 2026-08-15 |
 
 ---
@@ -114,7 +114,7 @@ The sweep's per-repo isolation causes this to appear as an orphan when scanning 
 
 ### Topic 8: `onex.cmd.omnimarket.cross-cli-delegation-requested.v1` — ALLOWLISTED
 
-**Publisher:** `node_cross_cli_originator` (omnimarket, created 2026-05-09, OMN-10143)
+**Publisher:** `node_cross_cli_originator` (omnimarket, created 2026-05-09)
 **Intended subscriber:** `node_delegation_orchestrator` (omnimarket) or bridge node
 **Why not wired:** New node created recently; the delegation orchestrator subscribes to `onex.cmd.omnibase-infra.delegation-request.v1` (omnibase-infra prefix), not the omnimarket-prefixed cross-cli topic.
 **Action needed:** Wire `node_delegation_orchestrator` to also subscribe to `cross-cli-delegation-requested.v1`, or create a topic bridge.
@@ -138,7 +138,7 @@ The sweep's per-repo isolation causes this to appear as an orphan when scanning 
 - `src/omnimarket/nodes/node_delegation_orchestrator/contract.yaml` — added `externally_consumed_topics` for `remote-agent-invoke.v1`
 - `src/dep_health_allowlist.yaml` — created with 7 genuinely-unwired topic entries
 
-### omnibase_infra (separate PR: OMN-11058-infra)
+### omnibase_infra (separate companion PR)
 - `src/dep_health_allowlist.yaml` — created with 1 entry for `consumer-restart.v1`
 
 ---

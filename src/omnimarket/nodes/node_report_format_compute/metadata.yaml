@@ -1,0 +1,23 @@
+name: node_report_format_compute
+version: "1.0.0"
+description: "Report format compute — converts markdown+metrics into Slack Block Kit blocks (OMN-13724)"
+omnibase_core_compat: ">=0.40.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_report_format_compute: "omnimarket.nodes.node_report_format_compute"
+capabilities:
+  standalone: false
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: none
+dependencies:
+  - "omnibase_core>=0.40.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["compute", "slack", "block-kit", "formatting", "report", "OMN-13724"]
+pack: "build"
+display_name: "Report Format Compute"
+node_role: "compute"

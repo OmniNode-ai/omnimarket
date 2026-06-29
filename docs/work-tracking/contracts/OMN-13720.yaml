@@ -1,0 +1,68 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-13720"
+title: "Consolidate EnumBudgetAction to omnibase_core canonical — remove inline definitions in omnimarket"
+summary: >-
+  Pure code-consolidation refactor. EnumBudgetAction (CONTINUE/WARN/THROTTLE/ABORT)
+  existed in three places: omnibase_core (canonical), omnimarket delegation wire
+  model_budget.py (inline class), and node_budget_policy_compute/models/model_budget_policy_enums.py
+  (inline class). This PR converts the delegation wire model to a re-export shim, removes the
+  duplicate inline class from model_budget_policy_enums.py, updates four consumers
+  (model_budget_policy_result.py, handler_budget_policy.py, test_handler_budget_policy.py,
+  handler_compliance_loop.py) to import directly from omnibase_core.enums.enum_budget_action,
+  and removes the handler_compliance_loop cross-node reach-in allowlist entry. No new runtime,
+  event-bus topic, REST endpoint, node contract, runtime_profile, or live infrastructure
+  mutation is introduced.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-no-duplicate-enum-definition"
+    description: >-
+      EnumBudgetAction is no longer defined inline in omnimarket. grep for 'class EnumBudgetAction'
+      in omnimarket src returns zero hits.
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          grep -r 'class EnumBudgetAction' src/ | grep -v __pycache__ | wc -l | grep -q '^0$'
+  - id: "dod-budget-policy-tests-pass"
+    description: >-
+      All 29 budget-policy handler unit tests pass with EnumBudgetAction imported
+      from omnibase_core.enums.enum_budget_action.
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          uv run pytest src/omnimarket/nodes/node_budget_policy_compute/tests/ -v -q
+  - id: "dod-cross-node-reach-in-allowlist-shrunk"
+    description: >-
+      test_no_cross_node_reach_in.py passes with the EnumBudgetAction allowlist entry removed
+      and baseline reduced from 84 to 83.
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          uv run pytest tests/test_no_cross_node_reach_in.py -v -q
+  - id: "dod-mypy-strict-clean"
+    description: >-
+      mypy --strict passes over the full omnimarket source tree including the updated imports.
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run mypy src/omnimarket/ --strict"
+  - id: "dod-no-runtime-mutation"
+    description: >-
+      Pure import-consolidation refactor; no live deploy, .201 mutation, event-bus topic change,
+      REST endpoint addition, or production data mutation was performed.
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          printf '%s\n' 'deploy gate: OMN-13720 is a pure import-consolidation refactor
+          with no live deploy, .201 mutation, event-bus topic change, REST endpoint, or
+          production data mutation'

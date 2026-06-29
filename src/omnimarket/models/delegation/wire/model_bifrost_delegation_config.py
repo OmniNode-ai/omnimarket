@@ -127,13 +127,17 @@ class ModelDelegationBackendConfig(BaseModel):
     backend_id: str = Field(
         ..., min_length=1, description="Stable human-readable slug."
     )
-    base_url_env: str | None = Field(
+    endpoint_url_env: str | None = Field(
         default=None,
-        description="Env var name holding the backend base URL (local backends).",
+        description=(
+            "Env var name holding the COMPLETE endpoint URL for local backends "
+            "(incl. /v1/chat/completions). Resolved verbatim — no construction "
+            "(OMN-13159 / OMN-12815)."
+        ),
     )
     endpoint_url: str | None = Field(
         default=None,
-        description="Endpoint URL populated by the deploy-time overlay. Null for local backends until overlay is applied.",
+        description="COMPLETE endpoint URL (incl. the full chat/completions path) populated by the deploy-time overlay, posted verbatim. Null for local backends until the overlay is applied.",
     )
     model_name: str | None = Field(
         default=None,
@@ -169,6 +173,17 @@ class ModelDelegationBackendConfig(BaseModel):
         ge=100,
         le=600000,
         description="Per-backend HTTP timeout in milliseconds.",
+    )
+    max_tokens: int = Field(
+        default=65536,
+        ge=1,
+        le=200000,
+        description=(
+            "Per-backend output-token budget/ceiling, resolved from the routing "
+            "contract (overlay-overridable). Bounded by the backend model's "
+            "context window. Local Qwen 128k backends carry 65536; cloud backends "
+            "carry their real provider output ceiling (OMN-13161)."
+        ),
     )
     capabilities: tuple[str, ...] = Field(
         default_factory=tuple,

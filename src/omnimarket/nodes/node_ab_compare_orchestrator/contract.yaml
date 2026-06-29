@@ -14,7 +14,8 @@ description: >
 handler_routing:
   routing_strategy: operation_match
   handlers:
-    - handler:
+    - operation: ab_compare
+      handler:
         name: HandlerAbCompareOrchestrator
         module: omnimarket.nodes.node_ab_compare_orchestrator.handlers.handler_ab_compare_orchestrator
       event_model:

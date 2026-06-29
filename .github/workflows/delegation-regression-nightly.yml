@@ -1,0 +1,115 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# delegation-regression-nightly.yml — Layer-2 delegation regression runner (OMN-13540).
+#
+# Runs the versioned golden-task corpus (tests/delegation_golden/corpus.yaml)
+# end-to-end against the stability-test lane on .201 via a self-hosted runner
+# that has bus + Postgres access. Publishes each integration case to the live
+# bus, reads the delegation_events projection, asserts the expected behavioral
+# block, and uploads the scoreboard artifact. Fails on any HARD (non-xfail)
+# assertion break.
+#
+# NIGHTLY (not pre-merge). The Layer-1 contract/unit gate runs on every PR via
+# the existing ci.yml pytest job (tests under tests/delegation_golden/ that are
+# NOT gated on OMN_ALLOW_LIVE_E2E_PROBE).
+#
+# Self-hosted lane access: the runner labelled `omnibase-ci` runs on the .201
+# network and can reach the stability-test Redpanda (:39092) and Postgres
+# (:15436). The stability-test Postgres password is provided via the
+# STABILITY_TEST_POSTGRES_PASSWORD secret (or the shared POSTGRES_PASSWORD).
+
+name: Delegation Regression (nightly)
+
+on:
+  schedule:
+    # 07:30 UTC nightly — after the dev/stability redeploy window settles.
+    - cron: '30 7 * * *'
+  workflow_dispatch:
+    inputs:
+      lane:
+        description: 'Lane to probe (stability-test | dev)'
+        type: string
+        required: false
+        default: 'stability-test'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: delegation-regression-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  golden-tasks:
+    name: Layer-2 golden tasks (live)
+    # Self-hosted runner with .201 lane access. Public forks never run this
+    # scheduled job (no lane access); it is intentionally a self-hosted-only job.
+    runs-on: >-
+      ${{ fromJSON(vars.OMNI_TRUSTED_CI_RUNS_ON_JSON || '["self-hosted","omnibase-ci"]') }}
+    timeout-minutes: 45
+    env:
+      ONEX_E2E_LANE: ${{ github.event.inputs.lane || 'stability-test' }}
+      # Lane addresses come from repo vars (no IP literal in CI config). When a
+      # var is unset these resolve empty and the runner falls back to its own
+      # annotated stability-test defaults (tests/delegation_golden/runner.py).
+      # Set STABILITY_TEST_KAFKA_BOOTSTRAP / _POSTGRES_HOST / _POSTGRES_PORT repo
+      # vars to point the nightly at a different lane without editing this file.
+      ONEX_E2E_KAFKA_BOOTSTRAP: ${{ vars.STABILITY_TEST_KAFKA_BOOTSTRAP }}
+      ONEX_E2E_POSTGRES_HOST: ${{ vars.STABILITY_TEST_POSTGRES_HOST }}
+      ONEX_E2E_POSTGRES_PORT: ${{ vars.STABILITY_TEST_POSTGRES_PORT }}
+      ONEX_E2E_POSTGRES_DB: omnidash_analytics
+      ONEX_E2E_POSTGRES_USER: postgres
+      ONEX_E2E_POSTGRES_PASSWORD: ${{ secrets.STABILITY_TEST_POSTGRES_PASSWORD || secrets.POSTGRES_PASSWORD }}
+      # Opt-in guard that the Layer-2 pytest module / runner require.
+      OMN_ALLOW_LIVE_E2E_PROBE: 'true'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Clone sibling repos (workspace deps)
+        run: |
+          git clone --depth=1 https://github.com/OmniNode-ai/omnibase_core.git ../omnibase_core
+          git clone --depth=1 https://github.com/OmniNode-ai/omnibase_compat.git ../omnibase_compat
+          git clone --depth=1 https://github.com/OmniNode-ai/omnimemory.git ../omnimemory
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          version: "latest"
+
+      - name: Set up Python 3.12
+        run: uv python install 3.12
+
+      - name: Install dependencies
+        run: uv sync --locked --all-extras
+
+      - name: Preflight — fail loud if the lane password is missing
+        run: |
+          if [ -z "${ONEX_E2E_POSTGRES_PASSWORD}" ]; then
+            echo "::error::STABILITY_TEST_POSTGRES_PASSWORD / POSTGRES_PASSWORD is not set."
+            echo "::error::The nightly Layer-2 runner cannot reach the lane Postgres without it."
+            exit 1
+          fi
+          echo "Lane=${ONEX_E2E_LANE} kafka=${ONEX_E2E_KAFKA_BOOTSTRAP} pg=${ONEX_E2E_POSTGRES_HOST}:${ONEX_E2E_POSTGRES_PORT}"
+
+      - name: Run Layer-2 golden-task runner (scoreboard)
+        id: runner
+        run: |
+          uv run python -m tests.delegation_golden.runner \
+            --out delegation_regression_scoreboard.json
+
+      - name: Run Layer-2 pytest (xfail-aware, fails on hard breaks)
+        if: always()
+        run: |
+          uv run pytest tests/delegation_golden/test_layer2_live_runner.py \
+            -v -m e2e --no-header
+
+      - name: Upload scoreboard artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: delegation-regression-scoreboard
+          path: delegation_regression_scoreboard.json
+          if-no-files-found: warn
+          retention-days: 30

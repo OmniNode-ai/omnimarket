@@ -1,0 +1,73 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-13676"
+title: "WS-5 Wave 2: multi-param integration tests for runtime/infra sweeps (+ db_sweep collector seam)"
+summary: >-
+  Repo-local deploy-gate evidence carrier for omnimarket PR. Adds real
+  multi-parameter end-to-end integration tests (>=3 distinct param sets and >=1
+  negative control each, asserting typed result fields) for seven omnimarket
+  nodes: node_runtime_sweep, node_database_sweep, node_duplication_sweep,
+  node_env_parity_compute, node_bus_audit_compute,
+  node_environment_health_scanner, and node_platform_readiness. The only source
+  change is an additive, testability-only collector seam on node_database_sweep:
+  a constructor-injected psql probe runner (NodeDatabaseSweep(psql_runner=...))
+  resolved at call time so existing module-_psql patches keep working and
+  production behavior (live _psql subprocess) is byte-for-byte unchanged. No
+  event-bus topic, REST endpoint, node contract, runtime_profile, image
+  dependency, or live runtime mutation is changed.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-wave2-integration-suite-passes"
+    description: >-
+      All 54 new parametrized integration tests across the seven Wave-2 node
+      directories pass in-process on the in-memory path (no live Kafka / .201).
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          uv run pytest tests/integration/node_runtime_sweep
+          tests/integration/node_database_sweep
+          tests/integration/node_duplication_sweep
+          tests/integration/node_env_parity_compute
+          tests/integration/node_bus_audit_compute
+          tests/integration/node_environment_health_scanner
+          tests/integration/node_platform_readiness -q
+  - id: "dod-db-sweep-seam-non-regressive"
+    description: >-
+      The node_database_sweep psql collector seam does not regress existing
+      unit/golden-chain coverage; the previously module-_psql-patching tests and
+      the new synthetic-row tests both pass.
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          uv run pytest tests/unit/nodes/node_database_sweep
+          tests/test_golden_chain_database_sweep.py
+          tests/integration/node_database_sweep -q
+  - id: "dod-strict-typing-clean"
+    description: >-
+      mypy --strict passes over the omnimarket source tree including the new
+      PsqlRunner seam on node_database_sweep.
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run mypy src/omnimarket/ --strict"
+  - id: "dod-no-runtime-mutation"
+    description: >-
+      Test-only change plus an additive testability seam; no live deploy,
+      restart, .201 mutation, production data mutation, new REST endpoint, or
+      event-bus topic change was performed for this PR.
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          printf '%s\n' 'deploy gate: OMN-13676 is a test-only PR plus an
+          additive constructor-injected psql seam on node_database_sweep; no
+          live deploy, restart, .201 mutation, production data mutation, REST
+          endpoint, or topic change performed'

@@ -14,6 +14,9 @@ from __future__ import annotations
 from unittest.mock import MagicMock
 
 import pytest
+from omnibase_core.protocols.event_bus.protocol_event_bus_publisher import (
+    ProtocolEventBusPublisher,
+)
 
 from omnimarket.nodes.node_build_loop.handlers.handler_build_loop import (
     HandlerBuildLoop,
@@ -27,7 +30,7 @@ from omnimarket.nodes.node_overseer_verifier.handlers.handler_overseer_verifier 
 
 
 def _make_event_bus() -> MagicMock:
-    bus = MagicMock()
+    bus = MagicMock(spec=ProtocolEventBusPublisher)
     bus.publish = MagicMock(return_value=None)
     bus.publish_envelope = MagicMock(return_value=None)
     return bus

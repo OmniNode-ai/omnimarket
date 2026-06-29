@@ -1,6 +1,6 @@
 name: node_pr_lifecycle_state_reducer
 version: "1.0.0"
-description: "PR lifecycle FSM reducer — pure state machine: (state, event) -> (new_state, intents[])"
+description: "PR lifecycle FSM reducer — pure state machine: (state, event) -> (new_state, intents[]); emits a durable per-iteration PR ledger projection (OMN-13321)"
 omnibase_core_compat: ">=0.39.0,<1.0.0"
 pack: pr_lifecycle
 node_role: reducer
@@ -20,4 +20,4 @@ dependencies:
   - "omnibase_core>=0.39.0"
 authors: ["OmniNode Platform Team"]
 license: "MIT"
-tags: ["reducer", "fsm", "pr-lifecycle"]
+tags: ["reducer", "fsm", "pr-lifecycle", "projection", "ledger"]

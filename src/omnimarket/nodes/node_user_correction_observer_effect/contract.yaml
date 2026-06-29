@@ -1,0 +1,140 @@
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+# ONEX Contract: node_user_correction_observer_effect
+# EFFECT node — observes a typed user correction and publishes it as a
+# category-weighted ModelUserCorrectionEvent fact on the bus (OMN-12846).
+#
+# The correction event is linked to the context pack / factor subset in play and
+# is dimensioned by failure axis (MISUNDERSTANDING vs NEW_INFORMATION). Only the
+# MISUNDERSTANDING axis is a context-selection-quality signal downstream; the
+# signal feeds context selection ONLY and is never wired to an agent-output
+# reward (anti-sycophancy invariant).
+
+name: node_user_correction_observer_effect
+contract_version: {major: 0, minor: 1, patch: 0}
+node_version: {major: 0, minor: 1, patch: 0}
+uuid: "2f9a7c14-6b3d-4e85-9c1a-7d0e2b4f8a31"
+node_type: effect
+runtime_profiles:
+  - effects
+input_model: "omnimarket.intelligence.events.ModelUserCorrectionEvent"
+output_model: "omnimarket.intelligence.events.ModelUserCorrectionEvent"
+handler:
+  module: omnimarket.nodes.node_user_correction_observer_effect.handler_user_correction_observer
+  class: HandlerUserCorrectionObserver
+  input_model: omnimarket.intelligence.events.ModelUserCorrectionEvent
+
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  idempotent: true
+  timeout_ms: 30000
+  runtime_profiles:
+    - effects
+
+description: |
+  Observes a typed user correction (category + failure axis + context linkage)
+  and republishes it as a durable ModelUserCorrectionEvent fact on the bus.
+
+  The publish topic is declared here in event_bus.publish_topics — the handler
+  resolves it from injected config, never hardcoding a topic literal.
+
+# === DOD EVIDENCE ===
+dod_evidence:
+  ticket: "OMN-12846"
+  parent_epic: "OMN-12837"
+  contract_driven_routing: true
+  no_hardcoded_paths: true
+  no_hardcoded_topic_literals: true
+  correlation_id_required: true
+  unit_tests: true
+
+# =============================================================================
+# PUBLISHED EVENTS (Kafka) — Documentation Layer
+# =============================================================================
+published_events:
+  - topic_suffix: "onex.evt.omnimarket.user-correction.v1"
+    full_topic_pattern: "{env}.onex.evt.omnimarket.user-correction.v1"
+    event_type: "UserCorrection"
+    trigger: "A typed user correction is observed and republished as a fact."
+    description: "Category-weighted user-correction event linked to context_pack_hash and factor_subset_hash."
+    payload_fields:
+      - name: "event_type"
+        type: "string"
+        description: "Always 'UserCorrection'"
+      - name: "session_id"
+        type: "string"
+        description: "Session reference"
+      - name: "correlation_id"
+        type: "string"
+        description: "Correlation ID for distributed tracing"
+      - name: "category"
+        type: "string"
+        description: "EnumUserCorrectionCategory member"
+      - name: "failure_axis"
+        type: "string"
+        description: "EnumCorrectionFailureAxis member (MISUNDERSTANDING | NEW_INFORMATION)"
+      - name: "context_pack_hash"
+        type: "string"
+        description: "SHA-256 digest of the context pack in play (required)"
+      - name: "factor_subset_hash"
+        type: "string"
+        description: "SHA-256 digest of the factor subset in play (required)"
+
+# === EVENT TYPE CONFIGURATION ===
+event_type:
+  version: {major: 1, minor: 0, patch: 0}
+  primary_events: ["user_correction_observed"]
+  event_categories: ["correction", "intelligence", "context-selection", "effect"]
+  publish_events: true
+  subscribe_events: true
+  event_routing: "correction"
+  invocation_mode: "subscription"
+
+# =============================================================================
+# EVENT BUS SUBCONTRACT — Runtime Routing Layer (source of truth for topics)
+# =============================================================================
+event_bus:
+  version:
+    major: 1
+    minor: 0
+    patch: 0
+
+  subscribe_topics:
+    - "onex.cmd.omnimarket.user-correction-observed.v1"
+
+  publish_topics:
+    - "onex.evt.omnimarket.user-correction.v1"
+
+  subscribe_topic_metadata:
+    "onex.cmd.omnimarket.user-correction-observed.v1":
+      schema_ref: "omnimarket.intelligence.events.ModelUserCorrectionEvent"
+      description: "Command carrying a typed user correction to be republished as a durable fact."
+
+  publish_topic_metadata:
+    "onex.evt.omnimarket.user-correction.v1":
+      schema_ref: "omnimarket.intelligence.events.ModelUserCorrectionEvent"
+      description: "Category-weighted user-correction fact linked to context pack / factor subset."
+
+externally_consumed_topics:
+  - "onex.evt.omnimarket.user-correction.v1"
+
+# === HANDLER ROUTING ===
+handler_routing:
+  handlers:
+    - operation: "observe"
+      handler_class: "HandlerUserCorrectionObserver"
+      handler_module: "omnimarket.nodes.node_user_correction_observer_effect.handler_user_correction_observer"
+      handler:
+        name: "HandlerUserCorrectionObserver"
+        module: "omnimarket.nodes.node_user_correction_observer_effect.handler_user_correction_observer"
+        handler_type: "EFFECT"
+
+# === HANDLER CONFIGURATION ===
+handler_config:
+  handler_class: "HandlerUserCorrectionObserver"
+  handler_module: "omnimarket.nodes.node_user_correction_observer_effect.handler_user_correction_observer"
+
+metadata:
+  transport_type: kafka

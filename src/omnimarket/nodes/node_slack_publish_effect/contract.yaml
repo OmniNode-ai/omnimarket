@@ -1,0 +1,120 @@
+---
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Slack Publish Effect (OMN-13723)
+#
+# EFFECT: generic, secret-store-backed Slack publish primitive.
+# Posts any pre-formed payload (Block Kit blocks or text) to any Slack channel.
+# All content formatting is the caller's responsibility — this node validates
+# and sends only. Token resolved at the effect boundary via api_key_ref.
+name: node_slack_publish_effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: effect
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  EFFECT: generic Slack publish primitive. Accepts a pre-formed payload
+  (channel + blocks/text + optional thread_ts) and posts it via
+  https://slack.com/api/chat.postMessage. The Slack bot token is resolved at
+  the effect boundary from the contract-declared api_key_ref via the canonical
+  secret-store resolver — no env read, no literal token in source.
+  Maintains a durable publish ledger keyed by idempotency_key so retries and
+  double-triggers produce exactly one Slack post and one deduped/skipped event.
+
+input_model:
+  name: ModelSlackPublish
+  module: omnimarket.nodes.node_slack_publish_effect.models.model_slack_publish
+  description: "Channel + payload + idempotency key for a single Slack post."
+
+output_model:
+  name: ModelSlackPublishResult
+  module: omnimarket.nodes.node_slack_publish_effect.models.model_slack_publish
+  description: "Publish outcome: success/deduped/error plus the returned slack_ts."
+
+handler:
+  module: omnimarket.nodes.node_slack_publish_effect.handlers.handler_slack_publish_effect
+  class: HandlerSlackPublishEffect
+  input_model: omnimarket.nodes.node_slack_publish_effect.models.model_slack_publish.ModelSlackPublish
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: slack_publish
+      handler:
+        name: HandlerSlackPublishEffect
+        module: omnimarket.nodes.node_slack_publish_effect.handlers.handler_slack_publish_effect
+      event_model:
+        name: ModelSlackPublish
+        module: omnimarket.nodes.node_slack_publish_effect.models.model_slack_publish
+
+descriptor:
+  node_archetype: effect
+  purity: impure
+  idempotent: true
+  timeout_ms: 30000
+  runtime_profiles:
+    - effects
+
+secrets:
+  # Slack bot token is contract-declared so the handler reads the ref name from
+  # here — not a bare source literal. Value is resolved at the effect boundary
+  # via the canonical secret-store resolver. In prod, provision SLACK_BOT_TOKEN
+  # in Infisical; locally, set it as an env var.
+  SLACK_BOT_TOKEN:
+    description: "Slack bot token (xoxb-...) for chat.postMessage."
+    required: true
+
+endpoints:
+  # Full, verbatim Slack Web API URL (honors "all URLs from contracts" +
+  # Bifrost complete-URL/fail-closed rule). Never appended-to at runtime.
+  slack_chat_post_message:
+    url: https://slack.com/api/chat.postMessage
+    method: POST
+    description: "Slack Web API chat.postMessage endpoint."
+
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.slack-publish.v1
+  terminal_events:
+    success: onex.evt.omnimarket.slack-published.v1
+    failure: onex.evt.omnimarket.slack-publish-failed.v1
+
+event_bus:
+  consumer_group: omnimarket.slack_publish_effect.consume.v1
+  subscribe_topics:
+    - onex.cmd.omnimarket.slack-publish.v1
+  publish_topics:
+    - onex.evt.omnimarket.slack-published.v1
+    - onex.evt.omnimarket.slack-publish-failed.v1
+    - onex.evt.omnimarket.slack-publish-deduped.v1
+  dlq_topics:
+    - onex.dlq.omnimarket.slack-publish.v1
+
+terminal_event: onex.evt.omnimarket.slack-published.v1
+
+dod_evidence:
+  phase: 1
+  artifacts:
+    - tests/test_golden_chain_slack_publish_effect.py
+  validation_notes: >
+    Phase 1: contract-driven publish with injected transport stub; secret
+    fail-closed when unset; idempotency ledger deduplication; handler
+    does not read env directly. Phase 2 (follow-up): migrate legacy
+    node_slack_alerter_effect callers onto this primitive (OMN-13733).
+
+dependencies:
+  packages:
+    - "omnibase_core>=0.45.0"
+    - "aiohttp>=3.9.0"
+
+metadata:
+  transport_type: kafka
+  description: "Generic Slack publish effect node"
+  author: "OmniNode Platform Team"
+  tags:
+    - "effect"
+    - "slack"
+    - "publish"
+    - "notification"
+  related_tickets:
+    - "OMN-13723"
+    - "OMN-13722"

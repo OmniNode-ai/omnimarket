@@ -29,6 +29,7 @@ from typing import Any
 
 import aiohttp
 
+from omnimarket.config.service_endpoints import GITHUB_REST_URL
 from omnimarket.nodes.node_platform_readiness.handlers.handler_platform_readiness import (
     EnumReadinessStatus,
 )
@@ -596,7 +597,7 @@ async def check_ci_health(ctx: CheckContext) -> ModelDimensionResultV2:
 
         async with aiohttp.ClientSession(headers=headers) as session:
             for repo in ctx.github_repos:
-                url = f"https://api.github.com/repos/{repo}/commits/HEAD/check-runs"
+                url = f"{GITHUB_REST_URL}/repos/{repo}/commits/HEAD/check-runs"
                 try:
                     async with session.get(
                         url,

@@ -22,7 +22,7 @@ import re
 import time
 from typing import Any, Literal
 
-from omnimarket.nodes.node_hostile_reviewer.handlers.adapter_inference_bridge import (
+from omnimarket.inference.adapter_inference_bridge import (
     AdapterInferenceBridge,
     ModelInferenceAdapter,
     ModelInferenceBridgeConfig,
