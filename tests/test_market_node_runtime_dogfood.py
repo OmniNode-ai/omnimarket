@@ -85,8 +85,12 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
     # OMN-13075 adds node_projection_baselines_roi: 333 -> 334.
     # OMN-13076 NC-03 adds node_projection_baselines_quality (REDUCER; quality
     # snapshot projection for the omnidash quality-baseline-panel widget): 334 -> 335.
-    assert summary["node_dirs"] == 335
-    assert summary["entry_points"] == 335
+    # OMN-13723 adds node_slack_publish_effect (EFFECT; generic secret-store-backed
+    # Slack publish primitive for the morning deep-dive skill epic): 335 -> 336.
+    # OMN-13724 adds node_report_format_compute (COMPUTE; md+metrics -> Slack
+    # Block Kit payload for the morning-report pipeline): 336 -> 337.
+    assert summary["node_dirs"] == 337
+    assert summary["entry_points"] == 337
     assert summary["missing_entry_points"] == []
     assert summary["dangling_entry_points"] == []
     assert summary["routable"] >= 297

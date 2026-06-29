@@ -51,3 +51,33 @@ metadata:
   related_tickets:
     - OMN-11935
     - OMN-11909
+
+# OMN-13734: machine-readable FSM (transcribed from authoritative handler/model logic).
+state_machine:
+  state_machine_name: knowledge_context_assembler_fsm
+  initial_state: idle
+  states:
+    - state_name: idle
+      description: "No context fragments folded yet."
+      required_data: []
+    - state_name: assembling
+      description: "Fragments accumulating into a context."
+      required_data: []
+    - state_name: assembled
+      description: "Knowledge context assembled."
+      required_data: []
+  transitions:
+    - from_state: idle
+      to_state: assembling
+      trigger: fragment_ready
+      description: "First context fragment ready."
+    - from_state: assembling
+      to_state: assembling
+      trigger: fragment_ready
+      description: "Fold another fragment."
+    - from_state: assembling
+      to_state: assembled
+      trigger: context_assembled
+      description: "Context assembly complete."
+  terminal_states: []
+  persistence_enabled: false

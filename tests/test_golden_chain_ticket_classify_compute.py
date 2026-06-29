@@ -13,11 +13,11 @@ from uuid import uuid4
 import pytest
 from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
 
+from omnimarket.enums.enum_buildability import (
+    EnumBuildability,
+)
 from omnimarket.nodes.node_ticket_classify_compute.handlers.handler_ticket_classify import (
     HandlerTicketClassify,
-)
-from omnimarket.nodes.node_ticket_classify_compute.models.enum_buildability import (
-    EnumBuildability,
 )
 from omnimarket.nodes.node_ticket_classify_compute.models.model_ticket_for_classification import (
     ModelTicketForClassification,

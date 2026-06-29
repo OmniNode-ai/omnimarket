@@ -36,3 +36,30 @@ event_bus:
 
 metadata:
   transport_type: kafka
+
+# OMN-13734: machine-readable FSM (transcribed from authoritative handler/model logic).
+state_machine:
+  state_machine_name: ledger_state_fsm
+  initial_state: idle
+  states:
+    - state_name: idle
+      description: "No ledger hash folded yet."
+      required_data: []
+    - state_name: reduced
+      description: "Ledger state projection materialized."
+      required_data: []
+  transitions:
+    - from_state: idle
+      to_state: reduced
+      trigger: ledger_hash_computed
+      description: "Ledger hash computed; fold into state."
+    - from_state: reduced
+      to_state: reduced
+      trigger: ledger_hash_computed
+      description: "Fold another ledger hash."
+    - from_state: reduced
+      to_state: reduced
+      trigger: ledger_state_reduced
+      description: "Re-observe own projection (idempotent)."
+  terminal_states: []
+  persistence_enabled: false

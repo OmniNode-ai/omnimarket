@@ -217,3 +217,30 @@ metadata:
   transport_type: kafka
   implementation_wave: 3
   related_tickets: ["OMN-11472", "OMN-11473", "OMN-11475", "OMN-11476"]
+
+# OMN-13734: machine-readable FSM (transcribed from authoritative handler/model logic).
+state_machine:
+  state_machine_name: evidence_dashboard_fsm
+  initial_state: idle
+  states:
+    - state_name: idle
+      description: "No dashboard evidence folded yet."
+      required_data: []
+    - state_name: reduced
+      description: "Evidence dashboard projection materialized."
+      required_data: []
+  transitions:
+    - from_state: idle
+      to_state: reduced
+      trigger: dashboard_normalized
+      description: "Normalized dashboard evidence folded."
+    - from_state: reduced
+      to_state: reduced
+      trigger: dashboard_normalized
+      description: "Fold more normalized evidence."
+    - from_state: reduced
+      to_state: reduced
+      trigger: dashboard_reduced
+      description: "Re-observe own projection (idempotent)."
+  terminal_states: []
+  persistence_enabled: false
