@@ -1,0 +1,77 @@
+---
+name: node_projection_receipt_gate
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: reducer
+node_version: {major: 1, minor: 0, patch: 0}
+input_model: ModelReceiptGateProjectionInput
+description: >
+  Projects OCC/DoD receipt-gate outcomes (verification receipt completions and
+  OCC evidence validations) into a queryable snapshot consumed by the omnidash
+  receipt-gate widget.
+
+handler:
+  module: omnimarket.nodes.node_projection_receipt_gate.handlers.handler_projection_receipt_gate
+  class: HandlerProjectionReceiptGate
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: reduce_receipt_gate
+      input_model: ModelReceiptGateProjectionInput
+      handler:
+        name: HandlerProjectionReceiptGate
+        module: omnimarket.nodes.node_projection_receipt_gate.handlers.handler_projection_receipt_gate
+
+descriptor:
+  node_archetype: reducer
+  purity: pure
+  idempotent: true
+  timeout_ms: 5000
+
+projection_api:
+  expose: true
+  exposures:
+    - topic: onex.snapshot.projection.receipt-gate.v1  # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
+      table: receipt_gate_rows
+      schema: public
+      columns:
+        - id
+        - name
+        - pass
+        - detail
+        - pr_ref
+        - worker
+        - verifier
+        - evidence_count
+        - evidence_hash
+        - signed_at
+        - observed_at
+      order_by: observed_at DESC
+      freshness_column: observed_at
+      limit: 100
+  snapshots:
+    - topic: onex.snapshot.projection.receipt-gate.v1  # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
+      model: omnimarket.nodes.node_projection_receipt_gate.models.model_receipt_gate_row.ModelReceiptGateRow
+      ownership: authoritative
+      ordering: observed_at_desc
+
+db_io:
+  db_tables:
+    - name: receipt_gate_rows
+      migration: "0000_create_receipt_gate_projection_table.sql"
+      access: write
+      database: omnidash_analytics
+      role: receipt_gate_projection
+
+event_bus:
+  subscribe_topics:
+    - onex.evt.omnimarket.verification-receipt-completed.v1
+    - onex.evt.omnimarket.evidence-validated.v1
+  publish_topics:
+    - onex.snapshot.projection.receipt-gate.v1  # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
+
+externally_consumed_topics:
+  - onex.snapshot.projection.receipt-gate.v1  # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
+
+metadata:
+  transport_type: kafka

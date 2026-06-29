@@ -97,8 +97,10 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
     # session-timeline + intent-distribution projection): 339 -> 340.
     # OMN-13087 adds node_projection_session_replay (REDUCER; session replay
     # snapshot projection for the omnidash Session Replay widget): 340 -> 341.
-    assert summary["node_dirs"] == 341
-    assert summary["entry_points"] == 341
+    # OMN-13081 adds node_projection_receipt_gate (REDUCER; OCC/DoD
+    # receipt-gate projection for the NC-08 dashboard widget): 341 -> 342.
+    assert summary["node_dirs"] == 342
+    assert summary["entry_points"] == 342
     assert summary["missing_entry_points"] == []
     assert summary["dangling_entry_points"] == []
     assert summary["routable"] >= 297
