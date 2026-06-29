@@ -10,6 +10,15 @@ description: >
   block the loop. Exposes ProtocolHealthChecker for pluggable check
   implementations.
 
+# Top-level initial-payload model for the event-driven routing path. The
+# RuntimeLocal event-driven resolver (_resolve_event_driven_payload_spec)
+# consults contract.input_model first; the handler.input_model below is only
+# read on the single-handler path. Both must be declared so either execution
+# path can seed the caller payload instead of failing closed.
+input_model:
+  module: omnimarket.nodes.node_verify_effect.models.model_verify_input
+  class: ModelVerifyInput
+
 handler:
   module: omnimarket.nodes.node_verify_effect.handlers.handler_verify
   class: HandlerVerify
