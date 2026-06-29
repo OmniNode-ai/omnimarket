@@ -1,0 +1,128 @@
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# dispatcher-route-coverage.yml — OMN-13333
+#
+# CI gate: for every contract.yaml in omnimarket that subscribes to a command
+# topic (onex.cmd.*), assert that the contract declares a dispatcher route via
+# handler_routing or runtime_dispatch.
+#
+# Missing wiring causes the command to go to DLQ silently.  This gate catches
+# that regression before it reaches the runtime.
+#
+# This is the omnimarket-side port of the same gate in omnibase_infra.
+# The omnibase_infra gate already covers both repos together; this workflow
+# ensures the status context is also emitted on omnimarket PRs, enabling a
+# future required_status_checks flip on omnimarket/dev (separate step).
+#
+# The check script lives in omnibase_infra and is sparse-checked out as a
+# sibling at ./omnibase_infra/.  Only stdlib + pyyaml is required — no full
+# uv sync.
+#
+# Coverage scope: all command topics (onex.cmd.*) in subscribe_topics.
+# compatibility_publish_topics are sender-side only and not checked.
+#
+# Changed-command-topic mode (OMN-12879):
+#   When the PR diff touches contract.yaml files, only those contracts are
+#   checked.  Pre-existing allowlisted violations are not re-reported.
+#
+# [OMN-13333]
+
+name: Dispatcher Route Coverage
+
+on:
+  pull_request:
+    branches: [main, dev]
+  push:
+    branches: [main]
+  merge_group:
+
+permissions:
+  contents: read
+
+jobs:
+  dispatcher-route-coverage:
+    name: dispatcher-route-coverage
+    runs-on: >-
+      ${{
+        (github.event_name == 'pull_request' &&
+         github.event.pull_request.head.repo.full_name != github.repository)
+        && fromJSON(vars.OMNI_PUBLIC_PR_RUNS_ON_JSON || '["ubuntu-latest"]')
+        || fromJSON(vars.OMNI_TRUSTED_CI_RUNS_ON_JSON || '["ubuntu-latest"]')
+      }}
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout omnimarket
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Checkout omnibase_infra (gate script only)
+        uses: actions/checkout@v4
+        with:
+          repository: OmniNode-ai/omnibase_infra
+          ref: main
+          path: omnibase_infra
+          token: ${{ secrets.OMNI_GITHUB_TOKEN || github.token }}
+          # Sparse checkout: only the gate script is needed
+          sparse-checkout: |
+            scripts/check_dispatcher_route_coverage.py
+          sparse-checkout-cone-mode: false
+
+      - name: Install pyyaml (only dep for gate script)
+        shell: bash
+        run: |
+          # The gate script uses only stdlib + pyyaml; skip full uv sync to keep
+          # this job fast (no Kafka, no DB, no handler imports).
+          python3 -m pip install --quiet pyyaml
+
+      - name: Collect changed contract paths (OMN-12879)
+        id: changed_contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Find contract.yaml files changed in this PR diff vs the base branch.
+          # For push/merge_group events there is no PR diff; run full scan.
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            BASE="${{ github.event.pull_request.base.sha }}"
+            HEAD="${{ github.event.pull_request.head.sha }}"
+            CHANGED=$(git diff --name-only "$BASE" "$HEAD" -- '**/contract.yaml' || true)
+            if [[ -n "$CHANGED" ]]; then
+              # Convert to absolute paths so the script can match them
+              ABS_PATHS=$(echo "$CHANGED" | xargs -I{} realpath --relative-to=. {} 2>/dev/null || echo "$CHANGED")
+              {
+                echo "changed_contracts<<EOF"
+                echo "$ABS_PATHS"
+                echo "EOF"
+              } >> "$GITHUB_OUTPUT"
+              echo "Found changed contracts:"
+              echo "$CHANGED" | head -20
+            else
+              echo "changed_contracts=" >> "$GITHUB_OUTPUT"
+              echo "No contract.yaml files changed; full scan will run."
+            fi
+          else
+            echo "changed_contracts=" >> "$GITHUB_OUTPUT"
+            echo "Non-PR event; running full scan."
+          fi
+
+      - name: Run dispatcher route-coverage gate
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          CHANGED="${{ steps.changed_contracts.outputs.changed_contracts }}"
+
+          ARGS=(
+            "--contracts-dir" "src/omnimarket/nodes"
+          )
+
+          if [[ -n "${CHANGED}" ]]; then
+            echo "::notice::Running in changed-contract mode (OMN-12879): $(echo "${CHANGED}" | wc -w) paths"
+            ARGS+=("--changed-contracts" "${CHANGED}")
+          else
+            echo "::notice::Running full scan across src/omnimarket/nodes"
+          fi
+
+          python3 omnibase_infra/scripts/check_dispatcher_route_coverage.py "${ARGS[@]}"
