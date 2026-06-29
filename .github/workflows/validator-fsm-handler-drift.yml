@@ -83,9 +83,9 @@ jobs:
 
       - name: Run fsm-handler-drift integration tests
         run: |
-          uv run --no-sync pytest \
+          PYTHONPATH="../omnibase_core/src${PYTHONPATH:+:$PYTHONPATH}" uv run --no-sync pytest \
             tests/validators/test_fsm_handler_drift_integration.py \
             -v
 
       - name: Scan omnimarket src/ for FSM handler drift (must exit 0)
-        run: uv run --no-sync python -m omnibase_core.validators.fsm_handler_drift src/
+        run: PYTHONPATH="../omnibase_core/src${PYTHONPATH:+:$PYTHONPATH}" uv run --no-sync python -m omnibase_core.validators.fsm_handler_drift src/
