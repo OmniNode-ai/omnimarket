@@ -225,6 +225,16 @@ class SessionLinearFetchError(RuntimeError):
     """Raised when Phase 2 cannot distinguish Linear failure from empty sprint."""
 
 
+class SessionStandingOrdersError(RuntimeError):
+    """Raised when a standing-orders file exists but cannot be loaded or parsed.
+
+    Distinguishes a genuine load/parse failure (malformed JSON, IO error,
+    malformed structure) from the legitimate empty-result case (no standing
+    orders file present). The latter returns {}; the former must surface
+    structurally instead of being silently swallowed (OMN-8721).
+    """
+
+
 # ---------------------------------------------------------------------------
 # Default probes (production implementations)
 # ---------------------------------------------------------------------------
@@ -918,6 +928,16 @@ class HandlerSessionOrchestrator:
                 health_report=health_report,
                 dry_run=command.dry_run,
             )
+        except SessionStandingOrdersError as exc:
+            logger.warning("Phase 2: standing orders load failed visibly: %s", exc)
+            return ModelSessionOrchestratorResult(
+                session_id=session_id,
+                correlation_id=correlation_id,
+                status=EnumSessionStatus.ERROR,
+                halt_reason=f"Phase 2 standing orders load failed: {exc}",
+                health_report=health_report,
+                dry_run=command.dry_run,
+            )
         logger.info(
             "Phase 2: scored %d items for session %s", len(dispatch_queue), session_id
         )
@@ -1207,11 +1227,22 @@ class HandlerSessionOrchestrator:
         return normalized
 
     def _load_standing_orders(self, path: str) -> dict[str, float]:
-        """Load standing orders priority boosts. Returns {ticket_id: boost}."""
+        """Load standing orders priority boosts. Returns {ticket_id: boost}.
+
+        An absent file is the legitimate empty-result case (no standing orders
+        configured) and returns {} after a structured log. A present-but-broken
+        file (malformed JSON, IO error, malformed structure) is a real failure
+        and raises ``SessionStandingOrdersError`` so it surfaces structurally
+        instead of being silently swallowed (OMN-8721).
+        """
+        abs_path = os.path.abspath(path)
+        if not os.path.exists(abs_path):
+            logger.warning(
+                "Phase 2: standing orders file absent at %s — no priority boosts applied",
+                abs_path,
+            )
+            return {}
         try:
-            abs_path = os.path.abspath(path)
-            if not os.path.exists(abs_path):
-                return {}
             with open(abs_path, encoding="utf-8") as fh:
                 orders = json.load(fh)
             now = _now()
@@ -1233,8 +1264,12 @@ class HandlerSessionOrchestrator:
                     boosts[ticket_id] = boost
             return boosts
         except Exception as exc:
-            logger.warning("Phase 2: standing orders load failed: %s", exc)
-            return {}
+            logger.error(
+                "Phase 2: standing orders load failed for %s: %s", abs_path, exc
+            )
+            raise SessionStandingOrdersError(
+                f"Standing orders load failed for {abs_path}: {exc}"
+            ) from exc
 
     def _score_tickets(
         self,
@@ -1601,4 +1636,6 @@ __all__: list[str] = [
     "ModelSessionOrchestratorCommand",
     "ModelSessionOrchestratorResult",
     "ProbeCallable",
+    "SessionLinearFetchError",
+    "SessionStandingOrdersError",
 ]
