@@ -102,8 +102,10 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
     # OMN-13079 NC-06 adds node_projection_live_events (REDUCER; live-events
     # stream projection contract for the omnidash live-event-stream widget):
     # 342 -> 343.
-    assert summary["node_dirs"] == 343
-    assert summary["entry_points"] == 343
+    # OMN-13086 adds node_projection_voice_sessions (REDUCER; voice session
+    # projection for the omnidash voice.sessions widget): 343 -> 344.
+    assert summary["node_dirs"] == 344
+    assert summary["entry_points"] == 344
     assert summary["missing_entry_points"] == []
     assert summary["dangling_entry_points"] == []
     assert summary["routable"] >= 299
