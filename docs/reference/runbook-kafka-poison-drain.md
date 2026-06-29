@@ -1,14 +1,13 @@
 # Runbook: Kafka Poison Record Drain — node_pr_lifecycle_orchestrator
 
 **Topic:** `onex.cmd.omnimarket.pr-lifecycle-orchestrator-start.v1`
-**Ticket:** OMN-9216
 **Guard:** `omniclaude/plugins/onex/hooks/scripts/post_tool_use_kafka_poison_message_guard.sh`
 
 ---
 
 ## Symptom
 
-The PostToolUse crash-escalation guard (OMN-9085) fires on `rpk group describe`
+The PostToolUse crash-escalation guard fires on `rpk group describe`
 or similar Bash output, recording a friction YAML at
 `$ONEX_STATE_DIR/friction/kafka_poison/`. The pattern `unicode_decode_consumer_groups`
 matches because the prod consumer group name embeds `describe_consumer_groups`
@@ -37,7 +36,7 @@ Interpret the output:
 
 If LOG-END-OFFSET=0 and PRIOR-OFFSET=-1 across all partitions, the topic is clean.
 The guard fired as a false positive. No drain is needed. Document the false positive
-and move to the classifier fix (see OMN-9216).
+and move to the classifier fix.
 
 ---
 
@@ -132,10 +131,10 @@ characters. This occurs legitimately on:
 - `rpk group describe` output (MEMBER-ID contains `aiokafka`, group name contains
   the topic path which includes `describe_consumer_groups` as a substring of the
   group convention)
-- `git show` of commit `e089337b8` (OMN-9085 commit message body)
+- `git show` of commit `e089337b8` (the crash-escalation guard commit)
 
 These are false positives. The friction file records them but no consumer action
-is required. Tracked for classifier narrowing in OMN-9216.
+is required. The guard is a known false-positive candidate for future classifier narrowing.
 
 ---
 

@@ -14,7 +14,8 @@ description: >
 handler_routing:
   routing_strategy: operation_match
   handlers:
-    - handler:
+    - operation: generation_consumer
+      handler:
         name: HandlerGenerationConsumer
         module: omnimarket.nodes.node_generation_consumer.handlers.handler_generation_consumer
       event_model:
@@ -22,7 +23,8 @@ handler_routing:
         module: omnimarket.nodes.node_generation_consumer.models.model_generation
       event_type: omnimarket.node-generation-requested
       message_category: command
-    - handler:
+    - operation: generated_executor
+      handler:
         name: HandlerGeneratedExecutor
         module: omnimarket.nodes.node_generation_consumer.handlers.handler_generated_executor
       event_model:
@@ -70,11 +72,33 @@ inputs:
     description: "SHA-256 hex digest of context_pack (sha256:<hex>); empty when context_pack is empty"
     required: false
     default: ""
+  # OMN-13289 (G0): validator-generation acceptance corpus. Optional with a null
+  # default so ordinary free-text node generation is unaffected. When present,
+  # the run is a VALIDATOR generation: the generated scanner is accepted only if
+  # it flags every violation_fixture and passes every clean_fixture, by
+  # deterministic execution (the corpus, NOT the LLM, is the acceptance
+  # authority). The corpus must include at least one adversarial mutation case.
+  validator_corpus:
+    type: object
+    description: >-
+      ModelValidatorCorpus gating acceptance of the generated validator
+      (violation_fixtures the scanner MUST flag, clean_fixtures it MUST pass).
+      Null for ordinary free-text generation (no corpus gate).
+    required: false
+    default: null
 
 outputs:
   contract_passed:
     type: bool
     description: "True if the generated node passed all validation checks"
+  # OMN-13289 (G0): validator-acceptance verdict (the corpus gate is the
+  # acceptance authority, not the LLM).
+  corpus_checked:
+    type: bool
+    description: "True when this run carried a validator acceptance corpus"
+  corpus_passed:
+    type: bool
+    description: "True only when the generated scanner flagged every violation_fixture and passed every clean_fixture"
   attempt_count:
     type: int
     description: "Number of generation attempts made"
@@ -108,6 +132,14 @@ event_bus:
     # result on generated-node-invoked. The deploy command is published by this
     # same node's generation flow (_emit_deploy) and consumed by the executor.
     - onex.cmd.omnimarket.node-deploy.v1
+    # OMN-13356: the tool-reuse pre-check is bus-native. Before generating, this
+    # node publishes a tool-reuse-match-requested command (below) and awaits the
+    # matcher's verdict on one of these two terminals. A MATCHED verdict
+    # short-circuits generation (the existing tool is returned, no LLM call); a
+    # NO_MATCH verdict proceeds to fresh generation. Both terminals are produced
+    # by node_tool_reuse_matcher_compute.
+    - onex.evt.omnimarket.tool-reuse-matched.v1
+    - onex.evt.omnimarket.tool-reuse-no-match.v1
   publish_topics:
     - onex.evt.omnimarket.node-generation-completed.v1
     - onex.evt.omnimarket.node-generation-failed.v1
@@ -123,6 +155,11 @@ event_bus:
     # the authority's decision (tier, provider, model, endpoint, attempt_count,
     # escalation_reason). Generation does NOT select the next model itself.
     - onex.evt.omnimarket.delegation-escalation-triggered.v1
+    # OMN-13356: the tool-reuse pre-check command. Published BEFORE the LLM
+    # generation loop runs; consumed by node_tool_reuse_matcher_compute, which
+    # replies on tool-reuse-matched.v1 / tool-reuse-no-match.v1 (subscribed
+    # above). A MATCHED verdict short-circuits generation; NO_MATCH proceeds.
+    - onex.cmd.omnimarket.tool-reuse-match-requested.v1
 
 model_routing:
   # OMN-12779 + OMN-12801: provider, served_model_id, and endpoint_ref are
@@ -156,6 +193,15 @@ model_routing:
   auth:
     shared_secret_env: LOCAL_LLM_SHARED_SECRET
     cidr_allowlist_env: LLM_ENDPOINT_CIDR_ALLOWLIST
+  # OMN-13621: per-model inference pricing is sourced from the canonical
+  # cost-pricing contract (omnimarket/cost/cost_pricing.yaml), NOT a hardcoded
+  # source constant. _calculate_cost resolves the priced entry for the run's
+  # (provider, served_model_id) and prices the measured tokens through it; the
+  # resulting cost_inference_usd lands in the canonical cost projection
+  # (generation_events.cost_inference_usd) via node_projection_delegation.
+  cost_pricing:
+    source: contract
+    contract_path: omnimarket/cost/cost_pricing.yaml
 
 dependencies:
   - name: llm_shared_secret
@@ -184,7 +230,6 @@ metadata:
   tags:
     - "orchestrator"
     - "generation"
-    - "hackathon"
     - "llm"
     - "node-generation"
     - "OMN-12683"

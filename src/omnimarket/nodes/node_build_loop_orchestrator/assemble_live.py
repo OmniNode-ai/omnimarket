@@ -40,6 +40,7 @@ from omnibase_core.protocols.event_bus.protocol_event_bus_publisher import (
     ProtocolEventBusPublisher,
 )
 
+from omnimarket.config.service_endpoints import LINEAR_GRAPHQL_URL
 from omnimarket.config.settings import Settings, get_settings
 from omnimarket.enums.enum_usage_source import EnumUsageSource
 from omnimarket.nodes.node_build_loop.models.model_loop_start_command import (
@@ -47,6 +48,9 @@ from omnimarket.nodes.node_build_loop.models.model_loop_start_command import (
 )
 from omnimarket.nodes.node_build_loop_orchestrator.handlers.handler_build_loop_orchestrator import (
     HandlerBuildLoopOrchestrator,
+)
+from omnimarket.nodes.node_build_loop_orchestrator.handlers.model_policy_loader import (
+    ModelPolicyLoader,
 )
 from omnimarket.nodes.node_build_loop_orchestrator.models.model_live_runner_config import (
     ModelLlmClassificationResult,
@@ -69,32 +73,37 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
-LINEAR_API_URL = "https://api.linear.app/graphql"
+LINEAR_API_URL = LINEAR_GRAPHQL_URL
 LINEAR_TEAM_ID = "9bdff6a3-f4ef-4ff7-b29a-6c4cf44371e6"
 
 OMNI_HOME = Path(os.environ["OMNI_HOME"])
 WORKTREE_ROOT = Path(os.environ.get("OMNI_WORKTREES_ROOT", ""))
 
-# LLM endpoints — resolved from env vars only, no hardcoded IP fallbacks (OMN-8782)
-LLM_FAST_URL = os.environ.get("LLM_CODER_FAST_URL", "")
-LLM_FAST_MODEL_NAME = os.environ.get("LLM_CODER_FAST_MODEL_NAME", "")
-LLM_CODER_URL = os.environ.get("LLM_CODER_URL", "")
-LLM_CODER_MODEL_NAME = os.environ.get("LLM_CODER_MODEL_NAME", "")
+# All LLM endpoints and API keys are resolved through ModelPolicyLoader (model_policy.yaml)
+# rather than raw os.environ.get with silent empty-string fallbacks (OMN-13695).
+# resolve_optional / resolve_model_id_optional return None when the policy is not configured,
+# preserving tiered-fallback skip semantics. resolve_api_key returns "" for local/keyless models.
+_POLICY_LOADER = ModelPolicyLoader()
 
-# Frontier GLM endpoint/profile resolved from runtime overlay.
-LLM_GLM_API_KEY = os.environ.get("LLM_GLM_API_KEY", "")
-LLM_GLM_URL = os.environ.get("LLM_GLM_URL", "")
-LLM_GLM_MODEL_NAME = os.environ.get("LLM_GLM_MODEL_NAME", "")
+# Fast local classifier (coder_fast policy).
+LOCAL_CODER_URL = _POLICY_LOADER.resolve_optional("coder")
+LOCAL_CODER_MODEL_NAME = _POLICY_LOADER.resolve_model_id_optional("coder")
 
-# Frontier OpenAI endpoint/profile resolved from runtime overlay.
-OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
-OPENAI_BASE_URL = os.environ.get("LLM_OPENAI_URL", "")
-OPENAI_MODEL_NAME = os.environ.get("LLM_OPENAI_MODEL_NAME", "")
+LLM_FAST_URL = _POLICY_LOADER.resolve_optional("coder_fast")
+LLM_FAST_MODEL_NAME = _POLICY_LOADER.resolve_model_id_optional("coder_fast")
 
-# Frontier: Google (Gemini via OpenAI-compat endpoint)
-GOOGLE_API_KEY = os.environ.get("GOOGLE_API_KEY", "") or os.environ.get(
-    "GEMINI_API_KEY", ""
-)
+# Frontier GLM endpoint/profile (delegation policy).
+LLM_GLM_API_KEY: str = _POLICY_LOADER.resolve_api_key("delegation")
+LLM_GLM_URL: str | None = _POLICY_LOADER.resolve_optional("delegation")
+LLM_GLM_MODEL_NAME: str | None = _POLICY_LOADER.resolve_model_id_optional("delegation")
+
+# Frontier OpenAI-compatible endpoint/profile (openai policy).
+OPENAI_API_KEY: str = _POLICY_LOADER.resolve_api_key("openai")
+OPENAI_BASE_URL: str | None = _POLICY_LOADER.resolve_optional("openai")
+OPENAI_MODEL_NAME: str | None = _POLICY_LOADER.resolve_model_id_optional("openai")
+
+# Frontier Google/Gemini endpoint/profile (google policy).
+GOOGLE_API_KEY: str = _POLICY_LOADER.resolve_api_key("google")
 
 LINEAR_API_KEY = os.environ.get("LINEAR_API_KEY", "")
 
@@ -418,7 +427,7 @@ class LiveTicketClassifyHandler:
                     ticket_id=ticket.ticket_id,
                     buildability=buildability,
                     source=source,
-                    model_used=LLM_FAST_MODEL_NAME
+                    model_used=(LLM_FAST_MODEL_NAME or "")
                     if source == "llm_classifier"
                     else "",
                     raw_response=raw_resp[:200],
@@ -878,11 +887,11 @@ class LiveBuildDispatchHandler:
             if impl and "_skip" not in impl:
                 return impl, LLM_GLM_MODEL_NAME
 
-        # Tier 2: configured local coder endpoint.
-        if LLM_CODER_URL and LLM_CODER_MODEL_NAME:
-            coder_model = LLM_CODER_MODEL_NAME
+        # Tier 2: configured local coder endpoint (routing-authority resolved).
+        if LOCAL_CODER_URL and LOCAL_CODER_MODEL_NAME:
+            coder_model = LOCAL_CODER_MODEL_NAME
             impl = await self._call_llm(
-                url=f"{LLM_CODER_URL}/v1/chat/completions",
+                url=f"{LOCAL_CODER_URL}/v1/chat/completions",
                 model=coder_model,
                 prompt=prompt,
                 max_tokens=4096,

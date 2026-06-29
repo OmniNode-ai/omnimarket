@@ -236,25 +236,55 @@ class TestDelegationChainE2E:
         publisher.publish(TOPIC_QUALITY_GATE_RESULT, gate_result)
         return gate_result
 
-    def test_full_chain_completes_with_passing_gate(
+    def test_context_pack_is_injected_into_inference_prompt(
+        self,
+        workflow: HandlerDelegationWorkflow,
+        request_model: ModelDelegationRequest,
+    ) -> None:
+        request = request_model.model_copy(
+            update={
+                "context_pack": "Context: prefer the event-bus path.",
+                "context_pack_hash": "sha256:ctx",
+            }
+        )
+        routing_handler = HandlerRoutingIntent()
+
+        routing_intent = workflow.handle_delegation_request(request)[0]
+        decision = routing_handler.handle(routing_intent)
+        inference_intent = workflow.handle_routing_decision(decision)[0]
+
+        assert "Context: prefer the event-bus path." in inference_intent.prompt
+        assert request.prompt in inference_intent.prompt
+
+    def test_full_chain_routes_research_with_semantic_authority(
         self,
         workflow: HandlerDelegationWorkflow,
         request_model: ModelDelegationRequest,
     ) -> None:
         publisher = _CapturingPublisher()
+        # OMN-13354: a research-shaped good answer — cites sources (Section /
+        # author-year / bracketed reference) and reasons through the claim
+        # (because / therefore / evidence). The research DoD is cites_sources +
+        # methodical_analysis plus semantic_adequacy, NOT the old code-line
+        # cites_specific_lines, so the fixture must look like research, not a
+        # code review.
         good_content = (
-            "Line 42 shows the runtime ingress boundary where validation should "
-            "happen before dispatch. The tradeoff is that strict validation can "
-            "reject more requests up front, but the benefit is clearer evidence "
-            "and lower risk of malformed payloads entering the event bus."
+            "According to Section 2 of the runtime design, validation belongs at "
+            "the ingress boundary before dispatch. As shown in (Gray, 2026) and "
+            "the references in [3], early validation lowers the risk of malformed "
+            "payloads entering the bus, because rejected requests never reach the "
+            "handlers; therefore the evidence favors front-loading the check."
         )
 
         gate_result = self._run_chain_to_gate_result(
             workflow, request_model, publisher, good_content
         )
         assert gate_result.passed is True  # type: ignore[attr-defined]
+        assert gate_result.quality_score == pytest.approx(1.0)  # type: ignore[attr-defined]
+        assert gate_result.failure_reasons == ()  # type: ignore[attr-defined]
 
-        # Hop 7: orchestrator consumes the gate result, emits terminal events.
+        # Hop 7: orchestrator consumes the gate result and completes once the
+        # explicit semantic adequacy authority clears.
         events = workflow.handle_gate_result(gate_result)  # type: ignore[arg-type]
         assert len(events) >= 1
         assert (

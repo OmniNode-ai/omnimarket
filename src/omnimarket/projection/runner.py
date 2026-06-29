@@ -5,17 +5,19 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import hashlib
+import json
 import logging
 import os
 import signal
 from abc import ABC, abstractmethod
+from collections.abc import Callable, Coroutine
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 import yaml
-from aiokafka import AIOKafkaConsumer
+from aiokafka import AIOKafkaConsumer, AIOKafkaProducer, TopicPartition
 from pydantic import (
     BaseModel,
     ConfigDict,
@@ -28,7 +30,15 @@ from pydantic import (
 
 from omnimarket.adapters.asyncpg_adapter import AsyncpgAdapter
 from omnimarket.config.settings import Settings
+from omnimarket.projection.dlq import (
+    build_dlq_envelope,
+    correlation_id_from_payload,
+)
 from omnimarket.projection.envelope import unwrap_envelope
+from omnimarket.projection.error_classification import (
+    ProjectionErrorClass,
+    classify_projection_error,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -39,6 +49,9 @@ DEFAULT_CLIENT_ID = "omnimarket-projection"
 RETRY_BASE_DELAY = 2.0
 RETRY_MAX_DELAY = 30.0
 MAX_RETRY_ATTEMPTS = 10
+
+# Async publish callable injected into projection handlers: (topic, value_bytes) -> None.
+PublishFn = Callable[[str, bytes], Coroutine[Any, Any, None]]
 
 
 @dataclass
@@ -273,6 +286,7 @@ class BaseProjectionRunner(ABC):
         client_id: str | None = None,
         runtime_binding: ModelProjectionRuntimeBinding | None = None,
         runtime_binding_overlay_path: str | Path | None = None,
+        publish_fn: PublishFn | None = None,
     ) -> None:
         resolved_binding = runtime_binding
         if resolved_binding is None and runtime_binding_overlay_path is not None:
@@ -305,6 +319,11 @@ class BaseProjectionRunner(ABC):
         self._stats = ProjectionStats()
         self._running = False
         self._consumer: AIOKafkaConsumer | None = None
+        # The projection runtime owns the producer lifecycle (OMN-12810); handlers
+        # never construct transport clients themselves. An injected publish_fn
+        # (tests or a DI container) takes precedence over the lazily-built producer.
+        self._publish_fn: PublishFn | None = publish_fn
+        self._producer: AIOKafkaProducer | None = None
 
     @property
     @abstractmethod
@@ -321,6 +340,27 @@ class BaseProjectionRunner(ABC):
         Returns True if projection succeeded, False if DB unavailable.
         """
         ...
+
+    @property
+    def poison_dlq_topics(self) -> list[str]:
+        """Contract-declared DLQ topic(s) for POISON (malformed) events.
+
+        OMN-13634: a subclass that consumes inbound bus events overrides this to
+        return its ``event_bus.dlq_topics``. The default empty list means a
+        subclass declared no DLQ; an uncatchable POISON error then re-raises
+        loudly (fail-loud) rather than being silently dropped.
+        """
+        return []
+
+    async def publish_dlq(self, topic: str, value: bytes) -> None:
+        """Publish a DLQ envelope. Default no-op; subclasses override.
+
+        OMN-13634: a subclass with a Kafka producer overrides this so the unified
+        classifier in ``_handle_message`` can route a POISON event to the
+        contract-declared DLQ topic. The default is a no-op so the base class
+        stays usable in tests without a producer.
+        """
+        return
 
     @property
     def db(self) -> AsyncpgAdapter:
@@ -344,6 +384,52 @@ class BaseProjectionRunner(ABC):
             if self._runtime_binding is not None
             else "legacy-env-settings"
         )
+
+    async def get_publish_fn(self) -> PublishFn | None:
+        """Return the runtime-owned publish callable, building a producer if needed.
+
+        The projection runtime owns the Kafka producer lifecycle (OMN-12810):
+        an injected ``publish_fn`` is used as-is; otherwise a single
+        ``AIOKafkaProducer`` is built lazily from the resolved bootstrap servers
+        and reused for the runner's lifetime. Returns ``None`` when no brokers are
+        configured so handlers can skip best-effort emission gracefully. The
+        producer is stopped in :meth:`shutdown`.
+        """
+        if self._publish_fn is not None:
+            return self._publish_fn
+
+        brokers = self.kafka_bootstrap_servers
+        if not brokers:
+            return None
+
+        if self._producer is None:
+            producer = AIOKafkaProducer(
+                bootstrap_servers=brokers,
+                value_serializer=lambda v: (
+                    v if isinstance(v, bytes) else v.encode("utf-8")
+                ),
+            )
+            try:
+                await producer.start()
+            except Exception as exc:
+                logger.warning("Kafka producer failed to start: %s", exc)
+                return None
+            self._producer = producer
+
+        producer = self._producer
+
+        async def _publish(topic: str, value: bytes) -> None:
+            await producer.send_and_wait(topic, value)
+
+        self._publish_fn = _publish
+        return self._publish_fn
+
+    async def _stop_producer(self) -> None:
+        """Stop the runtime-owned producer, if one was built."""
+        if self._producer is not None:
+            with contextlib.suppress(Exception):
+                await self._producer.stop()
+            self._producer = None
 
     @property
     def stats(self) -> ProjectionStats:
@@ -374,7 +460,17 @@ class BaseProjectionRunner(ABC):
                     group_id=self._group_id,
                     client_id=self._client_id,
                     auto_offset_reset="earliest",
-                    enable_auto_commit=True,
+                    # OMN-13350 (fail-loud): auto-commit was the data-loss
+                    # mechanism. When enabled, the offset advanced on the timer
+                    # regardless of whether the DB write succeeded, so a failed
+                    # INSERT (e.g. UndefinedColumn on a schema-drifted projection
+                    # table) was committed-and-dropped while the group reported
+                    # Stable / LAG=0. The offset is now committed explicitly ONLY
+                    # after a row is successfully projected (or the message is a
+                    # genuine non-event); a projection error propagates and leaves
+                    # the offset uncommitted so the message is re-read, never
+                    # silently skipped.
+                    enable_auto_commit=False,
                     value_deserializer=None,
                 )
                 await self._consumer.start()
@@ -408,6 +504,7 @@ class BaseProjectionRunner(ABC):
                 await asyncio.sleep(delay)
 
         logger.error("Consumer failed after %d retries", MAX_RETRY_ATTEMPTS)
+        await self._stop_producer()
         await self._db.close()
 
     async def shutdown(self) -> None:
@@ -417,18 +514,55 @@ class BaseProjectionRunner(ABC):
         if self._consumer:
             with contextlib.suppress(Exception):
                 await self._consumer.stop()
+        await self._stop_producer()
         await self._db.close()
 
     async def _handle_message(self, msg: Any) -> None:
-        """Parse, unwrap, dispatch, and track a single Kafka message."""
+        """Parse, unwrap, dispatch, and commit a single Kafka message.
+
+        Fail-loud contract (OMN-13350): the consumer runs with auto-commit
+        disabled. This method commits the offset ONLY when the message is fully
+        accounted for — either successfully projected, or a genuine non-event
+        (empty value / un-unwrappable envelope) that carries no row to persist.
+
+        Error classification (OMN-13634 / WS-F Phase 2): a projection error is
+        classified via :func:`classify_projection_error` so POISON and
+        RECOVERABLE failures get the right policy — the same policy the infra
+        ``handler_wiring`` path applies:
+
+        * RECOVERABLE (e.g. an ``UndefinedColumn`` from a not-yet-applied
+          migration, an ``OperationalError``, a dropped connection) is counted,
+          logged, and **re-raised** so the offset is NOT committed. The outer run
+          loop restarts the consumer and the uncommitted message is re-read on
+          the next poll — the failure surfaces loudly and the data is never
+          committed-and-dropped while the group reports Stable. A migration gap
+          lands here, never quarantined as malformed.
+        * POISON (a malformed payload ``ValidationError`` / ``PoisonEventError``
+          that will never project no matter how often it is retried) is routed to
+          the contract-declared poison DLQ and the offset IS committed, so it is
+          captured durably (recoverable by correlation_id) instead of retried in
+          a hot loop forever.
+
+        Most handlers catch their own ``ValidationError`` inside ``project_event``
+        and route to the DLQ before returning (the OMN-13548 path); this method
+        is the safety net for a POISON error that escapes a handler and the
+        re-read/no-commit guarantee for every RECOVERABLE error.
+        """
         topic = msg.topic
+        # Bound before the try so the except block always has a dict to attach to
+        # a DLQ envelope, even if a poison error somehow surfaces before
+        # project_event (it does not today — handlers raise inside project_event).
+        data: dict[str, Any] = {}
         try:
             if msg.value is None:
+                await self._commit_message(msg)
                 return
 
-            data = unwrap_envelope(msg.value)
-            if data is None:
+            unwrapped = unwrap_envelope(msg.value)
+            if unwrapped is None:
+                await self._commit_message(msg)
                 return
+            data = unwrapped
 
             fallback_id = deterministic_correlation_id(topic, msg.partition, msg.offset)
             meta = MessageMeta(
@@ -438,23 +572,123 @@ class BaseProjectionRunner(ABC):
             )
 
             projected = await self.project_event(topic, data, meta)
-
-            if projected:
-                self._stats.events_projected += 1
-                self._stats.last_projected_at = datetime.now(UTC)
-                ts = self._stats.topic_stats.setdefault(
-                    topic, {"projected": 0, "errors": 0}
-                )
-                ts["projected"] += 1
-                await self._update_watermark(f"{topic}:{msg.partition}", msg.offset)
-
         except Exception as err:
+            # OMN-13634: classify before deciding offset policy.
             self._stats.errors_count += 1
             ts = self._stats.topic_stats.setdefault(
                 topic, {"projected": 0, "errors": 0}
             )
             ts["errors"] += 1
-            logger.error("Error projecting %s: %s", topic, err)
+            error_class = classify_projection_error(err)
+            if error_class is ProjectionErrorClass.POISON:
+                # The payload is bad and will never project. Route it to the
+                # poison DLQ (durably recoverable by correlation_id) and commit so
+                # it is not retried in a hot loop forever.
+                routed = await self._route_poison_to_dlq(topic, data, err, meta)
+                logger.error(
+                    "POISON event on %s routed to DLQ=%s (offset committed): %s",
+                    topic,
+                    routed,
+                    err,
+                )
+                await self._commit_message(msg)
+                return
+            # RECOVERABLE: a missing column / server error / dropped connection.
+            # Do NOT advance the offset; re-raise so the run loop tears the
+            # consumer down with the offset uncommitted; the message is re-read,
+            # never dropped, until the infra catches up.
+            logger.error(
+                "RECOVERABLE error projecting %s (offset uncommitted, will retry): %s",
+                topic,
+                err,
+            )
+            raise
+
+        if projected:
+            self._stats.events_projected += 1
+            self._stats.last_projected_at = datetime.now(UTC)
+            ts = self._stats.topic_stats.setdefault(
+                topic, {"projected": 0, "errors": 0}
+            )
+            ts["projected"] += 1
+            await self._update_watermark(f"{topic}:{msg.partition}", msg.offset)
+
+        # Commit on a successful projection AND on a handled-but-not-applicable
+        # message (project_event returned False for a topic this runner does not
+        # project): both are fully accounted for, so the offset may advance. The
+        # only path that does NOT reach here is a raised projection error above.
+        await self._commit_message(msg)
+
+    async def _route_poison_to_dlq(
+        self,
+        topic: str,
+        data: dict[str, Any],
+        err: BaseException,
+        meta: MessageMeta,
+    ) -> bool:
+        """Publish a POISON event to the contract-declared poison DLQ topic.
+
+        OMN-13634: the base-class safety net for a POISON ``project_event`` error
+        that escaped a handler. Returns ``True`` when an envelope was published,
+        ``False`` when the subclass declared no ``poison_dlq_topics`` (the caller
+        still commits — the alternative is an unprocessable message wedging the
+        partition forever; the loud ERROR log is the durable signal). Best-effort:
+        a DLQ publish failure is logged, not raised.
+        """
+        dlq_topics = self.poison_dlq_topics
+        if not dlq_topics:
+            logger.error(
+                "POISON event on %s has NO poison DLQ topic declared "
+                "(committing to avoid a wedged partition): %s",
+                topic,
+                err,
+            )
+            return False
+        correlation_id = correlation_id_from_payload(data, fallback=meta.fallback_id)
+        envelope = build_dlq_envelope(
+            original_message=data,
+            failure_reason=f"poison projection error: {err}",
+            handler=type(self).__name__,
+            correlation_id=correlation_id,
+        )
+        value = json.dumps(envelope, default=str).encode("utf-8")
+        try:
+            await self.publish_dlq(dlq_topics[0], value)
+        except Exception as publish_err:
+            logger.error(
+                "Failed to route POISON event on %s to DLQ %s (correlation_id=%s): %s",
+                topic,
+                dlq_topics[0],
+                correlation_id,
+                publish_err,
+            )
+            return False
+        return True
+
+    async def _commit_message(self, msg: Any) -> None:
+        """Explicitly commit the offset for a fully-accounted-for message.
+
+        OMN-13350: replaces the removed enable_auto_commit timer. A commit
+        failure is logged but not raised — the offset stays where it is and the
+        message is re-read, which is the safe direction (at-least-once), not a
+        silent drop.
+        """
+        if self._consumer is None:
+            return
+        try:
+            await self._consumer.commit(
+                {
+                    TopicPartition(msg.topic, msg.partition): msg.offset + 1,
+                }
+            )
+        except Exception as err:
+            logger.warning(
+                "Failed to commit offset for %s:%d@%d: %s",
+                msg.topic,
+                msg.partition,
+                msg.offset,
+                err,
+            )
 
     async def _update_watermark(self, projection_name: str, offset: int) -> None:
         """Update projection_watermarks table -- matches omnidash SQL exactly."""

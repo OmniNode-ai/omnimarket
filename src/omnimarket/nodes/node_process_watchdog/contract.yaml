@@ -17,18 +17,15 @@ handler:
 
 handler_routing:
   handlers:
-    - handler:
+    - operation: process_watchdog
+      handler:
         name: HandlerProcessWatchdog
         module: omnimarket.nodes.node_process_watchdog.handlers.handler_process_watchdog
-    - handler:
-        name: check_daemon_health
-        module: omnimarket.nodes.node_process_watchdog.handlers.check_daemon_health
-    - handler:
-        name: check_socket
-        module: omnimarket.nodes.node_process_watchdog.handlers.check_socket
-    - handler:
-        name: checktargets_production
-        module: omnimarket.nodes.node_process_watchdog.handlers.checktargets_production
+    # OMN-13551: DaemonHealthCheckTarget / SocketCheckTarget / build_production_targets
+    # are check-target classes/factory used internally by HandlerProcessWatchdog,
+    # not runtime-dispatched handlers. The check-target ctors require
+    # socket_path / bootstrap_servers, so they quarantined at boot. Removed from
+    # handler_routing; still constructed internally by the watchdog handler.
 
 descriptor:
   node_archetype: compute

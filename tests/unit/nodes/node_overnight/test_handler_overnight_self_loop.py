@@ -117,7 +117,9 @@ class TestSelfLoopTrigger:
     def test_event_bus_with_no_self_loop_no_error(self) -> None:
         from unittest.mock import MagicMock
 
-        handler = HandlerOvernight(event_bus=MagicMock())
+        handler = HandlerOvernight(
+            event_bus=MagicMock(),  # transport-mock-ok: EventPublisher is a Callable type alias, not a Protocol class — spec= cannot be applied
+        )
 
         result = handler.handle(_cmd())
         assert result.session_status.value == "completed"

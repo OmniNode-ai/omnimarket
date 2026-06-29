@@ -59,10 +59,11 @@ def test_contract_declares_event_bus_surfaces() -> None:
     assert raw["handler_routing"]["routing_strategy"] == "operation_match"
     assert raw["handler_routing"]["handlers"] == [
         {
+            "operation": "friction_triage",
             "handler": {
                 "name": HANDLER_CLASS,
                 "module": HANDLER_MODULE,
-            }
+            },
         }
     ]
     eb = raw["event_bus"]

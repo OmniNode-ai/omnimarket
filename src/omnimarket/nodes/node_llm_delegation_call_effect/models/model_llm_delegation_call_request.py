@@ -5,7 +5,9 @@
 
 from __future__ import annotations
 
-from pydantic import BaseModel, ConfigDict
+from typing import Any
+
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class ModelLlmDelegationCallRequest(BaseModel):
@@ -34,11 +36,28 @@ class ModelLlmDelegationCallRequest(BaseModel):
     prompt_hash: str
     """SHA-256 of prompt. Stored in events for correlation and deduplication."""
 
+    system_prompt: str = ""
+    """Optional system message prepended to the chat-completions message set.
+
+    Resolved by the routing/task-type layer before the effect runs. Empty means
+    no system message is sent (single user message). In-memory only — never
+    persisted or published to Kafka.
+    """
+
     task_type: str = "generic"
     task_id: str | None = None
 
     max_tokens: int = 4096
     temperature: float = 0.3
+
+    timeout_seconds: float = Field(gt=0)
+    """Per-call HTTP timeout in seconds, resolved from the backend ``timeout_ms``.
+
+    Threaded by the routing/orchestrator layer from the contract-resolved
+    per-backend ``timeout_ms`` (÷1000) so the transport honors the configured
+    backend timeout instead of a hardcoded cap (OMN-13170). Required — there is
+    no silent default that would override contract config.
+    """
 
     # Cost provenance carried from the routing layer
     routing_policy_hash: str = ""
@@ -50,3 +69,11 @@ class ModelLlmDelegationCallRequest(BaseModel):
     attempt_number: int = 1
     model_tier: str = "unknown"
     provider: str = "unknown"
+
+    # Outbound request shaping resolved by the routing/contract layer before the
+    # effect runs. extra_headers are static provider headers from the bifrost
+    # backend config; provider_request_options are inference-protocol options
+    # (e.g. chat_template_kwargs) merged into the chat-completions payload. Both
+    # default empty so existing callers are unaffected.
+    extra_headers: dict[str, str] = Field(default_factory=dict)
+    provider_request_options: dict[str, Any] = Field(default_factory=dict)

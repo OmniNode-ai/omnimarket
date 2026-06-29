@@ -54,7 +54,7 @@ def main() -> None:
 
     sys.stdout.write(result.model_dump_json(indent=2) + "\n")
 
-    if result.overall_status == "FAIL":
+    if result.overall_status in ("FAIL", "ERROR"):
         sys.exit(1)
 
 

@@ -1,0 +1,6 @@
+{
+  "captured_from": "real z.ai GLM call (cloud-glm backend, routing-contract resolved)",
+  "resolved_model_id": "glm-5.2",
+  "raw_response": "{\"verdict\":\"PASS\",\"reasoning\":\"The reviewer identified a genuine XSS vulnerability (unescaped HTML), which is a significant security issue. They provided a concrete location and evidence, which are essential elements of an adequate code review \u2014 the finding is specific, actionable, and substantiated.\"}",
+  "task": "judge_verdict"
+}

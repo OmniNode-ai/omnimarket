@@ -16,7 +16,8 @@ handler:
 
 handler_routing:
   handlers:
-    - handler:
+    - operation: linear_updater
+      handler:
         name: HandlerLinearUpdaterEffect
         module: omnimarket.nodes.node_linear_updater_effect.handlers.handler_linear_updater_effect
 

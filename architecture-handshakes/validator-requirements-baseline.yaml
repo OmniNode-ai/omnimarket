@@ -1,0 +1,198 @@
+---
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# Accepted validator-requirement gaps for omnimarket (OMN-13291).
+#
+# Ratchet baseline for the validate-validator-requirements fleet gate
+# (consumer: omnibase_core validator_requirements_consumer.py, spec: OMN-9115).
+# The meta-gate compares the live per-repo scan against gaps[] below: a NEW gap
+# not listed fails the gate; a listed gap the scan no longer reproduces (stale)
+# also fails. Each gap closes as its validator is wired by the W1-W10 waves of
+# the validator-standardization remediation plan; shrink this list as that work
+# lands. This PR (OMN-13291 / W0) wires only the META-gate; it records current
+# state so regressions are caught and the baseline can only shrink.
+#
+# Schema (formalized OMN-13291): schema_version + repo + report_format +
+# classification + gaps. report_format "all_gaps" => the consumer enumerates
+# EVERY missing required gate per run (never fail-on-first). classification is
+# metadata-only (it explains why each gap is accepted + the tracking ticket);
+# only gaps[] is the ratchet.
+schema_version:
+  major: 1
+  minor: 0
+  patch: 0
+repo: omnimarket
+report_format: "all_gaps"
+
+classification:
+  aislop-patterns:
+    pre_commit: backlog
+    ci_workflow: backlog
+    tracking: OMN-9048
+  arch-002-no-transport-imports:
+    pre_commit: backlog
+    ci_workflow: backlog
+    tracking: OMN-9048
+  bandit-security:
+    pre_commit: backlog
+    ci_workflow: backlog
+    tracking: OMN-9048
+  detect-secrets:
+    pre_commit: backlog
+    ci_workflow: backlog
+    tracking: OMN-9048
+  enum-governance:
+    pre_commit: backlog
+    ci_workflow: backlog
+    tracking: OMN-9048
+  hardcoded-local-paths:
+    pre_commit: backlog
+    ci_workflow: backlog
+    tracking: OMN-9048
+  hardcoded-localhost-url:
+    # G2 (OMN-13294): generated + corpus-accepted localhost/loopback-URL COMPUTE
+    # validator. Owner is omnibase_core; omnimarket consumes it via OMN-9050 pin-
+    # bump propagation, so both gates are an accepted backlog (shadow) gap here
+    # until the core handler lands + the gate is shadow-baked to blocking.
+    pre_commit: backlog
+    ci_workflow: backlog
+    tracking: OMN-13294
+  hardcoded-private-ip:
+    # G2 (OMN-13294): generated + corpus-accepted private-IP COMPUTE validator.
+    # Lives in omnibase_core (the owner); omnimarket consumes it via the OMN-9050
+    # pin-bump propagation like every other core validator, so both gates are an
+    # accepted backlog gap here until that wiring lands.
+    pre_commit: backlog
+    ci_workflow: backlog
+    tracking: OMN-13294
+  hardcoded-topic-string:
+    # G2 (OMN-13294): generated + corpus-accepted onex.* topic-literal COMPUTE
+    # validator. Owner is omnibase_core; omnimarket consumes it via OMN-9050 pin-
+    # bump propagation, so both gates are an accepted backlog (shadow) gap here
+    # until the core handler lands + the gate is shadow-baked to blocking.
+    pre_commit: backlog
+    ci_workflow: backlog
+    tracking: OMN-13294
+  naming-conventions:
+    pre_commit: backlog
+    ci_workflow: backlog
+    tracking: OMN-9048
+  no-hardcoded-topics:
+    ci_workflow: backlog
+    tracking: OMN-9048
+  no-untracked-todos:
+    ci_workflow: backlog
+    tracking: OMN-9048
+  pydantic-patterns:
+    pre_commit: backlog
+    tracking: OMN-9048
+  self-gating-workflows:
+    pre_commit: backlog
+    tracking: OMN-9048
+  single-class-per-file:
+    pre_commit: backlog
+    ci_workflow: backlog
+    tracking: OMN-9048
+  spdx-headers:
+    pre_commit: backlog
+    ci_workflow: backlog
+    tracking: OMN-9048
+  todo-fixme-marker:
+    # G2 (OMN-13294): generated + corpus-accepted TODO/FIXME/HACK-marker COMPUTE
+    # validator. Owner is omnibase_core; omnimarket consumes it via OMN-9050 pin-
+    # bump propagation, so both gates are an accepted backlog (shadow) gap here
+    # until the core handler lands + the gate is shadow-baked to blocking.
+    pre_commit: backlog
+    ci_workflow: backlog
+    tracking: OMN-13294
+
+gaps:
+  # OMN-13578: aislop-patterns MISSING_CI_WORKFLOW gap closed — the `aislop-sweep`
+  # job in .github/workflows/ci.yml (strict PR-diff check_ai_slop scan, wired into
+  # the CI Summary failing rollup) now satisfies the ci_workflow requirement.
+  # The MISSING_PRE_COMMIT gap remains accepted (no pre-commit aislop hook yet).
+  - repo: omnimarket
+    validator: aislop-patterns
+    kind: MISSING_PRE_COMMIT
+  - repo: omnimarket
+    validator: arch-002-no-transport-imports
+    kind: MISSING_CI_WORKFLOW
+  - repo: omnimarket
+    validator: bandit-security
+    kind: MISSING_CI_WORKFLOW
+  - repo: omnimarket
+    validator: bandit-security
+    kind: MISSING_PRE_COMMIT
+  - repo: omnimarket
+    validator: detect-secrets
+    kind: MISSING_CI_WORKFLOW
+  - repo: omnimarket
+    validator: detect-secrets
+    kind: MISSING_PRE_COMMIT
+  - repo: omnimarket
+    validator: enum-governance
+    kind: MISSING_CI_WORKFLOW
+  - repo: omnimarket
+    validator: enum-governance
+    kind: MISSING_PRE_COMMIT
+  - repo: omnimarket
+    validator: hardcoded-local-paths
+    kind: MISSING_CI_WORKFLOW
+  - repo: omnimarket
+    validator: hardcoded-local-paths
+    kind: MISSING_PRE_COMMIT
+  - repo: omnimarket
+    validator: hardcoded-localhost-url
+    kind: MISSING_CI_WORKFLOW
+  - repo: omnimarket
+    validator: hardcoded-localhost-url
+    kind: MISSING_PRE_COMMIT
+  - repo: omnimarket
+    validator: hardcoded-private-ip
+    kind: MISSING_CI_WORKFLOW
+  - repo: omnimarket
+    validator: hardcoded-private-ip
+    kind: MISSING_PRE_COMMIT
+  - repo: omnimarket
+    validator: hardcoded-topic-string
+    kind: MISSING_CI_WORKFLOW
+  - repo: omnimarket
+    validator: hardcoded-topic-string
+    kind: MISSING_PRE_COMMIT
+  - repo: omnimarket
+    validator: naming-conventions
+    kind: MISSING_CI_WORKFLOW
+  - repo: omnimarket
+    validator: naming-conventions
+    kind: MISSING_PRE_COMMIT
+  - repo: omnimarket
+    validator: no-hardcoded-topics
+    kind: MISSING_CI_WORKFLOW
+  - repo: omnimarket
+    validator: no-untracked-todos
+    kind: MISSING_CI_WORKFLOW
+  - repo: omnimarket
+    validator: pydantic-patterns
+    kind: MISSING_PRE_COMMIT
+  - repo: omnimarket
+    validator: self-gating-workflows
+    kind: MISSING_PRE_COMMIT
+  - repo: omnimarket
+    validator: single-class-per-file
+    kind: MISSING_CI_WORKFLOW
+  - repo: omnimarket
+    validator: single-class-per-file
+    kind: MISSING_PRE_COMMIT
+  - repo: omnimarket
+    validator: spdx-headers
+    kind: MISSING_CI_WORKFLOW
+  - repo: omnimarket
+    validator: spdx-headers
+    kind: MISSING_PRE_COMMIT
+  - repo: omnimarket
+    validator: todo-fixme-marker
+    kind: MISSING_CI_WORKFLOW
+  - repo: omnimarket
+    validator: todo-fixme-marker
+    kind: MISSING_PRE_COMMIT

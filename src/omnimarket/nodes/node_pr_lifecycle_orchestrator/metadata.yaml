@@ -29,4 +29,4 @@ dependencies:
   - "aiokafka>=0.10.0"
 authors: ["OmniNode Platform Team"]
 license: "MIT"
-tags: ["pr-lifecycle", "orchestrator", "fsm", "merge-sweep", "github", "OMN-8087"]
+tags: ["pr-lifecycle", "orchestrator", "fsm", "merge-sweep", "github", "OMN-8087", "OMN-13586", "repo-health"]

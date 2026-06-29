@@ -10,6 +10,9 @@ from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
+from omnibase_core.protocols.event_bus.protocol_event_bus_publisher import (
+    ProtocolEventBusPublisher,
+)
 
 from omnimarket.nodes.node_architectural_invariant_loop import (
     ArchInvariantLoopRequest,
@@ -25,8 +28,12 @@ from omnimarket.nodes.node_architectural_invariant_loop.handlers.handler_archite
 )
 
 
-def _make_handler(event_bus: MagicMock | None = None) -> NodeArchitecturalInvariantLoop:
-    return NodeArchitecturalInvariantLoop(event_bus=event_bus or MagicMock())
+def _make_handler(
+    event_bus: ProtocolEventBusPublisher | None = None,
+) -> NodeArchitecturalInvariantLoop:
+    return NodeArchitecturalInvariantLoop(
+        event_bus=event_bus or MagicMock(spec=ProtocolEventBusPublisher)
+    )
 
 
 @pytest.mark.unit
@@ -187,7 +194,7 @@ class TestHandlerIntegration:
         src = tmp_path / "src"
         src.mkdir()
         (src / "module.py").write_text("event_bus = None\n")
-        event_bus = MagicMock()
+        event_bus = MagicMock(spec=ProtocolEventBusPublisher)
         handler = _make_handler(event_bus)
         result = handler.handle(
             ArchInvariantLoopRequest(
@@ -210,7 +217,7 @@ class TestHandlerIntegration:
         src = tmp_path / "src"
         src.mkdir()
         (src / "module.py").write_text("event_bus = None\n")
-        event_bus = MagicMock()
+        event_bus = MagicMock(spec=ProtocolEventBusPublisher)
         handler = _make_handler(event_bus)
         result = handler.handle(
             ArchInvariantLoopRequest(
@@ -231,7 +238,7 @@ class TestHandlerIntegration:
         src = tmp_path / "src"
         src.mkdir()
         (src / "module.py").write_text("event_bus = None\n")
-        event_bus = MagicMock()
+        event_bus = MagicMock(spec=ProtocolEventBusPublisher)
         handler = _make_handler(event_bus)
         result = handler.handle(
             ArchInvariantLoopRequest(

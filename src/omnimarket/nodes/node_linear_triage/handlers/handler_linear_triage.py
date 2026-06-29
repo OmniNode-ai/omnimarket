@@ -20,7 +20,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Protocol, runtime_checkable
 
-from omnimarket.inference.secret_store_resolver import resolve_api_key
+from omnimarket.config.service_endpoints import GITHUB_REST_URL, LINEAR_GRAPHQL_URL
+from omnimarket.inference.secret_store_resolver import resolve_api_key_async
 from omnimarket.nodes.contract_topics import contract_secret_ref
 from omnimarket.nodes.node_linear_triage.models.model_linear_triage_state import (
     EnumTriageAction,
@@ -54,6 +55,14 @@ _DONE_STATES = frozenset({"Done", "Cancelled", "Canceled"})
 # States eligible for auto-done via merged PR
 _ACTIVE_STATES = frozenset({"In Progress", "In Review", "Backlog"})
 
+# OMN-13039: epic auto-start ratchet — states that qualify an epic as "unstarted"
+_EPIC_UNSTARTED_STATES = frozenset({"Backlog", "Todo"})
+
+# OMN-13039: child states that trigger the epic auto-start ratchet
+_EPIC_ACTIVE_CHILD_STATES = frozenset(
+    {"In Progress", "In Review", "Done", "Cancelled", "Canceled"}
+)
+
 
 @runtime_checkable
 class LinearClientProtocol(Protocol):
@@ -86,7 +95,7 @@ class LinearHttpClient:
     that touches the network — all other code works against the Protocol.
     """
 
-    _BASE = "https://api.linear.app/graphql"
+    _BASE = LINEAR_GRAPHQL_URL
 
     def __init__(self, api_key: str) -> None:
         self._api_key = api_key
@@ -307,7 +316,7 @@ class GitHubHttpClient:
     the token from the contract-declared ``api_key_ref`` before construction.
     """
 
-    _BASE = "https://api.github.com"
+    _BASE = GITHUB_REST_URL
 
     def __init__(self, token: str) -> None:
         if not token:
@@ -552,12 +561,12 @@ class HandlerLinearTriage:
             )
         return LinearHttpClient(api_key)
 
-    def _get_github_client(self) -> GitHubClientProtocol:
+    async def _get_github_client(self) -> GitHubClientProtocol:
         if self._github_client is not None:
             return self._github_client
         # Ref-name sourced from contract (OMN-12856) — not a bare source literal.
         _github_ref = contract_secret_ref(_CONTRACT_PATH, "GITHUB_TOKEN")
-        secret = resolve_api_key(_github_ref)
+        secret = await resolve_api_key_async(_github_ref)
         if secret is None:
             raise RuntimeError(
                 f"api_key_ref {_github_ref!r} resolved to None — "
@@ -565,7 +574,9 @@ class HandlerLinearTriage:
             )
         return GitHubHttpClient(secret.get_secret_value())
 
-    def handle(self, request: ModelLinearTriageStartCommand) -> ModelLinearTriageResult:
+    async def handle(
+        self, request: ModelLinearTriageStartCommand
+    ) -> ModelLinearTriageResult:
         """Run the full triage pipeline.
 
         When ``request.flag_only`` is True (the default), the node NEVER writes
@@ -573,9 +584,16 @@ class HandlerLinearTriage:
         instead.  This is the safe operating mode until auto-close precision
         exceeds a human-approved threshold (current precision: ~17%, OMN-12869).
         Set ``flag_only=False`` only after precision has been validated.
+
+        The ``handle`` method is async so that ``resolve_api_key_async`` can be
+        awaited directly — the RuntimeLocal adapter dispatches handlers from
+        within a running event loop, so the sync ``resolve_api_key`` would raise
+        ("sync-only; call resolve_api_key_async from an async context").
+        ``LocalRuntimeBusAdapter`` detects the awaitable return and ``await``s it
+        automatically (OMN-13710).
         """
         client = self._get_client()
-        gh = self._get_github_client()
+        gh = await self._get_github_client()
         threshold = request.threshold_days
         dry_run = request.dry_run
         flag_only = request.flag_only
@@ -653,6 +671,14 @@ class HandlerLinearTriage:
         actions.extend(epic_actions)
         suppressed_closes.extend(epic_suppressed)
 
+        # --- Phase 5c: Epic auto-start ratchet (OMN-13039) ---
+        # Unstarted epics (Backlog/Todo) with >=1 started/completed child are
+        # transitioned to In Progress.  Monotone: never auto-Done.
+        start_actions, epics_started = self._phase_epic_autostart(
+            all_tickets, client, dry_run, flag_only
+        )
+        actions.extend(start_actions)
+
         if flag_only and suppressed_closes:
             _log.info(
                 "flag_only=True: suppressed %d candidate close(s) — "
@@ -670,6 +696,7 @@ class HandlerLinearTriage:
             marked_done=marked_done,
             marked_done_superseded=marked_done_superseded,
             epics_closed=epics_closed,
+            epics_started=epics_started,
             stale_flagged=stale_flagged,
             orphaned=orphaned,
             actions=actions,
@@ -1053,6 +1080,103 @@ class HandlerLinearTriage:
             )
 
         return actions, epics_closed, suppressed
+
+    def _phase_epic_autostart(
+        self,
+        all_tickets: list[ModelLinearTicket],
+        client: LinearClientProtocol,
+        dry_run: bool,
+        flag_only: bool,
+    ) -> tuple[list[ModelTriageAction], int]:
+        """Phase 5c: epic auto-start ratchet (OMN-13039).
+
+        Transitions unstarted epics (Backlog or to-do state) to In Progress when
+        they have at least one child in a started or completed state.
+
+        Semantics:
+        - Monotone: only ever advances state forward (never auto-Done).
+        - flag_only=True (default): produce WOULD_MARK_IN_PROGRESS actions; no Linear mutation.
+        - dry_run=True: same as flag_only for mutation purposes; actions show WOULD_MARK_IN_PROGRESS.
+        - flag_only=False + dry_run=False: execute save_issue and record MARK_IN_PROGRESS.
+
+        Returns (actions, epics_started_count).
+        """
+        actions: list[ModelTriageAction] = []
+        epics_started = 0
+
+        candidate_epics = [
+            t
+            for t in all_tickets
+            if not t.parent_id and t.state in _EPIC_UNSTARTED_STATES
+        ]
+        _log.info("Epic auto-start candidates: %d", len(candidate_epics))
+
+        for ticket in candidate_epics:
+            children = self._fetch_children(ticket, client)
+            if children is None or not children:
+                continue
+
+            has_active_child = any(
+                child.get("state", {}).get("name", "") in _EPIC_ACTIVE_CHILD_STATES
+                for child in children
+            )
+            if not has_active_child:
+                continue
+
+            active_child_ids = [
+                c["identifier"]
+                for c in children
+                if c.get("state", {}).get("name", "") in _EPIC_ACTIVE_CHILD_STATES
+            ]
+            evidence = (
+                f"Auto-start ratchet: {len(active_child_ids)} active/done child(ren) "
+                f"found under unstarted epic in state '{ticket.state}': "
+                f"{', '.join(active_child_ids[:5])}"
+                + (" ..." if len(active_child_ids) > 5 else "")
+            )
+
+            if flag_only or dry_run:
+                actions.append(
+                    ModelTriageAction(
+                        ticket_id=ticket.identifier,
+                        ticket_title=ticket.title,
+                        action=EnumTriageAction.WOULD_MARK_IN_PROGRESS,
+                        evidence=evidence,
+                    )
+                )
+                continue
+
+            try:
+                client.save_issue(issue_id=ticket.id, state="In Progress")
+                client.save_comment(
+                    issue_id=ticket.id,
+                    body=(
+                        f"Auto-started by linear-triage (OMN-13039 ratchet): "
+                        f"epic was in '{ticket.state}' with active/done children.\n"
+                        f"{evidence}"
+                    ),
+                )
+                epics_started += 1
+                actions.append(
+                    ModelTriageAction(
+                        ticket_id=ticket.identifier,
+                        ticket_title=ticket.title,
+                        action=EnumTriageAction.MARK_IN_PROGRESS,
+                        evidence=evidence,
+                    )
+                )
+            except Exception as exc:
+                actions.append(
+                    ModelTriageAction(
+                        ticket_id=ticket.identifier,
+                        ticket_title=ticket.title,
+                        action=EnumTriageAction.FLAG_STALE,
+                        evidence=f"Epic auto-start mutation failed: {exc}",
+                    )
+                )
+
+        _log.info("Epic auto-start ratchet: started %d epic(s)", epics_started)
+        return actions, epics_started
 
     def _fetch_children(
         self,

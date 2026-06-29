@@ -16,6 +16,9 @@ from omnimarket.nodes.node_merge_sweep_auto_merge_arm_effect.handlers.handler_au
 from omnimarket.nodes.node_merge_sweep_auto_merge_arm_effect.models.model_auto_merge_armed_event import (
     ModelAutoMergeArmedEvent,
 )
+from omnimarket.nodes.node_merge_sweep_auto_merge_arm_effect.models.model_auto_merge_unarmed_clean_alert_event import (
+    ModelAutoMergeUnarmedCleanAlertEvent,
+)
 from omnimarket.nodes.node_merge_sweep_triage_orchestrator.models.model_triage_request import (
     ModelAutoMergeArmCommand,
 )
@@ -76,7 +79,8 @@ async def test_failed_arm_returns_armed_false_with_error() -> None:
         handler = HandlerAutoMergeArmEffect()
         output = await handler.handle(_cmd())
 
-    assert len(output.events) == 1
+    # OMN-13322: a failed arm now also emits an unarmed-CLEAN alert event, so the
+    # completion is the FIRST event (not the only one).
     evt = output.events[0]
     assert isinstance(evt, ModelAutoMergeArmedEvent)
     assert evt.armed is False
@@ -109,3 +113,64 @@ async def test_idempotent_already_armed_succeeds() -> None:
 
     assert output1.events[0].armed is True
     assert output2.events[0].armed is True
+
+
+# --- OMN-13322: arm-trigger path + unarmed-CLEAN alert path ---
+
+
+@pytest.mark.asyncio
+async def test_arm_trigger_clean_pr_emits_only_completion_no_alert() -> None:
+    """Arm-trigger path: a CLEAN PR that arms successfully emits ONLY the
+    completion event — no unarmed-CLEAN alert."""
+    with patch.object(
+        HandlerAutoMergeArmEffect, "_arm_sync", return_value=(True, None)
+    ):
+        handler = HandlerAutoMergeArmEffect()
+        output = await handler.handle(_cmd())
+
+    assert len(output.events) == 1
+    assert isinstance(output.events[0], ModelAutoMergeArmedEvent)
+    assert not any(
+        isinstance(e, ModelAutoMergeUnarmedCleanAlertEvent) for e in output.events
+    )
+
+
+@pytest.mark.asyncio
+async def test_unarmed_clean_pr_emits_alert_event() -> None:
+    """Alert path: a CLEAN PR that fails to arm (e.g. missing OCC preflight,
+    OMN-10485) emits the completion AND a distinct unarmed-CLEAN alert."""
+    with patch.object(
+        HandlerAutoMergeArmEffect,
+        "_arm_sync",
+        return_value=(False, "OCC preflight missing"),
+    ):
+        handler = HandlerAutoMergeArmEffect()
+        output = await handler.handle(_cmd())
+
+    assert len(output.events) == 2
+    completion = output.events[0]
+    alert = output.events[1]
+    assert isinstance(completion, ModelAutoMergeArmedEvent)
+    assert completion.armed is False
+    assert isinstance(alert, ModelAutoMergeUnarmedCleanAlertEvent)
+    assert alert.reason == "OCC preflight missing"
+    assert alert.pr_number == 100
+    assert alert.repo == "OmniNode-ai/omni_home"
+    assert alert.total_prs == 3
+    assert alert.correlation_id == _CORR_ID
+    assert alert.run_id == _RUN_ID
+
+
+@pytest.mark.asyncio
+async def test_unarmed_clean_alert_reason_defaults_when_error_none() -> None:
+    """If the arm fails with no error string, the alert still carries a
+    non-empty reason (an alert without a reason is a contradiction)."""
+    with patch.object(
+        HandlerAutoMergeArmEffect, "_arm_sync", return_value=(False, None)
+    ):
+        handler = HandlerAutoMergeArmEffect()
+        output = await handler.handle(_cmd())
+
+    alert = output.events[1]
+    assert isinstance(alert, ModelAutoMergeUnarmedCleanAlertEvent)
+    assert alert.reason  # non-empty

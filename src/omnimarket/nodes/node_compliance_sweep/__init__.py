@@ -5,6 +5,7 @@ from omnimarket.nodes.node_compliance_sweep.handlers.handler_compliance_sweep im
     ComplianceSweepResult,
     ModelComplianceViolation,
     NodeComplianceSweep,
+    resolve_target_dirs,
 )
 
 __all__ = [
@@ -12,4 +13,5 @@ __all__ = [
     "ComplianceSweepResult",
     "ModelComplianceViolation",
     "NodeComplianceSweep",
+    "resolve_target_dirs",
 ]

@@ -1,0 +1,25 @@
+name: node_slack_publish_effect
+version: "1.0.0"
+description: "Generic Slack publish EFFECT — secret-store-backed, idempotent, content-agnostic."
+omnibase_core_compat: ">=0.45.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_slack_publish_effect: "omnimarket.nodes.node_slack_publish_effect"
+capabilities:
+  standalone: false
+  full_runtime: true
+  requires_network: true
+  requires_repo: false
+  requires_secrets: true
+  requires_docker: false
+  side_effect_class: write
+dependencies:
+  - "omnibase_core>=0.45.0"
+  - "aiohttp>=3.9.0"
+  - "aiokafka>=0.13.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["effect", "slack", "publish", "notification", "OMN-13723"]
+pack: "notifications"
+display_name: "Slack Publish Effect"
+node_role: "effect"

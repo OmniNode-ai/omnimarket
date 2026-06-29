@@ -15,7 +15,7 @@ test loops, CI polling, or merge logic to this skill.
 
 | Argument | Description | Default |
 | --- | --- | --- |
-| `ticket_id` | Linear ticket ID such as `OMN-10400` | Required |
+| `ticket_id` | Linear ticket ID such as `<TICKET-ID>` | Required |
 | `correlation_id` | UUID v4 correlation id for the pipeline run | Generate when omitted |
 | `skip_test_iterate` | Skip the TEST_ITERATE phase | `false` |
 | `dry_run` | Run without side effects | `false` |
@@ -47,7 +47,7 @@ Build the payload with this shape:
 ```json
 {
   "correlation_id": "<uuid-v4>",
-  "ticket_id": "OMN-10400",
+  "ticket_id": "<TICKET-ID>",
   "skip_test_iterate": false,
   "dry_run": true,
   "requested_at": "<utc-iso-8601-timestamp>"

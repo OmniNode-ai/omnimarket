@@ -15,6 +15,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from omnimarket.config.service_endpoints import LINEAR_GRAPHQL_URL
+
 
 class ModelLlmEndpoint(BaseModel):
     """Configuration for a single LLM endpoint."""
@@ -39,7 +41,7 @@ class ModelLiveRunnerConfig(BaseModel):
 
     # Linear
     linear_api_url: str = Field(
-        default="https://api.linear.app/graphql",
+        default=LINEAR_GRAPHQL_URL,
         description="Linear GraphQL API URL.",
     )
     linear_team_id: str = Field(..., description="Linear team UUID to query.")

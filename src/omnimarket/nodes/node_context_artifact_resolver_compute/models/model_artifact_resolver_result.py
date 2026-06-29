@@ -5,9 +5,10 @@
 The headline output is ``artifact_content_map``: a mapping from
 EnumContextFactor *value* string (e.g. "golden_chain") to the resolved,
 budget-bounded, precedence-ordered text the ROI runner injects.  The runner's
-``_assemble_context_text`` consumes this map verbatim, so an ON arm that lists
-a factor receives real content instead of the ``[stub content for ...]``
-placeholder.
+``_build_context_pack`` (which sources the pack from the canonical
+node_context_pack_builder_compute) consumes this map verbatim, so an ON arm
+that lists a factor receives real content instead of the
+``[stub content for ...]`` placeholder.
 """
 
 from __future__ import annotations

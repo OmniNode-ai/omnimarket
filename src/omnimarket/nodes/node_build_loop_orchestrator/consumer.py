@@ -10,7 +10,8 @@ a failure event with phase, error, and correlation_id.
 Environment:
     KAFKA_BOOTSTRAP_SERVERS  Redpanda/Kafka bootstrap (required)
     KAFKA_BROKER             Alias for KAFKA_BOOTSTRAP_SERVERS (fallback)
-    BUILD_LOOP_GROUP         Consumer group ID
+    BUILD_LOOP_GROUP         Consumer group ID, resolved through the overlay
+                             seam (``${env.BUILD_LOOP_GROUP}``)
                              (default: local.omnimarket.build_loop_orchestrator.consume.1.0.0)
 
 Usage:
@@ -29,6 +30,8 @@ from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID, uuid4
 
+from omnibase_infra.runtime.overlay.contract_env_ref import expand_contract_env_refs
+
 from omnimarket.nodes.node_build_loop_orchestrator.handlers.handler_build_loop_orchestrator import (
     TOPIC_BUILD_LOOP_COMPLETED,
     TOPIC_BUILD_LOOP_FAILED,
@@ -38,6 +41,25 @@ from omnimarket.nodes.node_build_loop_orchestrator.handlers.handler_build_loop_o
 logger = logging.getLogger(__name__)
 
 _DEFAULT_GROUP = "local.omnimarket.build_loop_orchestrator.consume.1.0.0"
+# Contract-declared config reference (OMN-13557 Wave-2 config -> overlay). The
+# consumer-group suffix resolves through the sanctioned overlay boundary
+# (``expand_contract_env_refs`` — the one env-reading surface) instead of a
+# scattered direct ``os.environ`` read. An unbound overlay var expands to the
+# empty string, in which case the canonical contract default constant applies
+# (a consumer-group suffix legitimately carries a default, unlike a fail-closed
+# endpoint).
+_GROUP_CONTRACT_REF = "${env.BUILD_LOOP_GROUP}"
+
+
+def _resolve_group_id() -> str:
+    """Resolve the consumer group id via the overlay seam.
+
+    Routes the ``BUILD_LOOP_GROUP`` config read through the sanctioned overlay
+    boundary (the one env-reading surface). An unbound overlay var expands to
+    the empty string, in which case the canonical contract default applies.
+    """
+    resolved = expand_contract_env_refs(_GROUP_CONTRACT_REF)
+    return resolved or _DEFAULT_GROUP
 
 
 def _parse_command(raw: dict[str, Any]) -> dict[str, Any]:
@@ -210,7 +232,7 @@ def main() -> None:
     broker = os.environ.get("KAFKA_BOOTSTRAP_SERVERS") or os.environ.get(
         "KAFKA_BROKER", ""
     )
-    group_id = os.environ.get("BUILD_LOOP_GROUP", _DEFAULT_GROUP)
+    group_id = _resolve_group_id()
     asyncio.run(_run_consumer(broker, group_id))
 
 

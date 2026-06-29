@@ -51,7 +51,7 @@ _PG_DB = os.environ.get("INTEGRATION_POSTGRES_DB", "omnidash_analytics")
 
 _KAFKA_BOOTSTRAP = os.environ.get(
     "KAFKA_BOOTSTRAP_SERVERS",
-    "192.168.86.201:19092",  # onex-allow-internal-ip OMN-11765 reason="stability-test lane lab Redpanda; read from env at runtime"
+    "192.168.86.201:39092",  # onex-allow-internal-ip OMN-11765 reason="stability-test lane lab Redpanda (port 39092; dev lane is 19092); read from env at runtime"
 )
 
 _TOPIC_DELEGATED = "onex.evt.omniclaude.task-delegated.v1"

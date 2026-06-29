@@ -12,16 +12,16 @@ from omnibase_core.enums.enum_context_pack_provenance import (
 from omnimarket.nodes.node_context_pack_builder_compute.handlers.handler_context_pack_builder import (
     HandlerContextPackBuilder,
 )
-from omnimarket.nodes.node_context_pack_builder_compute.models.model_context_pack_artifact import (
+from omnimarket.pack.model_context_pack_artifact import (
     ModelContextPackArtifact,
 )
-from omnimarket.nodes.node_context_pack_builder_compute.models.model_context_pack_builder_request import (
+from omnimarket.pack.model_context_pack_builder_request import (
     ModelContextPackBuilderRequest,
 )
-from omnimarket.nodes.node_context_pack_builder_compute.models.model_context_pack_builder_result import (
+from omnimarket.pack.model_context_pack_builder_result import (
     EnumContextPackBuilderStatus,
 )
-from omnimarket.nodes.node_context_pack_builder_compute.models.model_context_profile import (
+from omnimarket.pack.model_context_profile import (
     ModelContextProfile,
 )
 

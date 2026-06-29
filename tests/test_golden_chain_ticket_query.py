@@ -8,7 +8,7 @@ never calls mcp__linear-server__ directly.
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
 
 import pytest
@@ -33,6 +33,18 @@ def _make_issue(identifier: str, title: str = "Test Issue") -> ModelIssueResult:
     )
 
 
+def _handler_with_tracker(tracker: AsyncMock) -> HandlerTicketQuery:
+    """Build a container-driven HandlerTicketQuery that resolves *tracker*.
+
+    Mirrors the runtime resolver path (OMN-13603): the handler takes the
+    injectable container and resolves ProtocolProjectTracker from it at the
+    effect boundary.
+    """
+    container = MagicMock()
+    container.get_service.return_value = tracker
+    return HandlerTicketQuery(container=container)
+
+
 @pytest.mark.asyncio
 @pytest.mark.unit
 class TestTicketQueryGoldenChain:
@@ -44,7 +56,7 @@ class TestTicketQueryGoldenChain:
         tracker.search_issues = AsyncMock(
             return_value=[_make_issue("OMN-8771"), _make_issue("OMN-8772")]
         )
-        handler = HandlerTicketQuery(tracker=tracker)
+        handler = _handler_with_tracker(tracker)
 
         result = await handler.handle(
             correlation_id=uuid4(),
@@ -62,7 +74,7 @@ class TestTicketQueryGoldenChain:
         """list_issues is called when no query or issue_id is provided."""
         tracker = AsyncMock()
         tracker.list_issues = AsyncMock(return_value=[_make_issue("OMN-9000")])
-        handler = HandlerTicketQuery(tracker=tracker)
+        handler = _handler_with_tracker(tracker)
 
         result = await handler.handle(
             correlation_id=uuid4(),
@@ -82,7 +94,7 @@ class TestTicketQueryGoldenChain:
         """get_issue is called when issue_id is set."""
         tracker = AsyncMock()
         tracker.get_issue = AsyncMock(return_value=_make_issue("OMN-8771"))
-        handler = HandlerTicketQuery(tracker=tracker)
+        handler = _handler_with_tracker(tracker)
 
         result = await handler.handle(
             correlation_id=uuid4(),
@@ -99,7 +111,7 @@ class TestTicketQueryGoldenChain:
         """Empty result list is returned cleanly."""
         tracker = AsyncMock()
         tracker.search_issues = AsyncMock(return_value=[])
-        handler = HandlerTicketQuery(tracker=tracker)
+        handler = _handler_with_tracker(tracker)
 
         result = await handler.handle(
             correlation_id=uuid4(),

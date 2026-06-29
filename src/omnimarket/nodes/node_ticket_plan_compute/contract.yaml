@@ -16,7 +16,8 @@ handler:
 
 handler_routing:
   handlers:
-    - handler:
+    - operation: ticket_plan
+      handler:
         name: HandlerTicketPlanCompute
         module: omnimarket.nodes.node_ticket_plan_compute.handlers.handler_ticket_plan_compute
 

@@ -8,6 +8,13 @@ description: >
   Auto-merge effect node. Merges a GitHub PR after all CI gates pass and
   CodeRabbit Major threads are resolved. Emits a merge-completed event on success.
 
+# OMN-13530: top-level input_model so RuntimeLocal resolves the initial-payload
+# model (contract.input_model is the first resolver source) and the auto_merge
+# EFFECT dispatches headless. Mirrors node_dod_verify (OMN-12420/13253). The
+# handler's handle(payload: ModelAutoMergeInput) param annotation is the
+# equivalent step-4 fallback; both point at the same model.
+input_model: omnimarket.nodes.node_auto_merge_effect.models.model_auto_merge_input.ModelAutoMergeInput
+
 handler:
   module: omnimarket.nodes.node_auto_merge_effect.handlers.handler_auto_merge_effect
   class: HandlerAutoMergeEffect
@@ -16,9 +23,16 @@ handler:
 handler_routing:
   routing_strategy: operation_match
   handlers:
-    - handler:
+    # OMN-13530: operation_match entries require a non-empty `operation`;
+    # RuntimeLocal rejects the contract without it ("handlers[0].operation is
+    # missing"), which broke this node headless.
+    - operation: auto_merge
+      handler:
         name: HandlerAutoMergeEffect
         module: omnimarket.nodes.node_auto_merge_effect.handlers.handler_auto_merge_effect
+      event_model:
+        name: ModelAutoMergeInput
+        module: omnimarket.nodes.node_auto_merge_effect.models.model_auto_merge_input
 
 descriptor:
   node_archetype: effect

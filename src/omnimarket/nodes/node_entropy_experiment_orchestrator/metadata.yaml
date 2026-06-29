@@ -1,0 +1,23 @@
+name: node_entropy_experiment_orchestrator
+version: "1.0.0"
+description: "Entropy experiment orchestrator — aggregates framework tracks into the shared ModelExperimentResult (OMN-13614)"
+omnibase_core_compat: ">=0.46.0,<0.47.0"
+entry_points:
+  onex.nodes:
+    node_entropy_experiment_orchestrator: "omnimarket.nodes.node_entropy_experiment_orchestrator"
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: pure
+dependencies:
+  - "omnibase_core>=0.46.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["experiment", "entropy", "orchestrator", "sea-canonicalization", "evidence"]
+pack: "demo"
+display_name: "Entropy Experiment Orchestrator"
+node_role: "orchestrator"
