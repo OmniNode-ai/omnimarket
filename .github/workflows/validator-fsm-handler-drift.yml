@@ -52,12 +52,9 @@ jobs:
       - name: Checkout omnimarket
         uses: actions/checkout@v7
 
-      # OMN-13735: pin to the core PR branch so this gate is provable before
-      # omnibase_core#1360 merges (the validator is not yet on core's default
-      # branch). Revert to the default branch in the pin-bump follow-up once the
-      # validator lands on omnibase_core dev.
+      # OMN-13735: the validator landed on omnibase_core dev in #1360.
       - name: Clone omnibase_core (for new validator)
-        run: git clone --depth=1 --branch jonah/omn-13735-impl https://github.com/OmniNode-ai/omnibase_core.git ../omnibase_core
+        run: git clone --depth=1 --branch dev https://github.com/OmniNode-ai/omnibase_core.git ../omnibase_core
 
       - name: Clone omnibase_compat
         run: git clone --depth=1 https://github.com/OmniNode-ai/omnibase_compat.git ../omnibase_compat
