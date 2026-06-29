@@ -342,6 +342,7 @@ jobs:
           retention-days: 7
 
   topic-naming-lint:
+    name: Topic Naming Lint
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -371,6 +372,62 @@ jobs:
           uv run python ../omnibase_infra/scripts/validation/lint_topic_names.py \
             --scan-python src/omnimarket \
             --baseline scripts/validation/topic_naming_baseline.txt
+
+  # ============================================================================
+  # TOPIC ENUM DRIFT CHECK (OMN-13331 / WS-3)
+  # Validates that all topic string constants in canonical topics.py registry
+  # files are backed by at least one contract.yaml declaration (or carry a
+  # # onex-topic-allow annotation). Orphaned constants are drift violations.
+  # ============================================================================
+  topic-enum-drift:
+    name: Topic Enum Drift Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+      - name: Set up Python 3.12
+        run: uv python install 3.12
+      - name: Install dependencies
+        run: uv sync --locked --all-extras
+      - name: Check topic enum drift (OMN-13331)
+        run: |
+          echo "================================================================"
+          echo "Topic Enum Drift Check (OMN-13331)"
+          echo "Validates that topics.py constants are backed by contracts."
+          echo "================================================================"
+          uv run python scripts/ci/check_topic_enum_drift.py
+
+  # ============================================================================
+  # TOPIC DRIFT CHECK (OMN-13331 / WS-3)
+  # Validates that all contract-declared topics use valid ONEX naming format
+  # and known producer namespaces. New violations (not in baseline) fail CI.
+  # Cross-repo registry coverage gaps are warnings only (exit 0), mirroring the
+  # --warn-only behaviour of the equivalent omnibase_infra check (OMN-5248).
+  # ============================================================================
+  topic-drift-check:
+    name: Topic Drift Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+      - name: Set up Python 3.12
+        run: uv python install 3.12
+      - name: Install dependencies
+        run: uv sync --locked --all-extras
+      - name: Check topic drift (OMN-13331)
+        run: |
+          echo "================================================================"
+          echo "Topic Drift Check (OMN-13331)"
+          echo "Validates contract topic format + producer namespaces."
+          echo "Cross-repo registry coverage gaps are warn-only."
+          echo "================================================================"
+          uv run python scripts/ci/check_topic_drift.py
 
   event-registry-drift:
     name: Event Registry Drift
