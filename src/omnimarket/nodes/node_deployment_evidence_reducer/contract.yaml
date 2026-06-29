@@ -111,3 +111,38 @@ metadata:
   transport_type: kafka
   implementation_wave: 3
   related_tickets: ["OMN-11443", "OMN-12395", "OMN-12578"]
+
+# OMN-13734: machine-readable FSM (transcribed from authoritative handler/model logic).
+state_machine:
+  state_machine_name: deployment_evidence_fsm
+  initial_state: idle
+  states:
+    - state_name: idle
+      description: "No deployment evidence folded yet."
+      required_data: []
+    - state_name: reduced
+      description: "Deployment evidence projection materialized."
+      required_data: []
+  transitions:
+    - from_state: idle
+      to_state: reduced
+      trigger: evidence_validated
+      description: "Validated evidence folded."
+    - from_state: reduced
+      to_state: reduced
+      trigger: evidence_validated
+      description: "Fold more validated evidence."
+    - from_state: reduced
+      to_state: reduced
+      trigger: readiness_scored
+      description: "Readiness score folded."
+    - from_state: reduced
+      to_state: reduced
+      trigger: occ_pr_created
+      description: "OCC PR creation folded."
+    - from_state: reduced
+      to_state: reduced
+      trigger: deployment_evidence_reduced
+      description: "Re-observe own projection (idempotent)."
+  terminal_states: []
+  persistence_enabled: false
