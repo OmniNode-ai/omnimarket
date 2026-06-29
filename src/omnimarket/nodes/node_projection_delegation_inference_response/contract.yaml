@@ -1,0 +1,97 @@
+---
+# OMN-13088 (NC-15): projection contract for
+# onex.snapshot.projection.delegation.inference-response-text.v1
+#
+# Verified gap: neither node_projection_delegation nor node_llm_delegation_projection
+# publish_topics include this snapshot topic.  This reducer closes the coverage gap.
+
+name: node_projection_delegation_inference_response
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: reducer
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  Materializes inference response text snapshots from delegation inference events
+  into projection_delegation_inference_response_text.  Subscribes to
+  onex.evt.omnibase-infra.inference-response.v1 and upserts a singleton snapshot
+  row whose recent_responses JSONB column maintains a rolling window (max 10) of
+  recent responses.  Closes the NC-15 coverage gap where omnidash declared
+  the inference-response-text projection snapshot but no reducer was producing it
+  (OMN-12745 / OMN-12746).  OMN-13088.
+
+input_model: >-
+  omnibase_core.models.delegation.wire.model_orchestrator_intents.ModelInferenceResponseData
+
+handler:
+  module: >-
+    omnimarket.nodes.node_projection_delegation_inference_response.handlers.handler_projection_delegation_inference_response
+  class: HandlerProjectionDelegationInferenceResponse
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: project_inference_response
+      event_model: >-
+        omnibase_core.models.delegation.wire.model_orchestrator_intents.ModelInferenceResponseData
+      handler:
+        name: HandlerProjectionDelegationInferenceResponse
+        module: >-
+          omnimarket.nodes.node_projection_delegation_inference_response.handlers.handler_projection_delegation_inference_response
+  default_handler: HandlerProjectionDelegationInferenceResponse
+
+terminal_event: onex.snapshot.projection.delegation.inference-response-text.v1  # onex-topic-allow: projection snapshot topic
+
+event_bus:
+  subscribe_topics:
+    - onex.evt.omnibase-infra.inference-response.v1
+  publish_topics:
+    - onex.snapshot.projection.delegation.inference-response-text.v1  # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
+
+externally_consumed_topics:
+  - onex.snapshot.projection.delegation.inference-response-text.v1  # onex-topic-allow: projection snapshot topic served by projection-API
+
+db_io:
+  db_tables:
+    - name: projection_delegation_inference_response_text
+      migration: "0001_create_projection_delegation_inference_response_text.sql"
+      access: write
+      database: omnidash_analytics
+      role: projection
+
+reducer_contract:
+  state_update: "delta(singleton_state, event) -> upserted_snapshot_row"
+  owns_state: true
+  idempotent: true
+  ordering_authority: kafka_topic_partition_offset
+  duplicate_key_fields:
+    - singleton_key
+
+projection_api:
+  expose: true
+  exposures:
+    - topic: onex.snapshot.projection.delegation.inference-response-text.v1  # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
+      table: projection_delegation_inference_response_text
+      schema: public
+      columns:
+        - latest_correlation_id
+        - latest_model_name
+        - latest_task_type
+        - latest_generated_text
+        - latest_prompt_tokens
+        - latest_completion_tokens
+        - latest_latency_ms
+        - source_topic
+        - recent_responses
+        - captured_at
+        - provisioned
+      json_columns:
+        - recent_responses
+      freshness_column: captured_at
+      limit: 1
+
+metadata:
+  transport_type: kafka
+  demo_path: true
+  # OMN-12777 topic gate: verify this widget topic has a producing reducer.
+  widget_topics:
+    - onex.snapshot.projection.delegation.inference-response-text.v1  # onex-topic-allow: projection snapshot topic
