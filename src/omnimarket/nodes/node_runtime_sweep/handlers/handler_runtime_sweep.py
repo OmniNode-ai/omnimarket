@@ -238,6 +238,12 @@ class RuntimeSweepRequest(BaseModel):
     # how the single-repo CI import-probe avoids the cross-repo symmetry and
     # durability invariants.
     enabled_checks: list[EnumSweepCheck] | None = None
+    # OMN-13715: scope hint surfaced via `onex skill runtime_sweep --scope`.
+    # Accepted values (by convention): "all-repos" (default, full sweep) or
+    # "omnidash-only" (limit sweep to the omnidash repo context). The handler
+    # currently does not filter by scope — wiring the CLI arg is the OMN-13715
+    # deliverable; behavior gating is tracked separately. None ⇒ full sweep.
+    scope: str | None = None
     dry_run: bool = False
 
 
