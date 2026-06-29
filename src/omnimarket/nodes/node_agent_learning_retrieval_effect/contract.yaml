@@ -16,8 +16,8 @@ node_type: effect
 input_model: "ModelAgentLearningRetrievalRequest"
 output_model: "ModelAgentLearningRetrievalResponse"
 handler:
-  module: omnimarket.nodes.node_agent_learning_retrieval_effect
-  class: NodeAgentLearningRetrievalEffect
+  module: omnimarket.nodes.node_agent_learning_retrieval_effect.handlers.handler_agent_learning_retrieval
+  class: HandlerAgentLearningRetrieval
   input_model: omnimarket.nodes.node_agent_learning_retrieval_effect.models.model_request.ModelAgentLearningRetrievalRequest
 
 # === IO OPERATIONS (Required for EFFECT nodes) ===
@@ -120,7 +120,7 @@ handler_routing:
       handler_key: "HandlerAgentLearningRetrieval"
       priority: 0
       output_events: []
-  default_handler: "HandlerAgentLearningRetrieval"
+  default_handler: "omnimarket.nodes.node_agent_learning_retrieval_effect.handlers.handler_agent_learning_retrieval:HandlerAgentLearningRetrieval"
 
 # === EVENT BUS SUBCONTRACT ===
 descriptor:

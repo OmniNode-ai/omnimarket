@@ -139,3 +139,30 @@ config:
   TASK_CLASS_CONTRACT_PATH:
     description: "Path to the task classification contract file."
     required: false
+
+# OMN-13734: machine-readable FSM (transcribed from authoritative handler/model logic).
+state_machine:
+  state_machine_name: delegation_routing_fsm
+  initial_state: idle
+  states:
+    - state_name: idle
+      description: "No routing decision folded yet."
+      required_data: []
+    - state_name: routed
+      description: "Routing decision materialized."
+      required_data: []
+  transitions:
+    - from_state: idle
+      to_state: routed
+      trigger: routing_request
+      description: "Routing request received."
+    - from_state: routed
+      to_state: routed
+      trigger: routing_decision
+      description: "Routing decision folded."
+    - from_state: routed
+      to_state: routed
+      trigger: invocation
+      description: "Invocation folded."
+  terminal_states: []
+  persistence_enabled: false
