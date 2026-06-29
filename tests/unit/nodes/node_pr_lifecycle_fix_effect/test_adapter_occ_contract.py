@@ -52,6 +52,11 @@ class TestOccContractYamlTemplates:
             commit_sha="abc123",
             branch="auto/omn-9999-occ-contract",
             repo_slug="OmniNode-ai-omnimarket",
+            contract_sha256="a" * 64,
+            pr_head_sha="headsha123",
+            source_repo="OmniNode-ai/omnimarket",
+            runner="node_pr_lifecycle_fix_effect",
+            verifier="occ-auto-contract-verifier",
         )
         assert 'ticket_id: "OMN-9999"' in rendered
         assert "status: PASS" in rendered
@@ -59,6 +64,9 @@ class TestOccContractYamlTemplates:
         assert "node_pr_lifecycle_fix_effect" in rendered
         assert "occ-auto-contract" in rendered
         assert "abc123" in rendered
+        assert "contract_sha256" in rendered
+        assert "pr_head_sha" in rendered
+        assert "source_repo" in rendered
 
     def test_contract_template_no_unsubstituted_placeholders(self) -> None:
         rendered = _CONTRACT_TEMPLATE.format(
@@ -80,6 +88,11 @@ class TestOccContractYamlTemplates:
             commit_sha="deadbeef",
             branch="auto/omn-1234-occ-contract",
             repo_slug="OmniNode-ai-test",
+            contract_sha256="b" * 64,
+            pr_head_sha="headsha789",
+            source_repo="OmniNode-ai/test",
+            runner="node_pr_lifecycle_fix_effect",
+            verifier="occ-auto-contract-verifier",
         )
         # The probe_stdout line intentionally contains {{ }} for JSON literal braces;
         # after .format() those become { } — that is expected and correct.
@@ -325,7 +338,12 @@ class TestOccContractAdapterCreateOccContract:
         adapter = OccContractAdapter()
         sync_calls: list[tuple] = []
 
-        def fake_sync(repo: str, pr_number: int, ticket_id: str) -> str:
+        def fake_sync(
+            repo: str,
+            pr_number: int,
+            ticket_id: str,
+            pr_head_sha: str | None = None,
+        ) -> str:
             sync_calls.append((repo, pr_number, ticket_id))
             return f"[fake] created contract for {ticket_id}"
 

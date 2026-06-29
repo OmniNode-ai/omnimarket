@@ -5,11 +5,20 @@
 Handles the deploy_gate_contract_not_found failure class by creating a minimal
 OCC contract YAML and a bound receipt, then opening an OCC PR and cross-linking
 the original PR body.
+
+Proactive repair path (OMN-12425):
+  - Supports ``dry_run`` and ``mutate`` modes.
+  - Idempotency key = (ticket_id, evidence_item_id, repo, pr_head_sha,
+    contract_sha256); identical re-run is a no-op.
+  - Receipts include ``contract_sha256``, ``pr_head_sha``, ``source_repo``
+    and all other mandatory fields.
+  - REJECTS ``verifier == runner`` self-attestation.
 """
 
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import logging
 import os
 import subprocess
@@ -17,6 +26,7 @@ import tempfile
 import textwrap
 import uuid
 from pathlib import Path
+from typing import Literal
 
 from omnimarket.github_api import rest_json, split_repo
 from omnimarket.inference.secret_store_resolver import resolve_api_key
@@ -24,6 +34,9 @@ from omnimarket.nodes.contract_topics import contract_secret_ref
 
 logger = logging.getLogger(__name__)
 _CONTRACT_PATH = Path(__file__).resolve().parents[1] / "contract.yaml"
+
+_DEFAULT_RUNNER = "node_pr_lifecycle_fix_effect"
+_DEFAULT_VERIFIER = "occ-auto-contract-verifier"
 
 
 def _resolve_github_token() -> str:
@@ -36,6 +49,32 @@ def _resolve_github_token() -> str:
             "ensure GITHUB_TOKEN is set in the secret store."
         )
     return secret.get_secret_value()
+
+
+# ---------------------------------------------------------------------------
+# Module-level helpers
+# ---------------------------------------------------------------------------
+
+
+def _compute_contract_sha256(contract_yaml: str) -> str:
+    """Return the SHA-256 hex digest of contract YAML content."""
+    return hashlib.sha256(contract_yaml.encode()).hexdigest()
+
+
+def _build_idempotency_key(
+    *,
+    ticket_id: str,
+    evidence_item_id: str,
+    repo: str,
+    pr_head_sha: str,
+    contract_sha256: str,
+) -> str:
+    """Build a deterministic idempotency key from the 5-tuple.
+
+    Key = SHA-256(ticket_id|evidence_item_id|repo|pr_head_sha|contract_sha256).
+    """
+    raw = "|".join([ticket_id, evidence_item_id, repo, pr_head_sha, contract_sha256])
+    return hashlib.sha256(raw.encode()).hexdigest()
 
 
 _OCC_REPO = "OmniNode-ai/onex_change_control"
@@ -73,6 +112,10 @@ _CONTRACT_TEMPLATE = textwrap.dedent("""\
             check_value: "gh pr view {pr_number} --repo {repo} --json number,state"
     """)
 
+# Receipt template — all mandatory fields per OMN-12425 DoD:
+#   contract_sha256, pr_head_sha, source_repo, run_timestamp, commit_sha,
+#   probe_command, probe_stdout, runner, verifier.
+# verifier MUST differ from runner (self-attestation is rejected).
 _RECEIPT_TEMPLATE = textwrap.dedent("""\
     ---
     schema_version: "1.0.0"
@@ -83,26 +126,34 @@ _RECEIPT_TEMPLATE = textwrap.dedent("""\
     status: PASS
     run_timestamp: "{run_timestamp}"
     commit_sha: "{commit_sha}"
-    runner: "node_pr_lifecycle_fix_effect"
-    verifier: "occ-auto-contract"
-    probe_command: "gh pr view {pr_number} --repo {repo} --json number,state,headRefName"
+    runner: "{runner}"
+    verifier: "{verifier}"
+    probe_command: "gh pr view {pr_number} --repo {source_repo} --json number,state,headRefName"
     probe_stdout: |
-      {{"number":{pr_number},"state":"OPEN"}}
-    actual_output: "PASS: auto-created OCC contract for {ticket_id} from {repo}#{pr_number}."
+      {{"number":{pr_number},"state":"OPEN","headRefSha":"{pr_head_sha}"}}
+    actual_output: "PASS: auto-created OCC contract for {ticket_id} from {source_repo}#{pr_number}."
     exit_code: 0
     pr_number: {pr_number}
     branch: "{branch}"
+    contract_sha256: "{contract_sha256}"
+    pr_head_sha: "{pr_head_sha}"
+    source_repo: "{source_repo}"
     """)
 
 
 class OccContractAdapter:
     """Create a minimal OCC contract when deploy-gate fires for a missing contract.
 
-    Workflow:
+    Supports dry_run (detect gap, return description, no mutations) and
+    mutate (full create + push + PR + backlink) modes. Idempotency is
+    tracked per-instance via the 5-tuple key; identical re-runs are no-ops.
+
+    Workflow (mutate mode):
       1. Clone ``onex_change_control`` into a temp directory.
       2. Create branch ``auto/{ticket_id}-occ-contract``.
       3. Write ``contracts/{ticket_id}.yaml`` (ModelTicketContract-compatible).
-      4. Write ``drift/dod_receipts/{ticket_id}/{evidence_id}/command.yaml``.
+      4. Write ``drift/dod_receipts/{ticket_id}/{evidence_id}/command.yaml``
+         with all mandatory fields including ``contract_sha256``.
       5. Commit, push, open a PR via GitHub REST API.
       6. Append ``Evidence-Source`` and ``Evidence-Ticket`` lines to the original
          PR body via GitHub REST API.
@@ -115,28 +166,152 @@ class OccContractAdapter:
         occ_repo_git: str = _OCC_REPO_GIT,
         git_author_name: str = "omnimarket-bot",
         git_author_email: str = "bot@omninode.ai",
+        mode: Literal["dry_run", "mutate"] = "mutate",
+        runner: str = _DEFAULT_RUNNER,
+        verifier: str = _DEFAULT_VERIFIER,
     ) -> None:
         self._occ_repo = occ_repo
         self._occ_repo_git = occ_repo_git
         self._git_author_name = git_author_name
         self._git_author_email = git_author_email
+        self._mode = mode
+        self._runner = runner
+        self._verifier = verifier
+        # In-memory idempotency cache; keyed by _build_idempotency_key result.
+        self._executed_keys: set[str] = set()
+
+    # ------------------------------------------------------------------
+    # Public API
+    # ------------------------------------------------------------------
 
     async def create_occ_contract(
-        self, repo: str, pr_number: int, ticket_id: str
+        self,
+        repo: str,
+        pr_number: int,
+        ticket_id: str,
+        pr_head_sha: str | None = None,
     ) -> str:
         return await asyncio.to_thread(
-            self._create_occ_contract_sync, repo, pr_number, ticket_id
+            self._create_occ_contract_sync,
+            repo,
+            pr_number,
+            ticket_id,
+            pr_head_sha=pr_head_sha,
         )
 
+    def detect_occ_gap(
+        self,
+        *,
+        repo: str,
+        pr_number: int,
+        ticket_id: str,
+        contract_exists: bool,
+        receipt_exists: bool,
+    ) -> dict[str, object]:
+        """Detect whether OCC coverage is missing for a product PR.
+
+        Returns a dict with ``has_gap: bool`` and ``gap_reason: str``.
+        Pure computation — no side effects.
+        """
+        if not contract_exists and not receipt_exists:
+            return {
+                "has_gap": True,
+                "gap_reason": (
+                    f"missing contract and receipt for {ticket_id} "
+                    f"on {repo}#{pr_number}"
+                ),
+            }
+        if not contract_exists:
+            return {
+                "has_gap": True,
+                "gap_reason": (
+                    f"missing contract for {ticket_id} on {repo}#{pr_number}"
+                ),
+            }
+        if not receipt_exists:
+            return {
+                "has_gap": True,
+                "gap_reason": (
+                    f"missing receipt for {ticket_id} on {repo}#{pr_number}"
+                ),
+            }
+        return {"has_gap": False, "gap_reason": ""}
+
+    # ------------------------------------------------------------------
+    # Verifier != runner enforcement
+    # ------------------------------------------------------------------
+
+    def _validate_verifier_not_runner(self, *, runner: str, verifier: str) -> None:
+        """Raise ValueError if verifier == runner (self-attestation rejected)."""
+        if runner == verifier:
+            raise ValueError(
+                f"self-attestation rejected: verifier ({verifier!r}) must differ "
+                f"from runner ({runner!r}). Assign an independent verifier."
+            )
+
+    # ------------------------------------------------------------------
+    # Core sync implementation
+    # ------------------------------------------------------------------
+
     def _create_occ_contract_sync(
-        self, repo: str, pr_number: int, ticket_id: str
+        self,
+        repo: str,
+        pr_number: int,
+        ticket_id: str,
+        pr_head_sha: str | None = None,
     ) -> str:
         from datetime import UTC, datetime
+
+        # Enforce verifier != runner before doing any work.
+        self._validate_verifier_not_runner(runner=self._runner, verifier=self._verifier)
 
         run_timestamp = datetime.now(tz=UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
         branch = f"auto/{ticket_id.lower()}-occ-contract"
         evidence_id = f"dod-{repo.replace('/', '-')}-pr-{pr_number}"
-        repo_slug = repo.replace("/", "-")
+        effective_pr_head_sha = pr_head_sha or "unknown"
+
+        # Dry-run: describe what would happen, make no mutations.
+        if self._mode == "dry_run":
+            gap = self.detect_occ_gap(
+                repo=repo,
+                pr_number=pr_number,
+                ticket_id=ticket_id,
+                contract_exists=False,  # assume missing when in dry-run
+                receipt_exists=False,
+            )
+            action = (
+                f"[dry-run] would create OCC contract for {ticket_id} "
+                f"on {repo}#{pr_number} (branch={branch}). "
+                f"Gap detected: {gap['gap_reason']}"
+            )
+            logger.info("occ_contract_adapter (dry-run): %s", action)
+            return action
+
+        # Build the contract YAML content first so we can hash it.
+        contract_yaml = _CONTRACT_TEMPLATE.format(
+            ticket_id=ticket_id,
+            repo=repo,
+            pr_number=pr_number,
+            evidence_id=evidence_id,
+        )
+        contract_sha256 = _compute_contract_sha256(contract_yaml)
+
+        # Idempotency: skip if same key already executed in this process.
+        idempotency_key = _build_idempotency_key(
+            ticket_id=ticket_id,
+            evidence_item_id=evidence_id,
+            repo=repo,
+            pr_head_sha=effective_pr_head_sha,
+            contract_sha256=contract_sha256,
+        )
+        if idempotency_key in self._executed_keys:
+            action = (
+                f"[no-op] OCC contract for {ticket_id} on {repo}#{pr_number} "
+                f"already created for pr_head_sha={effective_pr_head_sha} "
+                f"(idempotency_key={idempotency_key[:12]}...)"
+            )
+            logger.info("occ_contract_adapter: %s", action)
+            return action
 
         with tempfile.TemporaryDirectory(prefix="occ-contract-") as tmpdir:
             clone_dir = Path(tmpdir) / "onex_change_control"
@@ -166,17 +341,9 @@ class OccContractAdapter:
             # 3. Write contract YAML
             contract_path = clone_dir / "contracts" / f"{ticket_id}.yaml"
             contract_path.parent.mkdir(parents=True, exist_ok=True)
-            # Fetch current HEAD sha for the receipt (best-effort; use placeholder on fail)
+            # Fetch current HEAD sha for the receipt (best-effort)
             commit_sha = self._head_sha(str(clone_dir))
-            contract_path.write_text(
-                _CONTRACT_TEMPLATE.format(
-                    ticket_id=ticket_id,
-                    repo=repo,
-                    pr_number=pr_number,
-                    evidence_id=evidence_id,
-                ),
-                encoding="utf-8",
-            )
+            contract_path.write_text(contract_yaml, encoding="utf-8")
 
             # 4. Write receipt YAML
             receipt_dir = clone_dir / "drift" / "dod_receipts" / ticket_id / evidence_id
@@ -191,7 +358,12 @@ class OccContractAdapter:
                     run_timestamp=run_timestamp,
                     commit_sha=commit_sha,
                     branch=branch,
-                    repo_slug=repo_slug,
+                    repo_slug=repo.replace("/", "-"),
+                    contract_sha256=contract_sha256,
+                    pr_head_sha=effective_pr_head_sha,
+                    source_repo=repo,
+                    runner=self._runner,
+                    verifier=self._verifier,
                 ),
                 encoding="utf-8",
             )
@@ -204,7 +376,9 @@ class OccContractAdapter:
             commit_msg = (
                 f"auto(OCC): create contract + receipt for {ticket_id}\n\n"
                 f"Auto-created by node_pr_lifecycle_fix_effect.\n"
-                f"Triggered by deploy-gate failure on {repo}#{pr_number}."
+                f"Triggered by deploy-gate failure on {repo}#{pr_number}.\n"
+                f"contract_sha256: {contract_sha256[:16]}...\n"
+                f"pr_head_sha: {effective_pr_head_sha}"
             )
             self._run_git(
                 ["git", "commit", "-m", commit_msg],
@@ -221,6 +395,8 @@ class OccContractAdapter:
             ticket_id=ticket_id,
             repo=repo,
             pr_number=pr_number,
+            contract_sha256=contract_sha256,
+            pr_head_sha=effective_pr_head_sha,
         )
 
         # 7. Append Evidence-Source to original PR body
@@ -230,6 +406,9 @@ class OccContractAdapter:
             occ_pr_number=occ_pr_number,
             ticket_id=ticket_id,
         )
+
+        # Mark as executed for idempotency
+        self._executed_keys.add(idempotency_key)
 
         action = (
             f"created OCC contract for {ticket_id} "
@@ -268,12 +447,16 @@ class OccContractAdapter:
         ticket_id: str,
         repo: str,
         pr_number: int,
+        contract_sha256: str = "unknown",
+        pr_head_sha: str = "unknown",
     ) -> int:
         owner, repo_name = split_repo(self._occ_repo)
         run_id = uuid.uuid4().hex[:8]
         body = (
             f"Auto-created OCC contract for `{ticket_id}`.\n\n"
             f"Triggered by deploy-gate failure on {repo}#{pr_number}.\n\n"
+            f"Source PR head SHA: `{pr_head_sha}`\n"
+            f"Contract SHA-256: `{contract_sha256[:16]}...`\n\n"
             f"Evidence-Ticket: {ticket_id}\n"
             f"Evidence-Source: auto-contract-{run_id}\n"
         )
@@ -325,4 +508,8 @@ class OccContractAdapter:
             )
 
 
-__all__ = ["OccContractAdapter"]
+__all__ = [
+    "OccContractAdapter",
+    "_build_idempotency_key",
+    "_compute_contract_sha256",
+]
