@@ -1,0 +1,58 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-13333"
+title: "Port dispatcher-route-coverage CI gate to omnimarket"
+summary: >-
+  Adds .github/workflows/dispatcher-route-coverage.yml to omnimarket so the
+  dispatcher-route-coverage status context is emitted on every omnimarket PR.
+  The gate verifies that every contract.yaml that subscribes to a command topic
+  (onex.cmd.*) declares a dispatcher route via handler_routing or
+  runtime_dispatch. Missing wiring causes messages to go to DLQ silently.
+  The check script lives in omnibase_infra and is sparse-checked out as a
+  sibling; only stdlib + pyyaml is required. Static analysis of all omnimarket
+  contracts confirms 0 violations at merge time. No live deploy, restart, .201
+  mutation, production data mutation, REST endpoint, or event-bus topic change
+  is performed.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omnimarket-coverage-clean"
+    description: >-
+      Static analysis of all omnimarket node contracts
+      (src/omnimarket/nodes/**/contract.yaml) shows 0 command-topic
+      subscriptions missing a dispatcher route. Every cmd-topic subscriber
+      declares handler_routing or runtime_dispatch.
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          python3 omnibase_infra/scripts/check_dispatcher_route_coverage.py
+          --contracts-dir src/omnimarket/nodes
+  - id: "dod-workflow-file-present"
+    description: >-
+      The workflow file .github/workflows/dispatcher-route-coverage.yml is
+      present in this PR and emits the dispatcher-route-coverage status context
+      on omnimarket PRs targeting dev/main and on merge_group events.
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          test -f .github/workflows/dispatcher-route-coverage.yml
+          && echo "workflow file present"
+  - id: "dod-no-runtime-mutation"
+    description: >-
+      CI workflow addition only; no live deploy, restart, .201 mutation,
+      production data mutation, REST endpoint, or event-bus topic change was
+      performed for this PR.
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          printf '%s\n' 'deploy gate: OMN-13333 adds a CI workflow file only;
+          no live deploy, restart, .201 mutation, production data mutation,
+          REST endpoint, or topic change performed'
