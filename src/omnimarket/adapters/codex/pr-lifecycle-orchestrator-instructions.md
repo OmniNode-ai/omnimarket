@@ -14,7 +14,7 @@ procedure. **Do not implement the logic yourself.**
 | merge_only | Only merge green PRs; skip fix | False |
 | repos | Comma-separated repo slugs to filter (empty = all) |  |
 | enable_auto_rebase | Auto-rebase stale (Track A-update) PR branches before merge | True |
-| verify | Run verification_sweep per-PR as pre-merge gate (OMN-7742) | False |
+| verify | Run verification_sweep per-PR as pre-merge gate | False |
 | verify_timeout_seconds | Hard per-PR verification timeout in seconds | 30 |
 
 ## Procedure

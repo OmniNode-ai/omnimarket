@@ -46,12 +46,33 @@ inputs:
   collect:
     type: bool
     description: >
-      CLI-only flag. When true, the entry point runs live rpk/psql probes to
-      populate flow metadata for the built-in critical chain stubs before
-      passing them to the pure handler. Mutually exclusive with a non-empty
-      flows list. Default: false.
+      When true (and flows is empty), the handler runs live rpk/psql probes to
+      populate flow metadata for the built-in critical-chain stubs before
+      classifying them. This is a real DataFlowSweepRequest field (not a
+      CLI-only flag), so the onex skill data_flow_sweep dispatch path resolves
+      and probes identically to the --collect CLI path (OMN-13534). Mutually
+      exclusive with a non-empty flows list. Default: false.
     required: false
     default: false
+  lane:
+    type: str
+    description: >
+      CLI-only target for --collect probes (OMN-13552). Selects which runtime
+      lane's real broker + DB the collector probes, resolving the lane to its
+      container names + runtime host (dev/stability-test/prod/judge run on .201
+      and are probed over SSH + docker exec; 'local' probes this host's in-stack
+      docker/psql). An unknown lane or an unreachable target lane fails LOUD with
+      status=error rather than a false PRODUCER_DOWN / false-clean verdict.
+      Default: dev.
+    required: false
+    default: dev
+  runtime_host:
+    type: str
+    description: >
+      CLI-only override (OMN-13552) for the SSH host of a remote lane; defaults
+      to the lane's canonical runtime host. Ignored for lane=local.
+    required: false
+    default: ""
 
 outputs:
   flow_results:

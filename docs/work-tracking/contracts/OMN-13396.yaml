@@ -1,0 +1,64 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-13396"
+title: "Terminal-path cost_usd fix: delegate-skill-terminal persists measured actual cost"
+summary: >
+  The delegation workflow handler constructed every terminal event with a
+  hardcoded cost_usd=0.0 (and candidate_cost_usd=0.0 on the baseline intent) at
+  the four delegate-skill-terminal construction points in
+  handler_delegation_workflow.py. The OMN-13355 savings recompute landed only on
+  the projection project() path, so the live SEA/delegation chain emitted via the
+  delegate-skill-terminal path persisted a zero actual cost and the savings number
+  was counterfactual - 0 — the full counterfactual, overstated by the serving
+  tier's real (non-zero, for metered) cost. This change mirrors the projection's
+  _measure_actual_cost computation at the terminal-event construction points by
+  reusing the SAME canonical pricing function (recompute_actual_cost_and_savings):
+  it resolves the serving tier's typed cost model (EnumTierCostType / ModelTierCost,
+  omnibase_core OMN-13234) by tier name from the canonical routing registry and
+  prices the measured tokens through it. free_local -> 0.0; metered -> rate*tokens.
+  The compat terminal events also carry the cost provenance fields (cost_tier_type
+  / cost_tier_name / cost_measurement_source / budget_headroom_consumed_usd) so a
+  projection over these events no longer reads counterfactual minus zero. The
+  remote-agent (A2A) lifecycle terminal carries no tokens/tier and routes through
+  the same helper, producing an audited no_cost_model zero rather than a silent
+  hardcode. No hardcoded 0.0, no parallel cost formula.
+is_seam_ticket: false
+interface_change: true
+interfaces_touched:
+  - "events"
+evidence_requirements:
+  - kind: "tests"
+    description: "Terminal-path cost DoD: the success path emits non-zero measured cost on a metered route and 0.0 on free_local; the baseline intent's candidate cost mirrors the measured tier cost."
+    command: "uv run pytest tests/unit/delegation/test_terminal_path_cost_usd_omn13396.py -q"
+  - kind: "ci"
+    description: "Full suite green (no -k filter); mypy --strict clean on the changed package."
+    command: "uv run pytest tests/ -q -m 'not kafka' && uv run mypy src/omnimarket/ --strict"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-001"
+    description: "Focused terminal-path test: metered (cheap_cloud) route emits cost_usd == rate*tokens (> 0) and cost_savings_usd == counterfactual - measured (< counterfactual); free_local (local) route emits cost_usd == 0.0 with free_local provenance; baseline candidate cost mirrors the measured tier cost."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/unit/delegation/test_terminal_path_cost_usd_omn13396.py -q"
+  - id: "dod-002"
+    description: "No regression: full delegation + tier-cost + actual-cost-recompute suites green after the change."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/unit/delegation/ tests/test_tier_cost_model_omn13234.py tests/test_actual_cost_recompute_omn13355.py -q"
+  - id: "dod-003"
+    description: "mypy --strict green on the full omnimarket src package (2455 files) and ruff format/check + pre-commit all green on the changed files."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run mypy src/omnimarket/ --strict"
+  - id: "dod-deploy"
+    description: "Deploy-gate evidence: this is a pure handler computation change — no migration, no schema change, no bespoke endpoint, no env-for-model change. The measured cost rides the existing task-delegated.v1 terminal event into the existing delegation_events projection columns (0018, shipped by OMN-13234). Picked up on the next runtime redeploy (Ticket B / OMN-13397); a live cloud-escalation delegation then emits non-null measured actual_cost_usd on rpk topic consume + projection readback."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "echo 'deploy-gate: OMN-13396 is a contract-native handler computation fix (no migration, no env, no bespoke endpoint); measured cost rides the existing terminal event into existing 0018 projection columns on the next redeploy'"

@@ -6,6 +6,7 @@ import logging
 import os
 from datetime import datetime
 
+from omnimarket.config.service_endpoints import LINEAR_GRAPHQL_URL
 from omnimarket.nodes.node_baseline_capture.models.model_baseline import (
     ModelLinearTicketSnapshot,
     ProbeSnapshotItem,
@@ -13,7 +14,7 @@ from omnimarket.nodes.node_baseline_capture.models.model_baseline import (
 
 logger = logging.getLogger(__name__)
 
-_LINEAR_API_URL = "https://api.linear.app/graphql"
+_LINEAR_API_URL = LINEAR_GRAPHQL_URL
 _QUERY = """
 query {
   issues(filter: {completedAt: {null: true}}, first: 250) {

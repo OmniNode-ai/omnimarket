@@ -1,0 +1,23 @@
+name: node_regression_test_orchestrator
+version: "1.0.0"
+description: "Regression-test orchestrator — deterministic replay of a recorded corpus, emits the canonical experiment result (OMN-13613)."
+omnibase_core_compat: ">=0.46.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_regression_test_orchestrator: "omnimarket.nodes.node_regression_test_orchestrator"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: orchestration
+dependencies:
+  - "omnibase_core>=0.46.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["orchestrator", "regression", "experiment", "replay", "sea-canonical", "OMN-13616"]
+pack: "experiment"
+display_name: "Regression Test Orchestrator"
+node_role: "orchestrator"

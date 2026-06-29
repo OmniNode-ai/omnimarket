@@ -10,11 +10,8 @@ from uuid import uuid4
 
 import pytest
 import yaml
+from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
 from omnibase_infra.enums import EnumDispatchStatus
-from omnibase_infra.event_bus.topic_constants import (
-    TOPIC_DELEGATION_COMPLETED,
-    TOPIC_DELEGATION_TASK_DELEGATED,
-)
 from omnibase_infra.models.dispatch.model_dispatch_result import ModelDispatchResult
 from omnibase_infra.runtime.event_bus_subcontract_wiring import (
     load_event_bus_subcontract,
@@ -22,14 +19,14 @@ from omnibase_infra.runtime.event_bus_subcontract_wiring import (
 )
 from omnibase_infra.runtime.models import ModelDomainPluginConfig
 
+from omnimarket.nodes.node_delegation_orchestrator.contract_topics import (
+    TOPIC_ID_DELEGATION_COMPLETED as TOPIC_DELEGATION_COMPLETED,
+)
 from omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_event import (
     ModelDelegationEvent,
 )
 from omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_result import (
     ModelDelegationResult,
-)
-from omnimarket.nodes.node_delegation_orchestrator.models.model_task_delegated_event import (
-    ModelTaskDelegatedEvent,
 )
 from omnimarket.nodes.node_delegation_orchestrator.plugin import (
     _CONTRACT_PATH,
@@ -51,7 +48,7 @@ class _RecordingEventBus:
 def _plugin_config(runtime_profile: str = "main") -> ModelDomainPluginConfig:
     return ModelDomainPluginConfig(
         container=MagicMock(),
-        event_bus=MagicMock(),
+        event_bus=MagicMock(spec=EventBusInmemory),
         correlation_id=uuid4(),
         input_topic="onex.cmd.omnibase-infra.delegation-request.v1",
         output_topic="onex.evt.omnibase-infra.delegation-completed.v1",
@@ -62,13 +59,16 @@ def _plugin_config(runtime_profile: str = "main") -> ModelDomainPluginConfig:
 
 
 @pytest.mark.unit
-def test_delegation_contract_declares_legacy_compatibility_publish_topic() -> None:
+def test_delegation_contract_has_no_legacy_compatibility_publish_topic() -> None:
+    # OMN-13629: the compatibility_publish_topics block and the task-delegated.v1
+    # publish topic were removed; the terminal collapsed to the canonical pair.
     contract = yaml.safe_load(_CONTRACT_PATH.read_text(encoding="utf-8"))
 
-    assert contract["compatibility_publish_topics"] == [
-        TOPIC_DELEGATION_TASK_DELEGATED,
-    ]
-    assert TOPIC_DELEGATION_TASK_DELEGATED in contract["event_bus"]["publish_topics"]
+    assert "compatibility_publish_topics" not in contract
+    legacy_topic = (
+        "onex.evt.omniclaude.task-delegated.v1"  # onex-topic-allow: negative proof
+    )
+    assert legacy_topic not in contract["event_bus"]["publish_topics"]
 
 
 @pytest.mark.unit
@@ -115,30 +115,20 @@ async def test_plugin_result_applier_allows_contract_terminal_topics() -> None:
             fallback_to_claude=False,
         ),
     )
-    compat = ModelTaskDelegatedEvent(
-        topic=TOPIC_DELEGATION_TASK_DELEGATED,
-        timestamp=datetime.now(UTC).isoformat(),
-        correlation_id=cid,
-        task_type="test",
-        delegated_to="local-coder",
-        model_name="local-coder",
-        quality_gate_passed=True,
-    )
+    # OMN-13629: a delegation terminal is now a SINGLE canonical event — no
+    # compat twin in output_events.
     result = ModelDispatchResult(
         status=EnumDispatchStatus.SUCCESS,
         topic="onex.evt.omnibase-infra.quality-gate-result.v1",
         started_at=datetime.now(UTC),
         correlation_id=cid,
-        output_events=[terminal, compat],
+        output_events=[terminal],
     )
 
     await applier.apply(result, cid)
 
     published_topics = [topic for topic, _envelope in bus.published]
-    assert published_topics == [
-        TOPIC_DELEGATION_COMPLETED,
-        TOPIC_DELEGATION_TASK_DELEGATED,
-    ]
+    assert published_topics == [TOPIC_DELEGATION_COMPLETED]
     terminal_payload = bus.published[0][1].payload
     assert isinstance(terminal_payload, ModelDelegationResult)
     assert terminal_payload.content.startswith("def test_example")

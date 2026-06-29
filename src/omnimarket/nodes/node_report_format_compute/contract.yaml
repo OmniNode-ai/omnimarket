@@ -1,0 +1,112 @@
+---
+name: node_report_format_compute
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: compute
+node_version: {major: 1, minor: 0, patch: 0}
+node_not_implemented: false
+
+description: >
+  Pure compute node that converts pre-fetched report markdown and structured
+  metrics into a Slack Block Kit blocks array with a mrkdwn fallback text
+  string. Performs section selection, truncation to Block Kit hard limits
+  (≤50 blocks, ≤3000 chars per section text), and emits a "full report"
+  link-out block when the content is truncated. Always produces a payload
+  (quiet-day rendering when no content is present). No I/O of any kind —
+  no git, gh, Linear, or Slack calls. Deterministic and stateless.
+
+handler:
+  module: omnimarket.nodes.node_report_format_compute.handlers.handler_report_format
+  class: NodeReportFormatCompute
+  input_model: omnimarket.nodes.node_report_format_compute.handlers.handler_report_format.ReportFormatRequest
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: format
+      handler:
+        name: NodeReportFormatCompute
+        module: omnimarket.nodes.node_report_format_compute.handlers.handler_report_format
+
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 5000
+  runtime_profiles: [main]
+
+inputs:
+  report_markdown:
+    type: str | null
+    description: >
+      Full report as a markdown string (may be null or empty on a quiet day).
+      Sections are delimited by level-2 headings (##).
+    required: false
+    default: null
+  metrics:
+    type: object | null
+    description: >
+      Optional pre-computed structured metrics dict (velocity, PR counts,
+      commit counts, etc.) merged into the header block.
+    required: false
+    default: null
+  run_date:
+    type: str
+    description: >
+      ISO 8601 date string (YYYY-MM-DD) for the report header (e.g. "2026-06-28").
+    required: true
+  full_report_url:
+    type: str | null
+    description: >
+      URL linking to the complete report. Included in a link-out block when the
+      rendered output is truncated. Null when no archive URL is available.
+    required: false
+    default: null
+  section_allowlist:
+    type: list[str] | null
+    description: >
+      Optional ordered list of section heading prefixes to include. When null
+      all sections are included in document order.
+    required: false
+    default: null
+
+outputs:
+  blocks:
+    type: list[object]
+    description: >
+      Slack Block Kit blocks array (max 50 elements). Ready to pass to
+      chat.postMessage as the blocks field.
+  fallback_text:
+    type: str
+    description: >
+      mrkdwn fallback text for notifications and accessibility. Used as the
+      text field in chat.postMessage when blocks is not supported.
+  truncated:
+    type: bool
+    description: >
+      True when the source content was truncated to fit Block Kit limits.
+      A "full report" link-out block is appended when true.
+  block_count:
+    type: int
+    description: "Number of blocks in the output array."
+  section_count:
+    type: int
+    description: "Number of content sections rendered."
+
+terminal_event: onex.evt.omnimarket.report-format-completed.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.report-format-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.report-format-completed.v1
+
+replay:
+  requires_validator_version: true
+  timestamp_authority: ingest_sequence
+  deterministic: true
+
+metadata:
+  transport_type: kafka
+  implementation_wave: 3
+  related_tickets: ["OMN-13724"]
+  skill_source: omniclaude/plugins/onex/skills/morning_report/

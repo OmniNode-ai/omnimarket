@@ -1,0 +1,20 @@
+{
+  "accepted": true,
+  "attempt_count": 1,
+  "clean_fixture_count": 4,
+  "contract_passed": true,
+  "contract_yaml": "name: node_markdown_violation_validator\ncontract_version: \"1.0.0\"\nnode_type: compute\ninput_model:\n  name: ModelMarkdownViolationInput\n  module: omnimarket.nodes.node_markdown_violation_validator.models\noutput_model:\n  name: ModelMarkdownViolationOutput\n  module: omnimarket.nodes.node_markdown_violation_validator.models",
+  "corpus_checked": true,
+  "corpus_errors": [],
+  "corpus_passed": true,
+  "correlation_id": "omn-13294-g2-todo-fixme-marker-565d92eb54af",
+  "endpoint_class": "local-coder",
+  "handler_source": "import re\n\ndef handle(input_data):\n    source = input_data.get('source', '')\n    # Pattern matches TODO, FIXME, or HACK as whole words.\n    # \\b ensures word boundaries (not part of a larger identifier).\n    pattern = r'\\b(TODO|FIXME|HACK)\\b'\n    findings = []\n\n    lines = source.split('\\n')\n    for line_num, line in enumerate(lines, start=1):\n        matches = re.findall(pattern, line)\n        for match in matches:\n            findings.append({\n                \"line_number\": line_num,\n                \"line_content\": line,\n                \"marker\": match\n            })\n\n    return {\"findings\": findings}",
+  "model_id": "Qwen3.6-35B-A3B",
+  "provider": "local",
+  "resolved_endpoint": "http://192.168.86.201:8000/v1/chat/completions",
+  "routing_source": "contract",
+  "usage_source": "measured",
+  "validator": "todo-fixme-marker",
+  "violation_fixture_count": 5
+}

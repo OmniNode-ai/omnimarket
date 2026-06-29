@@ -10,14 +10,23 @@ Entry flags control transition availability:
   - inventory_only: stops after INVENTORYING (no FIXING or MERGING)
   - fix_only: only TRIAGED -> FIXING allowed (skips MERGING)
 
+Repo-health fold functions (OMN-13585):
+  - fold_repo_health_classified: folds repo-health-classified.v1 events into
+    ModelPrLifecycleState.repo_health only; all PR-lane fields are untouched.
+  - fold_repo_health_repair_emitted: folds repo-health-repair-emitted.v1 events
+    into ModelPrLifecycleState.repo_health only; all PR-lane fields are untouched.
+
 Related:
     - OMN-8086: Create pr_lifecycle_state_reducer Node
     - OMN-8070: PR Lifecycle Domain epic
+    - OMN-13585: RH-3: Extend pr_lifecycle reducer state with additive repo_health sub-record
+    - OMN-13321: F5: emit durable per-PR ledger projection every sweep iteration
 """
 
 from __future__ import annotations
 
 import logging
+from datetime import UTC, datetime
 from typing import Any, Literal
 from uuid import UUID
 
@@ -34,6 +43,12 @@ from omnimarket.nodes.node_pr_lifecycle_state_reducer.models.model_pr_lifecycle_
     ModelPrLifecycleEntryFlags,
     ModelPrLifecycleState,
 )
+from omnimarket.projection.pr_ledger_projection import (
+    PR_LEDGER_PROJECTION_CONFLICT_KEY,
+    PR_LEDGER_PROJECTION_TABLE,
+    build_ledger_rows,
+)
+from omnimarket.projection.protocol_database import ProtocolProjectionDatabaseSync
 
 logger = logging.getLogger(__name__)
 
@@ -210,6 +225,99 @@ def _is_transition_allowed(
     return True
 
 
+# ---------------------------------------------------------------------------
+# Repo-health fold functions (OMN-13585)
+#
+# These are pure functions that fold repo-health domain events into the
+# ModelPrLifecycleState.repo_health sub-record ONLY.  The PR-lane FSM fields
+# (phase, prs_*, started_at, etc.) are never touched by these folds.
+# ---------------------------------------------------------------------------
+
+
+#: Topic suffixes that route to repo-health fold functions instead of the FSM delta.
+#: Full subscribed topics are declared in contract.yaml event_bus.subscribe_topics.
+_REPO_HEALTH_CLASSIFIED_TOPIC_SUFFIX = "repo-health-classified.v1"
+_REPO_HEALTH_REPAIR_EMITTED_TOPIC_SUFFIX = "repo-health-repair-emitted.v1"
+
+#: Classification values and their target counter field names.
+_CLASSIFICATION_FIELD: dict[str, str] = {
+    "pr_scoped": "pr_scoped_count",
+    "repo_baseline": "repo_baseline_count",
+    "external_dependency": "external_dependency_count",
+    "unknown": "unknown_count",
+}
+
+
+def fold_repo_health_classified(
+    state: ModelPrLifecycleState,
+    *,
+    classification: str,
+    ticket_ref: str | None,
+) -> ModelPrLifecycleState:
+    """Fold a repo-health-classified event into the repo_health sub-record.
+
+    Only ModelPrLifecycleState.repo_health is updated; all PR-lane FSM fields
+    are byte-identical in the returned state.
+
+    Args:
+        state: Current PR lifecycle state.
+        classification: Classification label from the event.
+            One of: 'pr_scoped', 'repo_baseline', 'external_dependency', 'unknown'.
+            Unknown labels increment unknown_count.
+        ticket_ref: Optional ticket reference string (unused here; reserved for
+            future sub-classification linking).
+
+    Returns:
+        New ModelPrLifecycleState with updated repo_health only.
+    """
+    rh = state.repo_health
+    counter_field = _CLASSIFICATION_FIELD.get(classification, "unknown_count")
+    current_counter: int = getattr(rh, counter_field)
+    rh_update: dict[str, object] = {
+        "classified_count": rh.classified_count + 1,
+        counter_field: current_counter + 1,
+    }
+    new_rh = rh.model_copy(update=rh_update)
+    return state.model_copy(update={"repo_health": new_rh})
+
+
+def fold_repo_health_repair_emitted(
+    state: ModelPrLifecycleState,
+    *,
+    ticket_ref: str | None,
+) -> ModelPrLifecycleState:
+    """Fold a repo-health-repair-emitted event into the repo_health sub-record.
+
+    Only ModelPrLifecycleState.repo_health is updated; all PR-lane FSM fields
+    are byte-identical in the returned state.
+
+    Duplicate ticket_refs are deduplicated in repair_task_refs.
+
+    Args:
+        state: Current PR lifecycle state.
+        ticket_ref: Ticket reference string for the emitted repair task,
+            or None if no ticket was generated.
+
+    Returns:
+        New ModelPrLifecycleState with updated repo_health only.
+    """
+    rh = state.repo_health
+    if ticket_ref is not None:
+        # Deduplicate: preserve insertion order via dict.fromkeys
+        new_refs: tuple[str, ...] = tuple(
+            dict.fromkeys((*rh.repair_task_refs, ticket_ref))
+        )
+    else:
+        new_refs = rh.repair_task_refs
+    new_rh = rh.model_copy(
+        update={
+            "repair_tasks_emitted": rh.repair_tasks_emitted + 1,
+            "repair_task_refs": new_refs,
+        }
+    )
+    return state.model_copy(update={"repo_health": new_rh})
+
+
 class HandlerPrLifecycleStateReducer:
     """Pure reducer: delta(state, event) -> (new_state, intents).
 
@@ -228,12 +336,42 @@ class HandlerPrLifecycleStateReducer:
     def handle_dict(self, input_data: dict[str, Any]) -> dict[str, Any]:
         """RuntimeLocal handler protocol shim.
 
-        Delegates to delta() with ModelPrLifecycleState and ModelPrLifecycleEvent
-        constructed from input_data.
+        Dispatches to the appropriate fold function based on the event_topic key,
+        or delegates to delta() for standard PR-lifecycle FSM events.
+
+        Repo-health events (OMN-13585):
+          - onex.evt.omnimarket.repo-health-classified.v1 → fold_repo_health_classified
+          - onex.evt.omnimarket.repo-health-repair-emitted.v1 → fold_repo_health_repair_emitted
+
+        All other events → delta() (FSM state transition).
         """
+        event_topic: str = input_data.get("event_topic", "")
         state_data = input_data.get("state", {})
         event_data = input_data.get("event", {})
         state = ModelPrLifecycleState(**state_data)
+
+        if event_topic.endswith(_REPO_HEALTH_CLASSIFIED_TOPIC_SUFFIX):
+            new_state = fold_repo_health_classified(
+                state,
+                classification=event_data.get("classification", "unknown"),
+                ticket_ref=event_data.get("ticket_ref"),
+            )
+            return {
+                "state": new_state.model_dump(mode="json"),
+                "intents": [],
+            }
+
+        if event_topic.endswith(_REPO_HEALTH_REPAIR_EMITTED_TOPIC_SUFFIX):
+            new_state = fold_repo_health_repair_emitted(
+                state,
+                ticket_ref=event_data.get("ticket_ref"),
+            )
+            return {
+                "state": new_state.model_dump(mode="json"),
+                "intents": [],
+            }
+
+        # Default: FSM delta path
         event = ModelPrLifecycleEvent(**event_data)
         new_state, intents = self.delta(state, event)
         return {
@@ -250,6 +388,10 @@ class HandlerPrLifecycleStateReducer:
         inventory_only: bool = False,
         fix_only: bool = False,
         merge_only: bool = False,
+        projection_db: ProtocolProjectionDatabaseSync | None = None,
+        sweep_id: str | None = None,
+        iteration: int = 0,
+        found_at: datetime | None = None,
         **_kwargs: Any,
     ) -> Any:
         """Unified entry point: dispatches to orchestrator or RuntimeLocal shim.
@@ -266,6 +408,14 @@ class HandlerPrLifecycleStateReducer:
           - fix_only: only FIX intents, no MERGE
           - merge_only: only MERGE intents, no FIX
           - dry_run: compute and return intents, orchestrator will not execute them
+
+        Per-iteration ledger projection (OMN-13321 / F5):
+          - projection_db + sweep_id: emit one durable ledger row per PR for
+            this iteration into pr_lifecycle_ledger_entries. Both must be
+            supplied together; supplying one without the other fails fast.
+          - iteration: monotonic per-sweep index (part of the conflict key,
+            so two consecutive iterations produce distinct rows).
+          - found_at: observation timestamp for the row; defaults to now().
         """
         # RuntimeLocal shim: positional dict argument
         if args:
@@ -326,11 +476,76 @@ class HandlerPrLifecycleStateReducer:
             merge_only,
         )
 
+        # OMN-13321 / F5: emit one durable, user-readable ledger row per PR
+        # EVERY iteration (not only at sweep end). The reducer is the named
+        # surface; rows land in the control-plane projection database keyed by
+        # (sweep_id, repo, pr_number, iteration), so two consecutive
+        # iterations both produce rows and neither overwrites the other.
+        self._emit_ledger_rows(
+            classified=classified_prs,
+            intents=intents,
+            projection_db=projection_db,
+            sweep_id=sweep_id,
+            iteration=iteration,
+            found_at=found_at,
+        )
+
         return ReducerResult(
             intents=tuple(intents),
             merge_count=merge_count,
             fix_count=fix_count,
             skip_count=skip_count,
+        )
+
+    def _emit_ledger_rows(
+        self,
+        *,
+        classified: tuple[Any, ...],
+        intents: list[Any],
+        projection_db: ProtocolProjectionDatabaseSync | None,
+        sweep_id: str | None,
+        iteration: int,
+        found_at: datetime | None,
+    ) -> None:
+        """Materialize per-iteration ledger rows into the projection database.
+
+        OMN-13321 / F5. When no projection_db AND no sweep_id are supplied the
+        reducer is the pure classifier (local/test path) and nothing is
+        emitted. Supplying one without the other is a wiring bug and fails
+        fast -- a half-configured durable surface silently dropping rows is
+        exactly the OMN-12569 failure mode this ticket hardens against.
+
+        ``found_at`` defaults to wall-clock now when the durable path is
+        active; ``next_check_at`` is derived from the contract freshness SLA
+        inside ``build_ledger_rows``.
+        """
+        if projection_db is None and sweep_id is None:
+            return
+        if projection_db is None or sweep_id is None:
+            raise ValueError(
+                "per-iteration ledger projection requires BOTH projection_db "
+                "and sweep_id; got projection_db="
+                f"{projection_db is not None}, sweep_id={sweep_id!r}"
+            )
+        observed_at = found_at if found_at is not None else datetime.now(tz=UTC)
+        rows = build_ledger_rows(
+            sweep_id=sweep_id,
+            iteration=iteration,
+            found_at=observed_at,
+            classified=classified,
+            intents=intents,
+        )
+        for row in rows:
+            projection_db.upsert(
+                PR_LEDGER_PROJECTION_TABLE,
+                PR_LEDGER_PROJECTION_CONFLICT_KEY,
+                row.to_row(),
+            )
+        logger.info(
+            "[STATE-REDUCER] ledger projection: sweep_id=%s iteration=%d rows=%d",
+            sweep_id,
+            iteration,
+            len(rows),
         )
 
     def delta(

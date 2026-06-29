@@ -1,0 +1,80 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract — Baselines Quality snapshot projection (OMN-13076)
+#
+# Projects per-pattern quality signals from the baselines-computed event into
+# the baselines_quality_snapshots table, and exposes that table through the
+# projection API on
+#   onex.snapshot.projection.baselines.quality.v1  # onex-topic-allow: projection snapshot topics use the onex.snapshot.* prefix by convention
+# so the omnidash quality-baseline-panel widget reads live quality data instead
+# of returning 404 (unknown_topic).
+---
+name: projection_baselines_quality
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: reducer
+node_version: {major: 1, minor: 0, patch: 0}
+input_model: omnimarket.nodes.node_projection_baselines.handlers.handler_projection_baselines.ModelBaselinesComputedEvent
+description: >
+  Aggregates baselines-computed events into a single baselines_quality_snapshots
+  row per snapshot_id. Computes confidence-tier counts (high, medium, low),
+  a weighted quality_score, and the recommend_rate ratio. The table is exposed
+  through the projection API as the baselines quality snapshot topic consumed by
+  the omnidash quality-baseline-panel dashboard widget.
+
+handler:
+  module: omnimarket.nodes.node_projection_baselines_quality.handlers.handler_projection_baselines_quality
+  class: HandlerProjectionBaselinesQuality
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: projection_baselines_quality
+      handler:
+        name: HandlerProjectionBaselinesQuality
+        module: omnimarket.nodes.node_projection_baselines_quality.handlers.handler_projection_baselines_quality
+      handler_module: omnimarket.nodes.node_projection_baselines_quality.handlers.handler_projection_baselines_quality
+      event_model: omnimarket.nodes.node_projection_baselines.handlers.handler_projection_baselines.ModelBaselinesComputedEvent
+
+terminal_event: onex.evt.omnimarket.projection-baselines-quality-applied.v1
+
+db_io:
+  db_tables:
+    - name: baselines_quality_snapshots
+      migration: "001_create_baselines_quality_snapshots.sql"
+      access: write
+      database: omnidash_analytics
+      role: quality_snapshots
+
+event_bus:
+  consumer_group: local.omnimarket.node_projection_baselines_quality.consume.v1
+  subscribe_topics:
+    - onex.evt.omnibase-infra.baselines-computed.v1
+  publish_topics:
+    - onex.evt.omnimarket.projection-baselines-quality-applied.v1
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.projection-baselines-quality-applied.v1
+
+projection_api:
+  expose: true
+  exposures:
+    - topic: onex.snapshot.projection.baselines.quality.v1 # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
+      table: baselines_quality_snapshots
+      schema: public
+      columns:
+        - snapshot_id
+        - captured_at
+        - patterns_compared
+        - patterns_recommended
+        - high_confidence_count
+        - medium_confidence_count
+        - low_confidence_count
+        - quality_score
+        - recommend_rate
+        - projected_at
+      order_by: projected_at DESC
+      freshness_column: projected_at
+      limit: 1
+
+metadata:
+  transport_type: kafka

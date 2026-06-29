@@ -71,10 +71,11 @@ def test_dep_cascade_dedup_orchestrator_contract_routing_surface() -> None:
     assert raw["handler_routing"]["routing_strategy"] == "operation_match"
     assert raw["handler_routing"]["handlers"] == [
         {
+            "operation": "dep_cascade_dedup",
             "handler": {
                 "name": _HANDLER_CLASS,
                 "module": _HANDLER_MODULE,
-            }
+            },
         }
     ]
 

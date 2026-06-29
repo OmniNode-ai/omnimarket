@@ -365,5 +365,14 @@ exit 1
 
     result = json.loads((run_dir / "result.json").read_text())
     assert result["final_state"] == "FAILED"
-    assert "pre-commit failed" in result["error_message"]
+    # The failure still surfaces loudly: the error message names the failing
+    # pre-commit command + exit code, and the structured signal carries the
+    # raw pre-commit output for a downstream classifier (OMN-13587).
+    assert "pre-commit run --all-files failed with exit 2" in result["error_message"]
+    precommit_failure = result["precommit_failure"]
+    assert precommit_failure["exit_code"] == 2
+    assert precommit_failure["command"] == "uv run pre-commit run --all-files"
+    assert "pre-commit failed on real local review" in precommit_failure["output_tail"]
+    # The completed event mirrors the structured signal on the failure path.
+    assert payload["precommit_failure"]["exit_code"] == 2
     assert result.get("push_status") != "pushed"

@@ -24,7 +24,9 @@ class TestEnsureSubHandlersDI:
             ProtocolPlatformReadinessHandler,
         )
 
-        handler = HandlerBuildLoopExecutor(event_bus=MagicMock())
+        handler = HandlerBuildLoopExecutor(
+            event_bus=MagicMock(),  # transport-mock-ok: EventPublisher is a Callable type alias, not a Protocol class — spec= cannot be applied
+        )
         handler._ensure_sub_handlers()
 
         assert handler._nightly_loop is not None
@@ -52,7 +54,9 @@ class TestEnsureSubHandlersDI:
         )
 
         # Simulate missing handler by patching _resolve_nightly_loop to raise
-        handler = HandlerBuildLoopExecutor(event_bus=MagicMock())
+        handler = HandlerBuildLoopExecutor(
+            event_bus=MagicMock(),  # transport-mock-ok: EventPublisher is a Callable type alias, not a Protocol class — spec= cannot be applied
+        )
 
         def _raise() -> None:
             raise DependencyResolutionError("nightly_loop", "stub not available")
@@ -70,7 +74,7 @@ class TestEnsureSubHandlersDI:
             HandlerBuildLoopExecutor,
         )
 
-        mock_bus = MagicMock()
+        mock_bus = MagicMock()  # transport-mock-ok: EventPublisher is a Callable type alias, not a Protocol class — spec= cannot be applied
         handler = HandlerBuildLoopExecutor(event_bus=mock_bus)
         handler._ensure_sub_handlers()
 

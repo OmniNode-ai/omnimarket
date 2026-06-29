@@ -6,9 +6,11 @@ node_version: {major: 1, minor: 0, patch: 0}
 input_model: omnimarket.nodes.node_projection_delegation.handlers.handler_projection_delegation.ModelProjectionTaskDelegatedEvent
 description: >
   Projects delegation terminal events into the delegation_events table.
-  Dedup by correlation_id. Sources include legacy task-delegated events,
-  shadow comparisons, node generation completions, and delegate-skill
-  terminal events.
+  Dedup by correlation_id. Sources are the canonical delegation terminal pair
+  (delegation-completed/failed.v1), shadow comparisons, node generation
+  completions, and delegate-skill terminal events. (OMN-13629: the legacy compat
+  task-delegated.v1 secondary path was dropped; the canonical terminal is
+  converted internally.)
 
 handler:
   module: omnimarket.nodes.node_projection_delegation.handlers.handler_projection_delegation
@@ -17,11 +19,13 @@ handler:
 handler_routing:
   routing_strategy: operation_match
   handlers:
-    - handler:
+    - operation: delegation_projection_runner
+      handler:
         name: DelegationProjectionRunner
         module: omnimarket.nodes.node_projection_delegation.handlers.handler_delegation
       handler_module: omnimarket.nodes.node_projection_delegation.handlers.handler_delegation
-    - handler:
+    - operation: projection_delegation
+      handler:
         name: HandlerProjectionDelegation
         module: omnimarket.nodes.node_projection_delegation.handlers.handler_projection_delegation
       handler_module: omnimarket.nodes.node_projection_delegation.handlers.handler_projection_delegation
@@ -41,7 +45,7 @@ golden_path:
 db_io:
   db_tables:
     - name: delegation_events
-      migration: "0011_delegation_event_projection_versions.sql"
+      migration: "0020_delegation_context_pack_hash.sql"
       access: write
       database: omnidash_analytics
       role: events
@@ -51,20 +55,43 @@ db_io:
       database: omnidash_analytics
       role: shadow_comparisons
     - name: generation_events
-      migration: "0013_generation_proof_fields.sql"
+      migration: "0015_generation_corpus_acceptance.sql"
       access: write
       database: omnidash_analytics
       role: generation_events
+    - name: delegation_judge_verdict_events
+      migration: "0016_delegation_judge_verdict_events.sql"
+      access: write
+      database: omnidash_analytics
+      role: judge_verdict_events
+    # OMN-13235: per-tenant ceiling budget state (cap + consumption), event-sourced
+    # from delegation source events for budgeted tiers.
+    - name: delegation_budget_state
+      migration: "0019_delegation_budget_state.sql"
+      access: write
+      database: omnidash_analytics
+      role: budget_state
 
 event_bus:
   subscribe_topics:
-    - onex.evt.omniclaude.task-delegated.v1
+    # OMN-13629 (WS-F Phase 1): dropped the legacy compat
+    # onex.evt.omniclaude.task-delegated.v1 secondary path. The orchestrator now
+    # emits a SINGLE canonical terminal; the canonical
+    # delegation-{completed,failed}.v1 pair below is converted internally via
+    # _canonical_result_to_task_delegated_payload, so the legacy co-writer that
+    # caused the OMN-13408/13475 divergence is gone.
     - onex.evt.omniclaude.delegation-shadow-comparison.v1
     - onex.evt.omnimarket.node-generation-completed.v1
+    # OMN-13468: the failure terminal was absent, making failed runs invisible
+    # at GET /projection/onex.evt.omnimarket.node-generation-failed.v1 (404
+    # unknown_topic). Both terminals share the same payload shape and write to
+    # the same generation_events table; only contract_passed differs in value.
+    - onex.evt.omnimarket.node-generation-failed.v1
     - onex.evt.omnimarket.delegate-skill-completed.v1
     - onex.evt.omnimarket.delegate-skill-failed.v1
     - onex.evt.omnibase-infra.delegation-completed.v1
     - onex.evt.omnibase-infra.delegation-failed.v1
+    - onex.evt.omnibase-infra.delegation-judge-verdict.v1
   publish_topics:
     - onex.evt.omnimarket.projection-delegation-applied.v1
     # Projection-API snapshot topics: this reducer materializes each exposure
@@ -76,6 +103,13 @@ event_bus:
     - onex.snapshot.projection.delegation.quality-gate.v1  # onex-topic-allow: projection snapshot topic
     - onex.snapshot.projection.delegation.token-usage.v1  # onex-topic-allow: projection snapshot topic
     - onex.snapshot.projection.delegation.model-routing.v1  # onex-topic-allow: projection snapshot topic
+    - onex.snapshot.projection.delegation.judge-verdicts.v1  # onex-topic-allow: projection snapshot topic
+    - onex.snapshot.projection.delegation.budget-state.v1  # onex-topic-allow: projection snapshot topic
+  # OMN-13548 (D-03): malformed inbound events (ValidationError / missing required
+  # fields) are routed here as a DURABLE failure signal carrying the offending
+  # envelope + correlation_id, instead of being logged + dropped silently.
+  dlq_topics:
+    - onex.dlq.omnimarket.projection-delegation-malformed.v1
 
 externally_consumed_topics:
   # Projection snapshot topics are served through projection_api/dashboard reads
@@ -86,6 +120,8 @@ externally_consumed_topics:
   - onex.snapshot.projection.delegation.quality-gate.v1  # onex-topic-allow: projection snapshot topic
   - onex.snapshot.projection.delegation.token-usage.v1  # onex-topic-allow: projection snapshot topic
   - onex.snapshot.projection.delegation.model-routing.v1  # onex-topic-allow: projection snapshot topic
+  - onex.snapshot.projection.delegation.judge-verdicts.v1  # onex-topic-allow: projection snapshot topic
+  - onex.snapshot.projection.delegation.budget-state.v1  # onex-topic-allow: projection snapshot topic
 
 projection_api:
   expose: true
@@ -106,8 +142,16 @@ projection_api:
         - delegation_latency_ms
         - tokens_input
         - tokens_output
+        - context_pack_hash
         - tokens_to_compliance
         - compliance_attempts
+        - required_bar
+        - actual_score
+        - escalation_count
+        - authority_source
+        - score_source
+        - request_override_applied
+        - override_within_bounds
         - cost_usd
         - cost_savings_usd
         - pricing_manifest_version
@@ -131,8 +175,13 @@ projection_api:
         - delegation_latency_ms
         - tokens_input
         - tokens_output
+        - context_pack_hash
         - tokens_to_compliance
         - compliance_attempts
+        - required_bar
+        - actual_score
+        - escalation_count
+        - authority_source
         - pricing_manifest_version
       order_by: timestamp DESC
       freshness_column: timestamp
@@ -152,7 +201,19 @@ projection_api:
         - latency_ms
         - tokens_input
         - tokens_output
+        - context_pack_hash
         - tokens_to_compliance
+        - required_bar
+        - actual_score
+        - escalation_count
+        - authority_source
+        - score_source
+        # OMN-13649: the authoritative routing/cost tier (local | cheap_cloud |
+        # cheap_frontier | claude) + its typed cost regime. Carried from the
+        # delegation terminal, persisted on the row, exposed here so the dashboard
+        # Tier Distribution reads tier from the projection (deletes modelTier.ts).
+        - cost_tier_name
+        - cost_tier_type
         - created_at
       order_by: created_at DESC
       freshness_column: created_at
@@ -180,10 +241,22 @@ projection_api:
         - delegation_latency_ms
         - tokens_input
         - tokens_output
+        - context_pack_hash
         - tokens_to_compliance
         - compliance_attempts
+        - required_bar
+        - actual_score
+        - escalation_count
+        - authority_source
+        - score_source
+        - request_override_applied
+        - override_within_bounds
         - cost_usd
         - cost_savings_usd
+        # OMN-13649: authoritative serving tier + typed cost regime on the
+        # per-correlation detail surface.
+        - cost_tier_name
+        - cost_tier_type
         - pricing_manifest_version
         - prompt_text
         - response_text
@@ -227,10 +300,17 @@ projection_api:
         - captured_at
         - provisioned
         - latest_projection_updated_at
+        # OMN-13662: tier distribution with explicit not_tier_routed
+        # classification. Maps empty cost_tier_name (delegate-skill terminals)
+        # to 'not_tier_routed', excludes those rows from the tier-% denominator
+        # (tier_routed_total), and surfaces total_tasks + not_tier_routed_count
+        # so the dashboard reads the classification instead of re-deriving it.
+        - by_tier
       json_columns:
         - rows
         - by_model
         - decision_traces
+        - by_tier
       freshness_column: latest_projection_updated_at
       limit: 1
     - topic: onex.snapshot.projection.delegation.quality-gate.v1 # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
@@ -243,6 +323,8 @@ projection_api:
         - total_checks
         - escalation_count
         - escalation_rate
+        - avg_actual_score
+        - avg_required_bar
         - by_check_type
         - failure_categories
         - avg_tokens_to_compliance
@@ -258,6 +340,33 @@ projection_api:
         - tokens_to_compliance_by_model
       freshness_column: latest_projection_updated_at
       limit: 1
+    - topic: onex.snapshot.projection.delegation.judge-verdicts.v1 # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
+      table: delegation_judge_verdict_events
+      schema: public
+      columns:
+        - id
+        - event_hash
+        - correlation_id
+        - task_type
+        - score_source
+        - judge_model
+        - judge_model_version
+        - judge_provider
+        - rubric_id
+        - rubric_hash
+        - prompt_hash
+        - input_hash
+        - temperature
+        - judge_node_version
+        - reasoning_hash
+        - verdict
+        - actual_score
+        - failure_kind
+        - failure_message
+        - created_at
+      order_by: created_at DESC
+      freshness_column: created_at
+      limit: 500
     - topic: onex.snapshot.projection.delegation.token-usage.v1 # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
       table: projection_delegation_token_usage
       schema: public
@@ -293,6 +402,17 @@ projection_api:
         - attempt_count
         - total_latency_e2e_ms
         - contract_passed
+        # OMN-13166: behavioral verdict, surfaced separately from contract_passed
+        # so the dashboard can show a shape-valid-but-behaviorally-wrong
+        # generation (the gate-zero false-green) as NOT a task-behavior pass.
+        - semantic_checked
+        - semantic_passed
+        # OMN-13289 (G0) / OMN-13350: validator-acceptance (corpus) verdict,
+        # surfaced so the dashboard can show a shape-valid validator that does NOT
+        # actually enforce its rule (corpus_checked=true, corpus_passed=false).
+        - corpus_checked
+        - corpus_passed
+        - corpus_errors
         - cost_inference_usd
         - contract_yaml
         - handler_source
@@ -311,6 +431,67 @@ projection_api:
       order_by: created_at DESC
       freshness_column: created_at
       limit: 500
+    # OMN-13468: expose the failure terminal via the projection-API so failed runs
+    # are observable at GET /projection/onex.evt.omnimarket.node-generation-failed.v1.
+    # Same table + columns as the completed exposure — contract_passed will be False
+    # for every row returned here. Rows are written by the same
+    # _project_generation_completed handler that processes the completed terminal.
+    - topic: onex.evt.omnimarket.node-generation-failed.v1
+      table: generation_events
+      schema: public
+      columns:
+        - id
+        - correlation_id
+        - task_description
+        - provider
+        - model_id
+        - endpoint_class
+        - attempt_count
+        - total_latency_e2e_ms
+        - contract_passed
+        - semantic_checked
+        - semantic_passed
+        - corpus_checked
+        - corpus_passed
+        - corpus_errors
+        - cost_inference_usd
+        - contract_yaml
+        - handler_source
+        - output_payload_sha256
+        - contract_sha256
+        - handler_sha256
+        - routing_source
+        - resolved_endpoint
+        - projection_owner
+        - timestamp
+        - created_at
+      order_by: created_at DESC
+      freshness_column: created_at
+      limit: 500
+    # OMN-13235: per-tenant ceiling budget-state surface — cap, period
+    # consumption, and remaining headroom for budgeted ceiling tiers. Readable so
+    # the dashboard / API can show how much of a tenant's monthly ceiling budget
+    # is consumed and confirm consumption rising after a ceiling escalation probe.
+    - topic: onex.snapshot.projection.delegation.budget-state.v1 # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
+      table: delegation_budget_state
+      schema: public
+      columns:
+        - id
+        - tenant_id
+        - cost_tier_name
+        - budget_period
+        - monthly_cap_usd
+        - consumed_usd
+        - overage_usd
+        - headroom_remaining_usd
+        - delegation_count
+        - first_event_at
+        - last_event_at
+        - created_at
+        - updated_at
+      order_by: updated_at DESC
+      freshness_column: updated_at
+      limit: 500
 
 metadata:
   transport_type: kafka
@@ -325,3 +506,5 @@ metadata:
     - onex.snapshot.projection.delegation.quality-gate.v1  # onex-topic-allow: projection snapshot topic
     - onex.snapshot.projection.delegation.token-usage.v1  # onex-topic-allow: projection snapshot topic
     - onex.snapshot.projection.delegation.model-routing.v1  # onex-topic-allow: projection snapshot topic
+    - onex.snapshot.projection.delegation.judge-verdicts.v1  # onex-topic-allow: projection snapshot topic
+    - onex.snapshot.projection.delegation.budget-state.v1  # onex-topic-allow: projection snapshot topic

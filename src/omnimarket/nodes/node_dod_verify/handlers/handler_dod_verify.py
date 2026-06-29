@@ -47,7 +47,8 @@ class HandlerDodVerify:
 
     def handle(
         self,
-        command: ModelDodVerifyStartCommand | dict[str, object],
+        payload: ModelDodVerifyStartCommand | dict[str, object],
+        *,
         evidence_results: list[ModelEvidenceCheckResult] | None = None,
     ) -> ModelDodVerifyState | dict[str, object]:
         """Run DoD evidence verification and return final state.
@@ -55,10 +56,16 @@ class HandlerDodVerify:
         Supports two calling conventions:
         - Typed: handle(ModelDodVerifyStartCommand, ...) -> ModelDodVerifyState
         - RuntimeLocal shim: handle(dict) -> dict  (required by RuntimeLocal contract)
+
+        OMN-13253: the first parameter is named ``payload`` so the RuntimeLocal
+        adapter's single-parameter dispatch passes the validated command/dict
+        positionally instead of keyword-fanning the model fields, and
+        ``evidence_results`` is keyword-only so the adapter sees exactly one
+        positional parameter.
         """
-        if isinstance(command, dict):
-            return self._handle_dict(command)
-        return self._handle_typed(command, evidence_results)
+        if isinstance(payload, dict):
+            return self._handle_dict(payload)
+        return self._handle_typed(payload, evidence_results)
 
     def _handle_dict(self, payload: dict[str, object]) -> dict[str, object]:
         """RuntimeLocal shim — translates dict in/out to typed handle."""

@@ -1,0 +1,91 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# pr-merged-publisher.yml
+#
+# Publishes onex.evt.github.pr-merged.v1 to the canonical event bus whenever a
+# PR merges to any branch. The event payload carries {repo, branch, pr_number,
+# ticket, merged_at} and is consumed by the projection node (OMN-13227) which
+# materialises a queryable projection at GET /projection/onex.evt.github.pr-merged.v1
+# on the local projection API. The per-machine worktree reaper (T4, OMN-13228)
+# polls that projection to trigger prune-worktrees.sh on matched worktrees.
+#
+# F3 BROKER DECISION (OMN-13226), re-resolved by verified reachability
+# (OMN-13226 follow-up):
+#   Runs on the self-hosted omnibase-ci runner for trusted, non-fork merge
+#   events (OMNI_RUNNER_SELECTOR_V1). That runner lives on .201 and reaches the
+#   LOCAL lane Redpanda broker directly: KAFKA_BOOTSTRAP_SERVERS is sourced from
+#   ~/.omnibase/.env on the runner (a plaintext LAN endpoint, e.g.
+#   localhost:19092). The event lands on the same Redpanda lane that the T3
+#   projection node (OMN-13227) consumes, so GET
+#   /projection/onex.evt.github.pr-merged.v1 is served at :3002 for local reaper
+#   polling. The transport is NOT hardcoded to a single provider — the script
+#   uses plaintext when no SASL creds are present (local lane) and SASL_SSL when
+#   they are (a cloud broker). Fork PRs fall back to ubuntu-latest, where the
+#   publisher gracefully skips (exit 0) if no broker is resolvable.
+#
+# Ticket: OMN-13226
+#
+# Broker resolution (on the trusted self-hosted runner):
+#   KAFKA_BOOTSTRAP_SERVERS    -- sourced from ~/.omnibase/.env on the runner;
+#                                 points at the local lane Redpanda broker
+# Optional (cloud broker only): KAFKA_SASL_USERNAME, KAFKA_SASL_PASSWORD
+
+name: PR Merged Publisher
+
+on:
+  pull_request:
+    types: [closed]
+
+jobs:
+  publish-pr-merged:
+    name: Publish pr-merged event
+    if: github.event.pull_request.merged == true
+    # OMNI_RUNNER_SELECTOR_V1 - trusted (non-fork) merges run on the self-hosted
+    # omnibase-ci runner so the publisher reaches the local lane broker; fork PRs
+    # fall back to ubuntu-latest (publisher skips gracefully when no broker).
+    runs-on: >-
+      ${{
+        (github.event_name == 'pull_request' &&
+         github.event.pull_request.head.repo.full_name != github.repository)
+        && fromJSON(vars.OMNI_PUBLIC_PR_RUNS_ON_JSON || '["ubuntu-latest"]')
+        || fromJSON(vars.OMNI_TRUSTED_CI_RUNS_ON_JSON || '["self-hosted","omnibase-ci"]')
+      }}
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          pip install --quiet confluent-kafka click pydantic
+
+      - name: Publish onex.evt.github.pr-merged.v1
+        # All potentially attacker-controlled inputs (branch name, PR title) are
+        # passed through environment variables to prevent shell injection.
+        #
+        # On the self-hosted runner, ~/.omnibase/.env supplies
+        # KAFKA_BOOTSTRAP_SERVERS (the local lane broker); that shell env value
+        # wins over the secret fallback. On a cloud runner the secret (if any)
+        # is used; with no broker the publisher skips gracefully (exit 0).
+        env:
+          KAFKA_BOOTSTRAP_SERVERS: ${{ secrets.KAFKA_BOOTSTRAP_SERVERS }}
+          KAFKA_SASL_USERNAME: ${{ secrets.KAFKA_SASL_USERNAME }}
+          KAFKA_SASL_PASSWORD: ${{ secrets.KAFKA_SASL_PASSWORD }}
+          PR_REPO: ${{ github.repository }}
+          PR_BRANCH: ${{ github.event.pull_request.head.ref }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_MERGED_AT: ${{ github.event.pull_request.merged_at }}
+          # Best-effort ticket extraction: the script also parses PR_BRANCH
+          PR_TICKET: ""
+        run: |
+          # On the self-hosted runner, shell env from ~/.omnibase/.env supplies
+          # the local lane broker endpoint and overrides the (cloud) secret.
+          source ~/.omnibase/.env 2>/dev/null || true
+          python scripts/publish_pr_merged_event.py

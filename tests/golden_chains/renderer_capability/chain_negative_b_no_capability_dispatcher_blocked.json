@@ -1,0 +1,16 @@
+{
+  "chain_name": "renderer_capability_negative_b_no_capability_dispatcher_blocked",
+  "description": "NEGATIVE chain (b): NO renderer ever declares a capability (empty event stream) -> the projection has zero rows -> a dispatcher requests a renderer to render a component -> the capability resolution against the projection finds no row (row_for(...) is None) -> the dispatcher must surface the typed EnumEmptyStateReason.UPSTREAM_BLOCKED rather than dispatch a blind render. Absence is treated as a hard gate, not a no-op.",
+  "subscribe_topic": "onex.cmd.ui.renderer-capability-declared.v1",
+  "ttl_seconds": 90,
+  "events": [],
+  "dispatcher_request": {
+    "observed_at": "2026-06-18T12:00:00Z",
+    "requested_renderer_id": "ui.effect.web",
+    "requested_component_kind": "chart",
+    "expected_empty_state_reason": "upstream-blocked"
+  },
+  "expected_state": {
+    "rows": []
+  }
+}

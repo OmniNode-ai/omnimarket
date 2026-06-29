@@ -8,7 +8,7 @@ import asyncio
 import json
 import logging
 import math
-from collections.abc import Callable, Coroutine, Mapping
+from collections.abc import Mapping
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -17,26 +17,45 @@ from uuid import uuid4
 import yaml
 from pydantic import ValidationError
 
+from omnimarket.events.delegation_judge_verdict import (
+    ModelDelegationJudgeVerdictEvent,
+)
+from omnimarket.events.topics import TASK_DELEGATED_TOPIC_V1
+from omnimarket.models.delegation.quality_bar_evidence import (
+    extract_quality_bar_evidence,
+)
 from omnimarket.models.delegation.wire.model_delegate_skill_terminal_projection import (
     ModelDelegateSkillTerminalProjection,
     ModelDelegationEventProjectionRow,
 )
 from omnimarket.nodes.node_projection_delegation.handlers.handler_projection_delegation import (
+    _judge_verdict_projection_row,
     compute_generation_proof_fields,
+)
+from omnimarket.projection.dlq import (
+    correlation_id_from_payload,
+    dlq_topics_from_contract,
+    route_to_dlq,
 )
 from omnimarket.projection.runner import (
     BaseProjectionRunner,
     MessageMeta,
+    PublishFn,
     safe_parse_date,
 )
 
 logger = logging.getLogger(__name__)
+
+HANDLER_ID_PROJECTION_DELEGATION = "node_projection_delegation"
 
 KNOWN_PROJECTION_TABLES: frozenset[str] = frozenset(
     {
         "delegation_events",
         "delegation_shadow_comparisons",
         "generation_events",
+        "delegation_judge_verdict_events",
+        # OMN-13235: per-tenant ceiling budget-state surface (cap + consumption).
+        "delegation_budget_state",
         "llm_cost_aggregates",
         "node_service_registry",
         "baselines_snapshots",
@@ -48,9 +67,6 @@ KNOWN_PROJECTION_TABLES: frozenset[str] = frozenset(
         "injection_effectiveness",
     }
 )
-
-# Type alias for an async publish callable: (topic, value_bytes) -> None
-PublishFn = Callable[[str, bytes], Coroutine[Any, Any, None]]
 
 
 class DelegationProjectionRunner(BaseProjectionRunner):
@@ -72,7 +88,7 @@ class DelegationProjectionRunner(BaseProjectionRunner):
         *,
         publish_fn: PublishFn | None = None,
     ) -> None:
-        super().__init__()
+        super().__init__(publish_fn=publish_fn)
         _path = contract_path or Path(__file__).parent.parent / "contract.yaml"
         with open(_path) as f:
             self._contract: dict[str, Any] = yaml.safe_load(f)
@@ -94,22 +110,44 @@ class DelegationProjectionRunner(BaseProjectionRunner):
             )
         if "generation_events" not in _by_role:
             raise ValueError("Contract missing required table role 'generation_events'")
+        if "judge_verdict_events" not in _by_role:
+            raise ValueError(
+                "Contract missing required table role 'judge_verdict_events'"
+            )
 
         self._table_delegation: str = _by_role["events"]
         self._table_shadow: str = _by_role["shadow_comparisons"]
         self._table_generation: str = _by_role["generation_events"]
+        self._table_judge_verdict: str = _by_role["judge_verdict_events"]
 
         _topics: list[str] = self._contract.get("event_bus", {}).get(
             "subscribe_topics", []
         )
-        self._topic_delegated: str = next(
-            (t for t in _topics if "task-delegated" in t), ""
-        )
+        # OMN-13629 (WS-F Phase 1): the legacy compat task-delegated.v1 was
+        # dropped from this node's contract subscribe_topics — the orchestrator no
+        # longer emits it and the bus no longer routes it here (the canonical
+        # delegation-{completed,failed}.v1 pair below is the live source, converted
+        # internally). The legacy direct-recognition is retained ONLY for the
+        # still-live e2e-probe harness (tests/integration/e2e_probe), which
+        # thin-publishes a task-delegated-shaped probe payload; resolved from the
+        # registry constant rather than subscribe_topics so it is not a phantom
+        # bus subscription. Remove once the probe harness is migrated to the
+        # canonical terminal (follow-up to OMN-13632).
+        self._topic_delegated: str = TASK_DELEGATED_TOPIC_V1
         self._topic_shadow: str = next(
             (t for t in _topics if "delegation-shadow-comparison" in t), ""
         )
         self._topic_generation: str = next(
             (t for t in _topics if "node-generation-completed" in t), ""
+        )
+        # OMN-13468: the failure terminal was absent from subscribe_topics, making
+        # failed runs invisible at the projection API. Route it to the same
+        # _project_generation_completed handler — same payload, same table.
+        self._topic_generation_failed: str = next(
+            (t for t in _topics if "node-generation-failed" in t), ""
+        )
+        self._topic_judge_verdict: str = next(
+            (t for t in _topics if "delegation-judge-verdict" in t), ""
         )
         self._topic_delegate_skill_completed: str = next(
             (t for t in _topics if "delegate-skill-completed" in t), ""
@@ -124,9 +162,27 @@ class DelegationProjectionRunner(BaseProjectionRunner):
             (t for t in _topics if "delegation-failed" in t), ""
         )
         self._terminal_topic: str | None = self._contract.get("terminal_event")
-        # Inject for testing; real producer is built lazily on first emit.
-        self._publish_fn: PublishFn | None = publish_fn
-        self._producer: Any = None  # AIOKafkaProducer, created on demand
+        # OMN-13548 (D-03): contract-declared DLQ topic for malformed events. A
+        # ValidationError on an inbound event now emits a DURABLE failure signal on
+        # the bus (the offending envelope routed to this topic, carrying its
+        # correlation_id) instead of being logged + dropped silently.
+        self._dlq_topics: list[str] = dlq_topics_from_contract(self._contract)
+
+    @property
+    def poison_dlq_topics(self) -> list[str]:
+        """OMN-13634: base-class safety net routes escaped POISON errors here."""
+        return self._dlq_topics
+
+    async def publish_dlq(self, topic: str, value: bytes) -> None:
+        """OMN-13634: supply the runtime-owned publisher to the base-class DLQ path."""
+        publish = await self.get_publish_fn()
+        if publish is None:
+            logger.error(
+                "node_projection_delegation: no publisher for POISON DLQ topic %s",
+                topic,
+            )
+            return
+        await publish(topic, value)
 
     @property
     def subscribe_topics(self) -> list[str]:
@@ -151,44 +207,6 @@ class DelegationProjectionRunner(BaseProjectionRunner):
     def topics(self) -> list[str]:
         return self.subscribe_topics
 
-    async def _get_publish_fn(self) -> PublishFn | None:
-        """Return the publish callable, building a Kafka producer lazily if needed."""
-        if self._publish_fn is not None:
-            return self._publish_fn
-
-        brokers = self.kafka_bootstrap_servers
-        if not brokers:
-            return None
-
-        try:
-            from aiokafka import AIOKafkaProducer
-        except ImportError:
-            logger.warning(
-                "aiokafka not installed; terminal events will not be published"
-            )
-            return None
-
-        if self._producer is None:
-            producer = AIOKafkaProducer(
-                bootstrap_servers=brokers,
-                value_serializer=lambda v: (
-                    v if isinstance(v, bytes) else v.encode("utf-8")
-                ),
-            )
-            try:
-                await producer.start()
-            except Exception as exc:
-                logger.warning("Kafka producer failed to start: %s", exc)
-                return None
-            self._producer = producer
-
-        producer = self._producer
-
-        async def _publish(topic: str, value: bytes) -> None:
-            await producer.send_and_wait(topic, value)
-
-        return _publish
-
     async def _emit_terminal_event(
         self,
         correlation_id: str,
@@ -196,7 +214,7 @@ class DelegationProjectionRunner(BaseProjectionRunner):
         terminal_topic: str,
     ) -> None:
         """Publish a terminal confirmation envelope to the declared terminal topic."""
-        publish = await self._get_publish_fn()
+        publish = await self.get_publish_fn()
         if publish is None:
             logger.debug(
                 "Terminal event skipped (no publish_fn/projection runtime binding): topic=%s correlation_id=%s",
@@ -233,6 +251,29 @@ class DelegationProjectionRunner(BaseProjectionRunner):
                 exc,
             )
 
+    async def _route_malformed_to_dlq(
+        self, data: dict[str, Any], reason: str, meta: MessageMeta | None = None
+    ) -> bool:
+        """Route a malformed inbound event to the contract-declared DLQ topic.
+
+        OMN-13548 (D-03): replaces the prior silent-drop on ValidationError. The
+        offending payload + failure reason + correlation_id are published to the
+        DLQ topic so the dropped event is durably recoverable on the bus. Returns
+        True so the consumer still commits the offset (the message is durably
+        captured on the DLQ, not reprocessed in a hot loop).
+        """
+        fallback = meta.fallback_id if meta is not None else ""
+        correlation_id = correlation_id_from_payload(data, fallback=fallback)
+        await route_to_dlq(
+            publish=await self.get_publish_fn(),
+            dlq_topics=self._dlq_topics,
+            original_message=data,
+            failure_reason=reason,
+            handler=HANDLER_ID_PROJECTION_DELEGATION,
+            correlation_id=correlation_id,
+        )
+        return True
+
     async def project_event(
         self, topic: str, data: dict[str, Any], meta: MessageMeta
     ) -> bool:
@@ -240,8 +281,12 @@ class DelegationProjectionRunner(BaseProjectionRunner):
             ok = await self._project_task_delegated(data, meta)
         elif topic == self._topic_shadow:
             ok = await self._project_shadow_comparison(data, meta)
-        elif topic == self._topic_generation:
+        elif topic in {self._topic_generation, self._topic_generation_failed}:
+            # OMN-13468: route both completed + failed terminals to the same
+            # handler — same payload shape, same generation_events table write.
             ok = await self._project_generation_completed(data, meta)
+        elif topic == self._topic_judge_verdict:
+            ok = await self._project_judge_verdict(data)
         elif topic in {
             self._topic_delegate_skill_completed,
             self._topic_delegate_skill_failed,
@@ -267,6 +312,53 @@ class DelegationProjectionRunner(BaseProjectionRunner):
 
         return ok
 
+    async def _project_judge_verdict(self, data: dict[str, Any]) -> bool:
+        try:
+            event = ModelDelegationJudgeVerdictEvent.model_validate(data)
+        except ValidationError as exc:
+            return await self._route_malformed_to_dlq(
+                data, f"judge verdict event failed model validation: {exc}"
+            )
+
+        row = _judge_verdict_projection_row(event)
+        await self.db.execute(
+            f"""
+            INSERT INTO {self._table_judge_verdict} (
+              event_hash, correlation_id, task_type, score_source,
+              judge_model, judge_model_version, judge_provider,
+              rubric_id, rubric_hash, prompt_hash, input_hash,
+              temperature, judge_node_version, reasoning_hash,
+              verdict, actual_score, failure_kind, failure_message
+            ) VALUES (
+              $1, $2, $3, $4,
+              $5, $6, $7,
+              $8, $9, $10, $11,
+              $12, $13, $14,
+              $15, $16, $17, $18
+            )
+            ON CONFLICT (event_hash) DO NOTHING
+            """,
+            row["event_hash"],
+            row["correlation_id"],
+            row["task_type"],
+            row["score_source"],
+            row["judge_model"],
+            row["judge_model_version"],
+            row["judge_provider"],
+            row["rubric_id"],
+            row["rubric_hash"],
+            row["prompt_hash"],
+            row["input_hash"],
+            row["temperature"],
+            row["judge_node_version"],
+            row["reasoning_hash"],
+            row["verdict"],
+            row["actual_score"],
+            row["failure_kind"],
+            row["failure_message"],
+        )
+        return True
+
     async def _project_delegation_terminal_result(
         self, data: dict[str, Any], meta: MessageMeta
     ) -> bool:
@@ -282,16 +374,14 @@ class DelegationProjectionRunner(BaseProjectionRunner):
         terminal result arrives. Terminal results therefore update missing row
         evidence instead of using the task-delegated insert-only conflict policy.
         """
-        correlation_id = (
-            data.get("correlation_id") or data.get("correlationId") or meta.fallback_id
-        )
-        task_type = data.get("task_type") or data.get("taskType")
-        delegated_to = (
-            data.get("delegated_to")
-            or data.get("delegatedTo")
-            or data.get("model_used")
-            or data.get("modelUsed")
-        )
+        # OMN-12811: ``data`` is the snake_case output of
+        # ``_canonical_result_to_task_delegated_payload`` (the canonical
+        # ``ModelDelegationResult`` terminal, ``extra='forbid'``). The legacy
+        # camelCase coalescing aliases were dead and are dropped; the remaining
+        # multi-key reads are snake_case field-name fallbacks within the one schema.
+        correlation_id = data.get("correlation_id") or meta.fallback_id
+        task_type = data.get("task_type")
+        delegated_to = data.get("delegated_to") or data.get("model_used")
         if not task_type or not delegated_to:
             logger.warning(
                 "delegation terminal event missing required fields (correlation_id=%s)",
@@ -300,74 +390,42 @@ class DelegationProjectionRunner(BaseProjectionRunner):
             return True
 
         timestamp = safe_parse_date(data.get("timestamp") or data.get("emitted_at"))
-        model_name = data.get("model_name") or data.get("modelName") or delegated_to
-        quality_gates_checked = data.get("quality_gates_checked") or data.get(
-            "qualityGatesChecked"
-        )
-        quality_gates_failed = data.get("quality_gates_failed") or data.get(
-            "qualityGatesFailed"
-        )
+        model_name = data.get("model_name") or delegated_to
+        quality_gates_checked = data.get("quality_gates_checked")
+        quality_gates_failed = data.get("quality_gates_failed")
         qgc_labels = _coerce_gate_labels(quality_gates_checked)
         qgf_labels = _coerce_gate_labels(quality_gates_failed)
         qgc_json = json.dumps(qgc_labels) if qgc_labels else None
         qgf_json = json.dumps(qgf_labels) if qgf_labels else None
-        quality_gate_detail = (
-            data.get("quality_gate_detail") or data.get("qualityGateDetail") or None
+        quality_gate_detail = data.get("quality_gate_detail") or None
+        quality_bar_evidence = extract_quality_bar_evidence(
+            data,
+            checked_labels=qgc_labels,
         )
-        cost_usd = _safe_numeric_str(data.get("cost_usd") or data.get("costUsd"))
+        cost_usd = _safe_numeric_str(data.get("cost_usd"))
         cost_savings_usd = _safe_numeric_str(
-            data.get("cost_savings_usd")
-            or data.get("costSavingsUsd")
-            or data.get("estimated_savings_usd")
-            or data.get("estimatedSavingsUsd")
+            data.get("cost_savings_usd") or data.get("estimated_savings_usd")
         )
         pricing_manifest_version = (
-            _safe_int_or_none(
-                data.get("pricing_manifest_version")
-                or data.get("pricingManifestVersion"),
-            )
-            or 0
+            _safe_int_or_none(data.get("pricing_manifest_version")) or 0
         )
         delegation_latency_ms = _safe_int_or_none(
-            data.get("delegation_latency_ms")
-            or data.get("delegationLatencyMs")
-            or data.get("latency_ms")
-            or data.get("latencyMs")
+            data.get("delegation_latency_ms") or data.get("latency_ms")
         )
         tokens_input = (
-            _safe_int_or_none(
-                data.get("tokens_input")
-                or data.get("tokensInput")
-                or data.get("prompt_tokens")
-                or data.get("promptTokens")
-            )
+            _safe_int_or_none(data.get("tokens_input") or data.get("prompt_tokens"))
             or 0
         )
         tokens_output = (
             _safe_int_or_none(
-                data.get("tokens_output")
-                or data.get("tokensOutput")
-                or data.get("completion_tokens")
-                or data.get("completionTokens")
+                data.get("tokens_output") or data.get("completion_tokens")
             )
             or 0
         )
-        tokens_to_compliance = (
-            _safe_int_or_none(
-                data.get("tokens_to_compliance") or data.get("tokensToCompliance")
-            )
-            or 0
-        )
-        compliance_attempts = (
-            _safe_int_or_none(
-                data.get("compliance_attempts") or data.get("complianceAttempts")
-            )
-            or 1
-        )
-        prompt_text = _blank_to_none(data.get("prompt_text") or data.get("promptText"))
-        response_text = _blank_to_none(
-            data.get("response_text") or data.get("responseText")
-        )
+        tokens_to_compliance = _safe_int_or_none(data.get("tokens_to_compliance")) or 0
+        compliance_attempts = _safe_int_or_none(data.get("compliance_attempts")) or 1
+        prompt_text = _blank_to_none(data.get("prompt_text"))
+        response_text = _blank_to_none(data.get("response_text"))
 
         await self.db.execute(
             f"""
@@ -380,7 +438,9 @@ class DelegationProjectionRunner(BaseProjectionRunner):
               cost_usd, cost_savings_usd, delegation_latency_ms,
               repo, is_shadow, prompt_text, response_text,
               tokens_input, tokens_output, tokens_to_compliance,
-              compliance_attempts, pricing_manifest_version
+              compliance_attempts, pricing_manifest_version,
+              required_bar, actual_score, escalation_count, authority_source,
+              score_source, request_override_applied, override_within_bounds
             ) VALUES (
               $1, $2, $3, $4,
               $5, $6, $7, $8,
@@ -390,7 +450,9 @@ class DelegationProjectionRunner(BaseProjectionRunner):
               $14, $15, $16,
               $17, $18, $19, $20,
               $21, $22, $23,
-              $24, $25
+              $24, $25,
+              $26, $27, $28, $29,
+              $30, $31, $32
             )
             ON CONFLICT (correlation_id) DO UPDATE SET
               session_id = COALESCE(EXCLUDED.session_id, {self._table_delegation}.session_id),
@@ -431,24 +493,23 @@ class DelegationProjectionRunner(BaseProjectionRunner):
               pricing_manifest_version = CASE
                 WHEN EXCLUDED.pricing_manifest_version > 0 THEN EXCLUDED.pricing_manifest_version
                 ELSE {self._table_delegation}.pricing_manifest_version
-              END
+              END,
+              required_bar = COALESCE(EXCLUDED.required_bar, {self._table_delegation}.required_bar),
+              actual_score = COALESCE(EXCLUDED.actual_score, {self._table_delegation}.actual_score),
+              escalation_count = GREATEST(EXCLUDED.escalation_count, {self._table_delegation}.escalation_count),
+              authority_source = COALESCE(EXCLUDED.authority_source, {self._table_delegation}.authority_source),
+              score_source = COALESCE(EXCLUDED.score_source, {self._table_delegation}.score_source),
+              request_override_applied = EXCLUDED.request_override_applied OR {self._table_delegation}.request_override_applied,
+              override_within_bounds = EXCLUDED.override_within_bounds AND {self._table_delegation}.override_within_bounds
             """,
             str(correlation_id),
-            str(data.get("session_id") or data.get("sessionId"))
-            if data.get("session_id") or data.get("sessionId")
-            else None,
+            str(data.get("session_id")) if data.get("session_id") else None,
             timestamp,
             str(task_type),
             str(delegated_to),
             str(model_name) if model_name else "",
-            str(data.get("delegated_by") or data.get("delegatedBy"))
-            if data.get("delegated_by") or data.get("delegatedBy")
-            else None,
-            bool(
-                data.get("quality_gate_passed")
-                if data.get("quality_gate_passed") is not None
-                else data.get("qualityGatePassed") or False
-            ),
+            str(data.get("delegated_by")) if data.get("delegated_by") else None,
+            bool(data.get("quality_gate_passed")),
             len(qgc_labels),
             len(qgf_labels),
             qgc_json,
@@ -458,11 +519,7 @@ class DelegationProjectionRunner(BaseProjectionRunner):
             cost_savings_usd,
             delegation_latency_ms,
             str(data.get("repo")) if data.get("repo") else None,
-            bool(
-                data.get("is_shadow")
-                if data.get("is_shadow") is not None
-                else data.get("isShadow") or False
-            ),
+            bool(data.get("is_shadow")),
             prompt_text,
             response_text,
             tokens_input,
@@ -470,6 +527,17 @@ class DelegationProjectionRunner(BaseProjectionRunner):
             tokens_to_compliance,
             compliance_attempts,
             pricing_manifest_version,
+            _safe_numeric_str(quality_bar_evidence.get("required_bar")),
+            _safe_numeric_str(quality_bar_evidence.get("actual_score")),
+            _safe_int_or_none(quality_bar_evidence.get("escalation_count")) or 0,
+            str(quality_bar_evidence.get("authority_source"))
+            if quality_bar_evidence.get("authority_source") is not None
+            else None,
+            str(quality_bar_evidence.get("score_source"))
+            if quality_bar_evidence.get("score_source") is not None
+            else None,
+            bool(quality_bar_evidence.get("request_override_applied") or False),
+            bool(quality_bar_evidence.get("override_within_bounds") is not False),
         )
         return True
 
@@ -488,11 +556,12 @@ class DelegationProjectionRunner(BaseProjectionRunner):
             or data.get("modelUsed")
         )
         if not task_type or not delegated_to:
-            logger.warning(
-                "task-delegated event missing required fields (correlation_id=%s)",
-                correlation_id,
+            return await self._route_malformed_to_dlq(
+                data,
+                "task-delegated event missing required fields "
+                f"(task_type={task_type!r}, delegated_to={delegated_to!r})",
+                meta,
             )
-            return True
 
         session_id = data.get("session_id") or data.get("sessionId") or None
         timestamp = safe_parse_date(data.get("timestamp") or data.get("emitted_at"))
@@ -521,6 +590,10 @@ class DelegationProjectionRunner(BaseProjectionRunner):
         qgf_json = json.dumps(qgf_labels) if qgf_labels else None
         quality_gate_detail = (
             data.get("quality_gate_detail") or data.get("qualityGateDetail") or None
+        )
+        quality_bar_evidence = extract_quality_bar_evidence(
+            data,
+            checked_labels=qgc_labels,
         )
 
         cost_usd = _safe_numeric_str(data.get("cost_usd") or data.get("costUsd"))
@@ -599,7 +672,9 @@ class DelegationProjectionRunner(BaseProjectionRunner):
               cost_usd, cost_savings_usd, delegation_latency_ms,
               repo, is_shadow, prompt_text, response_text,
               tokens_input, tokens_output, tokens_to_compliance,
-              compliance_attempts, pricing_manifest_version
+              compliance_attempts, pricing_manifest_version,
+              required_bar, actual_score, escalation_count, authority_source,
+              score_source, request_override_applied, override_within_bounds
             ) VALUES (
               $1, $2, $3, $4,
               $5, $6, $7,
@@ -609,9 +684,18 @@ class DelegationProjectionRunner(BaseProjectionRunner):
               $13, $14, $15,
               $16, $17, $18, $19,
               $20, $21, $22,
-              $23, $24
+              $23, $24,
+              $25, $26, $27, $28,
+              $29, $30, $31
             )
-            ON CONFLICT (correlation_id) DO NOTHING
+            ON CONFLICT (correlation_id) DO UPDATE SET
+              required_bar = COALESCE(EXCLUDED.required_bar, {self._table_delegation}.required_bar),
+              actual_score = COALESCE(EXCLUDED.actual_score, {self._table_delegation}.actual_score),
+              escalation_count = GREATEST(EXCLUDED.escalation_count, {self._table_delegation}.escalation_count),
+              authority_source = COALESCE(EXCLUDED.authority_source, {self._table_delegation}.authority_source),
+              score_source = COALESCE(EXCLUDED.score_source, {self._table_delegation}.score_source),
+              request_override_applied = EXCLUDED.request_override_applied OR {self._table_delegation}.request_override_applied,
+              override_within_bounds = EXCLUDED.override_within_bounds AND {self._table_delegation}.override_within_bounds
             """,
             correlation_id,
             str(session_id) if session_id else None,
@@ -637,6 +721,17 @@ class DelegationProjectionRunner(BaseProjectionRunner):
             tokens_to_compliance,
             compliance_attempts,
             pricing_manifest_version,
+            _safe_numeric_str(quality_bar_evidence.get("required_bar")),
+            _safe_numeric_str(quality_bar_evidence.get("actual_score")),
+            _safe_int_or_none(quality_bar_evidence.get("escalation_count")) or 0,
+            str(quality_bar_evidence.get("authority_source"))
+            if quality_bar_evidence.get("authority_source") is not None
+            else None,
+            str(quality_bar_evidence.get("score_source"))
+            if quality_bar_evidence.get("score_source") is not None
+            else None,
+            bool(quality_bar_evidence.get("request_override_applied") or False),
+            bool(quality_bar_evidence.get("override_within_bounds") is not False),
         )
         return True
 
@@ -646,11 +741,11 @@ class DelegationProjectionRunner(BaseProjectionRunner):
         try:
             terminal = ModelDelegateSkillTerminalProjection.from_payload(data)
         except ValidationError as exc:
-            logger.warning(
-                "delegate-skill terminal event failed model validation: %s",
-                exc,
+            return await self._route_malformed_to_dlq(
+                data,
+                f"delegate-skill terminal event failed model validation: {exc}",
+                meta,
             )
-            return True
 
         row = ModelDelegationEventProjectionRow.from_terminal_event(terminal)
         await self._upsert_delegate_skill_projection_row(row)
@@ -675,7 +770,7 @@ class DelegationProjectionRunner(BaseProjectionRunner):
               quality_gate_detail,
               cost_usd, cost_savings_usd, delegation_latency_ms,
               latency_ms, repo, is_shadow, prompt_text, response_text,
-              tokens_input, tokens_output, tokens_to_compliance,
+              context_pack_hash, tokens_input, tokens_output, tokens_to_compliance,
               compliance_attempts, pricing_manifest_version,
               projection_version, reducer_version
             ) VALUES (
@@ -686,9 +781,9 @@ class DelegationProjectionRunner(BaseProjectionRunner):
               $13,
               $14, $15, $16,
               $17, $18, $19, $20, $21,
-              $22, $23, $24,
-              $25, $26,
-              $27, $28
+              $22, $23, $24, $25,
+              $26, $27,
+              $28, $29
             )
             ON CONFLICT (correlation_id) DO UPDATE SET
               session_id = COALESCE(EXCLUDED.session_id, {self._table_delegation}.session_id),
@@ -711,6 +806,7 @@ class DelegationProjectionRunner(BaseProjectionRunner):
               is_shadow = EXCLUDED.is_shadow,
               prompt_text = COALESCE(EXCLUDED.prompt_text, {self._table_delegation}.prompt_text),
               response_text = COALESCE(EXCLUDED.response_text, {self._table_delegation}.response_text),
+              context_pack_hash = COALESCE(NULLIF(EXCLUDED.context_pack_hash, ''), {self._table_delegation}.context_pack_hash),
               tokens_input = EXCLUDED.tokens_input,
               tokens_output = EXCLUDED.tokens_output,
               tokens_to_compliance = EXCLUDED.tokens_to_compliance,
@@ -740,6 +836,7 @@ class DelegationProjectionRunner(BaseProjectionRunner):
             row.is_shadow,
             row.prompt_text,
             row.response_text,
+            row.context_pack_hash,
             row.tokens_input,
             row.tokens_output,
             row.tokens_to_compliance,
@@ -853,6 +950,35 @@ class DelegationProjectionRunner(BaseProjectionRunner):
             if data.get("contract_passed") is not None
             else data.get("contractPassed") or False
         )
+        # OMN-13166: behavioral verdict, persisted alongside contract_passed so
+        # the runner write path stays in lockstep with the live-runtime path.
+        semantic_checked = bool(
+            data.get("semantic_checked")
+            if data.get("semantic_checked") is not None
+            else data.get("semanticChecked") or False
+        )
+        semantic_passed = bool(
+            data.get("semantic_passed")
+            if data.get("semantic_passed") is not None
+            else data.get("semanticPassed") or False
+        )
+        # OMN-13289 (G0) / OMN-13350: validator-acceptance (corpus) verdict,
+        # persisted alongside contract_passed/semantic_passed so the runner write
+        # path stays in lockstep with the live-runtime path. corpus_errors is a
+        # JSONB column written via an explicit ::jsonb cast on a JSON string.
+        corpus_checked = bool(
+            data.get("corpus_checked")
+            if data.get("corpus_checked") is not None
+            else data.get("corpusChecked") or False
+        )
+        corpus_passed = bool(
+            data.get("corpus_passed")
+            if data.get("corpus_passed") is not None
+            else data.get("corpusPassed") or False
+        )
+        corpus_errors_json = json.dumps(
+            _coerce_gate_labels(data.get("corpus_errors") or data.get("corpusErrors"))
+        )
         cost_inference_usd = (
             _safe_numeric_str(
                 data.get("cost_inference_usd") or data.get("costInferenceUsd")
@@ -890,7 +1016,9 @@ class DelegationProjectionRunner(BaseProjectionRunner):
             INSERT INTO {self._table_generation} (
               correlation_id, task_description, provider, model_id,
               endpoint_class, attempt_count, total_latency_e2e_ms,
-              contract_passed, cost_inference_usd, timestamp,
+              contract_passed, semantic_checked, semantic_passed,
+              corpus_checked, corpus_passed, corpus_errors,
+              cost_inference_usd, timestamp,
               contract_yaml, handler_source,
               output_payload_sha256, contract_sha256, handler_sha256,
               routing_source, resolved_endpoint, projection_owner
@@ -898,9 +1026,11 @@ class DelegationProjectionRunner(BaseProjectionRunner):
               $1, $2, $3, $4,
               $5, $6, $7,
               $8, $9, $10,
-              $11, $12,
-              $13, $14, $15,
-              $16, $17, $18
+              $11, $12, $13::jsonb,
+              $14, $15,
+              $16, $17,
+              $18, $19, $20,
+              $21, $22, $23
             )
             ON CONFLICT (correlation_id) DO NOTHING
             """,
@@ -912,6 +1042,11 @@ class DelegationProjectionRunner(BaseProjectionRunner):
             attempt_count,
             total_latency_e2e_ms,
             contract_passed,
+            semantic_checked,
+            semantic_passed,
+            corpus_checked,
+            corpus_passed,
+            corpus_errors_json,
             cost_inference_usd,
             timestamp,
             contract_yaml,
@@ -1003,100 +1138,82 @@ def _first_mapping(data: Mapping[str, Any], *keys: str) -> Mapping[str, Any]:
 def _canonical_result_to_task_delegated_payload(
     data: dict[str, Any],
 ) -> dict[str, Any]:
-    """Normalize canonical delegation terminal results to the projection row shape."""
+    """Normalize canonical delegation terminal results to the projection row shape.
+
+    OMN-12811: the canonical delegation terminal (``delegation-completed.v1`` /
+    ``delegation-failed.v1``) is a single snake_case ``ModelDelegationResult``
+    schema declared ``extra='forbid'`` — the legacy ``task-delegated.v1`` camelCase
+    co-writer was deleted (OMN-13629). Every read here is therefore snake_case; the
+    prior dual-shape camel/snake coalescing aliases were dead and are dropped. The
+    remaining multi-key reads are snake_case field-name fallbacks within the one
+    canonical schema (e.g. ``content`` -> ``response_text``,
+    ``final_attempt_cost`` -> ``cost_usd``), not dual-shape shims.
+    """
     result = _canonical_terminal_result_payload(data)
-    usage = _first_mapping(result, "usage", "metrics", "token_usage", "tokenUsage")
+    usage = _first_mapping(result, "usage", "metrics", "token_usage")
     quality_passed = bool(
-        _first_present(
-            result,
-            "quality_passed",
-            "qualityPassed",
-            "quality_gate_passed",
-            "qualityGatePassed",
-        )
+        _first_present(result, "quality_passed", "quality_gate_passed")
     )
-    failure_reason = (
-        _first_present(result, "failure_reason", "failureReason", "error_message") or ""
-    )
+    failure_reason = _first_present(result, "failure_reason", "error_message") or ""
     quality_failures = (
         [str(failure_reason)] if failure_reason and not quality_passed else []
     )
-    model_used = _first_present(
-        result, "model_used", "modelUsed", "model_name", "modelName"
-    )
-    prompt_text = _first_present(result, "prompt_text", "promptText", "prompt")
+    model_used = _first_present(result, "model_used", "model_name")
+    prompt_text = _first_present(result, "prompt_text", "prompt")
     response_text = _first_present(
-        result, "content", "response_text", "responseText", "response", "output"
+        result, "content", "response_text", "response", "output"
     )
-    prompt_tokens = _first_present(
-        result,
-        "prompt_tokens",
-        "promptTokens",
-        "input_tokens",
-        "inputTokens",
-    )
+    prompt_tokens = _first_present(result, "prompt_tokens", "input_tokens")
     if prompt_tokens is None:
-        prompt_tokens = _first_present(
-            usage,
-            "prompt_tokens",
-            "promptTokens",
-            "input_tokens",
-            "inputTokens",
-        )
-    completion_tokens = _first_present(
-        result,
-        "completion_tokens",
-        "completionTokens",
-        "output_tokens",
-        "outputTokens",
-    )
+        prompt_tokens = _first_present(usage, "prompt_tokens", "input_tokens")
+    completion_tokens = _first_present(result, "completion_tokens", "output_tokens")
     if completion_tokens is None:
-        completion_tokens = _first_present(
-            usage,
-            "completion_tokens",
-            "completionTokens",
-            "output_tokens",
-            "outputTokens",
-        )
+        completion_tokens = _first_present(usage, "completion_tokens", "output_tokens")
     return {
         "correlation_id": (
-            _first_present(result, "correlation_id", "correlationId")
-            or _first_present(data, "correlation_id", "correlationId")
+            _first_present(result, "correlation_id")
+            or _first_present(data, "correlation_id")
         ),
-        "session_id": _first_present(result, "session_id", "sessionId"),
-        "task_type": _first_present(result, "task_type", "taskType") or "unknown",
+        "session_id": _first_present(result, "session_id"),
+        "task_type": _first_present(result, "task_type") or "unknown",
         "delegated_to": (
-            model_used
-            or _first_present(result, "delegated_to", "delegatedTo")
-            or "unknown"
+            model_used or _first_present(result, "delegated_to") or "unknown"
         ),
         "model_name": model_used or "",
         "quality_gate_passed": quality_passed,
         "quality_gates_failed": quality_failures,
         "quality_gate_detail": str(failure_reason) if failure_reason else None,
         "delegation_latency_ms": _first_present(
-            result, "latency_ms", "latencyMs", "delegation_latency_ms"
+            result, "latency_ms", "delegation_latency_ms"
         ),
-        "latency_ms": _first_present(result, "latency_ms", "latencyMs"),
+        "latency_ms": _first_present(result, "latency_ms"),
         "prompt_text": prompt_text,
         "response_text": response_text,
         "tokens_input": prompt_tokens or 0,
         "tokens_output": completion_tokens or 0,
-        "tokens_to_compliance": (
-            _first_present(result, "tokens_to_compliance", "tokensToCompliance") or 0
-        ),
-        "compliance_attempts": (
-            _first_present(result, "compliance_attempts", "complianceAttempts") or 1
-        ),
-        "cost_usd": (
-            _first_present(result, "cost_usd", "costUsd", "final_attempt_cost") or 0
-        ),
-        "cost_savings_usd": (
-            _first_present(result, "cost_savings_usd", "costSavingsUsd") or 0
-        ),
+        "tokens_to_compliance": _first_present(result, "tokens_to_compliance") or 0,
+        "compliance_attempts": _first_present(result, "compliance_attempts") or 1,
+        "cost_usd": _first_present(result, "cost_usd", "final_attempt_cost") or 0,
+        "cost_savings_usd": _first_present(result, "cost_savings_usd") or 0,
         "pricing_manifest_version": (
-            _first_present(result, "pricing_manifest_version", "pricingManifestVersion")
-            or 0
+            _first_present(result, "pricing_manifest_version") or 0
+        ),
+        "required_bar": _first_present(result, "required_bar"),
+        "actual_score": (
+            _first_present(result, "actual_score")
+            or _first_present(result, "quality_score")
+        ),
+        "escalation_count": _first_present(result, "escalation_count") or 0,
+        "authority_source": (
+            _first_present(result, "authority_source")
+            or _first_present(result, "required_bar_source")
+        ),
+        "score_source": _first_present(result, "score_source"),
+        "request_override_applied": (
+            _first_present(result, "request_override_applied") or False
+        ),
+        "override_within_bounds": (
+            _first_present(result, "override_within_bounds") is not False
         ),
     }
 

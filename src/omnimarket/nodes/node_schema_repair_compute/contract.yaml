@@ -11,7 +11,8 @@ description: >
 handler_routing:
   routing_strategy: operation_match
   handlers:
-    - handler:
+    - operation: schema_repair
+      handler:
         name: HandlerSchemaRepair
         module: omnimarket.nodes.node_schema_repair_compute.handlers.handler_schema_repair
 

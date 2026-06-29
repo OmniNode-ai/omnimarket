@@ -1,0 +1,34 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Test fixture: backend effect node contract for OMN-13385 tests
+---
+handler_id: node.test.effect.a
+name: node_effect_a
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: effect
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  Test fixture effect node contract for node_contract_graph_ir_compute tests.
+
+input_model: omnimarket.nodes.node_contract_graph_ir_compute.models.model_contract_graph_ir_request.ModelContractGraphIrRequest
+output_model: omnimarket.nodes.node_contract_graph_ir_compute.models.model_contract_graph_ir_response.ModelContractGraphIrResponse
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: run
+      handler:
+        name: HandlerEffectA
+        module: test.fixture.handler_effect_a
+
+descriptor:
+  node_archetype: effect
+  purity: impure
+  idempotent: false
+  timeout_ms: 5000
+
+publish_topics:
+  - onex.evt.test.effect-a-completed.v1
+subscribe_topics:
+  - onex.cmd.test.effect-a-requested.v1

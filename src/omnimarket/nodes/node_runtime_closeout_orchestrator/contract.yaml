@@ -1,0 +1,100 @@
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Runtime Closeout ORCHESTRATOR
+#
+# One-dispatch runtime closeout (OMN-13413, epic OMN-13410). Owns phase
+# sequencing but dispatches every phase OVER THE BUS — it never constructs
+# sibling handlers in-process, never runs an in-process FSM loop, and never does
+# I/O. Reuses node_redeploy_orchestrator (deploy phase) and the proof-matrix
+# nodes (node_golden_chain_sweep + node_integration_sweep) for the runtime proof
+# matrix.
+---
+name: node_runtime_closeout_orchestrator
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: orchestrator
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  One-dispatch runtime-closeout orchestrator. On closeout-start it emits the
+  read-only preflight command (identity / broker / projection / migration /
+  rollback — no lane mutation). On a ready preflight it emits the fresh-deploy
+  fitness-gate command; on a fit artifact it emits the deploy command by REUSING
+  node_redeploy_orchestrator (redeploy-start), so prod promotion stays
+  operator-gated by the redeploy orchestrator's own prod-promotion gate — never
+  relaxed here. On a healthy deploy it emits the proof-matrix command (reusing
+  node_golden_chain_sweep + node_integration_sweep); each cell is proven with a
+  fresh CID -> typed terminal -> projection readback. The terminal
+  closeout-completed event carries ModelCloseoutReceipt (SHA/image table,
+  migration ledger, per-cell verdicts, rollback plan, residual risk,
+  recommendation customer-beta | internal-integration | hold). A failing
+  preflight or fitness gate completes BLOCKED before any deploy. No in-process
+  handler construction, no FSM loop, no I/O.
+
+# Top-level input_model so the event-driven runtime builds the initial command
+# from the caller's `--input` payload (mirrors node_integration_sweep_orchestrator
+# / node_redeploy_orchestrator).
+input_model: omnimarket.nodes.node_runtime_closeout_orchestrator.models.model_closeout_start_command.ModelCloseoutStartCommand
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: "closeout.orchestrate"
+      handler:
+        name: HandlerRuntimeCloseoutOrchestrator
+        module: omnimarket.nodes.node_runtime_closeout_orchestrator.handlers.handler_runtime_closeout_orchestrator
+      description: "Route a closeout lifecycle event to the next bus command."
+      event_model:
+        name: ModelCloseoutStartCommand
+        module: omnimarket.nodes.node_runtime_closeout_orchestrator.models.model_closeout_start_command
+
+handler:
+  module: omnimarket.nodes.node_runtime_closeout_orchestrator.handlers.handler_runtime_closeout_orchestrator
+  class: HandlerRuntimeCloseoutOrchestrator
+  input_model: omnimarket.nodes.node_runtime_closeout_orchestrator.models.model_closeout_start_command.ModelCloseoutStartCommand
+
+output_model:
+  name: ModelCloseoutReceipt
+  module: omnimarket.events.runtime_closeout
+  description: "Terminal closeout receipt (COMPLETED | BLOCKED | FAILED)."
+
+descriptor:
+  node_archetype: orchestrator
+  purity: orchestration
+  idempotent: false
+  timeout_ms: 900000
+  runtime_profiles:
+    - effects
+
+terminal_event: onex.evt.omnimarket.closeout-completed.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.closeout-start.v1
+    # Phase completion facts the orchestrator reacts to.
+    - onex.evt.omnimarket.closeout-preflight-completed.v1
+    - onex.evt.omnimarket.closeout-fitness-gated.v1
+    # Deploy phase reuses node_redeploy_orchestrator's terminal event.
+    - onex.evt.omnimarket.redeploy-completed.v1
+    - onex.evt.omnimarket.closeout-proof-matrix-completed.v1
+  publish_topics:
+    - onex.cmd.omnimarket.closeout-preflight.v1
+    - onex.cmd.omnimarket.closeout-fitness-gate.v1
+    # Deploy phase reuses node_redeploy_orchestrator's start command.
+    - onex.cmd.omnimarket.redeploy-start.v1
+    - onex.cmd.omnimarket.closeout-proof-matrix.v1
+    - onex.evt.omnimarket.closeout-completed.v1
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.closeout-completed.v1
+
+dependencies:
+  packages:
+    - "omnibase_core>=0.39.0"
+
+metadata:
+  transport_type: kafka
+  description: "One-dispatch runtime-closeout orchestrator"
+  author: "OmniNode Platform Team"
+  related_tickets:
+    - "OMN-13413"
+    - "OMN-13410"

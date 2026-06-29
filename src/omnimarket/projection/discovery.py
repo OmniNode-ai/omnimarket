@@ -386,6 +386,24 @@ def _parse_projection_api_section(
         )
         return None
 
+    # Optional contract-declared cadence (OMN-13035 / retro B-7). Absent means
+    # on-demand (silence is never reported as stale). A positive integer
+    # declares the expected inter-event interval in seconds.
+    raw_interval = section.get("expected_event_interval_seconds")
+    if raw_interval is None:
+        expected_event_interval_seconds: int | None = None
+    elif type(raw_interval) is int and raw_interval > 0:
+        expected_event_interval_seconds = raw_interval
+    else:
+        logger.error(
+            "Contract %r (path: %s): "
+            "projection_api.expected_event_interval_seconds must be a positive "
+            "integer when present — contract excluded",
+            node_name,
+            contract_path,
+        )
+        return None
+
     return ProjectionTableConfig(
         topic=topic,
         table=table,
@@ -394,6 +412,7 @@ def _parse_projection_api_section(
         json_columns=json_columns,
         order_by=order_by,
         freshness_column=freshness_column,
+        expected_event_interval_seconds=expected_event_interval_seconds,
         cursor_column=cursor_column,
         last_event_id_column=last_event_id_column,
         last_ingest_sequence_column=last_ingest_sequence_column,

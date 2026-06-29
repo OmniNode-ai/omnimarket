@@ -27,6 +27,11 @@ import yaml
 from omnibase_compat.telemetry.model_sweep_result import ModelSweepResult
 from pydantic import BaseModel, ConfigDict, Field
 
+from omnimarket.nodes.sweep_scope import (
+    SweepScopeUnresolvedError,
+    require_target_dirs,
+)
+
 if TYPE_CHECKING:
     from omnibase_core.protocols.event_bus.protocol_event_bus_publisher import (
         ProtocolEventBusPublisher,
@@ -74,11 +79,23 @@ class ModelSweepFinding(BaseModel):
 
 
 class AislopSweepRequest(BaseModel):
-    """Input for the aislop sweep handler."""
+    """Input for the aislop sweep handler.
+
+    Scan targets are resolved by the shared
+    :mod:`omnimarket.nodes.sweep_scope` resolver:
+
+    * ``target_dirs`` — explicit absolute directory paths (highest precedence).
+    * ``repos`` — bare repo names resolved against ``$OMNI_HOME``.
+
+    When BOTH are empty the handler resolves :data:`sweep_scope.DEFAULT_REPOS`,
+    so a no-arg dispatch scans the real repo universe instead of zero repos
+    and reporting a false-clean (OMN-13538).
+    """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     target_dirs: list[str] = Field(default_factory=list)
+    repos: list[str] = Field(default_factory=list)
     checks: list[str] | None = None
     dry_run: bool = False
     severity_threshold: str = "WARNING"
@@ -226,13 +243,32 @@ class NodeAislopSweep:
         self._sweep_result_topic = _load_sweep_result_topic()
 
     def handle(self, request: AislopSweepRequest) -> AislopSweepResult:
-        """Execute the aislop sweep across target directories."""
+        """Execute the aislop sweep across target directories.
+
+        Resolves scan targets via the shared
+        :mod:`omnimarket.nodes.sweep_scope` resolver so the RuntimeLocal
+        dispatch path (empty/`repos` payload) scans the default repo set
+        exactly like the ``__main__`` CLI path, instead of looping over an
+        empty ``target_dirs`` and reporting a false-clean (OMN-13538).
+
+        Fails loud (status=error) when scope is empty AND no default can be
+        resolved — never returns ``clean`` over zero repos (Rule 5).
+        """
+        start_ts = time.monotonic()
+        try:
+            target_dirs = require_target_dirs(request.target_dirs, request.repos)
+        except SweepScopeUnresolvedError:
+            result = AislopSweepResult(status="error", dry_run=request.dry_run)
+            self._last_result = result
+            self._last_elapsed = time.monotonic() - start_ts
+            self._last_repos = []
+            return result
+
         checks = request.checks or self.ALL_CHECKS
         findings: list[ModelSweepFinding] = []
         repos_scanned = 0
-        start_ts = time.monotonic()
 
-        for target_dir in request.target_dirs:
+        for target_dir in target_dirs:
             target = Path(target_dir)
             if not target.is_dir():
                 continue
@@ -278,9 +314,7 @@ class NodeAislopSweep:
         )
         self._last_result = result
         self._last_elapsed = elapsed
-        self._last_repos = [
-            Path(d).name for d in request.target_dirs if Path(d).is_dir()
-        ]
+        self._last_repos = [Path(d).name for d in target_dirs if Path(d).is_dir()]
         return result
 
     async def emit_sweep_result(self, correlation_id: str) -> None:

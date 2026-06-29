@@ -16,8 +16,10 @@ handler:
   input_model: omnimarket.nodes.node_shim_scanner.models.model_shim_scan_request.ModelShimScanRequest
 
 handler_routing:
+  routing_strategy: operation_match
   handlers:
-    - handler:
+    - operation: scan
+      handler:
         name: HandlerShimScanner
         module: omnimarket.nodes.node_shim_scanner.handlers.handler_shim_scanner
 

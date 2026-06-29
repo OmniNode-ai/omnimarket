@@ -28,10 +28,6 @@ from omnimarket.events.delegation import (
     EnumQualityContractMode,
     validate_acceptance_criteria,
 )
-from omnimarket.models.delegation.wire.model_token_limits import (
-    DELEGATION_DEFAULT_MAX_TOKENS,
-    DELEGATION_MAX_TOKENS_HARD_LIMIT,
-)
 
 _ALLOWED_TASK_TYPES = (
     "test",
@@ -133,33 +129,36 @@ def build_delegation_payload(
     quality_contract_mode: EnumQualityContractMode = "extend_task_class",
     acceptance_criteria: tuple[str, ...] = (),
     wait: bool = True,
-    max_tokens: int = DELEGATION_DEFAULT_MAX_TOKENS,
+    max_tokens: int | None = None,
     correlation_id: str | UUID | None = None,
     metadata: dict[str, str] | None = None,
 ) -> dict[str, Any]:
-    """Build the payload object carried inside the delegation command envelope."""
+    """Build the payload object carried inside the delegation command envelope.
+
+    OMN-13161: ``max_tokens`` is optional. When ``None`` it is OMITTED from the
+    payload so the orchestrator resolves the effective value from the selected
+    backend's per-backend ceiling in the routing contract. An explicit value must
+    be a positive integer; the backend caps it at merge time (``min``).
+    """
     if not prompt:
         raise ValueError("prompt must be a non-empty string")
-    if (
+    if max_tokens is not None and (
         not isinstance(max_tokens, int)
         or isinstance(max_tokens, bool)
         or max_tokens < 1
-        or max_tokens > DELEGATION_MAX_TOKENS_HARD_LIMIT
     ):
-        raise ValueError(
-            "max_tokens must be a positive integer no greater than "
-            f"{DELEGATION_MAX_TOKENS_HARD_LIMIT}"
-        )
+        raise ValueError("max_tokens must be a positive integer when supplied")
     cid = _coerce_correlation_id(correlation_id)
     payload: dict[str, Any] = {
         "prompt": prompt,
         "task_type": _validate_task_type(task_type),
         "source": _validate_source(source),
         "wait": wait,
-        "max_tokens": max_tokens,
         "correlation_id": str(cid),
         "metadata": dict(metadata or {}),
     }
+    if max_tokens is not None:
+        payload["max_tokens"] = max_tokens
     if cwd is not None:
         payload["cwd"] = cwd
     if source_file_path is not None:
@@ -202,7 +201,7 @@ class DelegationDispatchAdapter:
         quality_contract_mode: EnumQualityContractMode,
         acceptance_criteria: tuple[str, ...],
         wait: bool,
-        max_tokens: int,
+        max_tokens: int | None,
         correlation_id: str | UUID | None,
         metadata: dict[str, str] | None,
     ) -> dict[str, Any]:
@@ -249,7 +248,7 @@ class DelegationDispatchAdapter:
         quality_contract_mode: EnumQualityContractMode = "extend_task_class",
         acceptance_criteria: tuple[str, ...] = (),
         wait: bool = True,
-        max_tokens: int = 2048,
+        max_tokens: int | None = None,
         correlation_id: str | UUID | None = None,
         metadata: dict[str, str] | None = None,
     ) -> dict[str, Any]:
@@ -287,7 +286,7 @@ class DelegationDispatchAdapter:
         quality_contract_mode: EnumQualityContractMode = "extend_task_class",
         acceptance_criteria: tuple[str, ...] = (),
         wait: bool = True,
-        max_tokens: int = 2048,
+        max_tokens: int | None = None,
         correlation_id: str | UUID | None = None,
         metadata: dict[str, str] | None = None,
         timeout_ms: int | None = None,
@@ -388,8 +387,12 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--max-tokens",
         type=int,
-        default=DELEGATION_DEFAULT_MAX_TOKENS,
-        help="Max output tokens.",
+        default=None,
+        help=(
+            "Optional explicit output-token budget. Omit to resolve the effective "
+            "value from the selected backend's per-backend ceiling in the routing "
+            "contract (OMN-13161)."
+        ),
     )
     parser.add_argument(
         "--correlation-id", default=None, help="Optional correlation UUID."

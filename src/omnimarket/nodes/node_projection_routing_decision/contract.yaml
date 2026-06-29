@@ -20,12 +20,14 @@ handler:
 handler_routing:
   routing_strategy: operation_match
   handlers:
-    - handler:
+    - operation: projection_routing_decision
+      handler:
         name: HandlerProjectionRoutingDecision
         module: omnimarket.nodes.node_projection_routing_decision.handlers.handler_projection_routing_decision
       handler_module: omnimarket.nodes.node_projection_routing_decision.handlers.handler_projection_routing_decision
       event_model: omnimarket.nodes.node_projection_routing_decision.handlers.handler_projection_routing_decision.ModelRoutingDecisionEvent
-    - handler:
+    - operation: routing_decision_projection_runner
+      handler:
         name: RoutingDecisionProjectionRunner
         module: omnimarket.nodes.node_projection_routing_decision.handlers.handler_routing_decision
       handler_module: omnimarket.nodes.node_projection_routing_decision.handlers.handler_routing_decision

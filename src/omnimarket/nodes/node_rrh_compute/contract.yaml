@@ -18,7 +18,8 @@ handler:
 
 handler_routing:
   handlers:
-    - handler:
+    - operation: rrh
+      handler:
         name: HandlerRrhCompute
         module: omnimarket.nodes.node_rrh_compute.handlers.handler_rrh_compute
 

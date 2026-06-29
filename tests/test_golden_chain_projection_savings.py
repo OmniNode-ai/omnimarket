@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta, timezone
 from decimal import Decimal
 from pathlib import Path
@@ -16,6 +17,9 @@ from omnimarket.nodes.node_projection_savings.handlers.handler_projection_saving
     ModelSavingsEstimatedEvent,
 )
 from omnimarket.projection.protocol_database import InmemoryDatabaseAdapter
+from omnimarket.projection.validation import (
+    validate_projection_materialization_contracts,
+)
 from tests.constants import MODEL_CLAUDE_OPUS_4_6, MODEL_QWEN3_CODER_30B
 
 HANDLER = HandlerProjectionSavings()
@@ -358,3 +362,191 @@ class TestProjectionSavingsContractConfig:
             "savings_estimates must target omnidash_analytics (not omnibase_infra); "
             "migration 075 applied updated_at to omnidash_analytics only"
         )
+
+
+_CONTRACT_PATH = Path("src/omnimarket/nodes/node_projection_savings/contract.yaml")
+_SERIES_MIGRATION = Path(
+    "src/omnimarket/nodes/node_projection_savings/migrations/"
+    "078_create_delegation_savings_series_projection_view.sql"
+)
+# OMN-13661 (T2): tier-mix columns appended to the series view.
+_SERIES_TIER_MIGRATION = Path(
+    "src/omnimarket/nodes/node_projection_savings/migrations/"
+    "079_add_savings_series_tier_mix.sql"
+)
+_SERIES_TOPIC = "onex.snapshot.projection.delegation.savings-series.v1"
+_SERIES_TABLE = "projection_delegation_savings_series"
+_SERIES_COLUMNS = [
+    "bucket",
+    "actual_cost_usd",
+    "baseline_cost_usd",
+    "savings_usd",
+    "task_count",
+    # OMN-13661 (T2): per-bucket routing-tier distribution.
+    "local_pct",
+    "cheap_pct",
+    "prem_pct",
+]
+
+
+@dataclass(frozen=True)
+class _ContractStub:
+    name: str
+    contract_path: Path
+
+
+@dataclass(frozen=True)
+class _ManifestStub:
+    contracts: tuple[_ContractStub, ...]
+
+
+def _series_exposure() -> dict[str, object]:
+    contract = yaml.safe_load(_CONTRACT_PATH.read_text())
+    for exposure in contract["projection_api"]["exposures"]:
+        if exposure["topic"] == _SERIES_TOPIC:
+            return exposure
+    raise AssertionError(f"No projection_api exposure declared for {_SERIES_TOPIC!r}")
+
+
+@pytest.mark.unit
+class TestDelegationSavingsSeriesProjection:
+    """OMN-13648 (G1): time-bucketed savings-over-time series exposure."""
+
+    def test_migration_078_creates_series_view(self) -> None:
+        sql = _SERIES_MIGRATION.read_text()
+        # The view is a single CREATE OR REPLACE VIEW over the bus-fed source.
+        assert f"CREATE OR REPLACE VIEW {_SERIES_TABLE}" in sql
+        # Re-derives the same UNION source as migration 076 (does NOT depend on
+        # 076's internal CTEs): both base relations are read directly.
+        assert "FROM savings_estimates" in sql
+        assert "FROM delegation_events" in sql
+        assert "combined_sessions AS" in sql
+        # One row per UTC day with SUM/COUNT aggregates.
+        assert "date_trunc('day', created_at) AS bucket" in sql
+        assert "SUM(local_cost_usd)" in sql
+        assert "SUM(cloud_cost_usd)" in sql
+        assert "SUM(savings_usd)" in sql
+        assert "COUNT(*)::int AS task_count" in sql
+        assert "GROUP BY 1" in sql
+        assert "ORDER BY 1" in sql
+        # Negative assertions run against executable SQL only (strip -- comments
+        # so the explanatory header doesn't satisfy the checks).
+        sql_body = "\n".join(line.split("--", 1)[0] for line in sql.splitlines())
+        # Aggregates over ALL sessions: the LIMIT 500 cap from 076 must NOT leak
+        # into the series view.
+        assert "LIMIT 500" not in sql_body
+        # Tier-mix columns are deferred to OMN-13649; they must not ship here.
+        for tier_col in ("local_pct", "cheap_pct", "prem_pct"):
+            assert tier_col not in sql_body
+
+    def test_contract_exposes_savings_series(self) -> None:
+        exposure = _series_exposure()
+        assert exposure["table"] == _SERIES_TABLE
+        assert exposure["schema"] == "public"
+        assert list(exposure["columns"]) == _SERIES_COLUMNS
+        assert exposure["order_by"] == "bucket ASC"
+        assert exposure["freshness_column"] == "bucket"
+        # A year of daily buckets is the sensible upper bound for the series.
+        assert exposure["limit"] == 365
+
+    def test_series_topic_in_externally_consumed(self) -> None:
+        contract = yaml.safe_load(_CONTRACT_PATH.read_text())
+        assert _SERIES_TOPIC in contract["externally_consumed_topics"]
+
+    def test_series_exposure_passes_materialization_ratchet(self) -> None:
+        # Proves the exposure carries a node-local migration that creates the
+        # view (materialization authority + cold DDL proof). Without migration
+        # 078 the projection API would mark the topic DEGRADED at startup.
+        manifest = _ManifestStub((_ContractStub("projection_savings", _CONTRACT_PATH),))
+        issues = validate_projection_materialization_contracts(manifest)
+        series_issues = [
+            issue for issue in issues if issue.table_or_view == _SERIES_TABLE
+        ]
+        assert series_issues == [], (
+            "series exposure failed materialization ratchet: "
+            + "; ".join(issue.format() for issue in series_issues)
+        )
+        # The whole contract must stay clean too.
+        assert issues == ()
+
+
+@pytest.mark.unit
+class TestSavingsSeriesTierMix:
+    """OMN-13661 (T2): per-bucket routing-tier distribution on the series view.
+
+    Migration 079 appends local_pct/cheap_pct/prem_pct to
+    projection_delegation_savings_series, mapping the authoritative
+    delegation_events.cost_tier_name onto three display buckets and computing
+    each pct over LLM-tier-routed rows only. The reconciliation arithmetic (pcts
+    sum to 1.0; not_tier_routed rows excluded from the denominator, counted in
+    task_count) is proven executably against the live dev DB in the PR evidence;
+    this suite gates the SQL/contract shape so a regression cannot ship.
+    """
+
+    @staticmethod
+    def _series_tier_sql_body() -> str:
+        sql = _SERIES_TIER_MIGRATION.read_text()
+        # Strip -- comments so structural checks run against executable SQL only,
+        # not the explanatory header (which names every tier and column).
+        return "\n".join(line.split("--", 1)[0] for line in sql.splitlines())
+
+    def test_migration_079_replaces_series_view_in_place(self) -> None:
+        body = self._series_tier_sql_body()
+        # CREATE OR REPLACE keeps the existing five columns + appends the pct
+        # columns (Postgres replace-view rule), so it is a non-breaking patch.
+        assert f"CREATE OR REPLACE VIEW {_SERIES_TABLE}" in body
+        # The pre-existing series columns must be preserved unchanged.
+        assert "date_trunc('day', created_at) AS bucket" in body
+        assert "SUM(local_cost_usd)" in body
+        assert "SUM(cloud_cost_usd)" in body
+        assert "SUM(savings_usd)" in body
+        assert "COUNT(*)::int AS task_count" in body
+        assert "GROUP BY 1" in body
+        assert "ORDER BY 1" in body
+
+    def test_migration_079_carries_authoritative_tier(self) -> None:
+        body = self._series_tier_sql_body()
+        # cost_tier_name is read from delegation_events (authoritative as of
+        # OMN-13649) and carried through the CTEs; the savings_estimates source
+        # has no serving tier (NULL), so it is not_tier_routed.
+        assert "NULLIF(cost_tier_name, '') AS cost_tier_name" in body
+        assert "NULL::text AS cost_tier_name" in body
+        assert "classified_sessions AS" in body
+
+    def test_migration_079_tier_bucket_mapping(self) -> None:
+        body = self._series_tier_sql_body()
+        # Authoritative tier -> {local, cheap, premium} mapping (routing_tiers.yaml
+        # ladder collapsed to three display buckets). Owned by the projection so
+        # the UI never re-derives tier from a model-name regex.
+        assert "WHEN cost_tier_name = 'local' THEN 'local'" in body
+        assert (
+            "WHEN cost_tier_name IN ('cheap_cloud', 'cheap_frontier') THEN 'cheap'"
+            in body
+        )
+        assert "WHEN cost_tier_name = 'claude' THEN 'premium'" in body
+        # Empty / NULL / unrecognized tier -> not_tier_routed (NULL bucket).
+        assert "ELSE NULL" in body
+
+    def test_migration_079_pct_over_tier_routed_denominator(self) -> None:
+        body = self._series_tier_sql_body()
+        # Each pct numerator counts only its bucket; the denominator counts the
+        # tier-routed rows (tier_bucket IS NOT NULL), so not_tier_routed rows are
+        # excluded from the denominator while still counted in task_count.
+        for bucket, col in (
+            ("local", "local_pct"),
+            ("cheap", "cheap_pct"),
+            ("premium", "prem_pct"),
+        ):
+            assert f"FILTER (WHERE tier_bucket = '{bucket}')" in body
+            assert f"AS {col}" in body
+        # NULLIF guards the divide-by-zero when a bucket has no tier-routed rows.
+        assert "NULLIF(COUNT(*) FILTER (WHERE tier_bucket IS NOT NULL), 0)" in body
+
+    def test_migration_079_appended_to_series_columns(self) -> None:
+        # The contract exposure must surface the new columns so the projection
+        # API serves them (and so the exposure⇄column drift scanner — T4 — sees
+        # a materialized source for each).
+        exposure = _series_exposure()
+        assert list(exposure["columns"]) == _SERIES_COLUMNS
+        for col in ("local_pct", "cheap_pct", "prem_pct"):
+            assert col in exposure["columns"]

@@ -20,6 +20,7 @@ from omnibase_core.models.delegation.wire import (
     ModelInferenceResponseData,
 )
 from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
+from omnibase_infra.protocols import ProtocolEventBusLike
 from omnibase_infra.runtime.auto_wiring.handler_wiring import _make_dispatch_callback
 from omnibase_infra.runtime.auto_wiring.models import ModelHandlerRef
 from omnibase_infra.runtime.service_dispatch_result_applier import (
@@ -89,6 +90,7 @@ def _make_terminal_routing_decision(correlation_id: object) -> ModelRoutingDecis
         endpoint_url="http://192.168.86.201:8001",  # onex-allow-internal-ip OMN-12720 reason="live probe endpoint reproduced in failure-chain unit test"
         cost_tier="local",
         max_context_tokens=65536,
+        max_tokens=65536,  # OMN-13345: contract backend output ceiling
         system_prompt="You are a test generation assistant.",
         rationale="Live probe selected the local Qwen endpoint.",
         tier_name="claude",
@@ -179,6 +181,101 @@ class TestHandlerInferenceIntent:
         assert result.content == ""
         assert result.error_message != ""
         assert result.model_used == "test-model"
+        # OMN-13408: a transport failure raises BEFORE any response.json(), so no
+        # usage was served — token fields stay 0 (only usage-bearing provider
+        # responses carry real tokens onto the error path).
+        assert result.prompt_tokens == 0
+        assert result.completion_tokens == 0
+        assert result.total_tokens == 0
+
+    @pytest.mark.parametrize(
+        "cli_url",
+        ["cli://codex", "cli://claude", "CLI://codex", " cli://codex "],
+    )
+    def test_cli_scheme_fails_closed_no_subprocess(self, cli_url: str) -> None:
+        """OMN-13215: the shelled-CLI inference path is removed.
+
+        A ``cli://`` endpoint (config drift / a removed tier) must fail closed at
+        the effect boundary with a typed error response — never spawn a subprocess.
+        ``subprocess`` and ``shutil`` are no longer imported by the handler module,
+        so any attempt to reach them would raise AttributeError; assert the handler
+        returns a clean error response instead.
+        """
+        handler = HandlerInferenceIntent()
+        intent = _make_intent(base_url=cli_url, model="codex-cli")
+
+        # No httpx mock: a correctly-failing handler rejects the scheme BEFORE any
+        # HTTP client is constructed.
+        result = handler.handle(intent)
+
+        assert isinstance(result, ModelInferenceResponseData)
+        assert result.content == ""
+        assert result.model_used == "codex-cli"
+        assert "HTTP" in result.error_message
+        assert "cli://" in result.error_message.lower() or cli_url.strip() in (
+            result.error_message
+        )
+
+    def test_handler_module_has_no_subprocess_or_shutil(self) -> None:
+        """OMN-13215: the codex-cli shell-execution code path is removed.
+
+        Guard against reintroduction: the inference handler module must not import
+        ``subprocess`` or ``shutil`` (the only consumers were the deleted CLI path).
+        """
+        import omnimarket.nodes.node_llm_delegation_call_effect.handlers.handler_inference_intent as mod
+
+        assert not hasattr(mod, "subprocess")
+        assert not hasattr(mod, "shutil")
+        assert not hasattr(mod, "_call_cli_backend")
+        assert not hasattr(mod, "_build_cli_command")
+        assert not hasattr(mod, "_is_cli_backend")
+
+    def test_ceiling_tier_http_endpoint_executes_like_lower_tiers(self) -> None:
+        """OMN-13215/OMN-13351: the ceiling tier executes via the canonical HTTP path.
+
+        A complete Gemini chat-completions URL (the default ceiling backend
+        ``cloud-gemini-pro``, repointed off the dead Anthropic ``cloud-sonnet`` in
+        OMN-13351) is posted verbatim with the resolved api_key, identical to every
+        lower tier.
+        """
+        handler = HandlerInferenceIntent()
+        ceiling_url = (
+            "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
+        )
+        intent = _make_intent(
+            base_url=ceiling_url,
+            model="gemini-2.5-flash",
+            api_key_ref="TEST_MODEL_API_KEY",
+        )
+        captured_urls: list[str] = []
+
+        mock_response = MagicMock()
+        mock_response.json.return_value = _SUCCESSFUL_HTTPX_RESPONSE
+        mock_response.raise_for_status.return_value = None
+
+        def _capture_post(url: str, **kwargs: object) -> MagicMock:
+            captured_urls.append(url)
+            return mock_response
+
+        with (
+            patch(
+                "omnimarket.nodes.node_llm_delegation_call_effect.handlers.handler_inference_intent.resolve_api_key",
+                return_value=None,
+            ),
+            patch("httpx.Client") as mock_client_cls,
+        ):
+            mock_client = MagicMock()
+            mock_client.__enter__ = MagicMock(return_value=mock_client)
+            mock_client.__exit__ = MagicMock(return_value=False)
+            mock_client.post.side_effect = _capture_post
+            mock_client_cls.return_value = mock_client
+
+            result = handler.handle(intent)
+
+        assert captured_urls == [ceiling_url]
+        assert result.content == "def test_foo(): pass"
+        assert result.model_used == "gemini-2.5-flash"
+        assert result.error_message == ""
 
     def test_provider_http_status_error_includes_sanitized_body(self) -> None:
         handler = HandlerInferenceIntent()
@@ -280,7 +377,7 @@ class TestHandlerInferenceIntent:
         assert response.content == ""
         assert "provider timed out" in response.error_message
 
-        bus = AsyncMock()
+        bus = AsyncMock(spec=ProtocolEventBusLike)
         applier = DispatchResultApplier(
             event_bus=bus,
             output_topic="onex.evt.omnibase-infra.delegation-completed.v1",
@@ -342,6 +439,10 @@ class TestHandlerInferenceIntent:
         assert result.content == ""
         assert result.model_used == "test-model"
         assert "empty message content" in result.error_message
+        # OMN-13408: served usage on the empty-content response is carried, not 0.
+        assert result.prompt_tokens == 10
+        assert result.completion_tokens == 0
+        assert result.total_tokens == 10
 
     def test_length_finish_reason_returns_error_response(self) -> None:
         handler = HandlerInferenceIntent()
@@ -377,6 +478,12 @@ class TestHandlerInferenceIntent:
         assert result.content == ""
         assert result.model_used == "test-model"
         assert "finish_reason=length" in result.error_message
+        # OMN-13408: the provider STILL reported served usage on the truncated
+        # response — the error-path response must carry the real metered tokens
+        # (not drop them to 0) so the canonical terminal records non-zero tokens.
+        assert result.prompt_tokens == 10
+        assert result.completion_tokens == 20
+        assert result.total_tokens == 30
 
     def test_returns_response_for_runtime_autopublish(self) -> None:
         # The runtime dispatch-result applier publishes the RETURNED model to the

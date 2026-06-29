@@ -65,6 +65,29 @@ class EnumFindingType(StrEnum):
     # orphaned even though static profile membership looks valid. This is the
     # second class of orphaning that static profile-subset validation misses.
     PROFILE_NO_LIVE_CONSUMER = "PROFILE_NO_LIVE_CONSUMER"
+    # OMN-13589: a single-repo onex.nodes entry point that fails the structural
+    # or import probe (module/__init__/contract.yaml/handler/model load). The
+    # harness collects per-entry-point probes; the pure node turns a failed
+    # probe into this finding.
+    BROKEN_ENTRY_POINT = "BROKEN_ENTRY_POINT"
+
+
+class EnumSweepCheck(StrEnum):
+    """Selectable runtime-sweep phases.
+
+    A request with ``enabled_checks=None`` runs every phase (default, full
+    cross-repo sweep). A request that names a subset runs only those phases —
+    this is how the single-repo CI import-probe scopes itself to REGISTRATION
+    without tripping the cross-repo symmetry/durability invariants.
+    """
+
+    REGISTRATION = "REGISTRATION"
+    DESCRIPTION = "DESCRIPTION"
+    WIRING = "WIRING"
+    SYMMETRY = "SYMMETRY"
+    DURABILITY = "DURABILITY"
+    STRANDED_WORKFLOW = "STRANDED_WORKFLOW"
+    PROFILE_CONSUMER = "PROFILE_CONSUMER"
 
 
 # ---------------------------------------------------------------------------
@@ -127,6 +150,25 @@ class ModelContractInput(BaseModel):
     runtime_profiles: list[str] = Field(default_factory=list)
 
 
+class ModelEntryPointProbe(BaseModel):
+    """Result of probing one single-repo ``onex.nodes`` entry point.
+
+    The harness (the I/O boundary) walks ``pyproject.toml``, runs the structural
+    and import checks for each declared node, and emits one probe per node. The
+    pure node turns ``ok=False`` probes into ``BROKEN_ENTRY_POINT`` findings.
+    ``reason`` is populated only when ``ok=False`` and mirrors the exact strings
+    produced by the structural/import checks (e.g. "contract.yaml missing",
+    "handler import failed: <exc>").
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    node_name: str
+    module_path: str
+    ok: bool
+    reason: str = ""
+
+
 class ModelRuntimeFinding(BaseModel):
     """A single runtime verification finding."""
 
@@ -184,6 +226,18 @@ class RuntimeSweepRequest(BaseModel):
     # broker census was not collected and the dual check is skipped — distinct
     # from an empty census (broker reachable, zero consumer groups).
     live_consumer_profiles: list[str] | None = None
+    # OMN-13589: single-repo entry-point import probes. The harness walks this
+    # repo's pyproject [project.entry-points."onex.nodes"] and produces one probe
+    # per node (structural + import checks). The REGISTRATION phase turns failed
+    # probes into BROKEN_ENTRY_POINT findings. Empty (default) ⇒ REGISTRATION
+    # emits nothing, so cross-repo/skill callers see no behavior change.
+    entry_point_probes: list[ModelEntryPointProbe] = Field(default_factory=list)
+    # OMN-13589: select which sweep phases run. None (default) ⇒ all phases run
+    # exactly as before — existing cross-repo/skill behavior is byte-for-byte
+    # preserved. A named subset (e.g. [REGISTRATION]) scopes the sweep, which is
+    # how the single-repo CI import-probe avoids the cross-repo symmetry and
+    # durability invariants.
+    enabled_checks: list[EnumSweepCheck] | None = None
     dry_run: bool = False
 
 
@@ -196,6 +250,7 @@ class RuntimeSweepResult(BaseModel):
     contracts_checked: int = 0
     topics_checked: int = 0
     workflows_checked: int = 0
+    entry_points_checked: int = 0
     status: str = "clean"  # clean | findings | error
     dry_run: bool = False
 
@@ -244,17 +299,40 @@ class NodeRuntimeSweep:
     Pure compute handler — operates on pre-collected contract metadata.
     """
 
+    @staticmethod
+    def _enabled(request: RuntimeSweepRequest, check: EnumSweepCheck) -> bool:
+        """True when ``check`` should run for this request.
+
+        ``enabled_checks is None`` ⇒ every phase runs (default, full sweep).
+        A named subset runs only the listed phases.
+        """
+        return request.enabled_checks is None or check in request.enabled_checks
+
     def handle(self, request: RuntimeSweepRequest) -> RuntimeSweepResult:
-        """Execute the runtime sweep."""
+        """Execute the runtime sweep.
+
+        Each phase is gated on ``_enabled``. With ``enabled_checks=None`` every
+        phase runs exactly as before (REGISTRATION emits nothing when there are
+        no entry-point probes), so existing cross-repo/skill callers are
+        unaffected. A named subset (e.g. [REGISTRATION]) scopes the sweep.
+        """
         findings: list[ModelRuntimeFinding] = []
 
+        # REGISTRATION phase (OMN-13589): single-repo entry-point probes.
+        # Emits nothing when no probes were supplied, so the default full sweep
+        # is unaffected.
+        if self._enabled(request, EnumSweepCheck.REGISTRATION):
+            findings.extend(self._check_registration(request.entry_point_probes))
+
         # Phase 1: Node description audit
-        for contract in request.contracts:
-            findings.extend(self._check_description(contract))
+        if self._enabled(request, EnumSweepCheck.DESCRIPTION):
+            for contract in request.contracts:
+                findings.extend(self._check_description(contract))
 
         # Phase 2: Handler wiring audit
-        for contract in request.contracts:
-            findings.extend(self._check_wiring(contract))
+        if self._enabled(request, EnumSweepCheck.WIRING):
+            for contract in request.contracts:
+                findings.extend(self._check_wiring(contract))
 
         # Phase 3: Topic symmetry audit
         all_producers = set(request.topic_producers)
@@ -264,26 +342,36 @@ class NodeRuntimeSweep:
             all_consumers.update(contract.subscribe_topics)
 
         all_topics = all_producers | all_consumers
-        findings.extend(self._check_symmetry(all_topics, all_producers, all_consumers))
+        if self._enabled(request, EnumSweepCheck.SYMMETRY):
+            findings.extend(
+                self._check_symmetry(all_topics, all_producers, all_consumers)
+            )
 
         # Phase 4: Contract-store durability audit (OMN-12962)
         # Flag any live-registered contract that is not reconstructable from a
         # durable cold-start source — these depend on retained registration
         # events and silently vanish on a cold runtime restart.
-        findings.extend(
-            self._check_census_durability(request.contracts, request.durable_node_names)
-        )
+        if self._enabled(request, EnumSweepCheck.DURABILITY):
+            findings.extend(
+                self._check_census_durability(
+                    request.contracts, request.durable_node_names
+                )
+            )
 
         # Phase 5: Stranded-workflow audit (FSM terminal-state invariant, OMN-12959).
-        findings.extend(
-            self._check_stranded_workflows(
-                request.workflow_observations, request.archetype_sla_ms
+        if self._enabled(request, EnumSweepCheck.STRANDED_WORKFLOW):
+            findings.extend(
+                self._check_stranded_workflows(
+                    request.workflow_observations, request.archetype_sla_ms
+                )
             )
-        )
         # Phase 6 (OMN-12957): manifest-vs-live-consumer census dual check.
         # Only runs when the caller collected the live broker consumer-group
         # census; static profile membership alone misses this orphan class.
-        if request.live_consumer_profiles is not None:
+        if (
+            self._enabled(request, EnumSweepCheck.PROFILE_CONSUMER)
+            and request.live_consumer_profiles is not None
+        ):
             findings.extend(
                 self._check_profile_consumer_census(
                     request.contracts, request.live_consumer_profiles
@@ -297,9 +385,32 @@ class NodeRuntimeSweep:
             contracts_checked=len(request.contracts),
             topics_checked=len(all_topics),
             workflows_checked=len(request.workflow_observations),
+            entry_points_checked=len(request.entry_point_probes),
             status=status,
             dry_run=request.dry_run,
         )
+
+    def _check_registration(
+        self, probes: list[ModelEntryPointProbe]
+    ) -> list[ModelRuntimeFinding]:
+        """Turn failed entry-point probes into BROKEN_ENTRY_POINT findings.
+
+        Pure: the import/structural work happens in the harness; this method only
+        classifies the pre-collected probe results.
+        """
+        findings: list[ModelRuntimeFinding] = []
+        for probe in probes:
+            if probe.ok:
+                continue
+            findings.append(
+                ModelRuntimeFinding(
+                    finding_type=EnumFindingType.BROKEN_ENTRY_POINT,
+                    subject=probe.node_name,
+                    message=f"{probe.module_path}: {probe.reason}",
+                    severity="CRITICAL",
+                )
+            )
+        return findings
 
     @staticmethod
     def _classify_watchdog(

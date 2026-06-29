@@ -70,7 +70,9 @@ def test_handler_model_router_boot_constructible_then_fails_loudly() -> None:
 
     # Boot-time construction with only event_bus must succeed (no TypeError):
     # this is exactly the runtime auto-wiring resolver's known-param path.
-    router = HandlerModelRouter(event_bus=MagicMock())
+    router = HandlerModelRouter(
+        event_bus=MagicMock(),  # transport-mock-ok: HandlerModelRouter.event_bus is typed Any — spec= cannot be applied
+    )
 
     # Routing through an unconfigured instance must fail loudly, not silently.
     with pytest.raises(RuntimeError, match="without policy/registry"):
@@ -117,13 +119,13 @@ def test_handler_pr_lifecycle_orchestrator_requires_event_bus() -> None:
         HandlerPrLifecycleOrchestrator()  # type: ignore[call-arg]
 
 
-def test_handler_workflow_runner_requires_event_bus() -> None:
-    from omnimarket.nodes.node_redeploy.handlers.handler_workflow_runner import (
-        HandlerRedeployWorkflowRunner,
+def test_handler_deploy_publish_monitor_requires_event_bus() -> None:
+    from omnimarket.nodes.node_redeploy_deploy_effect.handlers.handler_deploy_publish_monitor import (
+        HandlerDeployPublishMonitor,
     )
 
     with pytest.raises(TypeError):
-        HandlerRedeployWorkflowRunner()  # type: ignore[call-arg]
+        HandlerDeployPublishMonitor()  # type: ignore[call-arg]
 
 
 def test_handler_review_thread_reconciler_requires_event_bus() -> None:

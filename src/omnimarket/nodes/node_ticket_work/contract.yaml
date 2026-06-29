@@ -16,7 +16,8 @@ handler:
 handler_routing:
   routing_strategy: operation_match
   handlers:
-    - handler:
+    - operation: ticket_work
+      handler:
         name: HandlerTicketWork
         module: omnimarket.nodes.node_ticket_work.handlers.handler_ticket_work
 

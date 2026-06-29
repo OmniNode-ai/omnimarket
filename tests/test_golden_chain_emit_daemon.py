@@ -20,7 +20,7 @@ from unittest.mock import AsyncMock
 import pytest
 import yaml
 
-from omnimarket.nodes.node_emit_daemon.client import EmitClient, default_socket_path
+from omnimarket.events.emit_client import EmitClient, default_socket_path
 from omnimarket.nodes.node_emit_daemon.event_queue import (
     BoundedEventQueue,
     ModelQueuedEvent,

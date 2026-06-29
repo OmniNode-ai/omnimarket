@@ -151,7 +151,9 @@ def test_complete_envelope_records_session_status_and_phase_totals() -> None:
 def test_event_bus_mock_is_a_noop() -> None:
     from unittest.mock import MagicMock
 
-    handler = HandlerOvernight(event_bus=MagicMock())
+    handler = HandlerOvernight(
+        event_bus=MagicMock(),  # transport-mock-ok: EventPublisher is a Callable type alias, not a Protocol class — spec= cannot be applied
+    )
 
     # Must not raise; must still return a valid result.
     result = handler.handle(_cmd())

@@ -161,7 +161,9 @@ def test_quality_gate_strips_thinking_traces_before_concise_check() -> None:
         dod_heuristic=("concise",),
     )
     result = delta(gate_input)
-    assert result.passed is True
+    assert result.passed is False
+    assert result.quality_score == pytest.approx(1.0)
+    assert any("reject-only" in r for r in result.failure_reasons)
 
 
 @pytest.mark.unit

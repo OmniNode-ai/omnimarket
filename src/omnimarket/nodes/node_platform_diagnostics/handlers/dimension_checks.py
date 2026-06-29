@@ -26,6 +26,7 @@ from typing import Any
 
 import aiohttp
 
+from omnimarket.config.service_endpoints import GITHUB_REST_URL
 from omnimarket.nodes.node_platform_diagnostics.models.model_diagnostics_result import (
     EnumDiagnosticDimension,
     ModelDiagnosticDimensionResult,
@@ -550,7 +551,7 @@ async def check_ci_status(
 
         async with aiohttp.ClientSession(headers=headers) as session:
             for repo in ctx.github_repos:
-                url = f"https://api.github.com/repos/{repo}/actions/runs?branch=main&per_page=5"
+                url = f"{GITHUB_REST_URL}/repos/{repo}/actions/runs?branch=main&per_page=5"
                 try:
                     async with session.get(
                         url,

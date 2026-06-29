@@ -1,0 +1,50 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-13370"
+title: "P5: Retire marker heuristics as routing authority in delegation quality gate"
+summary: >-
+  Repo-local deploy-gate evidence carrier for omnimarket PR #1296. The PR changes
+  the pure delegation quality-gate reducer so schema/length/no-refusal/marker
+  checks remain reject-only diagnostics and can no longer create passed=true
+  without substantive adequacy authority. It preserves existing event-bus
+  topics and adds no bespoke REST endpoint, node contract, image dependency, or
+  live runtime mutation.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-local-quality-gate-tests"
+    description: >-
+      Local tests prove schema/length/no-refusal/marker checks can reject invalid
+      output but cannot promote output to adequate by themselves.
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          uv run pytest tests/unit/delegation/test_quality_gate_marker_authority_omn13370.py
+          tests/unit/delegation/ tests/integration/golden_chain/test_golden_chain_delegation_useful_artifact_chain.py
+          tests/unit/nodes/node_llm_delegation_projection/ -q
+  - id: "dod-calibration-retained"
+    description: >-
+      The OMN-12964 quality-score calibration remains non-degenerate after marker
+      checks stop acting as pass authority.
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run python scripts/ci/run_quality_gate_calibration.py"
+  - id: "dod-no-runtime-mutation"
+    description: >-
+      Pure reducer/test/metadata change only; no live deploy, restart, .201
+      mutation, production data mutation, new REST endpoint, or event-bus topic
+      change was performed for this PR.
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          printf '%s\n' 'deploy gate: OMN-13370 is a pure reducer/test/metadata
+          change; no live deploy, restart, .201 mutation, production data
+          mutation, REST endpoint, or topic change performed'

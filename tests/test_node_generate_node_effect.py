@@ -8,15 +8,13 @@ from uuid import uuid4
 import pytest
 import yaml
 
-from omnimarket.nodes.node_generate_node_effect.handlers.handler_generate_node import (
-    HandlerGenerateNode,
-)
-from omnimarket.nodes.node_generate_node_effect.models.model_generate_node_command import (
+from omnimarket.models.model_generate_node import (
     EnumNodeType,
     ModelGenerateNodeCommand,
-)
-from omnimarket.nodes.node_generate_node_effect.models.model_generate_node_result import (
     ModelGenerateNodeResult,
+)
+from omnimarket.nodes.node_generate_node_effect.handlers.handler_generate_node import (
+    HandlerGenerateNode,
 )
 
 CONTRACT_PATH = (

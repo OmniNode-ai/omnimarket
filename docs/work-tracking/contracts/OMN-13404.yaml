@@ -1,0 +1,87 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-13404"
+title: "Fix 0016_delegation_quality_bar_evidence cold-apply: CREATE OR REPLACE VIEW reorders an existing column"
+summary: >
+  node_projection_delegation migration 0016_delegation_quality_bar_evidence did
+  CREATE OR REPLACE VIEW projection_delegation_quality_gate AS ... that INSERTED
+  the two new authority columns (avg_actual_score, avg_required_bar) ahead of the
+  existing by_check_type column. Postgres forbids renaming/reordering an existing
+  output column at a given ordinal via CREATE OR REPLACE VIEW, so the view (which
+  already exists from 0010) failed to apply with
+  "ERROR: cannot change name of view column by_check_type to avg_actual_score".
+  Because the runner stops on first error (ON_ERROR_STOP=1), this blocked
+  0017_premium_counterfactual, 0018_delegation_cost_measurements, and
+  0019_delegation_budget_state on every cold lane, and the same view-from-0010 +
+  unapplied-0016 state blocks it on warm stability too. The minimal fix preserves
+  the 15 existing column ordinals/names exactly as 0010 created them and APPENDS
+  the two new columns at ordinals 16-17, so CREATE OR REPLACE VIEW is legal.
+  Consumers (contract projection columns list) select by name, so appending is
+  non-breaking. No DROP VIEW / CASCADE needed — the only object touching
+  projection_delegation_quality_gate is this view (0010 creates it, 0016 replaces
+  it); pg_depend has no other dependents to recreate. The OMN-13368 end-state
+  intent is preserved verbatim: escalation_count/escalation_rate now carry
+  total_escalations; by_check_type carries the score_vs_required_bar payload;
+  avg_actual_score/avg_required_bar are present — only their ordinal position
+  changed (now appended), which is invisible to name-based consumers.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-001"
+    description: >
+      MANDATORY EMPIRICAL COLD-APPLY PROOF: a scratch throwaway Postgres 16
+      (docker run --rm postgres:16 on .201) with a freshly-created cold
+      omnidash_analytics DB applied the full node_projection_delegation set
+      0007..0019 in lexical order with psql -v ON_ERROR_STOP=1 -f (the exact
+      runner semantics). ALL 14 files applied clean — including the previously
+      failing 0016_delegation_quality_bar_evidence (now CREATE VIEW, no error)
+      and the downstream 0017_premium_counterfactual,
+      0018_delegation_cost_measurements, 0019_delegation_budget_state.
+      The resulting projection_delegation_quality_gate has the intended 17
+      columns: ordinals 1-15 identical to 0010, avg_actual_score at 16 and
+      avg_required_bar at 17. View is selectable. Scratch container torn down.
+      Full log: .onex_state/runtime-e2e-2026-06-21/02-dev-deploy/60-cold-apply-proof.log
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "docker run -d --rm --name rte2e-coldtest-pg -e POSTGRES_PASSWORD=test postgres:16; createdb omnidash_analytics; for f in 0007..0019; do psql -d omnidash_analytics -v ON_ERROR_STOP=1 -f $f; done  # all apply clean (see 60-cold-apply-proof.log)"
+  - id: "dod-002"
+    description: >
+      The CREATE OR REPLACE VIEW is now legal because every pre-existing column
+      keeps its 0010 ordinal/name; the two new columns are appended. Verified by
+      information_schema.columns ordinal_position dump in the proof log: 1
+      overall_pass_rate ... 15 latest_projection_updated_at, 16 avg_actual_score,
+      17 avg_required_bar.
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "psql -d omnidash_analytics -c \"SELECT ordinal_position, column_name FROM information_schema.columns WHERE table_name='projection_delegation_quality_gate' ORDER BY ordinal_position\""
+  - id: "dod-003"
+    description: >
+      pre-commit run on the changed migration file passes, including the
+      "Migration base-table-before-view gate" hook. ruff does not lint .sql.
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "pre-commit run --files src/omnimarket/nodes/node_projection_delegation/migrations/0016_delegation_quality_bar_evidence.sql"
+  - id: "dod-deploy"
+    description: >
+      Deploy-gate evidence: this is a single idempotent forward-migration SQL fix
+      (no source/handler/contract/schema-intent change — the view's end-state
+      columns are identical to the original 0016 intent; only HOW it reaches that
+      state changed, from column-reorder to column-append). The runner is id-based
+      (schema_migrations PK, skip-manifest, NO checksum), so lanes that somehow
+      already recorded the broken 0016 id would skip — but no lane has applied it
+      (it has been failing everywhere), so on next redeploy every lane applies the
+      fixed 0016 clean. Empirically proven on a cold scratch DB (dod-001). The
+      fix is re-vendored into omnibase_infra docker/migrations/forward (paired
+      infra PR) byte-identical via sync-node-migrations.sh.
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "echo 'deploy-gate: OMN-13404 makes 0016 CREATE OR REPLACE VIEW legal by appending new columns; proven clean on a cold scratch Postgres 0007..0019 (60-cold-apply-proof.log); re-vendored byte-identical into omnibase_infra'"

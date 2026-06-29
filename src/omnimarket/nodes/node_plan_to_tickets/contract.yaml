@@ -4,6 +4,12 @@ contract_version: {major: 1, minor: 0, patch: 0}
 node_type: compute
 node_version: {major: 1, minor: 0, patch: 0}
 
+# OMN-13718: top-level input_model is required so RuntimeLocal's event-driven
+# path can seed the initial command envelope. Without it the runtime refuses to
+# publish a degenerate correlation_id-only payload and exits with an error.
+# Mirrors node_dod_verify (OMN-13253).
+input_model: omnimarket.events.design_to_plan.ModelPlanToTicketsStartCommand
+
 description: >
   Batch create Linear tickets from a plan markdown file. Parses ## Task N: sections,
   creates/links epic, resolves dependencies, and generates ModelTicketContracts for all tickets.
@@ -16,9 +22,15 @@ handler:
 handler_routing:
   routing_strategy: operation_match
   handlers:
-    - handler:
+    - operation: plan_to_tickets
+      handler:
         name: HandlerPlanToTickets
         module: omnimarket.nodes.node_plan_to_tickets.handlers.handler_plan_to_tickets
+      # OMN-13718: event_model so the runtime unwraps and validates the envelope
+      # payload against the typed command before dispatch.
+      event_model:
+        name: ModelPlanToTicketsStartCommand
+        module: omnimarket.events.design_to_plan
 
 descriptor:
   node_archetype: compute

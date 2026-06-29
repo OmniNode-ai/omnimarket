@@ -9,6 +9,7 @@ No network, no DB.
 from __future__ import annotations
 
 import json
+from collections.abc import Generator
 from typing import Any
 from unittest.mock import MagicMock, patch
 
@@ -16,6 +17,19 @@ import pytest
 from click.testing import CliRunner
 
 from omnimarket.cli.market import market
+
+
+@pytest.fixture(autouse=True)
+def _set_omnidash_url(monkeypatch: pytest.MonkeyPatch) -> Generator[None, None, None]:
+    """Bind OMNIDASH_API_URL for all tests in this module.
+
+    OMN-12807: _DEFAULT_BASE_URL removed from trace.py; the env var is now
+    required.  Unit tests that mock httpx.Client still need the var set so
+    _base_url() does not raise before the mock intercepts the request.
+    """
+    monkeypatch.setenv("OMNIDASH_API_URL", "http://test-projection-api:3002")
+    return
+
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -594,8 +608,16 @@ def test_base_url_strips_trailing_slash(monkeypatch: pytest.MonkeyPatch) -> None
 
 
 @pytest.mark.unit
-def test_base_url_defaults_to_localhost(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_base_url_raises_when_unset(monkeypatch: pytest.MonkeyPatch) -> None:
+    """_base_url() fails closed when OMNIDASH_API_URL is unset (no localhost default).
+
+    OMN-12807: _DEFAULT_BASE_URL removed; callers must bind OMNIDASH_API_URL
+    to the projection-API address for the active lane.
+    """
+    import click
+
     import omnimarket.cli.commands.trace as trace_mod
 
     monkeypatch.delenv("OMNIDASH_API_URL", raising=False)
-    assert trace_mod._base_url() == "http://localhost:3002"
+    with pytest.raises(click.ClickException, match="OMNIDASH_API_URL is not set"):
+        trace_mod._base_url()

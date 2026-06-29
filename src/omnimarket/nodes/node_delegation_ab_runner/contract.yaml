@@ -22,7 +22,8 @@ handler:
 handler_routing:
   routing_strategy: direct
   handlers:
-    - handler:
+    - operation: delegation_ab_runner
+      handler:
         name: HandlerDelegationAbRunner
         module: omnimarket.nodes.node_delegation_ab_runner.handlers.handler_delegation_ab_runner
 
@@ -33,7 +34,6 @@ descriptor:
   timeout_ms: 300000
   runtime_profiles:
     - effects
-    - local_macos_claude_hooks
 
 env_dependencies:
   LLM_CODER_URL:
