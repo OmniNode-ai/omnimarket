@@ -18,9 +18,9 @@ CREATE TABLE IF NOT EXISTS projection_delegation_inference_response_text (
     -- task_type is not carried by ModelInferenceResponseData; defaults to empty
     latest_task_type          TEXT    NOT NULL DEFAULT '',
     latest_generated_text     TEXT    NOT NULL DEFAULT '',
-    latest_prompt_tokens      INT     NOT NULL DEFAULT 0,
-    latest_completion_tokens  INT     NOT NULL DEFAULT 0,
-    latest_latency_ms         INT     NOT NULL DEFAULT 0,
+    latest_prompt_tokens      INT     NOT NULL DEFAULT 0 CHECK (latest_prompt_tokens >= 0),
+    latest_completion_tokens  INT     NOT NULL DEFAULT 0 CHECK (latest_completion_tokens >= 0),
+    latest_latency_ms         INT     NOT NULL DEFAULT 0 CHECK (latest_latency_ms >= 0),
 
     -- The Kafka topic that feeds this projection
     source_topic              TEXT    NOT NULL
@@ -29,13 +29,16 @@ CREATE TABLE IF NOT EXISTS projection_delegation_inference_response_text (
     -- Rolling FIFO window of recent responses (max MAX_HISTORY = 10)
     -- Each entry: {correlation_id, model_name, task_type, generated_text,
     --              prompt_tokens, completion_tokens, latency_ms, captured_at}
-    recent_responses          JSONB   NOT NULL DEFAULT '[]'::jsonb,
+    recent_responses          JSONB   NOT NULL DEFAULT '[]'::jsonb
+        CHECK (jsonb_typeof(recent_responses) = 'array'),
 
     -- When this snapshot was last materialized
     captured_at               TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 
     -- True once the projection reducer has written at least one row
-    provisioned               BOOLEAN NOT NULL DEFAULT TRUE
+    provisioned               BOOLEAN NOT NULL DEFAULT TRUE,
+
+    CHECK (singleton_key = 'global')
 );
 
 -- Seed the singleton row so the projection-API always returns a row
