@@ -74,3 +74,54 @@ metadata:
     - OMN-12120
   related_tickets:
     - OMN-12120
+
+# OMN-13734: machine-readable FSM (transcribed from authoritative handler/model logic).
+state_machine:
+  state_machine_name: swarm_subtask_state_fsm
+  initial_state: assigned
+  states:
+    - state_name: assigned
+      description: "Subtask assigned to a delegation tier (delegation_execute)."
+      required_data: []
+    - state_name: escalating
+      description: "Subtask escalated to a higher tier."
+      required_data: []
+    - state_name: completed
+      description: "Subtask completed successfully."
+      is_terminal: true
+      required_data: []
+    - state_name: failed
+      description: "All tiers exhausted; subtask failed."
+      is_terminal: true
+      required_data: []
+  transitions:
+    - from_state: assigned
+      to_state: assigned
+      trigger: delegation_execute
+      description: "Re-receive execute for the subtask."
+    - from_state: assigned
+      to_state: completed
+      trigger: delegation_call_completed
+      description: "Delegation call completed."
+    - from_state: assigned
+      to_state: escalating
+      trigger: delegation_escalation_triggered
+      description: "Guard: tier failed, attempts remain."
+    - from_state: assigned
+      to_state: failed
+      trigger: delegation_all_tiers_failed
+      description: "All tiers exhausted."
+    - from_state: escalating
+      to_state: completed
+      trigger: delegation_call_completed
+      description: "Escalated call completed."
+    - from_state: escalating
+      to_state: escalating
+      trigger: delegation_escalation_triggered
+      description: "Guard: escalate again, attempts remain."
+    - from_state: escalating
+      to_state: failed
+      trigger: delegation_all_tiers_failed
+      description: "All tiers exhausted after escalation."
+  terminal_states: [completed, failed]
+  persistence_enabled: false

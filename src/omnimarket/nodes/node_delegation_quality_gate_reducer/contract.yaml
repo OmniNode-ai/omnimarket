@@ -131,3 +131,30 @@ metadata:
     - validation
   related_tickets:
     - "OMN-7040"
+
+# OMN-13734: machine-readable FSM (transcribed from authoritative handler/model logic).
+state_machine:
+  state_machine_name: delegation_quality_gate_fsm
+  initial_state: idle
+  states:
+    - state_name: idle
+      description: "No quality-gate evaluation folded yet."
+      required_data: []
+    - state_name: evaluated
+      description: "Quality-gate result projection materialized."
+      required_data: []
+  transitions:
+    - from_state: idle
+      to_state: evaluated
+      trigger: quality_gate_request
+      description: "Quality-gate evaluation requested."
+    - from_state: evaluated
+      to_state: evaluated
+      trigger: quality_gate_request
+      description: "Fold another evaluation request."
+    - from_state: evaluated
+      to_state: evaluated
+      trigger: quality_gate_result
+      description: "Re-observe own result (idempotent)."
+  terminal_states: []
+  persistence_enabled: false
