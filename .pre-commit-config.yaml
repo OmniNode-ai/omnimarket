@@ -30,6 +30,17 @@ repos:
       - id: transport-mock-lint
         args: [--baseline, validation/transport_mock_baseline.yaml]
 
+  # FSM YAML-vs-handler drift guard (OMN-13735). Consumes the canonical validator
+  # exported by omnibase_core (check-fsm-handler-drift). Reconciles each reducer
+  # contract.yaml's fsm_handler_binding-declared state_machine slice against the
+  # handler's VALID_TRANSITIONS / GUARD_CONDITIONS Python symbols via AST literal
+  # eval; any (from_state, trigger)->to_state or guard divergence blocks. Pinned to
+  # the omnibase_core#1360 PR head; re-pin to the merged-dev SHA once it lands.
+  - repo: https://github.com/OmniNode-ai/omnibase_core
+    rev: 2d6e64e76a8bd90757eeacb8b4663c8e187beb59 # pragma: allowlist secret
+    hooks:
+      - id: check-fsm-handler-drift
+
   # Canonical Inference Gate (OMN-13249, fleet rollout of OMN-13219).
   # Rejects NEW non-canonical model-inference surfaces: shelled model CLIs
   # (codex/claude/gemini/opencode) and *_MODEL/*_PROVIDER env reads. Structural

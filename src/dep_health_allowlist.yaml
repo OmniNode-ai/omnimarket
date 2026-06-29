@@ -163,3 +163,17 @@ allowlist:
     owner_repo: omnimarket
     planned_subscriber: node_golden_chain_generator
     expires_at: "2026-08-15"
+
+  # --- task-delegated (legacy compat topic, OMN-13629) ---
+  # After OMN-13629 (WS-F Phase 1), the canonical delegation terminals collapsed to
+  # delegation-{completed,failed}.v1. task-delegated.v1 is retained as a registry
+  # reference in topics.py and in the golden_chains.yaml delegation chain head_topic
+  # for legacy monitoring continuity. It is no longer published or subscribed by any
+  # live node — declaring it in a contract would create false wiring.
+  # Expires: 2026-10-15 — remove after the delegation golden chain head_topic is
+  #   updated to the canonical delegation-completed.v1 topic (OMN-13629 follow-up).
+  - topic: "onex.evt.omniclaude.task-delegated.v1"
+    reason: "Legacy compat topic (OMN-13629); retained in topics.py registry and golden_chains.yaml delegation chain head — no live producer/consumer after WS-F Phase 1."
+    owner_repo: omnimarket
+    planned_subscriber: none
+    expires_at: "2026-10-15"
