@@ -1,4 +1,7 @@
 {
+  "graphify_version": "0.8.2",
+  "rule_version": "v1",
+  "captured_at": "2026-06-28T23:12:24.109900Z",
   "findings": [
     {
       "finding_type": "UNTESTED_HANDLER",
@@ -5850,8 +5853,5 @@
       "rule_id": "UNDECLARED_TOPIC",
       "rule_version": "v1"
     }
-  ],
-  "graphify_version": "0.8.2",
-  "rule_version": "v1",
-  "captured_at": "2026-06-28T22:28:32.419108+00:00"
+  ]
 }

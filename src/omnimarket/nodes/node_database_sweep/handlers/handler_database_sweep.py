@@ -11,6 +11,7 @@ ONEX node type: COMPUTE — deterministic scan, no LLM calls.
 from __future__ import annotations
 
 import os
+import shlex
 import subprocess
 from collections.abc import Callable
 from pathlib import Path
@@ -149,25 +150,70 @@ def _run(
         return -1, "", str(exc)
 
 
+# ---------------------------------------------------------------------------
+# Connection target (OMN-13717)
+# ---------------------------------------------------------------------------
+# database_sweep previously shelled bare ``psql -d <db>``, which connects to the
+# local unix socket. On the .201 runtime lanes there is no local Postgres, so
+# every probe failed with ``connection to server on socket "/tmp/.s.PGSQL.5432"
+# failed`` and the sweep discovered 0 tables and left every migration bucket at 0
+# — even though node_data_flow_sweep reached the same projection tables. The fix
+# aligns the transport with node_data_flow_sweep: run psql INSIDE the lane's
+# Postgres container (over SSH when a remote runtime host is configured). Host,
+# container, user, and ssh-user are env-overridable so the DSN is overlay-driven,
+# never a hardcoded local socket.
+
+_DEFAULT_RUNTIME_HOST = "192.168.86.201"  # onex-allow-internal-ip OMN-13717 reason="default .201 projection-lane host; overridden by ONEX_DATABASE_SWEEP_RUNTIME_HOST / ONEX_DATA_FLOW_RUNTIME_HOST; not a shipping connection string"
+_DEFAULT_PG_CONTAINER = "omnibase-infra-postgres"
+_DEFAULT_PG_USER = "postgres"
+_DEFAULT_SSH_USER = "jonah"
+
+
+def _resolve_pg_runtime_host() -> str:
+    """Resolve the runtime host the projection Postgres lives on.
+
+    Env-overridable (``ONEX_DATABASE_SWEEP_RUNTIME_HOST`` then the shared
+    ``ONEX_DATA_FLOW_RUNTIME_HOST`` so this sweep agrees with
+    node_data_flow_sweep), defaulting to the canonical .201 runtime host. An
+    empty value selects the local docker lane (psql via local ``docker exec``).
+    """
+    for var in ("ONEX_DATABASE_SWEEP_RUNTIME_HOST", "ONEX_DATA_FLOW_RUNTIME_HOST"):
+        if var in os.environ:
+            return os.environ[var].strip()
+    return _DEFAULT_RUNTIME_HOST
+
+
+def _build_psql_argv(query: str, database: str) -> list[str]:
+    """Build the argv that runs ``query`` against ``database`` on the lane.
+
+    Mirrors the node_data_flow_sweep transport: ``[ssh <user>@<host>] docker exec
+    <postgres_container> psql -U <user> -d <database> -tAc <query>``. There is no
+    bare local-socket ``psql`` path — that was the OMN-13717 wrong/empty-DB bug.
+    """
+    container = os.environ.get(
+        "ONEX_DATABASE_SWEEP_PG_CONTAINER", _DEFAULT_PG_CONTAINER
+    )
+    pg_user = os.environ.get("ONEX_DATABASE_SWEEP_PG_USER", _DEFAULT_PG_USER)
+    inner = ["psql", "-U", pg_user, "-d", database, "-tAc", query]
+    docker_argv = ["docker", "exec", container, *inner]
+    host = _resolve_pg_runtime_host()
+    if host:
+        ssh_user = os.environ.get("ONEX_DATABASE_SWEEP_SSH_USER", _DEFAULT_SSH_USER)
+        return ["ssh", f"{ssh_user}@{host}", shlex.join(docker_argv)]
+    return docker_argv
+
+
 def _psql(
     query: str, database: str, env: dict[str, str] | None = None
 ) -> tuple[int, str, str]:
-    """Run a psql query and return (returncode, stdout, stderr)."""
+    """Run a psql query on the lane projection DB; return (rc, stdout, stderr)."""
     pg_env = dict(os.environ)
     if env:
         pg_env.update(env)
-    cmd = [
-        "psql",
-        "-d",
-        database,
-        "-t",  # tuples only
-        "-A",  # unaligned
-        "-c",
-        query,
-    ]
+    argv = _build_psql_argv(query, database)
     try:
         r = subprocess.run(
-            cmd,
+            argv,
             capture_output=True,
             text=True,
             env=pg_env,
@@ -523,6 +569,35 @@ def _check_node_migrations(
 
 
 # ---------------------------------------------------------------------------
+# Migration bucket classification (OMN-13717)
+# ---------------------------------------------------------------------------
+# A migration result carries a fine-grained status; the sweep summary buckets
+# them into current / pending / failed. The previous aggregation only counted the
+# literal CURRENT / PENDING / FAILED statuses, so a sweep where every database
+# errored (versions-dir-missing => ERROR, unreachable DB => NO_TABLE) silently
+# left all three buckets at 0 — hiding the failure. ERROR and NO_TABLE are
+# failure states and roll into ``failed``; AHEAD rolls into ``pending``.
+_MIGRATION_CURRENT_STATES = frozenset({"CURRENT"})
+_MIGRATION_PENDING_STATES = frozenset({"PENDING", "AHEAD"})
+_MIGRATION_FAILED_STATES = frozenset({"FAILED", "NO_TABLE", "ERROR"})
+
+
+def _classify_migration_buckets(
+    results: list[ModelMigrationStateResult],
+) -> tuple[int, int, int]:
+    """Classify migration results into ``(current, pending, failed)`` counts."""
+    current = pending = failed = 0
+    for m in results:
+        if m.status in _MIGRATION_CURRENT_STATES:
+            current += 1
+        elif m.status in _MIGRATION_PENDING_STATES:
+            pending += 1
+        elif m.status in _MIGRATION_FAILED_STATES:
+            failed += 1
+    return current, pending, failed
+
+
+# ---------------------------------------------------------------------------
 # Handler
 # ---------------------------------------------------------------------------
 
@@ -623,6 +698,10 @@ class NodeDatabaseSweep:
         for m in migration_results:
             mig_status_counts[m.status] = mig_status_counts.get(m.status, 0) + 1
 
+        migrations_current, migrations_pending, migrations_failed = (
+            _classify_migration_buckets(migration_results)
+        )
+
         has_issues = (
             status_counts.get("STALE", 0) > 0
             or status_counts.get("EMPTY", 0) > 0
@@ -642,9 +721,9 @@ class NodeDatabaseSweep:
             tables_missing=status_counts.get("MISSING", 0),
             tables_orphan=status_counts.get("ORPHAN", 0),
             tables_unknown=status_counts.get("UNKNOWN", 0),
-            migrations_current=mig_status_counts.get("CURRENT", 0),
-            migrations_pending=mig_status_counts.get("PENDING", 0),
-            migrations_failed=mig_status_counts.get("FAILED", 0),
+            migrations_current=migrations_current,
+            migrations_pending=migrations_pending,
+            migrations_failed=migrations_failed,
             status="issues_found" if has_issues else "healthy",
             dry_run=request.dry_run,
         )
