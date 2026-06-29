@@ -479,6 +479,7 @@ class HandlerBuildLoopExecutor:
     def handle(
         self,
         command: ModelOvernightCommand,
+        *,
         phase_results: dict[EnumPhase, bool] | None = None,
         phase_costs: dict[EnumPhase, float] | None = None,
         dispatch_phases: bool = False,
