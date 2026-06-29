@@ -1,0 +1,19 @@
+name: projection_intent_classification
+version: "1.0.0"
+description: >
+  Projects intent-classified events into the intent_classification_events table.
+  UPSERT by correlation_id. Feeds omnidash intent-distribution and session-timeline widgets.
+omnibase_core_compat: ">=0.45.0,<1.0.0"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: true
+  requires_secrets: true
+  side_effect_class: write_db
+tags:
+  - projection
+  - intent
+  - reducer
+pack: "data"
+display_name: "Projection: Intent Classification"
+node_role: "effect"
