@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from enum import StrEnum
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, field_validator
 
 
 class EnumDepHealthFindingType(StrEnum):
@@ -36,3 +36,13 @@ class ModelDepHealthFinding(BaseModel):
     detail: str
     rule_id: str
     rule_version: str
+
+    @field_validator("file_path")
+    @classmethod
+    def _sanitize_file_path(cls, value: str | None) -> str | None:
+        if value is None or value.startswith("src/"):
+            return value
+        marker = "/src/"
+        if marker in value:
+            return "src/" + value.rsplit(marker, maxsplit=1)[1]
+        return value

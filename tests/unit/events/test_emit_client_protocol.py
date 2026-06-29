@@ -106,9 +106,16 @@ class TestSendAndRecvRetry:
         broken_sock.sendall.side_effect = OSError("broken pipe")
         good_sock = mock.MagicMock()
         expected: dict[str, object] = {"status": "queued", "event_id": "retry-evt-id"}
+        sockets = iter([broken_sock, good_sock])
+
+        def connect_mock() -> mock.MagicMock:
+            sock = next(sockets)
+            client._sock = sock  # type: ignore[attr-defined]
+            return sock
 
         with (
-            mock.patch.object(client, "_connect", side_effect=[broken_sock, good_sock]),
+            mock.patch.object(client, "close", wraps=client.close) as close_mock,
+            mock.patch.object(client, "_connect", side_effect=connect_mock),
             mock.patch.object(client, "_read_response", return_value=expected),
         ):
             result = client._send_and_recv(  # type: ignore[attr-defined]
@@ -119,6 +126,8 @@ class TestSendAndRecvRetry:
         # Both sockets had sendall called
         broken_sock.sendall.assert_called_once()
         good_sock.sendall.assert_called_once()
+        close_mock.assert_called_once()
+        broken_sock.close.assert_called_once()
 
     def test_retry_propagates_second_os_error(self) -> None:
         """If the retry also raises, the error is not caught again."""
@@ -127,14 +136,22 @@ class TestSendAndRecvRetry:
         broken_sock1.sendall.side_effect = OSError("first failure")
         broken_sock2 = mock.MagicMock()
         broken_sock2.sendall.side_effect = OSError("second failure")
+        sockets = iter([broken_sock1, broken_sock2])
+
+        def connect_mock() -> mock.MagicMock:
+            sock = next(sockets)
+            client._sock = sock  # type: ignore[attr-defined]
+            return sock
 
         with (
-            mock.patch.object(
-                client, "_connect", side_effect=[broken_sock1, broken_sock2]
-            ),
+            mock.patch.object(client, "close", wraps=client.close) as close_mock,
+            mock.patch.object(client, "_connect", side_effect=connect_mock),
             pytest.raises(OSError, match="second failure"),
         ):
             client._send_and_recv({"event_type": "x", "payload": {}})  # type: ignore[attr-defined]
+
+        close_mock.assert_called_once()
+        broken_sock1.close.assert_called_once()
 
 
 # ---------------------------------------------------------------------------
