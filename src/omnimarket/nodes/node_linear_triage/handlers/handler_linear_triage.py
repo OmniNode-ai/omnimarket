@@ -660,9 +660,12 @@ class HandlerLinearTriage:
         actions.extend(stale_actions)
 
         # --- Phase 5: Orphan detection ---
-        orphaned = sum(
-            1 for t in all_tickets if not t.parent_id and t.state not in _DONE_STATES
-        )
+        # OMN-13757: build the full list (no cap/sample) so callers can enumerate.
+        # Invariant: len(orphaned_tickets_list) == orphaned enforced before return.
+        orphaned_tickets_list: list[ModelLinearTicket] = [
+            t for t in all_tickets if not t.parent_id and t.state not in _DONE_STATES
+        ]
+        orphaned = len(orphaned_tickets_list)
 
         # --- Phase 5b: Epic completion detection ---
         epic_actions, epics_closed, epic_suppressed = self._phase_epic_check(
@@ -686,6 +689,11 @@ class HandlerLinearTriage:
                 len(suppressed_closes),
             )
 
+        # OMN-13757: enforce enumeration invariant before constructing the result.
+        assert len(orphaned_tickets_list) == orphaned, (
+            f"BUG: orphaned_tickets_list len {len(orphaned_tickets_list)} != orphaned {orphaned}"
+        )
+
         return ModelLinearTriageResult(
             status="completed",
             dry_run=dry_run,
@@ -701,6 +709,8 @@ class HandlerLinearTriage:
             orphaned=orphaned,
             actions=actions,
             suppressed_closes=suppressed_closes,
+            orphaned_tickets=orphaned_tickets_list,
+            stale_tickets=stale,
         )
 
     def _phase_pr_check(
@@ -711,7 +721,12 @@ class HandlerLinearTriage:
         dry_run: bool,
         flag_only: bool,
     ) -> tuple[list[ModelTriageAction], int, int, list[str]]:
-        """Phase 3: check In Progress / In Review tickets against GitHub PR state.
+        """Phase 3: check active tickets (_ACTIVE_STATES) against GitHub PR state.
+
+        _ACTIVE_STATES = {"In Progress", "In Review", "Backlog"}.  Backlog tickets
+        are included so that implementation work merged while a ticket was in Backlog
+        is detected (OMN-13756).  flag_only=True still suppresses all mutations,
+        so widening the detection set is safe under the OMN-12869 gate.
 
         Returns (actions, marked_done, marked_done_superseded, suppressed_closes).
         When flag_only=True, no Linear mutations are executed; candidate closes
@@ -722,12 +737,11 @@ class HandlerLinearTriage:
         marked_done_superseded = 0
         suppressed: list[str] = []
 
-        pr_candidates = [
-            t for t in all_tickets if t.state in {"In Progress", "In Review"}
-        ]
+        pr_candidates = [t for t in all_tickets if t.state in _ACTIVE_STATES]
         _log.info(
-            "PR check candidates: %d tickets in In Progress/In Review",
+            "PR check candidates: %d tickets in _ACTIVE_STATES (%s)",
             len(pr_candidates),
+            ", ".join(sorted(_ACTIVE_STATES)),
         )
 
         for i, ticket in enumerate(pr_candidates):

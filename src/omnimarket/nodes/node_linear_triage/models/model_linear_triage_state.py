@@ -89,6 +89,11 @@ class ModelLinearTriageResult(BaseModel):
     # Candidate closes suppressed by flag_only mode.
     # Each entry is "<ticket_id>: <evidence>" for human review.
     suppressed_closes: list[str] = Field(default_factory=list)
+    # OMN-13757: full enumeration of orphaned / stale tickets — never capped or sampled.
+    # Invariant: len(orphaned_tickets) == orphaned and len(stale_tickets) == stale_count.
+    # Required by ticketing_triage and ticketing-epic-org skills.
+    orphaned_tickets: list[ModelLinearTicket] = Field(default_factory=list)
+    stale_tickets: list[ModelLinearTicket] = Field(default_factory=list)
 
 
 class ModelLinearTriageCompletedEvent(BaseModel):
