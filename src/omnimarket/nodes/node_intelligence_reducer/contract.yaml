@@ -66,6 +66,23 @@ handler_routing:
         name: PatternLifecycleTransitionResult
         module: omnimarket.nodes.node_intelligence_reducer.handlers.handler_pattern_lifecycle
       description: "Pattern lifecycle transition result and routing (OMN-11907)"
+# FSM Handler Binding (OMN-13735)
+# =================================
+# Declares the typed binding between contract FSM transitions and the handler
+# module that implements them. The check-fsm-handler-drift validator (omnibase_core)
+# reads this section and mechanically verifies that VALID_TRANSITIONS and
+# GUARD_CONDITIONS in the handler exactly mirror the state_machine.transitions
+# filtered to the declared state_filter. Zero allowlist entries; all drift blocks.
+fsm_handler_binding:
+  - fsm_type: "PATTERN_LIFECYCLE"
+    handler_module: "omnimarket.nodes.node_intelligence_reducer.handlers.handler_pattern_lifecycle"
+    valid_transitions_symbol: "VALID_TRANSITIONS"
+    guard_conditions_symbol: "GUARD_CONDITIONS"
+    state_filter:
+      - "candidate"
+      - "provisional"
+      - "validated"
+      - "deprecated"
 # FSM State Machine Definition
 # ============================
 # The intelligence reducer manages three FSM types, each with its own state machine.
