@@ -19,6 +19,7 @@ existing dispatch behavior while relocating ownership.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 import subprocess
@@ -169,14 +170,31 @@ class AdapterInferenceBridge(ModelInferenceAdapter):
             msg = f"Model route {model_key!r} is missing cli_command"
             raise ValueError(msg)
         combined_prompt = f"{system_prompt}\n\n{user_prompt}"
-        result = subprocess.run(
-            [cli_command, combined_prompt],
-            capture_output=True,
-            text=True,
-            timeout=int(timeout_seconds),
-            check=False,
+        # Non-blocking subprocess dispatch: a synchronous subprocess.run() here
+        # would stall the event loop for the full CLI-model latency, starving
+        # every concurrent infer() / review / grader task on the same loop.
+        proc = await asyncio.create_subprocess_exec(
+            cli_command,
+            combined_prompt,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
         )
-        return result.stdout.strip()
+        try:
+            stdout_bytes, _stderr_bytes = await asyncio.wait_for(
+                proc.communicate(), timeout=timeout_seconds
+            )
+        except TimeoutError as exc:
+            # Preserve the prior subprocess.run(timeout=...) contract: reap the
+            # still-running child, then surface subprocess.TimeoutExpired so
+            # callers catching the original exception type keep working.
+            proc.kill()
+            await proc.wait()
+            raise subprocess.TimeoutExpired(
+                cmd=[cli_command, combined_prompt], timeout=timeout_seconds
+            ) from exc
+        # check=False semantics preserved: non-zero exit is tolerated; we return
+        # whatever the CLI wrote to stdout regardless of returncode.
+        return stdout_bytes.decode().strip()
 
 
 __all__: list[str] = [
