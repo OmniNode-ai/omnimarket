@@ -20,7 +20,11 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Protocol, runtime_checkable
 
-from omnimarket.config.service_endpoints import GITHUB_REST_URL, LINEAR_GRAPHQL_URL
+from omnimarket.config.service_endpoints import (
+    GITHUB_GRAPHQL_URL,
+    GITHUB_REST_URL,
+    LINEAR_GRAPHQL_URL,
+)
 from omnimarket.inference.secret_store_resolver import resolve_api_key_async
 from omnimarket.nodes.contract_topics import contract_secret_ref
 from omnimarket.nodes.node_linear_triage.models.model_linear_triage_state import (
@@ -63,6 +67,17 @@ _EPIC_ACTIVE_CHILD_STATES = frozenset(
     {"In Progress", "In Review", "Done", "Cancelled", "Canceled"}
 )
 
+# OMN-13759: implementing-PR detection.
+# Any OMN ticket id anywhere in text.
+_OMN_ID_RE = re.compile(r"OMN-\d+", re.IGNORECASE)
+# Primary OMN id in a conventional PR title: "type(OMN-123): summary".
+_TITLE_PAREN_OMN_RE = re.compile(r"\(\s*(OMN-\d+)", re.IGNORECASE)
+# Closing keyword + ticket id: "Closes OMN-123", "Fixes: OMN-123", "resolved OMN-123".
+_CLOSING_KEYWORD_RE = re.compile(
+    r"\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\b[\s:]+(OMN-\d+)",
+    re.IGNORECASE,
+)
+
 
 @runtime_checkable
 class LinearClientProtocol(Protocol):
@@ -80,6 +95,8 @@ class LinearClientProtocol(Protocol):
     def list_children(
         self, *, parent_id: str, limit: int = 50, after: str | None = None
     ) -> Any: ...
+
+    def list_issue_history(self, *, issue_id: str) -> Any: ...
 
     def get_issue(self, *, issue_id: str) -> Any: ...
 
@@ -177,6 +194,27 @@ class LinearHttpClient:
         query = """
         query GetIssue($id: String!) {
           issue(id: $id) { id identifier state { name } }
+        }
+        """
+        return self._post(query, {"id": issue_id})
+
+    def list_issue_history(self, *, issue_id: str) -> Any:
+        """Return the issue's state-transition history (most recent first).
+
+        Used to detect a Done -> active reopen after a PR merge (OMN-13759): a
+        ticket reopened after its implementing PR merged is NOT done-evidence.
+        """
+        query = """
+        query IssueHistory($id: String!) {
+          issue(id: $id) {
+            history(first: 50) {
+              nodes {
+                createdAt
+                fromState { name }
+                toState { name }
+              }
+            }
+          }
         }
         """
         return self._post(query, {"id": issue_id})
@@ -307,6 +345,8 @@ class GitHubClientProtocol(Protocol):
         self, *, repo: str, branch: str, state: str = "merged"
     ) -> list[dict[str, str]]: ...
 
+    def pr_closing_ticket_refs(self, *, repo: str, number: int) -> list[str]: ...
+
 
 class GitHubHttpClient:
     """GitHub REST API client using urllib (no external deps).
@@ -402,6 +442,9 @@ class GitHubHttpClient:
                 {
                     "number": str(item.get("number", "")),
                     "title": item.get("title", ""),
+                    # OMN-13759: body carries the "Closes/Fixes/Resolves OMN-id"
+                    # keyword used to confirm the implementing PR.
+                    "body": item.get("body", "") or "",
                     "state": pr_state,
                     "mergedAt": merged_at,
                     "url": item.get("html_url", ""),
@@ -471,6 +514,59 @@ class GitHubHttpClient:
             )
             raise
 
+    def _graphql(self, query: str, variables: dict[str, object]) -> Any:
+        """POST a GraphQL query to the GitHub GraphQL endpoint."""
+        payload = json.dumps({"query": query, "variables": variables}).encode()
+        req = urllib.request.Request(
+            GITHUB_GRAPHQL_URL,
+            data=payload,
+            headers={
+                "Accept": "application/vnd.github.v3+json",
+                "Authorization": f"Bearer {self._token}",
+                "User-Agent": "onex-linear-triage",
+                "Content-Type": "application/json",
+            },
+            method="POST",
+        )
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            data = json.loads(resp.read())
+        if "errors" in data:
+            raise RuntimeError(f"GitHub GraphQL error: {data['errors']}")
+        return data
+
+    def pr_closing_ticket_refs(self, *, repo: str, number: int) -> list[str]:
+        """Return OMN ids linked via the PR's GraphQL ``closingIssuesReferences``.
+
+        The installed ``gh`` CLI rejects the ``closingIssuesReferences`` REST/JSON
+        field and silently returns ``null``, so this queries the GraphQL API
+        directly (OMN-13759). Each closing reference is a GitHub issue; its title
+        and body are scanned for OMN ids, returned upper-cased and de-duplicated.
+        """
+        query = """
+        query ClosingRefs($owner: String!, $repo: String!, $number: Int!) {
+          repository(owner: $owner, name: $repo) {
+            pullRequest(number: $number) {
+              closingIssuesReferences(first: 20) {
+                nodes { title body }
+              }
+            }
+          }
+        }
+        """
+        data = self._graphql(
+            query, {"owner": "OmniNode-ai", "repo": repo, "number": number}
+        )
+        pull = ((data.get("data") or {}).get("repository") or {}).get(
+            "pullRequest"
+        ) or {}
+        nodes = (pull.get("closingIssuesReferences") or {}).get("nodes") or []
+        found: set[str] = set()
+        for node in nodes:
+            text = f"{node.get('title', '')} {node.get('body', '')}"
+            for m in _OMN_ID_RE.finditer(text):
+                found.add(m.group(0).upper())
+        return sorted(found)
+
 
 # OCC receipt PRs are evidence artifacts, not implementation work.
 # Excluding them from done-detection prevents false positives.
@@ -482,6 +578,146 @@ def _is_implementation_pr(pr: dict[str, str]) -> bool:
     return pr.get("repo", "") != _OCC_REPO
 
 
+def _norm_omn(value: str) -> str:
+    """Upper-case + strip an OMN id for case-insensitive comparison."""
+    return value.strip().upper()
+
+
+def _title_primary_omn_id(title: str) -> str | None:
+    """Return the primary OMN id from a PR title, or None.
+
+    The conventional PR title is ``<type>(<ticket>): <summary>`` — the id inside
+    the first parenthesis is the implementing (primary) ticket. If there is no
+    parenthesised id, fall back to the first bare OMN id in the title.
+    """
+    m = _TITLE_PAREN_OMN_RE.search(title or "")
+    if m:
+        return _norm_omn(m.group(1))
+    m2 = _OMN_ID_RE.search(title or "")
+    if m2:
+        return _norm_omn(m2.group(0))
+    return None
+
+
+def _body_closes_ticket(body: str, ticket_id: str) -> bool:
+    """True when the PR body has a Closes/Fixes/Resolves keyword for ``ticket_id``.
+
+    A bare mention of the id (no closing keyword) is NOT a close — that is the
+    1.6%-precision false positive OMN-13759 fixes.
+    """
+    target = _norm_omn(ticket_id)
+    for m in _CLOSING_KEYWORD_RE.finditer(body or ""):
+        if _norm_omn(m.group(1)) == target:
+            return True
+    return False
+
+
+def _pr_implements_ticket(
+    ticket_id: str,
+    pr: dict[str, str],
+    *,
+    gh: GitHubClientProtocol,
+) -> bool:
+    """Return True only when ``pr`` is the IMPLEMENTING PR for ``ticket_id``.
+
+    A merged PR that merely *mentions* the ticket id (evidence reference,
+    "related to", multi-ticket roll-up) is NOT done-evidence. The close path is
+    gated on one of three positive implementing signals (OMN-13759):
+
+      1. The PR title's primary OMN id == ``ticket_id``
+         (conventional ``type(OMN-id): summary``).
+      2. A ``Closes/Fixes/Resolves OMN-<id>`` keyword in the PR body.
+      3. A GitHub GraphQL ``closingIssuesReferences`` link to the ticket.
+
+    Failure to confirm any signal — including a failed GraphQL lookup — is
+    treated as "not implementing" (fails closed: precision over recall).
+    """
+    target = _norm_omn(ticket_id)
+
+    # 1. Title primary id (free — already in the search payload).
+    if _title_primary_omn_id(pr.get("title", "")) == target:
+        return True
+
+    # 2. Body closing keyword (free — body is in the search payload).
+    if _body_closes_ticket(pr.get("body", ""), ticket_id):
+        return True
+
+    # 3. GraphQL closingIssuesReferences (one extra call; only when 1+2 miss).
+    repo = pr.get("repo", "")
+    number = pr.get("number", "")
+    if repo and number:
+        try:
+            refs = gh.pr_closing_ticket_refs(repo=repo, number=int(number))
+        except Exception as exc:
+            _log.warning(
+                "closingIssuesReferences lookup failed for %s#%s (%s): %s",
+                repo,
+                number,
+                ticket_id,
+                exc,
+            )
+            return False
+        if target in {_norm_omn(r) for r in refs}:
+            return True
+
+    return False
+
+
+def _first_implementing_pr(
+    ticket_id: str,
+    prs: list[dict[str, str]],
+    *,
+    gh: GitHubClientProtocol,
+) -> dict[str, str] | None:
+    """Return the first PR in ``prs`` that implements ``ticket_id`` (non-OCC)."""
+    for pr in prs:
+        if not _is_implementation_pr(pr):
+            continue
+        if _pr_implements_ticket(ticket_id, pr, gh=gh):
+            return pr
+    return None
+
+
+def _ticket_reopened_after_merge(history_data: Any, merged_at: str) -> bool:
+    """True when the ticket was reopened (Done -> active) AFTER ``merged_at``.
+
+    A ticket reopened after its implementing PR merged is NOT current
+    done-evidence — the merge was superseded by further work (OMN-13759).
+    Parses defensively: malformed / missing history is treated as "not reopened".
+    """
+    if not merged_at:
+        return False
+    try:
+        merged_dt = datetime.fromisoformat(merged_at.replace("Z", "+00:00"))
+    except Exception:
+        return False
+    try:
+        nodes = (
+            history_data.get("data", {})
+            .get("issue", {})
+            .get("history", {})
+            .get("nodes", [])
+        )
+    except Exception:
+        return False
+    if not isinstance(nodes, list):
+        return False
+    for node in nodes:
+        if not isinstance(node, dict):
+            continue
+        from_state = (node.get("fromState") or {}).get("name", "")
+        to_state = (node.get("toState") or {}).get("name", "")
+        if from_state in _DONE_STATES and to_state not in _DONE_STATES:
+            created_at = str(node.get("createdAt", ""))
+            try:
+                created_dt = datetime.fromisoformat(created_at.replace("Z", "+00:00"))
+            except Exception:
+                continue
+            if created_dt > merged_dt:
+                return True
+    return False
+
+
 def _find_merged_pr(
     ticket_id: str,
     repo_slug: str | None,
@@ -489,28 +725,31 @@ def _find_merged_pr(
     *,
     gh: GitHubClientProtocol,
 ) -> dict[str, str] | None:
-    """Search for a merged PR for this ticket using GitHub API.
+    """Search for the merged IMPLEMENTING PR for this ticket using the GitHub API.
 
     Strategy:
     1. If repo_slug known (and not OCC), search that repo first (higher confidence).
-    2. Fall back to org-wide search (single API call).
-    3. If branch_name provided and repo_slug matches, also search by head branch.
+    2. If branch_name provided, a PR whose HEAD branch == the ticket's Linear
+       branch is itself an implementing signal (the branch is ticket-specific).
+    3. Fall back to org-wide search (single API call).
 
-    OCC receipt PRs (repo == onex_change_control) are always excluded — they are
-    evidence receipts, not implementation work.
+    Every candidate is gated through :func:`_pr_implements_ticket`: a PR that
+    merely mentions the ticket id is rejected (OMN-13759). OCC receipt PRs
+    (repo == onex_change_control) are always excluded.
     """
-    # Try repo-scoped search first (more precise), but never treat OCC as impl
+    # Try repo-scoped search first (more precise), but never treat OCC as impl.
     if repo_slug and repo_slug != _OCC_REPO:
         prs = gh.search_prs_in_repo(
             repo=repo_slug,
             search_term=ticket_id,
             state="merged",
         )
-        impl_prs = [p for p in prs if _is_implementation_pr(p)]
-        if impl_prs:
-            return impl_prs[0]
+        match = _first_implementing_pr(ticket_id, prs, gh=gh)
+        if match:
+            return match
 
-        # Try branch name in same repo
+        # A PR on the ticket's Linear branch IS the implementing PR (the branch
+        # name is ticket-specific), so accept it without the keyword/title gate.
         if branch_name:
             branch_prs = gh.list_prs_by_head(
                 repo=repo_slug,
@@ -521,11 +760,11 @@ def _find_merged_pr(
             if impl_branch:
                 return impl_branch[0]
 
-    # Org-wide search (single API call, covers all repos); exclude OCC results
+    # Org-wide search (single API call, covers all repos); gate each candidate.
     prs = gh.search_prs(search_term=ticket_id, state="merged")
-    impl_prs = [p for p in prs if _is_implementation_pr(p)]
-    if impl_prs:
-        return impl_prs[0]
+    match = _first_implementing_pr(ticket_id, prs, gh=gh)
+    if match:
+        return match
 
     return None
 
@@ -737,6 +976,12 @@ class HandlerLinearTriage:
         marked_done_superseded = 0
         suppressed: list[str] = []
 
+        # OMN-13759: a parent/epic with ANY non-done child must never be closed on
+        # a merged PR. Non-done children are exactly the tickets present in the
+        # list query (Done/Cancelled are filtered out), so the set of parent ids
+        # that still have open children is derivable with no extra API call.
+        open_child_parent_ids = {t.parent_id for t in all_tickets if t.parent_id}
+
         pr_candidates = [t for t in all_tickets if t.state in _ACTIVE_STATES]
         _log.info(
             "PR check candidates: %d tickets in _ACTIVE_STATES (%s)",
@@ -748,6 +993,8 @@ class HandlerLinearTriage:
             if (i + 1) % 10 == 0:
                 _log.info("PR check %d/%d", i + 1, len(pr_candidates))
 
+            has_open_children = ticket.id in open_child_parent_ids
+
             merged_pr = _find_merged_pr(
                 ticket.identifier,
                 _extract_repo(ticket),
@@ -757,7 +1004,12 @@ class HandlerLinearTriage:
 
             if merged_pr:
                 new_actions, delta, suppressed_entry = self._apply_merged_pr(
-                    ticket, merged_pr, client, dry_run, flag_only
+                    ticket,
+                    merged_pr,
+                    client,
+                    dry_run,
+                    flag_only,
+                    has_open_children=has_open_children,
                 )
                 actions.extend(new_actions)
                 marked_done += delta
@@ -766,7 +1018,12 @@ class HandlerLinearTriage:
                 continue
 
             new_actions, delta, suppressed_entry = self._check_superseded_pr(
-                ticket, gh, client, dry_run, flag_only
+                ticket,
+                gh,
+                client,
+                dry_run,
+                flag_only,
+                has_open_children=has_open_children,
             )
             actions.extend(new_actions)
             marked_done_superseded += delta
@@ -782,16 +1039,40 @@ class HandlerLinearTriage:
         client: LinearClientProtocol,
         dry_run: bool,
         flag_only: bool,
+        *,
+        has_open_children: bool = False,
     ) -> tuple[list[ModelTriageAction], int, str | None]:
-        """Mark a ticket Done given its directly merged PR.
+        """Mark a ticket Done given its directly merged IMPLEMENTING PR.
 
         Returns (actions, count, suppressed_entry).
         When flag_only=True, no mutation occurs; suppressed_entry carries the
         candidate close description for human review.
+
+        OMN-13759 suppression guards (both produce a no-op, NOT a close):
+          - ``has_open_children``: the ticket is a parent/epic with a non-done
+            child — it must close via the all-children-done path, not a PR.
+          - reopened-after-merge: the ticket transitioned Done -> active after
+            the PR merged, so the merge is no longer current done-evidence.
         """
         merged_at = merged_pr.get("mergedAt", "unknown date")
         pr_url = merged_pr.get("url", "")
         evidence = f"PR #{merged_pr.get('number')} merged {merged_at}\n{pr_url}"
+
+        # Guard 1: epic / parent with open children — never close on a PR.
+        if has_open_children:
+            _log.info(
+                "%s has open children — suppressing PR-based close (OMN-13759)",
+                ticket.identifier,
+            )
+            return [], 0, None
+
+        # Guard 2: reopened after merge — the merge is stale done-evidence.
+        if self._reopened_after_merge(ticket, merged_pr.get("mergedAt", ""), client):
+            _log.info(
+                "%s was reopened after PR merge — suppressing close (OMN-13759)",
+                ticket.identifier,
+            )
+            return [], 0, None
 
         # flag_only is the outer safety gate — it overrides dry_run.
         if flag_only:
@@ -862,6 +1143,31 @@ class HandlerLinearTriage:
             None,
         )
 
+    def _reopened_after_merge(
+        self,
+        ticket: ModelLinearTicket,
+        merged_at: str,
+        client: LinearClientProtocol,
+    ) -> bool:
+        """True when the ticket was reopened (Done -> active) after ``merged_at``.
+
+        Fetches the Linear issue history once. A history-fetch failure is treated
+        as "not reopened" (the implementing-PR gate already carries precision);
+        the parse itself fails closed to "not reopened" on malformed data.
+        """
+        if not merged_at:
+            return False
+        try:
+            history = client.list_issue_history(issue_id=ticket.id)
+        except Exception as exc:
+            _log.warning(
+                "issue-history lookup failed for %s: %s — assuming not reopened",
+                ticket.identifier,
+                exc,
+            )
+            return False
+        return _ticket_reopened_after_merge(history, merged_at)
+
     def _check_superseded_pr(
         self,
         ticket: ModelLinearTicket,
@@ -869,13 +1175,22 @@ class HandlerLinearTriage:
         client: LinearClientProtocol,
         dry_run: bool,
         flag_only: bool,
+        *,
+        has_open_children: bool = False,
     ) -> tuple[list[ModelTriageAction], int, str | None]:
         """Check for a closed-unmerged PR with a sibling merged elsewhere.
 
         Returns (actions, count, suppressed_entry).
         When flag_only=True, no mutation occurs; suppressed_entry carries the
         candidate close description for human review.
+
+        OMN-13759: the same epic-open-children and reopened-after-merge guards as
+        the direct-merge path apply — a superseded sibling is still a close.
         """
+        # Guard: parent/epic with open children never closes on a PR.
+        if has_open_children:
+            return [], 0, None
+
         repo_slug = _extract_repo(ticket)
         if not repo_slug:
             return [], 0, None
@@ -891,6 +1206,10 @@ class HandlerLinearTriage:
 
         sibling = _find_merged_pr(ticket.identifier, None, "", gh=gh)
         if not sibling:
+            return [], 0, None
+
+        # Guard: reopened after the sibling merged — stale done-evidence.
+        if self._reopened_after_merge(ticket, sibling.get("mergedAt", ""), client):
             return [], 0, None
 
         closed_pr_num = unmerged_closed[0].get("number", "?")

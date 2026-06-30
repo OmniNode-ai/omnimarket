@@ -77,6 +77,10 @@ def _stub_client(
         return {"data": {"issues": {"nodes": node_list}}}
 
     client.list_children.side_effect = _list_children
+    # OMN-13759: no reopen events by default — merge is current done-evidence.
+    client.list_issue_history.return_value = {
+        "data": {"issue": {"history": {"nodes": []}}}
+    }
     return client  # type: ignore[return-value]
 
 
@@ -92,15 +96,23 @@ def _stub_github(
     gh = MagicMock(spec=GitHubClientProtocol)
     pr_map = merged_prs or {}
 
+    def _implementing(search_term: str, pr: dict[str, str]) -> dict[str, str]:
+        # OMN-13759: ensure each keyed PR is the IMPLEMENTING PR for its ticket
+        # (title primary id + Closes keyword) so the done-detection gate accepts it.
+        enriched = dict(pr)
+        enriched.setdefault("title", f"fix({search_term}): impl")
+        enriched.setdefault("body", f"Closes {search_term}")
+        return enriched
+
     def _search_prs(*, search_term: str, state: str = "all") -> list[dict[str, str]]:
         pr = pr_map.get(search_term)
-        return [pr] if pr else []
+        return [_implementing(search_term, pr)] if pr else []
 
     def _search_prs_in_repo(
         *, repo: str, search_term: str, state: str = "all"
     ) -> list[dict[str, str]]:
         pr = pr_map.get(search_term)
-        return [pr] if pr else []
+        return [_implementing(search_term, pr)] if pr else []
 
     def _list_prs_by_head(
         *, repo: str, branch: str, state: str = "merged"
@@ -110,6 +122,7 @@ def _stub_github(
     gh.search_prs.side_effect = _search_prs
     gh.search_prs_in_repo.side_effect = _search_prs_in_repo
     gh.list_prs_by_head.side_effect = _list_prs_by_head
+    gh.pr_closing_ticket_refs.return_value = []
     return gh  # type: ignore[return-value]
 
 

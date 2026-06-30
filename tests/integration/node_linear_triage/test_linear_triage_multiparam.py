@@ -97,6 +97,10 @@ class _MockLinearClient:
     def get_issue(self, *, issue_id: str) -> Any:
         return {"data": {"issue": {}}}
 
+    def list_issue_history(self, *, issue_id: str) -> Any:
+        # No reopen events — the merge is current done-evidence (OMN-13759).
+        return {"data": {"issue": {"history": {"nodes": []}}}}
+
     def save_issue(self, *, issue_id: str, state: str) -> None:
         self.saved.append((issue_id, state))
 
@@ -114,10 +118,13 @@ class _MockGitHubClient:
     def __init__(self, merged_for: frozenset[str] = frozenset()) -> None:
         self._merged_for = merged_for
 
-    def _merged_pr(self, repo: str) -> dict[str, str]:
+    def _merged_pr(self, repo: str, ticket: str) -> dict[str, str]:
+        # OMN-13759: implementing PR — title primary id + Closes keyword name
+        # the ticket so the done-detection gate accepts it.
         return {
             "number": "42",
-            "title": "impl",
+            "title": f"fix({ticket}): impl",
+            "body": f"Closes {ticket}",
             "state": "closed",
             "mergedAt": "2026-06-01T00:00:00Z",
             "url": f"https://github.com/OmniNode-ai/{repo}/pull/42",
@@ -128,19 +135,22 @@ class _MockGitHubClient:
         self, *, search_term: str, state: str = "all"
     ) -> list[dict[str, str]]:
         if state == "merged" and search_term in self._merged_for:
-            return [self._merged_pr("omnimarket")]
+            return [self._merged_pr("omnimarket", search_term)]
         return []
 
     def search_prs_in_repo(
         self, *, repo: str, search_term: str, state: str = "all"
     ) -> list[dict[str, str]]:
         if state == "merged" and search_term in self._merged_for:
-            return [self._merged_pr(repo)]
+            return [self._merged_pr(repo, search_term)]
         return []
 
     def list_prs_by_head(
         self, *, repo: str, branch: str, state: str = "merged"
     ) -> list[dict[str, str]]:
+        return []
+
+    def pr_closing_ticket_refs(self, *, repo: str, number: int) -> list[str]:
         return []
 
 
