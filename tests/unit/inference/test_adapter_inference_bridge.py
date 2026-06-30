@@ -11,12 +11,15 @@ Covers all branches without live infrastructure:
   reserved extra_headers → warning + skip; temperature arg vs cfg;
   successful POST → parses choices[0].message.content
 - _call_cli_model(): missing cli_command → ValueError;
-  subprocess returns stdout.strip()
+  asyncio.create_subprocess_exec + communicate returns decoded stdout.strip();
+  does not block the event loop; timeout maps to subprocess.TimeoutExpired
 """
 
 from __future__ import annotations
 
+import asyncio
 import logging
+import subprocess
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -31,7 +34,7 @@ from omnimarket.inference.adapter_inference_bridge import (
 # ---------------------------------------------------------------------------
 
 _HTTP_MODULE = "httpx.AsyncClient"
-_SUBPROCESS_MODULE = "subprocess.run"
+_CREATE_SUBPROCESS = "asyncio.create_subprocess_exec"
 _BRIDGE_LOGGER = "omnimarket.inference.adapter_inference_bridge"
 
 
@@ -520,24 +523,30 @@ async def test_call_cli_model_missing_cli_command_raises() -> None:
 
 
 # ---------------------------------------------------------------------------
-# _call_cli_model(): subprocess.run → stdout.strip()
+# _call_cli_model(): asyncio.create_subprocess_exec → decoded stdout.strip()
 # ---------------------------------------------------------------------------
 
 
-async def test_call_cli_model_returns_stripped_stdout() -> None:
-    config = ModelInferenceBridgeConfig(
-        model_configs={
-            "cli-echo": {
-                "transport": "cli",
-                "cli_command": "/usr/bin/echo",
+def _cli_bridge(cli_command: str = "/usr/bin/echo") -> AdapterInferenceBridge:
+    return AdapterInferenceBridge(
+        ModelInferenceBridgeConfig(
+            model_configs={
+                "cli-echo": {
+                    "transport": "cli",
+                    "cli_command": cli_command,
+                }
             }
-        }
+        )
     )
-    bridge = AdapterInferenceBridge(config)
-    mock_proc = MagicMock()
-    mock_proc.stdout = "  hello from cli  \n"
 
-    with patch(_SUBPROCESS_MODULE, return_value=mock_proc) as mock_run:
+
+async def test_call_cli_model_returns_stripped_stdout() -> None:
+    bridge = _cli_bridge()
+    mock_proc = MagicMock()
+    mock_proc.communicate = AsyncMock(return_value=(b"  hello from cli  \n", b""))
+    mock_create = AsyncMock(return_value=mock_proc)
+
+    with patch(_CREATE_SUBPROCESS, new=mock_create) as mock_exec:
         result = await bridge.infer(
             model_key="cli-echo",
             system_prompt="sys",
@@ -546,33 +555,99 @@ async def test_call_cli_model_returns_stripped_stdout() -> None:
         )
 
     assert result == "hello from cli"
-    mock_run.assert_called_once()
-    cmd_list: list[str] = mock_run.call_args.args[0]
-    assert cmd_list[0] == "/usr/bin/echo"
-    assert "sys\n\nusr" in cmd_list[1]
+    mock_exec.assert_awaited_once()
+    mock_proc.communicate.assert_awaited_once()
+    call_args = mock_exec.call_args.args
+    assert call_args[0] == "/usr/bin/echo"
+    assert "sys\n\nusr" in call_args[1]
+    # PIPEs are wired so communicate() actually captures output.
+    assert mock_exec.call_args.kwargs["stdout"] == asyncio.subprocess.PIPE
+    assert mock_exec.call_args.kwargs["stderr"] == asyncio.subprocess.PIPE
 
 
 async def test_call_cli_model_combines_system_and_user_prompt() -> None:
-    config = ModelInferenceBridgeConfig(
-        model_configs={
-            "cli-combine": {
-                "transport": "cli",
-                "cli_command": "/usr/bin/mymodel",
-            }
-        }
-    )
-    bridge = AdapterInferenceBridge(config)
+    bridge = _cli_bridge("/usr/bin/mymodel")
     mock_proc = MagicMock()
-    mock_proc.stdout = "combined"
+    mock_proc.communicate = AsyncMock(return_value=(b"combined", b""))
+    mock_create = AsyncMock(return_value=mock_proc)
 
-    with patch(_SUBPROCESS_MODULE, return_value=mock_proc) as mock_run:
+    with patch(_CREATE_SUBPROCESS, new=mock_create) as mock_exec:
         await bridge.infer(
-            model_key="cli-combine",
+            model_key="cli-echo",
             system_prompt="SYSTEM",
             user_prompt="USER",
             timeout_seconds=3.0,
         )
 
-    cmd_list: list[str] = mock_run.call_args.args[0]
-    combined_prompt = cmd_list[1]
-    assert combined_prompt == "SYSTEM\n\nUSER"
+    call_args = mock_exec.call_args.args
+    assert call_args[1] == "SYSTEM\n\nUSER"
+
+
+async def test_call_cli_model_does_not_block_event_loop() -> None:
+    """The CLI subprocess is awaited; the event loop keeps scheduling siblings.
+
+    A blocking ``subprocess.run`` would freeze the single-threaded loop, the
+    sibling ``setter`` coroutine would never run, and ``proc_started.wait()``
+    would time out instead of returning. The test passing therefore proves the
+    call yields control to the loop while the subprocess is in flight.
+    """
+    bridge = _cli_bridge()
+    proc_started = asyncio.Event()
+    release = asyncio.Event()
+
+    async def fake_communicate(*_a: object, **_k: object) -> tuple[bytes, bytes]:
+        proc_started.set()
+        await asyncio.wait_for(release.wait(), timeout=1.0)
+        return (b"async-out", b"")
+
+    mock_proc = MagicMock()
+    mock_proc.communicate = fake_communicate
+
+    async def fake_create(*_a: object, **_k: object) -> MagicMock:
+        return mock_proc
+
+    async def setter() -> None:
+        # Only reachable if the loop is not blocked while infer() awaits.
+        await asyncio.wait_for(proc_started.wait(), timeout=1.0)
+        release.set()
+
+    with patch(_CREATE_SUBPROCESS, new=fake_create):
+        infer_result, _ = await asyncio.gather(
+            bridge.infer(
+                model_key="cli-echo",
+                system_prompt="sys",
+                user_prompt="usr",
+                timeout_seconds=5.0,
+            ),
+            setter(),
+        )
+
+    assert infer_result == "async-out"
+
+
+async def test_call_cli_model_timeout_maps_to_timeout_expired() -> None:
+    bridge = _cli_bridge()
+
+    async def slow_communicate(*_a: object, **_k: object) -> tuple[bytes, bytes]:
+        await asyncio.sleep(10)
+        return (b"", b"")
+
+    mock_proc = MagicMock()
+    mock_proc.communicate = slow_communicate
+    mock_proc.kill = MagicMock()
+    mock_proc.wait = AsyncMock()
+    mock_create = AsyncMock(return_value=mock_proc)
+
+    with (
+        patch(_CREATE_SUBPROCESS, new=mock_create),
+        pytest.raises(subprocess.TimeoutExpired),
+    ):
+        await bridge.infer(
+            model_key="cli-echo",
+            system_prompt="sys",
+            user_prompt="usr",
+            timeout_seconds=0.05,
+        )
+
+    mock_proc.kill.assert_called_once()
+    mock_proc.wait.assert_awaited_once()
