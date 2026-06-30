@@ -15,6 +15,7 @@ from omnimarket.nodes.node_projection_swarm.models.enums import (
     EnumFreshnessState,
     EnumSwarmRunStatus,
 )
+from omnimarket.projection.discovery import build_projection_topic_map
 from omnimarket.projection.protocol_database import InmemoryDatabaseAdapter
 
 HANDLER = HandlerProjectionSwarm()
@@ -255,6 +256,43 @@ class TestProjectionSwarmContractWiring:
         sla = contract["freshness_sla"]
         assert sla["max_lag_seconds"] == 30
         assert sla["degraded_after_seconds"] == 60
+
+
+SWARM_RUNS_TOPIC = "onex.snapshot.projection.swarm.runs.v1"
+
+
+class TestProjectionSwarmProjectionApi:
+    """OMN-13084: contract must expose swarm_runs on the projection API."""
+
+    def test_contract_declares_projection_api_exposure(self) -> None:
+        with open(CONTRACT_PATH) as f:
+            contract = yaml.safe_load(f)
+        api = contract["projection_api"]
+        assert api["expose"] is True
+        assert api["topic"] == SWARM_RUNS_TOPIC
+        assert api["table"] == "swarm_runs"
+        assert isinstance(api["columns"], list)
+        assert len(api["columns"]) > 0
+
+    def test_db_table_declares_owning_migration(self) -> None:
+        with open(CONTRACT_PATH) as f:
+            contract = yaml.safe_load(f)
+        tables = contract["db_io"]["db_tables"]
+        swarm = next(t for t in tables if t["name"] == "swarm_runs")
+        assert swarm["migration"] == "0001_create_swarm_runs.sql"
+
+    def test_topic_in_projection_topic_map(self) -> None:
+        topic_map = build_projection_topic_map()
+        assert SWARM_RUNS_TOPIC in topic_map, (
+            f"{SWARM_RUNS_TOPIC!r} not discoverable. node_projection_swarm "
+            "must declare projection_api.expose: true with topic/table/columns."
+        )
+        cfg = topic_map[SWARM_RUNS_TOPIC]
+        assert cfg.table == "swarm_runs"
+        assert cfg.schema_name == "public"
+        assert len(cfg.columns) > 0
+        assert "run_id" in cfg.columns
+        assert "status" in cfg.columns
 
 
 class TestProjectionSwarmModels:
