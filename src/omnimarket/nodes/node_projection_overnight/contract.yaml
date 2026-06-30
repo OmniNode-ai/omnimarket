@@ -40,12 +40,12 @@ terminal_event: onex.evt.omnimarket.projection-overnight-applied.v1
 db_io:
   db_tables:
     - name: overnight_sessions
-      migration: "schema_overnight_sessions.sql"
+      migration: "0000_create_overnight_sessions_tables.sql"
       access: write
       database: omnibase_infra
       role: projection
     - name: overnight_session_phases
-      migration: "schema_overnight_sessions.sql"
+      migration: "0000_create_overnight_sessions_tables.sql"
       access: write
       database: omnibase_infra
       role: projection
