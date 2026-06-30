@@ -55,9 +55,36 @@ freshness_sla:
 db_io:
   db_tables:
     - name: swarm_runs
+      migration: "0001_create_swarm_runs.sql"
       access: write
       database: omnidash_analytics
       role: projection
+
+projection_api:
+  expose: true
+  topic: "onex.snapshot.projection.swarm.runs.v1" # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
+  table: "swarm_runs"
+  schema: "public"
+  columns:
+    - "run_id"
+    - "correlation_id"
+    - "status"
+    - "task_hash"
+    - "subtask_count"
+    - "succeeded_count"
+    - "failed_count"
+    - "skipped_count"
+    - "models_used"
+    - "machines_used"
+    - "total_cost_usd"
+    - "cloud_equivalent_cost_usd"
+    - "savings_usd"
+    - "parallelism_speedup_ratio"
+    - "total_latency_ms"
+    - "created_at"
+  order_by: "created_at DESC"
+  freshness_column: "created_at"
+  limit: 500
 
 metadata:
   transport_type: kafka
