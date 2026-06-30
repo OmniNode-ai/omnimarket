@@ -43,5 +43,25 @@ event_bus:
     - onex.evt.omnimarket.dep-health-sweep-completed.v1
   publish_topics: []
 
+projection_api:
+  expose: true
+  topic: "onex.snapshot.projection.dep-health.findings.v1" # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
+  table: "dep_health_findings"
+  schema: "public"
+  columns:
+    - "run_id"
+    - "finding_type"
+    - "severity"
+    - "repo"
+    - "file_path"
+    - "symbol"
+    - "detail"
+    - "rule_id"
+    - "rule_version"
+    - "captured_at"
+  order_by: "captured_at DESC, severity ASC"
+  freshness_column: "captured_at"
+  limit: 500
+
 metadata:
   transport_type: kafka
