@@ -111,11 +111,15 @@ def _make_merged_pr(
     *,
     number: str = "42",
     repo: str = "omniclaude",
+    ticket: str = "OMN-1234",
     merged_at: str = "2026-04-08T10:00:00Z",
 ) -> dict[str, str]:
+    # OMN-13759: a merged PR is done-evidence only when it is the IMPLEMENTING
+    # PR — title primary id and a Closes keyword both name the ticket.
     return {
         "number": number,
-        "title": f"Fix something (#{number})",
+        "title": f"fix({ticket}): implement {ticket}",
+        "body": f"Closes {ticket}",
         "state": "closed",
         "mergedAt": merged_at,
         "url": f"https://github.com/OmniNode-ai/{repo}/pull/{number}",
@@ -139,10 +143,10 @@ class TestOmn13756BacklogPrCheck:
         Regression: _phase_pr_check previously hardcoded {"In Progress", "In Review"},
         silently dropping Backlog tickets even though _ACTIVE_STATES includes Backlog.
         """
-        merged_pr = _make_merged_pr(number="99", repo="omniclaude")
+        merged_pr = _make_merged_pr(number="99", repo="omniclaude", ticket="OMN-913001")
         issue = _make_issue(
             id="backlog-1",
-            identifier="OMN-BACKLOG-1",
+            identifier="OMN-913001",
             state="Backlog",
             days_ago=3,
         )
@@ -159,7 +163,7 @@ class TestOmn13756BacklogPrCheck:
             "Backlog ticket with merged PR must appear as WOULD_MARK_DONE candidate. "
             f"Actions: {[a.action for a in result.actions]}"
         )
-        assert any("OMN-BACKLOG-1" in entry for entry in result.suppressed_closes), (
+        assert any("OMN-913001" in entry for entry in result.suppressed_closes), (
             f"Backlog ticket missing from suppressed_closes: {result.suppressed_closes}"
         )
         pr_url = merged_pr["url"]
@@ -170,10 +174,10 @@ class TestOmn13756BacklogPrCheck:
 
     async def test_backlog_ticket_marked_done_when_flag_only_false(self) -> None:
         """Backlog ticket with merged PR is closed when flag_only=False."""
-        merged_pr = _make_merged_pr(number="77", repo="omniclaude")
+        merged_pr = _make_merged_pr(number="77", repo="omniclaude", ticket="OMN-913002")
         issue = _make_issue(
             id="backlog-2",
-            identifier="OMN-BACKLOG-2",
+            identifier="OMN-913002",
             state="Backlog",
             days_ago=2,
         )
@@ -191,20 +195,26 @@ class TestOmn13756BacklogPrCheck:
 
     async def test_in_progress_and_backlog_both_detected(self) -> None:
         """Both In Progress and Backlog tickets with merged PRs are detected."""
-        merged_pr_1 = _make_merged_pr(number="10", repo="omniclaude")
-        merged_pr_2 = _make_merged_pr(number="11", repo="omnimarket")
+        merged_pr_1 = _make_merged_pr(
+            number="10", repo="omniclaude", ticket="OMN-913003"
+        )
+        merged_pr_2 = _make_merged_pr(
+            number="11", repo="omnimarket", ticket="OMN-913004"
+        )
         issues = [
             _make_issue(
-                id="ip-1", identifier="OMN-IP-1", state="In Progress", days_ago=2
+                id="ip-1", identifier="OMN-913003", state="In Progress", days_ago=2
             ),
-            _make_issue(id="bl-1", identifier="OMN-BL-1", state="Backlog", days_ago=2),
+            _make_issue(
+                id="bl-1", identifier="OMN-913004", state="Backlog", days_ago=2
+            ),
         ]
         client = _stub_linear_client(issues)
 
         def _search(*, search_term: str, state: str = "all") -> list[dict[str, str]]:
-            if "OMN-IP-1" in search_term:
+            if "OMN-913003" in search_term:
                 return [merged_pr_1]
-            if "OMN-BL-1" in search_term:
+            if "OMN-913004" in search_term:
                 return [merged_pr_2]
             return []
 
