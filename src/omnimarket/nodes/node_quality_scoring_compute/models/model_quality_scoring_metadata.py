@@ -14,7 +14,6 @@ class ModelQualityScoringMetadata(BaseModel):
     Attributes:
         status: Current status of the scoring operation.
         message: Human-readable message about the scoring result.
-        tracking_url: URL for tracking stub implementation progress.
         source_language: Programming language of the scored content.
         analysis_version: Version of the analysis algorithm used.
         processing_time_ms: Time taken to process the scoring in milliseconds.
@@ -22,15 +21,14 @@ class ModelQualityScoringMetadata(BaseModel):
 
     status: str = Field(
         default="completed",
-        description="Status of the scoring operation (e.g., 'completed', 'stub', 'error')",
+        description=(
+            "Status of the scoring operation (e.g., 'completed', "
+            "'below_threshold', 'validation_error', 'compute_error')"
+        ),
     )
     message: str | None = Field(
         default=None,
         description="Human-readable message about the scoring result",
-    )
-    tracking_url: str | None = Field(
-        default=None,
-        description="URL for tracking stub implementation progress (for stub nodes)",
     )
     source_language: str | None = Field(
         default=None,
