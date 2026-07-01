@@ -172,6 +172,27 @@ async def test_handler_returns_failed_on_dispatch_error() -> None:
 
 
 @pytest.mark.unit
+async def test_handler_passes_through_timeout_status() -> None:
+    """``timeout`` is a declared terminal status (_TERMINAL_STATUSES) distinct
+    from completed/failed — it must pass through unmodified, not be coerced to
+    failed the way an unrecognized status is."""
+    port = AsyncMock()
+    port.dispatch.return_value = {
+        "status": "timeout",
+        "error_message": "runtime dispatch timed out",
+    }
+    handler = HandlerDelegateSkill(object(), dispatch_port=port)
+    request = ModelDelegateSkillRequest(
+        prompt="Test",
+        task_type="test",
+        source="claude-code",
+    )
+    response = await handler.handle(request)
+    assert response.status == "timeout"
+    assert response.error_message == "runtime dispatch timed out"
+
+
+@pytest.mark.unit
 async def test_handler_maps_unknown_status_to_failed() -> None:
     port = AsyncMock()
     port.dispatch.return_value = {

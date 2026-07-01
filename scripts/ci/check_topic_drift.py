@@ -161,9 +161,7 @@ def _validate_topic(topic: str) -> list[str]:
     violations: list[str] = []
     m = _TOPIC_PATTERN.match(topic)
     if not m:
-        violations.append(
-            "does not match onex.{kind}.{producer}.{event}.v{n} format"
-        )
+        violations.append("does not match onex.{kind}.{producer}.{event}.v{n} format")
         return violations  # No point checking sub-parts if overall format is wrong.
     kind = m.group("kind")
     producer = m.group("producer")
