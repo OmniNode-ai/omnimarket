@@ -14,6 +14,7 @@ independent of which transport is selected.
 from __future__ import annotations
 
 import time
+from datetime import UTC, datetime
 from decimal import Decimal
 from pathlib import Path
 from typing import Any
@@ -26,6 +27,12 @@ import yaml
 from omnimarket.enums.enum_cost_basis import EnumCostBasis
 from omnimarket.enums.enum_delegation_failure_class import EnumDelegationFailureClass
 from omnimarket.enums.enum_usage_source import EnumUsageSource
+from omnimarket.models.delegation.llm_cost_routing.model_llm_delegation_all_tiers_failed_event import (
+    ModelLlmDelegationAllTiersFailedEvent,
+)
+from omnimarket.models.delegation.llm_cost_routing.model_llm_delegation_completed_event import (
+    ModelLlmDelegationCompletedEvent,
+)
 from omnimarket.nodes.node_llm_delegation_call_effect.handlers import transport
 from omnimarket.nodes.node_llm_delegation_call_effect.handlers.handler_llm_delegation_call import (
     TOPIC_DELEGATION_ALL_TIERS_FAILED,
@@ -38,6 +45,9 @@ from omnimarket.nodes.node_llm_delegation_call_effect.handlers.handler_llm_deleg
 )
 from omnimarket.nodes.node_llm_delegation_call_effect.models.model_llm_delegation_call_request import (
     ModelLlmDelegationCallRequest,
+)
+from omnimarket.nodes.node_llm_delegation_call_effect.models.model_llm_delegation_call_result import (
+    ModelLlmDelegationCallResult,
 )
 
 _HANDLER_MODULE = (
@@ -430,3 +440,135 @@ class TestHandlerLlmDelegationCall:
         assert TOPIC_DELEGATION_ESCALATION_TRIGGERED in externally_consumed
         assert TOPIC_DELEGATION_ALL_TIERS_FAILED in externally_consumed
         assert "onex.evt.omnimarket.delegation-model-degraded.v1" in externally_consumed
+
+    @pytest.mark.unit
+    def test_generic_exception_returns_unknown_failure(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A transport exception that is neither TimeoutException nor
+        HTTPStatusError falls through to the catch-all ``except Exception``
+        branch and is classified UNKNOWN (distinct from TIMEOUT/RATE_LIMITED/
+        MODEL_UNAVAILABLE/INVALID_JSON)."""
+        _patch_post(monkeypatch, side_effect=RuntimeError("unexpected transport error"))
+
+        with patch(f"{_HANDLER_MODULE}._is_endpoint_healthy", return_value=True):
+            handler = HandlerLlmDelegationCall()
+            result = handler(_make_request())
+
+        assert result.success is False
+        assert result.failure_class == EnumDelegationFailureClass.UNKNOWN
+        assert "unexpected transport error" in result.error_message
+
+    @pytest.mark.unit
+    def test_emit_model_degraded_publishes_correct_topic(self) -> None:
+        publisher = MagicMock()  # transport-mock-ok: event_publisher typed Any
+        handler = HandlerLlmDelegationCall()
+        request = _make_request()
+        window_start = datetime(2026, 5, 1, tzinfo=UTC)
+        window_end = datetime(2026, 5, 1, 1, tzinfo=UTC)
+        expires_at = datetime(2026, 5, 1, 2, tzinfo=UTC)
+
+        handler.emit_model_degraded(
+            request,
+            window_start=window_start,
+            window_end=window_end,
+            attempt_count=10,
+            escalation_count=6,
+            threshold=0.5,
+            expires_at=expires_at,
+            reason="escalation rate exceeded threshold",
+            event_publisher=publisher,
+        )
+
+        publisher.publish.assert_called_once()
+        topic, event = publisher.publish.call_args[0]
+        assert topic == TOPIC_DELEGATION_MODEL_DEGRADED
+        assert event.model_id == request.model_id
+        assert event.attempt_count == 10
+        assert event.escalation_count == 6
+        assert event.threshold == 0.5
+        assert event.reason == "escalation rate exceeded threshold"
+
+
+class TestHandlerHandleRuntimeEntrypoint:
+    """Coverage for ``HandlerLlmDelegationCall.handle()`` — the ACTUAL
+    contract-wired runtime dispatch entrypoint (handler_routing resolves
+    ``handle``, never ``__call__``; see the module docstring on ``handle``).
+    ``__call__`` above is the separate swarm/A2A synchronous path. Every
+    boundary outcome ``handle()`` can return per its own docstring is
+    exercised here: endpoint-resolution failure, unhealthy endpoint (returns
+    the all-tiers-failed EVENT, not a result), success (returns the
+    call-completed EVENT), and timeout/http-error/invalid-json (returns a
+    plain failure ModelLlmDelegationCallResult, no event)."""
+
+    def setup_method(self) -> None:
+        _health_cache.clear()
+
+    @pytest.mark.unit
+    def test_handle_invalid_endpoint_ref_returns_failure_result(self) -> None:
+        handler = HandlerLlmDelegationCall()
+        request = _make_request(endpoint_ref="LLM_LOCAL_PRIMARY_URL")
+
+        result = handler.handle(request)
+
+        assert isinstance(result, ModelLlmDelegationCallResult)
+        assert result.success is False
+        assert result.failure_class == EnumDelegationFailureClass.MODEL_UNAVAILABLE
+        assert result.endpoint_healthy is False
+
+    @pytest.mark.unit
+    def test_handle_unhealthy_endpoint_returns_all_tiers_failed_event(self) -> None:
+        with patch(f"{_HANDLER_MODULE}._is_endpoint_healthy", return_value=False):
+            handler = HandlerLlmDelegationCall()
+            result = handler.handle(_make_request())
+
+        assert isinstance(result, ModelLlmDelegationAllTiersFailedEvent)
+        assert result.attempted_models == (_make_request().model_id,)
+        assert result.failure_classes == (EnumDelegationFailureClass.MODEL_UNAVAILABLE,)
+
+    @pytest.mark.unit
+    def test_handle_successful_call_returns_completed_event(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        api_resp = _make_api_response("hello from handle()", tokens_in=8, tokens_out=4)
+        _patch_post(monkeypatch, json_body=api_resp)
+
+        with patch(f"{_HANDLER_MODULE}._is_endpoint_healthy", return_value=True):
+            handler = HandlerLlmDelegationCall()
+            result = handler.handle(_make_request())
+
+        assert isinstance(result, ModelLlmDelegationCompletedEvent)
+        assert result.success is True
+        assert result.tokens_in == 8
+        assert result.tokens_out == 4
+        assert result.usage_source == EnumUsageSource.MEASURED
+
+    @pytest.mark.unit
+    def test_handle_timeout_returns_plain_failure_result_no_event(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _patch_post(monkeypatch, side_effect=httpx.TimeoutException("timed out"))
+
+        with patch(f"{_HANDLER_MODULE}._is_endpoint_healthy", return_value=True):
+            handler = HandlerLlmDelegationCall()
+            result = handler.handle(_make_request())
+
+        # timeout/http-error/invalid-json return the plain result (no event) —
+        # NOT ModelLlmDelegationCompletedEvent and NOT AllTiersFailedEvent.
+        assert isinstance(result, ModelLlmDelegationCallResult)
+        assert result.success is False
+        assert result.failure_class == EnumDelegationFailureClass.TIMEOUT
+
+    @pytest.mark.unit
+    def test_handle_empty_choices_returns_plain_failure_result_no_event(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _patch_post(monkeypatch, json_body={"choices": [], "usage": {}})
+
+        with patch(f"{_HANDLER_MODULE}._is_endpoint_healthy", return_value=True):
+            handler = HandlerLlmDelegationCall()
+            result = handler.handle(_make_request())
+
+        assert isinstance(result, ModelLlmDelegationCallResult)
+        assert result.success is False
+        assert result.failure_class == EnumDelegationFailureClass.INVALID_JSON

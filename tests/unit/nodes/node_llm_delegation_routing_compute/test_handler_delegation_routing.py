@@ -315,6 +315,133 @@ def test_unhealthy_fallback_raises() -> None:
 
 
 # ---------------------------------------------------------------------------
+# Dead-code defense-in-depth: candidate/fallback absent from model_profiles
+# ---------------------------------------------------------------------------
+#
+# ModelDelegationRoutingPolicy.validate_cross_references (a model_validator)
+# rejects any policy whose preferred_models or fallback references a model ID
+# absent from model_profiles — and Pydantic v2 reruns that "after" validator
+# on every construction of a containing model (ModelDelegationRoutingInput),
+# even when a pre-built, already-validated policy instance is passed in and
+# even via model_copy(update=...). There is therefore NO reachable path,
+# through the public constructors, that lets _select_model observe a
+# candidate/fallback id missing from model_profiles — confirmed empirically:
+# both direct re-construction and model_copy(update=...) re-raise the
+# cross-reference ValueError before _select_model ever runs.
+#
+# The two branches below (``model_id not found in policy model_profiles`` in
+# the preferred-candidate loop, and the fallback-not-found raise) are
+# therefore genuine defense-in-depth dead code under the current model
+# validators — not reachable in production. To close the coverage diff
+# honestly (not paper over it), these tests call the private ``_select_model``
+# directly against minimal duck-typed stand-ins that satisfy the attributes
+# the function reads, bypassing Pydantic construction entirely rather than
+# constructing an invalid ``ModelDelegationRoutingPolicy``. This documents the
+# branches as intentionally-tested dead code; see the Wave 10 PR body for the
+# corresponding follow-up recommendation (delete the branches or relax the
+# validator to make them reachable).
+
+
+class _StubProfile:
+    def __init__(
+        self,
+        model_id: str,
+        tier: str = "local",
+        endpoint_env: str = "LLM_A_URL",
+        max_context: int = 100_000,
+        cost_basis: EnumCostBasis = EnumCostBasis.ZERO_MARGINAL_API_COST,
+    ) -> None:
+        self.model_id = model_id
+        self.tier = tier
+        self.endpoint_env = endpoint_env
+        self.max_context = max_context
+        self.cost_basis = cost_basis
+
+
+class _StubTaskPolicy:
+    def __init__(self, preferred_models: list[str], fallback: str) -> None:
+        self.preferred_models = preferred_models
+        self.fallback = fallback
+
+
+class _StubPolicy:
+    def __init__(
+        self,
+        task_policies: dict[str, _StubTaskPolicy],
+        model_profiles: dict[str, _StubProfile],
+    ) -> None:
+        self.task_policies = task_policies
+        self.model_profiles = model_profiles
+
+
+class _StubRequest:
+    def __init__(self, task_type: str, prompt: str = "short prompt") -> None:
+        self.task_type = task_type
+        self.prompt = prompt
+        self.required_tier: str | None = None
+
+
+class _StubInput:
+    def __init__(self, request: _StubRequest, policy: _StubPolicy) -> None:
+        self.request = request
+        self.policy = policy
+        self.degradation_state: dict[tuple[str, str], DegradationEntry] = {}
+        self.health_state: dict[str, HealthEntry] = {}
+
+
+def test_fallback_not_in_model_profiles_raises() -> None:
+    """Fallback id declared in the task policy but absent from model_profiles.
+
+    Unreachable via the public constructor (see module note above) — exercised
+    directly against a duck-typed stand-in. All preferred candidates are
+    skipped (absent from model_profiles too), forcing the fallback path; the
+    fallback itself is also missing → hard ValueError, never a silent second
+    fallback.
+    """
+    policy = _StubPolicy(
+        task_policies={
+            "changelog": _StubTaskPolicy(
+                preferred_models=["model-ghost-1", "model-ghost-2"],
+                fallback="model-missing-fallback",
+            )
+        },
+        model_profiles={},
+    )
+    stub_input = _StubInput(_StubRequest("changelog"), policy)
+    with pytest.raises(ValueError, match=r"Fallback model .*not found in policy"):
+        _select_model(stub_input, _NOW)  # type: ignore[arg-type]
+
+
+def test_preferred_model_not_in_profiles_is_skipped_with_reason() -> None:
+    """A preferred_models entry with no matching model_profiles key is skipped.
+
+    Unreachable via the public constructor (see module note above) — exercised
+    directly against a duck-typed stand-in. Distinct from every other skip
+    reason (degraded/context/unhealthy): the candidate is simply absent from
+    the policy's model_profiles map. The next eligible candidate is still
+    selected and the audit trail records why.
+    """
+    policy = _StubPolicy(
+        task_policies={
+            "changelog": _StubTaskPolicy(
+                preferred_models=["model-ghost", "model-b"],
+                fallback="model-c",
+            )
+        },
+        model_profiles={
+            "model-b": _StubProfile("model-b", endpoint_env="LLM_B_URL"),
+            "model-c": _StubProfile("model-c", endpoint_env="LLM_C_URL"),
+        },
+    )
+    stub_input = _StubInput(_StubRequest("changelog"), policy)
+    result = _select_model(stub_input, _NOW)  # type: ignore[arg-type]
+    assert result.model_id == "model-b"
+    assert len(result.skipped_models) == 1
+    assert result.skipped_models[0].model_id == "model-ghost"
+    assert "not found in policy model_profiles" in result.skipped_models[0].skip_reason
+
+
+# ---------------------------------------------------------------------------
 # Tier override
 # ---------------------------------------------------------------------------
 

@@ -86,6 +86,13 @@ def _terminal_failure() -> dict[str, Any]:
     }
 
 
+def _terminal_timeout() -> dict[str, Any]:
+    return {
+        "status": "timeout",
+        "error_message": "runtime dispatch timed out before completion",
+    }
+
+
 # (case_id, task_type, max_tokens, result_dict, expected)
 CASES = [
     pytest.param(
@@ -140,6 +147,18 @@ CASES = [
             "quality_gates_failed": ["dod_evidence"],
         },
         id="terminal-failure-NEGATIVE",
+    ),
+    pytest.param(
+        # ``timeout`` is a declared terminal status distinct from completed/
+        # failed — it must round-trip over the bus unmodified, not be coerced.
+        "research",
+        None,
+        _terminal_timeout(),
+        {
+            "status": "timeout",
+            "error_contains": "runtime dispatch timed out",
+        },
+        id="terminal-timeout",
     ),
 ]
 
@@ -201,6 +220,8 @@ async def test_delegate_skill_round_trip(
         if expected["status"] == "failed":
             assert expected["error_contains"] in payload["error_message"]
             assert payload["quality_gates_failed"] == expected["quality_gates_failed"]
+        elif expected["status"] == "timeout":
+            assert expected["error_contains"] in payload["error_message"]
         else:
             assert payload["model_name"] == expected["model_name"]
             assert payload["provider"] == expected["provider"]
