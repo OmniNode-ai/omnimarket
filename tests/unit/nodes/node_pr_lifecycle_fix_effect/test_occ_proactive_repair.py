@@ -22,6 +22,7 @@ from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.adapter_occ_contract
     OccContractAdapter,
     _build_idempotency_key,
     _compute_contract_sha256,
+    classify_trivial_infra_fastpath,
 )
 from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.handler_pr_lifecycle_fix import (
     HandlerPrLifecycleFix,
@@ -526,3 +527,176 @@ class TestHandlerGapDetectionIntegration:
         assert result.fix_applied is True
         assert "[noop]" in result.fix_action
         assert result.error is None
+
+
+# ---------------------------------------------------------------------------
+# Trivial-infra OCC fast-path (OMN-13776)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestClassifyTrivialInfraFastpath:
+    """Size-and-path-scoped exemption for one-line non-runtime infra edits."""
+
+    def test_oneline_dockerfile_bump_is_eligible(self) -> None:
+        eligible, reason = classify_trivial_infra_fastpath(
+            ["deploy/Dockerfile"], total_diff_lines=2
+        )
+        assert eligible is True
+        assert "fast-path" in reason
+
+    def test_musl_version_bump_is_eligible(self) -> None:
+        eligible, _ = classify_trivial_infra_fastpath(
+            ["deploy/musl-toolchain.txt"], total_diff_lines=2
+        )
+        assert eligible is True
+
+    def test_requirements_txt_bump_is_eligible(self) -> None:
+        eligible, _ = classify_trivial_infra_fastpath(
+            ["requirements-lock.txt"], total_diff_lines=1
+        )
+        assert eligible is True
+
+    def test_empty_changed_files_never_eligible(self) -> None:
+        eligible, reason = classify_trivial_infra_fastpath([], total_diff_lines=0)
+        assert eligible is False
+        assert "no changed_files" in reason
+
+    def test_runtime_handler_change_not_eligible(self) -> None:
+        """A runtime-touching change (node handler .py file) never takes the
+        fast-path, even at 1 changed line."""
+        eligible, reason = classify_trivial_infra_fastpath(
+            [
+                "src/omnimarket/nodes/node_pr_lifecycle_fix_effect/handlers/"
+                "adapter_occ_contract.py"
+            ],
+            total_diff_lines=1,
+        )
+        assert eligible is False
+        assert "runtime-touching" in reason
+
+    def test_migration_change_not_eligible(self) -> None:
+        eligible, reason = classify_trivial_infra_fastpath(
+            ["src/omnimarket/nodes/node_x/migrations/0001_init.sql"],
+            total_diff_lines=1,
+        )
+        assert eligible is False
+        assert "runtime-touching" in reason
+
+    def test_large_diff_on_infra_file_not_eligible(self) -> None:
+        """Path-scoped infra file but diff too large -> not trivial."""
+        eligible, reason = classify_trivial_infra_fastpath(
+            ["Dockerfile"], total_diff_lines=50
+        )
+        assert eligible is False
+        assert "exceeds trivial threshold" in reason
+
+    def test_too_many_files_not_eligible(self) -> None:
+        eligible, reason = classify_trivial_infra_fastpath(
+            ["Dockerfile", "requirements.txt", ".python-version"],
+            total_diff_lines=3,
+        )
+        assert eligible is False
+        assert "exceeds trivial threshold" in reason
+
+    def test_mixed_infra_and_source_file_not_eligible(self) -> None:
+        eligible, reason = classify_trivial_infra_fastpath(
+            ["Dockerfile", "src/omnimarket/nodes/node_x/handlers/handler_x.py"],
+            total_diff_lines=2,
+        )
+        assert eligible is False
+        assert "runtime-touching" in reason
+
+    def test_non_allowlisted_infra_path_not_eligible(self) -> None:
+        eligible, reason = classify_trivial_infra_fastpath(
+            ["README.md"], total_diff_lines=1
+        )
+        assert eligible is False
+        assert "allowlist" in reason
+
+
+@pytest.mark.unit
+class TestHandlerTrivialInfraFastpathRouting:
+    """HandlerPrLifecycleFix skips the OCC adapter entirely on a fast-path hit."""
+
+    async def test_trivial_infra_edit_skips_occ_adapter(self) -> None:
+        from datetime import UTC, datetime
+        from uuid import uuid4
+
+        occ = MagicMock()
+        occ.create_occ_contract = MagicMock(
+            side_effect=AssertionError("must not be called on fast-path hit")
+        )
+        handler = HandlerPrLifecycleFix(occ_contract_adapter=occ)
+        command = ModelPrLifecycleFixCommand(
+            correlation_id=uuid4(),
+            pr_number=99,
+            repo="OmniNode-ai/omnimarket",
+            block_reason=EnumPrBlockReason.DEPLOY_GATE_CONTRACT_NOT_FOUND,
+            ticket_id="OMN-13765",
+            requested_at=datetime.now(tz=UTC),
+            changed_files=["deploy/Dockerfile"],
+            diff_total_lines=2,
+        )
+        result = await handler.handle(command)
+        assert result.fix_applied is True
+        assert result.error is None
+        assert "OCC fast-path" in result.fix_action
+        occ.create_occ_contract.assert_not_called()
+
+    async def test_runtime_touching_change_still_calls_occ_adapter(self) -> None:
+        from datetime import UTC, datetime
+        from uuid import uuid4
+
+        occ = MagicMock()
+
+        async def _create_occ_contract(
+            repo: str, pr_number: int, ticket_id: str
+        ) -> str:
+            return f"created OCC contract for {ticket_id} on {repo}#{pr_number}"
+
+        occ.create_occ_contract = _create_occ_contract
+        handler = HandlerPrLifecycleFix(occ_contract_adapter=occ)
+        command = ModelPrLifecycleFixCommand(
+            correlation_id=uuid4(),
+            pr_number=100,
+            repo="OmniNode-ai/omnimarket",
+            block_reason=EnumPrBlockReason.DEPLOY_GATE_CONTRACT_NOT_FOUND,
+            ticket_id="OMN-13765",
+            requested_at=datetime.now(tz=UTC),
+            changed_files=[
+                "src/omnimarket/nodes/node_pr_lifecycle_fix_effect/handlers/"
+                "handler_pr_lifecycle_fix.py"
+            ],
+            diff_total_lines=1,
+        )
+        result = await handler.handle(command)
+        assert result.fix_applied is True
+        assert "created OCC contract" in result.fix_action
+
+    async def test_no_changed_files_falls_back_to_occ_adapter(self) -> None:
+        """Backward compat: omitting changed_files (existing callers) never
+        takes the fast-path — still routes to the OCC adapter."""
+        from datetime import UTC, datetime
+        from uuid import uuid4
+
+        occ = MagicMock()
+
+        async def _create_occ_contract(
+            repo: str, pr_number: int, ticket_id: str
+        ) -> str:
+            return f"created OCC contract for {ticket_id} on {repo}#{pr_number}"
+
+        occ.create_occ_contract = _create_occ_contract
+        handler = HandlerPrLifecycleFix(occ_contract_adapter=occ)
+        command = ModelPrLifecycleFixCommand(
+            correlation_id=uuid4(),
+            pr_number=101,
+            repo="OmniNode-ai/omnimarket",
+            block_reason=EnumPrBlockReason.DEPLOY_GATE_CONTRACT_NOT_FOUND,
+            ticket_id="OMN-12425",
+            requested_at=datetime.now(tz=UTC),
+        )
+        result = await handler.handle(command)
+        assert result.fix_applied is True
+        assert "created OCC contract" in result.fix_action

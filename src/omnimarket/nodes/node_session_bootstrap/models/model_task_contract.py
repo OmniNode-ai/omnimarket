@@ -33,6 +33,23 @@ class EnumDodCheckType(StrEnum):
     OVERSEER_5CHECK = "overseer_5check"
 
 
+class EnumEvidenceArtifactKind(StrEnum):
+    """Classification of the artifact backing a RENDERED_OUTPUT evidence check.
+
+    Fed by ``classify_evidence_kind`` in dod_verification_registry.py
+    (OMN-13776). Distinguishes an HTTP-probe artifact (curl/httpx/wget against
+    a non-UI, non-browser-rendered endpoint) from an artifact that actually
+    requires browser/UI rendering proof — so a probe against ``/ready`` or a
+    projection API no longer wrongly demands a Playwright receipt, while a
+    dashboard/UI-class receipt still does (no regression of OMN-13024 /
+    OMN-13052).
+    """
+
+    HTTP_EVIDENCE = "http_evidence"
+    UI_RENDERED = "ui_rendered"
+    UNKNOWN = "unknown"
+
+
 class ModelDodEvidenceCheck(BaseModel):
     """A single DoD evidence check linked to a hardcoded verification function."""
 
@@ -41,6 +58,23 @@ class ModelDodEvidenceCheck(BaseModel):
     check_type: EnumDodCheckType
     required: bool = True
     timeout_seconds: int = 30
+    artifact_command: str | None = Field(
+        default=None,
+        description=(
+            "Command/tool used to produce the evidence artifact, e.g. "
+            "'curl -sf https://host/ready'. Only meaningful for "
+            "RENDERED_OUTPUT checks; used by classify_evidence_kind to tell "
+            "an HTTP probe apart from a browser-rendered UI check."
+        ),
+    )
+    target_endpoint: str | None = Field(
+        default=None,
+        description=(
+            "Endpoint/path the artifact_command targeted, e.g. '/ready' or "
+            "a dashboard host root. Only meaningful for RENDERED_OUTPUT "
+            "checks."
+        ),
+    )
 
 
 class ModelTaskContract(BaseModel):
@@ -70,6 +104,7 @@ class ModelTaskContract(BaseModel):
 
 __all__: list[str] = [
     "EnumDodCheckType",
+    "EnumEvidenceArtifactKind",
     "ModelDodEvidenceCheck",
     "ModelTaskContract",
 ]

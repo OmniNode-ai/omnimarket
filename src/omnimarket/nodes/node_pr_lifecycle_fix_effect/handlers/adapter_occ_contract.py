@@ -21,6 +21,7 @@ import asyncio
 import hashlib
 import logging
 import os
+import re
 import subprocess
 import tempfile
 import textwrap
@@ -79,6 +80,95 @@ def _build_idempotency_key(
 
 _OCC_REPO = "OmniNode-ai/onex_change_control"
 _OCC_REPO_GIT = "git@github.com:OmniNode-ai/onex_change_control.git"
+
+# ---------------------------------------------------------------------------
+# Trivial-infra OCC fast-path (OMN-13776).
+#
+# A one-line non-runtime infra edit (e.g. a Dockerfile base-image / musl
+# version bump) was still triggering the full OCC contract + receipt-chain
+# PR. This is a size-AND-path-scoped exemption, not a skip token: it only
+# fires when every changed file matches a known non-runtime infra pattern
+# AND the total diff is small. Any file touching node business logic
+# (handlers/models/contracts) or migrations never qualifies, regardless of
+# size. Pure computation — no I/O.
+# ---------------------------------------------------------------------------
+
+_TRIVIAL_DIFF_LINE_THRESHOLD = 4
+_TRIVIAL_FILE_COUNT_THRESHOLD = 2
+
+_RUNTIME_DENYLIST_RE = re.compile(r"(^|/)(nodes/|migrations/)|\.py$", re.IGNORECASE)
+
+_TRIVIAL_INFRA_ALLOWLIST_RE = re.compile(
+    r"(^|/)("
+    r"Dockerfile[\w.\-]*"
+    r"|[\w.\-]+\.dockerfile"
+    r"|requirements[\w.\-]*\.txt"
+    r"|\.python-version"
+    r"|[\w.\-]*musl[\w.\-]*"
+    r"|deploy/.+\.(ya?ml|sh)"
+    r"|\.github/workflows/.+\.ya?ml"
+    r")$",
+    re.IGNORECASE,
+)
+
+
+def classify_trivial_infra_fastpath(
+    changed_files: list[str], total_diff_lines: int
+) -> tuple[bool, str]:
+    """Decide whether a PR qualifies for the trivial-infra OCC fast-path.
+
+    Eligible only when ALL of the following hold:
+      - at least one changed file is given (an empty/unknown file list never
+        qualifies — we cannot prove triviality without evidence);
+      - every changed file matches the non-runtime infra allowlist and none
+        match the runtime denylist (node business logic, migrations, any
+        ``.py`` source file never qualifies, regardless of size);
+      - the file count and total diff line count are both within the
+        trivial thresholds.
+
+    Returns (eligible, reason).
+    """
+    if not changed_files:
+        return False, "no changed_files provided — cannot prove triviality"
+
+    denylisted = [f for f in changed_files if _RUNTIME_DENYLIST_RE.search(f)]
+    if denylisted:
+        return (
+            False,
+            f"runtime-touching files present, fast-path not eligible: {denylisted}",
+        )
+
+    non_allowlisted = [
+        f for f in changed_files if not _TRIVIAL_INFRA_ALLOWLIST_RE.search(f)
+    ]
+    if non_allowlisted:
+        return (
+            False,
+            "files outside the non-runtime infra allowlist, fast-path not "
+            f"eligible: {non_allowlisted}",
+        )
+
+    if len(changed_files) > _TRIVIAL_FILE_COUNT_THRESHOLD:
+        return (
+            False,
+            f"{len(changed_files)} files changed exceeds trivial threshold "
+            f"({_TRIVIAL_FILE_COUNT_THRESHOLD})",
+        )
+
+    if total_diff_lines > _TRIVIAL_DIFF_LINE_THRESHOLD:
+        return (
+            False,
+            f"{total_diff_lines} diff lines exceeds trivial threshold "
+            f"({_TRIVIAL_DIFF_LINE_THRESHOLD})",
+        )
+
+    return (
+        True,
+        f"trivial non-runtime infra edit ({len(changed_files)} file(s), "
+        f"{total_diff_lines} diff line(s)) — OCC receipt-chain skipped via "
+        "size/path-scoped fast-path",
+    )
+
 
 # ---------------------------------------------------------------------------
 # YAML builders — pure string construction, no YAML lib dependency needed
@@ -512,4 +602,5 @@ __all__ = [
     "OccContractAdapter",
     "_build_idempotency_key",
     "_compute_contract_sha256",
+    "classify_trivial_infra_fastpath",
 ]
