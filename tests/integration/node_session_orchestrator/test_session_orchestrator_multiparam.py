@@ -39,6 +39,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+import yaml
 
 from omnimarket.nodes.node_session_orchestrator.handlers.handler_session_orchestrator import (
     TOPIC_SESSION_ORCH_COMPLETED,
@@ -203,7 +204,6 @@ async def test_session_orchestrator_round_trip(
     assert payload["correlation_id"] == "corr-wave7"
     assert payload["session_id"] == "sess-wave7"
     assert payload["status"] == expect["status"]
-    assert "onex.evt.omnimarket.session-health-transition.v1"
 
     if expect.get("health_report_is_none"):
         assert payload["health_report"] is None
@@ -322,3 +322,30 @@ async def test_session_orchestrator_full_pipeline_reaches_phase3_dispatch(
         receipt = json.loads(raw_receipt)
         assert receipt["status"] == "dry_run"
         assert receipt["ticket_id"] in payload["dispatch_queue"]
+
+
+_CONTRACT_PATH = (
+    Path(__file__).resolve().parents[3]
+    / "src"
+    / "omnimarket"
+    / "nodes"
+    / "node_session_orchestrator"
+    / "contract.yaml"
+)
+
+
+def test_session_health_transition_topic_is_contract_pinned() -> None:
+    """Pins the declared but currently unemitted session-health-transition topic
+
+    with a real assertion (not a vacuous truthy-string literal). The handler
+    does not publish onex.evt.omnimarket.session-health-transition.v1 today --
+    health-state changes surface only via the health_report field on the
+    terminal event asserted above. This pins the declared topic name itself so
+    a future wiring of that publish path (or an accidental rename) is caught
+    by contract drift, not silently.
+    """
+    contract = yaml.safe_load(_CONTRACT_PATH.read_text(encoding="utf-8"))
+    assert (
+        "onex.evt.omnimarket.session-health-transition.v1"
+        in contract["event_bus"]["publish_topics"]
+    )
