@@ -223,6 +223,7 @@ class BoundedEventQueue:
         filepath = self._spool_dir / filename
 
         try:
+            self._spool_dir.mkdir(parents=True, exist_ok=True)
             filepath.write_text(event_json, encoding="utf-8")
             self._spool_files.append(filepath)
             self._spool_bytes += event_bytes
