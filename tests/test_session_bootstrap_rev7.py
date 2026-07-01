@@ -462,3 +462,21 @@ class TestBuildPulsePrompt:
         )
         assert "some-future-cron" in prompt
         assert "sess-002" in prompt
+
+    def test_prompt_directs_health_violation_emission_on_hallucinated_pass(
+        self,
+    ) -> None:
+        """Contract-state-coverage (OMN-13781): build_pulse_prompt's
+        CronOutputVerificationRoutine guidance directs the agent to emit
+        onex.evt.omnimarket.session-cron-health-violation.v1 both on a
+        detected HALLUCINATED PASS and on a VACUOUS_PULSE gate failure —
+        the node's declared output state is prompt-embedded, not
+        code-published, so this is the executable coverage proof."""
+        prompt = build_pulse_prompt(
+            cron_name="build-dispatch-pulse",
+            timeout_budget_ms=300000,
+            session_id="sess-001",
+            state_dir=".onex_state",
+        )
+        assert "onex.evt.omnimarket.session-cron-health-violation.v1" in prompt
+        assert prompt.count("onex.evt.omnimarket.session-cron-health-violation.v1") >= 2
