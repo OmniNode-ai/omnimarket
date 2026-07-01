@@ -442,6 +442,29 @@ class TestHandlerLlmDelegationCall:
         assert "onex.evt.omnimarket.delegation-model-degraded.v1" in externally_consumed
 
     @pytest.mark.unit
+    def test_resolved_topic_constants_match_documented_literal_values(self) -> None:
+        """Lock every contract-declared publish topic to its literal wire string.
+
+        A regression test, not a gate-satisfaction placeholder: the topic
+        constants are resolved dynamically from ``contract.yaml`` at import
+        time (``_single_contract_topic``); this pins the resolved value to
+        the documented canonical string so a silent contract rename is caught
+        here rather than only downstream at a live boundary.
+        """
+        assert (
+            TOPIC_DELEGATION_CALL_COMPLETED
+            == "onex.evt.omnimarket.delegation-call-completed.v1"
+        )
+        assert (
+            TOPIC_DELEGATION_ESCALATION_TRIGGERED
+            == "onex.evt.omnimarket.delegation-escalation-triggered.v1"
+        )
+        assert (
+            TOPIC_DELEGATION_ALL_TIERS_FAILED
+            == "onex.evt.omnimarket.delegation-all-tiers-failed.v1"
+        )
+
+    @pytest.mark.unit
     def test_generic_exception_returns_unknown_failure(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
