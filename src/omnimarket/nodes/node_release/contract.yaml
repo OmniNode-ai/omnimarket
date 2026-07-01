@@ -1,12 +1,17 @@
 ---
 name: node_release
 contract_version: {major: 1, minor: 0, patch: 0}
-node_type: compute
+node_type: orchestrator
 node_version: {major: 1, minor: 0, patch: 0}
 
 description: >
   Org-wide coordinated release pipeline — bumps versions, pins cross-repo deps, creates PRs,
   merges, tags, and triggers PyPI publish across all OmniNode repos in dependency-tier order.
+  NOTE (OMN-13796): HandlerRelease is a pure FSM state machine today — it performs
+  ZERO git/gh/PyPI I/O. The live-mutating pipeline described above is NOT runnable
+  through this node; that logic still lives in the un-gated `onex:release` omniclaude
+  skill. See metadata.yaml `capabilities.full_runtime: false` and the follow-up
+  ticket tracking the real gated EFFECT implementation.
 
 handler:
   module: omnimarket.nodes.node_release.handlers.handler_release
@@ -21,8 +26,8 @@ handler_routing:
         module: omnimarket.nodes.node_release.handlers.handler_release
 
 descriptor:
-  node_archetype: compute
-  purity: impure
+  node_archetype: orchestrator
+  purity: orchestration
   idempotent: true
   timeout_ms: 3600000
 
