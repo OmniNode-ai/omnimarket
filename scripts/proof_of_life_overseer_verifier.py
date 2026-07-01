@@ -80,8 +80,7 @@ def _load_command_topic(contract_path: Path = _CONTRACT_PATH) -> str:
     command_topics = [
         topic
         for topic in topics
-        if isinstance(topic, str)
-        and topic.startswith(_OMNIMARKET_COMMAND_TOPIC_PREFIX)
+        if isinstance(topic, str) and topic.startswith(_OMNIMARKET_COMMAND_TOPIC_PREFIX)
     ]
     if len(command_topics) != 1:
         raise RuntimeError(
