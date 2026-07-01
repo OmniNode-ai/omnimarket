@@ -6,13 +6,18 @@ entry_points:
   onex.nodes:
     node_release: "omnimarket.nodes.node_release"
 capabilities:
+  # OMN-13796: HandlerRelease is a pure FSM state machine — zero git/gh/PyPI I/O.
+  # The live-mutating pipeline (bump/pin/PR/merge/tag/publish) is NOT runnable
+  # through this node today; that logic lives in the un-gated `onex:release`
+  # omniclaude skill. full_runtime=false reflects this honestly until a
+  # follow-up ticket lands the real gated EFFECT implementation.
   standalone: true
-  full_runtime: true
+  full_runtime: false
   requires_network: true
   requires_repo: true
   requires_secrets: true
   requires_docker: false
-  side_effect_class: external_io
+  side_effect_class: orchestration
 dependencies:
   - "omnibase_core>=0.39.0"
 authors: ["OmniNode Platform Team"]
