@@ -12,17 +12,3 @@ from omnimarket.nodes.node_llm_delegation_call_effect.handlers.handler_llm_deleg
 
 def test_handler_llm_delegation_call_importable() -> None:
     assert HandlerLlmDelegationCall.__name__ == "HandlerLlmDelegationCall"
-
-
-def test_handler_llm_delegation_call_declared_output_topics_are_covered() -> None:
-    declared_topics = {
-        "onex.evt.omnimarket.delegation-call-completed.v1",
-        "onex.evt.omnimarket.delegation-escalation-triggered.v1",
-        "onex.evt.omnimarket.delegation-all-tiers-failed.v1",
-    }
-
-    assert declared_topics == {
-        "onex.evt.omnimarket.delegation-call-completed.v1",
-        "onex.evt.omnimarket.delegation-escalation-triggered.v1",
-        "onex.evt.omnimarket.delegation-all-tiers-failed.v1",
-    }
