@@ -217,6 +217,7 @@ def test_dispatch_worker_multiparam(
         ),
     ],
 )
+@pytest.mark.integration
 def test_dispatch_worker_knowledge_context_level_branches(
     level: str,
     expected_fragments: list[str],
