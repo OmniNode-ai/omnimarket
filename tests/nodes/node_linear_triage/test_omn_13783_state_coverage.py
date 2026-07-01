@@ -26,9 +26,11 @@ fakes only. No monkeypatching of urllib/subprocess.
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
 
 import pytest
+import yaml
 
 from omnimarket.nodes.node_linear_triage.handlers.handler_linear_triage import (
     HandlerLinearTriage,
@@ -532,3 +534,35 @@ def test_no_change_is_a_declared_but_unreachable_state() -> None:
         "update this suite with a real coverage test for the new code path "
         "instead of leaving this pin stale."
     )
+
+
+# ---------------------------------------------------------------------------
+# Declared terminal event / publish topic — contract-vs-code coverage pin
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+def test_contract_declares_the_completed_terminal_event() -> None:
+    """Pins the node's declared ``terminal_event`` / publish topic literal.
+
+    The runtime auto-wires a ``DispatchResultApplier`` that publishes the
+    handler's ``ModelLinearTriageResult`` to this topic for non-projection
+    compute nodes (the same pattern documented in
+    ``node_dod_verify/test_dispatch_envelope_unwrap.py``) — there is no
+    in-handler code path that constructs the event, so the contract
+    declaration itself is the thing under test here. A future rename of the
+    topic without updating this pin is a visible, reviewed diff.
+    """
+    contract_path = (
+        Path(__file__).resolve().parents[3]
+        / "src"
+        / "omnimarket"
+        / "nodes"
+        / "node_linear_triage"
+        / "contract.yaml"
+    )
+    contract = yaml.safe_load(contract_path.read_text(encoding="utf-8"))
+
+    expected_topic = "onex.evt.omnimarket.linear-triage-completed.v1"
+    assert contract["terminal_event"] == expected_topic
+    assert expected_topic in contract["event_bus"]["publish_topics"]

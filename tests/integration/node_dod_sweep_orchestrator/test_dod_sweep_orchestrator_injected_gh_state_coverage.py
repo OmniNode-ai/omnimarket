@@ -27,6 +27,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+import yaml
 
 from omnimarket.nodes.node_dod_sweep_orchestrator.handlers.handler_dod_sweep_orchestrator import (
     HandlerDodSweepOrchestrator,
@@ -233,3 +234,42 @@ def test_default_handler_still_uses_real_gh_collaborators() -> None:
     assert handler._gh_find_merged_pr_fn is not None
     assert handler._gh_pr_checks_pass_fn is not None
     assert handler._enumerate_tickets_fn is not None
+
+
+# ---------------------------------------------------------------------------
+# Declared failure terminal event — contract-vs-code coverage pin
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.integration
+def test_contract_declares_the_failure_terminal_event() -> None:
+    """Pins the node's declared failure terminal event / publish topic.
+
+    ``HandlerDodSweepOrchestrator.handle`` never raises on a failed sweep —
+    a failed check surfaces as ``status="failed"`` in the typed result (see
+    ``test_batch_mixed_pass_fail`` / ``test_targeted_missing_contract_fails``
+    in the pre-existing multiparam suite). The failure terminal event
+    (``onex.evt.omnimarket.dod-sweep-failed.v1``) is runtime-dispatch wiring
+    declared in the contract, not a code path the handler itself constructs —
+    this pin protects the contract declaration from silent drift/rename.
+    """
+    contract_path = (
+        Path(__file__).resolve().parents[3]
+        / "src"
+        / "omnimarket"
+        / "nodes"
+        / "node_dod_sweep_orchestrator"
+        / "contract.yaml"
+    )
+    contract = yaml.safe_load(contract_path.read_text(encoding="utf-8"))
+
+    expected_success = "onex.evt.omnimarket.dod-sweep-completed.v1"
+    expected_failure = "onex.evt.omnimarket.dod-sweep-failed.v1"
+    assert contract["terminal_event"] == expected_success
+    assert (
+        contract["runtime_dispatch"]["terminal_events"]["success"] == expected_success
+    )
+    assert (
+        contract["runtime_dispatch"]["terminal_events"]["failure"] == expected_failure
+    )
+    assert expected_failure in contract["event_bus"]["publish_topics"]
