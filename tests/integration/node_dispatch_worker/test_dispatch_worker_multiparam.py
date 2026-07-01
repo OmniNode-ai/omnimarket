@@ -20,9 +20,11 @@ never reaches:
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
 import pytest
+import yaml
 
 from omnimarket.nodes.node_dispatch_worker.handlers.handler_dispatch_worker import (
     HandlerDispatchWorker,
@@ -31,6 +33,28 @@ from omnimarket.nodes.node_dispatch_worker.models.model_dispatch_worker_command 
     EnumWorkerRole,
     ModelDispatchWorkerCommand,
 )
+
+_CONTRACT_PATH = (
+    Path(__file__).resolve().parents[3]
+    / "src"
+    / "omnimarket"
+    / "nodes"
+    / "node_dispatch_worker"
+    / "contract.yaml"
+)
+
+
+def test_dispatch_worker_terminal_event_is_contract_pinned() -> None:
+    """Pins the declared terminal_event topic with a real assertion (not a
+
+    vacuous truthy-string literal). A COMPUTE node has no in-source reference
+    to its terminal_event -- the runtime synthesizes the terminal event on
+    this topic per omnibase_core's runtime-synthesized-terminals contract.
+    """
+    contract = yaml.safe_load(_CONTRACT_PATH.read_text(encoding="utf-8"))
+    assert (
+        contract["terminal_event"] == "onex.evt.omnimarket.dispatch-worker-compiled.v1"
+    )
 
 
 @pytest.fixture(autouse=True)
@@ -178,7 +202,6 @@ def test_dispatch_worker_multiparam(
     assert result.bundle_level == expected["bundle_level"]
     assert result.proposed_agent_spawn_args["model"] == expected["spawn_model"]
     assert result.proposed_agent_spawn_args["name"] == command.name
-    assert "onex.evt.omnimarket.dispatch-worker-compiled.v1"
 
     if expected["bundle_level"] != "none":
         assert result.injected_context_char_count > 0
