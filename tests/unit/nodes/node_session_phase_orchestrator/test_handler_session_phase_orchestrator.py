@@ -126,6 +126,64 @@ class TestOrchestratorEmitsHalt:
 
 
 @pytest.mark.unit
+class TestOrchestratorDelegatesBudgetWarning:
+    """OMN-13784: closes the fourth ``action``/``tick_outcome`` branch pair.
+
+    The pre-existing suite covered transition_required, halt_required, and
+    no_action but never budget_warning — the fourth declared ``action``
+    literal and the ``warning_delegated`` tick_outcome it maps to.
+    """
+
+    def test_emits_transition_command_on_budget_warning(self) -> None:
+        handler = HandlerSessionPhaseOrchestrator()
+        evaluation = _make_evaluation(
+            action="budget_warning", reason="80% of phase budget consumed"
+        )
+        result = handler.handle(
+            ModelSessionPhaseOrchestratorInput(evaluations=(evaluation,))
+        )
+
+        transition_cmds = [
+            c for c in result.commands if c.command_type == _CMD_TYPE_TRANSITION
+        ]
+        assert len(transition_cmds) == 1
+        cmd = transition_cmds[0]
+        assert cmd.topic == _TOPIC_TRANSITION
+        assert cmd.payload["transition"] == "budget_warning"
+        assert cmd.payload["reason"] == "80% of phase budget consumed"
+        assert result.tick_outcome == "warning_delegated"
+
+        # halt/no other command types emitted alongside the delegated warning
+        halt_cmds = [c for c in result.commands if c.command_type == _CMD_TYPE_HALT]
+        assert len(halt_cmds) == 0
+
+    def test_tick_completed_emitted_with_warning_delegated_outcome(self) -> None:
+        handler = HandlerSessionPhaseOrchestrator()
+        evaluation = _make_evaluation(action="budget_warning")
+        result = handler.handle(
+            ModelSessionPhaseOrchestratorInput(evaluations=(evaluation,))
+        )
+
+        tick_cmds = [
+            c for c in result.commands if c.command_type == _CMD_TYPE_TICK_COMPLETED
+        ]
+        assert len(tick_cmds) == 1
+        assert tick_cmds[0].payload["tick_outcome"] == "warning_delegated"
+
+    def test_halt_still_takes_priority_over_budget_warning(self) -> None:
+        handler = HandlerSessionPhaseOrchestrator()
+        evaluations = (
+            _make_evaluation(action="budget_warning"),
+            _make_evaluation(action="halt_required", reason="critical failure"),
+        )
+        result = handler.handle(
+            ModelSessionPhaseOrchestratorInput(evaluations=evaluations)
+        )
+
+        assert result.tick_outcome == "halt_dispatched"
+
+
+@pytest.mark.unit
 class TestOrchestratorNoAction:
     def test_no_transition_or_halt_on_no_action(self) -> None:
         handler = HandlerSessionPhaseOrchestrator()

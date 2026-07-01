@@ -100,6 +100,45 @@ class TestDispatcherDispatchesWorkers:
 
 
 @pytest.mark.unit
+class TestDispatcherTransitionValues:
+    """OMN-13784: closes the remaining ``transition`` Literal members.
+
+    ``ModelSessionPhaseTransitionCommand.transition`` declares
+    ``["enter", "exit", "skip", "fail"]``; the pre-existing suite only ever
+    exercised ``"enter"``. Only ``"enter"`` dispatches workers from the phase
+    spec — the other three must still publish a phase-state event (with the
+    transition value passed through verbatim) but never dispatch workers.
+    """
+
+    @pytest.mark.parametrize("transition", ["exit", "skip", "fail"])
+    def test_publishes_phase_state_without_dispatching_workers(
+        self, transition: str
+    ) -> None:
+        dispatch_items = (
+            ModelDispatchItem(
+                theme_id="merge_sweep",
+                title="Run merge sweep",
+                target_repo="omnimarket",
+                dispatch_mode="skill",
+                skill_or_command="/onex:merge_sweep",
+            ),
+        )
+        spec = ModelSessionPhaseSpec(phase_name="merge", dispatch_items=dispatch_items)
+        handler = HandlerSessionPhaseDispatcher()
+        cmd = _make_cmd(transition=transition, phase_spec=spec)
+        result = handler.handle(ModelSessionPhaseDispatcherInput(commands=(cmd,)))
+
+        phase_state_events = [
+            e for e in result.events if e.event_type == _EVENT_TYPE_PHASE_STATE
+        ]
+        assert len(phase_state_events) == 1
+        assert phase_state_events[0].payload["transition"] == transition
+        # dispatch_items are only consumed on "enter" — every other transition
+        # must never dispatch workers even when a phase_spec is present.
+        assert result.workers_dispatched == 0
+
+
+@pytest.mark.unit
 class TestDispatcherBudgetWarning:
     def test_dispatcher_publishes_budget_warning(self) -> None:
         handler = HandlerSessionPhaseDispatcher()
