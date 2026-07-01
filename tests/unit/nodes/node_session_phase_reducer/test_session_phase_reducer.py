@@ -67,6 +67,7 @@ class TestSessionPhaseReducerDelta:
         new_state = handler.delta(None, event)
 
         assert new_state.session_id == _SESSION_ID
+        assert "active"
         assert new_state.current_phase == "start"
         assert new_state.phase_index == 0
         assert new_state.phase_started_at == _NOW

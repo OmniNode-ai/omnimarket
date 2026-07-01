@@ -178,6 +178,7 @@ def test_dispatch_worker_multiparam(
     assert result.bundle_level == expected["bundle_level"]
     assert result.proposed_agent_spawn_args["model"] == expected["spawn_model"]
     assert result.proposed_agent_spawn_args["name"] == command.name
+    assert "onex.evt.omnimarket.dispatch-worker-compiled.v1"
 
     if expected["bundle_level"] != "none":
         assert result.injected_context_char_count > 0

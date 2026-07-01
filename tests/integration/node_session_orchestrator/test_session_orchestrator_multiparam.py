@@ -203,6 +203,7 @@ async def test_session_orchestrator_round_trip(
     assert payload["correlation_id"] == "corr-wave7"
     assert payload["session_id"] == "sess-wave7"
     assert payload["status"] == expect["status"]
+    assert "onex.evt.omnimarket.session-health-transition.v1"
 
     if expect.get("health_report_is_none"):
         assert payload["health_report"] is None
