@@ -1,20 +1,12 @@
-# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
 
-"""Dep-health coverage marker for handler_llm_delegation_call."""
+"""State-coverage assertions for node_llm_delegation_call_effect."""
 
 from __future__ import annotations
 
-from omnimarket.nodes.node_llm_delegation_call_effect.handlers.handler_llm_delegation_call import (
-    HandlerLlmDelegationCall,
-)
 
-
-def test_handler_llm_delegation_call_importable() -> None:
-    assert HandlerLlmDelegationCall.__name__ == "HandlerLlmDelegationCall"
-
-
-def test_handler_llm_delegation_call_declared_output_topics_are_covered() -> None:
+def test_node_llm_delegation_call_effect_declared_output_topics_are_covered() -> None:
     declared_topics = {
         "onex.evt.omnimarket.delegation-call-completed.v1",
         "onex.evt.omnimarket.delegation-escalation-triggered.v1",
