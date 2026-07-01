@@ -22,6 +22,7 @@ import logging
 import os
 import re
 import subprocess
+from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -41,6 +42,14 @@ logger = logging.getLogger(__name__)
 
 _TICKET_RE = re.compile(r"^OMN-\d+$", re.IGNORECASE)
 _GH_TIMEOUT = 20  # seconds per subprocess call
+
+# Injectable collaborator seams for the ``gh`` subprocess boundary (OMN-13783).
+# Tests inject fakes here via ``HandlerDodSweepOrchestrator.__init__`` instead of
+# monkeypatching ``subprocess.run`` — the mechanics rule for this wave forbids
+# monkeypatching subprocess. Each default is the real, subprocess-backed function.
+GhFindMergedPrFn = Callable[[str, tuple[str, ...]], dict[str, str]]
+GhPrChecksPassFn = Callable[[str, str], tuple[bool, str]]
+EnumerateTicketsFn = Callable[[str], list[str]]
 
 
 # ---------------------------------------------------------------------------
@@ -200,9 +209,11 @@ def _gh_find_merged_pr(ticket_id: str, repos: tuple[str, ...]) -> dict[str, str]
 def _check_pr_merged(
     ticket_id: str,
     repos: tuple[str, ...],
+    *,
+    gh_find_merged_pr_fn: GhFindMergedPrFn = _gh_find_merged_pr,
 ) -> tuple[ModelDodCheckResult, dict[str, str]]:
     """Return (check_result, pr_info). pr_info carries number/repo for CI check."""
-    pr_info = _gh_find_merged_pr(ticket_id, repos)
+    pr_info = gh_find_merged_pr_fn(ticket_id, repos)
     if pr_info:
         return (
             ModelDodCheckResult(
@@ -296,6 +307,8 @@ def _gh_pr_checks_pass(pr_number: str, repo: str) -> tuple[bool, str]:
 def _check_ci_green(
     ticket_id: str,
     pr_info: dict[str, str],
+    *,
+    gh_pr_checks_pass_fn: GhPrChecksPassFn = _gh_pr_checks_pass,
 ) -> ModelDodCheckResult:
     """Return ci_green check result using pr_info from _check_pr_merged."""
     if not pr_info:
@@ -312,7 +325,7 @@ def _check_ci_green(
             status="skip",
             details={"reason": "pr_number_missing"},
         )
-    green, detail = _gh_pr_checks_pass(pr_number, repo)
+    green, detail = gh_pr_checks_pass_fn(pr_number, repo)
     return ModelDodCheckResult(
         check="ci_green",
         status="pass" if green else "fail",
@@ -384,6 +397,9 @@ def _run_ticket_checks(
     enabled_checks: tuple[str, ...],
     gh_repos: tuple[str, ...],
     dry_run: bool,
+    *,
+    gh_find_merged_pr_fn: GhFindMergedPrFn = _gh_find_merged_pr,
+    gh_pr_checks_pass_fn: GhPrChecksPassFn = _gh_pr_checks_pass,
 ) -> ModelDodTicketResult:
     """Run all enabled checks for one ticket and return a ModelDodTicketResult."""
     checks: list[ModelDodCheckResult] = []
@@ -399,11 +415,17 @@ def _run_ticket_checks(
         checks.append(_check_receipt_exists(ticket_id, contract_path))
 
     if "pr_merged" in enabled_checks:
-        pr_check, pr_info = _check_pr_merged(ticket_id, gh_repos)
+        pr_check, pr_info = _check_pr_merged(
+            ticket_id, gh_repos, gh_find_merged_pr_fn=gh_find_merged_pr_fn
+        )
         checks.append(pr_check)
 
     if "ci_green" in enabled_checks:
-        checks.append(_check_ci_green(ticket_id, pr_info))
+        checks.append(
+            _check_ci_green(
+                ticket_id, pr_info, gh_pr_checks_pass_fn=gh_pr_checks_pass_fn
+            )
+        )
 
     failed = sum(1 for c in checks if c.status == "fail")
     skipped = sum(1 for c in checks if c.status == "skip")
@@ -455,7 +477,24 @@ def _run_ticket_checks(
 
 
 class HandlerDodSweepOrchestrator:
-    """Targeted and batch DoD sweep receipt writer."""
+    """Targeted and batch DoD sweep receipt writer.
+
+    The three ``gh``-backed collaborators (merged-PR lookup, CI-checks lookup,
+    search-query ticket enumeration) are constructor-injectable seams (OMN-13783)
+    so tests can exercise every check/routing state via deterministic fakes
+    instead of monkeypatching ``subprocess.run``.
+    """
+
+    def __init__(
+        self,
+        *,
+        gh_find_merged_pr_fn: GhFindMergedPrFn = _gh_find_merged_pr,
+        gh_pr_checks_pass_fn: GhPrChecksPassFn = _gh_pr_checks_pass,
+        enumerate_tickets_fn: EnumerateTicketsFn = _enumerate_tickets_via_gh,
+    ) -> None:
+        self._gh_find_merged_pr_fn = gh_find_merged_pr_fn
+        self._gh_pr_checks_pass_fn = gh_pr_checks_pass_fn
+        self._enumerate_tickets_fn = enumerate_tickets_fn
 
     def handle(
         self, request: ModelDodSweepOrchestratorRequest
@@ -512,6 +551,8 @@ class HandlerDodSweepOrchestrator:
             enabled_checks=request.enabled_checks,
             gh_repos=self._effective_repos(request),
             dry_run=request.dry_run,
+            gh_find_merged_pr_fn=self._gh_find_merged_pr_fn,
+            gh_pr_checks_pass_fn=self._gh_pr_checks_pass_fn,
         )
 
         contract_path = contract_root / "contracts" / f"{ticket_id}.yaml"
@@ -551,7 +592,7 @@ class HandlerDodSweepOrchestrator:
         if request.ticket_ids:
             ticket_ids = [t.strip().upper() for t in request.ticket_ids]
         elif request.gh_search_query:
-            ticket_ids = _enumerate_tickets_via_gh(request.gh_search_query)
+            ticket_ids = self._enumerate_tickets_fn(request.gh_search_query)
         else:
             return ModelDodSweepOrchestratorResult(
                 status="skipped",
@@ -586,6 +627,8 @@ class HandlerDodSweepOrchestrator:
                 enabled_checks=request.enabled_checks,
                 gh_repos=gh_repos,
                 dry_run=request.dry_run,
+                gh_find_merged_pr_fn=self._gh_find_merged_pr_fn,
+                gh_pr_checks_pass_fn=self._gh_pr_checks_pass_fn,
             )
             results.append(tr)
             logger.info(
