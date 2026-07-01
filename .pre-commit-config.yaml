@@ -234,6 +234,19 @@ repos:
         pass_filenames: false
         stages: [pre-commit]
 
+      # OMN-13781: contract-state-coverage gate. Diffs each touched node's
+      # declared state set (contract.yaml) against states asserted by its
+      # tests. --check-changed HEAD scopes to locally staged/unstaged diffs
+      # so this stays fast; SYNC with state-coverage-gate.yml (which scopes
+      # to the PR/merge_group base ref instead).
+      - id: state-coverage-gate
+        name: Contract-state-coverage gate
+        language: system
+        entry: uv run python scripts/validate_state_coverage.py --check-changed HEAD --strict
+        files: ^(src/omnimarket/nodes/node_.*/contract\.yaml|src/omnimarket/nodes/node_.*/.*\.py|tests/.*\.py)$
+        pass_filenames: false
+        stages: [pre-commit]
+
       # OMN-12957: runtime_profiles contract validator (omnibase_core).
       # Enforces runtime_profiles_missing (OMN-9886) + runtime_profile_unregistered
       # (declared profile not in canonical REGISTERED_RUNTIME_PROFILES) +
