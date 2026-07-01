@@ -179,7 +179,6 @@ node_dispatch_worker onex.evt.omnimarket.dispatch-worker-compiled.v1
 node_dispatch_worker_execution_effect onex.cmd.omnimarket.delegation-request.v1
 node_dispatch_worker_execution_effect onex.evt.omnimarket.dispatch-worker-execution-completed.v1
 node_doc_freshness_sweep report
-node_dod_sweep_orchestrator onex.evt.omnimarket.dod-sweep-failed.v1
 node_emit_daemon onex.cmd.omniintelligence.claude-hook-event.v1
 node_emit_daemon onex.cmd.omniintelligence.compliance-evaluate.v1
 node_emit_daemon onex.cmd.omniintelligence.tool-content.v1
@@ -320,8 +319,6 @@ node_ledger_hash_compute onex.evt.omnimarket.ledger-hash-computed.v1
 node_ledger_orchestrator onex.cmd.omnimarket.ledger-append.v1
 node_ledger_orchestrator onex.evt.omnimarket.ledger-state-reduced.v1
 node_ledger_state_reducer reduced
-node_linear_triage marked_done_superseded
-node_linear_triage onex.evt.omnimarket.linear-triage-completed.v1
 node_llm_delegation_call_effect onex.evt.omnimarket.delegation-all-tiers-failed.v1
 node_llm_delegation_call_effect onex.evt.omnimarket.delegation-call-completed.v1
 node_llm_delegation_call_effect onex.evt.omnimarket.delegation-escalation-triggered.v1
