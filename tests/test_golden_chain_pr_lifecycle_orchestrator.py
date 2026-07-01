@@ -214,6 +214,43 @@ class MockFix:
             self._in_flight -= 1
 
 
+class _PublishFailsAtPhaseEventBus:
+    """Raises when a phase-transition publish reaches a specific ``to_phase``.
+
+    Forces an FSM state->FAILED transition for states whose internal handler
+    exceptions are otherwise isolated per-PR (VERIFYING, MERGING,
+    POST_MERGE_TAIL — see OMN-9234 / OMN-13673 per-PR isolation). The raise
+    happens inside ``_transition_phase``'s own ``_publish_phase_event`` call,
+    which runs *after* ``state.fsm`` has already been mutated to the target
+    state, so the outer failure handler observes the real ``from_state`` and
+    the FSM genuinely records e.g. MERGING -> FAILED (not TRIAGING -> FAILED).
+    """
+
+    _started = True
+
+    def __init__(self, fail_to_phase: str) -> None:
+        self._fail_to_phase = fail_to_phase
+        self.published: list[dict[str, Any]] = []
+
+    async def start(self) -> None:
+        return None
+
+    async def publish(
+        self,
+        *,
+        topic: str,
+        key: bytes | None,
+        value: bytes,
+        headers: Any = None,
+    ) -> None:
+        if topic == TOPIC_PHASE_TRANSITION:
+            payload = json.loads(value.decode())
+            if payload.get("to_phase") == self._fail_to_phase:
+                msg = f"event bus publish failed for to_phase={self._fail_to_phase}"
+                raise RuntimeError(msg)
+        self.published.append({"topic": topic, "value": value})
+
+
 class MockQueueStallAdapter:
     """Mock matching GitHubMergeQueueAdapter.remediate_queue_stall()."""
 
@@ -602,6 +639,133 @@ class TestPrLifecycleOrchestratorGoldenChain:
         # The failing PR must NOT be counted as merged.
         assert result.prs_merged == 0
 
+    async def test_exception_in_triage_leads_to_failed_state(self) -> None:
+        """Exception in triage -> final_state=FAILED (TRIAGING -> FAILED).
+
+        Unlike merge/verification, the triage call is a single batch call with
+        no per-PR isolation, so an exception here propagates straight to the
+        outer FSM handler while state.fsm == TRIAGING.
+        """
+
+        class BrokenTriage:
+            async def handle(self, correlation_id: Any, prs: Any) -> Any:
+                msg = "triage classifier crashed"
+                raise RuntimeError(msg)
+
+        inventory = MockInventory(prs=(_PR_GREEN,))
+        orch = await _make_orchestrator(
+            inventory=inventory,
+            triage=BrokenTriage(),  # type: ignore[arg-type]
+        )
+        result = await orch.handle(_make_command())
+
+        assert result.final_state == "FAILED"
+        assert result.error_message is not None
+        assert "triage classifier crashed" in result.error_message
+
+    async def test_exception_in_fix_dispatch_leads_to_failed_state(self) -> None:
+        """Exception in fix handler -> final_state=FAILED (FIXING -> FAILED).
+
+        Fix dispatch fans out via ``asyncio.gather(return_exceptions=True)``
+        then re-raises an ``ExceptionGroup`` when any PR's dispatch failed —
+        unlike merge, this is NOT per-PR isolated at the FSM level, so it is
+        expected to abort the sweep as FAILED.
+        """
+        inventory = MockInventory(prs=(_PR_RED,))
+        triage = MockTriage(classified=(_TRIAGE_RED,))
+        reducer = MockReducer(intents=(_INTENT_FIX,))
+        fix = MockFix(fail=True)
+
+        orch = await _make_orchestrator(
+            inventory=inventory,
+            triage=triage,
+            reducer=reducer,
+            fix=fix,
+        )
+        result = await orch.handle(_make_command())
+
+        assert result.final_state == "FAILED"
+        assert result.error_message is not None
+
+    async def test_publish_failure_during_verifying_transition_leads_to_failed_state(
+        self,
+    ) -> None:
+        """Phase-transition publish failure while entering VERIFYING -> FAILED.
+
+        Per-PR verification probe errors are isolated (VERIFICATION_TOOL_ERROR,
+        a neutral skip) and never abort the sweep (OMN-13673). The only way an
+        unhandled exception reaches the FSM while state.fsm == VERIFYING is a
+        failure in the phase-transition publish itself, forced here directly.
+        """
+        inventory = MockInventory(prs=(_PR_GREEN,))
+        triage = MockTriage(classified=(_TRIAGE_GREEN,))
+        reducer = MockReducer(intents=(_INTENT_MERGE,))
+        bus = _PublishFailsAtPhaseEventBus(fail_to_phase="verifying")
+
+        orch = await _make_orchestrator(
+            inventory=inventory,
+            triage=triage,
+            reducer=reducer,
+            event_bus=bus,  # type: ignore[arg-type]
+        )
+        result = await orch.handle(_make_command(verify=True))
+
+        assert result.final_state == "FAILED"
+        assert result.error_message is not None
+
+    async def test_publish_failure_during_merging_transition_leads_to_failed_state(
+        self,
+    ) -> None:
+        """Phase-transition publish failure while entering MERGING -> FAILED.
+
+        Per-PR merge handler errors are isolated (OMN-9234) and never abort
+        the sweep. The only way an unhandled exception reaches the FSM while
+        state.fsm == MERGING is a failure in the phase-transition publish
+        itself, forced here directly.
+        """
+        inventory = MockInventory(prs=(_PR_GREEN,))
+        triage = MockTriage(classified=(_TRIAGE_GREEN,))
+        reducer = MockReducer(intents=(_INTENT_MERGE,))
+        bus = _PublishFailsAtPhaseEventBus(fail_to_phase="merging")
+
+        orch = await _make_orchestrator(
+            inventory=inventory,
+            triage=triage,
+            reducer=reducer,
+            event_bus=bus,  # type: ignore[arg-type]
+        )
+        result = await orch.handle(_make_command())
+
+        assert result.final_state == "FAILED"
+        assert result.error_message is not None
+
+    async def test_publish_failure_during_post_merge_tail_transition_leads_to_failed_state(
+        self,
+    ) -> None:
+        """Phase-transition publish failure entering POST_MERGE_TAIL -> FAILED.
+
+        Proves POST_MERGE_TAIL -> FAILED is reachable and distinguishable from
+        a MERGING failure (OMN-12570): the merge itself succeeds, then the
+        transition into the post-merge-tail phase is where the fault occurs.
+        """
+        inventory = MockInventory(prs=(_PR_GREEN,))
+        triage = MockTriage(classified=(_TRIAGE_GREEN,))
+        reducer = MockReducer(intents=(_INTENT_MERGE,))
+        merge = MockMerge(prs_merged=1)
+        bus = _PublishFailsAtPhaseEventBus(fail_to_phase="post_merge_tail")
+
+        orch = await _make_orchestrator(
+            inventory=inventory,
+            triage=triage,
+            reducer=reducer,
+            merge=merge,
+            event_bus=bus,  # type: ignore[arg-type]
+        )
+        result = await orch.handle(_make_command())
+
+        assert result.final_state == "FAILED"
+        assert result.error_message is not None
+
     async def test_event_bus_receives_phase_transitions(
         self, event_bus: EventBusInmemory
     ) -> None:
@@ -761,6 +925,48 @@ class TestPrLifecycleOrchestratorGoldenChain:
         assert mod.TOPIC_COMPLETED in publish_topics
         assert mod.TOPIC_FIXER_DISPATCH_START in publish_topics
         assert contract["terminal_event"] == mod.TOPIC_COMPLETED
+
+    async def test_contract_fsm_states_match_orchestrator_enum(self) -> None:
+        """OMN-13806: every contract-declared FSM state must be implemented.
+
+        Regression lock for the REBASING drift fix — contract.yaml's fsm.states
+        must exactly match EnumOrchestratorState's members. A contract-declared
+        state with no corresponding enum member is dead/unreachable code.
+        """
+        import importlib
+
+        mod = importlib.import_module(
+            "omnimarket.nodes.node_pr_lifecycle_orchestrator."
+            "handlers.handler_pr_lifecycle_orchestrator"
+        )
+        contract_path = Path(mod.__file__).parents[1] / "contract.yaml"
+        contract = yaml.safe_load(contract_path.read_text(encoding="utf-8"))
+        declared_states = set(contract["fsm"]["states"])
+        implemented_states = {s.value for s in mod.EnumOrchestratorState}
+
+        assert declared_states == implemented_states
+        assert "REBASING" not in declared_states
+
+    async def test_contract_declares_single_pr_lifecycle_route(self) -> None:
+        """The operation_match routing table declares exactly one route.
+
+        Every test in this module exercises this single ``pr_lifecycle``
+        route; this test locks in that "every route" (DoD language) is
+        trivially the whole routing table for this orchestrator.
+        """
+        import importlib
+
+        mod = importlib.import_module(
+            "omnimarket.nodes.node_pr_lifecycle_orchestrator."
+            "handlers.handler_pr_lifecycle_orchestrator"
+        )
+        contract_path = Path(mod.__file__).parents[1] / "contract.yaml"
+        contract = yaml.safe_load(contract_path.read_text(encoding="utf-8"))
+        routing = contract["handler_routing"]
+        assert routing["routing_strategy"] == "operation_match"
+        handlers = routing["handlers"]
+        assert len(handlers) == 1
+        assert handlers[0]["operation"] == "pr_lifecycle"
 
     async def test_correlation_id_preserved_in_result(self) -> None:
         """correlation_id from command appears unchanged in result."""

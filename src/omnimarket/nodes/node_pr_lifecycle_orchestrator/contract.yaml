@@ -15,9 +15,9 @@ description: >
     - ProtocolFixHandler           (node_pr_lifecycle_fix_effect)
     - ProtocolStateReducerHandler  (node_pr_lifecycle_state_reducer)
 
-  FSM: IDLE -> INVENTORYING -> TRIAGING -> [REBASING|MERGING|FIXING|SKIPPED] -> COMPLETE
+  FSM: IDLE -> INVENTORYING -> TRIAGING -> [VERIFYING|MERGING|FIXING|SKIPPED] -> COMPLETE
   Entry flags control which transitions are enabled:
-    dry_run, inventory_only, fix_only, merge_only, enable_auto_rebase, repos (CSV filter)
+    dry_run, inventory_only, fix_only, merge_only, repos (CSV filter)
 
 handler_routing:
   routing_strategy: operation_match
@@ -88,7 +88,15 @@ inputs:
     minimum: 1
   enable_auto_rebase:
     type: bool
-    description: "Auto-rebase stale (Track A-update) PR branches before merge"
+    description: >
+      Auto-rebase stale (Track A-update) PR branches before merge.
+      RESERVED / CURRENTLY A NO-OP (OMN-13806): the orchestrator handler does
+      not consume this flag and has no REBASING FSM state or reducer intent
+      that wires it to HandlerAutoRebase (node_pr_lifecycle_fix_effect). The
+      declared REBASING state/transitions were removed from this contract's
+      fsm section as dead/unreachable drift; this field is kept for API
+      compatibility pending the OMN-13806 decision (wire it for real or
+      retire the field).
     required: false
     default: true
   use_dag_ordering:
@@ -225,13 +233,17 @@ phases:
   transition_table: pr_lifecycle_ledger_transitions
   conflict_key: run_id,from_phase,to_phase,recorded_at
 
+# OMN-13806: REBASING was declared here but never implemented by the handler
+# (no EnumOrchestratorState.REBASING, no REBASE reducer intent, enable_auto_rebase
+# never read) — dead/unreachable state removed to match shipped reality. See
+# OMN-13806 for the wire-it-or-retire-it decision on enable_auto_rebase /
+# HandlerAutoRebase.
 fsm:
   states:
     - IDLE
     - INVENTORYING
     - TRIAGING
     - VERIFYING
-    - REBASING
     - MERGING
     - POST_MERGE_TAIL                            # OMN-12570: post-merge CI tail phase
     - FIXING
@@ -252,11 +264,8 @@ fsm:
       to: COMPLETE
       trigger: "inventory_only flag set"
     - from: TRIAGING
-      to: REBASING
-      trigger: "Track A-update PRs present and enable_auto_rebase=True"
-    - from: TRIAGING
       to: MERGING
-      trigger: "triage completed, merge not skipped, no stale PRs or rebase skipped"
+      trigger: "triage completed, merge not skipped"
     - from: TRIAGING
       to: FIXING
       trigger: "triage completed, fix_only flag set"
@@ -270,12 +279,6 @@ fsm:
       to: MERGING
       trigger: "verification completed"
     - from: VERIFYING
-      to: FAILED
-      trigger: "error"
-    - from: REBASING
-      to: MERGING
-      trigger: "rebase attempts complete"
-    - from: REBASING
       to: FAILED
       trigger: "error"
     - from: MERGING
