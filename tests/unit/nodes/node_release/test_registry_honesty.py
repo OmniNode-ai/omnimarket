@@ -113,6 +113,45 @@ def test_handler_release_has_no_forbidden_io_imports(forbidden: str) -> None:
 
 
 @pytest.mark.unit
+def test_contract_declared_outputs_status_and_run_id_are_unimplemented() -> None:
+    """Registry-honesty companion check for the contract-state-coverage gate
+    (OMN-13781): contract.yaml `outputs` declares `status` and `run_id`
+    fields, but neither `ModelReleaseState`, `ModelReleasePhaseEvent`, nor
+    `ModelReleaseCompletedEvent` has a `status` or `run_id` field —
+    HandlerRelease's FSM never produces them. This is the same over-promising
+    pattern this ticket disposes elsewhere in the registry: `outputs.status`
+    and `outputs.run_id` are aspirational fields for the future gated EFFECT
+    (OMN-13798), not something this pure-FSM node implements today. Pin the
+    gap explicitly here rather than let it go unnoticed; if a future change
+    adds real `status`/`run_id` fields to the handler's output models, this
+    test should be updated (not silently left describing a stale gap)."""
+    contract = yaml.safe_load(CONTRACT_PATH.read_text())
+    declared_output_fields = set(contract["outputs"])
+
+    assert {"status", "run_id"}.issubset(declared_output_fields)
+
+    from omnimarket.nodes.node_release.models.model_release_state import (
+        ModelReleaseCompletedEvent,
+        ModelReleasePhaseEvent,
+        ModelReleaseState,
+    )
+
+    implemented_fields: set[str] = set()
+    for model in (
+        ModelReleaseState,
+        ModelReleasePhaseEvent,
+        ModelReleaseCompletedEvent,
+    ):
+        implemented_fields |= set(model.model_fields)
+
+    # "status" and "run_id" are declared in contract.yaml.outputs but not on
+    # any model HandlerRelease actually emits — confirming the gap is real,
+    # not a stale assertion.
+    assert "status" not in implemented_fields
+    assert "run_id" not in implemented_fields
+
+
+@pytest.mark.unit
 def test_handler_release_source_has_no_os_system_or_subprocess_calls() -> None:
     """Belt-and-suspenders: even without an `import subprocess`, a call site
     like `os.system(...)` or `os.popen(...)` would be real shell I/O."""
