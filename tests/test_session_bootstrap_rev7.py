@@ -32,6 +32,7 @@ from omnimarket.nodes.node_session_bootstrap.dispatch_lease import (
 )
 from omnimarket.nodes.node_session_bootstrap.dod_verification_registry import (
     DOD_VERIFICATION_REGISTRY,
+    classify_evidence_kind,
     run_dod_check,
 )
 from omnimarket.nodes.node_session_bootstrap.handlers.handler_session_bootstrap import (
@@ -39,6 +40,7 @@ from omnimarket.nodes.node_session_bootstrap.handlers.handler_session_bootstrap 
 )
 from omnimarket.nodes.node_session_bootstrap.models.model_task_contract import (
     EnumDodCheckType,
+    EnumEvidenceArtifactKind,
     ModelDodEvidenceCheck,
     ModelTaskContract,
 )
@@ -150,6 +152,109 @@ class TestEnumDodCheckType:
         passed, detail = run_dod_check(
             sample_contract, EnumDodCheckType.RENDERED_OUTPUT
         )
+        assert passed is True
+        assert "deferred" in detail.lower()
+
+
+# ---------------------------------------------------------------------------
+# classify_evidence_kind / _check_rendered_output — OMN-13776 HTTP-probe fix
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestClassifyEvidenceKind:
+    """HTTP-probe (curl/httpx) artifacts against non-UI endpoints classify as
+    HTTP-evidence, not browser/UI evidence (OMN-13776); UI-class endpoints
+    still require real rendered-output proof (no regression of OMN-13024).
+    """
+
+    def test_curl_against_ready_endpoint_is_http_evidence(self) -> None:
+        kind, detail = classify_evidence_kind("curl -sf https://host/ready", "/ready")
+        assert kind == EnumEvidenceArtifactKind.HTTP_EVIDENCE
+        assert "HTTP-evidence" in detail
+
+    def test_httpx_against_projection_api_is_http_evidence(self) -> None:
+        kind, _ = classify_evidence_kind(
+            "httpx GET https://host/v1/introspection/manifest",
+            "/v1/introspection/manifest",
+        )
+        assert kind == EnumEvidenceArtifactKind.HTTP_EVIDENCE
+
+    def test_wget_against_health_endpoint_is_http_evidence(self) -> None:
+        kind, _ = classify_evidence_kind("wget -qO- https://host/health", "/health")
+        assert kind == EnumEvidenceArtifactKind.HTTP_EVIDENCE
+
+    def test_curl_against_dashboard_is_ui_rendered_no_regression(self) -> None:
+        """curl-only proof against a UI/dashboard endpoint is still rejected
+        (OMN-13024 regression guard)."""
+        kind, detail = classify_evidence_kind(
+            "curl -sf https://dash.dev.omninode.ai/", "https://dash.dev.omninode.ai/"
+        )
+        assert kind == EnumEvidenceArtifactKind.UI_RENDERED
+        assert "OMN-13024" in detail
+
+    def test_curl_against_dashboard_path_is_ui_rendered(self) -> None:
+        kind, _ = classify_evidence_kind(
+            "curl -sf https://host/dashboard", "/dashboard"
+        )
+        assert kind == EnumEvidenceArtifactKind.UI_RENDERED
+
+    def test_missing_artifact_metadata_is_unknown(self) -> None:
+        kind, detail = classify_evidence_kind(None, None)
+        assert kind == EnumEvidenceArtifactKind.UNKNOWN
+        assert "insufficient" in detail.lower()
+
+    def test_non_probe_tool_against_api_endpoint_is_unknown(self) -> None:
+        """A non-HTTP-probe command against a non-UI endpoint doesn't match
+        either bucket — stays UNKNOWN rather than guessed."""
+        kind, _ = classify_evidence_kind("psql -c 'select 1'", "/api/db")
+        assert kind == EnumEvidenceArtifactKind.UNKNOWN
+
+
+@pytest.mark.unit
+class TestCheckRenderedOutputHttpProbeClassification:
+    """_check_rendered_output (via run_dod_check) wires classify_evidence_kind
+    into the RENDERED_OUTPUT DoD check."""
+
+    def _contract_with_rendered_output(
+        self, artifact_command: str | None, target_endpoint: str | None
+    ) -> ModelTaskContract:
+        return ModelTaskContract(
+            task_id="build-13776",
+            ticket_id="OMN-13776",
+            target_repo="OmniNode-ai/omnimarket",
+            target_branch_pattern="jonah/omn-13776-*",
+            dod_evidence=[
+                ModelDodEvidenceCheck(
+                    check_type=EnumDodCheckType.RENDERED_OUTPUT,
+                    artifact_command=artifact_command,
+                    target_endpoint=target_endpoint,
+                )
+            ],
+            dispatched_at=datetime.now(tz=UTC),
+            dispatch_path="agent_bypass",
+            model_used="sonnet",
+        )
+
+    def test_non_ui_http_probe_passes_without_playwright(self) -> None:
+        contract = self._contract_with_rendered_output(
+            "curl -sf https://host/ready", "/ready"
+        )
+        passed, detail = run_dod_check(contract, EnumDodCheckType.RENDERED_OUTPUT)
+        assert passed is True
+        assert "HTTP-evidence" in detail
+
+    def test_ui_class_endpoint_still_requires_rendered_output(self) -> None:
+        contract = self._contract_with_rendered_output(
+            "curl -sf https://dash.dev.omninode.ai/", "https://dash.dev.omninode.ai/"
+        )
+        passed, detail = run_dod_check(contract, EnumDodCheckType.RENDERED_OUTPUT)
+        assert passed is False
+        assert "OMN-13024" in detail
+
+    def test_no_artifact_metadata_preserves_deferred_behavior(self) -> None:
+        contract = self._contract_with_rendered_output(None, None)
+        passed, detail = run_dod_check(contract, EnumDodCheckType.RENDERED_OUTPUT)
         assert passed is True
         assert "deferred" in detail.lower()
 
@@ -357,3 +462,21 @@ class TestBuildPulsePrompt:
         )
         assert "some-future-cron" in prompt
         assert "sess-002" in prompt
+
+    def test_prompt_directs_health_violation_emission_on_hallucinated_pass(
+        self,
+    ) -> None:
+        """Contract-state-coverage (OMN-13781): build_pulse_prompt's
+        CronOutputVerificationRoutine guidance directs the agent to emit
+        onex.evt.omnimarket.session-cron-health-violation.v1 both on a
+        detected HALLUCINATED PASS and on a VACUOUS_PULSE gate failure —
+        the node's declared output state is prompt-embedded, not
+        code-published, so this is the executable coverage proof."""
+        prompt = build_pulse_prompt(
+            cron_name="build-dispatch-pulse",
+            timeout_budget_ms=300000,
+            session_id="sess-001",
+            state_dir=".onex_state",
+        )
+        assert "onex.evt.omnimarket.session-cron-health-violation.v1" in prompt
+        assert prompt.count("onex.evt.omnimarket.session-cron-health-violation.v1") >= 2

@@ -22,6 +22,9 @@ from datetime import UTC, datetime
 from typing import Protocol, runtime_checkable
 from uuid import UUID
 
+from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.adapter_occ_contract import (
+    classify_trivial_infra_fastpath,
+)
 from omnimarket.nodes.node_pr_lifecycle_fix_effect.models.model_fix_command import (
     EnumPrBlockReason,
     ModelPrLifecycleFixCommand,
@@ -265,6 +268,23 @@ class HandlerPrLifecycleFix:
             return await self._agent.dispatch_coderabbit_reply(repo, pr)
 
         if reason == EnumPrBlockReason.DEPLOY_GATE_CONTRACT_NOT_FOUND:
+            # Trivial-infra OCC fast-path (OMN-13776): a one-line non-runtime
+            # infra edit skips the full OCC contract + receipt-chain PR
+            # entirely — no skip token, decided purely from changed_files /
+            # diff_total_lines size-and-path scoping.
+            fastpath_eligible, fastpath_reason = classify_trivial_infra_fastpath(
+                command.changed_files, command.diff_total_lines
+            )
+            if fastpath_eligible:
+                logger.info(
+                    "PR lifecycle fix: trivial-infra OCC fast-path hit "
+                    "pr=%s repo=%s reason=%s",
+                    pr,
+                    repo,
+                    fastpath_reason,
+                )
+                return f"OCC fast-path: {fastpath_reason}"
+
             # deploy-gate failed because the OCC contract YAML is missing.
             # ticket_id is required; raise if absent so the caller gets a clear error.
             if not command.ticket_id:

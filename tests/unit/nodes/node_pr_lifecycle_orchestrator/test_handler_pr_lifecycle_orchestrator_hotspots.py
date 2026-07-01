@@ -58,7 +58,10 @@ class TestEnumOrchestratorState:
         for state in (
             EnumOrchestratorState.IDLE,
             EnumOrchestratorState.INVENTORYING,
+            EnumOrchestratorState.TRIAGING,
+            EnumOrchestratorState.VERIFYING,
             EnumOrchestratorState.MERGING,
+            EnumOrchestratorState.POST_MERGE_TAIL,
             EnumOrchestratorState.FIXING,
         ):
             assert state not in terminal

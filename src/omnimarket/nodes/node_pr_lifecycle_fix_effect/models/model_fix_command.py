@@ -6,7 +6,7 @@ from datetime import datetime
 from enum import StrEnum
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, NonNegativeInt
 
 
 class EnumPrBlockReason(StrEnum):
@@ -52,6 +52,22 @@ class ModelPrLifecycleFixCommand(BaseModel):
     )
     dry_run: bool = Field(default=False, description="Run without side effects.")
     requested_at: datetime = Field(..., description="When the command was issued.")
+    changed_files: list[str] = Field(
+        default_factory=list,
+        description=(
+            "PR changed-file paths, relative to repo root. Used by the "
+            "trivial-infra OCC fast-path (OMN-13776) to decide whether a "
+            "deploy_gate_contract_not_found fix can skip the full OCC "
+            "receipt-chain. Empty/unknown never qualifies for the fast-path."
+        ),
+    )
+    diff_total_lines: NonNegativeInt = Field(
+        default=0,
+        description=(
+            "Total additions + deletions across changed_files. Used by the "
+            "trivial-infra OCC fast-path size scoping (OMN-13776)."
+        ),
+    )
 
 
 __all__: list[str] = ["EnumPrBlockReason", "ModelPrLifecycleFixCommand"]
