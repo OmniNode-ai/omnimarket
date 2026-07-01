@@ -21,6 +21,19 @@ Param axes (>=3 distinct sets + a negative control):
   * args passthrough -> terminal payload echoes the supplied args.
   * malformed skill_path (raw bad fixture) -> rejected at the model boundary,
     NO terminal event reaches the success topic  (NEGATIVE CONTROL).
+
+KNOWN GAP (OMN-13784, do not paper over): ``ModelSkillResult.SkillResultStatus``
+declares a third member, ``FAILED``, that this handler never actually
+produces. ``handle_skill_requested`` raises ``ValueError`` on a blank
+``skill_name`` / malformed ``skill_path`` instead of catching and returning
+``FAILED`` -- and those same conditions are already rejected one layer up by
+``ModelSkillRequest``'s field validators before the handler ever runs, so the
+handler's own raises are unreachable through the normal envelope path too.
+The contract's declared ``failure_topic`` is correspondingly unwired: the
+single-topic ``LocalRuntimeBusAdapter`` used here has no route to it. Closing
+this is a real wiring change (catch + FAILED + route to failure_topic), not a
+test-only fix -- tracked as follow-up, not faked here with a status this
+handler cannot produce.
 """
 
 from __future__ import annotations

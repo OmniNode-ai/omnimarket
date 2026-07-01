@@ -9,6 +9,13 @@ fence source, and KB level; assertions cover the typed ``ModelDispatchWorkerResu
 fields (task description, compiled prompt body, fence embeds, spawn args, KB
 evidence). Negative controls: a duplicate in-progress worker must be rejected,
 and a role missing required identifiers must raise.
+
+OMN-13784 additions close two declared-input branches the base matrix above
+never reaches:
+  * ``knowledge_context_level`` L0/L1/L3 (only "none" and "L2" were covered;
+    L0/L1/L3 each grow a distinct set of prompt sections per contract.yaml).
+  * ``replace=True`` -- the declared override that lets a dedup-rejected
+    dispatch through when an in_progress worker with the same name exists.
 """
 
 from __future__ import annotations
@@ -171,6 +178,7 @@ def test_dispatch_worker_multiparam(
     assert result.bundle_level == expected["bundle_level"]
     assert result.proposed_agent_spawn_args["model"] == expected["spawn_model"]
     assert result.proposed_agent_spawn_args["name"] == command.name
+    assert "onex.evt.omnimarket.dispatch-worker-compiled.v1"
 
     if expected["bundle_level"] != "none":
         assert result.injected_context_char_count > 0
@@ -178,6 +186,103 @@ def test_dispatch_worker_multiparam(
         assert result.knowledge_context_bundle_hash != ""
     else:
         assert result.injected_context_char_count == 0
+
+
+@pytest.mark.parametrize(
+    ("level", "expected_fragments", "unexpected_fragments"),
+    [
+        pytest.param(
+            "L0",
+            ["## Knowledge Context", "Level L0", "scope summary only"],
+            ["**Primary ticket:**", "**Primary repo:**"],
+            id="kb-context-L0-scope-only",
+        ),
+        pytest.param(
+            "L1",
+            ["## Knowledge Context", "Level L1", "**Primary ticket:**"],
+            ["**Primary repo:**"],
+            id="kb-context-L1-adds-ticket",
+        ),
+        pytest.param(
+            "L3",
+            [
+                "## Knowledge Context",
+                "Level L3",
+                "**Primary ticket:**",
+                "**Primary repo:**",
+                "Extended decisions",
+            ],
+            [],
+            id="kb-context-L3-adds-extended-decisions",
+        ),
+    ],
+)
+@pytest.mark.integration
+def test_dispatch_worker_knowledge_context_level_branches(
+    level: str,
+    expected_fragments: list[str],
+    unexpected_fragments: list[str],
+) -> None:
+    """OMN-13784: closes the L0/L1/L3 ``knowledge_context_level`` branches.
+
+    The base CASES matrix above only exercised "none" and "L2"; each of
+    L0/L1/L3 grows a distinct set of prompt sections (see
+    ``_assemble_kb_context`` in the handler), so each is a genuinely
+    distinct declared state, not a parametrization of the same code path.
+    """
+    handler = HandlerDispatchWorker()
+    command = ModelDispatchWorkerCommand(
+        name=f"fixer-kb-{level.lower()}",
+        team="wave7",
+        role=EnumWorkerRole.fixer,
+        scope="implement with tiered KB context",
+        targets=["OMN-4444", "omnimarket#11"],
+        knowledge_context_level=level,
+    )
+    result = handler.handle(command, existing_task_subjects=None)
+
+    assert result.rejected_reason == ""
+    assert result.bundle_level == level
+    for fragment in expected_fragments:
+        assert fragment in result.validated_prompt_template, (
+            f"level={level}: missing {fragment!r}"
+        )
+    for fragment in unexpected_fragments:
+        assert fragment not in result.validated_prompt_template, (
+            f"level={level}: unexpected {fragment!r} leaked from a higher tier"
+        )
+    assert result.injected_context_char_count > 0
+    assert result.source_backends_used == ["local"]
+    assert result.degraded_backends == []
+
+
+@pytest.mark.integration
+def test_dispatch_worker_replace_true_overrides_dedup_rejection() -> None:
+    """OMN-13784: closes the ``replace=True`` override branch.
+
+    The base matrix's ``dedup-reject-NEGATIVE`` case proves the default
+    (``replace=False``) rejection path. This proves the declared override:
+    the same in_progress-worker collision must NOT reject when the caller
+    explicitly asks to replace it, and compilation proceeds normally.
+    """
+    handler = HandlerDispatchWorker()
+    command = ModelDispatchWorkerCommand(
+        name="fixer-dup",
+        team="wave10",
+        role=EnumWorkerRole.fixer,
+        scope="restart after replace",
+        targets=["OMN-3333", "omnimarket#9"],
+        replace=True,
+    )
+    result = handler.handle(
+        command,
+        existing_task_subjects=["[fixer] fixer-dup: already running"],
+    )
+
+    assert result.rejected_reason == ""
+    assert result.validated_task_description.startswith("[fixer] fixer-dup:")
+    assert result.validated_prompt_template != ""
+    assert result.proposed_agent_spawn_args["name"] == "fixer-dup"
 
 
 @pytest.mark.integration
