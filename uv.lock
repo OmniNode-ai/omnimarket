@@ -7,7 +7,7 @@ overrides = [
     { name = "omnibase-compat", git = "https://github.com/OmniNode-ai/omnibase_compat.git?rev=c0fc71681d046e840e0997c04bd26176785a2992" },
     { name = "omnibase-core", git = "https://github.com/OmniNode-ai/omnibase_core.git?rev=29e9057b4a3604c8add623eacac86f1b537defdb" },
     { name = "omnibase-infra", git = "https://github.com/OmniNode-ai/omnibase_infra.git?rev=7e52d5b0046c394b38454b97157e7a7191e6f008" },
-    { name = "omnibase-spi", specifier = ">=0.22.0,<0.23.0" },
+    { name = "omnibase-spi", specifier = ">=0.23.0,<0.24.0" },
 ]
 
 [[package]]
@@ -1302,16 +1302,16 @@ dependencies = [
 
 [[package]]
 name = "omnibase-spi"
-version = "0.22.0"
+version = "0.23.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "omnibase-core" },
     { name = "pydantic" },
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/43/7d/219a855c2e556030be09255dee9d5320cf21360a5372e05f91be042d84bb/omnibase_spi-0.22.0.tar.gz", hash = "sha256:a527e1e4fcff790d11ba78a5345cb9c58f1e36158a38bf83cf1c27ad22f87c66", size = 1115850, upload-time = "2026-05-26T13:51:00.209Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/f4/00/f69dbf0f4206a47fa64f409f0de76b2a1b4fee82ccc1f19b167893dad065/omnibase_spi-0.23.0.tar.gz", hash = "sha256:ac841935986dc871e96f38442bb4249fbdeb0189761838813f6efa23a2f598c6", size = 1132804, upload-time = "2026-06-30T21:42:58.523Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/ce/33/c8e98b6200f9a078b2d9205091467c6eddf2fd4a1cce9ca989b7ca256d1b/omnibase_spi-0.22.0-py3-none-any.whl", hash = "sha256:54f7f49a4e33c6d3f4fe185926e440c822671962da5ab976214db30af110c0af", size = 744687, upload-time = "2026-05-26T13:50:58.213Z" },
+    { url = "https://files.pythonhosted.org/packages/58/e4/bc8bc1ea42897ea8e8caf09cff94c82610ed824066db986793f9030722b2/omnibase_spi-0.23.0-py3-none-any.whl", hash = "sha256:c3ad4e9b2aa46697442407adfd633d3d8bc96ae2ad0c115b6dc0d8ef3b11ea5f", size = 743058, upload-time = "2026-06-30T21:42:57.132Z" },
 ]
 
 [[package]]
@@ -1374,7 +1374,7 @@ requires-dist = [
     { name = "omnibase-compat", git = "https://github.com/OmniNode-ai/omnibase_compat.git?rev=c0fc71681d046e840e0997c04bd26176785a2992" },
     { name = "omnibase-core", git = "https://github.com/OmniNode-ai/omnibase_core.git?rev=29e9057b4a3604c8add623eacac86f1b537defdb" },
     { name = "omnibase-infra", git = "https://github.com/OmniNode-ai/omnibase_infra.git?rev=7e52d5b0046c394b38454b97157e7a7191e6f008" },
-    { name = "omnibase-spi", specifier = ">=0.22.0,<0.23.0" },
+    { name = "omnibase-spi", specifier = ">=0.23.0,<0.24.0" },
     { name = "omninode-memory", git = "https://github.com/OmniNode-ai/omnimemory.git?rev=9843dd18cedaa4f5939289ba527532262b87003c" },
     { name = "onex-change-control", git = "https://github.com/OmniNode-ai/onex_change_control.git?rev=dd2620d18001495b8d0f493b421b38399e9aab4b" },
     { name = "packaging", specifier = ">=24.0" },
