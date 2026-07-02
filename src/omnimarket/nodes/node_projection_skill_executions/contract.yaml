@@ -7,8 +7,7 @@ input_model: ModelSkillExecutionProjectionEvent
 description: >
   Projects skill-lifecycle events into the skill_execution_snapshots table — the
   read model the omnidash skill-adoption widget (OMN-13832) consumes via the
-  onex.snapshot.projection.skill-executions.v1 projection snapshot topic
-  (declared in projection_api below). OMN-13839: completes the skill-measurement
+  projection snapshot topic declared in projection_api below. OMN-13839: completes the skill-measurement
   pipeline (emit OMN-13830 -> skill_executions table -> [this snapshot topic] ->
   widget). The deployed runtime entrypoint is
   handler_skill_executions.SkillExecutionsProjectionRunner, which folds the LIVE
