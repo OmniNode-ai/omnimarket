@@ -41,7 +41,7 @@ from omnimarket.events.verification import (
     ModelVerificationReceipt,
     ModelVerificationReceiptRequest,
 )
-from omnimarket.inference.secret_store_resolver import resolve_api_key
+from omnimarket.inference.secret_store_resolver import resolve_api_key_loop_safe
 from omnimarket.nodes.contract_topics import contract_secret_ref
 
 _log = logging.getLogger(__name__)
@@ -289,9 +289,19 @@ class HandlerVerificationReceiptGenerator:
 
         Ref-name sourced from the contract (OMN-12856); value resolved via the
         secret store. Never reads ``os.environ`` for the token directly.
+
+        Uses ``resolve_api_key_loop_safe`` (not the bare sync ``resolve_api_key``)
+        because ``handle`` stays synchronous — the ONEX RuntimeLocal adapter
+        dispatches this handler from inside a running event loop, where the bare
+        sync resolver raises ``RuntimeError("resolve_api_key() is sync-only ...")``.
+        The loop-safe resolver offloads to a worker thread in that case, so the
+        real (non-dry-run) CI path resolves the token instead of crashing
+        (OMN-13843). ``handle`` cannot simply become ``async def``: the
+        ``task.execute`` orchestrator's ``ProtocolMechanicalCheckExecutor.handle``
+        port is synchronous and calls this handler in-process.
         """
         github_ref = contract_secret_ref(_CONTRACT_PATH, "GITHUB_TOKEN")
-        github_secret = resolve_api_key(github_ref)
+        github_secret = resolve_api_key_loop_safe(github_ref)
         if github_secret is None:
             raise RuntimeError(
                 f"api_key_ref {github_ref!r} resolved to None — "

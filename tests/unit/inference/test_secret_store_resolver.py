@@ -28,6 +28,7 @@ from omnimarket.inference.secret_store_resolver import (
     clear_secret_store_resolver_cache,
     resolve_api_key,
     resolve_api_key_async,
+    resolve_api_key_loop_safe,
 )
 
 
@@ -145,6 +146,56 @@ class TestResolveApiKeySync:
                 resolve_api_key("ANY_KEY")
 
         asyncio.run(_inner())
+
+
+class TestResolveApiKeyLoopSafe:
+    """``resolve_api_key_loop_safe`` (OMN-13843): a sync resolver that returns the
+    secret VALUE and does not raise the sync-only guard when a loop is running."""
+
+    def test_none_ref_resolves_to_none(self) -> None:
+        assert resolve_api_key_loop_safe(None) is None
+
+    def test_env_backed_value_no_loop(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("OMN13843_LOOPSAFE_KEY", "sk-loopsafe")
+        resolved = resolve_api_key_loop_safe("OMN13843_LOOPSAFE_KEY")
+        assert isinstance(resolved, SecretStr)
+        assert resolved.get_secret_value() == "sk-loopsafe"
+
+    def test_resolves_from_within_running_loop(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The whole point: called from inside a running loop it must NOT raise
+        the sync-only error — it offloads to a worker thread and returns a value.
+        """
+        monkeypatch.setenv("OMN13843_LOOPSAFE_KEY", "sk-in-loop")
+
+        async def _inner() -> SecretStr | None:
+            return resolve_api_key_loop_safe("OMN13843_LOOPSAFE_KEY")
+
+        resolved = asyncio.run(_inner())
+        assert isinstance(resolved, SecretStr)
+        assert resolved.get_secret_value() == "sk-in-loop"
+
+    def test_missing_ref_fails_closed_within_loop(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.delenv("OMN13843_LOOPSAFE_ABSENT", raising=False)
+
+        async def _inner() -> None:
+            with pytest.raises(SecretResolutionError, match="OMN13843_LOOPSAFE_ABSENT"):
+                resolve_api_key_loop_safe("OMN13843_LOOPSAFE_ABSENT")
+
+        asyncio.run(_inner())
+
+    def test_not_required_within_loop_returns_none(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.delenv("OMN13843_LOOPSAFE_ABSENT", raising=False)
+
+        async def _inner() -> SecretStr | None:
+            return resolve_api_key_loop_safe("OMN13843_LOOPSAFE_ABSENT", required=False)
+
+        assert asyncio.run(_inner()) is None
 
 
 class TestApiKeyRefAvailable:
