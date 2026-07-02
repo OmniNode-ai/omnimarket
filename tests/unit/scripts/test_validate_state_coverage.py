@@ -382,3 +382,36 @@ def test_load_baseline_missing_file_returns_empty(
 ) -> None:
     monkeypatch.setattr(scc_module, "BASELINE_PATH", tmp_path / "does-not-exist.txt")
     assert scc_module._load_baseline() == set()  # type: ignore[attr-defined]
+
+
+@pytest.mark.unit
+def test_changed_nodes_uses_exact_segment_not_prefix_substring(
+    scc_module: object, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A test file under a longer node's directory must NOT flag a shorter node
+    whose name is a prefix of it.
+
+    Regression: ``node_projection_delegation`` is a prefix of
+    ``node_projection_delegation_inference_response``. The old substring match
+    (``candidate.name in Path(f).as_posix()``) spuriously flagged the shorter
+    node as directly-modified, which in strict mode promoted its baselined WARN
+    to a FAIL even though it was untouched.
+    """
+    import subprocess
+    import types
+
+    long_node = "node_projection_delegation_inference_response"
+    short_node = "node_projection_delegation"
+    # Both must be real node dirs for the iterdir()-based association to see them.
+    assert (scc_module.NODES_DIR / long_node).is_dir()  # type: ignore[attr-defined]
+    assert (scc_module.NODES_DIR / short_node).is_dir()  # type: ignore[attr-defined]
+
+    diff = f"tests/integration/{long_node}/test_bus_coverage.py\n"
+
+    def _fake_run(*_args: object, **_kwargs: object) -> types.SimpleNamespace:
+        return types.SimpleNamespace(returncode=0, stdout=diff, stderr="")
+
+    monkeypatch.setattr(subprocess, "run", _fake_run)
+    _nodes, directly_modified = scc_module._get_changed_nodes("origin/dev")  # type: ignore[attr-defined]
+    assert long_node in directly_modified
+    assert short_node not in directly_modified

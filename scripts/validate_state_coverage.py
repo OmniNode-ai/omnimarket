@@ -383,9 +383,16 @@ def _get_changed_nodes(git_ref: str) -> tuple[list[Path], set[str]]:
         ):
             directly_modified.add(parts[3])
         # A node's own tests being touched should also re-check its coverage.
+        # Match on exact path segments (directory components / filename), NOT a
+        # raw substring: a substring check spuriously flags a node whose name is
+        # a prefix of a longer node's name (e.g. ``node_projection_delegation``
+        # matching ``tests/integration/node_projection_delegation_inference_response/``),
+        # which in strict mode wrongly promotes the shorter node's baselined
+        # WARN to a FAIL even though it was never touched.
         if len(parts) >= 1 and parts[0] == "tests" and NODES_DIR.exists():
+            path_segments = set(Path(f).as_posix().split("/"))
             for candidate in NODES_DIR.iterdir():
-                if candidate.is_dir() and candidate.name in Path(f).as_posix():
+                if candidate.is_dir() and candidate.name in path_segments:
                     directly_modified.add(candidate.name)
 
     nodes: list[Path] = []
