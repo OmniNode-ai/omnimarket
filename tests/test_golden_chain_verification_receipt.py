@@ -22,8 +22,10 @@ from omnimarket.nodes.node_verification_receipt_generator.handlers.handler_verif
 )
 
 _FAKE_SECRET = SecretStr("fake-github-token-for-test")
+# handle() stays sync but resolves the token via the loop-safe resolver
+# (OMN-13843), so the patch target is resolve_api_key_loop_safe.
 _PATCH_RESOLVE = patch(
-    "omnimarket.nodes.node_verification_receipt_generator.handlers.handler_verification_receipt.resolve_api_key",
+    "omnimarket.nodes.node_verification_receipt_generator.handlers.handler_verification_receipt.resolve_api_key_loop_safe",
     return_value=_FAKE_SECRET,
 )
 

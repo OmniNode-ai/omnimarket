@@ -230,6 +230,44 @@ def _resolve_api_key_from_running_loop(
     return resolved
 
 
+def resolve_api_key_loop_safe(
+    api_key_ref: str | None,
+    *,
+    store: ProtocolSecretStore | None = None,
+    required: bool = True,
+) -> SecretStr | None:
+    """Resolve a secret VALUE from SYNC code that may run inside an event loop.
+
+    Identical to :func:`resolve_api_key`, except that when it is invoked from
+    within a running event loop the resolution is offloaded to a worker thread
+    (via :func:`_resolve_api_key_from_running_loop`) instead of raising the
+    "sync-only" guard.
+
+    Use this from a SYNC ``handle()`` that the ONEX runtime may dispatch on the
+    event loop: ``LocalRuntimeBusAdapter`` calls a sync handler directly inside
+    its async ``on_message``, so a bare :func:`resolve_api_key` would raise
+    ``RuntimeError("resolve_api_key() is sync-only ...")`` (OMN-13843). Async
+    handlers should keep awaiting :func:`resolve_api_key_async` directly; this
+    helper exists only for handlers that must stay synchronous (e.g. because a
+    sync orchestrator port calls them in-process).
+
+    Fail-closed semantics are unchanged: with ``required=True`` a declared ref
+    with no secret-store value raises :class:`SecretResolutionError`.
+    """
+    if not api_key_ref:
+        return None
+    try:
+        return resolve_api_key(api_key_ref, store=store, required=required)
+    except RuntimeError as exc:
+        if "sync-only" not in str(exc):
+            raise
+        return _resolve_api_key_from_running_loop(
+            api_key_ref,
+            store=store,
+            required=required,
+        )
+
+
 def api_key_ref_available(
     api_key_ref: str | None,
     *,
@@ -244,16 +282,7 @@ def api_key_ref_available(
     """
     if not api_key_ref:
         return True
-    try:
-        resolved = resolve_api_key(api_key_ref, store=store, required=False)
-    except RuntimeError as exc:
-        if "sync-only" not in str(exc):
-            raise
-        resolved = _resolve_api_key_from_running_loop(
-            api_key_ref,
-            store=store,
-            required=False,
-        )
+    resolved = resolve_api_key_loop_safe(api_key_ref, store=store, required=False)
     return resolved is not None
 
 
@@ -262,4 +291,5 @@ __all__: list[str] = [
     "api_key_ref_available",
     "resolve_api_key",
     "resolve_api_key_async",
+    "resolve_api_key_loop_safe",
 ]
