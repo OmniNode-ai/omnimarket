@@ -113,16 +113,22 @@ def test_dispatch_returns_typed_receipt_through_process_boundary(
     monkeypatch: pytest.MonkeyPatch,
     fake_backends: list[dict[str, object]],
 ) -> None:
-    """The supervised child returns a typed result on the host platform.
+    """The supervised child returns a typed result through the ``spawn`` path.
 
-    Proves the fork-safety fix end-to-end: the effect runs in a real spawned (on
-    macOS) child, returns its result over the queue, and ``dispatch()`` yields a
-    typed terminal dict — never a ``-6`` crash / ``exited without returning a
-    result`` RuntimeError. The effect double is pickleable so the ``spawn``
-    round-trip succeeds.
+    Proves the fork-safety fix end-to-end: the effect runs in a real ``spawn``-ed
+    child, returns its result over the queue, and ``dispatch()`` yields a typed
+    terminal dict — never a ``-6`` crash / ``exited without returning a result``
+    RuntimeError. The effect double is pickleable so the ``spawn`` round-trip
+    succeeds.
+
+    ``sys.platform`` is forced to ``darwin`` so the spawn start method (and its
+    pickling round-trip — the actual behavior OMN-13842 depends on) is exercised
+    regardless of host OS. Without this, Linux CI would take the ``fork`` branch
+    and never prove the spawned-child path this fix introduces.
     """
     db_path = tmp_path / "delegation.sqlite"
     _patch_routing(monkeypatch, fake_backends)
+    monkeypatch.setattr(port_module.sys, "platform", "darwin")
 
     port = LocalDelegationDispatchPort(
         effect_handler=SuccessfulEffectHandler(),
