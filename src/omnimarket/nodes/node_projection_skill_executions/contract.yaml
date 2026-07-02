@@ -1,0 +1,89 @@
+---
+name: node_projection_skill_executions
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: REDUCER_GENERIC
+node_version: {major: 1, minor: 0, patch: 0}
+input_model: ModelSkillExecutionProjectionEvent
+description: >
+  Projects skill-lifecycle events into the skill_execution_snapshots table — the
+  read model the omnidash skill-adoption widget (OMN-13832) consumes via the
+  onex.snapshot.projection.skill-executions.v1 projection snapshot topic
+  (declared in projection_api below). OMN-13839: completes the skill-measurement
+  pipeline (emit OMN-13830 -> skill_executions table -> [this snapshot topic] ->
+  widget). The deployed runtime entrypoint is
+  handler_skill_executions.SkillExecutionsProjectionRunner, which folds the LIVE
+  skill-started / skill-completed lifecycle topics (declared in
+  event_bus.subscribe_topics below) into one per-(skill_name, repo_id, window,
+  minute) aggregate row: started/completed counts, the completed-status
+  breakdown (success/failed/partial), and a DB-computed receipt_coverage.
+  DATA-PLANE NOTE: skill_executions lives in the omnibase_infra DB, which the
+  projection API (schemas {public, omnidash_analytics}, single DSN) does not
+  read. Following node_projection_cost_by_repo, this node sources the SAME
+  skill-lifecycle EVENTS from the bus and writes its own aggregate into
+  skill_execution_snapshots (public schema) — the table the projection API
+  actually serves — rather than reaching cross-DB into skill_executions.
+
+handler:
+  module: omnimarket.nodes.node_projection_skill_executions.handlers.handler_skill_executions
+  class: SkillExecutionsProjectionRunner
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: projection_skill_executions
+      handler:
+        name: SkillExecutionsProjectionRunner
+        module: omnimarket.nodes.node_projection_skill_executions.handlers.handler_skill_executions
+      handler_module: omnimarket.nodes.node_projection_skill_executions.handlers.handler_skill_executions
+      event_model: ModelSkillExecutionProjectionEvent
+
+idempotency:
+  enabled: true
+  strategy: snapshot_upsert
+  hash_fields:
+    - skill_name
+    - repo_id
+    - window
+    - snapshot_timestamp_minute
+
+terminal_event: onex.evt.omnimarket.skill-executions-snapshot.v1
+
+db_io:
+  db_tables:
+    - name: skill_execution_snapshots
+      migration: "0001_create_skill_execution_snapshots.sql"
+      access: write
+      database: omnidash_analytics
+      role: skill_executions_aggregate
+
+event_bus:
+  consumer_group: local.omnibase_infra.node_projection_skill_executions.consume.v1
+  subscribe_topics:
+    - onex.evt.omniclaude.skill-started.v1
+    - onex.evt.omniclaude.skill-completed.v1
+  publish_topics:
+    - onex.evt.omnimarket.skill-executions-snapshot.v1
+
+projection_api:
+  expose: true
+  topic: "onex.snapshot.projection.skill-executions.v1" # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
+  table: "skill_execution_snapshots"
+  schema: "public"
+  columns:
+    - "skill_name"
+    - "repo_id"
+    - "started_count"
+    - "completed_count"
+    - "success_count"
+    - "failed_count"
+    - "partial_count"
+    - "receipt_coverage"
+    - "window"
+    - "snapshot_timestamp_minute"
+    - "updated_at"
+  order_by: "started_count DESC"
+  freshness_column: "updated_at"
+  limit: 100
+
+metadata:
+  transport_type: kafka

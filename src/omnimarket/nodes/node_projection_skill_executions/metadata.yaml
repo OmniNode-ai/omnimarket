@@ -1,0 +1,18 @@
+name: node_projection_skill_executions
+version: "1.0.0"
+description: "Project skill-lifecycle events into the skill_execution_snapshots table."
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: true
+  requires_secrets: true
+  side_effect_class: read_write
+tags:
+  - projection
+  - skill
+  - adoption
+  - snapshot
+pack: "data"
+display_name: "Projection: Skill Executions"
+node_role: "reducer"

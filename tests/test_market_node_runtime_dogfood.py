@@ -110,8 +110,11 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
     # OMN-13088 NC-15 adds node_projection_delegation_inference_response
     # (REDUCER; inference-response-text projection for the omnidash delegation
     # model-output widget): 345 -> 346.
-    assert summary["node_dirs"] == 346
-    assert summary["entry_points"] == 346
+    # OMN-13839 adds node_projection_skill_executions (REDUCER; skill-lifecycle
+    # snapshot projection completing the measurement pipeline emit -> table ->
+    # snapshot topic -> skill-adoption widget): 346 -> 347.
+    assert summary["node_dirs"] == 347
+    assert summary["entry_points"] == 347
     assert summary["missing_entry_points"] == []
     assert summary["dangling_entry_points"] == []
     assert summary["routable"] >= 299

@@ -321,6 +321,8 @@ _ALLOWED_TABLES: frozenset[str] = frozenset(
         "review_bot_bypass_log",
         # node_projection_live_events
         "live_events",
+        # node_projection_skill_executions
+        "skill_execution_snapshots",
     }
 )
 
