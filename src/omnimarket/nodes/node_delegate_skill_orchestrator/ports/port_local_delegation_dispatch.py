@@ -27,6 +27,7 @@ import asyncio
 import logging
 import multiprocessing
 import queue
+import sys
 import time
 import uuid
 from collections.abc import Callable
@@ -120,6 +121,35 @@ type _EffectWorkerMessage = (
 )
 
 
+def _resolve_effect_process_context() -> Any:
+    """Resolve the multiprocessing start method for the effect child process.
+
+    OMN-13842: the delegation effect runs a real LLM call (health probe + curl /
+    httpx POST) that touches macOS system frameworks (Foundation / CoreFoundation
+    proxy resolution, TLS). Those initialize the Objective-C runtime in the parent
+    process. Starting the child with ``fork`` then executing any objc call in the
+    child aborts the child with SIGABRT (``objc[...]: +[... initialize] may have
+    been in progress in another thread when fork() was called ... Crashing
+    instead``) — exit code ``-6``, zero LLM output, and the local ``onex delegate``
+    CLI reports ``delegation effect process exited without returning a result``.
+
+    ``fork`` is only unsafe *after* the objc runtime is live, which is exactly the
+    delegation effect's steady state on ``local_macos_claude_hooks``. ``spawn``
+    starts a clean interpreter with no inherited objc state, so the child is
+    fork-safe. It requires the worker target + args to be picklable (they are:
+    a module-level worker function, a pickleable effect handler, and a spawn-
+    context ``Queue``). Use ``spawn`` on macOS; keep the cheaper ``fork`` (with a
+    ``spawn`` fallback for platforms that lack it) elsewhere, where objc
+    fork-safety does not apply.
+    """
+    if sys.platform == "darwin":
+        return multiprocessing.get_context("spawn")
+    try:
+        return multiprocessing.get_context("fork")
+    except ValueError:
+        return multiprocessing.get_context("spawn")
+
+
 def _effect_handler_worker(
     effect_handler: _EffectHandler,
     request: ModelLlmDelegationCallRequest,
@@ -158,11 +188,7 @@ async def _run_effect_handler_with_killable_timeout(
     timeout_seconds: float,
 ) -> ModelLlmDelegationCallResult:
     """Run the blocking sync effect behind a process boundary with a hard kill."""
-    context: Any
-    try:
-        context = multiprocessing.get_context("fork")
-    except ValueError:
-        context = multiprocessing.get_context("spawn")
+    context: Any = _resolve_effect_process_context()
     result_queue = context.Queue()
     process = context.Process(
         target=_effect_handler_worker,
