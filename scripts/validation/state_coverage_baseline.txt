@@ -3,8 +3,11 @@
 # scripts/validate_state_coverage.py extracts each node's declared state set
 # from contract.yaml (FSM states for orchestrators; output-class field names
 # + published event/topic types for compute/effect/reducer nodes) and diffs
-# it against the states literally asserted (as a quoted string or attribute
-# access) in that node's test files. Every pair below is a pre-existing gap
+# it against the states asserted in that node's test files (an AST-level
+# check: the state literal — a string constant, or an ``EnumX.STATE``-style
+# attribute — must appear in a genuine assertion context, never a bare
+# ``assert "<state>"``, a self-tautology, or a docstring/comment/import path).
+# Every pair below is a pre-existing gap
 # that was NOT introduced by the gate landing in OMN-13781 — they are WARN,
 # not FAIL, in non-strict (--check-all) mode so the initial gate PR lands
 # clean without a 262-node backfill blocking it.
@@ -450,6 +453,7 @@ node_pr_review_fsm_reducer init
 node_pr_review_fsm_reducer judge_verify
 node_pr_review_fsm_reducer post_threads
 node_pr_review_fsm_reducer report
+node_pr_review_fsm_reducer review
 node_pr_review_fsm_reducer watch
 node_pr_review_orchestrator onex.evt.omnimarket.pr-review-bot-phase-transition.v1
 node_pr_review_orchestrator onex.evt.omnimarket.pr-review-bot-thread-posted.v1

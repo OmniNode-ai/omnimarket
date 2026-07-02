@@ -142,6 +142,124 @@ def test_topic_state_requires_exact_quoted_match_not_attribute(
     assert covered_quoted is True
 
 
+# ---------------------------------------------------------------------------
+# AST hardening (OMN-13816): vacuous / tautological forms must NOT count as
+# coverage; genuine assertions against non-constant output still must.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+def test_bare_literal_assert_is_not_covered(scc_module: object) -> None:
+    """`assert "<state>"` proves nothing — no comparison against output."""
+    assert scc_module._state_covered("active", 'assert "active"') is False  # type: ignore[attr-defined]
+    topic = "onex.evt.omnimarket.foo.v1"
+    assert scc_module._state_covered(topic, f'assert "{topic}"') is False  # type: ignore[attr-defined]
+
+
+@pytest.mark.unit
+def test_literal_self_equality_is_not_covered(scc_module: object) -> None:
+    """Constant-vs-constant tautology (`"active" == "active"`) is vacuous."""
+    assert (
+        scc_module._state_covered("active", 'assert "active" == "active"')  # type: ignore[attr-defined]
+        is False
+    )
+
+
+@pytest.mark.unit
+def test_name_self_equality_is_not_covered(scc_module: object) -> None:
+    """`declared_topics == declared_topics` — the human-caught squash-shipped
+    self-equality — must not count."""
+    assert (
+        scc_module._state_covered(  # type: ignore[attr-defined]
+            "declared_topics", "assert declared_topics == declared_topics"
+        )
+        is False
+    )
+
+
+@pytest.mark.unit
+def test_attribute_self_equality_is_not_covered(scc_module: object) -> None:
+    """`result.overall_status == result.overall_status` — attribute-shaped
+    self-tautology — must not count even though `.overall_status` appears."""
+    assert (
+        scc_module._state_covered(  # type: ignore[attr-defined]
+            "overall_status",
+            "assert result.overall_status == result.overall_status",
+        )
+        is False
+    )
+
+
+@pytest.mark.unit
+def test_docstring_only_mention_is_not_covered(scc_module: object) -> None:
+    """A state named only in a docstring / bare string statement is not covered."""
+    source = '''
+def test_thing() -> None:
+    """active is the running phase."""
+    assert something_else == 1
+'''
+    assert scc_module._state_covered("active", source) is False  # type: ignore[attr-defined]
+
+
+@pytest.mark.unit
+def test_comment_only_mention_is_not_covered(scc_module: object) -> None:
+    """Comments are absent from the AST, so a comment mention is not coverage."""
+    source = "# transitions through the 'active' phase\nassert other == 2\n"
+    assert scc_module._state_covered("active", source) is False  # type: ignore[attr-defined]
+
+
+@pytest.mark.unit
+def test_import_path_mention_is_not_covered(scc_module: object) -> None:
+    """An import module path (`from omnimarket.review... import`) must not
+    false-positive as coverage of a `review` state — the exploit the old
+    regex's `.review` match admitted."""
+    source = "from omnimarket.review.pr_review_fsm import advance\nassert x == 1\n"
+    assert scc_module._state_covered("review", source) is False  # type: ignore[attr-defined]
+
+
+@pytest.mark.unit
+def test_genuine_comparison_is_covered(scc_module: object) -> None:
+    """`assert result.state == "active"` (literal vs non-constant output) counts."""
+    assert (
+        scc_module._state_covered("active", 'assert result.state == "active"')  # type: ignore[attr-defined]
+        is True
+    )
+
+
+@pytest.mark.unit
+def test_enum_attribute_in_for_loop_iterable_is_covered(scc_module: object) -> None:
+    """The common enum idiom — states listed in a for-loop iterable that feeds
+    an assert — is genuine coverage (`EnumX.INVENTORYING`)."""
+    source = (
+        "for state in (EnumX.IDLE, EnumX.INVENTORYING, EnumX.MERGING):\n"
+        "    assert state not in terminal\n"
+    )
+    assert scc_module._state_covered("INVENTORYING", source) is True  # type: ignore[attr-defined]
+
+
+@pytest.mark.unit
+def test_assert_equal_call_is_covered(scc_module: object) -> None:
+    """unittest-style `assertEqual(result.state, "active")` counts."""
+    assert (
+        scc_module._state_covered(  # type: ignore[attr-defined]
+            "active", 'self.assertEqual(result.state, "active")'
+        )
+        is True
+    )
+
+
+@pytest.mark.unit
+def test_per_file_sources_survive_duplicate_future_imports(
+    scc_module: object,
+) -> None:
+    """`_state_covered` accepts a per-file list; two files each carrying
+    `from __future__ import annotations` must not break parsing (a single
+    concatenated `ast.parse` would raise SyntaxError)."""
+    file_a = "from __future__ import annotations\nassert x == 1\n"
+    file_b = 'from __future__ import annotations\nassert result.state == "active"\n'
+    assert scc_module._state_covered("active", [file_a, file_b]) is True  # type: ignore[attr-defined]
+
+
 @pytest.mark.unit
 def test_validate_node_fails_on_uncovered_declared_state(
     scc_module: object, tmp_path: Path
