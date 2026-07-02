@@ -34,6 +34,11 @@ from omnimarket.nodes.node_linear_triage.models.model_linear_triage_state import
     ModelLinearTriageStartCommand,
     ModelTriageAction,
 )
+from omnimarket.nodes.node_linear_triage.services.close_evidence_gate import (
+    EnumCloseEvidenceKind,
+    ModelCloseEvidence,
+    enforce_close_evidence,
+)
 
 # Known OmniNode repos used for PR lookup
 KNOWN_REPOS = [
@@ -1032,6 +1037,28 @@ class HandlerLinearTriage:
 
         return actions, marked_done, marked_done_superseded, suppressed
 
+    def _mark_done(
+        self,
+        *,
+        client: LinearClientProtocol,
+        ticket: ModelLinearTicket,
+        comment: str,
+        evidence: ModelCloseEvidence,
+    ) -> None:
+        """Single fail-closed chokepoint for every auto Backlog-or-unstarted close.
+
+        Refuses the ``save_issue(state="Done")`` write unless ``evidence`` carries
+        a recognized durable evidence kind with a non-empty detail (OMN-13817).
+        A no-evidence attempt — the ``wf_1628d9a5`` signature — raises
+        :class:`CloseEvidenceRefusedError` before any mutation reaches Linear, so
+        no ticket is closed without a merged PR / superseding PR / all-children
+        roll-up / OCC receipt. Every close call site MUST route through here; do
+        not call ``client.save_issue(..., state="Done")`` directly.
+        """
+        enforce_close_evidence(ticket_id=ticket.identifier, evidence=evidence)
+        client.save_issue(issue_id=ticket.id, state="Done")
+        client.save_comment(issue_id=ticket.id, body=comment)
+
     def _apply_merged_pr(
         self,
         ticket: ModelLinearTicket,
@@ -1096,12 +1123,16 @@ class HandlerLinearTriage:
 
         if not dry_run:
             try:
-                client.save_issue(issue_id=ticket.id, state="Done")
-                client.save_comment(
-                    issue_id=ticket.id,
-                    body=(
+                self._mark_done(
+                    client=client,
+                    ticket=ticket,
+                    comment=(
                         f"Auto-closed by linear-triage: PR #{merged_pr.get('number')} "
                         f"merged {merged_at}\n{pr_url}"
+                    ),
+                    evidence=ModelCloseEvidence(
+                        kind=EnumCloseEvidenceKind.MERGED_IMPLEMENTING_PR,
+                        detail=evidence,
                     ),
                 )
                 return (
@@ -1243,14 +1274,18 @@ class HandlerLinearTriage:
 
         if not dry_run:
             try:
-                client.save_issue(issue_id=ticket.id, state="Done")
-                client.save_comment(
-                    issue_id=ticket.id,
-                    body=(
+                self._mark_done(
+                    client=client,
+                    ticket=ticket,
+                    comment=(
                         f"Auto-closed by linear-triage: work delivered via sibling PR "
                         f"#{sibling.get('number')} in {sibling.get('repo')} merged "
                         f"{sibling.get('mergedAt')}\n{sibling.get('url')}\n"
                         f"(Original PR #{closed_pr_num} was closed as superseded)"
+                    ),
+                    evidence=ModelCloseEvidence(
+                        kind=EnumCloseEvidenceKind.SUPERSEDED_BY_MERGED_PR,
+                        detail=evidence,
                     ),
                 )
                 return (
@@ -1383,12 +1418,16 @@ class HandlerLinearTriage:
             )
             if not dry_run:
                 try:
-                    client.save_issue(issue_id=ticket.id, state="Done")
-                    client.save_comment(
-                        issue_id=ticket.id,
-                        body=(
+                    self._mark_done(
+                        client=client,
+                        ticket=ticket,
+                        comment=(
                             f"Auto-closed by linear-triage: all {len(children)} child "
                             f"tickets are Done.\nChildren: {child_ids}"
+                        ),
+                        evidence=ModelCloseEvidence(
+                            kind=EnumCloseEvidenceKind.ALL_CHILDREN_DONE,
+                            detail=evidence,
                         ),
                     )
                     epics_closed += 1
