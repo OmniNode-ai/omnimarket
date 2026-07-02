@@ -640,8 +640,8 @@ def _receipt_is_pass_for_ticket(payload: dict[str, object], ticket_id: str) -> b
       ``ADVISORY`` / missing status is rejected — mirroring the non-PASS
       rejection in ``DurableEvidenceGate`` / ``extract_receipt_merge_commits``.
     * ``run_timestamp`` is a non-blank string. This rejects the legacy
-      ``timestamp``/``result`` schema and partial/stale stubs (same requirement
-      the DoD-completion guard imposes).
+      ``timestamp``/``result`` schema and partial/stale receipts (same
+      requirement the DoD-completion guard imposes).
     * ``ticket_id`` matches (case-insensitive) — a receipt for a different
       ticket never authorizes this ticket's close.
 
