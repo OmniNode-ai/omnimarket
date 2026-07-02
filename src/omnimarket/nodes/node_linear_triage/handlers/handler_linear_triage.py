@@ -14,11 +14,15 @@ import json
 import logging
 import os
 import re
+import subprocess
 import urllib.parse
 import urllib.request
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Protocol, runtime_checkable
+
+import yaml
+from omnibase_core.enums.ticket.enum_receipt_status import EnumReceiptStatus
 
 from omnimarket.config.service_endpoints import (
     GITHUB_GRAPHQL_URL,
@@ -583,6 +587,188 @@ def _is_implementation_pr(pr: dict[str, str]) -> bool:
     return pr.get("repo", "") != _OCC_REPO
 
 
+# ---------------------------------------------------------------------------
+# OMN-13853: OCC-receipt durable close evidence.
+#
+# The platform (node_pr_lifecycle_fix_effect / OccContractAdapter) writes one
+# node_dod_verify receipt per evidence item at
+# ``drift/dod_receipts/<TICKET>/<EVIDENCE_ITEM>/command.yaml`` on the OCC
+# governance ref. OCC governance is dev-targeted — contracts and receipts land
+# on ``dev`` first and are batched to ``main`` later (OMN-12593) — so the
+# governance ref is ``origin/dev``. A tracked ``status == PASS`` receipt there
+# is durable close evidence for the OCC_RECEIPT gate kind, even absent a live
+# merged-PR match. Constants are defined locally rather than imported from
+# node_dod_verify to respect the omnimarket cross-node import boundary.
+# ---------------------------------------------------------------------------
+_OCC_REPO_DIRNAME = "onex_change_control"
+_OCC_GOVERNANCE_REF = "origin/dev"
+_OCC_RECEIPT_DIR_PREFIX = "drift/dod_receipts"
+_PASS_STATUS = EnumReceiptStatus.PASS.value
+
+
+def _occ_receipt_dir(ticket_id: str) -> str:
+    """Return the OCC-root-relative receipt directory for ``ticket_id``.
+
+    The platform writes one receipt per evidence item under this directory.
+    Pure function — no I/O.
+    """
+    return f"{_OCC_RECEIPT_DIR_PREFIX}/{ticket_id}"
+
+
+def _parse_receipt_payload(raw: str) -> dict[str, object] | None:
+    """Parse a receipt file body (YAML or JSON) into a dict, else ``None``.
+
+    YAML is a JSON superset, so ``yaml.safe_load`` handles both the
+    ``command.yaml`` platform receipts and the JSON ``dod_report`` form. A
+    non-mapping or unparseable body is rejected (fail-closed). Pure function.
+    """
+    try:
+        loaded = yaml.safe_load(raw)
+    except yaml.YAMLError:
+        return None
+    if isinstance(loaded, dict):
+        return loaded
+    return None
+
+
+def _receipt_is_pass_for_ticket(payload: dict[str, object], ticket_id: str) -> bool:
+    """True when ``payload`` is a schema-valid PASS receipt bound to ``ticket_id``.
+
+    Fail-closed. A receipt qualifies only when all hold:
+
+    * ``status`` is present and equals ``PASS`` (case-insensitive). A ``FAIL`` /
+      ``ADVISORY`` / missing status is rejected — mirroring the non-PASS
+      rejection in ``DurableEvidenceGate`` / ``extract_receipt_merge_commits``.
+    * ``run_timestamp`` is a non-blank string. This rejects the legacy
+      ``timestamp``/``result`` schema and partial/stale stubs (same requirement
+      the DoD-completion guard imposes).
+    * ``ticket_id`` matches (case-insensitive) — a receipt for a different
+      ticket never authorizes this ticket's close.
+
+    Pure function — no I/O.
+    """
+    status = payload.get("status")
+    if not isinstance(status, str) or status.upper() != _PASS_STATUS.upper():
+        return False
+    run_ts = payload.get("run_timestamp")
+    if not isinstance(run_ts, str) or not run_ts.strip():
+        return False
+    receipt_ticket = payload.get("ticket_id")
+    if not isinstance(receipt_ticket, str):
+        return False
+    return _norm_omn(receipt_ticket) == _norm_omn(ticket_id)
+
+
+@runtime_checkable
+class OccReceiptProbe(Protocol):
+    """Probe: is a tracked, PASS node_dod_verify OCC receipt present for a ticket?
+
+    Returns the OCC-root-relative receipt directory (the durable-evidence detail
+    string) when at least one schema-valid ``status == PASS`` receipt bound to
+    ``ticket_id`` is tracked under ``drift/dod_receipts/<ticket_id>/`` on the OCC
+    governance ref, else ``None``. Fail-closed: a missing repo, unset env,
+    subprocess failure, malformed receipt, mismatched ticket id, or non-PASS
+    status all return ``None`` so no OCC_RECEIPT evidence is constructed.
+    """
+
+    def occ_receipt_detail(self, *, ticket_id: str) -> str | None: ...
+
+
+class OccReceiptSubprocessProbe:
+    """Default :class:`OccReceiptProbe` backed by ``git`` against the OCC clone.
+
+    Resolves the OCC repo from ``$OMNI_HOME/onex_change_control`` and probes the
+    governance ref (``origin/dev``) with ``git ls-tree`` + ``git show``. Every
+    failure mode is fail-closed (returns ``None``): the gate never accepts an
+    OCC_RECEIPT close it could not positively prove from a tracked PASS receipt.
+    """
+
+    def __init__(
+        self,
+        *,
+        occ_repo_path: Path | None = None,
+        governance_ref: str = _OCC_GOVERNANCE_REF,
+    ) -> None:
+        self._governance_ref = governance_ref
+        if occ_repo_path is not None:
+            self._occ_repo_path: Path | None = occ_repo_path
+            return
+        omni_home = os.environ.get("OMNI_HOME")
+        if not omni_home:
+            _log.warning(
+                "OMNI_HOME is not set — OCC-receipt close evidence is unavailable; "
+                "OCC_RECEIPT closes are fail-closed off (OMN-13853)."
+            )
+            self._occ_repo_path = None
+        else:
+            self._occ_repo_path = Path(omni_home) / _OCC_REPO_DIRNAME
+
+    def occ_receipt_detail(self, *, ticket_id: str) -> str | None:
+        if self._occ_repo_path is None or not self._occ_repo_path.is_dir():
+            return None
+        receipt_dir = _occ_receipt_dir(ticket_id)
+        tracked = self._ls_tree(receipt_dir)
+        if not tracked:
+            return None
+        for rel_path in tracked:
+            payload = self._show(rel_path)
+            if payload is None:
+                continue
+            if _receipt_is_pass_for_ticket(payload, ticket_id):
+                return receipt_dir
+        return None
+
+    def _ls_tree(self, receipt_dir: str) -> list[str]:
+        """List receipt files tracked under ``receipt_dir`` on the governance ref."""
+        try:
+            proc = subprocess.run(
+                [
+                    "git",
+                    "-C",
+                    str(self._occ_repo_path),
+                    "ls-tree",
+                    "-r",
+                    "--name-only",
+                    self._governance_ref,
+                    "--",
+                    receipt_dir,
+                ],
+                capture_output=True,
+                text=True,
+                timeout=15,
+                check=False,
+            )
+        except (subprocess.TimeoutExpired, FileNotFoundError, OSError) as exc:
+            _log.warning("OCC ls-tree failed for %s: %s", receipt_dir, exc)
+            return []
+        if proc.returncode != 0:
+            return []
+        return [line.strip() for line in proc.stdout.splitlines() if line.strip()]
+
+    def _show(self, rel_path: str) -> dict[str, object] | None:
+        """Load and parse the receipt at ``rel_path`` on the governance ref."""
+        try:
+            proc = subprocess.run(
+                [
+                    "git",
+                    "-C",
+                    str(self._occ_repo_path),
+                    "show",
+                    f"{self._governance_ref}:{rel_path}",
+                ],
+                capture_output=True,
+                text=True,
+                timeout=15,
+                check=False,
+            )
+        except (subprocess.TimeoutExpired, FileNotFoundError, OSError) as exc:
+            _log.warning("OCC show failed for %s: %s", rel_path, exc)
+            return None
+        if proc.returncode != 0:
+            return None
+        return _parse_receipt_payload(proc.stdout)
+
+
 def _norm_omn(value: str) -> str:
     """Upper-case + strip an OMN id for case-insensitive comparison."""
     return value.strip().upper()
@@ -790,9 +976,11 @@ class HandlerLinearTriage:
         self,
         client: LinearClientProtocol | None = None,
         github_client: GitHubClientProtocol | None = None,
+        occ_receipt_probe: OccReceiptProbe | None = None,
     ) -> None:
         self._client = client
         self._github_client = github_client
+        self._occ_receipt_probe = occ_receipt_probe
 
     def _get_client(self) -> LinearClientProtocol:
         if self._client is not None:
@@ -817,6 +1005,18 @@ class HandlerLinearTriage:
                 "ensure GITHUB_TOKEN is set in the secret store."
             )
         return GitHubHttpClient(secret.get_secret_value())
+
+    def _get_occ_receipt_probe(self) -> OccReceiptProbe:
+        """Return the OCC-receipt probe, lazily constructing the git-backed default.
+
+        The default :class:`OccReceiptSubprocessProbe` is fail-closed — when the
+        OCC clone or ``OMNI_HOME`` is unavailable it returns ``None`` for every
+        ticket, so the OCC_RECEIPT close path stays inert rather than closing
+        without proof (OMN-13853).
+        """
+        if self._occ_receipt_probe is None:
+            self._occ_receipt_probe = OccReceiptSubprocessProbe()
+        return self._occ_receipt_probe
 
     async def handle(
         self, request: ModelLinearTriageStartCommand
@@ -1022,6 +1222,29 @@ class HandlerLinearTriage:
                     suppressed.append(suppressed_entry)
                 continue
 
+            # OCC-receipt close (OMN-13853): a tracked PASS node_dod_verify
+            # receipt on the OCC governance ref is durable close evidence even
+            # without a live merged-PR match. Fail-closed — the probe returns
+            # None on missing / non-PASS / unavailable receipts, so this path
+            # never closes the wf_1628d9a5 no-evidence signature.
+            occ_detail = self._get_occ_receipt_probe().occ_receipt_detail(
+                ticket_id=ticket.identifier
+            )
+            if occ_detail is not None:
+                new_actions, delta, suppressed_entry = self._apply_occ_receipt(
+                    ticket,
+                    occ_detail,
+                    client,
+                    dry_run,
+                    flag_only,
+                    has_open_children=has_open_children,
+                )
+                actions.extend(new_actions)
+                marked_done += delta
+                if suppressed_entry:
+                    suppressed.append(suppressed_entry)
+                continue
+
             new_actions, delta, suppressed_entry = self._check_superseded_pr(
                 ticket,
                 gh,
@@ -1155,6 +1378,112 @@ class HandlerLinearTriage:
                             ticket_title=ticket.title,
                             action=EnumTriageAction.FLAG_STALE,
                             evidence=f"Mutation failed: {exc}",
+                        )
+                    ],
+                    0,
+                    None,
+                )
+
+        return (
+            [
+                ModelTriageAction(
+                    ticket_id=ticket.identifier,
+                    ticket_title=ticket.title,
+                    action=action_name,
+                    evidence=evidence,
+                )
+            ],
+            0,
+            None,
+        )
+
+    def _apply_occ_receipt(
+        self,
+        ticket: ModelLinearTicket,
+        receipt_detail: str,
+        client: LinearClientProtocol,
+        dry_run: bool,
+        flag_only: bool,
+        *,
+        has_open_children: bool = False,
+    ) -> tuple[list[ModelTriageAction], int, str | None]:
+        """Mark a ticket Done given a tracked PASS node_dod_verify OCC receipt.
+
+        Constructs ``ModelCloseEvidence(kind=OCC_RECEIPT, detail=<receipt dir>)``
+        and routes through the :meth:`_mark_done` chokepoint (OMN-13853). Mirrors
+        :meth:`_apply_merged_pr`: ``flag_only`` overrides ``dry_run`` and the same
+        OMN-13759 open-children guard applies — a parent/epic with a non-done
+        child must close via the all-children-done path, not a receipt.
+
+        Returns (actions, count, suppressed_entry). ``receipt_detail`` is the
+        OCC-root-relative receipt directory the probe positively verified; the
+        probe is the sole authority for whether a durable PASS receipt exists, so
+        reaching this method means the evidence is real.
+        """
+        evidence = f"OCC receipt tracked on {_OCC_GOVERNANCE_REF}: {receipt_detail}"
+
+        # Guard: epic / parent with open children — never close on a receipt.
+        if has_open_children:
+            _log.info(
+                "%s has open children — suppressing OCC-receipt close (OMN-13759)",
+                ticket.identifier,
+            )
+            return [], 0, None
+
+        # flag_only is the outer safety gate — it overrides dry_run.
+        if flag_only:
+            suppressed_entry = f"{ticket.identifier} (occ-receipt): {evidence}"
+            return (
+                [
+                    ModelTriageAction(
+                        ticket_id=ticket.identifier,
+                        ticket_title=ticket.title,
+                        action=EnumTriageAction.WOULD_MARK_DONE,
+                        evidence=evidence,
+                    )
+                ],
+                0,
+                suppressed_entry,
+            )
+
+        action_name = (
+            EnumTriageAction.WOULD_MARK_DONE if dry_run else EnumTriageAction.MARK_DONE
+        )
+
+        if not dry_run:
+            try:
+                self._mark_done(
+                    client=client,
+                    ticket=ticket,
+                    comment=(
+                        "Auto-closed by linear-triage: durable node_dod_verify OCC "
+                        f"receipt tracked on {_OCC_GOVERNANCE_REF}\n{receipt_detail}"
+                    ),
+                    evidence=ModelCloseEvidence(
+                        kind=EnumCloseEvidenceKind.OCC_RECEIPT,
+                        detail=evidence,
+                    ),
+                )
+                return (
+                    [
+                        ModelTriageAction(
+                            ticket_id=ticket.identifier,
+                            ticket_title=ticket.title,
+                            action=action_name,
+                            evidence=evidence,
+                        )
+                    ],
+                    1,
+                    None,
+                )
+            except Exception as exc:
+                return (
+                    [
+                        ModelTriageAction(
+                            ticket_id=ticket.identifier,
+                            ticket_title=ticket.title,
+                            action=EnumTriageAction.FLAG_STALE,
+                            evidence=f"OCC-receipt mutation failed: {exc}",
                         )
                     ],
                     0,
