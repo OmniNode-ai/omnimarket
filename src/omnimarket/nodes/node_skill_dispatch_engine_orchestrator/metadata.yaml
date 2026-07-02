@@ -1,8 +1,9 @@
 name: node_skill_dispatch_engine_orchestrator
 version: "1.0.0"
 description: >
-  Scaffold orchestrator node for the dispatch_engine skill. Live dispatch
-  returns a "dispatched" placeholder — real wiring is follow-up.
+  Thin router orchestrator for the dispatch_engine skill: routes a candidate
+  ticket set through RSD scoring then self-healing per-repo fan-out, returning
+  a real dispatch receipt with concrete worker specs.
 omnibase_core_compat: ">=0.39.0,<1.0.0"
 entry_points:
   onex.nodes:
@@ -19,7 +20,7 @@ dependencies:
   - "omnibase_core>=0.39.0"
 authors: ["OmniNode Platform Team"]
 license: "MIT"
-tags: ["orchestrator", "skill", "dispatch_engine", "scaffold"]
+tags: ["orchestrator", "skill", "dispatch_engine", "router"]
 pack: "pipeline"
 display_name: "Dispatch Engine Orchestrator"
 node_role: "orchestrator"

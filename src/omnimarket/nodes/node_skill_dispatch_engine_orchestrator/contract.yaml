@@ -5,9 +5,11 @@
 # Node: NodeSkillDispatchEngineOrchestrator
 # Skill: dispatch_engine
 #
-# Orchestrator shell node: dispatches skill invocations to the polymorphic
-# agent via HandlerSkillRequested. Scaffold — live dispatch returns a
-# "dispatched" placeholder; real wiring is follow-up work.
+# Thin router node: routes a dispatch request through RSD scoring
+# (node_rsd_fill_compute) then self-healing per-repo fan-out
+# (node_self_healing_dispatch_orchestrator), returning a real dispatch receipt
+# with concrete worker specs. Routing lives in HandlerDispatchEngineRouter;
+# the skill-lifecycle boundary lives in HandlerSkillRequested. (OMN-13834)
 
 name: node_skill_dispatch_engine_orchestrator
 contract_name: node_skill_dispatch_engine_orchestrator
@@ -26,11 +28,13 @@ node_version:
 node_type: ORCHESTRATOR_GENERIC
 
 description: >
-  Orchestrator node for the dispatch_engine skill.
-  Polls the work backlog and dispatches builders for gaps. Scaffold only:
-  live dispatch returns a "dispatched" string placeholder — real dispatch
-  wiring is follow-up work. Subscribes to command events, emits outcome
-  events on success or failure.
+  Orchestrator node for the dispatch_engine skill. A thin router over two
+  already-real pieces: RSD scoring (node_rsd_fill_compute) turns a candidate
+  ticket set into ranked candidates, then self-healing dispatch
+  (node_self_healing_dispatch_orchestrator) groups survivors per repo into
+  concrete worker specs. Returns a real dispatch receipt (worker specs, not a
+  placeholder string). Subscribes to command events, emits outcome events on
+  success or failure.
 
 input_model:
   name: ModelSkillRequest
@@ -69,6 +73,9 @@ io_operations:
     output_fields:
       - skill_name: str
       - status: str
+      - run_id: str
+      - total_selected: int
+      - worker_specs: list
     idempotent: false
 
 handler_routing:
@@ -101,10 +108,10 @@ error_handling:
 metadata:
   author: OmniNode Team
   license: MIT
-  maturity: stub
-  ticket: OMN-8821
+  maturity: beta
+  ticket: OMN-13834
   tags:
     - orchestrator
     - skill
     - dispatch_engine
-    - scaffold
+    - router
