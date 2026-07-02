@@ -9,6 +9,7 @@ Scans repository directories for common AI-slop patterns:
 - Empty implementations (bare pass in non-abstract src files)
 - TODO/FIXME markers in source code
 - Hardcoded configuration values (IPs, ports, DB names, API URLs)
+- Hardcoded absolute paths (/Users/..., /Volumes/...) — CLAUDE.md rule #6
 
 ONEX node type: COMPUTE — pure, deterministic, no LLM calls.
 """
@@ -213,6 +214,14 @@ _HARDCODED_CONFIG_PATTERNS: list[tuple[re.Pattern[str], str, str, str]] = [
     ),
 ]
 
+# CLAUDE.md rule #6: any string starting with /Users/ or /Volumes/ in source
+# code is a cross-machine portability bug. Mirrors ARCH-005 in
+# node_architectural_invariant_loop's static-architecture invariant set.
+_HARDCODED_PATH_PATTERN = re.compile(r'["\']/(Users|Volumes)/[^"\']+["\']')
+
+# Allowlist annotations honored on the same line as the flagged literal.
+_PATH_ALLOWLIST_MARKERS = ("local-path-ok", "onex-allow-internal-ip", "noqa")
+
 
 # ---------------------------------------------------------------------------
 # Handler
@@ -233,6 +242,7 @@ class NodeAislopSweep:
         "empty-impls",
         "todo-fixme",
         "hardcoded-config",
+        "hardcoded-paths",
     ]
 
     def __init__(
@@ -302,6 +312,10 @@ class NodeAislopSweep:
                 if "hardcoded-config" in checks:
                     findings.extend(
                         self._check_hardcoded_config(repo_name, rel_path, lines)
+                    )
+                if "hardcoded-paths" in checks:
+                    findings.extend(
+                        self._check_hardcoded_paths(repo_name, rel_path, lines)
                     )
 
         elapsed = time.monotonic() - start_ts
@@ -520,4 +534,31 @@ class NodeAislopSweep:
                         )
                     )
                     break  # one finding per line per check category
+        return findings
+
+    def _check_hardcoded_paths(
+        self, repo: str, path: str, lines: list[str]
+    ) -> list[ModelSweepFinding]:
+        """CLAUDE.md rule #6: no hardcoded /Users/ or /Volumes/ absolute paths.
+
+        Honors the `# local-path-ok` / `# onex-allow-internal-ip` allowlist
+        annotations on the same line as the flagged literal (matches the
+        ARCH-005 invariant in node_architectural_invariant_loop).
+        """
+        findings = []
+        for i, line in enumerate(lines, 1):
+            if any(marker in line for marker in _PATH_ALLOWLIST_MARKERS):
+                continue
+            if _HARDCODED_PATH_PATTERN.search(line):
+                findings.append(
+                    ModelSweepFinding(
+                        repo=repo,
+                        path=path,
+                        line=i,
+                        check="hardcoded-paths",
+                        message=f"Hardcoded absolute path: {line.strip()[:80]}",
+                        severity="ERROR",
+                        confidence="HIGH",
+                    )
+                )
         return findings
