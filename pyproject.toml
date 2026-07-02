@@ -29,7 +29,11 @@ classifiers = [
     "Typing :: Typed",
 ]
 dependencies = [
-    "omnibase_core>=0.45.0,<0.47.0",
+    # OMN-13836: bump core lower bound to the current resolvable range
+    # (core>=0.46.1) consistent with OMN-13822 and omnibase_infra @main
+    # (core>=0.46.1,<0.47.0 / spi>=0.23.0,<0.24.0). Name normalized to the
+    # hyphenated distribution name to match the rest of the block.
+    "omnibase-core>=0.46.1,<0.47.0",
     "omnibase-compat==0.5.5",
     "omnibase-spi>=0.23.0,<0.24.0",
     "omnibase-infra>=0.38.3,<0.39.0",
@@ -440,11 +444,24 @@ omninode-memory = { git = "https://github.com/OmniNode-ai/omnimemory.git", rev =
 onex-change-control = { git = "https://github.com/OmniNode-ai/onex_change_control.git", rev = "dd2620d18001495b8d0f493b421b38399e9aab4b" }
 
 [tool.uv]
+# OMN-13836: these overrides exist to force the ONEX core/spi/infra/compat
+# versions past omninode-memory==0.15.0's stale transitive hard-pins
+# (core==0.40.1 / spi==0.20.6 / infra==0.34.2) so omnimarket's own lock
+# resolves during local cross-repo dev.
+#
+# The previous form git-pinned core/infra/compat to foreign revs
+# (core@29e9057=0.46.2, infra@7e52d5b=0.38.4, compat@c0fc716=0.5.5). Those
+# git-URL overrides are the "conflicting-URL" source that made omnimarket
+# unresolvable when consumed as a declared dependency (OMN-13829): a git-URL
+# override forces a URL requirement that clashes with a consumer's own
+# core/infra pins. Relaxed to version-range overrides that match the
+# current resolvable ranges (core>=0.46.1, spi>=0.23.0) — same override
+# function, no foreign URLs.
 override-dependencies = [
-    "omnibase-core @ git+https://github.com/OmniNode-ai/omnibase_core.git@29e9057b4a3604c8add623eacac86f1b537defdb",
+    "omnibase-core>=0.46.1,<0.47.0",
     "omnibase-spi>=0.23.0,<0.24.0",
-    "omnibase-infra @ git+https://github.com/OmniNode-ai/omnibase_infra.git@7e52d5b0046c394b38454b97157e7a7191e6f008",
-    "omnibase-compat @ git+https://github.com/OmniNode-ai/omnibase_compat.git@c0fc71681d046e840e0997c04bd26176785a2992",
+    "omnibase-infra>=0.38.3,<0.39.0",
+    "omnibase-compat==0.5.5",
 ]
 
 [tool.hatch.build.targets.wheel]
