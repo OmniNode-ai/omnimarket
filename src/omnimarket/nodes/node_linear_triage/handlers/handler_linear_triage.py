@@ -1045,7 +1045,7 @@ class HandlerLinearTriage:
         comment: str,
         evidence: ModelCloseEvidence,
     ) -> None:
-        """Single fail-closed chokepoint for every auto Backlog/Todo -> Done flip.
+        """Single fail-closed chokepoint for every auto Backlog-or-unstarted close.
 
         Refuses the ``save_issue(state="Done")`` write unless ``evidence`` carries
         a recognized durable evidence kind with a non-empty detail (OMN-13817).
