@@ -41,9 +41,14 @@ logger = logging.getLogger(__name__)
 # OMN-13470: task classes whose deterministic check set is a hard floor but is too
 # strict to be the sole adequacy authority — the LLM-judge adequacy score is
 # combined with the deterministic graded score for these classes.
-_JUDGE_COMBINABLE_TASK_TYPES: frozenset[str] = frozenset(
+#
+# OMN-13849: exposed as the single public source of the judge-combinable task set
+# so the bus-less local dispatch path applies the SAME set of classes (parity with
+# this bus intent handler) instead of re-declaring a drift-prone copy.
+JUDGE_COMBINABLE_TASK_TYPES: frozenset[str] = frozenset(
     {"code_generation", "test", "validator_generation"}
 )
+_JUDGE_COMBINABLE_TASK_TYPES = JUDGE_COMBINABLE_TASK_TYPES
 
 _CONTRACT_PATH = Path(__file__).parent.parent / "contract.yaml"
 
@@ -174,4 +179,4 @@ class HandlerQualityGateIntent:
         )
 
 
-__all__ = ["HandlerQualityGateIntent"]
+__all__ = ["JUDGE_COMBINABLE_TASK_TYPES", "HandlerQualityGateIntent"]

@@ -37,11 +37,29 @@ from omnimarket.nodes.node_delegate_skill_orchestrator.ports import (
 from omnimarket.nodes.node_delegate_skill_orchestrator.ports.port_local_delegation_dispatch import (
     LocalDelegationDispatchPort,
 )
+from omnimarket.nodes.node_delegation_quality_gate_reducer.judge.handler_judge_adequacy import (
+    HandlerJudgeAdequacy,
+)
 from omnimarket.nodes.node_llm_delegation_call_effect import (
     ModelLlmDelegationCallRequest,
     ModelLlmDelegationCallResult,
 )
 from omnimarket.routing import delegation_backend_resolution
+from tests.fixtures.judge_inference import CannedAdequacyBridge
+
+
+def _pass_judge() -> HandlerJudgeAdequacy:
+    """A judge scoring every candidate adequate (0.95 -> PASS) for the local path.
+
+    OMN-13849: code_generation is judge-combinable and the local path applies the
+    0.85 required bar. A bare code answer is ~0.733 deterministic-only; this judge
+    lifts it over the bar so the loop-progress assertion (a COMPLETED terminal) is
+    not confounded by an escalation the missing judge would otherwise trigger.
+    """
+    return HandlerJudgeAdequacy(
+        inference_bridge=CannedAdequacyBridge(adequacy_score=0.95)
+    )
+
 
 # Tiny transport timeout (ms) so the contract-resolved ceiling is small and the
 # test runs fast and deterministically.
@@ -208,6 +226,7 @@ def test_dispatch_offloads_blocking_call_off_the_event_loop(
     port = LocalDelegationDispatchPort(
         effect_handler=SlowSuccessfulEffectHandler(),
         evidence_db_path=db_path,
+        judge=_pass_judge(),
     )
 
     async def _concurrent_progress() -> None:

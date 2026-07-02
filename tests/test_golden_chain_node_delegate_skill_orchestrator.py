@@ -29,8 +29,12 @@ from omnimarket.nodes.node_delegate_skill_orchestrator.handlers.handler_delegate
 from omnimarket.nodes.node_delegate_skill_orchestrator.ports.port_local_delegation_dispatch import (
     LocalDelegationDispatchPort,
 )
+from omnimarket.nodes.node_delegation_quality_gate_reducer.judge.handler_judge_adequacy import (
+    HandlerJudgeAdequacy,
+)
 from omnimarket.nodes.node_llm_delegation_call_effect.handlers import transport
 from omnimarket.routing import delegation_backend_resolution
+from tests.fixtures.judge_inference import CannedAdequacyBridge
 
 
 class _StubDispatchPort:
@@ -194,9 +198,17 @@ class TestDelegateSkillGoldenChain:
         )
 
         db_path = tmp_path / "delegation.sqlite"
+        # OMN-13849: `test` is a judge-combinable class and the local path applies
+        # the 0.85 required bar. Inject a passing judge so the single-tier `test`
+        # answer clears the bar (the combine lifts the ~0.733 deterministic-only
+        # score) and the chain stays a single-attempt COMPLETED — this test asserts
+        # the /no_think shaping + one inference call, not the judge-veto path.
         port = LocalDelegationDispatchPort(
             evidence_db_path=db_path,
             effect_process_boundary=False,
+            judge=HandlerJudgeAdequacy(
+                inference_bridge=CannedAdequacyBridge(adequacy_score=0.95)
+            ),
         )
         handler = HandlerDelegateSkill(dispatch_port=port)
         correlation_id = uuid4()
