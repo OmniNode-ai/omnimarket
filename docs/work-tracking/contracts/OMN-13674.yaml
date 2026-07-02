@@ -1,0 +1,60 @@
+---
+schema_version: "1.0.0"
+ticket_id: OMN-13674
+title: "Declared-state coverage: wave-kb-context-knowledge cluster"
+summary: >-
+  Adds full declared-state coverage integration tests for the
+  wave-kb-context-knowledge cluster (node_kb_adr_publisher,
+  node_kb_repowise_index_effect, node_context_bundle_generator_compute,
+  node_candidate_pool_compute), driven over the canonical in-memory bus
+  (EventBusInmemory + LocalRuntimeBusAdapter). The two effect handlers gain a
+  behavior-preserving constructor-injected subprocess runner seam
+  (ProtocolCommandRunner, default = subprocess.run) so their I/O boundary is
+  exercised at every outcome without monkeypatching subprocess, and their
+  handle() signature is made positional-or-keyword so they dispatch over the
+  canonical adapter. No runtime behavior change; the production default path is
+  byte-identical.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+evidence_requirements:
+  - kind: tests
+    description: "Full omnimarket test suite passes (non-kafka)"
+    command: "uv run pytest tests/ -m 'not kafka' -q"
+  - kind: tests
+    description: "New wave-kb-context-knowledge coverage suites pass"
+    command: "uv run pytest tests/integration/node_kb_adr_publisher tests/integration/node_kb_repowise_index_effect tests/integration/node_context_bundle_generator_compute tests/integration/node_candidate_pool_compute -q"
+  - kind: manual
+    description: "Contract-state-coverage gate passes for the four touched nodes"
+    command: "uv run python scripts/validate_state_coverage.py --check-changed origin/dev --strict"
+  - kind: manual
+    description: >-
+      Behavior-preserving test-injection seam on two effect handlers — no
+      runtime restart or Kafka topic change required (default runner is
+      subprocess.run; no deploy performed in this PR)
+    command: "printf '%s\n' 'deploy gate: wave-kb-context-knowledge coverage — behavior-preserving test-injection seam on effect handlers; production default path unchanged; no docker exec or rpk topic produce required'"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: dod-tests
+    description: "Full omnimarket test suite passes (non-kafka)"
+    source: manual
+    checks:
+      - check_type: command
+        check_value: "uv run pytest tests/ -m 'not kafka' -q"
+  - id: dod-coverage
+    description: "Contract-state-coverage gate passes for the four touched nodes"
+    source: manual
+    checks:
+      - check_type: command
+        check_value: "uv run python scripts/validate_state_coverage.py --check-changed origin/dev --strict"
+  - id: dod-deploy
+    description: >-
+      Behavior-preserving test-injection seam on two effect handlers — no
+      runtime restart or Kafka topic change required
+    source: manual
+    checks:
+      - check_type: command
+        check_value: "printf '%s\n' 'deploy gate: wave-kb-context-knowledge coverage — behavior-preserving test-injection seam on effect handlers; production default path unchanged; no docker exec or rpk topic produce required'"
