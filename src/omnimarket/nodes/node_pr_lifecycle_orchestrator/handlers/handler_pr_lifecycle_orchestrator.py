@@ -112,6 +112,32 @@ TOPIC_REPO_HEALTH_CLASSIFY = (
 )
 TOPIC_REPO_HEALTH_REPAIR_START = "onex.cmd.omnimarket.repo-health-repair-start.v1"  # onex-topic-allow: contract-declared
 
+# OMN-13831: indeterminate verification outcomes. For a PR whose changed files
+# map to a real (code-file) verification target, an indeterminate outcome must
+# fail CLOSED — the PR is excluded from the merge set rather than merged
+# unverified. These are NEUTRAL (still merge) only for genuine docs-only /
+# no-mapping PRs (target == SKIPPED_NO_MAPPING).
+_INDETERMINATE_VERIFICATION_OUTCOMES = frozenset(
+    {
+        EnumVerificationOutcome.VERIFICATION_UNAVAILABLE,
+        EnumVerificationOutcome.VERIFICATION_TIMEOUT,
+        EnumVerificationOutcome.VERIFICATION_TOOL_ERROR,
+    }
+)
+
+
+class ChangedFilesUnavailableError(RuntimeError):
+    """Raised when a PR's changed-file list cannot be resolved via ``gh``.
+
+    Distinguishes a *genuinely empty* changed-file list (a successful ``gh`` call
+    that returned zero paths → SKIPPED_NO_MAPPING, a neutral skip) from an
+    *indeterminate* result (the ``gh`` call failed or timed out even after a
+    retry). The orchestrator fails CLOSED on the indeterminate case (OMN-13831):
+    a PR whose changed files cannot be enumerated must never be merged on the
+    assumption that it is docs-only, because a transient ``gh`` outage would
+    otherwise silently let a code PR through unverified.
+    """
+
 
 # ---------------------------------------------------------------------------
 # Input / output models
@@ -1704,17 +1730,27 @@ class HandlerPrLifecycleOrchestrator:
         verification probe for that target is dispatched, and the per-PR
         outcome is classified into one of the 7 OMN-7742/OMN-8390 categories.
 
-        Blocking semantics (OMN-13673):
-          * Only ``VERIFICATION_FAILED`` blocks the PR — it is excluded from the
-            returned set and left open. Its outcome is carried in
-            ``state.verification_outcomes`` and recorded as a terminal FAILED
-            ledger conclusion in the BRANCH_CHECKS phase.
-          * Every other outcome (MERGED / VERIFICATION_UNAVAILABLE /
-            VERIFICATION_TIMEOUT / VERIFICATION_TOOL_ERROR / SKIPPED_NO_MAPPING /
-            SKIPPED_BY_POLICY) is a NEUTRAL skip — the PR proceeds to MERGING.
+        Blocking semantics (OMN-13673 + OMN-13831 fail-closed):
+          * ``VERIFICATION_FAILED`` always blocks the PR — it is excluded from
+            the returned set and left open.
+          * An *indeterminate* outcome (``VERIFICATION_UNAVAILABLE`` /
+            ``VERIFICATION_TIMEOUT`` / ``VERIFICATION_TOOL_ERROR``) blocks the PR
+            when its mapped verification target indicates code files
+            (``target != SKIPPED_NO_MAPPING``) OR when the PR's changed files
+            could not be enumerated at all. Indeterminate verification of code
+            must fail CLOSED — a transient probe/gh failure must never let a code
+            PR merge unverified (OMN-13831).
+          * NEUTRAL (still merges): a successful ``MERGED`` verification, a
+            genuine docs-only / no-mapping PR (``SKIPPED_NO_MAPPING``), an
+            indeterminate outcome on a docs-only / no-mapping PR, and
+            ``SKIPPED_BY_POLICY`` (dry_run).
 
-        Per-PR isolation: a probe error for one PR yields VERIFICATION_TOOL_ERROR
-        for that PR only (a neutral skip) and never aborts the batch.
+        Blocked PRs record a terminal FAILED ledger conclusion in the
+        BRANCH_CHECKS phase so the durable ledger reflects that they did not
+        merge for verification reasons.
+
+        Per-PR isolation: a probe error (or an un-enumerable changed-file list)
+        for one PR affects only that PR and never aborts the batch.
 
         In ``dry_run`` the gate classifies every PR as ``SKIPPED_BY_POLICY``
         without executing real probes, so the 7-category breakdown is still
@@ -1723,6 +1759,7 @@ class HandlerPrLifecycleOrchestrator:
         cleared: list[TriageRecord] = []
         for pr in merge_prs:
             target = EnumVerificationTarget.SKIPPED_NO_MAPPING
+            changed_files_unavailable = False
             try:
                 target = self._verification_target_for(pr.repo, pr.pr_number)
                 if command.dry_run:
@@ -1734,9 +1771,23 @@ class HandlerPrLifecycleOrchestrator:
                         target=target,
                         timeout_seconds=command.verify_timeout_seconds,
                     )
+            except ChangedFilesUnavailableError as exc:
+                # Fail CLOSED (OMN-13831): the PR's changed files could not be
+                # enumerated even after a retry, so we cannot prove it is
+                # docs-only. Treat it as an indeterminate code PR and block below.
+                logger.warning(
+                    "[PR-LIFECYCLE-ORCH] changed files unavailable for "
+                    "repo=%s pr=%d — failing closed (not merging): %s",
+                    pr.repo,
+                    pr.pr_number,
+                    exc,
+                )
+                changed_files_unavailable = True
+                outcome = EnumVerificationOutcome.VERIFICATION_UNAVAILABLE
             except Exception as exc:
-                # Per-PR isolation — a probe failure for one PR is a neutral
-                # tool error, never an abort of the whole batch.
+                # Per-PR isolation — a probe failure for one PR is an
+                # indeterminate tool error for that PR only, never an abort of
+                # the whole batch. Whether it BLOCKS depends on the target below.
                 logger.exception(
                     "[PR-LIFECYCLE-ORCH] verification probe raised for "
                     "repo=%s pr=%d target=%s: %s",
@@ -1762,7 +1813,16 @@ class HandlerPrLifecycleOrchestrator:
                 target.value,
             )
 
-            if outcome == EnumVerificationOutcome.VERIFICATION_FAILED:
+            # Fail-closed blocking decision (OMN-13673 + OMN-13831).
+            is_code_pr = (
+                changed_files_unavailable
+                or target != EnumVerificationTarget.SKIPPED_NO_MAPPING
+            )
+            should_block = outcome == EnumVerificationOutcome.VERIFICATION_FAILED or (
+                outcome in _INDETERMINATE_VERIFICATION_OUTCOMES and is_code_pr
+            )
+
+            if should_block:
                 # Blocked: the PR stays open. Record a terminal FAILED ledger
                 # conclusion in the BRANCH_CHECKS phase (state.phase == VERIFYING
                 # maps to BRANCH_CHECKS) so the durable ledger reflects that it
@@ -1806,48 +1866,72 @@ class HandlerPrLifecycleOrchestrator:
         """Return a PR's changed file paths via the gh CLI.
 
         Overridable in tests (or subclasses) to avoid real network calls.
-        Returns an empty list on any error (→ SKIPPED_NO_MAPPING, a neutral
-        skip) so a transient gh failure never blocks a merge.
+
+        Returns an empty list ONLY when ``gh`` succeeds and the PR genuinely has
+        zero changed paths (→ SKIPPED_NO_MAPPING, a neutral skip). On a ``gh``
+        failure the call is retried once; if it still fails this raises
+        ``ChangedFilesUnavailableError`` rather than returning ``[]`` (OMN-13831).
+        Silently returning ``[]`` on error would map a transient ``gh`` outage to
+        a neutral no-mapping skip and let a code PR merge unverified — so the
+        indeterminate case must be surfaced and fail CLOSED upstream.
         """
         import subprocess
 
-        try:
-            proc = subprocess.run(
-                [
-                    "gh",
-                    "pr",
-                    "view",
-                    str(pr_number),
-                    "--repo",
-                    repo,
-                    "--json",
-                    "files",
-                    "--jq",
-                    ".files[].path",
-                ],
-                capture_output=True,
-                text=True,
-                timeout=30,
-            )
-            if proc.returncode != 0:
+        attempts = 2
+        last_error = "<unknown>"
+        for attempt in range(1, attempts + 1):
+            try:
+                proc = subprocess.run(
+                    [
+                        "gh",
+                        "pr",
+                        "view",
+                        str(pr_number),
+                        "--repo",
+                        repo,
+                        "--json",
+                        "files",
+                        "--jq",
+                        ".files[].path",
+                    ],
+                    capture_output=True,
+                    text=True,
+                    timeout=30,
+                )
+            except Exception as exc:
+                last_error = f"{type(exc).__name__}: {exc}"
                 logger.warning(
-                    "[PR-LIFECYCLE-ORCH] gh pr view files failed for %s#%d "
-                    "(returncode=%d): %s",
+                    "[PR-LIFECYCLE-ORCH] gh pr view files raised for %s#%d "
+                    "(attempt %d/%d): %s",
                     repo,
                     pr_number,
+                    attempt,
+                    attempts,
+                    exc,
+                )
+                continue
+
+            if proc.returncode != 0:
+                last_error = proc.stderr.strip() or f"returncode={proc.returncode}"
+                logger.warning(
+                    "[PR-LIFECYCLE-ORCH] gh pr view files failed for %s#%d "
+                    "(attempt %d/%d, returncode=%d): %s",
+                    repo,
+                    pr_number,
+                    attempt,
+                    attempts,
                     proc.returncode,
                     proc.stderr.strip() or "<no stderr>",
                 )
-                return []
+                continue
+
+            # Success: an empty stdout here is a GENUINE zero-changed-files PR.
             return [line.strip() for line in proc.stdout.splitlines() if line.strip()]
-        except Exception as exc:
-            logger.warning(
-                "[PR-LIFECYCLE-ORCH] failed to list changed files for %s#%d: %s",
-                repo,
-                pr_number,
-                exc,
-            )
-            return []
+
+        raise ChangedFilesUnavailableError(
+            f"gh pr view files failed for {repo}#{pr_number} after "
+            f"{attempts} attempts: {last_error}"
+        )
 
     async def _execute_verification_probe(
         self,
