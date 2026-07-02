@@ -29,6 +29,24 @@ class ModelProjectionResult(BaseModel):
 class HandlerProjectionDepHealth:
     """Project dep-health-sweep-completed events into dep_health_findings table."""
 
+    def handle(self, input_data: dict[str, object]) -> dict[str, object]:
+        """RuntimeLocal handler protocol shim.
+
+        The runtime auto-wiring dispatches projection reducers via ``handle()``,
+        not ``project()`` — it injects the ``DatabaseAdapter`` at
+        ``input_data['_db']`` and passes the remaining keys as the event payload.
+        Without this shim the runtime raised ``AttributeError: 'HandlerProjectionDepHealth'
+        object has no attribute 'handle'`` and silently dropped every event, so
+        ``dep_health_findings`` never materialized a row (OMN-13825). Mirrors
+        ``HandlerProjectionSwarm.handle``.
+        """
+        db_raw = input_data.pop("_db", None)
+        if not isinstance(db_raw, DatabaseAdapter):
+            raise TypeError("handle() requires a DatabaseAdapter in input_data['_db']")
+        event = ModelDepHealthSweepCompletedEvent(**input_data)
+        result = self.project(event, db_raw)
+        return result.model_dump(mode="json")
+
     def project(
         self,
         event: ModelDepHealthSweepCompletedEvent,

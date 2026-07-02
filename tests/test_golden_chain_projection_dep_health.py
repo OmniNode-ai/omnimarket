@@ -7,6 +7,8 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from pathlib import Path
 
+import pytest
+
 from omnimarket.nodes.node_dependency_health_sweep.models.model_dep_health_finding import (
     EnumDepHealthFindingType,
     EnumDepHealthSeverity,
@@ -124,3 +126,39 @@ class TestProjectionDepHealth:
             in contract["event_bus"]["subscribe_topics"]
         )
         assert contract["node_type"] == "reducer"
+
+
+class TestProjectionDepHealthHandleShim:
+    """The runtime auto-wiring dispatches reducers via handle(), not project().
+
+    Regression guard for OMN-13825: HandlerProjectionDepHealth lacked a handle()
+    entrypoint, so the .201 stability runtime raised AttributeError and silently
+    dropped every dep-health-sweep-completed event (dep_health_findings stayed at
+    zero rows). This exercises the dict-based handle() shim the runtime uses.
+    """
+
+    def test_handle_dict_interface_materializes_rows(self) -> None:
+        db = InmemoryDatabaseAdapter()
+        payload: dict[str, object] = {
+            "_db": db,
+            "run_id": "run-handle-001",
+            "findings": [_FINDING_A.model_dump(mode="json")],
+            "summary": {str(_FINDING_A.finding_type): 1},
+            "captured_at": _NOW.isoformat(),
+        }
+        result = HANDLER.handle(payload)
+        assert result["rows_upserted"] == 1
+        rows = db.query("dep_health_findings")
+        assert len(rows) == 1
+        assert rows[0]["run_id"] == "run-handle-001"
+
+    def test_handle_raises_without_db_adapter(self) -> None:
+        with pytest.raises(TypeError, match="DatabaseAdapter"):
+            HANDLER.handle(
+                {
+                    "run_id": "x",
+                    "findings": [],
+                    "summary": {},
+                    "captured_at": _NOW.isoformat(),
+                }
+            )
