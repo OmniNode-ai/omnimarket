@@ -115,7 +115,9 @@ def test_design_to_plan_multiparam(
     handler = HandlerDesignToPlan()
     command = _command(**command_kwargs)
 
-    state, events, completed = handler.handle(command, phase_results=phase_results)
+    state, events, completed = handler.run_full_pipeline(
+        command, phase_results=phase_results
+    )
 
     assert state.current_phase == expect["final_phase"]
     assert completed.final_phase == expect["final_phase"]
@@ -128,7 +130,7 @@ def test_design_to_plan_multiparam(
 @pytest.mark.integration
 def test_design_to_plan_happy_path_event_sequence() -> None:
     """The all-success run walks the canonical phase sequence in order."""
-    _state, events, completed = HandlerDesignToPlan().handle(_command())
+    _state, events, completed = HandlerDesignToPlan().run_full_pipeline(_command())
 
     transitions = [(e.from_phase, e.to_phase) for e in events]
     assert transitions == [

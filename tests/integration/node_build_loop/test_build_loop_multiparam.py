@@ -69,7 +69,7 @@ def test_build_loop_success_paths(
 ) -> None:
     command = _command(mode, skip_closeout=skip_closeout)
 
-    state, events, completed = HandlerBuildLoop().handle(command)
+    state, events, completed = HandlerBuildLoop().run_full_cycle(command)
 
     # Terminal state reached COMPLETE with one completed cycle, no error.
     assert state.current_phase is EnumBuildLoopPhase.COMPLETE
@@ -97,7 +97,7 @@ def test_build_loop_failing_phase_does_not_complete() -> None:
     """Negative control: a failing phase stalls the FSM with a recorded error."""
     command = _command("build")
 
-    state, events, completed = HandlerBuildLoop().handle(
+    state, events, completed = HandlerBuildLoop().run_full_cycle(
         command, phase_results={EnumBuildLoopPhase.BUILDING: False}
     )
 
