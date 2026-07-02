@@ -135,9 +135,12 @@ class _IndexEffectBusHarness:
 
 def _make_qdrant(already_indexed_version: str | None = None) -> MagicMock:
     qdrant = MagicMock()
-    qdrant.get_collections.return_value = MagicMock(
-        collections=[MagicMock(name="onex_antipatterns")]
-    )
+    # NOTE: MagicMock(name=...) sets the mock's repr name, NOT a .name attribute --
+    # _ensure_collection compares c.name against the collection string, so the stub
+    # must expose a real .name for the existing-collection path to be exercised.
+    collection_stub = MagicMock()
+    collection_stub.name = "onex_antipatterns"
+    qdrant.get_collections.return_value = MagicMock(collections=[collection_stub])
     if already_indexed_version is not None:
         qdrant.retrieve.return_value = [
             MagicMock(

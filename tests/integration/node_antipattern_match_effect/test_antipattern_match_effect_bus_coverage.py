@@ -92,9 +92,11 @@ class _MatchEffectBusHarness:
 
 def _make_qdrant(results: list[Any] | None = None) -> MagicMock:
     qdrant = MagicMock()
-    qdrant.get_collections.return_value = MagicMock(
-        collections=[MagicMock(name="onex_antipatterns")]
-    )
+    # MagicMock(name=...) sets the repr name, not a .name attribute; expose a real
+    # .name so any collection-name comparison sees the literal string.
+    collection_stub = MagicMock()
+    collection_stub.name = "onex_antipatterns"
+    qdrant.get_collections.return_value = MagicMock(collections=[collection_stub])
     qdrant.search.return_value = results or []
     return qdrant
 
