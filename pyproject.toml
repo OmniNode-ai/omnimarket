@@ -30,7 +30,7 @@ classifiers = [
 ]
 dependencies = [
     "omnibase_core>=0.45.0,<0.47.0",
-    "omnibase-compat==0.5.4",
+    "omnibase-compat==0.5.5",
     "omnibase-spi>=0.22.0,<0.23.0",
     "omnibase-infra>=0.38.3,<0.39.0",
     "onex-change-control>=0.5.1",
@@ -433,18 +433,18 @@ delegation = "omnimarket.nodes.node_delegation_orchestrator.plugin:PluginDelegat
 omnimarket = "omnimarket.nodes"
 
 [tool.uv.sources]
-omnibase-core = { git = "https://github.com/OmniNode-ai/omnibase_core.git", rev = "0d56b4c9a58d2906c71443a46f2253effec88cae" }
-omnibase-compat = { git = "https://github.com/OmniNode-ai/omnibase_compat.git", rev = "331a9de450c7d4349825cb8933c5d2f663ba685b" }
+omnibase-core = { git = "https://github.com/OmniNode-ai/omnibase_core.git", rev = "29e9057b4a3604c8add623eacac86f1b537defdb" }
+omnibase-compat = { git = "https://github.com/OmniNode-ai/omnibase_compat.git", rev = "c0fc71681d046e840e0997c04bd26176785a2992" }
 omnibase-infra = { git = "https://github.com/OmniNode-ai/omnibase_infra.git", rev = "7e52d5b0046c394b38454b97157e7a7191e6f008" }
 omninode-memory = { git = "https://github.com/OmniNode-ai/omnimemory.git", rev = "9843dd18cedaa4f5939289ba527532262b87003c" }
 onex-change-control = { git = "https://github.com/OmniNode-ai/onex_change_control.git", rev = "dd2620d18001495b8d0f493b421b38399e9aab4b" }
 
 [tool.uv]
 override-dependencies = [
-    "omnibase-core @ git+https://github.com/OmniNode-ai/omnibase_core.git@0d56b4c9a58d2906c71443a46f2253effec88cae",
+    "omnibase-core @ git+https://github.com/OmniNode-ai/omnibase_core.git@29e9057b4a3604c8add623eacac86f1b537defdb",
     "omnibase-spi>=0.22.0,<0.23.0",
     "omnibase-infra @ git+https://github.com/OmniNode-ai/omnibase_infra.git@7e52d5b0046c394b38454b97157e7a7191e6f008",
-    "omnibase-compat @ git+https://github.com/OmniNode-ai/omnibase_compat.git@331a9de450c7d4349825cb8933c5d2f663ba685b",
+    "omnibase-compat @ git+https://github.com/OmniNode-ai/omnibase_compat.git@c0fc71681d046e840e0997c04bd26176785a2992",
 ]
 
 [tool.hatch.build.targets.wheel]
