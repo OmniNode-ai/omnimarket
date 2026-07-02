@@ -678,6 +678,44 @@ def next_eligible_tier(
     return None
 
 
+def first_eligible_tier(task_type: str) -> str | None:
+    """Return the CHEAPEST-FIRST initial tier for ``task_type``, or None.
+
+    Single parsing path for the INITIAL tier the bus-less local dispatch port
+    resolves (OMN-13861). Reads the closed-set task-class ``escalation_policy.
+    tier_order`` (via ``_tier_order_from_contract`` — the SAME order
+    ``next_eligible_tier`` walks) and returns the FIRST tier that can actually
+    route the task (a model serving ``task_type`` with a resolvable backend
+    endpoint, permitted by the task-class contract — ``_tier_can_route_task``,
+    identical to the escalation-hop eligibility check).
+
+    This lets the initial resolution honor the cheapest-first + closed-set
+    tier_order guardrails instead of the untargeted, bifrost-file-order
+    ``resolve_delegation_backend(task_type)`` that could land on an off-ladder
+    backend (e.g. the abandoned ``cloud-gemini-pro`` for ``code_generation``,
+    OMN-13667) and strand the escalation loop.
+
+    Returns ``None`` when the task class declares no tier_order (no contract entry)
+    or when no declared tier can route the task — the caller then falls back to the
+    legacy untargeted resolution for that (contract-less) class.
+    """
+    contract = _get_task_class_contract()
+    entry = _task_class_entry(contract, task_type)
+    if entry is None:
+        return None
+    escalation = entry.get("escalation_policy")
+    if not isinstance(escalation, dict) or not escalation.get("tier_order"):
+        # No closed-set tier_order to honor — let the caller keep legacy behavior.
+        return None
+
+    config = _get_config()
+    bifrost_backends = _load_bifrost_endpoints()
+    for tier in _tier_order_from_contract(config, entry):
+        if _tier_can_route_task(tier, task_type, bifrost_backends, contract):
+            return tier.name
+    return None
+
+
 # Stable machine-readable token prefixed onto every precise no-higher-tier
 # terminal reason (OMN-13167). Operators and projections key off this prefix; the
 # precise detail (exhausted policy + missing/unroutable tiers) follows after the
@@ -1046,6 +1084,7 @@ __all__: list[str] = [
     "backend_id_for_tier",
     "delta",
     "describe_no_higher_tier_available",
+    "first_eligible_tier",
     "next_eligible_tier",
     "resolve_task_class_dod_checks",
     "resolve_task_class_max_escalations",

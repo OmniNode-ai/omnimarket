@@ -114,6 +114,13 @@ def _install_ladder(
 
     monkeypatch.setattr(port_mod, "resolve_delegation_backend", fake_resolve)
     monkeypatch.setattr(port_mod, "next_eligible_tier", fake_next_eligible_tier)
+    # OMN-13861: the INITIAL resolution now consults the closed-set tier_order via
+    # first_eligible_tier (cheapest-first), exactly like every escalation hop. The
+    # deterministic ladder's first tier is ``initial_tier``; backend_id_for_tier +
+    # the backend_id-targeted fake_resolve then re-resolve it to the ladder backend.
+    monkeypatch.setattr(
+        port_mod, "first_eligible_tier", lambda _task_type: initial_tier
+    )
     monkeypatch.setattr(
         port_mod, "backend_id_for_tier", lambda tier, _task_type: _TIER_BACKEND_ID[tier]
     )

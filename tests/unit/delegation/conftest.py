@@ -32,6 +32,46 @@ from pathlib import Path
 
 import pytest
 
+# OMN-13861: cloud-tier routability in the routing reducer consults
+# ``api_key_ref_available(secret_ref)`` — now that the default secret store honors
+# the logical-ref → ENV_VAR convention (``llm.glm.api_key`` → ``LLM_GLM_API_KEY``),
+# a cloud tier that reads the REAL committed bifrost (with real ``secret_ref``s)
+# becomes routable IFF the corresponding ``LLM_*_API_KEY`` is present in the
+# ambient environment. Unit tests must not depend on whether the dev/CI box happens
+# to carry a live cloud credential: escalation-decision tests were passing only
+# because dotted refs were previously UNRESOLVABLE (the bug this ticket fixes).
+# Clear the cloud secret env vars so cloud-tier routability is deterministic (the
+# secrets are absent) for the whole delegation unit suite; a test that needs a
+# specific key sets it explicitly via ``monkeypatch.setenv`` after this autouse
+# fixture runs.
+_CLOUD_SECRET_ENV_VARS = (
+    "LLM_GLM_API_KEY",
+    "LLM_GEMINI_API_KEY",
+    "LLM_OPENROUTER_API_KEY",
+    "LLM_VERTEX_ACCESS_TOKEN",
+    "LLM_ANTHROPIC_API_KEY",
+    # Legacy literal forms some paths may still read directly.
+    "GEMINI_API_KEY",
+    "OPENROUTER_API_KEY",
+)
+
+
+@pytest.fixture(autouse=True)
+def _isolate_cloud_secret_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Make cloud-tier routability independent of ambient LLM credentials."""
+    for name in _CLOUD_SECRET_ENV_VARS:
+        monkeypatch.delenv(name, raising=False)
+    # The convention default store caches ``_configured_secret_store``; drop it so a
+    # sibling test that set ``ONEX_SECRET_RESOLVER_CONFIG_PATH`` cannot leak a lane
+    # mapping into this suite's availability checks.
+    monkeypatch.delenv("ONEX_SECRET_RESOLVER_CONFIG_PATH", raising=False)
+    from omnimarket.inference.secret_store_resolver import (
+        clear_secret_store_resolver_cache,
+    )
+
+    clear_secret_store_resolver_cache()
+
+
 # Bifrost config covering every backend_id referenced by routing_tiers.yaml.
 # OMN-13667: the claude ceiling now uses cloud-glm (primary) +
 # openrouter-qwen3-coder-480b (fallback). Both carry empty endpoint_url here so
