@@ -19,6 +19,27 @@ canonical surfaces (OMN-13160):
      against a local SQLite projection target so the local delegation tail is
      still materialized (the deprecated DirectCurl port's bespoke sqlite write is
      replaced by the same canonical projection the bus runtime uses).
+
+OMN-13849 — escalation loop + judge combine on the bus-less path:
+  * On a quality-gate FAIL the port re-dispatches to the next eligible tier,
+    mirroring the bus orchestrator's proven loop
+    (``handler_delegation_workflow.handle_gate_result`` :1343-1400 /
+    ``_decide_escalation`` :748-811): resolve the current tier via
+    ``tier_for_backend``, compute ``next_eligible_tier(current, excluded,
+    task_type=...)`` off the closed-set task-class ``tier_order``, re-resolve the
+    escalated backend, and retry — bounded by ``escalation_policy.max_escalations``
+    from ``task_class_contracts.v1.yaml``. Cheapest-first initial tier and the
+    closed-set ``tier_order`` semantics (no unlisted tiers) are preserved.
+  * For judge-combinable task classes the port runs the SAME ``HandlerJudgeAdequacy``
+    EFFECT the bus quality-gate-intent handler runs
+    (``handler_quality_gate_intent.handle_async`` :127-155) and threads the
+    resolved ``judge_adequacy_score`` / ``judge_verdict`` into the gate reducer, so
+    a good code answer can clear the 0.85 bar on the local path exactly as it does
+    on the bus.
+  * Every attempt's real metered cost (``result.actual_cost_usd``) is banked into
+    the cumulative cost projected on the evidence row — a rejected metered tier's
+    spend is never dropped (mirrors the bus ``_bank_attempt_spend``), and cost is
+    never a hardcoded 0.0.
 """
 
 from __future__ import annotations
@@ -31,6 +52,7 @@ import sys
 import time
 import uuid
 from collections.abc import Callable
+from decimal import Decimal
 from pathlib import Path
 from typing import Any, Literal, cast
 from uuid import UUID
@@ -41,6 +63,7 @@ from omnibase_core.models.delegation.wire import (
 )
 
 from omnimarket.enums.enum_delegation_failure_class import EnumDelegationFailureClass
+from omnimarket.events.delegation_judge_verdict import EnumDelegationJudgeVerdict
 from omnimarket.inference.protocol_config import apply_inference_protocol
 
 # The reducer (``delta``) returns the omnimarket wire result DTO (it carries the
@@ -50,6 +73,25 @@ from omnimarket.models.delegation.wire.model_quality_gate import (
     ModelQualityGateResult,
 )
 
+# OMN-13849: the SAME required-bar authority the bus orchestrator applies
+# (``handler_delegation_workflow.handle_gate_result`` :1240-1253). The quality-gate
+# reducer's ``result.passed`` is NOT the whole acceptance decision for a verifiable
+# task class: the reducer returns ``passed=True`` for a code answer that clears the
+# deterministic floor even at a graded score below the class ``required_bar`` (e.g.
+# code_generation ~0.733 < 0.85). Acceptance = ``passed`` AND ``score >= required_bar``
+# AND not a deterministic-floor rejection — resolved from the task-class contract.
+from omnimarket.nodes.node_delegation_orchestrator.quality_bar_authority import (
+    RequiredBarAuthorityError,
+    resolve_required_bar_authority,
+)
+
+# OMN-13849: the SAME required-bar authority the bus orchestrator applies
+# (``handler_delegation_workflow.handle_gate_result`` :1240-1253). The quality-gate
+# reducer's ``result.passed`` is NOT the whole acceptance decision for a verifiable
+# task class: the reducer returns ``passed=True`` for a code answer that clears the
+# deterministic floor even at a graded score below the class ``required_bar`` (e.g.
+# code_generation ~0.733 < 0.85). Acceptance = ``passed`` AND ``score >= required_bar``
+# AND not a deterministic-floor rejection — resolved from the task-class contract.
 # Canonical quality-gate reducer (OMN-13597): the SAME gate the bus path runs.
 # ``delta`` is the pure reducer; ``resolve_task_class_dod_checks`` is the routing
 # authority's public DoD resolver. Composing both here makes the local CLI path
@@ -58,8 +100,23 @@ from omnimarket.models.delegation.wire.model_quality_gate import (
 from omnimarket.nodes.node_delegation_quality_gate_reducer.handlers.handler_quality_gate import (
     delta as evaluate_quality_gate,
 )
+
+# OMN-13849: the SAME judge EFFECT + combinable task-class set the bus
+# quality-gate-intent handler uses. Reusing both (not re-declaring them) keeps the
+# local path in parity with the bus path — a good code answer clears the bar the
+# same way on both.
+from omnimarket.nodes.node_delegation_quality_gate_reducer.handlers.handler_quality_gate_intent import (
+    JUDGE_COMBINABLE_TASK_TYPES,
+)
+from omnimarket.nodes.node_delegation_quality_gate_reducer.judge.handler_judge_adequacy import (
+    HandlerJudgeAdequacy,
+)
 from omnimarket.nodes.node_delegation_routing_reducer.handlers.handler_delegation_routing import (
+    backend_id_for_tier,
+    next_eligible_tier,
     resolve_task_class_dod_checks,
+    resolve_task_class_max_escalations,
+    tier_for_backend,
 )
 
 # Import the canonical effect via its public package surface (not its internal
@@ -78,6 +135,7 @@ from omnimarket.projection.sqlite_database import (
     default_evidence_db_path,
 )
 from omnimarket.routing.delegation_backend_resolution import (
+    ModelResolvedDelegationBackend,
     resolve_delegation_backend,
     resolve_effective_max_tokens,
     resolve_timeout_seconds,
@@ -103,6 +161,13 @@ _TASK_TYPE_SYSTEM_PROMPTS: dict[str, str] = {
 }
 
 _DELEGATION_EVENTS_TABLE = "delegation_events"
+
+# OMN-13849: the escalation budget the local path uses when the task class declares
+# no ``escalation_policy.max_escalations``. Mirrors the bus orchestrator's
+# ``handle_gate_result`` default (``max_escalation_attempts=2``) so a task class
+# without a contract-declared budget still escalates the same bounded number of
+# times on both paths.
+_DEFAULT_MAX_ESCALATIONS = 2
 
 # OMN-13597: hard ceiling buffer (seconds) added to the contract-resolved
 # per-backend transport timeout when bounding the blocking effect call. Covers
@@ -236,6 +301,11 @@ class LocalDelegationDispatchPort:
 
     Default port when no event_bus is provided (local ``onex delegate``). Owns no
     transport detail — the effect handler selects curl/httpx by runtime profile.
+
+    OMN-13849: dispatch runs an in-process escalation loop. On a quality-gate FAIL
+    it re-dispatches to the next eligible tier (bounded by the task-class
+    ``max_escalations``), and it threads an LLM-judge adequacy score into the gate
+    for judge-combinable task classes — parity with the bus orchestrator.
     """
 
     def __init__(
@@ -246,6 +316,7 @@ class LocalDelegationDispatchPort:
         evidence_db: DatabaseAdapter | None = None,
         evidence_db_path: Path | None = None,
         effect_process_boundary: bool = True,
+        judge: HandlerJudgeAdequacy | None = None,
     ) -> None:
         self._effect_handler = effect_handler or HandlerLlmDelegationCall()
         self._projection_handler = projection_handler or HandlerProjectionDelegation()
@@ -253,6 +324,10 @@ class LocalDelegationDispatchPort:
             evidence_db_path or default_evidence_db_path()
         )
         self._effect_process_boundary = effect_process_boundary
+        # The judge wraps the canonical inference bridge; inject a fake/replay
+        # bridge in tests to avoid (or replay) the network call. Same surface the
+        # bus quality-gate-intent handler injects (OMN-13470/OMN-13849).
+        self._judge = judge if judge is not None else HandlerJudgeAdequacy()
 
     async def dispatch(
         self,
@@ -267,10 +342,313 @@ class LocalDelegationDispatchPort:
         quality_contract_mode: str,
         acceptance_criteria: tuple[str, ...],
     ) -> dict[str, object]:
-        # 1. ROUTING AUTHORITY — resolve model_id + COMPLETE endpoint_ref +
-        #    the per-backend output-token budget (OMN-13161).
+        # 1. ROUTING AUTHORITY — resolve the INITIAL (cheapest-first) backend.
+        #    MUST NOT change: the initial tier is cheapest-first; escalation only
+        #    advances UP the closed-set task-class tier_order (OMN-13140/OMN-13849).
         backend = resolve_delegation_backend(task_type)
 
+        # Escalation budget from the task-class contract escalation_policy
+        # (OMN-13849). None -> the class declares no budget; fall back to the bus
+        # orchestrator's default so both paths escalate the same bounded count.
+        max_escalations = resolve_task_class_max_escalations(task_type)
+        if max_escalations is None:
+            max_escalations = _DEFAULT_MAX_ESCALATIONS
+
+        # Tiers already attempted (excluded from re-selection), mirroring the bus
+        # ``excluded_tiers`` set threaded into ``next_eligible_tier``.
+        excluded_tiers: set[str] = set()
+        # Cumulative metered spend banked across every attempted tier (OMN-13849):
+        # a rejected metered tier's real cost is never dropped (bus
+        # ``_bank_attempt_spend`` parity). Projected as the row's cost_usd.
+        cumulative_cost_usd = Decimal("0")
+        cumulative_savings_usd = Decimal("0")
+        attempts: list[dict[str, object]] = []
+        escalation_count = 0
+
+        while True:
+            attempt_outcome = await self._run_single_attempt(
+                backend=backend,
+                prompt=prompt,
+                task_type=task_type,
+                correlation_id=correlation_id,
+                max_tokens=max_tokens,
+                quality_contract_mode=quality_contract_mode,
+                acceptance_criteria=acceptance_criteria,
+            )
+
+            # A hard transport/timeout failure is terminal — it is NOT a
+            # quality-gate FAIL and does not trigger an up-tier re-dispatch (the
+            # bus path likewise routes transport failures through its terminal
+            # failure branch, not the quality-gate escalation branch).
+            if (
+                attempt_outcome.failure_message is not None
+                and attempt_outcome.result is None
+            ):
+                assert attempt_outcome.timeout_result is not None
+                self._project_evidence(
+                    correlation_id=correlation_id,
+                    task_type=task_type,
+                    endpoint_ref=backend.endpoint_ref,
+                    model_id=backend.model_id,
+                    result=attempt_outcome.timeout_result,
+                    prompt=prompt,
+                    source_session_id=source_session_id,
+                    quality_passed=False,
+                    failure_message=attempt_outcome.failure_message,
+                    cost_usd=cumulative_cost_usd,
+                    savings_usd=cumulative_savings_usd,
+                    escalation_count=escalation_count,
+                )
+                return {
+                    "status": "failed",
+                    "error_message": attempt_outcome.failure_message,
+                    "correlation_id": str(correlation_id),
+                    "delegated_to": backend.endpoint_ref,
+                    "model_name": backend.model_id,
+                    "escalation_count": escalation_count,
+                    "attempts": attempts,
+                }
+
+            assert attempt_outcome.result is not None
+            result = attempt_outcome.result
+
+            # A transport-layer (non-timeout) failure result: also terminal.
+            if not result.success:
+                failure_message = result.error_message or "delegation call failed"
+                self._project_evidence(
+                    correlation_id=correlation_id,
+                    task_type=task_type,
+                    endpoint_ref=backend.endpoint_ref,
+                    model_id=backend.model_id,
+                    result=result,
+                    prompt=prompt,
+                    source_session_id=source_session_id,
+                    quality_passed=False,
+                    failure_message=failure_message,
+                    cost_usd=cumulative_cost_usd,
+                    savings_usd=cumulative_savings_usd,
+                    escalation_count=escalation_count,
+                )
+                return {
+                    "status": "failed",
+                    "error_message": failure_message,
+                    "correlation_id": str(correlation_id),
+                    "delegated_to": backend.endpoint_ref,
+                    "model_name": backend.model_id,
+                    "escalation_count": escalation_count,
+                    "attempts": attempts,
+                }
+
+            # This attempt's inference ran and incurred real metered cost — bank it
+            # BEFORE deciding pass/fail so a rejected metered tier's spend is
+            # counted even if we escalate away from it (OMN-13849).
+            cumulative_cost_usd += result.actual_cost_usd
+            cumulative_savings_usd += result.savings_usd
+
+            gate_result = attempt_outcome.gate_result
+            assert gate_result is not None
+            quality_passed = self._is_quality_accepted(task_type, gate_result)
+            attempts.append(
+                {
+                    "tier": backend.tier,
+                    "backend_id": backend.backend_id,
+                    "model_id": backend.model_id,
+                    "quality_gate_passed": quality_passed,
+                    "quality_score": gate_result.quality_score,
+                    "cost_usd": float(result.actual_cost_usd),
+                }
+            )
+
+            if quality_passed:
+                # 5. PROJECTION — materialize the local evidence row from the
+                #    terminal, carrying the REAL gate verdict and the CUMULATIVE
+                #    metered cost across every attempt (never a hardcoded PASS,
+                #    never a dropped rejected-attempt cost).
+                self._project_evidence(
+                    correlation_id=correlation_id,
+                    task_type=task_type,
+                    endpoint_ref=backend.endpoint_ref,
+                    model_id=backend.model_id,
+                    result=result,
+                    prompt=prompt,
+                    source_session_id=source_session_id,
+                    quality_passed=True,
+                    failure_message="",
+                    cost_usd=cumulative_cost_usd,
+                    savings_usd=cumulative_savings_usd,
+                    escalation_count=escalation_count,
+                )
+                return {
+                    "status": "completed",
+                    "content": result.content or "",
+                    "delegated_to": backend.endpoint_ref,
+                    "model_name": backend.model_id,
+                    "quality_gate_passed": True,
+                    "quality_score": gate_result.quality_score,
+                    "quality_gates_failed": list(gate_result.failure_reasons),
+                    "delegation_latency_ms": result.latency_ms,
+                    "input_tokens": result.tokens_in,
+                    "output_tokens": result.tokens_out,
+                    "total_tokens": result.tokens_in + result.tokens_out,
+                    "correlation_id": str(correlation_id),
+                    "escalation_count": escalation_count,
+                    "cost_usd": float(cumulative_cost_usd),
+                    "attempts": attempts,
+                }
+
+            # --- Quality-gate FAIL: evaluate escalation (mirror bus loop) -------
+            gate_failure_message = "; ".join(gate_result.failure_reasons)
+            current_tier = tier_for_backend(backend.backend_id) or backend.tier
+            excluded_tiers.add(current_tier)
+
+            next_backend: ModelResolvedDelegationBackend | None = None
+            if escalation_count < max_escalations:
+                next_backend = self._resolve_next_backend(
+                    current_tier=current_tier,
+                    task_type=task_type,
+                    excluded_tiers=frozenset(excluded_tiers),
+                )
+
+            if next_backend is None:
+                # Cannot escalate (budget exhausted or no higher eligible tier):
+                # terminal FAILED, carrying the cumulative metered cost of every
+                # attempt made so far.
+                self._project_evidence(
+                    correlation_id=correlation_id,
+                    task_type=task_type,
+                    endpoint_ref=backend.endpoint_ref,
+                    model_id=backend.model_id,
+                    result=result,
+                    prompt=prompt,
+                    source_session_id=source_session_id,
+                    quality_passed=False,
+                    failure_message=gate_failure_message,
+                    cost_usd=cumulative_cost_usd,
+                    savings_usd=cumulative_savings_usd,
+                    escalation_count=escalation_count,
+                )
+                return {
+                    "status": "failed",
+                    "content": result.content or "",
+                    "delegated_to": backend.endpoint_ref,
+                    "model_name": backend.model_id,
+                    "quality_gate_passed": False,
+                    "quality_score": gate_result.quality_score,
+                    "quality_gates_failed": list(gate_result.failure_reasons),
+                    "delegation_latency_ms": result.latency_ms,
+                    "input_tokens": result.tokens_in,
+                    "output_tokens": result.tokens_out,
+                    "total_tokens": result.tokens_in + result.tokens_out,
+                    "correlation_id": str(correlation_id),
+                    "escalation_count": escalation_count,
+                    "cost_usd": float(cumulative_cost_usd),
+                    "attempts": attempts,
+                }
+
+            # Escalate: advance to the next tier's backend and retry.
+            logger.info(
+                "LocalDelegationDispatch: escalating task_type=%s from tier=%s to "
+                "tier=%s (attempt %d/%d) correlation=%s reason=%s",
+                task_type,
+                current_tier,
+                next_backend.tier,
+                escalation_count + 1,
+                max_escalations,
+                correlation_id,
+                gate_failure_message,
+            )
+            escalation_count += 1
+            backend = next_backend
+
+    def _is_quality_accepted(
+        self, task_type: str, gate_result: ModelQualityGateResult
+    ) -> bool:
+        """Apply the task-class required-bar authority, mirroring the bus path.
+
+        The quality-gate reducer's ``passed`` alone is NOT the acceptance verdict
+        for a verifiable task class: the reducer returns ``passed=True`` for a code
+        answer that clears the deterministic FLOOR even at a graded score below the
+        class ``required_bar`` (e.g. code_generation ~0.733 < 0.85). The bus
+        orchestrator (``handle_gate_result`` :1240-1253) accepts only when the gate
+        passed AND the score is at/above the contract ``required_bar`` AND the
+        result is not a deterministic-floor rejection. This method replicates that
+        rule so the local path applies the same 0.85 bar the bus applies.
+
+        When the task class declares no ``quality_gate.required_bar`` (the legacy /
+        no-contract-DoD path), no bar can be applied and the reducer verdict
+        ``passed`` is the authority — preserving the pre-OMN-13849 behavior for
+        classes without a declared bar.
+        """
+        if gate_result.fail_category == "fail_deterministic":
+            return False
+        try:
+            authority = resolve_required_bar_authority(task_type=task_type)
+        except RequiredBarAuthorityError:
+            # No declared bar for this class — the reducer verdict is authoritative.
+            return gate_result.passed
+        if gate_result.quality_score < authority.required_bar:
+            return False
+        return gate_result.passed
+
+    def _resolve_next_backend(
+        self,
+        *,
+        current_tier: str,
+        task_type: str,
+        excluded_tiers: frozenset[str],
+    ) -> ModelResolvedDelegationBackend | None:
+        """Resolve the next eligible tier's backend, or None if none exists.
+
+        Mirrors the bus orchestrator's ``_decide_escalation`` tier resolution
+        (:748-811): ``next_eligible_tier`` reads the closed-set task-class
+        ``tier_order`` (never appends an unlisted tier — OMN-13140) and skips tiers
+        that cannot route the task; ``backend_id_for_tier`` then maps the resolved
+        tier to the concrete bifrost backend the tier would select, which is
+        re-resolved into a COMPLETE-endpoint ``ModelResolvedDelegationBackend``.
+        Returns None when the ladder is exhausted or the escalated backend has no
+        populated endpoint in the local overlay (fail-closed, no silent hang).
+        """
+        next_tier = next_eligible_tier(
+            current_tier, excluded_tiers, task_type=task_type
+        )
+        if next_tier is None:
+            return None
+        backend_id = backend_id_for_tier(next_tier, task_type)
+        if backend_id is None:
+            return None
+        try:
+            return resolve_delegation_backend(task_type, backend_id=backend_id)
+        except RuntimeError:
+            # The escalated tier's backend has no populated COMPLETE endpoint in
+            # the active overlay — treat the ladder as exhausted rather than
+            # dispatching to an unresolvable endpoint.
+            logger.warning(
+                "LocalDelegationDispatch: escalation tier=%s backend=%s has no "
+                "resolvable endpoint for task_type=%s; ladder exhausted",
+                next_tier,
+                backend_id,
+                task_type,
+            )
+            return None
+
+    async def _run_single_attempt(
+        self,
+        *,
+        backend: ModelResolvedDelegationBackend,
+        prompt: str,
+        task_type: str,
+        correlation_id: UUID,
+        max_tokens: int | None,
+        quality_contract_mode: str,
+        acceptance_criteria: tuple[str, ...],
+    ) -> _AttemptOutcome:
+        """Run one resolve->effect->gate attempt for ``backend``.
+
+        Returns the effect result + gate verdict on a completed call, or a
+        canonical TIMEOUT/transport failure marker the caller projects. This is
+        exactly the single-shot behavior the port had before OMN-13849; the
+        escalation loop calls it once per tier.
+        """
         # 2. RESOLVE the effective output-token budget from the routing contract.
         #    Unset request -> backend ceiling; explicit request -> capped at it.
         effective_max_tokens = resolve_effective_max_tokens(
@@ -376,94 +754,42 @@ class LocalDelegationDispatchPort:
                 error_message=failure_message,
                 endpoint_healthy=False,
             )
-            self._project_evidence(
-                correlation_id=correlation_id,
-                task_type=task_type,
-                endpoint_ref=backend.endpoint_ref,
-                model_id=backend.model_id,
-                result=timeout_result,
-                prompt=prompt,
-                source_session_id=source_session_id,
-                quality_passed=False,
+            return _AttemptOutcome(
+                result=None,
+                gate_result=None,
                 failure_message=failure_message,
+                timeout_result=timeout_result,
             )
-            return {
-                "status": "failed",
-                "error_message": failure_message,
-                "correlation_id": str(correlation_id),
-                "delegated_to": backend.endpoint_ref,
-                "model_name": backend.model_id,
-            }
 
         if not result.success:
-            failure_message = result.error_message or "delegation call failed"
-            self._project_evidence(
-                correlation_id=correlation_id,
-                task_type=task_type,
-                endpoint_ref=backend.endpoint_ref,
-                model_id=backend.model_id,
+            return _AttemptOutcome(
                 result=result,
-                prompt=prompt,
-                source_session_id=source_session_id,
-                quality_passed=False,
-                failure_message=failure_message,
+                gate_result=None,
+                failure_message=None,
+                timeout_result=None,
             )
-            return {
-                "status": "failed",
-                "error_message": failure_message,
-                "correlation_id": str(correlation_id),
-                "delegated_to": backend.endpoint_ref,
-                "model_name": backend.model_id,
-            }
 
         # 4. CANONICAL QUALITY GATE (OMN-13597) — run the SAME reducer the bus
         #    path runs. HTTP/transport success is NOT a quality verdict: a model
         #    refusal or empty answer returns success here but must NOT be recorded
         #    as a gate PASS. Resolve the task-class DoD checks from the routing
-        #    authority and evaluate the real verdict + graded score.
-        gate_result = self._evaluate_quality_gate(
+        #    authority and evaluate the real verdict + graded score, threading the
+        #    LLM-judge adequacy score for combinable task classes (OMN-13849).
+        gate_result = await self._evaluate_quality_gate(
             correlation_id=correlation_id,
             task_type=task_type,
             content=result.content or "",
             quality_contract_mode=quality_contract_mode,
             acceptance_criteria=acceptance_criteria,
         )
-        quality_passed = gate_result.passed
-        quality_score = gate_result.quality_score
-        gate_failure_message = (
-            "; ".join(gate_result.failure_reasons) if not quality_passed else ""
-        )
-
-        # 5. PROJECTION — materialize the local evidence row from the terminal,
-        #    carrying the REAL gate verdict (never a hardcoded PASS).
-        self._project_evidence(
-            correlation_id=correlation_id,
-            task_type=task_type,
-            endpoint_ref=backend.endpoint_ref,
-            model_id=backend.model_id,
+        return _AttemptOutcome(
             result=result,
-            prompt=prompt,
-            source_session_id=source_session_id,
-            quality_passed=quality_passed,
-            failure_message=gate_failure_message,
+            gate_result=gate_result,
+            failure_message=None,
+            timeout_result=None,
         )
 
-        return {
-            "status": "completed" if quality_passed else "failed",
-            "content": result.content or "",
-            "delegated_to": backend.endpoint_ref,
-            "model_name": backend.model_id,
-            "quality_gate_passed": quality_passed,
-            "quality_score": quality_score,
-            "quality_gates_failed": list(gate_result.failure_reasons),
-            "delegation_latency_ms": result.latency_ms,
-            "input_tokens": result.tokens_in,
-            "output_tokens": result.tokens_out,
-            "total_tokens": result.tokens_in + result.tokens_out,
-            "correlation_id": str(correlation_id),
-        }
-
-    def _evaluate_quality_gate(
+    async def _evaluate_quality_gate(
         self,
         *,
         correlation_id: UUID,
@@ -472,15 +798,23 @@ class LocalDelegationDispatchPort:
         quality_contract_mode: str,
         acceptance_criteria: tuple[str, ...],
     ) -> ModelQualityGateResult:
-        """Run the canonical quality-gate reducer for a successful local call.
+        """Run the canonical quality-gate reducer, combining the LLM-judge score.
 
         Resolves the task-class DoD checks (``dod_deterministic`` /
         ``dod_heuristic``) from the routing authority — the SAME contract the bus
         routing reducer feeds into the gate — then evaluates the canonical
         ``delta`` reducer. When the task class declares no DoD, the reducer falls
         back to its legacy heuristic checks (refusal/empty/length), so a refusal
-        still fails the gate. No judge adequacy score is available on the local
-        path, so it is omitted (deterministic + heuristic checks still apply).
+        still fails the gate.
+
+        OMN-13849: for judge-combinable task classes the SAME ``HandlerJudgeAdequacy``
+        EFFECT the bus quality-gate-intent handler runs
+        (``handle_async`` :127-155) scores the candidate, and its
+        ``judge_adequacy_score`` / ``judge_verdict`` are threaded into ``delta`` —
+        so a good code answer clears the 0.85 bar on the local path exactly as it
+        does on the bus. A ``JUDGE_FAILED`` verdict carries no score and falls back
+        to deterministic-only (never a silent zero); the deterministic refusal/empty
+        hard floor still hard-blocks before any combine.
         """
         dod_deterministic, dod_heuristic = resolve_task_class_dod_checks(task_type)
         gate_input = ModelQualityGateInput(
@@ -492,7 +826,35 @@ class LocalDelegationDispatchPort:
             quality_contract_mode=cast(EnumQualityContractMode, quality_contract_mode),
             acceptance_criteria=acceptance_criteria,
         )
-        return evaluate_quality_gate(gate_input)
+
+        judge_score: float | None = None
+        judge_verdict_value: EnumDelegationJudgeVerdict | None = None
+        if task_type in JUDGE_COMBINABLE_TASK_TYPES:
+            judge_verdict = await self._judge.score(
+                correlation_id=correlation_id,
+                task_type=task_type,
+                prompt=(
+                    "Judge whether the candidate adequately fulfills a "
+                    f"{task_type} task that satisfies the declared "
+                    "acceptance criteria."
+                ),
+                candidate_output=content,
+                acceptance_criteria=acceptance_criteria,
+            )
+            # A judge_failed verdict carries no score — fall back to deterministic
+            # only; never coerce a judge failure into a silent zero (which would
+            # tank an otherwise-acceptable answer). OMN-13642: thread the verdict
+            # itself (alongside the score) so a FAIL verdict vetoes acceptance in
+            # the reducer even when the combined score would clear the bar.
+            if judge_verdict.verdict is not EnumDelegationJudgeVerdict.JUDGE_FAILED:
+                judge_score = judge_verdict.actual_score
+                judge_verdict_value = judge_verdict.verdict
+
+        return evaluate_quality_gate(
+            gate_input,
+            judge_adequacy_score=judge_score,
+            judge_verdict=judge_verdict_value,
+        )
 
     def _project_evidence(
         self,
@@ -506,6 +868,9 @@ class LocalDelegationDispatchPort:
         source_session_id: str | None,
         quality_passed: bool,
         failure_message: str,
+        cost_usd: Decimal,
+        savings_usd: Decimal,
+        escalation_count: int,
     ) -> None:
         """Materialize a delegation_events row via the canonical projection.
 
@@ -513,6 +878,12 @@ class LocalDelegationDispatchPort:
         ``HandlerProjectionDelegation`` the bus runtime uses, against the local
         SQLite projection target. Best-effort: a projection failure is logged and
         swallowed so the delegation response is never broken by an evidence write.
+
+        OMN-13849: ``cost_usd`` is the CUMULATIVE metered spend banked across every
+        attempted tier (the final tier + every rejected escalation attempt), so the
+        row's cost reflects each attempt's real metered cost and never drops a
+        rejected metered attempt's spend. ``escalation_count`` records how many
+        up-tier re-dispatches occurred.
         """
         payload: dict[str, object] = {
             "status": "completed" if quality_passed else "failed",
@@ -525,13 +896,14 @@ class LocalDelegationDispatchPort:
             "quality_gate_passed": quality_passed,
             "quality_gates_failed": [] if quality_passed else [failure_message],
             "error_message": failure_message,
+            "escalation_count": escalation_count,
             "metrics": {
                 "input_tokens": result.tokens_in,
                 "output_tokens": result.tokens_out,
                 "total_tokens": result.tokens_in + result.tokens_out,
                 "latency_ms": result.latency_ms,
-                "cost_usd": float(result.actual_cost_usd),
-                "cost_savings_usd": float(result.savings_usd),
+                "cost_usd": float(cost_usd),
+                "cost_savings_usd": float(savings_usd),
             },
         }
         # The terminal projection types session_id as UUID | None; only forward a
@@ -560,6 +932,34 @@ class LocalDelegationDispatchPort:
                 correlation_id,
                 exc_info=True,
             )
+
+
+class _AttemptOutcome:
+    """Outcome of one dispatch attempt (effect + gate) for the escalation loop.
+
+    Exactly one of these shapes holds:
+      * ``result`` set + ``gate_result`` set — the effect succeeded and the gate
+        ran; the loop inspects ``gate_result.passed`` to accept or escalate.
+      * ``result`` set + ``gate_result`` None — the effect returned a transport
+        failure (``result.success`` is False); the loop terminates FAILED.
+      * ``result`` None + ``failure_message`` + ``timeout_result`` set — the effect
+        timed out; the loop projects ``timeout_result`` and terminates FAILED.
+    """
+
+    __slots__ = ("failure_message", "gate_result", "result", "timeout_result")
+
+    def __init__(
+        self,
+        *,
+        result: ModelLlmDelegationCallResult | None,
+        gate_result: ModelQualityGateResult | None,
+        failure_message: str | None,
+        timeout_result: ModelLlmDelegationCallResult | None,
+    ) -> None:
+        self.result = result
+        self.gate_result = gate_result
+        self.failure_message = failure_message
+        self.timeout_result = timeout_result
 
 
 __all__ = ["LocalDelegationDispatchPort"]

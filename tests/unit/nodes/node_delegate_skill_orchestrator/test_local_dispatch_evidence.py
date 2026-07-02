@@ -27,8 +27,27 @@ import pytest
 from omnimarket.nodes.node_delegate_skill_orchestrator.ports.port_local_delegation_dispatch import (
     LocalDelegationDispatchPort,
 )
+from omnimarket.nodes.node_delegation_quality_gate_reducer.judge.handler_judge_adequacy import (
+    HandlerJudgeAdequacy,
+)
 from omnimarket.nodes.node_llm_delegation_call_effect.handlers import transport
 from omnimarket.routing import delegation_backend_resolution
+from tests.fixtures.judge_inference import CannedAdequacyBridge
+
+
+def _pass_judge() -> HandlerJudgeAdequacy:
+    """A judge that scores every candidate adequate (0.95 -> PASS verdict).
+
+    OMN-13849: ``code_generation`` is a judge-combinable class, and the local path
+    applies the same 0.85 required bar the bus applies. A bare code answer scores
+    ~0.733 deterministic-only (below the bar), so these plumbing tests inject a
+    passing judge — the combine lifts the answer over the bar exactly as a live
+    judge would, keeping the test focused on the token/timeout/transport plumbing
+    it asserts rather than on the (separately-tested) judge-veto behavior.
+    """
+    return HandlerJudgeAdequacy(
+        inference_bridge=CannedAdequacyBridge(adequacy_score=0.95)
+    )
 
 
 @pytest.fixture
@@ -111,6 +130,7 @@ def test_local_dispatch_materializes_evidence_row(
     port = LocalDelegationDispatchPort(
         evidence_db_path=db_path,
         effect_process_boundary=False,
+        judge=_pass_judge(),
     )
     correlation_id = uuid4()
     result = asyncio.run(
@@ -176,6 +196,7 @@ def test_local_dispatch_evidence_is_idempotent(
     port = LocalDelegationDispatchPort(
         evidence_db_path=db_path,
         effect_process_boundary=False,
+        judge=_pass_judge(),
     )
     correlation_id = uuid4()
     for _ in range(2):
@@ -221,6 +242,7 @@ def test_local_dispatch_evidence_failure_does_not_break_response(
     port = LocalDelegationDispatchPort(
         evidence_db_path=db_path,
         effect_process_boundary=False,
+        judge=_pass_judge(),
     )
     result = asyncio.run(
         port.dispatch(
@@ -286,6 +308,7 @@ def test_local_dispatch_reaches_lan_endpoint_via_curl_on_macos_profile(
     port = LocalDelegationDispatchPort(
         evidence_db_path=db_path,
         effect_process_boundary=False,
+        judge=_pass_judge(),
     )
     result = asyncio.run(
         port.dispatch(
@@ -332,6 +355,7 @@ def test_local_dispatch_unset_max_tokens_uses_backend_ceiling(
     port = LocalDelegationDispatchPort(
         evidence_db_path=db_path,
         effect_process_boundary=False,
+        judge=_pass_judge(),
     )
     result = asyncio.run(
         port.dispatch(
@@ -367,6 +391,7 @@ def test_local_dispatch_explicit_max_tokens_capped_at_backend_ceiling(
     port = LocalDelegationDispatchPort(
         evidence_db_path=db_path,
         effect_process_boundary=False,
+        judge=_pass_judge(),
     )
     result = asyncio.run(
         port.dispatch(
@@ -399,6 +424,7 @@ def test_local_dispatch_explicit_max_tokens_below_ceiling_passes_through(
     port = LocalDelegationDispatchPort(
         evidence_db_path=db_path,
         effect_process_boundary=False,
+        judge=_pass_judge(),
     )
     result = asyncio.run(
         port.dispatch(
@@ -436,6 +462,7 @@ def test_local_dispatch_threads_backend_timeout_to_transport(
     port = LocalDelegationDispatchPort(
         evidence_db_path=db_path,
         effect_process_boundary=False,
+        judge=_pass_judge(),
     )
     result = asyncio.run(
         port.dispatch(
@@ -533,6 +560,7 @@ def test_local_dispatch_refusal_fails_quality_gate(
     port = LocalDelegationDispatchPort(
         evidence_db_path=db_path,
         effect_process_boundary=False,
+        judge=_pass_judge(),
     )
     correlation_id = uuid4()
     result = asyncio.run(
@@ -595,6 +623,7 @@ def test_local_dispatch_good_answer_passes_with_real_score(
     port = LocalDelegationDispatchPort(
         evidence_db_path=db_path,
         effect_process_boundary=False,
+        judge=_pass_judge(),
     )
     correlation_id = uuid4()
     result = asyncio.run(

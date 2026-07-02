@@ -64,4 +64,46 @@ class RecordedJudgeReplayAdapter(ModelInferenceAdapter):
         return self._raw_response
 
 
-__all__ = ["RecordedJudgeReplayAdapter"]
+class CannedAdequacyBridge(ModelInferenceAdapter):
+    """Return a fixed adequacy score/reasoning JSON (OMN-13849 local-path tests).
+
+    A hermetic judge inference double for the bus-LESS local dispatch path: it
+    exposes ``resolved_model_id()`` (a fixed CONCRETE model id — never a tier
+    name) so ``HandlerJudgeAdequacy`` records honest provenance without touching
+    real routing config, and ``infer`` returns a canned
+    ``{"adequacy_score": ..., "reasoning": ...}`` body the judge parses into a
+    verdict via the rubric thresholds. This is NOT a fake of the routing/model
+    resolution (that stays real via the ``resolved_model_id`` contract); only the
+    single LLM call is stubbed, exactly as the injected-bridge pattern intends.
+    """
+
+    def __init__(self, *, adequacy_score: float, model_id: str = "glm-5.2") -> None:
+        self._adequacy_score = adequacy_score
+        self._model_id = model_id
+        self.calls: list[dict[str, object]] = []
+
+    def resolved_model_id(self) -> str:
+        return self._model_id
+
+    async def infer(
+        self,
+        model_key: str,
+        system_prompt: str,
+        user_prompt: str,
+        timeout_seconds: float,
+        temperature: float | None = None,
+    ) -> str:
+        if model_key != self._model_id:
+            raise ValueError(
+                f"CannedAdequacyBridge is pinned to concrete model {self._model_id!r}; "
+                f"got {model_key!r} — a tier name must never reach the inference layer."
+            )
+        self.calls.append({"model_key": model_key, "temperature": temperature})
+        return (
+            '{"adequacy_score": '
+            f"{self._adequacy_score}"
+            ', "reasoning": "canned adequacy for OMN-13849 local-path test"}'
+        )
+
+
+__all__ = ["CannedAdequacyBridge", "RecordedJudgeReplayAdapter"]

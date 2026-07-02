@@ -796,6 +796,78 @@ def tier_for_backend(backend_id: str) -> str | None:
     return None
 
 
+def backend_id_for_tier(tier_name: str, task_type: str) -> str | None:
+    """Return the bifrost ``backend_id`` ``tier_name`` would select for ``task_type``.
+
+    Single parsing path for tier→backend resolution on escalation (OMN-13849): a
+    caller that escalated to ``tier_name`` via :func:`next_eligible_tier` resolves
+    the concrete backend for that tier here, using the SAME model-selection logic
+    ``delta`` applies (``_select_model_for_task`` with a 0-token availability
+    probe + the contract model override). This keeps the tier→backend mapping in
+    the routing authority instead of re-deriving it in a dispatch port — the local
+    bus-less path can then re-resolve the escalated backend through
+    ``resolve_delegation_backend(task_type, backend_id=...)`` without reaching into
+    the reducer's private selection helpers.
+
+    Returns the selected model's ``backend_ref`` (the bifrost ``backend_id``), or
+    ``None`` when the tier is unknown or declares no model that can route the task
+    with a resolvable backend endpoint.
+    """
+    config = _get_config()
+    matching_tier = next(
+        (tier for tier in config.tiers if tier.name == tier_name),
+        None,
+    )
+    if matching_tier is None:
+        return None
+
+    bifrost_backends = _load_bifrost_endpoints()
+    contract = _get_task_class_contract()
+    contract_model_ref = _get_contract_model_ref(task_type, contract=contract)
+    # 0-token availability probe: identifies which backend the tier WOULD select
+    # for the task (delta re-selects with the real token estimate).
+    selected = _select_model_for_task(
+        matching_tier.models,
+        task_type,
+        0,
+        bifrost_backends,
+        contract_model_ref=contract_model_ref,
+    )
+    if selected is None:
+        return None
+    return selected.backend_ref
+
+
+def resolve_task_class_max_escalations(task_type: str) -> int | None:
+    """Resolve ``escalation_policy.max_escalations`` for ``task_type`` (OMN-13849).
+
+    Public routing-authority surface: returns the escalation budget declared for
+    ``task_type`` in ``task_class_contracts.v1.yaml`` — the SAME contract the bus
+    routing reducer reads. Returns ``None`` when the contract file is absent, the
+    task class is not declared, or the task class declares no
+    ``escalation_policy.max_escalations`` integer, so a caller can distinguish
+    "no contract-declared budget" from an explicit value and fall back to its own
+    default rather than silently escalating an unbounded number of times.
+
+    This lets the bus-less local CLI dispatch path bound its escalation loop by the
+    contract budget without reaching into the routing reducer's private contract
+    read helpers.
+    """
+    contract = _get_task_class_contract()
+    entry = _task_class_entry(contract, task_type)
+    if entry is None:
+        return None
+    escalation = entry.get("escalation_policy")
+    if not isinstance(escalation, dict):
+        return None
+    raw = escalation.get("max_escalations")
+    if not isinstance(raw, int) or isinstance(raw, bool):
+        return None
+    if raw < 0:
+        return None
+    return raw
+
+
 def tier_max_retries(tier_name: str) -> int:
     """Return the per-tier retry budget (``max_retries``) from routing_tiers.yaml.
 
@@ -971,10 +1043,12 @@ __all__: list[str] = [
     # reducer's private models package (cross-node model reach-in guard).
     "ModelRoutingDecision",
     "_get_contract_model_ref",
+    "backend_id_for_tier",
     "delta",
     "describe_no_higher_tier_available",
     "next_eligible_tier",
     "resolve_task_class_dod_checks",
+    "resolve_task_class_max_escalations",
     "tier_for_backend",
     "tier_max_retries",
 ]
