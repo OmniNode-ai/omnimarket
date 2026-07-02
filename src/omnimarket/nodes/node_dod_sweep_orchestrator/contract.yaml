@@ -4,7 +4,10 @@ contract_version: {major: 1, minor: 0, patch: 0}
 node_type: orchestrator
 node_version: {major: 1, minor: 0, patch: 0}
 description: >
-  Orchestrates targeted DoD sweep receipt generation for tickets.
+  Orchestrates targeted DoD sweep receipt generation for tickets, plus the L3
+  close-path gate-escape audit (OMN-13854): flags Done tickets with
+  startedAt=null + zero attachments/documents + no merged PR discoverable as
+  wf_1628d9a5-signature gate-escape candidates.
 
 handler:
   module: omnimarket.nodes.node_dod_sweep_orchestrator.handlers.handler_dod_sweep_orchestrator
@@ -23,6 +26,9 @@ env_dependencies:
   ONEX_CC_REPO_PATH:
     required: true
     description: "Path to the omni_home repo registry; required when contract_root/evidence_root is not provided explicitly"
+  LINEAR_API_KEY:
+    required: false
+    description: "Linear API key for the gate_escape_audit=true path (OMN-13854); not read unless request.linear_api_key is empty and gate_escape_audit is requested"
 
 descriptor:
   node_archetype: orchestrator

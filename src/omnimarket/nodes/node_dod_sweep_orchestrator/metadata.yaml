@@ -1,6 +1,6 @@
 name: node_dod_sweep_orchestrator
 version: "1.0.0"
-description: "Orchestrates targeted DoD receipt generation across tickets"
+description: "Orchestrates targeted DoD receipt generation across tickets, plus the OMN-13854 close-path gate-escape audit"
 omnibase_core_compat: ">=0.40.0,<1.0.0"
 entry_points:
   onex.nodes:
@@ -8,7 +8,7 @@ entry_points:
 capabilities:
   standalone: true
   full_runtime: false
-  requires_network: false
+  requires_network: true
 dependencies:
   - "omnibase_core>=0.40.0"
 authors: ["OmniNode Platform Team"]
