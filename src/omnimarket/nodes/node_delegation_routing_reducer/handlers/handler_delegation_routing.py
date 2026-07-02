@@ -814,25 +814,28 @@ def backend_id_for_tier(tier_name: str, task_type: str) -> str | None:
     with a resolvable backend endpoint.
     """
     config = _get_config()
+    matching_tier = next(
+        (tier for tier in config.tiers if tier.name == tier_name),
+        None,
+    )
+    if matching_tier is None:
+        return None
+
     bifrost_backends = _load_bifrost_endpoints()
     contract = _get_task_class_contract()
     contract_model_ref = _get_contract_model_ref(task_type, contract=contract)
-    for tier in config.tiers:
-        if tier.name != tier_name:
-            continue
-        # 0-token availability probe: identifies which backend the tier WOULD
-        # select for the task (delta re-selects with the real token estimate).
-        selected = _select_model_for_task(
-            tier.models,
-            task_type,
-            0,
-            bifrost_backends,
-            contract_model_ref=contract_model_ref,
-        )
-        if selected is None:
-            return None
-        return selected.backend_ref
-    return None
+    # 0-token availability probe: identifies which backend the tier WOULD select
+    # for the task (delta re-selects with the real token estimate).
+    selected = _select_model_for_task(
+        matching_tier.models,
+        task_type,
+        0,
+        bifrost_backends,
+        contract_model_ref=contract_model_ref,
+    )
+    if selected is None:
+        return None
+    return selected.backend_ref
 
 
 def resolve_task_class_max_escalations(task_type: str) -> int | None:

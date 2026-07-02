@@ -68,6 +68,7 @@ def test_idle_is_the_declared_initial_state() -> None:
     assert initial == states["idle"]
 
 
+@pytest.mark.integration
 def test_evaluated_state_reached_when_delta_folds_a_verdict() -> None:
     """`evaluated`: folding a response through delta materializes a gate verdict.
 
