@@ -135,6 +135,16 @@ class ModelQualityGateResult(BaseModel):
         default=(),
         description="Deterministic acceptance failure cases.",
     )
+    skipped_checks: tuple[str, ...] = Field(
+        default=(),
+        description=(
+            "Deterministic DoD checks that were NOT evaluated because no "
+            "acceptance-command executor is wired for them (OMN-13850). Recorded "
+            "as durable evidence of the unevaluated status; excluded from the "
+            "deterministic passed/total fraction so a check with no executor "
+            "cannot report a phantom 'passed'."
+        ),
+    )
 
 
 __all__: list[str] = [

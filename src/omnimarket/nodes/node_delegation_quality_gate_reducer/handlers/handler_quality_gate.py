@@ -144,6 +144,23 @@ _FALLBACK_VERDICT_PREFIXES: tuple[str, ...] = (
 
 _ACCEPTANCE_VERSION = "delegation-deterministic-acceptance.v1"
 _DETERMINISTIC_SCORE_SOURCE = "deterministic_acceptance"
+
+# OMN-13850: deterministic checks that require executing an acceptance command
+# against a live target (test suite, sandbox) which the reducer — a pure,
+# I/O-free function — cannot run. There is no wired acceptance-command executor
+# in this ticket, so these checks are UNEVALUATED: they are recorded as SKIPPED
+# and EXCLUDED from the deterministic passed/total fraction. They must NEVER be
+# routed to a stand-in structural check (the prior alias to
+# ``_check_response_non_empty`` made ``passes_existing_tests`` a phantom that
+# reported "passed" on any non-empty answer without executing a single test).
+# Wiring a real acceptance-command EFFECT executor is a scoped follow-up
+# (OMN-13850 PR body): when it lands, an evaluated check moves out of this set
+# and contributes a real pass/fail again.
+_UNEVALUATED_DETERMINISTIC_CHECKS: frozenset[str] = frozenset(
+    {
+        "passes_existing_tests",
+    }
+)
 # OMN-13470: when an LLM-judge adequacy score is combined with the deterministic
 # graded score, the result records ``score_source="combined"`` so downstream
 # experiment analysis and the orchestrator's required-bar gate can distinguish a
@@ -730,11 +747,30 @@ def _check_accurate(content: str) -> str | None:
 def _evaluate_deterministic_checks(
     content: str,
     dod_deterministic: tuple[str, ...],
-) -> list[str]:
-    """Run all deterministic DoD checks and return failure messages."""
+) -> tuple[list[str], list[str]]:
+    """Run all deterministic DoD checks.
+
+    Returns:
+        ``(failures, skipped)`` where ``failures`` are the human-readable failure
+        messages of checks that were evaluated and failed, and ``skipped`` are
+        the names of UNEVALUATED checks (``_UNEVALUATED_DETERMINISTIC_CHECKS``)
+        that have no wired executor in this reducer. A skipped check produces
+        NEITHER a pass nor a failure — it is excluded from the deterministic
+        passed/total fraction by the caller (OMN-13850). This removes the phantom
+        always-pass that ``passes_existing_tests`` had while it was aliased to
+        ``_check_response_non_empty``.
+    """
     failures: list[str] = []
+    skipped: list[str] = []
     for check in dod_deterministic:
         reason: str | None = None
+        if check in _UNEVALUATED_DETERMINISTIC_CHECKS:
+            # OMN-13850: no acceptance-command executor is wired for this check in
+            # this reducer. Record it as SKIPPED so it neither passes nor fails
+            # and is dropped from the deterministic fraction — it must never
+            # silently report "passed" without executing anything.
+            skipped.append(check)
+            continue
         if check == "output_parses":
             reason = _check_output_parses(content)
         elif check == "signature_preserved":
@@ -747,7 +783,7 @@ def _evaluate_deterministic_checks(
             reason = _check_uses_pytest_mark_unit(content)
         elif check == "docstring_present":
             reason = _check_docstring_present(content)
-        elif check in ("response_non_empty", "task_completed", "passes_existing_tests"):
+        elif check in ("response_non_empty", "task_completed"):
             reason = _check_response_non_empty(content)
         elif check == "exactly_two_sentences":
             reason = _check_exactly_two_sentences(content)
@@ -771,7 +807,7 @@ def _evaluate_deterministic_checks(
                 reason = f"MALFORMED: unsupported deterministic DoD check '{check}'"
         if reason is not None:
             failures.append(reason)
-    return failures
+    return failures, skipped
 
 
 # Dispatch table: named heuristic check → checker function (content → failure message or None)
@@ -842,23 +878,41 @@ def _evaluate_heuristic_checks(
     return heuristic_failures, det_failures
 
 
+# OMN-13850: the empty/refusal deterministic HARD FLOOR (MUST-NOT-change, per the
+# ticket scope) is enforced independently of any single declared check. Before
+# this ticket the ONLY thing rejecting an EMPTY code_generation answer on the
+# deterministic path was ``passes_existing_tests`` aliased to
+# ``_check_response_non_empty``; removing the phantom alias would have silently
+# dropped the empty floor for verifiable classes whose declared deterministic set
+# does not name ``response_non_empty`` (``compiles_without_errors`` accepts the
+# empty string because ``ast.parse("")`` succeeds). This floor restores the
+# non-forgeable empty guard as a first-class, always-applied deterministic check
+# on the verifiable-acceptance path — an empty answer fails because it is EMPTY,
+# not because a phantom test check "failed".
+_EMPTY_RESPONSE_FLOOR_REASON = "MALFORMED: empty response"
+
+
 def _run_contract_checks(
     content: str,
     dod_deterministic: tuple[str, ...],
     dod_heuristic: tuple[str, ...],
-) -> tuple[list[str], list[str]]:
+) -> tuple[list[str], list[str], list[str]]:
     """Run contract-declared DoD checks.
 
     Returns:
-        (deterministic_failures, heuristic_failures) - separate lists so the
-        caller can apply the correct blocking/escalation semantics.
+        ``(deterministic_failures, heuristic_failures, skipped_deterministic)`` -
+        separate lists so the caller can apply the correct blocking/escalation
+        semantics and exclude unevaluated (skipped) deterministic checks from the
+        passed/total fraction (OMN-13850).
     """
-    det_failures = _evaluate_deterministic_checks(content, dod_deterministic)
+    det_failures, skipped_deterministic = _evaluate_deterministic_checks(
+        content, dod_deterministic
+    )
     heuristic_failures, extra_det_failures = _evaluate_heuristic_checks(
         content, dod_heuristic
     )
     det_failures.extend(extra_det_failures)
-    return det_failures, heuristic_failures
+    return det_failures, heuristic_failures, skipped_deterministic
 
 
 def _stable_hash(value: object) -> str:
@@ -883,19 +937,50 @@ def _deterministic_acceptance_score(
     return round(passed / deterministic_total, 3)
 
 
+def _evaluated_deterministic_total(
+    *,
+    dod_deterministic: tuple[str, ...],
+    deterministic_failures: list[str],
+    skipped_deterministic: list[str],
+) -> int:
+    """Return the count of deterministic checks that were actually evaluated.
+
+    OMN-13850: the deterministic passed/total fraction must EXCLUDE unevaluated
+    (skipped) checks so a check with no wired executor cannot inflate the score
+    with a phantom pass. The total is the declared deterministic checks minus the
+    skipped ones, floored at the failure count so unsupported checks — which
+    surface as extra deterministic failures beyond the declared set — are always
+    counted as denominator terms (a failure can never exceed the total).
+    """
+    declared_evaluated = len(dod_deterministic) - len(skipped_deterministic)
+    return max(declared_evaluated, len(deterministic_failures))
+
+
 def _deterministic_acceptance_evidence(
     *,
     task_type: str,
     content: str,
     dod_deterministic: tuple[str, ...],
     deterministic_failures: list[str],
+    skipped_deterministic: list[str],
 ) -> dict[str, object]:
-    """Build deterministic acceptance evidence for verifiable task classes."""
-    deterministic_total = max(len(dod_deterministic), len(deterministic_failures))
-    actual_score = _deterministic_acceptance_score(
-        deterministic_total, len(deterministic_failures)
+    """Build deterministic acceptance evidence for verifiable task classes.
+
+    OMN-13850: unevaluated (skipped) deterministic checks are EXCLUDED from the
+    evaluated-check total, so the ``actual_score`` fraction reflects only checks
+    that were actually run — never a phantom "pass" for a check with no wired
+    executor. The skipped names are recorded in ``skipped_checks`` so the
+    unevaluated status is durable evidence, not a silent drop.
+    """
+    evaluated_total = _evaluated_deterministic_total(
+        dod_deterministic=dod_deterministic,
+        deterministic_failures=deterministic_failures,
+        skipped_deterministic=skipped_deterministic,
     )
-    passed = deterministic_total > 0 and not deterministic_failures
+    actual_score = _deterministic_acceptance_score(
+        evaluated_total, len(deterministic_failures)
+    )
+    passed = evaluated_total > 0 and not deterministic_failures
     corpus_identity = {
         "acceptance_version": _ACCEPTANCE_VERSION,
         "score_source": _DETERMINISTIC_SCORE_SOURCE,
@@ -917,6 +1002,7 @@ def _deterministic_acceptance_evidence(
         "actual_score": actual_score,
         "pass_": passed,
         "failure_cases": tuple(deterministic_failures),
+        "skipped_checks": tuple(skipped_deterministic),
     }
 
 
@@ -926,19 +1012,28 @@ def _is_verifiable_deterministic_acceptance(
 ) -> bool:
     """Return whether this contract path holds deterministic acceptance authority.
 
-    Authority requires a verifiable task type AND at least one NON-reject-only
-    deterministic check. A ``dod_deterministic`` set composed solely of
-    reject-only structural pre-filters (OMN-13370/OMN-13373:
+    Authority requires a verifiable task type AND at least one NON-reject-only,
+    ACTUALLY-EVALUATED deterministic check. A ``dod_deterministic`` set composed
+    solely of reject-only structural pre-filters (OMN-13370/OMN-13373:
     ``no_refusal``/``response_non_empty``/``output_parses``/...) can still
     *reject* bad output, but per OMN-13370 it must never *promote* a clean
     output to adequate — so it confers no acceptance authority here. Without
     this guard, ``task_type=code_generation`` + ``acceptance_criteria=
     ["no_refusal"]`` + a clean output leaked to ``passed=True`` (OMN-13375).
+
+    OMN-13850: an UNEVALUATED (skipped) check — one with no wired executor, e.g.
+    ``passes_existing_tests`` — likewise confers NO acceptance authority. It runs
+    nothing, so it cannot promote a clean output to adequate. A verifiable set
+    whose only non-reject-only member is a skipped check therefore has no
+    evaluated authority and falls through to the reject-only / no-authority path
+    (``fail_heuristic`` unless a real evaluated authority is present).
     """
     if gate_input.task_type not in _VERIFIABLE_TASK_TYPES:
         return False
     return any(
-        not _is_reject_only_deterministic_check(check) for check in dod_deterministic
+        not _is_reject_only_deterministic_check(check)
+        and check not in _UNEVALUATED_DETERMINISTIC_CHECKS
+        for check in dod_deterministic
     )
 
 
@@ -1030,10 +1125,14 @@ def _has_adequacy_authority(
 
     Structural deterministic checks and marker/refusal/length heuristics can
     reject invalid output and keep contributing diagnostics/score, but OMN-13370
-    bars them from promoting an output to adequate by themselves.
+    bars them from promoting an output to adequate by themselves. OMN-13850:
+    an unevaluated (skipped) deterministic check runs nothing, so it likewise
+    cannot serve as adequacy authority.
     """
     if any(
-        not _is_reject_only_deterministic_check(check) for check in dod_deterministic
+        not _is_reject_only_deterministic_check(check)
+        and check not in _UNEVALUATED_DETERMINISTIC_CHECKS
+        for check in dod_deterministic
     ):
         return True
     return any(not _is_reject_only_heuristic_check(check) for check in dod_heuristic)
@@ -1177,18 +1276,37 @@ def delta(
         return _run_legacy_checks(gate_input)
 
     content = _strip_thinking_traces(gate_input.llm_response_content)
-    det_failures, heuristic_failures = _run_contract_checks(
+    det_failures, heuristic_failures, skipped_deterministic = _run_contract_checks(
         content, dod_deterministic, dod_heuristic
     )
     deterministic_acceptance_authority = _is_verifiable_deterministic_acceptance(
         gate_input, dod_deterministic
     )
+
+    # OMN-13850: empty/refusal deterministic HARD FLOOR (MUST-NOT-change). On the
+    # verifiable-acceptance path the empty guard used to come ONLY from
+    # ``passes_existing_tests`` aliased to ``_check_response_non_empty``. Now that
+    # ``passes_existing_tests`` is SKIPPED (unevaluated, no wired executor), an
+    # empty answer would otherwise slip through for a declared set that does not
+    # name ``response_non_empty`` (``compiles_without_errors`` accepts ``""``). The
+    # floor is a first-class, always-applied deterministic failure on the
+    # verifiable path so the empty answer hard-blocks because it is EMPTY — never
+    # because a phantom test check "failed". It is de-duplicated so a declared
+    # ``response_non_empty`` does not double-count.
+    if (
+        deterministic_acceptance_authority
+        and not content.strip()
+        and _EMPTY_RESPONSE_FLOOR_REASON not in det_failures
+    ):
+        det_failures.insert(0, _EMPTY_RESPONSE_FLOOR_REASON)
+
     acceptance_evidence = (
         _deterministic_acceptance_evidence(
             task_type=gate_input.task_type,
             content=content,
             dod_deterministic=dod_deterministic,
             deterministic_failures=det_failures,
+            skipped_deterministic=skipped_deterministic,
         )
         if deterministic_acceptance_authority
         else {}
@@ -1202,8 +1320,14 @@ def delta(
     # discriminates output quality instead of collapsing to {0.0, 1.0}.
     # Unsupported heuristic checks surface as deterministic failures, so the
     # deterministic band total includes any extra failures beyond the declared
-    # deterministic check count.
-    deterministic_total = max(len(dod_deterministic), len(det_failures))
+    # deterministic check count. OMN-13850: unevaluated (skipped) deterministic
+    # checks are EXCLUDED from the total so a check with no wired executor cannot
+    # inflate the fraction with a phantom pass.
+    deterministic_total = _evaluated_deterministic_total(
+        dod_deterministic=dod_deterministic,
+        deterministic_failures=det_failures,
+        skipped_deterministic=skipped_deterministic,
+    )
     quality_score = _graded_quality_score(
         deterministic_total=deterministic_total,
         deterministic_failures=len(det_failures),
