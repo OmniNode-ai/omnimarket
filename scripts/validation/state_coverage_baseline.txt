@@ -139,7 +139,6 @@ node_decompose_epic_orchestrator onex.cmd.omnimarket.contract-generate.v1
 node_deep_dive_report_effect onex.evt.omnimarket.deep-dive-report-failed.v1
 node_delegation_ab_runner onex.evt.omnimarket.delegation-ab-run-completed.v1
 node_delegation_escalation_decision_compute onex.evt.omnimarket.delegation-escalation-decided.v1
-node_delegation_quality_gate_reducer evaluated
 node_delegation_routing_feedback_reducer updated
 node_delegation_routing_reducer routed
 node_demo_cost_compute onex.evt.omnimarket.demo-cost-computed.v1
