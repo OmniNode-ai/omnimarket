@@ -148,9 +148,12 @@ def test_build_loop_handle_accepts_runtime_dispatch() -> None:
         dry_run=True,
     )
     result = _invoke_handle_method(HandlerBuildLoop().handle, command)
-    # handle() returns (state, events, completed_event); the point of the test is
-    # that the adapter invoked it without raising the correlation_id TypeError.
+    # handle() returns a typed ModelBuildLoopResult (BaseModel), not a tuple —
+    # a tuple return crashes the adapter publish path with ONEX_CORE_095
+    # (OMN-13841). The BaseModel return is what makes the result publishable.
     assert result is not None
+    assert isinstance(result, BaseModel)
+    assert not isinstance(result, tuple)
 
 
 @pytest.mark.unit
@@ -169,4 +172,7 @@ def test_design_to_plan_handle_accepts_runtime_dispatch() -> None:
         plan_only=True,
     )
     result = _invoke_handle_method(HandlerDesignToPlan().handle, command)
+    # Typed ModelDesignToPlanResult (BaseModel), not a tuple (OMN-13841).
     assert result is not None
+    assert isinstance(result, BaseModel)
+    assert not isinstance(result, tuple)
