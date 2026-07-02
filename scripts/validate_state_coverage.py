@@ -36,6 +36,7 @@ Flags:
 from __future__ import annotations
 
 import argparse
+import ast
 import json
 import re
 import subprocess
@@ -162,35 +163,128 @@ def _load_test_corpus() -> list[tuple[str, str]]:
     return corpus
 
 
-def _node_test_content(node_name: str, corpus: list[tuple[str, str]]) -> str:
-    """Concatenated content of every test file associated with a node.
+def _node_test_sources(node_name: str, corpus: list[tuple[str, str]]) -> list[str]:
+    """Per-file source of every test file associated with a node.
 
     A test file is associated with a node when the node name appears in its
     own path, OR the file's content references the node's module path
     (``omnimarket.nodes.<node_name>``) or the bare node name (covers
     dynamic-import / fixture-string references).
+
+    Returned per file (not concatenated): each real test file is a
+    self-contained module, but concatenating several — each carrying its own
+    ``from __future__ import annotations`` — raises ``SyntaxError`` on a single
+    ``ast.parse`` (a ``__future__`` import must be the first statement).
     """
-    parts: list[str] = []
+    sources: list[str] = []
     for path, content in corpus:
         if node_name in path or node_name in content:
-            parts.append(content)
-    return "\n".join(parts)
+            sources.append(content)
+    return sources
 
 
-def _state_covered(state: str, test_contents: str) -> bool:
-    """A declared state is covered if it is literally asserted in a test."""
+def _state_match_nodes(
+    tree: ast.AST, state: str, *, identifier_state: bool
+) -> list[ast.AST]:
+    """AST nodes that reference ``state`` — a string ``Constant`` equal to it,
+    or (for identifier-shaped states) an ``Attribute`` whose ``.attr`` is it.
+
+    Attribute references cover the common enum idiom
+    (``EnumOrchestratorState.INVENTORYING``); string constants cover topic
+    strings, dict keys, and quoted FSM names.
+    """
+    matches: list[ast.AST] = []
+    for node in ast.walk(tree):
+        if (isinstance(node, ast.Constant) and node.value == state) or (
+            identifier_state and isinstance(node, ast.Attribute) and node.attr == state
+        ):
+            matches.append(node)
+    return matches
+
+
+def _references_runtime(node: ast.AST) -> bool:
+    """True when ``node``'s subtree references a runtime value rather than
+    being a pure literal / literal collection — i.e. it contains a ``Name``,
+    ``Attribute``, ``Call``, ``Subscript``, awaited, or starred expression.
+    """
+    for child in ast.walk(node):
+        if isinstance(
+            child,
+            (ast.Name, ast.Attribute, ast.Call, ast.Subscript, ast.Await, ast.Starred),
+        ):
+            return True
+    return False
+
+
+def _is_vacuous_compare(node: ast.Compare) -> bool:
+    """A comparison proves nothing about emitted state when it is either a
+    structural self-tautology (every operand identical, e.g. ``x.foo == x.foo``
+    or ``declared == declared``) or has no runtime reference at all
+    (``"a" == "a"``)."""
+    operands: list[ast.expr] = [node.left, *node.comparators]
+    dumps = [ast.dump(op) for op in operands]
+    if len(dumps) >= 2 and all(d == dumps[0] for d in dumps[1:]):
+        return True
+    return not any(_references_runtime(op) for op in operands)
+
+
+def _vacuous_occurrence_ids(tree: ast.AST) -> set[int]:
+    """Object ids of AST nodes whose literal occurrences do NOT constitute
+    real coverage:
+
+    * ``docstring`` / bare string-constant expression statements
+      (``ast.Expr`` whose value is a string ``Constant``);
+    * bare literal assertions (``assert "<state>"`` — an ``ast.Assert`` whose
+      ``.test`` is a ``Constant``);
+    * every node contained in a *vacuous* comparison (self-tautology or
+      constant-vs-constant), so ``x.foo == x.foo`` and ``"a" == "a"`` do not
+      count via either the attribute or the literal.
+
+    Comments are absent from the AST entirely, so comment-only mentions are
+    excluded for free.
+    """
+    excluded: set[int] = set()
+    for node in ast.walk(tree):
+        if (
+            isinstance(node, ast.Expr)
+            and isinstance(node.value, ast.Constant)
+            and isinstance(node.value.value, str)
+        ):
+            excluded.add(id(node.value))
+        elif isinstance(node, ast.Assert) and isinstance(node.test, ast.Constant):
+            excluded.add(id(node.test))
+        elif isinstance(node, ast.Compare) and _is_vacuous_compare(node):
+            for child in ast.walk(node):
+                excluded.add(id(child))
+    return excluded
+
+
+def _state_covered(state: str, test_contents: str | list[str]) -> bool:
+    """A declared state is covered when its literal is genuinely referenced in
+    a node's tests.
+
+    Coverage is decided at the AST level, not by substring/regex presence. The
+    state name — as a string constant, or (for identifier-shaped states) an
+    ``.attr`` access (the enum idiom ``EnumX.STATE``) — must appear in a
+    position that actually exercises behaviour. It is NOT counted when its only
+    occurrences are vacuous: a bare ``assert "<state>"`` with no comparison, a
+    self-tautology / constant-only comparison (``x == x``, ``"a" == "a"``), or a
+    docstring / comment mention. Every other occurrence (compare operand, set /
+    tuple / for-loop iterable feeding an assert, ``assertEqual`` argument, dict
+    value, …) counts, matching the prior regex's reach without its blind spots.
+    """
     if not state:
         return False
-    # Quoted string literal (covers topic strings, FSM state names, dict keys).
-    quoted_pattern = re.compile(r"""['"]""" + re.escape(state) + r"""['"]""")
-    if quoted_pattern.search(test_contents):
-        return True
-    # Bare attribute access (covers Pydantic model field assertions like
-    # ``result.overall_status``). Only meaningful for identifier-shaped states
-    # (topics/event types contain '.' and would false-positive as substrings).
-    if _IDENTIFIER_RE.match(state) and "." not in state:
-        attr_pattern = re.compile(r"\." + re.escape(state) + r"\b")
-        if attr_pattern.search(test_contents):
+    sources = [test_contents] if isinstance(test_contents, str) else list(test_contents)
+    identifier_state = bool(_IDENTIFIER_RE.match(state)) and "." not in state
+    for source in sources:
+        try:
+            tree = ast.parse(source)
+        except SyntaxError:
+            continue
+        excluded = _vacuous_occurrence_ids(tree)
+        matches = _state_match_nodes(tree, state, identifier_state=identifier_state)
+        if any(id(match) not in excluded for match in matches):
             return True
     return False
 
@@ -233,9 +327,9 @@ def validate_node(
     if not ds.states:
         return NodeCoverageResult(node=node_name, kind=ds.kind)
 
-    combined_content = _node_test_content(node_name, test_corpus)
+    test_sources = _node_test_sources(node_name, test_corpus)
 
-    raw_uncovered = [s for s in ds.states if not _state_covered(s, combined_content)]
+    raw_uncovered = [s for s in ds.states if not _state_covered(s, test_sources)]
 
     uncovered: list[str] = []
     baselined_uncovered: list[str] = []
