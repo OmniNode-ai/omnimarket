@@ -2,38 +2,27 @@
 # SPDX-License-Identifier: MIT
 """Multi-parameter bus round-trip integration test for the dispatch_engine orchestrator.
 
-WS-5 Wave 7 (OMN-13681). ORCHESTRATOR_GENERIC archetype -> Variant B: the
-handler is driven over ``EventBusInmemory`` via ``LocalRuntimeBusAdapter``; a
-skill-request command is published and the terminal event on the success topic
-is asserted.
+WS-5 Wave 7 (OMN-13681), updated for the OMN-13834 router rebuild.
+ORCHESTRATOR_GENERIC archetype -> Variant B: the skill-lifecycle handler is
+driven over ``EventBusInmemory`` via ``LocalRuntimeBusAdapter``; a skill-request
+command is published and the terminal event on the success topic is asserted.
 
-HONESTY NOTE: ``node_skill_dispatch_engine_orchestrator`` is a documented
-scaffold (``contract.yaml`` ``maturity: stub``, OMN-8821) — live dispatch to the
-polymorphic agent is follow-up work, so the handler returns a ``"dispatched"``
-placeholder. This test does NOT fake that follow-up; it asserts the REAL,
-deterministic behavior that exists today: the dry_run vs live status branch, the
-args passthrough, and the input-validation boundary that rejects malformed
-skill requests (negative control -> no terminal event published).
+The node is no longer a scaffold: ``handle_skill_requested`` routes through the
+real RSD-scoring + self-healing composition (``HandlerDispatchEngineRouter``).
+This test asserts the deterministic behavior of the *skill-lifecycle shim* over
+the bus:
 
-Param axes (>=3 distinct sets + a negative control):
-  * dry_run=True  -> terminal status "dry_run".
-  * dry_run=False -> terminal status "dispatched".
+  * dry_run=True  -> terminal status "dry_run" (short-circuit, no routing).
+  * dry_run=False -> terminal status "no_candidates": the bare shim carries no
+    backlog access (ticket polling is owned upstream by node_pipeline_fill), so
+    routing an empty candidate set is an honest empty cycle — NOT a "dispatched"
+    placeholder.
   * args passthrough -> terminal payload echoes the supplied args.
   * malformed skill_path (raw bad fixture) -> rejected at the model boundary,
-    NO terminal event reaches the success topic  (NEGATIVE CONTROL).
+    NO terminal event published (NEGATIVE CONTROL).
 
-KNOWN GAP (OMN-13784, do not paper over): ``ModelSkillResult.SkillResultStatus``
-declares a third member, ``FAILED``, that this handler never actually
-produces. ``handle_skill_requested`` raises ``ValueError`` on a blank
-``skill_name`` / malformed ``skill_path`` instead of catching and returning
-``FAILED`` -- and those same conditions are already rejected one layer up by
-``ModelSkillRequest``'s field validators before the handler ever runs, so the
-handler's own raises are unreachable through the normal envelope path too.
-The contract's declared ``failure_topic`` is correspondingly unwired: the
-single-topic ``LocalRuntimeBusAdapter`` used here has no route to it. Closing
-this is a real wiring change (catch + FAILED + route to failure_topic), not a
-test-only fix -- tracked as follow-up, not faked here with a status this
-handler cannot produce.
+The REAL routed dispatch over a candidate ticket set (worker specs, ranking,
+cut accounting) is proven in ``tests/test_dispatch_engine_router.py``.
 """
 
 from __future__ import annotations
@@ -56,12 +45,16 @@ _SUCCESS_TOPIC = "onex.evt.omnimarket.dispatch_engine-completed.v1"
 
 
 class _DispatchHandlerWrapper:
-    """Bridge the adapter's ``handle(**payload)`` call to ``handle_skill_requested``."""
+    """Bridge the adapter's ``handle(**payload)`` call to ``handle_skill_requested``.
+
+    ``handle_skill_requested`` is a coroutine; the adapter awaits awaitable
+    handler results, so returning the coroutine here drives the async path.
+    """
 
     def __init__(self, event_bus: Any) -> None:
         self._inner = HandlerSkillRequested(event_bus=event_bus)
 
-    def handle(self, **payload: Any) -> dict[str, Any]:
+    def handle(self, **payload: Any) -> Any:
         return self._inner.handle_skill_requested(**payload)
 
 
@@ -78,13 +71,13 @@ _VALID_CASES: list[tuple[str, ModelSkillRequest, str, dict[str, str]]] = [
         {},
     ),
     (
-        "live-returns-dispatched",
+        "live-empty-backlog-no_candidates",
         ModelSkillRequest(
             skill_name="merge_sweep",
             skill_path="skills/merge_sweep/SKILL.md",
             dry_run=False,
         ),
-        "dispatched",
+        "no_candidates",
         {},
     ),
     (
@@ -95,7 +88,7 @@ _VALID_CASES: list[tuple[str, ModelSkillRequest, str, dict[str, str]]] = [
             args={"scope": "post-merge", "severity": "high"},
             dry_run=False,
         ),
-        "dispatched",
+        "no_candidates",
         {"scope": "post-merge", "severity": "high"},
     ),
 ]
