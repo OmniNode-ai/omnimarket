@@ -77,3 +77,14 @@ class ModelLlmDelegationCallRequest(BaseModel):
     # default empty so existing callers are unaffected.
     extra_headers: dict[str, str] = Field(default_factory=dict)
     provider_request_options: dict[str, Any] = Field(default_factory=dict)
+
+    secret_ref: str | None = Field(default=None)
+    """Logical secret reference (e.g. ``llm.glm.api_key``) for the backend's API key.
+
+    Carried verbatim from the routing authority's ``ModelResolvedDelegationBackend.
+    secret_ref``. The effect handler resolves it to the literal key value through the
+    canonical ``ProtocolSecretStore`` at the call boundary and attaches it as an
+    ``Authorization: Bearer <key>`` header (OMN-13861) — mirroring the sibling
+    ``HandlerInferenceIntent`` path. Only the reference NAME is carried here; the
+    secret VALUE is never resolved in the routing/composition layer, never persisted,
+    and never emitted to Kafka. ``None`` means an unauthenticated backend (local tier)."""

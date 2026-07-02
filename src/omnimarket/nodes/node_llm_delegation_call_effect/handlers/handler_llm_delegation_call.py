@@ -37,6 +37,7 @@ import yaml
 from omnimarket.enums.enum_cost_basis import EnumCostBasis
 from omnimarket.enums.enum_delegation_failure_class import EnumDelegationFailureClass
 from omnimarket.enums.enum_usage_source import EnumUsageSource
+from omnimarket.inference.secret_store_resolver import resolve_api_key_loop_safe
 from omnimarket.models.delegation.llm_cost_routing.model_llm_delegation_all_tiers_failed_event import (
     ModelLlmDelegationAllTiersFailedEvent,
 )
@@ -375,6 +376,14 @@ class HandlerLlmDelegationCall:
             payload.update(request.provider_request_options)
 
         try:
+            # OMN-13861: resolve the backend's API key from ``secret_ref`` and merge
+            # ``Authorization: Bearer <key>`` into the outbound headers BEFORE the
+            # POST. Without this the bus-less local path posted only the static
+            # bifrost headers (HTTP-Referer / X-Title), so every authenticated cloud
+            # tier 400'd with "Missing or invalid Authorization header". A declared
+            # ref that cannot be resolved fails closed (raises → caught below as a
+            # transport failure), never a silent unauthenticated call.
+            outbound_headers = self._resolve_outbound_headers(request)
             # OMN-12815/OMN-13159: the transport posts the COMPLETE endpoint URL
             # VERBATIM — no append, no construction — using curl on the macOS LAN
             # profile and httpx elsewhere.
@@ -384,7 +393,7 @@ class HandlerLlmDelegationCall:
                 endpoint_url=endpoint_url,
                 payload=payload,
                 timeout_seconds=request.timeout_seconds,
-                extra_headers=request.extra_headers,
+                extra_headers=outbound_headers,
             )
             latency_ms = response.latency_ms
             response_json: dict[str, Any] = response.json_body
@@ -581,6 +590,29 @@ class HandlerLlmDelegationCall:
             event,
             event_publisher,
         )
+
+    @staticmethod
+    def _resolve_outbound_headers(
+        request: ModelLlmDelegationCallRequest,
+    ) -> dict[str, str]:
+        """Return the static bifrost headers plus a resolved ``Authorization`` header.
+
+        OMN-13861: the routing authority carries only the logical ``secret_ref``
+        (e.g. ``llm.glm.api_key``); the literal API-key VALUE is resolved HERE, at
+        the effect boundary, through the canonical ``ProtocolSecretStore`` — the
+        same fail-closed resolution ``HandlerInferenceIntent`` performs for its
+        sibling path. ``resolve_api_key_loop_safe`` is used (not the bare sync
+        variant) so resolution works whether the effect runs standalone (no event
+        loop, in the local port's child process) or is dispatched on the runtime
+        loop. A ``None`` ``secret_ref`` (unauthenticated local backend) adds no
+        header; a declared-but-unresolvable ref fails closed (raises), so a cloud
+        call is never made silently without credentials.
+        """
+        headers = dict(request.extra_headers)
+        api_key = resolve_api_key_loop_safe(request.secret_ref)
+        if api_key is not None:
+            headers["Authorization"] = f"Bearer {api_key.get_secret_value()}"
+        return headers
 
     @staticmethod
     def _failure_result(

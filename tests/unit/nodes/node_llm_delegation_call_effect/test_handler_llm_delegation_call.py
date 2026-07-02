@@ -56,6 +56,22 @@ _HANDLER_MODULE = (
 )
 
 
+def _clear_secret_store_cache(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Isolate secret resolution: no lane config path + fresh convention store.
+
+    OMN-13861 auth tests resolve ``secret_ref`` through the convention-fallback
+    default store (``llm.x.api_key`` → ``LLM_X_API_KEY``). Clear any
+    ``ONEX_SECRET_RESOLVER_CONFIG_PATH`` a sibling test set and drop the cached
+    ``_configured_secret_store`` so the default (convention) store is used.
+    """
+    from omnimarket.inference.secret_store_resolver import (
+        clear_secret_store_resolver_cache,
+    )
+
+    monkeypatch.delenv("ONEX_SECRET_RESOLVER_CONFIG_PATH", raising=False)
+    clear_secret_store_resolver_cache()
+
+
 def _make_request(**overrides: object) -> ModelLlmDelegationCallRequest:
     defaults: dict[str, object] = {
         "request_id": "req-001",
@@ -481,6 +497,103 @@ class TestHandlerLlmDelegationCall:
         assert result.success is False
         assert result.failure_class == EnumDelegationFailureClass.UNKNOWN
         assert "unexpected transport error" in result.error_message
+
+    @pytest.mark.unit
+    def test_secret_ref_resolves_to_authorization_bearer_header(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """OMN-13861: a request carrying ``secret_ref`` attaches ``Authorization``.
+
+        The routing authority carries only the logical ``secret_ref``; the effect
+        handler resolves it to the literal key at the call boundary and posts an
+        ``Authorization: Bearer <key>`` header alongside the static bifrost headers.
+        Without this, every authenticated cloud tier 400'd on the bus-less path.
+        """
+        _clear_secret_store_cache(monkeypatch)
+        monkeypatch.setenv("LLM_TESTPROVIDER_API_KEY", "sk-test-abc123")
+        api_resp = _make_api_response("ok", tokens_in=1, tokens_out=1)
+        captured: dict[str, Any] = {}
+
+        def fake_post(
+            *,
+            endpoint_url: str,
+            payload: dict[str, Any],
+            timeout_seconds: float,
+            extra_headers: dict[str, str] | None = None,
+            runtime_profile: str | None = None,
+        ) -> transport.ModelTransportResponse:
+            captured["extra_headers"] = extra_headers
+            return transport.ModelTransportResponse(
+                status_code=200, json_body=api_resp, latency_ms=3
+            )
+
+        monkeypatch.setattr(transport, "post_chat_completion", fake_post)
+        with patch(f"{_HANDLER_MODULE}._is_endpoint_healthy", return_value=True):
+            result = HandlerLlmDelegationCall()(
+                _make_request(
+                    secret_ref="llm.testprovider.api_key",
+                    extra_headers={"X-Title": "OmniNode ONEX"},
+                )
+            )
+
+        assert result.success is True
+        headers = captured["extra_headers"]
+        assert headers["Authorization"] == "Bearer sk-test-abc123"
+        # The static bifrost headers are preserved alongside the resolved credential.
+        assert headers["X-Title"] == "OmniNode ONEX"
+
+    @pytest.mark.unit
+    def test_none_secret_ref_sends_no_authorization_header(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """An unauthenticated local backend (secret_ref=None) adds no Authorization."""
+        _clear_secret_store_cache(monkeypatch)
+        api_resp = _make_api_response("ok", tokens_in=1, tokens_out=1)
+        captured: dict[str, Any] = {}
+
+        def fake_post(
+            *,
+            endpoint_url: str,
+            payload: dict[str, Any],
+            timeout_seconds: float,
+            extra_headers: dict[str, str] | None = None,
+            runtime_profile: str | None = None,
+        ) -> transport.ModelTransportResponse:
+            captured["extra_headers"] = extra_headers
+            return transport.ModelTransportResponse(
+                status_code=200, json_body=api_resp, latency_ms=3
+            )
+
+        monkeypatch.setattr(transport, "post_chat_completion", fake_post)
+        with patch(f"{_HANDLER_MODULE}._is_endpoint_healthy", return_value=True):
+            result = HandlerLlmDelegationCall()(_make_request(secret_ref=None))
+
+        assert result.success is True
+        assert "Authorization" not in captured["extra_headers"]
+
+    @pytest.mark.unit
+    def test_declared_but_unresolvable_secret_ref_fails_closed(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A declared secret_ref with no resolvable value fails closed.
+
+        The handler must NOT make an unauthenticated call that would silently 400;
+        the ``SecretResolutionError`` is caught as a transport failure so the port
+        records a real failure rather than a misleading success.
+        """
+        _clear_secret_store_cache(monkeypatch)
+        monkeypatch.delenv("LLM_ABSENTPROVIDER_API_KEY", raising=False)
+        # transport.post must NOT be reached; make it explode if it is.
+        _patch_post(monkeypatch, side_effect=AssertionError("must not POST unauthed"))
+
+        with patch(f"{_HANDLER_MODULE}._is_endpoint_healthy", return_value=True):
+            result = HandlerLlmDelegationCall()(
+                _make_request(secret_ref="llm.absentprovider.api_key")
+            )
+
+        assert result.success is False
+        assert result.failure_class == EnumDelegationFailureClass.UNKNOWN
+        assert "absentprovider" in result.error_message.lower()
 
     @pytest.mark.unit
     def test_emit_model_degraded_publishes_correct_topic(self) -> None:

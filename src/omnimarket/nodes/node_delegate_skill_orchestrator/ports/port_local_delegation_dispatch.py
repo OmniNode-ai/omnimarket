@@ -113,6 +113,7 @@ from omnimarket.nodes.node_delegation_quality_gate_reducer.judge.handler_judge_a
 )
 from omnimarket.nodes.node_delegation_routing_reducer.handlers.handler_delegation_routing import (
     backend_id_for_tier,
+    first_eligible_tier,
     next_eligible_tier,
     resolve_task_class_dod_checks,
     resolve_task_class_max_escalations,
@@ -345,7 +346,7 @@ class LocalDelegationDispatchPort:
         # 1. ROUTING AUTHORITY — resolve the INITIAL (cheapest-first) backend.
         #    MUST NOT change: the initial tier is cheapest-first; escalation only
         #    advances UP the closed-set task-class tier_order (OMN-13140/OMN-13849).
-        backend = resolve_delegation_backend(task_type)
+        backend = self._resolve_initial_backend(task_type)
 
         # Escalation budget from the task-class contract escalation_policy
         # (OMN-13849). None -> the class declares no budget; fall back to the bus
@@ -590,6 +591,51 @@ class LocalDelegationDispatchPort:
             return False
         return gate_result.passed
 
+    def _resolve_initial_backend(
+        self, task_type: str
+    ) -> ModelResolvedDelegationBackend:
+        """Resolve the cheapest-first INITIAL backend via the task-class tier_order.
+
+        OMN-13861: the initial resolution MUST consult the closed-set task-class
+        ``escalation_policy.tier_order`` — exactly like every escalation hop already
+        does (``_resolve_next_backend``) — instead of the untargeted
+        ``resolve_delegation_backend(task_type)``. The untargeted call selected the
+        first bifrost-file-order backend whose ``endpoint_url`` was populated and
+        whose capabilities matched the task, which for ``code_generation`` was the
+        abandoned off-ladder ``cloud-gemini-pro`` (OMN-13667). That VIOLATED both
+        binding guardrails (cheapest-first + closed-set tier_order) and, because
+        ``tier_for_backend`` cannot classify an off-ladder backend,
+        ``next_eligible_tier`` returned None immediately — stranding the OMN-13849
+        escalation loop after a single attempt.
+
+        The first eligible tier is resolved through the routing authority
+        (``first_eligible_tier`` → ``backend_id_for_tier`` →
+        ``resolve_delegation_backend(task_type, backend_id=...)``), so the initial
+        backend is the cheapest tier the closed-set ladder actually declares. Falls
+        back to the untargeted resolution only when the task class declares no
+        routable tier_order (legacy / no-contract classes), preserving their
+        behavior without opening the closed set for classes that DO declare one.
+        """
+        first_tier = first_eligible_tier(task_type)
+        if first_tier is not None:
+            backend_id = backend_id_for_tier(first_tier, task_type)
+            if backend_id is not None:
+                try:
+                    return resolve_delegation_backend(task_type, backend_id=backend_id)
+                except RuntimeError:
+                    # The first tier's backend has no populated COMPLETE endpoint in
+                    # the active overlay — fall back to the untargeted resolution
+                    # rather than fail the dispatch outright.
+                    logger.warning(
+                        "LocalDelegationDispatch: initial tier=%s backend=%s has no "
+                        "resolvable endpoint for task_type=%s; falling back to "
+                        "untargeted resolution",
+                        first_tier,
+                        backend_id,
+                        task_type,
+                    )
+        return resolve_delegation_backend(task_type)
+
     def _resolve_next_backend(
         self,
         *,
@@ -707,6 +753,11 @@ class LocalDelegationDispatchPort:
             provider=backend.backend_id,
             extra_headers=backend.extra_headers,
             provider_request_options=provider_request_options,
+            # OMN-13861: carry the backend's logical secret reference so the effect
+            # handler can resolve it to an Authorization header at the call boundary.
+            # An authenticated cloud tier now attaches credentials on the bus-less
+            # local path; an unauthenticated local backend carries None.
+            secret_ref=backend.secret_ref,
         )
         # OMN-13597: the effect handler is a synchronous blocking call (health
         # probe + curl/httpx LLM POST). Awaiting it inline blocks the asyncio

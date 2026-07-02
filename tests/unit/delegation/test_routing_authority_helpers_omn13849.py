@@ -30,6 +30,7 @@ from omnimarket.nodes.node_delegation_routing_reducer.handlers import (
 )
 from omnimarket.nodes.node_delegation_routing_reducer.handlers.handler_delegation_routing import (
     backend_id_for_tier,
+    first_eligible_tier,
     next_eligible_tier,
     resolve_task_class_max_escalations,
     tier_for_backend,
@@ -158,3 +159,43 @@ def test_next_eligible_tier_advances_up_closed_set_order() -> None:
     # can route the task with a resolvable backend.
     assert nxt is not None
     assert nxt in {"local", "claude"}
+
+
+# --- OMN-13861: initial (cheapest-first) tier resolution -------------------------
+
+
+@pytest.mark.usefixtures("code_gen_routable")
+def test_first_eligible_tier_is_cheapest_in_closed_set_order() -> None:
+    """OMN-13861: the INITIAL tier is the FIRST of the closed-set tier_order.
+
+    code_generation's ``escalation_policy.tier_order`` is
+    ``[cheap_cloud, local, claude]``; the initial resolution must pick
+    ``cheap_cloud`` (the cheapest declared tier that can route the task), NOT the
+    first bifrost-file-order backend the untargeted resolver landed on. This is the
+    closed-set + cheapest-first guardrail the untargeted resolution violated.
+    """
+    assert first_eligible_tier("code_generation") == "cheap_cloud"
+
+
+@pytest.mark.usefixtures("code_gen_routable")
+def test_first_eligible_tier_backend_is_on_ladder_not_off_ladder() -> None:
+    """The initial backend the ladder selects is classifiable by tier_for_backend.
+
+    The bug was that the untargeted resolver landed on ``cloud-gemini-pro`` — a
+    backend on NO routing_tiers tier — so ``tier_for_backend`` returned None and
+    ``next_eligible_tier`` could never advance (escalation loop stranded after one
+    attempt). Resolving the first tier's backend through the routing authority
+    guarantees the initial backend IS on the ladder, so escalation can proceed.
+    """
+    first_tier = first_eligible_tier("code_generation")
+    assert first_tier is not None
+    backend_id = backend_id_for_tier(first_tier, "code_generation")
+    assert backend_id is not None
+    # The initial backend is classifiable back to its tier (on-ladder), so
+    # next_eligible_tier can advance from it — the escalation loop is not stranded.
+    assert tier_for_backend(backend_id) == first_tier
+
+
+def test_first_eligible_tier_unknown_task_returns_none() -> None:
+    """A task class with no declared tier_order -> None (caller keeps legacy path)."""
+    assert first_eligible_tier("not_a_real_task_class") is None
