@@ -55,15 +55,15 @@ marker). They need the marker added — a mechanical one-line-per-file fix, fold
 | 24 | tests/test_model_router_authorization_and_ttl.py:93 | patch_httpx_egress | C1 | DONE — per-line `# onex-allow-faked-boundary`: non-inference egress — model-router `/health` GET probe (health-liveness boundary, not inference) |
 | 25 | tests/integration/golden_chain/test_sea_acceptance_chain.py:350 | patch_httpx_egress | C1 | DONE — per-line `# onex-allow-faked-boundary`: SEA minimum-proof diagnostic asserts verbatim endpoint_url (OMN-12815) + exact served tokens vs a synthetic test-hostname response |
 | 26 | tests/integration/golden_chain/test_golden_chain_delegation_useful_artifact_chain.py:7 | patch_httpx_egress | C1 | DONE — docstring reworded to drop the literal `patch("httpx.Client")` string; already-migrated reference file, no code change |
-| 27 | tests/unit/nodes/node_baseline_capture/test_probe_unit.py:121 | patch_httpx_egress | C2 | justified-allow-non-inference |
-| 28 | tests/unit/nodes/node_baseline_capture/test_probe_unit.py:154 | patch_httpx_egress | C2 | justified-allow-non-inference |
-| 29 | tests/unit/nodes/node_baseline_capture/test_probe_unit.py:188 | patch_httpx_egress | C2 | justified-allow-non-inference |
-| 30 | tests/unit/nodes/node_baseline_capture/test_probe_unit.py:263 | patch_httpx_egress | C2 | justified-allow-non-inference |
-| 31 | tests/unit/nodes/node_baseline_capture/test_probe_unit.py:301 | patch_httpx_egress | C2 | justified-allow-non-inference |
-| 32 | tests/unit/nodes/node_baseline_capture/test_probe_unit.py:320 | patch_httpx_egress | C2 | justified-allow-non-inference |
-| 33 | tests/unit/nodes/node_baseline_capture/test_probe_unit.py:522 | patch_httpx_egress | C2 | justified-allow-non-inference |
-| 34 | tests/unit/nodes/node_baseline_capture/test_probe_unit.py:557 | patch_httpx_egress | C2 | justified-allow-non-inference |
-| 35 | tests/unit/nodes/node_baseline_capture/test_probe_unit.py:599 | patch_httpx_egress | C2 | justified-allow-non-inference |
+| 27 | tests/unit/nodes/node_baseline_capture/test_probe_unit.py:121 | patch_httpx_egress | C2 | DONE — per-line `# onex-allow-faked-boundary` (reason above line): ProbeSystemHealth liveness GET (Redpanda `/v1/cluster/health`); reads `status_code` only, never a completion — not the inference boundary |
+| 28 | tests/unit/nodes/node_baseline_capture/test_probe_unit.py:154 | patch_httpx_egress | C2 | DONE — per-line `# onex-allow-faked-boundary`: ProbeSystemHealth liveness GET (Redpanda `/v1/cluster/health`, ConnectError path); non-inference health egress |
+| 29 | tests/unit/nodes/node_baseline_capture/test_probe_unit.py:188 | patch_httpx_egress | C2 | DONE — per-line `# onex-allow-faked-boundary`: ProbeSystemHealth GETs the LLM host at `{LLM_CODER_URL}/health` (liveness endpoint, NOT a completion), reads `status_code` for 5xx classification — non-inference |
+| 30 | tests/unit/nodes/node_baseline_capture/test_probe_unit.py:263 | patch_httpx_egress | C2 | DONE — per-line `# onex-allow-faked-boundary`: ProbeKafkaTopics GETs the Redpanda admin `/v1/topics` API for topic/offset metadata — no model endpoint |
+| 31 | tests/unit/nodes/node_baseline_capture/test_probe_unit.py:301 | patch_httpx_egress | C2 | DONE — per-line `# onex-allow-faked-boundary`: ProbeKafkaTopics Redpanda admin-API topic listing (internal-topic filter path) — non-inference |
+| 32 | tests/unit/nodes/node_baseline_capture/test_probe_unit.py:320 | patch_httpx_egress | C2 | DONE — per-line `# onex-allow-faked-boundary`: ProbeKafkaTopics Redpanda admin-API topic listing (ConnectError path) — non-inference |
+| 33 | tests/unit/nodes/node_baseline_capture/test_probe_unit.py:522 | patch_httpx_egress | C2 | DONE — per-line `# onex-allow-faked-boundary`: ProbeLinearTickets POSTs an issues query to the Linear GraphQL API for ticket metadata — no model endpoint |
+| 34 | tests/unit/nodes/node_baseline_capture/test_probe_unit.py:557 | patch_httpx_egress | C2 | DONE — per-line `# onex-allow-faked-boundary`: ProbeLinearTickets Linear GraphQL egress (network-error path) — non-inference |
+| 35 | tests/unit/nodes/node_baseline_capture/test_probe_unit.py:599 | patch_httpx_egress | C2 | DONE — per-line `# onex-allow-faked-boundary`: ProbeLinearTickets Linear GraphQL egress (malformed-issue path) — non-inference |
 | 36 | tests/unit/nodes/node_dispatch_queue_drainer/test_handler_dispatch_queue_drainer.py:165 | mock_assigned_to_boundary | C3 | contract-level-fake (`worker: ProtocolDispatchWorker = MagicMock(spec=ProtocolDispatchWorker)` — build a typed fake implementing `ProtocolDispatchWorker`, not a spec'd MagicMock) |
 | 37 | tests/nodes/node_thread_reply_effect/test_handler_thread_reply.py:396 | mock_assigned_to_boundary | C3 | real-model-object / contract-level-fake for `mock_router` |
 | 38 | tests/nodes/node_thread_reply_effect/test_handler_thread_reply.py:442 | mock_assigned_to_boundary | C3 | real-model-object / contract-level-fake for `mock_router` |
@@ -137,11 +137,23 @@ marker). They need the marker added — a mechanical one-line-per-file fix, fold
   string (no code change). Annotations are format-stable under `ruff format` (short bare marker inline +
   reason comment above; verified idempotent). Detector delta after C1: 69 -> 43 (26 cleared).
 
-- **C2 — `node_baseline_capture` health-probe egress -> justified-allow-non-inference (9 findings, 1 file).**
-  `test_probe_unit.py` patches `httpx.AsyncClient` around container/service health probes — non-inference
-  egress. Add per-line `# onex-allow-faked-boundary` with a concrete "health probe, not inference
-  boundary" reason on each of the 9 sites. Verify each site first: confirm the probed endpoint is a
-  liveness/health check, not a model completion call, before annotating.
+- **C2 — `node_baseline_capture` non-inference egress — RESOLVED via scoped per-line
+  `# onex-allow-faked-boundary` (9 findings, 1 file: `test_probe_unit.py`). CLOSED 2026-07-03.**
+
+  Each site was verified against the probe source before annotating (`probe_system_health.py`,
+  `probe_kafka_topics.py`, `probe_linear_tickets.py`). None touch a model completion endpoint:
+  - **ProbeSystemHealth** (rows 27–29) issues `client.get(url)` to liveness endpoints ONLY —
+    Redpanda `/v1/cluster/health`, Qdrant `/healthz`, and every LLM host at `{url}/health` — and reads
+    `resp.status_code` alone (`healthy = status_code < 500`). Even the LLM_CODER/FAST/EMBEDDING hosts are
+    probed at `/health`, never at a completion route, so no prompt is posted and no model bytes are read.
+  - **ProbeKafkaTopics** (rows 30–32) GETs the Redpanda admin `/v1/topics` API for topic/offset metadata.
+  - **ProbeLinearTickets** (rows 33–35) POSTs an issues query to the Linear GraphQL API for ticket metadata.
+
+  All 9 carry a per-line bare `# onex-allow-faked-boundary` marker with a concrete category-specific reason
+  comment on the lines directly above (same format-stable convention as C1: short inline marker + reason
+  block above, idempotent under `ruff format`). No recorded-replay fixture applies — these are not the
+  inference boundary. `test_probe_unit.py`: 23/23 pass. Detector delta after C2: 43 -> 34 (9 cleared).
+  No product bug surfaced.
 
 - **C3 — `mock_assigned_to_boundary` -> real-model-object / contract-level-fake (10 findings, 7 files).**
   Replace bare `MagicMock`/`AsyncMock` assigned onto typed boundary attributes (`worker`, `mock_router`,
