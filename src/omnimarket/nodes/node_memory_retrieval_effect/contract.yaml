@@ -163,17 +163,20 @@ handler_routing:
   routing_strategy: operation_match
   handlers:
     # Semantic similarity search via Qdrant
-    - routing_key: "search"
+    - operation: search
+      routing_key: "search"
       handler_key: "HandlerQdrantMock"
       priority: 0
       output_events: []
     # Full-text search via PostgreSQL
-    - routing_key: "search_text"
+    - operation: search_text
+      routing_key: "search_text"
       handler_key: "HandlerDbMock"
       priority: 0
       output_events: []
     # Graph traversal via Neo4j/Memgraph
-    - routing_key: "search_graph"
+    - operation: search_graph
+      routing_key: "search_graph"
       handler_key: "HandlerGraphMock"
       priority: 0
       output_events: []

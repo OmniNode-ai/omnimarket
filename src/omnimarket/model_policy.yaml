@@ -57,6 +57,26 @@ policies:
     timeout_seconds: 30.0
     description: "Frontier code reviewer"
 
+  openai:
+    tier: cloud_openai
+    endpoint_ref: env:LLM_OPENAI_URL
+    api_key_env_var: OPENAI_API_KEY
+    model_id_env_var: LLM_OPENAI_MODEL_NAME
+    max_tokens: 4096
+    context_window: 128000
+    timeout_seconds: 120.0
+    description: "OpenAI-compatible frontier fallback"
+
+  google:
+    tier: cloud_google
+    endpoint_ref: env:LLM_GOOGLE_URL
+    api_key_env_var: GOOGLE_API_KEY
+    model_id_env_var: LLM_GOOGLE_MODEL_NAME
+    max_tokens: 8192
+    context_window: 1000000
+    timeout_seconds: 120.0
+    description: "Google/Gemini frontier fallback via OpenAI-compatible endpoint"
+
   embedding:
     tier: cloud
     env_var: LLM_EMBEDDING_URL

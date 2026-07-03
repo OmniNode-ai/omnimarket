@@ -26,15 +26,19 @@ from omnibase_core.models.delegation.model_invocation_command import (
     ModelInvocationCommand,
 )
 from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
+from omnibase_core.protocols.event_bus.protocol_event_bus import ProtocolEventBus
 from omnibase_infra.enums import EnumDispatchStatus
 from omnibase_infra.errors import InfraUnavailableError
-from omnibase_infra.event_bus.topic_constants import (
-    TOPIC_DELEGATION_COMPLETED,
-    TOPIC_DELEGATION_FAILED,
-    TOPIC_DELEGATION_INFERENCE_REQUEST,
-    TOPIC_DELEGATION_TASK_DELEGATED,
-)
 
+from omnimarket.nodes.node_delegation_orchestrator.contract_topics import (
+    TOPIC_ID_DELEGATION_COMPLETED as TOPIC_DELEGATION_COMPLETED,
+)
+from omnimarket.nodes.node_delegation_orchestrator.contract_topics import (
+    TOPIC_ID_DELEGATION_FAILED as TOPIC_DELEGATION_FAILED,
+)
+from omnimarket.nodes.node_delegation_orchestrator.contract_topics import (
+    TOPIC_ID_INFERENCE_REQUEST as TOPIC_DELEGATION_INFERENCE_REQUEST,
+)
 from omnimarket.nodes.node_delegation_orchestrator.dispatchers.dispatcher_agent_task_lifecycle import (
     DispatcherAgentTaskLifecycle,
 )
@@ -69,9 +73,15 @@ from omnimarket.nodes.node_delegation_routing_reducer.models.model_routing_decis
 
 TEST_ENDPOINT_URL = "http://delegation-llm.test:8000"
 
+# OMN-13629: the legacy compat task-delegated.v1 topic is no longer published by
+# the orchestrator. Tests assert its ABSENCE from published topics.
+_LEGACY_TASK_DELEGATED_TOPIC = (
+    "onex.evt.omniclaude.task-delegated.v1"  # onex-topic-allow: negative proof
+)
+
 
 def _make_mock_bus() -> MagicMock:
-    bus = MagicMock()
+    bus = MagicMock(spec=ProtocolEventBus)
     bus.publish_envelope = AsyncMock()
     return bus
 
@@ -142,6 +152,7 @@ def _start_delegation(
         endpoint_url=TEST_ENDPOINT_URL,
         cost_tier="low",
         max_context_tokens=65536,
+        max_tokens=65536,  # OMN-13345: contract backend output ceiling
         system_prompt="You are an assistant.",
         rationale="Routing test.",
     )
@@ -195,7 +206,8 @@ class TestDispatcherDelegationWorkflowBusPublish:
             c.kwargs["topic"] for c in bus.publish_envelope.call_args_list
         ]
         assert TOPIC_DELEGATION_COMPLETED in published_topics
-        assert TOPIC_DELEGATION_TASK_DELEGATED in published_topics
+        # OMN-13629: the legacy compat task-delegated.v1 is no longer published.
+        assert _LEGACY_TASK_DELEGATED_TOPIC not in published_topics
         for event in result.output_events:
             assert not hasattr(event, "topic") or event.topic is None  # type: ignore[union-attr]
 
@@ -220,7 +232,7 @@ class TestDispatcherDelegationWorkflowBusPublish:
             c.kwargs["topic"] for c in bus.publish_envelope.call_args_list
         ]
         assert TOPIC_DELEGATION_COMPLETED in published_topics
-        assert TOPIC_DELEGATION_TASK_DELEGATED in published_topics
+        assert _LEGACY_TASK_DELEGATED_TOPIC not in published_topics
 
     async def test_routing_decision_returns_inference_intent_for_applier(self) -> None:
         handler = HandlerDelegationWorkflow()
@@ -244,6 +256,7 @@ class TestDispatcherDelegationWorkflowBusPublish:
             endpoint_url=TEST_ENDPOINT_URL,
             cost_tier="low",
             max_context_tokens=65536,
+            max_tokens=65536,  # OMN-13345: contract backend output ceiling
             system_prompt="You are an assistant.",
             rationale="Routing test.",
         )
@@ -283,6 +296,7 @@ class TestDispatcherDelegationWorkflowBusPublish:
             endpoint_url=TEST_ENDPOINT_URL,
             cost_tier="low",
             max_context_tokens=65536,
+            max_tokens=65536,  # OMN-13345: contract backend output ceiling
             system_prompt="You are an assistant.",
             rationale="Routing test.",
         )
@@ -343,6 +357,7 @@ class TestDispatcherDelegationWorkflowBusPublish:
             endpoint_url=TEST_ENDPOINT_URL,
             cost_tier="low",
             max_context_tokens=65536,
+            max_tokens=65536,  # OMN-13345: contract backend output ceiling
             system_prompt="You are an assistant.",
             rationale="Routing test.",
         )
@@ -374,7 +389,7 @@ class TestDispatcherQualityGateResultBusPublish:
             c.kwargs["topic"] for c in bus.publish_envelope.call_args_list
         ]
         assert TOPIC_DELEGATION_COMPLETED in published_topics
-        assert TOPIC_DELEGATION_TASK_DELEGATED in published_topics
+        assert _LEGACY_TASK_DELEGATED_TOPIC not in published_topics
 
 
 @pytest.mark.unit
@@ -405,6 +420,7 @@ class TestDispatcherRoutingDecisionBusPublish:
             endpoint_url=TEST_ENDPOINT_URL,
             cost_tier="low",
             max_context_tokens=65536,
+            max_tokens=65536,  # OMN-13345: contract backend output ceiling
             system_prompt="You are an assistant.",
             rationale="Routing test.",
         )
@@ -473,7 +489,7 @@ class TestDispatcherQualityGateResultOutputEvents:
             c.kwargs["topic"] for c in bus.publish_envelope.call_args_list
         ]
         assert TOPIC_DELEGATION_FAILED in published_topics
-        assert TOPIC_DELEGATION_TASK_DELEGATED in published_topics
+        assert _LEGACY_TASK_DELEGATED_TOPIC not in published_topics
 
     async def test_envelope_payload_matches_expected_topic(self) -> None:
         """Each publish_envelope call carries the correct event in the envelope payload."""
@@ -494,10 +510,8 @@ class TestDispatcherQualityGateResultOutputEvents:
             topic_to_payload_type.get(TOPIC_DELEGATION_COMPLETED)
             == "ModelDelegationEventEnvelope"
         )
-        assert (
-            topic_to_payload_type.get(TOPIC_DELEGATION_TASK_DELEGATED)
-            == "ModelTaskDelegatedEvent"
-        )
+        # OMN-13629: no legacy compat event is published, so the topic is absent.
+        assert _LEGACY_TASK_DELEGATED_TOPIC not in topic_to_payload_type
 
     async def test_direct_publish_infra_failure_records_circuit_failure(
         self,

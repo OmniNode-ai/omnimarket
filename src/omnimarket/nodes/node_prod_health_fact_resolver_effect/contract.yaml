@@ -1,0 +1,100 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Prod Health Fact Resolver EFFECT
+#
+# OMN-13441 / OMN-13418 Phase 1.3: the orchestrator fact-gathering EFFECT that
+# resolves the prod-lane health into a deterministic ModelProdHealthFact BEFORE
+# the prod gate evaluates. The un-forgeable input that makes the prod-promotion
+# grant requirement health-conditional WITHOUT opening a bypass. Probes the live
+# prod-lane health endpoint at evaluation time (caller cannot assert health) and
+# fails closed to UNKNOWN on any indeterminate probe so the gate still requires a
+# grant.
+---
+name: node_prod_health_fact_resolver_effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: effect
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  EFFECT: resolves the prod-lane health into a deterministic ModelProdHealthFact
+  { lane=PROD, health: EnumProdHealth, probed_at, source }. Probes the live
+  prod-lane health endpoint (resolved from the deploy target) at evaluation time
+  so the caller cannot assert health (un-forgeable source). A CONFIRMED healthy
+  probe -> HEALTHY; a CONFIRMED down/failed probe -> UNHEALTHY; an indeterminate
+  probe (unreachable / error / timeout) -> UNKNOWN (NOT UNHEALTHY), which the
+  prod gate treats as "grant required" so a broken probe cannot induce the
+  recovery-waiver bypass. The resolved fact (value + probe source + probed_at) is
+  recorded on the decision for audit. No subprocess shell-out.
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: "redeploy.prod_health.resolve"
+      handler:
+        name: HandlerProdHealthFactResolver
+        module: omnimarket.nodes.node_prod_health_fact_resolver_effect.handlers.handler_prod_health_fact_resolver
+      description: "Probe the live prod-lane health and resolve the health fact."
+      input_model:
+        name: ModelProdHealthResolveCommand
+        module: omnimarket.events.runtime_deployment
+        description: "Correlation id + deterministic evaluated_at (probed_at)."
+
+handler:
+  module: omnimarket.nodes.node_prod_health_fact_resolver_effect.handlers.handler_prod_health_fact_resolver
+  class: HandlerProdHealthFactResolver
+  input_model: omnimarket.events.runtime_deployment.ModelProdHealthResolveCommand
+
+input_model:
+  name: ModelProdHealthResolveCommand
+  module: omnimarket.events.runtime_deployment
+  description: "Correlation id + deterministic evaluated_at; NO caller-supplied health."
+output_model:
+  name: ModelProdHealthResolvedEvent
+  module: omnimarket.events.runtime_deployment
+  description: "Resolved ModelProdHealthFact (UNKNOWN on any indeterminate probe)."
+
+descriptor:
+  node_archetype: effect
+  purity: impure
+  idempotent: true
+  timeout_ms: 60000
+  runtime_profiles:
+    - effects
+
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.prod-health-resolve.v1
+  terminal_events:
+    success: onex.evt.omnimarket.prod-health-resolved.v1
+    failure: onex.evt.omnimarket.prod-health-resolve-failed.v1
+
+terminal_event: onex.evt.omnimarket.prod-health-resolved.v1
+
+event_bus:
+  consumer_group: omnimarket.prod_health_fact_resolver_effect.consume.v1
+  subscribe_topics:
+    - onex.cmd.omnimarket.prod-health-resolve.v1
+  publish_topics:
+    - onex.evt.omnimarket.prod-health-resolved.v1
+    - onex.evt.omnimarket.prod-health-resolve-failed.v1
+  dlq_topics:
+    - onex.dlq.omnimarket.prod-health-resolve.v1
+
+dependencies:
+  packages:
+    - "omnibase_core>=0.39.0"
+
+metadata:
+  transport_type: kafka
+  description: "Prod-health fact resolver effect node"
+  author: "OmniNode Platform Team"
+  tags:
+    - "effect"
+    - "deploy"
+    - "promotion-gate"
+    - "prod"
+    - "health-resolver"
+  related_tickets:
+    - "OMN-13441"
+    - "OMN-13418"
+    - "OMN-13436"
+    - "OMN-13423"

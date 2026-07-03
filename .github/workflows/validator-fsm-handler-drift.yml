@@ -1,0 +1,88 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+# FSM Handler Drift Guard — omnimarket consumer gate (OMN-13735)
+#
+# Scans omnimarket's src/ for contracts with fsm_handler_binding and validates
+# that each declared handler's VALID_TRANSITIONS + GUARD_CONDITIONS match the
+# contract's state_machine.transitions exactly. Zero allowlist entries.
+#
+# Required status check context: "fsm-handler-drift".
+#
+# This workflow:
+#   1. Installs omnibase_core from the PR SHA so new validator code is available.
+#   2. Runs the fsm-handler-drift integration tests (TDD: divergence fixture, aligned
+#      fixture, real node_intelligence_reducer positive test).
+#   3. Runs the validator directly on omnimarket src/ to confirm zero findings.
+#
+# When the omnibase_core PR lands, the pin-bump PR will update the rev below.
+# Until then, the workflow installs from the pinned rev that carries the validator.
+
+name: FSM Handler Drift Guard
+
+on:
+  push:
+    branches: [main, develop, dev, "hotfix/**"]
+  pull_request:
+    branches: [main, develop, dev]
+  merge_group:
+    branches: [main, develop, dev]
+
+env:
+  PYTHON_VERSION: "3.12"
+  UV_VERSION: "0.8.3"
+
+concurrency:
+  group: fsm-handler-drift-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  fsm-handler-drift:
+    name: fsm-handler-drift
+    # OMNI_RUNNER_SELECTOR_V1 - trusted events default to self-hosted omnibase-ci; pull_request defaults to ubuntu-latest
+    runs-on: >-
+      ${{
+        github.event_name != 'pull_request'
+        && fromJSON(vars.OMNI_TRUSTED_CI_RUNS_ON_JSON || '["self-hosted","omnibase-ci"]')
+        || fromJSON(vars.OMNI_PUBLIC_PR_RUNS_ON_JSON || '["ubuntu-latest"]')
+      }}
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout omnimarket
+        uses: actions/checkout@v7
+
+      # OMN-13735: the validator landed on omnibase_core dev in #1360.
+      - name: Clone omnibase_core (for new validator)
+        run: git clone --depth=1 --branch dev https://github.com/OmniNode-ai/omnibase_core.git ../omnibase_core
+
+      - name: Clone omnibase_compat
+        run: git clone --depth=1 https://github.com/OmniNode-ai/omnibase_compat.git ../omnibase_compat
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          version: ${{ env.UV_VERSION }}
+
+      - name: Install omnimarket
+        run: uv sync --all-extras
+
+      - name: Install omnibase_compat
+        run: uv pip install --python .venv/bin/python -e ../omnibase_compat
+
+      - name: Install omnibase_core (includes check-fsm-handler-drift validator)
+        run: uv pip install --python .venv/bin/python --force-reinstall --no-deps -e ../omnibase_core
+
+      - name: Run fsm-handler-drift integration tests
+        run: |
+          PYTHONPATH="../omnibase_core/src${PYTHONPATH:+:$PYTHONPATH}" uv run --no-sync pytest \
+            tests/validators/test_fsm_handler_drift_integration.py \
+            -v
+
+      - name: Scan omnimarket src/ for FSM handler drift (must exit 0)
+        run: PYTHONPATH="../omnibase_core/src${PYTHONPATH:+:$PYTHONPATH}" uv run --no-sync python -m omnibase_core.validators.fsm_handler_drift src/

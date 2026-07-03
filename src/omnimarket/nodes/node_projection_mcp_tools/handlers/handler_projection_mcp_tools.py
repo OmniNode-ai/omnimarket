@@ -1,0 +1,190 @@
+"""HandlerProjectionMcpTools — project MCP tool registration events to the mcp_tools table.
+
+Consumes onex.evt.platform.node-registration.v1 events published by node_contract_registry,
+filters for mcp_eligible entries, and UPSERTs into the mcp_tools snapshot table.
+The projection is exposed through the projection API for the omnidash NC-07
+widget (palette-hidden).
+
+Replay-safe and idempotent: re-processing the same registration event for a given
+tool_name overwrites the existing row (UPSERT on tool_name).
+"""
+
+from __future__ import annotations
+
+from datetime import UTC, datetime
+
+from pydantic import BaseModel, ConfigDict, Field
+
+from omnimarket.nodes.node_projection_mcp_tools.models.enums import (
+    EnumFreshnessState,
+    EnumMcpToolStatus,
+)
+from omnimarket.nodes.node_projection_mcp_tools.models.model_mcp_tool_projection import (
+    ModelMcpToolProjection,
+)
+from omnimarket.projection.protocol_database import DatabaseAdapter
+
+TABLE = "mcp_tools"
+CONFLICT_KEY = "tool_name"
+
+# Freshness thresholds from contract.yaml freshness_sla
+MAX_LAG_SECONDS = 60
+DEGRADED_AFTER_SECONDS = 120
+
+
+class ModelMcpToolRegistrationEvent(BaseModel):
+    """Inbound event from onex.evt.platform.node-registration.v1.
+
+    Fields are a subset of ModelContractRegistrationResult as serialised to the bus.
+    Extra fields are silently ignored so forward-compatible payloads are handled.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="ignore")
+
+    node_name: str = Field(..., description="Name of the registered node / MCP tool.")
+    contract_hash: str = Field(default="")
+    correlation_id: str = Field(default="")
+    status: str = Field(default="registered")
+    mcp_eligible: bool = Field(
+        default=False, description="True when the node exposes MCP tool capabilities."
+    )
+    mcp_tags: tuple[str, ...] = Field(
+        default=(),
+        description="MCP capability tags (e.g. 'mcp-enabled', 'mcp-tool:<name>').",
+    )
+    deployer_id: str = Field(default="")
+    target_profile: str = Field(default="")
+    emitted_at: str | None = Field(
+        default=None, description="ISO 8601 event emission timestamp."
+    )
+    source_topic: str = Field(default="")
+    source_partition: int = Field(default=0, ge=0)
+    source_offset: int = Field(default=0, ge=0)
+    event_id: str = Field(default="")
+    # Supplementary contract metadata (description, model_id) forwarded via this field.
+    contract_metadata: dict[str, object] = Field(default_factory=dict)
+
+
+class ModelMcpToolsProjectionAppliedEvent(BaseModel):
+    """Outbound projection-mcp-tools-applied event payload."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    tool_name: str
+    rows_upserted: int
+    table: str = TABLE
+    projection: dict[str, object]
+    freshness_state: str
+    applied_at: str
+
+
+def _compute_freshness_state(
+    emitted_at: str | None,
+    now: datetime,
+) -> EnumFreshnessState:
+    """Compute freshness state based on event timestamp vs wall clock."""
+    if emitted_at is None:
+        return EnumFreshnessState.DEGRADED
+
+    try:
+        event_ts = datetime.fromisoformat(emitted_at.replace("Z", "+00:00"))
+    except ValueError:
+        return EnumFreshnessState.DEGRADED
+
+    lag_seconds = (now - event_ts.astimezone(UTC)).total_seconds()
+
+    if lag_seconds <= MAX_LAG_SECONDS:
+        return EnumFreshnessState.FRESH
+    if lag_seconds <= DEGRADED_AFTER_SECONDS:
+        return EnumFreshnessState.STALE
+    return EnumFreshnessState.DEGRADED
+
+
+class HandlerProjectionMcpTools:
+    """Project MCP-eligible node registration events into the mcp_tools table."""
+
+    def handle(self, input_data: dict[str, object]) -> dict[str, object]:
+        """RuntimeLocal handler protocol shim.
+
+        Expects a DatabaseAdapter at input_data['_db'].
+        Non-MCP events (mcp_eligible=False) are acknowledged with rows_upserted=0.
+        """
+        db_raw = input_data.pop("_db", None)
+        if not isinstance(db_raw, DatabaseAdapter):
+            raise TypeError("handle() requires a DatabaseAdapter in input_data['_db']")
+        event = ModelMcpToolRegistrationEvent(**input_data)
+        result = self.project(event, db_raw)
+        return result.model_dump(mode="json")
+
+    def project(
+        self,
+        event: ModelMcpToolRegistrationEvent,
+        db: DatabaseAdapter,
+    ) -> ModelMcpToolsProjectionAppliedEvent:
+        """UPSERT an MCP tool registration event.
+
+        Returns an applied event with rows_upserted=0 when the registration
+        is not mcp_eligible — the event is acknowledged but nothing is written.
+        """
+        now = datetime.now(tz=UTC)
+        now_iso = now.isoformat()
+
+        if not event.mcp_eligible:
+            return ModelMcpToolsProjectionAppliedEvent(
+                tool_name=event.node_name,
+                rows_upserted=0,
+                projection={},
+                freshness_state=EnumFreshnessState.FRESH,
+                applied_at=now_iso,
+            )
+
+        status = EnumMcpToolStatus.ACTIVE
+        if event.status in ("rejected",):
+            status = EnumMcpToolStatus.REJECTED
+
+        # Extract supplementary fields from forwarded contract metadata.
+        meta = event.contract_metadata
+        description = str(meta.get("description", meta.get("tool_description", "")))
+        model_id = str(meta.get("modelId", meta.get("model_id", "")))
+
+        projection = ModelMcpToolProjection(
+            tool_name=event.node_name,
+            description=description,
+            model_id=model_id,
+            correlation_id=str(event.correlation_id),
+            status=status,
+            is_active=status == EnumMcpToolStatus.ACTIVE,
+            mcp_tags=event.mcp_tags,
+            metadata=meta,
+            registered_at=event.emitted_at or now_iso,
+            projected_at=now_iso,
+        )
+
+        freshness_state = _compute_freshness_state(event.emitted_at, now)
+        row = projection.model_dump(mode="json")
+        # mcp_tags stored as list for DB compatibility (JSONB / TEXT[]).
+        row["mcp_tags"] = list(event.mcp_tags)
+        db.upsert(TABLE, CONFLICT_KEY, row)
+
+        return ModelMcpToolsProjectionAppliedEvent(
+            tool_name=event.node_name,
+            rows_upserted=1,
+            projection=row,
+            freshness_state=freshness_state,
+            applied_at=now_iso,
+        )
+
+    def project_batch(
+        self,
+        events: list[ModelMcpToolRegistrationEvent],
+        db: DatabaseAdapter,
+    ) -> list[ModelMcpToolsProjectionAppliedEvent]:
+        """UPSERT a batch of MCP tool registration events."""
+        return [self.project(event, db) for event in events]
+
+
+__all__: list[str] = [
+    "HandlerProjectionMcpTools",
+    "ModelMcpToolRegistrationEvent",
+    "ModelMcpToolsProjectionAppliedEvent",
+]

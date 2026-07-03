@@ -1,0 +1,29 @@
+{
+  "hardcoded-localhost-url": {
+    "accepted_handler_replay_passed": true,
+    "control_ok": true,
+    "flagall_false_flagged_cleans": 5,
+    "flagall_rejected": true,
+    "noop_missed_violations": 5,
+    "noop_rejected": true,
+    "replay_score": 1.0
+  },
+  "hardcoded-topic-string": {
+    "accepted_handler_replay_passed": true,
+    "control_ok": true,
+    "flagall_false_flagged_cleans": 4,
+    "flagall_rejected": true,
+    "noop_missed_violations": 5,
+    "noop_rejected": true,
+    "replay_score": 1.0
+  },
+  "todo-fixme-marker": {
+    "accepted_handler_replay_passed": true,
+    "control_ok": true,
+    "flagall_false_flagged_cleans": 4,
+    "flagall_rejected": true,
+    "noop_missed_violations": 5,
+    "noop_rejected": true,
+    "replay_score": 1.0
+  }
+}

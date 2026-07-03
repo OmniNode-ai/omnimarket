@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock, patch
 from uuid import UUID
 
 import pytest
-from pydantic import SecretStr
+from pydantic import SecretStr, ValidationError
 
 from omnimarket.nodes.node_ci_rerun_effect.handlers.handler_ci_rerun import (
     HandlerCiRerunEffect,
@@ -104,3 +104,125 @@ async def test_completion_event_carries_correct_metadata() -> None:
     assert evt.run_id == _RUN_ID
     assert evt.total_prs == 3
     assert evt.run_id_github == "12345678"
+
+
+# ---------------------------------------------------------------------------
+# OMN-13416 — empty-commit re-trigger mode (CI event-delivery gap)
+# ---------------------------------------------------------------------------
+
+
+def _empty_commit_cmd() -> ModelCiRerunCommand:
+    return ModelCiRerunCommand(
+        pr_number=700,
+        repo="OmniNode-ai/omni_home",
+        run_id_github="",
+        correlation_id=_CORR_ID,
+        run_id=_RUN_ID,
+        total_prs=1,
+        retrigger_mode="empty_commit",
+        head_branch="feat/wedged",
+        head_sha="abc123",
+        missing_required_contexts=("Runtime Sweep",),
+    )
+
+
+@pytest.mark.asyncio
+async def test_empty_commit_mode_uses_empty_commit_path_not_rerun() -> None:
+    """empty_commit mode must NOT call rerun-failed-jobs (no run to rerun)."""
+    with (
+        patch.object(
+            HandlerCiRerunEffect,
+            "_rerun_sync",
+            side_effect=AssertionError("must not rerun in empty_commit mode"),
+        ),
+        patch.object(
+            HandlerCiRerunEffect, "_empty_commit_sync", return_value=(True, None)
+        ),
+    ):
+        handler = HandlerCiRerunEffect()
+        output = await handler.handle(_empty_commit_cmd())
+
+    evt = output.events[0]
+    assert isinstance(evt, ModelCiRerunTriggeredEvent)
+    assert evt.rerun_triggered is True
+    assert evt.error is None
+    assert evt.pr_number == 700
+
+
+@pytest.mark.asyncio
+async def test_empty_commit_mode_failure_surfaces_error() -> None:
+    with patch.object(
+        HandlerCiRerunEffect,
+        "_empty_commit_sync",
+        return_value=(False, "push rejected"),
+    ):
+        handler = HandlerCiRerunEffect()
+        output = await handler.handle(_empty_commit_cmd())
+
+    evt = output.events[0]
+    assert isinstance(evt, ModelCiRerunTriggeredEvent)
+    assert evt.rerun_triggered is False
+    assert evt.error == "push rejected"
+
+
+@pytest.mark.asyncio
+async def test_empty_commit_mode_requires_head_branch_before_github_call() -> None:
+    cmd = _empty_commit_cmd().model_copy(update={"head_branch": ""})
+    with patch.object(
+        HandlerCiRerunEffect,
+        "_empty_commit_sync",
+        side_effect=AssertionError("must not call GitHub without head_branch"),
+    ):
+        handler = HandlerCiRerunEffect()
+        output = await handler.handle(cmd)
+
+    evt = output.events[0]
+    assert isinstance(evt, ModelCiRerunTriggeredEvent)
+    assert evt.rerun_triggered is False
+    assert evt.error == "empty_commit requires head_branch"
+
+
+@pytest.mark.asyncio
+async def test_empty_commit_mode_requires_head_sha_before_github_call() -> None:
+    cmd = _empty_commit_cmd().model_copy(update={"head_sha": ""})
+    with patch.object(
+        HandlerCiRerunEffect,
+        "_empty_commit_sync",
+        side_effect=AssertionError("must not call GitHub without head_sha"),
+    ):
+        handler = HandlerCiRerunEffect()
+        output = await handler.handle(cmd)
+
+    evt = output.events[0]
+    assert isinstance(evt, ModelCiRerunTriggeredEvent)
+    assert evt.rerun_triggered is False
+    assert evt.error == "empty_commit requires head_sha"
+
+
+def test_ci_rerun_command_rejects_empty_rerun_failed_run_id() -> None:
+    with pytest.raises(ValidationError, match="rerun_failed requires run_id_github"):
+        ModelCiRerunCommand(
+            pr_number=700,
+            repo="OmniNode-ai/omni_home",
+            run_id_github="",
+            correlation_id=_CORR_ID,
+            run_id=_RUN_ID,
+            total_prs=1,
+        )
+
+
+def test_ci_rerun_command_rejects_empty_commit_with_run_id() -> None:
+    with pytest.raises(
+        ValidationError, match="empty_commit requires empty run_id_github"
+    ):
+        ModelCiRerunCommand(
+            pr_number=700,
+            repo="OmniNode-ai/omni_home",
+            run_id_github="123456",
+            correlation_id=_CORR_ID,
+            run_id=_RUN_ID,
+            total_prs=1,
+            retrigger_mode="empty_commit",
+            head_branch="feat/wedged",
+            head_sha="abc123",
+        )

@@ -29,8 +29,6 @@ description: |
 # === RUNTIME PROFILES ===
 descriptor:
   runtime_profiles:
-    - local_macos_claude_hooks
-    - omninode_runtime
     - effects
 
 # === IO OPERATIONS ===

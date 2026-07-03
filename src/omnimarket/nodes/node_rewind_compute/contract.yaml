@@ -16,7 +16,8 @@ handler:
 
 handler_routing:
   handlers:
-    - handler:
+    - operation: rewind
+      handler:
         name: HandlerRewindCompute
         module: omnimarket.nodes.node_rewind_compute.handlers.handler_rewind_compute
 

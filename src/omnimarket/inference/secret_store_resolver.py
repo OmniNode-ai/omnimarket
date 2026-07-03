@@ -77,6 +77,58 @@ class _MappedSecretStore:
         return
 
 
+class _ConventionFallbackSecretStore:
+    """Default local store: literal env lookup, then dotted-ref → ENV_VAR convention.
+
+    OMN-13861: the bare ``AdapterEnvSecretStore`` resolves ``os.environ[key]``
+    LITERALLY, so a dotted logical ref (``llm.glm.api_key``) never matched the
+    canonical ``LLM_GLM_API_KEY`` env var and every authenticated cloud delegation
+    call failed to resolve its key on the bus-less local path (no
+    ``ONEX_SECRET_RESOLVER_CONFIG_PATH`` lane wired). This store composes both
+    lookups and is a STRICT SUPERSET of the prior literal-only behavior:
+
+      1. literal ``AdapterEnvSecretStore`` — a caller (or test fixture) that sets
+         the exact ref name (incl. a literal dotted ``llm.glm.api_key``) still
+         resolves, so nothing that worked before breaks;
+      2. on a miss, the ``SecretResolver`` convention fallback maps the dotted ref
+         to its canonical env-var name (``llm.glm.api_key`` → ``LLM_GLM_API_KEY``),
+         so the real ``LLM_*_API_KEY`` env vars now resolve.
+
+    A ref that is already an env-var-shaped name resolves identically in both
+    lookups. Read-only, like the sibling stores.
+    """
+
+    def __init__(self) -> None:
+        self._literal: ProtocolSecretStore = AdapterEnvSecretStore()
+        self._convention: ProtocolSecretStore = _MappedSecretStore(
+            SecretResolver(
+                config=ModelSecretResolverConfig(enable_convention_fallback=True)
+            )
+        )
+
+    async def get_secret(self, key: str) -> str | None:
+        literal = await self._literal.get_secret(key)
+        if literal:
+            return literal
+        return await self._convention.get_secret(key)
+
+    async def set_secret(self, key: str, value: str) -> bool:
+        raise RuntimeError("Convention-fallback secret store is read-only")
+
+    async def delete_secret(self, key: str) -> bool:
+        raise RuntimeError("Convention-fallback secret store is read-only")
+
+    async def list_keys(self, prefix: str | None = None) -> list[str]:
+        return await self._literal.list_keys(prefix)
+
+    async def health_check(self) -> bool:
+        return True
+
+    async def close(self, timeout_seconds: float = 30.0) -> None:
+        del timeout_seconds
+        return
+
+
 @lru_cache(maxsize=1)
 def _configured_secret_store() -> ProtocolSecretStore | None:
     """Return a lane-configured logical secret store when one is declared."""
@@ -103,14 +155,26 @@ def _default_secret_store() -> ProtocolSecretStore:
     """Return the default effect-boundary secret store.
 
     When ``ONEX_SECRET_RESOLVER_CONFIG_PATH`` is set, logical secret refs are
-    resolved through the lane secret mapping before reaching the concrete source.
-    Otherwise ``AdapterEnvSecretStore`` remains the compatibility backend for
-    runtime profiles where a logical resolver is not wired yet.
+    resolved through the explicit lane secret mapping before reaching the concrete
+    source (that path is authoritative and unchanged).
+
+    Otherwise (OMN-13861) the default store is a ``_ConventionFallbackSecretStore``
+    (literal env lookup, then dotted-ref → ENV_VAR convention), NOT a bare
+    ``AdapterEnvSecretStore``. The routing authority carries dotted logical
+    ``secret_ref``s (e.g. ``llm.glm.api_key``); the bare env adapter did a LITERAL
+    ``os.environ.get("llm.glm.api_key")`` that never matched the canonical
+    ``LLM_*_API_KEY`` env vars, so every authenticated cloud delegation call failed
+    to resolve its key on the bus-less local path when no
+    ``ONEX_SECRET_RESOLVER_CONFIG_PATH`` lane was wired. The composite store adds the
+    convention mapping (``llm.glm.api_key`` → ``LLM_GLM_API_KEY``) as a strict
+    SUPERSET of the prior literal behavior, so both a literal ref and the canonical
+    env-var form resolve. An explicit ``ONEX_SECRET_RESOLVER_CONFIG_PATH``
+    (Infisical/lane mapping) still overrides it above.
     """
     configured = _configured_secret_store()
     if configured is not None:
         return configured
-    store: ProtocolSecretStore = AdapterEnvSecretStore()
+    store: ProtocolSecretStore = _ConventionFallbackSecretStore()
     return store
 
 
@@ -230,6 +294,44 @@ def _resolve_api_key_from_running_loop(
     return resolved
 
 
+def resolve_api_key_loop_safe(
+    api_key_ref: str | None,
+    *,
+    store: ProtocolSecretStore | None = None,
+    required: bool = True,
+) -> SecretStr | None:
+    """Resolve a secret VALUE from SYNC code that may run inside an event loop.
+
+    Identical to :func:`resolve_api_key`, except that when it is invoked from
+    within a running event loop the resolution is offloaded to a worker thread
+    (via :func:`_resolve_api_key_from_running_loop`) instead of raising the
+    "sync-only" guard.
+
+    Use this from a SYNC ``handle()`` that the ONEX runtime may dispatch on the
+    event loop: ``LocalRuntimeBusAdapter`` calls a sync handler directly inside
+    its async ``on_message``, so a bare :func:`resolve_api_key` would raise
+    ``RuntimeError("resolve_api_key() is sync-only ...")`` (OMN-13843). Async
+    handlers should keep awaiting :func:`resolve_api_key_async` directly; this
+    helper exists only for handlers that must stay synchronous (e.g. because a
+    sync orchestrator port calls them in-process).
+
+    Fail-closed semantics are unchanged: with ``required=True`` a declared ref
+    with no secret-store value raises :class:`SecretResolutionError`.
+    """
+    if not api_key_ref:
+        return None
+    try:
+        return resolve_api_key(api_key_ref, store=store, required=required)
+    except RuntimeError as exc:
+        if "sync-only" not in str(exc):
+            raise
+        return _resolve_api_key_from_running_loop(
+            api_key_ref,
+            store=store,
+            required=required,
+        )
+
+
 def api_key_ref_available(
     api_key_ref: str | None,
     *,
@@ -244,16 +346,7 @@ def api_key_ref_available(
     """
     if not api_key_ref:
         return True
-    try:
-        resolved = resolve_api_key(api_key_ref, store=store, required=False)
-    except RuntimeError as exc:
-        if "sync-only" not in str(exc):
-            raise
-        resolved = _resolve_api_key_from_running_loop(
-            api_key_ref,
-            store=store,
-            required=False,
-        )
+    resolved = resolve_api_key_loop_safe(api_key_ref, store=store, required=False)
     return resolved is not None
 
 
@@ -262,4 +355,5 @@ __all__: list[str] = [
     "api_key_ref_available",
     "resolve_api_key",
     "resolve_api_key_async",
+    "resolve_api_key_loop_safe",
 ]

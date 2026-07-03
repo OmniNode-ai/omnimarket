@@ -7,6 +7,8 @@ from pathlib import Path
 from uuid import NAMESPACE_URL, uuid5
 
 import yaml
+from omnibase_core.enums.enum_node_kind import EnumNodeKind
+from omnibase_core.enums.enum_node_type import EnumNodeType
 
 from omnimarket.nodes.node_gap_compute.models.model_gap_compute_request import (
     EnumGapSubcommand,
@@ -21,12 +23,80 @@ from omnimarket.nodes.node_gap_compute.models.model_gap_compute_result import (
     ModelGapFinding,
     ModelSkippedGapProbe,
 )
+from omnimarket.nodes.sweep_scope import (
+    DEFAULT_REPOS,
+    SweepScopeUnresolvedError,
+    resolve_omni_home,
+)
 
 _REPO_ROOT = Path(__file__).resolve().parents[5]
 _OMNI_HOME = _REPO_ROOT.parent
+# Kept in lockstep with omnibase_core.topics._CANONICAL_TOPIC_PATTERN: the probe
+# must accept every kind the canonical bus pattern accepts (cmd|evt|dlq|snapshot|
+# intent), otherwise valid onex.snapshot.* and onex.dlq.* topics are flagged as
+# CRITICAL topic-drift false positives. Parity is enforced by
+# test_gap_compute_topic_regex.py.
 _TOPIC_RE = re.compile(
-    r"^onex\.(cmd|evt|intent)\.[a-z0-9_-]+(?:\.[a-z0-9][a-z0-9_-]*)+\.v[0-9]+$"
+    r"^onex\.(cmd|evt|dlq|snapshot|intent)\.[a-zA-Z0-9_-]+\.[a-zA-Z0-9_-]+(?:\.[a-zA-Z0-9_-]+)*\.v\d+$"
 )
+
+# Archetypes that legitimately have no required event-bus surface: pure COMPUTE
+# nodes are invoked in-process and return a typed result synchronously (per the
+# omnibase_core handler-output constraints), and RUNTIME_HOST nodes are runtime
+# infrastructure rather than bus participants. EFFECT / REDUCER / ORCHESTRATOR
+# nodes must touch the bus, so a missing event_bus on those remains a finding.
+_BUS_OPTIONAL_NODE_KINDS = frozenset({EnumNodeKind.COMPUTE, EnumNodeKind.RUNTIME_HOST})
+
+# Path *segments* whose presence anywhere in a discovered contract.yaml path
+# means the contract lives inside a nested git worktree or a generated/dependency
+# tree — a frozen duplicate of a canonical contract, not a canonical clone. The
+# walk prunes these so the sweep scans canonical clones only (OMN-13638).
+#
+# Matched per-segment (not substring) so a legitimately named directory like
+# ``docs/using_worktrees/`` is NOT excluded — only an actual ``worktrees`` /
+# ``omni_worktrees`` directory segment is. ``.claude/worktrees`` is covered by
+# the bare ``worktrees`` segment; ``omni_worktrees`` is the sibling per-ticket
+# clone convention. The 2026-06-26 dev sweep showed 48% of findings (and its
+# sole phantom CRITICAL) came from these duplicate trees. Sibling-class fix to
+# OMN-13521 (node_doc_freshness_sweep), whose exclusion set this mirrors.
+_WORKTREE_EXCLUDED_SEGMENTS = frozenset(
+    {
+        ".claude",
+        "worktrees",
+        "omni_worktrees",
+        ".venv",
+        "node_modules",
+        "__pycache__",
+        ".git",
+        ".mypy_cache",
+        ".pytest_cache",
+        ".ruff_cache",
+    }
+)
+
+# Bare lowercase archetype words used in contracts map to the canonical
+# ``*_GENERIC`` EnumNodeType (same mapping omnibase_core uses in
+# MixinNodeTypeValidator / ContractMergeEngine).
+_ARCH_WORD_TO_NODE_TYPE = {
+    "compute": EnumNodeType.COMPUTE_GENERIC,
+    "effect": EnumNodeType.EFFECT_GENERIC,
+    "reducer": EnumNodeType.REDUCER_GENERIC,
+    "orchestrator": EnumNodeType.ORCHESTRATOR_GENERIC,
+    "runtime_host": EnumNodeType.RUNTIME_HOST_GENERIC,
+}
+
+
+def _looks_like_omni_home(candidate: Path) -> bool:
+    """True when ``candidate`` looks like an omni_home checkout, not site-packages.
+
+    Guards the source-tree fallback so a deployed handler (loaded from
+    ``.../python3.12/site-packages``) never treats a version-token dir as the
+    omni_home root (OMN-13534). We require at least one canonical repo dir to be
+    present.
+    """
+    if not candidate.is_dir():
+        return False
+    return any((candidate / name).is_dir() for name in DEFAULT_REPOS)
 
 
 class HandlerGapCompute:
@@ -74,10 +144,18 @@ class HandlerGapCompute:
         for repo_root in repo_roots:
             repo_name = repo_root.name
             for contract_path in sorted(repo_root.rglob("contract.yaml")):
-                if (
-                    ".venv" in contract_path.parts
-                    or "node_modules" in contract_path.parts
-                ):
+                # Prune nested worktree snapshots and generated/dependency trees
+                # so only canonical clones are scanned (OMN-13638). Per-segment
+                # match against _WORKTREE_EXCLUDED_SEGMENTS on the path *below*
+                # the repo root — a single .claude / worktrees / omni_worktrees
+                # directory segment inside the clone excludes the contract.
+                # Scoping to the repo-relative parts (not the absolute path)
+                # avoids false-pruning every contract when the repo root itself
+                # is resolved under such a segment (e.g. an explicit worktree
+                # root); that whole-worktree case is handled by canonical-root
+                # resolution, not this per-contract filter.
+                walk_parts = _repo_relative_parts(contract_path, repo_root)
+                if _WORKTREE_EXCLUDED_SEGMENTS.intersection(walk_parts):
                     continue
                 rel_path = _relative_to_repo(contract_path, repo_root)
                 try:
@@ -111,6 +189,19 @@ class HandlerGapCompute:
                     )
                 event_bus = raw.get("event_bus")
                 if not isinstance(event_bus, dict):
+                    node_kind = _resolve_node_kind(raw.get("node_type"))
+                    if node_kind in _BUS_OPTIONAL_NODE_KINDS:
+                        skipped_probes.append(
+                            ModelSkippedGapProbe(
+                                probe="missing_event_bus_contract",
+                                reason=(
+                                    f"{rel_path}: {node_name} is a "
+                                    f"{node_kind.value} node; pure compute has no "
+                                    f"required event_bus surface."
+                                ),
+                            )
+                        )
+                        continue
                     findings.append(
                         self._finding(
                             category=EnumGapCategory.CONTRACT_DRIFT,
@@ -224,13 +315,43 @@ class HandlerGapCompute:
         )
 
     def _resolve_repo_roots(self, request: ModelGapComputeRequest) -> list[Path]:
+        """Resolve the repo roots to scan for deterministic gap detection.
+
+        On the ``onex skill gap`` (RuntimeLocal dispatch) path the handler
+        module is loaded from the installed package (e.g.
+        ``.../python3.12/site-packages``), so the old ``parents[5]`` fallback
+        resolved a scan root named ``python3.12`` — a version token, not a repo
+        — and the sweep false-cleaned (OMN-13534). When no explicit
+        ``repo_roots`` are supplied we now resolve ``$OMNI_HOME`` and enumerate
+        the canonical default repo set, identical to the other sweeps
+        (OMN-13538). When ``$OMNI_HOME`` is set but no default repo dir exists,
+        we return ``[]`` so ``_detect`` reports ``status=BLOCKED`` (non-clean)
+        rather than scanning a wrong root.
+        """
         if request.repo_roots:
             roots = [Path(item) for item in request.repo_roots]
         else:
-            roots = [_REPO_ROOT]
+            roots = self._default_repo_roots()
         if request.repo:
             roots = [path for path in roots if path.name == request.repo]
         return sorted(path for path in roots if path.is_dir())
+
+    def _default_repo_roots(self) -> list[Path]:
+        """Enumerate the canonical default repo roots under ``$OMNI_HOME``.
+
+        Resolves ``$OMNI_HOME`` from the environment first, falling back to the
+        source-tree-derived ``_OMNI_HOME`` only when the env var is unset AND
+        that fallback actually contains canonical repo dirs (i.e. we are running
+        from the omni_home source layout, not an installed site-packages copy).
+        Never returns a ``python3.x`` version-token root.
+        """
+        try:
+            omni_home = Path(resolve_omni_home())
+        except SweepScopeUnresolvedError:
+            if not _looks_like_omni_home(_OMNI_HOME):
+                return []
+            omni_home = _OMNI_HOME
+        return [omni_home / name for name in DEFAULT_REPOS]
 
     def _filter_findings(
         self, findings: list[ModelGapFinding], request: ModelGapComputeRequest
@@ -318,6 +439,30 @@ class HandlerGapCompute:
         )
 
 
+def _resolve_node_kind(raw_node_type: object) -> EnumNodeKind | None:
+    """Resolve a contract ``node_type`` value to its canonical ``EnumNodeKind``.
+
+    Accepts the lowercase archetype strings ("compute"/"effect"/"reducer"/
+    "orchestrator") and the ``*_GENERIC`` / specific ``EnumNodeType`` forms used
+    across contracts. Returns ``None`` for absent or unrecognized values so the
+    caller fails loud (keeps the WARNING) rather than silently suppressing.
+    """
+    if not isinstance(raw_node_type, str):
+        return None
+    token = raw_node_type.strip().strip('"').strip("'")
+    if not token:
+        return None
+    node_type = _ARCH_WORD_TO_NODE_TYPE.get(token.lower())
+    if node_type is None:
+        try:
+            node_type = EnumNodeType(token.upper())
+        except ValueError:
+            return None
+    if not EnumNodeType.has_node_kind(node_type):
+        return None
+    return EnumNodeType.get_node_kind(node_type)
+
+
 def _contract_topics(event_bus: dict[str, object], raw: dict[str, object]) -> list[str]:
     topics: list[str] = []
     for key in ("publish_topics", "subscribe_topics"):
@@ -335,6 +480,20 @@ def _relative_to_repo(path: Path, repo_root: Path) -> str:
         return str(path.relative_to(repo_root))
     except ValueError:
         return str(path)
+
+
+def _repo_relative_parts(path: Path, repo_root: Path) -> tuple[str, ...]:
+    """Return ``path``'s segments relative to ``repo_root``.
+
+    Used for worktree-exclusion matching so the per-segment filter ignores any
+    excluded segment that appears in the repo root's *own* ancestor path (e.g.
+    a clone resolved under ``omni_worktrees/``). Falls back to the full parts
+    when ``path`` is not under ``repo_root``.
+    """
+    try:
+        return path.relative_to(repo_root).parts
+    except ValueError:
+        return path.parts
 
 
 def _dispatch_class(boundary_kind: str, rule_name: str) -> str:

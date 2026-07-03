@@ -6,7 +6,7 @@ from datetime import datetime
 from enum import StrEnum
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, NonNegativeInt
 
 
 class EnumPrBlockReason(StrEnum):
@@ -20,6 +20,10 @@ class EnumPrBlockReason(StrEnum):
     coderabbit                     → CR thread auto-reply via dispatch_coderabbit_reply
     deploy_gate_contract_not_found → deploy-gate failed because OCC contract YAML is
                                      missing; auto-create it via create_occ_contract
+    receipt_evidence_source_autobind → Receipt Gate failed because the PR's
+                                     Evidence-Source points at the product head SHA
+                                     instead of an OCC source; autobind OCC receipt
+                                     evidence via autobind_evidence_source (OMN-13317)
     """
 
     CI_FAILURE = "ci_failure"
@@ -29,6 +33,7 @@ class EnumPrBlockReason(StrEnum):
     CHANGES_REQUESTED = "changes_requested"
     CODERABBIT = "coderabbit"
     DEPLOY_GATE_CONTRACT_NOT_FOUND = "deploy_gate_contract_not_found"
+    RECEIPT_EVIDENCE_SOURCE_AUTOBIND = "receipt_evidence_source_autobind"
 
 
 class ModelPrLifecycleFixCommand(BaseModel):
@@ -47,6 +52,22 @@ class ModelPrLifecycleFixCommand(BaseModel):
     )
     dry_run: bool = Field(default=False, description="Run without side effects.")
     requested_at: datetime = Field(..., description="When the command was issued.")
+    changed_files: list[str] = Field(
+        default_factory=list,
+        description=(
+            "PR changed-file paths, relative to repo root. Used by the "
+            "trivial-infra OCC fast-path (OMN-13776) to decide whether a "
+            "deploy_gate_contract_not_found fix can skip the full OCC "
+            "receipt-chain. Empty/unknown never qualifies for the fast-path."
+        ),
+    )
+    diff_total_lines: NonNegativeInt = Field(
+        default=0,
+        description=(
+            "Total additions + deletions across changed_files. Used by the "
+            "trivial-infra OCC fast-path size scoping (OMN-13776)."
+        ),
+    )
 
 
 __all__: list[str] = ["EnumPrBlockReason", "ModelPrLifecycleFixCommand"]

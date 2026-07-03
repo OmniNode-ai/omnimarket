@@ -17,6 +17,7 @@ import logging
 import subprocess
 import tempfile
 from pathlib import Path
+from typing import Any, Protocol
 
 from omnibase_core.models.adr.model_adr_draft import ModelADRDraft
 
@@ -29,6 +30,25 @@ from omnimarket.nodes.node_kb_adr_publisher.models.model_publish_result import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+class ProtocolCommandRunner(Protocol):
+    """Subprocess seam for git / gh CLI invocation.
+
+    Production callers use the default ``subprocess.run``; tests inject a
+    ``_Mock`` runner (the canonical ``_Mock*`` constructor-injection pattern),
+    so the effect's I/O boundary is exercised at every outcome without ever
+    running real subprocess and without monkeypatching ``subprocess``.
+    """
+
+    def __call__(
+        self, cmd: list[str], **kwargs: Any
+    ) -> subprocess.CompletedProcess[str]: ...
+
+
+def _default_run(cmd: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
+    """Production ``ProtocolCommandRunner`` default — a thin ``subprocess.run``."""
+    return subprocess.run(cmd, **kwargs)
 
 
 def _load_decisions(decisions_file: Path, model_key: str) -> list[dict[str, object]]:
@@ -48,8 +68,16 @@ def _load_decisions(decisions_file: Path, model_key: str) -> list[dict[str, obje
 class HandlerKBADRPublisher:
     """EFFECT handler — renders canary ADRs and opens a KB PR."""
 
+    def __init__(self, *, run: ProtocolCommandRunner | None = None) -> None:
+        """Store the subprocess seam.
+
+        ``run`` defaults to ``subprocess.run`` (unchanged production behaviour);
+        tests inject a ``_Mock`` runner to drive each I/O-boundary outcome.
+        """
+        self._run: ProtocolCommandRunner = run or _default_run
+
     async def handle(
-        self, *, request: ModelKBADRPublishRequest
+        self, request: ModelKBADRPublishRequest
     ) -> ModelKBADRPublishResult:
         canary_run_dir = Path(request.canary_run_dir)
         decisions_file = canary_run_dir / "extracted_decisions.json"
@@ -96,7 +124,7 @@ class HandlerKBADRPublisher:
             kb_dir = Path(tmpdir) / "knowledge-base"
 
             logger.info("Cloning %s ...", request.kb_repo)
-            subprocess.run(
+            self._run(
                 ["gh", "repo", "clone", request.kb_repo, str(kb_dir)],
                 check=True,
             )
@@ -104,7 +132,7 @@ class HandlerKBADRPublisher:
             proposed_dir = kb_dir / "adrs" / "proposed"
             proposed_dir.mkdir(parents=True, exist_ok=True)
 
-            subprocess.run(
+            self._run(
                 ["git", "-C", str(kb_dir), "checkout", "-b", branch],
                 check=True,
             )
@@ -120,8 +148,8 @@ class HandlerKBADRPublisher:
                 rendered_count += 1
 
             logger.info("Committing %d rendered ADRs ...", rendered_count)
-            subprocess.run(["git", "-C", str(kb_dir), "add", "-A"], check=True)
-            subprocess.run(
+            self._run(["git", "-C", str(kb_dir), "add", "-A"], check=True)
+            self._run(
                 [
                     "git",
                     "-C",
@@ -132,7 +160,7 @@ class HandlerKBADRPublisher:
                 ],
                 check=True,
             )
-            subprocess.run(
+            self._run(
                 ["git", "-C", str(kb_dir), "push", "-u", "origin", branch],
                 check=True,
             )
@@ -150,7 +178,7 @@ class HandlerKBADRPublisher:
                 "- [ ] Evidence JSON files present in `adrs/proposed/`\n"
             )
 
-            pr_result = subprocess.run(
+            pr_result = self._run(
                 [
                     "gh",
                     "pr",

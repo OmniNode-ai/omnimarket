@@ -13,6 +13,19 @@ When scope is NOT an OMN-\\d+ ticket ID the handler runs in batch mode.
 Tickets are enumerated from ``request.ticket_ids`` (explicit list) or via
 ``gh issue list --search <request.gh_search_query>`` (live GitHub query).
 Per-ticket results are aggregated into ``batch_results`` on the return value.
+
+Gate-escape audit mode (OMN-13854)
+-----------------------------------
+When ``request.gate_escape_audit`` is true, the handler ignores scope/
+ticket_ids entirely and instead runs the L3 close-path audit from
+``docs/plans/2026-07-02-done-flip-durable-evidence-gate-design.md`` §2: fetch
+every Done ticket for ``request.audit_team`` (optionally bounded by
+``audit_since``/``audit_until``), and flag the wf_1628d9a5 signature
+(``startedAt=null`` + zero attachments/documents + no merged PR discoverable
+via ``gh search prs``) after excluding the design doc's carve-outs. See
+``services/gate_escape_audit.py`` for the pure evaluation logic. This is an
+audit, not a gate — it never reopens or otherwise mutates ticket state; the
+only optional side effect is a Linear comment (``request.post_comment``).
 """
 
 from __future__ import annotations
@@ -22,12 +35,15 @@ import logging
 import os
 import re
 import subprocess
+import urllib.request
+from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 import yaml
 
+from omnimarket.config.service_endpoints import LINEAR_GRAPHQL_URL
 from omnimarket.nodes.node_dod_sweep_orchestrator.models.model_dod_sweep_orchestrator_request import (
     ModelDodSweepOrchestratorRequest,
 )
@@ -36,11 +52,34 @@ from omnimarket.nodes.node_dod_sweep_orchestrator.models.model_dod_sweep_orchest
     ModelDodSweepOrchestratorResult,
     ModelDodTicketResult,
 )
+from omnimarket.nodes.node_dod_sweep_orchestrator.services.gate_escape_audit import (
+    ModelGateEscapeFinding,
+    ModelGateEscapeTicketSnapshot,
+    compute_child_done_rollup,
+    evaluate_gate_escape,
+)
 
 logger = logging.getLogger(__name__)
 
 _TICKET_RE = re.compile(r"^OMN-\d+$", re.IGNORECASE)
 _GH_TIMEOUT = 20  # seconds per subprocess call
+_LINEAR_TIMEOUT = 30  # seconds per Linear GraphQL request
+
+# Injectable collaborator seams for the ``gh`` subprocess boundary (OMN-13783).
+# Tests inject fakes here via ``HandlerDodSweepOrchestrator.__init__`` instead of
+# monkeypatching ``subprocess.run`` — the mechanics rule for this wave forbids
+# monkeypatching subprocess. Each default is the real, subprocess-backed function.
+GhFindMergedPrFn = Callable[[str, tuple[str, ...]], dict[str, str]]
+GhPrChecksPassFn = Callable[[str, str], tuple[bool, str]]
+EnumerateTicketsFn = Callable[[str], list[str]]
+
+# Injectable collaborator seams for the gate-escape audit (OMN-13854), same
+# pattern: real implementations touch the network/gh CLI, tests inject fakes.
+LinearFetchDoneTicketsFn = Callable[
+    [str, str, str, str], tuple[ModelGateEscapeTicketSnapshot, ...]
+]
+GhSearchMergedPrFn = Callable[[str], bool]
+LinearPostCommentFn = Callable[[str, str, str], None]
 
 
 # ---------------------------------------------------------------------------
@@ -104,82 +143,107 @@ def _check_receipt_exists(
     )
 
 
-def _gh_find_merged_pr(ticket_id: str, repo: str) -> dict[str, str]:
+def _gh_find_merged_pr(ticket_id: str, repos: tuple[str, ...]) -> dict[str, str]:
     """Return {'number': '123', 'repo': 'owner/repo'} for the most-recent merged PR.
 
     Returns an empty dict when no merged PR is found or gh fails.
-    repo may be empty — gh then uses the current working directory's remote.
+
+    ``repos`` is an ordered list of GitHub repositories to search.  The function
+    tries each repo in turn and returns the first hit.  An empty string entry
+    means "use the current working directory's remote" (default gh behaviour).
+    When repos is empty, falls back to a single CWD-remote search.
+
+    Bug-fix (OMN-13702 Bug 1): jq ``.[0] | {number: (.number|tostring), ...}``
+    applied to an empty array produces ``{"number":"null","repo":""}`` instead
+    of ``null``.  The guard now explicitly rejects the string ``"null"`` as a
+    valid PR number.
     """
     jq = '.[0] | {number: (.number | tostring), repo: (.headRepository.nameWithOwner // "")}'
-    if repo:
-        cmd = [
-            "gh",
-            "pr",
-            "list",
-            "--repo",
-            repo,
-            "--search",
-            ticket_id,
-            "--state",
-            "merged",
-            "--json",
-            "number,headRepository",
-            "--jq",
-            jq,
-        ]
-    else:
-        cmd = [
-            "gh",
-            "pr",
-            "list",
-            "--search",
-            ticket_id,
-            "--state",
-            "merged",
-            "--json",
-            "number,headRepository",
-            "--jq",
-            jq,
-        ]
-    try:
-        result = subprocess.run(
-            cmd,
-            capture_output=True,
-            text=True,
-            timeout=_GH_TIMEOUT,
-        )
-    except subprocess.TimeoutExpired:
-        logger.warning("gh pr list timed out for %s", ticket_id)
-        return {}
-    except Exception as exc:
-        logger.warning("gh pr list error for %s: %s", ticket_id, exc)
-        return {}
+    targets: tuple[str, ...] = repos if repos else ("",)
+    for repo in targets:
+        if repo:
+            cmd = [
+                "gh",
+                "pr",
+                "list",
+                "--repo",
+                repo,
+                "--search",
+                ticket_id,
+                "--state",
+                "merged",
+                "--json",
+                "number,headRepository",
+                "--jq",
+                jq,
+            ]
+        else:
+            cmd = [
+                "gh",
+                "pr",
+                "list",
+                "--search",
+                ticket_id,
+                "--state",
+                "merged",
+                "--json",
+                "number,headRepository",
+                "--jq",
+                jq,
+            ]
+        try:
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=_GH_TIMEOUT,
+            )
+        except subprocess.TimeoutExpired:
+            logger.warning("gh pr list timed out for %s (repo=%r)", ticket_id, repo)
+            continue
+        except Exception as exc:
+            logger.warning(
+                "gh pr list error for %s (repo=%r): %s", ticket_id, repo, exc
+            )
+            continue
 
-    if result.returncode != 0:
-        logger.debug("gh pr list non-zero for %s: %s", ticket_id, result.stderr.strip())
-        return {}
+        if result.returncode != 0:
+            logger.debug(
+                "gh pr list non-zero for %s (repo=%r): %s",
+                ticket_id,
+                repo,
+                result.stderr.strip(),
+            )
+            continue
 
-    raw = result.stdout.strip()
-    if not raw or raw == "null":
-        return {}
-    try:
-        parsed = json.loads(raw)
-        if isinstance(parsed, dict) and parsed.get("number"):
-            return {
-                "number": str(parsed["number"]),
-                "repo": str(parsed.get("repo", "")),
-            }
-    except json.JSONDecodeError:
-        pass
+        raw = result.stdout.strip()
+        if not raw or raw == "null":
+            continue
+        try:
+            parsed = json.loads(raw)
+            # Guard against jq null-expansion: .[0] on [] → {"number":"null",...}
+            if (
+                isinstance(parsed, dict)
+                and parsed.get("number")
+                and str(parsed["number"]) != "null"
+            ):
+                return {
+                    "number": str(parsed["number"]),
+                    "repo": str(parsed.get("repo", "")),
+                }
+        except json.JSONDecodeError:
+            pass
     return {}
 
 
 def _check_pr_merged(
     ticket_id: str,
-    repo: str,
+    repos: tuple[str, ...],
+    *,
+    gh_find_merged_pr_fn: GhFindMergedPrFn = _gh_find_merged_pr,
 ) -> tuple[ModelDodCheckResult, dict[str, str]]:
     """Return (check_result, pr_info). pr_info carries number/repo for CI check."""
-    pr_info = _gh_find_merged_pr(ticket_id, repo)
+    pr_info = gh_find_merged_pr_fn(ticket_id, repos)
     if pr_info:
         return (
             ModelDodCheckResult(
@@ -203,7 +267,15 @@ def _check_pr_merged(
 
 
 def _gh_pr_checks_pass(pr_number: str, repo: str) -> tuple[bool, str]:
-    """Return (all_green, detail_message) for a given PR number."""
+    """Return (all_green, detail_message) for a given PR number.
+
+    Bug-fix (OMN-13702 Bug 2): the previous implementation requested
+    ``--json name,state,conclusion``.  The ``conclusion`` field does not exist
+    in ``gh pr checks --json``; the gh CLI exits 1 with "Unknown JSON field:
+    conclusion", so this function ALWAYS returned False regardless of CI status.
+    The fix uses ``--json name,state`` only and evaluates pass/fail via the
+    ``state`` field (``SUCCESS`` / ``SKIPPED`` / ``NEUTRAL`` are passing values).
+    """
     if repo:
         cmd = [
             "gh",
@@ -213,7 +285,7 @@ def _gh_pr_checks_pass(pr_number: str, repo: str) -> tuple[bool, str]:
             "--repo",
             repo,
             "--json",
-            "name,state,conclusion",
+            "name,state",
         ]
     else:
         cmd = [
@@ -222,7 +294,7 @@ def _gh_pr_checks_pass(pr_number: str, repo: str) -> tuple[bool, str]:
             "checks",
             pr_number,
             "--json",
-            "name,state,conclusion",
+            "name,state",
         ]
     try:
         result = subprocess.run(
@@ -255,11 +327,7 @@ def _gh_pr_checks_pass(pr_number: str, repo: str) -> tuple[bool, str]:
 
     _passing = {"SUCCESS", "NEUTRAL", "SKIPPED"}
     failed_names = [
-        str(c.get("name", "unknown"))
-        for c in checks
-        if c.get("conclusion") not in _passing
-        and c.get("state") not in _passing
-        and c.get("conclusion") is not None
+        str(c.get("name", "unknown")) for c in checks if c.get("state") not in _passing
     ]
     if failed_names:
         return False, f"failed_checks: {', '.join(failed_names[:5])}"
@@ -269,6 +337,8 @@ def _gh_pr_checks_pass(pr_number: str, repo: str) -> tuple[bool, str]:
 def _check_ci_green(
     ticket_id: str,
     pr_info: dict[str, str],
+    *,
+    gh_pr_checks_pass_fn: GhPrChecksPassFn = _gh_pr_checks_pass,
 ) -> ModelDodCheckResult:
     """Return ci_green check result using pr_info from _check_pr_merged."""
     if not pr_info:
@@ -285,7 +355,7 @@ def _check_ci_green(
             status="skip",
             details={"reason": "pr_number_missing"},
         )
-    green, detail = _gh_pr_checks_pass(pr_number, repo)
+    green, detail = gh_pr_checks_pass_fn(pr_number, repo)
     return ModelDodCheckResult(
         check="ci_green",
         status="pass" if green else "fail",
@@ -346,6 +416,168 @@ def _enumerate_tickets_via_gh(query: str) -> list[str]:
 
 
 # ---------------------------------------------------------------------------
+# Gate-escape audit (OMN-13854) — I/O boundary
+# ---------------------------------------------------------------------------
+
+
+def _linear_graphql_post(query: str, variables: dict[str, object], api_key: str) -> Any:
+    """POST a query to the Linear GraphQL API and return the decoded JSON body."""
+    payload = json.dumps({"query": query, "variables": variables}).encode()
+    req = urllib.request.Request(
+        LINEAR_GRAPHQL_URL,
+        data=payload,
+        headers={"Content-Type": "application/json", "Authorization": api_key},
+        method="POST",
+    )
+    with urllib.request.urlopen(req, timeout=_LINEAR_TIMEOUT) as resp:
+        data = json.loads(resp.read())
+    if "errors" in data:
+        raise RuntimeError(f"Linear GraphQL error: {data['errors']}")
+    return data
+
+
+def _fetch_done_tickets_via_linear(
+    team: str, since: str, until: str, api_key: str
+) -> tuple[ModelGateEscapeTicketSnapshot, ...]:
+    """Return every Done ticket for ``team``, optionally bounded by completedAt.
+
+    Paginates up to 5 pages (1000 tickets) — enough for any realistic audit
+    window; a wider sweep should narrow ``since``/``until`` instead.
+    """
+    date_clauses = []
+    if since:
+        date_clauses.append(f'gte: "{since}"')
+    if until:
+        date_clauses.append(f'lt: "{until}"')
+    completed_filter = (
+        f", completedAt: {{ {', '.join(date_clauses)} }}" if date_clauses else ""
+    )
+
+    snapshots: list[ModelGateEscapeTicketSnapshot] = []
+    after: str | None = None
+    for _ in range(5):
+        after_clause = f', after: "{after}"' if after else ""
+        query = f"""
+        query DoneTickets($team: String!) {{
+          issues(
+            first: 200{after_clause},
+            filter: {{
+              team: {{ name: {{ eq: $team }} }},
+              state: {{ type: {{ eq: "completed" }} }}{completed_filter}
+            }}
+          ) {{
+            pageInfo {{ hasNextPage endCursor }}
+            nodes {{
+              id identifier title
+              startedAt completedAt
+              state {{ name }}
+              labels {{ nodes {{ name }} }}
+              attachments {{ nodes {{ id }} }}
+              children {{ nodes {{ id state {{ name }} }} }}
+            }}
+          }}
+        }}
+        """
+        data = _linear_graphql_post(query, {"team": team}, api_key)
+        issues = data.get("data", {}).get("issues", {})
+        nodes = issues.get("nodes", [])
+        for node in nodes:
+            labels = tuple(
+                lbl["name"] for lbl in node.get("labels", {}).get("nodes", [])
+            )
+            attachments = node.get("attachments", {}).get("nodes", [])
+            child_nodes = node.get("children", {}).get("nodes", [])
+            child_states = tuple(
+                (c.get("state") or {}).get("name", "") for c in child_nodes
+            )
+            snapshots.append(
+                ModelGateEscapeTicketSnapshot(
+                    id=node["id"],
+                    identifier=node["identifier"],
+                    title=node.get("title", ""),
+                    state_name=node.get("state", {}).get("name", ""),
+                    started_at=node.get("startedAt"),
+                    completed_at=node.get("completedAt"),
+                    labels=labels,
+                    attachments_count=len(attachments),
+                    documents_count=0,  # see ModelGateEscapeTicketSnapshot docstring
+                    has_children=len(child_nodes) > 0,
+                    all_children_done=compute_child_done_rollup(child_states),
+                )
+            )
+        page_info = issues.get("pageInfo", {})
+        if not page_info.get("hasNextPage"):
+            break
+        after = page_info.get("endCursor")
+    return tuple(snapshots)
+
+
+def _gh_search_merged_pr_exists(ticket_id: str) -> bool:
+    """Return True when an org-wide merged PR references ``ticket_id``.
+
+    Uses ``gh search prs`` (not ``gh pr list``) so the search spans every
+    repo the authenticated user can see, matching the design doc's stated
+    detection mechanism rather than the single-repo ``pr_merged`` check above.
+    """
+    cmd = [
+        "gh",
+        "search",
+        "prs",
+        ticket_id,
+        "--state",
+        "merged",
+        "--json",
+        "number",
+        "--limit",
+        "1",
+    ]
+    try:
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=_GH_TIMEOUT,
+        )
+    except Exception as exc:
+        logger.warning("gh search prs failed for %s: %s", ticket_id, exc)
+        return False
+    if result.returncode != 0:
+        logger.debug(
+            "gh search prs non-zero for %s: %s", ticket_id, result.stderr.strip()
+        )
+        return False
+    try:
+        hits = json.loads(result.stdout.strip() or "[]")
+    except json.JSONDecodeError:
+        return False
+    return isinstance(hits, list) and len(hits) > 0
+
+
+def _post_linear_comment(issue_id: str, body: str, api_key: str) -> None:
+    """Post a comment on a Linear issue. Never mutates ticket state."""
+    query = """
+    mutation CreateComment($issueId: String!, $body: String!) {
+      commentCreate(input: { issueId: $issueId, body: $body }) {
+        success
+      }
+    }
+    """
+    _linear_graphql_post(query, {"issueId": issue_id, "body": body}, api_key)
+
+
+def _gate_escape_finding_comment(finding: ModelGateEscapeFinding) -> str:
+    return (
+        "**Gate-escape audit (OMN-13854)**: this ticket was flagged as a "
+        "wf_1628d9a5-signature gate-escape candidate — Done with "
+        f"startedAt={finding.started_at!r}, attachments={finding.attachments_count}, "
+        f"documents={finding.documents_count}, merged PR found={finding.merged_pr_found}. "
+        "This is an audit flag, not an automatic reopen — please attach durable "
+        "evidence (merged PR / OCC receipt) or confirm the close is a legitimate "
+        "carve-out."
+    )
+
+
+# ---------------------------------------------------------------------------
 # Per-ticket sweep
 # ---------------------------------------------------------------------------
 
@@ -355,8 +587,11 @@ def _run_ticket_checks(
     contract_root: Path,
     evidence_root: Path,
     enabled_checks: tuple[str, ...],
-    gh_repo: str,
+    gh_repos: tuple[str, ...],
     dry_run: bool,
+    *,
+    gh_find_merged_pr_fn: GhFindMergedPrFn = _gh_find_merged_pr,
+    gh_pr_checks_pass_fn: GhPrChecksPassFn = _gh_pr_checks_pass,
 ) -> ModelDodTicketResult:
     """Run all enabled checks for one ticket and return a ModelDodTicketResult."""
     checks: list[ModelDodCheckResult] = []
@@ -372,11 +607,17 @@ def _run_ticket_checks(
         checks.append(_check_receipt_exists(ticket_id, contract_path))
 
     if "pr_merged" in enabled_checks:
-        pr_check, pr_info = _check_pr_merged(ticket_id, gh_repo)
+        pr_check, pr_info = _check_pr_merged(
+            ticket_id, gh_repos, gh_find_merged_pr_fn=gh_find_merged_pr_fn
+        )
         checks.append(pr_check)
 
     if "ci_green" in enabled_checks:
-        checks.append(_check_ci_green(ticket_id, pr_info))
+        checks.append(
+            _check_ci_green(
+                ticket_id, pr_info, gh_pr_checks_pass_fn=gh_pr_checks_pass_fn
+            )
+        )
 
     failed = sum(1 for c in checks if c.status == "fail")
     skipped = sum(1 for c in checks if c.status == "skip")
@@ -428,11 +669,40 @@ def _run_ticket_checks(
 
 
 class HandlerDodSweepOrchestrator:
-    """Targeted and batch DoD sweep receipt writer."""
+    """Targeted and batch DoD sweep receipt writer.
+
+    The three ``gh``-backed collaborators (merged-PR lookup, CI-checks lookup,
+    search-query ticket enumeration) are constructor-injectable seams (OMN-13783)
+    so tests can exercise every check/routing state via deterministic fakes
+    instead of monkeypatching ``subprocess.run``.
+    """
+
+    def __init__(
+        self,
+        *,
+        gh_find_merged_pr_fn: GhFindMergedPrFn = _gh_find_merged_pr,
+        gh_pr_checks_pass_fn: GhPrChecksPassFn = _gh_pr_checks_pass,
+        enumerate_tickets_fn: EnumerateTicketsFn = _enumerate_tickets_via_gh,
+        linear_fetch_done_tickets_fn: LinearFetchDoneTicketsFn = _fetch_done_tickets_via_linear,
+        gh_search_merged_pr_fn: GhSearchMergedPrFn = _gh_search_merged_pr_exists,
+        linear_post_comment_fn: LinearPostCommentFn = _post_linear_comment,
+    ) -> None:
+        self._gh_find_merged_pr_fn = gh_find_merged_pr_fn
+        self._gh_pr_checks_pass_fn = gh_pr_checks_pass_fn
+        self._enumerate_tickets_fn = enumerate_tickets_fn
+        self._linear_fetch_done_tickets_fn = linear_fetch_done_tickets_fn
+        self._gh_search_merged_pr_fn = gh_search_merged_pr_fn
+        self._linear_post_comment_fn = linear_post_comment_fn
 
     def handle(
         self, request: ModelDodSweepOrchestratorRequest
     ) -> ModelDodSweepOrchestratorResult:
+        # Gate-escape audit mode (OMN-13854) needs no contract/evidence root —
+        # check it before the root resolution below, which requires
+        # ONEX_CC_REPO_PATH and would otherwise fail-fast unnecessarily.
+        if request.gate_escape_audit:
+            return self._gate_escape_audit(request)
+
         scope = request.scope.strip().upper() if request.scope else ""
         contract_root = self._resolve_root(request.contract_root)
         evidence_root = self._resolve_root(request.evidence_root)
@@ -454,8 +724,83 @@ class HandlerDodSweepOrchestrator:
         )
 
     # ------------------------------------------------------------------
+    # Gate-escape audit mode (OMN-13854)
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _resolve_linear_api_key(request: ModelDodSweepOrchestratorRequest) -> str:
+        if request.linear_api_key:
+            return request.linear_api_key
+        return os.environ.get("LINEAR_API_KEY", "")  # contract-config-ok: config  # fmt: skip
+
+    def _gate_escape_audit(
+        self, request: ModelDodSweepOrchestratorRequest
+    ) -> ModelDodSweepOrchestratorResult:
+        api_key = self._resolve_linear_api_key(request)
+        if not api_key:
+            return ModelDodSweepOrchestratorResult(
+                status="skipped",
+                mode="gate_escape_audit",
+                skipped=1,
+                details={
+                    "reason": "missing_linear_api_key",
+                    "hint": "Set LINEAR_API_KEY or pass request.linear_api_key.",
+                },
+            )
+
+        tickets = self._linear_fetch_done_tickets_fn(
+            request.audit_team, request.audit_since, request.audit_until, api_key
+        )
+
+        findings: list[ModelGateEscapeFinding] = []
+        for ticket in tickets:
+            merged_pr_found = self._gh_search_merged_pr_fn(ticket.identifier)
+            finding = evaluate_gate_escape(ticket, merged_pr_found=merged_pr_found)
+            findings.append(finding)
+            if finding.flagged:
+                logger.warning(
+                    "gate_escape_audit: %s flagged — %s",
+                    finding.ticket_id,
+                    finding.reason,
+                )
+            if finding.flagged and request.post_comment and not request.dry_run:
+                self._linear_post_comment_fn(
+                    ticket.id, _gate_escape_finding_comment(finding), api_key
+                )
+
+        flagged = [f for f in findings if f.flagged]
+        return ModelDodSweepOrchestratorResult(
+            status="flagged" if flagged else "clean",
+            mode="gate_escape_audit",
+            details={
+                "team": request.audit_team,
+                "since": request.audit_since,
+                "until": request.audit_until,
+                "dry_run": str(request.dry_run).lower(),
+                "post_comment": str(request.post_comment).lower(),
+            },
+            gate_escape_findings=tuple(findings),
+            gate_escape_checked=len(findings),
+            gate_escape_flagged=len(flagged),
+        )
+
+    # ------------------------------------------------------------------
     # Targeted mode
     # ------------------------------------------------------------------
+
+    @staticmethod
+    def _effective_repos(request: ModelDodSweepOrchestratorRequest) -> tuple[str, ...]:
+        """Resolve the ordered repo list to search for merged PRs.
+
+        gh_repos (plural) takes precedence when non-empty.  Falls back to
+        (gh_repo,) when only the singular field is set, or () (CWD remote) when
+        neither is set.
+        """
+        if request.gh_repos:
+            return request.gh_repos
+        if request.gh_repo:
+            return (request.gh_repo,)
+        return ()
 
     def _targeted(
         self,
@@ -469,8 +814,10 @@ class HandlerDodSweepOrchestrator:
             contract_root=contract_root,
             evidence_root=evidence_root,
             enabled_checks=request.enabled_checks,
-            gh_repo=request.gh_repo,
+            gh_repos=self._effective_repos(request),
             dry_run=request.dry_run,
+            gh_find_merged_pr_fn=self._gh_find_merged_pr_fn,
+            gh_pr_checks_pass_fn=self._gh_pr_checks_pass_fn,
         )
 
         contract_path = contract_root / "contracts" / f"{ticket_id}.yaml"
@@ -510,7 +857,7 @@ class HandlerDodSweepOrchestrator:
         if request.ticket_ids:
             ticket_ids = [t.strip().upper() for t in request.ticket_ids]
         elif request.gh_search_query:
-            ticket_ids = _enumerate_tickets_via_gh(request.gh_search_query)
+            ticket_ids = self._enumerate_tickets_fn(request.gh_search_query)
         else:
             return ModelDodSweepOrchestratorResult(
                 status="skipped",
@@ -535,6 +882,7 @@ class HandlerDodSweepOrchestrator:
                 },
             )
 
+        gh_repos = self._effective_repos(request)
         results: list[ModelDodTicketResult] = []
         for tid in valid_ids:
             tr = _run_ticket_checks(
@@ -542,8 +890,10 @@ class HandlerDodSweepOrchestrator:
                 contract_root=contract_root,
                 evidence_root=evidence_root,
                 enabled_checks=request.enabled_checks,
-                gh_repo=request.gh_repo,
+                gh_repos=gh_repos,
                 dry_run=request.dry_run,
+                gh_find_merged_pr_fn=self._gh_find_merged_pr_fn,
+                gh_pr_checks_pass_fn=self._gh_pr_checks_pass_fn,
             )
             results.append(tr)
             logger.info(

@@ -143,6 +143,11 @@ class ModelCreateFollowupTicketsResult(BaseModel):
         default=0,
         description="Number of Nit findings skipped due to include_nits=False.",
     )
+    skipped_duplicate_count: int = Field(
+        default=0,
+        description="Number of findings skipped because a ticket with the same "
+        "title was already produced in this batch (title-match idempotency).",
+    )
     dry_run: bool = Field(default=False)
 
 

@@ -31,6 +31,7 @@ HANDLER = HandlerProjectionContextRoi()
 CONTRACT_PATH = Path("src/omnimarket/nodes/node_projection_context_roi/contract.yaml")
 EXPERIMENT_SCORES_TOPIC = "onex.snapshot.projection.context.experiment-scores.v1"
 RUNNER_TERMINAL_TOPIC = "onex.evt.omnimarket.context-roi-run-completed.v1"
+RUNNER_FAILED_TERMINAL_TOPIC = "onex.evt.omnimarket.context-roi-run-failed.v1"
 
 
 def _row(
@@ -136,6 +137,70 @@ class TestContextRoiProjection:
         assert len(rows) == 1
         assert rows[0]["correlation_id"] == "c-1"
 
+    def test_failed_terminal_run_materialises_rows(self) -> None:
+        """A fully-failed run delivered on the FAILED terminal still projects.
+
+        Both runner terminals carry the same ModelContextRoiRunResult payload, so
+        the failed run's rows — final_success=False, failure_stage=generation —
+        materialise into context_roi_scores through the same projection path. This
+        is the de-wedge: before subscribing to the failed terminal, a failed run
+        produced zero usable rows (OMN-13645).
+        """
+        db = InmemoryDatabaseAdapter()
+        failed_row = ModelAttemptReductionRow(
+            run_id="run-failed-001",
+            correlation_id="c-fail-1",
+            task_id="task-A",
+            run_order=1,
+            context_factor_subset="golden_exemplar",
+            context_pack_hash="abc123",
+            attempt_count=2,
+            first_pass_success=False,
+            final_success=False,
+            failure_stage=EnumFailureStage.GENERATION,
+            prompt_tokens=120,
+            completion_tokens=0,
+            estimated_cost=0.0,
+            model_id="qwen3-coder-30b",
+            provider="local",
+            endpoint_ref="local-coder",
+        )
+        result = ModelContextRoiRunResult(
+            run_id="run-failed-001",
+            rows=(failed_row,),
+            failed_trials=1,
+            total_trials=1,
+        )
+        projection = HANDLER.project(result, db)
+        assert projection.rows_upserted == 1
+
+        rows = db.query("context_roi_scores")
+        assert len(rows) == 1
+        assert rows[0]["correlation_id"] == "c-fail-1"
+        assert rows[0]["final_success"] is False
+        assert rows[0]["failure_stage"] == "generation"
+
+    def test_handle_projects_failed_terminal_payload(self) -> None:
+        """handle() is terminal-agnostic: a failed-terminal envelope projects."""
+        db = InmemoryDatabaseAdapter()
+        payload: dict[str, object] = {
+            "run_id": "run-failed-002",
+            "rows": [
+                _row(
+                    correlation_id="c-fail-2", first_pass=False, final=False
+                ).model_dump(mode="json")
+            ],
+            "_db": db,
+            "_event_type": "context-roi-run-failed",
+            "event_landed": "2026-06-26T00:00:00+00:00",
+            "latency_ms": 8,
+        }
+        out = HANDLER.handle(payload)
+        assert out["rows_upserted"] == 1
+        rows = db.query("context_roi_scores")
+        assert len(rows) == 1
+        assert rows[0]["final_success"] is False
+
     def test_inbound_event_model_round_trips_runner_payload(self) -> None:
         result = ModelContextRoiRunResult(
             run_id="run-001",
@@ -158,6 +223,9 @@ class TestContextRoiContractWiring:
         )
         assert contract["handler"]["class"] == "HandlerProjectionContextRoi"
         assert RUNNER_TERMINAL_TOPIC in contract["event_bus"]["subscribe_topics"]
+        # The failed terminal must also be consumed so failed runs are projected
+        # instead of wedging the N-arm battery with zero usable rows (OMN-13645).
+        assert RUNNER_FAILED_TERMINAL_TOPIC in contract["event_bus"]["subscribe_topics"]
         assert (
             contract["event_bus"]["consumer_group"]
             == "local.omnimarket.node_projection_context_roi.consume.v1"

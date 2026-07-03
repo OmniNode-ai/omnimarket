@@ -1,11 +1,15 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""NodeSkillDispatchEngineOrchestrator — thin orchestrator shell for dispatch_engine.
+"""NodeSkillDispatchEngineOrchestrator — thin router for the dispatch_engine skill.
 
 Capability: skill.dispatch_engine
 
-Scaffold: live dispatch returns a ``"dispatched"`` placeholder. Real wiring to
-the polymorphic agent is follow-up work (tracked alongside OMN-8821).
+Routes a dispatch request through the two already-real pieces: RSD scoring
+(``node_rsd_fill_compute``) then self-healing per-repo fan-out
+(``node_self_healing_dispatch_orchestrator``), returning a real dispatch receipt
+with concrete worker specs. Dispatch logic lives in the handlers
+(``HandlerDispatchEngineRouter`` / ``HandlerSkillRequested``); this node is a thin
+coordination shell (OMN-13834).
 """
 
 from __future__ import annotations
@@ -23,7 +27,8 @@ class NodeSkillDispatchEngineOrchestrator(NodeOrchestrator):
 
     Capability: skill.dispatch_engine
 
-    All behavior defined in ``contract.yaml``. Dispatch logic lives in
+    All behavior defined in ``contract.yaml``. Routing logic lives in
+    ``HandlerDispatchEngineRouter``; the skill-lifecycle boundary lives in
     ``HandlerSkillRequested``. This node is a thin coordination shell.
     """
 

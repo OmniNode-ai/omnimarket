@@ -18,11 +18,13 @@ handler:
 
 handler_routing:
   handlers:
-    - handler:
+    - operation: data_verification
+      handler:
         name: HandlerDataVerification
         module: omnimarket.nodes.node_data_verification.handlers.handler_data_verification
-    - handler:
-        name: datasource_postgres
+    - operation: postgres
+      handler:
+        name: PostgresDataSource
         module: omnimarket.nodes.node_data_verification.handlers.datasource_postgres
 
 descriptor:

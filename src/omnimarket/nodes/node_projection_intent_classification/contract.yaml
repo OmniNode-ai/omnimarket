@@ -1,0 +1,106 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+# ONEX Contract: projection_intent_classification (NC-05)
+# OMN-13078: projection contract for intent-classification events.
+# omnidash declares topic onex.snapshot.projection.intent-classification.v1
+# (widgets: intent-distribution, session-timeline).
+
+name: projection_intent_classification
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: reducer
+node_version: {major: 1, minor: 0, patch: 0}
+input_model: omnimarket.nodes.node_projection_intent_classification.handlers.handler_projection_intent_classification.ModelIntentClassifiedEvent
+description: >
+  Projects intent-classified events from omniintelligence into the
+  intent_classification_events table. UPSERT by correlation_id.
+  Source topic: onex.evt.omniintelligence.intent-classified.v1.
+  Feeds omnidash widgets intent-distribution and session-timeline.
+
+handler:
+  module: omnimarket.nodes.node_projection_intent_classification.handlers.handler_projection_intent_classification
+  class: HandlerProjectionIntentClassification
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: projection_intent_classification
+      handler:
+        name: HandlerProjectionIntentClassification
+        module: omnimarket.nodes.node_projection_intent_classification.handlers.handler_projection_intent_classification
+      handler_module: omnimarket.nodes.node_projection_intent_classification.handlers.handler_projection_intent_classification
+      event_model: omnimarket.nodes.node_projection_intent_classification.handlers.handler_projection_intent_classification.ModelIntentClassifiedEvent
+    - operation: intent_classification_projection_runner
+      handler:
+        name: IntentClassificationProjectionRunner
+        module: omnimarket.nodes.node_projection_intent_classification.handlers.handler_intent_classification
+      handler_module: omnimarket.nodes.node_projection_intent_classification.handlers.handler_intent_classification
+
+terminal_event: onex.evt.omnimarket.projection-intent-classification-applied.v1
+
+db_io:
+  db_tables:
+    - name: intent_classification_events
+      migration: "0000_create_intent_classification_events.sql"
+      access: write
+      database: omnidash_analytics
+      role: events
+
+event_bus:
+  subscribe_topics:
+    - onex.evt.omniintelligence.intent-classified.v1
+  publish_topics:
+    - onex.evt.omnimarket.projection-intent-classification-applied.v1
+    # Projection-API snapshot topics: this reducer materializes each exposure
+    # into the projection table; the projection-API serves reads from those tables.
+    # Declared here so the OMN-12777 topic gate can verify widget_topics have a producer.
+    - onex.snapshot.projection.intent-classification.v1  # onex-topic-allow: projection snapshot topic
+    - onex.snapshot.projection.intent-classification.distribution.v1  # onex-topic-allow: projection snapshot topic
+  dlq_topics:
+    - onex.dlq.omnimarket.projection-intent-classification-malformed.v1
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.projection-intent-classification-applied.v1
+  # Projection snapshot topics are served through projection_api/dashboard reads
+  # rather than consumed by another Kafka node.
+  - onex.snapshot.projection.intent-classification.v1  # onex-topic-allow: projection snapshot topic
+  - onex.snapshot.projection.intent-classification.distribution.v1  # onex-topic-allow: projection snapshot topic
+
+projection_api:
+  expose: true
+  exposures:
+    # session-timeline widget: ordered events list
+    - topic: onex.snapshot.projection.intent-classification.v1  # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
+      table: intent_classification_events
+      schema: public
+      columns:
+        - id
+        - correlation_id
+        - session_id
+        - intent_class
+        - confidence
+        - keywords
+        - emitted_at
+        - ingested_at
+        - created_at
+      order_by: emitted_at DESC
+      freshness_column: ingested_at
+      limit: 500
+    # intent-distribution widget: same events table, filtered/grouped client-side
+    - topic: onex.snapshot.projection.intent-classification.distribution.v1  # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
+      table: intent_classification_events
+      schema: public
+      columns:
+        - intent_class
+        - session_id
+        - confidence
+        - emitted_at
+      order_by: emitted_at DESC
+      freshness_column: ingested_at
+      limit: 1000
+
+metadata:
+  transport_type: kafka
+  widget_topics:
+    - onex.snapshot.projection.intent-classification.v1  # onex-topic-allow: projection snapshot topic
+    - onex.snapshot.projection.intent-classification.distribution.v1  # onex-topic-allow: projection snapshot topic

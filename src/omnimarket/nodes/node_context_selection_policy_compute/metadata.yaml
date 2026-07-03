@@ -1,0 +1,27 @@
+name: node_context_selection_policy_compute
+version: "1.0.0"
+description: >
+  Deterministic context-selection policy engine implementing the Context
+  Authority Rule: ranks candidate context factors by M2-resolved measured
+  effectiveness and stamps every selection with the Authority 5-tuple
+  (OMN-12843 / M3).
+omnibase_core_compat: ">=0.45.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_context_selection_policy_compute: "omnimarket.nodes.node_context_selection_policy_compute"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: read_only
+dependencies:
+  - "omnibase_core>=0.45.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["context", "selection", "policy", "compute", "authority-rule"]
+pack: "context"
+display_name: "Context Selection Policy"
+node_role: "compute"

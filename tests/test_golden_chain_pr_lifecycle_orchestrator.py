@@ -48,6 +48,10 @@ from omnimarket.nodes.node_pr_lifecycle_orchestrator.protocols.protocol_sub_hand
     ReducerResult,
     TriageRecord,
 )
+from omnimarket.nodes.node_pr_lifecycle_orchestrator.verify_target_mapping import (
+    EnumVerificationOutcome,
+    EnumVerificationTarget,
+)
 
 TOPIC_PHASE_TRANSITION = (
     "onex.evt.omnimarket.pr-lifecycle-orchestrator-phase-transition.v1"
@@ -210,6 +214,43 @@ class MockFix:
             self._in_flight -= 1
 
 
+class _PublishFailsAtPhaseEventBus:
+    """Raises when a phase-transition publish reaches a specific ``to_phase``.
+
+    Forces an FSM state->FAILED transition for states whose internal handler
+    exceptions are otherwise isolated per-PR (VERIFYING, MERGING,
+    POST_MERGE_TAIL — see OMN-9234 / OMN-13673 per-PR isolation). The raise
+    happens inside ``_transition_phase``'s own ``_publish_phase_event`` call,
+    which runs *after* ``state.fsm`` has already been mutated to the target
+    state, so the outer failure handler observes the real ``from_state`` and
+    the FSM genuinely records e.g. MERGING -> FAILED (not TRIAGING -> FAILED).
+    """
+
+    _started = True
+
+    def __init__(self, fail_to_phase: str) -> None:
+        self._fail_to_phase = fail_to_phase
+        self.published: list[dict[str, Any]] = []
+
+    async def start(self) -> None:
+        return None
+
+    async def publish(
+        self,
+        *,
+        topic: str,
+        key: bytes | None,
+        value: bytes,
+        headers: Any = None,
+    ) -> None:
+        if topic == TOPIC_PHASE_TRANSITION:
+            payload = json.loads(value.decode())
+            if payload.get("to_phase") == self._fail_to_phase:
+                msg = f"event bus publish failed for to_phase={self._fail_to_phase}"
+                raise RuntimeError(msg)
+        self.published.append({"topic": topic, "value": value})
+
+
 class MockQueueStallAdapter:
     """Mock matching GitHubMergeQueueAdapter.remediate_queue_stall()."""
 
@@ -273,11 +314,19 @@ class _TestOrchestrator(HandlerPrLifecycleOrchestrator):
     """
 
     def __init__(
-        self, *, _mock_inventory_prs: tuple[PrRecord, ...] = (), **kwargs: Any
+        self,
+        *,
+        _mock_inventory_prs: tuple[PrRecord, ...] = (),
+        _changed_files_by_pr: dict[tuple[str, int], list[str]] | None = None,
+        _probe_outcome: EnumVerificationOutcome = EnumVerificationOutcome.MERGED,
+        **kwargs: Any,
     ) -> None:
         super().__init__(**kwargs)
         self._mock_prs = _mock_inventory_prs
         self.queue_stall_adapter = MockQueueStallAdapter()
+        # OMN-13673: deterministic verification hooks — no live gh/docker.
+        self._changed_files_by_pr = _changed_files_by_pr or {}
+        self._probe_outcome = _probe_outcome
 
     def _enumerate_repos(self) -> tuple[str, ...]:
         """Return repos from the mock PR fixture, deduplicated."""
@@ -290,6 +339,17 @@ class _TestOrchestrator(HandlerPrLifecycleOrchestrator):
     def _make_merge_queue_adapter(self) -> MockQueueStallAdapter:
         return self.queue_stall_adapter
 
+    # OMN-13673: override the verify hooks so the gate never touches live
+    # gh / docker. Default to an unmapped path (neutral SKIPPED_NO_MAPPING)
+    # unless a test injects changed files for a PR.
+    def _pr_changed_files(self, repo: str, pr_number: int) -> list[str]:
+        return list(self._changed_files_by_pr.get((repo, pr_number), ["README.md"]))
+
+    async def _execute_verification_probe(
+        self, *, target: EnumVerificationTarget, timeout_seconds: int
+    ) -> EnumVerificationOutcome:
+        return self._probe_outcome
+
 
 async def _make_orchestrator(
     *,
@@ -299,6 +359,8 @@ async def _make_orchestrator(
     merge: MockMerge | None = None,
     fix: MockFix | None = None,
     event_bus: EventBusInmemory | None = None,
+    changed_files_by_pr: dict[tuple[str, int], list[str]] | None = None,
+    probe_outcome: EnumVerificationOutcome = EnumVerificationOutcome.MERGED,
 ) -> _TestOrchestrator:
     from typing import cast
 
@@ -315,6 +377,8 @@ async def _make_orchestrator(
     bus = cast(ProtocolEventBusPublisher, raw_bus)
     return _TestOrchestrator(
         _mock_inventory_prs=mock_prs,
+        _changed_files_by_pr=changed_files_by_pr,
+        _probe_outcome=probe_outcome,
         inventory=inv,
         triage=triage or MockTriage(),
         reducer=reducer or MockReducer(),
@@ -575,6 +639,133 @@ class TestPrLifecycleOrchestratorGoldenChain:
         # The failing PR must NOT be counted as merged.
         assert result.prs_merged == 0
 
+    async def test_exception_in_triage_leads_to_failed_state(self) -> None:
+        """Exception in triage -> final_state=FAILED (TRIAGING -> FAILED).
+
+        Unlike merge/verification, the triage call is a single batch call with
+        no per-PR isolation, so an exception here propagates straight to the
+        outer FSM handler while state.fsm == TRIAGING.
+        """
+
+        class BrokenTriage:
+            async def handle(self, correlation_id: Any, prs: Any) -> Any:
+                msg = "triage classifier crashed"
+                raise RuntimeError(msg)
+
+        inventory = MockInventory(prs=(_PR_GREEN,))
+        orch = await _make_orchestrator(
+            inventory=inventory,
+            triage=BrokenTriage(),  # type: ignore[arg-type]
+        )
+        result = await orch.handle(_make_command())
+
+        assert result.final_state == "FAILED"
+        assert result.error_message is not None
+        assert "triage classifier crashed" in result.error_message
+
+    async def test_exception_in_fix_dispatch_leads_to_failed_state(self) -> None:
+        """Exception in fix handler -> final_state=FAILED (FIXING -> FAILED).
+
+        Fix dispatch fans out via ``asyncio.gather(return_exceptions=True)``
+        then re-raises an ``ExceptionGroup`` when any PR's dispatch failed —
+        unlike merge, this is NOT per-PR isolated at the FSM level, so it is
+        expected to abort the sweep as FAILED.
+        """
+        inventory = MockInventory(prs=(_PR_RED,))
+        triage = MockTriage(classified=(_TRIAGE_RED,))
+        reducer = MockReducer(intents=(_INTENT_FIX,))
+        fix = MockFix(fail=True)
+
+        orch = await _make_orchestrator(
+            inventory=inventory,
+            triage=triage,
+            reducer=reducer,
+            fix=fix,
+        )
+        result = await orch.handle(_make_command())
+
+        assert result.final_state == "FAILED"
+        assert result.error_message is not None
+
+    async def test_publish_failure_during_verifying_transition_leads_to_failed_state(
+        self,
+    ) -> None:
+        """Phase-transition publish failure while entering VERIFYING -> FAILED.
+
+        Per-PR verification probe errors are isolated (VERIFICATION_TOOL_ERROR,
+        a neutral skip) and never abort the sweep (OMN-13673). The only way an
+        unhandled exception reaches the FSM while state.fsm == VERIFYING is a
+        failure in the phase-transition publish itself, forced here directly.
+        """
+        inventory = MockInventory(prs=(_PR_GREEN,))
+        triage = MockTriage(classified=(_TRIAGE_GREEN,))
+        reducer = MockReducer(intents=(_INTENT_MERGE,))
+        bus = _PublishFailsAtPhaseEventBus(fail_to_phase="verifying")
+
+        orch = await _make_orchestrator(
+            inventory=inventory,
+            triage=triage,
+            reducer=reducer,
+            event_bus=bus,  # type: ignore[arg-type]
+        )
+        result = await orch.handle(_make_command(verify=True))
+
+        assert result.final_state == "FAILED"
+        assert result.error_message is not None
+
+    async def test_publish_failure_during_merging_transition_leads_to_failed_state(
+        self,
+    ) -> None:
+        """Phase-transition publish failure while entering MERGING -> FAILED.
+
+        Per-PR merge handler errors are isolated (OMN-9234) and never abort
+        the sweep. The only way an unhandled exception reaches the FSM while
+        state.fsm == MERGING is a failure in the phase-transition publish
+        itself, forced here directly.
+        """
+        inventory = MockInventory(prs=(_PR_GREEN,))
+        triage = MockTriage(classified=(_TRIAGE_GREEN,))
+        reducer = MockReducer(intents=(_INTENT_MERGE,))
+        bus = _PublishFailsAtPhaseEventBus(fail_to_phase="merging")
+
+        orch = await _make_orchestrator(
+            inventory=inventory,
+            triage=triage,
+            reducer=reducer,
+            event_bus=bus,  # type: ignore[arg-type]
+        )
+        result = await orch.handle(_make_command())
+
+        assert result.final_state == "FAILED"
+        assert result.error_message is not None
+
+    async def test_publish_failure_during_post_merge_tail_transition_leads_to_failed_state(
+        self,
+    ) -> None:
+        """Phase-transition publish failure entering POST_MERGE_TAIL -> FAILED.
+
+        Proves POST_MERGE_TAIL -> FAILED is reachable and distinguishable from
+        a MERGING failure (OMN-12570): the merge itself succeeds, then the
+        transition into the post-merge-tail phase is where the fault occurs.
+        """
+        inventory = MockInventory(prs=(_PR_GREEN,))
+        triage = MockTriage(classified=(_TRIAGE_GREEN,))
+        reducer = MockReducer(intents=(_INTENT_MERGE,))
+        merge = MockMerge(prs_merged=1)
+        bus = _PublishFailsAtPhaseEventBus(fail_to_phase="post_merge_tail")
+
+        orch = await _make_orchestrator(
+            inventory=inventory,
+            triage=triage,
+            reducer=reducer,
+            merge=merge,
+            event_bus=bus,  # type: ignore[arg-type]
+        )
+        result = await orch.handle(_make_command())
+
+        assert result.final_state == "FAILED"
+        assert result.error_message is not None
+
     async def test_event_bus_receives_phase_transitions(
         self, event_bus: EventBusInmemory
     ) -> None:
@@ -734,6 +925,48 @@ class TestPrLifecycleOrchestratorGoldenChain:
         assert mod.TOPIC_COMPLETED in publish_topics
         assert mod.TOPIC_FIXER_DISPATCH_START in publish_topics
         assert contract["terminal_event"] == mod.TOPIC_COMPLETED
+
+    async def test_contract_fsm_states_match_orchestrator_enum(self) -> None:
+        """OMN-13806: every contract-declared FSM state must be implemented.
+
+        Regression lock for the REBASING drift fix — contract.yaml's fsm.states
+        must exactly match EnumOrchestratorState's members. A contract-declared
+        state with no corresponding enum member is dead/unreachable code.
+        """
+        import importlib
+
+        mod = importlib.import_module(
+            "omnimarket.nodes.node_pr_lifecycle_orchestrator."
+            "handlers.handler_pr_lifecycle_orchestrator"
+        )
+        contract_path = Path(mod.__file__).parents[1] / "contract.yaml"
+        contract = yaml.safe_load(contract_path.read_text(encoding="utf-8"))
+        declared_states = set(contract["fsm"]["states"])
+        implemented_states = {s.value for s in mod.EnumOrchestratorState}
+
+        assert declared_states == implemented_states
+        assert "REBASING" not in declared_states
+
+    async def test_contract_declares_single_pr_lifecycle_route(self) -> None:
+        """The operation_match routing table declares exactly one route.
+
+        Every test in this module exercises this single ``pr_lifecycle``
+        route; this test locks in that "every route" (DoD language) is
+        trivially the whole routing table for this orchestrator.
+        """
+        import importlib
+
+        mod = importlib.import_module(
+            "omnimarket.nodes.node_pr_lifecycle_orchestrator."
+            "handlers.handler_pr_lifecycle_orchestrator"
+        )
+        contract_path = Path(mod.__file__).parents[1] / "contract.yaml"
+        contract = yaml.safe_load(contract_path.read_text(encoding="utf-8"))
+        routing = contract["handler_routing"]
+        assert routing["routing_strategy"] == "operation_match"
+        handlers = routing["handlers"]
+        assert len(handlers) == 1
+        assert handlers[0]["operation"] == "pr_lifecycle"
 
     async def test_correlation_id_preserved_in_result(self) -> None:
         """correlation_id from command appears unchanged in result."""
@@ -1020,10 +1253,14 @@ class TestPrLifecycleOrchestratorVerifyWiring:
         assert "prs_verified" in payload
         assert payload["prs_verified"] == 0
 
-    async def test_verify_true_fails_closed_via_verifying_state(
+    async def test_verify_true_pass_proceeds_through_verifying_to_merging(
         self, event_bus: EventBusInmemory
     ) -> None:
-        """verify=True transitions TRIAGING->VERIFYING->FAILED; merge never runs."""
+        """verify=True + verification PASS: TRIAGING->VERIFYING->MERGING; merge runs.
+
+        OMN-13673: replaces the prior fail-closed-raise behavior. A green PR
+        whose verification passes (MERGED) is cleared and proceeds to MERGING.
+        """
         await event_bus.start()
 
         inventory = MockInventory(prs=(_PR_GREEN,))
@@ -1039,53 +1276,80 @@ class TestPrLifecycleOrchestratorVerifyWiring:
             merge=merge,
             fix=fix,
             event_bus=event_bus,
+            # A handler-touching change maps to RUNTIME_HEALTH; the injected
+            # probe returns MERGED (pass) so the PR clears the gate.
+            changed_files_by_pr={
+                ("OmniNode-ai/omnimarket", 101): ["src/foo/handlers/handler_x.py"]
+            },
+            probe_outcome=EnumVerificationOutcome.MERGED,
         )
         result = await orch.handle(_make_command(verify=True))
 
-        assert result.final_state == "FAILED"
-        assert result.error_message is not None
-        assert "VERIFYING phase dispatch is not wired yet" in result.error_message
-        # Merge must NOT have run when verify=True and verify phase is unwired.
-        assert merge.call_count == 0
+        assert result.final_state == "COMPLETE"
+        assert result.error_message is None
+        # The cleared PR proceeded to merge.
+        assert merge.call_count == 1
+        assert result.prs_verified == 1
+        assert result.prs_verification_blocked == 0
+        assert result.verification_breakdown["MERGED"] == 1
 
-        # FSM contract: TRIAGING -> VERIFYING, then VERIFYING -> FAILED.
+        # FSM contract: TRIAGING -> VERIFYING, then VERIFYING -> MERGING.
         history = await event_bus.get_event_history(topic=TOPIC_PHASE_TRANSITION)
         transitions = [
             (json.loads(evt.value)["from_phase"], json.loads(evt.value)["to_phase"])
             for evt in history
         ]
         assert ("triaging", "verifying") in transitions
-        assert ("verifying", "failed") in transitions
+        assert ("verifying", "merging") in transitions
+        # The old fail-closed transition must never occur.
+        assert ("verifying", "failed") not in transitions
 
         await event_bus.close()
 
-    async def test_verify_true_failure_is_persisted(
+    async def test_verify_true_failure_blocks_pr_but_completes_sweep(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """A failed verify-gated sweep still writes durable pollable evidence."""
+        """A verification_failed PR stays open (no merge); the sweep still COMPLETEs.
+
+        OMN-13673: VERIFICATION_FAILED is the only blocking outcome — it removes
+        the PR from the merge set without raising or failing the whole sweep, and
+        the durable result.json records the 7-category breakdown.
+        """
         monkeypatch.setenv("ONEX_STATE_DIR", str(tmp_path))
         inventory = MockInventory(prs=(_PR_GREEN,))
         triage = MockTriage(classified=(_TRIAGE_GREEN,))
         reducer = MockReducer(intents=(_INTENT_MERGE,))
+        merge = MockMerge(prs_merged=1)
         orch = await _make_orchestrator(
             inventory=inventory,
             triage=triage,
             reducer=reducer,
-            merge=MockMerge(prs_merged=1),
+            merge=merge,
             fix=MockFix(),
+            changed_files_by_pr={
+                ("OmniNode-ai/omnimarket", 101): ["src/foo/handlers/handler_x.py"]
+            },
+            probe_outcome=EnumVerificationOutcome.VERIFICATION_FAILED,
         )
 
         result = await orch.handle(
             _make_command(run_id="20260521-verify-failed", verify=True)
         )
 
+        # Verification failed → PR excluded from merge, stays open. The sweep is
+        # NOT failed by the per-PR block.
+        assert result.final_state == "COMPLETE"
+        assert merge.call_count == 0
+        assert result.prs_verification_blocked == 1
+        assert result.prs_verified == 0
+
         result_path = (
             tmp_path / "merge-sweep" / "20260521-verify-failed" / "result.json"
         )
         payload = json.loads(result_path.read_text())
-        assert result.final_state == "FAILED"
-        assert payload["final_state"] == "FAILED"
-        assert "VERIFYING phase dispatch is not wired yet" in payload["error_message"]
+        assert payload["final_state"] == "COMPLETE"
+        assert payload["prs_verification_blocked"] == 1
+        assert payload["verification_breakdown"]["VERIFICATION_FAILED"] == 1
 
 
 @pytest.mark.unit
@@ -1442,3 +1706,104 @@ class TestPrLifecycleOrchestratorLedger:
         rebuilt = reconstruct_pr_ledger(tuple(source_events))
         assert rebuilt.entries[0].conclusion.value == "merged"
         assert rebuilt.entries[0].head_sha == "cafe01"
+
+
+class _MockInventoryWithCensus(MockInventory):
+    """MockInventory that also exposes the org-wide open-PR census (OMN-13318)."""
+
+    def __init__(
+        self,
+        *,
+        prs: tuple[PrRecord, ...] = (),
+        census: Any,
+    ) -> None:
+        super().__init__(prs=prs)
+        self._census = census
+        self.census_call_count = 0
+
+    def collect_org_wide_open_prs(self) -> Any:
+        self.census_call_count += 1
+        return self._census
+
+
+def _census(open_count: int, remainders: tuple[Any, ...] = ()) -> Any:
+    from omnimarket.nodes.node_pr_lifecycle_inventory_compute.models.model_pr_lifecycle_inventory import (
+        ModelOrgWideOpenPrInventory,
+    )
+
+    return ModelOrgWideOpenPrInventory(
+        open_count=open_count,
+        remainders=remainders,
+    )
+
+
+def _remainder(repo: str, pr_number: int, title: str = "") -> Any:
+    from omnimarket.nodes.node_pr_lifecycle_inventory_compute.models.model_pr_lifecycle_inventory import (
+        ModelOrgWideOpenPrRemainder,
+    )
+
+    return ModelOrgWideOpenPrRemainder(
+        repo=repo,
+        pr_number=pr_number,
+        title=title,
+        url=f"https://github.com/{repo}/pull/{pr_number}",
+    )
+
+
+@pytest.mark.unit
+class TestOrgWideSweepDoneGate:
+    """OMN-13318: org-wide open-PR census is a mandatory sweep-done gate.
+
+    DoD: seed one open PR org-wide -> the orchestrator refuses sweep-done and
+    reports NOT_DONE listing the remainder; close it -> reports COMPLETE.
+    """
+
+    async def test_open_pr_remainder_blocks_sweep_done(self) -> None:
+        remainder = _remainder("OmniNode-ai/omnibase_infra", 2043, "still open")
+        inventory = _MockInventoryWithCensus(
+            prs=(),
+            census=_census(open_count=1, remainders=(remainder,)),
+        )
+        orch = await _make_orchestrator(inventory=inventory)
+        result = await orch.handle(_make_command())
+
+        assert result.final_state == "NOT_DONE"
+        assert result.org_wide_open_count == 1
+        assert len(result.org_wide_open_remainders) == 1
+        assert result.org_wide_open_remainders[0].pr_number == 2043
+        assert result.org_wide_open_remainders[0].repo == "OmniNode-ai/omnibase_infra"
+        assert inventory.census_call_count == 1
+
+    async def test_zero_open_prs_allows_sweep_done(self) -> None:
+        inventory = _MockInventoryWithCensus(
+            prs=(),
+            census=_census(open_count=0),
+        )
+        orch = await _make_orchestrator(inventory=inventory)
+        result = await orch.handle(_make_command())
+
+        assert result.final_state == "COMPLETE"
+        assert result.org_wide_open_count == 0
+        assert result.org_wide_open_remainders == ()
+
+    async def test_failed_census_is_fail_closed_not_done(self) -> None:
+        from omnimarket.nodes.node_pr_lifecycle_inventory_compute.models.model_pr_lifecycle_inventory import (
+            ModelOrgWideOpenPrInventory,
+        )
+
+        inventory = _MockInventoryWithCensus(
+            prs=(),
+            census=ModelOrgWideOpenPrInventory(open_count=0, query_failed=True),
+        )
+        orch = await _make_orchestrator(inventory=inventory)
+        result = await orch.handle(_make_command())
+
+        assert result.final_state == "NOT_DONE"
+
+    async def test_missing_census_does_not_block(self) -> None:
+        """A stub inventory without the census method leaves COMPLETE untouched."""
+        orch = await _make_orchestrator(inventory=MockInventory(prs=()))
+        result = await orch.handle(_make_command())
+
+        assert result.final_state == "COMPLETE"
+        assert result.org_wide_open_count == 0

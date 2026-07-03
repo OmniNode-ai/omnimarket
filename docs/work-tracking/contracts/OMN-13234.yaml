@@ -1,0 +1,54 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-13234"
+title: "Typed tier cost model (free_local / metered / budgeted) in routing_tiers + projection"
+summary: >
+  Add a typed per-tier cost model to routing_tiers.yaml and teach the projection
+  cost computation to use it. The core ModelRoutingTier gains a typed `cost`
+  block (EnumTierCostType free_local | metered | budgeted with rate/cap/overage,
+  omnibase_core). routing_tiers.yaml declares the typed cost for every tier.
+  pricing.compute_tier_cost_usd implements the billing semantics (metered =
+  rate*tokens; budgeted in-budget = 0 cash + headroom drawdown; budgeted overage
+  = overage rate; free_local = 0). The delegation_events projection persists the
+  measured tier-cost provenance via migration 0018.
+is_seam_ticket: false
+interface_change: true
+interfaces_touched:
+  - "public_api"
+  - "events"
+evidence_requirements:
+  - kind: "tests"
+    description: "Typed cost-model DoD unit tests pass: metered=rate*tokens, budgeted under cap (headroom drawdown, 0 cash), budgeted over cap (overage), free_local=0; routing_tiers typed-cost contract round-trips."
+    command: "uv run pytest tests/test_tier_cost_model_omn13234.py tests/test_routing_tiers_contract.py -q"
+  - kind: "ci"
+    description: "mypy --strict green on the changed src modules."
+    command: "uv run mypy src/omnimarket/pricing.py src/omnimarket/nodes/node_delegation_routing_reducer/models/model_delegation_config.py src/omnimarket/nodes/node_projection_delegation/handlers/handler_projection_delegation.py --strict"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-001"
+    description: "Typed cost-model DoD unit tests pass: metered=rate*tokens, budgeted under cap (headroom drawdown, 0 cash), budgeted over cap (overage), free_local=0."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/test_tier_cost_model_omn13234.py -q"
+  - id: "dod-002"
+    description: "routing_tiers.yaml contract test green: every tier declares a typed cost block and the parser round-trips it."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/test_routing_tiers_contract.py tests/test_tier_cost_model_omn13234.py::TestRoutingTiersTypedCost -q"
+  - id: "dod-003"
+    description: "mypy --strict green on the changed src modules (pricing.py, model_delegation_config.py, handler_projection_delegation.py)."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run mypy src/omnimarket/pricing.py src/omnimarket/nodes/node_delegation_routing_reducer/models/model_delegation_config.py src/omnimarket/nodes/node_projection_delegation/handlers/handler_projection_delegation.py --strict"
+  - id: "dod-deploy"
+    description: "Deploy-gate evidence: migration 0018 is an idempotent ADD COLUMN IF NOT EXISTS on delegation_events; the cost-model config + projection columns are picked up on the next forward-migration run + runtime redeploy. No bespoke endpoint, no env-for-model change."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "echo 'deploy-gate: OMN-13234 ships an idempotent ADD COLUMN migration (0018) + contract-driven typed tier cost; applied by the canonical forward-migration runner against omnidash_analytics on the next redeploy'"

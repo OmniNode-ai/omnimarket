@@ -26,6 +26,31 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from omnimarket.events.repo_health import EnumFailureOrigin
+
+# Re-export for callers that import from this module
+__all__ = [
+    "EnumFailureOrigin",
+    "EnumPrCategory",
+    "EnumReducerIntent",
+    "FixResult",
+    "InventoryResult",
+    "MergeResult",
+    "OccDependencyEdge",
+    "PrRecord",
+    "PrTriageResult",
+    "ProtocolFixHandler",
+    "ProtocolInventoryHandler",
+    "ProtocolMergeHandler",
+    "ProtocolPruneHandler",
+    "ProtocolStateReducerHandler",
+    "ProtocolTriageHandler",
+    "PruneResult",
+    "ReducerIntent",
+    "ReducerResult",
+    "TriageRecord",
+]
+
 # ---------------------------------------------------------------------------
 # Shared data models (orchestrator-internal, used between phases)
 # ---------------------------------------------------------------------------
@@ -101,6 +126,20 @@ class TriageRecord(BaseModel):
     block_reason: str = Field(
         default="",
         description="Why this PR is blocked (populated for non-green PRs).",
+    )
+    validation_failure_origin: EnumFailureOrigin | None = Field(
+        default=None,
+        description=(
+            "When a fix/polish phase reports a validation failure, the upstream "
+            "classifier sets this to the failure-origin bucket "
+            "(pr_scoped / repo_baseline / external_dependency / unknown). "
+            "None means no validation failure was observed for this PR. "
+            "Used by the orchestrator for RH-4 fan-out: "
+            "  repo_baseline → publish repo-health-classify.v1 + repo-health-repair-start.v1; "
+            "  pr_scoped / unknown → publish repo-health-classify.v1 only; "
+            "  None → no repo-health commands emitted. "
+            "Related: OMN-13586 RH-4."
+        ),
     )
 
 
@@ -204,6 +243,21 @@ class FixResult(BaseModel):
     prs_skipped: int = Field(default=0, ge=0)
 
 
+class PruneResult(BaseModel):
+    """Aggregate of the worktree-prune effect across merged PRs (OMN-13859).
+
+    Records how many just-merged worktrees were removed vs. flagged dirty vs.
+    otherwise skipped, so the orchestrator can log/observe the prune tail
+    without owning the per-worktree decision logic.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    worktrees_pruned: int = Field(default=0, ge=0)
+    worktrees_flagged_dirty: int = Field(default=0, ge=0)
+    worktrees_skipped: int = Field(default=0, ge=0)
+
+
 # ---------------------------------------------------------------------------
 # Protocols — signatures match real sub-handler handle() methods exactly.
 #
@@ -278,6 +332,17 @@ class ProtocolFixHandler(Protocol):
     """Dispatch remediation for PRs with FIX intent.
 
     Signature matches HandlerPrLifecycleFix.handle().
+    """
+
+    async def handle(self, command: Any) -> Any: ...
+
+
+@runtime_checkable
+class ProtocolPruneHandler(Protocol):
+    """Prune the git worktree for a PR that just reached merged/closed.
+
+    Signature matches HandlerWorktreePrune.handle() — one command per
+    (ticket, repo), returning a typed prune result (OMN-13859).
     """
 
     async def handle(self, command: Any) -> Any: ...

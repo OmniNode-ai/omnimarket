@@ -68,6 +68,31 @@ def test_model_dep_health_finding_fields() -> None:
 
 
 @pytest.mark.unit
+def test_model_dep_health_finding_sanitizes_src_file_path() -> None:
+    from omnimarket.nodes.node_dependency_health_sweep.models.model_dep_health_finding import (
+        EnumDepHealthFindingType,
+        EnumDepHealthSeverity,
+        ModelDepHealthFinding,
+    )
+
+    finding = ModelDepHealthFinding(
+        finding_type=EnumDepHealthFindingType.UNTESTED_HANDLER,
+        severity=EnumDepHealthSeverity.MAJOR,
+        repo="fixture",
+        file_path=(
+            "/private/var/folders/tmp/pytest-of-user/pytest-1/fixture0/"
+            "src/omnimarket/nodes/node_x/handlers/handler_x.py"
+        ),
+        symbol="handler_x",
+        detail="Handler has no coverage.",
+        rule_id="UNTESTED_HANDLER",
+        rule_version="v1",
+    )
+
+    assert finding.file_path == "src/omnimarket/nodes/node_x/handlers/handler_x.py"
+
+
+@pytest.mark.unit
 def test_enum_dep_health_finding_type_values() -> None:
     from omnimarket.nodes.node_dependency_health_sweep.models.model_dep_health_finding import (
         EnumDepHealthFindingType,

@@ -1,6 +1,5 @@
 # Raw Env-Var Usage Audit — 2026-05-05
 
-**Ticket:** OMN-10547
 **Plan:** docs/plans/2026-05-05-omnimarket-public-shippable.md (Task 1)
 
 ## Scope
@@ -48,8 +47,8 @@ This CSV is the canonical scope for:
 - **Task 2** (Settings field set): every `key` value in this CSV is a candidate
   field on `omnimarket.config.Settings`.
 - **Task 3** (strip baked defaults): every row with `has_default == true` and a
-  default that contains `192.168.`, `/Users/`, `/Volumes/`, `cyankiwi/`,
-  `Corianas/`, `mlx-community/`, `dash.dev.omninode.ai`, `jonahgabriel`, or a
-  similar identity-leak literal is a Task 3 replacement target. Other defaults
+  default that contains a private LAN IP prefix, a personal filesystem path,
+  a private HuggingFace model identifier, a developer-specific domain, or a
+  personal git handle is a Task 3 replacement target. Other defaults
   are evaluated case-by-case (some are legitimate empty strings, ints, or
   policy-neutral fallbacks like `"0"`).

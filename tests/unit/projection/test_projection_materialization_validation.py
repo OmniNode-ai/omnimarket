@@ -185,6 +185,7 @@ def test_current_materialized_projection_contracts_pass_scoped_ratchet() -> None
     validated_contracts = {
         "node_deployment_evidence_reducer",
         "node_evidence_dashboard_reducer",
+        "node_projection_dep_health",
         "projection_delegation",
         "projection_llm_routing",
         "projection_overnight",

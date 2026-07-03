@@ -62,6 +62,11 @@ jobs:
       # and inline `# onex-topic-allow` annotations (delegation thin-shim plan, Task 8).
       - name: Topic-literal guardrail (annotation allowlist)
         run: uv run python scripts/ci/check_no_hardcoded_topics.py
+      # OMN-13548 (D-03): a projection handler that catches ValidationError must
+      # route the malformed event to its contract-declared DLQ topic, not drop it
+      # silently. SYNC with pre-commit hook 'projection-dlq-path'.
+      - name: Projection-DLQ path gate
+        run: uv run python scripts/ci/check_projection_dlq_path.py
       - name: Reject node-level topics.py files
         run: |
           FOUND=$(find src/omnimarket/nodes -name "topics.py" -path "*/node_*/*" 2>/dev/null)
@@ -92,20 +97,35 @@ jobs:
       # route_source from contract+authority AND that no demo-path source reads
       # env for endpoint/provider/model, hardcodes a provider literal, or reads a
       # fallback endpoint string. Fails CI on any hardcoded/env path on the demo path.
+      # OMN-13285 (W6/GAP-3): ported to the canonical core COMPUTE validator
+      # (replaces the deleted omnimarket-local scripts/ci/check_routing_authority.py).
       - name: Routing-authority demo gate (enforce)
-        run: uv run python scripts/ci/check_routing_authority.py
+        run: uv run python -m omnibase_core.validation.validator_routing_authority --repo omnimarket --repo-root .
       # OMN-12964: Quality-gate calibration. Fails CI if the delegation quality
       # gate score distribution collapses (degenerate {0.0,1.0}) or fails to
       # discriminate known-good from known-bad outputs. A meaningless quality
       # signal masquerades as an ON/OFF effect and invalidates Experiments 1-3.
       - name: Quality-gate calibration (enforce)
         run: uv run python scripts/ci/run_quality_gate_calibration.py
-      # OMN-12971: backend secret-ref / credential-ref discipline. Fails CI if a
+      # OMN-13290: backend secret-ref / credential-ref discipline. Fails CI if a
       # literal credential value lands in routing-authority config, or if an
       # authenticated cloud backend lacks a logical secret/credential ref. Keeps
       # the Vertex ADC path (and all cloud backends) value-free in committed config.
+      # Sourced from omnibase_core (ported from the deleted local OMN-12971 script).
       - name: Backend secret-discipline gate (enforce)
-        run: uv run python scripts/ci/check_backend_secret_discipline.py
+        run: >-
+          uv run python -m omnibase_core.validators.backend_secret_discipline
+          src/omnimarket/configs/bifrost_delegation.yaml
+          src/omnimarket/configs/routing_tiers.yaml
+          src/omnimarket/data/model_registry/model_registry_v1.yaml
+      # OMN-13530: every operation_match (or absent-strategy) handler_routing
+      # entry must declare a non-empty 'operation' field. A missing operation
+      # makes the contract fail closed at RuntimeLocal startup ('handlers[i].
+      # operation is missing' / result=failed) — the 0.46.0 regression that
+      # took down the headless automation fleet. SYNC with pre-commit hook
+      # 'operation-match-requires-operation'.
+      - name: operation_match operation-field gate (enforce)
+        run: uv run python -m omnibase_core.validators.operation_match_requires_operation src/omnimarket
       # OMN-12972 (plan P2.7): Gemini registry/version hygiene. Every provider:google
       # registry entry + its bifrost backend must align with the live Vertex-served
       # model name PER ENVIRONMENT (Vertex = publisher-qualified, AI Studio = bare)
@@ -322,6 +342,7 @@ jobs:
           retention-days: 7
 
   topic-naming-lint:
+    name: Topic Naming Lint
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -351,6 +372,62 @@ jobs:
           uv run python ../omnibase_infra/scripts/validation/lint_topic_names.py \
             --scan-python src/omnimarket \
             --baseline scripts/validation/topic_naming_baseline.txt
+
+  # ============================================================================
+  # TOPIC ENUM DRIFT CHECK (OMN-13331 / WS-3)
+  # Validates that all topic string constants in canonical topics.py registry
+  # files are backed by at least one contract.yaml declaration (or carry a
+  # # onex-topic-allow annotation). Orphaned constants are drift violations.
+  # ============================================================================
+  topic-enum-drift:
+    name: Topic Enum Drift Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+      - name: Set up Python 3.12
+        run: uv python install 3.12
+      - name: Install dependencies
+        run: uv sync --locked --all-extras
+      - name: Check topic enum drift (OMN-13331)
+        run: |
+          echo "================================================================"
+          echo "Topic Enum Drift Check (OMN-13331)"
+          echo "Validates that topics.py constants are backed by contracts."
+          echo "================================================================"
+          uv run python scripts/ci/check_topic_enum_drift.py
+
+  # ============================================================================
+  # TOPIC DRIFT CHECK (OMN-13331 / WS-3)
+  # Validates that all contract-declared topics use valid ONEX naming format
+  # and known producer namespaces. New violations (not in baseline) fail CI.
+  # Cross-repo registry coverage gaps are warnings only (exit 0), mirroring the
+  # --warn-only behaviour of the equivalent omnibase_infra check (OMN-5248).
+  # ============================================================================
+  topic-drift-check:
+    name: Topic Drift Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+      - name: Set up Python 3.12
+        run: uv python install 3.12
+      - name: Install dependencies
+        run: uv sync --locked --all-extras
+      - name: Check topic drift (OMN-13331)
+        run: |
+          echo "================================================================"
+          echo "Topic Drift Check (OMN-13331)"
+          echo "Validates contract topic format + producer namespaces."
+          echo "Cross-repo registry coverage gaps are warn-only."
+          echo "================================================================"
+          uv run python scripts/ci/check_topic_drift.py
 
   event-registry-drift:
     name: Event Registry Drift
@@ -401,7 +478,52 @@ jobs:
       - name: Install dependencies
         run: uv sync --locked --all-extras
       - name: Verify entry point wiring
-        run: uv run python scripts/ci/run_runtime_sweep.py --import-check
+        run: uv run python -m omnimarket.nodes.node_runtime_sweep --import-check
+
+  # ============================================================================
+  # CORE-ONLY-INSTALL GATE (OMN-13446, Phase 5, epic OMN-13442)
+  # Local-First Runtime Re-Convergence: RuntimeLocal + the local-runtime protocols
+  # are now CORE-RESIDENT (omnibase_core.runtime / omnibase_core.protocols.runtime,
+  # relocated from omnibase_infra in OMN-13444, deleted from infra in OMN-13445).
+  # This job proves the core-only-install guarantee: a clean venv with
+  # omnibase-infra UNINSTALLED can `import omnibase_core.runtime`, resolve
+  # RuntimeLocal from core, and run the in-memory harness end-to-end (zero infra).
+  # Required via the ci-summary aggregator (Rule 5: enforcement, not detection).
+  # ============================================================================
+  core-only-install:
+    name: Core-Only Install Gate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
+      - name: Install uv
+        uses: astral-sh/setup-uv@38f3f104447c67c051c4a08e39b64a148898af3a # v4
+        with:
+          version: "latest"
+      - name: Set up Python 3.12
+        run: uv python install 3.12
+      - name: Create clean core-only venv (NO omnibase-infra)
+        run: uv venv --python 3.12 .venv-core-only
+      - name: Install omnibase-core ONLY (from the pinned core git rev)
+        # Install core from the exact rev pinned in pyproject [tool.uv.sources].
+        # We deliberately do NOT run `uv sync` (which would pull omnibase-infra)
+        # and we never install omnimarket as a package — the harness imports the
+        # in-tree handler via PYTHONPATH=src, exercising the real workflow with
+        # only core + its transitive deps present.
+        run: |
+          uv pip install --python .venv-core-only \
+            "omnibase-core @ git+https://github.com/OmniNode-ai/omnibase_core.git@db7f341353e598df84629b1c32514c78d554ef57"
+      - name: Assert omnibase-infra is genuinely absent
+        run: |
+          if .venv-core-only/bin/python -c "import importlib.util,sys; sys.exit(0 if importlib.util.find_spec('omnibase_infra') is None else 1)"; then
+            echo "OK: omnibase_infra is NOT installed"
+          else
+            echo "::error::omnibase_infra leaked into the core-only venv — the gate is invalid"
+            exit 1
+          fi
+      - name: Run core-only-install guarantee harness (infra uninstalled)
+        env:
+          PYTHONPATH: src
+        run: .venv-core-only/bin/python scripts/ci/core_only_install_harness.py
 
   # ============================================================================
   # E2E WORKFLOW RUNNER (inmemory bus)
@@ -557,6 +679,53 @@ jobs:
           path: sea-e2e-chain-results.xml
 
   # ============================================================================
+  # GENERATED-NODE GOLDEN-CHAIN GATE (OMN-13624)
+  # Dedicated required gate for the self-extension loop golden-chain tests.
+  # Runs the two canonical proofs for the node-generation pipeline:
+  #   - test_golden_chain_generation_self_extension.py  (§D2 loop proof)
+  #   - test_golden_chain_generated_node_publish_effect.py  (§publish chain)
+  # Separate from the broad golden-chains job so failures surface explicitly
+  # against the generation/SEA nodes rather than buried in the full suite.
+  # Zero infra required — all assertions use injected fakes and sandbox exec.
+  # Wired as: ci.yml BLOCKING gate + pre-commit hook (Operating Rule #5).
+  # ============================================================================
+
+  generated-node-golden-chain:
+    name: Generated-Node Golden Chain Gate (OMN-13624)
+    needs: zone-filter
+    if: needs.zone-filter.outputs.docs_only != 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Clone omnibase_core
+        run: git clone --depth=1 https://github.com/OmniNode-ai/omnibase_core.git ../omnibase_core
+      - name: Clone omnibase_compat
+        run: git clone --depth=1 https://github.com/OmniNode-ai/omnibase_compat.git ../omnibase_compat
+      - name: Clone omnimemory
+        run: git clone --depth=1 https://github.com/OmniNode-ai/omnimemory.git ../omnimemory
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+      - name: Set up Python 3.12
+        run: uv python install 3.12
+      - name: Install dependencies
+        run: uv sync --locked --all-extras
+      - name: Run generated-node golden-chain tests
+        run: |
+          uv run pytest \
+            tests/test_golden_chain_generation_self_extension.py \
+            tests/test_golden_chain_generated_node_publish_effect.py \
+            -v --tb=short -m "not kafka" \
+            --junit-xml=generated-node-golden-chain-results.xml
+      - name: Upload generated-node golden-chain results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: generated-node-golden-chain-results
+          path: generated-node-golden-chain-results.xml
+
+  # ============================================================================
   # GATE AGGREGATOR
   # Required status check for branch protection and merge queue.
   # ============================================================================
@@ -641,10 +810,75 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
 
+  # ============================================================================
+  # AISLOP SWEEP GATE (OMN-13578) — failing-rollup sub-job (Model B, OMN-13574)
+  # Detection sweeps that are not pre-merge gates are advisory and get ignored
+  # (Operating Rule 5). aislop detection was ABSENT from omnimarket CI; this job
+  # makes it a required check by feeding the ci-summary rollup.
+  #
+  # SCOPE — PR diff only. The omnimarket tree carries pre-existing aislop debt
+  # (hardcoded topics, empty impls). A whole-tree hard gate would block every PR
+  # on that backlog. Instead this scans only the files a PR changes vs its base,
+  # exactly like omnibase_core's `ai-slop-check` and omniclaude's
+  # `ai-slop-check (strict, PR diff)` jobs: NEW slop blocks, existing debt does
+  # not. A planted violation in a touched file turns this job — and therefore
+  # the required CI Summary rollup — red.
+  #
+  # Uses the canonical scanner check_ai_slop.py from omnibase_core (cloned the
+  # same way the other omnimarket jobs clone it) so the rule set stays uniform
+  # across repos rather than forking a second omnimarket-local copy.
+  # ============================================================================
+  aislop-sweep:
+    name: Aislop Sweep (strict, PR diff)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Clone omnibase_core (canonical aislop scanner)
+        run: git clone --depth=1 https://github.com/OmniNode-ai/omnibase_core.git ../omnibase_core
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Compute changed Python/Markdown files vs PR base
+        id: changed
+        # BASE_REF is passed via env (not spliced into the script body) so an
+        # attacker-controlled ref/filename cannot be expanded as shell code.
+        # No --depth on the base fetch: a shallow tip can miss the merge-base on
+        # a diverged branch, making the `...` diff over-report files. A full
+        # fetch resolves the true merge-base.
+        env:
+          BASE_REF: ${{ github.base_ref }}
+          HEAD_REF: ${{ github.head_ref }}
+        run: |
+          if [ "$BASE_REF" = "main" ] && [[ "$HEAD_REF" == promotion/*-dev-to-main ]]; then
+            BASE_REF="dev"
+          fi
+          if [ -n "$BASE_REF" ]; then
+            git fetch origin "$BASE_REF" --no-tags
+            FILES=$(git diff --name-only "origin/$BASE_REF"...HEAD -- '*.py' '*.md' | tr '\n' ' ')
+          else
+            FILES=$(git diff --name-only HEAD~1 -- '*.py' '*.md' 2>/dev/null | tr '\n' ' ')
+          fi
+          echo "files=$FILES" >> "$GITHUB_OUTPUT"
+      - name: Check changed files for AI-slop patterns (strict)
+        # FILES is passed via env so attacker-controlled filenames (backticks,
+        # $(...)) are never spliced into the script source.
+        env:
+          FILES: ${{ steps.changed.outputs.files }}
+        run: |
+          if [ -z "$FILES" ]; then
+            echo "No changed Python/Markdown files — nothing to scan."
+            exit 0
+          fi
+          # shellcheck disable=SC2086
+          python ../omnibase_core/scripts/validation/check_ai_slop.py --strict $FILES
+
   ci-summary:
     name: CI Summary
     runs-on: ubuntu-latest
-    needs: [zone-filter, lint, typecheck, detect-changes, test, topic-naming-lint, runtime-sweep, contract-compliance, e2e-workflow-runner, golden-chains, sea-e2e-chains, dep-health]
+    needs: [zone-filter, lint, typecheck, detect-changes, test, topic-naming-lint, runtime-sweep, core-only-install, contract-compliance, e2e-workflow-runner, golden-chains, sea-e2e-chains, generated-node-golden-chain, dep-health, aislop-sweep]
     if: always()
     steps:
       - name: Check CI results
@@ -660,11 +894,14 @@ jobs:
             "test=${{ needs.test.result }}" \
             "topic-naming-lint=${{ needs.topic-naming-lint.result }}" \
             "runtime-sweep=${{ needs.runtime-sweep.result }}" \
+            "core-only-install=${{ needs.core-only-install.result }}" \
             "contract-compliance=${{ needs.contract-compliance.result }}" \
             "e2e-workflow-runner=${{ needs.e2e-workflow-runner.result }}" \
             "golden-chains=${{ needs.golden-chains.result }}" \
             "sea-e2e-chains=${{ needs.sea-e2e-chains.result }}" \
-            "dep-health=${{ needs.dep-health.result }}"; do
+            "generated-node-golden-chain=${{ needs.generated-node-golden-chain.result }}" \
+            "dep-health=${{ needs.dep-health.result }}" \
+            "aislop-sweep=${{ needs.aislop-sweep.result }}"; do
             NAME="${check%%=*}"
             RESULT="${check##*=}"
             if [ "$RESULT" != "success" ] && [ "$RESULT" != "skipped" ]; then

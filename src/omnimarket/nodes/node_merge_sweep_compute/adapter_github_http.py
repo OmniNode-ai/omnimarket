@@ -22,6 +22,7 @@ import urllib.error
 import urllib.request
 from typing import Any
 
+from omnimarket.config.service_endpoints import GITHUB_GRAPHQL_URL, GITHUB_REST_URL
 from omnimarket.nodes.node_merge_sweep_compute.protocols import (
     GitHubPrFetchProtocol,
     GitHubTransportError,
@@ -29,8 +30,8 @@ from omnimarket.nodes.node_merge_sweep_compute.protocols import (
 
 _log = logging.getLogger(__name__)
 
-_GITHUB_GRAPHQL = "https://api.github.com/graphql"
-_GITHUB_REST = "https://api.github.com"
+_GITHUB_GRAPHQL = GITHUB_GRAPHQL_URL
+_GITHUB_REST = GITHUB_REST_URL
 _REQUEST_TIMEOUT = 30
 
 # GraphQL query for open PRs with all the fields we need.

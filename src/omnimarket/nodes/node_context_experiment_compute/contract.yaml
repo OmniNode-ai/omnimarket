@@ -13,7 +13,8 @@ description: >
 handler_routing:
   routing_strategy: operation_match
   handlers:
-    - handler:
+    - operation: context_experiment
+      handler:
         name: HandlerContextExperiment
         module: omnimarket.nodes.node_context_experiment_compute.handlers.handler_context_experiment
 

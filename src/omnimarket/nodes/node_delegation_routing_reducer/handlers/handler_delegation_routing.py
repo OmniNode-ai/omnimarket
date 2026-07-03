@@ -21,8 +21,11 @@ additionally enforces:
   - cloud_routing_policy: "blocked" skips non-local tiers for that task class
   - pricing_ceiling_per_1k_tokens: tiers whose cost tier exceeds the ceiling
     are skipped (local=low, cheap_cloud=medium, claude=high)
-  - escalation_policy.tier_order: when present, overrides the default tier
-    iteration order declared in routing_tiers.yaml
+  - escalation_policy.tier_order: when present, this is the COMPLETE, CLOSED,
+    ORDERED set of eligible tiers for the task class — only the named tiers are
+    tried, in that order. Tiers absent from tier_order are excluded for the task
+    class (they are NOT appended after the declared order). When absent, the
+    routing_tiers.yaml declaration order is used.
   - task_model_overrides: per-task-type model ID overrides; takes priority over
     tier-order-based model selection (OMN-10942)
   - default_task_model_ref: fallback model ID for tasks with no explicit override
@@ -142,7 +145,9 @@ _SYSTEM_PROMPTS: dict[str, str] = {
 
 # cloud_routing_policy values that block routing to non-local tiers.
 _CLOUD_BLOCKED_POLICY = "blocked"
-_LOCAL_TIERS = {"local", "cli_agents"}
+# OMN-13215: the shelled ``cli_agents`` tier was removed; ``local`` is the only
+# zero-cost local-execution tier exempt from the cloud-blocked routing policy.
+_LOCAL_TIERS = {"local"}
 
 
 def _estimate_prompt_tokens(prompt: str) -> int:
@@ -250,6 +255,7 @@ class BifrostBackendRef:
         "api_key_ref",
         "endpoint_url",
         "extra_headers",
+        "max_tokens",
         "model_name",
         "timeout_ms",
     )
@@ -259,12 +265,17 @@ class BifrostBackendRef:
         endpoint_url: str,
         model_name: str,
         timeout_ms: int,
+        max_tokens: int,
         api_key_ref: str | None = None,
         extra_headers: dict[str, str] | None = None,
     ) -> None:
         self.endpoint_url = endpoint_url
         self.model_name = model_name
         self.timeout_ms = timeout_ms
+        # OMN-13345: the contract-declared per-backend output-token ceiling,
+        # carried onto the routing decision so the orchestrator posts it on the
+        # wire instead of the truncating 8192 request default.
+        self.max_tokens = max_tokens
         self.api_key_ref = api_key_ref
         self.extra_headers = extra_headers
 
@@ -339,6 +350,11 @@ def _load_bifrost_endpoints() -> dict[str, BifrostBackendRef]:
             endpoint_url=url,
             model_name=model_name,
             timeout_ms=backend.timeout_ms,
+            # OMN-13345: carry the contract-declared per-backend output ceiling
+            # (cloud-glm: 65536) onto the resolved backend so the routing
+            # decision can thread it to the orchestrator. The wire DTO already
+            # validates max_tokens >= 1, so no default is substituted here.
+            max_tokens=backend.max_tokens,
             api_key_ref=backend.resolved_secret_ref,
             extra_headers=dict(backend.extra_headers)
             if backend.extra_headers
@@ -486,7 +502,11 @@ def _tier_allowed_by_contract(
     if (
         ceiling_raw is not None
         and isinstance(ceiling_raw, (int, float))
-        and tier.cost_per_1k_tokens > float(ceiling_raw)
+        # OMN-13215: compare with a small epsilon so a tier whose cost EQUALS the
+        # contract ceiling (e.g. the claude ceiling tier at $0.015 vs a $0.015
+        # ceiling) is permitted. Strict ``>`` mis-rejected the equal case due to
+        # binary float representation of 0.015, stranding the declared ceiling tier.
+        and tier.cost_per_1k_tokens > float(ceiling_raw) + 1e-9
     ):
         return False
 
@@ -499,9 +519,17 @@ def _tier_order_from_contract(
 ) -> tuple[ModelRoutingTier, ...]:
     """Return tiers in contract-declared escalation order, or config default.
 
-    When the task-class entry declares escalation_policy.tier_order, tiers are
-    reordered to match. Tiers not mentioned in tier_order are appended in their
-    original config order after declared tiers.
+    When the task-class entry declares escalation_policy.tier_order, that list is
+    the COMPLETE, CLOSED, ORDERED set of eligible tiers for the task class: only
+    the named tiers are tried, in the declared order. Tiers absent from
+    tier_order are excluded for that task class (OMN-13140) — they are NOT
+    appended after the declared order. Appending them re-opened the set and let a
+    task whose ceiling tier failed escalate past it into an unlisted tier (e.g.
+    `test` declares [local, cheap_cloud, claude] but escalated into cheap_frontier
+    after claude), defeating the per-class ceiling the tier_order encodes.
+
+    When the task-class entry declares no tier_order, the config declaration
+    order is returned unchanged (graceful degradation).
     """
     if entry is None:
         return config.tiers
@@ -518,14 +546,16 @@ def _tier_order_from_contract(
     seen: set[str] = set()
 
     for name in tier_order:
-        if name in tier_by_name:
+        if not isinstance(name, str) or name not in tier_by_name:
+            msg = "task-class escalation_policy.tier_order references unknown routing tier"
+            raise ProtocolConfigurationError(
+                msg,
+                tier_name=name,
+                known_tiers=tuple(tier_by_name),
+            )
+        if name not in seen:
             ordered.append(tier_by_name[name])
             seen.add(name)
-
-    # Append any tiers not mentioned in tier_order (maintains coverage).
-    for tier in config.tiers:
-        if tier.name not in seen:
-            ordered.append(tier)
 
     return tuple(ordered)
 
@@ -550,6 +580,25 @@ def _definition_of_done_checks(
         if isinstance(heuristic, list)
         else (),
     )
+
+
+def resolve_task_class_dod_checks(
+    task_type: str,
+) -> tuple[tuple[str, ...], tuple[str, ...]]:
+    """Resolve the task-class DoD checks for ``task_type`` (OMN-13597).
+
+    Public routing-authority surface: returns the ``(dod_deterministic,
+    dod_heuristic)`` tuples declared for ``task_type`` in
+    ``task_class_contracts.v1.yaml`` — the SAME resolution the bus routing reducer
+    feeds into the quality gate. When the contract file is absent or declares no
+    DoD for the task class, both tuples are empty and the gate falls back to its
+    legacy heuristic checks. This lets the bus-less local CLI dispatch path run
+    the canonical gate without reaching into the routing reducer's private
+    helpers or re-deriving the contract read.
+    """
+    contract = _get_task_class_contract()
+    entry = _task_class_entry(contract, task_type)
+    return _definition_of_done_checks(entry)
 
 
 def _tier_can_route_task(
@@ -608,8 +657,14 @@ def next_eligible_tier(
     config = _get_config()
     bifrost_backends = _load_bifrost_endpoints() if task_type is not None else {}
     contract = _get_task_class_contract() if task_type is not None else None
+    entry = _task_class_entry(contract, task_type) if task_type is not None else None
+    tiers = (
+        _tier_order_from_contract(config, entry)
+        if task_type is not None
+        else config.tiers
+    )
     found_current = False
-    for tier in config.tiers:
+    for tier in tiers:
         if tier.name == current_tier_name:
             found_current = True
             continue
@@ -621,6 +676,138 @@ def next_eligible_tier(
             continue
         return tier.name
     return None
+
+
+def first_eligible_tier(task_type: str) -> str | None:
+    """Return the CHEAPEST-FIRST initial tier for ``task_type``, or None.
+
+    Single parsing path for the INITIAL tier the bus-less local dispatch port
+    resolves (OMN-13861). Reads the closed-set task-class ``escalation_policy.
+    tier_order`` (via ``_tier_order_from_contract`` — the SAME order
+    ``next_eligible_tier`` walks) and returns the FIRST tier that can actually
+    route the task (a model serving ``task_type`` with a resolvable backend
+    endpoint, permitted by the task-class contract — ``_tier_can_route_task``,
+    identical to the escalation-hop eligibility check).
+
+    This lets the initial resolution honor the cheapest-first + closed-set
+    tier_order guardrails instead of the untargeted, bifrost-file-order
+    ``resolve_delegation_backend(task_type)`` that could land on an off-ladder
+    backend (e.g. the abandoned ``cloud-gemini-pro`` for ``code_generation``,
+    OMN-13667) and strand the escalation loop.
+
+    Returns ``None`` when the task class declares no tier_order (no contract entry)
+    or when no declared tier can route the task — the caller then falls back to the
+    legacy untargeted resolution for that (contract-less) class.
+    """
+    contract = _get_task_class_contract()
+    entry = _task_class_entry(contract, task_type)
+    if entry is None:
+        return None
+    escalation = entry.get("escalation_policy")
+    if not isinstance(escalation, dict) or not escalation.get("tier_order"):
+        # No closed-set tier_order to honor — let the caller keep legacy behavior.
+        return None
+
+    config = _get_config()
+    bifrost_backends = _load_bifrost_endpoints()
+    for tier in _tier_order_from_contract(config, entry):
+        if _tier_can_route_task(tier, task_type, bifrost_backends, contract):
+            return tier.name
+    return None
+
+
+# Stable machine-readable token prefixed onto every precise no-higher-tier
+# terminal reason (OMN-13167). Operators and projections key off this prefix; the
+# precise detail (exhausted policy + missing/unroutable tiers) follows after the
+# `: ` separator.
+NO_HIGHER_TIER_REASON_TOKEN = "no_higher_tier_available"
+
+
+def _tier_skip_reason(
+    tier: ModelRoutingTier,
+    task_type: str,
+    excluded_tiers: frozenset[str],
+    bifrost_backends: dict[str, BifrostBackendRef],
+    contract: dict[str, object] | None,
+) -> str:
+    """Return the specific reason ``tier`` is not usable for ``task_type``.
+
+    Used only to build the precise no-higher-tier terminal reason — never to make
+    a routing decision. The returned phrase names exactly why the tier was
+    skipped so the terminal record is self-describing (OMN-13167).
+    """
+    if tier.name in excluded_tiers:
+        return "excluded"
+    entry = _task_class_entry(contract, task_type)
+    if not _tier_allowed_by_contract(tier, entry):
+        policy = entry.get("cloud_routing_policy") if entry is not None else None
+        if policy == _CLOUD_BLOCKED_POLICY and tier.name not in _LOCAL_TIERS:
+            return "cloud_routing_blocked"
+        return "above_pricing_ceiling"
+    return "no_routable_backend_for_task"
+
+
+def describe_no_higher_tier_available(
+    current_tier_name: str,
+    excluded_tiers: frozenset[str],
+    *,
+    task_type: str,
+) -> str:
+    """Return a precise terminal reason when no higher tier can serve a task.
+
+    Names the exhausted escalation policy (the task class and its declared,
+    closed-set ``tier_order``), the current tier, and each tier the policy lists
+    AFTER the current tier together with the reason it was unusable (excluded,
+    cloud-routing blocked, above pricing ceiling, or no routable backend serving
+    the task). The string is prefixed with ``NO_HIGHER_TIER_REASON_TOKEN`` so it
+    stays machine-keyable while carrying the diagnostic the bare token lacked
+    (OMN-13167). The orchestrator emits this as ``terminal_failure_reason`` so the
+    delegation-failed event and its correlation-trace projection row identify the
+    missing tier rather than a bare ``no_higher_tier_available``.
+    """
+    config = _get_config()
+    bifrost_backends = _load_bifrost_endpoints()
+    contract = _get_task_class_contract()
+    entry = _task_class_entry(contract, task_type)
+    tiers = _tier_order_from_contract(config, entry)
+    policy_order = tuple(t.name for t in tiers)
+
+    # Candidate tiers are those the policy lists strictly after the current tier.
+    after_current: list[ModelRoutingTier] = []
+    found_current = False
+    for tier in tiers:
+        if tier.name == current_tier_name:
+            found_current = True
+            continue
+        if found_current:
+            after_current.append(tier)
+
+    if not found_current:
+        return (
+            f"{NO_HIGHER_TIER_REASON_TOKEN}: task_class='{task_type}' "
+            f"current_tier='{current_tier_name}' is not in the declared "
+            f"escalation policy tier_order={list(policy_order)}"
+        )
+
+    if not after_current:
+        return (
+            f"{NO_HIGHER_TIER_REASON_TOKEN}: task_class='{task_type}' exhausted "
+            f"escalation policy tier_order={list(policy_order)} — "
+            f"current_tier='{current_tier_name}' is the final (ceiling) tier; "
+            f"no higher tier is declared for this task class"
+        )
+
+    skipped = [
+        f"{tier.name}("
+        f"{_tier_skip_reason(tier, task_type, excluded_tiers, bifrost_backends, contract)})"
+        for tier in after_current
+    ]
+    return (
+        f"{NO_HIGHER_TIER_REASON_TOKEN}: task_class='{task_type}' exhausted "
+        f"escalation policy tier_order={list(policy_order)} — "
+        f"current_tier='{current_tier_name}'; no usable higher tier: "
+        f"{', '.join(skipped)}"
+    )
 
 
 def tier_for_backend(backend_id: str) -> str | None:
@@ -645,6 +832,78 @@ def tier_for_backend(backend_id: str) -> str | None:
             if model.backend_ref == backend_id:
                 return tier.name
     return None
+
+
+def backend_id_for_tier(tier_name: str, task_type: str) -> str | None:
+    """Return the bifrost ``backend_id`` ``tier_name`` would select for ``task_type``.
+
+    Single parsing path for tier→backend resolution on escalation (OMN-13849): a
+    caller that escalated to ``tier_name`` via :func:`next_eligible_tier` resolves
+    the concrete backend for that tier here, using the SAME model-selection logic
+    ``delta`` applies (``_select_model_for_task`` with a 0-token availability
+    probe + the contract model override). This keeps the tier→backend mapping in
+    the routing authority instead of re-deriving it in a dispatch port — the local
+    bus-less path can then re-resolve the escalated backend through
+    ``resolve_delegation_backend(task_type, backend_id=...)`` without reaching into
+    the reducer's private selection helpers.
+
+    Returns the selected model's ``backend_ref`` (the bifrost ``backend_id``), or
+    ``None`` when the tier is unknown or declares no model that can route the task
+    with a resolvable backend endpoint.
+    """
+    config = _get_config()
+    matching_tier = next(
+        (tier for tier in config.tiers if tier.name == tier_name),
+        None,
+    )
+    if matching_tier is None:
+        return None
+
+    bifrost_backends = _load_bifrost_endpoints()
+    contract = _get_task_class_contract()
+    contract_model_ref = _get_contract_model_ref(task_type, contract=contract)
+    # 0-token availability probe: identifies which backend the tier WOULD select
+    # for the task (delta re-selects with the real token estimate).
+    selected = _select_model_for_task(
+        matching_tier.models,
+        task_type,
+        0,
+        bifrost_backends,
+        contract_model_ref=contract_model_ref,
+    )
+    if selected is None:
+        return None
+    return selected.backend_ref
+
+
+def resolve_task_class_max_escalations(task_type: str) -> int | None:
+    """Resolve ``escalation_policy.max_escalations`` for ``task_type`` (OMN-13849).
+
+    Public routing-authority surface: returns the escalation budget declared for
+    ``task_type`` in ``task_class_contracts.v1.yaml`` — the SAME contract the bus
+    routing reducer reads. Returns ``None`` when the contract file is absent, the
+    task class is not declared, or the task class declares no
+    ``escalation_policy.max_escalations`` integer, so a caller can distinguish
+    "no contract-declared budget" from an explicit value and fall back to its own
+    default rather than silently escalating an unbounded number of times.
+
+    This lets the bus-less local CLI dispatch path bound its escalation loop by the
+    contract budget without reaching into the routing reducer's private contract
+    read helpers.
+    """
+    contract = _get_task_class_contract()
+    entry = _task_class_entry(contract, task_type)
+    if entry is None:
+        return None
+    escalation = entry.get("escalation_policy")
+    if not isinstance(escalation, dict):
+        return None
+    raw = escalation.get("max_escalations")
+    if not isinstance(raw, int) or isinstance(raw, bool):
+        return None
+    if raw < 0:
+        return None
+    return raw
 
 
 def tier_max_retries(tier_name: str) -> int:
@@ -789,6 +1048,11 @@ def delta(
             cost_tier=cost_tier,
             max_context_tokens=selected.max_context_tokens,
             timeout_ms=backend.timeout_ms,
+            # OMN-13345: thread the contract-declared per-backend output ceiling
+            # onto the decision so the orchestrator posts it on the wire instead
+            # of the 8192 request default, which truncates cloud GLM
+            # (finish_reason=length) and tanks the quality gate.
+            max_tokens=backend.max_tokens,
             system_prompt=system_prompt,
             rationale=rationale,
             dod_deterministic=dod_deterministic,
@@ -810,9 +1074,20 @@ def delta(
 
 
 __all__: list[str] = [
+    "NO_HIGHER_TIER_REASON_TOKEN",
+    # OMN-13356: re-exported as the routing-authority surface. Consumers (e.g.
+    # node_generation_consumer) annotate against the type ``delta`` returns by
+    # importing it from this authority handler module — not by reaching into the
+    # reducer's private models package (cross-node model reach-in guard).
+    "ModelRoutingDecision",
     "_get_contract_model_ref",
+    "backend_id_for_tier",
     "delta",
+    "describe_no_higher_tier_available",
+    "first_eligible_tier",
     "next_eligible_tier",
+    "resolve_task_class_dod_checks",
+    "resolve_task_class_max_escalations",
     "tier_for_backend",
     "tier_max_retries",
 ]

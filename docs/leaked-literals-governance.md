@@ -7,8 +7,8 @@ Wired as pre-commit hook and required GHA status check (`Leaked Literals Gate`).
 
 Any committed file that contains:
 
-- Private LAN IP prefixes: `192.168.86.`
-- Personal filesystem paths: `/Users/jonah`, `/Volumes/PRO-G40`
+- Private LAN IP prefixes (configure via `ONEX_HOST` or equivalent env var)
+- Personal filesystem paths: `/Users/<user>`, `/Volumes/<external-drive>`
 - Private HuggingFace model identifiers: `cyankiwi/`, `Corianas/`, `mlx-community/`
 - Personal git handles: `jonahgabriel`
 
@@ -21,7 +21,7 @@ Add the annotation on the **same line** as the literal:
 ```python
 host = os.environ.get(
     "POSTGRES_HOST",
-    "192.168.86.201",  # onex-allow-internal-ip OMN-XXXXX reason="env-var fallback; override via POSTGRES_HOST"
+    "<onex-host>",  # onex-allow-internal-ip OMN-XXXXX reason="env-var fallback; override via POSTGRES_HOST"
 )
 ```
 

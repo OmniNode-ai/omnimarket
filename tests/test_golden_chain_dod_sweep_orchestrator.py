@@ -23,6 +23,8 @@ from omnimarket.nodes.node_dod_sweep_orchestrator.handlers.handler_dod_sweep_orc
     _check_ci_green,
     _check_contract_exists,
     _check_receipt_exists,
+    _gh_find_merged_pr,
+    _gh_pr_checks_pass,
 )
 from omnimarket.nodes.node_dod_sweep_orchestrator.models.model_dod_sweep_orchestrator_request import (
     ModelDodSweepOrchestratorRequest,
@@ -424,6 +426,191 @@ def test_check_contract_exists_fail(tmp_path: Path) -> None:
 # ---------------------------------------------------------------------------
 # Contract and entry-point registration
 # ---------------------------------------------------------------------------
+
+
+# ---------------------------------------------------------------------------
+# OMN-13702 regression: Bug 1 — jq null false positive in _gh_find_merged_pr
+# ---------------------------------------------------------------------------
+
+
+def test_gh_find_merged_pr_empty_list_returns_empty_dict() -> None:
+    """When gh pr list returns jq-expanded null (empty array), must return {}.
+
+    Regression for OMN-13702 Bug 1: jq '.[0] | {number: (.number|tostring), ...}'
+    on an empty array produces {"number":"null","repo":""}.  The old guard
+    `parsed.get("number")` trusts the string "null" as truthy, causing a
+    false-positive pr_info that later explodes in _check_ci_green.
+    """
+    jq_null_output = json.dumps({"number": "null", "repo": ""})
+    with mock.patch("subprocess.run") as mock_run:
+        mock_run.return_value = mock.Mock(
+            returncode=0,
+            stdout=jq_null_output,
+            stderr="",
+        )
+        result = _gh_find_merged_pr("OMN-99999", ("OmniNode-ai/omnimarket",))
+
+    assert result == {}, f"Expected empty dict, got {result!r}"
+
+
+def test_pr_merged_fail_when_jq_returns_null_number(tmp_path: Path) -> None:
+    """pr_merged must report fail (not ghost-pass) when gh returns jq-null PR number.
+
+    Regression for OMN-13702 Bug 1: the false-positive pr_info caused
+    _check_ci_green to call 'gh pr checks null' which always errors → failed.
+    After the fix, pr_merged cleanly returns fail with reason=no_merged_pr_found.
+    """
+    jq_null_output = json.dumps({"number": "null", "repo": ""})
+    with mock.patch("subprocess.run") as mock_run:
+        mock_run.return_value = mock.Mock(
+            returncode=0,
+            stdout=jq_null_output,
+            stderr="",
+        )
+        result = HandlerDodSweepOrchestrator().handle(
+            ModelDodSweepOrchestratorRequest(
+                scope="OMN-99999",
+                contract_root=str(tmp_path),
+                evidence_root=str(tmp_path),
+                enabled_checks=("pr_merged",),
+            )
+        )
+
+    pr_check = next(c for c in result.batch_results[0].checks if c.check == "pr_merged")
+    assert pr_check.status == "fail"
+    assert pr_check.details["reason"] == "no_merged_pr_found"
+
+
+# ---------------------------------------------------------------------------
+# OMN-13702 regression: Bug 2 — invalid `conclusion` field kills ci_green
+# ---------------------------------------------------------------------------
+
+
+def test_gh_pr_checks_pass_does_not_request_conclusion_field() -> None:
+    """_gh_pr_checks_pass must not include 'conclusion' in --json fields.
+
+    Regression for OMN-13702 Bug 2: `gh pr checks --json name,state,conclusion`
+    exits 1 with "Unknown JSON field: conclusion", causing ci_green to ALWAYS
+    return False regardless of actual CI status.
+    After the fix the command uses `--json name,state` only.
+    """
+    checks_output = json.dumps(
+        [
+            {"name": "lint", "state": "SUCCESS"},
+            {"name": "test", "state": "SUCCESS"},
+        ]
+    )
+    with mock.patch("subprocess.run") as mock_run:
+        mock_run.return_value = mock.Mock(
+            returncode=0,
+            stdout=checks_output,
+            stderr="",
+        )
+        green, detail = _gh_pr_checks_pass("42", "OmniNode-ai/omnimarket")
+
+    # Verify the subprocess call did NOT include 'conclusion' in --json arg
+    call_args = mock_run.call_args[0][0]  # positional args list
+    json_idx = call_args.index("--json") if "--json" in call_args else -1
+    assert json_idx >= 0, "--json flag not found in gh pr checks call"
+    json_fields = call_args[json_idx + 1]
+    assert "conclusion" not in json_fields, (
+        f"'conclusion' is not a valid gh pr checks JSON field but was requested: {json_fields}"
+    )
+    assert green is True
+    assert "2_checks_green" in detail
+
+
+def test_ci_green_pass_when_state_only_checks_succeed() -> None:
+    """ci_green must evaluate state field (no conclusion) to determine pass/fail.
+
+    Regression for OMN-13702 Bug 2: old code used conclusion (unavailable)
+    so ALL real CI runs evaluated as fail. Fix: filter on state only.
+    """
+    checks_output = json.dumps(
+        [
+            {"name": "lint", "state": "SUCCESS"},
+            {"name": "test", "state": "SKIPPED"},
+        ]
+    )
+    with mock.patch("subprocess.run") as mock_run:
+        mock_run.return_value = mock.Mock(returncode=0, stdout=checks_output, stderr="")
+        result = _check_ci_green(
+            "OMN-99999", {"number": "42", "repo": "OmniNode-ai/omnimarket"}
+        )
+
+    assert result.status == "pass"
+
+
+def test_ci_green_fail_when_state_failure() -> None:
+    """ci_green must detect FAILURE via state field alone.
+
+    Regression for OMN-13702 Bug 2: ensures the state-only filter correctly
+    flags a failed check without relying on the non-existent conclusion field.
+    """
+    checks_output = json.dumps(
+        [
+            {"name": "lint", "state": "FAILURE"},
+            {"name": "test", "state": "SUCCESS"},
+        ]
+    )
+    with mock.patch("subprocess.run") as mock_run:
+        mock_run.return_value = mock.Mock(returncode=0, stdout=checks_output, stderr="")
+        result = _check_ci_green(
+            "OMN-99999", {"number": "42", "repo": "OmniNode-ai/omnimarket"}
+        )
+
+    assert result.status == "fail"
+    assert "lint" in result.details["detail"]
+
+
+# ---------------------------------------------------------------------------
+# OMN-13702 regression: Bug 3 — cross-repo PR blind spot
+# ---------------------------------------------------------------------------
+
+
+def test_gh_repos_multi_repo_search_finds_pr_in_second_repo(tmp_path: Path) -> None:
+    """When gh_repos lists multiple repos, the handler tries each in order.
+
+    Regression for OMN-13702 Bug 3: a single gh_repo misses PRs in other repos.
+    With gh_repos=("OmniNode-ai/omnimarket", "OmniNode-ai/omnibase_infra"),
+    a ticket whose PR is in omnibase_infra should still resolve as pr_merged=pass.
+    """
+    # First repo returns empty (jq null), second returns a real PR
+    empty_output = json.dumps({"number": "null", "repo": ""})
+    real_output = json.dumps({"number": "2100", "repo": "OmniNode-ai/omnibase_infra"})
+
+    with mock.patch("subprocess.run") as mock_run:
+        mock_run.side_effect = [
+            mock.Mock(returncode=0, stdout=empty_output, stderr=""),
+            mock.Mock(returncode=0, stdout=real_output, stderr=""),
+        ]
+        result = HandlerDodSweepOrchestrator().handle(
+            ModelDodSweepOrchestratorRequest(
+                scope="OMN-13335",
+                contract_root=str(tmp_path),
+                evidence_root=str(tmp_path),
+                enabled_checks=("pr_merged",),
+                gh_repos=("OmniNode-ai/omnimarket", "OmniNode-ai/omnibase_infra"),
+            )
+        )
+
+    pr_check = next(c for c in result.batch_results[0].checks if c.check == "pr_merged")
+    assert pr_check.status == "pass"
+    assert pr_check.details["pr_number"] == "2100"
+    assert mock_run.call_count == 2  # tried both repos
+
+
+def test_request_model_accepts_gh_repos_field() -> None:
+    """ModelDodSweepOrchestratorRequest must accept gh_repos tuple field.
+
+    Regression for OMN-13702 Bug 3: the field was absent; adding it allows
+    callers to specify a list of repos for cross-repo PR discovery.
+    """
+    req = ModelDodSweepOrchestratorRequest(
+        scope="OMN-99999",
+        gh_repos=("OmniNode-ai/omnimarket", "OmniNode-ai/omnibase_core"),
+    )
+    assert req.gh_repos == ("OmniNode-ai/omnimarket", "OmniNode-ai/omnibase_core")
 
 
 def test_contract_declares_node_as_implemented() -> None:

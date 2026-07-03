@@ -8,6 +8,9 @@ from datetime import UTC, datetime
 from omnimarket.nodes.node_design_to_plan.models.model_design_to_plan_command import (
     ModelDesignToPlanCommand,
 )
+from omnimarket.nodes.node_design_to_plan.models.model_design_to_plan_result import (
+    ModelDesignToPlanResult,
+)
 from omnimarket.nodes.node_design_to_plan.models.model_design_to_plan_state import (
     TERMINAL_PHASES,
     EnumDesignToPlanPhase,
@@ -162,17 +165,28 @@ class HandlerDesignToPlan:
     def handle(
         self,
         command: ModelDesignToPlanCommand,
+        *,
         phase_results: dict[EnumDesignToPlanPhase, bool] | None = None,
-    ) -> tuple[
-        ModelDesignToPlanState,
-        list[ModelDesignToPlanPhaseEvent],
-        ModelDesignToPlanCompletedEvent,
-    ]:
-        """Primary entry point — delegates to run_full_pipeline."""
-        return self.run_full_pipeline(command, phase_results=phase_results)
+    ) -> ModelDesignToPlanResult:
+        """Primary entry point — runs the pipeline and returns a typed receipt.
+
+        Delegates to ``run_full_pipeline`` (which returns the tuple products)
+        and wraps them in a typed ``ModelDesignToPlanResult``. The runtime bus
+        adapter (``LocalRuntimeBusAdapter``) only accepts a
+        ``BaseModel``/``dict``/``None`` handler return; a raw ``tuple`` return
+        crashes with ``ONEX_CORE_095_HANDLER_EXECUTION_ERROR`` (OMN-13841).
+        """
+        state, events, completed = self.run_full_pipeline(
+            command, phase_results=phase_results
+        )
+        return ModelDesignToPlanResult(
+            final_state=state,
+            phase_events=events,
+            completed_event=completed,
+        )
 
     def _started_at(self) -> datetime:
         return datetime.now(tz=UTC)
 
 
-__all__: list[str] = ["HandlerDesignToPlan"]
+__all__: list[str] = ["HandlerDesignToPlan", "ModelDesignToPlanResult"]

@@ -118,7 +118,9 @@ class TestDelegationProjection:
         )
         assert contract["handler"]["class"] == "HandlerProjectionDelegation"
         topics = contract["event_bus"]["subscribe_topics"]
-        assert "onex.evt.omniclaude.task-delegated.v1" in topics
+        # OMN-13629: the legacy compat task-delegated.v1 secondary path was dropped;
+        # the canonical delegation pair is the live source.
+        assert "onex.evt.omniclaude.task-delegated.v1" not in topics
         assert "onex.evt.omnimarket.node-generation-completed.v1" in topics
         assert "onex.evt.omnimarket.delegate-skill-completed.v1" in topics
         assert "onex.evt.omnimarket.delegate-skill-failed.v1" in topics
@@ -148,6 +150,7 @@ class TestDelegationProjection:
             "provider": "local-qwen",
             "model_name": _DELEGATE_SKILL_TEST_MODEL,
             "response": "projection proof",
+            "context_pack_hash": "sha256:terminal",
             "quality_gate_passed": True,
             "quality_gates_failed": [],
             "metrics": {
@@ -174,6 +177,7 @@ class TestDelegationProjection:
         assert row["quality_gates_failed_jsonb"] == []
         assert row["tokens_input"] == 144
         assert row["tokens_output"] == 593
+        assert row["context_pack_hash"] == "sha256:terminal"
         assert row["cost_savings_usd"] == Decimal("0.009327")
         assert row["pricing_manifest_version"] == 1
 
@@ -190,6 +194,7 @@ class TestDelegationProjection:
             "model_name": _DELEGATE_SKILL_TEST_MODEL,
             "prompt_text": "write useful unit tests",
             "response": "useful pytest proof",
+            "context_pack_hash": "sha256:terminal",
             "quality_gate_passed": True,
             "quality_gates_failed": [],
             "metrics": {
@@ -220,6 +225,7 @@ class TestDelegationProjection:
         row = db.query("delegation_events")[0]
         assert row["prompt_text"] == "write useful unit tests"
         assert row["response_text"] == "useful pytest proof"
+        assert row["context_pack_hash"] == "sha256:terminal"
         assert row["tokens_input"] == 144
         assert row["tokens_output"] == 593
         assert row["tokens_to_compliance"] == 737
@@ -244,6 +250,11 @@ class TestDelegationProjection:
             "fallback_to_claude": False,
             "tokens_to_compliance": 737,
             "compliance_attempts": 1,
+            "required_bar": 0.8,
+            "actual_score": 0.98,
+            "escalation_count": 0,
+            "authority_source": "task_class:test",
+            "score_source": "quality_gate_graded_score",
         }
 
         result = HANDLER.handle(payload)
@@ -258,6 +269,238 @@ class TestDelegationProjection:
         assert row["tokens_output"] == 593
         assert row["tokens_to_compliance"] == 737
         assert row["response_text"] == "projection proof"
+        assert row["required_bar"] == 0.8
+        assert row["actual_score"] == 0.98
+        assert row["escalation_count"] == 0
+        assert row["authority_source"] == "task_class:test"
+        assert row["score_source"] == "quality_gate_graded_score"
+
+    def test_canonical_terminal_carries_authoritative_cost_tier(self) -> None:
+        """OMN-13649: the authoritative serving tier on the canonical terminal is
+        persisted on the row, and its typed cost regime is derived from it.
+
+        A COMPLETED local/free delegation has no metered escalation_history
+        winner, so before this change the projection wrote an empty tier for the
+        most common path. The terminal now carries ``cost_tier_name`` from the
+        routing decision; the projection persists it and resolves
+        ``cost_tier_type`` from the typed tier cost model.
+        """
+        db = InmemoryDatabaseAdapter()
+        payload: dict[str, object] = {
+            "_db": db,
+            "_event_type": "onex.evt.omnibase-infra.delegation-completed.v1",
+            "correlation_id": "corr-tier-local",
+            "task_type": "test",
+            "model_used": "Qwen3-Coder-30B-A3B",
+            "content": "tier proof",
+            "quality_passed": True,
+            "quality_score": 0.98,
+            "latency_ms": 1200,
+            "prompt_tokens": 144,
+            "completion_tokens": 593,
+            "total_tokens": 737,
+            "fallback_to_claude": False,
+            # The authoritative serving tier carried from the routing decision.
+            "cost_tier_name": "local",
+        }
+
+        result = HANDLER.handle(payload)
+
+        assert result["rows_upserted"] == 1
+        row = db.query("delegation_events")[0]
+        assert row["cost_tier_name"] == "local"
+        # cost_tier_type is DERIVED from the tier name via the typed cost model,
+        # not carried on the wire — "local" is a free_local tier.
+        assert row["cost_tier_type"] == "free_local"
+
+    def test_canonical_terminal_without_tier_falls_back_to_metered_winner(
+        self,
+    ) -> None:
+        """OMN-13649 back-compat: a terminal predating the cost_tier_name field
+        still resolves the serving tier from the metered escalation winner."""
+        db = InmemoryDatabaseAdapter()
+        payload: dict[str, object] = {
+            "_db": db,
+            "_event_type": "onex.evt.omnibase-infra.delegation-failed.v1",
+            "correlation_id": "corr-tier-fallback",
+            "task_type": "test",
+            "model_used": "glm-4.6",
+            "content": "fail",
+            "quality_passed": False,
+            "quality_score": 0.2,
+            "latency_ms": 900,
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "total_tokens": 0,
+            "fallback_to_claude": True,
+            # No top-level cost_tier_name (old terminal); the metered escalation
+            # winner supplies the serving tier.
+            "cumulative_attempt_cost": 0.02,
+            "escalation_history": [
+                {
+                    "tier_name": "cheap_cloud",
+                    "model_used": "glm-4.6",
+                    "cost_usd": 0.02,
+                    "prompt_tokens": 103,
+                    "completion_tokens": 1777,
+                },
+            ],
+        }
+
+        result = HANDLER.handle(payload)
+
+        assert result["rows_upserted"] == 1
+        row = db.query("delegation_events")[0]
+        assert row["cost_tier_name"] == "cheap_cloud"
+
+    def test_decisions_exposure_declares_cost_tier_columns(self) -> None:
+        """OMN-13649: the decisions.v1 + correlation-trace.v1 projection-API
+        exposures expose the tier so the dashboard reads it from the projection."""
+        contract_path = "src/omnimarket/nodes/node_projection_delegation/contract.yaml"
+        with open(contract_path) as f:
+            contract = yaml.safe_load(f)
+        exposures = {e["topic"]: e for e in contract["projection_api"]["exposures"]}
+        decisions = exposures["onex.snapshot.projection.delegation.decisions.v1"]
+        assert "cost_tier_name" in decisions["columns"]
+        assert "cost_tier_type" in decisions["columns"]
+        trace = exposures["onex.snapshot.projection.delegation.correlation-trace.v1"]
+        assert "cost_tier_name" in trace["columns"]
+        assert "cost_tier_type" in trace["columns"]
+
+    def test_task_delegated_labels_project_quality_bar_evidence(self) -> None:
+        db = InmemoryDatabaseAdapter()
+        payload: dict[str, object] = {
+            "_db": db,
+            "correlation_id": "corr-quality-bar-labels",
+            "task_type": "test",
+            "delegated_to": _DELEGATE_SKILL_TEST_MODEL,
+            "quality_gate_passed": False,
+            "quality_gates_checked": [
+                "p3.required_bar=0.800",
+                "p3.actual_score=0.700",
+                "p3.escalation_count=1",
+                "p3.authority_source=task_class:test",
+                "p3.score_source=quality_gate_graded_score",
+                "p3.request_override_applied=false",
+                "p3.override_within_bounds=true",
+            ],
+            "quality_gates_failed": ["score_below_required_bar"],
+        }
+
+        result = HANDLER.handle(payload)
+
+        assert result["rows_upserted"] == 1
+        row = db.query("delegation_events")[0]
+        assert row["required_bar"] == 0.8
+        assert row["actual_score"] == 0.7
+        assert row["escalation_count"] == 1
+        assert row["authority_source"] == "task_class:test"
+        assert row["score_source"] == "quality_gate_graded_score"
+        assert row["request_override_applied"] is False
+        assert row["override_within_bounds"] is True
+
+    def test_terminal_row_carries_created_at(self) -> None:
+        """OMN-13171: the terminal projection row populates created_at.
+
+        The deployed delegation_events schema declares created_at as
+        NOT NULL. The projection write must inject created_at explicitly so a
+        backing store without an implicit DB default (e.g. the local SQLite
+        evidence target on a warm volume) does not raise a NOT NULL constraint.
+        """
+        db = InmemoryDatabaseAdapter()
+        payload: dict[str, object] = {
+            "_db": db,
+            "_event_type": "delegate-skill-completed",
+            "status": "completed",
+            "correlation_id": "1d8f9a02-5b6c-4d7e-8f10-2a3b4c5d6e7f",
+            "task_type": "test",
+            "provider": "local-qwen",
+            "model_name": _DELEGATE_SKILL_TEST_MODEL,
+            "response": "projection proof",
+            "quality_gate_passed": True,
+            "quality_gates_failed": [],
+            "metrics": {
+                "input_tokens": 144,
+                "output_tokens": 593,
+                "total_tokens": 737,
+                "latency_ms": 1250,
+                "cost_usd": 0.0,
+                "cost_savings_usd": 0.0,
+            },
+        }
+
+        result = HANDLER.handle(payload)
+
+        assert result["rows_upserted"] == 1
+        row = db.query("delegation_events")[0]
+        created_at = row.get("created_at")
+        assert created_at, "terminal projection row must populate created_at"
+        # created_at mirrors the event timestamp (explicit injection, deterministic),
+        # not an implicit datetime.now() at the DB layer.
+        assert created_at == row["timestamp"]
+
+    def test_terminal_write_to_sqlite_with_not_null_created_at(
+        self, tmp_path: Path
+    ) -> None:
+        """OMN-13171: terminal write to a NOT NULL created_at SQLite store succeeds.
+
+        Reproduces the local-delegate evidence path against a warm-volume schema
+        where delegation_events.created_at is NOT NULL with no DB default. Before
+        the fix the INSERT raised sqlite3.IntegrityError: NOT NULL constraint
+        failed: delegation_events.created_at.
+        """
+        import sqlite3
+
+        from omnimarket.models.delegation.wire.model_delegate_skill_terminal_projection import (
+            ModelDelegateSkillTerminalProjection,
+        )
+        from omnimarket.projection.sqlite_database import SqliteDatabaseAdapter
+
+        db_path = tmp_path / "delegation.sqlite"
+        # Seed the deployed-shape table: created_at NOT NULL, no default — the
+        # warm-volume scenario the SqliteDatabaseAdapter additive DDL cannot relax.
+        conn = sqlite3.connect(str(db_path))
+        try:
+            conn.execute(
+                "CREATE TABLE delegation_events ("
+                "correlation_id TEXT NOT NULL UNIQUE, "
+                "created_at TEXT NOT NULL)"
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        adapter = SqliteDatabaseAdapter(db_path)
+        terminal = ModelDelegateSkillTerminalProjection.from_payload(
+            {
+                "status": "completed",
+                "correlation_id": "2e9f0b13-6c7d-5e8f-9012-3b4c5d6e7f80",
+                "task_type": "code_generation",
+                "provider": "local-qwen",
+                "model_name": _DELEGATE_SKILL_TEST_MODEL,
+                "response": "evidence proof",
+                "quality_gate_passed": True,
+                "quality_gates_failed": [],
+                "metrics": {
+                    "input_tokens": 11,
+                    "output_tokens": 22,
+                    "total_tokens": 33,
+                    "latency_ms": 42,
+                    "cost_usd": 0.0,
+                    "cost_savings_usd": 0.0,
+                },
+            }
+        )
+
+        result = HANDLER.project_delegate_skill_terminal(terminal, adapter)
+
+        assert result.rows_upserted == 1
+        rows = adapter.query(
+            "delegation_events",
+            {"correlation_id": "2e9f0b13-6c7d-5e8f-9012-3b4c5d6e7f80"},
+        )
+        assert len(rows) == 1
+        assert rows[0]["created_at"]
 
     def test_dashboard_projection_views_are_declared_by_migrations(self) -> None:
         delegation_view_migration = Path(
@@ -401,6 +644,19 @@ class TestPromptResponseText:
         assert rows[0]["prompt_text"] == "test prompt"
         assert rows[0]["response_text"] == "test response"
 
+    def test_context_pack_hash_written_to_row(self) -> None:
+        db = InmemoryDatabaseAdapter()
+        event = ModelTaskDelegatedEvent(
+            correlation_id="corr-context-pack",
+            task_type="code-review",
+            delegated_to="agent-alpha",
+            context_pack_hash="sha256:ctx",
+        )
+        HANDLER.project(event, db)
+        rows = db.query("delegation_events")
+        assert len(rows) == 1
+        assert rows[0]["context_pack_hash"] == "sha256:ctx"
+
     def test_prompt_response_text_default_none(self) -> None:
         db = InmemoryDatabaseAdapter()
         event = ModelTaskDelegatedEvent(
@@ -413,6 +669,7 @@ class TestPromptResponseText:
         assert len(rows) == 1
         assert rows[0]["prompt_text"] is None
         assert rows[0]["response_text"] is None
+        assert rows[0]["context_pack_hash"] == ""
 
     def test_prompt_response_text_via_handle_protocol(self) -> None:
         db = InmemoryDatabaseAdapter()
@@ -422,6 +679,7 @@ class TestPromptResponseText:
             "delegated_to": "agent-beta",
             "prompt_text": "test prompt",
             "response_text": "test response",
+            "context_pack_hash": "sha256:handle",
             "_db": db,
         }
         result = HANDLER.handle(payload)
@@ -429,6 +687,7 @@ class TestPromptResponseText:
         rows = db.query("delegation_events")
         assert rows[0]["prompt_text"] == "test prompt"
         assert rows[0]["response_text"] == "test response"
+        assert rows[0]["context_pack_hash"] == "sha256:handle"
 
 
 class TestCostFields:
@@ -939,3 +1198,263 @@ class TestNoBackfillMaterialization:
         ).read_text()
         assert "projection_version" in migration
         assert "reducer_version" in migration
+
+    def test_migration_declares_quality_bar_evidence_columns(self) -> None:
+        migration = Path(
+            "src/omnimarket/nodes/node_projection_delegation/migrations/"
+            "0016_delegation_quality_bar_evidence.sql"
+        ).read_text()
+        assert "required_bar NUMERIC" in migration
+        assert "actual_score NUMERIC" in migration
+        assert "escalation_count INT NOT NULL DEFAULT 0" in migration
+        assert "authority_source TEXT" in migration
+
+
+class TestResponseTextTimeoutOnPass:
+    """OMN-13596 — response_text must never carry a timeout/error string on a PASS row.
+
+    Regression suite for the wrong-value bug: a metered PASS row (cost_usd > 0,
+    quality_gate_passed=True) was showing "Timed out…" in response_text instead
+    of the model's actual answer.
+
+    Two paths are tested:
+    1. delegate-skill-timeout terminal must never write its error_message into
+       response_text when quality_gate_passed=True.
+    2. When a canonical delegation-completed.v1 writes the correct answer first
+       and a later delegate-skill-timeout terminal upserts the same row, the
+       timeout string must not overwrite the already-correct response_text.
+    """
+
+    _CORR = "13596000-0000-0000-0000-000000000001"
+    _REAL_ANSWER = "The model's actual, useful answer."
+    _TIMEOUT_MSG = "timed out after 300s waiting for delegation result"
+
+    def _canonical_pass_payload(self) -> dict[str, object]:
+        return {
+            "_event_type": "onex.evt.omnibase-infra.delegation-completed.v1",
+            "correlation_id": self._CORR,
+            "task_type": "test",
+            "model_used": "glm-5.2",
+            "content": self._REAL_ANSWER,
+            "quality_passed": True,
+            "quality_score": 0.980,
+            "latency_ms": 5000,
+            "prompt_tokens": 100,
+            "completion_tokens": 200,
+            "total_tokens": 300,
+            "fallback_to_claude": False,
+            "cumulative_attempt_cost": 0.0017,
+        }
+
+    def _timeout_terminal_payload(self) -> dict[str, object]:
+        """Simulate a delegate-skill-timeout terminal event.
+
+        This is what the delegate-skill-orchestrator emits when its
+        RuntimeDelegationDispatchPort times out waiting for the Kafka result
+        even though the delegation orchestrator already produced a PASS.
+        """
+        return {
+            "_event_type": "delegate-skill-completed",
+            "status": "timeout",
+            "correlation_id": self._CORR,
+            "task_type": "test",
+            "provider": "glm-5.2",
+            "model_name": "glm-5.2",
+            "response": "",
+            "quality_gate_passed": False,
+            "quality_gates_failed": [],
+            "error_message": self._TIMEOUT_MSG,
+            "metrics": {
+                "input_tokens": 0,
+                "output_tokens": 0,
+                "total_tokens": 0,
+                "tokens_to_compliance": 0,
+                "compliance_attempts": 1,
+                "cost_usd": 0.0,
+                "cost_savings_usd": 0.0,
+                "latency_ms": 300000,
+            },
+        }
+
+    def test_pass_terminal_response_text_never_carries_error_message(self) -> None:
+        """A PASS delegate-skill terminal (quality_gate_passed=True) must not
+        write its error_message into response_text even if response is empty.
+
+        Regression: from_terminal_event used ``event.response or event.error_message``
+        which would write "timed out…" as response_text on a row that the downstream
+        compat event later marks as PASS.
+        """
+        from omnimarket.models.delegation.wire.model_delegate_skill_terminal_projection import (
+            ModelDelegateSkillTerminalProjection,
+            ModelDelegationEventProjectionRow,
+        )
+
+        # Build a PASS terminal where response is empty but error_message is set
+        # (edge case: could happen if a success comes through with a warning message).
+        payload: dict[str, object] = {
+            "status": "completed",
+            "correlation_id": self._CORR,
+            "task_type": "test",
+            "provider": "glm-5.2",
+            "model_name": "glm-5.2",
+            "response": "",
+            "quality_gate_passed": True,
+            "quality_gates_failed": [],
+            "error_message": self._TIMEOUT_MSG,
+            "metrics": {
+                "input_tokens": 100,
+                "output_tokens": 200,
+                "total_tokens": 300,
+                "tokens_to_compliance": 300,
+                "compliance_attempts": 1,
+                "cost_usd": 0.0017,
+                "cost_savings_usd": 0.0,
+                "latency_ms": 5000,
+            },
+        }
+        terminal = ModelDelegateSkillTerminalProjection.from_payload(payload)
+        row = ModelDelegationEventProjectionRow.from_terminal_event(terminal)
+        # A PASS terminal must never write the error_message into response_text.
+        assert row.response_text != self._TIMEOUT_MSG, (
+            "PASS terminal must not carry error_message in response_text; "
+            f"got {row.response_text!r}"
+        )
+        # When response is empty and quality_gate_passed=True, response_text is None.
+        assert row.response_text is None
+
+    def test_timeout_terminal_does_not_overwrite_correct_response_text(self) -> None:
+        """When delegation-completed.v1 arrives first (correct answer) and a
+        delegate-skill-timeout terminal arrives later, the timeout must not
+        overwrite the already-correct response_text.
+
+        This is the primary scenario that produced the live bug: the canonical
+        delegation-completed event wrote the real answer first; the timeout
+        terminal event then clobbered it.
+        """
+        db = InmemoryDatabaseAdapter()
+
+        # Step 1: canonical delegation-completed.v1 PASS event arrives first.
+        canonical = dict(self._canonical_pass_payload())
+        canonical["_db"] = db
+        HANDLER.handle(canonical)
+
+        row = db.query("delegation_events")[0]
+        assert row["response_text"] == self._REAL_ANSWER, (
+            f"canonical PASS should write real answer, got {row['response_text']!r}"
+        )
+        assert row["quality_gate_passed"] is True
+
+        # Step 2: delegate-skill-timeout terminal arrives later (race / ordering).
+        timeout_payload = dict(self._timeout_terminal_payload())
+        timeout_payload["_db"] = db
+        HANDLER.handle(timeout_payload)
+
+        row = db.query("delegation_events")[0]
+        # The timeout terminal must NOT overwrite the already-correct response_text.
+        assert row["response_text"] == self._REAL_ANSWER, (
+            "timeout terminal must not overwrite existing correct response_text; "
+            f"got {row['response_text']!r}"
+        )
+
+    def test_canonical_pass_after_timeout_terminal_writes_correct_answer(self) -> None:
+        """When the timeout terminal arrives first and delegation-completed.v1
+        arrives second, the canonical PASS event writes the correct answer and
+        the timeout error string is replaced.
+
+        This is the reverse-ordering scenario — the final PASS row must carry
+        the real model answer, never the timeout string.
+        """
+        db = InmemoryDatabaseAdapter()
+
+        # Step 1: timeout terminal arrives first (FAILED row, no real answer).
+        timeout_payload = dict(self._timeout_terminal_payload())
+        timeout_payload["_db"] = db
+        HANDLER.handle(timeout_payload)
+
+        # At this point the row is FAILED — intermediate state is acceptable.
+
+        # Step 2: canonical delegation-completed.v1 PASS event arrives.
+        canonical = dict(self._canonical_pass_payload())
+        canonical["_db"] = db
+        HANDLER.handle(canonical)
+
+        row = db.query("delegation_events")[0]
+        # Final state: the authoritative metered PASS row must carry the real answer.
+        assert row["quality_gate_passed"] is True
+        assert row["response_text"] == self._REAL_ANSWER, (
+            "canonical PASS must write real answer even when timeout arrived first; "
+            f"got {row['response_text']!r}"
+        )
+
+    def test_canonical_pass_with_timeout_string_in_content_suppresses_it(self) -> None:
+        """OMN-13596 primary defect (handler line ~680): the SINGLE canonical
+        delegation-completed.v1 PASS event whose own ``content`` field carries the
+        delegation timeout string must NOT project that string into response_text.
+
+        Distinct from the cross-event race above: here only one event exists, it is
+        a metered PASS (cost_usd>0, quality_gate_passed=True), and its ``content``
+        is the caller-side Kafka-wait timeout text. Projecting it would make a
+        success display a timeout string. The converter must suppress it (no
+        prior-row value exists, so response_text resolves to None rather than the
+        timeout string).
+        """
+        db = InmemoryDatabaseAdapter()
+
+        canonical = dict(self._canonical_pass_payload())
+        # The orchestrator's terminal carried the timeout text in content even on
+        # the row that resolves as a metered PASS (the live CID 281097f3 case).
+        canonical["content"] = self._TIMEOUT_MSG
+        canonical["_db"] = db
+        HANDLER.handle(canonical)
+
+        row = db.query("delegation_events")[0]
+        assert row["quality_gate_passed"] is True
+        assert row["response_text"] != self._TIMEOUT_MSG, (
+            "metered PASS row must never project the delegation timeout string into "
+            f"response_text; got {row['response_text']!r}"
+        )
+        assert row["response_text"] is None
+
+    def test_canonical_failed_terminal_still_surfaces_content(self) -> None:
+        """OMN-13596 must not over-reach: a FAILED canonical terminal still
+        surfaces its terminal ``content`` (the failure/timeout text is the honest
+        answer for a failure). Only PASS rows suppress the timeout string.
+        """
+        db = InmemoryDatabaseAdapter()
+
+        failed = dict(self._canonical_pass_payload())
+        failed["_event_type"] = "onex.evt.omnibase-infra.delegation-failed.v1"
+        failed["content"] = self._TIMEOUT_MSG
+        failed["quality_passed"] = False
+        failed["failure_reason"] = "runtime_timeout"
+        failed["_db"] = db
+        HANDLER.handle(failed)
+
+        row = db.query("delegation_events")[0]
+        assert row["quality_gate_passed"] is False
+        assert row["response_text"] == self._TIMEOUT_MSG, (
+            "FAILED terminal should still surface its content; "
+            f"got {row['response_text']!r}"
+        )
+
+    def test_is_delegation_timeout_string_unit(self) -> None:
+        """Direct coverage of the OMN-13596 sentinel matcher."""
+        from omnimarket.nodes.node_projection_delegation.handlers.handler_projection_delegation import (
+            _is_delegation_timeout_string,
+        )
+
+        assert _is_delegation_timeout_string(
+            "timed out after 300s waiting for delegation result"
+        )
+        assert _is_delegation_timeout_string(
+            "Delegation timed out before runtime completion"
+        )
+        # Wrapped / suffixed variant still matches (substring, case-insensitive).
+        assert _is_delegation_timeout_string(
+            "Delegation timed out before runtime completion (cid=abc)"
+        )
+        # A genuine model answer is never suppressed.
+        assert not _is_delegation_timeout_string(self._REAL_ANSWER)
+        assert not _is_delegation_timeout_string("")
+        assert not _is_delegation_timeout_string(None)
+        assert not _is_delegation_timeout_string(123)

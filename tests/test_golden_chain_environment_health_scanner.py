@@ -167,6 +167,89 @@ def test_hooks_high_error_rate(tmp_path: Path) -> None:
     assert any("pre_tool_use" in f.subject for f in result.findings)
 
 
+@pytest.mark.unit
+def test_hooks_summary_fail_threshold(tmp_path: Path) -> None:
+    log_dir = tmp_path / "hooks" / "logs"
+    log_dir.mkdir(parents=True)
+    summary = {"session_start": {"total": 100, "errors": 16}}
+    (log_dir / "violations_summary.json").write_text(json.dumps(summary))
+
+    result = probe_hooks(log_dir=str(log_dir))
+
+    assert result.status == EnumReadinessStatus.FAIL
+    assert result.check_count == 1
+    assert result.findings[0].subject == "session_start"
+    assert result.findings[0].severity == EnumHealthFindingSeverity.FAIL
+
+
+@pytest.mark.unit
+def test_hooks_daily_summary_format_warns_with_file_count(tmp_path: Path) -> None:
+    log_dir = tmp_path / "hooks" / "logs"
+    log_dir.mkdir(parents=True)
+    summary = {
+        "last_updated": "2026-06-19T12:00:00Z",
+        "total_violations_today": 3,
+        "files_with_violations": ["a.py", "b.py"],
+    }
+    (log_dir / "violations_summary.json").write_text(json.dumps(summary))
+
+    result = probe_hooks(log_dir=str(log_dir))
+
+    assert result.status == EnumReadinessStatus.WARN
+    assert result.check_count == 1
+    assert result.findings[0].subject == "violations_summary.json"
+    assert "3 hook violations today across 2 files" in result.findings[0].message
+
+
+@pytest.mark.unit
+def test_hooks_malformed_summary_warns(tmp_path: Path) -> None:
+    log_dir = tmp_path / "hooks" / "logs"
+    log_dir.mkdir(parents=True)
+    (log_dir / "violations_summary.json").write_text("{not-json")
+
+    result = probe_hooks(log_dir=str(log_dir))
+
+    assert result.status == EnumReadinessStatus.WARN
+    assert result.check_count == 1
+    assert result.findings[0].subject == "violations_summary.json"
+    assert result.findings[0].message == "Failed to parse violations_summary.json"
+
+
+@pytest.mark.unit
+def test_hooks_jsonl_fallback_counts_violations(tmp_path: Path) -> None:
+    log_dir = tmp_path / "hooks" / "logs"
+    log_dir.mkdir(parents=True)
+    (log_dir / "violations.log").write_text(
+        "\n".join(
+            [
+                json.dumps({"hook": "pre_tool_use"}),
+                "{}",
+                "",
+                json.dumps({"hook": "post_tool_use"}),
+            ]
+        )
+    )
+
+    result = probe_hooks(log_dir=str(log_dir))
+
+    assert result.status == EnumReadinessStatus.WARN
+    assert result.check_count == 1
+    assert result.findings[0].subject == "violations.log"
+    assert "2 hook violation(s) recorded" in result.findings[0].message
+
+
+@pytest.mark.unit
+def test_hooks_missing_log_files_warns(tmp_path: Path) -> None:
+    log_dir = tmp_path / "hooks" / "logs"
+    log_dir.mkdir(parents=True)
+
+    result = probe_hooks(log_dir=str(log_dir))
+
+    assert result.status == EnumReadinessStatus.WARN
+    assert result.check_count == 0
+    assert result.findings[0].subject == "logs"
+
+
 # ---------------------------------------------------------------------------
 # Task 5: Prober 3 — Kafka
 # ---------------------------------------------------------------------------

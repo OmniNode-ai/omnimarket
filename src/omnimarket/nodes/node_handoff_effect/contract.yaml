@@ -72,7 +72,8 @@ externally_consumed_topics:
 handler_routing:
   routing_strategy: operation_match
   handlers:
-    - handler:
+    - operation: handoff
+      handler:
         name: HandlerHandoffEffect
         module: omnimarket.nodes.node_handoff_effect.handlers.handler_handoff_effect
 

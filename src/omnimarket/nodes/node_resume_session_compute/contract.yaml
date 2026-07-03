@@ -16,7 +16,8 @@ handler:
 
 handler_routing:
   handlers:
-    - handler:
+    - operation: resume_session
+      handler:
         name: HandlerResumeSessionCompute
         module: omnimarket.nodes.node_resume_session_compute.handlers.handler_resume_session_compute
 

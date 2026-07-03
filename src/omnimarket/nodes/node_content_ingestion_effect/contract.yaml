@@ -15,7 +15,8 @@ node_type: effect
 handler_routing:
   routing_strategy: operation_match
   handlers:
-    - handler:
+    - operation: content_ingestion
+      handler:
         name: HandlerContentIngestion
         module: omnimarket.nodes.node_content_ingestion_effect.handlers.handler_content_ingestion
 

@@ -17,11 +17,13 @@ handler:
 handler_routing:
   routing_strategy: operation_match
   handlers:
-    - handler:
+    - operation: baselines_projection_runner
+      handler:
         name: BaselinesProjectionRunner
         module: omnimarket.nodes.node_projection_baselines.handlers.handler_baselines
       handler_module: omnimarket.nodes.node_projection_baselines.handlers.handler_baselines
-    - handler:
+    - operation: projection_baselines
+      handler:
         name: HandlerProjectionBaselines
         module: omnimarket.nodes.node_projection_baselines.handlers.handler_projection_baselines
       handler_module: omnimarket.nodes.node_projection_baselines.handlers.handler_projection_baselines
@@ -32,22 +34,22 @@ terminal_event: onex.evt.omnimarket.projection-baselines-applied.v1
 db_io:
   db_tables:
     - name: baselines_snapshots
-      migration: "0001_omnidash_analytics_read_model.sql"
+      migration: "0001_create_baselines_tables.sql"
       access: write
       database: omnidash_analytics
       role: snapshots
     - name: baselines_comparisons
-      migration: "0001_omnidash_analytics_read_model.sql"
+      migration: "0001_create_baselines_tables.sql"
       access: write
       database: omnidash_analytics
       role: comparisons
     - name: baselines_trend
-      migration: "0001_omnidash_analytics_read_model.sql"
+      migration: "0001_create_baselines_tables.sql"
       access: write
       database: omnidash_analytics
       role: trend
     - name: baselines_breakdown
-      migration: "0001_omnidash_analytics_read_model.sql"
+      migration: "0001_create_baselines_tables.sql"
       access: write
       database: omnidash_analytics
       role: breakdown

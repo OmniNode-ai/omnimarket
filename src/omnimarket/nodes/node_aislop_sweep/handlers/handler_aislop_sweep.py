@@ -9,6 +9,7 @@ Scans repository directories for common AI-slop patterns:
 - Empty implementations (bare pass in non-abstract src files)
 - TODO/FIXME markers in source code
 - Hardcoded configuration values (IPs, ports, DB names, API URLs)
+- Hardcoded absolute paths (/Users/..., /Volumes/...) — CLAUDE.md rule #6
 
 ONEX node type: COMPUTE — pure, deterministic, no LLM calls.
 """
@@ -26,6 +27,11 @@ from typing import TYPE_CHECKING, Any
 import yaml
 from omnibase_compat.telemetry.model_sweep_result import ModelSweepResult
 from pydantic import BaseModel, ConfigDict, Field
+
+from omnimarket.nodes.sweep_scope import (
+    SweepScopeUnresolvedError,
+    require_target_dirs,
+)
 
 if TYPE_CHECKING:
     from omnibase_core.protocols.event_bus.protocol_event_bus_publisher import (
@@ -74,11 +80,23 @@ class ModelSweepFinding(BaseModel):
 
 
 class AislopSweepRequest(BaseModel):
-    """Input for the aislop sweep handler."""
+    """Input for the aislop sweep handler.
+
+    Scan targets are resolved by the shared
+    :mod:`omnimarket.nodes.sweep_scope` resolver:
+
+    * ``target_dirs`` — explicit absolute directory paths (highest precedence).
+    * ``repos`` — bare repo names resolved against ``$OMNI_HOME``.
+
+    When BOTH are empty the handler resolves :data:`sweep_scope.DEFAULT_REPOS`,
+    so a no-arg dispatch scans the real repo universe instead of zero repos
+    and reporting a false-clean (OMN-13538).
+    """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     target_dirs: list[str] = Field(default_factory=list)
+    repos: list[str] = Field(default_factory=list)
     checks: list[str] | None = None
     dry_run: bool = False
     severity_threshold: str = "WARNING"
@@ -196,6 +214,14 @@ _HARDCODED_CONFIG_PATTERNS: list[tuple[re.Pattern[str], str, str, str]] = [
     ),
 ]
 
+# CLAUDE.md rule #6: any string starting with /Users/ or /Volumes/ in source
+# code is a cross-machine portability bug. Mirrors ARCH-005 in
+# node_architectural_invariant_loop's static-architecture invariant set.
+_HARDCODED_PATH_PATTERN = re.compile(r'["\']/(Users|Volumes)/[^"\']+["\']')
+
+# Allowlist annotations honored on the same line as the flagged literal.
+_PATH_ALLOWLIST_MARKERS = ("local-path-ok", "onex-allow-internal-ip", "noqa")
+
 
 # ---------------------------------------------------------------------------
 # Handler
@@ -216,6 +242,7 @@ class NodeAislopSweep:
         "empty-impls",
         "todo-fixme",
         "hardcoded-config",
+        "hardcoded-paths",
     ]
 
     def __init__(
@@ -226,13 +253,32 @@ class NodeAislopSweep:
         self._sweep_result_topic = _load_sweep_result_topic()
 
     def handle(self, request: AislopSweepRequest) -> AislopSweepResult:
-        """Execute the aislop sweep across target directories."""
+        """Execute the aislop sweep across target directories.
+
+        Resolves scan targets via the shared
+        :mod:`omnimarket.nodes.sweep_scope` resolver so the RuntimeLocal
+        dispatch path (empty/`repos` payload) scans the default repo set
+        exactly like the ``__main__`` CLI path, instead of looping over an
+        empty ``target_dirs`` and reporting a false-clean (OMN-13538).
+
+        Fails loud (status=error) when scope is empty AND no default can be
+        resolved — never returns ``clean`` over zero repos (Rule 5).
+        """
+        start_ts = time.monotonic()
+        try:
+            target_dirs = require_target_dirs(request.target_dirs, request.repos)
+        except SweepScopeUnresolvedError:
+            result = AislopSweepResult(status="error", dry_run=request.dry_run)
+            self._last_result = result
+            self._last_elapsed = time.monotonic() - start_ts
+            self._last_repos = []
+            return result
+
         checks = request.checks or self.ALL_CHECKS
         findings: list[ModelSweepFinding] = []
         repos_scanned = 0
-        start_ts = time.monotonic()
 
-        for target_dir in request.target_dirs:
+        for target_dir in target_dirs:
             target = Path(target_dir)
             if not target.is_dir():
                 continue
@@ -267,6 +313,10 @@ class NodeAislopSweep:
                     findings.extend(
                         self._check_hardcoded_config(repo_name, rel_path, lines)
                     )
+                if "hardcoded-paths" in checks:
+                    findings.extend(
+                        self._check_hardcoded_paths(repo_name, rel_path, lines)
+                    )
 
         elapsed = time.monotonic() - start_ts
         status = "clean" if not findings else "findings"
@@ -278,9 +328,7 @@ class NodeAislopSweep:
         )
         self._last_result = result
         self._last_elapsed = elapsed
-        self._last_repos = [
-            Path(d).name for d in request.target_dirs if Path(d).is_dir()
-        ]
+        self._last_repos = [Path(d).name for d in target_dirs if Path(d).is_dir()]
         return result
 
     async def emit_sweep_result(self, correlation_id: str) -> None:
@@ -486,4 +534,31 @@ class NodeAislopSweep:
                         )
                     )
                     break  # one finding per line per check category
+        return findings
+
+    def _check_hardcoded_paths(
+        self, repo: str, path: str, lines: list[str]
+    ) -> list[ModelSweepFinding]:
+        """CLAUDE.md rule #6: no hardcoded /Users/ or /Volumes/ absolute paths.
+
+        Honors the `# local-path-ok` / `# onex-allow-internal-ip` allowlist
+        annotations on the same line as the flagged literal (matches the
+        ARCH-005 invariant in node_architectural_invariant_loop).
+        """
+        findings = []
+        for i, line in enumerate(lines, 1):
+            if any(marker in line for marker in _PATH_ALLOWLIST_MARKERS):
+                continue
+            if _HARDCODED_PATH_PATTERN.search(line):
+                findings.append(
+                    ModelSweepFinding(
+                        repo=repo,
+                        path=path,
+                        line=i,
+                        check="hardcoded-paths",
+                        message=f"Hardcoded absolute path: {line.strip()[:80]}",
+                        severity="ERROR",
+                        confidence="HIGH",
+                    )
+                )
         return findings

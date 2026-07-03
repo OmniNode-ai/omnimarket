@@ -85,7 +85,9 @@ class TestAllProtocolSlots:
             HandlerBuildLoopExecutor,
         )
 
-        handler = HandlerBuildLoopExecutor(event_bus=MagicMock())
+        handler = HandlerBuildLoopExecutor(
+            event_bus=MagicMock()  # transport-mock-ok: EventPublisher is a Callable type alias, not a Protocol class — spec= cannot be applied
+        )
         assert hasattr(handler, "_nightly_loop")
         assert hasattr(handler, "_build_loop")
         assert hasattr(handler, "_merge_sweep")

@@ -467,6 +467,54 @@ class EvidenceCollector:
             return str(occ_path)
         return None
 
+    def _resolve_contract_repo_dir(self, contract_path: Path | None) -> str | None:
+        """Resolve the OCC repo root for the ``$CONTRACT_REPO_DIR`` check token.
+
+        OMN-13857: contract check commands embed ``$CONTRACT_REPO_DIR`` (e.g.
+        ``grep -q ... "$CONTRACT_REPO_DIR/drift/dod_receipts/<T>/.../command.yaml"``).
+        Before this fix the token was only satisfied when the *caller* happened to
+        export ``CONTRACT_REPO_DIR``; unset it expanded to the empty string and
+        every receipt-backed check FAILED with a missing-prefix path — a
+        false-negative verdict on genuinely-passing evidence.
+
+        Resolution is deterministic and does not depend on the caller's shell:
+
+        1. An explicit non-empty ``CONTRACT_REPO_DIR`` in the environment wins
+           (honours a deliberate CI / operator override).
+        2. Otherwise, if the contract lives under ``onex_change_control/``, the
+           OCC root is derived from the contract path itself — correct even when
+           ``OMNI_HOME`` is unset or points elsewhere.
+        3. Otherwise ``$ONEX_CC_REPO_PATH`` when set.
+        4. Otherwise ``$OMNI_HOME/onex_change_control`` when that directory exists.
+
+        Returns the absolute OCC root, or ``None`` when it cannot be resolved
+        (the check then runs with the token unset — the fail-closed pre-fix
+        behaviour — rather than silently guessing a wrong root).
+        """
+        explicit = os.environ.get("CONTRACT_REPO_DIR", "").strip()
+        if explicit:
+            return explicit
+
+        # Derive from the contract path when it lives inside the OCC clone.
+        if contract_path is not None and "onex_change_control" in contract_path.parts:
+            parts = contract_path.parts
+            occ_index = parts.index("onex_change_control")
+            occ_root = Path(*parts[: occ_index + 1])
+            if occ_root.is_dir():
+                return str(occ_root)
+
+        cc_repo_path = os.environ.get("ONEX_CC_REPO_PATH", "").strip()
+        if cc_repo_path:
+            return cc_repo_path
+
+        omni_home = os.environ.get("OMNI_HOME", "").strip()
+        if omni_home:
+            occ_path = Path(omni_home) / "onex_change_control"
+            if occ_path.is_dir():
+                return str(occ_path)
+
+        return None
+
     def _run_command_check(
         self,
         check: dict[str, Any],
@@ -512,8 +560,21 @@ class EvidenceCollector:
             # OMN-10476: auto-inject OCC cwd when no explicit cwd is declared
             run_cwd = self._infer_occ_cwd(contract_path)
 
+        # OMN-13857: deterministically satisfy the ``$CONTRACT_REPO_DIR`` token
+        # used by receipt-backed check commands, so the verdict does not depend
+        # on the caller having exported it. Inherit the caller env and overlay
+        # the resolved OCC root (never mutate os.environ in place).
+        run_env: dict[str, str] | None = None
+        contract_repo_dir = self._resolve_contract_repo_dir(contract_path)
+        if contract_repo_dir is not None:
+            run_env = dict(os.environ)
+            run_env["CONTRACT_REPO_DIR"] = contract_repo_dir
+
         logger.info(
-            "Running command check (cwd=%s): %s", run_cwd or "<inherit>", cmd_str
+            "Running command check (cwd=%s, CONTRACT_REPO_DIR=%s): %s",
+            run_cwd or "<inherit>",
+            contract_repo_dir or "<unset>",
+            cmd_str,
         )
 
         start = time.monotonic()
@@ -525,6 +586,7 @@ class EvidenceCollector:
                 text=True,
                 timeout=self._timeout,
                 cwd=run_cwd,
+                env=run_env,
             )
             elapsed_ms = int((time.monotonic() - start) * 1000)
         except subprocess.TimeoutExpired:

@@ -144,6 +144,7 @@ class HandlerRelease:
     def handle(
         self,
         command: ModelReleaseCommand,
+        *,
         phase_results: dict[EnumReleasePhase, bool] | None = None,
     ) -> tuple[
         ModelReleaseState,

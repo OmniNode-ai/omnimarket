@@ -143,6 +143,11 @@ _is_self_exempt() {
     [[ "${path}" == "${exempt}" ]] && return 0
   done
   [[ "${path}" == docs/audits/*-raw-env-usage.csv ]] && return 0
+  # OMN-13294: durable generation-evidence JSON records the live endpoint (a LAN
+  # IP) verbatim as the routing-authority proof requires. JSON cannot carry a
+  # `# onex-allow-file` comment (escaped quotes break the marker regex), so this
+  # evidence-file class is path-exempt — same precedent as the raw-env-usage CSVs.
+  [[ "${path}" == docs/evidence/*/*.generation.json ]] && return 0
   return 1
 }
 

@@ -11,17 +11,17 @@ from omnibase_core.models.pack.model_context_chunk import ModelContextChunk
 from omnibase_core.models.pack.model_context_pack import ModelContextPack
 from omnibase_core.utils.util_context_pack import compute_chunk_id
 
-from omnimarket.nodes.node_context_pack_builder_compute.models.model_context_pack_artifact import (
+from omnimarket.pack.model_context_pack_artifact import (
     ModelContextPackArtifact,
 )
-from omnimarket.nodes.node_context_pack_builder_compute.models.model_context_pack_builder_request import (
+from omnimarket.pack.model_context_pack_builder_request import (
     ModelContextPackBuilderRequest,
 )
-from omnimarket.nodes.node_context_pack_builder_compute.models.model_context_pack_builder_result import (
+from omnimarket.pack.model_context_pack_builder_result import (
     EnumContextPackBuilderStatus,
     ModelContextPackBuilderResult,
 )
-from omnimarket.nodes.node_context_pack_builder_compute.models.model_context_profile import (
+from omnimarket.pack.model_context_profile import (
     ModelContextProfile,
 )
 

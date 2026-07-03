@@ -16,6 +16,9 @@ import json
 import logging
 from datetime import UTC, datetime
 
+from omnimarket.nodes.node_build_loop.models.model_build_loop_result import (
+    ModelBuildLoopResult,
+)
 from omnimarket.nodes.node_build_loop.models.model_loop_completed_event import (
     ModelLoopCompletedEvent,
 )
@@ -47,24 +50,38 @@ class HandlerBuildLoop:
     def handle(
         self,
         command: ModelLoopStartCommand,
+        *,
         phase_results: dict[EnumBuildLoopPhase, bool] | None = None,
-    ) -> tuple[
-        ModelLoopState, list[ModelPhaseTransitionEvent], ModelLoopCompletedEvent
-    ]:
+    ) -> ModelBuildLoopResult:
         """Primary entry point for RuntimeLocal handler protocol.
 
         Dispatches a full cycle through the FSM based on the command's mode.
         Delegates to run_full_cycle() which drives phase transitions according
-        to the mode (BUILD, CLOSE_OUT, FULL, OBSERVE).
+        to the mode (BUILD, CLOSE_OUT, FULL, OBSERVE), then wraps the cycle
+        products in a typed ``ModelBuildLoopResult``.
+
+        The runtime bus adapter (``LocalRuntimeBusAdapter``) only accepts a
+        ``BaseModel``/``dict``/``None`` handler return; a raw ``tuple`` return
+        crashes with ``ONEX_CORE_095_HANDLER_EXECUTION_ERROR`` (OMN-13841).
+        Returning the typed envelope keeps the entry point publishable while
+        ``run_full_cycle`` remains the tuple-returning internal driver.
 
         Args:
             command: Start command with mode, correlation_id, and config.
             phase_results: Optional per-phase success/failure overrides.
 
         Returns:
-            (final_state, transition_events, completed_event).
+            A typed ``ModelBuildLoopResult`` carrying the final state, the
+            transition trace, and the completion event.
         """
-        return self.run_full_cycle(command, phase_results=phase_results)
+        state, events, completed = self.run_full_cycle(
+            command, phase_results=phase_results
+        )
+        return ModelBuildLoopResult(
+            final_state=state,
+            transition_events=events,
+            completed_event=completed,
+        )
 
     def start(self, command: ModelLoopStartCommand) -> ModelLoopState:
         """Initialize loop state from a start command.
@@ -260,4 +277,4 @@ class HandlerBuildLoop:
         return state, events, completed
 
 
-__all__: list[str] = ["HandlerBuildLoop"]
+__all__: list[str] = ["HandlerBuildLoop", "ModelBuildLoopResult"]

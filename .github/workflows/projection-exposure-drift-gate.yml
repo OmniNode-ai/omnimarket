@@ -1,0 +1,66 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# OMN-13663 (T4, epic OMN-13659): projection exposure⇄column drift gate —
+# BLOCKING MODE.
+#
+# Every projection node contract.yaml's projection_api.exposures must be
+# reconciled against the materialized columns of the table/view each exposure
+# reads from. The materialized columns are extracted from the node's own
+# migration DDL (CREATE TABLE / ALTER TABLE ... ADD COLUMN / CREATE [OR REPLACE]
+# VIEW). This gate fails on:
+#
+#   - EXISTENCE drift (always blocking, not allowlistable): an exposure references
+#     a column its table/view does not materialize. A phantom column makes the
+#     projection query fail at runtime. Fix the exposure column list or the
+#     migration DDL.
+#
+#   - OMISSION drift (enforced via --fail-on-omission): a materialized
+#     identity/tier/cost column (cost_tier, tier, *_id, correlation_id, cost_*,
+#     savings_*, tokens_*) surfaced by NO exposure. This is the cost_tier_name
+#     class of bug (OMN-13649): delegation_events.cost_tier_name existed in DDL
+#     (migration 0018) but was omitted from the decisions.v1 exposure column list,
+#     so the tier silently dropped at the projection boundary and the UI fell back
+#     to a regex. Existing intentional omissions are grandfathered as an annotated
+#     ratchet baseline in .projection-exposure-allowlist.yaml; a NEW unannotated
+#     omission of such a column blocks merge.
+#
+# The validator ships in omnibase_core (the canonical validator repo) and is
+# installed here via a pinned git dependency — the same cross-repo pattern used by
+# the Canonical Inference Gate and URL Authority Gate. Re-pin the @<sha> to the
+# merged-dev SHA once omnibase_core#1350 lands.
+#
+# This job is a REQUIRED STATUS CHECK. The job name "Projection Exposure Drift
+# Gate" must match branch protection rules.
+
+name: Projection Exposure Drift Gate
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+    branches: [main, dev]
+  merge_group:
+
+permissions:
+  contents: read
+
+jobs:
+  projection-exposure-drift-gate:
+    name: Projection Exposure Drift Gate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v7
+
+      - name: Run projection exposure⇄column drift gate (full src tree, fail-on-omission)
+        run: |
+          uv run --with "omnibase-core @ git+https://github.com/OmniNode-ai/omnibase_core.git@0c69dff015b6f83365d4b0247d8b3230516276ae" \
+            python -m omnibase_core.validators.projection_exposure_drift \
+            src \
+            --fail-on-omission \
+            --allowlist .projection-exposure-allowlist.yaml

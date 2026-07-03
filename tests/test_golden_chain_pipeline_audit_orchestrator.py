@@ -78,10 +78,11 @@ def test_pipeline_audit_orchestrator_contract_routing_surface() -> None:
     assert raw["handler_routing"]["routing_strategy"] == "operation_match"
     assert raw["handler_routing"]["handlers"] == [
         {
+            "operation": "pipeline_audit",
             "handler": {
                 "name": _HANDLER_CLASS,
                 "module": _HANDLER_MODULE,
-            }
+            },
         }
     ]
 
@@ -460,9 +461,11 @@ event_bus:
 
 
 @pytest.mark.unit
-def test_pipeline_audit_orchestrator_requires_ticket_adapter_for_live_findings(
+def test_pipeline_audit_orchestrator_defaults_to_local_ticket_store(
     tmp_path: Path,
 ) -> None:
+    """OMN-13708: with no remote ticket adapter (the default local bus), live
+    findings are recorded in the local ticket store rather than crashing."""
     _write_repo(
         tmp_path,
         "producer",
@@ -475,14 +478,17 @@ event_bus:
 """,
     )
 
-    with pytest.raises(RuntimeError, match="ticket adapter required"):
-        HandlerPipelineAuditOrchestrator().handle(
-            ModelPipelineAuditRequest(
-                repos=("producer",),
-                audit_type=EnumAuditType.TOPICS,
-                omni_home_path=str(tmp_path),
-            )
+    result = HandlerPipelineAuditOrchestrator().handle(
+        ModelPipelineAuditRequest(
+            repos=("producer",),
+            audit_type=EnumAuditType.TOPICS,
+            omni_home_path=str(tmp_path),
         )
+    )
+
+    assert result.high_count == 1
+    assert result.tickets_created
+    assert all(tid.startswith("local-ticket-") for tid in result.tickets_created)
 
 
 @pytest.mark.unit
@@ -513,6 +519,83 @@ event_bus:
     assert result.run_status == EnumPipelineAuditStatus.COMPLETED
     assert result.high_count == 1
     assert result.tickets_created == ()
+
+
+# ---------------------------------------------------------------------------
+# OMN-13693: DLQ topic prefix must be a named constant, not a string literal
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+def test_dlq_topic_prefix_constant_is_importable() -> None:
+    """DLQ_TOPIC_PREFIX must exist in the node constants module (OMN-13693)."""
+    from omnimarket.nodes.node_pipeline_audit_orchestrator.constants import (
+        DLQ_TOPIC_PREFIX,
+    )
+
+    assert DLQ_TOPIC_PREFIX == "onex.dlq."
+
+
+@pytest.mark.unit
+def test_dlq_topics_excluded_from_no_consumer_finding(tmp_path: Path) -> None:
+    """Topics matching DLQ_TOPIC_PREFIX must not trigger a 'no consumer' finding."""
+    _write_repo(
+        tmp_path,
+        "dlq_producer",
+        contract_yaml="""
+name: node_dlq_producer
+event_bus:
+  publish_topics:
+    - onex.dlq.sample.failed.v1
+  subscribe_topics: []
+""",
+        source="pass\n",
+    )
+
+    result = HandlerPipelineAuditOrchestrator().handle(
+        ModelPipelineAuditRequest(
+            repos=("dlq_producer",),
+            audit_type=EnumAuditType.TOPICS,
+            dry_run=True,
+            omni_home_path=str(tmp_path),
+        )
+    )
+
+    # DLQ topics must be suppressed — zero findings expected
+    topic_findings = [
+        f
+        for f in result.gap_register
+        if f.proof_category == EnumProofCategory.WIRE_TOPICS
+        and "no audited consumer" in (f.description or "")
+        and "onex.dlq." in (f.evidence or "")
+    ]
+    assert topic_findings == [], (
+        "DLQ topics must not appear in 'produced but no consumer' findings"
+    )
+
+
+@pytest.mark.unit
+def test_handler_source_has_no_literal_dlq_string() -> None:
+    """Guard against regression: handler source must not contain the bare string literal."""
+    handler_path = (
+        Path(__file__).resolve().parents[1]
+        / "src"
+        / "omnimarket"
+        / "nodes"
+        / "node_pipeline_audit_orchestrator"
+        / "handlers"
+        / "handler_pipeline_audit_orchestrator.py"
+    )
+    source = handler_path.read_text(encoding="utf-8")
+    # The constant name is allowed; the raw literal in a startswith call is not.
+    assert '"onex.dlq."' not in source, (
+        "handler_pipeline_audit_orchestrator.py must not contain the raw "
+        "DLQ topic prefix as a double-quoted string literal — use DLQ_TOPIC_PREFIX from constants"
+    )
+    assert "'onex.dlq.'" not in source, (
+        "handler_pipeline_audit_orchestrator.py must not contain the raw "
+        "DLQ topic prefix as a single-quoted string literal — use DLQ_TOPIC_PREFIX from constants"
+    )
 
 
 def _write_repo(

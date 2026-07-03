@@ -29,7 +29,8 @@ handler:
 handler_routing:
   routing_strategy: operation_match
   handlers:
-    - handler:
+    - operation: ticketing_epic_org
+      handler:
         name: HandlerTicketingEpicOrg
         module: omnimarket.nodes.node_ticketing_epic_org_orchestrator.handlers.handler_ticketing_epic_org
 
@@ -54,6 +55,10 @@ event_bus:
     - onex.evt.omnimarket.ticketing-epic-org-proposal-ready.v1
   dlq_topics:
     - onex.dlq.omnimarket.ticketing-epic-org.v1
+
+externally_consumed_topics:
+  - onex.cmd.omnimarket.linear-epic-create.v1
+  - onex.cmd.omnimarket.linear-ticket-reparent.v1
 
 metadata:
   transport_type: kafka

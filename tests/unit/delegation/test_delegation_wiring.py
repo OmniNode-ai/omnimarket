@@ -20,10 +20,10 @@ import pytest
 import yaml
 from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
 from omnibase_infra.enums import EnumDispatchStatus
-from omnibase_infra.event_bus.topic_constants import (
-    TOPIC_DELEGATION_INFERENCE_RESPONSE,
-)
 
+from omnimarket.nodes.node_delegation_orchestrator.contract_topics import (
+    TOPIC_ID_INFERENCE_RESPONSE as TOPIC_DELEGATION_INFERENCE_RESPONSE,
+)
 from omnimarket.nodes.node_delegation_orchestrator.dispatchers.dispatcher_delegation_request import (
     DispatcherDelegationRequest,
 )
@@ -103,6 +103,7 @@ def _make_routing_decision(correlation_id: object) -> ModelRoutingDecision:
         endpoint_url="https://delegation-llm.test:8000",
         cost_tier="low",
         max_context_tokens=65536,
+        max_tokens=65536,  # OMN-13345: contract backend output ceiling
         system_prompt="You are a delegation test assistant.",
         rationale="Routing test.",
     )
@@ -197,7 +198,7 @@ class TestWireDelegationDispatchers:
     async def test_routes_have_correct_model_types(
         self, mock_container: MagicMock, mock_engine: MagicMock
     ) -> None:
-        from omnibase_infra.models.dispatch.model_dispatch_route import (
+        from omnibase_core.models.dispatch.model_dispatch_route import (
             ModelDispatchRoute,
         )
 

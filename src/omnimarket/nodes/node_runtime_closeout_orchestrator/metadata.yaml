@@ -1,0 +1,23 @@
+name: node_runtime_closeout_orchestrator
+version: "1.0.0"
+description: "One-dispatch runtime-closeout orchestrator — dispatches preflight / fitness-gate / deploy / proof-matrix commands over the bus."
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_runtime_closeout_orchestrator: "omnimarket.nodes.node_runtime_closeout_orchestrator"
+capabilities:
+  standalone: false
+  full_runtime: true
+  requires_network: true
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: orchestration
+dependencies:
+  - "omnibase_core>=0.39.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["orchestrator", "closeout", "runtime", "kafka", "deploy", "proof-matrix", "OMN-13413"]
+pack: "release"
+display_name: "Runtime Closeout Orchestrator"
+node_role: "orchestrator"

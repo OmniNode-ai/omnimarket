@@ -4,10 +4,18 @@
 
 from omnimarket.events.checkpoint import ModelCheckpointRequest
 from omnimarket.events.daemon_health_probe import ModelDaemonHealthProbeResult
+from omnimarket.events.delegation_judge_verdict import (
+    EnumDelegationJudgeVerdict,
+    ModelDelegationJudgeVerdictEvent,
+    build_delegation_judge_verdict_event,
+    sha256_json,
+    sha256_text,
+)
 from omnimarket.events.design_to_plan import (
     ModelPlanToTicketsCompletedEvent,
     ModelPlanToTicketsStartCommand,
 )
+from omnimarket.events.emit_client import EmitClient, default_socket_path
 from omnimarket.events.evidence_dashboard import ModelDashboardProjectionEvent
 from omnimarket.events.generation import (
     EnumGoldenChainGenerationStatus,
@@ -27,9 +35,35 @@ from omnimarket.events.knowledge_context import (
     ModelKnowledgeContextState,
 )
 from omnimarket.events.ledger import ModelLedgerAppendedEvent, ModelLedgerHashComputed
+from omnimarket.events.repo_health import (
+    EnumFailureOrigin,
+    ModelRepoHealthClassification,
+    ModelRepoHealthFailureEnvelope,
+)
 from omnimarket.events.runtime_deployment import (
+    DEFAULT_PREVIOUS_IMAGE,
+    EnumBuildSource,
+    EnumOccGateState,
+    EnumPromotionClass,
+    EnumRedeployPhase,
+    EnumRedeployScope,
+    EnumRedeployStatus,
+    ModelDeployRebuildCommand,
+    ModelDeployRebuildCompleted,
+    ModelProdPromotionGateDecision,
+    ModelProdPromotionInputs,
+    ModelReadinessProjectionFact,
+    ModelRedeployCommand,
+    ModelRedeployCompletedEvent,
+    ModelRedeployResult,
+    ModelRedeployRolledBackEvent,
+    ModelRedeployState,
     ModelRuntimeDeploymentProof,
+    ModelRuntimeImageBuilt,
     RuntimeLaneLike,
+    evaluate_prod_digest_gate,
+    evaluate_prod_promotion_gate,
+    lane_target,
 )
 from omnimarket.intelligence.events import (
     ModelIntentClassifiedEnvelope,
@@ -39,14 +73,27 @@ from omnimarket.intelligence.events import (
 )
 
 __all__ = [
+    "DEFAULT_PREVIOUS_IMAGE",
+    "EmitClient",
+    "EnumBuildSource",
     "EnumBundleStatus",
+    "EnumDelegationJudgeVerdict",
+    "EnumFailureOrigin",
     "EnumFragmentSource",
     "EnumGoldenChainGenerationStatus",
+    "EnumOccGateState",
+    "EnumPromotionClass",
+    "EnumRedeployPhase",
+    "EnumRedeployScope",
+    "EnumRedeployStatus",
     "EnumTestGenerationStatus",
     "ModelCheckpointRequest",
     "ModelDaemonHealthProbeResult",
     "ModelDashboardProjectionEvent",
     "ModelDeferredChainWarning",
+    "ModelDelegationJudgeVerdictEvent",
+    "ModelDeployRebuildCommand",
+    "ModelDeployRebuildCompleted",
     "ModelGeneratedTestFile",
     "ModelGoldenChainGenerationRequest",
     "ModelGoldenChainGenerationResult",
@@ -61,8 +108,26 @@ __all__ = [
     "ModelLedgerHashComputed",
     "ModelPlanToTicketsCompletedEvent",
     "ModelPlanToTicketsStartCommand",
+    "ModelProdPromotionGateDecision",
+    "ModelProdPromotionInputs",
+    "ModelReadinessProjectionFact",
+    "ModelRedeployCommand",
+    "ModelRedeployCompletedEvent",
+    "ModelRedeployResult",
+    "ModelRedeployRolledBackEvent",
+    "ModelRedeployState",
+    "ModelRepoHealthClassification",
+    "ModelRepoHealthFailureEnvelope",
     "ModelRuntimeDeploymentProof",
+    "ModelRuntimeImageBuilt",
     "ModelTestGenerationRequest",
     "ModelTestGenerationResult",
     "RuntimeLaneLike",
+    "build_delegation_judge_verdict_event",
+    "default_socket_path",
+    "evaluate_prod_digest_gate",
+    "evaluate_prod_promotion_gate",
+    "lane_target",
+    "sha256_json",
+    "sha256_text",
 ]

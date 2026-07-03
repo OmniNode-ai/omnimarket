@@ -1,0 +1,6 @@
+{
+  "captured_from": "real z.ai GLM call (cloud-glm backend, routing-contract resolved)",
+  "resolved_model_id": "glm-5.2",
+  "raw_response": "[\n  {\n    \"category\": \"Cross-Site Scripting (XSS)\",\n    \"severity\": \"major\",\n    \"title\": \"Unescaped rendering of user-supplied HTML\",\n    \"description\": \"The template renders the 'user_supplied_html' variable directly into the DOM without context-aware output encoding or sanitization. This allows an attacker to inject and execute arbitrary JavaScript payloads, leading to session hijacking, credential theft, or complete application compromise.\",\n    \"evidence\": \"<div>{{ user_supplied_html }}</div>\",\n    \"location\": \"template.html\"\n  }\n]",
+  "task": "hostile_review_findings"
+}

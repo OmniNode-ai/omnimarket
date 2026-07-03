@@ -14,15 +14,90 @@ from __future__ import annotations
 import fnmatch
 import json
 import logging
+import re
 import subprocess
 from typing import Any, Protocol
 
 from omnimarket.nodes.node_session_bootstrap.models.model_task_contract import (
     EnumDodCheckType,
+    EnumEvidenceArtifactKind,
     ModelTaskContract,
 )
 
 logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# HTTP-probe vs UI/Playwright evidence classification (OMN-13776).
+#
+# The UI-evidence gate (OMN-13024 / OMN-13052) correctly rejects curl-only
+# proof for ui/dashboard-class receipts. It was over-firing the reverse way:
+# curl/wget/httpx probes against NON-UI endpoints (projection API, /ready,
+# introspection) were landing in a playwright-required bucket. These patterns
+# teach the classifier the difference. Pure string matching — no I/O.
+# ---------------------------------------------------------------------------
+
+_HTTP_PROBE_TOOL_RE = re.compile(r"^\s*(curl|httpx|wget|http)\b", re.IGNORECASE)
+
+# Non-UI endpoint signals: health/readiness probes, versioned/API surfaces,
+# introspection, metrics, and other machine-readable (JSON) endpoints.
+_NON_UI_ENDPOINT_RE = re.compile(
+    r"(^/ready$|^/health\w*$|^/metrics$|/v\d+/|/api/|/introspection|\.json$)",
+    re.IGNORECASE,
+)
+
+# UI-class endpoint signals: browser-rendered dashboard/frontend surfaces.
+# Matched first so a UI-class endpoint is never reclassified as HTTP-evidence
+# just because it was probed with curl (that's exactly the OMN-13024 defect).
+_UI_ENDPOINT_RE = re.compile(
+    r"(dash\.|omnidash|/dashboard|\.html$|^/$)",
+    re.IGNORECASE,
+)
+
+
+def classify_evidence_kind(
+    artifact_command: str | None, target_endpoint: str | None
+) -> tuple[EnumEvidenceArtifactKind, str]:
+    """Classify a RENDERED_OUTPUT artifact as HTTP-evidence, UI-rendered, or unknown.
+
+    Pure function — no I/O, no subprocess calls. Rules (in order):
+
+    1. Missing artifact_command or target_endpoint -> UNKNOWN (insufficient
+       metadata to classify; caller falls back to prior deferred behavior).
+    2. target_endpoint matches a browser-rendered UI surface -> UI_RENDERED,
+       regardless of the probing tool. A curl/httpx probe against a UI page
+       does not prove rendering (preserves the OMN-13024 UI-evidence gate).
+    3. artifact_command is an HTTP-probe tool AND target_endpoint matches a
+       non-UI (API/health/introspection/JSON) surface -> HTTP_EVIDENCE.
+    4. Anything else -> UNKNOWN.
+    """
+    if not artifact_command or not target_endpoint:
+        return (
+            EnumEvidenceArtifactKind.UNKNOWN,
+            "insufficient artifact metadata to classify evidence kind",
+        )
+
+    if _UI_ENDPOINT_RE.search(target_endpoint):
+        return (
+            EnumEvidenceArtifactKind.UI_RENDERED,
+            f"target_endpoint {target_endpoint!r} is UI/browser-rendered — "
+            "curl-only proof is not accepted (OMN-13024)",
+        )
+
+    if _HTTP_PROBE_TOOL_RE.match(artifact_command) and _NON_UI_ENDPOINT_RE.search(
+        target_endpoint
+    ):
+        return (
+            EnumEvidenceArtifactKind.HTTP_EVIDENCE,
+            f"artifact_command {artifact_command!r} against non-UI "
+            f"target_endpoint {target_endpoint!r} is HTTP-evidence, not "
+            "browser/UI evidence",
+        )
+
+    return (
+        EnumEvidenceArtifactKind.UNKNOWN,
+        f"artifact_command {artifact_command!r} / target_endpoint "
+        f"{target_endpoint!r} did not match a known HTTP-probe or UI pattern",
+    )
 
 
 class DodVerifier(Protocol):
@@ -206,11 +281,50 @@ def _check_pre_commit_clean(contract: ModelTaskContract) -> tuple[bool, str]:
 
 
 def _check_rendered_output(contract: ModelTaskContract) -> tuple[bool, str]:
-    """Placeholder: visual assertion or screenshot diff for UI tickets.
+    """Verify RENDERED_OUTPUT evidence, classifying HTTP-probe vs UI artifacts.
 
-    Full Playwright integration deferred to Phase 2 (OMN-7093).
-    Returns best-effort pass for non-UI tickets.
+    OMN-13776: when the RENDERED_OUTPUT evidence item carries artifact
+    metadata (artifact_command / target_endpoint), classify it via
+    classify_evidence_kind:
+      - HTTP_EVIDENCE (curl/httpx/wget against a non-UI endpoint) -> pass,
+        no Playwright receipt required.
+      - UI_RENDERED (dashboard/browser-rendered endpoint) -> fail, a real
+        rendered-output/Playwright artifact is still required (no
+        regression of the OMN-13024 UI-evidence gate).
+      - UNKNOWN / no metadata -> full Playwright integration is deferred to
+        Phase 2 (OMN-7093); best-effort pass, unchanged from prior behavior.
     """
+    item = next(
+        (
+            evidence
+            for evidence in contract.dod_evidence
+            if evidence.check_type == EnumDodCheckType.RENDERED_OUTPUT
+            and (evidence.artifact_command or evidence.target_endpoint)
+        ),
+        None,
+    )
+    if item is not None:
+        kind, detail = classify_evidence_kind(
+            item.artifact_command, item.target_endpoint
+        )
+        if kind == EnumEvidenceArtifactKind.HTTP_EVIDENCE:
+            logger.info(
+                "rendered_output check: %s task_id=%s ticket_id=%s",
+                detail,
+                contract.task_id,
+                contract.ticket_id,
+            )
+            return True, detail
+        if kind == EnumEvidenceArtifactKind.UI_RENDERED:
+            logger.info(
+                "rendered_output check: %s task_id=%s ticket_id=%s",
+                detail,
+                contract.task_id,
+                contract.ticket_id,
+            )
+            return False, detail
+        # UNKNOWN with metadata present: fall through to the deferred default.
+
     logger.info(
         "rendered_output check: Playwright integration deferred (OMN-7093). "
         "task_id=%s ticket_id=%s",
@@ -288,5 +402,6 @@ def run_dod_check(
 __all__: list[str] = [
     "DOD_VERIFICATION_REGISTRY",
     "DodVerifier",
+    "classify_evidence_kind",
     "run_dod_check",
 ]

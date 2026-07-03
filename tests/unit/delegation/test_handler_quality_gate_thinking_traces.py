@@ -161,11 +161,19 @@ def test_quality_gate_strips_thinking_traces_before_concise_check() -> None:
         dod_heuristic=("concise",),
     )
     result = delta(gate_input)
-    assert result.passed is True
+    assert result.passed is False
+    assert result.quality_score == pytest.approx(1.0)
+    assert any("reject-only" in r for r in result.failure_reasons)
 
 
 @pytest.mark.unit
-def test_quality_gate_passes_existing_tests_check_is_supported() -> None:
+def test_quality_gate_passes_existing_tests_is_supported_not_unsupported() -> None:
+    """``passes_existing_tests`` is a recognized check, not an unsupported one.
+
+    It must not surface a ``MALFORMED: unsupported deterministic DoD check`` error
+    — it is a KNOWN check that is deliberately SKIPPED (no wired acceptance-command
+    executor), not an unrecognized one.
+    """
     gate_input = ModelQualityGateInput(
         correlation_id=uuid4(),
         task_type="code_generation",
@@ -177,7 +185,32 @@ def test_quality_gate_passes_existing_tests_check_is_supported() -> None:
     assert not any("unsupported deterministic" in r for r in result.failure_reasons), (
         f"passes_existing_tests produced unsupported error: {result.failure_reasons}"
     )
-    assert result.passed is True
+
+
+@pytest.mark.unit
+def test_quality_gate_passes_existing_tests_is_skipped_never_phantom_pass() -> None:
+    """OMN-13850: an UNEVALUATED ``passes_existing_tests`` must NOT phantom-pass.
+
+    Before OMN-13850 this check was aliased to ``_check_response_non_empty``, so a
+    clean-but-non-empty answer whose ONLY declared deterministic check was
+    ``passes_existing_tests`` returned ``passed=True`` while executing zero tests.
+    Now the check is recorded as SKIPPED (no wired executor), confers NO acceptance
+    authority, and the gate falls through to the no-authority verdict — a clean
+    answer no longer passes on a check that evaluated nothing.
+    """
+    gate_input = ModelQualityGateInput(
+        correlation_id=uuid4(),
+        task_type="code_generation",
+        llm_response_content=_CLEAN_CODE,
+        dod_deterministic=("passes_existing_tests",),
+        dod_heuristic=(),
+    )
+    result = delta(gate_input)
+    assert result.passed is False
+    assert result.fail_category == "fail_heuristic"
+    # No phantom "passed" evidence: the skipped check produced neither a pass nor a
+    # failure, so there is no deterministic-acceptance authority to promote it.
+    assert result.actual_score is None
 
 
 @pytest.mark.unit

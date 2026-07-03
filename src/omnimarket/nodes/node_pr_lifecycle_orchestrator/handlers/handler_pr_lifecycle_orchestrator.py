@@ -34,16 +34,17 @@ import json
 import logging
 import os
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from enum import StrEnum
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from omnimarket.events.repo_health import EnumFailureOrigin
 from omnimarket.nodes.node_pr_lifecycle_orchestrator.protocols.protocol_sub_handlers import (
     EnumPrCategory,
     EnumReducerIntent,
@@ -54,12 +55,20 @@ from omnimarket.nodes.node_pr_lifecycle_orchestrator.protocols.protocol_sub_hand
     ProtocolFixHandler,
     ProtocolInventoryHandler,
     ProtocolMergeHandler,
+    ProtocolPruneHandler,
     ProtocolStateReducerHandler,
     ProtocolTriageHandler,
     PrRecord,
     PrTriageResult,
+    PruneResult,
     ReducerResult,
     TriageRecord,
+)
+from omnimarket.nodes.node_pr_lifecycle_orchestrator.verify_target_mapping import (
+    EnumVerificationOutcome,
+    EnumVerificationTarget,
+    map_changed_files_to_target,
+    probe_runtime_health,
 )
 from omnimarket.nodes.pr_ledger_native import (
     EnumOrchestratorAction,
@@ -74,6 +83,10 @@ from omnimarket.nodes.pr_ledger_native import (
     apply_pr_ledger_event,
     record_phase_transition,
 )
+from omnimarket.projection.pr_ledger_projection import (
+    PR_LEDGER_PROJECTION_TABLE,
+)
+from omnimarket.projection.protocol_database import ProtocolProjectionDatabaseSync
 
 if TYPE_CHECKING:
     from omnibase_core.protocols.event_bus.protocol_event_bus_publisher import (
@@ -93,6 +106,39 @@ EVENT_TYPE_FIXER_DISPATCH_START = "omnimarket.fixer-dispatch-start"
 TOPIC_PR_LIFECYCLE_START = "onex.cmd.omnimarket.pr-lifecycle-orchestrator-start.v1"  # onex-topic-allow: contract-declared
 TOPIC_PR_LIFECYCLE_COMPLETED = "onex.evt.omnimarket.pr-lifecycle-orchestrator-completed.v1"  # onex-topic-allow: contract-declared
 TOPIC_PR_LIFECYCLE_FAILED = "onex.evt.omnimarket.pr-lifecycle-orchestrator-failed.v1"  # onex-topic-allow: contract-declared
+# OMN-13673: per-PR verification outcome event emitted during the VERIFYING phase.
+TOPIC_PR_LIFECYCLE_VERIFICATION_COMPLETED = "onex.evt.omnimarket.pr-lifecycle-verification-completed.v1"  # onex-topic-allow: contract-declared
+# OMN-13586 RH-4: repo-health classify/repair fan-out topics.
+TOPIC_REPO_HEALTH_CLASSIFY = (
+    "onex.cmd.omnimarket.repo-health-classify.v1"  # onex-topic-allow: contract-declared
+)
+TOPIC_REPO_HEALTH_REPAIR_START = "onex.cmd.omnimarket.repo-health-repair-start.v1"  # onex-topic-allow: contract-declared
+
+# OMN-13831: indeterminate verification outcomes. For a PR whose changed files
+# map to a real (code-file) verification target, an indeterminate outcome must
+# fail CLOSED — the PR is excluded from the merge set rather than merged
+# unverified. These are NEUTRAL (still merge) only for genuine docs-only /
+# no-mapping PRs (target == SKIPPED_NO_MAPPING).
+_INDETERMINATE_VERIFICATION_OUTCOMES = frozenset(
+    {
+        EnumVerificationOutcome.VERIFICATION_UNAVAILABLE,
+        EnumVerificationOutcome.VERIFICATION_TIMEOUT,
+        EnumVerificationOutcome.VERIFICATION_TOOL_ERROR,
+    }
+)
+
+
+class ChangedFilesUnavailableError(RuntimeError):
+    """Raised when a PR's changed-file list cannot be resolved via ``gh``.
+
+    Distinguishes a *genuinely empty* changed-file list (a successful ``gh`` call
+    that returned zero paths → SKIPPED_NO_MAPPING, a neutral skip) from an
+    *indeterminate* result (the ``gh`` call failed or timed out even after a
+    retry). The orchestrator fails CLOSED on the indeterminate case (OMN-13831):
+    a PR whose changed files cannot be enumerated must never be merged on the
+    assumption that it is docs-only, because a transient ``gh`` outage would
+    otherwise silently let a code PR through unverified.
+    """
 
 
 # ---------------------------------------------------------------------------
@@ -174,6 +220,17 @@ class ModelPrLifecycleStartCommand(BaseModel):
         return str(value or "")
 
 
+class OrgWideOpenPrRemainderRef(BaseModel):
+    """A single org-wide open PR still blocking the sweep-done report (OMN-13318)."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    repo: str = Field(...)
+    pr_number: int = Field(...)
+    title: str = Field(default="")
+    url: str = Field(default="")
+
+
 class ModelPrLifecycleResult(BaseModel):
     """Result returned by the orchestrator after a sweep run."""
 
@@ -185,8 +242,28 @@ class ModelPrLifecycleResult(BaseModel):
     prs_fixed: int = Field(default=0, ge=0)
     prs_skipped: int = Field(default=0, ge=0)
     prs_verified: int = Field(default=0, ge=0)
+    # OMN-13673: PRs whose pre-merge verification failed (VERIFICATION_FAILED).
+    # These stay open — they are the only verification outcome that blocks merge.
+    prs_verification_blocked: int = Field(default=0, ge=0)
+    # OMN-13673: per-outcome counts across the 7 verification categories
+    # (merged, verification_failed, verification_unavailable, verification_timeout,
+    # verification_tool_error, skipped_no_mapping, skipped_by_policy).
+    verification_breakdown: dict[str, int] = Field(default_factory=dict)
     final_state: str = Field(default="COMPLETE")
     error_message: str | None = Field(default=None)
+    # OMN-13318: org-wide open-PR census is a hard precondition on sweep-done.
+    org_wide_open_count: int = Field(
+        default=0,
+        ge=0,
+        description="Org-wide count of open PRs observed at sweep time.",
+    )
+    org_wide_open_remainders: tuple[OrgWideOpenPrRemainderRef, ...] = Field(
+        default_factory=tuple,
+        description=(
+            "The open PRs that prevented a sweep-done report. Non-empty whenever "
+            "final_state is NOT_DONE."
+        ),
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -211,6 +288,12 @@ class EnumOrchestratorState(StrEnum):
 
 
 _TERMINAL_STATES = {EnumOrchestratorState.COMPLETE, EnumOrchestratorState.FAILED}
+
+# OMN-13318: sweep-done is gated on an org-wide open-PR count of zero. When the
+# FSM reaches COMPLETE but open PRs survive org-wide, the reported final_state is
+# downgraded to NOT_DONE so the done-report is refused (and the remainders are
+# surfaced). This is a REPORT-level state, distinct from the FSM states above.
+_FINAL_STATE_NOT_DONE = "NOT_DONE"
 
 # OMN-12570: map each FSM state to the distinct CI-verification phase it
 # represents in the ledger. Branch checks, merge-group checks, and post-merge
@@ -258,6 +341,17 @@ class _SweepState:
     inventory_result: InventoryResult | None = None
     triage_result: PrTriageResult | None = None
     reducer_result: ReducerResult | None = None
+
+    # OMN-13318: org-wide open-PR census captured during INVENTORYING. The
+    # sweep-done report is refused while open_count > 0 (or the census failed).
+    org_wide_open: Any | None = None
+
+    # OMN-13673: per-PR verification outcome captured during the VERIFYING
+    # phase, keyed by (repo, pr_number) -> EnumVerificationOutcome.value. Only
+    # VERIFICATION_FAILED blocks the PR's auto-merge; every other outcome is a
+    # neutral skip that still proceeds to MERGING.
+    verification_outcomes: dict[tuple[str, int], str] = field(default_factory=dict)
+    prs_verification_blocked: int = 0
 
 
 # ---------------------------------------------------------------------------
@@ -311,6 +405,18 @@ class _StubFixHandler:
     async def handle(self, command: Any) -> Any:
         logger.warning("[PR-LIFECYCLE-ORCH] fix stub called (sub-node not wired)")
         return FixResult(prs_dispatched=0, prs_skipped=0)
+
+
+class _StubPruneHandler:
+    """Stub matching HandlerWorktreePrune.handle(command) signature.
+
+    Returns a no-op result so the POST_MERGE_TAIL prune step is inert when the
+    worktree-prune node is unavailable (OMN-13859).
+    """
+
+    async def handle(self, command: Any) -> Any:
+        logger.warning("[PR-LIFECYCLE-ORCH] prune stub called (sub-node not wired)")
+        return None
 
 
 # ---------------------------------------------------------------------------
@@ -436,6 +542,25 @@ def _block_reason_for_fix(pr: TriageRecord) -> Any:
     return EnumPrBlockReason.CODE_FAILURE
 
 
+def _render_verification_breakdown(
+    outcomes: Any,
+) -> dict[str, int]:
+    """Render the 7-category verification breakdown as a zero-filled count map.
+
+    Every ``EnumVerificationOutcome`` member is present so the render always
+    surfaces all 7 categories (merged, verification_failed,
+    verification_unavailable, verification_timeout, verification_tool_error,
+    skipped_no_mapping, skipped_by_policy), even when a category has zero PRs.
+    ``outcomes`` is an iterable of ``EnumVerificationOutcome.value`` strings.
+    """
+    breakdown: dict[str, int] = {member.value: 0 for member in EnumVerificationOutcome}
+    for value in outcomes:
+        key = str(value)
+        if key in breakdown:
+            breakdown[key] += 1
+    return breakdown
+
+
 # ---------------------------------------------------------------------------
 # Orchestrator handler
 # ---------------------------------------------------------------------------
@@ -457,18 +582,24 @@ class HandlerPrLifecycleOrchestrator:
         reducer: ProtocolStateReducerHandler | None = None,
         merge: ProtocolMergeHandler | None = None,
         fix: ProtocolFixHandler | None = None,
+        prune: ProtocolPruneHandler | None = None,
         event_bus: ProtocolEventBusPublisher,
         ledger_store: ProtocolPrLedgerStore | None = None,
+        projection_db: ProtocolProjectionDatabaseSync | None = None,
     ) -> None:
         self._topic_phase_transition = TOPIC_PHASE_TRANSITION
         self._topic_completed = TOPIC_COMPLETED
         self._topic_fixer_dispatch_start = TOPIC_FIXER_DISPATCH_START
+        self._topic_verification_completed = TOPIC_PR_LIFECYCLE_VERIFICATION_COMPLETED
 
         self._inventory = inventory
         self._triage = triage
         self._reducer = reducer
         self._merge = merge
         self._fix = fix
+        # OMN-13859: worktree-prune effect invoked in POST_MERGE_TAIL, one
+        # command per merged (ticket, repo). Optional like the other sub-handlers.
+        self._prune = prune
         self._event_bus = event_bus
         # Durable, reconstructable PR-ledger projection (OMN-12569). Defaults to
         # the in-memory store for local/test runs; the runtime injects a
@@ -478,6 +609,12 @@ class HandlerPrLifecycleOrchestrator:
         self._ledger_store: ProtocolPrLedgerStore = (
             ledger_store if ledger_store is not None else InMemoryPrLedgerStore()
         )
+        # OMN-13321 / F5: raw projection database for the per-iteration,
+        # user-readable PR ledger emitted by the state reducer. None in
+        # local/test runs (the reducer then stays a pure classifier); the
+        # runtime injects the control-plane projection database so a clean
+        # ledger row lands per PR per iteration.
+        self._projection_db: ProtocolProjectionDatabaseSync | None = projection_db
 
     def _record_ledger_event(
         self,
@@ -585,6 +722,26 @@ class HandlerPrLifecycleOrchestrator:
         await self._publish_phase_event(
             from_state.value, to_state.value, correlation_id
         )
+
+    def _next_iteration(self, sweep_id: str) -> int:
+        """Resolve the next per-sweep ledger iteration index (OMN-13321 / F5).
+
+        Queries the durable ledger projection for the highest iteration
+        already recorded for this ``sweep_id`` and returns max+1, so two
+        consecutive orchestrator passes that share a sweep_id append distinct
+        row sets (iteration 0, 1, ...) rather than overwriting each other.
+        Returns 0 when no projection database is wired or no rows exist yet.
+        """
+        if self._projection_db is None:
+            return 0
+        rows = self._projection_db.query(
+            PR_LEDGER_PROJECTION_TABLE, {"sweep_id": sweep_id}
+        )
+        if not rows:
+            return 0
+        # Projection rows are dict[str, object]; iteration is stored as an int
+        # (or its serialized form). str() round-trips both safely for int().
+        return max(int(str(row["iteration"])) for row in rows) + 1
 
     def ledger(self, run_id: str) -> ModelPrLedger:
         """Return the durable PR-ledger projection for a sweep run.
@@ -791,6 +948,9 @@ class HandlerPrLifecycleOrchestrator:
                 from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.adapter_github_cli import (
                     GitHubCliAdapter,
                 )
+                from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.adapter_occ_autobind import (
+                    OccAutobindAdapter,
+                )
                 from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.adapter_occ_contract import (
                     OccContractAdapter,
                 )
@@ -805,11 +965,31 @@ class HandlerPrLifecycleOrchestrator:
                     github_adapter=GitHubCliAdapter(),
                     agent_dispatch_adapter=PrPolishDispatchAdapter(),
                     occ_contract_adapter=OccContractAdapter(),
+                    occ_autobind_adapter=OccAutobindAdapter(),
                 )
                 self._check_protocol_conformance(fix_handler, ProtocolFixHandler, "fix")
                 self._fix = fix_handler
             except ImportError:
                 self._fix = _StubFixHandler()
+        if self._prune is None:
+            # OMN-13859: worktree-prune effect. Falls back to a no-op stub when
+            # the node is unavailable so the merge sweep never fails for lack of
+            # worktree GC.
+            try:
+                from omnimarket.nodes.node_pr_lifecycle_worktree_prune_effect.handlers.adapter_git_worktree import (
+                    GitWorktreeAdapter,
+                )
+                from omnimarket.nodes.node_pr_lifecycle_worktree_prune_effect.handlers.handler_worktree_prune import (
+                    HandlerWorktreePrune,
+                )
+
+                prune_handler = HandlerWorktreePrune(git_adapter=GitWorktreeAdapter())
+                self._check_protocol_conformance(
+                    prune_handler, ProtocolPruneHandler, "prune"
+                )
+                self._prune = prune_handler
+            except ImportError:
+                self._prune = _StubPruneHandler()
 
     async def handle(
         self,
@@ -879,9 +1059,14 @@ class HandlerPrLifecycleOrchestrator:
             )
             state.inventory_result = inv_result
             state.prs_inventoried = inv_result.total_collected
+            # OMN-13318: capture the org-wide open-PR census now so the
+            # sweep-done report can be refused while open PRs survive in any
+            # repo (the repo-by-repo inventory above can miss them).
+            state.org_wide_open = self._collect_org_wide_open_prs()
             logger.info(
-                "[PR-LIFECYCLE-ORCH] inventory completed: %d PRs",
+                "[PR-LIFECYCLE-ORCH] inventory completed: %d PRs (org-wide open=%s)",
                 inv_result.total_collected,
+                getattr(state.org_wide_open, "open_count", "n/a"),
             )
             # Ledger (OMN-12569): record one PR_INVENTORIED source event per
             # collected PR so the projection captures run id + branch SHA from
@@ -932,6 +1117,11 @@ class HandlerPrLifecycleOrchestrator:
 
             # Reducer: compute intents from triage result + flags
             assert self._reducer is not None
+            # OMN-13321 / F5: emit one durable, user-readable ledger row per
+            # PR for THIS iteration through the state reducer. iteration is
+            # resolved from the durable projection so consecutive passes that
+            # share a sweep_id (== run_id) append distinct rows.
+            ledger_iteration = self._next_iteration(command.run_id)
             reducer_result = await self._reducer.handle(
                 correlation_id=command.correlation_id,
                 classified=triage_result.classified,
@@ -939,6 +1129,9 @@ class HandlerPrLifecycleOrchestrator:
                 inventory_only=command.inventory_only,
                 fix_only=command.fix_only,
                 merge_only=command.merge_only,
+                projection_db=self._projection_db,
+                sweep_id=command.run_id if self._projection_db is not None else None,
+                iteration=ledger_iteration,
             )
             state.reducer_result = reducer_result
             self._write_occ_dependency_edges_file(
@@ -953,18 +1146,9 @@ class HandlerPrLifecycleOrchestrator:
                 ),
             )
 
-            if command.dry_run:
-                # dry_run: record intents but do not execute
-                state.prs_skipped = len(reducer_result.intents)
-                await self._transition_phase(
-                    state,
-                    EnumOrchestratorState.COMPLETE,
-                    run_id=command.run_id,
-                    correlation_id=command.correlation_id,
-                )
-                return self._build_result(state, command.correlation_id)
-
-            # Build per-intent sets
+            # Build per-intent sets. Computed BEFORE the dry_run short-circuit so
+            # the VERIFYING phase can materialize its 7-category breakdown on the
+            # dry-run path too (OMN-13673).
             merge_prs = tuple(
                 tr
                 for intent in reducer_result.intents
@@ -986,6 +1170,42 @@ class HandlerPrLifecycleOrchestrator:
                 for intent in reducer_result.intents
                 if intent.intent == EnumReducerIntent.SKIP
             )
+
+            # Phase: VERIFYING (OMN-13673 / OMN-7742). When verify=True and there
+            # are merge-ready PRs, run a per-PR pre-merge verification gate before
+            # MERGING. Only VERIFICATION_FAILED blocks that PR (it stays open);
+            # every other outcome (passed/unavailable/timeout/tool_error/
+            # no_mapping/by_policy) is a NEUTRAL skip that still proceeds to
+            # MERGING. A failure in one PR never blocks the rest of the batch.
+            # Runs in BOTH dry_run and live paths so the breakdown is always
+            # materialized — in dry_run the gate classifies each PR as
+            # SKIPPED_BY_POLICY without executing real probes. This replaces the
+            # prior hard RuntimeError raise: refusing a PR's merge is now
+            # STATE-BASED (state.verification_outcomes), never a raise.
+            if command.verify and merge_prs and not command.fix_only:
+                await self._transition_phase(
+                    state,
+                    EnumOrchestratorState.VERIFYING,
+                    run_id=command.run_id,
+                    correlation_id=command.correlation_id,
+                )
+                merge_prs = await self._run_verification(
+                    merge_prs=merge_prs,
+                    command=command,
+                    state=state,
+                )
+
+            if command.dry_run:
+                # dry_run: record intents but do not execute
+                state.prs_skipped = len(reducer_result.intents)
+                await self._transition_phase(
+                    state,
+                    EnumOrchestratorState.COMPLETE,
+                    run_id=command.run_id,
+                    correlation_id=command.correlation_id,
+                )
+                return self._build_result(state, command.correlation_id)
+
             state.prs_skipped = len(skip_prs)
             # Ledger (OMN-12569): record a terminal SKIPPED conclusion for each
             # PR the reducer chose not to act on.
@@ -1001,20 +1221,10 @@ class HandlerPrLifecycleOrchestrator:
                     phase=state.phase,
                 )
 
-            # Phase: MERGING (merge-group checks; skip if fix_only)
+            # Phase: MERGING (merge-group checks; skip if fix_only). ``merge_prs``
+            # here is the verification-cleared subset when verify=True — PRs whose
+            # verification failed have already been removed and left open.
             if merge_prs and not command.fix_only:
-                if command.verify:
-                    await self._transition_phase(
-                        state,
-                        EnumOrchestratorState.VERIFYING,
-                        run_id=command.run_id,
-                        correlation_id=command.correlation_id,
-                    )
-                    raise RuntimeError(
-                        "verify=True requested, but VERIFYING phase dispatch "
-                        "is not wired yet (OMN-7742 follow-up). Refusing to "
-                        "transition to MERGING without verification."
-                    )
                 await self._transition_phase(
                     state,
                     EnumOrchestratorState.MERGING,
@@ -1067,6 +1277,18 @@ class HandlerPrLifecycleOrchestrator:
                         phase=state.phase,
                     )
 
+                # OMN-13859: event-driven worktree prune-on-close. The merges
+                # just performed ARE the trigger; prune each merged PR's
+                # worktree scoped to its (ticket, repo). Runs only when at least
+                # one PR actually merged, and is fully best-effort — the prune
+                # effect's rails keep dirty/canonical/out-of-root worktrees.
+                if merge_result.prs_merged > 0:
+                    await self._prune_merged_worktrees(
+                        merged=merge_prs,
+                        inventory=state.inventory_result,
+                        correlation_id=command.correlation_id,
+                    )
+
                 if command.merge_only:
                     await self._transition_phase(
                         state,
@@ -1087,6 +1309,12 @@ class HandlerPrLifecycleOrchestrator:
                 await self._publish_fixer_dispatch_start(
                     fix_prs, command.correlation_id
                 )
+                # OMN-13586 RH-4: fan-out to repo-health classify/repair lane.
+                # Publishes classify cmd for all fix_prs that have a
+                # validation_failure_origin set; additionally publishes
+                # repair-start only for REPO_BASELINE origins.
+                # Best-effort — a publish error must never abort the sweep.
+                await self._publish_repo_health_fanout(fix_prs, command.correlation_id)
 
                 assert self._fix is not None
                 fix_results = await self._dispatch_fix_parallel(
@@ -1244,6 +1472,24 @@ class HandlerPrLifecycleOrchestrator:
         except Exception as exc:
             logger.warning("[PR-LIFECYCLE-ORCH] failed to enumerate org repos: %s", exc)
             return ()
+
+    def _collect_org_wide_open_prs(self) -> Any:
+        """Census every open PR across the org as the sweep-done precondition.
+
+        Delegates to the inventory handler's ``collect_org_wide_open_prs`` so the
+        org-wide search (``gh api /search/issues?q=org:OmniNode-ai is:pr is:open``)
+        lives in one place (OMN-13318). Overridable in tests to inject a
+        synthetic census without real gh calls.
+
+        Returns a ``ModelOrgWideOpenPrInventory`` when available, or ``None`` if
+        the wired inventory handler does not expose the census (e.g. a minimal
+        test double) — in which case the sweep-done gate is treated as satisfied.
+        """
+        self._ensure_sub_handlers()
+        collector = getattr(self._inventory, "collect_org_wide_open_prs", None)
+        if collector is None:
+            return None
+        return collector()
 
     async def _call_inventory(
         self,
@@ -1515,6 +1761,410 @@ class HandlerPrLifecycleOrchestrator:
 
         return MergeResult(prs_merged=prs_merged, prs_failed=prs_failed)
 
+    async def _prune_merged_worktrees(
+        self,
+        *,
+        merged: tuple[TriageRecord, ...],
+        inventory: InventoryResult | None,
+        correlation_id: UUID,
+    ) -> PruneResult:
+        """Prune the git worktree for each just-merged PR (OMN-13859).
+
+        Event-driven prune-on-close: the merges we performed in this sweep ARE
+        the trigger. One command per (ticket, repo) — scoped to exactly the
+        worktrees whose PRs just closed, never a full-registry scan. The prune
+        effect owns every safety rail (dirty→flag, canonical-clone→refuse,
+        outside-root→refuse, no @{u} requirement).
+
+        Best-effort: a prune failure or an unresolved worktrees root is logged
+        and swallowed so worktree GC never aborts a successful merge sweep.
+        """
+        if self._prune is None:
+            return PruneResult()
+
+        from omnimarket.events.worktree_prune import (
+            ModelWorktreePruneCommand,
+        )
+
+        # Recover branch per (repo, pr_number) from inventory for provenance/logging.
+        branch_by_pr: dict[tuple[str, int], str] = {}
+        if inventory is not None:
+            for rec in inventory.prs:
+                if rec.branch:
+                    branch_by_pr[(rec.repo, rec.pr_number)] = rec.branch
+
+        pruned = 0
+        flagged_dirty = 0
+        skipped = 0
+        for tr in merged:
+            branch = branch_by_pr.get((tr.repo, tr.pr_number))
+            for ticket_id in tr.ticket_ids:
+                try:
+                    command = ModelWorktreePruneCommand(
+                        correlation_id=correlation_id,
+                        ticket_id=ticket_id,
+                        repo=tr.repo,
+                        branch=branch,
+                        pr_number=tr.pr_number,
+                    )
+                    result = await self._prune.handle(command)
+                except Exception as exc:
+                    logger.warning(
+                        "[PR-LIFECYCLE-ORCH] worktree prune raised for "
+                        "ticket=%s repo=%s pr=%s: %s",
+                        ticket_id,
+                        tr.repo,
+                        tr.pr_number,
+                        exc,
+                    )
+                    skipped += 1
+                    continue
+                outcome = getattr(result, "outcome", None)
+                outcome_value = getattr(outcome, "value", outcome)
+                if outcome_value == "pruned":
+                    pruned += 1
+                elif outcome_value == "skipped_dirty":
+                    flagged_dirty += 1
+                else:
+                    skipped += 1
+
+        if pruned or flagged_dirty:
+            logger.info(
+                "[PR-LIFECYCLE-ORCH] worktree prune tail: %d pruned, "
+                "%d flagged-dirty (kept), %d skipped",
+                pruned,
+                flagged_dirty,
+                skipped,
+            )
+        return PruneResult(
+            worktrees_pruned=pruned,
+            worktrees_flagged_dirty=flagged_dirty,
+            worktrees_skipped=skipped,
+        )
+
+    # -----------------------------------------------------------------------
+    # VERIFYING phase (OMN-13673 / OMN-7742): per-PR pre-merge verification gate
+    # -----------------------------------------------------------------------
+
+    async def _run_verification(
+        self,
+        *,
+        merge_prs: tuple[TriageRecord, ...],
+        command: ModelPrLifecycleStartCommand,
+        state: _SweepState,
+    ) -> tuple[TriageRecord, ...]:
+        """Run the per-PR pre-merge verification gate and return cleared PRs.
+
+        For each merge-ready PR the verification target is computed from the
+        PR's changed files (``verify_target_mapping``), the canonical
+        verification probe for that target is dispatched, and the per-PR
+        outcome is classified into one of the 7 OMN-7742/OMN-8390 categories.
+
+        Blocking semantics (OMN-13673 + OMN-13831 fail-closed):
+          * ``VERIFICATION_FAILED`` always blocks the PR — it is excluded from
+            the returned set and left open.
+          * An *indeterminate* outcome (``VERIFICATION_UNAVAILABLE`` /
+            ``VERIFICATION_TIMEOUT`` / ``VERIFICATION_TOOL_ERROR``) blocks the PR
+            when its mapped verification target indicates code files
+            (``target != SKIPPED_NO_MAPPING``) OR when the PR's changed files
+            could not be enumerated at all. Indeterminate verification of code
+            must fail CLOSED — a transient probe/gh failure must never let a code
+            PR merge unverified (OMN-13831).
+          * NEUTRAL (still merges): a successful ``MERGED`` verification, a
+            genuine docs-only / no-mapping PR (``SKIPPED_NO_MAPPING``), an
+            indeterminate outcome on a docs-only / no-mapping PR, and
+            ``SKIPPED_BY_POLICY`` (dry_run).
+
+        Blocked PRs record a terminal FAILED ledger conclusion in the
+        BRANCH_CHECKS phase so the durable ledger reflects that they did not
+        merge for verification reasons.
+
+        Per-PR isolation: a probe error (or an un-enumerable changed-file list)
+        for one PR affects only that PR and never aborts the batch.
+
+        In ``dry_run`` the gate classifies every PR as ``SKIPPED_BY_POLICY``
+        without executing real probes, so the 7-category breakdown is still
+        materialized for evidence.
+        """
+        cleared: list[TriageRecord] = []
+        for pr in merge_prs:
+            target = EnumVerificationTarget.SKIPPED_NO_MAPPING
+            changed_files_unavailable = False
+            try:
+                target = self._verification_target_for(pr.repo, pr.pr_number)
+                if command.dry_run:
+                    outcome = EnumVerificationOutcome.SKIPPED_BY_POLICY
+                elif target == EnumVerificationTarget.SKIPPED_NO_MAPPING:
+                    outcome = EnumVerificationOutcome.SKIPPED_NO_MAPPING
+                else:
+                    outcome = await self._execute_verification_probe(
+                        target=target,
+                        timeout_seconds=command.verify_timeout_seconds,
+                    )
+            except ChangedFilesUnavailableError as exc:
+                # Fail CLOSED (OMN-13831): the PR's changed files could not be
+                # enumerated even after a retry, so we cannot prove it is
+                # docs-only. Treat it as an indeterminate code PR and block below.
+                logger.warning(
+                    "[PR-LIFECYCLE-ORCH] changed files unavailable for "
+                    "repo=%s pr=%d — failing closed (not merging): %s",
+                    pr.repo,
+                    pr.pr_number,
+                    exc,
+                )
+                changed_files_unavailable = True
+                outcome = EnumVerificationOutcome.VERIFICATION_UNAVAILABLE
+            except Exception as exc:
+                # Per-PR isolation — a probe failure for one PR is an
+                # indeterminate tool error for that PR only, never an abort of
+                # the whole batch. Whether it BLOCKS depends on the target below.
+                logger.exception(
+                    "[PR-LIFECYCLE-ORCH] verification probe raised for "
+                    "repo=%s pr=%d target=%s: %s",
+                    pr.repo,
+                    pr.pr_number,
+                    target,
+                    exc,
+                )
+                outcome = EnumVerificationOutcome.VERIFICATION_TOOL_ERROR
+
+            state.verification_outcomes[(pr.repo, pr.pr_number)] = outcome.value
+            await self._publish_verification_completed(
+                pr=pr,
+                target=target,
+                outcome=outcome,
+                correlation_id=command.correlation_id,
+            )
+            logger.info(
+                "[PR-LIFECYCLE-ORCH] verification %s repo=%s pr=%d target=%s",
+                outcome.value,
+                pr.repo,
+                pr.pr_number,
+                target.value,
+            )
+
+            # Fail-closed blocking decision (OMN-13673 + OMN-13831).
+            is_code_pr = (
+                changed_files_unavailable
+                or target != EnumVerificationTarget.SKIPPED_NO_MAPPING
+            )
+            should_block = outcome == EnumVerificationOutcome.VERIFICATION_FAILED or (
+                outcome in _INDETERMINATE_VERIFICATION_OUTCOMES and is_code_pr
+            )
+
+            if should_block:
+                # Blocked: the PR stays open. Record a terminal FAILED ledger
+                # conclusion in the BRANCH_CHECKS phase (state.phase == VERIFYING
+                # maps to BRANCH_CHECKS) so the durable ledger reflects that it
+                # did not merge for verification reasons.
+                state.prs_verification_blocked += 1
+                self._record_ledger_event(
+                    kind=EnumPrLedgerEventKind.FINAL_CONCLUSION,
+                    run_id=command.run_id,
+                    correlation_id=command.correlation_id,
+                    repo=pr.repo,
+                    pr_number=pr.pr_number,
+                    conclusion=EnumPrLedgerConclusion.FAILED,
+                    orchestrator_action=EnumOrchestratorAction.FIX,
+                    phase=state.phase,
+                )
+                continue
+
+            if outcome == EnumVerificationOutcome.MERGED:
+                state.prs_verified += 1
+            cleared.append(pr)
+
+        logger.info(
+            "[PR-LIFECYCLE-ORCH] verification complete: %d cleared, %d blocked "
+            "(breakdown=%s)",
+            len(cleared),
+            state.prs_verification_blocked,
+            _render_verification_breakdown(state.verification_outcomes.values()),
+        )
+        return tuple(cleared)
+
+    def _verification_target_for(
+        self,
+        repo: str,
+        pr_number: int,
+    ) -> EnumVerificationTarget:
+        """Map a PR's changed files to its verification target (OMN-7742)."""
+        changed_files = self._pr_changed_files(repo, pr_number)
+        return map_changed_files_to_target(changed_files)
+
+    def _pr_changed_files(self, repo: str, pr_number: int) -> list[str]:
+        """Return a PR's changed file paths via the gh CLI.
+
+        Overridable in tests (or subclasses) to avoid real network calls.
+
+        Returns an empty list ONLY when ``gh`` succeeds and the PR genuinely has
+        zero changed paths (→ SKIPPED_NO_MAPPING, a neutral skip). On a ``gh``
+        failure the call is retried once; if it still fails this raises
+        ``ChangedFilesUnavailableError`` rather than returning ``[]`` (OMN-13831).
+        Silently returning ``[]`` on error would map a transient ``gh`` outage to
+        a neutral no-mapping skip and let a code PR merge unverified — so the
+        indeterminate case must be surfaced and fail CLOSED upstream.
+        """
+        import subprocess
+
+        attempts = 2
+        last_error = "<unknown>"
+        for attempt in range(1, attempts + 1):
+            try:
+                proc = subprocess.run(
+                    [
+                        "gh",
+                        "pr",
+                        "view",
+                        str(pr_number),
+                        "--repo",
+                        repo,
+                        "--json",
+                        "files",
+                        "--jq",
+                        ".files[].path",
+                    ],
+                    capture_output=True,
+                    text=True,
+                    timeout=30,
+                )
+            except Exception as exc:
+                last_error = f"{type(exc).__name__}: {exc}"
+                logger.warning(
+                    "[PR-LIFECYCLE-ORCH] gh pr view files raised for %s#%d "
+                    "(attempt %d/%d): %s",
+                    repo,
+                    pr_number,
+                    attempt,
+                    attempts,
+                    exc,
+                )
+                continue
+
+            if proc.returncode != 0:
+                last_error = proc.stderr.strip() or f"returncode={proc.returncode}"
+                logger.warning(
+                    "[PR-LIFECYCLE-ORCH] gh pr view files failed for %s#%d "
+                    "(attempt %d/%d, returncode=%d): %s",
+                    repo,
+                    pr_number,
+                    attempt,
+                    attempts,
+                    proc.returncode,
+                    proc.stderr.strip() or "<no stderr>",
+                )
+                continue
+
+            # Success: an empty stdout here is a GENUINE zero-changed-files PR.
+            return [line.strip() for line in proc.stdout.splitlines() if line.strip()]
+
+        raise ChangedFilesUnavailableError(
+            f"gh pr view files failed for {repo}#{pr_number} after "
+            f"{attempts} attempts: {last_error}"
+        )
+
+    async def _execute_verification_probe(
+        self,
+        *,
+        target: EnumVerificationTarget,
+        timeout_seconds: int,
+    ) -> EnumVerificationOutcome:
+        """Dispatch the canonical verification probe for a target.
+
+        Overridable in tests to inject outcomes without live Docker / nodes.
+
+        * ``RUNTIME_HEALTH`` → the canonical local runtime-health probe
+          (``probe_runtime_health`` from ``verify_target_mapping``). ``total_failed
+          == 0`` is a pass (MERGED); any failure is VERIFICATION_FAILED.
+        * Every other recognized target → dispatch the canonical verification
+          EFFECT node (``node_verify_effect``). ``all_critical_passed`` is a pass;
+          a critical failure is VERIFICATION_FAILED. A timeout maps to
+          VERIFICATION_TIMEOUT, an unwired node to VERIFICATION_UNAVAILABLE, and
+          any other error to VERIFICATION_TOOL_ERROR — all NEUTRAL (non-blocking).
+        """
+        if target == EnumVerificationTarget.RUNTIME_HEALTH:
+            try:
+                report = await asyncio.to_thread(probe_runtime_health)
+            except Exception as exc:
+                logger.warning(
+                    "[PR-LIFECYCLE-ORCH] runtime-health probe error: %s", exc
+                )
+                return EnumVerificationOutcome.VERIFICATION_TOOL_ERROR
+            return (
+                EnumVerificationOutcome.MERGED
+                if report.total_failed == 0
+                else EnumVerificationOutcome.VERIFICATION_FAILED
+            )
+
+        try:
+            from omnimarket.nodes.node_verify_effect.handlers.handler_verify import (
+                HandlerVerify,
+            )
+        except ImportError:
+            logger.warning(
+                "[PR-LIFECYCLE-ORCH] canonical verify node unavailable for "
+                "target=%s — neutral skip",
+                target.value,
+            )
+            return EnumVerificationOutcome.VERIFICATION_UNAVAILABLE
+
+        verify_handler = HandlerVerify()
+        try:
+            result = await asyncio.wait_for(
+                verify_handler.handle(correlation_id=uuid4()),
+                timeout=timeout_seconds,
+            )
+        except TimeoutError:
+            return EnumVerificationOutcome.VERIFICATION_TIMEOUT
+        except Exception as exc:
+            logger.warning(
+                "[PR-LIFECYCLE-ORCH] canonical verify node error target=%s: %s",
+                target.value,
+                exc,
+            )
+            return EnumVerificationOutcome.VERIFICATION_TOOL_ERROR
+        return (
+            EnumVerificationOutcome.MERGED
+            if getattr(result, "all_critical_passed", False)
+            else EnumVerificationOutcome.VERIFICATION_FAILED
+        )
+
+    async def _publish_verification_completed(
+        self,
+        *,
+        pr: TriageRecord,
+        target: EnumVerificationTarget,
+        outcome: EnumVerificationOutcome,
+        correlation_id: UUID,
+    ) -> None:
+        """Publish a per-PR verification-completed event (bus-native).
+
+        Best-effort — a publish error must never abort the sweep.
+        """
+        payload = json.dumps(
+            {
+                "pr_number": pr.pr_number,
+                "repo": pr.repo,
+                "target": target.value,
+                "outcome": outcome.value,
+                "correlation_id": str(correlation_id),
+            }
+        ).encode()
+        try:
+            await self._event_bus.publish(
+                topic=self._topic_verification_completed,
+                key=None,
+                value=payload,
+            )
+        except Exception as exc:
+            logger.warning(
+                "[PR-LIFECYCLE-ORCH] failed to publish verification-completed "
+                "pr=%d repo=%s: %s",
+                pr.pr_number,
+                pr.repo,
+                exc,
+            )
+
     async def _dispatch_fix_parallel(
         self,
         *,
@@ -1638,6 +2288,7 @@ class HandlerPrLifecycleOrchestrator:
     def _build_result(
         self, state: _SweepState, correlation_id: UUID
     ) -> ModelPrLifecycleResult:
+        final_state, remainders = self._apply_org_wide_done_gate(state)
         return ModelPrLifecycleResult(
             correlation_id=correlation_id,
             prs_inventoried=state.prs_inventoried,
@@ -1645,9 +2296,58 @@ class HandlerPrLifecycleOrchestrator:
             prs_fixed=state.prs_fixed,
             prs_skipped=state.prs_skipped,
             prs_verified=state.prs_verified,
-            final_state=state.fsm.value,
+            prs_verification_blocked=state.prs_verification_blocked,
+            verification_breakdown=_render_verification_breakdown(
+                state.verification_outcomes.values()
+            ),
+            final_state=final_state,
             error_message=state.error_message,
+            org_wide_open_count=int(getattr(state.org_wide_open, "open_count", 0) or 0),
+            org_wide_open_remainders=remainders,
         )
+
+    @staticmethod
+    def _apply_org_wide_done_gate(
+        state: _SweepState,
+    ) -> tuple[str, tuple[OrgWideOpenPrRemainderRef, ...]]:
+        """Gate the reported final_state on the org-wide open-PR census (OMN-13318).
+
+        A sweep may only report COMPLETE when zero PRs remain open org-wide. If
+        the FSM reached COMPLETE but the census reports open PRs (or could not be
+        executed), the reported state is downgraded to NOT_DONE and the open-PR
+        remainders are surfaced so the sweep-done report is refused with the
+        exact PRs that still block it.
+
+        A FAILED sweep is left untouched — its failure already blocks the report.
+        When no census is available (e.g. a minimal test double that does not
+        expose ``collect_org_wide_open_prs``), the gate is a no-op.
+        """
+        if state.fsm is not EnumOrchestratorState.COMPLETE:
+            return state.fsm.value, ()
+
+        census = state.org_wide_open
+        if census is None:
+            return state.fsm.value, ()
+
+        if getattr(census, "sweep_done", True):
+            return state.fsm.value, ()
+
+        remainders = tuple(
+            OrgWideOpenPrRemainderRef(
+                repo=str(getattr(item, "repo", "")),
+                pr_number=int(getattr(item, "pr_number", 0) or 0),
+                title=str(getattr(item, "title", "") or ""),
+                url=str(getattr(item, "url", "") or ""),
+            )
+            for item in getattr(census, "remainders", ()) or ()
+        )
+        logger.warning(
+            "[PR-LIFECYCLE-ORCH] sweep-done REFUSED: %d org-wide open PR(s) "
+            "remain (query_failed=%s)",
+            int(getattr(census, "open_count", 0) or 0),
+            getattr(census, "query_failed", False),
+        )
+        return _FINAL_STATE_NOT_DONE, remainders
 
     def _sweep_run_dir(self, run_id: str) -> Path | None:
         state_dir = os.environ.get(
@@ -1717,9 +2417,19 @@ class HandlerPrLifecycleOrchestrator:
         out_path = out_dir / "result.json"
 
         is_failure = result.final_state == EnumOrchestratorState.FAILED.value
+        # OMN-13318: NOT_DONE is not a success — open PRs remain org-wide. The
+        # sweep-done report is refused; report it as a distinct not_done status
+        # carrying the blocking remainders.
+        is_not_done = result.final_state == _FINAL_STATE_NOT_DONE
+        if is_failure:
+            status = "error"
+        elif is_not_done:
+            status = "not_done"
+        else:
+            status = "success"
         payload: dict[str, Any] = {
             "skill_name": "merge-sweep",
-            "status": "error" if is_failure else "success",
+            "status": status,
             "run_id": run_id,
             "correlation_id": str(result.correlation_id),
             "final_state": result.final_state,
@@ -1728,6 +2438,13 @@ class HandlerPrLifecycleOrchestrator:
             "prs_fixed": result.prs_fixed,
             "prs_skipped": result.prs_skipped,
             "prs_verified": result.prs_verified,
+            "prs_verification_blocked": result.prs_verification_blocked,
+            "verification_breakdown": result.verification_breakdown,
+            "org_wide_open_count": result.org_wide_open_count,
+            "org_wide_open_remainders": [
+                remainder.model_dump(mode="json")
+                for remainder in result.org_wide_open_remainders
+            ],
             "error_message": result.error_message,
         }
 
@@ -1805,6 +2522,94 @@ class HandlerPrLifecycleOrchestrator:
                 key=None,
                 value=encoded,
             )
+
+    async def _publish_repo_health_fanout(
+        self,
+        fix_prs: tuple[TriageRecord, ...],
+        correlation_id: UUID,
+    ) -> None:
+        """RH-4 fan-out: publish repo-health classify/repair commands.
+
+        For each fix_pr with a ``validation_failure_origin`` set:
+          - Publish ``onex.cmd.omnimarket.repo-health-classify.v1`` (all non-None
+            origins) so node_repo_health_classify_compute can record the origin.
+          - Additionally publish ``onex.cmd.omnimarket.repo-health-repair-start.v1``
+            only when origin is REPO_BASELINE (the repair lane is triggered).
+
+        Decision rules per plan §3.3 (OMN-13586):
+          - repo_baseline  → classify cmd + repair-start cmd
+          - pr_scoped      → classify cmd only (stays in existing fix lane)
+          - unknown        → classify cmd only (surface evidence, no auto repair)
+          - external_dependency → classify cmd only (surfaced, no code repair task)
+          - None           → no commands (no validation failure observed)
+
+        Guardrail: these publishes are best-effort notifications — a publish
+        failure must never abort a sweep. Repo-baseline debt must NOT become a
+        new hard block on auto-merge arming (plan facts #9/#10).
+
+        Related: OMN-13586 RH-4, OMN-13316 epic.
+        """
+        for pr in fix_prs:
+            origin = pr.validation_failure_origin
+            if origin is None:
+                continue
+
+            # Emit the classify command for all non-None origins.
+            classify_payload = json.dumps(
+                {
+                    "pr_number": pr.pr_number,
+                    "repo": pr.repo,
+                    "failure_origin": origin.value,
+                    "block_reason": pr.block_reason or "",
+                    "failed_check_names": list(pr.failed_check_names),
+                    "correlation_id": str(correlation_id),
+                }
+            ).encode()
+            try:
+                await self._event_bus.publish(
+                    topic=TOPIC_REPO_HEALTH_CLASSIFY,
+                    key=None,
+                    value=classify_payload,
+                )
+            except Exception as exc:
+                logger.warning(
+                    "[PR-LIFECYCLE-ORCH] failed to publish repo-health-classify "
+                    "pr=%s repo=%s origin=%s: %s",
+                    pr.pr_number,
+                    pr.repo,
+                    origin,
+                    exc,
+                )
+
+            # Emit repair-start only for repo_baseline — pr_scoped and unknown
+            # do not trigger an automated repair task.
+            if origin is not EnumFailureOrigin.REPO_BASELINE:
+                continue
+
+            repair_payload = json.dumps(
+                {
+                    "pr_number": pr.pr_number,
+                    "repo": pr.repo,
+                    "failure_origin": origin.value,
+                    "block_reason": pr.block_reason or "",
+                    "failed_check_names": list(pr.failed_check_names),
+                    "correlation_id": str(correlation_id),
+                }
+            ).encode()
+            try:
+                await self._event_bus.publish(
+                    topic=TOPIC_REPO_HEALTH_REPAIR_START,
+                    key=None,
+                    value=repair_payload,
+                )
+            except Exception as exc:
+                logger.warning(
+                    "[PR-LIFECYCLE-ORCH] failed to publish repo-health-repair-start "
+                    "pr=%s repo=%s: %s",
+                    pr.pr_number,
+                    pr.repo,
+                    exc,
+                )
 
 
 __all__: list[str] = [

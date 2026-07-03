@@ -172,6 +172,27 @@ async def test_handler_returns_failed_on_dispatch_error() -> None:
 
 
 @pytest.mark.unit
+async def test_handler_passes_through_timeout_status() -> None:
+    """``timeout`` is a declared terminal status (_TERMINAL_STATUSES) distinct
+    from completed/failed — it must pass through unmodified, not be coerced to
+    failed the way an unrecognized status is."""
+    port = AsyncMock()
+    port.dispatch.return_value = {
+        "status": "timeout",
+        "error_message": "runtime dispatch timed out",
+    }
+    handler = HandlerDelegateSkill(object(), dispatch_port=port)
+    request = ModelDelegateSkillRequest(
+        prompt="Test",
+        task_type="test",
+        source="claude-code",
+    )
+    response = await handler.handle(request)
+    assert response.status == "timeout"
+    assert response.error_message == "runtime dispatch timed out"
+
+
+@pytest.mark.unit
 async def test_handler_maps_unknown_status_to_failed() -> None:
     port = AsyncMock()
     port.dispatch.return_value = {
@@ -369,11 +390,70 @@ def test_handler_constructs_without_dispatch_port() -> None:
 
 
 @pytest.mark.unit
-async def test_handler_with_no_port_uses_direct_curl_dispatch() -> None:
-    """Default port is DirectCurlDelegationDispatchPort (not fail-closed)."""
-    from omnimarket.nodes.node_delegate_skill_orchestrator.ports.port_direct_curl_dispatch import (
-        DirectCurlDelegationDispatchPort,
+async def test_handler_with_no_port_uses_local_in_process_dispatch() -> None:
+    """Default port is the in-process LocalDelegationDispatchPort (OMN-13160).
+
+    The standalone CLI path composes the routing authority, the canonical effect
+    handler (curl on the macOS LAN profile, httpx elsewhere), and the canonical
+    projection — replacing the deleted bespoke DirectCurl port.
+    """
+    from omnimarket.nodes.node_delegate_skill_orchestrator.ports.port_local_delegation_dispatch import (
+        LocalDelegationDispatchPort,
     )
 
     handler = HandlerDelegateSkill()
-    assert isinstance(handler._dispatch_port, DirectCurlDelegationDispatchPort)
+    assert isinstance(handler._dispatch_port, LocalDelegationDispatchPort)
+
+
+@pytest.mark.unit
+def test_handler_with_inmemory_bus_uses_local_in_process_dispatch() -> None:
+    """In-memory single-process runtime (`onex delegate --bus inmemory`) → local port.
+
+    OMN-13601: when the orchestrator runs on an in-memory bus there is no
+    co-deployed downstream delegation consumer of the runtime command topic. The
+    RuntimeDelegationDispatchPort would publish into the void and the orchestrator
+    terminal-wait times out at 300s with no evidence row. The in-memory CLI path
+    must route to LocalDelegationDispatchPort, which runs the real LLM effect, the
+    canonical quality gate, and writes the sqlite evidence row in-process.
+    """
+    from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
+
+    from omnimarket.nodes.node_delegate_skill_orchestrator.ports.port_local_delegation_dispatch import (
+        LocalDelegationDispatchPort,
+    )
+
+    handler = HandlerDelegateSkill(EventBusInmemory(environment="local", group="test"))
+    assert isinstance(handler._dispatch_port, LocalDelegationDispatchPort)
+
+
+@pytest.mark.unit
+def test_handler_with_external_broker_bus_uses_runtime_dispatch() -> None:
+    """A non-in-memory broker bus → RuntimeDelegationDispatchPort (OMN-13601).
+
+    On a real broker the full multi-node runtime (incl. the downstream delegation
+    consumer) is co-deployed, so the orchestrator publishes the runtime command
+    and awaits the terminal event over the bus.
+    """
+    from omnimarket.nodes.node_delegate_skill_orchestrator.ports.port_runtime_delegation_dispatch import (
+        RuntimeDelegationDispatchPort,
+    )
+
+    class _ExternalBrokerBus:
+        async def publish(
+            self,
+            topic: str,
+            key: bytes | None,
+            value: bytes,
+            headers: object = None,
+        ) -> None: ...
+
+        async def subscribe(
+            self,
+            topic: str,
+            node_identity: object | None = None,
+            on_message: object | None = None,
+            **kwargs: object,
+        ) -> object: ...
+
+    handler = HandlerDelegateSkill(_ExternalBrokerBus())
+    assert isinstance(handler._dispatch_port, RuntimeDelegationDispatchPort)

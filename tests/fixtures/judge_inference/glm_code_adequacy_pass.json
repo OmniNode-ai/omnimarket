@@ -1,0 +1,7 @@
+{
+  "captured_from": "real z.ai GLM call (cloud-glm backend, routing-contract resolved)",
+  "resolved_model_id": "glm-5.2",
+  "task_type": "code_generation",
+  "candidate_output": "```python\ndef add(a: int, b: int) -> int:\n    return a + b\n```",
+  "raw_response": "{\"adequacy_score\": 0.9, \"reasoning\": \"Valid, compilable Python function provided as a clean final artifact with no extraneous text, satisfying both acceptance criteria.\"}"
+}

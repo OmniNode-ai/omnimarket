@@ -1,5 +1,9 @@
 from pydantic import BaseModel, ConfigDict, Field
 
+from omnimarket.nodes.node_dod_sweep_orchestrator.services.gate_escape_audit import (
+    ModelGateEscapeFinding,
+)
+
 
 class ModelDodCheckResult(BaseModel):
     """Result for a single DoD check against one ticket."""
@@ -69,4 +73,16 @@ class ModelDodSweepOrchestratorResult(BaseModel):
     )
     batch_verified: int = Field(
         default=0, description="Tickets with all checks passing."
+    )
+    # Gate-escape audit fields (OMN-13854, mode == "gate_escape_audit")
+    gate_escape_findings: tuple[ModelGateEscapeFinding, ...] = Field(
+        default=(),
+        description="Per-ticket gate-escape audit verdicts when mode is gate_escape_audit.",
+    )
+    gate_escape_checked: int = Field(
+        default=0, description="Total Done tickets evaluated by the gate-escape audit."
+    )
+    gate_escape_flagged: int = Field(
+        default=0,
+        description="Tickets flagged as gate-escape candidates (wf_1628d9a5 signature).",
     )

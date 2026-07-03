@@ -1,0 +1,6 @@
+{
+  "captured_from": "real z.ai GLM call (cloud-glm backend, routing-contract resolved)",
+  "resolved_model_id": "glm-5.2",
+  "raw_response": "{\n  \"criteria_coverage\": 0.75,\n  \"contract_alignment\": 0.7,\n  \"anti_pattern_present\": 0.0,\n  \"overall_confidence\": 0.8,\n  \"rationale\": \"The diff fulfills the requirement for contract-driven topic lookup by using `self._contract.get_subscribe_topic`, avoiding hardcoding. However, while a `handle` method is present, its parameter is named `request` instead of `envelope`, and the diff does not explicitly show the class implementing the `ProtocolMessageHandler` protocol, resulting in partial coverage for the second criterion.\"\n}",
+  "task": "pr_semantic_grading"
+}

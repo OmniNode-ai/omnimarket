@@ -11,6 +11,18 @@
 # Tier evaluation order: local → cheap_cloud → claude
 # The handler iterates tiers top-to-bottom, stopping at the first accepted result.
 #
+# OMN-13215: every tier — INCLUDING the ceiling (claude) — resolves provider +
+# endpoint + model + api_key_ref per-tier from this contract deep-merged with the
+# overlay, and executes through the canonical HTTP inference path (Bifrost
+# complete-URL-from-contract) identical to the lower tiers. The ceiling tier model
+# maps to an HTTP frontier backend (default backend_id ``cloud-glm`` since
+# OMN-13667 — repointed off free-tier AI Studio Gemini that 503s on escalation;
+# OMN-13351 previously repointed off the dead Anthropic ``cloud-sonnet``); it is
+# swappable across gemini / glm / openrouter / claude purely via contract overlay
+# (repoint the model's backend_id, or override the backend's endpoint_url /
+# model_name / secret_ref) — no code change, no env var, no CLI shell-out. The
+# former shelled ``codex-cli`` / ``cli_agents`` tiers were REMOVED.
+#
 # Endpoint URLs are resolved from the repo bifrost contract deep-merged with
 # the user overlay at ~/.omninode/delegation/bifrost_overrides.yaml. The
 # backend_id field maps each model to a backend entry in the merged contract.
@@ -20,9 +32,16 @@
 #   - OMN-8029: Delegation pipeline — local→cheap-cloud→claude routing
 #   - OMN-10657: Endpoint resolution from bifrost contract, not env vars
 #   - OMN-10717: Default contract + endpoint overlay merge semantics
+#   - OMN-13215: Canonical, provider-swappable ceiling tier; remove shelled CLI
 tiers:
   - name: local
     cost_per_1k_tokens: 0.0
+    # OMN-13234: typed per-tier cost model. local is served on owned GPUs
+    # (.201/.200) — no marginal API cost. The dollar figure for a local call,
+    # when surfaced, comes from the pricing manifest's GPU compute_cost
+    # (electricity + amortization), not a per-token rate.
+    cost:
+      cost_type: free_local
     models:
       - id: Qwen3.6-35B-A3B
         backend_id: local-coder
@@ -69,26 +88,38 @@ tiers:
     max_retries: 2
   - name: cheap_cloud
     cost_per_1k_tokens: 0.002
+    # OMN-13234: metered tier — billed per token at a fixed rate (direct z.ai
+    # GLM key + Gemini Flash key), no monthly cap. Mirrors the legacy
+    # cost_per_1k_tokens above; the typed model is the authoritative source for
+    # the projection's actual-cost computation.
+    cost:
+      cost_type: metered
+      rate_per_1k_usd: 0.002
     models:
-      # OpenRouter GLM Flash — primary cheap-cloud code-gen backend (OMN-7980).
-      # Requires OPENROUTER_API_KEY. Falls back to glm-z-ai when key absent.
-      - id: openrouter-glm-flash
-        backend_id: openrouter-glm-flash
-        max_context_tokens: 131072
+      # OMN-13380: Direct z.ai GLM-5.2 — PRIMARY cheap-cloud code-gen backend.
+      # We hold a resolvable DIRECT GLM key (secret_ref llm.glm.api_key), so GLM
+      # routes direct to z.ai (backend cloud-glm) rather than through the
+      # OpenRouter aggregator. The former openrouter-glm-flash primary entry was
+      # REMOVED: OpenRouter is reserved for genuinely FREE models (the
+      # cheap_frontier Qwen3-Coder-480B free tier) — paying an aggregator markup
+      # for a model we can hit directly with our own key is a routing-cost bug,
+      # not a fallback strategy. model_name (glm-5.2) is resolved from the
+      # cloud-glm backend in bifrost_delegation.yaml (OMN-13343 verified id).
+      - id: glm-5.2
+        backend_id: cloud-glm
+        max_context_tokens: 128000
         use_for:
           - code_generation
+          # OMN-13541: code_review added so the cheap_cloud tier is a real
+          # escalation fallback for code_review (its escalation_policy.tier_order
+          # is [local, cheap_cloud]). Without it code_review could only route to
+          # the single local-coder backend — a single point of failure.
+          - code_review
           - reasoning
           - research
           - test
           - refactor
         fast_path_threshold_tokens: 8192
-      - id: glm-z-ai
-        backend_id: cloud-glm
-        max_context_tokens: 128000
-        use_for:
-          - code_generation
-          - reasoning
-          - research
       - id: gemini-flash
         backend_id: cloud-gemini-flash
         max_context_tokens: 1000000
@@ -123,6 +154,11 @@ tiers:
   # marginal API cost when the key is available.
   - name: cheap_frontier
     cost_per_1k_tokens: 0.0
+    # OMN-13234: free_local-class cost — the OpenRouter Qwen3-Coder-480B entry is
+    # the genuinely FREE tier (zero marginal API cost). Modeled as free_local so
+    # the projection records 0 actual cost without a per-token rate.
+    cost:
+      cost_type: free_local
     models:
       # Qwen3 Coder 480B via OpenRouter free tier — cheap frontier direct (OMN-12492)
       - id: openrouter-qwen3-coder-480b
@@ -138,12 +174,68 @@ tiers:
     eval_before_accept: true
     eval_model: qwen3.6-35b
     max_retries: 1
+  # Ceiling tier (OMN-13215). Executes through the canonical HTTP inference path
+  # like every lower tier — NO subprocess, NO shelled CLI. The model maps to an
+  # HTTP frontier backend. To swap the ceiling provider (gemini / glm / openrouter
+  # / claude) edit ONLY this contract/overlay: repoint backend_id to another HTTP
+  # backend, or override that backend's endpoint_url / model_name / secret_ref in
+  # bifrost_overrides.yaml. No code change required.
+  #
+  # OMN-13351: the ceiling backend was repointed from the dead Anthropic
+  # ``cloud-sonnet`` (secret_ref llm.anthropic.api_key, which resolves to None in
+  # every lane — this org has NO Anthropic key, Claude Code is OAuth) to the
+  # resolvable Gemini frontier backend ``cloud-gemini-pro`` (secret_ref
+  # llm.gemini.api_key, model gemini-2.5-flash). The 2026-06-19 stability-test
+  # escalation reprove proved the Anthropic key resolves to None and the ceiling
+  # terminated ``no_routable_backend_for_task`` on every escalation; a live
+  # key-resolution + 1-token model probe this ticket confirmed llm.gemini.api_key
+  # resolves and gemini-2.5-flash returns HTTP 200 (gemini-2.5-pro is quota-zero
+  # 429 on the only resolvable Gemini key, OMN-12890-class free-tier exhaustion).
+  #
+  # OMN-13667: ceiling repointed a second time — from free-tier AI Studio Gemini
+  # (cloud-gemini-pro, gemini-2.5-flash) which 503s on every escalation to
+  # GLM-5.2 z.ai direct (cloud-glm, secret_ref llm.glm.api_key) — the proven
+  # backend already used by the judge lane and the cheap_cloud tier. Cost model
+  # updated to metered (0.002 / 1k tokens) to match the billed z.ai direct key.
+  # max_retries raised 0 → 2 for resilience against transient z.ai errors.
+  # A fallback model entry (openrouter-qwen3-coder-480b, separate provider,
+  # genuinely free tier) is added so the ceiling is not a single point of failure.
+  #
+  # The tier slot is kept named ``claude`` because every task-class
+  # escalation_policy.tier_order and the handler cost_tier_map key on this literal
+  # tier name; ``claude`` is now a stable ceiling-slot identifier, NOT a provider
+  # claim.
   - name: claude
-    cost_per_1k_tokens: 0.015
+    cost_per_1k_tokens: 0.002
+    # OMN-13667: ceiling now routes to GLM-5.2 z.ai direct (cloud-glm,
+    # secret_ref llm.glm.api_key) — a billed direct key, same rate as cheap_cloud.
+    cost:
+      cost_type: metered
+      rate_per_1k_usd: 0.002
     models:
-      - id: claude-sonnet-4-6
-        backend_id: cloud-sonnet
-        max_context_tokens: 200000
+      # OMN-13667: primary ceiling model — GLM-5.2 z.ai direct, proven available
+      # (judge lane already runs on this backend). Replaces free-tier AI Studio
+      # Gemini (cloud-gemini-pro) which 503s on every escalation attempt.
+      - id: glm-5.2
+        backend_id: cloud-glm
+        max_context_tokens: 128000
+        use_for:
+          - escalation
+          - complex_reasoning
+          - agent_orchestration
+          - code_generation
+          - reasoning
+          - planning
+          - test
+          - document
+          - research
+      # OMN-13667: fallback ceiling entry — separate provider (OpenRouter /
+      # Qwen3 Coder 480B, genuinely free tier, consistent with the
+      # OpenRouter-only-for-free-models policy) so a z.ai outage does not
+      # hard-fail every escalation.
+      - id: openrouter-qwen3-coder-480b
+        backend_id: openrouter-qwen3-coder-480b
+        max_context_tokens: 262144
         use_for:
           - escalation
           - complex_reasoning
@@ -155,24 +247,4 @@ tiers:
           - document
           - research
     eval_before_accept: false
-    max_retries: 0
-  # CLI agent delegation tier (OMN-10137)
-  # Models dispatched via subprocess rather than HTTP API.
-  # Availability confirmed at dispatch time via shutil.which inside HandlerLlmCliSubprocess.
-  - name: cli_agents
-    cost_per_1k_tokens: 0.002
-    models:
-      - id: claude-cli
-        backend_id: cli-claude
-        max_context_tokens: 200000
-        use_for:
-          - agent_delegation
-          - complex_reasoning
-      - id: opencode-cli
-        backend_id: cli-opencode
-        max_context_tokens: 200000
-        use_for:
-          - agent_delegation
-          - code_generation
-    eval_before_accept: false
-    max_retries: 0
+    max_retries: 2

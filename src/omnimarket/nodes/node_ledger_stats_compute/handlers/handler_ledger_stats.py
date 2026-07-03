@@ -25,15 +25,19 @@ class HandlerLedgerStats:
     Pure compute — no external dependencies, no I/O.
     """
 
-    def handle(self, request: ModelLedgerStatsRequest) -> ModelLedgerStats:
+    def handle(self, payload: ModelLedgerStatsRequest) -> ModelLedgerStats:
         """Compute ledger statistics from a batch of chain records.
 
         Args:
-            request: Contains a tuple of ModelChainRecord instances.
+            payload: Contains a tuple of ModelChainRecord instances. Named
+                ``payload`` (OMN-13276) so the RuntimeLocal adapter's
+                single-parameter dispatch passes the validated request
+                positionally instead of keyword-fanning the model fields.
 
         Returns:
             ModelLedgerStats with aggregated counts and rates.
         """
+        request = payload
         total_chains = 0
         pass_count = 0
         fail_count = 0

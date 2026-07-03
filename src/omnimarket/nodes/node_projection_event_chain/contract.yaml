@@ -1,0 +1,83 @@
+---
+name: node_projection_event_chain
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: REDUCER_GENERIC
+node_version: {major: 1, minor: 0, patch: 0}
+input_model: ModelEventChainProjectionEvent
+description: >
+  Materializes the ordered per-event chain for a correlation_id from canonical
+  platform log-entry events. One durable row per (correlation_id, sequence)
+  ordered event, replacing the bespoke SEA event-chain JSON ledger. Given a
+  correlation_id, the ordered chain reconstructs deterministically from the
+  projection rows (read-side filter + sequence ordering).
+
+handler:
+  module: omnimarket.nodes.node_projection_event_chain.handlers.handler_projection_event_chain
+  class: HandlerProjectionEventChain
+
+handler_routing:
+  routing_strategy: payload_type_match
+  routes:
+    - input_model: omnimarket.nodes.node_projection_event_chain.models.model_event_chain_event.ModelEventChainProjectionEvent
+      output_model: omnimarket.nodes.node_projection_event_chain.models.model_event_chain_event.ModelEventChainRow
+  handlers:
+    - handler:
+        name: HandlerProjectionEventChain
+        module: omnimarket.nodes.node_projection_event_chain.handlers.handler_projection_event_chain
+      event_model: ModelEventChainProjectionEvent
+
+idempotency:
+  enabled: true
+  strategy: snapshot_upsert
+  hash_fields:
+    - correlation_id
+    - envelope_id
+
+event_bus:
+  consumer_group: local.omnibase_infra.node_projection_event_chain.consume.v1
+  subscribe_topics:
+    - onex.evt.platform.log-entry.v1
+  publish_topics:
+    - onex.evt.omnimarket.event-chain-applied.v1
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.event-chain-applied.v1
+
+# db_io.db_tables is the WRITE-side declaration the runtime auto-wiring
+# materialization path requires: omnibase_infra.runtime.auto_wiring.handler_wiring
+# only injects the projection DB adapter (_make_projection_dispatch_callback) for
+# contracts where _contract_declares_db_io is true (db_io.db_tables present).
+# Without this block the consumer subscribes and advances offsets but handle() is
+# never invoked with a _db adapter, so the event_chain table never materializes
+# (OMN-13083 root cause). The projection_api block below is read-side only (powers
+# GET /projection/...).
+db_io:
+  db_tables:
+    - name: event_chain
+      migration: "0001_create_event_chain.sql"
+      access: write
+      database: omnidash_analytics
+      role: event_chain
+
+projection_api:
+  expose: true
+  topic: "onex.snapshot.projection.event_chain.v1" # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
+  table: "event_chain"
+  schema: "public"
+  columns:
+    - "correlation_id"
+    - "sequence"
+    - "topic"
+    - "source_node"
+    - "envelope_id"
+    - "causation_id"
+    - "captured_at"
+    - "payload"
+  json_columns:
+    - "payload"
+  order_by: "sequence ASC"
+  freshness_column: "captured_at"
+  limit: 1000
+
+metadata:
+  transport_type: kafka

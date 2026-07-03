@@ -1,0 +1,87 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# Market Contract-State-Coverage Gate (OMN-13781)
+#
+# Extracts each node's declared state set from contract.yaml (FSM
+# states/transitions for orchestrators; output classes/event types for
+# compute/effect/reducer) and diffs it against the states asserted by that
+# node's tests. FAILs when a directly-touched node has an uncovered
+# declared state — see scripts/validate_state_coverage.py for the full
+# extraction/coverage/baseline rules.
+#
+# Runs on every PR/merge_group event with no paths filter (mirrors
+# node-drift-gate's OMN-12706 fix): a required status check must report on
+# every PR, including ones that touch neither src/omnimarket/nodes/** nor
+# tests/**, otherwise it stays permanently "expected" and blocks the queue.
+# `--check-changed` naturally short-circuits to a fast PASS when no node
+# directory was touched by the diff.
+
+name: state-coverage-gate
+
+on:
+  pull_request:
+    branches: [main, dev]
+  merge_group:
+  workflow_dispatch:
+
+concurrency:
+  group: state-coverage-gate-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  state-coverage-gate:
+    name: state-coverage-gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Clone omnibase_core
+        run: git clone --depth=1 https://github.com/OmniNode-ai/omnibase_core.git ../omnibase_core
+
+      - name: Clone omnibase_compat
+        run: git clone --depth=1 https://github.com/OmniNode-ai/omnibase_compat.git ../omnibase_compat
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+
+      - name: Set up Python 3.12
+        run: uv python install 3.12
+
+      - name: Install dependencies
+        run: uv sync --locked --all-extras
+
+      - name: Resolve base ref
+        id: base_ref
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PR_BASE_REF: ${{ github.base_ref }}
+          PR_HEAD_REF: ${{ github.head_ref }}
+          MERGE_GROUP_BASE_REF: ${{ github.event.merge_group.base_ref }}
+        run: |
+          if [[ "$EVENT_NAME" == "pull_request" && -n "$PR_BASE_REF" ]]; then
+            BASE_REF="$PR_BASE_REF"
+            if [[ "$BASE_REF" == "main" && "$PR_HEAD_REF" == promotion/*-dev-to-main ]]; then
+              BASE_REF="dev"
+            fi
+          elif [[ "$EVENT_NAME" == "merge_group" && -n "$MERGE_GROUP_BASE_REF" ]]; then
+            BASE_REF="${MERGE_GROUP_BASE_REF#refs/heads/}"
+          else
+            BASE_REF="dev"
+          fi
+          echo "base_ref=$BASE_REF" >> "$GITHUB_OUTPUT"
+          git fetch origin "$BASE_REF" --depth=1
+
+      - name: Run contract-state-coverage gate (changed nodes, strict)
+        env:
+          BASE_REF: ${{ steps.base_ref.outputs.base_ref }}
+        run: |
+          uv run python scripts/validate_state_coverage.py \
+            --check-changed "origin/$BASE_REF" --strict

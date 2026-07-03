@@ -333,14 +333,7 @@ def _create_safe_error_output(
             return ModelQualityScoringOutput(
                 success=False,
                 quality_score=0.0,
-                dimensions={
-                    "complexity": 0.0,
-                    "maintainability": 0.0,
-                    "documentation": 0.0,
-                    "temporal_relevance": 0.0,
-                    "patterns": 0.0,
-                    "architectural": 0.0,
-                },
+                dimensions=create_error_dimensions(),
                 onex_compliant=False,
                 recommendations=[],
                 metadata=ModelQualityScoringMetadata(
@@ -355,14 +348,7 @@ def _create_safe_error_output(
             return ModelQualityScoringOutput(
                 success=False,
                 quality_score=0.0,
-                dimensions={
-                    "complexity": 0.0,
-                    "maintainability": 0.0,
-                    "documentation": 0.0,
-                    "temporal_relevance": 0.0,
-                    "patterns": 0.0,
-                    "architectural": 0.0,
-                },
+                dimensions=create_error_dimensions(),
                 onex_compliant=False,
                 recommendations=[],
                 metadata=ModelQualityScoringMetadata(

@@ -1,0 +1,23 @@
+name: node_generated_node_publish_effect
+version: "1.0.0"
+description: "SEA Phase 0.2 publish effect -- commits a generated node package to a worktree branch and opens a PR via gh, emitting the PR URL on the bus"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_generated_node_publish_effect: "omnimarket.nodes.node_generated_node_publish_effect"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: true
+  requires_repo: true
+  requires_secrets: true
+  requires_docker: false
+  side_effect_class: external_io
+dependencies:
+  - "omnibase_core>=0.39.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["effect", "sea", "generation", "publish", "github", "pr", "auto-pr"]
+pack: "workflow"
+display_name: "Generated Node Publish Effect"
+node_role: "effect"

@@ -423,7 +423,7 @@ def _do_stop(args: argparse.Namespace) -> int:
 def _do_health(args: argparse.Namespace) -> int:
     import json as _json
 
-    from omnimarket.nodes.node_emit_daemon.client import EmitClient
+    from omnimarket.events.emit_client import EmitClient
 
     socket_path = _resolve_socket_path(args.socket_path)
     client = EmitClient(socket_path=socket_path, timeout=2.0)

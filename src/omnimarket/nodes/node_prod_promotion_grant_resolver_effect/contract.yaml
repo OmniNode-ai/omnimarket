@@ -1,0 +1,113 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Prod Promotion Grant Resolver EFFECT
+#
+# OMN-13439 / OMN-13418 Phase 2b: the orchestrator fact-gathering EFFECT that
+# resolves the prod promotion grant from the durable trust anchor BEFORE the prod
+# gate evaluates. Reads grants/prod_promotion_grants.yaml from
+# onex_change_control@main (anti-self-approval, OMN-10971 — mirrors
+# reject-deploy-gate-skip.yml's ?ref=main fetch), parses the YAML directly (ZERO
+# Python import on onex_change_control), and emits the resolved grant (or None —
+# fail closed) plus durable audit provenance.
+---
+name: node_prod_promotion_grant_resolver_effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: effect
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  EFFECT: resolves the prod promotion grant from the durable governance anchor.
+  Fetches grants/prod_promotion_grants.yaml from onex_change_control@main (NOT a
+  PR branch, so a request cannot author the authorization that approves it),
+  keyed by (promotion_batch_id, image_digest, lane=prod), and parses the YAML
+  directly without importing anything from onex_change_control. A present,
+  future-expiry, matching, non-self entry materializes ModelProdPromotionGrant; a
+  consumed entry resolves to ABSENT (no replay); an expired entry to EXPIRED; a
+  self-granted entry to SELF_GRANTED; no match to ABSENT — every non-RESOLVED
+  outcome leaves the grant None so the prod gate fails closed. Emits the resolved
+  fact plus durable audit provenance (source commit SHA, grant file path,
+  grant_id, file sha256, CODEOWNERS-match). The GitHub token is resolved at the
+  effect boundary from the contract-declared api_key_ref. No subprocess shell-out.
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: "redeploy.prod_grant.resolve"
+      handler:
+        name: HandlerProdPromotionGrantResolver
+        module: omnimarket.nodes.node_prod_promotion_grant_resolver_effect.handlers.handler_prod_promotion_grant_resolver
+      description: "Resolve the prod promotion grant from onex_change_control@main."
+      input_model:
+        name: ModelProdPromotionGrantResolveCommand
+        module: omnimarket.events.runtime_deployment
+        description: "Request key + requester + deterministic evaluated_at."
+
+handler:
+  module: omnimarket.nodes.node_prod_promotion_grant_resolver_effect.handlers.handler_prod_promotion_grant_resolver
+  class: HandlerProdPromotionGrantResolver
+  input_model: omnimarket.events.runtime_deployment.ModelProdPromotionGrantResolveCommand
+
+input_model:
+  name: ModelProdPromotionGrantResolveCommand
+  module: omnimarket.events.runtime_deployment
+  description: "Request key (batch, digest, lane=prod) + requester + evaluated_at."
+output_model:
+  name: ModelProdPromotionGrantResolvedEvent
+  module: omnimarket.events.runtime_deployment
+  description: "Resolved grant (or None) + typed resolution + audit provenance."
+
+descriptor:
+  node_archetype: effect
+  purity: impure
+  idempotent: true
+  timeout_ms: 60000
+  runtime_profiles:
+    - effects
+
+secrets:
+  # GitHub token is contract-declared so the handler reads the ref name from
+  # here — not a bare source literal. Value is resolved at the effect boundary
+  # via the canonical secret-store resolver.
+  GITHUB_TOKEN:
+    description: "GitHub token for reading the grant file from onex_change_control@main."
+    required: true
+
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.prod-promotion-grant-resolve.v1
+  terminal_events:
+    success: onex.evt.omnimarket.prod-promotion-grant-resolved.v1
+    failure: onex.evt.omnimarket.prod-promotion-grant-resolve-failed.v1
+
+terminal_event: onex.evt.omnimarket.prod-promotion-grant-resolved.v1
+
+event_bus:
+  consumer_group: omnimarket.prod_promotion_grant_resolver_effect.consume.v1
+  subscribe_topics:
+    - onex.cmd.omnimarket.prod-promotion-grant-resolve.v1
+  publish_topics:
+    - onex.evt.omnimarket.prod-promotion-grant-resolved.v1
+    - onex.evt.omnimarket.prod-promotion-grant-resolve-failed.v1
+  dlq_topics:
+    - onex.dlq.omnimarket.prod-promotion-grant-resolve.v1
+
+dependencies:
+  packages:
+    - "omnibase_core>=0.39.0"
+    - "pyyaml>=6.0"
+
+metadata:
+  transport_type: kafka
+  description: "Prod-promotion grant resolver effect node"
+  author: "OmniNode Platform Team"
+  tags:
+    - "effect"
+    - "deploy"
+    - "promotion-gate"
+    - "prod"
+    - "grant-resolver"
+  related_tickets:
+    - "OMN-13439"
+    - "OMN-13418"
+    - "OMN-13436"
+    - "OMN-13437"
+    - "OMN-10971"

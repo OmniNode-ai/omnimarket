@@ -18,6 +18,9 @@ from typing import Any, Protocol
 
 import yaml
 
+from omnimarket.nodes.node_pipeline_audit_orchestrator.constants import (
+    DLQ_TOPIC_PREFIX,
+)
 from omnimarket.nodes.node_pipeline_audit_orchestrator.models.model_pipeline_audit_request import (
     EnumAuditType,
     ModelPipelineAuditRequest,
@@ -69,6 +72,25 @@ class ProtocolPipelineAuditTicketAdapter(Protocol):
     def create_ticket(self, payload: dict[str, Any]) -> str: ...
 
 
+class LocalTicketStore:
+    """Local default ticket store — the contract default when no remote
+    (Linear) ticket adapter is injected.
+
+    The local runtime is always present; remote ticket creation is an override.
+    Absent the override (the default local bus), remediation tickets are
+    recorded locally and assigned deterministic ``local-ticket-NNNN`` ids so the
+    orchestrator runs to completion and the result honestly reports that tickets
+    were recorded locally, not created in Linear.
+    """
+
+    def __init__(self) -> None:
+        self.payloads: list[dict[str, Any]] = []
+
+    def create_ticket(self, payload: dict[str, Any]) -> str:
+        self.payloads.append(payload)
+        return f"local-ticket-{len(self.payloads):04d}"
+
+
 class HandlerPipelineAuditOrchestrator:
     """Inventory pipeline repos and emit a severity-ordered gap register."""
 
@@ -76,7 +98,9 @@ class HandlerPipelineAuditOrchestrator:
         self,
         ticket_adapter: ProtocolPipelineAuditTicketAdapter | None = None,
     ) -> None:
-        self._ticket_adapter = ticket_adapter
+        self._ticket_adapter: ProtocolPipelineAuditTicketAdapter = (
+            ticket_adapter if ticket_adapter is not None else LocalTicketStore()
+        )
 
     def handle(self, request: ModelPipelineAuditRequest) -> ModelPipelineAuditResult:
         repo_paths = _resolve_repos(request)
@@ -96,10 +120,6 @@ class HandlerPipelineAuditOrchestrator:
 
         tickets_created: list[str] = []
         if findings and not request.dry_run and not request.skip_ticket_creation:
-            if self._ticket_adapter is None:
-                raise RuntimeError(
-                    "ticket adapter required when skip_ticket_creation is false"
-                )
             tickets_created = [
                 self._ticket_adapter.create_ticket(_ticket_payload(finding))
                 for finding in findings
@@ -330,7 +350,7 @@ def _topic_findings(
     }
     findings: list[ModelGapFinding] = []
     for topic, repo in sorted(produced.items()):
-        if topic not in consumed and not topic.startswith("onex.dlq."):
+        if topic not in consumed and not topic.startswith(DLQ_TOPIC_PREFIX):
             findings.append(
                 _finding(
                     EnumFindingSeverity.HIGH,

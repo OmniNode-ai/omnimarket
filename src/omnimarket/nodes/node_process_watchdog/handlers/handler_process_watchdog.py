@@ -253,6 +253,7 @@ class HandlerProcessWatchdog:
     def handle(
         self,
         command: ModelWatchdogStartCommand,
+        *,
         targets: list[CheckTarget] | None = None,
     ) -> ModelWatchdogCompletedEvent:
         """Typed RuntimeLocal handler protocol entry point.

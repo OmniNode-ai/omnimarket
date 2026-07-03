@@ -3,18 +3,32 @@
 """Skill dispatch handler for node_skill_overseer_verify_orchestrator.
 
 Dispatches overseer_verify skill invocations to the polymorphic agent (Polly)
-via the injected task_dispatcher, then parses the structured RESULT: block.
+via a task dispatcher, then parses the structured RESULT: block.
+
+Container-driven pattern (OMN-13603): the handler is a class whose constructor
+takes the injectable ``container`` so the runtime resolver constructs it at boot
+via known-param injection — replacing the previous function-form handler
+``handle_skill_requested(request, *, task_dispatcher)`` whose required params the
+resolver could not satisfy (it quarantined at boot). The polymorphic-agent
+``TaskDispatcher`` is resolved at the dispatch boundary inside ``handle()``. Until
+a real bus-backed dispatcher is registered, ``handle()`` returns a structured
+FAILED ``ModelSkillResult`` rather than crashing — mirroring the sibling
+``node_skill_dispatch_engine_orchestrator`` scaffold semantics.
 """
 
 from __future__ import annotations
 
 import logging
 from collections.abc import Awaitable, Callable
+from typing import TYPE_CHECKING
 
 from ..models.model_skill_request import ModelSkillRequest
 from ..models.model_skill_result import ModelSkillResult, SkillResultStatus
 
-__all__ = ["handle_skill_requested"]
+if TYPE_CHECKING:
+    from omnibase_core.container import ModelONEXContainer
+
+__all__ = ["HandlerSkillRequested", "TaskDispatcher"]
 
 logger = logging.getLogger(__name__)
 
@@ -70,16 +84,10 @@ def _parse_result_block(output: str) -> tuple[SkillResultStatus, str | None]:
     return status, error
 
 
-async def handle_skill_requested(
-    request: ModelSkillRequest,
-    *,
-    task_dispatcher: TaskDispatcher,
-) -> ModelSkillResult:
-    """Dispatch an overseer_verify skill request to Polly and return a structured result."""
+def _build_dispatch_prompt(request: ModelSkillRequest) -> str:
     args_str = _build_args_string(request.args)
     args_clause = f" with args: {args_str}" if args_str else ""
-
-    prompt = (
+    return (
         f"Execute the skill defined at {request.skill_path!r}{args_clause}.\n"
         f"Read the skill definition from that path before executing.\n"
         f"After execution, you MUST include a structured RESULT: block in your "
@@ -89,37 +97,81 @@ async def handle_skill_requested(
         f"error: <error detail or leave blank>\n"
     )
 
-    logger.debug(
-        "Dispatching overseer_verify skill %r to Polly (skill_path=%r)",
-        request.skill_name,
-        request.skill_path,
-    )
 
-    try:
-        raw_output: str = await task_dispatcher(prompt)
-    except Exception:
-        logger.exception(
-            "task_dispatcher raised for skill %r",
+class HandlerSkillRequested:
+    """Dispatches the overseer_verify skill to the polymorphic agent.
+
+    The task dispatcher is resolved at the dispatch boundary, not at
+    construction — so the boot resolver can build this handler from the
+    injectable ``container`` alone. A real bus-backed dispatcher may be provided
+    explicitly (tests / future wiring); when none is available the handler
+    returns a structured FAILED result instead of crashing.
+    """
+
+    def __init__(
+        self,
+        container: ModelONEXContainer,
+        *,
+        task_dispatcher: TaskDispatcher | None = None,
+    ) -> None:
+        self._container = container
+        self._task_dispatcher = task_dispatcher
+
+    def _resolve_dispatcher(self) -> TaskDispatcher | None:
+        """Return the task dispatcher, if one is available.
+
+        Prefers an explicitly-provided dispatcher (tests / future wiring). No
+        bus-backed dispatcher provider is registered yet, so this returns None
+        otherwise — handled as a structured FAILED result by ``handle()``.
+        """
+        return self._task_dispatcher
+
+    async def handle(self, request: ModelSkillRequest) -> ModelSkillResult:
+        """Dispatch an overseer_verify skill request and return a structured result."""
+        dispatcher = self._resolve_dispatcher()
+        if dispatcher is None:
+            logger.warning(
+                "No task dispatcher available for skill %r; returning FAILED",
+                request.skill_name,
+            )
+            return ModelSkillResult(
+                skill_name=request.skill_name,
+                status=SkillResultStatus.FAILED,
+                error="no task dispatcher available (overseer_verify not yet wired)",
+            )
+
+        prompt = _build_dispatch_prompt(request)
+        logger.debug(
+            "Dispatching overseer_verify skill %r to Polly (skill_path=%r)",
             request.skill_name,
+            request.skill_path,
         )
+
+        try:
+            raw_output: str = await dispatcher(prompt)
+        except Exception:
+            logger.exception(
+                "task_dispatcher raised for skill %r",
+                request.skill_name,
+            )
+            return ModelSkillResult(
+                skill_name=request.skill_name,
+                status=SkillResultStatus.FAILED,
+                error="task_dispatcher raised an exception",
+            )
+
+        output_str: str = str(raw_output) if raw_output is not None else ""
+        status, error = _parse_result_block(output_str)
+
+        logger.debug(
+            "Skill %r completed with status=%s",
+            request.skill_name,
+            status,
+        )
+
         return ModelSkillResult(
             skill_name=request.skill_name,
-            status=SkillResultStatus.FAILED,
-            error="task_dispatcher raised an exception",
+            status=status,
+            output=output_str,
+            error=error,
         )
-
-    output_str: str = str(raw_output) if raw_output is not None else ""
-    status, error = _parse_result_block(output_str)
-
-    logger.debug(
-        "Skill %r completed with status=%s",
-        request.skill_name,
-        status,
-    )
-
-    return ModelSkillResult(
-        skill_name=request.skill_name,
-        status=status,
-        output=output_str,
-        error=error,
-    )

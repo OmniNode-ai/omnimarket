@@ -18,6 +18,9 @@ import pytest
 from omnimarket.nodes.node_auto_merge_effect.handlers.handler_auto_merge_effect import (
     HandlerAutoMergeEffect,
 )
+from omnimarket.nodes.node_auto_merge_effect.models.model_auto_merge_input import (
+    ModelAutoMergeInput,
+)
 from omnimarket.nodes.node_auto_merge_effect.models.model_auto_merge_result import (
     ModelAutoMergeResult,
 )
@@ -95,9 +98,11 @@ async def test_happy_path_merges_and_returns_sha() -> None:
     _make_no_sleep(handler)
 
     result = await handler.handle(
-        correlation_id=correlation_id,
-        pr_number=PR_NUM,
-        repo=REPO,
+        ModelAutoMergeInput(
+            correlation_id=correlation_id,
+            pr_number=PR_NUM,
+            repo=REPO,
+        )
     )
 
     assert isinstance(result, ModelAutoMergeResult)
@@ -131,9 +136,11 @@ async def test_happy_path_closes_ticket_when_branch_has_id() -> None:
     _make_no_sleep(handler)
 
     result = await handler.handle(
-        correlation_id=correlation_id,
-        pr_number=PR_NUM,
-        repo=REPO,
+        ModelAutoMergeInput(
+            correlation_id=correlation_id,
+            pr_number=PR_NUM,
+            repo=REPO,
+        )
     )
 
     assert result.merged is True
@@ -164,10 +171,12 @@ async def test_explicit_ticket_id_takes_priority() -> None:
     _make_no_sleep(handler)
 
     result = await handler.handle(
-        correlation_id=correlation_id,
-        pr_number=PR_NUM,
-        repo=REPO,
-        ticket_id="OMN-1234",
+        ModelAutoMergeInput(
+            correlation_id=correlation_id,
+            pr_number=PR_NUM,
+            repo=REPO,
+            ticket_id="OMN-1234",
+        )
     )
 
     assert result.merged is True
@@ -191,9 +200,11 @@ async def test_dirty_pr_blocks_immediately() -> None:
     _make_no_sleep(handler)
 
     result = await handler.handle(
-        correlation_id=correlation_id,
-        pr_number=PR_NUM,
-        repo=REPO,
+        ModelAutoMergeInput(
+            correlation_id=correlation_id,
+            pr_number=PR_NUM,
+            repo=REPO,
+        )
     )
 
     assert result.merged is False
@@ -218,9 +229,11 @@ async def test_changes_requested_review_blocks_merge() -> None:
     _make_no_sleep(handler)
 
     result = await handler.handle(
-        correlation_id=correlation_id,
-        pr_number=PR_NUM,
-        repo=REPO,
+        ModelAutoMergeInput(
+            correlation_id=correlation_id,
+            pr_number=PR_NUM,
+            repo=REPO,
+        )
     )
 
     assert result.merged is False
@@ -238,9 +251,11 @@ async def test_gh_pr_view_failure_returns_blocked() -> None:
     _make_no_sleep(handler)
 
     result = await handler.handle(
-        correlation_id=correlation_id,
-        pr_number=PR_NUM,
-        repo=REPO,
+        ModelAutoMergeInput(
+            correlation_id=correlation_id,
+            pr_number=PR_NUM,
+            repo=REPO,
+        )
     )
 
     assert result.merged is False
@@ -261,10 +276,12 @@ async def test_invalid_strategy_blocks_merge() -> None:
     _make_no_sleep(handler)
 
     result = await handler.handle(
-        correlation_id=correlation_id,
-        pr_number=PR_NUM,
-        repo=REPO,
-        strategy="fast-forward",
+        ModelAutoMergeInput(
+            correlation_id=correlation_id,
+            pr_number=PR_NUM,
+            repo=REPO,
+            strategy="fast-forward",
+        )
     )
 
     assert result.merged is False
@@ -284,9 +301,11 @@ async def test_merge_command_failure_returns_blocked() -> None:
     _make_no_sleep(handler)
 
     result = await handler.handle(
-        correlation_id=correlation_id,
-        pr_number=PR_NUM,
-        repo=REPO,
+        ModelAutoMergeInput(
+            correlation_id=correlation_id,
+            pr_number=PR_NUM,
+            repo=REPO,
+        )
     )
 
     assert result.merged is False
@@ -313,10 +332,12 @@ async def test_ticket_close_failure_is_non_blocking() -> None:
     _make_no_sleep(handler)
 
     result = await handler.handle(
-        correlation_id=correlation_id,
-        pr_number=PR_NUM,
-        repo=REPO,
-        ticket_id="OMN-9999",
+        ModelAutoMergeInput(
+            correlation_id=correlation_id,
+            pr_number=PR_NUM,
+            repo=REPO,
+            ticket_id="OMN-9999",
+        )
     )
 
     assert result.merged is True

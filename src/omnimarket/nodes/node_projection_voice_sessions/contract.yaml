@@ -1,0 +1,93 @@
+---
+name: node_projection_voice_sessions
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: reducer
+node_version: {major: 1, minor: 0, patch: 0}
+input_model: omnimarket.nodes.node_projection_voice_sessions.handlers.handler_projection_voice_sessions.ModelVoiceSessionEvent
+description: >
+  Reducer node projecting voice session events into the voice_sessions table.
+  Consumes voice-session-started, voice-session-turn, and voice-session-ended
+  events and UPSERTs into a queryable snapshot keyed on session_id.
+
+handler:
+  module: omnimarket.nodes.node_projection_voice_sessions.handlers.handler_projection_voice_sessions
+  class: HandlerProjectionVoiceSessions
+
+handler_routing:
+  routing_strategy: topic_match
+  handlers:
+    - topic: onex.evt.omniclaude.voice-session-started.v1
+      operation: voice_session_started
+      event_model:
+        name: ModelVoiceSessionEvent
+        module: omnimarket.nodes.node_projection_voice_sessions.handlers.handler_projection_voice_sessions
+      handler:
+        name: HandlerProjectionVoiceSessions
+        module: omnimarket.nodes.node_projection_voice_sessions.handlers.handler_projection_voice_sessions
+    - topic: onex.evt.omniclaude.voice-session-turn.v1
+      operation: voice_session_turn
+      event_model:
+        name: ModelVoiceSessionEvent
+        module: omnimarket.nodes.node_projection_voice_sessions.handlers.handler_projection_voice_sessions
+      handler:
+        name: HandlerProjectionVoiceSessions
+        module: omnimarket.nodes.node_projection_voice_sessions.handlers.handler_projection_voice_sessions
+    - topic: onex.evt.omniclaude.voice-session-ended.v1
+      operation: voice_session_ended
+      event_model:
+        name: ModelVoiceSessionEvent
+        module: omnimarket.nodes.node_projection_voice_sessions.handlers.handler_projection_voice_sessions
+      handler:
+        name: HandlerProjectionVoiceSessions
+        module: omnimarket.nodes.node_projection_voice_sessions.handlers.handler_projection_voice_sessions
+
+descriptor:
+  node_archetype: reducer
+  purity: effectful
+  idempotent: true
+  timeout_ms: 30000
+  runtime_profiles: [effects]
+
+terminal_event: onex.evt.omnimarket.projection-voice-sessions-applied.v1
+
+db_io:
+  db_tables:
+    - name: voice_sessions
+      migration: "0001_create_voice_sessions.sql"
+      access: write
+      database: omnidash_analytics
+      role: voice_sessions
+
+event_bus:
+  subscribe_topics:
+    - onex.evt.omniclaude.voice-session-started.v1
+    - onex.evt.omniclaude.voice-session-turn.v1
+    - onex.evt.omniclaude.voice-session-ended.v1
+  publish_topics:
+    - onex.evt.omnimarket.projection-voice-sessions-applied.v1
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.projection-voice-sessions-applied.v1
+
+projection_api:
+  expose: true
+  topic: "onex.snapshot.projection.voice.sessions.v1" # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
+  table: "voice_sessions"
+  schema: "public"
+  columns:
+    - "session_id"
+    - "started_at"
+    - "ended_at"
+    - "is_active"
+    - "total_turns"
+    - "total_duration_ms"
+    - "agent_name"
+    - "transcript_turns"
+  json_columns:
+    - "transcript_turns"
+  order_by: "started_at DESC"
+  freshness_column: "updated_at"
+  limit: 100
+
+metadata:
+  transport_type: kafka

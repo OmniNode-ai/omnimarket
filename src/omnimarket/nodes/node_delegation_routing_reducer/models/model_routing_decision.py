@@ -28,6 +28,8 @@ class ModelRoutingDecision(BaseModel):
         extra_headers: Optional extra HTTP headers for the backend (e.g. OpenRouter HTTP-Referer).
         cost_tier: Cost classification (e.g., "low", "medium", "high").
         max_context_tokens: Maximum context window for the selected model.
+        max_tokens: Contract-declared per-backend output-token ceiling carried
+            from the selected bifrost backend; posted on the inference request.
         system_prompt: System prompt tailored to the task type.
         rationale: Human-readable explanation for the routing decision.
         dod_deterministic: Deterministic quality checks from the task-class contract.
@@ -77,6 +79,21 @@ class ModelRoutingDecision(BaseModel):
         ge=100,
         le=600000,
         description="Per-backend inference timeout in milliseconds.",
+    )
+    max_tokens: int = Field(
+        ...,
+        ge=1,
+        description=(
+            "OMN-13345: the contract-declared per-backend output-token ceiling "
+            "(e.g. 65536 for cloud-glm) resolved from the bifrost backend and "
+            "carried onto the routing decision so the orchestrator can post it on "
+            "the wire. Without it the orchestrator threads the delegation "
+            "request's max_tokens, which is hard-capped at the 8192 "
+            "DELEGATION_MAX_TOKENS_HARD_LIMIT default — cloud GLM then truncates "
+            "(finish_reason=length) and the quality gate scores low. Fail-closed "
+            ">= 1; never silently defaulted (mirrors the OMN-13161 delegation "
+            "backend resolution and the OMN-13342 generation fix)."
+        ),
     )
     system_prompt: str = Field(
         ...,

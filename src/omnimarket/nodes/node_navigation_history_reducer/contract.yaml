@@ -85,3 +85,42 @@ config:
   LLM_EMBEDDING_URL:
     description: "Embedding model endpoint URL."
     required: false
+
+# OMN-13734: machine-readable FSM (transcribed from authoritative handler/model logic).
+state_machine:
+  state_machine_name: navigation_history_fsm
+  initial_state: idle
+  states:
+    - state_name: idle
+      description: "No navigation history folded yet."
+      required_data: []
+    - state_name: reduced
+      description: "Navigation history projection materialized."
+      required_data: []
+    - state_name: failed
+      description: "Navigation history reduction failed (terminal)."
+      is_terminal: true
+      required_data: []
+  transitions:
+    - from_state: idle
+      to_state: reduced
+      trigger: navigation_session_completed
+      description: "Session completed; fold into history."
+    - from_state: reduced
+      to_state: reduced
+      trigger: navigation_session_completed
+      description: "Fold another completed session."
+    - from_state: reduced
+      to_state: reduced
+      trigger: navigation_history_reduced
+      description: "Re-observe own projection (idempotent)."
+    - from_state: idle
+      to_state: failed
+      trigger: navigation_history_reduce_failed
+      description: "Reduction failed before any projection."
+    - from_state: reduced
+      to_state: failed
+      trigger: navigation_history_reduce_failed
+      description: "Reduction failed."
+  terminal_states: [failed]
+  persistence_enabled: false

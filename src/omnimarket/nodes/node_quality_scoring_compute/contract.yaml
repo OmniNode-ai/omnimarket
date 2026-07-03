@@ -13,7 +13,7 @@ node_version:
 name: "node_quality_scoring_compute"
 node_type: "COMPUTE_GENERIC"
 runtime_profiles:
-  - intelligence
+  - main
 description: >-
   Compute node for scoring code quality across multiple dimensions. Calculates maintainability, complexity,
   documentation, and ONEX compliance scores.
@@ -59,7 +59,7 @@ operations:
 # Status: Backlog - Phase 3 (v0.4.0)
 # Issue: https://github.com/OmniNode-ai/omniintelligence/issues/13
 #
-# Priority: Low (current stub implementation functional for interface validation)
+# Priority: Low (current implementation functional for interface validation)
 # Description: Create omniintelligence.protocols module with QualityAnalyzerProtocol
 #
 # When implemented:

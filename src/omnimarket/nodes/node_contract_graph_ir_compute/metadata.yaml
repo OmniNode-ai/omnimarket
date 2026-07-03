@@ -1,0 +1,19 @@
+name: node_contract_graph_ir_compute
+version: "1.0.0"
+description: "Read-only GET surface returning the deterministic Contract Graph IR + hash manifest"
+omnibase_core_compat: ">=0.45.0,<0.46.0"
+entry_points:
+  onex.nodes:
+    node_contract_graph_ir_compute: "omnimarket.nodes.node_contract_graph_ir_compute"
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+dependencies:
+  - "omnibase_core>=0.45.0,<0.46.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["compute", "contract-graph", "ir", "read-only", "deterministic", "hash-manifest"]
+pack: "contract"
+display_name: "Contract Graph IR Compute"
+node_role: "compute"
