@@ -188,6 +188,32 @@ repos:
   # Requires omnibase_infra at $OMNIBASE_INFRA_PATH or ../omnibase_infra.
   - repo: local
     hooks:
+      # OMN-13501/OMN-13502 (WS-F): no-faked-boundary gate — REPORT-ONLY.
+      # A Fake/Stub/Mock class subclassing one of the platform's own inference/
+      # routing/dispatch boundary protocols, a patch("httpx.Client") egress seam,
+      # or a MagicMock assigned to a boundary inside a real-dispatch test is a FAKE
+      # of our architecture (feedback_real_dispatch_path_tests). Detector is the
+      # pure COMPUTE HandlerNoFakedBoundaryCompute over the in-memory bus, shipped
+      # in omnibase_core 0.46.4 (PR #1377 FP-fix + #1379 gate). Canonical recorded-
+      # replay seam (patch("httpx.Client", return_value=<RecordedReplayInference
+      # Transport>)) is exempt. --report-only until omnimarket's ~50 real
+      # boundary fakes (OMN-13501) are burned down with REAL fixes; the blocking-
+      # flip PR also file-level-exempts the detector's own acceptance corpus
+      # (onex-allow-file-faked-boundary) and drops --report-only (mirrors the core
+      # gate). Suppress an approved fixture line with: # onex-allow-faked-boundary
+      - id: check-no-faked-boundary
+        name: No faked inference/routing/dispatch boundary — COMPUTE/bus, REPORT-ONLY (OMN-13501)
+        entry: uv run python -m omnibase_core.validation.no_faked_boundary.runtime_no_faked_boundary --report-only
+        language: system
+        types: [python]
+        exclude: >-
+          (?x)^(
+            archived/|
+            archive/
+          )
+        pass_filenames: true
+        stages: [pre-commit]
+
       # OMN-10580: Leaked-literals gate — blocks hardcoded LAN IPs, personal
       # paths, private model IDs from being committed. Add an inline annotation
       # to exempt a legitimate occurrence (see docs/leaked-literals-governance.md).
