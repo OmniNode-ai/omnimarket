@@ -51,6 +51,13 @@ _DEFAULT_CONTRACT_ROOTS: list[str] = [
 # ``DurableEvidenceGate.DEFAULT_OCC_GOVERNANCE_REF``.
 _DEFAULT_OCC_GOVERNANCE_REF = "origin/dev"
 
+# Wall-clock ceiling for the OCC git worktree/fetch subprocesses. A shared OCC
+# clone can hit lock contention under concurrent collect() calls, or a fetch can
+# stall on the network; without a timeout a stuck git op would block the whole
+# collect() with no recovery (CodeRabbit — Stability). Kept generous because a
+# fetch of the OCC repo may transfer real objects.
+_GIT_OP_TIMEOUT_S = 60
+
 
 class EvidenceCollector:
     """Loads a ticket contract and runs dod_evidence checks.
@@ -146,28 +153,44 @@ class EvidenceCollector:
         occ = self._resolve_occ_root()
         if occ is None:
             return None, None
+        # Refresh the remote-tracking ref first so a long-lived OMNI_HOME clone
+        # does not materialise a STALE origin/dev and miss the very contract this
+        # rider exists to pick up (CodeRabbit — Data Integrity). Best-effort: a
+        # fetch failure (offline, no remote — e.g. the local-branch test ref)
+        # falls through to whatever the local clone already has.
+        self._refresh_occ_ref(occ)
         omni_home = os.environ.get("OMNI_HOME", "").strip()
         parent = Path(omni_home) if omni_home and Path(omni_home).is_dir() else None
         try:
             tmp = Path(tempfile.mkdtemp(prefix=".occ-dev-wt-", dir=parent))
         except OSError:
             return None, None
-        proc = subprocess.run(
-            [
-                "git",
-                "-C",
-                str(occ),
-                "worktree",
-                "add",
-                "--detach",
-                "--force",
-                str(tmp),
+        try:
+            proc = subprocess.run(
+                [
+                    "git",
+                    "-C",
+                    str(occ),
+                    "worktree",
+                    "add",
+                    "--detach",
+                    "--force",
+                    str(tmp),
+                    self._occ_governance_ref,
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+                timeout=_GIT_OP_TIMEOUT_S,
+            )
+        except subprocess.TimeoutExpired:
+            logger.warning(
+                "Timed out materialising %s worktree of OCC after %ss",
                 self._occ_governance_ref,
-            ],
-            capture_output=True,
-            text=True,
-            check=False,
-        )
+                _GIT_OP_TIMEOUT_S,
+            )
+            shutil.rmtree(tmp, ignore_errors=True)
+            return None, None
         if proc.returncode != 0:
             logger.warning(
                 "Could not materialise %s worktree of OCC: %s",
@@ -178,16 +201,88 @@ class EvidenceCollector:
             return None, None
         return str(tmp), tmp
 
-    def _remove_occ_dev_worktree(self, worktree: Path) -> None:
-        occ = self._resolve_occ_root()
-        if occ is not None:
-            subprocess.run(
-                ["git", "-C", str(occ), "worktree", "remove", "--force", str(worktree)],
+    def _refresh_occ_ref(self, occ: Path) -> None:
+        """Best-effort ``git fetch`` of the OCC governance ref's remote branch.
+
+        Only fires for a ``<remote>/<branch>`` ref (e.g. ``origin/dev``); a bare
+        local-branch ref (test override) is left untouched. Failures are logged
+        and swallowed — the worktree add proceeds against the local clone.
+        """
+        ref = self._occ_governance_ref
+        if "/" not in ref:
+            return
+        remote, branch = ref.split("/", 1)
+        try:
+            proc = subprocess.run(
+                ["git", "-C", str(occ), "fetch", "--quiet", remote, branch],
                 capture_output=True,
                 text=True,
                 check=False,
+                timeout=_GIT_OP_TIMEOUT_S,
             )
+        except subprocess.TimeoutExpired:
+            logger.warning("Timed out fetching %s for OCC worktree refresh", ref)
+            return
+        if proc.returncode != 0:
+            logger.info(
+                "OCC ref refresh (git fetch %s %s) failed; using local clone: %s",
+                remote,
+                branch,
+                proc.stderr.strip(),
+            )
+
+    def _remove_occ_dev_worktree(self, worktree: Path) -> None:
+        occ = self._resolve_occ_root()
+        if occ is not None:
+            try:
+                proc = subprocess.run(
+                    [
+                        "git",
+                        "-C",
+                        str(occ),
+                        "worktree",
+                        "remove",
+                        "--force",
+                        str(worktree),
+                    ],
+                    capture_output=True,
+                    text=True,
+                    check=False,
+                    timeout=_GIT_OP_TIMEOUT_S,
+                )
+            except subprocess.TimeoutExpired:
+                logger.warning(
+                    "Timed out removing OCC worktree %s after %ss",
+                    worktree,
+                    _GIT_OP_TIMEOUT_S,
+                )
+                proc = None
+            # A failed/timed-out `worktree remove` leaves a stale registration
+            # under .git/worktrees/ even after rmtree deletes the directory;
+            # prune it so the shared OCC clone does not accumulate dead entries
+            # (CodeRabbit — Stability).
+            if proc is None or proc.returncode != 0:
+                if proc is not None:
+                    logger.warning(
+                        "git worktree remove failed for %s: %s; pruning registration",
+                        worktree,
+                        proc.stderr.strip(),
+                    )
+                self._prune_occ_worktrees(occ)
         shutil.rmtree(worktree, ignore_errors=True)
+
+    def _prune_occ_worktrees(self, occ: Path) -> None:
+        """Best-effort ``git worktree prune`` to clear stale registrations."""
+        try:
+            subprocess.run(
+                ["git", "-C", str(occ), "worktree", "prune"],
+                capture_output=True,
+                text=True,
+                check=False,
+                timeout=_GIT_OP_TIMEOUT_S,
+            )
+        except subprocess.TimeoutExpired:
+            logger.warning("Timed out pruning OCC worktrees under %s", occ)
 
     def _collect_impl(
         self,
