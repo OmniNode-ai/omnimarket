@@ -170,15 +170,23 @@ class TestRunNodeBootstrapResolution:
         assert "KAFKA_BOOTSTRAP_SERVERS" in content, (
             "cli_run_node.py must reference KAFKA_BOOTSTRAP_SERVERS"
         )
-        # Should use key access (raises KeyError on missing) not .get with localhost default
+        # Fail-fast contract (OMN-11757): cli_run_node.py must not silently default
+        # to a localhost bootstrap. Two accepted forms:
+        #   (1) bare key access  os.environ["KAFKA_BOOTSTRAP_SERVERS"]  (raises KeyError), or
+        #   (2) the OMN-13857 friendly form  os.environ.get("KAFKA_BOOTSTRAP_SERVERS", "")
+        #       followed by an explicit "not set" raise. An empty-string default is
+        #       still fail-fast (no localhost fallback), just a clearer error message.
+        # Only the localhost:19092 silent default is the OMN-11757 root cause, and the
+        # sibling test_no_localhost_kafka_default bans exactly that literal.
         has_key_access = 'os.environ["KAFKA_BOOTSTRAP_SERVERS"]' in content
-        has_safe_get = (
-            'os.environ.get("KAFKA_BOOTSTRAP_SERVERS")' in content
-            and "localhost" not in content
+        has_failfast_get = (
+            'os.environ.get("KAFKA_BOOTSTRAP_SERVERS"' in content
+            and 'localhost:19092"' not in content
         )
-        assert has_key_access or has_safe_get, (
+        assert has_key_access or has_failfast_get, (
             f"cli_run_node.py at {path} does not use fail-fast KAFKA_BOOTSTRAP_SERVERS "
-            "access. Expected os.environ['KAFKA_BOOTSTRAP_SERVERS'] (OMN-11757)."
+            "access. Expected os.environ['KAFKA_BOOTSTRAP_SERVERS'] or the OMN-13857 "
+            "os.environ.get(..., '') + explicit-raise form (OMN-11757)."
         )
 
     def test_kafka_bootstrap_servers_present_or_skip(self) -> None:
