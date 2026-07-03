@@ -22,6 +22,7 @@ from omnimarket.nodes.node_projection_mcp_tools.models.enums import (
 from omnimarket.nodes.node_projection_mcp_tools.models.model_mcp_tool_projection import (
     ModelMcpToolProjection,
 )
+from omnimarket.projection.handler_shim import split_projection_input
 from omnimarket.projection.protocol_database import DatabaseAdapter
 
 TABLE = "mcp_tools"
@@ -109,11 +110,9 @@ class HandlerProjectionMcpTools:
         Expects a DatabaseAdapter at input_data['_db'].
         Non-MCP events (mcp_eligible=False) are acknowledged with rows_upserted=0.
         """
-        db_raw = input_data.pop("_db", None)
-        if not isinstance(db_raw, DatabaseAdapter):
-            raise TypeError("handle() requires a DatabaseAdapter in input_data['_db']")
-        event = ModelMcpToolRegistrationEvent(**input_data)
-        result = self.project(event, db_raw)
+        db, payload, _meta = split_projection_input(input_data)
+        event = ModelMcpToolRegistrationEvent(**payload)
+        result = self.project(event, db)
         return result.model_dump(mode="json")
 
     def project(
