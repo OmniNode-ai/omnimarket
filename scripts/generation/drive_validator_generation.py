@@ -22,14 +22,13 @@ This is a driver / evidence harness, not a runtime node: it lives under
 provenance JSON). The artifact it accepts is then hand-landed in ``omnibase_core``
 (producer != owner; build-time validators live in core).
 
-no-faked-boundary self-exemption: the LLM task-description prompt strings this
-driver constructs quote the banned fake-boundary idioms verbatim (they instruct
-the model on exactly which patterns to flag), so the scanner flags this driver's
-own source. It is therefore file-level exempt, matching
-``omnibase_core.validation.no_faked_boundary.handler``'s own docstring
-self-exemption. onex-allow-file-faked-boundary OMN-13501 reason="generation-driver
-prompt text documents verbatim the fake-boundary idioms the generated scanner must
-flag".
+no-faked-boundary handling: the ``no-faked-boundary`` task-description prompt must
+quote the banned fake-boundary idioms verbatim (it instructs the model on exactly
+which patterns to flag). Rather than a file-level exemption, each verbatim idiom is
+hoisted to a module-level example constant that carries a per-line
+``onex-allow-faked-boundary`` marker (see ``_NFB_EXAMPLE_*`` below) and is
+interpolated into the prompt with runtime bytes unchanged — so ONLY those six
+example lines are exempt and the rest of this driver is scanned normally.
 
 Usage:
     uv run python -m scripts.generation.drive_validator_generation \\
@@ -53,6 +52,23 @@ from omnimarket.nodes.node_generation_consumer.models.model_generation import (
     ModelNodeGenerationRequest,
 )
 from omnimarket.nodes.node_generation_consumer.validator_corpora import CORPORA
+
+# Verbatim fake-boundary idioms the ``no-faked-boundary`` task prompt must quote as
+# examples for the model. Hoisted to per-line-marked constants (interpolated into
+# the prompt below, runtime bytes unchanged) so the generated-scanner detector
+# exempts ONLY these six example lines, not the whole driver.
+_NFB_EXAMPLE_CLASS_BRIDGE = (
+    "class _FakeBridge(ModelInferenceAdapter):"  # onex-allow-faked-boundary
+)
+_NFB_EXAMPLE_CLASS_ROUTER = (
+    "class _StubInferenceRouter(ModelInferenceAdapter):"  # onex-allow-faked-boundary
+)
+_NFB_EXAMPLE_MOCK_BRIDGE = "inference_bridge = MagicMock()"  # onex-allow-faked-boundary
+_NFB_EXAMPLE_MOCK_ROUTER = "self.router = AsyncMock()"  # onex-allow-faked-boundary
+_NFB_EXAMPLE_COMPLETION_BARE = "completion=prompt"  # onex-allow-faked-boundary
+_NFB_EXAMPLE_COMPLETION_FSTRING = (
+    'completion=f"...{prompt}..."'  # onex-allow-faked-boundary
+)
 
 # Task descriptions per target validator. Each describes the mechanical scanner
 # to generate in terms the local model can satisfy: a self-contained
@@ -129,8 +145,8 @@ _TASK_DESCRIPTIONS: dict[str, str] = {
         "(1) a class definition whose class name contains 'Fake', 'Stub', or 'Mock' "
         "AND that subclasses (has in its parenthesised bases) an identifier ending "
         "in one of: InferenceAdapter, Bridge, Router, RoutingResolver, or "
-        "containing 'Dispatch' — e.g. `class _FakeBridge(ModelInferenceAdapter):` or "
-        "`class _StubInferenceRouter(ModelInferenceAdapter):`. Do NOT flag a class "
+        f"containing 'Dispatch' — e.g. `{_NFB_EXAMPLE_CLASS_BRIDGE}` or "
+        f"`{_NFB_EXAMPLE_CLASS_ROUTER}`. Do NOT flag a class "
         "that subclasses a base which is NOT one of those inference/routing/dispatch "
         "boundary identifiers — e.g. `class MockServiceHub(MixinServiceRegistry):` "
         "(a service-registry mixin) is a test harness, not a fake of the inference "
@@ -144,11 +160,11 @@ _TASK_DESCRIPTIONS: dict[str, str] = {
         "substrings 'inference', 'bridge', 'router', or 'dispatch' "
         "(case-insensitive). Concretely, flag a line that matches the regex "
         "`(inference|bridge|router|dispatch)\\w*\\s*=\\s*(MagicMock|AsyncMock)\\(` "
-        "case-insensitively — this catches `inference_bridge = MagicMock()` and "
-        "`self.router = AsyncMock()`. Both of those lines MUST be flagged; "
+        f"case-insensitively — this catches `{_NFB_EXAMPLE_MOCK_BRIDGE}` and "
+        f"`{_NFB_EXAMPLE_MOCK_ROUTER}`. Both of those lines MUST be flagged; "
         "(4) a completion keyword argument whose VALUE is derived from the prompt "
-        "variable rather than a recorded string literal — i.e. `completion=prompt` "
-        '(the bare identifier prompt) or `completion=f"...{prompt}..."` (an '
+        f"variable rather than a recorded string literal — i.e. `{_NFB_EXAMPLE_COMPLETION_BARE}` "
+        f"(the bare identifier prompt) or `{_NFB_EXAMPLE_COMPLETION_FSTRING}` (an "
         "f-string that interpolates {prompt}). "
         "Do NOT flag CLEAN lines: a completion set to a plain quoted string literal "
         "with no f-string interpolation of prompt (e.g. "

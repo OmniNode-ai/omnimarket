@@ -38,6 +38,7 @@ from uuid import uuid4
 import pytest
 from omnibase_core.models.delegation.wire import (
     ModelInferenceIntent,
+    ModelInferenceResponseData,
     ModelQualityGateIntent,
     ModelRoutingIntent,
 )
@@ -134,19 +135,28 @@ class _CapturingPublisher:
         return [t for t, _ in self.published]
 
 
-def _httpx_response(content: str) -> MagicMock:
-    response = MagicMock()
-    response.json.return_value = {
-        "id": "chatcmpl-test",
-        "choices": [{"message": {"content": content}}],
-        "usage": {
-            "prompt_tokens": 100,
-            "completion_tokens": 200,
-            "total_tokens": 300,
-        },
-    }
-    response.raise_for_status.return_value = None
-    return response
+def _inference_response(
+    intent: ModelInferenceIntent, content: str
+) -> ModelInferenceResponseData:
+    """Construct the inference effect's OUTPUT event directly.
+
+    These chain tests exercise the DOWNSTREAM quality-gate + orchestrator
+    behavior for a given model response, so the inference-response event is a
+    controlled internal DTO (the same seam the quality-gate unit tests use) —
+    the model/HTTP boundary is NOT faked. The integrated inference request +
+    egress path is proven separately by
+    tests/integration/golden_chain/test_golden_chain_delegation_useful_artifact_chain.py.
+    """
+    return ModelInferenceResponseData(
+        correlation_id=intent.correlation_id,
+        content=content,
+        model_used=intent.model,
+        llm_call_id="chatcmpl-test",
+        latency_ms=1,
+        prompt_tokens=100,
+        completion_tokens=200,
+        total_tokens=300,
+    )
 
 
 @pytest.mark.unit
@@ -195,7 +205,6 @@ class TestDelegationChainE2E:
         topic-traversal assertions mirror the live bus chain.
         """
         routing_handler = HandlerRoutingIntent()
-        inference_handler = HandlerInferenceIntent()
         gate_handler = HandlerQualityGateIntent()
 
         # Hop 1: orchestrator emits routing intent.
@@ -214,20 +223,14 @@ class TestDelegationChainE2E:
         assert len(inference_intents) == 1
         assert isinstance(inference_intents[0], ModelInferenceIntent)
 
-        # Hop 4: LLM call effect consumes the typed intent, returns
-        # ModelInferenceResponseData; runtime auto-publishes it to inference-response.v1.
-        # OMN-13501 no-faked-boundary: synthetic model completion injected as a TEST INPUT
-        # to drive downstream quality-gate / refusal / escalation / veto logic; a
-        # recorded-from-real fixture cannot produce this adversarial output on demand and the
-        # transport forbids echo/empty completions. The inference boundary itself is proven
-        # by the recorded-replay golden chain.
-        with patch("httpx.Client") as mock_client_cls:  # onex-allow-faked-boundary
-            mock_client = MagicMock()
-            mock_client.__enter__ = MagicMock(return_value=mock_client)
-            mock_client.__exit__ = MagicMock(return_value=False)
-            mock_client.post.return_value = _httpx_response(llm_content)
-            mock_client_cls.return_value = mock_client
-            response = inference_handler.handle(inference_intents[0])
+        # Hop 4: the LLM call effect's OUTPUT event. This test proves the
+        # DOWNSTREAM gate + orchestrator behavior for a given model response, so
+        # the inference-response is constructed directly as a controlled internal
+        # DTO — the model/HTTP boundary is NOT faked (no recorded-from-real
+        # fixture can produce a refusal / weak-output adversarial completion on
+        # demand). The integrated inference request + egress is proven by the
+        # recorded-replay golden chain.
+        response = _inference_response(inference_intents[0], llm_content)
         publisher.publish(TOPIC_INFERENCE_RESPONSE, response)
 
         # Hop 5: orchestrator consumes the response, emits quality gate intent.

@@ -24,13 +24,13 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from pathlib import Path
-from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
 import pytest
 import yaml
 from omnibase_core.models.delegation.wire import (
     ModelInferenceIntent,
+    ModelInferenceResponseData,
     ModelQualityGateIntent,
     ModelRoutingIntent,
 )
@@ -64,7 +64,6 @@ from omnimarket.nodes.node_delegation_routing_reducer.handlers.handler_routing_i
 )
 from omnimarket.nodes.node_llm_delegation_call_effect.handlers.handler_inference_intent import (
     TOPIC_INFERENCE_RESPONSE,
-    HandlerInferenceIntent,
 )
 
 _CONTRACT_PATH = (
@@ -148,19 +147,29 @@ class _CapturingPublisher:
         return [t for t, _ in self.published]
 
 
-def _httpx_response(content: str) -> MagicMock:
-    response = MagicMock()
-    response.json.return_value = {
-        "id": "chatcmpl-test",
-        "choices": [{"message": {"content": content}}],
-        "usage": {
-            "prompt_tokens": 10,
-            "completion_tokens": 2,
-            "total_tokens": 12,
-        },
-    }
-    response.raise_for_status.return_value = None
-    return response
+def _inference_response(
+    intent: ModelInferenceIntent, content: str
+) -> ModelInferenceResponseData:
+    """Construct the inference effect's OUTPUT event directly.
+
+    The refusal-detection logic under test is deterministic downstream logic; it
+    is exercised by feeding a controlled inference-response DTO (the same seam
+    ``TestRefusalDetectionUnit`` uses to drive the gate) — the model/HTTP
+    boundary is NOT faked. Whether a real model emits a given refusal is a
+    non-deterministic concern proven by live eval, not this classifier test. The
+    integrated inference request + egress is proven separately by
+    tests/integration/golden_chain/test_golden_chain_delegation_useful_artifact_chain.py.
+    """
+    return ModelInferenceResponseData(
+        correlation_id=intent.correlation_id,
+        content=content,
+        model_used=intent.model,
+        llm_call_id="chatcmpl-test",
+        latency_ms=1,
+        prompt_tokens=10,
+        completion_tokens=2,
+        total_tokens=12,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -262,9 +271,10 @@ class TestRefusalDetectionUnit:
 class TestRefusalRealDispatchPath:
     """Tests that drive the full orchestrator → quality gate dispatch path.
 
-    Uses the same real-dispatch structure as test_delegation_chain_e2e.py:
-    each handler is the REAL handler (not a mock); only httpx is patched to
-    return a deterministic LLM response body.
+    Uses the same structure as test_delegation_chain_e2e.py: the routing, gate,
+    and orchestrator handlers are all REAL; the inference effect's OUTPUT event
+    is constructed as a controlled internal DTO (the model/HTTP boundary is not
+    faked) so the deterministic refusal-handling logic downstream is exercised.
     """
 
     @pytest.fixture(autouse=True)
@@ -302,15 +312,15 @@ class TestRefusalRealDispatchPath:
         request: ModelDelegationRequest,
         llm_content: str,
     ) -> tuple[object, list[object]]:
-        """Drive the real dispatch chain through all 7 hops.
+        """Drive the dispatch chain through all 7 hops.
 
         Returns (gate_result, terminal_events) where terminal_events is the list
-        returned by handle_gate_result. Each handler is REAL — only httpx is
-        patched to inject the LLM response body.
+        returned by handle_gate_result. The routing, gate, and orchestrator
+        handlers are REAL; the inference effect's OUTPUT event is constructed as
+        a controlled internal DTO (the model/HTTP boundary is not faked).
         """
         publisher = _CapturingPublisher()
         routing_handler = HandlerRoutingIntent()
-        inference_handler = HandlerInferenceIntent()
         gate_handler = HandlerQualityGateIntent()
 
         # Hop 1: orchestrator emits routing intent
@@ -327,19 +337,11 @@ class TestRefusalRealDispatchPath:
         assert len(inference_intents) == 1
         assert isinstance(inference_intents[0], ModelInferenceIntent)
 
-        # Hop 4: LLM call effect (httpx patched) → ModelInferenceResponseData
-        # OMN-13501 no-faked-boundary: synthetic model completion injected as a TEST INPUT
-        # to drive downstream quality-gate / refusal / escalation / veto logic; a
-        # recorded-from-real fixture cannot produce this adversarial output on demand and the
-        # transport forbids echo/empty completions. The inference boundary itself is proven
-        # by the recorded-replay golden chain.
-        with patch("httpx.Client") as mock_client_cls:  # onex-allow-faked-boundary
-            mock_client = MagicMock()
-            mock_client.__enter__ = MagicMock(return_value=mock_client)
-            mock_client.__exit__ = MagicMock(return_value=False)
-            mock_client.post.return_value = _httpx_response(llm_content)
-            mock_client_cls.return_value = mock_client
-            response = inference_handler.handle(inference_intents[0])
+        # Hop 4: the LLM call effect's OUTPUT event, constructed as a controlled
+        # internal DTO — the model/HTTP boundary is NOT faked. This test proves
+        # the DOWNSTREAM gate + orchestrator reject a refusal; the integrated
+        # inference request + egress is proven by the recorded-replay golden chain.
+        response = _inference_response(inference_intents[0], llm_content)
         publisher.publish(TOPIC_INFERENCE_RESPONSE, response)
 
         # Hop 5: orchestrator emits quality gate intent

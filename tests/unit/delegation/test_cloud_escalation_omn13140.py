@@ -34,7 +34,6 @@ import textwrap
 from collections.abc import Iterator
 from datetime import UTC, datetime
 from pathlib import Path
-from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
 import pytest
@@ -67,9 +66,6 @@ from omnimarket.nodes.node_delegation_routing_reducer.handlers.handler_delegatio
 )
 from omnimarket.nodes.node_delegation_routing_reducer.handlers.handler_routing_intent import (
     HandlerRoutingIntent,
-)
-from omnimarket.nodes.node_llm_delegation_call_effect.handlers.handler_inference_intent import (
-    HandlerInferenceIntent,
 )
 
 # Bifrost contract where local AND cheap_cloud carry resolvable code_generation
@@ -207,17 +203,6 @@ def _make_request() -> ModelDelegationRequest:
         max_tokens=2048,
         emitted_at=datetime.now(UTC),
     )
-
-
-def _httpx_response(content: str) -> MagicMock:
-    response = MagicMock()
-    response.json.return_value = {
-        "id": "chatcmpl-test",
-        "choices": [{"message": {"content": content}, "finish_reason": "stop"}],
-        "usage": {"prompt_tokens": 50, "completion_tokens": 5, "total_tokens": 55},
-    }
-    response.raise_for_status.return_value = None
-    return response
 
 
 # ---------------------------------------------------------------------------
@@ -553,7 +538,6 @@ class TestCodeGenerationEscalatesToGeminiCloud:
     ) -> None:
         workflow = HandlerDelegationWorkflow(workflows={})
         routing_handler = HandlerRoutingIntent()
-        inference_handler = HandlerInferenceIntent()
         gate_handler = HandlerQualityGateIntent()
         request = _make_request()
         cid = request.correlation_id
@@ -564,21 +548,16 @@ class TestCodeGenerationEscalatesToGeminiCloud:
         decision = routing_handler.handle(routing_intents[0])
         assert decision.tier_name == "local"
 
-        # Hop 3-4: orchestrator -> inference effect (mock a too-short local output).
+        # Hop 3-4: orchestrator -> inference effect. This test proves the
+        # DOWNSTREAM gate-fails-then-escalates behavior for a too-short local
+        # output, so the inference effect's OUTPUT event is constructed directly
+        # as a controlled internal DTO (via `_inference`) — the model/HTTP
+        # boundary is NOT faked. The integrated inference request + egress path
+        # is proven separately by
+        # tests/integration/golden_chain/test_golden_chain_delegation_useful_artifact_chain.py.
         inference_intents = workflow.handle_routing_decision(decision)
         assert isinstance(inference_intents[0], ModelInferenceIntent)
-        # OMN-13501 no-faked-boundary: synthetic model completion injected as a TEST INPUT
-        # to drive downstream quality-gate / refusal / escalation / veto logic; a
-        # recorded-from-real fixture cannot produce this adversarial output on demand and the
-        # transport forbids echo/empty completions. The inference boundary itself is proven
-        # by the recorded-replay golden chain.
-        with patch("httpx.Client") as mock_client_cls:  # onex-allow-faked-boundary
-            mock_client = MagicMock()
-            mock_client.__enter__ = MagicMock(return_value=mock_client)
-            mock_client.__exit__ = MagicMock(return_value=False)
-            mock_client.post.return_value = _httpx_response("x=1")
-            mock_client_cls.return_value = mock_client
-            response = inference_handler.handle(inference_intents[0])
+        response = _inference(cid, "x=1")
 
         # Hop 5-6: orchestrator -> quality gate reducer (WEAK_OUTPUT, 400-char DoD).
         gate_intents = workflow.handle_inference_response(response)

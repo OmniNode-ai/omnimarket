@@ -29,9 +29,9 @@ The invariant under test, per class:
     ``quality_gate_passed=false`` and never emit ``delegation-completed``.
 
 The chain is exercised over the REAL handlers (HandlerRoutingIntent,
-HandlerInferenceIntent, HandlerQualityGateIntent, HandlerDelegationWorkflow); only
-the outbound httpx provider call is patched to inject a deterministic candidate
-body (same substitution boundary the OMN-13409 suite uses), and the judge inference
+HandlerQualityGateIntent, HandlerDelegationWorkflow); the inference effect's OUTPUT
+event is constructed as a controlled internal DTO (the model/HTTP boundary is not
+faked — same downstream-DTO seam the OMN-13409 suite uses), and the judge inference
 rides the OMN-13470 RecordedJudgeReplayAdapter (a response captured from a real
 z.ai GLM call, pinned to the concrete model id). No handler is mocked.
 """
@@ -41,13 +41,13 @@ from __future__ import annotations
 from collections.abc import Generator
 from datetime import UTC, datetime
 from pathlib import Path
-from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
 import pytest
 import yaml
 from omnibase_core.models.delegation.wire import (
     ModelInferenceIntent,
+    ModelInferenceResponseData,
     ModelQualityGateIntent,
     ModelRoutingIntent,
 )
@@ -91,7 +91,6 @@ from omnimarket.nodes.node_delegation_routing_reducer.handlers.handler_routing_i
 )
 from omnimarket.nodes.node_llm_delegation_call_effect.handlers.handler_inference_intent import (
     TOPIC_INFERENCE_RESPONSE,
-    HandlerInferenceIntent,
 )
 from tests.fixtures.judge_inference import RecordedJudgeReplayAdapter
 
@@ -241,19 +240,28 @@ class _CapturingPublisher:
         return [t for t, _ in self.published]
 
 
-def _httpx_response(content: str) -> MagicMock:
-    response = MagicMock()
-    response.json.return_value = {
-        "id": "chatcmpl-test",
-        "choices": [{"message": {"content": content}}],
-        "usage": {
-            "prompt_tokens": 10,
-            "completion_tokens": 2,
-            "total_tokens": 12,
-        },
-    }
-    response.raise_for_status.return_value = None
-    return response
+def _inference_response(
+    intent: ModelInferenceIntent, content: str
+) -> ModelInferenceResponseData:
+    """Construct the inference effect's OUTPUT event directly.
+
+    These tests prove the DOWNSTREAM gate + orchestrator behavior (refusal /
+    weak-output handling, judge combine) for a given candidate body, so the
+    inference-response is a controlled internal DTO — the model/HTTP boundary is
+    NOT faked. The judge combine runs over the REAL recorded GLM replay adapter.
+    The integrated inference request + egress is proven separately by
+    tests/integration/golden_chain/test_golden_chain_delegation_useful_artifact_chain.py.
+    """
+    return ModelInferenceResponseData(
+        correlation_id=intent.correlation_id,
+        content=content,
+        model_used=intent.model,
+        llm_call_id="chatcmpl-test",
+        latency_ms=1,
+        prompt_tokens=10,
+        completion_tokens=2,
+        total_tokens=12,
+    )
 
 
 def _terminal_topics(terminal_events: list[BaseModel]) -> list[str | None]:
@@ -441,13 +449,13 @@ class TestCodeGenerationRefusalRealDispatchPath:
     ) -> tuple[ModelQualityGateResult, list[BaseModel]]:
         """Drive orchestrator -> routing -> inference -> gate(async judge) -> terminal.
 
-        Every hop is the real handler. httpx is patched at the inference hop to
-        inject the candidate body; the gate hop runs the async judge-combine path
-        over the recorded GLM replay (concrete model id pinned).
+        The routing, gate, and orchestrator hops are real handlers. The inference
+        hop's OUTPUT event is constructed as a controlled internal DTO (the
+        model/HTTP boundary is not faked); the gate hop runs the async
+        judge-combine path over the recorded GLM replay (concrete model id pinned).
         """
         publisher = _CapturingPublisher()
         routing_handler = HandlerRoutingIntent()
-        inference_handler = HandlerInferenceIntent()
         gate_handler = HandlerQualityGateIntent(
             judge=HandlerJudgeAdequacy(inference_bridge=RecordedJudgeReplayAdapter())
         )
@@ -466,19 +474,10 @@ class TestCodeGenerationRefusalRealDispatchPath:
         assert len(inference_intents) == 1
         assert isinstance(inference_intents[0], ModelInferenceIntent)
 
-        # Hop 4: LLM call effect (httpx patched) -> ModelInferenceResponseData.
-        # OMN-13501 no-faked-boundary: synthetic model completion injected as a TEST INPUT
-        # to drive downstream quality-gate / refusal / escalation / veto logic; a
-        # recorded-from-real fixture cannot produce this adversarial output on demand and the
-        # transport forbids echo/empty completions. The inference boundary itself is proven
-        # by the recorded-replay golden chain.
-        with patch("httpx.Client") as mock_client_cls:  # onex-allow-faked-boundary
-            mock_client = MagicMock()
-            mock_client.__enter__ = MagicMock(return_value=mock_client)
-            mock_client.__exit__ = MagicMock(return_value=False)
-            mock_client.post.return_value = _httpx_response(llm_content)
-            mock_client_cls.return_value = mock_client
-            response = inference_handler.handle(inference_intents[0])
+        # Hop 4: the LLM call effect's OUTPUT event, constructed as a controlled
+        # internal DTO — the model/HTTP boundary is NOT faked. The judge combine
+        # in hop 6 runs over the REAL recorded GLM replay adapter.
+        response = _inference_response(inference_intents[0], llm_content)
         publisher.publish(TOPIC_INFERENCE_RESPONSE, response)
 
         # Hop 5: orchestrator emits quality gate intent.
@@ -584,7 +583,6 @@ class TestResearchRefusalRealDispatchPath:
     ) -> tuple[ModelQualityGateResult, list[BaseModel]]:
         publisher = _CapturingPublisher()
         routing_handler = HandlerRoutingIntent()
-        inference_handler = HandlerInferenceIntent()
         gate_handler = HandlerQualityGateIntent()
 
         routing_intents = workflow.handle_delegation_request(request)
@@ -598,18 +596,10 @@ class TestResearchRefusalRealDispatchPath:
         assert len(inference_intents) == 1
         assert isinstance(inference_intents[0], ModelInferenceIntent)
 
-        # OMN-13501 no-faked-boundary: synthetic model completion injected as a TEST INPUT
-        # to drive downstream quality-gate / refusal / escalation / veto logic; a
-        # recorded-from-real fixture cannot produce this adversarial output on demand and the
-        # transport forbids echo/empty completions. The inference boundary itself is proven
-        # by the recorded-replay golden chain.
-        with patch("httpx.Client") as mock_client_cls:  # onex-allow-faked-boundary
-            mock_client = MagicMock()
-            mock_client.__enter__ = MagicMock(return_value=mock_client)
-            mock_client.__exit__ = MagicMock(return_value=False)
-            mock_client.post.return_value = _httpx_response(llm_content)
-            mock_client_cls.return_value = mock_client
-            response = inference_handler.handle(inference_intents[0])
+        # Hop 4: the LLM call effect's OUTPUT event, constructed as a controlled
+        # internal DTO — the model/HTTP boundary is NOT faked. This test proves
+        # the DOWNSTREAM gate + orchestrator behavior for a given candidate body.
+        response = _inference_response(inference_intents[0], llm_content)
         publisher.publish(TOPIC_INFERENCE_RESPONSE, response)
 
         gate_intents = workflow.handle_inference_response(response)
