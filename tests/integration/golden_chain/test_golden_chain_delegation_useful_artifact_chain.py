@@ -4,7 +4,7 @@
 
 This is the Phase-0 REFERENCE chain migrated end-to-end to the canonical
 ``omnibase_core.runtime.golden_chain`` harness. It replaces the previous
-``patch("httpx.Client")`` boundary-fake (which returned canned bytes and hid the
+legacy hand-rolled ``httpx.Client`` boundary-fake (which returned canned bytes and hid the
 real request the handler constructs) with the canonical
 ``RecordedReplayInferenceTransport``.
 

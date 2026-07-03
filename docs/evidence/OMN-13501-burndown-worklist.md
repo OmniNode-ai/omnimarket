@@ -29,32 +29,32 @@ marker). They need the marker added — a mechanical one-line-per-file fix, fold
 
 | # | File:Line | Rule | Cluster | Planned disposition |
 |---|-----------|------|---------|----------------------|
-| 1 | tests/unit/delegation/test_handler_inference_intent.py:120 | patch_httpx_egress | C1 | recorded-replay-fixture |
-| 2 | tests/unit/delegation/test_handler_inference_intent.py:155 | patch_httpx_egress | C1 | recorded-replay-fixture |
-| 3 | tests/unit/delegation/test_handler_inference_intent.py:171 | patch_httpx_egress | C1 | recorded-replay-fixture |
-| 4 | tests/unit/delegation/test_handler_inference_intent.py:265 | patch_httpx_egress | C1 | recorded-replay-fixture |
-| 5 | tests/unit/delegation/test_handler_inference_intent.py:311 | patch_httpx_egress | C1 | recorded-replay-fixture |
-| 6 | tests/unit/delegation/test_handler_inference_intent.py:361 | patch_httpx_egress | C1 | recorded-replay-fixture |
-| 7 | tests/unit/delegation/test_handler_inference_intent.py:429 | patch_httpx_egress | C1 | recorded-replay-fixture |
-| 8 | tests/unit/delegation/test_handler_inference_intent.py:468 | patch_httpx_egress | C1 | recorded-replay-fixture |
-| 9 | tests/unit/delegation/test_handler_inference_intent.py:498 | patch_httpx_egress | C1 | recorded-replay-fixture |
-| 10 | tests/unit/delegation/test_handler_inference_intent.py:520 | patch_httpx_egress | C1 | recorded-replay-fixture |
-| 11 | tests/unit/delegation/test_handler_inference_intent.py:573 | patch_httpx_egress | C1 | recorded-replay-fixture |
-| 12 | tests/unit/delegation/test_handler_inference_intent.py:614 | patch_httpx_egress | C1 | recorded-replay-fixture |
-| 13 | tests/unit/delegation/test_handler_inference_intent.py:644 | patch_httpx_egress | C1 | recorded-replay-fixture |
-| 14 | tests/unit/delegation/test_handler_inference_intent.py:689 | patch_httpx_egress | C1 | recorded-replay-fixture |
-| 15 | tests/unit/delegation/test_delegation_chain_e2e.py:219 | patch_httpx_egress | C1 | recorded-replay-fixture |
-| 16 | tests/unit/delegation/test_delegation_chain_e2e.py:336 | patch_httpx_egress | C1 | recorded-replay-fixture |
-| 17 | tests/unit/delegation/test_cloud_escalation_omn13140.py:570 | patch_httpx_egress | C1 | recorded-replay-fixture |
-| 18 | tests/unit/delegation/test_judge_verdict_vetoes_acceptance_omn13642.py:393 | patch_httpx_egress | C1 | recorded-replay-fixture |
-| 19 | tests/unit/delegation/test_refusal_not_pass_codegen_research_omn13479.py:470 | patch_httpx_egress | C1 | recorded-replay-fixture |
-| 20 | tests/unit/delegation/test_refusal_not_pass_codegen_research_omn13479.py:596 | patch_httpx_egress | C1 | recorded-replay-fixture |
-| 21 | tests/unit/delegation/test_refusal_not_pass_omn13409.py:331 | patch_httpx_egress | C1 | recorded-replay-fixture |
-| 22 | tests/unit/delegation/test_served_usage_upstream_omn13408.py:105 | patch_httpx_egress | C1 | recorded-replay-fixture |
-| 23 | tests/unit/delegation/test_served_usage_upstream_omn13408.py:184 | patch_httpx_egress | C1 | recorded-replay-fixture |
-| 24 | tests/test_model_router_authorization_and_ttl.py:93 | patch_httpx_egress | C1 | recorded-replay-fixture (real `FakeAsyncClient` subclass patched onto `httpx.AsyncClient` around `router.route_async`) |
-| 25 | tests/integration/golden_chain/test_sea_acceptance_chain.py:350 | patch_httpx_egress | C1 | recorded-replay-fixture |
-| 26 | tests/integration/golden_chain/test_golden_chain_delegation_useful_artifact_chain.py:7 | patch_httpx_egress | C1 | justified-allow (docstring prose describing an ALREADY-migrated pattern — this file is the Phase-0 OMN-13499 reference chain itself, already on `RecordedReplayInferenceTransport`; false-positive on historical text, not code — add `# onex-allow-faked-boundary` to the docstring line or reword to avoid the literal `patch("httpx.Client")` string) |
+| 1 | tests/unit/delegation/test_handler_inference_intent.py:120 | patch_httpx_egress | C1 | DONE — per-line `# onex-allow-faked-boundary` (reason above line): effect-handler unit test asserts request construction (verbatim URL / auth header / payload) at the egress; `transport.calls` records only model/url/request_hash |
+| 2 | tests/unit/delegation/test_handler_inference_intent.py:155 | patch_httpx_egress | C1 | DONE — per-line `# onex-allow-faked-boundary` (reason above line): effect-handler unit test asserts request construction (verbatim URL / auth header / payload) at the egress; `transport.calls` records only model/url/request_hash |
+| 3 | tests/unit/delegation/test_handler_inference_intent.py:171 | patch_httpx_egress | C1 | DONE — per-line `# onex-allow-faked-boundary`: effect-handler unit test injects a transport exception (ConnectionRefused/Timeout); `RecordedReplayInferenceTransport` has no exception-injection hook |
+| 4 | tests/unit/delegation/test_handler_inference_intent.py:265 | patch_httpx_egress | C1 | DONE — per-line `# onex-allow-faked-boundary` (reason above line): effect-handler unit test asserts request construction (verbatim URL / auth header / payload) at the egress; `transport.calls` records only model/url/request_hash |
+| 5 | tests/unit/delegation/test_handler_inference_intent.py:311 | patch_httpx_egress | C1 | DONE — per-line `# onex-allow-faked-boundary`: effect-handler unit test crafts an edge response (empty content / finish_reason=length / HTTP 4xx); `load_fixture` rejects empty completions and `ReplayResponse.raise_for_status` is a no-op |
+| 6 | tests/unit/delegation/test_handler_inference_intent.py:361 | patch_httpx_egress | C1 | DONE — per-line `# onex-allow-faked-boundary`: effect-handler unit test injects a transport exception (ConnectionRefused/Timeout); `RecordedReplayInferenceTransport` has no exception-injection hook |
+| 7 | tests/unit/delegation/test_handler_inference_intent.py:429 | patch_httpx_egress | C1 | DONE — per-line `# onex-allow-faked-boundary`: effect-handler unit test crafts an edge response (empty content / finish_reason=length / HTTP 4xx); `load_fixture` rejects empty completions and `ReplayResponse.raise_for_status` is a no-op |
+| 8 | tests/unit/delegation/test_handler_inference_intent.py:468 | patch_httpx_egress | C1 | DONE — per-line `# onex-allow-faked-boundary`: effect-handler unit test crafts an edge response (empty content / finish_reason=length / HTTP 4xx); `load_fixture` rejects empty completions and `ReplayResponse.raise_for_status` is a no-op |
+| 9 | tests/unit/delegation/test_handler_inference_intent.py:498 | patch_httpx_egress | C1 | DONE — per-line `# onex-allow-faked-boundary` (reason above line): effect-handler unit test asserts request construction (verbatim URL / auth header / payload) at the egress; `transport.calls` records only model/url/request_hash |
+| 10 | tests/unit/delegation/test_handler_inference_intent.py:520 | patch_httpx_egress | C1 | DONE — per-line `# onex-allow-faked-boundary` (reason above line): effect-handler unit test asserts request construction (verbatim URL / auth header / payload) at the egress; `transport.calls` records only model/url/request_hash |
+| 11 | tests/unit/delegation/test_handler_inference_intent.py:573 | patch_httpx_egress | C1 | DONE — per-line `# onex-allow-faked-boundary` (reason above line): effect-handler unit test asserts request construction (verbatim URL / auth header / payload) at the egress; `transport.calls` records only model/url/request_hash |
+| 12 | tests/unit/delegation/test_handler_inference_intent.py:614 | patch_httpx_egress | C1 | DONE — per-line `# onex-allow-faked-boundary` (reason above line): effect-handler unit test asserts request construction (verbatim URL / auth header / payload) at the egress; `transport.calls` records only model/url/request_hash |
+| 13 | tests/unit/delegation/test_handler_inference_intent.py:644 | patch_httpx_egress | C1 | DONE — per-line `# onex-allow-faked-boundary` (reason above line): effect-handler unit test asserts request construction (verbatim URL / auth header / payload) at the egress; `transport.calls` records only model/url/request_hash |
+| 14 | tests/unit/delegation/test_handler_inference_intent.py:689 | patch_httpx_egress | C1 | DONE — per-line `# onex-allow-faked-boundary` (reason above line): effect-handler unit test asserts request construction (verbatim URL / auth header / payload) at the egress; `transport.calls` records only model/url/request_hash |
+| 15 | tests/unit/delegation/test_delegation_chain_e2e.py:219 | patch_httpx_egress | C1 | DONE — per-line `# onex-allow-faked-boundary`: synthetic completion is a TEST INPUT driving downstream quality-gate / refusal / escalation / veto logic; not recordable-from-real, transport forbids echo/empty |
+| 16 | tests/unit/delegation/test_delegation_chain_e2e.py:336 | patch_httpx_egress | C1 | DONE — per-line `# onex-allow-faked-boundary`: effect-handler unit test injects a transport exception (ConnectionRefused/Timeout); `RecordedReplayInferenceTransport` has no exception-injection hook |
+| 17 | tests/unit/delegation/test_cloud_escalation_omn13140.py:570 | patch_httpx_egress | C1 | DONE — per-line `# onex-allow-faked-boundary`: synthetic completion is a TEST INPUT driving downstream quality-gate / refusal / escalation / veto logic; not recordable-from-real, transport forbids echo/empty |
+| 18 | tests/unit/delegation/test_judge_verdict_vetoes_acceptance_omn13642.py:393 | patch_httpx_egress | C1 | DONE — per-line `# onex-allow-faked-boundary`: synthetic completion is a TEST INPUT driving downstream quality-gate / refusal / escalation / veto logic; not recordable-from-real, transport forbids echo/empty |
+| 19 | tests/unit/delegation/test_refusal_not_pass_codegen_research_omn13479.py:470 | patch_httpx_egress | C1 | DONE — per-line `# onex-allow-faked-boundary`: synthetic completion is a TEST INPUT driving downstream quality-gate / refusal / escalation / veto logic; not recordable-from-real, transport forbids echo/empty |
+| 20 | tests/unit/delegation/test_refusal_not_pass_codegen_research_omn13479.py:596 | patch_httpx_egress | C1 | DONE — per-line `# onex-allow-faked-boundary`: synthetic completion is a TEST INPUT driving downstream quality-gate / refusal / escalation / veto logic; not recordable-from-real, transport forbids echo/empty |
+| 21 | tests/unit/delegation/test_refusal_not_pass_omn13409.py:331 | patch_httpx_egress | C1 | DONE — per-line `# onex-allow-faked-boundary`: synthetic completion is a TEST INPUT driving downstream quality-gate / refusal / escalation / veto logic; not recordable-from-real, transport forbids echo/empty |
+| 22 | tests/unit/delegation/test_served_usage_upstream_omn13408.py:105 | patch_httpx_egress | C1 | DONE — per-line `# onex-allow-faked-boundary`: effect-handler unit test crafts an edge response (empty content / finish_reason=length / HTTP 4xx); `load_fixture` rejects empty completions and `ReplayResponse.raise_for_status` is a no-op |
+| 23 | tests/unit/delegation/test_served_usage_upstream_omn13408.py:184 | patch_httpx_egress | C1 | DONE — per-line `# onex-allow-faked-boundary`: effect-handler unit test crafts an edge response (empty content / finish_reason=length / HTTP 4xx); `load_fixture` rejects empty completions and `ReplayResponse.raise_for_status` is a no-op |
+| 24 | tests/test_model_router_authorization_and_ttl.py:93 | patch_httpx_egress | C1 | DONE — per-line `# onex-allow-faked-boundary`: non-inference egress — model-router `/health` GET probe (health-liveness boundary, not inference) |
+| 25 | tests/integration/golden_chain/test_sea_acceptance_chain.py:350 | patch_httpx_egress | C1 | DONE — per-line `# onex-allow-faked-boundary`: SEA minimum-proof diagnostic asserts verbatim endpoint_url (OMN-12815) + exact served tokens vs a synthetic test-hostname response |
+| 26 | tests/integration/golden_chain/test_golden_chain_delegation_useful_artifact_chain.py:7 | patch_httpx_egress | C1 | DONE — docstring reworded to drop the literal `patch("httpx.Client")` string; already-migrated reference file, no code change |
 | 27 | tests/unit/nodes/node_baseline_capture/test_probe_unit.py:121 | patch_httpx_egress | C2 | justified-allow-non-inference |
 | 28 | tests/unit/nodes/node_baseline_capture/test_probe_unit.py:154 | patch_httpx_egress | C2 | justified-allow-non-inference |
 | 29 | tests/unit/nodes/node_baseline_capture/test_probe_unit.py:188 | patch_httpx_egress | C2 | justified-allow-non-inference |
@@ -101,16 +101,41 @@ marker). They need the marker added — a mechanical one-line-per-file fix, fold
 
 ## Cluster summary
 
-- **C1 — inference `patch_httpx_egress` -> recorded-replay-fixture (26 findings, 8 files).**
-  Migrate to `RecordedReplayInferenceAdapter` / golden-chain harness per the OMN-13499 Phase-0 pattern
-  (omnibase_core PR #1306; reference migration is already in-repo at
-  `tests/integration/golden_chain/test_golden_chain_delegation_useful_artifact_chain.py`, land via
-  `gh pr diff 1351 --repo OmniNode-ai/omnimarket`). Router/dispatch runs real; only model response bytes
-  are replayed from a provenance-stamped fixture (`model_id`, `endpoint`, `request_hash`, `recorded_at`).
-  New recordings only via `OMN_RECORD_GOLDEN=1` against live endpoints, never in CI. Heaviest single file
-  is `test_handler_inference_intent.py` (14 sites, one seam repeated per test — mechanical once the first
-  is done). One row (`test_golden_chain_delegation_useful_artifact_chain.py:7`) is a docstring false
-  positive on an already-migrated file — no code change, just a suppression/reword.
+- **C1 — inference `patch_httpx_egress` — RESOLVED via scoped per-line `# onex-allow-faked-boundary`,
+  NOT recorded-replay (26 findings, 10 files). CLOSED 2026-07-03.**
+
+  **Planned disposition was recorded-replay-fixture; actual disposition is a scoped per-line annotation
+  with a concrete reason above each site.** The plan assumed these 26 sites were the "same seam repeated,
+  mechanical after the first." Reading each test disproved that. The canonical
+  `RecordedReplayInferenceTransport` (OMN-13499) is `httpx.Client`-shaped but structurally fits exactly ONE
+  test shape: a happy-path chain that asserts a useful artifact from REAL recorded model bytes and that
+  routing resolved the concrete model. That shape is already covered by the in-repo reference chain
+  `tests/integration/golden_chain/test_golden_chain_delegation_useful_artifact_chain.py` (PR #1351). NONE
+  of the 26 C1 sites in this cluster are that shape. They split into:
+
+  - **Effect-handler unit tests** of `HandlerInferenceIntent` (whose job IS the HTTP egress) that inject a
+    transport exception (ConnectionRefused/Timeout), craft an edge provider response (empty content /
+    `finish_reason=length` truncation / HTTP 4xx), or capture the constructed request (verbatim URL / auth
+    header / payload messages). The transport **cannot serve any of these**: it has no exception-injection
+    hook; `load_fixture` fails closed on empty completions (`EMPTY_COMPLETION`); `ReplayResponse.raise_for_status`
+    is a no-op; and `transport.calls` records only `model/url/request_hash` — not headers or full payload.
+  - **Chain tests** that inject a **synthetic** model completion as a TEST INPUT to drive downstream
+    quality-gate / refusal / escalation / veto logic (refusal strings, weak output, truncated-with-usage).
+    A recorded-from-real fixture cannot produce these adversarial outputs on demand, and the transport
+    forbids echo/empty completions.
+
+  Force-fitting these to recorded-replay would require **fabricating provenance-stamped fixtures containing
+  synthetic content** — a worse doctrine violation than the finding (recorded-replay demands
+  *recorded-from-real* bytes), and would DELETE load-bearing error-path / edge-case / adversarial-input
+  coverage (forbidden test-weakening). The honest, detector-sanctioned fix is the per-line
+  `# onex-allow-faked-boundary` marker (the escape hatch the detector docstring blesses for
+  "genuinely-approved boundary doubles"), each carrying a concrete category-specific reason on the lines
+  directly above and stating that the integrated inference path itself is proven by the recorded-replay
+  golden chain. Row 24 (`test_model_router_authorization_and_ttl.py:93`) is non-inference `/health`-probe
+  egress (C2-style). Row 26 (`test_golden_chain_delegation_useful_artifact_chain.py:7`) was a docstring
+  false-positive on the already-migrated reference file — reworded to drop the literal `patch("httpx.Client")`
+  string (no code change). Annotations are format-stable under `ruff format` (short bare marker inline +
+  reason comment above; verified idempotent). Detector delta after C1: 69 -> 43 (26 cleared).
 
 - **C2 — `node_baseline_capture` health-probe egress -> justified-allow-non-inference (9 findings, 1 file).**
   `test_probe_unit.py` patches `httpx.AsyncClient` around container/service health probes — non-inference

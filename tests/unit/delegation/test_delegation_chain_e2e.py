@@ -216,7 +216,12 @@ class TestDelegationChainE2E:
 
         # Hop 4: LLM call effect consumes the typed intent, returns
         # ModelInferenceResponseData; runtime auto-publishes it to inference-response.v1.
-        with patch("httpx.Client") as mock_client_cls:
+        # OMN-13501 no-faked-boundary: synthetic model completion injected as a TEST INPUT
+        # to drive downstream quality-gate / refusal / escalation / veto logic; a
+        # recorded-from-real fixture cannot produce this adversarial output on demand and the
+        # transport forbids echo/empty completions. The inference boundary itself is proven
+        # by the recorded-replay golden chain.
+        with patch("httpx.Client") as mock_client_cls:  # onex-allow-faked-boundary
             mock_client = MagicMock()
             mock_client.__enter__ = MagicMock(return_value=mock_client)
             mock_client.__exit__ = MagicMock(return_value=False)
@@ -333,7 +338,11 @@ class TestDelegationChainE2E:
         decision = routing_handler.handle(routing_intents[0])
         inference_intents = workflow.handle_routing_decision(decision)
 
-        with patch("httpx.Client") as mock_client_cls:
+        # OMN-13501 no-faked-boundary: effect-handler unit test injects a transport-level
+        # exception (ConnectionRefused/Timeout) at the egress; RecordedReplayInferenceTransport
+        # has no exception-injection hook. Integrated inference path is proven by the golden
+        # chain test_golden_chain_delegation_useful_artifact_chain.py.
+        with patch("httpx.Client") as mock_client_cls:  # onex-allow-faked-boundary
             mock_client = MagicMock()
             mock_client.__enter__ = MagicMock(return_value=mock_client)
             mock_client.__exit__ = MagicMock(return_value=False)

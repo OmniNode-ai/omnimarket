@@ -390,7 +390,12 @@ class TestJudgeVerdictVetoRealDispatchPath:
         inference_intents = workflow.handle_routing_decision(decision)
         assert isinstance(inference_intents[0], ModelInferenceIntent)
 
-        with patch("httpx.Client") as mock_client_cls:
+        # OMN-13501 no-faked-boundary: synthetic model completion injected as a TEST INPUT
+        # to drive downstream quality-gate / refusal / escalation / veto logic; a
+        # recorded-from-real fixture cannot produce this adversarial output on demand and the
+        # transport forbids echo/empty completions. The inference boundary itself is proven
+        # by the recorded-replay golden chain.
+        with patch("httpx.Client") as mock_client_cls:  # onex-allow-faked-boundary
             mock_client = MagicMock()
             mock_client.__enter__ = MagicMock(return_value=mock_client)
             mock_client.__exit__ = MagicMock(return_value=False)

@@ -117,7 +117,11 @@ class TestHandlerInferenceIntent:
         mock_response.json.return_value = _SUCCESSFUL_HTTPX_RESPONSE
         mock_response.raise_for_status.return_value = None
 
-        with patch("httpx.Client") as mock_client_cls:
+        # OMN-13501 no-faked-boundary: effect-handler unit test asserts request construction
+        # (verbatim POST URL / Authorization header / payload messages) at the egress;
+        # RecordedReplayInferenceTransport.calls records only model/url/request_hash, not
+        # headers or full payload. Integrated path proven by the recorded-replay golden chain.
+        with patch("httpx.Client") as mock_client_cls:  # onex-allow-faked-boundary
             mock_client = MagicMock()
             mock_client.__enter__ = MagicMock(return_value=mock_client)
             mock_client.__exit__ = MagicMock(return_value=False)
@@ -152,7 +156,11 @@ class TestHandlerInferenceIntent:
             captured_urls.append(url)
             return mock_response
 
-        with patch("httpx.Client") as mock_client_cls:
+        # OMN-13501 no-faked-boundary: effect-handler unit test asserts request construction
+        # (verbatim POST URL / Authorization header / payload messages) at the egress;
+        # RecordedReplayInferenceTransport.calls records only model/url/request_hash, not
+        # headers or full payload. Integrated path proven by the recorded-replay golden chain.
+        with patch("httpx.Client") as mock_client_cls:  # onex-allow-faked-boundary
             mock_client = MagicMock()
             mock_client.__enter__ = MagicMock(return_value=mock_client)
             mock_client.__exit__ = MagicMock(return_value=False)
@@ -168,7 +176,11 @@ class TestHandlerInferenceIntent:
         handler = HandlerInferenceIntent()
         intent = _make_intent()
 
-        with patch("httpx.Client") as mock_client_cls:
+        # OMN-13501 no-faked-boundary: effect-handler unit test injects a transport-level
+        # exception (ConnectionRefused/Timeout) at the egress; RecordedReplayInferenceTransport
+        # has no exception-injection hook. Integrated inference path is proven by the golden
+        # chain test_golden_chain_delegation_useful_artifact_chain.py.
+        with patch("httpx.Client") as mock_client_cls:  # onex-allow-faked-boundary
             mock_client = MagicMock()
             mock_client.__enter__ = MagicMock(return_value=mock_client)
             mock_client.__exit__ = MagicMock(return_value=False)
@@ -262,7 +274,11 @@ class TestHandlerInferenceIntent:
                 "omnimarket.nodes.node_llm_delegation_call_effect.handlers.handler_inference_intent.resolve_api_key",
                 return_value=None,
             ),
-            patch("httpx.Client") as mock_client_cls,
+            # OMN-13501 no-faked-boundary: effect-handler unit test asserts request construction
+            # (verbatim POST URL / Authorization header / payload messages) at the egress;
+            # RecordedReplayInferenceTransport.calls records only model/url/request_hash, not
+            # headers or full payload. Integrated path proven by the recorded-replay golden chain.
+            patch("httpx.Client") as mock_client_cls,  # onex-allow-faked-boundary
         ):
             mock_client = MagicMock()
             mock_client.__enter__ = MagicMock(return_value=mock_client)
@@ -308,7 +324,11 @@ class TestHandlerInferenceIntent:
         )
 
         with (
-            patch("httpx.Client") as mock_client_cls,
+            # OMN-13501 no-faked-boundary: effect-handler unit test crafts an edge provider
+            # response (empty content / finish_reason=length / HTTP 4xx). load_fixture rejects
+            # empty completions (EMPTY_COMPLETION) and ReplayResponse.raise_for_status is a no-op,
+            # so the canonical transport cannot reproduce these. Path proven by the golden chain.
+            patch("httpx.Client") as mock_client_cls,  # onex-allow-faked-boundary
             patch(
                 "omnimarket.nodes.node_llm_delegation_call_effect.handlers.handler_inference_intent.resolve_api_key"
             ) as mock_resolve_api_key,
@@ -358,7 +378,11 @@ class TestHandlerInferenceIntent:
             source_tool="test-handler-inference-intent",
         )
 
-        with patch("httpx.Client") as mock_client_cls:
+        # OMN-13501 no-faked-boundary: effect-handler unit test injects a transport-level
+        # exception (ConnectionRefused/Timeout) at the egress; RecordedReplayInferenceTransport
+        # has no exception-injection hook. Integrated inference path is proven by the golden
+        # chain test_golden_chain_delegation_useful_artifact_chain.py.
+        with patch("httpx.Client") as mock_client_cls:  # onex-allow-faked-boundary
             mock_client = MagicMock()
             mock_client.__enter__ = MagicMock(return_value=mock_client)
             mock_client.__exit__ = MagicMock(return_value=False)
@@ -426,7 +450,11 @@ class TestHandlerInferenceIntent:
         }
         mock_response.raise_for_status.return_value = None
 
-        with patch("httpx.Client") as mock_client_cls:
+        # OMN-13501 no-faked-boundary: effect-handler unit test crafts an edge provider
+        # response (empty content / finish_reason=length / HTTP 4xx). load_fixture rejects
+        # empty completions (EMPTY_COMPLETION) and ReplayResponse.raise_for_status is a no-op,
+        # so the canonical transport cannot reproduce these. Path proven by the golden chain.
+        with patch("httpx.Client") as mock_client_cls:  # onex-allow-faked-boundary
             mock_client = MagicMock()
             mock_client.__enter__ = MagicMock(return_value=mock_client)
             mock_client.__exit__ = MagicMock(return_value=False)
@@ -465,7 +493,11 @@ class TestHandlerInferenceIntent:
         }
         mock_response.raise_for_status.return_value = None
 
-        with patch("httpx.Client") as mock_client_cls:
+        # OMN-13501 no-faked-boundary: effect-handler unit test crafts an edge provider
+        # response (empty content / finish_reason=length / HTTP 4xx). load_fixture rejects
+        # empty completions (EMPTY_COMPLETION) and ReplayResponse.raise_for_status is a no-op,
+        # so the canonical transport cannot reproduce these. Path proven by the golden chain.
+        with patch("httpx.Client") as mock_client_cls:  # onex-allow-faked-boundary
             mock_client = MagicMock()
             mock_client.__enter__ = MagicMock(return_value=mock_client)
             mock_client.__exit__ = MagicMock(return_value=False)
@@ -495,7 +527,11 @@ class TestHandlerInferenceIntent:
         mock_response.json.return_value = _SUCCESSFUL_HTTPX_RESPONSE
         mock_response.raise_for_status.return_value = None
 
-        with patch("httpx.Client") as mock_client_cls:
+        # OMN-13501 no-faked-boundary: effect-handler unit test asserts request construction
+        # (verbatim POST URL / Authorization header / payload messages) at the egress;
+        # RecordedReplayInferenceTransport.calls records only model/url/request_hash, not
+        # headers or full payload. Integrated path proven by the recorded-replay golden chain.
+        with patch("httpx.Client") as mock_client_cls:  # onex-allow-faked-boundary
             mock_client = MagicMock()
             mock_client.__enter__ = MagicMock(return_value=mock_client)
             mock_client.__exit__ = MagicMock(return_value=False)
@@ -517,7 +553,11 @@ class TestHandlerInferenceIntent:
         mock_response.json.return_value = _SUCCESSFUL_HTTPX_RESPONSE
         mock_response.raise_for_status.return_value = None
 
-        with patch("httpx.Client") as mock_client_cls:
+        # OMN-13501 no-faked-boundary: effect-handler unit test asserts request construction
+        # (verbatim POST URL / Authorization header / payload messages) at the egress;
+        # RecordedReplayInferenceTransport.calls records only model/url/request_hash, not
+        # headers or full payload. Integrated path proven by the recorded-replay golden chain.
+        with patch("httpx.Client") as mock_client_cls:  # onex-allow-faked-boundary
             mock_client = MagicMock()
             mock_client.__enter__ = MagicMock(return_value=mock_client)
             mock_client.__exit__ = MagicMock(return_value=False)
@@ -570,7 +610,11 @@ class TestHandlerInferenceIntent:
         }
         mock_response.raise_for_status.return_value = None
 
-        with patch("httpx.Client") as mock_client_cls:
+        # OMN-13501 no-faked-boundary: effect-handler unit test asserts request construction
+        # (verbatim POST URL / Authorization header / payload messages) at the egress;
+        # RecordedReplayInferenceTransport.calls records only model/url/request_hash, not
+        # headers or full payload. Integrated path proven by the recorded-replay golden chain.
+        with patch("httpx.Client") as mock_client_cls:  # onex-allow-faked-boundary
             mock_client = MagicMock()
             mock_client.__enter__ = MagicMock(return_value=mock_client)
             mock_client.__exit__ = MagicMock(return_value=False)
@@ -611,7 +655,11 @@ class TestHandlerInferenceIntent:
         mock_response.json.return_value = _SUCCESSFUL_HTTPX_RESPONSE
         mock_response.raise_for_status.return_value = None
 
-        with patch("httpx.Client") as mock_client_cls:
+        # OMN-13501 no-faked-boundary: effect-handler unit test asserts request construction
+        # (verbatim POST URL / Authorization header / payload messages) at the egress;
+        # RecordedReplayInferenceTransport.calls records only model/url/request_hash, not
+        # headers or full payload. Integrated path proven by the recorded-replay golden chain.
+        with patch("httpx.Client") as mock_client_cls:  # onex-allow-faked-boundary
             mock_client = MagicMock()
             mock_client.__enter__ = MagicMock(return_value=mock_client)
             mock_client.__exit__ = MagicMock(return_value=False)
@@ -641,7 +689,11 @@ class TestHandlerInferenceIntent:
         mock_response.json.return_value = _SUCCESSFUL_HTTPX_RESPONSE
         mock_response.raise_for_status.return_value = None
 
-        with patch("httpx.Client") as mock_client_cls:
+        # OMN-13501 no-faked-boundary: effect-handler unit test asserts request construction
+        # (verbatim POST URL / Authorization header / payload messages) at the egress;
+        # RecordedReplayInferenceTransport.calls records only model/url/request_hash, not
+        # headers or full payload. Integrated path proven by the recorded-replay golden chain.
+        with patch("httpx.Client") as mock_client_cls:  # onex-allow-faked-boundary
             mock_client = MagicMock()
             mock_client.__enter__ = MagicMock(return_value=mock_client)
             mock_client.__exit__ = MagicMock(return_value=False)
@@ -686,7 +738,11 @@ class TestHandlerInferenceIntent:
         mock_response.json.return_value = _SUCCESSFUL_HTTPX_RESPONSE
         mock_response.raise_for_status.return_value = None
 
-        with patch("httpx.Client") as mock_client_cls:
+        # OMN-13501 no-faked-boundary: effect-handler unit test asserts request construction
+        # (verbatim POST URL / Authorization header / payload messages) at the egress;
+        # RecordedReplayInferenceTransport.calls records only model/url/request_hash, not
+        # headers or full payload. Integrated path proven by the recorded-replay golden chain.
+        with patch("httpx.Client") as mock_client_cls:  # onex-allow-faked-boundary
             mock_client = MagicMock()
             mock_client.__enter__ = MagicMock(return_value=mock_client)
             mock_client.__exit__ = MagicMock(return_value=False)
