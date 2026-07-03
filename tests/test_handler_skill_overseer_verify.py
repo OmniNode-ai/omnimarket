@@ -10,13 +10,14 @@ absent a dispatcher the handler returns a structured FAILED result.
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import MagicMock
 from uuid import uuid4
 
 import pytest
 
 from omnimarket.nodes.node_skill_overseer_verify_orchestrator.handlers.handler_skill_requested import (
     HandlerSkillRequested,
+    TaskDispatcher,
 )
 from omnimarket.nodes.node_skill_overseer_verify_orchestrator.models import (
     ModelSkillRequest,
@@ -31,6 +32,33 @@ def _request() -> ModelSkillRequest:
         args={"ticket": "OMN-13603"},
         correlation_id=uuid4(),
     )
+
+
+def _dispatcher_returning(output: str) -> tuple[TaskDispatcher, list[str]]:
+    """Build a real, typed ``TaskDispatcher`` (agent-dispatch callable) that
+    returns ``output`` and records the prompts it was awaited with.
+
+    The task_dispatcher contract is ``Callable[[str], Awaitable[str]]`` — a real
+    async closure satisfies it exactly, so the agent-dispatch boundary is
+    exercised through its actual type rather than a bare ``AsyncMock``. This is
+    the agent-spawn surface, not the platform model-router/inference boundary.
+    """
+    calls: list[str] = []
+
+    async def _dispatch(prompt: str) -> str:
+        calls.append(prompt)
+        return output
+
+    return _dispatch, calls
+
+
+def _dispatcher_raising(exc: Exception) -> TaskDispatcher:
+    """Real, typed ``TaskDispatcher`` that raises to exercise the failure path."""
+
+    async def _dispatch(prompt: str) -> str:
+        raise exc
+
+    return _dispatch
 
 
 @pytest.mark.unit
@@ -57,19 +85,21 @@ class TestHandlerSkillRequested:
     @pytest.mark.asyncio
     async def test_dispatch_parses_success_result_block(self) -> None:
         """An explicit dispatcher's RESULT: block is parsed to SUCCESS."""
-        dispatcher = AsyncMock(return_value="work done\nRESULT:\nstatus: success\n")
+        dispatcher, calls = _dispatcher_returning(
+            "work done\nRESULT:\nstatus: success\n"
+        )
         handler = HandlerSkillRequested(
             container=MagicMock(), task_dispatcher=dispatcher
         )
         result = await handler.handle(_request())
-        dispatcher.assert_awaited_once()
+        assert len(calls) == 1
         assert result.status == SkillResultStatus.SUCCESS
         assert result.error is None
 
     @pytest.mark.asyncio
     async def test_dispatch_parses_failed_result_block(self) -> None:
-        dispatcher = AsyncMock(
-            return_value="RESULT:\nstatus: failed\nerror: gate rejected\n"
+        dispatcher, _calls = _dispatcher_returning(
+            "RESULT:\nstatus: failed\nerror: gate rejected\n"
         )
         handler = HandlerSkillRequested(
             container=MagicMock(), task_dispatcher=dispatcher
@@ -80,7 +110,7 @@ class TestHandlerSkillRequested:
 
     @pytest.mark.asyncio
     async def test_dispatcher_exception_returns_failed(self) -> None:
-        dispatcher = AsyncMock(side_effect=RuntimeError("agent unavailable"))
+        dispatcher = _dispatcher_raising(RuntimeError("agent unavailable"))
         handler = HandlerSkillRequested(
             container=MagicMock(), task_dispatcher=dispatcher
         )

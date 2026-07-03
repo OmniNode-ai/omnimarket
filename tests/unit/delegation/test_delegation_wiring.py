@@ -60,6 +60,8 @@ from omnimarket.nodes.node_delegation_routing_reducer.models.model_routing_decis
     ModelRoutingDecision,
 )
 
+from ._dispatch_engine_spy import RecordingDispatchEngine
+
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 _ORCHESTRATOR_CONTRACT = (
     _REPO_ROOT
@@ -129,12 +131,9 @@ def mock_container() -> MagicMock:
 
 
 @pytest.fixture
-def mock_engine() -> MagicMock:
-    """Create a mock MessageDispatchEngine."""
-    engine = MagicMock()
-    engine.register_dispatcher = MagicMock()
-    engine.register_route = MagicMock()
-    return engine
+def recording_engine() -> RecordingDispatchEngine:
+    """Real MessageDispatchEngine subclass that records register_* calls."""
+    return RecordingDispatchEngine()
 
 
 @pytest.mark.unit
@@ -143,30 +142,30 @@ class TestWireDelegationDispatchers:
 
     @pytest.mark.asyncio
     async def test_registers_dispatchers(
-        self, mock_container: MagicMock, mock_engine: MagicMock
+        self, mock_container: MagicMock, recording_engine: RecordingDispatchEngine
     ) -> None:
-        result = await wire_delegation_dispatchers(mock_container, mock_engine)
+        result = await wire_delegation_dispatchers(mock_container, recording_engine)
 
         assert result["dispatchers"] == [
             "dispatcher.delegation.workflow.command",
             "dispatcher.delegation.workflow.event",
         ]
-        assert mock_engine.register_dispatcher.call_count == 2
+        assert len(recording_engine.dispatcher_calls) == 2
 
     @pytest.mark.asyncio
     async def test_registers_routes(
-        self, mock_container: MagicMock, mock_engine: MagicMock
+        self, mock_container: MagicMock, recording_engine: RecordingDispatchEngine
     ) -> None:
-        result = await wire_delegation_dispatchers(mock_container, mock_engine)
+        result = await wire_delegation_dispatchers(mock_container, recording_engine)
 
         assert len(result["routes"]) == 6
-        assert mock_engine.register_route.call_count == 6
+        assert len(recording_engine.route_calls) == 6
 
     @pytest.mark.asyncio
     async def test_route_ids_are_correct(
-        self, mock_container: MagicMock, mock_engine: MagicMock
+        self, mock_container: MagicMock, recording_engine: RecordingDispatchEngine
     ) -> None:
-        result = await wire_delegation_dispatchers(mock_container, mock_engine)
+        result = await wire_delegation_dispatchers(mock_container, recording_engine)
 
         assert ROUTE_ID_DELEGATION_REQUEST in result["routes"]
         assert ROUTE_ID_INVOCATION_COMMAND in result["routes"]
@@ -177,9 +176,9 @@ class TestWireDelegationDispatchers:
 
     @pytest.mark.asyncio
     async def test_dispatcher_ids_are_correct(
-        self, mock_container: MagicMock, mock_engine: MagicMock
+        self, mock_container: MagicMock, recording_engine: RecordingDispatchEngine
     ) -> None:
-        result = await wire_delegation_dispatchers(mock_container, mock_engine)
+        result = await wire_delegation_dispatchers(mock_container, recording_engine)
 
         assert result["dispatchers"] == [
             "dispatcher.delegation.workflow.command",
@@ -188,35 +187,35 @@ class TestWireDelegationDispatchers:
 
     @pytest.mark.asyncio
     async def test_status_is_success(
-        self, mock_container: MagicMock, mock_engine: MagicMock
+        self, mock_container: MagicMock, recording_engine: RecordingDispatchEngine
     ) -> None:
-        result = await wire_delegation_dispatchers(mock_container, mock_engine)
+        result = await wire_delegation_dispatchers(mock_container, recording_engine)
 
         assert result["status"] == "success"
 
     @pytest.mark.asyncio
     async def test_routes_have_correct_model_types(
-        self, mock_container: MagicMock, mock_engine: MagicMock
+        self, mock_container: MagicMock, recording_engine: RecordingDispatchEngine
     ) -> None:
         from omnibase_core.models.dispatch.model_dispatch_route import (
             ModelDispatchRoute,
         )
 
-        await wire_delegation_dispatchers(mock_container, mock_engine)
+        await wire_delegation_dispatchers(mock_container, recording_engine)
 
-        for call in mock_engine.register_route.call_args_list:
-            route = call[0][0]
+        for call in recording_engine.route_calls:
+            route = call.args[0]
             assert isinstance(route, ModelDispatchRoute)
 
     @pytest.mark.asyncio
     async def test_wired_dispatchers_share_one_workflow_handler(
-        self, mock_container: MagicMock, mock_engine: MagicMock
+        self, mock_container: MagicMock, recording_engine: RecordingDispatchEngine
     ) -> None:
-        await wire_delegation_dispatchers(mock_container, mock_engine)
+        await wire_delegation_dispatchers(mock_container, recording_engine)
 
         dispatcher_handlers = [
             call.kwargs["dispatcher"].__self__._handler
-            for call in mock_engine.register_dispatcher.call_args_list
+            for call in recording_engine.dispatcher_calls
         ]
 
         assert len(dispatcher_handlers) == 2
@@ -224,13 +223,12 @@ class TestWireDelegationDispatchers:
 
     @pytest.mark.asyncio
     async def test_all_routes_point_to_canonical_workflow_dispatcher(
-        self, mock_container: MagicMock, mock_engine: MagicMock
+        self, mock_container: MagicMock, recording_engine: RecordingDispatchEngine
     ) -> None:
-        await wire_delegation_dispatchers(mock_container, mock_engine)
+        await wire_delegation_dispatchers(mock_container, recording_engine)
 
         route_dispatcher_ids = {
-            call.args[0].dispatcher_id
-            for call in mock_engine.register_route.call_args_list
+            call.args[0].dispatcher_id for call in recording_engine.route_calls
         }
 
         assert route_dispatcher_ids == {
@@ -239,7 +237,7 @@ class TestWireDelegationDispatchers:
         }
         registered_dispatchers = [
             call.kwargs["dispatcher"].__self__
-            for call in mock_engine.register_dispatcher.call_args_list
+            for call in recording_engine.dispatcher_calls
         ]
         assert all(
             isinstance(dispatcher, DispatcherDelegationWorkflow)

@@ -34,6 +34,8 @@ from omnimarket.nodes.node_delegation_orchestrator.plugin import (
     _build_delegation_result_applier,
 )
 
+from ._dispatch_engine_spy import RecordingDispatchEngine
+
 
 class _RecordingEventBus:
     def __init__(self) -> None:
@@ -76,15 +78,17 @@ def test_delegation_contract_has_no_legacy_compatibility_publish_topic() -> None
 async def test_dispatcher_routes_are_contract_managed() -> None:
     plugin = PluginDelegation()
     config = _plugin_config()
-    config.dispatch_engine = MagicMock()
+    engine = RecordingDispatchEngine()
+    config.dispatch_engine = engine
 
     result = await plugin.wire_dispatchers(config)
 
     assert result.success
     assert result.message == "Delegation dispatcher routes are contract-managed"
     assert plugin._dispatcher_wiring_succeeded is True
-    config.dispatch_engine.register_dispatcher.assert_not_called()
-    config.dispatch_engine.register_route.assert_not_called()
+    # Routes are contract-managed: wire_dispatchers must register nothing on the engine.
+    assert engine.dispatcher_calls == []
+    assert engine.route_calls == []
 
 
 @pytest.mark.unit
