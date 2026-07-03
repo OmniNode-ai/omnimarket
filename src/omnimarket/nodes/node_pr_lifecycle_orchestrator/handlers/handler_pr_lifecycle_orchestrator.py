@@ -55,10 +55,12 @@ from omnimarket.nodes.node_pr_lifecycle_orchestrator.protocols.protocol_sub_hand
     ProtocolFixHandler,
     ProtocolInventoryHandler,
     ProtocolMergeHandler,
+    ProtocolPruneHandler,
     ProtocolStateReducerHandler,
     ProtocolTriageHandler,
     PrRecord,
     PrTriageResult,
+    PruneResult,
     ReducerResult,
     TriageRecord,
 )
@@ -405,6 +407,18 @@ class _StubFixHandler:
         return FixResult(prs_dispatched=0, prs_skipped=0)
 
 
+class _StubPruneHandler:
+    """Stub matching HandlerWorktreePrune.handle(command) signature.
+
+    Returns a no-op result so the POST_MERGE_TAIL prune step is inert when the
+    worktree-prune node is unavailable (OMN-13859).
+    """
+
+    async def handle(self, command: Any) -> Any:
+        logger.warning("[PR-LIFECYCLE-ORCH] prune stub called (sub-node not wired)")
+        return None
+
+
 # ---------------------------------------------------------------------------
 # Model-translation helpers (PrRecord ↔ real sub-handler input models)
 # ---------------------------------------------------------------------------
@@ -568,6 +582,7 @@ class HandlerPrLifecycleOrchestrator:
         reducer: ProtocolStateReducerHandler | None = None,
         merge: ProtocolMergeHandler | None = None,
         fix: ProtocolFixHandler | None = None,
+        prune: ProtocolPruneHandler | None = None,
         event_bus: ProtocolEventBusPublisher,
         ledger_store: ProtocolPrLedgerStore | None = None,
         projection_db: ProtocolProjectionDatabaseSync | None = None,
@@ -582,6 +597,9 @@ class HandlerPrLifecycleOrchestrator:
         self._reducer = reducer
         self._merge = merge
         self._fix = fix
+        # OMN-13859: worktree-prune effect invoked in POST_MERGE_TAIL, one
+        # command per merged (ticket, repo). Optional like the other sub-handlers.
+        self._prune = prune
         self._event_bus = event_bus
         # Durable, reconstructable PR-ledger projection (OMN-12569). Defaults to
         # the in-memory store for local/test runs; the runtime injects a
@@ -953,6 +971,25 @@ class HandlerPrLifecycleOrchestrator:
                 self._fix = fix_handler
             except ImportError:
                 self._fix = _StubFixHandler()
+        if self._prune is None:
+            # OMN-13859: worktree-prune effect. Falls back to a no-op stub when
+            # the node is unavailable so the merge sweep never fails for lack of
+            # worktree GC.
+            try:
+                from omnimarket.nodes.node_pr_lifecycle_worktree_prune_effect.handlers.adapter_git_worktree import (
+                    GitWorktreeAdapter,
+                )
+                from omnimarket.nodes.node_pr_lifecycle_worktree_prune_effect.handlers.handler_worktree_prune import (
+                    HandlerWorktreePrune,
+                )
+
+                prune_handler = HandlerWorktreePrune(git_adapter=GitWorktreeAdapter())
+                self._check_protocol_conformance(
+                    prune_handler, ProtocolPruneHandler, "prune"
+                )
+                self._prune = prune_handler
+            except ImportError:
+                self._prune = _StubPruneHandler()
 
     async def handle(
         self,
@@ -1238,6 +1275,18 @@ class HandlerPrLifecycleOrchestrator:
                         conclusion=EnumPrLedgerConclusion.MERGED,
                         orchestrator_action=EnumOrchestratorAction.MERGE,
                         phase=state.phase,
+                    )
+
+                # OMN-13859: event-driven worktree prune-on-close. The merges
+                # just performed ARE the trigger; prune each merged PR's
+                # worktree scoped to its (ticket, repo). Runs only when at least
+                # one PR actually merged, and is fully best-effort — the prune
+                # effect's rails keep dirty/canonical/out-of-root worktrees.
+                if merge_result.prs_merged > 0:
+                    await self._prune_merged_worktrees(
+                        merged=merge_prs,
+                        inventory=state.inventory_result,
+                        correlation_id=command.correlation_id,
                     )
 
                 if command.merge_only:
@@ -1711,6 +1760,87 @@ class HandlerPrLifecycleOrchestrator:
                 prs_failed += 1
 
         return MergeResult(prs_merged=prs_merged, prs_failed=prs_failed)
+
+    async def _prune_merged_worktrees(
+        self,
+        *,
+        merged: tuple[TriageRecord, ...],
+        inventory: InventoryResult | None,
+        correlation_id: UUID,
+    ) -> PruneResult:
+        """Prune the git worktree for each just-merged PR (OMN-13859).
+
+        Event-driven prune-on-close: the merges we performed in this sweep ARE
+        the trigger. One command per (ticket, repo) — scoped to exactly the
+        worktrees whose PRs just closed, never a full-registry scan. The prune
+        effect owns every safety rail (dirty→flag, canonical-clone→refuse,
+        outside-root→refuse, no @{u} requirement).
+
+        Best-effort: a prune failure or an unresolved worktrees root is logged
+        and swallowed so worktree GC never aborts a successful merge sweep.
+        """
+        if self._prune is None:
+            return PruneResult()
+
+        from omnimarket.events.worktree_prune import (
+            ModelWorktreePruneCommand,
+        )
+
+        # Recover branch per (repo, pr_number) from inventory for provenance/logging.
+        branch_by_pr: dict[tuple[str, int], str] = {}
+        if inventory is not None:
+            for rec in inventory.prs:
+                if rec.branch:
+                    branch_by_pr[(rec.repo, rec.pr_number)] = rec.branch
+
+        pruned = 0
+        flagged_dirty = 0
+        skipped = 0
+        for tr in merged:
+            branch = branch_by_pr.get((tr.repo, tr.pr_number))
+            for ticket_id in tr.ticket_ids:
+                try:
+                    command = ModelWorktreePruneCommand(
+                        correlation_id=correlation_id,
+                        ticket_id=ticket_id,
+                        repo=tr.repo,
+                        branch=branch,
+                        pr_number=tr.pr_number,
+                    )
+                    result = await self._prune.handle(command)
+                except Exception as exc:
+                    logger.warning(
+                        "[PR-LIFECYCLE-ORCH] worktree prune raised for "
+                        "ticket=%s repo=%s pr=%s: %s",
+                        ticket_id,
+                        tr.repo,
+                        tr.pr_number,
+                        exc,
+                    )
+                    skipped += 1
+                    continue
+                outcome = getattr(result, "outcome", None)
+                outcome_value = getattr(outcome, "value", outcome)
+                if outcome_value == "pruned":
+                    pruned += 1
+                elif outcome_value == "skipped_dirty":
+                    flagged_dirty += 1
+                else:
+                    skipped += 1
+
+        if pruned or flagged_dirty:
+            logger.info(
+                "[PR-LIFECYCLE-ORCH] worktree prune tail: %d pruned, "
+                "%d flagged-dirty (kept), %d skipped",
+                pruned,
+                flagged_dirty,
+                skipped,
+            )
+        return PruneResult(
+            worktrees_pruned=pruned,
+            worktrees_flagged_dirty=flagged_dirty,
+            worktrees_skipped=skipped,
+        )
 
     # -----------------------------------------------------------------------
     # VERIFYING phase (OMN-13673 / OMN-7742): per-PR pre-merge verification gate

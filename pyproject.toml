@@ -226,6 +226,7 @@ node_overnight = "omnimarket.nodes.node_overnight"
 node_pr_lifecycle_state_reducer = "omnimarket.nodes.node_pr_lifecycle_state_reducer"
 node_pr_lifecycle_orchestrator = "omnimarket.nodes.node_pr_lifecycle_orchestrator"
 node_pr_lifecycle_merge_effect = "omnimarket.nodes.node_pr_lifecycle_merge_effect"
+node_pr_lifecycle_worktree_prune_effect = "omnimarket.nodes.node_pr_lifecycle_worktree_prune_effect"
 node_verification_sweep_orchestrator = "omnimarket.nodes.node_verification_sweep_orchestrator"
 node_retention_cleanup = "omnimarket.nodes.node_retention_cleanup"
 node_environment_health_scanner = "omnimarket.nodes.node_environment_health_scanner"
@@ -569,6 +570,7 @@ module = [
     "omnimarket.nodes.node_pr_lifecycle_triage_compute.*",
     "omnimarket.nodes.node_pr_lifecycle_state_reducer.*",
     "omnimarket.nodes.node_pr_lifecycle_merge_effect.*",
+    "omnimarket.nodes.node_pr_lifecycle_worktree_prune_effect.*",
     "omnimarket.nodes.node_pr_lifecycle_fix_effect.*",
 ]
 ignore_missing_imports = true
