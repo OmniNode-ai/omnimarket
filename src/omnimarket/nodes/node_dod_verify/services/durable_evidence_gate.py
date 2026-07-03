@@ -73,6 +73,11 @@ _PR_URL_RE = re.compile(
 # is treated as a malformed citation and skipped (see CR thread on PR #467).
 _SHA_RE = re.compile(r"^[0-9a-fA-F]{7,40}$")
 
+# OMN-13888: the unforgeable ``.supersede.<NNNN>.yaml`` filename ordinal.
+# Identical to the omnibase_core ``resolve_supersession`` authority key so both
+# resolvers agree on which supersession record is "latest".
+_SUPERSEDE_SEQ_RE = re.compile(r"\.supersede\.(\d+)\.yaml$")
+
 # Canonical OCC governance ref. OCC governance is dev-targeted: contracts and
 # receipts land on the OCC ``dev`` branch first and are batched to ``main``
 # later (OMN-12593). Defaulting to ``main`` falsely FAILs tickets whose evidence
@@ -175,6 +180,15 @@ class ReceiptsOnRefLoader(Protocol):
     Production wiring should load every ``*.yaml`` receipt under
     ``<repo>:<ref>:<receipt_dir>/``. The gate treats these receipts as the
     schema-valid source of PR/merge-commit bindings.
+
+    OMN-13888: each returned payload MUST carry a ``__source_name__`` key holding
+    the receipt file's basename (e.g. ``command.supersede.0002.yaml``).
+    :func:`apply_supersessions` orders the supersession chain by the
+    ``.supersede.<NNNN>`` ordinal parsed from that basename — the SAME authority
+    key the omnibase_core ``resolve_supersession`` resolver uses — so the two
+    resolvers cannot disagree on which record is "latest". Payloads that omit the
+    key fall back to the attacker-controllable ``created_at`` string and MUST NOT
+    be relied on for ordering in production.
     """
 
     def __call__(
@@ -236,6 +250,103 @@ def extract_defect_prevention(
         return None
 
     return _nonblank("prevention_gate"), _nonblank("non_recurrence_note")
+
+
+def apply_supersessions(
+    receipts: list[dict[str, object]],
+) -> list[dict[str, object]]:
+    """Resolve the supersession chain over a raw receipt payload set (OMN-13888).
+
+    ``_load_receipts_on_ref`` globs every ``*.yaml`` under a ticket's receipt
+    directory, so the payload list mixes base ``ModelDodReceipt`` receipts with
+    net-new ``ModelReceiptSupersession`` records (identified by the ``supersedes``
+    key). For each receipt key ``(ticket_id, evidence_item_id, check_type)`` the
+    latest supersession record decides the active receipt:
+
+    * a tombstone record drops the base receipt (no active receipt for the key);
+    * a replacement record substitutes its embedded ``replacement`` receipt.
+
+    "Latest" is resolved by the unforgeable ``.supersede.<NNNN>.yaml`` filename
+    ordinal — the SAME authority key the omnibase_core
+    :func:`resolve_supersession` resolver uses — so the two resolvers agree on
+    which record wins (round-1 consistency fix). The ordinal is read from the
+    ``__source_name__`` key that the :class:`ReceiptsOnRefLoader` attaches to each
+    payload (the receipt's basename). The payload-carried ``created_at`` string is
+    attacker-controllable, so it is used ONLY as a tiebreak among records that
+    carry no filename ordinal (e.g. hand-built test payloads). Records with a
+    higher ``NNNN`` always outrank records without one.
+
+    Without this filter a tombstoned base receipt's stale citation would still be
+    fed to Check 2, so an intentionally-invalidated PR (e.g. a closed-unmerged PR
+    that was re-bound to the actually-merged one) would keep failing the gate.
+
+    Pure function — no I/O.
+    """
+
+    def _key(payload: dict[str, object]) -> tuple[object, object, object]:
+        return (
+            payload.get("ticket_id"),
+            payload.get("evidence_item_id"),
+            payload.get("check_type"),
+        )
+
+    def _order_key(record: dict[str, object]) -> tuple[int, int, str]:
+        # Primary: the ``.supersede.<NNNN>`` filename ordinal (unforgeable, and
+        # identical to the omnibase_core resolver's authority). Records without a
+        # filename ordinal sort BEFORE numbered ones (has_seq=0) so a genuine
+        # numbered record always wins over a bare payload; created_at only breaks
+        # ties among un-numbered records.
+        source_name = record.get("__source_name__")
+        seq: int | None = None
+        if isinstance(source_name, str):
+            match = _SUPERSEDE_SEQ_RE.search(source_name)
+            if match is not None:
+                seq = int(match.group(1))
+        has_seq = 1 if seq is not None else 0
+        return (
+            has_seq,
+            seq if seq is not None else -1,
+            str(record.get("created_at", "")),
+        )
+
+    base: list[dict[str, object]] = []
+    chains: dict[tuple[object, object, object], list[dict[str, object]]] = {}
+    for payload in receipts:
+        if not isinstance(payload, dict):
+            continue
+        if "supersedes" in payload:
+            chains.setdefault(_key(payload), []).append(payload)
+        else:
+            base.append(payload)
+
+    latest_by_key: dict[tuple[object, object, object], dict[str, object]] = {}
+    for key, records in chains.items():
+        latest_by_key[key] = max(records, key=_order_key)
+
+    resolved: list[dict[str, object]] = []
+    handled_keys: set[tuple[object, object, object]] = set()
+    for payload in base:
+        key = _key(payload)
+        latest = latest_by_key.get(key)
+        if latest is None:
+            resolved.append(payload)
+            continue
+        handled_keys.add(key)
+        if latest.get("tombstone"):
+            continue  # key invalidated — drop the base receipt entirely
+        replacement = latest.get("replacement")
+        if isinstance(replacement, dict):
+            resolved.append(replacement)
+
+    # A replacement record whose base receipt was never written still re-binds.
+    for key, latest in latest_by_key.items():
+        if key in handled_keys or latest.get("tombstone"):
+            continue
+        replacement = latest.get("replacement")
+        if isinstance(replacement, dict):
+            resolved.append(replacement)
+
+    return resolved
 
 
 def extract_receipt_merge_commits(
@@ -474,6 +585,10 @@ class DurableEvidenceGate:
         receipts = self._load_receipts_on_ref(
             self._occ_repo_path, self._occ_governance_ref, receipt_dir
         )
+        # OMN-13888 (scope 4): honor supersession/tombstone records so a stale
+        # (e.g. closed-unmerged) PR citation that was re-bound or invalidated no
+        # longer feeds Check 2.
+        receipts = apply_supersessions(receipts)
 
         # Check 2: every PR-bound receipt is MERGED with mergeCommit.oid == commit_sha.
         citations = extract_receipt_merge_commits(receipts)
@@ -752,6 +867,7 @@ __all__: list[str] = [
     "GhPrViewProbe",
     "GitReceiptTrackedProbe",
     "ReceiptsOnRefLoader",
+    "apply_supersessions",
     "default_contract_path",
     "default_receipt_dir",
     "extract_contract_check_keys",
