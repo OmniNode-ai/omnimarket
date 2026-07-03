@@ -64,7 +64,11 @@ def _receipt(*, pr_number: int, commit_sha: str, status: str = "PASS") -> dict:
 
 
 def _supersession(
-    *, created_at: str, tombstone: bool, replacement: dict | None
+    *,
+    created_at: str,
+    tombstone: bool,
+    replacement: dict | None,
+    source_name: str | None = None,
 ) -> dict:
     data = {
         "schema_version": "1.0.0",
@@ -79,6 +83,10 @@ def _supersession(
     }
     if replacement is not None:
         data["replacement"] = replacement
+    if source_name is not None:
+        # OMN-13888: the loader attaches the receipt basename so apply_supersessions
+        # can order by the unforgeable .supersede.<NNNN> ordinal (matches core).
+        data["__source_name__"] = source_name
     return data
 
 
@@ -123,6 +131,54 @@ def test_apply_supersessions_latest_created_at_wins() -> None:
     resolved = apply_supersessions([base, early_tomb, late_rebind])
     assert len(resolved) == 1
     assert resolved[0]["pr_number"] == 1846
+
+
+@pytest.mark.unit
+def test_apply_supersessions_filename_ordinal_beats_created_at() -> None:
+    """OMN-13888 consistency: the .supersede.<NNNN> filename ordinal (the same
+    authority key omnibase_core resolve_supersession uses) decides "latest",
+    NOT the attacker-controllable created_at. Here the LATER created_at carries
+    the LOWER ordinal, so it must LOSE to the higher-ordinal record.
+    """
+    base = _receipt(pr_number=1845, commit_sha="a" * 40)
+    # Higher ordinal (0002) but EARLIER created_at → must win (rebind to #1846).
+    winner = _supersession(
+        created_at="2026-07-03T16:00:00Z",
+        tombstone=False,
+        replacement=_receipt(pr_number=1846, commit_sha=_MERGED_SHA),
+        source_name="command.supersede.0002.yaml",
+    )
+    # Lower ordinal (0001) but LATER created_at → must lose despite newer stamp.
+    loser = _supersession(
+        created_at="2026-07-03T23:00:00Z",
+        tombstone=True,
+        replacement=None,
+        source_name="command.supersede.0001.yaml",
+    )
+    resolved = apply_supersessions([base, loser, winner])
+    assert len(resolved) == 1
+    assert resolved[0]["pr_number"] == 1846
+
+
+@pytest.mark.unit
+def test_apply_supersessions_numbered_record_beats_unnumbered() -> None:
+    """A record carrying a filename ordinal always outranks a bare payload that
+    has none, regardless of created_at."""
+    base = _receipt(pr_number=1845, commit_sha="a" * 40)
+    numbered_tomb = _supersession(
+        created_at="2026-07-03T10:00:00Z",
+        tombstone=True,
+        replacement=None,
+        source_name="command.supersede.0005.yaml",
+    )
+    unnumbered_rebind = _supersession(
+        created_at="2026-07-03T23:59:00Z",
+        tombstone=False,
+        replacement=_receipt(pr_number=1846, commit_sha=_MERGED_SHA),
+    )
+    resolved = apply_supersessions([base, unnumbered_rebind, numbered_tomb])
+    # The numbered tombstone wins → base dropped, no active receipt.
+    assert resolved == []
 
 
 # --------------------------------------------------------------------------- #
@@ -280,4 +336,72 @@ def test_evidence_collector_resolves_dev_only_contract(
     assert results[0].evidence_id == "dod-a", results[0].message
     assert results[0].status == EnumEvidenceCheckStatus.VERIFIED, results[0].message
     # worktree cleaned up
+    assert collector._occ_dev_root is None
+
+
+@pytest.mark.unit
+def test_evidence_collector_prefers_dev_over_stale_main_copy(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """OMN-13888 round-1 residual edge: a STALE contract copy present on the
+    ``main`` working tree must NOT shadow the fresher ``dev`` version. The rider
+    now ALWAYS prefers dev when the contract is present there.
+    """
+    occ = tmp_path / "onex_change_control"
+    occ.mkdir()
+    _git(occ, "init", "-q")
+    _git(occ, "config", "user.email", "t@t.co")
+    _git(occ, "config", "user.name", "t")
+    _git(occ, "checkout", "-q", "-b", "main")
+    (occ / "contracts").mkdir()
+
+    # STALE main copy: a dod_evidence item whose id is dod-STALE.
+    stale = {
+        "schema_version": "1.0.0",
+        "ticket_id": _TICKET,
+        "dod_evidence": [
+            {
+                "id": "dod-STALE",
+                "description": "stale main copy",
+                "checks": [{"check_type": "command", "check_value": "true"}],
+            }
+        ],
+    }
+    (occ / "contracts" / f"{_TICKET}.yaml").write_text(
+        yaml.safe_dump(stale, sort_keys=True), encoding="utf-8"
+    )
+    _git(occ, "add", "-A")
+    _git(occ, "commit", "-q", "-m", "stale main contract")
+
+    # FRESH dev copy: item id dod-FRESH — the version that must be used.
+    _git(occ, "checkout", "-q", "-b", "dev")
+    fresh = {
+        "schema_version": "1.0.0",
+        "ticket_id": _TICKET,
+        "dod_evidence": [
+            {
+                "id": "dod-FRESH",
+                "description": "fresh dev copy",
+                "checks": [{"check_type": "command", "check_value": "true"}],
+            }
+        ],
+    }
+    (occ / "contracts" / f"{_TICKET}.yaml").write_text(
+        yaml.safe_dump(fresh, sort_keys=True), encoding="utf-8"
+    )
+    _git(occ, "add", "-A")
+    _git(occ, "commit", "-q", "-m", "fresh dev contract")
+    # Working tree back on main → the STALE copy is present on disk.
+    _git(occ, "checkout", "-q", "main")
+
+    monkeypatch.setenv("ONEX_CC_REPO_PATH", str(occ))
+    monkeypatch.setenv("OCC_GOVERNANCE_REF", "dev")
+    monkeypatch.delenv("OMNI_HOME", raising=False)
+
+    collector = EvidenceCollector()
+    results = collector.collect(_TICKET)
+
+    # The FRESH dev item resolved, not the stale main copy.
+    assert len(results) == 1
+    assert results[0].evidence_id == "dod-FRESH", results[0].message
     assert collector._occ_dev_root is None

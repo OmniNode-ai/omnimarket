@@ -80,25 +80,43 @@ class EvidenceCollector:
     ) -> list[ModelEvidenceCheckResult]:
         """Load contract and run all dod_evidence checks.
 
-        When no explicit ``contract_path`` is given and the contract is not on the
-        working tree (canonical clones track ``main``; OCC governance is dev-first),
-        an ``origin/dev`` worktree of the OCC repo is materialised so both the
-        contract load and the receipt greps see dev-only evidence (OMN-13888
-        scope 6). The worktree is removed before returning.
+        When no explicit ``contract_path`` is given, OCC governance is dev-first
+        (contracts and receipts land on the OCC ``dev`` branch first and are
+        batched to ``main`` later; the canonical clones track ``main``). Per the
+        OMN-13888 scope-6 decision of record, an auto-detected OCC contract is
+        ALWAYS resolved from an ``origin/dev`` worktree when that worktree can be
+        materialised and carries the contract — even when a (possibly STALE) copy
+        exists on the ``main``-tracking working tree. This closes the round-1
+        residual edge where a stale ``main`` copy was used as-is because the
+        contract was merely *present* on the working tree so the rider never
+        fired. The working tree is used only as a fallback (dev worktree cannot be
+        materialised, or the contract is absent on dev). The worktree is removed
+        before returning.
         """
         if contract_path is not None:
             return self._collect_impl(ticket_id, contract_path)
 
         created_worktree: Path | None = None
         try:
-            if self._find_contract(ticket_id) is None:
-                dev_root, created_worktree = self._materialize_occ_dev_worktree()
-                if dev_root is not None:
+            dev_root, created_worktree = self._materialize_occ_dev_worktree()
+            if dev_root is not None:
+                dev_candidate = Path(dev_root) / "contracts" / f"{ticket_id}.yaml"
+                if dev_candidate.exists():
+                    # dev is authoritative — prefer it over any working-tree copy.
                     self._occ_dev_root = dev_root
                     logger.info(
-                        "Resolved OCC contract root from %s worktree at %s",
+                        "Resolved OCC contract for %s from %s worktree at %s "
+                        "(dev-first, overrides any main working-tree copy)",
+                        ticket_id,
                         self._occ_governance_ref,
                         dev_root,
+                    )
+                elif self._find_contract(ticket_id) is None:
+                    logger.info(
+                        "Contract %s absent on %s and on the working tree; "
+                        "collect will report it missing",
+                        ticket_id,
+                        self._occ_governance_ref,
                     )
             return self._collect_impl(ticket_id, contract_path)
         finally:

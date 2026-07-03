@@ -73,6 +73,11 @@ _PR_URL_RE = re.compile(
 # is treated as a malformed citation and skipped (see CR thread on PR #467).
 _SHA_RE = re.compile(r"^[0-9a-fA-F]{7,40}$")
 
+# OMN-13888: the unforgeable ``.supersede.<NNNN>.yaml`` filename ordinal.
+# Identical to the omnibase_core ``resolve_supersession`` authority key so both
+# resolvers agree on which supersession record is "latest".
+_SUPERSEDE_SEQ_RE = re.compile(r"\.supersede\.(\d+)\.yaml$")
+
 # Canonical OCC governance ref. OCC governance is dev-targeted: contracts and
 # receipts land on the OCC ``dev`` branch first and are batched to ``main``
 # later (OMN-12593). Defaulting to ``main`` falsely FAILs tickets whose evidence
@@ -175,6 +180,15 @@ class ReceiptsOnRefLoader(Protocol):
     Production wiring should load every ``*.yaml`` receipt under
     ``<repo>:<ref>:<receipt_dir>/``. The gate treats these receipts as the
     schema-valid source of PR/merge-commit bindings.
+
+    OMN-13888: each returned payload MUST carry a ``__source_name__`` key holding
+    the receipt file's basename (e.g. ``command.supersede.0002.yaml``).
+    :func:`apply_supersessions` orders the supersession chain by the
+    ``.supersede.<NNNN>`` ordinal parsed from that basename — the SAME authority
+    key the omnibase_core ``resolve_supersession`` resolver uses — so the two
+    resolvers cannot disagree on which record is "latest". Payloads that omit the
+    key fall back to the attacker-controllable ``created_at`` string and MUST NOT
+    be relied on for ordering in production.
     """
 
     def __call__(
@@ -252,11 +266,15 @@ def apply_supersessions(
     * a tombstone record drops the base receipt (no active receipt for the key);
     * a replacement record substitutes its embedded ``replacement`` receipt.
 
-    "Latest" is resolved by ``created_at`` (ISO-8601, lexicographically == chrono).
-    The payloads carry no filename here, so ``created_at`` is the ordering key
-    (the ``.supersede.<NNNN>.yaml`` filenames used by the omnibase_core resolver
-    increase monotonically with authoring time in practice). Records without a
-    ``created_at`` sort first (are only used when they are the sole record).
+    "Latest" is resolved by the unforgeable ``.supersede.<NNNN>.yaml`` filename
+    ordinal — the SAME authority key the omnibase_core
+    :func:`resolve_supersession` resolver uses — so the two resolvers agree on
+    which record wins (round-1 consistency fix). The ordinal is read from the
+    ``__source_name__`` key that the :class:`ReceiptsOnRefLoader` attaches to each
+    payload (the receipt's basename). The payload-carried ``created_at`` string is
+    attacker-controllable, so it is used ONLY as a tiebreak among records that
+    carry no filename ordinal (e.g. hand-built test payloads). Records with a
+    higher ``NNNN`` always outrank records without one.
 
     Without this filter a tombstoned base receipt's stale citation would still be
     fed to Check 2, so an intentionally-invalidated PR (e.g. a closed-unmerged PR
@@ -272,6 +290,25 @@ def apply_supersessions(
             payload.get("check_type"),
         )
 
+    def _order_key(record: dict[str, object]) -> tuple[int, int, str]:
+        # Primary: the ``.supersede.<NNNN>`` filename ordinal (unforgeable, and
+        # identical to the omnibase_core resolver's authority). Records without a
+        # filename ordinal sort BEFORE numbered ones (has_seq=0) so a genuine
+        # numbered record always wins over a bare payload; created_at only breaks
+        # ties among un-numbered records.
+        source_name = record.get("__source_name__")
+        seq: int | None = None
+        if isinstance(source_name, str):
+            match = _SUPERSEDE_SEQ_RE.search(source_name)
+            if match is not None:
+                seq = int(match.group(1))
+        has_seq = 1 if seq is not None else 0
+        return (
+            has_seq,
+            seq if seq is not None else -1,
+            str(record.get("created_at", "")),
+        )
+
     base: list[dict[str, object]] = []
     chains: dict[tuple[object, object, object], list[dict[str, object]]] = {}
     for payload in receipts:
@@ -284,9 +321,7 @@ def apply_supersessions(
 
     latest_by_key: dict[tuple[object, object, object], dict[str, object]] = {}
     for key, records in chains.items():
-        latest_by_key[key] = max(
-            records, key=lambda record: str(record.get("created_at", ""))
-        )
+        latest_by_key[key] = max(records, key=_order_key)
 
     resolved: list[dict[str, object]] = []
     handled_keys: set[tuple[object, object, object]] = set()
