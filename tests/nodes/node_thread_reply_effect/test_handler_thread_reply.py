@@ -27,6 +27,12 @@ from uuid import uuid4
 
 import pytest
 
+from omnimarket.nodes.node_model_router.models.model_routing_request import (
+    ModelRoutingRequest,
+)
+from omnimarket.nodes.node_model_router.models.model_routing_result import (
+    ModelRoutingResult,
+)
 from omnimarket.nodes.node_thread_reply_effect.handlers.handler_thread_reply import (
     HandlerThreadReply,
 )
@@ -77,6 +83,23 @@ def _make_failing_llm_call() -> Callable[[str, dict[str, Any]], tuple[str, bool]
         raise RuntimeError("LLM endpoint unreachable")
 
     return _call
+
+
+class _StaticModelRouter:
+    """Typed contract-level fake for HandlerModelRouter.route_async.
+
+    Returns a caller-supplied real ``ModelRoutingResult`` so the platform routing
+    boundary is exercised through its real result contract (validated model
+    fields), not a bare MagicMock whose attributes are hand-set. Model selection
+    is fixed here because the test's subject is downstream propagation of the
+    resolved routing result, not the routing decision itself.
+    """
+
+    def __init__(self, result: ModelRoutingResult) -> None:
+        self._result = result
+
+    async def route_async(self, request: ModelRoutingRequest) -> ModelRoutingResult:
+        return self._result
 
 
 def _handler(
@@ -388,17 +411,17 @@ async def test_real_llm_path_produces_reply(monkeypatch: pytest.MonkeyPatch) -> 
     mock_provider = MagicMock()
     mock_provider.generate_async = AsyncMock(return_value=mock_response)
 
-    mock_routing_result = MagicMock()
-    mock_routing_result.endpoint_url = "http://localhost:8000"
-    mock_routing_result.model_key = "qwen3-coder-30b"
-    mock_routing_result.used_fallback = False
-
-    mock_router = MagicMock()
-    mock_router.route_async = AsyncMock(return_value=mock_routing_result)
+    routing_result = ModelRoutingResult(
+        model_key="qwen3-coder-30b",
+        endpoint_url="http://localhost:8000",  # onex-allow-internal-ip test routing-result endpoint
+        used_fallback=False,
+        correlation_id="thread-reply-effect",
+    )
+    fake_router = _StaticModelRouter(routing_result)
 
     import omnimarket.nodes.node_thread_reply_effect.handlers.handler_thread_reply as mod
 
-    monkeypatch.setattr(mod, "HandlerModelRouter", lambda **_kwargs: mock_router)
+    monkeypatch.setattr(mod, "HandlerModelRouter", lambda **_kwargs: fake_router)
     monkeypatch.setattr(
         mod, "AdapterLlmProviderOpenai", lambda **_kwargs: mock_provider
     )
@@ -434,17 +457,17 @@ async def test_real_llm_path_fallback_flag_propagated(
     mock_provider = MagicMock()
     mock_provider.generate_async = AsyncMock(return_value=mock_response)
 
-    mock_routing_result = MagicMock()
-    mock_routing_result.endpoint_url = "https://api.z.ai"
-    mock_routing_result.model_key = "glm-4.5"
-    mock_routing_result.used_fallback = True
-
-    mock_router = MagicMock()
-    mock_router.route_async = AsyncMock(return_value=mock_routing_result)
+    routing_result = ModelRoutingResult(
+        model_key="glm-4.5",
+        endpoint_url="https://api.z.ai",
+        used_fallback=True,
+        correlation_id="thread-reply-effect",
+    )
+    fake_router = _StaticModelRouter(routing_result)
 
     import omnimarket.nodes.node_thread_reply_effect.handlers.handler_thread_reply as mod
 
-    monkeypatch.setattr(mod, "HandlerModelRouter", lambda **_kwargs: mock_router)
+    monkeypatch.setattr(mod, "HandlerModelRouter", lambda **_kwargs: fake_router)
     monkeypatch.setattr(
         mod, "AdapterLlmProviderOpenai", lambda **_kwargs: mock_provider
     )

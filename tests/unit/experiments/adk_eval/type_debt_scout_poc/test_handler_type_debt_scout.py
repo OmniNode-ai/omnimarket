@@ -7,9 +7,12 @@ from __future__ import annotations
 
 import json
 from typing import Any
-from unittest.mock import AsyncMock
 
 import pytest
+from omnibase_infra.adapters.llm.adapter_model_router import AdapterModelRouter
+from omnibase_infra.adapters.llm.model_llm_adapter_request import (
+    ModelLlmAdapterRequest,
+)
 from omnibase_infra.adapters.llm.model_llm_adapter_response import (
     ModelLlmAdapterResponse,
 )
@@ -28,6 +31,29 @@ from experiments.adk_eval.type_debt_scout_poc.handler_type_debt_scout import (
     _parse_priorities,
     run_type_debt_scout,
 )
+
+
+class _RecordingModelRouter(AdapterModelRouter):  # type: ignore[misc]
+    """Typed contract-level fake for AdapterModelRouter.generate_typed.
+
+    Returns a caller-supplied real ``ModelLlmAdapterResponse`` and records each
+    request, replacing a bare ``AsyncMock`` on the model-router boundary
+    (OMN-13501 no-faked-boundary). The POC's subject under test is report
+    assembly and prompt construction, so a recorded typed response drives it
+    deterministically while the router type is satisfied through real
+    inheritance.
+    """
+
+    def __init__(self, response: ModelLlmAdapterResponse) -> None:
+        super().__init__()
+        self._response = response
+        self.requests: list[ModelLlmAdapterRequest] = []
+
+    async def generate_typed(
+        self, request: ModelLlmAdapterRequest
+    ) -> ModelLlmAdapterResponse:
+        self.requests.append(request)
+        return self._response
 
 
 def _sample_findings() -> list[ModelMypyFinding]:
@@ -151,8 +177,7 @@ class TestRunTypeDebtScout:
             finish_reason="stop",
             response_metadata={},
         )
-        fake_router = AsyncMock()
-        fake_router.generate_typed = AsyncMock(return_value=fake_response)
+        fake_router = _RecordingModelRouter(fake_response)
 
         report = await run_type_debt_scout(
             findings,
@@ -167,8 +192,8 @@ class TestRunTypeDebtScout:
         assert report.llm_calls == 1
         assert report.estimated_cost_usd == 0.0
         assert len(report.findings_prioritized) == 2
-        fake_router.generate_typed.assert_awaited_once()
-        request = fake_router.generate_typed.await_args.args[0]
+        assert len(fake_router.requests) == 1
+        request = fake_router.requests[0]
         assert request.model_name == config.model_id
         assert "src/module_a.py:10" in request.prompt
 
@@ -181,8 +206,7 @@ class TestRunTypeDebtScout:
             finish_reason="stop",
             response_metadata={},
         )
-        fake_router = AsyncMock()
-        fake_router.generate_typed = AsyncMock(return_value=fake_response)
+        fake_router = _RecordingModelRouter(fake_response)
         with pytest.raises(ValueError, match="JSON object"):
             await run_type_debt_scout(
                 _sample_findings(),

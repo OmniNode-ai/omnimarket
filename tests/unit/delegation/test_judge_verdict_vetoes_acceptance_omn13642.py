@@ -30,13 +30,13 @@ from __future__ import annotations
 from collections.abc import Generator
 from datetime import UTC, datetime
 from pathlib import Path
-from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
 import pytest
 import yaml
 from omnibase_core.models.delegation.wire import (
     ModelInferenceIntent,
+    ModelInferenceResponseData,
     ModelQualityGateIntent,
     ModelRoutingIntent,
 )
@@ -76,9 +76,6 @@ from omnimarket.nodes.node_delegation_quality_gate_reducer.models.model_quality_
 )
 from omnimarket.nodes.node_delegation_routing_reducer.handlers.handler_routing_intent import (
     HandlerRoutingIntent,
-)
-from omnimarket.nodes.node_llm_delegation_call_effect.handlers.handler_inference_intent import (
-    HandlerInferenceIntent,
 )
 from tests.fixtures.judge_inference import RecordedJudgeReplayAdapter
 
@@ -328,15 +325,27 @@ def _reset_routing_cache() -> None:
     _h._load_bifrost_endpoints.cache_clear()
 
 
-def _httpx_response(content: str) -> MagicMock:
-    response = MagicMock()
-    response.json.return_value = {
-        "id": "chatcmpl-test",
-        "choices": [{"message": {"content": content}}],
-        "usage": {"prompt_tokens": 10, "completion_tokens": 8, "total_tokens": 18},
-    }
-    response.raise_for_status.return_value = None
-    return response
+def _inference_response(
+    intent: ModelInferenceIntent, content: str
+) -> ModelInferenceResponseData:
+    """Construct the primary-delegation inference OUTPUT event directly.
+
+    This test proves the JUDGE veto path: the primary artifact is a controlled
+    internal DTO (the model/HTTP boundary is NOT faked), while the veto is driven
+    by the REAL recorded ``RecordedJudgeReplayAdapter``. The integrated inference
+    request + egress is proven separately by
+    tests/integration/golden_chain/test_golden_chain_delegation_useful_artifact_chain.py.
+    """
+    return ModelInferenceResponseData(
+        correlation_id=intent.correlation_id,
+        content=content,
+        model_used=intent.model,
+        llm_call_id="chatcmpl-test",
+        latency_ms=1,
+        prompt_tokens=10,
+        completion_tokens=8,
+        total_tokens=18,
+    )
 
 
 def _terminal_topics(terminal_events: list[BaseModel]) -> list[str | None]:
@@ -376,7 +385,6 @@ class TestJudgeVerdictVetoRealDispatchPath:
         fixture_name: str,
     ) -> tuple[ModelQualityGateResult, list[BaseModel]]:
         routing_handler = HandlerRoutingIntent()
-        inference_handler = HandlerInferenceIntent()
         gate_handler = HandlerQualityGateIntent(
             judge=HandlerJudgeAdequacy(
                 inference_bridge=RecordedJudgeReplayAdapter(fixture_name)
@@ -390,13 +398,10 @@ class TestJudgeVerdictVetoRealDispatchPath:
         inference_intents = workflow.handle_routing_decision(decision)
         assert isinstance(inference_intents[0], ModelInferenceIntent)
 
-        with patch("httpx.Client") as mock_client_cls:
-            mock_client = MagicMock()
-            mock_client.__enter__ = MagicMock(return_value=mock_client)
-            mock_client.__exit__ = MagicMock(return_value=False)
-            mock_client.post.return_value = _httpx_response(_GOOD_TEST_ARTIFACT)
-            mock_client_cls.return_value = mock_client
-            response = inference_handler.handle(inference_intents[0])
+        # Hop 4: the primary-delegation inference OUTPUT event, constructed as a
+        # controlled internal DTO — the model/HTTP boundary is NOT faked. The
+        # veto under test is driven by the REAL recorded judge adapter above.
+        response = _inference_response(inference_intents[0], _GOOD_TEST_ARTIFACT)
 
         gate_intents = workflow.handle_inference_response(response)
         assert isinstance(gate_intents[0], ModelQualityGateIntent)

@@ -88,9 +88,14 @@ async def test_model_router_health_cache_expires_after_ttl() -> None:
             http_call_count += 1
             return fake_response
 
+    fake = FakeAsyncClient()
+
     with (
         patch("time.monotonic", return_value=now),
-        patch("httpx.AsyncClient", return_value=FakeAsyncClient()),
+        # OMN-13501 no-faked-boundary: non-inference egress — fakes the model-router
+        # /health GET probe to prove health-cache TTL expiry triggers a fresh check;
+        # this is the health-liveness boundary, not the inference/completion boundary.
+        patch("httpx.AsyncClient", return_value=fake),  # onex-allow-faked-boundary
     ):
         request = ModelRoutingRequest(
             prompt="Test",

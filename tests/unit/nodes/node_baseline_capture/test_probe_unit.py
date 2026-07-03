@@ -118,7 +118,13 @@ class TestProbeSystemHealth:
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock(return_value=None)
 
-        with patch("httpx.AsyncClient", return_value=mock_client):
+        # OMN-13501 no-faked-boundary: health/liveness probe egress, NOT the inference
+        # boundary. ProbeSystemHealth GETs liveness endpoints only (Redpanda
+        # /v1/cluster/health, Qdrant /healthz, and each LLM host at {url}/health) and reads
+        # status_code alone — it never posts a prompt or reads a model completion.
+        with patch(
+            "httpx.AsyncClient", return_value=mock_client
+        ):  # onex-allow-faked-boundary
             result = await probe_system_health.ProbeSystemHealth().collect(
                 "/tmp/omni_home"
             )
@@ -151,7 +157,13 @@ class TestProbeSystemHealth:
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock(return_value=None)
 
-        with patch("httpx.AsyncClient", return_value=mock_client):
+        # OMN-13501 no-faked-boundary: health/liveness probe egress, NOT the inference
+        # boundary. ProbeSystemHealth GETs liveness endpoints only (Redpanda
+        # /v1/cluster/health, Qdrant /healthz, and each LLM host at {url}/health) and reads
+        # status_code alone — it never posts a prompt or reads a model completion.
+        with patch(
+            "httpx.AsyncClient", return_value=mock_client
+        ):  # onex-allow-faked-boundary
             result = await probe_system_health.ProbeSystemHealth().collect(
                 "/tmp/omni_home"
             )
@@ -185,7 +197,13 @@ class TestProbeSystemHealth:
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock(return_value=None)
 
-        with patch("httpx.AsyncClient", return_value=mock_client):
+        # OMN-13501 no-faked-boundary: health/liveness probe egress, NOT the inference
+        # boundary. ProbeSystemHealth GETs liveness endpoints only (Redpanda
+        # /v1/cluster/health, Qdrant /healthz, and each LLM host at {url}/health) and reads
+        # status_code alone — it never posts a prompt or reads a model completion.
+        with patch(
+            "httpx.AsyncClient", return_value=mock_client
+        ):  # onex-allow-faked-boundary
             result = await probe_system_health.ProbeSystemHealth().collect(
                 "/tmp/omni_home"
             )
@@ -260,7 +278,12 @@ class TestProbeKafkaTopics:
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock(return_value=None)
 
-        with patch("httpx.AsyncClient", return_value=mock_client):
+        # OMN-13501 no-faked-boundary: Redpanda admin-API topic-listing egress, NOT the
+        # inference boundary. ProbeKafkaTopics GETs the admin /v1/topics endpoint and parses
+        # topic/offset metadata — no model endpoint, no completion bytes.
+        with patch(
+            "httpx.AsyncClient", return_value=mock_client
+        ):  # onex-allow-faked-boundary
             result = await probe_kafka_topics.ProbeKafkaTopics().collect(
                 "/tmp/omni_home"
             )
@@ -298,7 +321,12 @@ class TestProbeKafkaTopics:
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock(return_value=None)
 
-        with patch("httpx.AsyncClient", return_value=mock_client):
+        # OMN-13501 no-faked-boundary: Redpanda admin-API topic-listing egress, NOT the
+        # inference boundary. ProbeKafkaTopics GETs the admin /v1/topics endpoint and parses
+        # topic/offset metadata — no model endpoint, no completion bytes.
+        with patch(
+            "httpx.AsyncClient", return_value=mock_client
+        ):  # onex-allow-faked-boundary
             result = await probe_kafka_topics.ProbeKafkaTopics().collect(
                 "/tmp/omni_home"
             )
@@ -317,7 +345,12 @@ class TestProbeKafkaTopics:
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock(return_value=None)
 
-        with patch("httpx.AsyncClient", return_value=mock_client):
+        # OMN-13501 no-faked-boundary: Redpanda admin-API topic-listing egress, NOT the
+        # inference boundary. ProbeKafkaTopics GETs the admin /v1/topics endpoint and parses
+        # topic/offset metadata — no model endpoint, no completion bytes.
+        with patch(
+            "httpx.AsyncClient", return_value=mock_client
+        ):  # onex-allow-faked-boundary
             result = await probe_kafka_topics.ProbeKafkaTopics().collect(
                 "/tmp/omni_home"
             )
@@ -519,7 +552,12 @@ class TestProbeLinearTickets:
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock(return_value=None)
 
-        with patch("httpx.AsyncClient", return_value=mock_client):
+        # OMN-13501 no-faked-boundary: Linear GraphQL API egress, NOT the inference boundary.
+        # ProbeLinearTickets POSTs an issues query to the Linear GraphQL endpoint and parses
+        # ticket metadata — no model endpoint, no completion bytes.
+        with patch(
+            "httpx.AsyncClient", return_value=mock_client
+        ):  # onex-allow-faked-boundary
             result = await probe_linear_tickets.ProbeLinearTickets().collect(
                 "/tmp/omni_home"
             )
@@ -554,7 +592,12 @@ class TestProbeLinearTickets:
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock(return_value=None)
 
-        with patch("httpx.AsyncClient", return_value=mock_client):
+        # OMN-13501 no-faked-boundary: Linear GraphQL API egress, NOT the inference boundary.
+        # ProbeLinearTickets POSTs an issues query to the Linear GraphQL endpoint and parses
+        # ticket metadata — no model endpoint, no completion bytes.
+        with patch(
+            "httpx.AsyncClient", return_value=mock_client
+        ):  # onex-allow-faked-boundary
             result = await probe_linear_tickets.ProbeLinearTickets().collect(
                 "/tmp/omni_home"
             )
@@ -596,7 +639,12 @@ class TestProbeLinearTickets:
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock(return_value=None)
 
-        with patch("httpx.AsyncClient", return_value=mock_client):
+        # OMN-13501 no-faked-boundary: Linear GraphQL API egress, NOT the inference boundary.
+        # ProbeLinearTickets POSTs an issues query to the Linear GraphQL endpoint and parses
+        # ticket metadata — no model endpoint, no completion bytes.
+        with patch(
+            "httpx.AsyncClient", return_value=mock_client
+        ):  # onex-allow-faked-boundary
             result = await probe_linear_tickets.ProbeLinearTickets().collect(
                 "/tmp/omni_home"
             )

@@ -102,7 +102,11 @@ def _make_intent_response_via_effect(cid: UUID) -> ModelInferenceResponseData:
     mock_response.json.return_value = _TRUNCATED_CLOUD_RESPONSE
     mock_response.raise_for_status.return_value = None
 
-    with patch("httpx.Client") as mock_client_cls:
+    # OMN-13501 no-faked-boundary: effect-handler unit test crafts an edge provider
+    # response (empty content / finish_reason=length / HTTP 4xx). load_fixture rejects
+    # empty completions (EMPTY_COMPLETION) and ReplayResponse.raise_for_status is a no-op,
+    # so the canonical transport cannot reproduce these. Path proven by the golden chain.
+    with patch("httpx.Client") as mock_client_cls:  # onex-allow-faked-boundary
         mock_client = MagicMock()
         mock_client.__enter__ = MagicMock(return_value=mock_client)
         mock_client.__exit__ = MagicMock(return_value=False)
@@ -181,7 +185,11 @@ class TestServedUsageUpstreamOmn13408:
         mock_response.json.return_value = _TRUNCATED_CLOUD_RESPONSE
         mock_response.raise_for_status.return_value = None
 
-        with patch("httpx.Client") as mock_client_cls:
+        # OMN-13501 no-faked-boundary: effect-handler unit test crafts an edge provider
+        # response (empty content / finish_reason=length / HTTP 4xx). load_fixture rejects
+        # empty completions (EMPTY_COMPLETION) and ReplayResponse.raise_for_status is a no-op,
+        # so the canonical transport cannot reproduce these. Path proven by the golden chain.
+        with patch("httpx.Client") as mock_client_cls:  # onex-allow-faked-boundary
             mock_client = MagicMock()
             mock_client.__enter__ = MagicMock(return_value=mock_client)
             mock_client.__exit__ = MagicMock(return_value=False)
