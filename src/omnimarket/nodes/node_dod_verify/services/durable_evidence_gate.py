@@ -238,6 +238,82 @@ def extract_defect_prevention(
     return _nonblank("prevention_gate"), _nonblank("non_recurrence_note")
 
 
+def apply_supersessions(
+    receipts: list[dict[str, object]],
+) -> list[dict[str, object]]:
+    """Resolve the supersession chain over a raw receipt payload set (OMN-13888).
+
+    ``_load_receipts_on_ref`` globs every ``*.yaml`` under a ticket's receipt
+    directory, so the payload list mixes base ``ModelDodReceipt`` receipts with
+    net-new ``ModelReceiptSupersession`` records (identified by the ``supersedes``
+    key). For each receipt key ``(ticket_id, evidence_item_id, check_type)`` the
+    latest supersession record decides the active receipt:
+
+    * a tombstone record drops the base receipt (no active receipt for the key);
+    * a replacement record substitutes its embedded ``replacement`` receipt.
+
+    "Latest" is resolved by ``created_at`` (ISO-8601, lexicographically == chrono).
+    The payloads carry no filename here, so ``created_at`` is the ordering key
+    (the ``.supersede.<NNNN>.yaml`` filenames used by the omnibase_core resolver
+    increase monotonically with authoring time in practice). Records without a
+    ``created_at`` sort first (are only used when they are the sole record).
+
+    Without this filter a tombstoned base receipt's stale citation would still be
+    fed to Check 2, so an intentionally-invalidated PR (e.g. a closed-unmerged PR
+    that was re-bound to the actually-merged one) would keep failing the gate.
+
+    Pure function — no I/O.
+    """
+
+    def _key(payload: dict[str, object]) -> tuple[object, object, object]:
+        return (
+            payload.get("ticket_id"),
+            payload.get("evidence_item_id"),
+            payload.get("check_type"),
+        )
+
+    base: list[dict[str, object]] = []
+    chains: dict[tuple[object, object, object], list[dict[str, object]]] = {}
+    for payload in receipts:
+        if not isinstance(payload, dict):
+            continue
+        if "supersedes" in payload:
+            chains.setdefault(_key(payload), []).append(payload)
+        else:
+            base.append(payload)
+
+    latest_by_key: dict[tuple[object, object, object], dict[str, object]] = {}
+    for key, records in chains.items():
+        latest_by_key[key] = max(
+            records, key=lambda record: str(record.get("created_at", ""))
+        )
+
+    resolved: list[dict[str, object]] = []
+    handled_keys: set[tuple[object, object, object]] = set()
+    for payload in base:
+        key = _key(payload)
+        latest = latest_by_key.get(key)
+        if latest is None:
+            resolved.append(payload)
+            continue
+        handled_keys.add(key)
+        if latest.get("tombstone"):
+            continue  # key invalidated — drop the base receipt entirely
+        replacement = latest.get("replacement")
+        if isinstance(replacement, dict):
+            resolved.append(replacement)
+
+    # A replacement record whose base receipt was never written still re-binds.
+    for key, latest in latest_by_key.items():
+        if key in handled_keys or latest.get("tombstone"):
+            continue
+        replacement = latest.get("replacement")
+        if isinstance(replacement, dict):
+            resolved.append(replacement)
+
+    return resolved
+
+
 def extract_receipt_merge_commits(
     receipts: list[dict[str, object]],
 ) -> list[ModelCitedMergeCommit]:
@@ -474,6 +550,10 @@ class DurableEvidenceGate:
         receipts = self._load_receipts_on_ref(
             self._occ_repo_path, self._occ_governance_ref, receipt_dir
         )
+        # OMN-13888 (scope 4): honor supersession/tombstone records so a stale
+        # (e.g. closed-unmerged) PR citation that was re-bound or invalidated no
+        # longer feeds Check 2.
+        receipts = apply_supersessions(receipts)
 
         # Check 2: every PR-bound receipt is MERGED with mergeCommit.oid == commit_sha.
         citations = extract_receipt_merge_commits(receipts)
@@ -752,6 +832,7 @@ __all__: list[str] = [
     "GhPrViewProbe",
     "GitReceiptTrackedProbe",
     "ReceiptsOnRefLoader",
+    "apply_supersessions",
     "default_contract_path",
     "default_receipt_dir",
     "extract_contract_check_keys",

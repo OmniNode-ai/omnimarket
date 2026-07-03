@@ -20,7 +20,9 @@ import glob
 import logging
 import os
 import shlex
+import shutil
 import subprocess
+import tempfile
 import time
 from pathlib import Path
 from typing import Any
@@ -40,6 +42,15 @@ _DEFAULT_CONTRACT_ROOTS: list[str] = [
     "${OMNI_HOME}/onex_change_control/contracts",
 ]
 
+# OMN-13888 (scope 6): OCC governance is dev-targeted — contracts and receipts
+# land on the OCC ``dev`` branch first and are batched to ``main`` later. The
+# canonical omni_home clones track ``main``, so a contract merged only to ``dev``
+# is invisible to a working-tree search (the OMN-13899 "No contract found",
+# correlation 93b4e964). Resolve from this ref instead. Overridable via
+# ``OCC_GOVERNANCE_REF`` for tests / operators. Mirrors
+# ``DurableEvidenceGate.DEFAULT_OCC_GOVERNANCE_REF``.
+_DEFAULT_OCC_GOVERNANCE_REF = "origin/dev"
+
 
 class EvidenceCollector:
     """Loads a ticket contract and runs dod_evidence checks.
@@ -53,6 +64,14 @@ class EvidenceCollector:
 
     def __init__(self, timeout_per_check: int = 30) -> None:
         self._timeout = timeout_per_check
+        # When set (during a dev-resolved collect), an origin/dev worktree of the
+        # OCC repo. Contract-load AND the shell greps run inside it so dev-only
+        # contracts + receipts are visible (OMN-13888 scope 6).
+        self._occ_dev_root: str | None = None
+        self._occ_governance_ref = (
+            os.environ.get("OCC_GOVERNANCE_REF", _DEFAULT_OCC_GOVERNANCE_REF).strip()
+            or _DEFAULT_OCC_GOVERNANCE_REF
+        )
 
     def collect(
         self,
@@ -60,6 +79,104 @@ class EvidenceCollector:
         contract_path: str | None = None,
     ) -> list[ModelEvidenceCheckResult]:
         """Load contract and run all dod_evidence checks.
+
+        When no explicit ``contract_path`` is given and the contract is not on the
+        working tree (canonical clones track ``main``; OCC governance is dev-first),
+        an ``origin/dev`` worktree of the OCC repo is materialised so both the
+        contract load and the receipt greps see dev-only evidence (OMN-13888
+        scope 6). The worktree is removed before returning.
+        """
+        if contract_path is not None:
+            return self._collect_impl(ticket_id, contract_path)
+
+        created_worktree: Path | None = None
+        try:
+            if self._find_contract(ticket_id) is None:
+                dev_root, created_worktree = self._materialize_occ_dev_worktree()
+                if dev_root is not None:
+                    self._occ_dev_root = dev_root
+                    logger.info(
+                        "Resolved OCC contract root from %s worktree at %s",
+                        self._occ_governance_ref,
+                        dev_root,
+                    )
+            return self._collect_impl(ticket_id, contract_path)
+        finally:
+            self._occ_dev_root = None
+            if created_worktree is not None:
+                self._remove_occ_dev_worktree(created_worktree)
+
+    def _resolve_occ_root(self) -> Path | None:
+        """Return the OCC repo root from the environment, or None."""
+        cc_repo_path = os.environ.get("ONEX_CC_REPO_PATH", "").strip()
+        if cc_repo_path and Path(cc_repo_path).is_dir():
+            return Path(cc_repo_path)
+        omni_home = os.environ.get("OMNI_HOME", "").strip()
+        if omni_home:
+            occ = Path(omni_home) / "onex_change_control"
+            if occ.is_dir():
+                return occ
+        return None
+
+    def _materialize_occ_dev_worktree(self) -> tuple[str | None, Path | None]:
+        """Add a detached ``origin/dev`` worktree of the OCC repo.
+
+        Returns ``(worktree_path_str, worktree_path)`` on success, else
+        ``(None, None)``. The worktree is placed under ``OMNI_HOME`` (when set) so
+        relative ``file_exists`` checks stay inside the containment boundary.
+        """
+        occ = self._resolve_occ_root()
+        if occ is None:
+            return None, None
+        omni_home = os.environ.get("OMNI_HOME", "").strip()
+        parent = Path(omni_home) if omni_home and Path(omni_home).is_dir() else None
+        try:
+            tmp = Path(tempfile.mkdtemp(prefix=".occ-dev-wt-", dir=parent))
+        except OSError:
+            return None, None
+        proc = subprocess.run(
+            [
+                "git",
+                "-C",
+                str(occ),
+                "worktree",
+                "add",
+                "--detach",
+                "--force",
+                str(tmp),
+                self._occ_governance_ref,
+            ],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if proc.returncode != 0:
+            logger.warning(
+                "Could not materialise %s worktree of OCC: %s",
+                self._occ_governance_ref,
+                proc.stderr.strip(),
+            )
+            shutil.rmtree(tmp, ignore_errors=True)
+            return None, None
+        return str(tmp), tmp
+
+    def _remove_occ_dev_worktree(self, worktree: Path) -> None:
+        occ = self._resolve_occ_root()
+        if occ is not None:
+            subprocess.run(
+                ["git", "-C", str(occ), "worktree", "remove", "--force", str(worktree)],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+        shutil.rmtree(worktree, ignore_errors=True)
+
+    def _collect_impl(
+        self,
+        ticket_id: str,
+        contract_path: str | None = None,
+    ) -> list[ModelEvidenceCheckResult]:
+        """Load contract and run all dod_evidence checks (worktree-agnostic core).
 
         Args:
             ticket_id: Linear ticket ID (e.g. OMN-1234).
@@ -150,6 +267,13 @@ class EvidenceCollector:
 
     def _find_contract(self, ticket_id: str) -> Path | None:
         """Search standard locations for a ticket contract."""
+        # OMN-13888 (scope 6): a materialised origin/dev worktree wins so a
+        # dev-only contract resolves instead of falling through to "No contract".
+        if self._occ_dev_root:
+            dev_candidate = Path(self._occ_dev_root) / "contracts" / f"{ticket_id}.yaml"
+            if dev_candidate.exists():
+                logger.info("Found contract at %s (dev worktree)", dev_candidate)
+                return dev_candidate
         for root_template in _DEFAULT_CONTRACT_ROOTS:
             root = Path(os.path.expandvars(root_template))
             candidate = root / f"{ticket_id}.yaml"
@@ -455,6 +579,10 @@ class EvidenceCollector:
         ``onex_change_control`` as a path component. Returns None for all
         other contracts (cwd stays inherited).
         """
+        # OMN-13888 (scope 6): during a dev-resolved collect, greps must run
+        # inside the origin/dev worktree so dev-only receipt files are visible.
+        if self._occ_dev_root:
+            return self._occ_dev_root
         if contract_path is None:
             return None
         if "onex_change_control" not in contract_path.parts:
@@ -494,6 +622,11 @@ class EvidenceCollector:
         explicit = os.environ.get("CONTRACT_REPO_DIR", "").strip()
         if explicit:
             return explicit
+
+        # OMN-13888 (scope 6): a materialised origin/dev worktree is the OCC root
+        # for receipt-backed greps during a dev-resolved collect.
+        if self._occ_dev_root:
+            return self._occ_dev_root
 
         # Derive from the contract path when it lives inside the OCC clone.
         if contract_path is not None and "onex_change_control" in contract_path.parts:
