@@ -22,6 +22,15 @@ This is a driver / evidence harness, not a runtime node: it lives under
 provenance JSON). The artifact it accepts is then hand-landed in ``omnibase_core``
 (producer != owner; build-time validators live in core).
 
+no-faked-boundary self-exemption: the LLM task-description prompt strings this
+driver constructs quote the banned fake-boundary idioms verbatim (they instruct
+the model on exactly which patterns to flag), so the scanner flags this driver's
+own source. It is therefore file-level exempt, matching
+``omnibase_core.validation.no_faked_boundary.handler``'s own docstring
+self-exemption. onex-allow-file-faked-boundary OMN-13501 reason="generation-driver
+prompt text documents verbatim the fake-boundary idioms the generated scanner must
+flag".
+
 Usage:
     uv run python -m scripts.generation.drive_validator_generation \\
         --validator hardcoded-private-ip \\

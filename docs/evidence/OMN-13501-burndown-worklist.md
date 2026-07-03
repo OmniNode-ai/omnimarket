@@ -74,30 +74,30 @@ marker). They need the marker added — a mechanical one-line-per-file fix, fold
 | 43 | tests/unit/delegation/test_delegation_wiring.py:135 | mock_assigned_to_boundary | C3 | DONE — `mock_engine` MagicMock fixture replaced with shared `RecordingDispatchEngine` (real `MessageDispatchEngine` subclass recording register_* calls as `unittest.mock.call` objects); all `.call_count`/`.call_args_list` assertions migrated to `.dispatcher_calls`/`.route_calls` |
 | 44 | tests/unit/experiments/adk_eval/type_debt_scout_poc/test_handler_type_debt_scout.py:154 | mock_assigned_to_boundary | C3 | DONE — typed `_RecordingModelRouter` subclassing real `AdapterModelRouter`, `generate_typed` returns a REAL `ModelLlmAdapterResponse` and records requests; `generate_typed.assert_awaited_once`/`await_args` replaced with `fake_router.requests` |
 | 45 | tests/unit/experiments/adk_eval/type_debt_scout_poc/test_handler_type_debt_scout.py:184 | mock_assigned_to_boundary | C3 | DONE — same `_RecordingModelRouter` (parse-failure path) |
-| 46 | src/omnimarket/nodes/node_adr_decision_extraction_llm_effect/tests/test_handler_decision_extraction.py:140 | class_subclassing_boundary | C4 | contract-level-fake (`class _MockBridge(ModelInferenceAdapter)` -> compose a real/contract-level fake instead of subclassing) |
-| 47 | src/omnimarket/nodes/node_adr_extraction_grader_llm_effect/tests/test_handler_extraction_grader.py:59 | class_subclassing_boundary | C4 | contract-level-fake |
-| 48 | src/omnimarket/nodes/node_adr_segmentation_llm_effect/tests/test_handler_segmentation.py:110 | class_subclassing_boundary | C4 | contract-level-fake |
-| 49 | src/omnimarket/nodes/node_pr_semantic_grader_llm_effect/tests/test_handler_pr_semantic_grader.py:87 | class_subclassing_boundary | C4 | contract-level-fake |
-| 50 | tests/integration/_review_verify_mocks.py:55 | class_subclassing_boundary | C4 | contract-level-fake (`class _MockInferenceAdapter(ModelInferenceAdapter)`) |
-| 51 | src/omnimarket/nodes/node_generation_consumer/validator_corpora/corpus_no_faked_boundary.py:28 | class_subclassing_boundary | C4 | justified-file-level-allow — add `onex-allow-file-faked-boundary` (corpus fixture text, subject IS the pattern) |
-| 52 | src/omnimarket/nodes/node_generation_consumer/validator_corpora/corpus_no_faked_boundary.py:29 | patch_httpx_egress | C4 | justified-file-level-allow |
-| 53 | src/omnimarket/nodes/node_generation_consumer/validator_corpora/corpus_no_faked_boundary.py:33 | mock_assigned_to_boundary | C4 | justified-file-level-allow |
-| 54 | src/omnimarket/nodes/node_generation_consumer/validator_corpora/corpus_no_faked_boundary.py:34 | completion_echoes_prompt_var | C4 | justified-file-level-allow |
-| 55 | src/omnimarket/nodes/node_generation_consumer/validator_corpora/corpus_no_faked_boundary.py:35 | completion_fstring_interpolates_prompt | C4 | justified-file-level-allow |
-| 56 | src/omnimarket/nodes/node_generation_consumer/validator_corpora/corpus_no_faked_boundary.py:72 | class_subclassing_boundary | C4 | justified-file-level-allow |
-| 57 | src/omnimarket/nodes/node_generation_consumer/validator_corpora/corpus_no_faked_boundary.py:81 | patch_httpx_egress | C4 | justified-file-level-allow |
-| 58 | src/omnimarket/nodes/node_generation_consumer/validator_corpora/corpus_no_faked_boundary.py:90 | completion_echoes_prompt_var | C4 | justified-file-level-allow |
-| 59 | src/omnimarket/nodes/node_generation_consumer/validator_corpora/corpus_no_faked_boundary.py:99 | mock_assigned_to_boundary | C4 | justified-file-level-allow |
-| 60 | src/omnimarket/nodes/node_generation_consumer/validator_corpora/corpus_no_faked_boundary.py:108 | class_subclassing_boundary | C4 | justified-file-level-allow |
-| 61 | src/omnimarket/nodes/node_generation_consumer/validator_corpora/corpus_no_faked_boundary.py:118 | patch_httpx_egress | C4 | justified-file-level-allow |
-| 62 | src/omnimarket/nodes/node_generation_consumer/validator_corpora/corpus_no_faked_boundary.py:125 | completion_fstring_interpolates_prompt | C4 | justified-file-level-allow |
-| 63 | src/omnimarket/nodes/node_generation_consumer/validator_corpora/corpus_no_faked_boundary.py:135 | mock_assigned_to_boundary | C4 | justified-file-level-allow |
-| 64 | scripts/generation/drive_validator_generation.py:123 | class_subclassing_boundary | C4 | justified-file-level-allow (LLM prompt text, same shape) |
-| 65 | scripts/generation/drive_validator_generation.py:124 | class_subclassing_boundary | C4 | justified-file-level-allow |
-| 66 | scripts/generation/drive_validator_generation.py:138 | mock_assigned_to_boundary | C4 | justified-file-level-allow |
-| 67 | scripts/generation/drive_validator_generation.py:139 | mock_assigned_to_boundary | C4 | justified-file-level-allow |
-| 68 | scripts/generation/drive_validator_generation.py:141 | completion_echoes_prompt_var | C4 | justified-file-level-allow |
-| 69 | scripts/generation/drive_validator_generation.py:142 | completion_fstring_interpolates_prompt | C4 | justified-file-level-allow |
+| 46 | src/omnimarket/nodes/node_adr_decision_extraction_llm_effect/tests/test_handler_decision_extraction.py:140 | class_subclassing_boundary | C4 | DONE — per-line `# onex-allow-faked-boundary` + reason. Planned "restructure to a non-subclass contract double" is BLOCKED here: `HandlerDecisionExtraction.inference_bridge` is a nominal `ModelInferenceAdapter` ABC under mypy-strict, and a non-subclass structural double fails `[arg-type]` (verified via probe). Kept as a signature-enforced ABC double injecting SYNTHETIC extraction JSON + exceptions (not recordable-from-real; no `RecordedReplayInferenceTransport` exception hook). Same evidence-based deviation as C1. |
+| 47 | src/omnimarket/nodes/node_adr_extraction_grader_llm_effect/tests/test_handler_extraction_grader.py:59 | class_subclassing_boundary | C4 | DONE — per-line `# onex-allow-faked-boundary` + reason (mypy-strict nominal-ABC blocks non-subclass double; synthetic grader-score JSON + exception injection, not recordable) |
+| 48 | src/omnimarket/nodes/node_adr_segmentation_llm_effect/tests/test_handler_segmentation.py:110 | class_subclassing_boundary | C4 | DONE — per-line `# onex-allow-faked-boundary` + reason (mypy-strict nominal-ABC blocks non-subclass double; synthetic sequential segmentation JSON + exceptions, not recordable) |
+| 49 | src/omnimarket/nodes/node_pr_semantic_grader_llm_effect/tests/test_handler_pr_semantic_grader.py:87 | class_subclassing_boundary | C4 | DONE — per-line `# onex-allow-faked-boundary` + reason (mypy-strict nominal-ABC blocks non-subclass double; synthetic semantic-grading JSON + exceptions, not recordable) |
+| 50 | tests/integration/_review_verify_mocks.py:55 | class_subclassing_boundary | C4 | DONE — GENUINE RESTRUCTURE (planned disposition). `_MockInferenceAdapter` no longer subclasses `ModelInferenceAdapter`; it is now a composed, duck-typed contract double matching the sibling `_MockGithubDiffEffect`/`_MockGithubReviewEffect` mocks in the same module. Viable here (file + its two integration consumers are outside the `^src/omnimarket/` mypy-hook scope). 12 consumer integration tests pass unchanged. |
+| 51 | src/omnimarket/nodes/node_generation_consumer/validator_corpora/corpus_no_faked_boundary.py:28 | class_subclassing_boundary | C4 | DONE — file-level `onex-allow-file-faked-boundary OMN-13501` marker added to corpus module docstring (subject IS the pattern; matches core detector self-exemption) |
+| 52 | src/omnimarket/nodes/node_generation_consumer/validator_corpora/corpus_no_faked_boundary.py:29 | patch_httpx_egress | C4 | DONE — file-level `onex-allow-file-faked-boundary` marker added to module docstring |
+| 53 | src/omnimarket/nodes/node_generation_consumer/validator_corpora/corpus_no_faked_boundary.py:33 | mock_assigned_to_boundary | C4 | DONE — file-level `onex-allow-file-faked-boundary` marker added to module docstring |
+| 54 | src/omnimarket/nodes/node_generation_consumer/validator_corpora/corpus_no_faked_boundary.py:34 | completion_echoes_prompt_var | C4 | DONE — file-level `onex-allow-file-faked-boundary` marker added to module docstring |
+| 55 | src/omnimarket/nodes/node_generation_consumer/validator_corpora/corpus_no_faked_boundary.py:35 | completion_fstring_interpolates_prompt | C4 | DONE — file-level `onex-allow-file-faked-boundary` marker added to module docstring |
+| 56 | src/omnimarket/nodes/node_generation_consumer/validator_corpora/corpus_no_faked_boundary.py:72 | class_subclassing_boundary | C4 | DONE — file-level `onex-allow-file-faked-boundary` marker added to module docstring |
+| 57 | src/omnimarket/nodes/node_generation_consumer/validator_corpora/corpus_no_faked_boundary.py:81 | patch_httpx_egress | C4 | DONE — file-level `onex-allow-file-faked-boundary` marker added to module docstring |
+| 58 | src/omnimarket/nodes/node_generation_consumer/validator_corpora/corpus_no_faked_boundary.py:90 | completion_echoes_prompt_var | C4 | DONE — file-level `onex-allow-file-faked-boundary` marker added to module docstring |
+| 59 | src/omnimarket/nodes/node_generation_consumer/validator_corpora/corpus_no_faked_boundary.py:99 | mock_assigned_to_boundary | C4 | DONE — file-level `onex-allow-file-faked-boundary` marker added to module docstring |
+| 60 | src/omnimarket/nodes/node_generation_consumer/validator_corpora/corpus_no_faked_boundary.py:108 | class_subclassing_boundary | C4 | DONE — file-level `onex-allow-file-faked-boundary` marker added to module docstring |
+| 61 | src/omnimarket/nodes/node_generation_consumer/validator_corpora/corpus_no_faked_boundary.py:118 | patch_httpx_egress | C4 | DONE — file-level `onex-allow-file-faked-boundary` marker added to module docstring |
+| 62 | src/omnimarket/nodes/node_generation_consumer/validator_corpora/corpus_no_faked_boundary.py:125 | completion_fstring_interpolates_prompt | C4 | DONE — file-level `onex-allow-file-faked-boundary` marker added to module docstring |
+| 63 | src/omnimarket/nodes/node_generation_consumer/validator_corpora/corpus_no_faked_boundary.py:135 | mock_assigned_to_boundary | C4 | DONE — file-level `onex-allow-file-faked-boundary` marker added to module docstring |
+| 64 | scripts/generation/drive_validator_generation.py:123 | class_subclassing_boundary | C4 | DONE — file-level `onex-allow-file-faked-boundary OMN-13501` marker added to driver module docstring (LLM prompt text quotes banned idioms verbatim) |
+| 65 | scripts/generation/drive_validator_generation.py:124 | class_subclassing_boundary | C4 | DONE — file-level `onex-allow-file-faked-boundary` marker added to module docstring |
+| 66 | scripts/generation/drive_validator_generation.py:138 | mock_assigned_to_boundary | C4 | DONE — file-level `onex-allow-file-faked-boundary` marker added to module docstring |
+| 67 | scripts/generation/drive_validator_generation.py:139 | mock_assigned_to_boundary | C4 | DONE — file-level `onex-allow-file-faked-boundary` marker added to module docstring |
+| 68 | scripts/generation/drive_validator_generation.py:141 | completion_echoes_prompt_var | C4 | DONE — file-level `onex-allow-file-faked-boundary` marker added to module docstring |
+| 69 | scripts/generation/drive_validator_generation.py:142 | completion_fstring_interpolates_prompt | C4 | DONE — file-level `onex-allow-file-faked-boundary` marker added to module docstring |
 
 ## Cluster summary
 
@@ -164,16 +164,43 @@ marker). They need the marker added — a mechanical one-line-per-file fix, fold
   (`task_dispatcher` callable), not the platform's own inference/routing boundary — verify against the
   contract before choosing real-object vs. justified-allow.
 
-- **C4 — `class_subclassing_boundary` (5) + missing file-level exemption cleanup (19) -> contract-level-fake
-  / justified-file-level-allow.** Five real test files subclass `ModelInferenceAdapter` directly
-  (`_MockBridge`, `_MockInferenceAdapter`) — restructure each to compose a real boundary object or a
-  contract-level fake instead of subclassing. Separately, add the `onex-allow-file-faked-boundary`
-  marker (per `omnibase_core.validation.no_faked_boundary.handler` docstring convention) to
-  `src/omnimarket/nodes/node_generation_consumer/validator_corpora/corpus_no_faked_boundary.py` and
-  `scripts/generation/drive_validator_generation.py` — both are fixture/prompt-text corpora whose SUBJECT
-  is the fake-boundary pattern, not a real fake; this is the same self-exemption
-  `omnibase_core`'s own detector docstring already uses. This second half of C4 is mechanical (one marker
-  line per file) and can be split off first if the class-subclassing half needs more review time.
+- **C4 — `class_subclassing_boundary` (5) + missing file-level exemption cleanup (19) — DONE
+  (2026-07-03).** Detector delta 24 -> 0 (this was the final cluster; all 24 remaining findings were C4).
+
+  *Split disposition, evidence-based:*
+
+  - **`tests/integration/_review_verify_mocks.py:55` — GENUINE RESTRUCTURE (as planned).**
+    `_MockInferenceAdapter` no longer subclasses `ModelInferenceAdapter`; it is now a composed,
+    duck-typed contract double matching the sibling `_MockGithubDiffEffect` / `_MockGithubReviewEffect`
+    mocks already in the module (the detector's own design blesses composed doubles and only flags
+    *subclassing* the boundary). Viable because this file and its two integration consumers
+    (`node_hostile_reviewer_orchestrator`, `node_pr_review_orchestrator` multiparam) sit outside the
+    `^src/omnimarket/` mypy-hook scope. 12 consumer integration tests pass unchanged.
+
+  - **Four node handler-unit test files (`_MockBridge`) — per-line `# onex-allow-faked-boundary`
+    marker + reason.** The planned "restructure to a non-subclass contract double" is BLOCKED: each
+    handler's `inference_bridge` param is a nominal `ModelInferenceAdapter` ABC and these test files ARE
+    under `^src/omnimarket/` (mypy-strict). A non-subclass structural double fails `[arg-type]` — verified
+    empirically with a throwaway mypy probe (`Argument 1 ... incompatible type "_StructuralDouble";
+    expected "ModelInferenceAdapter"`). The only non-marker route is converting the shared
+    `ModelInferenceAdapter` ABC to a `typing.Protocol` — a product architecture change to a cross-node
+    module (OMN-13208 owner), out of scope for a test-burndown cluster and requiring approval. The doubles
+    are kept as signature-enforced ABC subclasses injecting SYNTHETIC structured JSON + exceptions to
+    drive parse/retry/validation — inputs that are not recordable-from-real and cannot be served by
+    `RecordedReplayInferenceTransport` (no exception hook; rejects empty completions). Same evidence-based
+    deviation C1 already took for the structurally-identical `patch_httpx_egress` handler-unit sites; real
+    request construction / routing is proven by the recorded-replay golden chain.
+
+  - **`corpus_no_faked_boundary.py` (13) + `drive_validator_generation.py` (6) — file-level
+    `onex-allow-file-faked-boundary` marker** added to each module docstring, matching the
+    `omnibase_core.validation.no_faked_boundary.handler` self-exemption convention. Both files' SUBJECT is
+    the fake-boundary pattern (corpus violation-fixtures / LLM prompt text that must quote the banned
+    idioms verbatim), not a real fake.
+
+  *Candidate product follow-up (not done here):* if the marker footprint on the four node tests is
+  undesirable, convert `omnimarket.inference.adapter_inference_bridge.ModelInferenceAdapter` from an ABC
+  to a `runtime_checkable typing.Protocol` (its docstring already calls it a "Protocol"); that would let
+  every inference test double be a composed contract fake with no marker. Product change — file a ticket.
 
 ## Detector re-run command
 

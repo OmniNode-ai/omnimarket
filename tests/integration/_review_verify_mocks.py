@@ -18,7 +18,6 @@ from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
 
-from omnimarket.inference.adapter_inference_bridge import ModelInferenceAdapter
 from omnimarket.review.node_io import ModelGithubDiffResolvedEvent
 from omnimarket.review.pr_review_io import EnumThreadStatus, ThreadState
 from omnimarket.review.pr_review_node_io import (
@@ -52,8 +51,15 @@ def findings_json(payloads: list[dict[str, str]]) -> str:
     return json.dumps(payloads)
 
 
-class _MockInferenceAdapter(ModelInferenceAdapter):
-    """Deterministic inference adapter.
+class _MockInferenceAdapter:
+    """Deterministic inference contract-level double (composed, not subclassed).
+
+    Structurally implements the ``ModelInferenceAdapter.infer`` contract via
+    duck-typing — matching the sibling ``_MockGithubDiffEffect`` /
+    ``_MockGithubReviewEffect`` composition pattern in this module — rather than
+    subclassing the platform's own inference boundary (OMN-13501 no-faked-boundary:
+    a Mock/Fake/Stub subclass of the inference boundary is the flagged
+    anti-pattern; a composed contract double is the sanctioned form).
 
     Reviewer calls return ``review_raw`` (a JSON findings array, possibly empty);
     judge calls (system prompt names a "judge") return ``judge_raw``. No network,
