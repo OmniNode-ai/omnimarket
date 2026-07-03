@@ -1,0 +1,126 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - PR Lifecycle Worktree Prune Effect
+#
+# Event-driven prune of the git worktree for a PR that just reached merged/closed.
+# Invoked by pr_lifecycle_orchestrator (POST_MERGE_TAIL) once per merged PR,
+# scoped to that PR's ticket + repo. Replaces the polling GC that never removed
+# post-merge worktrees because it required a resolvable @{u} upstream.
+#
+# Related Tickets:
+#   - OMN-13859: Event-driven worktree prune-on-PR-close via pr_lifecycle_orchestrator
+---
+name: pr_lifecycle_worktree_prune_effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: effect
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  Prune a single ticket/repo git worktree after its PR reaches merged/closed.
+  The close event is the source of truth — the effect never scans the whole
+  worktree registry and never consults @{u} upstream state, so a deleted
+  post-merge remote branch does not block cleanup. Safety rails always fail
+  toward keep: a worktree with uncommitted changes is flagged (SKIPPED_DIRTY),
+  never removed; only paths strictly under the resolved worktrees root whose
+  .git is a worktree gitlink file are eligible — a canonical clone (.git
+  directory) or any path escaping the root is refused. The worktrees root is
+  resolved from the command or the ONEX_WORKTREES_ROOT env var, never hardcoded.
+
+handler:
+  module: omnimarket.nodes.node_pr_lifecycle_worktree_prune_effect.handlers.handler_worktree_prune
+  class: HandlerWorktreePrune
+  input_model: omnimarket.events.worktree_prune.ModelWorktreePruneCommand
+
+handler_routing:
+  routing_strategy: payload_type_match
+  handlers:
+    - handler:
+        name: HandlerWorktreePrune
+        module: omnimarket.nodes.node_pr_lifecycle_worktree_prune_effect.handlers.handler_worktree_prune
+      event_model:
+        name: ModelWorktreePruneCommand
+        module: omnimarket.events.worktree_prune
+    - handler:
+        name: GitWorktreeAdapter
+        module: omnimarket.nodes.node_pr_lifecycle_worktree_prune_effect.handlers.adapter_git_worktree
+
+descriptor:
+  node_archetype: effect
+  purity: side_effect
+  idempotent: true
+  timeout_ms: 120000
+  runtime_profiles:
+    - effects
+
+inputs:
+  correlation_id:
+    type: str
+    description: "Sweep run correlation ID"
+    required: true
+  ticket_id:
+    type: str
+    description: "Canonical OMN ticket identifier owning the worktree (e.g. OMN-13859)"
+    required: true
+  repo:
+    type: str
+    description: "Repo slug or bare name; owner prefix is stripped for path resolution"
+    required: true
+  branch:
+    type: str
+    description: "Branch that closed, provenance/logging only (not required for prune)"
+    required: false
+  pr_number:
+    type: int
+    description: "PR number that closed, provenance/logging only"
+    required: false
+  worktrees_root:
+    type: str
+    description: "Explicit worktrees root override; falls back to ONEX_WORKTREES_ROOT env"
+    required: false
+  dry_run:
+    type: bool
+    description: "Classify and report intended action without removing"
+    required: false
+    default: false
+
+outputs:
+  correlation_id:
+    type: str
+    description: "Sweep run correlation ID"
+  ticket_id:
+    type: str
+    description: "Ticket whose worktree was targeted"
+  repo:
+    type: str
+    description: "Repo (bare name) whose worktree was targeted"
+  worktree_path:
+    type: str
+    nullable: true
+    description: "Resolved absolute worktree path considered"
+  outcome:
+    type: str
+    description: "Terminal classification: pruned | dry_run | skipped_dirty | skipped_not_found | skipped_not_a_worktree | refused_outside_root | failed"
+  dirty_file_count:
+    type: int
+    description: "Count of uncommitted paths when outcome is skipped_dirty"
+  detail:
+    type: str
+    description: "Human-readable explanation of the outcome"
+  error:
+    type: str
+    nullable: true
+    description: "Error message when outcome is failed (null otherwise)"
+  completed_at:
+    type: str
+    description: "ISO 8601 datetime when the prune attempt completed"
+
+terminal_event: onex.evt.omnimarket.pr-lifecycle-worktree-prune-completed.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.pr-lifecycle-worktree-prune-start.v1
+  publish_topics:
+    - onex.evt.omnimarket.pr-lifecycle-worktree-prune-completed.v1
+
+metadata:
+  transport_type: kafka

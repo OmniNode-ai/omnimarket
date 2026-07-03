@@ -42,8 +42,10 @@ __all__ = [
     "ProtocolFixHandler",
     "ProtocolInventoryHandler",
     "ProtocolMergeHandler",
+    "ProtocolPruneHandler",
     "ProtocolStateReducerHandler",
     "ProtocolTriageHandler",
+    "PruneResult",
     "ReducerIntent",
     "ReducerResult",
     "TriageRecord",
@@ -241,6 +243,21 @@ class FixResult(BaseModel):
     prs_skipped: int = Field(default=0, ge=0)
 
 
+class PruneResult(BaseModel):
+    """Aggregate of the worktree-prune effect across merged PRs (OMN-13859).
+
+    Records how many just-merged worktrees were removed vs. flagged dirty vs.
+    otherwise skipped, so the orchestrator can log/observe the prune tail
+    without owning the per-worktree decision logic.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    worktrees_pruned: int = Field(default=0, ge=0)
+    worktrees_flagged_dirty: int = Field(default=0, ge=0)
+    worktrees_skipped: int = Field(default=0, ge=0)
+
+
 # ---------------------------------------------------------------------------
 # Protocols — signatures match real sub-handler handle() methods exactly.
 #
@@ -315,6 +332,17 @@ class ProtocolFixHandler(Protocol):
     """Dispatch remediation for PRs with FIX intent.
 
     Signature matches HandlerPrLifecycleFix.handle().
+    """
+
+    async def handle(self, command: Any) -> Any: ...
+
+
+@runtime_checkable
+class ProtocolPruneHandler(Protocol):
+    """Prune the git worktree for a PR that just reached merged/closed.
+
+    Signature matches HandlerWorktreePrune.handle() — one command per
+    (ticket, repo), returning a typed prune result (OMN-13859).
     """
 
     async def handle(self, command: Any) -> Any: ...

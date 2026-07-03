@@ -1,0 +1,23 @@
+name: node_pr_lifecycle_worktree_prune_effect
+version: "1.0.0"
+description: "PR lifecycle worktree prune effect — event-driven removal of a merged PR's git worktree, scoped to ticket + repo, with dirty-refusal and canonical-clone protection rails"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+pack: pr_lifecycle
+node_role: effect
+display_name: "Worktree Prune"
+entry_points:
+  onex.nodes:
+    node_pr_lifecycle_worktree_prune_effect: "omnimarket.nodes.node_pr_lifecycle_worktree_prune_effect"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: false
+  requires_repo: true
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: write
+dependencies:
+  - "omnibase_core>=0.39.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["effect", "pr", "worktree", "prune", "gc", "pr_lifecycle"]
