@@ -439,8 +439,8 @@ delegation = "omnimarket.nodes.node_delegation_orchestrator.plugin:PluginDelegat
 omnimarket = "omnimarket.nodes"
 
 [tool.uv.sources]
-omnibase-core = { git = "https://github.com/OmniNode-ai/omnibase_core.git", rev = "29e9057b4a3604c8add623eacac86f1b537defdb" }
-omnibase-compat = { git = "https://github.com/OmniNode-ai/omnibase_compat.git", rev = "c0fc71681d046e840e0997c04bd26176785a2992" }
+omnibase-core = { git = "https://github.com/OmniNode-ai/omnibase_core.git", rev = "29e9057b4a3604c8add623eacac86f1b537defdb" }  # raw-override-ok: OMN-13878
+omnibase-compat = { git = "https://github.com/OmniNode-ai/omnibase_compat.git", rev = "c0fc71681d046e840e0997c04bd26176785a2992" }  # raw-override-ok: OMN-13878
 omnibase-infra = { git = "https://github.com/OmniNode-ai/omnibase_infra.git", rev = "7e52d5b0046c394b38454b97157e7a7191e6f008" }
 omninode-memory = { git = "https://github.com/OmniNode-ai/omnimemory.git", rev = "9843dd18cedaa4f5939289ba527532262b87003c" }
 onex-change-control = { git = "https://github.com/OmniNode-ai/onex_change_control.git", rev = "dd2620d18001495b8d0f493b421b38399e9aab4b" }
