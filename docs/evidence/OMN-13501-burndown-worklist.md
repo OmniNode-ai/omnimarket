@@ -205,7 +205,7 @@ marker). They need the marker added — a mechanical one-line-per-file fix, fold
 ## Detector re-run command
 
 ```bash
-cd /Users/jonah/Code/omni_worktrees/OMN-13501/omnimarket
+cd "$OMNI_HOME/omni_worktrees/OMN-13501/omnimarket"
 env -u PYTHONPATH uv run python -m omnibase_core.validation.no_faked_boundary.runtime_no_faked_boundary .
 ```
 
