@@ -183,6 +183,26 @@ async def test_clean_worktree_is_pruned(tmp_path: Path) -> None:
 
 @pytest.mark.unit
 @pytest.mark.asyncio
+async def test_prune_result_covers_declared_output_envelope(tmp_path: Path) -> None:
+    root = tmp_path / "worktrees"
+    wt = _make_worktree(root, "OMN-13859", "omnimarket", gitlink=True)
+    canonical_git = tmp_path / "canonical" / "omnimarket" / ".git"
+    canonical_git.mkdir(parents=True)
+    adapter = FakeGitAdapter(porcelain="", common_dir=str(canonical_git))
+    handler = HandlerWorktreePrune(git_adapter=adapter)
+    command = _command(root)
+
+    result = await handler.handle(command)
+
+    assert result.correlation_id == command.correlation_id
+    assert result.ticket_id == "OMN-13859"
+    assert result.worktree_path == str(wt.resolve())
+    assert result.detail
+    assert result.completed_at.tzinfo is not None
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
 async def test_clean_worktree_dry_run_does_not_remove(tmp_path: Path) -> None:
     root = tmp_path / "worktrees"
     _make_worktree(root, "OMN-13859", "omnimarket", gitlink=True)
