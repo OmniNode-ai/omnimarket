@@ -850,7 +850,11 @@ jobs:
         # fetch resolves the true merge-base.
         env:
           BASE_REF: ${{ github.base_ref }}
+          HEAD_REF: ${{ github.head_ref }}
         run: |
+          if [ "$BASE_REF" = "main" ] && [[ "$HEAD_REF" == promotion/*-dev-to-main ]]; then
+            BASE_REF="dev"
+          fi
           if [ -n "$BASE_REF" ]; then
             git fetch origin "$BASE_REF" --no-tags
             FILES=$(git diff --name-only "origin/$BASE_REF"...HEAD -- '*.py' '*.md' | tr '\n' ' ')

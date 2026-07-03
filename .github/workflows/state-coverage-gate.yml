@@ -63,10 +63,14 @@ jobs:
         env:
           EVENT_NAME: ${{ github.event_name }}
           PR_BASE_REF: ${{ github.base_ref }}
+          PR_HEAD_REF: ${{ github.head_ref }}
           MERGE_GROUP_BASE_REF: ${{ github.event.merge_group.base_ref }}
         run: |
           if [[ "$EVENT_NAME" == "pull_request" && -n "$PR_BASE_REF" ]]; then
             BASE_REF="$PR_BASE_REF"
+            if [[ "$BASE_REF" == "main" && "$PR_HEAD_REF" == promotion/*-dev-to-main ]]; then
+              BASE_REF="dev"
+            fi
           elif [[ "$EVENT_NAME" == "merge_group" && -n "$MERGE_GROUP_BASE_REF" ]]; then
             BASE_REF="${MERGE_GROUP_BASE_REF#refs/heads/}"
           else
