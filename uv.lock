@@ -4,8 +4,8 @@ requires-python = "==3.12.*"
 
 [manifest]
 overrides = [
-    { name = "omnibase-compat", git = "https://github.com/OmniNode-ai/omnibase_compat.git?rev=c0fc71681d046e840e0997c04bd26176785a2992" },
-    { name = "omnibase-core", git = "https://github.com/OmniNode-ai/omnibase_core.git?rev=29e9057b4a3604c8add623eacac86f1b537defdb" },
+    { name = "omnibase-compat", specifier = "==0.5.5" },
+    { name = "omnibase-core", specifier = ">=0.46.1,<0.47.0" },
     { name = "omnibase-infra", git = "https://github.com/OmniNode-ai/omnibase_infra.git?rev=7e52d5b0046c394b38454b97157e7a7191e6f008" },
     { name = "omnibase-spi", specifier = ">=0.23.0,<0.24.0" },
 ]
@@ -1222,16 +1222,20 @@ wheels = [
 [[package]]
 name = "omnibase-compat"
 version = "0.5.5"
-source = { git = "https://github.com/OmniNode-ai/omnibase_compat.git?rev=c0fc71681d046e840e0997c04bd26176785a2992#c0fc71681d046e840e0997c04bd26176785a2992" }
+source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "pydantic" },
     { name = "typing-extensions" },
 ]
+sdist = { url = "https://files.pythonhosted.org/packages/71/6f/35e74ed8bc2210d0161445e0ab020b420d764ccf86f59decd11000bfee5a/omnibase_compat-0.5.5.tar.gz", hash = "sha256:181d5e67459de60203d48d7760ae9ccc7d1c8d15dcadfcab639059359e687e4c", size = 145437, upload-time = "2026-06-30T20:23:59.951Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/48/67/81463ac253d64ae96094e9639e897147b7cda60a2e6a40bd08029bdd221f/omnibase_compat-0.5.5-py3-none-any.whl", hash = "sha256:7609ab530acf7d8b52ff62f44015bcbed2778563ff57ae636f19cc57d15c245b", size = 99991, upload-time = "2026-06-30T20:23:58.898Z" },
+]
 
 [[package]]
 name = "omnibase-core"
-version = "0.46.2"
-source = { git = "https://github.com/OmniNode-ai/omnibase_core.git?rev=29e9057b4a3604c8add623eacac86f1b537defdb#29e9057b4a3604c8add623eacac86f1b537defdb" }
+version = "0.46.1"
+source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "blake3" },
     { name = "click" },
@@ -1245,6 +1249,10 @@ dependencies = [
     { name = "ruamel-yaml" },
     { name = "tree-sitter" },
     { name = "tree-sitter-python" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/68/2a/fe53acd14f2feeea5faf5b6df5fa0ba088e001d6f733f57f7477d95e6b2f/omnibase_core-0.46.1.tar.gz", hash = "sha256:d10b6cfc82436a5ad67ca35951d2e095dfb408a8bcb661c85374ad321f2c69e4", size = 8992716, upload-time = "2026-06-30T21:10:23.4Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/5b/f1/b8516eec6b8587fa2f446279545ef1626e04a3a1c82f1f491d9b8db31832/omnibase_core-0.46.1-py3-none-any.whl", hash = "sha256:01551cd2ac4009fb758c71edd1201be8a02406731132965fe782436849dfdfc9", size = 6351486, upload-time = "2026-06-30T21:10:20.427Z" },
 ]
 
 [[package]]
@@ -1371,8 +1379,8 @@ requires-dist = [
     { name = "fastapi", specifier = ">=0.115.0" },
     { name = "graphifyy", marker = "extra == 'dep-health'", specifier = "==0.8.2" },
     { name = "httpx", specifier = ">=0.27.0" },
-    { name = "omnibase-compat", git = "https://github.com/OmniNode-ai/omnibase_compat.git?rev=c0fc71681d046e840e0997c04bd26176785a2992" },
-    { name = "omnibase-core", git = "https://github.com/OmniNode-ai/omnibase_core.git?rev=29e9057b4a3604c8add623eacac86f1b537defdb" },
+    { name = "omnibase-compat", specifier = "==0.5.5" },
+    { name = "omnibase-core", specifier = ">=0.46.1,<0.47.0" },
     { name = "omnibase-infra", git = "https://github.com/OmniNode-ai/omnibase_infra.git?rev=7e52d5b0046c394b38454b97157e7a7191e6f008" },
     { name = "omnibase-spi", specifier = ">=0.23.0,<0.24.0" },
     { name = "omninode-memory", git = "https://github.com/OmniNode-ai/omnimemory.git?rev=9843dd18cedaa4f5939289ba527532262b87003c" },

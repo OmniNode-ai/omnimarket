@@ -439,8 +439,13 @@ delegation = "omnimarket.nodes.node_delegation_orchestrator.plugin:PluginDelegat
 omnimarket = "omnimarket.nodes"
 
 [tool.uv.sources]
-omnibase-core = { git = "https://github.com/OmniNode-ai/omnibase_core.git", rev = "29e9057b4a3604c8add623eacac86f1b537defdb" }  # raw-override-ok: OMN-13878
-omnibase-compat = { git = "https://github.com/OmniNode-ai/omnibase_compat.git", rev = "c0fc71681d046e840e0997c04bd26176785a2992" }  # raw-override-ok: OMN-13878
+# OMN-13878: omnibase-core and omnibase-compat now resolve from PyPI (removed
+# their git-source overrides). The version-range overrides below already target
+# the released artifacts: core>=0.46.1,<0.47.0 (PyPI 0.46.1; the former
+# rev 29e9057 was an unreleased 0.46.1+1-commit whose only delta is core's
+# validator_receipt_gate CI validator, which omnimarket does not import) and
+# compat==0.5.5 (the former rev c0fc716 IS the v0.5.5 tag == PyPI 0.5.5).
+# omnibase-infra git rev retained — infra is not in the dep-provenance forbidden set.
 omnibase-infra = { git = "https://github.com/OmniNode-ai/omnibase_infra.git", rev = "7e52d5b0046c394b38454b97157e7a7191e6f008" }
 omninode-memory = { git = "https://github.com/OmniNode-ai/omnimemory.git", rev = "9843dd18cedaa4f5939289ba527532262b87003c" }
 onex-change-control = { git = "https://github.com/OmniNode-ai/onex_change_control.git", rev = "dd2620d18001495b8d0f493b421b38399e9aab4b" }
