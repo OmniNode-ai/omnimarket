@@ -24,6 +24,7 @@ from datetime import UTC, datetime
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from omnimarket.projection.handler_shim import split_projection_input
 from omnimarket.projection.protocol_database import DatabaseAdapter
 
 TABLE = "intent_classification_events"
@@ -71,11 +72,9 @@ class HandlerProjectionIntentClassification:
         Delegates to project() with a ModelIntentClassifiedEvent and
         a DatabaseAdapter from input_data['_db'].
         """
-        db_raw = input_data.pop("_db", None)
-        if not isinstance(db_raw, DatabaseAdapter):
-            raise TypeError("handle() requires a DatabaseAdapter in input_data['_db']")
-        event = ModelIntentClassifiedEvent(**input_data)
-        result = self.project(event, db_raw)
+        db, payload, _meta = split_projection_input(input_data)
+        event = ModelIntentClassifiedEvent(**payload)
+        result = self.project(event, db)
         return result.model_dump(mode="json")
 
     def project(

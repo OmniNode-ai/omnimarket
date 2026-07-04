@@ -23,6 +23,7 @@ from omnimarket.nodes.node_projection_swarm.models.model_projection_freshness im
 from omnimarket.nodes.node_projection_swarm.models.model_swarm_run_projection import (
     ModelSwarmRunProjection,
 )
+from omnimarket.projection.handler_shim import split_projection_input
 from omnimarket.projection.protocol_database import DatabaseAdapter
 
 TABLE = "swarm_runs"
@@ -148,11 +149,9 @@ class HandlerProjectionSwarm:
 
         Expects a DatabaseAdapter at input_data['_db'].
         """
-        db_raw = input_data.pop("_db", None)
-        if not isinstance(db_raw, DatabaseAdapter):
-            raise TypeError("handle() requires a DatabaseAdapter in input_data['_db']")
-        event = ModelSwarmDispatchEvent(**input_data)
-        result = self.project(event, db_raw)
+        db, payload, _meta = split_projection_input(input_data)
+        event = ModelSwarmDispatchEvent(**payload)
+        result = self.project(event, db)
         return result.model_dump(mode="json")
 
     def project(

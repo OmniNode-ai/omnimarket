@@ -162,3 +162,30 @@ class TestProjectionDepHealthHandleShim:
                     "captured_at": _NOW.isoformat(),
                 }
             )
+
+    def test_handle_strips_injected_event_type_and_materializes(self) -> None:
+        """OMN-13825 defect-1: the runtime injects ``_event_type`` (derived from
+        the topic) alongside ``_db``. ``ModelDepHealthSweepCompletedEvent`` is
+        ``extra="forbid"``, so an earlier shim that popped only ``_db`` left
+        ``_event_type`` in the dict and ``Model(**input_data)`` raised
+        ``ValidationError [extra_forbidden]`` — the event was consumed
+        (offset committed, ``LAG=0``) but no row materialized. The shared
+        injected-key-stripping path must remove ``_event_type`` so the row lands.
+        """
+        db = InmemoryDatabaseAdapter()
+        payload: dict[str, object] = {
+            "_db": db,
+            # The exact key the runtime injects (handler_wiring.py:1509).
+            "_event_type": "omnimarket.dep-health-sweep-completed",
+            "run_id": "run-inject-001",
+            "findings": [_FINDING_A.model_dump(mode="json")],
+            "summary": {str(_FINDING_A.finding_type): 1},
+            "captured_at": _NOW.isoformat(),
+        }
+        result = HANDLER.handle(payload)
+        assert result["rows_upserted"] == 1
+        rows = db.query("dep_health_findings")
+        assert len(rows) == 1
+        assert rows[0]["run_id"] == "run-inject-001"
+        # The injected bookkeeping key must never reach the persisted row.
+        assert "_event_type" not in rows[0]
