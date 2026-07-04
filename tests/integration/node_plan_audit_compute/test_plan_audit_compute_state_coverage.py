@@ -14,9 +14,16 @@ of only surfacing at a live runtime/projection boundary.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import yaml
+
+from omnimarket.nodes.node_plan_audit_compute.handlers.handler_plan_audit_compute import (
+    HandlerPlanAuditCompute,
+)
+from omnimarket.nodes.node_plan_audit_compute.models.model_plan_audit_compute_request import (
+    ModelPlanAuditComputeRequest,
+)
 
 _CONTRACT_PATH = (
     Path(__file__).resolve().parents[3]
@@ -29,10 +36,44 @@ _CONTRACT_PATH = (
 
 
 def _load_contract() -> dict[str, Any]:
-    return yaml.safe_load(_CONTRACT_PATH.read_text())
+    return cast(dict[str, Any], yaml.safe_load(_CONTRACT_PATH.read_text()))
 
 
 def test_plan_audit_compute_declares_output_topics() -> None:
     """Every contract-declared publish topic keeps its literal wire string."""
     publish_topics = _load_contract()["event_bus"]["publish_topics"]
     assert "onex.evt.omnimarket.plan-audit-completed.v1" in publish_topics
+
+
+def test_plan_audit_compute_emits_declared_output_states(tmp_path: Path) -> None:
+    """The handler emits every contract-declared output field (OMN-13923).
+
+    Drives the COMPUTE handler over a real Markdown plan and asserts the
+    live result carries the ``verdict``, ``warnings``, and ``plans`` output
+    states the contract declares — a non-vacuous state-coverage pin so a
+    silent rename/removal of any declared output fails here.
+    """
+    plan = tmp_path / "rolling-plan.md"
+    plan.write_text(
+        "# Rolling Plan\n\n"
+        "Tracks **OMN-13923** work.\n\n"
+        "## Current Verified State\n\n"
+        "verified: 2026-07-04 via gh pr checks\n",
+        encoding="utf-8",
+    )
+
+    result = HandlerPlanAuditCompute().handle(
+        ModelPlanAuditComputeRequest(plan_path=str(plan))
+    )
+
+    declared_outputs = set(_load_contract()["outputs"])
+    assert {"verdict", "warnings", "plans", "passed", "status"} <= declared_outputs
+
+    # Non-vacuous attribute access proves each declared output state is emitted.
+    assert result.verdict.value in {"PASS", "WARN", "FAIL", "SKIPPED", "ERROR"}
+    assert isinstance(result.warnings, list)
+    assert isinstance(result.plans, list)
+    assert len(result.plans) == 1
+    assert result.plans[0].verdict is result.verdict
+    assert result.status == "ok"
+    assert result.passed is (result.verdict.value == "PASS")
