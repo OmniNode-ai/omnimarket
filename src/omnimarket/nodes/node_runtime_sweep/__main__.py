@@ -22,6 +22,7 @@ from pathlib import Path
 
 import yaml
 
+from omnimarket.nodes.node_runtime_sweep.collection import collect_contracts
 from omnimarket.nodes.node_runtime_sweep.handlers.handler_runtime_sweep import (
     EnumSweepCheck,
     ModelContractInput,
@@ -231,86 +232,6 @@ def collect_entry_point_probes(repo_root: Path) -> list[ModelEntryPointProbe]:
     ]
 
 
-def _extract_runtime_profiles(raw: dict[str, object]) -> list[str]:
-    """Return declared runtime_profiles (top-level or under descriptor), lower-cased."""
-    profiles_raw = raw.get("runtime_profiles")
-    descriptor = raw.get("descriptor")
-    if profiles_raw is None and isinstance(descriptor, dict):
-        profiles_raw = descriptor.get("runtime_profiles")
-    if isinstance(profiles_raw, str):
-        candidates: list[object] = [profiles_raw]
-    elif isinstance(profiles_raw, (list, tuple)):
-        candidates = list(profiles_raw)
-    else:
-        return []
-    return [p.strip().lower() for p in candidates if isinstance(p, str) and p.strip()]
-
-
-def _collect_contracts(omni_home: str, scope: str) -> list[ModelContractInput]:
-    """Walk omni_home repos and collect contract.yaml definitions."""
-    root = Path(omni_home)
-    contracts: list[ModelContractInput] = []
-
-    if scope == "omnidash-only":
-        repos = ["omnidash"]
-    else:
-        repos = [
-            d.name
-            for d in root.iterdir()
-            if d.is_dir() and not d.name.startswith(".") and (d / "src").exists()
-        ]
-
-    for repo in repos:
-        repo_dir = root / repo
-        if not repo_dir.is_dir():
-            continue
-        for contract_path in repo_dir.rglob("contract.yaml"):
-            if "nodes" not in str(contract_path):
-                continue
-            try:
-                raw = yaml.safe_load(contract_path.read_text())
-                if not isinstance(raw, dict):
-                    continue
-                name = raw.get("name", contract_path.parent.name)
-                description = raw.get("description", "")
-                handler_spec = raw.get("handler", {})
-                handler_module = (
-                    handler_spec.get("module", "")
-                    if isinstance(handler_spec, dict)
-                    else ""
-                )
-                event_bus = raw.get("event_bus", {})
-                raw_publish = (
-                    event_bus.get("publish_topics", [])
-                    if isinstance(event_bus, dict)
-                    else []
-                )
-                raw_subscribe = (
-                    event_bus.get("subscribe_topics", [])
-                    if isinstance(event_bus, dict)
-                    else []
-                )
-                # Only include string topics (skip structured event model entries)
-                publish_topics = [t for t in (raw_publish or []) if isinstance(t, str)]
-                subscribe_topics = [
-                    t for t in (raw_subscribe or []) if isinstance(t, str)
-                ]
-                contracts.append(
-                    ModelContractInput(
-                        node_name=name,
-                        description=description.strip() if description else "",
-                        handler_module=handler_module,
-                        publish_topics=publish_topics,
-                        subscribe_topics=subscribe_topics,
-                        runtime_profiles=_extract_runtime_profiles(raw),
-                    )
-                )
-            except Exception as exc:
-                _log.warning("failed to parse %s: %s", contract_path, exc)
-
-    return contracts
-
-
 def main() -> None:
     logging.basicConfig(level=logging.WARNING, format="%(levelname)s: %(message)s")
     omni_home = os.environ.get("OMNI_HOME")
@@ -379,7 +300,7 @@ def main() -> None:
         _log.warning("OMNI_HOME is not set — contract collection skipped")
         contracts: list[ModelContractInput] = []
     else:
-        contracts = _collect_contracts(omni_home, args.scope)
+        contracts = collect_contracts(omni_home, args.scope)
     if not contracts:
         _log.warning("no contract.yaml files found")
 
