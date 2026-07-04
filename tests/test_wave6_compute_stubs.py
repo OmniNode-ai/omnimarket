@@ -289,17 +289,23 @@ def test_rrh_request_frozen() -> None:
 
 
 @pytest.mark.unit
-def test_skill_functional_audit_handler_returns_empty_ok(tmp_path: Path) -> None:
-    """HandlerSkillFunctionalAuditCompute audits an empty skills root."""
+def test_skill_functional_audit_handler_raises_on_empty_skills_root(
+    tmp_path: Path,
+) -> None:
+    """HandlerSkillFunctionalAuditCompute raises on an empty skills root.
+
+    OMN-13926: a run that discovers zero skills must not report a vacuous
+    status="ok"/total_audited=0 result — it raises instead (mirrors the
+    OMN-13919 zero-entity-hard-fail pattern).
+    """
     skills_root = tmp_path / "skills"
     skills_root.mkdir()
     handler = HandlerSkillFunctionalAuditCompute()
-    result = handler.handle(
-        ModelSkillFunctionalAuditComputeRequest(skills_roots=[str(skills_root)])
-    )
 
-    assert result.status == "ok"
-    assert result.total_audited == 0
+    with pytest.raises(ValueError, match="zero skills"):
+        handler.handle(
+            ModelSkillFunctionalAuditComputeRequest(skills_roots=[str(skills_root)])
+        )
 
 
 @pytest.mark.unit
