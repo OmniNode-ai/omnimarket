@@ -4,9 +4,9 @@
 
 ONEX node type: COMPUTE — pure, deterministic, no LLM calls.
 
-This handler implements the ``skill_functional_audit`` SKILL.md methodology
-(Phase 2 risk-tier classification, Phase 3c pure-instruction exemption,
-orchestrator ``handler_routing`` support, resilient backing-node extraction).
+Follows the ``skill_functional_audit`` SKILL.md methodology (Phase 2
+risk-tier classification, Phase 3c pure-instruction exemption, orchestrator
+``handler_routing`` support, resilient backing-node extraction).
 
 Why the rewrite (OMN-13512): the prior heuristics were far cruder than the
 methodology they claimed to implement and produced systematic false positives:
