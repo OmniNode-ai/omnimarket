@@ -623,4 +623,5 @@ markers = [
     "slow: Tests that take a long time to run (>1s)",
     "kafka: marks tests requiring a running Kafka broker",
     "e2e: End-to-end probe tests against a live lane (requires OMN_ALLOW_LIVE_E2E_PROBE=true)",
+    "live_model: Tests that call live local LLM endpoints (requires OMN_ALLOW_LIVE_LADDER=1)",
 ]

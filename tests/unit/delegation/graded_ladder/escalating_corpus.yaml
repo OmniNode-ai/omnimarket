@@ -1,0 +1,190 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# Escalating-complexity graded benchmark corpus (OMN-13369, operator plan §3.6).
+#
+# Nine tasks across three difficulty tiers (easy -> medium -> hard). Every task
+# has an OBJECTIVE, deterministic grader (numeric equality, substring, or
+# HumanEval-style code execution) — no LLM-judge, no heuristic marker counting.
+# Objective grading is what makes cross-rung separation a genuine capability
+# signal: a weaker rung fails a hard task because its answer is actually wrong.
+#
+# The difficulty gradient is deliberate: every rung should clear the easy tier;
+# the hard tier (three algorithmic-code tasks + one multi-constraint number
+# search) is where the small floor rung and the large ceiling rung diverge.
+#
+# prompts end with a strict output directive so the graded answer is the
+# delivered artifact, not scratchpad. Reasoning-model <think> blocks are stripped
+# before grading (see graders.extract_answer).
+
+version: "1.0"
+ticket: OMN-13369
+
+tasks:
+  # ── EASY ───────────────────────────────────────────────────────────────
+  - task_id: easy_arith
+    benchmark_tier: easy
+    task_class: reasoning
+    grader: numeric
+    expected_number: 376
+    prompt: "Compute 47 * 8. Reply with only the resulting integer and nothing else."
+
+  - task_id: easy_symbol
+    benchmark_tier: easy
+    task_class: research
+    grader: contains
+    expected_substring: "Au"
+    case_sensitive: true
+    prompt: >-
+      What is the chemical symbol for the element gold? Reply with only the
+      one- or two-letter symbol and nothing else.
+
+  # ── MEDIUM ─────────────────────────────────────────────────────────────
+  - task_id: med_speed
+    benchmark_tier: medium
+    task_class: reasoning
+    grader: numeric
+    expected_number: 80
+    prompt: >-
+      A train travels 60 kilometers in 45 minutes. What is its average speed in
+      kilometers per hour? Reply with only the integer and nothing else.
+
+  - task_id: med_factorial
+    benchmark_tier: medium
+    task_class: reasoning
+    grader: numeric
+    expected_number: 479001600
+    prompt: "Compute 12 factorial (12!). Reply with only the resulting integer and nothing else."
+
+  - task_id: med_palindrome
+    benchmark_tier: medium
+    task_class: code_generation
+    grader: code_exec
+    entrypoint: is_palindrome
+    prompt: >-
+      Write a Python function `is_palindrome(s)` that returns True if the string
+      s is a palindrome ignoring letter case, spaces, and punctuation, and False
+      otherwise. Reply with only a single Python code block.
+    code_asserts: |
+      assert is_palindrome('A man, a plan, a canal: Panama') is True
+      assert is_palindrome('') is True
+      assert is_palindrome('abc') is False
+      assert is_palindrome('Was it a car or a cat I saw?') is True
+      assert is_palindrome('No lemon, no melon') is True
+
+  # ── HARD ───────────────────────────────────────────────────────────────
+  - task_id: hard_number_search
+    benchmark_tier: hard
+    task_class: reasoning
+    grader: numeric
+    expected_number: 161
+    prompt: >-
+      Find the integer n that satisfies ALL of these: n is between 100 and 200
+      inclusive, n is divisible by 7, and the sum of the digits of n equals 8.
+      There is exactly one such integer. Reply with only that integer and nothing
+      else.
+
+  - task_id: hard_lcs
+    benchmark_tier: hard
+    task_class: code_generation
+    grader: code_exec
+    entrypoint: lcs_length
+    prompt: >-
+      Write a Python function `lcs_length(a, b)` that returns the length of the
+      longest common subsequence of the two input strings a and b. Reply with
+      only a single Python code block.
+    code_asserts: |
+      assert lcs_length('abcde', 'ace') == 3
+      assert lcs_length('', 'abc') == 0
+      assert lcs_length('AGGTAB', 'GXTXAYB') == 4
+      assert lcs_length('abc', 'abc') == 3
+      assert lcs_length('abc', 'def') == 0
+
+  - task_id: hard_min_coins
+    benchmark_tier: hard
+    task_class: code_generation
+    grader: code_exec
+    entrypoint: min_coins
+    prompt: >-
+      Write a Python function `min_coins(coins, amount)` that returns the minimum
+      number of coins from the list `coins` needed to make `amount`, or -1 if it
+      is impossible. Each coin may be used unlimited times. Reply with only a
+      single Python code block.
+    code_asserts: |
+      assert min_coins([1, 2, 5], 11) == 3
+      assert min_coins([2], 3) == -1
+      assert min_coins([1], 0) == 0
+      assert min_coins([1, 3, 4], 6) == 2
+      assert min_coins([2, 5, 10, 1], 27) == 4
+
+  - task_id: hard_balanced_brackets
+    benchmark_tier: hard
+    task_class: code_generation
+    grader: code_exec
+    entrypoint: is_balanced
+    prompt: >-
+      Write a Python function `is_balanced(s)` that returns True if every round
+      (), square [], and curly {} bracket in the string s is correctly matched
+      and nested, and False otherwise. Non-bracket characters are ignored. Reply
+      with only a single Python code block.
+    code_asserts: |
+      assert is_balanced('()') is True
+      assert is_balanced('()[]{}') is True
+      assert is_balanced('(]') is False
+      assert is_balanced('([)]') is False
+      assert is_balanced('{[]}') is True
+      assert is_balanced('') is True
+      assert is_balanced('a(b)c[d]{e}') is True
+
+  - task_id: hard_mod_exp
+    benchmark_tier: hard
+    task_class: reasoning
+    grader: numeric
+    expected_number: 376
+    prompt: >-
+      What is the remainder when 2 raised to the power 100 is divided by 1000?
+      Reply with only the integer and nothing else.
+
+  - task_id: hard_trailing_zeros
+    benchmark_tier: hard
+    task_class: reasoning
+    grader: numeric
+    expected_number: 24
+    prompt: >-
+      How many trailing zeros are there at the end of 100 factorial (100!)?
+      Reply with only the integer and nothing else.
+
+  - task_id: hard_edit_distance
+    benchmark_tier: hard
+    task_class: code_generation
+    grader: code_exec
+    entrypoint: edit_distance
+    prompt: >-
+      Write a Python function `edit_distance(a, b)` that returns the Levenshtein
+      edit distance (minimum single-character insertions, deletions, or
+      substitutions) between strings a and b. Reply with only a single Python
+      code block.
+    code_asserts: |
+      assert edit_distance('horse', 'ros') == 3
+      assert edit_distance('intention', 'execution') == 5
+      assert edit_distance('', 'abc') == 3
+      assert edit_distance('abc', 'abc') == 0
+      assert edit_distance('sunday', 'saturday') == 3
+
+  - task_id: hard_regex_match
+    benchmark_tier: hard
+    task_class: code_generation
+    grader: code_exec
+    entrypoint: is_match
+    prompt: >-
+      Write a Python function `is_match(s, p)` implementing regular-expression
+      matching where '.' matches any single character and '*' matches zero or
+      more of the preceding element. The match must cover the ENTIRE input
+      string s. Reply with only a single Python code block.
+    code_asserts: |
+      assert is_match('aa', 'a') is False
+      assert is_match('aa', 'a*') is True
+      assert is_match('ab', '.*') is True
+      assert is_match('aab', 'c*a*b') is True
+      assert is_match('mississippi', 'mis*is*p*.') is False
+      assert is_match('mississippi', 'mis*is*ip*.') is True
