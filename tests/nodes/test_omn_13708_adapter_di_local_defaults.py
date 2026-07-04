@@ -209,14 +209,25 @@ def test_ticketing_insights_dates_not_in_epoch_when_data_supplied() -> None:
 
 
 @pytest.mark.unit
-def test_runtime_sweep_zero_entities_is_not_clean() -> None:
-    """An empty sweep checked nothing — must report no_input, not clean."""
-    result = NodeRuntimeSweep().handle(RuntimeSweepRequest())
-    assert result.contracts_checked == 0
-    assert result.topics_checked == 0
-    assert result.entry_points_checked == 0
-    assert result.status == "no_input"
-    assert result.status != "clean"
+def test_runtime_sweep_zero_entities_is_not_clean(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """A sweep that checks nothing must FAIL loudly, never report clean.
+
+    OMN-13919 hardened the OMN-13708 behavior: an empty request now resolves
+    the default ``$OMNI_HOME`` contract set, and a run that still checks zero
+    entities raises instead of returning a reportable ``no_input`` result
+    (the dispatch layer mapped any returned result to success).
+    """
+    # Empty $OMNI_HOME ⇒ default collection finds nothing ⇒ hard failure.
+    monkeypatch.setenv("OMNI_HOME", str(tmp_path))
+    with pytest.raises(ValueError, match="zero entities"):
+        NodeRuntimeSweep().handle(RuntimeSweepRequest())
+
+    # No $OMNI_HOME at all ⇒ hard failure, never a silent empty default.
+    monkeypatch.delenv("OMNI_HOME", raising=False)
+    with pytest.raises(ValueError, match="OMNI_HOME"):
+        NodeRuntimeSweep().handle(RuntimeSweepRequest())
 
 
 @pytest.mark.unit

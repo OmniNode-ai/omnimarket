@@ -278,9 +278,21 @@ class TestRuntimeSweepGoldenChain:
         assert result.by_type.get("NON_DURABLE_CONTRACT", 0) == 0
 
     async def test_dry_run_flag(self, event_bus: EventBusInmemory) -> None:
-        """dry_run flag should propagate from request to result."""
+        """dry_run flag should propagate from request to result.
+
+        Carries one contract so the request does not trigger the OMN-13919
+        default $OMNI_HOME collection path (empty input now self-collects).
+        """
         handler = NodeRuntimeSweep()
-        request = RuntimeSweepRequest(contracts=[], dry_run=True)
+        request = RuntimeSweepRequest(
+            contracts=[
+                ModelContractInput(
+                    node_name="node_dry_run_probe",
+                    description="A real description for the dry-run probe node.",
+                )
+            ],
+            dry_run=True,
+        )
         result = handler.handle(request)
 
         assert result.dry_run is True

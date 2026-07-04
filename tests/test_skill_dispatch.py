@@ -71,11 +71,27 @@ def _resolve_omni_home() -> str:
 
 
 def _make_hermetic_omni_home(tmpdir: Path) -> str:
-    """Build a throwaway omni_home with empty stubs so nodes can scan without
+    """Build a throwaway omni_home with minimal stubs so nodes can scan without
     depending on the operator's real checkout layout.
+
+    Seeds one minimal node contract: runtime_sweep now hard-fails on a
+    zero-entity environment (OMN-13919 — a sweep that checks nothing must
+    never pass), so a hermetic tree with no contract.yaml at all would
+    (correctly) crash the subprocess instead of emitting a JSON result.
     """
     for repo in ("omnibase_core", "omnimarket", "omnibase_infra", "omniclaude"):
         (tmpdir / repo / "src").mkdir(parents=True, exist_ok=True)
+    stub_node = tmpdir / "omnimarket" / "src" / "omnimarket" / "nodes" / "node_stub"
+    stub_node.mkdir(parents=True, exist_ok=True)
+    (stub_node / "contract.yaml").write_text(
+        "name: node_stub\n"
+        "description: Hermetic stub contract for skill-dispatch tests.\n"
+        "event_bus:\n"
+        "  publish_topics:\n"
+        "    - onex.evt.hermetic.stub-done.v1\n"
+        "  subscribe_topics:\n"
+        "    - onex.evt.hermetic.stub-done.v1\n"
+    )
     return str(tmpdir)
 
 

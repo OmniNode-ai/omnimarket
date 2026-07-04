@@ -3,11 +3,15 @@
 Checks node descriptions, handler wiring, topic symmetry (producer/consumer
 pairs), and classifies findings by type and severity.
 
-ONEX node type: COMPUTE — pure, deterministic, no LLM calls.
+ONEX node type: COMPUTE — deterministic, no LLM calls. Check phases are pure;
+when a request carries no entities the handler resolves the default input set
+from ``$OMNI_HOME`` (OMN-13919), mirroring NodeComplianceSweep's default-scan
+resolution.
 """
 
 from __future__ import annotations
 
+import os
 import re
 from enum import StrEnum
 from uuid import UUID
@@ -240,9 +244,9 @@ class RuntimeSweepRequest(BaseModel):
     enabled_checks: list[EnumSweepCheck] | None = None
     # OMN-13715: scope hint surfaced via `onex skill runtime_sweep --scope`.
     # Accepted values (by convention): "all-repos" (default, full sweep) or
-    # "omnidash-only" (limit sweep to the omnidash repo context). The handler
-    # currently does not filter by scope — wiring the CLI arg is the OMN-13715
-    # deliverable; behavior gating is tracked separately. None ⇒ full sweep.
+    # "omnidash-only" (limit sweep to the omnidash repo context). OMN-13919:
+    # when the request carries no entities, scope selects which repos the
+    # default $OMNI_HOME collection walks. None ⇒ full sweep ("all-repos").
     scope: str | None = None
     dry_run: bool = False
 
@@ -257,7 +261,9 @@ class RuntimeSweepResult(BaseModel):
     topics_checked: int = 0
     workflows_checked: int = 0
     entry_points_checked: int = 0
-    status: str = "clean"  # clean | findings | error | no_input
+    # OMN-13919: "no_input" is no longer a reportable status — a zero-entity
+    # run raises instead of returning (vacuous passes are unrepresentable).
+    status: str = "clean"  # clean | findings | error
     dry_run: bool = False
 
     @property
@@ -302,7 +308,13 @@ DEFAULT_ARCHETYPE_SLA_MS = 600_000  # 10 minutes
 class NodeRuntimeSweep:
     """Verify runtime registration and wiring integrity.
 
-    Pure compute handler — operates on pre-collected contract metadata.
+    The check phases are pure compute over pre-collected contract metadata.
+    When the caller supplies NO entities at all (the ``onex skill
+    runtime_sweep`` no-args dispatch path), the handler resolves a default
+    input set by walking ``$OMNI_HOME`` for contract.yaml files (OMN-13919) —
+    the same collection the ``__main__`` CLI harness performs. This mirrors
+    ``NodeComplianceSweep``, which resolves default scan dirs from
+    ``$OMNI_HOME`` inside ``handle()``.
     """
 
     @staticmethod
@@ -314,6 +326,62 @@ class NodeRuntimeSweep:
         """
         return request.enabled_checks is None or check in request.enabled_checks
 
+    @staticmethod
+    def _has_input(request: RuntimeSweepRequest) -> bool:
+        """True when the caller supplied at least one checkable entity."""
+        return bool(
+            request.contracts
+            or request.topic_producers
+            or request.topic_consumers
+            or request.workflow_observations
+            or request.entry_point_probes
+        )
+
+    @staticmethod
+    def _resolve_default_input(request: RuntimeSweepRequest) -> RuntimeSweepRequest:
+        """Collect the default entity set when the request carries none.
+
+        OMN-13919: the ``onex skill runtime_sweep`` dispatch path invokes this
+        handler with only ``{scope, dry_run}`` — before this fix every skill
+        run reported ``status=no_input`` with zero entities checked (a
+        regression of the OMN-13715/OMN-13708 vacuous-pass class). The local
+        repo set under ``$OMNI_HOME`` is the default check target: walk it for
+        contract.yaml files exactly as the ``__main__`` CLI harness does and
+        derive the topic census from the collected contracts.
+
+        Raises:
+            ValueError: when ``OMNI_HOME`` is unset (fail fast — never a
+                silent empty default; feedback rule #8).
+        """
+        if NodeRuntimeSweep._has_input(request):
+            return request
+
+        # Local import: collection imports ModelContractInput from this
+        # module, so a top-level import would be circular.
+        from omnimarket.nodes.node_runtime_sweep.collection import collect_contracts
+
+        omni_home = os.environ.get("OMNI_HOME")
+        if not omni_home:
+            raise ValueError(
+                "runtime_sweep received no input entities and OMNI_HOME is "
+                "not set — cannot resolve the default contract set. Set "
+                "OMNI_HOME or pass contracts/topics/probes explicitly."
+            )
+
+        contracts = collect_contracts(omni_home, request.scope or "all-repos")
+        all_publish: list[str] = []
+        all_subscribe: list[str] = []
+        for contract in contracts:
+            all_publish.extend(contract.publish_topics)
+            all_subscribe.extend(contract.subscribe_topics)
+        return request.model_copy(
+            update={
+                "contracts": contracts,
+                "topic_producers": all_publish,
+                "topic_consumers": all_subscribe,
+            }
+        )
+
     def handle(self, request: RuntimeSweepRequest) -> RuntimeSweepResult:
         """Execute the runtime sweep.
 
@@ -321,7 +389,13 @@ class NodeRuntimeSweep:
         phase runs exactly as before (REGISTRATION emits nothing when there are
         no entry-point probes), so existing cross-repo/skill callers are
         unaffected. A named subset (e.g. [REGISTRATION]) scopes the sweep.
+
+        A request with no entities resolves the default ``$OMNI_HOME``
+        contract set first; a run that still checks zero entities raises
+        instead of returning, so a vacuous pass is unrepresentable
+        (OMN-13919).
         """
+        request = self._resolve_default_input(request)
         findings: list[ModelRuntimeFinding] = []
 
         # REGISTRATION phase (OMN-13589): single-repo entry-point probes.
@@ -390,16 +464,20 @@ class NodeRuntimeSweep:
             + len(request.workflow_observations)
             + len(request.entry_point_probes)
         )
-        # OMN-13708: 0 entities checked is NOT a clean pass — it is a vacuous run
-        # that verified nothing. The local runtime is always present and is the
-        # default check target; an empty sweep must report ``no_input`` (not
-        # ``clean``) so callers never mistake "checked nothing" for "all healthy".
+        # OMN-13708 established that 0 entities checked is NOT a clean pass.
+        # OMN-13919 hardens it: a zero-entity run FAILS (raises) instead of
+        # returning a reportable ``no_input`` result, because the dispatch
+        # layer mapped any returned result to exit_code=0/status=success —
+        # exactly the vacuous false-green this class of fix exists to prevent.
         if entities_checked == 0:
-            status = "no_input"
-        elif findings:
-            status = "findings"
-        else:
-            status = "clean"
+            raise ValueError(
+                "runtime_sweep checked zero entities (contracts, topics, "
+                "workflows, entry points) — refusing to report a vacuous "
+                "pass. Default $OMNI_HOME collection found no contract.yaml "
+                "files; the environment is broken or the input wiring "
+                "regressed (OMN-13919)."
+            )
+        status = "findings" if findings else "clean"
 
         return RuntimeSweepResult(
             findings=findings,
