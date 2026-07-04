@@ -145,7 +145,7 @@ inputs:
     type: int
     description: "Seconds to sleep between NOT_DONE sweep passes"
     required: false
-    default: 60
+    default: 0
     minimum: 0
 
 outputs:

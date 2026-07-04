@@ -224,7 +224,7 @@ class ModelPrLifecycleStartCommand(BaseModel):
         description="Maximum sweep passes for one invocation.",
     )
     sweep_sleep_seconds: int = Field(
-        default=60,
+        default=0,
         ge=0,
         description="Backoff between NOT_DONE sweep passes.",
     )
