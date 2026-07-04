@@ -144,7 +144,7 @@ def test_ladder_includes_5090_and_4090_ai_pc_rungs() -> None:
     # No committed site-specific host/IP or local path (portability rule #6).
     # Public cloud https endpoints are allowed; private IPs / tailscale / paths
     # are not.
-    forbidden = ("192.168.", "100.99.", "100.109.", ".ts.net", "/users/", "localhost")
+    forbidden = ("192.168.", "100.99.", "100.109.", ".ts.net", "/users/", "localhost")  # test-literal-ok: guard corpus for forbidden rung endpoint tokens
     for r in rungs:
         blob = r.model_dump_json().lower()
         for bad in forbidden:
