@@ -1,8 +1,5 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-# test-literal-ok: this file's rung-endpoint portability guard intentionally
-# references forbidden host/IP token patterns as the exact thing it asserts
-# committed rungs must NOT contain.
 """Escalating-complexity graded ladder benchmark proof (OMN-13935, plan §3.6).
 
 Supersedes the earlier fixture-content smoke replay. These tests grade GENUINE
