@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""Escalating-complexity graded ladder benchmark proof (OMN-13369, plan §3.6).
+"""Escalating-complexity graded ladder benchmark proof (OMN-13935, plan §3.6).
 
 Supersedes the earlier fixture-content smoke replay. These tests grade GENUINE
 recorded per-rung model outputs (durable evidence captured from the live local

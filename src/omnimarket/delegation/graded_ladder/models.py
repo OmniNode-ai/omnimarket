@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""Typed DTOs for the escalating-complexity graded ladder benchmark (OMN-13369)."""
+"""Typed DTOs for the escalating-complexity graded ladder benchmark (OMN-13935)."""
 
 from __future__ import annotations
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""Delegation graded ladder benchmark report (OMN-13369, operator plan §3.6).
+"""Delegation graded ladder benchmark report (OMN-13935, operator plan §3.6).
 
 Escalating-complexity graded benchmark across the EXISTING local delegation
 ladder — including the 5090/4090 AI-PC rungs and the DeepSeek-V4-Flash ceiling.

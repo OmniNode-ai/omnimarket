@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""Record genuine per-rung outputs for the graded ladder benchmark (OMN-13369).
+"""Record genuine per-rung outputs for the graded ladder benchmark (OMN-13935).
 
 This is the explicitly-invoked capture step. It hits the REAL local ladder
 endpoints (the 5090/4090 AI-PC rungs and the Mac-Studio DS-V4-Flash ceiling) with
@@ -147,7 +147,13 @@ def _record_rung(
                 )
                 last_exc = None
                 break
-            except (urllib.error.URLError, TimeoutError, KeyError, ValueError) as exc:
+            except (
+                urllib.error.URLError,
+                TimeoutError,
+                KeyError,
+                IndexError,
+                ValueError,
+            ) as exc:
                 last_exc = exc
                 print(
                     f"    [{rung.rung_id}] {task.task_id}: attempt {attempt} ERROR {exc}",
@@ -213,7 +219,7 @@ def main(argv: list[str] | None = None) -> int:
         )
 
     packet = {
-        "ticket": "OMN-13369",
+        "ticket": "OMN-13935",
         "recorded_at": datetime.now(UTC).isoformat(),
         "corpus": str(args.corpus.name),
         "rungs": recorded_rungs,
@@ -221,8 +227,22 @@ def main(argv: list[str] | None = None) -> int:
     }
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_text(json.dumps(packet, indent=2, sort_keys=True) + "\n")
-    print(f"wrote {args.out} ({len(recorded_rungs)} rungs, {len(skipped)} skipped)")
-    return 0 if recorded_rungs and not skipped else 1
+
+    # A rung that resolved an endpoint but returned an error/timeout for EVERY
+    # task is a capture failure, not a success — surface it in the exit code so a
+    # silently-empty rung does not masquerade as recorded evidence.
+    empty_rungs = [
+        rid
+        for rid, recs in recorded_rungs.items()
+        if not any(cell.get("http_status") == 200 for cell in recs.values())
+    ]
+    print(
+        f"wrote {args.out} ({len(recorded_rungs)} rungs, {len(skipped)} skipped, "
+        f"{len(empty_rungs)} with zero successful cells)"
+    )
+    if empty_rungs:
+        print(f"  capture failure — no 200 cell for: {empty_rungs}", file=sys.stderr)
+    return 0 if recorded_rungs and not skipped and not empty_rungs else 1
 
 
 if __name__ == "__main__":
