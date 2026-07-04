@@ -199,3 +199,49 @@ def test_dispatch_path_runs_infra_probes_when_configured(tmp_path: Path) -> None
     surfaces = {s["surface"] for s in artifact["surfaces"]}
     assert {"RUNTIME_HEALTH", "CONTAINER_HEALTH", "GITHUB_CI"} <= surfaces
     assert {"KAFKA", "DB", "PROJECTION", "GOLDEN_CHAIN"} <= surfaces
+
+
+@pytest.mark.unit
+def test_dispatch_path_dry_run_returns_probe_plan(tmp_path: Path) -> None:
+    """Dry-run through the runtime returns a non-empty probe plan (OMN-13924).
+
+    Regression guard for the vacuous dry-run pass: the operator dogfood run
+    (``onex skill integration_sweep --dry-run`` with ONEX_CC_REPO_PATH set)
+    completed ``status=recorded`` with ``surfaces: []`` and
+    ``surface_probe_count: 0`` — zero targets enumerated, nothing verified.
+    The dry-run must now surface a planned-probe list in the terminal payload
+    while executing nothing (subprocess.run explodes if touched) and writing
+    no artifact.
+    """
+    artifact_root = tmp_path / "cc"
+    (artifact_root / "contracts").mkdir(parents=True)
+    input_path = _write_input(
+        tmp_path,
+        {
+            "artifact_root": str(artifact_root),
+            "artifact_date": "2026-07-03",
+            "dry_run": True,
+        },
+    )
+
+    with patch(
+        _PROBES_SUBPROCESS,
+        side_effect=AssertionError("dry-run must not execute probes"),
+    ):
+        runtime = RuntimeLocal(
+            workflow_path=CONTRACT_PATH,
+            state_root=tmp_path / "state",
+            input_path=input_path,
+            timeout=30,
+        )
+        result = runtime.run()
+
+    assert result == EnumWorkflowResult.COMPLETED
+    state = json.loads((tmp_path / "state" / "workflow_result.json").read_text())
+    payload = state["terminal_payload"]
+    assert payload["status"] == "planned"
+    assert int(payload["details"]["surface_probe_count"]) >= 3
+    surfaces = {entry["surface"] for entry in payload["surfaces"]}
+    assert {"RUNTIME_HEALTH", "CONTAINER_HEALTH", "GITHUB_CI"} <= surfaces
+    assert all(entry["status"] == "planned" for entry in payload["surfaces"])
+    assert not (artifact_root / "drift" / "integration" / "2026-07-03.yaml").exists()

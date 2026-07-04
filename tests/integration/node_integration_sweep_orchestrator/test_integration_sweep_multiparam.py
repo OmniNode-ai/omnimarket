@@ -83,25 +83,61 @@ def _request(
 
 @pytest.mark.integration
 def test_integration_sweep_dry_run_writes_nothing(tmp_path: Path) -> None:
+    """Dry-run with zero resolvable checks is a typed non-success (OMN-13924).
+
+    No contract exists for OMN-1 and surface probes are off, so the plan is
+    empty — the sweep must terminate ``no_input``, never a quiet success.
+    """
     handler = HandlerIntegrationSweepOrchestrator(runtime_sha_handler=_StubShaProbe())
     result = handler.handle(_request(tmp_path, dry_run=True, tickets=["OMN-1"]))
-    assert result.status == "recorded"
+    assert result.status == "no_input"
     assert result.artifact_written is False
     assert not Path(result.artifact_path).exists()
     assert result.details["runtime_sha_checks"] == "0"
 
 
+class _ExplodingShaProbe(HandlerRuntimeShaVerify):
+    """Fails the test if the dry-run planner ever reaches the SSH probe."""
+
+    def _probe_deployed_sha(self, request: ModelRuntimeShaVerifyRequest) -> str:
+        raise AssertionError("dry-run must not execute the runtime SHA probe")
+
+
 @pytest.mark.integration
-def test_integration_sweep_no_tickets_records_artifact(tmp_path: Path) -> None:
+def test_integration_sweep_dry_run_plans_sha_checks(tmp_path: Path) -> None:
+    """Dry-run enumerates the runtime-SHA checks a wet run would execute.
+
+    OMN-13924: the plan comes from the same contract enumeration as the wet
+    path, but no SSH probe runs (the exploding stub proves it) and no receipt
+    is written.
+    """
+    _write_contract(tmp_path / "cc" / "contracts", "OMN-400", _DEPLOYED_SHA)
+    handler = HandlerIntegrationSweepOrchestrator(
+        runtime_sha_handler=_ExplodingShaProbe()
+    )
+    result = handler.handle(_request(tmp_path, dry_run=True, tickets=["OMN-400"]))
+    assert result.status == "planned"
+    assert result.artifact_written is False
+    assert result.details["runtime_sha_checks"] == "1"
+    assert not (tmp_path / "cc" / "receipts").exists()
+
+
+@pytest.mark.integration
+def test_integration_sweep_no_tickets_is_no_input(tmp_path: Path) -> None:
+    """Zero tickets + probes off = zero work: artifact records ``no_input``.
+
+    OMN-13924: the artifact is still written (durable evidence of the empty
+    run) but the status is the typed non-success, not ``recorded``.
+    """
     handler = HandlerIntegrationSweepOrchestrator(runtime_sha_handler=_StubShaProbe())
     result = handler.handle(_request(tmp_path, tickets=[]))
-    assert result.status == "recorded"
+    assert result.status == "no_input"
     assert result.artifact_written is True
     assert result.ticket_count == 0
     written = Path(result.artifact_path)
     assert written.exists()
     payload = yaml.safe_load(written.read_text(encoding="utf-8"))
-    assert payload["status"] == "recorded"
+    assert payload["status"] == "no_input"
     assert payload["tickets"] == []
 
 

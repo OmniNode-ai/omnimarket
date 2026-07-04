@@ -32,7 +32,23 @@ from omnimarket.nodes.node_integration_sweep_orchestrator.models.model_integrati
 
 
 def test_integration_sweep_writes_drift_artifact(tmp_path: Path) -> None:
-    result = HandlerIntegrationSweepOrchestrator().handle(
+    """A wet run with a passing runtime-SHA check records the artifact.
+
+    OMN-13924: the sweep must have performed real work to report ``recorded``
+    — the contract fixture supplies one matching-SHA check so the run is
+    non-vacuous with surface probes off.
+    """
+    merge_sha = "abc123def456"  # pragma: allowlist secret
+    _write_runtime_sha_contract(tmp_path / "contracts", "OMN-10409", merge_sha)
+
+    result = HandlerIntegrationSweepOrchestrator(
+        runtime_sha_handler=_StubRuntimeShaHandler(
+            ticket_id="OMN-10409",
+            evidence_item_id="dod-runtime-sha",
+            merge_sha=merge_sha,
+            deployed_sha=merge_sha,
+        )
+    ).handle(
         ModelIntegrationSweepOrchestratorRequest(
             scope="explicit",
             tickets=["OMN-10409"],
@@ -53,6 +69,29 @@ def test_integration_sweep_writes_drift_artifact(tmp_path: Path) -> None:
     assert artifact["artifact_type"] == "ModelIntegrationRecord"
     assert artifact["tickets"] == ["OMN-10409"]
     assert artifact["status"] == "recorded"
+
+
+def test_integration_sweep_zero_work_is_no_input_not_success(tmp_path: Path) -> None:
+    """OMN-13924 regression: a run that verifies nothing must not say 'recorded'.
+
+    No contract file resolves for the ticket and surface probes are off, so
+    the sweep performs zero checks — the typed terminal status is 'no_input'.
+    """
+    result = HandlerIntegrationSweepOrchestrator().handle(
+        ModelIntegrationSweepOrchestratorRequest(
+            scope="explicit",
+            tickets=["OMN-10409"],
+            artifact_root=str(tmp_path),
+            artifact_date="2026-04-30",
+            run_surface_probes=False,
+        )
+    )
+
+    assert result.status == "no_input"
+    assert result.details["surface_probe_count"] == "0"
+    assert result.details["runtime_sha_checks"] == "0"
+    artifact = yaml.safe_load(Path(result.artifact_path).read_text(encoding="utf-8"))
+    assert artifact["status"] == "no_input"
 
 
 def test_integration_sweep_writes_runtime_sha_receipt_for_stale_runtime(
@@ -100,17 +139,53 @@ def test_integration_sweep_writes_runtime_sha_receipt_for_stale_runtime(
 
 
 def test_integration_sweep_dry_run_does_not_write(tmp_path: Path) -> None:
-    result = HandlerIntegrationSweepOrchestrator().handle(
-        ModelIntegrationSweepOrchestratorRequest(
-            tickets=["OMN-10409"],
-            artifact_root=str(tmp_path),
-            artifact_date="2026-04-30",
-            dry_run=True,
+    """Dry-run writes nothing but still returns a real, non-empty probe plan.
+
+    OMN-13924 regression: dry-run previously skipped probe enumeration
+    entirely and reported success with ``surfaces: []`` — a vacuous pass.
+    It must now enumerate the probe targets a wet run would touch, without
+    executing any of them (subprocess.run is patched to explode on use).
+    """
+    with patch(
+        "omnimarket.nodes.node_integration_sweep_orchestrator.handlers."
+        "surface_probes.subprocess.run",
+        side_effect=AssertionError("dry-run must not execute probes"),
+    ):
+        result = HandlerIntegrationSweepOrchestrator().handle(
+            ModelIntegrationSweepOrchestratorRequest(
+                tickets=["OMN-10409"],
+                artifact_root=str(tmp_path),
+                artifact_date="2026-04-30",
+                dry_run=True,
+            )
         )
-    )
 
     assert result.artifact_written is False
     assert not Path(result.artifact_path).exists()
+    # The plan is real: baseline probes are enumerated with their targets.
+    assert result.status == "planned"
+    assert int(result.details["surface_probe_count"]) >= 3
+    surfaces = {str(entry["surface"]) for entry in result.surfaces}
+    assert {"RUNTIME_HEALTH", "CONTAINER_HEALTH", "GITHUB_CI"} <= surfaces
+    for entry in result.surfaces:
+        assert entry["status"] == "planned"
+        assert str(entry["target"]).strip()
+
+
+def test_integration_sweep_dry_run_zero_probes_is_no_input(tmp_path: Path) -> None:
+    """OMN-13924: a dry-run that resolves zero probe targets is 'no_input'."""
+    result = HandlerIntegrationSweepOrchestrator().handle(
+        ModelIntegrationSweepOrchestratorRequest(
+            artifact_root=str(tmp_path),
+            artifact_date="2026-04-30",
+            dry_run=True,
+            run_surface_probes=False,
+        )
+    )
+
+    assert result.status == "no_input"
+    assert result.artifact_written is False
+    assert result.surfaces == []
 
 
 def test_contract_declares_node_as_implemented() -> None:

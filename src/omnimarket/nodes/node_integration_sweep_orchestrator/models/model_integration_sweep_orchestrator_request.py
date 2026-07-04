@@ -57,7 +57,12 @@ class ModelIntegrationSweepOrchestratorRequest(BaseModel):
     )
     dry_run: bool = Field(
         default=False,
-        description="When true, compute the artifact path but do not write it.",
+        description=(
+            "When true, do not write the artifact and do not execute probes; "
+            "instead enumerate and validate every probe target the wet run "
+            "would touch and return the plan (status='planned'). A dry-run "
+            "that resolves zero probes terminates status='no_input'."
+        ),
     )
     run_surface_probes: bool = Field(
         default=True,
