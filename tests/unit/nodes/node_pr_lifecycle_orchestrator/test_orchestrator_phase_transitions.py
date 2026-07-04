@@ -186,6 +186,7 @@ async def test_handle_loops_until_done_after_not_done_result() -> None:
     first = ModelPrLifecycleResult(
         correlation_id=correlation_id,
         final_state="NOT_DONE",
+        prs_inventoried=1,
         org_wide_open_count=1,
         org_wide_open_remainders=(
             OrgWideOpenPrRemainderRef(

@@ -1049,6 +1049,7 @@ class HandlerPrLifecycleOrchestrator:
                 not command.loop_until_done
                 or command.dry_run
                 or command.inventory_only
+                or not self._should_continue_sweep_loop(result)
                 or pass_index >= command.max_sweep_passes
             ):
                 return result
@@ -1065,6 +1066,17 @@ class HandlerPrLifecycleOrchestrator:
 
         assert result is not None
         return result
+
+    @staticmethod
+    def _should_continue_sweep_loop(result: ModelPrLifecycleResult) -> bool:
+        """Return whether another pass can still act on the NOT_DONE result."""
+        if result.final_state != _FINAL_STATE_NOT_DONE:
+            return False
+        if result.prs_inventoried > 0:
+            return True
+        if result.prs_merged > 0 or result.prs_fixed > 0 or result.prs_verified > 0:
+            return True
+        return False
 
     async def _run_sweep(
         self,
