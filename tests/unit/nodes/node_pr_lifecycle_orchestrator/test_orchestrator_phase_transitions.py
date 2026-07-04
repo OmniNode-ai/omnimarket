@@ -37,12 +37,12 @@ from omnimarket.nodes.node_pr_lifecycle_orchestrator.protocols.protocol_sub_hand
     ReducerResult,
     TriageRecord,
 )
+from omnimarket.nodes.node_pr_lifecycle_triage_compute.handlers.handler_pr_lifecycle_triage import (
+    HandlerPrLifecycleTriage,
+)
 from omnimarket.nodes.pr_ledger_native import (
     EnumPrLedgerConclusion,
     EnumPrLifecyclePhase,
-)
-from omnimarket.nodes.node_pr_lifecycle_triage_compute.handlers.handler_pr_lifecycle_triage import (
-    HandlerPrLifecycleTriage,
 )
 
 
@@ -147,9 +147,7 @@ class _LoopingOrchestrator(HandlerPrLifecycleOrchestrator):
             raise AssertionError("unexpected extra sweep pass")
         return self._results.pop(0)
 
-    def _write_result_file(
-        self, run_id: str, result: ModelPrLifecycleResult
-    ) -> None:
+    def _write_result_file(self, run_id: str, result: ModelPrLifecycleResult) -> None:
         self.writes.append(result)
 
 
