@@ -26,6 +26,18 @@ methodology they claimed to implement and produced systematic false positives:
 The resilient backing-node extractor mirrors the canonical declaration form
 enforced by ``omnibase_core.validation.validator_skill_backing_node`` so the
 audit and the liveness gate agree on what a "declared backing node" is.
+
+STATIC PREFILTER, NEVER CERTIFICATION (OMN-13926): every check this node
+performs is pure static resolution — is the skill's backing node mapped on
+disk, does it have a ``contract.yaml``, does the handler file exist, is it
+free of stub markers. None of that proves the skill actually *runs*. A skill
+can pass every static check here and still fail at live invocation (see
+OMN-13834: ``dispatch_engine`` passed this audit while its live ``--dry-run``
+execution failed). Per-skill passing verdicts are therefore labeled
+``STATIC_OK`` — never ``ok``/``certified``/``LIVE_VERIFIED`` — so downstream
+consumers cannot mistake a static resolution pass for a functional
+certification. See ``ModelSkillVerdict.status`` for the full verdict
+vocabulary.
 """
 
 from __future__ import annotations
@@ -112,14 +124,37 @@ _PURE_INSTRUCTION_MARKERS: tuple[str, ...] = (
 _FACADE_MIN_LINES = 200
 
 
+class SkillFunctionalAuditNoSkillsDiscoveredError(ValueError):
+    """Raised when the audit discovers zero skills under the resolved roots.
+
+    A run that audits nothing must not report ``status="ok"`` with
+    ``total_audited=0`` — that is a vacuous pass (mirrors the OMN-13919
+    zero-entity-hard-fail pattern). Empty roots, an over-narrow filter, or a
+    misconfigured ``skills_roots``/``nodes_root`` are configuration defects,
+    not clean audits, and must fail loudly.
+    """
+
+
 class HandlerSkillFunctionalAuditCompute:
-    """Static audit of skill shims against native Onex node contracts."""
+    """Static audit of skill shims against native Onex node contracts.
+
+    STATIC PREFILTER ONLY (OMN-13926): this handler never invokes a skill or
+    its backing node. Every verdict is derived from filesystem/YAML/text
+    inspection alone. A passing per-skill verdict is reported as
+    ``STATIC_OK``, never ``ok``/``certified``/``LIVE_VERIFIED`` — see
+    ``ModelSkillVerdict.status`` for the distinction between static
+    resolution and live certification.
+    """
 
     def handle(
         self, request: ModelSkillFunctionalAuditComputeRequest
     ) -> ModelSkillFunctionalAuditComputeResult:
         try:
             verdicts = _audit_skills(request)
+        except SkillFunctionalAuditNoSkillsDiscoveredError:
+            # Vacuous-audit hard fail: propagate, do not downgrade to an
+            # "error" result and never report a passing "ok" run.
+            raise
         except Exception as exc:
             return ModelSkillFunctionalAuditComputeResult(
                 status="error",
@@ -153,7 +188,8 @@ class _SkillShim:
 def _audit_skills(
     request: ModelSkillFunctionalAuditComputeRequest,
 ) -> list[ModelSkillVerdict]:
-    skills = _discover_skills(_resolve_skill_roots(request.skills_roots))
+    roots = _resolve_skill_roots(request.skills_roots)
+    skills = _discover_skills(roots)
     filters = set(request.skills_filter or ())
     if filters:
         skills = [
@@ -164,6 +200,15 @@ def _audit_skills(
             or f"onex:{skill.path.parent.name}" in filters
             or f"onex:{skill.name}" in filters
         ]
+
+    if not skills:
+        raise SkillFunctionalAuditNoSkillsDiscoveredError(
+            "skill_functional_audit discovered zero skills to audit under "
+            f"roots={[str(root) for root in roots]} "
+            f"filters={sorted(filters) if filters else None}; refusing to "
+            "emit a vacuous ok verdict (mirrors OMN-13919 zero-entity hard "
+            "fail)"
+        )
 
     nodes_roots = _resolve_nodes_roots(request.nodes_root)
     return [_audit_skill(skill, nodes_roots=nodes_roots) for skill in skills]
@@ -195,7 +240,8 @@ def _audit_skill(skill: _SkillShim, *, nodes_roots: list[Path]) -> ModelSkillVer
     # Phase 3c — pure-instruction exemption. A skill with no DECLARED backing
     # node is only a FACADE if its SKILL.md describes stateful orchestration AND
     # it is not marked instruction-only. Otherwise it is intentionally a
-    # pure-instruction / interactive skill and is WORKS, not a gap.
+    # pure-instruction / interactive skill and passes static resolution
+    # (STATIC_OK — this is a resolution pass, not a certification).
     if skill.node_name is None:
         if _is_facade_without_backing(skill.content):
             gaps.append(
@@ -204,7 +250,7 @@ def _audit_skill(skill: _SkillShim, *, nodes_roots: list[Path]) -> ModelSkillVer
             )
             status = "gap"
         else:
-            status = "ok"
+            status = "STATIC_OK"
         return ModelSkillVerdict(
             name=skill.name,
             status=status,
@@ -269,7 +315,10 @@ def _audit_skill(skill: _SkillShim, *, nodes_roots: list[Path]) -> ModelSkillVer
     elif gaps:
         status = "gap"
     else:
-        status = "ok"
+        # Static resolution passed: contract present, handler file(s) exist,
+        # no stub markers. This handler performs no live invocation, so
+        # STATIC_OK is the strongest verdict it can ever emit — never "ok".
+        status = "STATIC_OK"
     return ModelSkillVerdict(
         name=skill.name,
         status=status,

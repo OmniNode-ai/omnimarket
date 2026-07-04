@@ -15,6 +15,9 @@ from omnimarket.nodes.node_skill_functional_audit_compute.handlers.handler_skill
 from omnimarket.nodes.node_skill_functional_audit_compute.models.model_skill_functional_audit_compute_request import (
     ModelSkillFunctionalAuditComputeRequest,
 )
+from omnimarket.nodes.node_skill_functional_audit_compute.models.model_skill_functional_audit_compute_result import (
+    ModelSkillVerdict,
+)
 
 
 @pytest.mark.unit
@@ -46,11 +49,105 @@ def test_handler_detects_ok_stub_and_gap(tmp_path: Path) -> None:
     assert result.status == "ok"
     assert result.total_audited == 3
     by_name = {verdict.name: verdict for verdict in result.verdicts}
-    assert by_name["ok_skill"].status == "ok"
+    assert by_name["ok_skill"].status == "STATIC_OK"
     assert by_name["stub_skill"].status == "stub"
     assert by_name["gap_skill"].status == "gap"
     assert result.stubs_found == ["stub_skill"]
     assert result.gaps == ["gap_skill"]
+    # A passing per-skill verdict must never be the bare "ok" — that would
+    # misrepresent a static resolution pass as a functional certification.
+    assert all(verdict.status != "ok" for verdict in result.verdicts)
+
+
+@pytest.mark.unit
+def test_wired_stub_free_skill_emits_static_ok_never_ok(tmp_path: Path) -> None:
+    """OMN-13926: a statically-resolvable, wired, stub-free skill is STATIC_OK.
+
+    This handler performs no live invocation — it can never certify a skill
+    as functionally working, only that it resolves cleanly on disk. The
+    passing per-skill verdict must be labeled STATIC_OK, never "ok" /
+    "certified" / "LIVE_VERIFIED" (OMN-13834: dispatch_engine passed this
+    exact static audit while its live --dry-run execution actually failed).
+    """
+    skills_root = tmp_path / "skills"
+    nodes_root = tmp_path / "nodes"
+    _write_skill(
+        skills_root, "dispatch-engine", "dispatch_engine", "node_dispatch_engine"
+    )
+    _write_node(
+        nodes_root,
+        "node_dispatch_engine",
+        "handler_dispatch_engine.py",
+        "class HandlerDispatchEngine: pass",
+    )
+
+    handler = HandlerSkillFunctionalAuditCompute()
+    result = handler.handle(
+        ModelSkillFunctionalAuditComputeRequest(
+            skills_roots=[str(skills_root)],
+            nodes_root=str(nodes_root),
+        )
+    )
+
+    assert result.total_audited == 1
+    verdict = result.verdicts[0]
+    assert verdict.name == "dispatch_engine"
+    assert verdict.status == "STATIC_OK"
+    assert verdict.status != "ok"
+    assert verdict.status != "certified"
+    assert verdict.status != "LIVE_VERIFIED"
+
+
+@pytest.mark.unit
+def test_zero_skills_discovered_raises(tmp_path: Path) -> None:
+    """An empty/zero-skill audit must raise, never return a vacuous ok result.
+
+    Mirrors the OMN-13919 zero-entity-hard-fail pattern: a run over an empty
+    skills root discovers nothing to certify and must fail loudly rather than
+    silently reporting status="ok", total_audited=0.
+    """
+    skills_root = tmp_path / "skills"
+    skills_root.mkdir()
+
+    handler = HandlerSkillFunctionalAuditCompute()
+    with pytest.raises(ValueError, match="zero skills"):
+        handler.handle(
+            ModelSkillFunctionalAuditComputeRequest(skills_roots=[str(skills_root)])
+        )
+
+
+@pytest.mark.unit
+def test_zero_skills_after_filter_raises(tmp_path: Path) -> None:
+    """A skills_filter that matches nothing is also a vacuous audit — raises."""
+    skills_root = tmp_path / "skills"
+    nodes_root = tmp_path / "nodes"
+    _write_skill(skills_root, "ok-skill", "ok_skill", "node_ok_compute")
+    _write_node(nodes_root, "node_ok_compute", "handler_ok.py", "class Handler: pass")
+
+    handler = HandlerSkillFunctionalAuditCompute()
+    with pytest.raises(ValueError, match="zero skills"):
+        handler.handle(
+            ModelSkillFunctionalAuditComputeRequest(
+                skills_filter=["nonexistent-skill"],
+                skills_roots=[str(skills_root)],
+                nodes_root=str(nodes_root),
+            )
+        )
+
+
+@pytest.mark.unit
+def test_verdict_schema_documents_static_ok_vs_live_verified() -> None:
+    """The ModelSkillVerdict.status schema documents STATIC_OK vs LIVE_VERIFIED.
+
+    STATIC_OK is emitted by this handler for a passing skill. LIVE_VERIFIED is
+    documented as the reserved live-certification value but this handler never
+    emits it (it performs no live invocation).
+    """
+    schema = ModelSkillVerdict.model_json_schema()
+    status_description = schema["properties"]["status"]["description"]
+    assert "STATIC_OK" in status_description
+    assert "LIVE_VERIFIED" in status_description
+    assert "NOT" in status_description or "not" in status_description
 
 
 @pytest.mark.unit
@@ -87,7 +184,7 @@ Follow these steps to create a worktree.
     )
 
     assert result.total_audited == 1
-    assert result.verdicts[0].status == "ok"
+    assert result.verdicts[0].status == "STATIC_OK"
     assert result.gaps == []
 
 
@@ -161,7 +258,7 @@ below are advisory prose guidance, not deterministic implementation.
     )
 
     assert result.total_audited == 1
-    assert result.verdicts[0].status == "ok"
+    assert result.verdicts[0].status == "STATIC_OK"
 
 
 @pytest.mark.unit
@@ -200,7 +297,7 @@ are placeholders.
     )
 
     assert result.total_audited == 1
-    assert result.verdicts[0].status == "ok"
+    assert result.verdicts[0].status == "STATIC_OK"
     assert result.gaps == []
 
 
@@ -244,7 +341,7 @@ handler_routing:
     )
 
     assert result.total_audited == 1
-    assert result.verdicts[0].status == "ok", result.verdicts[0].gaps
+    assert result.verdicts[0].status == "STATIC_OK", result.verdicts[0].gaps
     assert result.gaps == []
 
 
@@ -320,7 +417,7 @@ description: PR review skill.
     )
 
     assert result.total_audited == 1
-    assert result.verdicts[0].status == "ok", result.verdicts[0].gaps
+    assert result.verdicts[0].status == "STATIC_OK", result.verdicts[0].gaps
 
 
 @pytest.mark.unit
@@ -376,7 +473,7 @@ components:
     )
 
     assert result.total_audited == 1
-    assert result.verdicts[0].status == "ok", result.verdicts[0].gaps
+    assert result.verdicts[0].status == "STATIC_OK", result.verdicts[0].gaps
     assert result.gaps == []
 
 
