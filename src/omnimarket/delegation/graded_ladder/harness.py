@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""Deterministic scoring harness for the graded ladder benchmark (OMN-13369).
+"""Deterministic scoring harness for the graded ladder benchmark (OMN-13935).
 
 Loads the ladder rungs, the escalating-complexity corpus, and the RECORDED
 per-rung outputs, grades every (rung, task) cell with the objective graders,

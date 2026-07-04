@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""Objective, deterministic graders for the graded ladder benchmark (OMN-13369).
+"""Objective, deterministic graders for the graded ladder benchmark (OMN-13935).
 
 Every grader returns a hard pass/fail computed from a recorded rung output. No
 LLM-judge and no heuristic marker counting is used — a weaker rung fails a hard
@@ -15,6 +15,7 @@ delivered answer, not the scratchpad.
 
 from __future__ import annotations
 
+import os
 import re
 import subprocess
 import sys
@@ -109,6 +110,13 @@ def run_code_asserts(
     subprocess with no arguments and no network dependency — so a hang or a bad
     exit cannot wedge or corrupt the grading process. A missing required
     ``entrypoint`` fails closed before any execution.
+
+    The subprocess runs with a MINIMAL environment (a default ``PATH`` from
+    ``os.defpath``, never the inherited environment) so candidate code cannot echo
+    an ambient secret into the failure tail that is serialized into the committed
+    evidence packet. ``os.defpath`` (a constant) is used rather than
+    ``os.environ`` so this package stays free of environment reads (the delegation
+    env-read gate).
     """
 
     if entrypoint and not re.search(
@@ -117,6 +125,7 @@ def run_code_asserts(
         return False, f"missing required entrypoint def {entrypoint!r}"
 
     harness = f"{candidate_code}\n\n# --- benchmark assertions ---\n{asserts}\n"
+    minimal_env = {"PATH": os.defpath, "PYTHONIOENCODING": "utf-8"}
     with tempfile.TemporaryDirectory() as tmp:
         script = Path(tmp) / "candidate_eval.py"
         script.write_text(harness)
@@ -128,6 +137,7 @@ def run_code_asserts(
                 timeout=timeout_s,
                 cwd=tmp,
                 check=False,
+                env=minimal_env,
             )
         except subprocess.TimeoutExpired:
             return False, f"code execution timed out after {timeout_s}s"

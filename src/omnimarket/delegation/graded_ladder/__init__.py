@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""Escalating-complexity graded ladder benchmark (OMN-13369, operator plan §3.6).
+"""Escalating-complexity graded ladder benchmark (OMN-13935, operator plan §3.6).
 
 The operator decision-of-record re-cut the delegation benchmark from a smoke
 test into a *graded* benchmark: an escalating-complexity corpus is run across the
