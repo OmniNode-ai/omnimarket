@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
 #
-# OMN-13501 / OMN-13502 (WS-F): no-faked-boundary gate — REPORT-ONLY MODE for omnimarket.
+# OMN-13501 / OMN-13502 (WS-F): no-faked-boundary gate — BLOCKING MODE for omnimarket.
 #
 # A hand-written class/object standing in for the platform's OWN inference /
 # routing / dispatch boundary (inference bridge, model router, routing-contract
@@ -17,25 +17,22 @@
 # 2026-07-03). The canonical recorded-replay seam (patch("httpx.Client",
 # return_value=<RecordedReplayInferenceTransport>), OMN-13499) is exempt.
 #
-# WHY REPORT-ONLY: omnimarket's detector self-scan reports ~63 findings = ~50 real
-# boundary fakes (OMN-13501 burn-down: 35 patch_httpx_egress, 10
-# mock_assigned_to_boundary, 5 class_subclassing_boundary) + 13 in the detector's
-# OWN acceptance corpus (validator_corpora/corpus_no_faked_boundary.py, which
-# embeds fake examples as ground truth). The gate runs advisory (--report-only,
-# always exit 0) so the population is visible in every PR and cannot grow
-# silently. The blocking-flip PR (OMN-13501/13502 Phase 3) lands three things
-# together: (1) file-level onex-allow-file-faked-boundary exempts the acceptance
-# corpus, (2) the ~50 real fakes are burned down with REAL fixes (recorded-replay
-# transports, real model objects, contract-level fakes, or a justified per-line
-# onex-allow-faked-boundary for non-inference HTTP), (3) --report-only drops and
-# the job name is added to the dev branch-protection required contexts (wedge-
-# safe: merge_group trigger, no paths filter, fail-propagating). Mirrors
-# omnibase_core's blocking gate (.github/workflows/no-faked-boundary.yml @ core)
-# one phase behind.
+# WHY BLOCKING NOW: the OMN-13501 burn-down landed REAL fixes for the ~50 real
+# boundary fakes (recorded-replay transports, real model objects, contract-level
+# fakes, or a justified per-line onex-allow-faked-boundary for non-inference HTTP),
+# and the detector's OWN acceptance corpus
+# (validator_corpora/corpus_no_faked_boundary.py, which embeds fake examples as
+# ground truth) is file-level-exempt (onex-allow-file-faked-boundary). omnimarket
+# src+tests now scans CLEAN (0 findings), so this gate drops --report-only and runs
+# BLOCKING — new fakes fail the job and block merge. The job name
+# "No Faked Boundary Gate" is added to the dev branch-protection required contexts
+# by the operator (wedge-safe: merge_group trigger, no paths filter,
+# fail-propagating). Mirrors omnibase_core's blocking gate
+# (.github/workflows/no-faked-boundary.yml @ core).
 #
 # Suppress an approved fixture line with:  # onex-allow-faked-boundary
 
-name: No Faked Boundary Gate (report-only)
+name: No Faked Boundary Gate
 
 on:
   pull_request:
@@ -48,7 +45,7 @@ permissions:
 
 jobs:
   no-faked-boundary-gate:
-    name: No Faked Boundary Gate (report-only)
+    name: No Faked Boundary Gate
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -76,8 +73,7 @@ jobs:
       - name: Install dependencies
         run: uv sync --locked --all-extras
 
-      - name: Run no-faked-boundary gate (full src + tests, REPORT-ONLY)
+      - name: Run no-faked-boundary gate (full src + tests, BLOCKING)
         run: |
           uv run python -m omnibase_core.validation.no_faked_boundary.runtime_no_faked_boundary \
-            --report-only \
             src tests
