@@ -38,6 +38,7 @@ from omnimarket.nodes.node_env_parity_collect_effect.models.model_env_parity_col
     ModelEnvParityCollectRequest,
 )
 
+# onex-allow-test-fixture OMN-13925 reason="synthetic lane env value; the test proves collected secrets never leak into the typed receipt"
 _SECRET_VALUE = "super-secret-postgres-password"  # pragma: allowlist secret
 
 _CONTRACT = yaml.safe_load(
