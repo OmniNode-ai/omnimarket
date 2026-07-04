@@ -115,8 +115,11 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
     # snapshot topic -> skill-adoption widget): 346 -> 347.
     # OMN-13859 adds node_pr_lifecycle_worktree_prune_effect (EFFECT; event-driven
     # worktree prune-on-PR-close driven by pr_lifecycle_orchestrator): 347 -> 348.
-    assert summary["node_dirs"] == 348
-    assert summary["entry_points"] == 348
+    # OMN-13925 adds node_env_parity_collect_effect (EFFECT; live read-only
+    # runtime-lane env collection over ssh + parity evaluation, the live front-end
+    # for the env_parity skill): 348 -> 349.
+    assert summary["node_dirs"] == 349
+    assert summary["entry_points"] == 349
     assert summary["missing_entry_points"] == []
     assert summary["dangling_entry_points"] == []
     assert summary["routable"] >= 299

@@ -1,0 +1,200 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Env Parity Collect EFFECT (OMN-13925)
+#
+# Live collection front-end for env parity. The pure compute primitive
+# (node_env_parity_compute) only ever evaluates caller-supplied snapshots, so
+# a skill dispatching it with a static payload produced a sample-data verdict
+# masquerading as live parity. This EFFECT closes that gap: it snapshots the
+# real runtime lanes read-only over ssh and evaluates the shared engine over
+# the freshly collected env.
+---
+name: node_env_parity_collect_effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: effect
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  EFFECT: read-only live collection of runtime-lane environment snapshots plus
+  parity evaluation. For each contract-declared lane it resolves the lane's
+  runtime container by compose project + service label (docker ps) and reads
+  the container's configured env (docker inspect .Config.Env) over ssh —
+  configuration reads only, never a mutation and never a docker exec, so
+  prod/judge lane boundaries are respected. The freshly collected snapshots
+  feed the shared env-parity engine (omnimarket.parity). Fails fast with a
+  typed error when no ssh target is available (no live collection input was
+  provided), when probes fail, or when zero lane containers are collected —
+  it never substitutes sample/static lane data. The receipt carries per-lane
+  provenance (container name/id, env var count, UTC collected_at) and the
+  parity verdict; raw env values never leave the handler.
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: "env_parity.collect"
+      handler:
+        name: HandlerEnvParityCollect
+        module: omnimarket.nodes.node_env_parity_collect_effect.handlers.handler_env_parity_collect
+      description: "Collect live lane env snapshots read-only and evaluate parity."
+      input_model:
+        name: ModelEnvParityCollectRequest
+        module: omnimarket.nodes.node_env_parity_collect_effect.models.model_env_parity_collect_request
+        description: "Lane/variable selection + ssh target + timeouts."
+
+handler:
+  module: omnimarket.nodes.node_env_parity_collect_effect.handlers.handler_env_parity_collect
+  class: HandlerEnvParityCollect
+  input_model: omnimarket.nodes.node_env_parity_collect_effect.models.model_env_parity_collect_request.ModelEnvParityCollectRequest
+
+input_model:
+  name: ModelEnvParityCollectRequest
+  module: omnimarket.nodes.node_env_parity_collect_effect.models.model_env_parity_collect_request
+  description: "Lane/variable selection + ssh target + timeouts."
+output_model:
+  name: ModelEnvParityCollectResult
+  module: omnimarket.nodes.node_env_parity_collect_effect.models.model_env_parity_collect_result
+  description: "Live collection provenance + parity verdict."
+
+descriptor:
+  node_archetype: effect
+  purity: impure
+  idempotent: true
+  timeout_ms: 120000
+  runtime_profiles:
+    - effects
+
+inputs:
+  scope:
+    type: str
+    description: "Human-readable parity scope"
+    required: false
+    default: runtime-lanes
+  lanes:
+    type: list[str]
+    description: "Subset of contract lanes to collect; empty means all lanes"
+    required: false
+    default: []
+  variable_names:
+    type: list[str]
+    description: "Subset of contract variables to check; empty means all variables"
+    required: false
+    default: []
+  ssh_target:
+    type: str
+    description: >-
+      ssh destination of the lane host; falls back to the contract-declared
+      env var, else the handler fails fast (no live collection input).
+    required: false
+  connect_timeout_seconds:
+    type: int
+    description: "ssh ConnectTimeout per probe"
+    required: false
+    default: 10
+
+outputs:
+  status:
+    type: str
+    description: "passed | gaps_detected | error"
+  parity_ok:
+    type: bool
+    description: "True when no parity gaps were detected over live snapshots"
+  lane_collections:
+    type: list[ModelEnvParityLaneCollection]
+    description: "Per-lane live collection provenance (timestamps, lane/container ids)"
+  parity:
+    type: ModelEnvParityComputeResult
+    description: "Parity verdict computed over the live snapshots"
+
+terminal_event: onex.evt.omnimarket.env-parity-collect-completed.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.env-parity-collect-start.v1
+  publish_topics:
+    - onex.evt.omnimarket.env-parity-collect-completed.v1
+
+# Live collection topology. Lane names/compose projects mirror the .201 lane
+# census manifest (omnibase_infra deploy/lane-census/lane-manifest.yaml):
+# verified 2026-07-03 via read-only `docker ps` over ssh — every lane runs
+# exactly one runtime container with compose service label onex runtime.
+lane_collection:
+  ssh_target_env_var: ONEX_LANE_SSH_TARGET
+  runtime_service_label: omninode-runtime
+  lanes:
+    - name: dev
+      compose_project: omnibase-infra
+      # dev is the ephemeral developer lane — legitimately down most of the
+      # time (lane manifest: optional / reconcile-when-present).
+      optional: true
+    - name: stability-test
+      compose_project: omnibase-infra-stability-test
+    - name: prod
+      compose_project: omnibase-infra-prod
+    - name: judge
+      compose_project: omnibase-infra-judge
+
+# Parity ruleset evaluated over the LIVE snapshots. Variables are the shared
+# runtime-lane env contract observed on all four lane runtime containers
+# (verified 2026-07-03 via read-only docker inspect .Config.Env). Presence
+# checks only: values (secrets included) never leave the handler un-hashed.
+env_parity:
+  lanes:
+    - dev
+    - stability-test
+    - prod
+    - judge
+  variables:
+    - name: KAFKA_BOOTSTRAP_SERVERS
+      category: kafka
+      consistency: presence
+    - name: KAFKA_BROKER_ALLOWLIST
+      category: kafka
+      consistency: presence
+    - name: POSTGRES_HOST
+      category: postgres
+      consistency: presence
+    - name: POSTGRES_USER
+      category: postgres
+      consistency: presence
+    - name: POSTGRES_PASSWORD
+      category: postgres
+      consistency: presence
+    - name: VALKEY_HOST
+      category: valkey
+      consistency: presence
+    - name: VALKEY_PORT
+      category: valkey
+      consistency: presence
+    - name: QDRANT_HOST
+      category: qdrant
+      consistency: presence
+    - name: QDRANT_PORT
+      category: qdrant
+      consistency: presence
+    - name: ONEX_ENVIRONMENT
+      category: runtime
+      consistency: presence
+    - name: ONEX_GROUP_ID
+      category: runtime
+      consistency: presence
+    - name: ONEX_LOG_LEVEL
+      category: runtime
+      consistency: presence
+    - name: ONEX_RUNTIME_CONTRACTS_DIR
+      category: runtime
+      consistency: presence
+    - name: ONEX_STATE_DIR
+      category: runtime
+      consistency: presence
+    - name: ONEX_ACTIVE_RUNTIME_PACKAGES
+      category: runtime
+      consistency: presence
+    - name: ONEX_SECRET_RESOLVER_CONFIG_PATH
+      category: runtime
+      consistency: presence
+    - name: RUNTIME_PROFILE
+      category: runtime
+      consistency: presence
+    - name: USE_EVENT_ROUTING
+      category: runtime
+      consistency: presence
