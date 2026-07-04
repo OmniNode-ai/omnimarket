@@ -28,8 +28,36 @@ SOW_PHASE2_REQUIRED_TOPICS: list[str] = [
     "onex.evt.omnimarket.build-loop-dod-checked.v1",  # onex-topic-allow: contract-declared
 ]
 
-# SSH target for .201 infra checks — must be set via ONEX_INFRA_SSH_TARGET env var
-_INFRA_SSH_TARGET = os.environ.get("ONEX_INFRA_SSH_TARGET", "")  # contract-config-ok: config  # fmt: skip
+_INFRA_SSH_TARGET_ENV_VAR = "ONEX_INFRA_SSH_TARGET"
+
+
+class InfraSshTargetNotConfiguredError(RuntimeError):
+    """Raised when SSH-backed readiness probes are requested without a target host.
+
+    OMN-13921: the previous module-level ``os.environ.get(..., "")`` default made
+    every remote probe run as ``ssh '' ...`` (empty host) when the env var was
+    unset. Per CLAUDE.md rule 8, missing config must fail fast — never fall back
+    to a silent empty-string host.
+    """
+
+    def __init__(self) -> None:
+        super().__init__(
+            f"{_INFRA_SSH_TARGET_ENV_VAR} is not set; refusing to run SSH-backed "
+            f"readiness probes against an empty host. Set "
+            f"{_INFRA_SSH_TARGET_ENV_VAR}=<user@host> for the target infra lane."
+        )
+
+
+def _resolve_infra_ssh_target() -> str:
+    """Resolve the SSH target for infra probes at call time (never import time).
+
+    Raises:
+        InfraSshTargetNotConfiguredError: if the env var is unset or blank.
+    """
+    target = os.environ.get(_INFRA_SSH_TARGET_ENV_VAR, "").strip()  # contract-config-ok: config  # fmt: skip
+    if not target:
+        raise InfraSshTargetNotConfiguredError
+    return target
 
 
 class EnumReadinessStatus(StrEnum):
@@ -144,15 +172,22 @@ class NodePlatformReadiness:
         )
 
     def _collect_dimensions(self, now: datetime) -> list[ModelDimensionInput]:
-        """Proactively collect all 7 system readiness dimensions."""
+        """Proactively collect all 7 system readiness dimensions.
+
+        Raises:
+            InfraSshTargetNotConfiguredError: if ONEX_INFRA_SSH_TARGET is unset —
+                fail fast before running ANY probe rather than degrading into
+                ``ssh ''`` timeouts (OMN-13921).
+        """
+        ssh_target = _resolve_infra_ssh_target()
         return [
             self._check_plugin_version(now),
-            self._check_docker_image_age(now),
-            self._check_migration_watermark(now),
-            self._check_kafka_topic_coverage(now),
+            self._check_docker_image_age(now, ssh_target),
+            self._check_migration_watermark(now, ssh_target),
+            self._check_kafka_topic_coverage(now, ssh_target),
             self._check_pre_commit_installation(now),
-            self._check_quality_score_coverage(now),
-            self._check_baselines_freshness(now),
+            self._check_quality_score_coverage(now, ssh_target),
+            self._check_baselines_freshness(now, ssh_target),
         ]
 
     def _check_plugin_version(self, now: datetime) -> ModelDimensionInput:
@@ -178,13 +213,15 @@ class NodePlatformReadiness:
             details=details,
         )
 
-    def _check_docker_image_age(self, now: datetime) -> ModelDimensionInput:
+    def _check_docker_image_age(
+        self, now: datetime, ssh_target: str
+    ) -> ModelDimensionInput:
         """Check if omninode-runtime Docker image was built today."""
         try:
             result = subprocess.run(
                 [
                     "ssh",
-                    _INFRA_SSH_TARGET,
+                    ssh_target,
                     "docker inspect omninode-runtime --format '{{.Created}}'",
                 ],
                 capture_output=True,
@@ -216,13 +253,15 @@ class NodePlatformReadiness:
             details=details,
         )
 
-    def _check_migration_watermark(self, now: datetime) -> ModelDimensionInput:
+    def _check_migration_watermark(
+        self, now: datetime, ssh_target: str
+    ) -> ModelDimensionInput:
         """Check that DB migration watermark is >= 062."""
         try:
             result = subprocess.run(
                 [
                     "ssh",
-                    _INFRA_SSH_TARGET,
+                    ssh_target,
                     "docker exec omnibase-infra-postgres psql -U postgres -d omnibase_infra -t -c "
                     '"SELECT migration_id FROM schema_migrations ORDER BY applied_at DESC LIMIT 1;"',
                 ],
@@ -258,14 +297,16 @@ class NodePlatformReadiness:
             details=details,
         )
 
-    def _check_kafka_topic_coverage(self, now: datetime) -> ModelDimensionInput:
+    def _check_kafka_topic_coverage(
+        self, now: datetime, ssh_target: str
+    ) -> ModelDimensionInput:
         """Check that SOW Phase 2 Kafka topics exist."""
         required_topics = SOW_PHASE2_REQUIRED_TOPICS
         try:
             result = subprocess.run(
                 [
                     "ssh",
-                    _INFRA_SSH_TARGET,
+                    ssh_target,
                     "docker exec omnibase-infra-redpanda rpk topic list 2>/dev/null",
                 ],
                 capture_output=True,
@@ -338,13 +379,15 @@ class NodePlatformReadiness:
             details=details,
         )
 
-    def _check_quality_score_coverage(self, now: datetime) -> ModelDimensionInput:
+    def _check_quality_score_coverage(
+        self, now: datetime, ssh_target: str
+    ) -> ModelDimensionInput:
         """Check routing_outcomes table has non-null quality scores."""
         try:
             result = subprocess.run(
                 [
                     "ssh",
-                    _INFRA_SSH_TARGET,
+                    ssh_target,
                     "docker exec omnibase-infra-postgres psql -U postgres -d omnibase_infra -t -c "
                     '"SELECT COUNT(*) FROM routing_outcomes WHERE quality_score IS NOT NULL;"',
                 ],
@@ -371,13 +414,15 @@ class NodePlatformReadiness:
             details=details,
         )
 
-    def _check_baselines_freshness(self, now: datetime) -> ModelDimensionInput:
+    def _check_baselines_freshness(
+        self, now: datetime, ssh_target: str
+    ) -> ModelDimensionInput:
         """Check baselines tables have recent data."""
         try:
             result = subprocess.run(
                 [
                     "ssh",
-                    _INFRA_SSH_TARGET,
+                    ssh_target,
                     "docker exec omnibase-infra-postgres psql -U postgres -d omnibase_infra -t -c "
                     "\"SELECT COUNT(*) FROM baselines_comparisons WHERE created_at > NOW() - INTERVAL '7 days';\"",
                 ],
