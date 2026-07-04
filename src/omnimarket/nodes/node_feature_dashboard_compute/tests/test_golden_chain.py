@@ -96,36 +96,43 @@ class TestHandlerImport:
 
 
 class TestHandlerCompute:
-    def test_handler_audits_feature_dashboard_skill(self) -> None:
+    def test_handler_audits_registry_skill(self) -> None:
+        """merge_sweep is dispatch-registered → discovered + non-zero coverage.
+
+        Regression pin for the stale-discovery defect: the old SKILL.md
+        directory scan reported 0% for skills that demonstrably work; the
+        live-registry discovery must resolve merge_sweep's backing node.
+        """
         handler = HandlerFeatureDashboardCompute()
-        request = ModelFeatureDashboardRequest(skills=["feature-dashboard"])
+        request = ModelFeatureDashboardRequest(skills=["merge_sweep"])
 
         result = handler.handle(request)
 
         assert result.status in {"complete", "partial"}
         assert result.skills_audited == 1
         assert result.checks_run == list(DEFAULT_CHECK_TYPES)
-        assert "feature-dashboard" in result.coverage_report
-        coverage = cast(dict[str, Any], result.coverage_report["feature-dashboard"])
-        assert isinstance(coverage, dict)
-        assert coverage["checks"]["skill_doc"] is False
+        assert "merge_sweep" in result.coverage_report
+        coverage = cast(dict[str, Any], result.coverage_report["merge_sweep"])
+        assert coverage["registered"] is True
+        assert coverage["node_name"] == "node_pr_lifecycle_orchestrator"
         assert coverage["checks"]["backing_node"] is True
         assert coverage["checks"]["contract"] is True
+        assert coverage["coverage_score"] > 0.0
 
     def test_handler_respects_check_filter(self) -> None:
         result = HandlerFeatureDashboardCompute().handle(
             ModelFeatureDashboardRequest(
-                skills=["feature-dashboard"],
-                check_types=["skill_doc", "contract"],
+                skills=["merge_sweep"],
+                check_types=["backing_node", "contract"],
             )
         )
 
-        coverage = result.coverage_report["feature-dashboard"]
+        coverage = result.coverage_report["merge_sweep"]
         assert isinstance(coverage, dict)
-        assert set(coverage["checks"]) == {"skill_doc", "contract"}
-        assert result.checks_run == ["skill_doc", "contract"]
+        assert set(coverage["checks"]) == {"backing_node", "contract"}
+        assert result.checks_run == ["backing_node", "contract"]
 
-    def test_handler_reports_empty_for_missing_skill_filter(self) -> None:
+    def test_handler_flags_unregistered_skill_filter(self) -> None:
         result = HandlerFeatureDashboardCompute().handle(
             ModelFeatureDashboardRequest(skills=["does-not-exist"])
         )
@@ -133,8 +140,12 @@ class TestHandlerCompute:
         assert result.status == "partial"
         assert result.skills_audited == 1
         coverage = cast(dict[str, Any], result.coverage_report["does-not-exist"])
-        checks = cast(dict[str, bool], coverage["checks"])
-        assert checks["backing_node"] is False
+        assert coverage["registered"] is False
+        registry_gaps = [
+            gap for gap in result.gaps if gap["check_type"] == "registry_entry"
+        ]
+        assert registry_gaps
+        assert registry_gaps[0]["severity"] == "HIGH"
 
     def test_request_rejects_unknown_check_type(self) -> None:
         with pytest.raises(ValueError, match="unknown check_types"):

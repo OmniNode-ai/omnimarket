@@ -2,17 +2,24 @@
 # SPDX-License-Identifier: MIT
 """Multi-parameter integration coverage for node_feature_dashboard_compute.
 
-WS-5 Wave 8 (OMN-13682). Variant A — the COMPUTE handler is driven in-process
-against a *synthetic repo tree* built under ``tmp_path`` (SKILL.md docs + backing
-``node_*`` dirs + contract.yaml + handler/models/tests + pyproject). Each case
-varies the skill filter, the requested layer checks, and which skills are present
-(fully-wired vs gap), and asserts the typed ``ModelFeatureDashboardResult``
-(status, gaps, per-skill coverage scores, checks_run).
+WS-5 Wave 8 (OMN-13682), re-anchored on live-registry discovery. The COMPUTE
+handler is driven in-process against a *synthetic repo tree* built under
+``tmp_path``: a ``skill_mapping.yaml`` dispatch registry (the discovery
+source) + backing ``node_*`` dirs + contract.yaml + handler/models/tests +
+pyproject + SKILL.md docs. Each case varies the skill filter, the requested
+layer checks, and which skills are present (fully-wired vs gap), and asserts
+the typed ``ModelFeatureDashboardResult`` (status, gaps, per-skill coverage
+scores, checks_run).
 
-Negative control: a deliberately under-wired skill (missing handler module) must
-surface a HIGH-severity ``handler`` gap and flip the overall status to
-``partial``. A run that reported ``complete`` over the broken skill would be a
-regression.
+Negative controls:
+
+* a deliberately under-wired skill (missing handler module) must surface a
+  HIGH-severity ``handler`` gap and flip the overall status to ``partial``;
+* a registry entry whose backing node does not exist at all must surface a
+  CRITICAL ``registry_inconsistency`` gap (dispatch-registered skills can
+  never silently score 0);
+* an empty registry must raise instead of returning a vacuous empty-success
+  result (the stale-discovery defect mode).
 """
 
 from __future__ import annotations
@@ -27,6 +34,20 @@ from omnimarket.nodes.node_feature_dashboard_compute.handlers.handler_feature_da
 from omnimarket.nodes.node_feature_dashboard_compute.models.model_feature_dashboard_request import (
     ModelFeatureDashboardRequest,
 )
+
+
+def _write_registry(repo_root: Path, skill_to_node: dict[str, str]) -> None:
+    """Synthetic live dispatch registry (the discovery source)."""
+    registry_dir = repo_root / "src" / "omnibase_infra" / "cli"
+    registry_dir.mkdir(parents=True, exist_ok=True)
+    lines = ["skills:"]
+    for skill, node in skill_to_node.items():
+        lines.append(f"  - skill_name: {skill}")
+        lines.append(f"    node_name: {node}")
+        lines.append(f"    result_model: omnimarket.nodes.{node}.models.model_x.X")
+    (registry_dir / "skill_mapping.yaml").write_text(
+        "\n".join(lines) + "\n", encoding="utf-8"
+    )
 
 
 def _write_full_node(repo_root: Path, node_name: str) -> None:
@@ -77,7 +98,7 @@ event_bus:
     (node_dir / "tests" / "__init__.py").write_text("", encoding="utf-8")
 
 
-def _write_skill(repo_root: Path, skill: str, node_name: str) -> None:
+def _write_skill_doc(repo_root: Path, skill: str, node_name: str) -> None:
     skill_dir = repo_root / "plugins" / "onex" / "skills" / skill
     skill_dir.mkdir(parents=True, exist_ok=True)
     (skill_dir / "SKILL.md").write_text(
@@ -99,17 +120,18 @@ def _build_repo(tmp_path: Path, *, include_good: bool, include_broken: bool) -> 
     repo_root = tmp_path / "repo"
     (repo_root / "plugins" / "onex" / "skills").mkdir(parents=True, exist_ok=True)
     (repo_root / "src" / "omnimarket" / "nodes").mkdir(parents=True, exist_ok=True)
-    declared_nodes: list[str] = []
+    skill_to_node: dict[str, str] = {}
     if include_good:
-        _write_skill(repo_root, "good", "node_good")
+        _write_skill_doc(repo_root, "good", "node_good")
         _write_full_node(repo_root, "node_good")
-        declared_nodes.append("node_good")
+        skill_to_node["good"] = "node_good"
     if include_broken:
-        _write_skill(repo_root, "broken", "node_broken")
+        _write_skill_doc(repo_root, "broken", "node_broken")
         _write_broken_node(repo_root, "node_broken")
-        declared_nodes.append("node_broken")
+        skill_to_node["broken"] = "node_broken"
+    _write_registry(repo_root, skill_to_node)
     # entry_point layer reads pyproject.toml for the node name.
-    entries = "\n".join(f'{n} = "omnimarket.nodes.{n}"' for n in declared_nodes)
+    entries = "\n".join(f'{n} = "omnimarket.nodes.{n}"' for n in skill_to_node.values())
     (repo_root / "pyproject.toml").write_text(
         f'[project.entry-points."onex.nodes"]\n{entries}\n', encoding="utf-8"
     )
@@ -162,17 +184,6 @@ _CASES = [
         False,
         False,
         id="check-types-subset",
-    ),
-    pytest.param(
-        False,
-        False,
-        None,
-        None,
-        "empty",
-        0,
-        False,
-        False,
-        id="empty-repo-no-skills",
     ),
 ]
 
@@ -239,5 +250,51 @@ def test_feature_dashboard_multiparam(
     # Fully-wired skill scores a perfect coverage map.
     if expect_good_complete:
         good = result.coverage_report["good"]
-        assert good["coverage_score"] == 1.0, good
-        assert all(good["checks"].values())  # type: ignore[union-attr]
+        assert good["coverage_score"] == 1.0, good  # type: ignore[index]
+        assert all(good["checks"].values())  # type: ignore[index, union-attr]
+
+
+@pytest.mark.integration
+def test_empty_registry_raises_instead_of_vacuous_success(tmp_path: Path) -> None:
+    """The stale-discovery defect mode: zero skills discovered.
+
+    The old handler returned ``status="empty"``/``skills_audited=0`` inside a
+    success receipt. Auditing nothing must now raise.
+    """
+    repo_root = tmp_path / "repo"
+    (repo_root / "src" / "omnimarket" / "nodes").mkdir(parents=True, exist_ok=True)
+    _write_registry(repo_root, {})
+
+    with pytest.raises(RuntimeError, match="zero skills"):
+        HandlerFeatureDashboardCompute().handle(
+            ModelFeatureDashboardRequest(repo_root=str(repo_root))
+        )
+
+
+@pytest.mark.integration
+def test_registered_skill_scoring_zero_flags_registry_inconsistency(
+    tmp_path: Path,
+) -> None:
+    """A dispatch-registered skill can never silently report 0% coverage."""
+    repo_root = tmp_path / "repo"
+    (repo_root / "src" / "omnimarket" / "nodes").mkdir(parents=True, exist_ok=True)
+    # Registered for dispatch, but its backing node dir does not exist.
+    _write_registry(repo_root, {"ghost": "node_ghost"})
+    (repo_root / "pyproject.toml").write_text(
+        '[project.entry-points."onex.nodes"]\n', encoding="utf-8"
+    )
+
+    result = HandlerFeatureDashboardCompute().handle(
+        ModelFeatureDashboardRequest(repo_root=str(repo_root))
+    )
+
+    assert result.status == "partial"
+    row = result.coverage_report["ghost"]
+    assert row["coverage_score"] == 0.0  # type: ignore[index]
+    critical = [
+        gap
+        for gap in result.gaps
+        if gap["check_type"] == "registry_inconsistency" and gap["skill"] == "ghost"
+    ]
+    assert critical, result.gaps
+    assert critical[0]["severity"] == "CRITICAL"
