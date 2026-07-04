@@ -11,6 +11,7 @@ from datetime import UTC, datetime
 
 from omnimarket.nodes.node_platform_readiness.handlers.handler_platform_readiness import (
     DimensionInput,
+    InfraSshTargetNotConfiguredError,
     NodePlatformReadiness,
     PlatformReadinessRequest,
     PlatformReadinessResult,
@@ -183,7 +184,11 @@ def main(argv: list[str] | None = None) -> int:
         now=now,
     )
 
-    raw_result = NodePlatformReadiness().handle(request)
+    try:
+        raw_result = NodePlatformReadiness().handle(request)
+    except InfraSshTargetNotConfiguredError as exc:
+        print(f"CONFIG ERROR: {exc}", file=sys.stderr)  # noqa: T201
+        return 2
     try:
         result = _filter_result(raw_result, _selected_dimensions(args))
     except ValueError as exc:
