@@ -220,6 +220,7 @@ node_claim_resolver = "omnimarket.nodes.node_claim_resolver"
 node_verified_dispatch_orchestrator = "omnimarket.nodes.node_verified_dispatch_orchestrator"
 node_pr_lifecycle_inventory_compute = "omnimarket.nodes.node_pr_lifecycle_inventory_compute"
 node_pr_lifecycle_fix_effect = "omnimarket.nodes.node_pr_lifecycle_fix_effect"
+node_pr_delegated_fix_effect = "omnimarket.nodes.node_pr_delegated_fix_effect"
 node_ci_watch = "omnimarket.nodes.node_ci_watch"
 node_coderabbit_triage = "omnimarket.nodes.node_coderabbit_triage"
 node_overnight = "omnimarket.nodes.node_overnight"
@@ -578,6 +579,7 @@ module = [
     "omnimarket.nodes.node_pr_lifecycle_merge_effect.*",
     "omnimarket.nodes.node_pr_lifecycle_worktree_prune_effect.*",
     "omnimarket.nodes.node_pr_lifecycle_fix_effect.*",
+    "omnimarket.nodes.node_pr_delegated_fix_effect.*",
 ]
 ignore_missing_imports = true
 

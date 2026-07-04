@@ -1,0 +1,128 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - PR Delegated Fix Effect
+#
+# Slice 0 (WS-D/D2, OMN-13940): a deterministic, zero-LLM delegated fix path
+# for merge-sweep. Runs `ruff format` + `ruff check --fix` inside a resolved
+# worktree, re-checks the denylist/blast-radius safety bar against the ACTUAL
+# diff produced, commits with a `delegated-by:` trailer, then re-enters the
+# EXISTING node_pr_polish gate/verify/push/coderabbit-triage/auto-merge-arm
+# flow (never self-arms auto-merge). node_pr_lifecycle_fix_effect's
+# HandlerPrLifecycleFix routes CODE_FAILURE/CHANGES_REQUESTED here only after
+# its own eligibility + two-strike gate approves; RECEIPT_FAILURE never
+# reaches this node.
+#
+# Related Tickets:
+#   - OMN-13940: WS-D/D2 merge-sweep delegation harness Slice 0
+---
+name: pr_delegated_fix_effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: effect
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  Deterministic (zero-LLM) delegated PR fix: ruff format + ruff check --fix
+  inside a resolved worktree, defense-in-depth denylist/blast-radius
+  re-check on the actual diff, commit with a delegated-by trailer, then
+  re-entry into the existing node_pr_polish flow with skip_repair_dispatch
+  and no_automerge always set. Slice 1 (follow-up) swaps the ruff step for a
+  real HandlerDelegateSkill(task_type="document") call for docstring/comment
+  diffs — this contract's command/result shape is additive-stable across
+  both slices.
+
+handler:
+  module: omnimarket.nodes.node_pr_delegated_fix_effect.handlers.handler_delegated_fix
+  class: HandlerDelegatedFix
+  input_model: omnimarket.events.pr_delegated_fix.ModelDelegatedFixCommand
+
+handler_routing:
+  routing_strategy: payload_type_match
+  handlers:
+    - handler:
+        name: HandlerDelegatedFix
+        module: omnimarket.nodes.node_pr_delegated_fix_effect.handlers.handler_delegated_fix
+      event_model:
+        name: ModelDelegatedFixCommand
+        module: omnimarket.events.pr_delegated_fix
+
+descriptor:
+  node_archetype: effect
+  purity: side_effect
+  idempotent: false
+  timeout_ms: 300000
+  runtime_profiles:
+    - effects
+
+inputs:
+  repo:
+    type: str
+    description: "GitHub repo slug (owner/repo)"
+    required: true
+  pr_number:
+    type: int
+    description: "PR number to remediate"
+    required: true
+  ticket_id:
+    type: str
+    description: "Linear ticket ID for worktree/trailer context"
+    required: false
+  block_reason:
+    type: str
+    description: "Originating block_reason (code_failure | changes_requested), for the commit trailer"
+    required: true
+  changed_files:
+    type: list
+    description: "PR changed-file paths known at dispatch time (defense-in-depth denylist re-check)"
+    required: false
+  diff_total_lines:
+    type: int
+    description: "Total additions + deletions known at dispatch time"
+    required: false
+    default: 0
+  worktree_path:
+    type: str
+    description: "Explicit worktree path; resolved/created under $OMNI_WORKTREES when absent"
+    required: false
+  dry_run:
+    type: bool
+    description: "Run the fix and gates without pushing"
+    required: false
+    default: false
+
+outputs:
+  outcome:
+    type: str
+    description: "accepted | no_changes | gate_failed | refused_size_gate | refused_denylist | refused_not_a_worktree | error"
+  delegation_model:
+    type: str
+    description: "Tool identity, e.g. 'ruff-deterministic' for Slice 0"
+  cost_usd:
+    type: float
+    description: "USD cost of the delegation attempt (0.0 for Slice 0)"
+  commit_sha:
+    type: str
+    nullable: true
+    description: "Commit SHA when a fix was committed, else null"
+  detail:
+    type: str
+    description: "Human-readable outcome explanation"
+  error:
+    type: str
+    nullable: true
+    description: "Error message when outcome is an error/failure state"
+
+terminal_event: onex.evt.omnimarket.pr-delegated-fix-completed.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.pr-delegated-fix-start.v1
+  publish_topics:
+    - onex.evt.omnimarket.pr-delegated-fix-completed.v1
+
+secrets:
+  GITHUB_TOKEN:
+    description: "GitHub PAT or Actions token, needed only for worktree auto-creation (gh pr view)."
+    required: false
+
+metadata:
+  transport_type: kafka

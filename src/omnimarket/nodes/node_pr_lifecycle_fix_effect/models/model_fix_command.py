@@ -68,6 +68,16 @@ class ModelPrLifecycleFixCommand(BaseModel):
             "trivial-infra OCC fast-path size scoping (OMN-13776)."
         ),
     )
+    review_context_text: str = Field(
+        default="",
+        description=(
+            "Concatenated PR title/body/CodeRabbit comment text, used by the "
+            "delegation content denylist (WS-D/D2, OMN-13940) to refuse "
+            "security/auth/crypto-adjacent fixes before routing to a "
+            "delegated (non-Claude) fix path. Empty is always denied "
+            "delegation-eligibility neutral (path/size checks still apply)."
+        ),
+    )
 
 
 __all__: list[str] = ["EnumPrBlockReason", "ModelPrLifecycleFixCommand"]

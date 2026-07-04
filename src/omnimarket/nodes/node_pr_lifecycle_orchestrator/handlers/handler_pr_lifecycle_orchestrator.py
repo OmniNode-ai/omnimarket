@@ -281,6 +281,13 @@ class ModelPrLifecycleResult(BaseModel):
             "final_state is NOT_DONE."
         ),
     )
+    # WS-D/D2 (OMN-13940): sweep-level delegation harness counters, summed
+    # across all FixResult entries the same way prs_fixed sums prs_dispatched.
+    prs_delegated_fix_attempted: int = Field(default=0, ge=0)
+    prs_delegated_fix_accepted: int = Field(default=0, ge=0)
+    prs_delegated_fix_gate_failed: int = Field(default=0, ge=0)
+    prs_delegated_fix_escalated: int = Field(default=0, ge=0)
+    delegation_cost_savings_usd: float = Field(default=0.0, ge=0.0)
 
 
 # ---------------------------------------------------------------------------
@@ -353,6 +360,13 @@ class _SweepState:
     prs_skipped: int = 0
     prs_verified: int = 0
     error_message: str | None = None
+    # WS-D/D2 (OMN-13940): delegation harness counters, aggregated the same
+    # way prs_fixed sums FixResult.prs_dispatched.
+    prs_delegated_fix_attempted: int = 0
+    prs_delegated_fix_accepted: int = 0
+    prs_delegated_fix_gate_failed: int = 0
+    prs_delegated_fix_escalated: int = 0
+    delegation_cost_savings_usd: float = 0.0
 
     # Inter-phase data
     inventory_result: InventoryResult | None = None
@@ -962,6 +976,9 @@ class HandlerPrLifecycleOrchestrator:
                 self._merge = _StubMergeHandler()
         if self._fix is None:
             try:
+                from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.adapter_delegated_fix import (
+                    DelegatedFixAdapter,
+                )
                 from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.adapter_github_cli import (
                     GitHubCliAdapter,
                 )
@@ -974,15 +991,25 @@ class HandlerPrLifecycleOrchestrator:
                 from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.adapter_pr_polish_dispatch import (
                     PrPolishDispatchAdapter,
                 )
+                from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.adapter_two_strike_store import (
+                    JsonFileTwoStrikeStore,
+                )
                 from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.handler_pr_lifecycle_fix import (
                     HandlerPrLifecycleFix,
                 )
 
+                # WS-D/D2 (OMN-13940): DelegatedFixAdapter + JsonFileTwoStrikeStore
+                # are wired explicitly (not left to HandlerPrLifecycleFix's
+                # test-convenience noop/in-memory defaults) so real merge-sweep
+                # runs actually attempt the delegated path and the two-strike
+                # counter survives across ticks.
                 fix_handler = HandlerPrLifecycleFix(
                     github_adapter=GitHubCliAdapter(),
                     agent_dispatch_adapter=PrPolishDispatchAdapter(),
                     occ_contract_adapter=OccContractAdapter(),
                     occ_autobind_adapter=OccAutobindAdapter(),
+                    delegation_fix_adapter=DelegatedFixAdapter(),
+                    two_strike_store=JsonFileTwoStrikeStore(),
                 )
                 self._check_protocol_conformance(fix_handler, ProtocolFixHandler, "fix")
                 self._fix = fix_handler
@@ -1386,10 +1413,30 @@ class HandlerPrLifecycleOrchestrator:
                 )
                 state.prs_fixed = sum(r.prs_dispatched for r in fix_results)
                 state.prs_skipped += sum(r.prs_skipped for r in fix_results)
+                state.prs_delegated_fix_attempted = sum(
+                    r.prs_delegated_fix_attempted for r in fix_results
+                )
+                state.prs_delegated_fix_accepted = sum(
+                    r.prs_delegated_fix_accepted for r in fix_results
+                )
+                state.prs_delegated_fix_gate_failed = sum(
+                    r.prs_delegated_fix_gate_failed for r in fix_results
+                )
+                state.prs_delegated_fix_escalated = sum(
+                    r.prs_delegated_fix_escalated for r in fix_results
+                )
+                state.delegation_cost_savings_usd = sum(
+                    r.delegation_cost_savings_usd for r in fix_results
+                )
                 logger.info(
-                    "[PR-LIFECYCLE-ORCH] fix completed: %d dispatched, %d skipped",
+                    "[PR-LIFECYCLE-ORCH] fix completed: %d dispatched, %d skipped, "
+                    "delegated attempted=%d accepted=%d gate_failed=%d escalated=%d",
                     state.prs_fixed,
                     sum(r.prs_skipped for r in fix_results),
+                    state.prs_delegated_fix_attempted,
+                    state.prs_delegated_fix_accepted,
+                    state.prs_delegated_fix_gate_failed,
+                    state.prs_delegated_fix_escalated,
                 )
                 # Ledger (OMN-12569): record a terminal FAILED conclusion (a
                 # non-green PR routed to remediation) with FIX action provenance.
@@ -2271,9 +2318,29 @@ class HandlerPrLifecycleOrchestrator:
                 if isinstance(raw, FixResult):
                     return raw
                 fix_applied: bool = getattr(raw, "fix_applied", False)
+                delegation_outcome = getattr(raw, "delegation_outcome", None)
+                delegation_outcome_value = (
+                    getattr(delegation_outcome, "value", delegation_outcome)
+                    if delegation_outcome is not None
+                    else None
+                )
+                # `is True` (not just truthy) so a MagicMock/duck-typed test
+                # double without an explicit `delegated` attribute never
+                # spuriously counts as an attempted delegation.
+                delegated: bool = getattr(raw, "delegated", False) is True
                 return FixResult(
                     prs_dispatched=1 if fix_applied else 0,
                     prs_skipped=0 if fix_applied else 1,
+                    prs_delegated_fix_attempted=1 if delegated else 0,
+                    prs_delegated_fix_accepted=(
+                        1 if delegation_outcome_value == "accepted" else 0
+                    ),
+                    prs_delegated_fix_gate_failed=(
+                        1 if delegation_outcome_value == "gate_failed" else 0
+                    ),
+                    prs_delegated_fix_escalated=(
+                        1 if delegation_outcome_value == "escalated" else 0
+                    ),
                 )
 
         logger.info(
@@ -2366,6 +2433,11 @@ class HandlerPrLifecycleOrchestrator:
             error_message=state.error_message,
             org_wide_open_count=int(getattr(state.org_wide_open, "open_count", 0) or 0),
             org_wide_open_remainders=remainders,
+            prs_delegated_fix_attempted=state.prs_delegated_fix_attempted,
+            prs_delegated_fix_accepted=state.prs_delegated_fix_accepted,
+            prs_delegated_fix_gate_failed=state.prs_delegated_fix_gate_failed,
+            prs_delegated_fix_escalated=state.prs_delegated_fix_escalated,
+            delegation_cost_savings_usd=state.delegation_cost_savings_usd,
         )
 
     @staticmethod
@@ -2502,6 +2574,11 @@ class HandlerPrLifecycleOrchestrator:
             "prs_verified": result.prs_verified,
             "prs_verification_blocked": result.prs_verification_blocked,
             "verification_breakdown": result.verification_breakdown,
+            "prs_delegated_fix_attempted": result.prs_delegated_fix_attempted,
+            "prs_delegated_fix_accepted": result.prs_delegated_fix_accepted,
+            "prs_delegated_fix_gate_failed": result.prs_delegated_fix_gate_failed,
+            "prs_delegated_fix_escalated": result.prs_delegated_fix_escalated,
+            "delegation_cost_savings_usd": result.delegation_cost_savings_usd,
             "org_wide_open_count": result.org_wide_open_count,
             "org_wide_open_remainders": [
                 remainder.model_dump(mode="json")
