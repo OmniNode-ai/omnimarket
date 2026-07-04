@@ -5,13 +5,18 @@ node_type: compute
 node_version: {major: 1, minor: 0, patch: 0}
 node_not_implemented: false
 description: >
-  Validate a plan YAML file: field presence checks, schema validation, and
-  dependency cycle detection. Produces a per-check pass/fail report with
-  violation details. Pure deterministic transform — no LLM calls.
-  The supported deterministic schema requires a top-level mapping with a
-  non-empty title and a non-empty tasks list. Each task requires non-empty id
-  and title fields, and may declare dependencies or depends_on as a list of
-  task id strings.
+  Audit plan files in YAML or Markdown format. YAML plans get field presence
+  checks, schema validation, and dependency cycle detection (top-level mapping
+  with a non-empty title and a non-empty tasks list; each task requires
+  non-empty id and title fields, and may declare dependencies or depends_on
+  as a list of task id strings). Markdown plans get structure (H1 title),
+  Linear ticket linkage (OMN-XXXX), and verified-state marker checks
+  (missing verified-state is advisory WARN). Unsupported file formats are
+  reported as SKIPPED with a reason, never a crash. plan_path may reference a
+  single file or a directory of plan files; a run that audits zero files is
+  an error, never a vacuous pass. Produces a per-file PASS/WARN/FAIL/SKIPPED
+  verdict plus an aggregate verdict. Pure deterministic transform — no LLM
+  calls.
 
 handler:
   module: omnimarket.nodes.node_plan_audit_compute.handlers.handler_plan_audit_compute
@@ -35,18 +40,31 @@ inputs:
   plan_path:
     type: str
     required: true
-    description: "Absolute path to the plan YAML file to audit"
+    description: >-
+      Absolute path to the plan file (YAML or Markdown) to audit, or to a
+      directory of plan files (each *.md/*.yaml/*.yml audited; other files
+      reported as SKIPPED)
 
 outputs:
   passed:
     type: bool
     description: "True when all checks pass"
+  verdict:
+    type: str
+    enum: [PASS, WARN, FAIL, SKIPPED, ERROR]
+    description: "Aggregate audit verdict across all scanned plan files"
   checks:
     type: list[object]
     description: "Per-check result objects with name, passed, and violation detail"
   violations:
     type: list[str]
     description: "Human-readable list of violation messages"
+  warnings:
+    type: list[str]
+    description: "Human-readable list of advisory messages"
+  plans:
+    type: list[object]
+    description: "Per-file audit results (path, verdict, checks, skip reason)"
   status:
     type: str
     enum: [ok, error]

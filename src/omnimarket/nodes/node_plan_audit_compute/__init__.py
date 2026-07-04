@@ -1,1 +1,1 @@
-"""node_plan_audit_compute — YAML validation, field checks, cycle detection for plan files."""
+"""node_plan_audit_compute — plan-file audit for YAML and Markdown plans."""
