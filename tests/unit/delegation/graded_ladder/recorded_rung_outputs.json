@@ -1,7 +1,7 @@
 {
   "corpus": "escalating_corpus.yaml",
-  "note": "Genuine per-rung outputs recorded live 2026-07-04 from the local delegation ladder (4090/5090 AI-PC via Tailscale, DS-V4-Flash on Mac-Studio). Timeout cells are real budget-exceeded fails: local reasoners could not deliver the hardest tasks within the recording timeout, mirroring the production per-backend timeout that triggers escalation.",
-  "recorded_at": "2026-07-04T16:24:29.384428+00:00",
+  "note": "Genuine per-rung outputs recorded live 2026-07-04 across the FULL delegation ladder: local 4090/5090 AI-PC + Mac-Studio 284B, plus the paid-cloud ceiling (GLM-5.2 z.ai) and the OpenRouter free tier. Canonical qwen3-coder-480b:free was upstream-429-throttled at record time; a reliably-available free code model (poolside/laguna-xs-2.1:free) was used per the operator fallback directive.",
+  "recorded_at": "2026-07-04T17:42:30.144768+00:00",
   "rungs": {
     "rung_4090_reasoner": {
       "easy_arith": {
@@ -192,6 +192,99 @@
         "recorded_at": "2026-07-04T15:06:52.312897+00:00"
       }
     },
+    "rung_cloud_glm": {
+      "easy_arith": {
+        "content": "376",
+        "http_status": 200,
+        "latency_ms": 2827,
+        "model_name": "glm-5.2",
+        "recorded_at": "2026-07-04T17:24:20.821393+00:00"
+      },
+      "easy_symbol": {
+        "content": "Au",
+        "http_status": 200,
+        "latency_ms": 3740,
+        "model_name": "glm-5.2",
+        "recorded_at": "2026-07-04T17:24:24.562577+00:00"
+      },
+      "hard_balanced_brackets": {
+        "content": "```python\ndef is_balanced(s):\n    stack = []\n    matching = {')': '(', ']': '[', '}': '{'}\n    opening = set('([{')\n    closing = set(')]}')\n    for char in s:\n        if char in opening:\n            stack.append(char)\n        elif char in closing:\n            if not stack or stack[-1] != matching[char]:\n                return False\n            stack.pop()\n    return not stack\n```",
+        "http_status": 200,
+        "latency_ms": 8377,
+        "model_name": "glm-5.2",
+        "recorded_at": "2026-07-04T17:25:42.716602+00:00"
+      },
+      "hard_edit_distance": {
+        "content": "```python\ndef edit_distance(a, b):\n    # Ensure b is the shorter string to minimise memory usage\n    if len(a) < len(b):\n        a, b = b, a\n    m, n = len(a), len(b)\n    # prev holds the edit distances for the previous row of a\n    prev = list(range(n + 1))\n    curr = [0] * (n + 1)\n    for i in range(1, m + 1):\n        curr[0] = i\n        for j in range(1, n + 1):\n            cost = 0 if a[i-1] == b[j-1] else 1\n            curr[j] = min(\n                prev[j] + 1,       # deletion from a\n                curr[j-1] + 1,     # insertion into a\n                prev[j-1] + cost   # substitution\n            )\n        # Move to the next row: current becomes previous, old previous is reused\n        prev, curr = curr, prev\n    return prev[n]\n```",
+        "http_status": 200,
+        "latency_ms": 33658,
+        "model_name": "glm-5.2",
+        "recorded_at": "2026-07-04T17:26:36.893182+00:00"
+      },
+      "hard_lcs": {
+        "content": "```python\ndef lcs_length(a, b):\n    m, n = len(a), len(b)\n    dp = [[0] * (n + 1) for _ in range(m + 1)]\n    for i in range(1, m + 1):\n        for j in range(1, n + 1):\n            if a[i - 1] == b[j - 1]:\n                dp[i][j] = dp[i - 1][j - 1] + 1\n            else:\n                dp[i][j] = max(dp[i - 1][j], dp[i][j - 1])\n    return dp[m][n]\n```",
+        "http_status": 200,
+        "latency_ms": 10168,
+        "model_name": "glm-5.2",
+        "recorded_at": "2026-07-04T17:25:26.035918+00:00"
+      },
+      "hard_min_coins": {
+        "content": "```python\ndef min_coins(coins, amount):\n    \"\"\"\n    Returns the minimum number of coins needed to make the given amount.\n    Each coin can be used an unlimited number of times.\n    If the amount cannot be made, returns -1.\n    \"\"\"\n    # dp[i] will store the minimum coins needed for amount i\n    dp = [float('inf')] * (amount + 1)\n    dp[0] = 0\n\n    for i in range(1, amount + 1):\n        for coin in coins:\n            if i - coin >= 0:\n                dp[i] = min(dp[i], dp[i - coin] + 1)\n\n    return dp[amount] if dp[amount] != float('inf') else -1\n```",
+        "http_status": 200,
+        "latency_ms": 8301,
+        "model_name": "glm-5.2",
+        "recorded_at": "2026-07-04T17:25:34.338916+00:00"
+      },
+      "hard_mod_exp": {
+        "content": "376",
+        "http_status": 200,
+        "latency_ms": 13256,
+        "model_name": "glm-5.2",
+        "recorded_at": "2026-07-04T17:25:55.973554+00:00"
+      },
+      "hard_number_search": {
+        "content": "161",
+        "http_status": 200,
+        "latency_ms": 9468,
+        "model_name": "glm-5.2",
+        "recorded_at": "2026-07-04T17:25:15.867164+00:00"
+      },
+      "hard_regex_match": {
+        "content": "```python\ndef is_match(s: str, p: str) -> bool:\n    m, n = len(s), len(p)\n    # dp[i][j] will be True if s[:i] matches p[:j]\n    dp = [[False] * (n + 1) for _ in range(m + 1)]\n    dp[0][0] = True  # empty string matches empty pattern\n\n    # Patterns that can match an empty string (e.g., \"a*\", \"a*b*\", \".*\")\n    for j in range(2, n + 1):\n        if p[j - 1] == '*':\n            dp[0][j] = dp[0][j - 2]\n\n    for i in range(1, m + 1):\n        for j in range(1, n + 1):\n            if p[j - 1] == '*':\n                # Zero occurrences of the character before '*'\n                dp[i][j] = dp[i][j - 2]\n                # One or more occurrences if preceding char matches s[i-1]\n                if p[j - 2] == s[i - 1] or p[j - 2] == '.':\n                    dp[i][j] |= dp[i - 1][j]\n            else:\n                # Current characters must match\n                if p[j - 1] == s[i - 1] or p[j - 1] == '.':\n                    dp[i][j] = dp[i - 1][j - 1]\n\n    return dp[m][n]\n```",
+        "http_status": 200,
+        "latency_ms": 46382,
+        "model_name": "glm-5.2",
+        "recorded_at": "2026-07-04T17:27:23.276566+00:00"
+      },
+      "hard_trailing_zeros": {
+        "content": "24",
+        "http_status": 200,
+        "latency_ms": 7259,
+        "model_name": "glm-5.2",
+        "recorded_at": "2026-07-04T17:26:03.233074+00:00"
+      },
+      "med_factorial": {
+        "content": "479001600",
+        "http_status": 200,
+        "latency_ms": 7207,
+        "model_name": "glm-5.2",
+        "recorded_at": "2026-07-04T17:24:36.468493+00:00"
+      },
+      "med_palindrome": {
+        "content": "```python\ndef is_palindrome(s):\n    cleaned = ''.join(ch.lower() for ch in s if ch.isalpha() or ch.isdigit())\n    return cleaned == cleaned[::-1]\n```",
+        "http_status": 200,
+        "latency_ms": 29929,
+        "model_name": "glm-5.2",
+        "recorded_at": "2026-07-04T17:25:06.398006+00:00"
+      },
+      "med_speed": {
+        "content": "80",
+        "http_status": 200,
+        "latency_ms": 4697,
+        "model_name": "glm-5.2",
+        "recorded_at": "2026-07-04T17:24:29.260446+00:00"
+      }
+    },
     "rung_ds_v4_flash": {
       "easy_arith": {
         "content": "376",
@@ -283,6 +376,99 @@
         "latency_ms": 3165,
         "model_name": "deepseek-v4-flash",
         "recorded_at": "2026-07-04T14:56:04.011745+00:00"
+      }
+    },
+    "rung_openrouter_free": {
+      "easy_arith": {
+        "content": "376",
+        "http_status": 200,
+        "latency_ms": 2602,
+        "model_name": "poolside/laguna-xs-2.1:free",
+        "recorded_at": "2026-07-04T17:37:20.918502+00:00"
+      },
+      "easy_symbol": {
+        "content": "Au",
+        "http_status": 200,
+        "latency_ms": 1172,
+        "model_name": "poolside/laguna-xs-2.1:free",
+        "recorded_at": "2026-07-04T17:37:22.091243+00:00"
+      },
+      "hard_balanced_brackets": {
+        "content": "```python\ndef is_balanced(s):\n    stack = []\n    mapping = {')': '(', ']': '[', '}': '{'}\n    opening = {'(', '[', '{'}\n    for char in s:\n        if char in opening:\n            stack.append(char)\n        elif char in mapping:\n            if not stack:\n                return False\n            top = stack.pop()\n            if top != mapping[char]:\n                return False\n    return not stack\n```",
+        "http_status": 200,
+        "latency_ms": 13322,
+        "model_name": "poolside/laguna-xs-2.1:free",
+        "recorded_at": "2026-07-04T17:39:17.418056+00:00"
+      },
+      "hard_edit_distance": {
+        "content": "```python\ndef edit_distance(a, b):\n    m = len(a)\n    n = len(b)\n    dp = [[0] * (n + 1) for _ in range(m + 1)]\n    \n    for i in range(m + 1):\n        dp[i][0] = i\n    for j in range(n + 1):\n        dp[0][j] = j\n    \n    for i in range(1, m + 1):\n        for j in range(1, n + 1):\n            if a[i - 1] == b[j - 1]:\n                dp[i][j] = dp[i - 1][j - 1]\n            else:\n                dp[i][j] = 1 + min(dp[i - 1][j], dp[i][j - 1], dp[i - 1][j - 1])\n    \n    return dp[m][n]\n```",
+        "http_status": 200,
+        "latency_ms": 35148,
+        "model_name": "poolside/laguna-xs-2.1:free",
+        "recorded_at": "2026-07-04T17:40:36.073438+00:00"
+      },
+      "hard_lcs": {
+        "content": "```python\ndef lcs_length(a, b):\n    m = len(a)\n    n = len(b)\n    dp = [[0] * (n + 1) for _ in range(m + 1)]\n    for i in range(1, m + 1):\n        for j in range(1, n + 1):\n            if a[i - 1] == b[j - 1]:\n                dp[i][j] = dp[i - 1][j - 1] + 1\n            else:\n                dp[i][j] = max(dp[i - 1][j], dp[i][j - 1])\n    return dp[m][n]\n```",
+        "http_status": 200,
+        "latency_ms": 11332,
+        "model_name": "poolside/laguna-xs-2.1:free",
+        "recorded_at": "2026-07-04T17:38:50.278720+00:00"
+      },
+      "hard_min_coins": {
+        "content": "```python\ndef min_coins(coins, amount):\n    dp = [float('inf')] * (amount + 1)\n    dp[0] = 0\n    for i in range(1, amount + 1):\n        for coin in coins:\n            if coin <= i:\n                dp[i] = min(dp[i], dp[i - coin] + 1)\n    return dp[amount] if dp[amount] != float('inf') else -1\n```",
+        "http_status": 200,
+        "latency_ms": 13815,
+        "model_name": "poolside/laguna-xs-2.1:free",
+        "recorded_at": "2026-07-04T17:39:04.095213+00:00"
+      },
+      "hard_mod_exp": {
+        "content": "376",
+        "http_status": 200,
+        "latency_ms": 34701,
+        "model_name": "poolside/laguna-xs-2.1:free",
+        "recorded_at": "2026-07-04T17:39:52.119755+00:00"
+      },
+      "hard_number_search": {
+        "content": "161",
+        "http_status": 200,
+        "latency_ms": 10899,
+        "model_name": "poolside/laguna-xs-2.1:free",
+        "recorded_at": "2026-07-04T17:38:38.945035+00:00"
+      },
+      "hard_regex_match": {
+        "content": "",
+        "http_status": 200,
+        "latency_ms": 48809,
+        "model_name": "poolside/laguna-xs-2.1:free",
+        "recorded_at": "2026-07-04T17:41:24.884009+00:00"
+      },
+      "hard_trailing_zeros": {
+        "content": "24",
+        "http_status": 200,
+        "latency_ms": 8803,
+        "model_name": "poolside/laguna-xs-2.1:free",
+        "recorded_at": "2026-07-04T17:40:00.923879+00:00"
+      },
+      "med_factorial": {
+        "content": "",
+        "http_status": 200,
+        "latency_ms": 50005,
+        "model_name": "poolside/laguna-xs-2.1:free",
+        "recorded_at": "2026-07-04T17:38:15.557546+00:00"
+      },
+      "med_palindrome": {
+        "content": "```python\ndef is_palindrome(s):\n    cleaned = ''.join(c.lower() for c in s if c.isalnum())\n    return cleaned == cleaned[::-1]\n```",
+        "http_status": 200,
+        "latency_ms": 12486,
+        "model_name": "poolside/laguna-xs-2.1:free",
+        "recorded_at": "2026-07-04T17:38:28.044944+00:00"
+      },
+      "med_speed": {
+        "content": "80",
+        "http_status": 200,
+        "latency_ms": 3459,
+        "model_name": "poolside/laguna-xs-2.1:free",
+        "recorded_at": "2026-07-04T17:37:25.551724+00:00"
       }
     }
   },
