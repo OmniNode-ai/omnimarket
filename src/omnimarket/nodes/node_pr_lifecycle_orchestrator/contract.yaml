@@ -130,6 +130,23 @@ inputs:
     required: false
     default: 30
     minimum: 1
+  loop_until_done:
+    type: bool
+    description: "Continue sweep passes while the result remains NOT_DONE"
+    required: false
+    default: true
+  max_sweep_passes:
+    type: int
+    description: "Maximum sweep passes when loop_until_done is enabled"
+    required: false
+    default: 20
+    minimum: 1
+  sweep_sleep_seconds:
+    type: int
+    description: "Seconds to sleep between NOT_DONE sweep passes"
+    required: false
+    default: 0
+    minimum: 0
 
 outputs:
   prs_inventoried:
