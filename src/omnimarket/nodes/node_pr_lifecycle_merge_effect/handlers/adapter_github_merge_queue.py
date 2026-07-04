@@ -32,8 +32,7 @@ _ENQUEUE_MUTATION = (
 )
 
 _DEQUEUE_MUTATION = (
-    "mutation($id: ID!) { dequeuePullRequest(input: {id: $id}) "
-    "{ clientMutationId } }"
+    "mutation($id: ID!) { dequeuePullRequest(input: {id: $id}) { clientMutationId } }"
 )
 
 _NO_MERGE_QUEUE_MARKERS = (
