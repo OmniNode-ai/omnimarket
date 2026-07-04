@@ -63,10 +63,31 @@ def _overlay_endpoints() -> dict[str, str]:
 
 
 def _resolve_endpoint(rung: ModelLadderRung, overlay: dict[str, str]) -> str | None:
-    env_url = os.environ.get(rung.endpoint_url_env)
-    if env_url:
-        return env_url
+    # Public cloud rungs carry the complete URL directly.
+    if rung.endpoint_url:
+        return rung.endpoint_url
+    if rung.endpoint_url_env:
+        env_url = os.environ.get(rung.endpoint_url_env)
+        if env_url:
+            return env_url
     return overlay.get(rung.backend_id)
+
+
+def _headers(rung: ModelLadderRung) -> dict[str, str]:
+    """Build request headers, adding a Bearer key for cloud rungs.
+
+    The key VALUE is read from the env var named by ``api_key_env`` at record
+    time only (never committed). Missing key on a cloud rung is surfaced by the
+    caller (the request 401s and the cell is recorded as a failure).
+    """
+
+    headers = {"Content-Type": "application/json"}
+    if rung.api_key_env:
+        key = os.environ.get(rung.api_key_env, "")
+        if key:
+            headers["Authorization"] = f"Bearer {key}"
+    headers.update(rung.extra_headers)
+    return headers
 
 
 def _resolve_model(endpoint: str, configured: str, *, timeout_s: float = 15.0) -> str:
@@ -90,7 +111,13 @@ def _resolve_model(endpoint: str, configured: str, *, timeout_s: float = 15.0) -
 
 
 def _complete(
-    endpoint: str, model_name: str, prompt: str, *, max_tokens: int, timeout_s: float
+    endpoint: str,
+    model_name: str,
+    prompt: str,
+    *,
+    max_tokens: int,
+    timeout_s: float,
+    headers: dict[str, str],
 ) -> tuple[str, int, int]:
     payload = json.dumps(
         {
@@ -103,7 +130,7 @@ def _complete(
     req = urllib.request.Request(
         endpoint,
         data=payload,
-        headers={"Content-Type": "application/json"},
+        headers=headers,
         method="POST",
     )
     start = time.monotonic()
@@ -111,7 +138,9 @@ def _complete(
         body = json.loads(resp.read().decode())
         status = resp.status
     latency_ms = int((time.monotonic() - start) * 1000)
-    content = body["choices"][0]["message"]["content"]
+    # Some providers return content: null with the text in a reasoning field or an
+    # empty completion; coerce to "" so an empty answer grades as a fail, not a crash.
+    content = body["choices"][0]["message"].get("content") or ""
     return content, latency_ms, status
 
 
@@ -122,21 +151,29 @@ def _record_rung(
     *,
     max_tokens: int,
     timeout_s: float,
+    retries: int = 3,
 ) -> dict[str, Any]:
     out: dict[str, Any] = {}
-    served_model = _resolve_model(endpoint, rung.model_name)
-    if served_model != rung.model_name:
-        print(
-            f"    [{rung.rung_id}] model {rung.model_name!r} -> served {served_model!r}"
-        )
+    headers = _headers(rung)
+    # Cloud rungs authenticate; their /models probe would 401, so trust the
+    # configured model id. Local rungs resolve the served id (label drift).
+    if rung.api_key_env or rung.endpoint_url:
+        served_model = rung.model_name
+    else:
+        served_model = _resolve_model(endpoint, rung.model_name)
+        if served_model != rung.model_name:
+            print(
+                f"    [{rung.rung_id}] model {rung.model_name!r} -> served {served_model!r}"
+            )
     for task in tasks:
         content = ""
         latency_ms = 0
         status = 0
         last_exc: Exception | None = None
-        # Slow local rungs (e.g. the 4090 reasoner) intermittently time out; retry
-        # so a transient network stall does not leave a non-200 evidence cell.
-        for attempt in range(1, 4):
+        # Slow local rungs (4090 reasoner) intermittently time out, and free-tier
+        # cloud (OpenRouter) can 429; retry with a longer backoff on rate-limit so
+        # a transient stall does not leave a non-200 evidence cell.
+        for attempt in range(1, retries + 1):
             try:
                 content, latency_ms, status = _complete(
                     endpoint,
@@ -144,6 +181,7 @@ def _record_rung(
                     task.prompt,
                     max_tokens=max_tokens,
                     timeout_s=timeout_s,
+                    headers=headers,
                 )
                 last_exc = None
                 break
@@ -155,11 +193,14 @@ def _record_rung(
                 ValueError,
             ) as exc:
                 last_exc = exc
+                code = getattr(exc, "code", None)
+                backoff = 30.0 if code == 429 else 3.0
                 print(
-                    f"    [{rung.rung_id}] {task.task_id}: attempt {attempt} ERROR {exc}",
+                    f"    [{rung.rung_id}] {task.task_id}: attempt {attempt} "
+                    f"ERROR {exc} (backoff {backoff}s)",
                     file=sys.stderr,
                 )
-                time.sleep(3.0)
+                time.sleep(backoff)
         if last_exc is not None:
             out[task.task_id] = {
                 "content": "",
@@ -194,10 +235,18 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--only", action="append", default=[], help="record only these rung_ids"
     )
+    parser.add_argument(
+        "--task", action="append", default=[], help="record only these task_ids"
+    )
+    parser.add_argument(
+        "--retries", type=int, default=3, help="per-cell attempts before recording fail"
+    )
     args = parser.parse_args(argv)
 
     rungs = load_rungs(args.rungs)
     tasks = load_corpus(args.corpus)
+    if args.task:
+        tasks = [t for t in tasks if t.task_id in args.task]
     overlay = _overlay_endpoints()
 
     recorded_rungs: dict[str, Any] = {}
@@ -215,7 +264,12 @@ def main(argv: list[str] | None = None) -> int:
             continue
         print(f"  RECORD {rung.rung_id} ({rung.model_name}) -> {endpoint}")
         recorded_rungs[rung.rung_id] = _record_rung(
-            rung, tasks, endpoint, max_tokens=args.max_tokens, timeout_s=args.timeout
+            rung,
+            tasks,
+            endpoint,
+            max_tokens=args.max_tokens,
+            timeout_s=args.timeout,
+            retries=args.retries,
         )
 
     packet = {

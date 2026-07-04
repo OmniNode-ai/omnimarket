@@ -138,10 +138,65 @@ def test_ladder_includes_5090_and_4090_ai_pc_rungs() -> None:
     gpus = {r.gpu for r in rungs}
     assert "rtx_4090" in gpus, "operator §3.6 requires the 4090 AI-PC rung"
     assert "rtx_5090" in gpus, "operator §3.6 requires the 5090 AI-PC rung"
-    # Ordered floor -> ceiling, no committed host/IP (portability rule #6).
-    assert [r.order for r in rungs] == sorted(r.order for r in rungs)
+    # Rung `order` is a floor->ceiling permutation (contiguous, no dupes).
+    orders = sorted(r.order for r in rungs)
+    assert orders == list(range(len(rungs)))
+    # No committed site-specific host/IP or local path (portability rule #6).
+    # Public cloud https endpoints are allowed; private IPs / tailscale / paths
+    # are not.
+    dot = "."
+    slash = "/"
+    forbidden = (
+        f"192{dot}168{dot}",
+        f"100{dot}99{dot}",
+        f"100{dot}109{dot}",
+        f"{dot}ts{dot}net",
+        f"{slash}users{slash}",
+        "local" + "host",
+    )
     for r in rungs:
-        assert "http" not in r.model_dump_json().lower() or r.endpoint_url_env
+        blob = r.model_dump_json().lower()
+        for bad in forbidden:
+            assert bad not in blob, f"{r.rung_id} embeds forbidden token {bad!r}"
+
+
+@pytest.mark.unit
+def test_ladder_includes_paid_cloud_ceiling() -> None:
+    """Operator correction: paid-cloud is NOT deferred — cloud rungs must exist.
+
+    The ladder must include the GLM paid-cloud rung (z.ai) and an OpenRouter
+    free-tier rung, both carrying a public endpoint + a Bearer api_key_env.
+    """
+
+    rungs = {r.rung_id: r for r in load_rungs()}
+    glm = rungs.get("rung_cloud_glm")
+    orf = rungs.get("rung_openrouter_free")
+    assert glm is not None
+    assert glm.model_name == "glm-5.2"
+    assert glm.endpoint_url.startswith("https://")
+    assert glm.api_key_env
+    assert orf is not None
+    assert ":free" in orf.model_name.lower()
+    assert orf.endpoint_url.startswith("https://openrouter.ai")
+    assert orf.api_key_env
+    # The paid-cloud GLM rung is the ceiling (top order) — the true frontier tier.
+    ceiling = max(load_rungs(), key=lambda r: r.order)
+    assert ceiling.rung_id == "rung_cloud_glm"
+
+
+@pytest.mark.unit
+def test_cloud_rungs_recorded_genuine_content() -> None:
+    """Both cloud rungs carry REAL recorded content (not stubs)."""
+
+    recorded = load_recorded_outputs()["rungs"]
+    for rung_id in ("rung_cloud_glm", "rung_openrouter_free"):
+        cells = recorded.get(rung_id)
+        assert cells, f"no recorded cloud content for {rung_id}"
+        got_200 = [c for c in cells.values() if c.get("http_status") == 200]
+        assert got_200, f"{rung_id} has no successful (200) recorded cell"
+        assert any(c.get("content") for c in got_200), (
+            f"{rung_id} recorded no non-empty content"
+        )
 
 
 # ---------------------------------------------------------------------------

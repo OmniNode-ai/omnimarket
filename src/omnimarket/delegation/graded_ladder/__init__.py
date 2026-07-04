@@ -4,9 +4,10 @@
 
 The operator decision-of-record re-cut the delegation benchmark from a smoke
 test into a *graded* benchmark: an escalating-complexity corpus is run across the
-EXISTING local delegation ladder rungs (including the 5090/4090 AI-PC rungs), and
-the acceptance criterion is that the benchmark SEPARATES the rungs — the floor
-rung scores measurably below the ceiling rung. Paid-cloud ceiling is deferred.
+EXISTING delegation ladder rungs (the local 5090/4090 AI-PC rungs and the 284B
+local ceiling, up to the paid-cloud ceiling — GLM-5.2 via z.ai and the OpenRouter
+free-tier frontier model), and the acceptance criterion is that the benchmark
+SEPARATES the rungs — the floor rung scores measurably below the cloud ceiling.
 
 This package holds the deterministic scoring core:
 

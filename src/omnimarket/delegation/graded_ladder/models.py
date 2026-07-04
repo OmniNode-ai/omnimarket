@@ -40,12 +40,14 @@ class EnumGraderKind(StrEnum):
 
 
 class ModelLadderRung(BaseModel):
-    """One rung of the local delegation ladder under test.
+    """One rung of the delegation ladder under test (local GPU or paid cloud).
 
-    Rungs are ordered floor -> ceiling by ``order``. Endpoints are resolved from
-    ``endpoint_url_env`` (capability-named, per the bifrost overlay convention) at
-    record time only — the committed rung config never embeds a site-specific
-    host/IP.
+    Rungs are ordered floor -> ceiling by ``order``. Local site-specific endpoints
+    are resolved from ``endpoint_url_env`` (capability-named, per the bifrost
+    overlay convention) at record time only — the committed rung config never
+    embeds a site-specific host/IP. Public CLOUD endpoints carry the complete URL
+    directly in ``endpoint_url`` (public URLs are safe to commit) and authenticate
+    with the Bearer key named by ``api_key_env``.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -55,15 +57,37 @@ class ModelLadderRung(BaseModel):
     model_name: str = Field(description="Model id served on this rung.")
     backend_id: str = Field(description="Canonical routing_tiers backend id.")
     endpoint_url_env: str = Field(
-        description="Env var holding the COMPLETE chat-completions URL for capture."
+        default="",
+        description=(
+            "Env var holding the COMPLETE chat-completions URL for a local "
+            "site-specific endpoint. Empty for public cloud rungs."
+        ),
     )
-    gpu: str = Field(description="Accelerator label, e.g. rtx_4090 / rtx_5090.")
+    endpoint_url: str = Field(
+        default="",
+        description=(
+            "COMPLETE public chat-completions URL for cloud rungs, transcribed "
+            "from bifrost_delegation.yaml (public URLs only — never a host/IP)."
+        ),
+    )
+    api_key_env: str = Field(
+        default="",
+        description=(
+            "Env var NAME (not value) holding the Bearer API key for cloud rungs; "
+            "sent as Authorization: Bearer <key> at record time. Empty for local."
+        ),
+    )
+    extra_headers: dict[str, str] = Field(
+        default_factory=dict,
+        description="Extra HTTP headers for the rung (e.g. OpenRouter attribution).",
+    )
+    gpu: str = Field(description="Accelerator label, e.g. rtx_4090 / rtx_5090 / cloud.")
     host_label: str = Field(
-        description="Human label of the serving host (AI-PC / Mac-Studio), no IP."
+        description="Human label of the serving host (AI-PC / Mac-Studio / cloud), no IP."
     )
     tier_name: str = Field(
         default="local",
-        description="routing_tiers.yaml tier this rung belongs to (all local here).",
+        description="routing_tiers.yaml tier (local / cheap_cloud / cheap_frontier).",
     )
 
 
