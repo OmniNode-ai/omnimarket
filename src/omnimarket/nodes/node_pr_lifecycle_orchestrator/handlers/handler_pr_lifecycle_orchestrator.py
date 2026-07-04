@@ -211,6 +211,23 @@ class ModelPrLifecycleStartCommand(BaseModel):
         ge=1,
         description="Hard per-PR verification timeout in seconds.",
     )
+    loop_until_done: bool = Field(
+        default=True,
+        description=(
+            "Keep re-running sweep passes while the org-wide done gate reports "
+            "NOT_DONE."
+        ),
+    )
+    max_sweep_passes: int = Field(
+        default=20,
+        ge=1,
+        description="Maximum sweep passes for one invocation.",
+    )
+    sweep_sleep_seconds: int = Field(
+        default=60,
+        ge=0,
+        description="Backoff between NOT_DONE sweep passes.",
+    )
 
     @field_validator("repos", mode="before")
     @classmethod
@@ -995,28 +1012,58 @@ class HandlerPrLifecycleOrchestrator:
         self,
         command: ModelPrLifecycleStartCommand,
     ) -> ModelPrLifecycleResult:
-        """Run the PR lifecycle sweep and persist the result for skill polling.
+        """Run the PR lifecycle sweep loop and persist each pass result.
 
         Writes ``$ONEX_STATE_DIR/merge-sweep/{run_id}/result.json`` on both
         success and failure paths. The merge_sweep skill (v4.0.0+) polls this
         file to determine orchestrator completion.
         """
-        try:
-            result = await self._run_sweep(command)
-        except BaseException as exc:
-            # Final safety net — even unexpected errors must produce a result.json
-            # so the polling skill can terminate instead of timing out.
-            logger.exception(
-                "[PR-LIFECYCLE-ORCH] unexpected failure outside FSM: %s", exc
-            )
-            result = ModelPrLifecycleResult(
-                correlation_id=command.correlation_id,
-                final_state=EnumOrchestratorState.FAILED.value,
-                error_message=str(exc),
-            )
+        result: ModelPrLifecycleResult | None = None
+        for pass_index in range(1, command.max_sweep_passes + 1):
+            try:
+                logger.info(
+                    "[PR-LIFECYCLE-ORCH] sweep pass %d/%d run_id=%s",
+                    pass_index,
+                    command.max_sweep_passes,
+                    command.run_id,
+                )
+                result = await self._run_sweep(command)
+            except BaseException as exc:
+                # Final safety net — even unexpected errors must produce a result.json
+                # so the polling skill can terminate instead of timing out.
+                logger.exception(
+                    "[PR-LIFECYCLE-ORCH] unexpected failure outside FSM: %s", exc
+                )
+                result = ModelPrLifecycleResult(
+                    correlation_id=command.correlation_id,
+                    final_state=EnumOrchestratorState.FAILED.value,
+                    error_message=str(exc),
+                )
+                self._write_result_file(command.run_id, result)
+                raise
+
             self._write_result_file(command.run_id, result)
-            raise
-        self._write_result_file(command.run_id, result)
+            if result.final_state != _FINAL_STATE_NOT_DONE:
+                return result
+            if (
+                not command.loop_until_done
+                or command.dry_run
+                or command.inventory_only
+                or pass_index >= command.max_sweep_passes
+            ):
+                return result
+
+            logger.info(
+                "[PR-LIFECYCLE-ORCH] sweep pass %d/%d reported NOT_DONE; "
+                "sleeping %ds before re-inventory",
+                pass_index,
+                command.max_sweep_passes,
+                command.sweep_sleep_seconds,
+            )
+            if command.sweep_sleep_seconds > 0:
+                await asyncio.sleep(command.sweep_sleep_seconds)
+
+        assert result is not None
         return result
 
     async def _run_sweep(
@@ -1663,7 +1710,10 @@ class HandlerPrLifecycleOrchestrator:
                 ticket_ids=pr.ticket_ids,
                 ci_status=_orch_checks_to_ci_status(pr.checks_status),
                 has_conflicts=pr.has_conflicts,
-                approved=(pr.review_status == "approved"),
+                approved=(
+                    pr.review_status == "approved"
+                    or str(pr.merge_state_status or "").upper() == "CLEAN"
+                ),
                 failed_check_names=pr.failed_check_names,
             )
             for pr in prs
