@@ -93,6 +93,18 @@ class ModelRedeployStartCommand(BaseModel):
             "attempted self-grant is observably discarded."
         ),
     )
+    dry_run: bool = Field(
+        default=False,
+        description=(
+            "Simulate the redeploy with NO live I/O (ssh/docker/rpk) and no bus "
+            "round-trip through the prod-promotion gate / deploy effect / "
+            "readiness gate. The orchestrator short-circuits to a REAL terminal "
+            "ModelRedeployCompletedEvent: DONE for dev/stability-test lanes "
+            "(nothing to authorize), BLOCKED for prod (a dry-run cannot resolve "
+            "the out-of-band promotion grant, so it never fabricates a passing "
+            "gate decision — OMN-13918)."
+        ),
+    )
 
 
 __all__: list[str] = ["ModelRedeployStartCommand"]

@@ -26,6 +26,14 @@ Flow (event-driven, no in-process loop):
 Non-prod lanes pass the gate trivially (the compute node allows them), so the
 same dispatch path serves dev / stability-test / prod with no branch in the
 orchestrator.
+
+``ModelRedeployStartCommand.dry_run`` (OMN-13918) short-circuits step 1 before
+any command is emitted: it never touches the gate / deploy effect / readiness
+gate, so ``onex skill redeploy --dry-run`` never performs live I/O. It still
+emits a REAL terminal ``redeploy-completed`` event rather than a synthetic
+success — ``DONE`` for dev/stability-test, ``BLOCKED`` for prod (a dry-run has
+no authority to resolve the out-of-band promotion grant, so it never fabricates
+a passing gate decision).
 """
 
 from __future__ import annotations
@@ -80,6 +88,13 @@ TOPIC_PROD_GATE_EVALUATE = _topic_with_suffix("prod-promotion-gate-evaluate.v1")
 TOPIC_DEPLOY_PUBLISH = _topic_with_suffix("redeploy-deploy-publish.v1")
 TOPIC_REDEPLOY_COMPLETED = _topic_with_suffix("redeploy-completed.v1")
 
+# OMN-13918: dry-run reports the base deploy-lifecycle phase count (sync_clones,
+# update_pins, rebuild, seed_infisical, verify_health, done) as SIMULATED — no
+# live I/O actually runs any of them. Kept local (not imported from the shared
+# ``_PHASE_SEQUENCE`` in ``omnimarket.events.runtime_deployment``, which is
+# module-private) so the count is self-documenting at the call site.
+_DRY_RUN_PHASES_SIMULATED = 6
+
 
 class HandlerRedeployOrchestrator:
     """Canonical orchestrator: dispatch redeploy commands over the bus."""
@@ -124,17 +139,72 @@ class HandlerRedeployOrchestrator:
     ) -> list[ModelEventEnvelope[Any]]:
         """Route a redeploy-start request to the next command.
 
-        Prod requests MUST resolve the promotion grant out-of-band first
-        (OMN-13439 Phase-2b resolver EFFECT reads the grant from
+        ``start.dry_run`` short-circuits BEFORE any bus round-trip (OMN-13918):
+        it never emits the grant-resolve / gate-evaluate / deploy-publish chain,
+        so a dry-run request touches no live I/O (ssh/docker/rpk) and cannot be
+        mistaken for a real deploy by any downstream consumer. See
+        ``_emit_dry_run_completed`` for the prod-safety rationale.
+
+        Otherwise: prod requests MUST resolve the promotion grant out-of-band
+        first (OMN-13439 Phase-2b resolver EFFECT reads the grant from
         ``onex_change_control@main``), so prod emits the grant-resolve command and
         only reaches the gate after the resolved fact rides back. Non-prod lanes
         need no grant — the gate trivially allows them — so they go straight to the
         gate-evaluate command, leaving dev/stability dispatch unchanged.
         """
         start = _coerce_start(envelope.payload, correlation_id)
+        if start.dry_run:
+            return self._emit_dry_run_completed(start)
         if start.runtime_lane is EnumRuntimeLane.PROD:
             return self._emit_grant_resolve(start)
         return self._emit_gate_evaluate(start, grant=None, evaluated_at=None)
+
+    def _emit_dry_run_completed(
+        self, start: ModelRedeployStartCommand
+    ) -> list[ModelEventEnvelope[Any]]:
+        """Emit a REAL terminal event for a dry-run request — no deploy I/O.
+
+        Dry-run short-circuits before any bus round-trip (grant-resolve /
+        gate-evaluate / deploy-publish / readiness-gate), so it never touches
+        ssh/docker/rpk. This still drives the orchestrator's own phase sequence
+        (it emits the SAME terminal event type a live run would eventually reach)
+        rather than fabricating a hardcoded empty success.
+
+        Prod safety (OMN-13918): a dry-run NEVER reports a fabricated pass for
+        the prod lane. A dry-run cannot resolve the out-of-band promotion grant
+        (Phase-2b resolver reads ``onex_change_control@main``), so it has no
+        authority to simulate a passing gate decision — reporting ``BLOCKED``
+        proves the gate is not bypassed rather than silently succeeding as if a
+        real prod promotion happened. Non-prod lanes carry no promotion
+        authorization to simulate, so they report ``DONE`` with the base
+        deploy-lifecycle phase count marked as SIMULATED (no live I/O ran).
+        """
+        if start.runtime_lane is EnumRuntimeLane.PROD:
+            completed = ModelRedeployCompletedEvent(
+                correlation_id=start.correlation_id,
+                final_phase=EnumRedeployPhase.BLOCKED,
+                phases_completed=0,
+                error_message=(
+                    "dry-run: prod lane requires a live prod-promotion-gate "
+                    "evaluation against an out-of-band-resolved grant; a "
+                    "dry-run cannot resolve that grant, so no promotion is "
+                    "simulated and no gate bypass is possible."
+                ),
+            )
+        else:
+            completed = ModelRedeployCompletedEvent(
+                correlation_id=start.correlation_id,
+                final_phase=EnumRedeployPhase.DONE,
+                phases_completed=_DRY_RUN_PHASES_SIMULATED,
+                error_message=None,
+            )
+        return [
+            ModelEventEnvelope(
+                payload=completed,
+                correlation_id=start.correlation_id,
+                event_type=TOPIC_REDEPLOY_COMPLETED,
+            )
+        ]
 
     def _emit_grant_resolve(
         self, start: ModelRedeployStartCommand
