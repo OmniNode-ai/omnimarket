@@ -1,0 +1,50 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# Delegation graded ladder benchmark — rung roster (OMN-13369, operator plan §3.6).
+#
+# These are the EXISTING local delegation-ladder rungs (routing_tiers.yaml, tier
+# `local`), ordered floor -> ceiling by genuine model capability. The operator
+# decision-of-record specifically requires the 5090/4090 AI-PC rungs be included;
+# both are present (rung_4090_reasoner, rung_5090_coder). Paid-cloud ceiling
+# (cheap_cloud / claude tiers) is DEFERRED per §3.6 and intentionally excluded.
+#
+# Endpoints are NOT embedded here (cross-machine portability, CLAUDE.md rule #6):
+# each rung names the capability env var that must carry the COMPLETE
+# chat-completions URL at record time (same convention as the bifrost overlay's
+# `endpoint_url_env`). The committed benchmark grades RECORDED outputs, so no
+# endpoint is needed to run it in CI.
+#
+# Verified live-reachable 2026-07-04 via `curl <endpoint>/v1/models` returning
+# HTTP 200 with the model id below (recorder run captured in recorded_rung_outputs.json).
+
+rungs:
+  # FLOOR — smallest local rung. RTX 4090 on the AI-PC. Qwen3.6-27B MTP.
+  - rung_id: rung_4090_reasoner
+    order: 0
+    model_name: Qwen3.6-27B-MTP-IQ4_XS.gguf
+    backend_id: local-reasoner
+    endpoint_url_env: BIFROST_LOCAL_REASONER_ENDPOINT_URL
+    gpu: rtx_4090
+    host_label: ai-pc
+    tier_name: local
+
+  # MID — RTX 5090 on the AI-PC. Qwen3.6-35B-A3B (the local-coder / heavy slot).
+  - rung_id: rung_5090_coder
+    order: 1
+    model_name: Qwen3.6-35B-A3B
+    backend_id: local-coder
+    endpoint_url_env: BIFROST_LOCAL_CODER_ENDPOINT_URL
+    gpu: rtx_5090
+    host_label: ai-pc
+    tier_name: local
+
+  # CEILING (local) — DeepSeek V4 Flash, 284B MoE on the Mac Studio.
+  - rung_id: rung_ds_v4_flash
+    order: 2
+    model_name: ds-v4-flash
+    backend_id: local-ds-v4-flash
+    endpoint_url_env: BIFROST_LOCAL_DS_V4_FLASH_ENDPOINT_URL
+    gpu: mac_studio_m3_ultra
+    host_label: mac-studio
+    tier_name: local
