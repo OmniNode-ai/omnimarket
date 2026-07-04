@@ -294,19 +294,18 @@ class TestQualityGateVerdictRecommendsFallback:
         "expected_min_tier",
     ),
     [
-        # OMN-13140 closed-set tier_order: code_generation declares
-        # [cheap_cloud, local, claude]. A gate failure on cheap_cloud escalates
-        # forward to the next declared tier (local), which is routable in the
-        # fixture. (Previously this case started on local and relied on the
-        # append-unlisted bug to reach cheap_frontier — a tier code_generation's
-        # tier_order does not list, so it is excluded under closed-set semantics.)
+        # OMN-13140 / OMN-13599 closed-set tier_order: code_generation declares
+        # [local, cheap_cloud, claude] (local AI-PC coder is the preferred first
+        # hop). A gate failure on cheap_cloud escalates forward to the next
+        # declared tier (the claude ceiling), which is routable in the fixture.
+        # cheap_frontier is absent from the closed set, so it is excluded.
         (
             "code_generation",
             "x = 1",
             ("min_length_chars_400",),
             "WEAK_OUTPUT",
             "cheap_cloud",
-            "local",
+            "claude",
         ),
         # research declares [local, cheap_cloud, claude]: a gate failure on local
         # escalates forward to cheap_cloud (routable in the fixture).
@@ -434,9 +433,10 @@ class TestNextEligibleTierCodeGeneration:
 
 @pytest.mark.unit
 class TestCanonicalCloudTargetCapability:
-    """GATE 3 (config): the canonical AI Studio Gemini target declares
-    code_generation in both the bifrost capabilities and the routing tier use_for;
-    Vertex stays defined but is intentionally NOT in the code_generation path.
+    """GATE 3 (config): the canonical AI Studio Gemini target keeps the
+    code_generation bifrost CAPABILITY but (OMN-13599) is intentionally NOT in the
+    code_generation ROUTING path (routing tier use_for) — code routes local then
+    direct z.ai GLM. Vertex likewise stays defined but out of the code path.
     """
 
     def _bifrost(self) -> dict[str, object]:
@@ -459,13 +459,20 @@ class TestCanonicalCloudTargetCapability:
             "code_generation" not in by_id[_CANONICAL_VERTEX_BACKEND_ID]["capabilities"]
         )
 
-    def test_gemini_flash_routing_tier_use_for_includes_code_generation(self) -> None:
+    def test_gemini_flash_routing_tier_use_for_excludes_code_generation(self) -> None:
+        # OMN-13599: Gemini flash remains AVAILABLE for prose/simple work
+        # (summarization, simple_tasks, document) and keeps the code_generation
+        # bifrost CAPABILITY, but it is intentionally removed from the
+        # code_generation ROUTING path (routing_tiers use_for). Code routes local
+        # first, then direct z.ai GLM — avoiding the AI Studio failures seen in
+        # dogfood.
         tiers = {t["name"]: t for t in self._routing_tiers()["tiers"]}
         cheap_cloud = tiers["cheap_cloud"]
         gemini = next(
             m for m in cheap_cloud["models"] if m["backend_id"] == "cloud-gemini-flash"
         )
-        assert "code_generation" in gemini["use_for"]
+        assert "code_generation" not in gemini["use_for"]
+        assert "summarization" in gemini["use_for"]
 
     def test_vertex_routing_tier_use_for_excludes_code_generation(self) -> None:
         tiers = {t["name"]: t for t in self._routing_tiers()["tiers"]}

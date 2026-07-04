@@ -549,6 +549,38 @@ class TestDeltaContractRouting:
             f"Expected default qwen3-coder-30b for unknown task, got: {result!r}"
         )
 
+    def test_local_coder_use_for_is_code_only(self) -> None:
+        """OMN-13599 recurrence guard: local-coder is a CODE backend only.
+
+        Its ``fast_path_threshold_tokens`` makes it win the fast-path for every
+        task type in its ``use_for``. If ``test`` or ``research`` are ever added
+        back, local-coder bleeds into task types the reasoner owns and
+        research/test regress off Qwen3.6-27B-MTP (see
+        ``test_reasoning_tasks_route_to_deepseek`` /
+        ``test_code_tasks_route_to_qwen3_coder``). Keep local-coder scoped to
+        code-writing task types.
+        """
+        import yaml
+
+        routing_tiers = yaml.safe_load(
+            Path("src/omnimarket/configs/routing_tiers.yaml").read_text()
+        )
+        local_tier = next(t for t in routing_tiers["tiers"] if t["name"] == "local")
+        coder = next(
+            m for m in local_tier["models"] if m["backend_id"] == "local-coder"
+        )
+        assert "test" not in coder["use_for"], (
+            "local-coder must not declare 'test' — with its fast_path_threshold "
+            "that hijacks test tasks from the reasoner (OMN-13599)"
+        )
+        assert "research" not in coder["use_for"], (
+            "local-coder must not declare 'research' — with its fast_path_threshold "
+            "that hijacks research tasks from the reasoner (OMN-13599)"
+        )
+        assert "code_generation" in coder["use_for"], (
+            "local-coder must remain the code_generation backend (OMN-13599)"
+        )
+
 
 # ---------------------------------------------------------------------------
 # Pricing ceiling enforcement via YAML config (OMN-11967)

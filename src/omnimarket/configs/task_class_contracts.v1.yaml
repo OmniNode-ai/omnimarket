@@ -35,8 +35,9 @@
 version: "1.0"
 default_task_model_ref: "Qwen3.6-35B-A3B"
 task_model_overrides:
-  # OMN-13380: Direct z.ai GLM-5.2 is the primary code-gen backend (preferred in
-  # the cheap_cloud tier, backend cloud-glm, secret_ref llm.glm.api_key). The
+  # OMN-13380/OMN-13599: Direct z.ai GLM-5.2 is the cloud fallback for code/test/
+  # refactor (preferred inside the cheap_cloud tier, backend cloud-glm,
+  # secret_ref llm.glm.api_key). The
   # former openrouter-glm-flash override was repointed here: we hold a direct GLM
   # key, so GLM routes direct to z.ai rather than through the OpenRouter
   # aggregator (routing-cost principle — OpenRouter is for FREE models only). The
@@ -89,11 +90,12 @@ task_classes:
         max: 1.0
     escalation_policy:
       max_escalations: 2
-      # OMN-13380: cheap_cloud is primary (direct z.ai GLM-5.2 via cloud-glm);
-      # local is the fallback when the GLM key is absent.
+      # OMN-13599: local AI-PC coder is primary when the Tailscale hostname overlay
+      # supplies a complete endpoint. Direct z.ai GLM-5.2 remains the metered
+      # cloud fallback/ceiling; Gemini is not in the code-generation first-hop path.
       tier_order:
-        - cheap_cloud
         - local
+        - cheap_cloud
         - claude
   documentation:
     required_capabilities:
