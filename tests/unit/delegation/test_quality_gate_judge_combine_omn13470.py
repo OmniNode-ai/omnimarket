@@ -159,6 +159,56 @@ _BIFROST_CONTRACT_CODE = (
     "  max_shadow_latency_ms: 5.0\n"
 )
 
+# OMN-13599: code_generation now routes local -> cheap_cloud(glm-5.2/cloud-glm)
+# -> claude, and Gemini flash is no longer in the code_generation ROUTING path.
+# The real-bus chain routes a code_generation request, so its self-contained
+# bifrost contract must carry the cloud-glm backend (the cheap_cloud code-gen
+# primary) with a COMPLETE verbatim endpoint_url and NO secret_ref — so routing
+# resolves deterministically to glm-5.2 without a host overlay and without the
+# LLM_GLM_API_KEY the delegation conftest deliberately clears. (The earlier
+# gemini-only contract could not resolve code_generation once OMN-13599 removed
+# gemini from that routing path, and local-coder has no endpoint off-host.)
+_BIFROST_CONTRACT_CODE_GLM = (
+    "config_version: '2.0.0'\n"
+    "schema_version: bifrost_delegation.v1\n"
+    "backends:\n"
+    "  - backend_id: cloud-glm\n"
+    '    endpoint_url: "https://example.test/v1/chat/completions"\n'
+    '    model_name: "glm-5.2"\n'
+    "    tier: cheap_cloud\n"
+    "    timeout_ms: 30000\n"
+    "    max_tokens: 8192\n"
+    "    capabilities: [code_generation, code_review, reasoning, research, test, refactor]\n"
+    "routing_rules:\n"
+    '  - rule_id: "cccccccc-cccc-4ccc-8ccc-cccccccccccc"\n'
+    "    priority: 10\n"
+    "    task_class: code_generation\n"
+    '    task_class_contract_version: "1.0.0"\n'
+    '    backend_policy_version: "2.0.0"\n'
+    "    match_operation_types: [chat_completion]\n"
+    "    match_capabilities: [code_generation]\n"
+    "    backend_ids: [cloud-glm]\n"
+    "    fallback_policy:\n"
+    "      action: escalate_to_next_tier\n"
+    "      max_retries: 1\n"
+    "      on_exhaust: return_error\n"
+    '    shadow_policy_id: "dddddddd-dddd-4ddd-8ddd-dddddddddddd"\n'
+    "default_backends:\n"
+    "  - cloud-glm\n"
+    "circuit_breaker:\n"
+    "  failure_threshold: 5\n"
+    "  window_seconds: 30\n"
+    "failover:\n"
+    "  max_attempts: 3\n"
+    "  backoff_base_ms: 500\n"
+    "shadow_mode:\n"
+    "  enabled: false\n"
+    '  policy_version: "test"\n'
+    "  log_sample_rate: 1.0\n"
+    "  comparison_logging_enabled: true\n"
+    "  max_shadow_latency_ms: 5.0\n"
+)
+
 _GLM_KEY_CONFIGURED = bool(os.environ.get("LLM_GLM_API_KEY", "").strip())
 _LIVE_JUDGE_ENABLED = (
     os.environ.get("OMN_ALLOW_LIVE_JUDGE_CALL", "").lower() == "true"
@@ -420,7 +470,10 @@ class TestJudgeCombineRealBusChain:
         _h._config = None
         _h._load_bifrost_endpoints.cache_clear()
         contract_path = tmp_path / "bifrost_delegation.yaml"
-        contract_path.write_text(_BIFROST_CONTRACT_CODE, encoding="utf-8")
+        # OMN-13599: the chain routes a code_generation request; use the GLM
+        # contract so resolution is deterministic (cloud-glm) under the new
+        # local -> cheap_cloud -> claude order, independent of host overlay.
+        contract_path.write_text(_BIFROST_CONTRACT_CODE_GLM, encoding="utf-8")
         monkeypatch.setenv("BIFROST_CONTRACT_PATH", str(contract_path))
         yield
         _h._config = None
@@ -431,6 +484,7 @@ class TestJudgeCombineRealBusChain:
         *,
         llm_content: str,
         judge_adapter: RecordedJudgeReplayAdapter,
+        min_tier_name: str | None = None,
     ) -> tuple[object, list[object], HandlerDelegationWorkflow, list[str]]:
         bus = EventBusInmemory()
         await bus.start()
@@ -470,6 +524,16 @@ class TestJudgeCombineRealBusChain:
         # --- orchestrator FSM start: emit routing intent ---
         routing_intents = workflow.handle_delegation_request(request)
         assert isinstance(routing_intents[0], ModelRoutingIntent)
+        # OMN-13599: for the fail-closed refusal proof, pin the terminal ceiling
+        # tier so a single-pass gate failure has no higher tier to escalate to
+        # and MUST emit a terminal delegation-failed event. (Under the new
+        # local -> cheap_cloud -> claude order the cheap_cloud primary and the
+        # claude ceiling share the cloud-glm backend, so a cheap_cloud refusal
+        # would otherwise escalate to claude rather than terminate in one pass.)
+        if min_tier_name is not None:
+            routing_intents = [
+                ModelRoutingIntent(payload=request, min_tier_name=min_tier_name)
+            ]
 
         # --- routing reducer resolves a concrete backend (REAL resolution) ---
         decision = routing_handler.handle(routing_intents[0])
@@ -539,6 +603,7 @@ class TestJudgeCombineRealBusChain:
         gate_result, _terminal, _workflow, consumed = await self._drive_chain(
             llm_content="I cannot complete this task.",
             judge_adapter=RecordedJudgeReplayAdapter(),
+            min_tier_name="claude",
         )
         assert gate_result.passed is False  # type: ignore[attr-defined]
         assert TOPIC_ID_DELEGATION_COMPLETED not in consumed, (

@@ -46,12 +46,21 @@ tiers:
       - id: Qwen3.6-35B-A3B
         backend_id: local-coder
         max_context_tokens: 65536
+        # OMN-13599: local-coder is the CODE backend only. `test` and `research`
+        # were removed here so the code-only fast_path_threshold below does not
+        # bleed local-coder into task types the reasoner owns — the routing
+        # contract keeps test/research on local-reasoner (Qwen3.6-27B-MTP); see
+        # test_contract_routing_policy. code_review/refactor stay: they are
+        # code-writing tasks and the reasoner does not declare them.
         use_for:
           - code_generation
           - code_review
           - refactor
-          - test
-          - research
+        # OMN-13599: AI-PC local-coder is the preferred local code backend when
+        # its Tailscale hostname overlay is present. Without a threshold, the
+        # fast-path selector can prefer later local models that also declare
+        # code_generation.
+        fast_path_threshold_tokens: 65536
       - id: Qwen3.6-27B-MTP-IQ4_XS.gguf
         backend_id: local-reasoner
         max_context_tokens: 24576
@@ -124,11 +133,9 @@ tiers:
         backend_id: cloud-gemini-flash
         max_context_tokens: 1000000
         use_for:
-          # OMN-13140: code_generation added so the canonical cloud-escalation
-          # target (AI Studio cloud-gemini-flash) is SELECTABLE for the hackathon
-          # code_generation proof. Without it the cheap_cloud tier could not route
-          # code_generation to Gemini and escalation never reached Google.
-          - code_generation
+          # OMN-13599: Gemini remains available for prose/simple work, but it is
+          # intentionally not a code_generation fallback. Code routes local first,
+          # then direct z.ai GLM, avoiding the AI Studio failures seen in dogfood.
           - summarization
           - simple_tasks
           - document

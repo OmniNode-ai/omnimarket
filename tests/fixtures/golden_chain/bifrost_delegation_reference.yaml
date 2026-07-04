@@ -1,14 +1,14 @@
 config_version: '2.0.0'
 schema_version: bifrost_delegation.v1
 backends:
-  - backend_id: local-coder
-    endpoint_url: "http://test-coder:8000"
-    model_name: "test-local-coder"
+  - backend_id: local-reasoner
+    endpoint_url: "http://test-reasoner:8001"
+    model_name: "test-local-reasoner"
     tier: local
     timeout_ms: 30000
     capabilities: [code_completion, context_window_large]
 default_backends:
-  - local-coder
+  - local-reasoner
 routing_rules:
   - rule_id: "55555555-5555-4555-8555-555555555555"
     priority: 10
@@ -17,7 +17,7 @@ routing_rules:
     backend_policy_version: "2.0.0"
     match_operation_types: [chat_completion]
     match_capabilities: [code_completion]
-    backend_ids: [local-coder]
+    backend_ids: [local-reasoner]
     fallback_policy:
       action: return_error
       max_retries: 0
