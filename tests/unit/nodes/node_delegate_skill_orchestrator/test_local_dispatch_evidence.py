@@ -30,7 +30,10 @@ from omnimarket.nodes.node_delegate_skill_orchestrator.ports.port_local_delegati
 from omnimarket.nodes.node_delegation_quality_gate_reducer.judge.handler_judge_adequacy import (
     HandlerJudgeAdequacy,
 )
-from omnimarket.nodes.node_llm_delegation_call_effect.handlers import transport
+from omnimarket.nodes.node_llm_delegation_call_effect.handlers import (
+    handler_llm_delegation_call,
+    transport,
+)
 from omnimarket.routing import delegation_backend_resolution
 from tests.fixtures.judge_inference import CannedAdequacyBridge
 
@@ -82,6 +85,14 @@ def _patch_routing(
 def _patch_transport(monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
     """Patch the effect handler transport to return a typed body (no network)."""
     captured: dict[str, Any] = {}
+    # handler_llm_delegation_call caches probe_health results in a module-level
+    # dict keyed by endpoint_url with a TTL. Under pytest-split, an earlier test
+    # (in this file or another) can cache a negative result for the same
+    # "http://inference.example:8000/..." fixture URL, which this test's
+    # monkeypatched fake_probe_health below would never override — the cache
+    # lookup happens before the patched function is even called. Clear it so
+    # this test's own probe result is authoritative (OMN-13940 CI flake).
+    handler_llm_delegation_call._health_cache.clear()
 
     def fake_probe_health(endpoint_url: str, **_: Any) -> bool:
         captured["probe_url"] = endpoint_url
@@ -492,6 +503,8 @@ def _patch_transport_with_content(
     exercises the QUALITY gate, not transport failure: a model refusal is still a
     200 OK at the transport boundary.
     """
+    # See _patch_transport above — clear the stale-cache-pollution hazard.
+    handler_llm_delegation_call._health_cache.clear()
 
     def fake_probe_health(endpoint_url: str, **_: Any) -> bool:
         return True
