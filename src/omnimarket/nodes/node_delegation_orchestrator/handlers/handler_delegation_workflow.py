@@ -61,6 +61,9 @@ from omnimarket.models.delegation.llm_cost_routing.model_llm_delegation_escalati
 from omnimarket.models.delegation.quality_bar_evidence import (
     format_quality_bar_labels,
 )
+from omnimarket.models.delegation.wire.model_quality_gate import (
+    SCORE_SOURCE_DETERMINISTIC_ACCEPTANCE,
+)
 from omnimarket.nodes.contract_topics import contract_publish_topics
 from omnimarket.nodes.node_delegation_escalation_decision_compute.handlers.handler_escalation_decision import (
     HandlerEscalationDecision,
@@ -1240,6 +1243,22 @@ class HandlerDelegationWorkflow:
         actual_score = result.quality_score
         score_below_required_bar = actual_score < required_bar_authority.required_bar
         pre_filter_rejected = result.fail_category == "fail_deterministic"
+        # OMN-13959 — judge-unavailable degraded acceptance (parity with the
+        # bus-less local port ``_is_quality_accepted``). A VERIFIABLE class records
+        # ``score_source=deterministic_acceptance`` (not ``combined``) ONLY when the
+        # deterministic acceptance FLOOR passed but the LLM-judge adequacy score was
+        # NOT combined — i.e. the judge failed / was unreachable (``JUDGE_FAILED``:
+        # e.g. the cloud judge is 429-throttled). In that state the combined-score
+        # ``required_bar`` (0.85) is structurally un-meetable (the judge's 0.4
+        # adequacy band is absent, so the deterministic-only graded score tops out
+        # ~0.733), so a valid artifact that cleared the real DoD floor must fall
+        # back to the deterministic-floor verdict instead of escalating to ladder
+        # exhaustion during a cloud-judge outage. This does NOT weaken the bar: when
+        # the judge IS reachable the score is combined and the full bar applies.
+        judge_unavailable_floor = (
+            result.passed
+            and result.score_source == SCORE_SOURCE_DETERMINISTIC_ACCEPTANCE
+        )
         # OMN-13409: quality_accepted requires result.passed in addition to the
         # score-threshold and deterministic-rejection checks. Before this fix the
         # orchestrator recomputed acceptance from fail_category + score alone and
@@ -1250,7 +1269,9 @@ class HandlerDelegationWorkflow:
         # authority fails (including the extended no_refusal pre-pass) — and the
         # orchestrator must honour it.
         quality_accepted = (
-            not pre_filter_rejected and not score_below_required_bar and result.passed
+            not pre_filter_rejected
+            and result.passed
+            and (judge_unavailable_floor or not score_below_required_bar)
         )
 
         if quality_accepted:

@@ -138,14 +138,19 @@ def test_passing_judge_lifts_code_answer_over_bar(
     assert len(bridge.calls) == 1
 
 
-def test_deterministic_only_code_answer_fails_bar_without_judge(
+def test_judge_unreachable_accepts_on_deterministic_floor(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Control: the same code answer FAILS the 0.85 bar when the judge fails closed.
+    """OMN-13959 supersedes OMN-13849's "judge-down => fail" control.
 
-    A judge whose inference errors (unresolvable) yields JUDGE_FAILED -> no score ->
-    deterministic-only 0.733 < 0.85 -> not accepted. This is exactly the structural
-    bias OMN-13849 documents; the passing-judge test above is what fixes it.
+    A judge whose inference errors (unresolvable / 429) yields JUDGE_FAILED -> no
+    score -> deterministic-only 0.733 < 0.85. OMN-13849 originally documented this
+    as "not accepted" (the structural bias the passing-judge combine fixes). But a
+    valid LOCAL artifact must not require a reachable CLOUD judge to be accepted:
+    OMN-13959 falls back to the deterministic FLOOR verdict when the judge is
+    UNAVAILABLE (distinct from a reachable judge scoring the answer low, which the
+    combined bar still rejects — see ``test_failing_judge_verdict_vetoes_acceptance``).
+    The same code answer therefore now COMPLETES on the local tier.
     """
     _no_escalation(monkeypatch)
 
@@ -164,8 +169,9 @@ def test_deterministic_only_code_answer_fails_bar_without_judge(
     )
     result = _dispatch(port, task_type="code_generation")
 
-    assert result["status"] == "failed"
-    assert result["quality_gate_passed"] is False
+    assert result["status"] == "completed"
+    assert result["quality_gate_passed"] is True
+    # Accepted on the deterministic floor, not by clearing the combined bar.
     assert float(result["quality_score"]) < 0.85
 
 

@@ -70,6 +70,7 @@ from omnimarket.inference.protocol_config import apply_inference_protocol
 # P1 deterministic-acceptance evidence fields not yet promoted to core), so the
 # port annotates against that surface rather than the core re-export.
 from omnimarket.models.delegation.wire.model_quality_gate import (
+    SCORE_SOURCE_DETERMINISTIC_ACCEPTANCE,
     ModelQualityGateResult,
 )
 
@@ -672,9 +673,32 @@ class LocalDelegationDispatchPort:
         no-contract-DoD path), no bar can be applied and the reducer verdict
         ``passed`` is the authority — preserving the pre-OMN-13849 behavior for
         classes without a declared bar.
+
+        OMN-13959 — judge-unavailable degraded acceptance. For a VERIFIABLE task
+        class the reducer records ``score_source=deterministic_acceptance`` (rather
+        than ``combined``) ONLY when the deterministic acceptance FLOOR passed but
+        the LLM-judge adequacy score was NOT combined — i.e. the judge call failed
+        / was unreachable (``JUDGE_FAILED``: e.g. the cloud judge is 429-throttled).
+        In that state the combined-score ``required_bar`` (0.85) is structurally
+        un-meetable, because the judge's semantic-adequacy band (weight 0.4) is
+        absent and the deterministic-only graded score tops out below the bar
+        (~0.733). Applying the combined bar would reject a valid LOCAL artifact that
+        cleared the real DoD floor and escalate it to ladder exhaustion during a
+        cloud-judge outage — defeating local-first. Fall back to the deterministic
+        FLOOR verdict (the real DoD checks: compiles / final-artifact-only /
+        non-refusal / non-empty) instead of a bar the judge band is required to
+        reach. This does NOT weaken the bar: when the judge IS reachable the score
+        is combined (``score_source=combined``) and the full bar still applies; a
+        deterministic-floor REJECTION returns ``fail_deterministic`` and is refused
+        above; a judge FAIL veto returns ``passed=False`` and is refused below.
         """
         if gate_result.fail_category == "fail_deterministic":
             return False
+        if (
+            gate_result.passed
+            and gate_result.score_source == SCORE_SOURCE_DETERMINISTIC_ACCEPTANCE
+        ):
+            return True
         try:
             authority = resolve_required_bar_authority(task_type=task_type)
         except RequiredBarAuthorityError:
