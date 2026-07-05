@@ -145,6 +145,8 @@ def test_minimal_skill_cli_payload_shape_validates() -> None:
 
     result = HandlerCreateTicket().handle(request)
     assert result.status == "created"
+    assert result.ticket_id == ""
+    assert result.ticket_url == ""
     assert result.validation_errors == []
 
 

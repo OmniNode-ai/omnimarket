@@ -41,6 +41,8 @@ class ModelCreateTicketResult(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     status: str = Field(default="created")
+    ticket_id: str = Field(default="")
+    ticket_url: str = Field(default="")
     title: str = Field(default="")
     team: str = Field(default="Omninode")
     is_seam_ticket: bool = Field(default=False)
