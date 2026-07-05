@@ -294,18 +294,21 @@ class TestQualityGateVerdictRecommendsFallback:
         "expected_min_tier",
     ),
     [
-        # OMN-13140 / OMN-13599 closed-set tier_order: code_generation declares
-        # [local, cheap_cloud, claude] (local AI-PC coder is the preferred first
-        # hop). A gate failure on cheap_cloud escalates forward to the next
-        # declared tier (the claude ceiling), which is routable in the fixture.
-        # cheap_frontier is absent from the closed set, so it is excluded.
+        # OMN-13140 / OMN-13943 closed-set tier_order: code_generation declares
+        # [local, cheap_cloud, cheap_frontier, claude] (local AI-PC coder is the
+        # preferred first hop). A gate failure on cheap_cloud escalates forward to
+        # the next declared tier — OMN-13943 inserted cheap_frontier (OpenRouter
+        # Qwen3-Coder-480B, free tier) between cheap_cloud and claude so a
+        # retryable cheap_cloud failure has somewhere to go before the ceiling —
+        # which is routable in the fixture (openrouter-qwen3-coder-480b carries a
+        # non-empty endpoint_url and no secret_ref requirement there).
         (
             "code_generation",
             "x = 1",
             ("min_length_chars_400",),
             "WEAK_OUTPUT",
             "cheap_cloud",
-            "claude",
+            "cheap_frontier",
         ),
         # research declares [local, cheap_cloud, claude]: a gate failure on local
         # escalates forward to cheap_cloud (routable in the fixture).

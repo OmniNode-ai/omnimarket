@@ -53,6 +53,14 @@ _CLOUD_SECRET_ENV_VARS = (
     # Legacy literal forms some paths may still read directly.
     "GEMINI_API_KEY",
     "OPENROUTER_API_KEY",
+    # OMN-13943: the bifrost contract's own ``api_key_env`` field is now a real
+    # secret-resolution fallback (secret_store_resolver.resolve_api_key_async),
+    # not dead config — a backend whose dotted secret_ref convention misses can
+    # still resolve through its own literal env var. OPEN_ROUTER_API_KEY (with
+    # underscore) is the canonical ~/.omnibase/.env name the openrouter backends
+    # declare via api_key_env; clear it too so cloud-tier routability in this
+    # suite stays independent of ambient credentials.
+    "OPEN_ROUTER_API_KEY",
 )
 
 

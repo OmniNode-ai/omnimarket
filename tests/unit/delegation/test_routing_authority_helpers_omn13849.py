@@ -107,8 +107,15 @@ def code_gen_routable(
 
 
 def test_resolve_max_escalations_reads_contract_budget() -> None:
-    """code_generation declares max_escalations=2; research=2; documentation=1."""
-    assert resolve_task_class_max_escalations("code_generation") == 2
+    """code_generation declares max_escalations=3 (OMN-13943); research=2;
+    documentation=1.
+
+    OMN-13943 bumped code_generation's budget 2 -> 3: the tier_order gained a
+    fourth tier (cheap_frontier, inserted between cheap_cloud and claude), so 3
+    escalations are now required to walk local -> cheap_cloud -> cheap_frontier
+    -> claude.
+    """
+    assert resolve_task_class_max_escalations("code_generation") == 3
     assert resolve_task_class_max_escalations("research") == 2
     assert resolve_task_class_max_escalations("documentation") == 1
 

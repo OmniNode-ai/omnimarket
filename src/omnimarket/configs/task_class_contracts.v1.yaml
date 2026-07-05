@@ -89,13 +89,23 @@ task_classes:
         min: 0.6
         max: 1.0
     escalation_policy:
-      max_escalations: 2
+      # OMN-13943: bumped 2 -> 3 so the ladder can actually reach `claude` now
+      # that `cheap_frontier` sits between `cheap_cloud` and it — 3 escalations
+      # are required to walk local -> cheap_cloud -> cheap_frontier -> claude.
+      max_escalations: 3
       # OMN-13599: local AI-PC coder is primary when the Tailscale hostname overlay
       # supplies a complete endpoint. Direct z.ai GLM-5.2 remains the metered
       # cloud fallback/ceiling; Gemini is not in the code-generation first-hop path.
+      # OMN-13943: `cheap_frontier` (OpenRouter Qwen3-Coder-480B, free tier) is
+      # now reachable via escalation — previously declared in routing_tiers.yaml
+      # but absent from every task class's tier_order, so a `cheap_cloud`
+      # RATE_LIMITED (GLM 429) had nowhere retryable to escalate to before
+      # `claude`. Inserted between `cheap_cloud` and `claude` so a GLM 429
+      # transparently falls through to OpenRouter before exhausting the ladder.
       tier_order:
         - local
         - cheap_cloud
+        - cheap_frontier
         - claude
   documentation:
     required_capabilities:
