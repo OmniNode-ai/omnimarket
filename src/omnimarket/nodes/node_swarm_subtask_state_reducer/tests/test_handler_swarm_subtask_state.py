@@ -40,7 +40,7 @@ def _event(
     endpoint_id: str = "ep-1",
     model_id: str = "model-1",
     failure_class: str = "",
-    source_topic: str = "onex.evt.omnimarket.delegation-call-completed.v1",  # onex-topic-test-fixture
+    source_topic: str = "onex.evt.omnimarket.delegation-call-completed.v1",
     source_partition: int = 0,
     source_offset: int = 1,
     emitted_at: str = "2026-05-25T00:00:00Z",
@@ -79,7 +79,7 @@ def test_delegation_execute_creates_assigned_subtask(
 ) -> None:
     evt = _event(
         EnumDelegationEventType.DELEGATION_EXECUTE,
-        source_topic="onex.cmd.omnimarket.delegation-execute.v1",  # onex-topic-test-fixture
+        source_topic="onex.cmd.omnimarket.delegation-execute.v1",
         source_offset=0,
     )
     result = handler.delta(_inp(evt))
@@ -101,7 +101,7 @@ def test_delegation_call_completed_transitions_to_completed(
     assign_evt = _event(
         EnumDelegationEventType.DELEGATION_EXECUTE,
         event_id="evt-assign",
-        source_topic="onex.cmd.omnimarket.delegation-execute.v1",  # onex-topic-test-fixture
+        source_topic="onex.cmd.omnimarket.delegation-execute.v1",
         source_offset=0,
     )
     state_after_assign = handler.delta(_inp(assign_evt)).new_state
@@ -128,7 +128,7 @@ def test_delegation_all_tiers_failed_transitions_to_failed(
     assign_evt = _event(
         EnumDelegationEventType.DELEGATION_EXECUTE,
         event_id="evt-assign",
-        source_topic="onex.cmd.omnimarket.delegation-execute.v1",  # onex-topic-test-fixture
+        source_topic="onex.cmd.omnimarket.delegation-execute.v1",
         source_offset=0,
     )
     state_after_assign = handler.delta(_inp(assign_evt)).new_state
@@ -155,7 +155,7 @@ def test_escalation_is_non_terminal(
     assign_evt = _event(
         EnumDelegationEventType.DELEGATION_EXECUTE,
         event_id="evt-assign",
-        source_topic="onex.cmd.omnimarket.delegation-execute.v1",  # onex-topic-test-fixture
+        source_topic="onex.cmd.omnimarket.delegation-execute.v1",
         source_offset=0,
     )
     state_after_assign = handler.delta(_inp(assign_evt)).new_state
@@ -193,7 +193,7 @@ def test_idempotency_replay_same_terminal_event_is_noop(
     assign_evt = _event(
         EnumDelegationEventType.DELEGATION_EXECUTE,
         event_id="evt-assign",
-        source_topic="onex.cmd.omnimarket.delegation-execute.v1",  # onex-topic-test-fixture
+        source_topic="onex.cmd.omnimarket.delegation-execute.v1",
         source_offset=0,
     )
     state_after_assign = handler.delta(_inp(assign_evt)).new_state
@@ -311,7 +311,7 @@ def test_swarm_fanout_completed_is_noop(
     evt = _event(
         EnumDelegationEventType.SWARM_FANOUT_COMPLETED,
         event_id="evt-fanout",
-        source_topic="onex.evt.omnimarket.swarm-fanout-completed.v1",  # onex-topic-test-fixture
+        source_topic="onex.evt.omnimarket.swarm-fanout-completed.v1",
     )
     result = handler.delta(_inp(evt, current))
     assert result.state_changed is False
@@ -325,7 +325,7 @@ def test_projection_freshness_populated_on_state_change(
     evt = _event(
         EnumDelegationEventType.DELEGATION_EXECUTE,
         event_id="evt-1",
-        source_topic="onex.cmd.omnimarket.delegation-execute.v1",  # onex-topic-test-fixture
+        source_topic="onex.cmd.omnimarket.delegation-execute.v1",
         source_partition=2,
         source_offset=42,
     )
@@ -335,16 +335,10 @@ def test_projection_freshness_populated_on_state_change(
     assert result.projection_freshness is not None
     f = result.projection_freshness
     assert f.source_event_id == "evt-1"
-    assert (
-        f.source_topic
-        == "onex.cmd.omnimarket.delegation-execute.v1"  # onex-topic-test-fixture
-    )
+    assert f.source_topic == "onex.cmd.omnimarket.delegation-execute.v1"
     assert f.source_partition == 2
     assert f.source_offset == 42
-    assert (
-        f.projection_cursor
-        == "onex.cmd.omnimarket.delegation-execute.v1/2/42"  # onex-topic-test-fixture
-    )
+    assert f.projection_cursor == "onex.cmd.omnimarket.delegation-execute.v1/2/42"
     assert f.reducer_version == "1.0.0"
 
 
@@ -360,7 +354,7 @@ def test_multiple_subtasks_independent_state(
         run_id=run_id,
         subtask_id="s1",
         event_id="e-a1",
-        source_topic="onex.cmd.omnimarket.delegation-execute.v1",  # onex-topic-test-fixture
+        source_topic="onex.cmd.omnimarket.delegation-execute.v1",
         source_offset=0,
     )
     state = handler.delta(_inp(assign_1)).new_state
@@ -370,7 +364,7 @@ def test_multiple_subtasks_independent_state(
         run_id=run_id,
         subtask_id="s2",
         event_id="e-a2",
-        source_topic="onex.cmd.omnimarket.delegation-execute.v1",  # onex-topic-test-fixture
+        source_topic="onex.cmd.omnimarket.delegation-execute.v1",
         source_offset=1,
     )
     state = handler.delta(_inp(assign_2, state)).new_state

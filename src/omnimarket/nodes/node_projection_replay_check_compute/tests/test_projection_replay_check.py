@@ -28,9 +28,7 @@ HANDLER = HandlerProjectionReplayCheck()
 _TABLE = "delegation_events"
 _TABLE_GEN = "generation_events"
 _TOPIC = "onex.evt.omnibase-infra.task-delegated.v1"
-_TOPIC_GEN = (
-    "onex.evt.omnimarket.node-generation-completed.v1"  # onex-topic-test-fixture
-)
+_TOPIC_GEN = "onex.evt.omnimarket.node-generation-completed.v1"
 
 
 def _evt(

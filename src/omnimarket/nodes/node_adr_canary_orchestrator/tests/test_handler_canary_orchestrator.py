@@ -665,7 +665,7 @@ class _FakeRequestResponseBus:
     ) -> None:
         envelope = json.loads(value.decode("utf-8"))
         self.published.append((topic, envelope))
-        completed_topic = "onex.evt.omnimarket.adr-document-ingestion-completed.v1"  # onex-topic-test-fixture
+        completed_topic = "onex.evt.omnimarket.adr-document-ingestion-completed.v1"
         on_message = self.subscriptions[completed_topic]
         response = {
             "correlation_id": envelope["correlation_id"],
@@ -704,11 +704,8 @@ class TestAdrBusProtocolAdapters:
 
         assert result.root_paths == ["/tmp/source"]
         assert result.documents[0].source_path == "docs/adr.md"
-        assert (
-            bus.published[0][0]
-            == (
-                "onex.cmd.omnimarket.adr-document-ingestion-requested.v1"  # onex-topic-test-fixture
-            )
+        assert bus.published[0][0] == (
+            "onex.cmd.omnimarket.adr-document-ingestion-requested.v1"
         )
         payload = bus.published[0][1]["payload"]
         assert isinstance(payload, dict)

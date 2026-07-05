@@ -76,7 +76,7 @@ def _ok_event(subtask_id: str, model_id: str = "qwen") -> dict[str, object]:
         "success": True,
         "model_id": model_id,
         "latency_ms": 40,
-        "_topic": "onex.evt.omnimarket.delegation-call-completed.v1",  # onex-topic-test-fixture
+        "_topic": "onex.evt.omnimarket.delegation-call-completed.v1",
     }
 
 
@@ -145,7 +145,7 @@ def test_all_tiers_failed_event_marks_dispatch_failed() -> None:
                 "model_id": "",
                 "latency_ms": 10,
                 "failure_class": "connection_refused",
-                "_topic": "onex.evt.omnimarket.delegation-all-tiers-failed.v1",  # onex-topic-test-fixture
+                "_topic": "onex.evt.omnimarket.delegation-all-tiers-failed.v1",
             }
         ]
     )
@@ -182,7 +182,7 @@ def test_dependency_chain_s2_not_published_when_s1_fails() -> None:
                 "model_id": "",
                 "latency_ms": 5,
                 "failure_class": "model_error",
-                "_topic": "onex.evt.omnimarket.delegation-all-tiers-failed.v1",  # onex-topic-test-fixture
+                "_topic": "onex.evt.omnimarket.delegation-all-tiers-failed.v1",
             }
         ]
     )

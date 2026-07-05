@@ -17,7 +17,7 @@ from omnimarket.nodes.node_closeout_verifier_compute.models.model_closeout_verif
     ModelCloseoutVerifyRequest,
 )
 
-_TOPIC = "onex.evt.omnimarket.closeout-verify-completed.v1"  # onex-topic-test-fixture
+_TOPIC = "onex.evt.omnimarket.closeout-verify-completed.v1"
 _VERIFIER = "agent/test-verifier"
 
 
@@ -164,12 +164,8 @@ class TestHandlerCloseoutVerifierChainFailures:
         assert result.failure_class == EnumCloseoutFailure.CHAIN_ORDER_MISMATCH
 
     def test_topic_mismatch_fails(self) -> None:
-        topic_a = (
-            "onex.evt.omnimarket.chain-diff-requested.v1"  # onex-topic-test-fixture
-        )
-        topic_b = (
-            "onex.evt.omnimarket.chain-diff-completed.v1"  # onex-topic-test-fixture
-        )
+        topic_a = "onex.evt.omnimarket.chain-diff-requested.v1"
+        topic_b = "onex.evt.omnimarket.chain-diff-completed.v1"
         expected = (_entry(1, "EventA", topic_a),)
         observed = (_entry(1, "EventA", topic_b),)
         request = ModelCloseoutVerifyRequest(

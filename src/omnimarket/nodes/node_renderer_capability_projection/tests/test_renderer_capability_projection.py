@@ -352,7 +352,7 @@ class TestTopicRegistration:
     def test_topic_constant_is_canonical_and_valid(self) -> None:
         assert (
             RENDERER_CAPABILITY_DECLARED_TOPIC_V1
-            == "onex.cmd.ui.renderer-capability-declared.v1"  # onex-topic-test-fixture
+            == "onex.cmd.ui.renderer-capability-declared.v1"
         )
         result = validate_topic_suffix(RENDERER_CAPABILITY_DECLARED_TOPIC_V1)
         assert result.is_valid is True

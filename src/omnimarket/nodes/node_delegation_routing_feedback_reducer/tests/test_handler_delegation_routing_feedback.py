@@ -45,7 +45,7 @@ def _completed_event(
         success=success,
         is_escalation=False,
         latency_ms=latency_ms,
-        source_topic="onex.evt.omnimarket.delegation-call-completed.v1",  # onex-topic-test-fixture
+        source_topic="onex.evt.omnimarket.delegation-call-completed.v1",
     )
 
 
@@ -64,7 +64,7 @@ def _escalation_event(
         success=False,
         is_escalation=True,
         latency_ms=0,
-        source_topic="onex.evt.omnimarket.delegation-escalation-triggered.v1",  # onex-topic-test-fixture
+        source_topic="onex.evt.omnimarket.delegation-escalation-triggered.v1",
     )
 
 
@@ -83,7 +83,7 @@ def _all_failed_event(
         success=False,
         is_escalation=False,
         latency_ms=0,
-        source_topic="onex.evt.omnimarket.delegation-all-tiers-failed.v1",  # onex-topic-test-fixture
+        source_topic="onex.evt.omnimarket.delegation-all-tiers-failed.v1",
     )
 
 
@@ -410,10 +410,7 @@ class TestHandlerRealDispatchPath:
     def test_unknown_topic_payload_is_noop(self) -> None:
         handler = HandlerDelegationRoutingFeedback()
         result = handler.handle(
-            {
-                "_topic": "onex.evt.omnimarket.something-else.v1",  # onex-topic-test-fixture
-                "model_id": "m",
-            }
+            {"_topic": "onex.evt.omnimarket.something-else.v1", "model_id": "m"}
         )
         assert result["skipped"] is True
         assert result["feedback"] is None

@@ -88,8 +88,5 @@ def test_runner_resolves_routing_table_and_topic() -> None:
     """
     assert _TABLE in KNOWN_PROJECTION_TABLES
     runner = RoutingDecisionProjectionRunner()
-    expected_topic = (
-        "onex.evt.omniclaude.routing-decision.v1"  # onex-topic-test-fixture
-    )
-    assert expected_topic in runner.subscribe_topics
+    assert "onex.evt.omniclaude.routing-decision.v1" in runner.subscribe_topics
     assert runner.topics == runner.subscribe_topics

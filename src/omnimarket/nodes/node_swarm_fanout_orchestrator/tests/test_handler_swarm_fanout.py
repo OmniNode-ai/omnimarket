@@ -79,7 +79,7 @@ def _completion_event(
         "success": success,
         "model_id": "Qwen3.6-35B-A3B",
         "latency_ms": 50,
-        "_topic": "onex.evt.omnimarket.delegation-call-completed.v1",  # onex-topic-test-fixture
+        "_topic": "onex.evt.omnimarket.delegation-call-completed.v1",
     }
 
 
@@ -90,7 +90,7 @@ def _failure_event(run_id: str, subtask_id: str) -> dict[str, object]:
         "model_id": "",
         "latency_ms": 10,
         "failure_class": "all_tiers_exhausted",
-        "_topic": "onex.evt.omnimarket.delegation-all-tiers-failed.v1",  # onex-topic-test-fixture
+        "_topic": "onex.evt.omnimarket.delegation-all-tiers-failed.v1",
     }
 
 
@@ -305,7 +305,7 @@ def test_unrelated_correlation_id_filtered_out() -> None:
                 "success": True,
                 "model_id": "m1",
                 "latency_ms": 10,
-                "_topic": "onex.evt.omnimarket.delegation-call-completed.v1",  # onex-topic-test-fixture
+                "_topic": "onex.evt.omnimarket.delegation-call-completed.v1",
             }
         ]
     )

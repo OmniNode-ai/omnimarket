@@ -42,12 +42,12 @@ _OFFENDING_DIFF = """\
 --- a/src/handler.py
 +++ b/src/handler.py
 @@ -10,6 +10,10 @@ class HandlerFoo:
-+    TOPIC = "onex.cmd.omnimarket.foo-requested.v1"  # onex-topic-test-fixture
++    TOPIC = "onex.cmd.omnimarket.foo-requested.v1"
 +    EVENT_TYPE = "foo_requested"
 +
      async def handle(self, request):
 -        topic = self._contract.get_topic("foo_requested")
-+        topic = "onex.cmd.omnimarket.foo-requested.v1"  # onex-topic-test-fixture
++        topic = "onex.cmd.omnimarket.foo-requested.v1"
 +        event_type = "foo_requested"
          await self._bus.publish(topic, {"event_type": event_type})
 """

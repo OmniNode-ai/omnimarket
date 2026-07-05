@@ -62,16 +62,12 @@ def _write_native_node(
             "class": "NodeNativeSample",
             "input_model": "omnimarket.nodes.node_native_sample.models.ModelRequest",
         },
-        "terminal_event": "onex.evt.omnimarket.native-sample-completed.v1",  # onex-topic-test-fixture
+        "terminal_event": "onex.evt.omnimarket.native-sample-completed.v1",
         "event_bus": {
-            "subscribe_topics": [
-                "onex.cmd.omnimarket.native-sample-start.v1"  # onex-topic-test-fixture
-            ],
+            "subscribe_topics": ["onex.cmd.omnimarket.native-sample-start.v1"],
             "publish_topics": publish_topics
             if publish_topics is not None
-            else [
-                "onex.evt.omnimarket.native-sample-completed.v1"  # onex-topic-test-fixture
-            ],
+            else ["onex.evt.omnimarket.native-sample-completed.v1"],
         },
     }
     (node_dir / "contract.yaml").write_text(yaml.safe_dump(contract, sort_keys=False))
@@ -231,8 +227,8 @@ class TestHandlerBehaviour:
         _write_native_node(
             tmp_path,
             handler_body="""
-            TOPIC_START = "onex.cmd.omnimarket.native-sample-start.v1"  # onex-topic-test-fixture
-            TOPIC_DONE = "onex.evt.omnimarket.native-sample-completed.v1"  # onex-topic-test-fixture
+            TOPIC_START = "onex.cmd.omnimarket.native-sample-start.v1"
+            TOPIC_DONE = "onex.evt.omnimarket.native-sample-completed.v1"
             """,
         )
         monkeypatch.setenv("OMNI_HOME", str(tmp_path))
@@ -261,9 +257,9 @@ class TestHandlerBehaviour:
         _write_native_node(
             tmp_path,
             handler_body="""
-            TOPIC_START = "onex.cmd.omnimarket.native-sample-start.v1"  # onex-topic-test-fixture
-            TOPIC_DONE = "onex.evt.omnimarket.native-sample-completed.v1"  # onex-topic-test-fixture
-            TOPIC_DRIFT = "onex.evt.omnimarket.undeclared-drift.v1"  # onex-topic-test-fixture
+            TOPIC_START = "onex.cmd.omnimarket.native-sample-start.v1"
+            TOPIC_DONE = "onex.evt.omnimarket.native-sample-completed.v1"
+            TOPIC_DRIFT = "onex.evt.omnimarket.undeclared-drift.v1"
             """,
         )
         monkeypatch.setenv("OMNI_HOME", str(tmp_path))
@@ -305,7 +301,7 @@ class TestHandlerBehaviour:
 
         _write_native_node(
             tmp_path,
-            handler_body='TOPIC_START = "onex.cmd.omnimarket.native-sample-start.v1"\n',  # onex-topic-test-fixture
+            handler_body='TOPIC_START = "onex.cmd.omnimarket.native-sample-start.v1"\n',
         )
         monkeypatch.setenv("OMNI_HOME", str(tmp_path))
 
