@@ -122,6 +122,46 @@ def test_create_ticket_multiparam(
 
 
 @pytest.mark.integration
+def test_minimal_skill_cli_payload_shape_validates() -> None:
+    """Regression for OMN-13964.
+
+    The ``onex skill create_ticket`` CLI path resolves ``skill_mapping.yaml``,
+    which declares ``allow-arch-violation`` with ``default: false`` — so the
+    runtime injects ``allow_arch_violation: False`` into *every* payload, even a
+    minimal ``--title X --team Y`` invocation. ``ModelCreateTicketRequest`` is
+    ``extra="forbid"``, so before this field existed the exact payload shape the
+    CLI produces failed with ``extra_forbidden`` on 100% of invocations (the
+    WS-D/D2 dogfood repro). This asserts that injected shape constructs and the
+    handler processes it end-to-end.
+    """
+    injected_payload: dict[str, object] = {
+        "title": "Dogfood the create_ticket rail",
+        "team": "Omninode",
+        "allow_arch_violation": False,  # what the CLI force-injects from the mapping default
+    }
+
+    request = ModelCreateTicketRequest(**injected_payload)
+    assert request.allow_arch_violation is False
+
+    result = HandlerCreateTicket().handle(request)
+    assert result.status == "created"
+    assert result.ticket_id == ""
+    assert result.ticket_url == ""
+    assert result.validation_errors == []
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize("allow", [False, True])
+def test_allow_arch_violation_field_is_accepted(allow: bool) -> None:
+    """The contract-declared ``allow_arch_violation`` input is a typed field."""
+    request = ModelCreateTicketRequest(
+        title="Ship with an arch override", allow_arch_violation=allow
+    )
+    assert request.allow_arch_violation is allow
+    assert HandlerCreateTicket().handle(request).status == "created"
+
+
+@pytest.mark.integration
 def test_created_ticket_emits_structured_description_body() -> None:
     """A real (non-dry-run, valid) request must materialize a DoD checklist."""
     result = HandlerCreateTicket().handle(
