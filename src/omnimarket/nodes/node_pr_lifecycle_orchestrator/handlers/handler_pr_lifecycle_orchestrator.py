@@ -386,7 +386,16 @@ class _SweepState:
 
 
 # ---------------------------------------------------------------------------
-# Default stub implementations (used when sub-nodes not yet available)
+# Stub sub-handler doubles.
+#
+# As of OMN-13984 these are NOT silent import-failure fallbacks for the core
+# sweep handlers (inventory/triage/reducer/merge/fix): an ImportError on any of
+# those now RAISES in _ensure_sub_handlers instead of degrading to a 0-result
+# "successful" sweep (a false positive that could mask real merge/fix work).
+# They remain for two legitimate uses only:
+#   (a) worktree-prune GC — the one intentional optional (OMN-13859: prune
+#       degrading must never fail a sweep); its ImportError fallback is kept.
+#   (b) lightweight test doubles imported directly by the unit tests.
 # ---------------------------------------------------------------------------
 
 
@@ -928,8 +937,13 @@ class HandlerPrLifecycleOrchestrator:
                     inv_handler, ProtocolInventoryHandler, "inventory"
                 )
                 self._inventory = inv_handler
-            except ImportError:
-                self._inventory = _StubInventoryHandler()
+            except ImportError as exc:
+                raise RuntimeError(
+                    "PR-lifecycle inventory sub-handler failed to import; refusing "
+                    "to run a merge sweep on a silent no-op stub that would report "
+                    "0 PRs as a successful pass. Fix the omnimarket install/"
+                    "packaging drift instead of degrading silently (OMN-13984)."
+                ) from exc
         if self._triage is None:
             try:
                 from omnimarket.nodes.node_pr_lifecycle_triage_compute.handlers.handler_pr_lifecycle_triage import (
@@ -941,8 +955,13 @@ class HandlerPrLifecycleOrchestrator:
                     triage_handler, ProtocolTriageHandler, "triage"
                 )
                 self._triage = triage_handler
-            except ImportError:
-                self._triage = _StubTriageHandler()
+            except ImportError as exc:
+                raise RuntimeError(
+                    "PR-lifecycle triage sub-handler failed to import; refusing to "
+                    "run a merge sweep on a silent no-op stub that would classify "
+                    "0 PRs as a successful pass. Fix the omnimarket install/"
+                    "packaging drift instead of degrading silently (OMN-13984)."
+                ) from exc
         if self._reducer is None:
             try:
                 from omnimarket.nodes.node_pr_lifecycle_state_reducer.handlers.handler_pr_lifecycle_state_reducer import (
@@ -954,8 +973,14 @@ class HandlerPrLifecycleOrchestrator:
                     reducer_handler, ProtocolStateReducerHandler, "reducer"
                 )
                 self._reducer = reducer_handler
-            except ImportError:
-                self._reducer = _StubReducerHandler()
+            except ImportError as exc:
+                raise RuntimeError(
+                    "PR-lifecycle state-reducer sub-handler failed to import; "
+                    "refusing to run a merge sweep on a silent no-op stub that "
+                    "would produce 0 merge/fix intents as a successful pass. Fix "
+                    "the omnimarket install/packaging drift instead of degrading "
+                    "silently (OMN-13984)."
+                ) from exc
         if self._merge is None:
             try:
                 from omnimarket.nodes.node_pr_lifecycle_merge_effect.handlers.adapter_github_merge_queue import (
@@ -972,8 +997,13 @@ class HandlerPrLifecycleOrchestrator:
                     merge_handler, ProtocolMergeHandler, "merge"
                 )
                 self._merge = merge_handler
-            except ImportError:
-                self._merge = _StubMergeHandler()
+            except ImportError as exc:
+                raise RuntimeError(
+                    "PR-lifecycle merge sub-handler failed to import; refusing to "
+                    "run a merge sweep on a silent no-op stub that would report "
+                    "0 merges as a successful pass. Fix the omnimarket install/"
+                    "packaging drift instead of degrading silently (OMN-13984)."
+                ) from exc
         if self._fix is None:
             try:
                 from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.adapter_delegated_fix import (
@@ -1013,8 +1043,14 @@ class HandlerPrLifecycleOrchestrator:
                 )
                 self._check_protocol_conformance(fix_handler, ProtocolFixHandler, "fix")
                 self._fix = fix_handler
-            except ImportError:
-                self._fix = _StubFixHandler()
+            except ImportError as exc:
+                raise RuntimeError(
+                    "PR-lifecycle fix sub-handler failed to import; refusing to "
+                    "run a merge sweep on a silent no-op stub that would report "
+                    "0 fixes dispatched as a successful pass (masking the real "
+                    "delegated-fix path). Fix the omnimarket install/packaging "
+                    "drift instead of degrading silently (OMN-13984)."
+                ) from exc
         if self._prune is None:
             # OMN-13859: worktree-prune effect. Falls back to a no-op stub when
             # the node is unavailable so the merge sweep never fails for lack of
