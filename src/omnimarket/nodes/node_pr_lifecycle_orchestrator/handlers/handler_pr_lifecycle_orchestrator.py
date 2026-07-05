@@ -1099,9 +1099,7 @@ class HandlerPrLifecycleOrchestrator:
         """Return whether another pass can still act on the NOT_DONE result."""
         if result.final_state != _FINAL_STATE_NOT_DONE:
             return False
-        if result.prs_inventoried > 0:
-            return True
-        if result.prs_merged > 0 or result.prs_fixed > 0 or result.prs_verified > 0:
+        if result.prs_merged > 0 or result.prs_fixed > 0:
             return True
         return False
 
@@ -1865,7 +1863,7 @@ class HandlerPrLifecycleOrchestrator:
                 continue
             if getattr(raw, "merged", False):
                 prs_merged += 1
-            else:
+            elif getattr(raw, "error", None):
                 prs_failed += 1
 
         return MergeResult(prs_merged=prs_merged, prs_failed=prs_failed)
@@ -2484,9 +2482,7 @@ class HandlerPrLifecycleOrchestrator:
         return _FINAL_STATE_NOT_DONE, remainders
 
     def _sweep_run_dir(self, run_id: str) -> Path | None:
-        state_dir = os.environ.get(
-            "ONEX_STATE_DIR", os.path.expanduser("~/.onex_state")
-        )
+        state_dir = self._resolved_state_dir()
         base = (Path(state_dir) / "merge-sweep").resolve()
         out_dir = (base / run_id).resolve()
         if not out_dir.is_relative_to(base):
@@ -2499,6 +2495,21 @@ class HandlerPrLifecycleOrchestrator:
             )
             return None
         return out_dir
+
+    @staticmethod
+    def _resolved_state_dir() -> Path:
+        """Resolve a writable state root and reject root-anchored fallbacks."""
+        raw_state_dir = os.environ.get("ONEX_STATE_DIR")
+        if raw_state_dir:
+            candidate = Path(raw_state_dir).expanduser()
+            resolved = candidate.resolve()
+            if resolved not in {Path("/"), Path("/.onex_state")}:
+                return resolved
+
+        omni_home = os.environ.get("OMNI_HOME")
+        if omni_home:
+            return (Path(omni_home).expanduser() / ".onex_state").resolve()
+        return Path(os.path.expanduser("~/.onex_state")).resolve()
 
     def _write_occ_dependency_edges_file(
         self,

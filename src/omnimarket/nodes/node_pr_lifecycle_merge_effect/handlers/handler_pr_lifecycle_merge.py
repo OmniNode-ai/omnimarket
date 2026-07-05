@@ -206,7 +206,7 @@ class HandlerPrLifecycleMerge:
                 pr_number=command.pr_number,
                 use_merge_queue=command.use_merge_queue,
             )
-            merged = True
+            merged = "already queued" not in merge_action.lower()
             comment_body = (
                 f"<!-- onex-correlation-id: {command.correlation_id} -->\n"
                 f"Auto-merged by merge-sweep | correlation_id: `{command.correlation_id}`"

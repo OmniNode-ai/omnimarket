@@ -1128,6 +1128,29 @@ class TestPrLifecycleOrchestratorResultFile:
         assert payload["final_state"] == "COMPLETE"
         assert payload["correlation_id"] == str(cmd.correlation_id)
 
+    async def test_root_state_dir_falls_back_to_omni_home(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A bad root ONEX_STATE_DIR must not write under /.onex_state."""
+        monkeypatch.setenv("ONEX_STATE_DIR", "/.onex_state")
+        monkeypatch.setenv("OMNI_HOME", str(tmp_path / "omni_home"))
+        orch = await _make_orchestrator(inventory=MockInventory(prs=()))
+        cmd = _make_command(run_id="20260411-root-fallback")
+
+        result = await orch.handle(cmd)
+        assert result.final_state == "COMPLETE"
+
+        result_path = (
+            tmp_path
+            / "omni_home"
+            / ".onex_state"
+            / "merge-sweep"
+            / "20260411-root-fallback"
+            / "result.json"
+        )
+        assert result_path.exists()
+        assert not Path("/.onex_state/merge-sweep/20260411-root-fallback").exists()
+
     async def test_failure_writes_result_json(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
