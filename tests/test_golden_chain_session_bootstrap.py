@@ -470,18 +470,23 @@ class TestGoldenChainSessionBootstrap:
             )
             handler.handle(cmd)
 
-        pulse_calls = [c for c in create_calls if c["cron"] == "*/30 * * * *"]
+        pulse_calls = [
+            c
+            for c in create_calls
+            if c["cron"] == "*/30 * * * *"
+            and "build_dispatch_pulse" in str(c["name_hint"])
+        ]
         assert len(pulse_calls) == 1, "build-dispatch-pulse must use */30 * * * *"
 
     def test_merge_sweep_cron_expression_is_correct(self) -> None:
-        """Phase 2: merge-sweep uses 23 * * * * expression."""
+        """Phase 2: merge-sweep uses */30 * * * * expression."""
         create_calls: list[dict[str, object]] = []
 
         def fake_list() -> list[dict[str, str]]:
             return []
 
         def fake_create(cron: str, prompt: str, recurring: bool) -> str:
-            create_calls.append({"cron": cron, "prompt_head": prompt[:80]})
+            create_calls.append({"cron": cron, "prompt": prompt})
             return f"job-{len(create_calls)}"
 
         handler = HandlerSessionBootstrap(
@@ -498,8 +503,12 @@ class TestGoldenChainSessionBootstrap:
             )
             handler.handle(cmd)
 
-        merge_calls = [c for c in create_calls if c["cron"] == "23 * * * *"]
-        assert len(merge_calls) == 1, "merge-sweep must use 23 * * * *"
+        merge_calls = [
+            c
+            for c in create_calls
+            if c["cron"] == "*/30 * * * *" and "--loop-until-done" in str(c["prompt"])
+        ]
+        assert len(merge_calls) == 1, "merge-sweep must use */30 * * * *"
 
     def test_overseer_verify_cron_expression_is_correct(self) -> None:
         """Phase 2: overseer-verify uses 11,31,51 * * * * expression."""
