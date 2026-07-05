@@ -183,6 +183,7 @@ async def resolve_api_key_async(
     *,
     store: ProtocolSecretStore | None = None,
     required: bool = True,
+    env_var_fallback: str | None = None,
 ) -> SecretStr | None:
     """Resolve the secret VALUE for an ``api_key_ref`` through the secret store.
 
@@ -197,6 +198,15 @@ async def resolve_api_key_async(
             ``False``, a missing/empty value returns ``None`` — for opt-in
             registration paths where an absent secret simply means "provider
             not configured on this host."
+        env_var_fallback: OMN-13943. An additional literal env-var NAME to
+            check when the primary ``api_key_ref`` lookup misses. This is
+            distinct from the dotted ``secret_ref`` convention (which maps
+            through ``SecretResolver``'s ``LLM_*_API_KEY`` naming): it is the
+            backend's own contract-declared ``api_key_env`` (e.g.
+            ``GEMINI_API_KEY``, ``OPEN_ROUTER_API_KEY``) — the canonical env
+            var already defined in ``~/.omnibase/.env``. The caller always
+            supplies this from config data, never a hardcoded literal in this
+            module, so no provider-specific alias lives in code here.
 
     Returns:
         The resolved secret wrapped in ``SecretStr``, or ``None`` when
@@ -205,21 +215,28 @@ async def resolve_api_key_async(
 
     Raises:
         SecretResolutionError: When ``required`` is ``True`` and ``api_key_ref``
-            is declared but the secret store has no non-empty value for it.
-            Fail-closed; no default.
+            is declared but neither the secret store nor ``env_var_fallback``
+            resolve a non-empty value. Fail-closed; no default.
     """
     if not api_key_ref:
         return None
 
     resolver = store if store is not None else _default_secret_store()
     value = await resolver.get_secret(api_key_ref)
+    if not value and env_var_fallback:
+        value = os.environ.get(env_var_fallback) or None
     if not value:
         if not required:
             return None
+        fallback_note = (
+            f" nor did the declared fallback env var {env_var_fallback!r}"
+            if env_var_fallback
+            else ""
+        )
         raise SecretResolutionError(
             f"Secret reference {api_key_ref!r} declared by the routing authority "
-            "could not be resolved from the secret store (missing or empty). "
-            "No fallback is permitted."
+            f"could not be resolved from the secret store (missing or empty){fallback_note}. "
+            "No further fallback is permitted."
         )
     return SecretStr(value)
 
@@ -229,6 +246,7 @@ def resolve_api_key(
     *,
     store: ProtocolSecretStore | None = None,
     required: bool = True,
+    env_var_fallback: str | None = None,
 ) -> SecretStr | None:
     """Synchronous wrapper over :func:`resolve_api_key_async`.
 
@@ -258,7 +276,12 @@ def resolve_api_key(
         )
 
     return asyncio.run(
-        resolve_api_key_async(api_key_ref, store=store, required=required)
+        resolve_api_key_async(
+            api_key_ref,
+            store=store,
+            required=required,
+            env_var_fallback=env_var_fallback,
+        )
     )
 
 
@@ -267,6 +290,7 @@ def _resolve_api_key_from_running_loop(
     *,
     store: ProtocolSecretStore | None,
     required: bool,
+    env_var_fallback: str | None = None,
 ) -> SecretStr | None:
     """Resolve from sync code that is already executing inside an event loop."""
     result: Queue[tuple[SecretStr | None, BaseException | None]] = Queue(maxsize=1)
@@ -274,7 +298,12 @@ def _resolve_api_key_from_running_loop(
     def _runner() -> None:
         try:
             resolved = asyncio.run(
-                resolve_api_key_async(api_key_ref, store=store, required=required)
+                resolve_api_key_async(
+                    api_key_ref,
+                    store=store,
+                    required=required,
+                    env_var_fallback=env_var_fallback,
+                )
             )
         except BaseException as exc:
             result.put((None, exc))
@@ -299,6 +328,7 @@ def resolve_api_key_loop_safe(
     *,
     store: ProtocolSecretStore | None = None,
     required: bool = True,
+    env_var_fallback: str | None = None,
 ) -> SecretStr | None:
     """Resolve a secret VALUE from SYNC code that may run inside an event loop.
 
@@ -316,12 +346,18 @@ def resolve_api_key_loop_safe(
     sync orchestrator port calls them in-process).
 
     Fail-closed semantics are unchanged: with ``required=True`` a declared ref
-    with no secret-store value raises :class:`SecretResolutionError`.
+    with no secret-store value (and no resolvable ``env_var_fallback``) raises
+    :class:`SecretResolutionError`.
     """
     if not api_key_ref:
         return None
     try:
-        return resolve_api_key(api_key_ref, store=store, required=required)
+        return resolve_api_key(
+            api_key_ref,
+            store=store,
+            required=required,
+            env_var_fallback=env_var_fallback,
+        )
     except RuntimeError as exc:
         if "sync-only" not in str(exc):
             raise
@@ -329,6 +365,7 @@ def resolve_api_key_loop_safe(
             api_key_ref,
             store=store,
             required=required,
+            env_var_fallback=env_var_fallback,
         )
 
 
@@ -336,6 +373,7 @@ def api_key_ref_available(
     api_key_ref: str | None,
     *,
     store: ProtocolSecretStore | None = None,
+    env_var_fallback: str | None = None,
 ) -> bool:
     """Return whether a secret ref resolves to a non-empty value.
 
@@ -343,10 +381,22 @@ def api_key_ref_available(
     backend the active runtime secret store cannot use. It returns only a
     boolean; the route decision still carries the secret reference name, never
     the secret value.
+
+    ``env_var_fallback`` (OMN-13943): when supplied, a backend whose dotted
+    ``secret_ref`` convention mapping misses but whose own contract-declared
+    literal env var IS set is still reported available — the routing tier
+    eligibility check must agree with what the effect boundary will actually
+    resolve at call time (:func:`resolve_api_key_async`), or a tier could be
+    reported unroutable while its backend is actually callable.
     """
     if not api_key_ref:
         return True
-    resolved = resolve_api_key_loop_safe(api_key_ref, store=store, required=False)
+    resolved = resolve_api_key_loop_safe(
+        api_key_ref,
+        store=store,
+        required=False,
+        env_var_fallback=env_var_fallback,
+    )
     return resolved is not None
 
 

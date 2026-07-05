@@ -161,8 +161,17 @@ def _backend_id_for_model(model_id: str) -> UUID:
 
 
 def _backend_secret_available(backend: BifrostBackendRef) -> bool:
-    """Return whether the runtime can resolve the backend's declared secret ref."""
-    return api_key_ref_available(backend.api_key_ref)
+    """Return whether the runtime can resolve the backend's declared secret ref.
+
+    OMN-13943: also checks the backend's contract-declared ``api_key_env`` as a
+    fallback, mirroring the effect boundary (``handler_llm_delegation_call``)
+    so tier eligibility here agrees with what the effect can actually resolve
+    at call time — a backend is not reported unroutable due to secret-ref
+    convention drift when its own literal env var IS set.
+    """
+    return api_key_ref_available(
+        backend.api_key_ref, env_var_fallback=backend.api_key_env
+    )
 
 
 def _select_model_for_task(
@@ -252,6 +261,7 @@ class BifrostBackendRef:
     """Resolved backend from the bifrost contract plus endpoint overlay."""
 
     __slots__ = (
+        "api_key_env",
         "api_key_ref",
         "endpoint_url",
         "extra_headers",
@@ -268,6 +278,7 @@ class BifrostBackendRef:
         max_tokens: int,
         api_key_ref: str | None = None,
         extra_headers: dict[str, str] | None = None,
+        api_key_env: str | None = None,
     ) -> None:
         self.endpoint_url = endpoint_url
         self.model_name = model_name
@@ -278,6 +289,11 @@ class BifrostBackendRef:
         self.max_tokens = max_tokens
         self.api_key_ref = api_key_ref
         self.extra_headers = extra_headers
+        # OMN-13943: the backend's own contract-declared literal env-var name
+        # (e.g. "GEMINI_API_KEY"), distinct from api_key_ref's dotted
+        # secret_ref convention. Used as a fallback when the dotted ref's
+        # convention-mapped env var is unset — see _backend_secret_available.
+        self.api_key_env = api_key_env
 
 
 @lru_cache(maxsize=1)
@@ -359,6 +375,15 @@ def _load_bifrost_endpoints() -> dict[str, BifrostBackendRef]:
             extra_headers=dict(backend.extra_headers)
             if backend.extra_headers
             else None,
+            # OMN-13943: carry the RAW api_key_env field (not resolved_secret_ref,
+            # which already folds api_key_env in as a last-resort ALTERNATIVE to
+            # secret_ref — never both). This is a genuine additional fallback
+            # checked alongside a populated secret_ref, not an either/or choice.
+            api_key_env=(
+                backend.api_key_env.strip()
+                if isinstance(backend.api_key_env, str) and backend.api_key_env.strip()
+                else None
+            ),
         )
 
     if not backends:

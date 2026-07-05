@@ -122,6 +122,17 @@ class ModelResolvedDelegationBackend(BaseModel):
             "never resolved in the routing authority."
         ),
     )
+    api_key_env: str | None = Field(
+        default=None,
+        description=(
+            "OMN-13943: the backend's own contract-declared literal env-var "
+            "NAME (e.g. ``GEMINI_API_KEY``), distinct from ``secret_ref``'s "
+            "dotted convention. Resolved as an ADDITIONAL fallback at the "
+            "effect boundary when the ``secret_ref`` convention mapping misses "
+            "— never a code-hardcoded alias, always sourced from the bifrost "
+            "backend config."
+        ),
+    )
 
 
 async def _load_store_overlay_async(
@@ -417,6 +428,16 @@ def resolve_delegation_backend(
         else None
     )
 
+    # OMN-13943: the RAW api_key_env field, carried alongside secret_ref (not
+    # instead of it) so the effect boundary can fall back to the backend's own
+    # literal env var when the secret_ref convention mapping misses.
+    raw_api_key_env = backend.get("api_key_env")
+    api_key_env = (
+        str(raw_api_key_env)
+        if isinstance(raw_api_key_env, str) and raw_api_key_env.strip()
+        else None
+    )
+
     return ModelResolvedDelegationBackend(
         backend_id=str(backend["backend_id"]),
         model_id=model_name,
@@ -426,6 +447,7 @@ def resolve_delegation_backend(
         timeout_ms=raw_timeout_ms,
         extra_headers=extra_headers,
         secret_ref=secret_ref,
+        api_key_env=api_key_env,
     )
 
 

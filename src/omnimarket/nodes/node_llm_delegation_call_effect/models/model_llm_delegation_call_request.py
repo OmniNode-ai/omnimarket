@@ -88,3 +88,11 @@ class ModelLlmDelegationCallRequest(BaseModel):
     ``HandlerInferenceIntent`` path. Only the reference NAME is carried here; the
     secret VALUE is never resolved in the routing/composition layer, never persisted,
     and never emitted to Kafka. ``None`` means an unauthenticated backend (local tier)."""
+
+    api_key_env: str | None = Field(default=None)
+    """OMN-13943: the backend's own contract-declared literal env-var NAME
+    (e.g. ``GEMINI_API_KEY``, ``OPEN_ROUTER_API_KEY``), carried verbatim from
+    ``ModelResolvedDelegationBackend.api_key_env``. Resolved as an ADDITIONAL
+    fallback at the effect boundary when ``secret_ref``'s dotted convention
+    mapping misses — distinct from ``secret_ref``, never a substitute for it.
+    ``None`` when the backend config declares no ``api_key_env``."""

@@ -250,15 +250,22 @@ backends:
       - reasoning
       - research
       - code_generation
-  # OpenRouter backends (OMN-7980) — route authority carries logical secret refs.
-  # api_key_env remains migration metadata; lane overlays map the logical ref
-  # to the concrete secret source (env/Infisical/file).
+  # OpenRouter backends (OMN-7980) — route authority carries logical secret refs
+  # (secret_ref). OMN-13943: api_key_env is a genuine ADDITIONAL fallback the
+  # effect boundary resolves when secret_ref's dotted convention mapping (→
+  # LLM_OPENROUTER_API_KEY) misses — it must name the REAL canonical env var
+  # (OPEN_ROUTER_API_KEY per ~/.omnibase/.env), not migration metadata.
   - backend_id: openrouter-glm-flash
     # OMN-12815: COMPLETE endpoint URL incl. the full chat path, posted VERBATIM.
     endpoint_url: "https://openrouter.ai/api/v1/chat/completions"
     model_name: "thudm/glm-4-9b-chat:free"
     secret_ref: llm.openrouter.api_key
-    api_key_env: OPENROUTER_API_KEY
+    # OMN-13943: canonical ~/.omnibase/.env declares OPEN_ROUTER_API_KEY (with
+    # underscore); this was OPENROUTER_API_KEY (no underscore, never resolves
+    # against the real env). api_key_env is now genuinely resolved as a
+    # fallback (see secret_store_resolver.resolve_api_key_async), so this
+    # rename is load-bearing, not just documentation.
+    api_key_env: OPEN_ROUTER_API_KEY
     tier: cheap_cloud
     timeout_ms: 60000
     # OMN-13161: GLM-4-9B (free OpenRouter tier) — modest 8192 output budget.
@@ -276,7 +283,12 @@ backends:
     endpoint_url: "https://openrouter.ai/api/v1/chat/completions"
     model_name: "qwen/qwen3-coder:free"
     secret_ref: llm.openrouter.api_key
-    api_key_env: OPENROUTER_API_KEY
+    # OMN-13943: canonical ~/.omnibase/.env declares OPEN_ROUTER_API_KEY (with
+    # underscore); this was OPENROUTER_API_KEY (no underscore, never resolves
+    # against the real env). api_key_env is now genuinely resolved as a
+    # fallback (see secret_store_resolver.resolve_api_key_async), so this
+    # rename is load-bearing, not just documentation.
+    api_key_env: OPEN_ROUTER_API_KEY
     tier: cheap_frontier
     # OMN-13170: 64k-output coder backend — align the timeout to the budget
     # (300000 ms); 120s was short for full 64k generations.
