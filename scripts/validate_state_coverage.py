@@ -41,6 +41,7 @@ import json
 import re
 import subprocess
 import sys
+from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -54,6 +55,8 @@ PYPROJECT = REPO_ROOT / "pyproject.toml"
 BASELINE_PATH = REPO_ROOT / "scripts" / "validation" / "state_coverage_baseline.txt"
 
 _IDENTIFIER_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_-]*$")
+_TOPIC_MARKER_RE = re.compile(r"\s+#\s*onex-topic-[A-Za-z0-9_-]+.*$")
+_STRING_LITERAL_RE = re.compile(r"""(?P<quote>['"])(?P<value>.*?)(?P=quote)""")
 
 
 @dataclass
@@ -380,6 +383,7 @@ def _get_changed_nodes(git_ref: str) -> tuple[list[Path], set[str]]:
             and parts[1] == "omnimarket"
             and parts[2] == "nodes"
             and parts[3].startswith("node_")
+            and _file_has_state_coverage_semantic_diff(git_ref, f)
         ):
             directly_modified.add(parts[3])
         # A node's own tests being touched should also re-check its coverage.
@@ -401,6 +405,61 @@ def _get_changed_nodes(git_ref: str) -> tuple[list[Path], set[str]]:
         if node_dir.is_dir():
             nodes.append(node_dir)
     return nodes, directly_modified
+
+
+def _normalize_diff_line_for_state_coverage(line: str) -> str:
+    """Remove annotation-only topic markers before strict-change comparison."""
+    return _TOPIC_MARKER_RE.sub("", line).strip()
+
+
+def _file_has_state_coverage_semantic_diff(git_ref: str, file_path: str) -> bool:
+    """True when a changed node file has more than marker/comment-only edits.
+
+    OMN-13944 topic-literal relocation sometimes adds only inline
+    ``# onex-topic-*`` markers to existing test fixture constants. That should
+    satisfy the topic-literal guard without promoting unrelated, baselined
+    state-coverage debt for the owning node.
+    """
+    proc = subprocess.run(
+        ["git", "diff", "--unified=0", git_ref, "--", file_path],
+        capture_output=True,
+        text=True,
+        check=False,
+        cwd=REPO_ROOT,
+    )
+    if proc.returncode != 0:
+        return True
+
+    removed: list[str] = []
+    added: list[str] = []
+    marker_added = False
+    for raw_line in proc.stdout.splitlines():
+        if raw_line.startswith(("--- ", "+++ ", "@@")):
+            continue
+        if raw_line.startswith("-"):
+            normalized = _normalize_diff_line_for_state_coverage(raw_line[1:])
+            if normalized and not normalized.startswith("#"):
+                removed.append(normalized)
+        elif raw_line.startswith("+"):
+            marker_added = marker_added or "onex-topic-" in raw_line
+            normalized = _normalize_diff_line_for_state_coverage(raw_line[1:])
+            if normalized and not normalized.startswith("#"):
+                added.append(normalized)
+
+    if marker_added and _onex_string_literals(removed) == _onex_string_literals(added):
+        return False
+    return Counter(removed) != Counter(added)
+
+
+def _onex_string_literals(lines: list[str]) -> Counter[str]:
+    values: list[str] = []
+    for line in lines:
+        values.extend(
+            match.group("value")
+            for match in _STRING_LITERAL_RE.finditer(line)
+            if "onex." in match.group("value")
+        )
+    return Counter(values)
 
 
 def collect_nodes(*, changed_ref: str | None) -> tuple[list[Path], set[str] | None]:
