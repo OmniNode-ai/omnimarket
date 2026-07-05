@@ -42,6 +42,7 @@ vocabulary.
 
 from __future__ import annotations
 
+import os
 import re
 from dataclasses import dataclass
 from pathlib import Path
@@ -344,13 +345,83 @@ def _is_facade_without_backing(content: str) -> bool:
     return any(marker in lowered for marker in _STATEFUL_ORCHESTRATION_MARKERS)
 
 
+def _resolve_omni_home() -> Path | None:
+    """Return the omni_home registry root, or None if it cannot be resolved.
+
+    Resolution order (no silent WRONG default — CLAUDE.md rule #8):
+
+    1. ``$OMNI_HOME`` when set. This is the load-bearing case: when omnimarket
+       is installed into a site-packages venv (the infra venv), ``_REPO_ROOT``
+       is the install dir, so a repo-relative walk cannot reach the sibling
+       repos — the env var is the only reliable anchor.
+    2. Canonical-clone fallback: ``_REPO_ROOT.parent`` *only* when it actually
+       contains the sibling ``omniclaude`` clone. This resolves when running
+       from the canonical registry checkout with ``$OMNI_HOME`` unset.
+
+    Returns None (not a guessed path) when neither anchor validates, so the
+    caller cannot silently pick up a wrong directory. A None here ultimately
+    surfaces as the zero-skills hard fail in ``_audit_skills``.
+    """
+    raw = os.environ.get("OMNI_HOME")
+    if raw:
+        return Path(raw)
+    candidate = _REPO_ROOT.parent
+    if (candidate / "omniclaude").is_dir():
+        return candidate
+    return None
+
+
 def _resolve_skill_roots(raw_roots: list[str] | None) -> list[Path]:
+    """Resolve the skill roots to audit.
+
+    An explicit ``skills_roots`` request field wins (test fixtures / callers).
+    Otherwise resolve the canonical skill libraries via the ``$OMNI_HOME``
+    sibling-repo layout — mirroring ``_resolve_nodes_roots`` — so root
+    resolution works even when ``_REPO_ROOT`` is a site-packages install dir
+    (the infra-venv case). Without this the default pointed at
+    ``<venv>/.../plugins/onex/skills``, which never exists, and the audit
+    hard-failed with SkillFunctionalAuditNoSkillsDiscoveredError. The 108
+    real skills live in the sibling ``omniclaude/plugins/onex/skills`` clone.
+
+    Fail-fast (CLAUDE.md rule #8): no silent wrong default. When ``$OMNI_HOME``
+    is unset AND the canonical-clone fallback does not validate, only the
+    repo-relative candidates remain; from a site-packages install those do not
+    exist, so ``_audit_skills`` raises the zero-skills hard fail rather than
+    reporting a vacuous pass.
+    """
     if raw_roots:
         return [Path(root) for root in raw_roots]
-    return [
-        _REPO_ROOT / "plugins" / "onex" / "skills",
-        _REPO_ROOT / "src" / "omnimarket" / "adapters" / "codex" / "skills",
-    ]
+
+    roots: list[Path] = []
+    omni_home = _resolve_omni_home()
+    if omni_home is not None:
+        # Canonical skill library lives in the sibling omniclaude clone.
+        roots.append(omni_home / "omniclaude" / "plugins" / "onex" / "skills")
+        # omnimarket's own portable skill packages.
+        roots.append(omni_home / "omnimarket" / "plugins" / "onex" / "skills")
+        roots.append(
+            omni_home
+            / "omnimarket"
+            / "src"
+            / "omnimarket"
+            / "adapters"
+            / "codex"
+            / "skills"
+        )
+    # Canonical-clone-relative fallbacks (resolve when running from the repo
+    # tree; harmless no-ops from a site-packages install because they will not
+    # exist and are skipped by _discover_skills' root.exists() guard).
+    roots.append(_REPO_ROOT / "plugins" / "onex" / "skills")
+    roots.append(_REPO_ROOT / "src" / "omnimarket" / "adapters" / "codex" / "skills")
+
+    # De-duplicate while preserving order.
+    seen: set[Path] = set()
+    unique: list[Path] = []
+    for root in roots:
+        if root not in seen:
+            seen.add(root)
+            unique.append(root)
+    return unique
 
 
 def _resolve_nodes_roots(raw_root: str | None) -> list[Path]:
