@@ -16,6 +16,27 @@ from omnimarket.models.delegation.wire.model_delegation_request import (
 
 EnumQualityGateCategory = Literal["pass", "fail_deterministic", "fail_heuristic"]
 
+# Canonical ``score_source`` identifiers recorded on ``ModelQualityGateResult``
+# (OMN-13470/OMN-13959). Kept here on the shared wire model so both the quality
+# gate reducer (which SETS the value) and the acceptance-decision callers — the
+# bus orchestrator ``handle_gate_result`` and the bus-less local dispatch port
+# ``_is_quality_accepted`` — reference the same constant without a magic string
+# or a cross-node handler import.
+#
+#   SCORE_SOURCE_DETERMINISTIC_ACCEPTANCE — a VERIFIABLE task class cleared the
+#     deterministic acceptance FLOOR but the LLM judge adequacy score was NOT
+#     combined (JUDGE_FAILED: judge unreachable / throttled, or no judge run).
+#   SCORE_SOURCE_COMBINED — the LLM-judge adequacy score WAS combined into the
+#     graded score (judge reachable).
+#
+# The distinction is load-bearing for OMN-13959: when the judge is unavailable a
+# verifiable class can only ever produce SCORE_SOURCE_DETERMINISTIC_ACCEPTANCE,
+# and the combined-score ``required_bar`` (0.85) is structurally un-meetable
+# without the judge band — so acceptance must fall back to the deterministic
+# floor verdict instead of failing valid local output during a cloud-judge outage.
+SCORE_SOURCE_DETERMINISTIC_ACCEPTANCE = "deterministic_acceptance"
+SCORE_SOURCE_COMBINED = "combined"
+
 
 class ModelQualityGateInput(BaseModel):
     """Gate input: LLM response content and expected quality markers."""
@@ -148,6 +169,8 @@ class ModelQualityGateResult(BaseModel):
 
 
 __all__: list[str] = [
+    "SCORE_SOURCE_COMBINED",
+    "SCORE_SOURCE_DETERMINISTIC_ACCEPTANCE",
     "EnumQualityGateCategory",
     "ModelQualityGateInput",
     "ModelQualityGateResult",

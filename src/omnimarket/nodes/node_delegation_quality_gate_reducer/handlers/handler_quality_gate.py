@@ -40,6 +40,10 @@ import re
 from collections.abc import Callable
 
 from omnimarket.events.delegation_judge_verdict import EnumDelegationJudgeVerdict
+from omnimarket.models.delegation.wire.model_quality_gate import (
+    SCORE_SOURCE_COMBINED,
+    SCORE_SOURCE_DETERMINISTIC_ACCEPTANCE,
+)
 from omnimarket.nodes.node_delegation_quality_gate_reducer.models.model_quality_contract import (
     MAX_WORDS_PER_SENTENCE_RE,
 )
@@ -143,7 +147,10 @@ _FALLBACK_VERDICT_PREFIXES: tuple[str, ...] = (
 )
 
 _ACCEPTANCE_VERSION = "delegation-deterministic-acceptance.v1"
-_DETERMINISTIC_SCORE_SOURCE = "deterministic_acceptance"
+# Single source of truth for the score_source identifiers lives on the shared
+# wire model so acceptance-decision callers reference the SAME constant the
+# reducer records (OMN-13959).
+_DETERMINISTIC_SCORE_SOURCE = SCORE_SOURCE_DETERMINISTIC_ACCEPTANCE
 
 # OMN-13850: deterministic checks that require executing an acceptance command
 # against a live target (test suite, sandbox) which the reducer — a pure,
@@ -165,7 +172,7 @@ _UNEVALUATED_DETERMINISTIC_CHECKS: frozenset[str] = frozenset(
 # graded score, the result records ``score_source="combined"`` so downstream
 # experiment analysis and the orchestrator's required-bar gate can distinguish a
 # combined verdict from a deterministic-only one.
-_COMBINED_SCORE_SOURCE = "combined"
+_COMBINED_SCORE_SOURCE = SCORE_SOURCE_COMBINED
 # OMN-13470: relative weight of the deterministic graded band vs. the LLM-judge
 # semantic-adequacy band when both are present. The deterministic band still
 # carries more weight (it is the verifiable, replayable signal), but the judge
