@@ -329,12 +329,27 @@ class HandlerIntegrationSweepOrchestrator:
         env_root = os.environ.get("ONEX_CC_REPO_PATH")  # contract-config-ok: config  # fmt: skip
         if env_root:
             resolved = Path(env_root).expanduser().resolve()
-            if not resolved.exists() or not (resolved / "contracts").is_dir():
-                raise RuntimeError(
-                    f"ONEX_CC_REPO_PATH={env_root!r} resolves to {resolved} "
-                    "which does not exist or lacks a contracts/ directory"
-                )
-            return resolved
+            if resolved.exists() and (resolved / "contracts").is_dir():
+                return resolved
+            # A stale/container ONEX_CC_REPO_PATH (e.g. the in-container mount
+            # /onex_change_control) can leak into a local infra-venv run where
+            # it has no contracts/ dir. Fall back to the canonical registry
+            # clone under OMNI_HOME before failing so the sweep stays runnable
+            # locally. Fail-fast (CLAUDE.md rule #8) is preserved:
+            # os.environ["OMNI_HOME"] raises KeyError when unset — never a
+            # silent default — and a fallback that itself lacks contracts/
+            # still raises RuntimeError.
+            fallback = (
+                Path(os.environ["OMNI_HOME"]).expanduser().resolve()
+                / "onex_change_control"
+            )
+            if fallback.exists() and (fallback / "contracts").is_dir():
+                return fallback
+            raise RuntimeError(
+                f"ONEX_CC_REPO_PATH={env_root!r} resolves to {resolved} which "
+                "does not exist or lacks a contracts/ directory, and the "
+                f"OMNI_HOME fallback {fallback} also lacks a contracts/ directory"
+            )
         raise RuntimeError(
             "ONEX_CC_REPO_PATH is not set and no explicit artifact_root was provided. "
             "Set ONEX_CC_REPO_PATH to the omni_home repo registry path."
