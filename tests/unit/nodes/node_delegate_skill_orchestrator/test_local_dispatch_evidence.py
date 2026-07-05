@@ -38,6 +38,24 @@ from omnimarket.routing import delegation_backend_resolution
 from tests.fixtures.judge_inference import CannedAdequacyBridge
 
 
+@pytest.fixture(autouse=True)
+def _clear_health_cache() -> None:
+    """Clear handler_llm_delegation_call's module-level health-probe cache.
+
+    The cache is keyed by endpoint_url with a TTL and is checked BEFORE any
+    monkeypatched fake_probe_health/fake_run in this file ever runs. Under
+    pytest-split, whichever test happens to land first in a given worker for
+    this shard can cache a negative probe result for the shared
+    "http://inference.example:8000/..." fixture URL, silently short-circuiting
+    every later test in the same worker regardless of that test's own patch
+    (OMN-13940 CI flake — reproduced only under specific shard/run ordering,
+    not on an unsharded local run). Autouse so it covers every test in this
+    file, including the curl-transport (macOS profile) test that does not go
+    through _patch_transport/_patch_transport_with_content below.
+    """
+    handler_llm_delegation_call._health_cache.clear()
+
+
 def _pass_judge() -> HandlerJudgeAdequacy:
     """A judge that scores every candidate adequate (0.95 -> PASS verdict).
 
@@ -85,14 +103,6 @@ def _patch_routing(
 def _patch_transport(monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
     """Patch the effect handler transport to return a typed body (no network)."""
     captured: dict[str, Any] = {}
-    # handler_llm_delegation_call caches probe_health results in a module-level
-    # dict keyed by endpoint_url with a TTL. Under pytest-split, an earlier test
-    # (in this file or another) can cache a negative result for the same
-    # "http://inference.example:8000/..." fixture URL, which this test's
-    # monkeypatched fake_probe_health below would never override — the cache
-    # lookup happens before the patched function is even called. Clear it so
-    # this test's own probe result is authoritative (OMN-13940 CI flake).
-    handler_llm_delegation_call._health_cache.clear()
 
     def fake_probe_health(endpoint_url: str, **_: Any) -> bool:
         captured["probe_url"] = endpoint_url
@@ -296,23 +306,28 @@ def test_local_dispatch_reaches_lan_endpoint_via_curl_on_macos_profile(
     class _FakeProc:
         returncode = 0
         stderr = ""
-        stdout = json.dumps(
-            {
-                "choices": [{"message": {"content": "ok"}}],
-                "model": "Qwen3.6-35B-A3B",
-                "usage": {
-                    "prompt_tokens": 1,
-                    "completion_tokens": 1,
-                    "total_tokens": 2,
-                },
-            }
-        )
+
+        def __init__(self, stdout: str) -> None:
+            self.stdout = stdout
 
     def fake_run(args: list[str], **_: Any) -> _FakeProc:
         # First call is the health probe (curl ... /health); the POST follows.
         if "-X" in args and "POST" in args:
             captured["post_args"] = args
-        return _FakeProc()
+            return _FakeProc(
+                json.dumps(
+                    {
+                        "choices": [{"message": {"content": "ok"}}],
+                        "model": "Qwen3.6-35B-A3B",
+                        "usage": {
+                            "prompt_tokens": 1,
+                            "completion_tokens": 1,
+                            "total_tokens": 2,
+                        },
+                    }
+                )
+            )
+        return _FakeProc("200")
 
     monkeypatch.setattr(subprocess, "run", fake_run)
 
@@ -503,8 +518,6 @@ def _patch_transport_with_content(
     exercises the QUALITY gate, not transport failure: a model refusal is still a
     200 OK at the transport boundary.
     """
-    # See _patch_transport above — clear the stale-cache-pollution hazard.
-    handler_llm_delegation_call._health_cache.clear()
 
     def fake_probe_health(endpoint_url: str, **_: Any) -> bool:
         return True
