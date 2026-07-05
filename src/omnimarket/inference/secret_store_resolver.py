@@ -77,6 +77,25 @@ class _MappedSecretStore:
         return
 
 
+# OMN-13960: provider-native env-var aliases for delegation secret refs.
+# ~/.omnibase/.env carries PROVIDER-NATIVE secret names (``OPEN_ROUTER_API_KEY``,
+# ``GEMINI_API_KEY``) that do NOT match the dotted-ref → ``LLM_*_API_KEY``
+# convention (``llm.openrouter.api_key`` → ``LLM_OPENROUTER_API_KEY``). OMN-13943
+# threaded these as a per-CALL-SITE ``env_var_fallback`` (each backend's bifrost
+# ``api_key_env``); this map accepts the SAME provider-native names at the STORE
+# level so resolution succeeds regardless of whether a given call site remembered
+# to thread ``api_key_env`` — the LLM-judge inference adapter did not, so an
+# OpenRouter/Gemini-backed judge would fail-closed even though the key is present.
+# The CANONICAL source of these names is ``bifrost_delegation.yaml`` ``api_key_env``;
+# this store-level map is the resolver-side safety net, not a second source of
+# truth. Fail-closed is preserved: this is the LAST lookup, so a genuinely-absent
+# secret still resolves to ``None`` (and ``required=True`` callers still raise).
+_PROVIDER_NATIVE_SECRET_ALIASES: dict[str, tuple[str, ...]] = {
+    "llm.openrouter.api_key": ("OPEN_ROUTER_API_KEY",),
+    "llm.gemini.api_key": ("GEMINI_API_KEY",),
+}
+
+
 class _ConventionFallbackSecretStore:
     """Default local store: literal env lookup, then dotted-ref → ENV_VAR convention.
 
@@ -110,7 +129,19 @@ class _ConventionFallbackSecretStore:
         literal = await self._literal.get_secret(key)
         if literal:
             return literal
-        return await self._convention.get_secret(key)
+        convention = await self._convention.get_secret(key)
+        if convention:
+            return convention
+        # OMN-13960: provider-native alias — accept the real ~/.omnibase/.env name
+        # (e.g. ``OPEN_ROUTER_API_KEY``/``GEMINI_API_KEY``) when neither the literal
+        # ref nor the dotted → ``LLM_*_API_KEY`` convention resolved. This makes
+        # OpenRouter/Gemini secrets resolvable from ANY call site, including ones
+        # that do not thread the bifrost ``api_key_env`` fallback (the judge path).
+        for alias in _PROVIDER_NATIVE_SECRET_ALIASES.get(key, ()):
+            value = os.environ.get(alias)
+            if value:
+                return value
+        return None
 
     async def set_secret(self, key: str, value: str) -> bool:
         raise RuntimeError("Convention-fallback secret store is read-only")
