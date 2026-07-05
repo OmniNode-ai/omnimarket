@@ -307,3 +307,88 @@ class TestApiKeyRefAvailable:
             )
             is False
         )
+
+
+class TestProviderNativeAliasStoreLevel:
+    """OMN-13960: the DEFAULT delegation store accepts provider-native env-var
+    names as aliases, so OpenRouter/Gemini secrets resolve from ANY call site
+    WITHOUT threading the per-backend ``env_var_fallback`` (``api_key_env``).
+
+    ~/.omnibase/.env carries ``OPEN_ROUTER_API_KEY`` / ``GEMINI_API_KEY`` — names
+    that do NOT match the dotted-ref → ``LLM_*_API_KEY`` convention. OMN-13943
+    only threaded these at two call sites; the LLM-judge adapter did not, so an
+    OpenRouter/Gemini-backed judge would fail-closed. These tests exercise the
+    DEFAULT store (no injected store, NO ``env_var_fallback``) so the store-level
+    alias is what resolves.
+    """
+
+    def _isolate_default_store(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # Force the default _ConventionFallbackSecretStore (no lane config), and
+        # remove the convention/literal names so ONLY the provider-native alias
+        # can satisfy the lookup.
+        monkeypatch.delenv("ONEX_SECRET_RESOLVER_CONFIG_PATH", raising=False)
+        monkeypatch.delenv("LLM_OPENROUTER_API_KEY", raising=False)
+        monkeypatch.delenv("LLM_GEMINI_API_KEY", raising=False)
+        monkeypatch.delenv("llm.openrouter.api_key", raising=False)
+        monkeypatch.delenv("llm.gemini.api_key", raising=False)
+        clear_secret_store_resolver_cache()
+
+    async def test_openrouter_ref_resolves_via_provider_native_alias(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        self._isolate_default_store(monkeypatch)
+        monkeypatch.setenv("OPEN_ROUTER_API_KEY", "sk-or-provider-native")
+
+        resolved = await resolve_api_key_async("llm.openrouter.api_key")
+
+        assert isinstance(resolved, SecretStr)
+        assert resolved.get_secret_value() == "sk-or-provider-native"
+
+    async def test_gemini_ref_resolves_via_provider_native_alias(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        self._isolate_default_store(monkeypatch)
+        monkeypatch.setenv("GEMINI_API_KEY", "sk-gemini-provider-native")
+
+        resolved = await resolve_api_key_async("llm.gemini.api_key")
+
+        assert isinstance(resolved, SecretStr)
+        assert resolved.get_secret_value() == "sk-gemini-provider-native"
+
+    async def test_convention_name_wins_over_alias(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The dotted → ``LLM_*_API_KEY`` convention resolves BEFORE the alias, so
+        an explicit ``LLM_OPENROUTER_API_KEY`` still takes precedence."""
+        monkeypatch.delenv("ONEX_SECRET_RESOLVER_CONFIG_PATH", raising=False)
+        clear_secret_store_resolver_cache()
+        monkeypatch.setenv("LLM_OPENROUTER_API_KEY", "sk-convention")
+        monkeypatch.setenv("OPEN_ROUTER_API_KEY", "sk-alias-should-not-win")
+
+        resolved = await resolve_api_key_async("llm.openrouter.api_key")
+
+        assert isinstance(resolved, SecretStr)
+        assert resolved.get_secret_value() == "sk-convention"
+
+    async def test_alias_absent_still_fails_closed(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Fail-fast (Rule 8): when NEITHER the convention name NOR the
+        provider-native alias is set, a required lookup still raises — the alias
+        is a last-resort accept, never a silent default."""
+        self._isolate_default_store(monkeypatch)
+        monkeypatch.delenv("OPEN_ROUTER_API_KEY", raising=False)
+
+        with pytest.raises(SecretResolutionError, match=r"llm\.openrouter\.api_key"):
+            await resolve_api_key_async("llm.openrouter.api_key")
+
+    async def test_non_provider_ref_unaffected_by_alias_map(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A ref with no provider-native alias entry is unchanged: it still fails
+        closed when its convention name is unset."""
+        self._isolate_default_store(monkeypatch)
+        monkeypatch.delenv("LLM_GLM_API_KEY", raising=False)
+
+        with pytest.raises(SecretResolutionError, match=r"llm\.glm\.api_key"):
+            await resolve_api_key_async("llm.glm.api_key")

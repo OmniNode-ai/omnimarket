@@ -101,7 +101,16 @@ class RoutingResolvedJudgeInferenceAdapter(ModelInferenceAdapter):
 
         api_key: str | None = None
         if backend.secret_ref is not None:
-            resolved = resolve_api_key(backend.secret_ref)
+            # OMN-13960: thread the backend's contract-declared ``api_key_env`` as
+            # the env-var fallback (parity with the routing-availability check and
+            # the delegation effect handler). The store-level provider-native alias
+            # (OMN-13960) already covers the default GLM/OpenRouter/Gemini refs, but
+            # passing ``api_key_env`` here keeps this call site consistent with the
+            # other two and resolves a backend whose api_key_env is not in the
+            # store-level alias map.
+            resolved = resolve_api_key(
+                backend.secret_ref, env_var_fallback=backend.api_key_env
+            )
             if resolved is None:
                 raise ValueError(
                     f"Judge backend {backend.backend_id!r} declares secret_ref "
