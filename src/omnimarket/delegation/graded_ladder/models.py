@@ -15,14 +15,28 @@ class EnumBenchmarkTier(StrEnum):
     EASY = "easy"
     MEDIUM = "medium"
     HARD = "hard"
+    # FRONTIER (OMN-13938): the hard tier saturates at 1.0 across every rung
+    # from the local 35B up through the paid-cloud GLM ceiling — it does not
+    # separate the frontier of the ladder. Frontier tasks are engineered to
+    # defeat pattern-matching rather than merely raise nominal difficulty:
+    # long-chain state-machine traces requiring genuine multi-step simulation,
+    # an efficiency-gated code task that fails a memorized O(n^2) textbook
+    # solution, and a long-context faithfulness task under an adversarial
+    # correction. See escalating_corpus.yaml's FRONTIER section comment for
+    # the calibration methodology and a deferred (not-shipped) novel-puzzle
+    # design that proved operationally unstable on the reachable ladder.
+    FRONTIER = "frontier"
 
 
 # Difficulty weights used for the weighted per-rung score. Harder tasks
-# discriminate rung capability more, so they carry more weight.
+# discriminate rung capability more, so they carry more weight. FRONTIER is
+# weighted above HARD so a single frontier miss meaningfully moves the
+# weighted score (OMN-13938).
 TIER_WEIGHT: dict[EnumBenchmarkTier, int] = {
     EnumBenchmarkTier.EASY: 1,
     EnumBenchmarkTier.MEDIUM: 2,
     EnumBenchmarkTier.HARD: 3,
+    EnumBenchmarkTier.FRONTIER: 4,
 }
 
 
@@ -127,6 +141,14 @@ class ModelGradedCell(BaseModel):
     output_chars: int = 0
     latency_ms: int = 0
     model_name: str = ""
+    # OMN-13938: True when the recorded cell is an infra-availability block this
+    # session (endpoint unreachable / quota exhausted — never actually attempted
+    # the task), as opposed to a genuine capability failure (endpoint reached,
+    # request sent, model timed out or answered wrong). Blocked cells are
+    # excluded from rung scoring (neither counted for nor against) so a
+    # same-week rate limit cannot manufacture a false capability regression;
+    # they are NOT dropped from the packet — the block is recorded honestly.
+    blocked: bool = False
 
 
 class ModelRungScore(BaseModel):
