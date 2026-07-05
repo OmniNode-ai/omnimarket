@@ -481,6 +481,82 @@ _TICKET_ID_PATTERN = re.compile(r"\bOMN-\d+\b", re.IGNORECASE)
 _UNKNOWN_OCC_MERGE_SHA = "unknown-occ-merge-sha"
 _RECEIPT_GATE_CHECK_NAME = "verify / verify"
 
+# ---------------------------------------------------------------------------
+# Machine failure-signature constants (OMN-13987 CP1)
+#
+# _block_reason_for_fix classifies off the machine failure signature
+# (failed_check_names + triage category + ticket presence), never off the
+# human-readable block_reason prose. These constants drive the three arms that
+# were previously dead because nothing emitted their machine enum literal.
+# ---------------------------------------------------------------------------
+
+# deploy-gate required-status-check name substring. Covers the reusable-workflow
+# form ("deploy-gate / deploy-gate") and the inline form ("deploy-gate").
+_DEPLOY_GATE_CHECK_SIGNATURE = "deploy-gate"
+
+# Check-name substrings that indicate a GENUINE code failure (lint / type /
+# test / build). If ANY failed check matches one of these, the failure is never
+# treated as a cheap flaky rerun — it routes to CODE_FAILURE (delegatable fix).
+_CODE_SIGNAL_CHECK_SUBSTRINGS: tuple[str, ...] = (
+    "lint",
+    "ruff",
+    "mypy",
+    "type-check",
+    "typecheck",
+    "test",
+    "pytest",
+    "format",
+    "compile",
+    "build",
+    "coverage",
+    "pre-commit",
+)
+
+# Check-name substrings for KNOWN flaky/infra failures that a bare re-run
+# (``gh run rerun --failed``) can clear without any code change. CI_FAILURE is
+# emitted ONLY when EVERY failed check matches one of these AND none match a
+# code-signal substring — a deliberately narrow, fail-safe guard so a real
+# lint/type/test failure is never silently rerun instead of fixed.
+_FLAKY_INFRA_CHECK_SUBSTRINGS: tuple[str, ...] = (
+    "runner",
+    "self-hosted",
+    "fleet",
+    "flaky",
+    "network",
+    "timeout",
+    "timed out",
+    "set up job",
+    "set up runner",
+    "queue",
+    "infrastructure",
+    "provision",
+)
+
+
+def _has_deploy_gate_failure(failed_check_names: tuple[str, ...]) -> bool:
+    """True iff a deploy-gate required check is among the failed checks."""
+    return any(
+        _DEPLOY_GATE_CHECK_SIGNATURE in name.lower() for name in failed_check_names
+    )
+
+
+def _is_flaky_infra_only(failed_check_names: tuple[str, ...]) -> bool:
+    """True iff every failed check is a known flaky/infra check (rerunnable).
+
+    Fail-safe: returns False when there are no failed check names, or when any
+    failed check looks like a genuine code failure (lint/type/test/build). Only
+    when the whole failed-check set is unambiguously flaky/infra does a cheap
+    ``gh run rerun --failed`` become the right routed action.
+    """
+    if not failed_check_names:
+        return False
+    lowered = [name.lower() for name in failed_check_names]
+    if any(sub in name for name in lowered for sub in _CODE_SIGNAL_CHECK_SUBSTRINGS):
+        return False
+    return all(
+        any(sub in name for sub in _FLAKY_INFRA_CHECK_SUBSTRINGS) for name in lowered
+    )
+
 
 def _map_ci_status(pr_state: Any) -> str:
     """Map ModelPrState fields to orchestrator-internal checks_status string."""
@@ -569,17 +645,68 @@ def _block_reason_for_fix(pr: TriageRecord) -> Any:
 
     if pr.category == EnumPrCategory.CONFLICTED:
         return EnumPrBlockReason.CONFLICT
+
+    # OMN-13987 CP1: a failed deploy-gate check means the PR's own OCC deploy
+    # contract is missing (or the trivial-infra fast-path applies). Route to the
+    # contract auto-create arm. Keyed on the machine check name, so it never
+    # collides with the receipt-gate (OCC_DEPENDENCY) or genuine code failures.
+    if _has_deploy_gate_failure(failed_check_names):
+        return EnumPrBlockReason.DEPLOY_GATE_CONTRACT_NOT_FOUND
+
     if failed_check_names and set(failed_check_names) == {_RECEIPT_GATE_CHECK_NAME}:
+        # OMN-13987 CP1: a receipt-gate-ONLY failure that has a ticket is the
+        # Evidence-Source-autobind class (OMN-13317 — the "green-except-OCC-
+        # companion" PR). Route to the cheap machine rebind; the adapter is
+        # self-guarding (no-ops when Evidence-Source is already an OCC source).
+        # Without a ticket, autobind cannot run, so genuine receipt failures
+        # keep the existing agent RECEIPT_FAILURE path.
+        if pr.ticket_ids:
+            return EnumPrBlockReason.RECEIPT_EVIDENCE_SOURCE_AUTOBIND
         return EnumPrBlockReason.RECEIPT_FAILURE
+
     if "coderabbit" in reason_lower or any(
         "coderabbit" in name for name in failed_check_names_lower
     ):
         return EnumPrBlockReason.CODERABBIT
     if pr.category == EnumPrCategory.NEEDS_REVIEW:
         return EnumPrBlockReason.CHANGES_REQUESTED
+
+    # OMN-13987 CP1: a RED PR whose failed checks are ALL known flaky/infra
+    # (rerunnable) and NONE look like a genuine lint/type/test failure → a cheap
+    # CI rerun. Deliberately narrow + fail-safe: any code-signal check present
+    # falls through to CODE_FAILURE below.
+    if pr.category == EnumPrCategory.RED and _is_flaky_infra_only(failed_check_names):
+        return EnumPrBlockReason.CI_FAILURE
+
     if pr.category == EnumPrCategory.RED:
         return EnumPrBlockReason.CODE_FAILURE
     return EnumPrBlockReason.CODE_FAILURE
+
+
+# Maps a triage EnumPrCategory to the fixer-dispatcher EnumStallCategory wire
+# literal (OMN-13987 CP2). Values MUST equal EnumStallCategory members in
+# node_fixer_dispatcher.models.model_fixer_dispatch — asserted by a test rather
+# than importing another node's model package at runtime (repo boundary rule).
+# Only RED and CONFLICTED have machine auto-fix routes (node_ci_fix_effect and
+# node_conflict_hunk_effect respectively); every other category maps to
+# ``unknown`` so the dispatcher escalates deterministically.
+_PR_CATEGORY_TO_STALL_CATEGORY: dict[EnumPrCategory, str] = {
+    EnumPrCategory.RED: "red",
+    EnumPrCategory.CONFLICTED: "conflicted",
+}
+
+
+def _stall_category_for_dispatch(category: EnumPrCategory) -> str:
+    """Map a triage EnumPrCategory to a fixer-dispatcher EnumStallCategory literal.
+
+    node_fixer_dispatcher routes on machine EnumStallCategory literals
+    (red / conflicted / behind / deploy_gate); publishing the human-readable
+    ``block_reason`` prose always missed the routing table and forced every
+    dispatch to escalate — leaving node_ci_fix_effect / node_conflict_hunk_effect
+    dead. RED→``red`` reaches node_ci_fix_effect and CONFLICTED→``conflicted``
+    reaches node_conflict_hunk_effect; unmapped categories return ``unknown``.
+    """
+    return _PR_CATEGORY_TO_STALL_CATEGORY.get(category, "unknown")
 
 
 def _render_verification_breakdown(
@@ -2672,10 +2799,15 @@ class HandlerPrLifecycleOrchestrator:
         if not self._topic_fixer_dispatch_start:
             return
         for pr in fix_prs:
+            # OMN-13987 CP2: the fixer dispatcher routes on machine
+            # EnumStallCategory literals, not on the human-readable block_reason
+            # prose. Emit the machine category so RED→node_ci_fix_effect and
+            # CONFLICTED→node_conflict_hunk_effect actually route. block_reason
+            # prose stays as the advisory ``blocking_reason`` for humans/logs.
             payload = {
                 "pr_number": pr.pr_number,
                 "repo": pr.repo,
-                "stall_category": pr.block_reason or "unknown",
+                "stall_category": _stall_category_for_dispatch(pr.category),
                 "blocking_reason": pr.block_reason or "",
                 "correlation_id": str(correlation_id),
             }
