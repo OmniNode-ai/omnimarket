@@ -63,7 +63,7 @@ def _run(
     worker_type: str = "ticket_worker",
     repo: str = "omnimarket",
     branch: str = "jonah/omn-8051-context-bundle-generator",
-    trigger_event: str = "onex.cmd.omnimarket.context-bundle-requested.v1",
+    trigger_event: str = "onex.cmd.omnimarket.context-bundle-requested.v1",  # onex-topic-test-fixture
 ) -> ModelRunContext:
     return ModelRunContext(
         session_id=session_id,

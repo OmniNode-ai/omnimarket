@@ -16,9 +16,9 @@ from omnimarket.nodes.node_chain_diff_compute.models.model_chain_diff_request im
     ModelChainDiffRequest,
 )
 
-_TOPIC_A = "onex.evt.omnimarket.chain-diff-requested.v1"
-_TOPIC_B = "onex.evt.omnimarket.chain-diff-completed.v1"
-_TOPIC_C = "onex.cmd.omnimarket.closeout-verify-requested.v1"
+_TOPIC_A = "onex.evt.omnimarket.chain-diff-requested.v1"  # onex-topic-test-fixture
+_TOPIC_B = "onex.evt.omnimarket.chain-diff-completed.v1"  # onex-topic-test-fixture
+_TOPIC_C = "onex.cmd.omnimarket.closeout-verify-requested.v1"  # onex-topic-test-fixture
 
 
 def _entry(

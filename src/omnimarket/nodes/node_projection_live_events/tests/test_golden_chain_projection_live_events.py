@@ -22,9 +22,11 @@ from omnimarket.nodes.node_projection_live_events.handlers.handler_projection_li
 from omnimarket.projection.protocol_database import InmemoryDatabaseAdapter
 
 CONTRACT_PATH = Path(__file__).resolve().parents[1] / "contract.yaml"
-LOG_TOPIC = "onex.evt.platform.log-entry.v1"
-APPLIED_TOPIC = "onex.evt.omnimarket.projection-live-events-applied.v1"
-SNAPSHOT_TOPIC = "onex.snapshot.projection.live-events.v1"
+LOG_TOPIC = "onex.evt.platform.log-entry.v1"  # onex-topic-test-fixture
+APPLIED_TOPIC = (
+    "onex.evt.omnimarket.projection-live-events-applied.v1"  # onex-topic-test-fixture
+)
+SNAPSHOT_TOPIC = "onex.snapshot.projection.live-events.v1"  # onex-topic-test-fixture
 TABLE = "live_events"
 
 

@@ -55,7 +55,9 @@ def test_row_delta_before_zero_after_one() -> None:
 def test_runner_subscribes_to_pattern_stored_topic() -> None:
     assert _TABLE in KNOWN_PROJECTION_TABLES
     runner = PatternLearningProjectionRunner()
-    assert runner.subscribe_topics == ["onex.evt.omniintelligence.pattern-stored.v1"]
+    assert runner.subscribe_topics == [
+        "onex.evt.omniintelligence.pattern-stored.v1"  # onex-topic-test-fixture
+    ]
 
 
 def test_migration_present_for_node() -> None:

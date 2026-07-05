@@ -201,7 +201,10 @@ async def test_process_event_publishes_to_kafka_when_producer_present() -> None:
     producer.send_and_wait.assert_awaited_once()
     call_args = producer.send_and_wait.call_args
     topic = call_args[0][0]
-    assert topic == "onex.evt.omniintelligence.dispatch-outcome-evaluated.v1"
+    assert (
+        topic
+        == "onex.evt.omniintelligence.dispatch-outcome-evaluated.v1"  # onex-topic-test-fixture
+    )
 
     raw_value = call_args[1]["value"]
     published = json.loads(raw_value.decode())

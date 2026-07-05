@@ -36,10 +36,14 @@ from omnimarket.projection.protocol_database import InmemoryDatabaseAdapter
 # ---------------------------------------------------------------------------
 
 _CONTRACT_PATH = Path(__file__).parent.parent / "contract.yaml"
-_LOG_TOPIC = "onex.evt.platform.log-entry.v1"
-_HEARTBEAT_TOPIC = "onex.evt.platform.node-heartbeat.v1"
-_INTROSPECTION_TOPIC = "onex.evt.platform.node-introspection.v1"
-_STATE_CHANGE_TOPIC = "onex.evt.platform.node-state-change.v1"
+_LOG_TOPIC = "onex.evt.platform.log-entry.v1"  # onex-topic-test-fixture
+_HEARTBEAT_TOPIC = "onex.evt.platform.node-heartbeat.v1"  # onex-topic-test-fixture
+_INTROSPECTION_TOPIC = (
+    "onex.evt.platform.node-introspection.v1"  # onex-topic-test-fixture
+)
+_STATE_CHANGE_TOPIC = (
+    "onex.evt.platform.node-state-change.v1"  # onex-topic-test-fixture
+)
 _DELEGATION_DONE_TOPIC = "onex.evt.omnibase-infra.delegation-completed.v1"
 _DELEGATION_FAIL_TOPIC = "onex.evt.omnibase-infra.delegation-failed.v1"
 
@@ -231,7 +235,8 @@ class TestModelLiveEventFromRaw:
     def test_from_raw_unknown_topic_defaults_to_action(self) -> None:
         raw = {"event_id": str(uuid4()), "message": "unknown topic event"}
         event = ModelLiveEvent.from_raw(
-            raw, "onex.evt.omnimarket.unknown-live-event.v1"
+            raw,
+            "onex.evt.omnimarket.unknown-live-event.v1",  # onex-topic-test-fixture
         )
         assert event.type == "ACTION"
         # source is derived from the topic's service segment (onex.evt.<service>.*)

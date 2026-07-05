@@ -168,9 +168,10 @@ class TestContractYaml:
             data = yaml.safe_load(f)
         event_bus = data["event_bus"]
         assert (
-            "onex.cmd.omniclaude.version-skew-check.v1" in event_bus["subscribe_topics"]
+            "onex.cmd.omniclaude.version-skew-check.v1"  # onex-topic-test-fixture
+            in event_bus["subscribe_topics"]
         )
         assert (
-            "onex.evt.omniclaude.version-skew-detected.v1"
+            "onex.evt.omniclaude.version-skew-detected.v1"  # onex-topic-test-fixture
             in event_bus["publish_topics"]
         )

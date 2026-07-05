@@ -35,9 +35,13 @@ from omnimarket.nodes.node_swarm_subtask_state_reducer.models.model_swarm_subtas
 # Helpers
 # ---------------------------------------------------------------------------
 
-_BASE_TOPIC_CMD = "onex.cmd.omnimarket.delegation-execute.v1"
-_BASE_TOPIC_EVT = "onex.evt.omnimarket.delegation-call-completed.v1"
-_FANOUT_TOPIC = "onex.evt.omnimarket.swarm-fanout-completed.v1"
+_BASE_TOPIC_CMD = "onex.cmd.omnimarket.delegation-execute.v1"  # onex-topic-test-fixture
+_BASE_TOPIC_EVT = (
+    "onex.evt.omnimarket.delegation-call-completed.v1"  # onex-topic-test-fixture
+)
+_FANOUT_TOPIC = (
+    "onex.evt.omnimarket.swarm-fanout-completed.v1"  # onex-topic-test-fixture
+)
 
 
 def _evt(
@@ -332,7 +336,7 @@ def test_golden_chain_failed_subtask_replay(handler: HandlerSwarmSubtaskState) -
         run_id=run_id,
         subtask_id="s1",
         event_id="e-fail",
-        source_topic="onex.evt.omnimarket.delegation-all-tiers-failed.v1",
+        source_topic="onex.evt.omnimarket.delegation-all-tiers-failed.v1",  # onex-topic-test-fixture
         source_partition=0,
         source_offset=1,
         failure_class="all_tiers_exhausted",

@@ -47,12 +47,12 @@ HARDCODED_TOPIC_CORPUS = ModelValidatorCorpus(
         # --- base cases: canonical onex.<a>.<b>.<c> topic literals ---
         ModelCorpusFixture(
             fixture_id="v-base-generation-topic",
-            source='TOPIC = "onex.generation.benchmark.completed"',
+            source='TOPIC = "onex.generation.benchmark.completed"',  # onex-topic-test-fixture
             description="hardcoded onex.* topic literal in source — must flag",
         ),
         ModelCorpusFixture(
             fixture_id="v-base-publish-call",
-            source='await bus.publish("onex.delegation.attempt.started", env)',
+            source='await bus.publish("onex.delegation.attempt.started", env)',  # onex-topic-test-fixture
             description="hardcoded onex.* topic passed inline to publish() — must flag",
         ),
         # --- adversarial mutation cases (must still flag) ---
@@ -64,13 +64,13 @@ HARDCODED_TOPIC_CORPUS = ModelValidatorCorpus(
         ),
         ModelCorpusFixture(
             fixture_id="v-mut-other-domain",
-            source='RESULT_TOPIC = "onex.review.verdict.posted"',
+            source='RESULT_TOPIC = "onex.review.verdict.posted"',  # onex-topic-test-fixture
             description="mutated to a different onex.* domain/suffix — must still flag",
             mutation_of="v-base-generation-topic",
         ),
         ModelCorpusFixture(
             fixture_id="v-mut-deeper-segments",
-            source='EVT = "onex.runtime.node.deploy.requested"',
+            source='EVT = "onex.runtime.node.deploy.requested"',  # onex-topic-test-fixture
             description="mutated to a deeper (5-segment) onex.* topic — must still flag",
             mutation_of="v-base-publish-call",
         ),

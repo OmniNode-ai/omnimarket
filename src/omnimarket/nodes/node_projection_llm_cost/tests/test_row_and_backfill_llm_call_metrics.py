@@ -545,7 +545,10 @@ class TestRealEventPayload:
 
 class TestConstants:
     def test_subscribe_topic_matches_contract(self) -> None:
-        assert SUBSCRIBE_TOPIC == "onex.evt.omniintelligence.llm-call-completed.v1"
+        assert (
+            SUBSCRIBE_TOPIC
+            == "onex.evt.omniintelligence.llm-call-completed.v1"  # onex-topic-test-fixture
+        )
 
     def test_backfill_group_format(self) -> None:
         assert (

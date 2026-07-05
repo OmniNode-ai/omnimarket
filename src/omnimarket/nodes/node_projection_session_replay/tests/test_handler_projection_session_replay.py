@@ -164,7 +164,8 @@ def test_classify_unknown_topic_returns_generic_event() -> None:
     """An unknown topic returns event_type='event', is_checkpoint=False."""
     event = _make_event()
     event_type, node_name, is_checkpoint = _classify_event(
-        "onex.evt.omnimarket.some-unrecognised-event.v1", event
+        "onex.evt.omnimarket.some-unrecognised-event.v1",  # onex-topic-test-fixture
+        event,
     )
     assert event_type == "event"
     assert node_name == "unknown"

@@ -112,7 +112,9 @@ def test_topics_from_contract_requires_publish_topics() -> None:
             "omnimarket.nodes.node_pipeline_fill.handlers.handler_pipeline_fill._load_contract",
             return_value={
                 "event_bus": {
-                    "publish_topics": ["onex.cmd.omnimarket.ticket-pipeline-start.v1"]
+                    "publish_topics": [
+                        "onex.cmd.omnimarket.ticket-pipeline-start.v1"  # onex-topic-test-fixture
+                    ]
                 }
             },
         ),
@@ -128,16 +130,19 @@ def test_topics_from_contract_returns_required_topics() -> None:
         return_value={
             "event_bus": {
                 "publish_topics": [
-                    "onex.cmd.omnimarket.ticket-pipeline-start.v1",
-                    "onex.evt.omnimarket.pipeline-fill-completed.v1",
+                    "onex.cmd.omnimarket.ticket-pipeline-start.v1",  # onex-topic-test-fixture
+                    "onex.evt.omnimarket.pipeline-fill-completed.v1",  # onex-topic-test-fixture
                 ]
             }
         },
     ):
-        assert _topics_from_contract() == {
-            "ticket_pipeline_start": "onex.cmd.omnimarket.ticket-pipeline-start.v1",
-            "pipeline_fill_completed": "onex.evt.omnimarket.pipeline-fill-completed.v1",
-        }
+        assert (
+            _topics_from_contract()
+            == {
+                "ticket_pipeline_start": "onex.cmd.omnimarket.ticket-pipeline-start.v1",  # onex-topic-test-fixture
+                "pipeline_fill_completed": "onex.evt.omnimarket.pipeline-fill-completed.v1",  # onex-topic-test-fixture
+            }
+        )
 
 
 @pytest.mark.unit

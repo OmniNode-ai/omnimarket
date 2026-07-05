@@ -17,9 +17,9 @@ from omnimarket.nodes.node_chain_diff.models.model_golden_chain_entry import (
     ModelGoldenChainEntry,
 )
 
-_TOPIC_A = "onex.evt.omnimarket.chain-diff-requested.v1"
-_TOPIC_B = "onex.evt.omnimarket.chain-diff-completed.v1"
-_TOPIC_C = "onex.cmd.omnimarket.closeout-verify-requested.v1"
+_TOPIC_A = "onex.evt.omnimarket.chain-diff-requested.v1"  # onex-topic-test-fixture
+_TOPIC_B = "onex.evt.omnimarket.chain-diff-completed.v1"  # onex-topic-test-fixture
+_TOPIC_C = "onex.cmd.omnimarket.closeout-verify-requested.v1"  # onex-topic-test-fixture
 
 
 def _entry(
@@ -206,7 +206,7 @@ class TestHandlerChainDiffDeterminism:
 @pytest.mark.unit
 class TestHandlerChainDiffNoHardcodedTopics:
     def test_topics_come_from_entries_not_handler(self) -> None:
-        custom_topic = "onex.evt.omnimarket.custom-event.v1"
+        custom_topic = "onex.evt.omnimarket.custom-event.v1"  # onex-topic-test-fixture
         expected = (_entry(1, "EventA", custom_topic),)
         observed = (_entry(1, "EventA", _TOPIC_B),)
         request = ModelChainDiffRequest(expected=expected, observed=observed)
