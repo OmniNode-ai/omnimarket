@@ -241,6 +241,14 @@ class FixResult(BaseModel):
 
     prs_dispatched: int = Field(default=0, ge=0)
     prs_skipped: int = Field(default=0, ge=0)
+    # WS-D/D2 (OMN-13940): delegation harness counters. attempted counts every
+    # call that actually invoked the delegated-fix path (accepted +
+    # gate_failed + escalated); not_attempted PRs are outside this count.
+    prs_delegated_fix_attempted: int = Field(default=0, ge=0)
+    prs_delegated_fix_accepted: int = Field(default=0, ge=0)
+    prs_delegated_fix_gate_failed: int = Field(default=0, ge=0)
+    prs_delegated_fix_escalated: int = Field(default=0, ge=0)
+    delegation_cost_savings_usd: float = Field(default=0.0, ge=0.0)
 
 
 class PruneResult(BaseModel):

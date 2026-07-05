@@ -124,6 +124,15 @@ def main() -> None:
         default=None,
         help="Explicit run directory for breadcrumb/result.json persistence.",
     )
+    parser.add_argument(
+        "--skip-repair-dispatch",
+        action="store_true",
+        default=False,
+        help=(
+            "Skip repair-worker (fixer) agent dispatch — for callers that "
+            "supply an already-fixed --worktree-path (OMN-13940)."
+        ),
+    )
     add_output_args(parser)
 
     args = parser.parse_args()
@@ -146,6 +155,7 @@ def main() -> None:
         dry_run=args.dry_run,
         worktree_path=args.worktree_path,
         run_dir=args.run_dir,
+        skip_repair_dispatch=args.skip_repair_dispatch,
         requested_at=datetime.now(UTC),
     )
 

@@ -1,0 +1,23 @@
+name: node_pr_delegated_fix_effect
+version: "1.0.0"
+description: "Deterministic delegated PR fix effect — ruff format/fix inside a worktree, defense-in-depth denylist re-check, commit-with-trailer, re-entry into node_pr_polish gates (Slice 0, no LLM)"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+pack: pr_lifecycle
+node_role: fix
+display_name: "PR Delegated Fix"
+entry_points:
+  onex.nodes:
+    node_pr_delegated_fix_effect: "omnimarket.nodes.node_pr_delegated_fix_effect"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: false
+  requires_repo: true
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: write
+dependencies:
+  - "omnibase_core>=0.39.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["effect", "pr", "fix", "delegation", "ruff", "pr_lifecycle"]

@@ -67,6 +67,15 @@ from omnimarket.nodes.node_runtime_closeout_orchestrator.models.model_closeout_s
 _DIGEST = "sha256:00c10de7"
 
 
+def test_runtime_closeout_declared_topic_literals_match_handler_constants() -> None:
+    """Pin contract-declared publish topics to handler constants."""
+    assert TOPIC_CLOSEOUT_PREFLIGHT == "onex.cmd.omnimarket.closeout-preflight.v1"
+    assert TOPIC_CLOSEOUT_FITNESS_GATE == "onex.cmd.omnimarket.closeout-fitness-gate.v1"
+    assert TOPIC_REDEPLOY_START == "onex.cmd.omnimarket.redeploy-start.v1"
+    assert TOPIC_CLOSEOUT_PROOF_MATRIX == "onex.cmd.omnimarket.closeout-proof-matrix.v1"
+    assert TOPIC_CLOSEOUT_COMPLETED == "onex.evt.omnimarket.closeout-completed.v1"
+
+
 @pytest.mark.unit
 class TestRuntimeCloseoutOrchestratorGoldenChain:
     async def test_start_to_preflight(self) -> None:

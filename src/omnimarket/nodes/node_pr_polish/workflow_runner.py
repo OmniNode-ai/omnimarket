@@ -82,6 +82,9 @@ class PrecommitFailureError(RuntimeError):
         self.failure = failure
 
 
+_SKIPPED_REPAIR_DISPATCH_STATUS = "skipped_repair_dispatch"
+
+
 class RepairDispatchEvidence(TypedDict):
     """Persisted repair-worker dispatch artifacts for a PR polish run."""
 
@@ -128,11 +131,19 @@ def run_live_pr_polish(
         if command.required_clean_runs > command.max_iterations:
             raise RuntimeError("required_clean_runs cannot exceed max_iterations")
 
-        dispatch_evidence = _prepare_repair_worker_dispatch(
-            command,
-            run_dir=run_dir,
-            started_at=started_at,
-        )
+        if command.skip_repair_dispatch:
+            # WS-D/D2 (OMN-13940): the caller (e.g. node_pr_delegated_fix_effect)
+            # already applied and committed a fix in worktree_path — dispatching
+            # a repair-worker (fixer) agent here would be redundant and would
+            # spawn an unwanted Claude agent for a PR the delegated path is
+            # explicitly trying to keep off the agent path.
+            dispatch_evidence = _skipped_repair_dispatch_evidence()
+        else:
+            dispatch_evidence = _prepare_repair_worker_dispatch(
+                command,
+                run_dir=run_dir,
+                started_at=started_at,
+            )
         payload["repair_worker_dispatch"] = dispatch_evidence
 
         if not command.worktree_path:
@@ -330,6 +341,29 @@ def _resolve_run_dir(command: ModelPrPolishStartCommand) -> Path:
     pr_part = str(command.pr_number) if command.pr_number is not None else "unknown-pr"
     run_id = uuid4().hex[:12]
     return state_dir / "pr-polish" / f"{repo_slug}-{pr_part}-{run_id}"
+
+
+def _skipped_repair_dispatch_evidence() -> RepairDispatchEvidence:
+    """Sentinel evidence for ``command.skip_repair_dispatch=True`` (OMN-13940).
+
+    No dispatch artifacts exist on disk in this path — every path field is an
+    empty string rather than a fabricated path, so a reader can tell at a
+    glance that repair-worker dispatch never ran.
+    """
+    return {
+        "dispatch_worker_command_path": "",
+        "dispatch_worker_result_path": "",
+        "dispatch_worker_spec_path": "",
+        "dispatch_execution_result_path": "",
+        "delegation_payloads_path": "",
+        "dispatch_receipt_dir": "",
+        "repair_worker_payloads_prepared": 0,
+        "repair_workers_dispatched": 0,
+        "repair_workers_skipped": 0,
+        "repair_workers_rejected": 0,
+        "repair_workers_failed": 0,
+        "delegation_publish_status": _SKIPPED_REPAIR_DISPATCH_STATUS,
+    }
 
 
 def _prepare_repair_worker_dispatch(

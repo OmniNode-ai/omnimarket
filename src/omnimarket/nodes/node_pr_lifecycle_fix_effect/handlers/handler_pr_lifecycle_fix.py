@@ -19,21 +19,44 @@ from __future__ import annotations
 
 import logging
 from datetime import UTC, datetime
-from typing import Protocol, runtime_checkable
+from typing import NamedTuple, Protocol, runtime_checkable
 from uuid import UUID
 
 from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.adapter_occ_contract import (
     classify_trivial_infra_fastpath,
+)
+from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.adapter_two_strike_store import (
+    ProtocolTwoStrikeStore,
+    strike_key,
+)
+from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.delegation_eligibility import (
+    TWO_STRIKE_THRESHOLD,
+    is_delegation_eligible,
 )
 from omnimarket.nodes.node_pr_lifecycle_fix_effect.models.model_fix_command import (
     EnumPrBlockReason,
     ModelPrLifecycleFixCommand,
 )
 from omnimarket.nodes.node_pr_lifecycle_fix_effect.models.model_fix_result import (
+    EnumDelegationOutcome,
     ModelPrLifecycleFixResult,
 )
 
 logger = logging.getLogger(__name__)
+
+
+class _DelegationInfo(NamedTuple):
+    """Delegation bookkeeping for a single ``_route`` call (WS-D/D2, OMN-13940)."""
+
+    delegated: bool
+    model: str | None
+    outcome: EnumDelegationOutcome | None
+    cost_usd: float | None
+
+
+_NOT_DELEGATED = _DelegationInfo(
+    delegated=False, model=None, outcome=None, cost_usd=None
+)
 
 
 # ---------------------------------------------------------------------------
@@ -92,6 +115,32 @@ class ProtocolOccContractAdapter(Protocol):
 
         Returns a human-readable action string describing what was created.
         """
+        ...
+
+
+@runtime_checkable
+class ProtocolDelegationFixAdapter(Protocol):
+    """Delegated (non-Claude) fix path required by the fix effect (WS-D/D2).
+
+    Called only for CODE_FAILURE / CHANGES_REQUESTED once
+    ``delegation_eligibility.is_delegation_eligible`` has approved the PR.
+    Implementations own worktree resolution, the actual fix (deterministic
+    tool or LLM delegation), local gates/verify, commit-with-trailer, and
+    re-entry into the existing pr_polish push/coderabbit-triage/auto-merge-arm
+    flow. Must raise on any gate/verify failure — the caller records a
+    two-strike and NEVER treats a raised exception as a push.
+    """
+
+    async def dispatch_delegated_fix(
+        self,
+        repo: str,
+        pr_number: int,
+        ticket_id: str | None,
+        command: ModelPrLifecycleFixCommand,
+    ) -> str:
+        """Run the delegated fix. Returns a human-readable action string on
+        success; raises on any failure (denylist trip, size gate, git apply
+        failure, or a local-gate/verify failure surfaced from pr_polish)."""
         ...
 
 
@@ -166,6 +215,38 @@ class _NoopOccAutobindAdapter:
         )
 
 
+class _NoopDelegationFixAdapter:
+    """No-op delegation-fix adapter for dry_run and standalone execution."""
+
+    async def dispatch_delegated_fix(
+        self,
+        repo: str,
+        pr_number: int,
+        ticket_id: str | None,
+        command: ModelPrLifecycleFixCommand,
+    ) -> str:
+        return f"[noop] would dispatch delegated fix on {repo}#{pr_number}"
+
+
+class _InMemoryTwoStrikeStore:
+    """Ephemeral in-memory two-strike counter for standalone/test use.
+
+    Does NOT persist across process restarts. Real merge-sweep wiring injects
+    ``JsonFileTwoStrikeStore`` via the orchestrator's ``_ensure_sub_handlers``
+    so the two-strike threshold survives across ticks (safety bar #7).
+    """
+
+    def __init__(self) -> None:
+        self._counts: dict[str, int] = {}
+
+    def get_strikes(self, key: str) -> int:
+        return self._counts.get(key, 0)
+
+    def record_failure(self, key: str) -> int:
+        self._counts[key] = self._counts.get(key, 0) + 1
+        return self._counts[key]
+
+
 # ---------------------------------------------------------------------------
 # Handler
 # ---------------------------------------------------------------------------
@@ -184,6 +265,9 @@ class HandlerPrLifecycleFix:
         agent_dispatch_adapter: ProtocolAgentDispatchAdapter | None = None,
         occ_contract_adapter: ProtocolOccContractAdapter | None = None,
         occ_autobind_adapter: ProtocolOccAutobindAdapter | None = None,
+        delegation_fix_adapter: ProtocolDelegationFixAdapter | None = None,
+        two_strike_store: ProtocolTwoStrikeStore | None = None,
+        delegation_model_name: str = "ruff-deterministic",
     ) -> None:
         self._github: ProtocolGitHubAdapter = github_adapter or _NoopGitHubAdapter()
         self._agent: ProtocolAgentDispatchAdapter = (
@@ -195,6 +279,18 @@ class HandlerPrLifecycleFix:
         self._occ_autobind: ProtocolOccAutobindAdapter = (
             occ_autobind_adapter or _NoopOccAutobindAdapter()
         )
+        # WS-D/D2 (OMN-13940): delegated (non-Claude) fix path for
+        # CODE_FAILURE / CHANGES_REQUESTED. Defaults to noop + an in-memory
+        # two-strike store (test/standalone convenience) — production wiring
+        # in HandlerPrLifecycleOrchestrator._ensure_sub_handlers injects the
+        # persistent JsonFileTwoStrikeStore explicitly.
+        self._delegation_fix: ProtocolDelegationFixAdapter = (
+            delegation_fix_adapter or _NoopDelegationFixAdapter()
+        )
+        self._two_strike: ProtocolTwoStrikeStore = (
+            two_strike_store or _InMemoryTwoStrikeStore()
+        )
+        self._delegation_model_name = delegation_model_name
 
     async def handle(
         self, command: ModelPrLifecycleFixCommand
@@ -216,9 +312,10 @@ class HandlerPrLifecycleFix:
         fix_action: str
         error: str | None = None
         fix_applied = False
+        delegation_info = _NOT_DELEGATED
 
         try:
-            fix_action = await self._route(command)
+            fix_action, delegation_info = await self._route(command)
             fix_applied = True
         except Exception as exc:
             fix_action = f"failed: {exc}"
@@ -241,9 +338,15 @@ class HandlerPrLifecycleFix:
             fix_action=fix_action,
             error=error,
             completed_at=datetime.now(tz=UTC),
+            delegated=delegation_info.delegated,
+            delegation_model=delegation_info.model,
+            delegation_outcome=delegation_info.outcome,
+            delegation_cost_usd=delegation_info.cost_usd,
         )
 
-    async def _route(self, command: ModelPrLifecycleFixCommand) -> str:
+    async def _route(
+        self, command: ModelPrLifecycleFixCommand
+    ) -> tuple[str, _DelegationInfo]:
         """Dispatch to the correct adapter based on block_reason."""
         reason = command.block_reason
         repo = command.repo
@@ -251,21 +354,27 @@ class HandlerPrLifecycleFix:
 
         if reason == EnumPrBlockReason.CI_FAILURE:
             # Flaky/infrastructure failure — rerun without code changes.
-            return await self._github.rerun_failed_checks(repo, pr)
+            return await self._github.rerun_failed_checks(repo, pr), _NOT_DELEGATED
+
+        if reason == EnumPrBlockReason.RECEIPT_FAILURE:
+            # Safety bar #5: an OCC/receipt-gate surface. Stays on the Claude
+            # agent path unconditionally — split out of the delegatable
+            # CODE_FAILURE/CHANGES_REQUESTED branch and NEVER delegated.
+            action = await self._agent.dispatch_review_fix(repo, pr, command.ticket_id)
+            return action, _NOT_DELEGATED
 
         if reason in {
             EnumPrBlockReason.CODE_FAILURE,
-            EnumPrBlockReason.RECEIPT_FAILURE,
             EnumPrBlockReason.CHANGES_REQUESTED,
         }:
-            # Code, receipt, or review-comment failure — delegate to pr_polish.
-            return await self._agent.dispatch_review_fix(repo, pr, command.ticket_id)
+            return await self._route_delegatable_fix(command)
 
         if reason == EnumPrBlockReason.CONFLICT:
-            return await self._github.resolve_conflicts(repo, pr)
+            return await self._github.resolve_conflicts(repo, pr), _NOT_DELEGATED
 
         if reason == EnumPrBlockReason.CODERABBIT:
-            return await self._agent.dispatch_coderabbit_reply(repo, pr)
+            action = await self._agent.dispatch_coderabbit_reply(repo, pr)
+            return action, _NOT_DELEGATED
 
         if reason == EnumPrBlockReason.DEPLOY_GATE_CONTRACT_NOT_FOUND:
             # Trivial-infra OCC fast-path (OMN-13776): a one-line non-runtime
@@ -283,7 +392,7 @@ class HandlerPrLifecycleFix:
                     repo,
                     fastpath_reason,
                 )
-                return f"OCC fast-path: {fastpath_reason}"
+                return f"OCC fast-path: {fastpath_reason}", _NOT_DELEGATED
 
             # deploy-gate failed because the OCC contract YAML is missing.
             # ticket_id is required; raise if absent so the caller gets a clear error.
@@ -293,19 +402,103 @@ class HandlerPrLifecycleFix:
                     f"on {repo}#{pr}"
                 )
                 raise ValueError(msg)
-            return await self._occ.create_occ_contract(repo, pr, command.ticket_id)
+            action = await self._occ.create_occ_contract(repo, pr, command.ticket_id)
+            return action, _NOT_DELEGATED
 
         if reason == EnumPrBlockReason.RECEIPT_EVIDENCE_SOURCE_AUTOBIND:
             # Receipt Gate failed: Evidence-Source points at the product head
             # SHA instead of an OCC source. Bind OCC evidence and rewrite the
             # PR body. ticket_id is optional — the adapter detects it from the
             # PR title/body when absent (OMN-13317 F1).
-            return await self._occ_autobind.autobind_evidence_source(
+            action = await self._occ_autobind.autobind_evidence_source(
                 repo, pr, command.ticket_id
             )
+            return action, _NOT_DELEGATED
 
         msg = f"Unhandled block_reason: {reason!r}"
         raise ValueError(msg)
+
+    async def _route_delegatable_fix(
+        self, command: ModelPrLifecycleFixCommand
+    ) -> tuple[str, _DelegationInfo]:
+        """Route CODE_FAILURE / CHANGES_REQUESTED to delegation or the agent.
+
+        Safety bar #7 (two-strike): a second delegation failure on the same
+        PR/block_reason permanently disables delegation for that key — the
+        call that trips the second strike escalates to the agent immediately;
+        every later call for that key is ineligible from the start.
+        """
+        repo, pr = command.repo, command.pr_number
+        key = strike_key(repo, pr, command.block_reason.value)
+        strikes = self._two_strike.get_strikes(key)
+        eligible, eligibility_reason = is_delegation_eligible(
+            block_reason=command.block_reason.value,
+            changed_files=command.changed_files,
+            diff_total_lines=command.diff_total_lines,
+            review_context_text=command.review_context_text,
+            strikes=strikes,
+        )
+
+        if not eligible:
+            logger.info(
+                "delegation ineligible: pr=%s repo=%s reason=%s strikes=%d",
+                pr,
+                repo,
+                eligibility_reason,
+                strikes,
+            )
+            action = await self._agent.dispatch_review_fix(repo, pr, command.ticket_id)
+            return action, _DelegationInfo(
+                delegated=False,
+                model=None,
+                outcome=EnumDelegationOutcome.NOT_ATTEMPTED,
+                cost_usd=None,
+            )
+
+        try:
+            action = await self._delegation_fix.dispatch_delegated_fix(
+                repo, pr, command.ticket_id, command
+            )
+        except Exception as exc:
+            new_strikes = self._two_strike.record_failure(key)
+            logger.warning(
+                "delegated fix failed: pr=%s repo=%s strikes=%d error=%s",
+                pr,
+                repo,
+                new_strikes,
+                exc,
+            )
+            if new_strikes >= TWO_STRIKE_THRESHOLD:
+                fallback = await self._agent.dispatch_review_fix(
+                    repo, pr, command.ticket_id
+                )
+                action = (
+                    f"delegated fix failed permanently ({exc}); "
+                    f"escalated to agent: {fallback}"
+                )
+                return action, _DelegationInfo(
+                    delegated=True,
+                    model=self._delegation_model_name,
+                    outcome=EnumDelegationOutcome.ESCALATED,
+                    cost_usd=0.0,
+                )
+            action = (
+                f"delegated fix failed ({exc}); strike {new_strikes}/"
+                f"{TWO_STRIKE_THRESHOLD}, no push — will retry or escalate next tick"
+            )
+            return action, _DelegationInfo(
+                delegated=True,
+                model=self._delegation_model_name,
+                outcome=EnumDelegationOutcome.GATE_FAILED,
+                cost_usd=0.0,
+            )
+
+        return action, _DelegationInfo(
+            delegated=True,
+            model=self._delegation_model_name,
+            outcome=EnumDelegationOutcome.ACCEPTED,
+            cost_usd=0.0,
+        )
 
     # RuntimeLocal handler shim
     def handle_sync(
@@ -332,6 +525,7 @@ class HandlerPrLifecycleFix:
 __all__: list[str] = [
     "HandlerPrLifecycleFix",
     "ProtocolAgentDispatchAdapter",
+    "ProtocolDelegationFixAdapter",
     "ProtocolGitHubAdapter",
     "ProtocolOccAutobindAdapter",
     "ProtocolOccContractAdapter",
