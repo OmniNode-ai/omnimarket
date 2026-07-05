@@ -29,6 +29,10 @@ class ModelCreateTicketRequest(BaseModel):
     )
     dry_run: bool = Field(default=False)
     team: str = Field(default="Omninode")
+    allow_arch_violation: bool = Field(
+        default=False,
+        description="Bypass architecture dependency validation (contract input).",
+    )
 
 
 class ModelCreateTicketResult(BaseModel):
