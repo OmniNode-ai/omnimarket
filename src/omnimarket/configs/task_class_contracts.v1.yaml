@@ -312,8 +312,19 @@ task_classes:
       deterministic:
         - response_non_empty
       heuristic:
+        # OMN-13963: `semantic_adequacy` is the LOCAL acceptance authority. Without
+        # a non-reject-only check the quality gate had NO adequacy authority for
+        # `reasoning` (response_non_empty / no_refusal / step_by_step_explanation
+        # are all reject-only), so a valid LOCAL Qwen answer could never PASS —
+        # the gate returned TASK_MISMATCH:no-adequacy-authority, force-escalated
+        # local→cheap_cloud, and hit the throttled GLM (429), killing the whole
+        # class during a cloud outage. `semantic_adequacy` (a real completeness
+        # check) is the SAME local authority the sibling reproducible_judge classes
+        # `document`/`research`/`summarization` already carry and complete on local
+        # with; it accepts a complete answer while a refusal/empty still fails.
         - no_refusal
         - step_by_step_explanation
+        - semantic_adequacy
     quality_gate:
       score_source: quality_gate_graded_score
       required_bar: 0.8
@@ -342,8 +353,12 @@ task_classes:
       deterministic:
         - response_non_empty
       heuristic:
+        # OMN-13963: LOCAL acceptance authority (see `reasoning` above). Without a
+        # non-reject-only check `complex_reasoning` had no adequacy authority and
+        # force-escalated valid local output to the throttled cloud judge.
         - step_by_step_explanation
         - methodical_analysis
+        - semantic_adequacy
     quality_gate:
       score_source: quality_gate_graded_score
       required_bar: 0.8
