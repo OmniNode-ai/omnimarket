@@ -153,6 +153,10 @@ def test_arm_axes(
 def test_chat_handles_non_mapping_choice_without_raising(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    def _urlopen(_req: object, *, timeout: float) -> _OpenAIResponse:
+        _ = timeout
+        return _OpenAIResponse()
+
     monkeypatch.setattr(
         model_client,
         "resolve_tier",
@@ -167,7 +171,7 @@ def test_chat_handles_non_mapping_choice_without_raising(
     monkeypatch.setattr(
         model_client.urllib.request,
         "urlopen",
-        lambda _req, _timeout: _OpenAIResponse(),
+        _urlopen,
     )
 
     call = model_client.chat(
