@@ -87,7 +87,9 @@ class TestHandlerPrLifecycleInventoryGoldenChain:
 
         handler = HandlerPrLifecycleInventory()
 
-        def fake_run(cmd: list[str], capture_output: bool, text: bool) -> MagicMock:
+        def fake_run(
+            cmd: list[str], capture_output: bool, text: bool, timeout: int | None = None
+        ) -> MagicMock:
             joined = " ".join(cmd)
             if "/search/issues" in joined:
                 return _make_subprocess_result(
@@ -167,7 +169,9 @@ class TestHandlerPrLifecycleInventoryGoldenChain:
         handler = HandlerPrLifecycleInventory()
         commands: list[list[str]] = []
 
-        def fake_run(cmd: list[str], capture_output: bool, text: bool) -> MagicMock:
+        def fake_run(
+            cmd: list[str], capture_output: bool, text: bool, timeout: int | None = None
+        ) -> MagicMock:
             commands.append(cmd)
             return _make_subprocess_result(
                 json.dumps(
@@ -229,7 +233,9 @@ class TestHandlerPrLifecycleInventoryGoldenChain:
     def test_gh_failure_records_error(self) -> None:
         handler = HandlerPrLifecycleInventory()
 
-        def fail_run(cmd: list[str], capture_output: bool, text: bool) -> MagicMock:
+        def fail_run(
+            cmd: list[str], capture_output: bool, text: bool, timeout: int | None = None
+        ) -> MagicMock:
             mock = MagicMock()
             mock.returncode = 1
             mock.stdout = ""
@@ -249,7 +255,9 @@ class TestHandlerPrLifecycleInventoryGoldenChain:
         """First PR succeeds, second fails — total_collected=1, 1 error."""
         call_count = 0
 
-        def mixed_run(cmd: list[str], capture_output: bool, text: bool) -> MagicMock:
+        def mixed_run(
+            cmd: list[str], capture_output: bool, text: bool, timeout: int | None = None
+        ) -> MagicMock:
             nonlocal call_count
             call_count += 1
             # First pr view call for PR 1 succeeds, everything for PR 2 fails
@@ -290,7 +298,9 @@ class TestHandlerPrLifecycleInventoryGoldenChain:
     def test_empty_pr_numbers_returns_empty_output(self) -> None:
         handler = HandlerPrLifecycleInventory()
 
-        def fake_run(cmd: list[str], capture_output: bool, text: bool) -> MagicMock:
+        def fake_run(
+            cmd: list[str], capture_output: bool, text: bool, timeout: int | None = None
+        ) -> MagicMock:
             # Only the org-wide census runs when no PR numbers are requested.
             return _make_subprocess_result(json.dumps({"total_count": 0, "items": []}))
 
@@ -310,7 +320,9 @@ class TestHandlerPrLifecycleInventoryGoldenChain:
         head_sha = "abc123"
         enqueued_at = datetime.now(tz=UTC) - timedelta(minutes=20)
 
-        def fake_run(cmd: list[str], capture_output: bool, text: bool) -> MagicMock:
+        def fake_run(
+            cmd: list[str], capture_output: bool, text: bool, timeout: int | None = None
+        ) -> MagicMock:
             joined = " ".join(cmd)
             if "actions/runs" in joined:
                 return _make_subprocess_result(json.dumps({"total_count": 0}))
@@ -356,7 +368,9 @@ class TestHandlerPrLifecycleInventoryGoldenChain:
         handler = HandlerPrLifecycleInventory()
         enqueued_at = datetime.now(tz=UTC) - timedelta(minutes=20)
 
-        def fake_run(cmd: list[str], capture_output: bool, text: bool) -> MagicMock:
+        def fake_run(
+            cmd: list[str], capture_output: bool, text: bool, timeout: int | None = None
+        ) -> MagicMock:
             joined = " ".join(cmd)
             if "actions/runs" in joined:
                 return _make_subprocess_result(json.dumps({"total_count": 1}))
@@ -430,7 +444,9 @@ class TestOrgWideOpenPrSweepGate:
             }
         ]
 
-        def fake_run(cmd: list[str], capture_output: bool, text: bool) -> MagicMock:
+        def fake_run(
+            cmd: list[str], capture_output: bool, text: bool, timeout: int | None = None
+        ) -> MagicMock:
             assert "/search/issues" in " ".join(cmd)
             assert any("org:OmniNode-ai is:pr is:open" in part for part in cmd)
             return _make_subprocess_result(json.dumps(_search_issues_payload(open_prs)))
@@ -450,7 +466,9 @@ class TestOrgWideOpenPrSweepGate:
     def test_close_the_pr_reports_done(self) -> None:
         handler = HandlerPrLifecycleInventory()
 
-        def fake_run(cmd: list[str], capture_output: bool, text: bool) -> MagicMock:
+        def fake_run(
+            cmd: list[str], capture_output: bool, text: bool, timeout: int | None = None
+        ) -> MagicMock:
             return _make_subprocess_result(json.dumps(_search_issues_payload([])))
 
         with patch("subprocess.run", side_effect=fake_run):
@@ -463,7 +481,9 @@ class TestOrgWideOpenPrSweepGate:
     def test_query_failure_is_fail_closed_not_done(self) -> None:
         handler = HandlerPrLifecycleInventory()
 
-        def fail_run(cmd: list[str], capture_output: bool, text: bool) -> MagicMock:
+        def fail_run(
+            cmd: list[str], capture_output: bool, text: bool, timeout: int | None = None
+        ) -> MagicMock:
             mock = MagicMock()
             mock.returncode = 1
             mock.stdout = ""
@@ -479,7 +499,9 @@ class TestOrgWideOpenPrSweepGate:
     def test_invalid_json_is_fail_closed_not_done(self) -> None:
         handler = HandlerPrLifecycleInventory()
 
-        def bad_json_run(cmd: list[str], capture_output: bool, text: bool) -> MagicMock:
+        def bad_json_run(
+            cmd: list[str], capture_output: bool, text: bool, timeout: int | None = None
+        ) -> MagicMock:
             return _make_subprocess_result("not-json")
 
         with patch("subprocess.run", side_effect=bad_json_run):
@@ -494,7 +516,9 @@ class TestOrgWideOpenPrSweepGate:
             {"number": 7, "repo": "OmniNode-ai/omnimarket", "title": "open one"}
         ]
 
-        def fake_run(cmd: list[str], capture_output: bool, text: bool) -> MagicMock:
+        def fake_run(
+            cmd: list[str], capture_output: bool, text: bool, timeout: int | None = None
+        ) -> MagicMock:
             if "/search/issues" in " ".join(cmd):
                 return _make_subprocess_result(
                     json.dumps(_search_issues_payload(open_prs))
@@ -532,7 +556,9 @@ class TestPrAssociatedRunsOnly:
     ) -> ModelPrState:
         handler = HandlerPrLifecycleInventory()
 
-        def fake_run(cmd: list[str], capture_output: bool, text: bool) -> MagicMock:
+        def fake_run(
+            cmd: list[str], capture_output: bool, text: bool, timeout: int | None = None
+        ) -> MagicMock:
             if "checks" in cmd:
                 return _make_subprocess_result(json.dumps(check_runs))
             if "reviews" in cmd[-1]:
@@ -551,7 +577,9 @@ class TestPrAssociatedRunsOnly:
         handler = HandlerPrLifecycleInventory()
         commands: list[list[str]] = []
 
-        def fake_run(cmd: list[str], capture_output: bool, text: bool) -> MagicMock:
+        def fake_run(
+            cmd: list[str], capture_output: bool, text: bool, timeout: int | None = None
+        ) -> MagicMock:
             commands.append(cmd)
             return _make_subprocess_result(json.dumps([]))
 
@@ -673,7 +701,9 @@ class TestEventBusWiring:
 
         received_events: list[dict[str, object]] = []
 
-        def fake_run(cmd: list[str], capture_output: bool, text: bool) -> MagicMock:
+        def fake_run(
+            cmd: list[str], capture_output: bool, text: bool, timeout: int | None = None
+        ) -> MagicMock:
             if "checks" in cmd:
                 return _make_subprocess_result("[]")
             if "reviews" in cmd[-1]:

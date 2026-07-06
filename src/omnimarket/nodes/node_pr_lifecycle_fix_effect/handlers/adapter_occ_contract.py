@@ -36,6 +36,11 @@ from omnimarket.nodes.contract_topics import contract_secret_ref
 logger = logging.getLogger(__name__)
 _CONTRACT_PATH = Path(__file__).resolve().parents[1] / "contract.yaml"
 
+# OMN-14031: bound every git subprocess so a stalled network git call (push /
+# fetch under egress saturation) fails fast instead of wedging the fix-effect
+# path — the same un-timed-subprocess hang class fixed in the inventory node.
+_GIT_TIMEOUT_SECONDS = 120
+
 _DEFAULT_RUNNER = "node_pr_lifecycle_fix_effect"
 _DEFAULT_VERIFIER = "occ-auto-contract-verifier"
 
@@ -521,6 +526,7 @@ class OccContractAdapter:
             check=True,
             capture_output=True,
             text=True,
+            timeout=_GIT_TIMEOUT_SECONDS,
         )
         return result.stdout.strip()
 
