@@ -51,6 +51,9 @@ _CHECK_LOG_NETWORK_SIGNATURES: tuple[str, ...] = (
     "fatal: early eof",
     "unexpected disconnect while reading sideband packet",
     "invalid index-pack output",
+    "failed to initialize container",
+    "one or more containers failed to start",
+    "service container postgres failed",
 )
 
 # F3 (OMN-13319): only PR-associated runs count toward required contexts.
