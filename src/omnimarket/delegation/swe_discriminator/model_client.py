@@ -8,23 +8,22 @@ Endpoints are resolved from the COMMITTED graded_ladder routing config
 gate). Selection is by rung id:
 
 * ``frontier``      — the cloud rung (``rung_cloud_glm`` by default). Its public
-                      ``endpoint_url`` comes from the committed config; the Bearer
-                      key is read at call time from the env var NAMED by the
-                      rung's ``api_key_env`` (never committed).
+                      ``endpoint_url`` comes from the committed config; the
+                      Bearer key is supplied by typed runtime config under the
+                      env-name declared by the rung.
 * ``cost_routed``   — the local rung (``rung_5090_coder`` by default). Its
-                      site-specific endpoint is resolved from the env var NAMED by
-                      the rung's ``endpoint_url_env`` or the operator-local bifrost
-                      overlay — no host/IP in source (CLAUDE.md rule #6).
+                      site-specific endpoint is resolved from typed runtime
+                      config or the operator-local bifrost overlay — no host/IP
+                      in source (CLAUDE.md rule #6).
 
-Which rung backs each tier is overridable by RUNG ID (``SWE_FRONTIER_RUNG`` /
-``SWE_COST_RUNG``), never by a hardcoded URL. Missing config fails fast so a
-silent wrong default cannot flatter a tier.
+Which rung backs each tier is overridable by RUNG ID in runtime config, never by
+a hardcoded URL. Missing config fails fast so a silent wrong default cannot
+flatter a tier.
 """
 
 from __future__ import annotations
 
 import json
-import os
 import time
 import urllib.error
 import urllib.request
@@ -35,13 +34,16 @@ import yaml
 
 from omnimarket.delegation.graded_ladder.harness import load_rungs
 from omnimarket.delegation.graded_ladder.models import ModelLadderRung
-from omnimarket.delegation.swe_discriminator.models import EnumRouting, ModelCall
+from omnimarket.delegation.swe_discriminator.models import (
+    EnumRouting,
+    ModelCall,
+    ModelSweDiscriminatorRuntimeConfig,
+)
 
 _OVERLAY_PATH = Path.home() / ".omninode" / "delegation" / "bifrost_overrides.yaml"
 
-# Default rung ids backing each tier (overridable by SWE_FRONTIER_RUNG /
-# SWE_COST_RUNG — a rung selector, never a URL). The rungs (endpoints, keys)
-# live in the committed graded_ladder ladder_rungs.yaml routing config.
+# Default rung ids backing each tier. The rungs (endpoints, keys) live in the
+# committed graded_ladder routing config.
 _DEFAULT_FRONTIER_RUNG = "rung_cloud_glm"
 _DEFAULT_COST_RUNG = "rung_5090_coder"
 
@@ -82,20 +84,27 @@ def _rung_by_id(rung_id: str) -> ModelLadderRung:
     raise RuntimeError(f"rung {rung_id!r} not found in ladder_rungs.yaml")
 
 
-def _resolve_rung_endpoint(rung: ModelLadderRung) -> str | None:
-    """Endpoint for a rung: committed public URL, else env var NAMED by the rung,
-    else the bifrost overlay by backend_id. No literal URL / ``*_URL`` env read."""
+def _resolve_rung_endpoint(
+    rung: ModelLadderRung, runtime_config: ModelSweDiscriminatorRuntimeConfig
+) -> str | None:
+    """Endpoint for a rung from committed config, runtime config, or overlay."""
 
     if rung.endpoint_url:
         return rung.endpoint_url
     if rung.endpoint_url_env:
-        env_url = os.environ.get(rung.endpoint_url_env)
-        if env_url:
-            return env_url
+        configured = runtime_config.endpoint_urls_by_env.get(rung.endpoint_url_env, "")
+        if configured:
+            return configured
+    configured = runtime_config.endpoint_urls_by_backend_id.get(rung.backend_id, "")
+    if configured:
+        return configured
     return _overlay_endpoint(rung.backend_id)
 
 
-def resolve_tier(tier: EnumRouting) -> tuple[str, str, str, dict[str, str], str]:
+def resolve_tier(
+    tier: EnumRouting,
+    runtime_config: ModelSweDiscriminatorRuntimeConfig | None = None,
+) -> tuple[str, str, str, dict[str, str], str]:
     """Return (endpoint_url, model_name, endpoint_label, headers, tier_str).
 
     Fails fast (RuntimeError) if a tier's endpoint or key cannot be resolved —
@@ -103,28 +112,33 @@ def resolve_tier(tier: EnumRouting) -> tuple[str, str, str, dict[str, str], str]
     reachable.
     """
 
+    config = runtime_config or ModelSweDiscriminatorRuntimeConfig()
     headers = {"Content-Type": "application/json"}
     if tier is EnumRouting.FRONTIER:
-        rung = _rung_by_id(os.environ.get("SWE_FRONTIER_RUNG", _DEFAULT_FRONTIER_RUNG))
-        url = _resolve_rung_endpoint(rung)
+        rung = _rung_by_id(config.frontier_rung_id or _DEFAULT_FRONTIER_RUNG)
+        url = _resolve_rung_endpoint(rung, config)
         if not url:
             raise RuntimeError(f"frontier rung {rung.rung_id!r} has no endpoint")
         if rung.api_key_env:
-            key = os.environ.get(rung.api_key_env, "")
+            key = config.api_keys_by_env.get(rung.api_key_env, "")
             if not key:
-                raise RuntimeError(f"frontier rung needs {rung.api_key_env} in env")
+                raise RuntimeError(
+                    f"frontier rung needs runtime config for {rung.api_key_env}"
+                )
             headers["Authorization"] = f"Bearer {key}"
         headers.update(rung.extra_headers)
         return url, rung.model_name, f"frontier:{rung.model_name}", headers, "frontier"
 
-    rung = _rung_by_id(os.environ.get("SWE_COST_RUNG", _DEFAULT_COST_RUNG))
-    url = _resolve_rung_endpoint(rung)
+    rung = _rung_by_id(config.cost_rung_id or _DEFAULT_COST_RUNG)
+    url = _resolve_rung_endpoint(rung, config)
     if not url:
         raise RuntimeError(
             f"cost_routed rung {rung.rung_id!r} has no endpoint "
-            f"(set {rung.endpoint_url_env or rung.backend_id} or the overlay)"
+            f"(configure {rung.endpoint_url_env or rung.backend_id} or the overlay)"
         )
-    model = _overlay_model(rung.backend_id, rung.model_name)
+    model = config.model_names_by_backend_id.get(
+        rung.backend_id, _overlay_model(rung.backend_id, rung.model_name)
+    )
     return url, model, f"cost_routed:{model}", headers, "cost_routed"
 
 
@@ -147,7 +161,7 @@ def is_infra_block(call: ModelCall) -> bool:
 # distill) spends completion tokens on a <think> scratchpad BEFORE the code, so a
 # 4096 cap truncates the answer to reasoning prose with no code block on a hard
 # task (the OMN-13335 hazard, live-reproduced). The default ceiling is raised so
-# the code survives the scratchpad; SWE_MAX_TOKENS overrides per run.
+# the code survives the scratchpad; runtime config may override it per run.
 _DEFAULT_MAX_TOKENS = 16384
 
 
@@ -156,6 +170,7 @@ def chat(
     prompt: str,
     *,
     role: str,
+    runtime_config: ModelSweDiscriminatorRuntimeConfig | None = None,
     max_tokens: int = _DEFAULT_MAX_TOKENS,
     timeout_s: float = 300.0,
     retries: int = 4,
@@ -169,16 +184,13 @@ def chat(
     from a genuine wrong answer.
     """
 
-    url, model_name, label, headers, tier_str = resolve_tier(tier)
+    config = runtime_config or ModelSweDiscriminatorRuntimeConfig()
+    retries = config.max_retries if runtime_config else retries
+    max_tokens = config.max_tokens if runtime_config else max_tokens
+    url, model_name, label, headers, tier_str = resolve_tier(tier, config)
     # A throttled frontier tier can otherwise hang the battery (retries*backoff
-    # per cell); SWE_MAX_RETRIES caps it so a sustained 429 fast-fails to a
-    # blocked cell instead of stalling the run.
-    env_retries = os.environ.get("SWE_MAX_RETRIES")
-    if env_retries and env_retries.isdigit():
-        retries = max(1, int(env_retries))
-    env_max_tokens = os.environ.get("SWE_MAX_TOKENS")
-    if env_max_tokens and env_max_tokens.isdigit():
-        max_tokens = max(256, int(env_max_tokens))
+    # per cell); max_retries caps it so a sustained 429 fast-fails to a blocked
+    # cell instead of stalling the run.
     payload = json.dumps(
         {
             "model": model_name,

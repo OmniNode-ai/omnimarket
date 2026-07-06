@@ -23,6 +23,27 @@ class EnumRouting(StrEnum):
     COST_ROUTED = "cost_routed"  # worker calls use the cost-routed (local) tier
 
 
+class ModelSweDiscriminatorRuntimeConfig(BaseModel):
+    """Operator-provided runtime inputs for live SWE-discriminator calls.
+
+    The rung catalog remains the routing authority. This model only carries
+    values that cannot live in committed config: secret material, site-local
+    endpoint overrides, and run budgets.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    frontier_rung_id: str = "rung_cloud_glm"
+    cost_rung_id: str = "rung_5090_coder"
+    api_keys_by_env: dict[str, str] = Field(default_factory=dict, repr=False)
+    endpoint_urls_by_env: dict[str, str] = Field(default_factory=dict)
+    endpoint_urls_by_backend_id: dict[str, str] = Field(default_factory=dict)
+    model_names_by_backend_id: dict[str, str] = Field(default_factory=dict)
+    decomposer_tier: EnumRouting = EnumRouting.FRONTIER
+    max_retries: int = Field(default=4, ge=1)
+    max_tokens: int = Field(default=16384, ge=256)
+
+
 class EnumRunOutcome(StrEnum):
     """Classified outcome of ONE (task, arm) run.
 

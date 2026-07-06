@@ -29,6 +29,7 @@ import sys
 from datetime import UTC, datetime
 from pathlib import Path
 
+from omnimarket.config.settings import Settings
 from omnimarket.delegation.swe_discriminator.arm_runner import run_arm
 from omnimarket.delegation.swe_discriminator.classify import (
     classify_run,
@@ -46,6 +47,7 @@ from omnimarket.delegation.swe_discriminator.models import (
     EnumRouting,
     EnumRunOutcome,
     GradedRow,
+    ModelSweDiscriminatorRuntimeConfig,
     PassKCell,
     SmokeReport,
     SweTask,
@@ -53,14 +55,17 @@ from omnimarket.delegation.swe_discriminator.models import (
 
 
 def _run_phase(
-    tasks: list[SweTask], arms: list[EnumArm], k: int
+    tasks: list[SweTask],
+    arms: list[EnumArm],
+    k: int,
+    runtime_config: ModelSweDiscriminatorRuntimeConfig,
 ) -> list[tuple[int, ArmRun]]:
     runs: list[tuple[int, ArmRun]] = []
     for task in tasks:
         for arm in arms:
             for rep in range(k):
                 print(f"  RUN  {task.task_id} :: {arm.value} [rep {rep}]", flush=True)
-                run = run_arm(task, arm)
+                run = run_arm(task, arm, runtime_config=runtime_config)
                 print(
                     f"       slices={run.n_slices} artifact_chars={len(run.artifact)} "
                     f"cost=${run.total_cost_usd:.6f} "
@@ -152,6 +157,55 @@ def _aggregate_cells(
     return cells
 
 
+def _parse_key_values(raw: str) -> dict[str, str]:
+    values: dict[str, str] = {}
+    if not raw:
+        return values
+    for item in raw.split(","):
+        if not item.strip():
+            continue
+        key, sep, value = item.partition("=")
+        if not sep:
+            raise ValueError(f"expected KEY=VALUE item, got {item!r}")
+        values[key.strip()] = value.strip()
+    return values
+
+
+def _runtime_config(args: argparse.Namespace) -> ModelSweDiscriminatorRuntimeConfig:
+    settings = Settings(_env_file=None)  # type: ignore[call-arg]
+    glm_key = args.frontier_api_key or settings.llm_glm_api_key.get_secret_value()
+    local_endpoint = args.local_endpoint_url or settings.llm_coder_url
+    local_model = args.local_model or settings.llm_coder_model_id
+
+    api_keys_by_env = _parse_key_values(args.api_key)
+    if glm_key:
+        api_keys_by_env.setdefault("LLM_GLM_API_KEY", glm_key)
+
+    endpoint_urls_by_env = _parse_key_values(args.endpoint_url)
+    endpoint_urls_by_backend_id: dict[str, str] = {}
+    if local_endpoint:
+        endpoint_urls_by_env.setdefault(
+            "BIFROST_LOCAL_CODER_ENDPOINT_URL", local_endpoint
+        )
+        endpoint_urls_by_backend_id["local-qwen-coder-30b"] = local_endpoint
+
+    model_names_by_backend_id = _parse_key_values(args.model_name)
+    if local_model:
+        model_names_by_backend_id["local-qwen-coder-30b"] = local_model
+
+    return ModelSweDiscriminatorRuntimeConfig(
+        frontier_rung_id=args.frontier_rung,
+        cost_rung_id=args.cost_rung,
+        api_keys_by_env=api_keys_by_env,
+        endpoint_urls_by_env=endpoint_urls_by_env,
+        endpoint_urls_by_backend_id=endpoint_urls_by_backend_id,
+        model_names_by_backend_id=model_names_by_backend_id,
+        decomposer_tier=EnumRouting(args.decomposer_tier),
+        max_retries=args.max_retries,
+        max_tokens=args.max_tokens,
+    )
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--corpus", type=Path, default=DEFAULT_CORPUS_PATH)
@@ -166,7 +220,38 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--task", action="append", default=[], help="restrict to these task_ids"
     )
+    parser.add_argument("--frontier-rung", default="rung_cloud_glm")
+    parser.add_argument("--cost-rung", default="rung_5090_coder")
+    parser.add_argument(
+        "--api-key",
+        action="append",
+        default=[],
+        help="Runtime secret mapping ENV_NAME=VALUE; repeatable.",
+    )
+    parser.add_argument(
+        "--endpoint-url",
+        action="append",
+        default=[],
+        help="Runtime endpoint mapping ENV_NAME=URL; repeatable.",
+    )
+    parser.add_argument(
+        "--model-name",
+        action="append",
+        default=[],
+        help="Runtime model override BACKEND_ID=MODEL; repeatable.",
+    )
+    parser.add_argument("--frontier-api-key", default="")
+    parser.add_argument("--local-endpoint-url", default="")
+    parser.add_argument("--local-model", default="")
+    parser.add_argument(
+        "--decomposer-tier",
+        choices=[routing.value for routing in EnumRouting],
+        default=EnumRouting.FRONTIER.value,
+    )
+    parser.add_argument("--max-retries", type=int, default=4)
+    parser.add_argument("--max-tokens", type=int, default=16384)
     args = parser.parse_args(argv)
+    runtime_config = _runtime_config(args)
 
     tasks = load_corpus(args.corpus)
     if args.task:
@@ -177,13 +262,13 @@ def main(argv: list[str] | None = None) -> int:
 
     # Fail fast if a tier is unreachable BEFORE running — a silent unreachable
     # tier would look like a capability failure.
-    _, frontier_model, _, _, _ = resolve_tier(EnumRouting.FRONTIER)
-    _, cost_model, _, _, _ = resolve_tier(EnumRouting.COST_ROUTED)
+    _, frontier_model, _, _, _ = resolve_tier(EnumRouting.FRONTIER, runtime_config)
+    _, cost_model, _, _, _ = resolve_tier(EnumRouting.COST_ROUTED, runtime_config)
     print(f"frontier={frontier_model} cost_routed={cost_model} k={k}")
     print(f"tasks={len(tasks)} arms={len(arms)} cells={len(tasks) * len(arms)}\n")
 
     print("=== PHASE 1: RUN (capture artifacts) ===")
-    runs = _run_phase(tasks, arms, k)
+    runs = _run_phase(tasks, arms, k, runtime_config)
     (args.out_dir / "arm_runs.json").write_text(
         json.dumps([r.model_dump(mode="json") for _, r in runs], indent=2) + "\n"
     )

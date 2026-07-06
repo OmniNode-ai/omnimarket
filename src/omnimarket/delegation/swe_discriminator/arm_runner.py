@@ -20,7 +20,6 @@ wedge the battery to zero rows (OMN-12792 failure mode).
 from __future__ import annotations
 
 import json
-import os
 
 from omnimarket.delegation.swe_discriminator.model_client import chat, is_infra_block
 from omnimarket.delegation.swe_discriminator.models import (
@@ -29,6 +28,7 @@ from omnimarket.delegation.swe_discriminator.models import (
     EnumDecomposition,
     EnumRouting,
     ModelCall,
+    ModelSweDiscriminatorRuntimeConfig,
     SweTask,
 )
 
@@ -126,7 +126,11 @@ def _finalize(run: ArmRun) -> ArmRun:
     return run
 
 
-def run_arm(task: SweTask, arm: EnumArm) -> ArmRun:
+def run_arm(
+    task: SweTask,
+    arm: EnumArm,
+    runtime_config: ModelSweDiscriminatorRuntimeConfig | None = None,
+) -> ArmRun:
     """Run one (task, arm) cell and capture the artifact + all model calls."""
 
     run = ArmRun(
@@ -138,7 +142,12 @@ def run_arm(task: SweTask, arm: EnumArm) -> ArmRun:
     worker_tier = arm.routing  # EnumRouting
 
     if arm.decomposition is EnumDecomposition.MONOLITH:
-        call = chat(worker_tier, _monolith_prompt(task), role="monolith")
+        call = chat(
+            worker_tier,
+            _monolith_prompt(task),
+            role="monolith",
+            runtime_config=runtime_config,
+        )
         run.calls.append(call)
         run.n_slices = 1
         run.slice_plan = ["<whole-task monolith>"]
@@ -148,16 +157,18 @@ def run_arm(task: SweTask, arm: EnumArm) -> ArmRun:
         return _finalize(run)
 
     # Decomposed: frontier decomposer (tax) -> per-slice worker (arm tier).
-    # The decomposer tier is env-overridable (SWE_DECOMPOSER_TIER=cost_routed)
-    # ONLY to exercise the decompose->slice->integrate plumbing when the frontier
-    # tier is unreachable; the real experiment MUST use a frontier decomposer so
-    # the decomposition tax reflects frontier economics.
+    # The real experiment uses a frontier decomposer so the decomposition tax
+    # reflects frontier economics. Runtime config can point it at cost_routed
+    # only for explicit plumbing checks when the frontier tier is unavailable.
     dec_tier = (
-        EnumRouting.COST_ROUTED
-        if os.environ.get("SWE_DECOMPOSER_TIER") == "cost_routed"
-        else EnumRouting.FRONTIER
+        runtime_config.decomposer_tier if runtime_config else EnumRouting.FRONTIER
     )
-    dec_call = chat(dec_tier, _decompose_prompt(task), role="decomposer")
+    dec_call = chat(
+        dec_tier,
+        _decompose_prompt(task),
+        role="decomposer",
+        runtime_config=runtime_config,
+    )
     run.calls.append(dec_call)
     run.decomposition_tax_usd = dec_call.cost_usd
     slices = _parse_slices(dec_call.content) if not dec_call.error else None
@@ -187,7 +198,10 @@ def run_arm(task: SweTask, arm: EnumArm) -> ArmRun:
             [str(x) for x in raw_produces] if isinstance(raw_produces, list) else []
         )
         wcall: ModelCall = chat(
-            worker_tier, _slice_prompt(task, instruction, produces), role="worker"
+            worker_tier,
+            _slice_prompt(task, instruction, produces),
+            role="worker",
+            runtime_config=runtime_config,
         )
         run.calls.append(wcall)
         if wcall.error:
