@@ -38,7 +38,7 @@ jobs:
         && fromJSON(vars.OMNI_PUBLIC_PR_RUNS_ON_JSON || '["ubuntu-latest"]')
         || fromJSON(vars.OMNI_TRUSTED_CI_RUNS_ON_JSON || '["ubuntu-latest"]')
       }}
-    timeout-minutes: 20
+    timeout-minutes: 35
 
     steps:
       - name: Checkout PR branch
