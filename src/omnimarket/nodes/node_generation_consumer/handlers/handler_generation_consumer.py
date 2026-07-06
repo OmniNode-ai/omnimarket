@@ -948,6 +948,85 @@ class HandlerGenerationConsumer:
             authority_resolved=False,
         )
 
+    def _forced_starting_route(
+        self,
+        *,
+        forced_endpoint_ref: str,
+        task_description: str,
+    ) -> ModelActiveRoute | None:
+        """Pin the STARTING route to a caller-forced backend's tier (OMN-14018).
+
+        The context-ROI battery pins a run to a specific backend (via
+        ``ModelNodeGenerationRequest.forced_endpoint_ref``) so it can capture
+        genuine per-tier graded outcomes — e.g. a real, sub-floor ``cheap_cloud``
+        cohort for ``context_roi_scores`` that the always-``local`` contract route
+        never produces. Instead of the contract-declared starting tier, this
+        resolves the concrete model + endpoint for the forced backend's tier
+        through the SAME routing authority (``delta`` with ``min_tier_name``) the
+        escalation path uses, and returns a fully authority-resolved route so
+        ``_call_llm`` posts directly to that backend.
+
+        Fail-safe (mirrors ``_escalate_route``): returns ``None`` — the caller then
+        keeps the contract-declared starting route — when the forced ref maps to no
+        tier or the authority cannot resolve it. A bad pin degrades to normal
+        routing and never crashes the run.
+        """
+        target_tier = tier_for_backend(forced_endpoint_ref)
+        if target_tier is None:
+            logger.warning(
+                "[generation-consumer] forced_endpoint_ref %r maps to no routing "
+                "tier; keeping contract-declared starting route",
+                forced_endpoint_ref,
+            )
+            return None
+
+        # The routing authority owns model/endpoint selection for the target tier.
+        # min_tier_name pins the resolution to the forced backend's tier; task_type
+        # drives the contract ladder. A fresh routing UUID keeps the human-facing
+        # generation correlation id separate (parity with _resolve_escalation_decision).
+        request = ModelDelegationRequest(
+            prompt=task_description,
+            task_type=self._task_type,
+            correlation_id=uuid4(),
+            emitted_at=datetime.now(tz=UTC),
+        )
+        try:
+            decision = cast(
+                _RoutingDecision,
+                routing_authority_delta(request, min_tier_name=target_tier),
+            )
+        except Exception as exc:
+            logger.warning(
+                "[generation-consumer] routing authority could not resolve forced "
+                "backend %r (tier %r); keeping contract-declared starting route: %s",
+                forced_endpoint_ref,
+                target_tier,
+                exc,
+            )
+            return None
+
+        if decision is None:
+            return None
+
+        provider = "local" if decision.tier_name in _LOCAL_TIER_NAMES else "cloud"
+        logger.info(
+            "[generation-consumer] forced starting route: backend=%r tier=%r "
+            "model=%r (OMN-14018 per-tier capture pin)",
+            forced_endpoint_ref,
+            decision.tier_name,
+            decision.selected_model,
+        )
+        return ModelActiveRoute(
+            tier_name=decision.tier_name,
+            provider=provider,
+            served_model_id=decision.selected_model,
+            endpoint_ref="",
+            authority_resolved=True,
+            endpoint_url=decision.endpoint_url,
+            api_key_ref=decision.api_key_ref,
+            max_tokens=decision.max_tokens,
+        )
+
     def _escalate_route(
         self,
         *,
@@ -1207,6 +1286,18 @@ class HandlerGenerationConsumer:
         # actually calls the escalated model. Reset per run so escalation state
         # from a prior request never leaks on a reused handler instance.
         self._active_route = self._starting_route()
+
+        # OMN-14018: an optional per-run backend pin (from the context-ROI battery)
+        # overrides the contract-declared starting tier so the run posts to a chosen
+        # backend and captures genuine per-tier graded outcomes. Fail-safe: an
+        # unresolvable pin keeps the contract-declared route (never crashes).
+        if command.forced_endpoint_ref:
+            forced_route = self._forced_starting_route(
+                forced_endpoint_ref=command.forced_endpoint_ref,
+                task_description=command.task_description,
+            )
+            if forced_route is not None:
+                self._active_route = forced_route
 
         attempts: list[ModelGenerationAttempt] = []
         e2e_start = time.time()

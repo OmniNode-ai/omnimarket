@@ -24,6 +24,7 @@ Coverage:
 
 from __future__ import annotations
 
+import json
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -756,3 +757,49 @@ def test_non_numeric_token_field_fails_row_closed() -> None:
     result = handler.handle(request)
     assert len(result.rows) == 4
     assert all(r.failure_stage == EnumFailureStage.GENERATION for r in result.rows)
+
+
+# ---------------------------------------------------------------------------
+# OMN-14018: target_endpoint pins generation to a chosen backend by threading
+# forced_endpoint_ref onto every published generation command.
+# ---------------------------------------------------------------------------
+
+
+def _published_generation_commands(
+    handler: HandlerContextRoiRunner, published: list[tuple[str, bytes]]
+) -> list[dict[str, Any]]:
+    """Decode the generation-command payloads the runner published.
+
+    The generation command is the one on the contract-declared generation command
+    topic — not the run's terminal completed/failed topics.
+    """
+    command_topic = handler._gen_command_topic
+    return [
+        json.loads(payload) for topic, payload in published if topic == command_topic
+    ]
+
+
+def test_target_endpoint_threads_forced_endpoint_ref_onto_command() -> None:
+    """A request target_endpoint is published as forced_endpoint_ref on every command."""
+    published: list[tuple[str, bytes]] = []
+    handler = _make_handler(published=published)
+    request = _make_request(arms=(_off_arm(), _golden_only_arm()), trials_per_cell=2)
+    request = request.model_copy(update={"target_endpoint": "cloud-glm"})
+
+    handler.handle(request)
+
+    commands = _published_generation_commands(handler, published)
+    assert commands  # at least one generation command was published
+    assert all(cmd.get("forced_endpoint_ref") == "cloud-glm" for cmd in commands)
+
+
+def test_empty_target_endpoint_omits_forced_endpoint_ref() -> None:
+    """The default (empty) target_endpoint leaves the command payload unchanged."""
+    published: list[tuple[str, bytes]] = []
+    handler = _make_handler(published=published)
+
+    handler.handle(_make_request())  # target_endpoint defaults to ""
+
+    commands = _published_generation_commands(handler, published)
+    assert commands
+    assert all("forced_endpoint_ref" not in cmd for cmd in commands)
