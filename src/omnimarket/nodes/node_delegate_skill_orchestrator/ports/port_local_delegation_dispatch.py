@@ -483,6 +483,12 @@ class LocalDelegationDispatchPort:
                             if transport_failure_class is not None
                             else None
                         ),
+                        # OMN-14063: surface WHY this tier was skipped (e.g. "endpoint
+                        # ... failed health probe") on the attempt record itself, not
+                        # only in the capture-file log line — a local->cloud escalation
+                        # must be visible to the caller of ModelDelegateSkillResponse,
+                        # not just an operator grepping logs after the fact.
+                        "error_message": transport_failure_message,
                     }
                 )
 

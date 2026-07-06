@@ -20,6 +20,7 @@ from omnimarket.nodes.node_delegate_skill_orchestrator.models.model_delegate_ski
     ModelDelegateSkillRequest,
 )
 from omnimarket.nodes.node_delegate_skill_orchestrator.models.model_delegate_skill_response import (
+    ModelDelegateSkillAttemptRecord,
     ModelDelegateSkillResponse,
     ModelDelegateSkillResponseMetrics,
 )
@@ -119,6 +120,47 @@ def _frontier_cost_estimates(result: dict[str, object]) -> dict[str, float]:
     )
 
 
+def _attempt_records(
+    result: dict[str, object],
+) -> list[ModelDelegateSkillAttemptRecord]:
+    """Build the typed per-tier attempt ladder (OMN-14063).
+
+    ``result["attempts"]`` is the dispatch port's internal per-attempt list
+    (present on the bus-less local port; absent — defaults to ``[]`` — on ports
+    that don't yet report per-attempt detail). Surfacing it here is what makes a
+    local->cloud escalation visible on the typed response instead of only in the
+    capture-file log.
+    """
+    raw_attempts = result.get("attempts")
+    if not isinstance(raw_attempts, list):
+        return []
+    records: list[ModelDelegateSkillAttemptRecord] = []
+    for raw in raw_attempts:
+        if not isinstance(raw, dict):
+            continue
+        records.append(
+            ModelDelegateSkillAttemptRecord(
+                tier=str(raw.get("tier", "")),
+                backend_id=str(raw.get("backend_id", "")),
+                model_id=str(raw.get("model_id", "")),
+                quality_gate_passed=bool(raw.get("quality_gate_passed", False)),
+                quality_score=(
+                    _as_float(raw["quality_score"])
+                    if raw.get("quality_score") is not None
+                    else None
+                ),
+                cost_usd=_as_float(raw.get("cost_usd")),
+                failure_class=(
+                    str(raw["failure_class"])
+                    if raw.get("failure_class") is not None
+                    else None
+                ),
+                error_message=str(raw.get("error_message", "")),
+            )
+        )
+    return records
+
+
 def _premium_counterfactual(
     result: dict[str, object],
 ) -> ModelPremiumCounterfactual | None:
@@ -201,6 +243,8 @@ def _response_from_result(
                 result.get("delegation_latency_ms", result.get("latency_ms", 0))
             ),
         ),
+        escalation_count=_as_int(result.get("escalation_count")),
+        attempts=_attempt_records(result),
     )
 
 
