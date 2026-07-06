@@ -19,6 +19,7 @@ from pathlib import Path
 
 import pytest
 
+from omnimarket.delegation.swe_discriminator import model_client
 from omnimarket.delegation.swe_discriminator.classify import (
     classify_run,
     detect_truncation,
@@ -98,6 +99,24 @@ def _call(
     )
 
 
+class _OpenAIResponse:
+    status = 200
+
+    def __enter__(self) -> _OpenAIResponse:
+        return self
+
+    def __exit__(self, *_exc: object) -> bool:
+        return False
+
+    def read(self) -> bytes:
+        return json.dumps(
+            {
+                "choices": ["malformed-choice"],
+                "usage": {"prompt_tokens": 1, "completion_tokens": 2},
+            }
+        ).encode()
+
+
 # --------------------------------------------------------------------------- #
 # Arm classifier (the 2x2 axes)
 # --------------------------------------------------------------------------- #
@@ -129,6 +148,41 @@ def test_arm_axes(
 ) -> None:
     assert arm.decomposition is decomp
     assert arm.routing is routing
+
+
+def test_chat_handles_non_mapping_choice_without_raising(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        model_client,
+        "resolve_tier",
+        lambda _tier, _config: (
+            "http://example.invalid/v1/chat/completions",
+            "local",
+            "cost_routed:local",
+            {},
+            "cost_routed",
+        ),
+    )
+    monkeypatch.setattr(
+        model_client.urllib.request,
+        "urlopen",
+        lambda _req, _timeout: _OpenAIResponse(),
+    )
+
+    call = model_client.chat(
+        EnumRouting.COST_ROUTED,
+        "prompt",
+        role="monolith",
+        retries=1,
+    )
+
+    assert call.error == ""
+    assert call.content == ""
+    assert call.finish_reason == ""
+    assert call.http_status == 200
+    assert call.prompt_tokens == 1
+    assert call.completion_tokens == 2
 
 
 # --------------------------------------------------------------------------- #

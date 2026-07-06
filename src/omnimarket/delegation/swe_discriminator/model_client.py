@@ -244,7 +244,8 @@ def chat(
             error="malformed response: empty 'choices'",
         )
     choice = choices[0]
-    message = choice.get("message", {}) if isinstance(choice, dict) else {}
+    choice = choice if isinstance(choice, dict) else {}
+    message = choice.get("message", {})
     content = message.get("content") or ""
     finish_reason = str(choice.get("finish_reason") or "")
     usage = body.get("usage", {}) or {}
