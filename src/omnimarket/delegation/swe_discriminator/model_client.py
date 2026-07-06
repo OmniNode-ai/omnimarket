@@ -230,8 +230,22 @@ def chat(
             error=str(last_exc),
         )
     latency_ms = int((time.monotonic() - start) * 1000)
-    choice = body["choices"][0]
-    content = choice["message"].get("content") or ""
+    choices = body.get("choices") or []
+    if not choices:
+        return ModelCall(
+            role=role,
+            tier=tier_str,
+            model_name=model_name,
+            endpoint_label=label,
+            prompt_chars=len(prompt),
+            content="",
+            latency_ms=latency_ms,
+            http_status=status,
+            error="malformed response: empty 'choices'",
+        )
+    choice = choices[0]
+    message = choice.get("message", {}) if isinstance(choice, dict) else {}
+    content = message.get("content") or ""
     finish_reason = str(choice.get("finish_reason") or "")
     usage = body.get("usage", {}) or {}
     p_tok = int(usage.get("prompt_tokens", 0))

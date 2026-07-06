@@ -12,6 +12,7 @@ The truncation detector is proven on the EXACT live L3 repro captured at the old
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -300,7 +301,7 @@ def test_offline_grader_selftest_green() -> None:
         capture_output=True,
         text=True,
         cwd=_REPO_ROOT,
-        env={"PYTHONPATH": str(_REPO_ROOT / "src")},
+        env={**os.environ, "PYTHONPATH": str(_REPO_ROOT / "src")},
     )
     assert result.returncode == 0, result.stdout + result.stderr
     assert "OK — grader discriminates" in result.stdout

@@ -18,7 +18,7 @@ or collapse to zero like OMN-12792? Truncated/blocked runs are recorded but
 EXCLUDED from capability scoring so the L3/L4 numbers do not lie.
 
     uv run python -m omnimarket.delegation.swe_discriminator.run_smoke \\
-        --out-dir docs/evidence/2026-07-05-swe-discriminator-smoke --k 3
+        --out-dir artifacts/swe-discriminator-smoke --k 3
 """
 
 from __future__ import annotations
@@ -65,7 +65,17 @@ def _run_phase(
         for arm in arms:
             for rep in range(k):
                 print(f"  RUN  {task.task_id} :: {arm.value} [rep {rep}]", flush=True)
-                run = run_arm(task, arm, runtime_config=runtime_config)
+                try:
+                    run = run_arm(task, arm, runtime_config=runtime_config)
+                except Exception as exc:
+                    run = ArmRun(
+                        task_id=task.task_id,
+                        arm=arm,
+                        decomposition=arm.decomposition,
+                        routing=arm.routing,
+                        blocked=True,
+                        error=f"uncaught run_arm error: {exc!r}",
+                    )
                 print(
                     f"       slices={run.n_slices} artifact_chars={len(run.artifact)} "
                     f"cost=${run.total_cost_usd:.6f} "
@@ -172,7 +182,7 @@ def _parse_key_values(raw: str) -> dict[str, str]:
 
 
 def _runtime_config(args: argparse.Namespace) -> ModelSweDiscriminatorRuntimeConfig:
-    settings = Settings(_env_file=None)  # type: ignore[call-arg]
+    settings = Settings(_env_file=None)
     glm_key = args.frontier_api_key or settings.llm_glm_api_key.get_secret_value()
     local_endpoint = args.local_endpoint_url or settings.llm_coder_url
     local_model = args.local_model or settings.llm_coder_model_id
