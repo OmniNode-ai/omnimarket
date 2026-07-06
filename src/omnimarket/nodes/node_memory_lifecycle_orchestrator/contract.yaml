@@ -171,6 +171,9 @@ handler_routing:
       handler_key: "HandlerMemoryTick"
       priority: 0
       output_events: []
+      handler:
+        name: "HandlerMemoryTick"
+        module: "omnimarket.nodes.node_memory_lifecycle_orchestrator.handlers.handler_memory_tick"
     # Expire command handler - ACTIVE -> EXPIRED state transition
     - operation: expire
       routing_key: "expire"
@@ -179,6 +182,9 @@ handler_routing:
       handler_key: "HandlerMemoryExpire"
       priority: 0
       output_events: []
+      handler:
+        name: "HandlerMemoryExpire"
+        module: "omnimarket.nodes.node_memory_lifecycle_orchestrator.handlers.handler_memory_expire"
     # Archive command handler - EXPIRED -> ARCHIVED state transition
     - operation: archive
       routing_key: "archive"
@@ -187,6 +193,9 @@ handler_routing:
       handler_key: "HandlerMemoryArchive"
       priority: 0
       output_events: []
+      handler:
+        name: "HandlerMemoryArchive"
+        module: "omnimarket.nodes.node_memory_lifecycle_orchestrator.handlers.handler_memory_archive"
   # NOTE: restore and memory-accessed handlers planned for OMN-1453
   # Their event_bus topics will be added when handlers are implemented
   default_handler: null
