@@ -1476,6 +1476,45 @@ class TestOrchestratorFixReasonRouting:
         assert fix.last_command.block_reason == expected
         assert fix.last_command.ticket_id == "OMN-11171"
 
+    async def test_network_flake_evidence_routes_to_ci_rerun(self) -> None:
+        """Network/clone log evidence routes a scary check name to CI rerun."""
+        inventory_record = PrRecord(
+            pr_number=502,
+            repo="OmniNode-ai/onex_change_control",
+            checks_status="failure",
+            review_status="pending",
+            ticket_ids=("OMN-13998",),
+            failed_check_names=("Kafka Boundary Parity",),
+            failed_check_flaky_evidence=("could not resolve host: github.com",),
+        )
+        triage_record = TriageRecord(
+            pr_number=inventory_record.pr_number,
+            repo=inventory_record.repo,
+            category=EnumPrCategory.RED,
+            ticket_ids=inventory_record.ticket_ids,
+            failed_check_names=inventory_record.failed_check_names,
+            failed_check_flaky_evidence=inventory_record.failed_check_flaky_evidence,
+            block_reason="CI status is 'failing' - fix required before merge.",
+        )
+        fix_intent = ReducerIntent(
+            pr_number=inventory_record.pr_number,
+            repo=inventory_record.repo,
+            intent=EnumReducerIntent.FIX,
+        )
+        fix = MockFix()
+        orch = await _make_orchestrator(
+            inventory=MockInventory(prs=(inventory_record,)),
+            triage=MockTriage(classified=(triage_record,)),
+            reducer=MockReducer(intents=(fix_intent,)),
+            fix=fix,
+        )
+
+        result = await orch.handle(_make_command())
+
+        assert result.final_state == "COMPLETE"
+        assert result.prs_fixed == 1
+        assert fix.last_command.block_reason == EnumPrBlockReason.CI_FAILURE
+
 
 # ---------------------------------------------------------------------------
 # OMN-9114: admin-merge-fallback default is ON

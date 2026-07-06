@@ -181,10 +181,59 @@ class TestHandlerPrLifecycleInventoryGoldenChain:
         with patch("subprocess.run", side_effect=fake_run):
             check_runs = handler._collect_check_runs("OmniNode-ai/omnimarket", 5)
 
-        assert "name,state,bucket,event" in commands[0]
+        assert "name,state,bucket,event,link" in commands[0]
         assert "conclusion" not in commands[0]
         assert [check.conclusion for check in check_runs] == ["success", "failure"]
         assert [check.status for check in check_runs] == ["completed", "completed"]
+
+    def test_collect_check_runs_captures_network_flake_evidence(self) -> None:
+        handler = HandlerPrLifecycleInventory()
+        commands: list[list[str]] = []
+        link = (
+            "https://github.com/OmniNode-ai/onex_change_control/"
+            "actions/runs/28760705648/job/85275485561"
+        )
+
+        def fake_run(
+            cmd: list[str],
+            capture_output: bool,
+            text: bool,
+            timeout: int | None = None,
+        ) -> MagicMock:
+            commands.append(cmd)
+            if cmd[:3] == ["gh", "pr", "checks"]:
+                return _make_subprocess_result(
+                    json.dumps(
+                        [
+                            {
+                                "name": "Kafka Boundary Parity",
+                                "state": "FAILURE",
+                                "bucket": "fail",
+                                "event": "pull_request",
+                                "link": link,
+                            }
+                        ]
+                    )
+                )
+            return _make_subprocess_result(
+                "fatal: unable to access 'https://github.com/OmniNode-ai/omnimarket.git/': "
+                "Could not resolve host: github.com\n"
+            )
+
+        with patch("subprocess.run", side_effect=fake_run):
+            check_runs = handler._collect_check_runs(
+                "OmniNode-ai/onex_change_control", 3637
+            )
+
+        assert check_runs[0].link == link
+        assert check_runs[0].flaky_failure_evidence == (
+            "could not resolve host: github.com",
+        )
+        assert commands[1][:3] == [
+            "gh",
+            "api",
+            "repos/OmniNode-ai/onex_change_control/actions/jobs/85275485561/logs",
+        ]
 
     def test_ci_failing_when_check_fails(self) -> None:
         check_runs = [
@@ -558,7 +607,7 @@ class TestPrAssociatedRunsOnly:
         with patch("subprocess.run", side_effect=fake_run):
             handler._collect_check_runs("OmniNode-ai/omnimarket", 5)
 
-        assert "name,state,bucket,event" in commands[0]
+        assert "name,state,bucket,event,link" in commands[0]
 
     def test_event_field_is_captured_on_check_run(self) -> None:
         pr = self._run(

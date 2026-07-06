@@ -86,6 +86,10 @@ class PrRecord(BaseModel):
         default_factory=tuple,
         description="Names of failed required or reported checks.",
     )
+    failed_check_flaky_evidence: tuple[str, ...] = Field(
+        default_factory=tuple,
+        description="Machine evidence that failed checks are rerunnable infra flakes.",
+    )
     coderabbit_unresolved: int = Field(
         default=0,
         description="Count of unresolved CodeRabbit threads.",
@@ -122,6 +126,10 @@ class TriageRecord(BaseModel):
     failed_check_names: tuple[str, ...] = Field(
         default_factory=tuple,
         description="Failed checks that informed this triage decision.",
+    )
+    failed_check_flaky_evidence: tuple[str, ...] = Field(
+        default_factory=tuple,
+        description="Machine evidence that failed checks are rerunnable infra flakes.",
     )
     block_reason: str = Field(
         default="",

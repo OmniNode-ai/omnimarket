@@ -576,6 +576,11 @@ def _is_flaky_infra_only(failed_check_names: tuple[str, ...]) -> bool:
     )
 
 
+def _has_flaky_failure_evidence(pr: TriageRecord) -> bool:
+    """True when inventory found hard network/clone evidence for failed checks."""
+    return bool(tuple(e.strip() for e in pr.failed_check_flaky_evidence if e.strip()))
+
+
 def _map_ci_status(pr_state: Any) -> str:
     """Map ModelPrState fields to orchestrator-internal checks_status string."""
     if getattr(pr_state, "ci_passing", None) is True:
@@ -595,6 +600,21 @@ def _failed_check_names(pr_state: Any) -> tuple[str, ...]:
             if name:
                 names.append(name)
     return tuple(sorted(set(names)))
+
+
+def _failed_check_flaky_evidence(pr_state: Any) -> tuple[str, ...]:
+    """Return machine flaky evidence collected for failed checks."""
+    evidence: list[str] = []
+    for check in getattr(pr_state, "check_runs", ()) or ():
+        conclusion = str(getattr(check, "conclusion", "") or "").lower()
+        if conclusion not in {"failure", "cancelled", "timed_out", "action_required"}:
+            continue
+        evidence.extend(
+            str(item).strip()
+            for item in getattr(check, "flaky_failure_evidence", ()) or ()
+            if str(item).strip()
+        )
+    return tuple(sorted(set(evidence)))
 
 
 def _extract_ticket_ids(*values: str) -> tuple[str, ...]:
@@ -693,7 +713,9 @@ def _block_reason_for_fix(pr: TriageRecord) -> Any:
     # (rerunnable) and NONE look like a genuine lint/type/test failure → a cheap
     # CI rerun. Deliberately narrow + fail-safe: any code-signal check present
     # falls through to CODE_FAILURE below.
-    if pr.category == EnumPrCategory.RED and _is_flaky_infra_only(failed_check_names):
+    if pr.category == EnumPrCategory.RED and (
+        _is_flaky_infra_only(failed_check_names) or _has_flaky_failure_evidence(pr)
+    ):
         return EnumPrBlockReason.CI_FAILURE
 
     if pr.category == EnumPrCategory.RED:
@@ -1840,6 +1862,9 @@ class HandlerPrLifecycleOrchestrator:
                         review_status=_map_review_status(pr_state),
                         has_conflicts=getattr(pr_state, "has_conflicts", False),
                         failed_check_names=_failed_check_names(pr_state),
+                        failed_check_flaky_evidence=_failed_check_flaky_evidence(
+                            pr_state
+                        ),
                         merge_state_status=getattr(
                             pr_state, "merge_state_status", None
                         ),
@@ -1953,6 +1978,7 @@ class HandlerPrLifecycleOrchestrator:
                     or str(pr.merge_state_status or "").upper() == "CLEAN"
                 ),
                 failed_check_names=pr.failed_check_names,
+                failed_check_flaky_evidence=pr.failed_check_flaky_evidence,
             )
             for pr in prs
         )
@@ -1984,6 +2010,9 @@ class HandlerPrLifecycleOrchestrator:
                     category=category,
                     ticket_ids=getattr(result, "ticket_ids", ()),
                     failed_check_names=getattr(result, "failed_check_names", ()),
+                    failed_check_flaky_evidence=getattr(
+                        result, "failed_check_flaky_evidence", ()
+                    ),
                     block_reason=getattr(result, "reason", ""),
                 )
             )

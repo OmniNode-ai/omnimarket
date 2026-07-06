@@ -44,6 +44,14 @@ _CHECK_BUCKET_TO_CONCLUSION = {
     "cancel": "cancelled",
 }
 _TERMINAL_CHECK_BUCKETS = {"pass", "fail", "skipping", "cancel"}
+_CHECK_LOG_NETWORK_SIGNATURES: tuple[str, ...] = (
+    "could not resolve host: github.com",
+    "gnutls recv error",
+    "rpc failed; curl 56",
+    "fatal: early eof",
+    "unexpected disconnect while reading sideband packet",
+    "invalid index-pack output",
+)
 
 # F3 (OMN-13319): only PR-associated runs count toward required contexts.
 # A green `workflow_dispatch` "CI Summary" must NOT satisfy arm — branch
@@ -499,7 +507,7 @@ class HandlerPrLifecycleInventory:
             "--repo",
             repo,
             "--json",
-            "name,state,bucket,event",
+            "name,state,bucket,event,link",
         ]
         result = subprocess.run(cmd, capture_output=True, text=True)
         if result.returncode != 0:
@@ -518,12 +526,66 @@ class HandlerPrLifecycleInventory:
                     status=self._normalize_check_status(item),
                     conclusion=self._normalize_check_conclusion(item),
                     event=self._normalize_check_event(item),
+                    link=str(item.get("link", "") or ""),
+                    flaky_failure_evidence=self._collect_flaky_failure_evidence(item),
                 )
                 for item in raw
             ]
         except (json.JSONDecodeError, KeyError) as exc:
             logger.debug("Failed to parse check runs for PR #%d: %s", pr_number, exc)
             return []
+
+    def _collect_flaky_failure_evidence(
+        self, item: dict[str, object]
+    ) -> tuple[str, ...]:
+        """Return network/clone evidence from a failed check's linked job log."""
+        conclusion = self._normalize_check_conclusion(item)
+        if conclusion not in {"failure", "cancelled", "timed_out"}:
+            return ()
+        link = str(item.get("link", "") or "")
+        if "/actions/runs/" not in link or "/job/" not in link:
+            return ()
+        job_id = link.rsplit("/job/", 1)[1].split("?", 1)[0].strip()
+        repo_name = self._repo_name_from_link(link)
+        if not job_id.isdigit() or not repo_name:
+            return ()
+        result = subprocess.run(
+            [
+                "gh",
+                "api",
+                f"repos/{_ORG_WIDE_OPEN_PR_ORG}/{repo_name}/actions/jobs/{job_id}/logs",
+                "--header",
+                "Accept: application/vnd.github+json",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        if result.returncode != 0:
+            logger.debug(
+                "failed to inspect check log %s for flaky evidence: %s",
+                link,
+                result.stderr.strip(),
+            )
+            return ()
+        lowered = result.stdout.lower()
+        return tuple(
+            signature
+            for signature in _CHECK_LOG_NETWORK_SIGNATURES
+            if signature in lowered
+        )
+
+    @staticmethod
+    def _repo_name_from_link(link: str) -> str:
+        parts = link.split("/")
+        try:
+            owner_index = parts.index(_ORG_WIDE_OPEN_PR_ORG)
+        except ValueError:
+            return ""
+        repo_index = owner_index + 1
+        if repo_index >= len(parts):
+            return ""
+        return parts[repo_index]
 
     @staticmethod
     def _normalize_check_status(item: dict[str, object]) -> str:
