@@ -58,6 +58,31 @@ def test_yaml_fenced_code_generation_answer_passes_compiles_without_errors() -> 
 
 
 @pytest.mark.unit
+def test_yaml_fence_with_info_string_passes_compiles_without_errors() -> None:
+    """Fence info strings after the language tag must still select YAML."""
+    content = (
+        '```yaml title="handler_routing.yaml"\n'
+        "handler_routing:\n"
+        "  routing_strategy: operation_match\n"
+        "```\n"
+    )
+    result = quality_gate_delta(
+        _gate_input(content=content, deterministic=("compiles_without_errors",))
+    )
+    assert result.failure_reasons == ()
+
+
+@pytest.mark.unit
+def test_yaml_fence_with_crlf_passes_compiles_without_errors() -> None:
+    """CRLF line endings must not force valid YAML back through ast.parse."""
+    content = "```yaml\r\nhandler_routing:\r\n  routing_strategy: operation_match\r\n```\r\n"
+    result = quality_gate_delta(
+        _gate_input(content=content, deterministic=("compiles_without_errors",))
+    )
+    assert result.failure_reasons == ()
+
+
+@pytest.mark.unit
 def test_malformed_yaml_fenced_answer_still_fails_compiles_without_errors() -> None:
     content = "```yaml\nhandler_routing: [unterminated\n```\n"
     result = quality_gate_delta(

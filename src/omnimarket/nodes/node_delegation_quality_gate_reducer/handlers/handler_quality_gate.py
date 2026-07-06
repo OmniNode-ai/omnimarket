@@ -380,8 +380,10 @@ def _strip_thinking_traces(content: str) -> str:
     return _THINKING_TRACE_RE.sub("", content)
 
 
-_MARKDOWN_FENCE_RE = re.compile(r"```(?:\w+)?\n(.*?)```", re.DOTALL)
-_MARKDOWN_FENCE_WITH_LANG_RE = re.compile(r"```(\w*)\n(.*?)```", re.DOTALL)
+_MARKDOWN_FENCE_RE = re.compile(r"```(?:[^\r\n]*)\r?\n(.*?)```", re.DOTALL)
+_MARKDOWN_FENCE_WITH_LANG_RE = re.compile(
+    r"```([A-Za-z0-9_-]*)[^\r\n]*\r?\n(.*?)```", re.DOTALL
+)
 
 # OMN-14004: fence language tags that mark a non-Python structured artifact. A
 # `code_generation` ask is not always Python (e.g. a YAML contract fragment, a
