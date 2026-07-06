@@ -42,18 +42,31 @@ def select_delegation_dispatch_port(
     """Return the dispatch port whose execution model matches ``event_bus``.
 
     * ``None`` or an in-memory bus → :class:`LocalDelegationDispatchPort`
-      (in-process effect + quality gate + sqlite evidence row).
+      (in-process effect + quality gate + config-resolved evidence row).
     * Any other (external broker) bus → :class:`RuntimeDelegationDispatchPort`
       (publish runtime command, await terminal over the bus).
+
+    OMN-14015: this factory is the composition root for the local port, so it
+    resolves the evidence DB target from config here (via
+    ``resolve_local_delegation_evidence_db`` — the projection runtime binding
+    overlay, defaulting to the local SQLite target) and injects it through the
+    port's ``evidence_db`` seam, rather than letting the port fall back to a
+    baked-in default. This is what lets the bus-less CLI target the platform
+    Postgres substrate purely by overlay.
     """
     if event_bus is None or isinstance(event_bus, EventBusInmemory):
         # Imported lazily so compile-only / payload-building paths and unit tests
         # do not require the local effect + projection stack.
+        from omnimarket.nodes.node_delegate_skill_orchestrator.ports.evidence_db_resolution import (
+            resolve_local_delegation_evidence_db,
+        )
         from omnimarket.nodes.node_delegate_skill_orchestrator.ports.port_local_delegation_dispatch import (
             LocalDelegationDispatchPort,
         )
 
-        return LocalDelegationDispatchPort()
+        return LocalDelegationDispatchPort(
+            evidence_db=resolve_local_delegation_evidence_db()
+        )
     return RuntimeDelegationDispatchPort(event_bus=event_bus)
 
 

@@ -16,9 +16,12 @@ canonical surfaces (OMN-13160):
      resolved ``endpoint_ref`` VERBATIM (OMN-12815/OMN-13159).
   3. PROJECTION — the canonical ``HandlerProjectionDelegation`` materializes a
      ``delegation_events`` evidence row from the terminal event, run in-process
-     against a local SQLite projection target so the local delegation tail is
-     still materialized (the deprecated DirectCurl port's bespoke sqlite write is
-     replaced by the same canonical projection the bus runtime uses).
+     against a projection target resolved from config (OMN-14015): the projection
+     runtime binding overlay selects the backing store, defaulting to the local
+     SQLite target when no overlay is configured (a truly bus-less CLI) and
+     targeting the platform Postgres substrate when the overlay declares it. The
+     deprecated DirectCurl port's bespoke sqlite write is replaced by the same
+     canonical projection the bus runtime uses.
 
 OMN-13849 — escalation loop + judge combine on the bus-less path:
   * On a quality-gate FAIL the port re-dispatches to the next eligible tier,
@@ -72,6 +75,9 @@ from omnimarket.inference.protocol_config import apply_inference_protocol
 from omnimarket.models.delegation.wire.model_quality_gate import (
     SCORE_SOURCE_DETERMINISTIC_ACCEPTANCE,
     ModelQualityGateResult,
+)
+from omnimarket.nodes.node_delegate_skill_orchestrator.ports.evidence_db_resolution import (
+    resolve_local_delegation_evidence_db,
 )
 
 # OMN-13849: the SAME required-bar authority the bus orchestrator applies
@@ -132,10 +138,7 @@ from omnimarket.nodes.node_projection_delegation.handlers.handler_projection_del
     HandlerProjectionDelegation,
 )
 from omnimarket.projection.protocol_database import DatabaseAdapter
-from omnimarket.projection.sqlite_database import (
-    SqliteDatabaseAdapter,
-    default_evidence_db_path,
-)
+from omnimarket.projection.sqlite_database import SqliteDatabaseAdapter
 from omnimarket.routing.delegation_backend_resolution import (
     ModelResolvedDelegationBackend,
     resolve_delegation_backend,
@@ -358,9 +361,21 @@ class LocalDelegationDispatchPort:
     ) -> None:
         self._effect_handler = effect_handler or HandlerLlmDelegationCall()
         self._projection_handler = projection_handler or HandlerProjectionDelegation()
-        self._evidence_db: DatabaseAdapter = evidence_db or SqliteDatabaseAdapter(
-            evidence_db_path or default_evidence_db_path()
-        )
+        # OMN-14015: the evidence DB target is no longer a hardcoded SQLite default.
+        # Precedence: an explicitly injected adapter (composition root / tests) wins;
+        # then an explicit sqlite path override (kept for the many tests that pin a
+        # tmp_path DB); otherwise resolve the target from config
+        # (``resolve_local_delegation_evidence_db`` reads the projection runtime
+        # binding overlay, defaulting to the canonical local SQLite target when no
+        # overlay is configured — byte-identical to the prior hardcoded default, so
+        # golden replays are unaffected).
+        self._evidence_db: DatabaseAdapter
+        if evidence_db is not None:
+            self._evidence_db = evidence_db
+        elif evidence_db_path is not None:
+            self._evidence_db = SqliteDatabaseAdapter(evidence_db_path)
+        else:
+            self._evidence_db = resolve_local_delegation_evidence_db()
         self._effect_process_boundary = effect_process_boundary
         # The judge wraps the canonical inference bridge; inject a fake/replay
         # bridge in tests to avoid (or replay) the network call. Same surface the
