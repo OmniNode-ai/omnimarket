@@ -146,6 +146,10 @@ class ChangedFilesUnavailableError(RuntimeError):
 # ---------------------------------------------------------------------------
 
 
+_DEFAULT_SWEEP_SLEEP_SECONDS = 30 * 60
+_DEFAULT_STANDING_SWEEP_PASSES = 17_520  # 365 days at a 30-minute cadence.
+
+
 class ModelPrLifecycleStartCommand(BaseModel):
     """Start command for the PR lifecycle orchestrator."""
 
@@ -219,12 +223,15 @@ class ModelPrLifecycleStartCommand(BaseModel):
         ),
     )
     max_sweep_passes: int = Field(
-        default=20,
+        default=_DEFAULT_STANDING_SWEEP_PASSES,
         ge=1,
-        description="Maximum sweep passes for one invocation.",
+        description=(
+            "Maximum sweep passes for one invocation. The default keeps the "
+            "operator sweep standing for roughly one year at the default cadence."
+        ),
     )
     sweep_sleep_seconds: int = Field(
-        default=0,
+        default=_DEFAULT_SWEEP_SLEEP_SECONDS,
         ge=0,
         description="Backoff between NOT_DONE sweep passes.",
     )
@@ -1302,7 +1309,9 @@ class HandlerPrLifecycleOrchestrator:
         """Return whether another pass can still act on the NOT_DONE result."""
         if result.final_state != _FINAL_STATE_NOT_DONE:
             return False
-        if result.prs_merged > 0 or result.prs_fixed > 0:
+        if result.prs_inventoried > 0 or result.org_wide_open_count > 0:
+            return True
+        if result.prs_merged > 0 or result.prs_fixed > 0 or result.prs_verified > 0:
             return True
         return False
 
