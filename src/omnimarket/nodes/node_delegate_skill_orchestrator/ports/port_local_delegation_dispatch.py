@@ -596,6 +596,25 @@ class LocalDelegationDispatchPort:
             current_tier = tier_for_backend(backend.backend_id) or backend.tier
             excluded_tiers.add(current_tier)
 
+            # OMN-14004: persist the rejected candidate's own content, not just the
+            # failure reason. Before this the capture log (and the terminal
+            # payload's cumulative ``content``) only ever carried the LAST
+            # attempt's text — an earlier tier's rejected-but-potentially-correct
+            # answer (e.g. a false-reject) was unrecoverable once escalation
+            # overwrote ``result``. The capture-file this logger writes to is
+            # already promoted to a content-addressed artifact by the CLI receipt
+            # layer (``receipt_mode.py``), so logging the full candidate here is
+            # enough to make it durable evidence without a new persistence surface.
+            logger.info(
+                "LocalDelegationDispatch: rejected candidate content "
+                "(task_type=%s tier=%s correlation=%s reason=%s):\n%s",
+                task_type,
+                backend.tier,
+                correlation_id,
+                gate_failure_message,
+                result.content or "",
+            )
+
             next_backend: ModelResolvedDelegationBackend | None = None
             if escalation_count < max_escalations:
                 next_backend = self._resolve_next_backend(

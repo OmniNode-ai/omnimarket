@@ -39,6 +39,8 @@ import json
 import re
 from collections.abc import Callable
 
+import yaml
+
 from omnimarket.events.delegation_judge_verdict import EnumDelegationJudgeVerdict
 from omnimarket.models.delegation.wire.model_quality_gate import (
     SCORE_SOURCE_COMBINED,
@@ -379,6 +381,15 @@ def _strip_thinking_traces(content: str) -> str:
 
 
 _MARKDOWN_FENCE_RE = re.compile(r"```(?:\w+)?\n(.*?)```", re.DOTALL)
+_MARKDOWN_FENCE_WITH_LANG_RE = re.compile(r"```(\w*)\n(.*?)```", re.DOTALL)
+
+# OMN-14004: fence language tags that mark a non-Python structured artifact. A
+# `code_generation` ask is not always Python (e.g. a YAML contract fragment, a
+# JSON config), so `_check_compiles_without_errors` must not force every
+# candidate through `ast.parse`. Tags outside these two sets (or no tag at all)
+# keep the prior Python-parse behavior unchanged.
+_YAML_FENCE_LANG_TAGS: frozenset[str] = frozenset({"yaml", "yml"})
+_JSON_FENCE_LANG_TAGS: frozenset[str] = frozenset({"json"})
 
 
 def _strip_markdown_code_fence(content: str) -> str:
@@ -395,6 +406,18 @@ def _strip_markdown_code_fence(content: str) -> str:
 def _extract_fenced_code_blocks(content: str) -> list[str]:
     """Return all fenced code block bodies from mixed content."""
     return _MARKDOWN_FENCE_RE.findall(content)
+
+
+def _extract_fenced_code_blocks_with_lang(content: str) -> list[tuple[str, str]]:
+    """Return (lang_tag, body) pairs for all fenced code blocks in mixed content.
+
+    ``lang_tag`` is the lowercased fence-info-string token (e.g. ``"yaml"`` for
+    ` ```yaml`), or ``""`` when the fence carries no language tag.
+    """
+    return [
+        (lang.lower(), body)
+        for lang, body in _MARKDOWN_FENCE_WITH_LANG_RE.findall(content)
+    ]
 
 
 def _remove_fenced_code_blocks(content: str) -> str:
@@ -592,19 +615,42 @@ def _check_semantic_adequacy(content: str) -> str | None:
 
 
 def _check_compiles_without_errors(content: str) -> str | None:
-    """Deterministic: Python-like delegated code must parse successfully.
+    """Deterministic: delegated code must parse as its declared artifact language.
 
-    Extracts fenced code blocks (```python ... ```) from mixed content before
-    parsing. If multiple blocks are present, all must compile. Falls back to
-    raw content when no fenced blocks are found.
+    OMN-14004: ``code_generation`` is not always a Python ask — a YAML
+    contract-fragment or JSON config is an equally valid code_generation
+    artifact. A fenced block's own language tag (```yaml`` / ```json``) selects
+    the parser for that block; an untagged fence or raw (non-fenced) content
+    keeps the original Python-only behavior (``ast.parse``) unchanged, so the
+    common Python case is byte-for-byte the same check as before. Only a block
+    that fails to parse under ITS OWN declared language fails the check — a
+    correct YAML answer no longer gets rejected for not being valid Python.
     """
-    blocks = _extract_fenced_code_blocks(content)
-    candidates = blocks if blocks else [_strip_markdown_code_fence(content)]
-    for candidate in candidates:
+    tagged_blocks = _extract_fenced_code_blocks_with_lang(content)
+    if not tagged_blocks:
+        candidate = _strip_markdown_code_fence(content)
         try:
             ast.parse(candidate)
         except SyntaxError as exc:
             return f"MALFORMED: response does not compile as Python: {exc.msg}"
+        return None
+
+    for lang, body in tagged_blocks:
+        if lang in _YAML_FENCE_LANG_TAGS:
+            try:
+                yaml.safe_load(body)
+            except yaml.YAMLError as exc:
+                return f"MALFORMED: response does not compile as YAML: {exc}"
+        elif lang in _JSON_FENCE_LANG_TAGS:
+            try:
+                json.loads(body)
+            except json.JSONDecodeError as exc:
+                return f"MALFORMED: response does not compile as JSON: {exc.msg}"
+        else:
+            try:
+                ast.parse(body)
+            except SyntaxError as exc:
+                return f"MALFORMED: response does not compile as Python: {exc.msg}"
     return None
 
 
