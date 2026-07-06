@@ -57,10 +57,10 @@ log = logging.getLogger(__name__)
 _PROJECTION_VERSION = "1.0.0"
 _FRESH_THRESHOLD = timedelta(minutes=5)
 _STALE_THRESHOLD = timedelta(minutes=60)
-_EVIDENCE_STAGES_TOPIC = "onex.snapshot.projection.evidence_pipeline.stages.v1"
-_EVIDENCE_TRACE_TOPIC = "onex.snapshot.projection.evidence_pipeline.correlations.v1"
-_EVIDENCE_READINESS_TOPIC = "onex.snapshot.projection.evidence_pipeline.readiness.v1"
-_EVIDENCE_EVENTS_TOPIC = "onex.snapshot.projection.evidence_pipeline.live_events.v1"
+_EVIDENCE_STAGES_TOPIC = "onex.snapshot.projection.evidence_pipeline.stages.v1"  # onex-topic-allow: projection-snapshot topic for evidence-pipeline API, no existing registry const (OMN-13944)
+_EVIDENCE_TRACE_TOPIC = "onex.snapshot.projection.evidence_pipeline.correlations.v1"  # onex-topic-allow: projection-snapshot topic for evidence-pipeline API, no existing registry const (OMN-13944)
+_EVIDENCE_READINESS_TOPIC = "onex.snapshot.projection.evidence_pipeline.readiness.v1"  # onex-topic-allow: projection-snapshot topic for evidence-pipeline API, no existing registry const (OMN-13944)
+_EVIDENCE_EVENTS_TOPIC = "onex.snapshot.projection.evidence_pipeline.live_events.v1"  # onex-topic-allow: projection-snapshot topic for evidence-pipeline API, no existing registry const (OMN-13944)
 # The /v1/evidence-pipeline/* endpoints serve only the OCC/deployment evidence
 # pipeline projection — they are NOT a per-correlation surface for delegation
 # runs. A delegation correlation_id legitimately has zero rows here and must be
@@ -68,9 +68,7 @@ _EVIDENCE_EVENTS_TOPIC = "onex.snapshot.projection.evidence_pipeline.live_events
 # (OMN-12748). Surfaced on filtered/empty responses so callers are not misled
 # into reading the empty result as a broken projection (OMN-13168).
 _EVIDENCE_QUERY_SCOPE = "evidence_pipeline"
-_DELEGATION_CORRELATION_TRACE_TOPIC = (
-    "onex.snapshot.projection.delegation.correlation-trace.v1"
-)
+_DELEGATION_CORRELATION_TRACE_TOPIC = "onex.snapshot.projection.delegation.correlation-trace.v1"  # onex-topic-allow: projection-snapshot topic for delegation correlation-trace API, no existing registry const (OMN-13944)
 PROJECTION_DATABASE_BINDING_OVERLAY_ENV = (
     "OMNIMARKET_PROJECTION_DATABASE_BINDING_OVERLAY"
 )

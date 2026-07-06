@@ -160,6 +160,41 @@ _PROHIBITED_PATTERNS = [
 
 _HARDCODED_TOPIC_PATTERN = re.compile(r'"onex\.[a-z]+\.[a-z]+\.[a-z]')
 
+# Structural recognition of a canonical StrEnum/Enum topic-registry class
+# (e.g. ``class TopicBase(StrEnum)`` in omnibase_core.topics, ``class
+# GovernanceTopic(str, Enum)`` in onex_change_control.kafka.topics). Topic
+# literals bound as enum members are the sanctioned home for topic constants
+# (OMN-13905 Part-1) — this mirrors the equivalent detector already shipped
+# in omniclaude/scripts/ci/run_aislop_sweep.py.
+_ENUM_CLASS_DEF_PATTERN = re.compile(r"^\s*class\s+\w+.*\b(?:StrEnum|Enum)\b")
+
+# A module-level (indent-0) UPPER_SNAKE_CASE constant assignment (optionally
+# module-private, leading-underscore) whose RHS is an "onex." literal, either
+# inline (``NAME = "onex...."``) or opening a parenthesized multi-line RHS
+# (``NAME: tuple[str, ...] = (`` followed by one literal per line, e.g. the
+# ``_OMNICLAUDE_SKILL_TOPIC_SUFFIXES`` tuple in platform_topic_suffixes.py).
+_MODULE_CONST_SAMELINE_PATTERN = re.compile(
+    r'^_?[A-Z][A-Z0-9_]*\s*(?::\s*[^=]+)?=\s*"onex\.'
+)
+_MODULE_CONST_OPEN_PATTERN = re.compile(
+    r"^_?[A-Z][A-Z0-9_]*\s*(?::\s*[^=]+)?=\s*\(\s*$"
+)
+
+# Per-line suppression markers already sanctioned and honored elsewhere in the
+# codebase (ValidatorHardcodedTopics in omnibase_core, omnimarket's own
+# scripts/ci/check_no_hardcoded_topics.py, and the "arch-topic-naming"
+# convention used ~15 times across omnibase_core/omniclaude for topic-shape
+# exceptions such as base-prefix constants). Recognizing them here brings the
+# aislop-sweep hardcoded-topics check into alignment with those sibling
+# checkers instead of independently re-litigating the same annotation.
+_TOPIC_ALLOW_MARKERS = (
+    "onex-topic-allow:",
+    "onex-topic-sot",
+    "onex-topic-test-fixture",
+    "onex-topic-doc-example",
+    "arch-topic-naming",
+)
+
 _COMPAT_SHIM_PATTERNS = [
     (re.compile(r"#\s*removed"), "# removed comment"),
     (re.compile(r"#\s*backwards?.compat"), "backwards-compat comment"),
@@ -405,26 +440,129 @@ class NodeAislopSweep:
                     )
         return findings
 
+    def _compute_enum_body_lines(self, lines: list[str]) -> set[int]:
+        """Return 1-indexed line numbers inside a StrEnum/Enum class body.
+
+        Structural detector for canonical topic-registry classes — topic
+        literals bound as enum members (``FOO = "onex...."`` inside
+        ``class TopicBase(StrEnum)``) are the sanctioned declaration site,
+        not a violation. Ported from the equivalent logic in
+        omniclaude/scripts/ci/run_aislop_sweep.py (OMN-13905 Part-1).
+        """
+        enum_lines: set[int] = set()
+        in_enum = False
+        enum_indent = -1
+        for i, line in enumerate(lines, 1):
+            stripped_line = line.rstrip()
+            indent = len(line) - len(line.lstrip())
+            if _ENUM_CLASS_DEF_PATTERN.match(stripped_line):
+                in_enum = True
+                enum_indent = indent
+            elif in_enum:
+                body = stripped_line.strip()
+                if (
+                    body
+                    and not body.startswith("#")
+                    and indent <= enum_indent
+                    and (
+                        re.match(r"\s*class\s", stripped_line)
+                        or not body.startswith(("@", '"', "'"))
+                    )
+                ):
+                    in_enum = False
+            if in_enum:
+                enum_lines.add(i)
+        return enum_lines
+
+    def _compute_module_topic_const_lines(self, lines: list[str]) -> set[int]:
+        """Return line numbers that are module-level topic constant RHS lines.
+
+        Covers both the single-line form (``NAME = "onex...."``) and the
+        parenthesized multi-line form used by
+        ``omnibase_infra/topics/platform_topic_suffixes.py``
+        (``NAME: str = (\\n    "onex...."\\n)``). Only meaningful when the
+        module also self-declares as topic source-of-truth (see
+        ``_module_declares_topic_sot``) — this alone does not exempt anything.
+        """
+        exempt: set[int] = set()
+        pending_close = False
+        for i, line in enumerate(lines, 1):
+            stripped = line.strip()
+            indent = len(line) - len(line.lstrip())
+            if pending_close:
+                exempt.add(i)
+                if stripped.startswith(")"):
+                    pending_close = False
+                continue
+            if indent != 0:
+                continue
+            if _MODULE_CONST_SAMELINE_PATTERN.match(stripped):
+                exempt.add(i)
+            elif _MODULE_CONST_OPEN_PATTERN.match(stripped):
+                exempt.add(i)
+                pending_close = True
+        return exempt
+
+    def _module_declares_topic_sot(self, lines: list[str]) -> bool:
+        """Whether this module self-declares as topic source-of-truth.
+
+        Reuses the existing ``onex-topic-sot`` marker (already documented and
+        honored per-line by ``ValidatorHardcodedTopics`` in omnibase_core) but
+        widens its scope to file-level for registries that define many
+        module-level constants rather than requiring per-line annotation on
+        every constant (e.g. platform_topic_suffixes.py). Checked only near
+        the top of the file so an unrelated later comment can't retroactively
+        exempt the whole module.
+        """
+        for line in lines[:40]:
+            stripped = line.strip()
+            if stripped.startswith("#") and "onex-topic-sot" in stripped:
+                return True
+        return False
+
     def _check_hardcoded_topics(
         self, repo: str, path: str, lines: list[str]
     ) -> list[ModelSweepFinding]:
-        if "contract.yaml" in path or "enum" in path.lower():
+        if "contract.yaml" in path:
             return []
         findings = []
         in_src = path.startswith("src/")
+        enum_body_lines = self._compute_enum_body_lines(lines)
+        is_sot_module = self._module_declares_topic_sot(lines)
+        module_const_lines = (
+            self._compute_module_topic_const_lines(lines) if is_sot_module else set()
+        )
         for i, line in enumerate(lines, 1):
-            if _HARDCODED_TOPIC_PATTERN.search(line):
-                findings.append(
-                    ModelSweepFinding(
-                        repo=repo,
-                        path=path,
-                        line=i,
-                        check="hardcoded-topics",
-                        message=f"Hardcoded topic string: {line.strip()[:80]}",
-                        severity="ERROR" if in_src else "WARNING",
-                        confidence="HIGH" if in_src else "MEDIUM",
-                    )
+            if not _HARDCODED_TOPIC_PATTERN.search(line):
+                continue
+            stripped = line.strip()
+            # Comment / docstring-example lines document topic shape; they
+            # don't embed a runtime literal that needs to live in a registry.
+            if stripped.startswith("#") or stripped.startswith(">>>"):
+                continue
+            # Structural: StrEnum/Enum class body member — canonical registry
+            # entry, not a violation.
+            if i in enum_body_lines:
+                continue
+            # Explicit per-line suppression markers already sanctioned
+            # elsewhere in the codebase.
+            if any(marker in line for marker in _TOPIC_ALLOW_MARKERS):
+                continue
+            # Structural: module-level constant declaration inside a module
+            # that self-declares as topic source-of-truth.
+            if i in module_const_lines:
+                continue
+            findings.append(
+                ModelSweepFinding(
+                    repo=repo,
+                    path=path,
+                    line=i,
+                    check="hardcoded-topics",
+                    message=f"Hardcoded topic string: {stripped[:80]}",
+                    severity="ERROR" if in_src else "WARNING",
+                    confidence="HIGH" if in_src else "MEDIUM",
                 )
+            )
         return findings
 
     def _check_compat_shims(

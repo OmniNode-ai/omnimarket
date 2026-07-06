@@ -607,9 +607,18 @@ class HandlerLlmDelegationCall:
         loop. A ``None`` ``secret_ref`` (unauthenticated local backend) adds no
         header; a declared-but-unresolvable ref fails closed (raises), so a cloud
         call is never made silently without credentials.
+
+        OMN-13943: ``request.api_key_env`` (the backend's own contract-declared
+        literal env-var name, e.g. ``GEMINI_API_KEY``) is passed as an
+        ADDITIONAL fallback — checked only when the ``secret_ref`` convention
+        mapping misses. This closes the secret-name drift between the dotted
+        ``llm.*.api_key`` convention (which maps to ``LLM_*_API_KEY``) and the
+        canonical env vars already defined in ``~/.omnibase/.env``.
         """
         headers = dict(request.extra_headers)
-        api_key = resolve_api_key_loop_safe(request.secret_ref)
+        api_key = resolve_api_key_loop_safe(
+            request.secret_ref, env_var_fallback=request.api_key_env
+        )
         if api_key is not None:
             headers["Authorization"] = f"Bearer {api_key.get_secret_value()}"
         return headers

@@ -188,3 +188,345 @@ tasks:
       assert is_match('aab', 'c*a*b') is True
       assert is_match('mississippi', 'mis*is*p*.') is False
       assert is_match('mississippi', 'mis*is*ip*.') is True
+
+  # ── FRONTIER ─────────────────────────────────────────────────────────
+  # OMN-13938: the easy/medium/hard tiers above SATURATE at the top of the
+  # ladder (35B / 284B / GLM all score 1.0) and do not separate the
+  # frontier rungs. These four tasks are engineered to defeat pattern-
+  # matching rather than merely raise nominal difficulty: two novel
+  # register-machine traces requiring genuine multi-step simulation (no
+  # code interpreter allowed), an efficiency-gated code task where a
+  # memorized O(n^2) textbook solution times out, and a long-context
+  # faithfulness task with an adversarially placed correction.
+  #
+  # Calibration note (live-verified 2026-07-04 against the local 5090
+  # rung, Qwen3.6-35B-A3B): an initial design with 500-1000+ dynamic VM
+  # steps and a 7-generation bespoke cellular automaton was DROPPED after
+  # live dry-run testing showed these local/free-tier models are extremely
+  # verbose tracers (~130-190 tokens per simulated step) — long traces blow
+  # through any operationally realistic token budget and the automaton task
+  # specifically sent the model into a degenerate repetition loop hunting
+  # for a closed-form boolean formula. Both VM tasks below were shortened
+  # to a step count empirically verified (finish_reason=stop, correct
+  # answer) to complete cleanly within a 20,000-token budget on the local
+  # ladder, per the explicit operator guidance to dry-run against a
+  # mid-tier model before shipping a corpus that fails closed for everyone.
+  # The cellular-automaton design is deferred (see OMN-13938 follow-up) —
+  # not shipped, to avoid a task that measures budget/repetition-loop luck
+  # rather than genuine capability.
+  - task_id: frontier_vm_trace_a
+    benchmark_tier: frontier
+    task_class: state_machine_trace
+    grader: numeric
+    expected_number: 30
+    prompt: |
+      You are given a program for a small custom register machine (NOT Python, NOT any real assembly language you may know — this is a bespoke instruction set). Registers A, B, C, D, E all start at 0 unless a SET instruction changes them. Execution starts at instruction 00 and proceeds sequentially unless a jump is taken. Instructions:
+        SET r, k   -> r = k (k is a literal integer)
+        MOV r, s   -> r = s (copy register s into register r)
+        ADD r, s   -> r = r + s
+        SUB r, s   -> r = r - s
+        MUL r, k   -> r = r * k
+        MOD r, k   -> r = r % k
+        INC r      -> r = r + 1
+        DEC r      -> r = r - 1
+        JMP addr        -> jump to instruction number addr
+        JNZ r, addr     -> if r != 0, jump to addr; otherwise continue to the next instruction
+        JZ  r, addr     -> if r == 0, jump to addr; otherwise continue to the next instruction
+        HALT       -> stop execution
+      Trace the program step by step by hand (do not write or run any code).
+      Program (12 instructions):
+
+      00: SET A, 0
+      01: SET B, 4
+      02: SET E, 5
+      03: MOV C, B
+      04: MUL C, 3
+      05: ADD A, C
+      06: MOD A, 97
+      07: SUB C, E
+      08: MOD C, 89
+      09: DEC B
+      10: JNZ B, 03
+      11: HALT
+
+      After the program HALTs, what is the final value of register A?
+      Reply with only that integer and nothing else.
+
+  - task_id: frontier_vm_trace_b
+    benchmark_tier: frontier
+    task_class: state_machine_trace
+    grader: numeric
+    expected_number: 277
+    prompt: |
+      You are given a program for a small custom register machine (NOT Python, NOT any real assembly language you may know — this is a bespoke instruction set). Registers A, B, C, D, E all start at 0 unless a SET instruction changes them. Execution starts at instruction 00 and proceeds sequentially unless a jump is taken. Instructions:
+        SET r, k   -> r = k (k is a literal integer)
+        MOV r, s   -> r = s (copy register s into register r)
+        ADD r, s   -> r = r + s
+        SUB r, s   -> r = r - s
+        MUL r, k   -> r = r * k
+        MOD r, k   -> r = r % k
+        INC r      -> r = r + 1
+        DEC r      -> r = r - 1
+        JMP addr        -> jump to instruction number addr
+        JNZ r, addr     -> if r != 0, jump to addr; otherwise continue to the next instruction
+        JZ  r, addr     -> if r == 0, jump to addr; otherwise continue to the next instruction
+        HALT       -> stop execution
+      Trace the program step by step by hand (do not write or run any code).
+      Program (16 instructions):
+
+      00: SET A, 1
+      01: SET B, 10
+      02: SET E, 7
+      03: MOV C, B
+      04: MUL C, 4
+      05: ADD A, C
+      06: MOD A, 131
+      07: SUB C, E
+      08: MOD C, 103
+      09: DEC B
+      10: JNZ B, 03
+      11: MUL A, 3
+      12: MOD A, 500
+      13: ADD A, E
+      14: MOD A, 500
+      15: HALT
+
+      After the program HALTs, what is the final value of register A?
+      Reply with only that integer and nothing else.
+
+  - task_id: frontier_efficient_inversions
+    benchmark_tier: frontier
+    task_class: efficient_code_generation
+    grader: code_exec
+    entrypoint: count_inversions
+    prompt: >-
+      Write a Python function `count_inversions(arr)` that returns the number of
+      inversions in the list `arr` — the number of index pairs (i, j) with i < j
+      and arr[i] > arr[j]. Your solution MUST run in O(n log n) time or better: it
+      will be graded against lists of up to 200,000 integers and must complete in
+      well under a few seconds. A brute-force O(n^2) double loop is too slow and
+      will fail grading — you need a divide-and-conquer or sort-based counting
+      approach, not the naive nested loop. Reply with only a single Python code
+      block.
+    code_asserts: |
+      import time
+      assert count_inversions([2, 4, 1, 3, 5]) == 3
+      assert count_inversions([1, 2, 3, 4, 5]) == 0
+      assert count_inversions([5, 4, 3, 2, 1]) == 10
+      assert count_inversions([]) == 0
+      _n = 200000
+      _arr = list(range(_n, 0, -1))
+      _expected = _n * (_n - 1) // 2
+      _start = time.perf_counter()
+      _got = count_inversions(_arr)
+      _elapsed = time.perf_counter() - _start
+      assert _got == _expected, f"large-N correctness failed: got={_got} expected={_expected}"
+      assert _elapsed < 5.0, (
+          f"large-N (n={_n}) took {_elapsed:.2f}s; must complete in under 5.0s "
+          "(an O(n^2) brute force will not clear this budget)"
+      )
+
+  - task_id: frontier_long_context_contradiction
+    benchmark_tier: frontier
+    task_class: long_context_faithfulness
+    grader: contains
+    expected_substring: "365,000"
+    case_sensitive: false
+    prompt: |
+      PROJECT KESTREL — ENGINEERING STATUS MEMO (INTERNAL)
+
+
+
+      This memo consolidates weekly engineering status across all Project Kestrel subsystems for program management review. Section references below are to the master status ledger, not to this memo's own numbering.
+
+
+
+      Section 1: Program Overview. Project Kestrel remains in the critical design review phase across all subsystems. The paragraphs below record individual engineering status items in chronological order as they were reported by each department during the current reporting cycle.
+
+
+
+      On June 25, the Electrical Harness team, working with Northgate Fasteners, escalated a firmware regression found during integration testing. A follow-up review is scheduled with the chief engineer next cycle. This entry is logged as memo item 001 in the Project Kestrel engineering status ledger for internal distribution only.
+
+      On April 23, the Supply Chain team, working with Northgate Fasteners, reported a 4% yield improvement on the composite layup process. This does not affect any safety-of-flight requirement. This entry is logged as memo item 002 in the Project Kestrel engineering status ledger for internal distribution only.
+
+      On November 27, the Materials Lab team, working with Northgate Fasteners, submitted a revised statement of work for the wiring harness subcontract. This does not affect any safety-of-flight requirement. This entry is logged as memo item 003 in the Project Kestrel engineering status ledger for internal distribution only.
+
+      On July 13, the Supply Chain team, working with Ferrolight Systems, began first-article inspection on the redesigned bracket assembly. The item remains open pending confirmation from the test lab. This entry is logged as memo item 004 in the Project Kestrel engineering status ledger for internal distribution only.
+
+      On February 20, the Systems Engineering team, working with Trestle Dynamics, completed the second round of vibration testing on the actuator housing. The item remains open pending confirmation from the test lab. This entry is logged as memo item 005 in the Project Kestrel engineering status ledger for internal distribution only.
+
+      On October 22, the Flight Test team, working with Meridian Alloys, closed out the corrective action from the prior quarter's audit finding. The item remains open pending confirmation from the test lab. This entry is logged as memo item 006 in the Project Kestrel engineering status ledger for internal distribution only.
+
+      Section 2: Budget Note. The Q3 hardware budget cap for Project Kestrel is set at $420,000, as approved at the program budget review. All departments should plan procurement against this figure until further notice.
+
+      On September 21, the Flight Test team, working with Trestle Dynamics, requested a two-week schedule extension for environmental qualification. No impact to the overall program schedule is expected at this time. This entry is logged as memo item 007 in the Project Kestrel engineering status ledger for internal distribution only.
+
+      On October 21, the Electrical Harness team, working with Halden Composites, submitted a revised statement of work for the wiring harness subcontract. This does not affect any safety-of-flight requirement. This entry is logged as memo item 008 in the Project Kestrel engineering status ledger for internal distribution only.
+
+      On May 4, the Avionics Integration team, working with Halden Composites, requested a two-week schedule extension for environmental qualification. The finance office has been notified for awareness only. This entry is logged as memo item 009 in the Project Kestrel engineering status ledger for internal distribution only.
+
+      On October 1, the Software Platform team, working with Solari Sensors, escalated a firmware regression found during integration testing. The item remains open pending confirmation from the test lab. This entry is logged as memo item 010 in the Project Kestrel engineering status ledger for internal distribution only.
+
+      On January 18, the Quality Assurance team, working with Blue Anvil Machining, escalated a firmware regression found during integration testing. The finance office has been notified for awareness only. This entry is logged as memo item 011 in the Project Kestrel engineering status ledger for internal distribution only.
+
+      On September 17, the Thermal Systems team, working with Trestle Dynamics, requested a two-week schedule extension for environmental qualification. A follow-up review is scheduled with the chief engineer next cycle. This entry is logged as memo item 012 in the Project Kestrel engineering status ledger for internal distribution only.
+
+      On October 23, the Thermal Systems team, working with Corvid Avionics, completed the second round of vibration testing on the actuator housing. A risk register entry has been opened to track resolution. This entry is logged as memo item 013 in the Project Kestrel engineering status ledger for internal distribution only.
+
+      On November 18, the Flight Test team, working with Halden Composites, began first-article inspection on the redesigned bracket assembly. A risk register entry has been opened to track resolution. This entry is logged as memo item 014 in the Project Kestrel engineering status ledger for internal distribution only.
+
+      On February 9, the Systems Engineering team, working with Northgate Fasteners, began first-article inspection on the redesigned bracket assembly. Program management concurred with the recommendation during the weekly sync. This entry is logged as memo item 015 in the Project Kestrel engineering status ledger for internal distribution only.
+
+      On February 11, the Systems Engineering team, working with Corvid Avionics, completed the second round of vibration testing on the actuator housing. A follow-up review is scheduled with the chief engineer next cycle. This entry is logged as memo item 016 in the Project Kestrel engineering status ledger for internal distribution only.
+
+      On September 2, the Software Platform team, working with Solari Sensors, began first-article inspection on the redesigned bracket assembly. Program management concurred with the recommendation during the weekly sync. This entry is logged as memo item 017 in the Project Kestrel engineering status ledger for internal distribution only.
+
+      On May 14, the Propulsion Test team, working with Blue Anvil Machining, flagged a long-lead procurement risk on the titanium fastener order. The change is tracked under the standard engineering change request process. This entry is logged as memo item 018 in the Project Kestrel engineering status ledger for internal distribution only.
+
+      On July 12, the Systems Engineering team, working with Corvid Avionics, completed the second round of vibration testing on the actuator housing. A risk register entry has been opened to track resolution. This entry is logged as memo item 019 in the Project Kestrel engineering status ledger for internal distribution only.
+
+      On April 23, the Structures team, working with Meridian Alloys, flagged a long-lead procurement risk on the titanium fastener order. Program management concurred with the recommendation during the weekly sync. This entry is logged as memo item 020 in the Project Kestrel engineering status ledger for internal distribution only.
+
+      On July 20, the Software Platform team, working with Corvid Avionics, recommended switching to the alternate connector supplier after a lot rejection. This does not affect any safety-of-flight requirement. This entry is logged as memo item 021 in the Project Kestrel engineering status ledger for internal distribution only.
+
+      On June 23, the Thermal Systems team, working with Trestle Dynamics, closed out the corrective action from the prior quarter's audit finding. The finance office has been notified for awareness only. This entry is logged as memo item 022 in the Project Kestrel engineering status ledger for internal distribution only.
+
+      On August 6, the Supply Chain team, working with Meridian Alloys, escalated a firmware regression found during integration testing. This does not affect any safety-of-flight requirement. This entry is logged as memo item 023 in the Project Kestrel engineering status ledger for internal distribution only.
+
+      On October 18, the Electrical Harness team, working with Northgate Fasteners, completed the second round of vibration testing on the actuator housing. The change is tracked under the standard engineering change request process. This entry is logged as memo item 024 in the Project Kestrel engineering status ledger for internal distribution only.
+
+      On July 25, the Software Platform team, working with Blue Anvil Machining, reported a 4% yield improvement on the composite layup process. The item remains open pending confirmation from the test lab. This entry is logged as memo item 025 in the Project Kestrel engineering status ledger for internal distribution only.
+
+      On July 19, the Quality Assurance team, working with Meridian Alloys, reported a 4% yield improvement on the composite layup process. A risk register entry has been opened to track resolution. This entry is logged as memo item 026 in the Project Kestrel engineering status ledger for internal distribution only.
+
+      On April 25, the Materials Lab team, working with Blue Anvil Machining, closed out the corrective action from the prior quarter's audit finding. Program management concurred with the recommendation during the weekly sync. This entry is logged as memo item 027 in the Project Kestrel engineering status ledger for internal distribution only.
+
+      On February 11, the Supply Chain team, working with Ferrolight Systems, recommended switching to the alternate connector supplier after a lot rejection. The change is tracked under the standard engineering change request process. This entry is logged as memo item 028 in the Project Kestrel engineering status ledger for internal distribution only.
+
+      On January 5, the Ground Support Equipment team, working with Solari Sensors, began first-article inspection on the redesigned bracket assembly. This does not affect any safety-of-flight requirement. This entry is logged as memo item 029 in the Project Kestrel engineering status ledger for internal distribution only.
+
+      On November 4, the Thermal Systems team, working with Blue Anvil Machining, requested a two-week schedule extension for environmental qualification. A risk register entry has been opened to track resolution. This entry is logged as memo item 030 in the Project Kestrel engineering status ledger for internal distribution only.
+
+      On April 26, the Software Platform team, working with Trestle Dynamics, completed the second round of vibration testing on the actuator housing. A risk register entry has been opened to track resolution. This entry is logged as memo item 031 in the Project Kestrel engineering status ledger for internal distribution only.
+
+      On November 22, the Quality Assurance team, working with Northgate Fasteners, reported a 4% yield improvement on the composite layup process. No impact to the overall program schedule is expected at this time. This entry is logged as memo item 032 in the Project Kestrel engineering status ledger for internal distribution only.
+
+      On January 10, the Propulsion Test team, working with Halden Composites, began first-article inspection on the redesigned bracket assembly. A risk register entry has been opened to track resolution. This entry is logged as memo item 033 in the Project Kestrel engineering status ledger for internal distribution only.
+
+      On November 28, the Propulsion Test team, working with Corvid Avionics, recommended switching to the alternate connector supplier after a lot rejection. No impact to the overall program schedule is expected at this time. This entry is logged as memo item 034 in the Project Kestrel engineering status ledger for internal distribution only.
+
+      On April 6, the Systems Engineering team, working with Solari Sensors, recommended switching to the alternate connector supplier after a lot rejection. The change is tracked under the standard engineering change request process. This entry is logged as memo item 035 in the Project Kestrel engineering status ledger for internal distribution only.
+
+      On November 23, the Propulsion Test team, working with Meridian Alloys, requested a two-week schedule extension for environmental qualification. The change is tracked under the standard engineering change request process. This entry is logged as memo item 036 in the Project Kestrel engineering status ledger for internal distribution only.
+
+      On June 25, the Flight Test team, working with Solari Sensors, delivered the updated failure-mode analysis for the flight controller. Program management concurred with the recommendation during the weekly sync. This entry is logged as memo item 037 in the Project Kestrel engineering status ledger for internal distribution only.
+
+      On March 26, the Avionics Integration team, working with Blue Anvil Machining, flagged a long-lead procurement risk on the titanium fastener order. No impact to the overall program schedule is expected at this time. This entry is logged as memo item 038 in the Project Kestrel engineering status ledger for internal distribution only.
+
+      On November 6, the Structures team, working with Halden Composites, reported a 4% yield improvement on the composite layup process. The finance office has been notified for awareness only. This entry is logged as memo item 039 in the Project Kestrel engineering status ledger for internal distribution only.
+
+      On November 18, the Software Platform team, working with Ferrolight Systems, submitted a revised statement of work for the wiring harness subcontract. A follow-up review is scheduled with the chief engineer next cycle. This entry is logged as memo item 040 in the Project Kestrel engineering status ledger for internal distribution only.
+
+      On November 8, the Supply Chain team, working with Meridian Alloys, completed the second round of vibration testing on the actuator housing. This does not affect any safety-of-flight requirement. This entry is logged as memo item 041 in the Project Kestrel engineering status ledger for internal distribution only.
+
+      On April 16, the Supply Chain team, working with Northgate Fasteners, began first-article inspection on the redesigned bracket assembly. A risk register entry has been opened to track resolution. This entry is logged as memo item 042 in the Project Kestrel engineering status ledger for internal distribution only.
+
+      On May 12, the Structures team, working with Ferrolight Systems, submitted a revised statement of work for the wiring harness subcontract. A follow-up review is scheduled with the chief engineer next cycle. This entry is logged as memo item 043 in the Project Kestrel engineering status ledger for internal distribution only.
+
+      On November 26, the Electrical Harness team, working with Blue Anvil Machining, completed the second round of vibration testing on the actuator housing. The change is tracked under the standard engineering change request process. This entry is logged as memo item 044 in the Project Kestrel engineering status ledger for internal distribution only.
+
+      On November 28, the Software Platform team, working with Halden Composites, began first-article inspection on the redesigned bracket assembly. No impact to the overall program schedule is expected at this time. This entry is logged as memo item 045 in the Project Kestrel engineering status ledger for internal distribution only.
+
+      On January 5, the Supply Chain team, working with Trestle Dynamics, began first-article inspection on the redesigned bracket assembly. Program management concurred with the recommendation during the weekly sync. This entry is logged as memo item 046 in the Project Kestrel engineering status ledger for internal distribution only.
+
+      On November 2, the Supply Chain team, working with Trestle Dynamics, recommended switching to the alternate connector supplier after a lot rejection. The item remains open pending confirmation from the test lab. This entry is logged as memo item 047 in the Project Kestrel engineering status ledger for internal distribution only.
+
+      On January 3, the Quality Assurance team, working with Halden Composites, escalated a firmware regression found during integration testing. The change is tracked under the standard engineering change request process. This entry is logged as memo item 048 in the Project Kestrel engineering status ledger for internal distribution only.
+
+      On August 13, the Quality Assurance team, working with Blue Anvil Machining, escalated a firmware regression found during integration testing. This does not affect any safety-of-flight requirement. This entry is logged as memo item 049 in the Project Kestrel engineering status ledger for internal distribution only.
+
+      On February 7, the Propulsion Test team, working with Halden Composites, recommended switching to the alternate connector supplier after a lot rejection. A follow-up review is scheduled with the chief engineer next cycle. This entry is logged as memo item 050 in the Project Kestrel engineering status ledger for internal distribution only.
+
+      On April 14, the Supply Chain team, working with Meridian Alloys, submitted a revised statement of work for the wiring harness subcontract. A follow-up review is scheduled with the chief engineer next cycle. This entry is logged as memo item 051 in the Project Kestrel engineering status ledger for internal distribution only.
+
+      On January 14, the Electrical Harness team, working with Ferrolight Systems, requested a two-week schedule extension for environmental qualification. A follow-up review is scheduled with the chief engineer next cycle. This entry is logged as memo item 052 in the Project Kestrel engineering status ledger for internal distribution only.
+
+      On January 10, the Supply Chain team, working with Trestle Dynamics, submitted a revised statement of work for the wiring harness subcontract. The item remains open pending confirmation from the test lab. This entry is logged as memo item 053 in the Project Kestrel engineering status ledger for internal distribution only.
+
+      On June 1, the Systems Engineering team, working with Solari Sensors, flagged a long-lead procurement risk on the titanium fastener order. The item remains open pending confirmation from the test lab. This entry is logged as memo item 054 in the Project Kestrel engineering status ledger for internal distribution only.
+
+      On January 18, the Electrical Harness team, working with Northgate Fasteners, requested a two-week schedule extension for environmental qualification. No impact to the overall program schedule is expected at this time. This entry is logged as memo item 055 in the Project Kestrel engineering status ledger for internal distribution only.
+
+      On July 2, the Systems Engineering team, working with Halden Composites, delivered the updated failure-mode analysis for the flight controller. This does not affect any safety-of-flight requirement. This entry is logged as memo item 056 in the Project Kestrel engineering status ledger for internal distribution only.
+
+      On August 24, the Avionics Integration team, working with Halden Composites, escalated a firmware regression found during integration testing. This does not affect any safety-of-flight requirement. This entry is logged as memo item 057 in the Project Kestrel engineering status ledger for internal distribution only.
+
+      On September 18, the Structures team, working with Northgate Fasteners, escalated a firmware regression found during integration testing. A risk register entry has been opened to track resolution. This entry is logged as memo item 058 in the Project Kestrel engineering status ledger for internal distribution only.
+
+      On June 24, the Software Platform team, working with Ferrolight Systems, recommended switching to the alternate connector supplier after a lot rejection. The item remains open pending confirmation from the test lab. This entry is logged as memo item 059 in the Project Kestrel engineering status ledger for internal distribution only.
+
+      On October 8, the Avionics Integration team, working with Corvid Avionics, closed out the corrective action from the prior quarter's audit finding. No impact to the overall program schedule is expected at this time. This entry is logged as memo item 060 in the Project Kestrel engineering status ledger for internal distribution only.
+
+      On May 22, the Supply Chain team, working with Corvid Avionics, closed out the corrective action from the prior quarter's audit finding. The finance office has been notified for awareness only. This entry is logged as memo item 061 in the Project Kestrel engineering status ledger for internal distribution only.
+
+      On October 12, the Supply Chain team, working with Solari Sensors, flagged a long-lead procurement risk on the titanium fastener order. No impact to the overall program schedule is expected at this time. This entry is logged as memo item 062 in the Project Kestrel engineering status ledger for internal distribution only.
+
+      On September 9, the Software Platform team, working with Corvid Avionics, escalated a firmware regression found during integration testing. A risk register entry has been opened to track resolution. This entry is logged as memo item 063 in the Project Kestrel engineering status ledger for internal distribution only.
+
+      On February 5, the Structures team, working with Trestle Dynamics, recommended switching to the alternate connector supplier after a lot rejection. Program management concurred with the recommendation during the weekly sync. This entry is logged as memo item 064 in the Project Kestrel engineering status ledger for internal distribution only.
+
+      On November 2, the Software Platform team, working with Corvid Avionics, closed out the corrective action from the prior quarter's audit finding. A follow-up review is scheduled with the chief engineer next cycle. This entry is logged as memo item 065 in the Project Kestrel engineering status ledger for internal distribution only.
+
+      On May 4, the Avionics Integration team, working with Halden Composites, requested a two-week schedule extension for environmental qualification. The item remains open pending confirmation from the test lab. This entry is logged as memo item 066 in the Project Kestrel engineering status ledger for internal distribution only.
+
+      On September 20, the Software Platform team, working with Ferrolight Systems, began first-article inspection on the redesigned bracket assembly. This does not affect any safety-of-flight requirement. This entry is logged as memo item 067 in the Project Kestrel engineering status ledger for internal distribution only.
+
+      On March 7, the Electrical Harness team, working with Blue Anvil Machining, delivered the updated failure-mode analysis for the flight controller. No impact to the overall program schedule is expected at this time. This entry is logged as memo item 068 in the Project Kestrel engineering status ledger for internal distribution only.
+
+      On April 24, the Systems Engineering team, working with Northgate Fasteners, requested a two-week schedule extension for environmental qualification. The change is tracked under the standard engineering change request process. This entry is logged as memo item 069 in the Project Kestrel engineering status ledger for internal distribution only.
+
+      On June 10, the Structures team, working with Trestle Dynamics, began first-article inspection on the redesigned bracket assembly. The item remains open pending confirmation from the test lab. This entry is logged as memo item 070 in the Project Kestrel engineering status ledger for internal distribution only.
+
+      On June 11, the Ground Support Equipment team, working with Halden Composites, reported a 4% yield improvement on the composite layup process. This does not affect any safety-of-flight requirement. This entry is logged as memo item 071 in the Project Kestrel engineering status ledger for internal distribution only.
+
+      On May 18, the Systems Engineering team, working with Ferrolight Systems, began first-article inspection on the redesigned bracket assembly. Program management concurred with the recommendation during the weekly sync. This entry is logged as memo item 072 in the Project Kestrel engineering status ledger for internal distribution only.
+
+      On August 14, the Avionics Integration team, working with Northgate Fasteners, completed the second round of vibration testing on the actuator housing. A follow-up review is scheduled with the chief engineer next cycle. This entry is logged as memo item 073 in the Project Kestrel engineering status ledger for internal distribution only.
+
+      On November 17, the Flight Test team, working with Northgate Fasteners, closed out the corrective action from the prior quarter's audit finding. This does not affect any safety-of-flight requirement. This entry is logged as memo item 074 in the Project Kestrel engineering status ledger for internal distribution only.
+
+      On September 23, the Avionics Integration team, working with Solari Sensors, submitted a revised statement of work for the wiring harness subcontract. The finance office has been notified for awareness only. This entry is logged as memo item 075 in the Project Kestrel engineering status ledger for internal distribution only.
+
+      On October 22, the Supply Chain team, working with Trestle Dynamics, requested a two-week schedule extension for environmental qualification. A risk register entry has been opened to track resolution. This entry is logged as memo item 076 in the Project Kestrel engineering status ledger for internal distribution only.
+
+      On October 23, the Electrical Harness team, working with Blue Anvil Machining, escalated a firmware regression found during integration testing. A risk register entry has been opened to track resolution. This entry is logged as memo item 077 in the Project Kestrel engineering status ledger for internal distribution only.
+
+      CORRECTION (memo v2, supersedes the Q3 figure recorded in Section 2 above): following a vendor discount negotiated with the primary structures supplier, the Q3 hardware budget cap for Project Kestrel is revised DOWNWARD to $365,000. This corrected figure is the authoritative Q3 hardware budget cap for all remaining procurement decisions this quarter; the earlier $420,000 figure in Section 2 is no longer valid.
+
+      On February 6, the Propulsion Test team, working with Blue Anvil Machining, delivered the updated failure-mode analysis for the flight controller. This does not affect any safety-of-flight requirement. This entry is logged as memo item 078 in the Project Kestrel engineering status ledger for internal distribution only.
+
+      On October 21, the Ground Support Equipment team, working with Northgate Fasteners, closed out the corrective action from the prior quarter's audit finding. Program management concurred with the recommendation during the weekly sync. This entry is logged as memo item 079 in the Project Kestrel engineering status ledger for internal distribution only.
+
+      On March 20, the Ground Support Equipment team, working with Trestle Dynamics, submitted a revised statement of work for the wiring harness subcontract. No impact to the overall program schedule is expected at this time. This entry is logged as memo item 080 in the Project Kestrel engineering status ledger for internal distribution only.
+
+      On February 17, the Propulsion Test team, working with Northgate Fasteners, delivered the updated failure-mode analysis for the flight controller. A follow-up review is scheduled with the chief engineer next cycle. This entry is logged as memo item 081 in the Project Kestrel engineering status ledger for internal distribution only.
+
+      On June 23, the Materials Lab team, working with Corvid Avionics, began first-article inspection on the redesigned bracket assembly. This does not affect any safety-of-flight requirement. This entry is logged as memo item 082 in the Project Kestrel engineering status ledger for internal distribution only.
+
+      On May 25, the Materials Lab team, working with Blue Anvil Machining, began first-article inspection on the redesigned bracket assembly. The change is tracked under the standard engineering change request process. This entry is logged as memo item 083 in the Project Kestrel engineering status ledger for internal distribution only.
+
+      On January 25, the Structures team, working with Blue Anvil Machining, delivered the updated failure-mode analysis for the flight controller. A risk register entry has been opened to track resolution. This entry is logged as memo item 084 in the Project Kestrel engineering status ledger for internal distribution only.
+
+      On March 25, the Structures team, working with Halden Composites, escalated a firmware regression found during integration testing. The finance office has been notified for awareness only. This entry is logged as memo item 085 in the Project Kestrel engineering status ledger for internal distribution only.
+
+      On January 20, the Software Platform team, working with Ferrolight Systems, completed the second round of vibration testing on the actuator housing. The change is tracked under the standard engineering change request process. This entry is logged as memo item 086 in the Project Kestrel engineering status ledger for internal distribution only.
+
+      On March 25, the Electrical Harness team, working with Halden Composites, escalated a firmware regression found during integration testing. The item remains open pending confirmation from the test lab. This entry is logged as memo item 087 in the Project Kestrel engineering status ledger for internal distribution only.
+
+      On May 20, the Electrical Harness team, working with Northgate Fasteners, requested a two-week schedule extension for environmental qualification. Program management concurred with the recommendation during the weekly sync. This entry is logged as memo item 088 in the Project Kestrel engineering status ledger for internal distribution only.
+
+
+
+      Section 3: Closing. End of the current reporting cycle's consolidated engineering status memo. Distribution: program management, department leads, finance office (budget sections only).
+
+      Question: according to the memo above, resolving any correction that supersedes an earlier figure, what is the CURRENT, authoritative Q3 hardware budget cap for Project Kestrel? Reply with only the dollar figure (e.g. $123,456) and nothing else.

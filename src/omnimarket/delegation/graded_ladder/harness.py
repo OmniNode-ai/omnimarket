@@ -92,6 +92,24 @@ class GradedLadderHarness:
                 output_recorded=False,
                 model_name=rung.model_name,
             )
+        if record.get("blocked"):
+            # Infra-availability block this session (endpoint unreachable /
+            # quota exhausted) — the task was never actually attempted. Record
+            # the block honestly (visible in the cell's `detail`) but exclude
+            # it from rung scoring so a same-week rate limit or a host going
+            # unreachable mid-session cannot manufacture a false capability
+            # regression (OMN-13938).
+            return ModelGradedCell(
+                rung_id=rung.rung_id,
+                task_id=task.task_id,
+                benchmark_tier=task.benchmark_tier,
+                grader=task.grader,
+                passed=False,
+                detail=f"blocked (not attempted): {record.get('error', 'no reason recorded')}",
+                output_recorded=True,
+                model_name=str(record.get("model_name", rung.model_name)),
+                blocked=True,
+            )
         content = str(record.get("content", ""))
         passed, detail = grade(task, content)
         return ModelGradedCell(
@@ -113,7 +131,10 @@ class GradedLadderHarness:
     def _rung_score(
         self, rung: ModelLadderRung, cells: list[ModelGradedCell]
     ) -> ModelRungScore:
-        rung_cells = [c for c in cells if c.rung_id == rung.rung_id]
+        # Blocked cells (infra unavailable this session) are excluded from
+        # scoring entirely — neither counted for nor against the rung
+        # (OMN-13938). They remain visible in the full `cells` list.
+        rung_cells = [c for c in cells if c.rung_id == rung.rung_id and not c.blocked]
         total = len(rung_cells)
         passed = sum(1 for c in rung_cells if c.passed)
         pass_rate = passed / total if total else 0.0

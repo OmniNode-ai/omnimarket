@@ -281,6 +281,21 @@ repos:
         pass_filenames: false
         stages: [pre-commit]
 
+      # OMN-13965: skill-mapping input-coverage gate. Every skill_mapping.yaml
+      # arg carrying a `default` is force-injected into the node-input payload
+      # on every `onex skill` invocation; if it is not accepted by the model the
+      # backing handler validates, the skill fails 100% of CLI calls
+      # (extra_forbidden). This diffs the installed skill_mapping.yaml against
+      # each node's resolved input model. Runs on node handler/model changes and
+      # on edits to the validator itself; SYNC with skill-mapping-input-coverage-gate.yml.
+      - id: skill-mapping-input-coverage-gate
+        name: Skill-mapping input-coverage gate (OMN-13965)
+        language: system
+        entry: uv run python scripts/validate_skill_mapping_input_coverage.py
+        files: ^(src/omnimarket/nodes/node_.*/(handlers|models)/.*\.py|src/omnimarket/nodes/node_.*/contract\.yaml|scripts/validate_skill_mapping_input_coverage\.py)$
+        pass_filenames: false
+        stages: [pre-commit]
+
       # OMN-12957: runtime_profiles contract validator (omnibase_core).
       # Enforces runtime_profiles_missing (OMN-9886) + runtime_profile_unregistered
       # (declared profile not in canonical REGISTERED_RUNTIME_PROFILES) +

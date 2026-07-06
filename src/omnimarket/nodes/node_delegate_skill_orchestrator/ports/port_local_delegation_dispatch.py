@@ -70,6 +70,7 @@ from omnimarket.inference.protocol_config import apply_inference_protocol
 # P1 deterministic-acceptance evidence fields not yet promoted to core), so the
 # port annotates against that surface rather than the core re-export.
 from omnimarket.models.delegation.wire.model_quality_gate import (
+    SCORE_SOURCE_DETERMINISTIC_ACCEPTANCE,
     ModelQualityGateResult,
 )
 
@@ -169,6 +170,42 @@ _DELEGATION_EVENTS_TABLE = "delegation_events"
 # without a contract-declared budget still escalates the same bounded number of
 # times on both paths.
 _DEFAULT_MAX_ESCALATIONS = 2
+
+# OMN-13943: failure classes that must NOT trigger an up-tier escalation retry.
+# Mirrors the bus orchestrator's ``_should_escalate_inference_error`` posture
+# (retry unless PROVEN non-retryable) but classifies on the effect result's typed
+# ``failure_class`` instead of raw error text, since the bus-less local port has
+# that structured field available. PROVIDER_AUTH_FAILED is excluded because
+# re-issuing the same prompt will not turn a bad credential into a good one on
+# the SAME backend, and silently escalating past an auth failure would mask a
+# real credential-config bug as a transient one. INVALID_JSON is excluded
+# because a structurally malformed response is a provider/contract defect, not a
+# transient condition a retry on a different tier is likely to fix. Every other
+# class — RATE_LIMITED, TIMEOUT, MODEL_UNAVAILABLE, CONTEXT_TOO_LARGE,
+# PRICING_UNKNOWN, UNKNOWN — is retryable, matching the bus's default-retry
+# posture. This is exactly the classification OMN-13943 requires: a GLM 429
+# (RATE_LIMITED) must fall through to the next tier instead of terminating.
+_NON_RETRYABLE_TRANSPORT_FAILURE_CLASSES: frozenset[EnumDelegationFailureClass] = (
+    frozenset(
+        {
+            EnumDelegationFailureClass.PROVIDER_AUTH_FAILED,
+            EnumDelegationFailureClass.INVALID_JSON,
+        }
+    )
+)
+
+
+def _is_retryable_transport_failure(
+    failure_class: EnumDelegationFailureClass | None,
+) -> bool:
+    """Return whether a transport/timeout failure should trigger up-tier escalation.
+
+    ``None`` (a failure result carrying no typed classification) is treated as
+    retryable, matching the bus's default-retry posture of escalating unless the
+    failure is PROVEN non-retryable.
+    """
+    return failure_class not in _NON_RETRYABLE_TRANSPORT_FAILURE_CLASSES
+
 
 # OMN-13597: hard ceiling buffer (seconds) added to the contract-resolved
 # per-backend transport timeout when bounding the blocking effect call. Covers
@@ -377,68 +414,125 @@ class LocalDelegationDispatchPort:
                 acceptance_criteria=acceptance_criteria,
             )
 
-            # A hard transport/timeout failure is terminal — it is NOT a
-            # quality-gate FAIL and does not trigger an up-tier re-dispatch (the
-            # bus path likewise routes transport failures through its terminal
-            # failure branch, not the quality-gate escalation branch).
+            # A hard transport/timeout failure: classify retryable vs terminal and,
+            # when retryable, route through the SAME up-tier escalation the
+            # quality-gate FAIL branch uses below (OMN-13943) — mirroring the bus
+            # orchestrator's ``_should_escalate_inference_error`` posture (retry
+            # unless PROVEN non-retryable). Only a non-retryable failure_class, or
+            # an exhausted/unreachable escalation ladder, terminates FAILED without
+            # trying a higher tier. This is what makes a GLM RATE_LIMITED (429)
+            # transparently fall through to the next tier instead of terminating
+            # the whole ``onex delegate`` call.
+            transport_result: ModelLlmDelegationCallResult
+            transport_failure_class: EnumDelegationFailureClass | None
+            transport_failure_message: str
+            transport_is_failure: bool
             if (
                 attempt_outcome.failure_message is not None
                 and attempt_outcome.result is None
             ):
                 assert attempt_outcome.timeout_result is not None
+                transport_result = attempt_outcome.timeout_result
+                transport_failure_class = EnumDelegationFailureClass.TIMEOUT
+                transport_failure_message = attempt_outcome.failure_message
+                transport_is_failure = True
+            else:
+                assert attempt_outcome.result is not None
+                transport_result = attempt_outcome.result
+                if not transport_result.success:
+                    transport_failure_class = transport_result.failure_class
+                    transport_failure_message = (
+                        transport_result.error_message or "delegation call failed"
+                    )
+                    transport_is_failure = True
+                else:
+                    transport_failure_class = None
+                    transport_failure_message = ""
+                    transport_is_failure = False
+
+            if transport_is_failure:
+                current_tier = tier_for_backend(backend.backend_id) or backend.tier
+                excluded_tiers.add(current_tier)
+
+                escalated_backend: ModelResolvedDelegationBackend | None = None
+                if (
+                    _is_retryable_transport_failure(transport_failure_class)
+                    and escalation_count < max_escalations
+                ):
+                    escalated_backend = self._resolve_next_backend(
+                        current_tier=current_tier,
+                        task_type=task_type,
+                        excluded_tiers=frozenset(excluded_tiers),
+                    )
+
+                # A transport failure never runs the quality gate, so bank its
+                # (typically zero) metered cost directly — mirrors the
+                # post-success banking below without requiring a gate verdict.
+                cumulative_cost_usd += transport_result.actual_cost_usd
+                cumulative_savings_usd += transport_result.savings_usd
+                attempts.append(
+                    {
+                        "tier": backend.tier,
+                        "backend_id": backend.backend_id,
+                        "model_id": backend.model_id,
+                        "quality_gate_passed": False,
+                        "quality_score": None,
+                        "cost_usd": float(transport_result.actual_cost_usd),
+                        "failure_class": (
+                            transport_failure_class.value
+                            if transport_failure_class is not None
+                            else None
+                        ),
+                    }
+                )
+
+                if escalated_backend is not None:
+                    logger.info(
+                        "LocalDelegationDispatch: escalating task_type=%s from "
+                        "tier=%s to tier=%s on transport failure_class=%s "
+                        "(attempt %d/%d) correlation=%s reason=%s",
+                        task_type,
+                        current_tier,
+                        escalated_backend.tier,
+                        transport_failure_class,
+                        escalation_count + 1,
+                        max_escalations,
+                        correlation_id,
+                        transport_failure_message,
+                    )
+                    escalation_count += 1
+                    backend = escalated_backend
+                    continue
+
+                # Cannot escalate (non-retryable failure_class, budget exhausted,
+                # or no higher eligible/resolvable tier): terminal FAILED, carrying
+                # the cumulative metered cost of every attempt made so far.
                 self._project_evidence(
                     correlation_id=correlation_id,
                     task_type=task_type,
                     endpoint_ref=backend.endpoint_ref,
                     model_id=backend.model_id,
-                    result=attempt_outcome.timeout_result,
+                    result=transport_result,
                     prompt=prompt,
                     source_session_id=source_session_id,
                     quality_passed=False,
-                    failure_message=attempt_outcome.failure_message,
+                    failure_message=transport_failure_message,
                     cost_usd=cumulative_cost_usd,
                     savings_usd=cumulative_savings_usd,
                     escalation_count=escalation_count,
                 )
                 return {
                     "status": "failed",
-                    "error_message": attempt_outcome.failure_message,
+                    "error_message": transport_failure_message,
                     "correlation_id": str(correlation_id),
                     "delegated_to": backend.endpoint_ref,
                     "model_name": backend.model_id,
                     "escalation_count": escalation_count,
+                    "cost_usd": float(cumulative_cost_usd),
                     "attempts": attempts,
                 }
 
-            assert attempt_outcome.result is not None
-            result = attempt_outcome.result
-
-            # A transport-layer (non-timeout) failure result: also terminal.
-            if not result.success:
-                failure_message = result.error_message or "delegation call failed"
-                self._project_evidence(
-                    correlation_id=correlation_id,
-                    task_type=task_type,
-                    endpoint_ref=backend.endpoint_ref,
-                    model_id=backend.model_id,
-                    result=result,
-                    prompt=prompt,
-                    source_session_id=source_session_id,
-                    quality_passed=False,
-                    failure_message=failure_message,
-                    cost_usd=cumulative_cost_usd,
-                    savings_usd=cumulative_savings_usd,
-                    escalation_count=escalation_count,
-                )
-                return {
-                    "status": "failed",
-                    "error_message": failure_message,
-                    "correlation_id": str(correlation_id),
-                    "delegated_to": backend.endpoint_ref,
-                    "model_name": backend.model_id,
-                    "escalation_count": escalation_count,
-                    "attempts": attempts,
-                }
+            result = transport_result
 
             # This attempt's inference ran and incurred real metered cost — bank it
             # BEFORE deciding pass/fail so a rejected metered tier's spend is
@@ -579,9 +673,32 @@ class LocalDelegationDispatchPort:
         no-contract-DoD path), no bar can be applied and the reducer verdict
         ``passed`` is the authority — preserving the pre-OMN-13849 behavior for
         classes without a declared bar.
+
+        OMN-13959 — judge-unavailable degraded acceptance. For a VERIFIABLE task
+        class the reducer records ``score_source=deterministic_acceptance`` (rather
+        than ``combined``) ONLY when the deterministic acceptance FLOOR passed but
+        the LLM-judge adequacy score was NOT combined — i.e. the judge call failed
+        / was unreachable (``JUDGE_FAILED``: e.g. the cloud judge is 429-throttled).
+        In that state the combined-score ``required_bar`` (0.85) is structurally
+        un-meetable, because the judge's semantic-adequacy band (weight 0.4) is
+        absent and the deterministic-only graded score tops out below the bar
+        (~0.733). Applying the combined bar would reject a valid LOCAL artifact that
+        cleared the real DoD floor and escalate it to ladder exhaustion during a
+        cloud-judge outage — defeating local-first. Fall back to the deterministic
+        FLOOR verdict (the real DoD checks: compiles / final-artifact-only /
+        non-refusal / non-empty) instead of a bar the judge band is required to
+        reach. This does NOT weaken the bar: when the judge IS reachable the score
+        is combined (``score_source=combined``) and the full bar still applies; a
+        deterministic-floor REJECTION returns ``fail_deterministic`` and is refused
+        above; a judge FAIL veto returns ``passed=False`` and is refused below.
         """
         if gate_result.fail_category == "fail_deterministic":
             return False
+        if (
+            gate_result.passed
+            and gate_result.score_source == SCORE_SOURCE_DETERMINISTIC_ACCEPTANCE
+        ):
+            return True
         try:
             authority = resolve_required_bar_authority(task_type=task_type)
         except RequiredBarAuthorityError:
@@ -758,6 +875,11 @@ class LocalDelegationDispatchPort:
             # An authenticated cloud tier now attaches credentials on the bus-less
             # local path; an unauthenticated local backend carries None.
             secret_ref=backend.secret_ref,
+            # OMN-13943: carry the backend's own contract-declared literal env-var
+            # name as an ADDITIONAL fallback the effect resolves when the
+            # secret_ref convention mapping misses (e.g. GEMINI_API_KEY /
+            # OPEN_ROUTER_API_KEY drift against the LLM_*_API_KEY convention).
+            api_key_env=backend.api_key_env,
         )
         # OMN-13597: the effect handler is a synchronous blocking call (health
         # probe + curl/httpx LLM POST). Awaiting it inline blocks the asyncio

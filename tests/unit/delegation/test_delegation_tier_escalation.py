@@ -1333,73 +1333,86 @@ class TestClosedSetTierOrderOMN13157:
             "(which is absent from the closed set)"
         )
 
-    def test_code_generation_after_cheap_cloud_advances_to_claude(
+    def test_code_generation_after_cheap_cloud_advances_to_cheap_frontier(
         self, frontier_unconfigured_bifrost: None
     ) -> None:
-        """OMN-13157 AC1 (continued) / OMN-13667 / OMN-13599: after cheap_cloud,
-        code_generation escalates to claude (the ceiling in the contract order
-        [local, cheap_cloud, claude]). OMN-13667 repointed the ceiling to cloud-glm
-        (GLM-5.2 z.ai direct), which is also the cheap_cloud primary backend and
-        carries a non-empty endpoint_url in the test fixture. The ceiling is
-        therefore ROUTABLE for code_generation, so escalating off cheap_cloud must
-        return 'claude' (not None).
+        """OMN-13157 AC1 (continued) / OMN-13943: after cheap_cloud, code_generation
+        now escalates to cheap_frontier (contract order [local, cheap_cloud,
+        cheap_frontier, claude]).
+
+        OMN-13943 inserted cheap_frontier (OpenRouter Qwen3-Coder-480B, free tier)
+        between cheap_cloud and claude — it was previously declared in
+        routing_tiers.yaml but absent from EVERY task class's tier_order, so a
+        cheap_cloud RATE_LIMITED (GLM 429) had nowhere retryable to escalate to
+        before the claude ceiling. This test supersedes the OMN-13667/OMN-13599
+        assertion that escalation skipped straight to claude.
         """
         result = next_eligible_tier(
             "cheap_cloud",
             frozenset(),
             task_type="code_generation",
         )
-        # OMN-13667: the ceiling backend (cloud-glm) is configured in
-        # frontier_unconfigured_bifrost (shared with cheap_cloud), so claude IS
-        # reachable after cheap_cloud for code_generation tasks.
-        assert result == "claude", (
-            "code_generation ceiling is claude; the ceiling backend (cloud-glm) "
-            "is configured via the shared cheap_cloud endpoint in this fixture, "
-            "so escalation must advance to claude (OMN-13667)"
+        assert result == "cheap_frontier", (
+            "code_generation tier_order=[local, cheap_cloud, cheap_frontier, "
+            "claude] (OMN-13943): after cheap_cloud, next must be cheap_frontier"
         )
 
-    def test_cheap_frontier_excluded_from_code_generation_by_closed_set(
+    def test_code_generation_after_cheap_frontier_advances_to_claude(
         self, frontier_unconfigured_bifrost: None
     ) -> None:
-        """OMN-13157 AC3: cheap_frontier is NEVER tried for code_generation.
+        """OMN-13943: cheap_frontier is not the ceiling — claude still follows it.
 
-        The closed-set contract order for code_generation is [local, cheap_cloud,
-        claude] (OMN-13599). cheap_frontier is absent, so it is excluded regardless of the
-        excluded_tiers argument. This test uses task_type=None (no contract order)
-        to confirm cheap_frontier IS reachable in declaration order, then
-        task_type='code_generation' to confirm it is excluded by the closed set.
-
-        The ``frontier_unconfigured_bifrost`` fixture pins resolvable ``local`` and
-        ``cheap_cloud`` backends (claude/frontier left empty) so the closed-set
-        assertion is deterministic regardless of the ambient bifrost config — the
-        ``task_type=None`` declaration-order branch never consults bifrost, so the
-        backward-compat baseline below is unaffected by the fixture.
+        The ceiling backend (cloud-glm) is configured in
+        frontier_unconfigured_bifrost (shared with cheap_cloud), so claude IS
+        reachable after cheap_frontier for code_generation tasks (OMN-13667).
         """
-        # Declaration-order (task_type=None) DOES advance to cheap_frontier
-        # from cheap_cloud (proves it is reachable in principle).
+        result = next_eligible_tier(
+            "cheap_frontier",
+            frozenset(),
+            task_type="code_generation",
+        )
+        assert result == "claude", (
+            "code_generation ceiling is claude; escalating past cheap_frontier "
+            "must still reach it (OMN-13667/OMN-13943)"
+        )
+
+    def test_cheap_frontier_now_included_in_code_generation_closed_set(
+        self, frontier_unconfigured_bifrost: None
+    ) -> None:
+        """OMN-13157 AC3 (superseded by OMN-13943): cheap_frontier tier_order
+        membership for code_generation is now an explicit contract choice, not an
+        accidental append-unlisted-tiers bug.
+
+        Pre-OMN-13943, code_generation's closed-set contract order was [local,
+        cheap_cloud, claude] and cheap_frontier was deliberately absent (it was an
+        orphaned tier reachable by NO task class). OMN-13943 added it between
+        cheap_cloud and claude so a retryable cheap_cloud failure (GLM 429) has
+        somewhere to escalate to before the ceiling. This test proves the
+        closed-set tier_order — not the append-unlisted-tiers bug OMN-13157
+        guarded against — is what makes cheap_frontier reachable: declaration
+        order (task_type=None) and the code_generation contract order now agree.
+        """
+        # Declaration-order (task_type=None) advances to cheap_frontier from
+        # cheap_cloud (unconditional routing_tiers.yaml order).
         decl_result = next_eligible_tier(
             "cheap_cloud",
             frozenset(),
             task_type=None,
         )
-        assert decl_result == "cheap_frontier", (
-            "declaration-order must advance to cheap_frontier from cheap_cloud "
-            "when no task_type is given (backward compat baseline)"
-        )
+        assert decl_result == "cheap_frontier"
 
-        # Closed-set for code_generation MUST NOT return cheap_frontier.
+        # code_generation's closed-set contract order now agrees — cheap_frontier
+        # is an explicit, declared member of the tier_order (OMN-13943), not an
+        # unlisted tier the append-bug would have re-opened.
         contract_result = next_eligible_tier(
             "cheap_cloud",
             frozenset(),
             task_type="code_generation",
         )
-        assert contract_result != "cheap_frontier", (
-            "cheap_frontier is absent from code_generation tier_order; "
-            "the closed-set must exclude it without needing it in excluded_tiers"
+        assert contract_result == "cheap_frontier", (
+            "cheap_frontier is now an explicit member of code_generation's "
+            "tier_order (OMN-13943)"
         )
-        # OMN-13599: order is [local, cheap_cloud, claude]; from cheap_cloud the
-        # next listed tier in the contract order is the claude ceiling.
-        assert contract_result == "claude"
 
     def test_task_type_none_preserves_declaration_order(self) -> None:
         """OMN-13157 AC2: task_type=None uses routing_tiers.yaml declaration order.
