@@ -308,6 +308,11 @@ class TestOccContractAdapterCreateOccContract:
                 "_append_evidence_to_pr",
                 side_effect=lambda **kw: append_calls.append(kw),
             ),
+            patch(
+                "omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers."
+                "adapter_occ_contract._resolve_github_token",
+                return_value="fake-token",
+            ),
             patch("tempfile.TemporaryDirectory") as mock_tmpdir,
             patch("pathlib.Path.mkdir"),
             patch("pathlib.Path.write_text"),
