@@ -233,8 +233,14 @@ class ModelPrLifecycleStartCommand(BaseModel):
     @classmethod
     def _coerce_repos(cls, value: object) -> str:
         if isinstance(value, list | tuple):
-            return ",".join(str(item).strip() for item in value if str(item).strip())
-        return str(value or "")
+            return ",".join(
+                repo for item in value if (repo := _normalize_repo_slug(str(item)))
+            )
+        return ",".join(
+            repo
+            for item in str(value or "").split(",")
+            if (repo := _normalize_repo_slug(item))
+        )
 
 
 class OrgWideOpenPrRemainderRef(BaseModel):
@@ -471,6 +477,17 @@ _REVIEW_STATUS_MAP: dict[str, str] = {
 _TICKET_ID_PATTERN = re.compile(r"\bOMN-\d+\b", re.IGNORECASE)
 _UNKNOWN_OCC_MERGE_SHA = "unknown-occ-merge-sha"
 _RECEIPT_GATE_CHECK_NAME = "verify / verify"
+_DEFAULT_GITHUB_OWNER = "OmniNode-ai"
+
+
+def _normalize_repo_slug(value: str) -> str:
+    """Return a GitHub ``OWNER/REPO`` slug for user-facing repo filters."""
+    repo = value.strip()
+    if not repo:
+        return ""
+    if "/" in repo:
+        return repo
+    return f"{_DEFAULT_GITHUB_OWNER}/{repo}"
 
 
 def _map_ci_status(pr_state: Any) -> str:

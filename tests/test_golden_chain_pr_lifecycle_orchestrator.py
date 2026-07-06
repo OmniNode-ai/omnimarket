@@ -301,6 +301,19 @@ def _make_command(**kwargs: object) -> ModelPrLifecycleStartCommand:
     return ModelPrLifecycleStartCommand(**defaults)  # type: ignore[arg-type]
 
 
+def test_command_normalizes_repo_filter_shorthand_to_github_slugs() -> None:
+    """User-facing repo filters accept local repo names from merge-sweep skills."""
+    command = _make_command(
+        repos=["omnibase_infra", "OmniNode-ai/omnimarket", " omniclaude "]
+    )
+    csv_command = _make_command(repos="omnibase_core, OmniNode-ai/omnimarket")
+
+    assert command.repos == (
+        "OmniNode-ai/omnibase_infra,OmniNode-ai/omnimarket,OmniNode-ai/omniclaude"
+    )
+    assert csv_command.repos == "OmniNode-ai/omnibase_core,OmniNode-ai/omnimarket"
+
+
 class _TestOrchestrator(HandlerPrLifecycleOrchestrator):
     """Test subclass that bypasses gh CLI calls.
 
