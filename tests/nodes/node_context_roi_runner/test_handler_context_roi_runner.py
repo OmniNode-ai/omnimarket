@@ -560,15 +560,22 @@ def test_failed_trials_count() -> None:
 # ---------------------------------------------------------------------------
 
 
+#: The node's declared terminal output states (contract publish_topics). Asserted
+#: by literal so the run genuinely lands on the contract-declared topics and so
+#: the contract-state-coverage gate sees both output states covered.
+_COMPLETED_TERMINAL_TOPIC = "onex.evt.omnimarket.context-roi-run-completed.v1"
+_FAILED_TERMINAL_TOPIC = "onex.evt.omnimarket.context-roi-run-failed.v1"
+
+
 def test_result_emitted_on_completed_topic() -> None:
     published: list[tuple[str, bytes]] = []
     handler = _make_handler(published=published, consumer_payload=_VALID_EVENT)
     handler.handle(_make_request())
 
-    completed = [t for t, _ in published if "context-roi-run-completed" in t]
+    completed = [t for t, _ in published if t == _COMPLETED_TERMINAL_TOPIC]
     assert len(completed) == 1
     # A run with usable rows must NOT also land on the failed terminal.
-    failed = [t for t, _ in published if "context-roi-run-failed" in t]
+    failed = [t for t, _ in published if t == _FAILED_TERMINAL_TOPIC]
     assert failed == []
 
 
@@ -590,8 +597,8 @@ def test_fully_failed_run_emitted_on_failed_topic() -> None:
     result = handler.handle(request)
 
     assert result.failed_trials == result.total_trials
-    failed = [t for t, _ in published if "context-roi-run-failed" in t]
-    completed = [t for t, _ in published if "context-roi-run-completed" in t]
+    failed = [t for t, _ in published if t == _FAILED_TERMINAL_TOPIC]
+    completed = [t for t, _ in published if t == _COMPLETED_TERMINAL_TOPIC]
     assert len(failed) == 1, "fully-failed run must publish on the failed terminal"
     assert completed == [], (
         "fully-failed run must NOT publish on the completed terminal"
