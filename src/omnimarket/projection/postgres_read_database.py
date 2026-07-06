@@ -49,7 +49,7 @@ class PostgresReadDatabaseAdapter:
 
     def _get_conn(self) -> psycopg2.extensions.connection:
         if self._conn is None or self._conn.closed:
-            self._conn = psycopg2.connect(
+            self._conn = psycopg2.connect(  # no-contract-check: read-only projection boundary; DSN-injected fail-open reader
                 self._dsn, connect_timeout=self._connect_timeout
             )
             # Read-only session — never mutate the projection table from the reader.
