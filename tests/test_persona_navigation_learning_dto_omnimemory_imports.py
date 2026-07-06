@@ -27,10 +27,6 @@ DTO_IMPORTS = {
     "omnimarket.nodes.node_navigation_history_reducer.models.model_navigation_session.NavigationOutcome": "omnimemory.nodes.node_navigation_history_reducer.models.model_navigation_session.NavigationOutcome",
     "omnimarket.nodes.node_persona_builder_compute.models.model_classify_request.ModelPersonaClassifyRequest": "omnimemory.nodes.node_persona_builder_compute.models.model_classify_request.ModelPersonaClassifyRequest",
     "omnimarket.nodes.node_persona_builder_compute.models.model_classify_result.ModelPersonaClassifyResult": "omnimemory.nodes.node_persona_builder_compute.models.model_classify_result.ModelPersonaClassifyResult",
-    "omnimarket.nodes.node_persona_lifecycle_orchestrator.models.model_persona_lifecycle_request.ModelPersonaLifecycleRequest": "omnimemory.nodes.node_persona_lifecycle_orchestrator.models.model_persona_lifecycle_request.ModelPersonaLifecycleRequest",
-    "omnimarket.nodes.node_persona_lifecycle_orchestrator.models.model_persona_lifecycle_response.ModelPersonaLifecycleResponse": "omnimemory.nodes.node_persona_lifecycle_orchestrator.models.model_persona_lifecycle_response.ModelPersonaLifecycleResponse",
-    "omnimarket.nodes.node_persona_retrieval_effect.models.model_persona_retrieval_request.ModelPersonaRetrievalRequest": "omnimemory.nodes.node_persona_retrieval_effect.models.model_persona_retrieval_request.ModelPersonaRetrievalRequest",
-    "omnimarket.nodes.node_persona_retrieval_effect.models.model_persona_retrieval_response.ModelPersonaRetrievalResponse": "omnimemory.nodes.node_persona_retrieval_effect.models.model_persona_retrieval_response.ModelPersonaRetrievalResponse",
     "omnimarket.nodes.node_persona_storage_effect.models.model_persona_storage_request.ModelPersonaStorageRequest": "omnimemory.nodes.node_persona_storage_effect.models.model_persona_storage_request.ModelPersonaStorageRequest",
     "omnimarket.nodes.node_persona_storage_effect.models.model_persona_storage_response.ModelPersonaStorageResponse": "omnimemory.nodes.node_persona_storage_effect.models.model_persona_storage_response.ModelPersonaStorageResponse",
 }
@@ -57,7 +53,13 @@ def test_market_dto_paths_reexport_omnimemory_objects(
 
 @pytest.mark.unit
 def test_node_package_exports_reexport_omnimemory_classes() -> None:
-    """Node-level compatibility exports return canonical omnimemory classes."""
+    """Node-level compatibility exports return canonical omnimemory classes.
+
+    OMN-14010: node_persona_lifecycle_orchestrator and node_persona_retrieval_effect
+    are excluded here — their omnimemory originals were deleted as never-shipped
+    stub scaffolding (OMN-12172) and the models are now self-contained in
+    omnimarket. See test_persona_lifecycle_and_retrieval_models_are_self_contained.
+    """
     from omnimarket.nodes.node_agent_learning_retrieval_effect import (
         ModelAgentLearningRetrievalRequest,
         ModelAgentLearningRetrievalResponse,
@@ -70,14 +72,6 @@ def test_node_package_exports_reexport_omnimemory_classes() -> None:
     from omnimarket.nodes.node_persona_builder_compute.models import (
         ModelPersonaClassifyRequest,
         ModelPersonaClassifyResult,
-    )
-    from omnimarket.nodes.node_persona_lifecycle_orchestrator import (
-        ModelPersonaLifecycleRequest,
-        ModelPersonaLifecycleResponse,
-    )
-    from omnimarket.nodes.node_persona_retrieval_effect import (
-        ModelPersonaRetrievalRequest,
-        ModelPersonaRetrievalResponse,
     )
     from omnimarket.nodes.node_persona_storage_effect import (
         ModelPersonaStorageRequest,
@@ -92,15 +86,49 @@ def test_node_package_exports_reexport_omnimemory_classes() -> None:
         ModelNavigationSession,
         ModelPersonaClassifyRequest,
         ModelPersonaClassifyResult,
-        ModelPersonaLifecycleRequest,
-        ModelPersonaLifecycleResponse,
-        ModelPersonaRetrievalRequest,
-        ModelPersonaRetrievalResponse,
         ModelPersonaStorageRequest,
         ModelPersonaStorageResponse,
     ]
 
     assert all(model.__module__.startswith("omnimemory.") for model in exported_models)
+
+
+@pytest.mark.unit
+def test_persona_lifecycle_and_retrieval_models_are_self_contained() -> None:
+    """OMN-14010 regression: these 4 models are inlined in omnimarket, not
+    re-exports of a deleted omnimemory stub (OMN-12172, "OMN-7305 never
+    shipped"). Importing the dead omnimemory paths must fail; the omnimarket
+    paths must resolve to real, self-contained omnimarket classes."""
+    from omnimarket.nodes.node_persona_lifecycle_orchestrator import (
+        ModelPersonaLifecycleRequest,
+        ModelPersonaLifecycleResponse,
+    )
+    from omnimarket.nodes.node_persona_retrieval_effect import (
+        ModelPersonaRetrievalRequest,
+        ModelPersonaRetrievalResponse,
+    )
+
+    for model in (
+        ModelPersonaLifecycleRequest,
+        ModelPersonaLifecycleResponse,
+        ModelPersonaRetrievalRequest,
+        ModelPersonaRetrievalResponse,
+    ):
+        assert model.__module__.startswith("omnimarket."), (
+            f"{model.__name__} must be self-contained in omnimarket, not a "
+            f"re-export (module={model.__module__})"
+        )
+
+    with pytest.raises(ModuleNotFoundError):
+        import_module(
+            "omnimemory.nodes.node_persona_lifecycle_orchestrator.models."
+            "model_persona_lifecycle_request"
+        )
+    with pytest.raises(ModuleNotFoundError):
+        import_module(
+            "omnimemory.nodes.node_persona_retrieval_effect.models."
+            "model_persona_retrieval_request"
+        )
 
 
 @pytest.mark.unit
