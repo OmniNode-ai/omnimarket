@@ -498,6 +498,7 @@ def _normalize_repo_slug(value: str) -> str:
         return repo
     return f"{_DEFAULT_GITHUB_OWNER}/{repo}"
 
+
 # ---------------------------------------------------------------------------
 # Machine failure-signature constants (OMN-13987 CP1)
 #
