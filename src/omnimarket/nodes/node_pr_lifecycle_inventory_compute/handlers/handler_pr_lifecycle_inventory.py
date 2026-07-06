@@ -54,6 +54,8 @@ _CHECK_LOG_NETWORK_SIGNATURES: tuple[str, ...] = (
     "failed to initialize container",
     "one or more containers failed to start",
     "service container postgres failed",
+    "failed to prepare extraction snapshot",
+    "lease does not exist",
 )
 
 # F3 (OMN-13319): only PR-associated runs count toward required contexts.
