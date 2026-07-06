@@ -521,6 +521,14 @@ async def test_forced_endpoint_ref_pins_first_attempt_to_that_tier(
     assert effect.calls[0].endpoint_url == _CLOUD_ENDPOINT
     assert result.attempts[0].provider == "cloud"
     assert result.attempts[0].model_id == _CLOUD_MODEL
+    # OMN-14018 capture-attribution: the attempt AND the run-level benchmark must
+    # record the forced BACKEND id (not the bare tier name) as endpoint_class, so
+    # the context_roi_scores row's endpoint_ref resolves through
+    # tier_for_backend(endpoint_ref) -> cheap_cloud and the captured per-tier rows
+    # are overlay-countable. A bare tier name ("cheap_cloud") resolves to None and
+    # the row would be silently dropped.
+    assert result.attempts[0].endpoint_class == "cloud-gemini-flash"
+    assert result.endpoint_class == "cloud-gemini-flash"
 
 
 @pytest.mark.unit

@@ -1016,11 +1016,21 @@ class HandlerGenerationConsumer:
             decision.tier_name,
             decision.selected_model,
         )
+        # Carry the forced BACKEND id on endpoint_ref (not "") even though the
+        # route is authority_resolved. _call_llm posts to endpoint_url when
+        # authority_resolved is True, so endpoint_ref does not affect the wire call
+        # — but it IS what surfaces as the attempt/benchmark endpoint_class and
+        # therefore the context_roi_scores row's endpoint_ref. The ROI overlay maps
+        # a row to a tier via tier_for_backend(endpoint_ref), which resolves a
+        # BACKEND id (e.g. 'cloud-glm' -> cheap_cloud) but NOT a bare tier name
+        # ('cheap_cloud' -> None). Recording the backend id is what makes the
+        # captured per-tier rows overlay-countable (OMN-14018/OMN-14011 Path 1);
+        # leaving it "" would silently drop every captured row.
         return ModelActiveRoute(
             tier_name=decision.tier_name,
             provider=provider,
             served_model_id=decision.selected_model,
-            endpoint_ref="",
+            endpoint_ref=forced_endpoint_ref,
             authority_resolved=True,
             endpoint_url=decision.endpoint_url,
             api_key_ref=decision.api_key_ref,
