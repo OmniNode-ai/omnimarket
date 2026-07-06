@@ -75,7 +75,9 @@ def test_yaml_fence_with_info_string_passes_compiles_without_errors() -> None:
 @pytest.mark.unit
 def test_yaml_fence_with_crlf_passes_compiles_without_errors() -> None:
     """CRLF line endings must not force valid YAML back through ast.parse."""
-    content = "```yaml\r\nhandler_routing:\r\n  routing_strategy: operation_match\r\n```\r\n"
+    content = (
+        "```yaml\r\nhandler_routing:\r\n  routing_strategy: operation_match\r\n```\r\n"
+    )
     result = quality_gate_delta(
         _gate_input(content=content, deterministic=("compiles_without_errors",))
     )
