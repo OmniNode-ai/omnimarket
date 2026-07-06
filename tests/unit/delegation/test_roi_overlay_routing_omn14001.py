@@ -553,3 +553,68 @@ def test_learning_loop_capture_to_decision_end_to_end() -> None:
     # 4. DECISION CHANGES — the SAME request now routes to cheap_cloud because the
     #    stored outcome demoted the proven-failing local tier. The loop is closed.
     assert first_eligible_tier("code_generation", roi_overlay=overlay) == "cheap_cloud"
+
+
+# --- LIVE wiring: the delegate path actually points the reader at the DB --------
+
+
+def test_resolve_context_roi_db_none_without_dsn(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """No OMNIDASH_ANALYTICS_DB_URL → None (fail-open, the common local case)."""
+    from omnimarket.routing.roi_overlay import resolve_context_roi_db
+
+    monkeypatch.delenv("OMNIDASH_ANALYTICS_DB_URL", raising=False)
+    assert resolve_context_roi_db() is None
+
+
+def test_resolve_context_roi_db_builds_lazy_adapter_with_dsn(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """DSN set → a read adapter is returned WITHOUT connecting (lazy)."""
+    from omnimarket.projection.postgres_read_database import PostgresReadDatabaseAdapter
+    from omnimarket.routing.roi_overlay import resolve_context_roi_db
+
+    monkeypatch.setenv(
+        "OMNIDASH_ANALYTICS_DB_URL", "postgresql://u:p@127.0.0.1:1/omnidash_analytics"
+    )
+    db = resolve_context_roi_db()
+    assert isinstance(db, PostgresReadDatabaseAdapter)
+
+
+def test_port_selection_injects_roi_db_from_env(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The SOLE live constructor wires the port's roi_db from the DSN env var.
+
+    This is the OMN-14001 live-wiring: `select_delegation_dispatch_port(None)`
+    (the bus-less `onex delegate` path) now builds a LocalDelegationDispatchPort
+    whose ROI reader points at the real projection DB — so the loop consults ROI
+    at runtime, not only in tests.
+    """
+    from omnimarket.nodes.node_delegate_skill_orchestrator.ports.port_selection import (
+        select_delegation_dispatch_port,
+    )
+    from omnimarket.projection.postgres_read_database import PostgresReadDatabaseAdapter
+
+    monkeypatch.setenv(
+        "OMNIDASH_ANALYTICS_DB_URL", "postgresql://u:p@127.0.0.1:1/omnidash_analytics"
+    )
+    port = select_delegation_dispatch_port(None)
+    assert isinstance(port._roi_db, PostgresReadDatabaseAdapter)
+
+    monkeypatch.delenv("OMNIDASH_ANALYTICS_DB_URL", raising=False)
+    port_off = select_delegation_dispatch_port(None)
+    assert port_off._roi_db is None
+
+
+def test_postgres_read_adapter_is_read_only_and_guards_identifiers() -> None:
+    """upsert is unsupported (read-only); table identifiers are validated."""
+    from omnimarket.projection.postgres_read_database import PostgresReadDatabaseAdapter
+
+    adapter = PostgresReadDatabaseAdapter("postgresql://u:p@127.0.0.1:1/db")
+    with pytest.raises(RuntimeError, match="read-only"):
+        adapter.upsert("t", "id", {})
+    with pytest.raises(ValueError, match="unsafe table identifier"):
+        adapter._quote_ident("bad; DROP TABLE x")
+    assert adapter._quote_ident("context_roi_scores") == '"context_roi_scores"'

@@ -73,6 +73,12 @@ DEFAULT_ROI_SUCCESS_FLOOR = 0.5
 _ENV_MIN_SAMPLES = "DELEGATION_ROI_MIN_SAMPLES"
 _ENV_SUCCESS_FLOOR = "DELEGATION_ROI_SUCCESS_FLOOR"
 
+#: DSN env var for the projection DB that materialises ``context_roi_scores``.
+#: This is the ``omnidash_analytics`` database (the context-ROI projection sink),
+#: NOT the local SQLite ``delegation_events`` evidence DB. The canonical name is
+#: reused from the projection tooling (node_projection_llm_cost / node_retention_cleanup).
+_ENV_CONTEXT_ROI_DSN = "OMNIDASH_ANALYTICS_DB_URL"
+
 
 def resolve_roi_min_samples() -> int:
     """Return the min-sample gate, honouring ``DELEGATION_ROI_MIN_SAMPLES``.
@@ -289,6 +295,41 @@ def resolve_roi_overlay(
     return overlay
 
 
+def resolve_context_roi_db() -> DatabaseAdapter | None:
+    """Resolve a read-only projection adapter for ``context_roi_scores`` — FAIL-OPEN.
+
+    Gated on the ``OMNIDASH_ANALYTICS_DB_URL`` DSN (the projection DB that
+    materialises the table). Returns ``None`` when the DSN is unset (the common
+    local case — no ROI read, static routing) or on ANY construction error, so a
+    delegation never fails because a telemetry DB is absent or unreachable. The
+    adapter connects LAZILY with a bounded timeout, so this factory does no I/O —
+    the first actual read happens inside ``resolve_roi_overlay``, which is itself
+    wrapped fail-open.
+
+    This is the live-wiring entrypoint (OMN-14001): the delegation dispatch-port
+    selector calls it to point the ROI reader at the real projection DB. It is a
+    deliberate, documented exception to the fail-fast-on-missing-env rule — a
+    telemetry read must degrade to static routing, never crash the caller.
+    """
+    dsn = os.environ.get(_ENV_CONTEXT_ROI_DSN, "").strip()
+    if not dsn:
+        return None
+    try:
+        from omnimarket.projection.postgres_read_database import (
+            PostgresReadDatabaseAdapter,
+        )
+
+        return PostgresReadDatabaseAdapter(dsn)
+    except Exception:
+        _logger.warning(
+            "resolve_context_roi_db failed to construct a projection adapter from "
+            "%s; ROI read disabled (static routing)",
+            _ENV_CONTEXT_ROI_DSN,
+            exc_info=True,
+        )
+        return None
+
+
 __all__ = [
     "CONTEXT_ROI_TABLE",
     "DEFAULT_ROI_MIN_SAMPLES",
@@ -296,6 +337,7 @@ __all__ = [
     "ModelRoutingRoiOverlay",
     "ModelTierRoiSignal",
     "build_roi_overlay",
+    "resolve_context_roi_db",
     "resolve_roi_min_samples",
     "resolve_roi_overlay",
     "resolve_roi_success_floor",
