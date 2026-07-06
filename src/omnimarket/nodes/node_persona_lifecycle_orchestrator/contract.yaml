@@ -39,9 +39,6 @@ handler_routing:
       priority: 0
       output_events:
         - "onex.evt.omnimemory.persona-snapshot-created.v1"
-      handler:
-        name: "HandlerPersonaRebuild"
-        module: "omnimarket.nodes.node_persona_lifecycle_orchestrator.handlers.handler_persona_rebuild"
     - operation: on_demand
       routing_key: "on_demand"
       handler_module: "omnimarket.nodes.node_persona_lifecycle_orchestrator.handlers.handler_persona_rebuild"
@@ -50,9 +47,6 @@ handler_routing:
       priority: 0
       output_events:
         - "onex.evt.omnimemory.persona-snapshot-created.v1"
-      handler:
-        name: "HandlerPersonaRebuild"
-        module: "omnimarket.nodes.node_persona_lifecycle_orchestrator.handlers.handler_persona_rebuild"
   default_handler: null
 
 tags:
