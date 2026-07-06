@@ -56,6 +56,10 @@ _CHECK_LOG_NETWORK_SIGNATURES: tuple[str, ...] = (
     "service container postgres failed",
     "failed to prepare extraction snapshot",
     "lease does not exist",
+    "failed to lookup address information",
+    "temporary failure in name resolution",
+    "failed to download distribution due to network timeout",
+    "request failed after 3 retries",
 )
 
 # F3 (OMN-13319): only PR-associated runs count toward required contexts.
