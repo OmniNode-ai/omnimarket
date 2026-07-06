@@ -2,17 +2,23 @@
 # SPDX-License-Identifier: MIT
 """Thin OpenAI-compatible chat client for the SWE-discriminator smoke run.
 
-Two tiers back the 2x2 routing axis:
+Endpoints are resolved from the COMMITTED graded_ladder routing config
+(``ladder_rungs.yaml``) — the same integration catalog the ladder recorder uses
+— so no URL literal or ``*_URL`` env read lives in this source (the url-authority
+gate). Selection is by rung id:
 
-* ``frontier``      — GLM-5.2 via z.ai direct (public URL committed; Bearer key
-                      from ``LLM_GLM_API_KEY`` at call time, never committed).
-* ``cost_routed``   — the local ladder floor (AI-PC 35B), resolved from the
-                      bifrost overlay (``~/.omninode/delegation/bifrost_overrides.yaml``)
-                      or the ``BIFROST_LOCAL_CODER_ENDPOINT_URL`` env var.
+* ``frontier``      — the cloud rung (``rung_cloud_glm`` by default). Its public
+                      ``endpoint_url`` comes from the committed config; the Bearer
+                      key is read at call time from the env var NAMED by the
+                      rung's ``api_key_env`` (never committed).
+* ``cost_routed``   — the local rung (``rung_5090_coder`` by default). Its
+                      site-specific endpoint is resolved from the env var NAMED by
+                      the rung's ``endpoint_url_env`` or the operator-local bifrost
+                      overlay — no host/IP in source (CLAUDE.md rule #6).
 
-No host/IP is embedded in source (CLAUDE.md rule #6): the local endpoint is
-resolved from the operator-local overlay/env at call time. Missing config
-fails fast so a silent wrong-default cannot flatter a cost-routed arm.
+Which rung backs each tier is overridable by RUNG ID (``SWE_FRONTIER_RUNG`` /
+``SWE_COST_RUNG``), never by a hardcoded URL. Missing config fails fast so a
+silent wrong default cannot flatter a tier.
 """
 
 from __future__ import annotations
@@ -27,17 +33,17 @@ from typing import Any
 
 import yaml
 
+from omnimarket.delegation.graded_ladder.harness import load_rungs
+from omnimarket.delegation.graded_ladder.models import ModelLadderRung
 from omnimarket.delegation.swe_discriminator.models import EnumRouting, ModelCall
 
 _OVERLAY_PATH = Path.home() / ".omninode" / "delegation" / "bifrost_overrides.yaml"
 
-# Public cloud URL — safe to commit (transcribed from ladder_rungs.yaml).
-_FRONTIER_URL = "https://api.z.ai/api/coding/paas/v4/chat/completions"
-_FRONTIER_MODEL = "glm-5.2"
-_FRONTIER_KEY_ENV = "LLM_GLM_API_KEY"
-
-_LOCAL_BACKEND_ID = "local-coder"
-_LOCAL_ENDPOINT_ENV = "BIFROST_LOCAL_CODER_ENDPOINT_URL"
+# Default rung ids backing each tier (overridable by SWE_FRONTIER_RUNG /
+# SWE_COST_RUNG — a rung selector, never a URL). The rungs (endpoints, keys)
+# live in the committed graded_ladder ladder_rungs.yaml routing config.
+_DEFAULT_FRONTIER_RUNG = "rung_cloud_glm"
+_DEFAULT_COST_RUNG = "rung_5090_coder"
 
 # Rough public list price for GLM (z.ai coding plan), USD per 1M tokens. The
 # cost axis of the experiment; local compute is amortized (reported separately,
@@ -69,43 +75,57 @@ def _overlay_model(backend_id: str, default: str) -> str:
     return default
 
 
+def _rung_by_id(rung_id: str) -> ModelLadderRung:
+    for rung in load_rungs():
+        if rung.rung_id == rung_id:
+            return rung
+    raise RuntimeError(f"rung {rung_id!r} not found in ladder_rungs.yaml")
+
+
+def _resolve_rung_endpoint(rung: ModelLadderRung) -> str | None:
+    """Endpoint for a rung: committed public URL, else env var NAMED by the rung,
+    else the bifrost overlay by backend_id. No literal URL / ``*_URL`` env read."""
+
+    if rung.endpoint_url:
+        return rung.endpoint_url
+    if rung.endpoint_url_env:
+        env_url = os.environ.get(rung.endpoint_url_env)
+        if env_url:
+            return env_url
+    return _overlay_endpoint(rung.backend_id)
+
+
 def resolve_tier(tier: EnumRouting) -> tuple[str, str, str, dict[str, str], str]:
     """Return (endpoint_url, model_name, endpoint_label, headers, tier_str).
 
     Fails fast (RuntimeError) if a tier's endpoint or key cannot be resolved —
-    a silent fallback would let a cost-routed arm masquerade as run when it was
-    never reachable.
+    a silent fallback would let a tier masquerade as run when it was never
+    reachable.
     """
 
     headers = {"Content-Type": "application/json"}
     if tier is EnumRouting.FRONTIER:
-        # The frontier endpoint is env-overridable so the same harness can pin a
-        # different frontier provider (GLM z.ai default; OpenRouter free coder as
-        # a fallback when the shared GLM key is quota-throttled). Public URL only.
-        url = os.environ.get("SWE_FRONTIER_URL", _FRONTIER_URL)
-        model = os.environ.get("SWE_FRONTIER_MODEL", _FRONTIER_MODEL)
-        key_env = os.environ.get("SWE_FRONTIER_KEY_ENV", _FRONTIER_KEY_ENV)
-        extra = os.environ.get("SWE_FRONTIER_HEADERS", "")
-        key = os.environ.get(key_env, "")
-        if not key:
-            raise RuntimeError(f"frontier tier needs {key_env} in env")
-        headers["Authorization"] = f"Bearer {key}"
-        for pair in extra.split(","):
-            if ":" in pair:
-                hk, hv = pair.split(":", 1)
-                headers[hk.strip()] = hv.strip()
-        return url, model, f"frontier:{model}", headers, "frontier"
+        rung = _rung_by_id(os.environ.get("SWE_FRONTIER_RUNG", _DEFAULT_FRONTIER_RUNG))
+        url = _resolve_rung_endpoint(rung)
+        if not url:
+            raise RuntimeError(f"frontier rung {rung.rung_id!r} has no endpoint")
+        if rung.api_key_env:
+            key = os.environ.get(rung.api_key_env, "")
+            if not key:
+                raise RuntimeError(f"frontier rung needs {rung.api_key_env} in env")
+            headers["Authorization"] = f"Bearer {key}"
+        headers.update(rung.extra_headers)
+        return url, rung.model_name, f"frontier:{rung.model_name}", headers, "frontier"
 
-    local_url = os.environ.get(_LOCAL_ENDPOINT_ENV) or _overlay_endpoint(
-        _LOCAL_BACKEND_ID
-    )
-    if not local_url:
+    rung = _rung_by_id(os.environ.get("SWE_COST_RUNG", _DEFAULT_COST_RUNG))
+    url = _resolve_rung_endpoint(rung)
+    if not url:
         raise RuntimeError(
-            f"cost_routed tier needs {_LOCAL_ENDPOINT_ENV} or overlay "
-            f"backend {_LOCAL_BACKEND_ID!r} at {_OVERLAY_PATH}"
+            f"cost_routed rung {rung.rung_id!r} has no endpoint "
+            f"(set {rung.endpoint_url_env or rung.backend_id} or the overlay)"
         )
-    local_model = _overlay_model(_LOCAL_BACKEND_ID, "Qwen3.6-35B-A3B")
-    return local_url, local_model, f"cost_routed:{local_model}", headers, "cost_routed"
+    model = _overlay_model(rung.backend_id, rung.model_name)
+    return url, model, f"cost_routed:{model}", headers, "cost_routed"
 
 
 def _rates(tier: EnumRouting) -> tuple[float, float]:
