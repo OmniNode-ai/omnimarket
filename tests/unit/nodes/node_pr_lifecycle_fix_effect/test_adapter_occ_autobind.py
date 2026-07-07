@@ -367,6 +367,59 @@ class TestOpenOrSyncOccPr:
 
 
 # ---------------------------------------------------------------------------
+# Re-fire (synchronize) safety: pushes must be --force (OMN-13990 / CodeRabbit)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestAutobindForcePush:
+    def test_pushes_use_force_for_refire_safety(self) -> None:
+        from unittest.mock import patch
+
+        adapter = OccAutobindAdapter()
+        git_calls: list[list[str]] = []
+
+        def fake_run_git(argv, *, cwd):  # type: ignore[no-untyped-def]
+            git_calls.append(argv)
+            return ""
+
+        def fake_rest(method, path, *, body=None, token=None):  # type: ignore[no-untyped-def]
+            if "onex_change_control" in path:  # OCC PR probe fetch
+                return {"state": "open", "number": 3658}
+            return {  # product PR snapshot: born without an OCC Evidence-Source
+                "body": "PR body, no evidence yet",
+                "title": "fix(OMN-1): thing",
+                "head": {"sha": "a" * 40, "ref": "feat"},
+                "state": "open",
+            }
+
+        with (
+            patch(f"{_MODULE}._resolve_github_token", return_value="tok"),
+            patch(f"{_MODULE}.rest_json", side_effect=fake_rest),
+            patch.object(adapter, "_clone_and_branch"),
+            patch.object(adapter, "_run_git", side_effect=fake_run_git),
+            patch.object(adapter, "_rebind_contract_sha256"),
+            patch.object(adapter, "_open_or_sync_occ_pr", return_value=3658),
+            patch.object(adapter, "_head_sha", return_value="occhead0"),
+            patch.object(adapter, "_observe_pr_probe", return_value=("{}", 0)),
+            patch.object(adapter, "_patch_evidence_source"),
+            patch("pathlib.Path.is_file", return_value=True),
+            patch("pathlib.Path.mkdir"),
+            patch("pathlib.Path.write_text"),
+        ):
+            result = adapter._autobind_sync("OmniNode-ai/omnibase_infra", 2043, None)
+
+        push_calls = [c for c in git_calls if "push" in c]
+        assert push_calls, "expected at least one git push"
+        for call in push_calls:
+            assert "--force" in call, (
+                f"OCC branch push must be --force for synchronize re-fire "
+                f"safety (non-fast-forward otherwise): {call}"
+            )
+        assert "OCC#3658" in result
+
+
+# ---------------------------------------------------------------------------
 # Validator-parity ticket extraction (OMN-13990 D3)
 # ---------------------------------------------------------------------------
 
