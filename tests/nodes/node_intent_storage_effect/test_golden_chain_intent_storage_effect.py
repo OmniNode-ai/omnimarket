@@ -15,6 +15,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
 import pytest
+import yaml
 from omnibase_core.enums.intelligence.enum_intent_category import EnumIntentCategory
 from omnibase_core.models.intelligence import ModelIntentClassificationOutput
 
@@ -130,3 +131,15 @@ class TestIntentStorageEffect:
         )
         assert resp.distribution["debugging"] == 10
         assert resp.total_intents == 15
+
+
+@pytest.mark.unit
+def test_contract_declares_publish_topics() -> None:
+    """OMN-14010 state-coverage: contract declares all 4 output topics for real."""
+    with open("src/omnimarket/nodes/node_intent_storage_effect/contract.yaml") as f:
+        contract = yaml.safe_load(f)
+    publish_topics = contract["event_bus"]["publish_topics"]
+    assert "onex.evt.omnimemory.intent-stored.v1" in publish_topics
+    assert "onex.evt.omnimemory.intent-store-failed.v1" in publish_topics
+    assert "onex.evt.omnimemory.intent-storage-completed.v1" in publish_topics
+    assert "onex.evt.omnimemory.intent-storage-failed.v1" in publish_topics

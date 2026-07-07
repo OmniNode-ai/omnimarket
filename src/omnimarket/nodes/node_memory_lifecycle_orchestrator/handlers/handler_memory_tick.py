@@ -52,6 +52,10 @@ from uuid import UUID, uuid4
 
 from omnibase_core.enums import EnumMessageCategory, EnumNodeKind
 from omnibase_core.models.dispatch.model_handler_output import ModelHandlerOutput
+from omnimemory.adapters.adapter_concurrency import (
+    CircuitBreaker,
+    CircuitBreakerOpenError,
+)
 from omnimemory.nodes.node_memory_lifecycle_orchestrator.handlers.handler_memory_tick import (
     ModelMemoryArchiveInitiated,
     ModelMemoryExpiredEvent,
@@ -60,7 +64,6 @@ from omnimemory.nodes.node_memory_lifecycle_orchestrator.handlers.handler_memory
     ModelMemoryTickMetadata,
     ModelMemoryTickResult,
 )
-from omnimemory.utils.concurrency import CircuitBreaker, CircuitBreakerOpenError
 from pydantic import BaseModel
 
 if TYPE_CHECKING:

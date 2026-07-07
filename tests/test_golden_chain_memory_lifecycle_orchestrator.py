@@ -15,6 +15,7 @@ from unittest.mock import MagicMock
 from uuid import uuid4
 
 import pytest
+import yaml
 
 from omnimarket.nodes.node_memory_lifecycle_orchestrator import (
     HandlerMemoryArchive,
@@ -135,3 +136,17 @@ class TestMemoryLifecycleOrchestratorGoldenChain:
             node_navigation_history_reducer,  # noqa: F401
             node_persona_lifecycle_orchestrator,  # noqa: F401
         )
+
+
+@pytest.mark.unit
+def test_memory_lifecycle_contract_declares_publish_topics() -> None:
+    """OMN-14010 state-coverage: contract declares all 4 output topics for real."""
+    with open(
+        "src/omnimarket/nodes/node_memory_lifecycle_orchestrator/contract.yaml"
+    ) as f:
+        contract = yaml.safe_load(f)
+    publish_topics = contract["event_bus"]["publish_topics"]
+    assert "onex.evt.omnimemory.memory-expired.v1" in publish_topics
+    assert "onex.evt.omnimemory.memory-archived.v1" in publish_topics
+    assert "onex.evt.omnimemory.memory-archive-initiated.v1" in publish_topics
+    assert "onex.evt.omnimemory.lifecycle-transition-failed.v1" in publish_topics
