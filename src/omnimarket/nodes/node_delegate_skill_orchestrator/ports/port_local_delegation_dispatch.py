@@ -145,6 +145,10 @@ from omnimarket.routing.delegation_backend_resolution import (
     resolve_effective_max_tokens,
     resolve_timeout_seconds,
 )
+from omnimarket.routing.roi_overlay import (
+    ModelRoutingRoiOverlay,
+    resolve_roi_overlay,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -358,6 +362,9 @@ class LocalDelegationDispatchPort:
         evidence_db_path: Path | None = None,
         effect_process_boundary: bool = True,
         judge: HandlerJudgeAdequacy | None = None,
+        roi_db: DatabaseAdapter | None = None,
+        roi_overlay_reader: Callable[[str], ModelRoutingRoiOverlay | None]
+        | None = None,
     ) -> None:
         self._effect_handler = effect_handler or HandlerLlmDelegationCall()
         self._projection_handler = projection_handler or HandlerProjectionDelegation()
@@ -381,6 +388,48 @@ class LocalDelegationDispatchPort:
         # bridge in tests to avoid (or replay) the network call. Same surface the
         # bus quality-gate-intent handler injects (OMN-13470/OMN-13849).
         self._judge = judge if judge is not None else HandlerJudgeAdequacy()
+        # OMN-14001 — the first closed platform learning loop. The ROI overlay is
+        # read from the ``context_roi_scores`` projection and threaded (as a pure
+        # input) into the routing authority so a proven-failing tier is demoted
+        # from the routing decision. ``roi_db`` is the projection adapter that
+        # carries ``context_roi_scores`` — DISTINCT from ``_evidence_db`` (the local
+        # SQLite ``delegation_events`` sink, which does NOT hold that table). When
+        # neither ``roi_db`` nor a custom ``roi_overlay_reader`` is provided the
+        # reader is a no-op returning None, so the loop is fail-OPEN: the local CLI
+        # degrades to the static tier order off-network or when the projection is
+        # unreachable, and never blocks on a telemetry read.
+        self._roi_db = roi_db
+        self._roi_overlay_reader = (
+            roi_overlay_reader or self._default_roi_overlay_reader
+        )
+
+    def _default_roi_overlay_reader(
+        self, task_type: str
+    ) -> ModelRoutingRoiOverlay | None:
+        """Resolve the ROI overlay from ``roi_db`` — fail-OPEN (OMN-14001).
+
+        Returns None when no ROI projection adapter was injected (the local
+        default), or on ANY read error, so a captured-outcome read never breaks a
+        live delegation. When a ``roi_db`` carrying ``context_roi_scores`` IS
+        provided (the runtime / live-proof wiring), the real per-tier success rates
+        drive tier suppression. ``tier_for_backend`` maps each row's
+        ``endpoint_ref`` to its routing tier.
+        """
+        if self._roi_db is None:
+            return None
+        try:
+            return resolve_roi_overlay(
+                self._roi_db,
+                task_type=task_type,
+                tier_of_endpoint=tier_for_backend,
+            )
+        except Exception:
+            logger.warning(
+                "ROI overlay resolution failed for task_type=%s; static tiers",
+                task_type,
+                exc_info=True,
+            )
+            return None
 
     async def dispatch(
         self,
@@ -395,10 +444,17 @@ class LocalDelegationDispatchPort:
         quality_contract_mode: str,
         acceptance_criteria: tuple[str, ...],
     ) -> dict[str, object]:
+        # OMN-14001 — read the captured-outcome ROI overlay ONCE per delegation
+        # (fail-open None when no ROI projection is wired). Threaded as a pure input
+        # into the routing authority so a tier proven to fail in ``context_roi_scores``
+        # is demoted from BOTH the initial resolution and every escalation hop, with
+        # the same overlay across the whole dispatch for a deterministic decision.
+        roi_overlay = self._roi_overlay_reader(task_type)
+
         # 1. ROUTING AUTHORITY — resolve the INITIAL (cheapest-first) backend.
-        #    MUST NOT change: the initial tier is cheapest-first; escalation only
-        #    advances UP the closed-set task-class tier_order (OMN-13140/OMN-13849).
-        backend = self._resolve_initial_backend(task_type)
+        #    Cheapest-first among tiers NOT ROI-suppressed; escalation only advances
+        #    UP the closed-set task-class tier_order (OMN-13140/OMN-13849/OMN-14001).
+        backend = self._resolve_initial_backend(task_type, roi_overlay=roi_overlay)
 
         # Escalation budget from the task-class contract escalation_policy
         # (OMN-13849). None -> the class declares no budget; fall back to the bus
@@ -478,6 +534,7 @@ class LocalDelegationDispatchPort:
                         current_tier=current_tier,
                         task_type=task_type,
                         excluded_tiers=frozenset(excluded_tiers),
+                        roi_overlay=roi_overlay,
                     )
 
                 # A transport failure never runs the quality gate, so bank its
@@ -611,12 +668,32 @@ class LocalDelegationDispatchPort:
             current_tier = tier_for_backend(backend.backend_id) or backend.tier
             excluded_tiers.add(current_tier)
 
+            # OMN-14004: persist the rejected candidate's own content, not just the
+            # failure reason. Before this the capture log (and the terminal
+            # payload's cumulative ``content``) only ever carried the LAST
+            # attempt's text — an earlier tier's rejected-but-potentially-correct
+            # answer (e.g. a false-reject) was unrecoverable once escalation
+            # overwrote ``result``. The capture-file this logger writes to is
+            # already promoted to a content-addressed artifact by the CLI receipt
+            # layer (``receipt_mode.py``), so logging the full candidate here is
+            # enough to make it durable evidence without a new persistence surface.
+            logger.info(
+                "LocalDelegationDispatch: rejected candidate content "
+                "(task_type=%s tier=%s correlation=%s reason=%s):\n%s",
+                task_type,
+                backend.tier,
+                correlation_id,
+                gate_failure_message,
+                result.content or "",
+            )
+
             next_backend: ModelResolvedDelegationBackend | None = None
             if escalation_count < max_escalations:
                 next_backend = self._resolve_next_backend(
                     current_tier=current_tier,
                     task_type=task_type,
                     excluded_tiers=frozenset(excluded_tiers),
+                    roi_overlay=roi_overlay,
                 )
 
             if next_backend is None:
@@ -724,9 +801,17 @@ class LocalDelegationDispatchPort:
         return gate_result.passed
 
     def _resolve_initial_backend(
-        self, task_type: str
+        self,
+        task_type: str,
+        *,
+        roi_overlay: ModelRoutingRoiOverlay | None = None,
     ) -> ModelResolvedDelegationBackend:
         """Resolve the cheapest-first INITIAL backend via the task-class tier_order.
+
+        OMN-14001: when ``roi_overlay`` demotes a proven-failing tier,
+        ``first_eligible_tier`` returns the cheapest tier NOT ROI-suppressed, so a
+        stored outcome changes which backend the initial resolution lands on. The
+        overlay's own fail-safe keeps a fully-suppressed ladder resolvable.
 
         OMN-13861: the initial resolution MUST consult the closed-set task-class
         ``escalation_policy.tier_order`` — exactly like every escalation hop already
@@ -748,7 +833,7 @@ class LocalDelegationDispatchPort:
         routable tier_order (legacy / no-contract classes), preserving their
         behavior without opening the closed set for classes that DO declare one.
         """
-        first_tier = first_eligible_tier(task_type)
+        first_tier = first_eligible_tier(task_type, roi_overlay=roi_overlay)
         if first_tier is not None:
             backend_id = backend_id_for_tier(first_tier, task_type)
             if backend_id is not None:
@@ -774,8 +859,13 @@ class LocalDelegationDispatchPort:
         current_tier: str,
         task_type: str,
         excluded_tiers: frozenset[str],
+        roi_overlay: ModelRoutingRoiOverlay | None = None,
     ) -> ModelResolvedDelegationBackend | None:
         """Resolve the next eligible tier's backend, or None if none exists.
+
+        OMN-14001: ``roi_overlay`` (when set) demotes ROI-suppressed tiers on the
+        escalation hop too, with the overlay's fail-safe second pass keeping the
+        ladder reachable when suppression would exhaust it.
 
         Mirrors the bus orchestrator's ``_decide_escalation`` tier resolution
         (:748-811): ``next_eligible_tier`` reads the closed-set task-class
@@ -787,7 +877,7 @@ class LocalDelegationDispatchPort:
         populated endpoint in the local overlay (fail-closed, no silent hang).
         """
         next_tier = next_eligible_tier(
-            current_tier, excluded_tiers, task_type=task_type
+            current_tier, excluded_tiers, task_type=task_type, roi_overlay=roi_overlay
         )
         if next_tier is None:
             return None

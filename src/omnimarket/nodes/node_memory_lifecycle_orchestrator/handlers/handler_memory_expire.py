@@ -107,7 +107,7 @@ from omnimemory.nodes.node_memory_lifecycle_orchestrator.handlers.handler_memory
 
 if TYPE_CHECKING:
     from omnibase_core.container import ModelONEXContainer
-from omnimemory.utils.concurrency import (
+from omnimemory.adapters.adapter_concurrency import (
     CircuitBreaker,
     CircuitBreakerOpenError,
     CircuitBreakerState,

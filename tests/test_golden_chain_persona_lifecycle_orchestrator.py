@@ -11,6 +11,7 @@ Related: OMN-8301 (Wave 5 migration), OMN-7305
 from __future__ import annotations
 
 import pytest
+import yaml
 
 from omnimarket.nodes.node_persona_lifecycle_orchestrator import (
     ModelPersonaLifecycleRequest,
@@ -64,3 +65,14 @@ class TestPersonaLifecycleOrchestratorGoldenChain:
         import omnimarket.nodes.node_persona_lifecycle_orchestrator as node
 
         assert node is not None
+
+
+@pytest.mark.unit
+def test_contract_declares_publish_topic() -> None:
+    """OMN-14010 state-coverage: contract declares the output topic for real."""
+    with open(
+        "src/omnimarket/nodes/node_persona_lifecycle_orchestrator/contract.yaml"
+    ) as f:
+        contract = yaml.safe_load(f)
+    publish_topics = contract["event_bus"]["publish_topics"]
+    assert "onex.evt.omnimemory.persona-snapshot-created.v1" in publish_topics

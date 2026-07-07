@@ -63,9 +63,11 @@ def select_delegation_dispatch_port(
         from omnimarket.nodes.node_delegate_skill_orchestrator.ports.port_local_delegation_dispatch import (
             LocalDelegationDispatchPort,
         )
+        from omnimarket.routing.roi_overlay import resolve_context_roi_db
 
         return LocalDelegationDispatchPort(
-            evidence_db=resolve_local_delegation_evidence_db()
+            evidence_db=resolve_local_delegation_evidence_db(),
+            roi_db=resolve_context_roi_db(),
         )
     return RuntimeDelegationDispatchPort(event_bus=event_bus)
 
