@@ -194,7 +194,7 @@ def test_slug_in_filename(sample_draft: ModelADRDraft, output_dir: Path) -> None
     output_dir.mkdir(parents=True)
     result = render_adr_to_kb(sample_draft, "ADR-0042", output_dir)
 
-    assert "adr-0042" in result.adr_path.name
+    assert "ADR-0042" in result.adr_path.name
     assert result.adr_path.suffix == ".md"
     assert result.evidence_path.suffix == ".json"
-    assert "adr-0042" in result.evidence_path.name
+    assert "ADR-0042" in result.evidence_path.name
