@@ -120,6 +120,9 @@ handler_routing:
       handler_key: "HandlerAgentLearningRetrieval"
       priority: 0
       output_events: []
+      handler:
+        name: "HandlerAgentLearningRetrieval"
+        module: "omnimarket.nodes.node_agent_learning_retrieval_effect.handlers.handler_agent_learning_retrieval"
   default_handler: "omnimarket.nodes.node_agent_learning_retrieval_effect.handlers.handler_agent_learning_retrieval:HandlerAgentLearningRetrieval"
 
 # === EVENT BUS SUBCONTRACT ===
