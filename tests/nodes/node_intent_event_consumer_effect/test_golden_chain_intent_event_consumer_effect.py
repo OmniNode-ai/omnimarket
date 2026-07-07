@@ -16,6 +16,7 @@ from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
 
 import pytest
+import yaml
 
 from omnimarket.nodes.node_intent_event_consumer_effect import (
     HandlerIntentEventConsumer,
@@ -114,3 +115,15 @@ class TestIntentEventConsumerEffect:
         # Should not raise — invalid messages are routed to DLQ or counted as failed
         await consumer._handle_message(bad_message)
         storage.execute.assert_not_awaited()
+
+
+@pytest.mark.unit
+def test_contract_declares_publish_topics() -> None:
+    """OMN-14010 state-coverage: contract declares both output topics for real."""
+    with open(
+        "src/omnimarket/nodes/node_intent_event_consumer_effect/contract.yaml"
+    ) as f:
+        contract = yaml.safe_load(f)
+    publish_topics = contract["event_bus"]["publish_topics"]
+    assert "onex.evt.omnimemory.intent-stored.v1" in publish_topics
+    assert "onex.evt.omniintelligence.intent-classified-dlq.v1" in publish_topics

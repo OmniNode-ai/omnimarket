@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from omnimarket.nodes.node_projection_mcp_tools.models.enums import (
     EnumFreshnessState,
@@ -64,6 +64,36 @@ class ModelMcpToolRegistrationEvent(BaseModel):
     event_id: str = Field(default="")
     # Supplementary contract metadata (description, model_id) forwarded via this field.
     contract_metadata: dict[str, object] = Field(default_factory=dict)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _derive_mcp_eligibility_from_tags(cls, data: object) -> object:
+        """Derive mcp_eligible/mcp_tags from the real producer wire shape (OMN-14005).
+
+        node_generation_consumer._emit_registration (OMN-13607 WS-C Phase 0.3)
+        emits a generic ``tags: list[str]`` field (e.g. "mcp-enabled",
+        "mcp-tool:<name>") — it deliberately does NOT send `mcp_eligible`/
+        `mcp_tags` (that field pair was removed from the producer's contract as
+        legacy, see test_registration_payload_tags_are_mcp_conformant in
+        node_generation_consumer's tests). Without this, every real
+        generation-sourced registration event silently acked with
+        rows_upserted=0 — mcp_eligible defaulted False and no node ever became
+        an invokable mcp_tools row. When the caller hasn't explicitly supplied
+        mcp_eligible/mcp_tags, derive them here from the real `tags` list so a
+        generation-sourced registration is recognised as eligible.
+        """
+        if not isinstance(data, dict):
+            return data
+        tags = data.get("tags")
+        if not isinstance(tags, (list, tuple)):
+            return data
+        str_tags = tuple(str(t) for t in tags)
+        derived = dict(data)
+        if "mcp_eligible" not in derived:
+            derived["mcp_eligible"] = "mcp-enabled" in str_tags
+        if "mcp_tags" not in derived:
+            derived["mcp_tags"] = str_tags
+        return derived
 
 
 class ModelMcpToolsProjectionAppliedEvent(BaseModel):
