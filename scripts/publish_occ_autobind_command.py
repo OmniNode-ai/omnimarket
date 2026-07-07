@@ -49,6 +49,7 @@
 
 from __future__ import annotations
 
+import importlib.util
 import json
 import os
 import re
@@ -60,13 +61,20 @@ from pathlib import Path
 import click
 
 # Canonical topic constant (single source of truth in omnimarket.events.topics).
-_SRC_ROOT = Path(__file__).resolve().parents[1] / "src"
-if str(_SRC_ROOT) not in sys.path:
-    sys.path.insert(0, str(_SRC_ROOT))
+# Load the module by file path so this thin GHA script does not execute
+# omnimarket.events.__init__, which imports the full product dependency graph.
+_TOPICS_PATH = (
+    Path(__file__).resolve().parents[1] / "src" / "omnimarket" / "events" / "topics.py"
+)
+_TOPICS_SPEC = importlib.util.spec_from_file_location(
+    "omnimarket_events_topics_for_occ_autobind", _TOPICS_PATH
+)
+if _TOPICS_SPEC is None or _TOPICS_SPEC.loader is None:
+    raise RuntimeError(f"Could not load topic registry from {_TOPICS_PATH}")
+_TOPICS_MODULE = importlib.util.module_from_spec(_TOPICS_SPEC)
+_TOPICS_SPEC.loader.exec_module(_TOPICS_MODULE)
 
-from omnimarket.events.topics import OCC_AUTOBIND_COMMAND_TOPIC_V1  # noqa: E402
-
-TOPIC = OCC_AUTOBIND_COMMAND_TOPIC_V1
+TOPIC = _TOPICS_MODULE.OCC_AUTOBIND_COMMAND_TOPIC_V1
 
 _TICKET_RE = re.compile(r"OMN-\d+", re.IGNORECASE)
 
