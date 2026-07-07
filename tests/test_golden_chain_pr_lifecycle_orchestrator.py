@@ -1378,10 +1378,16 @@ class TestOrchestratorFixReasonRouting:
                 EnumPrBlockReason.CONFLICT,
             ),
             (
+                # OMN-13987 CP1: a receipt-gate-ONLY failure that carries a
+                # ticket (the inventory record below sets ticket_ids) is the
+                # Evidence-Source-autobind class (OMN-13317) — machine routing
+                # keys off ticket presence, not prose. The no-ticket case that
+                # stays RECEIPT_FAILURE is covered in
+                # test_omn_13987_pr_lifecycle_arm_activation.py.
                 EnumPrCategory.RED,
-                "Receipt Gate-only failure detected, but no ticket ID was found.",
+                "Receipt Gate-only failure with a ticket — Evidence-Source autobind.",
                 ("verify / verify",),
-                EnumPrBlockReason.RECEIPT_FAILURE,
+                EnumPrBlockReason.RECEIPT_EVIDENCE_SOURCE_AUTOBIND,
             ),
             (
                 EnumPrCategory.RED,

@@ -51,7 +51,7 @@ dependencies = [
     "psycopg2-binary>=2.9.10",
     "httpx>=0.27.0",
     "anthropic>=0.25.0",
-    "omninode-memory==0.15.0",
+    "omninode-memory==0.17.0",
     "radon>=6.0.1",
     "pytest>=8.4.0",
     "pytest-asyncio>=1.3.0",
@@ -449,14 +449,14 @@ omnimarket = "omnimarket.nodes"
 # compat==0.5.5 (the former rev c0fc716 IS the v0.5.5 tag == PyPI 0.5.5).
 # omnibase-infra git rev retained — infra is not in the dep-provenance forbidden set.
 omnibase-infra = { git = "https://github.com/OmniNode-ai/omnibase_infra.git", rev = "7e52d5b0046c394b38454b97157e7a7191e6f008" }
-omninode-memory = { git = "https://github.com/OmniNode-ai/omnimemory.git", rev = "9843dd18cedaa4f5939289ba527532262b87003c" }
+omninode-memory = { git = "https://github.com/OmniNode-ai/omnimemory.git", rev = "1cd318d5ca3071a24585191592d3a84fafd30cf7" }
 onex-change-control = { git = "https://github.com/OmniNode-ai/onex_change_control.git", rev = "dd2620d18001495b8d0f493b421b38399e9aab4b" }
 
 [tool.uv]
 # OMN-13836: these overrides exist to force the ONEX core/spi/infra/compat
-# versions past omninode-memory==0.15.0's stale transitive hard-pins
-# (core==0.40.1 / spi==0.20.6 / infra==0.34.2) so omnimarket's own lock
-# resolves during local cross-repo dev.
+# versions past omninode-memory's stale transitive hard-pins (observed at
+# omninode-memory==0.15.0: core==0.40.1 / spi==0.20.6 / infra==0.34.2) so
+# omnimarket's own lock resolves during local cross-repo dev.
 #
 # The previous form git-pinned core/infra/compat to foreign revs
 # (core@29e9057=0.46.2, infra@7e52d5b=0.38.4, compat@c0fc716=0.5.5). Those

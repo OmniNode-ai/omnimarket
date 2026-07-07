@@ -52,8 +52,17 @@ def select_delegation_dispatch_port(
         from omnimarket.nodes.node_delegate_skill_orchestrator.ports.port_local_delegation_dispatch import (
             LocalDelegationDispatchPort,
         )
+        from omnimarket.routing.roi_overlay import resolve_context_roi_db
 
-        return LocalDelegationDispatchPort()
+        # OMN-14001 — LIVE ROI wiring. Point the local dispatch port's ROI reader
+        # at the real ``context_roi_scores`` projection DB (``omnidash_analytics``,
+        # resolved from OMNIDASH_ANALYTICS_DB_URL) so ``onex delegate`` consults
+        # captured outcomes on every dispatch. Fail-OPEN: when the DSN is unset or
+        # unreachable ``resolve_context_roi_db`` returns None and the port degrades
+        # to static routing (byte-identical to before this change). This is the
+        # single live constructor of the local port, so injecting here is what
+        # makes the loop actually consult ROI at runtime (not just in tests).
+        return LocalDelegationDispatchPort(roi_db=resolve_context_roi_db())
     return RuntimeDelegationDispatchPort(event_bus=event_bus)
 
 

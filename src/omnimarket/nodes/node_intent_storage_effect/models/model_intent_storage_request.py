@@ -17,7 +17,7 @@ from uuid import UUID
 from omnibase_core.models.intelligence import (
     ModelIntentClassificationOutput,
 )
-from omnimemory.utils.pii_detector import PIIDetector
+from omnimemory.adapters.adapter_pii_detector import PIIDetector
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 __all__ = ["ModelIntentStorageRequest"]
