@@ -101,17 +101,41 @@ def probe_health(
     *,
     runtime_profile: str | None = None,
     timeout_seconds: float = 5.0,
+    attempts: int = 3,
+    backoff_seconds: float = 0.4,
 ) -> bool:
     """Probe ``/health`` for the endpoint host, returning False on any failure.
 
     Uses curl on the LAN-curl profile and httpx elsewhere, mirroring the POST
     transport so the LAN-safe path is exercised end-to-end on the macOS profile.
+
+    OMN-14063: retries up to ``attempts`` times (default 3) with a short
+    ``backoff_seconds`` pause between them before declaring the endpoint
+    unhealthy. A single 5s attempt cannot distinguish a genuinely dead backend
+    from a transient Tailscale/DERP-relay blip — live repro against a healthy
+    local endpoint over Tailscale showed a 1-in-5 single-shot timeout rate
+    while the backend was up throughout. Treating that blip as "unavailable"
+    silently escalates LOCAL-FIRST work to a paid cloud tier (the binding
+    local-first mandate is only supposed to escalate on a graded eval failure,
+    not a network hiccup). Retrying inline, before the caller ever sees
+    ``False``, fixes the false negative at the source instead of pushing
+    retry logic onto every caller.
     """
     _require_http_url(endpoint_url)
     probe_url = health_probe_url(endpoint_url)
-    if uses_lan_curl_transport(runtime_profile):
-        return _curl_probe_health(probe_url, timeout_seconds=timeout_seconds)
-    return _httpx_probe_health(probe_url, timeout_seconds=timeout_seconds)
+    use_curl = uses_lan_curl_transport(runtime_profile)
+    healthy = False
+    for attempt in range(attempts):
+        healthy = (
+            _curl_probe_health(probe_url, timeout_seconds=timeout_seconds)
+            if use_curl
+            else _httpx_probe_health(probe_url, timeout_seconds=timeout_seconds)
+        )
+        if healthy:
+            return True
+        if attempt < attempts - 1:
+            time.sleep(backoff_seconds)
+    return healthy
 
 
 def post_chat_completion(
