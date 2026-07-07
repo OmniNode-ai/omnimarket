@@ -5,7 +5,8 @@
 
 Reads extracted_decisions.json from the canary run directory, filters by
 model_key, renders ADRs via kb_adr_renderer adapter, clones the KB repo,
-creates a branch, writes files, and opens a PR for human review.
+creates a branch, writes flat adrs/ADR-NNNN-<slug>.md files, and opens a
+PR for human review.
 
 [OMN-11808]
 """
@@ -14,6 +15,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import subprocess
 import tempfile
 from pathlib import Path
@@ -63,6 +65,21 @@ def _load_decisions(decisions_file: Path, model_key: str) -> list[dict[str, obje
         if isinstance(metadata, dict) and metadata.get("model_id") == model_key:
             result.append(d)
     return result
+
+
+def _next_adr_number(adrs_dir: Path) -> int:
+    """Return the next sequential ADR number by scanning existing adrs/ADR-NNNN-*.md.
+
+    The knowledge-base convention numbers ADRs monotonically (ADR-0001, ADR-0002,
+    ...). New proposals continue from the highest existing number; an empty or
+    freshly cloned adrs/ starts at 1.
+    """
+    highest = 0
+    for adr_file in adrs_dir.glob("ADR-*.md"):
+        match = re.match(r"ADR-(\d+)", adr_file.name)
+        if match:
+            highest = max(highest, int(match.group(1)))
+    return highest + 1
 
 
 class HandlerKBADRPublisher:
@@ -129,8 +146,11 @@ class HandlerKBADRPublisher:
                 check=True,
             )
 
-            proposed_dir = kb_dir / "adrs" / "proposed"
-            proposed_dir.mkdir(parents=True, exist_ok=True)
+            # Knowledge-base convention: flat adrs/ADR-NNNN-<slug>.md with
+            # status: proposed frontmatter — no adrs/proposed/ subdirectory.
+            adrs_dir = kb_dir / "adrs"
+            adrs_dir.mkdir(parents=True, exist_ok=True)
+            next_num = _next_adr_number(adrs_dir)
 
             self._run(
                 ["git", "-C", str(kb_dir), "checkout", "-b", branch],
@@ -138,11 +158,11 @@ class HandlerKBADRPublisher:
             )
 
             rendered_count = 0
-            for i, decision in enumerate(model_decisions, start=1):
-                adr_id = f"ADR-PROPOSED-{i:04d}"
+            for offset, decision in enumerate(model_decisions):
+                adr_id = f"ADR-{next_num + offset:04d}"
                 draft = ModelADRDraft.model_validate(decision)
                 result = render_adr_to_kb(
-                    draft=draft, adr_id=adr_id, output_dir=proposed_dir
+                    draft=draft, adr_id=adr_id, output_dir=adrs_dir
                 )
                 logger.info("  Rendered: %s", result.adr_path.name)
                 rendered_count += 1
@@ -170,12 +190,14 @@ class HandlerKBADRPublisher:
                 f"- **Run ID**: `{run_id}`\n"
                 f"- **Model**: `{request.model_key}`\n"
                 f"- **Decisions extracted**: {rendered_count}\n\n"
-                "All ADRs placed in `adrs/proposed/` for human review.\n"
-                "Move to `adrs/` and change status to `accepted` after review.\n\n"
+                "All ADRs written to `adrs/` as `ADR-NNNN-<slug>.md` with "
+                "`status: proposed` frontmatter, pending human review.\n"
+                "Change status to `accepted` after review.\n\n"
                 "## Test plan\n"
-                "- [ ] Each proposed ADR has valid frontmatter\n"
+                "- [ ] Each proposed ADR has valid frontmatter "
+                "(schemas/frontmatter.schema.json)\n"
                 "- [ ] No internal references in content\n"
-                "- [ ] Evidence JSON files present in `adrs/proposed/`\n"
+                "- [ ] Companion evidence JSON present for each ADR\n"
             )
 
             pr_result = self._run(
