@@ -267,13 +267,7 @@ node_intelligence_reducer scored
 node_intelligence_reducer stored
 node_intelligence_reducer traceability
 node_intelligence_reducer validation
-node_intent_event_consumer_effect onex.evt.omniintelligence.intent-classified-dlq.v1
-node_intent_event_consumer_effect onex.evt.omnimemory.intent-stored.v1
 node_intent_query_effect onex.evt.omnimemory.intent-query-response.v1
-node_intent_storage_effect onex.evt.omnimemory.intent-storage-completed.v1
-node_intent_storage_effect onex.evt.omnimemory.intent-storage-failed.v1
-node_intent_storage_effect onex.evt.omnimemory.intent-store-failed.v1
-node_intent_storage_effect onex.evt.omnimemory.intent-stored.v1
 node_judge_verdict_parse_compute onex.evt.omnimarket.judge-verdict-parse-failed.v1
 node_judge_verdict_parse_compute onex.evt.omnimarket.judge-verdict-parsed.v1
 node_kafka_topic_emit_probe onex.evt.omnimarket.kafka-probe-complete.v1
@@ -303,10 +297,6 @@ node_loop_state_reducer classifying
 node_loop_state_reducer complete
 node_loop_state_reducer filling
 node_loop_state_reducer verifying
-node_memory_lifecycle_orchestrator onex.evt.omnimemory.lifecycle-transition-failed.v1
-node_memory_lifecycle_orchestrator onex.evt.omnimemory.memory-archive-initiated.v1
-node_memory_lifecycle_orchestrator onex.evt.omnimemory.memory-archived.v1
-node_memory_lifecycle_orchestrator onex.evt.omnimemory.memory-expired.v1
 node_memory_retrieval_effect onex.evt.omnimemory.memory-retrieval-response.v1
 node_memory_storage_effect onex.evt.omnimemory.memory-deleted.v1
 node_memory_storage_effect onex.evt.omnimemory.memory-retrieved.v1
@@ -378,9 +368,6 @@ node_pattern_b_broker onex.evt.omniclaude.delegation-completed.v1
 node_pattern_b_broker onex.evt.omniclaude.delegation-failed.v1
 node_persona_builder_compute onex.evt.omnimemory.persona-builder-completed.v1
 node_persona_builder_compute onex.evt.omnimemory.persona-builder-failed.v1
-node_persona_lifecycle_orchestrator onex.evt.omnimemory.persona-snapshot-created.v1
-node_persona_retrieval_effect onex.evt.omnimemory.persona-retrieval-completed.v1
-node_persona_retrieval_effect onex.evt.omnimemory.persona-retrieval-failed.v1
 node_persona_storage_effect onex.evt.omnimemory.persona-snapshot-created.v1
 node_persona_storage_effect onex.evt.omnimemory.persona-storage-completed.v1
 node_persona_storage_effect onex.evt.omnimemory.persona-storage-failed.v1
