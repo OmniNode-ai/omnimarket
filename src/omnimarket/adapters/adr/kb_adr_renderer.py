@@ -47,7 +47,9 @@ def render_adr_to_kb(
 
 
 def _slug(adr_id: str, title: str) -> str:
-    id_part = adr_id.lower().replace(" ", "-")
+    # Preserve the ADR-NNNN prefix case — the knowledge-base flat convention is
+    # uppercase (adrs/ADR-0009-...md); only the title portion is lowercased.
+    id_part = adr_id.replace(" ", "-")
     title_part = re.sub(r"[^a-z0-9-]", "-", title.lower())[:50].strip("-")
     title_part = re.sub(r"-{2,}", "-", title_part)
     return f"{id_part}-{title_part}"
