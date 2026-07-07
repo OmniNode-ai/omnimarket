@@ -404,6 +404,13 @@ def test_retryable_transport_failure_on_tier_n_escalates_to_tier_n_plus_1(
     assert calls == ["local", "cheap_cloud"]  # escalated past the transport failure
     assert result["status"] == "completed"
     assert result["escalation_count"] == 1
+    # OMN-14063: the skipped tier's WHY must be on its attempt record — this is
+    # what makes a local->cloud escalation visible to the ModelDelegateSkillResponse
+    # caller instead of only in the capture-file log.
+    failed_attempt = result["attempts"][0]
+    assert failed_attempt["tier"] == "local"
+    assert failed_attempt["failure_class"] == "model_unavailable"
+    assert failed_attempt["error_message"] == "connection refused"
 
 
 def test_non_retryable_transport_failure_terminates_without_escalating(
