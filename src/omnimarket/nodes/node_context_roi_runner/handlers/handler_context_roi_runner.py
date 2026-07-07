@@ -680,7 +680,7 @@ class HandlerContextRoiRunner:
                 register(correlation_id)
 
         # --- Step 2b: publish generation command over the bus ---
-        command_payload = {
+        command_payload: dict[str, Any] = {
             "task_description": task.task_description,
             "correlation_id": correlation_id,
             "max_attempts": request.max_attempts,
@@ -688,6 +688,11 @@ class HandlerContextRoiRunner:
             "context_artifacts": [],
             "context_pack_hash": context_pack_hash,
         }
+        # OMN-14018: pin this run's generation to a chosen backend when the request
+        # carries a target_endpoint. Only sent when non-empty so the default
+        # (contract-declared) routing is preserved byte-for-byte on the command.
+        if request.target_endpoint:
+            command_payload["forced_endpoint_ref"] = request.target_endpoint
         try:
             self._publisher(
                 self._gen_command_topic,
