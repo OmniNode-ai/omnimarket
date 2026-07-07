@@ -551,6 +551,14 @@ class OccAutobindAdapter:
             f"{repo}#{pr_number} (OMN-13317 F1).\n\n"
             f"Evidence-Ticket: {ticket}\n"
         )
+        # OMN-13990: target OCC's DEFAULT branch, not a hardcoded "main". The
+        # branch is cut from the shallow clone of the default (OCC default is
+        # `dev`); a PR based on "main" surfaces the entire dev<->main delta
+        # (thousands of files) with the 3 companion files buried in it — an
+        # unmergeable mega-PR. Basing on the default keeps the companion PR a
+        # clean net-new-files diff. (Surfaced by the first real end-to-end run;
+        # the emitter had authored zero companions before, so it never fired.)
+        base = self._occ_default_branch(owner, repo_name, token)
         resp = rest_json(
             "POST",
             f"/repos/{owner}/{repo_name}/pulls",
@@ -561,7 +569,7 @@ class OccAutobindAdapter:
                     f"{repo}#{pr_number}"
                 ),
                 "head": branch,
-                "base": "main",
+                "base": base,
                 "body": body,
             },
         )
@@ -571,6 +579,17 @@ class OccAutobindAdapter:
                 f"OCC PR creation returned unexpected number field: {number!r}"
             )
         return number
+
+    @staticmethod
+    def _occ_default_branch(owner: str, repo_name: str, token: str) -> str:
+        """Return the OCC repo's default branch (the correct companion PR base)."""
+        info = rest_json("GET", f"/repos/{owner}/{repo_name}", token=token)
+        default = info.get("default_branch")
+        if not isinstance(default, str) or not default:
+            raise RuntimeError(
+                f"could not resolve default branch for {owner}/{repo_name}"
+            )
+        return default
 
     @staticmethod
     def _first_open_pr_number(

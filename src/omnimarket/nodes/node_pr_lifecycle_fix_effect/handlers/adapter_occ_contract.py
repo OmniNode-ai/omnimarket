@@ -559,6 +559,16 @@ class OccContractAdapter:
             f"Evidence-Source: auto-contract-{run_id}\n"
         )
         token = _resolve_github_token()
+        # OMN-13990: base on OCC's DEFAULT branch, not a hardcoded "main" (OCC
+        # default is `dev`). The branch is cut from the shallow clone of the
+        # default, so a PR based on "main" would surface the whole dev<->main
+        # delta instead of a clean net-new companion diff.
+        info = rest_json("GET", f"/repos/{owner}/{repo_name}", token=token)
+        base = info.get("default_branch")
+        if not isinstance(base, str) or not base:
+            raise RuntimeError(
+                f"could not resolve default branch for {owner}/{repo_name}"
+            )
         resp = rest_json(
             "POST",
             f"/repos/{owner}/{repo_name}/pulls",
@@ -566,7 +576,7 @@ class OccContractAdapter:
             body={
                 "title": f"auto(OCC): contract + receipt for {ticket_id}",
                 "head": branch,
-                "base": "main",
+                "base": base,
                 "body": body,
             },
         )

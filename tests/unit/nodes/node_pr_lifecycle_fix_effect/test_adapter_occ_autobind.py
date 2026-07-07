@@ -328,9 +328,15 @@ class TestOpenOrSyncOccPr:
         from unittest.mock import patch
 
         adapter = OccAutobindAdapter()
+
+        def fake_rest(method, path, *, body=None, token=None):  # type: ignore[no-untyped-def]
+            if method == "GET":  # default-branch resolution
+                return {"default_branch": "dev"}
+            return {"number": 2900}
+
         with (
             patch.object(adapter, "_first_open_pr_number", return_value=None),
-            patch(f"{_MODULE}.rest_json", return_value={"number": 2900}) as mock_rest,
+            patch(f"{_MODULE}.rest_json", side_effect=fake_rest) as mock_rest,
             patch(f"{_MODULE}._resolve_github_token", return_value="tok"),
         ):
             result = adapter._open_or_sync_occ_pr(
@@ -341,7 +347,23 @@ class TestOpenOrSyncOccPr:
             )
 
         assert result == 2900
+        # Last call is the POST create, based on OCC's DEFAULT branch (dev),
+        # NOT a hardcoded "main" (OMN-13990 base-branch fix).
         assert mock_rest.call_args[0][0] == "POST"
+        assert mock_rest.call_args.kwargs["body"]["base"] == "dev"
+
+    def test_occ_default_branch_resolves_from_repo(self) -> None:
+        from unittest.mock import patch
+
+        with patch(
+            f"{_MODULE}.rest_json", return_value={"default_branch": "dev"}
+        ) as mock_rest:
+            base = OccAutobindAdapter._occ_default_branch(
+                "OmniNode-ai", "onex_change_control", "tok"
+            )
+
+        assert base == "dev"
+        assert mock_rest.call_args[0][0] == "GET"
 
 
 # ---------------------------------------------------------------------------
