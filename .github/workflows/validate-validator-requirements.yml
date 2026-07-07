@@ -15,7 +15,7 @@ on:
 jobs:
   occ-preflight:
     # self-gating-ok: centralized OCC preflight reusable is the canonical cross-repo gate for non-OCC repositories.
-    uses: OmniNode-ai/omnibase_core/.github/workflows/occ-preflight.yml@main
+    uses: OmniNode-ai/omnibase_core/.github/workflows/occ-preflight.yml@336021ef29ba3568394b31a32b9a3e01dba0dae9
     permissions:
       contents: read
       pull-requests: read
