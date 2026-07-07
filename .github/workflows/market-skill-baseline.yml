@@ -13,7 +13,6 @@ on:
       - "tests/test_market_skill_smokes.py"
       - "docs/reference/2026-04-28-market-skill-baseline.*"
       - ".github/workflows/market-skill-baseline.yml"
-  merge_group:
   workflow_dispatch:
 
 concurrency:
