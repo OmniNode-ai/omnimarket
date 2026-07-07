@@ -489,3 +489,92 @@ entries:
     source_directory: "docs/plans"
     topic_cluster: "worktree-and-repo-management"
     rationale: "Worktree discipline, dispatch lifecycle canonical location decisions"
+
+  # ── Recent Execution Plans (post-2026-05-23) ─────────────────────────
+  # OMN-14103 corpus extension: the rolling plan, recent dated plans, and the
+  # operator-authored strategy plans were not covered by the topic globs above.
+
+  - id: "rolling-seven-day-execution-plan"
+    root_paths:
+      - "docs/plans/ROLLING_SEVEN_DAY_PLAN.md"
+    discovery_mode: true
+    models: [qwen3-coder]
+    source_directory: "docs/plans"
+    topic_cluster: "rolling-execution-plan-governance"
+    rationale: "The rolling plan carries the standing operating preamble, the decision queue, and the dated revision log — a dense source of workflow and governance decisions not yet formalized as ADRs"
+
+  - id: "recent-execution-plans-2026-h2"
+    root_paths:
+      - "docs/plans/2026-05-2[4-9]-*"
+      - "docs/plans/2026-05-3*"
+      - "docs/plans/2026-06-*"
+      - "docs/plans/2026-07-*"
+    discovery_mode: true
+    models: [qwen3-coder]
+    source_directory: "docs/plans"
+    topic_cluster: "recent-execution-plans"
+    rationale: "Dated execution plans authored after 2026-05-23 capture in-flight architectural and workflow decisions across the platform"
+
+  - id: "recursive-contract-decomposition-micro-factories"
+    root_paths:
+      - "docs/plans/2026-*recursive-contract*"
+      - "docs/plans/2026-*micro-factor*"
+    discovery_mode: true
+    models: [qwen3-coder]
+    source_directory: "docs/plans"
+    topic_cluster: "recursive-contract-decomposition"
+    rationale: "Bisect-on-contract-failure, parallel local-model factories, and learned-boundary decomposition strategy decisions"
+
+  - id: "steel-onslaught-mech-redesign"
+    root_paths:
+      - "docs/plans/2026-*steel*"
+      - "docs/plans/2026-*onslaught*"
+    discovery_mode: true
+    models: [qwen3-coder]
+    source_directory: "docs/plans"
+    topic_cluster: "steel-onslaught-model-vs-model"
+    rationale: "Model-vs-model mech design, pilot-learning rescope, and redesign decisions for the steel-onslaught benchmark harness"
+
+  - id: "ci-streamlining-logjam-reduction"
+    root_paths:
+      - "docs/plans/2026-*ci-stream*"
+      - "docs/plans/2026-*logjam*"
+    discovery_mode: true
+    models: [qwen3-coder]
+    source_directory: "docs/plans"
+    topic_cluster: "ci-streamlining-and-test-load"
+    rationale: "CI logjam-reduction, change-aware test selection, and merge-queue throughput decisions"
+
+  # ── Session Handoffs ──────────────────────────────────────────────────
+
+  - id: "session-handoffs"
+    root_paths:
+      - "docs/handoff/2026-*"
+    discovery_mode: true
+    models: [qwen3-coder]
+    source_directory: "docs/handoff"
+    topic_cluster: "session-handoffs"
+    rationale: "Session handoffs record decisions taken and direction changes between working sessions — a high-signal source of undocumented operational decisions"
+
+  # ── Analyses & Audits ─────────────────────────────────────────────────
+
+  - id: "analyses-and-audits"
+    root_paths:
+      - "docs/analyses/2026-*"
+    discovery_mode: true
+    models: [qwen3-coder]
+    source_directory: "docs/analyses"
+    topic_cluster: "analyses-and-audits"
+    rationale: "Analysis and audit documents surface decision points about validation surfaces, test load, and hook usefulness"
+
+  # ── Incident Diagnoses ────────────────────────────────────────────────
+
+  - id: "incident-diagnoses"
+    root_paths:
+      - "docs/diagnoses/2026-*"
+      - "docs/diagnoses/diagnosis-2026-*"
+    discovery_mode: true
+    models: [qwen3-coder]
+    source_directory: "docs/diagnoses"
+    topic_cluster: "incident-diagnoses"
+    rationale: "Incident diagnoses capture post-incident operational-lesson and doctrine-formation decisions (runner fleet, merge-sweep, dispatch)"

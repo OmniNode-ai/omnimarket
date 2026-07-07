@@ -5,11 +5,13 @@
 from __future__ import annotations
 
 from omnimarket.models.delegation.wire.model_delegate_skill_response import (
+    ModelDelegateSkillAttemptRecord,
     ModelDelegateSkillResponse,
     ModelDelegateSkillResponseMetrics,
 )
 
 __all__ = [
+    "ModelDelegateSkillAttemptRecord",
     "ModelDelegateSkillResponse",
     "ModelDelegateSkillResponseMetrics",
 ]
