@@ -76,9 +76,9 @@ from uuid import UUID, uuid4
 from omnibase_core.models.dispatch.model_handler_output import ModelHandlerOutput
 from omnibase_core.models.events import ModelIntentStoredEvent
 from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
+from omnimemory.adapters.adapter_concurrency import CircuitBreaker, CircuitBreakerState
 from omnimemory.models.events import ModelIntentClassifiedEvent
 from omnimemory.models.utils.model_health_status import HealthStatus
-from omnimemory.utils.concurrency import CircuitBreaker, CircuitBreakerState
 from pydantic import ValidationError
 
 from omnimarket.nodes.node_intent_event_consumer_effect.models import (
