@@ -326,7 +326,16 @@ class OccAutobindAdapter:
                 ],
                 cwd=str(clone_dir),
             )
-            self._run_git(["git", "push", "origin", branch], cwd=str(clone_dir))
+            # Force-push: the auto/* bot branch is fully REGENERATED each run
+            # (fresh clone off the default + freshly-timestamped receipts), so a
+            # `synchronize` re-fire produces history disjoint from the already
+            # pushed remote branch — a plain push would be rejected non-fast-
+            # forward (OMN-13990 / CodeRabbit). Force-push is safe here (content
+            # is deterministic and the branch always presents the companion as
+            # all-adds relative to base, keeping the append-only gate green).
+            self._run_git(
+                ["git", "push", "--force", "origin", branch], cwd=str(clone_dir)
+            )
 
             # 3. Open or sync the OCC binding PR (one per product PR).
             occ_pr_number = self._open_or_sync_occ_pr(
@@ -393,7 +402,16 @@ class OccAutobindAdapter:
                 ],
                 cwd=str(clone_dir),
             )
-            self._run_git(["git", "push", "origin", branch], cwd=str(clone_dir))
+            # Force-push: the auto/* bot branch is fully REGENERATED each run
+            # (fresh clone off the default + freshly-timestamped receipts), so a
+            # `synchronize` re-fire produces history disjoint from the already
+            # pushed remote branch — a plain push would be rejected non-fast-
+            # forward (OMN-13990 / CodeRabbit). Force-push is safe here (content
+            # is deterministic and the branch always presents the companion as
+            # all-adds relative to base, keeping the append-only gate green).
+            self._run_git(
+                ["git", "push", "--force", "origin", branch], cwd=str(clone_dir)
+            )
 
         # 5. PATCH Evidence-Source: OCC#<n> back onto the product PR via REST.
         self._patch_evidence_source(

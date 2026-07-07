@@ -56,6 +56,11 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
+        with:
+          # This job only runs a Python publisher; it never pushes to git, so do
+          # not persist the auto-injected token into .git/config (supply-chain
+          # exposure surface for later steps). CodeRabbit hardening.
+          persist-credentials: false
 
       - name: Set up Python
         uses: actions/setup-python@v6

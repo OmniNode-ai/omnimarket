@@ -40,8 +40,22 @@ def scrub_credentials(text: str) -> str:
     return _CREDENTIAL_URL_RE.sub(r"\1***\2", text)
 
 
-def run_git(argv: list[str], *, cwd: str) -> str:
+def _scrub_process_text(value: str | bytes | None) -> str | None:
+    if value is None:
+        return None
+    if isinstance(value, bytes):
+        value = value.decode(errors="replace")
+    return scrub_credentials(value) or None
+
+
+def run_git(argv: list[str], *, cwd: str, timeout: float = 300.0) -> str:
     """Run a git subprocess, returning stripped stdout.
+
+    A ``timeout`` (default 300s) bounds network git operations (clone/push over
+    HTTPS): without it a stalled remote or network partition would hang the
+    calling thread indefinitely — and these run via ``asyncio.to_thread`` at the
+    effect boundary (OMN-13990). On timeout a credential-scrubbed
+    :class:`subprocess.TimeoutExpired` propagates.
 
     On failure the raised :class:`subprocess.CalledProcessError` is re-raised with
     its ``cmd``/``output``/``stderr`` credential-scrubbed, preserving the exception
@@ -55,7 +69,21 @@ def run_git(argv: list[str], *, cwd: str) -> str:
             check=True,
             capture_output=True,
             text=True,
+            timeout=timeout,
         )
+    except subprocess.TimeoutExpired as exc:
+        cmd_t = exc.cmd
+        scrubbed_t: list[str] | str = (
+            [scrub_credentials(str(part)) for part in cmd_t]
+            if isinstance(cmd_t, (list, tuple))
+            else scrub_credentials(str(cmd_t))
+        )
+        raise subprocess.TimeoutExpired(
+            scrubbed_t,
+            exc.timeout,
+            output=_scrub_process_text(exc.output),
+            stderr=_scrub_process_text(exc.stderr),
+        ) from None
     except subprocess.CalledProcessError as exc:
         cmd = exc.cmd
         scrubbed_cmd: list[str] | str

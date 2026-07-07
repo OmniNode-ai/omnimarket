@@ -381,6 +381,26 @@ class OccContractAdapter:
             logger.info("occ_contract_adapter (dry-run): %s", action)
             return action
 
+        # OMN-13990 (CodeRabbit): bail BEFORE any OCC mutation if the product PR
+        # is already Evidence-bound. Otherwise an already-bound PR still clones,
+        # pushes, and opens an unnecessary companion OCC PR before the late guard
+        # in _append_evidence_to_pr fires. Mirrors the autobind adapter's early
+        # idempotency guard. The resolved token is reused for the clone below.
+        token = _resolve_github_token()
+        product_owner, product_repo_name = split_repo(repo)
+        product_pr = rest_json(
+            "GET",
+            f"/repos/{product_owner}/{product_repo_name}/pulls/{pr_number}",
+            token=token,
+        )
+        if _ANY_EVIDENCE_SOURCE_RE.search(product_pr.get("body") or ""):
+            action = (
+                f"[no-op] {repo}#{pr_number} already has an Evidence-Source line; "
+                f"skipping OCC contract creation for {ticket_id}"
+            )
+            logger.info("occ_contract_adapter: %s", action)
+            return action
+
         # Build the contract YAML content first so we can hash it.
         contract_yaml = _CONTRACT_TEMPLATE.format(
             ticket_id=ticket_id,
@@ -408,10 +428,9 @@ class OccContractAdapter:
             return action
 
         # HTTPS x-access-token transport (OMN-13990): the effects container has
-        # no SSH identity. Resolve the token once for both the clone/push and the
-        # downstream REST calls; the shared transport redacts it from git errors.
-        token = _resolve_github_token()
-
+        # no SSH identity. The token resolved above (early Evidence-Source guard)
+        # is reused for the clone/push; the shared transport redacts it from git
+        # errors.
         with tempfile.TemporaryDirectory(prefix="occ-contract-") as tmpdir:
             clone_dir = Path(tmpdir) / "onex_change_control"
 
@@ -489,8 +508,11 @@ class OccContractAdapter:
                 ["git", "commit", "-m", commit_msg],
                 cwd=str(clone_dir),
             )
+            # Force-push: the auto/* bot branch is fully regenerated each run, so
+            # a re-fire diverges from the already-pushed remote branch and a plain
+            # push would be rejected non-fast-forward (OMN-13990 / CodeRabbit).
             self._run_git(
-                ["git", "push", "origin", branch],
+                ["git", "push", "--force", "origin", branch],
                 cwd=str(clone_dir),
             )
 

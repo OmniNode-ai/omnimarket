@@ -336,6 +336,11 @@ class TestOccContractAdapterCreateOccContract:
                 "adapter_occ_contract._resolve_github_token",
                 return_value="fake-token",
             ),
+            patch(
+                "omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers."
+                "adapter_occ_contract.rest_json",
+                return_value={"body": ""},  # early Evidence-Source guard: not bound
+            ),
             patch("tempfile.TemporaryDirectory") as mock_tmpdir,
             patch("pathlib.Path.mkdir"),
             patch("pathlib.Path.write_text"),
