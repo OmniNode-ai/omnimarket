@@ -109,7 +109,9 @@ def _install_ladder(
             return _backend_for_tier(initial_tier)
         return _backend_for_tier(_BACKEND_TIER[backend_id])
 
-    def fake_next_eligible_tier(current, excluded, *, task_type=None):
+    # ``roi_overlay`` accepted (OMN-14001) so the doubles match the extended
+    # routing-authority signature; this ladder ignores it (no ROI suppression).
+    def fake_next_eligible_tier(current, excluded, *, task_type=None, roi_overlay=None):
         try:
             idx = _LADDER.index(current)
         except ValueError:
@@ -126,7 +128,9 @@ def _install_ladder(
     # deterministic ladder's first tier is ``initial_tier``; backend_id_for_tier +
     # the backend_id-targeted fake_resolve then re-resolve it to the ladder backend.
     monkeypatch.setattr(
-        port_mod, "first_eligible_tier", lambda _task_type: initial_tier
+        port_mod,
+        "first_eligible_tier",
+        lambda _task_type, **_kwargs: initial_tier,
     )
     monkeypatch.setattr(
         port_mod, "backend_id_for_tier", lambda tier, _task_type: _TIER_BACKEND_ID[tier]
@@ -400,6 +404,13 @@ def test_retryable_transport_failure_on_tier_n_escalates_to_tier_n_plus_1(
     assert calls == ["local", "cheap_cloud"]  # escalated past the transport failure
     assert result["status"] == "completed"
     assert result["escalation_count"] == 1
+    # OMN-14063: the skipped tier's WHY must be on its attempt record — this is
+    # what makes a local->cloud escalation visible to the ModelDelegateSkillResponse
+    # caller instead of only in the capture-file log.
+    failed_attempt = result["attempts"][0]
+    assert failed_attempt["tier"] == "local"
+    assert failed_attempt["failure_class"] == "model_unavailable"
+    assert failed_attempt["error_message"] == "connection refused"
 
 
 def test_non_retryable_transport_failure_terminates_without_escalating(

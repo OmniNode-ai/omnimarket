@@ -91,6 +91,7 @@ from typing import TYPE_CHECKING, Protocol, runtime_checkable
 from uuid import UUID
 
 from omnibase_core.models.metadata.model_generic_metadata import ModelGenericMetadata
+from omnimemory.adapters.adapter_concurrency import CircuitBreaker
 from omnimemory.enums import EnumLifecycleState
 from omnimemory.nodes.node_memory_lifecycle_orchestrator.handlers.handler_memory_archive import (
     ModelArchiveMemoryCommand,
@@ -101,7 +102,6 @@ from omnimemory.nodes.node_memory_lifecycle_orchestrator.handlers.handler_memory
     ModelMemoryArchiveResult,
     ModelMemoryRow,
 )
-from omnimemory.utils.concurrency import CircuitBreaker
 
 if TYPE_CHECKING:
     from asyncpg import Pool

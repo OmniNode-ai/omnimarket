@@ -54,6 +54,12 @@ permissions:
   pull-requests: write
   contents: read
 
+env:
+  UV_CONCURRENT_DOWNLOADS: '1'
+  UV_HTTP_TIMEOUT: '600'
+  UV_SYNC_ATTEMPTS: '5'
+  UV_SYNC_RETRY_DELAY_SECONDS: '10'
+
 jobs:
   # ============================================================================
   # Token resolution — swap to onexbot GitHub App token when the app exists,
@@ -149,7 +155,16 @@ jobs:
         run: uv python install 3.12
 
       - name: Install dependencies
-        run: uv sync --locked --all-extras
+        run: |
+          for attempt in $(seq 1 "${UV_SYNC_ATTEMPTS}"); do
+            if uv sync --locked --all-extras; then
+              break
+            fi
+            if [ "$attempt" = "${UV_SYNC_ATTEMPTS}" ]; then
+              exit 1
+            fi
+            sleep "${UV_SYNC_RETRY_DELAY_SECONDS}"
+          done
 
       - name: Resolve PR number
         id: pr-num

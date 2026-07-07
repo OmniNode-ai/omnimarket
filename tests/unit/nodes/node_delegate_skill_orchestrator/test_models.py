@@ -13,6 +13,7 @@ from omnimarket.nodes.node_delegate_skill_orchestrator.models.model_delegate_ski
     ModelDelegateSkillRequest,
 )
 from omnimarket.nodes.node_delegate_skill_orchestrator.models.model_delegate_skill_response import (
+    ModelDelegateSkillAttemptRecord,
     ModelDelegateSkillResponse,
     ModelDelegateSkillResponseMetrics,
 )
@@ -194,3 +195,41 @@ def test_response_defaults() -> None:
     assert resp.metrics.tokens_to_compliance == 0
     assert resp.metrics.compliance_attempts == 0
     assert resp.error_message == "boom"
+    # OMN-14063: no escalation ladder by default — a construction that doesn't
+    # pass these fields must not break.
+    assert resp.escalation_count == 0
+    assert resp.attempts == []
+
+
+def test_response_carries_escalation_ladder() -> None:
+    """OMN-14063: a local->cloud escalation is representable on the typed
+    response, carrying WHY the earlier tier was skipped."""
+    resp = ModelDelegateSkillResponse(
+        status="completed",
+        correlation_id=uuid4(),
+        task_type="document",
+        escalation_count=1,
+        attempts=[
+            ModelDelegateSkillAttemptRecord(
+                tier="local",
+                backend_id="local-coder",
+                model_id="Qwen3.6-35B-A3B",
+                quality_gate_passed=False,
+                failure_class="model_unavailable",
+                error_message="endpoint http://local.example/health failed health probe",
+            ),
+            ModelDelegateSkillAttemptRecord(
+                tier="cheap_cloud",
+                backend_id="cloud-gemini-flash",
+                model_id="gemini-2.5-flash-lite",
+                quality_gate_passed=True,
+                quality_score=1.0,
+                cost_usd=0.0018,
+            ),
+        ],
+    )
+    assert resp.escalation_count == 1
+    assert len(resp.attempts) == 2
+    assert resp.attempts[0].failure_class == "model_unavailable"
+    assert "failed health probe" in resp.attempts[0].error_message
+    assert resp.attempts[1].quality_gate_passed is True

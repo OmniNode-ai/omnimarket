@@ -63,6 +63,7 @@ from omnimarket.models.delegation.wire.model_delegate_skill_request import (
     ModelDelegateSkillRequest,
 )
 from omnimarket.models.delegation.wire.model_delegate_skill_response import (
+    ModelDelegateSkillAttemptRecord,
     ModelDelegateSkillResponse,
     ModelDelegateSkillResponseMetrics,
 )
@@ -90,6 +91,7 @@ __all__: list[str] = [
     "ModelBifrostDelegationConfig",
     "ModelBudgetLimits",
     "ModelComplianceLoopResult",
+    "ModelDelegateSkillAttemptRecord",
     "ModelDelegateSkillRequest",
     "ModelDelegateSkillResponse",
     "ModelDelegateSkillResponseMetrics",
