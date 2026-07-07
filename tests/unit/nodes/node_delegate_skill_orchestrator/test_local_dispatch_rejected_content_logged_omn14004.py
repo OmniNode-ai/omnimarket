@@ -60,7 +60,7 @@ def _install_ladder(monkeypatch: pytest.MonkeyPatch) -> None:
             return _backend_for_tier("local")
         return _backend_for_tier(_BACKEND_TIER[backend_id])
 
-    def fake_next_eligible_tier(current, excluded, *, task_type=None):
+    def fake_next_eligible_tier(current, excluded, *, task_type=None, roi_overlay=None):
         try:
             idx = _LADDER.index(current)
         except ValueError:
@@ -70,9 +70,13 @@ def _install_ladder(monkeypatch: pytest.MonkeyPatch) -> None:
                 return tier
         return None
 
+    def fake_first_eligible_tier(_task_type, *, roi_overlay=None):
+        del roi_overlay
+        return "local"
+
     monkeypatch.setattr(port_mod, "resolve_delegation_backend", fake_resolve)
     monkeypatch.setattr(port_mod, "next_eligible_tier", fake_next_eligible_tier)
-    monkeypatch.setattr(port_mod, "first_eligible_tier", lambda _task_type: "local")
+    monkeypatch.setattr(port_mod, "first_eligible_tier", fake_first_eligible_tier)
     monkeypatch.setattr(
         port_mod, "backend_id_for_tier", lambda tier, _task_type: _TIER_BACKEND_ID[tier]
     )
