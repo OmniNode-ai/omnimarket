@@ -21,6 +21,7 @@ Topics are read from contract.yaml, never hardcoded.
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import random
 import string
@@ -32,6 +33,10 @@ from pathlib import Path
 from typing import Any, Literal, Protocol, runtime_checkable
 
 import yaml
+from omnibase_core.models.adr.model_adr_draft import ModelADRDraft
+from omnibase_core.models.adr.model_adr_extraction_metadata import (
+    ModelADRExtractionMetadata,
+)
 from pydantic import BaseModel, ConfigDict
 
 from omnimarket.models.adr import (
@@ -138,6 +143,12 @@ class ModelGroundTruthManifest(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     entries: list[ModelAdrManifestEntry]
+    # Optional top-level manifest metadata. The discovery manifest carries these
+    # as real keys; the ground-truth manifest keeps them as comments. Declared
+    # so both files load through the same model (OMN-14103).
+    schema_version: str | None = None
+    generated_at: str | None = None
+    ticket: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -146,6 +157,103 @@ class _AdrProtocolAdapters:
     extraction: ProtocolAdrExtraction
     grading: ProtocolAdrGrading
     draft_gen: ProtocolAdrDraftGen
+
+
+@dataclass(frozen=True, slots=True)
+class _RunModelOutcome:
+    """Per-model result: the evidence record plus serialized ADR drafts.
+
+    The ``decisions`` list carries fully serialized ``ModelADRDraft`` dicts
+    (``model_dump(mode="json")``). The orchestrator aggregates these across all
+    entries/models into the run-level ``extracted_decisions.json`` that
+    ``HandlerKBADRPublisher`` consumes (OMN-14103).
+    """
+
+    record: ModelEvidenceRecord
+    decisions: list[dict[str, object]]
+
+
+def _confidence_or_clamped(value: object) -> float:
+    """Coerce a raw confidence value into the [0.0, 1.0] range ModelADRDraft requires."""
+    if isinstance(value, bool):
+        return 0.0
+    if isinstance(value, int | float):
+        return max(0.0, min(1.0, float(value)))
+    if isinstance(value, str):
+        try:
+            return max(0.0, min(1.0, float(value)))
+        except ValueError:
+            return 0.0
+    return 0.0
+
+
+def _decisions_from_extraction(
+    extraction: ModelAdrExtractionSummary,
+    model: ModelAdrManifestModel,
+    run_id: str,
+    now: datetime,
+) -> list[dict[str, object]]:
+    """Map each raw extraction dict into a serialized ``ModelADRDraft``.
+
+    The publisher (``HandlerKBADRPublisher``) filters decisions by
+    ``extraction_metadata.model_id``; we set that to ``model.model_id`` so a
+    ``model_key`` argument equal to the model id selects this model's decisions.
+    Fields absent from the raw extraction (consequences, alternatives) are not
+    fabricated — they are left empty or flagged for human review.
+    """
+    decisions: list[dict[str, object]] = []
+    for raw in extraction.extractions_raw:
+        if not isinstance(raw, dict):
+            continue
+        title = str(raw.get("statement") or raw.get("title") or "Untitled decision")
+        context_parts: list[str] = []
+        rationale = raw.get("rationale")
+        if rationale:
+            context_parts.append(str(rationale))
+        evidence_quotes = raw.get("evidence_quotes")
+        if isinstance(evidence_quotes, list):
+            context_parts.extend(str(q) for q in evidence_quotes)
+        context = (
+            "\n".join(context_parts)
+            if context_parts
+            else "(no rationale captured by the extraction pipeline)"
+        )
+        decision_type = str(raw.get("decision_type") or "").strip()
+        decision = (
+            title if not decision_type else f"{title} (decision_type: {decision_type})"
+        )
+        source_segment_ids = raw.get("source_segment_ids")
+        source_evidence = (
+            [str(seg) for seg in source_segment_ids]
+            if isinstance(source_segment_ids, list)
+            else []
+        )
+        draft = ModelADRDraft(
+            date=now,
+            title=title,
+            context=context,
+            decision=decision,
+            consequences=(
+                "Consequences were not captured by the extraction pipeline; "
+                "complete during human review."
+            ),
+            alternatives_considered=[],
+            supersedes=[],
+            source_evidence=source_evidence,
+            extraction_metadata=ModelADRExtractionMetadata(
+                model_id=model.model_id,
+                confidence=_confidence_or_clamped(raw.get("confidence")),
+                pipeline_version="adr-canary-orchestrator-v1",
+                prompt_template_id=str(raw.get("prompt_template_id") or "unknown"),
+                prompt_template_version=str(
+                    raw.get("prompt_template_version") or "0.0.0"
+                ),
+                canary_run_id=run_id,
+                extracted_at=now,
+            ),
+        )
+        decisions.append(draft.model_dump(mode="json"))
+    return decisions
 
 
 # ---------------------------------------------------------------------------
@@ -247,17 +355,20 @@ class HandlerCanaryOrchestrator:
         run_id: str,
         ingestion: ModelAdrIngestionResult,
         evidence_entry_dir: Path,
-    ) -> ModelEvidenceRecord:
+    ) -> _RunModelOutcome:
         if model.external and not self._allow_external_providers:
             logger.info(
                 "Skipping external model %s (allow_external_providers=False)", model.key
             )
-            return ModelEvidenceRecord(
-                run_id=run_id,
-                entry_id=entry.id,
-                model_key=model.key,
-                model_id=model.model_id,
-                extraction_error="external_provider_disabled",
+            return _RunModelOutcome(
+                record=ModelEvidenceRecord(
+                    run_id=run_id,
+                    entry_id=entry.id,
+                    model_key=model.key,
+                    model_id=model.model_id,
+                    extraction_error="external_provider_disabled",
+                ),
+                decisions=[],
             )
 
         t0 = time.monotonic()
@@ -290,7 +401,7 @@ class HandlerCanaryOrchestrator:
                 }
             )
             _write_evidence(evidence_entry_dir, model.key, record)
-            return record
+            return _RunModelOutcome(record=record, decisions=[])
 
         if not extraction.success:
             record = record.model_copy(
@@ -300,42 +411,53 @@ class HandlerCanaryOrchestrator:
                 }
             )
             _write_evidence(evidence_entry_dir, model.key, record)
-            return record
+            return _RunModelOutcome(record=record, decisions=[])
 
         record = record.model_copy(update={"extraction_success": True})
 
-        # Step 2: grade
-        source_summary = "\n".join(d.source_path for d in ingestion.documents)
-        try:
-            scores = await grading_proto.grade(
-                ground_truth_adr=entry.ground_truth_adr,
-                extraction=extraction,
-                source_summary=source_summary,
-                correlation_id=run_id,
-            )
-        except Exception as exc:
-            logger.warning(
-                "Grading failed (entry=%s, model=%s): %s", entry.id, model.key, exc
-            )
-            record = record.model_copy(
-                update={
-                    "grading_error": f"{type(exc).__name__}: {exc}",
-                    "latency_ms": int((time.monotonic() - t0) * 1000),
-                }
-            )
-            _write_evidence(evidence_entry_dir, model.key, record)
-            return record
+        # Structured ADR drafts for the run-level extracted_decisions.json (the
+        # publisher input). Derived purely from the extraction — independent of
+        # grading — so discovery entries (no ground truth) still produce drafts.
+        decisions = _decisions_from_extraction(
+            extraction, model, run_id, datetime.now(UTC)
+        )
 
-        if scores.success:
-            record = record.model_copy(
-                update={
-                    "grading_success": True,
-                    "recall": scores.recall,
-                    "precision": scores.precision,
-                    "fidelity": scores.fidelity,
-                    "format_compliance": scores.format_compliance,
-                }
-            )
+        # Step 2: grade — skipped for discovery entries that have no ground truth.
+        if entry.ground_truth_adr is not None:
+            source_summary = "\n".join(d.source_path for d in ingestion.documents)
+            try:
+                scores = await grading_proto.grade(
+                    ground_truth_adr=entry.ground_truth_adr,
+                    extraction=extraction,
+                    source_summary=source_summary,
+                    correlation_id=run_id,
+                )
+            except Exception as exc:
+                logger.warning(
+                    "Grading failed (entry=%s, model=%s): %s",
+                    entry.id,
+                    model.key,
+                    exc,
+                )
+                record = record.model_copy(
+                    update={
+                        "grading_error": f"{type(exc).__name__}: {exc}",
+                        "latency_ms": int((time.monotonic() - t0) * 1000),
+                    }
+                )
+                _write_evidence(evidence_entry_dir, model.key, record)
+                return _RunModelOutcome(record=record, decisions=decisions)
+
+            if scores.success:
+                record = record.model_copy(
+                    update={
+                        "grading_success": True,
+                        "recall": scores.recall,
+                        "precision": scores.precision,
+                        "fidelity": scores.fidelity,
+                        "format_compliance": scores.format_compliance,
+                    }
+                )
 
         # Step 3: generate ADR draft
         if extraction.extraction_count > 0:
@@ -360,7 +482,7 @@ class HandlerCanaryOrchestrator:
             update={"latency_ms": int((time.monotonic() - t0) * 1000)}
         )
         _write_evidence(evidence_entry_dir, model.key, record)
-        return record
+        return _RunModelOutcome(record=record, decisions=decisions)
 
     # ------------------------------------------------------------------
     # Main entrypoint
@@ -416,6 +538,7 @@ class HandlerCanaryOrchestrator:
         sem = asyncio.Semaphore(self._max_concurrent_extractions)
 
         all_records: list[ModelEvidenceRecord] = []
+        all_decisions: list[dict[str, object]] = []
         entries_completed = 0
         entries_failed = 0
 
@@ -446,7 +569,7 @@ class HandlerCanaryOrchestrator:
                 _model: ModelAdrManifestModel = None,  # type: ignore[assignment]
                 _ing: ModelAdrIngestionResult = ingestion_result,
                 _edir: Path = evidence_entry_dir,
-            ) -> ModelEvidenceRecord:
+            ) -> _RunModelOutcome:
                 async with sem:
                     return await self._run_model(_entry, _model, run_id, _ing, _edir)
 
@@ -454,17 +577,28 @@ class HandlerCanaryOrchestrator:
             results = await asyncio.gather(*tasks, return_exceptions=True)
 
             entry_ok = True
-            for rec in results:
-                if isinstance(rec, BaseException):
-                    logger.error("Model task raised: %s", rec)
+            for outcome in results:
+                if isinstance(outcome, BaseException):
+                    logger.error("Model task raised: %s", outcome)
                     entry_ok = False
                 else:
-                    all_records.append(rec)
+                    all_records.append(outcome.record)
+                    all_decisions.extend(outcome.decisions)
 
             if entry_ok:
                 entries_completed += 1
             else:
                 entries_failed += 1
+
+        # Run-level publisher input — the flat list of ModelADRDraft dicts the
+        # kb_adr_publisher reads and filters by extraction_metadata.model_id.
+        decisions_path = evidence_dir / "extracted_decisions.json"
+        decisions_path.write_text(
+            json.dumps(all_decisions, indent=2, sort_keys=True), encoding="utf-8"
+        )
+        logger.info(
+            "Wrote %d extracted decisions to %s", len(all_decisions), decisions_path
+        )
 
         model_scores = _aggregate_scores(all_records)
         scorecard_path = _write_scorecard(

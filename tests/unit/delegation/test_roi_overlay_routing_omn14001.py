@@ -22,7 +22,7 @@ from __future__ import annotations
 
 import textwrap
 from collections.abc import Iterator
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
 from uuid import uuid4
@@ -53,9 +53,11 @@ from omnimarket.routing.roi_overlay import (
     ModelRoutingRoiOverlay,
     ModelTierRoiSignal,
     build_roi_overlay,
+    resolve_roi_lookback_rows,
     resolve_roi_min_samples,
     resolve_roi_overlay,
     resolve_roi_success_floor,
+    resolve_roi_window_seconds,
 )
 
 # --- Fixtures -------------------------------------------------------------------
@@ -175,6 +177,27 @@ def _roi_rows(endpoint_ref: str, *, n: int, successes: int) -> list[dict[str, ob
     ]
 
 
+def _dated_rows(
+    endpoint_ref: str,
+    *,
+    specs: list[tuple[datetime, bool]],
+) -> list[dict[str, object]]:
+    """context_roi_scores rows carrying an explicit ``created_at`` + ``final_success``.
+
+    ``specs`` is an ordered list of ``(created_at, final_success)`` — used to
+    exercise the OMN-14019 recency window (last-K / time-window) deterministically.
+    """
+    return [
+        {
+            "correlation_id": f"{endpoint_ref}-{i}",
+            "endpoint_ref": endpoint_ref,
+            "final_success": success,
+            "created_at": created_at,
+        }
+        for i, (created_at, success) in enumerate(specs)
+    ]
+
+
 def _request(task_type: str = "code_generation") -> ModelDelegationRequest:
     return ModelDelegationRequest(
         correlation_id=uuid4(),
@@ -274,6 +297,238 @@ def test_build_handles_int_and_str_final_success() -> None:
     (signal,) = overlay.signals
     assert signal.success_count == 0
     assert signal.suppressed
+
+
+# --- OMN-14019: bounded-recency window (regression-blindness fix) ---------------
+
+
+def _dt(offset_seconds: int) -> datetime:
+    """A tz-aware timestamp ``offset_seconds`` after a fixed base (older = smaller)."""
+    return datetime(2026, 7, 6, 12, 0, 0, tzinfo=UTC) + timedelta(
+        seconds=offset_seconds
+    )
+
+
+def test_recency_defaults_off_are_byte_identical_to_whole_table() -> None:
+    """No lookback/window → identical result to the lifetime aggregation (golden-safe)."""
+    rows = _roi_rows("local-coder", n=10, successes=8)  # 0.8 lifetime, not suppressed
+    lifetime = build_roi_overlay(
+        rows,
+        task_type="code_generation",
+        tier_of_endpoint=lambda _: "local",
+        min_samples=5,
+        success_floor=0.5,
+    )
+    explicit_off = build_roi_overlay(
+        rows,
+        task_type="code_generation",
+        tier_of_endpoint=lambda _: "local",
+        min_samples=5,
+        success_floor=0.5,
+        lookback_rows=None,
+        window_seconds=None,
+    )
+    assert lifetime.model_dump() == explicit_off.model_dump()
+    assert not lifetime.is_suppressed("local")
+
+
+def test_lookback_rows_suppresses_recently_regressed_tier() -> None:
+    """A tier with a long success history but recent failures IS now suppressed.
+
+    10 rows: the 5 oldest all succeeded, the 5 newest all failed. Lifetime rate is
+    0.5 (not < floor, so NOT suppressed whole-table). With lookback_rows=5 only the
+    recent failing cohort is scored → rate 0.0 → suppressed. This is the exact
+    regression-blindness the whole-table aggregation could never catch.
+    """
+    specs = [(_dt(i), True) for i in range(5)] + [
+        (_dt(100 + i), False) for i in range(5)
+    ]
+    rows = _dated_rows("local-coder", specs=specs)
+
+    whole_table = build_roi_overlay(
+        rows,
+        task_type="code_generation",
+        tier_of_endpoint=lambda _: "local",
+        min_samples=5,
+        success_floor=0.5,
+    )
+    assert not whole_table.is_suppressed("local")  # lifetime 0.5 is not < 0.5
+
+    recent = build_roi_overlay(
+        rows,
+        task_type="code_generation",
+        tier_of_endpoint=lambda _: "local",
+        min_samples=5,
+        success_floor=0.5,
+        lookback_rows=5,
+    )
+    (signal,) = recent.signals
+    assert signal.sample_count == 5
+    assert signal.success_count == 0
+    assert recent.is_suppressed("local")
+
+
+def test_lookback_keeps_the_most_recent_rows_regardless_of_input_order() -> None:
+    """Last-K is by ``created_at``, not list position — input order must not matter."""
+    # Shuffled input order; recency must still pick the 3 newest (all failures).
+    specs = [
+        (_dt(300), False),
+        (_dt(10), True),
+        (_dt(200), False),
+        (_dt(20), True),
+        (_dt(100), False),
+        (_dt(30), True),
+    ]
+    rows = _dated_rows("local-coder", specs=specs)
+    overlay = build_roi_overlay(
+        rows,
+        task_type="code_generation",
+        tier_of_endpoint=lambda _: "local",
+        min_samples=3,
+        success_floor=0.5,
+        lookback_rows=3,
+    )
+    (signal,) = overlay.signals
+    assert signal.sample_count == 3
+    assert signal.success_count == 0  # the 3 newest (offsets 100/200/300) all failed
+    assert overlay.is_suppressed("local")
+
+
+def test_window_seconds_filters_out_stale_rows() -> None:
+    """Rows older than the time window are dropped before aggregation."""
+    now = _dt(1000)
+    specs = [(_dt(i), True) for i in range(5)] + [  # stale successes (~1000s old)
+        (_dt(995 + i), False)
+        for i in range(5)  # recent failures (<10s old)
+    ]
+    rows = _dated_rows("local-coder", specs=specs)
+    overlay = build_roi_overlay(
+        rows,
+        task_type="code_generation",
+        tier_of_endpoint=lambda _: "local",
+        min_samples=5,
+        success_floor=0.5,
+        window_seconds=30.0,
+        now=now,
+    )
+    (signal,) = overlay.signals
+    assert signal.sample_count == 5  # only the recent failing cohort survives
+    assert signal.success_count == 0
+    assert overlay.is_suppressed("local")
+
+
+def test_window_thins_cohort_below_min_samples_so_no_suppression() -> None:
+    """A window that leaves < min_samples rows does not suppress (thin-sample gate)."""
+    now = _dt(1000)
+    specs = [(_dt(i), True) for i in range(5)] + [(_dt(998), False), (_dt(999), False)]
+    rows = _dated_rows("local-coder", specs=specs)
+    overlay = build_roi_overlay(
+        rows,
+        task_type="code_generation",
+        tier_of_endpoint=lambda _: "local",
+        min_samples=5,
+        success_floor=0.5,
+        window_seconds=30.0,
+        now=now,
+    )
+    (signal,) = overlay.signals
+    assert signal.sample_count == 2  # only 2 recent rows; below min_samples
+    assert not overlay.is_suppressed("local")
+
+
+def test_recency_drops_rows_without_created_at_when_window_active() -> None:
+    """Under an active window a row lacking a parseable created_at is excluded."""
+    dated = _dated_rows("local-coder", specs=[(_dt(i), False) for i in range(5)])
+    undated = _roi_rows("local-coder", n=5, successes=5)  # no created_at, all success
+    overlay = build_roi_overlay(
+        dated + undated,
+        task_type="code_generation",
+        tier_of_endpoint=lambda _: "local",
+        min_samples=5,
+        success_floor=0.5,
+        lookback_rows=10,
+    )
+    (signal,) = overlay.signals
+    assert signal.sample_count == 5  # only the 5 dated (failing) rows count
+    assert overlay.is_suppressed("local")
+
+
+def test_recency_parses_iso_string_created_at() -> None:
+    """created_at delivered as an ISO string (JSON/in-memory) is parsed, incl. trailing Z."""
+    rows: list[dict[str, object]] = [
+        {
+            "correlation_id": f"local-coder-{i}",
+            "endpoint_ref": "local-coder",
+            "final_success": False,
+            "created_at": f"2026-07-06T12:00:0{i}Z",
+        }
+        for i in range(5)
+    ]
+    overlay = build_roi_overlay(
+        rows,
+        task_type="code_generation",
+        tier_of_endpoint=lambda _: "local",
+        min_samples=5,
+        success_floor=0.5,
+        lookback_rows=5,
+    )
+    (signal,) = overlay.signals
+    assert signal.sample_count == 5
+    assert overlay.is_suppressed("local")
+
+
+def test_env_overrides_lookback_and_window(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The recency knobs resolve from env; malformed/non-positive → disabled (None)."""
+    monkeypatch.setenv("DELEGATION_ROI_LOOKBACK_ROWS", "7")
+    monkeypatch.setenv("DELEGATION_ROI_WINDOW_SECONDS", "3600")
+    assert resolve_roi_lookback_rows() == 7
+    assert resolve_roi_window_seconds() == 3600.0
+    # Non-positive / malformed → None (disabled = lifetime cohort), never "keep zero".
+    monkeypatch.setenv("DELEGATION_ROI_LOOKBACK_ROWS", "0")
+    monkeypatch.setenv("DELEGATION_ROI_WINDOW_SECONDS", "-5")
+    assert resolve_roi_lookback_rows() is None
+    assert resolve_roi_window_seconds() is None
+    monkeypatch.setenv("DELEGATION_ROI_LOOKBACK_ROWS", "notanint")
+    monkeypatch.setenv("DELEGATION_ROI_WINDOW_SECONDS", "notafloat")
+    assert resolve_roi_lookback_rows() is None
+    assert resolve_roi_window_seconds() is None
+
+
+def test_resolve_overlay_threads_lookback_window(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """resolve_roi_overlay honours env-set recency knobs end-to-end through a DB read."""
+    monkeypatch.delenv("DELEGATION_ROI_LOOKBACK_ROWS", raising=False)
+    monkeypatch.delenv("DELEGATION_ROI_WINDOW_SECONDS", raising=False)
+    db = InmemoryDatabaseAdapter()
+    specs = [(_dt(i), True) for i in range(5)] + [
+        (_dt(100 + i), False) for i in range(5)
+    ]
+    for row in _dated_rows("local-coder", specs=specs):
+        db.upsert(CONTEXT_ROI_TABLE, "correlation_id", row)
+
+    # Lifetime (env unset): 0.5 rate, not suppressed.
+    lifetime = resolve_roi_overlay(
+        db,
+        task_type="code_generation",
+        tier_of_endpoint=lambda _: "local",
+        min_samples=5,
+        success_floor=0.5,
+    )
+    assert lifetime is not None
+    assert not lifetime.is_suppressed("local")
+
+    # Recent-5 (explicit arg): 0.0 rate, suppressed.
+    recent = resolve_roi_overlay(
+        db,
+        task_type="code_generation",
+        tier_of_endpoint=lambda _: "local",
+        min_samples=5,
+        success_floor=0.5,
+        lookback_rows=5,
+    )
+    assert recent is not None
+    assert recent.is_suppressed("local")
 
 
 # --- resolve_roi_overlay (fail-open reader) ------------------------------------

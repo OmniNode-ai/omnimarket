@@ -11,6 +11,37 @@ from omnibase_core.models.delegation.wire import ModelPremiumCounterfactual
 from pydantic import BaseModel, ConfigDict, Field
 
 
+class ModelDelegateSkillAttemptRecord(BaseModel):
+    """One tier/backend attempt in a delegation's escalation ladder (OMN-14063).
+
+    Populated for the bus-less local dispatch path from the per-attempt list
+    ``LocalDelegationDispatchPort.dispatch`` already builds internally; prior to
+    OMN-14063 that list was computed but never threaded onto the typed response,
+    so a local->cloud escalation (e.g. triggered by a flaky health probe) was
+    invisible to the caller — visible only by grepping the capture-file log.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    tier: str = Field(...)
+    backend_id: str = Field(...)
+    model_id: str = Field(...)
+    quality_gate_passed: bool = Field(...)
+    quality_score: float | None = Field(default=None)
+    cost_usd: float = Field(default=0.0, ge=0.0)
+    failure_class: str | None = Field(
+        default=None,
+        description="Transport failure_class (e.g. 'model_unavailable') when this "
+        "attempt was skipped/failed before inference ran; None for a quality-gate "
+        "verdict or a successful attempt.",
+    )
+    error_message: str = Field(
+        default="",
+        description="Why this tier was skipped/failed, e.g. 'endpoint <url> failed "
+        "health probe' — the same reason previously visible only in the capture log.",
+    )
+
+
 class ModelDelegateSkillResponseMetrics(BaseModel):
     """Cost and latency metrics for a delegation."""
 
@@ -55,9 +86,22 @@ class ModelDelegateSkillResponse(BaseModel):
         default_factory=ModelDelegateSkillResponseMetrics,
     )
     error_message: str = Field(default="")
+    escalation_count: int = Field(
+        default=0,
+        ge=0,
+        description="Number of up-tier escalations before the terminal attempt "
+        "(OMN-14063). 0 means the first-resolved tier answered directly.",
+    )
+    attempts: list[ModelDelegateSkillAttemptRecord] = Field(
+        default_factory=list,
+        description="Per-tier attempt ladder, in order, including the terminal "
+        "attempt (OMN-14063). Empty for dispatch ports that do not yet report "
+        "per-attempt detail (e.g. the Kafka bus path).",
+    )
 
 
 __all__ = [
+    "ModelDelegateSkillAttemptRecord",
     "ModelDelegateSkillResponse",
     "ModelDelegateSkillResponseMetrics",
 ]

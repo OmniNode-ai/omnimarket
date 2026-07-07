@@ -332,6 +332,79 @@ async def test_handler_maps_scored_failed_delegation_terminal() -> None:
 
 
 @pytest.mark.unit
+async def test_handler_surfaces_escalation_ladder_on_typed_response() -> None:
+    """OMN-14063: a local->cloud escalation must be visible on the typed
+    response, not only in the capture-file log. Mirrors a real dispatch result
+    shape (health-probe failure on local, success on cheap_cloud)."""
+    port = AsyncMock()
+    port.dispatch.return_value = {
+        "status": "completed",
+        "content": "answer from cloud",
+        "delegated_to": "https://gemini.example/v1/chat/completions",
+        "model_name": "gemini-2.5-flash-lite",
+        "quality_gate_passed": True,
+        "quality_score": 1.0,
+        "cost_usd": 0.0018,
+        "escalation_count": 1,
+        "attempts": [
+            {
+                "tier": "local",
+                "backend_id": "local-coder",
+                "model_id": "Qwen3.6-35B-A3B",
+                "quality_gate_passed": False,
+                "quality_score": None,
+                "cost_usd": 0.0,
+                "failure_class": "model_unavailable",
+                "error_message": "endpoint http://local.example/v1/chat/completions failed health probe",
+            },
+            {
+                "tier": "cheap_cloud",
+                "backend_id": "cloud-gemini-flash",
+                "model_id": "gemini-2.5-flash-lite",
+                "quality_gate_passed": True,
+                "quality_score": 1.0,
+                "cost_usd": 0.0018,
+            },
+        ],
+    }
+    handler = HandlerDelegateSkill(object(), dispatch_port=port)
+    request = ModelDelegateSkillRequest(
+        prompt="Summarize this",
+        task_type="document",
+        source="claude-code",
+    )
+    response = await handler.handle(request)
+
+    assert response.escalation_count == 1
+    assert len(response.attempts) == 2
+    first, second = response.attempts
+    assert first.tier == "local"
+    assert first.backend_id == "local-coder"
+    assert first.quality_gate_passed is False
+    assert first.failure_class == "model_unavailable"
+    assert "failed health probe" in first.error_message
+    assert second.tier == "cheap_cloud"
+    assert second.quality_gate_passed is True
+    assert second.failure_class is None
+    assert second.error_message == ""
+
+
+@pytest.mark.unit
+async def test_handler_defaults_escalation_fields_when_dispatch_omits_them() -> None:
+    """A dispatch port that doesn't report per-attempt detail (e.g. the Kafka
+    bus path) must not break response construction — defaults to 0/[]."""
+    port = AsyncMock()
+    port.dispatch.return_value = {"status": "completed", "content": "ok"}
+    handler = HandlerDelegateSkill(object(), dispatch_port=port)
+    request = ModelDelegateSkillRequest(
+        prompt="Test", task_type="test", source="claude-code"
+    )
+    response = await handler.handle(request)
+    assert response.escalation_count == 0
+    assert response.attempts == []
+
+
+@pytest.mark.unit
 async def test_handler_does_not_reference_transport_internals(
     mock_dispatch_port: AsyncMock,
 ) -> None:
