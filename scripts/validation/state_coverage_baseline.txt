@@ -404,8 +404,6 @@ node_projection_delegation onex.snapshot.projection.delegation.budget-state.v1
 node_projection_delegation_inference_response onex.snapshot.projection.delegation.inference-response-text.v1
 node_projection_event_chain onex.evt.omnimarket.event-chain-applied.v1
 node_projection_instruction_eval onex.evt.omnimarket.instruction-eval-aggregate-snapshot.v1
-node_projection_live_events onex.evt.omnimarket.projection-live-events-applied.v1
-node_projection_live_events onex.snapshot.projection.live-events.v1
 node_projection_llm_cost onex.evt.omnimarket.projection-llm-cost-applied.v1
 node_projection_llm_routing onex.evt.omnimarket.projection-llm-routing-applied.v1
 node_projection_overnight onex.evt.omnimarket.projection-overnight-applied.v1
