@@ -40,6 +40,11 @@ from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.occ_git_transport im
 logger = logging.getLogger(__name__)
 _CONTRACT_PATH = Path(__file__).resolve().parents[1] / "contract.yaml"
 
+# OMN-14031: bound every git subprocess so a stalled network git call (push /
+# fetch under egress saturation) fails fast instead of wedging the fix-effect
+# path — the same un-timed-subprocess hang class fixed in the inventory node.
+_GIT_TIMEOUT_SECONDS = 120
+
 _DEFAULT_RUNNER = "node_pr_lifecycle_fix_effect"
 _DEFAULT_VERIFIER = "occ-auto-contract-verifier"
 
@@ -552,7 +557,7 @@ class OccContractAdapter:
     def _run_git(self, argv: list[str], *, cwd: str) -> str:
         # Delegates to the shared transport, which redacts any embedded
         # x-access-token credential from a surfaced git error (OMN-13990).
-        return run_git(argv, cwd=cwd)
+        return run_git(argv, cwd=cwd, timeout=_GIT_TIMEOUT_SECONDS)
 
     def _head_sha(self, cwd: str) -> str:
         try:
