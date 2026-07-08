@@ -48,14 +48,53 @@ permissions:
 
 jobs:
   occ-preflight:
-    # self-gating-ok: centralized OCC preflight reusable is the canonical cross-repo gate for non-OCC repositories.
-    uses: OmniNode-ai/omnibase_core/.github/workflows/occ-preflight.yml@336021ef29ba3568394b31a32b9a3e01dba0dae9
+    name: OCC Preflight Dependency
+    runs-on: ubuntu-latest
     permissions:
+      checks: read
       contents: read
-      pull-requests: read
-    with:
-      contracts-dir: contracts
-      receipts-dir: drift/dod_receipts
+    steps:
+      - name: Wait for required OCC preflight
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+
+          if [ "${{ github.event_name }}" != "pull_request" ]; then
+            echo "OCC preflight dependency is enforced by the pull_request gate; continuing for ${GITHUB_EVENT_NAME}."
+            exit 0
+          fi
+
+          for _ in $(seq 1 60); do
+            conclusion="$(
+              gh api "repos/${REPO}/commits/${HEAD_SHA}/check-runs?filter=latest&per_page=100" \
+                --jq '.check_runs[] | select(.name == "occ-preflight / eligibility") | .conclusion' \
+                | head -1
+            )"
+
+            case "$conclusion" in
+              success)
+                echo "OCC preflight passed for ${HEAD_SHA}."
+                exit 0
+                ;;
+              failure|cancelled|timed_out|action_required|startup_failure)
+                echo "::error::OCC preflight concluded ${conclusion}; refusing to start this workflow."
+                exit 1
+                ;;
+              "")
+                echo "Waiting for occ-preflight / eligibility to post for ${HEAD_SHA}..."
+                ;;
+              *)
+                echo "OCC preflight is ${conclusion}; waiting."
+                ;;
+            esac
+            sleep 10
+          done
+
+          echo "::error::Timed out waiting for occ-preflight / eligibility on ${HEAD_SHA}."
+          exit 1
 
   # ============================================================================
   # Token resolution — swap to onexbot GitHub App token when the app exists,
