@@ -32,6 +32,33 @@ from omnimarket.nodes.node_pr_lifecycle_fix_effect.models.model_fix_command impo
     ModelPrLifecycleFixCommand,
 )
 
+
+@pytest.fixture(autouse=True)
+def _fake_github_token() -> object:
+    """Stub the token resolver and product-PR fetch for every test.
+
+    OMN-13990 switched the OccContractAdapter clone to HTTPS x-access-token, so
+    ``_create_occ_contract_sync`` now resolves ``GITHUB_TOKEN`` and GETs the
+    product PR body (early Evidence-Source guard) before cloning. These unit
+    tests mock all git/network I/O; the resolver + rest_json must be stubbed so
+    no test reaches the real secret store or GitHub. rest_json returns a body
+    with NO Evidence-Source so the mutate flow proceeds past the early guard.
+    """
+    with (
+        patch(
+            "omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers."
+            "adapter_occ_contract._resolve_github_token",
+            return_value="fake-token",
+        ) as mock_token,
+        patch(
+            "omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers."
+            "adapter_occ_contract.rest_json",
+            return_value={"body": ""},
+        ),
+    ):
+        yield mock_token
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
