@@ -12,6 +12,7 @@ Related:
 from __future__ import annotations
 
 import json
+import subprocess
 from datetime import UTC, datetime, timedelta
 from unittest.mock import MagicMock, patch
 
@@ -238,6 +239,43 @@ class TestHandlerPrLifecycleInventoryGoldenChain:
             "api",
             "repos/OmniNode-ai/onex_change_control/actions/jobs/85275485561/logs",
         ]
+
+    def test_collect_flaky_failure_evidence_timeout_fails_soft(self) -> None:
+        handler = HandlerPrLifecycleInventory()
+        link = (
+            "https://github.com/OmniNode-ai/onex_change_control/"
+            "actions/runs/28760705648/job/85275485561"
+        )
+
+        def fake_run(
+            cmd: list[str],
+            capture_output: bool,
+            text: bool,
+            timeout: int | None = None,
+        ) -> MagicMock:
+            if cmd[:2] == ["gh", "api"]:
+                raise subprocess.TimeoutExpired(cmd, timeout or 30)
+            return _make_subprocess_result(
+                json.dumps(
+                    [
+                        {
+                            "name": "Kafka Boundary Parity",
+                            "state": "FAILURE",
+                            "bucket": "fail",
+                            "event": "pull_request",
+                            "link": link,
+                        }
+                    ]
+                )
+            )
+
+        with patch("subprocess.run", side_effect=fake_run):
+            check_runs = handler._collect_check_runs(
+                "OmniNode-ai/onex_change_control", 3637
+            )
+
+        assert check_runs[0].link == link
+        assert check_runs[0].flaky_failure_evidence == ()
 
     def test_ci_failing_when_check_fails(self) -> None:
         check_runs = [

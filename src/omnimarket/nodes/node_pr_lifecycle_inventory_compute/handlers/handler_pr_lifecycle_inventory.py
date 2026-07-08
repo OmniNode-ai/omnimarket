@@ -596,7 +596,7 @@ class HandlerPrLifecycleInventory:
         repo_name = self._repo_name_from_link(link)
         if not job_id.isdigit() or not repo_name:
             return ()
-        result = subprocess.run(
+        result = self._run_gh(
             [
                 "gh",
                 "api",
@@ -604,8 +604,6 @@ class HandlerPrLifecycleInventory:
                 "--header",
                 "Accept: application/vnd.github+json",
             ],
-            capture_output=True,
-            text=True,
             timeout=30,
         )
         if result.returncode != 0:

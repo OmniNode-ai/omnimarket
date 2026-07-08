@@ -583,6 +583,15 @@ def _is_flaky_infra_only(failed_check_names: tuple[str, ...]) -> bool:
     )
 
 
+def _has_code_signal_failure(failed_check_names: tuple[str, ...]) -> bool:
+    """True when any failed check name indicates code that must be fixed."""
+    return any(
+        sub in name.lower()
+        for name in failed_check_names
+        for sub in _CODE_SIGNAL_CHECK_SUBSTRINGS
+    )
+
+
 def _has_flaky_failure_evidence(pr: TriageRecord) -> bool:
     """True when inventory found hard network/clone evidence for failed checks."""
     return bool(tuple(e.strip() for e in pr.failed_check_flaky_evidence if e.strip()))
@@ -721,7 +730,11 @@ def _block_reason_for_fix(pr: TriageRecord) -> Any:
     # CI rerun. Deliberately narrow + fail-safe: any code-signal check present
     # falls through to CODE_FAILURE below.
     if pr.category == EnumPrCategory.RED and (
-        _is_flaky_infra_only(failed_check_names) or _has_flaky_failure_evidence(pr)
+        _is_flaky_infra_only(failed_check_names)
+        or (
+            _has_flaky_failure_evidence(pr)
+            and not _has_code_signal_failure(failed_check_names)
+        )
     ):
         return EnumPrBlockReason.CI_FAILURE
 
