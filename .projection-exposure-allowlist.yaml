@@ -46,3 +46,23 @@ omissions:
       budget-state row; not a rendered surface (the budget exposure serves
       tenant_id/cost_tier_name/period aggregates). Grandfathered ratchet baseline
       at OMN-13663 gate introduction.
+  - node: node_projection_delegation
+    table: delegation_events
+    column: tenant_id
+    reason: >-
+      OMN-14058 interim per-tenant identity stamp (operator-accepted for beta):
+      the column exists so writes with ONEX_TENANT_ID set land under a real
+      tenant identity instead of erroring, but no per-tenant dashboard surface
+      reads it yet. The durable per-tenant identity design (org/tenant model,
+      auth-derived resolution, RLS-aware readers) is OMN-14107 — surface this
+      column in an exposure when that lands.
+  - node: node_projection_savings
+    table: savings_estimates
+    column: tenant_id
+    reason: >-
+      OMN-14058 interim per-tenant identity stamp (operator-accepted for beta):
+      the column exists so writes with ONEX_TENANT_ID set land under a real
+      tenant identity instead of erroring, but no per-tenant dashboard surface
+      reads it yet. The durable per-tenant identity design (org/tenant model,
+      auth-derived resolution, RLS-aware readers) is OMN-14107 — surface this
+      column in an exposure when that lands.
