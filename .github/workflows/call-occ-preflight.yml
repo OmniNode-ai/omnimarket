@@ -32,7 +32,82 @@ permissions:
 
 jobs:
   occ-preflight:
-    uses: OmniNode-ai/omnibase_core/.github/workflows/occ-preflight.yml@main
-    with:
-      contracts-dir: contracts
-      receipts-dir: drift/dod_receipts
+    name: occ-preflight / eligibility
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - name: Resolve OCC evidence
+        id: occ
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: |
+          set -euo pipefail
+          occ_pr="$(
+            printf '%s\n' "$PR_BODY" \
+              | sed -nE 's/^Evidence-Source:[[:space:]]+OCC#([0-9]+)[[:space:]]*$/\1/p' \
+              | head -1
+          )"
+          if [ -z "$occ_pr" ]; then
+            echo "::error::Missing Evidence-Source: OCC#<pr> line."
+            exit 1
+          fi
+
+          state="$(gh pr view "$occ_pr" --repo OmniNode-ai/onex_change_control --json state --jq .state)"
+          if [ "$state" != "MERGED" ]; then
+            echo "::error::OCC evidence PR #${occ_pr} is ${state}, not MERGED."
+            exit 1
+          fi
+
+          sha="$(gh pr view "$occ_pr" --repo OmniNode-ai/onex_change_control --json mergeCommit --jq .mergeCommit.oid)"
+          if ! printf '%s' "$sha" | grep -Eq '^[0-9a-f]{40}$'; then
+            echo "::error::Could not resolve merged OCC evidence SHA for #${occ_pr}."
+            exit 1
+          fi
+
+          echo "pr=$occ_pr" >> "$GITHUB_OUTPUT"
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout omnibase_core validator
+        uses: actions/checkout@v6
+        with:
+          repository: OmniNode-ai/omnibase_core
+          ref: main
+          path: omnibase_core
+
+      - name: Checkout pinned OCC evidence
+        uses: actions/checkout@v6
+        with:
+          repository: OmniNode-ai/onex_change_control
+          ref: ${{ steps.occ.outputs.sha }}
+          path: onex_change_control
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+
+      - name: Validate OCC eligibility
+        working-directory: omnibase_core
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+          PR_BRANCH: ${{ github.event.pull_request.head.ref }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          OCC_SHA: ${{ steps.occ.outputs.sha }}
+        run: |
+          set -euo pipefail
+          body_file="$(mktemp)"
+          printf '%s\n' "$PR_BODY" > "$body_file"
+
+          uv run python -m omnibase_core.validation.validator_occ_merge_eligibility \
+            --repo omnimarket \
+            --pr-number "$PR_NUMBER" \
+            --pr-title "$PR_TITLE" \
+            --pr-body-file "$body_file" \
+            --pr-branch "$PR_BRANCH" \
+            --pr-commit-sha "$PR_HEAD_SHA" \
+            --occ-commit-sha "$OCC_SHA" \
+            --contracts-dir "$GITHUB_WORKSPACE/onex_change_control/contracts" \
+            --receipts-dir "$GITHUB_WORKSPACE/onex_change_control/drift/dod_receipts"

@@ -29,7 +29,57 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  occ-preflight:
+    name: OCC Preflight Dependency
+    runs-on: ubuntu-latest
+    permissions:
+      checks: read
+      contents: read
+    steps:
+      - name: Wait for required OCC preflight
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+
+          if [ "${{ github.event_name }}" != "pull_request" ]; then
+            echo "OCC preflight dependency is enforced by the pull_request gate; continuing for ${GITHUB_EVENT_NAME}."
+            exit 0
+          fi
+
+          for _ in $(seq 1 60); do
+            conclusion="$(
+              gh api "repos/${REPO}/commits/${HEAD_SHA}/check-runs?filter=latest&per_page=100" \
+                --jq '.check_runs[] | select(.name == "occ-preflight / eligibility") | .conclusion' \
+                | head -1
+            )"
+
+            case "$conclusion" in
+              success)
+                echo "OCC preflight passed for ${HEAD_SHA}."
+                exit 0
+                ;;
+              failure|cancelled|timed_out|action_required|startup_failure)
+                echo "::error::OCC preflight concluded ${conclusion}; refusing to start this workflow."
+                exit 1
+                ;;
+              "")
+                echo "Waiting for occ-preflight / eligibility to post for ${HEAD_SHA}..."
+                ;;
+              *)
+                echo "OCC preflight is ${conclusion}; waiting."
+                ;;
+            esac
+            sleep 10
+          done
+
+          echo "::error::Timed out waiting for occ-preflight / eligibility on ${HEAD_SHA}."
+          exit 1
+
   contract-validation:
+    needs: occ-preflight
     name: contract-validation
     runs-on: ubuntu-latest
     timeout-minutes: 10
