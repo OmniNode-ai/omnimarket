@@ -55,6 +55,8 @@ event_bus:
   publish_topics:
     - onex.evt.omnimarket.projection-live-events-applied.v1
     - onex.snapshot.projection.live-events.v1  # onex-topic-allow: projection snapshot topic
+  dlq_topics:
+    - onex.dlq.omnimarket.projection-live-events-malformed.v1
 
 externally_consumed_topics:
   - onex.evt.omnimarket.projection-live-events-applied.v1

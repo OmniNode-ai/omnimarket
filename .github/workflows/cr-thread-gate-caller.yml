@@ -10,8 +10,6 @@ on:
     types: [created, edited, deleted]
   issue_comment:
     types: [created, edited, deleted]
-  merge_group:
-    types: [checks_requested]
 
 jobs:
   occ-preflight:

@@ -142,12 +142,22 @@ class TestOccContractAdapterRunGit:
 class TestOccContractAdapterOpenOccPr:
     def test_open_occ_pr_calls_rest_json_and_returns_number(self) -> None:
         adapter = OccContractAdapter()
-        mock_resp = {"number": 42, "html_url": "https://github.com/test/pr/42"}
+
+        def fake_rest(
+            method: str,
+            path: str,
+            *,
+            body: dict | None = None,
+            token: str | None = None,
+        ) -> dict:
+            if method == "GET":  # default-branch resolution (OMN-13990)
+                return {"default_branch": "dev"}
+            return {"number": 42, "html_url": "https://github.com/test/pr/42"}
 
         with (
             patch(
                 "omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.adapter_occ_contract.rest_json",
-                return_value=mock_resp,
+                side_effect=fake_rest,
             ) as mock_rest,
             patch(
                 "omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.adapter_occ_contract._resolve_github_token",
@@ -162,17 +172,30 @@ class TestOccContractAdapterOpenOccPr:
             )
 
         assert result == 42
-        mock_rest.assert_called_once()
+        # Last call is the POST create, based on OCC's default branch (dev).
         call_kwargs = mock_rest.call_args
         assert call_kwargs[0][0] == "POST"
         assert "pulls" in call_kwargs[0][1]
+        assert call_kwargs.kwargs["body"]["base"] == "dev"
 
     def test_open_occ_pr_raises_on_missing_number(self) -> None:
         adapter = OccContractAdapter()
+
+        def fake_rest(
+            method: str,
+            path: str,
+            *,
+            body: dict | None = None,
+            token: str | None = None,
+        ) -> dict:
+            if method == "GET":
+                return {"default_branch": "dev"}
+            return {"html_url": "https://github.com/test"}
+
         with (
             patch(
                 "omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.adapter_occ_contract.rest_json",
-                return_value={"html_url": "https://github.com/test"},
+                side_effect=fake_rest,
             ),
             patch(
                 "omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.adapter_occ_contract._resolve_github_token",
@@ -307,6 +330,16 @@ class TestOccContractAdapterCreateOccContract:
                 adapter,
                 "_append_evidence_to_pr",
                 side_effect=lambda **kw: append_calls.append(kw),
+            ),
+            patch(
+                "omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers."
+                "adapter_occ_contract._resolve_github_token",
+                return_value="fake-token",
+            ),
+            patch(
+                "omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers."
+                "adapter_occ_contract.rest_json",
+                return_value={"body": ""},  # early Evidence-Source guard: not bound
             ),
             patch("tempfile.TemporaryDirectory") as mock_tmpdir,
             patch("pathlib.Path.mkdir"),

@@ -13,9 +13,11 @@
 # PATCHes Evidence-Source: OCC#<n> back onto the product PR so occ-preflight
 # goes green with zero manual edits.
 #
-# Payload: {repo, pr_number, pr_head_sha, ticket, requested_at}
+# Payload (ModelPrLifecycleFixCommand-shaped so payload_type_match routes it —
+# OMN-13990): {correlation_id, pr_number, repo, block_reason, ticket_id,
+# requested_at}. The head SHA is NOT carried; the adapter re-resolves it.
 #
-# Called from the call-occ-autobind GHA workflow on pull_request:
+# Emitted by the call-occ-autobind GHA workflow on pull_request:
 # [opened, synchronize].
 #
 # BROKER DECISION (mirrors publish_pr_merged_event.py, OMN-13226):
@@ -47,6 +49,7 @@
 
 from __future__ import annotations
 
+import importlib.util
 import json
 import os
 import re
@@ -58,15 +61,30 @@ from pathlib import Path
 import click
 
 # Canonical topic constant (single source of truth in omnimarket.events.topics).
-_SRC_ROOT = Path(__file__).resolve().parents[1] / "src"
-if str(_SRC_ROOT) not in sys.path:
-    sys.path.insert(0, str(_SRC_ROOT))
+# Load the module by file path so this thin GHA script does not execute
+# omnimarket.events.__init__, which imports the full product dependency graph.
+_TOPICS_PATH = (
+    Path(__file__).resolve().parents[1] / "src" / "omnimarket" / "events" / "topics.py"
+)
+_TOPICS_SPEC = importlib.util.spec_from_file_location(
+    "omnimarket_events_topics_for_occ_autobind", _TOPICS_PATH
+)
+if _TOPICS_SPEC is None or _TOPICS_SPEC.loader is None:
+    raise RuntimeError(f"Could not load topic registry from {_TOPICS_PATH}")
+_TOPICS_MODULE = importlib.util.module_from_spec(_TOPICS_SPEC)
+_TOPICS_SPEC.loader.exec_module(_TOPICS_MODULE)
 
-from omnimarket.events.topics import OCC_AUTOBIND_COMMAND_TOPIC_V1  # noqa: E402
-
-TOPIC = OCC_AUTOBIND_COMMAND_TOPIC_V1
+TOPIC = _TOPICS_MODULE.OCC_AUTOBIND_COMMAND_TOPIC_V1
 
 _TICKET_RE = re.compile(r"OMN-\d+", re.IGNORECASE)
+
+# Wire literal for the block reason the runtime routes this command under.
+# MUST equal EnumPrBlockReason.RECEIPT_EVIDENCE_SOURCE_AUTOBIND.value — asserted
+# by tests/unit/nodes/node_pr_lifecycle_fix_effect/test_publish_occ_autobind_command.py
+# rather than imported here (importing the node's model package into this thin
+# GHA-runner script would pull in far more than the minimal deps the workflow
+# installs). OMN-13990.
+_BLOCK_REASON_AUTOBIND = "receipt_evidence_source_autobind"
 
 
 def _extract_ticket(title: str, branch: str = "") -> str:
@@ -103,18 +121,26 @@ def _kafka_producer_config(
 def build_payload(
     repo: str,
     pr_number: int,
-    pr_head_sha: str,
     ticket: str,
-    event_id: str,
+    correlation_id: str,
 ) -> dict[str, object]:
-    """Return the canonical occ-autobind command payload."""
+    """Return an occ-autobind command payload shaped as ModelPrLifecycleFixCommand.
+
+    The runtime consumes this off ``onex.cmd.omnimarket.occ-autobind.v1`` and the
+    contract's ``payload_type_match`` routing validates it against
+    ``ModelPrLifecycleFixCommand`` (``extra='forbid'``) before dispatching to
+    ``HandlerPrLifecycleFix`` under the ``receipt_evidence_source_autobind`` block
+    reason. The keys here MUST be exactly the command model's fields — the old
+    ``{event_id, topic, pr_head_sha, ticket}`` shape never matched, so the command
+    was silently DLQ'd and the emitter never fired (OMN-13990). The adapter
+    re-resolves the head SHA from GitHub, so it is not carried on the wire.
+    """
     return {
-        "event_id": event_id,
-        "topic": TOPIC,
-        "repo": repo,
+        "correlation_id": correlation_id,
         "pr_number": pr_number,
-        "pr_head_sha": pr_head_sha,
-        "ticket": ticket,
+        "repo": repo,
+        "block_reason": _BLOCK_REASON_AUTOBIND,
+        "ticket_id": ticket or None,
         "requested_at": datetime.now(UTC).isoformat(),
     }
 
@@ -125,19 +151,17 @@ def publish_occ_autobind_command(
     password: str,
     repo: str,
     pr_number: int,
-    pr_head_sha: str,
     ticket: str,
 ) -> str:
-    """Publish onex.cmd.omnimarket.occ-autobind.v1 to Kafka. Returns the event_id."""
+    """Publish onex.cmd.omnimarket.occ-autobind.v1 to Kafka. Returns the correlation_id."""
     from confluent_kafka import Producer  # type: ignore[import-untyped,unused-ignore]
 
-    event_id = str(uuid.uuid4())
+    correlation_id = str(uuid.uuid4())
     payload = build_payload(
         repo=repo,
         pr_number=pr_number,
-        pr_head_sha=pr_head_sha,
         ticket=ticket,
-        event_id=event_id,
+        correlation_id=correlation_id,
     )
 
     producer = Producer(_kafka_producer_config(bootstrap_servers, username, password))
@@ -163,7 +187,7 @@ def publish_occ_autobind_command(
     if delivery_error is not None:
         raise RuntimeError(f"Kafka delivery failed: {delivery_error}") from None
 
-    return event_id
+    return correlation_id
 
 
 @click.command()
@@ -202,13 +226,12 @@ def main(dry_run: bool) -> None:
 
     ticket = ticket_env or _extract_ticket(title)
 
-    event_id = str(uuid.uuid4())
+    correlation_id = str(uuid.uuid4())
     payload = build_payload(
         repo=repo,
         pr_number=pr_number,
-        pr_head_sha=pr_head_sha,
         ticket=ticket,
-        event_id=event_id,
+        correlation_id=correlation_id,
     )
 
     click.echo(
@@ -243,7 +266,6 @@ def main(dry_run: bool) -> None:
             password=password,
             repo=repo,
             pr_number=pr_number,
-            pr_head_sha=pr_head_sha,
             ticket=ticket,
         )
     except Exception as exc:

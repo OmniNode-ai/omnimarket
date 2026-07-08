@@ -26,7 +26,6 @@ on:
       - 'src/omnimarket/runtime/**'
       - 'tests/test_plugin_compat_handshake.py'
       - '.github/workflows/plugin-compat-gate.yml'
-  merge_group:
   workflow_dispatch:
 
 env:
