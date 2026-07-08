@@ -479,3 +479,100 @@ async def test_emits_escalation_proof_matching_active_route(tmp_path: Path) -> N
     assert event["tier"] == "cheap_cloud"
     assert event["model"] == effect.calls[1].model == _CLOUD_MODEL
     assert event["endpoint"] == effect.calls[1].endpoint_url == _CLOUD_ENDPOINT
+
+
+# ---------------------------------------------------------------------------
+# OMN-14018: a per-run forced_endpoint_ref pins the STARTING route to a chosen
+# backend's tier (context-ROI per-tier capture), overriding the contract tier.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+@pytest.mark.usefixtures("hermetic_routing")
+@pytest.mark.asyncio
+async def test_forced_endpoint_ref_pins_first_attempt_to_that_tier(
+    tmp_path: Path,
+) -> None:
+    """forced_endpoint_ref=cloud-gemini-flash → attempt #1 posts to the CLOUD tier.
+
+    The contract declares local-coder (local); without a pin attempt #1 is local
+    (proven by ``test_first_attempt_routes_to_local_tier``). With the pin the
+    routing authority resolves the cheap_cloud tier's model + endpoint for the
+    STARTING route, so the first (and only) call rides cloud. This is the runner-
+    driven per-tier capture: the battery pins a run to a backend to record genuine
+    graded outcomes for that tier in context_roi_scores.
+    """
+    handler, effect = _make_real_path_handler(tmp_path, [_VALID_LLM_RESPONSE])
+
+    result = await handler.handle(
+        ModelNodeGenerationRequest(
+            task_description="Build a stub node",
+            correlation_id="corr-forced-cloud-1",
+            max_attempts=3,
+            forced_endpoint_ref="cloud-gemini-flash",
+        )
+    )
+
+    assert result.contract_passed is True
+    assert result.attempt_count == 1
+    assert len(effect.calls) == 1
+    # The pin overrode the contract-declared local start — first call rode cloud.
+    assert effect.calls[0].model == _CLOUD_MODEL
+    assert effect.calls[0].endpoint_url == _CLOUD_ENDPOINT
+    assert result.attempts[0].provider == "cloud"
+    assert result.attempts[0].model_id == _CLOUD_MODEL
+    # OMN-14018 capture-attribution: the attempt AND the run-level benchmark must
+    # record the forced BACKEND id (not the bare tier name) as endpoint_class, so
+    # the context_roi_scores row's endpoint_ref resolves through
+    # tier_for_backend(endpoint_ref) -> cheap_cloud and the captured per-tier rows
+    # are overlay-countable. A bare tier name ("cheap_cloud") resolves to None and
+    # the row would be silently dropped.
+    assert result.attempts[0].endpoint_class == "cloud-gemini-flash"
+    assert result.endpoint_class == "cloud-gemini-flash"
+
+
+@pytest.mark.unit
+@pytest.mark.usefixtures("hermetic_routing")
+@pytest.mark.asyncio
+async def test_empty_forced_endpoint_ref_uses_contract_starting_tier(
+    tmp_path: Path,
+) -> None:
+    """An empty forced_endpoint_ref (default) preserves contract-declared routing."""
+    handler, effect = _make_real_path_handler(tmp_path, [_VALID_LLM_RESPONSE])
+
+    result = await handler.handle(
+        ModelNodeGenerationRequest(
+            task_description="Build a stub node",
+            correlation_id="corr-forced-empty-1",
+            max_attempts=3,
+            forced_endpoint_ref="",
+        )
+    )
+
+    assert result.attempt_count == 1
+    assert effect.calls[0].model == _LOCAL_MODEL
+    assert effect.calls[0].endpoint_url == _LOCAL_ENDPOINT
+
+
+@pytest.mark.unit
+@pytest.mark.usefixtures("hermetic_routing")
+@pytest.mark.asyncio
+async def test_unresolvable_forced_endpoint_ref_falls_back_to_contract_route(
+    tmp_path: Path,
+) -> None:
+    """A forced ref that maps to no tier degrades to the contract route (fail-safe)."""
+    handler, effect = _make_real_path_handler(tmp_path, [_VALID_LLM_RESPONSE])
+
+    result = await handler.handle(
+        ModelNodeGenerationRequest(
+            task_description="Build a stub node",
+            correlation_id="corr-forced-bad-1",
+            max_attempts=3,
+            forced_endpoint_ref="no-such-backend",
+        )
+    )
+
+    # The bad pin did not crash the run; it kept the contract-declared local route.
+    assert result.contract_passed is True
+    assert effect.calls[0].model == _LOCAL_MODEL
+    assert effect.calls[0].endpoint_url == _LOCAL_ENDPOINT

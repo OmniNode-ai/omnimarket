@@ -20,7 +20,6 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import logging
-import os
 import re
 import subprocess
 import tempfile
@@ -32,6 +31,11 @@ from typing import Literal
 from omnimarket.github_api import rest_json, split_repo
 from omnimarket.inference.secret_store_resolver import resolve_api_key
 from omnimarket.nodes.contract_topics import contract_secret_ref
+from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.occ_git_transport import (
+    OCC_REPO,
+    authenticated_occ_url,
+    run_git,
+)
 
 logger = logging.getLogger(__name__)
 _CONTRACT_PATH = Path(__file__).resolve().parents[1] / "contract.yaml"
@@ -83,8 +87,10 @@ def _build_idempotency_key(
     return hashlib.sha256(raw.encode()).hexdigest()
 
 
-_OCC_REPO = "OmniNode-ai/onex_change_control"
-_OCC_REPO_GIT = "git@github.com:OmniNode-ai/onex_change_control.git"
+_OCC_REPO = OCC_REPO
+
+# Matches ANY populated Evidence-Source line (OMN-13990 item 8 idempotency guard).
+_ANY_EVIDENCE_SOURCE_RE = re.compile(r"^Evidence-Source:\s*\S", re.MULTILINE)
 
 # ---------------------------------------------------------------------------
 # Trivial-infra OCC fast-path (OMN-13776).
@@ -258,7 +264,6 @@ class OccContractAdapter:
         self,
         *,
         occ_repo: str = _OCC_REPO,
-        occ_repo_git: str = _OCC_REPO_GIT,
         git_author_name: str = "omnimarket-bot",
         git_author_email: str = "bot@omninode.ai",
         mode: Literal["dry_run", "mutate"] = "mutate",
@@ -266,7 +271,6 @@ class OccContractAdapter:
         verifier: str = _DEFAULT_VERIFIER,
     ) -> None:
         self._occ_repo = occ_repo
-        self._occ_repo_git = occ_repo_git
         self._git_author_name = git_author_name
         self._git_author_email = git_author_email
         self._mode = mode
@@ -382,6 +386,26 @@ class OccContractAdapter:
             logger.info("occ_contract_adapter (dry-run): %s", action)
             return action
 
+        # OMN-13990 (CodeRabbit): bail BEFORE any OCC mutation if the product PR
+        # is already Evidence-bound. Otherwise an already-bound PR still clones,
+        # pushes, and opens an unnecessary companion OCC PR before the late guard
+        # in _append_evidence_to_pr fires. Mirrors the autobind adapter's early
+        # idempotency guard. The resolved token is reused for the clone below.
+        token = _resolve_github_token()
+        product_owner, product_repo_name = split_repo(repo)
+        product_pr = rest_json(
+            "GET",
+            f"/repos/{product_owner}/{product_repo_name}/pulls/{pr_number}",
+            token=token,
+        )
+        if _ANY_EVIDENCE_SOURCE_RE.search(product_pr.get("body") or ""):
+            action = (
+                f"[no-op] {repo}#{pr_number} already has an Evidence-Source line; "
+                f"skipping OCC contract creation for {ticket_id}"
+            )
+            logger.info("occ_contract_adapter: %s", action)
+            return action
+
         # Build the contract YAML content first so we can hash it.
         contract_yaml = _CONTRACT_TEMPLATE.format(
             ticket_id=ticket_id,
@@ -408,12 +432,22 @@ class OccContractAdapter:
             logger.info("occ_contract_adapter: %s", action)
             return action
 
+        # HTTPS x-access-token transport (OMN-13990): the effects container has
+        # no SSH identity. The token resolved above (early Evidence-Source guard)
+        # is reused for the clone/push; the shared transport redacts it from git
+        # errors.
         with tempfile.TemporaryDirectory(prefix="occ-contract-") as tmpdir:
             clone_dir = Path(tmpdir) / "onex_change_control"
 
-            # 1. Shallow clone OCC repo
+            # 1. Shallow clone OCC repo over authenticated HTTPS
             self._run_git(
-                ["git", "clone", "--depth=1", self._occ_repo_git, str(clone_dir)],
+                [
+                    "git",
+                    "clone",
+                    "--depth=1",
+                    authenticated_occ_url(token, self._occ_repo),
+                    str(clone_dir),
+                ],
                 cwd=tmpdir,
             )
 
@@ -479,8 +513,11 @@ class OccContractAdapter:
                 ["git", "commit", "-m", commit_msg],
                 cwd=str(clone_dir),
             )
+            # Force-push: the auto/* bot branch is fully regenerated each run, so
+            # a re-fire diverges from the already-pushed remote branch and a plain
+            # push would be rejected non-fast-forward (OMN-13990 / CodeRabbit).
             self._run_git(
-                ["git", "push", "origin", branch],
+                ["git", "push", "--force", "origin", branch],
                 cwd=str(clone_dir),
             )
 
@@ -518,17 +555,9 @@ class OccContractAdapter:
     # ------------------------------------------------------------------
 
     def _run_git(self, argv: list[str], *, cwd: str) -> str:
-        env = os.environ.copy()
-        result = subprocess.run(
-            argv,
-            cwd=cwd,
-            env=env,
-            check=True,
-            capture_output=True,
-            text=True,
-            timeout=_GIT_TIMEOUT_SECONDS,
-        )
-        return result.stdout.strip()
+        # Delegates to the shared transport, which redacts any embedded
+        # x-access-token credential from a surfaced git error (OMN-13990).
+        return run_git(argv, cwd=cwd, timeout=_GIT_TIMEOUT_SECONDS)
 
     def _head_sha(self, cwd: str) -> str:
         try:
@@ -557,6 +586,16 @@ class OccContractAdapter:
             f"Evidence-Source: auto-contract-{run_id}\n"
         )
         token = _resolve_github_token()
+        # OMN-13990: base on OCC's DEFAULT branch, not a hardcoded "main" (OCC
+        # default is `dev`). The branch is cut from the shallow clone of the
+        # default, so a PR based on "main" would surface the whole dev<->main
+        # delta instead of a clean net-new companion diff.
+        info = rest_json("GET", f"/repos/{owner}/{repo_name}", token=token)
+        base = info.get("default_branch")
+        if not isinstance(base, str) or not base:
+            raise RuntimeError(
+                f"could not resolve default branch for {owner}/{repo_name}"
+            )
         resp = rest_json(
             "POST",
             f"/repos/{owner}/{repo_name}/pulls",
@@ -564,7 +603,7 @@ class OccContractAdapter:
             body={
                 "title": f"auto(OCC): contract + receipt for {ticket_id}",
                 "head": branch,
-                "base": "main",
+                "base": base,
                 "body": body,
             },
         )
@@ -594,14 +633,20 @@ class OccContractAdapter:
             f"Evidence-Ticket: {ticket_id}\n"
             f"Evidence-Source: OCC#{occ_pr_number}\n"
         )
-        # Only append if not already present (idempotency guard)
-        if f"Evidence-Source: OCC#{occ_pr_number}" not in existing_body:
-            rest_json(
-                "PATCH",
-                f"/repos/{owner}/{repo_name}/pulls/{pr_number}",
-                token=token,
-                body={"body": existing_body + evidence_footer},
-            )
+        # Idempotency hardening (OMN-13990 item 8 / §6 H1): skip when ANY
+        # Evidence-Source line already exists, not only this OCC number. The
+        # born-path autobind adapter may have already bound a (possibly
+        # different) OCC source; occ-preflight reads the FIRST Evidence-Source
+        # line (head -1), so appending a second footer under an already-bound
+        # PR would shadow the real source. Never double-foot.
+        if _ANY_EVIDENCE_SOURCE_RE.search(existing_body):
+            return
+        rest_json(
+            "PATCH",
+            f"/repos/{owner}/{repo_name}/pulls/{pr_number}",
+            token=token,
+            body={"body": existing_body + evidence_footer},
+        )
 
 
 __all__ = [

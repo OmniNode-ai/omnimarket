@@ -53,11 +53,20 @@ class TestAutobindYamlTemplates:
             run_timestamp="2026-06-19T12:00:00Z",
             commit_sha="040eb235aaaaaaaa",
             branch="auto/omn-9999-occ-autobind",
+            probe_command=(
+                "gh pr view 2043 --repo OmniNode-ai/omnibase_infra "
+                "--json number,state,headRefName"
+            ),
+            probe_stdout='{"headRefName":"feat","number":2043,"state":"open"}',
+            exit_code=0,
         )
         # check_receipt_hardening: pr_number >= 1, commit_sha 7-40 hex.
         assert "pr_number: 2043" in rendered
         assert "040eb235aaaaaaaa" in rendered
         assert "status: PASS" in rendered
+        assert "exit_code: 0" in rendered
+        # Genuine probe output, not a fabricated template (OMN-13990 item 4).
+        assert '{"headRefName":"feat","number":2043,"state":"open"}' in rendered
         # verifier is identifiable, not a denylisted session-local alias.
         assert "occ-evidence-source-autobind" in rendered
         assert 'contract_sha256: "sha256:PENDING"' in rendered
@@ -73,9 +82,16 @@ class TestAutobindYamlTemplates:
             run_timestamp="2026-06-19T12:00:00Z",
             occ_commit_sha="d97d5db9bbbbbbbb",
             branch="auto/omn-9999-occ-autobind",
+            probe_command=(
+                "gh pr view 2801 --repo OmniNode-ai/onex_change_control "
+                "--json number,state"
+            ),
+            probe_stdout='{"number":2801,"state":"open"}',
+            exit_code=0,
         )
         assert "pr_number: 2801" in rendered
         assert "d97d5db9bbbbbbbb" in rendered
+        assert "exit_code: 0" in rendered
         unresolved = re.findall(r"\{[a-z_]+\}", rendered)
         assert unresolved == [], f"unresolved placeholders: {unresolved}"
 
@@ -312,9 +328,15 @@ class TestOpenOrSyncOccPr:
         from unittest.mock import patch
 
         adapter = OccAutobindAdapter()
+
+        def fake_rest(method, path, *, body=None, token=None):  # type: ignore[no-untyped-def]
+            if method == "GET":  # default-branch resolution
+                return {"default_branch": "dev"}
+            return {"number": 2900}
+
         with (
             patch.object(adapter, "_first_open_pr_number", return_value=None),
-            patch(f"{_MODULE}.rest_json", return_value={"number": 2900}) as mock_rest,
+            patch(f"{_MODULE}.rest_json", side_effect=fake_rest) as mock_rest,
             patch(f"{_MODULE}._resolve_github_token", return_value="tok"),
         ):
             result = adapter._open_or_sync_occ_pr(
@@ -325,4 +347,160 @@ class TestOpenOrSyncOccPr:
             )
 
         assert result == 2900
+        # Last call is the POST create, based on OCC's DEFAULT branch (dev),
+        # NOT a hardcoded "main" (OMN-13990 base-branch fix).
         assert mock_rest.call_args[0][0] == "POST"
+        assert mock_rest.call_args.kwargs["body"]["base"] == "dev"
+
+    def test_occ_default_branch_resolves_from_repo(self) -> None:
+        from unittest.mock import patch
+
+        with patch(
+            f"{_MODULE}.rest_json", return_value={"default_branch": "dev"}
+        ) as mock_rest:
+            base = OccAutobindAdapter._occ_default_branch(
+                "OmniNode-ai", "onex_change_control", "tok"
+            )
+
+        assert base == "dev"
+        assert mock_rest.call_args[0][0] == "GET"
+
+
+# ---------------------------------------------------------------------------
+# Re-fire (synchronize) safety: pushes must be --force (OMN-13990 / CodeRabbit)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestAutobindForcePush:
+    def test_pushes_use_force_for_refire_safety(self) -> None:
+        from unittest.mock import patch
+
+        adapter = OccAutobindAdapter()
+        git_calls: list[list[str]] = []
+
+        def fake_run_git(argv, *, cwd):  # type: ignore[no-untyped-def]
+            git_calls.append(argv)
+            return ""
+
+        def fake_rest(method, path, *, body=None, token=None):  # type: ignore[no-untyped-def]
+            if "onex_change_control" in path:  # OCC PR probe fetch
+                return {"state": "open", "number": 3658}
+            return {  # product PR snapshot: born without an OCC Evidence-Source
+                "body": "PR body, no evidence yet",
+                "title": "fix(OMN-1): thing",
+                "head": {"sha": "a" * 40, "ref": "feat"},
+                "state": "open",
+            }
+
+        with (
+            patch(f"{_MODULE}._resolve_github_token", return_value="tok"),
+            patch(f"{_MODULE}.rest_json", side_effect=fake_rest),
+            patch.object(adapter, "_clone_and_branch"),
+            patch.object(adapter, "_run_git", side_effect=fake_run_git),
+            patch.object(adapter, "_rebind_contract_sha256"),
+            patch.object(adapter, "_open_or_sync_occ_pr", return_value=3658),
+            patch.object(adapter, "_head_sha", return_value="occhead0"),
+            patch.object(adapter, "_observe_pr_probe", return_value=("{}", 0)),
+            patch.object(adapter, "_patch_evidence_source"),
+            patch("pathlib.Path.is_file", return_value=True),
+            patch("pathlib.Path.mkdir"),
+            patch("pathlib.Path.write_text"),
+        ):
+            result = adapter._autobind_sync("OmniNode-ai/omnibase_infra", 2043, None)
+
+        push_calls = [c for c in git_calls if "push" in c]
+        assert push_calls, "expected at least one git push"
+        for call in push_calls:
+            assert "--force" in call, (
+                f"OCC branch push must be --force for synchronize re-fire "
+                f"safety (non-fast-forward otherwise): {call}"
+            )
+        assert "OCC#3658" in result
+
+
+# ---------------------------------------------------------------------------
+# Validator-parity ticket extraction (OMN-13990 D3)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestExtractTickets:
+    def test_single_title_token(self) -> None:
+        assert OccAutobindAdapter._extract_tickets("fix(OMN-1234): x", "body") == [
+            "OMN-1234"
+        ]
+
+    def test_all_title_tokens_when_no_closing_keyword(self) -> None:
+        assert OccAutobindAdapter._extract_tickets(
+            "fix(OMN-1)(OMN-2): x", "no closing keyword here"
+        ) == ["OMN-1", "OMN-2"]
+
+    def test_body_closing_keyword_is_exclusive(self) -> None:
+        # Gate parity: a body closing-keyword wins over ALL title tokens.
+        assert OccAutobindAdapter._extract_tickets("fix(OMN-9): x", "Closes OMN-5") == [
+            "OMN-5"
+        ]
+
+    def test_returns_empty_when_none(self) -> None:
+        assert OccAutobindAdapter._extract_tickets("no ticket", "still none") == []
+
+
+# ---------------------------------------------------------------------------
+# Genuine probe execution (OMN-13990 item 4 / OMN-14055)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestObservePrProbe:
+    def test_uses_real_gh_stdout_when_available(self) -> None:
+        from unittest.mock import MagicMock, patch
+
+        adapter = OccAutobindAdapter()
+        completed = MagicMock()
+        completed.returncode = 0
+        completed.stdout = '{"state": "open", "number": 5}'
+
+        with patch(f"{_MODULE}.subprocess.run", return_value=completed):
+            stdout, exit_code = adapter._observe_pr_probe(
+                probe_command="gh pr view 5 --repo o/r --json number,state",
+                token="tok",
+                fallback={"number": 5, "state": "unknown"},
+            )
+
+        # Real gh output, re-serialised compact + sorted (single YAML-safe line).
+        assert stdout == '{"number":5,"state":"open"}'
+        assert exit_code == 0
+
+    def test_falls_back_to_rest_data_when_gh_missing(self) -> None:
+        from unittest.mock import patch
+
+        adapter = OccAutobindAdapter()
+        with patch(f"{_MODULE}.subprocess.run", side_effect=FileNotFoundError):
+            stdout, exit_code = adapter._observe_pr_probe(
+                probe_command="gh pr view 5 --repo o/r --json number,state",
+                token="tok",
+                fallback={"number": 5, "state": "open"},
+            )
+
+        # Genuine REST-observed facts, never a fabricated template.
+        assert stdout == '{"number":5,"state":"open"}'
+        assert exit_code == 0
+
+    def test_falls_back_on_nonzero_exit(self) -> None:
+        from unittest.mock import MagicMock, patch
+
+        adapter = OccAutobindAdapter()
+        failed = MagicMock()
+        failed.returncode = 1
+        failed.stdout = ""
+
+        with patch(f"{_MODULE}.subprocess.run", return_value=failed):
+            stdout, exit_code = adapter._observe_pr_probe(
+                probe_command="gh pr view 5 --repo o/r --json number,state",
+                token="tok",
+                fallback={"number": 5, "state": "closed"},
+            )
+
+        assert stdout == '{"number":5,"state":"closed"}'
+        assert exit_code == 0

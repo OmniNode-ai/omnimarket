@@ -522,6 +522,9 @@ ignore = [
 [tool.ruff.lint.per-file-ignores]
 "tests/**/*.py" = ["T201", "SLF001"]
 "scripts/**/*.py" = ["T201"]
+# CLI entrypoint for the SWE-discriminator smoke battery (OMN-13988) — prints
+# progress/results to stdout like the sibling recorder scripts.
+"src/omnimarket/delegation/swe_discriminator/run_smoke.py" = ["T201"]
 
 [tool.mypy]
 strict = true

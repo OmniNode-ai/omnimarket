@@ -473,6 +473,15 @@ class TestContractSchema:
         publish_topics: list[str] = raw["event_bus"]["publish_topics"]
         assert any("live-events" in t for t in publish_topics)
 
+    def test_contract_declares_dlq_topic(self) -> None:
+        """OMN-13992: malformed/erroring events must be dead-lettered, not
+        dropped with only a log line — the runtime routes to
+        event_bus.dlq_topics[0] when the projection handler raises."""
+        raw = yaml.safe_load(_CONTRACT_PATH.read_text(encoding="utf-8"))
+        dlq_topics: list[str] = raw["event_bus"]["dlq_topics"]
+        assert dlq_topics
+        assert any("dlq" in t and "live-events" in t for t in dlq_topics)
+
     def test_contract_declares_projection_api_exposure(self) -> None:
         raw = yaml.safe_load(_CONTRACT_PATH.read_text(encoding="utf-8"))
         assert raw.get("projection_api", {}).get("expose") is True
