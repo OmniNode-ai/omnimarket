@@ -63,8 +63,7 @@ jobs:
           for _ in $(seq 1 60); do
             conclusion="$(
               gh api "repos/${REPO}/commits/${HEAD_SHA}/check-runs?filter=latest&per_page=100" \
-                --jq '.check_runs[] | select(.name == "occ-preflight / eligibility") | .conclusion' \
-                | head -1
+                --jq 'first(.check_runs[] | select(.name == "occ-preflight / eligibility") | .conclusion) // ""'
             )"
 
             case "$conclusion" in
