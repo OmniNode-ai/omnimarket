@@ -100,13 +100,12 @@ jobs:
           REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
-          # OMN-13138: dev is queue-controlled — the merge method is set by the merge
-          # queue, so passing an explicit --squash is rejected ("The merge strategy for
-          # dev is set by the merge queue") and the PR is NEVER enqueued (sits CLEAN +
-          # auto-merge armed forever). Use bare --auto and let the queue pick the method.
+          # OMN-14126: gh CLI now requires an explicit merge method in non-interactive
+          # mode. This repository disallows merge commits, so arm auto-merge with the
+          # repository's squash method instead of failing before enqueue verification.
           # OMN-13214: arming alone does not enqueue — the explicit enqueue + verify
           # steps below close that gap. Do NOT exit here on success.
-          if output=$(gh pr merge "$PR" --repo "$REPO" --auto 2>&1); then
+          if output=$(gh pr merge "$PR" --repo "$REPO" --auto --squash 2>&1); then
             echo "auto-merge enabled: $output"
           elif echo "$output" | grep -qiE "already enqueued|already queued|auto-merge already enabled"; then
             echo "auto-merge not newly enabled (expected): $output"
