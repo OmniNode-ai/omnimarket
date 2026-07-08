@@ -59,6 +59,9 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v6
 
+      - name: Clean stale dependency clones
+        run: rm -rf ../omnibase_core ../omnibase_compat ../omnimemory
+
       - name: Clone omnibase_core
         run: git clone --depth=1 https://github.com/OmniNode-ai/omnibase_core.git ../omnibase_core
 
