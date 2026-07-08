@@ -19,8 +19,135 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  occ-preflight:
+    name: OCC Preflight Dependency
+    runs-on: ubuntu-latest
+    permissions:
+      checks: read
+      contents: read
+    steps:
+      - name: Wait for required OCC preflight
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+
+          if [ "${{ github.event_name }}" != "pull_request" ]; then
+            echo "OCC preflight dependency is enforced by the pull_request gate; continuing for ${GITHUB_EVENT_NAME}."
+            exit 0
+          fi
+
+          for _ in $(seq 1 60); do
+            conclusion="$(
+              gh api "repos/${REPO}/commits/${HEAD_SHA}/check-runs?filter=latest&per_page=100" \
+                --jq 'first(.check_runs[] | select(.name == "occ-preflight / eligibility") | .conclusion) // ""'
+            )"
+
+            case "$conclusion" in
+              success)
+                echo "OCC preflight passed for ${HEAD_SHA}."
+                exit 0
+                ;;
+              failure|cancelled|timed_out|action_required|startup_failure)
+                echo "::error::OCC preflight concluded ${conclusion}; refusing to start this workflow."
+                exit 1
+                ;;
+              "")
+                echo "Waiting for occ-preflight / eligibility to post for ${HEAD_SHA}..."
+                ;;
+              *)
+                echo "OCC preflight is ${conclusion}; waiting."
+                ;;
+            esac
+            sleep 10
+          done
+
+          echo "::error::Timed out waiting for occ-preflight / eligibility on ${HEAD_SHA}."
+          exit 1
+
   deploy-gate:
-    uses: OmniNode-ai/omniclaude/.github/workflows/deploy-gate-reusable.yml@main
-    secrets: inherit
-    with:
-      contracts-dir: docs/work-tracking/contracts
+    needs: occ-preflight
+    name: deploy-gate / deploy-gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    steps:
+      - name: Checkout caller repo
+        uses: actions/checkout@v7
+
+      - name: Fetch deploy-gate support scripts
+        if: github.event_name != 'merge_group'
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          repository: OmniNode-ai/omniclaude
+          ref: main
+          path: .omniclaude-deploy-gate
+          persist-credentials: false
+          sparse-checkout: |
+            scripts/deploy-gate/checkout-occ-contracts.sh
+            .github/actions/deploy-gate/validate_pr_deploy_required.py
+          sparse-checkout-cone-mode: false
+
+      - name: Resolve deploy-gate OCC evidence source
+        if: github.event_name != 'merge_group'
+        id: resolve_occ_evidence
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "${GH_TOKEN}" ]; then
+            echo "::error::OCC evidence-source resolution requires GITHUB_TOKEN"
+            exit 1
+          fi
+
+          if ! changed_files="$(gh pr diff "$PR_NUMBER" --name-only 2>/tmp/deploy-gate-gh-diff.err | tr '\n' ' ')"; then
+            base_ref="${GITHUB_BASE_REF:-main}"
+            echo "::notice::gh pr diff failed; falling back to local git diff against origin/${base_ref}"
+            cat /tmp/deploy-gate-gh-diff.err || true
+            git fetch origin "$base_ref" --no-tags
+            changed_files="$(git diff --name-only "origin/${base_ref}" HEAD | tr '\n' ' ')"
+          fi
+          pr_body="$(gh pr view "$PR_NUMBER" --json body -q '.body')"
+
+          python "${GITHUB_WORKSPACE}/.omniclaude-deploy-gate/.github/actions/deploy-gate/validate_pr_deploy_required.py" \
+            --changed-files "$changed_files" \
+            --pr-body "$pr_body" \
+            --resolve-occ-ref \
+            --default-occ-ref dev \
+            --github-output "$GITHUB_OUTPUT"
+
+      - name: Checkout onex_change_control contracts
+        if: github.event_name != 'merge_group' && steps.resolve_occ_evidence.outputs.deploy_gate_required == 'true'
+        shell: bash
+        timeout-minutes: 12
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          OCC_REF: ${{ steps.resolve_occ_evidence.outputs.occ_ref }}
+          OCC_REPO_URL: https://github.com/OmniNode-ai/onex_change_control.git
+        run: |
+          set -euo pipefail
+
+          if [ -z "${GH_TOKEN}" ]; then
+            echo "::error::OCC contracts checkout requires GITHUB_TOKEN"
+            exit 1
+          fi
+
+          bash "${GITHUB_WORKSPACE}/.omniclaude-deploy-gate/scripts/deploy-gate/checkout-occ-contracts.sh"
+
+      - name: Skip on merge_group
+        if: github.event_name == 'merge_group'
+        run: |
+          echo "::notice::deploy-gate: merge_group event - skipped (validated on PR branch)."
+
+      - name: Run deploy gate
+        if: github.event_name != 'merge_group'
+        uses: OmniNode-ai/omniclaude/.github/actions/deploy-gate@main
+        with:
+          pr-number: ${{ github.event.pull_request.number }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          contracts-dir: _occ/contracts

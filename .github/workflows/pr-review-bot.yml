@@ -61,11 +61,60 @@ env:
   UV_SYNC_RETRY_DELAY_SECONDS: '10'
 
 jobs:
+  occ-preflight:
+    name: OCC Preflight Dependency
+    runs-on: ubuntu-latest
+    permissions:
+      checks: read
+      contents: read
+    steps:
+      - name: Wait for required OCC preflight
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+
+          if [ "${{ github.event_name }}" != "pull_request" ]; then
+            echo "OCC preflight dependency is enforced by the pull_request gate; continuing for ${GITHUB_EVENT_NAME}."
+            exit 0
+          fi
+
+          for _ in $(seq 1 60); do
+            conclusion="$(
+              gh api "repos/${REPO}/commits/${HEAD_SHA}/check-runs?filter=latest&per_page=100" \
+                --jq 'first(.check_runs[] | select(.name == "occ-preflight / eligibility") | .conclusion) // ""'
+            )"
+
+            case "$conclusion" in
+              success)
+                echo "OCC preflight passed for ${HEAD_SHA}."
+                exit 0
+                ;;
+              failure|cancelled|timed_out|action_required|startup_failure)
+                echo "::error::OCC preflight concluded ${conclusion}; refusing to start this workflow."
+                exit 1
+                ;;
+              "")
+                echo "Waiting for occ-preflight / eligibility to post for ${HEAD_SHA}..."
+                ;;
+              *)
+                echo "OCC preflight is ${conclusion}; waiting."
+                ;;
+            esac
+            sleep 10
+          done
+
+          echo "::error::Timed out waiting for occ-preflight / eligibility on ${HEAD_SHA}."
+          exit 1
+
   # ============================================================================
   # Token resolution — swap to onexbot GitHub App token when the app exists,
   # fall back to GITHUB_TOKEN otherwise. Mirrors pr-arch-review.yml pattern.
   # ============================================================================
   resolve-bot-token:
+    needs: occ-preflight
     name: Resolve Bot Token
     runs-on: ubuntu-latest
     outputs:
@@ -123,7 +172,7 @@ jobs:
         || fromJSON(vars.OMNI_TRUSTED_CI_RUNS_ON_JSON || '["ubuntu-latest"]')
       }}
     timeout-minutes: 20
-    needs: [resolve-bot-token]
+    needs: [occ-preflight, resolve-bot-token]
 
     steps:
       - name: Checkout PR branch
@@ -155,15 +204,27 @@ jobs:
         run: uv python install 3.12
 
       - name: Install dependencies
+        env:
+          UV_CONCURRENT_DOWNLOADS: "1"
+          UV_HTTP_TIMEOUT: "600"
+          UV_SYNC_ATTEMPTS: "5"
+          UV_SYNC_RETRY_DELAY_SECONDS: "10"
+          UV_TORCH_BACKEND: "cpu"
         run: |
-          for attempt in $(seq 1 "${UV_SYNC_ATTEMPTS}"); do
-            if uv sync --locked --all-extras; then
-              break
+          set -euo pipefail
+
+          attempt=1
+          until uv sync --locked --all-extras; do
+            status=$?
+            if [ "$attempt" -ge "$UV_SYNC_ATTEMPTS" ]; then
+              echo "::error::uv sync failed after ${attempt} attempt(s)"
+              exit "$status"
             fi
-            if [ "$attempt" = "${UV_SYNC_ATTEMPTS}" ]; then
-              exit 1
-            fi
-            sleep "${UV_SYNC_RETRY_DELAY_SECONDS}"
+
+            sleep_seconds=$((UV_SYNC_RETRY_DELAY_SECONDS * attempt))
+            echo "::warning::uv sync attempt ${attempt}/${UV_SYNC_ATTEMPTS} failed with exit ${status}; retrying in ${sleep_seconds}s"
+            sleep "$sleep_seconds"
+            attempt=$((attempt + 1))
           done
 
       - name: Resolve PR number

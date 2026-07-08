@@ -72,6 +72,18 @@ _CHECK_LOG_NETWORK_SIGNATURES: tuple[str, ...] = (
 # manually re-triggered the way `workflow_dispatch` runs can.
 _PR_ASSOCIATED_EVENTS = {"pull_request", "pull_request_target"}
 
+# OMN-14031: every `gh` call must be time-bounded. An un-timed gh subprocess can
+# block forever under GitHub API throttling or fleet egress saturation (the
+# OMN-13932 / OMN-14017 conditions), wedging the whole org-wide sweep with zero
+# output — the merge-sweep skill then drives ZERO merges and never returns.
+# Bound each call so a slow gh invocation is skipped (fail-soft) instead of
+# hanging the sweep. 90s is generous for the paginated org-wide census while
+# still turning an infinite hang into a bounded, observable failure.
+_GH_SUBPROCESS_TIMEOUT_SECONDS = 90
+# Conventional shell timeout exit code (matches coreutils `timeout`); non-zero
+# so every caller's existing `returncode != 0` fail-soft branch handles it.
+_GH_TIMEOUT_RETURNCODE = 124
+
 logger = logging.getLogger(__name__)
 
 HandlerType = Literal["NODE_HANDLER"]
@@ -95,6 +107,38 @@ class HandlerPrLifecycleInventory:
     @property
     def handler_category(self) -> HandlerCategory:
         return HANDLER_CATEGORY
+
+    @staticmethod
+    def _run_gh(
+        cmd: list[str],
+        *,
+        timeout: int = _GH_SUBPROCESS_TIMEOUT_SECONDS,
+    ) -> subprocess.CompletedProcess[str]:
+        """Run a ``gh`` command with a bounded timeout (OMN-14031).
+
+        A bare ``subprocess.run`` on a ``gh`` command has no timeout, so a
+        throttled or stalled GitHub call blocks forever and wedges the entire
+        sweep. On timeout this returns a synthetic non-zero
+        :class:`subprocess.CompletedProcess` (returncode
+        ``_GH_TIMEOUT_RETURNCODE``) so every caller's existing
+        ``returncode != 0`` branch treats the timeout exactly like any other
+        gh failure — fail-soft, never a hang. ``subprocess.run`` is still the
+        underlying call so tests that patch it keep working.
+        """
+        try:
+            return subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+        except subprocess.TimeoutExpired:
+            logger.warning(
+                "gh call timed out after %ds (skipping, fail-soft): %s",
+                timeout,
+                " ".join(cmd),
+            )
+            return subprocess.CompletedProcess(
+                cmd,
+                _GH_TIMEOUT_RETURNCODE,
+                stdout="",
+                stderr=f"gh call timed out after {timeout}s",
+            )
 
     def handle(self, input_model: ModelPrInventoryInput) -> ModelPrInventoryOutput:
         """Collect raw PR state for all requested PR numbers.
@@ -146,7 +190,7 @@ class HandlerPrLifecycleInventory:
         ``query_failed=True`` so the sweep is never reported done on missing
         evidence.
         """
-        result = subprocess.run(
+        result = self._run_gh(
             [
                 "gh",
                 "api",
@@ -158,9 +202,7 @@ class HandlerPrLifecycleInventory:
                 f"q={_ORG_WIDE_OPEN_PR_QUERY}",
                 "-f",
                 f"per_page={_ORG_WIDE_REMAINDER_LIMIT}",
-            ],
-            capture_output=True,
-            text=True,
+            ]
         )
         if result.returncode != 0:
             logger.warning(
@@ -262,7 +304,7 @@ class HandlerPrLifecycleInventory:
 
         for pr in candidate_prs:
             try:
-                result = subprocess.run(
+                result = self._run_gh(
                     [
                         "gh",
                         "pr",
@@ -272,9 +314,7 @@ class HandlerPrLifecycleInventory:
                         repo,
                         "--json",
                         "mergeQueueEntry",
-                    ],
-                    capture_output=True,
-                    text=True,
+                    ]
                 )
                 if result.returncode != 0:
                     continue
@@ -369,14 +409,12 @@ class HandlerPrLifecycleInventory:
 
     def _count_merge_group_runs(self, repo: str, head_sha: str) -> int | None:
         """Count merge_group workflow runs for the queue head SHA."""
-        result = subprocess.run(
+        result = self._run_gh(
             [
                 "gh",
                 "api",
                 f"repos/{repo}/actions/runs?head_sha={head_sha}&event=merge_group",
-            ],
-            capture_output=True,
-            text=True,
+            ]
         )
         if result.returncode != 0:
             logger.debug(
@@ -496,7 +534,7 @@ class HandlerPrLifecycleInventory:
             "title,state,isDraft,mergeable,mergeStateStatus,reviewDecision,"
             "baseRefName,headRefName",
         ]
-        result = subprocess.run(cmd, capture_output=True, text=True)
+        result = self._run_gh(cmd)
         if result.returncode != 0:
             raise RuntimeError(
                 f"gh pr view failed (exit {result.returncode}): {result.stderr.strip()}"
@@ -518,7 +556,7 @@ class HandlerPrLifecycleInventory:
             "--json",
             "name,state,bucket,event,link",
         ]
-        result = subprocess.run(cmd, capture_output=True, text=True)
+        result = self._run_gh(cmd)
         if result.returncode != 0:
             logger.debug(
                 "gh pr checks failed for PR #%d in %s: %s",
@@ -674,7 +712,7 @@ class HandlerPrLifecycleInventory:
             "--json",
             "reviews",
         ]
-        result = subprocess.run(cmd, capture_output=True, text=True)
+        result = self._run_gh(cmd)
         if result.returncode != 0:
             return []
         try:

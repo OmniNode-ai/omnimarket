@@ -17,7 +17,56 @@ env:
   REPO_NAME: 'omnimarket'
 
 jobs:
+  occ-preflight:
+    name: OCC Preflight Dependency
+    runs-on: ubuntu-latest
+    permissions:
+      checks: read
+      contents: read
+    steps:
+      - name: Wait for required OCC preflight
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+
+          if [ "${{ github.event_name }}" != "pull_request" ]; then
+            echo "OCC preflight dependency is enforced by the pull_request gate; continuing for ${GITHUB_EVENT_NAME}."
+            exit 0
+          fi
+
+          for _ in $(seq 1 60); do
+            conclusion="$(
+              gh api "repos/${REPO}/commits/${HEAD_SHA}/check-runs?filter=latest&per_page=100" \
+                --jq 'first(.check_runs[] | select(.name == "occ-preflight / eligibility") | .conclusion) // ""'
+            )"
+
+            case "$conclusion" in
+              success)
+                echo "OCC preflight passed for ${HEAD_SHA}."
+                exit 0
+                ;;
+              failure|cancelled|timed_out|action_required|startup_failure)
+                echo "::error::OCC preflight concluded ${conclusion}; refusing to start this workflow."
+                exit 1
+                ;;
+              "")
+                echo "Waiting for occ-preflight / eligibility to post for ${HEAD_SHA}..."
+                ;;
+              *)
+                echo "OCC preflight is ${conclusion}; waiting."
+                ;;
+            esac
+            sleep 10
+          done
+
+          echo "::error::Timed out waiting for occ-preflight / eligibility on ${HEAD_SHA}."
+          exit 1
+
   structure-validation:
+    needs: occ-preflight
     name: Repository Structure Validation
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -48,6 +97,7 @@ jobs:
           echo "All required omnimarket directories present."
 
   ecosystem-validation:
+    needs: occ-preflight
     name: Ecosystem Integration Validation
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -72,6 +122,7 @@ jobs:
           echo "OK: pyproject.toml found"
 
   legacy-compatibility-check:
+    needs: occ-preflight
     name: Legacy Compatibility Check
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -105,6 +156,7 @@ jobs:
           echo "Legacy compatibility check passed."
 
   ci-naming-convention:
+    needs: occ-preflight
     name: CI Naming Convention
     runs-on: ubuntu-latest
     steps:
@@ -139,6 +191,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     needs:
+      - occ-preflight
       - structure-validation
       - ecosystem-validation
       - legacy-compatibility-check
@@ -151,6 +204,7 @@ jobs:
           FAILED=false
 
           for check in \
+            "occ-preflight=${{ needs.occ-preflight.result }}" \
             "structure-validation=${{ needs.structure-validation.result }}" \
             "ecosystem-validation=${{ needs.ecosystem-validation.result }}" \
             "legacy-compatibility-check=${{ needs.legacy-compatibility-check.result }}" \

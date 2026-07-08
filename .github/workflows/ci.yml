@@ -8,14 +8,66 @@ on:
   merge_group:
 
 jobs:
+  # OCC preflight is the first non-OCC CI dependency. If central OCC
+  # evidence is missing or red, no runner-heavy validation jobs fan out.
+  occ-preflight:
+    name: OCC Preflight Dependency
+    runs-on: ubuntu-latest
+    permissions:
+      checks: read
+      contents: read
+    steps:
+      - name: Wait for required OCC preflight
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+
+          if [ "${{ github.event_name }}" != "pull_request" ]; then
+            echo "OCC preflight dependency is enforced by the pull_request gate; continuing for ${GITHUB_EVENT_NAME}."
+            exit 0
+          fi
+
+          for _ in $(seq 1 60); do
+            conclusion="$(
+              gh api "repos/${REPO}/commits/${HEAD_SHA}/check-runs?filter=latest&per_page=100" \
+                --jq 'first(.check_runs[] | select(.name == "occ-preflight / eligibility") | .conclusion) // ""'
+            )"
+
+            case "$conclusion" in
+              success)
+                echo "OCC preflight passed for ${HEAD_SHA}."
+                exit 0
+                ;;
+              failure|cancelled|timed_out|action_required|startup_failure)
+                echo "::error::OCC preflight concluded ${conclusion}; refusing to start heavy CI."
+                exit 1
+                ;;
+              "")
+                echo "Waiting for occ-preflight / eligibility to post for ${HEAD_SHA}..."
+                ;;
+              *)
+                echo "OCC preflight is ${conclusion}; waiting."
+                ;;
+            esac
+            sleep 10
+          done
+
+          echo "::error::Timed out waiting for occ-preflight / eligibility on ${HEAD_SHA}."
+          exit 1
+
   # Zone filter — short-circuit heavy jobs on docs / declarative-evidence PRs.
   # Calls the reusable workflow in omnibase_core. Outputs docs_only (true|false).
   zone-filter:
+    needs: occ-preflight
     uses: OmniNode-ai/omnibase_core/.github/workflows/zone-filter.yml@7631ef3321e1a6561f4b2c70019ee57d24160620
     with:
       python-version: "3.12"
 
   lint:
+    needs: occ-preflight
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -177,8 +229,8 @@ jobs:
           uv run python scripts/ci/check_golden_chain_coverage.py --changed-ref "$base"
 
   typecheck:
-    needs: zone-filter
-    if: needs.zone-filter.outputs.docs_only != 'true'
+    needs: [occ-preflight, zone-filter]
+    if: needs.occ-preflight.result == 'success' && (needs.zone-filter.outputs.docs_only != 'true')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -204,8 +256,8 @@ jobs:
   # ---------------------------------------------------------------------------
   detect-changes:
     name: Detect Changes
-    needs: zone-filter
-    if: needs.zone-filter.outputs.docs_only != 'true'
+    needs: [occ-preflight, zone-filter]
+    if: needs.occ-preflight.result == 'success' && (needs.zone-filter.outputs.docs_only != 'true')
     runs-on: ubuntu-latest
     outputs:
       is_full_suite: ${{ steps.detect.outputs.is_full_suite }}
@@ -271,7 +323,7 @@ jobs:
 
   test:
     name: Tests (Split ${{ matrix.split }}/${{ needs.detect-changes.outputs.split_count }})
-    needs: [detect-changes]
+    needs: [occ-preflight, detect-changes]
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -342,6 +394,7 @@ jobs:
           retention-days: 7
 
   topic-naming-lint:
+    needs: occ-preflight
     name: Topic Naming Lint
     runs-on: ubuntu-latest
     steps:
@@ -380,6 +433,7 @@ jobs:
   # # onex-topic-allow annotation). Orphaned constants are drift violations.
   # ============================================================================
   topic-enum-drift:
+    needs: occ-preflight
     name: Topic Enum Drift Check
     runs-on: ubuntu-latest
     steps:
@@ -408,6 +462,7 @@ jobs:
   # --warn-only behaviour of the equivalent omnibase_infra check (OMN-5248).
   # ============================================================================
   topic-drift-check:
+    needs: occ-preflight
     name: Topic Drift Check
     runs-on: ubuntu-latest
     steps:
@@ -430,6 +485,7 @@ jobs:
           uv run python scripts/ci/check_topic_drift.py
 
   event-registry-drift:
+    needs: occ-preflight
     name: Event Registry Drift
     runs-on: ubuntu-latest
     steps:
@@ -461,6 +517,7 @@ jobs:
   # PR merges (the PR fixing 96 broken entry points).
   # ============================================================================
   runtime-sweep:
+    needs: occ-preflight
     name: Runtime Sweep
     runs-on: ubuntu-latest
     steps:
@@ -491,6 +548,7 @@ jobs:
   # Required via the ci-summary aggregator (Rule 5: enforcement, not detection).
   # ============================================================================
   core-only-install:
+    needs: occ-preflight
     name: Core-Only Install Gate
     runs-on: ubuntu-latest
     steps:
@@ -537,8 +595,8 @@ jobs:
 
   e2e-workflow-runner:
     name: E2E Workflow Runner (inmemory bus)
-    needs: zone-filter
-    if: needs.zone-filter.outputs.docs_only != 'true'
+    needs: [occ-preflight, zone-filter]
+    if: needs.occ-preflight.result == 'success' && (needs.zone-filter.outputs.docs_only != 'true')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
@@ -607,8 +665,8 @@ jobs:
 
   golden-chains:
     name: Golden Chain Suite (inmemory bus)
-    needs: zone-filter
-    if: needs.zone-filter.outputs.docs_only != 'true'
+    needs: [occ-preflight, zone-filter]
+    if: needs.occ-preflight.result == 'success' && (needs.zone-filter.outputs.docs_only != 'true')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -646,8 +704,8 @@ jobs:
 
   sea-e2e-chains:
     name: SEA E2E Acceptance + Error Chains (OMN-12660)
-    needs: zone-filter
-    if: needs.zone-filter.outputs.docs_only != 'true'
+    needs: [occ-preflight, zone-filter]
+    if: needs.occ-preflight.result == 'success' && (needs.zone-filter.outputs.docs_only != 'true')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -692,8 +750,8 @@ jobs:
 
   generated-node-golden-chain:
     name: Generated-Node Golden Chain Gate (OMN-13624)
-    needs: zone-filter
-    if: needs.zone-filter.outputs.docs_only != 'true'
+    needs: [occ-preflight, zone-filter]
+    if: needs.occ-preflight.result == 'success' && (needs.zone-filter.outputs.docs_only != 'true')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -738,6 +796,7 @@ jobs:
   # DEAD_IMPORT pass remains advisory until scanner confidence is proven.
   # ============================================================================
   dep-health:
+    needs: occ-preflight
     name: Dependency Health Gate
     runs-on: ubuntu-latest
     steps:
@@ -778,9 +837,10 @@ jobs:
             --delta-mode
 
   contract-compliance:
+    needs: occ-preflight
     name: Contract Compliance Check
     runs-on: ubuntu-latest
-    if: github.event_name == 'pull_request' || github.event_name == 'merge_group' || github.event_name == 'push'
+    if: needs.occ-preflight.result == 'success' && (github.event_name == 'pull_request' || github.event_name == 'merge_group' || github.event_name == 'push')
     steps:
       - uses: actions/checkout@v6
       - name: Checkout onex_change_control
@@ -829,6 +889,7 @@ jobs:
   # across repos rather than forking a second omnimarket-local copy.
   # ============================================================================
   aislop-sweep:
+    needs: occ-preflight
     name: Aislop Sweep (strict, PR diff)
     runs-on: ubuntu-latest
     steps:
@@ -874,7 +935,7 @@ jobs:
   ci-summary:
     name: CI Summary
     runs-on: ubuntu-latest
-    needs: [zone-filter, lint, typecheck, detect-changes, test, topic-naming-lint, runtime-sweep, core-only-install, contract-compliance, e2e-workflow-runner, golden-chains, sea-e2e-chains, generated-node-golden-chain, dep-health, aislop-sweep]
+    needs: [occ-preflight, zone-filter, lint, typecheck, detect-changes, test, topic-naming-lint, runtime-sweep, core-only-install, contract-compliance, e2e-workflow-runner, golden-chains, sea-e2e-chains, generated-node-golden-chain, dep-health, aislop-sweep]
     if: always()
     steps:
       - name: Check CI results
@@ -883,6 +944,7 @@ jobs:
           FAILED=false
 
           for check in \
+            "occ-preflight=${{ needs.occ-preflight.result }}" \
             "zone-filter=${{ needs.zone-filter.result }}" \
             "lint=${{ needs.lint.result }}" \
             "typecheck=${{ needs.typecheck.result }}" \

@@ -1,0 +1,170 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# SWE-discriminator SMOKE corpus (OMN-13988) — 2 repo-grounded tasks replayed
+# from held-back merged OmniNode PRs. One L1 (mechanical field-add) and one L2/3
+# (AST-level algorithmic rewrite). Each task serves task_text + context_code
+# (pre-fix source); held_back_asserts is the merged-PR-derived deterministic
+# floor and is NEVER served to an arm. Grading assembles grader_preamble + the
+# arm's produced code + held_back_asserts and execs it in isolation.
+#
+# task-scope note: for this SMOKE the "repo state" is reconstructed at the
+# FUNCTION/MODULE-SLICE level (not a full-repo checkout) so the deterministic
+# floor runs hermetically. The held-back asserts are derived from the real PR's
+# tests. proof_class = offline over captured artifacts.
+
+tasks:
+  - task_id: OMN-13964-create-ticket-field
+    level: 1
+    source_pr: "#1618"
+    source_sha: c0098259d50cdf6ff36d761d3eaf85cadbccf6d0
+    contamination_flag: true
+    task_text: |
+      The `onex skill create_ticket` CLI path fails 100% of invocations. The
+      skill mapping declares an `allow-arch-violation` input with default
+      false, so the runtime injects `allow_arch_violation=False` into every
+      payload — even a minimal call. The request model below is
+      `extra="forbid"` and does not declare that field, so validation dies with
+      `extra_forbidden` before any work happens.
+
+      Fix the two Pydantic models so the injected payload validates, WITHOUT
+      loosening `extra="forbid"`:
+        1. `ModelCreateTicketRequest` must accept a contract-declared boolean
+           input `allow_arch_violation` (default False).
+        2. `ModelCreateTicketResult` must additionally declare two
+           contract-declared string output fields `ticket_id` and `ticket_url`,
+           each defaulting to the empty string.
+      Return the COMPLETE corrected source of BOTH model classes in a single
+      fenced ```python block. Do not add any other fields or change existing
+      ones. Assume `from pydantic import BaseModel, ConfigDict, Field` is
+      already imported.
+    context_code: |
+      class ModelCreateTicketRequest(BaseModel):
+          """Request to create a Linear ticket."""
+
+          model_config = ConfigDict(frozen=True, extra="forbid")
+
+          title: str = Field(..., description="Ticket title.")
+          description: str = Field(default="", description="Optional description.")
+          repo: str | None = Field(default=None, description="Primary repo for scoping.")
+          parent: str | None = Field(default=None, description="Parent ticket ID (OMN-XXXX).")
+          blocked_by: list[str] = Field(
+              default_factory=list, description="Blocking ticket IDs."
+          )
+          dry_run: bool = Field(default=False)
+          team: str = Field(default="Omninode")
+
+
+      class ModelCreateTicketResult(BaseModel):
+          """Result of a ticket creation request."""
+
+          model_config = ConfigDict(frozen=True, extra="forbid")
+
+          status: str = Field(default="created")
+          title: str = Field(default="")
+          team: str = Field(default="Omninode")
+          is_seam_ticket: bool = Field(default=False)
+          interfaces_touched: list[str] = Field(default_factory=list)
+          contract_completeness: str = Field(default="stub")
+          validation_errors: list[str] = Field(default_factory=list)
+          description_body: str = Field(default="")
+          dry_run: bool = Field(default=False)
+    grader_preamble: |
+      from pydantic import BaseModel, ConfigDict, Field
+    required_defs:
+      - ModelCreateTicketRequest
+      - ModelCreateTicketResult
+    held_back_asserts: |
+      # injected minimal payload must validate (was extra_forbidden pre-fix)
+      req = ModelCreateTicketRequest(
+          title="Dogfood the create_ticket rail",
+          team="Omninode",
+          allow_arch_violation=False,
+      )
+      assert req.allow_arch_violation is False
+      assert ModelCreateTicketRequest(title="X", allow_arch_violation=True).allow_arch_violation is True
+      # new output fields exist and default to empty
+      res = ModelCreateTicketResult()
+      assert res.ticket_id == ""
+      assert res.ticket_url == ""
+      # extra=forbid preserved: an undeclared field still rejects
+      import pydantic
+      try:
+          ModelCreateTicketRequest(title="X", bogus_field=1)
+          raise SystemExit("extra=forbid was loosened")
+      except pydantic.ValidationError:
+          pass
+
+  - task_id: OMN-13816-state-coverage-ast
+    level: 3
+    source_pr: "#1556"
+    source_sha: 20d34622f87dcb2419a69057009d34a2c555a52c
+    contamination_flag: true
+    task_text: |
+      The state-coverage CI gate proves that every declared FSM/output state of
+      a node is genuinely asserted in that node's tests. Today the check
+      `_state_covered(state, test_contents)` is a regex/substring presence test
+      over concatenated test text and is trivially defeatable: it returns
+      "covered" for a bare `assert "active"`, for self-tautologies like
+      `x.foo == x.foo` or `declared == declared`, for constant-vs-constant like
+      `"a" == "a"`, for a state named only in a docstring or comment, and even
+      for an import module path (`from omnimarket.review... import` falsely
+      satisfies a `review` state).
+
+      Replace the substring check with an AST-level analysis:
+        - A state is covered only when its literal — a string constant, or (for
+          identifier-shaped states, i.e. matching `_IDENTIFIER_RE` with no `.`)
+          an `EnumX.STATE` attribute access — appears in a position that
+          actually exercises behavior.
+        - It is NEVER covered when its only occurrences are vacuous: a bare
+          `assert "<state>"` (assert whose test is a bare Constant), a
+          self-tautology or constant-only comparison (`x == x`, `"a" == "a"`),
+          or a docstring / comment (comments are absent from the AST for free).
+        - Genuine forms MUST still pass: `assert result.state == "active"`, an
+          enum listed in a for-loop iterable that feeds an assert, and
+          `assertEqual(result.state, "active")`.
+        - `_state_covered` must accept EITHER a single source string OR a list
+          of per-file sources (`str | list[str]`): each real test file starts
+          with `from __future__ import annotations`, so concatenating them and
+          doing one `ast.parse` raises SyntaxError — parse per file and skip
+          files that fail to parse.
+
+      Return a single fenced ```python block defining `_state_covered` (plus any
+      helper functions it needs). Assume `import ast`, `import re`, and
+      `_IDENTIFIER_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_-]*$")` are already
+      available. Do not read the filesystem.
+    context_code: |
+      # Pre-fix implementation (regex/substring — the version to replace):
+      def _state_covered(state: str, test_contents: str) -> bool:
+          """A declared state is covered if it is literally asserted in a test."""
+          if not state:
+              return False
+          quoted_pattern = re.compile(r"""['"]""" + re.escape(state) + r"""['"]""")
+          if quoted_pattern.search(test_contents):
+              return True
+          if _IDENTIFIER_RE.match(state) and "." not in state:
+              attr_pattern = re.compile(r"\." + re.escape(state) + r"\b")
+              if attr_pattern.search(test_contents):
+                  return True
+          return False
+    grader_preamble: |
+      import ast
+      import re
+      _IDENTIFIER_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_-]*$")
+    required_defs:
+      - _state_covered
+    held_back_asserts: |
+      # vacuous forms must NOT count as coverage
+      assert _state_covered("active", 'assert "active"') is False
+      assert _state_covered("onex.evt.omnimarket.foo.v1", 'assert "onex.evt.omnimarket.foo.v1"') is False
+      assert _state_covered("active", 'assert "active" == "active"') is False
+      assert _state_covered("declared_topics", "assert declared_topics == declared_topics") is False
+      assert _state_covered("overall_status", "assert result.overall_status == result.overall_status") is False
+      assert _state_covered("active", '\ndef test_thing() -> None:\n    """active is the running phase."""\n    assert something_else == 1\n') is False
+      assert _state_covered("active", "# transitions through the 'active' phase\nassert other == 2\n") is False
+      assert _state_covered("review", "from omnimarket.review.pr_review_fsm import advance\nassert x == 1\n") is False
+      # genuine assertions MUST count
+      assert _state_covered("active", 'assert result.state == "active"') is True
+      assert _state_covered("INVENTORYING", "for state in (EnumX.IDLE, EnumX.INVENTORYING, EnumX.MERGING):\n    assert state not in terminal\n") is True
+      assert _state_covered("active", 'self.assertEqual(result.state, "active")') is True
+      assert _state_covered("active", ["from __future__ import annotations\nassert x == 1\n", 'from __future__ import annotations\nassert result.state == "active"\n']) is True

@@ -129,6 +129,20 @@ class ModelContextRoiRunRequest(BaseModel):
             "content-resolver effect before dispatch."
         ),
     )
+    target_endpoint: str = Field(
+        default="",
+        description=(
+            "OMN-14018: optional per-run backend pin. When set to a routing-tier "
+            "backend id (e.g. 'cloud-glm', 'cloud-gemini-flash'), the runner "
+            "threads it onto every generation command as forced_endpoint_ref so "
+            "the generation consumer pins the run's STARTING route to that "
+            "backend's tier via the routing authority — giving per-tier graded "
+            "coverage (a genuinely-failing cheap_cloud cohort for context_roi_scores) "
+            "instead of always routing to the contract-declared local tier. Empty "
+            "(default) preserves contract-declared routing exactly. A ref that maps "
+            "to no tier degrades to normal routing (never crashes the run)."
+        ),
+    )
 
 
 __all__ = [

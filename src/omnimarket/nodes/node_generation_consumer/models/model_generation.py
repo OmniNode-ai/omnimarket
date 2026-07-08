@@ -253,6 +253,23 @@ class ModelNodeGenerationRequest(BaseModel):
         ),
     )
 
+    # --- OMN-14018: per-run backend pin (context-ROI per-tier capture) ---
+    # Optional with an empty default so ordinary generation is unaffected. When set
+    # to a routing-tier backend id (e.g. "cloud-glm"), the generation consumer pins
+    # this run's STARTING route to that backend's tier via the routing authority
+    # instead of the contract-declared starting tier — letting the context-ROI
+    # battery capture genuine per-tier graded outcomes for context_roi_scores. A ref
+    # that maps to no tier degrades to contract-declared routing (never crashes).
+    forced_endpoint_ref: str = Field(
+        default="",
+        description=(
+            "OMN-14018: optional routing-tier backend id to pin the STARTING route "
+            "for this run (e.g. 'cloud-glm'). Empty (default) = contract-declared "
+            "starting tier. Resolved through the routing authority; an unresolvable "
+            "ref falls back to the contract-declared route."
+        ),
+    )
+
 
 class ModelGenerationBenchmark(BaseModel):
     """Output benchmark emitted as the terminal event payload.

@@ -2,6 +2,7 @@
 
 from omnimarket.projection.discovery import build_projection_topic_map
 from omnimarket.projection.models import ProjectionStatus, ProjectionTableConfig
+from omnimarket.projection.postgres_sync_database import PostgresSyncProjectionAdapter
 from omnimarket.projection.protocol_database import (
     DatabaseAdapter,
     InmemoryDatabaseAdapter,
@@ -15,6 +16,7 @@ from omnimarket.projection.sqlite_database import (
 __all__: list[str] = [
     "DatabaseAdapter",
     "InmemoryDatabaseAdapter",
+    "PostgresSyncProjectionAdapter",
     "ProjectionStatus",
     "ProjectionTableConfig",
     "ProtocolProjectionDatabaseSync",
