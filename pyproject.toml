@@ -63,6 +63,9 @@ dependencies = [
 dep-health = [
     "graphifyy==0.8.2",
 ]
+intelligence = [
+    "adaptive-classifier>=0.1.2",
+]
 
 [project.urls]
 Homepage = "https://github.com/OmniNode-ai/omnimarket"

@@ -1026,7 +1026,7 @@ async def test_org_wide_open_downgrades_complete_to_not_done_over_bus(
         )
         scenario = await _drive(
             bus,
-            command=_command("run-notdone"),
+            command=_command("run-notdone", loop_until_done=False),
             inventory=_MockInventory(calls, _inventory((1,)), raises=False),
             triage=_MockTriage(
                 calls, _triage((1,), EnumPrCategory.GREEN), raises=False
