@@ -301,6 +301,19 @@ def _make_command(**kwargs: object) -> ModelPrLifecycleStartCommand:
     return ModelPrLifecycleStartCommand(**defaults)  # type: ignore[arg-type]
 
 
+def test_command_normalizes_repo_filter_shorthand_to_github_slugs() -> None:
+    """User-facing repo filters accept local repo names from merge-sweep skills."""
+    command = _make_command(
+        repos=["omnibase_infra", "OmniNode-ai/omnimarket", " omniclaude "]
+    )
+    csv_command = _make_command(repos="omnibase_core, OmniNode-ai/omnimarket")
+
+    assert command.repos == (
+        "OmniNode-ai/omnibase_infra,OmniNode-ai/omnimarket,OmniNode-ai/omniclaude"
+    )
+    assert csv_command.repos == "OmniNode-ai/omnibase_core,OmniNode-ai/omnimarket"
+
+
 class _TestOrchestrator(HandlerPrLifecycleOrchestrator):
     """Test subclass that bypasses gh CLI calls.
 
@@ -1128,6 +1141,29 @@ class TestPrLifecycleOrchestratorResultFile:
         assert payload["final_state"] == "COMPLETE"
         assert payload["correlation_id"] == str(cmd.correlation_id)
 
+    async def test_root_state_dir_falls_back_to_omni_home(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A bad root ONEX_STATE_DIR must not write under /.onex_state."""
+        monkeypatch.setenv("ONEX_STATE_DIR", "/.onex_state")
+        monkeypatch.setenv("OMNI_HOME", str(tmp_path / "omni_home"))
+        orch = await _make_orchestrator(inventory=MockInventory(prs=()))
+        cmd = _make_command(run_id="20260411-root-fallback")
+
+        result = await orch.handle(cmd)
+        assert result.final_state == "COMPLETE"
+
+        result_path = (
+            tmp_path
+            / "omni_home"
+            / ".onex_state"
+            / "merge-sweep"
+            / "20260411-root-fallback"
+            / "result.json"
+        )
+        assert result_path.exists()
+        assert not Path("/.onex_state/merge-sweep/20260411-root-fallback").exists()
+
     async def test_failure_writes_result_json(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
@@ -1439,6 +1475,45 @@ class TestOrchestratorFixReasonRouting:
         assert result.prs_fixed == 1
         assert fix.last_command.block_reason == expected
         assert fix.last_command.ticket_id == "OMN-11171"
+
+    async def test_network_flake_evidence_routes_to_ci_rerun(self) -> None:
+        """Network/clone log evidence routes a scary check name to CI rerun."""
+        inventory_record = PrRecord(
+            pr_number=502,
+            repo="OmniNode-ai/onex_change_control",
+            checks_status="failure",
+            review_status="pending",
+            ticket_ids=("OMN-13998",),
+            failed_check_names=("Kafka Boundary Parity",),
+            failed_check_flaky_evidence=("could not resolve host: github.com",),
+        )
+        triage_record = TriageRecord(
+            pr_number=inventory_record.pr_number,
+            repo=inventory_record.repo,
+            category=EnumPrCategory.RED,
+            ticket_ids=inventory_record.ticket_ids,
+            failed_check_names=inventory_record.failed_check_names,
+            failed_check_flaky_evidence=inventory_record.failed_check_flaky_evidence,
+            block_reason="CI status is 'failing' - fix required before merge.",
+        )
+        fix_intent = ReducerIntent(
+            pr_number=inventory_record.pr_number,
+            repo=inventory_record.repo,
+            intent=EnumReducerIntent.FIX,
+        )
+        fix = MockFix()
+        orch = await _make_orchestrator(
+            inventory=MockInventory(prs=(inventory_record,)),
+            triage=MockTriage(classified=(triage_record,)),
+            reducer=MockReducer(intents=(fix_intent,)),
+            fix=fix,
+        )
+
+        result = await orch.handle(_make_command())
+
+        assert result.final_state == "COMPLETE"
+        assert result.prs_fixed == 1
+        assert fix.last_command.block_reason == EnumPrBlockReason.CI_FAILURE
 
 
 # ---------------------------------------------------------------------------

@@ -59,6 +59,7 @@ def _record(
     *,
     category: EnumPrCategory,
     failed_check_names: tuple[str, ...] = (),
+    failed_check_flaky_evidence: tuple[str, ...] = (),
     ticket_ids: tuple[str, ...] = (),
     block_reason: str = "",
 ) -> TriageRecord:
@@ -68,6 +69,7 @@ def _record(
         category=category,
         ticket_ids=ticket_ids,
         failed_check_names=failed_check_names,
+        failed_check_flaky_evidence=failed_check_flaky_evidence,
         block_reason=block_reason,
     )
 
@@ -219,6 +221,15 @@ class TestChokepoint1Classifier:
         pr = _record(
             category=EnumPrCategory.RED,
             failed_check_names=("self-hosted runner", "mypy / strict"),
+        )
+        assert _block_reason_for_fix(pr) == EnumPrBlockReason.CODE_FAILURE
+
+    def test_mixed_flaky_evidence_and_code_failure_stays_code_failure(self) -> None:
+        """Network evidence for one check must not hide a real code check."""
+        pr = _record(
+            category=EnumPrCategory.RED,
+            failed_check_names=("Hostile Reviewer", "pytest / unit"),
+            failed_check_flaky_evidence=("could not resolve host: github.com",),
         )
         assert _block_reason_for_fix(pr) == EnumPrBlockReason.CODE_FAILURE
 

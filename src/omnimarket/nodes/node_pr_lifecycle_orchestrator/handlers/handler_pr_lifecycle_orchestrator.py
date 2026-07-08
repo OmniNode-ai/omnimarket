@@ -146,6 +146,10 @@ class ChangedFilesUnavailableError(RuntimeError):
 # ---------------------------------------------------------------------------
 
 
+_DEFAULT_SWEEP_SLEEP_SECONDS = 30 * 60
+_DEFAULT_STANDING_SWEEP_PASSES = 17_520  # 365 days at a 30-minute cadence.
+
+
 class ModelPrLifecycleStartCommand(BaseModel):
     """Start command for the PR lifecycle orchestrator."""
 
@@ -219,12 +223,15 @@ class ModelPrLifecycleStartCommand(BaseModel):
         ),
     )
     max_sweep_passes: int = Field(
-        default=20,
+        default=_DEFAULT_STANDING_SWEEP_PASSES,
         ge=1,
-        description="Maximum sweep passes for one invocation.",
+        description=(
+            "Maximum sweep passes for one invocation. The default keeps the "
+            "operator sweep standing for roughly one year at the default cadence."
+        ),
     )
     sweep_sleep_seconds: int = Field(
-        default=0,
+        default=_DEFAULT_SWEEP_SLEEP_SECONDS,
         ge=0,
         description="Backoff between NOT_DONE sweep passes.",
     )
@@ -233,8 +240,14 @@ class ModelPrLifecycleStartCommand(BaseModel):
     @classmethod
     def _coerce_repos(cls, value: object) -> str:
         if isinstance(value, list | tuple):
-            return ",".join(str(item).strip() for item in value if str(item).strip())
-        return str(value or "")
+            return ",".join(
+                repo for item in value if (repo := _normalize_repo_slug(str(item)))
+            )
+        return ",".join(
+            repo
+            for item in str(value or "").split(",")
+            if (repo := _normalize_repo_slug(item))
+        )
 
 
 class OrgWideOpenPrRemainderRef(BaseModel):
@@ -480,6 +493,18 @@ _REVIEW_STATUS_MAP: dict[str, str] = {
 _TICKET_ID_PATTERN = re.compile(r"\bOMN-\d+\b", re.IGNORECASE)
 _UNKNOWN_OCC_MERGE_SHA = "unknown-occ-merge-sha"
 _RECEIPT_GATE_CHECK_NAME = "verify / verify"
+_DEFAULT_GITHUB_OWNER = "OmniNode-ai"
+
+
+def _normalize_repo_slug(value: str) -> str:
+    """Return a GitHub ``OWNER/REPO`` slug for user-facing repo filters."""
+    repo = value.strip()
+    if not repo:
+        return ""
+    if "/" in repo:
+        return repo
+    return f"{_DEFAULT_GITHUB_OWNER}/{repo}"
+
 
 # ---------------------------------------------------------------------------
 # Machine failure-signature constants (OMN-13987 CP1)
@@ -558,6 +583,20 @@ def _is_flaky_infra_only(failed_check_names: tuple[str, ...]) -> bool:
     )
 
 
+def _has_code_signal_failure(failed_check_names: tuple[str, ...]) -> bool:
+    """True when any failed check name indicates code that must be fixed."""
+    return any(
+        sub in name.lower()
+        for name in failed_check_names
+        for sub in _CODE_SIGNAL_CHECK_SUBSTRINGS
+    )
+
+
+def _has_flaky_failure_evidence(pr: TriageRecord) -> bool:
+    """True when inventory found hard network/clone evidence for failed checks."""
+    return bool(tuple(e.strip() for e in pr.failed_check_flaky_evidence if e.strip()))
+
+
 def _map_ci_status(pr_state: Any) -> str:
     """Map ModelPrState fields to orchestrator-internal checks_status string."""
     if getattr(pr_state, "ci_passing", None) is True:
@@ -577,6 +616,21 @@ def _failed_check_names(pr_state: Any) -> tuple[str, ...]:
             if name:
                 names.append(name)
     return tuple(sorted(set(names)))
+
+
+def _failed_check_flaky_evidence(pr_state: Any) -> tuple[str, ...]:
+    """Return machine flaky evidence collected for failed checks."""
+    evidence: list[str] = []
+    for check in getattr(pr_state, "check_runs", ()) or ():
+        conclusion = str(getattr(check, "conclusion", "") or "").lower()
+        if conclusion not in {"failure", "cancelled", "timed_out", "action_required"}:
+            continue
+        evidence.extend(
+            str(item).strip()
+            for item in getattr(check, "flaky_failure_evidence", ()) or ()
+            if str(item).strip()
+        )
+    return tuple(sorted(set(evidence)))
 
 
 def _extract_ticket_ids(*values: str) -> tuple[str, ...]:
@@ -675,7 +729,13 @@ def _block_reason_for_fix(pr: TriageRecord) -> Any:
     # (rerunnable) and NONE look like a genuine lint/type/test failure → a cheap
     # CI rerun. Deliberately narrow + fail-safe: any code-signal check present
     # falls through to CODE_FAILURE below.
-    if pr.category == EnumPrCategory.RED and _is_flaky_infra_only(failed_check_names):
+    if pr.category == EnumPrCategory.RED and (
+        _is_flaky_infra_only(failed_check_names)
+        or (
+            _has_flaky_failure_evidence(pr)
+            and not _has_code_signal_failure(failed_check_names)
+        )
+    ):
         return EnumPrBlockReason.CI_FAILURE
 
     if pr.category == EnumPrCategory.RED:
@@ -1824,6 +1884,9 @@ class HandlerPrLifecycleOrchestrator:
                         review_status=_map_review_status(pr_state),
                         has_conflicts=getattr(pr_state, "has_conflicts", False),
                         failed_check_names=_failed_check_names(pr_state),
+                        failed_check_flaky_evidence=_failed_check_flaky_evidence(
+                            pr_state
+                        ),
                         merge_state_status=getattr(
                             pr_state, "merge_state_status", None
                         ),
@@ -1937,6 +2000,7 @@ class HandlerPrLifecycleOrchestrator:
                     or str(pr.merge_state_status or "").upper() == "CLEAN"
                 ),
                 failed_check_names=pr.failed_check_names,
+                failed_check_flaky_evidence=pr.failed_check_flaky_evidence,
             )
             for pr in prs
         )
@@ -1968,6 +2032,9 @@ class HandlerPrLifecycleOrchestrator:
                     category=category,
                     ticket_ids=getattr(result, "ticket_ids", ()),
                     failed_check_names=getattr(result, "failed_check_names", ()),
+                    failed_check_flaky_evidence=getattr(
+                        result, "failed_check_flaky_evidence", ()
+                    ),
                     block_reason=getattr(result, "reason", ""),
                 )
             )
@@ -2028,7 +2095,7 @@ class HandlerPrLifecycleOrchestrator:
                 continue
             if getattr(raw, "merged", False):
                 prs_merged += 1
-            else:
+            elif getattr(raw, "error", None):
                 prs_failed += 1
 
         return MergeResult(prs_merged=prs_merged, prs_failed=prs_failed)
@@ -2647,9 +2714,7 @@ class HandlerPrLifecycleOrchestrator:
         return _FINAL_STATE_NOT_DONE, remainders
 
     def _sweep_run_dir(self, run_id: str) -> Path | None:
-        state_dir = os.environ.get(
-            "ONEX_STATE_DIR", os.path.expanduser("~/.onex_state")
-        )
+        state_dir = self._resolved_state_dir()
         base = (Path(state_dir) / "merge-sweep").resolve()
         out_dir = (base / run_id).resolve()
         if not out_dir.is_relative_to(base):
@@ -2662,6 +2727,21 @@ class HandlerPrLifecycleOrchestrator:
             )
             return None
         return out_dir
+
+    @staticmethod
+    def _resolved_state_dir() -> Path:
+        """Resolve a writable state root and reject root-anchored fallbacks."""
+        raw_state_dir = os.environ.get("ONEX_STATE_DIR")
+        if raw_state_dir:
+            candidate = Path(raw_state_dir).expanduser()
+            resolved = candidate.resolve()
+            if resolved not in {Path("/"), Path("/.onex_state")}:
+                return resolved
+
+        omni_home = os.environ.get("OMNI_HOME")
+        if omni_home:
+            return (Path(omni_home).expanduser() / ".onex_state").resolve()
+        return Path(os.path.expanduser("~/.onex_state")).resolve()
 
     def _write_occ_dependency_edges_file(
         self,

@@ -23,6 +23,14 @@ class ModelPrCheckRun(BaseModel):
     event: str | None = (
         None  # GitHub run trigger: pull_request | workflow_dispatch | merge_group | ...
     )
+    link: str = Field(default="", description="GitHub details URL for this check.")
+    flaky_failure_evidence: tuple[str, ...] = Field(
+        default_factory=tuple,
+        description=(
+            "Machine evidence that the failed check is an infrastructure/network "
+            "flake rather than a product-code failure."
+        ),
+    )
 
 
 class ModelPrReview(BaseModel):

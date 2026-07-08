@@ -447,7 +447,7 @@ class _NativePrLifecycleContractTransport:
         raw = json.loads(value)
         assert raw["event_type"] == "omnimarket.pr-lifecycle-orchestrator-start"
         command = ModelPrLifecycleStartCommand.model_validate(raw["payload"])
-        assert command.repos == "omnimarket,onex_change_control"
+        assert command.repos == "OmniNode-ai/omnimarket,OmniNode-ai/onex_change_control"
 
         terminal_topic = "onex.evt.omnimarket.pr-lifecycle-orchestrator-completed.v1"
         assert terminal_topic in self.callbacks

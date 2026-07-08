@@ -64,6 +64,7 @@ def _result(
         category=category,
         ticket_ids=pr.ticket_ids,
         failed_check_names=pr.failed_check_names,
+        failed_check_flaky_evidence=pr.failed_check_flaky_evidence,
         reason=reason,
     )
 

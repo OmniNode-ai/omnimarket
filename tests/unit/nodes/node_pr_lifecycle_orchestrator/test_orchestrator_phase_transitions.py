@@ -179,6 +179,18 @@ async def test_call_triage_treats_clean_merge_state_as_merge_ready() -> None:
 
 
 @pytest.mark.unit
+def test_pr_lifecycle_defaults_to_standing_sweep_cadence() -> None:
+    command = ModelPrLifecycleStartCommand(
+        correlation_id=uuid4(),
+        run_id="standing-sweep-defaults",
+    )
+
+    assert command.loop_until_done is True
+    assert command.sweep_sleep_seconds == 30 * 60
+    assert command.max_sweep_passes == 17_520
+
+
+@pytest.mark.unit
 @pytest.mark.asyncio
 async def test_handle_loops_until_done_after_not_done_result() -> None:
     """A NOT_DONE report is a continuation condition, not command completion."""

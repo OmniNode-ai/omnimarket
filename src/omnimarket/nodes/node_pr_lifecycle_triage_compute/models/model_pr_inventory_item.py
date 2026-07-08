@@ -62,6 +62,10 @@ class ModelPrInventoryItem(BaseModel):
             "dependency failures from product-code failures."
         ),
     )
+    failed_check_flaky_evidence: tuple[str, ...] = Field(
+        default_factory=tuple,
+        description="Machine evidence that failed checks are rerunnable infra flakes.",
+    )
 
 
 __all__: list[str] = ["ModelPrInventoryItem"]

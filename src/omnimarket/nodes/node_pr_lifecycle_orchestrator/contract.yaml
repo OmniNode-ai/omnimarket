@@ -139,13 +139,13 @@ inputs:
     type: int
     description: "Maximum sweep passes when loop_until_done is enabled"
     required: false
-    default: 20
+    default: 17520
     minimum: 1
   sweep_sleep_seconds:
     type: int
     description: "Seconds to sleep between NOT_DONE sweep passes"
     required: false
-    default: 0
+    default: 1800
     minimum: 0
 
 outputs:
