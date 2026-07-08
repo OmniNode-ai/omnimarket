@@ -55,11 +55,26 @@ _OCC_PREFLIGHT_CHECK_NAME = "occ-preflight / eligibility"
 _OCC_EVIDENCE_CHECK_NAMES = frozenset(
     {_RECEIPT_GATE_CHECK_NAME, _OCC_PREFLIGHT_CHECK_NAME}
 )
+# OMN-13990 follow-up (round 2): a live sweep of the still-blocked PRs found
+# the widened match above STILL never fires, because a second, cosmetic check
+# rides along in the failed set — e.g. omninode_infra#579's
+# failed_check_names is {"verify / verify", "Enable Auto-Merge"}.
+# "Enable Auto-Merge" fails BY DESIGN on every PR today (org-wide auto-merge
+# is off) and is verified NOT a required status check on any repo's `dev`
+# branch protection (checked live 2026-07-08: omnimarket, omnibase_infra,
+# omniclaude, omninode_infra all omit it). Excluding it here is deliberately
+# narrow — it does NOT include checks like `call-reject-skip-token`
+# (omninode_infra#578's second failing check), which IS a required context;
+# a required-but-flaky check needs a CI rerun, not a classifier exclusion.
+_COSMETIC_NON_REQUIRED_CHECK_NAMES = frozenset({"Enable Auto-Merge"})
 
 
 def _is_receipt_only_failure(pr: ModelPrInventoryItem) -> bool:
     failed = {name.strip() for name in pr.failed_check_names if name.strip()}
-    return bool(failed) and failed <= _OCC_EVIDENCE_CHECK_NAMES
+    evidence_signature_checks = failed - _COSMETIC_NON_REQUIRED_CHECK_NAMES
+    return bool(evidence_signature_checks) and (
+        evidence_signature_checks <= _OCC_EVIDENCE_CHECK_NAMES
+    )
 
 
 def _result(
