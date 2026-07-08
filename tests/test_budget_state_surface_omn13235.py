@@ -183,3 +183,32 @@ class TestMigrationDeclaresTable:
         assert "CREATE TABLE IF NOT EXISTS delegation_budget_state" in migration
         assert "ux_delegation_budget_state_identity" in migration
         assert "headroom_remaining_usd" in migration
+
+
+@pytest.mark.unit
+class TestProjectionApiExposesBudgetStateSnapshot:
+    """OMN-14058: the budget-state snapshot topic stays contract-declared and
+    exposed via the projection API — the surface the per-tenant dashboard
+    panel reads, and (post OMN-14058) the surface carrying the tenant_id
+    column the interim ONEX_TENANT_ID stamp populates.
+    """
+
+    def test_contract_exposes_budget_state_snapshot_topic(self) -> None:
+        from pathlib import Path
+
+        import yaml
+
+        contract = yaml.safe_load(
+            Path(
+                "src/omnimarket/nodes/node_projection_delegation/contract.yaml"
+            ).read_text()
+        )
+        exposures = contract["projection_api"]["exposures"]
+        budget_state = next(
+            exposure
+            for exposure in exposures
+            if exposure["topic"]
+            == "onex.snapshot.projection.delegation.budget-state.v1"
+        )
+        assert budget_state["table"] == "delegation_budget_state"
+        assert "tenant_id" in budget_state["columns"]

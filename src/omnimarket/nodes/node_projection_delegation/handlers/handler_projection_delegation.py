@@ -154,6 +154,11 @@ class ModelProjectionTaskDelegatedEvent(BaseModel):
 
     correlation_id: str = Field(..., description="Unique correlation ID for dedup.")
     session_id: str | None = Field(default=None)
+    # string-id-ok: tenant_id is a named tenant identifier, not a UUID
+    # OMN-14058 (OPERATOR-ACCEPTED INTERIM): carried from the source event when
+    # the delegation FSM resolved a real tenant (ONEX_TENANT_ID). None means the
+    # row falls back to the 'omninode' column default.
+    tenant_id: str | None = Field(default=None)
     task_type: str = Field(..., description="Task type (e.g. code-review, refactor).")
     delegated_to: str = Field(..., description="Agent that received the task.")
     model_name: str = Field(
@@ -372,6 +377,12 @@ class HandlerProjectionDelegation:
             "request_override_applied": event.request_override_applied,
             "override_within_bounds": event.override_within_bounds,
         }
+        # OMN-14058 (OPERATOR-ACCEPTED INTERIM): only stamp tenant_id when the
+        # source event carried one — omitting the key (rather than writing
+        # None) lets the delegation_events column DEFAULT 'omninode' apply on
+        # INSERT and leaves an already-known tenant untouched on UPDATE.
+        if event.tenant_id:
+            row["tenant_id"] = event.tenant_id
         evidence = extract_quality_bar_evidence(row)
         evidence.update(
             extract_quality_bar_evidence(
@@ -394,7 +405,12 @@ class HandlerProjectionDelegation:
                     measurement.headroom_consumed_usd
                 ),
                 cost_usd=_as_decimal(measurement.cost_usd),
-                tenant_id=event.session_id,
+                # OMN-14058 bug fix (bundled with the interim tenant stamp):
+                # this previously passed event.session_id — a session is not a
+                # tenant. Use the real tenant_id (ONEX_TENANT_ID-sourced) and
+                # let ModelDelegationBudgetStateEvent.resolved_tenant() fall
+                # back to DEFAULT_TENANT when none was resolved.
+                tenant_id=event.tenant_id,
                 timestamp=event.timestamp,
             ),
             db,
@@ -467,6 +483,11 @@ class HandlerProjectionDelegation:
             "projection_version": row_model.projection_version,
             "reducer_version": row_model.reducer_version,
         }
+        # OMN-14058 (OPERATOR-ACCEPTED INTERIM): only stamp tenant_id when
+        # present — omitting the key lets the column DEFAULT 'omninode' apply
+        # on INSERT and leaves an already-known tenant untouched on UPDATE.
+        if row_model.tenant_id:
+            row["tenant_id"] = row_model.tenant_id
         # OMN-13596: preserve an already-correct response_text when this
         # delegate-skill terminal event carries None/empty response_text.
         # Without this guard, a late-arriving timeout terminal (status="timeout",
@@ -731,6 +752,11 @@ def _canonical_result_to_task_delegated_payload(
 
     return {
         "correlation_id": payload.get("correlation_id"),
+        # OMN-14058 (OPERATOR-ACCEPTED INTERIM): carry the canonical terminal's
+        # tenant_id (ONEX_TENANT_ID-sourced at request-acceptance) through the
+        # converter so the delegation_events row stamps a real tenant instead
+        # of the 'omninode' column default.
+        "tenant_id": payload.get("tenant_id"),
         "task_type": payload.get("task_type") or "unknown",
         "delegated_to": payload.get("model_used") or "unknown",
         "model_name": payload.get("model_used") or "",

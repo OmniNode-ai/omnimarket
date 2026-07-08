@@ -53,6 +53,7 @@ from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
 from omnibase_core.models.primitives.model_semver import ModelSemVer
 from pydantic import BaseModel
 
+from omnimarket.config import get_settings
 from omnimarket.enums.enum_delegation_failure_class import EnumDelegationFailureClass
 from omnimarket.inference.protocol_config import apply_inference_protocol
 from omnimarket.models.delegation.llm_cost_routing.model_llm_delegation_escalation_triggered_event import (
@@ -617,6 +618,12 @@ class TerminalEmissionInputs:
     prior_attempt_cost_usd: float = 0.0
     prior_attempt_prompt_tokens: int = 0
     prior_attempt_completion_tokens: int = 0
+    # OMN-14058 (OPERATOR-ACCEPTED INTERIM): tenant identity pinned onto the
+    # workflow at request-acceptance (ONEX_TENANT_ID fallback), carried onto
+    # every terminal so delegation/savings projections can stamp a real tenant
+    # instead of the shared 'omninode' column default. The durable per-tenant
+    # identity design is OMN-14107.
+    tenant_id: str | None = None
 
 
 @dataclass(frozen=True)
@@ -690,6 +697,11 @@ class DelegationWorkflowState:
     cumulative_attempt_cost_usd: float = 0.0
     cumulative_attempt_prompt_tokens: int = 0
     cumulative_attempt_completion_tokens: int = 0
+    # OMN-14058 (OPERATOR-ACCEPTED INTERIM): resolved ONCE in
+    # handle_delegation_request and carried onto every TerminalEmissionInputs
+    # for this correlation_id (mirrors the context_pack_hash acceptance-pin
+    # pattern above). The durable per-tenant identity design is OMN-14107.
+    tenant_id: str | None = None
 
 
 class HandlerDelegationWorkflow:
@@ -841,6 +853,12 @@ class HandlerDelegationWorkflow:
             # OMN-13644: pin the context-pack hash from acceptance so every
             # terminal carries it regardless of later escalation / request loss.
             context_pack_hash=_context_pack_hash_for_event(request),
+            # OMN-14058 (OPERATOR-ACCEPTED INTERIM): pin the tenant identity
+            # from acceptance for the same reason — an explicit request-level
+            # tenant_id wins; otherwise fall back to the single ONEX_TENANT_ID
+            # read for this process (no tenant identity otherwise exists
+            # anywhere in the delegation chain). Durable design: OMN-14107.
+            tenant_id=request.tenant_id or (get_settings().onex_tenant_id or None),
         )
         self._workflows[cid] = workflow
 
@@ -1105,6 +1123,7 @@ class HandlerDelegationWorkflow:
                 attempts_count=workflow.escalation_count + 1,
                 model_name=workflow.routing_decision.selected_model,
                 session_id=None,
+                tenant_id=workflow.tenant_id,
                 # Pre-gate inference failure: no quality gate ran, so report the
                 # compat DTO's documented default gate set as "checked".
                 quality_gates_checked=["length", "refusal", "markers"],
@@ -1806,6 +1825,10 @@ class HandlerDelegationWorkflow:
             # instead of reconstructing the tier from the model name, so the
             # dashboard reads tier from the projection (deletes modelTier.ts).
             cost_tier_name=cost.cost_tier_name,
+            # OMN-14058 (OPERATOR-ACCEPTED INTERIM): tenant identity pinned at
+            # request-acceptance, carried through TerminalEmissionInputs onto
+            # every terminal shape (completed / failed / agent-lifecycle).
+            tenant_id=inputs.tenant_id,
         )
 
         # OMN-13629 (WS-F Phase 1): the legacy compat ``ModelTaskDelegatedEvent``
@@ -1909,6 +1932,7 @@ class HandlerDelegationWorkflow:
             attempts_count=workflow.escalation_count + 1,
             model_name=workflow.routing_decision.selected_model,
             session_id=None,
+            tenant_id=workflow.tenant_id,
             quality_gates_checked=quality_gates_checked,
             quality_gates_failed=[] if completed else list(result.failure_reasons),
             llm_call_id=workflow.inference_llm_call_id,
@@ -1990,6 +2014,7 @@ class HandlerDelegationWorkflow:
             attempts_count=1,
             model_name=delegated_to,
             session_id=None,
+            tenant_id=workflow.tenant_id,
             quality_gates_checked=["agent-task-lifecycle"],
             quality_gates_failed=[failure_reason] if failure_reason else [],
             llm_call_id=lifecycle_event.remote_task_handle or "",
