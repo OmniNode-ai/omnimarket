@@ -11,8 +11,8 @@ from datetime import UTC, datetime
 from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
-import pytest
 import psycopg2
+import pytest
 
 from omnimarket.nodes.node_data_verification.handlers.datasource_postgres import (
     PostgresDataSource,
@@ -321,6 +321,7 @@ class TestPostgresDataSourceUnit:
 # ---------------------------------------------------------------------------
 # Integration tests (require real .201 DB -- skip in CI)
 # ---------------------------------------------------------------------------
+
 
 def _has_reachable_db() -> bool:
     dsn = os.environ.get("OMNIDASH_ANALYTICS_DB_URL")
