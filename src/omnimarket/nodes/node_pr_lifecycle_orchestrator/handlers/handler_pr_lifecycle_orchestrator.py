@@ -493,6 +493,17 @@ _REVIEW_STATUS_MAP: dict[str, str] = {
 _TICKET_ID_PATTERN = re.compile(r"\bOMN-\d+\b", re.IGNORECASE)
 _UNKNOWN_OCC_MERGE_SHA = "unknown-occ-merge-sha"
 _RECEIPT_GATE_CHECK_NAME = "verify / verify"
+# OMN-13990 follow-up: occ-preflight is a SEPARATE required check from the
+# receipt gate (omnibase_core occ-preflight.yml, job "eligibility") and fails
+# on the exact same "green-except-OCC-companion" signature — a PR whose only
+# red check is the OCC eligibility gate. Before this fix, only
+# _RECEIPT_GATE_CHECK_NAME was recognized here, so an occ-preflight-only
+# failure fell through to the generic RED/CODE_FAILURE branch below and never
+# reached the autobind arm (omninode_infra#2238 / omnibase_infra#2238 class).
+_OCC_PREFLIGHT_CHECK_NAME = "occ-preflight / eligibility"
+_OCC_EVIDENCE_CHECK_NAMES = frozenset(
+    {_RECEIPT_GATE_CHECK_NAME, _OCC_PREFLIGHT_CHECK_NAME}
+)
 _DEFAULT_GITHUB_OWNER = "OmniNode-ai"
 
 
@@ -707,13 +718,15 @@ def _block_reason_for_fix(pr: TriageRecord) -> Any:
     if _has_deploy_gate_failure(failed_check_names):
         return EnumPrBlockReason.DEPLOY_GATE_CONTRACT_NOT_FOUND
 
-    if failed_check_names and set(failed_check_names) == {_RECEIPT_GATE_CHECK_NAME}:
-        # OMN-13987 CP1: a receipt-gate-ONLY failure that has a ticket is the
-        # Evidence-Source-autobind class (OMN-13317 — the "green-except-OCC-
-        # companion" PR). Route to the cheap machine rebind; the adapter is
-        # self-guarding (no-ops when Evidence-Source is already an OCC source).
-        # Without a ticket, autobind cannot run, so genuine receipt failures
-        # keep the existing agent RECEIPT_FAILURE path.
+    if failed_check_names and set(failed_check_names) <= _OCC_EVIDENCE_CHECK_NAMES:
+        # OMN-13987 CP1 (extended, OMN-13990 follow-up): a failure set drawn
+        # ENTIRELY from {receipt gate, occ-preflight} — either alone, or both
+        # together — has a ticket is the Evidence-Source-autobind class
+        # (OMN-13317 — the "green-except-OCC-companion" PR). Route to the
+        # cheap machine rebind; the adapter is self-guarding (no-ops when
+        # Evidence-Source is already an OCC source). Without a ticket,
+        # autobind cannot run, so genuine receipt failures keep the existing
+        # agent RECEIPT_FAILURE path.
         if pr.ticket_ids:
             return EnumPrBlockReason.RECEIPT_EVIDENCE_SOURCE_AUTOBIND
         return EnumPrBlockReason.RECEIPT_FAILURE

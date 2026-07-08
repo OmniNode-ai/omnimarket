@@ -45,11 +45,21 @@ logger = logging.getLogger(__name__)
 _CI_FAILING_STATUSES: frozenset[str] = frozenset({"failing", "error", "failed"})
 _CI_PASSING_STATUSES: frozenset[str] = frozenset({"passing", "success"})
 _RECEIPT_GATE_CHECK_NAME = "verify / verify"
+# OMN-13990 follow-up: occ-preflight (omnibase_core occ-preflight.yml, job
+# "eligibility") is a separate required check from the receipt gate and fails
+# on the same "green-except-OCC-companion" signature. A PR whose only red
+# check is occ-preflight was previously falling through to the generic RED
+# category instead of OCC_DEPENDENCY, so the downstream fix router never saw
+# it as an OCC-evidence-only failure.
+_OCC_PREFLIGHT_CHECK_NAME = "occ-preflight / eligibility"
+_OCC_EVIDENCE_CHECK_NAMES = frozenset(
+    {_RECEIPT_GATE_CHECK_NAME, _OCC_PREFLIGHT_CHECK_NAME}
+)
 
 
 def _is_receipt_only_failure(pr: ModelPrInventoryItem) -> bool:
     failed = {name.strip() for name in pr.failed_check_names if name.strip()}
-    return failed == {_RECEIPT_GATE_CHECK_NAME}
+    return bool(failed) and failed <= _OCC_EVIDENCE_CHECK_NAMES
 
 
 def _result(
@@ -100,8 +110,9 @@ def _classify_pr(pr: ModelPrInventoryItem) -> ModelPrTriageResult:
                 pr,
                 category=EnumPrTriageCategory.OCC_DEPENDENCY,
                 reason=(
-                    "Receipt Gate is the only failing check — classify as "
-                    "OCC dependency and do not dispatch product-code fixes."
+                    "Receipt Gate and/or occ-preflight is the only failing "
+                    "check — classify as OCC dependency and do not dispatch "
+                    "product-code fixes."
                 ),
             )
         if _is_receipt_only_failure(pr):
@@ -109,8 +120,9 @@ def _classify_pr(pr: ModelPrInventoryItem) -> ModelPrTriageResult:
                 pr,
                 category=EnumPrTriageCategory.RED,
                 reason=(
-                    "Receipt Gate-only failure detected, but no ticket ID was found; "
-                    "fallback to RED to avoid an untracked OCC dependency."
+                    "Receipt Gate/occ-preflight-only failure detected, but no "
+                    "ticket ID was found; fallback to RED to avoid an "
+                    "untracked OCC dependency."
                 ),
             )
         return _result(

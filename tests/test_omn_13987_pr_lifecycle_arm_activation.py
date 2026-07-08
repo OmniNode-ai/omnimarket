@@ -52,6 +52,7 @@ from omnimarket.nodes.node_pr_lifecycle_orchestrator.protocols.protocol_sub_hand
 )
 
 _RECEIPT_GATE = "verify / verify"
+_OCC_PREFLIGHT = "occ-preflight / eligibility"
 _DEPLOY_GATE = "deploy-gate / deploy-gate"
 
 
@@ -199,6 +200,35 @@ class TestChokepoint1Classifier:
             EnumPrBlockReason.RECEIPT_EVIDENCE_SOURCE_AUTOBIND
         )
 
+    def test_occ_preflight_only_with_ticket_routes_to_autobind(self) -> None:
+        """occ-preflight (omnibase_core occ-preflight.yml "eligibility" job)
+        is a separate required check from the receipt gate but fails on the
+        identical "green-except-OCC-companion" signature (OMN-13990
+        follow-up). Before this fix an occ-preflight-only failure fell
+        through to CODE_FAILURE — the omnibase_infra#2238 class."""
+        pr = _record(
+            category=EnumPrCategory.RED,
+            failed_check_names=(_OCC_PREFLIGHT,),
+            ticket_ids=("OMN-14155",),
+        )
+        assert _block_reason_for_fix(pr) == (
+            EnumPrBlockReason.RECEIPT_EVIDENCE_SOURCE_AUTOBIND
+        )
+
+    def test_receipt_gate_and_occ_preflight_both_failing_routes_to_autobind(
+        self,
+    ) -> None:
+        """Both OCC-evidence checks failing together (nothing else) is still
+        the autobind class, not a code failure."""
+        pr = _record(
+            category=EnumPrCategory.RED,
+            failed_check_names=(_RECEIPT_GATE, _OCC_PREFLIGHT),
+            ticket_ids=("OMN-14155",),
+        )
+        assert _block_reason_for_fix(pr) == (
+            EnumPrBlockReason.RECEIPT_EVIDENCE_SOURCE_AUTOBIND
+        )
+
     def test_red_all_flaky_infra_routes_to_ci_failure(self) -> None:
         pr = _record(
             category=EnumPrCategory.RED,
@@ -230,6 +260,16 @@ class TestChokepoint1Classifier:
             category=EnumPrCategory.RED,
             failed_check_names=("Hostile Reviewer", "pytest / unit"),
             failed_check_flaky_evidence=("could not resolve host: github.com",),
+        )
+        assert _block_reason_for_fix(pr) == EnumPrBlockReason.CODE_FAILURE
+
+    def test_occ_preflight_plus_code_failure_stays_code_failure(self) -> None:
+        """occ-preflight failing alongside a genuine code-signal check must
+        stay CODE_FAILURE — an evidence gap never masks a real test failure."""
+        pr = _record(
+            category=EnumPrCategory.RED,
+            failed_check_names=(_OCC_PREFLIGHT, "pytest / unit"),
+            ticket_ids=("OMN-14155",),
         )
         assert _block_reason_for_fix(pr) == EnumPrBlockReason.CODE_FAILURE
 
