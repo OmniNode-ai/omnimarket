@@ -493,6 +493,33 @@ _REVIEW_STATUS_MAP: dict[str, str] = {
 _TICKET_ID_PATTERN = re.compile(r"\bOMN-\d+\b", re.IGNORECASE)
 _UNKNOWN_OCC_MERGE_SHA = "unknown-occ-merge-sha"
 _RECEIPT_GATE_CHECK_NAME = "verify / verify"
+# OMN-13990 follow-up: occ-preflight is a SEPARATE required check from the
+# receipt gate (omnibase_core occ-preflight.yml, job "eligibility") and fails
+# on the exact same "green-except-OCC-companion" signature — a PR whose only
+# red check is the OCC eligibility gate. Before this fix, only
+# _RECEIPT_GATE_CHECK_NAME was recognized here, so an occ-preflight-only
+# failure fell through to the generic RED/CODE_FAILURE branch below and never
+# reached the autobind arm (omninode_infra#2238 / omnibase_infra#2238 class).
+_OCC_PREFLIGHT_CHECK_NAME = "occ-preflight / eligibility"
+_OCC_EVIDENCE_CHECK_NAMES = frozenset(
+    {_RECEIPT_GATE_CHECK_NAME, _OCC_PREFLIGHT_CHECK_NAME}
+)
+# OMN-13990 follow-up (round 2): a live sweep of the still-blocked PRs found
+# the widened subset match above STILL never fires, because a second,
+# cosmetic check rides along in the failed set — e.g. omninode_infra#579's
+# failed_check_names is {"verify / verify", "Enable Auto-Merge"}.
+# "Enable Auto-Merge" fails BY DESIGN on every PR today (org-wide auto-merge
+# is off) and is verified NOT a required status check on any repo's `dev`
+# branch protection (checked live 2026-07-08: omnimarket, omnibase_infra,
+# omniclaude, omninode_infra all omit it from
+# `branches/dev/protection/required_status_checks`). Excluding it from the
+# OCC-evidence-signature comparison (below) lets the subset match see through
+# it. This denylist is deliberately narrow — it does NOT include checks like
+# `call-reject-skip-token` (omninode_infra#578's second failing check), which
+# IS a required context; a required-but-flaky check needs a CI rerun, not a
+# classifier exclusion (see the existing `_FLAKY_INFRA_CHECK_SUBSTRINGS` /
+# `_has_flaky_failure_evidence` path below for that case).
+_COSMETIC_NON_REQUIRED_CHECK_NAMES = frozenset({"Enable Auto-Merge"})
 _DEFAULT_GITHUB_OWNER = "OmniNode-ai"
 
 
@@ -707,13 +734,27 @@ def _block_reason_for_fix(pr: TriageRecord) -> Any:
     if _has_deploy_gate_failure(failed_check_names):
         return EnumPrBlockReason.DEPLOY_GATE_CONTRACT_NOT_FOUND
 
-    if failed_check_names and set(failed_check_names) == {_RECEIPT_GATE_CHECK_NAME}:
-        # OMN-13987 CP1: a receipt-gate-ONLY failure that has a ticket is the
+    # OMN-13990 follow-up (round 2): drop cosmetic non-required checks (e.g.
+    # "Enable Auto-Merge", which fails BY DESIGN org-wide) before comparing
+    # against the OCC-evidence signature — see _COSMETIC_NON_REQUIRED_CHECK_NAMES
+    # above. Scoped to this comparison only; the raw failed_check_names tuple
+    # (still including cosmetic entries) is used unchanged everywhere else in
+    # this function.
+    evidence_signature_checks = (
+        set(failed_check_names) - _COSMETIC_NON_REQUIRED_CHECK_NAMES
+    )
+    if (
+        evidence_signature_checks
+        and evidence_signature_checks <= _OCC_EVIDENCE_CHECK_NAMES
+    ):
+        # OMN-13987 CP1 (extended, OMN-13990 follow-up): a failure set drawn
+        # ENTIRELY from {receipt gate, occ-preflight} plus cosmetic checks —
+        # either alone, or both together — has a ticket is the
         # Evidence-Source-autobind class (OMN-13317 — the "green-except-OCC-
         # companion" PR). Route to the cheap machine rebind; the adapter is
-        # self-guarding (no-ops when Evidence-Source is already an OCC source).
-        # Without a ticket, autobind cannot run, so genuine receipt failures
-        # keep the existing agent RECEIPT_FAILURE path.
+        # self-guarding (no-ops when Evidence-Source is already an OCC
+        # source). Without a ticket, autobind cannot run, so genuine receipt
+        # failures keep the existing agent RECEIPT_FAILURE path.
         if pr.ticket_ids:
             return EnumPrBlockReason.RECEIPT_EVIDENCE_SOURCE_AUTOBIND
         return EnumPrBlockReason.RECEIPT_FAILURE

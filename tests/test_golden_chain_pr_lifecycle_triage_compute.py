@@ -133,6 +133,152 @@ class TestPrLifecycleTriageComputeGoldenChain:
         assert result.total_occ_dependency == 0
         assert result.total_red == 1
 
+    async def test_occ_preflight_only_failure_is_occ_dependency(
+        self, event_bus: EventBusInmemory
+    ) -> None:
+        """A lone occ-preflight failure is an OCC dependency, same as a lone
+        Receipt Gate failure (OMN-13990 follow-up). occ-preflight is a
+        separate required check (omnibase_core occ-preflight.yml, job
+        "eligibility") that fails on the identical "green-except-OCC-
+        companion" signature; before this fix it fell through to RED/
+        CODE_FAILURE instead (omnibase_infra#2238 class)."""
+        handler = HandlerPrLifecycleTriage()
+        correlation_id = uuid4()
+        prs = (
+            ModelPrInventoryItem(
+                pr_number=205,
+                repo="OmniNode-ai/omnibase_infra",
+                title="feat(OMN-14155): occ-preflight only failure",
+                ticket_ids=("OMN-14155",),
+                ci_status="failing",
+                failed_check_names=("occ-preflight / eligibility",),
+                has_conflicts=False,
+                approved=True,
+            ),
+        )
+
+        result = await handler.handle(correlation_id=correlation_id, prs=prs)
+
+        assert result.results[0].category == EnumPrTriageCategory.OCC_DEPENDENCY
+        assert result.total_occ_dependency == 1
+        assert result.total_red == 0
+
+    async def test_receipt_gate_and_occ_preflight_both_failing_is_occ_dependency(
+        self, event_bus: EventBusInmemory
+    ) -> None:
+        """Both OCC-evidence checks failing together (no other check) is still
+        a pure OCC dependency, never a code fix."""
+        handler = HandlerPrLifecycleTriage()
+        correlation_id = uuid4()
+        prs = (
+            ModelPrInventoryItem(
+                pr_number=206,
+                repo="OmniNode-ai/omnibase_infra",
+                title="feat(OMN-14155): both occ checks failing",
+                ticket_ids=("OMN-14155",),
+                ci_status="failing",
+                failed_check_names=(
+                    "verify / verify",
+                    "occ-preflight / eligibility",
+                ),
+                has_conflicts=False,
+                approved=True,
+            ),
+        )
+
+        result = await handler.handle(correlation_id=correlation_id, prs=prs)
+
+        assert result.results[0].category == EnumPrTriageCategory.OCC_DEPENDENCY
+        assert result.total_occ_dependency == 1
+
+    async def test_occ_preflight_plus_code_failure_stays_red(
+        self, event_bus: EventBusInmemory
+    ) -> None:
+        """occ-preflight failing ALONGSIDE a genuine code-signal check must
+        NOT be classified as a pure OCC dependency — a real lint/type/test
+        failure still needs a code fix, evidence gap or not."""
+        handler = HandlerPrLifecycleTriage()
+        correlation_id = uuid4()
+        prs = (
+            ModelPrInventoryItem(
+                pr_number=207,
+                repo="OmniNode-ai/omnibase_infra",
+                title="feat(OMN-14155): occ-preflight plus real failure",
+                ticket_ids=("OMN-14155",),
+                ci_status="failing",
+                failed_check_names=("occ-preflight / eligibility", "pytest / unit"),
+                has_conflicts=False,
+                approved=True,
+            ),
+        )
+
+        result = await handler.handle(correlation_id=correlation_id, prs=prs)
+
+        assert result.results[0].category == EnumPrTriageCategory.RED
+        assert result.total_occ_dependency == 0
+        assert result.total_red == 1
+
+    async def test_receipt_gate_plus_cosmetic_auto_merge_is_occ_dependency(
+        self, event_bus: EventBusInmemory
+    ) -> None:
+        """omninode_infra#579's real shape: {verify/verify, Enable
+        Auto-Merge}. "Enable Auto-Merge" fails BY DESIGN on every PR today
+        (org-wide auto-merge is off) and is verified non-required on every
+        repo's branch protection (OMN-13990 follow-up round 2) — it must not
+        mask the OCC-evidence-only signature."""
+        handler = HandlerPrLifecycleTriage()
+        correlation_id = uuid4()
+        prs = (
+            ModelPrInventoryItem(
+                pr_number=208,
+                repo="OmniNode-ai/omninode_infra",
+                title="fix(OMN-14136): cosmetic auto-merge alongside receipt gate",
+                ticket_ids=("OMN-14136",),
+                ci_status="failing",
+                failed_check_names=("verify / verify", "Enable Auto-Merge"),
+                has_conflicts=False,
+                approved=True,
+            ),
+        )
+
+        result = await handler.handle(correlation_id=correlation_id, prs=prs)
+
+        assert result.results[0].category == EnumPrTriageCategory.OCC_DEPENDENCY
+        assert result.total_occ_dependency == 1
+        assert result.total_red == 0
+
+    async def test_required_skip_token_gate_alongside_receipt_gate_stays_red(
+        self, event_bus: EventBusInmemory
+    ) -> None:
+        """omninode_infra#578's real shape: {verify/verify,
+        call-reject-skip-token}. Unlike Enable Auto-Merge, the skip-token
+        gate IS a required status check — it must NOT be swallowed by the
+        cosmetic exclusion, so this stays RED (needing its own CI-rerun/fix
+        path), not OCC_DEPENDENCY."""
+        handler = HandlerPrLifecycleTriage()
+        correlation_id = uuid4()
+        prs = (
+            ModelPrInventoryItem(
+                pr_number=209,
+                repo="OmniNode-ai/omninode_infra",
+                title="fix(OMN-14088): required skip-token gate alongside receipt gate",
+                ticket_ids=("OMN-14088",),
+                ci_status="failing",
+                failed_check_names=(
+                    "verify / verify",
+                    "call-reject-skip-token / scan / reject-skip-gate-token",
+                ),
+                has_conflicts=False,
+                approved=True,
+            ),
+        )
+
+        result = await handler.handle(correlation_id=correlation_id, prs=prs)
+
+        assert result.results[0].category == EnumPrTriageCategory.RED
+        assert result.total_occ_dependency == 0
+        assert result.total_red == 1
+
     async def test_conflicted_pr(self, event_bus: EventBusInmemory) -> None:
         """PR with merge conflicts -> CONFLICTED regardless of CI."""
         handler = HandlerPrLifecycleTriage()

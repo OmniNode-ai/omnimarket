@@ -52,7 +52,10 @@ from omnimarket.nodes.node_pr_lifecycle_orchestrator.protocols.protocol_sub_hand
 )
 
 _RECEIPT_GATE = "verify / verify"
+_OCC_PREFLIGHT = "occ-preflight / eligibility"
 _DEPLOY_GATE = "deploy-gate / deploy-gate"
+_ENABLE_AUTO_MERGE = "Enable Auto-Merge"
+_SKIP_TOKEN_GATE = "call-reject-skip-token / scan / reject-skip-gate-token"
 
 
 def _record(
@@ -199,6 +202,79 @@ class TestChokepoint1Classifier:
             EnumPrBlockReason.RECEIPT_EVIDENCE_SOURCE_AUTOBIND
         )
 
+    def test_occ_preflight_only_with_ticket_routes_to_autobind(self) -> None:
+        """occ-preflight (omnibase_core occ-preflight.yml "eligibility" job)
+        is a separate required check from the receipt gate but fails on the
+        identical "green-except-OCC-companion" signature (OMN-13990
+        follow-up). Before this fix an occ-preflight-only failure fell
+        through to CODE_FAILURE — the omnibase_infra#2238 class."""
+        pr = _record(
+            category=EnumPrCategory.RED,
+            failed_check_names=(_OCC_PREFLIGHT,),
+            ticket_ids=("OMN-14155",),
+        )
+        assert _block_reason_for_fix(pr) == (
+            EnumPrBlockReason.RECEIPT_EVIDENCE_SOURCE_AUTOBIND
+        )
+
+    def test_receipt_gate_and_occ_preflight_both_failing_routes_to_autobind(
+        self,
+    ) -> None:
+        """Both OCC-evidence checks failing together (nothing else) is still
+        the autobind class, not a code failure."""
+        pr = _record(
+            category=EnumPrCategory.RED,
+            failed_check_names=(_RECEIPT_GATE, _OCC_PREFLIGHT),
+            ticket_ids=("OMN-14155",),
+        )
+        assert _block_reason_for_fix(pr) == (
+            EnumPrBlockReason.RECEIPT_EVIDENCE_SOURCE_AUTOBIND
+        )
+
+    def test_receipt_gate_plus_cosmetic_auto_merge_routes_to_autobind(self) -> None:
+        """omninode_infra#579's real shape: {verify/verify, Enable Auto-Merge}.
+        "Enable Auto-Merge" fails BY DESIGN on every PR (org-wide auto-merge
+        is off) and is verified non-required on every repo's branch
+        protection — it must not mask the OCC-evidence-only signature
+        (OMN-13990 follow-up round 2)."""
+        pr = _record(
+            category=EnumPrCategory.RED,
+            failed_check_names=(_RECEIPT_GATE, _ENABLE_AUTO_MERGE),
+            ticket_ids=("OMN-14136",),
+        )
+        assert _block_reason_for_fix(pr) == (
+            EnumPrBlockReason.RECEIPT_EVIDENCE_SOURCE_AUTOBIND
+        )
+
+    def test_occ_preflight_plus_cosmetic_auto_merge_routes_to_autobind(self) -> None:
+        """occ-preflight-only signature must also see through the cosmetic
+        Enable Auto-Merge failure, same as the receipt-gate case above."""
+        pr = _record(
+            category=EnumPrCategory.RED,
+            failed_check_names=(_OCC_PREFLIGHT, _ENABLE_AUTO_MERGE),
+            ticket_ids=("OMN-14155",),
+        )
+        assert _block_reason_for_fix(pr) == (
+            EnumPrBlockReason.RECEIPT_EVIDENCE_SOURCE_AUTOBIND
+        )
+
+    def test_receipt_gate_plus_required_skip_token_gate_stays_code_failure(
+        self,
+    ) -> None:
+        """omninode_infra#578's real shape: {verify/verify,
+        call-reject-skip-token}. Unlike Enable Auto-Merge, the skip-token gate
+        IS a required status check on omninode_infra's branch protection — a
+        required-but-red check must NOT be swallowed by the cosmetic
+        exclusion. (Whether it's genuinely failing or just flaky is a CI
+        rerun question, not a classifier question — see the existing
+        flaky-infra-evidence path, which is untouched by this fix.)"""
+        pr = _record(
+            category=EnumPrCategory.RED,
+            failed_check_names=(_RECEIPT_GATE, _SKIP_TOKEN_GATE),
+            ticket_ids=("OMN-14088",),
+        )
+        assert _block_reason_for_fix(pr) == EnumPrBlockReason.CODE_FAILURE
+
     def test_red_all_flaky_infra_routes_to_ci_failure(self) -> None:
         pr = _record(
             category=EnumPrCategory.RED,
@@ -230,6 +306,27 @@ class TestChokepoint1Classifier:
             category=EnumPrCategory.RED,
             failed_check_names=("Hostile Reviewer", "pytest / unit"),
             failed_check_flaky_evidence=("could not resolve host: github.com",),
+        )
+        assert _block_reason_for_fix(pr) == EnumPrBlockReason.CODE_FAILURE
+
+    def test_cosmetic_auto_merge_plus_real_code_failure_stays_code_failure(
+        self,
+    ) -> None:
+        """The cosmetic-check exclusion must not rescue a genuine code
+        failure riding alongside Enable Auto-Merge — anti-over-broaden."""
+        pr = _record(
+            category=EnumPrCategory.RED,
+            failed_check_names=(_ENABLE_AUTO_MERGE, "pytest / unit"),
+        )
+        assert _block_reason_for_fix(pr) == EnumPrBlockReason.CODE_FAILURE
+
+    def test_occ_preflight_plus_code_failure_stays_code_failure(self) -> None:
+        """occ-preflight failing alongside a genuine code-signal check must
+        stay CODE_FAILURE — an evidence gap never masks a real test failure."""
+        pr = _record(
+            category=EnumPrCategory.RED,
+            failed_check_names=(_OCC_PREFLIGHT, "pytest / unit"),
+            ticket_ids=("OMN-14155",),
         )
         assert _block_reason_for_fix(pr) == EnumPrBlockReason.CODE_FAILURE
 
