@@ -207,6 +207,21 @@ def _projection_runtime_binding_from_overlay_env() -> (
     return load_projection_runtime_binding_overlay(overlay_path)
 
 
+def projection_runtime_binding_from_overlay_env() -> (
+    ModelProjectionRuntimeBinding | None
+):
+    """Resolve the projection runtime binding from the overlay env, or ``None``.
+
+    Public wrapper over the module-internal resolver so consumers outside the
+    projection package (e.g. the delegation dispatch port's evidence-DB resolver,
+    OMN-14015) obtain the same overlay-configured binding the projection runners
+    use WITHOUT reading ``OMNIMARKET_PROJECTION_RUNTIME_BINDING_OVERLAY``
+    themselves — keeping the env-read confined to the projection config surface
+    (the delegation env-read discipline, OMN-10915).
+    """
+    return _projection_runtime_binding_from_overlay_env()
+
+
 def deterministic_correlation_id(topic: str, partition: int, offset: int) -> str:
     """Derive a deterministic UUID-shaped string from Kafka coordinates.
 
