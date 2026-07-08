@@ -1309,7 +1309,7 @@ class HandlerPrLifecycleOrchestrator:
         """Return whether another pass can still act on the NOT_DONE result."""
         if result.final_state != _FINAL_STATE_NOT_DONE:
             return False
-        if result.prs_inventoried > 0 or result.org_wide_open_count > 0:
+        if result.prs_inventoried > 0:
             return True
         if result.prs_merged > 0 or result.prs_fixed > 0 or result.prs_verified > 0:
             return True
