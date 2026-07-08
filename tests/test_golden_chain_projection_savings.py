@@ -573,7 +573,6 @@ class TestSavingsContractDeclaredStates:
         overview = next(
             exposure
             for exposure in exposures
-            if exposure["topic"]
-            == "onex.snapshot.projection.cost.savings-overview.v1"
+            if exposure["topic"] == "onex.snapshot.projection.cost.savings-overview.v1"
         )
         assert overview["table"] == "projection_cost_savings_overview"
