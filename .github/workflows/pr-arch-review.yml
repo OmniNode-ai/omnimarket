@@ -5,25 +5,27 @@
 #
 # Automatic architectural PR review on every pull request.
 #
-# Two-phase approach:
-#   1. arch-lint      — static pattern checks (no model needed, always runs)
-#   2. pr-review-bot  — WorkflowRunner FSM pipeline (posts structured GitHub threads)
-#
-# Phase 1 catches:
+# Single-phase static architectural lint (arch-lint) — pattern checks that need
+# no model and always run. Catches:
 #   - Hardcoded Kafka topic strings in handler code
 #   - Manual handler wiring that bypasses the DI container
 #   - Reinvented DI patterns outside the contract system
 #   - event_bus=None bypass
 #   - Direct handler instantiation outside workflow_runner / WorkflowPackage entry points
 #
-# Phase 2 runs the full node_pr_review_bot FSM (stub reviewers until OMN-7969–OMN-7972
-# land concrete model handlers). When concrete handlers are wired in, the workflow
-# automatically picks them up — no workflow change required.
+# History: a second "pr-review-bot" FSM phase (node_pr_review_bot.workflow_runner)
+# once ran here and in the standalone pr-review-bot.yml workflow. Both were removed
+# in OMN-14176 — the node_pr_review_bot module tree was deleted in OMN-13212, so the
+# jobs no-op'd (skipped_no_review_models) and reported a false CLEAN, and neither was
+# a required status check. The workflow-module-resolution guard
+# (scripts/ci/check_workflow_module_refs.py) now blocks any workflow that imports a
+# deleted omnimarket module, so this class of dead reference cannot silently return.
 #
 # Bot identity (onexbot GitHub App):
-#   When ONEXBOT_APP_ID + ONEXBOT_APP_PRIVATE_KEY org secrets are set, comments are
-#   posted as onexbot[bot] via a short-lived installation token. Until the GitHub App
-#   is created, the workflow falls back to GITHUB_TOKEN (posts as github-actions[bot]).
+#   When ONEXBOT_APP_ID + ONEXBOT_APP_PRIVATE_KEY org secrets are set, the arch-lint
+#   PR comment is posted as onexbot[bot] via a short-lived installation token. Until
+#   the GitHub App is created, the workflow falls back to GITHUB_TOKEN (posts as
+#   github-actions[bot]).
 #
 #   To create the app:
 #     https://github.com/organizations/OmniNode-ai/settings/apps/new
@@ -31,9 +33,7 @@
 #     Store app_id as ONEXBOT_APP_ID and the private key as ONEXBOT_APP_PRIVATE_KEY
 #     in org-level Actions secrets.
 #
-#   bot_login constants in handler_thread_poster.py and handler_thread_watcher.py
-#   must match the actual app slug: "onexbot[bot]"
-#   Fallback identity is now github-actions[bot] — no personal username in the fallback path.
+#   Fallback identity is github-actions[bot] — no personal username in the fallback path.
 
 name: PR Architectural Review
 
@@ -97,7 +97,7 @@ jobs:
 
   # ============================================================================
   # Token resolution — swap to onexbot GitHub App token when the app exists,
-  # fall back to GITHUB_TOKEN otherwise. Runs once; both review jobs consume
+  # fall back to GITHUB_TOKEN otherwise. Runs once; the arch-lint job consumes
   # the output token.
   # ============================================================================
   resolve-bot-token:
@@ -387,7 +387,7 @@ jobs:
               '',
               report,
               '',
-              '_Powered by [node_pr_review_bot](src/omnimarket/nodes/node_pr_review_bot/)_',
+              '_Static architectural lint — no model inference (OMN-14176)._',
             ].join('\n');
 
             const { data: comments } = await github.rest.issues.listComments({
@@ -419,206 +419,13 @@ jobs:
             }
 
   # ============================================================================
-  # Phase 2 — WorkflowRunner FSM pipeline
-  # Calls node_pr_review_bot.workflow_runner.run_review() directly.
-  # Stub reviewers run until OMN-7969–OMN-7972 land concrete model handlers.
-  # ============================================================================
-  pr-review-bot:
-    name: PR Review Bot (FSM Pipeline)
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    needs: [occ-preflight, resolve-bot-token]
-
-    steps:
-      - name: Checkout PR branch
-        uses: actions/checkout@v4
-
-      - name: Clone omnibase_core
-        run: git clone --depth=1 https://github.com/OmniNode-ai/omnibase_core.git ../omnibase_core
-
-      - name: Clone omnibase_compat
-        run: git clone --depth=1 https://github.com/OmniNode-ai/omnibase_compat.git ../omnibase_compat
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@v4
-        with:
-          version: "latest"
-
-      - name: Set up Python 3.12
-        run: uv python install 3.12
-
-      - name: Install dependencies
-        run: uv sync --locked --all-extras
-
-      - name: Run PR review bot pipeline
-        id: review
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-          REPO: ${{ github.repository }}
-          PR_REVIEWER_MODELS: ${{ vars.PR_REVIEWER_MODELS }}
-          PR_REVIEW_JUDGE_MODEL: ${{ vars.PR_REVIEW_JUDGE_MODEL }}
-        run: |
-          uv run python - <<'PYEOF'
-          import sys
-          import os
-          import json
-
-          pr_number = int(os.environ["PR_NUMBER"])
-          repo = os.environ["REPO"]
-          reviewer_models = [
-              model.strip()
-              for model in os.environ.get("PR_REVIEWER_MODELS", "").split(",")
-              if model.strip()
-          ]
-          judge_model = os.environ.get("PR_REVIEW_JUDGE_MODEL", "").strip()
-
-          if not reviewer_models or not judge_model:
-              out = {
-                  "correlation_id": "",
-                  "verdict": "clean",
-                  "total_findings": 0,
-                  "threads_posted": 0,
-                  "threads_verified_pass": 0,
-                  "threads_verified_fail": 0,
-                  "phases_completed": 0,
-                  "final_phase": "skipped_no_review_models",
-                  "duration_ms": 0,
-              }
-              print(json.dumps(out, indent=2))
-              with open(os.environ["GITHUB_OUTPUT"], "a") as f:
-                  f.write("verdict=clean\n")
-                  f.write("total_findings=0\n")
-                  f.write("correlation_id=\n")
-              raise SystemExit(0)
-
-          from omnimarket.nodes.node_pr_review_bot.models.models import EnumFindingSeverity
-          from omnimarket.nodes.node_pr_review_bot.workflow_runner import run_review
-
-          result = run_review(
-              pr_number=pr_number,
-              repo=repo,
-              reviewer_models=reviewer_models,
-              judge_model=judge_model,
-              severity_threshold=EnumFindingSeverity.MAJOR,
-              dry_run=False,
-              max_findings_per_pr=20,
-          )
-
-          verdict = result.verdict
-          out = {
-              "correlation_id": str(result.correlation_id),
-              "verdict": verdict.verdict,
-              "total_findings": verdict.total_findings,
-              "threads_posted": verdict.threads_posted,
-              "threads_verified_pass": verdict.threads_verified_pass,
-              "threads_verified_fail": verdict.threads_verified_fail,
-              "phases_completed": len(result.events),
-              "final_phase": str(result.final_state.current_phase),
-              "duration_ms": verdict.duration_ms,
-          }
-          print(json.dumps(out, indent=2))
-
-          with open(os.environ["GITHUB_OUTPUT"], "a") as f:
-              f.write(f"verdict={verdict.verdict}\n")
-              f.write(f"total_findings={verdict.total_findings}\n")
-              f.write(f"correlation_id={out['correlation_id']}\n")
-          PYEOF
-
-      - name: Post review bot summary as PR comment
-        if: always()
-        uses: actions/github-script@v7
-        env:
-          REVIEW_VERDICT: ${{ steps.review.outputs.verdict }}
-          REVIEW_FINDINGS: ${{ steps.review.outputs.total_findings }}
-          REVIEW_CORRELATION_ID: ${{ steps.review.outputs.correlation_id }}
-          BOT_LOGIN: ${{ needs.resolve-bot-token.outputs.bot_login }}
-        with:
-          github-token: ${{ github.token }}
-          script: |
-            const verdict = process.env.REVIEW_VERDICT || 'unknown';
-            const findings = process.env.REVIEW_FINDINGS || '0';
-            const correlationId = process.env.REVIEW_CORRELATION_ID || '';
-            const botLogin = process.env.BOT_LOGIN || '';
-            const stepOutcome = '${{ steps.review.outcome }}';
-
-            const verdictEmoji = {
-              'clean': '✅',
-              'risks_noted': '⚠️',
-              'blocking_issue': '🚫',
-            }[verdict] || '❓';
-
-            const verdictLabel = {
-              'clean': 'CLEAN',
-              'risks_noted': 'RISKS NOTED',
-              'blocking_issue': 'BLOCKED',
-            }[verdict] || verdict.toUpperCase();
-
-            let statusNote = '';
-            if (stepOutcome === 'failure') {
-              statusNote = '\n\n> **Note**: The review pipeline encountered an error. ' +
-                'Check the [Actions log](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}) for details.';
-            } else if (verdict === 'clean' || findings === '0') {
-              statusNote = '\n\n> **Note**: Reviewer models are running as stubs (OMN-7969–OMN-7972 pending). ' +
-                'Architectural findings from Phase 1 (arch-lint) are the authoritative signal until model handlers land.';
-            }
-
-            const body = [
-              `## ${verdictEmoji} PR Review Bot — ${verdictLabel}`,
-              '',
-              `**Findings**: ${findings}  `,
-              `**Run ID**: \`${correlationId}\``,
-              statusNote,
-              '',
-              '---',
-              '',
-              '**Verdict semantics**',
-              '',
-              '| Verdict | Meaning |',
-              '|---------|---------|',
-              '| `clean` | No blocking findings |',
-              '| `risks_noted` | Findings noted; threads passed verification |',
-              '| `blocking_issue` | MAJOR/CRITICAL findings not resolved — do not merge |',
-              '',
-              '_Powered by [node_pr_review_bot](src/omnimarket/nodes/node_pr_review_bot/) — FSM pipeline with multi-model review fan-out_',
-            ].join('\n');
-
-            const { data: comments } = await github.rest.issues.listComments({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: context.issue.number,
-            });
-
-            const botComment = comments.find(c =>
-              (c.user.login === botLogin || c.user.type === 'Bot') &&
-              c.body.includes('PR Review Bot')
-            );
-
-            if (botComment) {
-              await github.rest.issues.updateComment({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                comment_id: botComment.id,
-                body,
-              });
-            } else {
-              await github.rest.issues.createComment({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                issue_number: context.issue.number,
-                body,
-              });
-            }
-
-  # ============================================================================
   # GATE AGGREGATOR
-  # arch-lint is required to pass. pr-review-bot is informational only
-  # (does not block merge) until concrete model handlers land.
+  # arch-lint is required to pass; occ-preflight must succeed.
   # ============================================================================
   pr-arch-review-gate:
     name: PR Arch Review Gate
     runs-on: ubuntu-latest
-    needs: [occ-preflight, arch-lint, pr-review-bot]
+    needs: [occ-preflight, arch-lint]
     if: always()
     steps:
       - name: Evaluate gate
@@ -628,11 +435,9 @@ jobs:
 
           PREFLIGHT="${{ needs.occ-preflight.result }}"
           ARCH_LINT="${{ needs.arch-lint.result }}"
-          PR_BOT="${{ needs.pr-review-bot.result }}"
 
           echo "occ-preflight: $PREFLIGHT"
           echo "arch-lint  : $ARCH_LINT"
-          echo "pr-review-bot (informational): $PR_BOT"
 
           if [ "$PREFLIGHT" != "success" ]; then
             echo "::error::OCC preflight failed or did not complete successfully."
@@ -643,11 +448,6 @@ jobs:
           if [ "$ARCH_LINT" != "success" ] && [ "$ARCH_LINT" != "skipped" ]; then
             echo "::error::arch-lint failed — architectural violations must be resolved before merge."
             FAILED=true
-          fi
-
-          # pr-review-bot is informational until concrete model handlers land (OMN-7969–OMN-7972)
-          if [ "$PR_BOT" != "success" ] && [ "$PR_BOT" != "skipped" ]; then
-            echo "::warning::pr-review-bot did not complete successfully (informational, does not block merge)."
           fi
 
           if [ "$FAILED" = "true" ]; then
