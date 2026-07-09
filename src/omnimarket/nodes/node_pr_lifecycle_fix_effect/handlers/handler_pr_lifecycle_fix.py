@@ -39,6 +39,7 @@ from omnimarket.nodes.node_pr_lifecycle_fix_effect.models.model_fix_command impo
 )
 from omnimarket.nodes.node_pr_lifecycle_fix_effect.models.model_fix_result import (
     EnumDelegationOutcome,
+    ModelOccCompanionVerification,
     ModelPrLifecycleFixResult,
 )
 
@@ -167,6 +168,24 @@ class ProtocolOccAutobindAdapter(Protocol):
         ...
 
 
+@runtime_checkable
+class ProtocolOccCompanionVerifier(Protocol):
+    """Independent read-back verifier for a pushed OCC Evidence-Source companion.
+
+    OMN-14173: the autobind arm's ``fix_applied`` flag reports only that the
+    adapter call returned without raising — it does NOT prove a companion was
+    pushed. This verifier re-reads GitHub to confirm the EFFECT (Evidence-Source
+    patch + open OCC PR + companion branch). ``prs_fixed`` is gated on its
+    ``verified`` result, never on the in-memory ``fix_applied`` flag.
+    """
+
+    async def verify_companion(
+        self, repo: str, pr_number: int, ticket_id: str | None = None
+    ) -> ModelOccCompanionVerification:
+        """Read GitHub back and return whether the OCC companion actually landed."""
+        ...
+
+
 # ---------------------------------------------------------------------------
 # Default no-op adapters (used in standalone / dry-run mode)
 # ---------------------------------------------------------------------------
@@ -212,6 +231,28 @@ class _NoopOccAutobindAdapter:
         return (
             f"[noop] would autobind Evidence-Source for "
             f"{ticket_id or '<auto>'} on {repo}#{pr_number}"
+        )
+
+
+class _UnverifiedOccCompanionVerifier:
+    """Fail-closed default verifier — proves nothing, so counts nothing.
+
+    OMN-14173: when no real read-back verifier is wired (standalone / dry-run /
+    the runtime-boot path), the OCC companion cannot be independently confirmed,
+    so verification returns ``verified=False``. This is the safe direction — a
+    missing verifier UNDER-counts (never falsely counts) ``prs_fixed``. The
+    merge-sweep orchestrator injects the live :class:`OccCompanionVerifier`.
+    """
+
+    async def verify_companion(
+        self, repo: str, pr_number: int, ticket_id: str | None = None
+    ) -> ModelOccCompanionVerification:
+        return ModelOccCompanionVerification(
+            verified=False,
+            detail=(
+                "no OCC companion verifier wired; fail-closed (cannot prove the "
+                "companion was pushed)"
+            ),
         )
 
 
@@ -265,6 +306,7 @@ class HandlerPrLifecycleFix:
         agent_dispatch_adapter: ProtocolAgentDispatchAdapter | None = None,
         occ_contract_adapter: ProtocolOccContractAdapter | None = None,
         occ_autobind_adapter: ProtocolOccAutobindAdapter | None = None,
+        occ_companion_verifier: ProtocolOccCompanionVerifier | None = None,
         delegation_fix_adapter: ProtocolDelegationFixAdapter | None = None,
         two_strike_store: ProtocolTwoStrikeStore | None = None,
         delegation_model_name: str = "ruff-deterministic",
@@ -278,6 +320,13 @@ class HandlerPrLifecycleFix:
         )
         self._occ_autobind: ProtocolOccAutobindAdapter = (
             occ_autobind_adapter or _NoopOccAutobindAdapter()
+        )
+        # OMN-14173: independent read-back verifier for the OCC autobind arm.
+        # Defaults fail-closed (proves nothing → counts nothing); the merge-sweep
+        # orchestrator injects the live OccCompanionVerifier so a real run gates
+        # prs_fixed on a confirmed pushed companion, not on the fix_applied flag.
+        self._occ_verifier: ProtocolOccCompanionVerifier = (
+            occ_companion_verifier or _UnverifiedOccCompanionVerifier()
         )
         # WS-D/D2 (OMN-13940): delegated (non-Claude) fix path for
         # CODE_FAILURE / CHANGES_REQUESTED. Defaults to noop + an in-memory
@@ -312,11 +361,31 @@ class HandlerPrLifecycleFix:
         fix_action: str
         error: str | None = None
         fix_applied = False
+        occ_companion_verified = False
         delegation_info = _NOT_DELEGATED
 
         try:
             fix_action, delegation_info = await self._route(command)
             fix_applied = True
+            # OMN-14173 fail-closed accounting: the autobind arm's success is
+            # measured by the EFFECT (a pushed OCC companion + Evidence-Source
+            # patch), never by the call returning. Re-read GitHub to confirm.
+            # `fix_applied` stays True (the route ran), but the orchestrator
+            # counts prs_fixed for this arm ONLY when the companion is verified,
+            # so a no-op/short-circuit dispatch can never inflate the count.
+            if (
+                command.block_reason
+                == EnumPrBlockReason.RECEIPT_EVIDENCE_SOURCE_AUTOBIND
+            ):
+                verification = await self._occ_verifier.verify_companion(
+                    command.repo, command.pr_number, command.ticket_id
+                )
+                occ_companion_verified = verification.verified
+                if not occ_companion_verified:
+                    fix_action = (
+                        f"{fix_action} | OCC companion NOT verified: "
+                        f"{verification.detail}"
+                    )
         except Exception as exc:
             fix_action = f"failed: {exc}"
             error = str(exc)
@@ -336,6 +405,7 @@ class HandlerPrLifecycleFix:
             block_reason=command.block_reason,
             fix_applied=fix_applied,
             fix_action=fix_action,
+            occ_companion_verified=occ_companion_verified,
             error=error,
             completed_at=datetime.now(tz=UTC),
             delegated=delegation_info.delegated,
@@ -528,5 +598,6 @@ __all__: list[str] = [
     "ProtocolDelegationFixAdapter",
     "ProtocolGitHubAdapter",
     "ProtocolOccAutobindAdapter",
+    "ProtocolOccCompanionVerifier",
     "ProtocolOccContractAdapter",
 ]

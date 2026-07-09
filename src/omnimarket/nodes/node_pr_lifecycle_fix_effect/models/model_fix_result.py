@@ -36,6 +36,55 @@ class EnumDelegationOutcome(StrEnum):
     NOT_ATTEMPTED = "not_attempted"
 
 
+class ModelOccCompanionVerification(BaseModel):
+    """Independent read-back proof that an OCC Evidence-Source companion landed.
+
+    OMN-14173: the ``receipt_evidence_source_autobind`` arm previously reported
+    ``fix_applied=True`` whenever the adapter call returned without raising —
+    including the no-op / short-circuit paths that pushed nothing. That produced
+    a false ``prs_fixed`` count with zero authored companions. This model carries
+    the *verified effect* (not the call): a companion is proven only when the
+    product PR body carries ``Evidence-Source: OCC#<n>``, that OCC PR is OPEN,
+    and the expected ``auto/*`` companion branch exists on the OCC remote. All
+    three must hold; the verifier fails CLOSED (``verified=False``) on any
+    missing evidence, resolution error, or unwired verifier.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    verified: bool = Field(
+        ...,
+        description=(
+            "True only when the pushed OCC companion + Evidence-Source patch "
+            "are independently confirmed by a GitHub read-back. Fails closed."
+        ),
+    )
+    occ_pr_number: int | None = Field(
+        default=None,
+        description="OCC companion PR number read from the product PR body.",
+    )
+    occ_branch: str | None = Field(
+        default=None,
+        description="Expected auto/* OCC companion branch that was probed.",
+    )
+    evidence_source_present: bool = Field(
+        default=False,
+        description="Product PR body carries `Evidence-Source: OCC#<n>`.",
+    )
+    occ_pr_open: bool = Field(
+        default=False,
+        description="The referenced OCC companion PR is in the open state.",
+    )
+    branch_exists: bool = Field(
+        default=False,
+        description="The auto/* companion branch exists on the OCC remote.",
+    )
+    detail: str = Field(
+        default="",
+        description="Human-readable verification detail (reason on failure).",
+    )
+
+
 class ModelPrLifecycleFixResult(BaseModel):
     """Result of a PR lifecycle fix dispatch."""
 
@@ -50,6 +99,19 @@ class ModelPrLifecycleFixResult(BaseModel):
     fix_applied: bool = Field(..., description="Whether a fix action was dispatched.")
     fix_action: str = Field(
         ..., description="Fix action taken or would be taken (dry_run)."
+    )
+    occ_companion_verified: bool = Field(
+        default=False,
+        description=(
+            "OMN-14173 fail-closed accounting: True ONLY when this is an "
+            "OCC-evidence arm (receipt_evidence_source_autobind) whose pushed "
+            "OCC companion + Evidence-Source patch were independently verified "
+            "by a GitHub read-back. Always False for non-OCC arms and for a "
+            "classified-but-not-minted / no-op / short-circuited OCC dispatch. "
+            "The orchestrator gates `prs_fixed` on this flag for the autobind "
+            "arm so a false-success (fix_applied=True, zero companions) can "
+            "never be counted."
+        ),
     )
     error: str | None = Field(default=None, description="Error message if fix failed.")
     completed_at: datetime = Field(..., description="When the fix completed.")
@@ -83,4 +145,8 @@ class ModelPrLifecycleFixResult(BaseModel):
     )
 
 
-__all__: list[str] = ["EnumDelegationOutcome", "ModelPrLifecycleFixResult"]
+__all__: list[str] = [
+    "EnumDelegationOutcome",
+    "ModelOccCompanionVerification",
+    "ModelPrLifecycleFixResult",
+]

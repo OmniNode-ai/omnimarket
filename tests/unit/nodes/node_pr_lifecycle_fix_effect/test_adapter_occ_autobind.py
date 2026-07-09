@@ -420,6 +420,146 @@ class TestAutobindForcePush:
 
 
 # ---------------------------------------------------------------------------
+# Create-if-absent: a genuinely FRESH ticket (no pre-existing OCC contract)
+# MINTS a net-new companion (OMN-14173 — the merge_sweep --fix-only residual).
+#
+# The prior end-to-end coverage (TestAutobindForcePush) forced is_file=True (the
+# SYNC path), so nothing locked the CREATE path. That left the "OccAutobindAdapter
+# only syncs an existing contract and no-ops for a fresh ticket" hypothesis
+# unfalsified. These tests exercise both branches and assert the EFFECT — a
+# net-new contract WRITTEN, the auto/* companion branch PUSHED (force), and
+# Evidence-Source PATCHed — never merely that the adapter call returned. Reverting
+# the `if not contract_path.is_file()` create guard makes the fresh-ticket test
+# fail (no contract written), which is the regression lock the residual needed.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestAutobindCreatesContractForFreshTicket:
+    @staticmethod
+    def _run_autobind(
+        *, contract_exists: bool
+    ) -> tuple[dict[str, str], list[list[str]], dict, str]:
+        """Drive ``_autobind_sync`` with every I/O seam mocked.
+
+        Returns ``(writes_by_path, git_calls, patch_evidence_kwargs, result)``.
+        ``contract_exists`` toggles ``Path.is_file``: ``False`` = fresh ticket
+        (create path), ``True`` = existing contract (sync path).
+        """
+        from pathlib import Path
+        from unittest.mock import patch
+
+        adapter = OccAutobindAdapter()
+        git_calls: list[list[str]] = []
+        writes: dict[str, str] = {}
+        patch_kwargs: dict = {}
+
+        def fake_run_git(argv, *, cwd):  # type: ignore[no-untyped-def]
+            git_calls.append(argv)
+            return ""
+
+        def fake_rest(method, path, *, body=None, token=None):  # type: ignore[no-untyped-def]
+            if "onex_change_control" in path:  # OCC PR probe fetch
+                return {"state": "open", "number": 3658}
+            return {  # product PR: born WITHOUT an OCC Evidence-Source
+                "body": "PR body, no evidence yet",
+                "title": "feat(OMN-99999): brand new ticket, no OCC contract",
+                "head": {"sha": "a" * 40, "ref": "feat"},
+                "state": "open",
+            }
+
+        def capture_write(self, data, *args, **kwargs):  # type: ignore[no-untyped-def]
+            writes[str(self)] = data
+            return
+
+        def fake_patch_evidence(**kwargs):  # type: ignore[no-untyped-def]
+            patch_kwargs.update(kwargs)
+
+        with (
+            patch(f"{_MODULE}._resolve_github_token", return_value="tok"),
+            patch(f"{_MODULE}.rest_json", side_effect=fake_rest),
+            patch.object(adapter, "_clone_and_branch"),
+            patch.object(adapter, "_run_git", side_effect=fake_run_git),
+            patch.object(adapter, "_rebind_contract_sha256"),
+            patch.object(adapter, "_open_or_sync_occ_pr", return_value=3658),
+            patch.object(adapter, "_head_sha", return_value="occhead0"),
+            patch.object(adapter, "_observe_pr_probe", return_value=("{}", 0)),
+            patch.object(
+                adapter, "_patch_evidence_source", side_effect=fake_patch_evidence
+            ),
+            patch.object(Path, "is_file", return_value=contract_exists),
+            patch.object(Path, "mkdir"),
+            patch.object(Path, "write_text", new=capture_write),
+        ):
+            result = adapter._autobind_sync("OmniNode-ai/omnimarket", 1653, None)
+
+        return writes, git_calls, patch_kwargs, result
+
+    def test_fresh_ticket_mints_net_new_contract_and_pushes(self) -> None:
+        """FRESH ticket (no contract) → CREATE a net-new companion and push it.
+
+        This is the exact scenario the residual named: ``--fix-only`` must MINT
+        for a first-time ticket, not no-op. Verifies the mint EFFECT.
+        """
+        writes, git_calls, patch_kwargs, result = self._run_autobind(
+            contract_exists=False
+        )
+
+        # EFFECT 1 — a net-new contracts/<ticket>.yaml is CREATED (not synced).
+        contract_writes = {
+            path: content
+            for path, content in writes.items()
+            if path.endswith("contracts/OMN-99999.yaml")
+        }
+        assert contract_writes, (
+            "a fresh ticket with NO pre-existing OCC contract MUST create "
+            f"contracts/OMN-99999.yaml; paths written: {sorted(writes)}"
+        )
+        (contract_content,) = contract_writes.values()
+        assert 'ticket_id: "OMN-99999"' in contract_content
+        assert "dod_evidence:" in contract_content
+
+        # EFFECT 2 — the auto/* companion branch is force-pushed.
+        push_calls = [call for call in git_calls if "push" in call]
+        assert push_calls, "the companion branch must be pushed for a fresh ticket"
+        for call in push_calls:
+            assert "--force" in call, f"companion push must be --force: {call}"
+
+        # EFFECT 3 — Evidence-Source: OCC#<n> is patched back onto the product PR.
+        assert patch_kwargs.get("occ_pr_number") == 3658
+        assert "OCC#3658" in result
+
+    def test_existing_contract_syncs_without_recreating_contract(self) -> None:
+        """EXISTING contract → SYNC (bind receipts) WITHOUT rewriting the contract.
+
+        OMN-13888 whole-file-hash defect: an existing OCC contract must never be
+        modified. The sync path still binds the companion (receipts + branch push
+        + Evidence-Source patch), it just does not touch the contract file.
+        """
+        writes, git_calls, patch_kwargs, result = self._run_autobind(
+            contract_exists=True
+        )
+
+        contract_writes = [
+            path for path in writes if path.endswith("contracts/OMN-99999.yaml")
+        ]
+        assert not contract_writes, (
+            "an existing OCC contract must NOT be recreated/modified on the sync "
+            f"path (OMN-13888 whole-file-hash); contract writes seen: {contract_writes}"
+        )
+        # The companion is still bound: receipts written + branch pushed + patched.
+        assert any("dod_receipts" in path for path in writes), (
+            "downstream/self-bind receipts must still be written on the sync path"
+        )
+        push_calls = [call for call in git_calls if "push" in call]
+        assert push_calls, "the companion branch must still be pushed on the sync path"
+        for call in push_calls:
+            assert "--force" in call, f"companion push must be --force: {call}"
+        assert patch_kwargs.get("occ_pr_number") == 3658
+        assert "OCC#3658" in result
+
+
+# ---------------------------------------------------------------------------
 # Validator-parity ticket extraction (OMN-13990 D3)
 # ---------------------------------------------------------------------------
 

@@ -208,6 +208,13 @@ class MockFix:
 
             result = MagicMock()
             result.fix_applied = True
+            # OMN-14173: happy-path double = fix applied AND the OCC companion
+            # was verified as pushed. `is True` gating in _fix_one requires a
+            # real bool here (a bare MagicMock attribute would not equal True),
+            # so the autobind arm counts prs_fixed exactly as before. The
+            # fail-closed (companion-not-verified) case is exercised by a
+            # dedicated double in test_occ_companion_fail_closed_accounting.py.
+            result.occ_companion_verified = True
             result.pr_number = pr_number
             return result
         finally:

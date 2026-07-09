@@ -37,6 +37,10 @@ from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.handler_pr_lifecycle
     _NoopGitHubAdapter,
     _NoopOccAutobindAdapter,
     _NoopOccContractAdapter,
+    _UnverifiedOccCompanionVerifier,
+)
+from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.occ_companion_verifier import (
+    OccCompanionVerifier,
 )
 from omnimarket.nodes.node_pr_lifecycle_orchestrator.handlers.handler_pr_lifecycle_orchestrator import (
     HandlerPrLifecycleOrchestrator,
@@ -78,3 +82,9 @@ class TestOrchestratorWiresLiveAdapters:
         assert isinstance(fix._occ_autobind, OccAutobindAdapter)
         assert not isinstance(fix._occ, _NoopOccContractAdapter)
         assert not isinstance(fix._occ_autobind, _NoopOccAutobindAdapter)
+        # OMN-14173: the live read-back verifier must be wired so prs_fixed is
+        # gated on a CONFIRMED pushed OCC companion, not on the fix_applied flag.
+        # The fail-closed default (_UnverifiedOccCompanionVerifier) would silently
+        # under-count real autobind fixes on the merge-sweep path.
+        assert isinstance(fix._occ_verifier, OccCompanionVerifier)
+        assert not isinstance(fix._occ_verifier, _UnverifiedOccCompanionVerifier)
