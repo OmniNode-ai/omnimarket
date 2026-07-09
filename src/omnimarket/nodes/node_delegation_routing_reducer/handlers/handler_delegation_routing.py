@@ -529,13 +529,22 @@ def _tier_allowed_by_contract(
 ) -> bool:
     """Return True if the tier is permitted by task-class contract constraints.
 
-    When no entry is declared, all tiers are allowed (graceful degradation).
     Enforces:
+      - undeclared task class (no contract entry) → only LOCAL tiers permitted
       - cloud_routing_policy: "blocked" → only local tiers permitted
       - pricing_ceiling_per_1k_tokens: tier cost must not exceed ceiling
+
+    OMN-14224: an undeclared-but-accepted task class used to FAIL OPEN here (all
+    tiers allowed as "graceful degradation"), which let it silently escalate to the
+    PAID cloud tier — the root enabler of the OMN-14218/refactor class of bug (an
+    accepted task type with no contract has no acceptance authority, so a valid
+    LOCAL output is rejected and the ladder walks straight into paid). Fail CLOSED
+    to local instead: an undeclared class can only run on the $0 local tiers, never
+    paid. Post-OMN-14218 every accepted task class is declared, so this changes no
+    current path; it is a guardrail against any future accepted-but-undeclared class.
     """
     if entry is None:
-        return True
+        return tier.name in _LOCAL_TIERS
 
     policy = entry.get("cloud_routing_policy")
     if policy == _CLOUD_BLOCKED_POLICY and tier.name not in _LOCAL_TIERS:

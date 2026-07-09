@@ -639,11 +639,27 @@ class TestPricingCeilingFromYamlConfig:
 
         assert _tier_allowed_by_contract(tier, entry) is True
 
-    def test_no_entry_allows_any_tier(self) -> None:
+    def test_no_entry_fails_closed_to_local_only(self) -> None:
+        """OMN-14224: an undeclared task class (no contract entry) may use ONLY
+        local tiers — never a paid/cloud tier. Previously this failed OPEN (any
+        tier allowed), letting an accepted-but-undeclared class silently escalate
+        to the paid cloud tier."""
         from omnimarket.nodes.node_delegation_routing_reducer.handlers.handler_delegation_routing import (
             _tier_allowed_by_contract,
         )
 
-        tier = self._make_tier("claude", 0.015)
-
-        assert _tier_allowed_by_contract(tier, None) is True
+        # A non-local (paid) tier is NOT allowed for an undeclared class.
+        assert (
+            _tier_allowed_by_contract(self._make_tier("claude", 0.015), None) is False
+        )
+        assert (
+            _tier_allowed_by_contract(self._make_tier("cheap_cloud", 0.002), None)
+            is False
+        )
+        # Even the FREE cheap_frontier tier is non-local → excluded (local-only).
+        assert (
+            _tier_allowed_by_contract(self._make_tier("cheap_frontier", 0.0), None)
+            is False
+        )
+        # The local tier IS allowed — the undeclared class can still run at $0.
+        assert _tier_allowed_by_contract(self._make_tier("local", 0.0), None) is True
