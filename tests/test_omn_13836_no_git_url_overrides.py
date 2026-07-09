@@ -11,8 +11,8 @@ These tests pin the omnimarket-side invariants from OMN-13836:
 
 1. No ``[tool.uv] override-dependencies`` entry may use a git URL.
 2. The direct ``omnibase-core`` / ``omnibase-spi`` constraints must sit on the
-   current resolvable ranges (``core>=0.46.1``, ``spi>=0.23.0``), consistent
-   with OMN-13822 and omnibase_infra @main.
+   current resolvable ranges (``core>=0.46.7``, ``spi>=0.23.0``), consistent
+   with OMN-14168 and omnibase_infra @main.
 
 They do NOT assert full cross-repo resolvability: the residual blocker is
 ``omninode-memory==0.15.0`` (hard-pins ``omnibase-spi==0.20.6``), which lives
@@ -75,9 +75,9 @@ def test_core_and_spi_direct_constraints_on_resolvable_ranges() -> None:
     assert core is not None, "omnibase-core missing from project.dependencies"
     assert spi is not None, "omnibase-spi missing from project.dependencies"
 
-    # OMN-13836 / OMN-13822: bumped to core>=0.46.1, spi>=0.23.0.
-    assert ">=0.46.1" in core, (
-        f"omnibase-core must require >=0.46.1 (OMN-13836). Got: {core!r}"
+    # OMN-14168 requires core>=0.46.7; OMN-13836 still forbids git URL pins.
+    assert ">=0.46.7" in core, (
+        f"omnibase-core must require >=0.46.7 (OMN-14168). Got: {core!r}"
     )
     assert ">=0.23.0" in spi, (
         f"omnibase-spi must require >=0.23.0 (OMN-13836). Got: {spi!r}"
