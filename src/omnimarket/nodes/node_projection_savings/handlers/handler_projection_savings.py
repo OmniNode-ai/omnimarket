@@ -198,6 +198,12 @@ class HandlerProjectionSavings:
             "created_at": now,
             "updated_at": now,
         }
+        # OMN-14058 (OPERATOR-ACCEPTED INTERIM): only stamp tenant_id when the
+        # source projection carried one — omitting the key lets the
+        # savings_estimates column DEFAULT 'omninode' apply on INSERT and
+        # leaves an already-known tenant untouched on UPDATE.
+        if projection.tenant_id:
+            row["tenant_id"] = projection.tenant_id
         ok = db.upsert(TABLE, CONFLICT_KEY, row)
         return ModelProjectionResult(rows_upserted=1 if ok else 0)
 

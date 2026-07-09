@@ -85,6 +85,14 @@ class ModelDelegateSkillTerminalProjection(ModelDelegateSkillResponse):
         default=None,
         validation_alias=AliasChoices("session_id", "sessionId"),
     )
+    # string-id-ok: tenant_id is a named tenant identifier, not a UUID
+    # OMN-14058 (OPERATOR-ACCEPTED INTERIM): carried from the delegation FSM's
+    # ONEX_TENANT_ID-sourced tenant identity when present. None means the
+    # delegation_events row falls back to the 'omninode' column default.
+    tenant_id: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("tenant_id", "tenantId"),
+    )
     machine_id: UUID | None = Field(
         default=None,
         validation_alias=AliasChoices("machine_id", "machineId"),
@@ -150,6 +158,8 @@ class ModelDelegationEventProjectionRow(BaseModel):
 
     correlation_id: UUID
     session_id: UUID | None = None
+    # string-id-ok: tenant_id is a named tenant identifier, not a UUID
+    tenant_id: str | None = None
     timestamp: AwareDatetime
     task_type: str
     delegated_to: str
@@ -188,6 +198,7 @@ class ModelDelegationEventProjectionRow(BaseModel):
         return cls(
             correlation_id=event.correlation_id,
             session_id=event.session_id,
+            tenant_id=event.tenant_id,
             timestamp=event.emitted_at,
             task_type=event.task_type,
             delegated_to=delegated_to,
@@ -241,6 +252,8 @@ class ModelDelegateSkillSavingsProjection(BaseModel):
     savings_usd: Decimal
     repo_name: str | None = None
     machine_id: UUID | None = None
+    # string-id-ok: tenant_id is a named tenant identifier, not a UUID
+    tenant_id: str | None = None
 
     @model_validator(mode="after")
     def _amounts_match(self) -> Self:
@@ -272,6 +285,7 @@ class ModelDelegateSkillSavingsProjection(BaseModel):
             savings_usd=savings_usd,
             repo_name=event.repo_name,
             machine_id=event.machine_id,
+            tenant_id=event.tenant_id,
         )
 
     @classmethod
@@ -321,6 +335,7 @@ class ModelDelegateSkillSavingsProjection(BaseModel):
             savings_usd=savings_usd,
             repo_name=event.repo,
             machine_id=None,
+            tenant_id=event.tenant_id,
         )
 
 
@@ -347,6 +362,8 @@ class ModelTaskDelegatedSavingsSource(BaseModel):
     cost_usd: Decimal = Field(default=Decimal("0"), ge=Decimal("0"))
     premium_counterfactual: ModelPremiumCounterfactual | None = Field(default=None)
     timestamp: AwareDatetime | None = Field(default=None)
+    # string-id-ok: tenant_id is a named tenant identifier, not a UUID
+    tenant_id: str | None = Field(default=None)
 
     @field_validator("repo", mode="before")
     @classmethod
@@ -458,6 +475,12 @@ class ModelTaskDelegatedSavingsSource(BaseModel):
         timestamp = payload.get("timestamp") or payload.get("emitted_at")
         if timestamp is not None:
             source_payload["timestamp"] = timestamp
+        # OMN-14058 (OPERATOR-ACCEPTED INTERIM): carry the canonical terminal's
+        # tenant_id (when the delegation FSM resolved one) so the savings row
+        # stamps a real tenant instead of the 'omninode' column default.
+        tenant_id = payload.get("tenant_id")
+        if tenant_id is not None:
+            source_payload["tenant_id"] = tenant_id
         return cls.from_payload(source_payload)
 
 

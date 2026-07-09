@@ -367,6 +367,19 @@ class Settings(BaseSettings):
         default="",
         description="Pattern-B runtime address (used by codex adapter).",
     )
+    onex_tenant_id: str = Field(
+        default="",
+        description=(
+            "Multi-tenant isolation identifier read ONCE at delegation "
+            "request-acceptance (HandlerDelegationWorkflow.handle_delegation_request "
+            "/ LocalDelegationDispatchPort.dispatch). OPERATOR-ACCEPTED INTERIM "
+            "(OMN-14058): no tenant identity otherwise exists anywhere in the "
+            "delegation chain, so delegation/savings projection rows silently "
+            "land under the 'omninode' column default. Empty string means no "
+            "tenant is configured and that default applies. The durable "
+            "per-tenant identity design is OMN-14107."
+        ),
+    )
 
     # =========================================================================
     # API KEYS / WEBHOOKS — informational misc

@@ -65,6 +65,7 @@ from omnibase_core.models.delegation.wire import (
     ModelQualityGateInput,
 )
 
+from omnimarket.config import get_settings
 from omnimarket.enums.enum_delegation_failure_class import EnumDelegationFailureClass
 from omnimarket.events.delegation_judge_verdict import EnumDelegationJudgeVerdict
 from omnimarket.inference.protocol_config import apply_inference_protocol
@@ -450,6 +451,13 @@ class LocalDelegationDispatchPort:
         # is demoted from BOTH the initial resolution and every escalation hop, with
         # the same overlay across the whole dispatch for a deterministic decision.
         roi_overlay = self._roi_overlay_reader(task_type)
+        # OMN-14058 (OPERATOR-ACCEPTED INTERIM): resolve tenant identity ONCE
+        # at request-acceptance, mirroring the bus orchestrator's
+        # HandlerDelegationWorkflow.handle_delegation_request. No tenant
+        # identity otherwise exists on this bus-less local CLI path, so
+        # evidence rows would silently land under the 'omninode' column
+        # default. The durable per-tenant identity design is OMN-14107.
+        resolved_tenant_id = get_settings().onex_tenant_id or None
 
         # 1. ROUTING AUTHORITY — resolve the INITIAL (cheapest-first) backend.
         #    Cheapest-first among tiers NOT ROI-suppressed; escalation only advances
@@ -593,6 +601,7 @@ class LocalDelegationDispatchPort:
                     result=transport_result,
                     prompt=prompt,
                     source_session_id=source_session_id,
+                    tenant_id=resolved_tenant_id,
                     quality_passed=False,
                     failure_message=transport_failure_message,
                     cost_usd=cumulative_cost_usd,
@@ -645,6 +654,7 @@ class LocalDelegationDispatchPort:
                     result=result,
                     prompt=prompt,
                     source_session_id=source_session_id,
+                    tenant_id=resolved_tenant_id,
                     quality_passed=True,
                     failure_message="",
                     cost_usd=cumulative_cost_usd,
@@ -714,6 +724,7 @@ class LocalDelegationDispatchPort:
                     result=result,
                     prompt=prompt,
                     source_session_id=source_session_id,
+                    tenant_id=resolved_tenant_id,
                     quality_passed=False,
                     failure_message=gate_failure_message,
                     cost_usd=cumulative_cost_usd,
@@ -1150,6 +1161,7 @@ class LocalDelegationDispatchPort:
         result: ModelLlmDelegationCallResult,
         prompt: str,
         source_session_id: str | None,
+        tenant_id: str | None,
         quality_passed: bool,
         failure_message: str,
         cost_usd: Decimal,
@@ -1201,6 +1213,12 @@ class LocalDelegationDispatchPort:
                     "non-UUID session id %r omitted from evidence row",
                     source_session_id,
                 )
+        # OMN-14058 (OPERATOR-ACCEPTED INTERIM): forward the request-acceptance
+        # tenant_id so the evidence row stamps a real tenant instead of the
+        # 'omninode' column default. None (no ONEX_TENANT_ID configured) omits
+        # the key so the column default still applies.
+        if tenant_id:
+            payload["tenant_id"] = tenant_id
         try:
             from omnimarket.models.delegation.wire.model_delegate_skill_terminal_projection import (
                 ModelDelegateSkillTerminalProjection,
