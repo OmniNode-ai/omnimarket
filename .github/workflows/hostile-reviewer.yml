@@ -170,6 +170,11 @@ jobs:
               # Bool-form verbatim mirror of
               # adapter_codex_reviewer._resolve_codex_binary: CODEX_BINARY (file+exec)
               # -> shutil.which("codex") -> known Homebrew/system fallback dirs.
+              # ASSUMPTION (load-bearing): codex resolvability is identical at
+              # preflight-time (uv run --no-project) and review-time (project uv run)
+              # ONLY because omniintelligence ships no `codex` console-script in its
+              # venv; if it ever adds one, resolve codex from the review's own env here
+              # or the preflight could miss a `.venv/bin/codex` the review would find.
               env_override = os.environ.get("CODEX_BINARY")
               if (
                   env_override
