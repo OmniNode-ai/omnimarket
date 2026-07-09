@@ -183,8 +183,18 @@ _COMBINED_SCORE_SOURCE = SCORE_SOURCE_COMBINED
 # refusal/empty stays blocked by the deterministic hard floor below.
 _COMBINED_DETERMINISTIC_WEIGHT: float = 0.6
 _COMBINED_JUDGE_WEIGHT: float = 0.4
+# OMN-14218: `refactor` is a verifiable code-authoring task class (it modifies
+# code and its output can be checked with the same deterministic acceptance floor
+# as `code_generation`). It was previously absent from this set, so the gate never
+# applied the deterministic-acceptance authority to it: a valid LOCAL refactor
+# artifact scored the code graded score (~0.867) but was rejected on a reject-only
+# heuristic marker (e.g. `no_obvious_regressions`, which clean code cannot contain),
+# force-escalating past the free/paid ladder to a 429 terminal. Adding it here (with
+# the task-class contract in task_class_contracts.v1.yaml and the judge-combinable
+# set below) gives refactor the same local-first, $0 acceptance path code_generation
+# already has.
 _VERIFIABLE_TASK_TYPES: frozenset[str] = frozenset(
-    {"code_generation", "test", "validator_generation"}
+    {"code_generation", "test", "validator_generation", "refactor"}
 )
 # OMN-13642: a FAIL judge verdict VETOES acceptance on the verifiable path even
 # when the weighted combined score clears the required_bar. The deterministic

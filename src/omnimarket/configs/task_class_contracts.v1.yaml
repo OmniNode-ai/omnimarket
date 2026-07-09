@@ -107,6 +107,62 @@ task_classes:
         - cheap_cloud
         - cheap_frontier
         - claude
+  # OMN-14218: `refactor` is accepted at the delegation surface (allowed_task_types,
+  # the CLI --task-type enum, task_model_overrides, and routing_tiers.yaml `use_for`)
+  # but had NO task-class contract here. Consequence: with no acceptance_authority
+  # and no adequacy_authority the quality gate returned _NO_ADEQUACY_AUTHORITY_REASON
+  # ("TASK_MISMATCH: no deterministic acceptance or judge adequacy authority") on
+  # every tier, so a valid LOCAL code artifact could never PASS and the workflow
+  # force-escalated local -> cheap_cloud (PAID glm-5.2, real spend) -> cheap_frontier
+  # (OpenRouter 429) -> failed. This mirrors the OMN-13541 fix that gave `code_review`
+  # a contract for the same "accepted at surface, no contract" gap. `refactor` is a
+  # code-writing task, so its contract mirrors `code_generation`: a deterministic
+  # acceptance authority + code DoD with the same closed tier_order, which lets local
+  # output PASS at $0 exactly like code_generation. (A minimal-diff / precision DoD
+  # for surgical edits to large files is tracked separately under OMN-14214.)
+  refactor:
+    score_source: deterministic_acceptance
+    acceptance_authority:
+      type: deterministic_acceptance
+      acceptance_version: delegation-deterministic-acceptance.v1
+      evidence_fields:
+        - acceptance_version
+        - corpus_hash
+        - validator_or_artifact_hash
+        - acceptance_command
+        - actual_score
+        - pass
+        - failure_cases
+    required_capabilities:
+      - code_completion
+      - context_window_large
+    pricing_ceiling_per_1k_tokens: 0.015
+    latency_sla_p99_ms: 30000
+    cloud_routing_policy: allowed
+    definition_of_done:
+      deterministic:
+        - compiles_without_errors
+        - final_artifact_only
+      heuristic:
+        - no_refusal
+        - follows_codebase_conventions
+        - no_obvious_regressions
+    quality_gate:
+      score_source: quality_gate_graded_score
+      required_bar: 0.85
+      request_override_bounds:
+        min: 0.6
+        max: 1.0
+    escalation_policy:
+      # Same closed ladder as code_generation (OMN-13943): local -> cheap_cloud ->
+      # cheap_frontier -> claude. With a working local acceptance authority the
+      # common path terminates at local ($0) and never escalates.
+      max_escalations: 3
+      tier_order:
+        - local
+        - cheap_cloud
+        - cheap_frontier
+        - claude
   documentation:
     required_capabilities:
       - natural_language_generation
