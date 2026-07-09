@@ -23,6 +23,12 @@ class EnumDurableEvidenceCheck(StrEnum):
 
     RECEIPT_TRACKED = "receipt_tracked"
     CONTRACT_CITES_MERGE_COMMIT = "contract_cites_merge_commit"
+    # OMN-14168: the no-PR runtime-ops alternative to CONTRACT_CITES_MERGE_COMMIT.
+    # A receipt set where every PASS receipt is evidence_class == RUNTIME_OPS and
+    # none carries a pr_number is verified against this check instead of the
+    # merged-PR check — a genuine no-source-change runtime-ops fix proven by a
+    # read-only live readback rather than a merged PR.
+    RUNTIME_OPS_READBACK = "runtime_ops_readback"
     CONTRACT_ON_OCC_MAIN = "contract_on_occ_main"
     DEFECT_PREVENTION_GATE = "defect_prevention_gate"
     DONE_CLASS_LABEL = "done_class_label"

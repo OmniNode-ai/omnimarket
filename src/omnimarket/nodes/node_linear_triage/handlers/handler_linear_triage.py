@@ -22,7 +22,11 @@ from pathlib import Path
 from typing import Any, Protocol, runtime_checkable
 
 import yaml
+from omnibase_core.enums.governance.enum_evidence_class import EnumEvidenceClass
 from omnibase_core.enums.ticket.enum_receipt_status import EnumReceiptStatus
+from omnibase_core.validation.runtime_ops_verb_loader import (
+    load_runtime_ops_verb_allowlist,
+)
 
 from omnimarket.config.service_endpoints import (
     GITHUB_GRAPHQL_URL,
@@ -659,6 +663,82 @@ def _receipt_is_pass_for_ticket(payload: dict[str, object], ticket_id: str) -> b
     return _norm_omn(receipt_ticket) == _norm_omn(ticket_id)
 
 
+_RUNTIME_OPS_EVIDENCE_CLASS = EnumEvidenceClass.RUNTIME_OPS.value
+
+
+def _is_prod_target(target_identity: str) -> bool:
+    """True when ``target_identity`` names a prod lane / namespace / project.
+
+    Token-exact match on ``prod`` (``onex-prod`` / ``omnibase-infra-prod`` /
+    ``prod`` match; ``product`` does not). Pure function.
+    """
+    tokens = set(
+        "".join(c if c.isalnum() else " " for c in target_identity.lower()).split()
+    )
+    return "prod" in tokens
+
+
+def _receipt_is_runtime_ops_readback_for_ticket(
+    payload: dict[str, object], ticket_id: str
+) -> bool:
+    """True when ``payload`` is a tracked, well-formed RUNTIME_OPS readback receipt.
+
+    Fail-closed local mirror of the ``node_dod_verify`` RUNTIME_OPS_READBACK
+    guardrails (OMN-14168), kept local to avoid a cross-node import — the same
+    posture :func:`_receipt_is_pass_for_ticket` already uses for the merged-PR
+    receipt check. The governed verb allowlist is imported from ``omnibase_core``
+    so it stays a single source of truth. A receipt qualifies only when ALL hold:
+
+    * PASS + ticket match (:func:`_receipt_is_pass_for_ticket`);
+    * ``evidence_class == runtime_ops`` (G-key);
+    * independent attester — ``verifier != runner`` (G1);
+    * no ``pr_number`` / ``pr_url`` binding (G2a);
+    * ``no_source_change is True`` (G2);
+    * ``mutation_verb`` in the governed allowlist (G2b);
+    * non-empty ``probe_stdout`` readback (G3);
+    * a linked ``prevention_followup`` (G5);
+    * a NON-prod ``target_identity`` — prod stays gated by OMN-13418 and fails
+      closed here (G4).
+
+    Pure function — no I/O.
+    """
+    if not _receipt_is_pass_for_ticket(payload, ticket_id):
+        return False
+    if payload.get("evidence_class") != _RUNTIME_OPS_EVIDENCE_CLASS:
+        return False
+    runner = payload.get("runner")
+    verifier = payload.get("verifier")
+    if not isinstance(runner, str) or not isinstance(verifier, str):
+        return False
+    if not runner.strip() or not verifier.strip() or runner.strip() == verifier.strip():
+        return False
+    if payload.get("pr_number") is not None:
+        return False
+    pr_url = payload.get("pr_url")
+    if isinstance(pr_url, str) and pr_url.strip():
+        return False
+    if payload.get("no_source_change") is not True:
+        return False
+    verb = payload.get("mutation_verb")
+    if (
+        not isinstance(verb, str)
+        or verb.strip() not in load_runtime_ops_verb_allowlist()
+    ):
+        return False
+    stdout = payload.get("probe_stdout")
+    if not isinstance(stdout, str) or not stdout.strip():
+        return False
+    followup = payload.get("prevention_followup")
+    if not isinstance(followup, str) or not followup.strip():
+        return False
+    target = payload.get("target_identity")
+    if not isinstance(target, str) or not target.strip():
+        return False
+    if _is_prod_target(target):
+        return False
+    return True
+
+
 @runtime_checkable
 class OccReceiptProbe(Protocol):
     """Probe: is a tracked, PASS node_dod_verify OCC receipt present for a ticket?
@@ -767,6 +847,50 @@ class OccReceiptSubprocessProbe:
         if proc.returncode != 0:
             return None
         return _parse_receipt_payload(proc.stdout)
+
+
+@runtime_checkable
+class RuntimeOpsReadbackProbe(Protocol):
+    """Probe: is a tracked, verified RUNTIME_OPS readback receipt present (OMN-14168)?
+
+    Returns the OCC-root-relative receipt directory (the durable-evidence detail
+    string) when at least one tracked receipt under
+    ``drift/dod_receipts/<ticket_id>/`` on the OCC governance ref passes the full
+    RUNTIME_OPS_READBACK guardrail set
+    (:func:`_receipt_is_runtime_ops_readback_for_ticket`), else ``None``.
+    Fail-closed: a missing repo, unset env, subprocess failure, malformed
+    receipt, or any failed guardrail returns ``None`` so no RUNTIME_OPS_READBACK
+    evidence is constructed from a Linear label alone.
+    """
+
+    def runtime_ops_readback_detail(self, *, ticket_id: str) -> str | None: ...
+
+
+class RuntimeOpsReadbackSubprocessProbe(OccReceiptSubprocessProbe):
+    """Default :class:`RuntimeOpsReadbackProbe` backed by ``git`` against the OCC clone.
+
+    Reuses :class:`OccReceiptSubprocessProbe`'s ``git ls-tree`` + ``git show``
+    plumbing (same OCC repo resolution + governance ref), but accepts a receipt
+    only when it passes the full RUNTIME_OPS_READBACK guardrail set — an
+    independently-verified, no-PR, no-source-change runtime-ops readback — rather
+    than merely being a PASS receipt bound to the ticket. Every failure mode is
+    fail-closed (returns ``None``).
+    """
+
+    def runtime_ops_readback_detail(self, *, ticket_id: str) -> str | None:
+        if self._occ_repo_path is None or not self._occ_repo_path.is_dir():
+            return None
+        receipt_dir = _occ_receipt_dir(ticket_id)
+        tracked = self._ls_tree(receipt_dir)
+        if not tracked:
+            return None
+        for rel_path in tracked:
+            payload = self._show(rel_path)
+            if payload is None:
+                continue
+            if _receipt_is_runtime_ops_readback_for_ticket(payload, ticket_id):
+                return receipt_dir
+        return None
 
 
 def _norm_omn(value: str) -> str:
@@ -1484,6 +1608,124 @@ class HandlerLinearTriage:
                             ticket_title=ticket.title,
                             action=EnumTriageAction.FLAG_STALE,
                             evidence=f"OCC-receipt mutation failed: {exc}",
+                        )
+                    ],
+                    0,
+                    None,
+                )
+
+        return (
+            [
+                ModelTriageAction(
+                    ticket_id=ticket.identifier,
+                    ticket_title=ticket.title,
+                    action=action_name,
+                    evidence=evidence,
+                )
+            ],
+            0,
+            None,
+        )
+
+    def _apply_runtime_ops_readback(
+        self,
+        ticket: ModelLinearTicket,
+        receipt_detail: str,
+        client: LinearClientProtocol,
+        dry_run: bool,
+        flag_only: bool,
+        *,
+        has_open_children: bool = False,
+    ) -> tuple[list[ModelTriageAction], int, str | None]:
+        """Mark a ticket Done given a tracked, verified RUNTIME_OPS readback receipt.
+
+        Constructs ``ModelCloseEvidence(kind=RUNTIME_OPS_READBACK, detail=<receipt
+        dir>)`` and routes through the :meth:`_mark_done` chokepoint (OMN-14168).
+        Mirrors :meth:`_apply_occ_receipt`: ``flag_only`` overrides ``dry_run`` and
+        the same OMN-13759 open-children guard applies — a parent/epic with a
+        non-done child must close via the all-children-done path, not a receipt.
+
+        ``receipt_detail`` is the OCC-root-relative receipt directory the
+        :class:`RuntimeOpsReadbackProbe` positively verified against the full
+        guardrail set (independent verifier, no PR, allowlisted verb, non-empty
+        readback, prevention follow-up, non-prod target). The probe is the sole
+        authority for whether a durable verified readback exists, so reaching this
+        method means the evidence is real. The close evidence is NEVER constructed
+        from a Linear label alone (G6).
+
+        Returns (actions, count, suppressed_entry). This method is staged for the
+        autogen verification tick / independent-verifier caller (Surface C, the L1
+        hook, is deferred to OMN-13856); it is not yet wired into the auto-sweep
+        loop.
+        """
+        evidence = (
+            f"RUNTIME_OPS readback receipt tracked on {_OCC_GOVERNANCE_REF}: "
+            f"{receipt_detail}"
+        )
+
+        # Guard: epic / parent with open children — never close on a receipt.
+        if has_open_children:
+            _log.info(
+                "%s has open children — suppressing RUNTIME_OPS close (OMN-14168)",
+                ticket.identifier,
+            )
+            return [], 0, None
+
+        # flag_only is the outer safety gate — it overrides dry_run.
+        if flag_only:
+            suppressed_entry = f"{ticket.identifier} (runtime-ops-readback): {evidence}"
+            return (
+                [
+                    ModelTriageAction(
+                        ticket_id=ticket.identifier,
+                        ticket_title=ticket.title,
+                        action=EnumTriageAction.WOULD_MARK_DONE,
+                        evidence=evidence,
+                    )
+                ],
+                0,
+                suppressed_entry,
+            )
+
+        action_name = (
+            EnumTriageAction.WOULD_MARK_DONE if dry_run else EnumTriageAction.MARK_DONE
+        )
+
+        if not dry_run:
+            try:
+                self._mark_done(
+                    client=client,
+                    ticket=ticket,
+                    comment=(
+                        "Auto-closed by linear-triage: durable node_dod_verify "
+                        f"RUNTIME_OPS readback receipt tracked on {_OCC_GOVERNANCE_REF}"
+                        f"\n{receipt_detail}"
+                    ),
+                    evidence=ModelCloseEvidence(
+                        kind=EnumCloseEvidenceKind.RUNTIME_OPS_READBACK,
+                        detail=evidence,
+                    ),
+                )
+                return (
+                    [
+                        ModelTriageAction(
+                            ticket_id=ticket.identifier,
+                            ticket_title=ticket.title,
+                            action=action_name,
+                            evidence=evidence,
+                        )
+                    ],
+                    1,
+                    None,
+                )
+            except Exception as exc:
+                return (
+                    [
+                        ModelTriageAction(
+                            ticket_id=ticket.identifier,
+                            ticket_title=ticket.title,
+                            action=EnumTriageAction.FLAG_STALE,
+                            evidence=f"RUNTIME_OPS-readback mutation failed: {exc}",
                         )
                     ],
                     0,

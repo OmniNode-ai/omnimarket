@@ -29,11 +29,9 @@ classifiers = [
     "Typing :: Typed",
 ]
 dependencies = [
-    # OMN-13836: bump core lower bound to the current resolvable range
-    # (core>=0.46.1) consistent with OMN-13822 and omnibase_infra @main
-    # (core>=0.46.1,<0.47.0 / spi>=0.23.0,<0.24.0). Name normalized to the
-    # hyphenated distribution name to match the rest of the block.
-    "omnibase-core>=0.46.1,<0.47.0",
+    # OMN-14168 requires EnumEvidenceClass.RUNTIME_OPS and
+    # runtime_ops_verb_loader from omnibase-core 0.46.7.
+    "omnibase-core>=0.46.7,<0.47.0",
     "omnibase-compat==0.5.5",
     "omnibase-spi>=0.23.0,<0.24.0",
     "omnibase-infra>=0.38.3,<0.39.0",
@@ -446,9 +444,7 @@ omnimarket = "omnimarket.nodes"
 [tool.uv.sources]
 # OMN-13878: omnibase-core and omnibase-compat now resolve from PyPI (removed
 # their git-source overrides). The version-range overrides below already target
-# the released artifacts: core>=0.46.1,<0.47.0 (PyPI 0.46.1; the former
-# rev 29e9057 was an unreleased 0.46.1+1-commit whose only delta is core's
-# validator_receipt_gate CI validator, which omnimarket does not import) and
+# the released artifacts: core>=0.46.7,<0.47.0 and
 # compat==0.5.5 (the former rev c0fc716 IS the v0.5.5 tag == PyPI 0.5.5).
 # omnibase-infra git rev retained — infra is not in the dep-provenance forbidden set.
 omnibase-infra = { git = "https://github.com/OmniNode-ai/omnibase_infra.git", rev = "7e52d5b0046c394b38454b97157e7a7191e6f008" }
@@ -467,10 +463,10 @@ onex-change-control = { git = "https://github.com/OmniNode-ai/onex_change_contro
 # unresolvable when consumed as a declared dependency (OMN-13829): a git-URL
 # override forces a URL requirement that clashes with a consumer's own
 # core/infra pins. Relaxed to version-range overrides that match the
-# current resolvable ranges (core>=0.46.1, spi>=0.23.0) — same override
+# current resolvable ranges (core>=0.46.7, spi>=0.23.0) — same override
 # function, no foreign URLs.
 override-dependencies = [
-    "omnibase-core>=0.46.1,<0.47.0",
+    "omnibase-core>=0.46.7,<0.47.0",
     "omnibase-spi>=0.23.0,<0.24.0",
     "omnibase-infra>=0.38.3,<0.39.0",
     "omnibase-compat==0.5.5",
