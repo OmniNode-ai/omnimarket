@@ -1,0 +1,59 @@
+# OMN-14172 — silent-skip false-green prevention gate config.
+#
+# WHY THIS EXISTS
+# ---------------
+# `@pytest.mark.integration` real-service tests self-skip (pytest.skip) when
+# their DB/service/env is absent. On a merge-gating job that ACTUALLY provisions
+# that service, such a skip is a *false-green*: the required Tests job reports
+# success while the real-DB assertion never ran. This recurred across repos
+# (OMN-10330 omninode_infra, OMN-14167 omnimarket) and each time it hid a genuine
+# latent defect (the OMN-14058 missing-`tenant_id`-column bug reached dev this way).
+#
+# `silent_skip_allowed: false` is the OMN-13575 anchor — a required-integration
+# test that self-skips because a PROVISIONED service is missing is NOT allowed to
+# pass silently. This gate makes that class mechanically RED.
+#
+# HOW IT STAYS LOW-FALSE-POSITIVE
+# -------------------------------
+# The gate is keyed to the services the merge-gating job actually PROVISIONS
+# (see `required_services`). A skip only fails the gate when its reason names a
+# *provisioned* service's absence — i.e. the service is right there and the test
+# SHOULD have run. Legitimately-optional skips (Kafka broker not provisioned by
+# design, live-LLM / live-e2e opt-in flags) are NOT provisioned and are never
+# treated as false-greens.
+silent_skip_allowed: false
+
+# Marker selector the guard job runs. Kafka is excluded because the merge-gating
+# job intentionally does NOT provision a broker (`-m "not kafka"` platform-wide).
+marker_selector: "integration and not kafka"
+
+# At least this many integration tests must actually EXECUTE (not skip) on the
+# provisioning job. Guards the zero-collection / all-skip false-green (a marker
+# typo or a broken collection selecting nothing — the OMN-14082 family).
+require_executed_min: 1
+
+# Services the merge-gating guard job PROVISIONS. A skip whose reason matches one
+# of these absence patterns is a false-green -> FAIL. Patterns are Python regex,
+# matched case-insensitively against the pytest skip reason (message + location).
+required_services:
+  postgres:
+    provisioned_by: "ci.yml `integration-guard` job (postgres:16-alpine service, POSTGRES_PASSWORD exported)"
+    missing_skip_patterns:
+      - "POSTGRES_PASSWORD not set"
+      - "no reachable Postgres"
+      - 'could not connect.*postgres'
+      - 'connection refused.*5432'
+
+# Skip reasons that are legitimately optional even for an integration-marked test.
+# These name resources the merge-gating job deliberately does NOT provision, so a
+# skip on them is expected, not a false-green. Used by `--strict` to assert every
+# observed skip is classified (so a NEW, unrecognised skip reason gets a human
+# look instead of silently passing). The default (non-strict) gate never fails on
+# these — it only fails on `required_services` patterns above.
+allowed_optional_skip_patterns:
+  - "OMN_ALLOW_LIVE"                     # live cloud/judge/ladder/e2e/qdrant opt-in flags
+  - "requires @pytest.mark.integration"  # conftest guard for opt-in kafka bus fixture
+  - "Redpanda broker not reachable"      # broker not provisioned in the merge-gating job
+  - "Kafka not reachable"                # broker not provisioned in the merge-gating job
+  - "omnibase_core not installed"        # sibling-clone-optional bootstrap probe
+  - "set OMN_ALLOW"                       # generic live opt-in flag phrasing
