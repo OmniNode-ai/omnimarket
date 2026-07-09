@@ -141,6 +141,11 @@ jobs:
           # is absent. The old assumption that the runner env provided it
           # (Infisical / shell profile) never held on this fleet.
           LOCAL_LLM_SHARED_SECRET: ${{ secrets.LOCAL_LLM_SHARED_SECRET }}
+          # Added alongside LOCAL_LLM_SHARED_SECRET for env parity with the review
+          # step (OMN-14176). This preflight uses a raw TCP probe so it does not
+          # invoke the LLM transport's CIDR check, but keeping the two LLM-contact
+          # env blocks identical avoids drift. The model host is within this subnet.
+          LLM_ENDPOINT_CIDR_ALLOWLIST: "192.168.86.0/24"  # onex-allow-internal-ip OMN-14176 reason="LAN subnet allowlist for the review LLM endpoint host 192.168.86.201"
         run: |
           # -e is intentionally OMITTED: this probe must NEVER fail the job. Every
           # uncertain/ambiguous outcome FAILS OPEN to the full install + review.
@@ -340,6 +345,12 @@ jobs:
           # on this fleet — that gap is why every review DEGRADED with "all models
           # failed" despite a reachable endpoint.
           LOCAL_LLM_SHARED_SECRET: ${{ secrets.LOCAL_LLM_SHARED_SECRET }}
+          # The omniintelligence LLM HTTP transport's _parse_cidr_allowlist RAISES
+          # if LLM_ENDPOINT_CIDR_ALLOWLIST is unset — there is NO code default (the
+          # docstring's LAN-subnet default is aspirational only). Without this the
+          # reviewer fail-closes on the CIDR gate → verdict=degraded even after the
+          # endpoint_url fix + the secret. The model host is within this subnet.
+          LLM_ENDPOINT_CIDR_ALLOWLIST: "192.168.86.0/24"  # onex-allow-internal-ip OMN-14176 reason="LAN subnet allowlist for the review LLM endpoint host 192.168.86.201; transport fail-closes if unset"
         working-directory: ../omniintelligence
         run: |
           set -euo pipefail
