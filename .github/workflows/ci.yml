@@ -329,6 +329,27 @@ jobs:
       fail-fast: false
       matrix:
         split: ${{ fromJson(needs.detect-changes.outputs.matrix) }}
+    # OMN-14167: real Postgres service so @pytest.mark.integration real-DB tests
+    # (e.g. tests/test_projection_delegation_tier_distribution_omn13662.py's
+    # `..._against_real_postgres` proof) actually EXECUTE instead of silently
+    # skipping. Without a broker they self-skip, which produced a false green:
+    # that gap let the OMN-14058 delegation_events tenant_id missing-column
+    # defect reach dev. Image + wiring mirror the omnibase_infra
+    # migration-integration job (postgres:16-alpine, ephemeral 5432/tcp,
+    # pg_isready health-check).
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_PASSWORD: test_password
+          POSTGRES_DB: omnibase_infra
+        ports:
+          - 5432/tcp
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     steps:
       - uses: actions/checkout@v4
       - name: Clone omnibase_core
@@ -345,6 +366,60 @@ jobs:
         run: uv python install 3.12
       - name: Install dependencies
         run: uv sync --locked --all-extras
+
+      # OMN-14167: resolve the Postgres service host + ephemeral port and export
+      # the connection env the integration fixtures read
+      # (INTEGRATION_POSTGRES_* / POSTGRES_PASSWORD). Setting POSTGRES_PASSWORD is
+      # what flips the real-DB integration tests from "skipped" to "executed".
+      # The host-resolution dance mirrors the omnibase_infra migration-integration
+      # job so this stays correct on both GitHub-hosted and self-hosted runners.
+      - name: Resolve Postgres service host and export integration env
+        env:
+          POSTGRES_PORT: ${{ job.services.postgres.ports['5432'] }}
+        run: |
+          host="$(python - <<'PY'
+          import os
+          import socket
+
+          port = int(os.environ["POSTGRES_PORT"])
+
+          def can_connect(candidate: str) -> bool:
+              try:
+                  with socket.create_connection((candidate, port), timeout=1.0):
+                      return True
+              except OSError:
+                  return False
+
+          if can_connect("127.0.0.1"):
+              print("127.0.0.1")
+              raise SystemExit(0)
+
+          with open("/proc/net/route", encoding="utf-8") as routes:
+              for line in routes.readlines()[1:]:
+                  fields = line.split()
+                  if len(fields) >= 3 and fields[1] == "00000000":
+                      gateway_hex = fields[2]
+                      gateway = ".".join(
+                          str(int(gateway_hex[i : i + 2], 16)) for i in (6, 4, 2, 0)
+                      )
+                      if can_connect(gateway):
+                          print(gateway)
+                          raise SystemExit(0)
+
+          raise SystemExit(
+              f"could not reach Postgres service on localhost or default gateway port {port}"
+          )
+          PY
+          )"
+          {
+            echo "INTEGRATION_POSTGRES_HOST=${host}"
+            echo "INTEGRATION_POSTGRES_PORT=${POSTGRES_PORT}"
+            echo "INTEGRATION_POSTGRES_USER=postgres"
+            echo "INTEGRATION_POSTGRES_PASSWORD=test_password"
+            echo "INTEGRATION_POSTGRES_DB=omnibase_infra"
+            echo "POSTGRES_PASSWORD=test_password"
+          } >> "$GITHUB_ENV"
+          echo "Resolved Postgres integration host=${host} port=${POSTGRES_PORT}"
 
       - name: Restore test durations cache
         uses: actions/cache/restore@v4
