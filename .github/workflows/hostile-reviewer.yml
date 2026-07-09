@@ -135,9 +135,12 @@ jobs:
         run: |
           # -e is intentionally OMITTED: this probe must NEVER fail the job. Every
           # uncertain/ambiguous outcome FAILS OPEN to the full install + review.
-          # We flip reachable=false ONLY on an unambiguous TCP connection failure —
-          # the exact condition (adapter_ai_reviewer._probe_tcp) under which today's
-          # review yields verdict=degraded + exit 0 with zero models succeeded.
+          # We flip reachable=false ONLY when the reviewer would ALSO degrade:
+          # deepseek-r1 is TCP-unreachable (adapter_ai_reviewer._probe_tcp) AND the
+          # codex api-fallback (select_models_with_fallback -> _resolve_codex_binary)
+          # is unavailable. That AND keeps our short-circuit a STRICT SUBSET of the
+          # reviewer's degrade condition under all configs, so once OMN-8524
+          # provisions codex on CI a deepseek outage no longer suppresses a review.
           set -o pipefail
 
           # Resolve host:port exactly as the reviewer does:
@@ -146,6 +149,7 @@ jobs:
           # (--no-project --with) so we do NOT trigger the ~3.6 GiB dependency sync.
           PROBE_TARGET="$(uv run --no-project --with pyyaml python - <<'PYEOF'
           import os
+          import shutil
           import urllib.parse
 
           import yaml
@@ -160,8 +164,48 @@ jobs:
           parsed = urllib.parse.urlparse(url)
           host = parsed.hostname or ""
           port = parsed.port or 80
+
+
+          def _codex_resolvable() -> bool:
+              # Bool-form verbatim mirror of
+              # adapter_codex_reviewer._resolve_codex_binary: CODEX_BINARY (file+exec)
+              # -> shutil.which("codex") -> known Homebrew/system fallback dirs.
+              env_override = os.environ.get("CODEX_BINARY")
+              if (
+                  env_override
+                  and os.path.isfile(env_override)
+                  and os.access(env_override, os.X_OK)
+              ):
+                  return True
+              if shutil.which("codex") is not None:
+                  return True
+              for directory in (
+                  "/opt/homebrew/bin",
+                  "/usr/local/bin",
+                  os.path.expanduser("~/.local/bin"),
+              ):
+                  candidate = os.path.join(directory, "codex")
+                  if os.path.isfile(candidate) and os.access(candidate, os.X_OK):
+                      return True
+              return False
+
+
+          # Mirror select_models_with_fallback: when the sole requested local model
+          # is unreachable the reviewer substitutes api_fallback_keys and only
+          # degrades if that fallback ALSO fails. fallback_blocks=True means a live
+          # fallback might still succeed -> we must NOT short-circuit; let the
+          # reviewer decide. Conservative: an unrecognized (non-codex) fallback we
+          # cannot prove unavailable also blocks the short-circuit (fail-open).
+          fallback_keys = list(registry.get("api_fallback_keys", []))
+          if not fallback_keys:
+              fallback_blocks = False
+          elif any(k != "codex" for k in fallback_keys):
+              fallback_blocks = True
+          else:
+              fallback_blocks = _codex_resolvable()
+
           if url and host:
-              print(f"{host}|{port}|{url}")
+              print(f"{host}|{port}|{'true' if fallback_blocks else 'false'}|{url}")
           PYEOF
           )"
 
@@ -174,8 +218,10 @@ jobs:
           HOST="${PROBE_TARGET%%|*}"
           REST="${PROBE_TARGET#*|}"
           PORT="${REST%%|*}"
+          REST="${REST#*|}"
+          FALLBACK_BLOCKS="${REST%%|*}"
           URL="${REST#*|}"
-          echo "Resolved ${REVIEW_MODEL_KEY} endpoint: ${URL} (probe ${HOST}:${PORT})"
+          echo "Resolved ${REVIEW_MODEL_KEY} endpoint: ${URL} (probe ${HOST}:${PORT}); codex_fallback_may_be_available=${FALLBACK_BLOCKS}"
 
           # TCP-connect probe — SAME semantics as adapter_ai_reviewer._probe_tcp
           # (socket.create_connection). We retry so our short-circuit is a STRICT
@@ -192,11 +238,22 @@ jobs:
             [ "$attempt" -lt 3 ] && sleep 2
           done
 
-          # Unambiguous connection failure across all attempts → short-circuit.
-          # Emit the IDENTICAL degraded verdict + exit 0 the review produces when
-          # its sole requested model is unreachable and no API fallback is
-          # available on CI (see the degraded branch of "Run adversarial review").
-          echo "::warning::${REVIEW_MODEL_KEY} endpoint ${HOST}:${PORT} unreachable after 3 attempts; short-circuiting to DEGRADED and skipping the ~3.6 GiB install + review."
+          # deepseek-r1 is unreachable. The reviewer does NOT degrade on that alone
+          # — select_models_with_fallback substitutes the codex api-fallback and only
+          # degrades if codex ALSO fails. If codex may be available, PROCEED to the
+          # full review and let the reviewer decide (fail-open; closes the OMN-8524
+          # coverage hole where a codex review would otherwise be suppressed).
+          if [ "$FALLBACK_BLOCKS" = "true" ]; then
+            echo "${REVIEW_MODEL_KEY} unreachable, but the codex api-fallback may be available; proceeding to the full review (reviewer decides) — OMN-8524."
+            echo "reachable=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # deepseek-r1 unreachable AND codex api-fallback unavailable → this is the
+          # EXACT condition under which the reviewer yields verdict=degraded + exit 0
+          # with zero models succeeded. Short-circuit with the IDENTICAL degraded
+          # verdict (see the degraded branch of "Run adversarial review").
+          echo "::warning::${REVIEW_MODEL_KEY} endpoint ${HOST}:${PORT} unreachable after 3 attempts and no codex api-fallback available; short-circuiting to DEGRADED and skipping the ~3.6 GiB install + review."
           {
             echo "reachable=false"
             echo "verdict=degraded"
