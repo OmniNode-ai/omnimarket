@@ -6,7 +6,7 @@
 # Adversarial multi-model code review gate on every pull request.
 #
 # Invokes omniintelligence.review_pairing.cli_review (node-based path via
-# HandlerLlmCliSubprocess / adapter_codex_reviewer) with --model deepseek-r1.
+# HandlerLlmCliSubprocess / adapter_codex_reviewer) with --model qwen3-review.
 # Codex is excluded from the initial pilot — add --model codex once non-interactive
 # OAuth auth is confirmed on trusted CI runners (OMN-8524).
 #
@@ -124,7 +124,180 @@ jobs:
       - name: Set up Python 3.12
         run: uv python install 3.12
 
+      - name: Preflight — probe review endpoint reachability
+        id: preflight
+        working-directory: ../omniintelligence
+        env:
+          # Resolve the SAME registry the reviewer loads (model_registry_loader)
+          # for the SAME models the review step runs
+          # (`--model qwen3-review --model qwen3-review-b`). We flip
+          # reachable=false ONLY when EVERY requested model is unreachable AND the
+          # codex api-fallback is unavailable — the exact condition under which the
+          # reviewer itself yields verdict=degraded + exit 0.
+          REVIEW_MODEL_KEYS: "qwen3-review qwen3-review-b"
+          REGISTRY_PATH: "src/omniintelligence/review_pairing/model_registry.yaml"
+          # Wired from a GitHub Actions secret (OMN-14176): the LLM HTTP transport
+          # HMAC-signs every call with LOCAL_LLM_SHARED_SECRET and fail-closes if it
+          # is absent. The old assumption that the runner env provided it
+          # (Infisical / shell profile) never held on this fleet.
+          LOCAL_LLM_SHARED_SECRET: ${{ secrets.LOCAL_LLM_SHARED_SECRET }}
+        run: |
+          # -e is intentionally OMITTED: this probe must NEVER fail the job. Every
+          # uncertain/ambiguous outcome FAILS OPEN to the full install + review.
+          # We flip reachable=false ONLY when the reviewer would ALSO degrade:
+          # ALL requested models are TCP-unreachable (adapter_ai_reviewer._probe_tcp)
+          # AND the codex api-fallback (select_models_with_fallback ->
+          # _resolve_codex_binary) is unavailable. That keeps our short-circuit a
+          # STRICT SUBSET of the reviewer's degrade condition under all configs, so
+          # once OMN-8524 provisions codex on CI a local outage no longer suppresses
+          # a review.
+          set -o pipefail
+
+          # Resolve host:port for EACH requested model exactly as the reviewer does:
+          #   url = os.environ.get(config.env_var, config.default_url)   # per-model
+          # then urllib.parse the host/port. pyyaml runs in an isolated env
+          # (--no-project --with) so we do NOT trigger the ~3.6 GiB dependency sync.
+          # Output: one "FALLBACK|<bool>" line, then one "TARGET|host|port|url" line
+          # per resolvable model.
+          PROBE_TARGETS="$(uv run --no-project --with pyyaml python - <<'PYEOF'
+          import os
+          import shutil
+          import urllib.parse
+
+          import yaml
+
+          registry_path = os.environ["REGISTRY_PATH"]
+          model_keys = os.environ["REVIEW_MODEL_KEYS"].split()
+          with open(registry_path, encoding="utf-8") as fh:
+              registry = yaml.safe_load(fh)
+
+
+          def _codex_resolvable() -> bool:
+              # Bool-form verbatim mirror of
+              # adapter_codex_reviewer._resolve_codex_binary: CODEX_BINARY (file+exec)
+              # -> shutil.which("codex") -> known Homebrew/system fallback dirs.
+              # ASSUMPTION (load-bearing): codex resolvability is identical at
+              # preflight-time (uv run --no-project) and review-time (project uv run)
+              # ONLY because omniintelligence ships no `codex` console-script in its
+              # venv; if it ever adds one, resolve codex from the review's own env here
+              # or the preflight could miss a `.venv/bin/codex` the review would find.
+              env_override = os.environ.get("CODEX_BINARY")
+              if (
+                  env_override
+                  and os.path.isfile(env_override)
+                  and os.access(env_override, os.X_OK)
+              ):
+                  return True
+              if shutil.which("codex") is not None:
+                  return True
+              for directory in (
+                  "/opt/homebrew/bin",
+                  "/usr/local/bin",
+                  os.path.expanduser("~/.local/bin"),
+              ):
+                  candidate = os.path.join(directory, "codex")
+                  if os.path.isfile(candidate) and os.access(candidate, os.X_OK):
+                      return True
+              return False
+
+
+          # Mirror select_models_with_fallback: when the requested local models are
+          # unreachable the reviewer substitutes api_fallback_keys and only degrades
+          # if that fallback ALSO fails. fallback_blocks=True means a live fallback
+          # might still succeed -> we must NOT short-circuit; let the reviewer decide.
+          # Conservative: an unrecognized (non-codex) fallback we cannot prove
+          # unavailable also blocks the short-circuit (fail-open).
+          fallback_keys = list(registry.get("api_fallback_keys", []))
+          if not fallback_keys:
+              fallback_blocks = False
+          elif any(k != "codex" for k in fallback_keys):
+              fallback_blocks = True
+          else:
+              fallback_blocks = _codex_resolvable()
+
+          print(f"FALLBACK|{'true' if fallback_blocks else 'false'}")
+
+          for model_key in model_keys:
+              cfg = registry["models"].get(model_key)
+              if not cfg:
+                  continue
+              # env_var overrides default_url — identical to adapter_ai_reviewer.
+              url = os.environ.get(cfg["env_var"], cfg["default_url"]).strip()
+              parsed = urllib.parse.urlparse(url)
+              host = parsed.hostname or ""
+              port = parsed.port or 80
+              if url and host:
+                  print(f"TARGET|{host}|{port}|{url}")
+          PYEOF
+          )"
+
+          FALLBACK_BLOCKS="$(printf '%s\n' "$PROBE_TARGETS" | sed -n 's/^FALLBACK|//p' | head -n1)"
+          TARGETS="$(printf '%s\n' "$PROBE_TARGETS" | grep '^TARGET' || true)"
+
+          if [ -z "$TARGETS" ]; then
+            echo "Could not statically resolve any of [${REVIEW_MODEL_KEYS}]; proceeding with full review (fail-open)."
+            echo "reachable=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # TCP-connect probe — SAME semantics as adapter_ai_reviewer._probe_tcp
+          # (socket.create_connection). We retry so our short-circuit is a STRICT
+          # SUBSET of the reviewer's own single-shot 2s probe. If ANY requested
+          # model is reachable, the review can succeed -> proceed. Process
+          # substitution (not a pipe) keeps this loop in the current shell so exit
+          # and UNREACHABLE persist.
+          UNREACHABLE=""
+          while IFS='|' read -r _tag HOST PORT URL; do
+            [ "$_tag" = "TARGET" ] || continue
+            model_reachable="false"
+            for attempt in 1 2 3; do
+              if timeout 5 bash -c "exec 3<>/dev/tcp/${HOST}/${PORT}" 2>/dev/null; then
+                echo "TCP connect to ${HOST}:${PORT} (${URL}) succeeded (attempt ${attempt})."
+                model_reachable="true"
+                break
+              fi
+              echo "TCP connect to ${HOST}:${PORT} (${URL}) failed (attempt ${attempt}/3)."
+              [ "$attempt" -lt 3 ] && sleep 2
+            done
+            if [ "$model_reachable" = "true" ]; then
+              echo "At least one review endpoint is reachable; proceeding with full review."
+              echo "reachable=true" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            UNREACHABLE="${UNREACHABLE}${HOST}:${PORT} "
+          done < <(printf '%s\n' "$TARGETS")
+
+          # EVERY requested model is unreachable. The reviewer does NOT degrade on
+          # that alone — select_models_with_fallback substitutes the codex
+          # api-fallback and only degrades if codex ALSO fails. If codex may be
+          # available, PROCEED and let the reviewer decide (fail-open; closes the
+          # OMN-8524 hole where a codex review would otherwise be suppressed).
+          if [ "$FALLBACK_BLOCKS" = "true" ]; then
+            echo "All review endpoints unreachable, but the codex api-fallback may be available; proceeding to the full review (reviewer decides) — OMN-8524."
+            echo "reachable=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # ALL models unreachable AND codex api-fallback unavailable → this is the
+          # EXACT condition under which the reviewer yields verdict=degraded + exit 0
+          # with zero models succeeded. Short-circuit with the IDENTICAL degraded
+          # verdict (see the degraded branch of "Run adversarial review").
+          echo "::warning::All review endpoints [${UNREACHABLE}] unreachable after 3 attempts and no codex api-fallback available; short-circuiting to DEGRADED and skipping the ~3.6 GiB install + review."
+          {
+            echo "reachable=false"
+            echo "verdict=degraded"
+            echo "blocking_count=0"
+            echo "total_findings=0"
+            echo "models_succeeded="
+            echo "error=all review endpoints [${UNREACHABLE}] unreachable — preflight short-circuit (no models available)"
+          } >> "$GITHUB_OUTPUT"
+          exit 0
+
       - name: Install omniintelligence dependencies
+        # Skip the heavy dependency sync when the review endpoint is unreachable
+        # (preflight short-circuit). Any non-'false' value — including a crashed
+        # or unset preflight — runs the install unchanged (fail-open).
+        if: steps.preflight.outputs.reachable != 'false'
         id: install-omniintelligence
         continue-on-error: true
         working-directory: ../omniintelligence
@@ -152,22 +325,35 @@ jobs:
           done
 
       - name: Run adversarial review
+        # Skipped only when the preflight proved the endpoint unreachable; the
+        # identical DEGRADED verdict is emitted by the preflight step instead.
+        if: steps.preflight.outputs.reachable != 'false'
         id: review
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           REPO: ${{ github.repository }}
-          # LLM_DEEPSEEK_URL is read directly from the selected runner's environment
-          # (Infisical-injected or shell profile) — no GitHub secret needed
+          # LOCAL_LLM_SHARED_SECRET is wired from a GitHub Actions secret
+          # (OMN-14176): the omniintelligence LLM HTTP transport HMAC-signs every
+          # call with it and fail-closes if it is absent. The earlier assumption
+          # that the runner env supplied it (Infisical / shell profile) never held
+          # on this fleet — that gap is why every review DEGRADED with "all models
+          # failed" despite a reachable endpoint.
+          LOCAL_LLM_SHARED_SECRET: ${{ secrets.LOCAL_LLM_SHARED_SECRET }}
         working-directory: ../omniintelligence
         run: |
           set -euo pipefail
 
           # Run cli_review; stdout = ModelMultiReviewResult JSON, stderr = human summary
+          # Two models (OMN-14176): qwen3-review (5090 :8000) + qwen3-review-b
+          # (4090 :8001). Running >=2 models makes cli_review exit 0 ("at least 2
+          # succeeded") reachable — fixing the single-model exit-2 collapse where a
+          # successful review was misreported as "all models failed".
           REVIEW_JSON=$(uv run python -m omniintelligence.review_pairing.cli_review \
             --pr "$PR_NUMBER" \
             --repo "$REPO" \
-            --model deepseek-r1 \
+            --model qwen3-review \
+            --model qwen3-review-b \
             2>/dev/null) || REVIEW_EXIT=$?
 
           # If the CLI itself failed (not model degraded — actual crash), report and exit 0
@@ -178,7 +364,7 @@ jobs:
               echo "blocking_count=0"
               echo "total_findings=0"
               echo "models_succeeded="
-              echo "error=cli_review exited non-zero (all models failed or binary error)"
+              echo "error=cli_review exited non-zero (fewer than 2 models succeeded — partial/total outage — or binary error)"
             } >> "$GITHUB_OUTPUT"
             exit 0
           fi
@@ -226,11 +412,15 @@ jobs:
         if: always()
         uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea # v7
         env:
-          REVIEW_VERDICT: ${{ steps.review.outputs.verdict }}
-          REVIEW_BLOCKING: ${{ steps.review.outputs.blocking_count }}
-          REVIEW_TOTAL: ${{ steps.review.outputs.total_findings }}
-          REVIEW_MODELS: ${{ steps.review.outputs.models_succeeded }}
-          REVIEW_ERROR: ${{ steps.review.outputs.error }}
+          # When the preflight short-circuits, the review step is skipped and its
+          # outputs are empty; fall back to the preflight's identical degraded
+          # outputs. On the endpoint-up path the review outputs are authoritative
+          # (non-empty) so these resolve to exactly the same values as before.
+          REVIEW_VERDICT: ${{ steps.review.outputs.verdict || steps.preflight.outputs.verdict }}
+          REVIEW_BLOCKING: ${{ steps.review.outputs.blocking_count || steps.preflight.outputs.blocking_count }}
+          REVIEW_TOTAL: ${{ steps.review.outputs.total_findings || steps.preflight.outputs.total_findings }}
+          REVIEW_MODELS: ${{ steps.review.outputs.models_succeeded || steps.preflight.outputs.models_succeeded }}
+          REVIEW_ERROR: ${{ steps.review.outputs.error || steps.preflight.outputs.error }}
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
