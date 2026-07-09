@@ -17,6 +17,7 @@ pre-populate evidence_results (tests, event-bus consumers).
 from __future__ import annotations
 
 import glob
+import json
 import logging
 import os
 import shlex
@@ -32,6 +33,10 @@ import yaml
 from omnimarket.nodes.node_dod_verify.models.model_dod_verify_state import (
     EnumEvidenceCheckStatus,
     ModelEvidenceCheckResult,
+)
+from omnimarket.nodes.node_dod_verify.services.durable_evidence_gate import (
+    apply_supersessions,
+    extract_receipt_merge_commits,
 )
 
 logger = logging.getLogger(__name__)
@@ -57,6 +62,32 @@ _DEFAULT_OCC_GOVERNANCE_REF = "origin/dev"
 # collect() with no recovery (CodeRabbit — Stability). Kept generous because a
 # fetch of the OCC repo may transfer real objects.
 _GIT_OP_TIMEOUT_S = 60
+
+# OMN-14207: live GitHub PR-state verification.
+#
+# A dod_evidence item that BINDS to a GitHub PR is additionally verified against
+# the LIVE PR state: the PR must be MERGED and all status checks green. This runs
+# ALONGSIDE the contract's declared hash/receipt checks (it never replaces them).
+#
+# It closes a false-positive class: a static receipt can record ``status: PASS``
+# while the product PR is actually unmerged / CI-red, so the grep-the-receipt
+# check passes and dod_verify reports ``verified`` for work that is neither merged
+# nor green. OMN-13996 is the discovery case — ``dod_verify`` said ``verified 3/3``
+# while ``omnibase_infra#2216`` was OPEN with 7 failing required checks.
+#
+# The binding source is authoritative, not heuristic (evidence-item ``id`` slugs
+# are unreliable repo names): an explicit ``pr`` field on the item, else the
+# durable receipt's ``pr_number`` + probed ``--repo owner/repo`` — the SAME fields
+# the DurableEvidenceGate binds against.
+_LIVE_PR_CHECK_ENV = "DOD_VERIFY_LIVE_PR_CHECK"
+_GH_PR_TIMEOUT_S = 30
+_DEFAULT_GITHUB_ORG = "OmniNode-ai"
+# ``gh pr checks --json ... state`` values that are NOT a failure. Anything else
+# (FAILURE, CANCELLED, ERROR, TIMED_OUT, ACTION_REQUIRED, PENDING, QUEUED,
+# IN_PROGRESS, ...) is treated as not-green — a Done-flip gate fails closed on
+# anything not proven passing. NOTE: ``gh pr checks`` exits 0 even with FAILURE
+# rows, so the states MUST be parsed; the exit code cannot be trusted.
+_GH_CHECK_GREEN_STATES = frozenset({"SUCCESS", "SKIPPED", "NEUTRAL"})
 
 
 class EvidenceCollector:
@@ -375,6 +406,12 @@ class EvidenceCollector:
         for item in dod_items:
             result = self._check_evidence_item(item, ticket_id, path)
             results.append(result)
+            # OMN-14207: verify the LIVE PR state for any PR-bound item. Emitted
+            # as additional check result(s) ALONGSIDE the item's declared checks
+            # so a static ``status: PASS`` receipt can no longer mask an unmerged
+            # or CI-red product PR.
+            if isinstance(item, dict):
+                results.extend(self._live_pr_checks_for_item(item, ticket_id, path))
 
         return results
 
@@ -760,6 +797,318 @@ class EvidenceCollector:
                 return str(occ_path)
 
         return None
+
+    # ------------------------------------------------------------------
+    # OMN-14207: live GitHub PR-state verification for PR-bound evidence.
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _live_pr_check_enabled() -> bool:
+        """Whether the live PR-state check runs (default: on).
+
+        Disabled only when ``DOD_VERIFY_LIVE_PR_CHECK`` is explicitly set to a
+        falsey value (``0``/``false``/``off``/``no``). This is a deliberate,
+        logged operator opt-out for environments without an authenticated
+        ``gh`` CLI — NOT a silent fallback. When disabled, the live check is
+        emitted as SKIPPED (surfaced, not swallowed).
+        """
+        raw = os.environ.get(_LIVE_PR_CHECK_ENV, "1").strip().lower()
+        return raw not in ("0", "false", "off", "no")
+
+    @staticmethod
+    def _normalize_repo(repo: str) -> str:
+        """Return ``owner/repo``, defaulting a bare name to the OmniNode org."""
+        repo = repo.strip()
+        return repo if "/" in repo else f"{_DEFAULT_GITHUB_ORG}/{repo}"
+
+    def _resolve_pr_bindings(
+        self,
+        item: dict[str, Any],
+        ticket_id: str,
+        contract_path: Path | None,
+    ) -> list[tuple[str, int]]:
+        """Resolve every ``(owner/repo, pr_number)`` this evidence item binds to.
+
+        Two authoritative sources, in precedence order:
+
+        1. An explicit ``pr`` mapping on the item (``{repo, number}``) or explicit
+           ``repo`` + ``pr_number`` scalar fields — lets a contract declare the
+           binding directly (future-proof).
+        2. The durable receipt(s) for the item under
+           ``<occ_root>/drift/dod_receipts/<ticket>/<item_id>/*.yaml``: the receipt
+           records ``pr_number`` and the probed ``--repo owner/repo`` (the SAME
+           fields the DurableEvidenceGate binds against). This is what catches a
+           contract (e.g. OMN-13996) that never declared the binding explicitly.
+
+        Returns a de-duplicated list; empty when the item does not bind to any PR
+        (a non-PR evidence item is therefore unaffected by the live check). The
+        evidence-item ``id`` slug is deliberately NOT parsed for a repo — those
+        slugs are frequently descriptive labels (``product``, ``sea``,
+        ``release-*``), not repo names, so guessing a repo from them would be a
+        false-positive machine.
+        """
+        bindings: list[tuple[str, int]] = []
+        seen: set[tuple[str, int]] = set()
+
+        def _add(repo_val: object, number_val: object) -> None:
+            if not isinstance(repo_val, str) or not repo_val.strip():
+                return
+            # bool is an int subclass — reject it as a PR number.
+            if isinstance(number_val, bool):
+                return
+            if isinstance(number_val, int):
+                number = number_val
+            elif isinstance(number_val, str) and number_val.strip().isdigit():
+                number = int(number_val.strip())
+            else:
+                return
+            if number <= 0:
+                return
+            key = (self._normalize_repo(repo_val), number)
+            if key not in seen:
+                seen.add(key)
+                bindings.append(key)
+
+        # 1. Explicit fields on the item.
+        explicit = item.get("pr")
+        if isinstance(explicit, dict):
+            _add(
+                explicit.get("repo"),
+                explicit.get("number", explicit.get("pr_number")),
+            )
+        _add(item.get("repo"), item.get("pr_number"))
+
+        # 2. Receipt-derived bindings (only when nothing explicit was declared).
+        if not bindings:
+            item_id = item.get("id")
+            if isinstance(item_id, str) and item_id:
+                receipts = apply_supersessions(
+                    self._load_item_receipts(item_id, ticket_id, contract_path)
+                )
+                for citation in extract_receipt_merge_commits(receipts):
+                    _add(citation.repo, citation.pr_number)
+
+        return bindings
+
+    def _load_item_receipts(
+        self,
+        item_id: str,
+        ticket_id: str,
+        contract_path: Path | None,
+    ) -> list[dict[str, Any]]:
+        """Load the durable receipt payloads for a single evidence item.
+
+        Receipts live at the canonical platform layout
+        ``<occ_root>/drift/dod_receipts/<ticket>/<item_id>/*.yaml``. Each payload
+        is tagged with ``__source_name__`` so :func:`apply_supersessions` can
+        order any supersession chain by the unforgeable filename ordinal (matching
+        the DurableEvidenceGate). Returns ``[]`` when the OCC root or the receipt
+        directory cannot be resolved.
+        """
+        occ_root = self._resolve_contract_repo_dir(contract_path)
+        if occ_root is None:
+            return []
+        receipt_dir = Path(occ_root) / "drift" / "dod_receipts" / ticket_id / item_id
+        if not receipt_dir.is_dir():
+            return []
+        payloads: list[dict[str, Any]] = []
+        for receipt_file in sorted(receipt_dir.glob("*.yaml")):
+            raw = self._load_yaml(receipt_file)
+            if raw is None:
+                continue
+            raw.setdefault("__source_name__", receipt_file.name)
+            payloads.append(raw)
+        return payloads
+
+    def _live_pr_checks_for_item(
+        self,
+        item: dict[str, Any],
+        ticket_id: str,
+        contract_path: Path | None,
+    ) -> list[ModelEvidenceCheckResult]:
+        """Emit the live PR-state check result(s) for a PR-bound evidence item.
+
+        Returns ``[]`` for a non-PR item (leaving its declared-check result the
+        sole authority). Otherwise one result per bound PR: VERIFIED when the PR
+        is MERGED and all checks are green; FAILED otherwise, INCLUDING when the
+        live state cannot be resolved (fail-closed — a Done-flip must not proceed
+        on unverifiable PR state).
+        """
+        bindings = self._resolve_pr_bindings(item, ticket_id, contract_path)
+        if not bindings:
+            return []
+
+        item_id = str(item.get("id", "unknown"))
+        description = str(item.get("description", item_id))
+
+        if not self._live_pr_check_enabled():
+            logger.warning(
+                "Live PR check disabled via %s; %d binding(s) NOT verified for %s",
+                _LIVE_PR_CHECK_ENV,
+                len(bindings),
+                item_id,
+            )
+            return [
+                ModelEvidenceCheckResult(
+                    evidence_id=f"{item_id}::pr-live-state",
+                    description=f"Live PR state for {description}",
+                    status=EnumEvidenceCheckStatus.SKIPPED,
+                    message=(
+                        f"Live PR check disabled via {_LIVE_PR_CHECK_ENV}; "
+                        f"bindings not verified: {bindings}"
+                    ),
+                )
+            ]
+
+        results: list[ModelEvidenceCheckResult] = []
+        multi = len(bindings) > 1
+        for repo, pr_number in bindings:
+            evidence_id = (
+                f"{item_id}::pr-{pr_number}-live-state"
+                if multi
+                else f"{item_id}::pr-live-state"
+            )
+            ok, message = self._verify_live_pr(repo, pr_number)
+            results.append(
+                ModelEvidenceCheckResult(
+                    evidence_id=evidence_id,
+                    description=f"Live GitHub state for {repo}#{pr_number} ({item_id})",
+                    status=(
+                        EnumEvidenceCheckStatus.VERIFIED
+                        if ok
+                        else EnumEvidenceCheckStatus.FAILED
+                    ),
+                    message=message,
+                )
+            )
+        return results
+
+    def _verify_live_pr(self, repo: str, pr_number: int) -> tuple[bool, str]:
+        """Return ``(ok, message)`` for the live state of ``repo#pr_number``.
+
+        ``ok`` is True only when the PR is MERGED AND every status check is green.
+        A failure to resolve the merge state (gh missing/auth/network/not-found)
+        fails closed.
+        """
+        merge = self._fetch_pr_merge_state(repo, pr_number)
+        if merge is None:
+            return False, (
+                f"{repo}#{pr_number}: could not resolve live PR state via gh "
+                "(missing/auth/network/not-found). Failing closed — a Done-flip "
+                "must not proceed on unverifiable PR state."
+            )
+        merged, state = merge
+        reasons: list[str] = []
+        if not merged:
+            reasons.append(f"PR not merged (state={state})")
+        checks_green, checks_detail = self._fetch_pr_checks_green(repo, pr_number)
+        if not checks_green:
+            reasons.append(f"required checks not green ({checks_detail})")
+        if reasons:
+            return False, f"{repo}#{pr_number}: " + "; ".join(reasons)
+        return True, f"{repo}#{pr_number}: MERGED (state={state}); {checks_detail}"
+
+    def _fetch_pr_merge_state(
+        self,
+        repo: str,
+        pr_number: int,
+    ) -> tuple[bool, str] | None:
+        """Return ``(merged, state)`` for ``repo#pr_number`` via ``gh pr view``.
+
+        Returns ``None`` on any inability to resolve the PR (timeout, missing gh,
+        non-zero exit, unparseable output) so the caller can fail closed.
+        """
+        try:
+            result = subprocess.run(
+                [
+                    "gh",
+                    "pr",
+                    "view",
+                    str(pr_number),
+                    "--repo",
+                    repo,
+                    "--json",
+                    "state,mergedAt",
+                ],
+                capture_output=True,
+                text=True,
+                timeout=_GH_PR_TIMEOUT_S,
+                check=False,
+            )
+        except (subprocess.TimeoutExpired, OSError) as exc:
+            logger.warning("gh pr view failed for %s#%d: %s", repo, pr_number, exc)
+            return None
+        if result.returncode != 0:
+            logger.warning(
+                "gh pr view non-zero for %s#%d: %s",
+                repo,
+                pr_number,
+                result.stderr.strip(),
+            )
+            return None
+        try:
+            data = json.loads(result.stdout or "{}")
+        except json.JSONDecodeError:
+            logger.warning(
+                "gh pr view returned unparseable JSON for %s#%d", repo, pr_number
+            )
+            return None
+        if not isinstance(data, dict):
+            return None
+        state = str(data.get("state") or "UNKNOWN")
+        merged = bool(data.get("mergedAt")) or state.upper() == "MERGED"
+        return merged, state
+
+    def _fetch_pr_checks_green(
+        self,
+        repo: str,
+        pr_number: int,
+    ) -> tuple[bool, str]:
+        """Return ``(all_green, detail)`` for ``repo#pr_number`` status checks.
+
+        Fails closed: any non-green check (FAILURE/CANCELLED/PENDING/...), an
+        empty check set, or an inability to enumerate checks yields ``False``.
+        ``gh pr checks`` exits 0 even with failing rows, so the JSON states are
+        parsed rather than the exit code.
+        """
+        try:
+            result = subprocess.run(
+                [
+                    "gh",
+                    "pr",
+                    "checks",
+                    str(pr_number),
+                    "--repo",
+                    repo,
+                    "--json",
+                    "name,state",
+                ],
+                capture_output=True,
+                text=True,
+                timeout=_GH_PR_TIMEOUT_S,
+                check=False,
+            )
+        except (subprocess.TimeoutExpired, OSError) as exc:
+            return False, f"gh pr checks error: {exc}"
+        try:
+            data = json.loads(result.stdout or "[]")
+        except json.JSONDecodeError:
+            detail = (result.stderr or result.stdout or "").strip()
+            return False, f"could not read check results: {detail[:200]}"
+        if not isinstance(data, list) or not data:
+            detail = (result.stderr or "no status checks reported").strip()
+            return False, f"no status checks reported: {detail[:200]}"
+        not_green = sorted(
+            str(check.get("name") or "<unnamed>")
+            for check in data
+            if isinstance(check, dict)
+            and str(check.get("state") or "").upper() not in _GH_CHECK_GREEN_STATES
+        )
+        if not_green:
+            shown = ", ".join(not_green[:10])
+            more = "" if len(not_green) <= 10 else f" (+{len(not_green) - 10} more)"
+            return False, f"{len(not_green)} check(s) not green: {shown}{more}"
+        return True, f"all {len(data)} status check(s) green"
 
     def _run_command_check(
         self,
