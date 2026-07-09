@@ -1143,10 +1143,35 @@ jobs:
           # shellcheck disable=SC2086
           python ../omnibase_core/scripts/validation/check_ai_slop.py --strict $FILES
 
+  # ============================================================================
+  # WORKFLOW MODULE-RESOLUTION GUARD (OMN-14176) — failing-rollup sub-job.
+  # Every in-repo omnimarket module referenced by a .github/workflows/*.yml step
+  # (from X import / import X / python -m X) must resolve under src/omnimarket/.
+  # A workflow that imports a deleted node (e.g. node_pr_review_bot, deleted in
+  # OMN-13212) previously stayed green while silently no-op'ing and reporting a
+  # false CLEAN — nothing proved the module it claims to run still exists. This
+  # guard closes that gap. Same-repo scope only; sibling-repo refs (omniintelligence.*,
+  # omnibase_*) are cloned at CI runtime and out of scope. Feeds the required
+  # ci-summary rollup (Rule 5: enforcement, not detection). Pure stdlib, no uv
+  # sync. SYNC with pre-commit hook "workflow-module-refs".
+  # ============================================================================
+  workflow-module-refs:
+    needs: occ-preflight
+    name: Workflow Module Resolution
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Check workflow module references (OMN-14176)
+        run: python scripts/ci/check_workflow_module_refs.py
+
   ci-summary:
     name: CI Summary
     runs-on: ubuntu-latest
-    needs: [occ-preflight, zone-filter, lint, typecheck, detect-changes, test, integration-guard, topic-naming-lint, runtime-sweep, core-only-install, contract-compliance, e2e-workflow-runner, golden-chains, sea-e2e-chains, generated-node-golden-chain, dep-health, aislop-sweep]
+    needs: [occ-preflight, zone-filter, lint, typecheck, detect-changes, test, integration-guard, topic-naming-lint, runtime-sweep, core-only-install, contract-compliance, e2e-workflow-runner, golden-chains, sea-e2e-chains, generated-node-golden-chain, dep-health, aislop-sweep, workflow-module-refs]
     if: always()
     steps:
       - name: Check CI results
@@ -1171,7 +1196,8 @@ jobs:
             "sea-e2e-chains=${{ needs.sea-e2e-chains.result }}" \
             "generated-node-golden-chain=${{ needs.generated-node-golden-chain.result }}" \
             "dep-health=${{ needs.dep-health.result }}" \
-            "aislop-sweep=${{ needs.aislop-sweep.result }}"; do
+            "aislop-sweep=${{ needs.aislop-sweep.result }}" \
+            "workflow-module-refs=${{ needs.workflow-module-refs.result }}"; do
             NAME="${check%%=*}"
             RESULT="${check##*=}"
             if [ "$RESULT" != "success" ] && [ "$RESULT" != "skipped" ]; then

@@ -576,6 +576,23 @@ repos:
         files: ^src/.*\.py$
         stages: [pre-commit]
 
+      # OMN-14176: workflow module-resolution guard. Every in-repo omnimarket
+      # module referenced by a .github/workflows/*.yml step (from X import /
+      # import X / python -m X) must resolve under src/omnimarket/. Catches the
+      # class of dead workflow that imports a deleted node — node_pr_review_bot
+      # (deleted in OMN-13212) no-op'd and reported a false CLEAN while its
+      # workflows stayed green. Same-repo scope only: sibling-repo refs
+      # (omniintelligence.*, omnibase_*) are cloned at CI runtime and out of
+      # scope. Pure stdlib, no uv sync (mirrors entry-point-format). SYNC with
+      # ci.yml job "workflow-module-refs".
+      - id: workflow-module-refs
+        name: Workflow module-resolution guard (OMN-14176)
+        language: system
+        entry: python scripts/ci/check_workflow_module_refs.py
+        files: ^(\.github/workflows/.*\.ya?ml|scripts/ci/check_workflow_module_refs\.py)$
+        pass_filenames: false
+        stages: [pre-commit]
+
       # Skip-token rejection gate (OMN-11412 / OMN-10414)
       # Blocks [skip-*] bypass tokens in staged markdown/yaml/txt files.
       # Escape hatch: add '# skip-token-allowed: <receipt-id>' with a traceable approval receipt.
