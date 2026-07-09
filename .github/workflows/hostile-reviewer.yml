@@ -6,7 +6,7 @@
 # Adversarial multi-model code review gate on every pull request.
 #
 # Invokes omniintelligence.review_pairing.cli_review (node-based path via
-# HandlerLlmCliSubprocess / adapter_codex_reviewer) with --model deepseek-r1.
+# HandlerLlmCliSubprocess / adapter_codex_reviewer) with --model qwen3-review.
 # Codex is excluded from the initial pilot — add --model codex once non-interactive
 # OAuth auth is confirmed on trusted CI runners (OMN-8524).
 #
@@ -129,14 +129,14 @@ jobs:
         working-directory: ../omniintelligence
         env:
           # Resolve the SAME registry the reviewer loads (model_registry_loader)
-          # for the SAME model the review step runs (`--model deepseek-r1`).
-          REVIEW_MODEL_KEY: "deepseek-r1"
+          # for the SAME model the review step runs (`--model qwen3-review`).
+          REVIEW_MODEL_KEY: "qwen3-review"
           REGISTRY_PATH: "src/omniintelligence/review_pairing/model_registry.yaml"
         run: |
           # -e is intentionally OMITTED: this probe must NEVER fail the job. Every
           # uncertain/ambiguous outcome FAILS OPEN to the full install + review.
           # We flip reachable=false ONLY when the reviewer would ALSO degrade:
-          # deepseek-r1 is TCP-unreachable (adapter_ai_reviewer._probe_tcp) AND the
+          # the review model (qwen3-review) is TCP-unreachable (adapter_ai_reviewer._probe_tcp) AND the
           # codex api-fallback (select_models_with_fallback -> _resolve_codex_binary)
           # is unavailable. That AND keeps our short-circuit a STRICT SUBSET of the
           # reviewer's degrade condition under all configs, so once OMN-8524
@@ -243,7 +243,7 @@ jobs:
             [ "$attempt" -lt 3 ] && sleep 2
           done
 
-          # deepseek-r1 is unreachable. The reviewer does NOT degrade on that alone
+          # the review model (qwen3-review) is unreachable. The reviewer does NOT degrade on that alone
           # — select_models_with_fallback substitutes the codex api-fallback and only
           # degrades if codex ALSO fails. If codex may be available, PROCEED to the
           # full review and let the reviewer decide (fail-open; closes the OMN-8524
@@ -254,7 +254,7 @@ jobs:
             exit 0
           fi
 
-          # deepseek-r1 unreachable AND codex api-fallback unavailable → this is the
+          # the review model (qwen3-review) unreachable AND codex api-fallback unavailable → this is the
           # EXACT condition under which the reviewer yields verdict=degraded + exit 0
           # with zero models succeeded. Short-circuit with the IDENTICAL degraded
           # verdict (see the degraded branch of "Run adversarial review").
@@ -319,7 +319,7 @@ jobs:
           REVIEW_JSON=$(uv run python -m omniintelligence.review_pairing.cli_review \
             --pr "$PR_NUMBER" \
             --repo "$REPO" \
-            --model deepseek-r1 \
+            --model qwen3-review \
             2>/dev/null) || REVIEW_EXIT=$?
 
           # If the CLI itself failed (not model degraded — actual crash), report and exit 0
