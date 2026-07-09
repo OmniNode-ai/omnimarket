@@ -124,7 +124,94 @@ jobs:
       - name: Set up Python 3.12
         run: uv python install 3.12
 
+      - name: Preflight — probe review endpoint reachability
+        id: preflight
+        working-directory: ../omniintelligence
+        env:
+          # Resolve the SAME registry the reviewer loads (model_registry_loader)
+          # for the SAME model the review step runs (`--model deepseek-r1`).
+          REVIEW_MODEL_KEY: "deepseek-r1"
+          REGISTRY_PATH: "src/omniintelligence/review_pairing/model_registry.yaml"
+        run: |
+          # -e is intentionally OMITTED: this probe must NEVER fail the job. Every
+          # uncertain/ambiguous outcome FAILS OPEN to the full install + review.
+          # We flip reachable=false ONLY on an unambiguous TCP connection failure —
+          # the exact condition (adapter_ai_reviewer._probe_tcp) under which today's
+          # review yields verdict=degraded + exit 0 with zero models succeeded.
+          set -o pipefail
+
+          # Resolve host:port exactly as the reviewer does:
+          #   url = os.environ.get(config.env_var, config.default_url)   # per-model
+          # then urllib.parse the host/port. pyyaml runs in an isolated env
+          # (--no-project --with) so we do NOT trigger the ~3.6 GiB dependency sync.
+          PROBE_TARGET="$(uv run --no-project --with pyyaml python - <<'PYEOF'
+          import os
+          import urllib.parse
+
+          import yaml
+
+          registry_path = os.environ["REGISTRY_PATH"]
+          model_key = os.environ["REVIEW_MODEL_KEY"]
+          with open(registry_path, encoding="utf-8") as fh:
+              registry = yaml.safe_load(fh)
+          cfg = registry["models"][model_key]
+          # env_var overrides default_url — identical to adapter_ai_reviewer.
+          url = os.environ.get(cfg["env_var"], cfg["default_url"]).strip()
+          parsed = urllib.parse.urlparse(url)
+          host = parsed.hostname or ""
+          port = parsed.port or 80
+          if url and host:
+              print(f"{host}|{port}|{url}")
+          PYEOF
+          )"
+
+          if [ -z "$PROBE_TARGET" ]; then
+            echo "Could not statically resolve the ${REVIEW_MODEL_KEY} endpoint; proceeding with full review (fail-open)."
+            echo "reachable=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          HOST="${PROBE_TARGET%%|*}"
+          REST="${PROBE_TARGET#*|}"
+          PORT="${REST%%|*}"
+          URL="${REST#*|}"
+          echo "Resolved ${REVIEW_MODEL_KEY} endpoint: ${URL} (probe ${HOST}:${PORT})"
+
+          # TCP-connect probe — SAME semantics as adapter_ai_reviewer._probe_tcp
+          # (socket.create_connection). We retry so our short-circuit is a STRICT
+          # SUBSET of the reviewer's own single-shot 2s probe: we conclude
+          # "unreachable" only when it is unambiguous, never suppressing a viable
+          # review because the probe was flaky.
+          for attempt in 1 2 3; do
+            if timeout 5 bash -c "exec 3<>/dev/tcp/${HOST}/${PORT}" 2>/dev/null; then
+              echo "TCP connect to ${HOST}:${PORT} succeeded (attempt ${attempt}); proceeding with full review."
+              echo "reachable=true" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            echo "TCP connect to ${HOST}:${PORT} failed (attempt ${attempt}/3)."
+            [ "$attempt" -lt 3 ] && sleep 2
+          done
+
+          # Unambiguous connection failure across all attempts → short-circuit.
+          # Emit the IDENTICAL degraded verdict + exit 0 the review produces when
+          # its sole requested model is unreachable and no API fallback is
+          # available on CI (see the degraded branch of "Run adversarial review").
+          echo "::warning::${REVIEW_MODEL_KEY} endpoint ${HOST}:${PORT} unreachable after 3 attempts; short-circuiting to DEGRADED and skipping the ~3.6 GiB install + review."
+          {
+            echo "reachable=false"
+            echo "verdict=degraded"
+            echo "blocking_count=0"
+            echo "total_findings=0"
+            echo "models_succeeded="
+            echo "error=review endpoint (${REVIEW_MODEL_KEY} @ ${HOST}:${PORT}) unreachable — preflight short-circuit (no models available)"
+          } >> "$GITHUB_OUTPUT"
+          exit 0
+
       - name: Install omniintelligence dependencies
+        # Skip the heavy dependency sync when the review endpoint is unreachable
+        # (preflight short-circuit). Any non-'false' value — including a crashed
+        # or unset preflight — runs the install unchanged (fail-open).
+        if: steps.preflight.outputs.reachable != 'false'
         id: install-omniintelligence
         continue-on-error: true
         working-directory: ../omniintelligence
@@ -152,6 +239,9 @@ jobs:
           done
 
       - name: Run adversarial review
+        # Skipped only when the preflight proved the endpoint unreachable; the
+        # identical DEGRADED verdict is emitted by the preflight step instead.
+        if: steps.preflight.outputs.reachable != 'false'
         id: review
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -226,11 +316,15 @@ jobs:
         if: always()
         uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea # v7
         env:
-          REVIEW_VERDICT: ${{ steps.review.outputs.verdict }}
-          REVIEW_BLOCKING: ${{ steps.review.outputs.blocking_count }}
-          REVIEW_TOTAL: ${{ steps.review.outputs.total_findings }}
-          REVIEW_MODELS: ${{ steps.review.outputs.models_succeeded }}
-          REVIEW_ERROR: ${{ steps.review.outputs.error }}
+          # When the preflight short-circuits, the review step is skipped and its
+          # outputs are empty; fall back to the preflight's identical degraded
+          # outputs. On the endpoint-up path the review outputs are authoritative
+          # (non-empty) so these resolve to exactly the same values as before.
+          REVIEW_VERDICT: ${{ steps.review.outputs.verdict || steps.preflight.outputs.verdict }}
+          REVIEW_BLOCKING: ${{ steps.review.outputs.blocking_count || steps.preflight.outputs.blocking_count }}
+          REVIEW_TOTAL: ${{ steps.review.outputs.total_findings || steps.preflight.outputs.total_findings }}
+          REVIEW_MODELS: ${{ steps.review.outputs.models_succeeded || steps.preflight.outputs.models_succeeded }}
+          REVIEW_ERROR: ${{ steps.review.outputs.error || steps.preflight.outputs.error }}
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
