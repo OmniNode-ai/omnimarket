@@ -356,6 +356,13 @@ jobs:
           set -euo pipefail
 
           # Run cli_review; stdout = ModelMultiReviewResult JSON, stderr = human summary
+          # (the per-model failure reason on a DEGRADED verdict lives here).
+          # stderr was previously discarded with `2>/dev/null`, so a
+          # "Models succeeded: none" verdict gave no per-model reason in the log
+          # (OMN-14176). Tee stderr to a log file AND back to fd 2 (the job log) so
+          # the reason is visible. stdout is still captured into REVIEW_JSON via the
+          # command substitution, and the command's exit code is still preserved via
+          # `|| REVIEW_EXIT=$?` — this only stops swallowing stderr.
           # Two models (OMN-14176): qwen3-review (5090 :8000) + qwen3-review-b
           # (4090 :8001). Running >=2 models makes cli_review exit 0 ("at least 2
           # succeeded") reachable — fixing the single-model exit-2 collapse where a
@@ -365,7 +372,7 @@ jobs:
             --repo "$REPO" \
             --model qwen3-review \
             --model qwen3-review-b \
-            2>/dev/null) || REVIEW_EXIT=$?
+            2> >(tee hostile-reviewer-stderr.log >&2)) || REVIEW_EXIT=$?
 
           # If the CLI itself failed (not model degraded — actual crash), report and exit 0
           # to avoid blocking PRs due to infrastructure issues during pilot phase.
