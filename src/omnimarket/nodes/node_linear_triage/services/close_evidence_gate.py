@@ -40,12 +40,18 @@ class EnumCloseEvidenceKind(StrEnum):
     * ``ALL_CHILDREN_DONE`` — an epic/parent whose every child is Done (roll-up).
     * ``OCC_RECEIPT`` — a durable OCC receipt bound to the ticket on the
       governance ref (the ``node_dod_verify`` ``DurableEvidenceGate`` surface).
+    * ``RUNTIME_OPS_READBACK`` — a tracked, independently-verified RUNTIME_OPS
+      readback receipt for a no-source-change runtime-ops fix that has NO PR
+      (OMN-14168). The auto-close path constructs this only after a fail-closed
+      probe positively verifies the durable typed receipt; a Linear label alone
+      never constructs it.
     """
 
     MERGED_IMPLEMENTING_PR = "merged_implementing_pr"
     SUPERSEDED_BY_MERGED_PR = "superseded_by_merged_pr"
     ALL_CHILDREN_DONE = "all_children_done"
     OCC_RECEIPT = "occ_receipt"
+    RUNTIME_OPS_READBACK = "runtime_ops_readback"
 
 
 class ModelCloseEvidence(BaseModel):

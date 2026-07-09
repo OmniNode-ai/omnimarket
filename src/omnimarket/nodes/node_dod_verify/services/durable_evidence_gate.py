@@ -55,6 +55,10 @@ import json
 import re
 from typing import Protocol
 
+from omnibase_core.validation.runtime_ops_verb_loader import (
+    load_runtime_ops_verb_allowlist,
+)
+
 from omnimarket.nodes.node_dod_verify.models.model_durable_evidence_gate import (
     EnumDefectLabel,
     EnumDoneClassLabel,
@@ -63,6 +67,10 @@ from omnimarket.nodes.node_dod_verify.models.model_durable_evidence_gate import 
     ModelCitedMergeCommit,
     ModelDurableEvidenceCheckResult,
     ModelDurableEvidenceGateResult,
+)
+from omnimarket.nodes.node_dod_verify.services.runtime_ops_readback import (
+    evaluate_runtime_ops_readback,
+    is_runtime_ops_receipt_set,
 )
 
 _PR_URL_RE = re.compile(
@@ -590,60 +598,87 @@ class DurableEvidenceGate:
         # longer feeds Check 2.
         receipts = apply_supersessions(receipts)
 
-        # Check 2: every PR-bound receipt is MERGED with mergeCommit.oid == commit_sha.
+        # Check 2: either the merged-PR check OR — for a no-PR runtime-ops fix —
+        # the RUNTIME_OPS_READBACK alternative (OMN-14168). The receipt set keys
+        # the branch: when at least one PASS receipt is evidence_class ==
+        # RUNTIME_OPS, the merged-PR check is structurally unsatisfiable (no PR
+        # exists), so the runtime-ops readback guardrails run instead.
         citations = extract_receipt_merge_commits(receipts)
-        check2_failure: str | None = None
-        if not citations:
-            check2_failure = (
-                f"No PASS receipt under {receipt_dir}/ binds pr_number, "
-                "commit_sha, and a GitHub repo. Durable evidence must cite an "
-                "actual merged PR via receipt fields before Linear can move to Done."
-            )
-        else:
-            for citation in citations:
-                state, merge_commit_oid = self._gh_pr_view(
-                    citation.repo, citation.pr_number
-                )
-                if state != "MERGED":
-                    check2_failure = (
-                        f"{citation.pr_url} state={state}, expected MERGED. "
-                        "Update the durable receipt to cite the real merged PR "
-                        "before re-running the gate."
-                    )
-                    break
-                if merge_commit_oid is None or (
-                    not merge_commit_oid.startswith(citation.cited_sha[:7])
-                    and not citation.cited_sha.startswith(merge_commit_oid[:7])
-                ):
-                    check2_failure = (
-                        f"{citation.pr_url} mergeCommit.oid="
-                        f"{merge_commit_oid!r} does not match receipt "
-                        f"commit_sha={citation.cited_sha!r}. The durable receipt "
-                        "is citing a superseded, head-only, or wrong commit — "
-                        "update the receipt to the actual merge commit before "
-                        "re-running the gate."
-                    )
-                    break
-        if check2_failure is None:
-            cite_msg = (
-                f"All {len(citations)} receipt-bound PR(s) are MERGED with "
-                "matching merge SHAs."
+        receipt_keys: set[tuple[str, str]]
+        if is_runtime_ops_receipt_set(receipts):
+            pass_receipts = [
+                r
+                for r in receipts
+                if isinstance(r, dict)
+                and isinstance(r.get("status"), str)
+                and str(r["status"]).upper() == "PASS"
+            ]
+            ro_passed, ro_message, receipt_keys = evaluate_runtime_ops_readback(
+                pass_receipts,
+                verb_allowlist=load_runtime_ops_verb_allowlist(),
             )
             checks.append(
                 ModelDurableEvidenceCheckResult(
-                    check=EnumDurableEvidenceCheck.CONTRACT_CITES_MERGE_COMMIT,
-                    passed=True,
-                    message=cite_msg,
+                    check=EnumDurableEvidenceCheck.RUNTIME_OPS_READBACK,
+                    passed=ro_passed,
+                    message=ro_message,
                 )
             )
         else:
-            checks.append(
-                ModelDurableEvidenceCheckResult(
-                    check=EnumDurableEvidenceCheck.CONTRACT_CITES_MERGE_COMMIT,
-                    passed=False,
-                    message=check2_failure,
+            receipt_keys = {(c.evidence_item_id, c.check_type) for c in citations}
+            check2_failure: str | None = None
+            if not citations:
+                check2_failure = (
+                    f"No PASS receipt under {receipt_dir}/ binds pr_number, "
+                    "commit_sha, and a GitHub repo. Durable evidence must cite an "
+                    "actual merged PR via receipt fields before Linear can move to "
+                    "Done."
                 )
-            )
+            else:
+                for citation in citations:
+                    state, merge_commit_oid = self._gh_pr_view(
+                        citation.repo, citation.pr_number
+                    )
+                    if state != "MERGED":
+                        check2_failure = (
+                            f"{citation.pr_url} state={state}, expected MERGED. "
+                            "Update the durable receipt to cite the real merged PR "
+                            "before re-running the gate."
+                        )
+                        break
+                    if merge_commit_oid is None or (
+                        not merge_commit_oid.startswith(citation.cited_sha[:7])
+                        and not citation.cited_sha.startswith(merge_commit_oid[:7])
+                    ):
+                        check2_failure = (
+                            f"{citation.pr_url} mergeCommit.oid="
+                            f"{merge_commit_oid!r} does not match receipt "
+                            f"commit_sha={citation.cited_sha!r}. The durable receipt "
+                            "is citing a superseded, head-only, or wrong commit — "
+                            "update the receipt to the actual merge commit before "
+                            "re-running the gate."
+                        )
+                        break
+            if check2_failure is None:
+                cite_msg = (
+                    f"All {len(citations)} receipt-bound PR(s) are MERGED with "
+                    "matching merge SHAs."
+                )
+                checks.append(
+                    ModelDurableEvidenceCheckResult(
+                        check=EnumDurableEvidenceCheck.CONTRACT_CITES_MERGE_COMMIT,
+                        passed=True,
+                        message=cite_msg,
+                    )
+                )
+            else:
+                checks.append(
+                    ModelDurableEvidenceCheckResult(
+                        check=EnumDurableEvidenceCheck.CONTRACT_CITES_MERGE_COMMIT,
+                        passed=False,
+                        message=check2_failure,
+                    )
+                )
 
         # Check 3: the OCC governance ref contains a contract version declaring
         # the schema-valid evidence checks for the receipt-bound PR commits.
@@ -668,7 +703,12 @@ class DurableEvidenceGate:
         else:
             local_contract_keys = extract_contract_check_keys(contract)
             main_contract_keys = extract_contract_check_keys(main_contract)
-            receipt_keys = {(c.evidence_item_id, c.check_type) for c in citations}
+            # ``receipt_keys`` was computed by Check 2 above — from the merged-PR
+            # citations on the normal path, or from the verified RUNTIME_OPS
+            # readback receipts on the no-PR path (OMN-14168). The runtime-ops
+            # contract stub declares a single ``runtime_readback`` dod_evidence
+            # item, so this check keeps the contract-on-governance-ref invariant
+            # intact for the runtime-ops class too.
             missing_contract_keys = local_contract_keys - main_contract_keys
             missing_receipt_keys = receipt_keys - main_contract_keys
             if missing_contract_keys or missing_receipt_keys:
