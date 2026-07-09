@@ -389,6 +389,11 @@ task_classes:
       heuristic:
         - structured_output
         - covers_dependencies
+        # OMN-14220: local acceptance authority. structured_output/covers_dependencies
+        # are reject-only markers; without a non-reject-only check a valid LOCAL plan
+        # could never PASS and force-escalated to paid cloud. semantic_adequacy is the
+        # same local authority the reproducible_judge siblings use.
+        - semantic_adequacy
     quality_gate:
       score_source: quality_gate_graded_score
       required_bar: 0.8
@@ -418,7 +423,14 @@ task_classes:
         - response_non_empty
       heuristic:
         - cites_specific_lines
-        - explains_tradeoffs
+        # OMN-14220: `explains_tradeoffs` removed — it was a reject-only catch-22
+        # (identical to the OMN-13354 research fix): a valid bug-focused review cites
+        # lines but need not discuss tradeoffs, so requiring tradeoff language
+        # false-rejected correct reviews (live: a line-cited review scored 0.867 but
+        # failed `explains_tradeoffs`). `cites_specific_lines` stays as the genuine
+        # "is this a code review" reject-only filter; `semantic_adequacy` is the local
+        # acceptance authority so a complete review PASSES locally.
+        - semantic_adequacy
     quality_gate:
       score_source: quality_gate_graded_score
       required_bar: 0.8
@@ -448,7 +460,12 @@ task_classes:
         - response_non_empty
       heuristic:
         - cites_specific_lines
-        - no_obvious_regressions
+        # OMN-14220: `no_obvious_regressions` removed — same reject-only catch-22 as
+        # `review` above: a valid code review that finds bugs need not use
+        # regression/backward-compat language, so requiring it false-rejected correct
+        # reviews. `cites_specific_lines` stays as the reject-only filter;
+        # `semantic_adequacy` is the local acceptance authority.
+        - semantic_adequacy
     quality_gate:
       score_source: quality_gate_graded_score
       required_bar: 0.8
@@ -508,6 +525,9 @@ task_classes:
       heuristic:
         - no_refusal
         - sub_tasks_verified
+        # OMN-14220: local acceptance authority (no_refusal/sub_tasks_verified are
+        # reject-only). Without it a valid LOCAL agent-delegation report escalated to paid.
+        - semantic_adequacy
     quality_gate:
       score_source: quality_gate_graded_score
       required_bar: 0.8
