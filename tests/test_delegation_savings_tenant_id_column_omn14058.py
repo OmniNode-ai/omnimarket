@@ -42,7 +42,7 @@ import os
 from decimal import Decimal
 from pathlib import Path
 from typing import Any
-from urllib.parse import quote_plus
+from urllib.parse import quote, quote_plus
 
 import asyncpg
 import pytest
@@ -193,7 +193,12 @@ def _sync_dsn_for_schema(schema: str) -> str:
     port = os.environ.get("INTEGRATION_POSTGRES_PORT", "5432")
     user = os.environ.get("INTEGRATION_POSTGRES_USER", "postgres")
     db = os.environ.get("INTEGRATION_POSTGRES_DB", "omnibase_infra")
-    options = quote_plus(f"-c search_path={schema},public")
+    # NOTE: use ``quote`` (space -> %20), NOT ``quote_plus`` (space -> +).
+    # libpq parses the URI ``options`` value per RFC 3986 and does NOT decode
+    # ``+`` back to a space, so a ``quote_plus``-encoded ``-c search_path=...``
+    # arrives as ``-c+search_path=...`` and fails with
+    # ``unrecognized configuration parameter "+search_path"`` (OMN-14167).
+    options = quote(f"-c search_path={schema},public")
     return (
         f"postgresql://{quote_plus(user)}:{quote_plus(password)}@{host}:{port}/{db}"
         f"?options={options}"
