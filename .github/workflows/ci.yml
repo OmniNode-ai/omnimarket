@@ -468,6 +468,142 @@ jobs:
           path: junit-${{ matrix.split }}.xml
           retention-days: 7
 
+  # ============================================================================
+  # INTEGRATION SILENT-SKIP GUARD (OMN-14172)
+  # Fail-closed gate against the silent-skip false-green class. An
+  # @pytest.mark.integration real-service test that self-skips because its
+  # DB/service/env is absent produces a false-green: the required Tests job
+  # reports success while the real-DB assertion never ran. This recurred across
+  # repos (OMN-10330 omninode_infra, OMN-14167 omnimarket) and each time hid a
+  # genuine latent defect (the OMN-14058 missing-tenant_id-column bug reached
+  # dev this way). Detection-only never held; this makes the class mechanically
+  # RED (Operating Rule #5: enforcement, not detection).
+  #
+  # This job PROVISIONS Postgres (mirroring the Tests job, OMN-14167) and runs
+  # ONLY the integration-marked tests, then asserts via check_integration_skips.py
+  # that (1) none skipped citing a *provisioned* service's absence and (2) at
+  # least one integration test actually executed (zero-collection is itself a
+  # false-green). Legitimately-optional skips (Kafka broker not provisioned by
+  # design, live-LLM / live-e2e opt-in flags) remain allowed — the gate is keyed
+  # to the services this job actually provisions (integration_skip_guard.yaml).
+  #
+  # Wired as: ci.yml BLOCKING gate (via ci-summary rollup) + pre-commit hook
+  # 'integration-skip-guard'. SYNC both when the config changes.
+  # ============================================================================
+  integration-guard:
+    name: Integration Silent-Skip Guard (OMN-14172)
+    needs: [occ-preflight, zone-filter]
+    if: needs.occ-preflight.result == 'success' && (needs.zone-filter.outputs.docs_only != 'true')
+    runs-on: ubuntu-latest
+    # Same Postgres service block as the Tests job (OMN-14167): a real broker so
+    # the @pytest.mark.integration real-DB proofs EXECUTE instead of self-skipping.
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_PASSWORD: test_password
+          POSTGRES_DB: omnibase_infra
+        ports:
+          - 5432/tcp
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Clone omnibase_core
+        run: git clone --depth=1 https://github.com/OmniNode-ai/omnibase_core.git ../omnibase_core
+      - name: Clone omnibase_compat
+        run: git clone --depth=1 https://github.com/OmniNode-ai/omnibase_compat.git ../omnibase_compat
+      - name: Clone omnimemory
+        run: git clone --depth=1 https://github.com/OmniNode-ai/omnimemory.git ../omnimemory
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+      - name: Set up Python 3.12
+        run: uv python install 3.12
+      - name: Install dependencies
+        run: uv sync --locked --all-extras
+
+      # Resolve the Postgres service host + ephemeral port and export the
+      # connection env the integration fixtures read. Setting POSTGRES_PASSWORD
+      # is what flips the real-DB integration tests from "skipped" to "executed"
+      # (identical to the Tests job step; host-resolution mirrors omnibase_infra).
+      - name: Resolve Postgres service host and export integration env
+        env:
+          POSTGRES_PORT: ${{ job.services.postgres.ports['5432'] }}
+        run: |
+          host="$(python - <<'PY'
+          import os
+          import socket
+
+          port = int(os.environ["POSTGRES_PORT"])
+
+          def can_connect(candidate: str) -> bool:
+              try:
+                  with socket.create_connection((candidate, port), timeout=1.0):
+                      return True
+              except OSError:
+                  return False
+
+          if can_connect("127.0.0.1"):
+              print("127.0.0.1")
+              raise SystemExit(0)
+
+          with open("/proc/net/route", encoding="utf-8") as routes:
+              for line in routes.readlines()[1:]:
+                  fields = line.split()
+                  if len(fields) >= 3 and fields[1] == "00000000":
+                      gateway_hex = fields[2]
+                      gateway = ".".join(
+                          str(int(gateway_hex[i : i + 2], 16)) for i in (6, 4, 2, 0)
+                      )
+                      if can_connect(gateway):
+                          print(gateway)
+                          raise SystemExit(0)
+
+          raise SystemExit(
+              f"could not reach Postgres service on localhost or default gateway port {port}"
+          )
+          PY
+          )"
+          {
+            echo "INTEGRATION_POSTGRES_HOST=${host}"
+            echo "INTEGRATION_POSTGRES_PORT=${POSTGRES_PORT}"
+            echo "INTEGRATION_POSTGRES_USER=postgres"
+            echo "INTEGRATION_POSTGRES_PASSWORD=test_password"
+            echo "INTEGRATION_POSTGRES_DB=omnibase_infra"
+            echo "POSTGRES_PASSWORD=test_password"
+          } >> "$GITHUB_ENV"
+          echo "Resolved Postgres integration host=${host} port=${POSTGRES_PORT}"
+
+      # Run ONLY the integration-marked tests (kafka excluded — no broker
+      # provisioned). Real integration FAILURES fail this step directly; the
+      # silent-skip enforcement below runs regardless (if: always()).
+      - name: Run integration-marked tests (Postgres provisioned)
+        run: |
+          uv run pytest -m "integration and not kafka" \
+            -rs -v --tb=short \
+            --junitxml=integration-guard.xml
+
+      # Fail-closed silent-skip enforcement. RED if any integration test skipped
+      # citing a provisioned service's absence, or if zero integration tests ran.
+      - name: Enforce no missing-service silent-skips (OMN-14172)
+        if: always()
+        run: |
+          uv run python scripts/ci/check_integration_skips.py \
+            --junit integration-guard.xml
+
+      - name: Upload integration-guard results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: integration-guard-results
+          path: integration-guard.xml
+          retention-days: 7
+
   topic-naming-lint:
     needs: occ-preflight
     name: Topic Naming Lint
@@ -1010,7 +1146,7 @@ jobs:
   ci-summary:
     name: CI Summary
     runs-on: ubuntu-latest
-    needs: [occ-preflight, zone-filter, lint, typecheck, detect-changes, test, topic-naming-lint, runtime-sweep, core-only-install, contract-compliance, e2e-workflow-runner, golden-chains, sea-e2e-chains, generated-node-golden-chain, dep-health, aislop-sweep]
+    needs: [occ-preflight, zone-filter, lint, typecheck, detect-changes, test, integration-guard, topic-naming-lint, runtime-sweep, core-only-install, contract-compliance, e2e-workflow-runner, golden-chains, sea-e2e-chains, generated-node-golden-chain, dep-health, aislop-sweep]
     if: always()
     steps:
       - name: Check CI results
@@ -1025,6 +1161,7 @@ jobs:
             "typecheck=${{ needs.typecheck.result }}" \
             "detect-changes=${{ needs.detect-changes.result }}" \
             "test=${{ needs.test.result }}" \
+            "integration-guard=${{ needs.integration-guard.result }}" \
             "topic-naming-lint=${{ needs.topic-naming-lint.result }}" \
             "runtime-sweep=${{ needs.runtime-sweep.result }}" \
             "core-only-install=${{ needs.core-only-install.result }}" \

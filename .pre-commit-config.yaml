@@ -532,6 +532,31 @@ repos:
         language: system
         pass_filenames: false
 
+      # OMN-14172: integration silent-skip false-green gate. An
+      # @pytest.mark.integration real-service test that self-skips because a
+      # PROVISIONED service (Postgres) is absent is a false-green — the required
+      # Tests job goes green while the real-DB assertion never ran (the exact gap
+      # that let the OMN-14058 missing-tenant_id-column defect reach dev).
+      # The --selftest runs the gate's own logic against synthetic pass/fail
+      # JUnit reports (case (a) provisioned -> PASS, case (b) reintroduced
+      # missing-service silent skip -> RED) so the gate cannot silently regress,
+      # and validates the shipped integration_skip_guard.yaml parses. No DB
+      # needed locally — the CI job 'integration-guard' is the full runtime gate.
+      # SYNC with ci.yml job 'integration-guard' (Operating Rule #5).
+      - id: integration-skip-guard
+        name: Integration silent-skip guard selftest (OMN-14172)
+        language: system
+        entry: uv run python scripts/ci/check_integration_skips.py --selftest
+        files: >-
+          ^(scripts/ci/check_integration_skips\.py|
+          scripts/ci/integration_skip_guard\.yaml|
+          tests/ci/test_check_integration_skips\.py|
+          \.github/workflows/ci\.yml|
+          tests/test_delegation_savings_tenant_id_column_omn14058\.py|
+          tests/test_projection_delegation_tier_distribution_omn13662\.py)$
+        pass_filenames: false
+        stages: [pre-commit]
+
       # OMN-11040: Dependency health gate — blocks new CRITICAL/MAJOR dependency
       # health findings from being committed. Baseline-first: set
       # --severity-threshold to INFO to observe all findings without blocking.
