@@ -16,6 +16,9 @@
 #   passed   — no critical/error findings → exit 0
 #
 # Reference: OMN-8524
+#
+# Comment-only touch to trigger a fresh run post gate-4 landing (probe
+# threshold + stderr visibility fixes) — OMN-14176 reviewer-gate revival.
 
 name: Hostile Reviewer
 
