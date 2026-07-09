@@ -1255,6 +1255,9 @@ class HandlerPrLifecycleOrchestrator:
                 from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.handler_pr_lifecycle_fix import (
                     HandlerPrLifecycleFix,
                 )
+                from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.occ_companion_verifier import (
+                    OccCompanionVerifier,
+                )
 
                 # WS-D/D2 (OMN-13940): DelegatedFixAdapter + JsonFileTwoStrikeStore
                 # are wired explicitly (not left to HandlerPrLifecycleFix's
@@ -1266,6 +1269,11 @@ class HandlerPrLifecycleOrchestrator:
                     agent_dispatch_adapter=PrPolishDispatchAdapter(),
                     occ_contract_adapter=OccContractAdapter(),
                     occ_autobind_adapter=OccAutobindAdapter(),
+                    # OMN-14173: live read-back verifier so prs_fixed is gated on
+                    # a CONFIRMED pushed OCC companion, not on fix_applied. Without
+                    # this the autobind arm reported prs_fixed while authoring zero
+                    # companions (merge_sweep --fix-only false-success).
+                    occ_companion_verifier=OccCompanionVerifier(),
                     delegation_fix_adapter=DelegatedFixAdapter(),
                     two_strike_store=JsonFileTwoStrikeStore(),
                 )
@@ -2571,6 +2579,7 @@ class HandlerPrLifecycleOrchestrator:
                 # Real fix handler signature: handle(command: ModelPrLifecycleFixCommand)
                 # Construct command from TriageRecord fields.
                 from omnimarket.nodes.node_pr_lifecycle_fix_effect.models.model_fix_command import (
+                    EnumPrBlockReason,
                     ModelPrLifecycleFixCommand,
                 )
 
@@ -2589,6 +2598,24 @@ class HandlerPrLifecycleOrchestrator:
                 if isinstance(raw, FixResult):
                     return raw
                 fix_applied: bool = getattr(raw, "fix_applied", False)
+                # OMN-14173 fail-closed accounting: the RECEIPT_EVIDENCE_SOURCE_
+                # AUTOBIND arm reports fix_applied=True whenever the adapter call
+                # returns — including no-op / short-circuit paths that push NO OCC
+                # companion (the merge_sweep --fix-only false-success: prs_fixed=2,
+                # zero companions authored). For that arm, a PR may be counted as
+                # fixed ONLY when the fix handler independently verified a pushed
+                # OCC companion + Evidence-Source patch (occ_companion_verified).
+                # `is True` (not just truthy) so a MagicMock double without the
+                # attribute never spuriously counts. Every other block reason
+                # keeps its existing dispatch-based semantics.
+                counted_as_fixed: bool = fix_applied
+                if (
+                    fix_command.block_reason
+                    == EnumPrBlockReason.RECEIPT_EVIDENCE_SOURCE_AUTOBIND
+                ):
+                    counted_as_fixed = (
+                        getattr(raw, "occ_companion_verified", False) is True
+                    )
                 delegation_outcome = getattr(raw, "delegation_outcome", None)
                 delegation_outcome_value = (
                     getattr(delegation_outcome, "value", delegation_outcome)
@@ -2600,8 +2627,8 @@ class HandlerPrLifecycleOrchestrator:
                 # spuriously counts as an attempted delegation.
                 delegated: bool = getattr(raw, "delegated", False) is True
                 return FixResult(
-                    prs_dispatched=1 if fix_applied else 0,
-                    prs_skipped=0 if fix_applied else 1,
+                    prs_dispatched=1 if counted_as_fixed else 0,
+                    prs_skipped=0 if counted_as_fixed else 1,
                     prs_delegated_fix_attempted=1 if delegated else 0,
                     prs_delegated_fix_accepted=(
                         1 if delegation_outcome_value == "accepted" else 0
