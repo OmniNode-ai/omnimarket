@@ -10,6 +10,13 @@ Covers the conditional fan-out logic:
   - code-only change -> Repowise reindex only
   - ADR-keyword content -> KB ADR publisher canary command emitted
   - evidence written to .onex_state/knowledge-sync/<sync_run_id>.json
+
+Handler shape (OMN-14242): thin canonical --
+``def handle(self, payload: ModelPostMergeSyncRequest) -> ModelSyncFanoutCommands``.
+No envelope, no ``ModelHandlerOutput`` wrapper, no coercion in the handler --
+the runtime wraps. The handler performs synchronous file I/O only (no
+``await``), so it is sync -- same shape as the ``HandlerFrictionTriageOrchestrator``
+precedent (same ORCHESTRATOR archetype, same "sync file I/O, no real await").
 """
 
 from __future__ import annotations
@@ -28,7 +35,6 @@ from omnimarket.nodes.node_post_merge_knowledge_sync_orchestrator.handlers.handl
 from omnimarket.nodes.node_post_merge_knowledge_sync_orchestrator.models.model_sync_request import (
     ModelPostMergeSyncRequest,
     ModelSyncEvidence,
-    ModelSyncFanoutCommands,
 )
 
 # ---------------------------------------------------------------------------
@@ -61,42 +67,28 @@ def _make_request(
     return ModelPostMergeSyncRequest(**{**defaults, **overrides})
 
 
-def _get_fanout(output: Any) -> ModelSyncFanoutCommands:
-    """Extract the ModelSyncFanoutCommands event from handler output events."""
-    for evt in output.events:
-        if isinstance(evt, ModelSyncFanoutCommands):
-            return evt
-    raise AssertionError(
-        f"No ModelSyncFanoutCommands in output.events: {output.events}"
-    )
-
-
 # ---------------------------------------------------------------------------
 # Test: code-only change -> Repowise reindex only
 # ---------------------------------------------------------------------------
 
 
 class TestCodeOnlyChange:
-    @pytest.mark.asyncio
-    async def test_code_only_triggers_repowise_only(self) -> None:
+    def test_code_only_triggers_repowise_only(self) -> None:
         handler = HandlerPostMergeSyncOrchestrator()
         request = _make_request(changed_files=["src/omnimarket/nodes/foo/handler.py"])
 
-        output = await handler.handle(request)
-        fanout = _get_fanout(output)
+        fanout = handler.handle(request)
 
         assert fanout.trigger_repowise_reindex is True
         assert fanout.trigger_memgraph_repopulation is False
         assert fanout.trigger_qdrant_antipattern_reindex is False
         assert fanout.trigger_kb_adr_canary is False
 
-    @pytest.mark.asyncio
-    async def test_code_only_repowise_carries_correct_metadata(self) -> None:
+    def test_code_only_repowise_carries_correct_metadata(self) -> None:
         handler = HandlerPostMergeSyncOrchestrator()
         request = _make_request(changed_files=["src/omnimarket/nodes/foo/handler.py"])
 
-        output = await handler.handle(request)
-        fanout = _get_fanout(output)
+        fanout = handler.handle(request)
 
         assert fanout.affected_repo == REPO
         assert fanout.merged_pr == MERGED_PR
@@ -110,8 +102,7 @@ class TestCodeOnlyChange:
 
 
 class TestContractChange:
-    @pytest.mark.asyncio
-    async def test_contract_change_triggers_memgraph(self) -> None:
+    def test_contract_change_triggers_memgraph(self) -> None:
         handler = HandlerPostMergeSyncOrchestrator()
         request = _make_request(
             changed_files=[
@@ -120,15 +111,13 @@ class TestContractChange:
             ]
         )
 
-        output = await handler.handle(request)
-        fanout = _get_fanout(output)
+        fanout = handler.handle(request)
 
         assert fanout.trigger_repowise_reindex is True
         assert fanout.trigger_memgraph_repopulation is True
         assert fanout.trigger_qdrant_antipattern_reindex is False
 
-    @pytest.mark.asyncio
-    async def test_multiple_contract_files_triggers_memgraph_once(self) -> None:
+    def test_multiple_contract_files_triggers_memgraph_once(self) -> None:
         handler = HandlerPostMergeSyncOrchestrator()
         request = _make_request(
             changed_files=[
@@ -137,8 +126,7 @@ class TestContractChange:
             ]
         )
 
-        output = await handler.handle(request)
-        fanout = _get_fanout(output)
+        fanout = handler.handle(request)
 
         assert fanout.trigger_memgraph_repopulation is True
         assert fanout.modified_contract_files == [
@@ -153,32 +141,27 @@ class TestContractChange:
 
 
 class TestAntipatternChange:
-    @pytest.mark.asyncio
-    async def test_antipattern_file_triggers_qdrant(self) -> None:
+    def test_antipattern_file_triggers_qdrant(self) -> None:
         handler = HandlerPostMergeSyncOrchestrator()
         request = _make_request(
             changed_files=["src/omnimarket/antipatterns/antipatterns.yaml"]
         )
 
-        output = await handler.handle(request)
-        fanout = _get_fanout(output)
+        fanout = handler.handle(request)
 
         assert fanout.trigger_qdrant_antipattern_reindex is True
         assert fanout.trigger_repowise_reindex is True
         assert fanout.trigger_memgraph_repopulation is False
 
-    @pytest.mark.asyncio
-    async def test_antipattern_json_triggers_qdrant(self) -> None:
+    def test_antipattern_json_triggers_qdrant(self) -> None:
         handler = HandlerPostMergeSyncOrchestrator()
         request = _make_request(changed_files=["docs/antipatterns/catalog.json"])
 
-        output = await handler.handle(request)
-        fanout = _get_fanout(output)
+        fanout = handler.handle(request)
 
         assert fanout.trigger_qdrant_antipattern_reindex is True
 
-    @pytest.mark.asyncio
-    async def test_antipattern_and_contract_both_trigger(self) -> None:
+    def test_antipattern_and_contract_both_trigger(self) -> None:
         handler = HandlerPostMergeSyncOrchestrator()
         request = _make_request(
             changed_files=[
@@ -187,8 +170,7 @@ class TestAntipatternChange:
             ]
         )
 
-        output = await handler.handle(request)
-        fanout = _get_fanout(output)
+        fanout = handler.handle(request)
 
         assert fanout.trigger_memgraph_repopulation is True
         assert fanout.trigger_qdrant_antipattern_reindex is True
@@ -201,55 +183,47 @@ class TestAntipatternChange:
 
 
 class TestADRKeywordTrigger:
-    @pytest.mark.asyncio
-    async def test_adr_keyword_in_body_triggers_canary(self) -> None:
+    def test_adr_keyword_in_body_triggers_canary(self) -> None:
         handler = HandlerPostMergeSyncOrchestrator()
         request = _make_request(
             changed_files=["src/omnimarket/nodes/foo/handler.py"],
             pr_body="This PR implements an ADR decision: use Kafka for all inter-service transport.",
         )
 
-        output = await handler.handle(request)
-        fanout = _get_fanout(output)
+        fanout = handler.handle(request)
 
         assert fanout.trigger_kb_adr_canary is True
 
-    @pytest.mark.asyncio
-    async def test_architecture_decision_keyword_triggers_canary(self) -> None:
+    def test_architecture_decision_keyword_triggers_canary(self) -> None:
         handler = HandlerPostMergeSyncOrchestrator()
         request = _make_request(
             changed_files=["src/omnimarket/nodes/foo/handler.py"],
             pr_body="Architecture Decision: adopt deterministic replay as truth mechanism.",
         )
 
-        output = await handler.handle(request)
-        fanout = _get_fanout(output)
+        fanout = handler.handle(request)
 
         assert fanout.trigger_kb_adr_canary is True
 
-    @pytest.mark.asyncio
-    async def test_no_adr_keyword_does_not_trigger_canary(self) -> None:
+    def test_no_adr_keyword_does_not_trigger_canary(self) -> None:
         handler = HandlerPostMergeSyncOrchestrator()
         request = _make_request(
             changed_files=["src/omnimarket/nodes/foo/handler.py"],
             pr_body="Fix a bug in the handler logic.",
         )
 
-        output = await handler.handle(request)
-        fanout = _get_fanout(output)
+        fanout = handler.handle(request)
 
         assert fanout.trigger_kb_adr_canary is False
 
-    @pytest.mark.asyncio
-    async def test_adr_keyword_in_title_triggers_canary(self) -> None:
+    def test_adr_keyword_in_title_triggers_canary(self) -> None:
         handler = HandlerPostMergeSyncOrchestrator()
         request = _make_request(
             changed_files=["src/omnimarket/nodes/foo/handler.py"],
             pr_title="feat: ADR-0012 adopt contract-first design",
         )
 
-        output = await handler.handle(request)
-        fanout = _get_fanout(output)
+        fanout = handler.handle(request)
 
         assert fanout.trigger_kb_adr_canary is True
 
@@ -260,8 +234,7 @@ class TestADRKeywordTrigger:
 
 
 class TestEvidencePersistence:
-    @pytest.mark.asyncio
-    async def test_evidence_written_to_disk(self, tmp_path: Path) -> None:
+    def test_evidence_written_to_disk(self, tmp_path: Path) -> None:
         handler = HandlerPostMergeSyncOrchestrator()
         request = _make_request(
             changed_files=["src/omnimarket/nodes/node_foo/contract.yaml"],
@@ -272,7 +245,7 @@ class TestEvidencePersistence:
             "omnimarket.nodes.node_post_merge_knowledge_sync_orchestrator.handlers.handler_post_merge_sync.EVIDENCE_BASE_DIR",
             evidence_dir,
         ):
-            await handler.handle(request)
+            handler.handle(request)
 
         evidence_file = evidence_dir / f"{SYNC_RUN_ID}.json"
         assert evidence_file.exists(), f"Expected evidence at {evidence_file}"
@@ -286,8 +259,7 @@ class TestEvidencePersistence:
         assert "memgraph_snapshot_hash" in data
         assert "qdrant_collection_version" in data
 
-    @pytest.mark.asyncio
-    async def test_evidence_contains_fanout_flags(self, tmp_path: Path) -> None:
+    def test_evidence_contains_fanout_flags(self, tmp_path: Path) -> None:
         handler = HandlerPostMergeSyncOrchestrator()
         request = _make_request(
             changed_files=["src/omnimarket/nodes/node_foo/contract.yaml"],
@@ -298,7 +270,7 @@ class TestEvidencePersistence:
             "omnimarket.nodes.node_post_merge_knowledge_sync_orchestrator.handlers.handler_post_merge_sync.EVIDENCE_BASE_DIR",
             evidence_dir,
         ):
-            await handler.handle(request)
+            handler.handle(request)
 
         evidence_file = evidence_dir / f"{SYNC_RUN_ID}.json"
         data: dict[str, Any] = json.loads(evidence_file.read_text())
@@ -340,3 +312,18 @@ class TestModelSyncEvidence:
         )
         assert evidence.sync_run_id == SYNC_RUN_ID
         assert evidence.repowise_index_hash == "hash-abc"
+
+
+def test_contract_declares_all_fanout_topics() -> None:
+    """The orchestrator's contract declares every topic it can emit on: the
+    terminal completed event plus the four conditional fan-out command topics."""
+    import omnimarket.nodes.node_post_merge_knowledge_sync_orchestrator as node_pkg
+
+    contract_text = (Path(node_pkg.__file__).parent / "contract.yaml").read_text()
+    assert "onex.evt.omnimarket.post-merge-sync-completed.v1" in contract_text
+    assert "onex.cmd.omnimarket.repowise-reindex-requested.v1" in contract_text
+    assert "onex.cmd.omnimarket.memgraph-repopulation-requested.v1" in contract_text
+    assert (
+        "onex.cmd.omnimarket.qdrant-antipattern-reindex-requested.v1" in contract_text
+    )
+    assert "onex.cmd.omnimarket.adr-canary-requested.v1" in contract_text
