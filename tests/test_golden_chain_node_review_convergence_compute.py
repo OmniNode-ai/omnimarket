@@ -7,10 +7,13 @@ Request -> COMPUTE result chain: labeled findings yield per-model F1 metrics.
 
 from __future__ import annotations
 
+from pathlib import Path
 from uuid import uuid4
 
 import pytest
+import yaml
 
+import omnimarket.nodes.node_review_convergence_compute as _convergence_node_pkg
 from omnimarket.models.model_review_finding import EnumFindingCategory
 from omnimarket.nodes.node_review_convergence_compute.handlers.handler_convergence_compute import (
     HandlerConvergenceCompute,
@@ -20,6 +23,30 @@ from omnimarket.nodes.node_review_convergence_compute.models.model_review_conver
     ModelConvergenceOutput,
     ModelFindingLabel,
 )
+
+_CONTRACT_PATH = Path(_convergence_node_pkg.__file__).parent / "contract.yaml"
+
+
+@pytest.mark.unit
+def test_contract_declares_convergence_terminal_event_topics() -> None:
+    """The node's declared output states are the two convergence event topics.
+
+    Covers the contract-declared output states for state-coverage: the success
+    and failure terminal events plus the published-topic set.
+    """
+    contract = yaml.safe_load(_CONTRACT_PATH.read_text())
+    terminal_events = contract["runtime_dispatch"]["terminal_events"]
+    assert (
+        terminal_events["success"]
+        == "onex.evt.omnimarket.review-convergence-reduced.v1"
+    )
+    assert (
+        terminal_events["failure"] == "onex.evt.omnimarket.review-convergence-failed.v1"
+    )
+    assert set(contract["event_bus"]["publish_topics"]) == {
+        "onex.evt.omnimarket.review-convergence-reduced.v1",
+        "onex.evt.omnimarket.review-convergence-failed.v1",
+    }
 
 
 @pytest.mark.unit
