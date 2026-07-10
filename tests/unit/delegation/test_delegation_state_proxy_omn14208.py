@@ -313,31 +313,57 @@ class TestStateIoCodecFlushBridge:
     def test_flush_round_trips_tenant_state_and_in_flight_through_real_handle_legs(
         self,
     ) -> None:
+        """Two SEPARATE load/handle/flush cycles — one per leg — mirroring
+        exactly how omnibase_infra's wiring drives each leg as its own
+        dispatch: fresh ``adapter.load(cid)`` (here, a fresh
+        ``_bind_infra_state_io_rows`` bind of whatever the prior leg
+        "persisted"), run ``handle()``, then ``codec.flush(cid)``. Asserts
+        every one of the 3 seam fields (``tenant_id``/``state``/``in_flight``)
+        by NAME and VALUE at each leg — including the ``in_flight``
+        False -> True transition — not just presence of the keys (this is
+        the seam-match regression guard, OMN-14208 pair-verify).
+        """
         cid = uuid4()
         request = _make_request(cid, tenant_id="acme-corp")
         routing_decision = _make_routing_decision(cid)
 
         handler = HandlerDelegationWorkflow()
         codec = state_codec.StateIoCodec()
+
+        # Leg 1: no row yet -> creates the workflow (in_flight=False,
+        # state=RECEIVED).
         with _bind_infra_state_io_rows({str(cid): (None, 0)}):
-            # Leg 1: no row yet -> creates the workflow (in_flight=False).
             handler.handle_delegation_request(request)
-            # Leg 2: RECEIVED -> ROUTED, sets inference_intent_in_flight=True.
+            leg1_flushed = codec.flush(str(cid))
+
+        assert leg1_flushed is not None
+        leg1_parsed = json.loads(leg1_flushed)
+        assert leg1_parsed["tenant_id"] == "acme-corp"
+        assert leg1_parsed["state"] == EnumDelegationState.RECEIVED.value
+        assert leg1_parsed["in_flight"] is False
+
+        leg1_decoded = state_codec.decode(leg1_flushed)
+        assert leg1_decoded.tenant_id == "acme-corp"
+        assert leg1_decoded.state == EnumDelegationState.RECEIVED
+        assert leg1_decoded.inference_intent_in_flight is False
+
+        # Leg 2: loads leg 1's "persisted" row fresh (a new bind, exactly
+        # like a real second dispatch reloading from the DB) -> RECEIVED ->
+        # ROUTED, sets inference_intent_in_flight=True.
+        with _bind_infra_state_io_rows({str(cid): (leg1_flushed, 0)}):
             handler.handle_routing_decision(routing_decision)
+            leg2_flushed = codec.flush(str(cid))
 
-            flushed = codec.flush(str(cid))
+        assert leg2_flushed is not None
+        leg2_parsed = json.loads(leg2_flushed)
+        assert leg2_parsed["tenant_id"] == "acme-corp"
+        assert leg2_parsed["state"] == EnumDelegationState.ROUTED.value
+        assert leg2_parsed["in_flight"] is True
 
-        assert flushed is not None
-        parsed = json.loads(flushed)
-        assert parsed["tenant_id"] == "acme-corp"
-        assert parsed["state"] == EnumDelegationState.ROUTED.value
-        assert parsed["in_flight"] is True
-
-        # Round-trips back through the real codec too.
-        decoded = state_codec.decode(flushed)
-        assert decoded.tenant_id == "acme-corp"
-        assert decoded.state == EnumDelegationState.ROUTED
-        assert decoded.inference_intent_in_flight is True
+        leg2_decoded = state_codec.decode(leg2_flushed)
+        assert leg2_decoded.tenant_id == "acme-corp"
+        assert leg2_decoded.state == EnumDelegationState.ROUTED
+        assert leg2_decoded.inference_intent_in_flight is True
 
     def test_flush_returns_none_when_untouched(self) -> None:
         """A dispatch that never loads/sets `cid` on the shared proxy this
