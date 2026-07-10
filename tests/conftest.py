@@ -106,6 +106,20 @@ def _isolate_unit_env(
     monkeypatch.delenv("ONEX_STATE_ROOT", raising=False)
 
 
+@pytest.fixture(autouse=True)
+def _default_paid_escalation_for_tests(monkeypatch: pytest.MonkeyPatch) -> None:
+    """OMN-14225: run the suite at the production DEFAULT — paid escalation ON.
+
+    Paid (metered) escalation is ON by default (metered + logged, never silent); an
+    operator opts OUT via a falsy ``ONEX_DELEGATION_ALLOW_PAID``. Clear any ambient
+    opt-out so the many escalation-mechanism tests reliably exercise the FULL ladder
+    (they assert escalation into the paid ``cheap_cloud``/``claude`` tiers). The
+    opt-OUT behavior is covered by dedicated regressions
+    (``test_paid_escalation_gate_omn14225``) that ``setenv`` a falsy value.
+    """
+    monkeypatch.delenv("ONEX_DELEGATION_ALLOW_PAID", raising=False)
+
+
 @pytest.fixture
 def fake_lan_ip() -> str:
     """Loopback address used in unit tests instead of a LAN IP."""

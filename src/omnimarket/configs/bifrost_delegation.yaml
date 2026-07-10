@@ -145,12 +145,15 @@ backends:
   - backend_id: cloud-glm
     # OMN-12819: COMPLETE endpoint URL incl. the full chat path, posted VERBATIM.
     endpoint_url: "https://api.z.ai/api/coding/paas/v4/chat/completions"
-    # OMN-13343: refreshed glm-4.5 -> glm-5.2, the current z.ai GLM Coding Plan
-    # flagship ("AI Coding Powered by GLM-5.2 & GLM-5-Turbo"). Live 1-token probe
-    # of the endpoint above with the LLM_GLM_API_KEY secret confirmed glm-5.2 is
-    # accepted (response echoes model=glm-5.2); glm-5 is an alias that resolves to
-    # glm-5.2. Use the exact verified id — a wrong id fails closed.
-    model_name: "glm-5.2"
+    # OMN-14225: repointed glm-5.2 (flagship) -> glm-5-turbo, the CHEAPER GLM
+    # coding-plan model ("AI Coding Powered by GLM-5.2 & GLM-5-Turbo"), per the
+    # operator's paid policy (paid is ON + metered + logged; use the cheap,
+    # subscription-covered GLM, never the flagship glm-5.2). Live 1-token probe of
+    # the endpoint above with LLM_GLM_API_KEY confirmed glm-5-turbo is accepted and
+    # pins CLEANLY (response echoes model=glm-5-turbo, respects max_tokens) — unlike
+    # glm-4.5-air, which the endpoint substitutes to glm-4.7 and which burns
+    # reasoning tokens. Use the exact verified id — a wrong id fails closed.
+    model_name: "glm-5-turbo"
     secret_ref: llm.glm.api_key
     api_key_env: LLM_GLM_API_KEY
     tier: cheap_cloud
@@ -164,6 +167,29 @@ backends:
       - code_generation
       - reasoning
       - research
+  - backend_id: cloud-glm-judge
+    # OMN-14225: the quality-gate JUDGE's OWN backend, DECOUPLED from the
+    # cheap_cloud escalation model. cloud-glm above is the paid ESCALATION model
+    # and was repointed glm-5.2 -> glm-5-turbo (the cheaper coding-plan model).
+    # The judge is a quality authority, not an escalation step, so it stays on the
+    # FLAGSHIP glm-5.2 regardless of what the escalation model is. This backend is
+    # pinned by backend_id from the judge adapter (RoutingResolvedJudgeInferenceAdapter,
+    # _DEFAULT_JUDGE_BACKEND_ID) and is referenced by NO routing rule / tier, so it
+    # is never selected on the delegation escalation ladder — only the judge rides
+    # it. Same z.ai GLM coding endpoint + secret as cloud-glm; only the model_name
+    # differs. To move the judge model, repoint this model_name — the escalation
+    # model (cloud-glm) is unaffected, and vice versa.
+    endpoint_url: "https://api.z.ai/api/coding/paas/v4/chat/completions"
+    model_name: "glm-5.2"
+    secret_ref: llm.glm.api_key
+    api_key_env: LLM_GLM_API_KEY
+    tier: judge
+    # Match cloud-glm's budget: the judge issues a small structured verdict but
+    # rides the same endpoint, so the same generous timeout/output ceiling apply.
+    timeout_ms: 300000
+    max_tokens: 65536
+    capabilities:
+      - judge_adequacy
   - backend_id: cloud-gemini-flash
     # OMN-12815: COMPLETE endpoint URL incl. the full chat path, posted VERBATIM.
     # No in-code construction/append; the routing authority returns this unchanged.

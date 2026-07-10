@@ -641,6 +641,28 @@ class LocalDelegationDispatchPort:
             cumulative_cost_usd += result.actual_cost_usd
             cumulative_savings_usd += result.savings_usd
 
+            # OMN-14225: paid escalation is ON (metered) but NEVER SILENT. Any attempt
+            # that incurred real metered spend is logged prominently — model,
+            # task_type, tier, this attempt's cost, the running paid total for the
+            # request, and the escalation depth (why we left the free tiers) — so a
+            # paid GLM call can always be audited, meeting the original OMN-14097
+            # "never silently spend" requirement without blocking the subscription-
+            # covered paid tier.
+            if result.actual_cost_usd > 0:
+                logger.warning(
+                    "PAID DELEGATION (metered): task_type=%s model=%s tier=%s "
+                    "cost_usd=%.6f cumulative_paid_usd=%.6f escalation_count=%d "
+                    "correlation=%s — escalated off the free tiers (local/frontier); "
+                    "set ONEX_DELEGATION_ALLOW_PAID=0 to disable paid escalation.",
+                    task_type,
+                    backend.model_id,
+                    backend.tier,
+                    float(result.actual_cost_usd),
+                    float(cumulative_cost_usd),
+                    escalation_count,
+                    correlation_id,
+                )
+
             gate_result = attempt_outcome.gate_result
             assert gate_result is not None
             quality_passed = self._is_quality_accepted(task_type, gate_result)

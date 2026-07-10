@@ -302,6 +302,25 @@ class TestJudgeResolvesConcreteModelNotTier:
         assert model_id not in {"cheap_cloud", "cheap_frontier", "local", "unknown"}
         assert model_id  # non-empty concrete id
 
+    def test_judge_backend_decoupled_from_escalation_model(self) -> None:
+        """OMN-14225: the JUDGE model is decoupled from the cheap_cloud escalation.
+
+        The paid escalation backend (``cloud-glm``) was repointed to the cheaper
+        ``glm-5-turbo``; the JUDGE is a quality authority, not an escalation step,
+        so it keeps its OWN ``cloud-glm-judge`` backend pinned to the flagship
+        ``glm-5.2``. This proves repointing the escalation model can never again
+        drag the judge off the flagship (the OMN-14225 coupling this fix closes).
+        """
+        judge_model = RoutingResolvedJudgeInferenceAdapter().resolved_model_id()
+        escalation_model = resolve_delegation_backend(
+            "code_generation", backend_id="cloud-glm"
+        ).model_id
+        assert judge_model == "glm-5.2"
+        assert escalation_model == "glm-5-turbo"
+        # The load-bearing invariant: the two are resolved from DIFFERENT backends
+        # and are NOT the same model — the judge does not ride the escalation model.
+        assert judge_model != escalation_model
+
     @pytest.mark.asyncio
     async def test_recorded_replay_rejects_tier_name_as_model_key(self) -> None:
         """The replay fixture cannot mask the bug: a tier name fails closed.

@@ -596,10 +596,14 @@ def test_first_eligible_tier_static_is_local() -> None:
 
 
 @pytest.mark.usefixtures("code_gen_routable")
-def test_first_eligible_tier_roi_suppression_flips_to_cheap_cloud() -> None:
-    """THE closed loop: a captured below-floor local ROI routes to cheap_cloud."""
+def test_first_eligible_tier_roi_suppression_flips_to_cheap_frontier() -> None:
+    """THE closed loop: a captured below-floor local ROI routes to the FREE
+    cheap_frontier tier (OMN-14225 free-before-paid: cheap_frontier precedes the
+    paid cheap_cloud in code_generation's tier_order)."""
     overlay = _suppress("local")
-    assert first_eligible_tier("code_generation", roi_overlay=overlay) == "cheap_cloud"
+    assert (
+        first_eligible_tier("code_generation", roi_overlay=overlay) == "cheap_frontier"
+    )
 
 
 @pytest.mark.usefixtures("code_gen_routable")
@@ -630,10 +634,12 @@ def test_first_eligible_tier_all_suppressed_failsafe_to_static() -> None:
 
 
 @pytest.mark.usefixtures("code_gen_routable")
-def test_next_eligible_tier_static_from_local_is_cheap_cloud() -> None:
+def test_next_eligible_tier_static_from_local_is_cheap_frontier() -> None:
+    # OMN-14225 free-before-paid: after local, code_generation escalates to the
+    # FREE cheap_frontier tier before the paid cheap_cloud.
     assert (
         next_eligible_tier("local", frozenset(), task_type="code_generation")
-        == "cheap_cloud"
+        == "cheap_frontier"
     )
 
 
@@ -652,14 +658,15 @@ def test_next_eligible_tier_roi_suppression_flips_to_cheap_frontier() -> None:
 @pytest.mark.usefixtures("code_gen_routable")
 def test_next_eligible_tier_failsafe_when_only_next_tier_suppressed() -> None:
     """Suppressing the only remaining routable next tier falls back to it (never dead-end)."""
-    overlay = _suppress("cheap_frontier", "claude")
-    # From cheap_cloud the only routable higher tiers are cheap_frontier/claude
-    # (both suppressed) -> fail-safe second pass returns cheap_frontier.
+    # OMN-14225 order [local, cheap_frontier, cheap_cloud, claude]: from cheap_cloud
+    # the only routable higher tier is the claude ceiling. Suppressing it must not
+    # dead-end — the fail-safe second pass ignores ROI suppression and returns claude.
+    overlay = _suppress("claude")
     assert (
         next_eligible_tier(
             "cheap_cloud", frozenset(), task_type="code_generation", roi_overlay=overlay
         )
-        == "cheap_frontier"
+        == "claude"
     )
 
 
@@ -670,10 +677,11 @@ def test_delta_static_routes_local() -> None:
 
 
 @pytest.mark.usefixtures("code_gen_routable")
-def test_delta_roi_suppression_routes_cheap_cloud() -> None:
-    """delta() honours the overlay: proven-failing local -> cheap_cloud decision."""
+def test_delta_roi_suppression_routes_cheap_frontier() -> None:
+    """delta() honours the overlay: proven-failing local -> cheap_frontier decision
+    (OMN-14225 free-before-paid: the FREE frontier tier precedes the paid cheap_cloud)."""
     decision = delta(_request(), roi_overlay=_suppress("local"))
-    assert decision.tier_name == "cheap_cloud"
+    assert decision.tier_name == "cheap_frontier"
     assert "ROI-demoted past ['local']" in decision.rationale
 
 
@@ -743,8 +751,10 @@ def test_port_resolve_initial_backend_roi_flips_tier(
     flipped = port._resolve_initial_backend(
         "code_generation", roi_overlay=_suppress("local")
     )
-    assert flipped.backend_id == "cloud-glm"
-    assert flipped.tier == "cheap_cloud"
+    # OMN-14225 free-before-paid: a suppressed local flips to the FREE cheap_frontier
+    # tier (openrouter-qwen3-coder-480b), not the paid cheap_cloud.
+    assert flipped.backend_id == "openrouter-qwen3-coder-480b"
+    assert flipped.tier == "cheap_frontier"
 
 
 # --- CAPSTONE: the closed loop end-to-end through canonical handlers ------------
@@ -805,9 +815,13 @@ def test_learning_loop_capture_to_decision_end_to_end() -> None:
     assert overlay is not None
     assert overlay.is_suppressed("local")
 
-    # 4. DECISION CHANGES — the SAME request now routes to cheap_cloud because the
-    #    stored outcome demoted the proven-failing local tier. The loop is closed.
-    assert first_eligible_tier("code_generation", roi_overlay=overlay) == "cheap_cloud"
+    # 4. DECISION CHANGES — the SAME request now routes to the FREE cheap_frontier
+    #    tier because the stored outcome demoted the proven-failing local tier
+    #    (OMN-14225 free-before-paid: cheap_frontier precedes the paid cheap_cloud).
+    #    The loop is closed.
+    assert (
+        first_eligible_tier("code_generation", roi_overlay=overlay) == "cheap_frontier"
+    )
 
 
 # --- LIVE wiring: the delegate path actually points the reader at the DB --------

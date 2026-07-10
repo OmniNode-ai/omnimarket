@@ -294,20 +294,18 @@ class TestQualityGateVerdictRecommendsFallback:
         "expected_min_tier",
     ),
     [
-        # OMN-13140 / OMN-13943 closed-set tier_order: code_generation declares
-        # [local, cheap_cloud, cheap_frontier, claude] (local AI-PC coder is the
-        # preferred first hop). A gate failure on cheap_cloud escalates forward to
-        # the next declared tier — OMN-13943 inserted cheap_frontier (OpenRouter
-        # Qwen3-Coder-480B, free tier) between cheap_cloud and claude so a
-        # retryable cheap_cloud failure has somewhere to go before the ceiling —
-        # which is routable in the fixture (openrouter-qwen3-coder-480b carries a
-        # non-empty endpoint_url and no secret_ref requirement there).
+        # OMN-14225 free-before-paid closed-set tier_order: code_generation declares
+        # [local, cheap_frontier, cheap_cloud, claude] (local AI-PC coder is the
+        # preferred first hop). A gate failure on local escalates forward to the FREE
+        # cheap_frontier tier BEFORE any paid tier — routable in the fixture
+        # (openrouter-qwen3-coder-480b carries a non-empty endpoint_url and no
+        # secret_ref requirement there).
         (
             "code_generation",
             "x = 1",
             ("min_length_chars_400",),
             "WEAK_OUTPUT",
-            "cheap_cloud",
+            "local",
             "cheap_frontier",
         ),
         # research declares [local, cheap_cloud, claude]: a gate failure on local
@@ -508,7 +506,9 @@ class TestCanonicalCloudTargetCapability:
         tiers = {t["name"]: t for t in self._routing_tiers()["tiers"]}
         terminal = tiers["claude"]
         assert terminal["models"][0]["backend_id"] == _TERMINAL_CEILING_BACKEND_ID
-        assert terminal["models"][0]["id"] == "glm-5.2"
+        # OMN-14225: the paid GLM model repointed glm-5.2 -> glm-5-turbo (cheaper
+        # coding-plan model; paid is ON + metered + logged, subscription-covered).
+        assert terminal["models"][0]["id"] == "glm-5-turbo"
 
         backends = self._bifrost()["backends"]
         by_id = {b["backend_id"]: b for b in backends}

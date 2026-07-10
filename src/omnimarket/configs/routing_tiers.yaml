@@ -114,7 +114,7 @@ tiers:
       # for a model we can hit directly with our own key is a routing-cost bug,
       # not a fallback strategy. model_name (glm-5.2) is resolved from the
       # cloud-glm backend in bifrost_delegation.yaml (OMN-13343 verified id).
-      - id: glm-5.2
+      - id: glm-5-turbo
         backend_id: cloud-glm
         max_context_tokens: 128000
         use_for:
@@ -223,7 +223,7 @@ tiers:
       # OMN-13667: primary ceiling model — GLM-5.2 z.ai direct, proven available
       # (judge lane already runs on this backend). Replaces free-tier AI Studio
       # Gemini (cloud-gemini-pro) which 503s on every escalation attempt.
-      - id: glm-5.2
+      - id: glm-5-turbo
         backend_id: cloud-glm
         max_context_tokens: 128000
         use_for:

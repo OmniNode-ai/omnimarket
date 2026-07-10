@@ -42,6 +42,7 @@ Related:
 from __future__ import annotations
 
 import logging
+import os
 from functools import lru_cache
 from pathlib import Path
 from uuid import NAMESPACE_DNS, UUID, uuid5
@@ -166,6 +167,37 @@ _CLOUD_BLOCKED_POLICY = "blocked"
 # OMN-13215: the shelled ``cli_agents`` tier was removed; ``local`` is the only
 # zero-cost local-execution tier exempt from the cloud-blocked routing policy.
 _LOCAL_TIERS = {"local"}
+
+# OMN-14225: paid escalation policy = ON by default, METERED + LOGGED (never
+# SILENT). Paid (metered, cost_per_1k_tokens > 0) tiers ARE allowed — the operator's
+# GLM subscription covers them — but every paid escalation is logged prominently
+# (model, task_type, cost_usd, reason) at the execution boundary so it can never
+# happen silently (the original OMN-14097 concern). An operator may opt OUT
+# per-process by setting ONEX_DELEGATION_ALLOW_PAID to a falsy value
+# (0/false/no/off), which fails the ladder closed to the free tiers. This gate is
+# the single eligibility point ``_tier_allowed_by_contract``, consulted by both the
+# routing reducer (``delta``) and the bus-less escalation loop
+# (``next_eligible_tier``/``first_eligible_tier`` via ``_tier_can_route_task``).
+_ALLOW_PAID_ENV = "ONEX_DELEGATION_ALLOW_PAID"
+_ALLOW_PAID_FALSY = frozenset({"0", "false", "no", "off"})
+
+
+def _paid_escalation_allowed() -> bool:
+    """Return whether paid (metered) escalation is permitted — True by default.
+
+    Paid is ON unless an operator explicitly opts OUT via a falsy
+    ``ONEX_DELEGATION_ALLOW_PAID`` (0/false/no/off). Read at call time (not import
+    time) so a test or an operator can toggle it per-process. "Never silent" is met
+    by the prominent paid-escalation log at the execution boundary, not by blocking.
+    """
+    # OMN-14225: the paid-escalation opt-out is an INTENTIONAL per-process operator
+    # toggle — read at call time (not import time) so an operator or a test can flip
+    # it per process, metered + logged at the execution boundary, never a silent
+    # config path. It is exempted from the delegation env-read scanner via the inline
+    # token below; a contract-config rewrite would defeat the per-process-toggle
+    # design this gate deliberately provides.
+    raw_opt_out = os.environ.get(_ALLOW_PAID_ENV, "")  # ONEX_FLAG_EXEMPT
+    return raw_opt_out.strip().lower() not in _ALLOW_PAID_FALSY
 
 
 def _estimate_prompt_tokens(prompt: str) -> int:
@@ -531,6 +563,7 @@ def _tier_allowed_by_contract(
 
     Enforces:
       - undeclared task class (no contract entry) → only LOCAL tiers permitted
+      - OMN-14225: paid (metered) tier behind the ONEX_DELEGATION_ALLOW_PAID gate
       - cloud_routing_policy: "blocked" → only local tiers permitted
       - pricing_ceiling_per_1k_tokens: tier cost must not exceed ceiling
 
@@ -543,6 +576,14 @@ def _tier_allowed_by_contract(
     paid. Post-OMN-14218 every accepted task class is declared, so this changes no
     current path; it is a guardrail against any future accepted-but-undeclared class.
     """
+    # OMN-14225: paid tier gate — a metered (cost > 0) tier is eligible by default
+    # (paid is ON, metered + logged) UNLESS an operator has opted OUT via a falsy
+    # ONEX_DELEGATION_ALLOW_PAID, in which case the ladder fails closed to the free
+    # tiers. Applied first (independent of the contract entry) so the opt-out covers
+    # every routing surface. Free tiers (local, cheap_frontier) are always eligible.
+    if tier.cost_per_1k_tokens > 0 and not _paid_escalation_allowed():
+        return False
+
     if entry is None:
         return tier.name in _LOCAL_TIERS
 
