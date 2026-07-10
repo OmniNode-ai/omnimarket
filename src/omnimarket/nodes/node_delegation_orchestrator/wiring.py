@@ -58,8 +58,18 @@ def get_shared_delegation_workflow_handler() -> HandlerDelegationWorkflow:
         from omnimarket.nodes.node_delegation_orchestrator.handlers.handler_delegation_workflow import (
             HandlerDelegationWorkflow,
         )
+        from omnimarket.nodes.node_delegation_orchestrator.state_codec import (
+            DelegationWorkflowStateProxy,
+        )
 
-        _SHARED_WORKFLOW_HANDLER = HandlerDelegationWorkflow()
+        # OMN-14208: install the ContextVar-backed proxy explicitly at the
+        # singleton construction site (this is also HandlerDelegationWorkflow's
+        # own default, but naming it here documents that the live dispatch
+        # path is durable-state-capable rather than relying on the
+        # constructor's default staying in sync).
+        _SHARED_WORKFLOW_HANDLER = HandlerDelegationWorkflow(
+            workflows=DelegationWorkflowStateProxy()
+        )
     return _SHARED_WORKFLOW_HANDLER
 
 
