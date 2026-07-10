@@ -32,7 +32,7 @@ dependencies = [
     # OMN-14168 requires EnumEvidenceClass.RUNTIME_OPS and
     # runtime_ops_verb_loader from omnibase-core 0.46.7.
     "omnibase-core>=0.46.7,<0.47.0",
-    "omnibase-compat==0.5.5",
+    "omnibase-compat==0.5.6",
     "omnibase-spi>=0.23.0,<0.24.0",
     "omnibase-infra>=0.38.3,<0.39.0",
     "onex-change-control>=0.5.1",
@@ -469,7 +469,7 @@ override-dependencies = [
     "omnibase-core>=0.46.7,<0.47.0",
     "omnibase-spi>=0.23.0,<0.24.0",
     "omnibase-infra>=0.38.3,<0.39.0",
-    "omnibase-compat==0.5.5",
+    "omnibase-compat==0.5.6",
 ]
 
 [tool.hatch.build.targets.wheel]

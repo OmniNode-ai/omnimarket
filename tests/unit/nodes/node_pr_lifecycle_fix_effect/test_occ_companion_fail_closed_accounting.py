@@ -42,6 +42,9 @@ from omnimarket.nodes.node_pr_lifecycle_orchestrator.handlers.handler_pr_lifecyc
     HandlerPrLifecycleOrchestrator,
     _block_reason_for_fix,
 )
+from omnimarket.nodes.node_pr_lifecycle_orchestrator.handlers.occ_stamp_readback import (
+    ModelOccStampReadbackResult,
+)
 from omnimarket.nodes.node_pr_lifecycle_orchestrator.protocols.protocol_sub_handlers import (
     EnumPrCategory,
     TriageRecord,
@@ -88,6 +91,32 @@ class _FakeVerifier:
         )
 
 
+class _FakeStampReadback:
+    """Fake orchestrator OCC-stamp read-back returning a fixed verdict.
+
+    OMN-14191 moved the authoritative prs_fixed gate from the fix handler's
+    self-reported occ_companion_verified flag to an INDEPENDENT orchestrator
+    read-back over live gh state (CLAUDE.md Rule 3). These tests inject that
+    read-back directly.
+    """
+
+    def __init__(self, *, verified: bool) -> None:
+        self._verified = verified
+        self.calls: list[tuple[str, int, str | None]] = []
+
+    async def verify_fix_landed(
+        self, repo: str, pr_number: int, ticket_id: str | None = None
+    ) -> ModelOccStampReadbackResult:
+        self.calls.append((repo, pr_number, ticket_id))
+        return ModelOccStampReadbackResult(
+            verified=self._verified,
+            occ_pr_number=4242 if self._verified else None,
+            evidence_source_present=self._verified,
+            occ_pr_open=self._verified,
+            reason="verified" if self._verified else "companion not landed",
+        )
+
+
 def _occ_preflight_pr() -> TriageRecord:
     """A green-except-OCC-companion PR: only occ-preflight fails, ticket present."""
     return TriageRecord(
@@ -101,10 +130,13 @@ def _occ_preflight_pr() -> TriageRecord:
 
 def _make_orchestrator(
     fix_handler: HandlerPrLifecycleFix,
+    *,
+    readback: _FakeStampReadback | None = None,
 ) -> HandlerPrLifecycleOrchestrator:
     return HandlerPrLifecycleOrchestrator(
         event_bus=MagicMock(spec=ProtocolEventBusPublisher),
         fix=fix_handler,
+        occ_stamp_readback=readback,
     )
 
 
@@ -150,16 +182,15 @@ class TestFailClosedAccounting:
     async def test_unverified_companion_is_not_counted(self) -> None:
         """The false-success shape: adapter returns cleanly, nothing pushed.
 
-        fix_applied is True (the route ran) but the companion is NOT verified,
-        so the orchestrator must count the PR as skipped, never as fixed.
+        fix_applied is True (the route ran) but the orchestrator's independent
+        read-back cannot confirm a landed companion, so the PR must count as
+        skipped, never as fixed (OMN-14191 generalizes this beyond the autobind
+        arm).
         """
         adapter = _RecordingAutobindAdapter()
-        verifier = _FakeVerifier(verified=False)
-        fix = HandlerPrLifecycleFix(
-            occ_autobind_adapter=adapter,
-            occ_companion_verifier=verifier,
-        )
-        orch = _make_orchestrator(fix)
+        readback = _FakeStampReadback(verified=False)
+        fix = HandlerPrLifecycleFix(occ_autobind_adapter=adapter)
+        orch = _make_orchestrator(fix, readback=readback)
 
         prs_dispatched = await _dispatch_one(orch, _occ_preflight_pr())
 
@@ -168,20 +199,19 @@ class TestFailClosedAccounting:
             "counted in prs_fixed (this was the merge_sweep false-success)"
         )
         assert adapter.calls, "autobind adapter must still be invoked"
-        assert verifier.calls, "the read-back verifier must run for the autobind arm"
+        assert readback.calls, "the orchestrator read-back must run for the arm"
 
     async def test_verified_companion_is_counted(self) -> None:
         """Happy path: a confirmed pushed companion counts exactly once."""
         adapter = _RecordingAutobindAdapter()
-        fix = HandlerPrLifecycleFix(
-            occ_autobind_adapter=adapter,
-            occ_companion_verifier=_FakeVerifier(verified=True),
-        )
-        orch = _make_orchestrator(fix)
+        readback = _FakeStampReadback(verified=True)
+        fix = HandlerPrLifecycleFix(occ_autobind_adapter=adapter)
+        orch = _make_orchestrator(fix, readback=readback)
 
         prs_dispatched = await _dispatch_one(orch, _occ_preflight_pr())
 
         assert prs_dispatched == 1
+        assert readback.calls, "the orchestrator read-back must run for the arm"
 
 
 @pytest.mark.unit
