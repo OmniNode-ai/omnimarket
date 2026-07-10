@@ -4,7 +4,7 @@ requires-python = "==3.12.*"
 
 [manifest]
 overrides = [
-    { name = "omnibase-compat", specifier = "==0.5.5" },
+    { name = "omnibase-compat", specifier = "==0.5.6" },
     { name = "omnibase-core", specifier = ">=0.46.7,<0.47.0" },
     { name = "omnibase-infra", git = "https://github.com/OmniNode-ai/omnibase_infra.git?rev=7e52d5b0046c394b38454b97157e7a7191e6f008" },
     { name = "omnibase-spi", specifier = ">=0.23.0,<0.24.0" },
@@ -1586,15 +1586,15 @@ wheels = [
 
 [[package]]
 name = "omnibase-compat"
-version = "0.5.5"
+version = "0.5.6"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "pydantic" },
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/71/6f/35e74ed8bc2210d0161445e0ab020b420d764ccf86f59decd11000bfee5a/omnibase_compat-0.5.5.tar.gz", hash = "sha256:181d5e67459de60203d48d7760ae9ccc7d1c8d15dcadfcab639059359e687e4c", size = 145437, upload-time = "2026-06-30T20:23:59.951Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/b5/38/3e9290a351e052614107bc98dcedbe06208cda734096df6afb41135ae3da/omnibase_compat-0.5.6.tar.gz", hash = "sha256:c26670bdbac2a59e574752097e613837f702a860c473e3e414f0b2155e0e06bc", size = 166159, upload-time = "2026-07-10T01:01:22.414Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/48/67/81463ac253d64ae96094e9639e897147b7cda60a2e6a40bd08029bdd221f/omnibase_compat-0.5.5-py3-none-any.whl", hash = "sha256:7609ab530acf7d8b52ff62f44015bcbed2778563ff57ae636f19cc57d15c245b", size = 99991, upload-time = "2026-06-30T20:23:58.898Z" },
+    { url = "https://files.pythonhosted.org/packages/fe/9d/f0eb5f864bf82df2e0dec89b3c22e91fc3f9080c3ec747f41601e80f826c/omnibase_compat-0.5.6-py3-none-any.whl", hash = "sha256:ede963de6323e26bdc597e24bb981f80b6b3d7758b88a3104d9b24f3c02131b2", size = 116915, upload-time = "2026-07-10T01:01:21.345Z" },
 ]
 
 [[package]]
@@ -1748,7 +1748,7 @@ requires-dist = [
     { name = "fastapi", specifier = ">=0.115.0" },
     { name = "graphifyy", marker = "extra == 'dep-health'", specifier = "==0.8.2" },
     { name = "httpx", specifier = ">=0.27.0" },
-    { name = "omnibase-compat", specifier = "==0.5.5" },
+    { name = "omnibase-compat", specifier = "==0.5.6" },
     { name = "omnibase-core", specifier = ">=0.46.7,<0.47.0" },
     { name = "omnibase-infra", git = "https://github.com/OmniNode-ai/omnibase_infra.git?rev=7e52d5b0046c394b38454b97157e7a7191e6f008" },
     { name = "omnibase-spi", specifier = ">=0.23.0,<0.24.0" },
