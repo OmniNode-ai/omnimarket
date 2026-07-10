@@ -18,22 +18,35 @@ contract_name: "node_delegation_orchestrator"
 node_name: "node_delegation_orchestrator"
 contract_version:
   major: 0
-  minor: 5
+  minor: 6
   patch: 0
 node_version:
   major: 0
-  minor: 3
+  minor: 4
   patch: 0
 node_type: "ORCHESTRATOR_GENERIC"
 terminal_events:
   success: "onex.evt.omnibase-infra.delegation-completed.v1"
   failure: "onex.evt.omnibase-infra.delegation-failed.v1"
+# OMN-14208: opt-in binding for durable per-request workflow FSM state. When
+# runtime wiring recognizes this key, the dispatch-seam boundary hook loads
+# the correlation_id-keyed row before handle() and CAS-persists it after, so
+# workflow state survives a cold-process replay instead of living only in the
+# in-process HandlerDelegationWorkflow._shared_workflows dict. Inert on infra
+# that does not yet recognize `state_io` (an unrecognized top-level contract
+# key is filtered out before Pydantic validation, never rejected) — activation
+# is gated on the corresponding omnibase_infra wiring landing.
+state_io:
+  database: "omnibase_infra"
+  table: "delegation_workflow_state"
+  key: "correlation_id"
+  codec: "omnimarket.nodes.node_delegation_orchestrator.state_codec"
 # OMN-13629 (WS-F Phase 1): the legacy compat task-delegated.v1 co-writer was
 # removed. A delegation terminal now emits a single canonical event on
 # delegation-{completed,failed}.v1. The delegation + savings projections consume
 # the canonical pair directly (no compat hop).
 description: >
-  Orchestrator node that coordinates delegation through a correlation_id-keyed FSM: receive delegation request, invoke routing reducer, dispatch typed invocation commands to the selected effect lane, react to remote agent lifecycle events or the legacy inference and quality-gate path, then emit delegation-completed or delegation-failed. As of 0.2.0 (OMN-10792), exposes HandlerComplianceLoop as an in-process helper. As of 0.3.0 (OMN-10794), HandlerDelegationWorkflow invokes the loop per inference attempt when ModelDelegationRequest sets ``output_schema_key`` + ``compliance_budget``: validation failure with budget CONTINUE emits a fresh repair-prompt ModelInferenceIntent and stays in ROUTED (self-loop); compliant or budget ABORT forwards to the quality gate. tokens_to_compliance + compliance_attempts are accumulated across attempts and forwarded onto the single canonical terminal ModelDelegationResult (the legacy ModelTaskDelegatedEvent co-writer was removed in OMN-13629).
+  Orchestrator node that coordinates delegation through a correlation_id-keyed FSM: receive delegation request, invoke routing reducer, dispatch typed invocation commands to the selected effect lane, react to remote agent lifecycle events or the legacy inference and quality-gate path, then emit delegation-completed or delegation-failed. As of 0.2.0 (OMN-10792), exposes HandlerComplianceLoop as an in-process helper. As of 0.3.0 (OMN-10794), HandlerDelegationWorkflow invokes the loop per inference attempt when ModelDelegationRequest sets ``output_schema_key`` + ``compliance_budget``: validation failure with budget CONTINUE emits a fresh repair-prompt ModelInferenceIntent and stays in ROUTED (self-loop); compliant or budget ABORT forwards to the quality gate. tokens_to_compliance + compliance_attempts are accumulated across attempts and forwarded onto the single canonical terminal ModelDelegationResult (the legacy ModelTaskDelegatedEvent co-writer was removed in OMN-13629). As of 0.4.0 (OMN-14208), declares an opt-in `state_io` binding for durable per-request FSM state (wall-clock latency epoch + TypeAdapter codec + ContextVar-backed state proxy); runtime activation is gated on the corresponding omnibase_infra wiring.
 
 config_dependencies:
   - key: "INFERENCE_PROTOCOL_CONFIG_PATH"
