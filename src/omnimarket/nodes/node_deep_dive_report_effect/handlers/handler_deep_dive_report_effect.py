@@ -15,9 +15,6 @@ from __future__ import annotations
 
 from collections import Counter
 from pathlib import Path
-from uuid import uuid4
-
-from omnibase_core.models.dispatch.model_handler_output import ModelHandlerOutput
 
 from omnimarket.nodes.node_deep_dive_report_effect.adapters.adapter_local_git_report_data_source import (
     AdapterLocalGitReportDataSource,
@@ -39,8 +36,6 @@ from omnimarket.nodes.node_deep_dive_report_effect.protocols.protocol_report_dat
     ProtocolReportDataSource,
 )
 
-_HANDLER_ID = "node_deep_dive_report_effect"
-
 
 class HandlerDeepDiveReportEffect:
     """EFFECT: scan a workspace and emit the daily deep-dive report.
@@ -60,14 +55,13 @@ class HandlerDeepDiveReportEffect:
 
     async def handle(
         self, command: ModelDeepDiveReportCommand
-    ) -> ModelHandlerOutput[None]:
+    ) -> ModelDeepDiveReportResultEvent:
         ds = self._data_source
         date = ds.resolve_date(command.date)
         date_str = date.isoformat()
 
         if command.dry_run:
-            event = self._quiet_event(command, date_str)
-            return self._wrap(command, event)
+            return self._quiet_event(command, date_str)
 
         root = Path(command.root)
         repos = ds.discover_repos(root, command.repo_prefixes)
@@ -120,17 +114,16 @@ class HandlerDeepDiveReportEffect:
             quiet_day=quiet_day,
             total_commits=total_commits,
         )
-        event = ModelDeepDiveReportResultEvent(
+        return ModelDeepDiveReportResultEvent(
             correlation_id=command.correlation_id,
             report_date=date_str,
             report_markdown=markdown,
             metrics=metrics,
             quiet_day=quiet_day,
         )
-        return self._wrap(command, event)
 
     # ------------------------------------------------------------------
-    # Pure rendering + envelope helpers (no I/O)
+    # Pure rendering helpers (no I/O)
     # ------------------------------------------------------------------
 
     def _quiet_event(
@@ -202,15 +195,3 @@ class HandlerDeepDiveReportEffect:
         if ticket_ids:
             lines += ["", "## Tickets", ", ".join(ticket_ids)]
         return "\n".join(lines) + "\n"
-
-    def _wrap(
-        self,
-        command: ModelDeepDiveReportCommand,
-        event: ModelDeepDiveReportResultEvent,
-    ) -> ModelHandlerOutput[None]:
-        return ModelHandlerOutput.for_effect(
-            input_envelope_id=uuid4(),
-            correlation_id=command.correlation_id,
-            handler_id=_HANDLER_ID,
-            events=(event,),
-        )
