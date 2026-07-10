@@ -416,6 +416,29 @@ def _inference_timeout_seconds(workflow: DelegationWorkflowState) -> float:
     return max(1.0, min(600.0, workflow.routing_decision.timeout_ms / 1000.0))
 
 
+def _resolve_tenant_id(workflow: DelegationWorkflowState) -> str | None:
+    """Resolve tenant identity for a terminal emission (OMN-14208).
+
+    Under durable per-request state, ``workflow.tenant_id`` is persisted and
+    reloaded fresh on every leg (proven by the state_codec round-trip golden
+    test), so this recovery is normally a no-op — the acceptance-time pin
+    survives unchanged. It exists as a defensive fallback for a durably-stored
+    row whose tenant pin comes back unset (e.g. a pre-existing row from before
+    this field, or any decode path that yields ``None``): legs 2-5 carry no
+    tenant_id on their own wire payload, so without this fallback a lost pin
+    would silently degrade to the shared 'omninode' projection column default
+    — the exact OMN-14058 failure mode this design closes. Mirrors the
+    acceptance-time precedence in ``handle_delegation_request``: the workflow's
+    own pin wins, then the pinned request's tenant_id, then the single
+    process-wide ``ONEX_TENANT_ID`` read.
+    """
+    if workflow.tenant_id:
+        return workflow.tenant_id
+    if workflow.request is not None and workflow.request.tenant_id:
+        return workflow.request.tenant_id
+    return get_settings().onex_tenant_id or None
+
+
 def _build_model_inference_intent(
     *,
     base_url: str,
@@ -667,7 +690,13 @@ class DelegationWorkflowState:
     # from acceptance. Defaults to '' (OFF-arm: no context pack supplied).
     context_pack_hash: str = ""
     gate_result: ModelQualityGateResult | None = None
-    started_at_ns: int = field(default_factory=time.monotonic_ns)
+    # OMN-14208: wall-clock epoch, NOT time.monotonic_ns(). monotonic_ns has a
+    # process/boot-local epoch — durable cross-process state (a leg replayed in
+    # a different process than the one that started the workflow) makes a
+    # monotonic-vs-monotonic subtraction across processes meaningless (garbage
+    # or negative elapsed_ms). latency_ms is an observability metric on the
+    # terminal event, not an ordering authority, so an absolute epoch is correct.
+    started_at_ns: int = field(default_factory=time.time_ns)
     # Compliance-loop counters (OMN-10794). The orchestrator owns the loop,
     # ``compliance_attempts`` counts the inference attempts it has issued so
     # far (1 = first attempt) and ``accumulated_tokens`` is the running sum
@@ -714,6 +743,17 @@ class HandlerDelegationWorkflow:
 
     _shared_workflows: ClassVar[dict[UUID, DelegationWorkflowState]] = {}
 
+    @classmethod
+    def shared_workflows(cls) -> dict[UUID, DelegationWorkflowState]:
+        """Return the process-wide fallback workflow dict.
+
+        OMN-14208: the public accessor ``DelegationWorkflowStateProxy`` (in
+        ``state_codec.py``) uses to forward to when the state_io ContextVar is
+        unset — avoids a cross-module private-attribute reach into
+        ``_shared_workflows`` directly.
+        """
+        return cls._shared_workflows
+
     # OMN-13476: the escalation/tier decision is owned by a stateless COMPUTE
     # node. The orchestrator resolves the config-dependent inputs (next eligible
     # tier + no-higher-tier reason, which read the routing contract+overlay) and
@@ -726,7 +766,30 @@ class HandlerDelegationWorkflow:
         self,
         workflows: MutableMapping[UUID, DelegationWorkflowState] | None = None,
     ) -> None:
-        self._workflows = workflows if workflows is not None else self._shared_workflows
+        if workflows is not None:
+            self._workflows = workflows
+        else:
+            # OMN-14208: default swaps from the bare ClassVar dict to the
+            # process-wide shared ContextVar-backed proxy singleton. Local
+            # import: state_codec imports DelegationWorkflowState from this
+            # module, so importing the proxy at module scope here would be
+            # circular. The proxy transparently forwards every operation to
+            # `_shared_workflows` when the state_io ContextVar is unset
+            # (tests, standalone, any caller outside the runtime dispatch-seam
+            # boundary hook), so this swap is behavior-preserving for every
+            # existing caller — it only activates decode/CAS-persist
+            # semantics under a live state_io binding. The shared singleton
+            # (rather than a fresh instance per handler) is what lets
+            # `StateIoCodec.flush` — resolved independently by
+            # omnibase_infra's wiring — reach the SAME per-request decoded
+            # cache this proxy populates (pair-verify M1); production
+            # constructs exactly one HandlerDelegationWorkflow, so this is a
+            # no-op there.
+            from omnimarket.nodes.node_delegation_orchestrator.state_codec import (
+                get_default_proxy,
+            )
+
+            self._workflows = get_default_proxy()
 
     @property
     def workflows(self) -> MutableMapping[UUID, DelegationWorkflowState]:
@@ -990,7 +1053,9 @@ class HandlerDelegationWorkflow:
             return []
 
         if response.error_message:
-            elapsed_ms = (time.monotonic_ns() - workflow.started_at_ns) // 1_000_000
+            # OMN-14208: wall-clock epoch subtraction (started_at_ns is now
+            # time.time_ns()) — see the field docstring above.
+            elapsed_ms = (time.time_ns() - workflow.started_at_ns) // 1_000_000
             model_used = response.model_used or workflow.routing_decision.selected_model
 
             # Record this tier's failed attempt in escalation history before
@@ -1123,7 +1188,7 @@ class HandlerDelegationWorkflow:
                 attempts_count=workflow.escalation_count + 1,
                 model_name=workflow.routing_decision.selected_model,
                 session_id=None,
-                tenant_id=workflow.tenant_id,
+                tenant_id=_resolve_tenant_id(workflow),
                 # Pre-gate inference failure: no quality gate ran, so report the
                 # compat DTO's documented default gate set as "checked".
                 quality_gates_checked=["length", "refusal", "markers"],
@@ -1228,7 +1293,8 @@ class HandlerDelegationWorkflow:
         assert workflow.inference_content is not None
         assert workflow.inference_model_used is not None
 
-        elapsed_ms = (time.monotonic_ns() - workflow.started_at_ns) // 1_000_000
+        # OMN-14208: wall-clock epoch subtraction — see started_at_ns docstring.
+        elapsed_ms = (time.time_ns() - workflow.started_at_ns) // 1_000_000
 
         # Compliance counters (OMN-10794): defaults preserve legacy single-attempt
         # semantics (1 attempt, total_tokens of that attempt) when the request
@@ -1932,7 +1998,7 @@ class HandlerDelegationWorkflow:
             attempts_count=workflow.escalation_count + 1,
             model_name=workflow.routing_decision.selected_model,
             session_id=None,
-            tenant_id=workflow.tenant_id,
+            tenant_id=_resolve_tenant_id(workflow),
             quality_gates_checked=quality_gates_checked,
             quality_gates_failed=[] if completed else list(result.failure_reasons),
             llm_call_id=workflow.inference_llm_call_id,
@@ -1971,7 +2037,8 @@ class HandlerDelegationWorkflow:
 
         assert workflow.request is not None
 
-        elapsed_ms = (time.monotonic_ns() - workflow.started_at_ns) // 1_000_000
+        # OMN-14208: wall-clock epoch subtraction — see started_at_ns docstring.
+        elapsed_ms = (time.time_ns() - workflow.started_at_ns) // 1_000_000
         delegated_to = (
             workflow.invocation_command.target_ref
             if workflow.invocation_command is not None
@@ -2014,7 +2081,7 @@ class HandlerDelegationWorkflow:
             attempts_count=1,
             model_name=delegated_to,
             session_id=None,
-            tenant_id=workflow.tenant_id,
+            tenant_id=_resolve_tenant_id(workflow),
             quality_gates_checked=["agent-task-lifecycle"],
             quality_gates_failed=[failure_reason] if failure_reason else [],
             llm_call_id=lifecycle_event.remote_task_handle or "",
