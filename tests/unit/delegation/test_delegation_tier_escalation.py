@@ -1311,89 +1311,86 @@ class TestClosedSetTierOrderOMN13157:
     to stall after cheap_cloud instead of escalating to local.
     """
 
-    def test_code_generation_after_local_escalates_to_cheap_cloud(
+    def test_code_generation_after_local_escalates_to_cheap_frontier(
         self, frontier_unconfigured_bifrost: None
     ) -> None:
-        """OMN-13157 AC1 / OMN-13599: after the preferred first hop (local) fails,
-        code_generation MUST escalate to cheap_cloud (contract order
-        [local, cheap_cloud, claude]).
+        """OMN-14225: after the preferred first hop (local) fails, code_generation
+        escalates to the FREE cheap_frontier tier BEFORE any paid tier (contract
+        order [local, cheap_frontier, cheap_cloud, claude]).
 
-        cheap_frontier is NOT in code_generation's tier_order so it must be
-        excluded WITHOUT needing to put it in excluded_tiers — the closed set
-        alone enforces the exclusion.
+        Free-before-paid: cheap_frontier (OpenRouter, free_local) precedes
+        cheap_cloud (z.ai glm-5.2, metered/PAID), so the ladder tries the free
+        frontier before spending. Supersedes the pre-OMN-14225 assertion that
+        after local came cheap_cloud.
         """
         result = next_eligible_tier(
             "local",
-            frozenset(),  # empty: cheap_frontier must be excluded by closed-set
-            task_type="code_generation",
-        )
-        assert result == "cheap_cloud", (
-            "code_generation tier_order=[local, cheap_cloud, claude]: "
-            "after local, next must be cheap_cloud — NOT cheap_frontier "
-            "(which is absent from the closed set)"
-        )
-
-    def test_code_generation_after_cheap_cloud_advances_to_cheap_frontier(
-        self, frontier_unconfigured_bifrost: None
-    ) -> None:
-        """OMN-13157 AC1 (continued) / OMN-13943: after cheap_cloud, code_generation
-        now escalates to cheap_frontier (contract order [local, cheap_cloud,
-        cheap_frontier, claude]).
-
-        OMN-13943 inserted cheap_frontier (OpenRouter Qwen3-Coder-480B, free tier)
-        between cheap_cloud and claude — it was previously declared in
-        routing_tiers.yaml but absent from EVERY task class's tier_order, so a
-        cheap_cloud RATE_LIMITED (GLM 429) had nowhere retryable to escalate to
-        before the claude ceiling. This test supersedes the OMN-13667/OMN-13599
-        assertion that escalation skipped straight to claude.
-        """
-        result = next_eligible_tier(
-            "cheap_cloud",
             frozenset(),
             task_type="code_generation",
         )
         assert result == "cheap_frontier", (
-            "code_generation tier_order=[local, cheap_cloud, cheap_frontier, "
-            "claude] (OMN-13943): after cheap_cloud, next must be cheap_frontier"
+            "code_generation tier_order=[local, cheap_frontier, cheap_cloud, "
+            "claude] (OMN-14225 free-before-paid): after local, next must be the "
+            "FREE cheap_frontier — NOT the paid cheap_cloud"
         )
 
-    def test_code_generation_after_cheap_frontier_advances_to_claude(
+    def test_code_generation_after_cheap_frontier_advances_to_cheap_cloud(
         self, frontier_unconfigured_bifrost: None
     ) -> None:
-        """OMN-13943: cheap_frontier is not the ceiling — claude still follows it.
+        """OMN-14225: after the FREE cheap_frontier fails, code_generation escalates
+        to the paid cheap_cloud (contract order [local, cheap_frontier, cheap_cloud,
+        claude]).
 
-        The ceiling backend (cloud-glm) is configured in
-        frontier_unconfigured_bifrost (shared with cheap_cloud), so claude IS
-        reachable after cheap_frontier for code_generation tasks (OMN-13667).
+        The free frontier tier is exhausted before any paid tier is reached.
+        Supersedes the pre-OMN-14225 assertion that after cheap_cloud came
+        cheap_frontier.
         """
         result = next_eligible_tier(
             "cheap_frontier",
             frozenset(),
             task_type="code_generation",
         )
+        assert result == "cheap_cloud", (
+            "code_generation tier_order=[local, cheap_frontier, cheap_cloud, "
+            "claude] (OMN-14225): after the free cheap_frontier, next is the paid "
+            "cheap_cloud"
+        )
+
+    def test_code_generation_after_cheap_cloud_advances_to_claude(
+        self, frontier_unconfigured_bifrost: None
+    ) -> None:
+        """OMN-14225: cheap_cloud is not the ceiling — claude follows it (contract
+        order [local, cheap_frontier, cheap_cloud, claude]).
+
+        The ceiling backend (cloud-glm) is configured in
+        frontier_unconfigured_bifrost (shared with cheap_cloud), so claude IS
+        reachable after cheap_cloud for code_generation tasks (OMN-13667).
+        """
+        result = next_eligible_tier(
+            "cheap_cloud",
+            frozenset(),
+            task_type="code_generation",
+        )
         assert result == "claude", (
-            "code_generation ceiling is claude; escalating past cheap_frontier "
-            "must still reach it (OMN-13667/OMN-13943)"
+            "code_generation ceiling is claude; escalating past cheap_cloud must "
+            "still reach it (OMN-13667/OMN-14225)"
         )
 
     def test_cheap_frontier_now_included_in_code_generation_closed_set(
         self, frontier_unconfigured_bifrost: None
     ) -> None:
-        """OMN-13157 AC3 (superseded by OMN-13943): cheap_frontier tier_order
-        membership for code_generation is now an explicit contract choice, not an
-        accidental append-unlisted-tiers bug.
+        """OMN-13157 AC3 / OMN-14225: cheap_frontier is an explicit member of
+        code_generation's closed-set tier_order, now ordered BEFORE the paid
+        cheap_cloud (free-before-paid).
 
-        Pre-OMN-13943, code_generation's closed-set contract order was [local,
-        cheap_cloud, claude] and cheap_frontier was deliberately absent (it was an
-        orphaned tier reachable by NO task class). OMN-13943 added it between
-        cheap_cloud and claude so a retryable cheap_cloud failure (GLM 429) has
-        somewhere to escalate to before the ceiling. This test proves the
-        closed-set tier_order — not the append-unlisted-tiers bug OMN-13157
-        guarded against — is what makes cheap_frontier reachable: declaration
-        order (task_type=None) and the code_generation contract order now agree.
+        The declaration order (task_type=None, routing_tiers.yaml) is UNCHANGED by
+        OMN-14225 ([local, cheap_cloud, cheap_frontier, claude]) — only the
+        per-task-class escalation_policy.tier_order was reordered. This test proves
+        cheap_frontier is a declared member of the code_generation contract order
+        and is reached from local (before cheap_cloud), not appended past the set.
         """
-        # Declaration-order (task_type=None) advances to cheap_frontier from
-        # cheap_cloud (unconditional routing_tiers.yaml order).
+        # Declaration-order (task_type=None) is unchanged: cheap_cloud→cheap_frontier
+        # (routing_tiers.yaml order, not reordered by OMN-14225).
         decl_result = next_eligible_tier(
             "cheap_cloud",
             frozenset(),
@@ -1401,17 +1398,16 @@ class TestClosedSetTierOrderOMN13157:
         )
         assert decl_result == "cheap_frontier"
 
-        # code_generation's closed-set contract order now agrees — cheap_frontier
-        # is an explicit, declared member of the tier_order (OMN-13943), not an
-        # unlisted tier the append-bug would have re-opened.
+        # code_generation's closed-set contract order reaches cheap_frontier from
+        # local (free-before-paid, OMN-14225) — an explicit, declared member.
         contract_result = next_eligible_tier(
-            "cheap_cloud",
+            "local",
             frozenset(),
             task_type="code_generation",
         )
         assert contract_result == "cheap_frontier", (
-            "cheap_frontier is now an explicit member of code_generation's "
-            "tier_order (OMN-13943)"
+            "cheap_frontier is an explicit member of code_generation's tier_order, "
+            "reached from local before the paid cheap_cloud (OMN-14225)"
         )
 
     def test_task_type_none_preserves_declaration_order(self) -> None:

@@ -103,9 +103,12 @@ task_classes:
       # `claude`. Inserted between `cheap_cloud` and `claude` so a GLM 429
       # transparently falls through to OpenRouter before exhausting the ladder.
       tier_order:
+        # OMN-14225: free before paid. cheap_frontier (OpenRouter Qwen3-Coder-480B,
+        # free_local) precedes cheap_cloud (z.ai glm-5.2, metered/PAID) so a task that
+        # must escalate off local tries the FREE frontier tier before any paid tier.
         - local
-        - cheap_cloud
         - cheap_frontier
+        - cheap_cloud
         - claude
   # OMN-14218: `refactor` is accepted at the delegation surface (allowed_task_types,
   # the CLI --task-type enum, task_model_overrides, and routing_tiers.yaml `use_for`)
@@ -159,9 +162,12 @@ task_classes:
       # common path terminates at local ($0) and never escalates.
       max_escalations: 3
       tier_order:
+        # OMN-14225: free before paid. cheap_frontier (OpenRouter Qwen3-Coder-480B,
+        # free_local) precedes cheap_cloud (z.ai glm-5.2, metered/PAID) so a task that
+        # must escalate off local tries the FREE frontier tier before any paid tier.
         - local
-        - cheap_cloud
         - cheap_frontier
+        - cheap_cloud
         - claude
   documentation:
     required_capabilities:

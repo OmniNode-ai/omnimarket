@@ -42,6 +42,7 @@ Related:
 from __future__ import annotations
 
 import logging
+import os
 from functools import lru_cache
 from pathlib import Path
 from uuid import NAMESPACE_DNS, UUID, uuid5
@@ -166,6 +167,28 @@ _CLOUD_BLOCKED_POLICY = "blocked"
 # OMN-13215: the shelled ``cli_agents`` tier was removed; ``local`` is the only
 # zero-cost local-execution tier exempt from the cloud-blocked routing policy.
 _LOCAL_TIERS = {"local"}
+
+# OMN-14225: paid escalation gate. A PAID (metered, cost_per_1k_tokens > 0) tier is
+# behind an explicit opt-in so delegation never SILENTLY spends. The FREE tiers
+# (local, cheap_frontier) are always eligible; a metered tier (cheap_cloud, the
+# claude ceiling) is reachable only when ONEX_DELEGATION_ALLOW_PAID is explicitly
+# truthy. Default OFF: a task that fails local + the free frontier terminates
+# (returning its best artifact, OMN-14220) at $0 rather than escalating to paid
+# without an operator opt-in. This is enforced at the single eligibility point
+# ``_tier_allowed_by_contract``, which both the routing reducer (``delta``) and the
+# bus-less escalation loop (``next_eligible_tier``/``first_eligible_tier`` via
+# ``_tier_can_route_task``) consult — so one gate covers every routing surface.
+_ALLOW_PAID_ENV = "ONEX_DELEGATION_ALLOW_PAID"
+_ALLOW_PAID_TRUTHY = frozenset({"1", "true", "yes", "on"})
+
+
+def _paid_escalation_allowed() -> bool:
+    """Return True only when paid (metered) escalation is explicitly enabled.
+
+    Read at call time (not import time) so a test or an operator can toggle the
+    gate per-process via ``ONEX_DELEGATION_ALLOW_PAID``.
+    """
+    return os.environ.get(_ALLOW_PAID_ENV, "").strip().lower() in _ALLOW_PAID_TRUTHY
 
 
 def _estimate_prompt_tokens(prompt: str) -> int:
@@ -531,6 +554,7 @@ def _tier_allowed_by_contract(
 
     Enforces:
       - undeclared task class (no contract entry) → only LOCAL tiers permitted
+      - OMN-14225: paid (metered) tier behind the ONEX_DELEGATION_ALLOW_PAID gate
       - cloud_routing_policy: "blocked" → only local tiers permitted
       - pricing_ceiling_per_1k_tokens: tier cost must not exceed ceiling
 
@@ -543,6 +567,13 @@ def _tier_allowed_by_contract(
     paid. Post-OMN-14218 every accepted task class is declared, so this changes no
     current path; it is a guardrail against any future accepted-but-undeclared class.
     """
+    # OMN-14225: paid tier behind an explicit gate — a metered (cost > 0) tier is
+    # eligible only when paid escalation is explicitly enabled. Applied first (and
+    # independent of the contract entry) so no routing surface can reach a paid tier
+    # while the gate is closed. Free tiers (local, cheap_frontier) are unaffected.
+    if tier.cost_per_1k_tokens > 0 and not _paid_escalation_allowed():
+        return False
+
     if entry is None:
         return tier.name in _LOCAL_TIERS
 
