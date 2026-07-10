@@ -41,7 +41,18 @@ class TestLoadInvariantContracts:
     def test_loads_all_seed_contracts(self) -> None:
         contracts = _load_invariant_contracts(None)
         codes = {c["principle_code"] for c in contracts}
-        assert codes == {"ARCH-001", "ARCH-002", "ARCH-003", "ARCH-004", "ARCH-005"}
+        # ARCH-006 is a governance-of-record declaration (no checker in
+        # _CHECKER_MAP): loaded + counted, but never emits a violation from this
+        # pure node. Enforcement lives on the branch-protection-audit EFFECT
+        # surface in omnibase_infra (OMN-14288).
+        assert codes == {
+            "ARCH-001",
+            "ARCH-002",
+            "ARCH-003",
+            "ARCH-004",
+            "ARCH-005",
+            "ARCH-006",
+        }
 
     def test_filters_by_invariant_ids(self) -> None:
         contracts = _load_invariant_contracts(["ARCH-001", "ARCH-003"])
@@ -149,7 +160,9 @@ class TestHandlerIntegration:
         handler = _make_handler()
         result = handler.handle(ArchInvariantLoopRequest(target_dirs=[]))
         assert result.violations == []
-        assert result.invariants_evaluated == 5
+        # 6 = ARCH-001..005 checkers + ARCH-006 governance-of-record declaration
+        # (loaded/counted, no checker → never a violation from this pure node).
+        assert result.invariants_evaluated == 6
 
     def test_nonexistent_dir_skipped(self, tmp_path: Path) -> None:
         handler = _make_handler()
