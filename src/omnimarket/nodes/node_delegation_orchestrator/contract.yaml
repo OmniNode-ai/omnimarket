@@ -40,7 +40,9 @@ state_io:
   database: "omnibase_infra"
   table: "delegation_workflow_state"
   key: "correlation_id"
-  codec: "omnimarket.nodes.node_delegation_orchestrator.state_codec"
+  codec:
+    module: "omnimarket.nodes.node_delegation_orchestrator.state_codec"
+    name: "StateIoCodec"
 # OMN-13629 (WS-F Phase 1): the legacy compat task-delegated.v1 co-writer was
 # removed. A delegation terminal now emits a single canonical event on
 # delegation-{completed,failed}.v1. The delegation + savings projections consume

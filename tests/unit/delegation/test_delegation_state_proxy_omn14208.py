@@ -7,9 +7,9 @@
 Covers:
 - Fallback: ContextVar unset -> DelegationWorkflowStateProxy forwards to the
   process-wide ClassVar dict (byte-for-byte the pre-OMN-14208 behavior).
-- Bound: ContextVar set -> proxy decode-once-and-caches from the bound raw
-  JSON mapping, and an in-place attribute mutation on the returned object is
-  visible without a `__setitem__` call.
+- Bound: omnibase_infra's CONTEXTVAR_STATE_IO_ROWS set -> proxy
+  decode-once-and-caches from the bound raw JSON, and an in-place attribute
+  mutation on the returned object is visible without a `__setitem__` call.
 - Tenant recovery: a cold-process reload (a fresh HandlerDelegationWorkflow /
   fresh proxy, never touched by this correlation_id before) that loads a
   durably-persisted row carrying `tenant_id` must carry that SAME tenant onto
@@ -17,6 +17,20 @@ Covers:
 - Re-fold determinism: replaying an event against a persisted
   `inference_intent_in_flight=True` flag emits nothing (the synchronous
   in-flight dedup guard survives a cold-process reload).
+- Flush bridge: `StateIoCodec.flush(cid)` — the pair-verify M1 bridge
+  omnibase_infra's wiring calls post-handle — round-trips tenant_id/state/
+  in_flight correctly across real handle() legs (pair-proof regression, M2).
+
+Since OMN-14208 pair-verify M1, the proxy bridges DIRECTLY to
+omnibase_infra's own `CONTEXTVAR_STATE_IO_ROWS` (the old market-local
+`_DELEGATION_STATE_CONTEXT` / `bind_state_context` were retired). This
+repo's pinned `omnibase-infra` rev predates that symbol (state_io ships in
+omnibase_infra first, OMN-14208), so `_bind_infra_state_io_rows` below
+injects a stand-in module exposing a real `ContextVar` of the same name
+when the genuine import fails — the exact `ImportError` fallback path
+`state_codec._read_active_rows` is built to tolerate. Once the infra pin is
+bumped past the OMN-14208 release, the real import succeeds and these tests
+exercise the genuine object with no changes needed here.
 
 Related:
     - OMN-14208: durable per-request delegation FSM state
@@ -24,6 +38,12 @@ Related:
 
 from __future__ import annotations
 
+import json
+import sys
+import types
+from collections.abc import Iterator
+from contextlib import contextmanager
+from contextvars import ContextVar
 from datetime import UTC, datetime
 from uuid import uuid4
 
@@ -48,6 +68,42 @@ from omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_resul
 from omnimarket.nodes.node_delegation_routing_reducer.models.model_routing_decision import (
     ModelRoutingDecision,
 )
+
+_STATE_STORE_ADAPTER_MODULE = "omnibase_infra.runtime.state_io.state_store_adapter"
+
+
+@contextmanager
+def _bind_infra_state_io_rows(
+    rows: dict[str, tuple[str | None, int]],
+) -> Iterator[None]:
+    """Bind a real ``CONTEXTVAR_STATE_IO_ROWS``-shaped ContextVar for the block.
+
+    Injects a stand-in module at ``sys.modules`` if the genuine
+    ``omnibase_infra.runtime.state_io.state_store_adapter`` import fails (the
+    pinned ``omnibase-infra`` rev in this repo predates the OMN-14208 module —
+    see ``state_codec._read_active_rows``). Restores whatever was previously
+    at that ``sys.modules`` key afterward, so this never leaks across tests.
+    """
+    previous = sys.modules.get(_STATE_STORE_ADAPTER_MODULE)
+    try:
+        from omnibase_infra.runtime.state_io import state_store_adapter
+
+        contextvar = state_store_adapter.CONTEXTVAR_STATE_IO_ROWS
+    except ImportError:
+        contextvar = ContextVar("onex_state_io_rows", default=None)
+        fake_module = types.ModuleType(_STATE_STORE_ADAPTER_MODULE)
+        fake_module.CONTEXTVAR_STATE_IO_ROWS = contextvar  # type: ignore[attr-defined]
+        sys.modules[_STATE_STORE_ADAPTER_MODULE] = fake_module
+
+    token = contextvar.set(rows)
+    try:
+        yield
+    finally:
+        contextvar.reset(token)
+        if previous is None:
+            sys.modules.pop(_STATE_STORE_ADAPTER_MODULE, None)
+        else:
+            sys.modules[_STATE_STORE_ADAPTER_MODULE] = previous
 
 
 def _make_request(
@@ -121,10 +177,10 @@ class TestProxyBoundContext:
             state=EnumDelegationState.RECEIVED,
             request=_make_request(cid),
         )
-        raw = {cid: state_codec.encode(state)}
+        payload_json = state_codec.encode(state).decode("utf-8")
 
         handler = HandlerDelegationWorkflow()
-        with state_codec.bind_state_context(raw):
+        with _bind_infra_state_io_rows({str(cid): (payload_json, 0)}):
             loaded_once = handler.workflows[cid]
             loaded_again = handler.workflows[cid]
             # Same cached object on a second read within the bound context —
@@ -137,6 +193,11 @@ class TestProxyBoundContext:
             loaded_once.compliance_attempts = 7
             assert handler.workflows[cid].compliance_attempts == 7
 
+            # Evict so this cid doesn't linger in the shared default proxy's
+            # cache beyond this test (the proxy is a process-wide singleton,
+            # OMN-14208 pair-verify M1).
+            handler.workflows.flush(cid)  # type: ignore[attr-defined]
+
     def test_flush_reencodes_and_evicts(self) -> None:
         cid = uuid4()
         state = DelegationWorkflowState(
@@ -144,10 +205,10 @@ class TestProxyBoundContext:
             state=EnumDelegationState.RECEIVED,
             request=_make_request(cid),
         )
-        raw = {cid: state_codec.encode(state)}
+        payload_json = state_codec.encode(state).decode("utf-8")
 
         handler = HandlerDelegationWorkflow()
-        with state_codec.bind_state_context(raw):
+        with _bind_infra_state_io_rows({str(cid): (payload_json, 0)}):
             handler.workflows[cid].compliance_attempts = 3
             proxy = handler.workflows
             flushed = proxy.flush(cid)  # type: ignore[attr-defined]
@@ -183,12 +244,15 @@ class TestTenantRecoveryOnColdReload:
             current_tier_name="local",
             tenant_id="tenant-xyz",
         )
-        raw = {cid: state_codec.encode(persisted_state)}
+        payload_json = state_codec.encode(persisted_state).decode("utf-8")
 
-        # A brand-new handler/proxy: nothing in this process has ever touched
-        # `cid` before — simulates the cold-process replay this design closes.
+        # A brand-new handler: nothing in this process has ever touched `cid`
+        # before — simulates the cold-process replay this design closes (the
+        # shared default proxy's cache has no entry for this fresh random
+        # cid regardless of process-lifetime sharing, OMN-14208 pair-verify
+        # M1).
         handler = HandlerDelegationWorkflow()
-        with state_codec.bind_state_context(raw):
+        with _bind_infra_state_io_rows({str(cid): (payload_json, 0)}):
             events = handler.handle_gate_result(
                 ModelQualityGateResult(
                     correlation_id=cid,  # type: ignore[arg-type]
@@ -196,6 +260,7 @@ class TestTenantRecoveryOnColdReload:
                     quality_score=0.9,
                 )
             )
+            handler.workflows.flush(cid)  # type: ignore[attr-defined]
 
         terminal = next(e for e in events if isinstance(e, ModelDelegationEvent))
         result: ModelDelegationResult = terminal.payload
@@ -223,10 +288,62 @@ class TestRefoldDeterminism:
             inference_intent_in_flight=True,
             current_tier_name="local",
         )
-        raw = {cid: state_codec.encode(persisted_state)}
+        payload_json = state_codec.encode(persisted_state).decode("utf-8")
 
         handler = HandlerDelegationWorkflow()
-        with state_codec.bind_state_context(raw):
+        with _bind_infra_state_io_rows({str(cid): (payload_json, 0)}):
             events = handler.handle_routing_decision(_make_routing_decision(cid))
+            handler.workflows.flush(cid)  # type: ignore[attr-defined]
 
         assert events == []
+
+
+@pytest.mark.unit
+class TestStateIoCodecFlushBridge:
+    """``StateIoCodec.flush(cid)`` is the pair-verify M1 bridge omnibase_infra's
+    wiring calls post-handle (handler_wiring.py ``_load_handle_persist``)
+    instead of reading a write-back value out of ``CONTEXTVAR_STATE_IO_ROWS``
+    itself. This drives two REAL handle() legs against the shared default
+    proxy and asserts the flushed JSON round-trips tenant_id/state/in_flight
+    correctly — the exact guard the M2 fix (well-known ``in_flight`` key)
+    needed and the individually-green infra/market suites lacked before the
+    pair-verify (OMN-14208).
+    """
+
+    def test_flush_round_trips_tenant_state_and_in_flight_through_real_handle_legs(
+        self,
+    ) -> None:
+        cid = uuid4()
+        request = _make_request(cid, tenant_id="acme-corp")
+        routing_decision = _make_routing_decision(cid)
+
+        handler = HandlerDelegationWorkflow()
+        codec = state_codec.StateIoCodec()
+        with _bind_infra_state_io_rows({str(cid): (None, 0)}):
+            # Leg 1: no row yet -> creates the workflow (in_flight=False).
+            handler.handle_delegation_request(request)
+            # Leg 2: RECEIVED -> ROUTED, sets inference_intent_in_flight=True.
+            handler.handle_routing_decision(routing_decision)
+
+            flushed = codec.flush(str(cid))
+
+        assert flushed is not None
+        parsed = json.loads(flushed)
+        assert parsed["tenant_id"] == "acme-corp"
+        assert parsed["state"] == EnumDelegationState.ROUTED.value
+        assert parsed["in_flight"] is True
+
+        # Round-trips back through the real codec too.
+        decoded = state_codec.decode(flushed)
+        assert decoded.tenant_id == "acme-corp"
+        assert decoded.state == EnumDelegationState.ROUTED
+        assert decoded.inference_intent_in_flight is True
+
+    def test_flush_returns_none_when_untouched(self) -> None:
+        """A dispatch that never loads/sets `cid` on the shared proxy this
+        request must return None from flush -- infra then skips persistence
+        (matches _load_handle_persist's "nothing changed" no-op-skip path)."""
+        cid = uuid4()
+        codec = state_codec.StateIoCodec()
+        with _bind_infra_state_io_rows({str(cid): (None, 0)}):
+            assert codec.flush(str(cid)) is None

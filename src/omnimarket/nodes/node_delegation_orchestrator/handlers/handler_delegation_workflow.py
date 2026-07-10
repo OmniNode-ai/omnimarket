@@ -770,20 +770,26 @@ class HandlerDelegationWorkflow:
             self._workflows = workflows
         else:
             # OMN-14208: default swaps from the bare ClassVar dict to the
-            # ContextVar-backed proxy. Local import: state_codec imports
-            # DelegationWorkflowState from this module, so importing the
-            # proxy at module scope here would be circular. The proxy
-            # transparently forwards every operation to `_shared_workflows`
-            # when the state_io ContextVar is unset (tests, standalone, any
-            # caller outside the runtime dispatch-seam boundary hook), so this
-            # swap is behavior-preserving for every existing caller — it only
-            # activates decode/CAS-persist semantics under a live state_io
-            # binding.
+            # process-wide shared ContextVar-backed proxy singleton. Local
+            # import: state_codec imports DelegationWorkflowState from this
+            # module, so importing the proxy at module scope here would be
+            # circular. The proxy transparently forwards every operation to
+            # `_shared_workflows` when the state_io ContextVar is unset
+            # (tests, standalone, any caller outside the runtime dispatch-seam
+            # boundary hook), so this swap is behavior-preserving for every
+            # existing caller — it only activates decode/CAS-persist
+            # semantics under a live state_io binding. The shared singleton
+            # (rather than a fresh instance per handler) is what lets
+            # `StateIoCodec.flush` — resolved independently by
+            # omnibase_infra's wiring — reach the SAME per-request decoded
+            # cache this proxy populates (pair-verify M1); production
+            # constructs exactly one HandlerDelegationWorkflow, so this is a
+            # no-op there.
             from omnimarket.nodes.node_delegation_orchestrator.state_codec import (
-                DelegationWorkflowStateProxy,
+                get_default_proxy,
             )
 
-            self._workflows = DelegationWorkflowStateProxy()
+            self._workflows = get_default_proxy()
 
     @property
     def workflows(self) -> MutableMapping[UUID, DelegationWorkflowState]:

@@ -20,6 +20,7 @@ default on every downstream projection.
 from __future__ import annotations
 
 import dataclasses
+import json
 from datetime import UTC, datetime
 from uuid import NAMESPACE_DNS, uuid4, uuid5
 
@@ -188,6 +189,34 @@ def test_delegation_state_roundtrip_preserves_every_field() -> None:
     # Whole-object equality as a belt-and-suspenders check (the dataclass's
     # generated __eq__ compares every field at once).
     assert decoded == original
+
+
+def test_delegation_state_roundtrip_encodes_well_known_key_interface() -> None:
+    """OMN-14208 pair-verify M2: the omnibase_infra state_io wiring seam never
+    decodes this payload's business shape — it extracts exactly 3 well-known
+    TOP-LEVEL JSON keys (``tenant_id`` / ``state`` / ``in_flight``,
+    handler_wiring.py ``_extract_state_io_metadata``) to populate its
+    denormalized columns. The dataclass's own field-by-field loop above can't
+    catch a well-known-KEY gap: ``DelegationWorkflowState`` has no
+    ``in_flight`` field at all (the real field is
+    ``inference_intent_in_flight``), so a bare TypeAdapter dump left that
+    column permanently False in every persisted row. Assert the wire shape
+    directly instead of trusting the dataclass round-trip alone.
+    """
+    original = _build_fully_populated_state()
+    assert original.inference_intent_in_flight is True
+
+    encoded = state_codec.encode(original)
+    parsed = json.loads(encoded)
+
+    assert parsed["tenant_id"] == original.tenant_id
+    assert parsed["state"] == original.state.value
+    assert parsed["in_flight"] is True
+
+    # decode() must strip the well-known key before validating -- it has no
+    # corresponding dataclass field -- and still round-trip the real one.
+    decoded = state_codec.decode(encoded)
+    assert decoded.inference_intent_in_flight is True
 
 
 def test_delegation_state_roundtrip_decode_accepts_str() -> None:

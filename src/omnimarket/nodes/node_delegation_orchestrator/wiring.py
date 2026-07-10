@@ -59,16 +59,23 @@ def get_shared_delegation_workflow_handler() -> HandlerDelegationWorkflow:
             HandlerDelegationWorkflow,
         )
         from omnimarket.nodes.node_delegation_orchestrator.state_codec import (
-            DelegationWorkflowStateProxy,
+            get_default_proxy,
         )
 
-        # OMN-14208: install the ContextVar-backed proxy explicitly at the
-        # singleton construction site (this is also HandlerDelegationWorkflow's
-        # own default, but naming it here documents that the live dispatch
-        # path is durable-state-capable rather than relying on the
-        # constructor's default staying in sync).
+        # OMN-14208: install the SAME shared-singleton proxy
+        # StateIoCodec.flush reads from explicitly at this construction site
+        # (this is also HandlerDelegationWorkflow's own default, but naming
+        # it here documents that the live dispatch path is
+        # durable-state-capable rather than relying on the constructor's
+        # default staying in sync). Passing a freshly-constructed
+        # DelegationWorkflowStateProxy() here — rather than the shared
+        # get_default_proxy() singleton — would silently break the M1 bridge:
+        # the handler would decode/cache into a proxy instance
+        # StateIoCodec.flush never reads from, so infra's post-handle
+        # flush(cid) would always observe None and never persist (OMN-14208
+        # pair-verify M1).
         _SHARED_WORKFLOW_HANDLER = HandlerDelegationWorkflow(
-            workflows=DelegationWorkflowStateProxy()
+            workflows=get_default_proxy()
         )
     return _SHARED_WORKFLOW_HANDLER
 
