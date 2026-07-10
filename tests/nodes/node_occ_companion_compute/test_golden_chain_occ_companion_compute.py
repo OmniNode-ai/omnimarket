@@ -93,6 +93,7 @@ class TestContractYaml:
         data = yaml.safe_load(contract_path.read_text())
         assert isinstance(data, dict)
         assert data["name"] == "node_occ_companion_compute"
+        assert data["lifecycle"] == "experimental"
         assert data["node_type"] == "COMPUTE_GENERIC"
 
     def test_contract_declares_handler_routing(self, contract_path: Path) -> None:

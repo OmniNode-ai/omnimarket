@@ -13,6 +13,7 @@
 #   - OMN-14233: per-entry hashing / two-audiences supersession (T3)
 #   - OMN-14055: COMPUTE-node-as-attestation-oracle (RSD-5, consumes this handler)
 name: "node_occ_companion_compute"
+lifecycle: experimental
 node_type: "COMPUTE_GENERIC"
 contract_version:
   major: 1
