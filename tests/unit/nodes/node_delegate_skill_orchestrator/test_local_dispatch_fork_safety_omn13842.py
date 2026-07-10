@@ -154,6 +154,7 @@ def test_dispatch_returns_typed_receipt_through_process_boundary(
                 wait=True,
                 quality_contract_mode="extend_task_class",
                 acceptance_criteria=(),
+                tenant_id=None,
             ),
             timeout=30.0,
         )

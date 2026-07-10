@@ -446,6 +446,7 @@ class LocalDelegationDispatchPort:
         wait: bool,
         quality_contract_mode: str,
         acceptance_criteria: tuple[str, ...],
+        tenant_id: str | None,
     ) -> dict[str, object]:
         # OMN-14001 — read the captured-outcome ROI overlay ONCE per delegation
         # (fail-open None when no ROI projection is wired). Threaded as a pure input
@@ -453,13 +454,16 @@ class LocalDelegationDispatchPort:
         # is demoted from BOTH the initial resolution and every escalation hop, with
         # the same overlay across the whole dispatch for a deterministic decision.
         roi_overlay = self._roi_overlay_reader(task_type)
-        # OMN-14058 (OPERATOR-ACCEPTED INTERIM): resolve tenant identity ONCE
-        # at request-acceptance, mirroring the bus orchestrator's
-        # HandlerDelegationWorkflow.handle_delegation_request. No tenant
-        # identity otherwise exists on this bus-less local CLI path, so
-        # evidence rows would silently land under the 'omninode' column
-        # default. The durable per-tenant identity design is OMN-14107.
-        resolved_tenant_id = get_settings().onex_tenant_id or None
+        # OMN-14058 (OPERATOR-ACCEPTED INTERIM), refined by OMN-14349: prefer a
+        # caller-supplied verified tenant_id (would only be non-None if something
+        # upstream of this genuinely bus-less path stamped one -- structurally
+        # rare, but never override a real value with the local env-var interim).
+        # Falls back to ONEX_TENANT_ID, mirroring the bus orchestrator's
+        # HandlerDelegationWorkflow.handle_delegation_request. No tenant identity
+        # otherwise exists on this bus-less local CLI path, so evidence rows
+        # would silently land under the 'omninode' column default. The durable
+        # per-tenant identity design is OMN-14107.
+        resolved_tenant_id = tenant_id or get_settings().onex_tenant_id or None
 
         # 1. ROUTING AUTHORITY — resolve the INITIAL (cheapest-first) backend.
         #    Cheapest-first among tiers NOT ROI-suppressed; escalation only advances

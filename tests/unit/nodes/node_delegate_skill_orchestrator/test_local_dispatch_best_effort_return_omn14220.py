@@ -140,6 +140,7 @@ def test_terminal_failure_returns_best_authored_artifact(
             wait=True,
             quality_contract_mode="extend_task_class",
             acceptance_criteria=(),
+            tenant_id=None,
         )
     )
 
