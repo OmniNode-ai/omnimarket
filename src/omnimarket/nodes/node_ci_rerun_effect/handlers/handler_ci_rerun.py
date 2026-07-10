@@ -20,9 +20,6 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 from typing import Any
-from uuid import uuid4
-
-from omnibase_core.models.dispatch.model_handler_output import ModelHandlerOutput
 
 from omnimarket.config.service_endpoints import GITHUB_REST_URL
 from omnimarket.inference.secret_store_resolver import resolve_api_key_async
@@ -41,9 +38,15 @@ _CONTRACT_PATH = Path(__file__).resolve().parents[1] / "contract.yaml"
 
 
 class HandlerCiRerunEffect:
-    """EFFECT: trigger the GitHub rerun-failed-jobs API on a PR's failing run."""
+    """EFFECT: trigger the GitHub rerun-failed-jobs API on a PR's failing run.
 
-    async def handle(self, request: ModelCiRerunCommand) -> ModelHandlerOutput:  # type: ignore[type-arg]
+    Canonical thin shape (OMN-14242): ``handle()`` takes a single typed
+    ``ModelCiRerunCommand`` payload and returns the typed
+    ``ModelCiRerunTriggeredEvent`` result directly — no envelope, no
+    ``ModelHandlerOutput`` wrapper, no coercion; the runtime wraps.
+    """
+
+    async def handle(self, request: ModelCiRerunCommand) -> ModelCiRerunTriggeredEvent:
         """Trigger CI rerun. Real work runs inline before returning.
 
         The GitHub token ref-name is sourced from the contract ``secrets`` block
@@ -110,7 +113,7 @@ class HandlerCiRerunEffect:
                 elapsed,
             )
 
-        completion = ModelCiRerunTriggeredEvent(
+        return ModelCiRerunTriggeredEvent(
             pr_number=request.pr_number,
             repo=request.repo,
             correlation_id=request.correlation_id,
@@ -120,12 +123,6 @@ class HandlerCiRerunEffect:
             rerun_triggered=triggered,
             error=error,
             elapsed_seconds=elapsed,
-        )
-        return ModelHandlerOutput.for_effect(
-            input_envelope_id=uuid4(),
-            correlation_id=request.correlation_id,
-            handler_id="node_ci_rerun_effect",
-            events=(completion,),
         )
 
     async def _rerun(

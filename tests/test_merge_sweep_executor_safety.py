@@ -178,10 +178,8 @@ async def test_rebase_conflict_yields_stuck_no_force_push() -> None:
         patch("pathlib.Path.exists", return_value=True),
     ):
         handler = HandlerRebaseEffect()
-        output = await handler.handle(cmd)
+        event = await handler.handle(cmd)
 
-    assert len(output.events) == 1
-    event = output.events[0]
     assert event.success is False
     # conflict_files may be from --diff-filter=U or empty; either way, no force-push
     # Verify force-push was NOT called
@@ -298,13 +296,11 @@ async def test_rebase_protected_head_ref_refused_without_git_call() -> None:
 
     with patch("asyncio.create_subprocess_exec", side_effect=fail_if_called):
         handler = HandlerRebaseEffect()
-        output = await handler.handle(cmd)
+        event = await handler.handle(cmd)
 
     assert not git_called, (
         "git subprocess was called for protected head ref — guard failed"
     )
-    assert len(output.events) == 1
-    event = output.events[0]
     assert event.success is False
     assert "protected" in (event.error or "").lower()
 

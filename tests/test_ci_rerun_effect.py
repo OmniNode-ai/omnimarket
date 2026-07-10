@@ -46,18 +46,19 @@ def _cmd(run_id_github: str = "99887766") -> ModelCiRerunCommand:
 
 @pytest.mark.asyncio
 async def test_successful_rerun_returns_triggered_true() -> None:
-    """GitHub rerun-failed-jobs API succeeds → rerun_triggered=True."""
+    """GitHub rerun-failed-jobs API succeeds → rerun_triggered=True.
+
+    Canonical thin shape (OMN-14242): handle() returns the typed
+    ModelCiRerunTriggeredEvent directly — no ModelHandlerOutput envelope.
+    """
     with patch.object(HandlerCiRerunEffect, "_rerun_sync", return_value=(True, None)):
         handler = HandlerCiRerunEffect()
-        output = await handler.handle(_cmd())
+        evt = await handler.handle(_cmd())
 
-    assert len(output.events) == 1
-    evt = output.events[0]
     assert isinstance(evt, ModelCiRerunTriggeredEvent)
     assert evt.rerun_triggered is True
     assert evt.error is None
     assert evt.run_id_github == "99887766"
-    assert output.result is None
 
 
 @pytest.mark.asyncio
@@ -69,9 +70,8 @@ async def test_failed_rerun_returns_triggered_false_with_error() -> None:
         return_value=(False, "run not found"),
     ):
         handler = HandlerCiRerunEffect()
-        output = await handler.handle(_cmd())
+        evt = await handler.handle(_cmd())
 
-    evt = output.events[0]
     assert isinstance(evt, ModelCiRerunTriggeredEvent)
     assert evt.rerun_triggered is False
     assert evt.error == "run not found"
@@ -82,9 +82,8 @@ async def test_elapsed_seconds_recorded() -> None:
     """Elapsed time is non-negative."""
     with patch.object(HandlerCiRerunEffect, "_rerun_sync", return_value=(True, None)):
         handler = HandlerCiRerunEffect()
-        output = await handler.handle(_cmd())
+        evt = await handler.handle(_cmd())
 
-    evt = output.events[0]
     assert isinstance(evt, ModelCiRerunTriggeredEvent)
     assert evt.elapsed_seconds >= 0.0
 
@@ -94,9 +93,8 @@ async def test_completion_event_carries_correct_metadata() -> None:
     """Completion event carries pr_number, repo, correlation_id, run_id, total_prs."""
     with patch.object(HandlerCiRerunEffect, "_rerun_sync", return_value=(True, None)):
         handler = HandlerCiRerunEffect()
-        output = await handler.handle(_cmd("12345678"))
+        evt = await handler.handle(_cmd("12345678"))
 
-    evt = output.events[0]
     assert isinstance(evt, ModelCiRerunTriggeredEvent)
     assert evt.pr_number == 600
     assert evt.repo == "OmniNode-ai/omni_home"
@@ -140,9 +138,8 @@ async def test_empty_commit_mode_uses_empty_commit_path_not_rerun() -> None:
         ),
     ):
         handler = HandlerCiRerunEffect()
-        output = await handler.handle(_empty_commit_cmd())
+        evt = await handler.handle(_empty_commit_cmd())
 
-    evt = output.events[0]
     assert isinstance(evt, ModelCiRerunTriggeredEvent)
     assert evt.rerun_triggered is True
     assert evt.error is None
@@ -157,9 +154,8 @@ async def test_empty_commit_mode_failure_surfaces_error() -> None:
         return_value=(False, "push rejected"),
     ):
         handler = HandlerCiRerunEffect()
-        output = await handler.handle(_empty_commit_cmd())
+        evt = await handler.handle(_empty_commit_cmd())
 
-    evt = output.events[0]
     assert isinstance(evt, ModelCiRerunTriggeredEvent)
     assert evt.rerun_triggered is False
     assert evt.error == "push rejected"
@@ -174,9 +170,8 @@ async def test_empty_commit_mode_requires_head_branch_before_github_call() -> No
         side_effect=AssertionError("must not call GitHub without head_branch"),
     ):
         handler = HandlerCiRerunEffect()
-        output = await handler.handle(cmd)
+        evt = await handler.handle(cmd)
 
-    evt = output.events[0]
     assert isinstance(evt, ModelCiRerunTriggeredEvent)
     assert evt.rerun_triggered is False
     assert evt.error == "empty_commit requires head_branch"
@@ -191,9 +186,8 @@ async def test_empty_commit_mode_requires_head_sha_before_github_call() -> None:
         side_effect=AssertionError("must not call GitHub without head_sha"),
     ):
         handler = HandlerCiRerunEffect()
-        output = await handler.handle(cmd)
+        evt = await handler.handle(cmd)
 
-    evt = output.events[0]
     assert isinstance(evt, ModelCiRerunTriggeredEvent)
     assert evt.rerun_triggered is False
     assert evt.error == "empty_commit requires head_sha"
@@ -226,3 +220,13 @@ def test_ci_rerun_command_rejects_empty_commit_with_run_id() -> None:
             head_branch="feat/wedged",
             head_sha="abc123",
         )
+
+
+def test_contract_declares_output_topic() -> None:
+    """The CI-rerun EFFECT contract declares the topic it publishes on."""
+    from pathlib import Path
+
+    import omnimarket.nodes.node_ci_rerun_effect as node_pkg
+
+    contract_text = (Path(node_pkg.__file__).parent / "contract.yaml").read_text()
+    assert "onex.evt.omnimarket.pr-ci-rerun-triggered.v1" in contract_text

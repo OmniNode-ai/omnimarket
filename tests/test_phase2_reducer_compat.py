@@ -63,9 +63,7 @@ def _input(**kwargs: object) -> ModelSweepOutcomeInput:
 
 def _classify(**kwargs: object) -> ModelSweepOutcomeClassified:
     req = _input(**kwargs)
-    output = _classify_handler.handle(req)
-    assert output.result is not None
-    result = output.result
+    result = _classify_handler.handle(req)
     assert isinstance(result, ModelSweepOutcomeClassified)
     return result
 
@@ -444,9 +442,7 @@ def test_no_attribute_errors_on_phase2_event_shapes() -> None:
             **kwargs,
         )
         try:
-            output = _classify_handler.handle(req)
-            assert output.result is not None
-            result = output.result
+            result = _classify_handler.handle(req)
             assert isinstance(result, ModelSweepOutcomeClassified)
             assert result.outcome is not None
         except (KeyError, AttributeError) as exc:

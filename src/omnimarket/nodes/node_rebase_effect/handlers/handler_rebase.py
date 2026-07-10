@@ -16,6 +16,11 @@ Branch guards:
   - Refuses to operate on main/master/develop as HEAD (feature-branch only).
   - Refuses if head_ref == base_ref.
   - Force-with-lease=<ref>:<expected_sha> for concurrent-push safety.
+
+Thin canonical shape (OMN-14242): ``handle()`` returns the typed
+``ModelRebaseCompletedEvent`` directly -- no ``ModelHandlerOutput`` wrapper,
+no envelope, no coercion. The runtime wraps the single typed return into the
+dispatch envelope.
 """
 
 from __future__ import annotations
@@ -26,9 +31,6 @@ import logging
 import os
 import time
 from pathlib import Path
-from uuid import uuid4
-
-from omnibase_core.models.dispatch.model_handler_output import ModelHandlerOutput
 
 from omnimarket.nodes.node_merge_sweep_triage_orchestrator.models.model_triage_request import (
     ModelRebaseCommand,
@@ -67,9 +69,15 @@ def _worktree_root() -> Path:
 
 
 class HandlerRebaseEffect:
-    """EFFECT: rebase PR branch via per-invocation ephemeral worktree."""
+    """EFFECT: rebase PR branch via per-invocation ephemeral worktree.
 
-    async def handle(self, request: ModelRebaseCommand) -> ModelHandlerOutput:  # type: ignore[type-arg]
+    Thin canonical shape (OMN-14242): ``handle()`` returns the typed
+    ``ModelRebaseCompletedEvent`` directly -- no ``ModelHandlerOutput``
+    wrapper, no envelope, no coercion. The runtime wraps the single typed
+    return into the dispatch envelope.
+    """
+
+    async def handle(self, request: ModelRebaseCommand) -> ModelRebaseCompletedEvent:
         """Rebase PR. Real work runs inline before returning."""
         t0 = time.monotonic()
         completion = await self._rebase(request)
@@ -95,12 +103,7 @@ class HandlerRebaseEffect:
                 elapsed,
             )
 
-        return ModelHandlerOutput.for_effect(
-            input_envelope_id=uuid4(),
-            correlation_id=request.correlation_id,
-            handler_id="node_rebase_effect",
-            events=(completion,),
-        )
+        return completion
 
     async def _rebase(self, request: ModelRebaseCommand) -> ModelRebaseCompletedEvent:
         """Core rebase logic. Creates/tears down ephemeral worktree per invocation."""

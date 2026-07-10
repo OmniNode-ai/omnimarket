@@ -378,12 +378,7 @@ def _effect_event_to_input(event: Any) -> ModelSweepOutcomeInput:
 
 
 def _classify_outcome(request: ModelSweepOutcomeInput) -> ModelSweepOutcomeClassified:
-    output = HandlerSweepOutcomeClassify().handle(request)
-    if output.result is None:
-        raise RuntimeError("node_sweep_outcome_classify returned no result")
-    result = output.result
-    if not isinstance(result, ModelSweepOutcomeClassified):
-        raise TypeError(f"unexpected outcome type: {type(result).__name__}")
+    result = HandlerSweepOutcomeClassify().handle(request)
     _log(
         "node_sweep_outcome_classify",
         f"{result.repo}#{result.pr_number} source={result.source_event_type} "
@@ -449,17 +444,28 @@ async def _execute_command(
         )
         output = await HandlerAutoMergeArmEffect().handle(command)
     elif isinstance(command, ModelCiRerunCommand):
+        # node_ci_rerun_effect is canonical thin shape (OMN-14242): handle()
+        # returns the typed ModelCiRerunTriggeredEvent directly, not a
+        # ModelHandlerOutput envelope, so it can't join the shared
+        # `for event in output.events` loop below.
         _log(
             "node_ci_rerun_effect",
             f"executing {command.repo}#{command.pr_number} run={command.run_id_github}",
         )
-        output = await HandlerCiRerunEffect().handle(command)
+        completion = await HandlerCiRerunEffect().handle(command)
+        _log("node_ci_rerun_effect", _dump_model(completion))
+        return [_classify_outcome(_effect_event_to_input(completion))]
     elif isinstance(command, ModelRebaseCommand):
         _log(
             "node_rebase_effect",
             f"executing {command.repo}#{command.pr_number} head={command.head_ref_name}",
         )
-        output = await HandlerRebaseEffect().handle(command)
+        # node_rebase_effect is canonical thin shape (OMN-14242): handle()
+        # returns the typed completion event directly, not a ModelHandlerOutput
+        # envelope — the runtime wraps it.
+        rebase_event = await HandlerRebaseEffect().handle(command)
+        _log("node_rebase_effect", _dump_model(rebase_event))
+        return [_classify_outcome(_effect_event_to_input(rebase_event))]
     else:
         _log(type(command).__name__, f"no live effect wired {_dump_model(command)}")
         return []
