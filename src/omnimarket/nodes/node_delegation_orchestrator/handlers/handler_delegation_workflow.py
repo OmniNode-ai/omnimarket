@@ -667,7 +667,13 @@ class DelegationWorkflowState:
     # from acceptance. Defaults to '' (OFF-arm: no context pack supplied).
     context_pack_hash: str = ""
     gate_result: ModelQualityGateResult | None = None
-    started_at_ns: int = field(default_factory=time.monotonic_ns)
+    # OMN-14208: wall-clock epoch, NOT time.monotonic_ns(). monotonic_ns has a
+    # process/boot-local epoch — durable cross-process state (a leg replayed in
+    # a different process than the one that started the workflow) makes a
+    # monotonic-vs-monotonic subtraction across processes meaningless (garbage
+    # or negative elapsed_ms). latency_ms is an observability metric on the
+    # terminal event, not an ordering authority, so an absolute epoch is correct.
+    started_at_ns: int = field(default_factory=time.time_ns)
     # Compliance-loop counters (OMN-10794). The orchestrator owns the loop,
     # ``compliance_attempts`` counts the inference attempts it has issued so
     # far (1 = first attempt) and ``accumulated_tokens`` is the running sum
@@ -990,7 +996,9 @@ class HandlerDelegationWorkflow:
             return []
 
         if response.error_message:
-            elapsed_ms = (time.monotonic_ns() - workflow.started_at_ns) // 1_000_000
+            # OMN-14208: wall-clock epoch subtraction (started_at_ns is now
+            # time.time_ns()) — see the field docstring above.
+            elapsed_ms = (time.time_ns() - workflow.started_at_ns) // 1_000_000
             model_used = response.model_used or workflow.routing_decision.selected_model
 
             # Record this tier's failed attempt in escalation history before
@@ -1228,7 +1236,8 @@ class HandlerDelegationWorkflow:
         assert workflow.inference_content is not None
         assert workflow.inference_model_used is not None
 
-        elapsed_ms = (time.monotonic_ns() - workflow.started_at_ns) // 1_000_000
+        # OMN-14208: wall-clock epoch subtraction — see started_at_ns docstring.
+        elapsed_ms = (time.time_ns() - workflow.started_at_ns) // 1_000_000
 
         # Compliance counters (OMN-10794): defaults preserve legacy single-attempt
         # semantics (1 attempt, total_tokens of that attempt) when the request
@@ -1971,7 +1980,8 @@ class HandlerDelegationWorkflow:
 
         assert workflow.request is not None
 
-        elapsed_ms = (time.monotonic_ns() - workflow.started_at_ns) // 1_000_000
+        # OMN-14208: wall-clock epoch subtraction — see started_at_ns docstring.
+        elapsed_ms = (time.time_ns() - workflow.started_at_ns) // 1_000_000
         delegated_to = (
             workflow.invocation_command.target_ref
             if workflow.invocation_command is not None
