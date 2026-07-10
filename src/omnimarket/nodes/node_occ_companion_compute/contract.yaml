@@ -15,6 +15,7 @@
 name: "node_occ_companion_compute"
 lifecycle: experimental
 node_type: "COMPUTE_GENERIC"
+runtime_profiles: [main]
 contract_version:
   major: 1
   minor: 0
@@ -36,6 +37,12 @@ handler_routing:
       handler:
         name: "HandlerOccCompanionCompute"
         module: "omnimarket.nodes.node_occ_companion_compute.handlers.handler_occ_companion_compute"
+terminal_event: "onex.evt.omnimarket.occ-companion-compute-completed.v1"
+event_bus:
+  subscribe_topics:
+    - "onex.cmd.omnimarket.occ-companion-compute-requested.v1"
+  publish_topics:
+    - "onex.evt.omnimarket.occ-companion-compute-completed.v1"
 metadata:
   transport_type: kafka
   description: "OCC companion compute node — pure deterministic producer + attestation oracle"

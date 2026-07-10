@@ -109,6 +109,19 @@ class TestContractYaml:
         assert data["input_model"]["name"] == "ModelOccCompanionRequest"
         assert data["output_model"]["name"] == "ModelOccCompanionPlan"
 
+    def test_contract_declares_runtime_topics(self, contract_path: Path) -> None:
+        data = yaml.safe_load(contract_path.read_text())
+        assert data["runtime_profiles"] == ["main"]
+        assert data["terminal_event"] == (
+            "onex.evt.omnimarket.occ-companion-compute-completed.v1"
+        )
+        assert data["event_bus"]["subscribe_topics"] == [
+            "onex.cmd.omnimarket.occ-companion-compute-requested.v1"
+        ]
+        assert data["event_bus"]["publish_topics"] == [
+            "onex.evt.omnimarket.occ-companion-compute-completed.v1"
+        ]
+
 
 class TestMetadataYaml:
     def test_metadata_exists(self, metadata_path: Path) -> None:
@@ -178,5 +191,16 @@ class TestGoldenChainReplay:
         plan = compute_companion_plan(_request())
         assert plan.tickets == ("OMN-14285",)
         assert plan.companion_files
+
+    def test_plan_result_covers_declared_terminal_event(
+        self, contract_path: Path
+    ) -> None:
+        data = yaml.safe_load(contract_path.read_text())
+        plan = compute_companion_plan(_request())
+        assert plan.deterministic_digest
+        assert (
+            data["terminal_event"]
+            == "onex.evt.omnimarket.occ-companion-compute-completed.v1"
+        )
         assert plan.no_op is False
         assert all(f.is_net_new for f in plan.companion_files)

@@ -2,7 +2,7 @@ name: node_occ_companion_compute
 version: "1.0.0"
 description: "Pure computation: renders the deterministic OCC companion plan from PR + OCC state with zero I/O; doubles as the OMN-14055 attestation oracle"
 pack: occ_companion
-node_role: companion_compute
+node_role: compute
 display_name: "OCC Companion Compute"
 omnibase_core_compat: ">=0.39.0,<1.0.0"
 entry_points:
