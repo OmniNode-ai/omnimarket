@@ -68,14 +68,18 @@ _TWO_FINDINGS = findings_json(
 
 class _TypedHandlerWrapper:
     """Bridge adapter kwargs into the orchestrator's typed ReviewRequest, returning
-    the terminal completed event (what the runtime publishes to the terminal topic)."""
+    the terminal completed event (what the runtime publishes to the terminal topic).
+
+    Thin canonical shape (OMN-14242): the orchestrator's handle() now returns the
+    typed ModelPrReviewCompletedEvent directly -- no ModelHandlerOutput wrapper --
+    so no unwrapping is needed here.
+    """
 
     def __init__(self, handler: HandlerPrReviewOrchestrator) -> None:
         self._handler = handler
 
     async def handle(self, **payload: Any) -> Any:
-        output = await self._handler.handle(ReviewRequest(**payload))
-        return output.events[0]
+        return await self._handler.handle(ReviewRequest(**payload))
 
 
 @pytest.mark.integration
