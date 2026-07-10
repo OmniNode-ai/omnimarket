@@ -201,7 +201,7 @@ class TestPatchEvidenceSource:
                 repo="OmniNode-ai/omnibase_infra",
                 pr_number=2043,
                 occ_pr_number=2801,
-                ticket="OMN-9999",
+                tickets=["OMN-9999"],
                 existing_body=body,
             )
 
@@ -225,7 +225,7 @@ class TestPatchEvidenceSource:
                 repo="OmniNode-ai/omnibase_infra",
                 pr_number=2043,
                 occ_pr_number=2801,
-                ticket="OMN-9999",
+                tickets=["OMN-9999"],
                 existing_body="just a body",
             )
 
@@ -238,6 +238,8 @@ class TestPatchEvidenceSource:
         adapter = OccAutobindAdapter()
         calls, fake_rest = self._capture()
 
+        # A body already in canonical rendered form (correct OCC source AND the
+        # bound ticket) re-renders identically, so no PATCH is issued.
         with (
             patch(f"{_MODULE}.rest_json", side_effect=fake_rest),
             patch(f"{_MODULE}._resolve_github_token", return_value="tok"),
@@ -246,8 +248,10 @@ class TestPatchEvidenceSource:
                 repo="OmniNode-ai/omnibase_infra",
                 pr_number=2043,
                 occ_pr_number=2801,
-                ticket="OMN-9999",
-                existing_body="body\nEvidence-Source: OCC#2801\n",
+                tickets=["OMN-9999"],
+                existing_body=(
+                    "body\n\nEvidence-Ticket: OMN-9999\nEvidence-Source: OCC#2801\n"
+                ),
             )
 
         assert calls == []
@@ -644,3 +648,54 @@ class TestObservePrProbe:
 
         assert stdout == '{"number":5,"state":"closed"}'
         assert exit_code == 0
+
+
+# ---------------------------------------------------------------------------
+# OMN-14189: the patched product-PR body is authored by the Piece-2 core
+# renderer and round-trips back through the core parser — no inline stamp text
+# and no local Evidence-Source regex survive in this adapter.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestPatchEvidenceSourceRoundTrips:
+    def test_patched_body_round_trips_through_core_parser(self) -> None:
+        from unittest.mock import patch
+
+        from omnibase_compat.contracts.pr_occ_stamp import (
+            EnumPrEvidenceSourceKind,
+            parse_pr_occ_metadata_stamp,
+        )
+
+        adapter = OccAutobindAdapter()
+        captured: dict[str, str] = {}
+
+        def fake_rest(method, path, *, body=None, token=None):  # type: ignore[no-untyped-def]
+            captured["body"] = body["body"]
+            return {}
+
+        with (
+            patch(f"{_MODULE}.rest_json", side_effect=fake_rest),
+            patch(f"{_MODULE}._resolve_github_token", return_value="tok"),
+        ):
+            adapter._patch_evidence_source(
+                repo="OmniNode-ai/omnibase_infra",
+                pr_number=2043,
+                occ_pr_number=2801,
+                tickets=["OMN-9999", "OMN-1234"],
+                existing_body="Fixes a thing.\n\nEvidence-Source: 040eb235abcdef\n",
+            )
+
+        stamp = parse_pr_occ_metadata_stamp(captured["body"])
+        assert stamp.evidence_source is not None
+        assert stamp.evidence_source.kind is EnumPrEvidenceSourceKind.OCC_PR
+        assert stamp.evidence_source.occ_pr_number == 2801
+        assert list(stamp.evidence_tickets) == ["OMN-9999", "OMN-1234"]
+        assert "Fixes a thing." in captured["body"]
+        assert "040eb235abcdef" not in captured["body"]
+
+    def test_adapter_defines_no_inline_evidence_regex(self) -> None:
+        import omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.adapter_occ_autobind as mod
+
+        assert not hasattr(mod, "_EVIDENCE_SOURCE_RE")
+        assert not hasattr(mod, "_OCC_SOURCE_RE")

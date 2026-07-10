@@ -37,6 +37,7 @@ import shlex
 import subprocess
 import tempfile
 import textwrap
+from collections.abc import Sequence
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -56,6 +57,16 @@ from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.occ_git_transport im
     run_git,
 )
 
+# OMN-14189 (Piece 3/5, epic OMN-14180): all PR-body Evidence-Source /
+# Evidence-Ticket authoring and read-back flow through the single stamp seam,
+# which delegates to the Piece-2 core renderer/parser over the Piece-1 models.
+# No inline f-string stamp text and no local Evidence-Source regex survive here.
+from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.occ_stamp_authoring import (
+    product_pr_occ_binding,
+    render_occ_companion_pr_body,
+    render_product_pr_body_with_occ_source,
+)
+
 logger = logging.getLogger(__name__)
 _CONTRACT_PATH = Path(__file__).resolve().parents[1] / "contract.yaml"
 
@@ -68,10 +79,7 @@ _OCC_REPO = OCC_REPO
 
 # Ticket id pattern. Product PR titles/bodies cite OMN-XXXX (PR title gate).
 _TICKET_RE = re.compile(r"\bOMN-\d+\b")
-# Evidence-Source line: an OCC source is `OCC#<n>`; a product-SHA source is a
-# bare 7-40 hex sha (the failure mode this adapter repairs).
-_EVIDENCE_SOURCE_RE = re.compile(r"^Evidence-Source:\s*(\S+)\s*$", re.MULTILINE)
-_OCC_SOURCE_RE = re.compile(r"^OCC#\d+$")
+# Product PR head SHA validation (from the GitHub REST snapshot, not a stamp).
 _SHA_RE = re.compile(r"^[0-9a-fA-F]{7,40}$")
 # contract_sha256 line in a receipt: matches both 64-hex and PENDING sentinels.
 _CONTRACT_SHA_LINE_RE = re.compile(
@@ -231,11 +239,12 @@ class OccAutobindAdapter:
             )
 
         # Idempotency guard: already bound to an OCC source — nothing to do.
-        existing = _EVIDENCE_SOURCE_RE.search(body)
-        if existing and _OCC_SOURCE_RE.match(existing.group(1)):
+        # Read the canonical stamp via the Piece-2 parser, not a local regex.
+        already_bound = product_pr_occ_binding(body)
+        if already_bound is not None:
             action = (
                 f"no-op: {repo}#{pr_number} already bound to "
-                f"{existing.group(1)} (Evidence-Source already an OCC source)"
+                f"OCC#{already_bound} (Evidence-Source already an OCC source)"
             )
             logger.info("occ_autobind_adapter: %s", action)
             return action
@@ -423,7 +432,7 @@ class OccAutobindAdapter:
             repo=repo,
             pr_number=pr_number,
             occ_pr_number=occ_pr_number,
-            ticket=", ".join(tickets),
+            tickets=tickets,
             existing_body=body,
         )
 
@@ -568,12 +577,14 @@ class OccAutobindAdapter:
         if existing_number is not None:
             return existing_number
 
-        body = (
+        # Human prose is authored here; the Evidence-Ticket line is rendered by
+        # the Piece-2 core renderer over the typed stamp (no inline stamp text).
+        prose = (
             f"Autobind OCC evidence for `{ticket}`.\n\n"
             f"Triggered by Receipt-Gate Evidence-Source autobind on "
-            f"{repo}#{pr_number} (OMN-13317 F1).\n\n"
-            f"Evidence-Ticket: {ticket}\n"
+            f"{repo}#{pr_number} (OMN-13317 F1).\n"
         )
+        body = render_occ_companion_pr_body(prose, tickets=[ticket])
         # OMN-13990: target OCC's DEFAULT branch, not a hardcoded "main". The
         # branch is cut from the shallow clone of the default (OCC default is
         # `dev`); a PR based on "main" surfaces the entire dev<->main delta
@@ -644,37 +655,26 @@ class OccAutobindAdapter:
         repo: str,
         pr_number: int,
         occ_pr_number: int,
-        ticket: str,
+        tickets: Sequence[str],
         existing_body: str,
     ) -> None:
-        """Rewrite or append ``Evidence-Source: OCC#<n>`` via REST PATCH.
+        """Rebind the product PR body to ``Evidence-Source: OCC#<n>`` via REST PATCH.
+
+        The new body is produced entirely by the Piece-2 core renderer over the
+        typed stamp (human prose preserved verbatim, one canonical Evidence
+        block) — no inline f-string authoring. Idempotent: when the rendered body
+        equals the existing body there is nothing to write.
 
         ``gh pr edit`` and GraphQL silently no-op on Projects-classic repos
         (friction #7); REST PATCH of the body is the reliable path.
         """
+        new_body = render_product_pr_body_with_occ_source(
+            existing_body, occ_pr_number=occ_pr_number, tickets=tickets
+        )
+        if new_body == existing_body:
+            return  # already canonical — no-op
         token = _resolve_github_token()
         owner, repo_name = split_repo(repo)
-        occ_source = f"OCC#{occ_pr_number}"
-        occ_line = f"Evidence-Source: {occ_source}"
-
-        match = _EVIDENCE_SOURCE_RE.search(existing_body)
-        if match is not None:
-            if match.group(1) == occ_source:
-                return  # already bound to the correct OCC source — no-op
-            # Replace only the captured source token so surrounding whitespace
-            # (notably the trailing newline consumed by ``\s*$``) is preserved.
-            new_body = (
-                existing_body[: match.start(1)]
-                + occ_source
-                + existing_body[match.end(1) :]
-            )
-        else:
-            new_body = (
-                existing_body + f"\n\n---\nEvidence-Ticket: {ticket}\n{occ_line}\n"
-            )
-
-        if new_body == existing_body:
-            return  # already correct
         rest_json(
             "PATCH",
             f"/repos/{owner}/{repo_name}/pulls/{pr_number}",

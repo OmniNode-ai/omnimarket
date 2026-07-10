@@ -32,6 +32,10 @@ dependencies = [
     # OMN-14168 requires EnumEvidenceClass.RUNTIME_OPS and
     # runtime_ops_verb_loader from omnibase-core 0.46.7.
     "omnibase-core>=0.46.7,<0.47.0",
+    # OMN-14189 imports the shared OCC PR stamp renderer/parser + models from
+    # omnibase-compat 0.5.6 (relocated core->compat under OMN-14223 so the gate
+    # and this emitter share one zero-dep vocabulary): the single seam
+    # omnibase_compat.contracts.pr_occ_stamp.
     "omnibase-compat==0.5.6",
     "omnibase-spi>=0.23.0,<0.24.0",
     "omnibase-infra>=0.38.3,<0.39.0",
