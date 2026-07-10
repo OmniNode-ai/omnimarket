@@ -1,0 +1,62 @@
+---
+name: node_hybrid_codegen_orchestrator
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: orchestrator
+node_version: {major: 1, minor: 0, patch: 0}
+
+input_model: omnimarket.codegen.models.ModelCodegenSpec
+
+description: >
+  Codegen factory engine (tier-4a). A canonical ORCHESTRATOR that composes the
+  factory by dispatching commands over the bus: spec -> llm-generate (llm
+  effect) -> validate (node_generated_code_validator) -> type-check
+  (node_mypy_check_effect) -> serialize contract (node_contract_serialize_compute)
+  -> write files (file writer effect) -> completed. It owns phase sequencing only:
+  it never constructs sibling handlers in-process, never runs an in-process FSM
+  loop, and never does I/O. It threads a shared ModelCodegenPipelineState through
+  every command because the pure tier-1/tier-3 nodes return only verdicts.
+
+handler:
+  module: omnimarket.nodes.node_hybrid_codegen_orchestrator.handlers.handler_hybrid_codegen_orchestrator
+  class: HandlerHybridCodegenOrchestrator
+  input_model: omnimarket.codegen.models.ModelCodegenSpec
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: hybrid_codegen.orchestrate
+      handler:
+        name: HandlerHybridCodegenOrchestrator
+        module: omnimarket.nodes.node_hybrid_codegen_orchestrator.handlers.handler_hybrid_codegen_orchestrator
+      event_model:
+        name: ModelCodegenSpec
+        module: omnimarket.codegen.models
+
+descriptor:
+  node_archetype: orchestrator
+  purity: orchestration
+  idempotent: false
+  timeout_ms: 120000
+  runtime_profiles:
+    - effects
+
+terminal_event: onex.evt.omnimarket.hybrid-codegen-completed.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.hybrid-codegen-start.v1
+    - onex.evt.omnimarket.codegen-llm-generated.v1
+    - onex.evt.omnimarket.codegen-validation-outcome.v1
+    - onex.evt.omnimarket.codegen-typecheck-outcome.v1
+    - onex.evt.omnimarket.codegen-serialize-outcome.v1
+    - onex.evt.omnimarket.codegen-files-written.v1
+  publish_topics:
+    - onex.cmd.omnimarket.codegen-llm-generate.v1
+    - onex.cmd.omnimarket.generated-code-validation-requested.v1
+    - onex.cmd.omnimarket.mypy-check-requested.v1
+    - onex.cmd.omnimarket.contract-serialize-requested.v1
+    - onex.cmd.omnimarket.codegen-file-write.v1
+    - onex.evt.omnimarket.hybrid-codegen-completed.v1
+
+metadata:
+  transport_type: kafka
