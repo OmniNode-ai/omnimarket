@@ -347,8 +347,14 @@ def validate_node(
             f"contract.yaml missing 'handler' block (required for node_type={node_type!r})",
         )
 
-    # Check 3: pyproject.toml entry point
-    if node_name not in entry_points:
+    # Check 3: pyproject.toml entry point. A node explicitly marked
+    # lifecycle/status: deprecated or experimental (OMN-14151) is intentionally
+    # unregistered — e.g. a hard-gated legacy surface retired in favor of a
+    # replacement node — and is exempt, mirroring the orphan-node lifecycle
+    # exemption below.
+    if node_name not in entry_points and _contract_lifecycle(contract) not in (
+        LIFECYCLE_EXEMPTIONS
+    ):
         add(
             "pyproject_entry",
             f'no entry in pyproject.toml [project.entry-points."onex.nodes"] for {node_name}',

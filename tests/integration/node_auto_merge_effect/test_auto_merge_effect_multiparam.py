@@ -37,6 +37,16 @@ from omnimarket.nodes.node_auto_merge_effect.models.model_auto_merge_result impo
 REPO = "OmniNode-ai/omnimarket"
 
 
+@pytest.fixture(autouse=True)
+def _legacy_arm_surface_enabled(monkeypatch: pytest.MonkeyPatch) -> None:
+    """OMN-14151: this node is hard-gated fail-closed by default (superseded by
+    the merge-queue governor's single gated arm path). This suite exercises the
+    legacy handler's own gh-CLI-driven merge logic directly, so it opts the
+    surface back in explicitly — proving the underlying logic still works when
+    an operator re-enables it, while the org-wide default stays a no-op."""
+    monkeypatch.setenv("OMNIMARKET_LEGACY_MERGE_ARM_ENABLED", "true")
+
+
 def _pr_view(merge_state: str = "CLEAN", review_decision: str = "APPROVED") -> str:
     return json.dumps(
         {

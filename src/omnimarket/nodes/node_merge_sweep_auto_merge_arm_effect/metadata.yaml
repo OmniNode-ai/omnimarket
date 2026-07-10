@@ -2,9 +2,10 @@ name: node_merge_sweep_auto_merge_arm_effect
 version: "1.0.0"
 description: "Arms GitHub auto-merge for eligible merge-sweep PRs"
 omnibase_core_compat: ">=0.39.0,<1.0.0"
-entry_points:
-  onex.nodes:
-    node_merge_sweep_auto_merge_arm_effect: "omnimarket.nodes.node_merge_sweep_auto_merge_arm_effect"
+# OMN-14151: entry_points DEREGISTERED. Legacy arm surface superseded by the
+# merge-queue governor's single gated arm path (node_pr_arm_gate_compute +
+# node_pr_lifecycle_merge_effect). Handler remains, hard-gated fail-closed;
+# see contract.yaml `lifecycle: deprecated`.
 capabilities:
   standalone: true
   full_runtime: true

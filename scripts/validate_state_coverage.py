@@ -53,6 +53,15 @@ TESTS_DIR = REPO_ROOT / "tests"
 PYPROJECT = REPO_ROOT / "pyproject.toml"
 BASELINE_PATH = REPO_ROOT / "scripts" / "validation" / "state_coverage_baseline.txt"
 
+# OMN-14151: a node explicitly marked lifecycle/status: deprecated or
+# experimental is intentionally not getting further test investment (e.g. a
+# hard-gated legacy surface retired in favor of a replacement node) — its
+# baselined gaps stay WARN even when the node is directly touched (a hard-gate
+# neuters the node without exercising its declared states). Mirrors the same
+# exemption already applied to the pyproject-entry check in
+# scripts/validate_node_drift.py.
+LIFECYCLE_EXEMPTIONS = {"deprecated", "experimental"}
+
 _IDENTIFIER_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_-]*$")
 
 
@@ -143,6 +152,19 @@ def declared_states(contract: dict[str, Any]) -> DeclaredStates:
     if fsm_states is not None:
         return DeclaredStates(kind="fsm", states=fsm_states)
     return DeclaredStates(kind="outputs", states=_extract_output_states(contract))
+
+
+def _contract_lifecycle(contract: dict[str, Any]) -> str:
+    """Return normalized contract lifecycle/status annotation, if present."""
+    candidates: list[Any] = [contract.get("lifecycle"), contract.get("status")]
+    for nested_key in ("metadata", "descriptor"):
+        nested = contract.get(nested_key)
+        if isinstance(nested, dict):
+            candidates.extend([nested.get("lifecycle"), nested.get("status")])
+    for candidate in candidates:
+        if isinstance(candidate, str) and candidate.strip():
+            return candidate.strip().lower()
+    return ""
 
 
 def _load_test_corpus() -> list[tuple[str, str]]:
@@ -331,6 +353,10 @@ def validate_node(
 
     raw_uncovered = [s for s in ds.states if not _state_covered(s, test_sources)]
 
+    # OMN-14151: a lifecycle-exempt node's baselined gaps never strict-promote
+    # — see LIFECYCLE_EXEMPTIONS above.
+    lifecycle_exempt = _contract_lifecycle(contract) in LIFECYCLE_EXEMPTIONS
+
     uncovered: list[str] = []
     baselined_uncovered: list[str] = []
     for state in raw_uncovered:
@@ -339,7 +365,7 @@ def validate_node(
         # them — strict is only True here for nodes the caller marked
         # strict-eligible (directly modified in the diff), so untouched
         # legacy debt keeps its grandfather clause.
-        if is_baselined and not strict:
+        if is_baselined and (not strict or lifecycle_exempt):
             baselined_uncovered.append(state)
         else:
             uncovered.append(state)

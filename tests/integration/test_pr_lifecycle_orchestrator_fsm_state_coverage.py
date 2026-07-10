@@ -38,11 +38,17 @@ from uuid import uuid4
 
 import pytest
 
+from omnimarket.nodes.node_pr_arm_gate_compute.models.model_arm_gate_policy import (
+    EnumArmActionMode,
+)
 from omnimarket.nodes.node_pr_lifecycle_orchestrator.handlers.handler_pr_lifecycle_orchestrator import (
     TOPIC_COMPLETED,
     TOPIC_PHASE_TRANSITION,
     HandlerPrLifecycleOrchestrator,
     ModelPrLifecycleStartCommand,
+)
+from omnimarket.nodes.node_pr_lifecycle_orchestrator.handlers.occ_stamp_readback import (
+    ModelOccStampReadbackResult,
 )
 from omnimarket.nodes.node_pr_lifecycle_orchestrator.protocols.protocol_sub_handlers import (
     EnumPrCategory,
@@ -174,6 +180,19 @@ class _InjectedFaultError(RuntimeError):
     """Deterministic fault injected at a phase-entry boundary to drive X→FAILED."""
 
 
+class _VerifiedOccStampReadback:
+    """Hermetic OCC-companion read-back stub (OMN-14151 arm-gate).
+
+    Always verifies so the arm-gate's occ_companion_verified criterion is
+    satisfied without any live gh/remote call.
+    """
+
+    async def verify_fix_landed(
+        self, repo: str, pr_number: int, ticket_id: str | None = None
+    ) -> ModelOccStampReadbackResult:
+        return ModelOccStampReadbackResult(verified=True, reason="test: stubbed")
+
+
 class _FsmCoverageOrchestrator(HandlerPrLifecycleOrchestrator):
     """Orchestrator wired for deterministic FSM coverage over the bus.
 
@@ -193,6 +212,7 @@ class _FsmCoverageOrchestrator(HandlerPrLifecycleOrchestrator):
         fault: str | None = None,
         **kwargs: Any,
     ) -> None:
+        kwargs.setdefault("occ_stamp_readback", _VerifiedOccStampReadback())
         super().__init__(**kwargs)
         self._mock_prs = mock_prs
         self._verification_outcome = verification_outcome
@@ -273,7 +293,17 @@ class _TypedHandlerWrapper:
 # Fixture builders
 # ---------------------------------------------------------------------------
 def _green(pr_number: int) -> PrRecord:
-    return PrRecord(pr_number=pr_number, repo=_REPO, checks_status="success")
+    return PrRecord(
+        pr_number=pr_number,
+        repo=_REPO,
+        checks_status="success",
+        # OMN-14151: arm-gate-ready facts so scenarios asserting a real merge
+        # continue to pass under the merge-queue governor's fail-closed arm
+        # gate. Harmless for scenarios that never reach MERGING.
+        is_draft=False,
+        coderabbit_unresolved=0,
+        merge_state_status="CLEAN",
+    )
 
 
 def _red(pr_number: int) -> PrRecord:
@@ -338,7 +368,11 @@ _SCENARIOS: tuple[_Scenario, ...] = (
         prs=(_green(103),),
         triage=(_triage(103, EnumPrCategory.GREEN),),
         intents=(_intent(103, EnumReducerIntent.MERGE),),
-        command_kwargs={"merge_only": True},
+        command_kwargs={
+            "merge_only": True,
+            "action_mode": EnumArmActionMode.ENFORCE,
+            "merge_queue_mutation_kill_switch": False,
+        },
         expected_edges=frozenset(
             {
                 ("IDLE", "INVENTORYING"),
@@ -362,7 +396,10 @@ _SCENARIOS: tuple[_Scenario, ...] = (
             _intent(104, EnumReducerIntent.MERGE),
             _intent(105, EnumReducerIntent.FIX),
         ),
-        command_kwargs={},
+        command_kwargs={
+            "action_mode": EnumArmActionMode.ENFORCE,
+            "merge_queue_mutation_kill_switch": False,
+        },
         expected_edges=frozenset(
             {
                 ("IDLE", "INVENTORYING"),
@@ -381,7 +418,11 @@ _SCENARIOS: tuple[_Scenario, ...] = (
         prs=(_green(106),),
         triage=(_triage(106, EnumPrCategory.GREEN),),
         intents=(_intent(106, EnumReducerIntent.MERGE),),
-        command_kwargs={"verify": True},
+        command_kwargs={
+            "verify": True,
+            "action_mode": EnumArmActionMode.ENFORCE,
+            "merge_queue_mutation_kill_switch": False,
+        },
         verify_outcome=EnumVerificationOutcome.MERGED,
         expected_edges=frozenset(
             {

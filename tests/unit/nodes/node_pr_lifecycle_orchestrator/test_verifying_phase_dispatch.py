@@ -28,10 +28,16 @@ from uuid import uuid4
 
 import pytest
 
+from omnimarket.nodes.node_pr_arm_gate_compute.models.model_arm_gate_policy import (
+    EnumArmActionMode,
+)
 from omnimarket.nodes.node_pr_lifecycle_orchestrator.handlers.handler_pr_lifecycle_orchestrator import (
     ChangedFilesUnavailableError,
     HandlerPrLifecycleOrchestrator,
     ModelPrLifecycleStartCommand,
+)
+from omnimarket.nodes.node_pr_lifecycle_orchestrator.handlers.occ_stamp_readback import (
+    ModelOccStampReadbackResult,
 )
 from omnimarket.nodes.node_pr_lifecycle_orchestrator.protocols.protocol_sub_handlers import (
     EnumPrCategory,
@@ -51,6 +57,30 @@ from omnimarket.nodes.node_pr_lifecycle_orchestrator.verify_target_mapping impor
 )
 
 _REPO = "OmniNode-ai/omnimarket"
+
+# OMN-14151: the merge-queue governor's arm-gate defaults to REPORT_ONLY (zero
+# mutation) and requires every fact positively confirmed. Tests in this file
+# exercise VERIFYING-phase wiring, not the arm-gate itself, so PRs meant to
+# actually merge opt into ENFORCE with a fully arm-ready PrRecord + a stubbed
+# OCC-companion read-back that always verifies.
+_ENFORCE_KWARGS: dict[str, Any] = {
+    "action_mode": EnumArmActionMode.ENFORCE,
+    "merge_queue_mutation_kill_switch": False,
+}
+_ARM_READY_FACTS: dict[str, Any] = {
+    "is_draft": False,
+    "coderabbit_unresolved": 0,
+    "merge_state_status": "CLEAN",
+}
+
+
+class _VerifiedOccStampReadback:
+    """Stub OCC-stamp read-back that always verifies (OMN-14151 arm-gate)."""
+
+    async def verify_fix_landed(
+        self, repo: str, pr_number: int, ticket_id: str | None = None
+    ) -> ModelOccStampReadbackResult:
+        return ModelOccStampReadbackResult(verified=True)
 
 
 class _RecordingBus:
@@ -194,6 +224,7 @@ def _make_orch(
         merge=merge,
         fix=_MockFix(),
         event_bus=_RecordingBus(),
+        occ_stamp_readback=_VerifiedOccStampReadback(),
     )
 
 
@@ -201,7 +232,9 @@ def _make_orch(
 @pytest.mark.asyncio
 async def test_merge_ready_pr_passes_verification_and_merges() -> None:
     """A green PR whose verification PASSES proceeds to MERGING and merges."""
-    pr = PrRecord(pr_number=401, repo=_REPO, checks_status="success")
+    pr = PrRecord(
+        pr_number=401, repo=_REPO, checks_status="success", **_ARM_READY_FACTS
+    )
     triage = TriageRecord(pr_number=401, repo=_REPO, category=EnumPrCategory.GREEN)
     intent = ReducerIntent(pr_number=401, repo=_REPO, intent=EnumReducerIntent.MERGE)
     merge = _MockMerge()
@@ -219,6 +252,7 @@ async def test_merge_ready_pr_passes_verification_and_merges() -> None:
             run_id="20260627-verify-pass",
             merge_only=True,
             verify=True,
+            **_ENFORCE_KWARGS,
         )
     )
 
@@ -242,8 +276,12 @@ async def test_one_pr_verification_failure_does_not_block_batch() -> None:
     Proves per-PR isolation: one PR's verification failure removes only that PR
     from the merge set and never aborts the batch or fails the sweep.
     """
-    pr_pass = PrRecord(pr_number=501, repo=_REPO, checks_status="success")
-    pr_fail = PrRecord(pr_number=502, repo=_REPO, checks_status="success")
+    pr_pass = PrRecord(
+        pr_number=501, repo=_REPO, checks_status="success", **_ARM_READY_FACTS
+    )
+    pr_fail = PrRecord(
+        pr_number=502, repo=_REPO, checks_status="success", **_ARM_READY_FACTS
+    )
     classified = (
         TriageRecord(pr_number=501, repo=_REPO, category=EnumPrCategory.GREEN),
         TriageRecord(pr_number=502, repo=_REPO, category=EnumPrCategory.GREEN),
@@ -270,6 +308,7 @@ async def test_one_pr_verification_failure_does_not_block_batch() -> None:
             run_id="20260627-verify-mixed",
             merge_only=True,
             verify=True,
+            **_ENFORCE_KWARGS,
         )
     )
 
@@ -340,7 +379,9 @@ async def test_docs_only_no_mapping_pr_is_neutral_pass() -> None:
     A SKIPPED_NO_MAPPING target never runs a probe and always proceeds to
     MERGING — the fail-closed rule applies only to code-file PRs.
     """
-    pr = PrRecord(pr_number=602, repo=_REPO, checks_status="success")
+    pr = PrRecord(
+        pr_number=602, repo=_REPO, checks_status="success", **_ARM_READY_FACTS
+    )
     triage = TriageRecord(pr_number=602, repo=_REPO, category=EnumPrCategory.GREEN)
     intent = ReducerIntent(pr_number=602, repo=_REPO, intent=EnumReducerIntent.MERGE)
     merge = _MockMerge()
@@ -361,6 +402,7 @@ async def test_docs_only_no_mapping_pr_is_neutral_pass() -> None:
             run_id="20260627-verify-docsonly",
             merge_only=True,
             verify=True,
+            **_ENFORCE_KWARGS,
         )
     )
 

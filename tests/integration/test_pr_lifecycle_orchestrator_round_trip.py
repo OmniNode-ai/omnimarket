@@ -10,10 +10,16 @@ from uuid import uuid4
 
 import pytest
 
+from omnimarket.nodes.node_pr_arm_gate_compute.models.model_arm_gate_policy import (
+    EnumArmActionMode,
+)
 from omnimarket.nodes.node_pr_lifecycle_orchestrator.handlers.handler_pr_lifecycle_orchestrator import (
     TOPIC_COMPLETED,
     HandlerPrLifecycleOrchestrator,
     ModelPrLifecycleStartCommand,
+)
+from omnimarket.nodes.node_pr_lifecycle_orchestrator.handlers.occ_stamp_readback import (
+    ModelOccStampReadbackResult,
 )
 from omnimarket.nodes.node_pr_lifecycle_orchestrator.protocols.protocol_sub_handlers import (
     EnumPrCategory,
@@ -85,8 +91,24 @@ class _MockFix:
         return FixResult(prs_dispatched=1, prs_skipped=0)
 
 
+class _VerifiedOccStampReadback:
+    """Hermetic OCC-companion read-back stub (OMN-14151 arm-gate).
+
+    Always verifies so the arm-gate's occ_companion_verified criterion is
+    satisfied without any live gh/remote call. Injected by default so
+    ``_ensure_sub_handlers`` never wires the live subprocess-backed
+    ``OccStampReadback`` in these bus-round-trip tests.
+    """
+
+    async def verify_fix_landed(
+        self, repo: str, pr_number: int, ticket_id: str | None = None
+    ) -> ModelOccStampReadbackResult:
+        return ModelOccStampReadbackResult(verified=True, reason="test: stubbed")
+
+
 class _TestOrchestrator(HandlerPrLifecycleOrchestrator):
     def __init__(self, *, _mock_prs: tuple[PrRecord, ...] = (), **kwargs: Any) -> None:
+        kwargs.setdefault("occ_stamp_readback", _VerifiedOccStampReadback())
         super().__init__(**kwargs)
         self._mock_prs = _mock_prs
 
@@ -236,7 +258,17 @@ class _ParamOrchestrator(_TestOrchestrator):
 
 
 def _green_pr(pr_number: int, repo: str = "OmniNode-ai/omnimarket") -> PrRecord:
-    return PrRecord(pr_number=pr_number, repo=repo, checks_status="success")
+    return PrRecord(
+        pr_number=pr_number,
+        repo=repo,
+        checks_status="success",
+        # OMN-14151: arm-gate-ready facts so the parametrized merge assertions
+        # below continue to pass under the merge-queue governor's fail-closed
+        # arm gate.
+        is_draft=False,
+        coderabbit_unresolved=0,
+        merge_state_status="CLEAN",
+    )
 
 
 def _red_pr(pr_number: int, repo: str = "OmniNode-ai/omnimarket") -> PrRecord:
@@ -309,7 +341,11 @@ def _intent(
                 "merge_ok": True,
                 "verify_outcome": None,
             },
-            {"merge_only": True},
+            {
+                "merge_only": True,
+                "action_mode": EnumArmActionMode.ENFORCE,
+                "merge_queue_mutation_kill_switch": False,
+            },
             {
                 "final_state": "COMPLETE",
                 "prs_inventoried": 1,
@@ -336,7 +372,10 @@ def _intent(
                 "merge_ok": True,
                 "verify_outcome": None,
             },
-            {},
+            {
+                "action_mode": EnumArmActionMode.ENFORCE,
+                "merge_queue_mutation_kill_switch": False,
+            },
             {
                 "final_state": "COMPLETE",
                 "prs_inventoried": 2,
@@ -356,7 +395,11 @@ def _intent(
                 "merge_ok": True,
                 "verify_outcome": EnumVerificationOutcome.MERGED,
             },
-            {"verify": True},
+            {
+                "verify": True,
+                "action_mode": EnumArmActionMode.ENFORCE,
+                "merge_queue_mutation_kill_switch": False,
+            },
             {
                 "final_state": "COMPLETE",
                 "prs_inventoried": 1,

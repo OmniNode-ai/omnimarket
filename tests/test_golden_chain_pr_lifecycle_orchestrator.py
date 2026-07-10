@@ -29,6 +29,9 @@ import pytest
 import yaml
 from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
 
+from omnimarket.nodes.node_pr_arm_gate_compute.models.model_arm_gate_policy import (
+    EnumArmActionMode,
+)
 from omnimarket.nodes.node_pr_lifecycle_fix_effect.models.model_fix_command import (
     EnumPrBlockReason,
 )
@@ -278,6 +281,11 @@ _PR_GREEN = PrRecord(
     repo="OmniNode-ai/omnimarket",
     checks_status="success",
     review_status="approved",
+    # OMN-14151: arm-gate-ready facts so tests asserting a real merge continue
+    # to pass under the merge-queue governor's fail-closed arm gate.
+    is_draft=False,
+    coderabbit_unresolved=0,
+    merge_state_status="CLEAN",
 )
 _PR_RED = PrRecord(
     pr_number=102,
@@ -303,6 +311,14 @@ def _make_command(**kwargs: object) -> ModelPrLifecycleStartCommand:
     defaults: dict[str, object] = {
         "correlation_id": uuid4(),
         "run_id": "20260411-000000-test01",
+        # OMN-14151: this golden-chain suite proves the merge orchestration
+        # wiring works end to end with mocked sub-handlers — it is not
+        # exercising the arm-gate's report-only default (that has its own
+        # dedicated coverage). Opt into ENFORCE by default so existing
+        # merge-path assertions keep passing under the fail-closed arm gate;
+        # individual tests can still override action_mode/kill_switch.
+        "action_mode": EnumArmActionMode.ENFORCE,
+        "merge_queue_mutation_kill_switch": False,
     }
     defaults.update(kwargs)
     return ModelPrLifecycleStartCommand(**defaults)  # type: ignore[arg-type]
@@ -567,7 +583,10 @@ class TestPrLifecycleOrchestratorGoldenChain:
             triage=triage,
             reducer=reducer,
         )
-        result = await orch.handle(_make_command())
+        # OMN-14151: stall remediation is a separate opt-in from the arm-gate's
+        # readiness-arm decision — _make_command()'s ENFORCE default alone is
+        # not enough, enable_stall_remediation must also be set.
+        result = await orch.handle(_make_command(enable_stall_remediation=True))
 
         assert result.final_state == "COMPLETE"
         assert orch.queue_stall_adapter.calls == [("OmniNode-ai/omnimarket", 101)]

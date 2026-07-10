@@ -76,6 +76,18 @@ from omnimarket.nodes.node_pr_polish.models.model_pr_polish_start_command import
 
 _REPO = "OmniNode-ai/omnimarket"
 
+
+@pytest.fixture(autouse=True)
+def _legacy_arm_surface_enabled(monkeypatch: pytest.MonkeyPatch) -> None:
+    """OMN-14151: Rule 2's auto-merge-arm-emit is hard-gated fail-closed by
+    default (superseded by the merge-queue governor's single gated arm path).
+    This suite exercises the 14-row decision table's own routing logic
+    directly, so it opts the surface back in explicitly — proving the
+    underlying routing still works when an operator re-enables it, while the
+    org-wide default stays a no-op."""
+    monkeypatch.setenv("OMNIMARKET_LEGACY_MERGE_ARM_ENABLED", "true")
+
+
 # Contract topics.
 _TRIAGE_TOPIC = "onex.cmd.omnimarket.merge-sweep-triage.v1"
 _TERMINAL_TOPIC = "onex.evt.omnimarket.merge-sweep-state-reduced.v1"
