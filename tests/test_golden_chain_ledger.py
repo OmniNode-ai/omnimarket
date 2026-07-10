@@ -63,24 +63,20 @@ def test_four_node_chain_end_to_end(isolated_state_root: Path) -> None:
     # ---- Step 1: ORCHESTRATOR — tick → append command ----
     orchestrator = HandlerLedgerOrchestrator()
     tick = ModelLedgerTickCommand(tick_id=tick_id, correlation_id=correlation_id)
-    orch_output = orchestrator.handle(tick)
+    append_cmd = orchestrator.handle(tick)
 
-    assert len(orch_output.events) == 1
-    append_cmd = orch_output.events[0]
     assert isinstance(append_cmd, ModelLedgerAppendCommand)
     assert append_cmd.tick_id == tick_id
     assert append_cmd.correlation_id == correlation_id
 
     # ---- Step 2: EFFECT — append command → journal + appended event ----
     effect = HandlerLedgerAppend()
-    effect_output = effect.handle(append_cmd)
+    appended_evt = effect.handle(append_cmd)
 
     journal = isolated_state_root / "ledger-journal.txt"
     assert journal.exists()
     assert journal.read_text(encoding="utf-8") == f"{tick_id}\n"
 
-    assert len(effect_output.events) == 1
-    appended_evt = effect_output.events[0]
     assert isinstance(appended_evt, ModelLedgerAppendedEvent)
     assert appended_evt.tick_id == tick_id
     assert appended_evt.correlation_id == correlation_id
@@ -144,11 +140,11 @@ def test_chain_is_deterministic_over_same_inputs(isolated_state_root: Path) -> N
 def _run_chain_once(state_root: Path, tick_id: str) -> dict:
     """Helper: drives the 4-node chain once, returns the reducer projection dict."""
     correlation_id = uuid4()
-    orch_output = HandlerLedgerOrchestrator().handle(
+    append_cmd = HandlerLedgerOrchestrator().handle(
         ModelLedgerTickCommand(tick_id=tick_id, correlation_id=correlation_id)
     )
-    effect_output = HandlerLedgerAppend().handle(orch_output.events[0])
-    hash_result = HandlerLedgerHashCompute().handle(effect_output.events[0])
+    appended_evt = HandlerLedgerAppend().handle(append_cmd)
+    hash_result = HandlerLedgerHashCompute().handle(appended_evt)
     return HandlerLedgerStateReducer().handle(hash_result)
 
 

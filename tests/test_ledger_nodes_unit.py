@@ -52,22 +52,22 @@ def isolated_state_root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path
 
 
 def test_orchestrator_emits_exactly_one_append_command() -> None:
-    """Orchestrator: emits events=(ModelLedgerAppendCommand(...),), no result."""
+    """Orchestrator: single-emit thin handle() returns the append command directly.
+
+    Canonical thin shape (OMN-14242) — no ModelHandlerOutput envelope; the
+    runtime wraps. A single-emit ORCHESTRATOR returns its one emitted event.
+    """
     handler = HandlerLedgerOrchestrator()
     correlation_id = uuid4()
     tick = ModelLedgerTickCommand(tick_id="tick-001", correlation_id=correlation_id)
 
-    output = handler.handle(tick)
+    emitted = handler.handle(tick)
 
-    assert len(output.events) == 1
-    emitted = output.events[0]
     assert isinstance(emitted, ModelLedgerAppendCommand)
     assert emitted.tick_id == "tick-001"
     assert emitted.correlation_id == correlation_id
     # Correlation is carried forward from the input.
-    assert output.correlation_id == correlation_id
-    # ORCHESTRATOR outputs have no result payload.
-    assert output.result is None
+    assert emitted.correlation_id == correlation_id
 
 
 # ----------------------------------------------------------------------
@@ -80,14 +80,12 @@ def test_effect_appends_line_and_emits_event(isolated_state_root: Path) -> None:
     handler = HandlerLedgerAppend()
     cmd = ModelLedgerAppendCommand(tick_id="tick-abc", correlation_id=uuid4())
 
-    output = handler.handle(cmd)
+    evt = handler.handle(cmd)
 
     journal = isolated_state_root / "ledger-journal.txt"
     assert journal.exists()
     assert journal.read_text(encoding="utf-8") == "tick-abc\n"
 
-    assert len(output.events) == 1
-    evt = output.events[0]
     assert isinstance(evt, ModelLedgerAppendedEvent)
     assert evt.tick_id == "tick-abc"
     assert evt.line_number == 1
@@ -103,8 +101,8 @@ def test_effect_two_invocations_grow_journal(isolated_state_root: Path) -> None:
 
     journal = isolated_state_root / "ledger-journal.txt"
     assert journal.read_text(encoding="utf-8") == "a\nb\n"
-    assert out1.events[0].line_number == 1
-    assert out2.events[0].line_number == 2
+    assert out1.line_number == 1
+    assert out2.line_number == 2
 
 
 # ----------------------------------------------------------------------
@@ -208,3 +206,21 @@ def _make_hash_event(tick_id: str, correlation_id, line_count: int, sha: str):
         line_count=line_count,
         sha256_hex=sha,
     )
+
+
+def test_ledger_append_contract_declares_output_topic() -> None:
+    """The append EFFECT contract declares the topic it publishes on."""
+    import omnimarket.nodes.node_ledger_append_effect as node_pkg
+
+    contract_text = (Path(node_pkg.__file__).parent / "contract.yaml").read_text()
+    assert "onex.evt.omnimarket.ledger-appended.v1" in contract_text
+
+
+def test_ledger_orchestrator_contract_declares_output_topics() -> None:
+    """The orchestrator contract declares the append command topic it emits and
+    the reduced-state terminal event topic."""
+    import omnimarket.nodes.node_ledger_orchestrator as node_pkg
+
+    contract_text = (Path(node_pkg.__file__).parent / "contract.yaml").read_text()
+    assert "onex.cmd.omnimarket.ledger-append.v1" in contract_text
+    assert "onex.evt.omnimarket.ledger-state-reduced.v1" in contract_text
