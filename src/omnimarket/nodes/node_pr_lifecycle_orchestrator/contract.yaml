@@ -147,6 +147,37 @@ inputs:
     required: false
     default: 1800
     minimum: 0
+  action_mode:
+    type: str
+    description: >
+      Merge-queue governor action mode. Defaults to report_only for zero
+      mutation; callers must explicitly select enforce before any PR can arm.
+    required: false
+    default: report_only
+  merge_queue_mutation_kill_switch:
+    type: bool
+    description: >
+      Emergency stop for merge-queue mutation, engaged by default. Must be
+      explicitly set false in addition to action_mode=enforce before any PR can
+      arm.
+    required: false
+    default: true
+  merge_wave_cap:
+    type: int
+    description: >
+      Maximum PRs armed in one enforce pass. A value of 0 arms nothing
+      regardless of action_mode.
+    required: false
+    default: 3
+    minimum: 0
+  enable_stall_remediation:
+    type: bool
+    description: >
+      Opt-in flag for re-minting a stuck merge-group SHA on an already-armed PR
+      by dequeueing and re-enqueueing it. Still requires action_mode=enforce and
+      a disengaged kill switch.
+    required: false
+    default: false
 
 outputs:
   prs_inventoried:
