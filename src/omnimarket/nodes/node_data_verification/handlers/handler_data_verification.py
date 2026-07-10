@@ -256,24 +256,23 @@ class HandlerDataVerification:
         )
 
     def handle(
-        self,
-        command: ModelDataVerificationStartCommand,
-        *,
-        data_source: DataSource | None = None,
-        event_landed: bool | None = None,
-        latency_ms: float | None = None,
+        self, payload: ModelDataVerificationStartCommand
     ) -> ModelDataVerificationCompletedEvent:
         """Typed RuntimeLocal handler protocol entry point.
 
-        Delegates to run_verification. Uses InmemoryDataSource when no
-        data_source is provided (suitable for testing with pre-loaded rows).
+        OMN-14242: first parameter is named ``payload`` so the RuntimeLocal
+        adapter's single-parameter dispatch passes the validated request
+        positionally instead of keyword-fanning the model fields. No
+        cross-node caller or test ever supplied ``data_source`` /
+        ``event_landed`` / ``latency_ms`` through this entry point (those
+        injection points are exercised via ``run_verification`` directly in
+        tests), so this is a pure shape fold, not a behavior change: always
+        verifies against a fresh ``InmemoryDataSource`` with no
+        event-landed/latency override, exactly as the prior default-arg
+        behavior did for every real caller.
         """
-        _result, completed = self.run_verification(
-            command,
-            data_source or InmemoryDataSource(),
-            event_landed=event_landed,
-            latency_ms=latency_ms,
-        )
+        command = payload
+        _result, completed = self.run_verification(command, InmemoryDataSource())
         return completed
 
     def make_completed_event(

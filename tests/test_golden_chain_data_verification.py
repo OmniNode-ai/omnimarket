@@ -6,6 +6,7 @@ various check outcomes, and EventBusInmemory wiring.
 
 from __future__ import annotations
 
+import inspect
 import json
 from datetime import UTC, datetime
 from uuid import uuid4
@@ -16,6 +17,9 @@ from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
 from omnimarket.nodes.node_data_verification.handlers.handler_data_verification import (
     HandlerDataVerification,
     InmemoryDataSource,
+)
+from omnimarket.nodes.node_data_verification.models.model_data_verification_completed_event import (
+    ModelDataVerificationCompletedEvent,
 )
 from omnimarket.nodes.node_data_verification.models.model_data_verification_start_command import (
     ModelDataVerificationStartCommand,
@@ -296,3 +300,44 @@ class TestDataVerificationGoldenChain:
         assert len(result.sample_rows) == 0
         assert any("Row count" in issue for issue in result.issues)
         assert completed.status == EnumVerificationStatus.FAIL
+
+
+@pytest.mark.unit
+class TestHandlerDataVerificationThinCanonicalShape:
+    """OMN-14242: ``handle()`` is the canonical RuntimeLocal dispatch entry
+    point -- exactly one strongly-typed positional parameter named
+    ``payload``, no envelope, no test-injection kwonly overrides. The
+    dynamic injection points (``data_source``, ``event_landed``,
+    ``latency_ms``) remain exercised via ``run_verification()`` directly,
+    which is unaffected by this shape contract.
+    """
+
+    def test_handle_signature_is_thin_single_param(self) -> None:
+        """``handle`` takes only ``self`` and one param named ``payload``."""
+        sig = inspect.signature(HandlerDataVerification.handle)
+        params = [p for name, p in sig.parameters.items() if name != "self"]
+
+        assert len(params) == 1, (
+            f"handle() must take exactly one param besides self, got: {params}"
+        )
+        assert params[0].name == "payload"
+        assert params[0].kind == inspect.Parameter.POSITIONAL_OR_KEYWORD
+        # handler module uses ``from __future__ import annotations``, so the
+        # annotation is the string form, not the resolved class object.
+        assert params[0].annotation == "ModelDataVerificationStartCommand"
+
+    def test_handle_called_positionally_returns_completed_event(self) -> None:
+        """``handle(command)`` -- single positional arg, no kwargs -- works
+        end to end and returns the typed completed event directly (no
+        envelope, no ModelHandlerOutput wrapper)."""
+        handler = HandlerDataVerification()
+        command = _make_command(
+            expected_columns=["id", "name", "status"],
+        )
+
+        completed = handler.handle(command)
+
+        assert isinstance(completed, ModelDataVerificationCompletedEvent)
+        assert completed.table_name == command.table_name
+        assert completed.correlation_id == command.correlation_id
+        assert completed.result.correlation_id == command.correlation_id
