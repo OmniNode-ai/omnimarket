@@ -1,0 +1,24 @@
+name: node_occ_companion_compute
+version: "1.0.0"
+description: "Pure computation: renders the deterministic OCC companion plan from PR + OCC state with zero I/O; doubles as the OMN-14055 attestation oracle"
+pack: occ_companion
+node_role: companion_compute
+display_name: "OCC Companion Compute"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_occ_companion_compute: "omnimarket.nodes.node_occ_companion_compute"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: read_only
+dependencies:
+  - "omnibase_core>=0.39.0"
+  - "omnibase_compat"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["compute", "occ", "companion", "attestation-oracle"]
