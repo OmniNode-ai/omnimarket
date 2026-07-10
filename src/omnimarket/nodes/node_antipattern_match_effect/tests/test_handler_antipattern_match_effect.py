@@ -6,6 +6,9 @@
 Unit tests: mocked Qdrant + embedding client; exercises real code paths.
 Integration stub: @pytest.mark.integration — skipped unless .201 is available.
 
+Canonical thin shape (OMN-14242): qdrant_client is constructor-injected;
+handle() takes a single ModelAntipatternMatchRequest payload.
+
 [OMN-11919, OMN-11909]
 """
 
@@ -25,6 +28,9 @@ from omnimarket.nodes.node_antipattern_match_effect.handlers.handler_antipattern
 )
 from omnimarket.nodes.node_antipattern_match_effect.models.model_antipattern_match import (
     ModelAntipatternMatch,
+)
+from omnimarket.nodes.node_antipattern_match_effect.models.model_antipattern_match_request import (
+    ModelAntipatternMatchRequest,
 )
 from omnimarket.nodes.node_antipattern_match_effect.models.model_antipattern_match_response import (
     ModelAntipatternMatchResponse,
@@ -191,7 +197,7 @@ class TestHandlerAntipatternMatchEffect:
         ]
         qdrant = _make_mock_qdrant(results=hits)
         fake_embedding = [0.1] * 4096
-        handler = HandlerAntipatternMatchEffect()
+        handler = HandlerAntipatternMatchEffect(qdrant_client=qdrant)
 
         with patch(
             "omnimarket.nodes.node_antipattern_match_effect.handlers.handler_antipattern_match_effect.httpx.AsyncClient"
@@ -199,12 +205,13 @@ class TestHandlerAntipatternMatchEffect:
             mock_cls.return_value = _make_mock_http_client(fake_embedding)
 
             result = await handler.handle(
-                correlation_id="test-001",
-                code_text="def foo(): pass",
-                min_similarity=0.75,
-                max_results=5,
-                qdrant_client=qdrant,
-                embedding_endpoint_override="http://test-embed:8100",
+                ModelAntipatternMatchRequest(
+                    correlation_id="test-001",
+                    code_text="def foo(): pass",
+                    min_similarity=0.75,
+                    max_results=5,
+                    embedding_endpoint_override="http://test-embed:8100",
+                )
             )
 
         assert isinstance(result, ModelAntipatternMatchResponse)
@@ -223,7 +230,7 @@ class TestHandlerAntipatternMatchEffect:
         ]
         qdrant = _make_mock_qdrant(results=hits)
         fake_embedding = [0.1] * 4096
-        handler = HandlerAntipatternMatchEffect()
+        handler = HandlerAntipatternMatchEffect(qdrant_client=qdrant)
 
         with patch(
             "omnimarket.nodes.node_antipattern_match_effect.handlers.handler_antipattern_match_effect.httpx.AsyncClient"
@@ -231,12 +238,13 @@ class TestHandlerAntipatternMatchEffect:
             mock_cls.return_value = _make_mock_http_client(fake_embedding)
 
             result = await handler.handle(
-                correlation_id="test-002",
-                code_text="some code",
-                min_similarity=0.75,
-                max_results=5,
-                qdrant_client=qdrant,
-                embedding_endpoint_override="http://test-embed:8100",
+                ModelAntipatternMatchRequest(
+                    correlation_id="test-002",
+                    code_text="some code",
+                    min_similarity=0.75,
+                    max_results=5,
+                    embedding_endpoint_override="http://test-embed:8100",
+                )
             )
 
         assert result.matches[0].antipattern_name == "higher"
@@ -247,7 +255,7 @@ class TestHandlerAntipatternMatchEffect:
         hits = [_make_qdrant_hit(score=0.90, name=f"ap_{i}") for i in range(10)]
         qdrant = _make_mock_qdrant(results=hits)
         fake_embedding = [0.1] * 4096
-        handler = HandlerAntipatternMatchEffect()
+        handler = HandlerAntipatternMatchEffect(qdrant_client=qdrant)
 
         with patch(
             "omnimarket.nodes.node_antipattern_match_effect.handlers.handler_antipattern_match_effect.httpx.AsyncClient"
@@ -255,12 +263,13 @@ class TestHandlerAntipatternMatchEffect:
             mock_cls.return_value = _make_mock_http_client(fake_embedding)
 
             result = await handler.handle(
-                correlation_id="test-003",
-                code_text="code",
-                min_similarity=0.0,
-                max_results=3,
-                qdrant_client=qdrant,
-                embedding_endpoint_override="http://test-embed:8100",
+                ModelAntipatternMatchRequest(
+                    correlation_id="test-003",
+                    code_text="code",
+                    min_similarity=0.0,
+                    max_results=3,
+                    embedding_endpoint_override="http://test-embed:8100",
+                )
             )
 
         assert len(result.matches) == 3
@@ -269,7 +278,7 @@ class TestHandlerAntipatternMatchEffect:
     async def test_search_called_with_correct_params(self) -> None:
         qdrant = _make_mock_qdrant(results=[])
         fake_embedding = [0.5] * 4096
-        handler = HandlerAntipatternMatchEffect()
+        handler = HandlerAntipatternMatchEffect(qdrant_client=qdrant)
 
         with patch(
             "omnimarket.nodes.node_antipattern_match_effect.handlers.handler_antipattern_match_effect.httpx.AsyncClient"
@@ -277,12 +286,13 @@ class TestHandlerAntipatternMatchEffect:
             mock_cls.return_value = _make_mock_http_client(fake_embedding)
 
             await handler.handle(
-                correlation_id="test-004",
-                code_text="test code",
-                min_similarity=0.8,
-                max_results=7,
-                qdrant_client=qdrant,
-                embedding_endpoint_override="http://test-embed:8100",
+                ModelAntipatternMatchRequest(
+                    correlation_id="test-004",
+                    code_text="test code",
+                    min_similarity=0.8,
+                    max_results=7,
+                    embedding_endpoint_override="http://test-embed:8100",
+                )
             )
 
         qdrant.search.assert_called_once()
@@ -295,7 +305,7 @@ class TestHandlerAntipatternMatchEffect:
         hits = [_make_qdrant_hit(score=0.88, name="test_ap")]
         qdrant = _make_mock_qdrant(results=hits)
         fake_embedding = [0.1] * 4096
-        handler = HandlerAntipatternMatchEffect()
+        handler = HandlerAntipatternMatchEffect(qdrant_client=qdrant)
 
         with patch(
             "omnimarket.nodes.node_antipattern_match_effect.handlers.handler_antipattern_match_effect.httpx.AsyncClient"
@@ -303,12 +313,13 @@ class TestHandlerAntipatternMatchEffect:
             mock_cls.return_value = _make_mock_http_client(fake_embedding)
 
             result = await handler.handle(
-                correlation_id="test-005",
-                code_text="code",
-                min_similarity=0.75,
-                max_results=5,
-                qdrant_client=qdrant,
-                embedding_endpoint_override="http://test-embed:8100",
+                ModelAntipatternMatchRequest(
+                    correlation_id="test-005",
+                    code_text="code",
+                    min_similarity=0.75,
+                    max_results=5,
+                    embedding_endpoint_override="http://test-embed:8100",
+                )
             )
 
         assert len(result.matches) == 1
@@ -325,14 +336,15 @@ class TestHandlerAntipatternMatchEffect:
     async def test_missing_embedding_url_raises(self) -> None:
         import os
 
-        handler = HandlerAntipatternMatchEffect()
+        handler = HandlerAntipatternMatchEffect(qdrant_client=_make_mock_qdrant())
         backup = os.environ.pop("EMBEDDING_MODEL_URL", None)
         try:
             with pytest.raises(OSError, match="EMBEDDING_MODEL_URL"):
                 await handler.handle(
-                    correlation_id="test-006",
-                    code_text="some code",
-                    qdrant_client=_make_mock_qdrant(),
+                    ModelAntipatternMatchRequest(
+                        correlation_id="test-006",
+                        code_text="some code",
+                    )
                 )
         finally:
             if backup is not None:
@@ -340,26 +352,28 @@ class TestHandlerAntipatternMatchEffect:
 
     @pytest.mark.asyncio
     async def test_both_code_and_description_none_raises(self) -> None:
-        handler = HandlerAntipatternMatchEffect()
+        handler = HandlerAntipatternMatchEffect(qdrant_client=_make_mock_qdrant())
         with pytest.raises(ValueError, match=r"code_text.*description"):
             await handler.handle(
-                correlation_id="test-007",
-                qdrant_client=_make_mock_qdrant(),
-                embedding_endpoint_override="http://test-embed:8100",
+                ModelAntipatternMatchRequest(
+                    correlation_id="test-007",
+                    embedding_endpoint_override="http://test-embed:8100",
+                )
             )
 
     @pytest.mark.asyncio
     async def test_qdrant_unavailable_returns_empty_matches(self) -> None:
         import os
 
-        handler = HandlerAntipatternMatchEffect()
+        handler = HandlerAntipatternMatchEffect(qdrant_client=None)
         backup = os.environ.pop("QDRANT_HOST", None)
         try:
             result = await handler.handle(
-                correlation_id="test-008",
-                code_text="some code",
-                qdrant_client=None,
-                embedding_endpoint_override="http://test-embed:8100",
+                ModelAntipatternMatchRequest(
+                    correlation_id="test-008",
+                    code_text="some code",
+                    embedding_endpoint_override="http://test-embed:8100",
+                )
             )
         finally:
             if backup is not None:
@@ -371,7 +385,7 @@ class TestHandlerAntipatternMatchEffect:
     @pytest.mark.asyncio
     async def test_embedding_failure_returns_empty_matches(self) -> None:
         qdrant = _make_mock_qdrant(results=[])
-        handler = HandlerAntipatternMatchEffect()
+        handler = HandlerAntipatternMatchEffect(qdrant_client=qdrant)
 
         with patch(
             "omnimarket.nodes.node_antipattern_match_effect.handlers.handler_antipattern_match_effect.httpx.AsyncClient"
@@ -383,10 +397,11 @@ class TestHandlerAntipatternMatchEffect:
             mock_cls.return_value = mock_http
 
             result = await handler.handle(
-                correlation_id="test-009",
-                code_text="code",
-                qdrant_client=qdrant,
-                embedding_endpoint_override="http://test-embed:8100",
+                ModelAntipatternMatchRequest(
+                    correlation_id="test-009",
+                    code_text="code",
+                    embedding_endpoint_override="http://test-embed:8100",
+                )
             )
 
         assert result.matches == ()
@@ -408,7 +423,7 @@ class TestHandlerAntipatternMatchEffect:
         ]
         qdrant = _make_mock_qdrant(results=hits)
         fake_embedding = [0.1] * 4096
-        handler = HandlerAntipatternMatchEffect()
+        handler = HandlerAntipatternMatchEffect(qdrant_client=qdrant)
 
         with patch(
             "omnimarket.nodes.node_antipattern_match_effect.handlers.handler_antipattern_match_effect.httpx.AsyncClient"
@@ -416,13 +431,14 @@ class TestHandlerAntipatternMatchEffect:
             mock_cls.return_value = _make_mock_http_client(fake_embedding)
 
             result = await handler.handle(
-                correlation_id="test-010",
-                code_text="code",
-                min_similarity=0.75,
-                max_results=5,
-                freshness_decay_factor=0.20,
-                qdrant_client=qdrant,
-                embedding_endpoint_override="http://test-embed:8100",
+                ModelAntipatternMatchRequest(
+                    correlation_id="test-010",
+                    code_text="code",
+                    min_similarity=0.75,
+                    max_results=5,
+                    freshness_decay_factor=0.20,
+                    embedding_endpoint_override="http://test-embed:8100",
+                )
             )
 
         # recent_ap (0.85 base + big freshness boost) should outrank old_ap (0.90 base + tiny boost)
@@ -438,7 +454,7 @@ class TestHandlerAntipatternMatchEffect:
         ]
         qdrant = _make_mock_qdrant(results=hits)
         fake_embedding = [0.1] * 4096
-        handler = HandlerAntipatternMatchEffect()
+        handler = HandlerAntipatternMatchEffect(qdrant_client=qdrant)
 
         with patch(
             "omnimarket.nodes.node_antipattern_match_effect.handlers.handler_antipattern_match_effect.httpx.AsyncClient"
@@ -446,13 +462,14 @@ class TestHandlerAntipatternMatchEffect:
             mock_cls.return_value = _make_mock_http_client(fake_embedding)
 
             result = await handler.handle(
-                correlation_id="test-011",
-                code_text="code",
-                min_similarity=0.75,
-                max_results=5,
-                freshness_decay_factor=0.0,
-                qdrant_client=qdrant,
-                embedding_endpoint_override="http://test-embed:8100",
+                ModelAntipatternMatchRequest(
+                    correlation_id="test-011",
+                    code_text="code",
+                    min_similarity=0.75,
+                    max_results=5,
+                    freshness_decay_factor=0.0,
+                    embedding_endpoint_override="http://test-embed:8100",
+                )
             )
 
         assert result.matches[0].antipattern_name == "higher"
@@ -462,7 +479,7 @@ class TestHandlerAntipatternMatchEffect:
     async def test_correlation_id_propagated(self) -> None:
         qdrant = _make_mock_qdrant(results=[])
         fake_embedding = [0.1] * 4096
-        handler = HandlerAntipatternMatchEffect()
+        handler = HandlerAntipatternMatchEffect(qdrant_client=qdrant)
 
         with patch(
             "omnimarket.nodes.node_antipattern_match_effect.handlers.handler_antipattern_match_effect.httpx.AsyncClient"
@@ -470,10 +487,11 @@ class TestHandlerAntipatternMatchEffect:
             mock_cls.return_value = _make_mock_http_client(fake_embedding)
 
             result = await handler.handle(
-                correlation_id="unique-corr-abc",
-                code_text="code",
-                qdrant_client=qdrant,
-                embedding_endpoint_override="http://test-embed:8100",
+                ModelAntipatternMatchRequest(
+                    correlation_id="unique-corr-abc",
+                    code_text="code",
+                    embedding_endpoint_override="http://test-embed:8100",
+                )
             )
 
         assert result.correlation_id == "unique-corr-abc"
@@ -482,7 +500,7 @@ class TestHandlerAntipatternMatchEffect:
     async def test_query_text_used_populated_in_response(self) -> None:
         qdrant = _make_mock_qdrant(results=[])
         fake_embedding = [0.1] * 4096
-        handler = HandlerAntipatternMatchEffect()
+        handler = HandlerAntipatternMatchEffect(qdrant_client=qdrant)
 
         with patch(
             "omnimarket.nodes.node_antipattern_match_effect.handlers.handler_antipattern_match_effect.httpx.AsyncClient"
@@ -490,10 +508,11 @@ class TestHandlerAntipatternMatchEffect:
             mock_cls.return_value = _make_mock_http_client(fake_embedding)
 
             result = await handler.handle(
-                correlation_id="test-012",
-                code_text="def my_func(): pass",
-                qdrant_client=qdrant,
-                embedding_endpoint_override="http://test-embed:8100",
+                ModelAntipatternMatchRequest(
+                    correlation_id="test-012",
+                    code_text="def my_func(): pass",
+                    embedding_endpoint_override="http://test-embed:8100",
+                )
             )
 
         assert "my_func" in result.query_text_used
@@ -503,7 +522,7 @@ class TestHandlerAntipatternMatchEffect:
         hits = [_make_qdrant_hit(score=0.88, name="desc_match")]
         qdrant = _make_mock_qdrant(results=hits)
         fake_embedding = [0.1] * 4096
-        handler = HandlerAntipatternMatchEffect()
+        handler = HandlerAntipatternMatchEffect(qdrant_client=qdrant)
 
         with patch(
             "omnimarket.nodes.node_antipattern_match_effect.handlers.handler_antipattern_match_effect.httpx.AsyncClient"
@@ -511,12 +530,13 @@ class TestHandlerAntipatternMatchEffect:
             mock_cls.return_value = _make_mock_http_client(fake_embedding)
 
             result = await handler.handle(
-                correlation_id="test-013",
-                description="Hardcoded connection string in YAML",
-                min_similarity=0.75,
-                max_results=5,
-                qdrant_client=qdrant,
-                embedding_endpoint_override="http://test-embed:8100",
+                ModelAntipatternMatchRequest(
+                    correlation_id="test-013",
+                    description="Hardcoded connection string in YAML",
+                    min_similarity=0.75,
+                    max_results=5,
+                    embedding_endpoint_override="http://test-embed:8100",
+                )
             )
 
         assert len(result.matches) == 1
@@ -527,7 +547,7 @@ class TestHandlerAntipatternMatchEffect:
         hits = [_make_qdrant_hit(score=0.9), _make_qdrant_hit(score=0.7)]
         qdrant = _make_mock_qdrant(results=hits)
         fake_embedding = [0.1] * 4096
-        handler = HandlerAntipatternMatchEffect()
+        handler = HandlerAntipatternMatchEffect(qdrant_client=qdrant)
 
         with patch(
             "omnimarket.nodes.node_antipattern_match_effect.handlers.handler_antipattern_match_effect.httpx.AsyncClient"
@@ -535,12 +555,13 @@ class TestHandlerAntipatternMatchEffect:
             mock_cls.return_value = _make_mock_http_client(fake_embedding)
 
             result = await handler.handle(
-                correlation_id="test-014",
-                code_text="code",
-                min_similarity=0.75,
-                max_results=5,
-                qdrant_client=qdrant,
-                embedding_endpoint_override="http://test-embed:8100",
+                ModelAntipatternMatchRequest(
+                    correlation_id="test-014",
+                    code_text="code",
+                    min_similarity=0.75,
+                    max_results=5,
+                    embedding_endpoint_override="http://test-embed:8100",
+                )
             )
 
         assert result.total_candidates_searched == 2
@@ -576,14 +597,15 @@ async def test_integration_match_returns_results() -> None:
     except Exception as exc:
         pytest.skip(f"Qdrant unreachable: {exc}")
 
-    handler = HandlerAntipatternMatchEffect()
+    handler = HandlerAntipatternMatchEffect(qdrant_client=client)
     result = await handler.handle(
-        correlation_id="integration-match-001",
-        code_text="import omnibase_core.models directly from handler",
-        qdrant_client=client,
-        embedding_endpoint_override=endpoint,
-        min_similarity=0.5,
-        max_results=5,
+        ModelAntipatternMatchRequest(
+            correlation_id="integration-match-001",
+            code_text="import omnibase_core.models directly from handler",
+            embedding_endpoint_override=endpoint,
+            min_similarity=0.5,
+            max_results=5,
+        )
     )
 
     assert result.correlation_id == "integration-match-001"

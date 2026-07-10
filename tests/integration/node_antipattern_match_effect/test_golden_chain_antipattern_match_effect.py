@@ -59,8 +59,9 @@ _ENDPOINT = "http://embed.test:8100"
 
 
 class _MatchEffectBusHarness:
-    """Bus-drivable wrapper: a positional-model ``handle`` that forwards to the real
-    effect handler with the Qdrant client + embedding endpoint injected."""
+    """Bus-drivable wrapper: forwards to the real effect handler (Qdrant client
+    constructor-injected, canonical thin shape) with the embedding endpoint
+    default applied when the request does not override it."""
 
     def __init__(
         self,
@@ -68,26 +69,17 @@ class _MatchEffectBusHarness:
         qdrant_client: Any,
         embedding_endpoint: str | None = _ENDPOINT,
     ) -> None:
-        self._real = HandlerAntipatternMatchEffect()
-        self._qdrant = qdrant_client
+        self._real = HandlerAntipatternMatchEffect(qdrant_client=qdrant_client)
         self._endpoint = embedding_endpoint
 
     async def handle(
         self, request: ModelAntipatternMatchRequest
     ) -> ModelAntipatternMatchResponse:
-        return await self._real.handle(
-            correlation_id=request.correlation_id,
-            code_text=request.code_text,
-            description=request.description,
-            min_similarity=request.min_similarity,
-            max_results=request.max_results,
-            freshness_decay_factor=request.freshness_decay_factor,
-            qdrant_client=self._qdrant,
-            embedding_endpoint_override=(
-                request.embedding_endpoint_override or self._endpoint
-            ),
-            qdrant_collection_override=request.qdrant_collection_override,
-        )
+        if request.embedding_endpoint_override is None and self._endpoint is not None:
+            request = request.model_copy(
+                update={"embedding_endpoint_override": self._endpoint}
+            )
+        return await self._real.handle(request)
 
 
 def _make_qdrant(results: list[Any] | None = None) -> MagicMock:

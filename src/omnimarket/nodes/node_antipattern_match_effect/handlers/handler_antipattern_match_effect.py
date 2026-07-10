@@ -30,6 +30,9 @@ import httpx
 from omnimarket.nodes.node_antipattern_match_effect.models.model_antipattern_match import (
     ModelAntipatternMatch,
 )
+from omnimarket.nodes.node_antipattern_match_effect.models.model_antipattern_match_request import (
+    ModelAntipatternMatchRequest,
+)
 from omnimarket.nodes.node_antipattern_match_effect.models.model_antipattern_match_response import (
     ModelAntipatternMatchResponse,
 )
@@ -37,8 +40,6 @@ from omnimarket.nodes.node_antipattern_match_effect.models.model_antipattern_mat
 logger = logging.getLogger(__name__)
 
 DEFAULT_QDRANT_COLLECTION = "onex_antipatterns"
-DEFAULT_MIN_SIMILARITY = 0.75
-DEFAULT_MAX_RESULTS = 5
 
 
 def _build_query_text(
@@ -91,26 +92,30 @@ def _build_explanation(
 
 
 class HandlerAntipatternMatchEffect:
-    """EFFECT handler — embeds query and searches Qdrant for antipattern matches."""
+    """EFFECT handler — embeds query and searches Qdrant for antipattern matches.
+
+    The Qdrant client is injected via constructor for testability (canonical
+    thin shape, OMN-14242). ``handle()`` takes a single typed
+    ``ModelAntipatternMatchRequest`` payload — no envelope, no coercion; the
+    runtime wraps. When no client is injected, one is built lazily per-call
+    from QDRANT_HOST/QDRANT_PORT env vars (existing graceful-skip behavior
+    is preserved).
+    """
+
+    def __init__(self, qdrant_client: Any | None = None) -> None:
+        self._qdrant_client = qdrant_client
 
     async def handle(
-        self,
-        *,
-        correlation_id: str,
-        code_text: str | None = None,
-        description: str | None = None,
-        min_similarity: float = DEFAULT_MIN_SIMILARITY,
-        max_results: int = DEFAULT_MAX_RESULTS,
-        freshness_decay_factor: float = 0.05,
-        qdrant_client: Any | None = None,
-        embedding_endpoint_override: str | None = None,
-        qdrant_collection_override: str | None = None,
+        self, payload: ModelAntipatternMatchRequest
     ) -> ModelAntipatternMatchResponse:
         """Embed query and return matching antipatterns from vector store."""
-        query_text = _build_query_text(code_text=code_text, description=description)
+        correlation_id = payload.correlation_id
+        query_text = _build_query_text(
+            code_text=payload.code_text, description=payload.description
+        )
 
         endpoint = (
-            embedding_endpoint_override
+            payload.embedding_endpoint_override
             or os.environ.get("EMBEDDING_MODEL_URL", "")  # contract-config-ok: config
         )
         if not endpoint:
@@ -120,13 +125,13 @@ class HandlerAntipatternMatchEffect:
             )
 
         collection = (
-            qdrant_collection_override
+            payload.qdrant_collection_override
             or os.environ.get(  # contract-config-ok: config
                 "ANTIPATTERN_QDRANT_COLLECTION", DEFAULT_QDRANT_COLLECTION
             )
         )
 
-        resolved_client = qdrant_client
+        resolved_client = self._qdrant_client
         if resolved_client is None:
             resolved_client = _build_qdrant_client()
             if resolved_client is None:
@@ -159,7 +164,7 @@ class HandlerAntipatternMatchEffect:
             hits = resolved_client.search(
                 collection_name=collection,
                 query_vector=embedding,
-                limit=max_results,
+                limit=payload.max_results,
                 with_payload=True,
             )
         except Exception:
@@ -177,46 +182,46 @@ class HandlerAntipatternMatchEffect:
         matches: list[ModelAntipatternMatch] = []
         for hit in hits:
             score: float = hit.score
-            if score < min_similarity:
+            if score < payload.min_similarity:
                 continue
 
-            payload: dict[str, Any] = hit.payload or {}
-            discovered_at: str | None = payload.get("discovered_at")
+            hit_payload: dict[str, Any] = hit.payload or {}
+            discovered_at: str | None = hit_payload.get("discovered_at")
             adjusted = _apply_freshness_boost(
                 base_score=score,
                 discovered_at=discovered_at,
-                decay_factor=freshness_decay_factor,
+                decay_factor=payload.freshness_decay_factor,
             )
-            ap_name = str(payload.get("name") or "unknown").strip() or "unknown"
-            ap_description = str(payload.get("description") or "").strip()
+            ap_name = str(hit_payload.get("name") or "unknown").strip() or "unknown"
+            ap_description = str(hit_payload.get("description") or "").strip()
             matches.append(
                 ModelAntipatternMatch(
                     similarity_score=score,
                     adjusted_score=adjusted,
                     antipattern_name=ap_name,
-                    severity=payload.get("severity", ""),
-                    enforcement=payload.get("enforcement", ""),
-                    category=payload.get("category", ""),
+                    severity=hit_payload.get("severity", ""),
+                    enforcement=hit_payload.get("enforcement", ""),
+                    category=hit_payload.get("category", ""),
                     description=ap_description,
-                    rationale=payload.get("rationale", ""),
+                    rationale=hit_payload.get("rationale", ""),
                     explanation=_build_explanation(
                         query_text=query_text,
                         antipattern_name=ap_name,
                         description=ap_description,
                     ),
-                    source_ticket=payload.get("source_ticket", ""),
-                    registry_version=payload.get("registry_version", ""),
+                    source_ticket=hit_payload.get("source_ticket", ""),
+                    registry_version=hit_payload.get("registry_version", ""),
                 )
             )
 
         matches.sort(key=lambda m: m.adjusted_score, reverse=True)
-        matches = matches[:max_results]
+        matches = matches[: payload.max_results]
 
         logger.info(
             "Antipattern match: %d/%d candidates above threshold %.2f (correlation_id=%s)",
             len(matches),
             total_candidates,
-            min_similarity,
+            payload.min_similarity,
             correlation_id,
         )
 
