@@ -1,11 +1,12 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""Unit tests for HandlerPrLifecycleFixRuntime (OMN-13990).
+"""Unit tests for HandlerPrLifecycleFixRuntime (OMN-13990 / OMN-14285).
 
 The runtime resolver zero-arg-constructs the contract's declared handler. This
-subclass must bind the LIVE OCC adapters under that path (the base handler would
-default to no-ops), stay boot-resolvable (no required non-injectable ctor param),
-honour explicit overrides, and still route the autobind command.
+subclass must bind the LIVE single OCC producer (OccCompanionEmitter) into both
+OCC slots under that path (the base handler would default to no-ops), stay
+boot-resolvable (no required non-injectable ctor param), honour explicit
+overrides, and still route the autobind command.
 """
 
 from __future__ import annotations
@@ -16,18 +17,15 @@ from uuid import uuid4
 
 import pytest
 
-from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.adapter_occ_autobind import (
-    OccAutobindAdapter,
-)
-from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.adapter_occ_contract import (
-    OccContractAdapter,
-)
 from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.handler_pr_lifecycle_fix import (
     _NoopOccAutobindAdapter,
     _NoopOccContractAdapter,
 )
 from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.handler_pr_lifecycle_fix_runtime import (
     HandlerPrLifecycleFixRuntime,
+)
+from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.occ_companion_emitter import (
+    OccCompanionEmitter,
 )
 from omnimarket.nodes.node_pr_lifecycle_fix_effect.models.model_fix_command import (
     EnumPrBlockReason,
@@ -48,10 +46,11 @@ class _RecordingAutobindAdapter:
 
 @pytest.mark.unit
 class TestHandlerPrLifecycleFixRuntime:
-    def test_zero_arg_binds_live_occ_adapters_not_noop(self) -> None:
+    def test_zero_arg_binds_single_live_occ_producer_not_noop(self) -> None:
         handler = HandlerPrLifecycleFixRuntime()
-        assert isinstance(handler._occ_autobind, OccAutobindAdapter)
-        assert isinstance(handler._occ, OccContractAdapter)
+        # OMN-14285: one producer (OccCompanionEmitter) fills both OCC slots.
+        assert isinstance(handler._occ_autobind, OccCompanionEmitter)
+        assert isinstance(handler._occ, OccCompanionEmitter)
         assert not isinstance(handler._occ_autobind, _NoopOccAutobindAdapter)
         assert not isinstance(handler._occ, _NoopOccContractAdapter)
 

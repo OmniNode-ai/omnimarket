@@ -54,7 +54,7 @@ PR_MERGED_TOPIC_V1 = "onex.evt.github.pr-merged.v1"  # onex-topic-allow: canonic
 
 # OCC Evidence-Source autobind command (OMN-13317 / F1). Thin-published by the
 # call-occ-autobind GHA workflow on product-PR opened/synchronize; consumed by
-# node_pr_lifecycle_fix_effect, which routes it to the OccAutobindAdapter under
+# node_pr_lifecycle_fix_effect, which routes it to the OccCompanionEmitter under
 # the receipt_evidence_source_autobind block reason. The effect generates a
 # receipt stamped with the real PR head + number, opens/syncs the OCC binding
 # PR, recomputes contract_sha256 across all matching receipts, and PATCHes

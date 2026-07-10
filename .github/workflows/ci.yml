@@ -161,6 +161,13 @@ jobs:
       # silently. SYNC with pre-commit hook 'projection-dlq-path'.
       - name: Projection-DLQ path gate
         run: uv run python scripts/ci/check_projection_dlq_path.py
+      # OMN-14285 (WI-1 / S1d): exactly one OCC companion producer. Fails if a
+      # second writer surface (inline receipt/contract template outside the
+      # occ_evidence_stamp seam, duplicate OccCompanionEmitter, or a resurrected
+      # scaffold_occ_receipt.py) reappears. SYNC with pre-commit hook
+      # 'one-occ-producer'.
+      - name: One OCC producer per contract
+        run: uv run python scripts/ci/check_one_occ_producer.py
       - name: Reject node-level topics.py files
         run: |
           FOUND=$(find src/omnimarket/nodes -name "topics.py" -path "*/node_*/*" 2>/dev/null)

@@ -1309,12 +1309,6 @@ class HandlerPrLifecycleOrchestrator:
                 from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.adapter_github_cli import (
                     GitHubCliAdapter,
                 )
-                from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.adapter_occ_autobind import (
-                    OccAutobindAdapter,
-                )
-                from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.adapter_occ_contract import (
-                    OccContractAdapter,
-                )
                 from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.adapter_pr_polish_dispatch import (
                     PrPolishDispatchAdapter,
                 )
@@ -1323,6 +1317,9 @@ class HandlerPrLifecycleOrchestrator:
                 )
                 from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.handler_pr_lifecycle_fix import (
                     HandlerPrLifecycleFix,
+                )
+                from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.occ_companion_emitter import (
+                    OccCompanionEmitter,
                 )
                 from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.occ_companion_verifier import (
                     OccCompanionVerifier,
@@ -1333,11 +1330,15 @@ class HandlerPrLifecycleOrchestrator:
                 # test-convenience noop/in-memory defaults) so real merge-sweep
                 # runs actually attempt the delegated path and the two-strike
                 # counter survives across ticks.
+                # OMN-14285: one OCC producer (OccCompanionEmitter) serves both the
+                # deploy-gate and autobind failure classes; the single instance is
+                # shared across both slots.
+                occ_emitter = OccCompanionEmitter()
                 fix_handler = HandlerPrLifecycleFix(
                     github_adapter=GitHubCliAdapter(),
                     agent_dispatch_adapter=PrPolishDispatchAdapter(),
-                    occ_contract_adapter=OccContractAdapter(),
-                    occ_autobind_adapter=OccAutobindAdapter(),
+                    occ_contract_adapter=occ_emitter,
+                    occ_autobind_adapter=occ_emitter,
                     # OMN-14173: live read-back verifier so prs_fixed is gated on
                     # a CONFIRMED pushed OCC companion, not on fix_applied. Without
                     # this the autobind arm reported prs_fixed while authoring zero

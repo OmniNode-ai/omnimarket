@@ -1,9 +1,9 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""Shared OCC git transport helpers (HTTPS x-access-token) for the fix-effect adapters.
+"""Shared OCC git transport helpers (HTTPS x-access-token) for the fix effect.
 
-The .201 effects runtime container has **no SSH identity**, so both OCC companion
-adapters (:class:`OccAutobindAdapter`, :class:`OccContractAdapter`) must clone and
+The .201 effects runtime container has **no SSH identity**, so the OCC companion
+producer (:class:`OccCompanionEmitter`) and the read-back verifier must clone and
 push ``onex_change_control`` over HTTPS using an ``x-access-token`` credential
 rather than an ``git@github.com:`` SSH remote (OMN-13990). The container already
 resolves ``GITHUB_TOKEN`` from the contract-declared secret ref (OMN-12856), so

@@ -22,9 +22,6 @@ from datetime import UTC, datetime
 from typing import NamedTuple, Protocol, runtime_checkable
 from uuid import UUID
 
-from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.adapter_occ_contract import (
-    classify_trivial_infra_fastpath,
-)
 from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.adapter_two_strike_store import (
     ProtocolTwoStrikeStore,
     strike_key,
@@ -32,6 +29,9 @@ from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.adapter_two_strike_s
 from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.delegation_eligibility import (
     TWO_STRIKE_THRESHOLD,
     is_delegation_eligible,
+)
+from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.occ_evidence_stamp import (
+    classify_trivial_infra_fastpath,
 )
 from omnimarket.nodes.node_pr_lifecycle_fix_effect.models.model_fix_command import (
     EnumPrBlockReason,

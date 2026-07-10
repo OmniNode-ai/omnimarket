@@ -6,7 +6,7 @@
 #
 # Thin-publishes onex.cmd.omnimarket.occ-autobind.v1 when a product PR is opened or
 # synchronized (OMN-13317 / F1). The command is consumed by
-# node_pr_lifecycle_fix_effect, which routes it to the OccAutobindAdapter under
+# node_pr_lifecycle_fix_effect, which routes it to the OccCompanionEmitter under
 # the receipt_evidence_source_autobind block reason: it detects the ticket,
 # generates a receipt stamped with the real PR head + number, opens/syncs the
 # OCC binding PR, recomputes contract_sha256 across all matching receipts, and

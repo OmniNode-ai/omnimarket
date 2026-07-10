@@ -12,12 +12,12 @@ runtime would report ``fix_applied=True`` while doing nothing (OMN-13990, §1.2
 defect 3).
 
 This subclass is the runtime-boot construction surface: it default-constructs the
-**live** OCC adapters (:class:`OccAutobindAdapter`, :class:`OccContractAdapter`)
-so the ``receipt_evidence_source_autobind`` and ``deploy_gate_contract_not_found``
-block reasons — the only two carried by this node's ``subscribe_topics`` on the
-runtime consume path — perform real OCC companion authoring. It mirrors the
-live-adapter wiring the merge-sweep orchestrator injects in
-``HandlerPrLifecycleOrchestrator._ensure_sub_handlers`` (§4 item 2).
+single **live** OCC producer (:class:`OccCompanionEmitter`, OMN-14285) into both
+OCC slots so the ``receipt_evidence_source_autobind`` and
+``deploy_gate_contract_not_found`` block reasons — the only two carried by this
+node's ``subscribe_topics`` on the runtime consume path — perform real OCC
+companion authoring through ONE writer. It mirrors the live wiring the merge-sweep
+orchestrator injects in ``HandlerPrLifecycleOrchestrator._ensure_sub_handlers``.
 
 The remaining adapters (GitHub rerun, agent dispatch, delegated fix, two-strike
 store) keep their base noop/in-memory defaults deliberately: those block reasons
@@ -35,12 +35,6 @@ Ticket: OMN-13990 (drive the OCC emitter at the normal/born path).
 
 from __future__ import annotations
 
-from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.adapter_occ_autobind import (
-    OccAutobindAdapter,
-)
-from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.adapter_occ_contract import (
-    OccContractAdapter,
-)
 from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.adapter_two_strike_store import (
     ProtocolTwoStrikeStore,
 )
@@ -52,6 +46,9 @@ from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.handler_pr_lifecycle
     ProtocolOccAutobindAdapter,
     ProtocolOccContractAdapter,
 )
+from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.occ_companion_emitter import (
+    OccCompanionEmitter,
+)
 
 
 class HandlerPrLifecycleFixRuntime(HandlerPrLifecycleFix):
@@ -59,7 +56,8 @@ class HandlerPrLifecycleFixRuntime(HandlerPrLifecycleFix):
 
     Behaviourally identical to the base handler except that a bare
     ``HandlerPrLifecycleFixRuntime()`` (the shape the runtime resolver constructs)
-    binds the **live** OCC contract + autobind adapters instead of no-ops.
+    binds the single **live** :class:`OccCompanionEmitter` into both OCC slots
+    instead of no-ops (OMN-14285: one producer, both failure classes).
     """
 
     def __init__(
@@ -72,11 +70,15 @@ class HandlerPrLifecycleFixRuntime(HandlerPrLifecycleFix):
         two_strike_store: ProtocolTwoStrikeStore | None = None,
         delegation_model_name: str = "ruff-deterministic",
     ) -> None:
+        # One producer serves both OCC failure classes (OMN-14285). A single
+        # emitter instance is shared across both slots so the deploy-gate and
+        # autobind reasons resolve to identical authoring behavior.
+        emitter = OccCompanionEmitter()
         super().__init__(
             github_adapter=github_adapter,
             agent_dispatch_adapter=agent_dispatch_adapter,
-            occ_contract_adapter=occ_contract_adapter or OccContractAdapter(),
-            occ_autobind_adapter=occ_autobind_adapter or OccAutobindAdapter(),
+            occ_contract_adapter=occ_contract_adapter or emitter,
+            occ_autobind_adapter=occ_autobind_adapter or emitter,
             delegation_fix_adapter=delegation_fix_adapter,
             two_strike_store=two_strike_store,
             delegation_model_name=delegation_model_name,
