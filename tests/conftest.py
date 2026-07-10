@@ -120,6 +120,38 @@ def _default_paid_escalation_for_tests(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("ONEX_DELEGATION_ALLOW_PAID", raising=False)
 
 
+_LEGACY_ARM_BEHAVIOR_TESTS = frozenset(
+    {
+        "tests/integration/test_merge_sweep_triage_orchestrator_route_coverage.py",
+        "tests/nodes/node_auto_merge_effect/test_handler_auto_merge_effect.py",
+        "tests/test_auto_merge_arm_effect.py",
+        "tests/test_golden_chain_auto_merge_effect.py",
+        "tests/test_golden_chain_merge_sweep_executor.py",
+        "tests/test_triage_orchestrator.py",
+        "tests/test_triage_phase2_emit_rules.py",
+    }
+)
+
+
+@pytest.fixture(autouse=True)
+def _enable_legacy_arm_for_direct_behavior_tests(
+    request: pytest.FixtureRequest,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Opt legacy direct-behavior suites into the OMN-14151 legacy arm surface.
+
+    The shipped default remains fail-closed. These suites exercise the old
+    handlers/routes directly, so they must opt in explicitly instead of
+    weakening the production default.
+    """
+    try:
+        relative_path = Path(request.node.fspath).relative_to(Path.cwd()).as_posix()
+    except ValueError:
+        relative_path = Path(request.node.fspath).as_posix()
+    if relative_path in _LEGACY_ARM_BEHAVIOR_TESTS:
+        monkeypatch.setenv("OMNIMARKET_LEGACY_MERGE_ARM_ENABLED", "true")
+
+
 @pytest.fixture
 def fake_lan_ip() -> str:
     """Loopback address used in unit tests instead of a LAN IP."""
