@@ -456,6 +456,14 @@ omnimarket = "omnimarket.nodes"
 # their git-source overrides). The version-range overrides below already target
 # the released artifacts: core>=0.46.7,<0.47.0 and
 # compat==0.5.5 (the former rev c0fc716 IS the v0.5.5 tag == PyPI 0.5.5).
+# OMN-14280: TEMPORARY coordinated core->market pin. This PR's tenant_id field
+# on ModelInferenceIntent/ModelInferenceResponseData was added on omnibase_core
+# dev (commit 38a05eb1) but has not yet published as 0.46.8 on PyPI. Pinning to
+# the exact dev commit so this PR can build against the real core field instead
+# of waiting on the release. REMOVE WHEN RELEASED: once omnibase-core 0.46.8
+# publishes, delete this override (the version-range pin above already covers
+# it) and `uv lock`. Mirrors the OMN-13878/OMN-12549 precedent exactly.
+omnibase-core = { git = "https://github.com/OmniNode-ai/omnibase_core.git", rev = "38a05eb1ddc9a5f25b7a905e92a4097176cb44c1" }  # raw-override-ok: OMN-14280
 # omnibase-infra git rev retained — infra is not in the dep-provenance forbidden set.
 omnibase-infra = { git = "https://github.com/OmniNode-ai/omnibase_infra.git", rev = "7e52d5b0046c394b38454b97157e7a7191e6f008" }
 omninode-memory = { git = "https://github.com/OmniNode-ai/omnimemory.git", rev = "1cd318d5ca3071a24585191592d3a84fafd30cf7" }
