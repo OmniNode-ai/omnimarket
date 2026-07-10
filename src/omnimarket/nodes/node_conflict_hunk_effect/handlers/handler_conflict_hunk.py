@@ -27,9 +27,6 @@ import time
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any, Literal
-from uuid import uuid4
-
-from omnibase_core.models.dispatch.model_handler_output import ModelHandlerOutput
 
 from omnimarket.nodes.node_conflict_hunk_effect.models.model_conflict_resolved_event import (
     ModelConflictResolvedEvent,
@@ -111,24 +108,31 @@ class HandlerConflictHunk:
         self._llm_call = llm_call_fn or _default_llm_call
         self._run = subprocess_run_fn or _default_subprocess_run
 
-    async def handle(self, request: ModelConflictHunkCommand) -> ModelHandlerOutput:  # type: ignore[type-arg]
+    async def handle(
+        self, payload: ModelConflictHunkCommand
+    ) -> ModelConflictResolvedEvent:
+        """Resolve conflict hunks for the given command.
+
+        Args:
+            payload: Typed conflict-hunk command (pr_number, repo, head_ref_name,
+                base_ref_name, conflict_files, correlation_id, run_id,
+                routing_policy).
+
+        Returns:
+            ModelConflictResolvedEvent describing the resolution outcome.
+        """
         t0 = time.monotonic()
-        event = await self._resolve(request)
+        event = await self._resolve(payload)
         elapsed = time.monotonic() - t0
         _log.info(
             "conflict_hunk %s#%s success=%s noop=%s elapsed=%.2fs",
-            request.repo,
-            request.pr_number,
+            payload.repo,
+            payload.pr_number,
             event.success,
             event.is_noop,
             elapsed,
         )
-        return ModelHandlerOutput.for_effect(
-            input_envelope_id=uuid4(),
-            correlation_id=request.correlation_id,
-            handler_id="node_conflict_hunk_effect",
-            events=(event,),
-        )
+        return event
 
     async def _resolve(
         self, request: ModelConflictHunkCommand
