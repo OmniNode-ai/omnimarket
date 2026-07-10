@@ -4,10 +4,11 @@
 
 Verifies:
 - Handler is importable and instantiatable
-- handle() returns ModelHandlerOutput with events (ORCHESTRATOR contract)
-- Emits antipattern-match-requested event toward effect node
-- Routes classifier command in output events
-- Similarity threshold flows from contract config default (0.80)
+- handle() returns the typed ModelAntipatternMatchCommand directly (OMN-14242
+  thin canonical shape -- no ModelHandlerOutput envelope, no coercion in the
+  handler; the runtime wraps this for bus publication toward
+  node_antipattern_match_effect)
+- Similarity threshold and correlation_id flow through to the emitted command
 """
 
 from __future__ import annotations
@@ -16,6 +17,9 @@ import pytest
 
 from omnimarket.nodes.node_semantic_antipattern_validator_orchestrator.handlers.handler_antipattern_validator_orchestrator import (
     HandlerAntipatternValidatorOrchestrator,
+)
+from omnimarket.nodes.node_semantic_antipattern_validator_orchestrator.models.model_antipattern_match_command import (
+    ModelAntipatternMatchCommand,
 )
 from omnimarket.nodes.node_semantic_antipattern_validator_orchestrator.models.model_antipattern_validator_request import (
     ModelAntipatternValidatorRequest,
@@ -49,69 +53,73 @@ def test_handler_importable() -> None:
 
 
 @pytest.mark.unit
-def test_handle_returns_handler_output() -> None:
-    from omnibase_core.models.dispatch.model_handler_output import ModelHandlerOutput
-
+def test_handle_returns_match_command_directly() -> None:
+    """Thin canonical shape (OMN-14242): handle() returns the typed
+    ModelAntipatternMatchCommand directly -- no ModelHandlerOutput envelope."""
     handler = HandlerAntipatternValidatorOrchestrator()
     req = _make_request()
     result = handler.handle(req)
 
-    assert isinstance(result, ModelHandlerOutput)
+    assert isinstance(result, ModelAntipatternMatchCommand)
 
 
 @pytest.mark.unit
-def test_handle_emits_at_least_one_event() -> None:
+def test_emitted_command_targets_antipattern_match_effect() -> None:
+    """The returned command carries the file identity the match effect needs."""
     handler = HandlerAntipatternValidatorOrchestrator()
-    req = _make_request()
+    req = _make_request(file_path="src/foo.py")
     result = handler.handle(req)
 
-    assert result.events
-    assert len(result.events) >= 1
-
-
-@pytest.mark.unit
-def test_emitted_event_targets_antipattern_match_effect() -> None:
-    """Event topic must reference the antipattern match effect."""
-    handler = HandlerAntipatternValidatorOrchestrator()
-    req = _make_request()
-    result = handler.handle(req)
-
-    topics = [
-        getattr(e, "topic", None) or getattr(e, "_topic", None) or type(e).__name__
-        for e in result.events
-    ]
-    assert any("antipattern" in (t or "").lower() for t in topics), (
-        f"Expected antipattern-related event topic, got: {topics}"
-    )
+    assert result.file_path == "src/foo.py"
 
 
 @pytest.mark.unit
 def test_similarity_threshold_passed_through() -> None:
-    """Threshold from request must appear in emitted event payload."""
+    """Threshold from request must appear on the emitted command."""
     handler = HandlerAntipatternValidatorOrchestrator()
     req = _make_request(similarity_threshold=0.92)
     result = handler.handle(req)
 
-    assert result.events
-    first_event = result.events[0]
-    # The event payload should carry threshold for the effect/classifier
-    payload_dict = (
-        first_event.model_dump()
-        if hasattr(first_event, "model_dump")
-        else vars(first_event)
-    )
-    # Flatten nested dicts for search
-    payload_str = str(payload_dict)
-    assert "0.92" in payload_str or "similarity_threshold" in payload_str
+    assert result.similarity_threshold == pytest.approx(0.92)
 
 
 @pytest.mark.unit
 def test_correlation_id_propagated() -> None:
-    """Correlation ID from request must appear in output."""
+    """Correlation ID from request must appear verbatim on the emitted command."""
     handler = HandlerAntipatternValidatorOrchestrator()
     correlation_id = "test-corr-id-12345"
     req = _make_request(correlation_id=correlation_id)
     result = handler.handle(req)
 
-    output_dict = result.model_dump()
-    assert correlation_id in str(output_dict)
+    assert result.correlation_id == correlation_id
+
+
+@pytest.mark.unit
+def test_invalid_correlation_id_forwarded_verbatim() -> None:
+    """A non-UUID correlation_id is forwarded as-is (OMN-14242: the UUID-parsing
+    fallback previously fed only the discarded ModelHandlerOutput envelope
+    correlation_id -- it is dead code once the envelope is gone)."""
+    handler = HandlerAntipatternValidatorOrchestrator()
+    req = _make_request(correlation_id="not-a-uuid")
+    result = handler.handle(req)
+
+    assert result.correlation_id == "not-a-uuid"
+
+
+@pytest.mark.unit
+def test_enforcement_mode_passed_through() -> None:
+    handler = HandlerAntipatternValidatorOrchestrator()
+    req = _make_request(enforcement_mode="advisory")
+    result = handler.handle(req)
+
+    assert result.enforcement_mode == "advisory"
+
+
+@pytest.mark.unit
+def test_file_content_passed_through() -> None:
+    handler = HandlerAntipatternValidatorOrchestrator()
+    content = "def god_function():\n    return 1\n"
+    req = _make_request(file_content=content)
+    result = handler.handle(req)
+
+    assert result.file_content == content
