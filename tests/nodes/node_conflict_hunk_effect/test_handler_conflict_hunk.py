@@ -218,14 +218,12 @@ async def test_successful_resolution(tmp_path: Path) -> None:
             llm_call_fn=llm_call,
             subprocess_run_fn=subprocess_fn,
         )
-        output = await handler.handle(_make_command())
+        event = await handler.handle(_make_command())
     finally:
         os.environ.pop("ONEX_CONFLICT_SOURCE_CLONE_ROOT", None)
         os.environ.pop("ONEX_CONFLICT_WORKTREE_ROOT", None)
 
-    assert output is not None
-    assert len(output.events) == 1
-    event = output.events[0]
+    assert event is not None
     assert isinstance(event, ModelConflictResolvedEvent)
     assert event.success is True
     assert event.resolution_committed is True
@@ -259,12 +257,11 @@ async def test_validation_failure_residual_markers(tmp_path: Path) -> None:
         handler = HandlerConflictHunk(
             llm_call_fn=llm_call, subprocess_run_fn=subprocess_fn
         )
-        output = await handler.handle(_make_command())
+        event = await handler.handle(_make_command())
     finally:
         os.environ.pop("ONEX_CONFLICT_SOURCE_CLONE_ROOT", None)
         os.environ.pop("ONEX_CONFLICT_WORKTREE_ROOT", None)
 
-    event = output.events[0]
     assert isinstance(event, ModelConflictResolvedEvent)
     assert event.success is False
     assert event.resolution_committed is False
@@ -353,12 +350,11 @@ async def test_file_outside_allowlist_emits_failure(tmp_path: Path) -> None:
 
     try:
         handler = HandlerConflictHunk(subprocess_run_fn=subprocess_fn)
-        output = await handler.handle(_make_command())
+        event = await handler.handle(_make_command())
     finally:
         os.environ.pop("ONEX_CONFLICT_SOURCE_CLONE_ROOT", None)
         os.environ.pop("ONEX_CONFLICT_WORKTREE_ROOT", None)
 
-    event = output.events[0]
     assert isinstance(event, ModelConflictResolvedEvent)
     assert event.success is False
     assert "allowlist" in (event.error or "")
@@ -384,12 +380,11 @@ async def test_no_conflict_markers_fails(tmp_path: Path) -> None:
 
     try:
         handler = HandlerConflictHunk(subprocess_run_fn=subprocess_fn)
-        output = await handler.handle(_make_command())
+        event = await handler.handle(_make_command())
     finally:
         os.environ.pop("ONEX_CONFLICT_SOURCE_CLONE_ROOT", None)
         os.environ.pop("ONEX_CONFLICT_WORKTREE_ROOT", None)
 
-    event = output.events[0]
     assert isinstance(event, ModelConflictResolvedEvent)
     assert event.success is False
     assert "No conflict markers" in (event.error or "")
@@ -418,12 +413,11 @@ async def test_noop_when_llm_returns_same_content(tmp_path: Path) -> None:
         handler = HandlerConflictHunk(
             llm_call_fn=llm_call, subprocess_run_fn=subprocess_fn
         )
-        output = await handler.handle(_make_command())
+        event = await handler.handle(_make_command())
     finally:
         os.environ.pop("ONEX_CONFLICT_SOURCE_CLONE_ROOT", None)
         os.environ.pop("ONEX_CONFLICT_WORKTREE_ROOT", None)
 
-    event = output.events[0]
     assert isinstance(event, ModelConflictResolvedEvent)
     assert event.is_noop is True
     assert event.resolution_committed is False
@@ -455,12 +449,11 @@ async def test_patch_size_guard(tmp_path: Path) -> None:
         handler = HandlerConflictHunk(
             llm_call_fn=llm_call, subprocess_run_fn=subprocess_fn
         )
-        output = await handler.handle(_make_command())
+        event = await handler.handle(_make_command())
     finally:
         os.environ.pop("ONEX_CONFLICT_SOURCE_CLONE_ROOT", None)
         os.environ.pop("ONEX_CONFLICT_WORKTREE_ROOT", None)
 
-    event = output.events[0]
     assert isinstance(event, ModelConflictResolvedEvent)
     assert event.success is False
     assert "net changed lines" in (event.error or "")
@@ -489,12 +482,11 @@ async def test_pytest_gate_failure(tmp_path: Path) -> None:
         handler = HandlerConflictHunk(
             llm_call_fn=llm_call, subprocess_run_fn=subprocess_fn
         )
-        output = await handler.handle(_make_command())
+        event = await handler.handle(_make_command())
     finally:
         os.environ.pop("ONEX_CONFLICT_SOURCE_CLONE_ROOT", None)
         os.environ.pop("ONEX_CONFLICT_WORKTREE_ROOT", None)
 
-    event = output.events[0]
     assert isinstance(event, ModelConflictResolvedEvent)
     assert event.success is False
     assert "pytest gate failed" in (event.error or "")
@@ -524,12 +516,11 @@ async def test_python_syntax_validation_failure(tmp_path: Path) -> None:
         handler = HandlerConflictHunk(
             llm_call_fn=llm_call, subprocess_run_fn=subprocess_fn
         )
-        output = await handler.handle(_make_command())
+        event = await handler.handle(_make_command())
     finally:
         os.environ.pop("ONEX_CONFLICT_SOURCE_CLONE_ROOT", None)
         os.environ.pop("ONEX_CONFLICT_WORKTREE_ROOT", None)
 
-    event = output.events[0]
     assert isinstance(event, ModelConflictResolvedEvent)
     assert event.success is False
     assert "invalid Python syntax" in (event.error or "")
@@ -551,12 +542,11 @@ async def test_branch_guard_protected_head(tmp_path: Path) -> None:
 
     try:
         handler = HandlerConflictHunk(subprocess_run_fn=subprocess_fn)
-        output = await handler.handle(_make_command(head_ref="main"))
+        event = await handler.handle(_make_command(head_ref="main"))
     finally:
         os.environ.pop("ONEX_CONFLICT_SOURCE_CLONE_ROOT", None)
         os.environ.pop("ONEX_CONFLICT_WORKTREE_ROOT", None)
 
-    event = output.events[0]
     assert isinstance(event, ModelConflictResolvedEvent)
     assert event.success is False
     assert "protected_head_ref" in (event.error or "")
@@ -621,12 +611,11 @@ async def test_push_succeeds_on_successful_resolution(tmp_path: Path) -> None:
             llm_call_fn=lambda _fp, _ctx, _rp: (_RESOLVED_CONTENT, False),
             subprocess_run_fn=subprocess_fn,
         )
-        output = await handler.handle(_make_command())
+        event = await handler.handle(_make_command())
     finally:
         os.environ.pop("ONEX_CONFLICT_SOURCE_CLONE_ROOT", None)
         os.environ.pop("ONEX_CONFLICT_WORKTREE_ROOT", None)
 
-    event = output.events[0]
     assert isinstance(event, ModelConflictResolvedEvent)
     assert event.success is True
     assert event.resolution_committed is True
@@ -665,13 +654,27 @@ async def test_push_failure_emits_fail_event(tmp_path: Path) -> None:
             llm_call_fn=lambda _fp, _ctx, _rp: (_RESOLVED_CONTENT, False),
             subprocess_run_fn=subprocess_fn,
         )
-        output = await handler.handle(_make_command())
+        event = await handler.handle(_make_command())
     finally:
         os.environ.pop("ONEX_CONFLICT_SOURCE_CLONE_ROOT", None)
         os.environ.pop("ONEX_CONFLICT_WORKTREE_ROOT", None)
 
-    event = output.events[0]
     assert isinstance(event, ModelConflictResolvedEvent)
     assert event.success is False
     assert "force-with-lease" in (event.error or "")
     assert event.resolution_committed is False
+
+
+def test_contract_declares_pr_conflict_resolved_topic() -> None:
+    """State-coverage: the node declares the pr-conflict-resolved output topic."""
+    import yaml
+
+    import omnimarket.nodes.node_conflict_hunk_effect as _conflict_node_pkg
+
+    contract = yaml.safe_load(
+        (Path(_conflict_node_pkg.__file__).parent / "contract.yaml").read_text()
+    )
+    assert (
+        "onex.evt.omnimarket.pr-conflict-resolved.v1"
+        in contract["event_bus"]["publish_topics"]
+    )
