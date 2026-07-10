@@ -10,7 +10,6 @@ from __future__ import annotations
 from uuid import uuid4
 
 import pytest
-from omnibase_core.enums.enum_node_kind import EnumNodeKind
 
 from omnimarket.models.model_review_finding import EnumFindingCategory
 from omnimarket.nodes.node_review_convergence_compute.handlers.handler_convergence_compute import (
@@ -24,10 +23,9 @@ from omnimarket.nodes.node_review_convergence_compute.models.model_review_conver
 
 
 @pytest.mark.unit
-@pytest.mark.asyncio
-async def test_golden_chain_convergence_perfect_agreement() -> None:
+def test_golden_chain_convergence_perfect_agreement() -> None:
     cid = uuid4()
-    output = await HandlerConvergenceCompute().handle(
+    result = HandlerConvergenceCompute().handle(
         ModelConvergenceInput(
             correlation_id=cid,
             model_key="qwen3-coder",
@@ -47,21 +45,18 @@ async def test_golden_chain_convergence_perfect_agreement() -> None:
             ],
         )
     )
-    assert output.node_kind == EnumNodeKind.COMPUTE
-    assert output.correlation_id == cid
-    assert isinstance(output.result, ModelConvergenceOutput)
-    assert output.result.overall_f1 == 1.0
-    assert output.result.true_positives == 2
+    assert isinstance(result, ModelConvergenceOutput)
+    assert result.overall_f1 == 1.0
+    assert result.true_positives == 2
 
 
 @pytest.mark.unit
-@pytest.mark.asyncio
-async def test_golden_chain_convergence_empty_labels() -> None:
-    output = await HandlerConvergenceCompute().handle(
+def test_golden_chain_convergence_empty_labels() -> None:
+    result = HandlerConvergenceCompute().handle(
         ModelConvergenceInput(
             correlation_id=uuid4(), model_key="qwen3-coder", labels=[]
         )
     )
-    assert isinstance(output.result, ModelConvergenceOutput)
-    assert output.result.overall_f1 == 0.0
-    assert output.result.total_labels == 0
+    assert isinstance(result, ModelConvergenceOutput)
+    assert result.overall_f1 == 0.0
+    assert result.total_labels == 0
