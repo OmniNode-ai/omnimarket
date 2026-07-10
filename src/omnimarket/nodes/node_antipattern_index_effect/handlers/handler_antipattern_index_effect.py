@@ -16,6 +16,11 @@ Design invariants:
   - Qdrant unavailability is a graceful skip (warning, zero counts), not an error.
   - correlation_id is required on both input and output.
 
+Canonical thin shape (OMN-14242): the Qdrant client and registry loader are
+constructor-injected dependencies; ``handle()`` takes the single typed
+``ModelAntipatternIndexRequest`` positionally and returns the typed
+``ModelAntipatternIndexResult`` directly — no envelope, no coercion.
+
 [OMN-11913, OMN-11909]
 """
 
@@ -31,6 +36,9 @@ from typing import Any
 
 import httpx
 
+from omnimarket.nodes.node_antipattern_index_effect.models.model_antipattern_index_request import (
+    ModelAntipatternIndexRequest,
+)
 from omnimarket.nodes.node_antipattern_index_effect.models.model_antipattern_index_result import (
     ModelAntipatternIndexResult,
 )
@@ -63,20 +71,28 @@ def _build_entry_text(entry: Any) -> str:
 
 
 class HandlerAntipatternIndexEffect:
-    """EFFECT handler — embeds antipattern registry and upserts into Qdrant."""
+    """EFFECT handler — embeds antipattern registry and upserts into Qdrant.
 
-    async def handle(
+    DI (OMN-14242): the Qdrant client and registry loader are constructor
+    dependencies. ``handle()`` takes the single typed request positionally.
+    """
+
+    def __init__(
         self,
         *,
-        correlation_id: str,
-        repo_root: str | None = None,
-        force_reindex: bool = False,
         qdrant_client: Any | None = None,
-        embedding_endpoint_override: str | None = None,
-        qdrant_collection_override: str | None = None,
         registry_loader: Callable[[Path], Any] | None = None,
+    ) -> None:
+        self._qdrant_client = qdrant_client
+        self._registry_loader = registry_loader
+
+    async def handle(
+        self, payload: ModelAntipatternIndexRequest
     ) -> ModelAntipatternIndexResult:
         """Embed all vector_enabled antipattern entries and upsert into Qdrant."""
+        correlation_id = payload.correlation_id
+
+        registry_loader = self._registry_loader
         if registry_loader is None:
             from omnibase_core.validation.antipattern_registry_loader import (
                 resolve_antipatterns,
@@ -85,7 +101,7 @@ class HandlerAntipatternIndexEffect:
             registry_loader = resolve_antipatterns
 
         endpoint = (
-            embedding_endpoint_override
+            payload.embedding_endpoint_override
             or os.environ.get("EMBEDDING_MODEL_URL", "")  # contract-config-ok: config
         )
         if not endpoint:
@@ -95,7 +111,7 @@ class HandlerAntipatternIndexEffect:
             )
 
         collection = (
-            qdrant_collection_override
+            payload.qdrant_collection_override
             or os.environ.get(  # contract-config-ok: config
                 "ANTIPATTERN_QDRANT_COLLECTION", DEFAULT_QDRANT_COLLECTION
             )
@@ -107,11 +123,11 @@ class HandlerAntipatternIndexEffect:
             )  # contract-config-ok: config
         )
 
-        resolved_root = Path(repo_root) if repo_root else Path.cwd()
+        resolved_root = Path(payload.repo_root) if payload.repo_root else Path.cwd()
         registry = registry_loader(resolved_root)
         registry_version = registry.version
 
-        resolved_client = qdrant_client
+        resolved_client = self._qdrant_client
         if resolved_client is None:
             resolved_client = _build_qdrant_client()
             if resolved_client is None:
@@ -143,7 +159,7 @@ class HandlerAntipatternIndexEffect:
             )
 
         # Idempotency check — skip if already indexed at this version
-        if not force_reindex and _is_already_indexed(
+        if not payload.force_reindex and _is_already_indexed(
             resolved_client, collection, registry_version
         ):
             logger.info(
