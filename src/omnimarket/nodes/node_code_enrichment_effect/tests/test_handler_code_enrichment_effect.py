@@ -6,6 +6,9 @@
 Unit tests: mocked LLM client, real code paths for confidence threshold logic.
 Integration stubs: @pytest.mark.integration — skipped unless .201 is available.
 
+Canonical thin shape (OMN-14242 canary): repository is constructor-injected;
+handle() takes a single ModelCodeEnrichmentRequest payload.
+
 [OMN-5657, OMN-5664]
 """
 
@@ -22,6 +25,9 @@ import pytest
 from omnimarket.nodes.node_code_enrichment_effect.handlers.handler_code_enrichment_effect import (
     DEFAULT_CONFIDENCE_THRESHOLD,
     HandlerCodeEnrichmentEffect,
+)
+from omnimarket.nodes.node_code_enrichment_effect.models.model_code_enrichment_request import (
+    ModelCodeEnrichmentRequest,
 )
 
 # =============================================================================
@@ -116,12 +122,13 @@ async def test_successful_enrichment(monkeypatch: pytest.MonkeyPatch) -> None:
 
     monkeypatch.setattr(httpx.AsyncClient, "post", mock_post)
 
-    handler = HandlerCodeEnrichmentEffect()
+    handler = HandlerCodeEnrichmentEffect(repository=repo)
     result = await handler.handle(
-        correlation_id="test-enrich-001",
-        repository=repo,
-        llm_endpoint_override="http://test:8001",
-        batch_size=10,
+        ModelCodeEnrichmentRequest(
+            correlation_id="test-enrich-001",
+            llm_endpoint_override="http://test:8001",
+            batch_size=10,
+        )
     )
 
     assert result.correlation_id == "test-enrich-001"
@@ -154,11 +161,12 @@ async def test_low_confidence_fallback(monkeypatch: pytest.MonkeyPatch) -> None:
 
     monkeypatch.setattr(httpx.AsyncClient, "post", mock_post)
 
-    handler = HandlerCodeEnrichmentEffect()
+    handler = HandlerCodeEnrichmentEffect(repository=repo)
     result = await handler.handle(
-        correlation_id="test-enrich-002",
-        repository=repo,
-        llm_endpoint_override="http://test:8001",
+        ModelCodeEnrichmentRequest(
+            correlation_id="test-enrich-002",
+            llm_endpoint_override="http://test:8001",
+        )
     )
 
     assert result.enriched_count == 1
@@ -183,11 +191,12 @@ async def test_llm_failure_increments_failed_count(
 
     monkeypatch.setattr(httpx.AsyncClient, "post", mock_post)
 
-    handler = HandlerCodeEnrichmentEffect()
+    handler = HandlerCodeEnrichmentEffect(repository=repo)
     result = await handler.handle(
-        correlation_id="test-enrich-003",
-        repository=repo,
-        llm_endpoint_override="http://test:8001",
+        ModelCodeEnrichmentRequest(
+            correlation_id="test-enrich-003",
+            llm_endpoint_override="http://test:8001",
+        )
     )
 
     assert result.enriched_count == 0
@@ -200,12 +209,13 @@ async def test_llm_failure_increments_failed_count(
 async def test_no_entities_returns_zero_counts() -> None:
     """When no entities need enrichment, return zero counts immediately."""
     repo = _make_mock_repository([])
-    handler = HandlerCodeEnrichmentEffect()
+    handler = HandlerCodeEnrichmentEffect(repository=repo)
 
     result = await handler.handle(
-        correlation_id="test-enrich-004",
-        repository=repo,
-        llm_endpoint_override="http://test:8001",
+        ModelCodeEnrichmentRequest(
+            correlation_id="test-enrich-004",
+            llm_endpoint_override="http://test:8001",
+        )
     )
 
     assert result.correlation_id == "test-enrich-004"
@@ -220,14 +230,13 @@ async def test_missing_llm_url_raises() -> None:
     import os
 
     repo = _make_mock_repository([_make_entity()])
-    handler = HandlerCodeEnrichmentEffect()
+    handler = HandlerCodeEnrichmentEffect(repository=repo)
 
     env_backup = os.environ.pop("LLM_CODER_URL", None)
     try:
         with pytest.raises(EnvironmentError, match="LLM_CODER_URL"):
             await handler.handle(
-                correlation_id="test-enrich-005",
-                repository=repo,
+                ModelCodeEnrichmentRequest(correlation_id="test-enrich-005")
             )
     finally:
         if env_backup is not None:
@@ -254,11 +263,12 @@ async def test_fallback_used_when_primary_unreachable(
     monkeypatch.setattr(httpx.AsyncClient, "post", mock_post)
     monkeypatch.setenv("LLM_FALLBACK_URL", "http://fallback:8001")
 
-    handler = HandlerCodeEnrichmentEffect()
+    handler = HandlerCodeEnrichmentEffect(repository=repo)
     result = await handler.handle(
-        correlation_id="test-enrich-006",
-        repository=repo,
-        llm_endpoint_override="http://primary:8001",
+        ModelCodeEnrichmentRequest(
+            correlation_id="test-enrich-006",
+            llm_endpoint_override="http://primary:8001",
+        )
     )
 
     assert result.enriched_count == 1
@@ -271,16 +281,26 @@ async def test_fallback_used_when_primary_unreachable(
 async def test_correlation_id_propagated_to_output() -> None:
     """correlation_id from input must appear unchanged in output."""
     repo = _make_mock_repository([])
-    handler = HandlerCodeEnrichmentEffect()
+    handler = HandlerCodeEnrichmentEffect(repository=repo)
     corr = "unique-enrichment-corr-abc-123"
 
     result = await handler.handle(
-        correlation_id=corr,
-        repository=repo,
-        llm_endpoint_override="http://test:8001",
+        ModelCodeEnrichmentRequest(
+            correlation_id=corr,
+            llm_endpoint_override="http://test:8001",
+        )
     )
 
     assert result.correlation_id == corr
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_invalid_batch_size_rejected_by_model() -> None:
+    """batch_size <= 0 is now rejected at model construction (Pydantic gt=0),
+    not by a manual handler-side check — validation moved to the typed payload."""
+    with pytest.raises(ValueError, match="greater than 0"):
+        ModelCodeEnrichmentRequest(correlation_id="test-enrich-007", batch_size=0)
 
 
 # =============================================================================
