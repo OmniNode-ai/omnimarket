@@ -371,6 +371,27 @@ class _TestOrchestrator(HandlerPrLifecycleOrchestrator):
         return self._probe_outcome
 
 
+class _LandedStampReadback:
+    """OMN-14191 test double: the fix landed a verified OCC companion.
+
+    The golden-chain / FSM / routing tests here assert ``prs_fixed`` reflects a
+    dispatched-and-landed fix; they do NOT exercise the read-back gate itself
+    (that lives in ``test_occ_stamp_readback_gate.py``), so they inject a
+    read-back that confirms the companion. Injecting it also keeps these tests
+    hermetic — without an injected read-back ``_ensure_sub_handlers`` wires the
+    live ``OccStampReadback`` (a real ``gh pr view`` subprocess).
+    """
+
+    async def verify_fix_landed(
+        self, repo: str, pr_number: int, ticket_id: str | None = None
+    ) -> Any:
+        from omnimarket.nodes.node_pr_lifecycle_orchestrator.handlers.occ_stamp_readback import (
+            ModelOccStampReadbackResult,
+        )
+
+        return ModelOccStampReadbackResult(verified=True, reason="test: landed")
+
+
 async def _make_orchestrator(
     *,
     inventory: Any = None,
@@ -381,6 +402,7 @@ async def _make_orchestrator(
     event_bus: EventBusInmemory | None = None,
     changed_files_by_pr: dict[tuple[str, int], list[str]] | None = None,
     probe_outcome: EnumVerificationOutcome = EnumVerificationOutcome.MERGED,
+    occ_stamp_readback: Any = None,
 ) -> _TestOrchestrator:
     from typing import cast
 
@@ -405,6 +427,9 @@ async def _make_orchestrator(
         merge=merge or MockMerge(),
         fix=fix or MockFix(),
         event_bus=bus,
+        # OMN-14191: inject a hermetic read-back so prs_fixed counts a landed
+        # fix without wiring the live gh OccStampReadback subprocess.
+        occ_stamp_readback=occ_stamp_readback or _LandedStampReadback(),
     )
 
 
@@ -1611,6 +1636,8 @@ class TestOrchestratorForwardsAdminMergeFallbackFlag:
             merge=MockMerge(),
             fix=fix,
             event_bus=cast(ProtocolEventBusPublisher, bus),
+            # OMN-14191: hermetic read-back (avoid the live gh subprocess).
+            occ_stamp_readback=_LandedStampReadback(),
         )
         await node.handle(
             ModelPrLifecycleStartCommand(

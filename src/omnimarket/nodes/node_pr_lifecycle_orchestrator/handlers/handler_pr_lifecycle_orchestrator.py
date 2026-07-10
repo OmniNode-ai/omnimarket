@@ -45,6 +45,10 @@ from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from omnimarket.events.repo_health import EnumFailureOrigin
+from omnimarket.nodes.node_pr_lifecycle_orchestrator.handlers.occ_stamp_readback import (
+    ProtocolOccStampReadback,
+    _UnverifiedOccStampReadback,
+)
 from omnimarket.nodes.node_pr_lifecycle_orchestrator.protocols.protocol_sub_handlers import (
     EnumPrCategory,
     EnumReducerIntent,
@@ -854,6 +858,7 @@ class HandlerPrLifecycleOrchestrator:
         event_bus: ProtocolEventBusPublisher,
         ledger_store: ProtocolPrLedgerStore | None = None,
         projection_db: ProtocolProjectionDatabaseSync | None = None,
+        occ_stamp_readback: ProtocolOccStampReadback | None = None,
     ) -> None:
         self._topic_phase_transition = TOPIC_PHASE_TRANSITION
         self._topic_completed = TOPIC_COMPLETED
@@ -883,6 +888,20 @@ class HandlerPrLifecycleOrchestrator:
         # runtime injects the control-plane projection database so a clean
         # ledger row lands per PR per iteration.
         self._projection_db: ProtocolProjectionDatabaseSync | None = projection_db
+        # OMN-14191: independent OCC-stamp read-back gate. prs_fixed is counted
+        # per fix arm ONLY after this reads the ACTUAL pushed OCC companion + the
+        # product PR body back (Piece-2 parser, live gh state) and confirms the
+        # stamp landed — never on the fix handler's self-reported return
+        # (CLAUDE.md Rule 3). Defaults fail-closed (proves nothing -> counts
+        # nothing); _ensure_sub_handlers wires the live OccStampReadback for real
+        # runs. This generalizes the OMN-14173 autobind read-back to every arm
+        # and closes OMN-14174's dispatch-vs-effect over-count.
+        self._occ_stamp_readback: ProtocolOccStampReadback = (
+            occ_stamp_readback
+            if occ_stamp_readback is not None
+            else _UnverifiedOccStampReadback()
+        )
+        self._occ_stamp_readback_injected = occ_stamp_readback is not None
 
     def _record_ledger_event(
         self,
@@ -1306,6 +1325,16 @@ class HandlerPrLifecycleOrchestrator:
                 self._prune = prune_handler
             except ImportError:
                 self._prune = _StubPruneHandler()
+        # OMN-14191: wire the live OCC-stamp read-back for real runs so prs_fixed
+        # is gated on a CONFIRMED landed OCC companion (read back over live gh
+        # state), not on the fix handler's dispatch-time self-report. Skipped when
+        # an explicit read-back was injected (tests inject a hermetic double).
+        if not self._occ_stamp_readback_injected:
+            from omnimarket.nodes.node_pr_lifecycle_orchestrator.handlers.occ_stamp_readback import (
+                OccStampReadback,
+            )
+
+            self._occ_stamp_readback = OccStampReadback()
 
     async def handle(
         self,
@@ -2579,7 +2608,6 @@ class HandlerPrLifecycleOrchestrator:
                 # Real fix handler signature: handle(command: ModelPrLifecycleFixCommand)
                 # Construct command from TriageRecord fields.
                 from omnimarket.nodes.node_pr_lifecycle_fix_effect.models.model_fix_command import (
-                    EnumPrBlockReason,
                     ModelPrLifecycleFixCommand,
                 )
 
@@ -2598,23 +2626,32 @@ class HandlerPrLifecycleOrchestrator:
                 if isinstance(raw, FixResult):
                     return raw
                 fix_applied: bool = getattr(raw, "fix_applied", False)
-                # OMN-14173 fail-closed accounting: the RECEIPT_EVIDENCE_SOURCE_
-                # AUTOBIND arm reports fix_applied=True whenever the adapter call
-                # returns — including no-op / short-circuit paths that push NO OCC
-                # companion (the merge_sweep --fix-only false-success: prs_fixed=2,
-                # zero companions authored). For that arm, a PR may be counted as
-                # fixed ONLY when the fix handler independently verified a pushed
-                # OCC companion + Evidence-Source patch (occ_companion_verified).
-                # `is True` (not just truthy) so a MagicMock double without the
-                # attribute never spuriously counts. Every other block reason
-                # keeps its existing dispatch-based semantics.
-                counted_as_fixed: bool = fix_applied
-                if (
-                    fix_command.block_reason
-                    == EnumPrBlockReason.RECEIPT_EVIDENCE_SOURCE_AUTOBIND
-                ):
-                    counted_as_fixed = (
-                        getattr(raw, "occ_companion_verified", False) is True
+                # OMN-14191 (generalizes OMN-14173; closes OMN-14174): never count
+                # prs_fixed on DISPATCH. Every fix arm — not just the OCC-autobind
+                # arm — is gated on an INDEPENDENT read-back over live gh/remote
+                # state: the orchestrator re-reads the ACTUAL pushed OCC companion
+                # PR + the product PR body (Piece-2 canonical parser) and counts
+                # the fix ONLY when the OCC stamp is confirmed landed. This never
+                # trusts the fix handler's self-reported fix_applied /
+                # occ_companion_verified flag (CLAUDE.md Rule 3). Arms that legit-
+                # imately land no OCC stamp (a bare CI rerun, a dispatched-but-not-
+                # yet-landed polish) fail-closed to NOT counted — the safe under-
+                # count direction OMN-14174 requires ("do not treat dispatch as
+                # success"). dry_run lands nothing, so it is never counted and
+                # never hits the network.
+                counted_as_fixed = False
+                if fix_applied and not dry_run:
+                    readback = await self._occ_stamp_readback.verify_fix_landed(
+                        pr.repo, pr.pr_number, fix_command.ticket_id
+                    )
+                    counted_as_fixed = readback.verified
+                    logger.info(
+                        "[PR-LIFECYCLE-ORCH] fix read-back pr=%s repo=%s "
+                        "reason=%s counted=%s",
+                        pr.pr_number,
+                        pr.repo,
+                        readback.reason,
+                        counted_as_fixed,
                     )
                 delegation_outcome = getattr(raw, "delegation_outcome", None)
                 delegation_outcome_value = (
