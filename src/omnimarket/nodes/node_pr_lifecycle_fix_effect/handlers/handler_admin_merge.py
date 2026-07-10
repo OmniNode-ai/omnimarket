@@ -27,8 +27,8 @@ from pydantic import BaseModel, ConfigDict
 from omnimarket.github_api import rest_json, split_repo
 from omnimarket.inference.secret_store_resolver import resolve_api_key
 from omnimarket.nodes.contract_topics import contract_secret_ref
-from omnimarket.nodes.node_pr_lifecycle_inventory_compute.models.model_pr_lifecycle_inventory import (
-    ModelStuckQueueEntry,
+from omnimarket.nodes.node_pr_lifecycle_fix_effect.models.model_admin_merge_request import (
+    ModelAdminMergeRequest,
 )
 
 logger = logging.getLogger(__name__)
@@ -125,36 +125,32 @@ class HandlerAdminMerge:
     def correlation_id(self) -> UUID | None:
         return None
 
-    async def handle(
-        self,
-        *,
-        stuck_prs: list[ModelStuckQueueEntry],
-        enable_admin_merge_fallback: bool = True,
-        dry_run: bool = False,
-    ) -> ModelAdminMergeResult:
+    async def handle(self, payload: ModelAdminMergeRequest) -> ModelAdminMergeResult:
         """Admin-merge all stuck PRs unless explicitly disabled.
 
         Args:
-            stuck_prs: PRs identified as stuck by inventory compute.
-            enable_admin_merge_fallback: Default ON; set False to disable.
-            dry_run: When True, log intent without merging.
+            payload: Typed request — stuck PRs, opt-in flag, dry-run flag.
 
         Returns:
             ModelAdminMergeResult with merge counts.
         """
-        if not enable_admin_merge_fallback:
+        dry_run = payload.dry_run
+
+        if not payload.enable_admin_merge_fallback:
             logger.info(
                 "admin-merge: skipped (enable_admin_merge_fallback=False), "
                 "stuck_prs=%d",
-                len(stuck_prs),
+                len(payload.stuck_prs),
             )
-            return ModelAdminMergeResult(prs_skipped=len(stuck_prs), dry_run=dry_run)
+            return ModelAdminMergeResult(
+                prs_skipped=len(payload.stuck_prs), dry_run=dry_run
+            )
 
         prs_merged = 0
         prs_skipped = 0
         prs_failed = 0
 
-        for pr in stuck_prs:
+        for pr in payload.stuck_prs:
             logger.warning(
                 "ADMIN MERGE TRIGGERED pr=%s repo=%s queue_age_minutes=%.1f dry_run=%s",
                 pr.pr_number,

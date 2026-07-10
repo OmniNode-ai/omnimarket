@@ -1577,16 +1577,18 @@ class TestAdminMergeFallbackDefaultOn:
         assert cmd.enable_admin_merge_fallback is False
 
     def test_handler_admin_merge_handle_default_opt_in_true(self) -> None:
-        """HandlerAdminMerge.handle(enable_admin_merge_fallback=...) defaults to True."""
-        import inspect
+        """ModelAdminMergeRequest.enable_admin_merge_fallback defaults to True.
 
-        from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.handler_admin_merge import (
-            HandlerAdminMerge,
+        HandlerAdminMerge.handle() takes a single typed
+        ModelAdminMergeRequest payload (OMN-14242 thin canonical shape); the
+        default now lives on the request model field, not a handle() kwarg.
+        """
+        from omnimarket.nodes.node_pr_lifecycle_fix_effect.models.model_admin_merge_request import (
+            ModelAdminMergeRequest,
         )
 
-        sig = inspect.signature(HandlerAdminMerge.handle)
-        param = sig.parameters["enable_admin_merge_fallback"]
-        assert param.default is True
+        field = ModelAdminMergeRequest.model_fields["enable_admin_merge_fallback"]
+        assert field.default is True
 
 
 @pytest.mark.asyncio

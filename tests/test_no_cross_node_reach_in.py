@@ -132,8 +132,11 @@ _KNOWN_VIOLATIONS: frozenset[str] = frozenset(
         # node_pipeline_fill → node_rsd_fill_compute
         "omnimarket.nodes.node_pipeline_fill.handlers.handler_pipeline_fill:omnimarket.nodes.node_rsd_fill_compute.models.model_scored_ticket:ModelScoredTicket",
         # node_pr_lifecycle_fix_effect → node_pr_lifecycle_inventory_compute
-        # OMN-9889: line shift from runtime ownership imports
-        "omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.handler_admin_merge:omnimarket.nodes.node_pr_lifecycle_inventory_compute.models.model_pr_lifecycle_inventory:ModelStuckQueueEntry",
+        # OMN-14242: import relocated from handlers/handler_admin_merge.py to
+        # models/model_admin_merge_request.py (thin canonical shape — the
+        # request payload, not the handler, now names the cross-node model).
+        # Same pre-existing reach-in relationship, net-zero allowlist growth.
+        "omnimarket.nodes.node_pr_lifecycle_fix_effect.models.model_admin_merge_request:omnimarket.nodes.node_pr_lifecycle_inventory_compute.models.model_pr_lifecycle_inventory:ModelStuckQueueEntry",
         # node_pr_lifecycle_orchestrator reach-ins (OMN-9806 keeps these as
         # temporary exceptions until shared lifecycle models move to events.*)
         "omnimarket.nodes.node_pr_lifecycle_orchestrator.handlers.handler_pr_lifecycle_orchestrator:omnimarket.nodes.node_pr_lifecycle_inventory_compute.models.model_pr_lifecycle_inventory:ModelPrInventoryInput",
