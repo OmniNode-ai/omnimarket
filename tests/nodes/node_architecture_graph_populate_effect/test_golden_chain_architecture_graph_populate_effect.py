@@ -328,6 +328,80 @@ class TestArchitectureGraphPopulateEffect:
             cypher = call.args[0]
             assert "UNWIND" in cypher or "GraphSnapshot" in cypher
 
+    async def test_write_to_graph_retries_transient_memgraph_error(self) -> None:
+        """OMN-14295 harvest: a Memgraph TransientError on a batch write must
+        be retried, not propagated on the first failure (adapted from
+        omniarchon's retry_on_transient_error)."""
+        handler, mock_driver = _make_handler_with_mock_driver()
+
+        mock_session = MagicMock()
+        mock_driver.session.return_value.__aenter__ = AsyncMock(
+            return_value=mock_session
+        )
+        mock_driver.session.return_value.__aexit__ = AsyncMock(return_value=False)
+
+        mock_result = MagicMock()
+        mock_result.consume = AsyncMock(return_value=MagicMock())
+        mock_session.run = AsyncMock(
+            side_effect=[
+                Exception("Memgraph.TransientError: conflicting transactions"),
+                mock_result,  # retried node-batch write succeeds
+                mock_result,  # snapshot-meta write
+            ]
+        )
+
+        nodes = [
+            ModelGraphNodeSpec(
+                node_id="repo_x", label="Repository", properties={"name": "x"}
+            )
+        ]
+        snapshot_meta = ModelGraphSnapshotMeta(
+            graph_schema_version="1.0.0",
+            graph_snapshot_id=str(uuid4()),
+            repo_count=1,
+            node_count=1,
+            edge_count=0,
+        )
+
+        await handler._write_to_graph(nodes, [], snapshot_meta)
+
+        # First call raised a transient error, second (retried) succeeded,
+        # third is the snapshot-meta write.
+        assert mock_session.run.await_count == 3
+
+    async def test_write_to_graph_does_not_retry_non_transient_error(self) -> None:
+        """A non-transient error (e.g. a real syntax error) must propagate
+        immediately — the retry is scoped to transient conflicts only."""
+        handler, mock_driver = _make_handler_with_mock_driver()
+
+        mock_session = MagicMock()
+        mock_driver.session.return_value.__aenter__ = AsyncMock(
+            return_value=mock_session
+        )
+        mock_driver.session.return_value.__aexit__ = AsyncMock(return_value=False)
+        mock_session.run = AsyncMock(
+            side_effect=Exception("Memgraph.ClientError: syntax error")
+        )
+
+        nodes = [
+            ModelGraphNodeSpec(
+                node_id="repo_x", label="Repository", properties={"name": "x"}
+            )
+        ]
+        snapshot_meta = ModelGraphSnapshotMeta(
+            graph_schema_version="1.0.0",
+            graph_snapshot_id=str(uuid4()),
+            repo_count=1,
+            node_count=1,
+            edge_count=0,
+        )
+
+        with pytest.raises(Exception, match="syntax error"):
+            await handler._write_to_graph(nodes, [], snapshot_meta)
+
+        # No retry — exactly one attempt.
+        assert mock_session.run.await_count == 1
+
     async def test_populate_from_contracts_returns_response(self) -> None:
         """Full populate operation returns a well-formed response."""
         handler, mock_driver = _make_handler_with_mock_driver()
