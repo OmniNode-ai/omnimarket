@@ -221,6 +221,69 @@ class TestProxyBoundContext:
 
 
 @pytest.mark.unit
+class TestExceptionPathStaleCacheR1:
+    """R1 (OMN-14208 pair-verify residual, found by Fable's second pass):
+    ``codec.flush(cid)`` only runs after ``handle()`` returns
+    (``handler_wiring.py``'s ``_load_handle_persist``, inside the ``try``).
+    If ``handle()`` raises mid-leg, ``flush`` never runs, the ContextVar
+    still resets (the ``finally``), but the proxy's cache would otherwise
+    retain the partially-mutated object -- a redelivered attempt could then
+    decode-hit that stale, never-persisted object instead of the freshly
+    loaded row. Concrete failure mode: a leg sets
+    ``inference_intent_in_flight = True`` then raises; redelivery sees
+    ``True`` from the stale cache while the durable row still says
+    ``False``, so the synchronous in-flight dedup guard eats the retry --
+    a permanent stall ``recover_stale_rows`` cannot catch (the row's
+    ``in_flight`` column is correctly ``False``).
+    """
+
+    def test_getitem_redecodes_rather_than_serving_stale_object_after_failed_leg(
+        self,
+    ) -> None:
+        cid = uuid4()
+        persisted_state = DelegationWorkflowState(
+            correlation_id=cid,
+            state=EnumDelegationState.ROUTED,
+            request=_make_request(cid),
+            inference_intent_in_flight=False,
+        )
+        persisted_json = state_codec.encode(persisted_state).decode("utf-8")
+
+        handler = HandlerDelegationWorkflow()
+
+        # Dispatch 1: loads the persisted (in_flight=False) row, mutates it
+        # in-place, then the leg "raises" -- simulated by simply exiting the
+        # bound context without ever calling flush(), exactly like
+        # handler_wiring.py's `finally: CONTEXTVAR_STATE_IO_ROWS.reset(token)`
+        # still runs on an exception even though `codec.flush(cid)` inside
+        # the `try` never does.
+        with _bind_infra_state_io_rows({str(cid): (persisted_json, 0)}):
+            loaded = handler.workflows[cid]
+            loaded.inference_intent_in_flight = True
+            assert handler.workflows[cid].inference_intent_in_flight is True
+            # (no flush() call here -- the failed leg never reaches it)
+
+        # Dispatch 2 (redelivery): a FRESH bind of the SAME persisted content
+        # -- a distinct str object even though the bytes are byte-identical,
+        # exactly like a fresh asyncpg `payload::text` fetch of the
+        # unmodified row would produce (confirmed: two separate
+        # json.dumps()/encode() calls never return the same object in
+        # CPython, so re-encoding the same state object is a faithful stand-in
+        # for "a fresh DB read produced this string").
+        fresh_payload_json = state_codec.encode(persisted_state).decode("utf-8")
+        assert fresh_payload_json == persisted_json
+        assert fresh_payload_json is not persisted_json
+
+        with _bind_infra_state_io_rows({str(cid): (fresh_payload_json, 0)}):
+            reloaded = handler.workflows[cid]
+            assert reloaded.inference_intent_in_flight is False, (
+                "stale cache from the failed (never-flushed) dispatch must "
+                "not leak into the redelivered attempt"
+            )
+            handler.workflows.flush(cid)  # type: ignore[attr-defined]
+
+
+@pytest.mark.unit
 class TestTenantRecoveryOnColdReload:
     """A fresh handler/proxy loading a durably-persisted row must carry the
     row's own tenant_id onto the terminal event, never the shared default.

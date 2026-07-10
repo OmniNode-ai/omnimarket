@@ -135,6 +135,21 @@ class DelegationWorkflowStateProxy(MutableMapping[UUID, DelegationWorkflowState]
       so a later dispatch for the same correlation_id always decodes the
       freshly-bound raw JSON rather than reusing a stale cached object from a
       previous request.
+
+      **Exception-path staleness (R1, OMN-14208 pair-verify residual):**
+      ``codec.flush(cid)`` only runs after ``handle()`` returns
+      (``handler_wiring.py``'s ``_load_handle_persist``, inside the ``try``).
+      If ``handle()`` raises mid-leg, ``flush`` never runs and this cache
+      would otherwise retain the partially-mutated object across the
+      ContextVar reset, so a redelivered attempt could decode-hit a stale,
+      never-persisted object instead of the freshly-loaded row. The cache
+      therefore stores ``(source_payload_json, decoded_state)`` — the exact
+      bound-row string this dispatch decoded against — and re-decodes
+      whenever the CURRENTLY bound row for ``cid`` is not (``is``, identity)
+      that same string object. Every dispatch binds a fresh string (even one
+      byte-identical to a prior value — e.g. a re-fetched, unmodified DB row),
+      so an abandoned entry from a failed dispatch is mechanically invalidated
+      the next time this cid is bound, with no explicit cleanup needed.
     * **Unbound** (tests, standalone/local dispatch, any caller outside the
       boundary hook): every operation forwards directly to
       ``HandlerDelegationWorkflow._shared_workflows`` with no caching layer —
@@ -143,7 +158,9 @@ class DelegationWorkflowStateProxy(MutableMapping[UUID, DelegationWorkflowState]
     """
 
     def __init__(self) -> None:
-        self._cache: dict[UUID, DelegationWorkflowState] = {}
+        # Value is (source_payload_json, decoded_state) — see the
+        # exception-path staleness note above (R1).
+        self._cache: dict[UUID, tuple[str | None, DelegationWorkflowState]] = {}
 
     @staticmethod
     def _shared_workflows() -> dict[UUID, DelegationWorkflowState]:
@@ -153,18 +170,23 @@ class DelegationWorkflowStateProxy(MutableMapping[UUID, DelegationWorkflowState]
         rows = _read_active_rows()
         if rows is None:
             return self._shared_workflows()[cid]
-        if cid not in self._cache:
-            payload_json, _version = rows[str(cid)]
-            if payload_json is None:
-                raise KeyError(cid)
-            self._cache[cid] = decode(payload_json)
-        return self._cache[cid]
+        payload_json, _version = rows[str(cid)]
+        if payload_json is None:
+            raise KeyError(cid)
+        cached = self._cache.get(cid)
+        if cached is not None and cached[0] is payload_json:
+            return cached[1]
+        decoded = decode(payload_json)
+        self._cache[cid] = (payload_json, decoded)
+        return decoded
 
     def __setitem__(self, cid: UUID, state: DelegationWorkflowState) -> None:
-        if _read_active_rows() is None:
+        rows = _read_active_rows()
+        if rows is None:
             self._shared_workflows()[cid] = state
             return
-        self._cache[cid] = state
+        payload_json, _version = rows.get(str(cid), (None, 0))
+        self._cache[cid] = (payload_json, state)
 
     def __delitem__(self, cid: UUID) -> None:
         # Never exercised on the live dispatch path: no site in
@@ -206,11 +228,12 @@ class DelegationWorkflowStateProxy(MutableMapping[UUID, DelegationWorkflowState]
         ``KeyError`` if ``cid`` was never loaded or set on this proxy
         instance during the current dispatch — nothing to persist.
         """
-        return encode(self._cache.pop(cid))
+        _source, state = self._cache.pop(cid)
+        return encode(state)
 
     def flush_all(self) -> dict[UUID, bytes]:
         """Re-encode and evict every entry touched (loaded or set) this dispatch."""
-        flushed = {cid: encode(state) for cid, state in self._cache.items()}
+        flushed = {cid: encode(state) for cid, (_source, state) in self._cache.items()}
         self._cache.clear()
         return flushed
 
