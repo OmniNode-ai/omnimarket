@@ -6,17 +6,36 @@ from __future__ import annotations
 
 from pathlib import Path
 from types import SimpleNamespace
-from uuid import UUID
 
 import pytest
+import yaml
 
+import omnimarket.nodes.node_omnigate_check_executor as _check_executor_node_pkg
 from omnimarket.nodes.node_omnigate_check_executor.handlers.handler_check_executor import (
     HandlerCheckExecutor,
+)
+from omnimarket.nodes.node_omnigate_check_executor.models.model_check_executor_input import (
+    ModelCheckExecutorInput,
 )
 
 pytestmark = pytest.mark.unit
 
-_CORRELATION_ID = UUID("00000000-0000-4000-a000-000000000145")
+_CONTRACT_PATH = Path(_check_executor_node_pkg.__file__).parent / "contract.yaml"
+
+
+def test_contract_declares_omnigate_checks_completed_topic() -> None:
+    """The node's declared output state is the omnigate-checks-completed event.
+
+    Covers the contract-declared output state for the strict state-coverage gate.
+    """
+    contract = yaml.safe_load(_CONTRACT_PATH.read_text())
+    assert (
+        contract["terminal_event"] == "onex.evt.omnimarket.omnigate-checks-completed.v1"
+    )
+    assert (
+        "onex.evt.omnimarket.omnigate-checks-completed.v1"
+        in contract["event_bus"]["publish_topics"]
+    )
 
 
 @pytest.mark.asyncio
@@ -45,9 +64,10 @@ async def test_check_executor_uses_injected_dependencies(tmp_path: Path) -> None
         config_loader=load_config,
         check_executor=execute_checks,
     ).handle(
-        _CORRELATION_ID,
-        str(tmp_path / ".omnigate.yaml"),
-        str(tmp_path),
+        ModelCheckExecutorInput(
+            config_path=str(tmp_path / ".omnigate.yaml"),
+            repo_path=str(tmp_path),
+        )
     )
 
     assert result.all_passed is True
@@ -72,9 +92,10 @@ async def test_advisory_blocks_when_config_policy_says_so(tmp_path: Path) -> Non
         config_loader=load_config,
         check_executor=execute_checks,
     ).handle(
-        _CORRELATION_ID,
-        str(tmp_path / ".omnigate.yaml"),
-        str(tmp_path),
+        ModelCheckExecutorInput(
+            config_path=str(tmp_path / ".omnigate.yaml"),
+            repo_path=str(tmp_path),
+        )
     )
 
     assert result.all_passed is False
