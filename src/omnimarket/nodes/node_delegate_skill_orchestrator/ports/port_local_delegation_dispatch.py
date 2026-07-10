@@ -481,6 +481,16 @@ class LocalDelegationDispatchPort:
         cumulative_savings_usd = Decimal("0")
         attempts: list[dict[str, object]] = []
         escalation_count = 0
+        # OMN-14220: best authored artifact seen across attempts (highest gate score,
+        # non-empty). On a terminal FAILURE the loop below used to return only the
+        # LAST attempt's ``result.content`` — which is empty when the final hop is a
+        # transport failure (e.g. a 429), so a caller received NOTHING even though an
+        # earlier tier authored a correct artifact that merely lost the (false-)
+        # rejecting gate. The rejected content was logged (OMN-14004) but never
+        # surfaced on the terminal payload. Track the best artifact and return it on
+        # failure so a successful authorship is never silently discarded.
+        best_content: str = ""
+        best_content_score: float = -1.0
 
         while True:
             attempt_outcome = await self._run_single_attempt(
@@ -610,6 +620,10 @@ class LocalDelegationDispatchPort:
                 )
                 return {
                     "status": "failed",
+                    # OMN-14220: return the best authored artifact seen so far rather
+                    # than nothing — a final transport failure (e.g. 429) must not
+                    # discard a correct earlier-tier authorship.
+                    "content": best_content,
                     "error_message": transport_failure_message,
                     "correlation_id": str(correlation_id),
                     "delegated_to": backend.endpoint_ref,
@@ -640,6 +654,12 @@ class LocalDelegationDispatchPort:
                     "cost_usd": float(result.actual_cost_usd),
                 }
             )
+
+            # OMN-14220: remember the best (highest-scoring) non-empty artifact so a
+            # terminal failure can return real authored work instead of discarding it.
+            if result.content and gate_result.quality_score > best_content_score:
+                best_content = result.content
+                best_content_score = gate_result.quality_score
 
             if quality_passed:
                 # 5. PROJECTION — materialize the local evidence row from the
@@ -733,7 +753,11 @@ class LocalDelegationDispatchPort:
                 )
                 return {
                     "status": "failed",
-                    "content": result.content or "",
+                    # OMN-14220: prefer the best authored artifact across all attempts
+                    # (highest gate score, non-empty) over the LAST attempt's content —
+                    # a later tier that scored lower (or returned empty) must not
+                    # overwrite a correct earlier authorship the gate (falsely) rejected.
+                    "content": best_content or (result.content or ""),
                     "delegated_to": backend.endpoint_ref,
                     "model_name": backend.model_id,
                     "quality_gate_passed": False,

@@ -68,8 +68,13 @@ _REFUSAL_PHRASES: tuple[str, ...] = (
     "i cannot",
     "i'm sorry",
     "as an ai",
-    "error:",
     "traceback",
+    # OMN-14220: "error:" was a member of this substring-matched set and fired as a
+    # FALSE refusal on legitimate prose that names an exception type
+    # (e.g. a docstring documenting ``Raises: ZeroDivisionError:`` — "zerodivisionerror:"
+    # contains "error:"). Detection of a bare leading error message moved to the
+    # word-boundary regex ``_LEADING_ERROR_RE`` below so "Error:" as a standalone
+    # message still trips while an in-word "...Error:" does not.
     # OMN-13409: additional common refusal patterns
     "cannot be fulfilled",
     "cannot be completed",
@@ -364,6 +369,29 @@ _HEURISTIC_CONTAINS_ANY_CHECKS: dict[str, tuple[str, tuple[str, ...]]] = {
         "TASK_MISMATCH",
         ("verified", "passed", "evidence", "check"),
     ),
+    # OMN-14220: implement the two checks the `planning` task class declared but
+    # that had no executor — a bare `MALFORMED: unsupported heuristic DoD check`
+    # hard-failed every planning output and force-escalated it to the paid cloud.
+    # Both are reject-only markers (they join _REJECT_ONLY_HEURISTIC_CHECKS via the
+    # spread below); the local acceptance authority for `planning` is
+    # `semantic_adequacy`, added to its DoD in task_class_contracts.v1.yaml.
+    "structured_output": (
+        "TASK_MISMATCH",
+        ("1.", "2.", "- ", "* ", "step", "phase", "first", "then"),
+    ),
+    "covers_dependencies": (
+        "TASK_MISMATCH",
+        (
+            "depend",
+            "requires",
+            "prerequisite",
+            "after",
+            "before",
+            "blocks",
+            "order",
+            "sequence",
+        ),
+    ),
 }
 
 _ACCURACY_UNCERTAINTY_PHRASES: tuple[str, ...] = (
@@ -383,6 +411,14 @@ _ACCURACY_UNCERTAINTY_PHRASES: tuple[str, ...] = (
 
 
 _THINKING_TRACE_RE = re.compile(r"<think>.*?</think>\s*", re.DOTALL)
+
+# OMN-14220: a bare leading "error:" message (a tool/inference error surfaced as the
+# whole response) is a refusal-class signal, but the plain substring "error:" also
+# matched legitimate prose naming an exception type ("...ZeroDivisionError:"). Match
+# "error:" only when it is NOT the tail of a longer word — i.e. preceded by a
+# non-letter (start of string, whitespace, or punctuation) — so "Error:" / " error:"
+# trips while "ZeroDivisionError:" does not.
+_LEADING_ERROR_RE = re.compile(r"(?<![A-Za-z])error\s*:", re.IGNORECASE)
 
 
 def _strip_thinking_traces(content: str) -> str:
@@ -492,6 +528,10 @@ def _check_no_refusal(content: str) -> str | None:
     # Pass 2: extended phrase detection on the first 200 chars.
     first_200 = stripped[:200].lower()
     detected = [p for p in _REFUSAL_PHRASES if p in first_200]
+    # OMN-14220: word-boundary "error:" detection (see _LEADING_ERROR_RE) — a bare
+    # leading/standalone error message trips, an in-word "...Error:" does not.
+    if _LEADING_ERROR_RE.search(first_200):
+        detected.append("error:")
     if detected:
         return f"REFUSAL: detected refusal phrases: {', '.join(detected)}"
 
@@ -746,8 +786,17 @@ def _check_contains_any(
 
 
 def _check_covers_args_returns_raises(content: str) -> str | None:
-    """Heuristic: documentation must cover args, returns, and raises sections."""
-    missing = [m for m in ("args:", "returns:", "raises:") if m not in content.lower()]
+    """Heuristic: documentation must cover args and returns sections.
+
+    OMN-14220: ``raises:`` is NOT required. Google style documents a ``Raises:``
+    section only for functions that actually raise; a function with no exception
+    path legitimately omits it, so requiring ``raises:`` unconditionally rejected
+    correct docstrings (a reject-only false positive that force-escalated valid
+    LOCAL documentation output to the paid cloud). ``args:``/``returns:`` remain
+    required as the reject-only pre-filter; the local acceptance authority for the
+    ``documentation`` class is ``semantic_adequacy``.
+    """
+    missing = [m for m in ("args:", "returns:") if m not in content.lower()]
     if missing:
         return "TASK_MISMATCH: missing documentation sections: " + ", ".join(missing)
     return None
