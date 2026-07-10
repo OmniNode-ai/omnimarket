@@ -24,6 +24,7 @@ import pytest
 
 from omnimarket.nodes.node_code_enrichment_effect.handlers.handler_code_enrichment_effect import (
     DEFAULT_CONFIDENCE_THRESHOLD,
+    TOPIC_CODE_ENRICHED,
     HandlerCodeEnrichmentEffect,
 )
 from omnimarket.nodes.node_code_enrichment_effect.models.model_code_enrichment_request import (
@@ -98,6 +99,11 @@ def _llm_json_response(
 # =============================================================================
 # Unit tests
 # =============================================================================
+
+
+def test_contract_declared_publish_topic_is_pinned() -> None:
+    """The contract-declared publish topic keeps its literal wire string."""
+    assert TOPIC_CODE_ENRICHED == "onex.evt.omnimarket.code-enriched.v1"
 
 
 @pytest.mark.unit
