@@ -121,8 +121,10 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
     # OMN-13940 adds node_pr_delegated_fix_effect (EFFECT; WS-D/D2 merge-sweep
     # delegation harness Slice 0 -- deterministic ruff-fix path re-entering
     # the existing pr_polish gate/verify/push flow): 349 -> 350.
-    assert summary["node_dirs"] == 350
-    assert summary["entry_points"] == 350
+    # OMN-14325 adds node_contract_serialize_compute plus four pure compute
+    # leaves for compliant model-to-contract serialization: 350 -> 355.
+    assert summary["node_dirs"] == 355
+    assert summary["entry_points"] == 355
     assert summary["missing_entry_points"] == []
     assert summary["dangling_entry_points"] == []
     assert summary["routable"] >= 299
