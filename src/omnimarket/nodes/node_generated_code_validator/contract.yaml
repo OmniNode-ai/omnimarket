@@ -1,0 +1,70 @@
+---
+name: node_generated_code_validator
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: compute
+node_version: {major: 1, minor: 0, patch: 0}
+description: >
+  Pure deterministic validator for a generated ONEX code artifact. Given the
+  artifact source text (and an optional expected structure) it returns typed
+  diagnostics: whether the source parses, any stub/empty/NotImplemented method
+  bodies, and any mismatch against the expected class name, base class
+  (archetype), and required methods (handler signature). No side effects, no
+  I/O, no bus or DB dependencies — operates only on the text in the request.
+
+handler:
+  module: omnimarket.nodes.node_generated_code_validator.handlers.handler_generated_code_validator
+  class: HandlerGeneratedCodeValidator
+  input_model: omnimarket.nodes.node_generated_code_validator.models.model_generated_code_validator_request.ModelGeneratedCodeValidatorRequest
+  output_model: omnimarket.nodes.node_generated_code_validator.models.model_generated_code_validation.ModelGeneratedCodeValidation
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: validate_generated_code
+      handler:
+        name: HandlerGeneratedCodeValidator
+        module: omnimarket.nodes.node_generated_code_validator.handlers.handler_generated_code_validator
+
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 500
+  runtime_profiles: [main]
+
+inputs:
+  source_text:
+    type: str
+    required: true
+    description: Full Python source text of the generated code artifact.
+  expected:
+    type: object
+    required: false
+    description: Optional expected structure (class_name, base_class, required_methods).
+
+outputs:
+  parses:
+    type: bool
+  syntax_error:
+    type: str
+  stub_methods:
+    type: array
+    items:
+      type: str
+  structure_issues:
+    type: array
+    items:
+      type: str
+  is_valid:
+    type: bool
+
+terminal_event: onex.evt.omnimarket.generated-code-validation-completed.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.generated-code-validation-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.generated-code-validation-completed.v1
+
+metadata:
+  transport_type: kafka

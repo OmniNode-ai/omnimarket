@@ -1,0 +1,71 @@
+---
+name: node_mypy_check_effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: effect
+node_version: {major: 1, minor: 0, patch: 0}
+description: >
+  Runs the mypy type checker over a code artifact and returns typed diagnostics
+  (per-message line, column, severity, code) plus an aggregate error count. An
+  EFFECT: it owns the subprocess and filesystem I/O — it writes the artifact to
+  a temporary file when given source text and shells out to mypy, which is
+  already a repo dev tool (no new runtime dependency). mypy never mutates the
+  target, so the side effect is read-only.
+
+input_model:
+  module: omnimarket.nodes.node_mypy_check_effect.models.model_mypy_check_request
+  class: ModelMypyCheckRequest
+
+handler:
+  module: omnimarket.nodes.node_mypy_check_effect.handlers.handler_mypy_check
+  class: HandlerMypyCheck
+  input_model: omnimarket.nodes.node_mypy_check_effect.models.model_mypy_check_request.ModelMypyCheckRequest
+  output_model: omnimarket.nodes.node_mypy_check_effect.models.model_mypy_check_result.ModelMypyCheckResult
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: mypy_check
+      handler:
+        name: HandlerMypyCheck
+        module: omnimarket.nodes.node_mypy_check_effect.handlers.handler_mypy_check
+
+descriptor:
+  node_archetype: effect
+  purity: side_effect
+  idempotent: true
+  timeout_ms: 60000
+  runtime_profiles:
+    - effects
+
+inputs:
+  source_text:
+    type: str
+    required: false
+    description: Artifact source to type-check; written to a temp file when set.
+  path:
+    type: str
+    required: false
+    description: Path to an existing file or directory to type-check.
+
+outputs:
+  success:
+    type: bool
+  error_count:
+    type: int
+  diagnostics:
+    type: array
+    items:
+      type: object
+  mypy_available:
+    type: bool
+
+terminal_event: onex.evt.omnimarket.mypy-check-completed.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.mypy-check-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.mypy-check-completed.v1
+
+metadata:
+  transport_type: kafka
