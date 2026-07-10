@@ -66,12 +66,24 @@ jobs:
           deadline=720
 
           while [ "$elapsed" -lt "$deadline" ]; do
-            response="$(
+            # NOTE(OMN-14343): GH Actions runs run: steps under `bash -e {0}` by
+            # default -- that -e is already active before this script's own
+            # `set -uo pipefail` runs, and `set -uo pipefail` does NOT clear an
+            # inherited -e. A bare `response="$(gh api ...)"; status=$?` would
+            # therefore abort the whole step on ANY gh api failure before status
+            # is ever checked, silently defeating the retry logic below. Using
+            # the command substitution as the condition of this `if` is the
+            # errexit-safe form -- bash does not trigger -e for a command that is
+            # part of an if/while/until condition, regardless of ambient -e state.
+            if response="$(
               gh api "repos/${REPO}/commits/${HEAD_SHA}/check-runs?filter=latest&per_page=100" \
                 --jq 'first(.check_runs[] | select(.name == "occ-preflight / eligibility") | .conclusion) // ""' \
                 2>&1
-            )"
-            status=$?
+            )"; then
+              status=0
+            else
+              status=$?
+            fi
 
             if [ "$status" -ne 0 ]; then
               if echo "$response" | grep -qi "rate limit"; then
