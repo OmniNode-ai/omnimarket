@@ -15,10 +15,12 @@ Related: OMN-11918 — Memgraph Architecture Graph Populator (Task 2.3)
 
 from __future__ import annotations
 
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
 
 import pytest
+import yaml
 
 from omnimarket.nodes.node_architecture_graph_populate_effect.handlers import (
     HandlerArchitectureGraphPopulate,
@@ -64,9 +66,33 @@ def _make_handler_with_mock_driver() -> tuple[
     return handler, mock_driver
 
 
+@pytest.fixture
+def node_dir() -> Path:
+    return (
+        Path(__file__).resolve().parent.parent.parent.parent
+        / "src"
+        / "omnimarket"
+        / "nodes"
+        / "node_architecture_graph_populate_effect"
+    )
+
+
+@pytest.fixture
+def contract_path(node_dir: Path) -> Path:
+    return node_dir / "contract.yaml"
+
+
 @pytest.mark.unit
 class TestArchitectureGraphPopulateEffect:
     """Golden chain tests for node_architecture_graph_populate_effect."""
+
+    def test_contract_declares_populated_topic(self, contract_path: Path) -> None:
+        """OMN-13781 state-coverage gate: prove the populated-event topic is
+        really contract-declared by parsing the live contract.yaml, not by
+        repeating the literal in a self-tautological assertion."""
+        contract = yaml.safe_load(contract_path.read_text())
+        publish_topics = contract["event_bus"]["publish_topics"]
+        assert "onex.evt.omnimarket.architecture-graph-populated.v1" in publish_topics
 
     async def test_node_importable(self) -> None:
         from omnimarket.nodes import node_architecture_graph_populate_effect
@@ -170,27 +196,19 @@ class TestArchitectureGraphPopulateEffect:
     async def test_cypher_merge_statements_use_merge_not_create(self) -> None:
         """MERGE statements must be idempotent — never CREATE."""
         handler, _ = _make_handler_with_mock_driver()
-        node = ModelGraphNodeSpec(
-            node_id="test_repo",
-            label="Repository",
-            properties={"name": "test_repo"},
-        )
-        cypher = handler._build_node_merge_cypher(node)
-        assert cypher.strip().startswith("MERGE")
+        cypher = handler._build_node_batch_cypher("Repository")
+        assert "MERGE" in cypher
         assert "CREATE" not in cypher
+        # OMN-14295: batched — one UNWIND MERGE per label, not per node.
+        assert "UNWIND" in cypher
 
     async def test_cypher_edge_merge_uses_merge(self) -> None:
         """Edge MERGE must be idempotent."""
         handler, _ = _make_handler_with_mock_driver()
-        edge = ModelGraphEdgeSpec(
-            source_id="node_a",
-            target_id="topic_b",
-            edge_type="PUBLISHES_TO",
-            source_authority="authoritative",
-        )
-        cypher = handler._build_edge_merge_cypher(edge)
+        cypher = handler._build_edge_batch_cypher("PUBLISHES_TO")
         assert "MERGE" in cypher
         assert "CREATE" not in cypher
+        assert "UNWIND" in cypher
 
     async def test_pyproject_deps_classified_as_evidence(self) -> None:
         """pyproject.toml-derived DEPENDS_ON edges are evidence, not authoritative."""
@@ -203,6 +221,112 @@ class TestArchitectureGraphPopulateEffect:
         assert len(depends_edges) >= 2
         for edge in depends_edges:
             assert edge.source_authority == "evidence"
+
+    async def test_import_edges_create_matching_python_module_nodes(
+        self, tmp_path: Path
+    ) -> None:
+        """OMN-14295: IMPORTS edges must MERGE against a real PythonModule
+        node, not a node_id nothing else ever creates. Before this fix,
+        _collect_import_edges returned only edges; the edge's MATCH
+        (a {node_id: source_id}) always found zero rows because no node spec
+        for that source_id was ever written, so the edge silently never
+        landed."""
+        handler, _ = _make_handler_with_mock_driver()
+
+        repo_root = tmp_path / "sample_repo"
+        module_dir = repo_root / "src" / "sample_repo" / "handlers"
+        module_dir.mkdir(parents=True)
+        (module_dir / "handler_foo.py").write_text("import omnibase_core\n")
+
+        nodes, edges = handler._collect_import_edges(repo_root, "sample_repo")
+
+        import_edges = [e for e in edges if e.edge_type == "IMPORTS"]
+        assert len(import_edges) == 1
+        module_nodes = [n for n in nodes if n.label == "PythonModule"]
+        assert len(module_nodes) == 1
+
+        # The edge's source_id must resolve to an actual node in the same
+        # batch — this is exactly what the edge MERGE's MATCH depends on.
+        assert import_edges[0].source_id == module_nodes[0].node_id
+        assert import_edges[0].target_id == "omnibase_core"
+        assert module_nodes[0].properties["repo"] == "sample_repo"
+
+    async def test_import_edges_do_not_collide_on_bare_filename(
+        self, tmp_path: Path
+    ) -> None:
+        """Two same-named files in different subdirectories (e.g. two
+        handlers/__init__.py) must produce distinct PythonModule node_ids —
+        the prior bare-filename-stem module_id collided them together."""
+        handler, _ = _make_handler_with_mock_driver()
+
+        repo_root = tmp_path / "sample_repo"
+        src = repo_root / "src" / "sample_repo"
+        (src / "node_a" / "handlers").mkdir(parents=True)
+        (src / "node_b" / "handlers").mkdir(parents=True)
+        (src / "node_a" / "handlers" / "__init__.py").write_text(
+            "import omnibase_core\n"
+        )
+        (src / "node_b" / "handlers" / "__init__.py").write_text(
+            "import omnibase_core\n"
+        )
+
+        nodes, _edges = handler._collect_import_edges(repo_root, "sample_repo")
+        module_ids = {n.node_id for n in nodes if n.label == "PythonModule"}
+        assert len(module_ids) == 2
+
+    async def test_write_to_graph_batches_by_label_and_edge_type(self) -> None:
+        """OMN-14295: writes must be UNWIND-batched, not one round trip per
+        node/edge — assert the mock session.run call count reflects
+        (label groups + edge_type groups), not len(nodes) + len(edges)."""
+        handler, mock_driver = _make_handler_with_mock_driver()
+
+        mock_session = MagicMock()
+        mock_driver.session.return_value.__aenter__ = AsyncMock(
+            return_value=mock_session
+        )
+        mock_driver.session.return_value.__aexit__ = AsyncMock(return_value=False)
+
+        mock_result = MagicMock()
+        mock_result.consume = AsyncMock(return_value=MagicMock())
+        mock_session.run = AsyncMock(return_value=mock_result)
+
+        nodes = [
+            ModelGraphNodeSpec(
+                node_id=f"repo_{i}", label="Repository", properties={"name": f"r{i}"}
+            )
+            for i in range(5)
+        ] + [
+            ModelGraphNodeSpec(
+                node_id=f"node_{i}", label="ONEXNode", properties={"name": f"n{i}"}
+            )
+            for i in range(3)
+        ]
+        edges = [
+            ModelGraphEdgeSpec(
+                source_id=f"repo_{i}",
+                target_id=f"node_{i % 3}",
+                edge_type="CONTAINS",
+                source_authority="authoritative",
+            )
+            for i in range(3)
+        ]
+        snapshot_meta = ModelGraphSnapshotMeta(
+            graph_schema_version="1.0.0",
+            graph_snapshot_id=str(uuid4()),
+            repo_count=5,
+            node_count=len(nodes),
+            edge_count=len(edges),
+        )
+
+        await handler._write_to_graph(nodes, edges, snapshot_meta)
+
+        # 2 label groups (Repository, ONEXNode) + 1 edge_type group
+        # (CONTAINS) + 1 snapshot-meta write = 4 calls total — not
+        # len(nodes) + len(edges) + 1 = 9.
+        assert mock_session.run.await_count == 4
+        for call in mock_session.run.await_args_list[:3]:
+            cypher = call.args[0]
+            assert "UNWIND" in cypher or "GraphSnapshot" in cypher
 
     async def test_populate_from_contracts_returns_response(self) -> None:
         """Full populate operation returns a well-formed response."""
