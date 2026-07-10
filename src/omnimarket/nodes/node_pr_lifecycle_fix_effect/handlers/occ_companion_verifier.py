@@ -27,7 +27,6 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import re
 import tempfile
 
 from omnimarket.github_api import GitHubApiError, rest_json, split_repo
@@ -39,15 +38,17 @@ from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.occ_git_transport im
     authenticated_occ_url,
     run_git,
 )
+
+# OMN-14189: the OCC-source read-back uses the single Piece-2 parser seam, not a
+# local Evidence-Source regex — same source of truth as the emitter and gate.
+from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.occ_stamp_authoring import (
+    product_pr_occ_binding,
+)
 from omnimarket.nodes.node_pr_lifecycle_fix_effect.models.model_fix_result import (
     ModelOccCompanionVerification,
 )
 
 logger = logging.getLogger(__name__)
-
-# Evidence-Source line pointing at an OCC source (`OCC#<n>`), not a product SHA.
-_EVIDENCE_SOURCE_RE = re.compile(r"^Evidence-Source:\s*(\S+)\s*$", re.MULTILINE)
-_OCC_SOURCE_RE = re.compile(r"^OCC#(\d+)$")
 
 _GIT_LS_REMOTE_TIMEOUT_SECONDS = 60
 
@@ -102,9 +103,8 @@ class OccCompanionVerifier:
                 detail=f"could not read product PR {repo}#{pr_number}: {exc}",
             )
         body = pr_data.get("body") or ""
-        match = _EVIDENCE_SOURCE_RE.search(body)
-        occ_match = _OCC_SOURCE_RE.match(match.group(1)) if match else None
-        if occ_match is None:
+        occ_pr_number = product_pr_occ_binding(body)
+        if occ_pr_number is None:
             return ModelOccCompanionVerification(
                 verified=False,
                 occ_branch=expected_branch,
@@ -114,7 +114,6 @@ class OccCompanionVerifier:
                     "(companion not bound)"
                 ),
             )
-        occ_pr_number = int(occ_match.group(1))
 
         # 2. The referenced OCC companion PR must be OPEN.
         try:

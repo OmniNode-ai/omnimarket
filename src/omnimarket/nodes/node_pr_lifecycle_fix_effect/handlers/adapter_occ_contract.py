@@ -24,7 +24,6 @@ import re
 import subprocess
 import tempfile
 import textwrap
-import uuid
 from pathlib import Path
 from typing import Literal
 
@@ -35,6 +34,15 @@ from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.occ_git_transport im
     OCC_REPO,
     authenticated_occ_url,
     run_git,
+)
+
+# OMN-14189 (Piece 3/5, epic OMN-14180): all PR-body Evidence-Source /
+# Evidence-Ticket authoring and read-back flow through the single stamp seam,
+# which delegates to the Piece-2 core renderer/parser over the Piece-1 models.
+from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.occ_stamp_authoring import (
+    product_pr_has_evidence_source,
+    render_occ_companion_pr_body,
+    render_product_pr_body_with_occ_source,
 )
 
 logger = logging.getLogger(__name__)
@@ -88,9 +96,6 @@ def _build_idempotency_key(
 
 
 _OCC_REPO = OCC_REPO
-
-# Matches ANY populated Evidence-Source line (OMN-13990 item 8 idempotency guard).
-_ANY_EVIDENCE_SOURCE_RE = re.compile(r"^Evidence-Source:\s*\S", re.MULTILINE)
 
 # ---------------------------------------------------------------------------
 # Trivial-infra OCC fast-path (OMN-13776).
@@ -398,7 +403,7 @@ class OccContractAdapter:
             f"/repos/{product_owner}/{product_repo_name}/pulls/{pr_number}",
             token=token,
         )
-        if _ANY_EVIDENCE_SOURCE_RE.search(product_pr.get("body") or ""):
+        if product_pr_has_evidence_source(product_pr.get("body") or ""):
             action = (
                 f"[no-op] {repo}#{pr_number} already has an Evidence-Source line; "
                 f"skipping OCC contract creation for {ticket_id}"
@@ -576,15 +581,20 @@ class OccContractAdapter:
         pr_head_sha: str = "unknown",
     ) -> int:
         owner, repo_name = split_repo(self._occ_repo)
-        run_id = uuid.uuid4().hex[:8]
-        body = (
+        # Human prose is authored here; the Evidence-Ticket line is rendered by
+        # the Piece-2 core renderer over the typed stamp (OMN-14189). The former
+        # ``Evidence-Source: auto-contract-<run_id>`` self-source was a fabricated
+        # placeholder token — not a canonical OCC#/SHA source, so the receipt-gate
+        # parser could never resolve it — and is dropped. The companion carries no
+        # Evidence-Source of its own; the product PR is the gate-read surface (the
+        # sibling autobind companion has always omitted it).
+        prose = (
             f"Auto-created OCC contract for `{ticket_id}`.\n\n"
             f"Triggered by deploy-gate failure on {repo}#{pr_number}.\n\n"
             f"Source PR head SHA: `{pr_head_sha}`\n"
-            f"Contract SHA-256: `{contract_sha256[:16]}...`\n\n"
-            f"Evidence-Ticket: {ticket_id}\n"
-            f"Evidence-Source: auto-contract-{run_id}\n"
+            f"Contract SHA-256: `{contract_sha256[:16]}...`\n"
         )
+        body = render_occ_companion_pr_body(prose, tickets=[ticket_id])
         token = _resolve_github_token()
         # OMN-13990: base on OCC's DEFAULT branch, not a hardcoded "main" (OCC
         # default is `dev`). The branch is cut from the shallow clone of the
@@ -628,24 +638,24 @@ class OccContractAdapter:
             "GET", f"/repos/{owner}/{repo_name}/pulls/{pr_number}", token=token
         )
         existing_body: str = pr_data.get("body") or ""
-        evidence_footer = (
-            f"\n\n---\n"
-            f"Evidence-Ticket: {ticket_id}\n"
-            f"Evidence-Source: OCC#{occ_pr_number}\n"
-        )
         # Idempotency hardening (OMN-13990 item 8 / §6 H1): skip when ANY
         # Evidence-Source line already exists, not only this OCC number. The
         # born-path autobind adapter may have already bound a (possibly
         # different) OCC source; occ-preflight reads the FIRST Evidence-Source
-        # line (head -1), so appending a second footer under an already-bound
-        # PR would shadow the real source. Never double-foot.
-        if _ANY_EVIDENCE_SOURCE_RE.search(existing_body):
+        # line (head -1), so re-stamping under an already-bound PR would shadow
+        # the real source. Never double-foot.
+        if product_pr_has_evidence_source(existing_body):
             return
+        # Author the Evidence-Source / Evidence-Ticket stamp via the Piece-2 core
+        # renderer over the typed model — no inline f-string footer (OMN-14189).
+        new_body = render_product_pr_body_with_occ_source(
+            existing_body, occ_pr_number=occ_pr_number, tickets=[ticket_id]
+        )
         rest_json(
             "PATCH",
             f"/repos/{owner}/{repo_name}/pulls/{pr_number}",
             token=token,
-            body={"body": existing_body + evidence_footer},
+            body={"body": new_body},
         )
 
 
