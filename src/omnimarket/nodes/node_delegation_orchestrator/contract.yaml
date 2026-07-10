@@ -163,6 +163,13 @@ fsm:
     - from: GATE_EVALUATED
       to: FAILED
       trigger: "quality gate failed"
+    # OMN-14234 (retry-local / best-of-N): sub-bar quality on a FREE (free_local)
+    # tier with per-tier max_retries budget remaining re-routes to the SAME tier
+    # for a fresh $0 draft, instead of escalating to a paid tier on the first weak
+    # local output (handle_gate_result._maybe_retry_local).
+    - from: GATE_EVALUATED
+      to: ROUTED
+      trigger: "local retry-N: sub-bar quality on a free tier with per-tier retry budget remaining, re-routing to the same tier (OMN-14234)"
     # OMN-13473/OMN-13477: reconciled handler-driven transitions. The handler
     # (handler_delegation_workflow.py _advance, resolving _DECLARED_TRANSITIONS)
     # drives these three ROUTED-origin edges that were previously undeclared. The

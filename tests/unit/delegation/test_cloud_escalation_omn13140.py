@@ -169,6 +169,24 @@ _CANONICAL_VERTEX_BACKEND_ID = "cloud-vertex-gemini"
 _TERMINAL_CEILING_BACKEND_ID = "cloud-glm"
 
 
+@pytest.fixture(autouse=True)
+def _disable_retry_local(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Isolate the local->cloud ESCALATION assertions from OMN-14234 retry-local.
+
+    These tests prove a weak LOCAL output escalates to the cloud tier. With
+    retry-local a sub-bar draft on the free ``local`` tier is re-drafted on the
+    SAME tier up to its ``max_retries`` budget BEFORE escalating, so the
+    local->cloud escalation asserted here would only fire after that budget is
+    exhausted. Disabling the free-tier gate keeps these tests targeting the
+    escalation resolution; retry-local is proven in ``test_retry_local_omn14234.py``.
+    """
+    from omnimarket.nodes.node_delegation_orchestrator.handlers import (
+        handler_delegation_workflow as _hw,
+    )
+
+    monkeypatch.setattr(_hw, "is_free_tier", lambda _tier: False)
+
+
 @pytest.fixture
 def code_gen_cloud_routable(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path

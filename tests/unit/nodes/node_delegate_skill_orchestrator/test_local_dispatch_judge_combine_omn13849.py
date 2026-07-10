@@ -80,6 +80,11 @@ def _no_escalation(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
         port_mod, "resolve_task_class_max_escalations", lambda _task_type: 0
     )
+    # OMN-14234: isolate the judge-combine decision from retry-local (best-of-N on a
+    # free tier). Disable the free-tier retry gate so a single deterministic draft is
+    # evaluated once — retry-local is proven separately in
+    # ``test_local_dispatch_retry_local_omn14234.py``.
+    monkeypatch.setattr(port_mod, "is_free_tier", lambda _tier: False)
 
 
 def _code_effect(
