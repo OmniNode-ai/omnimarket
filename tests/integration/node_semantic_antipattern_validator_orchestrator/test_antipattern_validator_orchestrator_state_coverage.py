@@ -18,7 +18,7 @@ from typing import Any, cast
 
 import yaml
 
-from tests.integration.node_semantic_antipattern_validator_orchestrator.test_antipattern_validator_orchestrator_bus_coverage import (
+from tests.integration.node_semantic_antipattern_validator_orchestrator.test_golden_chain_antipattern_validator_orchestrator import (
     TOPIC_MATCH_REQUESTED,
     TOPIC_VALIDATE,
 )

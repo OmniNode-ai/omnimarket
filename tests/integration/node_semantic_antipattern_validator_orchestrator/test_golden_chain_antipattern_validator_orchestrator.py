@@ -5,24 +5,28 @@ node_semantic_antipattern_validator_orchestrator, driven over the canonical
 in-memory bus.
 
 OMN-13674 (cluster wave-semantic-antipattern-subsystem, archetype orchestrator).
+OMN-14242: HandlerAntipatternValidatorOrchestrator.handle() returns the typed
+``ModelAntipatternMatchCommand`` directly (thin canonical shape -- no
+``ModelHandlerOutput`` envelope, no coercion in the handler).
 
 This ORCHESTRATOR declares no multi-state FSM in ``contract.yaml`` -- its declared
 surface is a *single* ``handler_routing`` route (``validate_semantic_antipatterns``)
 that consumes ``onex.cmd.omnimarket.antipattern-validate.v1`` and emits exactly one
 ``ModelAntipatternMatchCommand`` toward node_antipattern_match_effect on the declared
-``publish_topic`` (``onex.cmd.omnimarket.antipattern-match-requested.v1``). There is
-one internal branch: a valid ``correlation_id`` is parsed into a ``UUID`` while an
-un-parseable one falls back to a fresh ``uuid4()`` for the handler output.
+``publish_topic`` (``onex.cmd.omnimarket.antipattern-match-requested.v1``).
+``correlation_id`` is forwarded verbatim from the request onto the emitted command --
+no UUID parsing/fallback happens in the handler (that logic previously existed only
+to populate the now-deleted ``ModelHandlerOutput`` envelope's own correlation_id).
 
 How it is wired
 ---------------
 The orchestrator is dispatched through ``LocalRuntimeBusAdapter`` over the
 in-memory ``integration_event_bus``: a ``ModelAntipatternValidatorRequest`` lands
-on the declared command topic and the terminal ``ModelHandlerOutput`` (carrying the
-emitted match command in ``events[0]``) is auto-published onto the declared
-match-requested topic. Every assertion reads the emitted command off the bus, never
-off internal handler state -- so the declared route + both correlation-id branches
-are proven end-to-end over the bus.
+on the declared command topic and the handler's returned
+``ModelAntipatternMatchCommand`` is published directly (as its own JSON) onto the
+declared match-requested topic -- the runtime, not the handler, does the
+publication. Every assertion reads the emitted command off the bus, never off
+internal handler state.
 
 No subprocess, no monkeypatch, no real Kafka: the orchestrator is pure event
 forwarding, so no I/O seam needs mocking.
@@ -32,7 +36,7 @@ from __future__ import annotations
 
 import json
 from typing import Any
-from uuid import UUID, uuid4
+from uuid import uuid4
 
 import pytest
 
@@ -54,10 +58,10 @@ async def _drive(
     bus: Any,
     request: ModelAntipatternValidatorRequest,
 ) -> dict[str, Any]:
-    """Publish a validator request, return the single terminal handler-output dict.
+    """Publish a validator request, return the emitted match-command dict.
 
-    The terminal ``ModelHandlerOutput`` is read back off the declared match-requested
-    topic as raw JSON so the emitted command (``events[0]``) can be asserted directly.
+    The handler's returned ``ModelAntipatternMatchCommand`` is read back off the
+    declared match-requested topic as raw JSON.
     """
     adapter = LocalRuntimeBusAdapter(
         handler=HandlerAntipatternValidatorOrchestrator(),
@@ -108,10 +112,7 @@ async def test_route_fires_and_emits_single_match_command_over_bus(
     bus = integration_event_bus
     await bus.start()
     try:
-        output = await _drive(bus, _make_request())
-        events = output["events"]
-        assert len(events) == 1, "orchestrator must emit exactly one match command"
-        command = events[0]
+        command = await _drive(bus, _make_request())
         # The emitted command targets the antipattern match effect boundary.
         assert (
             command["file_path"] == "src/omnimarket/nodes/node_x/handlers/handler_x.py"
@@ -129,8 +130,8 @@ async def test_default_threshold_propagated_over_bus(
     bus = integration_event_bus
     await bus.start()
     try:
-        output = await _drive(bus, _make_request(similarity_threshold=0.80))
-        assert output["events"][0]["similarity_threshold"] == pytest.approx(0.80)
+        command = await _drive(bus, _make_request(similarity_threshold=0.80))
+        assert command["similarity_threshold"] == pytest.approx(0.80)
     finally:
         await bus.close()
 
@@ -143,8 +144,8 @@ async def test_custom_threshold_propagated_over_bus(
     bus = integration_event_bus
     await bus.start()
     try:
-        output = await _drive(bus, _make_request(similarity_threshold=0.92))
-        assert output["events"][0]["similarity_threshold"] == pytest.approx(0.92)
+        command = await _drive(bus, _make_request(similarity_threshold=0.92))
+        assert command["similarity_threshold"] == pytest.approx(0.92)
     finally:
         await bus.close()
 
@@ -157,8 +158,8 @@ async def test_advisory_enforcement_mode_propagated_over_bus(
     bus = integration_event_bus
     await bus.start()
     try:
-        output = await _drive(bus, _make_request(enforcement_mode="advisory"))
-        assert output["events"][0]["enforcement_mode"] == "advisory"
+        command = await _drive(bus, _make_request(enforcement_mode="advisory"))
+        assert command["enforcement_mode"] == "advisory"
     finally:
         await bus.close()
 
@@ -172,46 +173,39 @@ async def test_file_content_propagated_over_bus(
     await bus.start()
     try:
         content = "def god_function():\n    return 1\n"
-        output = await _drive(bus, _make_request(file_content=content))
-        assert output["events"][0]["file_content"] == content
+        command = await _drive(bus, _make_request(file_content=content))
+        assert command["file_content"] == content
     finally:
         await bus.close()
 
 
 @pytest.mark.integration
-async def test_valid_correlation_id_branch_over_bus(
+async def test_valid_correlation_id_forwarded_verbatim_over_bus(
     integration_event_bus: Any,
 ) -> None:
-    """Valid-UUID branch: the parsed UUID is the handler-output correlation_id and
-    the original string is preserved on the emitted command."""
+    """A valid-UUID correlation_id is forwarded verbatim onto the emitted command."""
     bus = integration_event_bus
     await bus.start()
     try:
         corr = str(uuid4())
-        output = await _drive(bus, _make_request(correlation_id=corr))
-        # Output correlation_id is the parsed UUID (round-trips to the same value).
-        assert UUID(output["correlation_id"]) == UUID(corr)
-        # Emitted command carries the caller-supplied correlation id verbatim.
-        assert output["events"][0]["correlation_id"] == corr
+        command = await _drive(bus, _make_request(correlation_id=corr))
+        assert command["correlation_id"] == corr
     finally:
         await bus.close()
 
 
 @pytest.mark.integration
-async def test_invalid_correlation_id_falls_back_to_uuid_over_bus(
+async def test_invalid_correlation_id_forwarded_verbatim_over_bus(
     integration_event_bus: Any,
 ) -> None:
-    """Fallback branch: an un-parseable correlation_id yields a fresh UUID on the
-    handler output while the emitted command still forwards the raw string."""
+    """A non-UUID correlation_id is forwarded verbatim too (OMN-14242: the thin
+    handler no longer parses/falls back -- that logic only ever fed the deleted
+    ModelHandlerOutput envelope's own correlation_id, not the emitted command)."""
     bus = integration_event_bus
     await bus.start()
     try:
-        output = await _drive(bus, _make_request(correlation_id="not-a-uuid"))
-        # Output correlation_id fell back to a real uuid4 (parses cleanly).
-        parsed = UUID(output["correlation_id"])
-        assert str(parsed) == output["correlation_id"]
-        # The emitted command still forwards the caller's raw (invalid) string.
-        assert output["events"][0]["correlation_id"] == "not-a-uuid"
+        command = await _drive(bus, _make_request(correlation_id="not-a-uuid"))
+        assert command["correlation_id"] == "not-a-uuid"
     finally:
         await bus.close()
 
@@ -247,7 +241,7 @@ async def test_repeated_requests_each_emit_one_command_idempotent_shape(
 
         emitted = await bus.get_event_history(topic=TOPIC_MATCH_REQUESTED)
         assert len(emitted) == 2
-        payloads = [json.loads(e.value)["events"][0] for e in emitted]
+        payloads = [json.loads(e.value) for e in emitted]
         assert payloads[0]["file_path"] == payloads[1]["file_path"]
         assert (
             payloads[0]["similarity_threshold"] == payloads[1]["similarity_threshold"]
