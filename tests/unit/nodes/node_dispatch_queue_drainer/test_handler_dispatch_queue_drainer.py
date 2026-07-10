@@ -14,6 +14,9 @@ import yaml
 from omnimarket.nodes.node_dispatch_queue_drainer.handlers import (
     HandlerDispatchQueueDrainer,
 )
+from omnimarket.nodes.node_dispatch_queue_drainer.models import (
+    ModelDispatchQueueDrainerRequest,
+)
 
 
 def _write_queue_item(path: Path, **overrides: object) -> None:
@@ -45,10 +48,12 @@ def test_handler_compiles_one_queue_item_without_moving_it(
     monkeypatch.setenv("OMNI_HOME", str(omni_home))
 
     result = HandlerDispatchQueueDrainer().handle(
-        queue_item_path=queue_item,
-        state_dir=state_dir,
-        tasks_dir=tasks_dir,
-        omni_home=omni_home,
+        ModelDispatchQueueDrainerRequest(
+            queue_item_path=queue_item,
+            state_dir=state_dir,
+            tasks_dir=tasks_dir,
+            omni_home=omni_home,
+        )
     )
 
     assert result.status == "compiled"
@@ -76,9 +81,11 @@ def test_handler_blocks_missing_repo_without_dispatch_record(tmp_path: Path) -> 
     omni_home.mkdir()
 
     result = HandlerDispatchQueueDrainer().handle(
-        queue_item_path=queue_item,
-        state_dir=state_dir,
-        omni_home=omni_home,
+        ModelDispatchQueueDrainerRequest(
+            queue_item_path=queue_item,
+            state_dir=state_dir,
+            omni_home=omni_home,
+        )
     )
 
     assert result.status == "blocked"
@@ -96,9 +103,11 @@ def test_handler_blocks_invalid_yaml_as_typed_outcome(tmp_path: Path) -> None:
     queue_item.write_text("not-a-mapping\n", encoding="utf-8")
 
     result = HandlerDispatchQueueDrainer().handle(
-        queue_item_path=queue_item,
-        state_dir=state_dir,
-        omni_home=tmp_path,
+        ModelDispatchQueueDrainerRequest(
+            queue_item_path=queue_item,
+            state_dir=state_dir,
+            omni_home=tmp_path,
+        )
     )
 
     assert result.status == "blocked"
@@ -115,9 +124,11 @@ def test_handler_blocks_malformed_yaml_as_typed_outcome(tmp_path: Path) -> None:
     queue_item.write_text("name: [unterminated\n", encoding="utf-8")
 
     result = HandlerDispatchQueueDrainer().handle(
-        queue_item_path=queue_item,
-        state_dir=state_dir,
-        omni_home=tmp_path,
+        ModelDispatchQueueDrainerRequest(
+            queue_item_path=queue_item,
+            state_dir=state_dir,
+            omni_home=tmp_path,
+        )
     )
 
     assert result.status == "blocked"
@@ -207,9 +218,11 @@ def test_handler_does_not_mutate_os_environ(
     env_before = dict(os.environ)
 
     HandlerDispatchQueueDrainer(dispatch_worker=worker).handle(
-        queue_item_path=queue_item,
-        state_dir=state_dir,
-        omni_home=omni_home,
+        ModelDispatchQueueDrainerRequest(
+            queue_item_path=queue_item,
+            state_dir=state_dir,
+            omni_home=omni_home,
+        )
     )
 
     assert os.environ == env_before, "handler must not mutate os.environ"
@@ -240,10 +253,12 @@ def test_handler_scan_uses_oldest_queue_item(
     monkeypatch.setenv("OMNI_HOME", str(omni_home))
 
     result = HandlerDispatchQueueDrainer().handle(
-        queue_dir=queue_dir,
-        state_dir=state_dir,
-        tasks_dir=tasks_dir,
-        omni_home=omni_home,
+        ModelDispatchQueueDrainerRequest(
+            queue_dir=queue_dir,
+            state_dir=state_dir,
+            tasks_dir=tasks_dir,
+            omni_home=omni_home,
+        )
     )
 
     assert result.status == "compiled"

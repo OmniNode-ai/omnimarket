@@ -26,6 +26,7 @@ from omnimarket.nodes.node_dispatch_queue_drainer.handlers.handler_dispatch_queu
     HandlerDispatchQueueDrainer,
 )
 from omnimarket.nodes.node_dispatch_queue_drainer.models import (
+    ModelDispatchQueueDrainerRequest,
     ModelDispatchQueueDrainerResult,
 )
 from omnimarket.nodes.node_dispatch_worker import (
@@ -81,9 +82,11 @@ def test_empty_queue_returns_empty(tmp_path: Path) -> None:
     """No queue item -> status=empty, artifact still written."""
     handler = HandlerDispatchQueueDrainer(dispatch_worker=_MockDispatchWorker())
     result = handler.handle(
-        queue_dir=tmp_path / "queue",
-        state_dir=tmp_path / "state",
-        omni_home=tmp_path / "omni_home",
+        ModelDispatchQueueDrainerRequest(
+            queue_dir=tmp_path / "queue",
+            state_dir=tmp_path / "state",
+            omni_home=tmp_path / "omni_home",
+        )
     )
     assert result.status == "empty"
     assert result.result_artifact_path
@@ -101,9 +104,11 @@ def test_valid_item_compiles(tmp_path: Path) -> None:
     worker = _MockDispatchWorker()
     handler = HandlerDispatchQueueDrainer(dispatch_worker=worker)
     result = handler.handle(
-        queue_dir=queue_dir,
-        state_dir=tmp_path / "state",
-        omni_home=omni_home,
+        ModelDispatchQueueDrainerRequest(
+            queue_dir=queue_dir,
+            state_dir=tmp_path / "state",
+            omni_home=omni_home,
+        )
     )
 
     assert result.status == "compiled"
@@ -133,9 +138,11 @@ def test_missing_repo_is_blocked(tmp_path: Path) -> None:
     worker = _MockDispatchWorker()
     handler = HandlerDispatchQueueDrainer(dispatch_worker=worker)
     result = handler.handle(
-        queue_dir=queue_dir,
-        state_dir=tmp_path / "state",
-        omni_home=omni_home,
+        ModelDispatchQueueDrainerRequest(
+            queue_dir=queue_dir,
+            state_dir=tmp_path / "state",
+            omni_home=omni_home,
+        )
     )
 
     assert result.status == "blocked"
@@ -153,9 +160,11 @@ def test_non_mapping_yaml_is_blocked(tmp_path: Path) -> None:
 
     handler = HandlerDispatchQueueDrainer(dispatch_worker=_MockDispatchWorker())
     result = handler.handle(
-        queue_dir=queue_dir,
-        state_dir=tmp_path / "state",
-        omni_home=tmp_path / "omni_home",
+        ModelDispatchQueueDrainerRequest(
+            queue_dir=queue_dir,
+            state_dir=tmp_path / "state",
+            omni_home=tmp_path / "omni_home",
+        )
     )
     assert result.status == "blocked"
     assert "mapping" in result.blocked_reason
@@ -172,9 +181,11 @@ def test_worker_rejection_is_blocked(tmp_path: Path) -> None:
     worker = _MockDispatchWorker(rejected_reason="worker already in_progress")
     handler = HandlerDispatchQueueDrainer(dispatch_worker=worker)
     result = handler.handle(
-        queue_dir=queue_dir,
-        state_dir=tmp_path / "state",
-        omni_home=omni_home,
+        ModelDispatchQueueDrainerRequest(
+            queue_dir=queue_dir,
+            state_dir=tmp_path / "state",
+            omni_home=omni_home,
+        )
     )
     assert result.status == "blocked"
     assert "dispatch worker rejected" in result.blocked_reason
@@ -183,10 +194,15 @@ def test_worker_rejection_is_blocked(tmp_path: Path) -> None:
 
 @pytest.mark.integration
 def test_limit_not_one_raises(tmp_path: Path) -> None:
-    """NEGATIVE CONTROL: the first drainer slice only supports limit=1."""
-    handler = HandlerDispatchQueueDrainer(dispatch_worker=_MockDispatchWorker())
+    """NEGATIVE CONTROL: the first drainer slice only supports limit=1.
+
+    OMN-14242 fail-fast migration: this is now a construction-time typed
+    validation error on ``ModelDispatchQueueDrainerRequest`` rather than a
+    late guard inside ``handle()`` — the request is never constructed, so
+    the handler is never invoked.
+    """
     with pytest.raises(ValueError, match="limit=1 only"):
-        handler.handle(
+        ModelDispatchQueueDrainerRequest(
             queue_dir=tmp_path / "queue",
             state_dir=tmp_path / "state",
             omni_home=tmp_path / "omni_home",
