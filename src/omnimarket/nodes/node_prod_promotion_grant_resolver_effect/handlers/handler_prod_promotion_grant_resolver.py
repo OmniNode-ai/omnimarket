@@ -18,8 +18,10 @@ The handler:
      whether the file is CODEOWNERS-protected on that ref;
   3. parses the YAML directly (ZERO Python import on onex_change_control) and
      resolves it against the request key via the pure ``grant_resolver``;
-  4. emits ``ModelProdPromotionGrantResolvedEvent`` carrying the resolved grant
-     (or ``None`` — fail closed) plus durable audit provenance.
+  4. returns ``ModelProdPromotionGrantResolvedEvent`` carrying the resolved
+     grant (or ``None`` — fail closed) plus durable audit provenance. The
+     runtime wraps the returned event for dispatch/emission — this handler
+     is a thin typed transform, not an envelope producer.
 
 Provenance lives on the EMITTED AUDIT EVIDENCE, never on the pure grant DTO.
 """
@@ -32,9 +34,7 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 from typing import Protocol
-from uuid import uuid4
 
-from omnibase_core.models.dispatch.model_handler_output import ModelHandlerOutput
 from pydantic import BaseModel, ConfigDict, Field
 
 from omnimarket.events.runtime_deployment import (
@@ -53,7 +53,6 @@ from omnimarket.nodes.node_prod_promotion_grant_resolver_effect.grant_resolver i
     resolve_grant,
 )
 
-_HANDLER_ID = "node_prod_promotion_grant_resolver_effect"
 _CONTRACT_PATH = Path(__file__).resolve().parents[1] / "contract.yaml"
 
 # GitHub API host for the grant-anchor read. This is the public api.github.com
@@ -172,9 +171,10 @@ class HandlerProdPromotionGrantResolver:
         self._fetcher = fetcher
 
     async def handle(
-        self, command: ModelProdPromotionGrantResolveCommand
-    ) -> ModelHandlerOutput[None]:
-        """Resolve the grant and emit the resolved fact + audit provenance."""
+        self, payload: ModelProdPromotionGrantResolveCommand
+    ) -> ModelProdPromotionGrantResolvedEvent:
+        """Resolve the grant and return the resolved fact + audit provenance."""
+        command = payload
         fetcher = await self._resolve_fetcher()
         fetched = await fetcher.fetch()
 
@@ -194,7 +194,7 @@ class HandlerProdPromotionGrantResolver:
             codeowners_match=fetched.codeowners_match,
         )
 
-        event = ModelProdPromotionGrantResolvedEvent(
+        return ModelProdPromotionGrantResolvedEvent(
             correlation_id=command.correlation_id,
             resolution=resolution.outcome,
             grant=resolution.grant
@@ -202,12 +202,6 @@ class HandlerProdPromotionGrantResolver:
             else None,
             evaluated_at=command.evaluated_at,
             provenance=provenance,
-        )
-        return ModelHandlerOutput.for_effect(
-            input_envelope_id=uuid4(),
-            correlation_id=command.correlation_id,
-            handler_id=_HANDLER_ID,
-            events=(event,),
         )
 
     async def _resolve_fetcher(self) -> ProtocolGrantFetcher:

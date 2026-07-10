@@ -348,10 +348,8 @@ class TestResolverEffectHandler:
         raw = _grant_file(_grant_entry())
         stub: ProtocolGrantFetcher = _StubFetcher(raw)
         handler = HandlerProdPromotionGrantResolver(fetcher=stub)
-        output = await handler.handle(_command())
+        event = await handler.handle(_command())
 
-        assert output.node_kind == EnumNodeKind.EFFECT
-        event = output.events[0]
         assert isinstance(event, ModelProdPromotionGrantResolvedEvent)
         assert event.resolution is EnumGrantResolution.RESOLVED
         assert event.grant is not None
@@ -370,9 +368,8 @@ class TestResolverEffectHandler:
     async def test_absent_grant_still_emits_provenance(self) -> None:
         raw = _grant_file()  # empty anchor
         handler = HandlerProdPromotionGrantResolver(fetcher=_StubFetcher(raw))
-        output = await handler.handle(_command())
+        event = await handler.handle(_command())
 
-        event = output.events[0]
         assert isinstance(event, ModelProdPromotionGrantResolvedEvent)
         assert event.resolution is EnumGrantResolution.ABSENT
         assert event.grant is None
@@ -384,8 +381,7 @@ class TestResolverEffectHandler:
     async def test_expired_grant_emits_none_with_typed_resolution(self) -> None:
         raw = _grant_file(_grant_entry(expires_at=_EVALUATED_AT - timedelta(seconds=1)))
         handler = HandlerProdPromotionGrantResolver(fetcher=_StubFetcher(raw))
-        output = await handler.handle(_command())
-        event = output.events[0]
+        event = await handler.handle(_command())
         assert isinstance(event, ModelProdPromotionGrantResolvedEvent)
         assert event.resolution is EnumGrantResolution.EXPIRED
         assert event.grant is None
@@ -393,8 +389,7 @@ class TestResolverEffectHandler:
     async def test_self_granted_emits_none(self) -> None:
         raw = _grant_file(_grant_entry(approved_by=_REQUESTER))
         handler = HandlerProdPromotionGrantResolver(fetcher=_StubFetcher(raw))
-        output = await handler.handle(_command(requested_by=_REQUESTER))
-        event = output.events[0]
+        event = await handler.handle(_command(requested_by=_REQUESTER))
         assert isinstance(event, ModelProdPromotionGrantResolvedEvent)
         assert event.resolution is EnumGrantResolution.SELF_GRANTED
         assert event.grant is None
@@ -402,8 +397,7 @@ class TestResolverEffectHandler:
     async def test_consumed_emits_none(self) -> None:
         raw = _grant_file(_grant_entry(consumed=True))
         handler = HandlerProdPromotionGrantResolver(fetcher=_StubFetcher(raw))
-        output = await handler.handle(_command())
-        event = output.events[0]
+        event = await handler.handle(_command())
         assert isinstance(event, ModelProdPromotionGrantResolvedEvent)
         assert event.resolution is EnumGrantResolution.CONSUMED
         assert event.grant is None
@@ -558,9 +552,7 @@ class TestOrchestratorResolverGoldenChain:
         assert isinstance(resolve_command, ModelProdPromotionGrantResolveCommand)
 
         # Edge 2: resolver EFFECT resolves the grant from the durable anchor.
-        resolve_out = await resolver.handle(resolve_command)
-        assert resolve_out.node_kind == EnumNodeKind.EFFECT
-        resolved = resolve_out.events[0]
+        resolved = await resolver.handle(resolve_command)
         assert isinstance(resolved, ModelProdPromotionGrantResolvedEvent)
         assert resolved.resolution is EnumGrantResolution.RESOLVED
         assert resolved.grant is not None
@@ -614,8 +606,7 @@ class TestOrchestratorResolverGoldenChain:
             requested_by=start.requested_by,
             evaluated_at=_EVALUATED_AT,
         )
-        resolve_out = await resolver.handle(resolve_command)
-        resolved = resolve_out.events[0]
+        resolved = await resolver.handle(resolve_command)
         assert isinstance(resolved, ModelProdPromotionGrantResolvedEvent)
         assert resolved.grant is None
 
@@ -660,3 +651,15 @@ class TestOrchestratorResolverGoldenChain:
         assert isinstance(gate_command, ModelProdPromotionGateCommand)
         assert gate_command.promotion_grant is None
         assert gate_command.evaluated_at is None
+
+
+def test_contract_declares_both_terminal_event_topics() -> None:
+    """The EFFECT's contract declares both terminal-event topics it can emit on:
+    the success/resolved topic and the resolve-failed topic."""
+    from pathlib import Path
+
+    import omnimarket.nodes.node_prod_promotion_grant_resolver_effect as node_pkg
+
+    contract_text = (Path(node_pkg.__file__).parent / "contract.yaml").read_text()
+    assert "onex.evt.omnimarket.prod-promotion-grant-resolved.v1" in contract_text
+    assert "onex.evt.omnimarket.prod-promotion-grant-resolve-failed.v1" in contract_text
