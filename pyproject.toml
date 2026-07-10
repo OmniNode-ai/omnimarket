@@ -31,6 +31,12 @@ classifiers = [
 dependencies = [
     # OMN-14168 requires EnumEvidenceClass.RUNTIME_OPS and
     # runtime_ops_verb_loader from omnibase-core 0.46.7.
+    # OMN-14280 (OMN-14208 slice-2 A-now): the inference-wire tenant_id feature
+    # (producer + cross-boundary test) requires the tenant_id field on
+    # ModelInferenceIntent / ModelInferenceResponseData, first released in
+    # omnibase-core 0.46.8 (the paired core PR #1415). The lower bound is kept at
+    # 0.46.7 so the resolver/toolchain stays functional until 0.46.8 publishes;
+    # relock onto 0.46.8 (uv lock --upgrade-package omnibase-core) at landing.
     "omnibase-core>=0.46.7,<0.47.0",
     # OMN-14189 imports the shared OCC PR stamp renderer/parser + models from
     # omnibase-compat 0.5.6 (relocated core->compat under OMN-14223 so the gate
@@ -470,6 +476,8 @@ onex-change-control = { git = "https://github.com/OmniNode-ai/onex_change_contro
 # current resolvable ranges (core>=0.46.7, spi>=0.23.0) — same override
 # function, no foreign URLs.
 override-dependencies = [
+    # OMN-14280: the tenant_id inference-wire feature needs core 0.46.8; lower
+    # bound kept at 0.46.7 so the resolver stays functional until it publishes.
     "omnibase-core>=0.46.7,<0.47.0",
     "omnibase-spi>=0.23.0,<0.24.0",
     "omnibase-infra>=0.38.3,<0.39.0",

@@ -452,6 +452,7 @@ def _build_model_inference_intent(
     api_key_ref: str | None,
     extra_headers: dict[str, str] | None,
     provider_request_options: dict[str, Any],
+    tenant_id: str | None,
 ) -> ModelInferenceIntent:
     # OMN-12815: base_url carries the COMPLETE endpoint URL from the routing
     # authority (decision.endpoint_url); the inference effect posts it verbatim.
@@ -467,10 +468,17 @@ def _build_model_inference_intent(
         "api_key_ref": api_key_ref,
         "extra_headers": extra_headers,
     }
-    if provider_request_options and "provider_request_options" in getattr(
-        ModelInferenceIntent, "model_fields", {}
-    ):
+    model_fields = getattr(ModelInferenceIntent, "model_fields", {})
+    if provider_request_options and "provider_request_options" in model_fields:
         payload["provider_request_options"] = provider_request_options
+    # OMN-14280 (OMN-14208 slice-2 A-now): stamp the workflow tenant onto the
+    # inference intent so the inference effect independently attributes its own
+    # side effects to the owning tenant. Guarded on the model exposing the field
+    # (mirrors provider_request_options above) so the producer degrades to the
+    # slice-1 correlation_id -> tenant attribution against a pre-0.46.8 core
+    # during the coordinated release window instead of raising extra="forbid".
+    if "tenant_id" in model_fields:
+        payload["tenant_id"] = tenant_id
     return ModelInferenceIntent.model_validate(payload)
 
 
@@ -577,6 +585,9 @@ def _evaluate_compliance(
             api_key_ref=workflow.routing_decision.api_key_ref,
             extra_headers=workflow.routing_decision.extra_headers,
             provider_request_options=provider_request_options,
+            # OMN-14280: stamp the workflow tenant onto the repair-attempt intent
+            # (same precedence as slice-1 terminal attribution via _resolve_tenant_id).
+            tenant_id=_resolve_tenant_id(workflow),
         )
     ]
 
@@ -1019,6 +1030,9 @@ class HandlerDelegationWorkflow:
                 api_key_ref=decision.api_key_ref,
                 extra_headers=decision.extra_headers,
                 provider_request_options=provider_request_options,
+                # OMN-14280: stamp the workflow tenant onto the initial/escalation
+                # inference intent (slice-1 precedence via _resolve_tenant_id).
+                tenant_id=_resolve_tenant_id(workflow),
             )
         ]
 
@@ -1044,6 +1058,24 @@ class HandlerDelegationWorkflow:
         workflow = self._workflows.get(response.correlation_id)
         if workflow is None:
             return []
+
+        # OMN-14280 (OMN-14208 slice-2 A-now): observability cross-check only.
+        # The inference effect round-trips the wire tenant it acted on; compare it
+        # against the workflow tenant so a divergence is *visible* in logs. This is
+        # deliberately WARN-only (not fail-closed) — the fail-closed
+        # wire==topic-tenant guard is A-enforce, gated behind the gateway
+        # topic-tenant stamp and not part of this slice. A None response tenant
+        # (pre-0.46.8 core / legacy replay) is not a mismatch and is skipped.
+        response_tenant = getattr(response, "tenant_id", None)
+        if response_tenant is not None and response_tenant != workflow.tenant_id:
+            _logger.warning(
+                "inference-response tenant divergence (A-now observability, "
+                "not enforced): correlation_id=%s response_tenant=%s "
+                "workflow_tenant=%s",
+                response.correlation_id,
+                response_tenant,
+                workflow.tenant_id,
+            )
 
         if workflow.state != EnumDelegationState.ROUTED:
             return []
