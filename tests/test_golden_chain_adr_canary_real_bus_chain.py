@@ -218,7 +218,7 @@ async def _wire_adr_subnodes(
 
     async def handle_ingestion(request: BaseModel) -> BaseModel:
         return await ingestion_handler.handle(
-            request=ModelIngestionRequest.model_validate(request)
+            ModelIngestionRequest.model_validate(request)
         )
 
     async def handle_extraction(request: BaseModel) -> BaseModel:
@@ -382,3 +382,20 @@ async def test_adr_canary_real_bus_backed_chain_reaches_all_subnodes(
         )
         assert len(await event_bus.get_event_history(topic=request_topic)) == 1
         assert len(await event_bus.get_event_history(topic=completed_topic)) == 1
+
+
+def test_contract_declares_adr_document_ingestion_completed_topic() -> None:
+    """State-coverage: the node declares the adr-document-ingestion-completed topic."""
+    from pathlib import Path
+
+    import yaml
+
+    import omnimarket.nodes.node_adr_document_ingestion_effect as _adr_node_pkg
+
+    contract = yaml.safe_load(
+        (Path(_adr_node_pkg.__file__).parent / "contract.yaml").read_text()
+    )
+    assert (
+        "onex.evt.omnimarket.adr-document-ingestion-completed.v1"
+        in contract["event_bus"]["publish_topics"]
+    )

@@ -120,7 +120,7 @@ class TestHandlerDocumentIngestion:
 
         with patch.object(handler, "_git_metadata", mock_git):
             result = await handler.handle(
-                request=ModelIngestionRequest(root_paths=[str(tmp_path)])
+                ModelIngestionRequest(root_paths=[str(tmp_path)])
             )
 
         assert isinstance(result, ModelIngestionResult)
@@ -138,7 +138,7 @@ class TestHandlerDocumentIngestion:
 
         with patch.object(handler, "_git_metadata", mock_git):
             result = await handler.handle(
-                request=ModelIngestionRequest(root_paths=[str(tmp_path)])
+                ModelIngestionRequest(root_paths=[str(tmp_path)])
             )
 
         assert len(result.documents) == 1
@@ -157,7 +157,7 @@ class TestHandlerDocumentIngestion:
 
         with patch.object(handler, "_git_metadata", mock_git):
             result = await handler.handle(
-                request=ModelIngestionRequest(root_paths=[str(tmp_path)])
+                ModelIngestionRequest(root_paths=[str(tmp_path)])
             )
 
         assert result.documents[0].source_content_sha256 == expected_sha
@@ -173,7 +173,7 @@ class TestHandlerDocumentIngestion:
 
         with patch.object(handler, "_git_metadata", mock_git):
             result = await handler.handle(
-                request=ModelIngestionRequest(root_paths=[str(tmp_path)])
+                ModelIngestionRequest(root_paths=[str(tmp_path)])
             )
 
         assert result.documents[0].file_size_bytes == expected_size
@@ -188,7 +188,7 @@ class TestHandlerDocumentIngestion:
 
         with patch.object(handler, "_git_metadata", mock_git):
             result = await handler.handle(
-                request=ModelIngestionRequest(root_paths=[str(tmp_path)])
+                ModelIngestionRequest(root_paths=[str(tmp_path)])
             )
 
         assert len(result.documents) == 1
@@ -204,7 +204,7 @@ class TestHandlerDocumentIngestion:
 
         with patch.object(handler, "_git_metadata", mock_git):
             result = await handler.handle(
-                request=ModelIngestionRequest(root_paths=[str(tmp_path)])
+                ModelIngestionRequest(root_paths=[str(tmp_path)])
             )
 
         assert len(result.documents) == 1
@@ -219,7 +219,7 @@ class TestHandlerDocumentIngestion:
 
         with patch.object(handler, "_git_metadata", mock_git):
             result = await handler.handle(
-                request=ModelIngestionRequest(root_paths=[str(tmp_path)])
+                ModelIngestionRequest(root_paths=[str(tmp_path)])
             )
 
         assert len(result.documents) == 1
@@ -234,7 +234,7 @@ class TestHandlerDocumentIngestion:
 
         with patch.object(handler, "_git_metadata", mock_git):
             result = await handler.handle(
-                request=ModelIngestionRequest(
+                ModelIngestionRequest(
                     root_paths=[str(tmp_path)], exclude_patterns=["vendor/"]
                 )
             )
@@ -257,7 +257,7 @@ class TestHandlerDocumentIngestion:
 
         with patch.object(handler, "_git_metadata", mock_git):
             result = await handler.handle(
-                request=ModelIngestionRequest(root_paths=[str(tmp_path)])
+                ModelIngestionRequest(root_paths=[str(tmp_path)])
             )
 
         doc = result.documents[0]
@@ -274,7 +274,7 @@ class TestHandlerDocumentIngestion:
 
         with patch.object(handler, "_git_metadata", mock_git):
             result = await handler.handle(
-                request=ModelIngestionRequest(root_paths=[str(tmp_path)])
+                ModelIngestionRequest(root_paths=[str(tmp_path)])
             )
 
         doc = result.documents[0]
@@ -295,7 +295,7 @@ class TestHandlerDocumentIngestion:
 
         with patch.object(handler, "_git_metadata", mock_git):
             result = await handler.handle(
-                request=ModelIngestionRequest(root_paths=[str(root_a), str(root_b)])
+                ModelIngestionRequest(root_paths=[str(root_a), str(root_b)])
             )
 
         assert len(result.documents) == 2
@@ -309,9 +309,7 @@ class TestHandlerDocumentIngestion:
         handler = HandlerDocumentIngestion()
 
         with patch.object(handler, "_git_metadata", mock_git):
-            result = await handler.handle(
-                request=ModelIngestionRequest(root_paths=[str(root)])
-            )
+            result = await handler.handle(ModelIngestionRequest(root_paths=[str(root)]))
 
         assert result.documents[0].repo_name == "omnibase_core"
 
@@ -322,7 +320,7 @@ class TestHandlerDocumentIngestion:
 
         with patch.object(handler, "_git_metadata", mock_git):
             result = await handler.handle(
-                request=ModelIngestionRequest(root_paths=[str(tmp_path)])
+                ModelIngestionRequest(root_paths=[str(tmp_path)])
             )
 
         assert result.documents == []
@@ -339,9 +337,7 @@ class TestHandlerDocumentIngestion:
 
         with patch.object(handler, "_git_metadata", mock_git):
             result = await handler.handle(
-                request=ModelIngestionRequest(
-                    root_paths=[str(file_path), str(valid_root)]
-                )
+                ModelIngestionRequest(root_paths=[str(file_path), str(valid_root)])
             )
 
         assert len(result.documents) == 1
@@ -357,7 +353,7 @@ class TestHandlerDocumentIngestion:
 
         with patch.object(handler, "_git_metadata", mock_git):
             result = await handler.handle(
-                request=ModelIngestionRequest(root_paths=[missing, str(tmp_path)])
+                ModelIngestionRequest(root_paths=[missing, str(tmp_path)])
             )
 
         assert len(result.documents) == 1
@@ -373,7 +369,7 @@ class TestHandlerDocumentIngestion:
 
         with patch.object(handler, "_git_metadata", mock_git):
             result = await handler.handle(
-                request=ModelIngestionRequest(root_paths=[str(tmp_path)])
+                ModelIngestionRequest(root_paths=[str(tmp_path)])
             )
 
         assert len(result.documents) == 1
@@ -468,9 +464,7 @@ async def test_integration_real_docs_tree() -> None:
         pytest.skip(f"docs path not found: {docs_path}")
 
     handler = HandlerDocumentIngestion()
-    result = await handler.handle(
-        request=ModelIngestionRequest(root_paths=[str(docs_path)])
-    )
+    result = await handler.handle(ModelIngestionRequest(root_paths=[str(docs_path)]))
 
     assert isinstance(result, ModelIngestionResult)
     assert len(result.documents) > 0
