@@ -16,7 +16,7 @@ from typing import Any, cast
 
 import yaml
 
-from tests.integration.node_antipattern_match_effect.test_antipattern_match_effect_bus_coverage import (
+from tests.integration.node_antipattern_match_effect.test_golden_chain_antipattern_match_effect import (
     TOPIC_MATCH_REQUESTED,
     TOPIC_MATCH_RESPONSE,
 )
