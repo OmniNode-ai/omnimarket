@@ -5,8 +5,11 @@
 
 from __future__ import annotations
 
+import inspect
+
 import pytest
 from omnibase_core.enums.pipeline.enum_closeout_failure import EnumCloseoutFailure
+from omnibase_core.models.pipeline.model_closeout_result import ModelCloseoutResult
 from omnibase_core.models.pipeline.model_evidence_artifact import ModelEvidenceArtifact
 from omnibase_core.models.pipeline.model_golden_chain_entry import ModelGoldenChainEntry
 
@@ -257,3 +260,23 @@ class TestHandlerCloseoutVerifierDeterminism:
         result = HandlerCloseoutVerifier().handle(_passing_request())
         assert result.chain_diff is not None
         assert result.chain_diff.matches is True
+
+
+@pytest.mark.unit
+class TestHandlerCloseoutVerifierCanonicalShape:
+    """Guards the OMN-14242 thin canonical shape: ``handle`` takes and returns
+    typed models directly. No ``ModelHandlerOutput`` envelope, no coercion —
+    the runtime is responsible for wrapping. A regression to an envelope
+    return would fail these assertions.
+    """
+
+    def test_handle_returns_the_typed_result_directly(self) -> None:
+        result = HandlerCloseoutVerifier().handle(_passing_request())
+        assert type(result) is ModelCloseoutResult
+
+    def test_handle_signature_is_thin_no_envelope(self) -> None:
+        sig = inspect.signature(HandlerCloseoutVerifier.handle, eval_str=True)
+        params = [p for name, p in sig.parameters.items() if name != "self"]
+        assert len(params) == 1
+        assert params[0].annotation is ModelCloseoutVerifyRequest
+        assert sig.return_annotation is ModelCloseoutResult
