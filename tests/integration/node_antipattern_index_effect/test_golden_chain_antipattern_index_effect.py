@@ -4,20 +4,24 @@
 boundary, driven over the canonical in-memory bus.
 
 OMN-13674 (cluster wave-semantic-antipattern-subsystem, archetype effect).
+OMN-14242 (thin canonical handler shape).
 
 The index effect embeds each vector-enabled antipattern registry entry and upserts
 it into a Qdrant collection, with idempotency keyed on the registry version. Its I/O
 seams are (a) the Qdrant client, (b) the registry loader, and (c) the embedding HTTP
 endpoint. The Qdrant client and registry loader are mocked by CONSTRUCTOR INJECTION
-(``_MockQdrant`` + a loader callable handed to ``_IndexEffectBusHarness``) -- never
-monkeypatched. The embedding endpoint has no injectable client seam, so it is stubbed
-with the same ``httpx.AsyncClient`` patch the shipped unit suite uses. No real
-network or Qdrant is touched.
+directly on ``HandlerAntipatternIndexEffect`` -- never monkeypatched. The embedding
+endpoint has no injectable client seam, so it is stubbed with the same
+``httpx.AsyncClient`` patch the shipped unit suite uses. No real network or Qdrant is
+touched.
 
-The real effect handler runs unchanged behind a thin bus harness whose
-positional-model ``handle`` lets ``LocalRuntimeBusAdapter`` drive it over the
-in-memory ``integration_event_bus``. The terminal ``ModelAntipatternIndexResult`` is
-read back off the declared completed topic and typed result fields are asserted.
+The real effect handler is driven directly: DI (Qdrant client + registry loader) is
+constructor-injected on ``HandlerAntipatternIndexEffect`` and its positional-model
+``handle(payload: ModelAntipatternIndexRequest)`` lets ``LocalRuntimeBusAdapter``
+drive it over the in-memory ``integration_event_bus`` with no wrapper shim. The
+embedding endpoint override travels on the request model itself. The terminal
+``ModelAntipatternIndexResult`` is read back off the declared completed topic and
+typed result fields are asserted.
 
 Outcomes covered: success (entries indexed + upserted), no-vector-entries skip,
 idempotent no-op (version already indexed), force-reindex bypass, embedding-failure
@@ -100,37 +104,19 @@ def _registry(vector_entries: int = 2, non_vector_entries: int = 1) -> _FakeRegi
     return _FakeRegistry(entries=entries)
 
 
-class _IndexEffectBusHarness:
-    """Bus-drivable wrapper: a positional-model ``handle`` that forwards to the real
-    index effect handler with Qdrant client, registry loader, and embedding endpoint
-    injected."""
+def _make_handler(
+    *, qdrant_client: Any, registry: _FakeRegistry
+) -> HandlerAntipatternIndexEffect:
+    """Construct the real handler with DI (Qdrant client + registry loader).
 
-    def __init__(
-        self,
-        *,
-        qdrant_client: Any,
-        registry: _FakeRegistry,
-        embedding_endpoint: str | None = _ENDPOINT,
-    ) -> None:
-        self._real = HandlerAntipatternIndexEffect()
-        self._qdrant = qdrant_client
-        self._registry = registry
-        self._endpoint = embedding_endpoint
-
-    async def handle(
-        self, request: ModelAntipatternIndexRequest
-    ) -> ModelAntipatternIndexResult:
-        return await self._real.handle(
-            correlation_id=request.correlation_id,
-            repo_root=request.repo_root,
-            force_reindex=request.force_reindex,
-            qdrant_client=self._qdrant,
-            embedding_endpoint_override=(
-                request.embedding_endpoint_override or self._endpoint
-            ),
-            qdrant_collection_override=request.qdrant_collection_override,
-            registry_loader=lambda _root: self._registry,
-        )
+    No wrapper shim: the handler is thin/canonical and takes a single typed
+    ``ModelAntipatternIndexRequest`` positionally in ``handle()``, so
+    ``LocalRuntimeBusAdapter`` can drive it unmodified over the bus.
+    """
+    return HandlerAntipatternIndexEffect(
+        qdrant_client=qdrant_client,
+        registry_loader=lambda _root: registry,
+    )
 
 
 def _make_qdrant(already_indexed_version: str | None = None) -> MagicMock:
@@ -165,20 +151,23 @@ def _mock_http(embedding: list[float]) -> AsyncMock:
 
 
 def _request(**overrides: Any) -> ModelAntipatternIndexRequest:
-    params: dict[str, Any] = {"correlation_id": "index-corr-001"}
+    params: dict[str, Any] = {
+        "correlation_id": "index-corr-001",
+        "embedding_endpoint_override": _ENDPOINT,
+    }
     params.update(overrides)
     return ModelAntipatternIndexRequest(**params)
 
 
 async def _drive(
     bus: Any,
-    harness: _IndexEffectBusHarness,
+    handler: HandlerAntipatternIndexEffect,
     request: ModelAntipatternIndexRequest,
 ) -> ModelAntipatternIndexResult | None:
     """Publish an index request over the bus; return the terminal result, or None
     when the handler raised (adapter suppresses output on error)."""
     adapter = LocalRuntimeBusAdapter(
-        handler=harness,
+        handler=handler,
         handler_name="antipattern-index-effect",
         input_model_cls=ModelAntipatternIndexRequest,
         output_topic=TOPIC_INDEX_COMPLETED,
@@ -209,13 +198,13 @@ async def test_success_indexes_vector_entries_over_bus(
     bus = integration_event_bus
     await bus.start()
     try:
-        harness = _IndexEffectBusHarness(
+        handler = _make_handler(
             qdrant_client=_make_qdrant(),
             registry=_registry(vector_entries=2, non_vector_entries=1),
         )
         with patch(_HTTP_TARGET) as http_cls:
             http_cls.return_value = _mock_http([0.1] * 8)
-            result = await _drive(bus, harness, _request())
+            result = await _drive(bus, handler, _request())
         assert result is not None
         assert result.correlation_id == "index-corr-001"
         assert result.indexed_count == 2
@@ -235,11 +224,11 @@ async def test_no_vector_entries_zero_indexed_over_bus(
     await bus.start()
     try:
         qdrant = _make_qdrant()
-        harness = _IndexEffectBusHarness(
+        handler = _make_handler(
             qdrant_client=qdrant,
             registry=_registry(vector_entries=0, non_vector_entries=3),
         )
-        result = await _drive(bus, harness, _request())
+        result = await _drive(bus, handler, _request())
         assert result is not None
         assert result.indexed_count == 0
         assert result.skipped_count == 3
@@ -257,10 +246,10 @@ async def test_idempotent_no_op_when_version_already_indexed_over_bus(
     await bus.start()
     try:
         qdrant = _make_qdrant(already_indexed_version="1.0.0")
-        harness = _IndexEffectBusHarness(
+        handler = _make_handler(
             qdrant_client=qdrant, registry=_registry(vector_entries=2)
         )
-        result = await _drive(bus, harness, _request())
+        result = await _drive(bus, handler, _request())
         assert result is not None
         assert result.was_no_op is True
         assert result.indexed_count == 0
@@ -278,12 +267,12 @@ async def test_force_reindex_bypasses_idempotency_over_bus(
     await bus.start()
     try:
         qdrant = _make_qdrant(already_indexed_version="1.0.0")
-        harness = _IndexEffectBusHarness(
+        handler = _make_handler(
             qdrant_client=qdrant, registry=_registry(vector_entries=1)
         )
         with patch(_HTTP_TARGET) as http_cls:
             http_cls.return_value = _mock_http([0.3] * 8)
-            result = await _drive(bus, harness, _request(force_reindex=True))
+            result = await _drive(bus, handler, _request(force_reindex=True))
         assert result is not None
         assert result.was_no_op is False
         assert result.indexed_count == 1
@@ -299,7 +288,7 @@ async def test_embedding_failure_increments_skipped_over_bus(
     bus = integration_event_bus
     await bus.start()
     try:
-        harness = _IndexEffectBusHarness(
+        handler = _make_handler(
             qdrant_client=_make_qdrant(),
             registry=_registry(vector_entries=2, non_vector_entries=0),
         )
@@ -309,7 +298,7 @@ async def test_embedding_failure_increments_skipped_over_bus(
             failing.__aenter__ = AsyncMock(return_value=failing)
             failing.__aexit__ = AsyncMock(return_value=None)
             http_cls.return_value = failing
-            result = await _drive(bus, harness, _request())
+            result = await _drive(bus, handler, _request())
         assert result is not None
         assert result.indexed_count == 0
         assert result.skipped_count == 2
@@ -328,10 +317,10 @@ async def test_qdrant_unavailable_graceful_skip_over_bus(
     await bus.start()
     try:
         monkeypatch.delenv("QDRANT_HOST", raising=False)
-        harness = _IndexEffectBusHarness(
+        handler = _make_handler(
             qdrant_client=None, registry=_registry(vector_entries=2)
         )
-        result = await _drive(bus, harness, _request())
+        result = await _drive(bus, handler, _request())
         assert result is not None
         assert result.indexed_count == 0
         assert result.skipped_count == 0
@@ -351,12 +340,11 @@ async def test_missing_embedding_endpoint_publishes_no_output_over_bus(
     await bus.start()
     try:
         monkeypatch.delenv("EMBEDDING_MODEL_URL", raising=False)
-        harness = _IndexEffectBusHarness(
+        handler = _make_handler(
             qdrant_client=_make_qdrant(),
             registry=_registry(vector_entries=1),
-            embedding_endpoint=None,
         )
-        result = await _drive(bus, harness, _request())
+        result = await _drive(bus, handler, _request(embedding_endpoint_override=None))
         assert result is None, "handler raise must not publish a completion event"
     finally:
         await bus.close()
@@ -370,12 +358,12 @@ async def test_repeated_publishes_are_deterministic_over_bus(
     bus = integration_event_bus
     await bus.start()
     try:
-        harness = _IndexEffectBusHarness(
+        handler = _make_handler(
             qdrant_client=_make_qdrant(),
             registry=_registry(vector_entries=2, non_vector_entries=1),
         )
         adapter = LocalRuntimeBusAdapter(
-            handler=harness,
+            handler=handler,
             handler_name="antipattern-index-effect",
             input_model_cls=ModelAntipatternIndexRequest,
             output_topic=TOPIC_INDEX_COMPLETED,

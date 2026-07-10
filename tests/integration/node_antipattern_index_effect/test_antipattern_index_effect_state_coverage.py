@@ -16,7 +16,7 @@ from typing import Any, cast
 
 import yaml
 
-from tests.integration.node_antipattern_index_effect.test_antipattern_index_effect_bus_coverage import (
+from tests.integration.node_antipattern_index_effect.test_golden_chain_antipattern_index_effect import (
     TOPIC_INDEX_COMPLETED,
     TOPIC_INDEX_REQUESTED,
 )
