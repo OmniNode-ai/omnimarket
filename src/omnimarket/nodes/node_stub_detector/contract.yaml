@@ -1,0 +1,63 @@
+---
+name: node_stub_detector
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: compute
+node_version: {major: 1, minor: 0, patch: 0}
+description: >
+  Pure deterministic detector of unimplemented method stubs in an ONEX node
+  source file. Walks the class bodies with the standard-library ast module and
+  flags each async method whose body carries a stub marker. Comment markers are
+  matched against real comment tokens and the not-implemented marker against the
+  AST, so a marker that appears only inside a string literal is never a false
+  positive. No side effects, no I/O, no bus or DB dependencies.
+
+handler:
+  module: omnimarket.nodes.node_stub_detector.handlers.handler_stub_detector
+  class: HandlerStubDetector
+  input_model: omnimarket.nodes.node_stub_detector.models.model_stub_detector_request.ModelStubDetectorRequest
+  output_model: omnimarket.nodes.node_stub_detector.models.model_stub_detection_result.ModelStubDetectionResult
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: detect_stubs
+      handler:
+        name: HandlerStubDetector
+        module: omnimarket.nodes.node_stub_detector.handlers.handler_stub_detector
+
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 500
+  runtime_profiles: [main]
+
+inputs:
+  source_text:
+    type: str
+    required: true
+    description: Full Python source text of a single ONEX node source file.
+
+outputs:
+  stubs:
+    type: array
+    items:
+      type: object
+      properties:
+        method_name:
+          type: str
+        signature:
+          type: str
+        marker:
+          type: str
+
+terminal_event: onex.evt.omnimarket.stub-detection-completed.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.stub-detection-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.stub-detection-completed.v1
+
+metadata:
+  transport_type: kafka
