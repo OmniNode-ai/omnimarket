@@ -190,7 +190,14 @@ def _paid_escalation_allowed() -> bool:
     time) so a test or an operator can toggle it per-process. "Never silent" is met
     by the prominent paid-escalation log at the execution boundary, not by blocking.
     """
-    return os.environ.get(_ALLOW_PAID_ENV, "").strip().lower() not in _ALLOW_PAID_FALSY
+    # OMN-14225: the paid-escalation opt-out is an INTENTIONAL per-process operator
+    # toggle — read at call time (not import time) so an operator or a test can flip
+    # it per process, metered + logged at the execution boundary, never a silent
+    # config path. It is exempted from the delegation env-read scanner via the inline
+    # token below; a contract-config rewrite would defeat the per-process-toggle
+    # design this gate deliberately provides.
+    raw_opt_out = os.environ.get(_ALLOW_PAID_ENV, "")  # ONEX_FLAG_EXEMPT
+    return raw_opt_out.strip().lower() not in _ALLOW_PAID_FALSY
 
 
 def _estimate_prompt_tokens(prompt: str) -> int:
