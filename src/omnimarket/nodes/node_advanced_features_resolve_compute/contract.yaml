@@ -1,0 +1,72 @@
+---
+name: node_advanced_features_resolve_compute
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: compute
+node_version: {major: 1, minor: 0, patch: 0}
+
+input_model: omnimarket.contract_assembly.models.ModelAdvancedFeaturesRequest
+
+description: >
+  Pure deterministic advanced-features resolver. Given a node archetype and
+  optional overrides it returns the typed advanced-features block (circuit
+  breaker, retry, observability, dead-letter queue, transactions). Defaults are
+  archetype-differentiated data, replacing the identical block the dormant
+  serializer emitted for every node. No I/O, no bus or DB dependencies.
+
+handler:
+  module: omnimarket.nodes.node_advanced_features_resolve_compute.handlers.handler_advanced_features_resolve
+  class: HandlerAdvancedFeaturesResolve
+  input_model: omnimarket.contract_assembly.models.ModelAdvancedFeaturesRequest
+  output_model: omnimarket.contract_assembly.models.ModelAdvancedFeatures
+
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 500
+  runtime_profiles:
+    - main
+
+inputs:
+  archetype:
+    type: str
+    required: true
+    description: EnumNodeArchetype (compute, effect, reducer, orchestrator)
+  overrides:
+    type: object
+    required: false
+    description: Optional per-field overrides layered onto the archetype defaults
+
+outputs:
+  circuit_breaker:
+    type: object
+  retry:
+    type: object
+  observability:
+    type: object
+  dead_letter_queue_enabled:
+    type: bool
+  transactions_enabled:
+    type: bool
+
+terminal_event: onex.evt.omnimarket.advanced-features-resolve-completed.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.advanced-features-resolve-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.advanced-features-resolve-completed.v1
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: advanced_features_resolve
+      handler:
+        name: HandlerAdvancedFeaturesResolve
+        module: omnimarket.nodes.node_advanced_features_resolve_compute.handlers.handler_advanced_features_resolve
+      event_model:
+        name: ModelAdvancedFeaturesRequest
+        module: omnimarket.contract_assembly.models
+
+metadata:
+  transport_type: kafka
