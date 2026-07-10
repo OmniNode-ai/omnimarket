@@ -238,6 +238,18 @@ class OccAutobindAdapter:
                 f"{head_sha!r}"
             )
 
+        # OMN-14255: the receipt must cite the actual squash ``mergeCommit.oid``
+        # once the PR has landed — NOT the pre-merge ``headRefOid``. On these
+        # squash-merge-only repos the merge commit is a brand-new SHA with no
+        # ancestry to the head, so a head-SHA citation cannot satisfy the
+        # DurableEvidenceGate CONTRACT_CITES_MERGE_COMMIT identity leg. When this
+        # adapter runs pre-merge (its usual Evidence-Source repair timing) the
+        # merge commit does not exist yet — GitHub's ``merge_commit_sha`` on an
+        # OPEN PR is a throwaway test-merge SHA, so it MUST be ignored unless the
+        # PR is actually merged. In that pre-merge case we fall back to the head
+        # SHA; the gate's PR-commits membership leg (OMN-14255) still accepts it.
+        receipt_commit_sha = self._receipt_commit_sha(pr_data, head_sha)
+
         # Idempotency guard: already bound to an OCC source — nothing to do.
         # Read the canonical stamp via the Piece-2 parser, not a local regex.
         already_bound = product_pr_occ_binding(body)
@@ -303,7 +315,9 @@ class OccAutobindAdapter:
                     )
                 contract_paths[ticket] = contract_path
 
-                # Stage 1: downstream receipt stamped with the REAL product head.
+                # Stage 1: downstream receipt stamped with the actual landed
+                # commit — the squash mergeCommit.oid post-merge, else the
+                # reviewed head SHA pre-merge (OMN-14255).
                 downstream_dir = (
                     clone_dir / "drift" / "dod_receipts" / ticket / evidence_id
                 )
@@ -315,7 +329,7 @@ class OccAutobindAdapter:
                         pr_number=pr_number,
                         repo=repo,
                         run_timestamp=run_timestamp,
-                        commit_sha=head_sha,
+                        commit_sha=receipt_commit_sha,
                         branch=branch,
                         probe_command=downstream_probe_command,
                         probe_stdout=downstream_stdout,
@@ -557,6 +571,26 @@ class OccAutobindAdapter:
 
     def _head_sha(self, cwd: str) -> str:
         return self._run_git(["git", "rev-parse", "HEAD"], cwd=cwd)
+
+    @staticmethod
+    def _receipt_commit_sha(pr_data: dict[str, object], head_sha: str) -> str:
+        """Resolve the commit SHA the downstream receipt should cite (OMN-14255).
+
+        Returns the actual squash ``merge_commit_sha`` ONLY when the PR is truly
+        merged; otherwise the reviewed ``head_sha``. GitHub's REST ``merge_commit_sha``
+        on an OPEN PR is a throwaway *test-merge* SHA that does not exist on any
+        branch, so it must never be cited — gate on the ``merged`` / ``merged_at``
+        facts before trusting it. Pure function — no I/O.
+        """
+        merged = bool(pr_data.get("merged")) or bool(pr_data.get("merged_at"))
+        merge_commit_sha = pr_data.get("merge_commit_sha")
+        if (
+            merged
+            and isinstance(merge_commit_sha, str)
+            and _SHA_RE.match(merge_commit_sha)
+        ):
+            return merge_commit_sha
+        return head_sha
 
     def _open_or_sync_occ_pr(
         self, *, branch: str, ticket: str, repo: str, pr_number: int

@@ -113,6 +113,7 @@ def _make_gate(
     *,
     tracked: dict[tuple[str, str, str], bool] | None = None,
     pr_view: dict[tuple[str, int], tuple[str, str | None]] | None = None,
+    pr_commits: dict[tuple[str, int], tuple[str, ...]] | None = None,
     contract_on_main: dict[str, object] | None = None,
     receipts_on_ref: list[dict[str, object]] | None = None,
     occ_governance_ref: str = _DEV_REF,
@@ -123,9 +124,14 @@ def _make_gate(
     tracked probe answers whether ANY receipt is tracked under the ticket's
     receipt DIRECTORY (``drift/dod_receipts/<TICKET>``), not a single fixed
     receipt file.
+
+    ``pr_commits`` is keyed by ``(repo, pr_number)`` and supplies the GitHub
+    PR-commits set for Check 2's membership leg (OMN-14255). An unmapped PR
+    yields an EMPTY tuple, exercising the fail-closed indeterminate path.
     """
     tracked_map = tracked or {}
     pr_view_map = pr_view or {}
+    pr_commits_map = pr_commits or {}
 
     def is_receipt_tracked(repo_path: str, ref: str, receipt_dir: str) -> bool:
         return tracked_map.get((repo_path, ref, receipt_dir), False)
@@ -135,6 +141,9 @@ def _make_gate(
             msg = f"unexpected gh probe: {repo}#{pr_number}"
             raise AssertionError(msg)
         return pr_view_map[(repo, pr_number)]
+
+    def pr_commits_probe(repo: str, pr_number: int) -> tuple[str, ...]:
+        return pr_commits_map.get((repo, pr_number), ())
 
     def load_contract(
         repo_path: str, ref: str, rel_path: str
@@ -149,6 +158,7 @@ def _make_gate(
     return DurableEvidenceGate(
         is_receipt_tracked=is_receipt_tracked,
         gh_pr_view=gh_pr_view,
+        pr_commits=pr_commits_probe,
         load_contract_on_ref=load_contract,
         load_receipts_on_ref=load_receipts,
         occ_repo_path=_OCC_REPO,
@@ -231,8 +241,13 @@ class TestDurableEvidenceGate:
         assert "state=CLOSED" in cite_check.message
         assert "expected MERGED" in cite_check.message
 
-    def test_contract_cites_wrong_merge_sha_hard_fails(self) -> None:
-        """PR is MERGED but mergeCommit.oid does not match cited SHA → FAIL."""
+    def test_contract_cites_unrelated_sha_hard_fails(self) -> None:
+        """PR MERGED but cited SHA is neither the merge commit nor a PR commit.
+
+        OMN-14255: the cited SHA fails the identity leg (it is not the squash
+        ``mergeCommit.oid``) AND is not a member of the PR's commit set, so it is
+        an unrelated/wrong commit and Check 2 hard-fails.
+        """
         contract = _ticket_contract()
         gate = _make_gate(
             tracked={
@@ -242,6 +257,13 @@ class TestDurableEvidenceGate:
                 ("OmniNode-ai/omnibase_core", 949): (
                     "MERGED",
                     "abcdef1234567890abcdef1234567890abcdef12",
+                ),
+            },
+            pr_commits={
+                # The PR's real commits — none is the receipt's zeros SHA.
+                ("OmniNode-ai/omnibase_core", 949): (
+                    "1111111111111111111111111111111111111111",
+                    "2222222222222222222222222222222222222222",
                 ),
             },
             contract_on_main=contract,
@@ -264,8 +286,92 @@ class TestDurableEvidenceGate:
             if c.check == EnumDurableEvidenceCheck.CONTRACT_CITES_MERGE_COMMIT
         )
         assert cite_check.passed is False
-        assert "does not match" in cite_check.message
-        assert "superseded, head-only, or wrong commit" in cite_check.message
+        assert "neither that merge commit nor" in cite_check.message
+        assert "not part of this PR" in cite_check.message
+
+    def test_squash_merge_head_sha_citation_passes_via_pr_commits(self) -> None:
+        """OMN-14255: a squash-merge receipt citing the pre-merge head SHA passes.
+
+        These repos are squash-merge-only, so the synthetic ``mergeCommit.oid``
+        has NO ancestry to the reviewed head SHA — the identity leg fails. But the
+        head SHA IS a member of the PR's commit set (the GitHub PR-commits API),
+        so Check 2 confirms the cited content actually landed and PASSES. This is
+        the exact class of receipt that was structurally un-passable before.
+        """
+        head_sha = "2d083c5211111111111111111111111111111111"
+        squash_merge_oid = "00e32f1a22222222222222222222222222222222"
+        contract = _ticket_contract()
+        gate = _make_gate(
+            tracked={(_OCC_REPO, _DEV_REF, _RECEIPT_DIR): True},
+            pr_view={
+                ("OmniNode-ai/omnibase_core", 949): ("MERGED", squash_merge_oid),
+            },
+            pr_commits={
+                # The squash mergeCommit.oid is unrelated to the head, but the
+                # reviewed head SHA is one of the PR's commits.
+                ("OmniNode-ai/omnibase_core", 949): (
+                    "9999999999999999999999999999999999999999",
+                    head_sha,
+                ),
+            },
+            contract_on_main=contract,
+            receipts_on_ref=[_receipt(commit_sha=head_sha)],
+        )
+
+        result = gate.evaluate(
+            ticket_id=_TICKET,
+            contract=contract,
+            receipt_dir=_RECEIPT_DIR,
+            contract_rel_path=_CONTRACT_PATH,
+            ticket_labels=frozenset({EnumDoneClassLabel.SOURCE_DONE.value}),
+        )
+
+        assert result.status == EnumDurableEvidenceStatus.PASS, result
+        cite_check = next(
+            c
+            for c in result.checks
+            if c.check == EnumDurableEvidenceCheck.CONTRACT_CITES_MERGE_COMMIT
+        )
+        assert cite_check.passed is True
+
+    def test_squash_merge_head_sha_fails_closed_when_pr_commits_unresolvable(
+        self,
+    ) -> None:
+        """OMN-14255 fail-closed: head-SHA citation + unresolvable PR-commits → FAIL.
+
+        The cited SHA is not the squash ``mergeCommit.oid`` (identity fails) and
+        the PR-commits API cannot be resolved (empty tuple — gh missing / auth /
+        network / not-found). An indeterminate membership result must NOT upgrade
+        to PASS, so Check 2 fails closed.
+        """
+        head_sha = "2d083c5211111111111111111111111111111111"
+        squash_merge_oid = "00e32f1a22222222222222222222222222222222"
+        contract = _ticket_contract()
+        gate = _make_gate(
+            tracked={(_OCC_REPO, _DEV_REF, _RECEIPT_DIR): True},
+            pr_view={
+                ("OmniNode-ai/omnibase_core", 949): ("MERGED", squash_merge_oid),
+            },
+            # No pr_commits mapping → the probe returns () (unresolvable).
+            contract_on_main=contract,
+            receipts_on_ref=[_receipt(commit_sha=head_sha)],
+        )
+
+        result = gate.evaluate(
+            ticket_id=_TICKET,
+            contract=contract,
+            receipt_dir=_RECEIPT_DIR,
+            contract_rel_path=_CONTRACT_PATH,
+        )
+
+        assert result.status == EnumDurableEvidenceStatus.FAIL
+        cite_check = next(
+            c
+            for c in result.checks
+            if c.check == EnumDurableEvidenceCheck.CONTRACT_CITES_MERGE_COMMIT
+        )
+        assert cite_check.passed is False
+        assert "fail-closed" in cite_check.message
 
     def test_contract_cites_merged_pr_pass(self) -> None:
         """All checks green: tracked receipt + MERGED PR + dev matches → PASS."""
