@@ -107,20 +107,17 @@ def _isolate_unit_env(
 
 
 @pytest.fixture(autouse=True)
-def _enable_paid_escalation_for_tests(monkeypatch: pytest.MonkeyPatch) -> None:
-    """OMN-14225: exercise the FULL escalation ladder in the test suite.
+def _default_paid_escalation_for_tests(monkeypatch: pytest.MonkeyPatch) -> None:
+    """OMN-14225: run the suite at the production DEFAULT — paid escalation ON.
 
-    Production now defaults paid escalation OFF (``ONEX_DELEGATION_ALLOW_PAID``
-    unset) so delegation never SILENTLY spends — a task that fails local + the free
-    frontier tier terminates at $0 rather than escalating to a paid tier without an
-    operator opt-in. The many escalation-mechanism tests written before that gate
-    assert escalation into the paid ``cheap_cloud``/``claude`` tiers, so enable the
-    gate here to keep exercising the full ladder. The paid-OFF *default* is covered
-    by dedicated regressions (``test_paid_escalation_gate_omn14225``) that
-    ``monkeypatch.delenv`` this var; any test may likewise override it.
+    Paid (metered) escalation is ON by default (metered + logged, never silent); an
+    operator opts OUT via a falsy ``ONEX_DELEGATION_ALLOW_PAID``. Clear any ambient
+    opt-out so the many escalation-mechanism tests reliably exercise the FULL ladder
+    (they assert escalation into the paid ``cheap_cloud``/``claude`` tiers). The
+    opt-OUT behavior is covered by dedicated regressions
+    (``test_paid_escalation_gate_omn14225``) that ``setenv`` a falsy value.
     """
-    if not os.environ.get("ONEX_DELEGATION_ALLOW_PAID"):
-        monkeypatch.setenv("ONEX_DELEGATION_ALLOW_PAID", "1")
+    monkeypatch.delenv("ONEX_DELEGATION_ALLOW_PAID", raising=False)
 
 
 @pytest.fixture

@@ -506,7 +506,9 @@ class TestCanonicalCloudTargetCapability:
         tiers = {t["name"]: t for t in self._routing_tiers()["tiers"]}
         terminal = tiers["claude"]
         assert terminal["models"][0]["backend_id"] == _TERMINAL_CEILING_BACKEND_ID
-        assert terminal["models"][0]["id"] == "glm-5.2"
+        # OMN-14225: the paid GLM model repointed glm-5.2 -> glm-5-turbo (cheaper
+        # coding-plan model; paid is ON + metered + logged, subscription-covered).
+        assert terminal["models"][0]["id"] == "glm-5-turbo"
 
         backends = self._bifrost()["backends"]
         by_id = {b["backend_id"]: b for b in backends}
