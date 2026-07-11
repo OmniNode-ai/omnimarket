@@ -136,6 +136,49 @@ async def test_handler_preserves_metadata_session_id_fallback() -> None:
 
 
 @pytest.mark.unit
+async def test_handler_propagates_verified_tenant_id_to_dispatch_port() -> None:
+    """OMN-14349: a verified tenant_id on the request MUST reach the dispatch port.
+
+    The stamp OMN-14208 Path A's tenant-ingress node writes into the wire model
+    is dead on arrival if HandlerDelegateSkill never threads it further -- this
+    pins the seam so the field can't silently stop being read.
+    """
+    port = AsyncMock()
+    port.dispatch.return_value = {"status": "completed", "content": "ok"}
+    handler = HandlerDelegateSkill(object(), dispatch_port=port)
+    request = ModelDelegateSkillRequest(
+        prompt="Review this file",
+        task_type="review",
+        source="claude-code",
+        tenant_id="acme",
+    )
+
+    await handler.handle(request)
+
+    port.dispatch.assert_awaited_once()
+    call_kwargs = port.dispatch.await_args.kwargs
+    assert call_kwargs["tenant_id"] == "acme"
+
+
+@pytest.mark.unit
+async def test_handler_passes_none_tenant_id_when_unset() -> None:
+    """No verified tenant_id upstream (e.g. bus-less local path) -> None, not a default."""
+    port = AsyncMock()
+    port.dispatch.return_value = {"status": "completed", "content": "ok"}
+    handler = HandlerDelegateSkill(object(), dispatch_port=port)
+    request = ModelDelegateSkillRequest(
+        prompt="Review this file",
+        task_type="review",
+        source="claude-code",
+    )
+
+    await handler.handle(request)
+
+    call_kwargs = port.dispatch.await_args.kwargs
+    assert call_kwargs["tenant_id"] is None
+
+
+@pytest.mark.unit
 async def test_handler_propagates_correlation_id(
     mock_dispatch_port: AsyncMock,
     event_bus: object,

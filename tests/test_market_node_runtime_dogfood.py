@@ -121,10 +121,12 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
     # OMN-13940 adds node_pr_delegated_fix_effect (EFFECT; WS-D/D2 merge-sweep
     # delegation harness Slice 0 -- deterministic ruff-fix path re-entering
     # the existing pr_polish gate/verify/push flow): 349 -> 350.
+    # OMN-14333 adds node_generated_code_validator and node_mypy_check_effect:
+    # 350 -> 352.
     # OMN-14326 adds node_ast_node_analyzer and node_stub_detector pure
-    # compute nodes for codegen analysis: 350 -> 352.
-    assert summary["node_dirs"] == 352
-    assert summary["entry_points"] == 352
+    # compute nodes for codegen analysis: 352 -> 354.
+    assert summary["node_dirs"] == 354
+    assert summary["entry_points"] == 354
     assert summary["missing_entry_points"] == []
     assert summary["dangling_entry_points"] == []
     assert summary["routable"] >= 299

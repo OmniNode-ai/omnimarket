@@ -81,7 +81,9 @@ def test_arch_clean_tree_no_violations(tmp_path: Path) -> None:
     )
     assert result.violations == []
     assert result.summary["total_violations"] == 0
-    assert result.invariants_evaluated == 5
+    # 6 = ARCH-001..005 checkers + ARCH-006 governance-of-record declaration
+    # (no checker → counted but never a violation from this pure node; OMN-14288).
+    assert result.invariants_evaluated == 6
     # Only the completion event is published when there are no violations.
     assert any(
         e["value"].get("event_type") == "arch_invariant_loop_completed"
