@@ -15,9 +15,10 @@ canonical nodes/handlers — there is NO in-process FSM ``advance()``, NO shelle
 4. node_review_response_parser_compute      — tolerant-parse responses to findings
 5. node_finding_aggregator_compute          — weighted-union dedup + verdict
 
-It emits ``ModelHostileReviewerCompletedEvent`` on
-``onex.evt.omnimarket.hostile-reviewer-completed.v1`` via
-``ModelHandlerOutput.for_orchestrator(events=...)`` — the bus is the transport.
+``handle()`` returns the typed ``ModelHostileReviewerCompletedEvent`` directly
+(OMN-14242 thin canonical shape — no ``ModelHandlerOutput`` envelope, no
+coercion in the handler; the runtime wraps it for publication on
+``onex.evt.omnimarket.hostile-reviewer-completed.v1``).
 
 The concrete inference adapter is resolved per-model from the contract
 ``model_routing`` policy + the contract-declared route-config env. It is
@@ -30,9 +31,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from datetime import UTC, datetime
-from uuid import UUID, uuid4
-
-from omnibase_core.models.dispatch.model_handler_output import ModelHandlerOutput
+from uuid import UUID
 
 from omnimarket.inference.adapter_inference_bridge import (
     AdapterInferenceBridge,
@@ -81,7 +80,6 @@ from omnimarket.review.node_io import (
 )
 
 _log = logging.getLogger(__name__)
-_HANDLER_ID = "node_hostile_reviewer_orchestrator"
 
 DEFAULT_MODEL_CONTEXT_WINDOW = 32_000
 DEFAULT_TIMEOUT_SECONDS = 90.0
@@ -136,23 +134,26 @@ class HandlerHostileReviewerOrchestrator:
 
     async def handle(
         self, command: ModelHostileReviewerStartCommand
-    ) -> ModelHandlerOutput[None]:
-        """Run the adversarial review and emit the completed event.
+    ) -> ModelHostileReviewerCompletedEvent:
+        """Run the adversarial review and return the completed event.
 
-        ORCHESTRATOR output: events only (the completed event). On any failure
-        the orchestrator still emits a completed event with final_phase=FAILED
-        and an error_message — silence on failure is worse than a typed failure.
+        Thin canonical shape (OMN-14242): returns the typed completed event
+        directly — no ``ModelHandlerOutput`` envelope, no coercion here; the
+        runtime wraps this for bus publication. On any failure the
+        orchestrator still returns a completed event with
+        ``final_phase=FAILED`` and an error_message — silence on failure is
+        worse than a typed failure.
         """
         started_at = datetime.now(tz=UTC)
         try:
-            completed = await self._run_review(command, started_at)
-        except Exception as exc:  # boundary-ok: orchestrator emits typed failure event
+            return await self._run_review(command, started_at)
+        except Exception as exc:  # boundary-ok: returns typed failure event
             _log.error(
                 "hostile reviewer orchestration failed (correlation_id=%s): %s",
                 command.correlation_id,
                 exc,
             )
-            completed = ModelHostileReviewerCompletedEvent(
+            return ModelHostileReviewerCompletedEvent(
                 correlation_id=command.correlation_id,
                 final_phase=EnumHostileReviewerPhase.FAILED,
                 started_at=started_at,
@@ -161,13 +162,6 @@ class HandlerHostileReviewerOrchestrator:
                 total_findings=0,
                 error_message=str(exc),
             )
-
-        return ModelHandlerOutput.for_orchestrator(
-            input_envelope_id=uuid4(),
-            correlation_id=command.correlation_id,
-            handler_id=_HANDLER_ID,
-            events=(completed,),
-        )
 
     async def _run_review(
         self,
