@@ -92,6 +92,13 @@ def _patch_routing(
         "load_bifrost_backends",
         lambda **_: backends,
     )
+    # OMN-14234: this suite proves the spawn PROCESS-BOUNDARY returns a typed
+    # receipt for a single canned effect call. Disable retry-local (best-of-N on a
+    # free tier) so a sub-bar ``local`` draft is not re-drafted 1+max_retries times
+    # through the real spawned child — this suite is not testing retry-local (which
+    # is covered in test_local_dispatch_retry_local_omn14234.py) and the extra
+    # spawns would only slow the boundary round-trip it does test.
+    monkeypatch.setattr(port_module, "is_free_tier", lambda _tier: False)
 
 
 def test_darwin_selects_spawn_start_method(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -147,6 +154,7 @@ def test_dispatch_returns_typed_receipt_through_process_boundary(
                 wait=True,
                 quality_contract_mode="extend_task_class",
                 acceptance_criteria=(),
+                tenant_id=None,
             ),
             timeout=30.0,
         )

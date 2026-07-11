@@ -104,6 +104,20 @@ class ModelDelegateSkillRequest(BaseModel):
             "by the delegation quality gate."
         ),
     )
+    # string-id-ok: tenant_id is a named tenant identifier (slug), not a UUID.
+    # Mirrors the field already shipped on omnibase_core's ModelDelegationRequest
+    # (OMN-14058). None on construction means no verified identity was stamped
+    # upstream -- OMN-14208 Path A's tenant-ingress node stamps a real value into
+    # the raw payload (topic-prefix-derived) before this model validates, on the
+    # bus path; the bus-less local CLI path leaves this None and falls back to
+    # the ONEX_TENANT_ID interim (OMN-14058) further downstream.
+    tenant_id: str | None = Field(
+        default=None,
+        description=(
+            "Multi-tenant isolation identifier, verified upstream when present. "
+            "Never a self-reported/client-writable value."
+        ),
+    )
 
     @field_validator("acceptance_criteria")
     @classmethod

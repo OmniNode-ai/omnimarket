@@ -48,6 +48,7 @@ from pathlib import Path
 from uuid import NAMESPACE_DNS, UUID, uuid5
 
 import yaml
+from omnibase_core.models.delegation.wire import EnumTierCostType
 from omnibase_infra.enums import EnumInfraTransportType
 from omnibase_infra.errors import ProtocolConfigurationError
 from omnibase_infra.models.errors.model_infra_error_context import (
@@ -1034,6 +1035,33 @@ def resolve_task_class_max_escalations(task_type: str) -> int | None:
     return raw
 
 
+def is_free_tier(tier_name: str) -> bool:
+    """Return whether ``tier_name`` is a $0 (free_local) tier in routing_tiers.yaml.
+
+    OMN-14234 (retry-local / best-of-N): a free tier costs nothing to re-run, so
+    the delegation ladder retries it up to its per-tier ``max_retries`` budget on a
+    sub-bar quality result BEFORE escalating to a paid (metered) tier — turning a
+    non-deterministic local coder (~1/3 single-shot pass at the 0.85 bar) into a
+    best-of-N draft loop at $0 instead of paying on the first weak draft. This is
+    the single parsing path both delegation paths (the bus orchestrator's
+    ``handle_gate_result`` and the bus-less ``LocalDelegationDispatchPort``) key
+    their free-tier retry gate on, so the classification cannot drift between them.
+
+    A tier is free when its typed cost model (OMN-13234) declares ``free_local``; a
+    tier not yet migrated to the typed ``cost`` block falls back to its flat
+    ``cost_per_1k_tokens == 0``. An unknown tier name is NOT free (fail-closed: an
+    unrecognized tier is never treated as a free retry surface, so retry-local can
+    never keep a paid/unknown tier off the escalation ladder).
+    """
+    config = _get_config()
+    for tier in config.tiers:
+        if tier.name == tier_name:
+            if tier.cost is not None:
+                return tier.cost.cost_type == EnumTierCostType.FREE_LOCAL
+            return tier.cost_per_1k_tokens == 0.0
+    return False
+
+
 def tier_max_retries(tier_name: str) -> int:
     """Return the per-tier retry budget (``max_retries``) from routing_tiers.yaml.
 
@@ -1253,6 +1281,7 @@ __all__: list[str] = [
     "delta",
     "describe_no_higher_tier_available",
     "first_eligible_tier",
+    "is_free_tier",
     "next_eligible_tier",
     "resolve_task_class_dod_checks",
     "resolve_task_class_max_escalations",

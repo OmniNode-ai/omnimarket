@@ -74,6 +74,25 @@ from omnimarket.nodes.node_delegation_routing_reducer.models.model_routing_decis
 # ---------------------------------------------------------------------------
 
 
+@pytest.fixture(autouse=True)
+def _disable_retry_local(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Isolate the tier-ESCALATION leg from OMN-14234 retry-local (best-of-N).
+
+    These tests drive gate failures on the free ``local`` tier and assert the
+    workflow escalates. With retry-local, a sub-bar draft on a FREE tier is retried
+    on the SAME tier up to its ``max_retries`` budget BEFORE escalating, so the
+    escalation assertions here would only hold after that budget is exhausted.
+    Disabling the free-tier gate keeps these focused on escalation; the retry-local
+    behavior (and its composition with escalation) is proven in
+    ``test_retry_local_omn14234.py``.
+    """
+    from omnimarket.nodes.node_delegation_orchestrator.handlers import (
+        handler_delegation_workflow as _hw,
+    )
+
+    monkeypatch.setattr(_hw, "is_free_tier", lambda _tier: False)
+
+
 def _make_request(
     correlation_id: UUID | None = None,
     task_type: str = "test",

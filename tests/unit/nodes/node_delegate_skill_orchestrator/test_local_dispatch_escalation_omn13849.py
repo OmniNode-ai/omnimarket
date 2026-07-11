@@ -143,6 +143,18 @@ def _install_ladder(
         "resolve_task_class_max_escalations",
         lambda _task_type: max_escalations,
     )
+    # OMN-14234: this deterministic ladder makes EVERY tier metered (``_TIER_COST``
+    # is non-zero for local too, to prove cumulative-cost banking), so no tier is a
+    # free retry-local surface here. Reflect the ladder's cost model in the
+    # ``is_free_tier`` gate so retry-local (best-of-N on a $0 tier) is inert and
+    # these tests keep proving pure up-tier ESCALATION. The retry-local behavior on
+    # a genuinely-free tier is proven separately in
+    # ``test_local_dispatch_retry_local_omn14234.py``.
+    monkeypatch.setattr(
+        port_mod,
+        "is_free_tier",
+        lambda tier: _TIER_COST.get(tier, Decimal("0")) == 0,
+    )
 
 
 class _PerTierEffect:
@@ -200,6 +212,7 @@ def _dispatch(
             wait=True,
             quality_contract_mode="extend_task_class",
             acceptance_criteria=(),
+            tenant_id=None,
         )
     )
 

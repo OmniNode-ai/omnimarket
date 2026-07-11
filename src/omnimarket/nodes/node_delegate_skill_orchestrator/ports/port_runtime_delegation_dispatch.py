@@ -90,6 +90,7 @@ class RuntimeDelegationDispatchPort:
         wait: bool,
         quality_contract_mode: str,
         acceptance_criteria: tuple[str, ...],
+        tenant_id: str | None,
     ) -> dict[str, object]:
         # OMN-13161: the bus runtime path carries its own routing-tier budgets in
         # the downstream delegation chain. When the request omits max_tokens, fall
@@ -98,6 +99,11 @@ class RuntimeDelegationDispatchPort:
         max_tokens_fields: dict[str, int] = (
             {} if max_tokens is None else {"max_tokens": max_tokens}
         )
+        # OMN-14349: ModelDelegationRequest.tenant_id already exists (OMN-14058) --
+        # this is the missing plumbing that actually populates it on the bus path.
+        # A None here is not a silent default; the field stays None and the
+        # downstream projection writer's existing OMN-14058 NULL/omitted-key
+        # handling applies (never a masked 'omninode' default).
         request = ModelDelegationRequest(
             prompt=prompt,
             task_type=cast("Any", task_type),
@@ -108,6 +114,7 @@ class RuntimeDelegationDispatchPort:
             emitted_at=datetime.now(UTC),
             quality_contract_mode=cast("Any", quality_contract_mode),
             acceptance_criteria=acceptance_criteria,
+            tenant_id=tenant_id,
         )
 
         if not wait:

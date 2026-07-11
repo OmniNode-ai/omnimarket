@@ -140,6 +140,7 @@ def test_rejected_candidate_content_is_logged_before_escalation(
                 wait=True,
                 quality_contract_mode="extend_task_class",
                 acceptance_criteria=(),
+                tenant_id=None,
             )
         )
 
