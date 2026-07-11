@@ -1,0 +1,19 @@
+name: node_generated_code_validator
+version: "1.0.0"
+description: "Pure deterministic validator for a generated ONEX code artifact — parse, stub, and structure diagnostics; no I/O"
+omnibase_core_compat: ">=0.40.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_generated_code_validator: "omnimarket.nodes.node_generated_code_validator"
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+dependencies:
+  - "omnibase_core>=0.40.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["compute", "validation", "codegen", "ast", "deterministic"]
+pack: "core"
+display_name: "Generated Code Validator"
+node_role: "compute"

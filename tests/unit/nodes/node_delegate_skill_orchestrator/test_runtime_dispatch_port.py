@@ -155,6 +155,7 @@ async def test_runtime_dispatch_port_publishes_message_type_not_topic_as_event_t
             wait=False,
             quality_contract_mode="replace_task_class",
             acceptance_criteria=(),
+            tenant_id=None,
         )
     finally:
         await bus.close()
@@ -186,6 +187,7 @@ async def test_runtime_dispatch_port_uses_contract_derived_transport_config() ->
         wait=False,
         quality_contract_mode="replace_task_class",
         acceptance_criteria=(),
+        tenant_id=None,
     )
     unsubscribe, _queue = await port._subscribe_for_result(correlation_id)
     await unsubscribe()
@@ -252,6 +254,7 @@ async def test_runtime_dispatch_port_round_trips_internal_delegation_result() ->
             wait=True,
             quality_contract_mode="replace_task_class",
             acceptance_criteria=("exactly_two_sentences",),
+            tenant_id=None,
         )
     finally:
         await bus.close()
@@ -270,6 +273,71 @@ async def test_runtime_dispatch_port_round_trips_internal_delegation_result() ->
     assert request.quality_contract_mode == "replace_task_class"
     assert request.acceptance_criteria == ("exactly_two_sentences",)
     assert request.emitted_at
+
+
+@pytest.mark.unit
+async def test_runtime_dispatch_port_threads_verified_tenant_id_onto_published_request() -> (
+    None
+):
+    """OMN-14349: a verified tenant_id passed to dispatch() must reach the
+    REAL ModelDelegationRequest published on the bus, not just be accepted
+    as a parameter. ModelDelegationRequest.tenant_id already existed
+    (OMN-14058) but nothing populated it on this path -- this pins the
+    plumbing end to end via the actual bus-published, actual-model-decoded
+    envelope, not a mock.
+    """
+    bus = EventBusInmemory(environment="test", group="delegate-skill-port")
+    received_requests: list[ModelDelegationRequest] = []
+    correlation_id = uuid4()
+    await bus.start()
+
+    async def on_command(message: ModelEventMessage) -> None:
+        await _publish_terminal_response(
+            bus,
+            message,
+            topic=TOPIC_DELEGATION_COMPLETED,
+            result=ModelDelegationResult(
+                correlation_id=correlation_id,
+                task_type="test",
+                model_used="Qwen3-Coder-30B",
+                endpoint_url="https://qwen.local",
+                content="ok",
+                quality_passed=True,
+                quality_score=1.0,
+                latency_ms=1,
+                prompt_tokens=1,
+                completion_tokens=1,
+                total_tokens=2,
+                fallback_to_claude=False,
+                failure_reason="",
+            ),
+            received_requests=received_requests,
+        )
+
+    try:
+        await bus.subscribe(
+            TOPIC_DELEGATION_REQUEST,
+            group_id=f"delegate-skill-port-tenant-test-{uuid4()}",
+            on_message=on_command,
+        )
+        port = RuntimeDelegationDispatchPort(event_bus=bus)
+        await port.dispatch(
+            prompt="Write tests",
+            task_type="test",
+            correlation_id=correlation_id,
+            max_tokens=512,
+            source_file_path=None,
+            source_session_id=None,
+            wait=True,
+            quality_contract_mode="replace_task_class",
+            acceptance_criteria=(),
+            tenant_id="acme",
+        )
+    finally:
+        await bus.close()
+
+    assert len(received_requests) == 1
+    assert received_requests[0].tenant_id == "acme"
 
 
 @pytest.mark.unit
@@ -317,6 +385,7 @@ async def test_runtime_dispatch_port_unwraps_delegation_event_payload() -> None:
             wait=True,
             quality_contract_mode="extend_task_class",
             acceptance_criteria=(),
+            tenant_id=None,
         )
     finally:
         await bus.close()
@@ -380,6 +449,7 @@ async def test_runtime_dispatch_port_ignores_early_empty_pattern_b_terminal() ->
             wait=True,
             quality_contract_mode="extend_task_class",
             acceptance_criteria=(),
+            tenant_id=None,
         )
     finally:
         await bus.close()

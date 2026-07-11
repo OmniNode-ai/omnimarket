@@ -123,8 +123,10 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
     # the existing pr_polish gate/verify/push flow): 349 -> 350.
     # OMN-14285 adds node_occ_companion_compute (COMPUTE; pure deterministic
     # OCC companion planning and attestation oracle for RSD-1): 350 -> 351.
-    assert summary["node_dirs"] == 351
-    assert summary["entry_points"] == 351
+    # OMN-14333 adds node_generated_code_validator and node_mypy_check_effect:
+    # 351 -> 353.
+    assert summary["node_dirs"] == 353
+    assert summary["entry_points"] == 353
     assert summary["missing_entry_points"] == []
     assert summary["dangling_entry_points"] == []
     assert summary["routable"] >= 299

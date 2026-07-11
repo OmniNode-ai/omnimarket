@@ -122,10 +122,12 @@ from omnimarket.nodes.node_delegation_quality_gate_reducer.judge.handler_judge_a
 from omnimarket.nodes.node_delegation_routing_reducer.handlers.handler_delegation_routing import (
     backend_id_for_tier,
     first_eligible_tier,
+    is_free_tier,
     next_eligible_tier,
     resolve_task_class_dod_checks,
     resolve_task_class_max_escalations,
     tier_for_backend,
+    tier_max_retries,
 )
 
 # Import the canonical effect via its public package surface (not its internal
@@ -444,6 +446,7 @@ class LocalDelegationDispatchPort:
         wait: bool,
         quality_contract_mode: str,
         acceptance_criteria: tuple[str, ...],
+        tenant_id: str | None,
     ) -> dict[str, object]:
         # OMN-14001 — read the captured-outcome ROI overlay ONCE per delegation
         # (fail-open None when no ROI projection is wired). Threaded as a pure input
@@ -451,13 +454,16 @@ class LocalDelegationDispatchPort:
         # is demoted from BOTH the initial resolution and every escalation hop, with
         # the same overlay across the whole dispatch for a deterministic decision.
         roi_overlay = self._roi_overlay_reader(task_type)
-        # OMN-14058 (OPERATOR-ACCEPTED INTERIM): resolve tenant identity ONCE
-        # at request-acceptance, mirroring the bus orchestrator's
-        # HandlerDelegationWorkflow.handle_delegation_request. No tenant
-        # identity otherwise exists on this bus-less local CLI path, so
-        # evidence rows would silently land under the 'omninode' column
-        # default. The durable per-tenant identity design is OMN-14107.
-        resolved_tenant_id = get_settings().onex_tenant_id or None
+        # OMN-14058 (OPERATOR-ACCEPTED INTERIM), refined by OMN-14349: prefer a
+        # caller-supplied verified tenant_id (would only be non-None if something
+        # upstream of this genuinely bus-less path stamped one -- structurally
+        # rare, but never override a real value with the local env-var interim).
+        # Falls back to ONEX_TENANT_ID, mirroring the bus orchestrator's
+        # HandlerDelegationWorkflow.handle_delegation_request. No tenant identity
+        # otherwise exists on this bus-less local CLI path, so evidence rows
+        # would silently land under the 'omninode' column default. The durable
+        # per-tenant identity design is OMN-14107.
+        resolved_tenant_id = tenant_id or get_settings().onex_tenant_id or None
 
         # 1. ROUTING AUTHORITY — resolve the INITIAL (cheapest-first) backend.
         #    Cheapest-first among tiers NOT ROI-suppressed; escalation only advances
@@ -491,6 +497,15 @@ class LocalDelegationDispatchPort:
         # failure so a successful authorship is never silently discarded.
         best_content: str = ""
         best_content_score: float = -1.0
+        # OMN-14234 (retry-local / best-of-N): per-free-tier count of $0 re-draft
+        # retries already issued. The local coder is non-deterministic (a trivial
+        # refactor scored 0.8/0.64/1.0 at the 0.85 bar), so ~2/3 of first drafts
+        # escalated to a PAID tier despite local inference being $0. Before
+        # escalating off a FREE tier we retry the SAME backend up to its
+        # contract-declared ``max_retries`` budget (routing_tiers.yaml; local=2 ->
+        # 3 total $0 drafts), lifting the $0 pass-rate before paying. Keyed per tier
+        # so each free tier on the ladder gets its own best-of-N budget.
+        local_retry_counts: dict[str, int] = {}
 
         while True:
             attempt_outcome = await self._run_single_attempt(
@@ -724,6 +739,37 @@ class LocalDelegationDispatchPort:
             # --- Quality-gate FAIL: evaluate escalation (mirror bus loop) -------
             gate_failure_message = "; ".join(gate_result.failure_reasons)
             current_tier = tier_for_backend(backend.backend_id) or backend.tier
+
+            # OMN-14234 (retry-local / best-of-N): before escalating off a FREE
+            # tier, retry the SAME backend up to its contract-declared max_retries
+            # budget. The local coder is non-deterministic (~1/3 single-shot pass at
+            # the 0.85 bar), so retrying a $0 draft lifts the local pass-rate before
+            # crossing to a PAID tier. Mirrors the bus orchestrator's
+            # ``_maybe_retry_local``: fail-closed — only a free tier with retry
+            # budget remaining retries; a paid tier or an exhausted budget falls
+            # through to the normal up-tier escalation. This retry does NOT touch
+            # ``escalation_count`` or ``excluded_tiers`` (a same-tier retry is not a
+            # tier escalation); the rejected draft's cost/tokens were already banked
+            # and recorded above, and ``best_content`` already tracks it.
+            if is_free_tier(current_tier) and local_retry_counts.get(
+                current_tier, 0
+            ) < tier_max_retries(current_tier):
+                local_retry_counts[current_tier] = (
+                    local_retry_counts.get(current_tier, 0) + 1
+                )
+                logger.info(
+                    "LocalDelegationDispatch: retry-local task_type=%s tier=%s "
+                    "draft %d/%d ($0 re-draft before escalating off free tier) "
+                    "correlation=%s reason=%s",
+                    task_type,
+                    current_tier,
+                    local_retry_counts[current_tier],
+                    tier_max_retries(current_tier),
+                    correlation_id,
+                    gate_failure_message,
+                )
+                continue
+
             excluded_tiers.add(current_tier)
 
             # OMN-14004: persist the rejected candidate's own content, not just the

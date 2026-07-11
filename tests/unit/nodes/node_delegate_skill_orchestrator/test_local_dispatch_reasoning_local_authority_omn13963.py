@@ -123,6 +123,7 @@ def _dispatch(
             wait=True,
             quality_contract_mode="extend_task_class",
             acceptance_criteria=(),
+            tenant_id=None,
         )
     )
 

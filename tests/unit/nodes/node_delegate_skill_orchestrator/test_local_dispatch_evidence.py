@@ -165,6 +165,7 @@ def test_local_dispatch_materializes_evidence_row(
             wait=True,
             quality_contract_mode="extend_task_class",
             acceptance_criteria=(),
+            tenant_id=None,
         )
     )
 
@@ -232,6 +233,7 @@ def test_local_dispatch_evidence_is_idempotent(
                 wait=True,
                 quality_contract_mode="extend_task_class",
                 acceptance_criteria=(),
+                tenant_id=None,
             )
         )
 
@@ -276,6 +278,7 @@ def test_local_dispatch_evidence_failure_does_not_break_response(
             wait=True,
             quality_contract_mode="extend_task_class",
             acceptance_criteria=(),
+            tenant_id=None,
         )
     )
 
@@ -347,6 +350,7 @@ def test_local_dispatch_reaches_lan_endpoint_via_curl_on_macos_profile(
             wait=True,
             quality_contract_mode="extend_task_class",
             acceptance_criteria=(),
+            tenant_id=None,
         )
     )
 
@@ -394,6 +398,7 @@ def test_local_dispatch_unset_max_tokens_uses_backend_ceiling(
             wait=True,
             quality_contract_mode="extend_task_class",
             acceptance_criteria=(),
+            tenant_id=None,
         )
     )
 
@@ -430,6 +435,7 @@ def test_local_dispatch_explicit_max_tokens_capped_at_backend_ceiling(
             wait=True,
             quality_contract_mode="extend_task_class",
             acceptance_criteria=(),
+            tenant_id=None,
         )
     )
 
@@ -463,6 +469,7 @@ def test_local_dispatch_explicit_max_tokens_below_ceiling_passes_through(
             wait=True,
             quality_contract_mode="extend_task_class",
             acceptance_criteria=(),
+            tenant_id=None,
         )
     )
 
@@ -501,6 +508,7 @@ def test_local_dispatch_threads_backend_timeout_to_transport(
             wait=True,
             quality_contract_mode="extend_task_class",
             acceptance_criteria=(),
+            tenant_id=None,
         )
     )
 
@@ -600,6 +608,7 @@ def test_local_dispatch_refusal_fails_quality_gate(
             wait=True,
             quality_contract_mode="extend_task_class",
             acceptance_criteria=(),
+            tenant_id=None,
         )
     )
 
@@ -663,6 +672,7 @@ def test_local_dispatch_good_answer_passes_with_real_score(
             wait=True,
             quality_contract_mode="extend_task_class",
             acceptance_criteria=(),
+            tenant_id=None,
         )
     )
 
