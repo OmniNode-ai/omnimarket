@@ -50,7 +50,11 @@ class ModelGithubGatewayRequest(BaseModel):
     operation: EnumGithubGatewayOperation = Field(
         ..., description="Which read operation to run."
     )
-    repo: str = Field(..., description="GitHub repo slug (org/name).")
+    repo: str = Field(
+        ...,
+        description="GitHub repo slug (org/name).",
+        pattern=r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$",
+    )
     pr_number: int | None = Field(
         default=None,
         description="PR number; required for PR-scoped operations, ignored otherwise.",
@@ -117,10 +121,10 @@ class ModelCiChecksResult(BaseModel):
     repo: str
     pr_number: int
     overall: _OverallState
-    total: int = Field(..., description="Number of required checks considered.")
-    passed: int
-    failed: int
-    pending: int
+    total: int = Field(..., ge=0, description="Number of required checks considered.")
+    passed: int = Field(..., ge=0)
+    failed: int = Field(..., ge=0)
+    pending: int = Field(..., ge=0)
     failing_contexts: list[str] = Field(default_factory=list)
 
 
@@ -143,8 +147,14 @@ class ModelOpenPrsResult(BaseModel):
 
     operation: Literal["open_prs_list"] = "open_prs_list"
     repo: str
-    count: int
+    count: int = Field(..., ge=0)
     prs: list[ModelOpenPrSummary] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def _count_matches_prs(self) -> ModelOpenPrsResult:
+        if self.count != len(self.prs):
+            raise ValueError("count must match len(prs).")
+        return self
 
 
 class ModelBranchProtectionResult(BaseModel):

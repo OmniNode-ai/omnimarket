@@ -24,10 +24,14 @@ from uuid import uuid4
 
 import pytest
 import yaml
-from pydantic import BaseModel, SecretStr
+from pydantic import BaseModel, SecretStr, ValidationError
 
+from omnimarket.github_api import GitHubApiError
 from omnimarket.nodes.node_github_repo_gateway_effect import (
     token_resolver,
+)
+from omnimarket.nodes.node_github_repo_gateway_effect import (
+    transport as gateway_transport,
 )
 from omnimarket.nodes.node_github_repo_gateway_effect.dispatcher import dispatch
 from omnimarket.nodes.node_github_repo_gateway_effect.models.model_gateway_io import (
@@ -38,6 +42,7 @@ from omnimarket.nodes.node_github_repo_gateway_effect.models.model_gateway_io im
     ModelGithubGatewayResponse,
     ModelMergeCommitShaResult,
     ModelOpenPrsResult,
+    ModelOpenPrSummary,
     ModelPrStatusResult,
     ModelReviewGateResult,
     ModelTicketRefResult,
@@ -51,6 +56,10 @@ from omnimarket.nodes.node_github_repo_gateway_effect.read_operations import (
     read_review_gate,
     read_ticket_ref,
 )
+from omnimarket.nodes.node_github_repo_gateway_effect.transport import (
+    RealGitHubReadTransport,
+)
+from omnimarket.nodes.node_merge_sweep_compute.protocols import GitHubTransportError
 
 _REPO = "OmniNode-ai/omnimarket"
 _PR = 1683
@@ -369,6 +378,19 @@ def test_pr_status_green_when_no_required_checks() -> None:
 
 
 @pytest.mark.unit
+def test_pr_status_blocks_unknown_or_null_merge_state_even_when_checks_green() -> None:
+    for raw_state in (None, "UNKNOWN_NEW_STATE"):
+        detail = dict(_PR_DETAIL)
+        detail["statusCheckRollup"] = []
+        detail["mergeStateStatus"] = raw_state
+        result = read_pr_status(_StubTransport(pr_detail=detail), _REPO, _PR)
+
+        assert result.overall == "green"
+        assert result.blocked is True
+        assert result.merge_state_status in {"UNKNOWN", "UNKNOWN_NEW_STATE"}
+
+
+@pytest.mark.unit
 def test_review_gate_blocked_on_changes_requested_and_unresolved() -> None:
     result = read_review_gate(_StubTransport(), _REPO, _PR)
     assert result.unresolved_threads == 1
@@ -410,6 +432,25 @@ def test_open_prs_list_summarizes() -> None:
 
 
 @pytest.mark.unit
+def test_open_prs_list_normalizes_missing_merge_state_to_unknown() -> None:
+    result = read_open_prs_list(
+        _StubTransport(
+            open_prs=[
+                {
+                    "number": 12,
+                    "title": "missing merge state",
+                    "isDraft": False,
+                    "mergeStateStatus": None,
+                    "reviewDecision": None,
+                }
+            ]
+        ),
+        _REPO,
+    )
+    assert result.prs[0].merge_state_status == "UNKNOWN"
+
+
+@pytest.mark.unit
 def test_branch_protection_passthrough() -> None:
     assert (
         read_branch_protection(
@@ -437,6 +478,25 @@ def test_request_requires_pr_number_for_pr_scoped_operation() -> None:
 
 
 @pytest.mark.unit
+@pytest.mark.parametrize(
+    "repo",
+    [
+        "OmniNode-ai",
+        "OmniNode-ai/omnimarket/extra",
+        "OmniNode-ai/",
+        "/omnimarket",
+        "OmniNode-ai/omni market",
+    ],
+)
+def test_request_rejects_non_slug_repo(repo: str) -> None:
+    with pytest.raises(ValidationError):
+        ModelGithubGatewayRequest(
+            operation=EnumGithubGatewayOperation.OPEN_PRS_LIST,
+            repo=repo,
+        )
+
+
+@pytest.mark.unit
 def test_request_allows_missing_pr_for_repo_scoped_operation() -> None:
     req = ModelGithubGatewayRequest(
         operation=EnumGithubGatewayOperation.OPEN_PRS_LIST, repo=_REPO
@@ -453,3 +513,48 @@ def test_response_wrapper_round_trips_discriminated_union() -> None:
     )
     assert isinstance(reparsed.result, ModelPrStatusResult)
     assert reparsed.result.operation == "pr_status"
+
+
+@pytest.mark.unit
+def test_ci_check_counts_must_be_non_negative() -> None:
+    with pytest.raises(ValidationError):
+        ModelCiChecksResult(
+            repo=_REPO,
+            pr_number=_PR,
+            overall="green",
+            total=1,
+            passed=-1,
+            failed=0,
+            pending=0,
+        )
+
+
+@pytest.mark.unit
+def test_open_pr_count_must_match_prs_length() -> None:
+    with pytest.raises(ValidationError, match="count must match"):
+        ModelOpenPrsResult(
+            repo=_REPO,
+            count=2,
+            prs=[
+                ModelOpenPrSummary(
+                    number=1,
+                    title="one",
+                    is_draft=False,
+                    merge_state_status="CLEAN",
+                )
+            ],
+        )
+
+
+@pytest.mark.unit
+def test_real_transport_normalizes_github_api_errors(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def _raise_github_error(*_args: Any, **_kwargs: Any) -> dict[str, Any]:
+        raise GitHubApiError("boom")
+
+    monkeypatch.setattr(gateway_transport, "graphql", _raise_github_error)
+    transport = RealGitHubReadTransport("token")
+
+    with pytest.raises(GitHubTransportError, match="GitHub request failed"):
+        transport.fetch_pr_detail(_REPO, _PR)

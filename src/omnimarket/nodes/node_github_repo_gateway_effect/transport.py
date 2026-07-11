@@ -7,10 +7,10 @@ real implementation that REUSES the existing typed GitHub transport — never a
 subprocess ``gh`` shell-out:
 
 * repo-scoped reads (``fetch_open_prs`` / ``fetch_branch_protection``) delegate
-  verbatim to :class:`GitHubHttpClient`;
+  verbatim to :class:`GitHubHttpTransport`;
 * PR-scoped reads use the module-level :func:`omnimarket.github_api.graphql`
   helper with a single-PR query, normalized to the same stable shapes
-  ``GitHubHttpClient`` produces.
+  ``GitHubHttpTransport`` produces.
 
 The token is passed in already-resolved; this module never reads any process
 environment variable.
@@ -20,10 +20,13 @@ from __future__ import annotations
 
 from typing import Any, Protocol, runtime_checkable
 
-from omnimarket.github_api import graphql, split_repo
-from omnimarket.nodes.node_merge_sweep_compute.adapter_github_http import (
-    GitHubHttpClient,
+from omnimarket.github_api import (
+    GitHubApiError,
+    GitHubHttpTransport,
+    graphql,
+    split_repo,
 )
+from omnimarket.nodes.node_merge_sweep_compute.protocols import GitHubTransportError
 
 # Single-PR query mirroring the fields the read functions consume. Uses the same
 # inline-fragment shape as the merge-sweep list query (fragments live inside
@@ -113,7 +116,7 @@ def _normalize_rollup_contexts(
 ) -> list[dict[str, Any]]:
     """Normalize StatusContext | CheckRun union nodes to a stable dict shape.
 
-    Mirrors GitHubHttpClient's normalization so PR-scoped and repo-scoped reads
+    Mirrors GitHubHttpTransport's normalization so PR-scoped and repo-scoped reads
     speak the same contexts vocabulary.
     """
     normalized: list[dict[str, Any]] = []
@@ -144,7 +147,7 @@ def _normalize_rollup_contexts(
 
 
 class RealGitHubReadTransport(GitHubReadTransportProtocol):
-    """Real transport reusing GitHubHttpClient + the github_api graphql helper."""
+    """Real transport reusing GitHubHttpTransport + the github_api graphql helper."""
 
     def __init__(self, token: str) -> None:
         if not token:
@@ -153,21 +156,30 @@ class RealGitHubReadTransport(GitHubReadTransportProtocol):
                 "api_key_ref before constructing RealGitHubReadTransport."
             )
         self._token = token
-        self._client = GitHubHttpClient(token)
+        self._client = GitHubHttpTransport(token)
 
     def fetch_open_prs(self, repo: str) -> list[dict[str, Any]]:
-        return self._client.fetch_open_prs(repo)
+        try:
+            return self._client.fetch_open_prs(repo)
+        except GitHubApiError as exc:
+            raise GitHubTransportError(f"GitHub request failed: {exc}") from exc
 
     def fetch_branch_protection(self, repo: str) -> int | None:
-        return self._client.fetch_branch_protection(repo)
+        try:
+            return self._client.fetch_branch_protection(repo)
+        except GitHubApiError as exc:
+            raise GitHubTransportError(f"GitHub request failed: {exc}") from exc
 
     def fetch_pr_detail(self, repo: str, pr_number: int) -> dict[str, Any]:
         owner, name = split_repo(repo)
-        data = graphql(
-            _PR_DETAIL_QUERY,
-            {"owner": owner, "name": name, "number": pr_number},
-            token=self._token,
-        )
+        try:
+            data = graphql(
+                _PR_DETAIL_QUERY,
+                {"owner": owner, "name": name, "number": pr_number},
+                token=self._token,
+            )
+        except GitHubApiError as exc:
+            raise GitHubTransportError(f"GitHub request failed: {exc}") from exc
         pr = ((data.get("repository") or {}).get("pullRequest")) or {}
         if not pr:
             raise RuntimeError(f"PR not found: {repo}#{pr_number}")

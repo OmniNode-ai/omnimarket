@@ -45,7 +45,6 @@ _FAILED_CONCLUSIONS = frozenset(
     }
 )
 _FAILED_STATUSES = frozenset({"FAILURE", "ERROR"})
-_MERGE_BLOCKING_STATES = frozenset({"BLOCKED", "DIRTY", "BEHIND", "DRAFT"})
 _TICKET_PATTERN = re.compile(r"(OMN|omn)-\d+", re.IGNORECASE)
 
 
@@ -85,6 +84,11 @@ def _classify_required_checks(
     return overall, failing_names, total, passed, failed, pending
 
 
+def _normalize_merge_state(value: object) -> str:
+    normalized = str(value or "UNKNOWN").upper()
+    return normalized or "UNKNOWN"
+
+
 def read_pr_status(
     transport: GitHubReadTransportProtocol, repo: str, pr_number: int
 ) -> ModelPrStatusResult:
@@ -93,8 +97,8 @@ def read_pr_status(
     overall, failing, _total, _passed, _failed, _pending = _classify_required_checks(
         pr.get("statusCheckRollup") or []
     )
-    merge_state = str(pr.get("mergeStateStatus", "UNKNOWN"))
-    blocked = overall != "green" or merge_state in _MERGE_BLOCKING_STATES
+    merge_state = _normalize_merge_state(pr.get("mergeStateStatus"))
+    blocked = overall != "green" or merge_state != "CLEAN"
     return ModelPrStatusResult(
         repo=repo,
         pr_number=pr_number,
@@ -136,7 +140,7 @@ def read_open_prs_list(
             number=pr["number"],
             title=str(pr.get("title", "")),
             is_draft=bool(pr.get("isDraft", False)),
-            merge_state_status=str(pr.get("mergeStateStatus", "UNKNOWN")),
+            merge_state_status=_normalize_merge_state(pr.get("mergeStateStatus")),
             review_decision=pr.get("reviewDecision"),
         )
         for pr in raw
