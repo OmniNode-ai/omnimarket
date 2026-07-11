@@ -109,6 +109,11 @@ def _make_gate(
             "gh_pr_view must NOT be called on the runtime-ops readback branch"
         )
 
+    def pr_commits(repo: str, pr_number: int) -> tuple[str, ...]:
+        raise AssertionError(
+            "pr_commits must NOT be called on the runtime-ops readback branch"
+        )
+
     def load_contract(
         repo_path: str, ref: str, rel_path: str
     ) -> dict[str, object] | None:
@@ -122,6 +127,7 @@ def _make_gate(
     return DurableEvidenceGate(
         is_receipt_tracked=is_receipt_tracked,
         gh_pr_view=gh_pr_view,
+        pr_commits=pr_commits,
         load_contract_on_ref=load_contract,
         load_receipts_on_ref=load_receipts,
         occ_repo_path=_OCC_REPO,

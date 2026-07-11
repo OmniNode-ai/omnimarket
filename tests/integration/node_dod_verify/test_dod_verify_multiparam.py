@@ -202,6 +202,12 @@ def _make_gate(
     def gh_pr_view(repo: str, pr_number: int) -> tuple[str, str | None]:
         return pr_view[(repo, pr_number)]
 
+    # These cases bind via merge-commit identity (or fail earlier at the
+    # tracked/state/citation checks), so the PR-commits membership leg
+    # (OMN-14255) is never consulted — an empty probe keeps them fail-closed.
+    def pr_commits(repo: str, pr_number: int) -> tuple[str, ...]:
+        return ()
+
     def load_contract(
         repo_path: str, ref: str, rel_path: str
     ) -> dict[str, object] | None:
@@ -215,6 +221,7 @@ def _make_gate(
     return DurableEvidenceGate(
         is_receipt_tracked=is_receipt_tracked,
         gh_pr_view=gh_pr_view,
+        pr_commits=pr_commits,
         load_contract_on_ref=load_contract,
         load_receipts_on_ref=load_receipts,
         occ_repo_path=_OCC_REPO,
