@@ -1,0 +1,20 @@
+name: node_ast_node_analyzer
+version: "1.0.0"
+description: "Pure deterministic AST analyzer for an ONEX node source file — no LLM calls, no I/O"
+omnibase_core_compat: ">=0.40.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_ast_node_analyzer: "omnimarket.nodes.node_ast_node_analyzer"
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+dependencies:
+  - "omnibase_core>=0.40.0"
+  - "omnibase-compat>=0.3.1"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["compute", "ast", "analysis", "codegen", "deterministic"]
+pack: "core"
+display_name: "AST Node Analyzer"
+node_role: "compute"

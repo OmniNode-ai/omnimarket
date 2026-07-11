@@ -40,7 +40,14 @@ This service refuses the Linear Done transition when any of the following holds:
    governance ref (untracked or local-only commit).
 2. The durable receipts under ``drift/dod_receipts/<TICKET>/`` do not bind at
    least one PASS ``pr_number`` + ``commit_sha`` receipt to a GitHub repository,
-   or the bound PR is not ``MERGED`` with that ``mergeCommit.oid``.
+   or the bound PR is not ``MERGED`` with a ``commit_sha`` that either matches the
+   squash ``mergeCommit.oid`` OR is a member of the PR's commit set (OMN-14255).
+   These repos are squash-merge-only, so a receipt that cites the pre-merge
+   ``headRefOid`` has NO ancestry relation to the synthetic squash commit;
+   requiring SHA identity with ``mergeCommit.oid`` made the check structurally
+   un-passable for head-SHA receipts. Check 2 now confirms the cited commit was
+   part of the merged PR via the GitHub PR-commits API instead of demanding
+   identity with the squash commit — fail-closed when neither leg can be proven.
 3. The contract version on the OCC governance ref does not yet declare the
    receipt-bound evidence checks (i.e. the ref still has the stale contract).
 
@@ -169,6 +176,52 @@ class GhPrViewProbe(Protocol):
     """
 
     def __call__(self, repo: str, pr_number: int) -> tuple[str, str | None]: ...
+
+
+class PrCommitsProbe(Protocol):
+    """Probe returning the commit OIDs that belong to ``<owner>/<repo>#<num>``.
+
+    This is the "GitHub PR-commits API" leg of Check 2's verification
+    (OMN-14255). Production wiring runs
+    ``gh pr view <num> --repo <repo> --json commits --jq '.commits[].oid'``
+    (equivalently ``gh api repos/<repo>/pulls/<num>/commits --jq '.[].oid'``) and
+    returns the full-length OIDs of every commit that was part of the PR branch.
+
+    On a squash merge the PR's pre-merge ``headRefOid`` IS a member of this set
+    even though it has NO git-ancestry relation to the synthetic squash
+    ``mergeCommit.oid`` — so ``git merge-base --is-ancestor headRefOid
+    mergeCommit.oid`` would (correctly) report False. Membership in this set is
+    therefore the deterministic way to confirm that a receipt citing the reviewed
+    head SHA is a legitimate citation of the content that actually landed.
+
+    Returns an EMPTY tuple when the PR's commits cannot be resolved (missing gh,
+    auth, network, not-found). The gate treats an empty result as indeterminate
+    and never upgrades a non-identity citation to PASS on it (fail-closed).
+    """
+
+    def __call__(self, repo: str, pr_number: int) -> tuple[str, ...]: ...
+
+
+def _sha_prefix_match(a: str, b: str) -> bool:
+    """Bidirectional git short-SHA (7-char) prefix match between two hex SHAs.
+
+    Mirrors the tolerance the gate has always used for merge-commit identity: a
+    receipt may cite a 7-40 char SHA and either side may be the abbreviated form.
+    Pure function — no I/O.
+    """
+    if not a or not b:
+        return False
+    return a.startswith(b[:7]) or b.startswith(a[:7])
+
+
+def _cited_sha_in_pr_commits(cited_sha: str, pr_commit_oids: tuple[str, ...]) -> bool:
+    """Return True when ``cited_sha`` matches any commit OID that was part of the PR.
+
+    Uses :func:`_sha_prefix_match` so an abbreviated receipt SHA still binds to a
+    full-length PR-commit OID. An empty ``pr_commit_oids`` (indeterminate probe)
+    yields False — the caller then fails closed. Pure function — no I/O.
+    """
+    return any(_sha_prefix_match(cited_sha, oid) for oid in pr_commit_oids)
 
 
 class ContractOnRefLoader(Protocol):
@@ -471,9 +524,12 @@ def _extract_repo_from_text(value: str, pr_number: int) -> str | None:
 class DurableEvidenceGate:
     """Pure-logic gate that refuses Linear Done if durable evidence is local-only.
 
-    Construction takes three Protocol-typed probes so unit tests can inject
-    deterministic stubs. Production wiring uses subprocess-backed
-    implementations.
+    Construction takes four Protocol-typed probes (receipt-tracked, gh-pr-view,
+    pr-commits, contract/receipt loaders) so unit tests can inject deterministic
+    stubs. Production wiring uses subprocess-backed implementations. The
+    ``pr_commits`` probe (OMN-14255) supplies Check 2's PR-commits-membership leg
+    so a receipt citing a squash-merged PR's pre-merge head SHA verifies without
+    requiring identity with the synthetic squash commit.
 
     The OCC governance ref defaults to :data:`DEFAULT_OCC_GOVERNANCE_REF`
     (``origin/dev``) because OCC governance is dev-targeted — contracts and
@@ -487,6 +543,7 @@ class DurableEvidenceGate:
         *,
         is_receipt_tracked: GitReceiptTrackedProbe,
         gh_pr_view: GhPrViewProbe,
+        pr_commits: PrCommitsProbe,
         load_contract_on_ref: ContractOnRefLoader,
         load_receipts_on_ref: ReceiptsOnRefLoader,
         occ_repo_path: str,
@@ -494,6 +551,7 @@ class DurableEvidenceGate:
     ) -> None:
         self._is_receipt_tracked = is_receipt_tracked
         self._gh_pr_view = gh_pr_view
+        self._pr_commits = pr_commits
         self._load_contract_on_ref = load_contract_on_ref
         self._load_receipts_on_ref = load_receipts_on_ref
         self._occ_repo_path = occ_repo_path
@@ -646,19 +704,39 @@ class DurableEvidenceGate:
                             "before re-running the gate."
                         )
                         break
-                    if merge_commit_oid is None or (
-                        not merge_commit_oid.startswith(citation.cited_sha[:7])
-                        and not citation.cited_sha.startswith(merge_commit_oid[:7])
+                    # PASS leg 1 — identity with the squash ``mergeCommit.oid``.
+                    # This is what a post-OMN-14255 writer stamps once the PR has
+                    # landed (``gh pr view --json mergeCommit``).
+                    if merge_commit_oid is not None and _sha_prefix_match(
+                        merge_commit_oid, citation.cited_sha
                     ):
-                        check2_failure = (
-                            f"{citation.pr_url} mergeCommit.oid="
-                            f"{merge_commit_oid!r} does not match receipt "
-                            f"commit_sha={citation.cited_sha!r}. The durable receipt "
-                            "is citing a superseded, head-only, or wrong commit — "
-                            "update the receipt to the actual merge commit before "
-                            "re-running the gate."
-                        )
-                        break
+                        continue
+                    # PASS leg 2 — membership in the PR's commit set (OMN-14255).
+                    # These repos are squash-merge-only, so the merge commit is a
+                    # brand-new SHA with NO ancestry to the reviewed head; a
+                    # receipt citing the pre-merge ``headRefOid`` (or any commit
+                    # that was part of the PR) is still a legitimate citation of
+                    # the content that landed. The GitHub PR-commits API confirms
+                    # it deterministically — ``headRefOid`` is a member of that set
+                    # even across a squash merge, where ``git merge-base
+                    # --is-ancestor`` would (correctly) report False. FAIL-CLOSED:
+                    # an empty/unresolvable commit set never upgrades a
+                    # non-identity citation to PASS.
+                    pr_commit_oids = self._pr_commits(citation.repo, citation.pr_number)
+                    if _cited_sha_in_pr_commits(citation.cited_sha, pr_commit_oids):
+                        continue
+                    check2_failure = (
+                        f"{citation.pr_url} is MERGED (mergeCommit.oid="
+                        f"{merge_commit_oid!r}) but receipt commit_sha="
+                        f"{citation.cited_sha!r} is neither that merge commit nor "
+                        f"a member of the PR's {len(pr_commit_oids)} commit(s). "
+                        "The receipt cites a commit that was not part of this PR — "
+                        "or the PR-commits API could not be resolved (fail-closed). "
+                        "Update the receipt to cite the squash mergeCommit.oid (or "
+                        "the reviewed head SHA that was actually merged) before "
+                        "re-running the gate."
+                    )
+                    break
             if check2_failure is None:
                 cite_msg = (
                     f"All {len(citations)} receipt-bound PR(s) are MERGED with "
@@ -906,6 +984,7 @@ __all__: list[str] = [
     "DurableEvidenceGateError",
     "GhPrViewProbe",
     "GitReceiptTrackedProbe",
+    "PrCommitsProbe",
     "ReceiptsOnRefLoader",
     "apply_supersessions",
     "default_contract_path",

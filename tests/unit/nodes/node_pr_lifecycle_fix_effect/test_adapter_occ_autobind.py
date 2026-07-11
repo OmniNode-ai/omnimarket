@@ -299,6 +299,52 @@ class TestAutobindIdempotency:
 
 
 # ---------------------------------------------------------------------------
+# Receipt commit_sha selection (OMN-14255) — cite the squash mergeCommit.oid
+# once the PR has landed, never the throwaway pre-merge test-merge SHA.
+# ---------------------------------------------------------------------------
+
+_HEAD_SHA = "2d083c5211111111111111111111111111111111"
+_MERGE_SHA = "00e32f1a22222222222222222222222222222222"
+
+
+@pytest.mark.unit
+class TestReceiptCommitSha:
+    def test_merged_pr_cites_merge_commit_sha(self) -> None:
+        """A merged PR stamps the actual squash mergeCommit.oid (OMN-14255)."""
+        pr_data = {"merged": True, "merge_commit_sha": _MERGE_SHA}
+        assert OccAutobindAdapter._receipt_commit_sha(pr_data, _HEAD_SHA) == _MERGE_SHA
+
+    def test_merged_at_timestamp_also_selects_merge_commit_sha(self) -> None:
+        """``merged_at`` (without a ``merged`` bool) still counts as landed."""
+        pr_data = {
+            "merged_at": "2026-07-10T05:11:49Z",
+            "merge_commit_sha": _MERGE_SHA,
+        }
+        assert OccAutobindAdapter._receipt_commit_sha(pr_data, _HEAD_SHA) == _MERGE_SHA
+
+    def test_open_pr_falls_back_to_head_sha(self) -> None:
+        """An OPEN PR's ``merge_commit_sha`` is a throwaway test-merge SHA and
+        must be ignored — the reviewed head SHA is cited instead (OMN-14255)."""
+        pr_data = {
+            "merged": False,
+            "merged_at": None,
+            # GitHub returns a (throwaway) test-merge SHA on OPEN PRs.
+            "merge_commit_sha": "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef",
+        }
+        assert OccAutobindAdapter._receipt_commit_sha(pr_data, _HEAD_SHA) == _HEAD_SHA
+
+    def test_merged_without_merge_commit_sha_falls_back_to_head(self) -> None:
+        """Merged but no valid ``merge_commit_sha`` field → cite the head SHA."""
+        pr_data = {"merged": True, "merge_commit_sha": None}
+        assert OccAutobindAdapter._receipt_commit_sha(pr_data, _HEAD_SHA) == _HEAD_SHA
+
+    def test_merged_with_non_hex_merge_commit_sha_falls_back(self) -> None:
+        """A malformed ``merge_commit_sha`` is rejected (fail-safe to head)."""
+        pr_data = {"merged": True, "merge_commit_sha": "not-a-sha!!"}
+        assert OccAutobindAdapter._receipt_commit_sha(pr_data, _HEAD_SHA) == _HEAD_SHA
+
+
+# ---------------------------------------------------------------------------
 # Open-or-sync OCC PR — reuses existing open PR for the branch
 # ---------------------------------------------------------------------------
 

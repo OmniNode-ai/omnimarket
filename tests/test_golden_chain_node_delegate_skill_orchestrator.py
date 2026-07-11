@@ -56,6 +56,7 @@ class _StubDispatchPort:
         wait: bool,
         quality_contract_mode: str,
         acceptance_criteria: tuple[str, ...],
+        tenant_id: str | None,
     ) -> dict[str, object]:
         self.calls.append(
             {

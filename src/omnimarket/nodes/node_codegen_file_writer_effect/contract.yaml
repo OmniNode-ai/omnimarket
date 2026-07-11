@@ -1,0 +1,72 @@
+---
+name: node_codegen_file_writer_effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: effect
+node_version: {major: 1, minor: 0, patch: 0}
+
+input_model: omnimarket.codegen.models.ModelFileWriteCommand
+
+description: >
+  Codegen factory file-writer step (tier-4a). An EFFECT that owns the filesystem
+  I/O: it writes each generated file under the command's target_root (refusing
+  any path that escapes the root) and returns the written paths recorded on the
+  pipeline state.
+
+handler:
+  module: omnimarket.nodes.node_codegen_file_writer_effect.handlers.handler_codegen_file_writer
+  class: HandlerCodegenFileWriter
+  input_model: omnimarket.codegen.models.ModelFileWriteCommand
+  output_model: omnimarket.codegen.models.ModelFileWriteResult
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: codegen_file_write
+      handler:
+        name: HandlerCodegenFileWriter
+        module: omnimarket.nodes.node_codegen_file_writer_effect.handlers.handler_codegen_file_writer
+      event_model:
+        name: ModelFileWriteCommand
+        module: omnimarket.codegen.models
+
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  idempotent: true
+  timeout_ms: 30000
+  runtime_profiles:
+    - effects
+
+inputs:
+  state:
+    type: object
+    required: true
+    description: The codegen pipeline state carrying the spec.
+  target_root:
+    type: str
+    required: true
+    description: Directory the generated files are written under.
+  files:
+    type: array
+    required: true
+    description: The generated files (relative_path + content) to write.
+
+outputs:
+  state:
+    type: object
+    description: The pipeline state, echoed unchanged.
+  written_paths:
+    type: array
+    items:
+      type: str
+
+terminal_event: onex.evt.omnimarket.codegen-files-written.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.codegen-file-write.v1
+  publish_topics:
+    - onex.evt.omnimarket.codegen-files-written.v1
+
+metadata:
+  transport_type: kafka

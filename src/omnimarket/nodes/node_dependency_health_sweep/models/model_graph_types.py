@@ -8,17 +8,21 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict
 
+from omnimarket.models.model_import_graph import ModelImportGraph
 from omnimarket.nodes.node_dependency_health_sweep.models.model_dep_health_finding import (
     ModelDepHealthFinding,
 )
 
-
-class ModelImportGraph(BaseModel):
-    model_config = ConfigDict(frozen=True, extra="forbid")
-
-    nodes: list[str]
-    edges: list[tuple[str, str]]
-    orphan_modules: list[str]
+# OMN-14295: ModelImportGraph moved to omnimarket.models so
+# node_architecture_graph_populate_effect can share it without reaching into
+# this node's private package; re-exported here so every existing import of
+# `model_graph_types.ModelImportGraph` keeps working unchanged.
+__all__ = [
+    "ModelBaselineSnapshot",
+    "ModelDiffResult",
+    "ModelImportGraph",
+    "ModelTopologyGraph",
+]
 
 
 class ModelTopologyGraph(BaseModel):

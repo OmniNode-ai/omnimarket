@@ -58,6 +58,7 @@ class ProtocolDelegationDispatchPort(Protocol):
         wait: bool,
         quality_contract_mode: str,
         acceptance_criteria: tuple[str, ...],
+        tenant_id: str | None,
     ) -> dict[str, object]: ...
 
 
@@ -293,6 +294,12 @@ class HandlerDelegateSkill:
                 wait=request.wait,
                 quality_contract_mode=request.quality_contract_mode,
                 acceptance_criteria=request.acceptance_criteria,
+                # OMN-14349: thread the verified tenant_id (stamped upstream by
+                # OMN-14208 Path A's ingress node from a verified source, never
+                # self-reported) to the dispatch port. A stamp that stops here is
+                # dead on arrival -- this is the seam pinned by
+                # test_handler_propagates_verified_tenant_id_to_dispatch_port.
+                tenant_id=request.tenant_id,
             )
         except Exception as exc:
             return ModelDelegateSkillResponse(

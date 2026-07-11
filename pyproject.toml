@@ -31,6 +31,12 @@ classifiers = [
 dependencies = [
     # OMN-14168 requires EnumEvidenceClass.RUNTIME_OPS and
     # runtime_ops_verb_loader from omnibase-core 0.46.7.
+    # OMN-14280 (OMN-14208 slice-2 A-now): the inference-wire tenant_id feature
+    # (producer + cross-boundary test) requires the tenant_id field on
+    # ModelInferenceIntent / ModelInferenceResponseData, first released in
+    # omnibase-core 0.46.8 (the paired core PR #1415). The lower bound is kept at
+    # 0.46.7 so the resolver/toolchain stays functional until 0.46.8 publishes;
+    # relock onto 0.46.8 (uv lock --upgrade-package omnibase-core) at landing.
     "omnibase-core>=0.46.7,<0.47.0",
     # OMN-14189 imports the shared OCC PR stamp renderer/parser + models from
     # omnibase-compat 0.5.6 (relocated core->compat under OMN-14223 so the gate
@@ -91,7 +97,14 @@ node_aislop_sweep = "omnimarket.nodes.node_aislop_sweep"
 node_architectural_invariant_loop = "omnimarket.nodes.node_architectural_invariant_loop"
 node_authorize = "omnimarket.nodes.node_authorize"
 node_budget_policy_compute = "omnimarket.nodes.node_budget_policy_compute"
+node_subcontract_render_compute = "omnimarket.nodes.node_subcontract_render_compute"
+node_advanced_features_resolve_compute = "omnimarket.nodes.node_advanced_features_resolve_compute"
+node_contract_assemble_compute = "omnimarket.nodes.node_contract_assemble_compute"
+node_contract_digest_compute = "omnimarket.nodes.node_contract_digest_compute"
+node_contract_serialize_compute = "omnimarket.nodes.node_contract_serialize_compute"
 node_chain_diff_compute = "omnimarket.nodes.node_chain_diff_compute"
+node_ast_node_analyzer = "omnimarket.nodes.node_ast_node_analyzer"
+node_stub_detector = "omnimarket.nodes.node_stub_detector"
 node_contract_graph_ir_compute = "omnimarket.nodes.node_contract_graph_ir_compute"
 node_delegation_escalation_decision_compute = "omnimarket.nodes.node_delegation_escalation_decision_compute"
 node_closeout_verifier_compute = "omnimarket.nodes.node_closeout_verifier_compute"
@@ -153,6 +166,11 @@ node_data_verification = "omnimarket.nodes.node_data_verification"
 node_process_watchdog = "omnimarket.nodes.node_process_watchdog"
 node_generate_node_effect = "omnimarket.nodes.node_generate_node_effect"
 node_generated_node_publish_effect = "omnimarket.nodes.node_generated_node_publish_effect"
+node_hybrid_codegen_orchestrator = "omnimarket.nodes.node_hybrid_codegen_orchestrator"
+node_llm_codegen_effect = "omnimarket.nodes.node_llm_codegen_effect"
+node_codegen_file_writer_effect = "omnimarket.nodes.node_codegen_file_writer_effect"
+node_generated_code_validator = "omnimarket.nodes.node_generated_code_validator"
+node_mypy_check_effect = "omnimarket.nodes.node_mypy_check_effect"
 node_projection_session_outcome = "omnimarket.nodes.node_projection_session_outcome"
 node_projection_session_replay = "omnimarket.nodes.node_projection_session_replay"
 node_projection_swarm = "omnimarket.nodes.node_projection_swarm"
@@ -226,6 +244,7 @@ node_claim_resolver = "omnimarket.nodes.node_claim_resolver"
 node_verified_dispatch_orchestrator = "omnimarket.nodes.node_verified_dispatch_orchestrator"
 node_pr_lifecycle_inventory_compute = "omnimarket.nodes.node_pr_lifecycle_inventory_compute"
 node_pr_lifecycle_fix_effect = "omnimarket.nodes.node_pr_lifecycle_fix_effect"
+node_occ_companion_compute = "omnimarket.nodes.node_occ_companion_compute"
 node_pr_delegated_fix_effect = "omnimarket.nodes.node_pr_delegated_fix_effect"
 node_ci_watch = "omnimarket.nodes.node_ci_watch"
 node_coderabbit_triage = "omnimarket.nodes.node_coderabbit_triage"
@@ -451,6 +470,14 @@ omnimarket = "omnimarket.nodes"
 # their git-source overrides). The version-range overrides below already target
 # the released artifacts: core>=0.46.7,<0.47.0 and
 # compat==0.5.5 (the former rev c0fc716 IS the v0.5.5 tag == PyPI 0.5.5).
+# OMN-14280: TEMPORARY coordinated core->market pin. This PR's tenant_id field
+# on ModelInferenceIntent/ModelInferenceResponseData was added on omnibase_core
+# dev (commit 38a05eb1) but has not yet published as 0.46.8 on PyPI. Pinning to
+# the exact dev commit so this PR can build against the real core field instead
+# of waiting on the release. REMOVE WHEN RELEASED: once omnibase-core 0.46.8
+# publishes, delete this override (the version-range pin above already covers
+# it) and `uv lock`. Mirrors the OMN-13878/OMN-12549 precedent exactly.
+omnibase-core = { git = "https://github.com/OmniNode-ai/omnibase_core.git", rev = "38a05eb1ddc9a5f25b7a905e92a4097176cb44c1" }  # raw-override-ok: OMN-14280
 # omnibase-infra git rev retained — infra is not in the dep-provenance forbidden set.
 omnibase-infra = { git = "https://github.com/OmniNode-ai/omnibase_infra.git", rev = "7e52d5b0046c394b38454b97157e7a7191e6f008" }
 omninode-memory = { git = "https://github.com/OmniNode-ai/omnimemory.git", rev = "1cd318d5ca3071a24585191592d3a84fafd30cf7" }
@@ -471,6 +498,8 @@ onex-change-control = { git = "https://github.com/OmniNode-ai/onex_change_contro
 # current resolvable ranges (core>=0.46.7, spi>=0.23.0) — same override
 # function, no foreign URLs.
 override-dependencies = [
+    # OMN-14280: the tenant_id inference-wire feature needs core 0.46.8; lower
+    # bound kept at 0.46.7 so the resolver stays functional until it publishes.
     "omnibase-core>=0.46.7,<0.47.0",
     "omnibase-spi>=0.23.0,<0.24.0",
     "omnibase-infra>=0.38.3,<0.39.0",

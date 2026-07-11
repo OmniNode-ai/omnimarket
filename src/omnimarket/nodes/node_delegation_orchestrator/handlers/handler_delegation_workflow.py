@@ -120,7 +120,9 @@ from omnimarket.nodes.node_delegation_quality_gate_reducer.models.model_quality_
 from omnimarket.nodes.node_delegation_routing_reducer.handlers.handler_delegation_routing import (
     NO_HIGHER_TIER_REASON_TOKEN,
     describe_no_higher_tier_available,
+    is_free_tier,
     next_eligible_tier,
+    tier_max_retries,
 )
 from omnimarket.nodes.node_delegation_routing_reducer.models.model_routing_decision import (
     ModelRoutingDecision,
@@ -452,6 +454,7 @@ def _build_model_inference_intent(
     api_key_ref: str | None,
     extra_headers: dict[str, str] | None,
     provider_request_options: dict[str, Any],
+    tenant_id: str | None,
 ) -> ModelInferenceIntent:
     # OMN-12815: base_url carries the COMPLETE endpoint URL from the routing
     # authority (decision.endpoint_url); the inference effect posts it verbatim.
@@ -467,10 +470,17 @@ def _build_model_inference_intent(
         "api_key_ref": api_key_ref,
         "extra_headers": extra_headers,
     }
-    if provider_request_options and "provider_request_options" in getattr(
-        ModelInferenceIntent, "model_fields", {}
-    ):
+    model_fields = getattr(ModelInferenceIntent, "model_fields", {})
+    if provider_request_options and "provider_request_options" in model_fields:
         payload["provider_request_options"] = provider_request_options
+    # OMN-14280 (OMN-14208 slice-2 A-now): stamp the workflow tenant onto the
+    # inference intent so the inference effect independently attributes its own
+    # side effects to the owning tenant. Guarded on the model exposing the field
+    # (mirrors provider_request_options above) so the producer degrades to the
+    # slice-1 correlation_id -> tenant attribution against a pre-0.46.8 core
+    # during the coordinated release window instead of raising extra="forbid".
+    if "tenant_id" in model_fields:
+        payload["tenant_id"] = tenant_id
     return ModelInferenceIntent.model_validate(payload)
 
 
@@ -577,6 +587,9 @@ def _evaluate_compliance(
             api_key_ref=workflow.routing_decision.api_key_ref,
             extra_headers=workflow.routing_decision.extra_headers,
             provider_request_options=provider_request_options,
+            # OMN-14280: stamp the workflow tenant onto the repair-attempt intent
+            # (same precedence as slice-1 terminal attribution via _resolve_tenant_id).
+            tenant_id=_resolve_tenant_id(workflow),
         )
     ]
 
@@ -726,6 +739,18 @@ class DelegationWorkflowState:
     cumulative_attempt_cost_usd: float = 0.0
     cumulative_attempt_prompt_tokens: int = 0
     cumulative_attempt_completion_tokens: int = 0
+    # OMN-14234 (retry-local / best-of-N). A FREE (free_local) tier is $0 to
+    # re-run, so a sub-bar quality result on a free tier retries the SAME tier up
+    # to its contract-declared ``max_retries`` budget (routing_tiers.yaml; local=2,
+    # so 1 initial + 2 retries = 3 $0 drafts) BEFORE escalating to a paid tier —
+    # lifting the non-deterministic local coder's $0 pass-rate (~1/3 single-shot ->
+    # ~70% at 3 attempts) instead of paying on the first weak draft.
+    # ``local_retry_count`` counts retries already issued on ``local_retry_tier``;
+    # both reset when a real tier escalation moves the workflow onto a different
+    # tier so each free tier gets its own best-of-N budget. Retry-local NEVER
+    # increments ``escalation_count`` (a same-tier retry is not a tier escalation).
+    local_retry_count: int = 0
+    local_retry_tier: str | None = None
     # OMN-14058 (OPERATOR-ACCEPTED INTERIM): resolved ONCE in
     # handle_delegation_request and carried onto every TerminalEmissionInputs
     # for this correlation_id (mirrors the context_pack_hash acceptance-pin
@@ -970,7 +995,11 @@ class HandlerDelegationWorkflow:
             workflow.state == EnumDelegationState.ROUTED
             and workflow.routing_decision is None
         ):
-            # Escalation re-entry: ESCALATING -> ROUTED with a new routing decision.
+            # Re-route re-entry with a new routing decision: either an escalation
+            # (ESCALATING -> ROUTED, a higher tier) or an OMN-14234 retry-local
+            # (GATE_EVALUATED -> ROUTED, the SAME free tier). Both reset
+            # routing_decision to None before emitting the re-route intent, so this
+            # branch handles them identically.
             workflow.routing_decision = decision
             workflow.current_tier_name = decision.tier_name or None
             workflow.compliance_attempts += 1
@@ -1019,6 +1048,9 @@ class HandlerDelegationWorkflow:
                 api_key_ref=decision.api_key_ref,
                 extra_headers=decision.extra_headers,
                 provider_request_options=provider_request_options,
+                # OMN-14280: stamp the workflow tenant onto the initial/escalation
+                # inference intent (slice-1 precedence via _resolve_tenant_id).
+                tenant_id=_resolve_tenant_id(workflow),
             )
         ]
 
@@ -1044,6 +1076,24 @@ class HandlerDelegationWorkflow:
         workflow = self._workflows.get(response.correlation_id)
         if workflow is None:
             return []
+
+        # OMN-14280 (OMN-14208 slice-2 A-now): observability cross-check only.
+        # The inference effect round-trips the wire tenant it acted on; compare it
+        # against the workflow tenant so a divergence is *visible* in logs. This is
+        # deliberately WARN-only (not fail-closed) — the fail-closed
+        # wire==topic-tenant guard is A-enforce, gated behind the gateway
+        # topic-tenant stamp and not part of this slice. A None response tenant
+        # (pre-0.46.8 core / legacy replay) is not a mismatch and is skipped.
+        response_tenant = getattr(response, "tenant_id", None)
+        if response_tenant is not None and response_tenant != workflow.tenant_id:
+            _logger.warning(
+                "inference-response tenant divergence (A-now observability, "
+                "not enforced): correlation_id=%s response_tenant=%s "
+                "workflow_tenant=%s",
+                response.correlation_id,
+                response_tenant,
+                workflow.tenant_id,
+            )
 
         if workflow.state != EnumDelegationState.ROUTED:
             return []
@@ -1439,6 +1489,21 @@ class HandlerDelegationWorkflow:
             completion_tokens=workflow.inference_completion_tokens,
         )
 
+        # OMN-14234 (retry-local / best-of-N): before escalating off a FREE tier,
+        # retry the SAME tier up to its contract-declared ``max_retries`` budget.
+        # The local coder is non-deterministic (a trivial refactor scored
+        # 0.8/0.64/1.0 across three runs at the 0.85 bar), so ~2/3 of first drafts
+        # escalated to a PAID tier despite local inference being $0. Retrying the
+        # free tier lifts the $0 pass-rate before crossing to paid — fail-closed:
+        # a paid tier, or an exhausted per-tier budget, falls through to the normal
+        # tier escalation below. This is the same-tier leg of the RSD FSM
+        # (GENERATING -> verify -> retry <= N local -> escalate).
+        retry_local_intents = self._maybe_retry_local(
+            workflow, rejected_attempt_cost_usd
+        )
+        if retry_local_intents is not None:
+            return retry_local_intents
+
         # OMN-13476: a sub-bar quality result is always retryable on a higher
         # tier, so the decision reduces to budget / current-tier / ladder. The
         # orchestrator resolves the routing-contract inputs inside
@@ -1526,6 +1591,68 @@ class HandlerDelegationWorkflow:
         self._advance(workflow, EnumDelegationState.FAILED)
         events.extend(self._emit_terminal(terminal_inputs))
         return events
+
+    def _maybe_retry_local(
+        self,
+        workflow: DelegationWorkflowState,
+        attempt_cost_usd: float,
+    ) -> list[BaseModel] | None:
+        """Retry the SAME free tier before escalating off it (OMN-14234, best-of-N).
+
+        The local coder is non-deterministic: a single trivial refactor scored
+        0.8 / 0.64 / 1.0 across three runs at the 0.85 bar (OMN-14234 live
+        evidence), so ~2/3 of first drafts escalated to a PAID tier despite local
+        inference being $0. Before escalating off a FREE tier this retries the SAME
+        tier up to its contract-declared ``max_retries`` budget (routing_tiers.yaml;
+        local=2, so 1 initial + 2 retries = 3 $0 drafts), so the workflow accepts
+        the first draft that clears the gate on re-route.
+
+        Fail-closed: only a FREE tier (``is_free_tier``) is retried, and only while
+        its per-tier budget remains — a paid tier, or an exhausted budget, returns
+        ``None`` so the caller runs the normal tier escalation. A retry re-routes to
+        the SAME tier (``min_tier_name`` pinned) via GATE_EVALUATED -> ROUTED; it
+        does NOT increment ``escalation_count`` and emits NO escalation event,
+        because a same-tier retry is not a tier escalation. The rejected draft's
+        (typically $0) spend is banked into the cumulative totals so cost/token
+        accounting stays honest across every draft, mirroring the escalation
+        branch's ``_bank_attempt_spend``.
+        """
+        tier = workflow.current_tier_name
+        if tier is None or not is_free_tier(tier):
+            return None
+        # Per-tier budget: reset the counter when a real escalation moved the
+        # workflow onto a different tier, so each free tier gets its own best-of-N
+        # budget rather than sharing one global count.
+        if workflow.local_retry_tier != tier:
+            workflow.local_retry_tier = tier
+            workflow.local_retry_count = 0
+        if workflow.local_retry_count >= tier_max_retries(tier):
+            return None
+        workflow.local_retry_count += 1
+
+        # Bank this rejected draft's spend + served tokens BEFORE the inference
+        # reset below discards ``workflow.inference_*``. For a free tier the cost is
+        # $0, but banking keeps the cumulative token/cost accounting identical to
+        # the escalation path (the terminal re-prices only the FINAL draft's tokens
+        # and adds the cumulative prior spend).
+        self._bank_attempt_spend(
+            workflow,
+            cost_usd=attempt_cost_usd,
+            prompt_tokens=workflow.inference_prompt_tokens,
+            completion_tokens=workflow.inference_completion_tokens,
+        )
+
+        # Re-route to the SAME tier: GATE_EVALUATED -> ROUTED, reset inference state
+        # so ``handle_routing_decision`` re-dispatches a fresh draft on re-entry.
+        workflow.inference_content = None
+        workflow.inference_model_used = None
+        workflow.inference_intent_in_flight = False
+        workflow.routing_decision = None
+        self._advance(workflow, EnumDelegationState.ROUTED)
+        assert workflow.request is not None
+        return [
+            ModelRoutingIntent(payload=workflow.request, min_tier_name=tier),
+        ]
 
     def _build_escalation_event(
         self,

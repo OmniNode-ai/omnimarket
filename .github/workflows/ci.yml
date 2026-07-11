@@ -23,18 +23,59 @@ jobs:
           REPO: ${{ github.repository }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |
-          set -euo pipefail
+          set -uo pipefail
 
           if [ "${{ github.event_name }}" != "pull_request" ]; then
             echo "OCC preflight dependency is enforced by the pull_request gate; continuing for ${GITHUB_EVENT_NAME}."
             exit 0
           fi
 
-          for _ in $(seq 1 60); do
-            conclusion="$(
-              gh api "repos/${REPO}/commits/${HEAD_SHA}/check-runs?filter=latest&per_page=100" \
-                --jq 'first(.check_runs[] | select(.name == "occ-preflight / eligibility") | .conclusion) // ""'
-            )"
+          # OMN-14343: desynchronize the ~33 same-PR pollers (one per workflow file
+          # -- GH Actions `needs:` can't cross workflow-file boundaries) so they
+          # don't all hit the Checks API in the same instant every 10s and exhaust
+          # the shared per-repo GitHub App installation rate-limit bucket.
+          sleep "$(( RANDOM % 15 ))"
+
+          backoff=5
+          elapsed=0
+          deadline=720
+
+          while [ "$elapsed" -lt "$deadline" ]; do
+            # NOTE(OMN-14343): GH Actions runs run: steps under `bash -e {0}` by
+            # default -- that -e is already active before this script's own
+            # `set -uo pipefail` runs, and `set -uo pipefail` does NOT clear an
+            # inherited -e. A bare `response="$(gh api ...)"; status=$?` would
+            # therefore abort the whole step on ANY gh api failure before status
+            # is ever checked, silently defeating the retry logic below. Using
+            # the command substitution as the condition of this `if` is the
+            # errexit-safe form -- bash does not trigger -e for a command that is
+            # part of an if/while/until condition, regardless of ambient -e state.
+            response=""
+            status=0
+            if response="$(
+              gh api "repos/${REPO}/commits/${HEAD_SHA}/check-runs?filter=latest&check_name=occ-preflight%20%2F%20eligibility&per_page=1" \
+                --jq 'first(.check_runs[] | .conclusion) // ""' \
+                2>&1
+            )"; then
+              status=0
+            else
+              status=$?
+            fi
+
+            if [ "$status" -ne 0 ]; then
+              if echo "$response" | grep -qi "rate limit"; then
+                echo "::warning::gh api rate-limited waiting for occ-preflight; backing off ${backoff}s."
+                sleep "$backoff"
+                elapsed=$((elapsed + backoff))
+                backoff=$(( backoff * 2 < 60 ? backoff * 2 : 60 ))
+                continue
+              fi
+              echo "::error::gh api call failed (non-rate-limit): ${response}"
+              exit 1
+            fi
+            backoff=5
+
+            conclusion="$response"
 
             case "$conclusion" in
               success)
@@ -52,12 +93,13 @@ jobs:
                 echo "OCC preflight is ${conclusion}; waiting."
                 ;;
             esac
+
             sleep 10
+            elapsed=$((elapsed + 10))
           done
 
           echo "::error::Timed out waiting for occ-preflight / eligibility on ${HEAD_SHA}."
           exit 1
-
   # Zone filter — short-circuit heavy jobs on docs / declarative-evidence PRs.
   # Calls the reusable workflow in omnibase_core. Outputs docs_only (true|false).
   zone-filter:
@@ -1168,10 +1210,37 @@ jobs:
       - name: Check workflow module references (OMN-14176)
         run: python scripts/ci/check_workflow_module_refs.py
 
+  no-noncanonical-lifecycle-classes:
+    name: no-noncanonical-lifecycle-classes
+    # OMN-14350: non-canonical lifecycle-class ratchet. Unconditional (no needs/if)
+    # so it never skips; wired into the required "CI Summary" via needs: + a strict
+    # success-only verdict check (fail-closed on skipped/cancelled/failure).
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          version: "0.8.3"
+      - name: Ratchet non-canonical lifecycle-word classes against frozen allowlist (OMN-14350)
+        run: |
+          uv run --no-project \
+            --with 'omnibase-core @ git+https://github.com/OmniNode-ai/omnibase_core@63635097705d832e0ee9c4811093efb31349105c' \
+            python -m omnibase_core.validators.no_noncanonical_lifecycle_classes \
+            --check-stale \
+            --allowlist .onex_ratchets/noncanonical_class_allowlist.yaml \
+            src/omnimarket
+
   ci-summary:
     name: CI Summary
     runs-on: ubuntu-latest
-    needs: [occ-preflight, zone-filter, lint, typecheck, detect-changes, test, integration-guard, topic-naming-lint, runtime-sweep, core-only-install, contract-compliance, e2e-workflow-runner, golden-chains, sea-e2e-chains, generated-node-golden-chain, dep-health, aislop-sweep, workflow-module-refs]
+    needs: [occ-preflight, zone-filter, lint, typecheck, detect-changes, test, integration-guard, topic-naming-lint, runtime-sweep, core-only-install, contract-compliance, e2e-workflow-runner, golden-chains, sea-e2e-chains, generated-node-golden-chain, dep-health, aislop-sweep, workflow-module-refs, no-noncanonical-lifecycle-classes]
     if: always()
     steps:
       - name: Check CI results
@@ -1207,6 +1276,19 @@ jobs:
               echo "$NAME: $RESULT"
             fi
           done
+
+          # OMN-14350: strict fail-closed gate on the non-canonical lifecycle-class
+          # ratchet. Unlike the loop above (success||skipped both pass), the ratchet
+          # must be EXACTLY 'success'; skipped/cancelled/failure ALL block (a skipped
+          # ratchet = un-enforced = fail-closed). It is in CI Summary needs: so this
+          # job WAITS for it (no race).
+          RATCHET_RESULT="${{ needs.no-noncanonical-lifecycle-classes.result }}"
+          if [ "$RATCHET_RESULT" != "success" ]; then
+            echo "::error::no-noncanonical-lifecycle-classes ratchet did not pass (result: $RATCHET_RESULT) - fail-closed (OMN-14350)"
+            FAILED=true
+          else
+            echo "no-noncanonical-lifecycle-classes: $RATCHET_RESULT"
+          fi
 
           if [ "$FAILED" = "true" ]; then
             echo ""

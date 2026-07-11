@@ -1,0 +1,62 @@
+---
+name: node_contract_digest_compute
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: compute
+node_version: {major: 1, minor: 0, patch: 0}
+
+input_model: omnimarket.contract_assembly.models.ModelContractDigestRequest
+
+description: >
+  Pure deterministic contract digester. Returns the sha256 of the exact
+  contract-YAML bytes it is given; the canonical form is the assembler's
+  responsibility, so the digest is a stable function of its input. Mirrors the
+  change-control contract_sha256 convention. No I/O, no bus or DB dependencies.
+
+handler:
+  module: omnimarket.nodes.node_contract_digest_compute.handlers.handler_contract_digest
+  class: HandlerContractDigest
+  input_model: omnimarket.contract_assembly.models.ModelContractDigestRequest
+  output_model: omnimarket.contract_assembly.models.ModelContractDigest
+
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 500
+  runtime_profiles:
+    - main
+
+inputs:
+  contract_yaml:
+    type: str
+    required: true
+    description: The serialized contract YAML to digest
+
+outputs:
+  contract_sha256:
+    type: str
+
+terminal_event: onex.evt.omnimarket.contract-digest-completed.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.contract-digest-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.contract-digest-completed.v1
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.contract-digest-completed.v1
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: contract_digest
+      handler:
+        name: HandlerContractDigest
+        module: omnimarket.nodes.node_contract_digest_compute.handlers.handler_contract_digest
+      event_model:
+        name: ModelContractDigestRequest
+        module: omnimarket.contract_assembly.models
+
+metadata:
+  transport_type: kafka

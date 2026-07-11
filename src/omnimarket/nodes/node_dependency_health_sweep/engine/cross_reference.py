@@ -176,8 +176,9 @@ class CrossReferenceEngine:
 
     def _has_test_coverage(self, repo_root: Path, handler_stem: str) -> bool:
         """Return True if any test file under repo_root references handler_stem."""
+        search_root = repo_root.parent if repo_root.name == "src" else repo_root
         for pattern in _TEST_FILE_GLOB:
-            for test_file in repo_root.rglob(pattern):
+            for test_file in search_root.rglob(pattern):
                 try:
                     content = test_file.read_text(errors="replace")
                 except OSError:
@@ -188,7 +189,8 @@ class CrossReferenceEngine:
 
     def _has_golden_chain_coverage(self, repo_root: Path, handler_stem: str) -> bool:
         """Return True if any golden-chain test file references handler_stem."""
-        for test_file in repo_root.rglob("test_golden_chain_*.py"):
+        search_root = repo_root.parent if repo_root.name == "src" else repo_root
+        for test_file in search_root.rglob("test_golden_chain_*.py"):
             try:
                 content = test_file.read_text(errors="replace")
             except OSError:
