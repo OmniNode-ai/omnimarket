@@ -5,13 +5,19 @@
 # The pure, stateless, deterministic "what the OCC companion must be": renders the
 # exact companion files (contract, downstream receipt, self-bind, two-audiences
 # supersede) + stamped product body from PR + OCC state gathered UP FRONT. Zero
-# I/O. Doubles as the OMN-14055 attestation oracle (the gate re-invokes this same
-# handler and byte-diffs the deterministic subset).
+# I/O.
+#
+# Second operation `verify_companion_attestation` (OMN-14055) is the attestation
+# oracle: it recomputes `compute_companion_plan` and byte-diffs the deterministic
+# subset against observed companion files, mechanically rejecting companions that
+# are not this handler's own output regardless of claimed identity. Standalone
+# as of 2026-07-11 — not yet wired into any CI gate; wiring behind RSD-2/3 (the
+# EFFECT nodes that make this the live producer) is a follow-up ticket.
 #
 # Related Tickets:
 #   - OMN-14285: define the OCC-producer node graph + retire the bespoke adapters
 #   - OMN-14233: per-entry hashing / two-audiences supersession (T3)
-#   - OMN-14055: COMPUTE-node-as-attestation-oracle (RSD-5, consumes this handler)
+#   - OMN-14055: COMPUTE-node-as-attestation-oracle (RSD-5, this node's second operation)
 name: "node_occ_companion_compute"
 lifecycle: experimental
 node_type: "COMPUTE_GENERIC"
@@ -37,6 +43,10 @@ handler_routing:
       handler:
         name: "HandlerOccCompanionCompute"
         module: "omnimarket.nodes.node_occ_companion_compute.handlers.handler_occ_companion_compute"
+    - operation: "verify_companion_attestation"
+      handler:
+        name: "HandlerOccCompanionAttestation"
+        module: "omnimarket.nodes.node_occ_companion_compute.handlers.handler_occ_companion_attestation"
 terminal_event: "onex.evt.omnimarket.occ-companion-compute-completed.v1"
 event_bus:
   subscribe_topics:

@@ -311,14 +311,21 @@ class TestPortedComputeChecks:
 
 @pytest.mark.unit
 class TestZeroIoPurity:
-    _HANDLER = (
+    _HANDLERS_DIR = (
         pathlib.Path(__file__).resolve().parents[4]
         / "src"
         / "omnimarket"
         / "nodes"
         / "node_occ_companion_compute"
         / "handlers"
-        / "handler_occ_companion_compute.py"
+    )
+    # Both routed operations on this node (compute + the OMN-14055 attestation
+    # oracle) must stay zero-I/O — the oracle re-invokes compute_companion_plan
+    # in-process, so a hidden probe/clone/now() in EITHER file breaks
+    # deterministic re-run.
+    _HANDLER_FILES = (
+        _HANDLERS_DIR / "handler_occ_companion_compute.py",
+        _HANDLERS_DIR / "handler_occ_companion_attestation.py",
     )
     _BANNED_IMPORT_ROOTS = frozenset(
         {
@@ -352,8 +359,9 @@ class TestZeroIoPurity:
         }
     )
 
-    def test_handler_module_has_no_io(self) -> None:
-        tree = ast.parse(self._HANDLER.read_text(encoding="utf-8"))
+    @pytest.mark.parametrize("handler_path", _HANDLER_FILES, ids=lambda p: p.name)
+    def test_handler_module_has_no_io(self, handler_path: pathlib.Path) -> None:
+        tree = ast.parse(handler_path.read_text(encoding="utf-8"))
         offenders: list[str] = []
         for node in ast.walk(tree):
             if isinstance(node, ast.Import):
@@ -373,6 +381,6 @@ class TestZeroIoPurity:
                 ):
                     offenders.append(f".{func.attr}()")
         assert offenders == [], (
-            "node_occ_companion_compute handler must do ZERO I/O (pure COMPUTE / "
-            f"attestation oracle) — found: {offenders}"
+            f"{handler_path.name} must do ZERO I/O (pure COMPUTE / attestation "
+            f"oracle) — found: {offenders}"
         )
