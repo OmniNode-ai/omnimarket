@@ -23,6 +23,7 @@ from typing import Any
 from uuid import uuid4
 
 import pytest
+import yaml
 from pydantic import BaseModel, SecretStr
 
 from omnimarket.nodes.node_github_repo_gateway_effect import (
@@ -69,6 +70,7 @@ _NODE_SOURCE_FILES = [
     _NODE_DIR / "__main__.py",
     _NODE_DIR / "handlers" / "handler_github_repo_gateway.py",
 ]
+_CONTRACT_PATH = _NODE_DIR / "contract.yaml"
 
 _PR_DETAIL: dict[str, Any] = {
     "number": _PR,
@@ -168,6 +170,18 @@ _EXPECTED_MODEL = {
     EnumGithubGatewayOperation.MERGE_COMMIT_SHA: ModelMergeCommitShaResult,
     EnumGithubGatewayOperation.TICKET_REF: ModelTicketRefResult,
 }
+
+
+def test_contract_declares_runtime_topics() -> None:
+    contract = yaml.safe_load(_CONTRACT_PATH.read_text(encoding="utf-8"))
+
+    terminal_event = "onex.evt.omnimarket.github-repo-gateway-read-completed.v1"
+    assert contract["terminal_event"] == terminal_event
+    assert (
+        "onex.cmd.omnimarket.github-repo-gateway-read-requested.v1"
+        in contract["event_bus"]["subscribe_topics"]
+    )
+    assert terminal_event in contract["event_bus"]["publish_topics"]
 
 
 # --- Protocol A: every operation returns its own typed shape ----------------

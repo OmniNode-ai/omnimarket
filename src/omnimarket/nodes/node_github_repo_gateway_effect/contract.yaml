@@ -10,8 +10,6 @@ name: node_github_repo_gateway_effect
 contract_version: {major: 1, minor: 0, patch: 0}
 node_type: effect
 node_version: {major: 1, minor: 0, patch: 0}
-# CLI-invoked first slice: not yet wired to the event bus (no subscribe/publish
-# topics). The live Kafka runtime path is a later, human-gated slice.
 lifecycle: experimental
 
 description: >
@@ -61,9 +59,13 @@ secrets:
     description: "GitHub PAT or Actions token for read-only PR/repo status."
     required: true
 
-# First slice is CLI-invoked (python -m ...): no live Kafka runtime path is
-# wired here. The command topic + terminal events + consumer group (and the
-# matching golden-chain coverage) are a later, human-gated runtime slice.
+terminal_event: onex.evt.omnimarket.github-repo-gateway-read-completed.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.github-repo-gateway-read-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.github-repo-gateway-read-completed.v1
 
 dependencies:
   packages:
