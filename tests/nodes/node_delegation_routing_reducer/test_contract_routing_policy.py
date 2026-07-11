@@ -583,6 +583,264 @@ class TestDeltaContractRouting:
 
 
 # ---------------------------------------------------------------------------
+# OMN-14396 — contract_model_ref override must respect use_for
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestContractModelRefRespectsUseFor:
+    """OMN-14396 regression: an id collision within a tier must not let the
+    contract-model-ref override select a backend that does not declare the
+    requested task_type.
+
+    Live incident: routing_tiers.yaml's local tier declares TWO backends that
+    share the model id "Qwen3.6-35B-A3B" — local-coder
+    (use_for=[code_generation, code_review, refactor]) and
+    local-heavy-reasoning (use_for=[research, reasoning, ...]).
+    task_class_contracts.v1.yaml's task_model_overrides.research points at
+    that same shared id. Before this fix, _select_model_for_task's
+    contract_model_ref loop matched on ``model.id`` alone (no ``use_for``
+    check), so it always resolved to whichever backend was declared FIRST in
+    the tier -- local-coder -- even though local-coder does not serve
+    "research". A real failure on local-coder's specific endpoint then
+    escalated the whole "local" tier to cheap_cloud (a real cloud provider,
+    z.ai/glm-5.2) without ever trying local-heavy-reasoning, the backend the
+    tier actually declares for research.
+    """
+
+    _BIFROST = textwrap.dedent("""\
+        config_version: "2.0.0"
+        schema_version: "bifrost_delegation.v1"
+        backends:
+          - backend_id: local-coder
+            endpoint_url: "http://192.168.86.201:8000"  # onex-allow-internal-ip OMN-14396 reason="test fixture reproducing the live local-coder/local-heavy-reasoning id collision"
+            model_name: Qwen3.6-35B-A3B  # onex-allow-model-id OMN-14396 reason="test fixture reproducing live shared model id across two backends"
+            tier: local
+            timeout_ms: 30000
+            capabilities: []
+          - backend_id: local-heavy-reasoning
+            endpoint_url: "http://192.168.86.201:8000"  # onex-allow-internal-ip OMN-14396 reason="test fixture reproducing the live local-coder/local-heavy-reasoning id collision"
+            model_name: Qwen3.6-35B-A3B  # onex-allow-model-id OMN-14396 reason="test fixture reproducing live shared model id across two backends"
+            tier: local
+            timeout_ms: 300000
+            capabilities: []
+          - backend_id: cloud-glm
+            endpoint_url: "https://api.z.ai/api/coding/paas/v4/chat/completions"
+            model_name: glm-5.2  # onex-allow-model-id OMN-14396 reason="test fixture cloud ceiling for the escalation-off-local negative assertion"
+            tier: cheap_cloud
+            timeout_ms: 30000
+            capabilities: []
+        routing_rules:
+          - rule_id: "d4e5f6a7-0001-4000-8000-000000000001"
+            priority: 10
+            task_class: research
+            task_class_contract_version: "1.0.0"
+            backend_policy_version: "2.0.0"
+            match_operation_types: [chat_completion]
+            match_capabilities: [research]
+            backend_ids: [local-coder, local-heavy-reasoning]
+            fallback_policy:
+              action: escalate_to_next_tier
+              max_retries: 1
+              on_exhaust: return_error
+            shadow_policy_id: "e5f6a7b8-0001-4000-8000-000000000001"
+        default_backends:
+          - local-coder
+        circuit_breaker:
+          failure_threshold: 5
+          window_seconds: 30
+        failover:
+          max_attempts: 3
+          backoff_base_ms: 500
+        shadow_mode:
+          enabled: false
+          policy_version: "unknown"
+          log_sample_rate: 1.0
+          comparison_logging_enabled: true
+          max_shadow_latency_ms: 5.0
+    """)
+
+    _ROUTING_TIERS = textwrap.dedent(f"""\
+        tiers:
+          - name: local
+            cost_per_1k_tokens: 0.0
+            models:
+              # Declared FIRST, same id as the model below, but NOT capable of
+              # research — mirrors the live local-coder entry.
+              - id: {MODEL_QWEN3_35B_A3B}
+                backend_id: local-coder
+                max_context_tokens: 65536
+                use_for: [code_generation, code_review, refactor]
+                fast_path_threshold_tokens: 65536
+              # Declared SECOND, SAME id, and IS declared for research —
+              # mirrors the live local-heavy-reasoning entry.
+              - id: {MODEL_QWEN3_35B_A3B}
+                backend_id: local-heavy-reasoning
+                max_context_tokens: 8192
+                use_for: [research, reasoning]
+                fast_path_threshold_tokens: 8192
+            eval_before_accept: true
+            eval_model: qwen3.6-35b
+            max_retries: 2
+          - name: cheap_cloud
+            cost_per_1k_tokens: 0.002
+            models:
+              - id: glm-5.2
+                backend_id: cloud-glm
+                max_context_tokens: 128000
+                use_for: [research]
+                fast_path_threshold_tokens: 8192
+            eval_before_accept: true
+            eval_model: qwen3.6-35b
+            max_retries: 1
+    """)
+
+    _TASK_CONTRACT = textwrap.dedent(f"""\
+        version: "1.0"
+        default_task_model_ref: "{MODEL_QWEN3_35B_A3B}"
+        task_model_overrides:
+          research: "{MODEL_QWEN3_35B_A3B}"
+        task_classes:
+          research:
+            pricing_ceiling_per_1k_tokens: 0.015
+            cloud_routing_policy: allowed
+            escalation_policy:
+              tier_order: [local, cheap_cloud]
+    """)
+
+    def _make_request(self, task_type: str, prompt: str = "x" * 100):  # type: ignore[no-untyped-def]
+        from datetime import datetime
+
+        from omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_request import (
+            ModelDelegationRequest,
+        )
+
+        return ModelDelegationRequest(
+            correlation_id=uuid4(),
+            task_type=task_type,  # type: ignore[arg-type]
+            prompt=prompt,
+            emitted_at=datetime.now(tz=UTC),
+        )
+
+    def test_research_resolves_local_backend_declared_for_research(
+        self, tmp_path: Path
+    ) -> None:
+        """research must resolve to local-heavy-reasoning, not local-coder.
+
+        BEFORE the OMN-14396 fix, the contract_model_ref loop matched
+        local-coder first (id match alone, no use_for check) even though
+        local-coder does not declare "research" -- the routing decision would
+        carry the wrong backend for a task type it never claimed to serve.
+        """
+        from omnimarket.nodes.node_delegation_routing_reducer.handlers.handler_delegation_routing import (
+            delta,
+        )
+
+        routing_file = tmp_path / "routing_tiers.yaml"
+        routing_file.write_text(self._ROUTING_TIERS)
+        contract_file = tmp_path / "task_class_contracts.yaml"
+        contract_file.write_text(self._TASK_CONTRACT)
+        bifrost_file = tmp_path / "bifrost_delegation.yaml"
+        bifrost_file.write_text(self._BIFROST)
+
+        prev_routing_path = os.environ.get("DELEGATION_ROUTING_TIERS_PATH")
+        prev_task_contract_path = os.environ.get("TASK_CLASS_CONTRACT_PATH")
+        prev_bifrost_contract_path = os.environ.get("BIFROST_CONTRACT_PATH")
+        os.environ["DELEGATION_ROUTING_TIERS_PATH"] = str(routing_file)
+        os.environ["TASK_CLASS_CONTRACT_PATH"] = str(contract_file)
+        os.environ["BIFROST_CONTRACT_PATH"] = str(bifrost_file)
+
+        try:
+            decision = delta(self._make_request("research"))
+
+            # Local-first: research must resolve on the "local" tier at $0,
+            # never straight to the "cheap_cloud" ceiling backend.
+            assert decision.tier_name == "local", (
+                "research must resolve to the local tier first, not "
+                f"escalate straight to {decision.tier_name!r} "
+                "(local-first mandate, OMN-14396)"
+            )
+            # The routing decision does not carry the raw backend_id, so the
+            # strongest available signal that local-coder (wrong capability)
+            # was NOT the one selected is the timeout_ms carried onto the
+            # decision -- local-coder declares 30000ms, local-heavy-reasoning
+            # declares 300000ms (matching the real routing_tiers.yaml split).
+            assert decision.timeout_ms == 300000, (
+                "expected local-heavy-reasoning's timeout (300000ms), got "
+                f"{decision.timeout_ms} -- selection fell through to "
+                "local-coder (use_for does not include research)"
+            )
+        finally:
+            if prev_routing_path is None:
+                os.environ.pop("DELEGATION_ROUTING_TIERS_PATH", None)
+            else:
+                os.environ["DELEGATION_ROUTING_TIERS_PATH"] = prev_routing_path
+            if prev_task_contract_path is None:
+                os.environ.pop("TASK_CLASS_CONTRACT_PATH", None)
+            else:
+                os.environ["TASK_CLASS_CONTRACT_PATH"] = prev_task_contract_path
+            if prev_bifrost_contract_path is None:
+                os.environ.pop("BIFROST_CONTRACT_PATH", None)
+            else:
+                os.environ["BIFROST_CONTRACT_PATH"] = prev_bifrost_contract_path
+
+    def test_select_model_for_task_skips_id_match_without_use_for(self) -> None:
+        """Focused unit test directly on _select_model_for_task (no I/O)."""
+        from omnimarket.nodes.node_delegation_routing_reducer.handlers.handler_delegation_routing import (
+            BifrostBackendRef,
+            _select_model_for_task,
+        )
+        from omnimarket.nodes.node_delegation_routing_reducer.models.model_tier_model import (
+            ModelTierModel,
+        )
+
+        wrong_capability_first = ModelTierModel(
+            id=MODEL_QWEN3_35B_A3B,
+            backend_ref="local-coder",
+            max_context_tokens=65536,
+            use_for=("code_generation", "code_review", "refactor"),
+            fast_path_threshold_tokens=65536,
+        )
+        right_capability_second = ModelTierModel(
+            id=MODEL_QWEN3_35B_A3B,
+            backend_ref="local-heavy-reasoning",
+            max_context_tokens=8192,
+            use_for=("research", "reasoning"),
+            fast_path_threshold_tokens=8192,
+        )
+        local_endpoint = "http://192.168.86.201:8000"  # onex-allow-internal-ip OMN-14396 reason="test fixture reproducing the live local-coder/local-heavy-reasoning shared endpoint"
+        backends = {
+            "local-coder": BifrostBackendRef(
+                endpoint_url=local_endpoint,
+                model_name=MODEL_QWEN3_35B_A3B,
+                timeout_ms=30000,
+                max_tokens=65536,
+            ),
+            "local-heavy-reasoning": BifrostBackendRef(
+                endpoint_url=local_endpoint,
+                model_name=MODEL_QWEN3_35B_A3B,
+                timeout_ms=300000,
+                max_tokens=65536,
+            ),
+        }
+
+        selected = _select_model_for_task(
+            (wrong_capability_first, right_capability_second),
+            "research",
+            estimated_tokens=25,
+            bifrost_backends=backends,
+            contract_model_ref=MODEL_QWEN3_35B_A3B,
+        )
+
+        assert selected is not None
+        assert selected.backend_ref == "local-heavy-reasoning", (
+            "contract_model_ref matched by id alone and ignored use_for, "
+            f"selecting {selected.backend_ref!r} instead of the backend "
+            "actually declared for 'research' (OMN-14396)"
+        )
+
+
+# ---------------------------------------------------------------------------
 # Pricing ceiling enforcement via YAML config (OMN-11967)
 # ---------------------------------------------------------------------------
 
