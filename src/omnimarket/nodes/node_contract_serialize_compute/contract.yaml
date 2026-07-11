@@ -1,0 +1,93 @@
+---
+name: node_contract_serialize_compute
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: compute
+node_version: {major: 1, minor: 0, patch: 0}
+
+input_model: omnimarket.contract_assembly.models.ModelContractAssemblyRequest
+
+description: >
+  Pure deterministic model-to-contract serializer. Given a node's name,
+  namespace, archetype, analysis, and subcontract selections, it renders each
+  subcontract fragment, resolves the archetype advanced-features block, assembles
+  the contract document, digests it, and gates the result through a contract lint.
+  Returns the serialized contract, its digest, the rendered fragments, and the
+  lint verdict. Composes four pure compute leaves; no I/O, no bus or DB.
+
+handler:
+  module: omnimarket.nodes.node_contract_serialize_compute.handlers.handler_contract_serialize
+  class: HandlerContractSerialize
+  input_model: omnimarket.contract_assembly.models.ModelContractAssemblyRequest
+  output_model: omnimarket.contract_assembly.models.ModelContractDocument
+
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 1000
+  runtime_profiles:
+    - main
+
+inputs:
+  node_name:
+    type: str
+    required: true
+    description: PascalCase node class name (e.g. NodeFooCompute)
+  namespace:
+    type: str
+    required: true
+    description: Contract namespace (e.g. omninode.services.foo.compute)
+  archetype:
+    type: str
+    required: true
+    description: EnumNodeArchetype (compute, effect, reducer, orchestrator)
+  analysis:
+    type: object
+    required: false
+    description: Node analysis (description, tags, version) turned into metadata
+  subcontract_selections:
+    type: array
+    required: false
+    description: Subcontracts to render into the assembled contract
+  overrides:
+    type: object
+    required: false
+    description: Advanced-features overrides layered onto the archetype defaults
+
+outputs:
+  contract_yaml:
+    type: str
+  contract_sha256:
+    type: str
+  subcontracts_rendered:
+    type: array
+  lint_status:
+    type: str
+    enum: [pass, fail]
+  lint_messages:
+    type: array
+
+terminal_event: onex.evt.omnimarket.contract-serialize-completed.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.contract-serialize-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.contract-serialize-completed.v1
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.contract-serialize-completed.v1
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: contract_serialize
+      handler:
+        name: HandlerContractSerialize
+        module: omnimarket.nodes.node_contract_serialize_compute.handlers.handler_contract_serialize
+      event_model:
+        name: ModelContractAssemblyRequest
+        module: omnimarket.contract_assembly.models
+
+metadata:
+  transport_type: kafka

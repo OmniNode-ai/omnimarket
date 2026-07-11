@@ -1,0 +1,70 @@
+---
+name: node_contract_assemble_compute
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: compute
+node_version: {major: 1, minor: 0, patch: 0}
+
+input_model: omnimarket.contract_assembly.models.ModelContractAssembleRequest
+
+description: >
+  Pure deterministic contract assembler. Consumes contract metadata, rendered
+  subcontract fragments (keyed by type), and the resolved advanced-features block,
+  builds a validated contract document model, and serializes it to YAML with a
+  DO-NOT-EDIT header. Replaces the hand-rolled dict-to-yaml serializer. No I/O.
+
+handler:
+  module: omnimarket.nodes.node_contract_assemble_compute.handlers.handler_contract_assemble
+  class: HandlerContractAssemble
+  input_model: omnimarket.contract_assembly.models.ModelContractAssembleRequest
+  output_model: omnimarket.contract_assembly.models.ModelContractDraft
+
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 500
+  runtime_profiles:
+    - main
+
+inputs:
+  metadata:
+    type: object
+    required: true
+    description: Contract metadata block (node_name, namespace, node_type, version, ...)
+  fragments:
+    type: array
+    required: true
+    description: Rendered subcontract fragments, each typed by subcontract kind
+  advanced_features:
+    type: object
+    required: true
+    description: Resolved advanced-features block
+
+outputs:
+  contract_yaml:
+    type: str
+
+terminal_event: onex.evt.omnimarket.contract-assemble-completed.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.contract-assemble-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.contract-assemble-completed.v1
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.contract-assemble-completed.v1
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: contract_assemble
+      handler:
+        name: HandlerContractAssemble
+        module: omnimarket.nodes.node_contract_assemble_compute.handlers.handler_contract_assemble
+      event_model:
+        name: ModelContractAssembleRequest
+        module: omnimarket.contract_assembly.models
+
+metadata:
+  transport_type: kafka

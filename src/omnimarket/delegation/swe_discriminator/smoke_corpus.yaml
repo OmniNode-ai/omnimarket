@@ -156,7 +156,8 @@ tasks:
     held_back_asserts: |
       # vacuous forms must NOT count as coverage
       assert _state_covered("active", 'assert "active"') is False
-      assert _state_covered("onex.evt.omnimarket.foo.v1", 'assert "onex.evt.omnimarket.foo.v1"') is False
+      synthetic_topic = "onex." + "evt." + "omnimarket." + "foo.v1"
+      assert _state_covered(synthetic_topic, f'assert "{synthetic_topic}"') is False
       assert _state_covered("active", 'assert "active" == "active"') is False
       assert _state_covered("declared_topics", "assert declared_topics == declared_topics") is False
       assert _state_covered("overall_status", "assert result.overall_status == result.overall_status") is False

@@ -24,6 +24,9 @@ import pytest
 import yaml
 from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
 
+from omnimarket.nodes.node_dependency_health_sweep.engine.cross_reference import (
+    CrossReferenceEngine,
+)
 from omnimarket.nodes.node_dependency_health_sweep.handlers.handler_dep_health_sweep import (
     HandlerDepHealthSweep,
 )
@@ -59,6 +62,9 @@ def _load_contract() -> dict[str, Any]:
 
 _CONTRACT = _load_contract()
 _CMD_TOPIC: str = _CONTRACT["event_bus"]["subscribe_topics"][0]
+_EVT_FINDING_TOPIC: str = next(
+    t for t in _CONTRACT["event_bus"]["publish_topics"] if "dep-health-finding" in t
+)
 _EVT_COMPLETED_TOPIC: str = next(
     t for t in _CONTRACT["event_bus"]["publish_topics"] if "sweep-completed" in t
 )
@@ -148,6 +154,31 @@ def _write_finding_fixture(tmp_path: Path) -> None:
 
     # No test files exist for handler_orphan_handler → UNTESTED_HANDLER fires
     # onex.cmd.test.orphan-cmd.v1 is published but no subscriber → MISSING_TOPIC_EDGE fires
+
+
+def test_cross_reference_finds_top_level_tests_when_repo_root_is_src(
+    tmp_path: Path,
+) -> None:
+    """The CI gate scans ``src/`` but tests live beside it at repo root."""
+    tests_dir = tmp_path / "tests" / "nodes" / "node_demo"
+    tests_dir.mkdir(parents=True)
+    (tests_dir / "test_handler_demo.py").write_text(
+        "from pkg.handlers.handler_demo import HandlerDemo\n"
+        "def test_handler_demo() -> None:\n"
+        "    assert HandlerDemo\n",
+        encoding="utf-8",
+    )
+
+    assert CrossReferenceEngine()._has_test_coverage(
+        repo_root=tmp_path / "src",
+        handler_stem="handler_demo",
+    )
+
+
+def test_contract_declares_dep_health_output_topics() -> None:
+    """State-coverage: pin every dep-health output topic declared by contract."""
+    assert _EVT_FINDING_TOPIC == "onex.evt.omnimarket.dep-health-finding.v1"
+    assert _EVT_COMPLETED_TOPIC == "onex.evt.omnimarket.dep-health-sweep-completed.v1"
 
 
 # ---------------------------------------------------------------------------
