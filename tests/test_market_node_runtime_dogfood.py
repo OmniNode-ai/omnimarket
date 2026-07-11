@@ -129,8 +129,10 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
     # leaves for compliant model-to-contract serialization: 353 -> 358.
     # OMN-14336 adds node_hybrid_codegen_orchestrator,
     # node_llm_codegen_effect, and node_codegen_file_writer_effect: 358 -> 361.
-    assert summary["node_dirs"] == 361
-    assert summary["entry_points"] == 361
+    # OMN-14326 adds node_ast_node_analyzer and node_stub_detector pure
+    # compute nodes for codegen analysis: 361 -> 363.
+    assert summary["node_dirs"] == 363
+    assert summary["entry_points"] == 363
     assert summary["missing_entry_points"] == []
     assert summary["dangling_entry_points"] == []
     assert summary["routable"] >= 299
