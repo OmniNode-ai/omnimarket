@@ -1210,10 +1210,37 @@ jobs:
       - name: Check workflow module references (OMN-14176)
         run: python scripts/ci/check_workflow_module_refs.py
 
+  no-noncanonical-lifecycle-classes:
+    name: no-noncanonical-lifecycle-classes
+    # OMN-14350: non-canonical lifecycle-class ratchet. Unconditional (no needs/if)
+    # so it never skips; wired into the required "CI Summary" via needs: + a strict
+    # success-only verdict check (fail-closed on skipped/cancelled/failure).
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          version: "0.8.3"
+      - name: Ratchet non-canonical lifecycle-word classes against frozen allowlist (OMN-14350)
+        run: |
+          uv run --no-project \
+            --with 'omnibase-core @ git+https://github.com/OmniNode-ai/omnibase_core@63635097705d832e0ee9c4811093efb31349105c' \
+            python -m omnibase_core.validators.no_noncanonical_lifecycle_classes \
+            --check-stale \
+            --allowlist .onex_ratchets/noncanonical_class_allowlist.yaml \
+            src/omnimarket
+
   ci-summary:
     name: CI Summary
     runs-on: ubuntu-latest
-    needs: [occ-preflight, zone-filter, lint, typecheck, detect-changes, test, integration-guard, topic-naming-lint, runtime-sweep, core-only-install, contract-compliance, e2e-workflow-runner, golden-chains, sea-e2e-chains, generated-node-golden-chain, dep-health, aislop-sweep, workflow-module-refs]
+    needs: [occ-preflight, zone-filter, lint, typecheck, detect-changes, test, integration-guard, topic-naming-lint, runtime-sweep, core-only-install, contract-compliance, e2e-workflow-runner, golden-chains, sea-e2e-chains, generated-node-golden-chain, dep-health, aislop-sweep, workflow-module-refs, no-noncanonical-lifecycle-classes]
     if: always()
     steps:
       - name: Check CI results
@@ -1249,6 +1276,19 @@ jobs:
               echo "$NAME: $RESULT"
             fi
           done
+
+          # OMN-14350: strict fail-closed gate on the non-canonical lifecycle-class
+          # ratchet. Unlike the loop above (success||skipped both pass), the ratchet
+          # must be EXACTLY 'success'; skipped/cancelled/failure ALL block (a skipped
+          # ratchet = un-enforced = fail-closed). It is in CI Summary needs: so this
+          # job WAITS for it (no race).
+          RATCHET_RESULT="${{ needs.no-noncanonical-lifecycle-classes.result }}"
+          if [ "$RATCHET_RESULT" != "success" ]; then
+            echo "::error::no-noncanonical-lifecycle-classes ratchet did not pass (result: $RATCHET_RESULT) - fail-closed (OMN-14350)"
+            FAILED=true
+          else
+            echo "no-noncanonical-lifecycle-classes: $RATCHET_RESULT"
+          fi
 
           if [ "$FAILED" = "true" ]; then
             echo ""
