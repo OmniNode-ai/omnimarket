@@ -32,9 +32,7 @@ import logging
 import os
 from pathlib import Path
 from typing import Any
-from uuid import UUID, uuid4
-
-from omnibase_core.models.dispatch.model_handler_output import ModelHandlerOutput
+from uuid import UUID
 
 from omnimarket.config.service_endpoints import SLACK_CHAT_POST_MESSAGE_URL
 from omnimarket.inference.secret_store_resolver import resolve_api_key_async
@@ -45,7 +43,6 @@ from omnimarket.nodes.node_slack_publish_effect.models.model_slack_publish impor
 )
 
 _log = logging.getLogger(__name__)
-_HANDLER_ID = "node_slack_publish_effect"
 _CONTRACT_PATH = Path(__file__).resolve().parents[1] / "contract.yaml"
 
 # URL resolved from the service_endpoints authority (OMN-12806); mirrored by
@@ -347,6 +344,11 @@ class SlackPublishTransport:
 class HandlerSlackPublishEffect:
     """EFFECT: generic Slack publish — secret-store-backed, idempotent.
 
+    Dependencies are injected via constructor for testability (canonical thin
+    shape, OMN-14242). ``handle()`` takes a single typed ``ModelSlackPublish``
+    payload and returns a single typed ``ModelSlackPublishResult`` — no
+    envelope, no coercion; the runtime wraps.
+
     Args:
         transport: Optional concrete transport. When omitted, a
             ``SlackPublishTransport`` is built at ``handle()`` time with the
@@ -369,96 +371,83 @@ class HandlerSlackPublishEffect:
         self._ledger_lookup = ledger_lookup or _ledger_lookup
         self._ledger_write = ledger_write or _ledger_write
 
-    async def handle(self, command: ModelSlackPublish) -> ModelHandlerOutput[None]:
+    async def handle(self, payload: ModelSlackPublish) -> ModelSlackPublishResult:
         """Publish a pre-formed payload to Slack, deduping via the ledger."""
-        if not command.channel:
+        if not payload.channel:
             raise ValueError(
                 "ModelSlackPublish.channel is required and must not be empty. "
                 "Supply channel from overlay config; never hardcode it."
             )
-        if command.blocks is None and command.text is None:
+        if payload.blocks is None and payload.text is None:
             raise ValueError(
                 "ModelSlackPublish requires at least one of 'blocks' or 'text'."
             )
 
         # --- idempotency check -------------------------------------------------
-        prior_ts = self._ledger_lookup(command.idempotency_key)
+        prior_ts = self._ledger_lookup(payload.idempotency_key)
         if prior_ts is not None:
             _log.info(
                 "Slack publish deduped: idempotency_key=%r prior_ts=%s "
                 "correlation_id=%s",
-                command.idempotency_key,
+                payload.idempotency_key,
                 prior_ts,
-                command.correlation_id,
+                payload.correlation_id,
             )
-            result = ModelSlackPublishResult(
+            return ModelSlackPublishResult(
                 success=True,
                 ts=prior_ts,
                 deduped=True,
                 error_code=None,
-                correlation_id=command.correlation_id,
-            )
-            return ModelHandlerOutput.for_effect(
-                input_envelope_id=uuid4(),
-                correlation_id=command.correlation_id,
-                handler_id=_HANDLER_ID,
-                events=(result,),
+                correlation_id=payload.correlation_id,
             )
 
         # --- resolve transport -------------------------------------------------
         transport = await self._resolve_transport()
 
         # --- build Slack payload ----------------------------------------------
-        api_payload: dict[str, Any] = {"channel": command.channel}
-        if command.blocks is not None:
-            api_payload["blocks"] = command.blocks
-        if command.text is not None:
-            api_payload["text"] = command.text
-        if command.thread_ts is not None:
-            api_payload["thread_ts"] = command.thread_ts
+        api_payload: dict[str, Any] = {"channel": payload.channel}
+        if payload.blocks is not None:
+            api_payload["blocks"] = payload.blocks
+        if payload.text is not None:
+            api_payload["text"] = payload.text
+        if payload.thread_ts is not None:
+            api_payload["thread_ts"] = payload.thread_ts
 
         # --- POST --------------------------------------------------------------
         success, slack_ts, error_code = await transport.post(
-            api_payload, command.correlation_id
+            api_payload, payload.correlation_id
         )
 
         # --- persist to ledger on success -------------------------------------
         if success and slack_ts is not None:
             try:
-                self._ledger_write(command.idempotency_key, slack_ts)
+                self._ledger_write(payload.idempotency_key, slack_ts)
             except Exception as exc:
                 # Ledger write failure is non-fatal; the message was posted.
                 # Log as warning so operators can investigate without blocking.
                 _log.warning(
                     "Slack publish ledger write failed (message was posted): "
                     "idempotency_key=%r slack_ts=%s error=%s",
-                    command.idempotency_key,
+                    payload.idempotency_key,
                     slack_ts,
                     exc,
                 )
-
-        result = ModelSlackPublishResult(
-            success=success,
-            ts=slack_ts,
-            deduped=False,
-            error_code=error_code,
-            correlation_id=command.correlation_id,
-        )
 
         if not success:
             _log.error(
                 "Slack publish failed: error_code=%s idempotency_key=%r "
                 "correlation_id=%s",
                 error_code,
-                command.idempotency_key,
-                command.correlation_id,
+                payload.idempotency_key,
+                payload.correlation_id,
             )
 
-        return ModelHandlerOutput.for_effect(
-            input_envelope_id=uuid4(),
-            correlation_id=command.correlation_id,
-            handler_id=_HANDLER_ID,
-            events=(result,),
+        return ModelSlackPublishResult(
+            success=success,
+            ts=slack_ts,
+            deduped=False,
+            error_code=error_code,
+            correlation_id=payload.correlation_id,
         )
 
     async def _resolve_transport(self) -> SlackPublishTransport:
