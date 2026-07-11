@@ -2,7 +2,7 @@ name: node_pr_arm_gate_compute
 version: "1.0.0"
 description: "Fail-closed COMPUTE ARM/WITHHOLD decider — the merge-queue governor's sole arm-gate"
 pack: pr_lifecycle
-node_role: arm_gate
+node_role: compute
 display_name: "PR Arm Gate"
 omnibase_core_compat: ">=0.39.0,<1.0.0"
 entry_points:

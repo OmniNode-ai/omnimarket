@@ -44,20 +44,14 @@ from uuid import UUID, uuid4
 from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from omnimarket.events.repo_health import EnumFailureOrigin
-from omnimarket.nodes.node_pr_arm_gate_compute.models.model_arm_candidate import (
-    ModelArmCandidate,
-)
-from omnimarket.nodes.node_pr_arm_gate_compute.models.model_arm_gate_decision import (
-    EnumArmDecision,
-)
-from omnimarket.nodes.node_pr_arm_gate_compute.models.model_arm_gate_policy import (
+from omnimarket.events.pr_arm_gate import (
     EnumArmActionMode,
+    EnumArmDecision,
+    ModelArmCandidate,
     ModelArmGatePolicy,
-)
-from omnimarket.nodes.node_pr_arm_gate_compute.models.model_arm_gate_request import (
     ModelArmGateRequest,
 )
+from omnimarket.events.repo_health import EnumFailureOrigin
 from omnimarket.nodes.node_pr_lifecycle_orchestrator.handlers.occ_stamp_readback import (
     ProtocolOccStampReadback,
     _UnverifiedOccStampReadback,
@@ -2320,6 +2314,7 @@ class HandlerPrLifecycleOrchestrator:
 
         HandlerPrLifecycleMerge.handle(command: ModelPrMergeCommand) → ModelPrMergeResult.
         """
+        self._ensure_sub_handlers()
         assert self._merge is not None
         assert self._arm_gate is not None
 

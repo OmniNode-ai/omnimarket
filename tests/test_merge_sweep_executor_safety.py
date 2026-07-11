@@ -243,8 +243,11 @@ def test_concurrent_runs_different_scope_no_collision() -> None:
 
 
 @pytest.mark.asyncio
-async def test_re_arm_already_armed_pr_returns_success() -> None:
+async def test_re_arm_already_armed_pr_returns_success(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """Re-arming an already-armed PR: API success → handler reports armed=True (idempotent)."""
+    monkeypatch.setenv("OMNIMARKET_LEGACY_MERGE_ARM_ENABLED", "1")
     cmd = ModelAutoMergeArmCommand(
         pr_number=101,
         repo=_REPO,

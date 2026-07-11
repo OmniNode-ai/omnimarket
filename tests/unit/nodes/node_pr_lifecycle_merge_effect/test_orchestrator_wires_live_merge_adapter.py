@@ -22,10 +22,10 @@ from omnimarket.nodes.node_pr_lifecycle_merge_effect.handlers.handler_pr_lifecyc
 )
 from omnimarket.nodes.node_pr_lifecycle_orchestrator.handlers.handler_pr_lifecycle_orchestrator import (
     HandlerPrLifecycleOrchestrator,
-    TriageRecord,
 )
 from omnimarket.nodes.node_pr_lifecycle_orchestrator.protocols.protocol_sub_handlers import (
     EnumPrCategory,
+    TriageRecord,
 )
 
 
@@ -61,9 +61,17 @@ class TestOrchestratorWiresLiveMergeAdapter:
 
                 return _Result()
 
+        class _ArmGate:
+            async def handle(self, request: object) -> object:
+                from omnimarket.events.pr_arm_gate import EnumArmDecision
+
+                return EnumArmDecision.ARM
+
         recorder = _RecordingMerge()
         orch = HandlerPrLifecycleOrchestrator(
-            event_bus=MagicMock(spec=ProtocolEventBusPublisher), merge=recorder
+            event_bus=MagicMock(spec=ProtocolEventBusPublisher),
+            merge=recorder,
+            arm_gate=_ArmGate(),
         )
 
         result = await orch._call_merge_fanout(

@@ -20,14 +20,10 @@ from __future__ import annotations
 import logging
 from typing import Literal
 
-from omnimarket.nodes.node_pr_arm_gate_compute.models.model_arm_gate_decision import (
+from omnimarket.events.pr_arm_gate import (
+    EnumArmActionMode,
     EnumArmDecision,
     ModelArmGateDecision,
-)
-from omnimarket.nodes.node_pr_arm_gate_compute.models.model_arm_gate_policy import (
-    EnumArmActionMode,
-)
-from omnimarket.nodes.node_pr_arm_gate_compute.models.model_arm_gate_request import (
     ModelArmGateRequest,
 )
 

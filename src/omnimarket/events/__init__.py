@@ -35,6 +35,14 @@ from omnimarket.events.knowledge_context import (
     ModelKnowledgeContextState,
 )
 from omnimarket.events.ledger import ModelLedgerAppendedEvent, ModelLedgerHashComputed
+from omnimarket.events.pr_arm_gate import (
+    EnumArmActionMode,
+    EnumArmDecision,
+    ModelArmCandidate,
+    ModelArmGateDecision,
+    ModelArmGatePolicy,
+    ModelArmGateRequest,
+)
 from omnimarket.events.repo_health import (
     EnumFailureOrigin,
     ModelRepoHealthClassification,
@@ -75,6 +83,8 @@ from omnimarket.intelligence.events import (
 __all__ = [
     "DEFAULT_PREVIOUS_IMAGE",
     "EmitClient",
+    "EnumArmActionMode",
+    "EnumArmDecision",
     "EnumBuildSource",
     "EnumBundleStatus",
     "EnumDelegationJudgeVerdict",
@@ -87,6 +97,10 @@ __all__ = [
     "EnumRedeployScope",
     "EnumRedeployStatus",
     "EnumTestGenerationStatus",
+    "ModelArmCandidate",
+    "ModelArmGateDecision",
+    "ModelArmGatePolicy",
+    "ModelArmGateRequest",
     "ModelCheckpointRequest",
     "ModelDaemonHealthProbeResult",
     "ModelDashboardProjectionEvent",
