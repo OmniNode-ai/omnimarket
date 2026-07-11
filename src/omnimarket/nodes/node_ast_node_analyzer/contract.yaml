@@ -65,5 +65,8 @@ event_bus:
   publish_topics:
     - onex.evt.omnimarket.ast-node-analysis-completed.v1
 
+externally_consumed_topics:
+  - onex.evt.omnimarket.ast-node-analysis-completed.v1
+
 metadata:
   transport_type: kafka
