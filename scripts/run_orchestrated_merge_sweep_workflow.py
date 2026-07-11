@@ -21,6 +21,8 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
+from omnimarket.inference.secret_store_resolver import resolve_api_key
+from omnimarket.nodes.contract_topics import contract_secret_ref
 from omnimarket.nodes.node_ci_rerun_effect import HandlerCiRerunEffect
 from omnimarket.nodes.node_merge_sweep_auto_merge_arm_effect import (
     HandlerAutoMergeArmEffect,
@@ -73,6 +75,14 @@ from omnimarket.nodes.node_sweep_outcome_classify.models.model_sweep_outcome imp
 )
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
+_MERGE_SWEEP_CONTRACT_PATH = (
+    REPO_ROOT
+    / "src"
+    / "omnimarket"
+    / "nodes"
+    / "node_merge_sweep_compute"
+    / "contract.yaml"
+)
 
 
 def _default_state_dir() -> str:
@@ -112,7 +122,14 @@ def _run(argv: list[str], *, cwd: Path = REPO_ROOT, timeout: int = 120) -> str:
 
 
 def _load_open_prs(repos: Iterable[str]) -> list[ModelPRInfo]:
-    github = GitHubHttpClient()
+    github_ref = contract_secret_ref(_MERGE_SWEEP_CONTRACT_PATH, "GITHUB_TOKEN")
+    github_secret = resolve_api_key(github_ref)
+    if github_secret is None:
+        raise RuntimeError(
+            f"api_key_ref {github_ref!r} resolved to None; "
+            "ensure GITHUB_TOKEN is set in the secret store."
+        )
+    github = GitHubHttpClient(github_secret.get_secret_value())
     protection = BranchProtectionCache(github)
     prs: list[ModelPRInfo] = []
     for repo in repos:
