@@ -186,6 +186,7 @@ def _dispatch(port: LocalDelegationDispatchPort, cid: UUID) -> dict[str, object]
             wait=True,
             quality_contract_mode="extend_task_class",
             acceptance_criteria=(),
+            tenant_id=None,
         )
     )
 

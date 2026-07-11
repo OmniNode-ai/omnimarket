@@ -166,6 +166,7 @@ def test_unreachable_endpoint_does_not_hang_and_records_failed_evidence(
                 wait=True,
                 quality_contract_mode="extend_task_class",
                 acceptance_criteria=(),
+                tenant_id=None,
             ),
             timeout=5.0,
         )
@@ -247,6 +248,7 @@ def test_dispatch_offloads_blocking_call_off_the_event_loop(
                 wait=True,
                 quality_contract_mode="extend_task_class",
                 acceptance_criteria=(),
+                tenant_id=None,
             )
         )
         progress_task = asyncio.create_task(_concurrent_progress())
