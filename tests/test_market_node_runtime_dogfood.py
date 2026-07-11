@@ -121,14 +121,16 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
     # OMN-13940 adds node_pr_delegated_fix_effect (EFFECT; WS-D/D2 merge-sweep
     # delegation harness Slice 0 -- deterministic ruff-fix path re-entering
     # the existing pr_polish gate/verify/push flow): 349 -> 350.
+    # OMN-14285 adds node_occ_companion_compute (COMPUTE; pure deterministic
+    # OCC companion planning and attestation oracle for RSD-1): 350 -> 351.
     # OMN-14333 adds node_generated_code_validator and node_mypy_check_effect:
-    # 350 -> 352.
+    # 351 -> 353.
     # OMN-14325 adds node_contract_serialize_compute plus four pure compute
-    # leaves for compliant model-to-contract serialization: 352 -> 357.
+    # leaves for compliant model-to-contract serialization: 353 -> 358.
     # OMN-14336 adds node_hybrid_codegen_orchestrator,
-    # node_llm_codegen_effect, and node_codegen_file_writer_effect: 357 -> 360.
-    assert summary["node_dirs"] == 360
-    assert summary["entry_points"] == 360
+    # node_llm_codegen_effect, and node_codegen_file_writer_effect: 358 -> 361.
+    assert summary["node_dirs"] == 361
+    assert summary["entry_points"] == 361
     assert summary["missing_entry_points"] == []
     assert summary["dangling_entry_points"] == []
     assert summary["routable"] >= 299
