@@ -58,5 +58,13 @@ event_bus:
     - onex.cmd.omnimarket.codegen-file-write.v1
     - onex.evt.omnimarket.hybrid-codegen-completed.v1
 
+externally_consumed_topics:
+  # Owned by downstream tier-1/tier-3 contracts or the tier-4a.2 reducer adapter;
+  # this orchestrator intentionally emits bus commands instead of importing them.
+  - onex.cmd.omnimarket.generated-code-validation-requested.v1
+  - onex.cmd.omnimarket.mypy-check-requested.v1
+  - onex.cmd.omnimarket.contract-serialize-requested.v1
+  - onex.evt.omnimarket.hybrid-codegen-completed.v1
+
 metadata:
   transport_type: kafka
