@@ -34,15 +34,15 @@ class HandlerContentIngestion:
     """
 
     async def handle(
-        self, *, request: ModelIngestionRequest
+        self, payload: ModelIngestionRequest
     ) -> list[ModelExtractionResult]:
         results: list[ModelExtractionResult] = []
 
-        for source_path in request.source_paths:
+        for source_path in payload.source_paths:
             logger.info("Processing content source: %s", source_path)
             result = ModelExtractionResult(
                 source_path=source_path,
-                content_type=request.content_type,
+                content_type=payload.content_type,
                 extracted_text=None,
                 extraction_error="extraction_not_implemented",
             )

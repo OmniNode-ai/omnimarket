@@ -153,7 +153,7 @@ async def test_handler_does_not_count_unimplemented_extraction_as_success() -> N
         correlation_id="corr-1",
     )
 
-    results = await handler.handle(request=request)
+    results = await handler.handle(request)
     summary = await handler.summarize(results=results, request=request)
 
     assert results == [
