@@ -1,0 +1,19 @@
+name: node_advanced_features_resolve_compute
+version: "1.0.0"
+description: "Pure archetype-differentiated advanced-features resolver for contract serialization"
+omnibase_core_compat: ">=0.42.0,<0.43.0"
+entry_points:
+  onex.nodes:
+    node_advanced_features_resolve_compute: "omnimarket.nodes.node_advanced_features_resolve_compute"
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+dependencies:
+  - "omnibase_core>=0.42.0,<0.43.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["compute", "contract", "serialization", "advanced-features", "deterministic"]
+pack: "codegen"
+display_name: "Advanced Features Resolve Compute"
+node_role: "compute"

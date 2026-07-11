@@ -84,9 +84,11 @@ jobs:
             # the command substitution as the condition of this `if` is the
             # errexit-safe form -- bash does not trigger -e for a command that is
             # part of an if/while/until condition, regardless of ambient -e state.
+            response=""
+            status=0
             if response="$(
-              gh api "repos/${REPO}/commits/${HEAD_SHA}/check-runs?filter=latest&per_page=100" \
-                --jq 'first(.check_runs[] | select(.name == "occ-preflight / eligibility") | .conclusion) // ""' \
+              gh api "repos/${REPO}/commits/${HEAD_SHA}/check-runs?filter=latest&check_name=occ-preflight%20%2F%20eligibility&per_page=1" \
+                --jq 'first(.check_runs[] | .conclusion) // ""' \
                 2>&1
             )"; then
               status=0

@@ -1,0 +1,19 @@
+name: node_contract_assemble_compute
+version: "1.0.0"
+description: "Pure contract-document assembler (metadata + fragments + advanced features) to YAML"
+omnibase_core_compat: ">=0.42.0,<0.43.0"
+entry_points:
+  onex.nodes:
+    node_contract_assemble_compute: "omnimarket.nodes.node_contract_assemble_compute"
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+dependencies:
+  - "omnibase_core>=0.42.0,<0.43.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["compute", "contract", "serialization", "assemble", "deterministic"]
+pack: "codegen"
+display_name: "Contract Assemble Compute"
+node_role: "compute"
