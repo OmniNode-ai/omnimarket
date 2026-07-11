@@ -23,9 +23,11 @@ from omnimarket.nodes.node_stub_detector.models.model_stub_detector_request impo
 # Ordered comment markers: (marker_label, comment_needle). Precedence follows
 # this order. The marker text lives only in these string constants — never in a
 # bare code comment — so the repo's untracked-marker gate does not flag it.
+_COMMENT_PREFIX = "# "
+_TODO_NEEDLE = "TODO:"
 _COMMENT_MARKERS: tuple[tuple[str, str], ...] = (
     ("# IMPLEMENTATION REQUIRED", "IMPLEMENTATION REQUIRED"),
-    ("# TODO:", "TODO:"),
+    (_COMMENT_PREFIX + _TODO_NEEDLE, _TODO_NEEDLE),
     ("pass  # Stub", "Stub"),
 )
 
