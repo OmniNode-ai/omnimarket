@@ -26,9 +26,17 @@ from uuid import uuid4
 import pytest
 import yaml
 
+from omnimarket.nodes.node_occ_companion_compute.handlers.handler_occ_companion_attestation import (
+    HandlerOccCompanionAttestation,
+    verify_companion_attestation,
+)
 from omnimarket.nodes.node_occ_companion_compute.handlers.handler_occ_companion_compute import (
     HandlerOccCompanionCompute,
     compute_companion_plan,
+)
+from omnimarket.nodes.node_occ_companion_compute.models.model_occ_attestation_result import (
+    ModelOccAttestationRequest,
+    ModelOccAttestationResult,
 )
 from omnimarket.nodes.node_occ_companion_compute.models.model_occ_companion_plan import (
     ModelOccCompanionPlan,
@@ -104,6 +112,16 @@ class TestContractYaml:
         assert handler["name"] == "HandlerOccCompanionCompute"
         assert "module" in handler
 
+    def test_contract_declares_attestation_operation(self, contract_path: Path) -> None:
+        """OMN-14055: the attestation oracle is a second routed operation on
+        this same node, not a bespoke standalone class (rule #7a)."""
+        data = yaml.safe_load(contract_path.read_text())
+        handlers = data.get("handler_routing", {}).get("handlers", [])
+        ops = {h["operation"]: h["handler"]["name"] for h in handlers}
+        assert (
+            ops.get("verify_companion_attestation") == "HandlerOccCompanionAttestation"
+        )
+
     def test_contract_declares_io_models(self, contract_path: Path) -> None:
         data = yaml.safe_load(contract_path.read_text())
         assert data["input_model"]["name"] == "ModelOccCompanionRequest"
@@ -151,6 +169,14 @@ class TestHandlerImport:
 
     def test_handler_declares_compute_category(self) -> None:
         handler = HandlerOccCompanionCompute()
+        assert handler.handler_category == "COMPUTE"
+        assert handler.handler_type == "NODE_HANDLER"
+
+    def test_attestation_handler_class_exists(self) -> None:
+        assert HandlerOccCompanionAttestation is not None
+
+    def test_attestation_handler_declares_compute_category(self) -> None:
+        handler = HandlerOccCompanionAttestation()
         assert handler.handler_category == "COMPUTE"
         assert handler.handler_type == "NODE_HANDLER"
 
@@ -204,3 +230,43 @@ class TestGoldenChainReplay:
         )
         assert plan.no_op is False
         assert all(f.is_net_new for f in plan.companion_files)
+
+
+# ---------------------------------------------------------------------------
+# Golden chain replay: attestation oracle through the real handler.handle()
+# path (OMN-14055, second routed operation on this node).
+# ---------------------------------------------------------------------------
+
+
+class TestGoldenChainAttestationReplay:
+    async def test_attestation_handler_accepts_own_output_via_handle(self) -> None:
+        request = _request()
+        plan = compute_companion_plan(request)
+        handler = HandlerOccCompanionAttestation()
+        result = await handler.handle(
+            uuid4(),
+            ModelOccAttestationRequest(
+                observed_files=plan.companion_files, expected=request
+            ),
+        )
+        assert isinstance(result, ModelOccAttestationResult)
+        assert result.accepted is True
+
+    async def test_attestation_handler_matches_pure_function(self) -> None:
+        request = _request()
+        plan = compute_companion_plan(request)
+        via_handler = await HandlerOccCompanionAttestation().handle(
+            uuid4(),
+            ModelOccAttestationRequest(
+                observed_files=plan.companion_files, expected=request
+            ),
+        )
+        via_function = verify_companion_attestation(plan.companion_files, request)
+        assert via_handler == via_function
+
+    def test_attestation_rejects_a_companion_from_a_different_pr(self) -> None:
+        request_a = _request(pr_number=1706)
+        request_b = _request(pr_number=1707, pr_head_sha="e" * 40)
+        plan_a = compute_companion_plan(request_a)
+        result = verify_companion_attestation(plan_a.companion_files, request_b)
+        assert result.accepted is False
