@@ -20,9 +20,7 @@ from pathlib import Path
 
 from pydantic import BaseModel, ConfigDict
 
-from omnimarket.nodes.node_dependency_health_sweep.engine.ast_import_scanner import (
-    ASTImportScanner,
-)
+from omnimarket.analysis.ast_import_scanner import ASTImportScanner
 from omnimarket.nodes.node_dependency_health_sweep.models.model_graph_types import (
     ModelImportGraph,
 )

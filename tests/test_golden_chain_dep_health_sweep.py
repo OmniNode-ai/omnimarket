@@ -68,6 +68,9 @@ _EVT_FINDING_TOPIC: str = next(
 _EVT_COMPLETED_TOPIC: str = next(
     t for t in _CONTRACT["event_bus"]["publish_topics"] if "sweep-completed" in t
 )
+_EVT_FINDING_TOPIC: str = next(
+    t for t in _CONTRACT["event_bus"]["publish_topics"] if "dep-health-finding" in t
+)
 
 # ---------------------------------------------------------------------------
 # Fixture helpers
@@ -270,6 +273,18 @@ _EVIDENCE_DATA: dict[str, Any] = {
 @pytest.mark.unit
 class TestGoldenChainDepHealthSweep:
     """Golden chain: handler invoke → findings → event emission → projection."""
+
+    def test_contract_declares_finding_topic(self) -> None:
+        """OMN-13781 state-coverage gate: prove the per-finding topic is
+        really contract-declared by parsing the live contract.yaml (via the
+        module's own _load_contract), not by repeating the literal in a
+        self-tautological assertion."""
+        contract = _load_contract()
+        assert (
+            "onex.evt.omnimarket.dep-health-finding.v1"
+            in contract["event_bus"]["publish_topics"]
+        )
+        assert _EVT_FINDING_TOPIC in contract["event_bus"]["publish_topics"]
 
     def test_a_clean_fixture(self, tmp_path: Path) -> None:
         """Clean fixture: valid import chain + matched pub/sub → status=='clean'."""

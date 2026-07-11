@@ -1,6 +1,13 @@
 # SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""AST-based import scanner — fallback when graphify is unavailable.
+"""AST-based import scanner — exact filesystem-path resolution.
+
+Promoted out of node_dependency_health_sweep/engine (OMN-14295) into a shared
+location so node_architecture_graph_populate_effect can reuse the same
+exact-resolution algorithm for its IMPORTS edges instead of duplicating a
+coarser ast.walk that produced edges MERGEing against never-created nodes.
+Originally built under OMN-11046 to fix an O(files x imports x modules)
+edge-count explosion from prefix matching.
 
 Walks all .py files under root, extracts import edges via ast.parse + ast.walk,
 and identifies orphan modules (no inbound edges, not entry-point __main__).
@@ -11,9 +18,7 @@ from __future__ import annotations
 import ast
 from pathlib import Path
 
-from omnimarket.nodes.node_dependency_health_sweep.models.model_graph_types import (
-    ModelImportGraph,
-)
+from omnimarket.models.model_import_graph import ModelImportGraph
 
 
 def _module_name(path: Path, root: Path) -> str:
