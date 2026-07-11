@@ -31,11 +31,15 @@ from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.handler_admin_merge 
 )
 from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.handler_auto_rebase import (
     HandlerAutoRebase,
+    ModelRebaseRequest,
     ModelRebaseResult,
 )
 from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.handler_comment_resolution import (
     HandlerCommentResolution,
     ModelCommentResolutionResult,
+)
+from omnimarket.nodes.node_pr_lifecycle_fix_effect.models.model_admin_merge_request import (
+    ModelAdminMergeRequest,
 )
 from omnimarket.nodes.node_pr_lifecycle_inventory_compute.models.model_pr_lifecycle_inventory import (
     ModelStuckQueueEntry,
@@ -72,7 +76,9 @@ class TestAutoRebaseStalesBranch:
         handler = HandlerAutoRebase(adapter=adapter)
 
         result = await handler.handle(
-            pr_number=42, repo="OmniNode-ai/omnimarket", dry_run=True
+            ModelRebaseRequest(
+                pr_number=42, repo="OmniNode-ai/omnimarket", dry_run=True
+            )
         )
 
         assert isinstance(result, ModelRebaseResult)
@@ -90,7 +96,9 @@ class TestAutoRebaseStalesBranch:
 
         handler = HandlerAutoRebase(adapter=MockRebaseAdapter())
         result = await handler.handle(
-            pr_number=99, repo="OmniNode-ai/omniclaude", dry_run=False
+            ModelRebaseRequest(
+                pr_number=99, repo="OmniNode-ai/omniclaude", dry_run=False
+            )
         )
 
         assert result.success is True
@@ -106,7 +114,9 @@ class TestAutoRebaseStalesBranch:
 
         handler = HandlerAutoRebase(adapter=FailingAdapter())
         result = await handler.handle(
-            pr_number=7, repo="OmniNode-ai/omnibase_core", dry_run=False
+            ModelRebaseRequest(
+                pr_number=7, repo="OmniNode-ai/omnibase_core", dry_run=False
+            )
         )
 
         assert result.success is False
@@ -400,9 +410,11 @@ class TestAdminMergeFallbackOptIn:
 
         with caplog.at_level(logging.WARNING):
             result = await handler.handle(
-                stuck_prs=[stuck_pr],
-                enable_admin_merge_fallback=True,
-                dry_run=True,
+                ModelAdminMergeRequest(
+                    stuck_prs=[stuck_pr],
+                    enable_admin_merge_fallback=True,
+                    dry_run=True,
+                )
             )
 
         assert isinstance(result, ModelAdminMergeResult)
@@ -421,9 +433,11 @@ class TestAdminMergeFallbackOptIn:
         handler = HandlerAdminMerge(adapter=MockAdminAdapter())
 
         result = await handler.handle(
-            stuck_prs=[stuck_pr],
-            enable_admin_merge_fallback=False,
-            dry_run=False,
+            ModelAdminMergeRequest(
+                stuck_prs=[stuck_pr],
+                enable_admin_merge_fallback=False,
+                dry_run=False,
+            )
         )
 
         assert result.prs_merged == 0
@@ -444,9 +458,11 @@ class TestAdminMergeFallbackOptIn:
         handler = HandlerAdminMerge(adapter=adapter)
 
         result = await handler.handle(
-            stuck_prs=[stuck_pr],
-            enable_admin_merge_fallback=True,
-            dry_run=False,
+            ModelAdminMergeRequest(
+                stuck_prs=[stuck_pr],
+                enable_admin_merge_fallback=True,
+                dry_run=False,
+            )
         )
 
         assert result.prs_merged == 1

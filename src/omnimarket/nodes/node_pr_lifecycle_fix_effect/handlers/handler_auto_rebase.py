@@ -40,8 +40,18 @@ def _resolve_github_token() -> str:
 
 
 # ---------------------------------------------------------------------------
-# Result model
+# Request / Result models
 # ---------------------------------------------------------------------------
+
+
+class ModelRebaseRequest(BaseModel):
+    """Request to auto-rebase a single stale PR branch."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    pr_number: int
+    repo: str
+    dry_run: bool = False
 
 
 class ModelRebaseResult(BaseModel):
@@ -136,19 +146,19 @@ class HandlerAutoRebase:
     def correlation_id(self) -> UUID | None:
         return None
 
-    async def handle(
-        self, *, pr_number: int, repo: str, dry_run: bool = False
-    ) -> ModelRebaseResult:
+    async def handle(self, payload: ModelRebaseRequest) -> ModelRebaseResult:
         """Rebase a stale PR branch.
 
         Args:
-            pr_number: GitHub PR number.
-            repo: Repo slug (owner/repo).
-            dry_run: When True, log intent and return success without calling gh.
+            payload: Typed request carrying pr_number, repo, and dry_run.
 
         Returns:
             ModelRebaseResult indicating success or failure.
         """
+        pr_number = payload.pr_number
+        repo = payload.repo
+        dry_run = payload.dry_run
+
         logger.info(
             "auto-rebase: pr=%s repo=%s dry_run=%s",
             pr_number,
@@ -193,6 +203,7 @@ class HandlerAutoRebase:
 
 __all__: list[str] = [
     "HandlerAutoRebase",
+    "ModelRebaseRequest",
     "ModelRebaseResult",
     "ProtocolRebaseAdapter",
 ]
