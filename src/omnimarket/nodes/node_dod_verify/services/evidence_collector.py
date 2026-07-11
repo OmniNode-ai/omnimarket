@@ -986,8 +986,9 @@ class EvidenceCollector:
     def _verify_live_pr(self, repo: str, pr_number: int) -> tuple[bool, str]:
         """Return ``(ok, message)`` for the live state of ``repo#pr_number``.
 
-        ``ok`` is True only when the PR is MERGED AND every status check is green.
-        A failure to resolve the merge state (gh missing/auth/network/not-found)
+        ``ok`` is True only when the PR is MERGED AND every REQUIRED status check
+        is green (OMN-14390) — a red non-required/informational check does not
+        block. A failure to resolve the merge state (gh missing/auth/network/not-found)
         fails closed.
         """
         merge = self._fetch_pr_merge_state(repo, pr_number)
@@ -1064,12 +1065,16 @@ class EvidenceCollector:
         repo: str,
         pr_number: int,
     ) -> tuple[bool, str]:
-        """Return ``(all_green, detail)`` for ``repo#pr_number`` status checks.
+        """Return ``(all_green, detail)`` for ``repo#pr_number`` REQUIRED status checks.
 
-        Fails closed: any non-green check (FAILURE/CANCELLED/PENDING/...), an
-        empty check set, or an inability to enumerate checks yields ``False``.
-        ``gh pr checks`` exits 0 even with failing rows, so the JSON states are
-        parsed rather than the exit code.
+        Scoped to required checks only via ``gh pr checks --required`` (OMN-14390)
+        — a non-green *non-required* check (e.g. an informational/advisory job)
+        must never fail a Done-flip; only branch-protection-required contexts are
+        load-bearing here. Fails closed: any non-green required check
+        (FAILURE/CANCELLED/PENDING/...), an empty required-check set, or an
+        inability to enumerate checks yields ``False``. ``gh pr checks`` exits 0
+        even with failing rows, so the JSON states are parsed rather than the
+        exit code.
         """
         try:
             result = subprocess.run(
@@ -1080,6 +1085,7 @@ class EvidenceCollector:
                     str(pr_number),
                     "--repo",
                     repo,
+                    "--required",
                     "--json",
                     "name,state",
                 ],
