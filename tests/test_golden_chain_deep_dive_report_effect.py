@@ -154,10 +154,8 @@ async def test_report_with_activity_emits_markdown_and_metrics() -> None:
     handler = HandlerDeepDiveReportEffect(data_source=ds)
     cmd = ModelDeepDiveReportCommand(correlation_id=uuid4(), root="/ws")
 
-    out = await handler.handle(cmd)
+    event = await handler.handle(cmd)
 
-    assert len(out.events) == 1
-    event = out.events[0]
     assert isinstance(event, ModelDeepDiveReportResultEvent)
     assert event.quiet_day is False
     assert event.report_date == "2026-06-28"
@@ -180,8 +178,7 @@ async def test_quiet_day_still_emits_payload() -> None:
     handler = HandlerDeepDiveReportEffect(data_source=ds)
     cmd = ModelDeepDiveReportCommand(correlation_id=uuid4(), root="/ws")
 
-    out = await handler.handle(cmd)
-    event = out.events[0]
+    event = await handler.handle(cmd)
     assert isinstance(event, ModelDeepDiveReportResultEvent)
     assert event.quiet_day is True
     assert "Quiet day" in event.report_markdown
@@ -194,8 +191,7 @@ async def test_dry_run_performs_no_reads() -> None:
     handler = HandlerDeepDiveReportEffect(data_source=ds)
     cmd = ModelDeepDiveReportCommand(correlation_id=uuid4(), root="/ws", dry_run=True)
 
-    out = await handler.handle(cmd)  # must not raise (no reads attempted)
-    event = out.events[0]
+    event = await handler.handle(cmd)  # must not raise (no reads attempted)
     assert isinstance(event, ModelDeepDiveReportResultEvent)
     assert event.quiet_day is True
     assert "discover_repos" not in ds.calls
@@ -206,8 +202,7 @@ async def test_result_survives_eventbus_inmemory_transit() -> None:
     ds = MockReportDataSource(_active_repo_days(), _green_drift())
     handler = HandlerDeepDiveReportEffect(data_source=ds)
     cmd = ModelDeepDiveReportCommand(correlation_id=uuid4(), root="/ws")
-    out = await handler.handle(cmd)
-    event = out.events[0]
+    event = await handler.handle(cmd)
     assert isinstance(event, ModelDeepDiveReportResultEvent)
 
     bus = EventBusInmemory()
@@ -230,3 +225,13 @@ async def test_result_survives_eventbus_inmemory_transit() -> None:
     assert len(received) == 1
     assert received[0].metrics.total_prs == 2
     assert received[0].correlation_id == event.correlation_id
+
+
+def test_contract_declares_both_terminal_event_topics() -> None:
+    """The EFFECT's contract declares both terminal-event topics it can emit on:
+    the success/completed topic and the failure topic."""
+    import omnimarket.nodes.node_deep_dive_report_effect as node_pkg
+
+    contract_text = (Path(node_pkg.__file__).parent / "contract.yaml").read_text()
+    assert "onex.evt.omnimarket.deep-dive-report-completed.v1" in contract_text
+    assert "onex.evt.omnimarket.deep-dive-report-failed.v1" in contract_text
