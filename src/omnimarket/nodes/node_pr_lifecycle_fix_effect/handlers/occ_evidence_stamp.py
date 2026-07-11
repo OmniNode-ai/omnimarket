@@ -136,6 +136,61 @@ _SELF_BIND_RECEIPT_TEMPLATE = textwrap.dedent("""\
     branch: "{branch}"
     """)
 
+# RSD compute-oracle templates (OMN-14285). These include the per-entry hash
+# field required by the node_occ_companion_compute attestation oracle, but they
+# still live in this sanctioned rendering seam so the repo has exactly one OCC
+# companion authoring-template home.
+_COMPUTE_CONTRACT_TEMPLATE = textwrap.dedent("""\
+    ---
+    schema_version: "1.0.0"
+    ticket_id: "{ticket_id}"
+    title: "Autobind OCC evidence for {ticket_id}"
+    summary: >
+      OCC contract authored by node_occ_companion_compute (OMN-14285) for {repo}
+      PR #{pr_number}.
+    is_seam_ticket: false
+    interface_change: false
+    interfaces_touched: []
+    evidence_requirements:
+      - kind: "ci"
+        description: "PR #{pr_number} CI checks green"
+        command: "gh pr checks {pr_number} --repo {repo}"
+    emergency_bypass:
+      enabled: false
+      justification: ""
+      follow_up_ticket_id: ""
+    dod_evidence:
+      - id: "{evidence_id}"
+        description: "PR #{pr_number} on {repo} — Evidence-Source autobind."
+        source: "generated"
+        checks:
+          - check_type: "command"
+            check_value: "gh pr view {pr_number} --repo {repo} --json number,state"
+    """)
+
+_COMPUTE_RECEIPT_TEMPLATE = textwrap.dedent("""\
+    ---
+    schema_version: "1.0.0"
+    ticket_id: "{ticket_id}"
+    evidence_item_id: "{evidence_id}"
+    check_type: "command"
+    check_value: "{check_value}"
+    contract_sha256: "sha256:{contract_sha256}"
+    contract_entry_sha256: "sha256:{contract_entry_sha256}"
+    status: PASS
+    run_timestamp: "{run_timestamp}"
+    commit_sha: "{commit_sha}"
+    runner: "{runner}"
+    verifier: "{verifier}"
+    probe_command: "{probe_command}"
+    probe_stdout: |
+      {probe_stdout}
+    actual_output: "{actual_output}"
+    exit_code: {exit_code}
+    pr_number: {pr_number}
+    branch: "{branch}"
+    """)
+
 # Default authoring identities. verifier MUST differ from runner (the receipt-gate
 # self-attestation guard, OMN-12791) — enforced in the emitter, not here.
 DEFAULT_RUNNER = "node_pr_lifecycle_fix_effect"
@@ -215,6 +270,56 @@ def render_self_bind_receipt(
         exit_code=exit_code,
         runner=runner,
         verifier=verifier,
+    )
+
+
+def render_compute_companion_contract(
+    *, ticket_id: str, repo: str, pr_number: int, evidence_id: str
+) -> str:
+    """Render the RSD compute-oracle companion contract YAML."""
+    return _COMPUTE_CONTRACT_TEMPLATE.format(
+        ticket_id=ticket_id,
+        repo=repo,
+        pr_number=pr_number,
+        evidence_id=evidence_id,
+    )
+
+
+def render_compute_receipt(
+    *,
+    ticket_id: str,
+    evidence_id: str,
+    check_value: str,
+    contract_sha256: str,
+    contract_entry_sha256: str,
+    run_timestamp: str,
+    commit_sha: str,
+    runner: str,
+    verifier: str,
+    probe_command: str,
+    probe_stdout: str,
+    actual_output: str,
+    exit_code: int,
+    pr_number: int,
+    branch: str,
+) -> str:
+    """Render the RSD compute-oracle receipt YAML."""
+    return _COMPUTE_RECEIPT_TEMPLATE.format(
+        ticket_id=ticket_id,
+        evidence_id=evidence_id,
+        check_value=check_value,
+        contract_sha256=contract_sha256,
+        contract_entry_sha256=contract_entry_sha256,
+        run_timestamp=run_timestamp,
+        commit_sha=commit_sha,
+        runner=runner,
+        verifier=verifier,
+        probe_command=probe_command,
+        probe_stdout=probe_stdout,
+        actual_output=actual_output,
+        exit_code=exit_code,
+        pr_number=pr_number,
+        branch=branch,
     )
 
 

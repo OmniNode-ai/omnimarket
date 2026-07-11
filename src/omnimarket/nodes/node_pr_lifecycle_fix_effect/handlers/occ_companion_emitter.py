@@ -578,7 +578,7 @@ class OccCompanionEmitter:
         if (
             merged
             and isinstance(merge_commit_sha, str)
-            and _SHA_RE.match(merge_commit_sha)
+            and SHA_RE.match(merge_commit_sha)
         ):
             return merge_commit_sha
         return head_sha
