@@ -38,9 +38,7 @@ _BASE = {
 def _classify(**kwargs: object) -> ModelSweepOutcomeClassified:
     req = ModelSweepOutcomeInput(**{**_BASE, **kwargs})
     handler = HandlerSweepOutcomeClassify()
-    output = handler.handle(req)
-    assert output.result is not None
-    result = output.result
+    result = handler.handle(req)
     assert isinstance(result, ModelSweepOutcomeClassified)
     return result
 
@@ -143,12 +141,8 @@ def test_handler_is_pure_no_io() -> None:
         total_prs=5,
     )
     handler = HandlerSweepOutcomeClassify()
-    out1 = handler.handle(req)
-    out2 = handler.handle(req)
-    assert out1.result is not None
-    assert out2.result is not None
-    r1 = out1.result
-    r2 = out2.result
+    r1 = handler.handle(req)
+    r2 = handler.handle(req)
     assert isinstance(r1, ModelSweepOutcomeClassified)
     assert isinstance(r2, ModelSweepOutcomeClassified)
     assert r1.outcome == r2.outcome

@@ -264,10 +264,7 @@ async def test_golden_chain_3_prs_full_pipeline() -> None:
         patch("pathlib.Path.exists", return_value=True),
     ):
         rebase_handler = HandlerRebaseEffect()
-        rebase_output = await rebase_handler.handle(rebase_cmd)
-
-    assert len(rebase_output.events) == 1
-    rebase_event = rebase_output.events[0]
+        rebase_event = await rebase_handler.handle(rebase_cmd)
     assert rebase_event.pr_number == 200
 
     # --- Node 4: CI rerun effect ---
@@ -281,17 +278,15 @@ async def test_golden_chain_3_prs_full_pipeline() -> None:
         ),
     ):
         ci_handler = HandlerCiRerunEffect()
-        ci_output = await ci_handler.handle(ci_cmd)
+        ci_event = await ci_handler.handle(ci_cmd)
 
-    assert len(ci_output.events) == 1
-    ci_event = ci_output.events[0]
     assert ci_event.rerun_triggered is True
     assert ci_event.pr_number == 300
 
     # --- Node 5: COMPUTE — classify each completion event ---
     classify_handler = HandlerSweepOutcomeClassify()
 
-    arm_classified_output = classify_handler.handle(
+    arm_classified = classify_handler.handle(
         ModelSweepOutcomeInput(
             event_type="armed",
             armed=arm_event.armed,
@@ -303,11 +298,9 @@ async def test_golden_chain_3_prs_full_pipeline() -> None:
             total_prs=arm_event.total_prs,
         )
     )
-    assert arm_classified_output.result is not None
-    arm_classified = arm_classified_output.result
     assert arm_classified.outcome == EnumSweepOutcome.ARMED
 
-    rebase_classified_output = classify_handler.handle(
+    rebase_classified = classify_handler.handle(
         ModelSweepOutcomeInput(
             event_type="rebase_completed",
             success=rebase_event.success,
@@ -320,8 +313,6 @@ async def test_golden_chain_3_prs_full_pipeline() -> None:
             total_prs=rebase_event.total_prs,
         )
     )
-    assert rebase_classified_output.result is not None
-    rebase_classified = rebase_classified_output.result
     # Either REBASED (success) or STUCK/FAILED (conflict or failure)
     assert rebase_classified.outcome in {
         EnumSweepOutcome.REBASED,
@@ -329,7 +320,7 @@ async def test_golden_chain_3_prs_full_pipeline() -> None:
         EnumSweepOutcome.FAILED,
     }
 
-    ci_classified_output = classify_handler.handle(
+    ci_classified = classify_handler.handle(
         ModelSweepOutcomeInput(
             event_type="ci_rerun_triggered",
             rerun_triggered=ci_event.rerun_triggered,
@@ -341,8 +332,6 @@ async def test_golden_chain_3_prs_full_pipeline() -> None:
             total_prs=ci_event.total_prs,
         )
     )
-    assert ci_classified_output.result is not None
-    ci_classified = ci_classified_output.result
     assert ci_classified.outcome == EnumSweepOutcome.CI_RERUN_TRIGGERED
 
     # --- Node 6: REDUCER — aggregate all 3 outcomes ---

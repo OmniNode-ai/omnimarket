@@ -21,6 +21,8 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
+from omnimarket.inference.secret_store_resolver import resolve_api_key
+from omnimarket.nodes.contract_topics import contract_secret_ref
 from omnimarket.nodes.node_ci_rerun_effect import HandlerCiRerunEffect
 from omnimarket.nodes.node_merge_sweep_auto_merge_arm_effect import (
     HandlerAutoMergeArmEffect,
@@ -73,6 +75,14 @@ from omnimarket.nodes.node_sweep_outcome_classify.models.model_sweep_outcome imp
 )
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
+_MERGE_SWEEP_CONTRACT_PATH = (
+    REPO_ROOT
+    / "src"
+    / "omnimarket"
+    / "nodes"
+    / "node_merge_sweep_compute"
+    / "contract.yaml"
+)
 
 
 def _default_state_dir() -> str:
@@ -112,7 +122,14 @@ def _run(argv: list[str], *, cwd: Path = REPO_ROOT, timeout: int = 120) -> str:
 
 
 def _load_open_prs(repos: Iterable[str]) -> list[ModelPRInfo]:
-    github = GitHubHttpClient()
+    github_ref = contract_secret_ref(_MERGE_SWEEP_CONTRACT_PATH, "GITHUB_TOKEN")
+    github_secret = resolve_api_key(github_ref)
+    if github_secret is None:
+        raise RuntimeError(
+            f"api_key_ref {github_ref!r} resolved to None; "
+            "ensure GITHUB_TOKEN is set in the secret store."
+        )
+    github = GitHubHttpClient(github_secret.get_secret_value())
     protection = BranchProtectionCache(github)
     prs: list[ModelPRInfo] = []
     for repo in repos:
@@ -378,12 +395,7 @@ def _effect_event_to_input(event: Any) -> ModelSweepOutcomeInput:
 
 
 def _classify_outcome(request: ModelSweepOutcomeInput) -> ModelSweepOutcomeClassified:
-    output = HandlerSweepOutcomeClassify().handle(request)
-    if output.result is None:
-        raise RuntimeError("node_sweep_outcome_classify returned no result")
-    result = output.result
-    if not isinstance(result, ModelSweepOutcomeClassified):
-        raise TypeError(f"unexpected outcome type: {type(result).__name__}")
+    result = HandlerSweepOutcomeClassify().handle(request)
     _log(
         "node_sweep_outcome_classify",
         f"{result.repo}#{result.pr_number} source={result.source_event_type} "
@@ -449,17 +461,28 @@ async def _execute_command(
         )
         output = await HandlerAutoMergeArmEffect().handle(command)
     elif isinstance(command, ModelCiRerunCommand):
+        # node_ci_rerun_effect is canonical thin shape (OMN-14242): handle()
+        # returns the typed ModelCiRerunTriggeredEvent directly, not a
+        # ModelHandlerOutput envelope, so it can't join the shared
+        # `for event in output.events` loop below.
         _log(
             "node_ci_rerun_effect",
             f"executing {command.repo}#{command.pr_number} run={command.run_id_github}",
         )
-        output = await HandlerCiRerunEffect().handle(command)
+        completion = await HandlerCiRerunEffect().handle(command)
+        _log("node_ci_rerun_effect", _dump_model(completion))
+        return [_classify_outcome(_effect_event_to_input(completion))]
     elif isinstance(command, ModelRebaseCommand):
         _log(
             "node_rebase_effect",
             f"executing {command.repo}#{command.pr_number} head={command.head_ref_name}",
         )
-        output = await HandlerRebaseEffect().handle(command)
+        # node_rebase_effect is canonical thin shape (OMN-14242): handle()
+        # returns the typed completion event directly, not a ModelHandlerOutput
+        # envelope — the runtime wraps it.
+        rebase_event = await HandlerRebaseEffect().handle(command)
+        _log("node_rebase_effect", _dump_model(rebase_event))
+        return [_classify_outcome(_effect_event_to_input(rebase_event))]
     else:
         _log(type(command).__name__, f"no live effect wired {_dump_model(command)}")
         return []
