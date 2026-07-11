@@ -121,10 +121,9 @@ async def test_healthy_probe_resolves_healthy() -> None:
     )
     handler = HandlerProdHealthFactResolver(prober=prober)
     cid = uuid4()
-    output = await handler.handle(
+    event = await handler.handle(
         ModelProdHealthResolveCommand(correlation_id=cid, evaluated_at=_EVALUATED_AT)
     )
-    event = output.events[0]
     assert isinstance(event, ModelProdHealthResolvedEvent)
     assert event.health_fact.health is EnumProdHealth.HEALTHY
     assert event.health_fact.lane is EnumRuntimeLane.PROD
@@ -137,12 +136,12 @@ async def test_healthy_probe_resolves_healthy() -> None:
 async def test_failed_probe_resolves_unhealthy() -> None:
     prober = _StubProber(ModelProbeResult(reachable=True, status_code=500))
     handler = HandlerProdHealthFactResolver(prober=prober)
-    output = await handler.handle(
+    event = await handler.handle(
         ModelProdHealthResolveCommand(
             correlation_id=uuid4(), evaluated_at=_EVALUATED_AT
         )
     )
-    assert output.events[0].health_fact.health is EnumProdHealth.UNHEALTHY
+    assert event.health_fact.health is EnumProdHealth.UNHEALTHY
 
 
 @pytest.mark.asyncio
@@ -151,12 +150,12 @@ async def test_unreachable_probe_resolves_unknown_not_unhealthy() -> None:
         ModelProbeResult(reachable=False, status_code=None, detail="URLError")
     )
     handler = HandlerProdHealthFactResolver(prober=prober)
-    output = await handler.handle(
+    event = await handler.handle(
         ModelProdHealthResolveCommand(
             correlation_id=uuid4(), evaluated_at=_EVALUATED_AT
         )
     )
-    health = output.events[0].health_fact.health
+    health = event.health_fact.health
     assert health is not EnumProdHealth.UNHEALTHY
     assert health is EnumProdHealth.UNKNOWN
 
@@ -165,15 +164,15 @@ async def test_unreachable_probe_resolves_unknown_not_unhealthy() -> None:
 async def test_raising_prober_resolves_unknown_not_unhealthy() -> None:
     prober = _StubProber(None, exc=TimeoutError("probe timed out"))
     handler = HandlerProdHealthFactResolver(prober=prober)
-    output = await handler.handle(
+    event = await handler.handle(
         ModelProdHealthResolveCommand(
             correlation_id=uuid4(), evaluated_at=_EVALUATED_AT
         )
     )
-    health = output.events[0].health_fact.health
+    health = event.health_fact.health
     assert health is not EnumProdHealth.UNHEALTHY
     assert health is EnumProdHealth.UNKNOWN
-    assert output.events[0].health_fact.source == _PROD_HEALTH_URL
+    assert event.health_fact.source == _PROD_HEALTH_URL
 
 
 @pytest.mark.asyncio
@@ -283,10 +282,9 @@ async def test_golden_chain_resolved_fact_reaches_gate_command_not_start() -> No
     # The resolver EFFECT probes live prod and finds it DOWN (confirmed unhealthy).
     prober = _StubProber(ModelProbeResult(reachable=True, status_code=503))
     handler = HandlerProdHealthFactResolver(prober=prober)
-    output = await handler.handle(
+    resolved = await handler.handle(
         ModelProdHealthResolveCommand(correlation_id=cid, evaluated_at=_EVALUATED_AT)
     )
-    resolved = output.events[0]
     assert isinstance(resolved, ModelProdHealthResolvedEvent)
 
     # The orchestrator stamps the RESOLVED fact onto the gate command — NOT the
@@ -305,3 +303,15 @@ async def test_golden_chain_resolved_fact_reaches_gate_command_not_start() -> No
         gate_command.prod_health.source
         == lane_target(EnumRuntimeLane.PROD).health_targets[0]
     )
+
+
+def test_contract_declares_both_terminal_event_topics() -> None:
+    """The EFFECT's contract declares both terminal-event topics it can emit on:
+    the success/resolved topic and the resolve-failed topic."""
+    from pathlib import Path
+
+    import omnimarket.nodes.node_prod_health_fact_resolver_effect as node_pkg
+
+    contract_text = (Path(node_pkg.__file__).parent / "contract.yaml").read_text()
+    assert "onex.evt.omnimarket.prod-health-resolved.v1" in contract_text
+    assert "onex.evt.omnimarket.prod-health-resolve-failed.v1" in contract_text

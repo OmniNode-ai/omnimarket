@@ -23,7 +23,8 @@ The handler:
   3. classifies the probe result through the pure ``classify_health``;
   4. stamps ``probed_at`` from the command's deterministic ``evaluated_at`` and
      records the probed endpoint as the un-forgeable ``source``;
-  5. emits ``ModelProdHealthResolvedEvent`` carrying the resolved fact.
+  5. returns the ``ModelProdHealthResolvedEvent`` carrying the resolved fact —
+     the runtime wraps the single typed return into the dispatch envelope.
 """
 
 from __future__ import annotations
@@ -32,9 +33,6 @@ import asyncio
 import urllib.error
 import urllib.request
 from typing import Protocol
-from uuid import uuid4
-
-from omnibase_core.models.dispatch.model_handler_output import ModelHandlerOutput
 
 from omnimarket.events.runtime_deployment import (
     EnumRuntimeLane,
@@ -48,7 +46,6 @@ from omnimarket.nodes.node_prod_health_fact_resolver_effect.health_resolver impo
     classify_health,
 )
 
-_HANDLER_ID = "node_prod_health_fact_resolver_effect"
 _PROBE_TIMEOUT = 10.0
 
 
@@ -112,9 +109,15 @@ class HandlerProdHealthFactResolver:
         self._prober = prober
 
     async def handle(
-        self, command: ModelProdHealthResolveCommand
-    ) -> ModelHandlerOutput[None]:
-        """Probe prod-lane health and emit the resolved fact."""
+        self, payload: ModelProdHealthResolveCommand
+    ) -> ModelProdHealthResolvedEvent:
+        """Probe prod-lane health and return the resolved fact event.
+
+        ``payload`` is named to match the runtime's single-parameter dispatch
+        convention (OMN-13276); no envelope, no coercion — the runtime wraps
+        this single typed return into the dispatch envelope.
+        """
+        command = payload
         prober = self._prober if self._prober is not None else HttpHealthProber()
         target = lane_target(EnumRuntimeLane.PROD)
         # The main runtime health endpoint is the canonical liveness signal.
@@ -135,15 +138,9 @@ class HandlerProdHealthFactResolver:
             probed_at=command.evaluated_at,
             source=health_url,
         )
-        event = ModelProdHealthResolvedEvent(
+        return ModelProdHealthResolvedEvent(
             correlation_id=command.correlation_id,
             health_fact=fact,
-        )
-        return ModelHandlerOutput.for_effect(
-            input_envelope_id=uuid4(),
-            correlation_id=command.correlation_id,
-            handler_id=_HANDLER_ID,
-            events=(event,),
         )
 
 
