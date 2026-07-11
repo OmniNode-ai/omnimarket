@@ -1,0 +1,19 @@
+name: node_contract_serialize_compute
+version: "1.0.0"
+description: "Pure model-to-contract serializer composing render, resolve, assemble, digest, and lint"
+omnibase_core_compat: ">=0.42.0,<0.43.0"
+entry_points:
+  onex.nodes:
+    node_contract_serialize_compute: "omnimarket.nodes.node_contract_serialize_compute"
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+dependencies:
+  - "omnibase_core>=0.42.0,<0.43.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["compute", "contract", "serialization", "keystone", "deterministic"]
+pack: "codegen"
+display_name: "Contract Serialize Compute"
+node_role: "compute"
