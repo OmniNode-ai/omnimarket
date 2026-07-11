@@ -5,7 +5,7 @@ requires-python = "==3.12.*"
 [manifest]
 overrides = [
     { name = "omnibase-compat", specifier = "==0.5.6" },
-    { name = "omnibase-core", specifier = ">=0.46.7,<0.47.0" },
+    { name = "omnibase-core", git = "https://github.com/OmniNode-ai/omnibase_core.git?rev=38a05eb1ddc9a5f25b7a905e92a4097176cb44c1" },
     { name = "omnibase-infra", git = "https://github.com/OmniNode-ai/omnibase_infra.git?rev=7e52d5b0046c394b38454b97157e7a7191e6f008" },
     { name = "omnibase-spi", specifier = ">=0.23.0,<0.24.0" },
 ]
@@ -1599,8 +1599,8 @@ wheels = [
 
 [[package]]
 name = "omnibase-core"
-version = "0.46.7"
-source = { registry = "https://pypi.org/simple" }
+version = "0.46.8"
+source = { git = "https://github.com/OmniNode-ai/omnibase_core.git?rev=38a05eb1ddc9a5f25b7a905e92a4097176cb44c1#38a05eb1ddc9a5f25b7a905e92a4097176cb44c1" }
 dependencies = [
     { name = "blake3" },
     { name = "click" },
@@ -1614,10 +1614,6 @@ dependencies = [
     { name = "ruamel-yaml" },
     { name = "tree-sitter" },
     { name = "tree-sitter-python" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/68/51/e89d9832e703200dfc21c9f32d4b247ad3bfcdd1a36b4053884d71357c95/omnibase_core-0.46.7.tar.gz", hash = "sha256:71f675a1461af2aa7ce3ce28e99728dd9a04c9038a828e60a091cc0bab18a3a7", size = 9065896, upload-time = "2026-07-09T08:00:55.548Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/38/21/4e02df34674e66308c4154dea2b1b7971f0635e475ebadda77ded36d2dc1/omnibase_core-0.46.7-py3-none-any.whl", hash = "sha256:b37ef287830fba6e04ea712ed3ebf3fe4eabbf236cd30c13951941731579f5d3", size = 6392503, upload-time = "2026-07-09T07:57:59.652Z" },
 ]
 
 [[package]]
@@ -1749,7 +1745,7 @@ requires-dist = [
     { name = "graphifyy", marker = "extra == 'dep-health'", specifier = "==0.8.2" },
     { name = "httpx", specifier = ">=0.27.0" },
     { name = "omnibase-compat", specifier = "==0.5.6" },
-    { name = "omnibase-core", specifier = ">=0.46.7,<0.47.0" },
+    { name = "omnibase-core", git = "https://github.com/OmniNode-ai/omnibase_core.git?rev=38a05eb1ddc9a5f25b7a905e92a4097176cb44c1" },
     { name = "omnibase-infra", git = "https://github.com/OmniNode-ai/omnibase_infra.git?rev=7e52d5b0046c394b38454b97157e7a7191e6f008" },
     { name = "omnibase-spi", specifier = ">=0.23.0,<0.24.0" },
     { name = "omninode-memory", git = "https://github.com/OmniNode-ai/omnimemory.git?rev=1cd318d5ca3071a24585191592d3a84fafd30cf7" },
