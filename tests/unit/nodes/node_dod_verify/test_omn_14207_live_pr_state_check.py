@@ -534,3 +534,53 @@ class TestGhOutputParsing:
         green, detail = collector._fetch_pr_checks_green(_REPO, _PR)
         assert green is False
         assert "no status checks" in detail.lower()
+
+    def test_fetch_scopes_to_required_checks_only(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """OMN-14390 regression.
+
+        Discovery case: omnibase_infra#2232 (OMN-14134) had all 14
+        branch-protection-required contexts green plus one red *non-required*
+        "TODO Audit" check. The old call (no ``--required``) fetched every
+        check row and failed the whole gate on that non-required row, while
+        mislabeling the result "required checks not green" — a false negative
+        that would have wrongly blocked every Done-flip citing that PR.
+
+        This asserts two things: (1) the ``gh pr checks`` invocation actually
+        passes ``--required`` (so gh itself never returns non-required rows),
+        and (2) given the required-only payload gh would return in that exact
+        scenario (all required green; the red non-required row absent because
+        gh already filtered it out), the collector reports green.
+        """
+        captured_args: list[list[str]] = []
+
+        def _run(*args: object, **kwargs: object) -> subprocess.CompletedProcess:
+            call_args = list(args[0]) if args else []
+            captured_args.append(call_args)
+            # Mirrors what `gh pr checks --required --json name,state` returns
+            # for the #2232 scenario: 14 required contexts, all green. The
+            # non-required "TODO Audit" row is absent — gh's own --required
+            # filtering never surfaces it here.
+            return subprocess.CompletedProcess(
+                args=call_args,
+                returncode=0,
+                stdout=(
+                    '[{"name":"CI Summary","state":"SUCCESS"},'
+                    '{"name":"verify / verify","state":"SUCCESS"},'
+                    '{"name":"deploy-gate / deploy-gate","state":"SUCCESS"}]'
+                ),
+                stderr="",
+            )
+
+        monkeypatch.setattr(ec_mod.subprocess, "run", _run)
+        collector = EvidenceCollector()
+        green, detail = collector._fetch_pr_checks_green(_REPO, _PR)
+
+        assert captured_args, "gh pr checks was never invoked"
+        assert "--required" in captured_args[0], (
+            "gh pr checks must be invoked with --required so a red "
+            "non-required check (e.g. TODO Audit) can never fail this gate"
+        )
+        assert green is True
+        assert "3 status check(s) green" in detail
