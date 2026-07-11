@@ -80,6 +80,10 @@ class TestSubcontractRenderGoldenPerType:
         parsed = yaml.safe_load(fragment.yaml_fragment)
         assert parsed["event"]["transport"] == "kafka"
 
+    def test_extra_fields_may_not_override_operations(self) -> None:
+        with pytest.raises(ValueError, match="reserved key 'operations'"):
+            _render(EnumSubcontractType.EVENT, extra_fields={"operations": "bad"})
+
     def test_render_is_deterministic(self) -> None:
         first = _render(EnumSubcontractType.DATABASE)
         second = _render(EnumSubcontractType.DATABASE)

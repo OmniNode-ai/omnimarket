@@ -22,6 +22,7 @@ from omnimarket.contract_assembly.models import (
     ModelContractDraft,
     ModelContractMetadata,
     ModelSemVer,
+    ModelSubcontractFragment,
     ModelSubcontractRenderRequest,
 )
 from omnimarket.contract_assembly.render import render_subcontract
@@ -95,3 +96,60 @@ class TestContractAssemble:
         first = _assemble(EnumSubcontractType.DATABASE)
         second = _assemble(EnumSubcontractType.DATABASE)
         assert first.contract_yaml == second.contract_yaml
+
+    def test_rejects_non_mapping_fragment(self) -> None:
+        advanced = resolve_advanced_features(
+            ModelAdvancedFeaturesRequest(archetype=EnumNodeArchetype.COMPUTE)
+        )
+        with pytest.raises(ValueError, match="is not a mapping"):
+            HandlerContractAssemble().handle(
+                ModelContractAssembleRequest(
+                    metadata=_metadata(),
+                    fragments=(
+                        ModelSubcontractFragment(
+                            type=EnumSubcontractType.COMPUTE,
+                            yaml_fragment="- not-a-mapping\n",
+                            sha256="unused",
+                        ),
+                    ),
+                    advanced_features=advanced,
+                )
+            )
+
+    def test_rejects_fragment_missing_declared_type_key(self) -> None:
+        advanced = resolve_advanced_features(
+            ModelAdvancedFeaturesRequest(archetype=EnumNodeArchetype.COMPUTE)
+        )
+        with pytest.raises(ValueError, match="missing declared type key"):
+            HandlerContractAssemble().handle(
+                ModelContractAssembleRequest(
+                    metadata=_metadata(),
+                    fragments=(
+                        ModelSubcontractFragment(
+                            type=EnumSubcontractType.COMPUTE,
+                            yaml_fragment="event:\n  operations: []\n",
+                            sha256="unused",
+                        ),
+                    ),
+                    advanced_features=advanced,
+                )
+            )
+
+    def test_rejects_duplicate_fragment_types(self) -> None:
+        advanced = resolve_advanced_features(
+            ModelAdvancedFeaturesRequest(archetype=EnumNodeArchetype.COMPUTE)
+        )
+        first = render_subcontract(
+            ModelSubcontractRenderRequest(type=EnumSubcontractType.COMPUTE)
+        )
+        second = render_subcontract(
+            ModelSubcontractRenderRequest(type=EnumSubcontractType.COMPUTE)
+        )
+        with pytest.raises(ValueError, match="duplicate fragment"):
+            HandlerContractAssemble().handle(
+                ModelContractAssembleRequest(
+                    metadata=_metadata(),
+                    fragments=(first, second),
+                    advanced_features=advanced,
+                )
+            )

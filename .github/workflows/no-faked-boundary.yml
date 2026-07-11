@@ -86,23 +86,15 @@ jobs:
             # part of an if/while/until condition, regardless of ambient -e state.
             response=""
             status=0
-            for page in $(seq 1 5); do
-              if page_response="$(
-                gh api "repos/${REPO}/commits/${HEAD_SHA}/check-runs?filter=latest&per_page=100&page=${page}" \
-                  --jq 'first(.check_runs[] | select(.name == "occ-preflight / eligibility") | .conclusion) // ""' \
-                  2>&1
-              )"; then
-                status=0
-                if [ -n "$page_response" ]; then
-                  response="$page_response"
-                  break
-                fi
-              else
-                status=$?
-                response="$page_response"
-                break
-              fi
-            done
+            if response="$(
+              gh api "repos/${REPO}/commits/${HEAD_SHA}/check-runs?filter=latest&check_name=occ-preflight%20%2F%20eligibility&per_page=1" \
+                --jq 'first(.check_runs[] | .conclusion) // ""' \
+                2>&1
+            )"; then
+              status=0
+            else
+              status=$?
+            fi
 
             if [ "$status" -ne 0 ]; then
               if echo "$response" | grep -qi "rate limit"; then

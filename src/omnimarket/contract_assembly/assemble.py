@@ -39,8 +39,16 @@ def assemble_contract(request: ModelContractAssembleRequest) -> ModelContractDra
     subcontracts: dict[str, Any] = {}
     for fragment in request.fragments:
         parsed = yaml.safe_load(fragment.yaml_fragment) or {}
+        if not isinstance(parsed, dict):
+            raise ValueError(f"fragment '{fragment.type.value}' is not a mapping")
+        if fragment.type.value not in parsed:
+            raise ValueError(
+                f"fragment '{fragment.type.value}' is missing declared type key"
+            )
+        if fragment.type.value in subcontracts:
+            raise ValueError(f"duplicate fragment for type '{fragment.type.value}'")
         # Consume by type: pull the entry keyed by the fragment's declared type.
-        subcontracts[fragment.type.value] = parsed.get(fragment.type.value, {})
+        subcontracts[fragment.type.value] = parsed[fragment.type.value]
 
     document = ModelContractDocumentModel(
         metadata=request.metadata.model_dump(mode="json"),

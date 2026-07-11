@@ -15,6 +15,7 @@ import hashlib
 import pytest
 import yaml
 
+from omnimarket.contract_assembly.lint import lint_contract
 from omnimarket.contract_assembly.models import (
     EnumLintStatus,
     EnumNodeArchetype,
@@ -108,3 +109,27 @@ class TestContractSerialize:
         parsed = yaml.safe_load(doc.contract_yaml)
         assert parsed["subcontracts"] == {}
         assert doc.lint_status is EnumLintStatus.PASS
+
+    @pytest.mark.parametrize(
+        ("contract_yaml", "message"),
+        [
+            (
+                "metadata: null\nsubcontracts: {}\nadvanced_features: {}\n",
+                "metadata section is not a mapping",
+            ),
+            (
+                "metadata: {}\nsubcontracts: {}\nadvanced_features: []\n",
+                "advanced_features section is not a mapping",
+            ),
+            (
+                "metadata: {}\nsubcontracts:\n  compute:\n    operations: null\nadvanced_features: {}\n",
+                "subcontract 'compute' declares no operations",
+            ),
+        ],
+    )
+    def test_lint_rejects_malformed_section_types(
+        self, contract_yaml: str, message: str
+    ) -> None:
+        result = lint_contract(contract_yaml)
+        assert result.status is EnumLintStatus.FAIL
+        assert message in result.messages

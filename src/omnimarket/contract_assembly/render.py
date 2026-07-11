@@ -61,6 +61,8 @@ def render_subcontract(
         if request.operations
         else list(canonical_operations(request.type))
     )
+    if "operations" in request.extra_fields:
+        raise ValueError("extra_fields may not override reserved key 'operations'")
     body: dict[str, Any] = {"operations": operations}
     for key, value in request.extra_fields.items():
         body[key] = value

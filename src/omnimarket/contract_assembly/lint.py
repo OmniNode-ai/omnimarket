@@ -38,11 +38,15 @@ def lint_contract(contract_yaml: str) -> ModelLintResult:
     for key in _REQUIRED_TOP_LEVEL_KEYS:
         if key not in parsed:
             messages.append(f"missing required top-level key: {key}")
+        elif key != "subcontracts" and not isinstance(parsed[key], dict):
+            messages.append(f"{key} section is not a mapping")
 
     subcontracts = parsed.get("subcontracts")
     if isinstance(subcontracts, dict):
         for name, body in subcontracts.items():
-            if not isinstance(body, dict) or "operations" not in body:
+            if not isinstance(body, dict):
+                messages.append(f"subcontract '{name}' is not a mapping")
+            elif not isinstance(body.get("operations"), list):
                 messages.append(f"subcontract '{name}' declares no operations")
     elif "subcontracts" in parsed:
         messages.append("subcontracts section is not a mapping")
