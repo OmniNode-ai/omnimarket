@@ -1,0 +1,60 @@
+---
+name: node_llm_codegen_effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: effect
+node_version: {major: 1, minor: 0, patch: 0}
+
+input_model: omnimarket.codegen.models.ModelLlmGenerateCommand
+
+description: >
+  Codegen factory LLM step (tier-4a). An EFFECT that owns the inference network
+  I/O: given a node spec it prompts an LLM (via an injectable inference adapter)
+  and returns the generated node source recorded on the pipeline state. Tests
+  inject a deterministic adapter so no live model is required.
+
+handler:
+  module: omnimarket.nodes.node_llm_codegen_effect.handlers.handler_llm_codegen
+  class: HandlerLlmCodegen
+  input_model: omnimarket.codegen.models.ModelLlmGenerateCommand
+  output_model: omnimarket.codegen.models.ModelLlmGenerateResult
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: codegen_llm_generate
+      handler:
+        name: HandlerLlmCodegen
+        module: omnimarket.nodes.node_llm_codegen_effect.handlers.handler_llm_codegen
+      event_model:
+        name: ModelLlmGenerateCommand
+        module: omnimarket.codegen.models
+
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  idempotent: false
+  timeout_ms: 120000
+  runtime_profiles:
+    - effects
+
+inputs:
+  state:
+    type: object
+    required: true
+    description: The codegen pipeline state carrying the spec to generate from.
+
+outputs:
+  state:
+    type: object
+    description: The pipeline state with the generated source recorded.
+
+terminal_event: onex.evt.omnimarket.codegen-llm-generated.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.codegen-llm-generate.v1
+  publish_topics:
+    - onex.evt.omnimarket.codegen-llm-generated.v1
+
+metadata:
+  transport_type: kafka
