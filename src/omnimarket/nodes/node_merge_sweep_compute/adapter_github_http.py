@@ -1,9 +1,9 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""GitHub HTTP adapter for node_merge_sweep — zero external dependencies.
+"""GitHub HTTP adapter for node_merge_sweep.
 
-Uses GitHub GraphQL API (via urllib) to fetch open PRs with rich status fields,
-and REST API for branch protection. The GitHub token is passed explicitly at
+Uses the canonical GitHub API transport helper to fetch open PRs with rich
+status fields, and REST API for branch protection. The GitHub token is passed explicitly at
 construction time — this module never reads ``os.environ`` for the token name.
 Callers resolve the token from the contract-declared ``api_key_ref``
 (``GITHUB_TOKEN``) via the canonical secret-store resolver.
@@ -16,23 +16,13 @@ OMN-MERGE-SWEEP.
 
 from __future__ import annotations
 
-import json
-import logging
-import urllib.error
-import urllib.request
 from typing import Any
 
-from omnimarket.config.service_endpoints import GITHUB_GRAPHQL_URL, GITHUB_REST_URL
+from omnimarket.github_api import GitHubApiError, graphql, rest_json
 from omnimarket.nodes.node_merge_sweep_compute.protocols import (
     GitHubPrFetchProtocol,
     GitHubTransportError,
 )
-
-_log = logging.getLogger(__name__)
-
-_GITHUB_GRAPHQL = GITHUB_GRAPHQL_URL
-_GITHUB_REST = GITHUB_REST_URL
-_REQUEST_TIMEOUT = 30
 
 # GraphQL query for open PRs with all the fields we need.
 # Mirrors the output of `gh pr list --json number,title,mergeable,mergeStateStatus,
@@ -137,25 +127,10 @@ class GitHubHttpClient(GitHubPrFetchProtocol):
         Raises GitHubTransportError on network, auth, or decode failures so
         callers can distinguish transport failure from an empty result.
         """
-        payload = json.dumps({"query": query, "variables": variables}).encode()
-        req = urllib.request.Request(
-            _GITHUB_GRAPHQL,
-            data=payload,
-            headers={
-                "Authorization": f"bearer {self._token}",
-                "Content-Type": "application/json",
-            },
-        )
         try:
-            with urllib.request.urlopen(req, timeout=_REQUEST_TIMEOUT) as resp:
-                body = json.loads(resp.read())
-        except (urllib.error.URLError, json.JSONDecodeError, OSError) as exc:
+            return graphql(query, variables, token=self._token)
+        except GitHubApiError as exc:
             raise GitHubTransportError(f"GraphQL request failed: {exc}") from exc
-        if "errors" in body:
-            _log.warning("GraphQL errors: %s", body["errors"])
-            raise GitHubTransportError(f"GraphQL returned errors: {body['errors']}")
-        data = body.get("data")
-        return data if isinstance(data, dict) else {}
 
     def _rest_get(self, path: str) -> dict[str, Any] | None:
         """Execute a REST API GET. Returns parsed JSON or None for 404.
@@ -163,26 +138,13 @@ class GitHubHttpClient(GitHubPrFetchProtocol):
         Raises GitHubTransportError on network, auth, or non-404 HTTP failures.
         Returns None only for 404 (resource genuinely absent).
         """
-        url = f"{_GITHUB_REST}{path}"
-        req = urllib.request.Request(
-            url,
-            headers={
-                "Authorization": f"bearer {self._token}",
-                "Accept": "application/vnd.github+json",
-            },
-        )
         try:
-            with urllib.request.urlopen(req, timeout=_REQUEST_TIMEOUT) as resp:
-                return json.loads(resp.read())  # type: ignore[no-any-return]
-        except urllib.error.HTTPError as exc:
+            return rest_json("GET", path, token=self._token)
+        except GitHubApiError as exc:
             # 404 = no branch protection configured — that's a valid business state
-            if exc.code == 404:
+            if exc.status_code == 404:
                 return None
             raise GitHubTransportError(f"REST API error for {path}: {exc}") from exc
-        except (urllib.error.URLError, json.JSONDecodeError, OSError) as exc:
-            raise GitHubTransportError(
-                f"REST API request failed for {path}: {exc}"
-            ) from exc
 
     def fetch_open_prs(self, repo: str) -> list[dict[str, Any]]:
         """Fetch open PRs via GitHub GraphQL API."""
