@@ -123,8 +123,10 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
     # the existing pr_polish gate/verify/push flow): 349 -> 350.
     # OMN-14333 adds node_generated_code_validator and node_mypy_check_effect:
     # 350 -> 352.
-    assert summary["node_dirs"] == 352
-    assert summary["entry_points"] == 352
+    # OMN-14336 adds node_hybrid_codegen_orchestrator,
+    # node_llm_codegen_effect, and node_codegen_file_writer_effect: 352 -> 355.
+    assert summary["node_dirs"] == 355
+    assert summary["entry_points"] == 355
     assert summary["missing_entry_points"] == []
     assert summary["dangling_entry_points"] == []
     assert summary["routable"] >= 299
