@@ -318,8 +318,17 @@ class TestOmn13996Regression:
         live = by_id[f"{item['id']}::pr-live-state"]
         assert live.status == EnumEvidenceCheckStatus.FAILED
 
-        # And the aggregate verdict is FAILED, not the old ``verified``.
+        # And the aggregate verdict is FAILED, not the old ``verified``. Reuse
+        # the already-mocked collector for the handler's dict-shim path too —
+        # otherwise handler.handle() builds a fresh, unmocked EvidenceCollector
+        # that shells out to the real `gh pr view`/`gh pr checks` for the
+        # hardcoded #2216 and flakes as that PR's live state drifts (OMN-14392).
         handler = HandlerDodVerify()
+
+        def _return_collector() -> EvidenceCollector:
+            return collector
+
+        handler._make_collector = _return_collector  # type: ignore[method-assign]
         state = handler.handle(
             {
                 "correlation_id": str(uuid4()),
