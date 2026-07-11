@@ -1,0 +1,26 @@
+{
+  "golden_version": "compute_golden.v1",
+  "input": {
+    "events": [
+      {
+        "correlation_id": "corr-001",
+        "offset": 0,
+        "partition": 0,
+        "source_topic": "onex.evt.omnibase-infra.task-delegated.v1",
+        "table": "delegation_events"
+      }
+    ]
+  },
+  "input_type": "ModelReplayCheckRequest",
+  "output": {
+    "blocked": 0,
+    "findings": [],
+    "replay_proven": 0,
+    "runtime_observed": 1,
+    "status": "clean",
+    "superseded": 0,
+    "total_correlations": 1
+  },
+  "output_type": "ModelReplayCheckResult",
+  "volatile_mask": []
+}

@@ -61,7 +61,7 @@ def _req(*events: ModelProjectionEvent) -> ModelReplayCheckRequest:
 class TestSingleOccurrence:
     def test_single_event_is_runtime_observed(self) -> None:
         req = _req(_evt("corr-001", offset=0))
-        result = HANDLER.check(req)
+        result = HANDLER.handle(req)
         assert result.status == "clean"
         assert result.total_correlations == 1
         assert result.runtime_observed == 1
@@ -72,7 +72,7 @@ class TestSingleOccurrence:
 
     def test_dedupe_held_true_on_single_occurrence(self) -> None:
         req = _req(_evt("corr-001", offset=0))
-        result = HANDLER.check(req)
+        result = HANDLER.handle(req)
         classifications = {
             (r.correlation_id, r.table): r for r in (result.findings or ())
         }
@@ -94,7 +94,7 @@ class TestExactReplay:
         e1 = _evt("corr-002", offset=5)
         e2 = _evt("corr-002", offset=5)  # identical
         req = _req(e1, e2)
-        result = HANDLER.check(req)
+        result = HANDLER.handle(req)
 
         assert result.status == "clean"
         assert result.total_correlations == 1
@@ -104,7 +104,7 @@ class TestExactReplay:
     def test_dedupe_held_true_on_replay(self) -> None:
         e = _evt("corr-003", offset=10)
         req = _req(e, e, e)  # triple replay
-        result = HANDLER.check(req)
+        result = HANDLER.handle(req)
 
         assert result.replay_proven == 1
         assert result.status == "clean"
@@ -114,7 +114,7 @@ class TestExactReplay:
         e = _evt("corr-004", offset=7)
         req = _req(e, e, e)
         # Access via an intermediate assertion on aggregates
-        result = HANDLER.check(req)
+        result = HANDLER.handle(req)
         assert result.total_correlations == 1
         assert result.replay_proven == 1
 
@@ -123,7 +123,7 @@ class TestExactReplay:
         e_del = _evt("corr-005", table=_TABLE, offset=1)
         e_gen = _evt("corr-005", table=_TABLE_GEN, topic=_TOPIC_GEN, offset=1)
         req = _req(e_del, e_gen)
-        result = HANDLER.check(req)
+        result = HANDLER.handle(req)
 
         # Two distinct (correlation_id, table) pairs — each observed once.
         assert result.total_correlations == 2
@@ -142,7 +142,7 @@ class TestSuperseded:
         e1 = _evt("corr-006", offset=0)
         e2 = _evt("corr-006", offset=5)
         req = _req(e1, e2)
-        result = HANDLER.check(req)
+        result = HANDLER.handle(req)
 
         assert result.status == "findings"
         assert result.superseded == 1
@@ -154,7 +154,7 @@ class TestSuperseded:
         e1 = _evt("corr-007", partition=0, offset=10)
         e2 = _evt("corr-007", partition=1, offset=0)
         req = _req(e1, e2)
-        result = HANDLER.check(req)
+        result = HANDLER.handle(req)
 
         assert result.superseded == 1
         detail = result.findings[0].detail
@@ -206,7 +206,7 @@ class TestMixedBatch:
         e_super_new = _evt("corr-012", offset=9)  # supersedes
 
         req = _req(e_once, e_replay_a, e_replay_b, e_super_old, e_super_new)
-        result = HANDLER.check(req)
+        result = HANDLER.handle(req)
 
         assert result.total_correlations == 3
         assert result.runtime_observed == 1
@@ -221,7 +221,7 @@ class TestMixedBatch:
         e2a = _evt("corr-021", offset=5)
         e2b = _evt("corr-021", offset=5)
         req = _req(e1, e2a, e2b)
-        result = HANDLER.check(req)
+        result = HANDLER.handle(req)
 
         assert result.status == "clean"
         assert not result.findings

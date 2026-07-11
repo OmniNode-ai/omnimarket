@@ -1,0 +1,63 @@
+{
+  "golden_version": "compute_golden.v1",
+  "input": {
+    "events": [
+      {
+        "correlation_id": "obs",
+        "offset": 1,
+        "partition": 0,
+        "source_topic": "onex.evt.omnibase-infra.task-delegated.v1",
+        "table": "delegation_events"
+      },
+      {
+        "correlation_id": "dup",
+        "offset": 7,
+        "partition": 2,
+        "source_topic": "onex.evt.omnibase-infra.task-delegated.v1",
+        "table": "delegation_events"
+      },
+      {
+        "correlation_id": "dup",
+        "offset": 7,
+        "partition": 2,
+        "source_topic": "onex.evt.omnibase-infra.task-delegated.v1",
+        "table": "delegation_events"
+      },
+      {
+        "correlation_id": "sup",
+        "offset": 3,
+        "partition": 0,
+        "source_topic": "onex.evt.omnibase-infra.task-delegated.v1",
+        "table": "delegation_events"
+      },
+      {
+        "correlation_id": "sup",
+        "offset": 8,
+        "partition": 0,
+        "source_topic": "onex.evt.omnibase-infra.task-delegated.v1",
+        "table": "delegation_events"
+      }
+    ]
+  },
+  "input_type": "ModelReplayCheckRequest",
+  "output": {
+    "blocked": 0,
+    "findings": [
+      {
+        "correlation_id": "sup",
+        "dedupe_held": true,
+        "detail": "earliest at partition=0/offset=3 superseded by partition=0/offset=8; UPSERT conflict resolution applies",
+        "occurrence_count": 2,
+        "status": "superseded",
+        "table": "delegation_events"
+      }
+    ],
+    "replay_proven": 1,
+    "runtime_observed": 1,
+    "status": "findings",
+    "superseded": 1,
+    "total_correlations": 3
+  },
+  "output_type": "ModelReplayCheckResult",
+  "volatile_mask": []
+}
