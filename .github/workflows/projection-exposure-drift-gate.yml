@@ -66,10 +66,17 @@ jobs:
           fi
 
           for _ in $(seq 1 60); do
-            conclusion="$(
-              gh api "repos/${REPO}/commits/${HEAD_SHA}/check-runs?filter=latest&per_page=100" \
-                --jq 'first(.check_runs[] | select(.name == "occ-preflight / eligibility") | .conclusion) // ""'
-            )"
+            conclusion=""
+            for page in $(seq 1 5); do
+              page_conclusion="$(
+                gh api "repos/${REPO}/commits/${HEAD_SHA}/check-runs?filter=latest&per_page=100&page=${page}" \
+                  --jq 'first(.check_runs[] | select(.name == "occ-preflight / eligibility") | .conclusion) // ""'
+              )"
+              if [ -n "$page_conclusion" ]; then
+                conclusion="$page_conclusion"
+                break
+              fi
+            done
 
             case "$conclusion" in
               success)
