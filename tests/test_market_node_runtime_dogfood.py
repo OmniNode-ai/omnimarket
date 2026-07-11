@@ -34,6 +34,12 @@ NATIVE_NON_ADDRESSABLE_NODES = {
     "node_projection_dep_health",
 }
 
+OMN_14151_LEGACY_ARM_SURFACES = {
+    "node_auto_merge_effect",
+    "node_merge_sweep_auto_merge_arm_effect",
+    "node_merge_sweep_triage_orchestrator",
+}
+
 
 def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> None:
     report = build_report()
@@ -133,9 +139,14 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
     # compute nodes for codegen analysis: 361 -> 363.
     # OMN-14307 adds node_github_repo_gateway_effect (EFFECT; typed read-only
     # GitHub repo status gateway for merge-sweep verification): 363 -> 364.
-    assert summary["node_dirs"] == 364
-    assert summary["entry_points"] == 364
-    assert summary["missing_entry_points"] == []
+    # OMN-14151 adds node_pr_arm_gate_compute (COMPUTE; fail-closed ARM/WITHHOLD
+    # decider for the merge-queue governor): 364 -> 365.
+    assert summary["node_dirs"] == 365
+    # OMN-14151 deliberately removes request/response entry points from the
+    # three legacy arm surfaces; the new arm-gate compute node is the single
+    # active route.
+    assert summary["entry_points"] == 362
+    assert set(summary["missing_entry_points"]) == OMN_14151_LEGACY_ARM_SURFACES
     assert summary["dangling_entry_points"] == []
     assert summary["routable"] >= 299
     assert summary["skipped"] == 4

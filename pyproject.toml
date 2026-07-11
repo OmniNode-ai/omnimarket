@@ -209,7 +209,10 @@ node_loop_state_reducer = "omnimarket.nodes.node_loop_state_reducer"
 node_ticket_classify_compute = "omnimarket.nodes.node_ticket_classify_compute"
 node_build_dispatch_effect = "omnimarket.nodes.node_build_dispatch_effect"
 node_closeout_effect = "omnimarket.nodes.node_closeout_effect"
-node_auto_merge_effect = "omnimarket.nodes.node_auto_merge_effect"
+# OMN-14151: node_auto_merge_effect entry point DEREGISTERED — legacy arm
+# surface superseded by the merge-queue governor's single gated arm path
+# (node_pr_arm_gate_compute + node_pr_lifecycle_merge_effect). Handler source
+# remains, hard-gated fail-closed (contract.yaml lifecycle: deprecated).
 node_finding_aggregator_compute = "omnimarket.nodes.node_finding_aggregator_compute"
 node_pr_snapshot_effect = "omnimarket.nodes.node_pr_snapshot_effect"
 node_pr_health_monitor = "omnimarket.nodes.node_pr_health_monitor"
@@ -238,6 +241,7 @@ node_redeploy_fsm_reducer = "omnimarket.nodes.node_redeploy_fsm_reducer"
 node_baseline_capture = "omnimarket.nodes.node_baseline_capture"
 node_baseline_compare = "omnimarket.nodes.node_baseline_compare"
 node_pr_lifecycle_triage_compute = "omnimarket.nodes.node_pr_lifecycle_triage_compute"
+node_pr_arm_gate_compute = "omnimarket.nodes.node_pr_arm_gate_compute"
 node_nightly_loop_controller = "omnimarket.nodes.node_nightly_loop_controller"
 node_overseer_verifier = "omnimarket.nodes.node_overseer_verifier"
 node_claim_resolver = "omnimarket.nodes.node_claim_resolver"
@@ -317,8 +321,11 @@ node_pipeline_fill = "omnimarket.nodes.node_pipeline_fill"
 node_session_compose = "omnimarket.nodes.node_session_compose"
 node_ticket_query = "omnimarket.nodes.node_ticket_query"
 node_monitor_alert_responder = "omnimarket.nodes.node_monitor_alert_responder"
-node_merge_sweep_triage_orchestrator = "omnimarket.nodes.node_merge_sweep_triage_orchestrator"
-node_merge_sweep_auto_merge_arm_effect = "omnimarket.nodes.node_merge_sweep_auto_merge_arm_effect"
+# OMN-14151: node_merge_sweep_triage_orchestrator and
+# node_merge_sweep_auto_merge_arm_effect entry points DEREGISTERED — legacy
+# arm surfaces superseded by the merge-queue governor's single gated arm path
+# (node_pr_arm_gate_compute + node_pr_lifecycle_merge_effect). Handler source
+# remains, hard-gated fail-closed (contract.yaml lifecycle: deprecated).
 node_rebase_effect = "omnimarket.nodes.node_rebase_effect"
 node_ci_rerun_effect = "omnimarket.nodes.node_ci_rerun_effect"
 node_ci_fix_effect = "omnimarket.nodes.node_ci_fix_effect"

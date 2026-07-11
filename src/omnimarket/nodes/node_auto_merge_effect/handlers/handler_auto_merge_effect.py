@@ -9,6 +9,12 @@ Steps:
     3. Execute merge via `gh pr merge` (explicit gh exception per SKILL.md)
     4. Re-query PR to capture merge commit SHA
     5. Optionally close the associated Linear ticket (non-blocking)
+
+OMN-14151: this is one of the three legacy arm surfaces superseded by the
+merge-queue governor's single gated arm path (node_pr_arm_gate_compute +
+node_pr_lifecycle_merge_effect). Hard-gated fail-closed — ``handle()`` returns
+a no-op result before any `gh` mutation unless ``_LEGACY_ARM_ENV_VAR`` is
+explicitly enabled.
 """
 
 from __future__ import annotations
@@ -22,6 +28,7 @@ from collections.abc import Callable
 from typing import Any, Literal
 from uuid import UUID
 
+from omnimarket.config.env_flags import env_flag
 from omnimarket.nodes.node_auto_merge_effect.models.model_auto_merge_input import (
     ModelAutoMergeInput,
 )
@@ -36,6 +43,11 @@ _POLL_INTERVAL_S = 60
 
 # mergeStateStatus values that mean "keep polling"
 _POLL_STATES = {"BEHIND", "BLOCKED", "UNSTABLE", "HAS_HOOKS", "UNKNOWN"}
+
+# OMN-14151: legacy arm surface hard-gate. Safe default False — this handler
+# is a no-op (never calls `gh pr merge`) unless an operator explicitly opts
+# this surface back in.
+_LEGACY_ARM_ENV_VAR = "OMNIMARKET_LEGACY_MERGE_ARM_ENABLED"
 
 
 class HandlerAutoMergeEffect:
@@ -87,6 +99,24 @@ class HandlerAutoMergeEffect:
             pr_number,
             repo,
         )
+
+        if not env_flag(_LEGACY_ARM_ENV_VAR, safe_default=False):
+            logger.info(
+                "auto-merge gated (no-op): pr=%s repo=%s — legacy arm surface "
+                "disabled by default (OMN-14151); set %s=true to re-enable",
+                pr_number,
+                repo,
+                _LEGACY_ARM_ENV_VAR,
+            )
+            return ModelAutoMergeResult(
+                correlation_id=correlation_id,
+                pr_number=pr_number,
+                repo=repo,
+                merged=False,
+                blocked_reason=(
+                    f"gated: legacy arm surface disabled ({_LEGACY_ARM_ENV_VAR} not enabled)"
+                ),
+            )
 
         deadline = time.monotonic() + gate_timeout_hours * 3600
 

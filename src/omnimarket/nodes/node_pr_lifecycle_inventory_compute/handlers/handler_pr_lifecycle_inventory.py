@@ -44,6 +44,11 @@ _CHECK_BUCKET_TO_CONCLUSION = {
     "cancel": "cancelled",
 }
 _TERMINAL_CHECK_BUCKETS = {"pass", "fail", "skipping", "cancel"}
+# OMN-14151: bot logins whose unresolved review threads count toward
+# ``coderabbit_unresolved``. Mirrors the bot-login precedent already used by
+# node_pr_lifecycle_fix_effect's trivial-comment-resolution adapter.
+_CODERABBIT_LOGINS = frozenset({"coderabbitai", "coderabbitai[bot]"})
+
 _CHECK_LOG_NETWORK_SIGNATURES: tuple[str, ...] = (
     "could not resolve host: github.com",
     "gnutls recv error",
@@ -508,7 +513,64 @@ class HandlerPrLifecycleInventory:
             reviews=tuple(reviews),
             has_conflicts=has_conflicts,
             ci_passing=ci_passing,
+            coderabbit_unresolved=self._collect_coderabbit_unresolved(repo, pr_number),
         )
+
+    def _collect_coderabbit_unresolved(self, repo: str, pr_number: int) -> int | None:
+        """Count unresolved CodeRabbit review threads (OMN-14151).
+
+        Returns None (unknown) on any gh failure or parse error — the
+        merge-queue arm-gate treats None as WITHHOLD, never as "0 unresolved".
+        """
+        result = self._run_gh(
+            [
+                "gh",
+                "pr",
+                "view",
+                str(pr_number),
+                "--repo",
+                repo,
+                "--json",
+                "reviewThreads",
+            ]
+        )
+        if result.returncode != 0:
+            logger.debug(
+                "gh pr view reviewThreads failed for %s#%s: %s",
+                repo,
+                pr_number,
+                result.stderr.strip(),
+            )
+            return None
+        try:
+            data: dict[str, object] = json.loads(result.stdout)
+        except json.JSONDecodeError:
+            logger.debug(
+                "reviewThreads returned invalid JSON for %s#%s", repo, pr_number
+            )
+            return None
+        threads = data.get("reviewThreads")
+        if not isinstance(threads, list):
+            return None
+
+        count = 0
+        for thread in threads:
+            if not isinstance(thread, dict) or thread.get("isResolved"):
+                continue
+            comments = thread.get("comments") or []
+            if not isinstance(comments, list) or not comments:
+                continue
+            first = comments[0] if isinstance(comments[0], dict) else {}
+            author = first.get("author")
+            if isinstance(author, dict):
+                login = str(author.get("login", "")).lower()
+            elif isinstance(author, str):
+                login = author.lower()
+            else:
+                login = ""
+            if login in _CODERABBIT_LOGINS:
+                count += 1
+        return count
 
     def _gh_pr_view(self, repo: str, pr_number: int) -> dict[str, object]:
         """Run gh pr view and return parsed JSON.

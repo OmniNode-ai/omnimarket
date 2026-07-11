@@ -35,6 +35,7 @@ from uuid import uuid4
 
 from omnibase_core.models.dispatch.model_handler_output import ModelHandlerOutput
 
+from omnimarket.config.env_flags import env_flag
 from omnimarket.nodes.node_merge_sweep_compute.handlers.handler_merge_sweep import (
     EnumPRTrack,
     ModelClassifiedPR,
@@ -65,6 +66,13 @@ TOPIC_CONFLICT_HUNK = "onex.cmd.omnimarket.pr-conflict-hunk.v1"  # onex-topic-al
 TOPIC_CI_FIX = (
     "onex.cmd.omnimarket.pr-ci-fix.v1"  # onex-topic-allow: pending contract auto-wiring
 )
+
+# OMN-14151: legacy arm surface hard-gate. Safe default False — Rule 2 never
+# emits ModelAutoMergeArmCommand (the legacy unconditional arm-emit) unless an
+# operator explicitly opts this surface back in. This is one of the three
+# legacy arm surfaces superseded by the merge-queue governor's single gated
+# arm path (node_pr_arm_gate_compute + node_pr_lifecycle_merge_effect).
+_LEGACY_ARM_ENV_VAR = "OMNIMARKET_LEGACY_MERGE_ARM_ENABLED"
 
 _PROTECTED_BASES = {"main", "master", "develop"}
 
@@ -308,6 +316,16 @@ class HandlerTriageOrchestrator:
             and approval_cleared
             and pr.required_checks_pass
         ):
+            if not env_flag(_LEGACY_ARM_ENV_VAR, safe_default=False):
+                _log.info(
+                    "PR %s/%s: SKIP Rule 2 auto-merge arm-emit — legacy arm "
+                    "surface disabled by default (OMN-14151); set %s=true to "
+                    "re-enable",
+                    pr.repo,
+                    pr.number,
+                    _LEGACY_ARM_ENV_VAR,
+                )
+                return None
             pr_node_id, head_ref_name = await self._resolve_pr_graphql_id(
                 pr.repo, pr.number
             )

@@ -522,6 +522,27 @@ repos:
         pass_filenames: false
         stages: [pre-commit]
 
+      # OMN-14151: single-arm-path CI guard. Blocks any change that re-adds a
+      # pyproject.toml entry point for the three deregistered legacy arm
+      # surfaces, drops a legacy handler's fail-closed env-flag hard-gate, or
+      # bypasses the arm-gate call inside the merge fanout. SYNC with ci.yml
+      # pytest suite.
+      - id: single-arm-path-policy-gate
+        name: Merge-queue governor single-arm-path gate (OMN-14151)
+        language: system
+        entry: uv run pytest tests/test_single_arm_path_policy.py -q -m unit
+        files: >-
+          ^(pyproject\.toml|
+          src/omnimarket/config/env_flags\.py|
+          src/omnimarket/nodes/node_pr_arm_gate_compute/.*|
+          src/omnimarket/nodes/node_auto_merge_effect/handlers/handler_auto_merge_effect\.py|
+          src/omnimarket/nodes/node_merge_sweep_auto_merge_arm_effect/handlers/handler_auto_merge_arm\.py|
+          src/omnimarket/nodes/node_merge_sweep_triage_orchestrator/handlers/handler_triage\.py|
+          src/omnimarket/nodes/node_pr_lifecycle_orchestrator/handlers/handler_pr_lifecycle_orchestrator\.py|
+          tests/test_single_arm_path_policy\.py)$
+        pass_filenames: false
+        stages: [pre-commit]
+
       # OMN-13624 (WS-C SEA Phase 7.1): generated-node golden-chain gate.
       # Executes the two canonical self-extension loop proofs when generation
       # node source or the golden-chain test files themselves change.

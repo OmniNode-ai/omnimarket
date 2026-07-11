@@ -72,6 +72,14 @@ class ModelPrState(BaseModel):
     reviews: tuple[ModelPrReview, ...] = Field(default_factory=tuple)
     has_conflicts: bool = False
     ci_passing: bool | None = None  # None when checks not yet complete
+    coderabbit_unresolved: int | None = Field(
+        default=None,
+        description=(
+            "Count of unresolved CodeRabbit review threads (OMN-14151). None "
+            "means the count was never collected — callers must treat that as "
+            "unknown, never as 0."
+        ),
+    )
 
 
 class ModelStuckQueueEntry(BaseModel):

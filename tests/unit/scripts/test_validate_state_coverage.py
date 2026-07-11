@@ -345,6 +345,32 @@ def test_validate_node_baseline_promoted_to_fail_when_strict(
 
 
 @pytest.mark.unit
+def test_validate_node_baseline_stays_warn_when_strict_and_deprecated(
+    scc_module: object, tmp_path: Path
+) -> None:
+    """A node explicitly marked lifecycle: deprecated (OMN-14151) is exempt
+    from strict-mode baseline promotion — a hard-gated legacy surface neuters
+    itself rather than needing new test investment for the states it will
+    stop emitting."""
+    node_dir = tmp_path / "node_example_reducer"
+    node_dir.mkdir()
+    (node_dir / "contract.yaml").write_text(
+        "node_type: reducer\n"
+        "lifecycle: deprecated\n"
+        "state_machine:\n  states:\n    - state_name: idle\n"
+    )
+    baseline = {("node_example_reducer", "idle")}
+
+    result = scc_module.validate_node(  # type: ignore[attr-defined]
+        node_dir, baseline=baseline, strict=True, test_corpus=[]
+    )
+    assert result.passed is True, (
+        "deprecated node's baselined gap must stay WARN even in strict mode"
+    )
+    assert result.baselined_uncovered == ["idle"]
+
+
+@pytest.mark.unit
 def test_validate_node_no_contract_returns_empty_kind(
     scc_module: object, tmp_path: Path
 ) -> None:

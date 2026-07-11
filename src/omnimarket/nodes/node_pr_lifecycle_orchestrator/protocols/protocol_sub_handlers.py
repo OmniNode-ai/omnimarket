@@ -39,6 +39,7 @@ __all__ = [
     "OccDependencyEdge",
     "PrRecord",
     "PrTriageResult",
+    "ProtocolArmGateHandler",
     "ProtocolFixHandler",
     "ProtocolInventoryHandler",
     "ProtocolMergeHandler",
@@ -90,13 +91,24 @@ class PrRecord(BaseModel):
         default_factory=tuple,
         description="Machine evidence that failed checks are rerunnable infra flakes.",
     )
-    coderabbit_unresolved: int = Field(
-        default=0,
-        description="Count of unresolved CodeRabbit threads.",
+    coderabbit_unresolved: int | None = Field(
+        default=None,
+        description=(
+            "Count of unresolved CodeRabbit threads. None means the count was "
+            "never collected (OMN-14151) — the arm-gate treats that as "
+            "unknown, never as 0."
+        ),
     )
     merge_state_status: str | None = Field(
         default=None,
         description="GitHub merge state: CLEAN | DIRTY | BLOCKED | BEHIND | UNKNOWN",
+    )
+    is_draft: bool | None = Field(
+        default=None,
+        description=(
+            "GitHub isDraft (OMN-14151). None means never collected — the "
+            "arm-gate treats that as unknown, never as False."
+        ),
     )
 
 
@@ -362,3 +374,13 @@ class ProtocolPruneHandler(Protocol):
     """
 
     async def handle(self, command: Any) -> Any: ...
+
+
+@runtime_checkable
+class ProtocolArmGateHandler(Protocol):
+    """Fail-closed ARM/WITHHOLD decider for the merge-queue governor (OMN-14151).
+
+    Signature matches HandlerPrArmGate.handle().
+    """
+
+    async def handle(self, request: Any) -> Any: ...

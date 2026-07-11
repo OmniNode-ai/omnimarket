@@ -44,6 +44,13 @@ from uuid import UUID, uuid4
 from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from omnimarket.events.pr_arm_gate import (
+    EnumArmActionMode,
+    EnumArmDecision,
+    ModelArmCandidate,
+    ModelArmGatePolicy,
+    ModelArmGateRequest,
+)
 from omnimarket.events.repo_health import EnumFailureOrigin
 from omnimarket.nodes.node_pr_lifecycle_orchestrator.handlers.occ_stamp_readback import (
     ProtocolOccStampReadback,
@@ -56,6 +63,7 @@ from omnimarket.nodes.node_pr_lifecycle_orchestrator.protocols.protocol_sub_hand
     InventoryResult,
     MergeResult,
     OccDependencyEdge,
+    ProtocolArmGateHandler,
     ProtocolFixHandler,
     ProtocolInventoryHandler,
     ProtocolMergeHandler,
@@ -238,6 +246,43 @@ class ModelPrLifecycleStartCommand(BaseModel):
         default=_DEFAULT_SWEEP_SLEEP_SECONDS,
         ge=0,
         description="Backoff between NOT_DONE sweep passes.",
+    )
+    # OMN-14151: merge-queue governor action mode. action_mode and kill_switch
+    # are folded into node_pr_arm_gate_compute's ARM/WITHHOLD decision — a
+    # single choke point, not a second check the orchestrator could bypass.
+    # Both default to the SAFE (zero-mutation) value: an operator must
+    # explicitly select ENFORCE *and* explicitly disengage the kill switch
+    # before any PR can be armed. This replaces the pre-OMN-14151 posture where
+    # dry_run=False alone was sufficient to mutate the merge queue.
+    action_mode: EnumArmActionMode = Field(
+        default=EnumArmActionMode.REPORT_ONLY,
+        description="report_only (default, zero mutation) or enforce (opt-in).",
+    )
+    merge_queue_mutation_kill_switch: bool = Field(
+        default=True,
+        description=(
+            "Emergency stop, engaged by default. Must be explicitly set False "
+            "in addition to action_mode=enforce before any PR can arm."
+        ),
+    )
+    merge_wave_cap: int = Field(
+        default=3,
+        ge=0,
+        description=(
+            "Maximum PRs armed in one enforce pass. 0 arms nothing regardless "
+            "of action_mode."
+        ),
+    )
+    enable_stall_remediation: bool = Field(
+        default=False,
+        description=(
+            "Opt-in flag for merge-queue stall remediation (dequeue + "
+            "re-enqueue an ALREADY-armed PR to re-mint a stuck merge-group "
+            "SHA). This is a separate operation from readiness-arming an "
+            "unarmed PR, gated by this flag rather than the arm-gate's "
+            "per-PR ARM decision. Still requires action_mode=enforce and a "
+            "disengaged kill switch."
+        ),
     )
 
     @field_validator("repos", mode="before")
@@ -855,6 +900,7 @@ class HandlerPrLifecycleOrchestrator:
         merge: ProtocolMergeHandler | None = None,
         fix: ProtocolFixHandler | None = None,
         prune: ProtocolPruneHandler | None = None,
+        arm_gate: ProtocolArmGateHandler | None = None,
         event_bus: ProtocolEventBusPublisher,
         ledger_store: ProtocolPrLedgerStore | None = None,
         projection_db: ProtocolProjectionDatabaseSync | None = None,
@@ -873,6 +919,10 @@ class HandlerPrLifecycleOrchestrator:
         # OMN-13859: worktree-prune effect invoked in POST_MERGE_TAIL, one
         # command per merged (ticket, repo). Optional like the other sub-handlers.
         self._prune = prune
+        # OMN-14151: sole ARM/WITHHOLD decider for the merge fanout. Optional
+        # like the other sub-handlers; _ensure_sub_handlers wires the real
+        # HandlerPrArmGate for live runs.
+        self._arm_gate = arm_gate
         self._event_bus = event_bus
         # Durable, reconstructable PR-ledger projection (OMN-12569). Defaults to
         # the in-memory store for local/test runs; the runtime injects a
@@ -1325,6 +1375,20 @@ class HandlerPrLifecycleOrchestrator:
                 self._prune = prune_handler
             except ImportError:
                 self._prune = _StubPruneHandler()
+        if self._arm_gate is None:
+            # OMN-14151: the arm-gate is a pure compute with zero optional
+            # dependencies — no ImportError fallback stub is needed, but a
+            # missing import must still fail loudly (never a silent no-op
+            # decider) per OMN-13984's "no silent successful no-op" rule.
+            from omnimarket.nodes.node_pr_arm_gate_compute.handlers.handler_arm_gate import (
+                HandlerPrArmGate,
+            )
+
+            arm_gate_handler = HandlerPrArmGate()
+            self._check_protocol_conformance(
+                arm_gate_handler, ProtocolArmGateHandler, "arm_gate"
+            )
+            self._arm_gate = arm_gate_handler
         # OMN-14191: wire the live OCC-stamp read-back for real runs so prs_fixed
         # is gated on a CONFIRMED landed OCC companion (read back over live gh
         # state), not on the fix handler's dispatch-time self-report. Skipped when
@@ -1621,11 +1685,19 @@ class HandlerPrLifecycleOrchestrator:
 
                 assert self._merge is not None
                 # Real merge handler signature: handle(command: ModelPrMergeCommand)
-                # Fan out: one command per PR, aggregate the results.
+                # Fan out: one command per PR, gated per-PR by the arm-gate
+                # (OMN-14151), aggregate the results.
                 merge_result = await self._call_merge_fanout(
                     correlation_id=command.correlation_id,
                     prs_to_merge=merge_prs,
                     dry_run=command.dry_run,
+                    inv_result=state.inventory_result,
+                    policy=ModelArmGatePolicy(
+                        action_mode=command.action_mode,
+                        kill_switch=command.merge_queue_mutation_kill_switch,
+                        wave_cap=command.merge_wave_cap,
+                        enable_stall_remediation=command.enable_stall_remediation,
+                    ),
                 )
                 state.prs_merged = merge_result.prs_merged
                 logger.info(
@@ -1968,6 +2040,15 @@ class HandlerPrLifecycleOrchestrator:
                         merge_state_status=getattr(
                             pr_state, "merge_state_status", None
                         ),
+                        # OMN-14151: genuine tri-state facts for the arm-gate.
+                        # ``is_draft`` is threaded straight from the inventory
+                        # read; ``coderabbit_unresolved`` is None when the
+                        # inventory handler never collected it (never
+                        # defaulted to 0).
+                        is_draft=getattr(pr_state, "is_draft", None),
+                        coderabbit_unresolved=getattr(
+                            pr_state, "coderabbit_unresolved", None
+                        ),
                     )
                 )
 
@@ -1998,6 +2079,28 @@ class HandlerPrLifecycleOrchestrator:
                 len(inv_result.stuck_queue_prs),
                 command.dry_run,
                 command.inventory_only,
+            )
+            return
+        # OMN-14151: stall remediation dequeues + re-enqueues an ALREADY-armed
+        # PR to re-mint a stuck merge-group SHA — a separate operation from
+        # readiness-arming an unarmed PR, so it is NOT routed through the
+        # arm-gate. It is instead gated behind its own explicit opt-in
+        # (enable_stall_remediation) plus the same action_mode/kill_switch
+        # envelope, so the shipped conservative config has exactly one active
+        # arm path.
+        if (
+            command.action_mode is not EnumArmActionMode.ENFORCE
+            or command.merge_queue_mutation_kill_switch
+            or not command.enable_stall_remediation
+        ):
+            logger.info(
+                "[PR-LIFECYCLE-ORCH] detected %d stalled queue PRs; "
+                "remediation withheld action_mode=%s kill_switch=%s "
+                "enable_stall_remediation=%s",
+                len(inv_result.stuck_queue_prs),
+                command.action_mode.value,
+                command.merge_queue_mutation_kill_switch,
+                command.enable_stall_remediation,
             )
             return
 
@@ -2127,26 +2230,137 @@ class HandlerPrLifecycleOrchestrator:
             non_green_count=non_green_count,
         )
 
+    @staticmethod
+    def _status_checks_for_arm(checks_status: str) -> str | None:
+        """Map the genuinely-collected orchestrator checks_status to the
+        arm-gate's SUCCESS/FAILURE/PENDING vocabulary (OMN-14151).
+
+        ``checks_status`` already reflects a positively-collected fact (PR-
+        associated check runs only, per F3/OMN-13319) — this is a vocabulary
+        translation, not a second inference path. "unknown" maps to None so
+        the arm-gate WITHHOLDs rather than treating unknown as a pass.
+        """
+        mapping = {"success": "SUCCESS", "failure": "FAILURE", "pending": "PENDING"}
+        return mapping.get(checks_status.lower())
+
+    async def _evaluate_arm_gate(
+        self,
+        *,
+        pr: TriageRecord,
+        pr_record: PrRecord | None,
+        policy: ModelArmGatePolicy,
+    ) -> EnumArmDecision:
+        """Evaluate the sole ARM/WITHHOLD decider for one merge-intent PR.
+
+        Builds a ModelArmCandidate from genuine facts collected at inventory
+        time (never re-derived here) plus a live OCC-companion read-back, and
+        delegates the ARM/WITHHOLD call entirely to node_pr_arm_gate_compute.
+
+        The OCC-companion read-back (a live gh/remote call) is skipped
+        whenever the policy alone already guarantees WITHHOLD (action_mode is
+        not ENFORCE, or the kill switch is engaged) — report_only is the
+        default posture and must cost zero extra external calls, not just
+        zero mutation.
+        """
+        assert self._arm_gate is not None
+        occ_companion_verified: bool | None = None
+        if policy.action_mode is EnumArmActionMode.ENFORCE and not policy.kill_switch:
+            occ_readback = await self._occ_stamp_readback.verify_fix_landed(
+                pr.repo, pr.pr_number
+            )
+            occ_companion_verified = occ_readback.verified
+        candidate = ModelArmCandidate(
+            repo=pr.repo,
+            pr_number=pr.pr_number,
+            is_draft=pr_record.is_draft if pr_record is not None else None,
+            coderabbit_unresolved=(
+                pr_record.coderabbit_unresolved if pr_record is not None else None
+            ),
+            merge_state_status=(
+                pr_record.merge_state_status if pr_record is not None else None
+            ),
+            status_checks=(
+                self._status_checks_for_arm(pr_record.checks_status)
+                if pr_record is not None
+                else None
+            ),
+            occ_companion_verified=occ_companion_verified,
+        )
+        raw_decision = await self._arm_gate.handle(
+            ModelArmGateRequest(candidate=candidate, policy=policy)
+        )
+        # Short-circuit: a test double may return the bare EnumArmDecision.
+        if isinstance(raw_decision, EnumArmDecision):
+            return raw_decision
+        decision: EnumArmDecision = raw_decision.decision
+        return decision
+
     async def _call_merge_fanout(
         self,
         *,
         correlation_id: UUID,
         prs_to_merge: tuple[TriageRecord, ...],
         dry_run: bool,
+        inv_result: InventoryResult | None = None,
+        policy: ModelArmGatePolicy | None = None,
     ) -> MergeResult:
         """Fan out merge commands to the merge handler (one command per PR).
 
+        Every PR is first evaluated by node_pr_arm_gate_compute (OMN-14151),
+        the sole ARM/WITHHOLD decider — this is the ONE gated path that can
+        mutate the merge queue. Only ARM-decided PRs, priority-ordered and
+        capped at ``policy.wave_cap``, reach the merge handler; every other PR
+        is a report-only no-op this pass (default posture: zero mutation).
+
         HandlerPrLifecycleMerge.handle(command: ModelPrMergeCommand) → ModelPrMergeResult.
         """
+        self._ensure_sub_handlers()
         assert self._merge is not None
+        assert self._arm_gate is not None
 
         from omnimarket.nodes.node_pr_lifecycle_merge_effect.models.model_merge_command import (
             ModelPrMergeCommand,
         )
 
+        effective_policy = policy if policy is not None else ModelArmGatePolicy()
+        pr_lookup: dict[tuple[str, int], PrRecord] = {}
+        if inv_result is not None:
+            pr_lookup = {(p.repo, p.pr_number): p for p in inv_result.prs}
+
+        armed: list[TriageRecord] = []
+        for pr in prs_to_merge:
+            decision = await self._evaluate_arm_gate(
+                pr=pr,
+                pr_record=pr_lookup.get((pr.repo, pr.pr_number)),
+                policy=effective_policy,
+            )
+            if decision is EnumArmDecision.ARM:
+                armed.append(pr)
+            else:
+                logger.info(
+                    "[PR-LIFECYCLE-ORCH] arm-gate WITHHOLD %s#%s (report-only "
+                    "this pass)",
+                    pr.repo,
+                    pr.pr_number,
+                )
+
+        # Wave-cap: bound blast radius to the first N ARM-decided PRs,
+        # deterministically ordered (repo, pr_number) since this slice ships
+        # with a flat priority_hint of 0 for every candidate.
+        armed = sorted(armed, key=lambda pr: (pr.repo, pr.pr_number))
+        capped = armed[: effective_policy.wave_cap]
+        if len(armed) > len(capped):
+            logger.info(
+                "[PR-LIFECYCLE-ORCH] wave_cap=%d bounded %d ARM-decided PR(s) "
+                "to %d this pass",
+                effective_policy.wave_cap,
+                len(armed),
+                len(capped),
+            )
+
         prs_merged = 0
         prs_failed = 0
-        for pr in prs_to_merge:
+        for pr in capped:
             merge_command = ModelPrMergeCommand(
                 correlation_id=correlation_id,
                 pr_number=pr.pr_number,

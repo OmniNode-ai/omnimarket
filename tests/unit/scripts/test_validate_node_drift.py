@@ -216,6 +216,62 @@ def test_orphan_node_check_allows_experimental_contract(
 
 
 @pytest.mark.unit
+def test_pyproject_entry_check_allows_deprecated_lifecycle(
+    drift_module: object,
+    tmp_path: Path,
+) -> None:
+    """A node explicitly marked lifecycle: deprecated (OMN-14151) is exempt from
+    the pyproject_entry FAIL even in --strict mode — this is how a hard-gated
+    legacy node's entry_points can be removed without tripping the gate."""
+    node_dir = tmp_path / "node_legacy_arm"
+    node_dir.mkdir()
+    (node_dir / "contract.yaml").write_text(
+        "name: node_legacy_arm\n"
+        "node_type: effect\n"
+        "lifecycle: deprecated\n"
+        "handler:\n"
+        "  module: omnimarket.nodes.node_legacy_arm.handlers.handler_legacy_arm\n"
+        "  class: HandlerLegacyArm\n"
+    )
+
+    result = drift_module.validate_node(  # type: ignore[attr-defined]
+        node_dir,
+        entry_points=set(),  # no pyproject entry — this node was deregistered
+        strict=True,
+    )
+
+    assert result.passed is True
+    assert not any(finding.check == "pyproject_entry" for finding in result.findings)
+
+
+@pytest.mark.unit
+def test_pyproject_entry_check_fails_missing_entry_without_lifecycle_marker(
+    drift_module: object,
+    tmp_path: Path,
+) -> None:
+    """A node missing its pyproject entry with NO lifecycle marker still FAILs —
+    the OMN-14151 exemption is opt-in, not a blanket loosening of check 3."""
+    node_dir = tmp_path / "node_unregistered"
+    node_dir.mkdir()
+    (node_dir / "contract.yaml").write_text(
+        "name: node_unregistered\n"
+        "node_type: effect\n"
+        "handler:\n"
+        "  module: omnimarket.nodes.node_unregistered.handlers.handler_unregistered\n"
+        "  class: HandlerUnregistered\n"
+    )
+
+    result = drift_module.validate_node(  # type: ignore[attr-defined]
+        node_dir,
+        entry_points=set(),
+        strict=True,
+    )
+
+    assert result.passed is False
+    assert any(finding.check == "pyproject_entry" for finding in result.findings)
+
+
+@pytest.mark.unit
 def test_orphan_node_check_passes_bidirectional_contract(
     drift_module: object,
     tmp_path: Path,

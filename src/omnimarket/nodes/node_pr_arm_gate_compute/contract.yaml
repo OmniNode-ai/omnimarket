@@ -1,0 +1,57 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - PR Arm Gate Compute (OMN-14151)
+#
+# Pure computation: the merge-queue governor's SOLE ARM/WITHHOLD decider. Zero
+# network calls, zero re-derivation of the facts it is handed. ARM requires
+# every criterion (action_mode, kill_switch, is_draft, coderabbit_unresolved,
+# merge_state_status, status_checks, occ_companion_verified) to positively
+# hold; any None/unknown fact fails closed to WITHHOLD.
+#
+# Related Tickets:
+#   - OMN-14151: merge-queue governor arm-gate
+name: "node_pr_arm_gate_compute"
+node_type: "COMPUTE_GENERIC"
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_version: "1.0.0"
+description: "Fail-closed COMPUTE ARM/WITHHOLD decider for the merge-queue governor's single gated arm path."
+lifecycle: active
+event_bus:
+  # Event-shaped, not command-shaped: this pure COMPUTE node reacts to an
+  # upstream "merge candidate ready" event rather than consuming a command
+  # (mirrors node_pr_lifecycle_triage_compute's event-subscribe shape).
+  subscribe_topics:
+    - "onex.evt.omnimarket.pr-lifecycle-merge-candidate-ready.v1"
+  publish_topics:
+    - "onex.evt.omnimarket.pr-arm-gate-decided.v1"
+input_model:
+  name: "ModelArmGateRequest"
+  module: "omnimarket.nodes.node_pr_arm_gate_compute.models.model_arm_gate_request"
+  description: "One candidate PR's genuine tri-state facts plus the operator policy to evaluate it against."
+output_model:
+  name: "ModelArmGateDecision"
+  module: "omnimarket.nodes.node_pr_arm_gate_compute.models.model_arm_gate_decision"
+  description: "ARM | WITHHOLD verdict with machine-readable withheld_reasons."
+handler_routing:
+  routing_strategy: "operation_match"
+  handlers:
+    - operation: "evaluate_arm_gate"
+      handler:
+        name: "HandlerPrArmGate"
+        module: "omnimarket.nodes.node_pr_arm_gate_compute.handlers.handler_arm_gate"
+metadata:
+  transport_type: kafka
+  description: "Merge-queue governor arm-gate compute node"
+  author: "OmniNode Team"
+  created: "2026-07-10"
+  tags:
+    - "compute"
+    - "pr-lifecycle"
+    - "arm-gate"
+    - "merge-queue-governor"
+    - "OMN-14151"
+  related_tickets:
+    - "OMN-14151"

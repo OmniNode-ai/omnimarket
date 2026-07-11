@@ -6,6 +6,11 @@ name: node_merge_sweep_auto_merge_arm_effect
 contract_version: {major: 1, minor: 0, patch: 0}
 node_type: effect
 node_version: {major: 1, minor: 0, patch: 0}
+# OMN-14151: legacy arm surface, superseded by the merge-queue governor's
+# single gated arm path (node_pr_arm_gate_compute + node_pr_lifecycle_merge_effect).
+# entry_points deregistered from pyproject.toml/metadata.yaml; handler
+# hard-gated fail-closed (OMNIMARKET_LEGACY_MERGE_ARM_ENABLED, default False).
+lifecycle: deprecated
 
 description: >
   Arms GitHub auto-merge via GraphQL enablePullRequestAutoMerge (SQUASH strategy).
