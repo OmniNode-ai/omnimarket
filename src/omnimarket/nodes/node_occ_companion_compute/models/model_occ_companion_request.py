@@ -21,7 +21,11 @@ what keeps the plan a pure function of the request.
 
 from __future__ import annotations
 
-from pydantic import BaseModel, ConfigDict, Field
+import re
+
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+_GIT_SHA_RE = re.compile(r"^[0-9a-fA-F]{7,40}$")
 
 
 class ModelObservedProbe(BaseModel):
@@ -133,6 +137,33 @@ class ModelOccCompanionRequest(BaseModel):
     diff_total_lines: int = Field(
         default=0, description="Total changed diff lines on the product PR."
     )
+
+    @field_validator("pr_head_sha", "occ_head_sha")
+    @classmethod
+    def _validate_git_sha(cls, value: str | None) -> str | None:
+        if value is None:
+            return value
+        if not _GIT_SHA_RE.fullmatch(value):
+            raise ValueError("commit SHA must be 7-40 hexadecimal characters")
+        return value
+
+    @field_validator("occ_contract_states")
+    @classmethod
+    def _validate_unique_occ_contract_states(
+        cls, value: tuple[ModelOccContractState, ...]
+    ) -> tuple[ModelOccContractState, ...]:
+        seen: set[str] = set()
+        duplicates: list[str] = []
+        for state in value:
+            if state.ticket_id in seen:
+                duplicates.append(state.ticket_id)
+            seen.add(state.ticket_id)
+        if duplicates:
+            duplicate_list = ", ".join(sorted(set(duplicates)))
+            raise ValueError(
+                f"occ_contract_states must not contain duplicate ticket_id values: {duplicate_list}"
+            )
+        return value
 
 
 __all__ = [

@@ -68,6 +68,31 @@ def _request(**overrides: object) -> ModelOccCompanionRequest:
 
 
 # ---------------------------------------------------------------------------
+# Request boundary validation
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestRequestBoundaryValidation:
+    def test_rejects_malformed_product_head_sha(self) -> None:
+        with pytest.raises(ValueError, match="7-40 hexadecimal"):
+            _request(pr_head_sha="not-a-sha")
+
+    def test_rejects_malformed_occ_head_sha_when_present(self) -> None:
+        with pytest.raises(ValueError, match="7-40 hexadecimal"):
+            _request(occ_pr_number=55, occ_head_sha="not-a-sha")
+
+    def test_allows_missing_occ_head_sha_on_first_pass(self) -> None:
+        assert _request(occ_head_sha=None).occ_head_sha is None
+
+    def test_rejects_duplicate_occ_contract_state_ticket_ids(self) -> None:
+        state_a = ModelOccContractState(ticket_id="OMN-9999", exists=True)
+        state_b = ModelOccContractState(ticket_id="OMN-9999", exists=False)
+        with pytest.raises(ValueError, match="duplicate ticket_id"):
+            _request(occ_contract_states=(state_a, state_b))
+
+
+# ---------------------------------------------------------------------------
 # T1 — determinism
 # ---------------------------------------------------------------------------
 
