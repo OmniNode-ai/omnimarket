@@ -70,7 +70,7 @@ def _raises_not_implemented(func: _FunctionDef) -> bool:
 
 
 def _has_stub_comment(func: _FunctionDef, comments: dict[int, list[str]]) -> bool:
-    """True when a stub comment needle appears in the function's line range."""
+    """True when an incomplete-work comment appears in the function's line range."""
     start = func.lineno
     end = func.end_lineno or func.lineno
     in_range = "\n".join(
@@ -112,7 +112,7 @@ def _is_empty_body(body: list[ast.stmt]) -> bool:
 
 
 def _function_is_stub(func: _FunctionDef, comments: dict[int, list[str]]) -> bool:
-    """True when the function is an unimplemented stub."""
+    """True when the function has no implementation body."""
     if _is_empty_body(_body_after_docstring(func)):
         return True
     if _raises_not_implemented(func):
@@ -123,7 +123,7 @@ def _function_is_stub(func: _FunctionDef, comments: dict[int, list[str]]) -> boo
 def _detect_stub_methods(
     tree: ast.AST, comments: dict[int, list[str]]
 ) -> tuple[str, ...]:
-    """Return the names of every stub function/method, in source order."""
+    """Return names of functions or methods without implementation, in source order."""
     return tuple(
         node.name
         for node in ast.walk(tree)
@@ -192,7 +192,7 @@ def validate_generated_code(
 
     Pure: parses the given text, performs no I/O, and returns a deterministic
     result. A non-parseable artifact short-circuits with ``is_valid=False`` and
-    the syntax error captured; the stub and structure checks run only on
+    the syntax error captured; implementation and structure checks run only on
     parseable source.
     """
     try:
