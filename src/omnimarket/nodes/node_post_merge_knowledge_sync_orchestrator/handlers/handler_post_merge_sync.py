@@ -11,6 +11,13 @@ to knowledge backends:
   (d) KB ADR canary        — triggered when PR title/body contains ADR keywords
 
 Produces durable evidence at .onex_state/knowledge-sync/<sync_run_id>.json.
+
+Thin canonical shape (OMN-14242): ``handle`` takes the typed request and
+returns the typed ``ModelSyncFanoutCommands`` result directly — no envelope,
+no ``ModelHandlerOutput`` wrapper, no coercion. The runtime wraps. The method
+is sync: evidence persistence is plain synchronous file I/O with no
+``await``-worthy operation, matching the ``HandlerFrictionTriageOrchestrator``
+precedent (same ORCHESTRATOR archetype).
 """
 
 from __future__ import annotations
@@ -19,9 +26,6 @@ import json
 import logging
 import os
 from pathlib import Path
-from uuid import uuid4
-
-from omnibase_core.models.dispatch.model_handler_output import ModelHandlerOutput
 
 from omnimarket.nodes.node_post_merge_knowledge_sync_orchestrator.models.model_sync_request import (
     ModelPostMergeSyncRequest,
@@ -74,7 +78,17 @@ def _has_adr_keyword(text: str) -> bool:
 class HandlerPostMergeSyncOrchestrator:
     """ORCHESTRATOR — conditionally fans out to knowledge backends after a PR merge."""
 
-    async def handle(self, request: ModelPostMergeSyncRequest) -> ModelHandlerOutput:  # type: ignore[type-arg]
+    def handle(self, payload: ModelPostMergeSyncRequest) -> ModelSyncFanoutCommands:
+        """Compute the conditional fan-out decision and persist evidence.
+
+        Args:
+            payload: The post-merge PR event to evaluate.
+
+        Returns:
+            ModelSyncFanoutCommands describing which knowledge backends to
+            trigger for this merge.
+        """
+        request = payload
         modified_contract_files = [
             f for f in request.changed_files if _is_contract_file(f)
         ]
@@ -113,12 +127,7 @@ class HandlerPostMergeSyncOrchestrator:
             trigger_adr,
         )
 
-        return ModelHandlerOutput.for_orchestrator(
-            input_envelope_id=uuid4(),
-            correlation_id=request.correlation_id,
-            handler_id="node_post_merge_knowledge_sync_orchestrator",
-            events=(fanout,),
-        )
+        return fanout
 
     def _write_evidence(
         self,
