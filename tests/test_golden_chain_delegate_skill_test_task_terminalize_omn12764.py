@@ -289,6 +289,7 @@ async def test_test_task_terminates_via_bus_backed_dispatch_port() -> None:
             wait=True,
             quality_contract_mode="replace_task_class",
             acceptance_criteria=(),
+            tenant_id=None,
         )
     finally:
         await bus.close()
@@ -358,6 +359,7 @@ async def test_test_task_failed_terminal_received_via_bus() -> None:
             wait=True,
             quality_contract_mode="replace_task_class",
             acceptance_criteria=(),
+            tenant_id=None,
         )
     finally:
         await bus.close()

@@ -106,6 +106,10 @@ inputs:
     type: str
     required: false
     description: Session that originated the delegation request.
+  tenant_id:
+    type: str
+    required: false
+    description: Verified tenant slug derived at the gateway or runtime boundary.
   recipient:
     type: str
     required: false
