@@ -11,6 +11,8 @@ description: >
   Ledger demo EFFECT. Writes a tick line to <state_root>/ledger-journal.txt,
   emits appended event with the resulting line_number. Part of OMN-8943.
 
+output_model: omnimarket.nodes.node_ledger_append_effect.models.model_ledger_appended_event.ModelLedgerAppendedEvent
+
 handler:
   module: omnimarket.nodes.node_ledger_append_effect.handlers.handler_ledger_append
   class: HandlerLedgerAppend

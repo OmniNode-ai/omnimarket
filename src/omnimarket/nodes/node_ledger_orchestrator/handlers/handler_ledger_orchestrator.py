@@ -2,14 +2,13 @@
 # SPDX-License-Identifier: MIT
 """Handler for `node_ledger_orchestrator` (OMN-8947).
 
-Per ONEX rules: ORCHESTRATOR emits events/intents, never returns a result.
+Canonical thin shape (OMN-14242): ``handle()`` takes a single typed payload
+and returns its single typed emit directly — no ``ModelHandlerOutput``
+envelope, no coercion in the handler. The runtime wraps the return value
+into an envelope/event publish; this handler is a pure single-emit mapping.
 """
 
 from __future__ import annotations
-
-from uuid import uuid4
-
-from omnibase_core.models.dispatch.model_handler_output import ModelHandlerOutput
 
 from omnimarket.nodes.node_ledger_orchestrator.models.model_ledger_tick_command import (
     ModelLedgerAppendCommand,
@@ -20,23 +19,14 @@ from omnimarket.nodes.node_ledger_orchestrator.models.model_ledger_tick_command 
 class HandlerLedgerOrchestrator:
     """Orchestrator shell. Receives a tick command, emits an append command event."""
 
-    def handle(self, request: ModelLedgerTickCommand) -> ModelHandlerOutput[None]:
+    def handle(self, payload: ModelLedgerTickCommand) -> ModelLedgerAppendCommand:
         """Convert tick → append command.
 
-        Emits a single `ModelLedgerAppendCommand` event; the append-effect node
-        consumes it in the next link of the four-node chain.
-
-        `input_envelope_id` is synthesized per-invocation; production runtime
-        would pass the envelope ID of the triggering message. `correlation_id`
-        is carried forward from the request.
+        Single emit: the append-effect node consumes the returned
+        `ModelLedgerAppendCommand` in the next link of the four-node chain.
+        `correlation_id` is carried forward from the payload.
         """
-        append_cmd = ModelLedgerAppendCommand(
-            tick_id=request.tick_id,
-            correlation_id=request.correlation_id,
-        )
-        return ModelHandlerOutput.for_orchestrator(
-            input_envelope_id=uuid4(),
-            correlation_id=request.correlation_id,
-            handler_id="node_ledger_orchestrator",
-            events=(append_cmd,),
+        return ModelLedgerAppendCommand(
+            tick_id=payload.tick_id,
+            correlation_id=payload.correlation_id,
         )
