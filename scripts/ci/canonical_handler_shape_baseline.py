@@ -95,7 +95,6 @@ NON_CANONICAL: tuple[str, ...] = (
     "omnimarket.nodes.node_projection_pattern_learning",
     "omnimarket.nodes.node_projection_receipt_gate",
     "omnimarket.nodes.node_projection_registration",
-    "omnimarket.nodes.node_projection_replay_check_compute",
     "omnimarket.nodes.node_projection_routing_decision",
     "omnimarket.nodes.node_projection_sandbox_decisions",
     "omnimarket.nodes.node_projection_savings",
