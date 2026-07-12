@@ -132,7 +132,9 @@ def test_cli_wait_for_completion_fails_on_failed_completion(
     monkeypatch.setenv("KAFKA_SASL_USERNAME", "user")
     monkeypatch.setenv("KAFKA_SASL_PASSWORD", "secret")
     monkeypatch.setenv("DEPLOY_AGENT_HMAC_SECRET", "hmac-secret")
-    monkeypatch.setattr(trigger_module, "publish_rebuild_event", lambda **_kwargs: None)
+    # publish_rebuild_event returns the delivered count; the caller asserts it is
+    # >=1 (RT-5 fail-closed on zero output), so the mock must return 1, not None.
+    monkeypatch.setattr(trigger_module, "publish_rebuild_event", lambda **_kwargs: 1)
     monkeypatch.setattr(
         trigger_module,
         "wait_for_rebuild_completion",
