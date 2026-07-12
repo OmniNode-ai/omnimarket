@@ -231,6 +231,7 @@ def _select_model_for_task(
     estimated_tokens: int,
     bifrost_backends: dict[str, BifrostBackendRef],
     contract_model_ref: str | None = None,
+    exclude_backend_refs: frozenset[str] = frozenset(),
 ) -> ModelTierModel | None:
     """Select the best model from a tier for the given task and token count.
 
@@ -248,6 +249,15 @@ def _select_model_for_task(
     Prefers fast-path models when prompt fits within their threshold.
     Falls back to any model that declares the task type in use_for.
     Endpoint availability is checked via the bifrost_backends dict (keyed by backend_id).
+
+    ``exclude_backend_refs`` (OMN-14402, same-tier backend fallback) removes the
+    named ``backend_ref``s from every selection pass — including the
+    contract_model_ref id-match pass. When exclusions are active, the
+    "id-matches-but-ignores-use_for" escape hatch above is also disabled: that
+    hatch exists to preserve an EXPLICIT single-match pin to an off-use_for
+    model (e.g. OMN-10942/OMN-13140's cloud override), which is a different
+    concern than a same-tier RETRY after a transport failure, where a candidate
+    that does not even declare the task type is never a valid substitute.
     """
     # Contract-declared model takes priority — find it by model ID in this tier.
     #
@@ -273,6 +283,7 @@ def _select_model_for_task(
             model
             for model in tier_models
             if model.id == contract_model_ref
+            and model.backend_ref not in exclude_backend_refs
             and (backend := bifrost_backends.get(model.backend_ref)) is not None
             and _backend_secret_available(backend)
             and estimated_tokens <= model.max_context_tokens
@@ -280,10 +291,12 @@ def _select_model_for_task(
         for model in id_matches:
             if task_type in model.use_for:
                 return model
-        if id_matches:
+        if id_matches and not exclude_backend_refs:
             return id_matches[0]
 
     for model in tier_models:
+        if model.backend_ref in exclude_backend_refs:
+            continue
         backend = bifrost_backends.get(model.backend_ref)
         if (
             task_type in model.use_for
@@ -296,6 +309,8 @@ def _select_model_for_task(
             return model
 
     for model in tier_models:
+        if model.backend_ref in exclude_backend_refs:
+            continue
         backend = bifrost_backends.get(model.backend_ref)
         if (
             task_type in model.use_for
@@ -1032,6 +1047,63 @@ def backend_id_for_tier(tier_name: str, task_type: str) -> str | None:
     return selected.backend_ref
 
 
+def sibling_backend_available_in_tier(
+    tier_name: str,
+    task_type: str,
+    exclude_backend_refs: frozenset[str],
+) -> str | None:
+    """Return the ``backend_ref`` of an untried sibling backend in ``tier_name``.
+
+    OMN-14402 same-tier backend fallback: before escalating a TRANSPORT/
+    inference failure off the tier entirely (walking to the next, possibly
+    paid/cloud tier via ``next_eligible_tier``), the orchestrator checks
+    whether ``tier_name`` declares another backend — besides the ones in
+    ``exclude_backend_refs`` — that also serves ``task_type`` with a
+    resolvable endpoint. This is an ELIGIBILITY check only (mirrors
+    ``_tier_can_route_task`` / ``backend_id_for_tier``): it runs the SAME
+    ``_select_model_for_task`` selection ``delta()`` applies, with a 0-token
+    availability probe, so the backend this reports is exactly the one the
+    paired ``ModelRoutingIntent(min_tier_name=tier_name,
+    excluded_backend_refs=exclude_backend_refs)`` re-route will resolve.
+
+    Ordering is deterministic and config-declared, never dict/set iteration
+    order: ``tier.models`` in ``routing_tiers.yaml`` declaration order, with
+    the fast-path-threshold pass preferred over the general use_for pass —
+    the same two-pass order ``_select_model_for_task`` always applies.
+
+    Returns ``None`` when ``tier_name`` is unknown, declares no backend for
+    ``task_type``, or every such backend is already in
+    ``exclude_backend_refs`` — the orchestrator then falls through to the
+    normal cross-tier escalation (``next_eligible_tier``), which is the
+    ORIGINAL behavior when no sibling exists.
+    """
+    config = _get_config()
+    matching_tier = next(
+        (tier for tier in config.tiers if tier.name == tier_name),
+        None,
+    )
+    if matching_tier is None:
+        return None
+
+    bifrost_backends = _load_bifrost_endpoints()
+    contract = _get_task_class_contract()
+    contract_model_ref = _get_contract_model_ref(task_type, contract=contract)
+    # 0-token availability probe (mirrors _tier_can_route_task / backend_id_for_tier):
+    # identifies which backend the tier WOULD select excluding the failed
+    # backend(s); the real re-route re-selects with the actual token estimate.
+    selected = _select_model_for_task(
+        matching_tier.models,
+        task_type,
+        0,
+        bifrost_backends,
+        contract_model_ref=contract_model_ref,
+        exclude_backend_refs=exclude_backend_refs,
+    )
+    if selected is None:
+        return None
+    return selected.backend_ref
+
+
 def resolve_task_class_max_escalations(task_type: str) -> int | None:
     """Resolve ``escalation_policy.max_escalations`` for ``task_type`` (OMN-13849).
 
@@ -1121,6 +1193,7 @@ def delta(
     *,
     min_tier_name: str | None = None,
     roi_overlay: ModelRoutingRoiOverlay | None = None,
+    excluded_backend_refs: frozenset[str] = frozenset(),
 ) -> ModelRoutingDecision:
     """Compute routing decision for a delegation request.
 
@@ -1146,6 +1219,19 @@ def delta(
     projection read happens inside this reducer, preserving fresh-process/live
     parity (OMN-12974).
 
+    When ``excluded_backend_refs`` is set (OMN-14402, same-tier backend
+    fallback), those ``backend_ref``s are skipped in EVERY tier's selection —
+    including ``min_tier_name``'s own tier. Combined with ``min_tier_name``
+    pinned to the CURRENT (failing) tier, this naturally does two things in one
+    call: if the tier still declares an untried sibling for the task, it is
+    selected (``tier_name`` on the result is unchanged); if not, selection
+    falls through to the next tier exactly as a real tier escalation would.
+    The orchestrator decides WHICH of those two outcomes to treat as a "retry"
+    vs a "real escalation" via ``sibling_backend_available_in_tier`` BEFORE
+    calling this — see ``handler_delegation_workflow._maybe_retry_sibling_backend``.
+    Backend refs are unique across tiers, so applying the same exclusion set
+    tier-wide is a no-op for tiers that never declared the excluded backend.
+
     Endpoint URLs are resolved from the bifrost contract overlay, not endpoint env vars.
 
     Args:
@@ -1154,6 +1240,8 @@ def delta(
             iteration order. Used by the escalation path after quality gate failure.
         roi_overlay: When set, the resolved captured-ROI signal used to demote
             proven-failing tiers before the static order.
+        excluded_backend_refs: Backend refs to skip in every tier's selection
+            (OMN-14402 same-tier backend fallback).
 
     Returns:
         A routing decision with selected model, endpoint, and config.
@@ -1199,6 +1287,7 @@ def delta(
                 estimated_tokens,
                 bifrost_backends,
                 contract_model_ref=contract_model_ref,
+                exclude_backend_refs=excluded_backend_refs,
             )
             if selected is None:
                 continue
@@ -1271,6 +1360,11 @@ def delta(
                 dod_deterministic=dod_deterministic,
                 dod_heuristic=dod_heuristic,
                 tier_name=tier.name,
+                # OMN-14402: the raw backend_ref, distinct from selected_backend_id
+                # (a UUID hashed from .id alone, which collides across backends
+                # sharing an id — OMN-14396). Same-tier backend fallback keys its
+                # already-tried exclusion set off this field.
+                selected_backend_ref=selected.backend_ref,
             )
         return None
 
@@ -1312,6 +1406,7 @@ __all__: list[str] = [
     "next_eligible_tier",
     "resolve_task_class_dod_checks",
     "resolve_task_class_max_escalations",
+    "sibling_backend_available_in_tier",
     "tier_for_backend",
     "tier_max_retries",
 ]

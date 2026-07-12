@@ -72,7 +72,18 @@ class HandlerRoutingIntent:
     """
 
     def handle(self, intent: ModelRoutingIntent) -> ModelRoutingDecision:
-        decision = routing_delta(intent.payload, min_tier_name=intent.min_tier_name)
+        # OMN-14402: getattr-guarded so this consumer degrades gracefully
+        # against a core pin that predates the excluded_backend_refs field
+        # (mirrors the OMN-14280 tenant_id rollout-skew pattern) instead of
+        # raising AttributeError on a mixed-deploy window.
+        excluded_backend_refs = frozenset(
+            getattr(intent, "excluded_backend_refs", ()) or ()
+        )
+        decision = routing_delta(
+            intent.payload,
+            min_tier_name=intent.min_tier_name,
+            excluded_backend_refs=excluded_backend_refs,
+        )
         logger.info(
             "HandlerRoutingIntent resolved: model=%s endpoint=%s tier=%s correlation_id=%s",
             decision.selected_model,
