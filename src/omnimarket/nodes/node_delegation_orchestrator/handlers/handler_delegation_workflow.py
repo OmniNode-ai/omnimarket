@@ -122,6 +122,7 @@ from omnimarket.nodes.node_delegation_routing_reducer.handlers.handler_delegatio
     describe_no_higher_tier_available,
     is_free_tier,
     next_eligible_tier,
+    sibling_backend_available_in_tier,
     tier_max_retries,
 )
 from omnimarket.nodes.node_delegation_routing_reducer.models.model_routing_decision import (
@@ -751,6 +752,22 @@ class DelegationWorkflowState:
     # increments ``escalation_count`` (a same-tier retry is not a tier escalation).
     local_retry_count: int = 0
     local_retry_tier: str | None = None
+    # OMN-14402 (same-tier backend fallback). A TRANSPORT/inference failure of
+    # the selected backend tries a SIBLING backend in the same tier — one that
+    # also declares the task_type — before escalating the whole tier to the
+    # next (possibly paid/cloud) tier. ``same_tier_failed_backend_refs`` is the
+    # set of backend_refs already tried-and-failed on
+    # ``same_tier_failed_backend_tier``; both reset when the workflow moves
+    # onto a different tier (a real escalation), so each tier's fallback
+    # exclusion set is independent — mirrors the local_retry_tier/
+    # local_retry_count reset pattern above. Distinct from that OMN-14234 pair:
+    # local_retry_* is a same-tier RE-DRAFT on a quality-gate failure (best-of-N
+    # on a FREE tier only); this is a same-tier RE-ROUTE to a DIFFERENT backend
+    # on a transport/inference failure (any tier). Never increments
+    # ``escalation_count`` and emits no escalation event — a same-tier backend
+    # swap is not a tier escalation.
+    same_tier_failed_backend_refs: tuple[str, ...] = ()
+    same_tier_failed_backend_tier: str | None = None
     # OMN-14058 (OPERATOR-ACCEPTED INTERIM): resolved ONCE in
     # handle_delegation_request and carried onto every TerminalEmissionInputs
     # for this correlation_id (mirrors the context_pack_hash acceptance-pin
@@ -1130,6 +1147,30 @@ class HandlerDelegationWorkflow:
                 completion_tokens=response.completion_tokens,
             )
 
+            error_retryable = _should_escalate_inference_error(response.error_message)
+
+            # OMN-14402 (same-tier backend fallback): a RETRYABLE transport/
+            # inference failure (connection refused, timeout, unavailable —
+            # the SAME class the next branch treats as escalatable) gets one
+            # attempt per untried sibling backend in the CURRENT tier before
+            # ``next_eligible_tier`` walks to the next (possibly paid/cloud)
+            # tier below. A non-retryable error (empty content/choices) is
+            # unchanged — the existing minimal-safe classification still
+            # applies unmodified; a different local model is not assumed to
+            # fix a genuinely empty/malformed provider response either, so
+            # this stays scoped to the transport-failure class the ticket
+            # names.
+            if error_retryable:
+                sibling_retry_intents = self._maybe_retry_sibling_backend(
+                    workflow,
+                    failed_backend_ref=workflow.routing_decision.selected_backend_ref,
+                    attempt_cost_usd=attempt_cost_usd,
+                    prompt_tokens=response.prompt_tokens,
+                    completion_tokens=response.completion_tokens,
+                )
+                if sibling_retry_intents is not None:
+                    return sibling_retry_intents
+
             # OMN-13476: the escalate-or-terminate decision is owned by the
             # node_delegation_escalation_decision_compute COMPUTE. Infra errors
             # (auth failure, connection refused, timeout) are retryable at the
@@ -1144,9 +1185,7 @@ class HandlerDelegationWorkflow:
                 workflow,
                 max_escalation_attempts=_MAX_INFERENCE_ESCALATION_ATTEMPTS,
                 excluded_tiers=_INFERENCE_ERROR_EXCLUDED_TIERS,
-                error_retryable=_should_escalate_inference_error(
-                    response.error_message
-                ),
+                error_retryable=error_retryable,
                 non_retryable_reason="non_retryable_inference_response",
                 task_type=error_task_type,
             )
@@ -1591,6 +1630,112 @@ class HandlerDelegationWorkflow:
         self._advance(workflow, EnumDelegationState.FAILED)
         events.extend(self._emit_terminal(terminal_inputs))
         return events
+
+    def _maybe_retry_sibling_backend(
+        self,
+        workflow: DelegationWorkflowState,
+        *,
+        failed_backend_ref: str,
+        attempt_cost_usd: float,
+        prompt_tokens: int,
+        completion_tokens: int,
+    ) -> list[BaseModel] | None:
+        """Try a sibling backend in the SAME tier before escalating off it (OMN-14402).
+
+        There was NO same-tier fallback for a TRANSPORT/inference failure: if the
+        selected backend's endpoint failed, ``handle_inference_response`` walked
+        straight to the NEXT tier via ``next_eligible_tier`` — even when the
+        current tier declares another backend that also serves the task_type
+        (e.g. routing_tiers.yaml's local tier carries both
+        local-heavy-reasoning and local-reasoner for "research"). This is acute
+        whenever the next tier is cloud and the cloud provider cannot serve
+        (e.g. a 429-exhausted quota window): a single local backend's transport
+        failure used to fail the whole delegation instead of trying a healthy
+        local sibling.
+
+        Fail-closed and bounded: ``sibling_backend_available_in_tier`` runs the
+        SAME deterministic selection ``delta()`` applies (routing_tiers.yaml
+        declaration order, fast-path pass before the general use_for pass) over
+        the backends NOT YET in ``same_tier_failed_backend_refs`` — so this can
+        retry at most once per eligible backend the tier declares for the task,
+        never indefinitely. Returns ``None`` (no retry) as soon as no untried
+        sibling exists, so the caller falls through to the ORIGINAL cross-tier
+        escalation path unchanged.
+
+        A retry re-routes to the SAME tier (``min_tier_name`` pinned, with the
+        growing exclusion set) via a ROUTED -> ROUTED self-loop; it does NOT
+        increment ``escalation_count`` and emits NO escalation event, because a
+        same-tier backend swap is not a tier escalation — mirrors
+        ``_maybe_retry_local``'s same-tier-is-not-an-escalation contract. This is
+        a DIFFERENT failure class from ``_maybe_retry_local`` (quality-gate
+        best-of-N on a free tier only): this path only fires on a
+        transport/inference failure, on ANY tier (free or paid), and never
+        conflates with the OMN-14234 retry-local budget or counters.
+
+        The rejected attempt's spend is banked into the cumulative totals before
+        the inference state reset, mirroring ``_bank_attempt_spend`` on every
+        other non-terminal branch.
+        """
+        tier = workflow.current_tier_name
+        # Fail closed on an unidentified failed backend (e.g. a routing decision
+        # from before OMN-14402, or a replayed/legacy row whose
+        # selected_backend_ref defaulted to ""): without a concrete ref to
+        # exclude, the deterministic selection would just re-resolve the SAME
+        # backend every time — a retry loop, not a fallback. Skip the feature
+        # entirely and preserve the prior escalate-off-tier behavior.
+        if tier is None or workflow.request is None or not failed_backend_ref:
+            return None
+        task_type = workflow.request.task_type
+
+        # Per-tier exclusion set: reset when the workflow lands on a different
+        # tier (a real escalation moved it), so each tier's fallback budget is
+        # independent — mirrors the local_retry_tier/local_retry_count reset.
+        if workflow.same_tier_failed_backend_tier != tier:
+            workflow.same_tier_failed_backend_tier = tier
+            workflow.same_tier_failed_backend_refs = ()
+        if (
+            failed_backend_ref
+            and failed_backend_ref not in workflow.same_tier_failed_backend_refs
+        ):
+            workflow.same_tier_failed_backend_refs = (
+                *workflow.same_tier_failed_backend_refs,
+                failed_backend_ref,
+            )
+
+        excluded = frozenset(workflow.same_tier_failed_backend_refs)
+        sibling = sibling_backend_available_in_tier(tier, task_type, excluded)
+        if sibling is None:
+            return None
+
+        self._bank_attempt_spend(
+            workflow,
+            cost_usd=attempt_cost_usd,
+            prompt_tokens=prompt_tokens,
+            completion_tokens=completion_tokens,
+        )
+
+        # Re-route to the SAME tier, excluding every backend already tried this
+        # tier. handle_routing_decision resumes the inference dispatch on
+        # whatever decision comes back (the sibling delta() just proved routable).
+        workflow.inference_content = None
+        workflow.inference_model_used = None
+        workflow.inference_intent_in_flight = False
+        workflow.routing_decision = None
+        self._advance(workflow, EnumDelegationState.ROUTED)
+        assert workflow.request is not None
+
+        # OMN-14402: getattr-guarded field presence so this producer degrades
+        # gracefully against a core pin that predates excluded_backend_refs
+        # (mirrors the OMN-14280 tenant_id rollout pattern) — a frozen,
+        # extra="forbid" model rejects an unknown kwarg outright.
+        intent_kwargs: dict[str, Any] = {
+            "payload": workflow.request,
+            "min_tier_name": tier,
+        }
+        model_fields = getattr(ModelRoutingIntent, "model_fields", {})
+        if "excluded_backend_refs" in model_fields:
+            intent_kwargs["excluded_backend_refs"] = tuple(sorted(excluded))
+        return [ModelRoutingIntent(**intent_kwargs)]
 
     def _maybe_retry_local(
         self,

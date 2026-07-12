@@ -121,6 +121,20 @@ class ModelRoutingDecision(BaseModel):
             "Authoritative escalation handle — do not confuse with cost_tier."
         ),
     )
+    selected_backend_ref: str = Field(
+        default="",
+        description=(
+            "OMN-14402: the raw backend_ref (routing_tiers.yaml backend_id, "
+            "e.g. 'local-heavy-reasoning') of the selected model. Distinct from "
+            "selected_backend_id, a UUID hashed from the model id ALONE — which "
+            "collides when two backends in the same tier share an id serving "
+            "different capabilities (e.g. local-coder and local-heavy-reasoning "
+            "both declaring 'Qwen3.6-35B-A3B', OMN-14396). The orchestrator "
+            "carries this onto its escalation bookkeeping so a same-tier "
+            "backend fallback after a transport/inference failure can identify "
+            "precisely which backend just failed and exclude it on retry."
+        ),
+    )
 
 
 __all__: list[str] = ["ModelRoutingDecision"]
