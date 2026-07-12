@@ -113,9 +113,21 @@ _DEFAULT_VERIFIER = "occ-evidence-source-autobind"
 
 
 def _resolve_github_token() -> str:
-    """Resolve the GitHub token from the contract-declared ref (OMN-12856)."""
+    """Resolve the GitHub token from the contract-declared ref (OMN-12856).
+
+    ``env_var_fallback`` (OMN-14452): the deployed effects lane's secret
+    resolver is configured with an explicit LLM/Slack-only mapping and
+    ``enable_convention_fallback: false`` (delegation secrets, OMN-13861/13960)
+    — it never resolves ``GITHUB_TOKEN``, which isn't an LLM secret and isn't
+    in that mapping. ``GITHUB_TOKEN`` is passed straight through as a literal
+    container env var (``runtime-effects.yaml`` ``required_env``), so falling
+    back to reading it directly — the same mechanism already used for
+    OpenRouter/Gemini provider-native names — resolves it instead of raising
+    ``SecretResolutionError`` on a secret that is genuinely present in the
+    environment.
+    """
     ref = contract_secret_ref(_CONTRACT_PATH, "GITHUB_TOKEN")
-    secret = resolve_api_key(ref)
+    secret = resolve_api_key(ref, env_var_fallback=ref)
     if secret is None:
         raise RuntimeError(
             f"api_key_ref {ref!r} resolved to None — "

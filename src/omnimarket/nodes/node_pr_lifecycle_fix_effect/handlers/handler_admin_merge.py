@@ -36,9 +36,15 @@ _CONTRACT_PATH = Path(__file__).resolve().parents[1] / "contract.yaml"
 
 
 def _resolve_github_token() -> str:
-    """Resolve the GitHub token from the contract-declared ref (OMN-12856)."""
+    """Resolve the GitHub token from the contract-declared ref (OMN-12856).
+
+    ``env_var_fallback`` (OMN-14452): the deployed lane's secret resolver is
+    LLM/Slack-scoped with convention fallback disabled and never resolves
+    ``GITHUB_TOKEN`` — falling back to the literal env var (already passed
+    straight through as a container env var) resolves it instead of raising.
+    """
     ref = contract_secret_ref(_CONTRACT_PATH, "GITHUB_TOKEN")
-    secret = resolve_api_key(ref)
+    secret = resolve_api_key(ref, env_var_fallback=ref)
     if secret is None:
         raise RuntimeError(
             f"api_key_ref {ref!r} resolved to None — "

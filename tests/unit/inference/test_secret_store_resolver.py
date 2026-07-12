@@ -175,6 +175,92 @@ class TestResolveApiKeyAsync:
             )
 
 
+class TestGithubTokenAgainstDeployedLaneSecretResolverConfig:
+    """Pins the live OMN-14452 defect against the ACTUAL deployed shape.
+
+    The rendered lane config below is copied verbatim (mapping keys +
+    ``enable_convention_fallback: false``) from
+    ``/app/data/delegation/secret_resolver.yaml`` observed live on the
+    ``omninode-runtime-effects`` container (render_runtime_policy_env.py,
+    omnibase_infra, always renders with convention fallback disabled). It is
+    LLM/Slack-scoped and never declares ``GITHUB_TOKEN`` — which is not an
+    LLM secret and was never meant to route through this store. GITHUB_TOKEN
+    is nonetheless genuinely present as a literal container env var
+    (``runtime-effects.yaml`` ``required_env``). This is the EXISTS-but-WRONG
+    shape: the secret is present in the environment, but the specific
+    resolution path the deployed emitter used could not see it — not a
+    synthetic "the ref is simply absent" case.
+    """
+
+    _DEPLOYED_LANE_CONFIG = textwrap.dedent("""\
+        mappings:
+        - logical_name: llm.openrouter.api_key
+          source:
+            source_type: env
+            source_path: OPEN_ROUTER_API_KEY
+        - logical_name: llm.glm.api_key
+          source:
+            source_type: env
+            source_path: LLM_GLM_API_KEY
+        - logical_name: llm.gemini.api_key
+          source:
+            source_type: env
+            source_path: GEMINI_API_KEY
+        - logical_name: slack.bot_token
+          source:
+            source_type: env
+            source_path: SLACK_BOT_TOKEN
+        enable_convention_fallback: false
+    """)
+
+    def _render_deployed_lane_config(
+        self, tmp_path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        config_file = tmp_path / "secret_resolver.yaml"
+        config_file.write_text(self._DEPLOYED_LANE_CONFIG)
+        monkeypatch.setenv("ONEX_SECRET_RESOLVER_CONFIG_PATH", str(config_file))
+        clear_secret_store_resolver_cache()
+
+    async def test_red_github_token_unresolvable_without_env_var_fallback(
+        self, tmp_path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """RED: reproduces the exact live ``SecretResolutionError`` (OMN-14452)."""
+        monkeypatch.setenv("GITHUB_TOKEN", "ghp_livevaluepresentinenv0000")
+        self._render_deployed_lane_config(tmp_path, monkeypatch)
+
+        with pytest.raises(SecretResolutionError, match="GITHUB_TOKEN"):
+            await resolve_api_key_async("GITHUB_TOKEN")
+
+    async def test_green_github_token_resolves_via_env_var_fallback(
+        self, tmp_path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """GREEN: the OMN-14452 fix — ``env_var_fallback`` resolves the same
+        literal container env var the deployed lane's mapped store could not
+        see, without weakening fail-closed semantics for a truly absent
+        secret (see ``test_missing_ref_fails_closed_even_with_unset_fallback``)."""
+        monkeypatch.setenv("GITHUB_TOKEN", "ghp_livevaluepresentinenv0000")
+        self._render_deployed_lane_config(tmp_path, monkeypatch)
+
+        resolved = await resolve_api_key_async(
+            "GITHUB_TOKEN", env_var_fallback="GITHUB_TOKEN"
+        )
+
+        assert isinstance(resolved, SecretStr)
+        assert resolved.get_secret_value() == "ghp_livevaluepresentinenv0000"
+
+    async def test_still_fails_closed_when_token_is_genuinely_absent(
+        self, tmp_path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The fix must not become a silent default (Rule 8): if GITHUB_TOKEN
+        is genuinely unset, resolution still raises even with the fallback
+        declared."""
+        monkeypatch.delenv("GITHUB_TOKEN", raising=False)
+        self._render_deployed_lane_config(tmp_path, monkeypatch)
+
+        with pytest.raises(SecretResolutionError, match="GITHUB_TOKEN"):
+            await resolve_api_key_async("GITHUB_TOKEN", env_var_fallback="GITHUB_TOKEN")
+
+
 class TestResolveApiKeySync:
     def test_none_ref_resolves_to_none(self) -> None:
         assert resolve_api_key(None) is None

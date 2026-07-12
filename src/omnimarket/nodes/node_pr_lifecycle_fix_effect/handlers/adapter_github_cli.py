@@ -38,9 +38,14 @@ def _resolve_github_token() -> str:
     Sync variant — only safe to call from sync helpers running in
     ``asyncio.to_thread`` (e.g. ``_failed_run_ids_sync``,
     ``_resolve_conflicts_sync``).
+
+    ``env_var_fallback`` (OMN-14452): the deployed lane's secret resolver is
+    LLM/Slack-scoped with convention fallback disabled and never resolves
+    ``GITHUB_TOKEN`` — falling back to the literal env var (already passed
+    straight through as a container env var) resolves it instead of raising.
     """
     ref = contract_secret_ref(_CONTRACT_PATH, "GITHUB_TOKEN")
-    secret = resolve_api_key(ref)
+    secret = resolve_api_key(ref, env_var_fallback=ref)
     if secret is None:
         raise RuntimeError(
             f"api_key_ref {ref!r} resolved to None — "
@@ -50,9 +55,12 @@ def _resolve_github_token() -> str:
 
 
 async def _resolve_github_token_async() -> str:
-    """Async variant — call from async methods that are not inside asyncio.to_thread."""
+    """Async variant — call from async methods that are not inside asyncio.to_thread.
+
+    ``env_var_fallback`` — see :func:`_resolve_github_token` (OMN-14452).
+    """
     ref = contract_secret_ref(_CONTRACT_PATH, "GITHUB_TOKEN")
-    secret = await resolve_api_key_async(ref)
+    secret = await resolve_api_key_async(ref, env_var_fallback=ref)
     if secret is None:
         raise RuntimeError(
             f"api_key_ref {ref!r} resolved to None — "

@@ -87,6 +87,28 @@ _TICKET_RE = re.compile(r"OMN-\d+", re.IGNORECASE)
 _BLOCK_REASON_AUTOBIND = "receipt_evidence_source_autobind"
 
 
+def _is_trusted_runner() -> bool:
+    """Return whether this run is on the trusted self-hosted lane (OMN-14451).
+
+    Mirrors the same fork/non-fork test the workflow uses to pick `runs-on:`,
+    threaded through as ``RUNNER_IS_TRUSTED`` so this script can tell an
+    expected fork-runner skip (no broker provisioned, ubuntu-latest) apart
+    from a real misconfiguration on the trusted runner, where the broker MUST
+    be resolvable. Required (not defaulted) so a wiring gap fails loudly
+    instead of silently choosing the permissive branch.
+    """
+    raw = os.environ.get("RUNNER_IS_TRUSTED", "").strip().lower()
+    if raw not in ("true", "false"):
+        click.echo(
+            f"ERROR: RUNNER_IS_TRUSTED must be 'true' or 'false', got {raw!r}. "
+            "Refusing to guess whether a missing broker is an expected fork "
+            "skip or a trusted-runner misconfiguration.",
+            err=True,
+        )
+        sys.exit(1)
+    return raw == "true"
+
+
 def _extract_ticket(title: str, branch: str = "") -> str:
     """Extract the first Linear ticket reference (OMN-NNN) from title or branch."""
     for source in (title, branch):
@@ -249,12 +271,25 @@ def main(dry_run: bool) -> None:
     password = os.environ.get("KAFKA_SASL_PASSWORD", "")
 
     if not bootstrap_servers:
+        if _is_trusted_runner():
+            # OMN-14451: this is the exact bug class that let the publisher run
+            # green while publishing nothing for its entire lifetime. On the
+            # trusted self-hosted lane for an occ-autobind-eligible PR, a
+            # broker MUST be resolvable (secrets.KAFKA_BOOTSTRAP_SERVERS) --
+            # a publisher that silently no-ops here is worse than one that is
+            # absent, so this fails the job instead of exiting 0.
+            click.echo(
+                "ERROR: KAFKA_BOOTSTRAP_SERVERS is not set on the TRUSTED "
+                "self-hosted runner for an occ-autobind-eligible PR. The "
+                "broker MUST be resolvable here. Failing loudly instead of "
+                "silently skipping (OMN-14451).",
+                err=True,
+            )
+            sys.exit(1)
         click.echo(
-            "WARNING: KAFKA_BOOTSTRAP_SERVERS is not set -- skipping occ-autobind "
-            "publish (no broker resolvable from the environment). The self-hosted "
-            "omnibase-ci runner sources this from ~/.omnibase/.env; if you see "
-            "this on the trusted runner, the runner env is misconfigured. Exiting "
-            "0 so a misconfig does not fail every PR's checks.",
+            "WARNING: KAFKA_BOOTSTRAP_SERVERS is not set -- skipping "
+            "occ-autobind publish (expected on a fork/cloud runner with no "
+            "broker provisioned). Exiting 0.",
             err=True,
         )
         sys.exit(0)

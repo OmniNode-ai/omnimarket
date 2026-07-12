@@ -11,14 +11,24 @@
 # `Evidence-Source: OCC#<n>` onto the PR body and occ-preflight (which now also
 # fires on `edited`) re-evaluates green — zero manual authoring.
 #
-# BROKER DECISION (mirrors pr-merged-publisher.yml, OMN-13226):
+# BROKER DECISION (mirrors pr-merged-publisher.yml, OMN-13226; corrected under
+# OMN-14451):
 #   Trusted (non-fork) PR events run on the self-hosted omnibase-ci runner on
-#   .201, which reaches the LOCAL lane Redpanda broker directly
-#   (KAFKA_BOOTSTRAP_SERVERS sourced from ~/.omnibase/.env). Fork PRs fall back
-#   to ubuntu-latest, where the publisher skips gracefully (exit 0) because no
-#   broker is resolvable. The transport is env-resolved, never hardcoded.
+#   .201. That runner is a DOCKER CONTAINER (docker-compose.runners.yml,
+#   omnibase_infra) with no bind mount for ~/.omnibase/.env -- that path is
+#   host-only and does not exist inside the container, so `source
+#   ~/.omnibase/.env` was always a silent no-op there (previously masked by
+#   `|| true`). KAFKA_BOOTSTRAP_SERVERS is now supplied ONLY via the
+#   repo-level `secrets.KAFKA_BOOTSTRAP_SERVERS` (the dev-lane Redpanda's
+#   Tailscale-advertised external listener, reachable from inside the runner
+#   container across the bridge network -- verified live, OMN-14451). Fork
+#   PRs fall back to ubuntu-latest, where no broker is configured and the
+#   publisher skips gracefully (exit 0). On the trusted runner, a missing
+#   broker is now a hard failure (RUNNER_IS_TRUSTED) rather than a silent
+#   exit 0, since that combination means a real misconfiguration, not an
+#   expected fork skip.
 #
-# Ticket: OMN-13990
+# Ticket: OMN-13990, OMN-14451
 
 name: OCC Autobind Publisher
 
@@ -51,6 +61,16 @@ jobs:
         && fromJSON(vars.OMNI_PUBLIC_PR_RUNS_ON_JSON || '["ubuntu-latest"]')
         || fromJSON(vars.OMNI_TRUSTED_CI_RUNS_ON_JSON || '["self-hosted","omnibase-ci"]')
       }}
+    # OMN-14451: same fork/non-fork test as `runs-on:` above, threaded into the
+    # publish step so the script can fail loudly (not silently exit 0) when the
+    # broker is unresolvable on the trusted lane where a real broker MUST exist.
+    env:
+      RUNNER_IS_TRUSTED: >-
+        ${{
+          (github.event_name == 'pull_request' &&
+           github.event.pull_request.head.repo.full_name != github.repository)
+          && 'false' || 'true'
+        }}
     timeout-minutes: 5
 
     steps:
@@ -75,10 +95,10 @@ jobs:
         # All potentially attacker-controlled inputs (branch name, PR title) are
         # passed through environment variables to prevent shell injection.
         #
-        # On the self-hosted runner, ~/.omnibase/.env supplies
-        # KAFKA_BOOTSTRAP_SERVERS (the local lane broker); that shell env value
-        # wins over the secret fallback. On a cloud runner the secret (if any)
-        # is used; with no broker the publisher skips gracefully (exit 0).
+        # OMN-14451: KAFKA_BOOTSTRAP_SERVERS comes ONLY from the repo secret now
+        # (the dev-lane Redpanda's Tailscale-advertised external listener). The
+        # runner is a container with no ~/.omnibase/.env bind mount, so sourcing
+        # that host-only dotfile here was always a silent no-op -- removed.
         env:
           KAFKA_BOOTSTRAP_SERVERS: ${{ secrets.KAFKA_BOOTSTRAP_SERVERS }}
           KAFKA_SASL_USERNAME: ${{ secrets.KAFKA_SASL_USERNAME }}
@@ -90,7 +110,4 @@ jobs:
           # Best-effort ticket extraction; the script also parses the branch ref.
           PR_TICKET: ""
         run: |
-          # On the self-hosted runner, shell env from ~/.omnibase/.env supplies
-          # the local lane broker endpoint and overrides the (cloud) secret.
-          source ~/.omnibase/.env 2>/dev/null || true
           python scripts/publish_occ_autobind_command.py
