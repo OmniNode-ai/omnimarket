@@ -1,0 +1,44 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+# Manifest for check-duplicate-registry-ids (OMN-14435, wiring OMN-14401's
+# guard into the repo that owns the registry which actually motivated it).
+#
+# Config-as-data: declares which config/registry YAML files in THIS repo are
+# checked for duplicate ids over a non-unique key. See
+# omnibase_core.validation.validator_duplicate_config_ids for the check
+# semantics (list_path syntax, disambiguator_field rules, fail-closed
+# behavior).
+#
+# list_path: "tiers[].models" is a GROUPED path — uniqueness is checked
+# WITHIN each tier independently, never across tiers. This matters:
+# routing_tiers.yaml intentionally repeats the same model id (and the same
+# use_for values) across DIFFERENT tiers — e.g. glm-5-turbo is a legitimate
+# member of both the cheap_cloud tier and the claude (escalation ceiling)
+# tier. Only a same-tier id collision is a real ambiguity. A flat
+# (whole-file) uniqueness check would false-positive on this file's normal
+# shape.
+#
+# disambiguator_field: use_for — the local tier legitimately declares two
+# backends under model id "Qwen3.6-35B-A3B" (local-coder, local-heavy-
+# reasoning) with disjoint use_for sets. This is the exact OMN-14396 shape:
+# the DATA was always correctly disambiguated; the bug was that the
+# consuming resolver (_select_model_for_task) ignored use_for on an id
+# collision (fixed in omnimarket#1720). This guard protects the DATA side
+# going forward — a future edit that introduces an id collision with
+# OVERLAPPING use_for (or no use_for at all) within the same tier fails here.
+#
+# Measured 2026-07-12: 0 pre-existing violations (verified per-tier against
+# the live file — the local tier's disambiguated pair passes, the cross-tier
+# repeats correctly do not false-positive). No grandfather list needed.
+# Falsifiability proven against a throwaway copy: planting "research" into
+# local-coder's use_for (colliding with local-heavy-reasoning's use_for
+# within the same tier) -> guard fails, names the tier group and the
+# overlapping value. Reverting -> guard passes. See OMN-14435 / OMN-14401
+# remediation thread for command output.
+
+registries:
+  - path: src/omnimarket/configs/routing_tiers.yaml
+    list_path: "tiers[].models"
+    id_field: id
+    disambiguator_field: use_for
