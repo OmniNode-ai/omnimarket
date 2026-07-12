@@ -18,13 +18,29 @@ import pytest
 
 from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.occ_evidence_stamp import (
     build_idempotency_key,
+    ci_check_evidence_id,
     classify_trivial_infra_fastpath,
     compute_contract_sha256,
     rebind_contract_sha256_in_text,
+    render_ci_check_receipt,
     render_companion_contract,
     render_downstream_receipt,
     render_self_bind_receipt,
 )
+
+# Mirrors the classifier `derive_proof_tier` ships in onex_change_control#3990
+# (scripts/validation/check_contract_substance_floor.py, OMN-14409): a `gh pr
+# view --json <metadata-only-fields>` command is an existence probe (tier L0);
+# anything else — including `gh pr checks` — is left to derive a higher tier.
+# Re-derived here (not imported) because #3990 lives in a different repo; the
+# RED->GREEN proof against the REAL deriver is run manually and cited in the
+# PR body per OMN-14425.
+_GH_PR_VIEW_RE = re.compile(r"\bgh\s+pr\s+view\b")
+
+
+def _is_existence_probe_like_omn_14409(command: str) -> bool:
+    return bool(_GH_PR_VIEW_RE.search(command))
+
 
 _NAMED_PLACEHOLDER_RE = re.compile(r"\{[a-z_]+\}")
 
@@ -64,6 +80,62 @@ class TestCompanionContractRender:
         assert render_companion_contract(**kwargs) == render_companion_contract(
             **kwargs
         )
+
+
+@pytest.mark.unit
+class TestContractSubstanceFloor:
+    """OMN-14425: the autobind must emit a check that derives above tier L0.
+
+    OMN-14409's contract substance floor (OCC#3990) rejects a contract whose
+    ENTIRE dod_evidence is existence probes. Proven live: contracts/OMN-14400.yaml
+    and contracts/OMN-14411.yaml were minted with 100% `gh pr view --json
+    number,state` checks and would fail that gate. This is the RED->GREEN proof
+    at the render layer: the OLD single-item shape is all-existence (would FAIL
+    #3990's gate); the NEW two-item shape adds a check that is not an existence
+    probe (would PASS).
+    """
+
+    def _render(self) -> str:
+        return render_companion_contract(
+            ticket_id="OMN-14425",
+            repo="OmniNode-ai/omnimarket",
+            pr_number=1721,
+            evidence_id="dod-OmniNode-ai-omnimarket-pr-1721",
+        )
+
+    def test_declares_two_dod_evidence_items(self) -> None:
+        rendered = self._render()
+        assert rendered.count("- id: ") == 2
+
+    def test_existence_probe_item_is_preserved_verbatim(self) -> None:
+        # OMN-14425 ADDS a claim; it must not remove or alter the binding probe
+        # the Evidence-Source autobind stamp path depends on.
+        rendered = self._render()
+        assert (
+            "gh pr view 1721 --repo OmniNode-ai/omnimarket --json number,state"
+            in rendered
+        )
+
+    def test_second_item_check_value_is_not_an_existence_probe(self) -> None:
+        rendered = self._render()
+        ci_check_value = "gh pr checks 1721 --repo OmniNode-ai/omnimarket"
+        assert ci_check_value in rendered
+        assert not _is_existence_probe_like_omn_14409(ci_check_value)
+
+    def test_second_item_id_derived_from_base_evidence_id(self) -> None:
+        rendered = self._render()
+        expected_id = ci_check_evidence_id("dod-OmniNode-ai-omnimarket-pr-1721")
+        assert f'id: "{expected_id}"' in rendered
+
+    def test_old_single_item_shape_was_all_existence_red_case(self) -> None:
+        """Pin the defective shape OMN-14425 fixes, so this test regresses loudly
+        if the fix is ever reverted. This is exactly contracts/OMN-14400.yaml /
+        OMN-14411.yaml as minted before this fix — every declared check matches
+        the existence-probe pattern."""
+        old_shape_only_check = (
+            "gh pr view 1721 --repo OmniNode-ai/omnimarket --json number,state"
+        )
+        assert _is_existence_probe_like_omn_14409(old_shape_only_check)
 
 
 @pytest.mark.unit
@@ -127,6 +199,61 @@ class TestSelfBindReceiptRender:
         assert "pr_number: 42" in rendered
         assert 'commit_sha: "def5678"' in rendered
         assert _NAMED_PLACEHOLDER_RE.findall(rendered) == []
+
+
+@pytest.mark.unit
+class TestCiCheckReceiptRender:
+    """OMN-14425: the receipt backing the new substantive dod_evidence item."""
+
+    def _render(self) -> str:
+        return render_ci_check_receipt(
+            ticket_id="OMN-9999",
+            evidence_id=ci_check_evidence_id("dod-OmniNode-ai-omnimarket-pr-123"),
+            pr_number=123,
+            repo="OmniNode-ai/omnimarket",
+            run_timestamp="2026-07-10T00:00:00Z",
+            commit_sha="abc1234",
+            branch="auto/omninode-ai-omnimarket-pr-123-occ-autobind",
+            probe_command="gh pr checks 123 --repo OmniNode-ai/omnimarket",
+            probe_stdout='{"number":123,"note":"ci status not observed"}',
+            exit_code=0,
+        )
+
+    def test_renders_required_receipt_fields(self) -> None:
+        rendered = self._render()
+        assert 'ticket_id: "OMN-9999"' in rendered
+        assert 'evidence_item_id: "dod-OmniNode-ai-omnimarket-pr-123-ci"' in rendered
+        assert "status: PASS" in rendered
+        assert "pr_number: 123" in rendered
+        assert 'commit_sha: "abc1234"' in rendered
+        # The declared check is the CI-outcome probe, not the existence probe.
+        assert 'check_value: "gh pr checks 123 --repo OmniNode-ai/omnimarket"' in (
+            rendered
+        )
+        assert 'contract_sha256: "sha256:PENDING"' in rendered
+
+    def test_no_unsubstituted_named_placeholders(self) -> None:
+        assert _NAMED_PLACEHOLDER_RE.findall(self._render()) == []
+
+    def test_verifier_defaults_differ_from_runner(self) -> None:
+        rendered = self._render()
+        runner = re.search(r'runner:\s*"([^"]+)"', rendered)
+        verifier = re.search(r'verifier:\s*"([^"]+)"', rendered)
+        assert runner is not None
+        assert verifier is not None
+        assert runner.group(1) != verifier.group(1)
+
+
+@pytest.mark.unit
+class TestCiCheckEvidenceId:
+    def test_derives_from_base_id_with_ci_suffix(self) -> None:
+        assert ci_check_evidence_id("dod-x-pr-1") == "dod-x-pr-1-ci"
+
+    def test_deterministic(self) -> None:
+        assert ci_check_evidence_id("dod-a") == ci_check_evidence_id("dod-a")
+
+    def test_distinct_ids_stay_distinct(self) -> None:
+        assert ci_check_evidence_id("dod-a") != ci_check_evidence_id("dod-b")
 
 
 @pytest.mark.unit
