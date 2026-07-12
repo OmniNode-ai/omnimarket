@@ -73,6 +73,24 @@ class ModelDelegateSkillResponse(BaseModel):
     status: Literal["completed", "failed", "timeout"] = Field(...)
     correlation_id: UUID = Field(...)
     task_type: str = Field(...)
+    # string-id-ok: tenant_id is a named tenant identifier (slug), not a UUID.
+    # OMN-14485: the terminal event `delegate-skill-completed.v1` is auto-published
+    # from this response, and node_projection_delegation reads the row's tenant
+    # from that terminal. Before this field the response could not carry the
+    # request-resolved tenant, so the terminal was tenant-less and every row fell
+    # back to the 'omninode' column default -- a LIVE NO-OP for tenant-carry on the
+    # merged multitenant write-path (OMN-14208 epic). None means no tenant was
+    # resolved (request tenant_id absent AND ONEX_TENANT_ID unset); the projection
+    # then applies the column default. The verified value is resolved upstream and
+    # via the ONEX_TENANT_ID interim (OMN-14058), never self-reported here.
+    tenant_id: str | None = Field(
+        default=None,
+        description=(
+            "Multi-tenant isolation identifier carried onto the terminal event so "
+            "the delegation_events projection row stamps a real tenant. None means "
+            "the 'omninode' column default applies."
+        ),
+    )
     provider: str = Field(default="")
     model_name: str = Field(default="")
     model_cloud_baseline: str = Field(default="")

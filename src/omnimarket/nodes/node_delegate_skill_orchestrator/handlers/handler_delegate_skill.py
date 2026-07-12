@@ -16,6 +16,7 @@ from uuid import UUID
 
 from omnibase_core.models.delegation.wire import ModelPremiumCounterfactual
 
+from omnimarket.config import get_settings
 from omnimarket.nodes.node_delegate_skill_orchestrator.models.model_delegate_skill_request import (
     ModelDelegateSkillRequest,
 )
@@ -183,7 +184,10 @@ def _premium_counterfactual(
 
 
 def _response_from_result(
-    request: ModelDelegateSkillRequest, result: dict[str, object]
+    request: ModelDelegateSkillRequest,
+    result: dict[str, object],
+    *,
+    tenant_id: str | None,
 ) -> ModelDelegateSkillResponse:
     raw_status = str(result.get("status", "completed"))
     is_known_status = raw_status in _TERMINAL_STATUSES
@@ -204,6 +208,9 @@ def _response_from_result(
         status=status_value,
         correlation_id=request.correlation_id,
         task_type=request.task_type,
+        # OMN-14485: carry the resolved tenant onto the response so the terminal
+        # event this becomes stamps a real tenant on the projection row.
+        tenant_id=tenant_id,
         provider=str(result.get("delegated_to") or result.get("endpoint_url") or ""),
         model_name=str(result.get("model_name") or result.get("model_used") or ""),
         model_cloud_baseline=str(
@@ -282,6 +289,15 @@ class HandlerDelegateSkill:
         On any dispatch exception, returns ``status="failed"`` with the error text
         rather than propagating — failed delegations must remain observable.
         """
+        # OMN-14485: resolve the tenant identity ONCE at request-acceptance and
+        # carry it onto the response (and thus the auto-published terminal event
+        # node_projection_delegation reads). Precedence mirrors the local dispatch
+        # port and HandlerDelegationWorkflow: a verified request-carried tenant_id
+        # wins; otherwise the ONEX_TENANT_ID interim (OMN-14058) applies; else None.
+        # The dispatch port still receives the verified request tenant_id (OMN-14349
+        # seam) — the env-var interim is a projection-stamping fallback, not a
+        # verified-identity source at the port boundary.
+        resolved_tenant_id = request.tenant_id or get_settings().onex_tenant_id or None
         try:
             result = await self._dispatch_port.dispatch(
                 prompt=request.prompt,
@@ -306,7 +322,10 @@ class HandlerDelegateSkill:
                 status="failed",
                 correlation_id=request.correlation_id,
                 task_type=request.task_type,
+                # OMN-14485: a failed delegation still writes a projection row —
+                # stamp the resolved tenant so per-tenant failure visibility holds.
+                tenant_id=resolved_tenant_id,
                 error_message=str(exc),
             )
 
-        return _response_from_result(request, result)
+        return _response_from_result(request, result, tenant_id=resolved_tenant_id)
