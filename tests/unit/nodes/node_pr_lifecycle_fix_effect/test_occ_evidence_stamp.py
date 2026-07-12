@@ -21,6 +21,8 @@ from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.occ_evidence_stamp i
     ci_check_evidence_id,
     classify_trivial_infra_fastpath,
     compute_contract_sha256,
+    extract_evidence_item_id,
+    rebind_contract_entry_sha256_in_text,
     rebind_contract_sha256_in_text,
     render_ci_check_receipt,
     render_companion_contract,
@@ -165,6 +167,13 @@ class TestDownstreamReceiptRender:
         # Contract binding starts as a rebindable PENDING sentinel.
         assert 'contract_sha256: "sha256:PENDING"' in rendered
 
+    def test_renders_contract_entry_sha256_pending_sentinel(self) -> None:
+        # OMN-14418 residual 3: the downstream receipt corresponds to a
+        # declared dod_evidence item, so it MUST carry a rebindable
+        # contract_entry_sha256 sentinel alongside the legacy whole-file one.
+        rendered = self._render()
+        assert 'contract_entry_sha256: "sha256:PENDING"' in rendered
+
     def test_no_unsubstituted_named_placeholders(self) -> None:
         # Only the intentional literal-JSON probe line may carry braces; all
         # *named* {placeholder} tokens must be gone.
@@ -199,6 +208,25 @@ class TestSelfBindReceiptRender:
         assert "pr_number: 42" in rendered
         assert 'commit_sha: "def5678"' in rendered
         assert _NAMED_PLACEHOLDER_RE.findall(rendered) == []
+
+    def test_never_renders_contract_entry_sha256(self) -> None:
+        # OMN-14418 residual 3: a self-bind receipt's evidence_item_id
+        # ("occ-self-bind-pr-<n>") is never a declared dod_evidence item, so
+        # it must NOT carry a contract_entry_sha256 field — there is no entry
+        # for it to bind to.
+        rendered = render_self_bind_receipt(
+            ticket_id="OMN-9999",
+            evidence_id="occ-self-bind-pr-42",
+            occ_pr_number=42,
+            occ_repo="OmniNode-ai/onex_change_control",
+            run_timestamp="2026-07-10T00:00:00Z",
+            occ_commit_sha="def5678",
+            branch="auto/omninode-ai-omnimarket-pr-123-occ-autobind",
+            probe_command="gh pr view 42 --repo OmniNode-ai/onex_change_control --json number,state",
+            probe_stdout='{"number":42,"state":"OPEN"}',
+            exit_code=0,
+        )
+        assert "contract_entry_sha256" not in rendered
 
 
 @pytest.mark.unit
@@ -286,6 +314,55 @@ class TestContractSha256:
         )
         twice = rebind_contract_sha256_in_text(once, digest)
         assert once == twice
+
+
+@pytest.mark.unit
+class TestContractEntrySha256Rebind:
+    """OMN-13888 / OMN-14418 residual 3: per-entry rebind helpers."""
+
+    def test_rebind_sets_prefixed_line_verbatim(self) -> None:
+        receipt = 'x: 1\ncontract_entry_sha256: "sha256:PENDING"\ny: 2\n'
+        prefixed = f"sha256:{'a' * 64}"
+        rebound = rebind_contract_entry_sha256_in_text(receipt, prefixed)
+        assert f'contract_entry_sha256: "{prefixed}"' in rebound
+        assert "PENDING" not in rebound
+        # Only the contract_entry_sha256 line changed.
+        assert "x: 1" in rebound
+        assert "y: 2" in rebound
+
+    def test_rebind_does_not_touch_sibling_contract_sha256_line(self) -> None:
+        # The two fields must rebind independently — a receipt carries both.
+        receipt = (
+            'contract_sha256: "sha256:PENDING"\n'
+            'contract_entry_sha256: "sha256:PENDING"\n'
+        )
+        prefixed = f"sha256:{'c' * 64}"
+        rebound = rebind_contract_entry_sha256_in_text(receipt, prefixed)
+        assert 'contract_sha256: "sha256:PENDING"' in rebound  # untouched
+        assert f'contract_entry_sha256: "{prefixed}"' in rebound
+
+    def test_rebind_is_idempotent_fixpoint(self) -> None:
+        prefixed = f"sha256:{'d' * 64}"
+        once = rebind_contract_entry_sha256_in_text(
+            'contract_entry_sha256: "sha256:PENDING"\n', prefixed
+        )
+        twice = rebind_contract_entry_sha256_in_text(once, prefixed)
+        assert once == twice
+
+    def test_rebind_is_noop_when_field_absent(self) -> None:
+        # Self-bind receipts never declare the field — rebinding must leave
+        # the text byte-for-byte unchanged, never fabricate the line.
+        receipt = 'ticket_id: "OMN-9999"\ncontract_sha256: "sha256:PENDING"\n'
+        rebound = rebind_contract_entry_sha256_in_text(receipt, f"sha256:{'e' * 64}")
+        assert rebound == receipt
+        assert "contract_entry_sha256" not in rebound
+
+    def test_extract_evidence_item_id_finds_declared_id(self) -> None:
+        text = 'ticket_id: "OMN-9999"\nevidence_item_id: "dod-x-pr-1"\ncheck_type: "command"\n'
+        assert extract_evidence_item_id(text) == "dod-x-pr-1"
+
+    def test_extract_evidence_item_id_none_when_absent(self) -> None:
+        assert extract_evidence_item_id('ticket_id: "OMN-9999"\n') is None
 
 
 @pytest.mark.unit

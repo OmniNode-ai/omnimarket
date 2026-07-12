@@ -18,19 +18,22 @@ two of them carried divergent receipt shapes and the pre-OMN-14255 head-SHA bug.
 Both failure classes are now ONE code path (:meth:`_emit_companion_sync`): the
 autobind flow already authored the contract-if-absent, so the deploy-gate case is
 a caller of the same core. Every committed byte — contract YAML, downstream
-receipt, self-bind receipt, ``contract_sha256`` binding — is rendered by the pure
-:mod:`occ_evidence_stamp` seam (the COMPUTE half); this class owns only the git/gh
-side effects (the EFFECT half). PR-body ``Evidence-Source`` / ``Evidence-Ticket``
-authoring flows through the :mod:`occ_stamp_authoring` seam (Piece 3, OMN-14189).
+receipt, self-bind receipt, ``contract_sha256``/``contract_entry_sha256``
+binding — is rendered by the pure :mod:`occ_evidence_stamp` seam (the COMPUTE
+half); this class owns only the git/gh side effects (the EFFECT half). PR-body
+``Evidence-Source`` / ``Evidence-Ticket`` authoring flows through the
+:mod:`occ_stamp_authoring` seam (Piece 3, OMN-14189).
 
 Hardened behaviors preserved from the autobind path: the real ``gh pr view``
 probe (machine-observed, not fabricated — OMN-13990 item 4 / OMN-14055),
-whole-file ``contract_sha256`` rebind across every matching receipt (friction #9),
-the two-stage OCC self-bind, open-**or-sync** idempotency (no 422 on ``synchronize``
-re-fire), and force-push all-adds regeneration (append-only gate stays green).
-Capabilities folded in from the deploy-gate path: ``dry_run`` mode, the
-configurable ``verifier != runner`` self-attestation guard (OMN-12791), and
-``detect_occ_gap``.
+whole-file ``contract_sha256`` rebind across every matching receipt (friction #9;
+now paired with a per-receipt ``contract_entry_sha256`` rebind, OMN-13888 /
+OMN-14418 residual 3, so receipts survive a later append to the contract instead
+of going stale), the two-stage OCC self-bind, open-**or-sync** idempotency (no
+422 on ``synchronize`` re-fire), and force-push all-adds regeneration
+(append-only gate stays green). Capabilities folded in from the deploy-gate
+path: ``dry_run`` mode, the configurable ``verifier != runner`` self-attestation
+guard (OMN-12791), and ``detect_occ_gap``.
 """
 
 from __future__ import annotations
@@ -47,12 +50,23 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Literal
 
+import yaml
+
 # OMN-13990 (D3, validator-parity ticket extraction): the emitter uses the SAME
 # ticket-extraction the occ-preflight eligibility validator uses so the two can
 # never cite a different ticket set. This is the gate's own private helper —
 # importing it (rather than re-deriving the regex) binds the emitter to the gate
 # exactly. omnibase-core is a declared omnimarket dependency.
-from omnibase_core.validation.validator_receipt_gate import _extract_ticket_ids
+#
+# OMN-14418 residual 3: compute_contract_entry_sha256 is the SAME canonical
+# per-entry hasher the consumer-side gates (check_receipt_contract_binding,
+# check_receipt_hardening.py) recompute against — imported, never
+# re-implemented, so the producer and the gates can never diverge on the hash.
+from omnibase_core.validation.validator_receipt_gate import (
+    ContractEntryNotFoundError,
+    _extract_ticket_ids,
+    compute_contract_entry_sha256,
+)
 
 from omnimarket.github_api import rest_json, split_repo
 from omnimarket.inference.secret_store_resolver import resolve_api_key
@@ -61,6 +75,8 @@ from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.occ_evidence_stamp i
     SHA_RE,
     ci_check_evidence_id,
     compute_contract_sha256,
+    extract_evidence_item_id,
+    rebind_contract_entry_sha256_in_text,
     rebind_contract_sha256_in_text,
     render_ci_check_receipt,
     render_companion_contract,
@@ -577,18 +593,58 @@ class OccCompanionEmitter:
     def _rebind_all_receipts(
         self, clone_dir: Path, ticket: str, contract_path: Path
     ) -> None:
-        """Set ``contract_sha256`` to sha256(contract) on every matching receipt.
+        """Rebind every matching receipt's contract hash binding(s).
 
-        Mirrors the overnight-sweep manual recipe (friction #9):
-        ``LC_ALL=C shasum -a 256 contracts/<ticket>.yaml`` then rewrite the hash
-        in ``drift/dod_receipts/<ticket>/*/command.yaml``. Rendering + hashing are
-        the pure :mod:`occ_evidence_stamp` seam; this method only does the file I/O.
+        Legacy whole-file: sets ``contract_sha256`` to sha256(contract) on
+        every receipt, mirroring the overnight-sweep manual recipe (friction
+        #9): ``LC_ALL=C shasum -a 256 contracts/<ticket>.yaml`` then rewrite
+        the hash in ``drift/dod_receipts/<ticket>/*/command.yaml``. Kept for
+        backward compat — the hardening gate still falls back to it for
+        receipts with no per-entry hash (self-bind receipts).
+
+        Per-entry (OMN-13888 / OMN-14418 residual 3): for a receipt that
+        declares ``contract_entry_sha256``, also rebind that field to
+        ``compute_contract_entry_sha256(contract_data, receipt's own
+        evidence_item_id)`` — the SAME canonical per-entry hasher the
+        consumer-side gates recompute against, never a local
+        re-implementation. This is per-receipt evidence_item_id-aware (each
+        receipt's own declared id, extracted from its own text) rather than
+        one blanket whole-file substitution, so a contract with multiple
+        dod_evidence items (e.g. the downstream check plus a future sibling
+        check) rebinds each receipt against its own entry, not a shared
+        digest. A receipt whose evidence_item_id is not declared in the
+        contract's dod_evidence (self-bind receipts, by design — see
+        occ_evidence_stamp) is left with the field absent/unset; there is no
+        entry for it to bind to, so ContractEntryNotFoundError is swallowed
+        for that one receipt rather than aborting the whole rebind sweep.
+
+        Rendering + hashing stay in the pure :mod:`occ_evidence_stamp` seam
+        (plus the canonical omnibase_core per-entry hasher); this method only
+        does the file I/O.
         """
-        digest = compute_contract_sha256(contract_path.read_bytes())
+        contract_bytes = contract_path.read_bytes()
+        whole_file_digest = compute_contract_sha256(contract_bytes)
+        contract_data = yaml.safe_load(contract_bytes)
         receipt_root = clone_dir / "drift" / "dod_receipts" / ticket
         for receipt in receipt_root.rglob("*.yaml"):
             text = receipt.read_text(encoding="utf-8")
-            new_text = rebind_contract_sha256_in_text(text, digest)
+            new_text = rebind_contract_sha256_in_text(text, whole_file_digest)
+
+            evidence_item_id = extract_evidence_item_id(new_text)
+            if evidence_item_id is not None:
+                try:
+                    entry_digest = compute_contract_entry_sha256(
+                        contract_data, evidence_item_id
+                    )
+                except ContractEntryNotFoundError:
+                    # Not every receipt binds to a declared dod_evidence item
+                    # (self-bind receipts, by design) — nothing to rebind.
+                    pass
+                else:
+                    new_text = rebind_contract_entry_sha256_in_text(
+                        new_text, entry_digest
+                    )
+
             if new_text != text:
                 receipt.write_text(new_text, encoding="utf-8")
 
