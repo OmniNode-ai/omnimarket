@@ -20,7 +20,7 @@ The gate's default invocation must resolve against the *real* control-plane
 layout, not a speculative one:
 
 * The receipt is NOT a single ``evidence/<TICKET>/dod_report.json`` file. The
-  platform (``node_pr_lifecycle_fix_effect`` / ``OccContractAdapter``) writes
+  platform (``node_pr_lifecycle_fix_effect`` / ``OccCompanionEmitter``) writes
   one receipt per evidence item at
   ``drift/dod_receipts/<TICKET>/<EVIDENCE_ITEM>/command.yaml``.
 * OCC governance is dev-targeted: contracts and receipts land on the OCC ``dev``

@@ -30,7 +30,6 @@ from __future__ import annotations
 import hashlib
 import logging
 import re
-import textwrap
 from typing import Literal
 from uuid import UUID
 
@@ -60,64 +59,12 @@ from omnimarket.nodes.node_occ_companion_compute.models.model_occ_companion_requ
     ModelOccCompanionRequest,
     ModelOccContractState,
 )
+from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.occ_evidence_stamp import (
+    render_compute_companion_contract,
+    render_compute_receipt,
+)
 
 logger = logging.getLogger(__name__)
-
-# ---------------------------------------------------------------------------
-# Deterministic companion templates (byte-stable; no YAML lib in the authoring
-# path so hashing is byte-for-byte reproducible).
-# ---------------------------------------------------------------------------
-
-_CONTRACT_TEMPLATE = textwrap.dedent("""\
-    ---
-    schema_version: "1.0.0"
-    ticket_id: "{ticket_id}"
-    title: "Autobind OCC evidence for {ticket_id}"
-    summary: >
-      OCC contract authored by node_occ_companion_compute (OMN-14285) for {repo}
-      PR #{pr_number}.
-    is_seam_ticket: false
-    interface_change: false
-    interfaces_touched: []
-    evidence_requirements:
-      - kind: "ci"
-        description: "PR #{pr_number} CI checks green"
-        command: "gh pr checks {pr_number} --repo {repo}"
-    emergency_bypass:
-      enabled: false
-      justification: ""
-      follow_up_ticket_id: ""
-    dod_evidence:
-      - id: "{evidence_id}"
-        description: "PR #{pr_number} on {repo} — Evidence-Source autobind."
-        source: "generated"
-        checks:
-          - check_type: "command"
-            check_value: "gh pr view {pr_number} --repo {repo} --json number,state"
-    """)
-
-_RECEIPT_TEMPLATE = textwrap.dedent("""\
-    ---
-    schema_version: "1.0.0"
-    ticket_id: "{ticket_id}"
-    evidence_item_id: "{evidence_id}"
-    check_type: "command"
-    check_value: "{check_value}"
-    contract_sha256: "sha256:{contract_sha256}"
-    contract_entry_sha256: "sha256:{contract_entry_sha256}"
-    status: PASS
-    run_timestamp: "{run_timestamp}"
-    commit_sha: "{commit_sha}"
-    runner: "{runner}"
-    verifier: "{verifier}"
-    probe_command: "{probe_command}"
-    probe_stdout: |
-      {probe_stdout}
-    actual_output: "{actual_output}"
-    exit_code: {exit_code}
-    pr_number: {pr_number}
-    branch: "{branch}"
-    """)
 
 # Observed-fact lines projected OUT of the reproducibility fingerprint (§4.4).
 _OBSERVED_KEYS = ("run_timestamp", "probe_command", "exit_code")
@@ -268,7 +215,7 @@ def _receipt(
     actual_output: str,
     branch: str,
 ) -> str:
-    content = _RECEIPT_TEMPLATE.format(
+    content = render_compute_receipt(
         ticket_id=ticket_id,
         evidence_id=evidence_id,
         check_value=check_value,
@@ -423,7 +370,7 @@ def compute_companion_plan(request: ModelOccCompanionRequest) -> ModelOccCompani
             contract_hash = whole
         else:
             # Fresh (absent, or exists-but-open → full regeneration all-adds).
-            contract_content = _CONTRACT_TEMPLATE.format(
+            contract_content = render_compute_companion_contract(
                 ticket_id=ticket,
                 repo=repo,
                 pr_number=pr_number,

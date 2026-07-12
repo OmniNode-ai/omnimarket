@@ -6,8 +6,8 @@ Two chokepoints in ``node_pr_lifecycle_orchestrator`` left built-and-tested fix
 arms / effect nodes unreachable in production:
 
 * CP1 — ``_block_reason_for_fix`` never emitted DEPLOY_GATE_CONTRACT_NOT_FOUND /
-  RECEIPT_EVIDENCE_SOURCE_AUTOBIND / CI_FAILURE, so the OccContractAdapter,
-  OccAutobindAdapter, and GitHubCliAdapter.rerun_failed_checks arms in
+  RECEIPT_EVIDENCE_SOURCE_AUTOBIND / CI_FAILURE, so the OccCompanionEmitter
+  (deploy-gate + autobind arms) and GitHubCliAdapter.rerun_failed_checks arms in
   ``node_pr_lifecycle_fix_effect`` were dead.
 * CP2 — ``_publish_fixer_dispatch_start`` emitted ``stall_category = block_reason``
   (prose), which never matched the ``EnumStallCategory`` routing table in

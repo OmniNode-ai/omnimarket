@@ -22,12 +22,6 @@ from omnibase_core.protocols.event_bus.protocol_event_bus_publisher import (
 from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.adapter_github_cli import (
     GitHubCliAdapter,
 )
-from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.adapter_occ_autobind import (
-    OccAutobindAdapter,
-)
-from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.adapter_occ_contract import (
-    OccContractAdapter,
-)
 from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.adapter_pr_polish_dispatch import (
     PrPolishDispatchAdapter,
 )
@@ -38,6 +32,9 @@ from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.handler_pr_lifecycle
     _NoopOccAutobindAdapter,
     _NoopOccContractAdapter,
     _UnverifiedOccCompanionVerifier,
+)
+from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.occ_companion_emitter import (
+    OccCompanionEmitter,
 )
 from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.occ_companion_verifier import (
     OccCompanionVerifier,
@@ -75,11 +72,11 @@ class TestOrchestratorWiresLiveAdapters:
         )
         assert not isinstance(fix._github, _NoopGitHubAdapter)
         assert not isinstance(fix._agent, _NoopAgentDispatchAdapter)
-        # OMN-13317 F1: the Evidence-Source autobind path must wire the live
-        # OccAutobindAdapter — a no-op here means a Receipt-Gate
+        # OMN-13317 F1 / OMN-14285: both OCC failure classes must wire the single
+        # live OccCompanionEmitter — a no-op here means a Receipt-Gate
         # Evidence-Source failure silently reports fix_applied=True with no bind.
-        assert isinstance(fix._occ, OccContractAdapter)
-        assert isinstance(fix._occ_autobind, OccAutobindAdapter)
+        assert isinstance(fix._occ, OccCompanionEmitter)
+        assert isinstance(fix._occ_autobind, OccCompanionEmitter)
         assert not isinstance(fix._occ, _NoopOccContractAdapter)
         assert not isinstance(fix._occ_autobind, _NoopOccAutobindAdapter)
         # OMN-14173: the live read-back verifier must be wired so prs_fixed is

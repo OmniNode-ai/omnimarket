@@ -1,56 +1,70 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""Evidence-Source autobind adapter for pr_lifecycle_fix_effect (OMN-13317, F1).
+"""The single canonical OCC companion producer (OMN-14285, S1 converge).
 
-Handles the receipt_evidence_source_autobind failure class: a product PR whose
-``Evidence-Source`` points at the product head SHA instead of an OCC source, so
-the Receipt Gate (``verify / verify``) fails. Binding is fully manual today
-(``onex_change_control#2801`` / ``omnibase_infra#2043`` consumed hours).
+This is the **one** OCC-companion writer surface for the node. It replaces the
+two ~80%-overlapping ``*Adapter`` classes that coexisted before S1:
 
-Flow (the missing glue F1 builds on top of the existing deploy-gate adapter):
+  * ``OccAutobindAdapter`` (``receipt_evidence_source_autobind``: a product PR
+    whose ``Evidence-Source`` pointed at its own head SHA instead of an OCC
+    source), and
+  * ``OccContractAdapter`` (``deploy_gate_contract_not_found``: a product PR with
+    no OCC contract at all),
 
-  1. Detect the ticket id from the product PR title/body.
-  2. Resolve the real product PR head SHA + number (stamped into the receipt —
-     NOT the OCC repo HEAD, which the deploy-gate adapter used).
-  3. Open/sync an OCC binding PR carrying ``contracts/<ticket>.yaml`` (created if
-     absent) + a downstream receipt stamped with the product PR head + number.
-  4. Two-stage self-bind: after the OCC PR exists, add a self-binding receipt
-     using the REAL OCC PR number + OCC head commit (hooks reject placeholder
-     ``commit_sha`` / ``pr_number`` — see overnight-sweep friction #8).
-  5. Recompute ``contract_sha256`` across ALL matching receipts via
-     ``LC_ALL=C shasum -a 256`` (friction #9 — easy to miss).
-  6. PATCH ``Evidence-Source: OCC#<n>`` back onto the product PR body via REST
-     (NOT ``gh pr edit`` — Projects-classic no-op, friction #7).
+plus the bespoke ``omniclaude/scripts/scaffold_occ_receipt.py`` manual writer
+(retired under the same ticket). All three authored load-bearing OCC evidence;
+two of them carried divergent receipt shapes and the pre-OMN-14255 head-SHA bug.
 
-The result is validated by the unchanged ``occ-preflight / eligibility`` check.
+Both failure classes are now ONE code path (:meth:`_emit_companion_sync`): the
+autobind flow already authored the contract-if-absent, so the deploy-gate case is
+a caller of the same core. Every committed byte — contract YAML, downstream
+receipt, self-bind receipt, ``contract_sha256`` binding — is rendered by the pure
+:mod:`occ_evidence_stamp` seam (the COMPUTE half); this class owns only the git/gh
+side effects (the EFFECT half). PR-body ``Evidence-Source`` / ``Evidence-Ticket``
+authoring flows through the :mod:`occ_stamp_authoring` seam (Piece 3, OMN-14189).
+
+Hardened behaviors preserved from the autobind path: the real ``gh pr view``
+probe (machine-observed, not fabricated — OMN-13990 item 4 / OMN-14055),
+whole-file ``contract_sha256`` rebind across every matching receipt (friction #9),
+the two-stage OCC self-bind, open-**or-sync** idempotency (no 422 on ``synchronize``
+re-fire), and force-push all-adds regeneration (append-only gate stays green).
+Capabilities folded in from the deploy-gate path: ``dry_run`` mode, the
+configurable ``verifier != runner`` self-attestation guard (OMN-12791), and
+``detect_occ_gap``.
 """
 
 from __future__ import annotations
 
 import asyncio
-import hashlib
 import json
 import logging
 import os
-import re
 import shlex
 import subprocess
 import tempfile
-import textwrap
 from collections.abc import Sequence
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Literal
 
 # OMN-13990 (D3, validator-parity ticket extraction): the emitter uses the SAME
 # ticket-extraction the occ-preflight eligibility validator uses so the two can
 # never cite a different ticket set. This is the gate's own private helper —
-# importing it (rather than re-deriving the regex) is deliberate: it binds the
-# emitter to the gate exactly. omnibase-core is a declared omnimarket dependency.
+# importing it (rather than re-deriving the regex) binds the emitter to the gate
+# exactly. omnibase-core is a declared omnimarket dependency.
 from omnibase_core.validation.validator_receipt_gate import _extract_ticket_ids
 
 from omnimarket.github_api import rest_json, split_repo
 from omnimarket.inference.secret_store_resolver import resolve_api_key
 from omnimarket.nodes.contract_topics import contract_secret_ref
+from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.occ_evidence_stamp import (
+    SHA_RE,
+    compute_contract_sha256,
+    rebind_contract_sha256_in_text,
+    render_companion_contract,
+    render_downstream_receipt,
+    render_self_bind_receipt,
+)
 from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.occ_git_transport import (
     OCC_REPO,
     authenticated_occ_url,
@@ -60,7 +74,6 @@ from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.occ_git_transport im
 # OMN-14189 (Piece 3/5, epic OMN-14180): all PR-body Evidence-Source /
 # Evidence-Ticket authoring and read-back flow through the single stamp seam,
 # which delegates to the Piece-2 core renderer/parser over the Piece-1 models.
-# No inline f-string stamp text and no local Evidence-Source regex survive here.
 from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.occ_stamp_authoring import (
     product_pr_occ_binding,
     render_occ_companion_pr_body,
@@ -77,14 +90,8 @@ _GIT_TIMEOUT_SECONDS = 120
 
 _OCC_REPO = OCC_REPO
 
-# Ticket id pattern. Product PR titles/bodies cite OMN-XXXX (PR title gate).
-_TICKET_RE = re.compile(r"\bOMN-\d+\b")
-# Product PR head SHA validation (from the GitHub REST snapshot, not a stamp).
-_SHA_RE = re.compile(r"^[0-9a-fA-F]{7,40}$")
-# contract_sha256 line in a receipt: matches both 64-hex and PENDING sentinels.
-_CONTRACT_SHA_LINE_RE = re.compile(
-    r'contract_sha256:\s*"sha256:(?:[0-9a-f]{64}|PENDING)"'
-)
+_DEFAULT_RUNNER = "node_pr_lifecycle_fix_effect"
+_DEFAULT_VERIFIER = "occ-evidence-source-autobind"
 
 
 def _resolve_github_token() -> str:
@@ -99,103 +106,13 @@ def _resolve_github_token() -> str:
     return secret.get_secret_value()
 
 
-# ---------------------------------------------------------------------------
-# YAML builders — pure string construction (the receipt-gate parses YAML, but
-# we keep authoring lib-free so byte-for-byte hashing is deterministic).
-# ---------------------------------------------------------------------------
+class OccCompanionEmitter:
+    """Author the OCC companion (contract + receipts) + rebind a product PR.
 
-_CONTRACT_TEMPLATE = textwrap.dedent("""\
-    ---
-    schema_version: "1.0.0"
-    ticket_id: "{ticket_id}"
-    title: "Autobind OCC evidence for {ticket_id}"
-    summary: >
-      OCC contract bound by node_pr_lifecycle_fix_effect Evidence-Source autobind
-      (OMN-13317 F1) when {repo} PR #{pr_number} carried a product-SHA
-      Evidence-Source and failed the Receipt Gate.
-    is_seam_ticket: false
-    interface_change: false
-    interfaces_touched: []
-    evidence_requirements:
-      - kind: "ci"
-        description: "PR #{pr_number} CI checks green"
-        command: "gh pr checks {pr_number} --repo {repo}"
-    emergency_bypass:
-      enabled: false
-      justification: ""
-      follow_up_ticket_id: ""
-    dod_evidence:
-      - id: "{evidence_id}"
-        description: "PR #{pr_number} on {repo} — Evidence-Source autobind."
-        source: "generated"
-        checks:
-          - check_type: "command"
-            check_value: "gh pr view {pr_number} --repo {repo} --json number,state"
-    """)
-
-# Downstream receipt — stamped with the REAL product PR head + number so
-# check_receipt_hardening.py (commit_sha 7-40 hex, pr_number >= 1) passes.
-# contract_sha256 starts PENDING and is rebound in stage 2. probe_command,
-# probe_stdout and exit_code are genuine machine-observed values from the live
-# GitHub probe (OMN-13990 item 4 / OMN-14055) — no fabricated template output.
-# probe_stdout is a single compact JSON line so the literal block stays valid.
-_DOWNSTREAM_RECEIPT_TEMPLATE = textwrap.dedent("""\
-    ---
-    schema_version: "1.0.0"
-    ticket_id: "{ticket_id}"
-    evidence_item_id: "{evidence_id}"
-    check_type: "command"
-    check_value: "gh pr view {pr_number} --repo {repo} --json number,state,headRefName"
-    contract_sha256: "sha256:PENDING"
-    status: PASS
-    run_timestamp: "{run_timestamp}"
-    commit_sha: "{commit_sha}"
-    runner: "node_pr_lifecycle_fix_effect"
-    verifier: "occ-evidence-source-autobind"
-    probe_command: "{probe_command}"
-    probe_stdout: |
-      {probe_stdout}
-    actual_output: "PASS: Evidence-Source autobind for {ticket_id} from {repo}#{pr_number}."
-    exit_code: {exit_code}
-    pr_number: {pr_number}
-    branch: "{branch}"
-    """)
-
-# Self-binding receipt — proves the OCC PR itself. Stamped with the REAL OCC PR
-# number + OCC head commit (placeholder values are rejected by hooks; friction #8).
-# probe_command/probe_stdout/exit_code are genuine machine-observed values from
-# the live GitHub probe against the OCC PR (OMN-13990 item 4).
-_SELF_BIND_RECEIPT_TEMPLATE = textwrap.dedent("""\
-    ---
-    schema_version: "1.0.0"
-    ticket_id: "{ticket_id}"
-    evidence_item_id: "{evidence_id}"
-    check_type: "command"
-    check_value: "gh pr view {occ_pr_number} --repo {occ_repo} --json number,state"
-    contract_sha256: "sha256:PENDING"
-    status: PASS
-    run_timestamp: "{run_timestamp}"
-    commit_sha: "{occ_commit_sha}"
-    runner: "node_pr_lifecycle_fix_effect"
-    verifier: "occ-evidence-source-autobind"
-    probe_command: "{probe_command}"
-    probe_stdout: |
-      {probe_stdout}
-    actual_output: "PASS: OCC self-bind for {ticket_id} (OCC#{occ_pr_number})."
-    exit_code: {exit_code}
-    pr_number: {occ_pr_number}
-    branch: "{branch}"
-    """)
-
-
-class OccAutobindAdapter:
-    """Repair a product PR's ``Evidence-Source`` by binding OCC receipt evidence.
-
-    Unlike :class:`OccContractAdapter` (which handles the missing-contract
-    deploy-gate class and stamps the receipt with the OCC repo HEAD), this
-    adapter stamps the downstream receipt with the **real product PR head SHA
-    and number**, performs the two-stage self-bind against the real OCC PR, and
-    recomputes ``contract_sha256`` across every matching receipt before pushing.
+    A single producer for both OCC failure classes. The public methods
+    (:meth:`autobind_evidence_source`, :meth:`create_occ_contract`) are thin
+    entry points over the shared :meth:`_emit_companion_sync` core, so there is
+    exactly one clone/branch/commit/push/PR/patch flow and one receipt vocabulary.
     """
 
     def __init__(
@@ -204,21 +121,107 @@ class OccAutobindAdapter:
         occ_repo: str = _OCC_REPO,
         git_author_name: str = "omnimarket-bot",
         git_author_email: str = "bot@omninode.ai",
+        mode: Literal["dry_run", "mutate"] = "mutate",
+        runner: str = _DEFAULT_RUNNER,
+        verifier: str = _DEFAULT_VERIFIER,
     ) -> None:
         self._occ_repo = occ_repo
         self._git_author_name = git_author_name
         self._git_author_email = git_author_email
+        self._mode = mode
+        self._runner = runner
+        self._verifier = verifier
+        # verifier == runner is rejected at construction so a mis-wired producer
+        # fails fast rather than authoring self-attesting receipts (OMN-12791).
+        self._validate_verifier_not_runner(runner=runner, verifier=verifier)
+
+    # ------------------------------------------------------------------
+    # Public API — both former adapter surfaces, one core
+    # ------------------------------------------------------------------
 
     async def autobind_evidence_source(
         self, repo: str, pr_number: int, ticket_id: str | None = None
     ) -> str:
-        return await asyncio.to_thread(self._autobind_sync, repo, pr_number, ticket_id)
+        """Bind OCC receipt evidence for a PR and rewrite its Evidence-Source.
+
+        The ``receipt_evidence_source_autobind`` failure class: the product PR's
+        ``Evidence-Source`` points at its own head SHA (or is absent).
+        """
+        return await asyncio.to_thread(
+            self._emit_companion_sync, repo, pr_number, ticket_id
+        )
+
+    async def create_occ_contract(
+        self,
+        repo: str,
+        pr_number: int,
+        ticket_id: str,
+        pr_head_sha: str | None = None,
+    ) -> str:
+        """Author the OCC companion when deploy-gate fires for a missing contract.
+
+        The ``deploy_gate_contract_not_found`` failure class. ``pr_head_sha`` is
+        accepted for call-compatibility but the authoritative head SHA is always
+        re-observed live from GitHub inside the core (never a caller-supplied
+        value), so a stale hint can never be stamped into a receipt.
+        """
+        return await asyncio.to_thread(
+            self._emit_companion_sync, repo, pr_number, ticket_id
+        )
+
+    def detect_occ_gap(
+        self,
+        *,
+        repo: str,
+        pr_number: int,
+        ticket_id: str,
+        contract_exists: bool,
+        receipt_exists: bool,
+    ) -> dict[str, object]:
+        """Detect whether OCC coverage is missing for a product PR (pure)."""
+        if not contract_exists and not receipt_exists:
+            reason = (
+                f"missing contract and receipt for {ticket_id} on {repo}#{pr_number}"
+            )
+        elif not contract_exists:
+            reason = f"missing contract for {ticket_id} on {repo}#{pr_number}"
+        elif not receipt_exists:
+            reason = f"missing receipt for {ticket_id} on {repo}#{pr_number}"
+        else:
+            return {"has_gap": False, "gap_reason": ""}
+        return {"has_gap": True, "gap_reason": reason}
 
     # ------------------------------------------------------------------
-    # Top-level flow
+    # verifier != runner enforcement (OMN-12791)
     # ------------------------------------------------------------------
 
-    def _autobind_sync(self, repo: str, pr_number: int, ticket_id: str | None) -> str:
+    def _validate_verifier_not_runner(self, *, runner: str, verifier: str) -> None:
+        """Raise ValueError if verifier == runner (self-attestation rejected)."""
+        if runner == verifier:
+            raise ValueError(
+                f"self-attestation rejected: verifier ({verifier!r}) must differ "
+                f"from runner ({runner!r}). Assign an independent verifier."
+            )
+
+    # ------------------------------------------------------------------
+    # The one core flow
+    # ------------------------------------------------------------------
+
+    def _emit_companion_sync(
+        self, repo: str, pr_number: int, ticket_id: str | None
+    ) -> str:
+        # Dry-run: describe intent and make ZERO side effects (no token, no I/O).
+        # This is a planning affordance (detect_occ_gap companion), not a
+        # production path — the runtime/orchestrator always wire mutate mode.
+        if self._mode == "dry_run":
+            who = ticket_id or "auto-detected ticket(s)"
+            action = (
+                f"[dry-run] would author OCC companion for {who} on "
+                f"{repo}#{pr_number} (no side effects performed)"
+            )
+            logger.info("occ_companion_emitter (dry-run): %s", action)
+            return action
+
         token = _resolve_github_token()
         owner, repo_name = split_repo(repo)
 
@@ -232,7 +235,7 @@ class OccAutobindAdapter:
         head_sha = head.get("sha") if isinstance(head, dict) else None
         head_ref = head.get("ref") if isinstance(head, dict) else None
         pr_state = pr_data.get("state") or "open"
-        if not isinstance(head_sha, str) or not _SHA_RE.match(head_sha):
+        if not isinstance(head_sha, str) or not SHA_RE.match(head_sha):
             raise RuntimeError(
                 f"could not resolve product PR head SHA for {repo}#{pr_number}: "
                 f"{head_sha!r}"
@@ -258,28 +261,29 @@ class OccAutobindAdapter:
                 f"no-op: {repo}#{pr_number} already bound to "
                 f"OCC#{already_bound} (Evidence-Source already an OCC source)"
             )
-            logger.info("occ_autobind_adapter: %s", action)
+            logger.info("occ_companion_emitter: %s", action)
             return action
 
         # 2. Validator-parity ticket extraction (OMN-13990 D3): the gate owns
         #    tickets via closing-keyword-exclusive-else-all-title-tokens; author a
-        #    companion for EVERY cited ticket so the emitter and gate agree. Fall
-        #    back to the caller-supplied ticket only when the PR cites none.
+        #    companion for EVERY cited ticket. Fall back to the caller-supplied
+        #    ticket only when the PR cites none.
         tickets = self._extract_tickets(title, body)
         if not tickets and ticket_id:
             tickets = [ticket_id]
         if not tickets:
             raise RuntimeError(
                 f"could not detect any OMN-XXXX ticket id from {repo}#{pr_number} "
-                "title/body; cannot autobind Evidence-Source."
+                "title/body; cannot author an OCC companion."
             )
 
-        run_timestamp = datetime.now(tz=UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
         repo_slug = repo.replace("/", "-")
         # One OCC branch/PR per product PR (ticket-count agnostic) so a single
         # Evidence-Source: OCC#<n> covers every cited ticket and re-fires sync.
         branch = f"auto/{repo_slug.lower()}-pr-{pr_number}-occ-autobind"
         evidence_id = f"dod-{repo_slug}-pr-{pr_number}"
+
+        run_timestamp = datetime.now(tz=UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
         # Genuine product-PR probe, observed once and shared across tickets.
         downstream_probe_command = (
@@ -295,7 +299,7 @@ class OccAutobindAdapter:
             },
         )
 
-        with tempfile.TemporaryDirectory(prefix="occ-autobind-") as tmpdir:
+        with tempfile.TemporaryDirectory(prefix="occ-companion-") as tmpdir:
             clone_dir = Path(tmpdir) / "onex_change_control"
             self._clone_and_branch(clone_dir, branch, tmpdir, token)
 
@@ -305,7 +309,7 @@ class OccAutobindAdapter:
                 contract_path.parent.mkdir(parents=True, exist_ok=True)
                 if not contract_path.is_file():
                     contract_path.write_text(
-                        _CONTRACT_TEMPLATE.format(
+                        render_companion_contract(
                             ticket_id=ticket,
                             repo=repo,
                             pr_number=pr_number,
@@ -323,7 +327,7 @@ class OccAutobindAdapter:
                 )
                 downstream_dir.mkdir(parents=True, exist_ok=True)
                 (downstream_dir / "command.yaml").write_text(
-                    _DOWNSTREAM_RECEIPT_TEMPLATE.format(
+                    render_downstream_receipt(
                         ticket_id=ticket,
                         evidence_id=evidence_id,
                         pr_number=pr_number,
@@ -334,10 +338,12 @@ class OccAutobindAdapter:
                         probe_command=downstream_probe_command,
                         probe_stdout=downstream_stdout,
                         exit_code=downstream_exit,
+                        runner=self._runner,
+                        verifier=self._verifier,
                     ),
                     encoding="utf-8",
                 )
-                self._rebind_contract_sha256(clone_dir, ticket, contract_path)
+                self._rebind_all_receipts(clone_dir, ticket, contract_path)
 
             self._run_git(["git", "add", "contracts", "drift"], cwd=str(clone_dir))
             self._run_git(
@@ -346,10 +352,11 @@ class OccAutobindAdapter:
                     "commit",
                     "-m",
                     (
-                        f"evidence({', '.join(tickets)}): autobind OCC evidence "
+                        f"evidence({', '.join(tickets)}): author OCC companion "
                         f"for {repo}#{pr_number}\n\n"
-                        f"Evidence-Source autobind by node_pr_lifecycle_fix_effect "
-                        f"(OMN-13317 F1 / OMN-13990). Product PR head {head_sha}."
+                        f"OCC companion by node_pr_lifecycle_fix_effect "
+                        f"(OMN-13317 F1 / OMN-13990 / OMN-14285). "
+                        f"Product PR head {head_sha}."
                     ),
                 ],
                 cwd=str(clone_dir),
@@ -400,7 +407,7 @@ class OccAutobindAdapter:
                 )
                 self_bind_dir.mkdir(parents=True, exist_ok=True)
                 (self_bind_dir / "command.yaml").write_text(
-                    _SELF_BIND_RECEIPT_TEMPLATE.format(
+                    render_self_bind_receipt(
                         ticket_id=ticket,
                         evidence_id=f"occ-self-bind-pr-{occ_pr_number}",
                         occ_pr_number=occ_pr_number,
@@ -411,11 +418,13 @@ class OccAutobindAdapter:
                         probe_command=occ_probe_command,
                         probe_stdout=occ_stdout,
                         exit_code=occ_exit,
+                        runner=self._runner,
+                        verifier=self._verifier,
                     ),
                     encoding="utf-8",
                 )
                 # Rebind contract hash across ALL matching receipts (friction #9).
-                self._rebind_contract_sha256(clone_dir, ticket, contract_paths[ticket])
+                self._rebind_all_receipts(clone_dir, ticket, contract_paths[ticket])
 
             self._run_git(["git", "add", "drift"], cwd=str(clone_dir))
             self._run_git(
@@ -430,13 +439,7 @@ class OccAutobindAdapter:
                 ],
                 cwd=str(clone_dir),
             )
-            # Force-push: the auto/* bot branch is fully REGENERATED each run
-            # (fresh clone off the default + freshly-timestamped receipts), so a
-            # `synchronize` re-fire produces history disjoint from the already
-            # pushed remote branch — a plain push would be rejected non-fast-
-            # forward (OMN-13990 / CodeRabbit). Force-push is safe here (content
-            # is deterministic and the branch always presents the companion as
-            # all-adds relative to base, keeping the append-only gate green).
+            # Force-push (see rationale above): deterministic all-adds regeneration.
             self._run_git(
                 ["git", "push", "--force", "origin", branch], cwd=str(clone_dir)
             )
@@ -451,25 +454,16 @@ class OccAutobindAdapter:
         )
 
         action = (
-            f"autobound Evidence-Source: OCC#{occ_pr_number} for "
+            f"authored OCC companion Evidence-Source: OCC#{occ_pr_number} for "
             f"{', '.join(tickets)} on {repo}#{pr_number} "
             f"(product head {head_sha}, branch {branch})"
         )
-        logger.info("occ_autobind_adapter: %s", action)
+        logger.info("occ_companion_emitter: %s", action)
         return action
 
     # ------------------------------------------------------------------
     # Helpers
     # ------------------------------------------------------------------
-
-    @staticmethod
-    def _detect_ticket(title: str, body: str) -> str | None:
-        """Detect the OMN-NNNN ticket id from PR title (preferred) then body."""
-        for source in (title, body):
-            match = _TICKET_RE.search(source)
-            if match is not None:
-                return match.group(0)
-        return None
 
     @staticmethod
     def _extract_tickets(title: str, body: str) -> list[str]:
@@ -489,12 +483,11 @@ class OccAutobindAdapter:
         Runs the real ``gh pr view --json`` probe so the receipt carries
         machine-observed output rather than a fabricated template (OMN-13990
         item 4 / OMN-14055). ``gh`` authenticates from ``GH_TOKEN``. When ``gh``
-        is unavailable (not installed in the effects container) or errors, the
-        probe falls back to the fields already observed from the GitHub REST API
-        — still genuine GitHub facts, never a hardcoded template — and reports
-        exit_code 0 because the PR was in fact observed. Output is re-serialised
-        as a single compact JSON line so the receipt's YAML block scalar stays
-        well-formed.
+        is unavailable or errors, the probe falls back to the fields already
+        observed from the GitHub REST API — still genuine GitHub facts, never a
+        hardcoded template — and reports exit_code 0 because the PR was in fact
+        observed. Output is re-serialised as a single compact JSON line so the
+        receipt's YAML block scalar stays well-formed.
         """
         fallback_json = json.dumps(fallback, separators=(",", ":"), sort_keys=True)
         try:
@@ -544,23 +537,21 @@ class OccAutobindAdapter:
         )
         self._run_git(["git", "checkout", "-b", branch], cwd=str(clone_dir))
 
-    def _rebind_contract_sha256(
+    def _rebind_all_receipts(
         self, clone_dir: Path, ticket: str, contract_path: Path
     ) -> None:
         """Set ``contract_sha256`` to sha256(contract) on every matching receipt.
 
         Mirrors the overnight-sweep manual recipe (friction #9):
-        ``LC_ALL=C shasum -a 256 contracts/<ticket>.yaml`` then rewrite the
-        hash in ``drift/dod_receipts/<ticket>/*/command.yaml``. Implemented in
-        Python with the same byte semantics (``LC_ALL=C`` is a locale concern
-        for the shell tool, not for Python's hashlib, which is locale-free).
+        ``LC_ALL=C shasum -a 256 contracts/<ticket>.yaml`` then rewrite the hash
+        in ``drift/dod_receipts/<ticket>/*/command.yaml``. Rendering + hashing are
+        the pure :mod:`occ_evidence_stamp` seam; this method only does the file I/O.
         """
-        digest = hashlib.sha256(contract_path.read_bytes()).hexdigest()
-        replacement = f'contract_sha256: "sha256:{digest}"'
+        digest = compute_contract_sha256(contract_path.read_bytes())
         receipt_root = clone_dir / "drift" / "dod_receipts" / ticket
         for receipt in receipt_root.rglob("*.yaml"):
             text = receipt.read_text(encoding="utf-8")
-            new_text = _CONTRACT_SHA_LINE_RE.sub(replacement, text)
+            new_text = rebind_contract_sha256_in_text(text, digest)
             if new_text != text:
                 receipt.write_text(new_text, encoding="utf-8")
 
@@ -587,7 +578,7 @@ class OccAutobindAdapter:
         if (
             merged
             and isinstance(merge_commit_sha, str)
-            and _SHA_RE.match(merge_commit_sha)
+            and SHA_RE.match(merge_commit_sha)
         ):
             return merge_commit_sha
         return head_sha
@@ -597,16 +588,13 @@ class OccAutobindAdapter:
     ) -> int:
         """Open the OCC binding PR, or return the existing PR for this branch.
 
-        ``synchronize`` re-fires this adapter for the same product PR; the OCC
+        ``synchronize`` re-fires the emitter for the same product PR; the OCC
         branch already exists and pushing updates it, so a fresh ``create`` 422s.
         Look up the open PR for the branch head first.
         """
         token = _resolve_github_token()
         owner, repo_name = split_repo(self._occ_repo)
 
-        # The list endpoint (`/pulls?head=...`) returns a JSON array, which the
-        # dict-returning ``rest_json`` contract cannot represent. Use the search
-        # API (object with ``items``) to find an existing open PR for the branch.
         existing_number = self._first_open_pr_number(owner, repo_name, branch, token)
         if existing_number is not None:
             return existing_number
@@ -615,8 +603,8 @@ class OccAutobindAdapter:
         # the Piece-2 core renderer over the typed stamp (no inline stamp text).
         prose = (
             f"Autobind OCC evidence for `{ticket}`.\n\n"
-            f"Triggered by Receipt-Gate Evidence-Source autobind on "
-            f"{repo}#{pr_number} (OMN-13317 F1).\n"
+            f"Triggered by node_pr_lifecycle_fix_effect OCC companion emitter on "
+            f"{repo}#{pr_number} (OMN-13317 F1 / OMN-14285).\n"
         )
         body = render_occ_companion_pr_body(prose, tickets=[ticket])
         # OMN-13990: target OCC's DEFAULT branch, not a hardcoded "main". The
@@ -624,8 +612,7 @@ class OccAutobindAdapter:
         # `dev`); a PR based on "main" surfaces the entire dev<->main delta
         # (thousands of files) with the 3 companion files buried in it — an
         # unmergeable mega-PR. Basing on the default keeps the companion PR a
-        # clean net-new-files diff. (Surfaced by the first real end-to-end run;
-        # the emitter had authored zero companions before, so it never fired.)
+        # clean net-new-files diff.
         base = self._occ_default_branch(owner, repo_name, token)
         resp = rest_json(
             "POST",
@@ -717,4 +704,4 @@ class OccAutobindAdapter:
         )
 
 
-__all__ = ["OccAutobindAdapter"]
+__all__ = ["OccCompanionEmitter"]

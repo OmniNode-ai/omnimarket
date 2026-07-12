@@ -594,7 +594,7 @@ def _is_implementation_pr(pr: dict[str, str]) -> bool:
 # ---------------------------------------------------------------------------
 # OMN-13853: OCC-receipt durable close evidence.
 #
-# The platform (node_pr_lifecycle_fix_effect / OccContractAdapter) writes one
+# The platform (node_pr_lifecycle_fix_effect / OccCompanionEmitter) writes one
 # node_dod_verify receipt per evidence item at
 # ``drift/dod_receipts/<TICKET>/<EVIDENCE_ITEM>/command.yaml`` on the OCC
 # governance ref. OCC governance is dev-targeted — contracts and receipts land

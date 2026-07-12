@@ -628,6 +628,19 @@ repos:
         pass_filenames: false
         stages: [pre-commit]
 
+      # One-producer-per-contract guard (OMN-14285 / WI-1, S1d). Fails if a
+      # second OCC companion-authoring surface (an inline receipt/contract YAML
+      # template outside the occ_evidence_stamp seam, a duplicate
+      # OccCompanionEmitter, or a resurrected scaffold_occ_receipt.py) reappears.
+      # SYNC with ci.yml job "one-occ-producer".
+      - id: one-occ-producer
+        name: One OCC producer per contract (OMN-14285)
+        language: system
+        entry: python scripts/ci/check_one_occ_producer.py
+        files: ^(src/omnimarket/.*\.py|scripts/ci/check_one_occ_producer\.py)$
+        pass_filenames: false
+        stages: [pre-commit]
+
       # Skip-token rejection gate (OMN-11412 / OMN-10414)
       # Blocks [skip-*] bypass tokens in staged markdown/yaml/txt files.
       # Escape hatch: add '# skip-token-allowed: <receipt-id>' with a traceable approval receipt.

@@ -49,7 +49,7 @@ from omnimarket.nodes.node_dod_verify.services.durable_evidence_gate import (
 )
 
 # Canonical default surfaces under test. These mirror the real OCC layout the
-# platform writes (OccContractAdapter) and the dev-targeted governance ref.
+# platform writes (OccCompanionEmitter) and the dev-targeted governance ref.
 _OCC_REPO = "/fake/onex_change_control"
 _DEV_REF = DEFAULT_OCC_GOVERNANCE_REF  # "origin/dev"
 _TICKET = "OMN-9855"

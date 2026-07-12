@@ -30,7 +30,7 @@ import logging
 import tempfile
 
 from omnimarket.github_api import GitHubApiError, rest_json, split_repo
-from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.adapter_occ_autobind import (
+from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.occ_companion_emitter import (
     _resolve_github_token,
 )
 from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.occ_git_transport import (
@@ -56,7 +56,7 @@ _GIT_LS_REMOTE_TIMEOUT_SECONDS = 60
 def _expected_branch(repo: str, pr_number: int) -> str:
     """Return the deterministic auto/* companion branch the adapter pushes.
 
-    Mirrors ``OccAutobindAdapter`` exactly (one OCC branch per product PR):
+    Mirrors ``OccCompanionEmitter`` exactly (one OCC branch per product PR):
     ``auto/<repo-slug-lower>-pr-<pr_number>-occ-autobind``.
     """
     repo_slug = repo.replace("/", "-").lower()
