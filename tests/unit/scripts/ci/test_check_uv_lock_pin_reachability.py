@@ -14,7 +14,8 @@ from pathlib import Path
 
 import pytest
 
-from scripts.ci.check_uv_lock_pin_reachability import extract_pins, is_reachable
+from scripts.ci import check_uv_lock_pin_reachability
+from scripts.ci.check_uv_lock_pin_reachability import extract_pins, is_reachable, main
 
 _LOCK = """
 [[package]]
@@ -90,3 +91,35 @@ def test_naive_unpruned_check_gives_a_false_pass(clone: tuple[Path, str, str]) -
     repo = root / "omnibase_core"
     assert is_reachable(repo, doomed, prune=False) is True  # <-- the false PASS
     assert is_reachable(repo, doomed, prune=True) is False  # <-- the truth
+
+
+def test_fetch_failure_fails_closed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo = tmp_path / "omnibase_core"
+    (repo / ".git").mkdir(parents=True)
+
+    def fake_git(args: list[str], cwd: Path) -> subprocess.CompletedProcess[str]:
+        assert cwd == repo
+        if args == ["fetch", "origin", "--prune", "--quiet"]:
+            return subprocess.CompletedProcess(["git", *args], 1, "", "network down")
+        raise AssertionError(f"unexpected git call after failed fetch: {args}")
+
+    monkeypatch.setattr(check_uv_lock_pin_reachability, "_git", fake_git)
+
+    assert is_reachable(repo, "a" * 40) is False
+
+
+def test_missing_clone_fails_gate(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    lock = tmp_path / "uv.lock"
+    lock.write_text(_LOCK.format(rev="a" * 40), encoding="utf-8")
+    clones = tmp_path / "clones"
+    clones.mkdir()
+
+    assert main(["--lock", str(lock), "--clones-root", str(clones)]) == 1
+
+    out = capsys.readouterr().out
+    assert "UNVERIFIED  omnibase_core @ aaaaaaaaa" in out
+    assert "could not be verified" in out

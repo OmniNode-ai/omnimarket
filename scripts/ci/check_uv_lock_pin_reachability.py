@@ -62,7 +62,9 @@ def is_reachable(repo_dir: Path, rev: str, *, prune: bool = True) -> bool:
     deleted upstream -- the exact false-negative that let OMN-14447 through.
     """
     if prune:
-        _git(["fetch", "origin", "--prune", "--quiet"], cwd=repo_dir)
+        fetch = _git(["fetch", "origin", "--prune", "--quiet"], cwd=repo_dir)
+        if fetch.returncode != 0:
+            return False
 
     # The object may not even be present on a fresh clone -- that alone is a failure.
     if _git(["cat-file", "-e", f"{rev}^{{commit}}"], cwd=repo_dir).returncode != 0:
@@ -94,16 +96,31 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     unreachable: list[tuple[str, str]] = []
+    unverified: list[tuple[str, str, Path]] = []
     for repo, rev in pins:
         repo_dir = args.clones_root / repo
         if not (repo_dir / ".git").exists():
-            print(f"  SKIP        {repo} @ {rev[:9]} (no clone at {repo_dir})")
+            print(f"  UNVERIFIED  {repo} @ {rev[:9]} (no clone at {repo_dir})")
+            unverified.append((repo, rev, repo_dir))
             continue
         if is_reachable(repo_dir, rev, prune=not args.no_prune):
             print(f"  OK          {repo} @ {rev[:9]}")
         else:
             print(f"  UNREACHABLE {repo} @ {rev[:9]}")
             unreachable.append((repo, rev))
+
+    if unverified:
+        print(
+            f"\n{len(unverified)} git-SHA pin(s) in {args.lock} could not be verified "
+            "because the required sibling clone was missing:\n"
+        )
+        for repo, rev, repo_dir in unverified:
+            print(f"  {repo} @ {rev} (expected clone: {repo_dir})")
+        print(
+            "\nA missing clone means the gate did not prove reachability. Failing closed\n"
+            "prevents clone/setup failures from producing a false green check.\n"
+        )
+        return 1
 
     if not unreachable:
         print(f"\nuv.lock pin reachability OK: {len(pins)} git pin(s) checked")
