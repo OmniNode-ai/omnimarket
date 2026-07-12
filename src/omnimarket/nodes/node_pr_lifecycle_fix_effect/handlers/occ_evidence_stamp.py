@@ -28,6 +28,19 @@ Determinism contract (exercised by ``test_occ_evidence_stamp``):
   * ``rebind_contract_sha256_in_text`` is an idempotent fixpoint once bound;
   * no named ``{placeholder}`` survives a render (only the intentional JSON
     literal braces in the self-attesting ``probe_stdout`` block).
+
+Per-entry hash rebind (OMN-14418 residual 3): the downstream receipt now also
+carries a ``contract_entry_sha256: "sha256:PENDING"`` sentinel, rebound by the
+effect writer (via :func:`rebind_contract_entry_sha256_in_text`) to the OMN-13888
+per-entry hash so the receipt survives a later append to the contract instead of
+going stale with the whole-file ``contract_sha256``. The OCC self-bind receipt
+does **not** carry the field: it binds to the OCC companion PR, not to any
+declared ``dod_evidence`` item, so there is no entry for it to hash against —
+minting one would either crash the canonical hasher (``ContractEntryNotFoundError``)
+or point at the wrong entry. It keeps the legacy whole-file ``contract_sha256``
+binding only, which is exactly what the consumer-side dual-accept gates
+(``check_receipt_contract_binding`` / ``check_receipt_hardening.py``) already
+expect from a receipt with no ``contract_entry_sha256``.
 """
 
 from __future__ import annotations
@@ -43,6 +56,18 @@ SHA_RE = re.compile(r"^[0-9a-fA-F]{7,40}$")
 # contract_sha256 line in a receipt: matches both 64-hex and PENDING sentinels.
 CONTRACT_SHA_LINE_RE = re.compile(
     r'contract_sha256:\s*"sha256:(?:[0-9a-f]{64}|PENDING)"'
+)
+# contract_entry_sha256 line (OMN-13888 / OMN-14418 residual 3): the per-entry
+# sibling of CONTRACT_SHA_LINE_RE. Absent entirely from receipts that do not
+# correspond to a declared dod_evidence item (self-bind receipts).
+CONTRACT_ENTRY_SHA_LINE_RE = re.compile(
+    r'contract_entry_sha256:\s*"sha256:(?:[0-9a-f]{64}|PENDING)"'
+)
+# evidence_item_id line in a receipt — used to recover which dod_evidence
+# entry a given receipt file binds to, without a full YAML round-trip (keeps
+# the rebind step byte-shape-preserving, matching CONTRACT_SHA_LINE_RE's style).
+EVIDENCE_ITEM_ID_LINE_RE = re.compile(
+    r'^evidence_item_id:\s*"([^"]+)"\s*$', re.MULTILINE
 )
 
 # ---------------------------------------------------------------------------
@@ -84,6 +109,10 @@ _CONTRACT_TEMPLATE = textwrap.dedent("""\
 # Downstream receipt — stamped with the REAL product PR head + number so
 # check_receipt_hardening.py (commit_sha 7-40 hex, pr_number >= 1) passes.
 # contract_sha256 starts PENDING and is rebound once the contract is final.
+# contract_entry_sha256 (OMN-13888 / OMN-14418 residual 3) likewise starts
+# PENDING and is rebound to the OMN-13888 per-entry hash of this receipt's own
+# dod_evidence[evidence_id] — the entry this receipt's evidence_item_id names
+# IS declared in the companion contract above, so the per-entry hash resolves.
 # probe_command, probe_stdout and exit_code are genuine machine-observed values
 # from the live GitHub probe (OMN-13990 item 4 / OMN-14055) — no fabricated
 # template output. probe_stdout is a single compact JSON line so the literal
@@ -96,6 +125,7 @@ _DOWNSTREAM_RECEIPT_TEMPLATE = textwrap.dedent("""\
     check_type: "command"
     check_value: "gh pr view {pr_number} --repo {repo} --json number,state,headRefName"
     contract_sha256: "sha256:PENDING"
+    contract_entry_sha256: "sha256:PENDING"
     status: PASS
     run_timestamp: "{run_timestamp}"
     commit_sha: "{commit_sha}"
@@ -114,6 +144,12 @@ _DOWNSTREAM_RECEIPT_TEMPLATE = textwrap.dedent("""\
 # number + OCC head commit (placeholder values are rejected by hooks; friction #8).
 # probe_command/probe_stdout/exit_code are genuine machine-observed values from
 # the live GitHub probe against the OCC PR (OMN-13990 item 4).
+# Deliberately carries NO contract_entry_sha256 (OMN-14418 residual 3): this
+# receipt's evidence_item_id ("occ-self-bind-pr-<n>") is never a declared
+# dod_evidence item in the companion contract — it proves the OCC PR exists,
+# not a contract-declared check — so there is no entry to hash against. It
+# keeps only the legacy whole-file contract_sha256 binding, which is exactly
+# what the dual-accept gates expect from a receipt with no per-entry hash.
 _SELF_BIND_RECEIPT_TEMPLATE = textwrap.dedent("""\
     ---
     schema_version: "1.0.0"
@@ -345,6 +381,35 @@ def rebind_contract_sha256_in_text(text: str, digest_hex: str) -> str:
     return CONTRACT_SHA_LINE_RE.sub(replacement, text)
 
 
+def rebind_contract_entry_sha256_in_text(text: str, prefixed_digest: str) -> str:
+    """Rewrite a receipt's ``contract_entry_sha256`` line to ``prefixed_digest``.
+
+    ``prefixed_digest`` is the full ``sha256:<hex>`` string as returned by
+    ``omnibase_core.validation.validator_receipt_gate.compute_contract_entry_sha256``
+    (the canonical per-entry hasher, OMN-13888) — written verbatim rather than
+    re-prefixed locally, so the byte-shape stays identical to what the
+    hardening/receipt gates recompute.
+
+    Idempotent fixpoint, mirroring :func:`rebind_contract_sha256_in_text`. A
+    no-op when the receipt does not declare the field at all (self-bind
+    receipts — OMN-14418 residual 3): they have no ``contract_entry_sha256``
+    line to match, so the substitution simply finds nothing to replace.
+    """
+    replacement = f'contract_entry_sha256: "{prefixed_digest}"'
+    return CONTRACT_ENTRY_SHA_LINE_RE.sub(replacement, text)
+
+
+def extract_evidence_item_id(text: str) -> str | None:
+    """Return the ``evidence_item_id`` a rendered receipt declares, or ``None``.
+
+    Pure regex extraction (no YAML round-trip) so the rebind step can look up
+    which ``dod_evidence`` entry a given receipt file binds to while staying
+    consistent with this module's byte-shape-preserving, lib-free authoring.
+    """
+    match = EVIDENCE_ITEM_ID_LINE_RE.search(text)
+    return match.group(1) if match is not None else None
+
+
 def build_idempotency_key(
     *,
     ticket_id: str,
@@ -450,14 +515,18 @@ def classify_trivial_infra_fastpath(
 
 
 __all__ = [
+    "CONTRACT_ENTRY_SHA_LINE_RE",
     "CONTRACT_SHA_LINE_RE",
     "DEFAULT_RUNNER",
     "DEFAULT_VERIFIER",
+    "EVIDENCE_ITEM_ID_LINE_RE",
     "SHA_RE",
     "TICKET_RE",
     "build_idempotency_key",
     "classify_trivial_infra_fastpath",
     "compute_contract_sha256",
+    "extract_evidence_item_id",
+    "rebind_contract_entry_sha256_in_text",
     "rebind_contract_sha256_in_text",
     "render_companion_contract",
     "render_downstream_receipt",

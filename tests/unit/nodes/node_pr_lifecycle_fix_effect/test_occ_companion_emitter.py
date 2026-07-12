@@ -16,6 +16,10 @@ from pathlib import Path
 from unittest.mock import patch
 
 import pytest
+import yaml
+from omnibase_core.validation.validator_receipt_gate import (
+    compute_contract_entry_sha256,
+)
 
 from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.occ_companion_emitter import (
     OccCompanionEmitter,
@@ -317,6 +321,20 @@ class TestFullEmitFlow:
         assert downstream.is_file()
         assert 'commit_sha: "' + "b" * 40 + '"' in downstream.read_text()
 
+        # OMN-14418 residual 3: the downstream receipt (bound to the declared
+        # dod_evidence item) carries a genuine per-entry hash matching the
+        # canonical hasher, imported — never re-implemented.
+        contract_data = yaml.safe_load(contract.read_text())
+        expected_entry = compute_contract_entry_sha256(
+            contract_data, "dod-OmniNode-ai-omnimarket-pr-321"
+        )
+        assert f'contract_entry_sha256: "{expected_entry}"' in downstream.read_text()
+
+        # The self-bind receipt has NO declared dod_evidence counterpart, so
+        # it must never carry a fabricated contract_entry_sha256.
+        self_bind = next(r for r in receipts if "occ-self-bind" in r.parent.name)
+        assert "contract_entry_sha256" not in self_bind.read_text()
+
         # Action reports the single-producer companion bind.
         assert "OCC#55" in action
         assert "OMN-9999" in action
@@ -337,3 +355,73 @@ class TestFullEmitFlow:
             )
         assert r1 == r2 == "core-ran"
         assert core.call_count == 2
+
+
+# ---------------------------------------------------------------------------
+# OMN-14418 residual 3 — append-stability: a later append to the contract
+# must NOT invalidate an already-minted downstream receipt's binding. This is
+# the whole point of the fix: prove the receipt SURVIVES an append, where the
+# legacy whole-file contract_sha256 does not.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestAppendStability:
+    def test_entry_hash_survives_append_whole_file_hash_does_not(
+        self, tmp_path: Path
+    ) -> None:
+        emitter = OccCompanionEmitter()
+        _action, clone_root = TestFullEmitFlow()._run(emitter, tmp_path)
+
+        contract_path = clone_root / "contracts" / "OMN-9999.yaml"
+        downstream_path = (
+            clone_root
+            / "drift"
+            / "dod_receipts"
+            / "OMN-9999"
+            / "dod-OmniNode-ai-omnimarket-pr-321"
+            / "command.yaml"
+        )
+        receipt_before = yaml.safe_load(downstream_path.read_text())
+
+        # RED (pre-OMN-14418-R3 shape): a receipt that only ever bound the
+        # legacy whole-file contract_sha256 has nothing that survives an
+        # append — its ONLY binding goes stale the moment the contract grows.
+        # This receipt (rendered by the current, fixed producer) instead
+        # carries contract_entry_sha256; assert it is actually present before
+        # testing survival, so a regression that drops the field back to None
+        # fails this test loudly rather than passing vacuously.
+        assert receipt_before["contract_entry_sha256"] is not None
+
+        # Mutate the contract: append a second, unrelated dod_evidence item —
+        # simulating a later independent append (e.g. OMN-14425's CI-check
+        # item, or any future evidence requirement added to this ticket).
+        contract_data = yaml.safe_load(contract_path.read_text())
+        contract_data["dod_evidence"].append(
+            {
+                "id": "dod-OmniNode-ai-omnimarket-pr-321-ci",
+                "description": "unrelated later-appended check",
+                "source": "generated",
+                "checks": [
+                    {
+                        "check_type": "command",
+                        "check_value": "gh pr checks 321 --repo OmniNode-ai/omnimarket",
+                    }
+                ],
+            }
+        )
+        contract_path.write_text(yaml.safe_dump(contract_data, sort_keys=False))
+
+        # GREEN: the per-entry hash for the ORIGINAL entry is unchanged by
+        # the append — recomputing it against the now-appended contract
+        # yields the same digest the receipt already carries.
+        appended_contract_data = yaml.safe_load(contract_path.read_text())
+        recomputed_entry = compute_contract_entry_sha256(
+            appended_contract_data, "dod-OmniNode-ai-omnimarket-pr-321"
+        )
+        assert receipt_before["contract_entry_sha256"] == recomputed_entry
+
+        # Contrast: the legacy whole-file hash DOES go stale on the same
+        # append — this is the rot OMN-14411/OMN-14418 residual 3 describe.
+        whole_file_after = f"sha256:{__import__('hashlib').sha256(contract_path.read_bytes()).hexdigest()}"
+        assert receipt_before["contract_sha256"] != whole_file_after
