@@ -237,24 +237,51 @@ def _select_model_for_task(
     When contract_model_ref is provided (from task_model_overrides or
     default_task_model_ref in the task-class contract), the matching model is
     preferred over tier-order-based selection, provided it has an available
-    backend and fits within the token budget. Falls back to tier-order selection
-    when the contract-declared model is unavailable in this tier.
+    backend and fits within the token budget. When contract_model_ref
+    identifies more than one model in this tier (an id shared across distinct
+    backends — see OMN-14396 below), the candidate that also declares
+    task_type in use_for wins; otherwise the first id match is used regardless
+    of use_for, preserving the override as an explicit pin to a specific model
+    (OMN-10942). Falls back to tier-order selection when the contract-declared
+    model is unavailable in this tier.
 
     Prefers fast-path models when prompt fits within their threshold.
     Falls back to any model that declares the task type in use_for.
     Endpoint availability is checked via the bifrost_backends dict (keyed by backend_id).
     """
     # Contract-declared model takes priority — find it by model ID in this tier.
+    #
+    # OMN-14396: a model id can collide across two backends in the same tier
+    # serving DIFFERENT capabilities (e.g. local-coder and
+    # local-heavy-reasoning both declare id "Qwen3.6-35B-A3B" — one is the
+    # code_generation backend, the other the research/reasoning backend on
+    # the same physical endpoint). Matching on id alone always picked
+    # whichever backend was declared first, regardless of whether it actually
+    # served task_type — e.g. local-coder (use_for=[code_generation,
+    # code_review, refactor]) winning over local-heavy-reasoning for a
+    # "research" task purely by file order. delta() then routes to exactly
+    # that one backend; a real transport/quality failure there escalates the
+    # WHOLE tier to cheap_cloud/claude without ever trying the tier's other
+    # backend that does declare the task. Collect every id match and prefer
+    # the one that also declares task_type in use_for; only when NONE of the
+    # id matches declare task_type do we fall back to the first id match
+    # (unchanged behavior for the common case of a single, unambiguous
+    # override — e.g. pinning a task type to a cloud model that intentionally
+    # sits outside its own use_for list, OMN-10942/OMN-13140).
     if contract_model_ref is not None:
-        for model in tier_models:
-            backend = bifrost_backends.get(model.backend_ref)
-            if (
-                model.id == contract_model_ref
-                and backend
-                and _backend_secret_available(backend)
-                and estimated_tokens <= model.max_context_tokens
-            ):
+        id_matches = [
+            model
+            for model in tier_models
+            if model.id == contract_model_ref
+            and (backend := bifrost_backends.get(model.backend_ref)) is not None
+            and _backend_secret_available(backend)
+            and estimated_tokens <= model.max_context_tokens
+        ]
+        for model in id_matches:
+            if task_type in model.use_for:
                 return model
+        if id_matches:
+            return id_matches[0]
 
     for model in tier_models:
         backend = bifrost_backends.get(model.backend_ref)
