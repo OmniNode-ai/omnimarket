@@ -17,7 +17,6 @@ pre-populate evidence_results (tests, event-bus consumers).
 from __future__ import annotations
 
 import glob
-import json
 import logging
 import os
 import shlex
@@ -26,10 +25,19 @@ import subprocess
 import tempfile
 import time
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import yaml
+from omnibase_core.models.dispatch.model_handler_output import ModelHandlerOutput
 
+from omnimarket.nodes.node_dod_verify.handlers.handler_dod_evidence_github_effect import (
+    HandlerDodEvidenceGithubEffect,
+)
+from omnimarket.nodes.node_dod_verify.models.model_dod_evidence_github_lookup import (
+    EnumDodEvidenceGithubOperation,
+    ModelDodEvidenceGithubLookupCommand,
+    ModelDodEvidenceGithubLookupResultEvent,
+)
 from omnimarket.nodes.node_dod_verify.models.model_dod_verify_state import (
     EnumEvidenceCheckStatus,
     ModelEvidenceCheckResult,
@@ -80,14 +88,11 @@ _GIT_OP_TIMEOUT_S = 60
 # durable receipt's ``pr_number`` + probed ``--repo owner/repo`` — the SAME fields
 # the DurableEvidenceGate binds against.
 _LIVE_PR_CHECK_ENV = "DOD_VERIFY_LIVE_PR_CHECK"
-_GH_PR_TIMEOUT_S = 30
 _DEFAULT_GITHUB_ORG = "OmniNode-ai"
-# ``gh pr checks --json ... state`` values that are NOT a failure. Anything else
-# (FAILURE, CANCELLED, ERROR, TIMED_OUT, ACTION_REQUIRED, PENDING, QUEUED,
-# IN_PROGRESS, ...) is treated as not-green — a Done-flip gate fails closed on
-# anything not proven passing. NOTE: ``gh pr checks`` exits 0 even with FAILURE
-# rows, so the states MUST be parsed; the exit code cannot be trusted.
-_GH_CHECK_GREEN_STATES = frozenset({"SUCCESS", "SKIPPED", "NEUTRAL"})
+# NOTE: the gh-CLI timeout and check-green-state constants formerly declared
+# here (``_GH_PR_TIMEOUT_S``, ``_GH_CHECK_GREEN_STATES``) moved to
+# ``handler_dod_evidence_github_effect.py`` with the subprocess calls that used
+# them (OMN-14400, RSD-1 of OMN-14398).
 
 
 class EvidenceCollector:
@@ -110,6 +115,18 @@ class EvidenceCollector:
             os.environ.get("OCC_GOVERNANCE_REF", _DEFAULT_OCC_GOVERNANCE_REF).strip()
             or _DEFAULT_OCC_GOVERNANCE_REF
         )
+
+    @staticmethod
+    def _github_lookup_result(
+        output: ModelHandlerOutput[None],
+    ) -> ModelDodEvidenceGithubLookupResultEvent:
+        """Type-narrow HandlerDodEvidenceGithubEffect's single emitted event.
+
+        ``ModelHandlerOutput.events`` is ``tuple[Any, ...]`` (the generic
+        dispatch-engine shape); this handler always emits exactly one
+        ``ModelDodEvidenceGithubLookupResultEvent`` per call (OMN-14400).
+        """
+        return cast(ModelDodEvidenceGithubLookupResultEvent, output.events[0])
 
     def collect(
         self,
@@ -603,76 +620,40 @@ class EvidenceCollector:
     def _lookup_pr_for_ticket(self, ticket_id: str) -> str:
         """Return the merged PR number string for ticket_id, or empty string.
 
-        Checks PR_NUMBER env var first. Falls back to ``gh pr list`` search.
-        Returns empty string when nothing can be resolved (caller must handle
-        unresolved placeholders gracefully).
+        Checks PR_NUMBER env var first (not gh I/O — stays here). Falls back
+        to HandlerDodEvidenceGithubEffect's ``gh pr list`` search (OMN-14400,
+        RSD-1 of OMN-14398 — behavior-identical carve-out of the gh-CLI I/O
+        into a canonical EFFECT handler). Returns empty string when nothing
+        can be resolved (caller must handle unresolved placeholders
+        gracefully).
         """
         env_val = os.environ.get("PR_NUMBER", "").strip()
         if env_val:
             return env_val
-        try:
-            result = subprocess.run(
-                [
-                    "gh",
-                    "pr",
-                    "list",
-                    "--search",
-                    ticket_id,
-                    "--state",
-                    "merged",
-                    "--json",
-                    "number",
-                    "--jq",
-                    ".[0].number",
-                ],
-                capture_output=True,
-                text=True,
-                timeout=15,
-            )
-            if result.returncode == 0:
-                num = result.stdout.strip()
-                if num and num != "null":
-                    return num
-        except Exception:
-            pass
-        return ""
+        command = ModelDodEvidenceGithubLookupCommand(
+            operation=EnumDodEvidenceGithubOperation.LOOKUP_PR_FOR_TICKET,
+            ticket_id=ticket_id,
+        )
+        output = HandlerDodEvidenceGithubEffect().handle(command)
+        return self._github_lookup_result(output).text_value
 
     def _lookup_repo_for_ticket(self, ticket_id: str) -> str:
         """Return the ``owner/repo`` string for ticket_id, or empty string.
 
-        Checks REPO env var first. Falls back to ``gh pr list`` search
-        to discover which repo contains a merged PR for this ticket.
+        Checks REPO env var first (not gh I/O — stays here). Falls back to
+        HandlerDodEvidenceGithubEffect's ``gh pr list`` search to discover
+        which repo contains a merged PR for this ticket (OMN-14400, RSD-1 of
+        OMN-14398).
         """
         env_val = os.environ.get("REPO", "").strip()
         if env_val:
             return env_val
-        try:
-            # Search across all repos known to the gh CLI for the ticket in the PR title/body.
-            result = subprocess.run(
-                [
-                    "gh",
-                    "pr",
-                    "list",
-                    "--search",
-                    ticket_id,
-                    "--state",
-                    "merged",
-                    "--json",
-                    "number,headRepository",
-                    "--jq",
-                    '.[0] | .headRepository.nameWithOwner // ""',
-                ],
-                capture_output=True,
-                text=True,
-                timeout=15,
-            )
-            if result.returncode == 0:
-                repo = result.stdout.strip()
-                if repo and repo != "null":
-                    return repo
-        except Exception:
-            pass
-        return ""
+        command = ModelDodEvidenceGithubLookupCommand(
+            operation=EnumDodEvidenceGithubOperation.LOOKUP_REPO_FOR_TICKET,
+            ticket_id=ticket_id,
+        )
+        output = HandlerDodEvidenceGithubEffect().handle(command)
+        return self._github_lookup_result(output).text_value
 
     def _resolve_command_placeholders(
         self,
@@ -1014,107 +995,48 @@ class EvidenceCollector:
         repo: str,
         pr_number: int,
     ) -> tuple[bool, str] | None:
-        """Return ``(merged, state)`` for ``repo#pr_number`` via ``gh pr view``.
+        """Return ``(merged, state)`` for ``repo#pr_number`` via the GitHub
+        effect handler's ``gh pr view`` lookup (OMN-14400, RSD-1 of
+        OMN-14398 — behavior-identical carve-out of the gh-CLI I/O into a
+        canonical EFFECT handler).
 
         Returns ``None`` on any inability to resolve the PR (timeout, missing gh,
         non-zero exit, unparseable output) so the caller can fail closed.
         """
-        try:
-            result = subprocess.run(
-                [
-                    "gh",
-                    "pr",
-                    "view",
-                    str(pr_number),
-                    "--repo",
-                    repo,
-                    "--json",
-                    "state,mergedAt",
-                ],
-                capture_output=True,
-                text=True,
-                timeout=_GH_PR_TIMEOUT_S,
-                check=False,
-            )
-        except (subprocess.TimeoutExpired, OSError) as exc:
-            logger.warning("gh pr view failed for %s#%d: %s", repo, pr_number, exc)
+        command = ModelDodEvidenceGithubLookupCommand(
+            operation=EnumDodEvidenceGithubOperation.FETCH_PR_MERGE_STATE,
+            repo=repo,
+            pr_number=pr_number,
+        )
+        output = HandlerDodEvidenceGithubEffect().handle(command)
+        result = self._github_lookup_result(output)
+        if not result.resolved:
             return None
-        if result.returncode != 0:
-            logger.warning(
-                "gh pr view non-zero for %s#%d: %s",
-                repo,
-                pr_number,
-                result.stderr.strip(),
-            )
-            return None
-        try:
-            data = json.loads(result.stdout or "{}")
-        except json.JSONDecodeError:
-            logger.warning(
-                "gh pr view returned unparseable JSON for %s#%d", repo, pr_number
-            )
-            return None
-        if not isinstance(data, dict):
-            return None
-        state = str(data.get("state") or "UNKNOWN")
-        merged = bool(data.get("mergedAt")) or state.upper() == "MERGED"
-        return merged, state
+        return bool(result.merged), result.state or "UNKNOWN"
 
     def _fetch_pr_checks_green(
         self,
         repo: str,
         pr_number: int,
     ) -> tuple[bool, str]:
-        """Return ``(all_green, detail)`` for ``repo#pr_number`` REQUIRED status checks.
+        """Return ``(all_green, detail)`` for ``repo#pr_number`` REQUIRED status
+        checks via the GitHub effect handler (OMN-14400, RSD-1 of OMN-14398).
 
         Scoped to required checks only via ``gh pr checks --required`` (OMN-14390)
         — a non-green *non-required* check (e.g. an informational/advisory job)
         must never fail a Done-flip; only branch-protection-required contexts are
         load-bearing here. Fails closed: any non-green required check
         (FAILURE/CANCELLED/PENDING/...), an empty required-check set, or an
-        inability to enumerate checks yields ``False``. ``gh pr checks`` exits 0
-        even with failing rows, so the JSON states are parsed rather than the
-        exit code.
+        inability to enumerate checks yields ``False``.
         """
-        try:
-            result = subprocess.run(
-                [
-                    "gh",
-                    "pr",
-                    "checks",
-                    str(pr_number),
-                    "--repo",
-                    repo,
-                    "--required",
-                    "--json",
-                    "name,state",
-                ],
-                capture_output=True,
-                text=True,
-                timeout=_GH_PR_TIMEOUT_S,
-                check=False,
-            )
-        except (subprocess.TimeoutExpired, OSError) as exc:
-            return False, f"gh pr checks error: {exc}"
-        try:
-            data = json.loads(result.stdout or "[]")
-        except json.JSONDecodeError:
-            detail = (result.stderr or result.stdout or "").strip()
-            return False, f"could not read check results: {detail[:200]}"
-        if not isinstance(data, list) or not data:
-            detail = (result.stderr or "no status checks reported").strip()
-            return False, f"no status checks reported: {detail[:200]}"
-        not_green = sorted(
-            str(check.get("name") or "<unnamed>")
-            for check in data
-            if isinstance(check, dict)
-            and str(check.get("state") or "").upper() not in _GH_CHECK_GREEN_STATES
+        command = ModelDodEvidenceGithubLookupCommand(
+            operation=EnumDodEvidenceGithubOperation.FETCH_PR_CHECKS_GREEN,
+            repo=repo,
+            pr_number=pr_number,
         )
-        if not_green:
-            shown = ", ".join(not_green[:10])
-            more = "" if len(not_green) <= 10 else f" (+{len(not_green) - 10} more)"
-            return False, f"{len(not_green)} check(s) not green: {shown}{more}"
-        return True, f"all {len(data)} status check(s) green"
+        output = HandlerDodEvidenceGithubEffect().handle(command)
+        result = self._github_lookup_result(output)
+        return bool(result.checks_green), result.detail or ""
 
     def _run_command_check(
         self,
