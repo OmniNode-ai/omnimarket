@@ -287,6 +287,51 @@ class TestFullEmitFlow:
             action = emitter._emit_companion_sync("OmniNode-ai/omnimarket", 321, None)
         return action, clone_root
 
+    def test_every_declared_entry_receipt_carries_a_per_entry_hash(
+        self, tmp_path: Path
+    ) -> None:
+        """SEAM (OMN-14425 x OMN-14418): the invariant across BOTH changes.
+
+        OMN-14425 adds a second dod_evidence item (the `gh pr checks` L1 probe)
+        and a receipt for it. OMN-14418 requires every receipt bound to a
+        DECLARED dod_evidence item to carry `contract_entry_sha256`. Each PR was
+        green on its own; merged, the new CI-check receipt was born WITHOUT the
+        per-entry hash, because `rebind_contract_entry_sha256_in_text` only
+        rewrites an existing line and is a no-op when the field is absent.
+
+        This asserts the property over EVERY receipt rather than a named one, so
+        a future third receipt cannot reintroduce the gap: declared => hashed,
+        undeclared (self-bind, by design) => not hashed.
+        """
+        emitter = OccCompanionEmitter()
+        _action, clone_root = self._run(emitter, tmp_path)
+
+        contract_data = yaml.safe_load(
+            (clone_root / "contracts" / "OMN-9999.yaml").read_text()
+        )
+        declared = {item["id"] for item in (contract_data.get("dod_evidence") or [])}
+        assert len(declared) >= 2, "expected the existence probe + the CI check"
+
+        receipts = sorted(
+            (clone_root / "drift" / "dod_receipts" / "OMN-9999").rglob("command.yaml")
+        )
+        assert receipts
+
+        for receipt in receipts:
+            data = yaml.safe_load(receipt.read_text()) or {}
+            item_id = data.get("evidence_item_id")
+            has_hash = bool(data.get("contract_entry_sha256"))
+            if item_id in declared:
+                assert has_hash, (
+                    f"{receipt.parent.name} binds DECLARED item {item_id!r} but "
+                    "carries no contract_entry_sha256 — receipt born pre-rotted"
+                )
+            else:
+                assert not has_hash, (
+                    f"{receipt.parent.name} binds UNDECLARED item {item_id!r} but "
+                    "carries a fabricated contract_entry_sha256"
+                )
+
     def test_authors_contract_and_receipts_and_rebinds(self, tmp_path: Path) -> None:
         emitter = OccCompanionEmitter()
         action, clone_root = self._run(emitter, tmp_path)
@@ -296,11 +341,11 @@ class TestFullEmitFlow:
         assert contract.is_file()
         assert 'ticket_id: "OMN-9999"' in contract.read_text()
 
-        # Downstream + self-bind receipts authored under the ticket.
+        # Downstream + CI-check (OMN-14425) + self-bind receipts authored.
         receipts = list(
             (clone_root / "drift" / "dod_receipts" / "OMN-9999").rglob("*.yaml")
         )
-        assert len(receipts) >= 2  # downstream + occ-self-bind
+        assert len(receipts) >= 3  # downstream + ci-check + occ-self-bind
 
         # Every receipt's contract_sha256 is rebound to the real digest (no PENDING).
         digest = __import__("hashlib").sha256(contract.read_bytes()).hexdigest()
@@ -334,6 +379,31 @@ class TestFullEmitFlow:
         # it must never carry a fabricated contract_entry_sha256.
         self_bind = next(r for r in receipts if "occ-self-bind" in r.parent.name)
         assert "contract_entry_sha256" not in self_bind.read_text()
+        # OMN-14425: the CI-check receipt backs the substantive dod_evidence
+        # item the contract now declares alongside the existence probe.
+        ci_check = (
+            clone_root
+            / "drift"
+            / "dod_receipts"
+            / "OMN-9999"
+            / "dod-OmniNode-ai-omnimarket-pr-321-ci"
+            / "command.yaml"
+        )
+        assert ci_check.is_file()
+        ci_text = ci_check.read_text()
+        assert (
+            'check_value: "gh pr checks 321 --repo OmniNode-ai/omnimarket"' in ci_text
+        )
+        assert 'evidence_item_id: "dod-OmniNode-ai-omnimarket-pr-321-ci"' in ci_text
+
+        # The contract declares both items — existence probe untouched, CI
+        # check added.
+        contract_text = contract.read_text()
+        assert (
+            "gh pr view 321 --repo OmniNode-ai/omnimarket --json number,state"
+            in contract_text
+        )
+        assert "gh pr checks 321 --repo OmniNode-ai/omnimarket" in contract_text
 
         # Action reports the single-producer companion bind.
         assert "OCC#55" in action

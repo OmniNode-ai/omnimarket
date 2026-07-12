@@ -73,10 +73,12 @@ from omnimarket.inference.secret_store_resolver import resolve_api_key
 from omnimarket.nodes.contract_topics import contract_secret_ref
 from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.occ_evidence_stamp import (
     SHA_RE,
+    ci_check_evidence_id,
     compute_contract_sha256,
     extract_evidence_item_id,
     rebind_contract_entry_sha256_in_text,
     rebind_contract_sha256_in_text,
+    render_ci_check_receipt,
     render_companion_contract,
     render_downstream_receipt,
     render_self_bind_receipt,
@@ -298,6 +300,7 @@ class OccCompanionEmitter:
         # Evidence-Source: OCC#<n> covers every cited ticket and re-fires sync.
         branch = f"auto/{repo_slug.lower()}-pr-{pr_number}-occ-autobind"
         evidence_id = f"dod-{repo_slug}-pr-{pr_number}"
+        ci_evidence_id = ci_check_evidence_id(evidence_id)
 
         run_timestamp = datetime.now(tz=UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
@@ -313,6 +316,17 @@ class OccCompanionEmitter:
                 "state": pr_state,
                 "headRefName": head_ref or head_sha,
             },
+        )
+
+        # OMN-14425: a second, falsifiable claim alongside the existence probe
+        # above — `gh pr checks` fails when the PR's CI fails, so it derives to
+        # proof tier L1 and satisfies the OMN-14409 contract substance floor.
+        # The existence probe is kept, not replaced; this adds a claim.
+        ci_probe_command = f"gh pr checks {pr_number} --repo {repo}"
+        ci_stdout, ci_exit = self._observe_pr_probe(
+            probe_command=ci_probe_command,
+            token=token,
+            fallback={"number": pr_number, "note": "ci status not observed"},
         )
 
         with tempfile.TemporaryDirectory(prefix="occ-companion-") as tmpdir:
@@ -354,6 +368,29 @@ class OccCompanionEmitter:
                         probe_command=downstream_probe_command,
                         probe_stdout=downstream_stdout,
                         exit_code=downstream_exit,
+                        runner=self._runner,
+                        verifier=self._verifier,
+                    ),
+                    encoding="utf-8",
+                )
+
+                # Stage 1b: CI-outcome receipt (OMN-14425) — backs the second,
+                # substantive dod_evidence item declared alongside the existence
+                # probe above.
+                ci_dir = clone_dir / "drift" / "dod_receipts" / ticket / ci_evidence_id
+                ci_dir.mkdir(parents=True, exist_ok=True)
+                (ci_dir / "command.yaml").write_text(
+                    render_ci_check_receipt(
+                        ticket_id=ticket,
+                        evidence_id=ci_evidence_id,
+                        pr_number=pr_number,
+                        repo=repo,
+                        run_timestamp=run_timestamp,
+                        commit_sha=receipt_commit_sha,
+                        branch=branch,
+                        probe_command=ci_probe_command,
+                        probe_stdout=ci_stdout,
+                        exit_code=ci_exit,
                         runner=self._runner,
                         verifier=self._verifier,
                     ),

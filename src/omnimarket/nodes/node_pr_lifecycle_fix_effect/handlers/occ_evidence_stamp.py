@@ -104,6 +104,12 @@ _CONTRACT_TEMPLATE = textwrap.dedent("""\
         checks:
           - check_type: "command"
             check_value: "gh pr view {pr_number} --repo {repo} --json number,state"
+      - id: "{ci_evidence_id}"
+        description: "PR #{pr_number} on {repo} — CI outcome (OMN-14425 substance check)."
+        source: "generated"
+        checks:
+          - check_type: "command"
+            check_value: "gh pr checks {pr_number} --repo {repo}"
     """)
 
 # Downstream receipt — stamped with the REAL product PR head + number so
@@ -135,6 +141,46 @@ _DOWNSTREAM_RECEIPT_TEMPLATE = textwrap.dedent("""\
     probe_stdout: |
       {probe_stdout}
     actual_output: "PASS: Evidence-Source autobind for {ticket_id} from {repo}#{pr_number}."
+    exit_code: {exit_code}
+    pr_number: {pr_number}
+    branch: "{branch}"
+    """)
+
+# CI-outcome receipt (OMN-14425) — backs the second dod_evidence item the
+# substance floor (OMN-14409 / OCC#3990) requires. `gh pr checks` is falsifiable
+# (it fails when the PR's CI fails), so it derives proof tier L1, unlike the
+# existence probe above which derives L0. This is an ADDED claim, not a
+# replacement — the existence probe stays for Evidence-Source binding.
+# probe_command/probe_stdout/exit_code are genuine machine-observed values from
+# the live GitHub probe (OMN-13990 item 4 / OMN-14055), same as the templates
+# above — never a fabricated template output.
+#
+# contract_entry_sha256 (OMN-14418 seam): this receipt's evidence_item_id IS a
+# declared dod_evidence item on the companion contract, so it MUST carry the
+# per-entry hash exactly like the downstream receipt. It starts PENDING and is
+# rebound by _rebind_all_receipts. The field has to be emitted here —
+# rebind_contract_entry_sha256_in_text only REWRITES an existing line and is a
+# documented no-op when the field is absent, so omitting it silently ships a
+# receipt bound to a declared entry with no per-entry hash (the OMN-14425 x
+# OMN-14418 seam: each PR was green alone, and the merged pair was not).
+_CI_CHECK_RECEIPT_TEMPLATE = textwrap.dedent("""\
+    ---
+    schema_version: "1.0.0"
+    ticket_id: "{ticket_id}"
+    evidence_item_id: "{evidence_id}"
+    check_type: "command"
+    check_value: "gh pr checks {pr_number} --repo {repo}"
+    contract_sha256: "sha256:PENDING"
+    contract_entry_sha256: "sha256:PENDING"
+    status: PASS
+    run_timestamp: "{run_timestamp}"
+    commit_sha: "{commit_sha}"
+    runner: "{runner}"
+    verifier: "{verifier}"
+    probe_command: "{probe_command}"
+    probe_stdout: |
+      {probe_stdout}
+    actual_output: "PASS: CI-outcome check for {ticket_id} from {repo}#{pr_number} (OMN-14425)."
     exit_code: {exit_code}
     pr_number: {pr_number}
     branch: "{branch}"
@@ -233,15 +279,33 @@ DEFAULT_RUNNER = "node_pr_lifecycle_fix_effect"
 DEFAULT_VERIFIER = "occ-evidence-source-autobind"
 
 
+def ci_check_evidence_id(evidence_id: str) -> str:
+    """Derive the CI-outcome dod_evidence item id from the base evidence id.
+
+    Shared by :func:`render_companion_contract` (which declares the item) and
+    the emitter (which writes the receipt that backs it), so the contract's
+    declared id and the receipt's directory name can never diverge (OMN-14425).
+    """
+    return f"{evidence_id}-ci"
+
+
 def render_companion_contract(
     *, ticket_id: str, repo: str, pr_number: int, evidence_id: str
 ) -> str:
-    """Render the ``contracts/<ticket>.yaml`` companion contract YAML."""
+    """Render the ``contracts/<ticket>.yaml`` companion contract YAML.
+
+    Declares two dod_evidence items (OMN-14425): the existence/binding probe
+    (``gh pr view``, proof tier L0 — required for Evidence-Source stamping,
+    never removed) and a CI-outcome probe (``gh pr checks``, proof tier L1)
+    that satisfies the OMN-14409 contract substance floor. This adds a claim;
+    it does not replace one.
+    """
     return _CONTRACT_TEMPLATE.format(
         ticket_id=ticket_id,
         repo=repo,
         pr_number=pr_number,
         evidence_id=evidence_id,
+        ci_evidence_id=ci_check_evidence_id(evidence_id),
     )
 
 
@@ -262,6 +326,42 @@ def render_downstream_receipt(
 ) -> str:
     """Render the downstream (product-PR-bound) DoD receipt YAML."""
     return _DOWNSTREAM_RECEIPT_TEMPLATE.format(
+        ticket_id=ticket_id,
+        evidence_id=evidence_id,
+        pr_number=pr_number,
+        repo=repo,
+        run_timestamp=run_timestamp,
+        commit_sha=commit_sha,
+        branch=branch,
+        probe_command=probe_command,
+        probe_stdout=probe_stdout,
+        exit_code=exit_code,
+        runner=runner,
+        verifier=verifier,
+    )
+
+
+def render_ci_check_receipt(
+    *,
+    ticket_id: str,
+    evidence_id: str,
+    pr_number: int,
+    repo: str,
+    run_timestamp: str,
+    commit_sha: str,
+    branch: str,
+    probe_command: str,
+    probe_stdout: str,
+    exit_code: int,
+    runner: str = DEFAULT_RUNNER,
+    verifier: str = DEFAULT_VERIFIER,
+) -> str:
+    """Render the CI-outcome (``gh pr checks``) DoD receipt YAML (OMN-14425).
+
+    Backs the substantive dod_evidence item the substance floor (OMN-14409 /
+    OCC#3990) requires alongside the existence-probe binding item.
+    """
+    return _CI_CHECK_RECEIPT_TEMPLATE.format(
         ticket_id=ticket_id,
         evidence_id=evidence_id,
         pr_number=pr_number,
@@ -523,11 +623,13 @@ __all__ = [
     "SHA_RE",
     "TICKET_RE",
     "build_idempotency_key",
+    "ci_check_evidence_id",
     "classify_trivial_infra_fastpath",
     "compute_contract_sha256",
     "extract_evidence_item_id",
     "rebind_contract_entry_sha256_in_text",
     "rebind_contract_sha256_in_text",
+    "render_ci_check_receipt",
     "render_companion_contract",
     "render_downstream_receipt",
     "render_self_bind_receipt",
