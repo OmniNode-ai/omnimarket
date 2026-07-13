@@ -193,6 +193,54 @@ class TestArchitectureGraphPopulateEffect:
         for edge in sub_edges + pub_edges:
             assert edge.source_authority == "authoritative"
 
+    async def test_collect_contract_data_ignores_vendored_venv_copies(
+        self, tmp_path: Path
+    ) -> None:
+        """OMN-14583: a contract.yaml vendored into a consuming repo's own
+        .venv (i.e. an installed dependency's node contract, not a native
+        node of that repo) must never be attributed to the consuming repo.
+
+        Before this fix, _collect_contract_data walked
+        repo_path.rglob("contract.yaml") with no .venv exclusion, so every
+        repo that depends on omnimarket as a pip dependency would have its
+        own venv-vendored copy of every omnimarket node contract ingested
+        and misattributed as repo=<consuming repo>."""
+        handler, _ = _make_handler_with_mock_driver()
+
+        repo_root = tmp_path / "sample_repo"
+
+        # Native node — really owned by sample_repo, lives under src/.
+        native_dir = repo_root / "src" / "sample_repo" / "nodes" / "node_native_thing"
+        native_dir.mkdir(parents=True)
+        (native_dir / "contract.yaml").write_text(
+            yaml.dump({"name": "node_native_thing", "node_type": "effect"})
+        )
+
+        # Vendored dependency copy — an installed OTHER package's node,
+        # nested under sample_repo's own .venv. Must be excluded entirely.
+        vendored_dir = (
+            repo_root
+            / ".venv"
+            / "lib"
+            / "python3.12"
+            / "site-packages"
+            / "omnimarket"
+            / "nodes"
+            / "node_delegation_orchestrator"
+        )
+        vendored_dir.mkdir(parents=True)
+        (vendored_dir / "contract.yaml").write_text(
+            yaml.dump(
+                {"name": "node_delegation_orchestrator", "node_type": "orchestrator"}
+            )
+        )
+
+        nodes, _edges = handler._collect_contract_data(repo_root, "sample_repo")
+        onex_node_names = {n.properties["name"] for n in nodes if n.label == "ONEXNode"}
+
+        assert "node_native_thing" in onex_node_names
+        assert "node_delegation_orchestrator" not in onex_node_names
+
     async def test_cypher_merge_statements_use_merge_not_create(self) -> None:
         """MERGE statements must be idempotent — never CREATE."""
         handler, _ = _make_handler_with_mock_driver()
