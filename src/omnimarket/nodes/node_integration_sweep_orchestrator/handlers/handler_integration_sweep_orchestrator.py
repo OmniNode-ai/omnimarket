@@ -40,6 +40,13 @@ STATUS_NO_INPUT = "no_input"
 PROBE_STATUS_PLANNED = "planned"
 PROBE_STATUS_INVALID = "invalid"
 
+# Per-entry status values a live surface probe (surface_probes.py) reports
+# for a dimension it actually scanned but did NOT verify (OMN-14538). Both
+# are terminal non-success outcomes for that surface — a probe never raises,
+# it always returns a structured "fail" (assertion did not hold) or "error"
+# (could not reach the surface at all) dict instead.
+_SURFACE_NON_SUCCESS_STATUSES = frozenset({"fail", "error"})
+
 
 class HandlerIntegrationSweepOrchestrator:
     """Write deterministic integration sweep artifacts."""
@@ -107,11 +114,43 @@ class HandlerIntegrationSweepOrchestrator:
             for entry in surface_results
             if entry.get("status") == PROBE_STATUS_INVALID
         )
+        # OMN-14538: a probe that RAN and reported "fail"/"error" is scanned
+        # evidence, not silence — it must never be absorbed into a green
+        # verdict. surface_probes.py never raises, so a dead SSH host, an
+        # unreachable runtime, or a failing rpk/psql assertion all surface
+        # here as a structured non-success entry rather than an exception.
+        surface_fail_count = sum(
+            1
+            for entry in surface_results
+            if entry.get("status") in _SURFACE_NON_SUCCESS_STATUSES
+        )
+        # OMN-14538: the census of WHAT was actually placed in scope for this
+        # run. tickets and the four infra-surface census lists (kafka/db/
+        # projection/golden_chain) are each an optional-with-empty-default
+        # field — a caller can construct a request that declares nothing on
+        # every one of them and still get 3 baseline health/CI probes to
+        # execute. Those 3 probes prove infra reachability, never integration
+        # correctness. A RECORDED verdict asserts the latter, so it requires
+        # at least one positively-declared census dimension.
+        census_dimensions_configured = sum(
+            1
+            for configured in (
+                tickets,
+                request.kafka_topics or request.kafka_consumer_groups,
+                request.db_tables,
+                request.projection_topics,
+                request.golden_chains,
+            )
+            if configured
+        )
+        scanned_count = len(surface_results) + len(runtime_sha_records)
         status = self._resolve_status(
             dry_run=request.dry_run,
-            probe_count=len(surface_results) + len(runtime_sha_records),
+            probe_count=scanned_count,
             stale_count=stale_count,
             invalid_target_count=invalid_target_count,
+            surface_fail_count=surface_fail_count,
+            census_dimensions_configured=census_dimensions_configured,
         )
 
         payload = {
@@ -146,7 +185,10 @@ class HandlerIntegrationSweepOrchestrator:
                 "runtime_sha_checks": str(len(runtime_sha_records)),
                 "runtime_sha_stale": str(stale_count),
                 "surface_probe_count": str(len(surface_results)),
+                "surface_probe_failures": str(surface_fail_count),
                 "invalid_probe_targets": str(invalid_target_count),
+                "scanned_count": str(scanned_count),
+                "census_dimensions_configured": str(census_dimensions_configured),
             },
         )
 
@@ -157,6 +199,8 @@ class HandlerIntegrationSweepOrchestrator:
         probe_count: int,
         stale_count: int,
         invalid_target_count: int,
+        surface_fail_count: int,
+        census_dimensions_configured: int,
     ) -> str:
         """Resolve the terminal sweep status.
 
@@ -165,12 +209,34 @@ class HandlerIntegrationSweepOrchestrator:
         (OMN-13924). Dry-run reports ``planned`` (or ``blocked`` when a
         planned probe has an empty/invalid target); wet runs keep the
         ``blocked``/``recorded`` semantics.
+
+        OMN-14538 (class fix): a wet run can only terminate ``recorded`` when
+        BOTH of the following hold:
+
+        1. Every dimension that was actually scanned reported success —
+           a stale runtime-SHA receipt OR a surface probe that returned
+           ``fail``/``error`` (RUNTIME fail, SSH-dead CONTAINER_HEALTH,
+           unreachable KAFKA/DB, etc.) fail-closes to ``blocked``. Previously
+           only ``stale_count`` gated this, so RUNTIME fail + SSH dead +
+           KAFKA fail + empty tables still returned ``recorded`` as long as
+           no ticket's runtime-SHA receipt happened to be stale.
+        2. At least one census dimension (tickets, kafka, db, projection,
+           golden_chains) was positively declared. A run with an empty
+           census on every dimension only ever executes the 3 baseline
+           health/CI probes — real evidence of infra reachability, but zero
+           evidence of integration correctness — so it can never claim
+           ``recorded``. Absence of the census is a failure, not a silent
+           pass-through.
         """
         if probe_count == 0:
             return STATUS_NO_INPUT
         if dry_run:
             return STATUS_BLOCKED if invalid_target_count else STATUS_PLANNED
-        return STATUS_BLOCKED if stale_count else STATUS_RECORDED
+        if not census_dimensions_configured:
+            return STATUS_BLOCKED
+        return (
+            STATUS_BLOCKED if (stale_count or surface_fail_count) else STATUS_RECORDED
+        )
 
     @staticmethod
     def _plan_surface_probes(
