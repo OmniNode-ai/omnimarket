@@ -258,7 +258,35 @@ _COMPUTE_RECEIPT_TEMPLATE = textwrap.dedent("""\
     check_type: "command"
     check_value: "{check_value}"
     contract_sha256: "sha256:{contract_sha256}"
-    contract_entry_sha256: "sha256:{contract_entry_sha256}"
+    contract_entry_sha256: "{contract_entry_sha256}"
+    status: PASS
+    run_timestamp: "{run_timestamp}"
+    commit_sha: "{commit_sha}"
+    runner: "{runner}"
+    verifier: "{verifier}"
+    probe_command: "{probe_command}"
+    probe_stdout: |
+      {probe_stdout}
+    actual_output: "{actual_output}"
+    exit_code: {exit_code}
+    pr_number: {pr_number}
+    branch: "{branch}"
+    """)
+
+# Same shape, but with NO contract_entry_sha256 line — for a compute receipt
+# whose evidence_item_id is not a DECLARED dod_evidence item (an OCC self-bind
+# receipt). Emitting a per-entry hash for such a receipt would fail core's
+# ``check_receipt_contract_binding`` with ``ContractEntryNotFoundError`` — the
+# receipt keeps only the whole-file ``contract_sha256`` the dual-accept gate
+# expects (mirrors ``_SELF_BIND_RECEIPT_TEMPLATE``). OMN-14406.
+_COMPUTE_RECEIPT_TEMPLATE_NO_ENTRY = textwrap.dedent("""\
+    ---
+    schema_version: "1.0.0"
+    ticket_id: "{ticket_id}"
+    evidence_item_id: "{evidence_id}"
+    check_type: "command"
+    check_value: "{check_value}"
+    contract_sha256: "sha256:{contract_sha256}"
     status: PASS
     run_timestamp: "{run_timestamp}"
     commit_sha: "{commit_sha}"
@@ -427,7 +455,7 @@ def render_compute_receipt(
     evidence_id: str,
     check_value: str,
     contract_sha256: str,
-    contract_entry_sha256: str,
+    contract_entry_sha256: str | None,
     run_timestamp: str,
     commit_sha: str,
     runner: str,
@@ -439,23 +467,36 @@ def render_compute_receipt(
     pr_number: int,
     branch: str,
 ) -> str:
-    """Render the RSD compute-oracle receipt YAML."""
+    """Render the RSD compute-oracle receipt YAML.
+
+    ``contract_sha256`` is a bare hex digest (the template prefixes ``sha256:``).
+    ``contract_entry_sha256`` is the FULL ``sha256:<hex>`` string as returned by
+    ``omnibase_core.validation.validator_receipt_gate.compute_contract_entry_sha256``
+    (written verbatim — NOT re-prefixed — so the byte-shape matches what the gate
+    recomputes; OMN-14406), or ``None`` for a receipt whose ``evidence_item_id``
+    is not a declared ``dod_evidence`` item (a self-bind receipt), which then
+    carries only the whole-file binding.
+    """
+    fields = {
+        "ticket_id": ticket_id,
+        "evidence_id": evidence_id,
+        "check_value": check_value,
+        "contract_sha256": contract_sha256,
+        "run_timestamp": run_timestamp,
+        "commit_sha": commit_sha,
+        "runner": runner,
+        "verifier": verifier,
+        "probe_command": probe_command,
+        "probe_stdout": probe_stdout,
+        "actual_output": actual_output,
+        "exit_code": exit_code,
+        "pr_number": pr_number,
+        "branch": branch,
+    }
+    if contract_entry_sha256 is None:
+        return _COMPUTE_RECEIPT_TEMPLATE_NO_ENTRY.format(**fields)
     return _COMPUTE_RECEIPT_TEMPLATE.format(
-        ticket_id=ticket_id,
-        evidence_id=evidence_id,
-        check_value=check_value,
-        contract_sha256=contract_sha256,
-        contract_entry_sha256=contract_entry_sha256,
-        run_timestamp=run_timestamp,
-        commit_sha=commit_sha,
-        runner=runner,
-        verifier=verifier,
-        probe_command=probe_command,
-        probe_stdout=probe_stdout,
-        actual_output=actual_output,
-        exit_code=exit_code,
-        pr_number=pr_number,
-        branch=branch,
+        contract_entry_sha256=contract_entry_sha256, **fields
     )
 
 
