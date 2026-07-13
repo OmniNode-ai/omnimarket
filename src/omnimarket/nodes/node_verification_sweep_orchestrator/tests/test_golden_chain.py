@@ -265,3 +265,91 @@ class TestHandlerGoldenChain:
 
         assert result.overall_status == "pass"
         assert ("resolve", "OMN-EPIC") in probe.calls
+
+
+class TestEmptyVerificationSetFailsClosed:
+    """OMN-14552 — a sweep that verifies nothing must FAIL, never green over ∅.
+
+    RED-against-exists-but-wrong: the *empty verification set* is a scope that
+    genuinely exists (a request with no targets/epic/pr, or an epic that
+    resolves to zero children) but is the WRONG scope to certify anything
+    against. Pre-fix the handler returned ``overall_status="skip"`` — a
+    non-``fail`` verdict a caller treats as "not a failure" = passing. This is
+    the exact "green over nothing" disease of OMN-14531. Fail-closed: refuse to
+    report any non-``fail`` verdict over ``scanned_count == 0``.
+    """
+
+    def test_no_targets_refuses_pass(self) -> None:
+        # No targets, no epic, no pr → zero-size verification set.
+        handler = HandlerVerificationSweepOrchestrator(
+            probe_adapter=FakeProbeAdapter(),
+            receipt_writer=FakeReceiptWriter(),
+        )
+
+        result = handler.handle(ModelVerificationSweepOrchestratorRequest())
+
+        assert result.overall_status == "fail"
+        assert result.scanned_count == 0
+        assert any(e.phase == "empty_scope" for e in result.adapter_errors)
+
+    def test_epic_resolving_to_zero_children_refuses_pass(self) -> None:
+        # The epic exists but resolves to no children → still an empty set.
+        class _EmptyResolveProbe(FakeProbeAdapter):
+            def resolve_targets(
+                self, _request: ModelVerificationSweepOrchestratorRequest
+            ) -> Sequence[str]:
+                return ()
+
+        handler = HandlerVerificationSweepOrchestrator(
+            probe_adapter=_EmptyResolveProbe(),
+            receipt_writer=FakeReceiptWriter(),
+        )
+
+        result = handler.handle(
+            ModelVerificationSweepOrchestratorRequest(epic="OMN-EMPTY-EPIC")
+        )
+
+        assert result.overall_status == "fail"
+        assert result.scanned_count == 0
+        assert any(e.phase == "empty_scope" for e in result.adapter_errors)
+
+    def test_dry_run_empty_set_still_fails_closed(self) -> None:
+        # Fail-closed applies even in dry_run — a plan over ∅ is still ∅.
+        handler = HandlerVerificationSweepOrchestrator(
+            probe_adapter=FakeProbeAdapter(),
+            receipt_writer=FakeReceiptWriter(),
+        )
+
+        result = handler.handle(ModelVerificationSweepOrchestratorRequest(dry_run=True))
+
+        assert result.overall_status == "fail"
+        assert result.scanned_count == 0
+        assert result.receipt_path == ""
+
+    def test_genuinely_verified_set_passes_with_positive_scanned_count(self) -> None:
+        # GREEN only against a real, non-empty, all-PASS verification set.
+        handler = HandlerVerificationSweepOrchestrator(
+            probe_adapter=FakeProbeAdapter(),
+            receipt_writer=FakeReceiptWriter(),
+        )
+
+        result = handler.handle(
+            ModelVerificationSweepOrchestratorRequest(targets=("OMN-12345",))
+        )
+
+        assert result.overall_status == "pass"
+        assert result.scanned_count == 1
+        assert not any(e.phase == "empty_scope" for e in result.adapter_errors)
+
+    def test_correlation_id_from_envelope_payload_is_accepted(self) -> None:
+        # Dispatch seam: the runtime injects correlation_id into the envelope
+        # payload dict; an extra="forbid" model without the field rejected it
+        # with extra_forbidden BEFORE handle() ran (integration_sweep OMN-13145).
+        from uuid import uuid4
+
+        request = ModelVerificationSweepOrchestratorRequest(
+            correlation_id=uuid4(),
+            targets=("OMN-12345",),
+        )
+
+        assert request.correlation_id is not None

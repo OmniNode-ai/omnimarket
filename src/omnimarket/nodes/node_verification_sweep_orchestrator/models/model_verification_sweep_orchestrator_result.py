@@ -11,6 +11,7 @@ from pydantic import BaseModel, ConfigDict, Field
 VerificationStatus = Literal["pass", "fail", "partial", "skip"]
 AdapterErrorPhase = Literal[
     "target_resolution",
+    "empty_scope",
     "dashboard",
     "database",
     "dod_evidence",
@@ -77,6 +78,14 @@ class ModelVerificationSweepOrchestratorResult(BaseModel):
     )
     db_checks: list[ModelDatabaseVerificationResult] = Field(default_factory=list)
     dod_receipts: list[ModelDodEvidenceVerificationResult] = Field(default_factory=list)
+    scanned_count: int = Field(
+        default=0,
+        description=(
+            "Number of targets in the resolved verification set (the census "
+            "collected by the harness). A verdict is only trustworthy when this "
+            "is > 0; zero means the sweep certified nothing and fails closed."
+        ),
+    )
     overall_status: VerificationStatus = "skip"
     receipt_path: str = Field(
         default="",
