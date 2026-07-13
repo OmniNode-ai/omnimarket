@@ -17,6 +17,7 @@ accepted:
 - DISCONNECTED_SUBGRAPH::ledger_append_effect::-
 - DISCONNECTED_SUBGRAPH::node_antipattern_match_effect::-
 - DISCONNECTED_SUBGRAPH::node_artifact_change_detector_effect::-
+- DISCONNECTED_SUBGRAPH::node_baseline_capture::-
 - DISCONNECTED_SUBGRAPH::node_chain_orchestrator::-
 - DISCONNECTED_SUBGRAPH::node_ci_fix_effect::-
 - DISCONNECTED_SUBGRAPH::node_codegen_file_writer_effect::-
@@ -27,6 +28,7 @@ accepted:
 - DISCONNECTED_SUBGRAPH::node_dependency_health_sweep::-
 - DISCONNECTED_SUBGRAPH::node_design_to_plan::-
 - DISCONNECTED_SUBGRAPH::node_omnigate_check_executor::-
+- DISCONNECTED_SUBGRAPH::node_pattern_lifecycle_effect::-
 - DISCONNECTED_SUBGRAPH::node_topic_migration_executor_effect::-
 - ORPHANED_CONSUMER::ab_compare_orchestrator::onex.cmd.omnimarket.ab-compare-start.v1
 - ORPHANED_CONSUMER::adr_segmentation_llm_effect::onex.cmd.omnimarket.adr-segmentation-requested.v1
