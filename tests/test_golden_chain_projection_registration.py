@@ -311,13 +311,11 @@ class TestRegistrationProjection:
         assert "onex.evt.platform.node-introspection.v1" in topics
         assert "onex.evt.platform.node-heartbeat.v1" in topics
         publish_topics = contract["event_bus"]["publish_topics"]
-        assert (
-            "onex.evt.omnimarket.projection-registration-applied.v1" in publish_topics
+        projection_applied_topic = (
+            "onex.evt.omnimarket.projection-registration-applied.v1"
         )
-        assert (
-            contract["terminal_event"]
-            == "onex.evt.omnimarket.projection-registration-applied.v1"
-        )
+        assert projection_applied_topic in publish_topics
+        assert contract["terminal_event"] == projection_applied_topic
 
     def test_projection_api_schema_is_public(self) -> None:
         """OMN-12761: Assert that projection_api.schema is 'public', not a database name.

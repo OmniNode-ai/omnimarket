@@ -74,9 +74,10 @@ class TestPsqlConnectionTarget:
             assert database == "omnidash_analytics"
             return 0, "agent_routing_decisions\nnode_service_registry\n", ""
 
-        tables = _get_all_tables("omnidash_analytics", fake_psql)
+        tables, scan_error = _get_all_tables("omnidash_analytics", fake_psql)
 
         assert tables == ["agent_routing_decisions", "node_service_registry"]
+        assert scan_error == ""
 
 
 @pytest.mark.unit
@@ -124,3 +125,86 @@ class TestMigrationBucketClassification:
         argv = h._build_psql_argv("SELECT 1;", "omnidash_analytics")
         assert argv[0] in ("ssh", "docker")
         assert argv[0] != "psql"
+
+
+@pytest.mark.unit
+class TestTableScanFailsClosed:
+    """OMN-14526: a table scan that could not run must FAIL, never report zeros.
+
+    OMN-13717 (this module's original subject) fixed the *connection target* but
+    left the swallow intact: ``_get_all_tables`` still returned a bare ``[]`` when
+    psql itself failed, so an unreachable database aggregated to ``tables_empty=0``
+    — byte-identical to a clean scan of a healthy database. That fail-open path is
+    why five empty ledger tables (OMN-14525) sat undetected: the detector built to
+    find them reported ``tables_empty: 0`` because it scanned nothing at all.
+
+    Each test below fails against the pre-fix handler.
+    """
+
+    def test_psql_failure_is_a_scan_error_not_an_empty_list(self) -> None:
+        """rc != 0 (unreachable host) => scan_error set, NOT a silent empty list."""
+
+        def failing_psql(query: str, database: str) -> tuple[int, str, str]:
+            return (
+                255,
+                "",
+                "ssh: connect to host runtime-lane port 22: Operation timed out",
+            )
+
+        tables, scan_error = _get_all_tables("omnidash_analytics", failing_psql)
+
+        assert tables == []
+        assert scan_error, (
+            "a failed psql probe must surface an error, not an empty list"
+        )
+        assert "omnidash_analytics" in scan_error
+        assert "Operation timed out" in scan_error
+
+    def test_zero_tables_is_a_scan_error(self) -> None:
+        """A projection DB reporting zero tables means the probe reached nothing."""
+
+        def empty_psql(query: str, database: str) -> tuple[int, str, str]:
+            return 0, "", ""
+
+        tables, scan_error = _get_all_tables("omnidash_analytics", empty_psql)
+
+        assert tables == []
+        assert "zero tables" in scan_error
+
+    def test_handler_reports_error_status_when_scan_fails(self) -> None:
+        """THE REGRESSION: a failed scan must NOT be reported as tables_empty=0.
+
+        Pre-fix, this returned status='issues_found' (from unrelated migration
+        errors) with tables_empty=0 — a result indistinguishable from a healthy
+        database. The caller had no way to know nothing was scanned.
+        """
+
+        def failing_psql(query: str, database: str) -> tuple[int, str, str]:
+            return 255, "", "connection refused"
+
+        handler = h.NodeDatabaseSweep(psql_runner=failing_psql)
+        result = handler.handle(h.DatabaseSweepRequest(omni_home="", dry_run=True))
+
+        assert result.status == "error", (
+            "a sweep that scanned zero tables because the probe failed must be "
+            f"status=error, got {result.status!r} with tables_empty={result.tables_empty}"
+        )
+        assert result.table_scan_error
+        assert result.table_results == []
+
+    def test_successful_scan_still_reports_normally(self) -> None:
+        """Regression guard: a working probe is unaffected by the fail-closed path."""
+
+        def working_psql(query: str, database: str) -> tuple[int, str, str]:
+            if "pg_tables" in query:
+                return 0, "delegation_events\n", ""
+            if "column_name" in query or "information_schema" in query:
+                return 0, "1", ""
+            return 0, "42|2026-07-13 02:00:00|HEALTHY", ""
+
+        handler = h.NodeDatabaseSweep(psql_runner=working_psql)
+        result = handler.handle(h.DatabaseSweepRequest(omni_home="", dry_run=True))
+
+        assert result.table_scan_error == ""
+        assert result.status != "error"
+        assert len(result.table_results) == 1

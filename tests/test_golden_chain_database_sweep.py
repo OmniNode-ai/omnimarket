@@ -198,7 +198,7 @@ class TestDatabaseSweepGoldenChain:
                 "omnimarket.nodes.node_database_sweep.handlers.handler_database_sweep._check_drizzle_migration"
             ) as mock_drizzle_mig,
         ):
-            mock_tables.return_value = []
+            mock_tables.return_value = ([], "")
             mock_drizzle.return_value = set()
             mock_alembic.return_value = None
             mock_drizzle_mig.return_value = None
@@ -241,7 +241,7 @@ class TestDatabaseSweepGoldenChain:
             with (
                 patch(
                     "omnimarket.nodes.node_database_sweep.handlers.handler_database_sweep._get_all_tables",
-                    return_value=[],
+                    return_value=([], ""),
                 ),
                 patch(
                     "omnimarket.nodes.node_database_sweep.handlers.handler_database_sweep._get_drizzle_tables",

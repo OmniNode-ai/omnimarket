@@ -125,6 +125,10 @@ class DatabaseSweepResult(BaseModel):
     migrations_failed: int = 0
     status: str = "healthy"  # healthy | issues_found | error
     dry_run: bool = False
+    # OMN-14526: non-empty when the table scan could not be completed. A failed
+    # scan must never be reported as ``tables_empty=0`` — that is indistinguishable
+    # from a clean scan and is how five empty ledger tables stayed invisible.
+    table_scan_error: str = ""
 
 
 # ---------------------------------------------------------------------------
@@ -163,7 +167,11 @@ def _run(
 # container, user, and ssh-user are env-overridable so the DSN is overlay-driven,
 # never a hardcoded local socket.
 
-_DEFAULT_RUNTIME_HOST = "192.168.86.201"  # onex-allow-internal-ip OMN-13717 reason="default .201 projection-lane host; overridden by ONEX_DATABASE_SWEEP_RUNTIME_HOST / ONEX_DATA_FLOW_RUNTIME_HOST; not a shipping connection string"
+# OMN-14526: this defaulted to the runtime host's raw private LAN address, which is
+# NOT routable off-network — so every off-LAN run failed to reach any database and
+# (pre-fix) silently reported tables_empty=0. The Tailscale MagicDNS name resolves
+# both on-LAN and remotely, so the sweep works from anywhere. Still env-overridable.
+_DEFAULT_RUNTIME_HOST = "omninode-pc.tail75df5e.ts.net"
 _DEFAULT_PG_CONTAINER = "omnibase-infra-postgres"
 _DEFAULT_PG_USER = "postgres"
 _DEFAULT_SSH_USER = "jonah"
@@ -257,15 +265,50 @@ def _check_table(
     psql = psql or _psql
     drizzle_defined = table in drizzle_tables
 
-    # Tables not known to Drizzle and not in per-table thresholds have no freshness metadata
-    if not drizzle_defined and (
-        staleness_thresholds is None or table not in staleness_thresholds
-    ):
+    # OMN-14526: EMPTINESS IS ORTHOGONAL TO FRESHNESS. This previously short-circuited
+    # to UNKNOWN for any table absent from the Drizzle schema — WITHOUT EVER COUNTING
+    # ROWS. The emitted ``row_count=0`` was the model default, not a measurement: a
+    # zero that looks like evidence and is not. Because ``UNKNOWN`` is not an issue
+    # state, every empty non-Drizzle table (e.g. pr_lifecycle_ledger_entries, 0 rows)
+    # was invisible — the second half of why OMN-14525's empty ledgers went unseen.
+    #
+    # A row count is always obtainable, even with no timestamp column. Count first,
+    # and let a genuine zero be EMPTY regardless of what freshness metadata exists.
+    has_freshness_metadata = drizzle_defined or (
+        staleness_thresholds is not None and table in staleness_thresholds
+    )
+    if not has_freshness_metadata:
+        rc, out, err = psql(f"SELECT count(*) FROM {table};", database)
+        if rc != 0:
+            return ModelTableHealthResult(
+                table_name=table,
+                status="MISSING",
+                drizzle_defined=False,
+                message=f"row-count query error: {err[:200]}",
+            )
+        try:
+            row_count = int(out.strip())
+        except ValueError:
+            return ModelTableHealthResult(
+                table_name=table,
+                status="MISSING",
+                drizzle_defined=False,
+                message=f"unexpected row-count output: {out[:80]!r}",
+            )
+        if row_count == 0:
+            return ModelTableHealthResult(
+                table_name=table,
+                row_count=0,
+                status="EMPTY",
+                drizzle_defined=False,
+                message="table has zero rows (no freshness metadata, but emptiness is knowable)",
+            )
         return ModelTableHealthResult(
             table_name=table,
+            row_count=row_count,
             status="UNKNOWN",
             drizzle_defined=False,
-            message="no freshness metadata: not in Drizzle schema and no per-table threshold",
+            message="populated, but staleness unassessable: not in Drizzle schema and no per-table threshold",
         )
 
     effective_hours: float = (
@@ -338,16 +381,39 @@ def _check_table(
     )
 
 
-def _get_all_tables(database: str, psql: PsqlRunner | None = None) -> list[str]:
-    """Return all user table names in the public schema."""
+def _get_all_tables(
+    database: str, psql: PsqlRunner | None = None
+) -> tuple[list[str], str]:
+    """Return ``(table_names, scan_error)`` for the public schema of ``database``.
+
+    OMN-14526: this previously returned a bare ``[]`` on BOTH a failed psql probe
+    (``rc != 0`` — unreachable host, wrong container, auth failure) and a genuinely
+    table-less database, discarding stderr entirely. The caller could not tell "I
+    checked and found nothing" from "I checked nothing", so an unreachable database
+    was aggregated as ``tables_empty=0`` — a clean bill of health. That fail-open
+    path is why five empty ledger tables (OMN-14525) went undetected indefinitely.
+
+    The two cases are now distinct:
+      * ``rc != 0``       -> ``([], "<reason>")``  the probe FAILED; caller fails closed.
+      * ``rc == 0``, no rows -> ``([], "<reason>")``  a projection DB with zero tables
+        means the probe is pointed at nothing real; also a scan failure, not health.
+      * ``rc == 0``, rows    -> ``([...], "")``     a genuine scan.
+    """
     psql = psql or _psql
-    rc, out, _ = psql(
+    rc, out, err = psql(
         "SELECT tablename FROM pg_tables WHERE schemaname = 'public' ORDER BY tablename;",
         database,
     )
-    if rc != 0 or not out:
-        return []
-    return [line.strip() for line in out.splitlines() if line.strip()]
+    if rc != 0:
+        reason = err.strip() or f"psql exited {rc} with no stderr"
+        return [], f"table scan failed on database {database!r}: {reason}"
+    tables = [line.strip() for line in out.splitlines() if line.strip()]
+    if not tables:
+        return [], (
+            f"table scan on database {database!r} returned zero tables — "
+            "the probe is not reaching a populated database"
+        )
+    return tables, ""
 
 
 def _check_alembic_migration(
@@ -625,10 +691,13 @@ class NodeDatabaseSweep:
 
         # Phase 1 + 2: table health
         table_results: list[ModelTableHealthResult] = []
+        table_scan_error = ""
         if request.table:
             scan_tables = [request.table]
         else:
-            scan_tables = _get_all_tables(analytics_db, self._psql_runner)
+            scan_tables, table_scan_error = _get_all_tables(
+                analytics_db, self._psql_runner
+            )
 
         for tbl in scan_tables:
             result = _check_table(
@@ -654,9 +723,17 @@ class NodeDatabaseSweep:
                     )
                 )
 
-        # Mark orphan tables — UNKNOWN tables stay UNKNOWN (no freshness metadata)
+        # Mark orphan tables — UNKNOWN tables stay UNKNOWN (no freshness metadata).
+        # OMN-14526: EMPTY is also preserved. An empty table that happens to be absent
+        # from the Drizzle schema is still EMPTY — that is the load-bearing fact, and
+        # ORPHAN is not an issue state, so overwriting it here would re-hide exactly
+        # the empty ledger tables this sweep exists to surface.
         for r in table_results:
-            if not r.drizzle_defined and r.status not in ("MISSING", "UNKNOWN"):
+            if not r.drizzle_defined and r.status not in (
+                "MISSING",
+                "UNKNOWN",
+                "EMPTY",
+            ):
                 # Rebuild as ORPHAN
                 table_results[table_results.index(r)] = ModelTableHealthResult(
                     table_name=r.table_name,
@@ -712,6 +789,16 @@ class NodeDatabaseSweep:
             or mig_status_counts.get("ERROR", 0) > 0
         )
 
+        # OMN-14526: fail CLOSED. A scan that could not run is an ``error``, never a
+        # zero-count clean bill of health — the counts below are meaningless when
+        # nothing was scanned, so they must not be the only thing the caller sees.
+        if table_scan_error:
+            status = "error"
+        elif has_issues:
+            status = "issues_found"
+        else:
+            status = "healthy"
+
         return DatabaseSweepResult(
             table_results=table_results,
             migration_results=migration_results,
@@ -724,6 +811,7 @@ class NodeDatabaseSweep:
             migrations_current=migrations_current,
             migrations_pending=migrations_pending,
             migrations_failed=migrations_failed,
-            status="issues_found" if has_issues else "healthy",
+            status=status,
             dry_run=request.dry_run,
+            table_scan_error=table_scan_error,
         )
