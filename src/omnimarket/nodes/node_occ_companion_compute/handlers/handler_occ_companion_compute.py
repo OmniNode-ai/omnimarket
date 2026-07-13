@@ -43,7 +43,9 @@ from omnibase_compat.contracts.pr_occ_stamp import (
 from omnibase_core.models.contracts.ticket.model_dod_receipt import ModelDodReceipt
 from omnibase_core.validation.validator_receipt_gate import (
     SKIP_TOKEN_PATTERN,
+    ContractEntryNotFoundError,
     _extract_ticket_ids,
+    compute_contract_entry_sha256,
 )
 
 from omnimarket.nodes.node_occ_companion_compute.models.enum_companion_file_kind import (
@@ -120,12 +122,25 @@ def _sha256_hex(data: str) -> str:
     return hashlib.sha256(data.encode()).hexdigest()
 
 
-def _entry_sha256(
-    *, ticket_id: str, evidence_id: str, check_value: str, commit_sha: str
-) -> str:
-    """Per-entry immutable hash (OMN-14233) — appends never restale prior receipts."""
-    raw = "|".join([ticket_id, evidence_id, check_value, commit_sha])
-    return _sha256_hex(raw)
+def _entry_hash_for(parsed_contract: object, evidence_id: str) -> str | None:
+    """Canonical per-entry contract hash for one receipt's evidence item.
+
+    Delegates to core's ``compute_contract_entry_sha256`` (OMN-13888) — the SAME
+    function the receipt-gate / occ-preflight recompute with — so a receipt this
+    node mints is byte-recomputable by the gate (OMN-14406). Returns the full
+    ``sha256:<hex>`` string, or ``None`` when ``evidence_id`` is not a declared
+    ``dod_evidence`` item in ``parsed_contract`` (e.g. an OCC self-bind receipt,
+    which binds the OCC PR itself, not a contract-declared check). A ``None``
+    result makes the receipt fall back to the whole-file ``contract_sha256``
+    binding the dual-accept gate expects, instead of minting a per-entry hash the
+    gate would reject with ``ContractEntryNotFoundError``.
+    """
+    if parsed_contract is None:
+        return None
+    try:
+        return compute_contract_entry_sha256(parsed_contract, evidence_id)
+    except ContractEntryNotFoundError:
+        return None
 
 
 def _strip_observed_facts(content: str) -> str:
@@ -209,7 +224,7 @@ def _receipt(
     evidence_id: str,
     check_value: str,
     contract_sha256: str,
-    contract_entry_sha256: str,
+    contract_entry_sha256: str | None,
     commit_sha: str,
     probe: ModelObservedProbe,
     actual_output: str,
@@ -332,13 +347,16 @@ def compute_companion_plan(request: ModelOccCompanionRequest) -> ModelOccCompani
             # would restale every merged receipt, so emit NET-NEW supersede files
             # (both hashes) for each prior entry — never mutate the merged receipt.
             whole = state.whole_file_sha256 or _sha256_hex(state.raw_contract_text)
+            # The per-entry hash for a prior entry is recomputed against the
+            # merged (frozen) contract — the SAME contract the gate has on disk —
+            # so a supersede receipt is byte-recomputable by the gate (OMN-14406).
+            parsed_contract = (
+                yaml.safe_load(state.raw_contract_text)
+                if state.raw_contract_text
+                else None
+            )
             for prior_entry in state.existing_entry_ids:
-                entry_hash = _entry_sha256(
-                    ticket_id=ticket,
-                    evidence_id=prior_entry,
-                    check_value=downstream_check,
-                    commit_sha=request.pr_head_sha,
-                )
+                entry_hash = _entry_hash_for(parsed_contract, prior_entry)
                 content = _receipt(
                     request=request,
                     ticket_id=ticket,
@@ -364,7 +382,7 @@ def compute_companion_plan(request: ModelOccCompanionRequest) -> ModelOccCompani
                         kind=EnumCompanionFileKind.SUPERSEDE_RECEIPT,
                         ticket_id=ticket,
                         contract_sha256=whole,
-                        contract_entry_sha256=entry_hash,
+                        contract_entry_sha256=entry_hash or "",
                     )
                 )
             contract_hash = whole
@@ -377,6 +395,10 @@ def compute_companion_plan(request: ModelOccCompanionRequest) -> ModelOccCompani
                 evidence_id=evidence_id,
             )
             contract_hash = _sha256_hex(contract_content)
+            # Parse the just-rendered contract so the downstream receipt's
+            # per-entry hash is recomputed against the exact bytes committed
+            # alongside it (OMN-14406) — the gate parses the same file.
+            parsed_contract = yaml.safe_load(contract_content)
             files.append(
                 ModelCompanionFile(
                     path=f"contracts/{ticket}.yaml",
@@ -387,13 +409,11 @@ def compute_companion_plan(request: ModelOccCompanionRequest) -> ModelOccCompani
             )
 
         # This consumer's downstream receipt (net-new, per-PR path — never the
-        # merged entry's path). Bound to the product head SHA.
-        entry_hash = _entry_sha256(
-            ticket_id=ticket,
-            evidence_id=evidence_id,
-            check_value=downstream_check,
-            commit_sha=request.pr_head_sha,
-        )
+        # merged entry's path). Bound to the product head SHA. The per-entry hash
+        # resolves against the fresh contract (evidence_id IS declared there); on
+        # the merged path evidence_id is NOT in the frozen contract, so
+        # _entry_hash_for returns None and the receipt keeps the whole-file bind.
+        entry_hash = _entry_hash_for(parsed_contract, evidence_id)
         content = _receipt(
             request=request,
             ticket_id=ticket,
@@ -415,7 +435,7 @@ def compute_companion_plan(request: ModelOccCompanionRequest) -> ModelOccCompani
                 kind=EnumCompanionFileKind.DOWNSTREAM_RECEIPT,
                 ticket_id=ticket,
                 contract_sha256=contract_hash,
-                contract_entry_sha256=entry_hash,
+                contract_entry_sha256=entry_hash or "",
             )
         )
 
@@ -427,19 +447,18 @@ def compute_companion_plan(request: ModelOccCompanionRequest) -> ModelOccCompani
                 "--json number,state"
             )
             occ_commit = request.occ_head_sha or request.pr_head_sha
-            sb_entry_hash = _entry_sha256(
-                ticket_id=ticket,
-                evidence_id=f"occ-self-bind-pr-{request.occ_pr_number}",
-                check_value=occ_check,
-                commit_sha=occ_commit,
-            )
+            # The self-bind receipt proves the OCC PR itself; its evidence_item_id
+            # ("occ-self-bind-pr-N") is NEVER a declared dod_evidence item, so it
+            # carries NO per-entry hash (contract_entry_sha256=None) — minting one
+            # would fail the gate with ContractEntryNotFoundError. It keeps only
+            # the whole-file contract_sha256 the dual-accept gate expects.
             content = _receipt(
                 request=request,
                 ticket_id=ticket,
                 evidence_id=f"occ-self-bind-pr-{request.occ_pr_number}",
                 check_value=occ_check,
                 contract_sha256=contract_hash,
-                contract_entry_sha256=sb_entry_hash,
+                contract_entry_sha256=None,
                 commit_sha=occ_commit,
                 probe=request.occ_probe,
                 actual_output=(
@@ -457,7 +476,7 @@ def compute_companion_plan(request: ModelOccCompanionRequest) -> ModelOccCompani
                     kind=EnumCompanionFileKind.SELF_BIND_RECEIPT,
                     ticket_id=ticket,
                     contract_sha256=contract_hash,
-                    contract_entry_sha256=sb_entry_hash,
+                    contract_entry_sha256="",
                 )
             )
 
