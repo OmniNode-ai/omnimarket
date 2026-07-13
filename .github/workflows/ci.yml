@@ -1244,6 +1244,49 @@ jobs:
           python ../omnibase_core/scripts/validation/check_ai_slop.py --strict $FILES
 
   # ============================================================================
+  # COVERAGE SWEEP GATE (OMN-14539) — failing-rollup sub-job.
+  # Detection sweeps that are not pre-merge gates are advisory and get ignored
+  # (Operating Rule 5). coverage_sweep existed but nothing ever GENERATED the
+  # coverage.json artifact it reads — the handler silently `continue`d past a
+  # missing one and reported status="clean" (OMN-14531 audit: false green
+  # over zero measured modules). This job is the harness that was missing: it
+  # generates a real coverage.json for THIS repo's own checkout via
+  # `pytest --cov` (scripts/ci/run_coverage_sweep_gate.py), then dispatches
+  # node_coverage_sweep against it.
+  #
+  # COVERAGE BOUNDARY (explicit, OMN-14531 Part 4): this job covers omnimarket
+  # only — the fleet-wide 8-repo default scan (sweep_scope.DEFAULT_REPOS)
+  # needs those repos checked out and is tracked as follow-up under OMN-14531.
+  # What this job DOES guarantee: the sweep can no longer silently pass over
+  # an unmeasured scope. Fails when status="error" (no usable coverage
+  # artifact was ever produced); existing coverage debt (status="gaps_found")
+  # is informational and does not block, matching aislop-sweep's
+  # new-vs-existing-debt precedent above.
+  # ============================================================================
+  coverage-sweep-gate:
+    needs: occ-preflight
+    name: Coverage Sweep Gate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Clone omnibase_core
+        run: git clone --depth=1 https://github.com/OmniNode-ai/omnibase_core.git ../omnibase_core
+      - name: Clone omnibase_compat
+        run: git clone --depth=1 https://github.com/OmniNode-ai/omnibase_compat.git ../omnibase_compat
+      - name: Clone omnimemory
+        run: git clone --depth=1 https://github.com/OmniNode-ai/omnimemory.git ../omnimemory
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+      - name: Set up Python 3.12
+        run: uv python install 3.12
+      - name: Install dependencies
+        run: uv sync --locked --all-extras
+      - name: Generate coverage.json and sweep it (OMN-14539)
+        run: uv run python scripts/ci/run_coverage_sweep_gate.py --target-dir "$GITHUB_WORKSPACE"
+
+  # ============================================================================
   # WORKFLOW MODULE-RESOLUTION GUARD (OMN-14176) — failing-rollup sub-job.
   # Every in-repo omnimarket module referenced by a .github/workflows/*.yml step
   # (from X import / import X / python -m X) must resolve under src/omnimarket/.
@@ -1298,7 +1341,7 @@ jobs:
   ci-summary:
     name: CI Summary
     runs-on: ubuntu-latest
-    needs: [occ-preflight, zone-filter, lint, typecheck, detect-changes, test, integration-guard, topic-naming-lint, runtime-sweep, core-only-install, contract-compliance, e2e-workflow-runner, golden-chains, sea-e2e-chains, generated-node-golden-chain, dep-health, uv-lock-pin-reachability, aislop-sweep, workflow-module-refs, no-noncanonical-lifecycle-classes]
+    needs: [occ-preflight, zone-filter, lint, typecheck, detect-changes, test, integration-guard, topic-naming-lint, runtime-sweep, core-only-install, contract-compliance, e2e-workflow-runner, golden-chains, sea-e2e-chains, generated-node-golden-chain, dep-health, uv-lock-pin-reachability, aislop-sweep, coverage-sweep-gate, workflow-module-refs, no-noncanonical-lifecycle-classes]
     if: always()
     steps:
       - name: Check CI results
@@ -1325,6 +1368,7 @@ jobs:
             "dep-health=${{ needs.dep-health.result }}" \
             "uv-lock-pin-reachability=${{ needs.uv-lock-pin-reachability.result }}" \
             "aislop-sweep=${{ needs.aislop-sweep.result }}" \
+            "coverage-sweep-gate=${{ needs.coverage-sweep-gate.result }}" \
             "workflow-module-refs=${{ needs.workflow-module-refs.result }}"; do
             NAME="${check%%=*}"
             RESULT="${check##*=}"

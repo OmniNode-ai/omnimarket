@@ -74,6 +74,12 @@ class CoverageSweepResult(BaseModel):
     average_coverage: float = 0.0
     status: str = "clean"  # clean | gaps_found | partial | error
     dry_run: bool = False
+    coverage_missing: list[str] = Field(default_factory=list)
+    """Target dirs (or repos within them) for which no usable coverage
+    artifact was found — a missing/unreadable `coverage.json`, or a resolved
+    target_dir that is not a directory. Non-empty ``coverage_missing`` forces
+    ``status="error"``: absence of the inner census is a FAILURE, never a
+    silent skip (OMN-14539)."""
 
     @property
     def total_gaps(self) -> int:
@@ -105,10 +111,24 @@ class NodeCoverageSweep:
         :mod:`omnimarket.nodes.sweep_scope` resolver so the RuntimeLocal
         dispatch path (empty/`repos` payload) scans the default repo set
         exactly like the ``__main__`` CLI path, instead of defaulting to zero
-        repos and reporting a false-clean (OMN-13538).
+        repos and reporting a false-clean (OMN-13538). That covers the OUTER
+        census (which repos to scan).
 
-        Fails loud (status=error) when scope is empty AND no default can be
-        resolved — never returns ``clean`` over zero repos (Rule 5).
+        The INNER census — a real, parseable ``coverage.json`` per resolved
+        target dir — was never a declared request field and, before
+        OMN-14539, its absence was swallowed by a silent ``continue``: a
+        target dir with no coverage artifact contributed zero modules and
+        zero gaps, so ``status`` still came out ``"clean"`` — arithmetically
+        identical to "every module measured and healthy". Nothing generates
+        ``coverage.json`` today, so that silent branch was the ONLY branch
+        that ever fired in production (OMN-14531 audit).
+
+        Fixed contract (OMN-14539): a resolved target dir that is not a
+        directory, or has no readable ``coverage.json``, is recorded in
+        ``coverage_missing`` and forces ``status="error"``. A ``clean``
+        verdict additionally requires at least one module was actually
+        measured (``total_modules > 0``) — refusing to report clean over a
+        scope that scanned repos but measured nothing.
         """
         try:
             target_dirs = require_target_dirs(request.target_dirs, request.repos)
@@ -116,6 +136,7 @@ class NodeCoverageSweep:
             return CoverageSweepResult(status="error", dry_run=request.dry_run)
 
         gaps: list[ModelCoverageGap] = []
+        coverage_missing: list[str] = []
         repos_scanned = 0
         total_modules = 0
         coverage_sum = 0.0
@@ -125,17 +146,22 @@ class NodeCoverageSweep:
         for target_dir in target_dirs:
             target = Path(target_dir)
             if not target.is_dir():
+                coverage_missing.append(f"{target_dir} (directory not found)")
                 continue
             repos_scanned += 1
             repo_name = target.name
 
             coverage_file = target / "coverage.json"
             if not coverage_file.exists():
+                coverage_missing.append(f"{repo_name} (coverage.json not found)")
                 continue
 
             try:
                 data = json.loads(coverage_file.read_text(encoding="utf-8"))
-            except (json.JSONDecodeError, OSError):
+            except (json.JSONDecodeError, OSError) as exc:
+                coverage_missing.append(
+                    f"{repo_name} (coverage.json unreadable: {exc})"
+                )
                 continue
 
             files_data = data.get("files", {})
@@ -170,7 +196,19 @@ class NodeCoverageSweep:
 
         avg = coverage_sum / total_modules if total_modules > 0 else 0.0
         zero_count = sum(1 for g in gaps if g.priority == "ZERO")
-        status = "clean" if not gaps else "gaps_found"
+
+        if coverage_missing:
+            # Absence of the inner census is a FAILURE, never a silent skip
+            # (OMN-14539 class fix, part 1/2).
+            status = "error"
+        elif total_modules == 0:
+            # repos_scanned > 0 but nothing was ever measured — refusing to
+            # report clean over zero scanned modules (part 2/3).
+            status = "error"
+        elif gaps:
+            status = "gaps_found"
+        else:
+            status = "clean"
 
         return CoverageSweepResult(
             gaps=gaps,
@@ -181,4 +219,5 @@ class NodeCoverageSweep:
             average_coverage=round(avg, 2),
             status=status,
             dry_run=request.dry_run,
+            coverage_missing=coverage_missing,
         )
