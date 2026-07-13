@@ -17,7 +17,10 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Callable
+from pathlib import Path
 from typing import Any, Literal
+
+import yaml
 
 from omnimarket.models.delegation.llm_cost_routing.model_llm_delegation_all_tiers_failed_event import (
     ModelLlmDelegationAllTiersFailedEvent,
@@ -83,14 +86,27 @@ _EVENT_TO_STATE: dict[EnumDelegationEventType, EnumSubtaskState] = {
 # (OMN-14355). idempotency does not depend on these two fields (it keys on
 # terminal_event_id == event_id); only the freshness cursor's partition/
 # offset segments are degraded to "0/0".
-# onex-topic-allow: each literal below mirrors this node's own contract.yaml
-# event_bus.subscribe_topics 1:1 (source of truth) — used only for freshness-
-# cursor bookkeeping in the adapters above, never to construct a subscription.
-_TOPIC_DELEGATION_EXECUTE = "onex.cmd.omnimarket.delegation-execute.v1"  # onex-topic-allow: mirrors contract.yaml subscribe_topics
-_TOPIC_DELEGATION_CALL_COMPLETED = "onex.evt.omnimarket.delegation-call-completed.v1"  # onex-topic-allow: mirrors contract.yaml subscribe_topics
-_TOPIC_DELEGATION_ESCALATION_TRIGGERED = "onex.evt.omnimarket.delegation-escalation-triggered.v1"  # onex-topic-allow: mirrors contract.yaml subscribe_topics
-_TOPIC_DELEGATION_ALL_TIERS_FAILED = "onex.evt.omnimarket.delegation-all-tiers-failed.v1"  # onex-topic-allow: mirrors contract.yaml subscribe_topics
-_TOPIC_SWARM_FANOUT_COMPLETED = "onex.evt.omnimarket.swarm-fanout-completed.v1"  # onex-topic-allow: mirrors contract.yaml subscribe_topics
+# Sourced from this node's own contract.yaml event_bus.subscribe_topics (the
+# source of truth) at import time, matching node_generation_consumer's
+# next((t for t in topics if "..." in t), "") idiom — never a hardcoded
+# literal. Used only for freshness-cursor bookkeeping in the adapters below,
+# never to construct a subscription.
+_CONTRACT_PATH = Path(__file__).parent.parent / "contract.yaml"
+_contract_text = _CONTRACT_PATH.read_text()  # node-purity-ok: reads this node's own contract.yaml for topic names, same pattern as handler_savings.py's __init__
+_SUBSCRIBE_TOPICS: list[str] = (
+    yaml.safe_load(_contract_text).get("event_bus", {}).get("subscribe_topics", [])
+)
+
+
+def _topic(marker: str) -> str:
+    return next((t for t in _SUBSCRIBE_TOPICS if marker in t), "")
+
+
+_TOPIC_DELEGATION_EXECUTE = _topic("delegation-execute")
+_TOPIC_DELEGATION_CALL_COMPLETED = _topic("delegation-call-completed")
+_TOPIC_DELEGATION_ESCALATION_TRIGGERED = _topic("delegation-escalation-triggered")
+_TOPIC_DELEGATION_ALL_TIERS_FAILED = _topic("delegation-all-tiers-failed")
+_TOPIC_SWARM_FANOUT_COMPLETED = _topic("swarm-fanout-completed")
 
 
 def _from_call_request(payload: ModelLlmDelegationCallRequest) -> ModelDelegationEvent:
