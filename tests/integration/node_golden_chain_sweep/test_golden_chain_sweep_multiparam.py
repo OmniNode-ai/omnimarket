@@ -27,6 +27,7 @@ from omnimarket.nodes.node_golden_chain_sweep.handlers.handler_golden_chain_swee
     EnumChainStatus,
     EnumSweepStatus,
     GoldenChainSweepRequest,
+    ModelChainCensus,
     ModelChainDefinition,
     NodeGoldenChainSweep,
 )
@@ -59,13 +60,25 @@ def _req(
     *,
     idle_gate: bool = False,
     now_iso: str | None = None,
+    census: ModelChainCensus | None = None,
 ) -> GoldenChainSweepRequest:
     return GoldenChainSweepRequest(
         chains=chains,
         projected_rows=rows,
         idle_gate=idle_gate,
         now_iso=now_iso,
+        census=census,
     )
+
+
+def _scanned(n: int) -> ModelChainCensus:
+    """Census proving the collector actually queried ``n`` tail surfaces.
+
+    OMN-14536: the TIMEOUT (idle_gate off) vs GATED (idle_gate on) distinction
+    for a queried-but-empty table only holds once the census proves a surface was
+    scanned. Without it, scanned_count==0 fails closed to NOT_COLLECTED — "I never
+    looked" can never masquerade as "I looked and it was idle"."""
+    return ModelChainCensus(source="multiparam-test", scanned_count=n)
 
 
 # id -> builder returning (request, expected dict)
@@ -98,7 +111,8 @@ def _c_missing_field_fail() -> tuple[GoldenChainSweepRequest, dict[str, object]]
 
 
 def _c_no_row_timeout() -> tuple[GoldenChainSweepRequest, dict[str, object]]:
-    req = _req([_chain("c1")], {})
+    # Collector queried the table (scanned=1), found no row, idle_gate off → TIMEOUT.
+    req = _req([_chain("c1")], {}, census=_scanned(1))
     return req, {
         "overall": EnumSweepStatus.FAIL,
         "passed": 0,
@@ -110,7 +124,8 @@ def _c_no_row_timeout() -> tuple[GoldenChainSweepRequest, dict[str, object]]:
 
 
 def _c_no_row_gated() -> tuple[GoldenChainSweepRequest, dict[str, object]]:
-    req = _req([_chain("c1")], {}, idle_gate=True)
+    # Collector queried the table (scanned=1), found no row, idle_gate on → GATED.
+    req = _req([_chain("c1")], {}, idle_gate=True, census=_scanned(1))
     return req, {
         "overall": EnumSweepStatus.GATED,
         "passed": 0,
