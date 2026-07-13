@@ -414,6 +414,110 @@ def test_ingress_root_fix_does_not_mask_a_producer_nobody_consumes(
     assert orphaned[0].node == "ingress_poller_alone"
 
 
+def test_ingress_root_rescues_only_its_own_cluster__a_separate_dead_island_still_fails(
+    tmp_path: Path,
+) -> None:
+    """The discriminating negative fixture the fix must not blur.
+
+    One graph, two unrelated weakly-connected components: the ingress-root
+    pair (legitimately live, must NOT be flagged) sits ALONGSIDE a genuinely
+    dead rival-ledgers-shaped island (two rival_* nodes, internally wired,
+    fed by nothing -- must STILL be flagged). If the ingress-root signal ever
+    leaked reachability across components, or if the fix accidentally
+    softened the subgraph check in general rather than adding one narrow
+    signal, the second island would go silent too. It must not.
+    """
+    _write(
+        tmp_path,
+        "omnimarket",
+        "ingress_poller",
+        {
+            "name": "ingress_poller",
+            "event_bus": {
+                "subscribe_topics": [],
+                "publish_topics": ["onex.evt.omnimarket.signal-received.v1"],
+            },
+            "handler_routing": {
+                "handlers": [
+                    {
+                        "operation": "poll",
+                        "handler": {"module": "test_module", "name": "TestHandler"},
+                    }
+                ]
+            },
+        },
+    )
+    _write(
+        tmp_path,
+        "omnimarket",
+        "signal_evaluator",
+        {
+            "name": "signal_evaluator",
+            "event_bus": {
+                "subscribe_topics": ["onex.evt.omnimarket.signal-received.v1"]
+            },
+            "handler_routing": {
+                "handlers": [
+                    {
+                        "operation": "evaluate",
+                        "handler": {"module": "test_module", "name": "TestHandler"},
+                    }
+                ]
+            },
+        },
+    )
+    # A SEPARATE, unconnected component: internally wired, fed by nothing --
+    # neither node has empty subscribe_topics, so the ingress-root signal
+    # cannot fire for either one. Same shape as the rival-ledgers test above.
+    _write(
+        tmp_path,
+        "omnimarket",
+        "rival_orchestrator",
+        {
+            "name": "rival_orchestrator",
+            "event_bus": {
+                "subscribe_topics": ["onex.cmd.omnimarket.rival-tick.v1"],
+                "publish_topics": ["onex.evt.omnimarket.rival-reduced.v1"],
+            },
+            "handler_routing": {
+                "handlers": [
+                    {
+                        "operation": "tick",
+                        "handler": {"module": "test_module", "name": "TestHandler"},
+                    }
+                ]
+            },
+        },
+    )
+    _write(
+        tmp_path,
+        "omnimarket",
+        "rival_state_reducer",
+        {
+            "name": "rival_state_reducer",
+            "event_bus": {"subscribe_topics": ["onex.evt.omnimarket.rival-reduced.v1"]},
+            "handler_routing": {
+                "handlers": [
+                    {
+                        "operation": "reduce",
+                        "handler": {"module": "test_module", "name": "TestHandler"},
+                    }
+                ]
+            },
+        },
+    )
+
+    defects = find_defects(_graph(tmp_path))
+    subgraphs = {d.node for d in defects if d.defect == "DISCONNECTED_SUBGRAPH"}
+
+    # The ingress-root pair is legitimately live -- rescued.
+    assert "ingress_poller" not in subgraphs
+    assert "signal_evaluator" not in subgraphs
+    # The unrelated dead island is untouched by the fix -- still flagged.
+    assert "rival_orchestrator" in subgraphs
+    assert len([d for d in defects if d.defect == "DISCONNECTED_SUBGRAPH"]) == 1
+
+
 def test_declared_external_producer_makes_a_consumer_reachable(tmp_path: Path) -> None:
     """Some topics really are published off-graph (the skill CLI, a GitHub webhook).
 
