@@ -149,6 +149,11 @@ def test_contract_declares_event_bus_surfaces() -> None:
     assert "onex.cmd.omnimarket.decision-store-start.v1" in eb["subscribe_topics"]
     assert "onex.evt.omnimarket.decision-stored.v1" in eb["publish_topics"]
     assert "onex.evt.omnimarket.decision-conflict-detected.v1" in eb["publish_topics"]
+    # OMN-14529: decision-query-result.v1 was declared but never asserted —
+    # the contract-state-coverage gate (OMN-13781) flagged it once this test
+    # file was touched (strict mode drops the baseline grandfather for a
+    # directly-modified node).
+    assert "onex.evt.omnimarket.decision-query-result.v1" in eb["publish_topics"]
     assert "onex.dlq.omnimarket.decision-store.v1" in eb["dlq_topics"]
 
 
@@ -404,8 +409,45 @@ def test_handler_requires_entry_for_record() -> None:
 
 
 @pytest.mark.unit
-def test_handler_requires_adapters_for_live_record() -> None:
-    with pytest.raises(RuntimeError, match="conflict adapter required"):
+def test_bare_handler_wires_real_default_adapters_not_none() -> None:
+    """OMN-14529 proof #1: a bare ``HandlerDecisionStoreOrchestrator()`` —
+    the exact zero-arg construction the generic ``onex skill`` /
+    receipt-mode dispatch uses when instantiating the contract-declared
+    handler class — wires REAL default adapters, not ``None``.
+
+    Before this ticket, all four adapters defaulted to ``None`` and any live
+    ``record`` call raised ``RuntimeError("... adapter required ...")`` the
+    instant a dispatch route existed: the routing gap (no skill_mapping.yaml
+    entry) and this adapter-default gap were two distinct, stacked bugs.
+    This replaces the three tests that pinned the OLD (broken) None-default
+    behavior — ``test_handler_requires_adapters_for_live_record``,
+    ``test_handler_requires_semantic_adapter_for_high_confidence_conflict``,
+    ``test_handler_requires_notify_adapter_for_high_conflict`` — which this
+    change makes obsolete by construction: there is no longer any code path
+    that leaves an adapter as ``None``.
+    """
+    handler = HandlerDecisionStoreOrchestrator()
+    assert handler._conflict_adapter is not None
+    assert handler._semantic_adapter is not None
+    assert handler._store_adapter is not None
+    assert handler._notify_adapter is not None
+    assert type(handler._conflict_adapter).__name__ == "StructuralConflictCheck"
+    assert type(handler._semantic_adapter).__name__ == "DeferredSemanticReview"
+    assert type(handler._store_adapter).__name__ == "PostgresDecisionStore"
+    assert type(handler._notify_adapter).__name__ == "LogOnlyNotify"
+
+
+@pytest.mark.unit
+def test_bare_handler_record_fails_on_missing_dsn_not_missing_adapter(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The bare handler's live ``record`` path fails on missing Postgres
+    config (``OMNIBASE_INFRA_DB_URL``), never on a missing adapter — proving
+    the real defaults are wired all the way through to the actual I/O
+    boundary rather than stopping at another ``None`` internally.
+    """
+    monkeypatch.delenv("OMNIBASE_INFRA_DB_URL", raising=False)
+    with pytest.raises(RuntimeError, match="OMNIBASE_INFRA_DB_URL is not set"):
         HandlerDecisionStoreOrchestrator().handle(
             ModelDecisionStoreRequest(
                 action=EnumDecisionAction.RECORD,
@@ -414,58 +456,33 @@ def test_handler_requires_adapters_for_live_record() -> None:
             )
         )
 
-    with pytest.raises(RuntimeError, match="store adapter required"):
-        HandlerDecisionStoreOrchestrator(
-            conflict_adapter=FakeConflictAdapter([])
-        ).handle(
-            ModelDecisionStoreRequest(
-                action=EnumDecisionAction.RECORD,
-                entry=_entry(),
-                dry_run=False,
-            )
-        )
-
 
 @pytest.mark.unit
-def test_handler_requires_semantic_adapter_for_high_confidence_conflict() -> None:
-    with pytest.raises(RuntimeError, match="semantic adapter required"):
-        HandlerDecisionStoreOrchestrator(
-            conflict_adapter=FakeConflictAdapter(
-                [
-                    _conflict(
-                        structural_confidence=0.7, severity=EnumConflictSeverity.MEDIUM
-                    )
-                ]
-            ),
-            store_adapter=FakeStoreAdapter(),
-        ).handle(
-            ModelDecisionStoreRequest(
-                action=EnumDecisionAction.RECORD,
-                entry=_entry(),
-                dry_run=False,
-            )
-        )
+def test_default_semantic_and_notify_adapters_complete_high_conflict_record() -> None:
+    """With only conflict_adapter/store_adapter faked, the REAL default
+    semantic (pass-through) and notify (log-only) adapters complete a HIGH
+    conflict record without raising — proving the record path that used to
+    hit "semantic adapter required" / "notify adapter required" now
+    completes end-to-end via the honest deferred defaults.
+    """
+    conflict = _conflict(structural_confidence=0.9, severity=EnumConflictSeverity.HIGH)
+    store = FakeStoreAdapter()
 
-
-@pytest.mark.unit
-def test_handler_requires_notify_adapter_for_high_conflict() -> None:
-    with pytest.raises(RuntimeError, match="notify adapter required"):
-        HandlerDecisionStoreOrchestrator(
-            conflict_adapter=FakeConflictAdapter(
-                [
-                    _conflict(
-                        structural_confidence=0.5, severity=EnumConflictSeverity.HIGH
-                    )
-                ]
-            ),
-            store_adapter=FakeStoreAdapter(),
-        ).handle(
-            ModelDecisionStoreRequest(
-                action=EnumDecisionAction.RECORD,
-                entry=_entry(),
-                dry_run=False,
-            )
+    result = HandlerDecisionStoreOrchestrator(
+        conflict_adapter=FakeConflictAdapter([conflict]),
+        store_adapter=store,
+    ).handle(
+        ModelDecisionStoreRequest(
+            action=EnumDecisionAction.RECORD,
+            entry=_entry(),
+            dry_run=False,
         )
+    )
+
+    assert result.stored_decision_id == "decision-1"
+    assert result.slack_gate_triggered is True
+    assert result.high_severity_count == 1
+    assert len(store.persisted) == 1
 
 
 def _entry(summary: str = "All APIs use Pydantic models") -> ModelDecisionEntry:
