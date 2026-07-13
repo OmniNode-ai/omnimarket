@@ -89,6 +89,9 @@ outputs:
   dod_receipts:
     type: list[ModelDodEvidenceVerificationResult]
     description: "Per dod_evidence item verification results"
+  scanned_count:
+    type: int
+    description: "Number of targets in the resolved verification set; a verdict is trustworthy only when > 0 (OMN-14552)"
   overall_status:
     type: str
     description: "pass | fail | partial | skip"
