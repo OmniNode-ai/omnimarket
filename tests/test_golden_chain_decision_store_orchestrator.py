@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from importlib import import_module
 from importlib.metadata import entry_points
 from pathlib import Path
@@ -13,6 +14,9 @@ import pytest
 import yaml
 from pydantic import ValidationError
 
+from omnimarket.nodes.node_decision_store_orchestrator.adapters.postgres_decision_store import (
+    _run_async,
+)
 from omnimarket.nodes.node_decision_store_orchestrator.handlers.handler_decision_store_orchestrator import (
     HandlerDecisionStoreOrchestrator,
 )
@@ -483,6 +487,43 @@ def test_default_semantic_and_notify_adapters_complete_high_conflict_record() ->
     assert result.slack_gate_triggered is True
     assert result.high_severity_count == 1
     assert len(store.persisted) == 1
+
+
+@pytest.mark.unit
+def test_run_async_bridge_works_with_no_running_loop() -> None:
+    """No running loop (e.g. a script calling the handler directly):
+    _run_async falls through to a plain asyncio.run()."""
+
+    async def _coro() -> int:
+        return 42
+
+    assert _run_async(_coro()) == 42
+
+
+@pytest.mark.unit
+def test_run_async_bridge_works_from_inside_a_running_loop() -> None:
+    """OMN-14529 full-CLI-seam-proof regression: HandlerDecisionStoreOrchestrator
+    .handle() is invoked by omnibase_core's RuntimeLocal from INSIDE an
+    already-running asyncio event loop (RuntimeLocal._invoke_handler_method
+    calls the handler synchronously from within its own `async def` path).
+    An earlier version of _run_async treated a running loop as unsupported
+    and raised RuntimeError there — that broke the real `onex skill
+    decision_store record` dispatch even though the bare-handler row-proof
+    (which never runs inside a loop) never caught it. This drives _run_async
+    from inside a real running loop and asserts it still returns the coroutine's
+    result instead of raising.
+    """
+
+    async def _coro() -> int:
+        return 7
+
+    async def _drive_from_running_loop() -> int:
+        # Calling the plain sync _run_async from here means
+        # asyncio.get_running_loop() succeeds inside it — exactly the
+        # RuntimeLocal shape.
+        return _run_async(_coro())
+
+    assert asyncio.run(_drive_from_running_loop()) == 7
 
 
 def _entry(summary: str = "All APIs use Pydantic models") -> ModelDecisionEntry:

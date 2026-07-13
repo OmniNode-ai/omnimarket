@@ -12,12 +12,30 @@ sync -> async with a one-shot asyncpg pool per call. A one-shot pool is a
 correctness requirement, not just simplicity: asyncpg pools are bound to the
 event loop that created them, and each ``asyncio.run()`` call opens a new
 loop, so a pool cached across calls would break on the second call.
+
+OMN-14529 full-seam-proof correction: driving `onex skill decision_store
+record` end-to-end (not just bare handler construction) showed
+``HandlerDecisionStoreOrchestrator.handle()`` is invoked from INSIDE
+``omnibase_core.runtime.runtime_local.RuntimeLocal``'s already-running
+asyncio event loop — ``RuntimeLocal._invoke_handler_method`` calls
+``method(initial_payload)`` synchronously from within its own ``async def``
+execution path, so ``asyncio.get_running_loop()`` succeeds here even though
+``handle()`` itself is a plain sync function. An earlier version of this
+bridge treated that as unsupported and raised — that was wrong; it is the
+NORMAL production dispatch path, and the earlier bare-handler row-proof
+never exercised it (it called `asyncio.run()` once at script top level, so
+`_run_async` always saw no running loop). The bridge now runs the coroutine
+on a fresh event loop in a dedicated thread and blocks for the result when a
+loop is already running — safe because this adapter is always invoked as a
+plain (non-awaited) synchronous call from the outer loop, never awaited
+directly, so a brief cross-thread block cannot deadlock it.
 """
 
 from __future__ import annotations
 
 import asyncio
 import os
+import threading
 from collections.abc import Coroutine, Mapping
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any, cast
@@ -60,19 +78,34 @@ def _require_dsn() -> str:
 def _run_async[T](coro: Coroutine[Any, Any, T]) -> T:
     """Bridge a coroutine into this synchronous adapter method.
 
-    Raises loudly (rather than degrading) if called from inside an
-    already-running event loop — HandlerDecisionStoreOrchestrator.handle()
-    is a synchronous entry point and is never expected to run there.
+    No running loop (e.g. a script calling the handler directly): run the
+    coroutine on a fresh loop via ``asyncio.run()`` in the current thread.
+
+    A loop IS already running (the real production path — see module
+    docstring): ``asyncio.run()`` cannot nest inside a running loop, so run
+    the coroutine on a fresh loop in a dedicated thread and block for the
+    result.
     """
     try:
         asyncio.get_running_loop()
     except RuntimeError:
         return asyncio.run(coro)
-    raise RuntimeError(
-        "PostgresDecisionStore cannot run inside an already-running "
-        "event loop; HandlerDecisionStoreOrchestrator.handle() is a "
-        "synchronous entry point."
-    )
+
+    result: list[T] = []
+    error: list[BaseException] = []
+
+    def _run_in_new_loop() -> None:
+        try:
+            result.append(asyncio.run(coro))
+        except BaseException as exc:
+            error.append(exc)
+
+    thread = threading.Thread(target=_run_in_new_loop)
+    thread.start()
+    thread.join()
+    if error:
+        raise error[0]
+    return result[0]
 
 
 class PostgresDecisionStore:
