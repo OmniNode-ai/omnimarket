@@ -557,6 +557,33 @@ repos:
         pass_filenames: false
         stages: [pre-commit]
 
+      # OMN-14527: contract topic graph — the static producer/consumer oracle.
+      # Nodes are contracts, edges are topics. Catches the defect class that five
+      # merged, CI-green, `Done` tickets shipped anyway: a consumer subscribed to a
+      # topic NO contract publishes (node_ledger_write_effect was starved for its
+      # entire life), a producer whose output nothing reads, a node that subscribes
+      # with no dispatcher, and a fully-wired cluster with no inbound edge.
+      #
+      # Static — no broker, no deploy. Ratcheted: pre-existing debt is frozen in
+      # src/omnimarket/validators/data/contract_topic_graph_baseline.yaml and that
+      # baseline may only ever SHRINK. A NEW defect hard-fails.
+      #
+      # Sound ONLY where the whole active runtime surface (omnibase_infra +
+      # omnimarket) is co-installed — a partial graph reports every cross-package
+      # producer as a phantom orphan, so build_graph() fails closed instead of
+      # answering wrongly. SYNC with .github/workflows/contract-topic-graph.yml.
+      # NOTE: single-line regex on purpose. A YAML folded scalar (>-) joins its
+      # lines with SPACES, which silently breaks the alternation and makes this
+      # hook match nothing — it reports "no files to check" and Skips, so the gate
+      # looks green while never having run.
+      - id: contract-topic-graph
+        name: Contract topic graph (orphaned consumers/producers, dead chains)
+        language: system
+        entry: env -u PYTHONPATH uv run python -m omnimarket.validators.contract_topic_graph
+        files: ^(src/omnimarket/nodes/.*/contract\.yaml|src/omnimarket/validators/(contract_topic_graph\.py|data/contract_topic_graph_baseline\.yaml))$
+        pass_filenames: false
+        stages: [pre-commit]
+
       # OMN-13624 (WS-C SEA Phase 7.1): generated-node golden-chain gate.
       # Executes the two canonical self-extension loop proofs when generation
       # node source or the golden-chain test files themselves change.

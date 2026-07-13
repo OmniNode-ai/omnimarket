@@ -1,0 +1,600 @@
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+"""Static contract topic graph — the producer/consumer oracle (OMN-14527).
+
+Every runtime wiring check the platform had before this asked the RUNTIME
+"are you alive?" -- consumer groups, row counts, wiring reports. That diagnoses
+from the effect side, one node at a time, and it only ever sees nodes that
+someone remembered to look at.
+
+This asks the opposite, and it asks it of every node at once:
+
+    who is SUPPOSED to talk to whom -- and do they?
+
+Nodes are contracts. Edges are topics. A producer declares ``publish_topics``;
+a consumer declares ``subscribe_topics``. An edge exists when the topic names
+match. Everything below falls out of that one relation, statically, with no
+broker and no deploy.
+
+The motivating defect (OMN-14134 / 13532 / 4828 / 13989 / 13997 -- five merged,
+CI-green, ``Done`` tickets that were 100% runtime no-ops):
+``node_ledger_write_effect`` has a fully wired ``handler_routing``
+(HandlerLedgerAppend + HandlerLedgerQuery, topic-routed) and subscribes to
+``onex.cmd.platform.ledger-append.v1``. No contract anywhere publishes that
+topic, and the node declares no ``runtime_dispatch`` entry point -- so there is
+no producer and no CLI dispatch path. The handler was alive, healthy, and
+starved for its entire life. Five green CI runs never noticed, because CI was
+never asked this question.
+
+Soundness requires the WHOLE graph
+----------------------------------
+A partial graph invents false orphans: a topic whose producer lives in a repo
+you cannot see looks exactly like a topic nobody produces. This validator is
+therefore only sound where the entire active runtime surface is co-installed.
+Per ``omnibase_infra/docker/runtime-policy.env`` that surface is
+``ONEX_ACTIVE_RUNTIME_PACKAGES=omnibase_infra,omnimarket``, and omnimarket is the
+only repo that depends on omnibase_infra -- so omnimarket is the only place the
+graph is complete. :func:`discover_contract_roots` resolves those packages from
+the installed distributions (the same way ``runtime_host_process`` does) and
+:func:`build_graph` FAILS CLOSED if any required package is missing rather than
+reporting the false orphans a partial view would produce.
+
+Ratchet, not a big bang
+-----------------------
+The corpus already carries a large pre-existing defect population. A gate that
+hard-fails all of it on day one blocks every merge and gets disabled within the
+hour -- the classic way a correct check dies. So the existing defects are frozen
+into a baseline that may only ever SHRINK. Any defect NOT in the baseline is a
+hard failure. That stops the bleeding immediately and turns the backlog into a
+burn-down list instead of an outage.
+
+Usage::
+
+    python -m omnimarket.validators.contract_topic_graph            # gate (ratcheted)
+    python -m omnimarket.validators.contract_topic_graph --report   # full census
+    python -m omnimarket.validators.contract_topic_graph --write-baseline
+"""
+
+from __future__ import annotations
+
+import argparse
+import importlib.util
+import os
+import re
+import sys
+from collections.abc import Sequence
+from pathlib import Path
+from typing import Literal
+
+import yaml
+from pydantic import BaseModel, ConfigDict, Field
+
+# The active runtime surface (omnibase_infra/docker/runtime-policy.env:64).
+# These are the packages whose contracts the runtime host actually loads.
+ACTIVE_RUNTIME_PACKAGES: tuple[str, ...] = ("omnibase_infra", "omnimarket")
+
+# Contracts contribute to the graph from any of these packages. omnibase_core
+# ships a handful of node contracts that participate as producers/consumers even
+# though core itself is not an "active runtime package".
+GRAPH_PACKAGES: tuple[str, ...] = ("omnibase_infra", "omnibase_core", "omnimarket")
+
+# onex.<kind>.<producer>.<event-name>.<version>
+_TOPIC_RE = re.compile(r"^onex\.(evt|cmd|intent|dlq)\.[a-z0-9._-]+\.v\d+$")
+
+DEFAULT_BASELINE = Path(__file__).parent / "data" / "contract_topic_graph_baseline.yaml"
+
+DefectClass = Literal[
+    "ORPHANED_CONSUMER",
+    "ORPHANED_PRODUCER",
+    "DECLARED_BUT_UNWIRED",
+    "DISCONNECTED_SUBGRAPH",
+]
+
+
+class ModelContractNode(BaseModel):
+    """One contract.yaml, reduced to its graph-relevant surface."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    name: str
+    package: str
+    path: str
+    publish_topics: tuple[str, ...] = ()
+    subscribe_topics: tuple[str, ...] = ()
+    command_topic: str | None = None
+    terminal_topics: tuple[str, ...] = ()
+    externally_consumed: tuple[str, ...] = ()
+    has_dispatch_wiring: bool = False
+    runtime_loaded: bool = False
+
+
+class ModelGraphFinding(BaseModel):
+    """A single static defect on the contract graph."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    defect: DefectClass
+    topic: str | None = None
+    node: str | None = None
+    package: str = ""
+    detail: str = ""
+
+    def key(self) -> str:
+        """Stable identity used for baseline matching."""
+        return f"{self.defect}::{self.node or '-'}::{self.topic or '-'}"
+
+
+class ModelTopicGraph(BaseModel):
+    """The contract graph: nodes are contracts, edges are topics."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    nodes: tuple[ModelContractNode, ...]
+    producers: dict[str, tuple[str, ...]] = Field(default_factory=dict)
+    consumers: dict[str, tuple[str, ...]] = Field(default_factory=dict)
+    # Topics an external, non-contract actor legitimately publishes (the skill
+    # CLI, a GitHub webhook, the omniclaude hook daemon). Declared, never assumed.
+    external_producers: dict[str, str] = Field(default_factory=dict)
+
+    @property
+    def topics(self) -> set[str]:
+        return set(self.producers) | set(self.consumers)
+
+    def edges(self) -> list[tuple[str, str, str]]:
+        """Every (producer_node, topic, consumer_node) triple."""
+        out: list[tuple[str, str, str]] = []
+        for topic, prods in self.producers.items():
+            for consumer in self.consumers.get(topic, ()):
+                for producer in prods:
+                    out.append((producer, topic, consumer))
+        return out
+
+    def is_reachable(self, topic: str) -> bool:
+        """Can anything, anywhere, ever put a message on this topic?"""
+        if self.producers.get(topic):
+            return True
+        if topic in self.external_producers:
+            return True
+        # A node's runtime_dispatch.command_topic is the CLI's publish target,
+        # so declaring one IS an entry point even with no contract producer.
+        return any(n.command_topic == topic for n in self.nodes)
+
+
+def _collect_topics(value: object) -> list[str]:
+    """Flatten any nested YAML value into the ONEX topic literals it contains."""
+    if isinstance(value, str):
+        candidate = value.strip()
+        return [candidate] if _TOPIC_RE.match(candidate) else []
+    if isinstance(value, list):
+        return [t for item in value for t in _collect_topics(item)]
+    if isinstance(value, dict):
+        return [t for item in value.values() for t in _collect_topics(item)]
+    return []
+
+
+def _dig(data: object, *path: str) -> object:
+    for key in path:
+        if not isinstance(data, dict):
+            return None
+        data = data.get(key)
+    return data
+
+
+def parse_contract(path: Path, package: str) -> ModelContractNode | None:
+    """Reduce one contract.yaml to its graph surface.
+
+    The corpus declares topics through roughly a dozen different key shapes that
+    accreted over time (``event_bus.publish_topics``, ``event_bus.publish.success_topic``,
+    ``runtime_dispatch.terminal_events``, ``published_events[].topic``, ...). All of
+    them are real and all of them are load-bearing, so this reads the union. A
+    parser that knew only the dominant shape would silently miss ~40% of the
+    declarations and report the resulting phantom orphans as defects.
+
+    Note the contract's ``name:`` is authoritative and is NOT the directory name.
+    """
+    try:
+        data = yaml.safe_load(path.read_text(errors="replace"))
+    except yaml.YAMLError:
+        return None
+    if not isinstance(data, dict):
+        return None
+
+    raw_bus = data.get("event_bus")
+    bus: dict[str, object] = raw_bus if isinstance(raw_bus, dict) else {}
+
+    published: list[str] = []
+    published += _collect_topics(bus.get("publish_topics"))
+    published += _collect_topics(_dig(bus, "publish", "success_topic"))
+    published += _collect_topics(_dig(bus, "publish", "failure_topic"))
+    published += _collect_topics(_dig(data, "runtime_dispatch", "terminal_events"))
+    for key in ("published_events", "produced_events", "publications"):
+        published += _collect_topics(data.get(key))
+    published += _collect_topics(_dig(data, "topics", "produces"))
+
+    subscribed: list[str] = []
+    subscribed += _collect_topics(bus.get("subscribe_topics"))
+    subscribed += _collect_topics(_dig(bus, "subscribe", "topic"))
+    for key in ("consumed_events", "subscribed_events", "input_subscriptions"):
+        subscribed += _collect_topics(data.get(key))
+    subscribed += _collect_topics(_dig(data, "topics", "consumes"))
+    subscribed += _collect_topics(_dig(data, "subscriptions", "topics"))
+
+    command_topic = _dig(data, "runtime_dispatch", "command_topic")
+    if not (isinstance(command_topic, str) and _TOPIC_RE.match(command_topic)):
+        command_topic = None
+    else:
+        # The node consumes commands here; the CLI dispatcher is the producer.
+        subscribed.append(command_topic)
+
+    # runtime_dispatch.terminal_events are the success/failure results the CLI
+    # dispatcher itself awaits. They have an external consumer by construction, so
+    # "no contract subscribes to them" is the design, not an orphaned producer.
+    terminal_topics = tuple(
+        sorted(set(_collect_topics(_dig(data, "runtime_dispatch", "terminal_events"))))
+    )
+
+    # The runtime host only loads <package>/nodes/*/contract.yaml direct children
+    # (_discover_package_node_contracts), and only for active runtime packages.
+    parts = path.parts
+    is_node_dir = "nodes" in parts and parts.index("nodes") == len(parts) - 3
+    runtime_loaded = (
+        package in ACTIVE_RUNTIME_PACKAGES
+        and is_node_dir
+        and not bus.get("plugin_managed")
+    )
+
+    return ModelContractNode(
+        name=str(
+            data.get("name")
+            or data.get("contract_name")
+            or data.get("node_name")
+            or path.parent.name
+        ),
+        package=package,
+        path=str(path),
+        publish_topics=tuple(sorted(set(published))),
+        subscribe_topics=tuple(sorted(set(subscribed))),
+        command_topic=command_topic,
+        terminal_topics=terminal_topics,
+        externally_consumed=tuple(
+            sorted(set(_collect_topics(data.get("externally_consumed_topics"))))
+        ),
+        # A subscription is wired to a dispatcher by handler_routing (topic/operation
+        # match) or by a single top-level handler. Without either, the runtime still
+        # creates the Kafka subscription -- it just has nowhere to dispatch the event
+        # it receives, and drops it ("No dispatcher found").
+        has_dispatch_wiring=bool(data.get("handler_routing") or data.get("handler")),
+        runtime_loaded=runtime_loaded,
+    )
+
+
+def discover_contract_roots() -> dict[str, Path]:
+    """Resolve each graph package to its installed on-disk root.
+
+    Mirrors ``runtime_host_process._discover_package_node_contracts``: contracts
+    ship as package data, so the installed distribution is the source of truth
+    and CI needs no checkout of the sibling repos.
+
+    FAILS CLOSED when ``PYTHONPATH`` is set. An ambient PYTHONPATH silently
+    reroutes ``find_spec`` from the pinned wheel to a local canonical clone, so
+    the graph is built from a DIFFERENT contract corpus than the one CI resolves
+    and the gate returns a different verdict on the same commit depending on whose
+    shell it ran in. That is not a hypothetical: developing this validator, the
+    ambient PYTHONPATH pointed at the omnibase_infra clone and produced 9 defects
+    that do not exist in the pinned wheel. A gate whose answer depends on the
+    caller's environment is not a gate. Run with ``env -u PYTHONPATH``.
+    """
+    shadowed = os.environ.get("PYTHONPATH")
+    if shadowed:
+        raise RuntimeError(
+            "Contract graph refuses to run with PYTHONPATH set "
+            f"({shadowed!r}): it reroutes package resolution away from the pinned "
+            "wheels, so the graph would be built from a different corpus than CI "
+            "resolves and the verdict would depend on the caller's shell. "
+            "Re-run with: env -u PYTHONPATH"
+        )
+
+    roots: dict[str, Path] = {}
+    for package in GRAPH_PACKAGES:
+        spec = importlib.util.find_spec(package)
+        if spec is None or not spec.origin:
+            continue
+        roots[package] = Path(spec.origin).parent
+    return roots
+
+
+def build_graph(
+    roots: dict[str, Path] | None = None,
+    external_producers: dict[str, str] | None = None,
+) -> ModelTopicGraph:
+    """Build the contract graph, failing closed on an incomplete package surface."""
+    roots = roots if roots is not None else discover_contract_roots()
+
+    missing = [p for p in ACTIVE_RUNTIME_PACKAGES if p not in roots]
+    if missing:
+        raise RuntimeError(
+            "Contract graph is UNSOUND without the full active runtime surface: "
+            f"missing {missing}. A partial graph reports every cross-package "
+            "producer as a phantom orphan. Run this where "
+            f"{list(ACTIVE_RUNTIME_PACKAGES)} are co-installed (omnimarket)."
+        )
+
+    nodes: list[ModelContractNode] = []
+    for package, root in sorted(roots.items()):
+        for contract_path in sorted(root.rglob("contract.yaml")):
+            node = parse_contract(contract_path, package)
+            if node is not None:
+                nodes.append(node)
+
+    producers: dict[str, list[str]] = {}
+    consumers: dict[str, list[str]] = {}
+    for node in nodes:
+        for topic in node.publish_topics:
+            producers.setdefault(topic, []).append(node.name)
+        for topic in node.subscribe_topics:
+            consumers.setdefault(topic, []).append(node.name)
+
+    return ModelTopicGraph(
+        nodes=tuple(nodes),
+        producers={t: tuple(v) for t, v in producers.items()},
+        consumers={t: tuple(v) for t, v in consumers.items()},
+        external_producers=dict(external_producers or {}),
+    )
+
+
+def find_defects(graph: ModelTopicGraph) -> list[ModelGraphFinding]:
+    """Every static defect the graph can prove, without a broker."""
+    findings: list[ModelGraphFinding] = []
+    by_name = {n.name: n for n in graph.nodes}
+
+    externally_consumed: set[str] = set()
+    for node in graph.nodes:
+        externally_consumed.update(node.externally_consumed)
+        # The CLI dispatcher awaits these; they are consumed off-graph by design.
+        externally_consumed.update(node.terminal_topics)
+
+    # --- ORPHANED CONSUMER: subscribed, but nothing can ever publish it.
+    # This is HandlerLedgerAppend: alive, healthy, starved for its entire life.
+    for topic in sorted(graph.consumers):
+        if graph.is_reachable(topic):
+            continue
+        for consumer in graph.consumers[topic]:
+            consumer_node = by_name.get(consumer)
+            if consumer_node is None or not consumer_node.runtime_loaded:
+                continue
+            findings.append(
+                ModelGraphFinding(
+                    defect="ORPHANED_CONSUMER",
+                    topic=topic,
+                    node=consumer,
+                    package=consumer_node.package,
+                    detail=(
+                        "subscribes to a topic that NO contract publishes, that is not "
+                        "declared as an external producer, and that is no node's "
+                        "runtime_dispatch.command_topic — nothing can ever send it a message"
+                    ),
+                )
+            )
+
+    # --- ORPHANED PRODUCER: published, but nothing consumes it. Output goes nowhere.
+    for topic in sorted(graph.producers):
+        if graph.consumers.get(topic) or topic in externally_consumed:
+            continue
+        for producer in graph.producers[topic]:
+            producer_node = by_name.get(producer)
+            if producer_node is None or not producer_node.runtime_loaded:
+                continue
+            findings.append(
+                ModelGraphFinding(
+                    defect="ORPHANED_PRODUCER",
+                    topic=topic,
+                    node=producer,
+                    package=producer_node.package,
+                    detail=(
+                        "publishes a topic that NO contract subscribes to and that is not "
+                        "declared in externally_consumed_topics — its output goes nowhere"
+                    ),
+                )
+            )
+
+    # --- DECLARED BUT UNWIRED: the runtime creates the subscription, then has no
+    # dispatcher for what arrives. Events are consumed and silently dropped.
+    for node in graph.nodes:
+        if (
+            node.runtime_loaded
+            and node.subscribe_topics
+            and not node.has_dispatch_wiring
+        ):
+            findings.append(
+                ModelGraphFinding(
+                    defect="DECLARED_BUT_UNWIRED",
+                    node=node.name,
+                    package=node.package,
+                    detail=(
+                        f"declares {len(node.subscribe_topics)} subscribe topic(s) with NO "
+                        "handler_routing and NO handler — the runtime subscribes, receives, "
+                        "and drops every event because there is nothing to dispatch to"
+                    ),
+                )
+            )
+
+    # --- DISCONNECTED SUBGRAPH: a fully-wired cluster with no inbound edge from
+    # the rest of the platform. This is how two rival ledger systems both sat idle.
+    findings.extend(_find_disconnected_subgraphs(graph, by_name))
+    return findings
+
+
+def _find_disconnected_subgraphs(
+    graph: ModelTopicGraph, by_name: dict[str, ModelContractNode]
+) -> list[ModelGraphFinding]:
+    """Weakly-connected components containing no reachable entry point.
+
+    A component is live only if SOME topic in it can be fed from outside: a
+    contract producer beyond the component, a declared external producer, or a
+    runtime_dispatch entry point. A component where every inbound topic is
+    unreachable can never run, however perfectly its internals are wired.
+    """
+    adjacency: dict[str, set[str]] = {n.name: set() for n in graph.nodes}
+    for producer, _topic, consumer in graph.edges():
+        adjacency.setdefault(producer, set()).add(consumer)
+        adjacency.setdefault(consumer, set()).add(producer)
+
+    seen: set[str] = set()
+    findings: list[ModelGraphFinding] = []
+    for node in graph.nodes:
+        if node.name in seen or not node.runtime_loaded:
+            continue
+        # Flood-fill the weakly-connected component.
+        component: set[str] = set()
+        stack = [node.name]
+        while stack:
+            current = stack.pop()
+            if current in component:
+                continue
+            component.add(current)
+            stack.extend(adjacency.get(current, set()) - component)
+        seen |= component
+
+        # A single node with no edges at all is covered by the orphan checks;
+        # the subgraph check is about CLUSTERS that are internally wired but fed
+        # by nothing.
+        if len(component) < 2:
+            continue
+
+        has_entry = False
+        for member in component:
+            member_node = by_name.get(member)
+            if member_node is None:
+                continue
+            if member_node.command_topic is not None:
+                has_entry = True
+                break
+            for topic in member_node.subscribe_topics:
+                if topic in graph.external_producers:
+                    has_entry = True
+                    break
+                # Fed by a producer OUTSIDE this component => has an inbound edge.
+                if any(p not in component for p in graph.producers.get(topic, ())):
+                    has_entry = True
+                    break
+            if has_entry:
+                break
+
+        if not has_entry:
+            findings.append(
+                ModelGraphFinding(
+                    defect="DISCONNECTED_SUBGRAPH",
+                    node=min(component),
+                    package=by_name[min(component)].package,
+                    detail=(
+                        f"{len(component)} internally-wired nodes with NO inbound edge from the "
+                        f"rest of the platform and no entry point: {sorted(component)} — "
+                        "the cluster is fully wired and can never receive a message"
+                    ),
+                )
+            )
+    return findings
+
+
+class ModelBaseline(BaseModel):
+    """Frozen pre-existing defects. May only ever shrink."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    external_producers: dict[str, str] = Field(default_factory=dict)
+    accepted: list[str] = Field(default_factory=list)
+
+
+def load_baseline(path: Path) -> ModelBaseline:
+    if not path.is_file():
+        return ModelBaseline()
+    data = yaml.safe_load(path.read_text()) or {}
+    return ModelBaseline.model_validate(data)
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--baseline", type=Path, default=DEFAULT_BASELINE)
+    parser.add_argument("--report", action="store_true", help="print the full census")
+    parser.add_argument(
+        "--write-baseline",
+        action="store_true",
+        help="freeze current defects (ratchet reset)",
+    )
+    args = parser.parse_args(argv)
+
+    baseline = load_baseline(args.baseline)
+    graph = build_graph(external_producers=baseline.external_producers)
+    findings = find_defects(graph)
+
+    if args.write_baseline:
+        args.baseline.parent.mkdir(parents=True, exist_ok=True)
+        args.baseline.write_text(
+            yaml.safe_dump(
+                {
+                    "external_producers": baseline.external_producers,
+                    "accepted": sorted({f.key() for f in findings}),
+                },
+                sort_keys=True,
+                default_flow_style=False,
+            )
+        )
+        sys.stdout.write(f"Froze {len(findings)} defect(s) into {args.baseline}\n")
+        return 0
+
+    if args.report:
+        sys.stdout.write(
+            f"contracts={len(graph.nodes)} topics={len(graph.topics)} edges={len(graph.edges())}\n"
+        )
+        for finding in sorted(
+            findings, key=lambda f: (f.defect, f.node or "", f.topic or "")
+        ):
+            sys.stdout.write(
+                f"  {finding.defect:<22} {finding.node or '-':<45} {finding.topic or ''}\n"
+            )
+
+    accepted = set(baseline.accepted)
+    current = {f.key(): f for f in findings}
+    new_defects = [f for key, f in sorted(current.items()) if key not in accepted]
+    # The ratchet: a baselined defect that is FIXED must leave the baseline, or the
+    # baseline silently re-authorizes the defect if it ever regresses.
+    fixed = sorted(accepted - set(current))
+
+    if new_defects:
+        lines = [
+            "",
+            f"CONTRACT GRAPH GATE FAILED — {len(new_defects)} new static defect(s).",
+            "",
+            "The contract graph proves these are broken WITHOUT running anything:",
+            "",
+        ]
+        for finding in new_defects:
+            lines.append(f"  [{finding.defect}] {finding.node} ({finding.package})")
+            if finding.topic:
+                lines.append(f"      topic: {finding.topic}")
+            lines.append(f"      {finding.detail}")
+            lines.append("")
+        lines.append(
+            "Fix the wiring. Do NOT add these to the baseline — the baseline is frozen "
+            "pre-existing debt and may only shrink."
+        )
+        sys.stderr.write("\n".join(lines) + "\n")
+        return 1
+
+    if fixed:
+        sys.stderr.write(
+            f"\nCONTRACT GRAPH GATE FAILED — {len(fixed)} baselined defect(s) are now FIXED.\n\n"
+            "Remove them from the baseline so the ratchet cannot silently re-authorize a\n"
+            "regression:\n\n" + "\n".join(f"  {key}" for key in fixed) + "\n"
+        )
+        return 1
+
+    sys.stdout.write(
+        f"OK: contract graph clean — {len(graph.nodes)} contracts, {len(graph.topics)} topics, "
+        f"{len(graph.edges())} edges, {len(accepted)} baselined defect(s) pending burn-down.\n"
+    )
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
