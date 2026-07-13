@@ -22,6 +22,9 @@ from pathlib import Path
 
 import yaml
 
+from omnimarket.nodes.node_runtime_sweep.broker_probe import (
+    collect_live_consumer_groups,
+)
 from omnimarket.nodes.node_runtime_sweep.collection import collect_contracts
 from omnimarket.nodes.node_runtime_sweep.handlers.handler_runtime_sweep import (
     EnumSweepCheck,
@@ -252,14 +255,30 @@ def main() -> None:
         help="Report findings without creating Linear tickets",
     )
     parser.add_argument(
-        "--live-consumer-profiles",
+        "--bootstrap-servers",
         default=None,
         help=(
-            "Comma-separated runtime_profiles that currently have a live "
-            "consumer group on the broker (e.g. 'main,effects,workers'). When "
-            "provided, runs the OMN-12957 dual check: any subscribing node whose "
-            "declared profiles are all absent from this census is flagged as a "
-            "silent orphan. Omit to skip the live-census check."
+            "Kafka/Redpanda bootstrap servers to probe for the LIVE "
+            "consumer-group census (OMN-14528). Defaults to the "
+            "KAFKA_BOOTSTRAP_SERVERS env var. The census is COLLECTED IN CODE by "
+            "probing the broker (broker_probe.collect_live_consumer_groups via "
+            "confluent_kafka.admin.AdminClient.list_consumer_groups) — there is "
+            "no operator-typed census override. The removed --live-consumer-profiles "
+            "flag required the operator to hand-type the census and nothing ever "
+            "supplied it, so the deadness check silently never ran."
+        ),
+    )
+    parser.add_argument(
+        "--skip-consumer-liveness",
+        action="store_true",
+        default=False,
+        help=(
+            "Explicitly run a STATIC-ONLY sweep, omitting the CONSUMER_LIVENESS "
+            "phase (OMN-14528). Without this flag the full sweep REQUIRES a "
+            "broker (via --bootstrap-servers / KAFKA_BOOTSTRAP_SERVERS) and fails "
+            "closed if none is configured — a runtime sweep that cannot probe "
+            "the broker cannot verify liveness. This flag is the loud, explicit "
+            "operator opt-out; it is never a silent skip."
         ),
     )
     parser.add_argument(
@@ -310,19 +329,41 @@ def main() -> None:
         all_publish.extend(c.publish_topics)
         all_subscribe.extend(c.subscribe_topics)
 
-    live_consumer_profiles: list[str] | None = None
-    if args.live_consumer_profiles is not None:
-        live_consumer_profiles = [
-            p.strip().lower()
-            for p in args.live_consumer_profiles.split(",")
-            if p.strip()
+    # OMN-14528: collect the LIVE consumer-group census by probing the broker in
+    # code (never a hand-typed flag). The full sweep runs CONSUMER_LIVENESS by
+    # default and fails closed when no broker is configured — unless the
+    # operator explicitly opts into a static-only sweep with
+    # --skip-consumer-liveness.
+    enabled_checks: list[EnumSweepCheck] | None = None
+    live_consumer_groups: list[str] | None = None
+    require_live_consumer_census = False
+    if args.skip_consumer_liveness:
+        # Loud, explicit static-only sweep: every phase EXCEPT the live check.
+        enabled_checks = [
+            c for c in EnumSweepCheck if c is not EnumSweepCheck.CONSUMER_LIVENESS
         ]
+    else:
+        bootstrap_servers = args.bootstrap_servers or os.environ.get(
+            "KAFKA_BOOTSTRAP_SERVERS"
+        )
+        if not bootstrap_servers:
+            _log.error(
+                "CONSUMER_LIVENESS check requires a broker but neither "
+                "--bootstrap-servers nor KAFKA_BOOTSTRAP_SERVERS is set. Set one, "
+                "or pass --skip-consumer-liveness for an explicit static-only "
+                "sweep (fail closed; never a silent skip, OMN-14528)."
+            )
+            sys.exit(2)
+        live_consumer_groups = collect_live_consumer_groups(bootstrap_servers)
+        require_live_consumer_census = True
 
     request = RuntimeSweepRequest(
         contracts=contracts,
         topic_producers=all_publish,
         topic_consumers=all_subscribe,
-        live_consumer_profiles=live_consumer_profiles,
+        live_consumer_groups=live_consumer_groups,
+        require_live_consumer_census=require_live_consumer_census,
+        enabled_checks=enabled_checks,
         dry_run=args.dry_run,
     )
 

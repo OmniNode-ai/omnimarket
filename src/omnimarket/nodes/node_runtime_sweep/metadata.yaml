@@ -8,13 +8,21 @@ entry_points:
 capabilities:
   standalone: true
   full_runtime: true
-  requires_network: false
+  # OMN-14528: the CONSUMER_LIVENESS phase probes the Kafka/Redpanda broker for
+  # the live consumer-group census (broker_probe.collect_live_consumer_groups),
+  # so the node now requires network access to the broker.
+  requires_network: true
   requires_repo: true
   requires_secrets: false
   requires_docker: false
   side_effect_class: read_only
 dependencies:
   - "omnibase_core>=0.39.0"
+  # OMN-14528: canonical consumer-group naming (normalize_kafka_identifier) +
+  # infra error types used by the broker probe.
+  - "omnibase-infra>=0.38.3,<0.39.0"
+  # OMN-14528: AdminClient.list_consumer_groups broker probe.
+  - "confluent-kafka>=2.12.0,<3.0.0"
 authors: ["OmniNode Platform Team"]
 license: "MIT"
 tags: ["sweep", "runtime", "wiring", "contracts", "verification", "watchdog", "fsm-invariant"]

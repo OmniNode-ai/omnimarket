@@ -73,6 +73,23 @@ def fixture_omni_home(tmp_path: Path) -> Path:
     return tmp_path
 
 
+@pytest.fixture
+def stub_broker(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Stub the OMN-14528 live-consumer-group broker probe.
+
+    The default skill/CLI sweep now probes the broker for the live
+    consumer-group census (fail closed when no broker is configured). These
+    default-input COLLECTION tests are orthogonal to liveness, so the probe is
+    stubbed to a non-empty census and ``KAFKA_BOOTSTRAP_SERVERS`` is set — the
+    collection assertions below stay focused on the $OMNI_HOME walk.
+    """
+    monkeypatch.setenv("KAFKA_BOOTSTRAP_SERVERS", "fakehost:19092")
+    monkeypatch.setattr(
+        "omnimarket.nodes.node_runtime_sweep.broker_probe.collect_live_consumer_groups",
+        lambda _bootstrap_servers: ["dev.omnimarket.node_stub.consume.v1"],
+    )
+
+
 # ---------------------------------------------------------------------------
 # 1. Default input wiring
 # ---------------------------------------------------------------------------
@@ -80,7 +97,7 @@ def fixture_omni_home(tmp_path: Path) -> Path:
 
 @pytest.mark.unit
 def test_empty_request_self_collects_default_input(
-    monkeypatch: pytest.MonkeyPatch, fixture_omni_home: Path
+    monkeypatch: pytest.MonkeyPatch, fixture_omni_home: Path, stub_broker: None
 ) -> None:
     """No-input request (the skill dispatch shape) must check real entities."""
     monkeypatch.setenv("OMNI_HOME", str(fixture_omni_home))
@@ -94,7 +111,7 @@ def test_empty_request_self_collects_default_input(
 
 @pytest.mark.unit
 def test_skill_dispatch_payload_shape_checks_entities(
-    monkeypatch: pytest.MonkeyPatch, fixture_omni_home: Path
+    monkeypatch: pytest.MonkeyPatch, fixture_omni_home: Path, stub_broker: None
 ) -> None:
     """The exact ``onex skill runtime_sweep`` payload must not be vacuous.
 
@@ -112,7 +129,7 @@ def test_skill_dispatch_payload_shape_checks_entities(
 
 @pytest.mark.unit
 def test_scope_omnidash_only_limits_default_collection(
-    monkeypatch: pytest.MonkeyPatch, fixture_omni_home: Path
+    monkeypatch: pytest.MonkeyPatch, fixture_omni_home: Path, stub_broker: None
 ) -> None:
     """scope=omnidash-only restricts the default walk to the omnidash repo."""
     monkeypatch.setenv("OMNI_HOME", str(fixture_omni_home))
