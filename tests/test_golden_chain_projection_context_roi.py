@@ -88,6 +88,45 @@ class TestContextRoiProjection:
         assert first["failure_stage"] == "none"
         assert first["proof_class"] == "runtime-observed-only"
 
+    def test_factor_subset_hash_and_routing_source_are_projected_omn14535(
+        self,
+    ) -> None:
+        """OMN-14535: the runner has populated both fields on every row since
+        their introduction (handler_context_roi_runner.py's
+        _factor_subset_hash / routing_source) — this projection silently
+        dropped both, on every row ever written. Drives the real, non-default
+        producer values (not the golden-chain fixtures' implicit "" default,
+        which never exercised the missing-field bug) through project().
+        """
+        db = InmemoryDatabaseAdapter()
+        row = ModelAttemptReductionRow(
+            run_id="run-001",
+            correlation_id="c-omn14535",
+            task_id="task-A",
+            run_order=1,
+            context_factor_subset="golden_exemplar",
+            context_pack_hash="abc123",
+            factor_subset_hash="sha256:real-factor-hash",
+            routing_source="routing_tier:local-coder",
+            attempt_count=1,
+            first_pass_success=True,
+            final_success=True,
+            failure_stage=EnumFailureStage.NONE,
+            prompt_tokens=100,
+            completion_tokens=50,
+            estimated_cost=0.0,
+            model_id="qwen3-coder-30b",
+            provider="local",
+            endpoint_ref="local-coder",
+        )
+        result = ModelContextRoiRunResult(run_id="run-001", rows=(row,))
+
+        HANDLER.project(result, db)
+
+        projected = db.query("context_roi_scores")[0]
+        assert projected["factor_subset_hash"] == "sha256:real-factor-hash"
+        assert projected["routing_source"] == "routing_tier:local-coder"
+
     def test_tokens_used_is_prompt_plus_completion(self) -> None:
         db = InmemoryDatabaseAdapter()
         result = ModelContextRoiRunResult(
@@ -230,6 +269,15 @@ class TestContextRoiContractWiring:
             contract["event_bus"]["consumer_group"]
             == "local.omnimarket.node_projection_context_roi.consume.v1"
         )
+        # OMN-14535: closes a pre-existing state-coverage-gate baseline gap
+        # (this node's declared terminal_event output was never asserted by
+        # any top-level test) while touching this contract for the dropped-
+        # fields fix.
+        assert (
+            contract["terminal_event"]
+            == "onex.evt.omnimarket.projection-context-roi-applied.v1"
+        )
+        assert contract["terminal_event"] in contract["event_bus"]["publish_topics"]
 
     def test_migration_declares_handler_schema(self) -> None:
         migration = (
