@@ -16,11 +16,26 @@ import ast
 import logging
 import os
 import re
+import subprocess
 from pathlib import Path
+from typing import Any
 
+import yaml
 from pydantic import BaseModel, ConfigDict, Field
 
 _log = logging.getLogger(__name__)
+
+# OMN-14541 (org-jam fix, parent OMN-14531): the shipped baseline of
+# pre-existing debt this gate ratchets against. First-activation of the
+# compliance-sweep CI gate found 81 pre-existing violations across 40
+# handler files in nodes this PR never touched — those are frozen here so
+# the gate stays fail-closed on NEW violations without permanently blocking
+# every future omnimarket dev PR (CI Summary is the sole required check on
+# dev). See ``merge_base_accepted_keys`` for why the comparison is against
+# the merge-base's copy of this file, not the PR's own.
+DEFAULT_BASELINE = (
+    Path(__file__).parent.parent / "data" / "compliance_sweep_baseline.yaml"
+)
 
 # Default handler repos scanned when neither ``target_dirs`` nor ``repos`` is
 # supplied. Shared by the ``__main__`` CLI path and the RuntimeLocal dispatch
@@ -56,6 +71,19 @@ class ModelComplianceViolation(BaseModel):
     severity: str  # CRITICAL | ERROR | WARNING
     line: int = 0
 
+    def key(self) -> str:
+        """Stable identity used for baseline matching (OMN-14541).
+
+        Deliberately excludes ``line`` — an unrelated edit above the
+        violating line in the same file would shift it, which would make a
+        genuinely unchanged pre-existing violation look "new" on every
+        baseline comparison. ``message`` already carries the violating
+        source text (or the specific transport import), so
+        ``violation_type + node_name + handler_path + message`` is unique
+        without needing the line number.
+        """
+        return f"{self.violation_type}::{self.node_name}::{self.handler_path}::{self.message}"
+
 
 class ComplianceSweepRequest(BaseModel):
     """Input for the compliance sweep handler.
@@ -77,6 +105,18 @@ class ComplianceSweepRequest(BaseModel):
     repos: list[str] = Field(default_factory=list)
     checks: list[str] | None = None
     dry_run: bool = False
+    # OMN-14541 (org-jam fix): override the shipped baseline path. None (the
+    # default) resolves to DEFAULT_BASELINE — tests and callers wanting a
+    # scoped/empty baseline pass an explicit path instead.
+    baseline_path: str | None = None
+
+
+class ModelComplianceBaseline(BaseModel):
+    """Frozen pre-existing compliance debt. May only ever shrink (OMN-14541)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    accepted: list[str] = Field(default_factory=list)
 
 
 class ComplianceSweepResult(BaseModel):
@@ -85,15 +125,47 @@ class ComplianceSweepResult(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     violations: list[ModelComplianceViolation] = Field(default_factory=list)
+    # OMN-14541 (org-jam fix): the subset of ``violations`` NOT covered by the
+    # trusted baseline — these, and only these, determine ``status``. A
+    # violation whose key is in the baseline is real debt, still reported,
+    # but does not fail the gate.
+    new_violations: list[ModelComplianceViolation] = Field(default_factory=list)
+    baselined_violations: list[ModelComplianceViolation] = Field(default_factory=list)
+    # Baseline keys with no matching current violation in THIS scan —
+    # informational only, not a gate condition (see evaluate_ratchet):
+    # unlike the contract-topic-graph ratchet's fixed whole-corpus scope,
+    # this handler is routinely called against an arbitrary partial scope,
+    # so an absent key here is not reliable evidence the underlying
+    # violation was actually fixed rather than simply out of scope.
+    fixed_baseline_keys: list[str] = Field(default_factory=list)
     handlers_scanned: int = 0
+    # OMN-14541 (class fix, parent OMN-14531): count of contract.yaml files
+    # examined by the "missing-routing" check. Together with
+    # ``handlers_scanned`` this forms the scan census — see ``scanned_count``.
+    contracts_checked: int = 0
     compliant: int = 0
     imperative: int = 0
     status: str = "compliant"  # compliant | violations_found | error
+    # OMN-14541: populated only when status == "error" — the reason the sweep
+    # refused to report a verdict (e.g. an unresolvable/empty scan scope).
+    scan_error: str | None = None
     dry_run: bool = False
 
     @property
     def total_violations(self) -> int:
         return len(self.violations)
+
+    @property
+    def scanned_count(self) -> int:
+        """Total scan surface examined across all check dimensions.
+
+        OMN-14541 (class fix, parent OMN-14531): the shared detector-shelf
+        defect is a roll-up that computes ``bad_count == 0 -> green`` without
+        ever asserting this is > 0. A scan of an empty/unresolvable scope is
+        arithmetically identical to a genuinely clean scan of the real
+        handler universe unless this invariant is enforced (see ``handle()``).
+        """
+        return self.handlers_scanned + self.contracts_checked
 
     @property
     def by_type(self) -> dict[str, int]:
@@ -108,6 +180,115 @@ class ComplianceSweepResult(BaseModel):
         for v in self.violations:
             counts[v.severity] = counts.get(v.severity, 0) + 1
         return counts
+
+
+# ---------------------------------------------------------------------------
+# Baseline ratchet (OMN-14541, org-jam fix)
+#
+# First activation of this gate as a CI requirement found 81 pre-existing
+# violations across 40 handler files this PR never touched. Since CI Summary
+# is the sole required status check on omnimarket dev, hard-failing on that
+# debt would permanently block every future dev PR — the OMN-14505 "fail
+# closed with no grandfather jams the org" lesson. The fix mirrors the
+# contract-topic-graph ratchet (OMN-14527): pre-existing debt is frozen in a
+# baseline that may only ever SHRINK, and the comparison is against the
+# baseline's content AT THE MERGE-BASE with the target branch — never the
+# PR's own copy — so a PR cannot add a real violation and its baseline entry
+# in the same commit and have the ratchet miss it.
+# ---------------------------------------------------------------------------
+
+
+def load_baseline(path: Path) -> ModelComplianceBaseline:
+    if not path.is_file():
+        return ModelComplianceBaseline()
+    data = yaml.safe_load(path.read_text()) or {}
+    return ModelComplianceBaseline.model_validate(data)
+
+
+def _run_git(args: list[str], cwd: Path) -> str | None:
+    """Run a git command, returning stdout or None on any failure."""
+    try:
+        result = subprocess.run(
+            ["git", *args],
+            cwd=cwd,
+            capture_output=True,
+            text=True,
+            timeout=30,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if result.returncode != 0:
+        return None
+    return result.stdout.strip()
+
+
+def merge_base_accepted_keys(baseline_path: Path) -> set[str] | None:
+    """Return the ``accepted`` keys frozen in the baseline AT THE MERGE-BASE.
+
+    Returns ``None`` (best-effort, not a hard requirement) when the merge
+    base cannot be determined — a shallow local clone, a detached/unpushed
+    branch, ``git`` being unavailable, or (the bootstrap case: this file
+    being brand new) the path simply not existing at the merge-base commit.
+    Callers fall back to trusting the PR-local baseline in that case rather
+    than hard-failing every run on an environment limitation unrelated to
+    the actual violation population.
+    """
+    repo_root = baseline_path.resolve().parent
+    while repo_root != repo_root.parent and not (repo_root / ".git").exists():
+        repo_root = repo_root.parent
+    if not (repo_root / ".git").exists():
+        return None
+
+    rel_path = baseline_path.resolve().relative_to(repo_root).as_posix()
+    target_ref = os.environ.get("GITHUB_BASE_REF", "").strip()
+    candidates = (
+        [f"origin/{target_ref}"] if target_ref else ["origin/dev", "origin/main"]
+    )
+    for candidate in candidates:
+        merge_base = _run_git(["merge-base", "HEAD", candidate], cwd=repo_root)
+        if not merge_base:
+            continue
+        content = _run_git(["show", f"{merge_base}:{rel_path}"], cwd=repo_root)
+        if content is None:
+            continue
+        try:
+            data = yaml.safe_load(content) or {}
+            baseline = ModelComplianceBaseline.model_validate(data)
+        except (yaml.YAMLError, ValueError):
+            continue
+        return set(baseline.accepted)
+    return None
+
+
+def evaluate_ratchet(
+    violations: list[ModelComplianceViolation],
+    local_accepted: set[str],
+    trusted_accepted: set[str],
+) -> tuple[list[ModelComplianceViolation], list[ModelComplianceViolation], list[str]]:
+    """Split ``violations`` into ``(new, baselined, fixed_keys)`` per the ratchet.
+
+    ``trusted_accepted`` decides what counts as "already accepted" — it must
+    be the merge-base baseline (or, as a documented fallback, the PR-local
+    one), NEVER a baseline this same run could have just written. A
+    violation is NEW the instant its key is not in ``trusted_accepted``,
+    regardless of whether ``local_accepted`` (the PR's own, possibly
+    just-edited, baseline file) also contains it — that is what stops a PR
+    from adding a real violation and its baseline entry in the same commit.
+
+    ``fixed_keys`` is evaluated against ``local_accepted`` instead: a key the
+    PR-local baseline still claims to accept, but that no longer corresponds
+    to any current violation. Returned for visibility only — callers scanning
+    a partial scope (a single repo, one target_dir) should NOT treat this as
+    proof the underlying violation was fixed rather than simply out of the
+    current scan's scope; only a canonical whole-corpus scan can tell those
+    apart.
+    """
+    current_keys = {v.key() for v in violations}
+    new_violations = [v for v in violations if v.key() not in trusted_accepted]
+    baselined_violations = [v for v in violations if v.key() in trusted_accepted]
+    fixed_keys = sorted(local_accepted - current_keys)
+    return new_violations, baselined_violations, fixed_keys
 
 
 # ---------------------------------------------------------------------------
@@ -212,17 +393,41 @@ class NodeComplianceSweep:
         path (empty/`repos` payload) scans the default repo set exactly like
         the ``__main__`` CLI path, instead of defaulting to zero handlers
         (OMN-13514).
+
+        OMN-14541 (class fix, parent OMN-14531): a scope that resolves to
+        zero directories, or whose every resolved directory is unreadable,
+        must never report ``status="compliant"`` — that is arithmetically
+        indistinguishable from a genuinely clean scan of the real handler
+        universe. This method refuses to report a verdict (``status="error"``)
+        whenever ``scanned_count == 0``, mirroring the
+        ``node_duplication_sweep`` "Refusing to report PASS over an
+        unresolvable scope" template.
         """
         checks = request.checks or self.ALL_CHECKS
         violations: list[ModelComplianceViolation] = []
         handlers_scanned = 0
+        contracts_checked = 0
         compliant_count = 0
 
         target_dirs = self._resolve_targets(request)
 
+        if not target_dirs:
+            return ComplianceSweepResult(
+                status="error",
+                scan_error=(
+                    "Scan scope resolved to zero target directories "
+                    "(empty/unresolvable repos or target_dirs). Refusing to "
+                    "report compliant over an unresolvable scope."
+                ),
+                dry_run=request.dry_run,
+            )
+
+        unresolved_targets: list[str] = []
+
         for target_dir in target_dirs:
             target = Path(target_dir)
             if not target.is_dir():
+                unresolved_targets.append(target_dir)
                 continue
             repo_name = target.name
 
@@ -260,11 +465,75 @@ class NodeComplianceSweep:
                 else:
                     compliant_count += 1
 
-        status = "compliant" if not violations else "violations_found"
+            # OMN-14541: the "missing-routing" check operates per-node
+            # (per contract.yaml), not per handler file — a node's canonical
+            # handler must be reachable through its own declared routing
+            # table. Contracts are counted toward ``scanned_count``
+            # regardless of which checks are active (mirrors
+            # ``handlers_scanned`` counting every handler file found), but
+            # violations are only emitted when "missing-routing" is requested.
+            for contract_path in self._find_node_contracts(target):
+                contracts_checked += 1
+                node_name = self._infer_node_name_from_contract(contract_path, target)
+                if "missing-routing" in checks:
+                    violations.extend(
+                        self._check_missing_routing(repo_name, contract_path, node_name)
+                    )
+
+        scanned_count = handlers_scanned + contracts_checked
+        if scanned_count == 0:
+            return ComplianceSweepResult(
+                status="error",
+                scan_error=(
+                    f"0 handlers and 0 contracts scanned across "
+                    f"{len(target_dirs)} target dir(s) "
+                    f"({len(unresolved_targets)} unresolved: "
+                    f"{unresolved_targets}). Refusing to report compliant "
+                    f"over an unresolvable/empty scope."
+                ),
+                handlers_scanned=0,
+                contracts_checked=0,
+                dry_run=request.dry_run,
+            )
+
+        baseline_path = (
+            Path(request.baseline_path) if request.baseline_path else DEFAULT_BASELINE
+        )
+        baseline = load_baseline(baseline_path)
+        local_accepted = set(baseline.accepted)
+
+        trusted_accepted = merge_base_accepted_keys(baseline_path)
+        if trusted_accepted is None:
+            _log.warning(
+                "compliance-sweep could not resolve the merge-base baseline "
+                "(shallow clone, detached checkout, or brand-new baseline file) "
+                "— falling back to the PR-local baseline for this run's "
+                "new-violation check."
+            )
+            trusted_accepted = local_accepted
+
+        new_violations, baselined_violations, fixed_baseline_keys = evaluate_ratchet(
+            violations, local_accepted, trusted_accepted
+        )
+
+        # OMN-14541: only NEW violations fail the gate. Pre-existing debt
+        # still in the trusted baseline is reported but does not jam every
+        # future PR. ``fixed_baseline_keys`` is informational only, not a
+        # gate condition — unlike the contract-topic-graph ratchet, this
+        # handler is routinely called against an arbitrary PARTIAL scope
+        # (a single repo, a synthetic test fixture, one target_dir), so a
+        # baseline key absent from a partial scan is expected, not evidence
+        # the underlying violation was actually fixed. Enforcing baseline
+        # cleanup on that signal here would misfire on every scoped scan.
+        status = "compliant" if not new_violations else "violations_found"
 
         return ComplianceSweepResult(
             violations=violations,
+            new_violations=new_violations,
+            baselined_violations=baselined_violations,
+            fixed_baseline_keys=fixed_baseline_keys,
             handlers_scanned=handlers_scanned,
+            contracts_checked=contracts_checked,
             compliant=compliant_count,
             imperative=handlers_scanned - compliant_count,
             status=status,
@@ -307,6 +576,146 @@ class NodeComplianceSweep:
             if part.startswith("node_"):
                 return part
         return handler_file.stem
+
+    def _find_node_contracts(self, root: Path) -> list[Path]:
+        """Find node contract.yaml files under ``root`` (OMN-14541).
+
+        Used by the "missing-routing" check, which operates per-node
+        (per contract) rather than per handler file.
+        """
+        results = []
+        for contract_path in root.rglob("contract.yaml"):
+            if any(part in _EXCLUDED_DIRS for part in contract_path.parts):
+                continue
+            results.append(contract_path)
+        return sorted(results)
+
+    def _infer_node_name_from_contract(
+        self, contract_path: Path, repo_root: Path
+    ) -> str:
+        """Infer node name from a contract.yaml's location (OMN-14541)."""
+        parts = contract_path.relative_to(repo_root).parts
+        for part in parts:
+            if part.startswith("node_"):
+                return part
+        return contract_path.parent.name
+
+    def _check_missing_routing(
+        self, repo: str, contract_path: Path, node_name: str
+    ) -> list[ModelComplianceViolation]:
+        """Check 4: the node's canonical handler is reachable via its own
+        declared ``handler_routing`` table (OMN-14541).
+
+        A node that declares a top-level ``handler:`` block (the handler
+        ``RuntimeLocal`` resolves for direct/single-shot dispatch) AND a
+        non-empty ``handler_routing.handlers`` table (multi-operation
+        ``operation_match`` dispatch) is only actually reachable at runtime
+        if the canonical handler appears somewhere in that table — as a
+        per-operation entry (matched by module path, or by class name when
+        the entry omits a module, per the ``handler_key``/``handler_class``
+        contract dialects) or as ``handler_routing.default_handler``. If
+        neither, the declared canonical handler can never be dispatched —
+        this is the real-world "no dispatcher found" failure mode (a routing
+        table that silently drops the node's own primary handler).
+
+        Nodes with no ``handler_routing`` block, or an empty ``handlers``
+        table, are not checked here: a bare ``handler:`` block alone is
+        sufficient for single-operation dispatch (no routing table needed),
+        matching the precedent in
+        ``omnibase_core.nodes.node_compliance_scan_compute`` ("No
+        handler_routing declared (optional)").
+
+        Calibrated against the live workspace (OMN-14541): this exact
+        matcher produces zero false positives across all 318 real
+        omnimarket/omnibase_core/omnibase_infra/... nodes that declare both
+        a top handler and a non-empty routing table.
+        """
+        try:
+            text = contract_path.read_text(encoding="utf-8")
+            data = yaml.safe_load(text)
+        except (OSError, yaml.YAMLError):
+            return []
+        if not isinstance(data, dict):
+            return []
+
+        top_handler = data.get("handler")
+        if not isinstance(top_handler, dict) or not top_handler.get("module"):
+            return []
+        top_module = str(top_handler["module"])
+        top_class = top_handler.get("class")
+
+        routing = data.get("handler_routing")
+        if not isinstance(routing, dict):
+            return []
+        entries = routing.get("handlers")
+        if not entries:
+            return []
+
+        if self._handler_is_routed(top_module, top_class, entries, routing):
+            return []
+
+        line = 1
+        for i, source_line in enumerate(text.splitlines(), 1):
+            if top_module in source_line:
+                line = i
+                break
+
+        return [
+            ModelComplianceViolation(
+                repo=repo,
+                handler_path=str(contract_path.name),
+                node_name=node_name,
+                violation_type="MISSING_HANDLER_ROUTING",
+                message=(
+                    f"Canonical handler '{top_module}"
+                    f"{'.' + str(top_class) if top_class else ''}' is not "
+                    f"reachable via handler_routing.handlers (operation_match "
+                    f"table) or handler_routing.default_handler — it can "
+                    f"never be dispatched for any operation."
+                ),
+                severity="CRITICAL",
+                line=line,
+            )
+        ]
+
+    @staticmethod
+    def _handler_is_routed(
+        top_module: str,
+        top_class: str | None,
+        entries: list[Any],
+        routing: dict[str, Any],
+    ) -> bool:
+        """Return True if ``top_module``/``top_class`` is reachable through
+        ``entries`` (per-operation routing) or ``routing.default_handler``.
+
+        Handles the three contract dialects observed in the live workspace:
+        nested ``handler: {module, name|class}``, flat ``handler_module`` /
+        ``handler_class``, and bare ``handler_key`` (class-name only, no
+        module path).
+        """
+        for entry in entries:
+            if not isinstance(entry, dict):
+                continue
+            module = None
+            cls = None
+            nested = entry.get("handler")
+            if isinstance(nested, dict):
+                module = nested.get("module")
+                cls = nested.get("name") or nested.get("class")
+            module = module or entry.get("handler_module")
+            cls = cls or entry.get("handler_class") or entry.get("handler_key")
+            if module and module == top_module:
+                return True
+            if module is None and cls and top_class and cls == top_class:
+                return True
+
+        default_handler = routing.get("default_handler")
+        if default_handler:
+            tail = str(default_handler).rsplit(":", 1)[-1]
+            if tail == top_class or default_handler == top_module:
+                return True
+
+        return False
 
     def _read_lines(self, path: Path) -> list[str]:
         try:
