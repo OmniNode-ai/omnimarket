@@ -1,0 +1,94 @@
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# Contract Topic Graph Gate (OMN-14527)
+#
+# Nodes are contracts. Edges are topics. This gate asks the question no runtime
+# probe can answer cheaply: WHO IS SUPPOSED TO TALK TO WHOM — AND DO THEY?
+#
+# It catches, statically and with no broker:
+#   ORPHANED_CONSUMER      subscribes to a topic NO contract publishes
+#   ORPHANED_PRODUCER      publishes a topic NO contract subscribes to
+#   DECLARED_BUT_UNWIRED   subscribes with no handler_routing — consumes and drops
+#   DISCONNECTED_SUBGRAPH  a fully-wired cluster with no inbound edge
+#
+# This is the gate that would have caught OMN-14134 / 13532 / 4828 / 13989 / 13997
+# before any of them merged: five CI-green `Done` tickets that were 100% runtime
+# no-ops because node_ledger_write_effect subscribed to a topic nobody published.
+#
+# RATCHET: pre-existing debt is frozen in the baseline, which may only SHRINK.
+# A NEW defect hard-fails. Fixing a baselined defect without removing its baseline
+# entry ALSO fails, so the baseline can never silently re-authorize a regression.
+
+name: Contract Topic Graph
+
+on:
+  pull_request:
+    branches: [main, dev]
+  merge_group:
+  workflow_dispatch:
+
+concurrency:
+  group: contract-topic-graph-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  contract-topic-graph:
+    name: contract-topic-graph
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      # fetch-depth: 0 (full history) is required so the baseline ratchet can
+      # resolve the merge-base with the target branch -- a shallow clone
+      # cannot prove a baseline addition predates this PR.
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@38f3f104447c67c051c4a08e39b64a148898af3a # v4
+        with:
+          enable-cache: true
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: Install dependencies
+        run: uv sync --all-extras
+
+      # The graph is only sound where the entire active runtime surface
+      # (ONEX_ACTIVE_RUNTIME_PACKAGES=omnibase_infra,omnimarket) is co-installed.
+      # omnimarket depends on omnibase_infra, so its CI environment is the one
+      # place that holds the complete graph. If that ever stops being true the
+      # validator raises rather than reporting phantom orphans — assert it loudly
+      # here so a dependency change surfaces as a gate failure, not as silence.
+      - name: Assert the graph surface is complete (fail closed)
+        run: |
+          uv run python - <<'PY'
+          from omnimarket.validators.contract_topic_graph import (
+              ACTIVE_RUNTIME_PACKAGES,
+              discover_contract_roots,
+          )
+
+          roots = discover_contract_roots()
+          missing = [p for p in ACTIVE_RUNTIME_PACKAGES if p not in roots]
+          if missing:
+              raise SystemExit(
+                  f"::error::Contract graph is UNSOUND — missing {missing}. "
+                  "A partial graph reports every cross-package producer as a phantom "
+                  "orphan. Restore the dependency or move this gate."
+              )
+          print(f"Graph surface complete: {sorted(roots)}")
+          PY
+
+      - name: Contract topic graph gate (ratcheted)
+        run: uv run python -m omnimarket.validators.contract_topic_graph
+
+      - name: Golden-chain tests (generated per edge)
+        run: uv run pytest tests/validators/test_contract_topic_graph.py -q
+
+      - name: Census (informational)
+        if: always()
+        run: uv run python -m omnimarket.validators.contract_topic_graph --report || true
