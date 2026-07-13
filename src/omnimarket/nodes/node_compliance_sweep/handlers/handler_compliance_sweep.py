@@ -16,6 +16,7 @@ import ast
 import logging
 import os
 import re
+import subprocess
 from pathlib import Path
 from typing import Any
 
@@ -23,6 +24,18 @@ import yaml
 from pydantic import BaseModel, ConfigDict, Field
 
 _log = logging.getLogger(__name__)
+
+# OMN-14541 (org-jam fix, parent OMN-14531): the shipped baseline of
+# pre-existing debt this gate ratchets against. First-activation of the
+# compliance-sweep CI gate found 81 pre-existing violations across 40
+# handler files in nodes this PR never touched — those are frozen here so
+# the gate stays fail-closed on NEW violations without permanently blocking
+# every future omnimarket dev PR (CI Summary is the sole required check on
+# dev). See ``merge_base_accepted_keys`` for why the comparison is against
+# the merge-base's copy of this file, not the PR's own.
+DEFAULT_BASELINE = (
+    Path(__file__).parent.parent / "data" / "compliance_sweep_baseline.yaml"
+)
 
 # Default handler repos scanned when neither ``target_dirs`` nor ``repos`` is
 # supplied. Shared by the ``__main__`` CLI path and the RuntimeLocal dispatch
@@ -58,6 +71,19 @@ class ModelComplianceViolation(BaseModel):
     severity: str  # CRITICAL | ERROR | WARNING
     line: int = 0
 
+    def key(self) -> str:
+        """Stable identity used for baseline matching (OMN-14541).
+
+        Deliberately excludes ``line`` — an unrelated edit above the
+        violating line in the same file would shift it, which would make a
+        genuinely unchanged pre-existing violation look "new" on every
+        baseline comparison. ``message`` already carries the violating
+        source text (or the specific transport import), so
+        ``violation_type + node_name + handler_path + message`` is unique
+        without needing the line number.
+        """
+        return f"{self.violation_type}::{self.node_name}::{self.handler_path}::{self.message}"
+
 
 class ComplianceSweepRequest(BaseModel):
     """Input for the compliance sweep handler.
@@ -79,6 +105,18 @@ class ComplianceSweepRequest(BaseModel):
     repos: list[str] = Field(default_factory=list)
     checks: list[str] | None = None
     dry_run: bool = False
+    # OMN-14541 (org-jam fix): override the shipped baseline path. None (the
+    # default) resolves to DEFAULT_BASELINE — tests and callers wanting a
+    # scoped/empty baseline pass an explicit path instead.
+    baseline_path: str | None = None
+
+
+class ModelComplianceBaseline(BaseModel):
+    """Frozen pre-existing compliance debt. May only ever shrink (OMN-14541)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    accepted: list[str] = Field(default_factory=list)
 
 
 class ComplianceSweepResult(BaseModel):
@@ -87,6 +125,19 @@ class ComplianceSweepResult(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     violations: list[ModelComplianceViolation] = Field(default_factory=list)
+    # OMN-14541 (org-jam fix): the subset of ``violations`` NOT covered by the
+    # trusted baseline — these, and only these, determine ``status``. A
+    # violation whose key is in the baseline is real debt, still reported,
+    # but does not fail the gate.
+    new_violations: list[ModelComplianceViolation] = Field(default_factory=list)
+    baselined_violations: list[ModelComplianceViolation] = Field(default_factory=list)
+    # Baseline keys with no matching current violation in THIS scan —
+    # informational only, not a gate condition (see evaluate_ratchet):
+    # unlike the contract-topic-graph ratchet's fixed whole-corpus scope,
+    # this handler is routinely called against an arbitrary partial scope,
+    # so an absent key here is not reliable evidence the underlying
+    # violation was actually fixed rather than simply out of scope.
+    fixed_baseline_keys: list[str] = Field(default_factory=list)
     handlers_scanned: int = 0
     # OMN-14541 (class fix, parent OMN-14531): count of contract.yaml files
     # examined by the "missing-routing" check. Together with
@@ -129,6 +180,115 @@ class ComplianceSweepResult(BaseModel):
         for v in self.violations:
             counts[v.severity] = counts.get(v.severity, 0) + 1
         return counts
+
+
+# ---------------------------------------------------------------------------
+# Baseline ratchet (OMN-14541, org-jam fix)
+#
+# First activation of this gate as a CI requirement found 81 pre-existing
+# violations across 40 handler files this PR never touched. Since CI Summary
+# is the sole required status check on omnimarket dev, hard-failing on that
+# debt would permanently block every future dev PR — the OMN-14505 "fail
+# closed with no grandfather jams the org" lesson. The fix mirrors the
+# contract-topic-graph ratchet (OMN-14527): pre-existing debt is frozen in a
+# baseline that may only ever SHRINK, and the comparison is against the
+# baseline's content AT THE MERGE-BASE with the target branch — never the
+# PR's own copy — so a PR cannot add a real violation and its baseline entry
+# in the same commit and have the ratchet miss it.
+# ---------------------------------------------------------------------------
+
+
+def load_baseline(path: Path) -> ModelComplianceBaseline:
+    if not path.is_file():
+        return ModelComplianceBaseline()
+    data = yaml.safe_load(path.read_text()) or {}
+    return ModelComplianceBaseline.model_validate(data)
+
+
+def _run_git(args: list[str], cwd: Path) -> str | None:
+    """Run a git command, returning stdout or None on any failure."""
+    try:
+        result = subprocess.run(
+            ["git", *args],
+            cwd=cwd,
+            capture_output=True,
+            text=True,
+            timeout=30,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if result.returncode != 0:
+        return None
+    return result.stdout.strip()
+
+
+def merge_base_accepted_keys(baseline_path: Path) -> set[str] | None:
+    """Return the ``accepted`` keys frozen in the baseline AT THE MERGE-BASE.
+
+    Returns ``None`` (best-effort, not a hard requirement) when the merge
+    base cannot be determined — a shallow local clone, a detached/unpushed
+    branch, ``git`` being unavailable, or (the bootstrap case: this file
+    being brand new) the path simply not existing at the merge-base commit.
+    Callers fall back to trusting the PR-local baseline in that case rather
+    than hard-failing every run on an environment limitation unrelated to
+    the actual violation population.
+    """
+    repo_root = baseline_path.resolve().parent
+    while repo_root != repo_root.parent and not (repo_root / ".git").exists():
+        repo_root = repo_root.parent
+    if not (repo_root / ".git").exists():
+        return None
+
+    rel_path = baseline_path.resolve().relative_to(repo_root).as_posix()
+    target_ref = os.environ.get("GITHUB_BASE_REF", "").strip()
+    candidates = (
+        [f"origin/{target_ref}"] if target_ref else ["origin/dev", "origin/main"]
+    )
+    for candidate in candidates:
+        merge_base = _run_git(["merge-base", "HEAD", candidate], cwd=repo_root)
+        if not merge_base:
+            continue
+        content = _run_git(["show", f"{merge_base}:{rel_path}"], cwd=repo_root)
+        if content is None:
+            continue
+        try:
+            data = yaml.safe_load(content) or {}
+            baseline = ModelComplianceBaseline.model_validate(data)
+        except (yaml.YAMLError, ValueError):
+            continue
+        return set(baseline.accepted)
+    return None
+
+
+def evaluate_ratchet(
+    violations: list[ModelComplianceViolation],
+    local_accepted: set[str],
+    trusted_accepted: set[str],
+) -> tuple[list[ModelComplianceViolation], list[ModelComplianceViolation], list[str]]:
+    """Split ``violations`` into ``(new, baselined, fixed_keys)`` per the ratchet.
+
+    ``trusted_accepted`` decides what counts as "already accepted" — it must
+    be the merge-base baseline (or, as a documented fallback, the PR-local
+    one), NEVER a baseline this same run could have just written. A
+    violation is NEW the instant its key is not in ``trusted_accepted``,
+    regardless of whether ``local_accepted`` (the PR's own, possibly
+    just-edited, baseline file) also contains it — that is what stops a PR
+    from adding a real violation and its baseline entry in the same commit.
+
+    ``fixed_keys`` is evaluated against ``local_accepted`` instead: a key the
+    PR-local baseline still claims to accept, but that no longer corresponds
+    to any current violation. Returned for visibility only — callers scanning
+    a partial scope (a single repo, one target_dir) should NOT treat this as
+    proof the underlying violation was fixed rather than simply out of the
+    current scan's scope; only a canonical whole-corpus scan can tell those
+    apart.
+    """
+    current_keys = {v.key() for v in violations}
+    new_violations = [v for v in violations if v.key() not in trusted_accepted]
+    baselined_violations = [v for v in violations if v.key() in trusted_accepted]
+    fixed_keys = sorted(local_accepted - current_keys)
+    return new_violations, baselined_violations, fixed_keys
 
 
 # ---------------------------------------------------------------------------
@@ -336,10 +496,42 @@ class NodeComplianceSweep:
                 dry_run=request.dry_run,
             )
 
-        status = "compliant" if not violations else "violations_found"
+        baseline_path = (
+            Path(request.baseline_path) if request.baseline_path else DEFAULT_BASELINE
+        )
+        baseline = load_baseline(baseline_path)
+        local_accepted = set(baseline.accepted)
+
+        trusted_accepted = merge_base_accepted_keys(baseline_path)
+        if trusted_accepted is None:
+            _log.warning(
+                "compliance-sweep could not resolve the merge-base baseline "
+                "(shallow clone, detached checkout, or brand-new baseline file) "
+                "— falling back to the PR-local baseline for this run's "
+                "new-violation check."
+            )
+            trusted_accepted = local_accepted
+
+        new_violations, baselined_violations, fixed_baseline_keys = evaluate_ratchet(
+            violations, local_accepted, trusted_accepted
+        )
+
+        # OMN-14541: only NEW violations fail the gate. Pre-existing debt
+        # still in the trusted baseline is reported but does not jam every
+        # future PR. ``fixed_baseline_keys`` is informational only, not a
+        # gate condition — unlike the contract-topic-graph ratchet, this
+        # handler is routinely called against an arbitrary PARTIAL scope
+        # (a single repo, a synthetic test fixture, one target_dir), so a
+        # baseline key absent from a partial scan is expected, not evidence
+        # the underlying violation was actually fixed. Enforcing baseline
+        # cleanup on that signal here would misfire on every scoped scan.
+        status = "compliant" if not new_violations else "violations_found"
 
         return ComplianceSweepResult(
             violations=violations,
+            new_violations=new_violations,
+            baselined_violations=baselined_violations,
+            fixed_baseline_keys=fixed_baseline_keys,
             handlers_scanned=handlers_scanned,
             contracts_checked=contracts_checked,
             compliant=compliant_count,

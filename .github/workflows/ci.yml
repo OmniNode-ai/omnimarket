@@ -813,7 +813,13 @@ jobs:
     name: Compliance Sweep
     runs-on: ubuntu-latest
     steps:
+      # fetch-depth: 0 (full history) is required so the violation baseline
+      # ratchet can resolve the merge-base with the target branch (OMN-14541,
+      # org-jam fix) — a shallow clone cannot prove a baseline addition
+      # predates this PR.
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - name: Clone omnibase_core
         run: git clone --depth=1 https://github.com/OmniNode-ai/omnibase_core.git ../omnibase_core
       - name: Clone omnibase_compat
