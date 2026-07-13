@@ -34,6 +34,20 @@ KNOWN_PROJECTION_TABLES: frozenset[str] = frozenset(
 )
 
 
+def _optional_int(value: Any) -> int | None:
+    """Coerce a wire value to int, or None when absent/unparseable.
+
+    None lets the SQL COALESCE keep the column's existing value rather than
+    zeroing it out.
+    """
+    if value is None:
+        return None
+    try:
+        return int(float(value))
+    except (TypeError, ValueError):
+        return None
+
+
 class RegistrationProjectionRunner(BaseProjectionRunner):
     """Projects node registration events into node_service_registry table.
 
@@ -130,15 +144,28 @@ class RegistrationProjectionRunner(BaseProjectionRunner):
             or "unknown"
         )
 
-        raw_metadata = data.get("metadata") or {}
-        if not isinstance(raw_metadata, dict):
-            raw_metadata = {}
-        metadata = {**raw_metadata}
+        # OMN-14490: the producer (omnibase_infra MixinNodeIntrospection) emits a
+        # RICH introspection payload on the very hot node-introspection.v1 topic;
+        # the prior projection silently DROPPED endpoints / declared_capabilities
+        # / discovered_capabilities / contract_capabilities / current_state,
+        # persisting only node_name/node_id into the metadata JSONB. Preserve the
+        # FULL wire payload (minus runtime-injected `_`-prefixed keys) so nothing
+        # is lost; the column extractions above are unchanged.
+        metadata: dict[str, Any] = {
+            key: value for key, value in data.items() if not str(key).startswith("_")
+        }
+        raw_metadata = data.get("metadata")
+        if isinstance(raw_metadata, dict):
+            # Flatten the producer's own metadata block alongside the top-level
+            # fields so readers need not unwrap metadata.metadata.
+            metadata.update(raw_metadata)
         if node_name:
             metadata["node_name"] = node_name
         if node_id:
             metadata["node_id"] = node_id
-        metadata_json = json.dumps(metadata)
+        # default=str guards any non-JSON-native value (UUID/datetime) that
+        # slipped through; the topic is JSON so this is belt-and-suspenders.
+        metadata_json = json.dumps(metadata, default=str)
 
         await self.db.execute(
             f"""
@@ -183,16 +210,46 @@ class RegistrationProjectionRunner(BaseProjectionRunner):
             data.get("health_status") or data.get("healthStatus") or "healthy"
         )
 
+        # OMN-14506: the producer emits the canonical ModelNodeHeartbeatEvent
+        # (node_type / node_version / uptime_seconds / active_operations_count /
+        # memory_usage_mb / cpu_usage_percent / correlation_id). This projection
+        # previously persisted NONE of it — it wrote only health_status — so every
+        # heartbeat on a high-frequency topic dropped all its health metrics.
+        #
+        # The payload is MERGED into the existing metadata (`||`) rather than
+        # replacing it: a replace would clobber the rich introspection metadata
+        # (endpoints/capabilities) that OMN-14490 persists on the same row.
+        metrics: dict[str, Any] = {
+            key: value for key, value in data.items() if not str(key).startswith("_")
+        }
+        metrics_json = json.dumps(metrics, default=str)
+
+        # Row identity: the registry is keyed by service_name, which introspection
+        # resolves to node_name. The canonical heartbeat carries only node_id, so
+        # matching on service_name alone resolves to the UUID and matches ZERO
+        # rows — heartbeats never landed at all. Join through the node_id that
+        # introspection persists into the metadata JSONB, keeping the direct key
+        # as a fallback.
+        node_id = data.get("node_id") or data.get("nodeId")
+
         await self.db.execute(
             f"""
             UPDATE {self._table_registry}
             SET health_status = $1,
+                uptime_seconds = COALESCE($2, uptime_seconds),
+                metadata = COALESCE(metadata, '{{}}'::jsonb) || $3::jsonb,
                 last_health_check = NOW(),
-                updated_at = NOW()
-            WHERE service_name = $2
+                last_heartbeat_at = NOW(),
+                updated_at = NOW(),
+                projected_at = NOW()
+            WHERE service_name = $4
+               OR ($5::text IS NOT NULL AND metadata->>'node_id' = $5::text)
             """,
             str(health_status),
+            _optional_int(data.get("uptime_seconds")),
+            metrics_json,
             str(service_name),
+            str(node_id) if node_id else None,
         )
         return True
 
