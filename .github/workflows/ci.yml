@@ -1206,6 +1206,49 @@ jobs:
           GH_TOKEN: ${{ github.token }}
 
   # ============================================================================
+  # CONTRACT SWEEP GATE (OMN-14542, class fix, parent OMN-14531)
+  # node_contract_sweep (`nodes/*/contract.yaml` field/topic/node_type compliance)
+  # previously had ZERO CI/pre-commit caller anywhere and its ContractSweepRequest
+  # defaulted `repos` to an empty list, which the handler silently reinterpreted as
+  # "scan whatever top-level omni_home dirs happen to have a src/" — a prior receipt
+  # reported 9 contracts checked clean while 941 actually existed (~1% coverage).
+  #
+  # This job wires scripts/ci/run_contract_sweep_gate.py as a REQUIRED gate. The
+  # script derives the census (--repos) from its own on-disk location (never an
+  # operator-typed value) and independently re-counts contract.yaml files via a
+  # second, separately-implemented filesystem probe, then asserts the node's own
+  # scanned_count matches that independent count and is > 0. Any narrowing
+  # (scanned_count mismatch), any empty scope (scanned_count == 0), or an
+  # unresolvable OMNI_HOME is a HARD, BLOCKING failure — this is what actually
+  # closes the "9 vs 941" defect.
+  #
+  # SCOPE — the omnimarket tree carries pre-existing field/topic/node_type
+  # violations (5 major, 21 minor as of this gate landing — tracked in OMN-14544; see
+  # tracked follow-up). A whole-tree hard gate on those specific violations would
+  # immediately block every future PR on that backlog, so this job does NOT pass
+  # --strict: violations are printed as a warning (visible in the job log) but do
+  # not fail the check. --strict may be added once the backlog is paid down.
+  # ============================================================================
+  contract-sweep-gate:
+    needs: occ-preflight
+    name: Contract Sweep Gate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install uv
+        uses: astral-sh/setup-uv@38f3f104447c67c051c4a08e39b64a148898af3a # v4
+        with:
+          version: "latest"
+      - name: Install dependencies
+        run: uv sync --locked --all-extras
+      - name: Run contract sweep scope-invariant gate
+        run: uv run python scripts/ci/run_contract_sweep_gate.py
+
+  # ============================================================================
   # AISLOP SWEEP GATE (OMN-13578) — failing-rollup sub-job (Model B, OMN-13574)
   # Detection sweeps that are not pre-merge gates are advisory and get ignored
   # (Operating Rule 5). aislop detection was ABSENT from omnimarket CI; this job
@@ -1365,7 +1408,7 @@ jobs:
   ci-summary:
     name: CI Summary
     runs-on: ubuntu-latest
-    needs: [occ-preflight, zone-filter, lint, typecheck, detect-changes, test, integration-guard, topic-naming-lint, runtime-sweep, core-only-install, contract-compliance, e2e-workflow-runner, golden-chains, sea-e2e-chains, generated-node-golden-chain, dep-health, uv-lock-pin-reachability, aislop-sweep, coverage-sweep-gate, workflow-module-refs, no-noncanonical-lifecycle-classes]
+    needs: [occ-preflight, zone-filter, lint, typecheck, detect-changes, test, integration-guard, topic-naming-lint, runtime-sweep, core-only-install, contract-compliance, contract-sweep-gate, e2e-workflow-runner, golden-chains, sea-e2e-chains, generated-node-golden-chain, dep-health, uv-lock-pin-reachability, aislop-sweep, coverage-sweep-gate, workflow-module-refs, no-noncanonical-lifecycle-classes]
     if: always()
     steps:
       - name: Check CI results
@@ -1385,6 +1428,7 @@ jobs:
             "runtime-sweep=${{ needs.runtime-sweep.result }}" \
             "core-only-install=${{ needs.core-only-install.result }}" \
             "contract-compliance=${{ needs.contract-compliance.result }}" \
+            "contract-sweep-gate=${{ needs.contract-sweep-gate.result }}" \
             "e2e-workflow-runner=${{ needs.e2e-workflow-runner.result }}" \
             "golden-chains=${{ needs.golden-chains.result }}" \
             "sea-e2e-chains=${{ needs.sea-e2e-chains.result }}" \

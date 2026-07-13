@@ -309,6 +309,22 @@ repos:
         pass_filenames: false
         stages: [pre-commit]
 
+      # OMN-14542 (class fix, parent OMN-14531): node_contract_sweep's
+      # ContractSweepRequest.repos previously defaulted to an empty list, which the
+      # handler silently reinterpreted as "scan whatever omni_home dirs happen to
+      # have a src/" -- a prior receipt reported 9 contracts checked clean while 941
+      # actually existed. This hook runs the full-corpus gate on every contract.yaml
+      # edit and refuses to pass unless the node's own scanned_count matches an
+      # independently-computed contract count and is > 0. SYNC with ci.yml job
+      # "Contract Sweep Gate".
+      - id: contract-sweep-gate
+        name: Contract sweep scope-invariant gate (OMN-14542)
+        language: system
+        entry: uv run python scripts/ci/run_contract_sweep_gate.py
+        files: ^(src/omnimarket/nodes/node_.*/contract\.yaml|src/omnimarket/nodes/node_contract_sweep/.*\.py|scripts/ci/run_contract_sweep_gate\.py)$
+        pass_filenames: false
+        stages: [pre-commit]
+
       # OMN-13965: skill-mapping input-coverage gate. Every skill_mapping.yaml
       # arg carrying a `default` is force-injected into the node-input payload
       # on every `onex skill` invocation; if it is not accepted by the model the
