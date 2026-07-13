@@ -64,7 +64,7 @@ def _dead_infra_run(argv: list[str], **_kwargs: object) -> MagicMock:
     out = MagicMock()
     out.returncode = 1
     out.stdout = ""
-    out.stderr = "ssh: connect to host 192.168.86.201 port 22: Connection refused"
+    out.stderr = "ssh: connect to host 192.168.86.201 port 22: Connection refused"  # onex-allow-internal-ip OMN-14538 reason="mocked ssh stderr text in a unit test fixture; no live connection is made"
     return out
 
 
