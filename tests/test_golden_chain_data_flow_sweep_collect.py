@@ -70,14 +70,35 @@ def _local_target() -> ModelLaneTarget:
 @pytest.mark.unit
 class TestLaneResolution:
     def test_dev_lane_resolves_to_remote_host(self) -> None:
-        """dev resolves to the .201 runtime host + unprefixed container names."""
+        """dev resolves to the .201 runtime host + unprefixed container names.
+
+        OMN-14531: the default host is the Tailscale MagicDNS name, not the raw
+        private LAN IP — a raw ``192.168.86.201`` default is unroutable
+        off-network (feedback_use_tailscale_magicdns_hostnames), and was a Rule
+        #6 hardcoded-LAN-IP violation. Mirrors the node_database_sweep OMN-14526
+        fix.
+        """
         target = resolve_lane_target("dev")
         assert target.is_remote is True
-        assert (
-            target.runtime_host == "192.168.86.201"
-        )  # onex-allow-internal-ip OMN-13552 reason="test asserts canonical lane host resolution"
+        assert target.runtime_host == "omninode-pc.tail75df5e.ts.net"
         assert target.redpanda_container == "omnibase-infra-redpanda"
         assert target.postgres_container == "omnibase-infra-postgres"
+
+    def test_runtime_host_env_var_overrides_default(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """OMN-14531: ``ONEX_DATA_FLOW_RUNTIME_HOST`` must actually take effect.
+
+        The module docstring/comment claimed this env var overrode the default
+        runtime host, but the code never read it — setting the var had zero
+        effect on resolution. node_database_sweep already reads this exact
+        shared var (OMN-14526) so the two sweeps agree on which host they probe.
+        """
+        monkeypatch.setenv(
+            "ONEX_DATA_FLOW_RUNTIME_HOST", "custom-lane-host.example.com"
+        )
+        target = resolve_lane_target("dev")
+        assert target.runtime_host == "custom-lane-host.example.com"
 
     def test_prefixed_lanes_resolve_to_prefixed_containers(self) -> None:
         for lane, prefix in (
@@ -139,9 +160,7 @@ class TestRemoteTransport:
         assert captured, "no command was run"
         argv = captured[0]
         assert argv[0] == "ssh", f"remote lane must use ssh, got {argv!r}"
-        assert (
-            argv[1] == "jonah@192.168.86.201"
-        )  # onex-allow-internal-ip OMN-13552 reason="test asserts ssh target host"
+        assert argv[1] == "jonah@omninode-pc.tail75df5e.ts.net"
         assert "docker exec omnibase-infra-redpanda" in argv[2]
 
     def test_local_lane_probe_uses_bare_docker(self) -> None:
@@ -266,6 +285,59 @@ class TestCollector:
             result = collector.collect_flow_metadata(_stub(), _local_target())
 
         assert result.producer_status == EnumProducerStatus.MISSING
+
+    def test_probe_consumer_lag_fails_closed_on_rpk_failure(self) -> None:
+        """OMN-14531: an rpk group-describe failure must NOT be reported as lag=0.
+
+        Previously a non-zero ``rpk group describe`` return code was silently
+        treated as "0 lag" (fail-open) — indistinguishable from a genuinely
+        quiescent consumer group, so the handler classified the flow healthy
+        even though the probe never actually observed the group state.
+        """
+        from omnimarket.nodes.node_data_flow_sweep import collector
+
+        with patch.object(
+            collector, "_run_argv", return_value=(1, "rpk: unable to connect")
+        ):
+            lag, lag_unknown = collector.probe_consumer_lag(
+                _local_target(), "onex.evt.test.stub.v1"
+            )
+
+        assert lag_unknown is True
+        assert lag == 0
+
+    def test_collect_flow_metadata_lag_probe_failure_fails_closed(self) -> None:
+        """A group-describe failure propagates consumer_lag_unknown=True end-to-end."""
+        from omnimarket.nodes.node_data_flow_sweep import collector
+
+        def fake_docker_exec(
+            target: ModelLaneTarget,
+            container: str,
+            inner_argv: list[str],
+            *,
+            timeout: int = 10,
+        ) -> tuple[int, str]:
+            joined = " ".join(inner_argv)
+            if "topic describe" in joined:
+                return 0, (
+                    "PARTITION  LEADER  EPOCH  REPLICAS  LOG-START  HIGH-WATERMARK\n"
+                    "0          1       0      [1]       0          5\n"
+                )
+            if "topic consume" in joined:
+                return 1, ""
+            if "group describe" in joined:
+                return 1, "connection refused"
+            if "COUNT" in joined:
+                return 0, "42"
+            if "INTERVAL" in joined:
+                return 0, "1"
+            return 1, ""
+
+        with patch.object(collector, "_docker_exec", side_effect=fake_docker_exec):
+            result = collector.collect_flow_metadata(_stub(), _local_target())
+
+        assert result.consumer_lag_unknown is True
+        assert result.producer_status == EnumProducerStatus.ACTIVE
 
 
 # ---------------------------------------------------------------------------
@@ -392,6 +464,31 @@ class TestHandlerWithCollectedFlows:
         result = handler.handle(DataFlowSweepRequest(flows=[]))
         assert result.flows_checked == 3
         assert result.status == "issues_found"
+
+    def test_handler_lag_unknown_flow_is_not_healthy(self) -> None:
+        """OMN-14531: a flow whose lag probe failed must never classify FLOWING.
+
+        This is the fail-closed contract at the handler boundary: an otherwise
+        pristine flow (active producer, rows present, recent data) must still
+        report broken when the live consumer-lag probe could not be trusted.
+        """
+        handler = NodeDataFlowSweep()
+        flow = ModelFlowInput(
+            topic="onex.evt.test.lagunknown.v1",
+            handler_name="projectLagUnknown",
+            table_name="lag_unknown_table",
+            producer_status=EnumProducerStatus.ACTIVE,
+            consumer_lag=0,
+            consumer_lag_unknown=True,
+            table_row_count=5,
+            table_has_recent_data=True,
+        )
+        result = handler.handle(DataFlowSweepRequest(flows=[flow]))
+
+        assert result.flow_results[0].flow_status == EnumFlowStatus.LAG_UNKNOWN
+        assert result.status == "issues_found"
+        assert result.healthy == 0
+        assert result.broken == 1
 
     def test_handler_single_healthy_flow_is_healthy(self) -> None:
         """A single explicitly-supplied healthy flow returns healthy."""

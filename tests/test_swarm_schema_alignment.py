@@ -24,8 +24,17 @@ from omnimarket.nodes.node_swarm_decomposer_compute.models.model_swarm_decompose
 from omnimarket.nodes.node_swarm_decomposer_compute.models.model_swarm_decompose_result import (
     ModelSwarmDecomposeResult,
 )
+from omnimarket.nodes.node_swarm_dispatch_orchestrator.handlers.handler_swarm_dispatch import (
+    HandlerSwarmDispatchOrchestrator,
+)
+from omnimarket.nodes.node_swarm_dispatch_orchestrator.models.enums import (
+    EnumSwarmOrchestratorState,
+)
 from omnimarket.nodes.node_swarm_dispatch_orchestrator.models.model_orchestrator_state import (
     ModelEndpointHealth as OrchestratorEndpointHealth,
+)
+from omnimarket.nodes.node_swarm_dispatch_orchestrator.models.model_orchestrator_state import (
+    ModelOrchestratorState,
 )
 from omnimarket.nodes.node_swarm_dispatch_orchestrator.models.model_orchestrator_state import (
     ModelSubtask as OrchestratorSubtask,
@@ -175,3 +184,89 @@ class TestOrchestratorToAggregate:
 
     def test_result_has_run_id(self) -> None:
         assert "run_id" in ModelSwarmAggregateResult.model_fields
+
+
+@pytest.mark.unit
+class TestSwarmDispatchOrchestratorStateCoverage:
+    """Runtime FSM coverage for node_swarm_dispatch_orchestrator."""
+
+    def test_runtime_transition_sequence_covers_declared_states(self) -> None:
+        handler = HandlerSwarmDispatchOrchestrator()
+        received = ModelOrchestratorState(
+            fsm_state=EnumSwarmOrchestratorState.RECEIVED,
+            run_id="run-state-coverage",
+            correlation_id="corr-state-coverage",
+            original_task="state coverage",
+        )
+
+        health_checked, _ = handler.transition_health_checked(
+            received,
+            {
+                "endpoint_health": {
+                    "ep-1": {
+                        "endpoint_status": "reachable",
+                        "latency_ms": 10,
+                    }
+                }
+            },
+        )
+        decomposed, _ = handler.transition_decomposed(
+            health_checked,
+            {
+                "subtasks": [
+                    {
+                        "subtask_id": "st-1",
+                        "description": "implement route",
+                        "depends_on": [],
+                    }
+                ]
+            },
+        )
+        endpoints_selected, _ = handler.transition_endpoints_selected(
+            decomposed,
+            {"assignments": {"st-1": "ep-1"}},
+        )
+        dispatching, _ = handler.transition_dispatching(
+            endpoints_selected,
+            {
+                "dispatches": [
+                    {
+                        "subtask_id": "st-1",
+                        "endpoint_id": "ep-1",
+                        "status": "succeeded",
+                        "result_text": "done",
+                    }
+                ]
+            },
+        )
+        aggregating, _ = handler.transition_aggregating(
+            dispatching,
+            {"aggregated_output": "done"},
+            total_latency_ms=100,
+        )
+        completed, _ = handler.transition_completed(aggregating)
+        failed, _ = handler.transition_failed(
+            endpoints_selected,
+            "dispatch fanout failed",
+        )
+
+        observed_states = [
+            received.fsm_state,
+            health_checked.fsm_state,
+            decomposed.fsm_state,
+            endpoints_selected.fsm_state,
+            dispatching.fsm_state,
+            aggregating.fsm_state,
+            completed.fsm_state,
+            failed.fsm_state,
+        ]
+        assert observed_states == [
+            EnumSwarmOrchestratorState.RECEIVED,
+            EnumSwarmOrchestratorState.HEALTH_CHECKED,
+            EnumSwarmOrchestratorState.DECOMPOSED,
+            EnumSwarmOrchestratorState.ENDPOINTS_SELECTED,
+            EnumSwarmOrchestratorState.DISPATCHING,
+            EnumSwarmOrchestratorState.AGGREGATING,
+            EnumSwarmOrchestratorState.COMPLETED,
+            EnumSwarmOrchestratorState.FAILED,
+        ]
