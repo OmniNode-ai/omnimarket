@@ -1,6 +1,7 @@
-version: 0.1.0
 name: node_dirty_canonical_sweep
+contract_version: {major: 1, minor: 0, patch: 0}
 node_type: effect
+node_version: {major: 1, minor: 0, patch: 0}
 description: >
   Detect dirty (uncommitted) files in canonical omni_home repo clones and
   auto-ship each dirty repo to a fresh dev-based worktree + PR. The canonical clone is
