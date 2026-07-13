@@ -31,8 +31,14 @@ descriptor:
 inputs:
   repos:
     type: list[str]
-    description: "Repo directories to scan; empty = all repos under OMNI_HOME"
-    required: false
+    description: >
+      Repo directories to scan under OMNI_HOME. REQUIRED, non-empty —
+      must be a harness-collected census (a real filesystem probe), never
+      an operator-typed default. There is no "empty = all" fallback
+      (OMN-14542): a prior receipt reported 9 contracts checked clean
+      while 941 actually existed because an unpopulated census was
+      silently reinterpreted as "scan everything".
+    required: true
   dry_run:
     type: bool
     description: "If true, report violations without creating tickets"
@@ -43,9 +49,30 @@ outputs:
   violations:
     type: list[ContractViolation]
     description: "All detected contract violations"
+  contracts_checked:
+    type: int
+    description: "Count of contract.yaml files actually scanned"
+  scanned_count:
+    type: int
+    description: >
+      Same value as contracts_checked. A PASS/FAIL verdict is only ever
+      reported when scanned_count > 0 — see status.
   summary:
     type: object
     description: "Aggregated counts by severity"
+  status:
+    type: str
+    description: >
+      PASS | FAIL | ERROR. ERROR means the scope itself is not
+      trustworthy (missing OMNI_HOME, a requested repo absent on disk,
+      or scanned_count == 0) and must be treated as a hard failure, never
+      a clean sweep.
+  missing_repos:
+    type: list[str]
+    description: "Requested repos that do not exist on disk under OMNI_HOME"
+  scope_error:
+    type: str
+    description: "Human-readable reason when status == ERROR"
 
 terminal_event: onex.evt.omnimarket.contract-sweep-completed.v1
 
