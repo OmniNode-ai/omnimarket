@@ -883,35 +883,59 @@ jobs:
         run: uv python install 3.12
       - name: Install dependencies
         run: uv sync --locked --all-extras
-      - name: Run golden_chain_sweep workflow E2E
+      - name: Golden-chain census gate (OMN-14536)
         run: |
-          STATE_ROOT=$(mktemp -d)
-          if uv run onex node node_golden_chain_sweep \
-            --contract golden_chain_sweep_workflow.yaml \
-            --backend event_bus=inmemory \
-            --state-root "$STATE_ROOT" \
-            --timeout 60 \
-            --verbose; then
-            EXIT=0
-          else
-            EXIT=$?
-          fi
-          echo "--- workflow_result.json ---"
-          if [ -f "$STATE_ROOT/workflow_result.json" ]; then
-            cat "$STATE_ROOT/workflow_result.json"
-            if python3 -c "import json,sys; d=json.load(open('$STATE_ROOT/workflow_result.json')); sys.exit(0 if d.get('result')=='completed' else 1)"; then
-              EVIDENCE=0
-            else
-              EVIDENCE=$?
-            fi
-          else
-            EVIDENCE=1
-          fi
-          if [ $EXIT -ne 0 ] || [ $EVIDENCE -ne 0 ]; then
-            echo "::error::E2E workflow run failed: exit=$EXIT evidence_check=$EVIDENCE"
+          # The golden_chain_sweep node is a pure validator over projected_rows.
+          # This step is the HARNESS: node_golden_chain_sweep.census_collector
+          # derives the locally-reachable (Group A) chains, drives each one's REAL
+          # projection on an in-memory DB, reads the materialized row back, runs
+          # the sweep, and exits non-zero unless overall_status==pass AND
+          # scanned_count>0. The Group B (cross-repo) chains are routed to
+          # omnibase_infra CI — see .github/workflows/golden-chain-crossrepo.yml.
+          #
+          # OMN-14536: this replaces the prior "workflow E2E" check that gated on
+          # workflow_result.json result=='completed' (the workflow RAN) rather
+          # than the node's overall_status (its verdict). With projected_rows={}
+          # every chain timed out, the node returned overall_status=fail, and CI
+          # passed anyway — 0 of 13 chains verified. The gate now reads the verdict.
+          set -o pipefail
+          RESULT=$(mktemp)
+          uv run python -m omnimarket.nodes.node_golden_chain_sweep.census_collector \
+            --out "$RESULT" || GATE_EXIT=$?
+          GATE_EXIT=${GATE_EXIT:-0}
+          echo "--- census gate result ($RESULT) ---"
+          # Fail-closed cross-check on the emitted JSON (belt-and-suspenders on
+          # top of the collector's own exit code): overall_status must be pass,
+          # scanned_count must be > 0, and the derived split must cover the whole
+          # registry (no chain silently dropped from the denominator).
+          python3 - "$RESULT" <<'PY'
+          import json, sys
+          d = json.load(open(sys.argv[1]))
+          hr = d["handler_result"]
+          status = hr["overall_status"]
+          scanned = hr["scanned_count"]
+          reachable = set(d["reachable"]); routed = set(d["routed_to_omnibase_infra"])
+          print(d["coverage_boundary"])
+          errs = []
+          if scanned <= 0:
+              errs.append(f"scanned_count={scanned} (nothing observed — vacuous)")
+          if status != "pass":
+              errs.append(f"overall_status={status} (not pass)")
+          if not reachable:
+              errs.append("Group A (reachable) is empty — no chain is verified here")
+          if reachable & routed:
+              errs.append(f"chain(s) in BOTH buckets: {sorted(reachable & routed)}")
+          if errs:
+              for e in errs:
+                  print(f"::error::golden-chain census gate: {e}")
+              sys.exit(1)
+          print(f"golden-chain census gate GREEN: overall_status=pass, scanned_count={scanned}, "
+                f"reachable={len(reachable)}, routed_to_infra={len(routed)}")
+          PY
+          if [ "${GATE_EXIT}" -ne 0 ]; then
+            echo "::error::census collector exited ${GATE_EXIT}"
             exit 1
           fi
-          echo "E2E PASSED: terminal event received, evidence written, exit=0"
   # ============================================================================
   # GOLDEN CHAIN SUITE
   # Runs all 1,000+ golden chain tests (EventBusInmemory, zero infra) on every PR.

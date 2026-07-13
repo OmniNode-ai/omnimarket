@@ -117,6 +117,11 @@ def main() -> None:
     # run — both are advisory: consumers/producers are healthy in shape but
     # have not flowed recently. Only blocking states (fail/partial/error/timeout)
     # exit non-zero.
+    #
+    # NOT_COLLECTED (OMN-14536) is blocking and deliberately absent from the
+    # advisory set: it means zero tail surfaces were observed, so "healthy but
+    # idle" is not a conclusion this run is entitled to draw. An advisory status
+    # requires that the census actually looked at something.
     if result.status not in ("pass", "gated", "warn"):
         sys.exit(1)
 

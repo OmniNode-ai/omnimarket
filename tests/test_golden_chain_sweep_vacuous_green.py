@@ -75,14 +75,22 @@ class TestSkillDispatchLoadsChains:
         assert result.overall_status != EnumSweepStatus.PASS
         assert result.chains_passed == 0
 
-    def test_skill_dispatch_idle_gate_no_rows_is_gated_not_pass(self) -> None:
-        """With idle_gate, no-rows chains are GATED (non-blocking) — still not a
-        vacuous PASS over zero chains, because chains_total > 0."""
+    def test_skill_dispatch_idle_gate_no_rows_is_not_collected_not_gated(self) -> None:
+        """With idle_gate but NO census, the skill-dispatch path is NOT_COLLECTED.
+
+        OMN-14536 superseded the old expectation here. This exact payload (13
+        chains, idle_gate=True, projected_rows={}, no census) used to launder into
+        a non-blocking GATED — a sweep that observed ZERO tail surfaces reporting
+        "healthy, just idle". That WAS the vacuous-green hatch. With the census
+        invariant, scanned_count==0 fails closed to NOT_COLLECTED (blocking) —
+        idle_gate can no longer rescue an uncollected census."""
         request = GoldenChainSweepRequest(
             correlation_id="skill-dispatch-test", idle_gate=True
         )
         result = NodeGoldenChainSweep().handle(request)
 
         assert result.chains_total > 0
-        assert result.chains_gated == result.chains_total
-        assert result.overall_status == EnumSweepStatus.GATED
+        assert result.scanned_count == 0
+        assert result.overall_status == EnumSweepStatus.NOT_COLLECTED
+        assert result.overall_status != EnumSweepStatus.GATED
+        assert result.status not in ("pass", "gated", "warn")

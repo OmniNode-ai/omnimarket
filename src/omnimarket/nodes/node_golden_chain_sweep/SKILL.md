@@ -82,3 +82,31 @@ python -m omnimarket.nodes.node_golden_chain_sweep \
 ## Output
 
 JSON `GoldenChainSweepResult` to stdout. Exit code 0 on overall pass, 1 otherwise.
+
+## CI census gate (OMN-14536)
+
+This node is a **validator**, not a collector — it only ever looks at the
+`projected_rows` a caller hands it. The omnimarket CI harness that actually
+**collects** those rows is `census_collector.py` (co-located). It is a real
+in-memory probe, not prose and not an operator flag:
+
+- `reachability.py` **derives** (from node contracts + handler introspection)
+  which chains omnimarket can prove head→tail in-memory (**Group A**) vs which
+  are cross-repo/runtime-dependent and routed to omnibase_infra CI (**Group B**).
+  The split is computed, never hand-maintained.
+- `census_collector.py` drives each Group-A chain's **real** projection handler
+  on an `InmemoryDatabaseAdapter`, reads the materialized tail row back, runs the
+  sweep with a `ModelChainCensus` (recording `scanned_count` = surfaces queried),
+  and exits non-zero unless `overall_status == pass` **and** `scanned_count > 0`.
+
+```bash
+# omnimarket CI (Group A gate): fail-closed on an empty/failing census
+uv run python -m omnimarket.nodes.node_golden_chain_sweep.census_collector
+
+# omnibase_infra CI (Group B): emit the DERIVED cross-repo routing manifest
+uv run python -m omnimarket.nodes.node_golden_chain_sweep.census_collector --mode route
+```
+
+`scanned_count == 0` (no census collected) fails closed to `NOT_COLLECTED` — a
+green verdict over an absent census is impossible. This closed the vacuous-green
+hole where CI gated on the *workflow* completing rather than the node's verdict.

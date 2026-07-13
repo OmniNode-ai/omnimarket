@@ -1,0 +1,87 @@
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# Canonical head-event payloads for the in-memory census probe (OMN-14536).
+#
+# These are the INPUTS the census collector feeds to each Group-A chain's REAL
+# projection handler on an InmemoryDatabaseAdapter. The collector then reads the
+# materialized tail row back and hands it to the golden_chain_sweep validator.
+# The projected ROW is genuinely computed by the real handler — these payloads
+# are test inputs (mirroring each chain's golden-chain test), NOT hand-authored
+# rows and NOT prose.
+#
+# Membership is cross-checked against reachability.derive_chain_reachability():
+# every reachable (Group A) chain MUST have a payload here, and every payload
+# here MUST be for a reachable chain, else census_collector fails closed. The
+# fixture set can never silently diverge from the derived split.
+#
+# Each entry's fields are the union of the event model's REQUIRED fields and the
+# chain's expected_fields (so the projected row carries every asserted field).
+# The collector overrides created_at/timestamp with the collection-time clock
+# for freshness-gated chains, so a freshly-collected row is never stale.
+
+payloads:
+  # registration: routing-decision -> agent_routing_decisions
+  # expected_fields: correlation_id, selected_agent
+  registration:
+    id: "a0000000-0000-0000-0000-000000000001"
+    correlation_id: "c0000000-0000-0000-0000-000000000001"
+    selected_agent: "agent-coder"
+    confidence_score: 0.91
+    request_type: "code-review"
+    routing_reason: "policy:default"
+    domain: "engineering"
+
+  # routing: llm-routing-decision -> llm_routing_decisions
+  # expected_fields: correlation_id
+  routing:
+    correlation_id: "c0000000-0000-0000-0000-000000000002"
+    llm_agent: "claude-opus"
+
+  # evaluation: session-outcome -> session_outcomes (freshness-gated, 24h)
+  # expected_fields: session_id
+  evaluation:
+    session_id: "sess-census-0001"
+    outcome: "success"
+
+  # pattern_learning: pattern-stored -> pattern_learning_artifacts (freshness-gated, 24h)
+  # expected_fields: correlation_id
+  pattern_learning:
+    pattern_id: "p0000000-0000-0000-0000-000000000001"
+    pattern_name: "census-probe-pattern"
+    pattern_type: "structural"
+    correlation_id: "c0000000-0000-0000-0000-000000000003"
+
+  # delegation: task-delegated -> delegation_events
+  # expected_fields: correlation_id, tokens_to_compliance, compliance_attempts
+  delegation:
+    correlation_id: "c0000000-0000-0000-0000-000000000004"
+    task_type: "code-generation"
+    delegated_to: "local:mlx"
+    tokens_to_compliance: 128
+    compliance_attempts: 1
+
+  # d1_d2_scaffold: delegation-completed -> delegation_events
+  # expected_fields: correlation_id, quality_gate_passed, response_text
+  d1_d2_scaffold:
+    correlation_id: "c0000000-0000-0000-0000-000000000005"
+    task_type: "scaffold-node"
+    delegated_to: "local:mlx"
+    quality_gate_passed: true
+    response_text: "scaffolded node contract + handler"
+
+  # delegation_projection_materialization: delegation-completed -> delegation_events
+  # expected_fields: correlation_id, task_type, delegated_to, model_name,
+  #   quality_gate_passed, response_text, tokens_input, tokens_output,
+  #   tokens_to_compliance, compliance_attempts
+  delegation_projection_materialization:
+    correlation_id: "c0000000-0000-0000-0000-000000000006"
+    task_type: "delegation-round-trip"
+    delegated_to: "local:mlx"
+    model_name: "mlx-community/Qwen2.5-Coder-32B"
+    quality_gate_passed: true
+    response_text: "materialized delegation projection row"
+    tokens_input: 512
+    tokens_output: 256
+    tokens_to_compliance: 200
+    compliance_attempts: 2

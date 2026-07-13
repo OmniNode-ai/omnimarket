@@ -19,7 +19,11 @@ chains:
     # this window downgrades the chain to STALE (a distinct non-PASS tri-state),
     # so green requires recent flow. 86400s == 24h: a healthy producer projects
     # at least daily.
-    timestamp_field: created_at
+    # OMN-14536: the recency column is the projection's `projected_at` stamp —
+    # the pattern_learning_artifacts row has no `created_at` column, so the old
+    # `created_at` value made this check perpetually STALE against any real row
+    # (decorative). `projected_at` is set to the projection clock on every write.
+    timestamp_field: projected_at
     max_row_age_seconds: 86400
     expected_fields:
       - correlation_id
@@ -44,7 +48,11 @@ chains:
     # OMN-13639: recency assertion (see pattern_learning above). The session_id
     # fixture row (sess-001) is ~4 weeks old; without this a green verdict masks
     # an idle session-outcome producer. 86400s == 24h freshness window.
-    timestamp_field: created_at
+    # OMN-14536: the recency column is the projection's `ingested_at` stamp — the
+    # session_outcomes row has no `created_at` column (it writes emitted_at +
+    # ingested_at), so the old `created_at` value made this check perpetually
+    # STALE against any real row. `ingested_at` is the projection clock.
+    timestamp_field: ingested_at
     max_row_age_seconds: 86400
     expected_fields:
       - session_id

@@ -10,6 +10,7 @@ from omnimarket.nodes.node_golden_chain_sweep.handlers.handler_golden_chain_swee
     EnumChainStatus,
     EnumSweepStatus,
     GoldenChainSweepRequest,
+    ModelChainCensus,
     ModelChainDefinition,
     NodeGoldenChainSweep,
 )
@@ -74,19 +75,26 @@ class TestPatternLearningChainValidation:
         assert "correlation_id" in result.chain_results[0].missing_fields
 
     def test_timeout_when_no_row_projected(self) -> None:
+        # OMN-14536: the collector queried the table (scanned=1) and found no row.
+        # Without a census, scanned_count==0 fails closed to NOT_COLLECTED; the
+        # TIMEOUT verdict is only meaningful once a surface was actually scanned.
         request = GoldenChainSweepRequest(
             chains=[_CHAIN],
             projected_rows={},
+            census=ModelChainCensus(source="pattern-learning-test", scanned_count=1),
         )
         result = _HANDLER.handle(request)
         assert result.chain_results[0].status == EnumChainStatus.TIMEOUT
         assert result.overall_status == EnumSweepStatus.FAIL
 
     def test_gated_when_idle_gate_and_no_row(self) -> None:
+        # OMN-14536: idle_gate distinguishes "queried, idle" from "queried, broken"
+        # only when a surface was scanned — an uncollected census cannot be gated.
         request = GoldenChainSweepRequest(
             chains=[_CHAIN],
             projected_rows={},
             idle_gate=True,
+            census=ModelChainCensus(source="pattern-learning-test", scanned_count=1),
         )
         result = _HANDLER.handle(request)
         assert result.chain_results[0].status == EnumChainStatus.GATED
@@ -132,10 +140,12 @@ class TestPatternLearningChainValidation:
         projected_rows["evaluation"]["session_id"] = "test-evaluation"
         # OMN-13639: pattern_learning + evaluation now carry a per-chain freshness
         # threshold — a field-complete row must also be recent to PASS. Supply a
-        # fresh created_at and inject the reference clock below.
+        # fresh recency stamp and inject the reference clock below.
+        # OMN-14536: the recency columns are the real projected row columns —
+        # pattern_learning uses `projected_at`, evaluation uses `ingested_at`.
         _now_iso = "2026-06-26T12:00:00+00:00"
-        projected_rows["pattern_learning"]["created_at"] = "2026-06-26T11:59:00+00:00"
-        projected_rows["evaluation"]["created_at"] = "2026-06-26T11:59:00+00:00"
+        projected_rows["pattern_learning"]["projected_at"] = "2026-06-26T11:59:00+00:00"
+        projected_rows["evaluation"]["ingested_at"] = "2026-06-26T11:59:00+00:00"
         # OMN-12660 WS-G: sea_acceptance additional required fields
         projected_rows["sea_acceptance"]["task_type"] = "generate_onex_node"
         projected_rows["sea_acceptance"]["delegated_to"] = "claude-sonnet-4-6"

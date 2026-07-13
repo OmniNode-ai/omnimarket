@@ -53,6 +53,7 @@ class EnumChainStatus(StrEnum):
     TIMEOUT = "timeout"
     GATED = "gated"  # consumer healthy but idle; non-blocking
     STALE = "stale"  # fields present but latest row exceeds freshness threshold
+    UNREACHABLE = "unreachable"  # census could not query this chain's tail surface
 
 
 class EnumSweepStatus(StrEnum):
@@ -63,11 +64,59 @@ class EnumSweepStatus(StrEnum):
     FAIL = "fail"
     GATED = "gated"  # all non-passing chains are idle-gated; non-blocking
     WARN = "warn"  # all non-passing chains are stale; non-blocking warning
+    NOT_COLLECTED = "not_collected"  # census never collected — blocking (OMN-14536)
 
 
 # ---------------------------------------------------------------------------
 # Models
 # ---------------------------------------------------------------------------
+
+
+class ModelChainCensus(BaseModel):
+    """Provenance of the ``projected_rows`` census (OMN-14536).
+
+    This handler validates rows it did not collect. Without provenance, a census
+    that was **never collected** is indistinguishable from a census that **was
+    collected and legitimately found nothing** — the two produce byte-identical
+    ``projected_rows={}``. That ambiguity is what made the CI gate vacuous: with
+    ``idle_gate=True`` an entirely uncollected census laundered into a
+    non-blocking ``GATED`` (exit 0), and with ``idle_gate=False`` a broken
+    harness was indistinguishable from a broken chain.
+
+    ``scanned_count`` is the number of tail surfaces the collector **actually
+    queried** — NOT the number of rows it found. Querying 6 tables and finding 4
+    rows is ``scanned_count=6`` with 2 genuinely-idle chains: that is a real
+    observation and ``idle_gate`` may legitimately gate it. Querying 0 tables is
+    ``scanned_count=0``: nothing was observed, and no flag may launder that into
+    anything but a blocking failure.
+
+    The rule this model exists to enforce: **"scanned nothing" and "all healthy"
+    must never be the same output.**
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    source: str = Field(
+        description=(
+            "Where the census was collected from — e.g. "
+            "'postgres:omnidash_analytics' or 'caller-supplied'. Recorded on the "
+            "result so a reader can tell which surface was actually read."
+        )
+    )
+    scanned_count: int = Field(
+        ge=0,
+        description=(
+            "Number of tail surfaces the collector actually queried. NOT the "
+            "number of rows found. Zero means nothing was observed — fail-closed."
+        ),
+    )
+    unreachable: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Chains whose tail surface could not be queried at all (table absent, "
+            "DB unreachable). These are UNREACHABLE — blocking, never a silent skip."
+        ),
+    )
 
 
 class ModelChainDefinition(BaseModel):
@@ -164,6 +213,12 @@ class GoldenChainSweepRequest(BaseModel):
     )
     timeout_ms: int = 15000
     projected_rows: dict[str, dict[str, object]] = Field(default_factory=dict)
+    # Provenance of projected_rows (OMN-14536). When None, the census provenance
+    # is unknown and the effective scanned count falls back to len(projected_rows)
+    # — so a caller that supplies rows directly (unit tests, fixtures) still has a
+    # non-zero scan, while the CI/skill dispatch path that supplies NO rows and NO
+    # census scans zero surfaces and is fail-closed to NOT_COLLECTED.
+    census: ModelChainCensus | None = None
     idle_gate: bool = (
         False  # when True, missing rows → GATED (non-blocking) not TIMEOUT
     )
@@ -187,6 +242,12 @@ class GoldenChainSweepResult(BaseModel):
     chains_failed: int = 0
     chains_gated: int = 0
     chains_stale: int = 0
+    chains_unreachable: int = 0
+    # The census invariant, surfaced on the result so the CI gate can assert it
+    # without re-deriving it (OMN-14536). scanned_count == 0 means no tail surface
+    # was observed at all — the sweep proved nothing and MUST NOT read green.
+    scanned_count: int = 0
+    census_source: str = "caller-supplied"
     overall_status: EnumSweepStatus = EnumSweepStatus.PASS
     status: str = "pass"
 
@@ -233,8 +294,40 @@ class NodeGoldenChainSweep:
         failed = 0
         gated = 0
         stale = 0
+        unreachable = 0
+
+        census = request.census
+        # The effective scan count: how many tail surfaces were ACTUALLY observed.
+        # With a census, that is the collector's own count (surfaces queried — not
+        # rows found, so a queried-but-empty table still counts as observed). With
+        # no census, fall back to the number of rows the caller handed us; a caller
+        # that supplied neither rows nor a census observed nothing at all.
+        scanned_count = (
+            census.scanned_count if census is not None else len(request.projected_rows)
+        )
+        census_source = census.source if census is not None else "caller-supplied"
+        unreachable_names = set(census.unreachable) if census is not None else set()
 
         for chain in request.chains:
+            if chain.name in unreachable_names:
+                # The collector could not query this chain's tail surface at all.
+                # Not observed => cannot be green, and cannot be silently skipped.
+                results.append(
+                    ModelChainResult(
+                        name=chain.name,
+                        status=EnumChainStatus.UNREACHABLE,
+                        head_topic=chain.head_topic,
+                        tail_table=chain.tail_table,
+                        message=(
+                            f"UNREACHABLE: census could not query tail surface "
+                            f"'{chain.tail_table}' for chain {chain.name} — the chain "
+                            f"was never observed (blocking, not a skip)"
+                        ),
+                    )
+                )
+                unreachable += 1
+                continue
+
             result = self._validate_chain(
                 chain,
                 request.projected_rows,
@@ -253,10 +346,12 @@ class NodeGoldenChainSweep:
 
         overall = self._aggregate(
             chains_present=bool(request.chains),
+            scanned_count=scanned_count,
             passed=passed,
             failed=failed,
             gated=gated,
             stale=stale,
+            unreachable=unreachable,
         )
 
         return GoldenChainSweepResult(
@@ -266,6 +361,9 @@ class NodeGoldenChainSweep:
             chains_failed=failed,
             chains_gated=gated,
             chains_stale=stale,
+            chains_unreachable=unreachable,
+            scanned_count=scanned_count,
+            census_source=census_source,
             overall_status=overall,
             status=overall.value,
         )
@@ -274,24 +372,39 @@ class NodeGoldenChainSweep:
     def _aggregate(
         *,
         chains_present: bool,
+        scanned_count: int,
         passed: int,
         failed: int,
         gated: int,
         stale: int,
+        unreachable: int,
     ) -> EnumSweepStatus:
         """Roll per-chain counts up to a single overall status.
 
-        Precedence: a vacuous (zero-chain) sweep is fail-closed. A blocking
-        FAIL always degrades to PARTIAL/FAIL. GATED (idle) and STALE (recency)
-        are non-blocking — when they are the *only* non-PASS chains, the sweep
-        reports GATED or WARN respectively rather than green PASS, so an
-        operator sees the distinction.
+        Precedence: a vacuous (zero-chain) sweep is fail-closed. An uncollected
+        census is fail-closed. A blocking FAIL always degrades to PARTIAL/FAIL.
+        GATED (idle) and STALE (recency) are non-blocking — when they are the
+        *only* non-PASS chains, the sweep reports GATED or WARN respectively
+        rather than green PASS, so an operator sees the distinction.
         """
         if not chains_present:
             # Fail-closed: zero validated chains must NEVER report pass. A sweep
             # over an empty chain set is vacuous truth, not health (OMN-13553).
             return EnumSweepStatus.FAIL
-        if failed > 0:
+
+        if scanned_count == 0:
+            # THE CENSUS INVARIANT (OMN-14536). Zero tail surfaces were observed,
+            # so every chain verdict below is an artifact of looking at nothing.
+            #
+            # This is checked BEFORE the gated/stale branches on purpose: those are
+            # the non-blocking states, and routing an uncollected census into either
+            # of them is exactly the laundering this invariant exists to stop. Prior
+            # to this, `idle_gate=True` over a never-collected census returned a
+            # non-blocking GATED and the CLI exited 0 — an entirely unobserved sweep
+            # reporting "healthy, just idle". "Scanned nothing" is NOT "all healthy".
+            return EnumSweepStatus.NOT_COLLECTED
+
+        if unreachable > 0 or failed > 0:
             # Any blocking failure → PARTIAL if anything else passed/gated/stale,
             # else a hard FAIL.
             if passed > 0 or gated > 0 or stale > 0:
