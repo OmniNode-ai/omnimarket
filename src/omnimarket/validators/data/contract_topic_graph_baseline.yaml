@@ -77,6 +77,11 @@ accepted:
 - ORPHANED_CONSUMER::morning_handoff_generator::onex.cmd.omnimarket.morning-handoff-start.v1
 - ORPHANED_CONSUMER::node_advanced_features_resolve_compute::onex.cmd.omnimarket.advanced-features-resolve-requested.v1
 - ORPHANED_CONSUMER::node_adversarial_pipeline_orchestrator::onex.cmd.omnimarket.adversarial-pipeline-start.v1
+- ORPHANED_CONSUMER::node_agent_coordinator_orchestrator::onex.cmd.omnimemory.coordination-list-subscriptions.v1
+- ORPHANED_CONSUMER::node_agent_coordinator_orchestrator::onex.cmd.omnimemory.coordination-notify.v1
+- ORPHANED_CONSUMER::node_agent_coordinator_orchestrator::onex.cmd.omnimemory.coordination-subscribe.v1
+- ORPHANED_CONSUMER::node_agent_coordinator_orchestrator::onex.cmd.omnimemory.coordination-unsubscribe.v1
+- ORPHANED_CONSUMER::node_agent_learning_retrieval_effect::onex.cmd.omnimemory.agent-learning-retrieval-requested.v1
 - ORPHANED_CONSUMER::node_antipattern_index_effect::onex.cmd.omnimarket.antipattern-index-requested.v1
 - ORPHANED_CONSUMER::node_architectural_invariant_loop::onex.cmd.omnimarket.arch-invariant-loop-start.v1
 - ORPHANED_CONSUMER::node_architecture_graph_populate_effect::onex.cmd.omnimarket.architecture-graph-populate-requested.v1
@@ -118,6 +123,7 @@ accepted:
 - ORPHANED_CONSUMER::node_context_selection_policy_compute::onex.cmd.omnimarket.context-selection-policy-requested.v1
 - ORPHANED_CONSUMER::node_contract_assemble_compute::onex.cmd.omnimarket.contract-assemble-requested.v1
 - ORPHANED_CONSUMER::node_contract_digest_compute::onex.cmd.omnimarket.contract-digest-requested.v1
+- ORPHANED_CONSUMER::node_contract_drift_compute::onex.cmd.omnimarket.contract-drift-compute-start.v1
 - ORPHANED_CONSUMER::node_contract_graph_ir_compute::onex.cmd.omnimarket.contract-graph-ir-requested.v1
 - ORPHANED_CONSUMER::node_contract_registry::onex.cmd.platform.node-registration-requested.v1
 - ORPHANED_CONSUMER::node_contract_registry_reducer::onex.evt.platform.contract-deregistered.v1
@@ -153,6 +159,7 @@ accepted:
 - ORPHANED_CONSUMER::node_evidence_dashboard_effect::onex.cmd.omnimarket.evidence-pipeline-start.v1
 - ORPHANED_CONSUMER::node_evidence_pipeline_orchestrator::onex.cmd.omnimarket.evidence-pipeline-start.v1
 - ORPHANED_CONSUMER::node_feature_dashboard_compute::onex.cmd.omnimarket.feature-dashboard-start.v1
+- ORPHANED_CONSUMER::node_filesystem_crawler_effect::onex.cmd.omnimarket.filesystem-crawl-start.v1
 - ORPHANED_CONSUMER::node_friction_triage_orchestrator::onex.cmd.omnimarket.friction-triage-start.v1
 - ORPHANED_CONSUMER::node_gap_compute::onex.cmd.omnimarket.gap-compute-start.v1
 - ORPHANED_CONSUMER::node_generate_node_effect::onex.cmd.omnimarket.generate-node-start.v1
@@ -168,8 +175,6 @@ accepted:
 - ORPHANED_CONSUMER::node_hybrid_codegen_orchestrator::onex.evt.omnimarket.codegen-typecheck-outcome.v1
 - ORPHANED_CONSUMER::node_hybrid_codegen_orchestrator::onex.evt.omnimarket.codegen-validation-outcome.v1
 - ORPHANED_CONSUMER::node_insights_to_plan_compute::onex.cmd.omnimarket.insights-to-plan-start.v1
-- ORPHANED_CONSUMER::node_intelligence_orchestrator::onex.cmd.omniintelligence.code-analysis.v1
-- ORPHANED_CONSUMER::node_intelligence_orchestrator::onex.cmd.omniintelligence.document-ingestion.v1
 - ORPHANED_CONSUMER::node_intelligence_orchestrator::onex.cmd.omnimarket.code-analysis.v1
 - ORPHANED_CONSUMER::node_intelligence_orchestrator::onex.cmd.omnimarket.document-ingestion.v1
 - ORPHANED_CONSUMER::node_intelligence_orchestrator::onex.cmd.omnimarket.intent-received.v1
@@ -177,6 +182,7 @@ accepted:
 - ORPHANED_CONSUMER::node_intelligence_orchestrator::onex.evt.omnimarket.intent-drift-detected.v1
 - ORPHANED_CONSUMER::node_intelligence_reducer::onex.cmd.omnimarket.pattern-lifecycle-process.v1
 - ORPHANED_CONSUMER::node_intelligence_reducer::onex.evt.omnimarket.intent-outcome-labeled.v1
+- ORPHANED_CONSUMER::node_intent_query_effect::onex.cmd.omnimemory.intent-query-requested.v1
 - ORPHANED_CONSUMER::node_kb_adr_publisher::onex.cmd.omnimarket.kb-adr-publish-requested.v1
 - ORPHANED_CONSUMER::node_kb_repowise_index_effect::onex.cmd.omnimarket.kb-repowise-index-requested.v1
 - ORPHANED_CONSUMER::node_knowledge_context_assembler_orchestrator::onex.cmd.omnimarket.knowledge-context-requested.v1
@@ -191,6 +197,10 @@ accepted:
 - ORPHANED_CONSUMER::node_llm_completion_effect::onex.cmd.omnibase-infra.llm-completion-request.v1
 - ORPHANED_CONSUMER::node_llm_embedding_effect::onex.cmd.omnibase-infra.llm-embedding-request.v1
 - ORPHANED_CONSUMER::node_llm_inference_effect::onex.cmd.omnibase-infra.llm-inference-request.v1
+- ORPHANED_CONSUMER::node_memory_lifecycle_orchestrator::onex.cmd.omnimemory.archive-memory.v1
+- ORPHANED_CONSUMER::node_memory_lifecycle_orchestrator::onex.cmd.omnimemory.expire-memory.v1
+- ORPHANED_CONSUMER::node_memory_lifecycle_orchestrator::onex.cmd.omnimemory.runtime-tick.v1
+- ORPHANED_CONSUMER::node_memory_retrieval_effect::onex.cmd.omnimemory.memory-retrieval-requested.v1
 - ORPHANED_CONSUMER::node_merge_effect::onex.cmd.omnimarket.pr-merge.v1
 - ORPHANED_CONSUMER::node_merge_gate_effect::onex.evt.platform.merge-gate-decision.v1
 - ORPHANED_CONSUMER::node_merge_sweep_triage_orchestrator::onex.cmd.omnimarket.merge-sweep-triage.v1
@@ -200,6 +210,7 @@ accepted:
 - ORPHANED_CONSUMER::node_merge_sweep_workflow_orchestrator::onex.evt.skill.merge-sweep-pr-list.v1
 - ORPHANED_CONSUMER::node_model_comparison_runner::onex.cmd.omnimarket.model-comparison-requested.v1
 - ORPHANED_CONSUMER::node_multi_agent_orchestrator::onex.cmd.omnimarket.multi-agent-start.v1
+- ORPHANED_CONSUMER::node_navigation_history_reducer::onex.evt.omnimemory.navigation-session-completed.v1
 - ORPHANED_CONSUMER::node_observability_sink_effect::onex.cmd.omnimarket.observability-sink.v1
 - ORPHANED_CONSUMER::node_occ_companion_compute::onex.cmd.omnimarket.occ-companion-compute-requested.v1
 - ORPHANED_CONSUMER::node_occ_evidence_draft_orchestrator::onex.cmd.omnimarket.occ-evidence-draft-start.v1
@@ -272,7 +283,6 @@ accepted:
 - ORPHANED_CONSUMER::node_session_compose::onex.cmd.omnimarket.session-compose.v1
 - ORPHANED_CONSUMER::node_session_phase_evaluator::onex.cmd.omnimarket.session-phase-evaluate.v1
 - ORPHANED_CONSUMER::node_shim_scanner::onex.cmd.omnimarket.shim-scan-start.v1
-- ORPHANED_CONSUMER::node_skill_dispatch_engine_orchestrator::onex.cmd.omniclaude.dispatch_engine.v1
 - ORPHANED_CONSUMER::node_skill_dispatch_engine_orchestrator::onex.cmd.omnimarket.dispatch_engine.v1
 - ORPHANED_CONSUMER::node_skill_functional_audit_compute::onex.cmd.omnimarket.skill-functional-audit-start.v1
 - ORPHANED_CONSUMER::node_skill_overseer_verify_orchestrator::onex.cmd.omnimarket.overseer_verify.v1
@@ -446,6 +456,7 @@ accepted:
 - ORPHANED_PRODUCER::node_adr_draft_generation_compute::onex.evt.omnimarket.adr-draft-generation-completed.v1
 - ORPHANED_PRODUCER::node_adversarial_pipeline_orchestrator::onex.evt.omnimarket.adversarial-pipeline-completed.v1
 - ORPHANED_PRODUCER::node_adversarial_pipeline_orchestrator::onex.evt.omnimarket.adversarial-pipeline-gate-failed.v1
+- ORPHANED_PRODUCER::node_agent_learning_retrieval_effect::onex.evt.omnimemory.agent-learning-retrieval-response.v1
 - ORPHANED_PRODUCER::node_architectural_invariant_loop::onex.evt.omnimarket.arch-invariant-loop-completed.v1
 - ORPHANED_PRODUCER::node_architectural_invariant_loop::onex.evt.omnimarket.arch-invariant-violation.v1
 - ORPHANED_PRODUCER::node_architecture_graph_populate_effect::onex.evt.omnimarket.architecture-graph-populated.v1
@@ -476,6 +487,9 @@ accepted:
 - ORPHANED_PRODUCER::node_context_bundle_generator_compute::onex.evt.omnimarket.context-bundle-completed.v1
 - ORPHANED_PRODUCER::node_context_exploration_policy_compute::onex.evt.omnimarket.context-exploration-policy-completed.v1
 - ORPHANED_PRODUCER::node_context_selection_policy_compute::onex.evt.omnimarket.context-selection-policy-completed.v1
+- ORPHANED_PRODUCER::node_contract_drift_compute::onex.evt.omnimarket.contract-drift-compute-completed.v1
+- ORPHANED_PRODUCER::node_contract_drift_compute::onex.evt.omnimarket.contract-drift-finding.v1
+- ORPHANED_PRODUCER::node_contract_drift_compute::onex.evt.omnimarket.sweep-result.v1
 - ORPHANED_PRODUCER::node_contract_registry::onex.evt.platform.node-registration-rejected.v1
 - ORPHANED_PRODUCER::node_create_ticket::onex.evt.omnimarket.create-ticket-completed.v1
 - ORPHANED_PRODUCER::node_cross_cli_originator::onex.cmd.omnimarket.cross-cli-delegation-requested.v1
@@ -508,6 +522,7 @@ accepted:
 - ORPHANED_PRODUCER::node_epic_team_orchestrator::onex.evt.omnimarket.epic-team-wave-dispatched.v1
 - ORPHANED_PRODUCER::node_event_forward_effect::onex.evt.omnibase-infra.event-forwarded.v1
 - ORPHANED_PRODUCER::node_feature_dashboard_compute::onex.evt.omnimarket.feature-dashboard-completed.v1
+- ORPHANED_PRODUCER::node_filesystem_crawler_effect::onex.evt.omnimemory.document-removed.v1
 - ORPHANED_PRODUCER::node_friction_triage_orchestrator::onex.evt.omnimarket.friction-triage-completed.v1
 - ORPHANED_PRODUCER::node_gap_compute::onex.evt.omnimarket.gap-compute-completed.v1
 - ORPHANED_PRODUCER::node_generate_node_effect::onex.evt.omnimarket.generate-node-completed.v1
@@ -518,12 +533,6 @@ accepted:
 - ORPHANED_PRODUCER::node_github_review_effect::onex.evt.omnimarket.pr-review-bot-thread-verified.v1
 - ORPHANED_PRODUCER::node_hostile_reviewer_orchestrator::onex.evt.omnimarket.hostile-reviewer-completed.v1
 - ORPHANED_PRODUCER::node_insights_to_plan_compute::onex.evt.omnimarket.insights-to-plan-completed.v1
-- ORPHANED_PRODUCER::node_intelligence_orchestrator::onex.evt.omniintelligence.code-analysis-completed.v1
-- ORPHANED_PRODUCER::node_intelligence_orchestrator::onex.evt.omniintelligence.code-analysis-failed.v1
-- ORPHANED_PRODUCER::node_intelligence_orchestrator::onex.evt.omniintelligence.document-ingestion-completed.v1
-- ORPHANED_PRODUCER::node_intelligence_orchestrator::onex.evt.omniintelligence.document-ingestion-failed.v1
-- ORPHANED_PRODUCER::node_intelligence_orchestrator::onex.evt.omniintelligence.pattern-learning-completed.v1
-- ORPHANED_PRODUCER::node_intelligence_orchestrator::onex.evt.omniintelligence.pattern-learning-failed.v1
 - ORPHANED_PRODUCER::node_intelligence_orchestrator::onex.evt.omnimarket.code-analysis-completed.v1
 - ORPHANED_PRODUCER::node_intelligence_orchestrator::onex.evt.omnimarket.code-analysis-failed.v1
 - ORPHANED_PRODUCER::node_intelligence_orchestrator::onex.evt.omnimarket.document-ingestion-completed.v1
@@ -534,6 +543,7 @@ accepted:
 - ORPHANED_PRODUCER::node_intelligence_orchestrator::onex.evt.omnimarket.pattern-learning-failed.v1
 - ORPHANED_PRODUCER::node_intelligence_reducer::onex.evt.omnimarket.intent-pattern-promoted.v1
 - ORPHANED_PRODUCER::node_intent_event_consumer_effect::onex.evt.omniintelligence.intent-classified-dlq.v1
+- ORPHANED_PRODUCER::node_intent_query_effect::onex.evt.omnimemory.intent-query-response.v1
 - ORPHANED_PRODUCER::node_kb_adr_publisher::onex.evt.omnimarket.kb-adr-publish-completed.v1
 - ORPHANED_PRODUCER::node_kb_repowise_index_effect::onex.evt.omnimarket.kb-repowise-index-completed.v1
 - ORPHANED_PRODUCER::node_knowledge_context_assembler_orchestrator::onex.evt.omnimarket.knowledge-context-assembled.v1
@@ -546,6 +556,11 @@ accepted:
 - ORPHANED_PRODUCER::node_llm_completion_effect::onex.evt.omnibase-infra.llm-completion-completed.v1
 - ORPHANED_PRODUCER::node_llm_inference_effect::onex.evt.omnibase-infra.llm-call-completed.v1
 - ORPHANED_PRODUCER::node_loop_state_reducer::onex.evt.omnimarket.build-loop-state-reduced.v1
+- ORPHANED_PRODUCER::node_memory_lifecycle_orchestrator::onex.evt.omnimemory.lifecycle-transition-failed.v1
+- ORPHANED_PRODUCER::node_memory_lifecycle_orchestrator::onex.evt.omnimemory.memory-archive-initiated.v1
+- ORPHANED_PRODUCER::node_memory_lifecycle_orchestrator::onex.evt.omnimemory.memory-archived.v1
+- ORPHANED_PRODUCER::node_memory_lifecycle_orchestrator::onex.evt.omnimemory.memory-expired.v1
+- ORPHANED_PRODUCER::node_memory_retrieval_effect::onex.evt.omnimemory.memory-retrieval-response.v1
 - ORPHANED_PRODUCER::node_merge_effect::onex.evt.omnimarket.merge-result.v1
 - ORPHANED_PRODUCER::node_merge_sweep_auto_merge_arm_effect::onex.evt.omnimarket.pr-auto-merge-unarmed-clean-alert.v1
 - ORPHANED_PRODUCER::node_merge_sweep_state_reducer::onex.evt.omnimarket.merge-sweep-completed.v1
@@ -634,8 +649,6 @@ accepted:
 - ORPHANED_PRODUCER::node_session_compose::onex.evt.omnimarket.session-compose-failed.v1
 - ORPHANED_PRODUCER::node_session_phase_reducer::onex.evt.omnimarket.session-phase-state-reduced.v1
 - ORPHANED_PRODUCER::node_shim_scanner::onex.evt.omnimarket.shim-scan-completed.v1
-- ORPHANED_PRODUCER::node_skill_dispatch_engine_orchestrator::onex.evt.omniclaude.dispatch_engine-completed.v1
-- ORPHANED_PRODUCER::node_skill_dispatch_engine_orchestrator::onex.evt.omniclaude.dispatch_engine-failed.v1
 - ORPHANED_PRODUCER::node_skill_dispatch_engine_orchestrator::onex.evt.omnimarket.dispatch_engine-completed.v1
 - ORPHANED_PRODUCER::node_skill_dispatch_engine_orchestrator::onex.evt.omnimarket.dispatch_engine-failed.v1
 - ORPHANED_PRODUCER::node_skill_functional_audit_compute::onex.evt.omnimarket.skill-functional-audit-completed.v1

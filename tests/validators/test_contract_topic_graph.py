@@ -483,6 +483,68 @@ def test_checkout_tier_package_is_never_runtime_loaded(tmp_path: Path) -> None:
     assert not any(d.package == "omniclaude" for d in find_defects(graph))
 
 
+def test_ambiguous_node_name_across_packages_is_not_misattributed(
+    tmp_path: Path,
+) -> None:
+    """OMN-14575, RED->GREEN. A real, pre-existing collision surfaced by
+    OMN-14568's broadening: node_intelligence_orchestrator exists in BOTH
+    omnimarket (runtime_loaded) and omniintelligence (not). Before the fix,
+    find_defects()'s by_name was a single {name: node} dict, so it collapsed
+    to whichever copy's package sorted last -- attributing the OTHER copy's
+    topics to the wrong package's runtime_loaded flag. Here the two copies
+    subscribe to two DIFFERENT topics; only the omnimarket one may ever be
+    defect-flagged.
+    """
+    _write(
+        tmp_path,
+        "omnimarket",
+        "node_dup",
+        {
+            "name": "node_dup",
+            "event_bus": {"subscribe_topics": ["onex.cmd.omnimarket.real-orphan.v1"]},
+            "handler_routing": {
+                "handlers": [
+                    {"operation": "x", "handler": {"module": "m", "name": "H"}}
+                ]
+            },
+        },
+    )
+    _write(
+        tmp_path,
+        "omniintelligence",
+        "node_dup",
+        {
+            "name": "node_dup",
+            "event_bus": {
+                "subscribe_topics": ["onex.cmd.omniintelligence.not-runtime-loaded.v1"]
+            },
+            # No handler_routing -- if this were ever (mis)treated as the
+            # runtime_loaded omnimarket copy it would ALSO show up as
+            # DECLARED_BUT_UNWIRED, which is exactly the kind of
+            # misattribution this test guards against.
+        },
+    )
+    defects = find_defects(_graph(tmp_path))
+
+    # The omnimarket copy's own topic is a real, legitimate orphan.
+    assert any(
+        d.defect == "ORPHANED_CONSUMER"
+        and d.node == "node_dup"
+        and d.topic == "onex.cmd.omnimarket.real-orphan.v1"
+        for d in defects
+    )
+    # The omniintelligence copy is NOT runtime_loaded. Its topic must never be
+    # defect-flagged under any defect class, regardless of the name collision
+    # with the runtime_loaded omnimarket copy.
+    assert not any(
+        d.topic == "onex.cmd.omniintelligence.not-runtime-loaded.v1" for d in defects
+    )
+    assert not any(
+        d.defect == "DECLARED_BUT_UNWIRED" and d.package == "omniintelligence"
+        for d in defects
+    )
+
+
 # ---------------------------------------------------------------------------
 # THE RATCHET — the baseline may only ever shrink.
 # ---------------------------------------------------------------------------
