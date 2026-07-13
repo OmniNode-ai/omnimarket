@@ -195,6 +195,18 @@ class SavingsProjectionRunner(BaseProjectionRunner):
         }:
             return await self._project_canonical_delegation_savings(data, meta)
 
+        # OMN-14533: onex.evt.omnibase-infra.savings-estimated.v1's REAL producer
+        # (omnibase_infra node_savings_estimation_compute, ModelSavingsEstimate)
+        # uses a completely different field set — actual_model_id,
+        # counterfactual_model_id, actual_cost_usd, estimated_total_savings_usd,
+        # timestamp_iso — none of which this branch's session_id/model_local/
+        # etc. lookups (or the camelCase aliases) ever matched. Every real
+        # savings-estimated.v1 message failed "missing model identifiers" /
+        # "missing cost fields" below and went straight to the DLQ — 0 rows
+        # ever. Normalize the real shape onto the canonical keys this branch
+        # already expects before the existing lookups run.
+        data = _normalize_savings_estimate_payload(data)
+
         session_id = str(data.get("session_id") or data.get("sessionId") or "").strip()
         if not session_id:
             return await self._route_malformed_to_dlq(
@@ -426,6 +438,67 @@ class SavingsProjectionRunner(BaseProjectionRunner):
             repo_name,
             machine_id,
         )
+
+
+# OMN-14533: field names from omnibase_infra's real
+# node_savings_estimation_compute.models.model_savings_estimate.ModelSavingsEstimate
+# — the actual producer of onex.evt.omnibase-infra.savings-estimated.v1. Any
+# one of these keys present (and none of the canonical `session_id`+
+# `model_local` pair) identifies a real savings-estimated payload.
+_SAVINGS_ESTIMATE_MARKER_KEYS: tuple[str, ...] = (
+    "source_event_id",
+    "actual_model_id",
+    "counterfactual_model_id",
+    "actual_cost_usd",
+    "estimated_total_savings_usd",
+)
+
+
+def _normalize_savings_estimate_payload(data: dict[str, Any]) -> dict[str, Any]:
+    """Re-key a real ModelSavingsEstimate payload onto the canonical shape.
+
+    No-op (returns ``data`` unchanged) when the payload already uses the
+    canonical `model_local`/`model_cloud_baseline` keys — including every
+    delegate-skill / canonical-delegation payload that reaches this generic
+    branch via some other, non-savings-estimated route, and every existing
+    caller that already speaks the canonical shape.
+
+    Field mapping (real producer -> canonical):
+      * ``actual_model_id``            -> ``model_local``       (model actually used)
+      * ``counterfactual_model_id``    -> ``model_cloud_baseline`` (pricing counterfactual)
+      * ``actual_cost_usd``            -> ``local_cost_usd``    (measured actual spend)
+      * ``estimated_total_savings_usd``-> ``savings_usd``       (direct + heuristic total)
+      * ``local_cost_usd + savings_usd`` -> ``cloud_cost_usd``  (ModelSavingsEstimate has
+        no direct cloud-cost field; the counterfactual cost is reconstructed the same
+        way every other path in this module derives it: local + savings)
+      * ``timestamp_iso``              -> ``event_timestamp``
+      * ``repo_name``/``machine_id``: ModelSavingsEstimate carries neither; they
+        stay absent (the existing repo_name/machine_id lookups below already
+        default to None on a missing key).
+    """
+    if data.get("model_local") or data.get("modelLocal"):
+        return data  # already canonical-shaped
+    if not any(key in data for key in _SAVINGS_ESTIMATE_MARKER_KEYS):
+        return data  # not a ModelSavingsEstimate payload
+
+    normalized = dict(data)
+    normalized.setdefault("model_local", data.get("actual_model_id"))
+    normalized.setdefault("model_cloud_baseline", data.get("counterfactual_model_id"))
+    normalized.setdefault("event_timestamp", data.get("timestamp_iso"))
+
+    local_cost = _first_present(data, "actual_cost_usd")
+    savings = _first_present(data, "estimated_total_savings_usd")
+    if local_cost is not None and savings is not None:
+        try:
+            local_dec = Decimal(str(local_cost))
+            savings_dec = Decimal(str(savings))
+        except (InvalidOperation, ValueError, TypeError):
+            pass
+        else:
+            normalized.setdefault("local_cost_usd", str(local_dec))
+            normalized.setdefault("savings_usd", str(savings_dec))
+            normalized.setdefault("cloud_cost_usd", str(local_dec + savings_dec))
+    return normalized
 
 
 def _first_present(data: dict[str, Any], *keys: str) -> Any:
