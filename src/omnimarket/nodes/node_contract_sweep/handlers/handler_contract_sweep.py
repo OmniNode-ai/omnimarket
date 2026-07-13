@@ -24,6 +24,17 @@ from pydantic import BaseModel, ConfigDict, Field
 # ---------------------------------------------------------------------------
 
 _TOPIC_RE = re.compile(r"^onex\.(cmd|evt|intent)\.[a-z0-9_-]+\.[a-z0-9_-]+\.v\d+$")
+# `snapshot` is a pre-existing, cross-repo-established topic kind for
+# projection/materialized-view broadcast topics (verified in use across
+# omnimarket, omnidash, onex_change_control, omnibase_infra, omnibase_core,
+# and omniintelligence — OMN-14544). Unlike cmd/evt/intent, which are always
+# producer.event, a snapshot topic's tail reflects the projection's sub-view
+# hierarchy and is variable-depth (e.g.
+# onex.snapshot.projection.delegation.correlation-trace.v1), so it gets its
+# own pattern rather than forcing the fixed 2-segment shape onto it.
+_SNAPSHOT_TOPIC_RE = re.compile(
+    r"^onex\.snapshot\.[a-z0-9_-]+(?:\.[a-z0-9_-]+)+\.v\d+$"
+)
 _REQUIRED_FIELDS = frozenset(
     ["name", "contract_version", "node_type", "node_version", "description"]
 )
@@ -295,13 +306,16 @@ class NodeContractSweep:
         if isinstance(event_bus, dict):
             for direction in ("subscribe_topics", "publish_topics"):
                 for topic in event_bus.get(direction, []) or []:
-                    if isinstance(topic, str) and not _TOPIC_RE.match(topic):
+                    if isinstance(topic, str) and not (
+                        _TOPIC_RE.match(topic) or _SNAPSHOT_TOPIC_RE.match(topic)
+                    ):
                         violations.append(
                             ContractViolation(
                                 node_name=node_name,
                                 violation_type=EnumViolationType.INVALID_TOPIC_NAME,
                                 severity=EnumViolationSeverity.MINOR,
-                                message=f"Topic {topic!r} does not match onex.{{cmd|evt|intent}}.producer.event.vN",
+                                message=f"Topic {topic!r} does not match onex.{{cmd|evt|intent}}.producer.event.vN "
+                                "or onex.snapshot.producer.path+.vN",
                                 field=f"event_bus.{direction}",
                             )
                         )

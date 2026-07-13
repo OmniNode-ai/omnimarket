@@ -77,7 +77,15 @@ class TestContract:
         with open(contract_path) as f:
             contract = yaml.safe_load(f)
         assert contract["name"] == "emit_daemon"
-        assert contract["node_type"] == "service"
+        # OMN-14544: top-level node_type must be one of the canonical
+        # contract_sweep-enforced values (compute/effect/reducer/orchestrator
+        # + _GENERIC variants); "service" is not. The daemon is effectful
+        # (Kafka publish, unix socket I/O), so it maps to "effect" — the same
+        # normalization market_contract_adapter._ARCHETYPE_NORMALIZATION
+        # already applies to a "service" archetype/node_type.
+        # descriptor.node_archetype is left as "service" (a separately
+        # explicitly-mapped descriptor vocabulary, unaffected by this fix).
+        assert contract["node_type"] == "effect"
 
     def test_metadata_yaml_exists(self) -> None:
         metadata_path = (
@@ -1427,3 +1435,79 @@ class TestCaptureTopicRegistrations:
         assert "onex.cmd.omniclaude.delegate-task.v1" in publish_topics
         assert "onex.evt.omniclaude.agent-actions.v1" in publish_topics
         assert "onex.evt.omniintelligence.llm-call-completed.v1" in publish_topics
+
+    def test_previously_uncovered_publish_topics_are_declared(self) -> None:
+        """OMN-14544: state-coverage-gate (scripts/validate_state_coverage.py)
+        treats every ``event_bus.publish_topics`` entry as a declared state
+        every associated test file must reference; in --strict mode (used on
+        any PR that directly touches a node's files) a pre-existing baselined
+        gap for that node is promoted to a hard FAIL. node_emit_daemon
+        carried 43 such pre-existing gaps (scripts/validation/
+        state_coverage_baseline.txt) that blocked ANY future edit to this
+        contract, including the unrelated node_type fix landed alongside
+        this test. This closes that debt with real, non-vacuous coverage —
+        each literal is asserted against the live parsed contract, matching
+        the established pattern in test_capture_topics_declared_in_contract
+        above (catches accidental removal/typo of a fan-out target, not just
+        satisfying the gate)."""
+        contract_path = (
+            Path(__file__).parent.parent
+            / "src"
+            / "omnimarket"
+            / "nodes"
+            / "node_emit_daemon"
+            / "contract.yaml"
+        )
+        contract = yaml.safe_load(contract_path.read_text(encoding="utf-8"))
+        publish_topics = set(contract["event_bus"]["publish_topics"])
+
+        previously_uncovered = {
+            "onex.cmd.omniintelligence.claude-hook-event.v1",
+            "onex.cmd.omniintelligence.compliance-evaluate.v1",
+            "onex.cmd.omniintelligence.tool-content.v1",
+            "onex.cmd.omniintelligence.utilization-scoring.v1",
+            "onex.evt.omniclaude.agent-chat-broadcast.v1",
+            "onex.evt.omniclaude.agent-match.v1",
+            "onex.evt.omniclaude.agent-status.v1",
+            "onex.evt.omniclaude.audit-dispatch-validated.v1",
+            "onex.evt.omniclaude.budget-cap-hit.v1",
+            "onex.evt.omniclaude.change-frame.v1",
+            "onex.evt.omniclaude.context-enrichment.v1",
+            "onex.evt.omniclaude.context-utilization.v1",
+            "onex.evt.omniclaude.correlation-trace.v1",
+            "onex.evt.omniclaude.dod-guard-fired.v1",
+            "onex.evt.omniclaude.dod-sweep-completed.v1",
+            "onex.evt.omniclaude.epic-run-updated.v1",
+            "onex.evt.omniclaude.friction-observed.v1",
+            "onex.evt.omniclaude.gate-decision.v1",
+            "onex.evt.omniclaude.hook-health-error.v1",
+            "onex.evt.omniclaude.hostile-reviewer-completed.v1",
+            "onex.evt.omniclaude.hostile-reviewer-failed.v1",
+            "onex.evt.omniclaude.injection-recorded.v1",
+            "onex.evt.omniclaude.llm-routing-fallback.v1",
+            "onex.evt.omniclaude.notification-blocked.v1",
+            "onex.evt.omniclaude.notification-completed.v1",
+            "onex.evt.omniclaude.pattern-enforcement.v1",
+            "onex.evt.omniclaude.plan-review-completed.v1",
+            "onex.evt.omniclaude.pr-validation-rollup.v1",
+            "onex.evt.omniclaude.pr-watch-updated.v1",
+            "onex.evt.omniclaude.prompt-submitted.v1",
+            "onex.evt.omniclaude.routing-decision.v1",
+            "onex.evt.omniclaude.session-coordination-signal.v1",
+            "onex.evt.omniclaude.session-ended.v1",
+            "onex.evt.omniclaude.skill-completed.v1",
+            "onex.evt.omniclaude.skill-invoked.v1",
+            "onex.evt.omniclaude.skill-started.v1",
+            "onex.evt.omniclaude.static-context-edit-detected.v1",
+            "onex.evt.omniclaude.team-evidence-written.v1",
+            "onex.evt.omniclaude.team-task-assigned.v1",
+            "onex.evt.omniclaude.team-task-completed.v1",
+            "onex.evt.omniclaude.team-task-progress.v1",
+            "onex.evt.omniclaude.tool-executed.v1",
+            "onex.evt.omnimarket.emit-daemon-lifecycle-failed.v1",
+        }
+        for topic in previously_uncovered:
+            assert topic in publish_topics, (
+                f"{topic!r} was removed from event_bus.publish_topics — "
+                "update this test and the state-coverage baseline together"
+            )

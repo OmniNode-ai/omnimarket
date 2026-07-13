@@ -18,11 +18,14 @@ in a skill file. This script:
 3. Calls `NodeContractSweep.handle()` and enforces the fail-closed scope
    invariant: refuse to exit 0 unless `scanned_count > 0` AND
    `scanned_count == the independently-probed count`.
-4. Reports (but does not yet block on) real field/topic/node_type
-   violations found in the corpus — that debt is tracked separately
-   (existing violations predate this gate; tracked in OMN-14544; see follow-up
-   ticket). Pass --strict to promote violations to blocking once that debt
-   is paid down.
+4. Reports real field/topic/node_type violations found in the corpus. The
+   pre-existing backlog (5 major, 21 minor) was paid down under OMN-14544 —
+   the 5 major violations were fixed at the source and the 21 minor
+   `onex.snapshot.*` topics turned out to be a real, cross-repo-established
+   projection-broadcast topic kind, not naming mistakes, so the separate
+   `_SNAPSHOT_TOPIC_RE` accepts it. The corpus is now a real zero, so --strict is on
+   by default in ci.yml and .pre-commit-config.yaml; pass --strict here too
+   to block on any NEW violation.
 
 Exit codes:
   0 — scope invariant holds (scanned_count > 0 and matches the independent

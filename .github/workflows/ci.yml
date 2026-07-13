@@ -1260,12 +1260,16 @@ jobs:
   # unresolvable OMNI_HOME is a HARD, BLOCKING failure — this is what actually
   # closes the "9 vs 941" defect.
   #
-  # SCOPE — the omnimarket tree carries pre-existing field/topic/node_type
-  # violations (5 major, 21 minor as of this gate landing — tracked in OMN-14544; see
-  # tracked follow-up). A whole-tree hard gate on those specific violations would
-  # immediately block every future PR on that backlog, so this job does NOT pass
-  # --strict: violations are printed as a warning (visible in the job log) but do
-  # not fail the check. --strict may be added once the backlog is paid down.
+  # SCOPE — the pre-existing field/topic/node_type backlog (5 major, 21 minor as
+  # of the gate landing) was paid down under OMN-14544: the 5 major violations
+  # (2 contracts missing contract_version/node_version, node_emit_daemon's
+  # invalid node_type) were fixed at the source, and the 21 minor violations
+  # were re-classified — `onex.snapshot.*` is a real, cross-repo-established
+  # projection-broadcast topic kind (verified in use across omnimarket,
+  # omnidash, onex_change_control, omnibase_infra, omnibase_core, and
+  # omniintelligence), not 21 naming mistakes, so the separate
+  # `_SNAPSHOT_TOPIC_RE` accepts it. The corpus is now a real, enforced zero — this job passes
+  # --strict so any NEW violation fails closed.
   # ============================================================================
   contract-sweep-gate:
     needs: occ-preflight
@@ -1284,7 +1288,7 @@ jobs:
       - name: Install dependencies
         run: uv sync --locked --all-extras
       - name: Run contract sweep scope-invariant gate
-        run: uv run python scripts/ci/run_contract_sweep_gate.py
+        run: uv run python scripts/ci/run_contract_sweep_gate.py --strict
 
   # ============================================================================
   # AISLOP SWEEP GATE (OMN-13578) — failing-rollup sub-job (Model B, OMN-13574)

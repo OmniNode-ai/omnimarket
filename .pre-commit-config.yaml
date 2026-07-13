@@ -321,12 +321,13 @@ repos:
       # have a src/" -- a prior receipt reported 9 contracts checked clean while 941
       # actually existed. This hook runs the full-corpus gate on every contract.yaml
       # edit and refuses to pass unless the node's own scanned_count matches an
-      # independently-computed contract count and is > 0. SYNC with ci.yml job
-      # "Contract Sweep Gate".
+      # independently-computed contract count and is > 0. The field/topic/node_type
+      # violation backlog was paid down under OMN-14544, so --strict is on: SYNC
+      # with ci.yml job "Contract Sweep Gate".
       - id: contract-sweep-gate
         name: Contract sweep scope-invariant gate (OMN-14542)
         language: system
-        entry: uv run python scripts/ci/run_contract_sweep_gate.py
+        entry: uv run python scripts/ci/run_contract_sweep_gate.py --strict
         files: ^(src/omnimarket/nodes/node_.*/contract\.yaml|src/omnimarket/nodes/node_contract_sweep/.*\.py|scripts/ci/run_contract_sweep_gate\.py)$
         pass_filenames: false
         stages: [pre-commit]
