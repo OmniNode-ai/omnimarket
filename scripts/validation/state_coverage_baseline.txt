@@ -399,7 +399,6 @@ node_projection_baselines onex.evt.omnimarket.projection-baselines-applied.v1
 node_projection_baselines_quality onex.evt.omnimarket.projection-baselines-quality-applied.v1
 node_projection_baselines_roi onex.evt.omnimarket.projection-baselines-roi-applied.v1
 node_projection_capsule_store onex.evt.omnimarket.capsule-store-applied.v1
-node_projection_context_roi onex.evt.omnimarket.projection-context-roi-applied.v1
 node_projection_delegation onex.snapshot.projection.delegation.budget-state.v1
 node_projection_delegation_inference_response onex.snapshot.projection.delegation.inference-response-text.v1
 node_projection_event_chain onex.evt.omnimarket.event-chain-applied.v1

@@ -84,6 +84,8 @@ projection_api:
         - run_order
         - context_factor_subset
         - context_pack_hash
+        - factor_subset_hash
+        - routing_source
         - attempt_count
         - first_pass_success
         - final_success
