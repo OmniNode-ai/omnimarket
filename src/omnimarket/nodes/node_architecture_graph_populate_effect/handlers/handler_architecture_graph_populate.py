@@ -422,25 +422,24 @@ class HandlerArchitectureGraphPopulate:
     ) -> tuple[list[ModelGraphNodeSpec], list[ModelGraphEdgeSpec]]:
         """Walk repo for contract.yaml files; parse each into node/edge specs.
 
-        OMN-14583: scoped to ``<repo>/src`` (falling back to ``repo_path`` if
-        no ``src/`` dir exists — same convention ``_collect_import_edges``
-        already uses one method below), with an explicit vendored-directory
-        exclusion as defense in depth. Before this fix, a bare
-        ``repo_path.rglob("contract.yaml")`` also descended into
-        ``.venv/lib/.../site-packages/<dep>/...`` — every repo that depends
-        on omnimarket vendors a full copy of its node contracts there, and
-        each one was misattributed as a *native* node of the consuming repo
-        (``repo=repo_name``), inflating the graph with phantom nodes that
-        don't actually belong to that repo.
+        OMN-14583: walks the full ``repo_path`` (not scoped to ``src/`` —
+        real, non-vendored node contracts can legitimately live outside
+        ``src/``, e.g. ``omnibase_core/examples/demo/model-validate/
+        contract.yaml``; scoping to ``src/`` would silently drop those),
+        filtered through ``_iter_real_contract_paths``'s vendored-directory
+        exclusion. Before this fix, a bare ``repo_path.rglob("contract.yaml")``
+        also descended into ``.venv/lib/.../site-packages/<dep>/...`` — every
+        repo that depends on omnimarket vendors a full copy of its node
+        contracts there, and each one was misattributed as a *native* node of
+        the consuming repo (``repo=repo_name``), inflating the graph with
+        phantom nodes that don't actually belong to that repo. The exclusion
+        filter removes exactly those vendored copies (``.venv``/
+        ``site-packages`` both match) and nothing else.
         """
         nodes: list[ModelGraphNodeSpec] = []
         edges: list[ModelGraphEdgeSpec] = []
 
-        src_root = repo_path / "src"
-        if not src_root.exists():
-            src_root = repo_path
-
-        for contract_path in _iter_real_contract_paths(src_root):
+        for contract_path in _iter_real_contract_paths(repo_path):
             try:
                 with open(contract_path) as f:
                     contract = yaml.safe_load(f)
