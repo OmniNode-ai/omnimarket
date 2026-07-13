@@ -17,7 +17,9 @@ import logging
 import os
 import re
 from pathlib import Path
+from typing import Any
 
+import yaml
 from pydantic import BaseModel, ConfigDict, Field
 
 _log = logging.getLogger(__name__)
@@ -86,14 +88,33 @@ class ComplianceSweepResult(BaseModel):
 
     violations: list[ModelComplianceViolation] = Field(default_factory=list)
     handlers_scanned: int = 0
+    # OMN-14541 (class fix, parent OMN-14531): count of contract.yaml files
+    # examined by the "missing-routing" check. Together with
+    # ``handlers_scanned`` this forms the scan census — see ``scanned_count``.
+    contracts_checked: int = 0
     compliant: int = 0
     imperative: int = 0
     status: str = "compliant"  # compliant | violations_found | error
+    # OMN-14541: populated only when status == "error" — the reason the sweep
+    # refused to report a verdict (e.g. an unresolvable/empty scan scope).
+    scan_error: str | None = None
     dry_run: bool = False
 
     @property
     def total_violations(self) -> int:
         return len(self.violations)
+
+    @property
+    def scanned_count(self) -> int:
+        """Total scan surface examined across all check dimensions.
+
+        OMN-14541 (class fix, parent OMN-14531): the shared detector-shelf
+        defect is a roll-up that computes ``bad_count == 0 -> green`` without
+        ever asserting this is > 0. A scan of an empty/unresolvable scope is
+        arithmetically identical to a genuinely clean scan of the real
+        handler universe unless this invariant is enforced (see ``handle()``).
+        """
+        return self.handlers_scanned + self.contracts_checked
 
     @property
     def by_type(self) -> dict[str, int]:
@@ -212,17 +233,41 @@ class NodeComplianceSweep:
         path (empty/`repos` payload) scans the default repo set exactly like
         the ``__main__`` CLI path, instead of defaulting to zero handlers
         (OMN-13514).
+
+        OMN-14541 (class fix, parent OMN-14531): a scope that resolves to
+        zero directories, or whose every resolved directory is unreadable,
+        must never report ``status="compliant"`` — that is arithmetically
+        indistinguishable from a genuinely clean scan of the real handler
+        universe. This method refuses to report a verdict (``status="error"``)
+        whenever ``scanned_count == 0``, mirroring the
+        ``node_duplication_sweep`` "Refusing to report PASS over an
+        unresolvable scope" template.
         """
         checks = request.checks or self.ALL_CHECKS
         violations: list[ModelComplianceViolation] = []
         handlers_scanned = 0
+        contracts_checked = 0
         compliant_count = 0
 
         target_dirs = self._resolve_targets(request)
 
+        if not target_dirs:
+            return ComplianceSweepResult(
+                status="error",
+                scan_error=(
+                    "Scan scope resolved to zero target directories "
+                    "(empty/unresolvable repos or target_dirs). Refusing to "
+                    "report compliant over an unresolvable scope."
+                ),
+                dry_run=request.dry_run,
+            )
+
+        unresolved_targets: list[str] = []
+
         for target_dir in target_dirs:
             target = Path(target_dir)
             if not target.is_dir():
+                unresolved_targets.append(target_dir)
                 continue
             repo_name = target.name
 
@@ -260,11 +305,43 @@ class NodeComplianceSweep:
                 else:
                     compliant_count += 1
 
+            # OMN-14541: the "missing-routing" check operates per-node
+            # (per contract.yaml), not per handler file — a node's canonical
+            # handler must be reachable through its own declared routing
+            # table. Contracts are counted toward ``scanned_count``
+            # regardless of which checks are active (mirrors
+            # ``handlers_scanned`` counting every handler file found), but
+            # violations are only emitted when "missing-routing" is requested.
+            for contract_path in self._find_node_contracts(target):
+                contracts_checked += 1
+                node_name = self._infer_node_name_from_contract(contract_path, target)
+                if "missing-routing" in checks:
+                    violations.extend(
+                        self._check_missing_routing(repo_name, contract_path, node_name)
+                    )
+
+        scanned_count = handlers_scanned + contracts_checked
+        if scanned_count == 0:
+            return ComplianceSweepResult(
+                status="error",
+                scan_error=(
+                    f"0 handlers and 0 contracts scanned across "
+                    f"{len(target_dirs)} target dir(s) "
+                    f"({len(unresolved_targets)} unresolved: "
+                    f"{unresolved_targets}). Refusing to report compliant "
+                    f"over an unresolvable/empty scope."
+                ),
+                handlers_scanned=0,
+                contracts_checked=0,
+                dry_run=request.dry_run,
+            )
+
         status = "compliant" if not violations else "violations_found"
 
         return ComplianceSweepResult(
             violations=violations,
             handlers_scanned=handlers_scanned,
+            contracts_checked=contracts_checked,
             compliant=compliant_count,
             imperative=handlers_scanned - compliant_count,
             status=status,
@@ -307,6 +384,146 @@ class NodeComplianceSweep:
             if part.startswith("node_"):
                 return part
         return handler_file.stem
+
+    def _find_node_contracts(self, root: Path) -> list[Path]:
+        """Find node contract.yaml files under ``root`` (OMN-14541).
+
+        Used by the "missing-routing" check, which operates per-node
+        (per contract) rather than per handler file.
+        """
+        results = []
+        for contract_path in root.rglob("contract.yaml"):
+            if any(part in _EXCLUDED_DIRS for part in contract_path.parts):
+                continue
+            results.append(contract_path)
+        return sorted(results)
+
+    def _infer_node_name_from_contract(
+        self, contract_path: Path, repo_root: Path
+    ) -> str:
+        """Infer node name from a contract.yaml's location (OMN-14541)."""
+        parts = contract_path.relative_to(repo_root).parts
+        for part in parts:
+            if part.startswith("node_"):
+                return part
+        return contract_path.parent.name
+
+    def _check_missing_routing(
+        self, repo: str, contract_path: Path, node_name: str
+    ) -> list[ModelComplianceViolation]:
+        """Check 4: the node's canonical handler is reachable via its own
+        declared ``handler_routing`` table (OMN-14541).
+
+        A node that declares a top-level ``handler:`` block (the handler
+        ``RuntimeLocal`` resolves for direct/single-shot dispatch) AND a
+        non-empty ``handler_routing.handlers`` table (multi-operation
+        ``operation_match`` dispatch) is only actually reachable at runtime
+        if the canonical handler appears somewhere in that table — as a
+        per-operation entry (matched by module path, or by class name when
+        the entry omits a module, per the ``handler_key``/``handler_class``
+        contract dialects) or as ``handler_routing.default_handler``. If
+        neither, the declared canonical handler can never be dispatched —
+        this is the real-world "no dispatcher found" failure mode (a routing
+        table that silently drops the node's own primary handler).
+
+        Nodes with no ``handler_routing`` block, or an empty ``handlers``
+        table, are not checked here: a bare ``handler:`` block alone is
+        sufficient for single-operation dispatch (no routing table needed),
+        matching the precedent in
+        ``omnibase_core.nodes.node_compliance_scan_compute`` ("No
+        handler_routing declared (optional)").
+
+        Calibrated against the live workspace (OMN-14541): this exact
+        matcher produces zero false positives across all 318 real
+        omnimarket/omnibase_core/omnibase_infra/... nodes that declare both
+        a top handler and a non-empty routing table.
+        """
+        try:
+            text = contract_path.read_text(encoding="utf-8")
+            data = yaml.safe_load(text)
+        except (OSError, yaml.YAMLError):
+            return []
+        if not isinstance(data, dict):
+            return []
+
+        top_handler = data.get("handler")
+        if not isinstance(top_handler, dict) or not top_handler.get("module"):
+            return []
+        top_module = str(top_handler["module"])
+        top_class = top_handler.get("class")
+
+        routing = data.get("handler_routing")
+        if not isinstance(routing, dict):
+            return []
+        entries = routing.get("handlers")
+        if not entries:
+            return []
+
+        if self._handler_is_routed(top_module, top_class, entries, routing):
+            return []
+
+        line = 1
+        for i, source_line in enumerate(text.splitlines(), 1):
+            if top_module in source_line:
+                line = i
+                break
+
+        return [
+            ModelComplianceViolation(
+                repo=repo,
+                handler_path=str(contract_path.name),
+                node_name=node_name,
+                violation_type="MISSING_HANDLER_ROUTING",
+                message=(
+                    f"Canonical handler '{top_module}"
+                    f"{'.' + str(top_class) if top_class else ''}' is not "
+                    f"reachable via handler_routing.handlers (operation_match "
+                    f"table) or handler_routing.default_handler — it can "
+                    f"never be dispatched for any operation."
+                ),
+                severity="CRITICAL",
+                line=line,
+            )
+        ]
+
+    @staticmethod
+    def _handler_is_routed(
+        top_module: str,
+        top_class: str | None,
+        entries: list[Any],
+        routing: dict[str, Any],
+    ) -> bool:
+        """Return True if ``top_module``/``top_class`` is reachable through
+        ``entries`` (per-operation routing) or ``routing.default_handler``.
+
+        Handles the three contract dialects observed in the live workspace:
+        nested ``handler: {module, name|class}``, flat ``handler_module`` /
+        ``handler_class``, and bare ``handler_key`` (class-name only, no
+        module path).
+        """
+        for entry in entries:
+            if not isinstance(entry, dict):
+                continue
+            module = None
+            cls = None
+            nested = entry.get("handler")
+            if isinstance(nested, dict):
+                module = nested.get("module")
+                cls = nested.get("name") or nested.get("class")
+            module = module or entry.get("handler_module")
+            cls = cls or entry.get("handler_class") or entry.get("handler_key")
+            if module and module == top_module:
+                return True
+            if module is None and cls and top_class and cls == top_class:
+                return True
+
+        default_handler = routing.get("default_handler")
+        if default_handler:
+            tail = str(default_handler).rsplit(":", 1)[-1]
+            if tail == top_class or default_handler == top_module:
+                return True
+
+        return False
 
     def _read_lines(self, path: Path) -> list[str]:
         try:
