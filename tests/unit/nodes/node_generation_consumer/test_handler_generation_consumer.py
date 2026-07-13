@@ -706,6 +706,34 @@ async def test_registration_payload_preserves_correlation_id() -> None:
     assert payload["correlation_id"] == "corr-reg-correlation-1"
 
 
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_registration_payload_carries_contract_metadata_omn14532() -> None:
+    """OMN-14532: contract_metadata.description/model_id must be populated.
+
+    Before this fix, _emit_registration never sent a contract_metadata field
+    at all, so node_projection_mcp_tools' mcp_tools.description and
+    mcp_tools.model_id columns were "" forever for every generation-sourced
+    tool. The data was always available on the benchmark — it just never
+    made it onto the wire.
+    """
+    published: list[tuple[str, bytes]] = []
+    handler = _make_handler([_VALID_LLM_RESPONSE], published=published)
+
+    await handler.handle(
+        ModelNodeGenerationRequest(
+            task_description="Build a stub node",
+            correlation_id="corr-reg-meta-1",
+        )
+    )
+
+    _, payload = _registration_event(published)
+    meta = payload["contract_metadata"]
+    assert meta["description"] == "Build a stub node"
+    assert isinstance(meta["model_id"], str)
+    assert meta["model_id"]
+
+
 # ---------------------------------------------------------------------------
 # Contract model_routing endpoint resolution tests
 #

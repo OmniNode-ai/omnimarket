@@ -251,18 +251,29 @@ class TestProjectionMcpToolsIdempotency:
 
 
 # ---------------------------------------------------------------------------
-# Rejected status
+# Rejected status (OMN-14532)
+#
+# The old ``event.status == "rejected"`` branch in project() was dead code:
+# node_contract_registry's reject path (_reject()) never sets
+# mcp_eligible=True and publishes to a DIFFERENT topic
+# (node-registration-rejected.v1) this node does not subscribe to;
+# node_generation_consumer never sends a `status` field valued "rejected" at
+# all. Any event that reaches project() past the `mcp_eligible` gate is,
+# by construction, never a real rejection. Removed the branch — this test
+# now proves that a manually-constructed status="rejected" (a combination
+# that never occurs on the real wire) does NOT flip status/is_active,
+# rather than asserting the dead behavior.
 # ---------------------------------------------------------------------------
 
 
 class TestProjectionMcpToolsRejected:
-    def test_rejected_status_projects_inactive(self) -> None:
+    def test_status_field_no_longer_affects_projection(self) -> None:
         db = InmemoryDatabaseAdapter()
         event = _mcp_event(status="rejected")
         HANDLER.project(event, db)
         row = db.query("mcp_tools")[0]
-        assert row["status"] == EnumMcpToolStatus.REJECTED
-        assert row["is_active"] is False
+        assert row["status"] == EnumMcpToolStatus.ACTIVE
+        assert row["is_active"] is True
 
 
 # ---------------------------------------------------------------------------
