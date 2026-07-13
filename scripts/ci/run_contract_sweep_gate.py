@@ -22,8 +22,8 @@ in a skill file. This script:
    pre-existing backlog (5 major, 21 minor) was paid down under OMN-14544 —
    the 5 major violations were fixed at the source and the 21 minor
    `onex.snapshot.*` topics turned out to be a real, cross-repo-established
-   projection-broadcast topic kind, not naming mistakes, so `_TOPIC_RE` was
-   extended to accept it. The corpus is now a real zero, so --strict is on
+   projection-broadcast topic kind, not naming mistakes, so the separate
+   `_SNAPSHOT_TOPIC_RE` accepts it. The corpus is now a real zero, so --strict is on
    by default in ci.yml and .pre-commit-config.yaml; pass --strict here too
    to block on any NEW violation.
 

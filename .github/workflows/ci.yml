@@ -1267,8 +1267,8 @@ jobs:
   # were re-classified — `onex.snapshot.*` is a real, cross-repo-established
   # projection-broadcast topic kind (verified in use across omnimarket,
   # omnidash, onex_change_control, omnibase_infra, omnibase_core, and
-  # omniintelligence), not 21 naming mistakes, so `_TOPIC_RE` was extended to
-  # accept it. The corpus is now a real, enforced zero — this job passes
+  # omniintelligence), not 21 naming mistakes, so the separate
+  # `_SNAPSHOT_TOPIC_RE` accepts it. The corpus is now a real, enforced zero — this job passes
   # --strict so any NEW violation fails closed.
   # ============================================================================
   contract-sweep-gate:
