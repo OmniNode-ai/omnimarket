@@ -52,6 +52,9 @@ dependencies = [
     "pyyaml>=6.0.2,<7.0.0",
     "packaging>=24.0",
     "aiokafka>=0.13.0",
+    # OMN-14528: node_runtime_sweep.broker_probe uses the confluent AdminClient
+    # (list_consumer_groups) to collect the live consumer-group census in code.
+    "confluent-kafka>=2.12.0,<3.0.0",
     "asyncpg>=0.30.0",
     "fastapi>=0.115.0",
     "uvicorn>=0.30.0",

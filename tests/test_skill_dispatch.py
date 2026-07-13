@@ -142,7 +142,10 @@ def hermetic_omni_home(tmp_path: Path) -> str:
         ),
         (
             "omnimarket.nodes.node_runtime_sweep",
-            ["--scope", "all-repos"],
+            # OMN-14528: the hermetic tree has no broker, so run a static-only
+            # sweep (the full sweep now fails closed when it cannot probe the
+            # broker for the live consumer-group census).
+            ["--scope", "all-repos", "--skip-consumer-liveness"],
         ),
         (
             "omnimarket.nodes.node_aislop_sweep",
@@ -230,7 +233,8 @@ def test_runtime_sweep_parity(hermetic_omni_home: str) -> None:
 
     proc_data = _run_node_subprocess(
         "omnimarket.nodes.node_runtime_sweep",
-        ["--scope", "all-repos"],
+        # OMN-14528: hermetic tree has no broker → static-only sweep.
+        ["--scope", "all-repos", "--skip-consumer-liveness"],
         omni_home=hermetic_omni_home,
     )
     assert "findings" in proc_data
