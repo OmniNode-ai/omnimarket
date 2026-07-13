@@ -28,9 +28,11 @@ import yaml
 from omnimarket.validators.contract_topic_graph import (
     ModelTopicGraph,
     build_graph,
+    evaluate_ratchet,
     find_defects,
     load_baseline,
     main,
+    merge_base_accepted_keys,
     parse_contract,
 )
 
@@ -70,7 +72,14 @@ def test_healthy_producer_consumer_pair_is_clean(tmp_path: Path) -> None:
             "name": "node_emitter",
             "runtime_dispatch": {"command_topic": "onex.cmd.omnimarket.emit.v1"},
             "event_bus": {"publish_topics": ["onex.evt.omnimarket.thing-happened.v1"]},
-            "handler_routing": {"handlers": [{"operation": "emit"}]},
+            "handler_routing": {
+                "handlers": [
+                    {
+                        "operation": "emit",
+                        "handler": {"module": "test_module", "name": "TestHandler"},
+                    }
+                ]
+            },
         },
     )
     _write(
@@ -82,7 +91,14 @@ def test_healthy_producer_consumer_pair_is_clean(tmp_path: Path) -> None:
             "event_bus": {
                 "subscribe_topics": ["onex.evt.omnimarket.thing-happened.v1"]
             },
-            "handler_routing": {"handlers": [{"operation": "read"}]},
+            "handler_routing": {
+                "handlers": [
+                    {
+                        "operation": "read",
+                        "handler": {"module": "test_module", "name": "TestHandler"},
+                    }
+                ]
+            },
         },
     )
 
@@ -161,7 +177,14 @@ def test_red_against_exists_but_wrong__producer_publishes_the_wrong_topic(
             "runtime_dispatch": {"command_topic": "onex.cmd.omnimarket.emit.v1"},
             # Consumer wants .v1. This publishes .v2. Nothing else is wrong.
             "event_bus": {"publish_topics": ["onex.evt.omnimarket.thing-happened.v2"]},
-            "handler_routing": {"handlers": [{"operation": "emit"}]},
+            "handler_routing": {
+                "handlers": [
+                    {
+                        "operation": "emit",
+                        "handler": {"module": "test_module", "name": "TestHandler"},
+                    }
+                ]
+            },
         },
     )
     _write(
@@ -173,7 +196,14 @@ def test_red_against_exists_but_wrong__producer_publishes_the_wrong_topic(
             "event_bus": {
                 "subscribe_topics": ["onex.evt.omnimarket.thing-happened.v1"]
             },
-            "handler_routing": {"handlers": [{"operation": "read"}]},
+            "handler_routing": {
+                "handlers": [
+                    {
+                        "operation": "read",
+                        "handler": {"module": "test_module", "name": "TestHandler"},
+                    }
+                ]
+            },
         },
     )
 
@@ -216,7 +246,14 @@ def test_declared_but_unwired_is_caught(tmp_path: Path) -> None:
             "name": "node_beat",
             "runtime_dispatch": {"command_topic": "onex.cmd.platform.beat.v1"},
             "event_bus": {"publish_topics": ["onex.evt.platform.node-heartbeat.v1"]},
-            "handler_routing": {"handlers": [{"operation": "beat"}]},
+            "handler_routing": {
+                "handlers": [
+                    {
+                        "operation": "beat",
+                        "handler": {"module": "test_module", "name": "TestHandler"},
+                    }
+                ]
+            },
         },
     )
 
@@ -241,7 +278,14 @@ def test_disconnected_subgraph_is_caught__two_rival_ledgers(tmp_path: Path) -> N
                 "subscribe_topics": ["onex.cmd.omnimarket.ledger-tick.v1"],
                 "publish_topics": ["onex.evt.omnimarket.ledger-reduced.v1"],
             },
-            "handler_routing": {"handlers": [{"operation": "tick"}]},
+            "handler_routing": {
+                "handlers": [
+                    {
+                        "operation": "tick",
+                        "handler": {"module": "test_module", "name": "TestHandler"},
+                    }
+                ]
+            },
         },
     )
     _write(
@@ -253,7 +297,14 @@ def test_disconnected_subgraph_is_caught__two_rival_ledgers(tmp_path: Path) -> N
             "event_bus": {
                 "subscribe_topics": ["onex.evt.omnimarket.ledger-reduced.v1"]
             },
-            "handler_routing": {"handlers": [{"operation": "reduce"}]},
+            "handler_routing": {
+                "handlers": [
+                    {
+                        "operation": "reduce",
+                        "handler": {"module": "test_module", "name": "TestHandler"},
+                    }
+                ]
+            },
         },
     )
 
@@ -278,7 +329,14 @@ def test_declared_external_producer_makes_a_consumer_reachable(tmp_path: Path) -
         {
             "name": "node_webhook_reader",
             "event_bus": {"subscribe_topics": ["onex.evt.github.pr-webhook.v1"]},
-            "handler_routing": {"handlers": [{"operation": "read"}]},
+            "handler_routing": {
+                "handlers": [
+                    {
+                        "operation": "read",
+                        "handler": {"module": "test_module", "name": "TestHandler"},
+                    }
+                ]
+            },
         },
     )
 
@@ -384,7 +442,14 @@ def test_ratchet_hard_fails_on_a_new_defect(tmp_path: Path) -> None:
             "event_bus": {
                 "subscribe_topics": ["onex.cmd.platform.nobody-sends-this.v1"]
             },
-            "handler_routing": {"handlers": [{"operation": "x"}]},
+            "handler_routing": {
+                "handlers": [
+                    {
+                        "operation": "x",
+                        "handler": {"module": "test_module", "name": "TestHandler"},
+                    }
+                ]
+            },
         },
     )
     graph = _graph(tmp_path)
@@ -415,6 +480,96 @@ def test_ratchet_hard_fails_when_a_baselined_defect_is_fixed(tmp_path: Path) -> 
     current = {d.key() for d in find_defects(graph)}
     fixed = set(load_baseline(baseline).accepted) - current
     assert fixed == {"ORPHANED_CONSUMER::node_gone::onex.cmd.platform.gone.v1"}
+
+
+def test_ratchet_rejects_a_defect_smuggled_in_via_its_own_baseline_entry(
+    tmp_path: Path,
+) -> None:
+    """A PR cannot launder a new defect by baselining it in the same commit.
+
+    ``evaluate_ratchet`` must key off ``trusted_accepted`` (the merge-base
+    baseline), never the PR-local one -- otherwise a PR could add a real
+    defect and its exact baseline key together and ``new_defects`` would
+    come back empty, defeating the entire shrink-only ratchet.
+    """
+    _write(
+        tmp_path,
+        "omnibase_infra",
+        "node_starved",
+        {
+            "name": "node_starved",
+            "event_bus": {
+                "subscribe_topics": ["onex.cmd.platform.nobody-sends-this.v1"]
+            },
+            "handler_routing": {
+                "handlers": [
+                    {
+                        "operation": "x",
+                        "handler": {"module": "test_module", "name": "TestHandler"},
+                    }
+                ]
+            },
+        },
+    )
+    findings = find_defects(_graph(tmp_path))
+    key = next(f.key() for f in findings if f.node == "node_starved")
+
+    # The PR's own baseline already accepts the key -- as if the implementer
+    # ran --write-baseline in the same commit that introduced the defect.
+    local_accepted = {key}
+    # The merge-base baseline (what actually predates this PR) does not.
+    trusted_accepted: set[str] = set()
+
+    new_defects, fixed = evaluate_ratchet(findings, local_accepted, trusted_accepted)
+
+    assert [f.key() for f in new_defects] == [key]
+    assert fixed == []
+
+
+def test_ratchet_trusts_a_defect_that_genuinely_predates_the_pr(
+    tmp_path: Path,
+) -> None:
+    """The same key is silent when the MERGE-BASE baseline already has it."""
+    _write(
+        tmp_path,
+        "omnibase_infra",
+        "node_starved",
+        {
+            "name": "node_starved",
+            "event_bus": {
+                "subscribe_topics": ["onex.cmd.platform.nobody-sends-this.v1"]
+            },
+            "handler_routing": {
+                "handlers": [
+                    {
+                        "operation": "x",
+                        "handler": {"module": "test_module", "name": "TestHandler"},
+                    }
+                ]
+            },
+        },
+    )
+    findings = find_defects(_graph(tmp_path))
+    key = next(f.key() for f in findings if f.node == "node_starved")
+
+    local_accepted = {key}
+    trusted_accepted = {key}  # genuinely pre-existing, per the merge-base baseline
+
+    new_defects, fixed = evaluate_ratchet(findings, local_accepted, trusted_accepted)
+
+    assert new_defects == []
+    assert fixed == []
+
+
+def test_merge_base_accepted_keys_returns_none_outside_a_git_repo(
+    tmp_path: Path,
+) -> None:
+    """No ``.git`` reachable from the baseline path -- resolve to unknown, not []."""
+    baseline_path = tmp_path / "not_a_repo" / "baseline.yaml"
+    baseline_path.parent.mkdir(parents=True)
+    baseline_path.write_text(yaml.safe_dump({"external_producers": {}, "accepted": []}))
+
+    assert merge_base_accepted_keys(baseline_path) is None
 
 
 def test_baseline_is_a_burn_down_list_not_a_growing_allowlist() -> None:

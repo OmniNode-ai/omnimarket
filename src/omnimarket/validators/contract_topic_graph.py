@@ -61,6 +61,7 @@ import argparse
 import importlib.util
 import os
 import re
+import subprocess
 import sys
 from collections.abc import Sequence
 from pathlib import Path
@@ -180,6 +181,46 @@ def _dig(data: object, *path: str) -> object:
     return data
 
 
+def _has_dispatch_entry(handler_routing: object) -> bool:
+    """True only if ``handler_routing`` names a real, dispatchable handler.
+
+    A bare ``{"handlers": []}`` or a mapping missing ``handlers`` entirely is
+    NOT wired -- the runtime creates the Kafka subscription and has nowhere to
+    dispatch the event it receives ("No dispatcher found"). Each
+    ``handlers[]`` entry must resolve a module plus a class/name, matching the
+    shape RuntimeLocal actually dispatches on: ``handler: {module, name}`` (or
+    ``class``). ``default_handler`` is the other real dispatch path, declared
+    as a non-empty ``"module:ClassName"`` string.
+    """
+    if not isinstance(handler_routing, dict):
+        return False
+    handlers = handler_routing.get("handlers")
+    if isinstance(handlers, list):
+        for entry in handlers:
+            if not isinstance(entry, dict):
+                continue
+            target = entry.get("handler")
+            if (
+                isinstance(target, dict)
+                and target.get("module")
+                and (target.get("name") or target.get("class"))
+            ):
+                return True
+    default_handler = handler_routing.get("default_handler")
+    if isinstance(default_handler, str) and default_handler.strip():
+        return True
+    return False
+
+
+def _has_top_level_handler(handler: object) -> bool:
+    """True only if a top-level ``handler:`` names a module and a class/name."""
+    return bool(
+        isinstance(handler, dict)
+        and handler.get("module")
+        and (handler.get("class") or handler.get("name"))
+    )
+
+
 def parse_contract(path: Path, package: str) -> ModelContractNode | None:
     """Reduce one contract.yaml to its graph surface.
 
@@ -194,10 +235,10 @@ def parse_contract(path: Path, package: str) -> ModelContractNode | None:
     """
     try:
         data = yaml.safe_load(path.read_text(errors="replace"))
-    except yaml.YAMLError:
-        return None
+    except yaml.YAMLError as exc:
+        raise RuntimeError(f"Invalid contract YAML: {path}") from exc
     if not isinstance(data, dict):
-        return None
+        raise RuntimeError(f"Contract must contain a YAML mapping: {path}")
 
     raw_bus = data.get("event_bus")
     bus: dict[str, object] = raw_bus if isinstance(raw_bus, dict) else {}
@@ -262,8 +303,11 @@ def parse_contract(path: Path, package: str) -> ModelContractNode | None:
         # A subscription is wired to a dispatcher by handler_routing (topic/operation
         # match) or by a single top-level handler. Without either, the runtime still
         # creates the Kafka subscription -- it just has nowhere to dispatch the event
-        # it receives, and drops it ("No dispatcher found").
-        has_dispatch_wiring=bool(data.get("handler_routing") or data.get("handler")),
+        # it receives, and drops it ("No dispatcher found"). Truthiness of the
+        # handler_routing MAPPING is not enough -- {"handlers": []} is truthy and
+        # still undispatchable, so this checks for an actual resolvable entry.
+        has_dispatch_wiring=_has_dispatch_entry(data.get("handler_routing"))
+        or _has_top_level_handler(data.get("handler")),
         runtime_loaded=runtime_loaded,
     )
 
@@ -512,6 +556,96 @@ def load_baseline(path: Path) -> ModelBaseline:
     return ModelBaseline.model_validate(data)
 
 
+def _run_git(args: list[str], cwd: Path) -> str | None:
+    """Run a git command, returning stdout or None on any failure."""
+    try:
+        result = subprocess.run(
+            ["git", *args],
+            cwd=cwd,
+            capture_output=True,
+            text=True,
+            timeout=30,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if result.returncode != 0:
+        return None
+    return result.stdout.strip()
+
+
+def merge_base_accepted_keys(baseline_path: Path) -> set[str] | None:
+    """Return the ``accepted`` keys frozen in the baseline AT THE MERGE-BASE.
+
+    The PR-controlled baseline on disk cannot be trusted to gate itself: a PR
+    can add a real new defect and its exact key to the baseline in the same
+    commit (by hand, or via ``--write-baseline``), which makes ``new_defects``
+    empty against the PR's own copy -- the advertised shrink-only ratchet is
+    then not enforced at all. This resolves the SAME file's content at the
+    merge-base with the PR's target branch instead, so a key can only ever
+    count as "already accepted" if it predates this PR.
+
+    Returns ``None`` (best-effort, not a hard requirement) when the merge base
+    cannot be determined -- a shallow local clone, a detached/unpushed branch,
+    or ``git`` being unavailable. Callers fall back to trusting the PR-local
+    baseline in that case rather than hard-failing every run on an
+    environment limitation unrelated to the actual defect population.
+    """
+    repo_root = baseline_path.resolve().parent
+    while repo_root != repo_root.parent and not (repo_root / ".git").exists():
+        repo_root = repo_root.parent
+    if not (repo_root / ".git").exists():
+        return None
+
+    rel_path = baseline_path.resolve().relative_to(repo_root).as_posix()
+    target_ref = os.environ.get("GITHUB_BASE_REF", "").strip()
+    candidates = (
+        [f"origin/{target_ref}"] if target_ref else ["origin/dev", "origin/main"]
+    )
+    for candidate in candidates:
+        merge_base = _run_git(["merge-base", "HEAD", candidate], cwd=repo_root)
+        if not merge_base:
+            continue
+        content = _run_git(["show", f"{merge_base}:{rel_path}"], cwd=repo_root)
+        if content is None:
+            continue
+        try:
+            data = yaml.safe_load(content) or {}
+            baseline = ModelBaseline.model_validate(data)
+        except (yaml.YAMLError, ValueError):
+            continue
+        return set(baseline.accepted)
+    return None
+
+
+def evaluate_ratchet(
+    findings: list[ModelGraphFinding],
+    local_accepted: set[str],
+    trusted_accepted: set[str],
+) -> tuple[list[ModelGraphFinding], list[str]]:
+    """Split ``findings`` into ``(new_defects, fixed)`` against the ratchet.
+
+    ``trusted_accepted`` decides what counts as "already accepted" -- it must
+    be the merge-base baseline (or, as a documented fallback, the PR-local
+    one), NEVER a baseline this same run could have just written. A key is a
+    new defect the instant it is not in ``trusted_accepted``, regardless of
+    whether ``local_accepted`` (the PR's own, possibly-just-edited, baseline
+    file) also contains it -- that is what stops a PR from adding a real
+    defect and its baseline entry in the same commit.
+
+    ``fixed`` is evaluated against ``local_accepted`` instead: a key the
+    PR-local baseline still claims to accept, but that no longer corresponds
+    to any current finding, must be removed from the baseline so it cannot
+    silently re-authorize a regression later.
+    """
+    current = {f.key(): f for f in findings}
+    new_defects = [
+        f for key, f in sorted(current.items()) if key not in trusted_accepted
+    ]
+    fixed = sorted(local_accepted - set(current))
+    return new_defects, fixed
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--baseline", type=Path, default=DEFAULT_BASELINE)
@@ -554,11 +688,22 @@ def main(argv: Sequence[str] | None = None) -> int:
             )
 
     accepted = set(baseline.accepted)
-    current = {f.key(): f for f in findings}
-    new_defects = [f for key, f in sorted(current.items()) if key not in accepted]
-    # The ratchet: a baselined defect that is FIXED must leave the baseline, or the
-    # baseline silently re-authorizes the defect if it ever regresses.
-    fixed = sorted(accepted - set(current))
+
+    # Trust the merge-base's baseline, not this PR's own copy, to decide what
+    # counts as "already accepted" -- otherwise a PR could add a real new
+    # defect and its baseline entry in the same commit and the ratchet would
+    # never see it. Falls back to the PR-local baseline only when the merge
+    # base genuinely cannot be resolved (see merge_base_accepted_keys).
+    trusted_accepted = merge_base_accepted_keys(args.baseline)
+    if trusted_accepted is None:
+        sys.stderr.write(
+            "::warning::contract-topic-graph could not resolve the merge-base "
+            "baseline (shallow clone or detached checkout) -- falling back to "
+            "the PR-local baseline for this run's new-defect check.\n"
+        )
+        trusted_accepted = accepted
+
+    new_defects, fixed = evaluate_ratchet(findings, accepted, trusted_accepted)
 
     if new_defects:
         lines = [
