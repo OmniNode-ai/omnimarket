@@ -36,10 +36,61 @@ output_model:
   module: omnimarket.nodes.node_swarm_subtask_state_reducer.models.model_swarm_subtask_output
   description: "New run state + projection freshness fields."
 
+# OMN-14534: routing_strategy was operation_match with NO event_model declared
+# on the single handler entry. With no event_model, the auto-wiring dispatcher
+# (omnibase_infra handler_wiring.py) calls handle() with the RAW
+# ModelEventEnvelope object instead of a validated payload — every real
+# dispatch raised TypeError inside handle(), which MessageDispatchEngine
+# swallowed into a HANDLER_ERROR status while the offset still committed:
+# silent, permanent data loss on every message across all 5 subscribed
+# topics. topic_match + a per-topic event_model (matching node_projection_swarm's
+# established pattern) makes the dispatcher validate the real producer wire
+# shape before calling handle(). The 5 topics carry 3 distinct real producer
+# models (delegation-execute is the fan-out command; the 3 delegation-* event
+# topics are node_llm_delegation_call_effect's outputs; swarm-fanout-completed
+# is node_swarm_fanout_orchestrator's terminal) — none of them is the
+# reducer's own ModelDelegationEvent, so handle() now adapts each real shape
+# instead of the (never-matched) invented one.
 handler_routing:
-  routing_strategy: operation_match
+  routing_strategy: topic_match
   handlers:
-    - operation: reduce_subtask_state
+    - topic: onex.cmd.omnimarket.delegation-execute.v1
+      operation: reduce_subtask_state
+      event_model:
+        name: ModelLlmDelegationCallRequest
+        module: omnimarket.nodes.node_llm_delegation_call_effect.models.model_llm_delegation_call_request
+      handler:
+        name: HandlerSwarmSubtaskState
+        module: omnimarket.nodes.node_swarm_subtask_state_reducer.handlers.handler_swarm_subtask_state
+    - topic: onex.evt.omnimarket.delegation-call-completed.v1
+      operation: reduce_subtask_state
+      event_model:
+        name: ModelLlmDelegationCompletedEvent
+        module: omnimarket.models.delegation.llm_cost_routing.model_llm_delegation_completed_event
+      handler:
+        name: HandlerSwarmSubtaskState
+        module: omnimarket.nodes.node_swarm_subtask_state_reducer.handlers.handler_swarm_subtask_state
+    - topic: onex.evt.omnimarket.delegation-escalation-triggered.v1
+      operation: reduce_subtask_state
+      event_model:
+        name: ModelLlmDelegationEscalationTriggeredEvent
+        module: omnimarket.models.delegation.llm_cost_routing.model_llm_delegation_escalation_triggered_event
+      handler:
+        name: HandlerSwarmSubtaskState
+        module: omnimarket.nodes.node_swarm_subtask_state_reducer.handlers.handler_swarm_subtask_state
+    - topic: onex.evt.omnimarket.delegation-all-tiers-failed.v1
+      operation: reduce_subtask_state
+      event_model:
+        name: ModelLlmDelegationAllTiersFailedEvent
+        module: omnimarket.models.delegation.llm_cost_routing.model_llm_delegation_all_tiers_failed_event
+      handler:
+        name: HandlerSwarmSubtaskState
+        module: omnimarket.nodes.node_swarm_subtask_state_reducer.handlers.handler_swarm_subtask_state
+    - topic: onex.evt.omnimarket.swarm-fanout-completed.v1
+      operation: reduce_subtask_state
+      event_model:
+        name: ModelSwarmFanoutResult
+        module: omnimarket.nodes.node_swarm_fanout_orchestrator.models.model_swarm_fanout_result
       handler:
         name: HandlerSwarmSubtaskState
         module: omnimarket.nodes.node_swarm_subtask_state_reducer.handlers.handler_swarm_subtask_state

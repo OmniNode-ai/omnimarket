@@ -528,10 +528,6 @@ node_swarm_fanout_orchestrator FAILED
 node_swarm_fanout_orchestrator PLANNING
 node_swarm_fleet_discovery_effect onex.evt.omnimarket.swarm-fleet-discovered.v1
 node_swarm_registry_compute onex.evt.omnimarket.swarm-endpoints-selected.v1
-node_swarm_subtask_state_reducer assigned
-node_swarm_subtask_state_reducer completed
-node_swarm_subtask_state_reducer escalating
-node_swarm_subtask_state_reducer failed
 node_swarm_supervisor_orchestrator FAILED
 node_swarm_supervisor_orchestrator HALTED
 node_swarm_supervisor_orchestrator IDLE
