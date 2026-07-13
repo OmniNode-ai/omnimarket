@@ -167,9 +167,19 @@ class HandlerProjectionMcpTools:
                 applied_at=now_iso,
             )
 
+        # OMN-14532: this was `status = ACTIVE; if event.status == "rejected":
+        # status = REJECTED` — permanently dead. Both real producers gate
+        # eligibility before status matters: node_contract_registry's reject
+        # path (_reject()) never sets mcp_eligible=True (model default is
+        # False and it is never overridden there), and it publishes to a
+        # DIFFERENT topic (node-registration-rejected.v1) this node does not
+        # even subscribe to. node_generation_consumer never sends a `status`
+        # field carrying "rejected" at all. Every event that reaches this
+        # point (past the `mcp_eligible` gate above) is, by construction,
+        # never a rejection — so status is always ACTIVE here. Removed the
+        # unreachable branch rather than leave code that implies a capability
+        # (rejecting a registration) this projector cannot actually exercise.
         status = EnumMcpToolStatus.ACTIVE
-        if event.status in ("rejected",):
-            status = EnumMcpToolStatus.REJECTED
 
         # Extract supplementary fields from forwarded contract metadata.
         meta = event.contract_metadata

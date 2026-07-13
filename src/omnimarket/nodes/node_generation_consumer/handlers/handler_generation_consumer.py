@@ -1887,6 +1887,15 @@ class HandlerGenerationConsumer:
                         f"mcp-tool:{node_name}",
                     ],
                     "source": "node_generation_consumer",
+                    # OMN-14532: node_projection_mcp_tools reads description/
+                    # model_id from contract_metadata — this field was never
+                    # populated by any producer, so every mcp_tools row had
+                    # description="" and model_id="" forever. Both are
+                    # available on the benchmark that triggered registration.
+                    "contract_metadata": {
+                        "description": benchmark.task_description,
+                        "model_id": benchmark.model_id,
+                    },
                 }
             ).encode()
             await _await_publish(self._event_publisher, self._topic_registered, payload)
