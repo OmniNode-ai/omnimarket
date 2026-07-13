@@ -12,15 +12,59 @@ Acceptance criteria:
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
+from uuid import UUID, uuid4
+
+from omnibase_core.enums.enum_node_kind import EnumNodeKind
+from omnibase_core.models.primitives.model_semver import ModelSemVer
+from omnibase_infra.models.registration.model_node_heartbeat_event import (
+    ModelNodeHeartbeatEvent,
+)
+
+# OMN-14490: the consumer validates against the producer's CANONICAL introspection
+# event (omnibase_infra), so these tests build that exact shape rather than the
+# retired slim local copy.
+from omnibase_infra.models.registration.model_node_introspection_event import (
+    ModelNodeIntrospectionEvent,
+)
 
 from omnimarket.nodes.node_projection_registration.handlers.handler_projection_registration import (
     HandlerProjectionRegistration,
-    ModelNodeHeartbeatEvent,
-    ModelNodeIntrospectionEvent,
 )
 from omnimarket.projection.protocol_database import InmemoryDatabaseAdapter
 
 HANDLER = HandlerProjectionRegistration()
+
+
+def _hb(node_id: UUID, *, uptime_seconds: float = 0.0) -> ModelNodeHeartbeatEvent:
+    """Build the producer's CANONICAL heartbeat event (omnibase_infra).
+
+    OMN-14506: the canonical heartbeat has no service_name/node_name/
+    health_status — it identifies its node by node_id alone, which is why the
+    projection joins on node_id rather than keying on a name it never receives.
+    """
+    return ModelNodeHeartbeatEvent(
+        node_id=node_id,
+        node_type=EnumNodeKind.EFFECT,
+        node_version=ModelSemVer(major=1, minor=0, patch=0),
+        uptime_seconds=uptime_seconds,
+        timestamp=datetime.now(tz=UTC),
+    )
+
+
+def _intro(node_name: str, *, service_url: str = "") -> ModelNodeIntrospectionEvent:
+    """Build the producer's canonical introspection event (omnibase_infra).
+
+    node_id, node_type, correlation_id, and timestamp are required by the
+    canonical wire model; the node identity used by the projection is node_name.
+    """
+    return ModelNodeIntrospectionEvent(
+        node_id=uuid4(),
+        node_name=node_name,
+        node_type=EnumNodeKind.EFFECT,
+        correlation_id=uuid4(),
+        timestamp=datetime.now(tz=UTC),
+        endpoints={"http": service_url} if service_url else {},
+    )
 
 
 class TestHeartbeatUpdatesLastHeartbeatAt:
@@ -28,24 +72,12 @@ class TestHeartbeatUpdatesLastHeartbeatAt:
 
     def test_heartbeat_updates_last_heartbeat_at(self) -> None:
         db = InmemoryDatabaseAdapter()
-        HANDLER.project_introspection(
-            ModelNodeIntrospectionEvent(
-                service_name="node_build_loop",
-                service_url="http://localhost:8080",
-                health_status="healthy",
-            ),
-            db,
-        )
+        intro = _intro("node_build_loop", service_url="http://localhost:8080")
+        HANDLER.project_introspection(intro, db)
 
         before = datetime.now(tz=UTC)
 
-        HANDLER.project_heartbeat(
-            ModelNodeHeartbeatEvent(
-                service_name="node_build_loop",
-                health_status="healthy",
-            ),
-            db,
-        )
+        HANDLER.project_heartbeat(_hb(intro.node_id), db)
 
         rows = db.query("node_service_registry")
         assert len(rows) == 1
@@ -71,10 +103,7 @@ class TestHeartbeatUpdatesLastHeartbeatAt:
         """Registration itself should initialise last_heartbeat_at."""
         db = InmemoryDatabaseAdapter()
         HANDLER.project_introspection(
-            ModelNodeIntrospectionEvent(
-                service_name="node_watchdog",
-                service_url="http://localhost:9090",
-            ),
+            _intro("node_watchdog", service_url="http://localhost:9090"),
             db,
         )
         rows = db.query("node_service_registry")
@@ -88,21 +117,11 @@ class TestUptimeSecondsIncrements:
 
     def test_heartbeat_with_explicit_uptime_seconds(self) -> None:
         db = InmemoryDatabaseAdapter()
-        HANDLER.project_introspection(
-            ModelNodeIntrospectionEvent(
-                service_name="node_overseer",
-                service_url="http://localhost:8000",
-            ),
-            db,
-        )
-        HANDLER.project_heartbeat(
-            ModelNodeHeartbeatEvent(
-                service_name="node_overseer",
-                health_status="healthy",
-                uptime_seconds=120,
-            ),
-            db,
-        )
+        intro = _intro("node_overseer", service_url="http://localhost:8000")
+        HANDLER.project_introspection(intro, db)
+
+        HANDLER.project_heartbeat(_hb(intro.node_id, uptime_seconds=120), db)
+
         rows = db.query("node_service_registry")
         assert rows[0].get("uptime_seconds") == 120, (
             "uptime_seconds must be stored from heartbeat event"
@@ -110,41 +129,21 @@ class TestUptimeSecondsIncrements:
 
     def test_heartbeat_uptime_seconds_updates_on_second_heartbeat(self) -> None:
         db = InmemoryDatabaseAdapter()
-        HANDLER.project_introspection(
-            ModelNodeIntrospectionEvent(
-                service_name="node_runner",
-                service_url="http://localhost:8001",
-            ),
-            db,
-        )
-        HANDLER.project_heartbeat(
-            ModelNodeHeartbeatEvent(
-                service_name="node_runner",
-                health_status="healthy",
-                uptime_seconds=60,
-            ),
-            db,
-        )
-        HANDLER.project_heartbeat(
-            ModelNodeHeartbeatEvent(
-                service_name="node_runner",
-                health_status="healthy",
-                uptime_seconds=120,
-            ),
-            db,
-        )
+        intro = _intro("node_runner", service_url="http://localhost:8001")
+        HANDLER.project_introspection(intro, db)
+
+        HANDLER.project_heartbeat(_hb(intro.node_id, uptime_seconds=60), db)
+        HANDLER.project_heartbeat(_hb(intro.node_id, uptime_seconds=120), db)
+
         rows = db.query("node_service_registry")
+        assert len(rows) == 1, "heartbeats must update the node's row, not add rows"
         assert rows[0].get("uptime_seconds") == 120, (
             "uptime_seconds must be updated on second heartbeat"
         )
 
     def test_uptime_seconds_field_present_on_model(self) -> None:
-        """ModelNodeHeartbeatEvent must have uptime_seconds field."""
-        event = ModelNodeHeartbeatEvent(
-            service_name="svc",
-            health_status="healthy",
-            uptime_seconds=300,
-        )
+        """The canonical ModelNodeHeartbeatEvent carries uptime_seconds."""
+        event = _hb(uuid4(), uptime_seconds=300)
         assert event.uptime_seconds == 300
 
 
@@ -274,11 +273,7 @@ class TestPeriodicHeartbeatEmitter:
         # Register 3 nodes
         for i in range(3):
             HANDLER.project_introspection(
-                ModelNodeIntrospectionEvent(
-                    service_name=f"node_test_{i}",
-                    service_url=f"http://localhost:{9000 + i}",
-                    health_status="healthy",
-                ),
+                _intro(f"node_test_{i}", service_url=f"http://localhost:{9000 + i}"),
                 db,
             )
 

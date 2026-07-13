@@ -10,6 +10,14 @@ capabilities:
   requires_network: true
   requires_secrets: true
   side_effect_class: write_db
+# OMN-14490 / OMN-14506: this node consumes the producer's CANONICAL event models
+# (ModelNodeIntrospectionEvent / ModelNodeHeartbeatEvent) from omnibase_infra
+# rather than redefining slim extra="ignore" copies that silently dropped every
+# field they did not declare.
+dependencies:
+  - "omnibase_core>=0.39.0"
+  - "omnibase-infra>=0.1.0"
+  - "pyyaml>=6.0"
 tags:
   - projection
   - registration

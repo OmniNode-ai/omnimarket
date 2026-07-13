@@ -480,6 +480,75 @@ class TestRegistrationHandler:
         mock_db.execute.assert_called_once()
 
     @pytest.mark.asyncio
+    async def test_introspection_rich_fields_survive_metadata_jsonb(
+        self, mock_db: AsyncMock
+    ) -> None:
+        """OMN-14490: the async runner (the live Kafka->Postgres projector) must
+        NOT silently drop the producer's rich introspection fields on the very
+        hot node-introspection.v1 topic. Drive the producer's ACTUAL canonical
+        wire payload and assert endpoints / declared_capabilities /
+        discovered_capabilities / contract_capabilities / current_state all
+        survive into the metadata JSONB bind.
+
+        RED against exists-but-wrong: the prior runner persisted only
+        node_name/node_id into metadata, so these keys were absent (KeyError).
+        """
+        import json
+        from datetime import UTC, datetime
+        from uuid import uuid4
+
+        from omnibase_core.enums.enum_node_kind import EnumNodeKind
+        from omnibase_core.models.primitives.model_semver import ModelSemVer
+        from omnibase_infra.models.registration.model_node_introspection_event import (
+            ModelContractCapabilities,
+            ModelDiscoveredCapabilities,
+            ModelNodeCapabilities,
+            ModelNodeIntrospectionEvent,
+        )
+
+        from omnimarket.nodes.node_projection_registration.handlers.handler_registration import (
+            RegistrationProjectionRunner,
+        )
+
+        runner = RegistrationProjectionRunner()
+        runner._db = mock_db
+
+        event = ModelNodeIntrospectionEvent(
+            node_id=uuid4(),
+            node_name="rich-runner-svc",
+            node_type=EnumNodeKind.COMPUTE,
+            correlation_id=uuid4(),
+            timestamp=datetime.now(tz=UTC),
+            endpoints={"http": "http://rich-runner:8080"},
+            declared_capabilities=ModelNodeCapabilities(),
+            discovered_capabilities=ModelDiscoveredCapabilities(has_fsm=True),
+            contract_capabilities=ModelContractCapabilities(
+                contract_type="COMPUTE_GENERIC",
+                contract_version=ModelSemVer(major=2, minor=0, patch=0),
+                capability_tags=["omn14490-runner"],
+            ),
+            current_state="RUNNING",
+        )
+        # Drive the EXACT producer wire payload through the async projector.
+        wire = event.model_dump(mode="json")
+        result = await runner.project_event(
+            "onex.evt.platform.node-introspection.v1", wire, _make_meta()
+        )
+        assert result is True
+        mock_db.execute.assert_called_once()
+
+        # Positional binds: (sql, service_name, service_url, service_type,
+        # health_status, metadata_json) -> metadata_json is index 5.
+        metadata = json.loads(mock_db.execute.call_args[0][5])
+        assert metadata["endpoints"] == {"http": "http://rich-runner:8080"}
+        assert metadata["declared_capabilities"] == wire["declared_capabilities"]
+        assert metadata["discovered_capabilities"]["has_fsm"] is True
+        assert metadata["contract_capabilities"]["capability_tags"] == [
+            "omn14490-runner"
+        ]
+        assert metadata["current_state"] == "RUNNING"
+
+    @pytest.mark.asyncio
     async def test_heartbeat(self, mock_db: AsyncMock) -> None:
         from omnimarket.nodes.node_projection_registration.handlers.handler_registration import (
             RegistrationProjectionRunner,
