@@ -474,9 +474,27 @@ def _find_disconnected_subgraphs(
     """Weakly-connected components containing no reachable entry point.
 
     A component is live only if SOME topic in it can be fed from outside: a
-    contract producer beyond the component, a declared external producer, or a
-    runtime_dispatch entry point. A component where every inbound topic is
-    unreachable can never run, however perfectly its internals are wired.
+    contract producer beyond the component, a declared external producer, a
+    runtime_dispatch entry point, or an on-demand ingress root (see below). A
+    component where every inbound topic is unreachable can never run, however
+    perfectly its internals are wired.
+
+    OMN-14591: a member with EMPTY ``subscribe_topics`` that still publishes
+    something is itself an entry point -- not brokenness. A node with zero
+    subscriptions has no possible way to ever run except by being invoked from
+    outside the Kafka graph entirely (cron, on-demand CLI, a scheduler) --
+    that is the necessary shape of an ingress/root EFFECT (the motivating
+    case: ``node_gmail_intent_poller_effect``, an on-demand Gmail poller with
+    ``subscribe_topics: []`` that feeds a downstream evaluator over a real,
+    correctly-matched topic). Before this, such a cluster read identically to
+    a genuinely dead island, because neither existing entry-point signal
+    (``command_topic``, externally-produced/outside-component
+    ``subscribe_topics``) can ever fire for a node with no subscriptions to
+    examine. This does not widen any OTHER check: a zero-subscription node
+    with no ``publish_topics`` either forms its own singleton component
+    (already excluded below) or produces nothing to flag; a zero-subscription
+    node whose ``publish_topics`` nobody consumes is still caught separately
+    by ``ORPHANED_PRODUCER``.
     """
     adjacency: dict[str, set[str]] = {n.name: set() for n in graph.nodes}
     for producer, _topic, consumer in graph.edges():
@@ -511,6 +529,13 @@ def _find_disconnected_subgraphs(
             if member_node is None:
                 continue
             if member_node.command_topic is not None:
+                has_entry = True
+                break
+            # OMN-14591: an on-demand ingress root -- no subscriptions to ever
+            # be fed BY the graph, but it demonstrably produces INTO the graph.
+            # The only way such a node runs at all is an external trigger
+            # (cron, CLI, manual) outside the Kafka contract graph entirely.
+            if not member_node.subscribe_topics and member_node.publish_topics:
                 has_entry = True
                 break
             for topic in member_node.subscribe_topics:

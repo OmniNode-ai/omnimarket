@@ -315,6 +315,105 @@ def test_disconnected_subgraph_is_caught__two_rival_ledgers(tmp_path: Path) -> N
     assert "ledger_state_reducer" in subgraphs[0].detail
 
 
+def test_ondemand_ingress_root_is_not_flagged_disconnected(tmp_path: Path) -> None:
+    """OMN-14591: a cron/on-demand root with zero subscriptions is NOT debt.
+
+    The motivating case: node_gmail_intent_poller_effect (subscribe_topics: [],
+    "On-demand trigger" per its own contract comment) feeds
+    node_gmail_intent_evaluator_effect over a real, correctly-matched topic.
+    A node with no subscriptions has no possible way to ever run except by
+    being invoked from outside the Kafka graph entirely -- that IS the entry
+    point, even though neither existing signal (command_topic, externally-fed
+    subscribe_topics) can fire for a node with no subscriptions to examine.
+    Before the fix this 2-node cluster read identically to a genuinely dead
+    island (see test_disconnected_subgraph_is_caught__two_rival_ledgers just
+    above, which must keep failing).
+    """
+    _write(
+        tmp_path,
+        "omnimarket",
+        "ingress_poller",
+        {
+            "name": "ingress_poller",
+            "event_bus": {
+                "subscribe_topics": [],
+                "publish_topics": ["onex.evt.omnimarket.signal-received.v1"],
+            },
+            "handler_routing": {
+                "handlers": [
+                    {
+                        "operation": "poll",
+                        "handler": {"module": "test_module", "name": "TestHandler"},
+                    }
+                ]
+            },
+        },
+    )
+    _write(
+        tmp_path,
+        "omnimarket",
+        "signal_evaluator",
+        {
+            "name": "signal_evaluator",
+            "event_bus": {
+                "subscribe_topics": ["onex.evt.omnimarket.signal-received.v1"]
+            },
+            "handler_routing": {
+                "handlers": [
+                    {
+                        "operation": "evaluate",
+                        "handler": {"module": "test_module", "name": "TestHandler"},
+                    }
+                ]
+            },
+        },
+    )
+
+    defects = find_defects(_graph(tmp_path))
+    assert [d for d in defects if d.defect == "DISCONNECTED_SUBGRAPH"] == []
+    # Not orphaned either -- the topic IS produced and IS consumed.
+    assert [
+        d for d in defects if d.defect in ("ORPHANED_CONSUMER", "ORPHANED_PRODUCER")
+    ] == []
+
+
+def test_ingress_root_fix_does_not_mask_a_producer_nobody_consumes(
+    tmp_path: Path,
+) -> None:
+    """The ingress-root exemption is narrow: it does not launder a producer
+    whose output genuinely goes nowhere. That defect is ORPHANED_PRODUCER's
+    job, evaluated independently of the subgraph check, and must still fire.
+    """
+    _write(
+        tmp_path,
+        "omnimarket",
+        "ingress_poller_alone",
+        {
+            "name": "ingress_poller_alone",
+            "event_bus": {
+                "subscribe_topics": [],
+                "publish_topics": ["onex.evt.omnimarket.nobody-listens.v1"],
+            },
+            "handler_routing": {
+                "handlers": [
+                    {
+                        "operation": "poll",
+                        "handler": {"module": "test_module", "name": "TestHandler"},
+                    }
+                ]
+            },
+        },
+    )
+
+    defects = find_defects(_graph(tmp_path))
+    # Singleton component (no edges at all) -- covered by the orphan check,
+    # never by the subgraph check (len(component) < 2 excludes it there).
+    assert [d for d in defects if d.defect == "DISCONNECTED_SUBGRAPH"] == []
+    orphaned = [d for d in defects if d.defect == "ORPHANED_PRODUCER"]
+    assert len(orphaned) == 1
+    assert orphaned[0].node == "ingress_poller_alone"
+
+
 def test_declared_external_producer_makes_a_consumer_reachable(tmp_path: Path) -> None:
     """Some topics really are published off-graph (the skill CLI, a GitHub webhook).
 
