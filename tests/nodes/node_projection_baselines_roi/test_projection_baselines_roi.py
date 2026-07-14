@@ -19,14 +19,12 @@ from __future__ import annotations
 
 import yaml
 
-from omnimarket.nodes.node_projection_baselines.handlers.handler_projection_baselines import (
+from omnimarket.nodes.node_projection_baselines_roi.handlers.handler_projection_baselines_roi import (
+    HandlerProjectionBaselinesRoi,
     ModelBaselinesComparison,
     ModelBaselinesComputedEvent,
     ModelBaselinesRecommendation,
     ModelBaselinesRetryCount,
-)
-from omnimarket.nodes.node_projection_baselines_roi.handlers.handler_projection_baselines_roi import (
-    HandlerProjectionBaselinesRoi,
     ModelBaselinesRoiProjectionResult,
 )
 from omnimarket.projection.protocol_database import InmemoryDatabaseAdapter
@@ -196,6 +194,14 @@ class TestHandlerProjectionBaselinesRoi:
         exposures = contract["projection_api"]["exposures"]
         topics = [e["topic"] for e in exposures]
         assert "onex.snapshot.projection.baselines.roi.v1" in topics
+
+    def test_contract_terminal_event(self) -> None:
+        with open(_CONTRACT_PATH) as f:
+            contract = yaml.safe_load(f)
+        assert (
+            contract["terminal_event"]
+            == "onex.evt.omnimarket.projection-baselines-roi-applied.v1"
+        )
 
     def test_handle_shim_delegates_to_project(self) -> None:
         db = InmemoryDatabaseAdapter()

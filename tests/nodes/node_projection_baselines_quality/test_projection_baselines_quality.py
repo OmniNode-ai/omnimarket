@@ -20,15 +20,13 @@ from __future__ import annotations
 
 import yaml
 
-from omnimarket.nodes.node_projection_baselines.handlers.handler_projection_baselines import (
-    ModelBaselinesComparison,
-    ModelBaselinesComputedEvent,
-    ModelBaselinesRecommendation,
-    ModelBaselinesRetryCount,
-)
 from omnimarket.nodes.node_projection_baselines_quality.handlers.handler_projection_baselines_quality import (
     HandlerProjectionBaselinesQuality,
+    ModelBaselinesComparison,
+    ModelBaselinesComputedEvent,
     ModelBaselinesQualityProjectionResult,
+    ModelBaselinesRecommendation,
+    ModelBaselinesRetryCount,
 )
 from omnimarket.projection.protocol_database import InmemoryDatabaseAdapter
 

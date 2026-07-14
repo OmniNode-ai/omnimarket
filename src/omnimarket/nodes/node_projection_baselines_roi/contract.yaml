@@ -13,7 +13,7 @@ name: projection_baselines_roi
 contract_version: {major: 1, minor: 0, patch: 0}
 node_type: reducer
 node_version: {major: 1, minor: 0, patch: 0}
-input_model: omnimarket.nodes.node_projection_baselines.handlers.handler_projection_baselines.ModelBaselinesComputedEvent
+input_model: omnimarket.nodes.node_projection_baselines_roi.handlers.handler_projection_baselines_roi.ModelBaselinesComputedEvent
 description: >
   Aggregates baselines-computed events into a single baselines_roi_snapshots
   row per snapshot_id. Computes token_delta, time_delta_ms, retry_delta,
@@ -33,7 +33,7 @@ handler_routing:
         name: HandlerProjectionBaselinesRoi
         module: omnimarket.nodes.node_projection_baselines_roi.handlers.handler_projection_baselines_roi
       handler_module: omnimarket.nodes.node_projection_baselines_roi.handlers.handler_projection_baselines_roi
-      event_model: omnimarket.nodes.node_projection_baselines.handlers.handler_projection_baselines.ModelBaselinesComputedEvent
+      event_model: omnimarket.nodes.node_projection_baselines_roi.handlers.handler_projection_baselines_roi.ModelBaselinesComputedEvent
 
 terminal_event: onex.evt.omnimarket.projection-baselines-roi-applied.v1
 

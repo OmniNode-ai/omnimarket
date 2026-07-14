@@ -3,11 +3,11 @@ name: projection_baselines
 contract_version: {major: 1, minor: 0, patch: 0}
 node_type: reducer
 node_version: {major: 1, minor: 0, patch: 0}
-input_model: omnimarket.nodes.node_projection_baselines.handlers.handler_projection_baselines.ModelBaselinesComputedEvent
+input_model: omnibase_infra.services.observability.baselines.models.model_baselines_snapshot_event.ModelBaselinesSnapshotEvent
 description: >
   Projects baselines-computed events into 4 baselines tables
-  (baselines_snapshots, baselines_comparisons, baselines_recommendations,
-  baselines_retry_counts) as a single transactional unit.
+  (baselines_snapshots, baselines_comparisons, baselines_trend,
+  baselines_breakdown) as a single transactional unit.
   Source topic: onex.evt.omnibase-infra.baselines-computed.v1.
 
 handler:
@@ -27,7 +27,7 @@ handler_routing:
         name: HandlerProjectionBaselines
         module: omnimarket.nodes.node_projection_baselines.handlers.handler_projection_baselines
       handler_module: omnimarket.nodes.node_projection_baselines.handlers.handler_projection_baselines
-      event_model: omnimarket.nodes.node_projection_baselines.handlers.handler_projection_baselines.ModelBaselinesComputedEvent
+      event_model: omnibase_infra.services.observability.baselines.models.model_baselines_snapshot_event.ModelBaselinesSnapshotEvent
 
 terminal_event: onex.evt.omnimarket.projection-baselines-applied.v1
 
@@ -39,17 +39,17 @@ db_io:
       database: omnidash_analytics
       role: snapshots
     - name: baselines_comparisons
-      migration: "0001_create_baselines_tables.sql"
+      migration: "0002_realign_child_tables_to_producer_schema.sql"
       access: write
       database: omnidash_analytics
       role: comparisons
     - name: baselines_trend
-      migration: "0001_create_baselines_tables.sql"
+      migration: "0002_realign_child_tables_to_producer_schema.sql"
       access: write
       database: omnidash_analytics
       role: trend
     - name: baselines_breakdown
-      migration: "0001_create_baselines_tables.sql"
+      migration: "0002_realign_child_tables_to_producer_schema.sql"
       access: write
       database: omnidash_analytics
       role: breakdown
@@ -59,6 +59,8 @@ event_bus:
     - onex.evt.omnibase-infra.baselines-computed.v1
   publish_topics:
     - onex.evt.omnimarket.projection-baselines-applied.v1
+  dlq_topics:
+    - onex.dlq.omnimarket.projection-baselines-malformed.v1
 
 externally_consumed_topics:
   - onex.evt.omnimarket.projection-baselines-applied.v1

@@ -6,14 +6,12 @@ from __future__ import annotations
 
 import pytest
 
-from omnimarket.nodes.node_projection_baselines.handlers.handler_projection_baselines import (
+from omnimarket.nodes.node_projection_baselines_roi.handlers.handler_projection_baselines_roi import (
+    HandlerProjectionBaselinesRoi,
     ModelBaselinesComparison,
     ModelBaselinesComputedEvent,
     ModelBaselinesRecommendation,
     ModelBaselinesRetryCount,
-)
-from omnimarket.nodes.node_projection_baselines_roi.handlers.handler_projection_baselines_roi import (
-    HandlerProjectionBaselinesRoi,
 )
 from omnimarket.projection.protocol_database import InmemoryDatabaseAdapter
 

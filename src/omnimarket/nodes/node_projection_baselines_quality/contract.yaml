@@ -13,7 +13,7 @@ name: projection_baselines_quality
 contract_version: {major: 1, minor: 0, patch: 0}
 node_type: reducer
 node_version: {major: 1, minor: 0, patch: 0}
-input_model: omnimarket.nodes.node_projection_baselines.handlers.handler_projection_baselines.ModelBaselinesComputedEvent
+input_model: omnimarket.nodes.node_projection_baselines_quality.handlers.handler_projection_baselines_quality.ModelBaselinesComputedEvent
 description: >
   Aggregates baselines-computed events into a single baselines_quality_snapshots
   row per snapshot_id. Computes confidence-tier counts (high, medium, low),
@@ -33,7 +33,7 @@ handler_routing:
         name: HandlerProjectionBaselinesQuality
         module: omnimarket.nodes.node_projection_baselines_quality.handlers.handler_projection_baselines_quality
       handler_module: omnimarket.nodes.node_projection_baselines_quality.handlers.handler_projection_baselines_quality
-      event_model: omnimarket.nodes.node_projection_baselines.handlers.handler_projection_baselines.ModelBaselinesComputedEvent
+      event_model: omnimarket.nodes.node_projection_baselines_quality.handlers.handler_projection_baselines_quality.ModelBaselinesComputedEvent
 
 terminal_event: onex.evt.omnimarket.projection-baselines-quality-applied.v1
 

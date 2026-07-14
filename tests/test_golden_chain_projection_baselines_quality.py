@@ -7,12 +7,10 @@ Exercises the full live path: event → handler → DB upsert → projection row
 
 from __future__ import annotations
 
-from omnimarket.nodes.node_projection_baselines.handlers.handler_projection_baselines import (
-    ModelBaselinesComparison,
-    ModelBaselinesComputedEvent,
-)
 from omnimarket.nodes.node_projection_baselines_quality.handlers.handler_projection_baselines_quality import (
     HandlerProjectionBaselinesQuality,
+    ModelBaselinesComparison,
+    ModelBaselinesComputedEvent,
 )
 from omnimarket.projection.protocol_database import InmemoryDatabaseAdapter
 
@@ -88,4 +86,8 @@ class TestBaselinesQualityProjection:
         assert any(
             e["topic"] == "onex.snapshot.projection.baselines.quality.v1"
             for e in exposures
+        )
+        assert (
+            contract["terminal_event"]
+            == "onex.evt.omnimarket.projection-baselines-quality-applied.v1"
         )

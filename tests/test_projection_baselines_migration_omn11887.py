@@ -31,6 +31,12 @@ NODES = ROOT / "src" / "omnimarket" / "nodes"
 BASELINES_DIR = NODES / "node_projection_baselines"
 BASELINES_MIGRATIONS = BASELINES_DIR / "migrations"
 BASELINES_MIGRATION = BASELINES_MIGRATIONS / "0001_create_baselines_tables.sql"
+# OMN-14513: comparisons/trend/breakdown were recreated with the real
+# producer row shapes (ModelBaselinesComparisonRow/TrendRow/BreakdownRow);
+# 0002 is now the authoritative CREATE TABLE for those three tables.
+BASELINES_MIGRATION_0002 = (
+    BASELINES_MIGRATIONS / "0002_realign_child_tables_to_producer_schema.sql"
+)
 
 OVERNIGHT_DIR = NODES / "node_projection_overnight"
 
@@ -41,9 +47,9 @@ CONTRACT_DECLARED_TABLES = {
     "baselines_breakdown",
 }
 
-# Columns BaselinesProjectionRunner (handler_baselines.py) actually writes per
-# table. The migration must materialize at least these so the transactional
-# projection insert does not fail at runtime.
+# Columns baselines_snapshots must have (0001 file, unchanged by OMN-14513 --
+# HandlerProjectionBaselines/BaselinesProjectionRunner both write exactly the
+# producer's top-level fields into this table).
 REQUIRED_COLUMNS: dict[str, set[str]] = {
     "baselines_snapshots": {
         "snapshot_id",
@@ -53,34 +59,48 @@ REQUIRED_COLUMNS: dict[str, set[str]] = {
         "window_end_utc",
         "projected_at",
     },
+}
+
+# OMN-14513: columns comparisons/trend/breakdown must have (0002 file) --
+# both HandlerProjectionBaselines and BaselinesProjectionRunner now write the
+# producer's real ModelBaselinesComparisonRow/TrendRow/BreakdownRow field
+# names into these tables.
+REQUIRED_COLUMNS_0002: dict[str, set[str]] = {
     "baselines_comparisons": {
+        "id",
         "snapshot_id",
-        "pattern_id",
-        "pattern_name",
+        "comparison_date",
+        "treatment_sessions",
+        "treatment_success_rate",
+        "control_sessions",
+        "control_success_rate",
+        "roi_pct",
         "sample_size",
-        "window_start",
-        "window_end",
-        "token_delta",
-        "time_delta",
-        "retry_delta",
-        "test_pass_rate_delta",
-        "review_iteration_delta",
-        "recommendation",
-        "confidence",
-        "rationale",
+        "computed_at",
+        "created_at",
     },
     "baselines_trend": {
+        "id",
         "snapshot_id",
-        "date",
-        "avg_cost_savings",
-        "avg_outcome_improvement",
-        "comparisons_evaluated",
+        "trend_date",
+        "cohort",
+        "session_count",
+        "success_rate",
+        "roi_pct",
+        "computed_at",
+        "created_at",
     },
     "baselines_breakdown": {
+        "id",
         "snapshot_id",
-        "action",
-        "count",
-        "avg_confidence",
+        "pattern_id",
+        "pattern_label",
+        "treatment_success_rate",
+        "control_success_rate",
+        "roi_pct",
+        "sample_count",
+        "computed_at",
+        "created_at",
     },
 }
 
@@ -158,6 +178,53 @@ def test_baselines_migration_columns_match_projection_writes() -> None:
         missing = required - present
         assert not missing, (
             f"{table} migration missing columns the projection writes: "
+            f"{sorted(missing)}"
+        )
+
+
+def test_baselines_migration_0002_file_exists() -> None:
+    assert BASELINES_MIGRATION_0002.is_file(), (
+        f"expected the OMN-14513 realignment migration at {BASELINES_MIGRATION_0002}"
+    )
+
+
+def test_baselines_migration_0002_is_idempotent() -> None:
+    sql = _strip_sql_comments(BASELINES_MIGRATION_0002.read_text())
+    creates = re.findall(r"CREATE\s+TABLE", sql, re.IGNORECASE)
+    guarded = re.findall(r"CREATE\s+TABLE\s+IF\s+NOT\s+EXISTS", sql, re.IGNORECASE)
+    assert creates, "0002 migration declares no CREATE TABLE statements"
+    assert len(creates) == len(guarded), (
+        "every CREATE TABLE must use IF NOT EXISTS for re-runnable idempotency"
+    )
+    drops = re.findall(r"DROP\s+TABLE", sql, re.IGNORECASE)
+    guarded_drops = re.findall(r"DROP\s+TABLE\s+IF\s+EXISTS", sql, re.IGNORECASE)
+    assert len(drops) == len(guarded_drops), (
+        "every DROP TABLE must use IF EXISTS for re-runnable idempotency"
+    )
+    bare_index = re.findall(
+        r"CREATE\s+(?:UNIQUE\s+)?INDEX\s+(?!IF\s+NOT\s+EXISTS)", sql, re.IGNORECASE
+    )
+    assert not bare_index, "every CREATE INDEX must use IF NOT EXISTS"
+
+
+def test_baselines_migration_0002_columns_match_producer_row_shapes() -> None:
+    """OMN-14513: 0002's columns must hold the real producer row fields.
+
+    This is the regression pin for the seam-mismatch fix -- the previous
+    0001-only schema (pattern_id/token_delta/date/avg_cost_savings/action/
+    count) shared almost no field names with
+    ModelBaselinesComparisonRow/ModelBaselinesTrendRow/
+    ModelBaselinesBreakdownRow.
+    """
+    sql = BASELINES_MIGRATION_0002.read_text()
+    tables = _parse_create_tables(sql)
+    for table, required in REQUIRED_COLUMNS_0002.items():
+        body = tables.get(table, "")
+        assert body, f"0002 migration missing CREATE TABLE for {table}"
+        present = set(re.findall(r"(?m)^\s*([a-z_][a-z0-9_]*)\b", body))
+        missing = required - present
+        assert not missing, (
+            f"{table} (0002) migration missing producer-shaped columns: "
             f"{sorted(missing)}"
         )
 

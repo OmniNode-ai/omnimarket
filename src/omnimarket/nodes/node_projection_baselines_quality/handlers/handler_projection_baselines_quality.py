@@ -25,13 +25,85 @@ from datetime import UTC, datetime
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from omnimarket.nodes.node_projection_baselines.handlers.handler_projection_baselines import (
-    ModelBaselinesComputedEvent,
-)
 from omnimarket.projection.protocol_database import DatabaseAdapter
 
 TABLE = "baselines_quality_snapshots"
 CONFLICT_KEY = "snapshot_id"
+
+# OMN-14513 follow-up (tracked separately -- see OMN-14513 PR body): these
+# local models encode the SAME fictional wire shape flagged and fixed for
+# node_projection_baselines's own consumer path (patterns_compared /
+# patterns_recommended / confidence fields the real producer -- omnibase_infra's
+# ModelBaselinesSnapshotEvent -- never sends). Kept as a private, unchanged
+# copy here (rather than re-importing the now-fixed
+# handler_projection_baselines module) purely to avoid a compile break: this
+# node was importing the OTHER node's now-deleted local model. Behavior is
+# byte-for-byte identical to before this PR -- neither newly fixed nor newly
+# broken. A follow-up ticket reconciles this node's own aggregation fields
+# onto the real producer schema the same way OMN-14513 did for
+# node_projection_baselines.
+
+
+class ModelBaselinesComparison(BaseModel):
+    """A single pattern comparison from the baselines snapshot."""
+
+    model_config = ConfigDict(frozen=True, extra="ignore")
+
+    pattern_id: str
+    pattern_name: str = ""
+    sample_size: int = 0
+    window_start: str = ""
+    window_end: str = ""
+    baseline_tokens: int = 0
+    current_tokens: int = 0
+    token_delta: int = 0
+    token_delta_pct: float = 0.0
+    baseline_time_s: float = 0.0
+    current_time_s: float = 0.0
+    time_delta_s: float = 0.0
+    time_delta_pct: float = 0.0
+    confidence: str = "low"
+    rationale: str = ""
+
+
+class ModelBaselinesRecommendation(BaseModel):
+    """A promotion/demotion recommendation for a pattern."""
+
+    model_config = ConfigDict(frozen=True, extra="ignore")
+
+    pattern_id: str
+    pattern_name: str = ""
+    action: str = ""
+    reason: str = ""
+    confidence: str = "low"
+
+
+class ModelBaselinesRetryCount(BaseModel):
+    """Retry count for a pattern within the snapshot window."""
+
+    model_config = ConfigDict(frozen=True, extra="ignore")
+
+    pattern_id: str
+    pattern_name: str = ""
+    retry_count: int = 0
+    window_start: str = ""
+    window_end: str = ""
+
+
+class ModelBaselinesComputedEvent(BaseModel):
+    """Inbound event from onex.evt.omnibase-infra.baselines-computed.v1."""
+
+    model_config = ConfigDict(frozen=True, extra="ignore")
+
+    snapshot_id: str = Field(..., description="Unique snapshot ID.")
+    contract_version: int = Field(default=1)
+    computed_at_utc: str = Field(..., description="ISO 8601 timestamp.")
+    patterns_compared: int = Field(default=0, ge=0)
+    patterns_recommended: int = Field(default=0, ge=0)
+    comparisons: list[ModelBaselinesComparison] = Field(default_factory=list)
+    recommendations: list[ModelBaselinesRecommendation] = Field(default_factory=list)
+    retry_counts: list[ModelBaselinesRetryCount] = Field(default_factory=list)
+
 
 _CONFIDENCE_WEIGHTS: dict[str, float] = {
     "high": 1.0,
