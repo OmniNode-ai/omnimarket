@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""Contract-level seam-match assertion (OMN-14208 guard, decoupled).
+"""Contract-level seam-match assertion (OMN-14208 guard, def-B).
 
 tier-4 depends on tier-1/2/3 ONLY through the topic + payload contract, never by
 importing their handlers or co-locating their source. This test proves, at the
@@ -13,16 +13,19 @@ mirrors the real consumer's request model (cited); the assertion fails if tier-4
 emitted payload drifts (adds a field the consumer forbids, or drops a required
 one). When tier-1/2/3 co-deploy, the live topic wiring is the other half of the
 seam; this contract-level half is what lets tier-4 land independently.
+
+Definition B (OMN-14355): the handler returns bare typed models; each model's
+publish topic is resolved from its class via the contract's ``published_events``
+(the same resolution the runtime performs), not from an envelope ``event_type``.
 """
 
 from __future__ import annotations
 
 from pathlib import Path
-from uuid import uuid4
 
 import pytest
 import yaml
-from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
+from pydantic import BaseModel
 
 from omnimarket.codegen.models import (
     ModelCodegenPipelineState,
@@ -93,6 +96,19 @@ _SEAM_CONTRACT: dict[str, dict[str, set[str]]] = {
 _VALIDATOR_EXPECTED_ALLOWED = {"class_name", "base_class", "required_methods"}
 
 
+def _published_events() -> dict[str, str]:
+    contract = yaml.safe_load(_CONTRACT_PATH.read_text())
+    return {e["event_type"]: e["topic"] for e in contract["published_events"]}
+
+
+_PUBLISHED = _published_events()
+
+
+def _resolve_topic(model: BaseModel) -> str:
+    short = type(model).__name__.removeprefix("Model")
+    return _PUBLISHED[short]
+
+
 def _spec() -> ModelCodegenSpec:
     return ModelCodegenSpec(
         node_name="NodeGreeterCompute",
@@ -113,16 +129,11 @@ def _state(
     )
 
 
-def _env(event_type: str, payload: object) -> ModelEventEnvelope[object]:
-    return ModelEventEnvelope(
-        payload=payload, correlation_id=uuid4(), event_type=event_type
-    )
-
-
-async def _emit_for(event_type: str, payload: object) -> ModelEventEnvelope[object]:
-    output = await HandlerHybridCodegenOrchestrator().handle(_env(event_type, payload))
-    assert len(output.events) == 1
-    return output.events[0]
+def _emit_for(payload: BaseModel) -> tuple[str, BaseModel]:
+    output = HandlerHybridCodegenOrchestrator().handle(payload)
+    assert len(output) == 1
+    model = output[0]
+    return _resolve_topic(model), model
 
 
 def _assert_seam(topic_suffix: str, payload_dump: dict[str, object]) -> None:
@@ -140,17 +151,14 @@ def _assert_seam(topic_suffix: str, payload_dump: dict[str, object]) -> None:
     )
 
 
-@pytest.mark.asyncio
+@pytest.mark.unit
 class TestSeamMatch:
     """tier-4's emitted payloads are valid inputs for each downstream node."""
 
-    async def test_validator_seam_matches(self) -> None:
-        emitted = await _emit_for(
-            "onex.evt.omnimarket.codegen-llm-generated.v1",
-            ModelLlmGenerateResult(state=_state()),
-        )
-        assert emitted.event_type.endswith("generated-code-validation-requested.v1")
-        dump = emitted.payload.model_dump()
+    def test_validator_seam_matches(self) -> None:
+        topic, model = _emit_for(ModelLlmGenerateResult(state=_state()))
+        assert topic.endswith("generated-code-validation-requested.v1")
+        dump = model.model_dump()
         _assert_seam("generated-code-validation-requested.v1", dump)
         # nested `expected` must match the consumer's ModelExpectedStructure fields.
         assert set(dump["expected"]) <= _VALIDATOR_EXPECTED_ALLOWED
@@ -159,36 +167,32 @@ class TestSeamMatch:
         assert dump["expected"]["base_class"] == "NodeCompute"
         assert dump["expected"]["required_methods"] == ("handle",)
 
-    async def test_mypy_seam_matches(self) -> None:
-        emitted = await _emit_for(
-            "onex.evt.omnimarket.codegen-validation-outcome.v1",
-            ModelCodegenValidationOutcome(state=_state(), is_valid=True),
+    def test_mypy_seam_matches(self) -> None:
+        topic, model = _emit_for(
+            ModelCodegenValidationOutcome(state=_state(), is_valid=True)
         )
-        assert emitted.event_type.endswith("mypy-check-requested.v1")
-        _assert_seam("mypy-check-requested.v1", emitted.payload.model_dump())
+        assert topic.endswith("mypy-check-requested.v1")
+        _assert_seam("mypy-check-requested.v1", model.model_dump())
 
-    async def test_contract_serialize_seam_matches(self) -> None:
-        emitted = await _emit_for(
-            "onex.evt.omnimarket.codegen-typecheck-outcome.v1",
-            ModelCodegenTypecheckOutcome(state=_state(), success=True),
+    def test_contract_serialize_seam_matches(self) -> None:
+        topic, model = _emit_for(
+            ModelCodegenTypecheckOutcome(state=_state(), success=True)
         )
-        assert emitted.event_type.endswith("contract-serialize-requested.v1")
-        dump = emitted.payload.model_dump()
+        assert topic.endswith("contract-serialize-requested.v1")
+        dump = model.model_dump()
         _assert_seam("contract-serialize-requested.v1", dump)
         # nested analysis must match the consumer's ModelNodeAnalysis shape.
         assert set(dump["analysis"]) <= {"description", "tags", "version"}
 
-    async def test_serialize_outcome_drives_file_write_not_a_downstream_seam(
-        self,
-    ) -> None:
+    def test_serialize_outcome_drives_file_write_not_a_downstream_seam(self) -> None:
         # The file-write command targets tier-4's OWN effect, so it legitimately
         # carries pipeline state — assert the file set is assembled, not a seam.
-        emitted = await _emit_for(
-            "onex.evt.omnimarket.codegen-serialize-outcome.v1",
-            ModelCodegenSerializeOutcome(state=_state(source="SRC", contract_yaml="Y")),
+        topic, model = _emit_for(
+            ModelCodegenSerializeOutcome(state=_state(source="SRC", contract_yaml="Y"))
         )
-        assert emitted.event_type.endswith("codegen-file-write.v1")
-        by_path = {f.relative_path: f.content for f in emitted.payload.files}
+        assert topic.endswith("codegen-file-write.v1")
+        assert isinstance(model, BaseModel)
+        by_path = {f.relative_path: f.content for f in model.files}  # type: ignore[attr-defined]
         assert by_path["handler.py"] == "SRC"
         assert by_path["contract.yaml"] == "Y"
 
