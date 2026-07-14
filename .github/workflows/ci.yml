@@ -302,6 +302,7 @@ jobs:
           uv run python ../omnibase_core/scripts/ci/canonical_handler_shape.py \
             --package omnimarket --src-root src \
             --baseline scripts/ci/canonical_handler_shape_baseline.py \
+            --receipts-dir scripts/ci/adequacy_receipts \
             --full
 
   typecheck:
