@@ -141,11 +141,15 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
     # GitHub repo status gateway for merge-sweep verification): 363 -> 364.
     # OMN-14151 adds node_pr_arm_gate_compute (COMPUTE; fail-closed ARM/WITHHOLD
     # decider for the merge-queue governor): 364 -> 365.
-    assert summary["node_dirs"] == 365
+    # OMN-14608 adds node_codegen_outcome_reducer (REDUCER; joins the three raw
+    # codegen downstream verdicts to retained pipeline state so the hybrid
+    # codegen orchestrator's outcome topics have a real producer): 365 -> 366.
+    assert summary["node_dirs"] == 366
     # OMN-14151 deliberately removes request/response entry points from the
     # three legacy arm surfaces; the new arm-gate compute node is the single
-    # active route.
-    assert summary["entry_points"] == 362
+    # active route. OMN-14608's reducer entry point brings the count back up:
+    # 362 -> 363.
+    assert summary["entry_points"] == 363
     assert set(summary["missing_entry_points"]) == OMN_14151_LEGACY_ARM_SURFACES
     assert summary["dangling_entry_points"] == []
     assert summary["routable"] >= 299

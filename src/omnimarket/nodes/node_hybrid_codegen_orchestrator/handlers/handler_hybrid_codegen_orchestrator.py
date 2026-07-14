@@ -178,7 +178,12 @@ class HandlerHybridCodegenOrchestrator:
         self, envelope: ModelEventEnvelope[Any], correlation_id: UUID
     ) -> list[ModelEventEnvelope[Any]]:
         spec = _coerce(envelope.payload, ModelCodegenSpec)
-        state = ModelCodegenPipelineState(spec=spec)
+        # OMN-14608: seed the run identity into the pipeline state from the start
+        # envelope's correlation_id. It threads through every hop (llm-generate ->
+        # llm-generated seeds the reducer store; each seam echoes it onto the
+        # downstream verdict) so node_codegen_outcome_reducer can join a raw
+        # verdict back to this retained state on the correlation key.
+        state = ModelCodegenPipelineState(spec=spec, correlation_id=str(correlation_id))
         return self._emit(
             ModelLlmGenerateCommand(state=state), correlation_id, TOPIC_LLM_GENERATE
         )
@@ -195,6 +200,7 @@ class HandlerHybridCodegenOrchestrator:
                 base_class=spec.base_class,
                 required_methods=(spec.handler_method,),
             ),
+            correlation_id=result.state.correlation_id,  # OMN-14608
         )
         return self._emit(command, correlation_id, TOPIC_VALIDATE)
 
@@ -209,7 +215,10 @@ class HandlerHybridCodegenOrchestrator:
                 correlation_id,
                 issues=outcome.issues,
             )
-        command = ModelMypyRequestSeam(source_text=outcome.state.source_text)
+        command = ModelMypyRequestSeam(
+            source_text=outcome.state.source_text,
+            correlation_id=outcome.state.correlation_id,  # OMN-14608
+        )
         return self._emit(command, correlation_id, TOPIC_TYPECHECK)
 
     def _on_typecheck_outcome(
@@ -229,6 +238,7 @@ class HandlerHybridCodegenOrchestrator:
             namespace=spec.namespace,
             archetype=spec.archetype,
             analysis=ModelNodeAnalysisSeam(description=spec.description),
+            correlation_id=outcome.state.correlation_id,  # OMN-14608
         )
         return self._emit(command, correlation_id, TOPIC_SERIALIZE)
 
