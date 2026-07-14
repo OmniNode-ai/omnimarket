@@ -3,28 +3,31 @@
 """Tests for node_projection_baselines_roi — NC-02.
 
 Verifies that HandlerProjectionBaselinesRoi projects a
-ModelBaselinesComputedEvent into the baselines_roi_snapshots table with the
-correct ROI summary fields.
+ModelBaselinesSnapshotEvent (the real producer contract) into the
+baselines_roi_snapshots table with the correct ROI summary fields.
 
 Coverage:
-- Snapshot row is upserted with correct token_delta, time_delta_ms, retry_delta
-- recommendations JSONB column counts actions correctly
-- confidence is computed as an average of mapped scores
+- Snapshot row is upserted with correct token_delta, roi_pct_avg,
+  latency_improvement_pct_avg, cost_improvement_pct_avg, sample_size
 - Re-projection of the same snapshot_id upserts (not inserts) the row
-- Empty comparisons / retry_counts / recommendations produce zero-value rows
+- Empty comparisons produce zero-value rows
 - Contract declares the correct subscribe topic and projection_api snapshot topic
+- handle() shim delegates to project()
 """
 
 from __future__ import annotations
 
-import yaml
+from datetime import UTC, date, datetime
+from uuid import UUID
 
-from omnimarket.nodes.node_projection_baselines.handlers.handler_projection_baselines import (
-    ModelBaselinesComparison,
-    ModelBaselinesComputedEvent,
-    ModelBaselinesRecommendation,
-    ModelBaselinesRetryCount,
+import yaml
+from omnibase_infra.services.observability.baselines.models.model_baselines_comparison_row import (
+    ModelBaselinesComparisonRow,
 )
+from omnibase_infra.services.observability.baselines.models.model_baselines_snapshot_event import (
+    ModelBaselinesSnapshotEvent,
+)
+
 from omnimarket.nodes.node_projection_baselines_roi.handlers.handler_projection_baselines_roi import (
     HandlerProjectionBaselinesRoi,
     ModelBaselinesRoiProjectionResult,
@@ -35,48 +38,59 @@ _CONTRACT_PATH = "src/omnimarket/nodes/node_projection_baselines_roi/contract.ya
 
 HANDLER = HandlerProjectionBaselinesRoi()
 TABLE = "baselines_roi_snapshots"
+_NOW = datetime(2026, 6, 28, 10, 0, 0, tzinfo=UTC)
+_DEFAULT_SNAPSHOT_ID = UUID("11111111-2222-3333-4444-555555555555")
 
 
-def _full_event(snapshot_id: str = "snap-roi-001") -> ModelBaselinesComputedEvent:
-    return ModelBaselinesComputedEvent(
+def _comparison(
+    comp_id: str,
+    *,
+    treatment_total_tokens: int = 0,
+    control_total_tokens: int = 0,
+    roi_pct: float | None = None,
+    latency_improvement_pct: float | None = None,
+    cost_improvement_pct: float | None = None,
+    sample_size: int = 0,
+) -> ModelBaselinesComparisonRow:
+    return ModelBaselinesComparisonRow(
+        id=UUID(comp_id),
+        comparison_date=date(2026, 6, 28),
+        treatment_total_tokens=treatment_total_tokens,
+        control_total_tokens=control_total_tokens,
+        roi_pct=roi_pct,
+        latency_improvement_pct=latency_improvement_pct,
+        cost_improvement_pct=cost_improvement_pct,
+        sample_size=sample_size,
+        computed_at=_NOW,
+        created_at=_NOW,
+        updated_at=_NOW,
+    )
+
+
+def _full_event(
+    snapshot_id: UUID = _DEFAULT_SNAPSHOT_ID,
+) -> ModelBaselinesSnapshotEvent:
+    return ModelBaselinesSnapshotEvent(
         snapshot_id=snapshot_id,
-        computed_at_utc="2026-06-28T10:00:00Z",
-        patterns_compared=3,
-        patterns_recommended=2,
+        computed_at_utc=_NOW,
         comparisons=[
-            ModelBaselinesComparison(
-                pattern_id="pat-a",
-                token_delta=-2000,
-                time_delta_s=1.5,
-                confidence="high",
+            _comparison(
+                "aaaaaaaa-0000-0000-0000-000000000001",
+                treatment_total_tokens=6000,
+                control_total_tokens=8000,
+                roi_pct=25.0,
+                latency_improvement_pct=39.3,
+                cost_improvement_pct=25.0,
+                sample_size=120,
             ),
-            ModelBaselinesComparison(
-                pattern_id="pat-b",
-                token_delta=500,
-                time_delta_s=-0.3,
-                confidence="medium",
-            ),
-        ],
-        recommendations=[
-            ModelBaselinesRecommendation(
-                pattern_id="pat-a",
-                action="promote",
-                confidence="high",
-            ),
-            ModelBaselinesRecommendation(
-                pattern_id="pat-b",
-                action="shadow",
-                confidence="medium",
-            ),
-        ],
-        retry_counts=[
-            ModelBaselinesRetryCount(
-                pattern_id="pat-a",
-                retry_count=3,
-            ),
-            ModelBaselinesRetryCount(
-                pattern_id="pat-b",
-                retry_count=1,
+            _comparison(
+                "aaaaaaaa-0000-0000-0000-000000000002",
+                treatment_total_tokens=4000,
+                control_total_tokens=4500,
+                roi_pct=None,
+                latency_improvement_pct=None,
+                cost_improvement_pct=11.1,
+                sample_size=80,
             ),
         ],
     )
@@ -96,86 +110,83 @@ class TestHandlerProjectionBaselinesRoi:
         assert len(rows) == 1
         row = rows[0]
 
-        assert row["snapshot_id"] == "snap-roi-001"
-        assert row["captured_at"] == "2026-06-28T10:00:00Z"
+        assert row["snapshot_id"] == "11111111-2222-3333-4444-555555555555"
+        assert row["captured_at"] == _NOW.isoformat()
 
-    def test_token_delta_is_sum_of_comparisons(self) -> None:
+    def test_token_delta_is_control_minus_treatment_tokens(self) -> None:
         db = InmemoryDatabaseAdapter()
         event = _full_event()
         HANDLER.project(event, db)
 
         row = db.query(TABLE)[0]
-        # -2000 + 500 = -1500
-        assert row["token_delta"] == -1500
+        # control: 8000 + 4500 = 12500; treatment: 6000 + 4000 = 10000
+        assert row["token_delta"] == 2500
 
-    def test_time_delta_ms_is_sum_converted(self) -> None:
+    def test_roi_pct_avg_ignores_nulls(self) -> None:
         db = InmemoryDatabaseAdapter()
         event = _full_event()
         HANDLER.project(event, db)
 
         row = db.query(TABLE)[0]
-        # (1.5 + -0.3) * 1000 = 1200ms
-        assert abs(float(str(row["time_delta_ms"])) - 1200.0) < 0.01
+        # only one comparison has a non-null roi_pct: 25.0
+        assert abs(float(str(row["roi_pct_avg"])) - 25.0) < 0.001
 
-    def test_retry_delta_is_sum_of_retry_counts(self) -> None:
+    def test_cost_improvement_pct_avg_is_mean(self) -> None:
         db = InmemoryDatabaseAdapter()
         event = _full_event()
         HANDLER.project(event, db)
 
         row = db.query(TABLE)[0]
-        # 3 + 1 = 4
-        assert row["retry_delta"] == 4
+        assert abs(float(str(row["cost_improvement_pct_avg"])) - 18.05) < 0.001
 
-    def test_recommendations_counts_actions(self) -> None:
+    def test_sample_size_is_sum(self) -> None:
         db = InmemoryDatabaseAdapter()
         event = _full_event()
         HANDLER.project(event, db)
 
         row = db.query(TABLE)[0]
-        recs = row["recommendations"]
-        assert isinstance(recs, dict)
-        assert recs["promote"] == 1
-        assert recs["shadow"] == 1
-        assert recs["suppress"] == 0
-        assert recs["fork"] == 0
-
-    def test_confidence_is_average_of_mapped_scores(self) -> None:
-        db = InmemoryDatabaseAdapter()
-        event = _full_event()
-        HANDLER.project(event, db)
-
-        row = db.query(TABLE)[0]
-        # comparisons: high=1.0, medium=0.5 → average = 0.75
-        assert abs(float(str(row["confidence"])) - 0.75) < 0.001
+        assert row["sample_size"] == 200
 
     def test_empty_event_produces_zero_values(self) -> None:
         db = InmemoryDatabaseAdapter()
-        event = ModelBaselinesComputedEvent(
-            snapshot_id="snap-empty",
-            computed_at_utc="2026-06-28T00:00:00Z",
+        event = ModelBaselinesSnapshotEvent(
+            snapshot_id=UUID("00000000-0000-0000-0000-000000000000"),
+            computed_at_utc=_NOW,
         )
         result = HANDLER.project(event, db)
 
         assert result.rows_upserted == 1
         row = db.query(TABLE)[0]
         assert row["token_delta"] == 0
-        assert row["retry_delta"] == 0
-        assert float(str(row["time_delta_ms"])) == 0.0
-        recs = row["recommendations"]
-        assert all(recs[k] == 0 for k in ("promote", "shadow", "suppress", "fork"))
-        assert float(str(row["confidence"])) == 0.0
+        assert float(str(row["roi_pct_avg"])) == 0.0
+        assert float(str(row["latency_improvement_pct_avg"])) == 0.0
+        assert float(str(row["cost_improvement_pct_avg"])) == 0.0
+        assert row["sample_size"] == 0
 
     def test_upsert_on_duplicate_snapshot_id(self) -> None:
         db = InmemoryDatabaseAdapter()
-        ev1 = ModelBaselinesComputedEvent(
-            snapshot_id="snap-dup",
-            computed_at_utc="2026-06-28T08:00:00Z",
-            comparisons=[ModelBaselinesComparison(pattern_id="p1", token_delta=100)],
+        snap_id = UUID("99999999-0000-0000-0000-000000000000")
+        ev1 = ModelBaselinesSnapshotEvent(
+            snapshot_id=snap_id,
+            computed_at_utc=_NOW,
+            comparisons=[
+                _comparison(
+                    "bbbbbbbb-0000-0000-0000-000000000001",
+                    treatment_total_tokens=100,
+                    control_total_tokens=100,
+                )
+            ],
         )
-        ev2 = ModelBaselinesComputedEvent(
-            snapshot_id="snap-dup",
-            computed_at_utc="2026-06-28T09:00:00Z",
-            comparisons=[ModelBaselinesComparison(pattern_id="p2", token_delta=200)],
+        ev2 = ModelBaselinesSnapshotEvent(
+            snapshot_id=snap_id,
+            computed_at_utc=_NOW,
+            comparisons=[
+                _comparison(
+                    "bbbbbbbb-0000-0000-0000-000000000002",
+                    treatment_total_tokens=100,
+                    control_total_tokens=300,
+                )
+            ],
         )
         HANDLER.project(ev1, db)
         HANDLER.project(ev2, db)
@@ -197,12 +208,41 @@ class TestHandlerProjectionBaselinesRoi:
         topics = [e["topic"] for e in exposures]
         assert "onex.snapshot.projection.baselines.roi.v1" in topics
 
+    def test_contract_terminal_event(self) -> None:
+        with open(_CONTRACT_PATH) as f:
+            contract = yaml.safe_load(f)
+        assert (
+            contract["terminal_event"]
+            == "onex.evt.omnimarket.projection-baselines-roi-applied.v1"
+        )
+
+    def test_contract_dlq_topic(self) -> None:
+        with open(_CONTRACT_PATH) as f:
+            contract = yaml.safe_load(f)
+        assert (
+            "onex.dlq.omnimarket.projection-baselines-roi-malformed.v1"
+            in contract["event_bus"]["dlq_topics"]
+        )
+
     def test_handle_shim_delegates_to_project(self) -> None:
         db = InmemoryDatabaseAdapter()
-        event = _full_event("snap-shim")
+        event = _full_event(UUID("22222222-3333-4444-5555-666666666666"))
         payload = event.model_dump(mode="json")
         payload["_db"] = db
 
         out = HANDLER.handle(payload)
         assert out["rows_upserted"] == 1
         assert out["table"] == TABLE
+
+    def test_handle_shim_tolerates_transport_keys(self) -> None:
+        """extra='forbid' on the producer model must tolerate injected keys."""
+        db = InmemoryDatabaseAdapter()
+        event = _full_event(UUID("33333333-4444-5555-6666-777777777777"))
+        payload = event.model_dump(mode="json")
+        payload["_db"] = db
+        payload["_envelope"] = {"payload": {}}
+        payload["_event_type"] = "onex.evt.omnibase-infra.baselines-computed.v1"
+        payload["_correlation_id"] = "corr-1"
+
+        out = HANDLER.handle(payload)
+        assert out["rows_upserted"] == 1
