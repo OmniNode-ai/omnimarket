@@ -138,6 +138,21 @@ class ModelOccCompanionRequest(BaseModel):
         default=0, description="Total changed diff lines on the product PR."
     )
 
+    # Honest content-read check (OMN-14619): a downstream check_value derived by
+    # the read-EFFECT (``node_occ_state_effect``) from the PR diff — a content
+    # read pinned to ``pr_head_sha``, asserting a symbol the PR actually adds,
+    # RED-controlled against the base ref (see
+    # ``reference_occ_receipt_gate_flow``: "assert a symbol the change
+    # introduces, not the file's existence"). ``None`` when the read-EFFECT found
+    # no RED-controllable candidate (e.g. a non-Python change) — the COMPUTE
+    # falls back to the generic ``gh pr view`` state check in that case, exactly
+    # as it did before this field existed.
+    downstream_check_value: str | None = Field(
+        default=None,
+        description="Content-read check_value asserting a PR-added symbol, or "
+        "None to fall back to the generic PR-state check.",
+    )
+
     @field_validator("pr_head_sha", "occ_head_sha")
     @classmethod
     def _validate_git_sha(cls, value: str | None) -> str | None:

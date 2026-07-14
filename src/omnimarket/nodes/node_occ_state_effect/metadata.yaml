@@ -1,0 +1,24 @@
+name: node_occ_state_effect
+version: "1.0.0"
+description: "Read-only EFFECT: gathers live PR + OCC state via GitHub REST for the OCC companion compute node (RSD-2, OMN-14619)"
+pack: occ_companion
+node_role: effect
+display_name: "OCC State Effect"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_occ_state_effect: "omnimarket.nodes.node_occ_state_effect"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: true
+  requires_repo: false
+  requires_secrets: true
+  requires_docker: false
+  side_effect_class: read_only
+dependencies:
+  - "omnibase_core>=0.39.0"
+  - "omnibase_compat"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["effect", "occ", "companion", "read-only", "OMN-14619"]

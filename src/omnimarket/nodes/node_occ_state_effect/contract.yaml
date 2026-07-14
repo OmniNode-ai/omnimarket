@@ -1,0 +1,88 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - OCC State Effect (RSD-2, OMN-14619)
+#
+# The read-EFFECT half of the read -> compute -> write OCC-companion producer
+# cycle (docs/plans/2026-07-10-occ-autogen-mechanization-design.md). Gathers
+# every machine-observed PR + OCC fact the pure COMPUTE node
+# (node_occ_companion_compute, RSD-1, OMN-14285) needs, and assembles the exact
+# ModelOccCompanionRequest it consumes. Read-only: never clones, writes, or
+# pushes to any GitHub surface. RSD-3 (the write-EFFECT + trigger/orchestrator
+# that makes this the live producer) is a distinct follow-up ticket — this node
+# is deliberately standalone so it can be proven against real PRs first.
+#
+# Related Tickets:
+#   - OMN-14619: RSD-2 read-EFFECT + honest content-read check_value
+#   - OMN-14285: RSD-1 (node_occ_companion_compute, the COMPUTE consumer)
+#   - OMN-14393: RSD-5 fail-closed attestation gate (blocked on RSD-2/3)
+name: "node_occ_state_effect"
+lifecycle: experimental
+node_type: "EFFECT_GENERIC"
+runtime_profiles: [effects]
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_version: "1.0.0"
+description: "Read-only EFFECT: gathers live PR + OCC state via GitHub REST and assembles the ModelOccCompanionRequest the OCC companion COMPUTE node consumes."
+input_model:
+  name: "ModelOccStateRequest"
+  module: "omnimarket.nodes.node_occ_state_effect.models.model_occ_state_request"
+  description: "Identifies the product PR (and OCC repo) to gather companion state for."
+output_model:
+  name: "ModelOccCompanionRequest"
+  module: "omnimarket.nodes.node_occ_companion_compute.models.model_occ_companion_request"
+  description: "All PR + OCC state the COMPUTE node needs, gathered up front."
+handler_routing:
+  routing_strategy: "operation_match"
+  handlers:
+    - operation: "gather_occ_companion_state"
+      handler:
+        name: "HandlerOccStateEffect"
+        module: "omnimarket.nodes.node_occ_state_effect.handlers.handler_occ_state_effect"
+# No event_bus block: this node is deliberately NOT wired to any Kafka
+# trigger yet (RSD-3 — the orchestrator/trigger that would call it — is a
+# distinct follow-up ticket, OMN-14619 non-goal). Declaring subscribe/publish
+# topics with no live producer/consumer trips the contract-topic-graph gate's
+# ORPHANED_CONSUMER/ORPHANED_PRODUCER checks (correctly — nothing sends or
+# reads these topics today). Invoked directly (handler.handle(...) /
+# HandlerOccStateEffect()._gather_sync(...)) until RSD-3 wires a real trigger,
+# at which point the event_bus block lands in that same PR alongside the
+# producer/consumer that makes it real.
+secrets:
+  # OMN-12856 pattern: GitHub token is contract-declared so the handler reads
+  # the ref name from here — not a bare source literal. Resolved at the effect
+  # boundary via the canonical secret-store resolver (occ_companion_emitter's
+  # env_var_fallback pattern, OMN-14452).
+  GITHUB_TOKEN:
+    description: "GitHub PAT or Actions token for REST API reads (PR facts, diff files, OCC contract state)."
+    required: true
+
+side_effects:
+  reads:
+    - github_api
+  writes: []
+  duplicate_handling: idempotent
+
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  runtime_profiles: [effects]
+  idempotent: true
+  timeout_ms: 60000
+
+metadata:
+  transport_type: kafka
+  description: "OCC companion state read-EFFECT — gathers live PR + OCC facts, zero mutation"
+  author: "OmniNode Team"
+  created: "2026-07-14"
+  tags:
+    - "effect"
+    - "occ"
+    - "companion"
+    - "read-only"
+    - "OMN-14619"
+  related_tickets:
+    - "OMN-14619"
+    - "OMN-14285"
+    - "OMN-14393"

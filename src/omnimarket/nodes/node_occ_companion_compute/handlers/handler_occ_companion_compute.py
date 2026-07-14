@@ -334,7 +334,12 @@ def compute_companion_plan(request: ModelOccCompanionRequest) -> ModelOccCompani
         return _plan(tickets=tickets, fast_path=True, fast_path_reason=fast_reason)
 
     evidence_id = f"dod-{repo_slug}-pr-{pr_number}"
-    downstream_check = (
+    # OMN-14619: prefer the read-EFFECT's content-read check (a symbol the PR
+    # actually adds, RED-controlled against the base ref) over the generic
+    # PR-state probe. The generic form is a legitimate fallback — never a
+    # rubber stamp on its own claim — but it proves only that the PR exists,
+    # not that the claimed work landed; see reference_occ_receipt_gate_flow.
+    downstream_check = request.downstream_check_value or (
         f"gh pr view {pr_number} --repo {repo} --json number,state,headRefName"
     )
     files: list[ModelCompanionFile] = []
