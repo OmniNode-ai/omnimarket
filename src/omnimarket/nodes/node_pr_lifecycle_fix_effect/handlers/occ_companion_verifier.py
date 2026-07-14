@@ -33,11 +33,6 @@ from omnimarket.github_api import GitHubApiError, rest_json, split_repo
 from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.occ_companion_emitter import (
     _resolve_github_token,
 )
-from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.occ_git_transport import (
-    OCC_REPO,
-    authenticated_occ_url,
-    run_git,
-)
 
 # OMN-14189: the OCC-source read-back uses the single Piece-2 parser seam, not a
 # local Evidence-Source regex — same source of truth as the emitter and gate.
@@ -46,6 +41,11 @@ from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.occ_stamp_authoring 
 )
 from omnimarket.nodes.node_pr_lifecycle_fix_effect.models.model_fix_result import (
     ModelOccCompanionVerification,
+)
+from omnimarket.occ_git_transport import (
+    OCC_REPO,
+    authenticated_occ_url,
+    run_git,
 )
 
 logger = logging.getLogger(__name__)

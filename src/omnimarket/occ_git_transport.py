@@ -1,13 +1,18 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""Shared OCC git transport helpers (HTTPS x-access-token) for the fix effect.
+"""Shared OCC git transport helpers (HTTPS x-access-token).
 
-The .201 effects runtime container has **no SSH identity**, so the OCC companion
-producer (:class:`OccCompanionEmitter`) and the read-back verifier must clone and
-push ``onex_change_control`` over HTTPS using an ``x-access-token`` credential
-rather than an ``git@github.com:`` SSH remote (OMN-13990). The container already
-resolves ``GITHUB_TOKEN`` from the contract-declared secret ref (OMN-12856), so
-the only gap was the git transport.
+Promoted to a shared top-level module (OMN-14622) so every OCC companion
+producer — the legacy :class:`OccCompanionEmitter`, its read-back verifier, and
+the deterministic ``node_occ_companion_effect`` (RSD-3) — clones/pushes
+``onex_change_control`` through ONE transport instead of a per-node copy
+(net-negative-surface).
+
+The .201 effects runtime container has **no SSH identity**, so OCC companion
+producers must clone and push ``onex_change_control`` over HTTPS using an
+``x-access-token`` credential rather than a ``git@github.com:`` SSH remote
+(OMN-13990). The container already resolves ``GITHUB_TOKEN`` from the
+contract-declared secret ref (OMN-12856), so the only gap was the git transport.
 
 The token is embedded in the clone/push URL (the same shape ``actions/checkout``
 uses). :func:`run_git` scrubs any ``x-access-token:<secret>@`` credential from a

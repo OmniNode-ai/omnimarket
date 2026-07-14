@@ -84,11 +84,6 @@ from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.occ_evidence_stamp i
     render_self_bind_dod_evidence_item,
     render_self_bind_receipt,
 )
-from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.occ_git_transport import (
-    OCC_REPO,
-    authenticated_occ_url,
-    run_git,
-)
 
 # OMN-14189 (Piece 3/5, epic OMN-14180): all PR-body Evidence-Source /
 # Evidence-Ticket authoring and read-back flow through the single stamp seam,
@@ -97,6 +92,11 @@ from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.occ_stamp_authoring 
     product_pr_occ_binding,
     render_occ_companion_pr_body,
     render_product_pr_body_with_occ_source,
+)
+from omnimarket.occ_git_transport import (
+    OCC_REPO,
+    authenticated_occ_url,
+    run_git,
 )
 
 logger = logging.getLogger(__name__)
