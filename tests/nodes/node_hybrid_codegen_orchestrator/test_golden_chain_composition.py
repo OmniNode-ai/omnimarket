@@ -24,8 +24,10 @@ from collections.abc import Awaitable, Callable
 from pathlib import Path
 from uuid import uuid4
 
+import yaml
 from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
 from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
+from pydantic import BaseModel
 
 from omnimarket.codegen.models import (
     EnumCodegenStatus,
@@ -36,7 +38,9 @@ from omnimarket.codegen.models import (
     ModelCodegenTypecheckOutcome,
     ModelCodegenValidationOutcome,
     ModelContractAssemblyRequestSeam,
+    ModelFileWriteResult,
     ModelLlmGenerateCommand,
+    ModelLlmGenerateResult,
     ModelMypyRequestSeam,
     ModelValidatorRequestSeam,
 )
@@ -72,6 +76,37 @@ _ORCHESTRATOR_SUBSCRIBE = (
     _T_SERIALIZE_OUTCOME,
     _T_FILES_WRITTEN,
 )
+
+# def-B seam (OMN-14355/§6ii): the runtime validates each subscribe topic's wire
+# payload into the contract's per-topic event_model before calling handle(request),
+# and resolves each emitted model's publish topic from published_events. This
+# harness replicates BOTH so it drives the real def-B contract, not the old
+# envelope.event_type switch.
+_CONTRACT_PATH = (
+    Path(__file__).resolve().parents[3]
+    / "src"
+    / "omnimarket"
+    / "nodes"
+    / "node_hybrid_codegen_orchestrator"
+    / "contract.yaml"
+)
+_PUBLISHED = {
+    e["event_type"]: e["topic"]
+    for e in yaml.safe_load(_CONTRACT_PATH.read_text())["published_events"]
+}
+_TOPIC_TO_INPUT_MODEL: dict[str, type[BaseModel]] = {
+    _T_START: ModelCodegenSpec,
+    _T_LLM_GENERATED: ModelLlmGenerateResult,
+    _T_VALIDATION_OUTCOME: ModelCodegenValidationOutcome,
+    _T_TYPECHECK_OUTCOME: ModelCodegenTypecheckOutcome,
+    _T_SERIALIZE_OUTCOME: ModelCodegenSerializeOutcome,
+    _T_FILES_WRITTEN: ModelFileWriteResult,
+}
+
+
+def _resolve_emit_topic(model: BaseModel) -> str:
+    return _PUBLISHED[type(model).__name__.removeprefix("Model")]
+
 
 _GENERATED_NODE_SOURCE = (
     "class NodeCompute:\n"
@@ -196,9 +231,21 @@ async def test_bus_driven_factory_produces_compliant_node(
 
     async def orchestrator_on_message(message: object) -> None:
         envelope = _decode(message)
-        output = await orchestrator.handle(envelope)
-        for emitted in output.events:
-            await event_bus.publish_envelope(emitted, emitted.event_type)
+        # Replicate the runtime: validate the wire payload into the per-topic
+        # event_model, then dispatch def-B and resolve each emit's topic by class.
+        request = _TOPIC_TO_INPUT_MODEL[str(envelope.event_type)].model_validate(
+            envelope.payload
+        )
+        for emitted in orchestrator.handle(request):
+            topic = _resolve_emit_topic(emitted)
+            await event_bus.publish_envelope(
+                ModelEventEnvelope(
+                    payload=emitted,
+                    correlation_id=envelope.correlation_id,
+                    event_type=topic,
+                ),
+                topic,
+            )
 
     async def llm_on_message(message: object) -> None:
         envelope = _decode(message)
@@ -298,9 +345,21 @@ async def test_bus_driven_invalid_source_rejects(
 
     async def orchestrator_on_message(message: object) -> None:
         envelope = _decode(message)
-        output = await orchestrator.handle(envelope)
-        for emitted in output.events:
-            await event_bus.publish_envelope(emitted, emitted.event_type)
+        # Replicate the runtime: validate the wire payload into the per-topic
+        # event_model, then dispatch def-B and resolve each emit's topic by class.
+        request = _TOPIC_TO_INPUT_MODEL[str(envelope.event_type)].model_validate(
+            envelope.payload
+        )
+        for emitted in orchestrator.handle(request):
+            topic = _resolve_emit_topic(emitted)
+            await event_bus.publish_envelope(
+                ModelEventEnvelope(
+                    payload=emitted,
+                    correlation_id=envelope.correlation_id,
+                    event_type=topic,
+                ),
+                topic,
+            )
 
     async def llm_on_message(message: object) -> None:
         envelope = _decode(message)
