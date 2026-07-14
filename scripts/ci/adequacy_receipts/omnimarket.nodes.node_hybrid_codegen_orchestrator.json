@@ -1,0 +1,25 @@
+{
+  "branch_coverage_pct": 96.0,
+  "candidate_count": 8,
+  "coverage_target": 80.0,
+  "handler_module": "omnimarket.nodes.node_hybrid_codegen_orchestrator.handlers.handler_hybrid_codegen_orchestrator",
+  "handler_module_sha256": "sha256:d7e233b69b0f6e452fc7de6db96c4fce5ef27f9a26a5cda67bf261406cf1b8d3",
+  "meets_target": true,
+  "node_id": "omnimarket.nodes.node_hybrid_codegen_orchestrator",
+  "receipt_schema": "adequacy_receipt.v1",
+  "recorded_at": "2026-07-14T19:30:23Z",
+  "recorder_schema": "adequacy_receipt.v1",
+  "selected_count": 8,
+  "selected_input_hashes": [
+    "sha256:b5e5768c532cc6070fb2b5160177675f3299c006352a2bcebcd664813ea5fd9d",
+    "sha256:f3b0d29ae7ce9755f1e664cc8dfe13414c9b0d3658aef3ed0e9e86bd9bc9d5f8",
+    "sha256:a3ea555d5cc682f0de40b0ef82dcd40b581e2f7867663556f5de4d6611abfd1d",
+    "sha256:0492f15ce1d3c1cda898514c0b88d67d17581272747c254af419955ccc6ed3bc",
+    "sha256:a7f27ae8e7874e70213128b5e5752254376edd86e00488e6dba2635dd31da0fc",
+    "sha256:69c78942a5f0007eb2c095474c3176f49431929483a6b2b6eb852dd0fbcb4fe4",
+    "sha256:8101035f17868fb9190a47a233e8a35136e67994ad798653cac46b820c829a80",
+    "sha256:e67c6aee45afb3bd83069ad80d9d3c00f8953600fd72298e50a213dd2349d4cd"
+  ],
+  "uncovered_waiver": null,
+  "volatile_mask": []
+}

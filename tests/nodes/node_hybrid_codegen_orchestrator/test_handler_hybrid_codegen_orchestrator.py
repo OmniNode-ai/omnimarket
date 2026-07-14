@@ -1,22 +1,28 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""Phase-routing unit tests for the hybrid codegen ORCHESTRATOR (decoupled).
+"""Phase-routing / routing-equivalence tests for the codegen ORCHESTRATOR (def-B).
 
-Each phase is driven in isolation with a synthetic stage outcome; the test
-asserts the orchestrator emits the right next command on the right topic with the
-right payload type, and that the rejection branches emit a terminal completed.
-The bus-driven end-to-end wiring is covered by ``test_golden_chain_composition``;
-the payload/topic seam is covered by ``test_seam_match``.
+Each phase is driven in isolation with a synthetic stage payload; the test asserts
+the def-B ``handle(request)`` emits the right next event **model** and that model's
+class resolves to the right publish **topic** via the contract's ``published_events``
+(the same class -> topic resolution the runtime uses). Because the emitted
+(resolved-topic, payload-model) per phase is exactly what the removed
+``handle(envelope)`` produced, this IS the def-B == envelope routing-equivalence
+proof (OMN-14403 §4). The rejection branches emit a terminal completed.
+
+Definition B (OMN-14355): the handler takes a bare typed payload and returns a
+tuple of bare typed models — no ``ModelEventEnvelope``, no ``event_type`` on the
+handler side. The topic lives in the contract, resolved here exactly as the
+applier does (``removeprefix('Model')`` then published_events lookup).
 """
 
 from __future__ import annotations
 
 from pathlib import Path
-from uuid import uuid4
 
 import pytest
 import yaml
-from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
+from pydantic import BaseModel
 
 from omnimarket.codegen.models import (
     EnumCodegenStatus,
@@ -48,6 +54,20 @@ _CONTRACT_PATH = (
 )
 
 
+def _published_events() -> dict[str, str]:
+    contract = yaml.safe_load(_CONTRACT_PATH.read_text())
+    return {e["event_type"]: e["topic"] for e in contract["published_events"]}
+
+
+_PUBLISHED = _published_events()
+
+
+def _resolve_topic(model: BaseModel) -> str:
+    """Resolve an emitted model's topic exactly as the runtime applier does."""
+    short = type(model).__name__.removeprefix("Model")
+    return _PUBLISHED[short]
+
+
 def _spec() -> ModelCodegenSpec:
     return ModelCodegenSpec(
         node_name="NodeGreeterCompute",
@@ -64,104 +84,139 @@ def _state(source: str = "", contract_yaml: str = "") -> ModelCodegenPipelineSta
     )
 
 
-def _env(event_type: str, payload: object) -> ModelEventEnvelope[object]:
-    return ModelEventEnvelope(
-        payload=payload, correlation_id=uuid4(), event_type=event_type
-    )
+def _handle(payload: BaseModel) -> tuple[str, BaseModel]:
+    """Drive one phase; return the single emitted (resolved-topic, payload-model)."""
+    output = HandlerHybridCodegenOrchestrator().handle(payload)
+    assert len(output) == 1
+    model = output[0]
+    return _resolve_topic(model), model
 
 
-async def _handle(event_type: str, payload: object) -> ModelEventEnvelope[object]:
-    output = await HandlerHybridCodegenOrchestrator().handle(_env(event_type, payload))
-    assert len(output.events) == 1
-    return output.events[0]
+@pytest.mark.unit
+class TestPhaseRoutingEquivalence:
+    def test_start_emits_llm_generate(self) -> None:
+        topic, payload = _handle(_spec())
+        assert topic.endswith("codegen-llm-generate.v1")
+        assert isinstance(payload, ModelLlmGenerateCommand)
+        assert payload.state.spec.node_name == "NodeGreeterCompute"
 
+    def test_llm_generated_emits_validator_seam(self) -> None:
+        topic, payload = _handle(
+            ModelLlmGenerateResult(state=_state(source="class X: ..."))
+        )
+        assert topic.endswith("generated-code-validation-requested.v1")
+        assert isinstance(payload, ModelValidatorRequestSeam)
+        assert payload.source_text == "class X: ..."
+        assert payload.expected is not None
+        assert payload.expected.class_name == "NodeGreeterCompute"
+        assert payload.expected.base_class == "NodeCompute"
+        assert payload.expected.required_methods == ("handle",)
 
-@pytest.mark.asyncio
-class TestPhaseRouting:
-    async def test_start_emits_llm_generate(self) -> None:
-        event = await _handle("onex.cmd.omnimarket.hybrid-codegen-start.v1", _spec())
-        assert event.event_type.endswith("codegen-llm-generate.v1")
-        assert isinstance(event.payload, ModelLlmGenerateCommand)
-        assert event.payload.state.spec.node_name == "NodeGreeterCompute"
+    def test_valid_outcome_emits_mypy_seam(self) -> None:
+        topic, payload = _handle(
+            ModelCodegenValidationOutcome(state=_state(source="code"), is_valid=True)
+        )
+        assert topic.endswith("mypy-check-requested.v1")
+        assert isinstance(payload, ModelMypyRequestSeam)
+        assert payload.source_text == "code"
 
-    async def test_llm_generated_emits_validator_seam(self) -> None:
-        payload = ModelLlmGenerateResult(state=_state(source="class X: ..."))
-        event = await _handle("onex.evt.omnimarket.codegen-llm-generated.v1", payload)
-        assert event.event_type.endswith("generated-code-validation-requested.v1")
-        assert isinstance(event.payload, ModelValidatorRequestSeam)
-        assert event.payload.source_text == "class X: ..."
-        assert event.payload.expected is not None
-        assert event.payload.expected.class_name == "NodeGreeterCompute"
-        assert event.payload.expected.base_class == "NodeCompute"
-        assert event.payload.expected.required_methods == ("handle",)
+    def test_invalid_outcome_emits_rejected_terminal(self) -> None:
+        topic, payload = _handle(
+            ModelCodegenValidationOutcome(
+                state=_state(), is_valid=False, issues=("bad",)
+            )
+        )
+        assert topic.endswith("hybrid-codegen-completed.v1")
+        assert isinstance(payload, ModelCodegenCompleted)
+        assert payload.status is EnumCodegenStatus.REJECTED_VALIDATION
+        assert payload.issues == ("bad",)
 
-    async def test_valid_outcome_emits_mypy_seam(self) -> None:
-        payload = ModelCodegenValidationOutcome(
-            state=_state(source="code"), is_valid=True
+    def test_typecheck_success_emits_contract_serialize_seam(self) -> None:
+        topic, payload = _handle(
+            ModelCodegenTypecheckOutcome(state=_state(source="code"), success=True)
         )
-        event = await _handle(
-            "onex.evt.omnimarket.codegen-validation-outcome.v1", payload
-        )
-        assert event.event_type.endswith("mypy-check-requested.v1")
-        assert isinstance(event.payload, ModelMypyRequestSeam)
-        assert event.payload.source_text == "code"
+        assert topic.endswith("contract-serialize-requested.v1")
+        assert isinstance(payload, ModelContractAssemblyRequestSeam)
+        assert payload.node_name == "NodeGreeterCompute"
+        assert payload.archetype == "compute"
 
-    async def test_invalid_outcome_emits_rejected_terminal(self) -> None:
-        payload = ModelCodegenValidationOutcome(
-            state=_state(), is_valid=False, issues=("bad",)
+    def test_typecheck_failure_emits_rejected_terminal(self) -> None:
+        topic, payload = _handle(
+            ModelCodegenTypecheckOutcome(state=_state(), success=False, error_count=2)
         )
-        event = await _handle(
-            "onex.evt.omnimarket.codegen-validation-outcome.v1", payload
-        )
-        assert event.event_type.endswith("hybrid-codegen-completed.v1")
-        assert isinstance(event.payload, ModelCodegenCompleted)
-        assert event.payload.status is EnumCodegenStatus.REJECTED_VALIDATION
-        assert event.payload.issues == ("bad",)
+        assert topic.endswith("hybrid-codegen-completed.v1")
+        assert isinstance(payload, ModelCodegenCompleted)
+        assert payload.status is EnumCodegenStatus.REJECTED_TYPECHECK
 
-    async def test_typecheck_success_emits_contract_serialize_seam(self) -> None:
-        payload = ModelCodegenTypecheckOutcome(
-            state=_state(source="code"), success=True
+    def test_serialize_outcome_emits_file_write_with_files(self) -> None:
+        topic, payload = _handle(
+            ModelCodegenSerializeOutcome(
+                state=_state(source="handler-src", contract_yaml="name: x\n")
+            )
         )
-        event = await _handle(
-            "onex.evt.omnimarket.codegen-typecheck-outcome.v1", payload
-        )
-        assert event.event_type.endswith("contract-serialize-requested.v1")
-        assert isinstance(event.payload, ModelContractAssemblyRequestSeam)
-        assert event.payload.node_name == "NodeGreeterCompute"
-        assert event.payload.archetype == "compute"
-
-    async def test_typecheck_failure_emits_rejected_terminal(self) -> None:
-        payload = ModelCodegenTypecheckOutcome(
-            state=_state(), success=False, error_count=2
-        )
-        event = await _handle(
-            "onex.evt.omnimarket.codegen-typecheck-outcome.v1", payload
-        )
-        assert isinstance(event.payload, ModelCodegenCompleted)
-        assert event.payload.status is EnumCodegenStatus.REJECTED_TYPECHECK
-
-    async def test_serialize_outcome_emits_file_write_with_files(self) -> None:
-        payload = ModelCodegenSerializeOutcome(
-            state=_state(source="handler-src", contract_yaml="name: x\n")
-        )
-        event = await _handle(
-            "onex.evt.omnimarket.codegen-serialize-outcome.v1", payload
-        )
-        assert event.event_type.endswith("codegen-file-write.v1")
-        assert isinstance(event.payload, ModelFileWriteCommand)
-        by_path = {f.relative_path: f.content for f in event.payload.files}
+        assert topic.endswith("codegen-file-write.v1")
+        assert isinstance(payload, ModelFileWriteCommand)
+        by_path = {f.relative_path: f.content for f in payload.files}
         assert by_path["handler.py"] == "handler-src"
         assert by_path["contract.yaml"] == "name: x\n"
         assert "metadata.yaml" in by_path
 
-    async def test_files_written_emits_completed_terminal(self) -> None:
-        payload = ModelFileWriteResult(
-            state=_state(), written_paths=("build/node/handler.py",)
+    def test_files_written_emits_completed_terminal(self) -> None:
+        topic, payload = _handle(
+            ModelFileWriteResult(
+                state=_state(), written_paths=("build/node/handler.py",)
+            )
         )
-        event = await _handle("onex.evt.omnimarket.codegen-files-written.v1", payload)
-        assert isinstance(event.payload, ModelCodegenCompleted)
-        assert event.payload.status is EnumCodegenStatus.COMPLETED
-        assert event.payload.written_paths == ("build/node/handler.py",)
+        assert topic.endswith("hybrid-codegen-completed.v1")
+        assert isinstance(payload, ModelCodegenCompleted)
+        assert payload.status is EnumCodegenStatus.COMPLETED
+        assert payload.written_paths == ("build/node/handler.py",)
+
+
+@pytest.mark.unit
+class TestDefBCanonShape:
+    """Lock the def-B shape: no envelope, topic_match, published_events coverage."""
+
+    def test_handler_does_not_import_event_envelope(self) -> None:
+        import ast
+
+        src_path = (
+            _CONTRACT_PATH.parent
+            / "handlers"
+            / "handler_hybrid_codegen_orchestrator.py"
+        )
+        tree = ast.parse(src_path.read_text())
+        imported: set[str] = set()
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ImportFrom | ast.Import):
+                imported.update(alias.name for alias in node.names)
+        # The def-B canon (OMN-14355) forbids the envelope/handler-output surfaces
+        # in the handler; importing either hard-fails the canon-shape ratchet.
+        assert "ModelEventEnvelope" not in imported
+        assert "ModelHandlerOutput" not in imported
+
+    def test_contract_is_topic_match_with_per_topic_event_model(self) -> None:
+        contract = yaml.safe_load(_CONTRACT_PATH.read_text())
+        routing = contract["handler_routing"]
+        assert routing["routing_strategy"] == "topic_match"
+        subscribe = set(contract["event_bus"]["subscribe_topics"])
+        entry_topics = {h["topic"] for h in routing["handlers"]}
+        assert entry_topics == subscribe
+        for handler in routing["handlers"]:
+            assert handler["event_model"]["name"]  # every topic has a wire model
+
+    def test_published_events_cover_every_emitted_class_injectively(self) -> None:
+        # Every class the handler can emit is declared, and the map is injective.
+        emitted_short_names = {
+            "LlmGenerateCommand",
+            "ValidatorRequestSeam",
+            "MypyRequestSeam",
+            "ContractAssemblyRequestSeam",
+            "FileWriteCommand",
+            "CodegenCompleted",
+        }
+        assert emitted_short_names <= set(_PUBLISHED)
+        assert len(set(_PUBLISHED.values())) == len(_PUBLISHED)  # injective
 
 
 @pytest.mark.unit
