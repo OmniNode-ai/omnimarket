@@ -89,10 +89,14 @@ def test_contract_collecting_state_transitions() -> None:
     transition (e.g. losing the fork to FAILED) fails here rather than only
     during a live wave-collection incident. Compares against
     ``EnumFanoutFsmState`` members directly rather than the contract's
-    ``on:`` trigger labels — PyYAML's default (YAML 1.1) resolver parses the
-    bare scalar ``on`` as the boolean ``True``, not the string ``"on"``, so
-    ``transition["on"]`` is not a reliable key today (a latent contract
-    quirk, out of scope for this fix).
+    ``trigger:`` labels — no behavior here depends on that key's name.
+
+    Historical note (OMN-14596): this transitions block used to declare its
+    trigger label under a bare ``on:`` key, which PyYAML's default (YAML 1.1)
+    resolver parses as the boolean ``True`` rather than the string ``"on"``
+    (the "Norway problem" — ``transition["on"]`` raised ``KeyError``). The
+    key was renamed to ``trigger:`` to remove the landmine at the source;
+    this test still avoids depending on the trigger key entirely.
     """
     fsm = _load_contract()["fsm"]
     edges = {(t["from"], t["to"]) for t in fsm["transitions"]}
@@ -104,6 +108,58 @@ def test_contract_collecting_state_transitions() -> None:
     assert (dispatching, collecting) in edges
     assert (collecting, completed) in edges
     assert (collecting, failed) in edges
+
+
+def test_contract_transitions_trigger_key_is_a_real_string() -> None:
+    """OMN-14596 regression: the trigger key must survive ``yaml.safe_load``
+    as the string ``"trigger"``, not be swallowed into the Python bool
+    ``True`` key by PyYAML's YAML 1.1 "Norway problem" resolver.
+
+    Before the fix, this exact contract declared the trigger label under a
+    bare ``on:`` key. ``yaml.safe_load("on: commands_built")`` resolves to
+    ``{True: "commands_built"}`` — the string key ``"on"`` never exists in
+    the loaded dict, and any code accessing ``transition["on"]`` raises
+    ``KeyError``. This test drives the real PyYAML loader against the real
+    on-disk contract (not a synthetic snippet) and asserts both that the
+    boolean-key landmine is gone and that the intended string key resolves
+    to the expected trigger label for every declared transition.
+    """
+    fsm = _load_contract()["fsm"]
+    transitions = fsm["transitions"]
+    assert transitions, "contract.yaml fsm.transitions must not be empty"
+
+    expected_triggers = {
+        ("PLANNING", "DISPATCHING"): "commands_built",
+        ("DISPATCHING", "COLLECTING"): "all_commands_published",
+        ("COLLECTING", "COMPLETED"): "all_subtasks_terminal",
+        ("COLLECTING", "FAILED"): "fatal_error",
+    }
+
+    for transition in transitions:
+        # The Norway-problem landmine: PyYAML's safe_load resolver would
+        # fold a bare `on:`/`off:`/`yes:`/`no:` key to a Python bool. Assert
+        # no boolean key is present in any transition dict.
+        assert True not in transition, (
+            f"transition dict contains a boolean-True key (Norway problem "
+            f"regression): {transition}"
+        )
+        assert False not in transition, (
+            f"transition dict contains a boolean-False key (Norway problem "
+            f"regression): {transition}"
+        )
+
+        edge = (transition["from"], transition["to"])
+        assert "trigger" in transition, (
+            f"transition missing string 'trigger' key: {transition}"
+        )
+        trigger = transition["trigger"]
+        assert isinstance(trigger, str), (
+            f"trigger value must be a string, got {type(trigger)}: {transition}"
+        )
+        assert trigger == expected_triggers[edge], (
+            f"unexpected trigger label for edge {edge}: {trigger!r} != "
+            f"{expected_triggers[edge]!r}"
+        )
 
 
 def test_contract_topics_keep_literal_wire_strings() -> None:
