@@ -102,9 +102,19 @@ published_events:
   - event_type: "QualityGateIntent"
     topic: "onex.cmd.omnibase-infra.delegation-quality-gate-request.v1"
     description: "Intent emitted by orchestrator to invoke the quality gate reducer."
-  - event_type: "DelegationEvent"
+  # OMN-14600 (canonical two-class split, executes OMN-14403 A1): the
+  # terminal was a single "DelegationEvent" class-name entry mapped to ONE
+  # topic (a bespoke {topic, payload} carrier chose completed vs failed at
+  # runtime, which _outbox_topic_for's class-name lookup could never
+  # disambiguate). ModelDelegationCompleted / ModelDelegationFailed are two
+  # distinct classes (thin, no-new-fields subclasses of ModelDelegationResult)
+  # so each resolves to its own topic by class name alone.
+  - event_type: "DelegationCompleted"
     topic: "onex.evt.omnibase-infra.delegation-completed.v1"
-    description: "Delegation pipeline terminal event (completed or failed, topic set per-instance)."
+    description: "Delegation pipeline terminal event, COMPLETED outcome."
+  - event_type: "DelegationFailed"
+    topic: "onex.evt.omnibase-infra.delegation-failed.v1"
+    description: "Delegation pipeline terminal event, FAILED outcome."
   - event_type: "BaselineIntent"
     topic: "onex.cmd.omnibase-infra.baseline-comparison-request.v1"
     description: "Intent to trigger baseline cost comparison for savings tracking."

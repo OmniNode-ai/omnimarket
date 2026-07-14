@@ -37,9 +37,6 @@ from omnimarket.nodes.node_delegation_orchestrator.enums import EnumDelegationSt
 from omnimarket.nodes.node_delegation_orchestrator.handlers.handler_delegation_workflow import (
     HandlerDelegationWorkflow,
 )
-from omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_event import (
-    ModelDelegationEvent,
-)
 from omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_request import (
     ModelDelegationRequest,
 )
@@ -134,16 +131,11 @@ def _single_canonical(events: list[object]) -> ModelDelegationResult:
     """Pull THE single canonical terminal payload out of one emission.
 
     OMN-13629: asserts the terminal is a SINGLE canonical
-    ``ModelDelegationEvent`` (carrying ``ModelDelegationResult``) and that NO
+    ``ModelEventEnvelope`` (carrying ``ModelDelegationResult``) and that NO
     compat ``ModelTaskDelegatedEvent`` twin is co-emitted — the legacy co-writer
     that drove the OMN-13408 divergence is gone.
     """
-    canonical = [
-        e.payload
-        for e in events
-        if isinstance(e, ModelDelegationEvent)
-        and isinstance(e.payload, ModelDelegationResult)
-    ]
+    canonical = [e for e in events if isinstance(e, ModelDelegationResult)]
     compat = [e for e in events if isinstance(e, ModelTaskDelegatedEvent)]
     assert len(canonical) == 1, (
         f"expected exactly one canonical terminal, got {events!r}"
@@ -199,7 +191,17 @@ class TestSingleBuilderStructureOmn13629:
     """
 
     def test_canonical_terminal_result_built_exactly_once(self) -> None:
-        assert _count_constructions("ModelDelegationResult") == 1
+        # OMN-14600 (canonical two-class split): _emit_terminal now selects
+        # ModelDelegationCompleted / ModelDelegationFailed dynamically via a
+        # single `_terminal_cls(...)` call site rather than a literal
+        # `ModelDelegationResult(...)` name, so the invariant this test
+        # protects ("exactly one terminal construction site in the handler")
+        # is now checked against that call site instead. Neither class name
+        # appears as a literal constructor call anywhere else in the handler.
+        assert _count_constructions("_terminal_cls") == 1
+        assert _count_constructions("ModelDelegationResult") == 0
+        assert _count_constructions("ModelDelegationCompleted") == 0
+        assert _count_constructions("ModelDelegationFailed") == 0
 
     def test_compat_event_no_longer_constructed(self) -> None:
         # OMN-13629: the legacy ModelTaskDelegatedEvent co-writer was deleted.

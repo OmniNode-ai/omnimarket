@@ -69,10 +69,6 @@ from omnimarket.nodes.contract_topics import contract_publish_topics
 from omnimarket.nodes.node_delegation_escalation_decision_compute.handlers.handler_escalation_decision import (
     HandlerEscalationDecision,
 )
-from omnimarket.nodes.node_delegation_orchestrator.contract_topics import (
-    TOPIC_ID_DELEGATION_COMPLETED,
-    TOPIC_ID_DELEGATION_FAILED,
-)
 from omnimarket.nodes.node_delegation_orchestrator.enums import (
     EnumDelegationState,
 )
@@ -85,14 +81,12 @@ from omnimarket.nodes.node_delegation_orchestrator.models.model_baseline_intent 
 from omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_escalation_attempt import (
     ModelDelegationEscalationAttempt,
 )
-from omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_event import (
-    ModelDelegationEvent,
-)
 from omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_request import (
     ModelDelegationRequest,
 )
 from omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_result import (
-    ModelDelegationResult,
+    ModelDelegationCompleted,
+    ModelDelegationFailed,
 )
 from omnimarket.nodes.node_delegation_orchestrator.models.model_inference_intent import (
     ModelInferenceIntent,
@@ -2015,10 +2009,15 @@ class HandlerDelegationWorkflow:
     def _emit_terminal(self, inputs: TerminalEmissionInputs) -> list[BaseModel]:
         """ONE builder for the single canonical terminal event (OMN-13629).
 
-        This is the sole construction site for the canonical
-        ``ModelDelegationResult`` (wrapped in a ``ModelDelegationEvent`` on the
-        completed/failed topic). Cost is measured exactly once here from the
-        inputs' token counts + serving tier.
+        This is the sole construction site for the canonical terminal —
+        ``ModelDelegationCompleted`` or ``ModelDelegationFailed`` (both thin,
+        no-new-fields subclasses of ``ModelDelegationResult``) per
+        ``inputs.completed`` (OMN-14600, canonical two-class split — executes
+        OMN-14403 A1: the bespoke ``ModelDelegationEventEnvelope`` carrier is
+        no longer used; the terminal is a bare class emit like every other
+        intent this handler emits, resolved to its topic by class name
+        alone). Cost is measured exactly once here from the inputs' token
+        counts + serving tier.
 
         OMN-13629 (WS-F Phase 1): the legacy compat ``ModelTaskDelegatedEvent``
         co-writer (``task-delegated.v1``) was DELETED. A single terminal outcome
@@ -2122,7 +2121,16 @@ class HandlerDelegationWorkflow:
                 # cost_savings_usd == 0.0 (premium_counterfactual=None below).
                 total_savings_usd = cost.cost_savings_usd
 
-        delegation_result = ModelDelegationResult(
+        # OMN-14600: the terminal class ITSELF names the outcome — construct
+        # ModelDelegationCompleted or ModelDelegationFailed directly (both
+        # thin subclasses of ModelDelegationResult, identical flat wire
+        # shape) so class-name -> topic routing (_outbox_topic_for /
+        # DispatchResultApplier._resolve_mapped_output_topic) disambiguates
+        # completed vs failed without any embedded-topic carrier.
+        _terminal_cls = (
+            ModelDelegationCompleted if inputs.completed else ModelDelegationFailed
+        )
+        delegation_result = _terminal_cls(
             correlation_id=inputs.correlation_id,
             task_type=inputs.task_type,
             model_used=inputs.model_used,
@@ -2179,14 +2187,21 @@ class HandlerDelegationWorkflow:
         # re-derived downstream from the same authoritative cost/token figures.
         assert total_savings_usd >= 0.0  # honest floor invariant (OMN-13335)
 
-        topic = (
-            TOPIC_ID_DELEGATION_COMPLETED
-            if inputs.completed
-            else TOPIC_ID_DELEGATION_FAILED
-        )
-        return [
-            ModelDelegationEvent(topic=topic, payload=delegation_result),
-        ]
+        # OMN-14600 (root-cause fix, canonical two-class split — executes
+        # OMN-14403 A1): the terminal is now a BARE class emit, no envelope
+        # carrier and no topic var — identical to how ModelRoutingIntent /
+        # ModelInferenceIntent / ModelQualityGateIntent are already emitted
+        # elsewhere in this file. The PRIOR bespoke ``ModelDelegationEvent
+        # Envelope{topic, payload}`` carrier's real class name never matched
+        # the contract's published_events key ("DelegationEvent" covered
+        # only the completed topic, ambiguous for one class on two topics)
+        # once stripped by the in-row outbox's _outbox_topic_for lookup
+        # (handler_wiring.py) -- every delegation completion raised
+        # ModelOnexError there and stranded at COMPLETED/in_flight=true.
+        # ModelDelegationCompleted / ModelDelegationFailed each resolve to
+        # their OWN contract-declared topic by class name alone — no
+        # embedded-topic resolution needed anywhere downstream.
+        return [delegation_result]
 
     def _gate_terminal_inputs(
         self,

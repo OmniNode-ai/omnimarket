@@ -41,7 +41,11 @@ def test_dead_stub_file_is_removed(rel_path: str) -> None:
 @pytest.mark.unit
 def test_canonical_symbols_still_importable_from_omnibase_core() -> None:
     """Symbols that were duplicated locally are still canonical in omnibase_core."""
-    # model_event_envelope duplicate
+    # model_event_envelope duplicate. OMN-14600: the bespoke
+    # ModelDelegationEventEnvelope carrier is no longer emitted or re-exported
+    # anywhere in omnimarket (the orchestrator now emits the canonical
+    # ModelEventEnvelope directly) -- the class itself is retained, dead-but-
+    # defined, in omnibase_core to avoid a cross-repo release-ordering break.
     from omnibase_core.models.delegation.wire.model_delegation_wire_envelope import (
         ModelDelegationEventEnvelope,
     )
@@ -89,7 +93,6 @@ def test_wire_init_re_exports_from_omnibase_core() -> None:
     """models.delegation.wire.__init__ re-exports canonical symbols from omnibase_core."""
     from omnimarket.models.delegation.wire import (
         ModelDelegationConfig,
-        ModelDelegationEventEnvelope,
         ModelInferenceIntent,
         ModelRoutingTier,
         ModelTaskDelegatedEvent,
@@ -101,10 +104,22 @@ def test_wire_init_re_exports_from_omnibase_core() -> None:
         f"ModelDelegationConfig came from {ModelDelegationConfig.__module__}, "
         "expected omnibase_core"
     )
-    assert "omnibase_core" in ModelDelegationEventEnvelope.__module__, (
-        f"ModelDelegationEventEnvelope came from {ModelDelegationEventEnvelope.__module__}"
-    )
     assert "omnibase_core" in ModelInferenceIntent.__module__
     assert "omnibase_core" in ModelRoutingTier.__module__
     assert "omnibase_core" in ModelTaskDelegatedEvent.__module__
     assert "omnibase_core" in ModelTierModel.__module__
+
+
+@pytest.mark.unit
+def test_delegation_event_envelope_no_longer_re_exported_omn14600() -> None:
+    """OMN-14600: the bespoke envelope re-export was removed from the wire shim.
+
+    ``ModelDelegationEventEnvelope`` is no longer emitted anywhere in
+    omnimarket (the delegation orchestrator emits the canonical
+    ``ModelEventEnvelope`` directly) -- this pins the negative proof that the
+    dead re-export does not silently reappear.
+    """
+    import omnimarket.models.delegation.wire as wire_module
+
+    assert not hasattr(wire_module, "ModelDelegationEventEnvelope")
+    assert "ModelDelegationEventEnvelope" not in wire_module.__all__
