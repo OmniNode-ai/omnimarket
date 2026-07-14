@@ -27,22 +27,17 @@ from omnibase_infra.errors import ProtocolConfigurationError
 from omnimarket.models.delegation.llm_cost_routing.model_llm_delegation_escalation_triggered_event import (
     ModelLlmDelegationEscalationTriggeredEvent,
 )
-from omnimarket.nodes.node_delegation_orchestrator.contract_topics import (
-    TOPIC_ID_DELEGATION_FAILED,
-)
 from omnimarket.nodes.node_delegation_orchestrator.enums import (
     EnumDelegationState,
 )
 from omnimarket.nodes.node_delegation_orchestrator.handlers.handler_delegation_workflow import (
     HandlerDelegationWorkflow,
 )
-from omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_event import (
-    ModelDelegationEvent,
-)
 from omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_request import (
     ModelDelegationRequest,
 )
 from omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_result import (
+    ModelDelegationFailed,
     ModelDelegationResult,
 )
 from omnimarket.nodes.node_delegation_orchestrator.models.model_inference_response_data import (
@@ -249,9 +244,9 @@ class TestGateFailMaxEscalationReached:
         assert workflow.state == EnumDelegationState.FAILED
 
         # Find the delegation result event
-        result_events = [e for e in events if isinstance(e, ModelDelegationEvent)]
+        result_events = [e for e in events if isinstance(e, ModelDelegationResult)]
         assert len(result_events) == 1
-        result = result_events[0].payload
+        result = result_events[0]
         assert isinstance(result, ModelDelegationResult)
         assert result.terminal_failure_reason == "max_escalation_attempts_reached"
 
@@ -277,9 +272,9 @@ class TestGateFailNoHigherTier:
         workflow = handler.workflows[cid]
         assert workflow.state == EnumDelegationState.FAILED
 
-        result_events = [e for e in events if isinstance(e, ModelDelegationEvent)]
+        result_events = [e for e in events if isinstance(e, ModelDelegationResult)]
         assert len(result_events) == 1
-        result = result_events[0].payload
+        result = result_events[0]
         assert isinstance(result, ModelDelegationResult)
         # OMN-13167: precise reason — stable machine-keyable token prefix plus the
         # exhausted task-class policy that produced the dead-end.
@@ -337,16 +332,14 @@ class TestGateFailFallbackNotRecommended:
             EnumDelegationState.ROUTED,
         }
 
-        result_events = [e for e in events if isinstance(e, ModelDelegationEvent)]
+        result_events = [e for e in events if isinstance(e, ModelDelegationResult)]
         assert len(result_events) >= 1
         # If FAILED, the terminal event must carry quality_passed=False.
         failed_events = [
-            e
-            for e in result_events
-            if getattr(e, "topic", None) == TOPIC_ID_DELEGATION_FAILED
+            e for e in result_events if isinstance(e, ModelDelegationFailed)
         ]
         if failed_events:
-            result = failed_events[0].payload
+            result = failed_events[0]
             assert isinstance(result, ModelDelegationResult)
             assert result.quality_passed is False
 
@@ -482,9 +475,9 @@ class TestTerminalEventEscalationMetadata:
         )
         events = handler.handle_gate_result(gate)
 
-        result_events = [e for e in events if isinstance(e, ModelDelegationEvent)]
+        result_events = [e for e in events if isinstance(e, ModelDelegationResult)]
         assert len(result_events) == 1
-        result = result_events[0].payload
+        result = result_events[0]
         assert isinstance(result, ModelDelegationResult)
 
         # Escalation metadata should be present
@@ -507,9 +500,9 @@ class TestTerminalEventEscalationMetadata:
         gate = _make_gate_result(cid, passed=True, quality_score=0.9)
         events = handler.handle_gate_result(gate)
 
-        result_events = [e for e in events if isinstance(e, ModelDelegationEvent)]
+        result_events = [e for e in events if isinstance(e, ModelDelegationResult)]
         assert len(result_events) >= 1
-        result = result_events[0].payload
+        result = result_events[0]
         assert isinstance(result, ModelDelegationResult)
         assert result.escalation_count == 0
         assert result.attempts_count == 1
@@ -725,14 +718,14 @@ class TestAllTiersFailMismatchedCeilingTokensTerminatesCleanly:
         workflow = handler.workflows[cid]
         assert workflow.state == EnumDelegationState.FAILED
 
-        delegation_events = [e for e in events if isinstance(e, ModelDelegationEvent)]
+        delegation_events = [e for e in events if isinstance(e, ModelDelegationResult)]
         assert len(delegation_events) == 1, (
             "exactly one terminal delegation event must be emitted"
         )
         terminal = delegation_events[0]
-        assert terminal.topic == TOPIC_ID_DELEGATION_FAILED
+        assert isinstance(terminal, ModelDelegationFailed)
 
-        result = terminal.payload
+        result = terminal
         assert isinstance(result, ModelDelegationResult)
         assert result.quality_passed is False
         assert result.fallback_to_claude is True
@@ -806,10 +799,10 @@ class TestAllTiersFailMismatchedCeilingTokensTerminatesCleanly:
 
         workflow = handler.workflows[cid]
         assert workflow.state == EnumDelegationState.FAILED
-        delegation_events = [e for e in events2 if isinstance(e, ModelDelegationEvent)]
+        delegation_events = [e for e in events2 if isinstance(e, ModelDelegationResult)]
         assert len(delegation_events) == 1
-        assert delegation_events[0].topic == TOPIC_ID_DELEGATION_FAILED
-        result = delegation_events[0].payload
+        assert isinstance(delegation_events[0], ModelDelegationFailed)
+        result = delegation_events[0]
         assert isinstance(result, ModelDelegationResult)
         assert result.quality_passed is False
         assert result.total_tokens == result.prompt_tokens + result.completion_tokens
@@ -1010,9 +1003,9 @@ class TestEscalationTerminatesWhenFrontierUnconfigured:
         assert workflow.state == EnumDelegationState.FAILED, (
             "FSM must reach terminal FAILED, not strand in ROUTED"
         )
-        result_events = [e for e in events2 if isinstance(e, ModelDelegationEvent)]
+        result_events = [e for e in events2 if isinstance(e, ModelDelegationResult)]
         assert len(result_events) == 1, "a terminal delegation event must be emitted"
-        result = result_events[0].payload
+        result = result_events[0]
         assert isinstance(result, ModelDelegationResult)
         assert result.quality_passed is False
         # OMN-13167: precise reason naming the exhausted `document` policy plus
@@ -1285,9 +1278,9 @@ class TestTestTaskDeadEndEmitsPreciseReason:
 
         workflow = handler.workflows[cid]
         assert workflow.state == EnumDelegationState.FAILED
-        result_events = [e for e in events if isinstance(e, ModelDelegationEvent)]
+        result_events = [e for e in events if isinstance(e, ModelDelegationResult)]
         assert len(result_events) == 1
-        result = result_events[0].payload
+        result = result_events[0]
         assert isinstance(result, ModelDelegationResult)
         assert result.fallback_to_claude is True
         assert result.terminal_failure_reason is not None

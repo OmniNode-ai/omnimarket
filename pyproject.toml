@@ -497,7 +497,14 @@ omnimarket = "omnimarket.nodes"
 # branch before deletion keeps the object and hides the breakage, which is why
 # it went unnoticed. Pin the MERGED commit on dev instead -- squash-merges are
 # reachable forever; feature-branch heads are not.
-omnibase-core = { git = "https://github.com/OmniNode-ai/omnibase_core.git", rev = "d08bb2313a42ad108e00cd8546c799b75953b84d" }  # raw-override-ok: OMN-14402
+#
+# OMN-14600: re-pinned from d08bb231 (OMN-14402's merged commit, 0.46.8) to
+# a9f25887 -- the MERGED squash commit of core #1439 on dev (also 0.46.8),
+# which adds ModelDelegationCompleted/ModelDelegationFailed. d08bb231 is a
+# strict ancestor of a9f25887, so this supersedes the 14402 pin and keeps its
+# excluded_backend_refs feature. REMOVE WHEN RELEASED: once core publishes a
+# version containing #1439, delete this override (the range pin covers it).
+omnibase-core = { git = "https://github.com/OmniNode-ai/omnibase_core.git", rev = "a9f25887a51851ddf24258e6a7a507e7e56b28d8" }  # raw-override-ok: OMN-14600
 # omnibase-infra git rev retained — infra is not in the dep-provenance forbidden set.
 omnibase-infra = { git = "https://github.com/OmniNode-ai/omnibase_infra.git", rev = "7e52d5b0046c394b38454b97157e7a7191e6f008" }
 omninode-memory = { git = "https://github.com/OmniNode-ai/omnimemory.git", rev = "1cd318d5ca3071a24585191592d3a84fafd30cf7" }

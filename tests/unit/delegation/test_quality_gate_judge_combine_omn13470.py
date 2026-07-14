@@ -64,11 +64,12 @@ from omnimarket.nodes.node_delegation_orchestrator.enums import EnumDelegationSt
 from omnimarket.nodes.node_delegation_orchestrator.handlers.handler_delegation_workflow import (
     HandlerDelegationWorkflow,
 )
-from omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_event import (
-    ModelDelegationEvent,
-)
 from omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_request import (
     ModelDelegationRequest,
+)
+from omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_result import (
+    ModelDelegationCompleted,
+    ModelDelegationResult,
 )
 from omnimarket.nodes.node_delegation_quality_gate_reducer.handlers.handler_quality_gate import (
     delta as quality_gate_delta,
@@ -584,15 +585,20 @@ class TestJudgeCombineRealBusChain:
         # --- terminal: publish the gate-driven terminal events OVER THE BUS ---
         terminal_events = workflow.handle_gate_result(gate_result)
         for ev in terminal_events:
-            if isinstance(ev, ModelDelegationEvent):
+            if isinstance(ev, ModelDelegationResult):
+                topic = (
+                    TOPIC_ID_DELEGATION_COMPLETED
+                    if isinstance(ev, ModelDelegationCompleted)
+                    else TOPIC_ID_DELEGATION_FAILED
+                )
                 await bus.publish(
-                    ev.topic,
+                    topic,
                     key=str(request.correlation_id).encode(),
                     value=json.dumps(
                         {
-                            "topic": ev.topic,
+                            "topic": topic,
                             "correlation_id": str(request.correlation_id),
-                            "payload": ev.payload.model_dump(mode="json"),
+                            "payload": ev.model_dump(mode="json"),
                         }
                     ).encode("utf-8"),
                 )

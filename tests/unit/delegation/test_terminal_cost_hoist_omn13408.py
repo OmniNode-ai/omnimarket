@@ -37,9 +37,6 @@ from omnimarket.nodes.node_delegation_orchestrator.handlers.handler_delegation_w
     HandlerDelegationWorkflow,
     TerminalEmissionInputs,
 )
-from omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_event import (
-    ModelDelegationEvent,
-)
 from omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_result import (
     ModelDelegationResult,
 )
@@ -167,9 +164,7 @@ class TestTerminalCostHoistOmn13408:
         history = _metered_history()
         events = handler._emit_terminal(_null_top_level_failed_inputs(history=history))
 
-        canonical = next(
-            e.payload for e in events if isinstance(e, ModelDelegationEvent)
-        )
+        canonical = next(e for e in events if isinstance(e, ModelDelegationResult))
 
         expected = recompute_actual_cost_and_savings(
             tier_name=_CHEAP_CLOUD,
@@ -218,9 +213,7 @@ class TestTerminalCostHoistOmn13408:
             }
         )
         events = handler._emit_terminal(populated)
-        canonical = next(
-            e.payload for e in events if isinstance(e, ModelDelegationEvent)
-        )
+        canonical = next(e for e in events if isinstance(e, ModelDelegationResult))
 
         expected = recompute_actual_cost_and_savings(
             tier_name=_CHEAP_CLOUD,
@@ -258,9 +251,7 @@ class TestTerminalCostHoistOmn13408:
         events = handler._emit_terminal(
             _null_top_level_failed_inputs(history=free_only_history)
         )
-        canonical = next(
-            e.payload for e in events if isinstance(e, ModelDelegationEvent)
-        )
+        canonical = next(e for e in events if isinstance(e, ModelDelegationResult))
         measurement = _measure_canonical(canonical)
         assert Decimal(str(measurement.cost_usd)) == Decimal("0")
         assert Decimal(str(measurement.cost_savings_usd)) == Decimal("0")
