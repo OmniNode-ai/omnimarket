@@ -27,6 +27,9 @@ handler:
 # match/assert_never — routing-equivalent to the removed envelope.event_type switch
 # (OMN-14403 §1). message_category is per-entry because this is a mixed-category
 # contract (the start topic is a command; the five outcome topics are events).
+# OMN-14608: explicit message_category per entry is required so the real
+# MessageDispatchEngine routes the command start topic and event outcome topics
+# under their correct categories.
 handler_routing:
   routing_strategy: topic_match
   handlers:

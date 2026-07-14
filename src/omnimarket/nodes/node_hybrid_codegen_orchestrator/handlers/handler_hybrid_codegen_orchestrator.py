@@ -158,7 +158,7 @@ class HandlerHybridCodegenOrchestrator:
     def _on_start(
         self, spec: ModelCodegenSpec
     ) -> tuple[CodegenOrchestratorOutput, ...]:
-        state = ModelCodegenPipelineState(spec=spec)
+        state = ModelCodegenPipelineState(spec=spec, correlation_id=spec.correlation_id)
         return (ModelLlmGenerateCommand(state=state),)
 
     def _on_llm_generated(
@@ -173,6 +173,7 @@ class HandlerHybridCodegenOrchestrator:
                     base_class=spec.base_class,
                     required_methods=(spec.handler_method,),
                 ),
+                correlation_id=result.state.correlation_id,
             ),
         )
 
@@ -185,7 +186,12 @@ class HandlerHybridCodegenOrchestrator:
                 EnumCodegenStatus.REJECTED_VALIDATION,
                 issues=outcome.issues,
             )
-        return (ModelMypyRequestSeam(source_text=outcome.state.source_text),)
+        return (
+            ModelMypyRequestSeam(
+                source_text=outcome.state.source_text,
+                correlation_id=outcome.state.correlation_id,
+            ),
+        )
 
     def _on_typecheck_outcome(
         self, outcome: ModelCodegenTypecheckOutcome
@@ -203,6 +209,7 @@ class HandlerHybridCodegenOrchestrator:
                 namespace=spec.namespace,
                 archetype=spec.archetype,
                 analysis=ModelNodeAnalysisSeam(description=spec.description),
+                correlation_id=outcome.state.correlation_id,
             ),
         )
 

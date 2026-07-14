@@ -58,14 +58,24 @@ _CONTRACT_PATH = (
 #   contract-serialize-requested.v1 -> node_contract_serialize_compute
 #       ModelContractAssemblyRequest{node_name, namespace, archetype (required),
 #                                    analysis?, subcontract_selections?, overrides?}
+# OMN-14608: every consumer request model gained an optional ``correlation_id``
+# (default "") that the orchestrator now populates from the run's pipeline state
+# so node_codegen_outcome_reducer can rejoin the pure downstream verdict to
+# retained state. The seam therefore carries correlation_id and each consumer
+# allows it — the seam→consumer field match still holds.
 _SEAM_CONTRACT: dict[str, dict[str, set[str]]] = {
     "generated-code-validation-requested.v1": {
         "required": {"source_text"},
-        "allowed": {"source_text", "expected"},
+        "allowed": {"source_text", "expected", "correlation_id"},
     },
     "mypy-check-requested.v1": {
         "required": {"source_text"},
-        "allowed": {"source_text", "path", "ignore_missing_imports"},
+        "allowed": {
+            "source_text",
+            "path",
+            "ignore_missing_imports",
+            "correlation_id",
+        },
     },
     "contract-serialize-requested.v1": {
         "required": {"node_name", "namespace", "archetype"},
@@ -76,6 +86,7 @@ _SEAM_CONTRACT: dict[str, dict[str, set[str]]] = {
             "analysis",
             "subcontract_selections",
             "overrides",
+            "correlation_id",
         },
     },
 }
