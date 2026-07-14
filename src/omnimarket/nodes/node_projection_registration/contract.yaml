@@ -71,6 +71,12 @@ event_bus:
     - onex.evt.platform.node-state-change.v1
   publish_topics:
     - onex.evt.omnimarket.projection-registration-applied.v1
+  # OMN-14593 (OMN-13548 D-03 pattern): malformed/erroring events -- including
+  # the shared-dispatch-engine cross-contamination this ticket root-caused and
+  # recovers from in the handler -- are routed here as a durable, recoverable
+  # failure signal instead of being logged + dropped forever.
+  dlq_topics:
+    - onex.dlq.omnimarket.projection-registration-malformed.v1
 
 externally_consumed_topics:
   - onex.evt.omnimarket.projection-registration-applied.v1
