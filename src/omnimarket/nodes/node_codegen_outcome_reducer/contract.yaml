@@ -1,0 +1,120 @@
+---
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Codegen Outcome Reducer (tier-4a.2)
+#
+# Closes OMN-14403 G1 / OMN-14608: the missing outcome-adapter between the three
+# pure downstream codegen nodes (which emit RAW verdicts carrying no pipeline
+# state) and the codegen ORCHESTRATOR (which subscribes to the state-carrying
+# *-outcome events). Seeds a per-correlation store from codegen-llm-generated.v1
+# and joins each raw verdict back to retained state on correlation_id.
+name: node_codegen_outcome_reducer
+node_type: reducer
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+
+runtime_profiles: [effects]
+
+description: >
+  Outcome-adapter reducer for the hybrid codegen factory. Seeds a per-correlation
+  ModelCodegenPipelineState store from codegen-llm-generated.v1, then joins each
+  raw downstream verdict (generated-code-validation-completed /
+  mypy-check-completed / contract-serialize-completed) to the retained state on
+  correlation_id and republishes the matching state-carrying *Outcome event the
+  orchestrator expects. 1-in -> 1-out per verdict (no fan-out). Definition B:
+  handle(request) dispatches by isinstance; never imports ModelEventEnvelope.
+
+handler:
+  module: omnimarket.nodes.node_codegen_outcome_reducer.handlers.handler_codegen_outcome_reducer
+  class: HandlerCodegenOutcomeReducer
+
+# OMN-14608: topic_match with a per-topic event_model — the same fix pattern
+# OMN-14534 applied to node_swarm_subtask_state_reducer. It makes the dispatcher
+# validate each REAL producer wire shape before calling handle(), so handle()
+# adapts a typed verdict (never the raw envelope). message_category: event on
+# every entry — all four subscribe topics are events, not commands (avoids the
+# OMN-14605 mixed-category NO_DISPATCHER trap).
+handler_routing:
+  routing_strategy: topic_match
+  handlers:
+    # Seed leg: the ONLY input carrying the full pipeline state. Emits nothing
+    # (handle returns None) — the orchestrator drives the validate command off
+    # this same event; this reducer only records the state for later joins.
+    - topic: onex.evt.omnimarket.codegen-llm-generated.v1
+      operation: reduce_codegen_outcome
+      message_category: event
+      event_model:
+        name: ModelLlmGenerateResult
+        module: omnimarket.codegen.models
+      handler:
+        name: HandlerCodegenOutcomeReducer
+        module: omnimarket.nodes.node_codegen_outcome_reducer.handlers.handler_codegen_outcome_reducer
+    # Validate verdict -> codegen-validation-outcome.v1
+    - topic: onex.evt.omnimarket.generated-code-validation-completed.v1
+      operation: reduce_codegen_outcome
+      message_category: event
+      event_model:
+        name: ModelGeneratedCodeValidation
+        module: omnimarket.nodes.node_generated_code_validator.models.model_generated_code_validation
+      handler:
+        name: HandlerCodegenOutcomeReducer
+        module: omnimarket.nodes.node_codegen_outcome_reducer.handlers.handler_codegen_outcome_reducer
+    # Type-check verdict -> codegen-typecheck-outcome.v1
+    - topic: onex.evt.omnimarket.mypy-check-completed.v1
+      operation: reduce_codegen_outcome
+      message_category: event
+      event_model:
+        name: ModelMypyCheckResult
+        module: omnimarket.nodes.node_mypy_check_effect.models.model_mypy_check_result
+      handler:
+        name: HandlerCodegenOutcomeReducer
+        module: omnimarket.nodes.node_codegen_outcome_reducer.handlers.handler_codegen_outcome_reducer
+    # Serialize verdict -> codegen-serialize-outcome.v1
+    - topic: onex.evt.omnimarket.contract-serialize-completed.v1
+      operation: reduce_codegen_outcome
+      message_category: event
+      event_model:
+        name: ModelContractDocument
+        module: omnimarket.contract_assembly.models
+      handler:
+        name: HandlerCodegenOutcomeReducer
+        module: omnimarket.nodes.node_codegen_outcome_reducer.handlers.handler_codegen_outcome_reducer
+
+descriptor:
+  node_archetype: reducer
+  # `impure`, deliberately NOT `pure`: this reducer retains cross-event state in
+  # instance memory (the correlation store) because the runtime hands handle()
+  # only the event payload, never prior state. It performs NO I/O and is
+  # deterministic given the event order. Durable state (OMN-14208 state_io /
+  # OMN-14598 reducer projection adapter) is the follow-on that makes it a pure
+  # delta and real-bus-correct; until then this is replay-proven only.
+  purity: impure
+  idempotent: false
+  timeout_ms: 5000
+
+event_bus:
+  subscribe_topics:
+    - onex.evt.omnimarket.codegen-llm-generated.v1
+    - onex.evt.omnimarket.generated-code-validation-completed.v1
+    - onex.evt.omnimarket.mypy-check-completed.v1
+    - onex.evt.omnimarket.contract-serialize-completed.v1
+  publish_topics:
+    - onex.evt.omnimarket.codegen-validation-outcome.v1
+    - onex.evt.omnimarket.codegen-typecheck-outcome.v1
+    - onex.evt.omnimarket.codegen-serialize-outcome.v1
+
+metadata:
+  transport_type: kafka
+  description: "Codegen outcome-adapter reducer — joins raw verdicts to retained pipeline state (OMN-14608)"
+  author: "OmniNode Team"
+  created: "2026-07-13"
+  tags:
+    - reducer
+    - codegen
+    - tier-4a
+    - outcome-adapter
+    - OMN-14608
+    - OMN-14403
+  related_tickets:
+    - OMN-14608
+    - OMN-14403

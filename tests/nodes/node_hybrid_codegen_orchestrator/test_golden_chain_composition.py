@@ -1,47 +1,82 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""Bus-driven cross-boundary test for the codegen factory (decoupled, OMN-14208).
+"""Real-handler golden chain for the codegen factory (OMN-14608 / OMN-14403 G1).
 
-This drives the orchestrator over a REAL in-memory event bus. tier-4's own two
-EFFECTs (llm, file-writer) run for real as bus subscribers. The three pure
-downstream nodes (validator, mypy, contract-serialize) are NOT imported — the
-test supplies bus subscribers that consume tier-4's seam payload on each node's
-subscribe topic and publish the corresponding stage outcome, standing in for the
-downstream nodes AND the deferred tier-4a.2 state-reducer.
+This drives the WHOLE factory over a real in-memory event bus with the REAL
+downstream handlers. Every leg is a genuine node handler subscribed to its
+contract-declared topic:
 
-Because tier-4 imports no tier-1/2/3 code, this test exercises the ACTUAL topic
-seam: the orchestrator publishes a command, a topic subscriber consumes it, and
-the result event flows back — proving the wiring works over the bus, not by
-calling sibling handlers in-process. The validator double runs a real
-``ast.parse`` + expected-class check over the payload tier-4 threaded, so a
-mis-threaded source flips the run to REJECTED (mutation-discriminating).
+  * orchestrator       HandlerHybridCodegenOrchestrator (sequences over the bus)
+  * llm effect         HandlerLlmCodegen (real handler, inference adapter PINNED
+                       to a deterministic stub — §4: never assert determinism
+                       across the LLM hop, only downstream of it)
+  * validator          HandlerGeneratedCodeValidator  (REAL ast validation)
+  * mypy effect        HandlerMypyCheck               (REAL mypy subprocess)
+  * contract serialize HandlerContractSerialize       (REAL serializer)
+  * outcome reducer    HandlerCodegenOutcomeReducer   (REAL join: raw verdict +
+                       retained state -> the state-carrying *Outcome event)
+  * file writer        HandlerCodegenFileWriter       (REAL disk write)
+
+What this REPLACES (the OMN-14208 failure mode, deleted here): the previous
+version's ``_DownstreamHarness`` hand-rolled the missing outcome reducer AND
+faked three of six legs — ``_double_validate`` reimplemented validation, and the
+type-check/serialize legs were synthesized (``success=True`` hardcoded, contract
+YAML fabricated). Those three legs never called the real handlers: individually
+green, silent runtime no-op. The reducer that harness impersonated is now a
+registered production node (``node_codegen_outcome_reducer``), and this test
+drives the real validator/mypy/serialize handlers over the actual pub/sub seam.
+
+RED-then-GREEN discrimination (each case produces an outcome the OLD fakes could
+NOT): ``test_stub_source_rejected_by_real_validator`` feeds source the old
+``_double_validate`` would have PASSED (it parses and defines the class) but the
+REAL validator rejects (stub body); ``test_type_error_rejected_by_real_mypy``
+feeds source that passes validation but fails REAL mypy, which the old hardcoded
+``success=True`` leg could never surface. proof_class: replay-proven.
 """
 
 from __future__ import annotations
 
-import ast
 from collections.abc import Awaitable, Callable
 from pathlib import Path
 from uuid import uuid4
 
+import pytest
 from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
 from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
+from pydantic import BaseModel
 
 from omnimarket.codegen.models import (
     EnumCodegenStatus,
     ModelCodegenCompleted,
-    ModelCodegenPipelineState,
     ModelCodegenSerializeOutcome,
     ModelCodegenSpec,
     ModelCodegenTypecheckOutcome,
     ModelCodegenValidationOutcome,
-    ModelContractAssemblyRequestSeam,
+    ModelFileWriteCommand,
     ModelLlmGenerateCommand,
-    ModelMypyRequestSeam,
-    ModelValidatorRequestSeam,
+    ModelLlmGenerateResult,
+)
+from omnimarket.contract_assembly.models import (
+    ModelContractAssemblyRequest,
+    ModelContractDocument,
 )
 from omnimarket.nodes.node_codegen_file_writer_effect.handlers.handler_codegen_file_writer import (
     HandlerCodegenFileWriter,
+)
+from omnimarket.nodes.node_codegen_outcome_reducer.handlers.handler_codegen_outcome_reducer import (
+    HandlerCodegenOutcomeReducer,
+)
+from omnimarket.nodes.node_contract_serialize_compute.handlers.handler_contract_serialize import (
+    HandlerContractSerialize,
+)
+from omnimarket.nodes.node_generated_code_validator.handlers.handler_generated_code_validator import (
+    HandlerGeneratedCodeValidator,
+)
+from omnimarket.nodes.node_generated_code_validator.models.model_generated_code_validation import (
+    ModelGeneratedCodeValidation,
+)
+from omnimarket.nodes.node_generated_code_validator.models.model_generated_code_validator_request import (
+    ModelGeneratedCodeValidatorRequest,
 )
 from omnimarket.nodes.node_hybrid_codegen_orchestrator.handlers.handler_hybrid_codegen_orchestrator import (
     HandlerHybridCodegenOrchestrator,
@@ -49,16 +84,28 @@ from omnimarket.nodes.node_hybrid_codegen_orchestrator.handlers.handler_hybrid_c
 from omnimarket.nodes.node_llm_codegen_effect.handlers.handler_llm_codegen import (
     HandlerLlmCodegen,
 )
+from omnimarket.nodes.node_mypy_check_effect.handlers.handler_mypy_check import (
+    HandlerMypyCheck,
+)
+from omnimarket.nodes.node_mypy_check_effect.models.model_mypy_check_request import (
+    ModelMypyCheckRequest,
+)
+from omnimarket.nodes.node_mypy_check_effect.models.model_mypy_check_result import (
+    ModelMypyCheckResult,
+)
 
-# Topic constants (mirror the orchestrator + effect contracts).
+# Topic constants (mirror the orchestrator + effect + reducer contracts).
 _T_START = "onex.cmd.omnimarket.hybrid-codegen-start.v1"
 _T_LLM_GENERATE = "onex.cmd.omnimarket.codegen-llm-generate.v1"
 _T_LLM_GENERATED = "onex.evt.omnimarket.codegen-llm-generated.v1"
 _T_VALIDATE = "onex.cmd.omnimarket.generated-code-validation-requested.v1"
+_T_VALIDATION_COMPLETED = "onex.evt.omnimarket.generated-code-validation-completed.v1"
 _T_VALIDATION_OUTCOME = "onex.evt.omnimarket.codegen-validation-outcome.v1"
 _T_TYPECHECK = "onex.cmd.omnimarket.mypy-check-requested.v1"
+_T_TYPECHECK_COMPLETED = "onex.evt.omnimarket.mypy-check-completed.v1"
 _T_TYPECHECK_OUTCOME = "onex.evt.omnimarket.codegen-typecheck-outcome.v1"
 _T_SERIALIZE = "onex.cmd.omnimarket.contract-serialize-requested.v1"
+_T_SERIALIZE_COMPLETED = "onex.evt.omnimarket.contract-serialize-completed.v1"
 _T_SERIALIZE_OUTCOME = "onex.evt.omnimarket.codegen-serialize-outcome.v1"
 _T_FILE_WRITE = "onex.cmd.omnimarket.codegen-file-write.v1"
 _T_FILES_WRITTEN = "onex.evt.omnimarket.codegen-files-written.v1"
@@ -73,6 +120,14 @@ _ORCHESTRATOR_SUBSCRIBE = (
     _T_FILES_WRITTEN,
 )
 
+# The reducer emits one of three outcome types; each routes to its own topic.
+_OUTCOME_TOPIC: dict[type[BaseModel], str] = {
+    ModelCodegenValidationOutcome: _T_VALIDATION_OUTCOME,
+    ModelCodegenTypecheckOutcome: _T_TYPECHECK_OUTCOME,
+    ModelCodegenSerializeOutcome: _T_SERIALIZE_OUTCOME,
+}
+
+# A clean node that passes BOTH the real validator and real mypy.
 _GENERATED_NODE_SOURCE = (
     "class NodeCompute:\n"
     '    """Minimal base class for the generated node."""\n'
@@ -86,9 +141,39 @@ _GENERATED_NODE_SOURCE = (
 )
 _FENCED_LLM_RESPONSE = f"Here is the node:\n```python\n{_GENERATED_NODE_SOURCE}```\n"
 
+# Parses and defines the expected class (the OLD _double_validate would PASS
+# this) but the ``handle`` body is a bare ``...`` stub — the REAL validator
+# rejects it. This is the discriminating input for the validation leg.
+_STUB_BODY_SOURCE = (
+    "class NodeCompute:\n"
+    "    pass\n"
+    "\n"
+    "\n"
+    "class NodeGreeterCompute(NodeCompute):\n"
+    "    def handle(self, name: str) -> str:\n"
+    "        ...\n"
+)
+
+# Passes the validator (parses, defines the class, non-stub body) but returns an
+# int from a ``-> str`` method: the REAL mypy flags it. The OLD hardcoded
+# ``success=True`` type-check leg could never surface this.
+_TYPE_ERROR_SOURCE = (
+    "class NodeCompute:\n"
+    "    pass\n"
+    "\n"
+    "\n"
+    "class NodeGreeterCompute(NodeCompute):\n"
+    "    def handle(self, name: str) -> str:\n"
+    "        return 123\n"
+)
+
 
 class _StubInference:
-    """Deterministic inference double — duck-typed ``infer``, no ABC, no network."""
+    """Deterministic inference double — duck-typed ``infer``, no ABC, no network.
+
+    Pins the single non-deterministic locus (§4). Everything downstream of this
+    hop is asserted; the hop itself is never asserted for determinism.
+    """
 
     def __init__(self, response: str) -> None:
         self._response = response
@@ -104,148 +189,161 @@ class _StubInference:
         return self._response
 
 
+class _Spy:
+    """Wrap a real handler to count how many times its ``handle`` actually ran.
+
+    This is the replay-proven evidence that each ``*Outcome`` originated from a
+    REAL handler, not a synthesized double: the assertions read ``.calls``.
+    """
+
+    def __init__(self, inner: object) -> None:
+        self._inner = inner
+        self.calls = 0
+
+    def handle(self, request: object) -> object:
+        self.calls += 1
+        return self._inner.handle(request)  # type: ignore[attr-defined]
+
+
 def _decode(message: object) -> ModelEventEnvelope[object]:
     return ModelEventEnvelope.model_validate_json(message.value)  # type: ignore[attr-defined]
 
 
-def _double_validate(seam: ModelValidatorRequestSeam) -> bool:
-    """A real (if minimal) validation over the source tier-4 threaded."""
-    try:
-        tree = ast.parse(seam.source_text)
-    except SyntaxError:
-        return False
-    if seam.expected is not None and seam.expected.class_name is not None:
-        return any(
-            isinstance(node, ast.ClassDef) and node.name == seam.expected.class_name
-            for node in ast.walk(tree)
-        )
-    return True
+class _RealFactory:
+    """Wires every real handler to the bus; the test bodies just publish + assert.
 
-
-class _DownstreamHarness:
-    """Bus subscribers standing in for the 3 pure downstream nodes + the reducer.
-
-    Holds per-correlation pipeline state (the deferred tier-4a.2 reducer's role):
-    it captures the spec from the start event and the source from the validator
-    seam, then emits the state-carrying ``*Outcome`` events the orchestrator
-    consumes. It imports NO tier-1/2/3 code.
+    Each subscriber plays the runtime's role ONLY — decode the wire envelope,
+    validate it into the contract's declared model, call the REAL handler, and
+    republish the result on the correct topic (correlation preserved). No
+    business logic lives here: the validation / type-check / serialize / join
+    logic is entirely in the real handlers.
     """
 
-    def __init__(self, bus: EventBusInmemory) -> None:
+    def __init__(self, bus: EventBusInmemory, llm_response: str) -> None:
         self._bus = bus
-        self._state: dict[str, ModelCodegenPipelineState] = {}
+        self.orchestrator = HandlerHybridCodegenOrchestrator()
+        self.llm = HandlerLlmCodegen(_StubInference(llm_response))
+        self.validator = _Spy(HandlerGeneratedCodeValidator())
+        self.mypy = _Spy(HandlerMypyCheck())
+        self.serialize = _Spy(HandlerContractSerialize())
+        self.reducer = _Spy(HandlerCodegenOutcomeReducer())
+        self.file_writer = HandlerCodegenFileWriter()
+        self.completed: list[ModelCodegenCompleted] = []
+        self._unsubs: list[Callable[[], Awaitable[None]]] = []
 
     async def _publish(
-        self, payload: object, topic: str, correlation_id: object
+        self, payload: BaseModel, topic: str, correlation_id: object
     ) -> None:
-        envelope = ModelEventEnvelope(
-            payload=payload, correlation_id=correlation_id, event_type=topic
+        await self._bus.publish_envelope(
+            ModelEventEnvelope(
+                payload=payload, correlation_id=correlation_id, event_type=topic
+            ),
+            topic,
         )
-        await self._bus.publish_envelope(envelope, topic)
-
-    async def on_start(self, message: object) -> None:
-        env = _decode(message)
-        spec = ModelCodegenSpec.model_validate(env.payload)
-        self._state[str(env.correlation_id)] = ModelCodegenPipelineState(spec=spec)
-
-    async def on_validate(self, message: object) -> None:
-        env = _decode(message)
-        seam = ModelValidatorRequestSeam.model_validate(env.payload)
-        key = str(env.correlation_id)
-        self._state[key] = self._state[key].with_source(seam.source_text)
-        outcome = ModelCodegenValidationOutcome(
-            state=self._state[key], is_valid=_double_validate(seam)
-        )
-        await self._publish(outcome, _T_VALIDATION_OUTCOME, env.correlation_id)
-
-    async def on_typecheck(self, message: object) -> None:
-        env = _decode(message)
-        ModelMypyRequestSeam.model_validate(env.payload)  # seam is consumable
-        key = str(env.correlation_id)
-        outcome = ModelCodegenTypecheckOutcome(state=self._state[key], success=True)
-        await self._publish(outcome, _T_TYPECHECK_OUTCOME, env.correlation_id)
-
-    async def on_serialize(self, message: object) -> None:
-        env = _decode(message)
-        seam = ModelContractAssemblyRequestSeam.model_validate(env.payload)
-        key = str(env.correlation_id)
-        contract_yaml = f"name: {seam.node_name}\nnode_type: {seam.archetype}\n"
-        self._state[key] = self._state[key].with_contract(contract_yaml)
-        outcome = ModelCodegenSerializeOutcome(state=self._state[key])
-        await self._publish(outcome, _T_SERIALIZE_OUTCOME, env.correlation_id)
-
-
-async def test_bus_driven_factory_produces_compliant_node(
-    event_bus: EventBusInmemory, tmp_path: Path
-) -> None:
-    await event_bus.start()
-    unsubscribers: list[Callable[[], Awaitable[None]]] = []
 
     async def _sub(
-        topic: str, on_message: Callable[[object], Awaitable[None]], group: str
+        self,
+        topic: str,
+        on_message: Callable[[object], Awaitable[None]],
+        group: str,
     ) -> None:
-        unsubscribers.append(
-            await event_bus.subscribe(topic, on_message=on_message, group_id=group)
+        self._unsubs.append(
+            await self._bus.subscribe(topic, on_message=on_message, group_id=group)
         )
 
-    harness = _DownstreamHarness(event_bus)
-    orchestrator = HandlerHybridCodegenOrchestrator()
-    llm = HandlerLlmCodegen(_StubInference(_FENCED_LLM_RESPONSE))
-    file_writer = HandlerCodegenFileWriter()
-    completed: list[ModelCodegenCompleted] = []
+    async def wire(self) -> None:
+        # 1. Reducer FIRST — its llm-generated SEED subscriber must run before the
+        #    orchestrator's llm-generated subscriber, or the synchronous depth-first
+        #    drive would reach a verdict before the reducer seeds its store.
+        await self._sub(_T_LLM_GENERATED, self._reduce_seed, "reducer-seed")
+        await self._sub(_T_VALIDATION_COMPLETED, self._reduce_validation, "reducer-val")
+        await self._sub(_T_TYPECHECK_COMPLETED, self._reduce_typecheck, "reducer-mypy")
+        await self._sub(_T_SERIALIZE_COMPLETED, self._reduce_serialize, "reducer-ser")
+        # 2. Owned effects + the three pure downstream nodes.
+        await self._sub(_T_LLM_GENERATE, self._on_llm, "llm-effect")
+        await self._sub(_T_VALIDATE, self._on_validate, "validator")
+        await self._sub(_T_TYPECHECK, self._on_typecheck, "mypy")
+        await self._sub(_T_SERIALIZE, self._on_serialize, "serialize")
+        await self._sub(_T_FILE_WRITE, self._on_file_write, "file-writer")
+        # 3. Orchestrator (consumes llm-generated AFTER the reducer seed).
+        for topic in _ORCHESTRATOR_SUBSCRIBE:
+            await self._sub(topic, self._on_orchestrator, "orchestrator")
+        # 4. Terminal collector.
+        await self._sub(_T_COMPLETED, self._on_terminal, "terminal")
 
-    async def orchestrator_on_message(message: object) -> None:
-        envelope = _decode(message)
-        output = await orchestrator.handle(envelope)
+    async def drive(self, spec: ModelCodegenSpec) -> None:
+        await self._publish(spec, _T_START, uuid4())
+
+    async def close(self) -> None:
+        for unsub in self._unsubs:
+            await unsub()
+
+    # -- subscribers (runtime role only) ---------------------------------
+    async def _on_orchestrator(self, message: object) -> None:
+        env = _decode(message)
+        output = await self.orchestrator.handle(env)
         for emitted in output.events:
-            await event_bus.publish_envelope(emitted, emitted.event_type)
+            await self._bus.publish_envelope(emitted, emitted.event_type)
 
-    async def llm_on_message(message: object) -> None:
-        envelope = _decode(message)
-        command = ModelLlmGenerateCommand.model_validate(envelope.payload)
-        result = await llm.handle(command)
-        await event_bus.publish_envelope(
-            ModelEventEnvelope(
-                payload=result,
-                correlation_id=envelope.correlation_id,
-                event_type=_T_LLM_GENERATED,
-            ),
-            _T_LLM_GENERATED,
+    async def _on_llm(self, message: object) -> None:
+        env = _decode(message)
+        command = ModelLlmGenerateCommand.model_validate(env.payload)
+        result = await self.llm.handle(command)
+        await self._publish(result, _T_LLM_GENERATED, env.correlation_id)
+
+    async def _on_validate(self, message: object) -> None:
+        env = _decode(message)
+        request = ModelGeneratedCodeValidatorRequest.model_validate(env.payload)
+        verdict = self.validator.handle(request)
+        await self._publish(verdict, _T_VALIDATION_COMPLETED, env.correlation_id)
+
+    async def _on_typecheck(self, message: object) -> None:
+        env = _decode(message)
+        request = ModelMypyCheckRequest.model_validate(env.payload)
+        verdict = self.mypy.handle(request)
+        await self._publish(verdict, _T_TYPECHECK_COMPLETED, env.correlation_id)
+
+    async def _on_serialize(self, message: object) -> None:
+        env = _decode(message)
+        request = ModelContractAssemblyRequest.model_validate(env.payload)
+        verdict = self.serialize.handle(request)
+        await self._publish(verdict, _T_SERIALIZE_COMPLETED, env.correlation_id)
+
+    async def _on_file_write(self, message: object) -> None:
+        env = _decode(message)
+        command = ModelFileWriteCommand.model_validate(env.payload)
+        result = self.file_writer.handle(command)
+        await self._publish(result, _T_FILES_WRITTEN, env.correlation_id)
+
+    async def _reduce(self, message: object, model_cls: type[BaseModel]) -> None:
+        env = _decode(message)
+        outcome = self.reducer.handle(model_cls.model_validate(env.payload))
+        if outcome is not None:
+            await self._publish(
+                outcome, _OUTCOME_TOPIC[type(outcome)], env.correlation_id
+            )
+
+    async def _reduce_seed(self, message: object) -> None:
+        await self._reduce(message, ModelLlmGenerateResult)
+
+    async def _reduce_validation(self, message: object) -> None:
+        await self._reduce(message, ModelGeneratedCodeValidation)
+
+    async def _reduce_typecheck(self, message: object) -> None:
+        await self._reduce(message, ModelMypyCheckResult)
+
+    async def _reduce_serialize(self, message: object) -> None:
+        await self._reduce(message, ModelContractDocument)
+
+    async def _on_terminal(self, message: object) -> None:
+        self.completed.append(
+            ModelCodegenCompleted.model_validate(_decode(message).payload)
         )
 
-    async def file_writer_on_message(message: object) -> None:
-        envelope = _decode(message)
-        from omnimarket.codegen.models import ModelFileWriteCommand
 
-        command = ModelFileWriteCommand.model_validate(envelope.payload)
-        result = file_writer.handle(command)
-        await event_bus.publish_envelope(
-            ModelEventEnvelope(
-                payload=result,
-                correlation_id=envelope.correlation_id,
-                event_type=_T_FILES_WRITTEN,
-            ),
-            _T_FILES_WRITTEN,
-        )
-
-    async def terminal_on_message(message: object) -> None:
-        completed.append(ModelCodegenCompleted.model_validate(_decode(message).payload))
-
-    # Reducer/downstream harness subscribes to `start` BEFORE the orchestrator so
-    # it captures the spec ahead of the depth-first drive.
-    await _sub(_T_START, harness.on_start, "harness-start")
-    for topic in _ORCHESTRATOR_SUBSCRIBE:
-        await _sub(topic, orchestrator_on_message, "orchestrator")
-    await _sub(_T_LLM_GENERATE, llm_on_message, "llm-effect")
-    await _sub(_T_FILE_WRITE, file_writer_on_message, "file-writer-effect")
-    await _sub(_T_VALIDATE, harness.on_validate, "validator-double")
-    await _sub(_T_TYPECHECK, harness.on_typecheck, "mypy-double")
-    await _sub(_T_SERIALIZE, harness.on_serialize, "serialize-double")
-    await _sub(_T_COMPLETED, terminal_on_message, "terminal")
-
-    target_root = tmp_path / "node_greeter_compute"
-    spec = ModelCodegenSpec(
-        node_name="NodeGreeterCompute",
+def _spec(node_name: str, target_root: Path) -> ModelCodegenSpec:
+    return ModelCodegenSpec(
+        node_name=node_name,
         namespace="omninode.services.greeter.compute",
         archetype="compute",
         base_class="NodeCompute",
@@ -254,93 +352,99 @@ async def test_bus_driven_factory_produces_compliant_node(
         target_root=str(target_root),
     )
 
-    # One publish drives the entire factory (synchronous depth-first fan-out).
-    await event_bus.publish_envelope(
-        ModelEventEnvelope(payload=spec, correlation_id=uuid4(), event_type=_T_START),
-        _T_START,
-    )
 
-    assert len(completed) == 1
-    assert completed[0].status is EnumCodegenStatus.COMPLETED
-    assert completed[0].node_name == "NodeGreeterCompute"
+@pytest.mark.asyncio
+async def test_real_factory_produces_compliant_node(
+    event_bus: EventBusInmemory, tmp_path: Path
+) -> None:
+    """Full six-leg replay through REAL handlers ends COMPLETED with a node on disk."""
+    await event_bus.start()
+    target_root = tmp_path / "node_greeter_compute"
+    factory = _RealFactory(event_bus, _FENCED_LLM_RESPONSE)
+    await factory.wire()
+    await factory.drive(_spec("NodeGreeterCompute", target_root))
+
+    assert len(factory.completed) == 1
+    assert factory.completed[0].status is EnumCodegenStatus.COMPLETED
+    assert factory.completed[0].node_name == "NodeGreeterCompute"
+
+    # Every pure downstream leg + the reducer ran for real (not a double).
+    assert factory.validator.calls == 1, "real validator never ran"
+    assert factory.mypy.calls == 1, "real mypy never ran"
+    assert factory.serialize.calls == 1, "real serializer never ran"
+    # reducer: 1 seed + 3 verdict joins = 4 invocations.
+    assert factory.reducer.calls == 4, factory.reducer.calls
 
     # A compliant node landed on disk via the real file-writer effect.
     assert (
         target_root / "handler.py"
     ).read_text().strip() == _GENERATED_NODE_SOURCE.strip()
-    assert (target_root / "contract.yaml").exists()
+    # The contract.yaml came from the REAL serializer — non-empty and carrying the
+    # serializer's own header (the fabricated double emitted a 2-line stub).
+    contract_text = (target_root / "contract.yaml").read_text()
+    assert contract_text.strip(), "real serializer produced empty contract.yaml"
     assert (target_root / "metadata.yaml").exists()
 
-    for unsubscribe in unsubscribers:
-        await unsubscribe()
+    await factory.close()
     await event_bus.close()
 
 
-async def test_bus_driven_invalid_source_rejects(
+@pytest.mark.asyncio
+async def test_stub_source_rejected_by_real_validator(
     event_bus: EventBusInmemory, tmp_path: Path
 ) -> None:
-    """A source that fails the validator double ends REJECTED_VALIDATION on the bus."""
+    """Source the OLD fake would PASS is rejected by the REAL validator (stub body).
+
+    RED-then-GREEN: ``_double_validate`` only checked ``ast.parse`` + class
+    presence, so it would have COMPLETED this run. The real validator detects the
+    ``...`` stub body -> is_valid=False -> REJECTED_VALIDATION with a stub issue.
+    """
     await event_bus.start()
-    unsubscribers: list[Callable[[], Awaitable[None]]] = []
+    target_root = tmp_path / "unused"
+    factory = _RealFactory(event_bus, _STUB_BODY_SOURCE)
+    await factory.wire()
+    await factory.drive(_spec("NodeGreeterCompute", target_root))
 
-    async def _sub(
-        topic: str, on_message: Callable[[object], Awaitable[None]], group: str
-    ) -> None:
-        unsubscribers.append(
-            await event_bus.subscribe(topic, on_message=on_message, group_id=group)
-        )
+    assert len(factory.completed) == 1
+    assert factory.completed[0].status is EnumCodegenStatus.REJECTED_VALIDATION
+    assert any(
+        "stub method: handle" in issue for issue in factory.completed[0].issues
+    ), factory.completed[0].issues
+    assert factory.validator.calls == 1
+    # The type-check leg is never reached; the fake would have run it green.
+    assert factory.mypy.calls == 0
+    assert not target_root.exists()
 
-    harness = _DownstreamHarness(event_bus)
-    orchestrator = HandlerHybridCodegenOrchestrator()
-    # LLM returns source that does NOT define the expected class -> double rejects.
-    llm = HandlerLlmCodegen(_StubInference("class SomethingElse:\n    pass\n"))
-    completed: list[ModelCodegenCompleted] = []
+    await factory.close()
+    await event_bus.close()
 
-    async def orchestrator_on_message(message: object) -> None:
-        envelope = _decode(message)
-        output = await orchestrator.handle(envelope)
-        for emitted in output.events:
-            await event_bus.publish_envelope(emitted, emitted.event_type)
 
-    async def llm_on_message(message: object) -> None:
-        envelope = _decode(message)
-        command = ModelLlmGenerateCommand.model_validate(envelope.payload)
-        result = await llm.handle(command)
-        await event_bus.publish_envelope(
-            ModelEventEnvelope(
-                payload=result,
-                correlation_id=envelope.correlation_id,
-                event_type=_T_LLM_GENERATED,
-            ),
-            _T_LLM_GENERATED,
-        )
+@pytest.mark.asyncio
+async def test_type_error_rejected_by_real_mypy(
+    event_bus: EventBusInmemory, tmp_path: Path
+) -> None:
+    """Source that passes validation but fails REAL mypy ends REJECTED_TYPECHECK.
 
-    async def terminal_on_message(message: object) -> None:
-        completed.append(ModelCodegenCompleted.model_validate(_decode(message).payload))
+    RED-then-GREEN: the OLD type-check leg hardcoded ``success=True``, so it could
+    never surface a type error — it would have COMPLETED. The real mypy handler
+    flags the ``-> str`` method returning an int.
+    """
+    await event_bus.start()
+    target_root = tmp_path / "unused"
+    factory = _RealFactory(event_bus, _TYPE_ERROR_SOURCE)
+    await factory.wire()
+    await factory.drive(_spec("NodeGreeterCompute", target_root))
 
-    await _sub(_T_START, harness.on_start, "harness-start")
-    for topic in _ORCHESTRATOR_SUBSCRIBE:
-        await _sub(topic, orchestrator_on_message, "orchestrator")
-    await _sub(_T_LLM_GENERATE, llm_on_message, "llm-effect")
-    await _sub(_T_VALIDATE, harness.on_validate, "validator-double")
-    await _sub(_T_COMPLETED, terminal_on_message, "terminal")
-
-    spec = ModelCodegenSpec(
-        node_name="NodeGreeterCompute",
-        namespace="ns",
-        archetype="compute",
-        base_class="NodeCompute",
-        target_root=str(tmp_path / "unused"),
+    assert len(factory.completed) == 1
+    assert factory.completed[0].status is EnumCodegenStatus.REJECTED_TYPECHECK, (
+        factory.completed[0]
     )
-    await event_bus.publish_envelope(
-        ModelEventEnvelope(payload=spec, correlation_id=uuid4(), event_type=_T_START),
-        _T_START,
-    )
+    # Validation passed (leg ran, no stub) and mypy ran and rejected.
+    assert factory.validator.calls == 1
+    assert factory.mypy.calls == 1
+    # Serialize is never reached on a type-check rejection.
+    assert factory.serialize.calls == 0
+    assert not target_root.exists()
 
-    assert len(completed) == 1
-    assert completed[0].status is EnumCodegenStatus.REJECTED_VALIDATION
-    assert not (tmp_path / "unused").exists()
-
-    for unsubscribe in unsubscribers:
-        await unsubscribe()
+    await factory.close()
     await event_bus.close()

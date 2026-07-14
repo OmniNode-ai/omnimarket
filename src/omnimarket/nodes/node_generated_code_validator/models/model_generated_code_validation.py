@@ -13,6 +13,7 @@ class ModelGeneratedCodeValidation(BaseModel):
     stub_methods: tuple[str, ...]
     structure_issues: tuple[str, ...]
     is_valid: bool
+    correlation_id: str = ""  # echoed from the request; OMN-14608 reducer join key
 
 
 __all__ = ["ModelGeneratedCodeValidation"]

@@ -22,6 +22,7 @@ class ModelMypyCheckResult(BaseModel):
     error_count: int
     diagnostics: tuple[ModelMypyDiagnostic, ...]
     mypy_available: bool
+    correlation_id: str = ""  # echoed from the request; OMN-14608 reducer join key
 
 
 __all__ = ["ModelMypyCheckResult", "ModelMypyDiagnostic"]

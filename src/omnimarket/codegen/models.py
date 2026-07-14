@@ -77,6 +77,17 @@ class ModelCodegenPipelineState(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     spec: ModelCodegenSpec
+    correlation_id: str = Field(
+        default="",
+        description=(
+            "Run identity threaded through every codegen hop. Seeded by the "
+            "orchestrator from the start envelope's correlation_id and echoed on "
+            "every downstream seam/verdict so node_codegen_outcome_reducer can "
+            "join a raw verdict back to this retained state on the correlation "
+            "key (OMN-14608 / OMN-14403 G1). Empty only for direct in-process "
+            "construction that never crosses the bus."
+        ),
+    )
     source_text: str = Field(default="", description="Generated source; set post-llm.")
     contract_yaml: str = Field(
         default="", description="Serialized contract; set post-serialize."
@@ -116,6 +127,14 @@ class ModelValidatorRequestSeam(BaseModel):
 
     source_text: str = Field(min_length=1)
     expected: ModelValidatorExpectedSeam | None = None
+    correlation_id: str = Field(
+        default="",
+        description=(
+            "Echoed onto the validator verdict so the outcome reducer can "
+            "rejoin it to retained state. Matches the consumer's "
+            "ModelGeneratedCodeValidatorRequest.correlation_id (OMN-14608)."
+        ),
+    )
 
 
 class ModelMypyRequestSeam(BaseModel):
@@ -127,6 +146,14 @@ class ModelMypyRequestSeam(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     source_text: str = Field(min_length=1)
+    correlation_id: str = Field(
+        default="",
+        description=(
+            "Echoed onto the mypy verdict so the outcome reducer can rejoin it "
+            "to retained state. Matches the consumer's "
+            "ModelMypyCheckRequest.correlation_id (OMN-14608)."
+        ),
+    )
 
 
 class ModelSemVerSeam(BaseModel):
@@ -163,6 +190,14 @@ class ModelContractAssemblyRequestSeam(BaseModel):
     namespace: str = Field(min_length=1)
     archetype: str = Field(min_length=1)
     analysis: ModelNodeAnalysisSeam = Field(default_factory=ModelNodeAnalysisSeam)
+    correlation_id: str = Field(
+        default="",
+        description=(
+            "Echoed onto the contract-serialize verdict so the outcome reducer "
+            "can rejoin it to retained state. Matches the consumer's "
+            "ModelContractAssemblyRequest.correlation_id (OMN-14608)."
+        ),
+    )
 
 
 # ---------------------------------------------------------------------------
