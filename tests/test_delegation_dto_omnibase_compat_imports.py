@@ -29,8 +29,13 @@ DTO_IMPORTS = {
     "omnimarket.nodes.node_delegation_orchestrator.models.model_compliance_loop_result.ModelComplianceLoopResult": "omnibase_core.models.delegation.wire.model_orchestrator_intents.ModelComplianceLoopResult",
     "omnimarket.nodes.node_delegation_orchestrator.models.ModelDelegationRequest": "omnibase_core.models.delegation.wire.model_delegation_wire_request.ModelDelegationRequest",
     "omnimarket.nodes.node_delegation_orchestrator.models.ModelDelegationResult": "omnibase_core.models.delegation.wire.model_delegation_result.ModelDelegationResult",
-    "omnimarket.nodes.node_delegation_orchestrator.models.ModelDelegationEvent": "omnibase_core.models.delegation.wire.model_delegation_wire_envelope.ModelDelegationEventEnvelope",
-    "omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_event.ModelDelegationEvent": "omnibase_core.models.delegation.wire.model_delegation_wire_envelope.ModelDelegationEventEnvelope",
+    # OMN-14600 (canonical two-class split, executes OMN-14403 A1): the bespoke
+    # ModelDelegationEvent alias for ModelDelegationEventEnvelope was deleted --
+    # the orchestrator now constructs one of these two thin ModelDelegationResult
+    # subclasses directly (class identity alone drives class-name -> topic
+    # routing; no carrier, no embedded-topic field).
+    "omnimarket.nodes.node_delegation_orchestrator.models.ModelDelegationCompleted": "omnibase_core.models.delegation.wire.model_delegation_result.ModelDelegationCompleted",
+    "omnimarket.nodes.node_delegation_orchestrator.models.ModelDelegationFailed": "omnibase_core.models.delegation.wire.model_delegation_result.ModelDelegationFailed",
     "omnimarket.nodes.node_delegation_orchestrator.models.ModelInferenceIntent": "omnibase_core.models.delegation.wire.model_orchestrator_intents.ModelInferenceIntent",
     "omnimarket.nodes.node_delegation_orchestrator.models.ModelInferenceResponseData": "omnibase_core.models.delegation.wire.model_orchestrator_intents.ModelInferenceResponseData",
     "omnimarket.nodes.node_delegation_orchestrator.models.ModelQualityGateIntent": "omnibase_core.models.delegation.wire.model_orchestrator_intents.ModelQualityGateIntent",

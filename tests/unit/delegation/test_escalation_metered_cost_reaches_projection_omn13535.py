@@ -36,9 +36,6 @@ from omnimarket.nodes.node_delegation_orchestrator.enums import EnumDelegationSt
 from omnimarket.nodes.node_delegation_orchestrator.handlers.handler_delegation_workflow import (
     HandlerDelegationWorkflow,
 )
-from omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_event import (
-    ModelDelegationEvent,
-)
 from omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_request import (
     ModelDelegationRequest,
 )
@@ -70,12 +67,7 @@ from omnimarket.pricing import (
 
 def _canonical_terminal(events: list[object]) -> ModelDelegationResult:
     """The SINGLE canonical terminal payload from one emission (OMN-13629)."""
-    terminals = [
-        e.payload
-        for e in events
-        if isinstance(e, ModelDelegationEvent)
-        and isinstance(e.payload, ModelDelegationResult)
-    ]
+    terminals = [e for e in events if isinstance(e, ModelDelegationResult)]
     assert len(terminals) == 1, f"expected one canonical terminal, got {events!r}"
     return terminals[0]
 
@@ -193,7 +185,7 @@ def _drive_metered_reject_then_free_accept(
     )
     assert handler.workflows[cid].state == EnumDelegationState.ROUTED
     assert handler.workflows[cid].escalation_count == 1
-    assert not any(isinstance(e, ModelDelegationEvent) for e in escalation_events)
+    assert not any(isinstance(e, ModelDelegationResult) for e in escalation_events)
 
     # Attempt 2: free 'local' tier, ACCEPTED by the gate (terminal COMPLETED).
     handler.handle_routing_decision(_make_routing_decision(cid, tier_name="local"))
@@ -234,8 +226,8 @@ class TestEscalationMeteredCostReachesProjectionOmn13535:
         expected_metered = _expected_metered_cost()
 
         # Canonical ModelDelegationResult terminal.
-        result_event = next(e for e in events if isinstance(e, ModelDelegationEvent))
-        result = result_event.payload
+        result_event = next(e for e in events if isinstance(e, ModelDelegationResult))
+        result = result_event
         assert isinstance(result, ModelDelegationResult)
         # The cumulative attempt cost includes the rejected metered tier even
         # though the FINAL accepted tier ('local') is free.

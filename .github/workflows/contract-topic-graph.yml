@@ -19,6 +19,15 @@
 # RATCHET: pre-existing debt is frozen in the baseline, which may only SHRINK.
 # A NEW defect hard-fails. Fixing a baselined defect without removing its baseline
 # entry ALSO fails, so the baseline can never silently re-authorize a regression.
+#
+# COVERAGE (OMN-14568): omnibase_infra/omnibase_core/omnimarket/omnibase_spi/
+# omnibase_compat/onex_change_control/omnimemory resolve from installed
+# distributions -- they're pip/uv dependencies of omnimarket already, so
+# `uv sync` pays for them. omniclaude/omniintelligence are NOT pip dependencies
+# (that would invert the repo-layering just to read packaged YAML) -- they're
+# checked out here instead, at origin/dev HEAD. This is a wiring-reconciliation
+# oracle, so tracking dev's moving HEAD is correct behavior: run-to-run
+# variance reflects real, current cross-repo wiring, not gate flakiness.
 
 name: Contract Topic Graph
 
@@ -37,6 +46,8 @@ jobs:
     name: contract-topic-graph
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    env:
+      CONTRACT_GRAPH_CHECKOUT_ROOT: ${{ github.workspace }}/.contract-graph-checkouts
 
     steps:
       # fetch-depth: 0 (full history) is required so the baseline ratchet can
@@ -46,6 +57,26 @@ jobs:
         with:
           persist-credentials: false
           fetch-depth: 0
+
+      # Census-only siblings (OMN-14568): NOT pip dependencies, just checked
+      # out so parse_contract can read their contract.yaml text. See
+      # CHECKOUT_PACKAGES / CONTRACT_GRAPH_CHECKOUT_ROOT in
+      # contract_topic_graph.py.
+      - name: Checkout omniclaude (census-only, full topic coverage)
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
+        with:
+          repository: OmniNode-ai/omniclaude
+          ref: dev
+          persist-credentials: false
+          path: .contract-graph-checkouts/omniclaude
+
+      - name: Checkout omniintelligence (census-only, full topic coverage)
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
+        with:
+          repository: OmniNode-ai/omniintelligence
+          ref: dev
+          persist-credentials: false
+          path: .contract-graph-checkouts/omniintelligence
 
       - name: Install uv
         uses: astral-sh/setup-uv@38f3f104447c67c051c4a08e39b64a148898af3a # v4
@@ -58,27 +89,27 @@ jobs:
       - name: Install dependencies
         run: uv sync --all-extras
 
-      # The graph is only sound where the entire active runtime surface
-      # (ONEX_ACTIVE_RUNTIME_PACKAGES=omnibase_infra,omnimarket) is co-installed.
-      # omnimarket depends on omnibase_infra, so its CI environment is the one
-      # place that holds the complete graph. If that ever stops being true the
-      # validator raises rather than reporting phantom orphans — assert it loudly
-      # here so a dependency change surfaces as a gate failure, not as silence.
+      # Fail closed on ANY missing package -- both the runtime-soundness pair
+      # (ACTIVE_RUNTIME_PACKAGES) and the full census scope (GRAPH_PACKAGES).
+      # A silent partial here is exactly how OMN-14527 shipped scoped to 3 of
+      # 9 topic-declaring packages for months with nothing erroring -- assert
+      # completeness loudly so a broken checkout or a dependency change
+      # surfaces as a gate failure, never as silence.
       - name: Assert the graph surface is complete (fail closed)
         run: |
           uv run python - <<'PY'
           from omnimarket.validators.contract_topic_graph import (
-              ACTIVE_RUNTIME_PACKAGES,
+              GRAPH_PACKAGES,
               discover_contract_roots,
           )
 
           roots = discover_contract_roots()
-          missing = [p for p in ACTIVE_RUNTIME_PACKAGES if p not in roots]
+          missing = [p for p in GRAPH_PACKAGES if p not in roots]
           if missing:
               raise SystemExit(
-                  f"::error::Contract graph is UNSOUND — missing {missing}. "
+                  f"::error::Contract graph is INCOMPLETE — missing {missing}. "
                   "A partial graph reports every cross-package producer as a phantom "
-                  "orphan. Restore the dependency or move this gate."
+                  "orphan. Restore the dependency/checkout or move this gate."
               )
           print(f"Graph surface complete: {sorted(roots)}")
           PY

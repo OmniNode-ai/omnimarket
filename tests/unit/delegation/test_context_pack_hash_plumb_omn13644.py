@@ -24,9 +24,6 @@ from omnimarket.nodes.node_delegation_orchestrator.enums import EnumDelegationSt
 from omnimarket.nodes.node_delegation_orchestrator.handlers.handler_delegation_workflow import (
     HandlerDelegationWorkflow,
 )
-from omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_event import (
-    ModelDelegationEvent,
-)
 from omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_request import (
     ModelDelegationRequest,
 )
@@ -125,12 +122,7 @@ def _make_gate_result(correlation_id: UUID) -> ModelQualityGateResult:
 
 
 def _single_canonical(events: list[object]) -> ModelDelegationResult:
-    canonical = [
-        e.payload
-        for e in events
-        if isinstance(e, ModelDelegationEvent)
-        and isinstance(e.payload, ModelDelegationResult)
-    ]
+    canonical = [e for e in events if isinstance(e, ModelDelegationResult)]
     assert len(canonical) == 1, (
         f"expected exactly one canonical terminal, got {events!r}"
     )

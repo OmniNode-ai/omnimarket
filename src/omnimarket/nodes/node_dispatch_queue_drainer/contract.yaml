@@ -1,6 +1,7 @@
-version: 0.1.0
 name: node_dispatch_queue_drainer
+contract_version: {major: 1, minor: 0, patch: 0}
 node_type: compute
+node_version: {major: 1, minor: 0, patch: 0}
 description: >
   Compile one legacy .onex_state/dispatch_queue YAML item through
   node_dispatch_worker without spawning agents or moving queue files.

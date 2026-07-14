@@ -51,6 +51,9 @@ class EnumFlowStatus(StrEnum):
     MISSING_TABLE = "MISSING_TABLE"
     PRODUCER_DOWN = "PRODUCER_DOWN"
     TOPIC_STALE = "TOPIC_STALE"
+    LAG_UNKNOWN = (
+        "LAG_UNKNOWN"  # OMN-14531: lag probe failed — fail CLOSED, never FLOWING
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -69,6 +72,7 @@ class ModelFlowInput(BaseModel):
     dashboard_route: str | None = None
     producer_status: EnumProducerStatus = EnumProducerStatus.ACTIVE
     consumer_lag: int = 0
+    consumer_lag_unknown: bool = False  # OMN-14531: True when the live lag probe failed — fail CLOSED, never healthy
     table_row_count: int = 0
     table_has_recent_data: bool = False
     field_mapping_valid: bool = True
@@ -332,6 +336,23 @@ class NodeDataFlowSweep:
                 table_row_count=0,
                 field_mapping_valid=flow.field_mapping_valid,
                 message=f"Messages in topic but 0 rows in {flow.table_name}",
+            )
+
+        # OMN-14531: a failed lag probe must fail CLOSED, never fall through to
+        # FLOWING. consumer_lag_unknown is set by the collector when rpk could
+        # not describe the consumer group — the flow's actual lag was never
+        # observed, so it is neither known-healthy nor known-lagging.
+        if flow.consumer_lag_unknown:
+            return ModelFlowResult(
+                topic=flow.topic,
+                handler_name=flow.handler_name,
+                table_name=flow.table_name,
+                producer_status=flow.producer_status,
+                flow_status=EnumFlowStatus.LAG_UNKNOWN,
+                consumer_lag=flow.consumer_lag,
+                table_row_count=flow.table_row_count,
+                field_mapping_valid=flow.field_mapping_valid,
+                message=f"Consumer lag probe failed for {flow.topic} — status unknown",
             )
 
         if flow.consumer_lag > 0:
