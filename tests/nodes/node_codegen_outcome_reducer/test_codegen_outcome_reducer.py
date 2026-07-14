@@ -24,17 +24,13 @@ from omnimarket.codegen.models import (
     ModelCodegenSpec,
     ModelCodegenTypecheckOutcome,
     ModelCodegenValidationOutcome,
+    ModelGeneratedCodeValidation,
     ModelLlmGenerateResult,
+    ModelMypyCheckResult,
 )
 from omnimarket.contract_assembly.models import EnumLintStatus, ModelContractDocument
 from omnimarket.nodes.node_codegen_outcome_reducer.handlers.handler_codegen_outcome_reducer import (
     HandlerCodegenOutcomeReducer,
-)
-from omnimarket.nodes.node_generated_code_validator.models.model_generated_code_validation import (
-    ModelGeneratedCodeValidation,
-)
-from omnimarket.nodes.node_mypy_check_effect.models.model_mypy_check_result import (
-    ModelMypyCheckResult,
 )
 
 _CONTRACT_PATH = (
@@ -201,5 +197,26 @@ class TestReducerJoin:
                     diagnostics=(),
                     mypy_available=True,
                     correlation_id="never-seeded",
+                )
+            )
+
+    def test_blank_correlation_id_on_seed_fails_loud(self) -> None:
+        """A seed whose correlation_id was never propagated fails loud, not silent."""
+        reducer = HandlerCodegenOutcomeReducer()
+        with pytest.raises(ValueError, match="blank correlation_id"):
+            reducer.handle(ModelLlmGenerateResult(state=_state("")))
+
+    def test_blank_correlation_id_on_verdict_fails_loud(self) -> None:
+        """A verdict with a blank id must not silently join whatever seed came last."""
+        reducer = HandlerCodegenOutcomeReducer()
+        reducer.handle(ModelLlmGenerateResult(state=_state("corr-1")))
+        with pytest.raises(ValueError, match="blank correlation_id"):
+            reducer.handle(
+                ModelMypyCheckResult(
+                    success=True,
+                    error_count=0,
+                    diagnostics=(),
+                    mypy_available=True,
+                    correlation_id="",
                 )
             )

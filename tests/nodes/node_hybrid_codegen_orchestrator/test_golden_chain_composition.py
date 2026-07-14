@@ -53,8 +53,10 @@ from omnimarket.codegen.models import (
     ModelCodegenTypecheckOutcome,
     ModelCodegenValidationOutcome,
     ModelFileWriteCommand,
+    ModelGeneratedCodeValidation,
     ModelLlmGenerateCommand,
     ModelLlmGenerateResult,
+    ModelMypyCheckResult,
 )
 from omnimarket.contract_assembly.models import (
     ModelContractAssemblyRequest,
@@ -72,9 +74,6 @@ from omnimarket.nodes.node_contract_serialize_compute.handlers.handler_contract_
 from omnimarket.nodes.node_generated_code_validator.handlers.handler_generated_code_validator import (
     HandlerGeneratedCodeValidator,
 )
-from omnimarket.nodes.node_generated_code_validator.models.model_generated_code_validation import (
-    ModelGeneratedCodeValidation,
-)
 from omnimarket.nodes.node_generated_code_validator.models.model_generated_code_validator_request import (
     ModelGeneratedCodeValidatorRequest,
 )
@@ -89,9 +88,6 @@ from omnimarket.nodes.node_mypy_check_effect.handlers.handler_mypy_check import 
 )
 from omnimarket.nodes.node_mypy_check_effect.models.model_mypy_check_request import (
     ModelMypyCheckRequest,
-)
-from omnimarket.nodes.node_mypy_check_effect.models.model_mypy_check_result import (
-    ModelMypyCheckResult,
 )
 
 # Topic constants (mirror the orchestrator + effect + reducer contracts).

@@ -55,7 +55,7 @@ handler_routing:
       message_category: event
       event_model:
         name: ModelGeneratedCodeValidation
-        module: omnimarket.nodes.node_generated_code_validator.models.model_generated_code_validation
+        module: omnimarket.codegen.models
       handler:
         name: HandlerCodegenOutcomeReducer
         module: omnimarket.nodes.node_codegen_outcome_reducer.handlers.handler_codegen_outcome_reducer
@@ -65,7 +65,7 @@ handler_routing:
       message_category: event
       event_model:
         name: ModelMypyCheckResult
-        module: omnimarket.nodes.node_mypy_check_effect.models.model_mypy_check_result
+        module: omnimarket.codegen.models
       handler:
         name: HandlerCodegenOutcomeReducer
         module: omnimarket.nodes.node_codegen_outcome_reducer.handlers.handler_codegen_outcome_reducer

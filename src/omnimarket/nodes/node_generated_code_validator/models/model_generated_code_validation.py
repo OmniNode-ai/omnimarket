@@ -1,19 +1,15 @@
-"""Result model: typed diagnostics for a generated code artifact."""
+"""Result model: typed diagnostics for a generated code artifact.
+
+Canonical definition lives in ``omnimarket.codegen.models`` (a shared,
+cross-node package) so ``node_codegen_outcome_reducer`` can consume this
+node's verdict without reaching into its private ``models`` package
+(OMN-9263 doctrine / OMN-14608). This module re-exports the same class —
+identity is preserved, so this node's own handler and contract keep working
+unchanged.
+"""
 
 from __future__ import annotations
 
-from pydantic import BaseModel, ConfigDict
-
-
-class ModelGeneratedCodeValidation(BaseModel):
-    model_config = ConfigDict(frozen=True, extra="forbid")
-
-    parses: bool
-    syntax_error: str | None
-    stub_methods: tuple[str, ...]
-    structure_issues: tuple[str, ...]
-    is_valid: bool
-    correlation_id: str = ""  # echoed from the request; OMN-14608 reducer join key
-
+from omnimarket.codegen.models import ModelGeneratedCodeValidation
 
 __all__ = ["ModelGeneratedCodeValidation"]

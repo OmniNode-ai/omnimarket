@@ -278,6 +278,57 @@ class ModelCodegenCompleted(BaseModel):
     issues: tuple[str, ...] = ()
 
 
+# ---------------------------------------------------------------------------
+# Downstream verdict wire models — the REAL output shapes node_generated_code_
+# validator and node_mypy_check_effect publish. Canonical home is here (not
+# either node's private models package) so node_codegen_outcome_reducer can
+# consume them without a cross-node reach-in (OMN-9263 doctrine; each owning
+# node's own models module re-exports the class defined here for its own
+# handler/contract, so identity is preserved end-to-end).
+# ---------------------------------------------------------------------------
+class ModelMypyDiagnostic(BaseModel):
+    """One mypy diagnostic line (mirrors node_mypy_check_effect's wire shape)."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    line: int
+    column: int | None
+    severity: str
+    message: str
+    code: str | None
+
+
+class ModelGeneratedCodeValidation(BaseModel):
+    """node_generated_code_validator's verdict (mirrors its wire output)."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    parses: bool
+    syntax_error: str | None
+    stub_methods: tuple[str, ...]
+    structure_issues: tuple[str, ...]
+    is_valid: bool
+    correlation_id: str = Field(
+        default="",
+        description="Echoed from the request; OMN-14608 reducer join key.",
+    )
+
+
+class ModelMypyCheckResult(BaseModel):
+    """node_mypy_check_effect's verdict (mirrors its wire output)."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    success: bool
+    error_count: int
+    diagnostics: tuple[ModelMypyDiagnostic, ...]
+    mypy_available: bool
+    correlation_id: str = Field(
+        default="",
+        description="Echoed from the request; OMN-14608 reducer join key.",
+    )
+
+
 __all__ = [
     "EnumCodegenStatus",
     "ModelCodegenCompleted",
@@ -289,9 +340,12 @@ __all__ = [
     "ModelContractAssemblyRequestSeam",
     "ModelFileWriteCommand",
     "ModelFileWriteResult",
+    "ModelGeneratedCodeValidation",
     "ModelGeneratedFile",
     "ModelLlmGenerateCommand",
     "ModelLlmGenerateResult",
+    "ModelMypyCheckResult",
+    "ModelMypyDiagnostic",
     "ModelMypyRequestSeam",
     "ModelNodeAnalysisSeam",
     "ModelSemVerSeam",

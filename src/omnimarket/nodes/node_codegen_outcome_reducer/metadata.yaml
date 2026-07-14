@@ -7,7 +7,11 @@ entry_points:
     node_codegen_outcome_reducer: "omnimarket.nodes.node_codegen_outcome_reducer"
 capabilities:
   standalone: true
-  full_runtime: true
+  # Process-local correlation store cannot join a seed and a verdict across
+  # separately routed handler instances on the real multi-instance runtime —
+  # replay-proven only until durable state lands (OMN-14598). Gate full_runtime
+  # false so the golden-chain coverage gate does not treat this as a live path.
+  full_runtime: false
   requires_network: false
   requires_repo: false
   requires_secrets: false

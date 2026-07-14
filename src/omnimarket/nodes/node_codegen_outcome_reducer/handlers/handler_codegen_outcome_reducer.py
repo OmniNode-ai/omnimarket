@@ -49,20 +49,20 @@ from omnimarket.codegen.models import (
     ModelCodegenSerializeOutcome,
     ModelCodegenTypecheckOutcome,
     ModelCodegenValidationOutcome,
-    ModelLlmGenerateResult,
-)
-from omnimarket.contract_assembly.models import ModelContractDocument
-from omnimarket.nodes.node_generated_code_validator.models.model_generated_code_validation import (
     ModelGeneratedCodeValidation,
-)
-from omnimarket.nodes.node_mypy_check_effect.models.model_mypy_check_result import (
+    ModelLlmGenerateResult,
     ModelMypyCheckResult,
 )
+from omnimarket.contract_assembly.models import ModelContractDocument
 
 # The four real producer wire models this reducer consumes (contract.yaml
 # handler_routing event_model per topic) and the three outcomes it emits.
 # `reuse — do not fork` (OMN-14403 plan §3 G1): the verdicts are the REAL
-# downstream models, imported not mirrored.
+# downstream models, imported not mirrored. ModelGeneratedCodeValidation and
+# ModelMypyCheckResult are defined in this shared package (not either
+# downstream node's private models package) so this cross-node join does not
+# reach into a sibling node's internals (OMN-9263 doctrine) — each owning
+# node's own models module re-exports the identical class.
 ReducerInput = (
     ModelLlmGenerateResult
     | ModelGeneratedCodeValidation
@@ -110,7 +110,8 @@ class HandlerCodegenOutcomeReducer:
         if isinstance(request, ModelLlmGenerateResult):
             # Seed only — the orchestrator drives the validate command off the
             # same llm-generated event, so this leg publishes nothing.
-            self._store[request.state.correlation_id] = request.state
+            correlation_id = self._require_correlation_id(request.state.correlation_id)
+            self._store[correlation_id] = request.state
             return None
 
         if isinstance(request, ModelGeneratedCodeValidation):
@@ -151,6 +152,7 @@ class HandlerCodegenOutcomeReducer:
         for is a wiring defect (out-of-order delivery or a lost seed), not a
         degradable condition — fail rather than fabricate empty state.
         """
+        correlation_id = self._require_correlation_id(correlation_id)
         state = self._store.get(correlation_id)
         if state is None:
             raise ValueError(
@@ -159,6 +161,24 @@ class HandlerCodegenOutcomeReducer:
                 "prior codegen-llm-generated seed (wiring defect or lost seed)."
             )
         return state
+
+    @staticmethod
+    def _require_correlation_id(correlation_id: str) -> str:
+        """Fail loud on a blank ``correlation_id`` rather than a silent join.
+
+        The reducer-facing seed/verdict models default ``correlation_id`` to
+        ``""`` (it's an additive OMN-14608 field on models that pre-date the
+        reducer). Treating that default as a valid ``_store`` key would let
+        unrelated, uncorrelated runs collide on the same key instead of
+        failing loudly on what is actually a wiring defect (a producer that
+        never propagated the id).
+        """
+        if not correlation_id:
+            raise ValueError(
+                "HandlerCodegenOutcomeReducer: blank correlation_id — the "
+                "upstream producer did not propagate it (wiring defect)."
+            )
+        return correlation_id
 
 
 __all__ = ["HandlerCodegenOutcomeReducer"]
