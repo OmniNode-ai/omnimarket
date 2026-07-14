@@ -504,11 +504,14 @@ class TestDispatcherQualityGateResultOutputEvents:
         topic_to_payload_type = {
             c.kwargs["topic"]: type(c.args[0].payload).__name__ for c in calls
         }
-        # The envelope payload is the canonical delegation event envelope; its
-        # .payload field is ModelDelegationResult.
+        # OMN-14600 (canonical two-class split): the orchestrator emits the
+        # BARE ModelDelegationCompleted / ModelDelegationFailed class directly
+        # -- no carrier to unwrap. DispatcherQualityGateResult resolves the
+        # topic by class name (_TERMINAL_TOPICS) and publishes the bare class
+        # verbatim, so the wire payload IS the terminal class itself.
         assert (
             topic_to_payload_type.get(TOPIC_DELEGATION_COMPLETED)
-            == "ModelDelegationEventEnvelope"
+            == "ModelDelegationCompleted"
         )
         # OMN-13629: no legacy compat event is published, so the topic is absent.
         assert _LEGACY_TASK_DELEGATED_TOPIC not in topic_to_payload_type
