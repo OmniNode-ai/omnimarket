@@ -12,37 +12,28 @@ instead of silently at runtime.
 
 It deliberately does NOT use ``_FakeDispatchEngine`` or two independent unit
 suites. It reconstructs each producer's EXACT emitted payload shape (the infra
-stamp symbols are not importable here: they live on unreleased infra branches
-#2254/#2252, and infra->market is a forbidden dependency direction, so the
-consumer repo owns this test) and feeds it to the real
-``ModelDelegateSkillRequest.model_validate`` under its production
-``ConfigDict(frozen=True, extra="forbid")``.
+stamp symbols are not importable here: they live in the infra repo, and
+infra->market is a forbidden dependency direction, so the consumer repo owns
+this test) and feeds it to the real ``ModelDelegateSkillRequest.model_validate``
+under its production ``ConfigDict(frozen=True, extra="forbid")``.
 
-Two producers write ``payload["tenant_id"]`` today, and they DISAGREE:
+OMN-14367 RECONCILED (this test file closes the ticket): both producers that
+write ``payload["tenant_id"]`` now route through the single canonical helper
+``omnibase_infra.shared.tenant_stamp.stamp_verified_tenant_slug`` and agree:
 
-  * #2254 auto-wiring stamp (handler_wiring._stamp_tenant_id_from_topic_prefix):
-    emits ``{**payload, "tenant_id": <slug>}`` — a SLUG string ("acme").
-  * #2252 gateway stamp (handler_consume_inbound.consume_inbound):
-    emits ``{**payload, "tenant_id": str(identity.tenant_id), "tenant_slug":
-    identity.tenant_slug}`` — where ``identity.tenant_id`` is a UUID and the
-    slug lives in a SEPARATE ``tenant_slug`` key.
+  * #2254 auto-wiring stamp (handler_wiring._stamp_tenant_id_from_topic_prefix)
+  * #2252 gateway stamp (handler_consume_inbound.consume_inbound)
 
-The consumer (``ModelDelegateSkillRequest.tenant_id: str | None``) documents its
-intent inline: "a named tenant identifier (slug), NOT a UUID." So the #2254
-shape is seam-matched and the #2252 shape is doubly wrong (extra ``tenant_slug``
-key under ``extra="forbid"`` + UUID-vs-slug semantic collision). The canonical
-wire shape + tenant_id semantics are unresolved; reconciliation is tracked by
-OMN-14367. This test PROVES the #2254 seam is closed and GATES the #2252 gap so
-it cannot regress into a silent no-op.
+Both now emit ``{**payload, "tenant_id": <slug>}`` — a SLUG string (e.g.
+"acme"), with NO separate ``tenant_slug`` key. The consumer
+(``ModelDelegateSkillRequest.tenant_id: str | None``) documents its intent
+inline: "a named tenant identifier (slug), NOT a UUID." This test proves both
+producer shapes are seam-matched against that consumer, field-by-field.
 """
 
 from __future__ import annotations
 
 import re
-from uuid import UUID, uuid4
-
-import pytest
-from pydantic import ValidationError
 
 from omnimarket.models.delegation.wire.model_delegate_skill_request import (
     ModelDelegateSkillRequest,
@@ -81,19 +72,18 @@ def _stamp_2254(topic: str, payload: dict[str, object]) -> dict[str, object]:
 
 
 def _stamp_2252_gateway(
-    payload: dict[str, object], tenant_uuid: UUID, tenant_slug: str
+    payload: dict[str, object], tenant_slug: str
 ) -> dict[str, object]:
     """Reconstruct the #2252 gateway consume_inbound emitted shape EXACTLY.
 
-    SYNC: ``handler_consume_inbound.consume_inbound`` ``verified_payload``.
-    Stamps BOTH ``tenant_id`` (the canonical UUID, stringified) AND a separate
-    ``tenant_slug`` (the slug), overwriting any payload-supplied values.
+    SYNC (post-OMN-14367): ``handler_consume_inbound.consume_inbound`` routes
+    through ``omnibase_infra.shared.tenant_stamp.stamp_verified_tenant_slug``,
+    which stamps ``tenant_id`` to the DNS-safe slug and overwrites any
+    payload-supplied value. There is no separate ``tenant_slug`` key -- the
+    UUID-plus-extra-key shape this helper reconstructed pre-reconciliation is
+    gone.
     """
-    return {
-        **payload,
-        "tenant_id": str(tenant_uuid),
-        "tenant_slug": tenant_slug,
-    }
+    return {**payload, "tenant_id": tenant_slug}
 
 
 # ---------------------------------------------------------------------------
@@ -132,54 +122,47 @@ def test_2254_stamp_overwrites_client_supplied_tenant_id() -> None:
 
 
 # ---------------------------------------------------------------------------
-# #2254 vs #2252 — semantic divergence (deterministic evidence)
+# #2254 vs #2252 — convergence proof (OMN-14367 reconciliation)
 # ---------------------------------------------------------------------------
 
 
-def test_producers_disagree_on_tenant_id_meaning() -> None:
-    """Pin the semantic collision the reconciliation ticket (OMN-14367) settles.
+def test_producers_converge_on_tenant_id_meaning() -> None:
+    """Pin the reconciliation the OMN-14367 ticket closes: both producers agree.
 
-    Both producers write ``payload["tenant_id"]`` but with different KINDS of
-    value for the same tenant: #2254 writes the slug, #2252 writes the canonical
-    UUID (with the slug relegated to a separate ``tenant_slug`` key). This is a
-    worse mismatch than the extra field — widening the consumer to accept
-    ``tenant_slug`` would silently mask it.
+    Both producers write ``payload["tenant_id"]`` and, post-reconciliation,
+    write the SAME kind of value for the same tenant: the DNS-safe slug, with
+    no separate ``tenant_slug`` key. Pre-reconciliation this test would have
+    failed (#2252 wrote a UUID plus an extra key); it now pins the converged
+    shape so the two producers cannot drift apart again silently.
     """
     raw = _raw_delegate_payload()
-    tenant_uuid = uuid4()
 
     shape_2254 = _stamp_2254(_PREFIXED_TOPIC, raw)
-    shape_2252 = _stamp_2252_gateway(raw, tenant_uuid, "acme")
+    shape_2252 = _stamp_2252_gateway(raw, "acme")
 
-    assert shape_2254["tenant_id"] == "acme"  # slug
-    assert shape_2252["tenant_id"] == str(tenant_uuid)  # UUID string — different kind
-    assert shape_2252["tenant_id"] != shape_2254["tenant_id"]
-    assert shape_2252["tenant_slug"] == "acme"  # slug lives here in #2252
-    assert "tenant_slug" not in shape_2254  # #2254 emits no tenant_slug
+    assert shape_2254["tenant_id"] == "acme"
+    assert shape_2252["tenant_id"] == "acme"
+    assert shape_2252["tenant_id"] == shape_2254["tenant_id"]
+    assert "tenant_slug" not in shape_2254
+    assert "tenant_slug" not in shape_2252
 
 
 # ---------------------------------------------------------------------------
-# #2252 seam — KNOWN GAP (gated, not silently accepted)
+# #2252 seam — CLOSED (OMN-14367 reconciliation proof)
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=ValidationError,
-    reason=(
-        "OMN-14367: #2252 gateway stamp emits tenant_id=UUID + extra tenant_slug; "
-        "consumer+#2254 mean slug. Trips green when the canonical shape is "
-        "reconciled."
-    ),
-)
-def test_2252_gateway_shape_currently_rejected() -> None:
-    """The #2252 gateway shape does not (yet) satisfy the consumer contract.
+def test_2252_gateway_shape_now_matches_consumer() -> None:
+    """The #2252 gateway shape now satisfies the consumer contract.
 
-    No extra assertions in the body: the ValidationError itself is the expected
-    (xfail) outcome, so nothing here can mask a semantic regression. When the
-    canonical shape is reconciled and ``model_validate`` stops raising, this
-    xpasses and strict-xfail fails the run — the signal to update the test with
-    the reconciled expectations.
+    Load-bearing OMN-14367 proof, mirroring ``test_2254_stamp_shape_validates_
+    against_consumer``: ``model_validate`` must NOT raise under
+    ``extra="forbid"`` (a pre-reconciliation shape with the extra
+    ``tenant_slug`` key would fail here), and the verified slug must survive.
+    This test previously asserted the OPPOSITE (a strict ``xfail`` pinning the
+    rejection) before the gateway producer was reconciled to the shared
+    ``stamp_verified_tenant_slug`` helper.
     """
-    stamped = _stamp_2252_gateway(_raw_delegate_payload(), uuid4(), "acme")
-    ModelDelegateSkillRequest.model_validate(stamped)
+    stamped = _stamp_2252_gateway(_raw_delegate_payload(), "acme")
+    req = ModelDelegateSkillRequest.model_validate(stamped)
+    assert req.tenant_id == "acme"

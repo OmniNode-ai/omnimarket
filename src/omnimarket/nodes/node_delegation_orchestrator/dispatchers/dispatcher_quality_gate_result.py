@@ -32,6 +32,14 @@ from omnibase_infra.nodes.node_registration_orchestrator.dispatchers._util_envel
 from omnibase_infra.utils import sanitize_error_message
 from pydantic import BaseModel, ValidationError
 
+from omnimarket.nodes.node_delegation_orchestrator.contract_topics import (
+    TOPIC_ID_DELEGATION_COMPLETED,
+    TOPIC_ID_DELEGATION_FAILED,
+)
+from omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_result import (
+    ModelDelegationCompleted,
+    ModelDelegationFailed,
+)
 from omnimarket.nodes.node_delegation_quality_gate_reducer.models.model_quality_gate_result import (
     ModelQualityGateResult,
 )
@@ -48,6 +56,15 @@ __all__ = ["DispatcherQualityGateResult"]
 logger = logging.getLogger(__name__)
 
 TOPIC_ID_QUALITY_GATE_RESULT = "delegation.quality-gate-result"
+# OMN-14600: the terminal is now a bare class emit (ModelDelegationCompleted /
+# ModelDelegationFailed, no .topic field) -- resolve it the same way
+# DispatcherDelegationWorkflow's _INTENT_TOPICS resolves its own class-keyed
+# emits, since this dispatcher publishes the terminal directly rather than
+# handing it to the external applier.
+_TERMINAL_TOPICS: dict[type, str] = {
+    ModelDelegationCompleted: TOPIC_ID_DELEGATION_COMPLETED,
+    ModelDelegationFailed: TOPIC_ID_DELEGATION_FAILED,
+}
 
 
 class DispatcherQualityGateResult(MixinAsyncCircuitBreaker):  # type: ignore[misc]
@@ -85,6 +102,8 @@ class DispatcherQualityGateResult(MixinAsyncCircuitBreaker):  # type: ignore[mis
         unpublished: list[BaseModel] = []
         for idx, event in enumerate(events):
             topic = getattr(event, "topic", None)
+            if topic is None:
+                topic = _TERMINAL_TOPICS.get(type(event))
             if topic is None:
                 unpublished.append(event)
                 continue

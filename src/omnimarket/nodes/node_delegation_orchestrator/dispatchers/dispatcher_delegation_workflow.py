@@ -26,12 +26,18 @@ from omnibase_infra.utils import sanitize_error_message
 from pydantic import BaseModel, ValidationError
 
 from omnimarket.nodes.node_delegation_orchestrator.contract_topics import (
+    TOPIC_ID_DELEGATION_COMPLETED,
+    TOPIC_ID_DELEGATION_FAILED,
     TOPIC_ID_INFERENCE_REQUEST,
     TOPIC_ID_QUALITY_GATE_REQUEST,
     TOPIC_ID_ROUTING_REQUEST,
 )
 from omnimarket.nodes.node_delegation_orchestrator.dispatchers.topic_utils import (
     derive_event_type_from_topic,
+)
+from omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_result import (
+    ModelDelegationCompleted,
+    ModelDelegationFailed,
 )
 from omnimarket.nodes.node_delegation_orchestrator.models.model_inference_intent import (
     ModelInferenceIntent,
@@ -59,6 +65,10 @@ _INTENT_TOPICS = {
     ModelRoutingIntent: TOPIC_ID_ROUTING_REQUEST,
     ModelInferenceIntent: TOPIC_ID_INFERENCE_REQUEST,
     ModelQualityGateIntent: TOPIC_ID_QUALITY_GATE_REQUEST,
+    # OMN-14600: the terminal is a bare class emit (no .topic field) --
+    # class-keyed, same as every other intent this dispatcher resolves.
+    ModelDelegationCompleted: TOPIC_ID_DELEGATION_COMPLETED,
+    ModelDelegationFailed: TOPIC_ID_DELEGATION_FAILED,
 }
 
 

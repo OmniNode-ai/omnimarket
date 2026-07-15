@@ -48,9 +48,6 @@ from omnimarket.nodes.node_delegation_orchestrator.handlers.handler_delegation_w
     HandlerDelegationWorkflow,
     TerminalEmissionInputs,
 )
-from omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_event import (
-    ModelDelegationEvent,
-)
 from omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_request import (
     ModelDelegationRequest,
 )
@@ -138,12 +135,7 @@ class TestEmitTerminalClampsNegativeSavingsOmn13335:
         # removed that event; the savings clamp is now an internal honest floor.
         events = handler._emit_terminal(_terminal_inputs_with_metered_prior(cid))
 
-        terminals = [
-            e.payload
-            for e in events
-            if isinstance(e, ModelDelegationEvent)
-            and isinstance(e.payload, ModelDelegationResult)
-        ]
+        terminals = [e for e in events if isinstance(e, ModelDelegationResult)]
         assert len(terminals) == 1, (
             "the terminal builder must emit exactly one canonical terminal (the "
             "live gap crashed here on negative savings, emitting none)"
@@ -277,12 +269,7 @@ class TestEscalatedTerminalEmitsOmn13335:
         )
 
         assert handler.workflows[cid].state == EnumDelegationState.COMPLETED
-        terminals = [
-            e.payload
-            for e in terminal_events
-            if isinstance(e, ModelDelegationEvent)
-            and isinstance(e.payload, ModelDelegationResult)
-        ]
+        terminals = [e for e in terminal_events if isinstance(e, ModelDelegationResult)]
         assert len(terminals) == 1, (
             "an escalated delegation must emit exactly one canonical terminal"
         )

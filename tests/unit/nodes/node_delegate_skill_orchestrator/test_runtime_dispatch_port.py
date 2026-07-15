@@ -28,9 +28,6 @@ from omnimarket.nodes.node_delegation_orchestrator.contract_topics import (
 from omnimarket.nodes.node_delegation_orchestrator.contract_topics import (
     TOPIC_ID_DELEGATION_REQUEST as TOPIC_DELEGATION_REQUEST,
 )
-from omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_event import (
-    ModelDelegationEvent,
-)
 from omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_request import (
     ModelDelegationRequest,
 )
@@ -98,12 +95,12 @@ async def _publish_terminal_response(
     )
     if received_requests is not None:
         received_requests.append(envelope.payload)
-    terminal = ModelDelegationEvent(
-        topic=topic,
+    # OMN-14600: the runtime publishes a SINGLE canonical ModelEventEnvelope
+    # whose payload is the unwrapped ModelDelegationResult directly — no
+    # bespoke inner envelope. This mirrors DispatchResultApplier's actual
+    # wire shape (service_dispatch_result_applier.py).
+    response = ModelEventEnvelope[ModelDelegationResult](
         payload=result,
-    )
-    response = ModelEventEnvelope[ModelDelegationEvent](
-        payload=terminal,
         correlation_id=result.correlation_id,
         envelope_timestamp=datetime.now(UTC),
         event_type=topic,

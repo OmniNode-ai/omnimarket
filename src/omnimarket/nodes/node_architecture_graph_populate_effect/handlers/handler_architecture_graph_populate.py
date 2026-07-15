@@ -27,7 +27,7 @@ import logging
 import re
 import time
 import tomllib
-from collections.abc import AsyncIterator, Awaitable, Callable
+from collections.abc import AsyncIterator, Awaitable, Callable, Iterator
 from contextlib import asynccontextmanager
 from functools import wraps
 from pathlib import Path
@@ -61,6 +61,37 @@ _LABEL_REPOSITORY = "Repository"
 _LABEL_ONEX_NODE = "ONEXNode"
 _LABEL_KAFKA_TOPIC = "KafkaTopic"
 _LABEL_PYTHON_MODULE = "PythonModule"
+
+# ---------------------------------------------------------------------------
+# OMN-14583: directories that never contain a repo's own node contracts —
+# only vendored dependency copies, build artifacts, or caches. A contract.yaml
+# found beneath one of these is a copy of some OTHER package's node, installed
+# as a dependency; it must never be attributed to the repo it happens to be
+# nested under.
+# ---------------------------------------------------------------------------
+_EXCLUDED_DIR_NAMES = frozenset(
+    {
+        ".venv",
+        "venv",
+        "site-packages",
+        "node_modules",
+        "dist",
+        "build",
+        "__pycache__",
+        ".git",
+    }
+)
+
+
+def _iter_real_contract_paths(root: Path) -> Iterator[Path]:
+    """Yield ``contract.yaml`` paths under ``root``, skipping vendored/build
+    directories (see ``_EXCLUDED_DIR_NAMES``)."""
+    for contract_path in root.rglob("contract.yaml"):
+        rel_parts = contract_path.relative_to(root).parts[:-1]
+        if any(part in _EXCLUDED_DIR_NAMES for part in rel_parts):
+            continue
+        yield contract_path
+
 
 # ---------------------------------------------------------------------------
 # Transient-write retry — adapted from omniarchon's
@@ -389,11 +420,26 @@ class HandlerArchitectureGraphPopulate:
     def _collect_contract_data(
         self, repo_path: Path, repo_name: str
     ) -> tuple[list[ModelGraphNodeSpec], list[ModelGraphEdgeSpec]]:
-        """Walk repo for contract.yaml files; parse each into node/edge specs."""
+        """Walk repo for contract.yaml files; parse each into node/edge specs.
+
+        OMN-14583: walks the full ``repo_path`` (not scoped to ``src/`` —
+        real, non-vendored node contracts can legitimately live outside
+        ``src/``, e.g. ``omnibase_core/examples/demo/model-validate/
+        contract.yaml``; scoping to ``src/`` would silently drop those),
+        filtered through ``_iter_real_contract_paths``'s vendored-directory
+        exclusion. Before this fix, a bare ``repo_path.rglob("contract.yaml")``
+        also descended into ``.venv/lib/.../site-packages/<dep>/...`` — every
+        repo that depends on omnimarket vendors a full copy of its node
+        contracts there, and each one was misattributed as a *native* node of
+        the consuming repo (``repo=repo_name``), inflating the graph with
+        phantom nodes that don't actually belong to that repo. The exclusion
+        filter removes exactly those vendored copies (``.venv``/
+        ``site-packages`` both match) and nothing else.
+        """
         nodes: list[ModelGraphNodeSpec] = []
         edges: list[ModelGraphEdgeSpec] = []
 
-        for contract_path in repo_path.rglob("contract.yaml"):
+        for contract_path in _iter_real_contract_paths(repo_path):
             try:
                 with open(contract_path) as f:
                     contract = yaml.safe_load(f)
