@@ -363,8 +363,7 @@ class HandlerPrReviewOrchestrator:
             for model_key, model_findings in by_model.items()
         )
         output = await self._aggregator.handle(
-            correlation_id=command.correlation_id,
-            input_data=ModelFindingAggregatorInput(
+            ModelFindingAggregatorInput(
                 correlation_id=command.correlation_id, sources=sources
             ),
         )

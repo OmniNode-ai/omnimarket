@@ -93,7 +93,7 @@ class TestHandlerFindingAggregator:
                 ),
             ),
         )
-        result = await handler.handle(cid, input_data)
+        result = await handler.handle(input_data)
         assert result.correlation_id == cid
         assert result.total_input_findings == 2
         assert result.total_merged_findings == 2
@@ -112,7 +112,7 @@ class TestHandlerFindingAggregator:
                 ModelSourceFindings(model_name="qwen3-coder", findings=(finding,)),
             ),
         )
-        result = await handler.handle(cid, input_data)
+        result = await handler.handle(input_data)
         assert result.total_input_findings == 2
         assert result.total_merged_findings == 1
         assert result.total_duplicates_removed == 1
@@ -142,7 +142,7 @@ class TestHandlerFindingAggregator:
                 ),
             ),
         )
-        result = await handler.handle(cid, input_data)
+        result = await handler.handle(input_data)
         assert result.total_merged_findings == 2
         assert result.total_duplicates_removed == 0
 
@@ -163,7 +163,7 @@ class TestHandlerFindingAggregator:
             ),
             config=ModelFindingAggregatorConfig(severity_promotes_on_conflict=True),
         )
-        result = await handler.handle(cid, input_data)
+        result = await handler.handle(input_data)
         assert result.total_merged_findings == 1
         assert result.merged_findings[0].severity == "error"
 
@@ -184,7 +184,7 @@ class TestHandlerFindingAggregator:
             ),
             config=ModelFindingAggregatorConfig(severity_promotes_on_conflict=False),
         )
-        result = await handler.handle(cid, input_data)
+        result = await handler.handle(input_data)
         assert result.total_merged_findings == 1
         # First finding's severity is kept
         assert result.merged_findings[0].severity == "warning"
@@ -196,7 +196,7 @@ class TestHandlerFindingAggregator:
             correlation_id=cid,
             sources=(ModelSourceFindings(model_name="model-a", findings=()),),
         )
-        result = await handler.handle(cid, input_data)
+        result = await handler.handle(input_data)
         assert result.verdict == EnumAggregatedVerdict.CLEAN
         assert result.total_merged_findings == 0
 
@@ -212,7 +212,7 @@ class TestHandlerFindingAggregator:
                 ),
             ),
         )
-        result = await handler.handle(cid, input_data)
+        result = await handler.handle(input_data)
         assert result.verdict == EnumAggregatedVerdict.BLOCKING_ISSUE
 
     async def test_custom_model_weights(self) -> None:
@@ -229,7 +229,7 @@ class TestHandlerFindingAggregator:
                 model_weights={"strong-model": 0.8, "weak-model": 0.2},
             ),
         )
-        result = await handler.handle(cid, input_data)
+        result = await handler.handle(input_data)
         assert result.total_merged_findings == 1
         assert result.merged_findings[0].weighted_score == pytest.approx(0.8)
 
@@ -254,7 +254,7 @@ class TestHandlerFindingAggregator:
             ),
             config=ModelFindingAggregatorConfig(jaccard_threshold=0.3),
         )
-        result = await handler.handle(cid, input_data)
+        result = await handler.handle(input_data)
         # With low threshold, similar messages should merge
         assert result.total_merged_findings == 1
 
@@ -279,7 +279,7 @@ class TestHandlerFindingAggregator:
             ),
             config=ModelFindingAggregatorConfig(jaccard_threshold=0.95),
         )
-        result = await handler.handle(cid, input_data)
+        result = await handler.handle(input_data)
         # With high threshold, slightly different messages stay separate
         assert result.total_merged_findings == 2
 
@@ -298,7 +298,7 @@ class TestHandlerFindingAggregator:
                 ),
             ),
         )
-        result = await handler.handle(cid, input_data)
+        result = await handler.handle(input_data)
         assert result.total_input_findings == 2
         assert result.total_merged_findings == 1
 
