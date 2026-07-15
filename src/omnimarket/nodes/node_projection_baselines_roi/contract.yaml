@@ -1,8 +1,8 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-# ONEX Node Contract — Baselines ROI snapshot projection (OMN-13075)
+# ONEX Node Contract — Baselines ROI snapshot projection (OMN-13075, OMN-14630)
 #
-# Projects per-pattern comparisons, recommendations, and retry counts from the
+# Projects daily treatment-vs-control comparison rows from the
 # baselines-computed event into the baselines_roi_snapshots table, and exposes
 # that table through the projection API on
 #   onex.snapshot.projection.baselines.roi.v1  # onex-topic-allow: projection snapshot topics use the onex.snapshot.* prefix by convention
@@ -13,11 +13,12 @@ name: projection_baselines_roi
 contract_version: {major: 1, minor: 0, patch: 0}
 node_type: reducer
 node_version: {major: 1, minor: 0, patch: 0}
-input_model: omnimarket.nodes.node_projection_baselines.handlers.handler_projection_baselines.ModelBaselinesComputedEvent
+input_model: omnibase_infra.services.observability.baselines.models.model_baselines_snapshot_event.ModelBaselinesSnapshotEvent
 description: >
   Aggregates baselines-computed events into a single baselines_roi_snapshots
-  row per snapshot_id. Computes token_delta, time_delta_ms, retry_delta,
-  per-action recommendation counts, and average confidence. The table is
+  row per snapshot_id. Computes token_delta (control minus treatment total
+  tokens), average roi_pct/latency_improvement_pct/cost_improvement_pct, and
+  total sample_size across the snapshot's comparison rows. The table is
   exposed through the projection API as the baselines ROI snapshot topic
   consumed by the omnidash BaselinesROICard dashboard widget.
 
@@ -33,14 +34,14 @@ handler_routing:
         name: HandlerProjectionBaselinesRoi
         module: omnimarket.nodes.node_projection_baselines_roi.handlers.handler_projection_baselines_roi
       handler_module: omnimarket.nodes.node_projection_baselines_roi.handlers.handler_projection_baselines_roi
-      event_model: omnimarket.nodes.node_projection_baselines.handlers.handler_projection_baselines.ModelBaselinesComputedEvent
+      event_model: omnibase_infra.services.observability.baselines.models.model_baselines_snapshot_event.ModelBaselinesSnapshotEvent
 
 terminal_event: onex.evt.omnimarket.projection-baselines-roi-applied.v1
 
 db_io:
   db_tables:
     - name: baselines_roi_snapshots
-      migration: "001_create_baselines_roi_snapshots.sql"
+      migration: "002_realign_roi_snapshots_to_producer_schema.sql"
       access: write
       database: omnidash_analytics
       role: roi_snapshots
@@ -51,6 +52,8 @@ event_bus:
     - onex.evt.omnibase-infra.baselines-computed.v1
   publish_topics:
     - onex.evt.omnimarket.projection-baselines-roi-applied.v1
+  dlq_topics:
+    - onex.dlq.omnimarket.projection-baselines-roi-malformed.v1
 
 externally_consumed_topics:
   - onex.evt.omnimarket.projection-baselines-roi-applied.v1
@@ -65,10 +68,10 @@ projection_api:
         - snapshot_id
         - captured_at
         - token_delta
-        - time_delta_ms
-        - retry_delta
-        - recommendations
-        - confidence
+        - roi_pct_avg
+        - latency_improvement_pct_avg
+        - cost_improvement_pct_avg
+        - sample_size
         - projected_at
       order_by: projected_at DESC
       freshness_column: projected_at
