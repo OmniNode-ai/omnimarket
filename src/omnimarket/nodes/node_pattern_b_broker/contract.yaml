@@ -18,10 +18,16 @@ handler_routing:
         name: AdapterPatternBBrokerPublish
         module: omnimarket.nodes.node_pattern_b_broker.handlers.adapter_broker_publish
       input_model: ModelPatternBBrokerDispatchRequest
+      event_model:
+        name: ModelPatternBBrokerDispatchRequest
+        module: omnimarket.nodes.node_pattern_b_broker.models.model_broker_envelope
     - operation: pattern_b_broker_terminal_consumer
       handler:
         name: AdapterPatternBBrokerTerminalConsumer
         module: omnimarket.nodes.node_pattern_b_broker.handlers.adapter_broker_terminal_consumer
+      event_model:
+        name: ModelPatternBBrokerDispatchRequest
+        module: omnimarket.nodes.node_pattern_b_broker.models.model_broker_envelope
 
 descriptor:
   node_archetype: orchestrator

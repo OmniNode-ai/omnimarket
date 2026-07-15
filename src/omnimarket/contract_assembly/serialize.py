@@ -90,6 +90,7 @@ def serialize_contract(
         subcontracts_rendered=fragments,
         lint_status=lint.status,
         lint_messages=lint.messages,
+        correlation_id=request.correlation_id,  # OMN-14608: echo for reducer join
     )
 
 

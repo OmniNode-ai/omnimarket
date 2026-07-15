@@ -276,6 +276,34 @@ jobs:
             base="$(git rev-parse HEAD^ 2>/dev/null || git rev-parse HEAD)"
           fi
           uv run python scripts/ci/check_golden_chain_coverage.py --changed-ref "$base"
+      # Canonical handler-shape GROWTH RATCHET fan-out (OMN-14355/OMN-14368/OMN-14372).
+      # compliance_sweep checks handler hygiene but is blind to handler SHAPE, so a
+      # non-canonical handler passes green CI. This classifies each omnimarket node's
+      # contract-declared handler (definition B: typed-payload handle(request)->
+      # response, adapted by the shared runtime, no envelope in the core), WARNs the
+      # committed baseline's debt (scripts/ci/canonical_handler_shape_baseline.py),
+      # and HARD-FAILS a NEW non-canonical node or baseline growth. Sourced from the
+      # already-cloned sibling omnibase_core checkout (same pattern as "Stub
+      # implementation check" above) since the classifier lives at omnibase_core's
+      # repo-root scripts/ci/, not the installed package. Runs --full (not the
+      # default --scope changed): the classifier's diff-scoped git-diff runs with
+      # cwd = the classifier's OWN repo (omnibase_core parents[2]), which is wrong
+      # for a fan-out invocation against this sibling checkout, so --full avoids
+      # that mismatch (this job's classification is cheap: ~365 nodes, sub-second).
+      # No pre-commit mirror yet: pre-commit's language:python remote-hook install
+      # only ships the installed src/omnibase_core/ package (verified — the
+      # classifier isn't importable that way), and language:script has no dep
+      # isolation (needs pydantic/pyyaml); see OMN-14563 for the real fix
+      # (relocate the classifier into an installed omnibase_core module). This
+      # CI-only pattern already matches several sibling gates in this same job
+      # list (compliance-sweep, runtime-sweep, aislop-sweep, coverage-sweep-gate).
+      - name: Canonical handler-shape ratchet (OMN-14355 fan-out)
+        run: |
+          uv run python ../omnibase_core/scripts/ci/canonical_handler_shape.py \
+            --package omnimarket --src-root src \
+            --baseline scripts/ci/canonical_handler_shape_baseline.py \
+            --receipts-dir scripts/ci/adequacy_receipts \
+            --full
 
   typecheck:
     needs: [occ-preflight, zone-filter]

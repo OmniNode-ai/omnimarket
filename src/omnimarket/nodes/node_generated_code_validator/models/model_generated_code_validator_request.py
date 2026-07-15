@@ -41,6 +41,14 @@ class ModelGeneratedCodeValidatorRequest(BaseModel):
         default=None,
         description="Optional expected structure; structure checks run only when supplied.",
     )
+    correlation_id: str = Field(
+        default="",
+        description=(
+            "Opaque run identity echoed verbatim onto the verdict so a downstream "
+            "reducer can rejoin the pure result to per-run state (OMN-14608). "
+            "Does not affect validation; empty for direct callers."
+        ),
+    )
 
 
 __all__ = ["ModelExpectedStructure", "ModelGeneratedCodeValidatorRequest"]

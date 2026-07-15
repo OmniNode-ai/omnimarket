@@ -39,9 +39,6 @@ from omnimarket.nodes.node_delegation_orchestrator.handlers.handler_delegation_w
     HandlerDelegationWorkflow,
     InvalidStateTransitionError,
 )
-from omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_event import (
-    ModelDelegationEvent,
-)
 from omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_request import (
     ModelDelegationRequest,
 )
@@ -130,12 +127,7 @@ def _make_gate_result(
 
 def _canonical_terminal(events: list[object]) -> ModelDelegationResult:
     """OMN-13629: the terminal is a SINGLE canonical event, no compat twin."""
-    canonical = [
-        e.payload
-        for e in events
-        if isinstance(e, ModelDelegationEvent)
-        and isinstance(e.payload, ModelDelegationResult)
-    ]
+    canonical = [e for e in events if isinstance(e, ModelDelegationResult)]
     compat = [e for e in events if isinstance(e, ModelTaskDelegatedEvent)]
     assert len(canonical) == 1, f"expected one canonical terminal, got {events!r}"
     assert compat == [], f"expected ZERO compat twins (OMN-13629), got {compat!r}"

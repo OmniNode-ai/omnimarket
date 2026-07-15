@@ -43,11 +43,12 @@ from omnimarket.nodes.node_delegation_orchestrator.handlers import (
 from omnimarket.nodes.node_delegation_orchestrator.handlers.handler_delegation_workflow import (
     HandlerDelegationWorkflow,
 )
-from omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_event import (
-    ModelDelegationEvent,
-)
 from omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_request import (
     ModelDelegationRequest,
+)
+from omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_result import (
+    ModelDelegationCompleted,
+    ModelDelegationResult,
 )
 from omnimarket.nodes.node_delegation_orchestrator.models.model_inference_response_data import (
     ModelInferenceResponseData,
@@ -214,11 +215,11 @@ class TestRetryLocalBusPath:
         wf = handler.workflows[cid]
         assert wf.state == EnumDelegationState.COMPLETED
         assert wf.escalation_count == 0
-        terminal = next(e for e in events if isinstance(e, ModelDelegationEvent))
-        assert terminal.topic == _COMPLETED_TOPIC
-        assert terminal.payload.quality_passed is True
+        terminal = next(e for e in events if isinstance(e, ModelDelegationResult))
+        assert isinstance(terminal, ModelDelegationCompleted)
+        assert terminal.quality_passed is True
         # local is free_local in the real cost model -> $0 across every draft.
-        assert terminal.payload.cumulative_attempt_cost == 0.0
+        assert terminal.cumulative_attempt_cost == 0.0
 
     def test_budget_exhausted_then_escalates_to_paid(
         self, retry_local_env: None

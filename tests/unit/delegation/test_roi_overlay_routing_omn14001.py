@@ -63,9 +63,10 @@ from omnimarket.routing.roi_overlay import (
 # --- Fixtures -------------------------------------------------------------------
 
 # Three routable tiers for code_generation (tier_order = local -> cheap_cloud ->
-# cheap_frontier -> claude): local-coder, cloud-glm (cheap_cloud AND claude
-# ceiling), openrouter-qwen3-coder-480b (cheap_frontier). Complete endpoint_urls
-# so the tiers route in CI without a host overlay.
+# cheap_frontier -> claude): local-coder, cloud-gemini-pro (cheap_cloud AND
+# claude ceiling — OMN-14625 repointed both off cloud-glm, whose z.ai route is
+# DEAD from the .201 runtime), openrouter-qwen3-coder-480b (cheap_frontier).
+# Complete endpoint_urls so the tiers route in CI without a host overlay.
 _BIFROST_THREE_TIER = textwrap.dedent(
     """\
     config_version: "2.0.0"
@@ -78,12 +79,12 @@ _BIFROST_THREE_TIER = textwrap.dedent(
         timeout_ms: 30000
         max_tokens: 8192
         capabilities: [code_generation]
-      - backend_id: cloud-glm
-        endpoint_url: "https://cloud.test/glm/v1/chat/completions"
-        model_name: glm-5.2
-        tier: cheap_cloud
-        timeout_ms: 30000
-        max_tokens: 8192
+      - backend_id: cloud-gemini-pro
+        endpoint_url: "https://cloud.test/gemini-pro/v1/chat/completions"
+        model_name: gemini-2.5-flash
+        tier: frontier_api
+        timeout_ms: 60000
+        max_tokens: 65536
         capabilities: [code_generation]
       - backend_id: openrouter-qwen3-coder-480b
         endpoint_url: "https://openrouter.test/v1/chat/completions"
@@ -100,7 +101,7 @@ _BIFROST_THREE_TIER = textwrap.dedent(
         backend_policy_version: "2.0.0"
         match_operation_types: [chat_completion]
         match_capabilities: [code_generation]
-        backend_ids: [local-coder, cloud-glm, openrouter-qwen3-coder-480b]
+        backend_ids: [local-coder, cloud-gemini-pro, openrouter-qwen3-coder-480b]
         fallback_policy:
           action: escalate_to_next_tier
           max_retries: 1

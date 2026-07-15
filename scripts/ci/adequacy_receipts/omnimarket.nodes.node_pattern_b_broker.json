@@ -1,0 +1,21 @@
+{
+  "branch_coverage_pct": 0.0,
+  "candidate_count": 2,
+  "coverage_target": 80.0,
+  "handler_module": "omnimarket.nodes.node_pattern_b_broker.handlers.adapter_broker_publish",
+  "handler_module_sha256": "sha256:eda06a0990e620830fc24349a383e44edc7c62394a9721123c824b51ef492dec",
+  "meets_target": false,
+  "node_id": "omnimarket.nodes.node_pattern_b_broker",
+  "receipt_schema": "adequacy_receipt.v1",
+  "recorded_at": "2026-07-15T06:20:00Z",
+  "recorder_schema": "adequacy_receipt.v1",
+  "selected_count": 2,
+  "selected_input_hashes": [
+    "sha256:0f20651699129bc7b6db12eb98867cad817b3f871b550c1df63e777db740c26f",
+    "sha256:637a8a48b6776928b86d8f149bc6416f83f0d0afca42add70e54b2fbbf98e9f2"
+  ],
+  "uncovered_waiver": {
+    "reason": "OMN-14616 flips the broker from missing handle() to canonical def-B by adding typed handle(request) delegates. The PR includes real auto-wiring RED/GREEN tests for publish and terminal-consumer dispatch reachability; it does not claim new branch-coverage breadth for adapter internals."
+  },
+  "volatile_mask": []
+}

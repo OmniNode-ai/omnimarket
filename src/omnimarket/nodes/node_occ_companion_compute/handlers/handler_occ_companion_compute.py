@@ -229,7 +229,16 @@ def _receipt(
     probe: ModelObservedProbe,
     actual_output: str,
     branch: str,
+    pr_number: int | None = None,
 ) -> str:
+    # ``pr_number`` defaults to the PRODUCT PR (the common case for the downstream
+    # and supersede receipts, which prove the product PR). The OCC self-bind
+    # receipt MUST override it with the OCC companion PR number: its evidence item
+    # proves the OCC PR itself, and core's ``_receipt_bound_to_pr`` accepts a
+    # receipt only when ``receipt.pr_number == <the OCC PR number>`` (or its
+    # commit_sha is in the OCC PR's commit set). Stamping the product PR number
+    # there is the OMN-14550 defect that surfaced as occ-preflight
+    # ``pr_ticket_mismatch``.
     content = render_compute_receipt(
         ticket_id=ticket_id,
         evidence_id=evidence_id,
@@ -244,7 +253,7 @@ def _receipt(
         probe_stdout=probe.stdout,
         actual_output=actual_output,
         exit_code=probe.exit_code,
-        pr_number=request.pr_number,
+        pr_number=request.pr_number if pr_number is None else pr_number,
         branch=branch,
     )
     _validate_receipt(content)
@@ -470,6 +479,9 @@ def compute_companion_plan(request: ModelOccCompanionRequest) -> ModelOccCompani
                     f"PASS: OCC self-bind for {ticket} (OCC#{request.occ_pr_number})."
                 ),
                 branch=branch,
+                # OMN-14550: bind the receipt to the OCC companion PR, NOT the
+                # product PR — this evidence item proves the OCC PR itself.
+                pr_number=request.occ_pr_number,
             )
             files.append(
                 ModelCompanionFile(
