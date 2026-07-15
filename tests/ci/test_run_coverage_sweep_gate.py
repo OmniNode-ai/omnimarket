@@ -165,8 +165,11 @@ class TestCoverageSweepGateGenerationWiring:
 
         captured_cmd: list[str] = []
 
+        captured_kwargs: dict[str, object] = {}
+
         def _fake_run(cmd, **kwargs):  # type: ignore[no-untyped-def]
             captured_cmd.extend(cmd)
+            captured_kwargs.update(kwargs)
             (tmp_path / "coverage.json").write_text(json.dumps({"files": {}}))
             return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
 
@@ -177,6 +180,9 @@ class TestCoverageSweepGateGenerationWiring:
         assert "coverage.json" in message
         assert "pytest" in captured_cmd
         assert any("--cov-report=json" in part for part in captured_cmd)
+        assert "capture_output" not in captured_kwargs
+        assert "stdout" not in captured_kwargs
+        assert "stderr" not in captured_kwargs
 
     def test_generate_helper_reports_failure_without_swallowing(
         self, tmp_path: Path

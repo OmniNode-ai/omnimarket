@@ -94,12 +94,14 @@ def generate_coverage_json(
         f"--cov={target_dir / 'src'}",
         f"--cov-report=json:{coverage_json}",
     ]
+    print(
+        "coverage-sweep-gate: running coverage generation command: " + " ".join(cmd),
+        flush=True,
+    )
     try:
         proc = subprocess.run(
             cmd,
             cwd=str(target_dir),
-            capture_output=True,
-            text=True,
             timeout=timeout_s,
             check=False,
         )
@@ -111,8 +113,7 @@ def generate_coverage_json(
     if not coverage_json.is_file():
         return False, (
             f"coverage generation exited {proc.returncode} but produced no "
-            f"coverage.json at {coverage_json}. stderr(tail): "
-            f"{proc.stderr[-2000:]}"
+            f"coverage.json at {coverage_json}."
         )
     return True, f"generated {coverage_json}"
 
