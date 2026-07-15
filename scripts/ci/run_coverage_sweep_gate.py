@@ -50,6 +50,7 @@ import argparse
 import json
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 # Add src/ to path so omnimarket imports work in CI without editable install
@@ -68,6 +69,7 @@ def generate_coverage_json(
     test_path: str = "tests/",
     marker_expr: str = "not kafka",
     timeout_s: int = 1800,
+    heartbeat_s: int = 60,
 ) -> tuple[bool, str]:
     """Run the real test suite under coverage and write ``coverage.json``.
 
@@ -99,12 +101,29 @@ def generate_coverage_json(
         flush=True,
     )
     try:
-        proc = subprocess.run(
+        proc = subprocess.Popen(
             cmd,
             cwd=str(target_dir),
-            timeout=timeout_s,
-            check=False,
         )
+        started_at = time.monotonic()
+        next_heartbeat_at = started_at + heartbeat_s
+        deadline_at = started_at + timeout_s
+
+        while proc.poll() is None:
+            now = time.monotonic()
+            if now >= deadline_at:
+                proc.kill()
+                proc.wait()
+                return False, f"coverage generation timed out after {timeout_s}s"
+            if now >= next_heartbeat_at:
+                elapsed_s = int(now - started_at)
+                print(
+                    "coverage-sweep-gate: coverage generation still running "
+                    f"after {elapsed_s}s",
+                    flush=True,
+                )
+                next_heartbeat_at = now + heartbeat_s
+            time.sleep(min(1.0, max(0.1, next_heartbeat_at - now)))
     except subprocess.TimeoutExpired as exc:
         return False, f"coverage generation timed out after {timeout_s}s: {exc}"
     except OSError as exc:
