@@ -8,9 +8,9 @@ re-implementing persistence — see CLAUDE.md's "reuse the canonical
 repository/effect pattern" instruction. Those handlers are ``async def
 handle(...)``; ``HandlerDecisionStoreOrchestrator.handle()`` is a synchronous
 Protocol boundary (``ProtocolDecisionStoreAdapter``), so this adapter bridges
-sync -> async with a one-shot asyncpg pool per call. A one-shot pool is a
-correctness requirement, not just simplicity: asyncpg pools are bound to the
-event loop that created them, and each ``asyncio.run()`` call opens a new
+sync -> async with a one-shot ``AsyncpgAdapter`` per call. A one-shot pool is
+a correctness requirement, not just simplicity: asyncpg pools are bound to
+the event loop that created them, and each ``asyncio.run()`` call opens a new
 loop, so a pool cached across calls would break on the second call.
 
 OMN-14529 full-seam-proof correction: driving `onex skill decision_store
@@ -36,7 +36,8 @@ from __future__ import annotations
 import asyncio
 import os
 import threading
-from collections.abc import Coroutine, Mapping
+from collections.abc import Callable, Coroutine, Mapping
+from contextlib import AbstractAsyncContextManager
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any, cast
 from uuid import uuid4
@@ -119,8 +120,14 @@ class PostgresDecisionStore:
             the DSN to be set merely to import the module.
     """
 
-    def __init__(self, dsn: str | None = None) -> None:
+    def __init__(
+        self,
+        dsn: str | None = None,
+        pool_resource_factory: Callable[[str], AbstractAsyncContextManager[Any]]
+        | None = None,
+    ) -> None:
         self._dsn = dsn
+        self._pool_resource_factory = pool_resource_factory
 
     # -- ProtocolDecisionStoreAdapter -----------------------------------
 
@@ -149,7 +156,6 @@ class PostgresDecisionStore:
     # -- async implementations -------------------------------------------
 
     async def _persist_decision_async(self, entry: ModelDecisionEntry) -> str:
-        import asyncpg
         from omnibase_infra.nodes.node_decision_store_effect.handlers.handler_write_decision import (
             HandlerWriteDecision,
         )
@@ -157,7 +163,6 @@ class PostgresDecisionStore:
             ModelPayloadWriteDecision,
         )
 
-        dsn = self._dsn or _require_dsn()
         decision_id = uuid4()
         correlation_id = uuid4()
         payload = ModelPayloadWriteDecision(
@@ -173,22 +178,18 @@ class PostgresDecisionStore:
             created_at=datetime.now(UTC),
             created_by=os.environ.get("USER", "onex-skill-decision_store"),
         )
-        pool = await asyncpg.create_pool(dsn=dsn, min_size=1, max_size=2)
-        try:
+        async with self._pool_resource() as pool:
             handler = HandlerWriteDecision(pool)
             result = await handler.handle(payload, correlation_id)
             if not result.success:
                 raise RuntimeError(
                     f"decision_store write failed: {result.error} ({result.error_code})"
                 )
-        finally:
-            await pool.close()
         return str(decision_id)
 
     async def _query_raw_async(
         self, *, domain: str, layer: str, limit: int
     ) -> tuple[ModelDecisionStoreEntry, ...]:
-        import asyncpg
         from omnibase_infra.nodes.node_decision_store_query_compute.handlers.handler_query_decisions import (
             HandlerQueryDecisions,
         )
@@ -196,14 +197,10 @@ class PostgresDecisionStore:
             ModelPayloadQueryDecisions,
         )
 
-        dsn = self._dsn or _require_dsn()
         payload = ModelPayloadQueryDecisions(domain=domain, layer=layer, limit=limit)
-        pool = await asyncpg.create_pool(dsn=dsn, min_size=1, max_size=2)
-        try:
+        async with self._pool_resource() as pool:
             handler = HandlerQueryDecisions(pool)
             result = await handler.handle(payload)
-        finally:
-            await pool.close()
         # ModelResultDecisionList.decisions is typed tuple[object, ...] pending
         # OMN-2763's ModelDecisionStoreEntry merge (see model_result_decision_list.py);
         # HandlerQueryDecisions._row_to_entry always constructs the concrete type.
@@ -212,7 +209,6 @@ class PostgresDecisionStore:
     async def _query_decisions_async(
         self, query_filter: ModelDecisionQueryFilter | None
     ) -> Mapping[str, Any]:
-        import asyncpg
         from omnibase_infra.nodes.node_decision_store_query_compute.handlers.handler_query_decisions import (
             HandlerQueryDecisions,
         )
@@ -220,7 +216,6 @@ class PostgresDecisionStore:
             ModelPayloadQueryDecisions,
         )
 
-        dsn = self._dsn or _require_dsn()
         payload = ModelPayloadQueryDecisions(
             domain=query_filter.domain if query_filter else None,
             layer=(
@@ -236,14 +231,21 @@ class PostgresDecisionStore:
             cursor=query_filter.cursor if query_filter else None,
             limit=query_filter.limit if query_filter else 20,
         )
-        pool = await asyncpg.create_pool(dsn=dsn, min_size=1, max_size=2)
-        try:
+        async with self._pool_resource() as pool:
             handler = HandlerQueryDecisions(pool)
             result = await handler.handle(payload)
-        finally:
-            await pool.close()
         entries = tuple(_to_orchestrator_entry_dict(row) for row in result.decisions)
         return {"entries": entries, "next_cursor": result.next_cursor}
+
+    def _pool_resource(self) -> AbstractAsyncContextManager[Any]:
+        factory = self._pool_resource_factory
+        if factory is None:
+            from omnimarket.nodes.node_decision_store_orchestrator.adapters.postgres_pool_resource import (
+                default_pool_resource,
+            )
+
+            factory = default_pool_resource
+        return factory(self._dsn or _require_dsn())
 
 
 def _to_orchestrator_entry_dict(row: Any) -> dict[str, Any]:
