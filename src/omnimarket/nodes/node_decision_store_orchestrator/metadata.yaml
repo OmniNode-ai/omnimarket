@@ -10,7 +10,9 @@ capabilities:
   full_runtime: false
   requires_network: true
 dependencies:
+  - "asyncpg>=0.31.0"
   - "omnibase_core>=0.40.0"
+  - "omnibase-infra>=0.1.0"
 authors: ["OmniNode Platform Team"]
 license: "MIT"
 tags: ["orchestrator", "decision-store", "conflict-detection", "architecture", "governance"]
