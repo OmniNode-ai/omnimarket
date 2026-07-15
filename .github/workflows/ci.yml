@@ -1478,7 +1478,7 @@ jobs:
   ci-summary:
     name: CI Summary
     runs-on: ubuntu-latest
-    needs: [occ-preflight, zone-filter, lint, typecheck, detect-changes, test, integration-guard, topic-naming-lint, runtime-sweep, compliance-sweep, core-only-install, contract-compliance, contract-sweep-gate, e2e-workflow-runner, golden-chains, sea-e2e-chains, generated-node-golden-chain, dep-health, uv-lock-pin-reachability, aislop-sweep, coverage-sweep-gate, workflow-module-refs, no-noncanonical-lifecycle-classes]
+    needs: [occ-preflight, zone-filter, lint, typecheck, detect-changes, test, integration-guard, topic-naming-lint, runtime-sweep, compliance-sweep, core-only-install, contract-compliance, contract-sweep-gate, e2e-workflow-runner, golden-chains, sea-e2e-chains, generated-node-golden-chain, dep-health, uv-lock-pin-reachability, aislop-sweep, coverage-sweep-gate, workflow-module-refs, no-noncanonical-lifecycle-classes, event-registry-drift, topic-drift-check, topic-enum-drift]
     if: always()
     steps:
       - name: Check CI results
@@ -1531,6 +1531,28 @@ jobs:
           else
             echo "no-noncanonical-lifecycle-classes: $RATCHET_RESULT"
           fi
+
+          # OMN-14590: event-registry-drift / topic-drift-check / topic-enum-drift
+          # ran on every PR already but were never referenced by ci-summary's
+          # needs: -- unlike most of OMN-14415's catalogue, these three live in
+          # THIS SAME FILE as ci-summary, so there was no `needs:` cross-file
+          # excuse; it was a plain omission. Strict success-only (not the loose
+          # loop above): each already ratchets pre-existing debt to a baseline
+          # (only NEW violations fail), so a skip/cancel/failure here is a real
+          # regression or a broken run, never an expected transient state.
+          for check in \
+            "event-registry-drift=${{ needs.event-registry-drift.result }}" \
+            "topic-drift-check=${{ needs.topic-drift-check.result }}" \
+            "topic-enum-drift=${{ needs.topic-enum-drift.result }}"; do
+            NAME="${check%%=*}"
+            RESULT="${check##*=}"
+            if [ "$RESULT" != "success" ]; then
+              echo "::error::$NAME did not pass (result: $RESULT) - fail-closed (OMN-14590)"
+              FAILED=true
+            else
+              echo "$NAME: $RESULT"
+            fi
+          done
 
           if [ "$FAILED" = "true" ]; then
             echo ""
