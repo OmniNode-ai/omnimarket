@@ -222,6 +222,12 @@ def _message_value(message: object) -> bytes | str | None:
 
 
 def _flatten_terminal_payload(payload: dict[str, object]) -> dict[str, object]:
+    # OMN-14600: retained for the legacy double-nested wire shape (a bespoke
+    # inner envelope carrying its own "topic" + "payload" keys). The runtime
+    # now publishes a SINGLE canonical envelope whose payload is the
+    # unwrapped ModelDelegationResult directly, which has no "payload" key of
+    # its own — the isinstance check below is False and this is a no-op
+    # pass-through for that (current) shape.
     nested_payload = payload.get("payload")
     if isinstance(nested_payload, dict):
         flattened = dict(nested_payload)
@@ -230,6 +236,20 @@ def _flatten_terminal_payload(payload: dict[str, object]) -> dict[str, object]:
             flattened["terminal_topic"] = topic
         return flattened
     return payload
+
+
+def _short_topic_alias(topic: str) -> str | None:
+    """Derive the '{producer}.{event-name}' alias DispatchResultApplier stamps
+    onto ``ModelEventEnvelope.event_type`` (see
+    ``service_dispatch_result_applier.py::_derive_event_type_from_topic``,
+    OMN-12116). The wire envelope's ``event_type`` carries this derived alias,
+    not the full topic string, so a failed/completed comparison against the
+    full topic must also check the derived form.
+    """
+    parts = topic.split(".")
+    if len(parts) >= 5 and parts[0] == "onex":
+        return f"{parts[2]}.{parts[3]}"
+    return None
 
 
 def _parse_delegation_terminal(
@@ -260,8 +280,25 @@ def _parse_delegation_terminal(
     if correlation_id != expected_correlation_id:
         return None
 
+    # OMN-14600: the single canonical envelope has no "topic" key on its
+    # (unwrapped) payload, so the primary signal is ``raw["event_type"]`` —
+    # which DispatchResultApplier stamps with the DERIVED short alias
+    # ("{producer}.{event-name}"), not the full topic string. Compare against
+    # both the full topic (legacy / test-simulated shape) and its derived
+    # alias so either form classifies correctly; ``failure_reason`` remains
+    # the final fallback for shapes that carry neither.
     topic = str(envelope_payload.get("topic") or raw.get("event_type") or "")
-    is_failed = topic == failed_topic or bool(terminal_payload.get("failure_reason"))
+    failed_alias = _short_topic_alias(failed_topic)
+    is_failed = (
+        topic == failed_topic
+        or (failed_alias is not None and topic == failed_alias)
+        or bool(terminal_payload.get("failure_reason"))
+    )
+    # Preserve the terminal_topic surface for callers even though the flat
+    # (single-envelope) shape no longer routes it through
+    # _flatten_terminal_payload's nested branch.
+    if topic and "terminal_topic" not in terminal_payload:
+        terminal_payload["terminal_topic"] = topic
     error_message = str(terminal_payload.get("failure_reason") or "") or None
     return ModelDispatchBusTerminalResult(
         correlation_id=correlation_id,

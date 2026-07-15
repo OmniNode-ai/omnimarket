@@ -10,6 +10,14 @@ capabilities:
   requires_network: true
   requires_secrets: true
   side_effect_class: write_db
+# OMN-14513: this node consumes the producer's CANONICAL event model
+# (ModelBaselinesSnapshotEvent) from omnibase_infra rather than redefining a
+# slim extra="ignore" copy that shared almost no field names with the real
+# producer contract and silently dropped every real event.
+dependencies:
+  - "omnibase_core>=0.39.0"
+  - "omnibase-infra>=0.38.3"
+  - "pyyaml>=6.0"
 tags:
   - projection
   - baselines

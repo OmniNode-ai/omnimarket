@@ -136,7 +136,11 @@ class HandlerMypyCheck:
     """EFFECT: run mypy on a code artifact, returning typed diagnostics."""
 
     def handle(self, request: ModelMypyCheckRequest) -> ModelMypyCheckResult:
-        return check_artifact(request)
+        # Echo correlation_id verbatim so a downstream reducer can rejoin the
+        # pure result to per-run state (OMN-14608). Type-checking is unchanged.
+        return check_artifact(request).model_copy(
+            update={"correlation_id": request.correlation_id}
+        )
 
 
 __all__ = ["HandlerMypyCheck", "check_artifact"]

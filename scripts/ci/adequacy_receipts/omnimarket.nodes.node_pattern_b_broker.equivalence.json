@@ -1,0 +1,8 @@
+{
+  "node_id": "omnimarket.nodes.node_pattern_b_broker",
+  "selected_input_hashes": [
+    "sha256:0f20651699129bc7b6db12eb98867cad817b3f871b550c1df63e777db740c26f",
+    "sha256:637a8a48b6776928b86d8f149bc6416f83f0d0afca42add70e54b2fbbf98e9f2"
+  ],
+  "status": "pass"
+}

@@ -171,9 +171,6 @@ accepted:
 - ORPHANED_CONSUMER::node_handler_correctness_gate::onex.cmd.omnimarket.handler-correctness-check.v1
 - ORPHANED_CONSUMER::node_hostile_reviewer_orchestrator::onex.cmd.omnimarket.hostile-reviewer-start.v1
 - ORPHANED_CONSUMER::node_hybrid_codegen_orchestrator::onex.cmd.omnimarket.hybrid-codegen-start.v1
-- ORPHANED_CONSUMER::node_hybrid_codegen_orchestrator::onex.evt.omnimarket.codegen-serialize-outcome.v1
-- ORPHANED_CONSUMER::node_hybrid_codegen_orchestrator::onex.evt.omnimarket.codegen-typecheck-outcome.v1
-- ORPHANED_CONSUMER::node_hybrid_codegen_orchestrator::onex.evt.omnimarket.codegen-validation-outcome.v1
 - ORPHANED_CONSUMER::node_insights_to_plan_compute::onex.cmd.omnimarket.insights-to-plan-start.v1
 - ORPHANED_CONSUMER::node_intelligence_orchestrator::onex.cmd.omnimarket.code-analysis.v1
 - ORPHANED_CONSUMER::node_intelligence_orchestrator::onex.cmd.omnimarket.document-ingestion.v1

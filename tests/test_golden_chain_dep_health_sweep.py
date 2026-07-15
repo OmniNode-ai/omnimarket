@@ -8,8 +8,9 @@ Three subtests:
      findings include UNTESTED_HANDLER + MISSING_TOPIC_EDGE
   C. Event emission — EventBusInmemory receives dep-health-sweep-completed after handle()
 
-Evidence bundle written to docs/evidence/dep-health-sweep/<run_id>/ by the test.
-Topic constants loaded from contract.yaml, never hardcoded.
+Evidence bundle written to pytest's tmp_path/dep-health-sweep/<run_id>/ by the test
+(OMN-14632 — never into the committed repo tree). Topic constants loaded from
+contract.yaml, never hardcoded.
 """
 
 from __future__ import annotations
@@ -190,6 +191,7 @@ def test_contract_declares_dep_health_output_topics() -> None:
 
 
 def _write_evidence_bundle(
+    evidence_root: Path,
     run_id: str,
     import_graph_data: dict[str, Any],
     topology_data: dict[str, Any],
@@ -198,8 +200,13 @@ def _write_evidence_bundle(
     projection_rows: list[dict[str, Any]],
     subtest_outcomes: dict[str, str],
 ) -> Path:
-    repo_root = Path(__file__).resolve().parents[1]
-    evidence_dir = repo_root / "docs" / "evidence" / "dep-health-sweep" / run_id
+    """Write the evidence bundle under a pytest-managed temp directory.
+
+    OMN-14632: must never write into the committed repo tree — every local/CI
+    run would otherwise leave the working tree dirty. Callers pass pytest's
+    ``tmp_path`` fixture (or a subdirectory of it) as ``evidence_root``.
+    """
+    evidence_dir = evidence_root / "dep-health-sweep" / run_id
     evidence_dir.mkdir(parents=True, exist_ok=True)
 
     (evidence_dir / "run_manifest.json").write_text(
@@ -436,8 +443,10 @@ class TestGoldenChainDepHealthSweep:
         )
         _EVIDENCE_DATA["projection_rows"] = rows
 
-        # Write evidence bundle on last subtest
+        # Write evidence bundle on last subtest — under tmp_path, never into
+        # the committed repo tree (OMN-14632).
         _write_evidence_bundle(
+            evidence_root=tmp_path,
             run_id=_RUN_ID_FOR_EVIDENCE,
             import_graph_data=_EVIDENCE_DATA["import_graph"],
             topology_data=_EVIDENCE_DATA["topology"],

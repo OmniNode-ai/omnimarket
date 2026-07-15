@@ -79,7 +79,8 @@ def main() -> None:
         help=(
             "JSON array of pre-collected flow objects (keys: topic, handler_name, "
             "table_name, dashboard_route, producer_status, consumer_lag, "
-            "table_row_count, table_has_recent_data, field_mapping_valid). "
+            "consumer_lag_unknown, table_row_count, table_has_recent_data, "
+            "field_mapping_valid). "
             "Default when --collect is not set: built-in critical chains."
         ),
     )

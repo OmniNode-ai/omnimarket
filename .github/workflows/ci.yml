@@ -276,6 +276,34 @@ jobs:
             base="$(git rev-parse HEAD^ 2>/dev/null || git rev-parse HEAD)"
           fi
           uv run python scripts/ci/check_golden_chain_coverage.py --changed-ref "$base"
+      # Canonical handler-shape GROWTH RATCHET fan-out (OMN-14355/OMN-14368/OMN-14372).
+      # compliance_sweep checks handler hygiene but is blind to handler SHAPE, so a
+      # non-canonical handler passes green CI. This classifies each omnimarket node's
+      # contract-declared handler (definition B: typed-payload handle(request)->
+      # response, adapted by the shared runtime, no envelope in the core), WARNs the
+      # committed baseline's debt (scripts/ci/canonical_handler_shape_baseline.py),
+      # and HARD-FAILS a NEW non-canonical node or baseline growth. Sourced from the
+      # already-cloned sibling omnibase_core checkout (same pattern as "Stub
+      # implementation check" above) since the classifier lives at omnibase_core's
+      # repo-root scripts/ci/, not the installed package. Runs --full (not the
+      # default --scope changed): the classifier's diff-scoped git-diff runs with
+      # cwd = the classifier's OWN repo (omnibase_core parents[2]), which is wrong
+      # for a fan-out invocation against this sibling checkout, so --full avoids
+      # that mismatch (this job's classification is cheap: ~365 nodes, sub-second).
+      # No pre-commit mirror yet: pre-commit's language:python remote-hook install
+      # only ships the installed src/omnibase_core/ package (verified — the
+      # classifier isn't importable that way), and language:script has no dep
+      # isolation (needs pydantic/pyyaml); see OMN-14563 for the real fix
+      # (relocate the classifier into an installed omnibase_core module). This
+      # CI-only pattern already matches several sibling gates in this same job
+      # list (compliance-sweep, runtime-sweep, aislop-sweep, coverage-sweep-gate).
+      - name: Canonical handler-shape ratchet (OMN-14355 fan-out)
+        run: |
+          uv run python ../omnibase_core/scripts/ci/canonical_handler_shape.py \
+            --package omnimarket --src-root src \
+            --baseline scripts/ci/canonical_handler_shape_baseline.py \
+            --receipts-dir scripts/ci/adequacy_receipts \
+            --full
 
   typecheck:
     needs: [occ-preflight, zone-filter]
@@ -1260,12 +1288,16 @@ jobs:
   # unresolvable OMNI_HOME is a HARD, BLOCKING failure — this is what actually
   # closes the "9 vs 941" defect.
   #
-  # SCOPE — the omnimarket tree carries pre-existing field/topic/node_type
-  # violations (5 major, 21 minor as of this gate landing — tracked in OMN-14544; see
-  # tracked follow-up). A whole-tree hard gate on those specific violations would
-  # immediately block every future PR on that backlog, so this job does NOT pass
-  # --strict: violations are printed as a warning (visible in the job log) but do
-  # not fail the check. --strict may be added once the backlog is paid down.
+  # SCOPE — the pre-existing field/topic/node_type backlog (5 major, 21 minor as
+  # of the gate landing) was paid down under OMN-14544: the 5 major violations
+  # (2 contracts missing contract_version/node_version, node_emit_daemon's
+  # invalid node_type) were fixed at the source, and the 21 minor violations
+  # were re-classified — `onex.snapshot.*` is a real, cross-repo-established
+  # projection-broadcast topic kind (verified in use across omnimarket,
+  # omnidash, onex_change_control, omnibase_infra, omnibase_core, and
+  # omniintelligence), not 21 naming mistakes, so the separate
+  # `_SNAPSHOT_TOPIC_RE` accepts it. The corpus is now a real, enforced zero — this job passes
+  # --strict so any NEW violation fails closed.
   # ============================================================================
   contract-sweep-gate:
     needs: occ-preflight
@@ -1284,7 +1316,7 @@ jobs:
       - name: Install dependencies
         run: uv sync --locked --all-extras
       - name: Run contract sweep scope-invariant gate
-        run: uv run python scripts/ci/run_contract_sweep_gate.py
+        run: uv run python scripts/ci/run_contract_sweep_gate.py --strict
 
   # ============================================================================
   # AISLOP SWEEP GATE (OMN-13578) — failing-rollup sub-job (Model B, OMN-13574)
@@ -1541,7 +1573,7 @@ jobs:
   ci-summary:
     name: CI Summary
     runs-on: ubuntu-latest
-    needs: [occ-preflight, zone-filter, lint, typecheck, detect-changes, test, integration-guard, topic-naming-lint, runtime-sweep, compliance-sweep, core-only-install, contract-compliance, contract-sweep-gate, e2e-workflow-runner, golden-chains, sea-e2e-chains, generated-node-golden-chain, dep-health, uv-lock-pin-reachability, aislop-sweep, coverage-sweep-gate, workflow-module-refs, no-noncanonical-lifecycle-classes, contract-topic-graph]
+    needs: [occ-preflight, zone-filter, lint, typecheck, detect-changes, test, integration-guard, topic-naming-lint, runtime-sweep, compliance-sweep, core-only-install, contract-compliance, contract-sweep-gate, e2e-workflow-runner, golden-chains, sea-e2e-chains, generated-node-golden-chain, dep-health, uv-lock-pin-reachability, aislop-sweep, coverage-sweep-gate, workflow-module-refs, no-noncanonical-lifecycle-classes, event-registry-drift, topic-drift-check, topic-enum-drift, contract-topic-graph]
     if: always()
     steps:
       - name: Check CI results
@@ -1602,6 +1634,28 @@ jobs:
           else
             echo "no-noncanonical-lifecycle-classes: $RATCHET_RESULT"
           fi
+
+          # OMN-14590: event-registry-drift / topic-drift-check / topic-enum-drift
+          # ran on every PR already but were never referenced by ci-summary's
+          # needs: -- unlike most of OMN-14415's catalogue, these three live in
+          # THIS SAME FILE as ci-summary, so there was no `needs:` cross-file
+          # excuse; it was a plain omission. Strict success-only (not the loose
+          # loop above): each already ratchets pre-existing debt to a baseline
+          # (only NEW violations fail), so a skip/cancel/failure here is a real
+          # regression or a broken run, never an expected transient state.
+          for check in \
+            "event-registry-drift=${{ needs.event-registry-drift.result }}" \
+            "topic-drift-check=${{ needs.topic-drift-check.result }}" \
+            "topic-enum-drift=${{ needs.topic-enum-drift.result }}"; do
+            NAME="${check%%=*}"
+            RESULT="${check##*=}"
+            if [ "$RESULT" != "success" ]; then
+              echo "::error::$NAME did not pass (result: $RESULT) - fail-closed (OMN-14590)"
+              FAILED=true
+            else
+              echo "$NAME: $RESULT"
+            fi
+          done
 
           if [ "$FAILED" = "true" ]; then
             echo ""

@@ -225,7 +225,12 @@ class HandlerGeneratedCodeValidator:
     def handle(
         self, request: ModelGeneratedCodeValidatorRequest
     ) -> ModelGeneratedCodeValidation:
-        return validate_generated_code(request.source_text, request.expected)
+        # Echo correlation_id verbatim so a downstream reducer can rejoin the
+        # pure verdict to per-run state (OMN-14608). The pure validation logic is
+        # unchanged — correlation is transport metadata, not a validation input.
+        return validate_generated_code(
+            request.source_text, request.expected
+        ).model_copy(update={"correlation_id": request.correlation_id})
 
 
 __all__ = ["HandlerGeneratedCodeValidator", "validate_generated_code"]

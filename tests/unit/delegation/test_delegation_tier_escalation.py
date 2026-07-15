@@ -27,22 +27,17 @@ from omnibase_infra.errors import ProtocolConfigurationError
 from omnimarket.models.delegation.llm_cost_routing.model_llm_delegation_escalation_triggered_event import (
     ModelLlmDelegationEscalationTriggeredEvent,
 )
-from omnimarket.nodes.node_delegation_orchestrator.contract_topics import (
-    TOPIC_ID_DELEGATION_FAILED,
-)
 from omnimarket.nodes.node_delegation_orchestrator.enums import (
     EnumDelegationState,
 )
 from omnimarket.nodes.node_delegation_orchestrator.handlers.handler_delegation_workflow import (
     HandlerDelegationWorkflow,
 )
-from omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_event import (
-    ModelDelegationEvent,
-)
 from omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_request import (
     ModelDelegationRequest,
 )
 from omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_result import (
+    ModelDelegationFailed,
     ModelDelegationResult,
 )
 from omnimarket.nodes.node_delegation_orchestrator.models.model_inference_response_data import (
@@ -249,9 +244,9 @@ class TestGateFailMaxEscalationReached:
         assert workflow.state == EnumDelegationState.FAILED
 
         # Find the delegation result event
-        result_events = [e for e in events if isinstance(e, ModelDelegationEvent)]
+        result_events = [e for e in events if isinstance(e, ModelDelegationResult)]
         assert len(result_events) == 1
-        result = result_events[0].payload
+        result = result_events[0]
         assert isinstance(result, ModelDelegationResult)
         assert result.terminal_failure_reason == "max_escalation_attempts_reached"
 
@@ -277,9 +272,9 @@ class TestGateFailNoHigherTier:
         workflow = handler.workflows[cid]
         assert workflow.state == EnumDelegationState.FAILED
 
-        result_events = [e for e in events if isinstance(e, ModelDelegationEvent)]
+        result_events = [e for e in events if isinstance(e, ModelDelegationResult)]
         assert len(result_events) == 1
-        result = result_events[0].payload
+        result = result_events[0]
         assert isinstance(result, ModelDelegationResult)
         # OMN-13167: precise reason — stable machine-keyable token prefix plus the
         # exhausted task-class policy that produced the dead-end.
@@ -337,16 +332,14 @@ class TestGateFailFallbackNotRecommended:
             EnumDelegationState.ROUTED,
         }
 
-        result_events = [e for e in events if isinstance(e, ModelDelegationEvent)]
+        result_events = [e for e in events if isinstance(e, ModelDelegationResult)]
         assert len(result_events) >= 1
         # If FAILED, the terminal event must carry quality_passed=False.
         failed_events = [
-            e
-            for e in result_events
-            if getattr(e, "topic", None) == TOPIC_ID_DELEGATION_FAILED
+            e for e in result_events if isinstance(e, ModelDelegationFailed)
         ]
         if failed_events:
-            result = failed_events[0].payload
+            result = failed_events[0]
             assert isinstance(result, ModelDelegationResult)
             assert result.quality_passed is False
 
@@ -482,9 +475,9 @@ class TestTerminalEventEscalationMetadata:
         )
         events = handler.handle_gate_result(gate)
 
-        result_events = [e for e in events if isinstance(e, ModelDelegationEvent)]
+        result_events = [e for e in events if isinstance(e, ModelDelegationResult)]
         assert len(result_events) == 1
-        result = result_events[0].payload
+        result = result_events[0]
         assert isinstance(result, ModelDelegationResult)
 
         # Escalation metadata should be present
@@ -507,9 +500,9 @@ class TestTerminalEventEscalationMetadata:
         gate = _make_gate_result(cid, passed=True, quality_score=0.9)
         events = handler.handle_gate_result(gate)
 
-        result_events = [e for e in events if isinstance(e, ModelDelegationEvent)]
+        result_events = [e for e in events if isinstance(e, ModelDelegationResult)]
         assert len(result_events) >= 1
-        result = result_events[0].payload
+        result = result_events[0]
         assert isinstance(result, ModelDelegationResult)
         assert result.escalation_count == 0
         assert result.attempts_count == 1
@@ -725,14 +718,14 @@ class TestAllTiersFailMismatchedCeilingTokensTerminatesCleanly:
         workflow = handler.workflows[cid]
         assert workflow.state == EnumDelegationState.FAILED
 
-        delegation_events = [e for e in events if isinstance(e, ModelDelegationEvent)]
+        delegation_events = [e for e in events if isinstance(e, ModelDelegationResult)]
         assert len(delegation_events) == 1, (
             "exactly one terminal delegation event must be emitted"
         )
         terminal = delegation_events[0]
-        assert terminal.topic == TOPIC_ID_DELEGATION_FAILED
+        assert isinstance(terminal, ModelDelegationFailed)
 
-        result = terminal.payload
+        result = terminal
         assert isinstance(result, ModelDelegationResult)
         assert result.quality_passed is False
         assert result.fallback_to_claude is True
@@ -806,10 +799,10 @@ class TestAllTiersFailMismatchedCeilingTokensTerminatesCleanly:
 
         workflow = handler.workflows[cid]
         assert workflow.state == EnumDelegationState.FAILED
-        delegation_events = [e for e in events2 if isinstance(e, ModelDelegationEvent)]
+        delegation_events = [e for e in events2 if isinstance(e, ModelDelegationResult)]
         assert len(delegation_events) == 1
-        assert delegation_events[0].topic == TOPIC_ID_DELEGATION_FAILED
-        result = delegation_events[0].payload
+        assert isinstance(delegation_events[0], ModelDelegationFailed)
+        result = delegation_events[0]
         assert isinstance(result, ModelDelegationResult)
         assert result.quality_passed is False
         assert result.total_tokens == result.prompt_tokens + result.completion_tokens
@@ -1010,9 +1003,9 @@ class TestEscalationTerminatesWhenFrontierUnconfigured:
         assert workflow.state == EnumDelegationState.FAILED, (
             "FSM must reach terminal FAILED, not strand in ROUTED"
         )
-        result_events = [e for e in events2 if isinstance(e, ModelDelegationEvent)]
+        result_events = [e for e in events2 if isinstance(e, ModelDelegationResult)]
         assert len(result_events) == 1, "a terminal delegation event must be emitted"
-        result = result_events[0].payload
+        result = result_events[0]
         assert isinstance(result, ModelDelegationResult)
         assert result.quality_passed is False
         # OMN-13167: precise reason naming the exhausted `document` policy plus
@@ -1098,25 +1091,32 @@ class TestTestResearchTierPolicyVerified:
 
     OMN-13667: repointed again from free-tier AI Studio Gemini (cloud-gemini-pro,
     503s on escalation) to GLM-5.2 z.ai direct (cloud-glm, secret_ref
-    llm.glm.api_key). The fixture now sets llm.glm.api_key so the new ceiling
-    backend is routable.
+    llm.glm.api_key). The fixture set llm.glm.api_key so that ceiling
+    backend was routable.
+
+    OMN-14625: repointed a THIRD time — z.ai GLM is DEAD from the .201 runtime
+    (resolve_api_key succeeds but every completion call 401s / loops
+    FAILED-only) — back to Gemini (cloud-gemini-pro, secret_ref
+    llm.gemini.api_key). The fixture now sets llm.gemini.api_key so the
+    ceiling backend is routable.
     """
 
     @pytest.fixture(autouse=True)
     def _configure_ceiling_secret(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> Iterator[None]:
-        # OMN-13667: the repo-default bifrost contract maps the claude ceiling tier
-        # to cloud-glm, whose secret_ref is llm.glm.api_key. The env-backed
-        # secret store reads the ref name verbatim, so set it to make the ceiling
-        # routable.
+        # OMN-14625: the repo-default bifrost contract maps the claude ceiling tier
+        # to cloud-gemini-pro, whose secret_ref is llm.gemini.api_key. The
+        # env-backed secret store reads the ref name verbatim, so set it to make
+        # the ceiling routable.
         from omnimarket.nodes.node_delegation_routing_reducer.handlers import (
             handler_delegation_routing as routing,
         )
 
-        # OMN-13667: ceiling repointed to cloud-glm (secret_ref llm.glm.api_key).
-        # Set the GLM key so the ceiling backend's secret resolves as available.
-        monkeypatch.setenv("llm.glm.api_key", "test-glm-key")
+        # OMN-14625: ceiling repointed to cloud-gemini-pro (secret_ref
+        # llm.gemini.api_key). Set the Gemini key so the ceiling backend's
+        # secret resolves as available.
+        monkeypatch.setenv("llm.gemini.api_key", "test-gemini-key")
         routing._load_bifrost_endpoints.cache_clear()
         yield
         routing._load_bifrost_endpoints.cache_clear()
@@ -1285,9 +1285,9 @@ class TestTestTaskDeadEndEmitsPreciseReason:
 
         workflow = handler.workflows[cid]
         assert workflow.state == EnumDelegationState.FAILED
-        result_events = [e for e in events if isinstance(e, ModelDelegationEvent)]
+        result_events = [e for e in events if isinstance(e, ModelDelegationResult)]
         assert len(result_events) == 1
-        result = result_events[0].payload
+        result = result_events[0]
         assert isinstance(result, ModelDelegationResult)
         assert result.fallback_to_claude is True
         assert result.terminal_failure_reason is not None

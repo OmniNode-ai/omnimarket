@@ -10,13 +10,12 @@ from omnimarket.nodes.node_delegation_orchestrator.models.model_baseline_intent 
 from omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_escalation_attempt import (
     ModelDelegationEscalationAttempt,
 )
-from omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_event import (
-    ModelDelegationEvent,
-)
 from omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_request import (
     ModelDelegationRequest,
 )
 from omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_result import (
+    ModelDelegationCompleted,
+    ModelDelegationFailed,
     ModelDelegationResult,
 )
 from omnimarket.nodes.node_delegation_orchestrator.models.model_inference_intent import (
@@ -37,8 +36,9 @@ from omnimarket.nodes.node_delegation_orchestrator.models.model_task_delegated_e
 
 __all__: list[str] = [
     "ModelBaselineIntent",
+    "ModelDelegationCompleted",
     "ModelDelegationEscalationAttempt",
-    "ModelDelegationEvent",
+    "ModelDelegationFailed",
     "ModelDelegationRequest",
     "ModelDelegationResult",
     "ModelInferenceIntent",

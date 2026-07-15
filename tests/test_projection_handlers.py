@@ -586,6 +586,30 @@ class TestRegistrationHandler:
 class TestBaselinesHandler:
     @pytest.mark.asyncio
     async def test_basic_projection(self, mock_db: AsyncMock) -> None:
+        """OMN-14513: drive a real producer-shaped ModelBaselinesSnapshotEvent.
+
+        Previously this test hand-built a fictional payload
+        (comparisons.pattern_id/recommendation, trend.date/avg_cost_savings,
+        breakdown.action/count) that the real producer never sends. Building
+        the payload from the producer's own model_dump() proves the fix
+        parses what the wire contract actually carries.
+        """
+        from datetime import UTC, date, datetime
+        from uuid import uuid4
+
+        from omnibase_infra.services.observability.baselines.models.model_baselines_breakdown_row import (
+            ModelBaselinesBreakdownRow,
+        )
+        from omnibase_infra.services.observability.baselines.models.model_baselines_comparison_row import (
+            ModelBaselinesComparisonRow,
+        )
+        from omnibase_infra.services.observability.baselines.models.model_baselines_snapshot_event import (
+            ModelBaselinesSnapshotEvent,
+        )
+        from omnibase_infra.services.observability.baselines.models.model_baselines_trend_row import (
+            ModelBaselinesTrendRow,
+        )
+
         from omnimarket.nodes.node_projection_baselines.handlers.handler_baselines import (
             BaselinesProjectionRunner,
         )
@@ -593,30 +617,49 @@ class TestBaselinesHandler:
         runner = BaselinesProjectionRunner()
         runner._db = mock_db
 
-        data = {
-            "snapshot_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
-            "contract_version": 2,
-            "computed_at_utc": "2026-04-06T12:00:00Z",
-            "comparisons": [
-                {
-                    "pattern_id": "p1",
-                    "pattern_name": "test_pattern",
-                    "sample_size": 100,
-                    "window_start": "2026-04-01",
-                    "window_end": "2026-04-06",
-                    "recommendation": "promote",
-                    "confidence": "high",
-                }
+        now = datetime(2026, 4, 6, 12, 0, 0, tzinfo=UTC)
+        producer_event = ModelBaselinesSnapshotEvent(
+            snapshot_id=uuid4(),
+            contract_version=2,
+            computed_at_utc=now,
+            comparisons=[
+                ModelBaselinesComparisonRow(
+                    id=uuid4(),
+                    comparison_date=date(2026, 4, 6),
+                    treatment_sessions=100,
+                    control_sessions=90,
+                    roi_pct=12.5,
+                    sample_size=190,
+                    computed_at=now,
+                    created_at=now,
+                    updated_at=now,
+                )
             ],
-            "trend": [
-                {
-                    "date": "2026-04-05",
-                    "avg_cost_savings": 0.15,
-                    "avg_outcome_improvement": 0.2,
-                }
+            trend=[
+                ModelBaselinesTrendRow(
+                    id=uuid4(),
+                    trend_date=date(2026, 4, 5),
+                    cohort="treatment",
+                    session_count=50,
+                    success_rate=0.9,
+                    computed_at=now,
+                    created_at=now,
+                )
             ],
-            "breakdown": [{"action": "promote", "count": 5, "avg_confidence": 0.8}],
-        }
+            breakdown=[
+                ModelBaselinesBreakdownRow(
+                    id=uuid4(),
+                    pattern_id=uuid4(),
+                    pattern_label="retry-guard",
+                    treatment_success_rate=0.92,
+                    sample_count=100,
+                    computed_at=now,
+                    created_at=now,
+                    updated_at=now,
+                )
+            ],
+        )
+        data = producer_event.model_dump(mode="json")
 
         result = await runner.project_event(
             "onex.evt.omnibase-infra.baselines-computed.v1", data, _make_meta()

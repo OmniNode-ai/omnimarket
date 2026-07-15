@@ -23,10 +23,9 @@ from omnibase_core.models.delegation.wire.model_budget import (
     ModelBudgetLimits,
 )
 from omnibase_core.models.delegation.wire.model_delegation_result import (
+    ModelDelegationCompleted,
+    ModelDelegationFailed,
     ModelDelegationResult,
-)
-from omnibase_core.models.delegation.wire.model_delegation_wire_envelope import (
-    ModelDelegationEventEnvelope,
 )
 from omnibase_core.models.delegation.wire.model_delegation_wire_request import (
     MAX_WORDS_PER_SENTENCE_RE,
@@ -99,9 +98,10 @@ __all__: list[str] = [
     "ModelDelegateSkillTerminalProjection",
     "ModelDelegationBackendConfig",
     "ModelDelegationCircuitBreakerConfig",
+    "ModelDelegationCompleted",
     "ModelDelegationConfig",
-    "ModelDelegationEventEnvelope",
     "ModelDelegationEventProjectionRow",
+    "ModelDelegationFailed",
     "ModelDelegationFailoverConfig",
     "ModelDelegationFallbackPolicy",
     "ModelDelegationRequest",

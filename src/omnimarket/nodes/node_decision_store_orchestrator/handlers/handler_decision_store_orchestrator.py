@@ -6,6 +6,17 @@ The orchestrator owns record/query/check-conflicts sequencing. Structural
 checks, semantic review, persistence, and notification are injected native
 adapters so the handler does not import other node handlers or call external
 services directly.
+
+OMN-14529: the four adapter constructor args defaulted to ``None``, which
+meant the generic ``onex skill`` / receipt-mode dispatch — which instantiates
+the contract-declared handler class with zero arguments, the same way
+``node_dod_sweep_orchestrator`` does — always hit
+``RuntimeError("... adapter required ...")`` on any live ``record`` call.
+There was no dispatch route (the original gap) AND, even once wired, the
+route would have failed closed instantly. The defaults below follow the
+``node_dod_sweep_orchestrator`` pattern: real, working, module-level default
+collaborators instead of ``None`` sentinels. See
+``adapters/__init__.py`` for what "real" means for each of the four.
 """
 
 from __future__ import annotations
@@ -13,6 +24,12 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Any, Protocol
 
+from omnimarket.nodes.node_decision_store_orchestrator.adapters import (
+    DeferredSemanticReview,
+    LogOnlyNotify,
+    PostgresDecisionStore,
+    StructuralConflictCheck,
+)
 from omnimarket.nodes.node_decision_store_orchestrator.models.model_decision_store_request import (
     EnumConflictSeverity,
     EnumDecisionAction,
@@ -66,6 +83,18 @@ class ProtocolDecisionNotifyAdapter(Protocol):
     ) -> None: ...
 
 
+# Shared, stateless default collaborators — constructed once at import time
+# and reused across every bare HandlerDecisionStoreOrchestrator() the generic
+# dispatch creates, mirroring node_dod_sweep_orchestrator's real-default-fn
+# pattern. Each adapter resolves its DSN lazily per-call (see
+# postgres_decision_store.py), so importing this module never
+# requires OMNIBASE_INFRA_DB_URL to be set.
+_DEFAULT_STORE_ADAPTER = PostgresDecisionStore()
+_DEFAULT_CONFLICT_ADAPTER = StructuralConflictCheck(_DEFAULT_STORE_ADAPTER)
+_DEFAULT_SEMANTIC_ADAPTER = DeferredSemanticReview()
+_DEFAULT_NOTIFY_ADAPTER = LogOnlyNotify()
+
+
 class HandlerDecisionStoreOrchestrator:
     """Route decision-store actions through native adapter boundaries."""
 
@@ -76,10 +105,10 @@ class HandlerDecisionStoreOrchestrator:
         store_adapter: ProtocolDecisionStoreAdapter | None = None,
         notify_adapter: ProtocolDecisionNotifyAdapter | None = None,
     ) -> None:
-        self._conflict_adapter = conflict_adapter
-        self._semantic_adapter = semantic_adapter
-        self._store_adapter = store_adapter
-        self._notify_adapter = notify_adapter
+        self._conflict_adapter = conflict_adapter or _DEFAULT_CONFLICT_ADAPTER
+        self._semantic_adapter = semantic_adapter or _DEFAULT_SEMANTIC_ADAPTER
+        self._store_adapter = store_adapter or _DEFAULT_STORE_ADAPTER
+        self._notify_adapter = notify_adapter or _DEFAULT_NOTIFY_ADAPTER
 
     def handle(self, request: ModelDecisionStoreRequest) -> ModelDecisionStoreResult:
         if request.action == EnumDecisionAction.QUERY:
