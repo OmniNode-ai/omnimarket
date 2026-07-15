@@ -290,6 +290,15 @@ class ModelContractAssemblyRequest(BaseModel):
     overrides: ModelAdvancedFeaturesOverrides = Field(
         default_factory=ModelAdvancedFeaturesOverrides
     )
+    correlation_id: str = Field(
+        default="",
+        description=(
+            "Opaque run identity echoed verbatim onto ModelContractDocument so a "
+            "downstream reducer can rejoin the pure result to per-run state "
+            "(OMN-14608). Not folded into the emitted contract; empty for direct "
+            "callers."
+        ),
+    )
 
 
 class ModelContractDocument(BaseModel):
@@ -302,6 +311,7 @@ class ModelContractDocument(BaseModel):
     subcontracts_rendered: tuple[ModelSubcontractFragment, ...]
     lint_status: EnumLintStatus
     lint_messages: tuple[str, ...] = ()
+    correlation_id: str = ""  # echoed from the request; OMN-14608 reducer join key
 
 
 __all__ = [

@@ -25,6 +25,7 @@ Target table schema:
 
 from __future__ import annotations
 
+import json
 from datetime import UTC, datetime, timedelta
 
 # OMN-14490 / OMN-14506: consume the producer's CANONICAL event models rather
@@ -65,6 +66,68 @@ def _strip_transport_keys(data: dict[str, object]) -> dict[str, object]:
     validation would raise on every single message.
     """
     return {k: v for k, v in data.items() if not str(k).startswith("_")}
+
+
+def _looks_like_raw_kafka_wrapper(data: dict[str, object]) -> bool:
+    """True when ``data`` is an undecoded ``ModelEventMessage`` shape, not a domain event.
+
+    OMN-14593: this node's own topics (``node-introspection.v1`` /
+    ``node-heartbeat.v1`` / ``node-state-change.v1``) are also subscribed by a
+    sibling raw/audit-purpose consumer (e.g. ``node_ledger_projection_compute``,
+    ``event_bus.consumer_purpose: audit``). The shared ``MessageDispatchEngine``
+    fans a single ``dispatch(topic, envelope)`` call out to EVERY dispatcher
+    registered for that topic (docstring: "Execute dispatchers (fan-out)") —
+    it does not scope the fan-out to the consumer group that received the
+    message. The raw-purpose consumer's own callback builds its envelope as
+    ``payload=ModelEventMessage.model_dump(mode="json")`` (the undecoded kafka
+    record: ``topic``/``key``/``value``/``headers``/``offset``/``partition``),
+    and ITS dispatch() call reaches this handler's dispatcher too, handing it
+    that raw shape instead of the decoded domain event. Detected by the raw
+    kafka record's marker keys together with the absence of the domain field
+    every one of this handler's models declares.
+    """
+    return (
+        isinstance(data, dict)
+        and "topic" in data
+        and "partition" in data
+        and "value" in data
+        and "node_id" not in data
+    )
+
+
+def _recover_domain_payload_from_raw_wrapper(
+    data: dict[str, object],
+) -> dict[str, object]:
+    """Recover the real domain event from a raw ``ModelEventMessage`` payload.
+
+    ``data["value"]`` carries the actual wire bytes this topic was published
+    with — either a full ``ModelEventEnvelope`` (nested ``payload`` key) or the
+    flat domain dict on a fallback publisher. Raises ``ValueError`` if ``value``
+    cannot be decoded into a mapping so the caller's normal validation-error
+    handling still applies (routes to DLQ once declared — never a silent
+    no-op).
+    """
+    raw_value = data.get("value")
+    if isinstance(raw_value, bytes):
+        raw_value = raw_value.decode("utf-8")
+    if not isinstance(raw_value, str):
+        raise ValueError(
+            "OMN-14593: raw kafka wrapper payload has no decodable 'value' "
+            f"field (type={type(raw_value).__name__})"
+        )
+    try:
+        decoded = json.loads(raw_value)
+    except json.JSONDecodeError as exc:
+        raise ValueError(
+            f"OMN-14593: raw kafka wrapper 'value' is not valid JSON: {exc}"
+        ) from exc
+    if not isinstance(decoded, dict):
+        raise ValueError(
+            "OMN-14593: raw kafka wrapper 'value' decoded to "
+            f"{type(decoded).__name__}, expected a mapping"
+        )
+    nested_payload = decoded.get("payload")
+    return nested_payload if isinstance(nested_payload, dict) else decoded
 
 
 def _require_service_name(
@@ -177,11 +240,20 @@ class HandlerProjectionRegistration:
         # which are extra="forbid". Any transport-injected `_`-prefixed keys must
         # be stripped first or validation raises on every message.
         payload = _strip_transport_keys(input_data)
+        # OMN-14593: recover from the shared dispatch engine's cross-contaminated
+        # fan-out (see _looks_like_raw_kafka_wrapper docstring) before validating
+        # against the canonical models. A malformed shape this can't recover is
+        # NOT caught here — it propagates to the wiring layer
+        # (_make_projection_dispatch_callback), which routes it to the
+        # contract-declared event_bus.dlq_topics.
+        # dlq-path-not-required: propagates to the wiring layer's dlq_topics route (OMN-13548)
+        if _looks_like_raw_kafka_wrapper(payload):
+            payload = _recover_domain_payload_from_raw_wrapper(payload)
         if event_type == "heartbeat":
             hb_event = ModelNodeHeartbeatEvent.model_validate(payload)
             result = self.project_heartbeat(hb_event, db_raw)
         elif event_type == "state_change":
-            state_event = ModelNodeStateChangeEvent(**input_data)
+            state_event = ModelNodeStateChangeEvent(**payload)
             result = self.project_state_change(state_event, db_raw)
         else:
             intro_event = ModelNodeIntrospectionEvent.model_validate(payload)

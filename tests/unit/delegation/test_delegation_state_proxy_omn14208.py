@@ -56,9 +56,6 @@ from omnimarket.nodes.node_delegation_orchestrator.handlers.handler_delegation_w
     DelegationWorkflowState,
     HandlerDelegationWorkflow,
 )
-from omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_event import (
-    ModelDelegationEvent,
-)
 from omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_request import (
     ModelDelegationRequest,
 )
@@ -325,8 +322,9 @@ class TestTenantRecoveryOnColdReload:
             )
             handler.workflows.flush(cid)  # type: ignore[attr-defined]
 
-        terminal = next(e for e in events if isinstance(e, ModelDelegationEvent))
-        result: ModelDelegationResult = terminal.payload
+        result: ModelDelegationResult = next(
+            e for e in events if isinstance(e, ModelDelegationResult)
+        )
         assert result.tenant_id == "tenant-xyz"
         assert result.tenant_id != "omninode"
 

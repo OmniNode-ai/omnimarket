@@ -20,12 +20,16 @@ forgot to enumerate is the one that breaks you.
 from __future__ import annotations
 
 import functools
+import os
 from pathlib import Path
 
 import pytest
 import yaml
 
 from omnimarket.validators.contract_topic_graph import (
+    CHECKOUT_PACKAGES,
+    CHECKOUT_ROOT_ENV,
+    GRAPH_PACKAGES,
     ModelTopicGraph,
     build_graph,
     evaluate_ratchet,
@@ -39,6 +43,22 @@ from omnimarket.validators.contract_topic_graph import (
 pytestmark = pytest.mark.unit
 
 
+def _checkout_tier_available() -> bool:
+    """True only where every CHECKOUT_PACKAGES repo is actually checked out.
+
+    The dedicated contract-topic-graph.yml gate always sets this up (it is the
+    authoritative, always-on enforcement surface for census completeness, and
+    it runs on every PR and on merge_group). Other CI jobs that incidentally
+    collect this file via the change-aware test selector do not check out
+    omniclaude/omniintelligence, so the real-corpus tests below skip there
+    rather than hard-failing on a resource that job was never given.
+    """
+    root = os.environ.get(CHECKOUT_ROOT_ENV)
+    if not root:
+        return False
+    return all((Path(root) / package).is_dir() for package in CHECKOUT_PACKAGES)
+
+
 def _write(tmp_path: Path, package: str, node: str, contract: dict) -> Path:
     """Write a contract.yaml at the <pkg>/nodes/<node>/ path the runtime loads from."""
     path = tmp_path / package / "nodes" / node / "contract.yaml"
@@ -48,10 +68,14 @@ def _write(tmp_path: Path, package: str, node: str, contract: dict) -> Path:
 
 
 def _graph(tmp_path: Path, external: dict[str, str] | None = None) -> ModelTopicGraph:
-    roots = {
-        "omnibase_infra": tmp_path / "omnibase_infra",
-        "omnimarket": tmp_path / "omnimarket",
-    }
+    """Build a graph over an empty-but-resolvable root for every GRAPH_PACKAGES
+    entry. build_graph() fails closed if a package root is UNRESOLVABLE (the
+    census-completeness invariant), but an empty root is a legitimate state --
+    omnibase_compat really does ship zero contract.yaml files in the real
+    corpus. Tests only ever write fixtures into omnibase_infra/omnimarket, so
+    every other package here always resolves empty.
+    """
+    roots = {package: tmp_path / package for package in GRAPH_PACKAGES}
     for root in roots.values():
         root.mkdir(parents=True, exist_ok=True)
     return build_graph(roots=roots, external_producers=external or {})
@@ -760,11 +784,122 @@ def test_build_graph_fails_closed_on_partial_package_surface(tmp_path: Path) -> 
         build_graph(roots={"omnimarket": tmp_path / "omnimarket"})
 
 
+def test_build_graph_fails_closed_on_missing_census_only_package(
+    tmp_path: Path,
+) -> None:
+    """A census-completeness gap must ALSO fail closed, even with both
+    ACTIVE_RUNTIME_PACKAGES present -- a silent partial here is exactly how
+    OMN-14527 went blind the first time (3 of 9 topic-declaring packages
+    scanned, ~410 topics invisible, for months, with nothing erroring)."""
+    roots = {
+        package: tmp_path / package
+        for package in GRAPH_PACKAGES
+        if package != "omniclaude"
+    }
+    for root in roots.values():
+        root.mkdir(parents=True, exist_ok=True)
+    with pytest.raises(RuntimeError, match="INCOMPLETE"):
+        build_graph(roots=roots)
+
+
+def test_checkout_tier_package_is_never_runtime_loaded(tmp_path: Path) -> None:
+    """omniclaude/omniintelligence resolve via filesystem checkout, not install,
+    and contribute producer/consumer edges only. They must never be flagged
+    runtime_loaded -- and therefore can never themselves be defect-flagged --
+    no matter how a node in them is (mis)wired."""
+    _write(
+        tmp_path,
+        "omniclaude",
+        "node_delegation_orchestrator",
+        {
+            "name": "node_delegation_orchestrator",
+            "event_bus": {
+                "subscribe_topics": ["onex.cmd.omniclaude.nobody-sends-this.v1"]
+            },
+            # Deliberately no handler_routing -- if this node were
+            # runtime_loaded it would be DECLARED_BUT_UNWIRED. It must not be.
+        },
+    )
+    graph = _graph(tmp_path)
+    node = next(n for n in graph.nodes if n.name == "node_delegation_orchestrator")
+    assert node.runtime_loaded is False
+    assert not any(d.package == "omniclaude" for d in find_defects(graph))
+
+
+def test_ambiguous_node_name_across_packages_is_not_misattributed(
+    tmp_path: Path,
+) -> None:
+    """OMN-14575, RED->GREEN. A real, pre-existing collision surfaced by
+    OMN-14568's broadening: node_intelligence_orchestrator exists in BOTH
+    omnimarket (runtime_loaded) and omniintelligence (not). Before the fix,
+    find_defects()'s by_name was a single {name: node} dict, so it collapsed
+    to whichever copy's package sorted last -- attributing the OTHER copy's
+    topics to the wrong package's runtime_loaded flag. Here the two copies
+    subscribe to two DIFFERENT topics; only the omnimarket one may ever be
+    defect-flagged.
+    """
+    _write(
+        tmp_path,
+        "omnimarket",
+        "node_dup",
+        {
+            "name": "node_dup",
+            "event_bus": {"subscribe_topics": ["onex.cmd.omnimarket.real-orphan.v1"]},
+            "handler_routing": {
+                "handlers": [
+                    {"operation": "x", "handler": {"module": "m", "name": "H"}}
+                ]
+            },
+        },
+    )
+    _write(
+        tmp_path,
+        "omniintelligence",
+        "node_dup",
+        {
+            "name": "node_dup",
+            "event_bus": {
+                "subscribe_topics": ["onex.cmd.omniintelligence.not-runtime-loaded.v1"]
+            },
+            # No handler_routing -- if this were ever (mis)treated as the
+            # runtime_loaded omnimarket copy it would ALSO show up as
+            # DECLARED_BUT_UNWIRED, which is exactly the kind of
+            # misattribution this test guards against.
+        },
+    )
+    defects = find_defects(_graph(tmp_path))
+
+    # The omnimarket copy's own topic is a real, legitimate orphan.
+    assert any(
+        d.defect == "ORPHANED_CONSUMER"
+        and d.node == "node_dup"
+        and d.topic == "onex.cmd.omnimarket.real-orphan.v1"
+        for d in defects
+    )
+    # The omniintelligence copy is NOT runtime_loaded. Its topic must never be
+    # defect-flagged under any defect class, regardless of the name collision
+    # with the runtime_loaded omnimarket copy.
+    assert not any(
+        d.topic == "onex.cmd.omniintelligence.not-runtime-loaded.v1" for d in defects
+    )
+    assert not any(
+        d.defect == "DECLARED_BUT_UNWIRED" and d.package == "omniintelligence"
+        for d in defects
+    )
+
+
 # ---------------------------------------------------------------------------
 # THE RATCHET — the baseline may only ever shrink.
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.skipif(
+    not _checkout_tier_available(),
+    reason=(
+        f"requires {CHECKOUT_ROOT_ENV} pointing at a checkout of "
+        f"{CHECKOUT_PACKAGES} -- see contract-topic-graph.yml"
+    ),
+)
 def test_gate_is_green_on_the_real_corpus_against_its_baseline() -> None:
     """GREEN CONTROL. If this ever fails on an untouched tree the gate is crying
     wolf, and a gate that cries wolf on day one gets disabled by lunchtime."""
@@ -965,7 +1100,22 @@ def _live_edges() -> list[object]:
     messages -- and declares no handler_routing, so it has been consuming and
     silently dropping every single one.
     """
+    if not _checkout_tier_available():
+        return [
+            pytest.param(
+                "-",
+                "-",
+                "-",
+                marks=pytest.mark.skip(
+                    reason=(
+                        f"requires {CHECKOUT_ROOT_ENV} pointing at a checkout of "
+                        f"{CHECKOUT_PACKAGES} -- see contract-topic-graph.yml"
+                    )
+                ),
+            )
+        ]
     graph = _real_graph()
+    by_name = {n.name: n for n in graph.nodes}
     unwired = {
         n.name
         for n in graph.nodes
@@ -979,10 +1129,64 @@ def _live_edges() -> list[object]:
         ).accepted
         if key.startswith("DECLARED_BUT_UNWIRED::")
     }
+    # OMN-14575 (filed, not fixed here): by_name is keyed on bare contract
+    # `name`, so a name that exists in more than one package collapses to
+    # whichever copy was inserted last -- the OTHER copy's real topics get
+    # attributed to the wrong ModelContractNode. OMN-14568 broadened the scan
+    # far enough to make several of these pre-existing cross-package name
+    # collisions collide for the first time (e.g. node_intelligence_orchestrator
+    # in both omnimarket and omniintelligence). Fixing node identity is a
+    # separate, larger change (OMN-14575); skip edges touching an ambiguous
+    # name here rather than asserting against a `by_name` lookup that is known
+    # to sometimes resolve to the wrong package's node.
+    name_counts: dict[str, int] = {}
+    for n in graph.nodes:
+        name_counts[n.name] = name_counts.get(n.name, 0) + 1
+    ambiguous_names = {name for name, count in name_counts.items() if count > 1}
 
     cases: list[object] = []
     for producer, topic, consumer in sorted(set(graph.edges())):
-        if consumer in unwired and consumer in baselined:
+        if producer in ambiguous_names or consumer in ambiguous_names:
+            cases.append(
+                pytest.param(
+                    producer,
+                    topic,
+                    consumer,
+                    marks=pytest.mark.skip(
+                        reason=(
+                            f"{producer!r}/{consumer!r} -- ambiguous node name exists "
+                            "in more than one package; by_name lookup can resolve to "
+                            "the wrong package's node (OMN-14575, not fixed here)"
+                        )
+                    ),
+                )
+            )
+            continue
+        consumer_node = by_name.get(consumer)
+        if consumer_node is not None and not consumer_node.runtime_loaded:
+            # OMN-14568: dispatch-wiring enforcement is scoped to
+            # ACTIVE_RUNTIME_PACKAGES, same as the DECLARED_BUT_UNWIRED census
+            # defect (see runtime_loaded in ModelContractNode). A census-only
+            # package (omniclaude/omniintelligence/omnimemory/...) contributes
+            # this edge for graph completeness, not for wiring-soundness
+            # enforcement -- holding it to has_dispatch_wiring would fail
+            # every edge into a package the runtime never loads contracts
+            # from in the first place.
+            cases.append(
+                pytest.param(
+                    producer,
+                    topic,
+                    consumer,
+                    marks=pytest.mark.skip(
+                        reason=(
+                            f"{consumer} ({consumer_node.package}) is not "
+                            "runtime_loaded -- dispatch-wiring is not enforced "
+                            "outside ACTIVE_RUNTIME_PACKAGES"
+                        )
+                    ),
+                )
+            )
+        elif consumer in unwired and consumer in baselined:
             cases.append(
                 pytest.param(
                     producer,

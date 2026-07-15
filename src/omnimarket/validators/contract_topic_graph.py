@@ -26,18 +26,45 @@ no producer and no CLI dispatch path. The handler was alive, healthy, and
 starved for its entire life. Five green CI runs never noticed, because CI was
 never asked this question.
 
-Soundness requires the WHOLE graph
-----------------------------------
+Soundness requires the WHOLE graph -- and "whole" serves two different jobs
+----------------------------------------------------------------------------
 A partial graph invents false orphans: a topic whose producer lives in a repo
-you cannot see looks exactly like a topic nobody produces. This validator is
-therefore only sound where the entire active runtime surface is co-installed.
-Per ``omnibase_infra/docker/runtime-policy.env`` that surface is
-``ONEX_ACTIVE_RUNTIME_PACKAGES=omnibase_infra,omnimarket``, and omnimarket is the
-only repo that depends on omnibase_infra -- so omnimarket is the only place the
-graph is complete. :func:`discover_contract_roots` resolves those packages from
-the installed distributions (the same way ``runtime_host_process`` does) and
-:func:`build_graph` FAILS CLOSED if any required package is missing rather than
-reporting the false orphans a partial view would produce.
+you cannot see looks exactly like a topic nobody produces. That constraint
+means two different things depending on what the graph is being asked:
+
+1. **Defect-flagging soundness.** Per ``omnibase_infra/docker/runtime-policy.env``
+   the runtime only ever loads ``ONEX_ACTIVE_RUNTIME_PACKAGES=omnibase_infra,omnimarket``
+   (:data:`ACTIVE_RUNTIME_PACKAGES`), and omnimarket is the only repo that
+   depends on omnibase_infra -- so omnimarket's CI is where THOSE two packages'
+   nodes can be soundly flagged ``runtime_loaded`` and defect-checked.
+   :func:`build_graph` FAILS CLOSED if either is missing.
+2. **Census / edge-visibility completeness.** A topic produced only by a
+   package outside the graph looks exactly like an orphan to every consumer
+   the graph CAN see -- regardless of whether that outside package is itself
+   runtime-loaded. OMN-14527 shipped with only 3 of the ~9 topic-declaring
+   repos in :data:`GRAPH_PACKAGES` (``omnibase_infra``, ``omnibase_core``,
+   ``omnimarket``), which left ~410 of ~1,491 statically-declared topics
+   invisible (``omniclaude``, ``omniintelligence``) -- OMN-14568 closed that
+   gap. Packages added for census completeness are NEVER added to
+   :data:`ACTIVE_RUNTIME_PACKAGES`; they contribute producer/consumer edges
+   only and are never eligible for ``runtime_loaded`` / defect-flagging.
+
+:func:`discover_contract_roots` resolves :data:`ACTIVE_RUNTIME_PACKAGES` and
+the rest of the already-installed :data:`GRAPH_PACKAGES` from installed
+distributions (the same way ``runtime_host_process`` does -- these are all
+pip/uv dependencies of omnimarket, so CI pays nothing extra for them).
+``omniclaude`` and ``omniintelligence`` are NOT pip dependencies of
+omnimarket -- adding them as such would invert the repo-layering (omnimarket
+owns portable workflow packages; omniclaude is a Claude Code agent plugin)
+purely to read YAML text out of packaged ``contract.yaml`` files. Since
+:func:`parse_contract` only ever reads YAML -- it never imports or executes
+the package -- a checked-out source tree is sufficient. Those two resolve via
+``CONTRACT_GRAPH_CHECKOUT_ROOT``, an env var pointing at a directory
+containing a checkout of each (see :func:`discover_contract_roots`).
+:func:`build_graph` FAILS CLOSED if ANY package in :data:`GRAPH_PACKAGES` --
+installed or checkout-tier -- cannot be resolved, rather than silently
+reporting a smaller graph as clean. A silent partial is exactly how this
+census went blind the first time.
 
 Ratchet, not a big bang
 -----------------------
@@ -53,6 +80,10 @@ Usage::
     python -m omnimarket.validators.contract_topic_graph            # gate (ratcheted)
     python -m omnimarket.validators.contract_topic_graph --report   # full census
     python -m omnimarket.validators.contract_topic_graph --write-baseline
+
+    # Full coverage requires the checkout-tier packages (see CHECKOUT_PACKAGES):
+    CONTRACT_GRAPH_CHECKOUT_ROOT=/path/to/checkouts \\
+        python -m omnimarket.validators.contract_topic_graph --report
 """
 
 from __future__ import annotations
@@ -71,13 +102,46 @@ import yaml
 from pydantic import BaseModel, ConfigDict, Field
 
 # The active runtime surface (omnibase_infra/docker/runtime-policy.env:64).
-# These are the packages whose contracts the runtime host actually loads.
+# These are the packages whose contracts the runtime host actually loads, and
+# the ONLY packages whose nodes are ever eligible for runtime_loaded=True /
+# defect-flagging (see the module docstring, "Defect-flagging soundness").
 ACTIVE_RUNTIME_PACKAGES: tuple[str, ...] = ("omnibase_infra", "omnimarket")
 
-# Contracts contribute to the graph from any of these packages. omnibase_core
-# ships a handful of node contracts that participate as producers/consumers even
-# though core itself is not an "active runtime package".
-GRAPH_PACKAGES: tuple[str, ...] = ("omnibase_infra", "omnibase_core", "omnimarket")
+# Resolved via importlib.util.find_spec against packages installed in the
+# omnimarket venv (pip/uv dependencies already paid for by `uv sync`). Beyond
+# the two active-runtime packages, these ship node contracts that participate
+# as producers/consumers -- their edges matter for census completeness even
+# though none of these packages is itself "active runtime".
+INSTALLED_PACKAGES: tuple[str, ...] = (
+    "omnibase_infra",
+    "omnibase_core",
+    "omnimarket",
+    "omnibase_spi",
+    "omnibase_compat",
+    "onex_change_control",
+    "omnimemory",
+)
+
+# Resolved via a filesystem checkout, NOT an import (see
+# discover_contract_roots / CONTRACT_GRAPH_CHECKOUT_ROOT). These are NOT pip
+# dependencies of omnimarket and never will be -- omnimarket owning a hard
+# runtime dependency on omniclaude (a Claude Code agent plugin) purely to read
+# packaged YAML would invert the repo-layering. parse_contract only reads
+# text, so a checkout is sufficient; no import, no code execution, no new
+# dependency. These packages are never in ACTIVE_RUNTIME_PACKAGES and so are
+# never runtime_loaded -- they contribute producer/consumer edges only.
+CHECKOUT_PACKAGES: tuple[str, ...] = ("omniclaude", "omniintelligence")
+
+# The full set the graph is expected to cover. build_graph() fails closed if
+# any of these cannot be resolved -- see the module docstring.
+GRAPH_PACKAGES: tuple[str, ...] = INSTALLED_PACKAGES + CHECKOUT_PACKAGES
+
+# Points at a directory containing a checkout of each CHECKOUT_PACKAGES repo
+# (e.g. CONTRACT_GRAPH_CHECKOUT_ROOT/omniclaude/, .../omniintelligence/). CI
+# populates this via extra actions/checkout steps at origin/dev HEAD -- this
+# is a wiring-reconciliation oracle, so tracking dev's moving HEAD (rather
+# than a pinned SHA) is the correct behavior, not a determinism bug.
+CHECKOUT_ROOT_ENV = "CONTRACT_GRAPH_CHECKOUT_ROOT"
 
 # onex.<kind>.<producer>.<event-name>.<version>
 _TOPIC_RE = re.compile(r"^onex\.(evt|cmd|intent|dlq)\.[a-z0-9._-]+\.v\d+$")
@@ -383,11 +447,18 @@ def _load_catalog_ingress_nodes(root: Path) -> frozenset[str]:
 
 
 def discover_contract_roots() -> dict[str, Path]:
-    """Resolve each graph package to its installed on-disk root.
+    """Resolve every graph package to its on-disk root -- two different ways.
 
-    Mirrors ``runtime_host_process._discover_package_node_contracts``: contracts
-    ship as package data, so the installed distribution is the source of truth
-    and CI needs no checkout of the sibling repos.
+    :data:`INSTALLED_PACKAGES` resolve from the installed distribution, the
+    same way ``runtime_host_process._discover_package_node_contracts`` does:
+    contracts ship as package data, and these are all pip/uv dependencies of
+    omnimarket already, so CI needs no checkout for them.
+
+    :data:`CHECKOUT_PACKAGES` resolve from a filesystem checkout under
+    ``CONTRACT_GRAPH_CHECKOUT_ROOT`` instead. They are deliberately NOT pip
+    dependencies of omnimarket (see the module docstring), and
+    :func:`parse_contract` only ever reads YAML text -- never imports or
+    executes the package -- so a checkout is sufficient.
 
     FAILS CLOSED when ``PYTHONPATH`` is set. An ambient PYTHONPATH silently
     reroutes ``find_spec`` from the pinned wheel to a local canonical clone, so
@@ -409,11 +480,29 @@ def discover_contract_roots() -> dict[str, Path]:
         )
 
     roots: dict[str, Path] = {}
-    for package in GRAPH_PACKAGES:
+    for package in INSTALLED_PACKAGES:
         spec = importlib.util.find_spec(package)
         if spec is None or not spec.origin:
             continue
         roots[package] = Path(spec.origin).parent
+
+    checkout_root_raw = os.environ.get(CHECKOUT_ROOT_ENV)
+    if checkout_root_raw:
+        checkout_root = Path(checkout_root_raw)
+        for package in CHECKOUT_PACKAGES:
+            checkout = checkout_root / package
+            # Scope to the package's OWN src tree, never the raw repo checkout:
+            # a local dev checkout can carry its own .venv with OTHER packages
+            # vendored as installed dependencies inside it (e.g. omniclaude's
+            # .venv ships an installed omniintelligence), and rglob-ing the
+            # whole repo root would silently re-scan and mis-attribute those
+            # nested copies under this package's name -- duplicate nodes,
+            # inflated counts, and a real DISCONNECTED_SUBGRAPH false-positive
+            # from cross-linking two copies of the same contract.
+            src_layout = checkout / "src" / package
+            candidate = src_layout if src_layout.is_dir() else checkout
+            if candidate.is_dir():
+                roots[package] = candidate
     return roots
 
 
@@ -424,13 +513,32 @@ def build_graph(
     """Build the contract graph, failing closed on an incomplete package surface."""
     roots = roots if roots is not None else discover_contract_roots()
 
-    missing = [p for p in ACTIVE_RUNTIME_PACKAGES if p not in roots]
-    if missing:
+    missing_runtime = [p for p in ACTIVE_RUNTIME_PACKAGES if p not in roots]
+    if missing_runtime:
         raise RuntimeError(
             "Contract graph is UNSOUND without the full active runtime surface: "
-            f"missing {missing}. A partial graph reports every cross-package "
+            f"missing {missing_runtime}. A partial graph reports every cross-package "
             "producer as a phantom orphan. Run this where "
             f"{list(ACTIVE_RUNTIME_PACKAGES)} are co-installed (omnimarket)."
+        )
+
+    # Beyond runtime-soundness, the census must cover every topic-declaring
+    # package or it reinvents the exact blind spot OMN-14568 fixed: a topic
+    # whose producer lives in an unscanned package looks exactly like an
+    # orphan to every consumer the graph CAN see. No silent shrinking.
+    missing_census = [p for p in GRAPH_PACKAGES if p not in roots]
+    if missing_census:
+        missing_checkout = [p for p in missing_census if p in CHECKOUT_PACKAGES]
+        hint = (
+            f" Set {CHECKOUT_ROOT_ENV} to a directory containing a checkout of "
+            f"{missing_checkout} -- parse_contract only reads YAML, no import "
+            "or install required."
+            if missing_checkout
+            else ""
+        )
+        raise RuntimeError(
+            f"Contract graph is INCOMPLETE: missing package roots for {missing_census}."
+            f"{hint}"
         )
 
     nodes: list[ModelContractNode] = []
@@ -459,10 +567,54 @@ def build_graph(
     )
 
 
+def _nodes_by_name(
+    nodes: Sequence[ModelContractNode],
+) -> dict[str, list[ModelContractNode]]:
+    """Every node sharing a bare contract `name`, in declaration order.
+
+    OMN-14575: a bare `name` is not unique across packages --
+    node_intelligence_orchestrator exists in both omnimarket and
+    omniintelligence, node_skill_dispatch_engine_orchestrator in both
+    omnimarket and omniclaude (real, pre-existing duplicates, surfaced once
+    OMN-14568 broadened the scan far enough to see both copies at once). A
+    single ``{name: node}`` dict silently collapses to whichever copy sorts
+    last, attributing one package's topics to the OTHER package's
+    runtime_loaded flag. Keep every candidate so callers can disambiguate by
+    which one actually declares the topic in question.
+    """
+    out: dict[str, list[ModelContractNode]] = {}
+    for node in nodes:
+        out.setdefault(node.name, []).append(node)
+    return out
+
+
+def _resolve_node_for_topic(
+    by_name: dict[str, list[ModelContractNode]],
+    name: str,
+    topic: str,
+    *,
+    consumer: bool,
+) -> ModelContractNode | None:
+    """The node that actually declares `topic` under `name`.
+
+    When `name` is unambiguous this is just a dict lookup. When it collides
+    across packages (see :func:`_nodes_by_name`), pick the candidate that
+    genuinely subscribes/publishes `topic` -- not an arbitrary one that merely
+    happens to share the name.
+    """
+    candidates = by_name.get(name, [])
+    if len(candidates) == 1:
+        return candidates[0]
+    for node in candidates:
+        if topic in (node.subscribe_topics if consumer else node.publish_topics):
+            return node
+    return candidates[0] if candidates else None
+
+
 def find_defects(graph: ModelTopicGraph) -> list[ModelGraphFinding]:
     """Every static defect the graph can prove, without a broker."""
     findings: list[ModelGraphFinding] = []
-    by_name = {n.name: n for n in graph.nodes}
+    by_name = _nodes_by_name(graph.nodes)
 
     externally_consumed: set[str] = set()
     for node in graph.nodes:
@@ -476,7 +628,9 @@ def find_defects(graph: ModelTopicGraph) -> list[ModelGraphFinding]:
         if graph.is_reachable(topic):
             continue
         for consumer in graph.consumers[topic]:
-            consumer_node = by_name.get(consumer)
+            consumer_node = _resolve_node_for_topic(
+                by_name, consumer, topic, consumer=True
+            )
             if consumer_node is None or not consumer_node.runtime_loaded:
                 continue
             findings.append(
@@ -498,7 +652,9 @@ def find_defects(graph: ModelTopicGraph) -> list[ModelGraphFinding]:
         if graph.consumers.get(topic) or topic in externally_consumed:
             continue
         for producer in graph.producers[topic]:
-            producer_node = by_name.get(producer)
+            producer_node = _resolve_node_for_topic(
+                by_name, producer, topic, consumer=False
+            )
             if producer_node is None or not producer_node.runtime_loaded:
                 continue
             findings.append(
@@ -542,7 +698,7 @@ def find_defects(graph: ModelTopicGraph) -> list[ModelGraphFinding]:
 
 
 def _find_disconnected_subgraphs(
-    graph: ModelTopicGraph, by_name: dict[str, ModelContractNode]
+    graph: ModelTopicGraph, by_name: dict[str, list[ModelContractNode]]
 ) -> list[ModelGraphFinding]:
     """Weakly-connected components containing no reachable entry point.
 
@@ -576,6 +732,14 @@ def _find_disconnected_subgraphs(
     forms its own singleton component (already excluded below) or produces
     nothing to flag; a zero-subscription node whose ``publish_topics``
     nobody consumes is still caught separately by ``ORPHANED_PRODUCER``.
+
+    KNOWN RESIDUAL (OMN-14575): the adjacency/component identity here is still
+    bare-name-keyed, so a name collision across packages can still conflate
+    two distinct nodes into one graph vertex (unlike the ORPHANED_CONSUMER/
+    ORPHANED_PRODUCER checks above, which now disambiguate by topic). Not
+    fixed here -- none of OMN-14568's 11 misattributed findings were this
+    class; fixing this fully needs the adjacency graph itself keyed on
+    (package, name), a larger change than this ticket's scope.
     """
     adjacency: dict[str, set[str]] = {n.name: set() for n in graph.nodes}
     for producer, _topic, consumer in graph.edges():
@@ -606,7 +770,8 @@ def _find_disconnected_subgraphs(
 
         has_entry = False
         for member in component:
-            member_node = by_name.get(member)
+            member_candidates = by_name.get(member, [])
+            member_node = member_candidates[0] if member_candidates else None
             if member_node is None:
                 continue
             if member_node.command_topic is not None:
@@ -639,11 +804,12 @@ def _find_disconnected_subgraphs(
                 break
 
         if not has_entry:
+            leader = min(component)
             findings.append(
                 ModelGraphFinding(
                     defect="DISCONNECTED_SUBGRAPH",
-                    node=min(component),
-                    package=by_name[min(component)].package,
+                    node=leader,
+                    package=by_name[leader][0].package,
                     detail=(
                         f"{len(component)} internally-wired nodes with NO inbound edge from the "
                         f"rest of the platform and no entry point: {sorted(component)} — "

@@ -36,11 +36,11 @@ from omnimarket.nodes.node_delegation_orchestrator.enums import EnumDelegationSt
 from omnimarket.nodes.node_delegation_orchestrator.handlers.handler_delegation_workflow import (
     HandlerDelegationWorkflow,
 )
-from omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_event import (
-    ModelDelegationEvent,
-)
 from omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_request import (
     ModelDelegationRequest,
+)
+from omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_result import (
+    ModelDelegationResult,
 )
 from omnimarket.nodes.node_delegation_orchestrator.models.model_inference_response_data import (
     ModelInferenceResponseData,
@@ -153,9 +153,9 @@ class TestCumulativeCostAccumulationOmn13408:
         events = handler.handle_gate_result(_make_gate_pass(cid))
         assert handler.workflows[cid].state == EnumDelegationState.COMPLETED
 
-        delegation_events = [e for e in events if isinstance(e, ModelDelegationEvent)]
+        delegation_events = [e for e in events if isinstance(e, ModelDelegationResult)]
         assert len(delegation_events) == 1
-        result = delegation_events[0].payload
+        result = delegation_events[0]
 
         # OMN-13408 invariants: cumulative costs must NOT be stuck at 0
         assert result.cumulative_attempt_cost > 0.0, (
@@ -209,9 +209,9 @@ class TestCumulativeCostAccumulationOmn13408:
         )
         assert handler.workflows[cid].state == EnumDelegationState.FAILED
 
-        delegation_events = [e for e in events if isinstance(e, ModelDelegationEvent)]
+        delegation_events = [e for e in events if isinstance(e, ModelDelegationResult)]
         assert len(delegation_events) == 1
-        result = delegation_events[0].payload
+        result = delegation_events[0]
 
         # OMN-13408 invariants on the failed terminal path
         assert result.cumulative_attempt_cost > 0.0, (
@@ -236,9 +236,9 @@ class TestCumulativeCostAccumulationOmn13408:
         events = handler.handle_gate_result(_make_gate_pass(cid))
         assert handler.workflows[cid].state == EnumDelegationState.COMPLETED
 
-        delegation_events = [e for e in events if isinstance(e, ModelDelegationEvent)]
+        delegation_events = [e for e in events if isinstance(e, ModelDelegationResult)]
         assert len(delegation_events) == 1
-        result = delegation_events[0].payload
+        result = delegation_events[0]
 
         # free_local is legitimately 0 — but token counts must still be populated
         assert result.cumulative_attempt_cost == pytest.approx(0.0)
@@ -261,9 +261,7 @@ class TestCumulativeCostAccumulationOmn13408:
             _make_inference_response(cid_m, prompt, completion)
         )
         events_m = handler_m.handle_gate_result(_make_gate_pass(cid_m))
-        result_m = next(
-            e.payload for e in events_m if isinstance(e, ModelDelegationEvent)
-        )
+        result_m = next(e for e in events_m if isinstance(e, ModelDelegationResult))
 
         handler_f = HandlerDelegationWorkflow()
         cid_f = uuid4()
@@ -273,9 +271,7 @@ class TestCumulativeCostAccumulationOmn13408:
             _make_inference_response(cid_f, prompt, completion)
         )
         events_f = handler_f.handle_gate_result(_make_gate_pass(cid_f))
-        result_f = next(
-            e.payload for e in events_f if isinstance(e, ModelDelegationEvent)
-        )
+        result_f = next(e for e in events_f if isinstance(e, ModelDelegationResult))
 
         assert result_m.cumulative_attempt_cost > result_f.cumulative_attempt_cost
         assert result_f.cumulative_attempt_cost == pytest.approx(0.0)

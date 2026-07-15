@@ -37,6 +37,8 @@ from pydantic import ValidationError
 from omnimarket.enums.enum_cost_basis import EnumCostBasis
 from omnimarket.enums.enum_delegation_failure_class import EnumDelegationFailureClass
 from omnimarket.enums.enum_usage_source import EnumUsageSource
+from omnimarket.events.llm_delegation_call import ModelLlmDelegationCallRequest
+from omnimarket.events.swarm_fanout import ModelSwarmFanoutResult
 from omnimarket.models.delegation.llm_cost_routing.model_llm_delegation_all_tiers_failed_event import (
     ModelLlmDelegationAllTiersFailedEvent,
 )
@@ -45,12 +47,6 @@ from omnimarket.models.delegation.llm_cost_routing.model_llm_delegation_complete
 )
 from omnimarket.models.delegation.llm_cost_routing.model_llm_delegation_escalation_triggered_event import (
     ModelLlmDelegationEscalationTriggeredEvent,
-)
-from omnimarket.nodes.node_llm_delegation_call_effect.models.model_llm_delegation_call_request import (
-    ModelLlmDelegationCallRequest,
-)
-from omnimarket.nodes.node_swarm_fanout_orchestrator.models.model_swarm_fanout_result import (
-    ModelSwarmFanoutResult,
 )
 from omnimarket.nodes.node_swarm_subtask_state_reducer.handlers.handler_swarm_subtask_state import (
     HandlerSwarmSubtaskState,

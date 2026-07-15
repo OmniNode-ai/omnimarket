@@ -599,10 +599,22 @@ repos:
       # lines with SPACES, which silently breaks the alternation and makes this
       # hook match nothing — it reports "no files to check" and Skips, so the gate
       # looks green while never having run.
+      # OMN-14568: full census coverage also requires omniclaude/omniintelligence,
+      # which resolve via CONTRACT_GRAPH_CHECKOUT_ROOT (a filesystem checkout, not
+      # a pip dependency -- see contract_topic_graph.py). Every developer on this
+      # workspace already has both as siblings under $OMNI_HOME (the canonical
+      # repo registry convention, CLAUDE.md), so that's the local default. This
+      # intentionally still fails closed (not a silent fallback) if OMNI_HOME
+      # itself is unset -- the same env var every other worktree command in this
+      # repo already requires.
       - id: contract-topic-graph
         name: Contract topic graph (orphaned consumers/producers, dead chains)
         language: system
-        entry: env -u PYTHONPATH uv run python -m omnimarket.validators.contract_topic_graph
+        # bash -c, not a bare argv entry: ${OMNI_HOME:?...} parameter expansion
+        # only happens under an actual shell (pre-commit runs `system` entries
+        # via shlex-split argv otherwise) -- see the mypy hook below for the
+        # same pattern.
+        entry: bash -c 'env -u PYTHONPATH CONTRACT_GRAPH_CHECKOUT_ROOT="${OMNI_HOME:?set OMNI_HOME to the omni_home path}" uv run python -m omnimarket.validators.contract_topic_graph'
         files: ^(src/omnimarket/nodes/.*/contract\.yaml|src/omnimarket/validators/(contract_topic_graph\.py|data/contract_topic_graph_baseline\.yaml))$
         pass_filenames: false
         stages: [pre-commit]

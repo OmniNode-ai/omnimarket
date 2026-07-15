@@ -81,6 +81,64 @@ def _stable_cloud_escalation_route(
 
     monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
     monkeypatch.setenv("LLM_GLM_API_KEY", "test-glm-key")
+    monkeypatch.setenv("GEMINI_API_KEY", "test-gemini-key")
+    bifrost_contract = tmp_path / "bifrost_delegation.yaml"
+    bifrost_contract.write_text(
+        yaml.safe_dump(
+            {
+                "config_version": "2.0.0",
+                "schema_version": "bifrost_delegation.v1",
+                "backends": [
+                    {
+                        "backend_id": "local-coder",
+                        "endpoint_url": (
+                            "http://100.109.203.94:8000/v1/chat/completions"
+                        ),
+                        "model_name": "Qwen3.6-35B-A3B",
+                        "tier": "local",
+                        "timeout_ms": 60000,
+                        "max_tokens": 65536,
+                        "capabilities": ["code_generation"],
+                    },
+                    {
+                        "backend_id": "cloud-gemini-pro",
+                        "endpoint_url": (
+                            "https://generativelanguage.googleapis.com/v1beta/openai/"
+                            "chat/completions"
+                        ),
+                        "model_name": "gemini-2.5-flash",
+                        "api_key_env": "GEMINI_API_KEY",
+                        "tier": "cheap_cloud",
+                        "timeout_ms": 60000,
+                        "max_tokens": 65536,
+                        "capabilities": ["code_generation"],
+                    },
+                ],
+                "routing_rules": [
+                    {
+                        "rule_id": "d4e5f6a7-0001-4000-8000-000000000001",
+                        "priority": 10,
+                        "task_class": "code_generation",
+                        "task_class_contract_version": "1.0.0",
+                        "backend_policy_version": "2.0.0",
+                        "match_operation_types": ["chat_completion"],
+                        "match_capabilities": ["code_generation"],
+                        "backend_ids": ["local-coder", "cloud-gemini-pro"],
+                        "fallback_policy": {
+                            "action": "escalate_to_next_tier",
+                            "max_retries": 1,
+                            "on_exhaust": "return_error",
+                        },
+                        "shadow_policy_id": "e5f6a7b8-0001-4000-8000-000000000001",
+                    }
+                ],
+                "default_backends": ["local-coder", "cloud-gemini-pro"],
+            },
+            sort_keys=False,
+        )
+    )
+    monkeypatch.setenv("BIFROST_CONTRACT_PATH", str(bifrost_contract))
+    monkeypatch.setenv("BIFROST_OVERLAY_PATH", str(tmp_path / "__no_overlay__.yaml"))
     secret_config = tmp_path / "secret_resolver.yaml"
     secret_config.write_text(
         yaml.safe_dump(
