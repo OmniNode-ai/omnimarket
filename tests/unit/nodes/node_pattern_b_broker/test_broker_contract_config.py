@@ -82,6 +82,26 @@ def test_broker_config_rejects_bool_timeout_field(tmp_path: Path) -> None:
 
 
 @pytest.mark.unit
+def test_broker_config_binds_declared_terminal_topics_to_contract_literals() -> None:
+    """Pin the contract's declared terminal ``publish_topics`` output states
+    (``onex.evt.omniclaude.delegation-completed.v1`` /
+    ``onex.evt.omniclaude.delegation-failed.v1``) to the runtime-bound config
+    values so the contract-state-coverage gate (OMN-13781) has a real,
+    non-vacuous assertion for both — not just an index-based comparison
+    against the raw YAML."""
+    config = load_pattern_b_broker_config(_BROKER_CONTRACT)
+
+    assert (
+        config.topics.terminal_completed_topic
+        == "onex.evt.omniclaude.delegation-completed.v1"
+    )
+    assert (
+        config.topics.terminal_failed_topic
+        == "onex.evt.omniclaude.delegation-failed.v1"
+    )
+
+
+@pytest.mark.unit
 def test_config_adapter_does_not_own_topic_literals() -> None:
     source = _CONFIG_ADAPTER.read_text(encoding="utf-8")
 
