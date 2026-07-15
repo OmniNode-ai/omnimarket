@@ -594,7 +594,9 @@ repos:
       # Sound ONLY where the whole active runtime surface (omnibase_infra +
       # omnimarket) is co-installed — a partial graph reports every cross-package
       # producer as a phantom orphan, so build_graph() fails closed instead of
-      # answering wrongly. SYNC with .github/workflows/contract-topic-graph.yml.
+      # answering wrongly. SYNC with the `contract-topic-graph` job in
+      # .github/workflows/ci.yml (moved there under OMN-14582; the standalone
+      # contract-topic-graph.yml is retired).
       # NOTE: single-line regex on purpose. A YAML folded scalar (>-) joins its
       # lines with SPACES, which silently breaks the alternation and makes this
       # hook match nothing — it reports "no files to check" and Skips, so the gate

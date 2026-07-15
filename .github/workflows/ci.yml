@@ -1475,10 +1475,105 @@ jobs:
             --allowlist .onex_ratchets/noncanonical_class_allowlist.yaml \
             src/omnimarket
 
+  # ============================================================================
+  # CONTRACT TOPIC GRAPH (OMN-14527 / OMN-14568 / OMN-14582)
+  # Static producer/consumer oracle over EVERY topic-declaring package. Moved
+  # here from the standalone contract-topic-graph.yml (retired) because GHA
+  # `needs:` cannot cross workflow-file boundaries -- CI Summary can only
+  # depend on jobs defined in THIS file.
+  #
+  # OMN-14582 Phase 1: unconditional (no needs/if), mirroring
+  # no-noncanonical-lifecycle-classes exactly, so it never silently skips --
+  # but wired into CI Summary's LOOSE loop only (skipped-or-success passes)
+  # for now, NOT the strict success-only check. Promoting it to strict
+  # (the actual merge-blocking flip) is OMN-14582 Phase 2, gated on Phase 1
+  # proving out reliable on real PRs first.
+  # ============================================================================
+  contract-topic-graph:
+    name: contract-topic-graph
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      CONTRACT_GRAPH_CHECKOUT_ROOT: ${{ github.workspace }}/.contract-graph-checkouts
+    steps:
+      # fetch-depth: 0 (full history) is required so the baseline ratchet can
+      # resolve the merge-base with the target branch -- a shallow clone
+      # cannot prove a baseline addition predates this PR.
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      # Census-only siblings (OMN-14568): NOT pip dependencies, just checked
+      # out so parse_contract can read their contract.yaml text. See
+      # CHECKOUT_PACKAGES / CONTRACT_GRAPH_CHECKOUT_ROOT in
+      # contract_topic_graph.py.
+      - name: Checkout omniclaude (census-only, full topic coverage)
+        uses: actions/checkout@v4
+        with:
+          repository: OmniNode-ai/omniclaude
+          ref: dev
+          persist-credentials: false
+          path: .contract-graph-checkouts/omniclaude
+
+      - name: Checkout omniintelligence (census-only, full topic coverage)
+        uses: actions/checkout@v4
+        with:
+          repository: OmniNode-ai/omniintelligence
+          ref: dev
+          persist-credentials: false
+          path: .contract-graph-checkouts/omniintelligence
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          enable-cache: true
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: Install dependencies
+        run: uv sync --all-extras
+
+      # Fail closed on ANY missing package -- both the runtime-soundness pair
+      # (ACTIVE_RUNTIME_PACKAGES) and the full census scope (GRAPH_PACKAGES).
+      # A silent partial here is exactly how OMN-14527 shipped scoped to 3 of
+      # 9 topic-declaring packages for months with nothing erroring -- assert
+      # completeness loudly so a broken checkout or a dependency change
+      # surfaces as a gate failure, never as silence.
+      - name: Assert the graph surface is complete (fail closed)
+        run: |
+          uv run python - <<'PY'
+          from omnimarket.validators.contract_topic_graph import (
+              GRAPH_PACKAGES,
+              discover_contract_roots,
+          )
+
+          roots = discover_contract_roots()
+          missing = [p for p in GRAPH_PACKAGES if p not in roots]
+          if missing:
+              raise SystemExit(
+                  f"::error::Contract graph is INCOMPLETE — missing {missing}. "
+                  "A partial graph reports every cross-package producer as a phantom "
+                  "orphan. Restore the dependency/checkout or move this gate."
+              )
+          print(f"Graph surface complete: {sorted(roots)}")
+          PY
+
+      - name: Contract topic graph gate (ratcheted)
+        run: uv run python -m omnimarket.validators.contract_topic_graph
+
+      - name: Golden-chain tests (generated per edge)
+        run: uv run pytest tests/validators/test_contract_topic_graph.py -q
+
+      - name: Census (informational)
+        if: always()
+        run: uv run python -m omnimarket.validators.contract_topic_graph --report || true
+
   ci-summary:
     name: CI Summary
     runs-on: ubuntu-latest
-    needs: [occ-preflight, zone-filter, lint, typecheck, detect-changes, test, integration-guard, topic-naming-lint, runtime-sweep, compliance-sweep, core-only-install, contract-compliance, contract-sweep-gate, e2e-workflow-runner, golden-chains, sea-e2e-chains, generated-node-golden-chain, dep-health, uv-lock-pin-reachability, aislop-sweep, coverage-sweep-gate, workflow-module-refs, no-noncanonical-lifecycle-classes, event-registry-drift, topic-drift-check, topic-enum-drift]
+    needs: [occ-preflight, zone-filter, lint, typecheck, detect-changes, test, integration-guard, topic-naming-lint, runtime-sweep, compliance-sweep, core-only-install, contract-compliance, contract-sweep-gate, e2e-workflow-runner, golden-chains, sea-e2e-chains, generated-node-golden-chain, dep-health, uv-lock-pin-reachability, aislop-sweep, coverage-sweep-gate, workflow-module-refs, no-noncanonical-lifecycle-classes, event-registry-drift, topic-drift-check, topic-enum-drift, contract-topic-graph]
     if: always()
     steps:
       - name: Check CI results
@@ -1508,7 +1603,8 @@ jobs:
             "uv-lock-pin-reachability=${{ needs.uv-lock-pin-reachability.result }}" \
             "aislop-sweep=${{ needs.aislop-sweep.result }}" \
             "coverage-sweep-gate=${{ needs.coverage-sweep-gate.result }}" \
-            "workflow-module-refs=${{ needs.workflow-module-refs.result }}"; do
+            "workflow-module-refs=${{ needs.workflow-module-refs.result }}" \
+            "contract-topic-graph=${{ needs.contract-topic-graph.result }}"; do
             NAME="${check%%=*}"
             RESULT="${check##*=}"
             if [ "$RESULT" != "success" ] && [ "$RESULT" != "skipped" ]; then
@@ -1518,6 +1614,13 @@ jobs:
               echo "$NAME: $RESULT"
             fi
           done
+
+          # OMN-14582 Phase 1: contract-topic-graph is deliberately in the loose
+          # loop above (success||skipped both pass), NOT given the strict
+          # treatment below yet. Promoting it to strict (the actual
+          # merge-blocking flip) is Phase 2, gated on Phase 1 proving reliable
+          # across several real PRs first -- do not move it up without that
+          # evidence and an explicit go-ahead (see OMN-14582).
 
           # OMN-14350: strict fail-closed gate on the non-canonical lifecycle-class
           # ratchet. Unlike the loop above (success||skipped both pass), the ratchet
