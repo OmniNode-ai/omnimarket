@@ -176,6 +176,9 @@ class TestArchitectureGraphPopulateEffect:
         # Should generate an ONEXNode for the node
         onex_nodes = [n for n in node_specs if n.label == "ONEXNode"]
         assert len(onex_nodes) == 1
+        # OMN-14571: node_id is repo-qualified (the graph identity key);
+        # properties["name"] stays the bare contract name for display/lookup.
+        assert onex_nodes[0].node_id == "omnimarket::node_sample_effect"
         assert onex_nodes[0].properties["name"] == "node_sample_effect"
         assert onex_nodes[0].properties["repo"] == "omnimarket"
 
@@ -189,9 +192,88 @@ class TestArchitectureGraphPopulateEffect:
         assert len(sub_edges) == 1
         assert len(pub_edges) == 1
 
+        # OMN-14571: sub/pub edges (and the CONTAINS edge from Repository)
+        # must attach to the repo-qualified ONEXNode id, not the bare name —
+        # otherwise MERGE would attach the edge to a different node than the
+        # one this same parse just created.
+        contains_edges = [e for e in edge_specs if e.edge_type == "CONTAINS"]
+        assert contains_edges[0].target_id == "omnimarket::node_sample_effect"
+        assert sub_edges[0].source_id == "omnimarket::node_sample_effect"
+        assert pub_edges[0].source_id == "omnimarket::node_sample_effect"
+
         # All contract-derived edges must be authoritative
         for edge in sub_edges + pub_edges:
             assert edge.source_authority == "authoritative"
+
+    async def test_same_named_node_in_two_repos_stays_distinct(self) -> None:
+        """OMN-14571 regression test — prove the identity-collision FIX, not
+        just that the code runs on a collision-free input.
+
+        Root cause (fixed here): ONEXNode.node_id was the bare contract
+        `name`, so MERGE (n:ONEXNode {node_id: ...}) collapsed two repos'
+        same-named nodes into one — the real, confirmed case being
+        node_delegation_orchestrator existing in BOTH omnimarket and
+        omniclaude. A green run against a single-repo/no-collision fixture
+        proves nothing (feedback_prove_red_against_exists_but_wrong); this
+        drives the actual collision scenario and asserts it resolves to TWO
+        distinct node_ids, not one merged record.
+        """
+        handler, _ = _make_handler_with_mock_driver()
+
+        shared_contract = {
+            "name": "node_delegation_orchestrator",
+            "node_type": "orchestrator",
+            "event_bus": {
+                "subscribe_topics": ["onex.cmd.shared.delegate.v1"],
+                "publish_topics": ["onex.evt.shared.delegated.v1"],
+            },
+        }
+
+        omnimarket_nodes, omnimarket_edges = handler._parse_contract_data(
+            repo="omnimarket",
+            node_name="node_delegation_orchestrator",
+            contract=shared_contract,
+        )
+        omniclaude_nodes, omniclaude_edges = handler._parse_contract_data(
+            repo="omniclaude",
+            node_name="node_delegation_orchestrator",
+            contract=shared_contract,
+        )
+
+        omnimarket_onex = next(n for n in omnimarket_nodes if n.label == "ONEXNode")
+        omniclaude_onex = next(n for n in omniclaude_nodes if n.label == "ONEXNode")
+
+        # The actual regression: pre-fix these two would be the SAME node_id
+        # (both "node_delegation_orchestrator"), so a MERGE against either
+        # would collapse into one node holding a mix of both repos' edges.
+        assert omnimarket_onex.node_id != omniclaude_onex.node_id
+        assert omnimarket_onex.node_id == "omnimarket::node_delegation_orchestrator"
+        assert omniclaude_onex.node_id == "omniclaude::node_delegation_orchestrator"
+
+        # Each repo's edges must attach to that repo's own node_id — proving
+        # a downstream topic_wiring-style query keyed on node_id would
+        # correctly attribute publishers/subscribers per repo, not merge them.
+        omnimarket_pub = next(
+            e for e in omnimarket_edges if e.edge_type == "PUBLISHES_TO"
+        )
+        omniclaude_pub = next(
+            e for e in omniclaude_edges if e.edge_type == "PUBLISHES_TO"
+        )
+        assert omnimarket_pub.source_id == omnimarket_onex.node_id
+        assert omniclaude_pub.source_id == omniclaude_onex.node_id
+        assert omnimarket_pub.source_id != omniclaude_pub.source_id
+
+        # De-duplication (as the real handler does across a full multi-repo
+        # populate run) must NOT collapse these two distinct node_ids.
+        combined = omnimarket_nodes + omniclaude_nodes
+        seen: set[str] = set()
+        deduped = []
+        for n in combined:
+            if n.node_id not in seen:
+                seen.add(n.node_id)
+                deduped.append(n)
+        deduped_onex = [n for n in deduped if n.label == "ONEXNode"]
+        assert len(deduped_onex) == 2
 
     async def test_collect_contract_data_ignores_vendored_venv_copies(
         self, tmp_path: Path

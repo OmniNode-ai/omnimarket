@@ -467,9 +467,17 @@ class HandlerArchitectureGraphPopulate:
 
         node_type = contract.get("node_type", "unknown")
 
-        # ONEXNode for this node
+        # OMN-14571: node_id is repo-qualified — same pattern as PythonModule's
+        # f"{repo_name}::{dotted}" (see _collect_import_edges below). Before
+        # this fix, node_id was the bare contract `name`, and two repos
+        # declaring a node with the same name (e.g. node_delegation_orchestrator
+        # in both omnimarket and omniclaude) MERGEd into a single ONEXNode,
+        # silently collapsing their PUBLISHES_TO/SUBSCRIBES_TO/CONTAINS edges.
+        # `properties["name"]` keeps the bare node name for display/lookup-by-
+        # name; `node_id` is the graph identity key.
+        onex_node_id = f"{repo}::{node_name}"
         onex_node = ModelGraphNodeSpec(
-            node_id=node_name,
+            node_id=onex_node_id,
             label=_LABEL_ONEX_NODE,
             properties={
                 "name": node_name,
@@ -483,7 +491,7 @@ class HandlerArchitectureGraphPopulate:
         edges.append(
             ModelGraphEdgeSpec(
                 source_id=repo,
-                target_id=node_name,
+                target_id=onex_node_id,
                 edge_type="CONTAINS",
                 source_authority="authoritative",
             )
@@ -504,7 +512,7 @@ class HandlerArchitectureGraphPopulate:
                 )
                 edges.append(
                     ModelGraphEdgeSpec(
-                        source_id=node_name,
+                        source_id=onex_node_id,
                         target_id=topic,
                         edge_type="SUBSCRIBES_TO",
                         source_authority="authoritative",
@@ -522,7 +530,7 @@ class HandlerArchitectureGraphPopulate:
                 )
                 edges.append(
                     ModelGraphEdgeSpec(
-                        source_id=node_name,
+                        source_id=onex_node_id,
                         target_id=topic,
                         edge_type="PUBLISHES_TO",
                         source_authority="authoritative",
