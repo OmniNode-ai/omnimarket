@@ -81,6 +81,7 @@ from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.occ_evidence_stamp i
     render_ci_check_receipt,
     render_companion_contract,
     render_downstream_receipt,
+    render_self_bind_dod_evidence_item,
     render_self_bind_receipt,
 )
 from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.occ_git_transport import (
@@ -330,15 +331,19 @@ class OccCompanionEmitter:
             },
         )
 
-        # OMN-14425: a second, falsifiable claim alongside the existence probe
-        # above — `gh pr checks` fails when the PR's CI fails, so it derives to
-        # proof tier L1 and satisfies the OMN-14409 contract substance floor.
-        # The existence probe is kept, not replaced; this adds a claim.
-        ci_probe_command = f"gh pr checks {pr_number} --repo {repo}"
+        # OMN-14425 / OMN-14650: a second, falsifiable claim alongside the
+        # existence probe above — the product PR's changed-file list. It derives
+        # proof tier L1 (static-assert family) and satisfies the OMN-14409
+        # substance floor WITHOUT gating on the source PR's CI being green (the
+        # deadlock the former `gh pr checks <source>` probe created). The
+        # existence probe is kept, not replaced; this adds a claim. `gh pr diff
+        # --name-only` is shlex-splittable so _observe_pr_probe can run it
+        # directly; the contract/receipt declare the full `| grep -q .` assertion.
+        ci_probe_command = f"gh pr diff {pr_number} --repo {repo} --name-only"
         ci_stdout, ci_exit = self._observe_pr_probe(
             probe_command=ci_probe_command,
             token=token,
-            fallback={"number": pr_number, "note": "ci status not observed"},
+            fallback={"number": pr_number, "note": "diff not observed"},
         )
 
         with tempfile.TemporaryDirectory(prefix="occ-companion-") as tmpdir:
@@ -462,19 +467,20 @@ class OccCompanionEmitter:
             )
 
             # Stage 2: self-binding receipt per ticket with the REAL OCC PR + head.
+            self_bind_evidence_id = f"occ-self-bind-pr-{occ_pr_number}"
             for ticket in tickets:
                 self_bind_dir = (
                     clone_dir
                     / "drift"
                     / "dod_receipts"
                     / ticket
-                    / f"occ-self-bind-pr-{occ_pr_number}"
+                    / self_bind_evidence_id
                 )
                 self_bind_dir.mkdir(parents=True, exist_ok=True)
                 (self_bind_dir / "command.yaml").write_text(
                     render_self_bind_receipt(
                         ticket_id=ticket,
-                        evidence_id=f"occ-self-bind-pr-{occ_pr_number}",
+                        evidence_id=self_bind_evidence_id,
                         occ_pr_number=occ_pr_number,
                         occ_repo=self._occ_repo,
                         run_timestamp=run_timestamp,
@@ -488,10 +494,24 @@ class OccCompanionEmitter:
                     ),
                     encoding="utf-8",
                 )
+                # OMN-14650: register the self-bind item in the contract's
+                # dod_evidence BEFORE recomputing contract_sha256, so
+                # validator_occ_merge_eligibility actually evaluates the self-bind
+                # receipt — the ONLY receipt bound to the OCC companion PR. Without
+                # this the receipt is written but never inspected and every auto/*
+                # companion fails eligibility with pr_ticket_mismatch. The rebind
+                # below then binds the self-bind receipt's per-entry hash (now that
+                # the entry exists) and the whole-file hash across ALL receipts.
+                self._append_self_bind_evidence(
+                    contract_paths[ticket],
+                    evidence_id=self_bind_evidence_id,
+                    occ_pr_number=occ_pr_number,
+                    ticket_id=ticket,
+                )
                 # Rebind contract hash across ALL matching receipts (friction #9).
                 self._rebind_all_receipts(clone_dir, ticket, contract_paths[ticket])
 
-            self._run_git(["git", "add", "drift"], cwd=str(clone_dir))
+            self._run_git(["git", "add", "contracts", "drift"], cwd=str(clone_dir))
             self._run_git(
                 [
                     "git",
@@ -659,6 +679,37 @@ class OccCompanionEmitter:
 
             if new_text != text:
                 receipt.write_text(new_text, encoding="utf-8")
+
+    def _append_self_bind_evidence(
+        self,
+        contract_path: Path,
+        *,
+        evidence_id: str,
+        occ_pr_number: int,
+        ticket_id: str,
+    ) -> None:
+        """Append the self-bind item to the contract's dod_evidence (OMN-14650).
+
+        The companion contract is rendered dod_evidence-terminal, so appending a
+        correctly-indented list item at EOF extends the list. Idempotent: a
+        ``synchronize`` re-fire regenerates the branch from a fresh clone of the
+        OCC default, so the contract is re-authored without the item and this
+        appends it again; the id-presence guard additionally protects against a
+        double-append within a single run. Must run BEFORE the whole-file/per-entry
+        rebind so the self-bind receipt binds to the final contract bytes.
+        """
+        text = contract_path.read_text(encoding="utf-8")
+        if f'- id: "{evidence_id}"' in text:
+            return  # already declared — do not append twice
+        if not text.endswith("\n"):
+            text += "\n"
+        text += render_self_bind_dod_evidence_item(
+            evidence_id=evidence_id,
+            occ_pr_number=occ_pr_number,
+            occ_repo=self._occ_repo,
+            ticket_id=ticket_id,
+        )
+        contract_path.write_text(text, encoding="utf-8")
 
     def _run_git(self, argv: list[str], *, cwd: str) -> str:
         # Delegates to the shared transport, which redacts any embedded

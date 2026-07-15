@@ -27,6 +27,7 @@ from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.occ_evidence_stamp i
     render_ci_check_receipt,
     render_companion_contract,
     render_downstream_receipt,
+    render_self_bind_dod_evidence_item,
     render_self_bind_receipt,
 )
 
@@ -119,10 +120,18 @@ class TestContractSubstanceFloor:
         )
 
     def test_second_item_check_value_is_not_an_existence_probe(self) -> None:
+        # OMN-14650: the second item is a product-diff-scope assertion (`gh pr
+        # diff ... --name-only | grep -q .`), NOT a source-CI-green probe. It
+        # still clears the OMN-14409 substance floor (static-assert family) and
+        # is not an existence probe.
         rendered = self._render()
-        ci_check_value = "gh pr checks 1721 --repo OmniNode-ai/omnimarket"
+        ci_check_value = (
+            "gh pr diff 1721 --repo OmniNode-ai/omnimarket --name-only | grep -q ."
+        )
         assert ci_check_value in rendered
         assert not _is_existence_probe_like_omn_14409(ci_check_value)
+        # Regression: the former `gh pr checks <source>` CI-green gate is gone.
+        assert "gh pr checks" not in rendered
 
     def test_second_item_id_derived_from_base_evidence_id(self) -> None:
         rendered = self._render()
@@ -209,11 +218,14 @@ class TestSelfBindReceiptRender:
         assert 'commit_sha: "def5678"' in rendered
         assert _NAMED_PLACEHOLDER_RE.findall(rendered) == []
 
-    def test_never_renders_contract_entry_sha256(self) -> None:
-        # OMN-14418 residual 3: a self-bind receipt's evidence_item_id
-        # ("occ-self-bind-pr-<n>") is never a declared dod_evidence item, so
-        # it must NOT carry a contract_entry_sha256 field — there is no entry
-        # for it to bind to.
+    def test_renders_contract_entry_sha256_pending_sentinel(self) -> None:
+        # OMN-14650: the self-bind receipt's evidence_item_id
+        # ("occ-self-bind-pr-<n>") is now APPENDED to the companion contract's
+        # dod_evidence as a declared item, so it MUST carry a rebindable
+        # contract_entry_sha256 sentinel (the per-entry scheme the proven merged
+        # path uses) alongside the whole-file contract_sha256. Before OMN-14650
+        # this field was deliberately omitted, which is exactly why every auto/*
+        # companion failed eligibility with pr_ticket_mismatch.
         rendered = render_self_bind_receipt(
             ticket_id="OMN-9999",
             evidence_id="occ-self-bind-pr-42",
@@ -226,7 +238,27 @@ class TestSelfBindReceiptRender:
             probe_stdout='{"number":42,"state":"OPEN"}',
             exit_code=0,
         )
-        assert "contract_entry_sha256" not in rendered
+        assert 'contract_entry_sha256: "sha256:PENDING"' in rendered
+        assert 'contract_sha256: "sha256:PENDING"' in rendered
+
+
+@pytest.mark.unit
+class TestSelfBindDodEvidenceItemRender:
+    def test_renders_declared_self_bind_contract_item(self) -> None:
+        rendered = render_self_bind_dod_evidence_item(
+            evidence_id="occ-self-bind-pr-42",
+            occ_pr_number=42,
+            occ_repo="OmniNode-ai/onex_change_control",
+            ticket_id="OMN-9999",
+        )
+
+        assert rendered.startswith('  - id: "occ-self-bind-pr-42"\n')
+        assert "OCC companion PR #42" in rendered
+        assert (
+            'check_value: "gh pr view 42 --repo OmniNode-ai/onex_change_control '
+            '--json number,state"' in rendered
+        )
+        assert _NAMED_PLACEHOLDER_RE.findall(rendered) == []
 
 
 @pytest.mark.unit
@@ -242,8 +274,8 @@ class TestCiCheckReceiptRender:
             run_timestamp="2026-07-10T00:00:00Z",
             commit_sha="abc1234",
             branch="auto/omninode-ai-omnimarket-pr-123-occ-autobind",
-            probe_command="gh pr checks 123 --repo OmniNode-ai/omnimarket",
-            probe_stdout='{"number":123,"note":"ci status not observed"}',
+            probe_command="gh pr diff 123 --repo OmniNode-ai/omnimarket --name-only",
+            probe_stdout='{"number":123,"note":"diff not observed"}',
             exit_code=0,
         )
 
@@ -254,10 +286,13 @@ class TestCiCheckReceiptRender:
         assert "status: PASS" in rendered
         assert "pr_number: 123" in rendered
         assert 'commit_sha: "abc1234"' in rendered
-        # The declared check is the CI-outcome probe, not the existence probe.
-        assert 'check_value: "gh pr checks 123 --repo OmniNode-ai/omnimarket"' in (
-            rendered
+        # OMN-14650: the declared check is a product-diff-scope assertion, not the
+        # former source-CI-green `gh pr checks` probe.
+        assert (
+            'check_value: "gh pr diff 123 --repo OmniNode-ai/omnimarket '
+            '--name-only | grep -q ."' in rendered
         )
+        assert "gh pr checks" not in rendered
         assert 'contract_sha256: "sha256:PENDING"' in rendered
 
     def test_no_unsubstituted_named_placeholders(self) -> None:
@@ -350,8 +385,8 @@ class TestContractEntrySha256Rebind:
         assert once == twice
 
     def test_rebind_is_noop_when_field_absent(self) -> None:
-        # Self-bind receipts never declare the field — rebinding must leave
-        # the text byte-for-byte unchanged, never fabricate the line.
+        # Legacy receipts may still lack the per-entry field — rebinding must
+        # leave that text byte-for-byte unchanged, never fabricate the line.
         receipt = 'ticket_id: "OMN-9999"\ncontract_sha256: "sha256:PENDING"\n'
         rebound = rebind_contract_entry_sha256_in_text(receipt, f"sha256:{'e' * 64}")
         assert rebound == receipt
