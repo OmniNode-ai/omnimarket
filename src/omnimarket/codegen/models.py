@@ -60,6 +60,13 @@ class ModelCodegenSpec(BaseModel):
     target_root: str = Field(
         default="", description="Directory the generated files are written under."
     )
+    correlation_id: str = Field(
+        default="",
+        description=(
+            "Run identity copied from the dispatch envelope at the def-B boundary "
+            "so the envelope-free orchestrator can seed reducer state."
+        ),
+    )
 
 
 class ModelGeneratedFile(BaseModel):

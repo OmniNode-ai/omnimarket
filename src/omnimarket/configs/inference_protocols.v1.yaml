@@ -55,10 +55,30 @@ profiles:
     request_options:
       reasoning_effort: none
 
+  # OMN-14626: task_types gate for the local Qwen no-think profile.
+  #
+  # Previously this profile matched ONLY via system_prompt_contains, which
+  # requires one of the four legacy phrases to appear verbatim in the system
+  # prompt. `_profile_matches` (protocol_config.py) checks task_types FIRST and
+  # short-circuits on it when a task_type is provided: `if profile.task_types:
+  # if task_type is not None: return task_type in profile.task_types`. A
+  # code_generation delegation call whose system prompt does not contain one of
+  # those phrases fell through the no-think gate entirely, leaving thinking ON
+  # for local Qwen3.6 (thinking-on by default) — the model burns the completion
+  # token budget on hidden chain-of-thought before it ever emits code. Adding
+  # task_types makes task_type authoritative for typed delegation calls, while
+  # system_prompt_contains remains the fallback for task_type=None callers (no
+  # regression to that path). Mirrors the sibling
+  # cloud-gemini-flash-no-think-code profile above.
   - profile_id: local-qwen-no-think
     enabled: true
     model_name_patterns:
       - "*qwen*"
+    task_types:
+      - "code_generation"
+      - "test"
+      - "validator_generation"
+      - "refactor"
     system_prompt_contains:
       - "test generation"
       - "test engineer"

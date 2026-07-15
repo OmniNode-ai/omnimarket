@@ -41,6 +41,7 @@ from pathlib import Path
 from uuid import uuid4
 
 import pytest
+import yaml
 from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
 from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
 from pydantic import BaseModel
@@ -53,6 +54,7 @@ from omnimarket.codegen.models import (
     ModelCodegenTypecheckOutcome,
     ModelCodegenValidationOutcome,
     ModelFileWriteCommand,
+    ModelFileWriteResult,
     ModelGeneratedCodeValidation,
     ModelLlmGenerateCommand,
     ModelLlmGenerateResult,
@@ -115,6 +117,37 @@ _ORCHESTRATOR_SUBSCRIBE = (
     _T_SERIALIZE_OUTCOME,
     _T_FILES_WRITTEN,
 )
+
+# def-B seam (OMN-14355/§6ii): the runtime validates each subscribe topic's wire
+# payload into the contract's per-topic event_model before calling handle(request),
+# and resolves each emitted model's publish topic from published_events. This
+# harness replicates BOTH so it drives the real def-B contract, not the old
+# envelope.event_type switch.
+_CONTRACT_PATH = (
+    Path(__file__).resolve().parents[3]
+    / "src"
+    / "omnimarket"
+    / "nodes"
+    / "node_hybrid_codegen_orchestrator"
+    / "contract.yaml"
+)
+_PUBLISHED = {
+    e["event_type"]: e["topic"]
+    for e in yaml.safe_load(_CONTRACT_PATH.read_text())["published_events"]
+}
+_TOPIC_TO_INPUT_MODEL: dict[str, type[BaseModel]] = {
+    _T_START: ModelCodegenSpec,
+    _T_LLM_GENERATED: ModelLlmGenerateResult,
+    _T_VALIDATION_OUTCOME: ModelCodegenValidationOutcome,
+    _T_TYPECHECK_OUTCOME: ModelCodegenTypecheckOutcome,
+    _T_SERIALIZE_OUTCOME: ModelCodegenSerializeOutcome,
+    _T_FILES_WRITTEN: ModelFileWriteResult,
+}
+
+
+def _resolve_emit_topic(model: BaseModel) -> str:
+    return _PUBLISHED[type(model).__name__.removeprefix("Model")]
+
 
 # The reducer emits one of three outcome types; each routes to its own topic.
 _OUTCOME_TOPIC: dict[type[BaseModel], str] = {
@@ -230,6 +263,8 @@ class _RealFactory:
     async def _publish(
         self, payload: BaseModel, topic: str, correlation_id: object
     ) -> None:
+        if isinstance(payload, ModelCodegenSpec):
+            payload = payload.model_copy(update={"correlation_id": str(correlation_id)})
         await self._bus.publish_envelope(
             ModelEventEnvelope(
                 payload=payload, correlation_id=correlation_id, event_type=topic
@@ -277,9 +312,10 @@ class _RealFactory:
     # -- subscribers (runtime role only) ---------------------------------
     async def _on_orchestrator(self, message: object) -> None:
         env = _decode(message)
-        output = await self.orchestrator.handle(env)
-        for emitted in output.events:
-            await self._bus.publish_envelope(emitted, emitted.event_type)
+        request = _TOPIC_TO_INPUT_MODEL[str(env.event_type)].model_validate(env.payload)
+        for emitted in self.orchestrator.handle(request):
+            topic = _resolve_emit_topic(emitted)
+            await self._publish(emitted, topic, env.correlation_id)
 
     async def _on_llm(self, message: object) -> None:
         env = _decode(message)

@@ -3,30 +3,39 @@
 """Tests for node_projection_baselines_quality — NC-03.
 
 Verifies that HandlerProjectionBaselinesQuality projects a
-ModelBaselinesComputedEvent into the baselines_quality_snapshots table with
-the correct quality summary fields.
+ModelBaselinesSnapshotEvent (the real producer contract) into the
+baselines_quality_snapshots table with the correct quality summary fields.
 
 Coverage:
-- Snapshot row is upserted with correct confidence tier counts
-- quality_score is computed as a weighted average of confidence tiers
-- recommend_rate is computed from patterns_recommended / patterns_compared
+- Snapshot row is upserted with correct confidence tier counts (derived
+  from breakdown.confidence, the real sample-sufficiency proxy)
+- quality_score is computed as the mean of comparison.treatment_success_rate
+- significant_rate is computed from patterns_significant / patterns_compared
 - Re-projection of the same snapshot_id upserts (not inserts) the row
-- Empty comparisons produce zero quality_score; zero patterns_compared gives 0.0 recommend_rate
+- Empty comparisons/breakdown produce zero-value rows
 - Contract declares the correct subscribe topic and projection_api snapshot topic
 - handle() shim delegates to project()
 """
 
 from __future__ import annotations
 
+from datetime import UTC, date, datetime
+from uuid import UUID
+
 import yaml
+from omnibase_infra.services.observability.baselines.models.model_baselines_breakdown_row import (
+    ModelBaselinesBreakdownRow,
+)
+from omnibase_infra.services.observability.baselines.models.model_baselines_comparison_row import (
+    ModelBaselinesComparisonRow,
+)
+from omnibase_infra.services.observability.baselines.models.model_baselines_snapshot_event import (
+    ModelBaselinesSnapshotEvent,
+)
 
 from omnimarket.nodes.node_projection_baselines_quality.handlers.handler_projection_baselines_quality import (
     HandlerProjectionBaselinesQuality,
-    ModelBaselinesComparison,
-    ModelBaselinesComputedEvent,
     ModelBaselinesQualityProjectionResult,
-    ModelBaselinesRecommendation,
-    ModelBaselinesRetryCount,
 )
 from omnimarket.projection.protocol_database import InmemoryDatabaseAdapter
 
@@ -34,56 +43,67 @@ _CONTRACT_PATH = "src/omnimarket/nodes/node_projection_baselines_quality/contrac
 
 HANDLER = HandlerProjectionBaselinesQuality()
 TABLE = "baselines_quality_snapshots"
+_NOW = datetime(2026, 6, 28, 10, 0, 0, tzinfo=UTC)
+_DEFAULT_SNAPSHOT_ID = UUID("11111111-2222-3333-4444-555555555555")
 
 
-def _full_event(snapshot_id: str = "snap-quality-001") -> ModelBaselinesComputedEvent:
-    return ModelBaselinesComputedEvent(
+def _comparison(
+    comp_id: str, treatment_success_rate: float | None
+) -> ModelBaselinesComparisonRow:
+    return ModelBaselinesComparisonRow(
+        id=UUID(comp_id),
+        comparison_date=date(2026, 6, 28),
+        treatment_success_rate=treatment_success_rate,
+        computed_at=_NOW,
+        created_at=_NOW,
+        updated_at=_NOW,
+    )
+
+
+def _breakdown(
+    bd_id: str, pattern_id: str, confidence: float | None
+) -> ModelBaselinesBreakdownRow:
+    return ModelBaselinesBreakdownRow(
+        id=UUID(bd_id),
+        pattern_id=UUID(pattern_id),
+        confidence=confidence,
+        sample_count=25 if confidence is not None else 5,
+        computed_at=_NOW,
+        created_at=_NOW,
+        updated_at=_NOW,
+    )
+
+
+def _full_event(
+    snapshot_id: UUID = _DEFAULT_SNAPSHOT_ID,
+) -> ModelBaselinesSnapshotEvent:
+    return ModelBaselinesSnapshotEvent(
         snapshot_id=snapshot_id,
-        computed_at_utc="2026-06-28T10:00:00Z",
-        patterns_compared=4,
-        patterns_recommended=2,
+        computed_at_utc=_NOW,
         comparisons=[
-            ModelBaselinesComparison(
-                pattern_id="pat-a",
-                token_delta=-1000,
-                time_delta_s=0.5,
-                confidence="high",
-            ),
-            ModelBaselinesComparison(
-                pattern_id="pat-b",
-                token_delta=200,
-                time_delta_s=-0.1,
-                confidence="medium",
-            ),
-            ModelBaselinesComparison(
-                pattern_id="pat-c",
-                token_delta=0,
-                time_delta_s=0.0,
-                confidence="low",
-            ),
-            ModelBaselinesComparison(
-                pattern_id="pat-d",
-                token_delta=100,
-                time_delta_s=0.2,
-                confidence="high",
-            ),
+            _comparison("aaaaaaaa-0000-0000-0000-000000000001", 0.9),
+            _comparison("aaaaaaaa-0000-0000-0000-000000000002", 0.5),
         ],
-        recommendations=[
-            ModelBaselinesRecommendation(
-                pattern_id="pat-a",
-                action="promote",
-                confidence="high",
+        breakdown=[
+            _breakdown(
+                "bbbbbbbb-0000-0000-0000-000000000001",
+                "cccccccc-0000-0000-0000-000000000001",
+                0.9,
             ),
-            ModelBaselinesRecommendation(
-                pattern_id="pat-b",
-                action="shadow",
-                confidence="medium",
+            _breakdown(
+                "bbbbbbbb-0000-0000-0000-000000000002",
+                "cccccccc-0000-0000-0000-000000000002",
+                0.6,
             ),
-        ],
-        retry_counts=[
-            ModelBaselinesRetryCount(
-                pattern_id="pat-c",
-                retry_count=2,
+            _breakdown(
+                "bbbbbbbb-0000-0000-0000-000000000003",
+                "cccccccc-0000-0000-0000-000000000003",
+                None,
+            ),
+            _breakdown(
+                "bbbbbbbb-0000-0000-0000-000000000004",
+                "cccccccc-0000-0000-0000-000000000004",
+                0.85,
             ),
         ],
     )
@@ -103,8 +123,8 @@ class TestHandlerProjectionBaselinesQuality:
         assert len(rows) == 1
         row = rows[0]
 
-        assert row["snapshot_id"] == "snap-quality-001"
-        assert row["captured_at"] == "2026-06-28T10:00:00Z"
+        assert row["snapshot_id"] == "11111111-2222-3333-4444-555555555555"
+        assert row["captured_at"] == _NOW.isoformat()
 
     def test_confidence_tier_counts_are_correct(self) -> None:
         db = InmemoryDatabaseAdapter()
@@ -112,28 +132,28 @@ class TestHandlerProjectionBaselinesQuality:
         HANDLER.project(event, db)
 
         row = db.query(TABLE)[0]
-        # 2 high (pat-a, pat-d), 1 medium (pat-b), 1 low (pat-c)
+        # 2 high (0.9, 0.85), 1 medium (0.6), 1 low (None -> insufficient sample)
         assert row["high_confidence_count"] == 2
         assert row["medium_confidence_count"] == 1
         assert row["low_confidence_count"] == 1
 
-    def test_quality_score_is_weighted_average(self) -> None:
+    def test_quality_score_is_mean_treatment_success_rate(self) -> None:
         db = InmemoryDatabaseAdapter()
         event = _full_event()
         HANDLER.project(event, db)
 
         row = db.query(TABLE)[0]
-        # (2*1.0 + 1*0.5 + 1*0.25) / 4 = 2.75 / 4 = 0.6875
-        assert abs(float(str(row["quality_score"])) - 0.6875) < 0.0001
+        # (0.9 + 0.5) / 2 = 0.7
+        assert abs(float(str(row["quality_score"])) - 0.7) < 0.0001
 
-    def test_recommend_rate_is_ratio(self) -> None:
+    def test_significant_rate_is_ratio(self) -> None:
         db = InmemoryDatabaseAdapter()
         event = _full_event()
         HANDLER.project(event, db)
 
         row = db.query(TABLE)[0]
-        # 2 recommended / 4 compared = 0.5
-        assert abs(float(str(row["recommend_rate"])) - 0.5) < 0.0001
+        # 3 of 4 breakdown rows have non-null confidence -> 0.75
+        assert abs(float(str(row["significant_rate"])) - 0.75) < 0.0001
 
     def test_patterns_counts_are_written(self) -> None:
         db = InmemoryDatabaseAdapter()
@@ -142,44 +162,52 @@ class TestHandlerProjectionBaselinesQuality:
 
         row = db.query(TABLE)[0]
         assert row["patterns_compared"] == 4
-        assert row["patterns_recommended"] == 2
+        assert row["patterns_significant"] == 3
 
-    def test_empty_comparisons_produces_zero_quality_score(self) -> None:
+    def test_empty_event_produces_zero_values(self) -> None:
         db = InmemoryDatabaseAdapter()
-        event = ModelBaselinesComputedEvent(
-            snapshot_id="snap-empty",
-            computed_at_utc="2026-06-28T00:00:00Z",
+        event = ModelBaselinesSnapshotEvent(
+            snapshot_id=UUID("00000000-0000-0000-0000-000000000000"),
+            computed_at_utc=_NOW,
         )
         result = HANDLER.project(event, db)
 
         assert result.rows_upserted == 1
         row = db.query(TABLE)[0]
         assert float(str(row["quality_score"])) == 0.0
-        assert float(str(row["recommend_rate"])) == 0.0
+        assert float(str(row["significant_rate"])) == 0.0
         assert row["high_confidence_count"] == 0
         assert row["medium_confidence_count"] == 0
         assert row["low_confidence_count"] == 0
 
     def test_upsert_on_duplicate_snapshot_id(self) -> None:
         db = InmemoryDatabaseAdapter()
-        ev1 = ModelBaselinesComputedEvent(
-            snapshot_id="snap-dup",
-            computed_at_utc="2026-06-28T08:00:00Z",
-            patterns_compared=2,
-            patterns_recommended=1,
-            comparisons=[
-                ModelBaselinesComparison(pattern_id="p1", confidence="high"),
+        snap_id = UUID("99999999-0000-0000-0000-000000000000")
+        ev1 = ModelBaselinesSnapshotEvent(
+            snapshot_id=snap_id,
+            computed_at_utc=_NOW,
+            breakdown=[
+                _breakdown(
+                    "dddddddd-0000-0000-0000-000000000001",
+                    "eeeeeeee-0000-0000-0000-000000000001",
+                    0.9,
+                ),
             ],
         )
-        ev2 = ModelBaselinesComputedEvent(
-            snapshot_id="snap-dup",
-            computed_at_utc="2026-06-28T09:00:00Z",
-            patterns_compared=3,
-            patterns_recommended=3,
-            comparisons=[
-                ModelBaselinesComparison(pattern_id="p2", confidence="low"),
-                ModelBaselinesComparison(pattern_id="p3", confidence="low"),
-                ModelBaselinesComparison(pattern_id="p4", confidence="low"),
+        ev2 = ModelBaselinesSnapshotEvent(
+            snapshot_id=snap_id,
+            computed_at_utc=_NOW,
+            breakdown=[
+                _breakdown(
+                    "dddddddd-0000-0000-0000-000000000002",
+                    "eeeeeeee-0000-0000-0000-000000000002",
+                    None,
+                ),
+                _breakdown(
+                    "dddddddd-0000-0000-0000-000000000003",
+                    "eeeeeeee-0000-0000-0000-000000000003",
+                    None,
+                ),
             ],
         )
         HANDLER.project(ev1, db)
@@ -189,7 +217,7 @@ class TestHandlerProjectionBaselinesQuality:
         assert len(rows) == 1
         # Second event should dominate
         assert rows[0]["high_confidence_count"] == 0
-        assert rows[0]["low_confidence_count"] == 3
+        assert rows[0]["low_confidence_count"] == 2
 
     def test_contract_subscribe_topic(self) -> None:
         with open(_CONTRACT_PATH) as f:
@@ -209,9 +237,17 @@ class TestHandlerProjectionBaselinesQuality:
             contract = yaml.safe_load(f)
         assert contract["node_type"] == "reducer"
 
+    def test_contract_dlq_topic(self) -> None:
+        with open(_CONTRACT_PATH) as f:
+            contract = yaml.safe_load(f)
+        assert (
+            "onex.dlq.omnimarket.projection-baselines-quality-malformed.v1"
+            in contract["event_bus"]["dlq_topics"]
+        )
+
     def test_handle_shim_delegates_to_project(self) -> None:
         db = InmemoryDatabaseAdapter()
-        event = _full_event("snap-shim")
+        event = _full_event(UUID("22222222-3333-4444-5555-666666666666"))
         payload = event.model_dump(mode="json")
         payload["_db"] = db
 

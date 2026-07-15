@@ -90,7 +90,7 @@ class TestContractRouting:
         for topic, expected_model in _EXPECTED_ROUTING.items():
             entry = by_topic[topic]
             # Per-topic event_model so the dispatcher validates the real producer
-            # wire shape before calling handle() (never the raw envelope).
+            # wire shape before calling handle() (never the untyped runtime wrapper).
             assert entry["event_model"]["name"] == expected_model, topic
             # All four subscribe topics are EVENTS, not commands (the OMN-14605
             # mixed-category NO_DISPATCHER trap).

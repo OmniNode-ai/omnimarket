@@ -58,6 +58,16 @@ _BIFROST_CODE_GEN_ROUTABLE = textwrap.dedent(
         timeout_ms: 30000
         max_tokens: 8192
         capabilities: [code_generation]
+      # OMN-14625: cheap_cloud and the claude ceiling now select cloud-gemini-pro
+      # (see routing_tiers.yaml); a complete endpoint is required here so
+      # next_eligible_tier can resolve past cheap_cloud to the claude ceiling.
+      - backend_id: cloud-gemini-pro
+        endpoint_url: "https://cloud.test/gemini-pro/v1/chat/completions"
+        model_name: gemini-2.5-flash
+        tier: frontier_api
+        timeout_ms: 60000
+        max_tokens: 65536
+        capabilities: [code_generation]
     routing_rules:
       - rule_id: "c0ffee00-0011-4000-8000-000000000001"
         priority: 10
@@ -66,7 +76,7 @@ _BIFROST_CODE_GEN_ROUTABLE = textwrap.dedent(
         backend_policy_version: "2.0.0"
         match_operation_types: [chat_completion]
         match_capabilities: [code_generation]
-        backend_ids: [local-coder, cloud-glm]
+        backend_ids: [local-coder, cloud-glm, cloud-gemini-pro]
         fallback_policy:
           action: escalate_to_next_tier
           max_retries: 1

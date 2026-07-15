@@ -43,6 +43,7 @@ import pytest
 import yaml
 from omnibase_core.enums import EnumMessageCategory
 from omnibase_core.models.dispatch.model_dispatch_route import ModelDispatchRoute
+from omnibase_core.models.dispatch.model_handler_output import ModelHandlerOutput
 from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
 from omnibase_infra.enums import EnumDispatchStatus
 from omnibase_infra.runtime.auto_wiring.handler_wiring import (
@@ -52,6 +53,7 @@ from omnibase_infra.runtime.auto_wiring.handler_wiring import (
 )
 from omnibase_infra.runtime.auto_wiring.models import ModelHandlerRef
 from omnibase_infra.runtime.message_dispatch_engine import MessageDispatchEngine
+from pydantic import BaseModel
 
 from omnimarket.codegen.models import (
     ModelCodegenPipelineState,
@@ -123,10 +125,43 @@ def _state() -> ModelCodegenPipelineState:
     )
 
 
+_PUBLISHED = {
+    entry["event_type"]: entry["topic"]
+    for entry in cast("list[dict[str, str]]", _contract()["published_events"])
+}
+
+
+def _resolve_emit_topic(model: BaseModel) -> str:
+    return _PUBLISHED[type(model).__name__.removeprefix("Model")]
+
+
+class _DispatchProofAdapter:
+    """Adapt def-B tuple fan-out to the legacy dispatch proof surface."""
+
+    def __init__(self) -> None:
+        self._inner = HandlerHybridCodegenOrchestrator()
+
+    def handle(self, request: BaseModel) -> ModelHandlerOutput[None]:
+        events = tuple(
+            ModelEventEnvelope(
+                payload=emitted,
+                correlation_id=uuid4(),
+                event_type=_resolve_emit_topic(emitted),
+            )
+            for emitted in self._inner.handle(request)  # type: ignore[arg-type]
+        )
+        return ModelHandlerOutput.for_orchestrator(
+            input_envelope_id=uuid4(),
+            correlation_id=uuid4(),
+            handler_id="hybrid-codegen-orchestrator",
+            events=events,
+        )
+
+
 def _engine_from_contract() -> MessageDispatchEngine:
     """Wire the REAL orchestrator handler per the contract's per-topic entries."""
     subscribe_topics = _subscribe_topics()
-    handler = HandlerHybridCodegenOrchestrator()
+    handler = _DispatchProofAdapter()
     engine = MessageDispatchEngine()
     for index, entry in enumerate(_entries()):
         category = _entry_category(entry, subscribe_topics)

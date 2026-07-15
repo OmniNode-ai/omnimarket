@@ -1091,25 +1091,32 @@ class TestTestResearchTierPolicyVerified:
 
     OMN-13667: repointed again from free-tier AI Studio Gemini (cloud-gemini-pro,
     503s on escalation) to GLM-5.2 z.ai direct (cloud-glm, secret_ref
-    llm.glm.api_key). The fixture now sets llm.glm.api_key so the new ceiling
-    backend is routable.
+    llm.glm.api_key). The fixture set llm.glm.api_key so that ceiling
+    backend was routable.
+
+    OMN-14625: repointed a THIRD time — z.ai GLM is DEAD from the .201 runtime
+    (resolve_api_key succeeds but every completion call 401s / loops
+    FAILED-only) — back to Gemini (cloud-gemini-pro, secret_ref
+    llm.gemini.api_key). The fixture now sets llm.gemini.api_key so the
+    ceiling backend is routable.
     """
 
     @pytest.fixture(autouse=True)
     def _configure_ceiling_secret(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> Iterator[None]:
-        # OMN-13667: the repo-default bifrost contract maps the claude ceiling tier
-        # to cloud-glm, whose secret_ref is llm.glm.api_key. The env-backed
-        # secret store reads the ref name verbatim, so set it to make the ceiling
-        # routable.
+        # OMN-14625: the repo-default bifrost contract maps the claude ceiling tier
+        # to cloud-gemini-pro, whose secret_ref is llm.gemini.api_key. The
+        # env-backed secret store reads the ref name verbatim, so set it to make
+        # the ceiling routable.
         from omnimarket.nodes.node_delegation_routing_reducer.handlers import (
             handler_delegation_routing as routing,
         )
 
-        # OMN-13667: ceiling repointed to cloud-glm (secret_ref llm.glm.api_key).
-        # Set the GLM key so the ceiling backend's secret resolves as available.
-        monkeypatch.setenv("llm.glm.api_key", "test-glm-key")
+        # OMN-14625: ceiling repointed to cloud-gemini-pro (secret_ref
+        # llm.gemini.api_key). Set the Gemini key so the ceiling backend's
+        # secret resolves as available.
+        monkeypatch.setenv("llm.gemini.api_key", "test-gemini-key")
         routing._load_bifrost_endpoints.cache_clear()
         yield
         routing._load_bifrost_endpoints.cache_clear()
