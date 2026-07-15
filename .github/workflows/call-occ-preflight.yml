@@ -54,3 +54,27 @@ jobs:
     with:
       contracts-dir: contracts
       receipts-dir: drift/dod_receipts
+
+  # WS3 (OMN-14646) — representative "OCC Preflight Dependency" poller migrated
+  # to the reusable Governance Readiness orchestrator. REPORT-ONLY shadow: it
+  # consumes the occ-preflight job result and maps it to a typed reason code,
+  # WITHOUT touching the required `occ-preflight / eligibility` context above and
+  # WITHOUT being added to branch-protection required_status_checks. Its surfaced
+  # context is `governance-readiness / evaluate` (not required).
+  #
+  # This shadow is scoped to the OCC dimension only. The product / receipt /
+  # deploy inputs are documented placeholders (`success`): the authoritative
+  # product signal remains the required `CI Summary` rollup and the authoritative
+  # receipt signal remains `receipt-gate / verify`. Wiring the orchestrator to
+  # consume all four dimensions together (and the remaining ~24 pollers) is the
+  # mechanical migration checklist in the PR body — deliberately out of this PR.
+  governance-readiness:
+    needs: [occ-preflight]
+    if: always()
+    uses: ./.github/workflows/governance-readiness.yml
+    with:
+      product_conclusion: success
+      occ_conclusion: ${{ needs.occ-preflight.result }}
+      receipt_conclusion: success
+      deploy_conclusion: success
+      report_only: true
