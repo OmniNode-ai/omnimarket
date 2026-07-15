@@ -82,16 +82,31 @@ class TestContractYaml:
         assert "github_pull_request" in side_effects.get("writes", [])
         assert "github_api" in side_effects.get("reads", [])
 
-    def test_contract_declares_no_event_bus_topics_yet(
+    def test_contract_declares_runtime_dispatch_topics(
         self, contract_path: Path
     ) -> None:
-        """OMN-14622: first PR is directly-invoked (same staging as RSD-2). The
-        Kafka trigger lands with the emitter-retirement follow-up, alongside the
-        producer/consumer that keeps the contract-topic-graph gate satisfied.
-        """
+        """OMN-14622: the pyproject entry point must be command-addressable."""
         data = yaml.safe_load(contract_path.read_text())
-        assert "event_bus" not in data
-        assert "terminal_event" not in data
+        assert data["runtime_dispatch"] == {
+            "command_topic": "onex.cmd.omnimarket.occ-companion-effect-requested.v1",
+            "terminal_events": {
+                "success": "onex.evt.omnimarket.occ-companion-effect-completed.v1",
+                "failure": "onex.evt.omnimarket.occ-companion-effect-failed.v1",
+            },
+        }
+        assert data["event_bus"] == {
+            "subscribe_topics": [
+                "onex.cmd.omnimarket.occ-companion-effect-requested.v1"
+            ],
+            "publish_topics": [
+                "onex.evt.omnimarket.occ-companion-effect-completed.v1",
+                "onex.evt.omnimarket.occ-companion-effect-failed.v1",
+            ],
+            "dlq_topics": ["onex.dlq.omnimarket.occ-companion-effect.v1"],
+        }
+        assert data["terminal_event"] == (
+            "onex.evt.omnimarket.occ-companion-effect-completed.v1"
+        )
 
 
 class TestMetadataYaml:
