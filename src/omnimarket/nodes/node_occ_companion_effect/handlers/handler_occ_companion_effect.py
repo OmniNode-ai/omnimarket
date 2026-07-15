@@ -38,8 +38,14 @@ import subprocess
 import tempfile
 from pathlib import Path
 from typing import Literal
-from uuid import UUID
 
+from omnimarket.events.occ_companion import (
+    ModelCompanionFile,
+    ModelObservedProbe,
+    ModelOccCompanionPlan,
+    ModelOccCompanionRequest,
+    ModelOccStateRequest,
+)
 from omnimarket.github_api import (
     GitHubApiError,
     rest_json,
@@ -51,14 +57,6 @@ from omnimarket.nodes.contract_topics import contract_secret_ref
 from omnimarket.nodes.node_occ_companion_compute.handlers.handler_occ_companion_compute import (
     compute_companion_plan,
 )
-from omnimarket.nodes.node_occ_companion_compute.models.model_occ_companion_plan import (
-    ModelCompanionFile,
-    ModelOccCompanionPlan,
-)
-from omnimarket.nodes.node_occ_companion_compute.models.model_occ_companion_request import (
-    ModelObservedProbe,
-    ModelOccCompanionRequest,
-)
 from omnimarket.nodes.node_occ_companion_effect.models.model_occ_companion_effect_request import (
     ModelOccCompanionEffectRequest,
 )
@@ -67,9 +65,6 @@ from omnimarket.nodes.node_occ_companion_effect.models.model_occ_companion_effec
 )
 from omnimarket.nodes.node_occ_state_effect.handlers.handler_occ_state_effect import (
     HandlerOccStateEffect,
-)
-from omnimarket.nodes.node_occ_state_effect.models.model_occ_state_request import (
-    ModelOccStateRequest,
 )
 from omnimarket.occ_git_transport import (
     authenticated_occ_url,
@@ -117,7 +112,6 @@ class HandlerOccCompanionEffect:
 
     async def handle(
         self,
-        correlation_id: UUID,
         request: ModelOccCompanionEffectRequest,
     ) -> ModelOccCompanionEffectResult:
         logger.info(
@@ -125,7 +119,7 @@ class HandlerOccCompanionEffect:
             request.repo,
             request.pr_number,
             request.mode,
-            correlation_id,
+            request.correlation_id,
         )
 
         # --- READ (RSD-2) -> COMPUTE (RSD-1), both side-effect-free-to-us ---
@@ -158,7 +152,7 @@ class HandlerOccCompanionEffect:
 
         # --- WRITE (this node) — the only side effects live here ---
         return await asyncio.to_thread(
-            self._write_sync, correlation_id, request, companion_request, plan
+            self._write_sync, request, companion_request, plan
         )
 
     # -- result assembly ----------------------------------------------------
@@ -195,7 +189,6 @@ class HandlerOccCompanionEffect:
 
     def _write_sync(
         self,
-        correlation_id: UUID,
         request: ModelOccCompanionEffectRequest,
         companion_request: ModelOccCompanionRequest,
         plan: ModelOccCompanionPlan,

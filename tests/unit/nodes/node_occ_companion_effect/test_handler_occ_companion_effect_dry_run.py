@@ -9,8 +9,6 @@ effect, and that ``mode="dry_run"`` (the default) never reaches the write path.
 
 from __future__ import annotations
 
-from uuid import uuid4
-
 import pytest
 
 from omnimarket.nodes.node_occ_companion_compute.models.model_occ_companion_request import (
@@ -64,8 +62,7 @@ async def test_dry_run_reads_and_computes_but_does_not_mutate() -> None:
         state_handler=_StubStateHandler(_canned_request())
     )
     result = await handler.handle(
-        uuid4(),
-        ModelOccCompanionEffectRequest(repo="OmniNode-ai/omnimarket", pr_number=1760),
+        ModelOccCompanionEffectRequest(repo="OmniNode-ai/omnimarket", pr_number=1760)
     )
 
     assert result.mode == "dry_run"
@@ -88,8 +85,7 @@ async def test_dry_run_on_already_bound_pr_is_no_op() -> None:
     )
     handler = HandlerOccCompanionEffect(state_handler=_StubStateHandler(bound))
     result = await handler.handle(
-        uuid4(),
-        ModelOccCompanionEffectRequest(repo="OmniNode-ai/omnimarket", pr_number=1760),
+        ModelOccCompanionEffectRequest(repo="OmniNode-ai/omnimarket", pr_number=1760)
     )
     assert result.no_op
     assert "already bound" in result.no_op_reason

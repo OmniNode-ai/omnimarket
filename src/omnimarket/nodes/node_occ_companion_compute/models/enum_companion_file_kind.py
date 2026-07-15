@@ -9,16 +9,6 @@ net-new supersession file), never a mutation of an existing merged receipt.
 
 from __future__ import annotations
 
-from enum import StrEnum
-
-
-class EnumCompanionFileKind(StrEnum):
-    """Kind of a single companion file in a :class:`ModelOccCompanionPlan`."""
-
-    CONTRACT = "contract"
-    DOWNSTREAM_RECEIPT = "downstream_receipt"
-    SELF_BIND_RECEIPT = "self_bind_receipt"
-    SUPERSEDE_RECEIPT = "supersede_receipt"
-
+from omnimarket.events.occ_companion import EnumCompanionFileKind
 
 __all__ = ["EnumCompanionFileKind"]
