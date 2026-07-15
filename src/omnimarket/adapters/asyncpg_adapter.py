@@ -37,6 +37,13 @@ class AsyncpgAdapter:
             "asyncpg pool connected (min=%d, max=%d)", self._min_size, self._max_size
         )
 
+    @property
+    def pool(self) -> asyncpg.Pool:
+        """Return the connected pool for canonical handlers that require it."""
+        if self._pool is None:
+            raise RuntimeError("call connect() first")
+        return self._pool
+
     async def execute(self, query: str, *params: Any) -> list[dict[str, Any]]:
         assert self._pool is not None, "call connect() first"
         async with self._pool.acquire() as conn:

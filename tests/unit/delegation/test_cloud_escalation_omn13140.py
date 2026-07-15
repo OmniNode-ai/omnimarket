@@ -166,7 +166,11 @@ _CANONICAL_VERTEX_BACKEND_ID = "cloud-vertex-gemini"
 # OMN-13667: repointed again from free-tier AI Studio Gemini (cloud-gemini-pro,
 # 503s on every escalation) to GLM-5.2 z.ai direct (cloud-glm,
 # secret_ref llm.glm.api_key) — the proven backend the judge already runs on.
-_TERMINAL_CEILING_BACKEND_ID = "cloud-glm"
+# OMN-14625: repointed a THIRD time — z.ai GLM is DEAD from the .201 runtime
+# (resolve_api_key succeeds but every completion call 401s / loops
+# FAILED-only) — back to cloud-gemini-pro (secret_ref llm.gemini.api_key,
+# model gemini-2.5-flash).
+_TERMINAL_CEILING_BACKEND_ID = "cloud-gemini-pro"
 
 
 @pytest.fixture(autouse=True)
@@ -512,21 +516,23 @@ class TestCanonicalCloudTargetCapability:
         assert gemini["secret_ref"] == "llm.gemini.api_key"
 
     def test_terminal_claude_tier_routes_to_http_frontier_backend(self) -> None:
-        """OMN-13215/OMN-13351/OMN-13667: the ceiling tier executes via the canonical
-        HTTP path.
+        """OMN-13215/OMN-13351/OMN-13667/OMN-14625: the ceiling tier executes via
+        the canonical HTTP path.
 
-        OMN-13667: the claude ceiling tier maps to the HTTP cloud-glm backend (GLM-5.2
-        z.ai direct, complete verbatim endpoint_url + secret_ref llm.glm.api_key),
+        OMN-14625: the claude ceiling tier maps to the HTTP cloud-gemini-pro backend
+        (Gemini, complete verbatim endpoint_url + secret_ref llm.gemini.api_key),
         NOT a shelled CLI and NOT the dead Anthropic cloud-sonnet (llm.anthropic.api_key
-        resolves to None in every lane). The prior cloud-gemini-pro Gemini backend
-        was replaced because free-tier AI Studio Gemini 503s on every escalation.
+        resolves to None in every lane). The prior GLM-5.2 z.ai direct backend
+        (cloud-glm, added under OMN-13667) was replaced because the z.ai route is
+        DEAD from the .201 runtime (resolve_api_key succeeds but every completion
+        call 401s / loops FAILED-only).
         """
         tiers = {t["name"]: t for t in self._routing_tiers()["tiers"]}
         terminal = tiers["claude"]
         assert terminal["models"][0]["backend_id"] == _TERMINAL_CEILING_BACKEND_ID
-        # OMN-14225: the paid GLM model repointed glm-5.2 -> glm-5-turbo (cheaper
-        # coding-plan model; paid is ON + metered + logged, subscription-covered).
-        assert terminal["models"][0]["id"] == "glm-5-turbo"
+        # OMN-14625: the ceiling model repointed glm-5-turbo (z.ai, dead) ->
+        # gemini-2.5-flash.
+        assert terminal["models"][0]["id"] == "gemini-2.5-flash"
 
         backends = self._bifrost()["backends"]
         by_id = {b["backend_id"]: b for b in backends}
@@ -535,8 +541,8 @@ class TestCanonicalCloudTargetCapability:
         assert ceiling["endpoint_url"].endswith("/chat/completions")
         assert ceiling["endpoint_url"].startswith("https://")
         # Secret resolved at the effect boundary via api_key_ref (not a literal),
-        # and it is the RESOLVABLE GLM ref — not the dead Anthropic ref.
-        assert ceiling["secret_ref"] == "llm.glm.api_key"
+        # and it is the RESOLVABLE Gemini ref — not the dead z.ai or Anthropic ref.
+        assert ceiling["secret_ref"] == "llm.gemini.api_key"
 
         # OMN-13351: the dead Anthropic backends were deleted; nothing routes to them.
         assert "cloud-sonnet" not in by_id

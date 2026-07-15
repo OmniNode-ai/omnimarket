@@ -2,17 +2,20 @@
 # SPDX-License-Identifier: MIT
 """Multi-parameter integration proof for node_create_ticket (OMN-13679, WS-5).
 
-Variant A (COMPUTE, direct in-process handler call). ``HandlerCreateTicket`` is
-pure logic — it validates parent/blocked-by IDs, detects seam signals, and
-synthesizes a structured description. No Linear client is touched at this node
-boundary (creation is performed downstream by the platform), so the test drives
-the handler directly and asserts the typed ``ModelCreateTicketResult`` fields.
+Variant A (COMPUTE, direct in-process handler call). ``HandlerCreateTicket``
+validates parent/blocked-by IDs, detects seam signals, synthesizes a
+structured description, and — since OMN-14547 — calls the injected Linear
+client to create the ticket. Real network I/O is never exercised here; a
+mock ``LinearTicketClientProtocol`` implementation stands in for the Linear
+GraphQL API so the test drives the handler directly and asserts the typed
+``ModelCreateTicketResult`` fields, including a non-empty ``ticket_id`` on
+every "created" case.
 
 Each parametrized case exercises a distinct mode/flag combination:
 - plain title (no seam) → stub completeness
 - seam titles (topics / database) → seam detection + full completeness
-- dry-run short-circuit
-- NEGATIVE CONTROL: malformed parent / blocked-by ID → validation_errors finding
+- dry-run short-circuit (no Linear call)
+- NEGATIVE CONTROL: malformed parent / blocked-by ID → validation_errors finding (no Linear call)
 """
 
 from __future__ import annotations
@@ -24,6 +27,28 @@ from omnimarket.nodes.node_create_ticket.handlers.handler_create_ticket import (
     ModelCreateTicketRequest,
     ModelCreateTicketResult,
 )
+
+
+class _MockLinearTicketClient:
+    """Minimal injectable Linear client — never touches the network."""
+
+    def __init__(
+        self,
+        created_id: str = "OMN-90002",
+        created_url: str = "https://linear.app/omninode/issue/OMN-90002",
+    ) -> None:
+        self._created_id = created_id
+        self._created_url = created_url
+        self.create_ticket_calls: list[dict[str, object]] = []
+
+    def create_ticket(
+        self, *, title: str, description: str, team: str, parent: str | None
+    ) -> tuple[str, str]:
+        self.create_ticket_calls.append(
+            {"title": title, "description": description, "team": team, "parent": parent}
+        )
+        return self._created_id, self._created_url
+
 
 # Each case: (payload kwargs, expected field assertions).
 _CASES = [
@@ -96,7 +121,10 @@ _CASES = [
 def test_create_ticket_multiparam(
     payload: dict[str, object], expected: dict[str, object]
 ) -> None:
-    result = HandlerCreateTicket().handle(ModelCreateTicketRequest(**payload))
+    # Injected on every case; only the "created" cases actually invoke it —
+    # dry_run and error cases short-circuit before the Linear call.
+    handler = HandlerCreateTicket(linear_client=_MockLinearTicketClient())
+    result = handler.handle(ModelCreateTicketRequest(**payload))
 
     assert isinstance(result, ModelCreateTicketResult)
     assert result.status == expected["status"]
@@ -120,6 +148,10 @@ def test_create_ticket_multiparam(
     else:
         assert result.validation_errors == []
 
+    if expected["status"] == "created":
+        # OMN-14547: a "created" result must always carry a real ticket_id.
+        assert result.ticket_id, "created result must have a non-empty ticket_id"
+
 
 @pytest.mark.integration
 def test_minimal_skill_cli_payload_shape_validates() -> None:
@@ -133,6 +165,9 @@ def test_minimal_skill_cli_payload_shape_validates() -> None:
     CLI produces failed with ``extra_forbidden`` on 100% of invocations (the
     WS-D/D2 dogfood repro). This asserts that injected shape constructs and the
     handler processes it end-to-end.
+
+    Updated for OMN-14547: a "created" result now carries a real (mocked)
+    ticket_id/ticket_url instead of the fake-success empty strings.
     """
     injected_payload: dict[str, object] = {
         "title": "Dogfood the create_ticket rail",
@@ -143,10 +178,12 @@ def test_minimal_skill_cli_payload_shape_validates() -> None:
     request = ModelCreateTicketRequest(**injected_payload)
     assert request.allow_arch_violation is False
 
-    result = HandlerCreateTicket().handle(request)
+    result = HandlerCreateTicket(linear_client=_MockLinearTicketClient()).handle(
+        request
+    )
     assert result.status == "created"
-    assert result.ticket_id == ""
-    assert result.ticket_url == ""
+    assert result.ticket_id == "OMN-90002"
+    assert result.ticket_url == "https://linear.app/omninode/issue/OMN-90002"
     assert result.validation_errors == []
 
 
@@ -158,13 +195,17 @@ def test_allow_arch_violation_field_is_accepted(allow: bool) -> None:
         title="Ship with an arch override", allow_arch_violation=allow
     )
     assert request.allow_arch_violation is allow
-    assert HandlerCreateTicket().handle(request).status == "created"
+    result = HandlerCreateTicket(linear_client=_MockLinearTicketClient()).handle(
+        request
+    )
+    assert result.status == "created"
+    assert result.ticket_id
 
 
 @pytest.mark.integration
 def test_created_ticket_emits_structured_description_body() -> None:
     """A real (non-dry-run, valid) request must materialize a DoD checklist."""
-    result = HandlerCreateTicket().handle(
+    result = HandlerCreateTicket(linear_client=_MockLinearTicketClient()).handle(
         ModelCreateTicketRequest(
             title="Ship the widget",
             description="implement the widget",

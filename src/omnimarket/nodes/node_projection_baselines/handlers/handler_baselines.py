@@ -1,24 +1,36 @@
-"""Baselines projection: Kafka -> 4 tables transactionally."""
+"""Baselines projection: Kafka -> 4 tables transactionally.
+
+OMN-14513: this runner previously parsed the incoming payload via raw dict
+``.get()`` chains against field names (``pattern_id``/``token_delta``/
+``date``/``avg_cost_savings``/``action``/``count``) invented independently of
+the real producer contract
+(``omnibase_infra.services.observability.baselines.models.model_baselines_snapshot_event.ModelBaselinesSnapshotEvent``),
+which shares almost no field names with them. Every real event silently
+degraded to all-default rows keyed on a blank ``pattern_id`` that the
+producer never sends. Fixed to validate the canonical producer model
+directly (market is the top layer: compat < core < spi < infra < market, so
+this import is legal) and to write the columns declared by
+``migrations/0002_realign_child_tables_to_producer_schema.sql``.
+"""
 
 from __future__ import annotations
 
 import asyncio
-import json
 import logging
-import re
 from pathlib import Path
 from typing import Any
 
 import yaml
-
-from omnimarket.projection.runner import (
-    BaseProjectionRunner,
-    MessageMeta,
-    deterministic_correlation_id,
-    safe_parse_date,
+from omnibase_infra.services.observability.baselines.models.model_baselines_snapshot_event import (
+    ModelBaselinesSnapshotEvent,
 )
 
+from omnimarket.projection.dlq import dlq_topics_from_contract
+from omnimarket.projection.runner import BaseProjectionRunner, MessageMeta, PublishFn
+
 logger = logging.getLogger(__name__)
+
+HANDLER_ID_PROJECTION_BASELINES = "node_projection_baselines"
 
 KNOWN_PROJECTION_TABLES: frozenset[str] = frozenset(
     {
@@ -36,13 +48,17 @@ KNOWN_PROJECTION_TABLES: frozenset[str] = frozenset(
     }
 )
 
-UUID_RE = re.compile(
-    r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", re.I
-)
 MAX_BATCH_ROWS = 4000
-DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
-VALID_PROMOTION_ACTIONS = {"promote", "shadow", "demote", "retire", "hold"}
-VALID_CONFIDENCE_LEVELS = {"low", "medium", "high"}
+
+
+def _strip_transport_keys(data: dict[str, Any]) -> dict[str, Any]:
+    """Drop runtime/transport-injected ``_``-prefixed keys from a decoded payload.
+
+    The canonical producer model is ``extra="forbid"``; ``unwrap_envelope``
+    attaches ``_envelope``/``_event_type``/``_correlation_id``, which would
+    otherwise raise on every message.
+    """
+    return {k: v for k, v in data.items() if not str(k).startswith("_")}
 
 
 class BaselinesProjectionRunner(BaseProjectionRunner):
@@ -53,8 +69,13 @@ class BaselinesProjectionRunner(BaseProjectionRunner):
     Matches omnidash projectBaselinesSnapshot() exactly.
     """
 
-    def __init__(self, contract_path: Path | None = None) -> None:
-        super().__init__()
+    def __init__(
+        self,
+        contract_path: Path | None = None,
+        *,
+        publish_fn: PublishFn | None = None,
+    ) -> None:
+        super().__init__(publish_fn=publish_fn)
         _path = contract_path or Path(__file__).parent.parent / "contract.yaml"
         with open(_path) as f:
             self._contract: dict[str, Any] = yaml.safe_load(f)
@@ -78,6 +99,29 @@ class BaselinesProjectionRunner(BaseProjectionRunner):
         self._table_comparisons: str = _by_role["comparisons"]
         self._table_trend: str = _by_role["trend"]
         self._table_breakdown: str = _by_role["breakdown"]
+        # OMN-14513 / OMN-13548 (D-03): a ValidationError raised inside
+        # project_event() while parsing the real producer's
+        # ModelBaselinesSnapshotEvent now emits a DURABLE failure signal on
+        # the contract-declared DLQ topic (via the base class's own POISON
+        # safety net in _handle_message) instead of being logged and dropped
+        # silently.
+        self._dlq_topics: list[str] = dlq_topics_from_contract(self._contract)
+
+    @property
+    def poison_dlq_topics(self) -> list[str]:
+        """OMN-13634: base-class safety net routes escaped POISON errors here."""
+        return self._dlq_topics
+
+    async def publish_dlq(self, topic: str, value: bytes) -> None:
+        """OMN-13634: supply the runtime-owned publisher to the base-class DLQ path."""
+        publish = await self.get_publish_fn()
+        if publish is None:
+            logger.error(
+                "node_projection_baselines: no publisher for POISON DLQ topic %s",
+                topic,
+            )
+            return
+        await publish(topic, value)
 
     @property
     def subscribe_topics(self) -> list[str]:
@@ -105,187 +149,33 @@ class BaselinesProjectionRunner(BaseProjectionRunner):
     async def project_event(
         self, topic: str, data: dict[str, Any], meta: MessageMeta
     ) -> bool:
-        raw_snapshot_id = data.get("snapshot_id")
-        if raw_snapshot_id and UUID_RE.match(str(raw_snapshot_id)):
-            snapshot_id = str(raw_snapshot_id)
-        else:
-            snapshot_id = deterministic_correlation_id(
-                "baselines-computed", meta.partition, meta.offset
-            )
+        event = ModelBaselinesSnapshotEvent(**_strip_transport_keys(data))
+        snapshot_id = str(event.snapshot_id)
 
-        contract_version = _safe_int(data.get("contract_version"), 1)
-        computed_at_utc = safe_parse_date(
-            data.get("computed_at_utc")
-            or data.get("computedAtUtc")
-            or data.get("computed_at")
-        )
-        window_start_utc = (
-            safe_parse_date(data.get("window_start_utc") or data.get("windowStartUtc"))
-            if (data.get("window_start_utc") or data.get("windowStartUtc"))
-            else None
-        )
-        window_end_utc = (
-            safe_parse_date(data.get("window_end_utc") or data.get("windowEndUtc"))
-            if (data.get("window_end_utc") or data.get("windowEndUtc"))
-            else None
-        )
-
-        # Parse child arrays with batch caps
-        _raw_comp = data.get("comparisons")
-        raw_comparisons_all: list[Any] = (
-            _raw_comp if isinstance(_raw_comp, list) else []
-        )
-        if len(raw_comparisons_all) > MAX_BATCH_ROWS:
+        comparisons = event.comparisons[:MAX_BATCH_ROWS]
+        if len(event.comparisons) > MAX_BATCH_ROWS:
             logger.warning(
                 "baselines snapshot %s: %d comparison rows, capping at %d",
                 snapshot_id,
-                len(raw_comparisons_all),
+                len(event.comparisons),
                 MAX_BATCH_ROWS,
             )
-        raw_comparisons = raw_comparisons_all[:MAX_BATCH_ROWS]
-
-        _raw_tr = data.get("trend")
-        raw_trend_all: list[Any] = _raw_tr if isinstance(_raw_tr, list) else []
-        if len(raw_trend_all) > MAX_BATCH_ROWS:
+        trend = event.trend[:MAX_BATCH_ROWS]
+        if len(event.trend) > MAX_BATCH_ROWS:
             logger.warning(
                 "baselines snapshot %s: %d trend rows, capping at %d",
                 snapshot_id,
-                len(raw_trend_all),
+                len(event.trend),
                 MAX_BATCH_ROWS,
             )
-        raw_trend = raw_trend_all[:MAX_BATCH_ROWS]
-
-        _raw_bd = data.get("breakdown")
-        raw_breakdown_all: list[Any] = _raw_bd if isinstance(_raw_bd, list) else []
-        if len(raw_breakdown_all) > MAX_BATCH_ROWS:
+        breakdown = event.breakdown[:MAX_BATCH_ROWS]
+        if len(event.breakdown) > MAX_BATCH_ROWS:
             logger.warning(
                 "baselines snapshot %s: %d breakdown rows, capping at %d",
                 snapshot_id,
-                len(raw_breakdown_all),
+                len(event.breakdown),
                 MAX_BATCH_ROWS,
             )
-        raw_breakdown = raw_breakdown_all[:MAX_BATCH_ROWS]
-
-        # Build trend rows with validation and dedup
-        trend_by_date: dict[str, dict[str, Any]] = {}
-        for t in raw_trend:
-            if not isinstance(t, dict):
-                continue
-            date_val = str(t.get("date") or t.get("dateStr") or "")
-            if not date_val or not DATE_RE.match(date_val):
-                logger.warning("Skipping trend row with invalid date: %s", date_val)
-                continue
-            trend_by_date[date_val] = {
-                "snapshot_id": snapshot_id,
-                "date": date_val,
-                "avg_cost_savings": str(
-                    max(
-                        0.0,
-                        min(
-                            99.0,
-                            _safe_float(
-                                t.get("avg_cost_savings") or t.get("avgCostSavings")
-                            ),
-                        ),
-                    )
-                ),
-                "avg_outcome_improvement": str(
-                    max(
-                        0.0,
-                        min(
-                            99.0,
-                            _safe_float(
-                                t.get("avg_outcome_improvement")
-                                or t.get("avgOutcomeImprovement")
-                            ),
-                        ),
-                    )
-                ),
-                "comparisons_evaluated": _safe_int(
-                    t.get("comparisons_evaluated") or t.get("comparisonsEvaluated")
-                ),
-            }
-
-        # Build comparison rows
-        comparison_rows = []
-        for c in raw_comparisons:
-            if not isinstance(c, dict):
-                continue
-            pattern_id = str(c.get("pattern_id") or c.get("patternId") or "").strip()
-            if not pattern_id:
-                logger.warning(
-                    "Skipping comparison row with blank pattern_id for snapshot %s",
-                    snapshot_id,
-                )
-                continue
-
-            rec_raw = str(c.get("recommendation") or "")
-            recommendation = rec_raw if rec_raw in VALID_PROMOTION_ACTIONS else "shadow"
-            conf_raw = str(c.get("confidence") or "").lower()
-            confidence = conf_raw if conf_raw in VALID_CONFIDENCE_LEVELS else "low"
-
-            comparison_rows.append(
-                {
-                    "snapshot_id": snapshot_id,
-                    "pattern_id": pattern_id,
-                    "pattern_name": str(
-                        c.get("pattern_name") or c.get("patternName") or ""
-                    ),
-                    "sample_size": _safe_int(
-                        c.get("sample_size") or c.get("sampleSize")
-                    ),
-                    "window_start": str(
-                        c.get("window_start") or c.get("windowStart") or ""
-                    ),
-                    "window_end": str(c.get("window_end") or c.get("windowEnd") or ""),
-                    "token_delta": json.dumps(
-                        c.get("token_delta") or c.get("tokenDelta") or {}
-                    ),
-                    "time_delta": json.dumps(
-                        c.get("time_delta") or c.get("timeDelta") or {}
-                    ),
-                    "retry_delta": json.dumps(
-                        c.get("retry_delta") or c.get("retryDelta") or {}
-                    ),
-                    "test_pass_rate_delta": json.dumps(
-                        c.get("test_pass_rate_delta")
-                        or c.get("testPassRateDelta")
-                        or {}
-                    ),
-                    "review_iteration_delta": json.dumps(
-                        c.get("review_iteration_delta")
-                        or c.get("reviewIterationDelta")
-                        or {}
-                    ),
-                    "recommendation": recommendation,
-                    "confidence": confidence,
-                    "rationale": str(c.get("rationale") or ""),
-                }
-            )
-
-        # Build breakdown rows with dedup
-        breakdown_by_action: dict[str, dict[str, Any]] = {}
-        for b in raw_breakdown:
-            if not isinstance(b, dict):
-                continue
-            action_raw = str(b.get("action") or "")
-            action = action_raw if action_raw in VALID_PROMOTION_ACTIONS else "shadow"
-            breakdown_by_action[action] = {
-                "snapshot_id": snapshot_id,
-                "action": action,
-                "count": _safe_int(b.get("count")),
-                "avg_confidence": str(
-                    max(
-                        0.0,
-                        min(
-                            1.0,
-                            _safe_float(
-                                b.get("avg_confidence") or b.get("avgConfidence")
-                            ),
-                        ),
-                    )
-                ),
-            }
 
         # Execute all in a single transaction
         queries: list[tuple[str, tuple[Any, ...]]] = []
@@ -306,10 +196,10 @@ class BaselinesProjectionRunner(BaseProjectionRunner):
             """,
                 (
                     snapshot_id,
-                    contract_version,
-                    computed_at_utc,
-                    window_start_utc,
-                    window_end_utc,
+                    event.contract_version,
+                    event.computed_at_utc,
+                    event.window_start_utc,
+                    event.window_end_utc,
                 ),
             )
         )
@@ -321,35 +211,45 @@ class BaselinesProjectionRunner(BaseProjectionRunner):
                 (snapshot_id,),
             )
         )
-        for row in comparison_rows:
+        for comp in comparisons:
             queries.append(
                 (
                     f"""
                 INSERT INTO {self._table_comparisons} (
-                  snapshot_id, pattern_id, pattern_name, sample_size,
-                  window_start, window_end, token_delta, time_delta,
-                  retry_delta, test_pass_rate_delta, review_iteration_delta,
-                  recommendation, confidence, rationale
+                  id, snapshot_id, comparison_date, period_label,
+                  treatment_sessions, treatment_success_rate, treatment_avg_latency_ms,
+                  treatment_avg_cost_tokens, treatment_total_tokens,
+                  control_sessions, control_success_rate, control_avg_latency_ms,
+                  control_avg_cost_tokens, control_total_tokens,
+                  roi_pct, latency_improvement_pct, cost_improvement_pct,
+                  sample_size, computed_at, created_at, updated_at
                 ) VALUES (
-                  $1, $2, $3, $4, $5, $6, $7::jsonb, $8::jsonb,
-                  $9::jsonb, $10::jsonb, $11::jsonb, $12, $13, $14
+                  $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12,
+                  $13, $14, $15, $16, $17, $18, $19, $20, $21
                 )
                 """,
                     (
-                        row["snapshot_id"],
-                        row["pattern_id"],
-                        row["pattern_name"],
-                        row["sample_size"],
-                        row["window_start"],
-                        row["window_end"],
-                        row["token_delta"],
-                        row["time_delta"],
-                        row["retry_delta"],
-                        row["test_pass_rate_delta"],
-                        row["review_iteration_delta"],
-                        row["recommendation"],
-                        row["confidence"],
-                        row["rationale"],
+                        str(comp.id),
+                        snapshot_id,
+                        comp.comparison_date,
+                        comp.period_label,
+                        comp.treatment_sessions,
+                        comp.treatment_success_rate,
+                        comp.treatment_avg_latency_ms,
+                        comp.treatment_avg_cost_tokens,
+                        comp.treatment_total_tokens,
+                        comp.control_sessions,
+                        comp.control_success_rate,
+                        comp.control_avg_latency_ms,
+                        comp.control_avg_cost_tokens,
+                        comp.control_total_tokens,
+                        comp.roi_pct,
+                        comp.latency_improvement_pct,
+                        comp.cost_improvement_pct,
+                        comp.sample_size,
+                        comp.computed_at,
+                        comp.created_at,
+                        comp.updated_at,
                     ),
                 )
             )
@@ -361,20 +261,28 @@ class BaselinesProjectionRunner(BaseProjectionRunner):
                 (snapshot_id,),
             )
         )
-        for row in trend_by_date.values():
+        for tr in trend:
             queries.append(
                 (
                     f"""
                 INSERT INTO {self._table_trend} (
-                  snapshot_id, date, avg_cost_savings, avg_outcome_improvement, comparisons_evaluated
-                ) VALUES ($1, $2, $3, $4, $5)
+                  id, snapshot_id, trend_date, cohort, session_count,
+                  success_rate, avg_latency_ms, avg_cost_tokens, roi_pct,
+                  computed_at, created_at
+                ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
                 """,
                     (
-                        row["snapshot_id"],
-                        row["date"],
-                        row["avg_cost_savings"],
-                        row["avg_outcome_improvement"],
-                        row["comparisons_evaluated"],
+                        str(tr.id),
+                        snapshot_id,
+                        tr.trend_date,
+                        tr.cohort,
+                        tr.session_count,
+                        tr.success_rate,
+                        tr.avg_latency_ms,
+                        tr.avg_cost_tokens,
+                        tr.roi_pct,
+                        tr.computed_at,
+                        tr.created_at,
                     ),
                 )
             )
@@ -386,19 +294,32 @@ class BaselinesProjectionRunner(BaseProjectionRunner):
                 (snapshot_id,),
             )
         )
-        for row in breakdown_by_action.values():
+        for bd in breakdown:
             queries.append(
                 (
                     f"""
                 INSERT INTO {self._table_breakdown} (
-                  snapshot_id, action, count, avg_confidence
-                ) VALUES ($1, $2, $3, $4)
+                  id, snapshot_id, pattern_id, pattern_label,
+                  treatment_success_rate, control_success_rate, roi_pct,
+                  sample_count, treatment_count, control_count, confidence,
+                  computed_at, created_at, updated_at
+                ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
                 """,
                     (
-                        row["snapshot_id"],
-                        row["action"],
-                        row["count"],
-                        row["avg_confidence"],
+                        str(bd.id),
+                        snapshot_id,
+                        str(bd.pattern_id),
+                        bd.pattern_label,
+                        bd.treatment_success_rate,
+                        bd.control_success_rate,
+                        bd.roi_pct,
+                        bd.sample_count,
+                        bd.treatment_count,
+                        bd.control_count,
+                        bd.confidence,
+                        bd.computed_at,
+                        bd.created_at,
+                        bd.updated_at,
                     ),
                 )
             )
@@ -408,29 +329,11 @@ class BaselinesProjectionRunner(BaseProjectionRunner):
         logger.info(
             "Projected baselines snapshot %s (%d comparisons, %d trend, %d breakdown)",
             snapshot_id,
-            len(comparison_rows),
-            len(trend_by_date),
-            len(breakdown_by_action),
+            len(comparisons),
+            len(trend),
+            len(breakdown),
         )
         return True
-
-
-def _safe_int(value: Any, default: int = 0) -> int:
-    if value is None:
-        return default
-    try:
-        return int(float(value))
-    except (ValueError, TypeError):
-        return default
-
-
-def _safe_float(value: Any, default: float = 0.0) -> float:
-    if value is None:
-        return default
-    try:
-        return float(value)
-    except (ValueError, TypeError):
-        return default
 
 
 if __name__ == "__main__":

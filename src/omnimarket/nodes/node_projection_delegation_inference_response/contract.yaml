@@ -46,6 +46,15 @@ event_bus:
     - onex.evt.omnibase-infra.inference-response.v1
   publish_topics:
     - onex.snapshot.projection.delegation.inference-response-text.v1  # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
+  # OMN-14494: without a declared DLQ, a projection write error (e.g. the
+  # OMN-14487 "can't adapt type 'dict'" crash) is dropped to a container
+  # ERROR log line and reaches NO topic -- a DLQ-only reaper misses it
+  # entirely. Four sibling projection nodes (node_projection_delegation,
+  # node_projection_intent_classification, node_projection_live_events,
+  # node_projection_savings) already declare dlq_topics; this closes the
+  # same observability gap for this node.
+  dlq_topics:
+    - onex.dlq.omnimarket.projection-delegation-inference-response-malformed.v1
 
 externally_consumed_topics:
   - onex.snapshot.projection.delegation.inference-response-text.v1  # onex-topic-allow: projection snapshot topic served by projection-API

@@ -31,9 +31,6 @@ from omnimarket.nodes.node_delegation_orchestrator.enums import EnumDelegationSt
 from omnimarket.nodes.node_delegation_orchestrator.handlers.handler_delegation_workflow import (
     HandlerDelegationWorkflow,
 )
-from omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_event import (
-    ModelDelegationEvent,
-)
 from omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_request import (
     ModelDelegationRequest,
 )
@@ -140,12 +137,7 @@ def _drive_success_to_terminal() -> ModelDelegationResult:
     handler.handle_inference_response(_make_success_response(cid))
     intents = handler.handle_gate_result(_make_gate_result(cid))
     assert handler.workflows[cid].state == EnumDelegationState.COMPLETED
-    return next(
-        e.payload
-        for e in intents
-        if isinstance(e, ModelDelegationEvent)
-        and isinstance(e.payload, ModelDelegationResult)
-    )
+    return next(e for e in intents if isinstance(e, ModelDelegationResult))
 
 
 def _drive_failure_to_terminal() -> ModelDelegationResult:
@@ -157,12 +149,7 @@ def _drive_failure_to_terminal() -> ModelDelegationResult:
     events = handler.handle_inference_response(_make_failed_response(cid))
     assert handler.workflows[cid].state == EnumDelegationState.FAILED
     # OMN-13629: the terminal-failed path returns a single canonical event.
-    terminals = [
-        e.payload
-        for e in events
-        if isinstance(e, ModelDelegationEvent)
-        and isinstance(e.payload, ModelDelegationResult)
-    ]
+    terminals = [e for e in events if isinstance(e, ModelDelegationResult)]
     assert len(terminals) == 1, (
         f"expected exactly one canonical terminal, got {events!r}"
     )

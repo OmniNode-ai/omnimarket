@@ -24,9 +24,15 @@ import hashlib
 import pathlib
 
 import pytest
+import yaml
 from omnibase_compat.contracts.pr_occ_stamp import (
     EnumPrEvidenceSourceKind,
     parse_pr_occ_metadata_stamp,
+)
+from omnibase_core.models.contracts.ticket.model_dod_receipt import ModelDodReceipt
+from omnibase_core.validation.validator_occ_merge_eligibility import (
+    ModelOccEligibilityInput,
+    _receipt_bound_to_pr,
 )
 
 from omnimarket.nodes.node_occ_companion_compute.handlers.handler_occ_companion_compute import (
@@ -384,3 +390,75 @@ class TestZeroIoPurity:
             f"{handler_path.name} must do ZERO I/O (pure COMPUTE / attestation "
             f"oracle) — found: {offenders}"
         )
+
+
+# ---------------------------------------------------------------------------
+# OMN-14550 — the OCC self-bind receipt binds the OCC companion PR, not the
+# product PR. Pre-fix, ``_receipt`` stamped ``request.pr_number`` (the PRODUCT
+# PR) into EVERY receipt including the self-bind one, so core's
+# ``_receipt_bound_to_pr`` failed the ``receipt.pr_number == <OCC PR>`` branch
+# and occ-preflight rejected the companion with ``pr_ticket_mismatch``.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestOmn14550SelfBindPrNumber:
+    _PRODUCT_PR = 321
+    _OCC_PR = 55
+    _OCC_HEAD = "c" * 40
+
+    def _self_bind_receipt_text(self) -> str:
+        plan = compute_companion_plan(
+            _request(
+                pr_number=self._PRODUCT_PR,
+                occ_pr_number=self._OCC_PR,
+                occ_head_sha=self._OCC_HEAD,
+                occ_probe=_probe('{"number":55,"state":"OPEN"}'),
+            )
+        )
+        receipt = next(
+            f
+            for f in plan.companion_files
+            if f.kind == EnumCompanionFileKind.SELF_BIND_RECEIPT
+        )
+        return receipt.content
+
+    def test_self_bind_pr_number_is_occ_pr_not_product_pr(self) -> None:
+        # Parse the YAML and read the field programmatically — never grep raw
+        # bytes (OMN-14550 fix scope #3: check_value text can contain the same
+        # substring, producing a self-referential false-positive self-check).
+        parsed = yaml.safe_load(self._self_bind_receipt_text())
+        assert parsed["pr_number"] == self._OCC_PR
+        assert parsed["pr_number"] != self._PRODUCT_PR
+
+    def test_self_bind_check_value_targets_occ_pr_not_a_commit_sha(self) -> None:
+        # Fix scope #2: the self-bind check_value asserts the durable OCC PR
+        # identity (``gh pr view <OCC_PR>``), never a commit-SHA substring that
+        # may not appear in the receipt or the branch's real history.
+        parsed = yaml.safe_load(self._self_bind_receipt_text())
+        assert f"gh pr view {self._OCC_PR}" in parsed["check_value"]
+        assert str(self._PRODUCT_PR) not in parsed["check_value"]
+
+    def test_self_bind_binds_occ_pr_through_core_validator(self) -> None:
+        # Drive the ACTUAL binding seam core's occ-preflight uses. The OCC PR
+        # snapshot's commit set deliberately EXCLUDES the receipt commit (a
+        # rebased/squashed OCC branch), so binding can ONLY succeed via the
+        # ``pr_number`` branch — isolating the OMN-14550 defect. Pre-fix
+        # pr_number=321 fails both branches (pr_ticket_mismatch); post-fix
+        # pr_number=55 binds by pr_number.
+        receipt = ModelDodReceipt.model_validate(
+            yaml.safe_load(self._self_bind_receipt_text())
+        )
+        snapshot = ModelOccEligibilityInput(
+            repo="OmniNode-ai/onex_change_control",
+            pr_number=self._OCC_PR,
+            occ_commit_sha="d" * 40,
+            contracts_dir=pathlib.Path("/nonexistent/contracts"),
+            receipts_dir=pathlib.Path("/nonexistent/receipts"),
+            pr_commit_shas=("d" * 40,),  # excludes the receipt commit on purpose
+            pr_commit_texts=(),
+        )
+        assert receipt.commit_sha.lower() not in {
+            s.lower() for s in snapshot.pr_commit_shas
+        }, "test setup invariant: commit_sha must NOT match so only pr_number binds"
+        assert _receipt_bound_to_pr(receipt, snapshot) is True

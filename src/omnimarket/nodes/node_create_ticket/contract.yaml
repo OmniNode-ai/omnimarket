@@ -84,6 +84,20 @@ outputs:
 
 terminal_event: onex.evt.omnimarket.create-ticket-completed.v1
 
+secrets:
+  # Linear API key is contract-declared so the handler reads the ref name
+  # from here — not a bare source literal. Value is resolved at the effect
+  # boundary via the canonical secret-store resolver
+  # (omnimarket.inference.secret_store_resolver), sourced from
+  # ~/.omnibase/.env (LINEAR_API_KEY) or Infisical.
+  LINEAR_API_KEY:
+    description: "Linear API key for creating tickets via the GraphQL API."
+    required: true
+
+integrations:
+  linear:
+    graphql_url: "https://api.linear.app/graphql"
+
 event_bus:
   subscribe_topics:
     - onex.cmd.omnimarket.create-ticket-start.v1

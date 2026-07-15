@@ -15,13 +15,16 @@
 # endpoint + model + api_key_ref per-tier from this contract deep-merged with the
 # overlay, and executes through the canonical HTTP inference path (Bifrost
 # complete-URL-from-contract) identical to the lower tiers. The ceiling tier model
-# maps to an HTTP frontier backend (default backend_id ``cloud-glm`` since
-# OMN-13667 — repointed off free-tier AI Studio Gemini that 503s on escalation;
-# OMN-13351 previously repointed off the dead Anthropic ``cloud-sonnet``); it is
-# swappable across gemini / glm / openrouter / claude purely via contract overlay
-# (repoint the model's backend_id, or override the backend's endpoint_url /
-# model_name / secret_ref) — no code change, no env var, no CLI shell-out. The
-# former shelled ``codex-cli`` / ``cli_agents`` tiers were REMOVED.
+# maps to an HTTP frontier backend (default backend_id ``cloud-gemini-pro`` since
+# OMN-14625 — repointed off direct z.ai GLM (``cloud-glm``), whose route is DEAD
+# from the .201 runtime (resolve_api_key succeeds but every completion call
+# 401s / loops FAILED-only); OMN-13667 previously repointed off free-tier AI
+# Studio Gemini that 503s on escalation; OMN-13351 before that repointed off
+# the dead Anthropic ``cloud-sonnet``); it is swappable across gemini / glm /
+# openrouter / claude purely via contract overlay (repoint the model's
+# backend_id, or override the backend's endpoint_url / model_name /
+# secret_ref) — no code change, no env var, no CLI shell-out. The former
+# shelled ``codex-cli`` / ``cli_agents`` tiers were REMOVED.
 #
 # Endpoint URLs are resolved from the repo bifrost contract deep-merged with
 # the user overlay at ~/.omninode/delegation/bifrost_overrides.yaml. The
@@ -33,6 +36,8 @@
 #   - OMN-10657: Endpoint resolution from bifrost contract, not env vars
 #   - OMN-10717: Default contract + endpoint overlay merge semantics
 #   - OMN-13215: Canonical, provider-swappable ceiling tier; remove shelled CLI
+#   - OMN-14625: GLM z.ai route dead from .201 — cheap_cloud/ceiling/judge
+#     repointed to Gemini (cloud-gemini-pro)
 tiers:
   - name: local
     cost_per_1k_tokens: 0.0
@@ -105,18 +110,19 @@ tiers:
       cost_type: metered
       rate_per_1k_usd: 0.002
     models:
-      # OMN-13380: Direct z.ai GLM-5.2 — PRIMARY cheap-cloud code-gen backend.
-      # We hold a resolvable DIRECT GLM key (secret_ref llm.glm.api_key), so GLM
-      # routes direct to z.ai (backend cloud-glm) rather than through the
-      # OpenRouter aggregator. The former openrouter-glm-flash primary entry was
-      # REMOVED: OpenRouter is reserved for genuinely FREE models (the
-      # cheap_frontier Qwen3-Coder-480B free tier) — paying an aggregator markup
-      # for a model we can hit directly with our own key is a routing-cost bug,
-      # not a fallback strategy. model_name (glm-5.2) is resolved from the
-      # cloud-glm backend in bifrost_delegation.yaml (OMN-13343 verified id).
-      - id: glm-5-turbo
-        backend_id: cloud-glm
-        max_context_tokens: 128000
+      # OMN-14625: PRIMARY cheap-cloud code-gen backend repointed off direct
+      # z.ai GLM (backend cloud-glm) to Gemini (backend cloud-gemini-pro,
+      # model gemini-2.5-flash). The z.ai GLM route is DEAD from the .201
+      # runtime (OMN-14625 forensics: resolve_api_key succeeds but every
+      # completion call 401s / loops FAILED-only — see
+      # reference_glm_zai_wiring_and_consumers). Gemini's cloud-gemini-pro
+      # backend is proven resolvable (secret_ref llm.gemini.api_key, live
+      # 200s) and is already the ceiling's Gemini entry below, so this reuses
+      # a backend already known-good on this lane rather than introducing a
+      # new one.
+      - id: gemini-2.5-flash
+        backend_id: cloud-gemini-pro
+        max_context_tokens: 1000000
         use_for:
           - code_generation
           # OMN-13541: code_review added so the cheap_cloud tier is a real
@@ -208,41 +214,45 @@ tiers:
   # A fallback model entry (openrouter-qwen3-coder-480b, separate provider,
   # genuinely free tier) is added so the ceiling is not a single point of failure.
   #
+  # OMN-14625: ceiling repointed a THIRD time — from GLM-5.2 z.ai direct
+  # (cloud-glm) back to Gemini (cloud-gemini-pro, gemini-2.5-flash). The z.ai
+  # GLM route is DEAD from the .201 runtime: resolve_api_key succeeds but every
+  # completion call 401s / loops FAILED-only (forensics this ticket; see memory
+  # reference_glm_zai_wiring_and_consumers). The openrouter-qwen3-coder-480b
+  # fallback entry added under OMN-13667 is REMOVED — with the primary ceiling
+  # back on a proven-resolvable backend, the free-aggregator fallback is not
+  # worth its markup-avoidance tradeoff on the ceiling slot specifically
+  # (cheap_frontier below still carries the same OpenRouter model for the
+  # lower-cost escalation path).
+  #
   # The tier slot is kept named ``claude`` because every task-class
   # escalation_policy.tier_order and the handler cost_tier_map key on this literal
   # tier name; ``claude`` is now a stable ceiling-slot identifier, NOT a provider
   # claim.
   - name: claude
     cost_per_1k_tokens: 0.002
-    # OMN-13667: ceiling now routes to GLM-5.2 z.ai direct (cloud-glm,
-    # secret_ref llm.glm.api_key) — a billed direct key, same rate as cheap_cloud.
+    # OMN-14625: ceiling repointed off GLM-5.2 z.ai direct (cloud-glm) to Gemini
+    # (cloud-gemini-pro) — same billed/metered rate class as cheap_cloud above.
     cost:
       cost_type: metered
       rate_per_1k_usd: 0.002
     models:
-      # OMN-13667: primary ceiling model — GLM-5.2 z.ai direct, proven available
-      # (judge lane already runs on this backend). Replaces free-tier AI Studio
-      # Gemini (cloud-gemini-pro) which 503s on every escalation attempt.
-      - id: glm-5-turbo
-        backend_id: cloud-glm
-        max_context_tokens: 128000
-        use_for:
-          - escalation
-          - complex_reasoning
-          - agent_orchestration
-          - code_generation
-          - reasoning
-          - planning
-          - test
-          - document
-          - research
-      # OMN-13667: fallback ceiling entry — separate provider (OpenRouter /
-      # Qwen3 Coder 480B, genuinely free tier, consistent with the
-      # OpenRouter-only-for-free-models policy) so a z.ai outage does not
-      # hard-fail every escalation.
-      - id: openrouter-qwen3-coder-480b
-        backend_id: openrouter-qwen3-coder-480b
-        max_context_tokens: 262144
+      # OMN-14625: primary ceiling model repointed from GLM-5.2 z.ai direct
+      # (cloud-glm) to Gemini (cloud-gemini-pro, model gemini-2.5-flash). The
+      # z.ai GLM route is DEAD from the .201 runtime — resolve_api_key succeeds
+      # but every completion call 401s / loops FAILED-only (OMN-14625
+      # forensics; see reference_glm_zai_wiring_and_consumers). Gemini's
+      # cloud-gemini-pro backend is proven resolvable on this lane (live 200s,
+      # secret_ref llm.gemini.api_key). The OpenRouter Qwen3-Coder-480B
+      # fallback entry that previously sat below GLM is REMOVED from this
+      # ceiling: it is not a routine escalation backend (OpenRouter is
+      # reserved for the genuinely-free cheap_frontier tier per OMN-14225
+      # policy), and with the primary ceiling now on a proven-resolvable
+      # backend a paid-tier single point of failure is preferable to a free
+      # aggregator markup as the ceiling's own fallback.
+      - id: gemini-2.5-flash
+        backend_id: cloud-gemini-pro
+        max_context_tokens: 1000000
         use_for:
           - escalation
           - complex_reasoning

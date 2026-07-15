@@ -64,11 +64,12 @@ from omnimarket.nodes.node_delegation_orchestrator.enums import EnumDelegationSt
 from omnimarket.nodes.node_delegation_orchestrator.handlers.handler_delegation_workflow import (
     HandlerDelegationWorkflow,
 )
-from omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_event import (
-    ModelDelegationEvent,
-)
 from omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_request import (
     ModelDelegationRequest,
+)
+from omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_result import (
+    ModelDelegationCompleted,
+    ModelDelegationResult,
 )
 from omnimarket.nodes.node_delegation_quality_gate_reducer.handlers.handler_quality_gate import (
     delta as quality_gate_delta,
@@ -159,22 +160,24 @@ _BIFROST_CONTRACT_CODE = (
     "  max_shadow_latency_ms: 5.0\n"
 )
 
-# OMN-13599: code_generation now routes local -> cheap_cloud(glm-5.2/cloud-glm)
-# -> claude, and Gemini flash is no longer in the code_generation ROUTING path.
-# The real-bus chain routes a code_generation request, so its self-contained
-# bifrost contract must carry the cloud-glm backend (the cheap_cloud code-gen
-# primary) with a COMPLETE verbatim endpoint_url and NO secret_ref — so routing
-# resolves deterministically to glm-5.2 without a host overlay and without the
-# LLM_GLM_API_KEY the delegation conftest deliberately clears. (The earlier
-# gemini-only contract could not resolve code_generation once OMN-13599 removed
-# gemini from that routing path, and local-coder has no endpoint off-host.)
+# OMN-13599: code_generation routes local -> cheap_cloud -> claude.
+# OMN-14625: cheap_cloud's code_generation primary was repointed off z.ai GLM
+# (cloud-glm, DEAD from the .201 runtime) to Gemini (cloud-gemini-pro). The
+# real-bus chain routes a code_generation request, so its self-contained
+# bifrost contract must carry the cloud-gemini-pro backend (the cheap_cloud
+# code-gen primary) with a COMPLETE verbatim endpoint_url and NO secret_ref —
+# so routing resolves deterministically to gemini-2.5-flash without a host
+# overlay and without the LLM_GEMINI_API_KEY the delegation conftest
+# deliberately clears. (The earlier gemini-only contract could not resolve
+# code_generation once OMN-13599 removed gemini from that routing path, and
+# local-coder has no endpoint off-host.)
 _BIFROST_CONTRACT_CODE_GLM = (
     "config_version: '2.0.0'\n"
     "schema_version: bifrost_delegation.v1\n"
     "backends:\n"
-    "  - backend_id: cloud-glm\n"
+    "  - backend_id: cloud-gemini-pro\n"
     '    endpoint_url: "https://example.test/v1/chat/completions"\n'
-    '    model_name: "glm-5.2"\n'
+    '    model_name: "gemini-2.5-flash"\n'
     "    tier: cheap_cloud\n"
     "    timeout_ms: 30000\n"
     "    max_tokens: 8192\n"
@@ -187,14 +190,14 @@ _BIFROST_CONTRACT_CODE_GLM = (
     '    backend_policy_version: "2.0.0"\n'
     "    match_operation_types: [chat_completion]\n"
     "    match_capabilities: [code_generation]\n"
-    "    backend_ids: [cloud-glm]\n"
+    "    backend_ids: [cloud-gemini-pro]\n"
     "    fallback_policy:\n"
     "      action: escalate_to_next_tier\n"
     "      max_retries: 1\n"
     "      on_exhaust: return_error\n"
     '    shadow_policy_id: "dddddddd-dddd-4ddd-8ddd-dddddddddddd"\n'
     "default_backends:\n"
-    "  - cloud-glm\n"
+    "  - cloud-gemini-pro\n"
     "circuit_breaker:\n"
     "  failure_threshold: 5\n"
     "  window_seconds: 30\n"
@@ -305,17 +308,22 @@ class TestJudgeResolvesConcreteModelNotTier:
     def test_judge_backend_decoupled_from_escalation_model(self) -> None:
         """OMN-14225: the JUDGE model is decoupled from the cheap_cloud escalation.
 
-        The paid escalation backend (``cloud-glm``) was repointed to the cheaper
-        ``glm-5-turbo``; the JUDGE is a quality authority, not an escalation step,
-        so it keeps its OWN ``cloud-glm-judge`` backend pinned to the flagship
-        ``glm-5.2``. This proves repointing the escalation model can never again
-        drag the judge off the flagship (the OMN-14225 coupling this fix closes).
+        OMN-14625: the escalation backend (``cloud-glm``) is UNCHANGED by this
+        ticket — cheap_cloud/claude were repointed to a different backend
+        (``cloud-gemini-pro``), leaving ``cloud-glm`` itself defined-but-unused
+        (still ``glm-5-turbo``). The JUDGE's OWN ``cloud-glm-judge`` backend was
+        separately repointed off z.ai GLM to Gemini (``gemini-2.5-flash``) because
+        the z.ai route is DEAD from the .201 runtime. This test's load-bearing
+        invariant survives both repoints unchanged: the judge and the escalation
+        backend resolve from DIFFERENT backend definitions and are never forced
+        to the same model — repointing one can never again drag the other along
+        (the OMN-14225 coupling this fix originally closed).
         """
         judge_model = RoutingResolvedJudgeInferenceAdapter().resolved_model_id()
         escalation_model = resolve_delegation_backend(
             "code_generation", backend_id="cloud-glm"
         ).model_id
-        assert judge_model == "glm-5.2"
+        assert judge_model == "gemini-2.5-flash"
         assert escalation_model == "glm-5-turbo"
         # The load-bearing invariant: the two are resolved from DIFFERENT backends
         # and are NOT the same model — the judge does not ride the escalation model.
@@ -584,15 +592,20 @@ class TestJudgeCombineRealBusChain:
         # --- terminal: publish the gate-driven terminal events OVER THE BUS ---
         terminal_events = workflow.handle_gate_result(gate_result)
         for ev in terminal_events:
-            if isinstance(ev, ModelDelegationEvent):
+            if isinstance(ev, ModelDelegationResult):
+                topic = (
+                    TOPIC_ID_DELEGATION_COMPLETED
+                    if isinstance(ev, ModelDelegationCompleted)
+                    else TOPIC_ID_DELEGATION_FAILED
+                )
                 await bus.publish(
-                    ev.topic,
+                    topic,
                     key=str(request.correlation_id).encode(),
                     value=json.dumps(
                         {
-                            "topic": ev.topic,
+                            "topic": topic,
                             "correlation_id": str(request.correlation_id),
-                            "payload": ev.payload.model_dump(mode="json"),
+                            "payload": ev.model_dump(mode="json"),
                         }
                     ).encode("utf-8"),
                 )

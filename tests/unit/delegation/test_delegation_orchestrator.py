@@ -39,13 +39,12 @@ from omnimarket.nodes.node_delegation_orchestrator.handlers.handler_delegation_w
     HandlerDelegationWorkflow,
     InvalidStateTransitionError,
 )
-from omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_event import (
-    ModelDelegationEvent,
-)
 from omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_request import (
     ModelDelegationRequest,
 )
 from omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_result import (
+    ModelDelegationCompleted,
+    ModelDelegationFailed,
     ModelDelegationResult,
 )
 from omnimarket.nodes.node_delegation_orchestrator.models.model_inference_intent import (
@@ -341,11 +340,10 @@ class TestHappyPath:
         intents = handler.handle_gate_result(gate)
         # 2 events: delegation-completed terminal, baseline intent.
         assert len(intents) == 2
-        assert isinstance(intents[0], ModelDelegationEvent)
-        assert intents[0].topic == "onex.evt.omnibase-infra.delegation-completed.v1"
+        assert isinstance(intents[0], ModelDelegationCompleted)
         assert handler.workflows[cid].state == EnumDelegationState.COMPLETED
 
-        result: ModelDelegationResult = intents[0].payload
+        result: ModelDelegationResult = intents[0]
         assert result.correlation_id == cid
         assert result.quality_passed is True
         assert result.quality_score == pytest.approx(0.9)
@@ -385,8 +383,8 @@ class TestHappyPath:
         handler.handle_inference_response(_make_inference_response(correlation_id=cid))
         intents = handler.handle_gate_result(_make_gate_result(cid, passed=True))
 
-        assert isinstance(intents[0], ModelDelegationEvent)
-        result: ModelDelegationResult = intents[0].payload
+        assert isinstance(intents[0], ModelDelegationCompleted)
+        result: ModelDelegationResult = intents[0]
         assert result.latency_ms >= 0
 
 
@@ -424,11 +422,10 @@ class TestGateFailure:
         # OMN-13629: single canonical delegation-failed terminal (no baseline on
         # failure, no compat twin).
         assert len(intents) == 1
-        assert isinstance(intents[0], ModelDelegationEvent)
-        assert intents[0].topic == "onex.evt.omnibase-infra.delegation-failed.v1"
+        assert isinstance(intents[0], ModelDelegationFailed)
         assert handler.workflows[cid].state == EnumDelegationState.FAILED
 
-        result: ModelDelegationResult = intents[0].payload
+        result: ModelDelegationResult = intents[0]
         assert result.quality_passed is False
         assert result.fallback_to_claude is True
         assert "REFUSAL" in result.failure_reason
@@ -462,8 +459,8 @@ class TestGateFailure:
         )
         intents = handler.handle_gate_result(gate)
 
-        assert isinstance(intents[0], ModelDelegationEvent)
-        result: ModelDelegationResult = intents[0].payload
+        assert isinstance(intents[0], ModelDelegationFailed)
+        result: ModelDelegationResult = intents[0]
         assert result.fallback_to_claude is True
         assert result.quality_passed is False
         assert "score_below_required_bar" in result.failure_reason
@@ -700,7 +697,8 @@ class TestConcurrentWorkflows:
 class TestTaskDelegatedEventTopicRouting:
     """OMN-13629: the orchestrator no longer emits the legacy compat event.
 
-    The terminal collapsed to a single canonical ModelDelegationEvent. These
+    The terminal collapsed to a single canonical ModelDelegationCompleted /
+    ModelDelegationFailed emit. These
     tests prove the compat ModelTaskDelegatedEvent is NOT in the emitted output
     on either the pass or the fail path — the divergence-prone co-writer is gone.
     """
@@ -841,7 +839,7 @@ class TestInferenceErrorEscalation:
         routing_intents = [e for e in intents if isinstance(e, ModelRoutingIntent)]
         assert len(routing_intents) == 1
         assert routing_intents[0].min_tier_name is not None
-        assert not any(isinstance(e, ModelDelegationEvent) for e in intents)
+        assert not any(isinstance(e, ModelDelegationResult) for e in intents)
         escalations = [
             e
             for e in intents
@@ -879,13 +877,13 @@ class TestInferenceErrorEscalation:
 
         assert not any(isinstance(event, ModelRoutingIntent) for event in events)
         failure_event = next(
-            event for event in events if isinstance(event, ModelDelegationEvent)
+            event for event in events if isinstance(event, ModelDelegationResult)
         )
-        assert failure_event.topic == "onex.evt.omnibase-infra.delegation-failed.v1"
+        assert isinstance(failure_event, ModelDelegationFailed)
         assert handler.workflows[cid].state == EnumDelegationState.FAILED
         assert handler.workflows[cid].escalation_count == 0
 
-        result: ModelDelegationResult = failure_event.payload
+        result: ModelDelegationResult = failure_event
         assert result.quality_passed is False
         assert result.failure_reason == error_message
         assert result.terminal_failure_reason == "non_retryable_inference_response"
@@ -914,7 +912,7 @@ class TestInferenceErrorEscalation:
         assert len(routing_intents) == 1
         assert routing_intents[0].min_tier_name is not None
         assert routing_intents[0].min_tier_name != "local"
-        assert not any(isinstance(e, ModelDelegationEvent) for e in events)
+        assert not any(isinstance(e, ModelDelegationResult) for e in events)
 
         workflow = handler.workflows[cid]
         assert workflow.state == EnumDelegationState.ROUTED
@@ -1001,8 +999,9 @@ class TestInferenceErrorEscalation:
         )
 
         assert handler.workflows[cid].state == EnumDelegationState.COMPLETED
-        result_event = next(e for e in events if isinstance(e, ModelDelegationEvent))
-        result: ModelDelegationResult = result_event.payload
+        result_event = next(e for e in events if isinstance(e, ModelDelegationResult))
+        assert isinstance(result_event, ModelDelegationCompleted)
+        result: ModelDelegationResult = result_event
         assert result.quality_passed is True
         assert result.escalation_count == 1
         assert len(result.escalation_history) == 1
@@ -1024,11 +1023,11 @@ class TestInferenceErrorEscalation:
 
         # OMN-13629: a single canonical FAILED terminal (no compat twin).
         assert len(intents) == 1
-        failure_event = next(e for e in intents if isinstance(e, ModelDelegationEvent))
-        assert failure_event.topic == "onex.evt.omnibase-infra.delegation-failed.v1"
+        failure_event = next(e for e in intents if isinstance(e, ModelDelegationResult))
+        assert isinstance(failure_event, ModelDelegationFailed)
         assert handler.workflows[cid].state == EnumDelegationState.FAILED
 
-        result: ModelDelegationResult = failure_event.payload
+        result: ModelDelegationResult = failure_event
         assert result.quality_passed is False
         assert "401" in result.failure_reason
 
@@ -1134,10 +1133,10 @@ class TestInferenceErrorEscalation:
         final = handler.handle_inference_response(
             _make_error_inference_response(cid, "502 Bad Gateway final")
         )
-        failure_event = next(e for e in final if isinstance(e, ModelDelegationEvent))
-        assert failure_event.topic == "onex.evt.omnibase-infra.delegation-failed.v1"
+        failure_event = next(e for e in final if isinstance(e, ModelDelegationResult))
+        assert isinstance(failure_event, ModelDelegationFailed)
         assert handler.workflows[cid].state == EnumDelegationState.FAILED
-        result_payload: ModelDelegationResult = failure_event.payload
+        result_payload: ModelDelegationResult = failure_event
         assert (
             result_payload.terminal_failure_reason == "max_escalation_attempts_reached"
         )

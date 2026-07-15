@@ -39,16 +39,18 @@ from pydantic import BaseModel
 from omnimarket.inference.adapter_inference_bridge import ModelInferenceAdapter
 from omnimarket.nodes.node_delegation_orchestrator.contract_topics import (
     TOPIC_ID_DELEGATION_COMPLETED,
+    TOPIC_ID_DELEGATION_FAILED,
 )
 from omnimarket.nodes.node_delegation_orchestrator.enums import EnumDelegationState
 from omnimarket.nodes.node_delegation_orchestrator.handlers.handler_delegation_workflow import (
     HandlerDelegationWorkflow,
 )
-from omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_event import (
-    ModelDelegationEvent,
-)
 from omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_request import (
     ModelDelegationRequest,
+)
+from omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_result import (
+    ModelDelegationCompleted,
+    ModelDelegationResult,
 )
 from omnimarket.nodes.node_delegation_quality_gate_reducer.handlers.handler_quality_gate_intent import (
     HandlerQualityGateIntent,
@@ -169,9 +171,13 @@ def _inference_response(
 
 def _terminal_topics(terminal_events: list[BaseModel]) -> list[str | None]:
     return [
-        getattr(e, "topic", None)
+        (
+            TOPIC_ID_DELEGATION_COMPLETED
+            if isinstance(e, ModelDelegationCompleted)
+            else TOPIC_ID_DELEGATION_FAILED
+        )
         for e in terminal_events
-        if isinstance(e, ModelDelegationEvent)
+        if isinstance(e, ModelDelegationResult)
     ]
 
 
