@@ -31,7 +31,7 @@ input_model:
   description: "Identifies the product PR (and OCC repo) to gather companion state for."
 output_model:
   name: "ModelOccCompanionRequest"
-  module: "omnimarket.nodes.node_occ_companion_compute.models.model_occ_companion_request"
+  module: "omnimarket.events.occ_companion"
   description: "All PR + OCC state the COMPUTE node needs, gathered up front."
 handler_routing:
   routing_strategy: "operation_match"
@@ -40,15 +40,23 @@ handler_routing:
       handler:
         name: "HandlerOccStateEffect"
         module: "omnimarket.nodes.node_occ_state_effect.handlers.handler_occ_state_effect"
-# No event_bus block: this node is deliberately NOT wired to any Kafka
-# trigger yet (RSD-3 — the orchestrator/trigger that would call it — is a
-# distinct follow-up ticket, OMN-14619 non-goal). Declaring subscribe/publish
-# topics with no live producer/consumer trips the contract-topic-graph gate's
-# ORPHANED_CONSUMER/ORPHANED_PRODUCER checks (correctly — nothing sends or
-# reads these topics today). Invoked directly (handler.handle(...) /
-# HandlerOccStateEffect()._gather_sync(...)) until RSD-3 wires a real trigger,
-# at which point the event_bus block lands in that same PR alongside the
-# producer/consumer that makes it real.
+
+runtime_dispatch:
+  command_topic: "onex.cmd.omnimarket.occ-state-effect-requested.v1"
+  terminal_events:
+    success: "onex.evt.omnimarket.occ-state-effect-completed.v1"
+    failure: "onex.evt.omnimarket.occ-state-effect-failed.v1"
+
+event_bus:
+  subscribe_topics:
+    - "onex.cmd.omnimarket.occ-state-effect-requested.v1"
+  publish_topics:
+    - "onex.evt.omnimarket.occ-state-effect-completed.v1"
+    - "onex.evt.omnimarket.occ-state-effect-failed.v1"
+  dlq_topics:
+    - "onex.dlq.omnimarket.occ-state-effect.v1"
+
+terminal_event: "onex.evt.omnimarket.occ-state-effect-completed.v1"
 secrets:
   # OMN-12856 pattern: GitHub token is contract-declared so the handler reads
   # the ref name from here — not a bare source literal. Resolved at the effect

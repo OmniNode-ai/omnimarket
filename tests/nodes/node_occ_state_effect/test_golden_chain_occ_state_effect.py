@@ -88,17 +88,33 @@ class TestContractYaml:
         assert side_effects.get("writes") == []
         assert "github_api" in side_effects.get("reads", [])
 
-    def test_contract_declares_no_event_bus_topics_yet(
+    def test_contract_declares_runtime_dispatch_topics(
         self, contract_path: Path
     ) -> None:
-        """OMN-14619: deliberately NOT wired to Kafka yet (no RSD-3 trigger
-        exists). An event_bus block with no live producer/consumer would trip
-        the contract-topic-graph gate's ORPHANED_CONSUMER/ORPHANED_PRODUCER
-        checks — correctly, since nothing sends or reads these topics today.
-        """
         data = yaml.safe_load(contract_path.read_text())
-        assert "event_bus" not in data
-        assert "terminal_event" not in data
+        assert (
+            data["runtime_dispatch"]["command_topic"]
+            == "onex.cmd.omnimarket.occ-state-effect-requested.v1"
+        )
+        assert (
+            data["runtime_dispatch"]["terminal_events"]["success"]
+            == "onex.evt.omnimarket.occ-state-effect-completed.v1"
+        )
+        assert (
+            data["runtime_dispatch"]["terminal_events"]["failure"]
+            == "onex.evt.omnimarket.occ-state-effect-failed.v1"
+        )
+        assert data["event_bus"]["subscribe_topics"] == [
+            "onex.cmd.omnimarket.occ-state-effect-requested.v1"
+        ]
+        assert data["event_bus"]["publish_topics"] == [
+            "onex.evt.omnimarket.occ-state-effect-completed.v1",
+            "onex.evt.omnimarket.occ-state-effect-failed.v1",
+        ]
+        assert (
+            data["terminal_event"]
+            == "onex.evt.omnimarket.occ-state-effect-completed.v1"
+        )
 
 
 class TestMetadataYaml:

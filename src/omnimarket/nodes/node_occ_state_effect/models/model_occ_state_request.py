@@ -3,7 +3,7 @@
 """ModelOccStateRequest — the command that triggers the RSD-2 read-EFFECT.
 
 Identifies the product PR to gather state for; everything else the COMPUTE
-node needs (:class:`~omnimarket.nodes.node_occ_companion_compute.models.model_occ_companion_request.ModelOccCompanionRequest`)
+node needs (:class:`~omnimarket.events.occ_companion.ModelOccCompanionRequest`)
 is derived from live GitHub facts by :class:`HandlerOccStateEffect`, never
 supplied here.
 """

@@ -40,19 +40,18 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Literal
-from uuid import UUID
 
 import yaml
 from omnibase_core.validation.validator_receipt_gate import _extract_ticket_ids
 
-from omnimarket.github_api import GitHubApiError, rest_json, rest_json_array, split_repo
-from omnimarket.inference.secret_store_resolver import resolve_api_key
-from omnimarket.nodes.contract_topics import contract_secret_ref
-from omnimarket.nodes.node_occ_companion_compute.models.model_occ_companion_request import (
+from omnimarket.events.occ_companion import (
     ModelObservedProbe,
     ModelOccCompanionRequest,
     ModelOccContractState,
 )
+from omnimarket.github_api import GitHubApiError, rest_json, rest_json_array, split_repo
+from omnimarket.inference.secret_store_resolver import resolve_api_key
+from omnimarket.nodes.contract_topics import contract_secret_ref
 from omnimarket.nodes.node_occ_state_effect.models.model_occ_state_request import (
     ModelOccStateRequest,
 )
@@ -223,16 +222,12 @@ class HandlerOccStateEffect:
     def handler_category(self) -> Literal["EFFECT"]:
         return "EFFECT"
 
-    async def handle(
-        self,
-        correlation_id: UUID,
-        request: ModelOccStateRequest,
-    ) -> ModelOccCompanionRequest:
+    async def handle(self, request: ModelOccStateRequest) -> ModelOccCompanionRequest:
         logger.info(
             "occ_state_effect: repo=%s pr=%s correlation_id=%s",
             request.repo,
             request.pr_number,
-            correlation_id,
+            request.correlation_id,
         )
         return await asyncio.to_thread(self._gather_sync, request)
 
