@@ -146,6 +146,13 @@ CHECKOUT_ROOT_ENV = "CONTRACT_GRAPH_CHECKOUT_ROOT"
 # onex.<kind>.<producer>.<event-name>.<version>
 _TOPIC_RE = re.compile(r"^onex\.(evt|cmd|intent|dlq)\.[a-z0-9._-]+\.v\d+$")
 
+# OMN-14591: integrations/catalog.yaml entry types that constitute a genuine
+# on-demand/external-trigger signal (see _load_catalog_ingress_nodes). Only
+# "poller" is observed in the corpus today (e.g. gmail_intent_poller,
+# github_pr_poller); extend if a real cron/scheduled entry appears -- do NOT
+# add types speculatively.
+_INGRESS_CATALOG_TYPES = frozenset({"poller"})
+
 DEFAULT_BASELINE = Path(__file__).parent / "data" / "contract_topic_graph_baseline.yaml"
 
 DefectClass = Literal[
@@ -171,6 +178,16 @@ class ModelContractNode(BaseModel):
     externally_consumed: tuple[str, ...] = ()
     has_dispatch_wiring: bool = False
     runtime_loaded: bool = False
+    # OMN-14591: a REAL, positive, machine-checkable signal that this node is
+    # deliberately invoked from outside the Kafka contract graph (cron/on-demand
+    # poller, per contracts/integrations/catalog.yaml, or an explicit
+    # runtime_dispatch.external_trigger annotation) -- see
+    # _find_disconnected_subgraphs. Bare structural shape (subscribe_topics ==
+    # () + has publish_topics) is NOT sufficient on its own: verify round 1
+    # caught it silently rescuing 2 genuinely dead nodes (node_baseline_capture,
+    # node_pattern_lifecycle_effect) that share the shape but have no
+    # invocation path at all.
+    declared_ingress_root: bool = False
 
 
 class ModelGraphFinding(BaseModel):
@@ -285,7 +302,12 @@ def _has_top_level_handler(handler: object) -> bool:
     )
 
 
-def parse_contract(path: Path, package: str) -> ModelContractNode | None:
+def parse_contract(
+    path: Path,
+    package: str,
+    *,
+    catalog_ingress_nodes: frozenset[str] = frozenset(),
+) -> ModelContractNode | None:
     """Reduce one contract.yaml to its graph surface.
 
     The corpus declares topics through roughly a dozen different key shapes that
@@ -348,13 +370,27 @@ def parse_contract(path: Path, package: str) -> ModelContractNode | None:
         and not bus.get("plugin_managed")
     )
 
+    name = str(
+        data.get("name")
+        or data.get("contract_name")
+        or data.get("node_name")
+        or path.parent.name
+    )
+
+    # OMN-14591: two REAL, positive signals distinguish a genuine on-demand
+    # ingress root from a node that merely shares its structural shape
+    # (subscribe_topics == (), has publish_topics). (1) A maintained,
+    # dashboard-consumed integrations catalog entry (contracts/integrations/
+    # catalog.yaml) naming this node under a poller/cron-typed integration --
+    # an external fact this node cannot self-declare. (2) An explicit
+    # runtime_dispatch.external_trigger: true annotation, for nodes without a
+    # catalog entry. Neither is the bare shape itself -- see
+    # ModelContractNode.declared_ingress_root.
+    explicit_external_trigger = bool(_dig(data, "runtime_dispatch", "external_trigger"))
+    declared_ingress_root = explicit_external_trigger or name in catalog_ingress_nodes
+
     return ModelContractNode(
-        name=str(
-            data.get("name")
-            or data.get("contract_name")
-            or data.get("node_name")
-            or path.parent.name
-        ),
+        name=name,
         package=package,
         path=str(path),
         publish_topics=tuple(sorted(set(published))),
@@ -373,7 +409,41 @@ def parse_contract(path: Path, package: str) -> ModelContractNode | None:
         has_dispatch_wiring=_has_dispatch_entry(data.get("handler_routing"))
         or _has_top_level_handler(data.get("handler")),
         runtime_loaded=runtime_loaded,
+        declared_ingress_root=declared_ingress_root,
     )
+
+
+def _load_catalog_ingress_nodes(root: Path) -> frozenset[str]:
+    """Node names declared under a poller/cron-typed integration in this
+    package's ``contracts/integrations/catalog.yaml``, if it ships one.
+
+    This file is a maintained, real registry (consumed by the omnidash
+    Integration Catalog dashboard) -- not something a node's own contract can
+    self-declare. It is the positive external fact that distinguishes a
+    genuine on-demand ingress root (e.g. node_gmail_intent_poller_effect,
+    type: poller) from a node that merely shares its structural shape.
+    """
+    catalog_path = root / "contracts" / "integrations" / "catalog.yaml"
+    if not catalog_path.is_file():
+        return frozenset()
+    try:
+        data = yaml.safe_load(catalog_path.read_text(errors="replace")) or {}
+    except yaml.YAMLError:
+        return frozenset()
+    entries = data.get("integrations") if isinstance(data, dict) else None
+    if not isinstance(entries, list):
+        return frozenset()
+    names: set[str] = set()
+    for entry in entries:
+        if (
+            not isinstance(entry, dict)
+            or entry.get("type") not in _INGRESS_CATALOG_TYPES
+        ):
+            continue
+        nodes = entry.get("nodes")
+        if isinstance(nodes, list):
+            names.update(n for n in nodes if isinstance(n, str))
+    return frozenset(names)
 
 
 def discover_contract_roots() -> dict[str, Path]:
@@ -473,8 +543,11 @@ def build_graph(
 
     nodes: list[ModelContractNode] = []
     for package, root in sorted(roots.items()):
+        catalog_ingress_nodes = _load_catalog_ingress_nodes(root)
         for contract_path in sorted(root.rglob("contract.yaml")):
-            node = parse_contract(contract_path, package)
+            node = parse_contract(
+                contract_path, package, catalog_ingress_nodes=catalog_ingress_nodes
+            )
             if node is not None:
                 nodes.append(node)
 
@@ -630,9 +703,35 @@ def _find_disconnected_subgraphs(
     """Weakly-connected components containing no reachable entry point.
 
     A component is live only if SOME topic in it can be fed from outside: a
-    contract producer beyond the component, a declared external producer, or a
-    runtime_dispatch entry point. A component where every inbound topic is
-    unreachable can never run, however perfectly its internals are wired.
+    contract producer beyond the component, a declared external producer, a
+    runtime_dispatch entry point, or an on-demand ingress root (see below). A
+    component where every inbound topic is unreachable can never run, however
+    perfectly its internals are wired.
+
+    OMN-14591: a member with EMPTY ``subscribe_topics`` that still publishes
+    something CAN be an entry point -- not brokenness -- but bare structural
+    shape is not sufficient proof on its own. A node with zero subscriptions
+    has no possible way to ever run except by being invoked from outside the
+    Kafka graph entirely (cron, on-demand CLI, a scheduler); that shape is
+    NECESSARY for an ingress/root EFFECT (the motivating case:
+    ``node_gmail_intent_poller_effect``, an on-demand Gmail poller with
+    ``subscribe_topics: []`` that feeds a downstream evaluator over a real,
+    correctly-matched topic) but it is NOT SUFFICIENT: verify round 1 proved
+    the shape alone also matches genuinely dead scaffolding with no invocation
+    path at all (``node_baseline_capture``, ``node_pattern_lifecycle_effect``
+    -- no cron, no GHA, no CLI caller, exhaustively grepped). So this also
+    requires ``declared_ingress_root`` -- a REAL, positive, external signal
+    (a ``contracts/integrations/catalog.yaml`` poller entry, or an explicit
+    ``runtime_dispatch.external_trigger: true`` annotation) that the node
+    cannot self-declare via shape alone. Before the shape check existed,
+    such a cluster read identically to a genuinely dead island, because
+    neither of the two ORIGINAL entry-point signals (``command_topic``,
+    externally-produced/outside-component ``subscribe_topics``) can ever fire
+    for a node with no subscriptions to examine. This does not widen any
+    OTHER check: a zero-subscription node with no ``publish_topics`` either
+    forms its own singleton component (already excluded below) or produces
+    nothing to flag; a zero-subscription node whose ``publish_topics``
+    nobody consumes is still caught separately by ``ORPHANED_PRODUCER``.
 
     KNOWN RESIDUAL (OMN-14575): the adjacency/component identity here is still
     bare-name-keyed, so a name collision across packages can still conflate
@@ -676,6 +775,21 @@ def _find_disconnected_subgraphs(
             if member_node is None:
                 continue
             if member_node.command_topic is not None:
+                has_entry = True
+                break
+            # OMN-14591: an on-demand ingress root -- no subscriptions to ever
+            # be fed BY the graph, but it demonstrably produces INTO the graph,
+            # AND carries a real, positive external-invocation signal
+            # (declared_ingress_root -- a catalog.yaml poller entry or an
+            # explicit runtime_dispatch.external_trigger annotation). The bare
+            # shape alone (empty subscribe_topics + publish_topics) is NOT
+            # enough: verify round 1 proved it silently rescues genuinely dead
+            # nodes that share the shape with no invocation path at all.
+            if (
+                not member_node.subscribe_topics
+                and member_node.publish_topics
+                and member_node.declared_ingress_root
+            ):
                 has_entry = True
                 break
             for topic in member_node.subscribe_topics:

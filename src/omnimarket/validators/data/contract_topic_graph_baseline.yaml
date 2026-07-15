@@ -27,7 +27,6 @@ accepted:
 - DISCONNECTED_SUBGRAPH::node_demo_cost_compute::-
 - DISCONNECTED_SUBGRAPH::node_dependency_health_sweep::-
 - DISCONNECTED_SUBGRAPH::node_design_to_plan::-
-- DISCONNECTED_SUBGRAPH::node_gmail_intent_evaluator_effect::-
 - DISCONNECTED_SUBGRAPH::node_omnigate_check_executor::-
 - DISCONNECTED_SUBGRAPH::node_topic_migration_executor_effect::-
 - ORPHANED_CONSUMER::ab_compare_orchestrator::onex.cmd.omnimarket.ab-compare-start.v1

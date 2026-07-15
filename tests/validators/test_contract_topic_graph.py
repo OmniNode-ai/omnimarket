@@ -339,6 +339,349 @@ def test_disconnected_subgraph_is_caught__two_rival_ledgers(tmp_path: Path) -> N
     assert "ledger_state_reducer" in subgraphs[0].detail
 
 
+def _write_catalog(tmp_path: Path, package: str, integrations: list[dict]) -> Path:
+    """Write a contracts/integrations/catalog.yaml under a synthetic package root."""
+    path = tmp_path / package / "contracts" / "integrations" / "catalog.yaml"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(yaml.safe_dump({"integrations": integrations}))
+    return path
+
+
+def test_ondemand_ingress_root_is_not_flagged_disconnected(tmp_path: Path) -> None:
+    """OMN-14591: a cron/on-demand root with zero subscriptions is NOT debt --
+    but ONLY when a real, positive external-invocation signal backs it up.
+
+    The motivating case: node_gmail_intent_poller_effect (subscribe_topics: [],
+    "On-demand trigger" per its own contract comment, AND a real
+    contracts/integrations/catalog.yaml poller entry) feeds
+    node_gmail_intent_evaluator_effect over a real, correctly-matched topic.
+    A node with no subscriptions has no possible way to ever run except by
+    being invoked from outside the Kafka graph entirely -- that CAN be the
+    entry point, even though neither original signal (command_topic,
+    externally-fed subscribe_topics) can fire for a node with no
+    subscriptions to examine. But verify round 1 proved the bare SHAPE alone
+    is not sufficient (it also matched genuinely dead scaffolding with no
+    invocation path at all -- see
+    test_bare_ingress_shape_without_a_signal_is_still_flagged_disconnected
+    below), so this fixture uses the explicit
+    runtime_dispatch.external_trigger annotation as the positive signal (the
+    catalog.yaml path is proven separately in
+    test_catalog_poller_entry_is_a_valid_ingress_signal). Before either
+    signal existed, this 2-node cluster read identically to a genuinely dead
+    island (see test_disconnected_subgraph_is_caught__two_rival_ledgers just
+    above, which must keep failing).
+    """
+    _write(
+        tmp_path,
+        "omnimarket",
+        "ingress_poller",
+        {
+            "name": "ingress_poller",
+            "event_bus": {
+                "subscribe_topics": [],
+                "publish_topics": ["onex.evt.omnimarket.signal-received.v1"],
+            },
+            "runtime_dispatch": {"external_trigger": True},
+            "handler_routing": {
+                "handlers": [
+                    {
+                        "operation": "poll",
+                        "handler": {"module": "test_module", "name": "TestHandler"},
+                    }
+                ]
+            },
+        },
+    )
+    _write(
+        tmp_path,
+        "omnimarket",
+        "signal_evaluator",
+        {
+            "name": "signal_evaluator",
+            "event_bus": {
+                "subscribe_topics": ["onex.evt.omnimarket.signal-received.v1"]
+            },
+            "handler_routing": {
+                "handlers": [
+                    {
+                        "operation": "evaluate",
+                        "handler": {"module": "test_module", "name": "TestHandler"},
+                    }
+                ]
+            },
+        },
+    )
+
+    defects = find_defects(_graph(tmp_path))
+    assert [d for d in defects if d.defect == "DISCONNECTED_SUBGRAPH"] == []
+    # Not orphaned either -- the topic IS produced and IS consumed.
+    assert [
+        d for d in defects if d.defect in ("ORPHANED_CONSUMER", "ORPHANED_PRODUCER")
+    ] == []
+
+
+def test_catalog_poller_entry_is_a_valid_ingress_signal(tmp_path: Path) -> None:
+    """The OTHER positive signal: a real contracts/integrations/catalog.yaml
+    poller entry, with NO explicit contract annotation -- exactly the shape
+    of the real node_gmail_intent_poller_effect (its own catalog entry, no
+    runtime_dispatch.external_trigger field at all).
+    """
+    _write(
+        tmp_path,
+        "omnimarket",
+        "catalog_poller",
+        {
+            "name": "catalog_poller",
+            "event_bus": {
+                "subscribe_topics": [],
+                "publish_topics": ["onex.evt.omnimarket.catalog-signal.v1"],
+            },
+            "handler_routing": {
+                "handlers": [
+                    {
+                        "operation": "poll",
+                        "handler": {"module": "test_module", "name": "TestHandler"},
+                    }
+                ]
+            },
+        },
+    )
+    _write(
+        tmp_path,
+        "omnimarket",
+        "catalog_signal_evaluator",
+        {
+            "name": "catalog_signal_evaluator",
+            "event_bus": {
+                "subscribe_topics": ["onex.evt.omnimarket.catalog-signal.v1"]
+            },
+            "handler_routing": {
+                "handlers": [
+                    {
+                        "operation": "evaluate",
+                        "handler": {"module": "test_module", "name": "TestHandler"},
+                    }
+                ]
+            },
+        },
+    )
+    _write_catalog(
+        tmp_path,
+        "omnimarket",
+        [
+            {
+                "id": "catalog_poller_integration",
+                "type": "poller",
+                "nodes": ["catalog_poller"],
+            }
+        ],
+    )
+
+    defects = find_defects(_graph(tmp_path))
+    assert [d for d in defects if d.defect == "DISCONNECTED_SUBGRAPH"] == []
+
+
+def test_bare_ingress_shape_without_a_signal_is_still_flagged_disconnected(
+    tmp_path: Path,
+) -> None:
+    """THE critical negative fixture from verify round 1.
+
+    Same structural shape as the gmail poller (subscribe_topics == (), has
+    publish_topics, feeds a real downstream consumer) but with NEITHER
+    positive signal -- no catalog.yaml entry, no explicit annotation. This is
+    exactly the shape of node_baseline_capture / node_pattern_lifecycle_effect:
+    dead scaffolding with no invocation path, not a legitimate ingress root.
+    Bare shape must NOT be treated as sufficient proof on its own.
+    """
+    _write(
+        tmp_path,
+        "omnimarket",
+        "unsignaled_producer",
+        {
+            "name": "unsignaled_producer",
+            "event_bus": {
+                "subscribe_topics": [],
+                "publish_topics": ["onex.evt.omnimarket.unclaimed-signal.v1"],
+            },
+            "handler_routing": {
+                "handlers": [
+                    {
+                        "operation": "produce",
+                        "handler": {"module": "test_module", "name": "TestHandler"},
+                    }
+                ]
+            },
+        },
+    )
+    _write(
+        tmp_path,
+        "omnimarket",
+        "unsignaled_consumer",
+        {
+            "name": "unsignaled_consumer",
+            "event_bus": {
+                "subscribe_topics": ["onex.evt.omnimarket.unclaimed-signal.v1"]
+            },
+            "handler_routing": {
+                "handlers": [
+                    {
+                        "operation": "consume",
+                        "handler": {"module": "test_module", "name": "TestHandler"},
+                    }
+                ]
+            },
+        },
+    )
+
+    defects = find_defects(_graph(tmp_path))
+    subgraphs = [d for d in defects if d.defect == "DISCONNECTED_SUBGRAPH"]
+    assert len(subgraphs) == 1
+    assert "unsignaled_producer" in subgraphs[0].detail
+    assert "unsignaled_consumer" in subgraphs[0].detail
+
+
+def test_ingress_root_fix_does_not_mask_a_producer_nobody_consumes(
+    tmp_path: Path,
+) -> None:
+    """The ingress-root exemption is narrow: it does not launder a producer
+    whose output genuinely goes nowhere. That defect is ORPHANED_PRODUCER's
+    job, evaluated independently of the subgraph check, and must still fire.
+    """
+    _write(
+        tmp_path,
+        "omnimarket",
+        "ingress_poller_alone",
+        {
+            "name": "ingress_poller_alone",
+            "event_bus": {
+                "subscribe_topics": [],
+                "publish_topics": ["onex.evt.omnimarket.nobody-listens.v1"],
+            },
+            "handler_routing": {
+                "handlers": [
+                    {
+                        "operation": "poll",
+                        "handler": {"module": "test_module", "name": "TestHandler"},
+                    }
+                ]
+            },
+        },
+    )
+
+    defects = find_defects(_graph(tmp_path))
+    # Singleton component (no edges at all) -- covered by the orphan check,
+    # never by the subgraph check (len(component) < 2 excludes it there).
+    assert [d for d in defects if d.defect == "DISCONNECTED_SUBGRAPH"] == []
+    orphaned = [d for d in defects if d.defect == "ORPHANED_PRODUCER"]
+    assert len(orphaned) == 1
+    assert orphaned[0].node == "ingress_poller_alone"
+
+
+def test_ingress_root_rescues_only_its_own_cluster__a_separate_dead_island_still_fails(
+    tmp_path: Path,
+) -> None:
+    """The discriminating negative fixture the fix must not blur.
+
+    One graph, two unrelated weakly-connected components: the ingress-root
+    pair (legitimately live, must NOT be flagged) sits ALONGSIDE a genuinely
+    dead rival-ledgers-shaped island (two rival_* nodes, internally wired,
+    fed by nothing -- must STILL be flagged). If the ingress-root signal ever
+    leaked reachability across components, or if the fix accidentally
+    softened the subgraph check in general rather than adding one narrow
+    signal, the second island would go silent too. It must not.
+    """
+    _write(
+        tmp_path,
+        "omnimarket",
+        "ingress_poller",
+        {
+            "name": "ingress_poller",
+            "event_bus": {
+                "subscribe_topics": [],
+                "publish_topics": ["onex.evt.omnimarket.signal-received.v1"],
+            },
+            "runtime_dispatch": {"external_trigger": True},
+            "handler_routing": {
+                "handlers": [
+                    {
+                        "operation": "poll",
+                        "handler": {"module": "test_module", "name": "TestHandler"},
+                    }
+                ]
+            },
+        },
+    )
+    _write(
+        tmp_path,
+        "omnimarket",
+        "signal_evaluator",
+        {
+            "name": "signal_evaluator",
+            "event_bus": {
+                "subscribe_topics": ["onex.evt.omnimarket.signal-received.v1"]
+            },
+            "handler_routing": {
+                "handlers": [
+                    {
+                        "operation": "evaluate",
+                        "handler": {"module": "test_module", "name": "TestHandler"},
+                    }
+                ]
+            },
+        },
+    )
+    # A SEPARATE, unconnected component: internally wired, fed by nothing --
+    # neither node has empty subscribe_topics, so the ingress-root signal
+    # cannot fire for either one. Same shape as the rival-ledgers test above.
+    _write(
+        tmp_path,
+        "omnimarket",
+        "rival_orchestrator",
+        {
+            "name": "rival_orchestrator",
+            "event_bus": {
+                "subscribe_topics": ["onex.cmd.omnimarket.rival-tick.v1"],
+                "publish_topics": ["onex.evt.omnimarket.rival-reduced.v1"],
+            },
+            "handler_routing": {
+                "handlers": [
+                    {
+                        "operation": "tick",
+                        "handler": {"module": "test_module", "name": "TestHandler"},
+                    }
+                ]
+            },
+        },
+    )
+    _write(
+        tmp_path,
+        "omnimarket",
+        "rival_state_reducer",
+        {
+            "name": "rival_state_reducer",
+            "event_bus": {"subscribe_topics": ["onex.evt.omnimarket.rival-reduced.v1"]},
+            "handler_routing": {
+                "handlers": [
+                    {
+                        "operation": "reduce",
+                        "handler": {"module": "test_module", "name": "TestHandler"},
+                    }
+                ]
+            },
+        },
+    )
+
+    defects = find_defects(_graph(tmp_path))
+    subgraphs = {d.node for d in defects if d.defect == "DISCONNECTED_SUBGRAPH"}
+
+    # The ingress-root pair is legitimately live -- rescued.
+    assert "ingress_poller" not in subgraphs
+    assert "signal_evaluator" not in subgraphs
+    # The unrelated dead island is untouched by the fix -- still flagged.
+    assert "rival_orchestrator" in subgraphs
+    assert len([d for d in defects if d.defect == "DISCONNECTED_SUBGRAPH"]) == 1
+
+
 def test_declared_external_producer_makes_a_consumer_reachable(tmp_path: Path) -> None:
     """Some topics really are published off-graph (the skill CLI, a GitHub webhook).
 
