@@ -11,6 +11,7 @@ populated, freshly measured coverage.json. A green on absence is vacuous.
 from __future__ import annotations
 
 import json
+import subprocess
 import sys
 from pathlib import Path
 from unittest.mock import patch
@@ -154,6 +155,45 @@ class TestCoverageSweepGateGreenProof:
         assert payload["total_modules"] == 1
 
 
+class _FakePopen:
+    """Minimal stand-in for ``subprocess.Popen`` used by generate_coverage_json.
+
+    OMN-14645 (+ deconflict with OMN-14641 #1776): generation STREAMS the
+    child's stdout/stderr live to the job log (no ``capture_output`` / PIPE) and
+    emits parent heartbeat output while the child is still running;
+    ``start_new_session=True`` still lets a timeout reap the whole process
+    group. These fakes exercise that path without a real subprocess. ``pid`` is
+    a non-existent value so the best-effort ``_reap_process_group`` helper
+    resolves to a no-op (getpgid raises).
+    """
+
+    def __init__(
+        self,
+        cmd: list[str],
+        *,
+        returncode: int = 0,
+        timeout: bool = False,
+    ) -> None:
+        self.args = cmd
+        self.pid = 2**31 - 1  # non-existent pid; reaping is a guarded no-op
+        self.returncode = returncode
+        self._timeout = timeout
+
+    def wait(self, timeout=None):  # type: ignore[no-untyped-def]
+        if self._timeout:
+            self._timeout = False  # a subsequent wait after reaping returns
+            raise subprocess.TimeoutExpired(self.args, timeout or 0)
+        return self.returncode
+
+    def poll(self) -> int | None:
+        if self._timeout:
+            return None
+        return self.returncode
+
+    def kill(self) -> None:
+        self.returncode = -9
+
+
 class TestCoverageSweepGateGenerationWiring:
     """The generation step is real subprocess-driven code, not prose."""
 
@@ -163,26 +203,16 @@ class TestCoverageSweepGateGenerationWiring:
         (tmp_path / "src").mkdir()
 
         captured_cmd: list[str] = []
-
         captured_kwargs: dict[str, object] = {}
-
-        class _FakeProcess:
-            returncode = 0
-
-            def __init__(self) -> None:
-                self._poll_count = 0
-
-            def poll(self) -> int | None:
-                self._poll_count += 1
-                if self._poll_count == 1:
-                    return None
-                (tmp_path / "coverage.json").write_text(json.dumps({"files": {}}))
-                return 0
 
         def _fake_popen(cmd, **kwargs):  # type: ignore[no-untyped-def]
             captured_cmd.extend(cmd)
             captured_kwargs.update(kwargs)
-            return _FakeProcess()
+            # OMN-14645: the child MUST be started in its own session so a
+            # timeout can reap the whole process group.
+            assert kwargs.get("start_new_session") is True
+            (tmp_path / "coverage.json").write_text(json.dumps({"files": {}}))
+            return _FakePopen(cmd, returncode=0)
 
         with (
             patch("run_coverage_sweep_gate.subprocess.Popen", side_effect=_fake_popen),
@@ -194,6 +224,9 @@ class TestCoverageSweepGateGenerationWiring:
         assert "coverage.json" in message
         assert "pytest" in captured_cmd
         assert any("--cov-report=json" in part for part in captured_cmd)
+        # OMN-14645 / deconflict OMN-14641 (#1776): output MUST stream to the
+        # job log, never be captured/PIPE-buffered — capturing freezes the run's
+        # updatedAt and re-triggers the Codex stale-run cancel storm this fixes.
         assert "capture_output" not in captured_kwargs
         assert "stdout" not in captured_kwargs
         assert "stderr" not in captured_kwargs
@@ -203,20 +236,47 @@ class TestCoverageSweepGateGenerationWiring:
     ) -> None:
         from run_coverage_sweep_gate import generate_coverage_json
 
-        class _FakeProcess:
-            returncode = 1
-
-            def poll(self) -> int:
-                return 1
-
         def _fake_popen(cmd, **kwargs):  # type: ignore[no-untyped-def]
-            return _FakeProcess()
+            # exits non-zero and writes NO coverage.json
+            return _FakePopen(cmd, returncode=1)
 
         with patch("run_coverage_sweep_gate.subprocess.Popen", side_effect=_fake_popen):
             ok, message = generate_coverage_json(tmp_path)
 
         assert ok is False
-        assert "boom" in message or "coverage.json" in message
+        # The failing subprocess streamed its own diagnostics to the job log;
+        # the returned message just points there — it must not silently swallow.
+        assert "streamed pytest output" in message
+
+    def test_generation_timeout_reaps_and_fails_loudly(self, tmp_path: Path) -> None:
+        """OMN-14645: a timed-out generation reaps the process group and reports
+        failure LOUDLY — it must never leave a stale artifact swept as clean.
+
+        The timeout path is driven by ``proc.wait(timeout=...)`` raising
+        ``TimeoutExpired`` (streaming, no capture), NOT by ``communicate``.
+        """
+        from run_coverage_sweep_gate import generate_coverage_json
+
+        reaped: dict[str, bool] = {"called": False}
+
+        def _fake_popen(cmd, **kwargs):  # type: ignore[no-untyped-def]
+            return _FakePopen(cmd, timeout=True)
+
+        def _fake_reap(proc):  # type: ignore[no-untyped-def]
+            reaped["called"] = True
+
+        with (
+            patch("run_coverage_sweep_gate.subprocess.Popen", side_effect=_fake_popen),
+            patch(
+                "run_coverage_sweep_gate._reap_process_group", side_effect=_fake_reap
+            ),
+        ):
+            ok, message = generate_coverage_json(tmp_path, timeout_s=1)
+
+        assert ok is False
+        assert "timed out" in message
+        # Reaping-on-timeout is retained and fires loudly (no silent stale pass).
+        assert reaped["called"] is True
 
     def test_generate_helper_emits_parent_heartbeat(
         self, tmp_path: Path, capsys: pytest.CaptureFixture[str]

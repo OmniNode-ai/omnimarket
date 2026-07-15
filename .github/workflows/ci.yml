@@ -7,6 +7,25 @@ on:
     branches: [main, dev]
   merge_group:
 
+# OMN-14645: single-flight per ref, QUEUE — never cancel — an older candidate.
+# The coverage-sweep-gate is the longest-pole job (3 fresh sibling clones +
+# `uv sync --all-extras` + full `pytest --cov`), so any run-wide cancel almost
+# always catches it mid-flight; the resulting `cancelled` result rolls the
+# required "CI Summary" red and wedges the PR (mergeStateStatus=BLOCKED).
+# `cancel-in-progress: false` means a newer run on the SAME ref WAITS for the
+# in-flight one to reach a terminal result instead of cancelling it — so a
+# running sweep is allowed to finish. The group is keyed by ref, so different
+# PRs (and main / merge_group) never block each other.
+#
+# SCOPE / HONESTY: this guards same-ref push/synchronize churn only. It does
+# NOT stop an external `gh run rerun` on the SAME run id (a rerun is not a new
+# workflow run and is not subject to `concurrency`), which was the verified
+# driver of the 2026-07-15 cancel storm on #1754/#1758/#1774. Halting that
+# driver is an operational action, not a YAML change (see PR body).
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   # OCC preflight is the first non-OCC CI dependency. If central OCC
   # evidence is missing or red, no runner-heavy validation jobs fan out.
@@ -1404,6 +1423,13 @@ jobs:
     needs: occ-preflight
     name: Coverage Sweep Gate
     runs-on: ubuntu-latest
+    # OMN-14645: bound the longest-pole job explicitly. The generation step caps
+    # its inner `pytest --cov` at 1800s (30 min) in run_coverage_sweep_gate.py;
+    # 40 min leaves headroom for setup (3 clones + `uv sync --all-extras`) while
+    # ensuring a wedged/orphaned pytest child can never hold a runner slot for
+    # the 360-minute GitHub default. A timeout here surfaces as `cancelled` and
+    # is caught fail-closed by the strict CI-Summary check below (never a pass).
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
       - name: Clone omnibase_core
@@ -1633,6 +1659,23 @@ jobs:
             FAILED=true
           else
             echo "no-noncanonical-lifecycle-classes: $RATCHET_RESULT"
+          fi
+
+          # OMN-14645: strict fail-closed gate on coverage-sweep-gate. It was
+          # previously in the loose loop above where BOTH 'success' and
+          # 'skipped' pass -- a 'skipped' coverage sweep would silently PASS the
+          # required "CI Summary" (fail-OPEN, an un-measured scope reported
+          # clean). Per reference_ci_gate_enforcement_mechanics the coverage
+          # census must be EXACTLY 'success'; skipped/cancelled/failure ALL
+          # block. This does NOT mask cancellation -- a 'cancelled' coverage
+          # sweep (the 2026-07-15 storm symptom) still fails here, loudly; the
+          # concurrency/timeout hardening above is what PREVENTS the cancel.
+          COVERAGE_RESULT="${{ needs.coverage-sweep-gate.result }}"
+          if [ "$COVERAGE_RESULT" != "success" ]; then
+            echo "::error::coverage-sweep-gate did not pass (result: $COVERAGE_RESULT) - fail-closed (OMN-14645); cancelled/skipped/failure never counts as a measured-clean coverage census"
+            FAILED=true
+          else
+            echo "coverage-sweep-gate: $COVERAGE_RESULT"
           fi
 
           # OMN-14590: event-registry-drift / topic-drift-check / topic-enum-drift

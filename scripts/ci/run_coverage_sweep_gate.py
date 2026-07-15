@@ -48,6 +48,8 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
+import signal
 import subprocess
 import sys
 import time
@@ -61,6 +63,38 @@ from omnimarket.nodes.node_coverage_sweep.handlers.handler_coverage_sweep import
     CoverageSweepRequest,
     NodeCoverageSweep,
 )
+
+
+def _reap_process_group(proc: subprocess.Popen[bytes]) -> None:
+    """Best-effort SIGTERM then SIGKILL of the child's ENTIRE process group.
+
+    OMN-14645: coverage generation runs the full pytest suite, which can fan
+    out into pytest-xdist workers and other spawned subprocesses. A plain
+    ``proc.kill()`` on timeout reaps only the direct ``uv`` child and can
+    orphan the rest, wedging or leaking the CI runner (a suspected
+    runner-slot-hold vector behind the always-cancelled longest-pole job).
+    Because the child is started in its own session (``start_new_session=True``)
+    it is the leader of a fresh process group, so we can signal the whole group
+    by its pgid. Purely best-effort — every lookup/signal is guarded because
+    the group may already be gone.
+    """
+    if os.name != "posix":
+        proc.kill()
+        return
+    try:
+        pgid = os.getpgid(proc.pid)
+    except (ProcessLookupError, OSError):
+        return
+    for sig in (signal.SIGTERM, signal.SIGKILL):
+        try:
+            os.killpg(pgid, sig)
+        except (ProcessLookupError, OSError):
+            return
+        try:
+            proc.wait(timeout=5)
+            return
+        except subprocess.TimeoutExpired:
+            continue
 
 
 def generate_coverage_json(
@@ -78,6 +112,25 @@ def generate_coverage_json(
     swallow subprocess failures — a failed generation run must not silently
     leave a stale or absent coverage.json behind and then let the sweep
     report clean over it.
+
+    OMN-14645: the child is launched in its own session/process group
+    (``start_new_session=True``) so that a timeout reaps the WHOLE pytest
+    process tree, not just the direct ``uv`` child — orphaned coverage
+    children are a runner-wedge vector on the longest-pole CI job. A timeout
+    fails LOUDLY (``succeeded=False`` with an explicit message); it never
+    leaves a stale artifact to be swept as clean.
+
+    OMN-14645 / deconflict with OMN-14641 (#1776): the child's stdout/stderr
+    are NOT captured — they STREAM straight through to this job's stdout/stderr.
+    Capturing (``stdout=PIPE``/``stderr=PIPE``/``capture_output``) buffers the
+    entire ~8-minute ``pytest --cov`` run until the process exits, which freezes
+    the CI run's ``updatedAt`` for the whole longest-pole job. A frozen
+    ``updatedAt`` is exactly what trips the Codex merge controller's stale-run
+    heuristic into a cancel+rerun storm — the very failure this ticket exists to
+    fix (controller self-diagnosed at the merge-controller ledger ~17:39Z). Do
+    NOT re-add PIPE capture here: live streaming keeps the run heartbeating, and
+    the timeout output above is preserved in the streamed job log, so there is no
+    need to silently capture-and-hold it for a diagnostic tail.
 
     Returns ``(succeeded, message)``. ``succeeded=False`` does not itself
     fail the gate — the downstream sweep will observe the missing/invalid
@@ -97,42 +150,56 @@ def generate_coverage_json(
         f"--cov-report=json:{coverage_json}",
     ]
     print(
-        "coverage-sweep-gate: running coverage generation command: " + " ".join(cmd),
+        "coverage-sweep-gate: running coverage generation (streaming output): "
+        + " ".join(cmd),
         flush=True,
     )
     try:
+        # No stdout/stderr redirection: the child inherits this process's
+        # stdout/stderr and streams live to the CI job log (see docstring —
+        # capturing would freeze updatedAt and trigger the cancel storm).
         proc = subprocess.Popen(
             cmd,
             cwd=str(target_dir),
+            start_new_session=True,
         )
-        started_at = time.monotonic()
-        next_heartbeat_at = started_at + heartbeat_s
-        deadline_at = started_at + timeout_s
-
-        while proc.poll() is None:
-            now = time.monotonic()
-            if now >= deadline_at:
-                proc.kill()
-                proc.wait()
-                return False, f"coverage generation timed out after {timeout_s}s"
-            if now >= next_heartbeat_at:
-                elapsed_s = int(now - started_at)
-                print(
-                    "coverage-sweep-gate: coverage generation still running "
-                    f"after {elapsed_s}s",
-                    flush=True,
-                )
-                next_heartbeat_at = now + heartbeat_s
-            time.sleep(min(1.0, max(0.1, next_heartbeat_at - now)))
-    except subprocess.TimeoutExpired as exc:
-        return False, f"coverage generation timed out after {timeout_s}s: {exc}"
     except OSError as exc:
         return False, f"coverage generation subprocess failed to start: {exc}"
+
+    started_at = time.monotonic()
+    next_heartbeat_at = started_at + heartbeat_s
+    deadline_at = started_at + timeout_s
+
+    while proc.poll() is None:
+        now = time.monotonic()
+        if now >= deadline_at:
+            _reap_process_group(proc)
+            return False, (
+                f"coverage generation timed out after {timeout_s}s; process group "
+                f"reaped (OMN-14645). The pytest output above (streamed live) shows "
+                f"where it hung."
+            )
+        if now >= next_heartbeat_at:
+            elapsed_s = int(now - started_at)
+            print(
+                "coverage-sweep-gate: coverage generation still running "
+                f"after {elapsed_s}s",
+                flush=True,
+            )
+            next_heartbeat_at = now + heartbeat_s
+        time.sleep(min(1.0, max(0.1, next_heartbeat_at - now)))
+
+    if proc.returncode:
+        return False, (
+            f"coverage generation exited {proc.returncode}. See the streamed "
+            f"pytest output above for the failure."
+        )
 
     if not coverage_json.is_file():
         return False, (
             f"coverage generation exited {proc.returncode} but produced no "
-            f"coverage.json at {coverage_json}."
+            f"coverage.json at {coverage_json}. See the streamed pytest output "
+            f"above for the failure."
         )
     return True, f"generated {coverage_json}"
 
