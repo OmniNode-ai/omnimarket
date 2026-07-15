@@ -313,11 +313,10 @@ class HandlerHostileReviewerOrchestrator:
             for model_key, findings in per_model_findings.items()
         )
         output = await self._aggregator.handle(
-            correlation_id=correlation_id,
-            input_data=ModelFindingAggregatorInput(
+            ModelFindingAggregatorInput(
                 correlation_id=correlation_id,
                 sources=sources,
-            ),
+            )
         )
         verdict = _verdict_from_aggregated(output.verdict.value)
         _log.info(
