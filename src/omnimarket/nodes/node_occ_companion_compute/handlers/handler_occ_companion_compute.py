@@ -356,6 +356,17 @@ def compute_companion_plan(request: ModelOccCompanionRequest) -> ModelOccCompani
     for ticket in tickets:
         state = _state_for(request, ticket)
 
+        # OMN-14622: on pass 2 (OCC PR known) the self-bind is a DECLARED
+        # dod_evidence entry, not just a receipt — occ-preflight iterates the
+        # contract's dod_evidence, so an undeclared self-bind receipt is never
+        # read and the OCC companion PR fails its OWN occ-preflight
+        # (pr_ticket_mismatch). None on pass 1 / the frozen merged path.
+        self_bind_evidence_id = (
+            f"occ-self-bind-pr-{request.occ_pr_number}"
+            if request.occ_pr_number is not None
+            else None
+        )
+
         if state.exists and state.merged:
             # Two-audiences (OMN-14233): the contract is frozen (merged). Appending
             # would restale every merged receipt, so emit NET-NEW supersede files
@@ -402,11 +413,16 @@ def compute_companion_plan(request: ModelOccCompanionRequest) -> ModelOccCompani
             contract_hash = whole
         else:
             # Fresh (absent, or exists-but-open → full regeneration all-adds).
+            # On pass 2 the contract ALSO declares the self-bind item (OMN-14622)
+            # so the OCC companion PR's own occ-preflight can bind it.
             contract_content = render_compute_companion_contract(
                 ticket_id=ticket,
                 repo=repo,
                 pr_number=pr_number,
                 evidence_id=evidence_id,
+                self_bind_evidence_id=self_bind_evidence_id,
+                occ_pr_number=request.occ_pr_number,
+                occ_repo=request.occ_repo,
             )
             contract_hash = _sha256_hex(contract_content)
             # Parse the just-rendered contract so the downstream receipt's
@@ -455,24 +471,33 @@ def compute_companion_plan(request: ModelOccCompanionRequest) -> ModelOccCompani
 
         # Two-stage self-bind: only renderable once the OCC PR is known (2nd pass
         # / oracle re-run). Proves the OCC companion PR itself.
-        if request.occ_pr_number is not None and request.occ_probe is not None:
+        if (
+            request.occ_pr_number is not None
+            and request.occ_probe is not None
+            and self_bind_evidence_id is not None
+        ):
             occ_check = (
                 f"gh pr view {request.occ_pr_number} --repo {request.occ_repo} "
                 "--json number,state"
             )
             occ_commit = request.occ_head_sha or request.pr_head_sha
-            # The self-bind receipt proves the OCC PR itself; its evidence_item_id
-            # ("occ-self-bind-pr-N") is NEVER a declared dod_evidence item, so it
-            # carries NO per-entry hash (contract_entry_sha256=None) — minting one
-            # would fail the gate with ContractEntryNotFoundError. It keeps only
-            # the whole-file contract_sha256 the dual-accept gate expects.
+            # OMN-14622: on the FRESH path the self-bind id IS a declared
+            # dod_evidence item (the contract renders it on pass 2), so it carries
+            # the OMN-13888 per-entry hash — append-invariant and byte-recomputable
+            # by the gate. On the frozen MERGED path the id is NOT in the (frozen)
+            # contract, so _entry_hash_for returns None and the receipt keeps only
+            # the whole-file contract_sha256 (minting a per-entry hash there would
+            # fail the gate with ContractEntryNotFoundError).
+            self_bind_entry_hash = _entry_hash_for(
+                parsed_contract, self_bind_evidence_id
+            )
             content = _receipt(
                 request=request,
                 ticket_id=ticket,
-                evidence_id=f"occ-self-bind-pr-{request.occ_pr_number}",
+                evidence_id=self_bind_evidence_id,
                 check_value=occ_check,
                 contract_sha256=contract_hash,
-                contract_entry_sha256=None,
+                contract_entry_sha256=self_bind_entry_hash,
                 commit_sha=occ_commit,
                 probe=request.occ_probe,
                 actual_output=(
@@ -487,13 +512,13 @@ def compute_companion_plan(request: ModelOccCompanionRequest) -> ModelOccCompani
                 ModelCompanionFile(
                     path=(
                         f"drift/dod_receipts/{ticket}/"
-                        f"occ-self-bind-pr-{request.occ_pr_number}/command.yaml"
+                        f"{self_bind_evidence_id}/command.yaml"
                     ),
                     content=content,
                     kind=EnumCompanionFileKind.SELF_BIND_RECEIPT,
                     ticket_id=ticket,
                     contract_sha256=contract_hash,
-                    contract_entry_sha256="",
+                    contract_entry_sha256=self_bind_entry_hash or "",
                 )
             )
 

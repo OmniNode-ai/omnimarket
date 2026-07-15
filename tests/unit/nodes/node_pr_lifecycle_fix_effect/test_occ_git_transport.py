@@ -9,10 +9,11 @@ run_git wrapper (success + credential-scrubbed failure). No network access.
 from __future__ import annotations
 
 import subprocess
+from pathlib import Path
 
 import pytest
 
-from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.occ_git_transport import (
+from omnimarket.occ_git_transport import (
     OCC_REPO,
     authenticated_occ_url,
     run_git,
@@ -51,18 +52,18 @@ class TestScrubCredentials:
 
 @pytest.mark.unit
 class TestRunGit:
-    def test_returns_stripped_stdout(self, tmp_path: object) -> None:
-        result = run_git(["git", "--version"], cwd=str(tmp_path))  # type: ignore[arg-type]
+    def test_returns_stripped_stdout(self, tmp_path: Path) -> None:
+        result = run_git(["git", "--version"], cwd=str(tmp_path))
         assert result.startswith("git version")
 
-    def test_raises_called_process_error_on_failure(self, tmp_path: object) -> None:
+    def test_raises_called_process_error_on_failure(self, tmp_path: Path) -> None:
         with pytest.raises(subprocess.CalledProcessError):
             run_git(
                 ["git", "rev-parse", "--verify", "refs/heads/nope-xyz"],
-                cwd=str(tmp_path),  # type: ignore[arg-type]
+                cwd=str(tmp_path),
             )
 
-    def test_credential_is_redacted_from_failure(self, tmp_path: object) -> None:
+    def test_credential_is_redacted_from_failure(self, tmp_path: Path) -> None:
         # A locally-failing git invocation whose argv carries the token pattern:
         # git treats the first arg as a subcommand, fails fast (no network), and
         # the token must NOT leak into the raised exception.
@@ -70,7 +71,7 @@ class TestRunGit:
         with pytest.raises(subprocess.CalledProcessError) as exc_info:
             run_git(
                 ["git", token_arg, "definitely-not-a-git-subcommand"],
-                cwd=str(tmp_path),  # type: ignore[arg-type]
+                cwd=str(tmp_path),
             )
         rendered = (
             str(exc_info.value)

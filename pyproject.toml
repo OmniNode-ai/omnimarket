@@ -254,6 +254,7 @@ node_pr_lifecycle_inventory_compute = "omnimarket.nodes.node_pr_lifecycle_invent
 node_pr_lifecycle_fix_effect = "omnimarket.nodes.node_pr_lifecycle_fix_effect"
 node_occ_companion_compute = "omnimarket.nodes.node_occ_companion_compute"
 node_occ_state_effect = "omnimarket.nodes.node_occ_state_effect"
+node_occ_companion_effect = "omnimarket.nodes.node_occ_companion_effect"
 node_pr_delegated_fix_effect = "omnimarket.nodes.node_pr_delegated_fix_effect"
 node_ci_watch = "omnimarket.nodes.node_ci_watch"
 node_coderabbit_triage = "omnimarket.nodes.node_coderabbit_triage"

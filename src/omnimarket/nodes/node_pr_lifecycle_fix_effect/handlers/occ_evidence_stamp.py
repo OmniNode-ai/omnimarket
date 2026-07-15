@@ -260,8 +260,7 @@ _COMPUTE_CONTRACT_TEMPLATE = textwrap.dedent("""\
     ticket_id: "{ticket_id}"
     title: "Autobind OCC evidence for {ticket_id}"
     summary: >
-      OCC contract authored by node_occ_companion_compute (OMN-14285) for {repo}
-      PR #{pr_number}.
+      OCC contract authored by node_occ_companion_compute (OMN-14285) for {repo} PR #{pr_number}.
     is_seam_ticket: false
     interface_change: false
     interfaces_touched: []
@@ -282,13 +281,39 @@ _COMPUTE_CONTRACT_TEMPLATE = textwrap.dedent("""\
             check_value: "gh pr view {pr_number} --repo {repo} --json number,state"
     """)
 
+# Self-bind dod_evidence entry appended to the compute-oracle contract on pass 2
+# (OMN-14622). Once the OCC companion PR exists, the contract must DECLARE a
+# self-bind item so occ-preflight, iterating the contract's dod_evidence, finds a
+# PASS receipt bound to the OCC PR itself — otherwise the OCC companion PR fails
+# its OWN occ-preflight with pr_ticket_mismatch ("no PASS receipt binds to PR
+# #<occ>"; proven 2026-07-14 against validate_occ_merge_eligibility). This is a
+# pure binding item (proof tier L0 — an existence check on the OCC PR, which is
+# legitimate for a binding item; the substantive L1 claim is the downstream
+# content-read). Indent matches the 6-space dod_evidence list items above so the
+# block continues the same YAML sequence when concatenated.
+# NOT textwrap.dedent'd: every line here is indented, so dedent would strip the
+# common leading whitespace and flatten the list item to column 0 (invalid YAML).
+# The rendered _COMPUTE_CONTRACT_TEMPLATE puts dod_evidence list items at 2-space
+# indent, so this block matches that exactly and continues the same sequence.
+_COMPUTE_SELF_BIND_ENTRY_TEMPLATE = (
+    '  - id: "{self_bind_evidence_id}"\n'
+    '    description: "Binds {ticket_id} to OCC companion PR'
+    ' #{occ_pr_number} (self-bind)."\n'
+    '    source: "generated"\n'
+    "    checks:\n"
+    '      - check_type: "command"\n'
+    '        check_value: "gh pr view {occ_pr_number} --repo'
+    ' {occ_repo} --json number,state"\n'
+)
+
 _COMPUTE_RECEIPT_TEMPLATE = textwrap.dedent("""\
     ---
     schema_version: "1.0.0"
     ticket_id: "{ticket_id}"
     evidence_item_id: "{evidence_id}"
     check_type: "command"
-    check_value: "{check_value}"
+    check_value: |-
+      {check_value}
     contract_sha256: "sha256:{contract_sha256}"
     contract_entry_sha256: "{contract_entry_sha256}"
     status: PASS
@@ -317,7 +342,8 @@ _COMPUTE_RECEIPT_TEMPLATE_NO_ENTRY = textwrap.dedent("""\
     ticket_id: "{ticket_id}"
     evidence_item_id: "{evidence_id}"
     check_type: "command"
-    check_value: "{check_value}"
+    check_value: |-
+      {check_value}
     contract_sha256: "sha256:{contract_sha256}"
     status: PASS
     run_timestamp: "{run_timestamp}"
@@ -500,14 +526,41 @@ def render_self_bind_dod_evidence_item(
 
 
 def render_compute_companion_contract(
-    *, ticket_id: str, repo: str, pr_number: int, evidence_id: str
+    *,
+    ticket_id: str,
+    repo: str,
+    pr_number: int,
+    evidence_id: str,
+    self_bind_evidence_id: str | None = None,
+    occ_pr_number: int | None = None,
+    occ_repo: str | None = None,
 ) -> str:
-    """Render the RSD compute-oracle companion contract YAML."""
-    return _COMPUTE_CONTRACT_TEMPLATE.format(
+    """Render the RSD compute-oracle companion contract YAML.
+
+    On pass 1 (``self_bind_evidence_id is None``) the contract declares only the
+    downstream product-receipt item. On pass 2 — once the OCC companion PR exists
+    — the self-bind item is APPENDED (OMN-14622) so the contract declares the
+    receipt that binds the OCC PR to itself; without it the OCC companion PR fails
+    its own occ-preflight (``pr_ticket_mismatch``). Pure function of its inputs.
+    """
+    base = _COMPUTE_CONTRACT_TEMPLATE.format(
         ticket_id=ticket_id,
         repo=repo,
         pr_number=pr_number,
         evidence_id=evidence_id,
+    )
+    if self_bind_evidence_id is None:
+        return base
+    if occ_pr_number is None or occ_repo is None:
+        raise ValueError(
+            "self_bind_evidence_id requires occ_pr_number and occ_repo to render "
+            "the self-bind dod_evidence entry"
+        )
+    return base + _COMPUTE_SELF_BIND_ENTRY_TEMPLATE.format(
+        self_bind_evidence_id=self_bind_evidence_id,
+        ticket_id=ticket_id,
+        occ_pr_number=occ_pr_number,
+        occ_repo=occ_repo,
     )
 
 

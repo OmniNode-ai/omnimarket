@@ -10,6 +10,8 @@ nodes do not reach into another node's private model package.
 from __future__ import annotations
 
 import re
+from enum import StrEnum
+from uuid import UUID, uuid4
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -26,6 +28,94 @@ class ModelObservedProbe(BaseModel):
         ..., description="Captured probe stdout (single compact JSON line)."
     )
     exit_code: int = Field(default=0, description="Probe exit code.")
+
+
+class EnumCompanionFileKind(StrEnum):
+    """Kind of a single companion file in a :class:`ModelOccCompanionPlan`."""
+
+    CONTRACT = "contract"
+    DOWNSTREAM_RECEIPT = "downstream_receipt"
+    SELF_BIND_RECEIPT = "self_bind_receipt"
+    SUPERSEDE_RECEIPT = "supersede_receipt"
+
+
+class ModelCompanionWedge(BaseModel):
+    """A self-reported authoring defect, paired with its failure mode + fix."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    code: str = Field(..., description="Wedge code, e.g. 'skip_token_present'.")
+    failure_mode: str = Field(..., description="What breaks if this ships.")
+    alternative: str = Field(..., description="What to do instead.")
+
+
+class ModelCompanionFile(BaseModel):
+    """One net-new OCC companion file the plan emits (byte-exact content)."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    path: str = Field(..., description="Path relative to the OCC repo root.")
+    content: str = Field(..., description="Byte-exact file content to write.")
+    kind: EnumCompanionFileKind = Field(..., description="Companion file kind.")
+    ticket_id: str = Field(..., description="The OMN-XXXX ticket this file is for.")
+    is_net_new: bool = Field(
+        default=True,
+        description="Always True — the append-only gate accepts only net-new files.",
+    )
+    contract_sha256: str = Field(
+        default="",
+        description="Whole-file contract hash bound in this receipt (empty for a contract file).",
+    )
+    contract_entry_sha256: str = Field(
+        default="",
+        description="Per-entry hash for append/supersede receipts (empty otherwise).",
+    )
+
+
+class ModelOccCompanionPlan(BaseModel):
+    """The deterministic companion plan a COMPUTE run emits from a request."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    repo: str = Field(..., description="Product repo slug.")
+    pr_number: int = Field(..., description="Product PR number.")
+    tickets: tuple[str, ...] = Field(
+        default=(), description="The gate-parity cited ticket set (may be empty)."
+    )
+    branch: str = Field(
+        default="", description="Deterministic OCC companion branch name."
+    )
+
+    no_op: bool = Field(
+        default=False,
+        description="True when nothing should be authored (already bound, or no ticket).",
+    )
+    no_op_reason: str = Field(default="", description="Why the plan is a no-op.")
+
+    fast_path: bool = Field(
+        default=False,
+        description="True when the trivial-infra fast-path skips the companion.",
+    )
+    fast_path_reason: str = Field(default="", description="Fast-path decision reason.")
+
+    companion_files: tuple[ModelCompanionFile, ...] = Field(
+        default=(),
+        description="Net-new OCC files to write.",
+    )
+    product_body_stamped: str = Field(
+        default="",
+        description="The product PR body with the canonical Evidence-Source block.",
+    )
+    evidence_source_occ_pr: int | None = Field(
+        default=None, description="OCC PR number stamped as Evidence-Source."
+    )
+    wedges: tuple[ModelCompanionWedge, ...] = Field(
+        default=(), description="Self-reported authoring defects."
+    )
+    deterministic_digest: str = Field(
+        default="",
+        description="Reproducibility fingerprint for the deterministic companion subset.",
+    )
 
 
 class ModelOccContractState(BaseModel):
@@ -141,8 +231,33 @@ class ModelOccCompanionRequest(BaseModel):
         return value
 
 
+class ModelOccStateRequest(BaseModel):
+    """Identify the product PR (and OCC repo) to gather companion state for."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    repo: str = Field(..., description="Product repo slug (owner/repo).")
+    pr_number: int = Field(..., description="Product PR number.")
+    occ_repo: str = Field(
+        default="OmniNode-ai/onex_change_control", description="OCC repo slug."
+    )
+    runner: str = Field(
+        default="node_occ_companion_compute", description="Receipt runner identity."
+    )
+    verifier: str = Field(
+        default="occ-evidence-source-autobind",
+        description="Receipt verifier identity (must differ from runner).",
+    )
+    correlation_id: UUID = Field(default_factory=uuid4)
+
+
 __all__ = [
+    "EnumCompanionFileKind",
+    "ModelCompanionFile",
+    "ModelCompanionWedge",
     "ModelObservedProbe",
+    "ModelOccCompanionPlan",
     "ModelOccCompanionRequest",
     "ModelOccContractState",
+    "ModelOccStateRequest",
 ]

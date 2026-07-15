@@ -68,7 +68,7 @@ def _request(**overrides: object) -> ModelOccCompanionRequest:
         "product_probe": _probe(),
     }
     base.update(overrides)
-    return ModelOccCompanionRequest(**base)  # type: ignore[arg-type]
+    return ModelOccCompanionRequest.model_validate(base)
 
 
 def _whole_file_hash(text: str) -> str:
@@ -140,12 +140,16 @@ class TestFreshCompanionIsGateRecomputable:
 
 
 @pytest.mark.unit
-class TestSelfBindReceiptHasNoUnrecomputableEntryHash:
-    def test_self_bind_receipt_carries_no_per_entry_hash(self) -> None:
-        """A self-bind receipt's evidence_item_id (``occ-self-bind-pr-N``) is
-        never a declared ``dod_evidence`` item, so it must NOT carry a
-        ``contract_entry_sha256`` — otherwise the gate rejects it as binding a
-        non-existent entry. It keeps only the whole-file binding.
+class TestSelfBindReceiptIsDeclaredAndHashed:
+    def test_self_bind_receipt_is_declared_and_carries_recomputable_hash(self) -> None:
+        """OMN-14622: on pass 2 the self-bind item (``occ-self-bind-pr-N``) is a
+        DECLARED ``dod_evidence`` entry in the companion contract — without it the
+        OCC companion PR fails its OWN occ-preflight with ``pr_ticket_mismatch``
+        (nothing binds the OCC PR). Because it is declared, its receipt carries a
+        ``contract_entry_sha256`` that recomputes byte-equal to core's canonical
+        per-entry hash. (Superseded the pre-14622 invariant that asserted the
+        self-bind carried NO per-entry hash — that assumed the item was never
+        declared, which was the very gap that forced the manual companion lane.)
         """
         plan = compute_companion_plan(
             _request(
@@ -154,17 +158,26 @@ class TestSelfBindReceiptHasNoUnrecomputableEntryHash:
                 occ_probe=_probe('{"number":55,"state":"OPEN"}'),
             )
         )
+        contract = _by_kind(plan.companion_files, EnumCompanionFileKind.CONTRACT)[0]
+        parsed_contract = yaml.safe_load(contract.content)
+        declared = {item["id"] for item in (parsed_contract.get("dod_evidence") or [])}
         self_binds = _by_kind(
             plan.companion_files, EnumCompanionFileKind.SELF_BIND_RECEIPT
         )
         assert self_binds, "expected a self-bind receipt when the OCC PR is known"
         for sb in self_binds:
-            assert "contract_entry_sha256" not in sb.content, (
-                "self-bind receipt binds an UNDECLARED item; a per-entry hash "
-                "would fail core's gate with ContractEntryNotFoundError"
-            )
             receipt = ModelDodReceipt.model_validate(yaml.safe_load(sb.content))
-            assert receipt.contract_entry_sha256 is None
+            assert receipt.evidence_item_id in declared, (
+                "self-bind item must be a DECLARED dod_evidence entry so "
+                "occ-preflight binds the OCC PR"
+            )
+            assert receipt.contract_entry_sha256 is not None
+            expected = compute_contract_entry_sha256(
+                parsed_contract, receipt.evidence_item_id
+            )
+            assert receipt.contract_entry_sha256 == expected
+            # And the whole binding is gate-recomputable against the fresh contract.
+            assert _gate(sb, contract) is None
 
     def test_every_declared_receipt_hashed_undeclared_not(self) -> None:
         """The full invariant, over EVERY minted receipt (mirrors the born-path
