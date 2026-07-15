@@ -25,8 +25,8 @@ This node is the missing production component. It:
 
 Definition B (OMN-14355): ``handle(request: <verdict union>) -> <outcome> | None``
 — a bare typed payload in, a bare typed model out, dispatched by ``isinstance``.
-It never imports the runtime envelope type (that hard-fails the canon ratchet). The
-per-topic ``event_model`` in ``contract.yaml`` (``topic_match``) makes the
+It never imports the runtime envelope type (that hard-fails the canon ratchet).
+The per-topic ``event_model`` in ``contract.yaml`` (``topic_match``) makes the
 dispatcher validate each real producer wire shape before calling ``handle`` —
 the same fix pattern OMN-14534 applied to node_swarm_subtask_state_reducer. The
 join is 1-in -> 1-out per call (no multi-event fan-out), so it needs neither the

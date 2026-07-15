@@ -21,77 +21,90 @@ handler:
   class: HandlerHybridCodegenOrchestrator
   input_model: omnimarket.codegen.models.ModelCodegenSpec
 
-# OMN-14608: per-topic topic_match entries with an EXPLICIT message_category per
-# entry. The prior single operation_match entry made auto-wiring
-# (_prepare_handler_wiring) derive ONE category from subscribe_topics[0]
-# (hybrid-codegen-start.v1 = command) and stamp it on ALL routes — so the real
-# MessageDispatchEngine category filter dropped the .evt outcome events as
-# NO_DISPATCHER (RED confirmed by execution). The orchestrator therefore could
-# NOT consume the codegen-*-outcome.v1 events node_codegen_outcome_reducer now
-# produces: the chain was still dead on a real bus. Splitting per topic with the
-# correct category (command for the start command, event for every .evt topic)
-# makes each route carry the right category so the outcome events route to this
-# handler. The handler stays handle(envelope) and branches on event_type — the
-# auto-wiring kernel re-hydrates a typed envelope with event_type preserved for
-# each per-topic event_model (OMN-13247), so the split does NOT require a def-B
-# re-signature (that is OMN-14372/P3a, out of scope here).
+# def-B (OMN-14355) topic_match: one entry per subscribe topic, each with the
+# per-topic event_model the runtime validates the wire shape into before calling
+# handle(request). The handler dispatches on the payload's concrete class via
+# match/assert_never — routing-equivalent to the removed envelope.event_type switch
+# (OMN-14403 §1). message_category is per-entry because this is a mixed-category
+# contract (the start topic is a command; the five outcome topics are events).
+# OMN-14608: explicit message_category per entry is required so the real
+# MessageDispatchEngine routes the command start topic and event outcome topics
+# under their correct categories.
 handler_routing:
   routing_strategy: topic_match
   handlers:
     - topic: onex.cmd.omnimarket.hybrid-codegen-start.v1
       operation: hybrid_codegen.orchestrate
       message_category: command
-      handler:
-        name: HandlerHybridCodegenOrchestrator
-        module: omnimarket.nodes.node_hybrid_codegen_orchestrator.handlers.handler_hybrid_codegen_orchestrator
       event_model:
         name: ModelCodegenSpec
         module: omnimarket.codegen.models
+      handler:
+        name: HandlerHybridCodegenOrchestrator
+        module: omnimarket.nodes.node_hybrid_codegen_orchestrator.handlers.handler_hybrid_codegen_orchestrator
     - topic: onex.evt.omnimarket.codegen-llm-generated.v1
       operation: hybrid_codegen.orchestrate
       message_category: event
-      handler:
-        name: HandlerHybridCodegenOrchestrator
-        module: omnimarket.nodes.node_hybrid_codegen_orchestrator.handlers.handler_hybrid_codegen_orchestrator
       event_model:
         name: ModelLlmGenerateResult
         module: omnimarket.codegen.models
+      handler:
+        name: HandlerHybridCodegenOrchestrator
+        module: omnimarket.nodes.node_hybrid_codegen_orchestrator.handlers.handler_hybrid_codegen_orchestrator
     - topic: onex.evt.omnimarket.codegen-validation-outcome.v1
       operation: hybrid_codegen.orchestrate
       message_category: event
-      handler:
-        name: HandlerHybridCodegenOrchestrator
-        module: omnimarket.nodes.node_hybrid_codegen_orchestrator.handlers.handler_hybrid_codegen_orchestrator
       event_model:
         name: ModelCodegenValidationOutcome
         module: omnimarket.codegen.models
+      handler:
+        name: HandlerHybridCodegenOrchestrator
+        module: omnimarket.nodes.node_hybrid_codegen_orchestrator.handlers.handler_hybrid_codegen_orchestrator
     - topic: onex.evt.omnimarket.codegen-typecheck-outcome.v1
       operation: hybrid_codegen.orchestrate
       message_category: event
-      handler:
-        name: HandlerHybridCodegenOrchestrator
-        module: omnimarket.nodes.node_hybrid_codegen_orchestrator.handlers.handler_hybrid_codegen_orchestrator
       event_model:
         name: ModelCodegenTypecheckOutcome
         module: omnimarket.codegen.models
+      handler:
+        name: HandlerHybridCodegenOrchestrator
+        module: omnimarket.nodes.node_hybrid_codegen_orchestrator.handlers.handler_hybrid_codegen_orchestrator
     - topic: onex.evt.omnimarket.codegen-serialize-outcome.v1
       operation: hybrid_codegen.orchestrate
       message_category: event
-      handler:
-        name: HandlerHybridCodegenOrchestrator
-        module: omnimarket.nodes.node_hybrid_codegen_orchestrator.handlers.handler_hybrid_codegen_orchestrator
       event_model:
         name: ModelCodegenSerializeOutcome
         module: omnimarket.codegen.models
-    - topic: onex.evt.omnimarket.codegen-files-written.v1
-      operation: hybrid_codegen.orchestrate
-      message_category: event
       handler:
         name: HandlerHybridCodegenOrchestrator
         module: omnimarket.nodes.node_hybrid_codegen_orchestrator.handlers.handler_hybrid_codegen_orchestrator
+    - topic: onex.evt.omnimarket.codegen-files-written.v1
+      operation: hybrid_codegen.orchestrate
+      message_category: event
       event_model:
         name: ModelFileWriteResult
         module: omnimarket.codegen.models
+      handler:
+        name: HandlerHybridCodegenOrchestrator
+        module: omnimarket.nodes.node_hybrid_codegen_orchestrator.handlers.handler_hybrid_codegen_orchestrator
+
+# def-B publish routing (OMN-14403 §6ii): the topic for each emitted event model is
+# resolved from its class via this class -> topic map by the shared
+# runtime_fanout_resolver, so no topic string lives in the handler. event_type is
+# the short class name (Model prefix stripped). Injective (one class -> one topic).
+published_events:
+  - event_type: LlmGenerateCommand
+    topic: onex.cmd.omnimarket.codegen-llm-generate.v1
+  - event_type: ValidatorRequestSeam
+    topic: onex.cmd.omnimarket.generated-code-validation-requested.v1
+  - event_type: MypyRequestSeam
+    topic: onex.cmd.omnimarket.mypy-check-requested.v1
+  - event_type: ContractAssemblyRequestSeam
+    topic: onex.cmd.omnimarket.contract-serialize-requested.v1
+  - event_type: FileWriteCommand
+    topic: onex.cmd.omnimarket.codegen-file-write.v1
+  - event_type: CodegenCompleted
+    topic: onex.evt.omnimarket.hybrid-codegen-completed.v1
 
 descriptor:
   node_archetype: orchestrator

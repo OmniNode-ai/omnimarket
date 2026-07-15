@@ -53,16 +53,16 @@ fsm:
   transitions:
     - from: PLANNING
       to: DISPATCHING
-      on: commands_built
+      trigger: commands_built
     - from: DISPATCHING
       to: COLLECTING
-      on: all_commands_published
+      trigger: all_commands_published
     - from: COLLECTING
       to: COMPLETED
-      on: all_subtasks_terminal
+      trigger: all_subtasks_terminal
     - from: COLLECTING
       to: FAILED
-      on: fatal_error
+      trigger: fatal_error
 
 event_bus:
   version: {major: 2, minor: 0, patch: 0}

@@ -15,13 +15,20 @@ OMN-13351: the claude-tier ceiling backend was repointed from the dead Anthropic
 unroutable in tests that specifically need that shape).
 
 OMN-13667: the ceiling was repointed again to GLM-5.2 z.ai direct (cloud-glm)
-+ fallback openrouter-qwen3-coder-480b. BOTH ceiling backends carry NON-EMPTY
-endpoints in this fixture because ``cloud-glm`` is also the primary model for the
-``cheap_cloud`` tier (test/research tasks) — making it empty would silently break
-cheap_cloud routability. ``cloud-gemini-pro`` is kept (empty) for contract
-completeness; tests that still need an entirely-unroutable ceiling for a specific
-task type must use a task class whose tier_order ends at cheap_cloud (e.g. document)
-or supply their own fixture.
++ fallback openrouter-qwen3-coder-480b. BOTH ceiling backends carried NON-EMPTY
+endpoints in this fixture because ``cloud-glm`` was also the primary model for the
+``cheap_cloud`` tier (test/research tasks) — making it empty would have silently
+broken cheap_cloud routability.
+
+OMN-14625: cheap_cloud and the claude ceiling are repointed off z.ai GLM
+(``cloud-glm``, DEAD from the .201 runtime) to Gemini (``cloud-gemini-pro``).
+This fixture is swapped to match: ``cloud-gemini-pro`` now carries the
+NON-EMPTY endpoint (it is the primary model for both cheap_cloud and the
+claude ceiling), and ``cloud-glm`` is kept (empty) for contract completeness
+only — it is no longer referenced by any routing tier. Tests that still need
+an entirely-unroutable ceiling for a specific task type must use a task class
+whose tier_order ends at cheap_cloud (e.g. document) or supply their own
+fixture.
 """
 
 from __future__ import annotations
@@ -81,11 +88,10 @@ def _isolate_cloud_secret_env(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 # Bifrost config covering every backend_id referenced by routing_tiers.yaml.
-# OMN-13667: the claude ceiling now uses cloud-glm (primary) +
-# openrouter-qwen3-coder-480b (fallback). Both carry empty endpoint_url here so
-# escalating to the ceiling tier yields no routable backend, preserving the
-# deployed-regression shape. cloud-gemini-pro kept (empty) for contract
-# completeness; it is no longer the ceiling backend.
+# OMN-14625: the claude ceiling and cheap_cloud tier now use cloud-gemini-pro
+# (Gemini) as their primary/only model. cloud-glm carries an empty
+# endpoint_url here for contract completeness only; it is no longer
+# referenced by any routing tier (see OMN-14625 in routing_tiers.yaml).
 BIFROST_FRONTIER_UNCONFIGURED = textwrap.dedent(
     """\
     config_version: "1.2.0"
@@ -122,7 +128,7 @@ BIFROST_FRONTIER_UNCONFIGURED = textwrap.dedent(
         timeout_ms: 30000
         capabilities: [reasoning]
       - backend_id: cloud-glm
-        endpoint_url: "https://cloud.test/glm/v4/chat/completions"
+        endpoint_url: ""
         model_name: glm-5.2
         tier: cheap_cloud
         timeout_ms: 30000
@@ -146,11 +152,11 @@ BIFROST_FRONTIER_UNCONFIGURED = textwrap.dedent(
         timeout_ms: 30000
         capabilities: [code_generation]
       - backend_id: cloud-gemini-pro
-        endpoint_url: ""
+        endpoint_url: "https://cloud.test/gemini-pro/v1/chat/completions"
         model_name: gemini-2.5-flash
         tier: frontier_api
         timeout_ms: 60000
-        capabilities: [documentation]
+        capabilities: [code_generation, documentation]
     routing_rules:
       - rule_id: "d4e5f6a7-0001-4000-8000-000000000001"
         priority: 10
@@ -191,13 +197,13 @@ def frontier_unconfigured_bifrost(
     tests (the deployed stability-test regression shape from OMN-12939).
 
     Local, cheap_cloud, and cheap_frontier backends carry resolvable endpoints.
-    cloud-gemini-pro (the old ceiling backend) has an empty endpoint_url.
-    OMN-13667: the new ceiling backends (cloud-glm + openrouter-qwen3-coder-480b)
-    have NON-EMPTY endpoints because cloud-glm is shared with cheap_cloud — tests
-    that specifically require the ceiling to be unroutable must use a task class
-    whose tier_order ends at cheap_cloud (e.g. document) or add a local fixture.
-    Backends here declare no api_key_ref, so they are usable in unit context
-    purely on a non-empty endpoint_url — exactly the eligibility delta() applies.
+    OMN-14625: cloud-gemini-pro (the current cheap_cloud + claude ceiling
+    backend) has a NON-EMPTY endpoint_url, and cloud-glm (no longer referenced
+    by any routing tier) has an empty one. Tests that specifically require the
+    ceiling to be unroutable must use a task class whose tier_order ends at
+    cheap_cloud (e.g. document) or add a local fixture. Backends here declare
+    no api_key_ref, so they are usable in unit context purely on a non-empty
+    endpoint_url — exactly the eligibility delta() applies.
     """
     from omnimarket.nodes.node_delegation_routing_reducer.handlers import (
         handler_delegation_routing as routing,
