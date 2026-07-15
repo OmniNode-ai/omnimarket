@@ -19,6 +19,7 @@ from __future__ import annotations
 import glob
 import logging
 import os
+import re
 import shlex
 import shutil
 import subprocess
@@ -93,6 +94,28 @@ _DEFAULT_GITHUB_ORG = "OmniNode-ai"
 # here (``_GH_PR_TIMEOUT_S``, ``_GH_CHECK_GREEN_STATES``) moved to
 # ``handler_dod_evidence_github_effect.py`` with the subprocess calls that used
 # them (OMN-14400, RSD-1 of OMN-14398).
+
+# OMN-14637: merged-state re-anchoring of a self-referential live-PR-state gate.
+#
+# A contract ``command`` check that asserts its product PR is still live-OPEN —
+# the canonical ``gh pr view <n> --repo <r> --json state,... --jq '.state ==
+# "OPEN" and ...'`` idiom — becomes PERMANENTLY false the moment the PR
+# squash-merges: GitHub flips ``.state`` to ``MERGED`` and deletes the head
+# branch. The sanctioned ``dod_verify`` closeout then fails-closed forever on a
+# normal, successful merge (13/26 checks failed on the OMN-11878 re-run) unless a
+# human hand-authors one more "merged" superseding evidence entry in the same
+# breath as the merge.
+#
+# When an evidence item is authoritatively bound to a CONFIRMED-MERGED PR (the
+# SAME binding + live-probe machinery the OMN-14207 live-state check uses), the
+# collector re-anchors ONLY the ``.state == "OPEN"`` equality to the merged
+# terminal state (``.state == "MERGED"``). Every other predicate in the command
+# (``.headRefOid``, ``.files``, ``.title``, ``.baseRefName``, receipt greps) still
+# runs — all of which ``gh pr view`` still reports for a merged PR — so a
+# genuinely-incomplete ticket (merge commit missing the expected files) STILL
+# FAILS. The relaxation is therefore verification-preserving and non-vacuous, and
+# it never touches an unrelated ``"OPEN"`` literal (e.g. ``.title == "OPEN"``).
+_PR_OPEN_STATE_PREDICATE_RE = re.compile(r"""(\.state\s*==\s*)(["'])OPEN\2""")
 
 
 class EvidenceCollector:
@@ -499,6 +522,16 @@ class EvidenceCollector:
                 message="No checks defined for this evidence item.",
             )
 
+        # OMN-14637: when this evidence item is authoritatively bound to a PR that
+        # GitHub now confirms MERGED, relax any live-OPEN-state gate in its command
+        # checks to the merged terminal state, so the sanctioned closeout does not
+        # fail-closed forever on a normal, successful merge (branch deleted +
+        # ``.state`` flipped to MERGED). Resolved ONCE per item; the merge state is
+        # read from the live GitHub surface, never caller-supplied.
+        relax_merged_state = self._item_bound_to_merged_pr(
+            item, ticket_id, contract_path
+        )
+
         # Run each check; all must pass for the item to be VERIFIED
         messages: list[str] = []
         for check in checks:
@@ -511,7 +544,12 @@ class EvidenceCollector:
                 # can declare intent (running tests) distinct from generic
                 # commands without forcing every shell-based check into the same
                 # bucket. Regression for OMN-10046.
-                ok, msg = self._run_command_check(check, ticket_id, contract_path)
+                ok, msg = self._run_command_check(
+                    check,
+                    ticket_id,
+                    contract_path,
+                    relax_merged_state=relax_merged_state,
+                )
                 if not ok:
                     return ModelEvidenceCheckResult(
                         evidence_id=evidence_id,
@@ -1038,11 +1076,80 @@ class EvidenceCollector:
         result = self._github_lookup_result(output)
         return bool(result.checks_green), result.detail or ""
 
+    # ------------------------------------------------------------------
+    # OMN-14637: merged-state re-anchoring of self-referential live-OPEN gates.
+    # ------------------------------------------------------------------
+
+    def _item_bound_to_merged_pr(
+        self,
+        item: dict[str, Any],
+        ticket_id: str,
+        contract_path: Path | None,
+    ) -> bool:
+        """Whether this evidence item binds to a PR that GitHub confirms MERGED.
+
+        Reuses the SAME authoritative binding resolution the OMN-14207 live-state
+        check uses (:meth:`_resolve_pr_bindings` — an explicit ``pr`` field or the
+        durable receipt's ``pr_number`` + probed repo), then reads live merge
+        state via :meth:`_fetch_pr_merge_state`. Returns ``True`` only when at
+        least one bound PR is CONFIRMED MERGED.
+
+        Fails safe (no relaxation → command runs verbatim) when:
+
+        * the live-PR check is disabled (``DOD_VERIFY_LIVE_PR_CHECK`` off) — merge
+          state cannot then be authoritatively confirmed;
+        * the item binds to no PR;
+        * the probe is unresolved / errored, or the PR is not merged (OPEN/CLOSED).
+
+        The merge fact is therefore never caller-supplied — it is read from the
+        live GitHub surface, mirroring the fail-closed posture of the live check.
+        """
+        if not self._live_pr_check_enabled():
+            return False
+        bindings = self._resolve_pr_bindings(item, ticket_id, contract_path)
+        for repo, pr_number in bindings:
+            merge = self._fetch_pr_merge_state(repo, pr_number)
+            if merge is not None and merge[0]:
+                logger.info(
+                    "OMN-14637: evidence item %s binds to MERGED PR %s#%d — "
+                    "relaxing any live-OPEN-state gate to the merged terminal "
+                    "state for its command checks.",
+                    item.get("id", "unknown"),
+                    repo,
+                    pr_number,
+                )
+                return True
+        return False
+
+    @staticmethod
+    def _relax_merged_pr_state_predicate(cmd_str: str) -> tuple[str, bool]:
+        """Rewrite ``.state == "OPEN"`` → ``.state == "MERGED"`` (OMN-14637).
+
+        Applied ONLY when the evidence item is confirmed bound to a MERGED PR
+        (see :meth:`_item_bound_to_merged_pr`). It targets the canonical
+        ``gh pr view ... --json state ... --jq '.state == "OPEN" and ...'`` idiom
+        precisely: only the ``.state`` equality against ``OPEN`` (single- or
+        double-quoted) is rewritten, preserving the quote style. Every other
+        predicate — ``.headRefOid``, ``.files``, ``.title``, ``.baseRefName``,
+        receipt greps, and any unrelated ``"OPEN"`` literal such as
+        ``.title == "OPEN"`` — is left untouched, so the check still re-verifies
+        the merged PR's retained content rather than vacuously passing.
+
+        Returns ``(new_cmd, changed)`` where ``changed`` is ``True`` when at least
+        one predicate was rewritten.
+        """
+        new_cmd, count = _PR_OPEN_STATE_PREDICATE_RE.subn(
+            lambda m: f"{m.group(1)}{m.group(2)}MERGED{m.group(2)}", cmd_str
+        )
+        return new_cmd, count > 0
+
     def _run_command_check(
         self,
         check: dict[str, Any],
         ticket_id: str,
         contract_path: Path | None = None,
+        *,
+        relax_merged_state: bool = False,
     ) -> tuple[bool, str]:
         """Execute a command-type check. Returns (success, message).
 
@@ -1067,6 +1174,19 @@ class EvidenceCollector:
         )
         if placeholder_err is not None:
             return False, placeholder_err
+
+        # OMN-14637: when the evidence item is bound to a CONFIRMED-MERGED PR,
+        # re-anchor any live-OPEN-state gate to the merged terminal state so a
+        # normal, successful merge (head branch deleted, ``.state`` → MERGED) no
+        # longer fails the sanctioned closeout forever. All other predicates in the
+        # command still execute, so an unmet DoD still FAILS (non-vacuous).
+        if relax_merged_state:
+            cmd_str, relaxed = self._relax_merged_pr_state_predicate(cmd_str)
+            if relaxed:
+                logger.info(
+                    "OMN-14637: relaxed live-OPEN-state gate to MERGED for a "
+                    "merged-PR-bound command check."
+                )
 
         # OMN-10078: resolve optional cwd via template-substitution +
         # containment-check pipeline. None => inherit caller cwd.
