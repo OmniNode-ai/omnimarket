@@ -33,14 +33,17 @@ Per-entry hash rebind (OMN-14418 residual 3): the downstream receipt now also
 carries a ``contract_entry_sha256: "sha256:PENDING"`` sentinel, rebound by the
 effect writer (via :func:`rebind_contract_entry_sha256_in_text`) to the OMN-13888
 per-entry hash so the receipt survives a later append to the contract instead of
-going stale with the whole-file ``contract_sha256``. The OCC self-bind receipt
-does **not** carry the field: it binds to the OCC companion PR, not to any
-declared ``dod_evidence`` item, so there is no entry for it to hash against —
-minting one would either crash the canonical hasher (``ContractEntryNotFoundError``)
-or point at the wrong entry. It keeps the legacy whole-file ``contract_sha256``
-binding only, which is exactly what the consumer-side dual-accept gates
-(``check_receipt_contract_binding`` / ``check_receipt_hardening.py``) already
-expect from a receipt with no ``contract_entry_sha256``.
+going stale with the whole-file ``contract_sha256``. OMN-14650: the OCC self-bind
+receipt now ALSO carries the field. Its ``evidence_item_id``
+(``occ-self-bind-pr-<n>``) is appended to the companion contract's
+``dod_evidence`` as a declared item (:func:`render_self_bind_dod_evidence_item`)
+so ``validator_occ_merge_eligibility`` — which only inspects receipts whose id is
+a declared item — evaluates it (it is the ONLY receipt bound to the OCC PR).
+Once declared, the per-entry hash resolves, so the self-bind receipt binds via
+the same per-entry scheme the proven merged path uses for its
+``dod-occ-self-bind-pr-<n>`` receipt. Before OMN-14650 the id was never declared
+and the field was deliberately omitted — which is exactly why every ``auto/*``
+companion failed eligibility with ``pr_ticket_mismatch``.
 """
 
 from __future__ import annotations
@@ -91,8 +94,8 @@ _CONTRACT_TEMPLATE = textwrap.dedent("""\
     interfaces_touched: []
     evidence_requirements:
       - kind: "ci"
-        description: "PR #{pr_number} CI checks green"
-        command: "gh pr checks {pr_number} --repo {repo}"
+        description: "PR #{pr_number} product diff scope present"
+        command: "gh pr diff {pr_number} --repo {repo} --name-only | grep -q ."
     emergency_bypass:
       enabled: false
       justification: ""
@@ -105,11 +108,11 @@ _CONTRACT_TEMPLATE = textwrap.dedent("""\
           - check_type: "command"
             check_value: "gh pr view {pr_number} --repo {repo} --json number,state"
       - id: "{ci_evidence_id}"
-        description: "PR #{pr_number} on {repo} — CI outcome (OMN-14425 substance check)."
+        description: "PR #{pr_number} on {repo} — product diff scope (OMN-14425 substance check; OMN-14650: no longer gated on source-PR CI being green)."
         source: "generated"
         checks:
           - check_type: "command"
-            check_value: "gh pr checks {pr_number} --repo {repo}"
+            check_value: "gh pr diff {pr_number} --repo {repo} --name-only | grep -q ."
     """)
 
 # Downstream receipt — stamped with the REAL product PR head + number so
@@ -146,11 +149,15 @@ _DOWNSTREAM_RECEIPT_TEMPLATE = textwrap.dedent("""\
     branch: "{branch}"
     """)
 
-# CI-outcome receipt (OMN-14425) — backs the second dod_evidence item the
-# substance floor (OMN-14409 / OCC#3990) requires. `gh pr checks` is falsifiable
-# (it fails when the PR's CI fails), so it derives proof tier L1, unlike the
-# existence probe above which derives L0. This is an ADDED claim, not a
-# replacement — the existence probe stays for Evidence-Source binding.
+# Product-diff-scope receipt (OMN-14425; OMN-14650) — backs the second
+# dod_evidence item the substance floor (OMN-14409 / OCC#3990) requires. It was
+# formerly derived from `gh pr checks <source>`, which asserted the SOURCE PR's
+# CI was green — an unsatisfiable claim while the source PR is red and blocked on
+# this very companion (the deadlock OMN-14650 fixes). It is now a `gh pr diff
+# ... --name-only | grep -q .` deploy-scope/diff assertion: falsifiable about the
+# change (it fails on an empty diff) and derives proof tier L1 via the substance
+# floor's static-assert family (`| grep`), exactly like the merged path's
+# product-head/deploy-scope checks — WITHOUT gating on the source PR being green.
 # probe_command/probe_stdout/exit_code are genuine machine-observed values from
 # the live GitHub probe (OMN-13990 item 4 / OMN-14055), same as the templates
 # above — never a fabricated template output.
@@ -169,7 +176,7 @@ _CI_CHECK_RECEIPT_TEMPLATE = textwrap.dedent("""\
     ticket_id: "{ticket_id}"
     evidence_item_id: "{evidence_id}"
     check_type: "command"
-    check_value: "gh pr checks {pr_number} --repo {repo}"
+    check_value: "gh pr diff {pr_number} --repo {repo} --name-only | grep -q ."
     contract_sha256: "sha256:PENDING"
     contract_entry_sha256: "sha256:PENDING"
     status: PASS
@@ -180,7 +187,7 @@ _CI_CHECK_RECEIPT_TEMPLATE = textwrap.dedent("""\
     probe_command: "{probe_command}"
     probe_stdout: |
       {probe_stdout}
-    actual_output: "PASS: CI-outcome check for {ticket_id} from {repo}#{pr_number} (OMN-14425)."
+    actual_output: "PASS: product-diff-scope check for {ticket_id} from {repo}#{pr_number} (OMN-14425 / OMN-14650)."
     exit_code: {exit_code}
     pr_number: {pr_number}
     branch: "{branch}"
@@ -190,12 +197,17 @@ _CI_CHECK_RECEIPT_TEMPLATE = textwrap.dedent("""\
 # number + OCC head commit (placeholder values are rejected by hooks; friction #8).
 # probe_command/probe_stdout/exit_code are genuine machine-observed values from
 # the live GitHub probe against the OCC PR (OMN-13990 item 4).
-# Deliberately carries NO contract_entry_sha256 (OMN-14418 residual 3): this
-# receipt's evidence_item_id ("occ-self-bind-pr-<n>") is never a declared
-# dod_evidence item in the companion contract — it proves the OCC PR exists,
-# not a contract-declared check — so there is no entry to hash against. It
-# keeps only the legacy whole-file contract_sha256 binding, which is exactly
-# what the dual-accept gates expect from a receipt with no per-entry hash.
+# OMN-14650: this receipt's evidence_item_id ("occ-self-bind-pr-<n>") is now
+# APPENDED to the companion contract's dod_evidence as a declared item by the
+# effect writer (render_self_bind_dod_evidence_item) — it is the ONLY receipt
+# bound to the OCC companion PR, and validator_occ_merge_eligibility only
+# inspects receipts whose evidence_item_id is a DECLARED dod_evidence item. So it
+# now carries a rebindable contract_entry_sha256 sentinel (the per-entry scheme
+# the proven merged path uses for its dod-occ-self-bind-pr-<n> receipt), rebound
+# by _rebind_all_receipts once the entry is declared, alongside the legacy
+# whole-file contract_sha256. Before OMN-14650 the id was never declared, so the
+# field was deliberately omitted; that omission is exactly why every auto/*
+# companion failed eligibility with pr_ticket_mismatch.
 _SELF_BIND_RECEIPT_TEMPLATE = textwrap.dedent("""\
     ---
     schema_version: "1.0.0"
@@ -204,6 +216,7 @@ _SELF_BIND_RECEIPT_TEMPLATE = textwrap.dedent("""\
     check_type: "command"
     check_value: "gh pr view {occ_pr_number} --repo {occ_repo} --json number,state"
     contract_sha256: "sha256:PENDING"
+    contract_entry_sha256: "sha256:PENDING"
     status: PASS
     run_timestamp: "{run_timestamp}"
     commit_sha: "{occ_commit_sha}"
@@ -217,6 +230,25 @@ _SELF_BIND_RECEIPT_TEMPLATE = textwrap.dedent("""\
     pr_number: {occ_pr_number}
     branch: "{branch}"
     """)
+
+# Self-bind dod_evidence CONTRACT item (OMN-14650). Appended to the companion
+# contract's dod_evidence list by the effect writer once the OCC companion PR
+# number is known, so validator_occ_merge_eligibility — which only inspects
+# receipts whose evidence_item_id is a DECLARED dod_evidence item — actually
+# evaluates the self-bind receipt (the ONLY receipt bound to the OCC PR). The
+# check_type is "command" so the receipt path resolves to
+# <ticket>/<evidence_id>/command.yaml. Written with explicit indentation (NOT
+# dedent) so the 2-space list item aligns byte-for-byte with the items rendered
+# by _CONTRACT_TEMPLATE when appended to the end of the (dod_evidence-terminal)
+# contract file.
+_SELF_BIND_DOD_EVIDENCE_ITEM_TEMPLATE = (
+    '  - id: "{evidence_id}"\n'
+    '    description: "OCC companion PR #{occ_pr_number} on {occ_repo} — self-binding proof for {ticket_id} (OMN-14650)."\n'
+    '    source: "generated"\n'
+    "    checks:\n"
+    '      - check_type: "command"\n'
+    '        check_value: "gh pr view {occ_pr_number} --repo {occ_repo} --json number,state"\n'
+)
 
 # RSD compute-oracle templates (OMN-14285). These include the per-entry hash
 # field required by the node_occ_companion_compute attestation oracle, but they
@@ -322,11 +354,15 @@ def render_companion_contract(
 ) -> str:
     """Render the ``contracts/<ticket>.yaml`` companion contract YAML.
 
-    Declares two dod_evidence items (OMN-14425): the existence/binding probe
-    (``gh pr view``, proof tier L0 — required for Evidence-Source stamping,
-    never removed) and a CI-outcome probe (``gh pr checks``, proof tier L1)
-    that satisfies the OMN-14409 contract substance floor. This adds a claim;
-    it does not replace one.
+    Declares two dod_evidence items: the existence/binding probe (``gh pr view``,
+    proof tier L0 — required for Evidence-Source stamping, never removed) and a
+    product-diff-scope probe (``gh pr diff ... --name-only | grep -q .``, proof
+    tier L1 via the substance floor's static-assert family) that satisfies the
+    OMN-14409 contract substance floor. OMN-14650: the second item was formerly a
+    ``gh pr checks <source>`` CI-outcome probe that gated on the source PR being
+    green — an unsatisfiable claim while the source is red and blocked on this
+    companion; the diff-scope assertion is falsifiable about the change without
+    that deadlock. This adds a claim; it does not replace the binding probe.
     """
     return _CONTRACT_TEMPLATE.format(
         ticket_id=ticket_id,
@@ -384,10 +420,13 @@ def render_ci_check_receipt(
     runner: str = DEFAULT_RUNNER,
     verifier: str = DEFAULT_VERIFIER,
 ) -> str:
-    """Render the CI-outcome (``gh pr checks``) DoD receipt YAML (OMN-14425).
+    """Render the product-diff-scope DoD receipt YAML (OMN-14425 / OMN-14650).
 
     Backs the substantive dod_evidence item the substance floor (OMN-14409 /
-    OCC#3990) requires alongside the existence-probe binding item.
+    OCC#3990) requires alongside the existence-probe binding item. The declared
+    check is ``gh pr diff ... --name-only | grep -q .`` (a diff assertion),
+    replacing the former ``gh pr checks <source>`` CI-outcome probe that
+    deadlocked on the source PR being green (OMN-14650).
     """
     return _CI_CHECK_RECEIPT_TEMPLATE.format(
         ticket_id=ticket_id,
@@ -434,6 +473,29 @@ def render_self_bind_receipt(
         exit_code=exit_code,
         runner=runner,
         verifier=verifier,
+    )
+
+
+def render_self_bind_dod_evidence_item(
+    *, evidence_id: str, occ_pr_number: int, occ_repo: str, ticket_id: str
+) -> str:
+    """Render the self-bind dod_evidence list item (OMN-14650).
+
+    Appended to the companion contract's ``dod_evidence`` list by the effect
+    writer so ``validator_occ_merge_eligibility`` evaluates the self-bind receipt
+    — the only receipt bound to the OCC companion PR. Without this declaration
+    the self-bind receipt is written to disk but never inspected, so every
+    ``auto/*`` companion fails eligibility with ``pr_ticket_mismatch``.
+
+    ``check_type`` is ``command`` so the receipt path resolves to
+    ``<ticket>/<evidence_id>/command.yaml``. The rendered item is a pure function
+    of its inputs and carries no unsubstituted named placeholder.
+    """
+    return _SELF_BIND_DOD_EVIDENCE_ITEM_TEMPLATE.format(
+        evidence_id=evidence_id,
+        occ_pr_number=occ_pr_number,
+        occ_repo=occ_repo,
+        ticket_id=ticket_id,
     )
 
 
@@ -673,5 +735,6 @@ __all__ = [
     "render_ci_check_receipt",
     "render_companion_contract",
     "render_downstream_receipt",
+    "render_self_bind_dod_evidence_item",
     "render_self_bind_receipt",
 ]

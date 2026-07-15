@@ -17,6 +17,11 @@ from unittest.mock import patch
 
 import pytest
 import yaml
+from omnibase_core.validation.validator_occ_merge_eligibility import (
+    EnumOccEligibilityReason,
+    ModelOccEligibilityInput,
+    validate_occ_merge_eligibility,
+)
 from omnibase_core.validation.validator_receipt_gate import (
     compute_contract_entry_sha256,
 )
@@ -261,7 +266,7 @@ class TestFullEmitFlow:
 
         def fake_run_git(argv: list[str], *, cwd: str) -> str:
             git_calls.append(argv)
-            return "occhead1234" if "rev-parse" in argv else ""
+            return "c" * 40 if "rev-parse" in argv else ""
 
         with (
             patch(f"{_MOD}.rest_json", side_effect=fake_rest),
@@ -290,18 +295,15 @@ class TestFullEmitFlow:
     def test_every_declared_entry_receipt_carries_a_per_entry_hash(
         self, tmp_path: Path
     ) -> None:
-        """SEAM (OMN-14425 x OMN-14418): the invariant across BOTH changes.
+        """SEAM (OMN-14425 x OMN-14418 x OMN-14650): declared => hashed.
 
-        OMN-14425 adds a second dod_evidence item (the `gh pr checks` L1 probe)
-        and a receipt for it. OMN-14418 requires every receipt bound to a
-        DECLARED dod_evidence item to carry `contract_entry_sha256`. Each PR was
-        green on its own; merged, the new CI-check receipt was born WITHOUT the
-        per-entry hash, because `rebind_contract_entry_sha256_in_text` only
-        rewrites an existing line and is a no-op when the field is absent.
-
-        This asserts the property over EVERY receipt rather than a named one, so
-        a future third receipt cannot reintroduce the gap: declared => hashed,
-        undeclared (self-bind, by design) => not hashed.
+        OMN-14418 requires every receipt bound to a DECLARED dod_evidence item to
+        carry `contract_entry_sha256`. OMN-14650 appends the self-bind item
+        (`occ-self-bind-pr-<n>`) to the contract's dod_evidence, so the self-bind
+        receipt is now ALSO a declared item and MUST carry the per-entry hash —
+        matching the proven merged path. Post-OMN-14650 every emitted receipt
+        binds a declared item, so the invariant collapses to: declared => hashed,
+        checked over EVERY receipt so a future receipt cannot reintroduce a gap.
         """
         emitter = OccCompanionEmitter()
         _action, clone_root = self._run(emitter, tmp_path)
@@ -310,7 +312,12 @@ class TestFullEmitFlow:
             (clone_root / "contracts" / "OMN-9999.yaml").read_text()
         )
         declared = {item["id"] for item in (contract_data.get("dod_evidence") or [])}
-        assert len(declared) >= 2, "expected the existence probe + the CI check"
+        # existence probe + diff-scope check + OMN-14650 self-bind item.
+        assert len(declared) >= 3
+        assert "occ-self-bind-pr-55" in declared, (
+            "OMN-14650: the self-bind item must be registered in the contract's "
+            "dod_evidence or eligibility never evaluates the self-bind receipt"
+        )
 
         receipts = sorted(
             (clone_root / "drift" / "dod_receipts" / "OMN-9999").rglob("command.yaml")
@@ -375,12 +382,20 @@ class TestFullEmitFlow:
         )
         assert f'contract_entry_sha256: "{expected_entry}"' in downstream.read_text()
 
-        # The self-bind receipt has NO declared dod_evidence counterpart, so
-        # it must never carry a fabricated contract_entry_sha256.
+        # OMN-14650: the self-bind receipt's evidence_item_id is now APPENDED to
+        # the contract's dod_evidence, so it binds via the per-entry scheme — it
+        # MUST carry a contract_entry_sha256 matching the canonical hasher for its
+        # own (now declared) entry, exactly like the proven merged path.
         self_bind = next(r for r in receipts if "occ-self-bind" in r.parent.name)
-        assert "contract_entry_sha256" not in self_bind.read_text()
-        # OMN-14425: the CI-check receipt backs the substantive dod_evidence
-        # item the contract now declares alongside the existence probe.
+        self_bind_text = self_bind.read_text()
+        self_bind_id = self_bind.parent.name  # occ-self-bind-pr-55
+        assert self_bind_id == "occ-self-bind-pr-55"
+        expected_self_bind_entry = compute_contract_entry_sha256(
+            contract_data, self_bind_id
+        )
+        assert f'contract_entry_sha256: "{expected_self_bind_entry}"' in self_bind_text
+        # OMN-14650: the CI receipt backs the product-diff-scope substance item,
+        # no longer the deadlocking source-CI-green `gh pr checks` probe.
         ci_check = (
             clone_root
             / "drift"
@@ -392,22 +407,125 @@ class TestFullEmitFlow:
         assert ci_check.is_file()
         ci_text = ci_check.read_text()
         assert (
-            'check_value: "gh pr checks 321 --repo OmniNode-ai/omnimarket"' in ci_text
+            'check_value: "gh pr diff 321 --repo OmniNode-ai/omnimarket '
+            '--name-only | grep -q ."' in ci_text
         )
         assert 'evidence_item_id: "dod-OmniNode-ai-omnimarket-pr-321-ci"' in ci_text
 
-        # The contract declares both items — existence probe untouched, CI
-        # check added.
+        # The contract declares all three items — existence probe untouched,
+        # diff-scope check (not `gh pr checks`), and the self-bind item (OMN-14650).
         contract_text = contract.read_text()
         assert (
             "gh pr view 321 --repo OmniNode-ai/omnimarket --json number,state"
             in contract_text
         )
-        assert "gh pr checks 321 --repo OmniNode-ai/omnimarket" in contract_text
+        assert (
+            "gh pr diff 321 --repo OmniNode-ai/omnimarket --name-only | grep -q ."
+            in contract_text
+        )
+        assert "gh pr checks" not in contract_text
+        assert 'id: "occ-self-bind-pr-55"' in contract_text
 
         # Action reports the single-producer companion bind.
         assert "OCC#55" in action
         assert "OMN-9999" in action
+
+    def test_emitted_companion_is_occ_merge_eligible(self, tmp_path: Path) -> None:
+        """Golden proof: emitted files satisfy the real OCC eligibility validator.
+
+        OMN-14650 regressed because the self-bind receipt was written but its
+        evidence id was not declared in the contract, so the validator never saw
+        the only receipt bound to the OCC companion PR and returned
+        pr_ticket_mismatch. Exercise the real validator against the emitted
+        contract/receipt tree so the auto/* path proves eligible end to end.
+        """
+        emitter = OccCompanionEmitter()
+        _action, clone_root = self._run(emitter, tmp_path)
+
+        snapshot = ModelOccEligibilityInput(
+            repo="onex_change_control",
+            pr_number=55,
+            pr_title=(
+                "evidence(OMN-9999): OCC Evidence-Source autobind for "
+                "OmniNode-ai/omnimarket#321"
+            ),
+            pr_body="Autobind OCC evidence.\n\nEvidence-Ticket: OMN-9999\n",
+            pr_branch="auto/omninode-ai-omnimarket-pr-321-occ-autobind",
+            pr_commit_shas=("c" * 40,),
+            pr_commit_texts=(
+                "evidence(OMN-9999): autobind OmniNode-ai/omnimarket#321",
+            ),
+            occ_commit_sha="c" * 40,
+            contracts_dir=clone_root / "contracts",
+            receipts_dir=clone_root / "drift" / "dod_receipts",
+        )
+
+        result = validate_occ_merge_eligibility(snapshot)
+
+        assert result.eligible is True, result.detail
+        assert result.reason is EnumOccEligibilityReason.ELIGIBLE
+        assert "OMN-9999:occ-self-bind-pr-55:command" in result.receipt_ids
+
+    def test_absent_self_bind_declaration_is_ineligible_red_case(
+        self, tmp_path: Path
+    ) -> None:
+        """RED against exists-but-wrong (OMN-14650): with the self-bind receipt
+        WRITTEN but its id NOT appended to the contract's dod_evidence — the
+        exact pre-fix behavior — the validator never inspects the only receipt
+        bound to the OCC companion PR and the companion is INELIGIBLE with
+        pr_ticket_mismatch. This asserts against the wrong-but-present tree
+        (receipt file exists on disk) so it fails on pre-fix code and proves the
+        GREEN case above is non-vacuous.
+        """
+        emitter = OccCompanionEmitter()
+        # Neutralize ONLY the OMN-14650 fix (the contract-declaration append);
+        # everything else — the self-bind RECEIPT write, the rebind — still runs,
+        # reproducing the exact born-broken auto/* companion.
+        with patch.object(emitter, "_append_self_bind_evidence"):
+            _action, clone_root = self._run(emitter, tmp_path)
+
+        # The self-bind receipt file IS present (exists-but-wrong)...
+        self_bind = (
+            clone_root
+            / "drift"
+            / "dod_receipts"
+            / "OMN-9999"
+            / "occ-self-bind-pr-55"
+            / "command.yaml"
+        )
+        assert self_bind.is_file(), "self-bind receipt must still be written"
+        # ...but its id is absent from the contract's dod_evidence, so the
+        # validator cannot reach it.
+        contract_data = yaml.safe_load(
+            (clone_root / "contracts" / "OMN-9999.yaml").read_text()
+        )
+        declared = {item["id"] for item in contract_data["dod_evidence"]}
+        assert "occ-self-bind-pr-55" not in declared
+
+        snapshot = ModelOccEligibilityInput(
+            repo="onex_change_control",
+            pr_number=55,
+            pr_title=(
+                "evidence(OMN-9999): OCC Evidence-Source autobind for "
+                "OmniNode-ai/omnimarket#321"
+            ),
+            pr_body="Autobind OCC evidence.\n\nEvidence-Ticket: OMN-9999\n",
+            pr_branch="auto/omninode-ai-omnimarket-pr-321-occ-autobind",
+            pr_commit_shas=("c" * 40,),
+            pr_commit_texts=(
+                "evidence(OMN-9999): autobind OmniNode-ai/omnimarket#321",
+            ),
+            occ_commit_sha="c" * 40,
+            contracts_dir=clone_root / "contracts",
+            receipts_dir=clone_root / "drift" / "dod_receipts",
+        )
+
+        result = validate_occ_merge_eligibility(snapshot)
+
+        assert result.eligible is False
+        assert result.reason is EnumOccEligibilityReason.PR_TICKET_MISMATCH, (
+            result.detail
+        )
 
     def test_create_and_autobind_route_same_core(self, tmp_path: Path) -> None:
         """Both public entry points drive the identical authoring core."""
@@ -463,13 +581,13 @@ class TestAppendStability:
         # fails this test loudly rather than passing vacuously.
         assert receipt_before["contract_entry_sha256"] is not None
 
-        # Mutate the contract: append a second, unrelated dod_evidence item —
-        # simulating a later independent append (e.g. OMN-14425's CI-check
-        # item, or any future evidence requirement added to this ticket).
+        # Mutate the contract: append an unrelated dod_evidence item —
+        # simulating a later independent append (e.g. any future evidence
+        # requirement added to this ticket).
         contract_data = yaml.safe_load(contract_path.read_text())
         contract_data["dod_evidence"].append(
             {
-                "id": "dod-OmniNode-ai-omnimarket-pr-321-ci",
+                "id": "dod-OmniNode-ai-omnimarket-pr-321-later",
                 "description": "unrelated later-appended check",
                 "source": "generated",
                 "checks": [
