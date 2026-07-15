@@ -50,6 +50,7 @@ import argparse
 import json
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 # Add src/ to path so omnimarket imports work in CI without editable install
@@ -68,6 +69,7 @@ def generate_coverage_json(
     test_path: str = "tests/",
     marker_expr: str = "not kafka",
     timeout_s: int = 1800,
+    heartbeat_s: int = 60,
 ) -> tuple[bool, str]:
     """Run the real test suite under coverage and write ``coverage.json``.
 
@@ -94,15 +96,34 @@ def generate_coverage_json(
         f"--cov={target_dir / 'src'}",
         f"--cov-report=json:{coverage_json}",
     ]
+    print(
+        "coverage-sweep-gate: running coverage generation command: " + " ".join(cmd),
+        flush=True,
+    )
     try:
-        proc = subprocess.run(
+        proc = subprocess.Popen(
             cmd,
             cwd=str(target_dir),
-            capture_output=True,
-            text=True,
-            timeout=timeout_s,
-            check=False,
         )
+        started_at = time.monotonic()
+        next_heartbeat_at = started_at + heartbeat_s
+        deadline_at = started_at + timeout_s
+
+        while proc.poll() is None:
+            now = time.monotonic()
+            if now >= deadline_at:
+                proc.kill()
+                proc.wait()
+                return False, f"coverage generation timed out after {timeout_s}s"
+            if now >= next_heartbeat_at:
+                elapsed_s = int(now - started_at)
+                print(
+                    "coverage-sweep-gate: coverage generation still running "
+                    f"after {elapsed_s}s",
+                    flush=True,
+                )
+                next_heartbeat_at = now + heartbeat_s
+            time.sleep(min(1.0, max(0.1, next_heartbeat_at - now)))
     except subprocess.TimeoutExpired as exc:
         return False, f"coverage generation timed out after {timeout_s}s: {exc}"
     except OSError as exc:
@@ -111,8 +132,7 @@ def generate_coverage_json(
     if not coverage_json.is_file():
         return False, (
             f"coverage generation exited {proc.returncode} but produced no "
-            f"coverage.json at {coverage_json}. stderr(tail): "
-            f"{proc.stderr[-2000:]}"
+            f"coverage.json at {coverage_json}."
         )
     return True, f"generated {coverage_json}"
 

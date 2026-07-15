@@ -11,7 +11,6 @@ populated, freshly measured coverage.json. A green on absence is vacuous.
 from __future__ import annotations
 
 import json
-import subprocess
 import sys
 from pathlib import Path
 from unittest.mock import patch
@@ -165,32 +164,94 @@ class TestCoverageSweepGateGenerationWiring:
 
         captured_cmd: list[str] = []
 
-        def _fake_run(cmd, **kwargs):  # type: ignore[no-untyped-def]
-            captured_cmd.extend(cmd)
-            (tmp_path / "coverage.json").write_text(json.dumps({"files": {}}))
-            return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+        captured_kwargs: dict[str, object] = {}
 
-        with patch("run_coverage_sweep_gate.subprocess.run", side_effect=_fake_run):
-            ok, message = generate_coverage_json(tmp_path)
+        class _FakeProcess:
+            returncode = 0
+
+            def __init__(self) -> None:
+                self._poll_count = 0
+
+            def poll(self) -> int | None:
+                self._poll_count += 1
+                if self._poll_count == 1:
+                    return None
+                (tmp_path / "coverage.json").write_text(json.dumps({"files": {}}))
+                return 0
+
+        def _fake_popen(cmd, **kwargs):  # type: ignore[no-untyped-def]
+            captured_cmd.extend(cmd)
+            captured_kwargs.update(kwargs)
+            return _FakeProcess()
+
+        with (
+            patch("run_coverage_sweep_gate.subprocess.Popen", side_effect=_fake_popen),
+            patch("run_coverage_sweep_gate.time.sleep"),
+        ):
+            ok, message = generate_coverage_json(tmp_path, heartbeat_s=1)
 
         assert ok is True
         assert "coverage.json" in message
         assert "pytest" in captured_cmd
         assert any("--cov-report=json" in part for part in captured_cmd)
+        assert "capture_output" not in captured_kwargs
+        assert "stdout" not in captured_kwargs
+        assert "stderr" not in captured_kwargs
 
     def test_generate_helper_reports_failure_without_swallowing(
         self, tmp_path: Path
     ) -> None:
         from run_coverage_sweep_gate import generate_coverage_json
 
-        def _fake_run(cmd, **kwargs):  # type: ignore[no-untyped-def]
-            return subprocess.CompletedProcess(cmd, 1, stdout="", stderr="boom")
+        class _FakeProcess:
+            returncode = 1
 
-        with patch("run_coverage_sweep_gate.subprocess.run", side_effect=_fake_run):
+            def poll(self) -> int:
+                return 1
+
+        def _fake_popen(cmd, **kwargs):  # type: ignore[no-untyped-def]
+            return _FakeProcess()
+
+        with patch("run_coverage_sweep_gate.subprocess.Popen", side_effect=_fake_popen):
             ok, message = generate_coverage_json(tmp_path)
 
         assert ok is False
         assert "boom" in message or "coverage.json" in message
+
+    def test_generate_helper_emits_parent_heartbeat(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        from run_coverage_sweep_gate import generate_coverage_json
+
+        class _FakeProcess:
+            returncode = 0
+
+            def __init__(self) -> None:
+                self._poll_count = 0
+
+            def poll(self) -> int | None:
+                self._poll_count += 1
+                if self._poll_count < 3:
+                    return None
+                (tmp_path / "coverage.json").write_text(json.dumps({"files": {}}))
+                return 0
+
+        times = iter([0.0, 1.0, 1.0, 2.0, 2.0])
+
+        with (
+            patch(
+                "run_coverage_sweep_gate.subprocess.Popen", return_value=_FakeProcess()
+            ),
+            patch(
+                "run_coverage_sweep_gate.time.monotonic",
+                side_effect=lambda: next(times),
+            ),
+            patch("run_coverage_sweep_gate.time.sleep"),
+        ):
+            ok, _ = generate_coverage_json(tmp_path, heartbeat_s=1)
+
+        assert ok is True
+        assert "coverage generation still running after 1s" in capsys.readouterr().out
 
     def test_generation_failure_exits_two(self, tmp_path: Path) -> None:
         from run_coverage_sweep_gate import main
