@@ -310,6 +310,47 @@ class TestPortedComputeChecks:
 
 
 # ---------------------------------------------------------------------------
+# OMN-14619 — read-EFFECT-supplied content-read check_value override
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestDownstreamCheckOverride:
+    """The read-EFFECT (node_occ_state_effect) may supply an honest content-read
+    check_value; the COMPUTE node must use it verbatim instead of its generic
+    PR-state fallback, and must keep the fallback when none is supplied
+    (backward compatible with every request built before this field existed).
+    """
+
+    def test_default_falls_back_to_generic_pr_state_check(self) -> None:
+        plan = compute_companion_plan(_request())
+        downstream = next(
+            f
+            for f in plan.companion_files
+            if f.kind == EnumCompanionFileKind.DOWNSTREAM_RECEIPT
+        )
+        parsed = yaml.safe_load(downstream.content)
+        assert parsed["check_value"] == (
+            "gh pr view 321 --repo OmniNode-ai/omnimarket --json number,state,headRefName"
+        )
+
+    def test_supplied_check_value_is_used_verbatim(self) -> None:
+        honest_check = (
+            "gh api repos/OmniNode-ai/omnimarket/contents/src/x.py?ref="
+            + "b" * 40
+            + " --jq -r .content | base64 -d | grep -c 'class HandlerX'"
+        )
+        plan = compute_companion_plan(_request(downstream_check_value=honest_check))
+        downstream = next(
+            f
+            for f in plan.companion_files
+            if f.kind == EnumCompanionFileKind.DOWNSTREAM_RECEIPT
+        )
+        parsed = yaml.safe_load(downstream.content)
+        assert parsed["check_value"] == honest_check
+
+
+# ---------------------------------------------------------------------------
 # Purity guard — the COMPUTE handler must do ZERO I/O (load-bearing for the
 # attestation oracle: a hidden probe/clone/now() breaks deterministic re-run).
 # ---------------------------------------------------------------------------

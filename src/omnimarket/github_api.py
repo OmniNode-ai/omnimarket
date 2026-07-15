@@ -230,6 +230,53 @@ def rest_json(
     return parsed
 
 
+def rest_json_array(
+    method: str,
+    path: str,
+    *,
+    token: str,
+) -> list[dict[str, Any]]:
+    """Execute a GitHub REST API call returning a JSON array of objects.
+
+    Sibling of :func:`rest_json` for the list-returning endpoints (e.g.
+    ``pulls/{n}/files``, ``pulls/{n}/commits``) where the top-level payload is a
+    JSON array rather than an object — ``rest_json`` rejects those with
+    ``GitHubApiError`` by design (dict-only contract).
+
+    Args:
+        method: HTTP method (GET, POST, PATCH, …).
+        path: API path starting with ``/`` (appended to https://api.github.com).
+        token: Resolved GitHub bearer token.
+
+    Raises:
+        GitHubApiError: On HTTP, network, or JSON decode failures.
+    """
+    headers = _base_headers(token)
+    req = urllib.request.Request(
+        f"{_GITHUB_REST}{path}",
+        headers=headers,
+        method=method,
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=_REQUEST_TIMEOUT) as resp:
+            raw = resp.read()
+    except urllib.error.HTTPError as exc:
+        detail = exc.read().decode("utf-8", errors="replace").strip()
+        raise GitHubApiError(detail or str(exc), status_code=exc.code) from exc
+    except (urllib.error.URLError, OSError) as exc:
+        raise GitHubApiError(str(exc)) from exc
+
+    if not raw:
+        return []
+    try:
+        parsed = json.loads(raw.decode("utf-8"))
+    except json.JSONDecodeError as exc:
+        raise GitHubApiError(f"invalid JSON response for {path}: {exc}") from exc
+    if not isinstance(parsed, list):
+        raise GitHubApiError(f"unexpected JSON response type for {path}")
+    return parsed
+
+
 def rest_no_content(
     method: str,
     path: str,

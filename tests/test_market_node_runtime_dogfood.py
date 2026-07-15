@@ -144,12 +144,14 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
     # OMN-14608 adds node_codegen_outcome_reducer (REDUCER; joins the three raw
     # codegen downstream verdicts to retained pipeline state so the hybrid
     # codegen orchestrator's outcome topics have a real producer): 365 -> 366.
-    assert summary["node_dirs"] == 366
+    # OMN-14619 adds node_occ_state_effect (EFFECT; read-only OCC companion
+    # state gatherer for the RSD producer chain): 366 -> 367.
+    assert summary["node_dirs"] == 367
     # OMN-14151 deliberately removes request/response entry points from the
     # three legacy arm surfaces; the new arm-gate compute node is the single
     # active route. OMN-14608's reducer entry point brings the count back up:
-    # 362 -> 363.
-    assert summary["entry_points"] == 363
+    # 362 -> 363. OMN-14619 adds the state-effect gather route: 363 -> 364.
+    assert summary["entry_points"] == 364
     assert set(summary["missing_entry_points"]) == OMN_14151_LEGACY_ARM_SURFACES
     assert summary["dangling_entry_points"] == []
     assert summary["routable"] >= 299
