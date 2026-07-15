@@ -46,13 +46,6 @@ from omnimarket.inference.adapter_inference_bridge import (
     AdapterInferenceBridge,
     ModelInferenceAdapter,
 )
-from omnimarket.nodes.node_finding_aggregator_compute.handlers.handler_finding_aggregator import (
-    HandlerFindingAggregator,
-)
-from omnimarket.nodes.node_finding_aggregator_compute.models.model_finding_aggregator_input import (
-    ModelFindingAggregatorInput,
-    ModelSourceFindings,
-)
 from omnimarket.nodes.node_github_diff_effect.handlers.handler_github_diff import (
     HandlerGithubDiffEffect,
 )
@@ -74,6 +67,7 @@ from omnimarket.nodes.node_review_prompt_builder_compute.handlers.handler_prompt
 from omnimarket.nodes.node_review_response_parser_compute.handlers.handler_response_parser_compute import (
     HandlerResponseParserCompute,
 )
+from omnimarket.review.finding_aggregator import FindingAggregatorGateway
 from omnimarket.review.node_io import (
     ModelGithubDiffCommand,
     ModelGithubDiffResolvedEvent,
@@ -183,7 +177,7 @@ class HandlerPrReviewOrchestrator:
         self._github_review_effect = github_review_effect or HandlerGithubReviewEffect()
         self._prompt_builder = HandlerPromptBuilderCompute()
         self._response_parser = HandlerResponseParserCompute()
-        self._aggregator = HandlerFindingAggregator()
+        self._aggregator = FindingAggregatorGateway()
         self._judge_parser = HandlerJudgeVerdictParseCompute()
 
     async def handle(self, command: ReviewRequest) -> ModelPrReviewCompletedEvent:
@@ -355,17 +349,12 @@ class HandlerPrReviewOrchestrator:
         by_model: dict[str, list[ReviewFinding]] = {}
         for f in findings:
             by_model.setdefault(f.source_model, []).append(f)
-        sources = tuple(
-            ModelSourceFindings(
-                model_name=model_key,
-                findings=tuple(_finding_to_aggregator_dict(f) for f in model_findings),
-            )
-            for model_key, model_findings in by_model.items()
-        )
-        output = await self._aggregator.handle(
-            ModelFindingAggregatorInput(
-                correlation_id=command.correlation_id, sources=sources
-            ),
+        output = await self._aggregator.aggregate(
+            correlation_id=command.correlation_id,
+            findings_by_model={
+                model_key: tuple(_finding_to_aggregator_dict(f) for f in model_findings)
+                for model_key, model_findings in by_model.items()
+            },
         )
         _log.info(
             "pr review aggregator verdict=%s (correlation_id=%s, merged=%d)",
