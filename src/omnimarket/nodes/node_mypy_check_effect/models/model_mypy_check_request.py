@@ -20,6 +20,14 @@ class ModelMypyCheckRequest(BaseModel):
         default=True,
         description="Pass --ignore-missing-imports (generated snippets often lack third-party stubs).",
     )
+    correlation_id: str = Field(
+        default="",
+        description=(
+            "Opaque run identity echoed verbatim onto the result so a downstream "
+            "reducer can rejoin the pure result to per-run state (OMN-14608). "
+            "Does not affect type-checking; empty for direct callers."
+        ),
+    )
 
     @model_validator(mode="after")
     def _exactly_one_target(self) -> ModelMypyCheckRequest:

@@ -43,6 +43,18 @@ class AdapterPatternBBrokerPublish:
     def config(self) -> ModelPatternBBrokerRuntimeConfig:
         return self._config
 
+    async def handle(
+        self,
+        request: ModelPatternBBrokerDispatchRequest,
+    ) -> ModelPatternBBrokerPublishReceipt:
+        """Def-B dispatch entrypoint — delegates to :meth:`publish`.
+
+        Required so auto-wiring's ``_make_dispatch_callback``
+        (``omnibase_infra.runtime.auto_wiring.handler_wiring``) can bind a
+        real handle entrypoint instead of ``_missing_handle`` (OMN-14616).
+        """
+        return await self.publish(request)
+
     async def publish(
         self,
         request: ModelPatternBBrokerDispatchRequest,

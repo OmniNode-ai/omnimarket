@@ -36,20 +36,15 @@ from uuid import NAMESPACE_DNS, UUID, uuid4, uuid5
 import pytest
 
 from omnimarket.adapters.asyncpg_adapter import AsyncpgAdapter
-from omnimarket.nodes.node_delegation_orchestrator.contract_topics import (
-    TOPIC_ID_DELEGATION_FAILED,
-)
 from omnimarket.nodes.node_delegation_orchestrator.enums import EnumDelegationState
 from omnimarket.nodes.node_delegation_orchestrator.handlers.handler_delegation_workflow import (
     HandlerDelegationWorkflow,
-)
-from omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_event import (
-    ModelDelegationEvent,
 )
 from omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_request import (
     ModelDelegationRequest,
 )
 from omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_result import (
+    ModelDelegationFailed,
     ModelDelegationResult,
 )
 from omnimarket.nodes.node_delegation_orchestrator.models.model_inference_response_data import (
@@ -135,18 +130,13 @@ class TestSingleCanonicalTerminalOmn13629:
 
     def test_emits_exactly_one_terminal_on_delegation_failed(self) -> None:
         events = _drive_all_tiers_failed()
-        terminals = [
-            e
-            for e in events
-            if isinstance(e, ModelDelegationEvent)
-            and isinstance(e.payload, ModelDelegationResult)
-        ]
+        terminals = [e for e in events if isinstance(e, ModelDelegationResult)]
         assert len(terminals) == 1, (
             f"all-tiers-failed must emit EXACTLY ONE canonical terminal, got: {events!r}"
         )
         terminal = terminals[0]
-        assert str(terminal.topic) == TOPIC_ID_DELEGATION_FAILED
-        assert terminal.payload.quality_passed is False
+        assert isinstance(terminal, ModelDelegationFailed)
+        assert terminal.quality_passed is False
 
     def test_no_compat_task_delegated_event_emitted(self) -> None:
         events = _drive_all_tiers_failed()
@@ -161,12 +151,7 @@ class TestSingleCanonicalTerminalOmn13629:
         saving on the failed path is non-negative — the clamp is an honest value
         floor, no longer a ge=0 crash that suppresses the terminal."""
         events = _drive_all_tiers_failed()
-        terminal = next(
-            e.payload
-            for e in events
-            if isinstance(e, ModelDelegationEvent)
-            and isinstance(e.payload, ModelDelegationResult)
-        )
+        terminal = next(e for e in events if isinstance(e, ModelDelegationResult))
         # Run the failed terminal through the canonical projection converter +
         # cost measurement; the materialized saving must be >= 0.
         from omnimarket.nodes.node_projection_delegation.handlers.handler_projection_delegation import (
@@ -182,12 +167,7 @@ class TestSingleCanonicalTerminalOmn13629:
         """The canonical failed terminal converts to a valid delegation_events row
         model (the projection write path), proving the row is written."""
         events = _drive_all_tiers_failed()
-        terminal = next(
-            e.payload
-            for e in events
-            if isinstance(e, ModelDelegationEvent)
-            and isinstance(e.payload, ModelDelegationResult)
-        )
+        terminal = next(e for e in events if isinstance(e, ModelDelegationResult))
         payload = terminal.model_dump(mode="json")
         converted = _canonical_result_to_task_delegated_payload(payload)
         # Constructing the projection row event is the projection's row-write
@@ -237,12 +217,7 @@ class TestSavingsRunnerCanonicalRepointOmn13629:
         runner._db = self._mock_db()
 
         events = _drive_all_tiers_failed()
-        terminal = next(
-            e.payload
-            for e in events
-            if isinstance(e, ModelDelegationEvent)
-            and isinstance(e.payload, ModelDelegationResult)
-        )
+        terminal = next(e for e in events if isinstance(e, ModelDelegationResult))
         data = terminal.model_dump(mode="json")
         meta = MessageMeta(partition=0, offset=0, fallback_id=str(uuid4()))
 

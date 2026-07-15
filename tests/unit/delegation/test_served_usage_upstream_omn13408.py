@@ -39,13 +39,11 @@ from omnimarket.nodes.node_delegation_orchestrator.handlers.handler_delegation_w
     _MAX_INFERENCE_ESCALATION_ATTEMPTS,
     HandlerDelegationWorkflow,
 )
-from omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_event import (
-    ModelDelegationEvent,
-)
 from omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_request import (
     ModelDelegationRequest,
 )
 from omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_result import (
+    ModelDelegationFailed,
     ModelDelegationResult,
 )
 from omnimarket.nodes.node_delegation_orchestrator.models.model_task_delegated_event import (
@@ -229,12 +227,12 @@ class TestServedUsageUpstreamOmn13408:
 
         # CANONICAL terminal event (delegation-failed.v1).
         delegation_events = [
-            e for e in terminal_events if isinstance(e, ModelDelegationEvent)
+            e for e in terminal_events if isinstance(e, ModelDelegationResult)
         ]
         assert len(delegation_events) == 1
-        canonical = delegation_events[0].payload
+        canonical = delegation_events[0]
         assert isinstance(canonical, ModelDelegationResult)
-        assert delegation_events[0].topic.endswith("delegation-failed.v1")
+        assert isinstance(delegation_events[0], ModelDelegationFailed)
 
         # The canonical event carries the served tokens (was 0/0 before the fix).
         # total_tokens is reconciled to prompt + completion at the wire boundary

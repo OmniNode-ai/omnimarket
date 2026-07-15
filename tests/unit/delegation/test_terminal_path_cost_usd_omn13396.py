@@ -34,9 +34,6 @@ from omnimarket.nodes.node_delegation_orchestrator.handlers.handler_delegation_w
 from omnimarket.nodes.node_delegation_orchestrator.models.model_baseline_intent import (
     ModelBaselineIntent,
 )
-from omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_event import (
-    ModelDelegationEvent,
-)
 from omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_request import (
     ModelDelegationRequest,
 )
@@ -148,12 +145,7 @@ def _drive_success_to_terminal(
     intents = handler.handle_gate_result(_make_gate_result(cid))
     assert handler.workflows[cid].state == EnumDelegationState.COMPLETED
 
-    canonical = next(
-        e.payload
-        for e in intents
-        if isinstance(e, ModelDelegationEvent)
-        and isinstance(e.payload, ModelDelegationResult)
-    )
+    canonical = next(e for e in intents if isinstance(e, ModelDelegationResult))
     baseline = next(e for e in intents if isinstance(e, ModelBaselineIntent))
     return canonical, baseline
 

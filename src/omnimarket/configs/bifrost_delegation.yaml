@@ -169,23 +169,31 @@ backends:
       - research
   - backend_id: cloud-glm-judge
     # OMN-14225: the quality-gate JUDGE's OWN backend, DECOUPLED from the
-    # cheap_cloud escalation model. cloud-glm above is the paid ESCALATION model
-    # and was repointed glm-5.2 -> glm-5-turbo (the cheaper coding-plan model).
-    # The judge is a quality authority, not an escalation step, so it stays on the
-    # FLAGSHIP glm-5.2 regardless of what the escalation model is. This backend is
-    # pinned by backend_id from the judge adapter (RoutingResolvedJudgeInferenceAdapter,
-    # _DEFAULT_JUDGE_BACKEND_ID) and is referenced by NO routing rule / tier, so it
-    # is never selected on the delegation escalation ladder — only the judge rides
-    # it. Same z.ai GLM coding endpoint + secret as cloud-glm; only the model_name
-    # differs. To move the judge model, repoint this model_name — the escalation
-    # model (cloud-glm) is unaffected, and vice versa.
-    endpoint_url: "https://api.z.ai/api/coding/paas/v4/chat/completions"
-    model_name: "glm-5.2"
-    secret_ref: llm.glm.api_key
-    api_key_env: LLM_GLM_API_KEY
+    # cheap_cloud escalation model. This backend is pinned by backend_id from
+    # the judge adapter (RoutingResolvedJudgeInferenceAdapter,
+    # _DEFAULT_JUDGE_BACKEND_ID) and is referenced by NO routing rule / tier, so
+    # it is never selected on the delegation escalation ladder — only the judge
+    # rides it. To move the judge model, repoint this backend — the escalation
+    # tiers are unaffected, and vice versa. The backend_id (``cloud-glm-judge``)
+    # is kept as-is (it is a stable pin string, not a provider claim) even
+    # though it no longer points at z.ai/GLM — same pattern as the ``claude``
+    # ceiling tier name.
+    #
+    # OMN-14625: repointed off z.ai GLM-5.2 to Gemini. The z.ai GLM route is
+    # DEAD from the .201 runtime: resolve_api_key succeeds but every completion
+    # call 401s / loops FAILED-only (forensics this ticket; see memory
+    # reference_glm_zai_wiring_and_consumers). Verified nothing else keys on
+    # this backend's z.ai identity (endpoint_url/model_name) — only the
+    # backend_id string is pinned by the judge adapter — so repointing this
+    # definition in place is sufficient.
+    endpoint_url: "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
+    model_name: "gemini-2.5-flash"
+    secret_ref: llm.gemini.api_key
+    api_key_env: GEMINI_API_KEY
     tier: judge
-    # Match cloud-glm's budget: the judge issues a small structured verdict but
-    # rides the same endpoint, so the same generous timeout/output ceiling apply.
+    # Match the ceiling/cheap_cloud Gemini budget: the judge issues a small
+    # structured verdict but rides the same endpoint, so the same generous
+    # timeout/output ceiling apply.
     timeout_ms: 300000
     max_tokens: 65536
     capabilities:

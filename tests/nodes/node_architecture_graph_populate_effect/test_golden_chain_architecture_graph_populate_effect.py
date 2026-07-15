@@ -275,6 +275,115 @@ class TestArchitectureGraphPopulateEffect:
         deduped_onex = [n for n in deduped if n.label == "ONEXNode"]
         assert len(deduped_onex) == 2
 
+    async def test_collect_contract_data_ignores_vendored_venv_copies(
+        self, tmp_path: Path
+    ) -> None:
+        """OMN-14583: a contract.yaml vendored into a consuming repo's own
+        .venv (i.e. an installed dependency's node contract, not a native
+        node of that repo) must never be attributed to the consuming repo.
+
+        Before this fix, _collect_contract_data walked
+        repo_path.rglob("contract.yaml") with no .venv exclusion, so every
+        repo that depends on omnimarket as a pip dependency would have its
+        own venv-vendored copy of every omnimarket node contract ingested
+        and misattributed as repo=<consuming repo>.
+
+        The vendored fixture is nested INSIDE src/ (not just at repo root)
+        so the exclusion filter is independently load-bearing here, not
+        merely redundant with any directory scoping — adversarial review
+        (2026-07-13) found the original fixture sat outside src/, so it was
+        excluded regardless of whether the filter ran at all."""
+        handler, _ = _make_handler_with_mock_driver()
+
+        repo_root = tmp_path / "sample_repo"
+
+        # Native node — really owned by sample_repo, lives under src/.
+        native_dir = repo_root / "src" / "sample_repo" / "nodes" / "node_native_thing"
+        native_dir.mkdir(parents=True)
+        (native_dir / "contract.yaml").write_text(
+            yaml.dump({"name": "node_native_thing", "node_type": "effect"})
+        )
+
+        # Vendored dependency copy nested INSIDE src/ (a plausible real
+        # layout: an in-tree vendored/bundled copy of a dependency, not the
+        # top-level .venv) — an installed OTHER package's node. Must be
+        # excluded by the directory-name filter regardless of nesting depth
+        # or whether it happens to fall under src/.
+        vendored_dir = (
+            repo_root
+            / "src"
+            / ".venv"
+            / "lib"
+            / "python3.12"
+            / "site-packages"
+            / "omnimarket"
+            / "nodes"
+            / "node_delegation_orchestrator"
+        )
+        vendored_dir.mkdir(parents=True)
+        (vendored_dir / "contract.yaml").write_text(
+            yaml.dump(
+                {"name": "node_delegation_orchestrator", "node_type": "orchestrator"}
+            )
+        )
+
+        nodes, _edges = handler._collect_contract_data(repo_root, "sample_repo")
+        onex_node_names = {n.properties["name"] for n in nodes if n.label == "ONEXNode"}
+
+        assert "node_native_thing" in onex_node_names
+        assert "node_delegation_orchestrator" not in onex_node_names
+
+    async def test_collect_contract_data_includes_non_src_native_contracts(
+        self, tmp_path: Path
+    ) -> None:
+        """OMN-14583: a real, non-vendored node contract living OUTSIDE
+        src/ (e.g. an examples/demo fixture) must still be included — the
+        fix must not regress to src/-only scoping.
+
+        Adversarial review (2026-07-13) found the original fix scoped the
+        walk to <repo>/src, which silently dropped a real contract found in
+        the live workspace: omnibase_core/examples/demo/model-validate/
+        contract.yaml (name: support-ticket-classifier, node_type:
+        COMPUTE_GENERIC) — present in the graph before the fix, silently
+        omitted after. This test pins that a contract shaped like that one
+        stays included; only vendored/build directories are excluded.
+
+        The fixture creates a sibling src/ directory (with its own native
+        node) alongside examples/ — without it, repo_root has no src/ at
+        all, and an earlier (src/-scoped) version of this fix would silently
+        fall back to scanning the whole repo_root anyway, making this test
+        pass for the wrong reason and masking the exact regression it exists
+        to catch. Found via a live sanity check against the real
+        omnibase_core checkout after remediation, not by inspection alone."""
+        handler, _ = _make_handler_with_mock_driver()
+
+        repo_root = tmp_path / "sample_repo"
+
+        # Sibling src/ dir with its own native node — makes repo_root a
+        # realistic layout (src/ exists) so a src/-scoped walk would
+        # genuinely exclude examples/ below, rather than silently falling
+        # back to scanning all of repo_root because src/ is absent.
+        native_dir = repo_root / "src" / "sample_repo" / "nodes" / "node_native_thing"
+        native_dir.mkdir(parents=True)
+        (native_dir / "contract.yaml").write_text(
+            yaml.dump({"name": "node_native_thing", "node_type": "effect"})
+        )
+
+        # Real, non-vendored contract outside src/ — mirrors
+        # omnibase_core/examples/demo/model-validate/contract.yaml.
+        example_dir = repo_root / "examples" / "demo" / "model-validate"
+        example_dir.mkdir(parents=True)
+        (example_dir / "contract.yaml").write_text(
+            yaml.dump(
+                {"name": "support-ticket-classifier", "node_type": "COMPUTE_GENERIC"}
+            )
+        )
+
+        nodes, _edges = handler._collect_contract_data(repo_root, "sample_repo")
+        onex_node_names = {n.properties["name"] for n in nodes if n.label == "ONEXNode"}
+
+        assert "support-ticket-classifier" in onex_node_names
+
     async def test_cypher_merge_statements_use_merge_not_create(self) -> None:
         """MERGE statements must be idempotent — never CREATE."""
         handler, _ = _make_handler_with_mock_driver()

@@ -4,10 +4,10 @@
 """D1 re-home guard: EmitClient owner is omnimarket.events.emit_client (OMN-13213).
 
 Canonical migration Phase D1 moves EmitClient / default_socket_path out of the
-non-canonical node_emit_daemon (node_type: service) into the shared
-omnimarket.events package, so canonical EFFECT nodes no longer import another
-node's private package. These tests pin the new owner and prove the cross-node
-import has been eliminated.
+non-canonical node_emit_daemon (node_type: effect, descriptor.node_archetype:
+service — OMN-14544) into the shared omnimarket.events package, so canonical
+EFFECT nodes no longer import another node's private package. These tests pin
+the new owner and prove the cross-node import has been eliminated.
 """
 
 from __future__ import annotations

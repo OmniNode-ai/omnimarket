@@ -34,10 +34,8 @@ from omnimarket.nodes.node_delegation_orchestrator.enums import (
 from omnimarket.nodes.node_delegation_orchestrator.handlers.handler_delegation_workflow import (
     HandlerDelegationWorkflow,
 )
-from omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_event import (
-    ModelDelegationEvent,
-)
 from omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_result import (
+    ModelDelegationFailed,
     ModelDelegationResult,
 )
 from omnimarket.nodes.node_delegation_routing_reducer.models.model_routing_decision import (
@@ -422,11 +420,11 @@ class TestHandlerInferenceIntent:
         failure_event = next(
             event
             for event in terminal_events
-            if isinstance(event, ModelDelegationEvent)
+            if isinstance(event, ModelDelegationResult)
         )
-        assert failure_event.topic == "onex.evt.omnibase-infra.delegation-failed.v1"
+        assert isinstance(failure_event, ModelDelegationFailed)
         assert workflow.workflows[correlation_id].state == EnumDelegationState.FAILED
-        failure_payload = failure_event.payload
+        failure_payload = failure_event
         assert isinstance(failure_payload, ModelDelegationResult)
         assert failure_payload.correlation_id == correlation_id
         assert failure_payload.quality_passed is False

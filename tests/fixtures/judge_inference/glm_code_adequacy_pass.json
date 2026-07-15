@@ -1,6 +1,6 @@
 {
-  "captured_from": "real z.ai GLM call (cloud-glm backend, routing-contract resolved)",
-  "resolved_model_id": "glm-5.2",
+  "captured_from": "real z.ai GLM call (cloud-glm-judge backend, routing-contract resolved). OMN-14625: resolved_model_id updated glm-5.2 -> gemini-2.5-flash — the judge backend (cloud-glm-judge in bifrost_delegation.yaml) was repointed off z.ai GLM (DEAD from the .201 runtime) to Gemini. This field is a routing-identity pin consumed by RecordedJudgeReplayAdapter's model_key guard (OMN-13470), not a claim Gemini produced this raw_response text; raw_response is preserved unchanged from the original z.ai capture since it exercises downstream, provider-agnostic score-combine/veto logic.",
+  "resolved_model_id": "gemini-2.5-flash",
   "task_type": "code_generation",
   "candidate_output": "```python\ndef add(a: int, b: int) -> int:\n    return a + b\n```",
   "raw_response": "{\"adequacy_score\": 0.9, \"reasoning\": \"Valid, compilable Python function provided as a clean final artifact with no extraneous text, satisfying both acceptance criteria.\"}"

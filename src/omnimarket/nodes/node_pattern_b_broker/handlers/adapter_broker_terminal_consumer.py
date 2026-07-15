@@ -56,6 +56,18 @@ class AdapterPatternBBrokerTerminalConsumer:
     def config(self) -> ModelPatternBBrokerRuntimeConfig:
         return self._config
 
+    async def handle(
+        self,
+        request: ModelPatternBBrokerDispatchRequest,
+    ) -> ModelPatternBBrokerTerminalEvent:
+        """Def-B dispatch entrypoint — delegates to :meth:`wait_for_terminal_event`.
+
+        Required so auto-wiring's ``_make_dispatch_callback``
+        (``omnibase_infra.runtime.auto_wiring.handler_wiring``) can bind a
+        real handle entrypoint instead of ``_missing_handle`` (OMN-14616).
+        """
+        return await self.wait_for_terminal_event(request)
+
     async def wait_for_terminal_event(
         self,
         request: ModelPatternBBrokerDispatchRequest,

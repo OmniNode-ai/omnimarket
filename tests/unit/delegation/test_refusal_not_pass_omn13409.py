@@ -37,16 +37,18 @@ from omnibase_core.models.delegation.wire import (
 
 from omnimarket.nodes.node_delegation_orchestrator.contract_topics import (
     TOPIC_ID_DELEGATION_COMPLETED,
+    TOPIC_ID_DELEGATION_FAILED,
 )
 from omnimarket.nodes.node_delegation_orchestrator.enums import EnumDelegationState
 from omnimarket.nodes.node_delegation_orchestrator.handlers.handler_delegation_workflow import (
     HandlerDelegationWorkflow,
 )
-from omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_event import (
-    ModelDelegationEvent,
-)
 from omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_request import (
     ModelDelegationRequest,
+)
+from omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_result import (
+    ModelDelegationCompleted,
+    ModelDelegationResult,
 )
 from omnimarket.nodes.node_delegation_quality_gate_reducer.handlers.handler_quality_gate import (
     delta as quality_gate_delta,
@@ -382,9 +384,13 @@ class TestRefusalRealDispatchPath:
 
         # The terminal events must include delegation-failed, not delegation-completed.
         published_topics = [
-            getattr(e, "topic", None)
+            (
+                TOPIC_ID_DELEGATION_COMPLETED
+                if isinstance(e, ModelDelegationCompleted)
+                else TOPIC_ID_DELEGATION_FAILED
+            )
             for e in terminal_events
-            if isinstance(e, ModelDelegationEvent)
+            if isinstance(e, ModelDelegationResult)
         ]
         assert TOPIC_ID_DELEGATION_COMPLETED not in published_topics, (
             f"delegation-completed must NOT be emitted for a 'NO' refusal; "
@@ -412,9 +418,13 @@ class TestRefusalRealDispatchPath:
         )
 
         published_topics = [
-            getattr(e, "topic", None)
+            (
+                TOPIC_ID_DELEGATION_COMPLETED
+                if isinstance(e, ModelDelegationCompleted)
+                else TOPIC_ID_DELEGATION_FAILED
+            )
             for e in terminal_events
-            if isinstance(e, ModelDelegationEvent)
+            if isinstance(e, ModelDelegationResult)
         ]
         assert TOPIC_ID_DELEGATION_COMPLETED not in published_topics, (
             f"delegation-completed must NOT be emitted for 'No.' refusal; "
@@ -441,9 +451,13 @@ class TestRefusalRealDispatchPath:
         )
 
         published_topics = [
-            getattr(e, "topic", None)
+            (
+                TOPIC_ID_DELEGATION_COMPLETED
+                if isinstance(e, ModelDelegationCompleted)
+                else TOPIC_ID_DELEGATION_FAILED
+            )
             for e in terminal_events
-            if isinstance(e, ModelDelegationEvent)
+            if isinstance(e, ModelDelegationResult)
         ]
         assert TOPIC_ID_DELEGATION_COMPLETED not in published_topics, (
             f"delegation-completed must NOT be emitted for refusal; "
@@ -470,9 +484,13 @@ class TestRefusalRealDispatchPath:
         )
 
         published_topics = [
-            getattr(e, "topic", None)
+            (
+                TOPIC_ID_DELEGATION_COMPLETED
+                if isinstance(e, ModelDelegationCompleted)
+                else TOPIC_ID_DELEGATION_FAILED
+            )
             for e in terminal_events
-            if isinstance(e, ModelDelegationEvent)
+            if isinstance(e, ModelDelegationResult)
         ]
         assert TOPIC_ID_DELEGATION_COMPLETED in published_topics, (
             f"good summary must produce delegation-completed; topics={published_topics}"
