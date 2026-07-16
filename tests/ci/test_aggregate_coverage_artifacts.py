@@ -131,6 +131,22 @@ def test_missing_required_key_fails_closed(tmp_path: Path) -> None:
     assert exc.value.reason == agg.REASON_MALFORMED
 
 
+def test_non_object_metadata_fails_closed(tmp_path: Path) -> None:
+    with pytest.raises(agg.ArtifactValidationError) as exc:
+        agg.validate_artifacts(
+            ["not-an-object"], tmp_path, expected_head=HEAD, split_count=1
+        )
+    assert exc.value.reason == agg.REASON_MALFORMED
+
+
+def test_mismatched_split_count_fails_closed(tmp_path: Path) -> None:
+    _write_shard(tmp_path, 1, 2)
+    metas = agg.load_metadata(tmp_path)
+    with pytest.raises(agg.ArtifactValidationError) as exc:
+        agg.validate_artifacts(metas, tmp_path, expected_head=HEAD, split_count=1)
+    assert exc.value.reason == agg.REASON_MALFORMED
+
+
 def test_schema_mismatch_fails_closed(tmp_path: Path) -> None:
     _write_shard(tmp_path, 1, 1, schema_version="omnimarket.coverage-artifact/v0")
     metas = agg.load_metadata(tmp_path)
@@ -156,6 +172,14 @@ def test_inconsistent_scope_fails_closed(tmp_path: Path) -> None:
     metas = agg.load_metadata(tmp_path)
     with pytest.raises(agg.ArtifactValidationError) as exc:
         agg.validate_artifacts(metas, tmp_path, expected_head=HEAD, split_count=2)
+    assert exc.value.reason == agg.REASON_MALFORMED
+
+
+def test_unknown_scope_fails_closed(tmp_path: Path) -> None:
+    _write_shard(tmp_path, 1, 1, test_scope="partial")
+    metas = agg.load_metadata(tmp_path)
+    with pytest.raises(agg.ArtifactValidationError) as exc:
+        agg.validate_artifacts(metas, tmp_path, expected_head=HEAD, split_count=1)
     assert exc.value.reason == agg.REASON_MALFORMED
 
 
@@ -213,6 +237,16 @@ def test_parity_within_tolerance_passes(tmp_path: Path) -> None:
         tmp_path / "shadow.json", tmp_path / "auth.json", tolerance=0.5
     )
     assert ok
+
+
+def test_parity_rejects_malformed_totals(tmp_path: Path) -> None:
+    _write_coverage_json(tmp_path / "shadow.json", 82.0, 820, 1000)
+    (tmp_path / "auth.json").write_text(json.dumps({"totals": {}}))
+
+    with pytest.raises(ValueError, match="malformed coverage totals"):
+        agg.parity_compare(
+            tmp_path / "shadow.json", tmp_path / "auth.json", tolerance=0.5
+        )
 
 
 # ---------------------------------------------------------------------------

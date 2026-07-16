@@ -617,7 +617,7 @@ jobs:
 
       - name: Upload coverage shard artifact (OMN-14680)
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: coverage-shard-${{ matrix.split }}
           path: |
@@ -1600,7 +1600,8 @@ jobs:
             --split-count "${{ needs.detect-changes.outputs.split_count }}" \
             --target-dir "$GITHUB_WORKSPACE" \
             --compare-to .coverage-authoritative/coverage.json \
-            --tolerance 0.5
+            --tolerance 0.5 \
+            --max-age-seconds 21600
 
   # ============================================================================
   # WORKFLOW MODULE-RESOLUTION GUARD (OMN-14176) — failing-rollup sub-job.

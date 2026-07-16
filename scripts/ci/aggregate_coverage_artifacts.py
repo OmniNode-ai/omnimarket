@@ -247,6 +247,10 @@ def validate_artifacts(
     scopes: set[str] = set()
 
     for meta in metas:
+        if not isinstance(meta, dict):
+            raise ArtifactValidationError(
+                REASON_MALFORMED, f"metadata is not an object: {meta!r}"
+            )
         missing_keys = required - set(meta.keys())
         if missing_keys:
             raise ArtifactValidationError(
@@ -271,15 +275,23 @@ def validate_artifacts(
             raise ArtifactValidationError(
                 REASON_MALFORMED, f"split is not an int: {split!r}"
             )
+        meta_split_count = meta["split_count"]
+        if not isinstance(meta_split_count, int) or meta_split_count != split_count:
+            raise ArtifactValidationError(
+                REASON_MALFORMED,
+                f"split_count {meta_split_count!r} does not match expected "
+                f"{split_count!r} for split {split}.",
+            )
         if split in seen_splits:
             raise ArtifactValidationError(
                 REASON_MALFORMED, f"duplicate artifact for split {split}"
             )
         seen_splits[split] = meta
         scope = meta["test_scope"]
-        if not isinstance(scope, str):
+        if scope not in {"full", "smart"}:
             raise ArtifactValidationError(
-                REASON_MALFORMED, f"test_scope is not a str: {scope!r}"
+                REASON_MALFORMED,
+                f"test_scope must be 'full' or 'smart': {scope!r}",
             )
         scopes.add(scope)
 
@@ -402,11 +414,14 @@ def combine_coverage(
 # ---------------------------------------------------------------------------
 def _totals(coverage_json: Path) -> dict[str, float]:
     data = json.loads(coverage_json.read_text(encoding="utf-8"))
-    totals = data.get("totals", {})
+    totals = data.get("totals")
+    required = {"percent_covered", "covered_lines", "num_statements"}
+    if not isinstance(totals, dict) or not required.issubset(totals):
+        raise ValueError(f"{coverage_json} has malformed coverage totals")
     return {
-        "percent_covered": float(totals.get("percent_covered", 0.0)),
-        "covered_lines": float(totals.get("covered_lines", 0)),
-        "num_statements": float(totals.get("num_statements", 0)),
+        "percent_covered": float(totals["percent_covered"]),
+        "covered_lines": float(totals["covered_lines"]),
+        "num_statements": float(totals["num_statements"]),
     }
 
 
