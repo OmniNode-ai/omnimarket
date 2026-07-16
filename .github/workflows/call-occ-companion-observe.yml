@@ -1,0 +1,138 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# call-occ-companion-observe.yml
+#
+# WS5 (OMN-14657) — report-only observation of the deterministic OCC-companion
+# producer. RSD-2 (node_occ_state_effect, omnimarket#1761, OMN-14619) and
+# RSD-3 (node_occ_companion_effect, omnimarket#1764, OMN-14622) are merged to
+# dev but have NEVER run in CI: the node is directly-invoked only and has
+# never emitted a live companion. This workflow runs it in mode="dry_run" on
+# real, ticketed omnimarket PRs so its output (the companion plan it WOULD
+# author) can be observed before any fail-closed flip is considered.
+#
+# NOT a producer, NOT a gate:
+#   * mode is a HARDCODED literal "dry_run" below — never templated from PR
+#     input, never parameterized to "mutate". dry_run reads + computes the
+#     plan and returns it WITHOUT cloning, pushing, opening a PR, or
+#     stamping the product body (see ModelOccCompanionEffectRequest.mode).
+#   * This job is `continue-on-error: true`, is NOT added to
+#     required_status_checks, and is NOT in ci-summary's `needs:` — it can
+#     never block a merge.
+#   * OccCompanionEmitter (node_pr_lifecycle_fix_effect) and
+#     call-occ-autobind.yml remain untouched and are the sole LIVE producer
+#     during the observation window (docs/plans/2026-07-14-rsd3-occ-producer-
+#     and-retirement.md §4).
+#
+# Dispatch surface: the canonical `onex node <name>` local-runtime CLI
+# (omnibase_infra.cli.cli_node:run_node_by_name, entry-point `onex.cli.node`/
+# `onex.cli.run`) — no bespoke Python script. This reuses RSD-1
+# (node_occ_companion_compute) / RSD-2 (node_occ_state_effect) / RSD-3
+# (node_occ_companion_effect) exactly as merged; it authors zero new
+# producer code.
+#
+# Out of scope (tracked elsewhere, do not fold in here): OMN-14623
+# (merged-path supersede rendering bug — producer is fresh-path-only until
+# it lands), the dod-deploy-assessment emission gap, OMN-14393 (RSD-5
+# fail-closed attestation gate + relocation to omnibase_compat), and the
+# observation-window (~10 candidate) acceptance / flip decision.
+#
+# Ticket: OMN-14657 (child of OMN-14285; blocks OMN-14393).
+
+name: OCC Companion Observe (report-only)
+
+on:
+  pull_request:
+    branches: [main, dev, "hotfix/**"]
+    types: [opened, synchronize, reopened, ready_for_review]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  occ-companion-observe:
+    name: OCC Companion Observe (dry_run, non-blocking)
+    # Same eligibility filter as call-occ-autobind.yml: skip dependency bots
+    # and PRs with no OMN ticket token, and skip fork PRs (no secrets, and
+    # "trusted (non-fork) ticketed product-PR events" per the WS5 spec).
+    if: >-
+      github.actor != 'dependabot[bot]' &&
+      github.actor != 'renovate[bot]' &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      (contains(github.event.pull_request.title, 'OMN-') ||
+       contains(github.event.pull_request.head.ref, 'OMN-'))
+    runs-on: ubuntu-latest
+    # Report-only, non-blocking (WS5 guardrail 3): a red step here is
+    # observed, never enforced. This job carries no required-status-check
+    # name and is not referenced by any other workflow's `needs:`.
+    continue-on-error: true
+    timeout-minutes: 10
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
+        with:
+          persist-credentials: false
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@38f3f104447c67c051c4a08e39b64a148898af3a # v4
+        with:
+          version: "latest"
+
+      - name: Set up Python 3.12
+        run: uv python install 3.12
+
+      - name: Install dependencies
+        run: uv sync --locked --all-extras
+
+      - name: Build dry_run observe payload
+        env:
+          PR_REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          # mode is a hardcoded literal — never sourced from PR input.
+          jq -n \
+            --arg repo "$PR_REPO" \
+            --argjson pr_number "$PR_NUMBER" \
+            '{repo: $repo, pr_number: $pr_number, mode: "dry_run"}' \
+            > occ_companion_observe_payload.json
+          cat occ_companion_observe_payload.json
+
+      - name: Run node_occ_companion_effect (dry_run observe)
+        id: observe
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -o pipefail
+          uv run onex node node_occ_companion_effect \
+            --input occ_companion_observe_payload.json \
+            --output receipt \
+            | tee occ_companion_observe_result.json
+
+      - name: Publish observation to job summary
+        if: always()
+        run: |
+          {
+            echo "### OCC Companion Producer — dry_run observation (report-only, non-blocking)"
+            echo
+            echo "Ticket: OMN-14657. mode=dry_run — no GitHub mutation was performed."
+            echo
+            echo '```json'
+            if [ -s occ_companion_observe_result.json ]; then
+              cat occ_companion_observe_result.json
+            else
+              echo "(node did not produce a result — see step logs above)"
+            fi
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload observation artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: occ-companion-observe-${{ github.event.pull_request.number }}
+          path: |
+            occ_companion_observe_payload.json
+            occ_companion_observe_result.json
+          if-no-files-found: ignore
+          retention-days: 30
