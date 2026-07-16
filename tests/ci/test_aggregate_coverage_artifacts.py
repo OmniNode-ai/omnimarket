@@ -25,6 +25,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
+from coverage import CoverageData
 
 REPO_ROOT = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(REPO_ROOT / "scripts" / "ci"))
@@ -279,3 +280,25 @@ def test_combine_merges_shard_data_once(tmp_path: Path) -> None:
     )
     assert result.status in {"clean", "gaps_found"}
     assert result.total_modules >= 1
+
+
+def test_combine_ignores_missing_third_party_source_records(tmp_path: Path) -> None:
+    """Combined shard data may include C-extension/provider traces whose source
+    paths are not present in the checkout. The shadow aggregate should still
+    emit JSON instead of failing on those non-repo records."""
+    target = tmp_path / "repo"
+    target.mkdir()
+    artifacts = tmp_path / "artifacts"
+    artifacts.mkdir()
+
+    data_file = artifacts / ".coverage.1"
+    data = CoverageData(basename=str(data_file))
+    data.add_lines({str(target / "src/dependency_injector/providers.pyx"): {1, 2}})
+    data.write()
+    (artifacts / "coverage-meta-1.json").write_text(json.dumps(_meta(1, 1)))
+
+    out = target / "coverage.json"
+    ok, msg = agg.combine_coverage(artifacts, 1, target, out)
+
+    assert ok, msg
+    assert out.is_file()

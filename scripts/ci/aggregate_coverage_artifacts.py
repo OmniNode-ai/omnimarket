@@ -380,8 +380,12 @@ def combine_coverage(
     if not ok:
         return False, msg
 
+    # Combined shard data can contain traces from C extensions or provider
+    # modules whose original source paths are not present in the checkout.
+    # `coverage json -i` keeps those records from making the shadow aggregate
+    # red while still failing on malformed data, combine errors, and timeouts.
     ok, msg = run_bounded(
-        [py, "-m", "coverage", "json", "-o", str(out_path)],
+        [py, "-m", "coverage", "json", "-i", "-o", str(out_path)],
         cwd=target_dir,
         label="coverage-json",
         timeout_s=timeout_s,
