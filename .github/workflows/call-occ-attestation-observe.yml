@@ -1,0 +1,128 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# call-occ-attestation-observe.yml
+#
+# Toggle 2 (OMN-14393) — the REPORT-ONLY attestation gate. NON-BLOCKING.
+#
+# Distinct from call-occ-companion-observe.yml:
+#   * observe   = "what the producer WOULD author" (node_occ_companion_effect dry_run).
+#   * attest    = "does the companion actually ON THIS PR byte-match the canonical
+#                  plan AND pass occ-preflight" (node_occ_attestation_observe).
+#
+# node_occ_attestation_observe resolves the product PR's Evidence-Source OCC PR,
+# byte-diffs its on-PR companion against a recomputed compute_companion_plan
+# (verify_companion_attestation), checks the occ:machine-minted marker label, and
+# reads the product PR's occ-preflight eligibility. It emits ONE typed
+# ModelOccAutoauthorObservation — the durable evidence unit the N=10 window
+# (node_occ_autoauthor_window) aggregates for the FUTURE fail-closed flip.
+#
+# SAFETY (this is the whole point — do NOT weaken):
+#   * `continue-on-error: true` — a mismatch/failure here is OBSERVED, never enforced.
+#   * NOT added to required_status_checks and NOT referenced by ci.yml's CI Summary
+#     `needs:` (GHA `needs:` cannot cross workflow-file boundaries — CI Summary can
+#     only gate on jobs defined in ci.yml). So this structurally cannot block a
+#     merge, exactly like the OMN-14657 observe job.
+#   * The FAIL-CLOSED flip (relocate oracle to omnibase_compat, wire into
+#     validator_receipt_gate / validator_occ_merge_eligibility as required CI +
+#     pre-commit) is a LATER operator-gated step, OUT OF THIS LANE.
+#
+# Ticket: OMN-14393 (RSD-5). Design:
+#   docs/plans/2026-07-14-rsd3-occ-producer-and-retirement.md §3-§4.
+
+name: OCC Attestation Observe (report-only)
+
+on:
+  pull_request:
+    branches: [main, dev, "hotfix/**"]
+    types: [opened, synchronize, reopened, ready_for_review, edited]
+
+permissions:
+  contents: read
+  pull-requests: read
+  checks: read
+
+jobs:
+  occ-attestation-observe:
+    name: OCC Attestation Observe (report-only, non-blocking)
+    # Same eligibility filter as the observe / autobind workflows.
+    if: >-
+      github.actor != 'dependabot[bot]' &&
+      github.actor != 'renovate[bot]' &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      (contains(github.event.pull_request.title, 'OMN-') ||
+       contains(github.event.pull_request.head.ref, 'OMN-'))
+    runs-on: ubuntu-latest
+    # Report-only, non-blocking (design §3 guardrail): a red step here is
+    # observed, never enforced. No required-status-check name; no `needs:` refs.
+    continue-on-error: true
+    timeout-minutes: 10
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
+        with:
+          persist-credentials: false
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@38f3f104447c67c051c4a08e39b64a148898af3a # v4
+        with:
+          version: "latest"
+
+      - name: Set up Python 3.12
+        run: uv python install 3.12
+
+      - name: Install dependencies
+        run: uv sync --locked --all-extras
+
+      - name: Build attestation-observe payload
+        env:
+          PR_REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          jq -n \
+            --arg repo "$PR_REPO" \
+            --argjson pr_number "$PR_NUMBER" \
+            '{repo: $repo, pr_number: $pr_number}' \
+            > occ_attestation_observe_payload.json
+          cat occ_attestation_observe_payload.json
+
+      - name: Run node_occ_attestation_observe (read-only)
+        id: observe
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -o pipefail
+          uv run onex node node_occ_attestation_observe \
+            --input occ_attestation_observe_payload.json \
+            --output receipt \
+            | tee occ_attestation_observe_result.json
+
+      - name: Publish observation to job summary
+        if: always()
+        run: |
+          {
+            echo "### OCC Attestation — report-only observation (non-blocking)"
+            echo
+            echo "Ticket: OMN-14393. This gate OBSERVES only — it cannot block a merge."
+            echo "One ModelOccAutoauthorObservation is emitted per run; the N=10 window"
+            echo "(node_occ_autoauthor_window) aggregates them for the future flip."
+            echo
+            echo '```json'
+            if [ -s occ_attestation_observe_result.json ]; then
+              cat occ_attestation_observe_result.json
+            else
+              echo "(node did not produce a result — see step logs above)"
+            fi
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload observation artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: occ-attestation-observe-${{ github.event.pull_request.number }}
+          path: |
+            occ_attestation_observe_payload.json
+            occ_attestation_observe_result.json
+          if-no-files-found: ignore
+          retention-days: 30
