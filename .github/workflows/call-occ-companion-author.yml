@@ -33,8 +33,9 @@
 #
 # When mutate is enabled the node clones onex_change_control, pushes a branch, and
 # opens the OCC PR, so it runs on the trusted self-hosted runner with a
-# write-scoped GITHUB_TOKEN (the read-only Actions token used for dry_run is
-# insufficient — supply it via the secret store on that runner or a repo secret).
+# write-scoped OCC_AUTOAUTHOR_TOKEN (the read-only Actions token used for
+# dry_run is insufficient - supply it via a repo/org secret backed by a GitHub
+# App/PAT with write access to OmniNode-ai/onex_change_control).
 #
 # Ticket: OMN-14393 (RSD-5). Design doc:
 #   docs/plans/2026-07-14-rsd3-occ-producer-and-retirement.md §3-§4.
@@ -114,12 +115,28 @@ jobs:
             > occ_companion_author_payload.json
           cat occ_companion_author_payload.json
 
+      - name: Validate mutate write token
+        if: ${{ vars.OMNI_OCC_AUTOAUTHOR_MODE == 'mutate' }}
+        env:
+          OCC_AUTOAUTHOR_TOKEN: ${{ secrets.OCC_AUTOAUTHOR_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -z "${OCC_AUTOAUTHOR_TOKEN:-}" ]; then
+            echo "::error::OMNI_OCC_AUTOAUTHOR_MODE=mutate requires OCC_AUTOAUTHOR_TOKEN with write access to OmniNode-ai/onex_change_control."
+            exit 1
+          fi
+
       - name: Run node_occ_companion_effect (mode-gated)
         id: author
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          OCC_AUTOAUTHOR_TOKEN: ${{ secrets.OCC_AUTOAUTHOR_TOKEN }}
         run: |
-          set -o pipefail
+          set -euo pipefail
+          MODE="$(jq -r '.mode' occ_companion_author_payload.json)"
+          if [ "$MODE" = "mutate" ]; then
+            export GITHUB_TOKEN="${OCC_AUTOAUTHOR_TOKEN:?mutate requires OCC_AUTOAUTHOR_TOKEN}"
+          fi
           uv run onex node node_occ_companion_effect \
             --input occ_companion_author_payload.json \
             --output receipt \
@@ -145,7 +162,7 @@ jobs:
 
       - name: Upload authoring artifact
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: occ-companion-author-${{ github.event.pull_request.number }}
           path: |

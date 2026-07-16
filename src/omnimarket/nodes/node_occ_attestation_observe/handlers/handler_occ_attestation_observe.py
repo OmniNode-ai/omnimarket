@@ -28,6 +28,7 @@ always produces a typed record.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 from datetime import UTC, datetime
@@ -62,14 +63,10 @@ from omnimarket.nodes.contract_topics import contract_secret_ref
 from omnimarket.nodes.node_occ_attestation_observe.models.model_occ_attestation_observe_request import (
     ModelOccAttestationObserveRequest,
 )
-from omnimarket.nodes.node_occ_companion_compute.handlers.handler_occ_companion_attestation import (
-    verify_companion_attestation,
-)
-from omnimarket.nodes.node_occ_companion_compute.handlers.handler_occ_companion_compute import (
-    compute_companion_plan,
-)
-from omnimarket.nodes.node_occ_state_effect.handlers.handler_occ_state_effect import (
+from omnimarket.occ_autoauthor_attestation import (
     HandlerOccStateEffect,
+    compute_companion_plan,
+    verify_companion_attestation,
 )
 
 logger = logging.getLogger(__name__)
@@ -208,8 +205,11 @@ class HandlerOccAttestationObserve:
             )
         )
 
-        occ_preflight_eligible = self._read_occ_preflight_eligible(
-            request.repo, expected_request.pr_head_sha, token
+        occ_preflight_eligible = await asyncio.to_thread(
+            self._read_occ_preflight_eligible,
+            request.repo,
+            expected_request.pr_head_sha,
+            token,
         )
 
         occ_pr_number = resolve_evidence_source_occ_pr(expected_request.pr_body)
@@ -225,12 +225,17 @@ class HandlerOccAttestationObserve:
                 reason="no Evidence-Source OCC PR stamped on the product PR body",
             )
 
-        occ_head_sha, minted_by_node = self._read_occ_pr_head_and_marker(
-            request.occ_repo, occ_pr_number, token
+        occ_head_sha, minted_by_node = await asyncio.to_thread(
+            self._read_occ_pr_head_and_marker, request.occ_repo, occ_pr_number, token
         )
 
-        attestation_match, reason = self._attest_companion(
-            expected_request, request.occ_repo, occ_pr_number, occ_head_sha, token
+        attestation_match, reason = await asyncio.to_thread(
+            self._attest_companion,
+            expected_request,
+            request.occ_repo,
+            occ_pr_number,
+            occ_head_sha,
+            token,
         )
 
         return ModelOccAutoauthorObservation(

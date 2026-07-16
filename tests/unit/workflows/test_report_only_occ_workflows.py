@@ -71,13 +71,38 @@ def test_author_workflow_defaults_to_dry_run_and_never_uses_pr_input() -> None:
     # to dry_run via a fail-closed allowlist.
     assert 'MODE="${OMNI_OCC_AUTOAUTHOR_MODE:-dry_run}"' in text
     assert "dry_run|mutate)" in text  # allowlist branch
+    assert "OMNI_OCC_AUTOAUTHOR_MODE: ${{ vars.OMNI_OCC_AUTOAUTHOR_MODE }}" in text
+    payload_step = text.split("Build author payload", 1)[1].split(
+        "Run node_occ_companion_effect", 1
+    )[0]
     # Injection-safety: mode is NEVER taken from PR title/body/head_ref.
-    assert (
-        "github.event.pull_request.title"
-        not in text.split("if:", 1)[-1].split("Build author payload")[-1]
-    )
+    for forbidden in (
+        "github.event.pull_request.title",
+        "github.event.pull_request.body",
+        "github.event.pull_request.head.ref",
+    ):
+        assert forbidden not in payload_step
     # The payload's mode comes from the validated shell var, not a PR field.
-    assert "--arg mode " in text
+    assert '--arg mode "$MODE"' in payload_step
+
+
+@pytest.mark.unit
+def test_author_workflow_uses_occ_write_token_only_for_mutate() -> None:
+    text = _AUTHOR.read_text(encoding="utf-8")
+    assert "Validate mutate write token" in text
+    assert "OCC_AUTOAUTHOR_TOKEN: ${{ secrets.OCC_AUTOAUTHOR_TOKEN }}" in text
+    assert 'if [ "$MODE" = "mutate" ]; then' in text
+    assert (
+        'export GITHUB_TOKEN="${OCC_AUTOAUTHOR_TOKEN:?mutate requires OCC_AUTOAUTHOR_TOKEN}"'
+        in text
+    )
+
+
+@pytest.mark.unit
+def test_new_workflows_pin_upload_artifact_action() -> None:
+    pinned = "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02"
+    assert pinned in _AUTHOR.read_text(encoding="utf-8")
+    assert pinned in _ATTEST.read_text(encoding="utf-8")
 
 
 @pytest.mark.unit
