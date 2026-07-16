@@ -324,6 +324,22 @@ jobs:
             --receipts-dir scripts/ci/adequacy_receipts \
             --full
 
+      # OMN-14617: fleet-wide fan-out of the omnibase_infra OMN-14135 dispatch-ENTRYPOINT
+      # gate. A contract-declared handler exposing NEITHER handle() nor handle_async() is
+      # bound by the shared auto-wiring to _missing_handle, which raises ModelOnexError on
+      # EVERY dispatch — while the contract validates, the node boots, and CI stays green
+      # (node_pattern_b_broker's AdapterPatternBBroker* shipped exactly this way, caught
+      # only by manual OMN-14605 triage and fixed under OMN-14616/#1769). Registration and
+      # routing do NOT imply executability. Self-contained repo-local validator (the
+      # infra copy is not in a released omnibase-infra wheel), same spirit as
+      # omnimarket.validators.event_registry_drift. The validator fails closed under a
+      # non-vacuity floor (MIN_EXPECTED_DECLARED_HANDLERS) so a collapsed scan cannot pass
+      # silently (OMN-14541). Ratchet frozen in
+      # validation/handler_dispatch_entrypoint_baseline.yaml and is shrink-only.
+      # SYNC with pre-commit hook 'handler-dispatch-entrypoint'.
+      - name: Handler dispatch-entrypoint gate (OMN-14617 fan-out)
+        run: PYTHONPATH=src uv run python -m omnimarket.validators.handler_dispatch_entrypoint src/omnimarket
+
   typecheck:
     needs: [occ-preflight, zone-filter]
     if: needs.occ-preflight.result == 'success' && (needs.zone-filter.outputs.docs_only != 'true')

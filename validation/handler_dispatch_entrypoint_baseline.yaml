@@ -1,0 +1,123 @@
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# OMN-14617 -- frozen burn-down baseline for the omnimarket handler dispatch-ENTRYPOINT gate.
+# Fleet-wide fan-out of the omnibase_infra OMN-14135 gate (see
+# src/omnimarket/validators/handler_dispatch_entrypoint.py).
+#
+# INVARIANT (omnimarket.validators.handler_dispatch_entrypoint):
+#   a handler named in a contract's `handler_routing.handlers[]` MUST expose a callable
+#   `handle` or `handle_async`. The shared runtime's _make_dispatch_callback binds one of
+#   them at wiring time; a handler exposing NEITHER is bound to `_missing_handle`, which
+#   raises ModelOnexError on EVERY dispatch -- while the contract validates, the node
+#   boots, and CI stays green. Registration and routing do NOT imply executability.
+#
+# THIS IS A RATCHET, NOT AN EXEMPTION. It is SHRINK-ONLY:
+#   * a handler NOT listed here with no entrypoint  -> FAIL (no new instances, ever);
+#   * a handler listed here that GAINS an entrypoint -> FAIL until it is removed
+#     (a fixed handler still listed is STALE = FAIL, so the list cannot rot).
+#
+# Census 2026-07-16 at dev: 32 of 380 distinct contract-declared handlers are
+# entrypointless. node_pattern_b_broker's AdapterPatternBBrokerPublish /
+# AdapterPatternBBrokerTerminalConsumer are deliberately NOT listed -- they are the
+# instances that exposed this defect class for omnimarket (OMN-14616) and now carry a
+# real def-B entrypoint (merged via #1769).
+#
+# Burn-down tracked under OMN-14617. End state is an empty list.
+
+known_entrypointless:
+  - contract: ab_compare_reducer
+    handler: HandlerAbCompareReducer
+    module: omnimarket.nodes.node_ab_compare_reducer.handlers.handler_ab_compare_reducer
+  - contract: baseline_capture
+    handler: ProbeDbRowCounts
+    module: omnimarket.nodes.node_baseline_capture.handlers.probes.probe_db_row_counts
+  - contract: baseline_capture
+    handler: ProbeGitBranches
+    module: omnimarket.nodes.node_baseline_capture.handlers.probes.probe_git_branches
+  - contract: baseline_capture
+    handler: ProbeGitHubPRs
+    module: omnimarket.nodes.node_baseline_capture.handlers.probes.probe_github_prs
+  - contract: baseline_capture
+    handler: ProbeKafkaTopics
+    module: omnimarket.nodes.node_baseline_capture.handlers.probes.probe_kafka_topics
+  - contract: baseline_capture
+    handler: ProbeLinearTickets
+    module: omnimarket.nodes.node_baseline_capture.handlers.probes.probe_linear_tickets
+  - contract: baseline_capture
+    handler: ProbeSystemHealth
+    module: omnimarket.nodes.node_baseline_capture.handlers.probes.probe_system_health
+  - contract: build_dispatch_effect
+    handler: DispatchHistoryStore
+    module: omnimarket.nodes.node_build_dispatch_effect.handlers.dispatch_history_store
+  - contract: canary_score_reducer
+    handler: HandlerCanaryScoreReducer
+    module: omnimarket.nodes.node_canary_score_reducer.handlers.handler_canary_score_reducer
+  - contract: claim_resolver
+    handler: HandlerClaimResolver
+    module: omnimarket.nodes.node_claim_resolver.handlers.handler_claim_resolver
+  - contract: data_verification
+    handler: PostgresDataSource
+    module: omnimarket.nodes.node_data_verification.handlers.datasource_postgres
+  - contract: node_architecture_graph_populate_effect
+    handler: HandlerArchitectureGraphPopulate
+    module: omnimarket.nodes.node_architecture_graph_populate_effect.handlers.handler_architecture_graph_populate
+  - contract: node_architecture_graph_query_effect
+    handler: HandlerArchitectureGraphQuery
+    module: omnimarket.nodes.node_architecture_graph_query_effect.handlers.handler_architecture_graph_query
+  - contract: node_filesystem_crawler_effect
+    handler: HandlerCrawlFilesystem
+    module: omnimarket.nodes.node_filesystem_crawler_effect.handlers.handler_crawl_filesystem
+  - contract: node_intent_query_effect
+    handler: HandlerIntentQuery
+    module: omnimarket.nodes.node_intent_query_effect.handlers.handler_intent_query
+  - contract: node_knowledge_context_assembler_reducer
+    handler: HandlerKnowledgeContextAssemblerReducer
+    module: omnimarket.nodes.node_knowledge_context_assembler_reducer.handlers.handler_knowledge_context_assembler_reducer
+  - contract: node_knowledge_query_federation_orchestrator
+    handler: HandlerKnowledgeQueryFederation
+    module: omnimarket.nodes.node_knowledge_query_federation_orchestrator.handlers.handler_knowledge_query_federation
+  - contract: node_model_router
+    handler: HandlerModelRouter
+    module: omnimarket.nodes.node_model_router.handlers.handler_model_router
+  - contract: node_navigation_history_reducer
+    handler: HandlerNavigationHistoryReducer
+    module: omnimarket.nodes.node_navigation_history_reducer.handlers.handler_navigation_history_reducer
+  - contract: node_occ_evidence_draft_orchestrator
+    handler: HandlerOccEvidenceDraftOrchestrator
+    module: omnimarket.nodes.node_occ_evidence_draft_orchestrator.handlers.handler_occ_evidence_draft_orchestrator
+  - contract: node_overseer_observer
+    handler: NullSideEffectObserver
+    module: omnimarket.nodes.node_overseer_observer.handlers.handler_side_effect_observer
+  - contract: node_semantic_analyzer_compute
+    handler: HandlerSemanticCompute
+    module: omnimarket.nodes.node_semantic_analyzer_compute.handlers.handler_semantic_compute
+  - contract: node_similarity_compute
+    handler: HandlerSimilarityCompute
+    module: omnimarket.nodes.node_similarity_compute.handlers.handler_similarity_compute
+  - contract: node_skill_dispatch_engine_orchestrator
+    handler: HandlerSkillRequested
+    module: omnimarket.nodes.node_skill_dispatch_engine_orchestrator.handlers.handler_skill_requested
+  - contract: overseer_verifier
+    handler: HandlerOverseerVerifier
+    module: omnimarket.nodes.node_overseer_verifier.handlers.handler_overseer_verifier
+  - contract: overseer_verifier
+    handler: HandlerOverseerVerifierConsumer
+    module: omnimarket.nodes.node_overseer_verifier.handlers.handler_overseer_verifier_consumer
+  - contract: pr_lifecycle_merge_effect
+    handler: GitHubMergeQueueAdapter
+    module: omnimarket.nodes.node_pr_lifecycle_merge_effect.handlers.adapter_github_merge_queue
+  - contract: projection_overnight
+    handler: HandlerProjectionOvernightPhaseEnd
+    module: omnimarket.nodes.node_projection_overnight.handlers.handler_projection_overnight
+  - contract: projection_overnight
+    handler: HandlerProjectionOvernightSessionComplete
+    module: omnimarket.nodes.node_projection_overnight.handlers.handler_projection_overnight
+  - contract: projection_overnight
+    handler: HandlerProjectionOvernightSessionStart
+    module: omnimarket.nodes.node_projection_overnight.handlers.handler_projection_overnight
+  - contract: ticket_pipeline
+    handler: HandlerReportPoster
+    module: omnimarket.nodes.node_ticket_pipeline.handlers.handler_report_poster
+  - contract: verified_dispatch_orchestrator
+    handler: HandlerVerifiedDispatchOrchestrator
+    module: omnimarket.nodes.node_verified_dispatch_orchestrator.handlers.handler_verified_dispatch_orchestrator
