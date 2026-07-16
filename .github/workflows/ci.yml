@@ -541,26 +541,91 @@ jobs:
           restore-keys: |
             test-durations-
 
+      # OMN-14680 (merge-flow WS2): collect coverage IN the shard where the
+      # tests already run, writing a per-shard data file to COVERAGE_FILE. The
+      # shadow aggregator combines these ONCE instead of the authoritative
+      # gate's second full `pytest --cov` pass. `--cov=src --cov-report=`
+      # mirrors the authoritative gate's measurement basis exactly (no branch
+      # coverage) so the shadow census is comparable.
       - name: Run pytest (smart selection)
         if: vars.ENABLE_SMART_TESTS == 'true' && needs.detect-changes.outputs.is_full_suite == 'false'
+        env:
+          COVERAGE_FILE: ${{ github.workspace }}/.coverage.${{ matrix.split }}
         run: |
           paths=$(echo '${{ needs.detect-changes.outputs.selected_paths }}' | python -c "import json,sys; print(' '.join(json.load(sys.stdin)))")
           uv run pytest $paths \
             --splits ${{ needs.detect-changes.outputs.split_count }} \
             --group ${{ matrix.split }} \
+            --cov=src --cov-report= \
             -v --tb=short -m "not kafka" \
             --junitxml=junit-${{ matrix.split }}.xml
 
       - name: Run pytest (full suite)
         if: vars.ENABLE_SMART_TESTS != 'true' || needs.detect-changes.outputs.is_full_suite == 'true'
+        env:
+          COVERAGE_FILE: ${{ github.workspace }}/.coverage.${{ matrix.split }}
         run: |
           uv run pytest tests/ \
             --splits ${{ needs.detect-changes.outputs.split_count }} \
             --group ${{ matrix.split }} \
             --store-durations \
             --durations-path .test_durations \
+            --cov=src --cov-report= \
             -v --tb=short -m "not kafka" \
             --junitxml=junit-${{ matrix.split }}.xml
+
+      # OMN-14680: stamp a versioned metadata sidecar (head SHA, environment,
+      # test-scope, schema) so the shadow aggregator can validate the artifact
+      # is head-bound, complete, and schema-current — a missing/stale/wrong-head
+      # shard fails the aggregator closed, never a silent under-count.
+      - name: Emit coverage artifact metadata (OMN-14680)
+        if: always()
+        env:
+          HEAD_SHA: ${{ github.sha }}
+          SPLIT: ${{ matrix.split }}
+          SPLIT_COUNT: ${{ needs.detect-changes.outputs.split_count }}
+          IS_FULL: ${{ needs.detect-changes.outputs.is_full_suite }}
+          SMART_FLAG: ${{ vars.ENABLE_SMART_TESTS }}
+          RUN_ID: ${{ github.run_id }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+        run: |
+          python - <<'PY'
+          import datetime
+          import json
+          import os
+
+          smart = os.environ.get("SMART_FLAG") == "true"
+          is_full = os.environ.get("IS_FULL") == "true"
+          scope = "smart" if (smart and not is_full) else "full"
+          split = int(os.environ["SPLIT"])
+          meta = {
+              "schema_version": "omnimarket.coverage-artifact/v1",
+              "head_sha": os.environ["HEAD_SHA"],
+              "split": split,
+              "split_count": int(os.environ["SPLIT_COUNT"]),
+              "test_scope": scope,
+              "run_id": os.environ.get("RUN_ID"),
+              "run_attempt": os.environ.get("RUN_ATTEMPT"),
+              "python_version": "3.12",
+              "runner_os": os.environ.get("RUNNER_OS"),
+              "created_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+          }
+          with open(f"coverage-meta-{split}.json", "w", encoding="utf-8") as fh:
+              json.dump(meta, fh, indent=2)
+          print(json.dumps(meta, indent=2))
+          PY
+
+      - name: Upload coverage shard artifact (OMN-14680)
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: coverage-shard-${{ matrix.split }}
+          path: |
+            .coverage.${{ matrix.split }}
+            coverage-meta-${{ matrix.split }}.json
+          include-hidden-files: true
+          if-no-files-found: warn
+          retention-days: 7
 
       - name: Save test durations (full suite only, split 1)
         if: |
@@ -1464,6 +1529,79 @@ jobs:
         run: uv sync --locked --all-extras
       - name: Generate coverage.json and sweep it (OMN-14539)
         run: uv run python scripts/ci/run_coverage_sweep_gate.py --target-dir "$GITHUB_WORKSPACE"
+      # OMN-14680: publish the authoritative census so the shadow aggregator can
+      # prove same-head parity against it. Additive only — this job's pass/fail
+      # is still decided solely by the sweep step above; it remains the
+      # merge-blocking authority until the shadow path is proven and cut over.
+      - name: Upload authoritative coverage.json (OMN-14680 shadow parity)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-authoritative
+          path: coverage.json
+          if-no-files-found: warn
+          retention-days: 7
+
+  # ============================================================================
+  # COVERAGE AGGREGATE — SHADOW (OMN-14680 / merge-flow WS2)
+  # SHADOW, NON-BLOCKING: deliberately NOT in ci-summary `needs:`, so it can
+  # fail LOUD without wedging a merge. It proves the per-shard coverage
+  # artifacts emitted by `test` can be combined ONCE (no second full
+  # `pytest --cov`) into a census at parity with the authoritative
+  # `coverage-sweep-gate`. Fail-closed on missing/stale/malformed/wrong-head
+  # artifacts. The authoritative gate stays the required census until parity
+  # holds across enough real PRs to cut over (plan §2 WS2 rollback:
+  # "Restore the existing sweep as required if comparison diverges; do not
+  # waive coverage.").
+  # ============================================================================
+  coverage-aggregate-shadow:
+    name: Coverage Aggregate (shadow)
+    needs: [occ-preflight, detect-changes, test, coverage-sweep-gate]
+    # Runs even if `test`/`coverage-sweep-gate` failed (always()) so a partial
+    # shard set is surfaced fail-closed; skipped only when detect-changes was
+    # (docs-only PRs produce no shards to aggregate).
+    if: always() && needs.detect-changes.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Clone omnibase_core
+        run: git clone --depth=1 https://github.com/OmniNode-ai/omnibase_core.git ../omnibase_core
+      - name: Clone omnibase_compat
+        run: git clone --depth=1 https://github.com/OmniNode-ai/omnibase_compat.git ../omnibase_compat
+      - name: Clone omnimemory
+        run: git clone --depth=1 https://github.com/OmniNode-ai/omnimemory.git ../omnimemory
+      - name: Install uv (dependency cache — OMN-14680)
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+          enable-cache: true
+      - name: Set up Python 3.12
+        run: uv python install 3.12
+      - name: Install dependencies
+        run: uv sync --locked --all-extras
+      - name: Download per-shard coverage artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: coverage-shard-*
+          path: .coverage-artifacts
+          merge-multiple: true
+      - name: Download authoritative coverage.json (best-effort)
+        uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          name: coverage-authoritative
+          path: .coverage-authoritative
+      - name: Aggregate + validate + shadow parity (OMN-14680)
+        run: |
+          uv run python scripts/ci/aggregate_coverage_artifacts.py \
+            --artifacts-dir .coverage-artifacts \
+            --expected-head "${{ github.sha }}" \
+            --split-count "${{ needs.detect-changes.outputs.split_count }}" \
+            --target-dir "$GITHUB_WORKSPACE" \
+            --compare-to .coverage-authoritative/coverage.json \
+            --tolerance 0.5 \
+            --max-age-seconds 21600
 
   # ============================================================================
   # WORKFLOW MODULE-RESOLUTION GUARD (OMN-14176) — failing-rollup sub-job.
