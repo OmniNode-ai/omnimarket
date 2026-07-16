@@ -41,6 +41,9 @@ from omnibase_compat.contracts.pr_occ_stamp import (
     render_pr_occ_metadata_stamp,
 )
 from omnibase_core.models.contracts.ticket.model_dod_receipt import ModelDodReceipt
+from omnibase_core.models.contracts.ticket.model_receipt_supersession import (
+    ModelReceiptSupersession,
+)
 from omnibase_core.validation.validator_receipt_gate import (
     SKIP_TOKEN_PATTERN,
     ContractEntryNotFoundError,
@@ -69,7 +72,11 @@ from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.occ_evidence_stamp i
 logger = logging.getLogger(__name__)
 
 # Observed-fact lines projected OUT of the reproducibility fingerprint (§4.4).
-_OBSERVED_KEYS = ("run_timestamp", "probe_command", "exit_code")
+# ``created_at`` is the supersession-record sibling of ``run_timestamp`` (both are
+# derived from the injected authoring timestamp), so it must be stripped too or a
+# re-probe with a fresh timestamp would drift the merged-path supersede fingerprint
+# and the RSD-5 oracle would reject a byte-faithful companion (OMN-14623).
+_OBSERVED_KEYS = ("run_timestamp", "probe_command", "exit_code", "created_at")
 
 # Trivial-infra fast-path (OMN-13776) — pure size-AND-path scoping. Inlined here
 # (the canonical COMPUTE home); RSD-2 retires the adapter copies into this node.
@@ -146,21 +153,32 @@ def _entry_hash_for(parsed_contract: object, evidence_id: str) -> str | None:
 def _strip_observed_facts(content: str) -> str:
     """Project the non-reproducible observed-fact lines out of a receipt.
 
-    Removes ``run_timestamp`` / ``probe_command`` / ``exit_code`` lines and the
-    ``probe_stdout`` block scalar, so two plans that differ ONLY in observed facts
-    fingerprint identically (the oracle re-probes those instead of byte-diffing).
+    Removes ``run_timestamp`` / ``probe_command`` / ``exit_code`` / ``created_at``
+    lines and the ``probe_stdout`` block scalar, so two plans that differ ONLY in
+    observed facts fingerprint identically (the oracle re-probes those instead of
+    byte-diffing).
+
+    Matching is indentation-agnostic (OMN-14623): a merged-path supersede file is
+    a ``ModelReceiptSupersession`` whose observed facts live INSIDE the nested
+    ``replacement:`` receipt (indented), unlike a flat downstream/self-bind
+    receipt whose keys are at column 0. The nested ``probe_stdout`` block scalar
+    is bounded by indentation depth rather than a fixed 2-space prefix so a
+    deeper-nested block is stripped whole. For a flat receipt this is
+    byte-identical to the prior column-0 logic.
     """
     out: list[str] = []
-    in_probe_block = False
+    probe_block_indent: int | None = None
     for line in content.splitlines():
-        if in_probe_block:
-            if line.startswith("  ") or line.strip() == "":
+        if probe_block_indent is not None:
+            indent = len(line) - len(line.lstrip())
+            if line.strip() == "" or indent > probe_block_indent:
                 continue
-            in_probe_block = False
-        if line.startswith("probe_stdout:"):
-            in_probe_block = True
+            probe_block_indent = None
+        stripped = line.lstrip()
+        if stripped.startswith("probe_stdout:"):
+            probe_block_indent = len(line) - len(line.lstrip())
             continue
-        if any(line.startswith(f"{key}:") for key in _OBSERVED_KEYS):
+        if any(stripped.startswith(f"{key}:") for key in _OBSERVED_KEYS):
             continue
         out.append(line)
     return "\n".join(out)
@@ -257,6 +275,79 @@ def _receipt(
         branch=branch,
     )
     _validate_receipt(content)
+    return content
+
+
+def _supersede_file(
+    *,
+    request: ModelOccCompanionRequest,
+    ticket_id: str,
+    prior_entry: str,
+    check_value: str,
+    contract_sha256: str,
+    contract_entry_sha256: str,
+    branch: str,
+) -> str:
+    """Render a ``ModelReceiptSupersession`` YAML re-binding one prior entry.
+
+    The merged-path (2nd-consumer, OMN-14623) counterpart of :func:`_receipt`.
+    ``resolve_supersession`` parses ``<check_type>.supersede.<NNNN>.yaml`` STRICTLY
+    as a :class:`ModelReceiptSupersession` (frozen / ``extra="forbid"``), so the
+    plain-receipt shape :func:`_receipt` emits is schema-rejected there. This wraps
+    a fully-formed product-PR-bound replacement receipt — carrying BOTH the
+    whole-file ``contract_sha256`` and the per-entry ``contract_entry_sha256`` the
+    dual-accept gate requires — in the supersession header, re-binding the prior
+    (1st-consumer) entry to THIS product PR without editing the merged base file.
+
+    ``contract_entry_sha256`` is required (non-empty) here: a prior entry is by
+    construction declared in the merged contract, so its per-entry hash always
+    resolves — a supersession ``replacement`` with a whole-file-only binding is
+    rejected by :class:`ModelReceiptSupersession`.
+    """
+    replacement_yaml = _receipt(
+        request=request,
+        ticket_id=ticket_id,
+        evidence_id=prior_entry,
+        check_value=check_value,
+        contract_sha256=contract_sha256,
+        contract_entry_sha256=contract_entry_sha256,
+        commit_sha=request.pr_head_sha,
+        probe=request.product_probe,
+        actual_output=(
+            f"PASS: supersede {prior_entry} rebind for {ticket_id} "
+            f"(2nd consumer {request.repo}#{request.pr_number})."
+        ),
+        branch=branch,
+    )
+    replacement = ModelDodReceipt.model_validate(yaml.safe_load(replacement_yaml))
+    record = ModelReceiptSupersession(
+        schema_version="1.0.0",
+        ticket_id=ticket_id,
+        evidence_item_id=prior_entry,
+        check_type="command",
+        supersedes=f"drift/dod_receipts/{ticket_id}/{prior_entry}/command.yaml",
+        reason=(
+            f"2nd consumer {request.repo}#{request.pr_number} re-binds prior entry "
+            f"{prior_entry} to this product PR without editing the merged base "
+            "receipt (OMN-14623 merged-path supersede)."
+        ),
+        superseder=request.verifier,
+        # created_at is the injected authoring timestamp (NO datetime.now — this
+        # handler is a pure zero-I/O COMPUTE / attestation oracle). Passed as an
+        # ISO-8601 string; ModelReceiptSupersession coerces + tz-validates it.
+        created_at=request.run_timestamp.replace("Z", "+00:00"),
+        tombstone=False,
+        replacement=replacement,
+    )
+    content = yaml.safe_dump(
+        record.model_dump(mode="json"),
+        sort_keys=False,
+        default_flow_style=False,
+        allow_unicode=True,
+    )
+    # Fail loud if the rendered bytes do not round-trip back to the strict schema
+    # the gate parses — a silent malformed supersede is exactly the OMN-14623 bug.
+    ModelReceiptSupersession.model_validate(yaml.safe_load(content))
     return content
 
 
@@ -368,33 +459,96 @@ def compute_companion_plan(request: ModelOccCompanionRequest) -> ModelOccCompani
         )
 
         if state.exists and state.merged:
-            # Two-audiences (OMN-14233): the contract is frozen (merged). Appending
-            # would restale every merged receipt, so emit NET-NEW supersede files
-            # (both hashes) for each prior entry — never mutate the merged receipt.
+            # Two-audiences merged path (OMN-14233 / OMN-14623): the merged base
+            # RECEIPTS are frozen and never edited. Each prior entry is re-bound to
+            # THIS product PR via a NET-NEW ModelReceiptSupersession file (dual-hash
+            # replacement) — NOT a plain receipt: resolve_supersession parses
+            # `<check_type>.supersede.<NNNN>.yaml` STRICTLY as a
+            # ModelReceiptSupersession (frozen / extra="forbid"), so the plain
+            # receipt shape is schema-rejected (the pre-14623 defect).
             whole = state.whole_file_sha256 or _sha256_hex(state.raw_contract_text)
-            # The per-entry hash for a prior entry is recomputed against the
-            # merged (frozen) contract — the SAME contract the gate has on disk —
-            # so a supersede receipt is byte-recomputable by the gate (OMN-14406).
-            parsed_contract = (
-                yaml.safe_load(state.raw_contract_text)
-                if state.raw_contract_text
-                else None
-            )
+            if self_bind_evidence_id is not None:
+                # Pass 2 (OCC PR known): the OCC companion PR's own occ-preflight
+                # iterates the ON-DISK contract's dod_evidence and needs a PASS
+                # receipt bound to the OCC PR. The frozen merged contract does NOT
+                # declare the self-bind item, so we APPEND it and re-emit the
+                # contract here — otherwise the OCC PR fails its own occ-preflight
+                # with pr_ticket_mismatch (OMN-14623 defect 2, the merged-path twin
+                # of the OMN-14622 fresh-path fix). Appending ONE dod_evidence item
+                # leaves every existing entry's per-entry hash unchanged
+                # (append-invariant, OMN-13888) and every existing entry is
+                # superseded here anyway, so the whole-file rebind (whole -> H')
+                # cannot restale a receipt the gate actually reads.
+                base_contract = render_compute_companion_contract(
+                    ticket_id=ticket,
+                    repo=repo,
+                    pr_number=pr_number,
+                    evidence_id=evidence_id,
+                )
+                full_contract = render_compute_companion_contract(
+                    ticket_id=ticket,
+                    repo=repo,
+                    pr_number=pr_number,
+                    evidence_id=evidence_id,
+                    self_bind_evidence_id=self_bind_evidence_id,
+                    occ_pr_number=request.occ_pr_number,
+                    occ_repo=request.occ_repo,
+                )
+                # render_compute_companion_contract returns base + entry, so the
+                # suffix is exactly the self-bind dod_evidence item — byte-identical
+                # to the fresh-path declaration, without reproducing the merged
+                # contract's (1st-consumer-authored) entries.
+                self_bind_entry_text = full_contract[len(base_contract) :]
+                merged_text = state.raw_contract_text
+                if merged_text and not merged_text.endswith("\n"):
+                    merged_text += "\n"
+                contract_content = merged_text + self_bind_entry_text
+                parsed_contract = yaml.safe_load(contract_content)
+                if _entry_hash_for(parsed_contract, self_bind_evidence_id) is None:
+                    raise ValueError(
+                        f"merged-path self-bind entry {self_bind_evidence_id!r} did "
+                        f"not resolve after appending to {ticket}'s merged contract; "
+                        "the contract's dod_evidence list is not the terminal YAML "
+                        "key (OMN-14623)."
+                    )
+                contract_hash = _sha256_hex(contract_content)
+                files.append(
+                    ModelCompanionFile(
+                        path=f"contracts/{ticket}.yaml",
+                        content=contract_content,
+                        kind=EnumCompanionFileKind.CONTRACT,
+                        ticket_id=ticket,
+                    )
+                )
+            else:
+                # Pass 1 (no OCC PR yet): the on-disk contract is the unmodified
+                # merged file, so per-entry hashes bind against the frozen bytes.
+                parsed_contract = (
+                    yaml.safe_load(state.raw_contract_text)
+                    if state.raw_contract_text
+                    else None
+                )
+                contract_hash = whole
+
             for prior_entry in state.existing_entry_ids:
+                # A prior entry is by construction a declared dod_evidence item, so
+                # its per-entry hash always resolves; a None here means malformed
+                # input (existing_entry_ids not matching the contract) and must fail
+                # loud — a supersession replacement REQUIRES a per-entry hash.
                 entry_hash = _entry_hash_for(parsed_contract, prior_entry)
-                content = _receipt(
+                if entry_hash is None:
+                    raise ValueError(
+                        f"merged-path prior entry {prior_entry!r} is not a declared "
+                        f"dod_evidence item in {ticket}'s merged contract; cannot "
+                        "mint a dual-hash supersession (OMN-14623)."
+                    )
+                content = _supersede_file(
                     request=request,
                     ticket_id=ticket,
-                    evidence_id=prior_entry,
+                    prior_entry=prior_entry,
                     check_value=downstream_check,
-                    contract_sha256=whole,
+                    contract_sha256=contract_hash,
                     contract_entry_sha256=entry_hash,
-                    commit_sha=request.pr_head_sha,
-                    probe=request.product_probe,
-                    actual_output=(
-                        f"PASS: supersede {prior_entry} rebind for {ticket} "
-                        f"(2nd consumer {repo}#{pr_number})."
-                    ),
                     branch=branch,
                 )
                 files.append(
@@ -406,11 +560,10 @@ def compute_companion_plan(request: ModelOccCompanionRequest) -> ModelOccCompani
                         content=content,
                         kind=EnumCompanionFileKind.SUPERSEDE_RECEIPT,
                         ticket_id=ticket,
-                        contract_sha256=whole,
-                        contract_entry_sha256=entry_hash or "",
+                        contract_sha256=contract_hash,
+                        contract_entry_sha256=entry_hash,
                     )
                 )
-            contract_hash = whole
         else:
             # Fresh (absent, or exists-but-open → full regeneration all-adds).
             # On pass 2 the contract ALSO declares the self-bind item (OMN-14622)

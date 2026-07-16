@@ -282,11 +282,19 @@ class TestMergedTwoAudiencesSupersedeIsRecomputable:
         )
 
     def test_supersede_receipt_recomputable_against_merged_contract(self) -> None:
-        """A merged-contract 2nd consumer's net-new supersede receipt binds a
-        prior entry that IS declared in the (frozen) merged contract, so its
-        per-entry hash is recomputable against that merged contract.
+        """A merged-contract 2nd consumer's net-new supersede file is a
+        ``ModelReceiptSupersession`` (NOT a plain receipt — OMN-14623 defect b),
+        whose ``replacement`` binds a prior entry that IS declared in the (frozen)
+        merged contract, so its per-entry hash is recomputable against that merged
+        contract.
         """
+        from omnibase_core.models.contracts.ticket.model_receipt_supersession import (
+            ModelReceiptSupersession,
+        )
+
         state = self._merged_state()
+        # Pass 1 merged path (no OCC PR yet): the on-disk contract is the frozen
+        # merged file, so the replacement per-entry hash binds against it.
         plan = compute_companion_plan(_request(occ_contract_states=(state,)))
         supersedes = _by_kind(
             plan.companion_files, EnumCompanionFileKind.SUPERSEDE_RECEIPT
@@ -295,13 +303,18 @@ class TestMergedTwoAudiencesSupersedeIsRecomputable:
 
         merged_contract = yaml.safe_load(state.raw_contract_text)
         for sf in supersedes:
-            receipt = ModelDodReceipt.model_validate(yaml.safe_load(sf.content))
-            assert receipt.contract_entry_sha256 is not None
+            # Parses STRICTLY as a supersession — a plain ModelDodReceipt here is
+            # exactly the pre-14623 bug (resolve_supersession schema-rejects it).
+            record = ModelReceiptSupersession.model_validate(yaml.safe_load(sf.content))
+            replacement = record.replacement
+            assert replacement is not None
+            assert replacement.contract_entry_sha256 is not None
+            assert replacement.contract_sha256 is not None
             result = check_receipt_contract_binding(
-                receipt=receipt,
+                receipt=replacement,
                 contract_data=merged_contract,
-                evidence_item_id=receipt.evidence_item_id,
+                evidence_item_id=replacement.evidence_item_id,
                 whole_file_hash=_whole_file_hash(state.raw_contract_text),
                 is_bound_to_this_pr=False,
             )
-            assert result is None, f"supersede receipt not recomputable: {result}"
+            assert result is None, f"supersede replacement not recomputable: {result}"
