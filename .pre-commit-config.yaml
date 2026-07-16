@@ -281,6 +281,25 @@ repos:
         files: ^(src/omnimarket/nodes/node_emit_daemon/(event_registry\.py|registries/topics\.yaml|models/.*\.py)|src/omnimarket/validators/event_registry_drift\.py|scripts/validation/event_registry_drift_baseline\.txt)$
         stages: [pre-commit]
 
+      # OMN-14617: fleet-wide fan-out of the omnibase_infra OMN-14135 dispatch-ENTRYPOINT
+      # gate. A contract-declared handler exposing NEITHER handle() nor handle_async() is
+      # bound by the shared auto-wiring to _missing_handle and raises ModelOnexError on
+      # EVERY dispatch, while the contract validates, the node boots, and CI stays green
+      # (node_pattern_b_broker's AdapterPatternBBroker* shipped this way; OMN-14616/#1769).
+      # Registration/routing != executability. Triggers on contract.yaml too: a contract
+      # can declare a handler that has no entrypoint without any handler .py changing.
+      # Fails closed under a non-vacuity floor so a collapsed scan cannot pass silently
+      # (OMN-14541). Ratchet frozen in validation/handler_dispatch_entrypoint_baseline.yaml
+      # (shrink-only). SYNC with the ci.yml step 'Handler dispatch-entrypoint gate
+      # (OMN-14617 fan-out)'.
+      - id: handler-dispatch-entrypoint
+        name: Every contract-declared handler has a dispatch entrypoint (OMN-14617)
+        language: system
+        entry: env PYTHONPATH=src uv run python -m omnimarket.validators.handler_dispatch_entrypoint src/omnimarket
+        pass_filenames: false
+        files: ^(src/omnimarket/.*\.(py|yaml)|validation/handler_dispatch_entrypoint_baseline\.yaml)$
+        stages: [pre-commit]
+
       # OMN-8611: entry-point format check (fast, triggers on pyproject.toml changes)
       # Validates that all [project.entry-points."onex.nodes"] entries are valid
       # dotted module paths. Does not verify filesystem — CI runtime_sweep does that.
