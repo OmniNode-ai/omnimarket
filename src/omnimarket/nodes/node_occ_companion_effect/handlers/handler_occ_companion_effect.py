@@ -39,6 +39,7 @@ import tempfile
 from pathlib import Path
 from typing import Literal
 
+from omnimarket.events.occ_autoauthor import OCC_MACHINE_MINTED_LABEL
 from omnimarket.events.occ_companion import (
     ModelCompanionFile,
     ModelObservedProbe,
@@ -215,6 +216,13 @@ class HandlerOccCompanionEffect:
                 occ_owner, occ_name, branch, plan.tickets, request, token
             )
 
+            # Marker seam (OMN-14393): stamp the machine-minted label so the
+            # report-only window can decide `minted_by_node`. OccCompanionEmitter
+            # and this node share the `auto/…-occ-autobind` branch prefix, so
+            # branch alone is not a discriminator. Best-effort: a label failure
+            # must never abort authoring (the label is observability, not a gate).
+            self._apply_machine_minted_label(occ_owner, occ_name, occ_pr_number, token)
+
             # Pass 2: re-run the SAME pure compute with the OCC PR facts so it
             # renders the self-bind receipt (+ contract self-bind entry) and the
             # Evidence-Source-stamped product body — deterministically.
@@ -335,6 +343,33 @@ class HandlerOccCompanionEffect:
         if not isinstance(number, int):
             raise GitHubApiError(f"OCC PR create returned no number: {created}")
         return number, str(created.get("html_url") or "")
+
+    def _apply_machine_minted_label(
+        self, occ_owner: str, occ_name: str, occ_pr_number: int, token: str
+    ) -> None:
+        """Best-effort: add the machine-minted marker label to the OCC PR.
+
+        The distinguishable marker (OMN-14393) that lets the report-only window
+        decide ``minted_by_node``. Non-fatal by contract: any failure is logged
+        and swallowed so a label API hiccup can never abort a successful author.
+        """
+        try:
+            rest_json(
+                "POST",
+                f"/repos/{occ_owner}/{occ_name}/issues/{occ_pr_number}/labels",
+                token=token,
+                body={"labels": [OCC_MACHINE_MINTED_LABEL]},
+            )
+        except (
+            GitHubApiError,
+            OSError,
+        ) as exc:  # fallback-ok: label is observability, not a gate
+            logger.warning(
+                "occ_companion_effect: could not apply %r label to OCC#%s: %s",
+                OCC_MACHINE_MINTED_LABEL,
+                occ_pr_number,
+                exc,
+            )
 
     def _first_open_pr(
         self, occ_owner: str, occ_name: str, branch: str, token: str

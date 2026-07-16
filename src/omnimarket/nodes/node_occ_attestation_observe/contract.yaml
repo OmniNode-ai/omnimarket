@@ -1,0 +1,85 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - OCC Attestation Observe (OMN-14393, report-only)
+#
+# Read-only EFFECT. Observes the OCC companion on a real product PR and emits ONE
+# ModelOccAutoauthorObservation: resolves the Evidence-Source OCC PR, byte-diffs
+# its on-PR companion against the recomputed compute_companion_plan
+# (verify_companion_attestation), checks the machine-minted marker label, and
+# reads the product PR's occ-preflight eligibility. This is the REPORT-ONLY
+# attestation gate (docs/plans/2026-07-14-rsd3-occ-producer-and-retirement.md §3):
+# it observes only — it opens nothing, stamps nothing, retires nothing, and the
+# calling workflow is non-blocking (continue-on-error).
+#
+# Directly-invoked only (no Kafka producer/consumer) — declares no event_bus
+# topics, so it contributes no edges to the contract-topic-graph. The runtime
+# resolves it via the top-level handler block (_run_compute path: no
+# terminal_event / no event bus needed) and builds the typed input from
+# handler.input_model.
+#
+# Related Tickets:
+#   - OMN-14393: RSD-5 report-only attestation gate (this node)
+#   - OMN-14055: attestation oracle (verify_companion_attestation)
+#   - OMN-14285: RSD-1 OCC-producer node graph
+name: "node_occ_attestation_observe"
+lifecycle: experimental
+node_type: "EFFECT_GENERIC"
+runtime_profiles: [effects]
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_version: "1.0.0"
+description: "Read-only EFFECT: observes + attests the OCC companion on a product PR and emits one observation record (Evidence-Source resolution, byte-diff attestation, marker-label check, occ-preflight eligibility). Report-only, non-blocking."
+input_model:
+  name: "ModelOccAttestationObserveRequest"
+  module: "omnimarket.nodes.node_occ_attestation_observe.models.model_occ_attestation_observe_request"
+  description: "Identifies the product PR to observe an OCC companion for."
+output_model:
+  name: "ModelOccAutoauthorObservation"
+  module: "omnimarket.events.occ_autoauthor"
+  description: "One report-only observation: minted_by_node + attestation_match + occ_preflight_eligible."
+# Top-level handler block: the runtime's compute-execution path (_run_compute,
+# reached because this contract declares no terminal_event) resolves the handler
+# and builds the typed input payload from THIS block's input_model.
+handler:
+  module: "omnimarket.nodes.node_occ_attestation_observe.handlers.handler_occ_attestation_observe"
+  class: "HandlerOccAttestationObserve"
+  input_model: "omnimarket.nodes.node_occ_attestation_observe.models.model_occ_attestation_observe_request.ModelOccAttestationObserveRequest"
+handler_routing:
+  routing_strategy: "operation_match"
+  default_handler: "omnimarket.nodes.node_occ_attestation_observe.handlers.handler_occ_attestation_observe:HandlerOccAttestationObserve"
+  handlers:
+    - operation: "observe_attestation"
+      handler:
+        name: "HandlerOccAttestationObserve"
+        module: "omnimarket.nodes.node_occ_attestation_observe.handlers.handler_occ_attestation_observe"
+# Declared command/terminal bus interface (dispatch-addressable). No top-level
+# `terminal_event:` scalar is set, so the local runtime keeps using the
+# _run_compute path for `onex node`; these runtime_dispatch topics are the CLI
+# dispatcher's own command/result seam (exempt from orphan detection, like
+# node_occ_companion_effect) and carry no bus producer/consumer today.
+runtime_dispatch:
+  command_topic: "onex.cmd.omnimarket.occ-attestation-observe-requested.v1"
+  terminal_events:
+    success: "onex.evt.omnimarket.occ-attestation-observe-completed.v1"
+    failure: "onex.evt.omnimarket.occ-attestation-observe-failed.v1"
+secrets:
+  GITHUB_TOKEN:
+    description: "GitHub token for read-only REST (product PR, OCC PR, check-runs, file contents). No write scope is used."
+    required: true
+metadata:
+  transport_type: http
+  description: "OCC attestation observe — report-only, read-only companion attestation on a product PR (GitHub REST over HTTP)"
+  author: "OmniNode Team"
+  created: "2026-07-16"
+  tags:
+    - "effect"
+    - "occ"
+    - "attestation"
+    - "report-only"
+    - "OMN-14393"
+  related_tickets:
+    - "OMN-14393"
+    - "OMN-14055"
+    - "OMN-14285"

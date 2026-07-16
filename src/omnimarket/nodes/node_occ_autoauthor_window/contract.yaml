@@ -1,0 +1,76 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - OCC Auto-authoring Window (OMN-14393, report-only)
+#
+# Pure COMPUTE. Aggregates the durable OCC auto-authoring observation trail into a
+# trailing consecutive-clean streak (N=10 default) and reports whether it has
+# reached N. This is the EVIDENCE GATE for the future OMN-14393 fail-closed flip
+# (docs/plans/2026-07-14-rsd3-occ-producer-and-retirement.md §4): it counts, it
+# does NOT flip anything, retire anything, or block any PR.
+#
+# Directly-invoked only (no Kafka producer/consumer) — it declares no event_bus
+# topics, so it contributes no edges to the contract-topic-graph. The runtime
+# resolves it via handler_routing.default_handler (_run_compute path: no
+# terminal_event / no event bus needed).
+#
+# Related Tickets:
+#   - OMN-14393: RSD-5 report-only attestation gate + N-window (this node)
+#   - OMN-14285: RSD-1 OCC-producer node graph
+name: "node_occ_autoauthor_window"
+lifecycle: experimental
+node_type: "COMPUTE_GENERIC"
+runtime_profiles: [main]
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_version: "1.0.0"
+description: "Pure computation: counts the trailing consecutive-clean streak over the OCC auto-authoring observation trail and reports flip-readiness (N=10). Zero I/O; evidence-only."
+input_model:
+  name: "ModelOccAutoauthorWindowRequest"
+  module: "omnimarket.nodes.node_occ_autoauthor_window.models.model_occ_autoauthor_window_request"
+  description: "The observation trail + the operator-set streak threshold N."
+output_model:
+  name: "ModelOccAutoauthorWindowResult"
+  module: "omnimarket.nodes.node_occ_autoauthor_window.models.model_occ_autoauthor_window_result"
+  description: "The trailing consecutive-clean count and whether it has reached N (flip_ready)."
+# Top-level handler block: the runtime's compute-execution path (_run_compute,
+# reached because this contract declares no terminal_event) resolves the handler
+# and builds the typed input payload from THIS block's input_model (the routed
+# input_model above is read only by the event-driven path).
+handler:
+  module: "omnimarket.nodes.node_occ_autoauthor_window.handlers.handler_occ_autoauthor_window"
+  class: "HandlerOccAutoauthorWindow"
+  input_model: "omnimarket.nodes.node_occ_autoauthor_window.models.model_occ_autoauthor_window_request.ModelOccAutoauthorWindowRequest"
+handler_routing:
+  routing_strategy: "operation_match"
+  default_handler: "omnimarket.nodes.node_occ_autoauthor_window.handlers.handler_occ_autoauthor_window:HandlerOccAutoauthorWindow"
+  handlers:
+    - operation: "aggregate_autoauthor_window"
+      handler:
+        name: "HandlerOccAutoauthorWindow"
+        module: "omnimarket.nodes.node_occ_autoauthor_window.handlers.handler_occ_autoauthor_window"
+# Declared command/terminal bus interface (dispatch-addressable). No top-level
+# `terminal_event:` scalar is set, so the local runtime keeps using the
+# _run_compute path for `onex node`; these runtime_dispatch topics are the CLI
+# dispatcher's own command/result seam (exempt from orphan detection, like
+# node_occ_companion_effect) and carry no bus producer/consumer today.
+runtime_dispatch:
+  command_topic: "onex.cmd.omnimarket.occ-autoauthor-window-requested.v1"
+  terminal_events:
+    success: "onex.evt.omnimarket.occ-autoauthor-window-completed.v1"
+    failure: "onex.evt.omnimarket.occ-autoauthor-window-failed.v1"
+metadata:
+  transport_type: inmemory
+  description: "OCC auto-authoring window counter — pure evidence-only aggregator (no external transport)"
+  author: "OmniNode Team"
+  created: "2026-07-16"
+  tags:
+    - "compute"
+    - "occ"
+    - "autoauthor"
+    - "report-only"
+    - "OMN-14393"
+  related_tickets:
+    - "OMN-14393"
+    - "OMN-14285"
