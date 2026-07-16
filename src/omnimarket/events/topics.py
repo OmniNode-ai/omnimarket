@@ -52,6 +52,14 @@ ROUTING_FEEDBACK_UPDATED_TOPIC_V1 = "onex.evt.omnimarket.routing-feedback-update
 # GET /projection/onex.evt.github.pr-merged.v1 on the .201 lane (:3002).
 PR_MERGED_TOPIC_V1 = "onex.evt.github.pr-merged.v1"  # onex-topic-allow: canonical topic registry; declared in node_pr_merged_projection contract.yaml subscribe_topics (OMN-13226/13227)
 
+# Merge-flow state-transition telemetry (OMN-14648 / WS6). Emitted per PR state
+# transition through the merge flow; consumed by node_merge_state_projection,
+# which materializes the merge_state_transitions projection so the merge-flow
+# metrics (per-state duration, evidence-volume ratio baseline 1.67 -> target
+# <=1.1, same-head reruns by reason) can be measured from the event log.
+# REPORT-ONLY: no enforcement wired off this topic in the WS6 first PR.
+MERGE_STATE_TRANSITION_TOPIC_V1 = "onex.evt.omnimarket.merge-state-transition.v1"  # onex-topic-allow: canonical topic registry; declared in node_merge_state_projection contract.yaml subscribe_topics (OMN-14648)
+
 # OCC Evidence-Source autobind command (OMN-13317 / F1). Thin-published by the
 # call-occ-autobind GHA workflow on product-PR opened/synchronize; consumed by
 # node_pr_lifecycle_fix_effect, which routes it to the OccCompanionEmitter under

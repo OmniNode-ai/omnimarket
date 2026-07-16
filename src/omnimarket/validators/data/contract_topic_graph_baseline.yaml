@@ -731,4 +731,11 @@ accepted:
 - ORPHANED_PRODUCER::verified_dispatch_orchestrator::onex.evt.omnimarket.verified-dispatch-completed.v1
 - ORPHANED_PRODUCER::version_skew_detector::onex.evt.omniclaude.version-skew-detected.v1
 - ORPHANED_PRODUCER::version_skew_detector::onex.evt.omniclaude.version-skew-healthy.v1
-external_producers: {}
+external_producers:
+  # OMN-14648 / WS6 merge-state telemetry. Merge-flow state-transition events are
+  # published by external merge-flow instrumentation (a GHA workflow / publisher
+  # script in the pr-merged-publisher class, not a node contract), the same way
+  # onex.evt.github.pr-merged.v1 is published by the pr-merged-publisher GHA
+  # workflow. node_merge_state_projection is the REPORT-ONLY measurement
+  # consumer; the publisher is wired in the WS6 enforcement follow-up.
+  onex.evt.omnimarket.merge-state-transition.v1: "merge-flow instrumentation publisher (GHA workflow / publisher script) — OMN-14648 WS6"

@@ -1,0 +1,117 @@
+---
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# node_merge_state_projection — merge-state telemetry projection (OMN-14648 / WS6)
+#
+# Materializes onex.evt.omnimarket.merge-state-transition.v1 events into the
+# merge_state_transitions projection table, deduped by the deterministic
+# event_id fingerprint with a strictly-monotonic projection_cursor. This is the
+# MEASUREMENT layer for the merge flow: the merge-flow metrics
+# (merge_state_metrics_native.compute_merge_flow_metrics) are materialized from
+# these rows — per-state duration, evidence-volume ratio (baseline 1.67 ->
+# target <=1.1), companions per product PR, same-head reruns by reason code,
+# queue wait, and product failures before vs after evidence.
+#
+# REPORT-ONLY (first PR): contract + projector + tests only. No enforcement /
+# WIP-cap gate is wired off this projection here — the operator asked to measure
+# before automating any merge decision.
+#
+# Ticket: OMN-14648 (WS6 merge-state telemetry projection)
+
+name: merge_state_projection
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: reducer
+node_version: {major: 1, minor: 0, patch: 0}
+# Consumer-only event-sourced reducer: it subscribes to the merge-state topic
+# and materializes rows for the projection API to read; it publishes nothing.
+# The node-liveness drift gate accepts a consumer-only contract when lifecycle
+# is experimental (mirrors node_pr_merged_projection / node_projection_dep_health).
+lifecycle: experimental
+
+description: >
+  Projects merge-flow state-transition events
+  (onex.evt.omnimarket.merge-state-transition.v1) into the
+  merge_state_transitions table — one row per transition, deduped by the
+  deterministic event_id fingerprint, with a strictly-monotonic
+  projection_cursor BIGSERIAL. States reuse the canonical EnumPrLifecyclePhase
+  FSM (OMN-12570); event identity reuses the canonical deterministic-fingerprint
+  primitive (generate_fingerprint). The materialized rows feed the merge-flow
+  metrics fold that quantifies per-state duration, the evidence-volume ratio
+  (baseline 1.67 -> target <=1.1), companions per product PR, same-head reruns
+  by reason code, queue wait, and product failures found before vs after
+  evidence. REPORT-ONLY: no WIP cap or auto-merge gate is wired off this
+  projection in this contract.
+
+handler:
+  module: omnimarket.nodes.node_merge_state_projection.handlers.handler_merge_state_projection
+  class: HandlerMergeStateProjection
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: merge_state_transition
+      handler:
+        name: HandlerMergeStateProjection
+        module: omnimarket.nodes.node_merge_state_projection.handlers.handler_merge_state_projection
+
+runtime_dispatch:
+  addressable: false
+  invocation_mode: projection_reducer
+  reason: >
+    Merge-state projection is an event-sourced reducer invoked by the projection
+    host with a database adapter; it does not own a request/response command
+    route.
+
+db_io:
+  db_tables:
+    - name: merge_state_transitions
+      migration: "0001_create_merge_state_transitions.sql"
+      access: write
+      database: omnidash_analytics
+      role: merge_state_transitions
+
+event_bus:
+  subscribe_topics:
+    - onex.evt.omnimarket.merge-state-transition.v1
+  publish_topics: []
+
+projection_api:
+  expose: true
+  exposures:
+    # Read path for the merge-flow telemetry consumer. The generic projection
+    # API serves GET /projection/onex.evt.omnimarket.merge-state-transition.v1
+    # ?since=<cursor>; since filters projection_cursor > <cursor> and the
+    # response carries next_cursor.
+    - topic: onex.evt.omnimarket.merge-state-transition.v1
+      table: merge_state_transitions
+      schema: public
+      columns:
+        - projection_cursor
+        - event_id
+        - repo
+        - pr_number
+        - head_sha
+        - branch
+        - from_state
+        - to_state
+        - occurred_at
+        - reason_code
+        - is_occ_evidence
+        - product_pr_number
+        - queue_wait_seconds
+        - product_failure_found
+        - evidence_present
+        - created_at
+      order_by: projection_cursor ASC
+      freshness_column: created_at
+      cursor_column: projection_cursor
+      limit: 500
+
+descriptor:
+  node_archetype: reducer
+  purity: effectful
+  runtime_profiles:
+    - effects
+  idempotent: true
+  timeout_ms: 0
