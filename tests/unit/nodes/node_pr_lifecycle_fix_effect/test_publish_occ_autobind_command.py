@@ -207,3 +207,85 @@ class TestFailClosedOnTrustedRunner:
         # fails loudly on delivery error — never silently exits 0.
         assert result.exit_code == 1, result.output
         assert "Delivery error" in result.output
+
+
+class _FakeProducer:
+    """Minimal confluent_kafka.Producer stand-in.
+
+    ``flush()`` returns ``remaining`` — the count of messages still queued when
+    the flush window elapses — mirroring librdkafka. On an unreachable broker
+    the message stays queued (remaining=1) and the delivery callback never
+    fires, which is exactly the false-green condition under test.
+    """
+
+    def __init__(self, remaining: int, config: dict[str, object] | None = None) -> None:
+        self._remaining = remaining
+        self.produced: list[dict[str, object]] = []
+
+    def produce(self, **kwargs: object) -> None:
+        self.produced.append(kwargs)
+
+    def flush(self, timeout: float | None = None) -> int:
+        # The delivery callback is deliberately NOT invoked: on a connection
+        # refusal librdkafka never delivers and never times the message out
+        # within the short flush window, so on_delivery stays silent.
+        return self._remaining
+
+
+def _install_fake_confluent_kafka(
+    monkeypatch: pytest.MonkeyPatch, remaining: int
+) -> None:
+    """Inject a fake ``confluent_kafka`` module so the function-local import resolves it."""
+    import sys
+    import types
+
+    fake_mod = types.ModuleType("confluent_kafka")
+    fake_mod.Producer = lambda config=None: _FakeProducer(remaining, config)  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "confluent_kafka", fake_mod)
+
+
+@pytest.mark.unit
+class TestFailClosedOnUndeliveredFlush:
+    """OMN-14639: reporting success on an UNDELIVERED command is a false green.
+
+    OMN-14451 only closed the *unset broker* case. When the broker is SET but
+    unreachable (connection refused), ``producer.flush(timeout=30)`` returns a
+    non-zero remaining count while ``_on_delivery`` never fires, so the old code
+    ignored the flush result and returned the correlation_id — a green publish
+    that delivered nothing. These tests pin the real flush path (the previous
+    suite monkeypatched ``publish_occ_autobind_command`` away entirely, so this
+    exact branch was never exercised).
+    """
+
+    def test_undelivered_message_raises(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """RED reproduction: flush leaves 1 message queued => must raise, not return."""
+        module = _load_publisher()
+        _install_fake_confluent_kafka(monkeypatch, remaining=1)
+
+        with pytest.raises(RuntimeError, match="undelivered"):
+            module.publish_occ_autobind_command(  # type: ignore[attr-defined]
+                bootstrap_servers="10.0.0.9:19092",
+                username="",
+                password="",
+                repo="OmniNode-ai/omnimarket",
+                pr_number=1774,
+                ticket="OMN-14637",
+            )
+
+    def test_fully_flushed_message_returns_correlation_id(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """GREEN control: flush drains the queue (remaining=0) => normal success."""
+        module = _load_publisher()
+        _install_fake_confluent_kafka(monkeypatch, remaining=0)
+
+        correlation_id = module.publish_occ_autobind_command(  # type: ignore[attr-defined]
+            bootstrap_servers="10.0.0.9:19092",
+            username="",
+            password="",
+            repo="OmniNode-ai/omnimarket",
+            pr_number=1774,
+            ticket="OMN-14637",
+        )
+        assert isinstance(correlation_id, str)
+        assert correlation_id
