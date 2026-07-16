@@ -50,6 +50,16 @@ handler_routing:
       handler:
         name: "HandlerOccAutoauthorWindow"
         module: "omnimarket.nodes.node_occ_autoauthor_window.handlers.handler_occ_autoauthor_window"
+# Declared command/terminal bus interface (dispatch-addressable). No top-level
+# `terminal_event:` scalar is set, so the local runtime keeps using the
+# _run_compute path for `onex node`; these runtime_dispatch topics are the CLI
+# dispatcher's own command/result seam (exempt from orphan detection, like
+# node_occ_companion_effect) and carry no bus producer/consumer today.
+runtime_dispatch:
+  command_topic: "onex.cmd.omnimarket.occ-autoauthor-window-requested.v1"
+  terminal_events:
+    success: "onex.evt.omnimarket.occ-autoauthor-window-completed.v1"
+    failure: "onex.evt.omnimarket.occ-autoauthor-window-failed.v1"
 metadata:
   transport_type: inmemory
   description: "OCC auto-authoring window counter — pure evidence-only aggregator (no external transport)"

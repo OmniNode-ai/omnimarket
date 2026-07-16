@@ -72,11 +72,18 @@ class TestContractYaml:
         }
         assert ops.get("aggregate_autoauthor_window") == "HandlerOccAutoauthorWindow"
 
-    def test_contract_is_topicless_directly_invoked(self, node_dir: Path) -> None:
-        # No event_bus / terminal_event => no graph edges; runs via _run_compute.
+    def test_contract_is_directly_invoked_compute_path(self, node_dir: Path) -> None:
+        # No event_bus and no top-level terminal_event scalar => the local runtime
+        # uses the _run_compute path for `onex node`. The runtime_dispatch block
+        # declares the dispatch-addressable command seam (exempt from topic-graph
+        # orphan detection) without changing that execution path.
         data = yaml.safe_load((node_dir / "contract.yaml").read_text())
         assert "event_bus" not in data
         assert "terminal_event" not in data
+        assert (
+            data["runtime_dispatch"]["command_topic"]
+            == "onex.cmd.omnimarket.occ-autoauthor-window-requested.v1"
+        )
         assert data["handler"]["class"] == "HandlerOccAutoauthorWindow"
 
     def test_metadata_is_read_only_no_network(self, node_dir: Path) -> None:

@@ -132,12 +132,18 @@ class TestContractYaml:
         }
         assert ops.get("observe_attestation") == "HandlerOccAttestationObserve"
 
-    def test_contract_is_topicless_and_declares_read_only_secret(
+    def test_contract_is_directly_invoked_and_declares_read_only_secret(
         self, node_dir: Path
     ) -> None:
+        # No event_bus / top-level terminal_event => _run_compute path preserved;
+        # runtime_dispatch declares the dispatch-addressable command seam only.
         data = yaml.safe_load((node_dir / "contract.yaml").read_text())
         assert "event_bus" not in data
         assert "terminal_event" not in data
+        assert (
+            data["runtime_dispatch"]["command_topic"]
+            == "onex.cmd.omnimarket.occ-attestation-observe-requested.v1"
+        )
         assert data["secrets"]["GITHUB_TOKEN"]["required"] is True
 
     def test_output_model_is_the_shared_observation(self, node_dir: Path) -> None:

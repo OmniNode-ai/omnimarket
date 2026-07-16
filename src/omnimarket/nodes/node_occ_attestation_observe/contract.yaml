@@ -54,6 +54,16 @@ handler_routing:
       handler:
         name: "HandlerOccAttestationObserve"
         module: "omnimarket.nodes.node_occ_attestation_observe.handlers.handler_occ_attestation_observe"
+# Declared command/terminal bus interface (dispatch-addressable). No top-level
+# `terminal_event:` scalar is set, so the local runtime keeps using the
+# _run_compute path for `onex node`; these runtime_dispatch topics are the CLI
+# dispatcher's own command/result seam (exempt from orphan detection, like
+# node_occ_companion_effect) and carry no bus producer/consumer today.
+runtime_dispatch:
+  command_topic: "onex.cmd.omnimarket.occ-attestation-observe-requested.v1"
+  terminal_events:
+    success: "onex.evt.omnimarket.occ-attestation-observe-completed.v1"
+    failure: "onex.evt.omnimarket.occ-attestation-observe-failed.v1"
 secrets:
   GITHUB_TOKEN:
     description: "GitHub token for read-only REST (product PR, OCC PR, check-runs, file contents). No write scope is used."
