@@ -834,6 +834,32 @@ repos:
         stages: [pre-commit]
         files: ^(\.pre-commit-config\.yaml|\.github/workflows/ci\.yml)$
 
+  # Governed impacted-test selector at PRE-PUSH (OMN-13973 / WS7 fan-out, omnimarket).
+  # Runs the fast local IMPACTED SUBSET of the unit suite once per `git push`,
+  # via the SAME selector CI uses (scripts/ci/detect_test_paths.py +
+  # scripts/ci/test_selection_adjacency.yaml, ENABLE_SMART_TESTS) -- never a
+  # hand-typed -k. Fail-closed: escalates to the full unit suite when it cannot
+  # prove narrowing is safe (shared module / pyproject deps / test-infra / >=6
+  # modules / main). SEAM: omnimarket's selector CLI takes NO --base-ref (unlike
+  # the omnibase_core canary #1451) -- the wrapper matches omnimarket's CI seam.
+  # NET-NEGATIVE-SURFACE: retires the "run the whole unit suite by hand before
+  # every push" manual default (root CLAUDE.md Rule #4). This is a fast local
+  # impacted subset, ADVISORY of the full CI suite -- NOT byte-parity with an
+  # enforced CI context (on CI the selector is behind ENABLE_SMART_TESTS
+  # off-by-default; the enforced merge gate is the full suite). FAIL-LOUD:
+  # hard-errors (exit 1) if base/selector/adjacency cannot resolve; never a
+  # green skip.
+  - repo: local
+    hooks:
+      - id: prepush-smart-tests
+        name: Governed impacted-test selector (pre-push, OMN-13973)
+        entry: bash scripts/hooks/prepush_smart_tests.sh
+        language: system
+        pass_filenames: false
+        always_run: true
+        verbose: true
+        stages: [pre-push]
+
 # Configuration
 # OMN-14666 (plan §3d.5): every stage a hook uses MUST be installed by
 # `pre-commit install`. Previously [pre-commit] only, so the required-CI-mirror
