@@ -204,10 +204,29 @@ def publish_occ_autobind_command(
         value=message,
         on_delivery=_on_delivery,
     )
-    producer.flush(timeout=30)
+    # OMN-14639: flush() returns the number of messages STILL in the producer
+    # queue when the timeout elapses. A broker that refuses the connection (e.g.
+    # the target lane is down / KAFKA_BOOTSTRAP_SERVERS is mispointed) leaves the
+    # message queued and unacked; librdkafka's per-message delivery timeout
+    # (message.timeout.ms, default 300000ms) is far larger than this 30s flush
+    # window, so `_on_delivery` never fires and `delivery_error` stays None. The
+    # old code ignored the flush return and therefore reported success on an
+    # UNDELIVERED command — the exact "runs green while publishing nothing" bug
+    # class OMN-14451 set out to kill, but only for the *unset broker* case. A
+    # non-zero remaining count means the command did NOT reach the broker, so it
+    # is a hard delivery failure, not success.
+    remaining = producer.flush(timeout=30)
 
     if delivery_error is not None:
         raise RuntimeError(f"Kafka delivery failed: {delivery_error}") from None
+
+    if remaining and remaining > 0:
+        raise RuntimeError(
+            f"Kafka delivery timed out: {remaining} message(s) still undelivered "
+            f"to {bootstrap_servers} after a 30s flush (broker unreachable / "
+            "connection refused). Refusing to report success on an undelivered "
+            "occ-autobind command (OMN-14639)."
+        )
 
     return correlation_id
 
