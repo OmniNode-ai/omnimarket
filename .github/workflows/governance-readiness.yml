@@ -1,0 +1,176 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# Governance Readiness orchestrator — reusable workflow (OMN-14646, WS3).
+#
+# ONE reusable orchestration path built AROUND the existing OCC/receipt
+# validators (occ-preflight / receipt-gate / deploy-gate). It does NOT
+# reimplement any validation: callers pass in the already-computed conclusions
+# of those subchecks (plus the evidence facts they surface), and this workflow
+# maps them to exactly one typed reason code via the deterministic, unit-tested
+# classifier `scripts/ci/governance_readiness.py`.
+#
+# Reason codes: EVIDENCE_MISSING, EVIDENCE_STALE, RECEIPT_FAILED,
+#               PRODUCT_NOT_GREEN, RUNNER_INFRA, POLICY_HELD (+ READY).
+#
+# REPORT-ONLY. This workflow is a shadow/observation surface. It is NOT wired
+# into branch-protection required_status_checks and, in report-only mode, always
+# concludes success — it only publishes the reason code to the job summary and as
+# an annotation. Making its context required is a separate additive-then-
+# subtractive step (plan §5) that needs maintainer approval; do not do it here.
+#
+# Fail-closed semantics live in the classifier: a skipped/cancelled/absent
+# governance subcheck maps to RUNNER_INFRA and never to READY.
+
+name: governance-readiness
+
+on:
+  workflow_call:
+    inputs:
+      product_conclusion:
+        description: Aggregate Product Readiness / CI conclusion (success|failure|cancelled|skipped|...).
+        type: string
+        required: false
+        default: ""
+      occ_conclusion:
+        description: occ-preflight (eligibility) job conclusion.
+        type: string
+        required: false
+        default: ""
+      receipt_conclusion:
+        description: receipt-gate (verify) job conclusion.
+        type: string
+        required: false
+        default: ""
+      deploy_conclusion:
+        description: deploy-gate job conclusion.
+        type: string
+        required: false
+        default: ""
+      evidence_state:
+        description: Evidence-Source resolution fact (present|missing|stale|unknown).
+        type: string
+        required: false
+        default: "unknown"
+      receipt_state:
+        description: Receipt validity fact (pass|fail|absent|unknown).
+        type: string
+        required: false
+        default: "unknown"
+      policy_held:
+        description: True when governance is deliberately held for approval/grant.
+        type: boolean
+        required: false
+        default: false
+      report_only:
+        description: >-
+          When true (default), the evaluate job always concludes success and only
+          reports the reason code. When false (future enforcement, post-N=10
+          observation + maintainer approval), a non-READY result fails the job.
+        type: boolean
+        required: false
+        default: true
+    outputs:
+      reason_code:
+        description: The typed governance-readiness reason code.
+        value: ${{ jobs.evaluate.outputs.reason_code }}
+      ready:
+        description: "true when governance-ready (READY)."
+        value: ${{ jobs.evaluate.outputs.ready }}
+
+permissions:
+  contents: read
+
+jobs:
+  evaluate:
+    name: evaluate
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      reason_code: ${{ steps.classify.outputs.reason_code }}
+      ready: ${{ steps.classify.outputs.ready }}
+    steps:
+      - name: Check out repo (for the classifier script)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Classify governance readiness
+        id: classify
+        env:
+          PRODUCT_CONCLUSION: ${{ inputs.product_conclusion }}
+          OCC_CONCLUSION: ${{ inputs.occ_conclusion }}
+          RECEIPT_CONCLUSION: ${{ inputs.receipt_conclusion }}
+          DEPLOY_CONCLUSION: ${{ inputs.deploy_conclusion }}
+          EVIDENCE_STATE: ${{ inputs.evidence_state }}
+          RECEIPT_STATE: ${{ inputs.receipt_state }}
+          POLICY_HELD: ${{ inputs.policy_held }}
+          REPORT_ONLY: ${{ inputs.report_only }}
+        run: |
+          set -euo pipefail
+
+          facts="$(python - <<'PY'
+          import json, os
+          print(json.dumps({
+              "product_conclusion": os.environ.get("PRODUCT_CONCLUSION", ""),
+              "occ_conclusion": os.environ.get("OCC_CONCLUSION", ""),
+              "receipt_conclusion": os.environ.get("RECEIPT_CONCLUSION", ""),
+              "deploy_conclusion": os.environ.get("DEPLOY_CONCLUSION", ""),
+              "evidence_state": os.environ.get("EVIDENCE_STATE", "unknown"),
+              "receipt_state": os.environ.get("RECEIPT_STATE", "unknown"),
+              "policy_held": os.environ.get("POLICY_HELD", "false"),
+          }))
+          PY
+          )"
+
+          # The classifier's own exit code carries enforcement semantics; capture
+          # it without aborting the step so we can always emit the annotation.
+          set +e
+          out="$(python scripts/ci/governance_readiness.py classify \
+            --facts-json "$facts" \
+            --report-only "${REPORT_ONLY}")"
+          classify_rc=$?
+          set -e
+
+          echo "$out"
+          reason_code="$(printf '%s' "$out" | python -c 'import json,sys; print(json.load(sys.stdin)["reason_code"])')"
+          ready="$(printf '%s' "$out" | python -c 'import json,sys; print(str(json.load(sys.stdin)["ready"]).lower())')"
+          message="$(printf '%s' "$out" | python -c 'import json,sys; print(json.load(sys.stdin)["message"])')"
+
+          echo "reason_code=${reason_code}" >> "$GITHUB_OUTPUT"
+          echo "ready=${ready}" >> "$GITHUB_OUTPUT"
+
+          {
+            echo "## Governance Readiness (report-only)"
+            echo ""
+            echo "| field | value |"
+            echo "| --- | --- |"
+            echo "| reason_code | \`${reason_code}\` |"
+            echo "| ready | \`${ready}\` |"
+            echo "| product | \`${PRODUCT_CONCLUSION:-<none>}\` |"
+            echo "| occ-preflight | \`${OCC_CONCLUSION:-<none>}\` |"
+            echo "| receipt-gate | \`${RECEIPT_CONCLUSION:-<none>}\` |"
+            echo "| deploy-gate | \`${DEPLOY_CONCLUSION:-<none>}\` |"
+            echo "| evidence_state | \`${EVIDENCE_STATE}\` |"
+            echo "| receipt_state | \`${RECEIPT_STATE}\` |"
+            echo ""
+            echo "> ${message}"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          if [ "${ready}" = "true" ]; then
+            echo "::notice title=Governance Readiness::${reason_code} — ${message}"
+          else
+            echo "::warning title=Governance Readiness::${reason_code} — ${message}"
+          fi
+
+          # Report-only: never fail the check. In enforcement mode the classifier
+          # returns non-zero on a non-READY result and we propagate it.
+          if [ "${REPORT_ONLY}" = "true" ]; then
+            exit 0
+          fi
+          exit $classify_rc
