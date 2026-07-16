@@ -4,10 +4,12 @@
 
 from omnimarket.nodes.node_merge_state_projection.handlers.handler_merge_state_projection import (
     HandlerMergeStateProjection,
+    ModelMergeStateProjectionRequest,
     ModelMergeStateProjectionResult,
 )
 
 __all__ = [
     "HandlerMergeStateProjection",
+    "ModelMergeStateProjectionRequest",
     "ModelMergeStateProjectionResult",
 ]

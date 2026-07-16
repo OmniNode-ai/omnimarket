@@ -192,7 +192,7 @@ def test_handle_shim_recomputes_event_id_and_requires_adapter() -> None:
     payload["event_id"] = "forged-value"  # must be recomputed, not trusted
     payload["_db"] = db
     out = handler.handle(payload)
-    assert out["rows_upserted"] == 1
+    assert out.rows_upserted == 1
     assert db.tables["merge_state_transitions"][0]["event_id"] == evt.event_id
 
     with pytest.raises(TypeError, match="DatabaseAdapter"):

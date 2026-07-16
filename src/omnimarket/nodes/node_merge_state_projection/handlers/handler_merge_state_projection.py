@@ -35,29 +35,54 @@ class ModelMergeStateProjectionResult(BaseModel):
     table: str = Field(default=TABLE)
 
 
+class ModelMergeStateProjectionRequest(BaseModel):
+    """Typed reducer request with the injected projection database adapter."""
+
+    model_config = ConfigDict(
+        arbitrary_types_allowed=True,
+        frozen=True,
+        extra="forbid",
+    )
+
+    event: ModelMergeStateTransitionEvent
+    db: DatabaseAdapter
+
+    @classmethod
+    def from_runtime_payload(
+        cls, payload: dict[str, object]
+    ) -> ModelMergeStateProjectionRequest:
+        event_payload = dict(payload)
+        db_raw = event_payload.pop("_db", None)
+        if not isinstance(db_raw, DatabaseAdapter):
+            raise TypeError("handle() requires a DatabaseAdapter in payload['_db']")
+        event_payload.pop("_event_type", None)
+        # ``event_id`` is a computed field; drop any inbound value so the model
+        # recomputes the deterministic fingerprint from the identifying tuple.
+        event_payload.pop("event_id", None)
+        return cls(
+            event=ModelMergeStateTransitionEvent.model_validate(event_payload),
+            db=db_raw,
+        )
+
+
 class HandlerMergeStateProjection:
     """Project ``merge-state-transition.v1`` events into ``merge_state_transitions``."""
 
-    def handle(self, input_data: dict[str, object]) -> dict[str, object]:
+    def handle(
+        self,
+        request: ModelMergeStateProjectionRequest,
+    ) -> ModelMergeStateProjectionResult:
         """Runtime dispatch shim.
 
         The projection host delivers the event payload plus a ``DatabaseAdapter``
-        under ``input_data['_db']``. Coerce the payload into a
+        under ``payload['_db']``. Coerce the payload into a typed request, then a
         ``ModelMergeStateTransitionEvent`` and project it. Fail fast when the
         adapter is absent — a missing adapter is a wiring bug, not a recoverable
         state.
         """
-        payload = dict(input_data)
-        db_raw = payload.pop("_db", None)
-        if not isinstance(db_raw, DatabaseAdapter):
-            raise TypeError("handle() requires a DatabaseAdapter in input_data['_db']")
-        payload.pop("_event_type", None)
-        # ``event_id`` is a computed field; drop any inbound value so the model
-        # recomputes the deterministic fingerprint from the identifying tuple.
-        payload.pop("event_id", None)
-        event = ModelMergeStateTransitionEvent.model_validate(payload)
-        result = self.project(event, db_raw)
-        return result.model_dump(mode="json")
+        if isinstance(request, dict):
+            request = ModelMergeStateProjectionRequest.from_runtime_payload(request)
+        return self.project(request.event, request.db)
 
     def project(
         self,
@@ -91,5 +116,6 @@ class HandlerMergeStateProjection:
 
 __all__ = [
     "HandlerMergeStateProjection",
+    "ModelMergeStateProjectionRequest",
     "ModelMergeStateProjectionResult",
 ]
