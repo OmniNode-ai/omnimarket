@@ -34,11 +34,11 @@ decision ("measure before automating").
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import UTC, datetime
 from enum import StrEnum
 
 from omnibase_core.validation.cross_repo.util_fingerprint import generate_fingerprint
-from pydantic import BaseModel, ConfigDict, Field, computed_field
+from pydantic import BaseModel, ConfigDict, Field, computed_field, field_validator
 
 from omnimarket.nodes.pr_ledger_native import (
     EnumPrLifecyclePhase,
@@ -136,12 +136,24 @@ class ModelMergeStateTransitionEvent(BaseModel):
         "was found (drives failures-found-before-vs-after-evidence).",
     )
 
+    @field_validator("occurred_at")
+    @classmethod
+    def _normalize_occurred_at(cls, value: datetime) -> datetime:
+        if value.tzinfo is None or value.utcoffset() is None:
+            raise ValueError("occurred_at must be timezone-aware")
+        return value.astimezone(UTC)
+
     def _validate_transition(self) -> ModelMergeStateTransitionEvent:
         if not is_allowed_phase_transition(self.from_state, self.to_state):
             raise ValueError(
                 f"illegal merge-flow transition {self.from_state} -> "
                 f"{self.to_state}: not a declared FSM edge"
             )
+        is_rerun = self.from_state is self.to_state
+        if is_rerun and self.reason_code is None:
+            raise ValueError("same-state reruns require a reason_code")
+        if not is_rerun and self.reason_code is not None:
+            raise ValueError("reason_code is only valid for same-state reruns")
         return self
 
     def model_post_init(self, __context: object) -> None:

@@ -145,7 +145,10 @@ def compute_merge_flow_metrics(
             EnumPrLifecyclePhase.MERGE_GROUP,
             EnumPrLifecyclePhase.POST_MERGE_TAIL,
         ):
-            merged_prs.setdefault((t.repo, t.pr_number), t.is_occ_evidence)
+            key = (t.repo, t.pr_number)
+            if key in merged_prs and merged_prs[key] != t.is_occ_evidence:
+                raise ValueError(f"inconsistent OCC classification for PR {key}")
+            merged_prs[key] = t.is_occ_evidence
 
     occ_evidence_merges = sum(1 for is_occ in merged_prs.values() if is_occ)
     product_merges = sum(1 for is_occ in merged_prs.values() if not is_occ)

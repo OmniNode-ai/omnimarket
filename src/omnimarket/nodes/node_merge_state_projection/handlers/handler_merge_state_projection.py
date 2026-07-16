@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 """HandlerMergeStateProjection — project merge-state transitions (OMN-14648 / WS6).
 
-Consumes ``onex.evt.omnimarket.merge-state-transition.v1`` and UPSERTs one row
+Consumes merge-state transition events and UPSERTs one row
 per transition into the ``merge_state_transitions`` table, deduped by the
 deterministic ``event_id`` fingerprint. Idempotent: projecting the same
 transition twice leaves exactly one row, so a replay of the merge-flow event log

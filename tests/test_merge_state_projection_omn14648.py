@@ -16,7 +16,7 @@ Covers the three deliverables of the REPORT-ONLY first PR:
 
 from __future__ import annotations
 
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime, timedelta, timezone
 
 import pytest
 
@@ -111,6 +111,31 @@ def test_event_id_differs_when_identity_differs() -> None:
     assert base.event_id != other_pr.event_id
 
 
+def test_event_id_canonicalizes_equivalent_instants_to_utc() -> None:
+    utc = _txn(
+        from_state=EnumPrLifecyclePhase.TRIAGE,
+        to_state=EnumPrLifecyclePhase.MERGE_GROUP,
+        at=datetime(2026, 7, 15, 12, 0, 0, tzinfo=UTC),
+    )
+    offset = _txn(
+        from_state=EnumPrLifecyclePhase.TRIAGE,
+        to_state=EnumPrLifecyclePhase.MERGE_GROUP,
+        at=datetime(2026, 7, 15, 7, 0, 0, tzinfo=timezone(timedelta(hours=-5))),
+    )
+    assert utc.occurred_at == datetime(2026, 7, 15, 12, 0, 0, tzinfo=UTC)
+    assert offset.occurred_at == utc.occurred_at
+    assert offset.event_id == utc.event_id
+
+
+def test_event_model_rejects_naive_occurred_at() -> None:
+    with pytest.raises(ValueError, match="timezone-aware"):
+        _txn(
+            from_state=EnumPrLifecyclePhase.TRIAGE,
+            to_state=EnumPrLifecyclePhase.MERGE_GROUP,
+            at=datetime(2026, 7, 15, 12, 0, 0),
+        )
+
+
 def test_illegal_transition_is_rejected() -> None:
     # INVENTORY -> MERGE_GROUP is not a declared FSM edge.
     with pytest.raises(ValueError, match="illegal merge-flow transition"):
@@ -130,6 +155,25 @@ def test_self_transition_is_allowed() -> None:
         reason_code=EnumMergeRerunReason.MERGE_GROUP_TIMEOUT,
     )
     assert evt.reason_code is EnumMergeRerunReason.MERGE_GROUP_TIMEOUT
+
+
+def test_same_state_transition_requires_reason_code() -> None:
+    with pytest.raises(ValueError, match="same-state reruns require a reason_code"):
+        _txn(
+            from_state=EnumPrLifecyclePhase.MERGE_GROUP,
+            to_state=EnumPrLifecyclePhase.MERGE_GROUP,
+            at=_T0,
+        )
+
+
+def test_forward_transition_rejects_reason_code() -> None:
+    with pytest.raises(ValueError, match="reason_code is only valid"):
+        _txn(
+            from_state=EnumPrLifecyclePhase.TRIAGE,
+            to_state=EnumPrLifecyclePhase.MERGE_GROUP,
+            at=_T0,
+            reason_code=EnumMergeRerunReason.CI_FLAKE,
+        )
 
 
 def test_event_model_forbids_extra_fields() -> None:
@@ -309,6 +353,29 @@ def test_evidence_volume_ratio_baseline_and_target() -> None:
     assert mg.evidence_volume_ratio == pytest.approx(1.0)
     assert mg.evidence_volume_meets_target is True
     assert mg.evidence_volume_ratio_target == EVIDENCE_VOLUME_RATIO_TARGET
+
+
+def test_evidence_volume_rejects_inconsistent_pr_classification() -> None:
+    txns = [
+        _txn(
+            pr_number=410,
+            head_sha="same-pr-product",
+            from_state=EnumPrLifecyclePhase.MERGE_GROUP,
+            to_state=EnumPrLifecyclePhase.TERMINAL,
+            at=_T0,
+            is_occ_evidence=False,
+        ),
+        _txn(
+            pr_number=410,
+            head_sha="same-pr-evidence",
+            from_state=EnumPrLifecyclePhase.POST_MERGE_TAIL,
+            to_state=EnumPrLifecyclePhase.TERMINAL,
+            at=_T0 + timedelta(seconds=1),
+            is_occ_evidence=True,
+        ),
+    ]
+    with pytest.raises(ValueError, match="inconsistent OCC classification"):
+        compute_merge_flow_metrics(txns)
 
 
 def test_companions_per_product_pr() -> None:

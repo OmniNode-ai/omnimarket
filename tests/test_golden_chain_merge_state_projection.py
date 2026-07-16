@@ -156,9 +156,20 @@ class TestMergeStateProjectionDataFlow:
         ]
         for evt in events:
             HANDLER.project(evt, db)
-        assert len(db.query(TABLE)) == 4
+        rows = db.query(TABLE)
+        assert len(rows) == 4
 
-        metrics = compute_merge_flow_metrics(events)
+        projected_events = [
+            ModelMergeStateTransitionEvent.model_validate(
+                {
+                    key: value
+                    for key, value in row.items()
+                    if key not in {"event_id", "projection_cursor"}
+                }
+            )
+            for row in rows
+        ]
+        metrics = compute_merge_flow_metrics(projected_events)
         assert metrics.product_merges == 2
         assert metrics.occ_evidence_merges == 2
         assert metrics.evidence_volume_ratio == pytest.approx(1.0)
