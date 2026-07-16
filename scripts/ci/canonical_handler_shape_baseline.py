@@ -37,7 +37,6 @@ NON_CANONICAL: tuple[str, ...] = (
     "omnimarket.nodes.node_evidence_dashboard_effect",
     "omnimarket.nodes.node_evidence_dashboard_reducer",
     "omnimarket.nodes.node_filesystem_crawler_effect",
-    "omnimarket.nodes.node_finding_aggregator_compute",
     "omnimarket.nodes.node_handoff_effect",
     "omnimarket.nodes.node_hybrid_codegen_orchestrator",
     "omnimarket.nodes.node_intelligence_orchestrator",

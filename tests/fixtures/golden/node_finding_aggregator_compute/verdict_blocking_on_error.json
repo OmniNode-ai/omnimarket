@@ -1,0 +1,49 @@
+{
+  "input": {
+    "config": {
+      "jaccard_threshold": 0.7,
+      "model_weights": {},
+      "severity_promotes_on_conflict": true
+    },
+    "correlation_id": "11111111-1111-4111-8111-111111111111",
+    "sources": [
+      {
+        "findings": [
+          {
+            "file_path": "src/main.py",
+            "line_start": 10,
+            "normalized_message": "line too long",
+            "rule_id": "ruff:E501",
+            "severity": "error"
+          }
+        ],
+        "model_name": "model-a"
+      }
+    ]
+  },
+  "output": {
+    "correlation_id": "11111111-1111-4111-8111-111111111111",
+    "merged_findings": [
+      {
+        "file_path": "src/main.py",
+        "line_end": null,
+        "line_start": 10,
+        "merged_count": 1,
+        "normalized_message": "line too long",
+        "rule_id": "ruff:E501",
+        "severity": "error",
+        "source_models": [
+          "model-a"
+        ],
+        "weighted_score": 1.0
+      }
+    ],
+    "source_model_count": 1,
+    "total_duplicates_removed": 0,
+    "total_input_findings": 1,
+    "total_merged_findings": 1,
+    "verdict": "blocking_issue"
+  },
+  "output_sha256": "sha256:bd03489e0506d7f335a76006bfc448b3506711d16f2c41d1d6cfd23f7b3a2cac",
+  "scenario": "verdict_blocking_on_error"
+}

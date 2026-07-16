@@ -1,0 +1,27 @@
+{
+  "input": {
+    "config": {
+      "jaccard_threshold": 0.7,
+      "model_weights": {},
+      "severity_promotes_on_conflict": true
+    },
+    "correlation_id": "11111111-1111-4111-8111-111111111111",
+    "sources": [
+      {
+        "findings": [],
+        "model_name": "model-a"
+      }
+    ]
+  },
+  "output": {
+    "correlation_id": "11111111-1111-4111-8111-111111111111",
+    "merged_findings": [],
+    "source_model_count": 1,
+    "total_duplicates_removed": 0,
+    "total_input_findings": 0,
+    "total_merged_findings": 0,
+    "verdict": "clean"
+  },
+  "output_sha256": "sha256:dd0de59a78d7141780d6612d7a077c5577abed8e4ac386abdecfa4991edd9742",
+  "scenario": "verdict_clean_on_empty"
+}

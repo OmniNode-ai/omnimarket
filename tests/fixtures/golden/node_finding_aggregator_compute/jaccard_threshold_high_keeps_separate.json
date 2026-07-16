@@ -1,0 +1,74 @@
+{
+  "input": {
+    "config": {
+      "jaccard_threshold": 0.95,
+      "model_weights": {},
+      "severity_promotes_on_conflict": true
+    },
+    "correlation_id": "11111111-1111-4111-8111-111111111111",
+    "sources": [
+      {
+        "findings": [
+          {
+            "file_path": "src/main.py",
+            "line_start": 10,
+            "normalized_message": "line too long in function",
+            "rule_id": "ruff:E501",
+            "severity": "warning"
+          }
+        ],
+        "model_name": "model-a"
+      },
+      {
+        "findings": [
+          {
+            "file_path": "src/main.py",
+            "line_start": 10,
+            "normalized_message": "line too long exceeds limit",
+            "rule_id": "ruff:E501",
+            "severity": "warning"
+          }
+        ],
+        "model_name": "model-b"
+      }
+    ]
+  },
+  "output": {
+    "correlation_id": "11111111-1111-4111-8111-111111111111",
+    "merged_findings": [
+      {
+        "file_path": "src/main.py",
+        "line_end": null,
+        "line_start": 10,
+        "merged_count": 1,
+        "normalized_message": "line too long in function",
+        "rule_id": "ruff:E501",
+        "severity": "warning",
+        "source_models": [
+          "model-a"
+        ],
+        "weighted_score": 0.5
+      },
+      {
+        "file_path": "src/main.py",
+        "line_end": null,
+        "line_start": 10,
+        "merged_count": 1,
+        "normalized_message": "line too long exceeds limit",
+        "rule_id": "ruff:E501",
+        "severity": "warning",
+        "source_models": [
+          "model-b"
+        ],
+        "weighted_score": 0.5
+      }
+    ],
+    "source_model_count": 2,
+    "total_duplicates_removed": 0,
+    "total_input_findings": 2,
+    "total_merged_findings": 2,
+    "verdict": "risks_noted"
+  },
+  "output_sha256": "sha256:dea6ff5caaf071f2cb2b89428b15784e3165628add07d0601e742a4295b4b720",
+  "scenario": "jaccard_threshold_high_keeps_separate"
+}
