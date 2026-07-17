@@ -1,0 +1,83 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Delivery Replay Projection Compute (OMN-14726, B6)
+#
+# Pure COMPUTE. Folds an ordered, self-contained delivery/event sequence into a
+# deterministic projection checksum + terminal cursor, and (when an expectation
+# is supplied) reports whether the replay diverged. This is the comparison tool
+# underpinning the B6 canary-acceptance gate: replaying the same sequence yields
+# an identical checksum + cursor, and a divergent sequence differs. Determinism
+# is proven in-process/in-test — no live bus/DB/cluster dependency.
+#
+# Directly-invoked only (no Kafka producer/consumer) — it declares no event_bus
+# topics, so it contributes no edges to the contract-topic-graph. The runtime
+# resolves it via handler_routing.default_handler (_run_compute path: no
+# terminal_event / no event bus needed).
+#
+# Related Tickets:
+#   - OMN-14726: B6 delivery/replay contract + deterministic projection tool
+name: "node_delivery_replay_projection_compute"
+lifecycle: experimental
+node_type: "COMPUTE_GENERIC"
+runtime_profiles: [main]
+contract_version:
+  major: 0
+  minor: 1
+  patch: 0
+node_version: "0.1.0"
+description: >
+  Pure computation: folds an ordered delivery/event sequence into a stable
+  projection checksum (an ordered hash chain over the sequence plus a
+  last-write-wins materialized view — content- and order-sensitive) and a
+  terminal cursor (per-(topic, partition) maximum offset plus event count —
+  delivery-position/completeness-sensitive, order-insensitive). When an expected
+  result is supplied, reports divergence per signal. Zero I/O; deterministic.
+input_model:
+  name: "ModelDeliveryReplayInput"
+  module: "omnimarket.nodes.node_delivery_replay_projection_compute.models.model_delivery_replay_input"
+  description: "Ordered delivery sequence plus optional expected result."
+output_model:
+  name: "ModelReplayProjection"
+  module: "omnimarket.nodes.node_delivery_replay_projection_compute.models.model_replay_projection"
+  description: "Projection checksum, terminal cursor, and divergence verdict."
+# Top-level handler block: the runtime's compute-execution path (_run_compute,
+# reached because this contract declares no terminal_event) resolves the handler
+# and builds the typed input payload from THIS block's input_model.
+handler:
+  module: "omnimarket.nodes.node_delivery_replay_projection_compute.handlers.handler_delivery_replay_projection"
+  class: "HandlerDeliveryReplayProjection"
+  input_model: "omnimarket.nodes.node_delivery_replay_projection_compute.models.model_delivery_replay_input.ModelDeliveryReplayInput"
+handler_routing:
+  routing_strategy: "operation_match"
+  default_handler: "omnimarket.nodes.node_delivery_replay_projection_compute.handlers.handler_delivery_replay_projection:HandlerDeliveryReplayProjection"
+  handlers:
+    - operation: "project_delivery_replay"
+      handler:
+        name: "HandlerDeliveryReplayProjection"
+        module: "omnimarket.nodes.node_delivery_replay_projection_compute.handlers.handler_delivery_replay_projection"
+# Declared command/terminal seam (dispatch-addressable). No top-level
+# `terminal_event:` scalar is set, so the local runtime keeps using the
+# _run_compute path for `onex node`; these runtime_dispatch topics are the CLI
+# dispatcher's own command/result seam (exempt from orphan detection) and carry
+# no bus producer/consumer today.
+runtime_dispatch:
+  command_topic: "onex.cmd.omnimarket.delivery-replay-projection-requested.v1"
+  terminal_events:
+    success: "onex.evt.omnimarket.delivery-replay-projection-completed.v1"
+    failure: "onex.evt.omnimarket.delivery-replay-projection-failed.v1"
+metadata:
+  transport_type: inmemory
+  description: "Delivery/replay deterministic projection — stable checksum + cursor from an ordered event sequence, with per-signal divergence reporting (no external transport)"
+  author: "OmniNode Team"
+  created: "2026-07-17"
+  tags:
+    - "compute"
+    - "replay"
+    - "determinism"
+    - "projection"
+    - "checksum"
+    - "cursor"
+    - "golden-chain"
+    - "OMN-14726"
+  related_tickets:
+    - "OMN-14726"

@@ -153,7 +153,9 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
     # OMN-14393 adds node_occ_autoauthor_window (COMPUTE; N=10 report-only
     # auto-authoring observation counter) and node_occ_attestation_observe
     # (EFFECT; read-only report-only companion attestation gate): 369 -> 371.
-    assert summary["node_dirs"] == 371
+    # OMN-14726 adds node_delivery_replay_projection_compute (COMPUTE; B6
+    # deterministic delivery/replay projection checksum + cursor tool): 371 -> 372.
+    assert summary["node_dirs"] == 372
     # OMN-14151 deliberately removes request/response entry points from the
     # three legacy arm surfaces; the new arm-gate compute node is the single
     # active route. OMN-14608's reducer entry point brings the count back up:
@@ -162,7 +164,9 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
     # OMN-14648 adds the merge-state projection route: 365 -> 366.
     # OMN-14393 adds the window (compute) + attestation-observe (effect) routes:
     # 366 -> 368.
-    assert summary["entry_points"] == 368
+    # OMN-14726 adds the delivery-replay-projection compute route (addressable via
+    # runtime_dispatch, resolves as routable): 368 -> 369.
+    assert summary["entry_points"] == 369
     assert set(summary["missing_entry_points"]) == OMN_14151_LEGACY_ARM_SURFACES
     assert summary["dangling_entry_points"] == []
     assert summary["routable"] >= 299
