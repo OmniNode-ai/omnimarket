@@ -16,12 +16,18 @@
 #   2. This workflow NEVER references or triggers `call-occ-preflight.yml` and so
 #      mints NO OCC request. The authoritative OCC path is untouched and still
 #      runs from its own workflow exactly as before.
-#   3. REPORT-ONLY / NON-REQUIRED. The only branch-protection-required context on
-#      `dev` is `CI Summary` (ci.yml) — this workflow adds `product-readiness /
-#      evaluate` and `product-readiness-shadow / reason-graph` as NON-required
-#      shadow contexts and cannot wedge a merge. Making any of these required (or
-#      removing `occ-preflight` from the authoritative product jobs) is a
-#      separate operator-gated WS4 step; do NOT do it here.
+#   3. ENFORCING BUT NON-REQUIRED (OMN-14709, WS4 step 1). The only branch-
+#      protection-required context on `dev` is `CI Summary` (ci.yml). This
+#      workflow adds `product-readiness / evaluate` and
+#      `product-readiness-shadow / reason-graph` as NON-required shadow contexts.
+#      As of WS4 step 1 they are ENFORCING (a genuine product defect concludes
+#      RED) yet remain NON-required — so a red shadow reports the red-side parity
+#      signal but CANNOT wedge a merge. Only a PRODUCT_FAILED root (real lint/
+#      typecheck/tests defect) is fatal; non-product roots (RUNNER_INFRA /
+#      EVIDENCE_MISSING / GITHUB_API_OUTAGE / POLICY_HELD) and a READY graph stay
+#      GREEN. Adding either context to `required_status_checks` (or removing
+#      `occ-preflight` from the authoritative product jobs) is a separate
+#      operator-gated step; do NOT do it here.
 #
 # During the shadow window, the `product-readiness / evaluate` verdict is
 # compared against the OLD authoritative `CI Summary` outcome across live PR
@@ -134,7 +140,14 @@ jobs:
       typecheck_conclusion: ${{ needs.typecheck-shadow.result }}
       tests_conclusion: ${{ needs.tests-shadow.result }}
       coverage_conclusion: ${{ needs.tests-shadow.result }}
-      report_only: true
+      # ENFORCING (OMN-14709, WS4 step 1). report_only=false makes `evaluate`
+      # propagate the classifier exit code so a genuine product defect concludes
+      # RED. This context stays NON-required (not in required_status_checks), so a
+      # red shadow reports but cannot block a merge — it generates the red-side
+      # parity the shadow window needs. The classifier is fatal ONLY on an
+      # affirmative product failure; a `product_infra` (RUNNER_INFRA) dimension
+      # stays non-fatal, matching the reason-graph below.
+      report_only: false
 
   # --- Typed reason-graph (report-only) ------------------------------------
   reason-graph:
@@ -163,7 +176,12 @@ jobs:
           TYPECHECK_CONCLUSION: ${{ needs.typecheck-shadow.result }}
           TESTS_CONCLUSION: ${{ needs.tests-shadow.result }}
         run: |
-          set -euo pipefail
+          # NOTE: no `set -e` here. GitHub's default shell is already `bash -e`,
+          # but the enforcing `--exit-status` run below is captured through an
+          # `if ...; then` guard, which is exempt from errexit, so a PRODUCT_FAILED
+          # non-zero exit is captured (not aborted) and re-emitted deterministically
+          # via the final `exit $rc`.
+          set -uo pipefail
           facts="$(python - <<'PY'
           import json, os
           tests = os.environ.get("TESTS_CONCLUSION", "")
@@ -179,12 +197,25 @@ jobs:
           }))
           PY
           )"
-          graph="$(python scripts/ci/product_reason_graph.py graph --facts-json "$facts" --summary 2> summary.md)"
+          # ENFORCING (OMN-14709): --exit-status makes the reason-graph exit 1 ONLY
+          # when the elected root is PRODUCT_FAILED (a genuine lint/typecheck/tests
+          # defect). Non-product roots (RUNNER_INFRA / EVIDENCE_MISSING /
+          # GITHUB_API_OUTAGE / POLICY_HELD) and a READY graph stay exit 0. This
+          # context is NON-required, so a red conclusion reports without blocking.
+          if graph="$(python scripts/ci/product_reason_graph.py graph \
+              --facts-json "$facts" --summary --exit-status 2> summary.md)"; then
+            rc=0
+          else
+            rc=$?
+          fi
           echo "$graph"
           cat summary.md >> "$GITHUB_STEP_SUMMARY"
           root_kind="$(printf '%s' "$graph" | python -c 'import json,sys; r=json.load(sys.stdin)["root"]; print(r["kind"] if r else "READY")')"
           if [ "$root_kind" = "READY" ]; then
-            echo "::notice title=CI Reason Graph::READY — product dimension is green (report-only)"
+            echo "::notice title=CI Reason Graph::READY — product dimension is green"
+          elif [ "$rc" -ne 0 ]; then
+            echo "::error title=CI Reason Graph::ROOT ${root_kind} — product defect (enforcing; NON-required, does not block merge)"
           else
-            echo "::warning title=CI Reason Graph::ROOT ${root_kind} (report-only shadow; not merge-blocking)"
+            echo "::warning title=CI Reason Graph::ROOT ${root_kind} (non-product root; non-fatal, not merge-blocking)"
           fi
+          exit "$rc"

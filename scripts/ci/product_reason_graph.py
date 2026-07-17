@@ -359,6 +359,18 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="Also print a Markdown summary block to stderr.",
     )
+    p.add_argument(
+        "--exit-status",
+        action="store_true",
+        help=(
+            "ENFORCING mode (OMN-14709): exit non-zero ONLY when the elected root "
+            "is a genuine product defect (PRODUCT_FAILED). Every non-product root "
+            "(RUNNER_INFRA / EVIDENCE_MISSING / GITHUB_API_OUTAGE / POLICY_HELD / "
+            "DEPLOY_TRIGGER_FAILED) and a READY graph stay exit 0, so an infra/"
+            "evidence/policy cause never masquerades as a product-red merge signal. "
+            "Without this flag the surface stays report-only (always exit 0)."
+        ),
+    )
 
     args = parser.parse_args(argv)
 
@@ -375,7 +387,12 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps(graph, sort_keys=True))
         if args.summary:
             print(_render_summary(graph), file=sys.stderr)
-        # Report-only: this surface never fails the check.
+        # Report-only unless --exit-status is passed. In enforcing mode ONLY a
+        # PRODUCT_FAILED root is fatal; non-product roots and READY stay exit 0.
+        if args.exit_status:
+            root = graph["root"]
+            if root is not None and root["kind"] == PRODUCT_FAILED:
+                return 1
         return 0
 
     parser.error(f"unknown command: {args.command}")

@@ -245,6 +245,112 @@ def test_cli_graph_is_report_only_exit_zero_on_red() -> None:
 
 
 # --------------------------------------------------------------------------
+# ENFORCING CLI surface — `--exit-status` (OMN-14709, WS4 step 1).
+#
+# The load-bearing shadow-enforcement proof: a genuine PRODUCT_FAILED root exits
+# NON-ZERO; a green graph and every NON-product root (RUNNER_INFRA /
+# EVIDENCE_MISSING / GITHUB_API_OUTAGE / POLICY_HELD) stay exit 0. The workflow
+# reason-graph step propagates this exit code on a NON-required context, so a red
+# product defect reports without blocking the merge.
+# --------------------------------------------------------------------------
+
+
+def _run_graph_exit_status(facts: dict) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        [
+            sys.executable,
+            str(_SCRIPT),
+            "graph",
+            "--facts-json",
+            json.dumps(facts),
+            "--exit-status",
+        ],
+        capture_output=True,
+        text=True,
+    )
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("failing_check", ["lint", "typecheck", "tests", "coverage"])
+def test_exit_status_nonzero_on_product_failed_root(failing_check: str) -> None:
+    """A genuine product defect (PRODUCT_FAILED root) exits NON-ZERO."""
+    subchecks = _green_subchecks()
+    subchecks[failing_check] = "failure"
+    proc = _run_graph_exit_status({"head_sha": _HEAD, "subchecks": subchecks})
+    assert proc.returncode == 1, proc.stdout
+    assert json.loads(proc.stdout)["root"]["kind"] == PRODUCT_FAILED
+
+
+@pytest.mark.unit
+def test_exit_status_zero_on_green() -> None:
+    """A fully green product dimension (READY, no root) stays exit 0."""
+    proc = _run_graph_exit_status({"head_sha": _HEAD, "subchecks": _green_subchecks()})
+    assert proc.returncode == 0, proc.stdout
+    payload = json.loads(proc.stdout)
+    assert payload["root"] is None
+    assert payload["ready"] is True
+
+
+@pytest.mark.unit
+def test_exit_status_zero_on_runner_infra_root() -> None:
+    """A RUNNER_INFRA root (unconfirmable product dimension) stays exit 0."""
+    subchecks = _green_subchecks()
+    subchecks["tests"] = "cancelled"
+    subchecks["coverage"] = "cancelled"
+    proc = _run_graph_exit_status({"head_sha": _HEAD, "subchecks": subchecks})
+    assert proc.returncode == 0, proc.stdout
+    assert json.loads(proc.stdout)["root"]["kind"] == RUNNER_INFRA
+
+
+@pytest.mark.unit
+def test_exit_status_zero_on_evidence_missing_root() -> None:
+    """An EVIDENCE_MISSING root (OCC red, product green) stays exit 0."""
+    proc = _run_graph_exit_status(
+        {
+            "head_sha": _HEAD,
+            "subchecks": _green_subchecks(),
+            "occ_eligibility": "failure",
+        }
+    )
+    assert proc.returncode == 0, proc.stdout
+    assert json.loads(proc.stdout)["root"]["kind"] == EVIDENCE_MISSING
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ("facts_extra", "expected_root"),
+    [
+        ({"gh_api": "5xx"}, GITHUB_API_OUTAGE),
+        ({"policy": "prod-hold"}, POLICY_HELD),
+    ],
+)
+def test_exit_status_zero_on_other_non_product_roots(
+    facts_extra: dict, expected_root: str
+) -> None:
+    """GITHUB_API_OUTAGE and POLICY_HELD roots stay exit 0 (non-product)."""
+    facts = {"head_sha": _HEAD, "subchecks": _green_subchecks(), **facts_extra}
+    proc = _run_graph_exit_status(facts)
+    assert proc.returncode == 0, proc.stdout
+    assert json.loads(proc.stdout)["root"]["kind"] == expected_root
+
+
+@pytest.mark.unit
+def test_exit_status_zero_when_product_fail_masked_by_higher_root() -> None:
+    """A product failure under a higher-precedence infra root is NOT fatal.
+
+    Infra invalidates the observability of the product dimension, so the elected
+    root is RUNNER_INFRA (not PRODUCT_FAILED) and the enforcing surface stays 0.
+    """
+    subchecks = _green_subchecks()
+    subchecks["lint"] = "failure"
+    proc = _run_graph_exit_status(
+        {"head_sha": _HEAD, "subchecks": subchecks, "runner_signal": "disk-preflight"}
+    )
+    assert proc.returncode == 0, proc.stdout
+    assert json.loads(proc.stdout)["root"]["kind"] == RUNNER_INFRA
+
+
+# --------------------------------------------------------------------------
 # STRUCTURAL — the shadow surface never couples to OCC (mints no OCC request).
 # --------------------------------------------------------------------------
 
