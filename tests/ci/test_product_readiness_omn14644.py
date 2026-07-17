@@ -481,3 +481,20 @@ def test_cli_enforcement_fails_on_red_but_passes_on_green() -> None:
     )
     assert green.returncode == 0
     assert json.loads(green.stdout)["freeze_eligible"] is True
+
+
+@pytest.mark.unit
+def test_cli_enforcement_non_fatal_on_product_infra() -> None:
+    """Enforcement (OMN-14709) is fatal ONLY on an affirmative product defect.
+
+    A merely unconfirmable product dimension (`product_infra` from a skipped/
+    cancelled subcheck) is a RUNNER_INFRA cause, not a product-red signal, so on
+    the non-required shadow it stays exit 0 — field-consistent with the typed
+    reason-graph, which is fatal only on a PRODUCT_FAILED root. `freeze_eligible`
+    remains False (product_infra is never freeze-eligible).
+    """
+    proc = _run_cli({"tests": "cancelled"}, "false")
+    payload = json.loads(proc.stdout)
+    assert payload["outcome"] == "product_infra"
+    assert payload["freeze_eligible"] is False
+    assert proc.returncode == 0

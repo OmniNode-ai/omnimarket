@@ -55,6 +55,20 @@ TEST_FAILED = "test_failed"
 COVERAGE_FAILED = "coverage_failed"
 PRODUCT_INFRA = "product_infra"
 
+# Outcomes that represent a subcheck that AFFIRMATIVELY reported `failure` on its
+# own evidence (a genuine product defect) — as opposed to `product_infra`, which
+# is a merely unconfirmable/absent dimension. Only these are fatal in enforcement
+# mode; see OMN-14709 and the PRODUCT_FAILED root in product_reason_graph.py.
+_AFFIRMATIVE_PRODUCT_FAILURES: frozenset[str] = frozenset(
+    {
+        CHANGE_DETECTION_FAILED,
+        LINT_FAILED,
+        TYPE_FAILED,
+        TEST_FAILED,
+        COVERAGE_FAILED,
+    }
+)
+
 
 class EnumSubcheckOutcome(StrEnum):
     """Coarse category a raw GitHub check conclusion maps to."""
@@ -274,8 +288,17 @@ def main(argv: list[str] | None = None) -> int:
         report_only = _truthy(args.report_only)
         if report_only or result.freeze_eligible:
             return 0
-        # Enforcement mode (future, post-observation): a non-green head fails.
-        return 1
+        # Enforcement mode (OMN-14709): fail ONLY on an affirmative product defect
+        # (lint/typecheck/tests/coverage/change-detection reported `failure`). A
+        # merely unconfirmable product dimension (`product_infra` — a skipped/
+        # cancelled/absent subcheck) is a RUNNER_INFRA cause, NOT a product-red
+        # signal, so on this non-required shadow it stays non-fatal (exit 0). This
+        # keeps the `evaluate` caller field-consistent with the typed reason-graph,
+        # which is fatal only on a PRODUCT_FAILED root. `freeze_eligible` is
+        # unchanged (product_infra is still not freeze-eligible).
+        if result.outcome in _AFFIRMATIVE_PRODUCT_FAILURES:
+            return 1
+        return 0
 
     parser.error(f"unknown command: {args.command}")
     return 2  # pragma: no cover - argparse exits first
