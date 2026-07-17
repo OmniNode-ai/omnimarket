@@ -1,0 +1,190 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# Product Readiness — SHADOW caller (OMN-14703 / OMN-14644 Phase 3, CI-01/CI-02).
+#
+# Phase 3 canary. This workflow wires the existing OCC-independent Product
+# Readiness scaffold (`.github/workflows/product-readiness.yml`, WS1 #1786) as an
+# ADDITIVE, report-only surface that runs the substantive product proof (lint,
+# typecheck, tests/coverage) *independently of* `occ-preflight`, then emits the
+# typed reason-graph.
+#
+# LOAD-BEARING INVARIANTS (do not weaken — see design §1.1):
+#   1. NO `occ-preflight` anywhere in this workflow's needs-chain. The product
+#      subcheck jobs below carry no `needs: occ-preflight`, so Product Readiness
+#      reports FIRST on the exact head SHA, before any OCC evidence exists.
+#   2. This workflow NEVER references or triggers `call-occ-preflight.yml` and so
+#      mints NO OCC request. The authoritative OCC path is untouched and still
+#      runs from its own workflow exactly as before.
+#   3. REPORT-ONLY / NON-REQUIRED. The only branch-protection-required context on
+#      `dev` is `CI Summary` (ci.yml) — this workflow adds `product-readiness /
+#      evaluate` and `product-readiness-shadow / reason-graph` as NON-required
+#      shadow contexts and cannot wedge a merge. Making any of these required (or
+#      removing `occ-preflight` from the authoritative product jobs) is a
+#      separate operator-gated WS4 step; do NOT do it here.
+#
+# During the shadow window, the `product-readiness / evaluate` verdict is
+# compared against the OLD authoritative `CI Summary` outcome across live PR
+# classes. Cutover happens only after a zero-disagreement window + maintainer
+# approval.
+
+name: product-readiness-shadow
+
+on:
+  pull_request:
+    branches: [main, dev]
+    types: [opened, synchronize, reopened, ready_for_review]
+  merge_group:
+
+permissions:
+  contents: read
+
+# Shadow surface: newer head supersedes an in-flight shadow run for the same ref.
+concurrency:
+  group: product-readiness-shadow-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # --- Product subchecks — each INDEPENDENT of occ-preflight ---------------
+  lint-shadow:
+    name: lint (shadow)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Clone omnibase_core
+        run: git clone --depth=1 https://github.com/OmniNode-ai/omnibase_core.git ../omnibase_core
+      - name: Clone omnibase_compat
+        run: git clone --depth=1 https://github.com/OmniNode-ai/omnibase_compat.git ../omnibase_compat
+      - name: Clone omnimemory
+        run: git clone --depth=1 https://github.com/OmniNode-ai/omnimemory.git ../omnimemory
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+      - name: Set up Python 3.12
+        run: uv python install 3.12
+      - name: Install dependencies
+        run: uv sync --locked --all-extras
+      - name: Ruff check
+        run: uv run ruff check src/ tests/
+      - name: Ruff format check
+        run: uv run ruff format --check src/ tests/
+
+  typecheck-shadow:
+    name: typecheck (shadow)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Clone omnibase_core
+        run: git clone --depth=1 https://github.com/OmniNode-ai/omnibase_core.git ../omnibase_core
+      - name: Clone omnibase_compat
+        run: git clone --depth=1 https://github.com/OmniNode-ai/omnibase_compat.git ../omnibase_compat
+      - name: Clone omnimemory
+        run: git clone --depth=1 https://github.com/OmniNode-ai/omnimemory.git ../omnimemory
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+      - name: Set up Python 3.12
+        run: uv python install 3.12
+      - name: Install dependencies
+        run: uv sync --locked --all-extras
+      - name: Mypy strict
+        run: uv run mypy src/omnimarket/ --strict
+
+  tests-shadow:
+    # Fast, hermetic unit slice (no kafka/integration services). The coverage
+    # dimension is folded into this job for the canary — its conclusion is passed
+    # as BOTH tests_conclusion and coverage_conclusion below.
+    name: tests+coverage (shadow)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Clone omnibase_core
+        run: git clone --depth=1 https://github.com/OmniNode-ai/omnibase_core.git ../omnibase_core
+      - name: Clone omnibase_compat
+        run: git clone --depth=1 https://github.com/OmniNode-ai/omnibase_compat.git ../omnibase_compat
+      - name: Clone omnimemory
+        run: git clone --depth=1 https://github.com/OmniNode-ai/omnimemory.git ../omnimemory
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+      - name: Set up Python 3.12
+        run: uv python install 3.12
+      - name: Install dependencies
+        run: uv sync --locked --all-extras
+      - name: Unit tests (fast slice)
+        run: uv run pytest tests/ -m "unit and not kafka" -q --no-header
+
+  # --- Reusable, report-only Product Readiness aggregate -------------------
+  # NO occ-preflight in this needs-chain. Consumes the product subchecks'
+  # conclusions only. Surfaced NON-required context: `product-readiness / evaluate`.
+  product-readiness:
+    needs: [lint-shadow, typecheck-shadow, tests-shadow]
+    if: always()
+    uses: ./.github/workflows/product-readiness.yml
+    with:
+      # change-detection is trivially satisfied on a PR head (this canary does
+      # not shard tests); report success so a green head is product_green.
+      change_detection_conclusion: success
+      lint_conclusion: ${{ needs.lint-shadow.result }}
+      typecheck_conclusion: ${{ needs.typecheck-shadow.result }}
+      tests_conclusion: ${{ needs.tests-shadow.result }}
+      coverage_conclusion: ${{ needs.tests-shadow.result }}
+      report_only: true
+
+  # --- Typed reason-graph (report-only) ------------------------------------
+  reason-graph:
+    name: reason-graph
+    needs: [lint-shadow, typecheck-shadow, tests-shadow]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Emit reason graph
+        env:
+          # Exact head SHA the graph is content-addressed to. For pull_request
+          # use the PR head (github.sha is the ephemeral merge commit); for
+          # merge_group use the queued head; else the pushed SHA.
+          HEAD_SHA: >-
+            ${{ github.event.pull_request.head.sha
+              || github.event.merge_group.head_sha
+              || github.sha }}
+          LINT_CONCLUSION: ${{ needs.lint-shadow.result }}
+          TYPECHECK_CONCLUSION: ${{ needs.typecheck-shadow.result }}
+          TESTS_CONCLUSION: ${{ needs.tests-shadow.result }}
+        run: |
+          set -euo pipefail
+          facts="$(python - <<'PY'
+          import json, os
+          tests = os.environ.get("TESTS_CONCLUSION", "")
+          print(json.dumps({
+              "head_sha": os.environ.get("HEAD_SHA", ""),
+              "subchecks": {
+                  "change_detection": "success",
+                  "lint": os.environ.get("LINT_CONCLUSION", ""),
+                  "typecheck": os.environ.get("TYPECHECK_CONCLUSION", ""),
+                  "tests": tests,
+                  "coverage": tests,
+              },
+          }))
+          PY
+          )"
+          graph="$(python scripts/ci/product_reason_graph.py graph --facts-json "$facts" --summary 2> summary.md)"
+          echo "$graph"
+          cat summary.md >> "$GITHUB_STEP_SUMMARY"
+          root_kind="$(printf '%s' "$graph" | python -c 'import json,sys; r=json.load(sys.stdin)["root"]; print(r["kind"] if r else "READY")')"
+          if [ "$root_kind" = "READY" ]; then
+            echo "::notice title=CI Reason Graph::READY — product dimension is green (report-only)"
+          else
+            echo "::warning title=CI Reason Graph::ROOT ${root_kind} (report-only shadow; not merge-blocking)"
+          fi
