@@ -156,6 +156,11 @@ class ModelOccCompanionRequest(BaseModel):
     pr_title: str = Field(default="", description="Product PR title.")
     pr_body: str = Field(default="", description="Product PR body.")
     pr_state: str = Field(default="open", description="Product PR state.")
+    pr_is_draft: bool = Field(
+        default=False,
+        description="Is the product PR a draft? Carried on the seam so the pure "
+        "COMPUTE can suppress companions for draft PRs (F-17) without a probe.",
+    )
     pr_head_ref: str = Field(default="", description="Product PR head branch ref.")
 
     runner: str = Field(

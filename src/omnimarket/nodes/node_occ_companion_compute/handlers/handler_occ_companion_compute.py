@@ -71,6 +71,18 @@ from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.occ_evidence_stamp i
 
 logger = logging.getLogger(__name__)
 
+# F-17 (2026-07-16 merge-sweep friction report): a companion must NOT be authored
+# for a product PR that is closed/merged, a draft, or explicitly marked
+# do-not-merge/WIP. occ#4333 was generated for a closed draft
+# `[WS4 PARITY PROBE - DO NOT MERGE]` PR, producing queue noise + a failing
+# obsolete companion. The pure COMPUTE suppresses at authoring time (returns a
+# no-op plan) instead of relying on a downstream probe.
+_SUPPRESS_PR_STATES = frozenset({"closed", "merged"})
+_DO_NOT_MERGE_RE = re.compile(
+    r"do[\s\-_]?not[\s\-_]?merge|\bDNM\b|\bWIP\b|\[\s*draft",
+    re.IGNORECASE,
+)
+
 # Observed-fact lines projected OUT of the reproducibility fingerprint (§4.4).
 # ``created_at`` is the supersession-record sibling of ``run_timestamp`` (both are
 # derived from the injected authoring timestamp), so it must be stripped too or a
@@ -339,11 +351,22 @@ def _supersede_file(
         tombstone=False,
         replacement=replacement,
     )
-    content = yaml.safe_dump(
+    # F-03 (merge-sweep friction): the supersession file lands in
+    # onex_change_control, whose hosted pre-commit runs yamlfmt with
+    # ``include_document_start: true`` and ``max_line_length: 100``. A bare
+    # ``yaml.safe_dump`` omits the ``---`` document-start marker AND wraps long
+    # scalars (e.g. ``actual_output``) at PyYAML's default width 80 — both of
+    # which yamlfmt then rewrites, so the generated companion is formatter-dirty
+    # and fails hosted Pre-commit (OCC#4313/#4333). Emit the ``---`` marker and a
+    # width wide enough that PyYAML never wraps a scalar, so the bytes are a
+    # yamlfmt no-op before push. (The flat receipt/contract templates already
+    # start with ``---`` and stay single-line, so only this dumped path drifted.)
+    content = "---\n" + yaml.safe_dump(
         record.model_dump(mode="json"),
         sort_keys=False,
         default_flow_style=False,
         allow_unicode=True,
+        width=1_000_000,
     )
     # Fail loud if the rendered bytes do not round-trip back to the strict schema
     # the gate parses — a silent malformed supersede is exactly the OMN-14623 bug.
@@ -409,6 +432,35 @@ def compute_companion_plan(request: ModelOccCompanionRequest) -> ModelOccCompani
         kw.setdefault("branch", branch)
         kw.setdefault("wedges", wedges)
         return ModelOccCompanionPlan(**kw)
+
+    # F-17: suppress companion authoring for closed/merged, draft, or explicitly
+    # do-not-merge/WIP product PRs. Authoring one yields queue noise + a failing
+    # obsolete companion for a dead target (occ#4333). A do-not-merge marker is
+    # matched in BOTH the title and body per the friction report.
+    pr_state_norm = request.pr_state.strip().lower()
+    if pr_state_norm in _SUPPRESS_PR_STATES:
+        return _plan(
+            no_op=True,
+            no_op_reason=(
+                f"product PR state is {pr_state_norm!r}; not authoring a companion "
+                "for a non-open PR (F-17)"
+            ),
+        )
+    if request.pr_is_draft:
+        return _plan(
+            no_op=True,
+            no_op_reason="product PR is a draft; suppressing companion (F-17)",
+        )
+    if _DO_NOT_MERGE_RE.search(request.pr_title) or _DO_NOT_MERGE_RE.search(
+        request.pr_body
+    ):
+        return _plan(
+            no_op=True,
+            no_op_reason=(
+                "product PR title/body is marked do-not-merge/WIP/draft; "
+                "suppressing companion (F-17)"
+            ),
+        )
 
     # Idempotency: already bound to an OCC source — nothing to author.
     already = _already_bound_occ(request.pr_body)

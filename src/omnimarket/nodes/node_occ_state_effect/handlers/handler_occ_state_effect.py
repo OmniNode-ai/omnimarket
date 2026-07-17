@@ -247,6 +247,7 @@ class HandlerOccStateEffect:
         title = str(pr.get("title") or "")
         body = str(pr.get("body") or "")
         pr_state = str(pr.get("state") or "open")
+        pr_is_draft = bool(pr.get("draft"))
         head_ref = str(head.get("ref") or "")
 
         files = self._list_files(owner, repo_name, request.pr_number, token)
@@ -294,6 +295,7 @@ class HandlerOccStateEffect:
             pr_title=title,
             pr_body=body,
             pr_state=pr_state,
+            pr_is_draft=pr_is_draft,
             pr_head_ref=head_ref,
             runner=request.runner,
             verifier=request.verifier,
