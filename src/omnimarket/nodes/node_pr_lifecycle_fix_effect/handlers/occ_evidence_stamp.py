@@ -254,6 +254,28 @@ _SELF_BIND_DOD_EVIDENCE_ITEM_TEMPLATE = (
 # field required by the node_occ_companion_compute attestation oracle, but they
 # still live in this sanctioned rendering seam so the repo has exactly one OCC
 # companion authoring-template home.
+#
+# OMN-14679: the downstream dod_evidence item declares TWO checks — a binding
+# existence probe AND a substantive product-diff-scope assertion — and every
+# ``check_value`` is rendered in the canonical placeholder-var form
+# (``${{PR_NUMBER}}`` / ``${{REPO}}``) rather than interpolated live
+# ``gh pr view``/``gh pr diff`` output. Two gates enforce this and both were RED
+# on the un-normalized form (proven live on onex_change_control#4284):
+#   * ``lint-contract-check-values`` (OMN-9350 / OMN-14673) rejects a hardcoded
+#     integer PR number in a ``gh pr view|checks|diff`` command; the placeholder
+#     form is the only accepted shape (``gh pr ... ${{PR_NUMBER}} --repo ${{REPO}}``).
+#   * ``check_contract_substance_floor`` (OMN-14409) rejects a contract whose
+#     ENTIRE dod_evidence is existence probes (tier L0). ``gh pr diff ... | grep
+#     -q .`` derives L1 via the substance floor's static-assert family — it is
+#     falsifiable about the change (fails on an empty diff) exactly like the
+#     merged born-path emitter's product-diff-scope check (OMN-14425 / OMN-14650),
+#     WITHOUT gating on the source PR's CI being green.
+# The binding probe stays (it is legitimate for Evidence-Source stamping); the
+# substantive probe is ADDED so occ-preflight passing is no longer a companion
+# that fails the pre-commit substance floor. Both checks are ``check_type:
+# command``, so occ-preflight resolves them to the SAME per-item receipt
+# (``<item>/command.yaml``) and the per-entry hash (which digests the whole item)
+# binds both with no extra receipt.
 _COMPUTE_CONTRACT_TEMPLATE = textwrap.dedent("""\
     ---
     schema_version: "1.0.0"
@@ -267,7 +289,7 @@ _COMPUTE_CONTRACT_TEMPLATE = textwrap.dedent("""\
     evidence_requirements:
       - kind: "ci"
         description: "PR #{pr_number} CI checks green"
-        command: "gh pr checks {pr_number} --repo {repo}"
+        command: "gh pr checks ${{PR_NUMBER}} --repo ${{REPO}}"
     emergency_bypass:
       enabled: false
       justification: ""
@@ -278,7 +300,9 @@ _COMPUTE_CONTRACT_TEMPLATE = textwrap.dedent("""\
         source: "generated"
         checks:
           - check_type: "command"
-            check_value: "gh pr view {pr_number} --repo {repo} --json number,state"
+            check_value: "gh pr view ${{PR_NUMBER}} --repo ${{REPO}} --json number,state"
+          - check_type: "command"
+            check_value: "gh pr diff ${{PR_NUMBER}} --repo ${{REPO}} --name-only | grep -q ."
     """)
 
 # Self-bind dod_evidence entry appended to the compute-oracle contract on pass 2
@@ -295,6 +319,13 @@ _COMPUTE_CONTRACT_TEMPLATE = textwrap.dedent("""\
 # common leading whitespace and flatten the list item to column 0 (invalid YAML).
 # The rendered _COMPUTE_CONTRACT_TEMPLATE puts dod_evidence list items at 2-space
 # indent, so this block matches that exactly and continues the same sequence.
+#
+# OMN-14679: the check_value is rendered in the canonical placeholder-var form
+# (``${{PR_NUMBER}}`` / ``${{REPO}}``), never the live OCC PR integer, so the
+# self-bind item clears ``lint-contract-check-values`` (OMN-9350 / OMN-14673)
+# like the downstream item. It stays a binding existence probe (tier L0) — the
+# substance floor is already satisfied by the downstream item's diff-scope check
+# — so it is legitimate for OCC-PR binding without counting toward the floor.
 _COMPUTE_SELF_BIND_ENTRY_TEMPLATE = (
     '  - id: "{self_bind_evidence_id}"\n'
     '    description: "Binds {ticket_id} to OCC companion PR'
@@ -302,8 +333,8 @@ _COMPUTE_SELF_BIND_ENTRY_TEMPLATE = (
     '    source: "generated"\n'
     "    checks:\n"
     '      - check_type: "command"\n'
-    '        check_value: "gh pr view {occ_pr_number} --repo'
-    ' {occ_repo} --json number,state"\n'
+    '        check_value: "gh pr view ${{PR_NUMBER}} --repo'
+    ' ${{REPO}} --json number,state"\n'
 )
 
 _COMPUTE_RECEIPT_TEMPLATE = textwrap.dedent("""\
@@ -537,11 +568,16 @@ def render_compute_companion_contract(
 ) -> str:
     """Render the RSD compute-oracle companion contract YAML.
 
-    On pass 1 (``self_bind_evidence_id is None``) the contract declares only the
-    downstream product-receipt item. On pass 2 — once the OCC companion PR exists
-    — the self-bind item is APPENDED (OMN-14622) so the contract declares the
-    receipt that binds the OCC PR to itself; without it the OCC companion PR fails
-    its own occ-preflight (``pr_ticket_mismatch``). Pure function of its inputs.
+    The downstream item declares a binding existence probe AND a substantive
+    product-diff-scope check, both in canonical ``${PR_NUMBER}`` / ``${REPO}``
+    placeholder form (OMN-14679), so a minted companion clears both the
+    ``lint-contract-check-values`` placeholder gate and the OMN-14409 substance
+    floor — not only occ-preflight. On pass 1 (``self_bind_evidence_id is None``)
+    the contract declares only that downstream item. On pass 2 — once the OCC
+    companion PR exists — the self-bind item is APPENDED (OMN-14622) so the
+    contract declares the receipt that binds the OCC PR to itself; without it the
+    OCC companion PR fails its own occ-preflight (``pr_ticket_mismatch``). Pure
+    function of its inputs.
     """
     base = _COMPUTE_CONTRACT_TEMPLATE.format(
         ticket_id=ticket_id,

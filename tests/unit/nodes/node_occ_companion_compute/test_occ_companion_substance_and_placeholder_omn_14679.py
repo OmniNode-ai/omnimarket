@@ -1,0 +1,214 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+"""OMN-14679: the RSD companion producer must mint contracts that clear BOTH the
+onex_change_control pre-commit gates that occ-preflight does NOT cover:
+
+  * ``lint-contract-check-values`` (OMN-9350 / OMN-14673): every ``gh pr
+    view|checks|diff`` ``check_value`` must be in canonical placeholder-var form
+    (``${PR_NUMBER}`` / ``${REPO}``), never a hardcoded live integer.
+  * ``check_contract_substance_floor`` (OMN-14409): a contract may NOT consist
+    entirely of existence probes (``gh pr view --json <metadata-only>`` = tier
+    L0). At least one dod_evidence check must be substantive (L1+).
+
+Proven live on onex_change_control#4284 (25 pass / 2 fail): the un-normalized,
+existence-only compute contract passed occ-preflight but FAILED both gates above.
+These regressions drive the ACTUAL seam ``compute_companion_plan(request) ->
+minted contract file`` and re-assert the two gates' load-bearing rules against
+the minted bytes, with a RED control proving the pre-14679 form fails. The
+canonical gate logic they mirror lives in onex_change_control
+(``scripts/lint_contract_check_values.py`` and
+``scripts/validation/check_contract_substance_floor.py``) and is not importable
+here; the regexes below are copied verbatim from those gates so drift goes RED.
+"""
+
+from __future__ import annotations
+
+import re
+
+import pytest
+import yaml
+
+from omnimarket.nodes.node_occ_companion_compute.handlers.handler_occ_companion_compute import (
+    compute_companion_plan,
+)
+from omnimarket.nodes.node_occ_companion_compute.models.enum_companion_file_kind import (
+    EnumCompanionFileKind,
+)
+from omnimarket.nodes.node_occ_companion_compute.models.model_occ_companion_request import (
+    ModelObservedProbe,
+    ModelOccCompanionRequest,
+)
+
+# --- verbatim from scripts/lint_contract_check_values.py (OMN-9350/14673) ------
+_GH_PR_PREFIX = ("gh pr checks", "gh pr view", "gh pr diff")
+_HARDCODED_PR_NUMBER_RE = re.compile(r"gh pr (?:checks|view|diff)\s+\d+\s")
+_BRACE_PR_RE = re.compile(r"\{pr\}")
+_BRACE_REPO_RE = re.compile(r"\{repo\}")
+
+
+def _lint_legacy_gh_pr(value: str) -> str | None:
+    stripped = value.strip()
+    if not stripped.startswith(_GH_PR_PREFIX):
+        return None
+    if _HARDCODED_PR_NUMBER_RE.search(stripped):
+        return "hardcoded integer PR number"
+    if _BRACE_PR_RE.search(stripped):
+        return "wrong-format {pr} placeholder"
+    if _BRACE_REPO_RE.search(stripped):
+        return "wrong-format {repo} placeholder"
+    if "${PR_NUMBER}" not in stripped:
+        return "missing ${PR_NUMBER} placeholder"
+    if "${REPO}" not in stripped and "--repo" not in stripped:
+        return "missing --repo argument"
+    return None
+
+
+# --- verbatim from scripts/validation/check_contract_substance_floor.py --------
+# (OMN-14409). An existence probe is a `gh pr view` requesting only metadata
+# fields; the substantive families include a `| grep` static assertion (L1).
+_EXISTENCE_JSON_FIELDS = frozenset(
+    {
+        "number",
+        "state",
+        "url",
+        "title",
+        "body",
+        "headrefname",
+        "headrefoid",
+        "baserefname",
+        "author",
+        "isdraft",
+        "mergedat",
+        "createdat",
+        "updatedat",
+        "closedat",
+        "mergeable",
+        "mergestatestatus",
+        "mergecommit",
+    }
+)
+_GH_PR_VIEW_RE = re.compile(r"\bgh\s+pr\s+view\b")
+_JSON_FLAG_RE = re.compile(r"--json[=\s]+([A-Za-z0-9_,]+)")
+_CMD = r"(?:^|[|;&]\s*|\$\(\s*|\b(?:run|exec|xargs|sudo|time|env|then|do|else)\s+)"
+_STATIC_ASSERT_RE = re.compile(rf"{_CMD}(grep|rg|ast-grep)\b")
+
+
+def _is_existence_probe(command: str) -> bool:
+    if not _GH_PR_VIEW_RE.search(command):
+        return False
+    fields: set[str] = set()
+    for match in _JSON_FLAG_RE.finditer(command):
+        fields.update(f.strip().lower() for f in match.group(1).split(",") if f.strip())
+    if not fields:
+        return True
+    return fields.issubset(_EXISTENCE_JSON_FIELDS)
+
+
+def _is_substantive(check_value: str) -> bool:
+    """True when the check derives to L1+ under the substance floor.
+
+    Restricted here to the families the producer emits (static-assert `| grep`);
+    an existence probe returns False, matching the canonical deriver.
+    """
+    command = (check_value or "").strip()
+    if _is_existence_probe(command):
+        return False
+    return bool(_STATIC_ASSERT_RE.search(command))
+
+
+def _probe() -> ModelObservedProbe:
+    return ModelObservedProbe(
+        command="gh pr view 321 --repo OmniNode-ai/omnimarket --json number,state",
+        stdout='{"number":321,"state":"OPEN"}',
+        exit_code=0,
+    )
+
+
+def _request(**overrides: object) -> ModelOccCompanionRequest:
+    base: dict[str, object] = {
+        "repo": "OmniNode-ai/omnimarket",
+        "pr_number": 321,
+        "pr_head_sha": "b" * 40,
+        "pr_title": "feat(OMN-9999): the thing",
+        "pr_body": "Implements the thing.",
+        "run_timestamp": "2026-07-10T00:00:00Z",
+        "product_probe": _probe(),
+    }
+    base.update(overrides)
+    return ModelOccCompanionRequest(**base)  # type: ignore[arg-type]
+
+
+def _minted_contract_checks(**request_overrides: object) -> list[str]:
+    plan = compute_companion_plan(_request(**request_overrides))
+    contract = next(
+        f for f in plan.companion_files if f.kind == EnumCompanionFileKind.CONTRACT
+    )
+    data = yaml.safe_load(contract.content)
+    return [ck["check_value"] for item in data["dod_evidence"] for ck in item["checks"]]
+
+
+# A request whose OCC PR is known -> the contract ALSO declares the self-bind
+# item, exercising every check_value the producer can mint.
+_PASS2 = {
+    "occ_pr_number": 4284,
+    "occ_head_sha": "c" * 40,
+    "occ_repo": "OmniNode-ai/onex_change_control",
+    "occ_probe": ModelObservedProbe(
+        command="gh pr view 4284 --repo OmniNode-ai/onex_change_control --json number,state",
+        stdout='{"number":4284,"state":"OPEN"}',
+        exit_code=0,
+    ),
+}
+
+
+@pytest.mark.unit
+class TestMintedContractClearsPlaceholderLint:
+    def test_pass1_every_check_value_is_placeholder_normalized(self) -> None:
+        for cv in _minted_contract_checks():
+            assert _lint_legacy_gh_pr(cv) is None, (
+                f"lint-contract-check-values rejects: {cv}"
+            )
+
+    def test_pass2_every_check_value_is_placeholder_normalized(self) -> None:
+        checks = _minted_contract_checks(**_PASS2)
+        # downstream (view + diff) + self-bind (view) = 3 checks, all normalized.
+        assert len(checks) == 3
+        for cv in checks:
+            assert _lint_legacy_gh_pr(cv) is None, (
+                f"lint-contract-check-values rejects: {cv}"
+            )
+
+
+@pytest.mark.unit
+class TestMintedContractClearsSubstanceFloor:
+    def test_pass1_declares_a_substantive_check(self) -> None:
+        assert any(_is_substantive(cv) for cv in _minted_contract_checks())
+
+    def test_pass2_declares_a_substantive_check(self) -> None:
+        assert any(_is_substantive(cv) for cv in _minted_contract_checks(**_PASS2))
+
+    def test_pass2_still_declares_the_binding_existence_probe(self) -> None:
+        # The substance floor keeps existence/binding probes valid; the fix ADDS
+        # a substantive check, it does not drop the Evidence-Source binding probe.
+        assert any(_is_existence_probe(cv) for cv in _minted_contract_checks(**_PASS2))
+
+
+@pytest.mark.unit
+class TestRedControlPre14679Form:
+    """feedback_prove_red_against_exists_but_wrong: the un-normalized,
+    existence-only form the producer minted BEFORE OMN-14679 must fail BOTH
+    gate mirrors, proving the assertions are load-bearing (not vacuously green).
+    """
+
+    _OLD_EXISTENCE_ONLY = (
+        "gh pr view 1788 --repo OmniNode-ai/omnimarket --json number,state"
+    )
+
+    def test_old_form_fails_placeholder_lint(self) -> None:
+        assert (
+            _lint_legacy_gh_pr(self._OLD_EXISTENCE_ONLY)
+            == "hardcoded integer PR number"
+        )
+
+    def test_old_form_is_not_substantive(self) -> None:
+        assert not _is_substantive(self._OLD_EXISTENCE_ONLY)
