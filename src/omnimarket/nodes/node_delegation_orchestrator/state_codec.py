@@ -166,19 +166,51 @@ class DelegationWorkflowStateProxy(MutableMapping[UUID, DelegationWorkflowState]
     def _shared_workflows() -> dict[UUID, DelegationWorkflowState]:
         return HandlerDelegationWorkflow.shared_workflows()
 
+    def _lookup_bound(
+        self,
+        cid: UUID,
+        rows: dict[str, tuple[str | None, int]],
+    ) -> DelegationWorkflowState | None:
+        """Resolve ``cid``'s state for the CURRENTLY bound dispatch, or ``None``.
+
+        Single source of truth shared by ``__getitem__`` and ``__contains__`` so
+        the two can never disagree (OMN-14721). Before this, ``__contains__``
+        returned ``True`` whenever ``cid`` was in ``_cache`` while ``__getitem__``
+        raised ``KeyError`` for the same ``cid`` when the bound row's payload was
+        ``None`` — the exact inconsistency behind the delegation
+        routing-intent regression: a leg that CREATED a fresh workflow this
+        dispatch (``__setitem__`` caches it under a ``None`` source) saw
+        ``cid in self._workflows`` succeed but ``self._workflows[cid]`` blow up,
+        so the FSM dedup guard could not read back a workflow it had just
+        created and the leg committed an empty outbox batch.
+
+        A cached entry counts ONLY when its recorded source string is identical
+        (``is``) to the row currently bound for ``cid`` — including the ``None``
+        source of a workflow THIS dispatch just created — otherwise the bound raw
+        JSON is decoded (and cached), or ``None`` is returned when no row exists
+        yet. This keys the guard on the durable per-leg row plus this dispatch's
+        own writes, never on a stale object an earlier, unflushed dispatch left
+        behind (the R1 exception-path staleness invariant is preserved: a
+        different bound source string re-decodes).
+        """
+        payload_json, _version = rows.get(str(cid), (None, 0))
+        cached = self._cache.get(cid)
+        if cached is not None and cached[0] is payload_json:
+            return cached[1]
+        if payload_json is None:
+            return None
+        decoded = decode(payload_json)
+        self._cache[cid] = (payload_json, decoded)
+        return decoded
+
     def __getitem__(self, cid: UUID) -> DelegationWorkflowState:
         rows = _read_active_rows()
         if rows is None:
             return self._shared_workflows()[cid]
-        payload_json, _version = rows[str(cid)]
-        if payload_json is None:
+        state = self._lookup_bound(cid, rows)
+        if state is None:
             raise KeyError(cid)
-        cached = self._cache.get(cid)
-        if cached is not None and cached[0] is payload_json:
-            return cached[1]
-        decoded = decode(payload_json)
-        self._cache[cid] = (payload_json, decoded)
-        return decoded
+        return state
 
     def __setitem__(self, cid: UUID, state: DelegationWorkflowState) -> None:
         rows = _read_active_rows()
@@ -202,12 +234,20 @@ class DelegationWorkflowStateProxy(MutableMapping[UUID, DelegationWorkflowState]
         rows = _read_active_rows()
         if rows is None:
             return cid in self._shared_workflows()
-        if cid in self._cache:
-            return True
         if not isinstance(cid, UUID):
             return False
-        entry = rows.get(str(cid))
-        return entry is not None and entry[0] is not None
+        # OMN-14721: mirror ``_lookup_bound``'s presence predicate EXACTLY
+        # (without its decode/cache side effect) so ``cid in proxy`` is true iff
+        # ``proxy[cid]`` would succeed. A cache entry counts only when its
+        # recorded source ``is`` the currently bound row (incl. the ``None``
+        # source of a just-created workflow); a stale cache entry from an
+        # earlier, unflushed dispatch (source mismatch, ``None`` bound row) is
+        # NOT present — it must re-decode on the next read.
+        payload_json, _version = rows.get(str(cid), (None, 0))
+        cached = self._cache.get(cid)
+        if cached is not None and cached[0] is payload_json:
+            return True
+        return payload_json is not None
 
     def __iter__(self) -> Iterator[UUID]:
         if _read_active_rows() is None:
