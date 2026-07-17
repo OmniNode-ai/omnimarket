@@ -65,6 +65,9 @@ from omnimarket.nodes.node_occ_companion_compute.models.model_occ_companion_requ
     ModelOccContractState,
 )
 from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.occ_evidence_stamp import (
+    DEPLOY_ASSESSMENT_CHECK_VALUE,
+    DEPLOY_ASSESSMENT_EVIDENCE_ID,
+    find_deploy_sensitive_paths,
     render_compute_companion_contract,
     render_compute_receipt,
 )
@@ -494,6 +497,17 @@ def compute_companion_plan(request: ModelOccCompanionRequest) -> ModelOccCompani
     downstream_check = request.downstream_check_value or (
         f"gh pr view {pr_number} --repo {repo} --json number,state,headRefName"
     )
+
+    # F-05 (OMN-14742): does the product PR touch runtime/deploy-sensitive paths
+    # that would trip the product repo's required deploy-gate? If so, the OCC
+    # companion contract must declare a deploy-keyword dod_evidence item or the
+    # product PR is blocked after Evidence-Source binds (proven: OMN-14623's fix
+    # PR omnimarket#1791 needed a manual deploy-scope receipt, OCC#4289). This is
+    # PR-level (the same changed_files apply to every cited ticket); the
+    # classifier mirrors the canonical deploy-gate runtime-path predicate.
+    deploy_hits = find_deploy_sensitive_paths(request.changed_files)
+    emit_deploy_assessment = bool(deploy_hits)
+
     files: list[ModelCompanionFile] = []
 
     for ticket in tickets:
@@ -619,7 +633,10 @@ def compute_companion_plan(request: ModelOccCompanionRequest) -> ModelOccCompani
         else:
             # Fresh (absent, or exists-but-open → full regeneration all-adds).
             # On pass 2 the contract ALSO declares the self-bind item (OMN-14622)
-            # so the OCC companion PR's own occ-preflight can bind it.
+            # so the OCC companion PR's own occ-preflight can bind it. F-05: when
+            # the PR touches runtime/deploy-sensitive paths the contract also
+            # declares the dod-deploy-assessment item (OMN-14742), ordered before
+            # the self-bind entry.
             contract_content = render_compute_companion_contract(
                 ticket_id=ticket,
                 repo=repo,
@@ -628,6 +645,7 @@ def compute_companion_plan(request: ModelOccCompanionRequest) -> ModelOccCompani
                 self_bind_evidence_id=self_bind_evidence_id,
                 occ_pr_number=request.occ_pr_number,
                 occ_repo=request.occ_repo,
+                emit_deploy_assessment=emit_deploy_assessment,
             )
             contract_hash = _sha256_hex(contract_content)
             # Parse the just-rendered contract so the downstream receipt's
@@ -673,6 +691,48 @@ def compute_companion_plan(request: ModelOccCompanionRequest) -> ModelOccCompani
                 contract_entry_sha256=entry_hash or "",
             )
         )
+
+        # F-05 (OMN-14742): the deploy-assessment receipt backing the
+        # dod-deploy-assessment item declared on the (fresh-path) contract, bound
+        # to the product PR head. Fresh/all-adds path only: the merged path is
+        # deferred — a frozen merged contract that already declares the item
+        # carries it via the existing supersession machinery, and re-rendering the
+        # deploy item onto a frozen contract is out of scope for F-05. The item IS
+        # declared on the just-rendered fresh contract, so its per-entry hash
+        # resolves exactly like the downstream item's.
+        if emit_deploy_assessment and not (state.exists and state.merged):
+            deploy_entry_hash = _entry_hash_for(
+                parsed_contract, DEPLOY_ASSESSMENT_EVIDENCE_ID
+            )
+            deploy_content = _receipt(
+                request=request,
+                ticket_id=ticket,
+                evidence_id=DEPLOY_ASSESSMENT_EVIDENCE_ID,
+                check_value=DEPLOY_ASSESSMENT_CHECK_VALUE,
+                contract_sha256=contract_hash,
+                contract_entry_sha256=deploy_entry_hash,
+                commit_sha=request.pr_head_sha,
+                probe=request.product_probe,
+                actual_output=(
+                    f"PASS: deploy-scope present for {ticket} from {repo}#{pr_number}"
+                    f" — {len(deploy_hits)} runtime/deploy-sensitive path(s), e.g. "
+                    f"{sorted(deploy_hits)[0]}."
+                ),
+                branch=branch,
+            )
+            files.append(
+                ModelCompanionFile(
+                    path=(
+                        f"drift/dod_receipts/{ticket}/"
+                        f"{DEPLOY_ASSESSMENT_EVIDENCE_ID}/command.yaml"
+                    ),
+                    content=deploy_content,
+                    kind=EnumCompanionFileKind.DOWNSTREAM_RECEIPT,
+                    ticket_id=ticket,
+                    contract_sha256=contract_hash,
+                    contract_entry_sha256=deploy_entry_hash or "",
+                )
+            )
 
         # Two-stage self-bind: only renderable once the OCC PR is known (2nd pass
         # / oracle re-run). Proves the OCC companion PR itself.
