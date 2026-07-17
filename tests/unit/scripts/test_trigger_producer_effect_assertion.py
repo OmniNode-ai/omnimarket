@@ -33,6 +33,7 @@ _PRODUCER_SCRIPTS: list[Path] = [SCRIPT_PATH]
 _BANNED_SILENT_SKIP_PHRASE = "skipping publish"
 
 _RUNTIME_CHANGE_FILE = "src/omnimarket/nodes/node_runtime_sweep/handler.py"
+_MERGE_SHA = "deadbeefcafef00d1234567890abcdef12345678"
 _PUBLISH_CREDS_ENV = (
     "KAFKA_BOOTSTRAP_SERVERS",
     "KAFKA_SASL_USERNAME",
@@ -89,6 +90,10 @@ def test_runtime_change_with_broker_unset_fails_closed(
         [
             "--changed-files",
             _RUNTIME_CHANGE_FILE,
+            "--base-branch",
+            "dev",
+            "--source-sha",
+            _MERGE_SHA,
             "--correlation-id",
             "corr-red",
         ],
@@ -96,7 +101,7 @@ def test_runtime_change_with_broker_unset_fails_closed(
 
     assert result.exit_code != 0, result.output
     # It got PAST the trigger decision (was a producer expected to emit).
-    assert "Rebuild triggered" in result.output
+    assert "Redeploy triggered" in result.output
     # And it did NOT take the deleted silent-skip path.
     assert _BANNED_SILENT_SKIP_PHRASE not in result.output
 
@@ -109,11 +114,22 @@ def test_zero_delivery_emit_fails_closed(
     for name in _PUBLISH_CREDS_ENV:
         monkeypatch.setenv(name, "present")
 
-    monkeypatch.setattr(trigger_module, "publish_rebuild_event", lambda **_kwargs: 0)
+    monkeypatch.setattr(
+        trigger_module, "publish_redeploy_start_event", lambda **_kwargs: 0
+    )
 
     result = CliRunner().invoke(
         trigger_module.main,
-        ["--changed-files", _RUNTIME_CHANGE_FILE, "--correlation-id", "corr-zero"],
+        [
+            "--changed-files",
+            _RUNTIME_CHANGE_FILE,
+            "--base-branch",
+            "dev",
+            "--source-sha",
+            _MERGE_SHA,
+            "--correlation-id",
+            "corr-zero",
+        ],
     )
 
     assert result.exit_code != 0, result.output
@@ -133,7 +149,14 @@ def test_no_runtime_change_exits_zero(
 
     result = CliRunner().invoke(
         trigger_module.main,
-        ["--changed-files", "README.md,docs/thing.md"],
+        [
+            "--changed-files",
+            "README.md,docs/thing.md",
+            "--base-branch",
+            "dev",
+            "--source-sha",
+            _MERGE_SHA,
+        ],
     )
 
     assert result.exit_code == 0, result.output
@@ -149,11 +172,19 @@ def test_dry_run_with_runtime_change_exits_zero(
     def _explode(**_kwargs: Any) -> int:
         raise AssertionError("dry-run must not publish")
 
-    monkeypatch.setattr(trigger_module, "publish_rebuild_event", _explode)
+    monkeypatch.setattr(trigger_module, "publish_redeploy_start_event", _explode)
 
     result = CliRunner().invoke(
         trigger_module.main,
-        ["--changed-files", _RUNTIME_CHANGE_FILE, "--dry-run"],
+        [
+            "--changed-files",
+            _RUNTIME_CHANGE_FILE,
+            "--base-branch",
+            "dev",
+            "--source-sha",
+            _MERGE_SHA,
+            "--dry-run",
+        ],
     )
 
     assert result.exit_code == 0, result.output
@@ -167,15 +198,26 @@ def test_happy_path_publishes_and_exits_zero(
     for name in _PUBLISH_CREDS_ENV:
         monkeypatch.setenv(name, "present")
 
-    monkeypatch.setattr(trigger_module, "publish_rebuild_event", lambda **_kwargs: 1)
+    monkeypatch.setattr(
+        trigger_module, "publish_redeploy_start_event", lambda **_kwargs: 1
+    )
 
     result = CliRunner().invoke(
         trigger_module.main,
-        ["--changed-files", _RUNTIME_CHANGE_FILE, "--correlation-id", "corr-ok"],
+        [
+            "--changed-files",
+            _RUNTIME_CHANGE_FILE,
+            "--base-branch",
+            "dev",
+            "--source-sha",
+            _MERGE_SHA,
+            "--correlation-id",
+            "corr-ok",
+        ],
     )
 
     assert result.exit_code == 0, result.output
-    assert "Published rebuild-requested" in result.output
+    assert "Published redeploy-start" in result.output
     assert "delivered=1" in result.output
 
 

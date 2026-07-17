@@ -4,15 +4,37 @@
 
 # trigger_rebuild_on_merge.py
 #
-# Publishes onex.cmd.deploy.rebuild-requested.v1 when a merged PR contains
-# runtime changes. Called from the runtime-rebuild-trigger GHA workflow on
-# push to main.
+# Publishes onex.cmd.omnimarket.redeploy-start.v1 (consumed by
+# node_redeploy_orchestrator) when a merged PR contains runtime changes. Called
+# from the runtime-rebuild-trigger GHA workflow on PR merge to dev or main.
+#
+# node_redeploy_orchestrator owns the deployment lifecycle (lane policy via the
+# prod-gate compute, digest pinning, readiness, rollback) and its deploy
+# publish-monitor EFFECT is the SOLE emitter of
+# onex.cmd.deploy.rebuild-requested.v1 to the deploy agent. CI publishes a typed
+# start command only; it never talks to the deploy agent directly.
 #
 # Triggers when:
 #   - PR had the "runtime_change" label, OR
 #   - Any changed file matches src/omnimarket/** or src/omnibase_infra/nodes/**
 #
-# Ticket: OMN-8917
+# Lane policy (the triggering ref decides the lane — no hardcoded origin/main):
+#   - merge to dev  -> runtime_lane=dev,            source_branch=dev
+#   - merge to main -> runtime_lane=stability-test, source_branch=main
+#     (dev->main promotion proves the stability lane; prod deploys the
+#      stability-proven digest later via node_redeploy_orchestrator, not from CI)
+#
+# Fail-closed effect discipline (RT-5, OMN-14470): once a runtime change is
+# detected and this is not a dry run, the job's PURPOSE is to emit exactly one
+# redeploy-start command. Emitting zero — because a publish precondition (broker,
+# SASL creds, HMAC secret) is missing, or because the emit delivered nothing —
+# MUST fail closed (non-zero, red), never "skip publish" green. This is why this
+# copy keeps require_producer_preconditions / assert_producer_emitted even though
+# the omnibase_infra sibling does not.
+#
+# Tickets: OMN-8917 (original auto-trigger), OMN-12573 (re-point to
+#          node_redeploy), OMN-14470 (RT-5 fail-closed), OMN-14702 (omnimarket
+#          re-point — completes the OMN-12573 omnimarket half).
 #
 # Required environment variables (when not --dry-run):
 #   KAFKA_BOOTSTRAP_SERVERS   -- broker address(es), e.g. host:9092
@@ -24,7 +46,8 @@
 #   python scripts/trigger_rebuild_on_merge.py \
 #     --changed-files "src/omnimarket/nodes/foo/handler.py,README.md" \
 #     --labels "runtime_change,bug" \
-#     --git-ref "origin/main" \
+#     --base-branch "dev" \
+#     --source-sha "<merge_commit_sha>" \
 #     [--dry-run]
 
 from __future__ import annotations
@@ -50,7 +73,10 @@ _SCRIPTS_DIR = str(Path(__file__).resolve().parent)
 if _SCRIPTS_DIR not in sys.path:
     sys.path.insert(0, _SCRIPTS_DIR)
 
-TOPIC = "onex.cmd.deploy.rebuild-requested.v1"
+# CI publishes the node_redeploy_orchestrator start command; the orchestrator's
+# deploy publish-monitor effect is the sole emitter of the deploy-agent rebuild
+# command downstream.
+TOPIC = "onex.cmd.omnimarket.redeploy-start.v1"
 COMPLETED_TOPIC = "onex.evt.deploy.rebuild-completed.v1"
 
 _RUNTIME_PATH_PATTERNS = [
@@ -59,6 +85,15 @@ _RUNTIME_PATH_PATTERNS = [
 ]
 
 _RUNTIME_LABEL = "runtime_change"
+
+# Maps the merged PR's base branch to a runtime lane. Values match
+# deploy_agent.events.EnumRuntimeLane (dev | stability-test | prod). prod is not
+# triggerable from CI: production deploys the stability-proven digest through
+# node_redeploy_orchestrator's promotion gate, never from a merge event.
+_BASE_BRANCH_LANES: dict[str, str] = {
+    "dev": "dev",
+    "main": "stability-test",
+}
 
 
 def should_trigger(changed_files: list[str], labels: list[str]) -> bool:
@@ -72,7 +107,25 @@ def should_trigger(changed_files: list[str], labels: list[str]) -> bool:
     return False
 
 
-def _sign_envelope(envelope: dict, secret: str) -> dict:
+def lane_for_base_branch(base_branch: str) -> str:
+    """Map a merged PR's base branch to a node_redeploy_orchestrator runtime lane.
+
+    Fails closed on unmapped branches: a misconfigured trigger must not silently
+    pick a default lane and rebuild the wrong runtime. prod is intentionally
+    absent from the mapping — no CI merge event can select the prod lane.
+    """
+    lane = _BASE_BRANCH_LANES.get(base_branch)
+    if lane is None:
+        allowed = ", ".join(sorted(_BASE_BRANCH_LANES))
+        msg = (
+            f"No runtime lane mapping for base branch {base_branch!r}; "
+            f"allowed base branches: {allowed}"
+        )
+        raise ValueError(msg)
+    return lane
+
+
+def _sign_envelope(envelope: dict[str, object], secret: str) -> dict[str, object]:
     body_dict = {k: v for k, v in envelope.items() if k != "_signature"}
     body = json.dumps(body_dict, sort_keys=True, separators=(",", ":")).encode()
     signature = hmac.new(secret.encode(), body, hashlib.sha256).hexdigest()
@@ -93,16 +146,51 @@ def _kafka_sasl_config(
     }
 
 
-def publish_rebuild_event(
+def build_redeploy_start_envelope(
+    *,
+    runtime_lane: str,
+    source_branch: str,
+    source_sha: str,
+    correlation_id: str,
+    requested_by: str,
+    hmac_secret: str,
+) -> dict[str, object]:
+    """Build and sign the canonical redeploy-start command envelope.
+
+    Field-for-field the same shape node_redeploy_orchestrator consumes and the
+    same shape the omnibase_infra sibling emits (correlation_id, requested_by,
+    runtime_lane, source_branch, source_sha, requires_occ, requires_readiness_gate,
+    requested_at, then the HMAC-SHA256 _signature over the sorted-key compact
+    JSON body). Given a fixed requested_at this is deterministic — the dry-run
+    proof and cross-boundary tests build the exact candidate bytes through this
+    function without touching a broker.
+    """
+    envelope: dict[str, object] = {
+        "correlation_id": correlation_id,
+        "requested_by": requested_by,
+        "runtime_lane": runtime_lane,
+        "source_branch": source_branch,
+        "source_sha": source_sha,
+        # dev dogfoods OCC drafting; stability gates on readiness before prod.
+        "requires_occ": True,
+        "requires_readiness_gate": runtime_lane != "dev",
+        "requested_at": datetime.now(UTC).isoformat(),
+    }
+    return _sign_envelope(envelope, hmac_secret)
+
+
+def publish_redeploy_start_event(
     bootstrap_servers: str,
     username: str,
     password: str,
     hmac_secret: str,
-    git_ref: str,
+    runtime_lane: str,
+    source_branch: str,
+    source_sha: str,
     correlation_id: str,
     requested_by: str,
 ) -> int:
-    """Publish a signed rebuild-requested event to Kafka via SASL_SSL.
+    """Publish a signed redeploy-start command to node_redeploy_orchestrator via SASL_SSL.
 
     Returns the number of events delivered (``1`` on success). Raises on any
     delivery failure so the caller can assert a non-zero emit count — a producer
@@ -110,15 +198,14 @@ def publish_rebuild_event(
     """
     from confluent_kafka import Producer  # type: ignore[import-untyped]
 
-    envelope = {
-        "correlation_id": correlation_id,
-        "requested_by": requested_by,
-        "scope": "runtime",
-        "services": [],
-        "git_ref": git_ref,
-        "requested_at": datetime.now(UTC).isoformat(),
-    }
-    signed = _sign_envelope(envelope, hmac_secret)
+    signed = build_redeploy_start_envelope(
+        runtime_lane=runtime_lane,
+        source_branch=source_branch,
+        source_sha=source_sha,
+        correlation_id=correlation_id,
+        requested_by=requested_by,
+        hmac_secret=hmac_secret,
+    )
 
     producer = Producer(_kafka_sasl_config(bootstrap_servers, username, password))
 
@@ -130,7 +217,7 @@ def publish_rebuild_event(
             delivery_error = RuntimeError(str(err))
 
     message = json.dumps(signed, default=str).encode("utf-8")
-    key = f"gha-rebuild/{correlation_id}".encode()
+    key = f"gha-redeploy/{correlation_id}".encode()
 
     producer.produce(
         topic=TOPIC,
@@ -143,7 +230,7 @@ def publish_rebuild_event(
     if delivery_error is not None:
         raise RuntimeError(f"Kafka delivery failed: {delivery_error}") from None
 
-    # Exactly one rebuild-requested event was delivered; the caller asserts N>0.
+    # Exactly one redeploy-start command was delivered; the caller asserts N>0.
     return 1
 
 
@@ -154,7 +241,14 @@ def wait_for_rebuild_completion(
     correlation_id: str,
     timeout_seconds: float,
 ) -> dict[str, Any]:
-    """Wait for a deploy-agent rebuild-completed event by correlation ID."""
+    """Wait for a deploy-agent rebuild-completed event by correlation ID.
+
+    node_redeploy_orchestrator propagates the start command's correlation_id
+    through its deploy publish-monitor effect, so the downstream
+    rebuild-completed.v1 event carries the SAME correlation_id CI minted here.
+    A timeout raises TimeoutError naming the correlation_id — the durable failed
+    correlation receipt for the run.
+    """
     from confluent_kafka import Consumer  # type: ignore[import-untyped]
 
     consumer_config = {
@@ -210,14 +304,19 @@ def wait_for_rebuild_completion(
     help="Comma-separated list of PR label names",
 )
 @click.option(
-    "--git-ref",
-    default="origin/main",
-    help="Git ref to rebuild (default: origin/main)",
+    "--base-branch",
+    required=True,
+    help="Merged PR base branch (dev | main) — decides the runtime lane",
+)
+@click.option(
+    "--source-sha",
+    required=True,
+    help="Merge commit SHA of the triggering PR (the ref node_redeploy_orchestrator rebuilds)",
 )
 @click.option(
     "--requested-by",
     default="gha-runtime-rebuild-trigger",
-    help="Identifier for who is requesting the rebuild",
+    help="Identifier for who is requesting the redeploy",
 )
 @click.option(
     "--correlation-id",
@@ -246,17 +345,20 @@ def wait_for_rebuild_completion(
 def main(
     changed_files: str,
     labels: str,
-    git_ref: str,
+    base_branch: str,
+    source_sha: str,
     requested_by: str,
     correlation_id: str,
     dry_run: bool,
     wait_for_completion: bool,
     completion_timeout_seconds: float,
 ) -> None:
-    """Publish rebuild-requested event if PR contains runtime changes.
+    """Publish a node_redeploy_orchestrator start command if a PR contains runtime changes.
 
-    Triggers when PR had runtime_change label OR changed files match
-    src/omnimarket/** or src/omnibase_infra/nodes/**.
+    Triggers when PR had the runtime_change label OR changed files match
+    src/omnimarket/** or src/omnibase_infra/nodes/**. The triggering base branch
+    decides the runtime lane; the merge SHA is the ref node_redeploy_orchestrator
+    rebuilds. There is no hardcoded origin/main.
     """
     files: list[str] = (
         [f.strip() for f in changed_files.split(",") if f.strip()]
@@ -269,6 +371,11 @@ def main(
 
     corr_id = correlation_id or str(uuid.uuid4())
 
+    # Fail closed BEFORE any trigger decision on an unmapped base branch: a
+    # misconfigured workflow ref must never silently pick a default lane. prod is
+    # not in the mapping, so no CI event can select the prod lane.
+    runtime_lane = lane_for_base_branch(base_branch)
+
     if not should_trigger(files, label_list):
         click.echo(
             "No rebuild trigger: no runtime_change label or runtime path changes detected."
@@ -276,8 +383,9 @@ def main(
         sys.exit(0)
 
     click.echo(
-        f"Rebuild triggered: git_ref={git_ref} correlation_id={corr_id} "
-        f"labels={label_list} files_matched={[f for f in files if any(f.startswith(p.rstrip('*')) for p in _RUNTIME_PATH_PATTERNS)]}"
+        f"Redeploy triggered: runtime_lane={runtime_lane} source_branch={base_branch} "
+        f"source_sha={source_sha} correlation_id={corr_id} labels={label_list} "
+        f"files_matched={[f for f in files if any(f.startswith(p.rstrip('*')) for p in _RUNTIME_PATH_PATTERNS)]}"
     )
 
     if dry_run:
@@ -297,12 +405,10 @@ def main(
     hmac_secret = os.environ.get("DEPLOY_AGENT_HMAC_SECRET", "")
 
     # A runtime change was detected and this is not a dry run, so the job's
-    # PURPOSE is now to publish exactly one rebuild-requested event. If any
+    # PURPOSE is now to publish exactly one redeploy-start command. If any
     # precondition for publishing is absent (broker, SASL creds, HMAC secret),
     # this producer CANNOT emit — that is zero output and MUST fail closed
-    # (RT-5 / OMN-14470), never "skip publish" green. The dead-producer bug this
-    # replaces printed "KAFKA_BOOTSTRAP_SERVERS is not set -- skipping publish"
-    # and exited 0, so the deploy trigger was green-but-silent on every merge.
+    # (RT-5 / OMN-14470), never green.
     try:
         require_producer_preconditions(
             artifact=TOPIC,
@@ -318,12 +424,14 @@ def main(
         sys.exit(1)
 
     try:
-        delivered = publish_rebuild_event(
+        delivered = publish_redeploy_start_event(
             bootstrap_servers=bootstrap_servers,
             username=username,
             password=password,
             hmac_secret=hmac_secret,
-            git_ref=git_ref,
+            runtime_lane=runtime_lane,
+            source_branch=base_branch,
+            source_sha=source_sha,
             correlation_id=corr_id,
             requested_by=requested_by,
         )
@@ -342,8 +450,8 @@ def main(
         sys.exit(1)
 
     click.echo(
-        f"Published rebuild-requested to {TOPIC} "
-        f"(correlation_id={corr_id}, delivered={delivered})"
+        f"Published redeploy-start to {TOPIC} "
+        f"(correlation_id={corr_id}, runtime_lane={runtime_lane}, delivered={delivered})"
     )
 
     if wait_for_completion:

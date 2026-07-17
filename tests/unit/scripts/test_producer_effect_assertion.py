@@ -29,7 +29,7 @@ from producer_effect_assertion import (  # noqa: E402
     require_producer_preconditions,
 )
 
-_ARTIFACT = "onex.cmd.deploy.rebuild-requested.v1"
+_ARTIFACT = "onex.cmd.omnimarket.redeploy-start.v1"
 
 
 class TestRequireProducerPreconditions:
