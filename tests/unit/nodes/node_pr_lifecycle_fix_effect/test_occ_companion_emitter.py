@@ -406,24 +406,28 @@ class TestFullEmitFlow:
         )
         assert ci_check.is_file()
         ci_text = ci_check.read_text()
+        # OMN-14741 F-06: the CI receipt records a concrete GraphQL diff-scope
+        # probe (`gh pr view --json files`), not the REST-fragile `gh pr diff`.
         assert (
-            'check_value: "gh pr diff 321 --repo OmniNode-ai/omnimarket '
-            '--name-only | grep -q ."' in ci_text
+            'check_value: "gh pr view 321 --repo OmniNode-ai/omnimarket '
+            '--json files"' in ci_text
         )
         assert 'evidence_item_id: "dod-OmniNode-ai-omnimarket-pr-321-ci"' in ci_text
 
-        # The contract declares all three items — existence probe untouched,
-        # diff-scope check (not `gh pr checks`), and the self-bind item (OMN-14650).
+        # OMN-14741 F-02: the contract declares all three items in canonical
+        # ${PR_NUMBER}/${REPO} placeholder form (lint-contract-check-values clean),
+        # NOT interpolated integers — existence probe, diff-scope `--json files`
+        # check (not `gh pr diff`/`gh pr checks`), and the self-bind item.
         contract_text = contract.read_text()
         assert (
-            "gh pr view 321 --repo OmniNode-ai/omnimarket --json number,state"
+            "gh pr view ${PR_NUMBER} --repo ${REPO} --json number,state"
             in contract_text
         )
-        assert (
-            "gh pr diff 321 --repo OmniNode-ai/omnimarket --name-only | grep -q ."
-            in contract_text
-        )
+        assert "gh pr view ${PR_NUMBER} --repo ${REPO} --json files" in contract_text
         assert "gh pr checks" not in contract_text
+        assert "gh pr diff" not in contract_text
+        # No hardcoded integer PR number in any contract check command (F-02).
+        assert "gh pr view 321" not in contract_text
         assert 'id: "occ-self-bind-pr-55"' in contract_text
 
         # Action reports the single-producer companion bind.

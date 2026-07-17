@@ -80,40 +80,73 @@ EVIDENCE_ITEM_ID_LINE_RE = re.compile(
 # / OMN-13990 / OMN-14255) so the live born-path companion stays gate-valid.
 # ---------------------------------------------------------------------------
 
-_CONTRACT_TEMPLATE = textwrap.dedent("""\
+# OMN-14741 (LIVE emitter F-02/F-03/F-06): the born-path contract now emits the
+# SAME accepted shape the compute-oracle uses, so the live companion clears the
+# hosted gates the compute path already clears:
+#   * ``lint-contract-check-values`` (OMN-9350 / OMN-14673) — every ``check_value``
+#     renders in the canonical ``${PR_NUMBER}`` / ``${REPO}`` placeholder form, NOT
+#     an interpolated live integer. Placeholder form is also constant-length, so
+#     the check_value line never grows with a longer repo/PR and stays under the
+#     yamlfmt 100-col line width regardless of inputs.
+#   * hosted ``yamlfmt`` Pre-commit (OMN-14741 F-03) — the ``summary`` is a short
+#     single-line double-quoted scalar (no ``>`` folded block that yamlfmt reflows)
+#     and every rendered line stays under the OCC ``.yamlfmt`` ``max_line_length:
+#     100``, so the generated YAML is yamlfmt-idempotent by construction. The
+#     occ-emitter-golden CI gate proves this at yamlfmt v0.21.0.
+#   * ``check_contract_substance_floor`` (OMN-14409) — the second dod_evidence item
+#     is a ``gh pr view --json files`` diff-scope assertion (derives tier L1 via the
+#     substance floor's diff-assert family), NOT the REST-fragile ``gh pr diff``
+#     (OMN-14741 F-06). The first item stays a ``gh pr view --json number,state``
+#     existence/binding probe (tier L0), untouched — Evidence-Source stamping needs
+#     it and it does not count toward the floor.
+#
+# The head template ends at ``dod_evidence:``; the two base items are appended by
+# ``render_companion_contract`` from the standalone item-block templates below, so
+# the effect writer can reuse those SAME blocks to repair a PRE-EXISTING contract
+# that is missing this PR's rows (OMN-14741 F-04) — one authoring home, no drift.
+_CONTRACT_HEAD_TEMPLATE = textwrap.dedent("""\
     ---
     schema_version: "1.0.0"
     ticket_id: "{ticket_id}"
     title: "Autobind OCC evidence for {ticket_id}"
-    summary: >
-      OCC contract bound by node_pr_lifecycle_fix_effect Evidence-Source autobind
-      (OMN-13317 F1) when {repo} PR #{pr_number} carried a product-SHA
-      Evidence-Source or was missing an OCC contract, and failed the gate.
+    summary: "OCC Evidence-Source autobind companion (OMN-13317 F1) for PR #{pr_number}."
     is_seam_ticket: false
     interface_change: false
     interfaces_touched: []
     evidence_requirements:
       - kind: "ci"
         description: "PR #{pr_number} product diff scope present"
-        command: "gh pr diff {pr_number} --repo {repo} --name-only | grep -q ."
+        command: "gh pr view ${{PR_NUMBER}} --repo ${{REPO}} --json files"
     emergency_bypass:
       enabled: false
       justification: ""
       follow_up_ticket_id: ""
     dod_evidence:
-      - id: "{evidence_id}"
-        description: "PR #{pr_number} on {repo} — Evidence-Source autobind."
-        source: "generated"
-        checks:
-          - check_type: "command"
-            check_value: "gh pr view {pr_number} --repo {repo} --json number,state"
-      - id: "{ci_evidence_id}"
-        description: "PR #{pr_number} on {repo} — product diff scope (OMN-14425 substance check; OMN-14650: no longer gated on source-PR CI being green)."
-        source: "generated"
-        checks:
-          - check_type: "command"
-            check_value: "gh pr diff {pr_number} --repo {repo} --name-only | grep -q ."
     """)
+
+# Downstream (Evidence-Source binding) dod_evidence item — an existence probe
+# (tier L0). 2-space list indent so it continues the head template's
+# ``dod_evidence:`` sequence; NOT textwrap.dedent'd (every line is indented).
+_DOWNSTREAM_DOD_ITEM_TEMPLATE = (
+    '  - id: "{evidence_id}"\n'
+    '    description: "PR #{pr_number} on {repo} — Evidence-Source autobind."\n'
+    '    source: "generated"\n'
+    "    checks:\n"
+    '      - check_type: "command"\n'
+    '        check_value: "gh pr view ${{PR_NUMBER}} --repo ${{REPO}} --json number,state"\n'
+)
+
+# Product-diff-scope dod_evidence item — the substantive check (tier L1 via the
+# substance floor's diff-assert family: ``--json files`` names the files the PR
+# touches). GraphQL-backed (OMN-14741 F-06), not the REST-fragile ``gh pr diff``.
+_CI_DOD_ITEM_TEMPLATE = (
+    '  - id: "{ci_evidence_id}"\n'
+    '    description: "PR #{pr_number} on {repo} — product diff scope check (OMN-14425)."\n'
+    '    source: "generated"\n'
+    "    checks:\n"
+    '      - check_type: "command"\n'
+    '        check_value: "gh pr view ${{PR_NUMBER}} --repo ${{REPO}} --json files"\n'
+)
 
 # Downstream receipt — stamped with the REAL product PR head + number so
 # check_receipt_hardening.py (commit_sha 7-40 hex, pr_number >= 1) passes.
@@ -165,7 +198,7 @@ _DOWNSTREAM_RECEIPT_TEMPLATE = textwrap.dedent("""\
 # contract_entry_sha256 (OMN-14418 seam): this receipt's evidence_item_id IS a
 # declared dod_evidence item on the companion contract, so it MUST carry the
 # per-entry hash exactly like the downstream receipt. It starts PENDING and is
-# rebound by _rebind_all_receipts. The field has to be emitted here —
+# rebound by _rebind_receipts. The field has to be emitted here —
 # rebind_contract_entry_sha256_in_text only REWRITES an existing line and is a
 # documented no-op when the field is absent, so omitting it silently ships a
 # receipt bound to a declared entry with no per-entry hash (the OMN-14425 x
@@ -176,7 +209,7 @@ _CI_CHECK_RECEIPT_TEMPLATE = textwrap.dedent("""\
     ticket_id: "{ticket_id}"
     evidence_item_id: "{evidence_id}"
     check_type: "command"
-    check_value: "gh pr diff {pr_number} --repo {repo} --name-only | grep -q ."
+    check_value: "gh pr view {pr_number} --repo {repo} --json files"
     contract_sha256: "sha256:PENDING"
     contract_entry_sha256: "sha256:PENDING"
     status: PASS
@@ -187,7 +220,7 @@ _CI_CHECK_RECEIPT_TEMPLATE = textwrap.dedent("""\
     probe_command: "{probe_command}"
     probe_stdout: |
       {probe_stdout}
-    actual_output: "PASS: product-diff-scope check for {ticket_id} from {repo}#{pr_number} (OMN-14425 / OMN-14650)."
+    actual_output: "PASS: product-diff-scope for {ticket_id} from {repo}#{pr_number}."
     exit_code: {exit_code}
     pr_number: {pr_number}
     branch: "{branch}"
@@ -204,7 +237,7 @@ _CI_CHECK_RECEIPT_TEMPLATE = textwrap.dedent("""\
 # inspects receipts whose evidence_item_id is a DECLARED dod_evidence item. So it
 # now carries a rebindable contract_entry_sha256 sentinel (the per-entry scheme
 # the proven merged path uses for its dod-occ-self-bind-pr-<n> receipt), rebound
-# by _rebind_all_receipts once the entry is declared, alongside the legacy
+# by _rebind_receipts once the entry is declared, alongside the legacy
 # whole-file contract_sha256. Before OMN-14650 the id was never declared, so the
 # field was deliberately omitted; that omission is exactly why every auto/*
 # companion failed eligibility with pr_ticket_mismatch.
@@ -238,16 +271,17 @@ _SELF_BIND_RECEIPT_TEMPLATE = textwrap.dedent("""\
 # evaluates the self-bind receipt (the ONLY receipt bound to the OCC PR). The
 # check_type is "command" so the receipt path resolves to
 # <ticket>/<evidence_id>/command.yaml. Written with explicit indentation (NOT
-# dedent) so the 2-space list item aligns byte-for-byte with the items rendered
-# by _CONTRACT_TEMPLATE when appended to the end of the (dod_evidence-terminal)
-# contract file.
+# dedent) so the 2-space list item aligns byte-for-byte with the base item blocks
+# (_DOWNSTREAM_DOD_ITEM_TEMPLATE / _CI_DOD_ITEM_TEMPLATE) and can be structurally
+# inserted at the end of the dod_evidence list by the effect writer (OMN-14741
+# F-04), robust to a non-dod_evidence-terminal contract.
 _SELF_BIND_DOD_EVIDENCE_ITEM_TEMPLATE = (
     '  - id: "{evidence_id}"\n'
-    '    description: "OCC companion PR #{occ_pr_number} on {occ_repo} — self-binding proof for {ticket_id} (OMN-14650)."\n'
+    '    description: "OCC companion PR #{occ_pr_number} — self-bind for {ticket_id} (OMN-14650)."\n'
     '    source: "generated"\n'
     "    checks:\n"
     '      - check_type: "command"\n'
-    '        check_value: "gh pr view {occ_pr_number} --repo {occ_repo} --json number,state"\n'
+    '        check_value: "gh pr view ${{PR_NUMBER}} --repo ${{REPO}} --json number,state"\n'
 )
 
 # RSD compute-oracle templates (OMN-14285). These include the per-entry hash
@@ -406,27 +440,62 @@ def ci_check_evidence_id(evidence_id: str) -> str:
     return f"{evidence_id}-ci"
 
 
+def render_downstream_dod_evidence_item(
+    *, evidence_id: str, repo: str, pr_number: int
+) -> str:
+    """Render the Evidence-Source binding dod_evidence item block (tier L0).
+
+    Standalone so the effect writer can append it to a PRE-EXISTING contract that
+    is missing this PR's rows (OMN-14741 F-04) using the SAME block that
+    :func:`render_companion_contract` embeds — one authoring home, no drift. The
+    ``check_value`` is placeholder-var form (``${PR_NUMBER}`` / ``${REPO}``) so it
+    clears ``lint-contract-check-values`` (OMN-14741 F-02).
+    """
+    return _DOWNSTREAM_DOD_ITEM_TEMPLATE.format(
+        evidence_id=evidence_id, repo=repo, pr_number=pr_number
+    )
+
+
+def render_ci_dod_evidence_item(*, evidence_id: str, repo: str, pr_number: int) -> str:
+    """Render the product-diff-scope dod_evidence item block (tier L1).
+
+    ``--json files`` derives tier L1 via the OMN-14409 substance floor's
+    diff-assert family and is GraphQL-backed (OMN-14741 F-06). Its id is derived
+    from the base evidence id via :func:`ci_check_evidence_id` so the contract's
+    declared id and the backing receipt's directory can never diverge (OMN-14425).
+    """
+    return _CI_DOD_ITEM_TEMPLATE.format(
+        ci_evidence_id=ci_check_evidence_id(evidence_id),
+        repo=repo,
+        pr_number=pr_number,
+    )
+
+
 def render_companion_contract(
     *, ticket_id: str, repo: str, pr_number: int, evidence_id: str
 ) -> str:
     """Render the ``contracts/<ticket>.yaml`` companion contract YAML.
 
-    Declares two dod_evidence items: the existence/binding probe (``gh pr view``,
-    proof tier L0 — required for Evidence-Source stamping, never removed) and a
-    product-diff-scope probe (``gh pr diff ... --name-only | grep -q .``, proof
-    tier L1 via the substance floor's static-assert family) that satisfies the
-    OMN-14409 contract substance floor. OMN-14650: the second item was formerly a
-    ``gh pr checks <source>`` CI-outcome probe that gated on the source PR being
-    green — an unsatisfiable claim while the source is red and blocked on this
-    companion; the diff-scope assertion is falsifiable about the change without
-    that deadlock. This adds a claim; it does not replace the binding probe.
+    Declares two dod_evidence items: the existence/binding probe (``gh pr view
+    --json number,state``, proof tier L0 — required for Evidence-Source stamping,
+    never removed) and a product-diff-scope probe (``gh pr view --json files``,
+    proof tier L1 via the substance floor's diff-assert family) that satisfies the
+    OMN-14409 contract substance floor. OMN-14741: every ``check_value`` renders in
+    canonical ``${PR_NUMBER}`` / ``${REPO}`` placeholder form (F-02, clears
+    ``lint-contract-check-values``), the diff-scope check is the GraphQL
+    ``gh pr view --json files`` rather than the REST-fragile ``gh pr diff`` (F-06),
+    and every line is yamlfmt-idempotent under the OCC ``.yamlfmt`` config (F-03).
+    The two base items are composed from the standalone item-block renderers so the
+    effect writer can reuse them to repair a pre-existing contract (F-04).
     """
-    return _CONTRACT_TEMPLATE.format(
-        ticket_id=ticket_id,
-        repo=repo,
-        pr_number=pr_number,
-        evidence_id=evidence_id,
-        ci_evidence_id=ci_check_evidence_id(evidence_id),
+    return (
+        _CONTRACT_HEAD_TEMPLATE.format(ticket_id=ticket_id, pr_number=pr_number)
+        + render_downstream_dod_evidence_item(
+            evidence_id=evidence_id, repo=repo, pr_number=pr_number
+        )
+        + render_ci_dod_evidence_item(
+            evidence_id=evidence_id, repo=repo, pr_number=pr_number
+        )
     )
 
 
@@ -822,7 +891,9 @@ __all__ = [
     "rebind_contract_entry_sha256_in_text",
     "rebind_contract_sha256_in_text",
     "render_ci_check_receipt",
+    "render_ci_dod_evidence_item",
     "render_companion_contract",
+    "render_downstream_dod_evidence_item",
     "render_downstream_receipt",
     "render_self_bind_dod_evidence_item",
     "render_self_bind_receipt",
