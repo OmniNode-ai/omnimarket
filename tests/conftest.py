@@ -64,6 +64,35 @@ def _ensure_omni_home(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
 
 
 @pytest.fixture(autouse=True)
+def _scrub_inherited_git_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    """OMN-14746: unset git plumbing env vars inherited from the pre-push hook.
+
+    When ``git push`` invokes a hook, git exports ``GIT_DIR`` / ``GIT_INDEX_FILE``
+    / ``GIT_WORK_TREE`` (absolute paths into the REAL invoking worktree's ``.git``).
+    Those override BOTH ``subprocess.run(..., cwd=<tmp>)`` AND an explicit
+    ``git -C <tmp>`` (memory ``reference_git_env_vars_override_c_and_cwd``), so any
+    test that runs ``git init/add/commit`` in a ``tmp_path`` repo would instead
+    mutate — and wipe — the invoking worktree's index (the observed ~5846 staged
+    deletions). Popping them from ``os.environ`` makes every git subprocess (the
+    test helper AND the production handler under test) operate on its own ``cwd``.
+
+    Under a plain ``uv run pytest`` (no hook) these vars are unset, so this is a
+    no-op there — safe and correct. This is a function-scoped autouse fixture, so
+    it runs before the function-scoped ``git_repo`` / ``clone`` fixtures that build
+    tmp repos, scrubbing the env before any git subprocess fires.
+    """
+    for var in (
+        "GIT_DIR",
+        "GIT_INDEX_FILE",
+        "GIT_WORK_TREE",
+        "GIT_PREFIX",
+        "GIT_OBJECT_DIRECTORY",
+        "GIT_COMMON_DIR",
+    ):
+        monkeypatch.delenv(var, raising=False)
+
+
+@pytest.fixture(autouse=True)
 def _isolate_unit_env(
     request: pytest.FixtureRequest,
     monkeypatch: pytest.MonkeyPatch,

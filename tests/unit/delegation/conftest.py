@@ -87,6 +87,41 @@ def _isolate_cloud_secret_env(monkeypatch: pytest.MonkeyPatch) -> None:
     clear_secret_store_resolver_cache()
 
 
+@pytest.fixture(autouse=True)
+def _isolate_bifrost_file_overlay(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """OMN-14746: neutralize the DEV-ONLY host bifrost file overlay.
+
+    ``resolve_delegation_backend`` / ``load_bifrost_backends`` fall back to a
+    DEV-ONLY local file overlay at ``~/.omninode/delegation/bifrost_overrides.yaml``
+    when no secret store is supplied (OMN-13232). On a developer machine that
+    overlay remaps ``cloud-glm`` off z.ai GLM to a local/Gemini backend, so the
+    tests here that assert the COMMITTED contract values (``glm-5-turbo`` /
+    ``llm.glm.api_key``) pass in CI (file absent) but FAIL locally under the
+    pre-push full-suite escalation. Point the file overlay at a per-test path
+    that is never created, so resolution is hermetic on every machine.
+
+    Both functions bind ``overlay_path=_OVERLAY_PATH`` as a keyword-only default
+    captured in ``__kwdefaults__`` at ``def`` time. The judge adapter
+    (``adapter_routing_resolved_judge.resolved_model_id``) calls
+    ``resolve_delegation_backend(..., backend_id=...)`` with NO ``overlay_path``
+    passthrough, so patching the module attribute alone does not reach it — patch
+    the module attribute AND both functions' ``__kwdefaults__``.
+    """
+    from omnimarket.routing import delegation_backend_resolution as d
+
+    # Never created, so ``overlay_path.is_file()`` is False and resolution falls
+    # through to the committed bifrost contract on any machine.
+    absent_overlay = tmp_path / "no_bifrost_overrides.yaml"
+
+    monkeypatch.setattr(d, "_OVERLAY_PATH", absent_overlay, raising=False)
+    for fn_name in ("resolve_delegation_backend", "load_bifrost_backends"):
+        kwdefaults = getattr(getattr(d, fn_name), "__kwdefaults__", None)
+        if kwdefaults and "overlay_path" in kwdefaults:
+            monkeypatch.setitem(kwdefaults, "overlay_path", absent_overlay)
+
+
 # Bifrost config covering every backend_id referenced by routing_tiers.yaml.
 # OMN-14625: the claude ceiling and cheap_cloud tier now use cloud-gemini-pro
 # (Gemini) as their primary/only model. cloud-glm carries an empty
