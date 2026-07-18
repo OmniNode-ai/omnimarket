@@ -178,12 +178,29 @@ def test_delegated_command_does_not_inherit_git_worktree_bindings(
     assert result.stdout == "unset|unset|unset"
 
 
-def test_real_worktree_autoresolves_without_env() -> None:
-    """From the real checkout the wrapper derives env with NOTHING exported.
+def test_omni_worktree_layout_autoresolves_without_env(tmp_path: Path) -> None:
+    """From the mandated worktree layout the wrapper derives env with no exports.
 
     This is the ergonomic win: a correct change proves locally without the
-    operator reconstructing hidden environment.
+    operator reconstructing hidden environment. The topology is built
+    hermetically instead of relying on CI to have a sibling omnibase_infra
+    checkout next to the test checkout.
     """
-    result = _run(WRAPPER, "--check", env=_clean_env())
+    fake_home = tmp_path / "omni_home"
+    worktree_repo = fake_home / "omni_worktrees" / "OMN-14462" / "omnimarket"
+    scripts = worktree_repo / "scripts"
+    scripts.mkdir(parents=True)
+    wrapper = scripts / "merge-proof"
+    shutil.copy2(WRAPPER, wrapper)
+    wrapper.chmod(0o755)
+
+    fake_infra_validator = (
+        fake_home / "omnibase_infra" / "scripts" / "validation" / "lint_topic_names.py"
+    )
+    fake_infra_validator.parent.mkdir(parents=True)
+    fake_infra_validator.write_text("")
+
+    result = _run(wrapper, "--check", env=_clean_env())
     assert result.returncode == 0, f"stdout={result.stdout}\nstderr={result.stderr}"
-    assert "OMNIBASE_INFRA_PATH=" in result.stdout
+    assert f"OMNI_HOME={fake_home}" in result.stdout
+    assert f"OMNIBASE_INFRA_PATH={fake_home / 'omnibase_infra'}" in result.stdout
