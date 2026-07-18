@@ -242,6 +242,12 @@ _GH_PR_VIEW_RE = re.compile(r"\bgh\s+pr\s+view\b")
 _JSON_FLAG_RE = re.compile(r"--json[=\s]+([A-Za-z0-9_,]+)")
 _CMD = r"(?:^|[|;&]\s*|\$\(\s*|\b(?:run|exec|xargs|sudo|time|env|then|do|else)\s+)"
 _STATIC_ASSERT_RE = re.compile(rf"{_CMD}(grep|rg|ast-grep)\b")
+# OMN-14783 F-06: a `gh pr view --json files` diff-assertion derives to L1 in the
+# canonical substance floor (`_DIFF_ASSERT_RE`, check_contract_substance_floor.py).
+# This local mirror had drifted (it only recognized `| grep`); the F-06 swap of
+# the compute contract's diff-scope check to `--json files` — matching the
+# born-path emitter — requires this branch, verbatim, so drift stays RED.
+_DIFF_ASSERT_RE = re.compile(r"(--json[=\s]+[^|]*\bfiles\b|\.files\[)")
 
 
 def is_existence_probe(command: str) -> bool:
@@ -259,7 +265,7 @@ def is_substantive(check_value: str) -> bool:
     command = (check_value or "").strip()
     if is_existence_probe(command):
         return False
-    return bool(_STATIC_ASSERT_RE.search(command))
+    return bool(_DIFF_ASSERT_RE.search(command) or _STATIC_ASSERT_RE.search(command))
 
 
 # --- F-01 append-only ----------------------------------------------------------

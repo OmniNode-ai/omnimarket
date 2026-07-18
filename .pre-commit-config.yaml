@@ -285,19 +285,25 @@ repos:
       # broken companion shape is caught locally before push (mirrors the
       # occ-emitter-golden CI gate). BLOCKING.
       - id: occ-emitter-golden
-        name: OCC emitter golden gate (OMN-14741) — LIVE producer output
+        name: OCC emitter golden gate (OMN-14741/14783) — LIVE producer + compute parity
         entry: >-
           uv run pytest
           tests/unit/nodes/node_pr_lifecycle_fix_effect/test_occ_companion_emitter_friction_omn_14741.py
           tests/unit/nodes/node_pr_lifecycle_fix_effect/test_occ_companion_emitter.py
           tests/unit/nodes/node_pr_lifecycle_fix_effect/test_occ_evidence_stamp.py
+          tests/unit/nodes/node_occ_companion_compute/test_occ_emitter_golden_fixtures_omn_14710.py
+          tests/unit/nodes/node_occ_companion_compute/test_occ_emitter_compute_f06_f16_parity_omn_14783.py
           -q
         language: system
         pass_filenames: false
         files: >-
           (?x)^(
             src/omnimarket/nodes/node_pr_lifecycle_fix_effect/handlers/occ_(companion_emitter|evidence_stamp)\.py
+            |src/omnimarket/nodes/node_occ_companion_compute/handlers/handler_occ_companion_compute\.py
+            |src/omnimarket/nodes/node_occ_state_effect/handlers/handler_occ_state_effect\.py
+            |src/omnimarket/events/occ_companion\.py
             |tests/unit/nodes/node_pr_lifecycle_fix_effect/test_occ_(companion_emitter|evidence_stamp|companion_emitter_friction_omn_14741)\.py
+            |tests/unit/nodes/node_occ_companion_compute/test_occ_emitter_(golden_fixtures_omn_14710|compute_f06_f16_parity_omn_14783)\.py
           )$
         stages: [pre-commit]
 
