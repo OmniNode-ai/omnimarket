@@ -14,6 +14,12 @@
 # do-not-merge suppression — so a regression that reintroduces a broken companion
 # shape fails BEFORE it can ship (rule 5: detection wired as a pre-merge gate).
 #
+# OMN-14783 (step 1) closes the last F-06/F-16 divergence between the born-path
+# emitter and the canonical node graph (node_occ_companion_compute) and wires two
+# previously-unenforced compute-oracle suites into THIS gate so the parity cannot
+# silently regress: the OMN-14710 golden fixtures (compute-oracle) and the new
+# emitter-vs-compute F-06/F-16 parity fixture (a real cross-producer comparison).
+#
 # yamlfmt v0.21.0 matches the onex_change_control .yamlfmt pin so the F-03
 # idempotence check mirrors the hosted yamlfmt Pre-commit exactly.
 #
@@ -77,4 +83,6 @@ jobs:
             tests/unit/nodes/node_pr_lifecycle_fix_effect/test_occ_companion_emitter_friction_omn_14741.py \
             tests/unit/nodes/node_pr_lifecycle_fix_effect/test_occ_companion_emitter.py \
             tests/unit/nodes/node_pr_lifecycle_fix_effect/test_occ_evidence_stamp.py \
+            tests/unit/nodes/node_occ_companion_compute/test_occ_emitter_golden_fixtures_omn_14710.py \
+            tests/unit/nodes/node_occ_companion_compute/test_occ_emitter_compute_f06_f16_parity_omn_14783.py \
             -q -p no:randomly

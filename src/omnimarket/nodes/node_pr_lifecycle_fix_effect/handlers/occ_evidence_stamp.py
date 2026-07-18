@@ -310,17 +310,29 @@ _SELF_BIND_DOD_EVIDENCE_ITEM_TEMPLATE = (
 #     integer PR number in a ``gh pr view|checks|diff`` command; the placeholder
 #     form is the only accepted shape (``gh pr ... ${{PR_NUMBER}} --repo ${{REPO}}``).
 #   * ``check_contract_substance_floor`` (OMN-14409) rejects a contract whose
-#     ENTIRE dod_evidence is existence probes (tier L0). ``gh pr diff ... | grep
-#     -q .`` derives L1 via the substance floor's static-assert family — it is
-#     falsifiable about the change (fails on an empty diff) exactly like the
-#     merged born-path emitter's product-diff-scope check (OMN-14425 / OMN-14650),
-#     WITHOUT gating on the source PR's CI being green.
+#     ENTIRE dod_evidence is existence probes (tier L0). ``gh pr view ... --json
+#     files`` derives L1 via the substance floor's diff-assert family (``--json
+#     files`` names the files the PR touches, matched by the floor's
+#     ``_DIFF_ASSERT_RE``) — falsifiable about the change, exactly like the
+#     emitter's product-diff-scope check. OMN-14783 F-06: it is the GraphQL
+#     ``--json files`` form (identical to the emitter's ``_CI_ITEM_PUBLIC_CHECK_VALUE``),
+#     NOT the REST-fragile ``gh pr diff ... --name-only | grep -q .`` that returned
+#     HTML/503 during a GitHub REST incident (OCC#4297) — closing the last F-06
+#     divergence between this compute contract and the born-path emitter.
 # The binding probe stays (it is legitimate for Evidence-Source stamping); the
 # substantive probe is ADDED so occ-preflight passing is no longer a companion
 # that fails the pre-commit substance floor. Both checks are ``check_type:
 # command``, so occ-preflight resolves them to the SAME per-item receipt
 # (``<item>/command.yaml``) and the per-entry hash (which digests the whole item)
 # binds both with no extra receipt.
+#
+# OMN-14783 F-06/F-16: the two base ``check_value``s are substituted VALUES
+# (single-brace ``{binding_check_value}`` / ``{diff_scope_check_value}``, NOT
+# re-scanned by ``.format`` — so the literal ``${PR_NUMBER}`` / ``${REPO}`` a
+# public value carries survive) so a private product repo can swap in the
+# hosted-safe :func:`receipt_local_check_value` form per repo without a second
+# template, exactly like the emitter's :func:`render_companion_contract`. The
+# public defaults reproduce the accepted shape byte-for-byte.
 _COMPUTE_CONTRACT_TEMPLATE = textwrap.dedent("""\
     ---
     schema_version: "1.0.0"
@@ -345,9 +357,9 @@ _COMPUTE_CONTRACT_TEMPLATE = textwrap.dedent("""\
         source: "generated"
         checks:
           - check_type: "command"
-            check_value: "gh pr view ${{PR_NUMBER}} --repo ${{REPO}} --json number,state"
+            check_value: "{binding_check_value}"
           - check_type: "command"
-            check_value: "gh pr diff ${{PR_NUMBER}} --repo ${{REPO}} --name-only | grep -q ."
+            check_value: "{diff_scope_check_value}"
     """)
 
 # Self-bind dod_evidence entry appended to the compute-oracle contract on pass 2
@@ -801,6 +813,8 @@ def render_compute_companion_contract(
     occ_pr_number: int | None = None,
     occ_repo: str | None = None,
     emit_deploy_assessment: bool = False,
+    binding_check_value: str | None = None,
+    diff_scope_check_value: str | None = None,
 ) -> str:
     """Render the RSD compute-oracle companion contract YAML.
 
@@ -808,11 +822,22 @@ def render_compute_companion_contract(
     product-diff-scope check, both in canonical ``${PR_NUMBER}`` / ``${REPO}``
     placeholder form (OMN-14679), so a minted companion clears both the
     ``lint-contract-check-values`` placeholder gate and the OMN-14409 substance
-    floor — not only occ-preflight. On pass 1 (``self_bind_evidence_id is None``)
-    the contract declares only that downstream item. On pass 2 — once the OCC
-    companion PR exists — the self-bind item is APPENDED (OMN-14622) so the
-    contract declares the receipt that binds the OCC PR to itself; without it the
-    OCC companion PR fails its own occ-preflight (``pr_ticket_mismatch``).
+    floor — not only occ-preflight. OMN-14783 F-06: the diff-scope check defaults
+    to the GraphQL ``gh pr view ${PR_NUMBER} --repo ${REPO} --json files`` — the
+    SAME form the born-path emitter's :func:`render_companion_contract` uses (via
+    ``_CI_ITEM_PUBLIC_CHECK_VALUE``) — not the REST-fragile ``gh pr diff ...
+    --name-only`` (OCC#4297). It still derives L1 via the substance floor's
+    diff-assert family. OMN-14783 F-16: a private product repo passes hosted-safe
+    ``binding_check_value`` / ``diff_scope_check_value`` (the receipt-local
+    :func:`receipt_local_check_value` form, since the hosted OCC runner cannot
+    re-run ``gh pr view --repo <private>``); public repos leave both ``None`` to
+    keep the accepted shape byte-for-byte.
+
+    On pass 1 (``self_bind_evidence_id is None``) the contract declares only that
+    downstream item. On pass 2 — once the OCC companion PR exists — the self-bind
+    item is APPENDED (OMN-14622) so the contract declares the receipt that binds
+    the OCC PR to itself; without it the OCC companion PR fails its own
+    occ-preflight (``pr_ticket_mismatch``).
 
     When ``emit_deploy_assessment`` is True (the product PR touches
     runtime/deploy-sensitive paths — see :func:`find_deploy_sensitive_paths`) the
@@ -829,6 +854,12 @@ def render_compute_companion_contract(
             repo=repo,
             pr_number=pr_number,
             evidence_id=evidence_id,
+            binding_check_value=(
+                binding_check_value or _DOWNSTREAM_ITEM_PUBLIC_CHECK_VALUE
+            ),
+            diff_scope_check_value=(
+                diff_scope_check_value or _CI_ITEM_PUBLIC_CHECK_VALUE
+            ),
         )
     ]
     if emit_deploy_assessment:

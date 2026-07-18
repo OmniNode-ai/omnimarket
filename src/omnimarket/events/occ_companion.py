@@ -215,6 +215,19 @@ class ModelOccCompanionRequest(BaseModel):
         "None to fall back to the generic PR-state check.",
     )
 
+    product_repo_private: bool = Field(
+        default=False,
+        description="Is the product repo private (OMN-14783 F-16 / OMN-14766)? A "
+        "private repo cannot be re-probed by the hosted OCC contract-compliance "
+        "runner — its token has no scope there, so a `gh pr view --repo <private>` "
+        "check_value fails hosted (OCC#4307/#4318). When True the compute renders "
+        "the declared contract + receipt check_values as the hosted-safe "
+        "receipt-local grep, matching the born-path emitter; the live probe stays "
+        "recorded in probe_command/probe_stdout. Read from base.repo.private by the "
+        "read-EFFECT — public by default, so an unexpectedly-absent field fails "
+        "loud in hosted CI rather than silently skipping the guard.",
+    )
+
     @field_validator("pr_head_sha", "occ_head_sha")
     @classmethod
     def _validate_git_sha(cls, value: str | None) -> str | None:

@@ -91,6 +91,14 @@ _GH_PR_VIEW_RE = re.compile(r"\bgh\s+pr\s+view\b")
 _JSON_FLAG_RE = re.compile(r"--json[=\s]+([A-Za-z0-9_,]+)")
 _CMD = r"(?:^|[|;&]\s*|\$\(\s*|\b(?:run|exec|xargs|sudo|time|env|then|do|else)\s+)"
 _STATIC_ASSERT_RE = re.compile(rf"{_CMD}(grep|rg|ast-grep)\b")
+# OMN-14783 F-06: `gh pr view --json files` names the files the PR touches — a
+# DIFF ASSERTION, falsifiable about the change, so the canonical substance floor
+# derives it to L1 (`_DIFF_ASSERT_RE`, check_contract_substance_floor.py:200/318).
+# This branch was MISSING from this local mirror, which only recognized `| grep`;
+# the omission was harmless while the compute contract's diff-scope check used
+# `gh pr diff ... | grep -q .`, but the F-06 swap to `--json files` (parity with
+# the born-path emitter) surfaced it. Copied verbatim so drift stays RED.
+_DIFF_ASSERT_RE = re.compile(r"(--json[=\s]+[^|]*\bfiles\b|\.files\[)")
 
 
 def _is_existence_probe(command: str) -> bool:
@@ -107,13 +115,14 @@ def _is_existence_probe(command: str) -> bool:
 def _is_substantive(check_value: str) -> bool:
     """True when the check derives to L1+ under the substance floor.
 
-    Restricted here to the families the producer emits (static-assert `| grep`);
-    an existence probe returns False, matching the canonical deriver.
+    Mirrors the canonical deriver's substantive families the producer emits: a
+    diff-assert (`gh pr view --json files`, OMN-14783 F-06) OR a static-assert
+    (`| grep`); an existence probe returns False.
     """
     command = (check_value or "").strip()
     if _is_existence_probe(command):
         return False
-    return bool(_STATIC_ASSERT_RE.search(command))
+    return bool(_DIFF_ASSERT_RE.search(command) or _STATIC_ASSERT_RE.search(command))
 
 
 def _probe() -> ModelObservedProbe:

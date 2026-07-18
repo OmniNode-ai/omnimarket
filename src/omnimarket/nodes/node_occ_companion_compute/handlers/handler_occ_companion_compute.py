@@ -68,6 +68,7 @@ from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.occ_evidence_stamp i
     DEPLOY_ASSESSMENT_CHECK_VALUE,
     DEPLOY_ASSESSMENT_EVIDENCE_ID,
     find_deploy_sensitive_paths,
+    receipt_local_check_value,
     render_compute_companion_contract,
     render_compute_receipt,
 )
@@ -538,6 +539,27 @@ def compute_companion_plan(request: ModelOccCompanionRequest) -> ModelOccCompani
             else None
         )
 
+        # OMN-14783 F-16: a private product repo cannot be re-probed by the hosted
+        # OCC contract-compliance runner (`gh pr view --repo <private>` has no token
+        # scope — OCC#4307/#4318). Render the DECLARED check_values receipt-local
+        # (the born-path emitter's hosted-safe form), so the runner asserts the
+        # committed receipt attests PASS instead of re-running a private-repo probe.
+        # Both contract checks resolve to the SAME per-item receipt, so both point
+        # at it. The live probe stays in the receipt's probe_command/probe_stdout.
+        # Public repos keep the accepted hosted shape byte-for-byte (fresh-path
+        # only; the frozen merged path is deferred convergence, OMN-14783 step 1).
+        contract_binding_check: str | None = None
+        contract_diff_scope_check: str | None = None
+        if request.product_repo_private:
+            receipt_local = receipt_local_check_value(
+                ticket_id=ticket, evidence_id=evidence_id
+            )
+            receipt_check_value = receipt_local
+            contract_binding_check = receipt_local
+            contract_diff_scope_check = receipt_local
+        else:
+            receipt_check_value = downstream_check
+
         if state.exists and state.merged:
             # Two-audiences merged path (OMN-14233 / OMN-14623): the merged base
             # RECEIPTS are frozen and never edited. Each prior entry is re-bound to
@@ -660,6 +682,8 @@ def compute_companion_plan(request: ModelOccCompanionRequest) -> ModelOccCompani
                 occ_pr_number=request.occ_pr_number,
                 occ_repo=request.occ_repo,
                 emit_deploy_assessment=emit_deploy_assessment,
+                binding_check_value=contract_binding_check,
+                diff_scope_check_value=contract_diff_scope_check,
             )
             contract_hash = _sha256_hex(contract_content)
             # Parse the just-rendered contract so the downstream receipt's
@@ -685,7 +709,7 @@ def compute_companion_plan(request: ModelOccCompanionRequest) -> ModelOccCompani
             request=request,
             ticket_id=ticket,
             evidence_id=evidence_id,
-            check_value=downstream_check,
+            check_value=receipt_check_value,
             contract_sha256=contract_hash,
             contract_entry_sha256=entry_hash,
             commit_sha=request.pr_head_sha,

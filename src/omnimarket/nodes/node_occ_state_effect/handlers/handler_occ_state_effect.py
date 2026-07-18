@@ -267,10 +267,19 @@ class HandlerOccStateEffect:
         pr_state = str(pr.get("state") or "open")
         pr_is_draft = bool(pr.get("draft"))
         head_ref = str(head.get("ref") or "")
-        # F-17 parity: carry PR label names so the pure COMPUTE can suppress a
-        # do-not-merge/WIP-LABELLED PR (the emitter checks labels; the canonical
-        # producer must too).
+        # F-17 parity (OMN-14785): carry PR label names so the pure COMPUTE can
+        # suppress a do-not-merge/WIP-LABELLED PR (the emitter checks labels; the
+        # canonical producer must too).
         pr_labels = extract_pr_label_names(pr)
+        # OMN-14783 F-16 / OMN-14766: the base repo is always the PRODUCT repo (even
+        # for a fork PR whose head.repo is the fork). A private product repo cannot
+        # be re-probed by the hosted OCC contract-compliance runner (its token has
+        # no scope there), so the COMPUTE must render declared check_values
+        # receipt-local (OCC#4307/#4318). Read base.repo.private with no extra API
+        # call — the emitter's _is_private_repo does the same. Fails SAFE to public
+        # when the field is absent (a hosted gh check then fails loud in OCC CI
+        # rather than a silent skip), mirroring the emitter.
+        product_repo_private = bool(_as_dict(base.get("repo")).get("private"))
 
         files = self._list_files(owner, repo_name, request.pr_number, token)
         changed_files = tuple(str(f.get("filename", "")) for f in files)
@@ -284,8 +293,14 @@ class HandlerOccStateEffect:
             for ticket in tickets
         )
 
+        # OMN-14783 F-16 (D-16.3): the content-read check is a hosted
+        # `gh api repos/<repo>/contents/...` re-run, which — like `gh pr view
+        # --repo <private>` — fails under the hosted OCC runner's token for a
+        # PRIVATE product repo. Suppress it there so the COMPUTE falls back to the
+        # hosted-safe receipt-local check_value (driven by product_repo_private)
+        # instead of shipping an un-runnable hosted content-read.
         downstream_check_value: str | None = None
-        if head_sha and base_sha:
+        if head_sha and base_sha and not product_repo_private:
             candidates = extract_symbol_candidates(files)
 
             def _fetch(path: str, ref: str) -> str | None:
@@ -329,6 +344,7 @@ class HandlerOccStateEffect:
             changed_files=changed_files,
             diff_total_lines=diff_total_lines,
             downstream_check_value=downstream_check_value,
+            product_repo_private=product_repo_private,
         )
 
     def _list_files(
