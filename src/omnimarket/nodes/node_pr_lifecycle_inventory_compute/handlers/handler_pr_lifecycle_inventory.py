@@ -15,13 +15,15 @@ import json
 import logging
 import subprocess
 from datetime import UTC, datetime
-from typing import Literal
+from typing import Literal, NamedTuple
 
 from omnimarket.merge_control.reason_code_classifier import (
+    ALL_LOG_SIGNATURES,
     EnumMergeCheckReasonCode,
     MergeCheckFacts,
     classify,
     classify_job,
+    text_has_api_outage_signature,
 )
 from omnimarket.nodes.node_pr_lifecycle_inventory_compute.models.model_pr_lifecycle_inventory import (
     ModelOrgWideOpenPrInventory,
@@ -55,22 +57,32 @@ _TERMINAL_CHECK_BUCKETS = {"pass", "fail", "skipping", "cancel"}
 # node_pr_lifecycle_fix_effect's trivial-comment-resolution adapter.
 _CODERABBIT_LOGINS = frozenset({"coderabbitai", "coderabbitai[bot]"})
 
-_CHECK_LOG_NETWORK_SIGNATURES: tuple[str, ...] = (
-    "could not resolve host: github.com",
-    "gnutls recv error",
-    "rpc failed; curl 56",
-    "fatal: early eof",
-    "unexpected disconnect while reading sideband packet",
-    "invalid index-pack output",
-    "failed to initialize container",
-    "one or more containers failed to start",
-    "service container postgres failed",
-    "failed to prepare extraction snapshot",
-    "lease does not exist",
-    "failed to lookup address information",
-    "temporary failure in name resolution",
-    "failed to download distribution due to network timeout",
-    "request failed after 3 retries",
+# OMN-14769: the job-log signature set the classifier keys on is imported from
+# ``reason_code_classifier.ALL_LOG_SIGNATURES`` (the single source of truth).
+# A node-local subset (the former ``_CHECK_LOG_NETWORK_SIGNATURES``) had drifted
+# from it — it carried NONE of the classifier's F-23 isolation-hang signatures
+# (``os._exit(1)`` / ``thread timeout`` / ``hard timeout`` / ``leaked thread``)
+# and NONE of the API-outage signatures — so an os._exit hang on a product-named
+# step extracted an empty tuple and classified PRODUCT_FAILED live while every
+# fixture passed. Extracting against the canonical union makes that drift
+# structurally impossible.
+
+# gh renders a GitHub HTTP error to stderr as e.g. "gh: Service Unavailable
+# (HTTP 503)". These markers detect an API OUTAGE (5xx / rate-limit) in a gh
+# error blob, complementing the classifier's job-LOG outage signatures (which
+# use a different phrasing, e.g. "503 service unavailable"). Feeds ``api_error``
+# so a failed jobs-API metadata call during a platform incident emits
+# GITHUB_API_OUTAGE (F-07) rather than failing closed to an infra rerun.
+_GH_API_OUTAGE_STDERR_MARKERS: tuple[str, ...] = (
+    "http 502",
+    "http 503",
+    "http 504",
+    "bad gateway",
+    "service unavailable",
+    "gateway time-out",
+    "gateway timeout",
+    "secondary rate limit",
+    "api rate limit exceeded",
 )
 
 # F3 (OMN-13319): only PR-associated runs count toward required contexts.
@@ -102,6 +114,25 @@ HandlerCategory = Literal["COMPUTE"]
 
 HANDLER_TYPE: HandlerType = "NODE_HANDLER"
 HANDLER_CATEGORY: HandlerCategory = "COMPUTE"
+
+
+class _JobsApiResult(NamedTuple):
+    """Outcome of a jobs-API attempt fetch for a single failed check (OMN-14769).
+
+    Carries the failing job object (or ``None`` when none could be resolved)
+    plus the two live-derived context facts the classifier needs but that a
+    bare job object does not encode:
+
+    - ``api_error``: the jobs-API metadata call itself failed as a GitHub
+      OUTAGE (HTTP 5xx / rate-limit / timeout / HTML body) → GITHUB_API_OUTAGE.
+    - ``is_superseded``: the check's linked job is absent from the run's LATEST
+      attempt and a re-run exists → the row is from a superseded attempt →
+      STALE_CONTEXT (refresh/supersede, do not fix).
+    """
+
+    job: dict[str, object] | None
+    api_error: bool = False
+    is_superseded: bool = False
 
 
 class HandlerPrLifecycleInventory:
@@ -696,44 +727,61 @@ class HandlerPrLifecycleInventory:
 
         event = self._normalize_check_event(item)
         link = str(item.get("link", "") or "")
-        job = self._fetch_jobs_api_job(repo, link)
-        if job is not None:
+        fetch = self._fetch_jobs_api_job(repo, link)
+        if fetch.job is not None:
             return classify_job(
-                job,
+                fetch.job,
                 run_event=event,
                 current_head_sha=current_head_sha,
                 required_context=True,
+                api_error=fetch.api_error,
+                is_superseded=fetch.is_superseded,
                 log_signatures=flaky_evidence,
             )
         # No jobs-API job resolved — classify on the gh-pr-checks facts we have
-        # (event / conclusion / infra evidence). Fail-closed inside the classifier.
+        # (event / conclusion / infra evidence) plus the live-derived
+        # ``api_error`` (an OUTAGE on the metadata call itself, F-07). Fail-closed
+        # inside the classifier.
         return classify(
             MergeCheckFacts(
                 run_event=event,
                 current_head_sha=current_head_sha,
                 required_context=True,
+                api_error=fetch.api_error,
+                is_superseded=fetch.is_superseded,
                 job_conclusion=conclusion,
                 log_signatures=flaky_evidence,
             )
         )
 
-    def _fetch_jobs_api_job(self, repo: str, link: str) -> dict[str, object] | None:
-        """Fetch the jobs-API job object for a check's linked run (fail-soft).
+    def _fetch_jobs_api_job(self, repo: str, link: str) -> _JobsApiResult:
+        """Fetch the jobs-API attempt facts for a check's linked run (fail-soft).
 
         Parses ``run_id`` and ``job_id`` from a ``gh pr checks`` link of the form
         ``.../actions/runs/<run_id>/job/<job_id>`` and returns the matching job
-        from ``repos/<repo>/actions/runs/<run_id>/jobs`` (latest attempt). Returns
-        None on any parse/gh/JSON failure so classification degrades gracefully.
+        from ``repos/<repo>/actions/runs/<run_id>/jobs`` (latest attempt), plus
+        the two live-derived facts the classifier needs (OMN-14769):
+
+        - ``api_error``: the jobs-API metadata call itself failed as a GitHub
+          OUTAGE (HTTP 5xx / rate-limit / timeout / HTML body). Distinguished
+          from a plain not-found so an incident emits GITHUB_API_OUTAGE (F-07)
+          rather than failing closed to an infra rerun.
+        - ``is_superseded``: the linked ``job_id`` is a real job that is ABSENT
+          from the run's latest attempt and a re-run exists (max ``run_attempt``
+          > 1) — the check row is from a superseded earlier attempt (F-14/F-26).
+
+        Returns an empty :class:`_JobsApiResult` on any parse/not-found failure
+        so classification degrades gracefully.
         """
         if "/actions/runs/" not in link:
-            return None
+            return _JobsApiResult(None)
         try:
             after_runs = link.split("/actions/runs/", 1)[1]
             run_id = after_runs.split("/", 1)[0].strip()
         except (IndexError, ValueError):
-            return None
+            return _JobsApiResult(None)
         if not run_id.isdigit():
-            return None
+            return _JobsApiResult(None)
         job_id = ""
         if "/job/" in link:
             job_id = link.rsplit("/job/", 1)[1].split("?", 1)[0].strip()
@@ -742,26 +790,39 @@ class HandlerPrLifecycleInventory:
             timeout=30,
         )
         if result.returncode != 0:
+            api_error = self._gh_result_is_api_outage(result)
             logger.debug(
-                "jobs-API fetch failed for %s run %s: %s",
+                "jobs-API fetch failed for %s run %s (api_outage=%s): %s",
                 repo,
                 run_id,
+                api_error,
                 result.stderr.strip(),
             )
-            return None
+            return _JobsApiResult(None, api_error=api_error)
         try:
             payload = json.loads(result.stdout or "{}")
         except json.JSONDecodeError:
-            return None
+            # A non-JSON body (an HTML 5xx error page passed straight through) is
+            # an OUTAGE, not a plain miss.
+            return _JobsApiResult(
+                None, api_error=text_has_api_outage_signature(result.stdout)
+            )
         jobs = payload.get("jobs") if isinstance(payload, dict) else None
         if not isinstance(jobs, list) or not jobs:
-            return None
+            return _JobsApiResult(None)
         job_dicts = [j for j in jobs if isinstance(j, dict)]
+        is_superseded = False
         if job_id.isdigit():
             for j in job_dicts:
                 if str(j.get("id")) == job_id:
-                    return j
-        # Fall back to the first non-successful job (the failing one).
+                    return _JobsApiResult(j)
+            # The linked job is absent from the run's LATEST attempt. If a re-run
+            # exists (max attempt > 1) the check row is from a superseded attempt
+            # — refresh/supersede, do not fix (F-14/F-26). A single-attempt miss
+            # is treated as a benign link/rollup mismatch, not supersession.
+            is_superseded = self._max_run_attempt(job_dicts) > 1
+        # Fall back to the first non-successful job (the failing one) of the
+        # latest attempt.
         for j in job_dicts:
             if str(j.get("conclusion") or "").lower() in {
                 "failure",
@@ -769,13 +830,51 @@ class HandlerPrLifecycleInventory:
                 "timed_out",
                 "action_required",
             }:
-                return j
-        return job_dicts[0] if job_dicts else None
+                return _JobsApiResult(j, is_superseded=is_superseded)
+        return _JobsApiResult(
+            job_dicts[0] if job_dicts else None, is_superseded=is_superseded
+        )
+
+    @classmethod
+    def _gh_result_is_api_outage(cls, result: subprocess.CompletedProcess[str]) -> bool:
+        """True when a failed gh call failed as a GitHub API OUTAGE (F-07).
+
+        An OUTAGE is an HTTP 5xx / rate-limit / timeout on the API itself, as
+        opposed to a plain not-found / auth error. A ``gh`` timeout surfaces as
+        the synthetic ``_GH_TIMEOUT_RETURNCODE``; an HTTP error surfaces its
+        status/body in stdout+stderr. Combines the classifier's job-LOG outage
+        signatures (HTML/5xx phrasing) with gh-CLI stderr markers so both
+        renderings are caught.
+        """
+        if result.returncode == _GH_TIMEOUT_RETURNCODE:
+            return True
+        blob = f"{result.stdout}\n{result.stderr}".lower()
+        if text_has_api_outage_signature(blob):
+            return True
+        return any(marker in blob for marker in _GH_API_OUTAGE_STDERR_MARKERS)
+
+    @staticmethod
+    def _max_run_attempt(job_dicts: list[dict[str, object]]) -> int:
+        """Highest ``run_attempt`` across a run's returned jobs (>= 1)."""
+        attempts = [
+            j.get("run_attempt")
+            for j in job_dicts
+            if isinstance(j.get("run_attempt"), int)
+        ]
+        return max((a for a in attempts if isinstance(a, int)), default=1)
 
     def _collect_flaky_failure_evidence(
         self, item: dict[str, object]
     ) -> tuple[str, ...]:
-        """Return network/clone evidence from a failed check's linked job log."""
+        """Return classifier log signatures from a failed check's linked job log.
+
+        Scans the job log for every signature in the classifier's canonical
+        ``ALL_LOG_SIGNATURES`` union (runner-infra + API-outage families), so the
+        extracted tuple fed to ``classify`` is exactly what the classifier keys
+        on — the F-23 isolation-hang and API-outage signatures included
+        (OMN-14769). The result also populates ``ModelPrCheckRun.flaky_failure_
+        evidence`` used by the orchestrator's fallback rerun heuristic.
+        """
         conclusion = self._normalize_check_conclusion(item)
         if conclusion not in {"failure", "cancelled", "timed_out"}:
             return ()
@@ -805,9 +904,7 @@ class HandlerPrLifecycleInventory:
             return ()
         lowered = result.stdout.lower()
         return tuple(
-            signature
-            for signature in _CHECK_LOG_NETWORK_SIGNATURES
-            if signature in lowered
+            signature for signature in ALL_LOG_SIGNATURES if signature in lowered
         )
 
     @staticmethod

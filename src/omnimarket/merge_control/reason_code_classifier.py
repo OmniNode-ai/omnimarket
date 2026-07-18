@@ -147,9 +147,13 @@ _API_OUTAGE_LOG_SIGNATURES: tuple[str, ...] = (
 )
 
 # Job-LOG substrings indicating a self-hosted runner network/clone/container
-# infrastructure fault (F-08). Superset of the inventory
-# ``_CHECK_LOG_NETWORK_SIGNATURES`` set; kept local so the shared classifier does
-# not import a node's private module (repo boundary rule).
+# infrastructure fault (F-08). This module is the SINGLE SOURCE OF TRUTH for the
+# signatures the classifier keys on: the inventory node imports the public
+# ``ALL_LOG_SIGNATURES`` union (below) to drive its log extraction, so the tuple
+# it feeds ``classify`` is exactly what ``classify`` matches on. A node-local
+# subset previously drifted from this set and silently dropped the F-23
+# isolation-hang and every API-outage signature (OMN-14769 follow-up to
+# OMN-14765) — do not re-introduce a divergent copy in any consumer.
 _RUNNER_INFRA_LOG_SIGNATURES: tuple[str, ...] = (
     "could not resolve host: github.com",
     "could not resolve host: codeload.github.com",
@@ -192,6 +196,31 @@ _REASON_CODE_PRECEDENCE: tuple[EnumMergeCheckReasonCode, ...] = (
     EnumMergeCheckReasonCode.RUNNER_INFRA,
     EnumMergeCheckReasonCode.CANCELLED,
 )
+
+# Public: the COMPLETE set of job-LOG signatures the classifier keys on, across
+# both families. The inventory node scans job logs for exactly these so its
+# extracted ``log_signatures`` tuple is precisely what ``classify`` matches on —
+# one source of truth, no drift (OMN-14769). Order is runner-infra first, then
+# API-outage; callers that preserve match order therefore surface an infra
+# signature ahead of an outage one, which is harmless (the classifier ranks by
+# family, not by list position).
+ALL_LOG_SIGNATURES: tuple[str, ...] = (
+    *_RUNNER_INFRA_LOG_SIGNATURES,
+    *_API_OUTAGE_LOG_SIGNATURES,
+)
+
+
+def text_has_api_outage_signature(text: str) -> bool:
+    """True if ``text`` carries a GitHub API-outage signature (F-07).
+
+    ``text`` may be a job-log body or a gh error/metadata blob. Used by the
+    inventory node to set ``api_error`` when the jobs-API metadata call itself
+    returns an outage body (HTML error page / 5xx / rate-limit) rather than the
+    expected JSON, so the classifier emits ``GITHUB_API_OUTAGE`` (withhold)
+    instead of failing closed to an infra rerun.
+    """
+    lowered = text.lower()
+    return any(sig in lowered for sig in _API_OUTAGE_LOG_SIGNATURES)
 
 
 @dataclass(frozen=True)
@@ -433,6 +462,7 @@ def dominant_reason_code(
 
 
 __all__: list[str] = [
+    "ALL_LOG_SIGNATURES",
     "EnumMergeCheckReasonCode",
     "MergeCheckFacts",
     "classify",
@@ -440,4 +470,5 @@ __all__: list[str] = [
     "classify_job",
     "dominant_reason_code",
     "facts_from_job",
+    "text_has_api_outage_signature",
 ]
