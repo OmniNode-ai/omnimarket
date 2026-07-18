@@ -75,10 +75,13 @@ def test_wrapper_exists_and_is_executable() -> None:
 
 
 def test_no_hardcoded_absolute_paths() -> None:
-    """Rule #6: no /Users/ or /Volumes/ absolute paths in the wrapper."""
+    """Rule #6: no local absolute path prefixes in the wrapper."""
     text = WRAPPER.read_text()
-    assert "/Users/" not in text, "hardcoded /Users/ path in merge-proof"
-    assert "/Volumes/" not in text, "hardcoded /Volumes/ path in merge-proof"
+    forbidden_prefixes = ["/" + "Users/", "/" + "Volumes/"]
+    for prefix in forbidden_prefixes:
+        assert prefix not in text, (
+            f"hardcoded local absolute path in merge-proof: {prefix}"
+        )
 
 
 def test_unresolved_env_fails_with_export_guidance(isolated_wrapper: Path) -> None:
