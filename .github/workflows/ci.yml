@@ -355,21 +355,22 @@ jobs:
       # ======================================================================
       # BRANCH-SAFETY GATE (OMN-14768 / friction F-11 + F-12)
       # Folded into the `lint` job — which is in ci.yml's required "CI Summary"
-      # rollup `needs:` — so it is GENUINELY blocking on every PR class.
+      # rollup `needs:` — so F-11 + the self-tests are GENUINELY blocking on
+      # every PR class. F-12 runs here too but is ADVISORY (continue-on-error)
+      # for now to avoid wedging an already-open ticket-split PR — see its step.
       #
       # WHY NOT A STANDALONE WORKFLOW: a separate workflow file gets its own
       # run_id and CANNOT be aggregated into CI Summary (GHA `needs:` cannot
       # cross workflow-file boundaries), and it is NOT in the dev
       # required_status_checks (["CI Summary","reason-graph","OCC Emitter Golden
-      # Gate"]). A standalone "Branch-safety gate" workflow was therefore
-      # ADVISORY — it could not block a merge without a separate
-      # branch-protection required-context flip. Running the same checks HERE, as
-      # `lint` steps, makes them part of the already-required CI Summary with no
-      # paths filter and no job-level `if` — enforcement, not detection (Operating
-      # Rule #5). The standalone branch-safety-gate.yml (which shipped ADVISORY in
-      # #1810) is retired in this follow-up PR — net-negative surface. SYNC with
-      # the two pre-commit hooks check-branch-rename-prohibited /
-      # check-branch-identity-tests.
+      # Gate"]). The standalone "Branch-safety gate" workflow that shipped in
+      # #1810 was therefore ADVISORY — it could not block a merge without a
+      # separate branch-protection required-context flip. Running these checks
+      # HERE, as `lint` steps, makes F-11 part of the already-required CI Summary
+      # with no paths filter and no job-level `if` — enforcement, not detection
+      # (Operating Rule #5). The standalone branch-safety-gate.yml is retired in
+      # this follow-up PR — net-negative surface. SYNC with the two pre-commit
+      # hooks check-branch-rename-prohibited / check-branch-identity-tests.
       #
       # F-11 (rename prohibition): renaming an OPEN PR's head branch CLOSES the PR
       # (the omnidash#258 class). Fails closed if any branch-rename invocation is
@@ -384,8 +385,26 @@ jobs:
       # branch-name failure — on a PR it asserts the head branch references every
       # `Evidence-Ticket: OMN-XXXX` in the PR body, reusing the Receipt Gate's own
       # regexes so the two cannot drift. PR-only (needs the PR body/head ref).
-      - name: Branch-safety F-12 — Evidence-Ticket branch identity (PR only)
+      #
+      # ADVISORY FOR NOW (continue-on-error: true) — NOT yet merge-blocking, on
+      # purpose. The Receipt-Gate branch↔Evidence-Ticket axis F-12 mirrors is NOT
+      # a required status check on omnimarket dev today, and a legitimate
+      # ticket-split PR can carry a branch named for a parent ticket while its
+      # Evidence-Ticket cites the sub-ticket (live example at authoring time: PR
+      # #1811 — branch `…omn-14765…`, `Evidence-Ticket: OMN-14769`). Making F-12
+      # hard-fail inside the required CI Summary rollup NOW would WEDGE that
+      # already-open PR (and renaming its branch to satisfy F-12 would CLOSE it —
+      # the F-11 class), so this step stays report-only until such open
+      # mismatches clear. It still runs on every PR (visible annotation) and is
+      # BLOCKING at pre-commit (hook `check-branch-identity-tests` self-tests +
+      # the author's own pre-push). FLIP TO BLOCKING: delete the
+      # `continue-on-error: true` line below once no open omnimarket PR trips it
+      # (re-check with `check_branch_identity.py --mode identity`), OR after the
+      # ticket-split convention is folded into `branch_binds_ticket`. F-11 above
+      # is already genuinely blocking (verified it does not wedge #1811).
+      - name: Branch-safety F-12 — Evidence-Ticket branch identity (PR only, advisory)
         if: github.event_name == 'pull_request'
+        continue-on-error: true
         env:
           PR_BODY: ${{ github.event.pull_request.body }}
           HEAD_REF: ${{ github.event.pull_request.head.ref }}
