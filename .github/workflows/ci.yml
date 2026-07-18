@@ -352,6 +352,48 @@ jobs:
       - name: Handler dispatch-entrypoint gate (OMN-14617 fan-out)
         run: PYTHONPATH=src uv run python -m omnimarket.validators.handler_dispatch_entrypoint src/omnimarket
 
+      # ======================================================================
+      # BRANCH-SAFETY GATE (OMN-14768 / friction F-11 + F-12)
+      # Folded into the `lint` job — which is in ci.yml's required "CI Summary"
+      # rollup `needs:` — so it is GENUINELY blocking on every PR class.
+      #
+      # WHY NOT A STANDALONE WORKFLOW: a separate workflow file gets its own
+      # run_id and CANNOT be aggregated into CI Summary (GHA `needs:` cannot
+      # cross workflow-file boundaries), and it is NOT in the dev
+      # required_status_checks (["CI Summary","reason-graph","OCC Emitter Golden
+      # Gate"]). A standalone "Branch-safety gate" workflow was therefore
+      # ADVISORY — it could not block a merge without a separate
+      # branch-protection required-context flip. Running the same checks HERE, as
+      # `lint` steps, makes them part of the already-required CI Summary with no
+      # paths filter and no job-level `if` — enforcement, not detection (Operating
+      # Rule #5). The standalone branch-safety-gate.yml (which shipped ADVISORY in
+      # #1810) is retired in this follow-up PR — net-negative surface. SYNC with
+      # the two pre-commit hooks check-branch-rename-prohibited /
+      # check-branch-identity-tests.
+      #
+      # F-11 (rename prohibition): renaming an OPEN PR's head branch CLOSES the PR
+      # (the omnidash#258 class). Fails closed if any branch-rename invocation is
+      # introduced anywhere in the merge-controller node tree.
+      - name: Branch-safety F-11 — branch-rename prohibition (merge-controller tree)
+        run: uv run python scripts/ci/check_branch_identity.py --mode rename-scan
+      # Self-tests run here too so a passing rename-scan of the real tree is never
+      # vacuous (a planted rename is proven to fail — positive controls).
+      - name: Branch-safety gate self-tests (positive controls — non-vacuous)
+        run: uv run pytest tests/ci/test_check_branch_identity.py -q -p no:randomly
+      # F-12 (Evidence-Ticket branch identity): front-runs the Receipt Gate's late
+      # branch-name failure — on a PR it asserts the head branch references every
+      # `Evidence-Ticket: OMN-XXXX` in the PR body, reusing the Receipt Gate's own
+      # regexes so the two cannot drift. PR-only (needs the PR body/head ref).
+      - name: Branch-safety F-12 — Evidence-Ticket branch identity (PR only)
+        if: github.event_name == 'pull_request'
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+        run: |
+          printf '%s' "$PR_BODY" > /tmp/pr_body.txt
+          uv run python scripts/ci/check_branch_identity.py \
+            --mode identity --branch "$HEAD_REF" --body-file /tmp/pr_body.txt
+
   typecheck:
     needs: [occ-preflight, zone-filter]
     if: needs.occ-preflight.result == 'success' && (needs.zone-filter.outputs.docs_only != 'true')
