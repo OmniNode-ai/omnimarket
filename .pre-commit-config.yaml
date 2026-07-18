@@ -258,6 +258,17 @@ repos:
         pass_filenames: false
         stages: [pre-commit]
 
+      # Shell hygiene gate (OMN-14761 / F-22). Fail-closed shellcheck over changed
+      # shell scripts; same script the shellcheck-gate CI job runs, so local and CI
+      # enforcement cannot drift. The tracked tree is held to --severity=error.
+      - id: shell-hygiene
+        name: Shell hygiene (shellcheck, OMN-14761)
+        entry: bash scripts/ci/check_shell_hygiene.sh
+        language: system
+        types: [shell]
+        pass_filenames: true
+        stages: [pre-commit]
+
       - id: check-dep-provenance
         name: Forbid first-party git-source overrides (OMN-13873)
         entry: uv run --frozen python scripts/check_dep_provenance.py
