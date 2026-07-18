@@ -79,6 +79,7 @@ from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.occ_evidence_stamp i
     extract_evidence_item_id,
     rebind_contract_entry_sha256_in_text,
     rebind_contract_sha256_in_text,
+    receipt_local_check_value,
     render_ci_check_receipt,
     render_ci_dod_evidence_item,
     render_companion_contract,
@@ -279,6 +280,13 @@ class OccCompanionEmitter:
         head_sha = head.get("sha") if isinstance(head, dict) else None
         head_ref = head.get("ref") if isinstance(head, dict) else None
         pr_state = pr_data.get("state") or "open"
+        # OMN-14766 F-16: a private product repo cannot be re-probed by the hosted
+        # OCC contract-compliance runner (its token has no scope on the private
+        # repo), so a `gh pr view --repo <private>` check_value fails hosted while
+        # passing on this emitter (OCC#4307/#4318). Read the repo visibility from
+        # the PR REST payload (`base.repo.private`) — no extra API call — so the
+        # declared check_values can be rendered hosted-safe (receipt-local) below.
+        is_private = self._is_private_repo(pr_data)
         if not isinstance(head_sha, str) or not SHA_RE.match(head_sha):
             raise RuntimeError(
                 f"could not resolve product PR head SHA for {repo}#{pr_number}: "
@@ -361,18 +369,41 @@ class OccCompanionEmitter:
 
         # OMN-14425 / OMN-14650: a second, falsifiable claim alongside the
         # existence probe above — the product PR's changed-file list. It derives
-        # proof tier L1 (static-assert family) and satisfies the OMN-14409
-        # substance floor WITHOUT gating on the source PR's CI being green (the
-        # deadlock the former `gh pr checks <source>` probe created). The
-        # existence probe is kept, not replaced; this adds a claim. `gh pr diff
-        # --name-only` is shlex-splittable so _observe_pr_probe can run it
-        # directly; the contract/receipt declare the full `| grep -q .` assertion.
-        ci_probe_command = f"gh pr diff {pr_number} --repo {repo} --name-only"
+        # proof tier L1 (substance floor's diff-assert family: `--json files` names
+        # the files the PR touches) and satisfies the OMN-14409 substance floor
+        # WITHOUT gating on the source PR's CI being green (the deadlock the former
+        # `gh pr checks <source>` probe created). The existence probe is kept, not
+        # replaced; this adds a claim.
+        #
+        # OMN-14766 F-06: the RUNTIME probe is the GraphQL `gh pr view --json files`,
+        # NOT the REST-fragile `gh pr diff ... --name-only` (which returned HTML/503
+        # during a GitHub REST incident — OCC#4297). OMN-14741 already moved the
+        # declared receipt/contract check_value to `--json files`; this closes the
+        # remainder so the emitter's own probe matches the check_value it declares
+        # (`probe_command == check_value` on the public path). `gh pr view --json
+        # files` is pipe-free JSON, so _observe_pr_probe can shlex.split + json.loads
+        # it directly.
+        ci_probe_command = f"gh pr view {pr_number} --repo {repo} --json files"
         ci_stdout, ci_exit = self._observe_pr_probe(
             probe_command=ci_probe_command,
             token=token,
             fallback={"number": pr_number, "note": "diff not observed"},
         )
+
+        # OMN-14766 F-16: for a private product repo the DECLARED check_value the
+        # hosted OCC runner re-runs is a receipt-local grep (computed per ticket
+        # below, since the receipt path is ticket-scoped) instead of a
+        # `gh pr view --repo <private>` re-probe. The live probe above still runs on
+        # THIS emitter (which has repo scope) and is recorded in each receipt's
+        # probe_command/probe_stdout/exit_code. Public repos keep None so the
+        # OMN-14741 shape is preserved byte-for-byte.
+        def _hosted_safe_check_values(ticket: str) -> tuple[str | None, str | None]:
+            if not is_private:
+                return None, None
+            return (
+                receipt_local_check_value(ticket_id=ticket, evidence_id=evidence_id),
+                receipt_local_check_value(ticket_id=ticket, evidence_id=ci_evidence_id),
+            )
 
         with tempfile.TemporaryDirectory(prefix="occ-companion-") as tmpdir:
             clone_dir = Path(tmpdir) / "onex_change_control"
@@ -380,6 +411,9 @@ class OccCompanionEmitter:
 
             contract_paths: dict[str, Path] = {}
             for ticket in tickets:
+                downstream_check_value, ci_check_value = _hosted_safe_check_values(
+                    ticket
+                )
                 contract_path = clone_dir / "contracts" / f"{ticket}.yaml"
                 contract_path.parent.mkdir(parents=True, exist_ok=True)
                 if not contract_path.is_file():
@@ -389,6 +423,8 @@ class OccCompanionEmitter:
                             repo=repo,
                             pr_number=pr_number,
                             evidence_id=evidence_id,
+                            downstream_check_value=downstream_check_value,
+                            ci_check_value=ci_check_value,
                         ),
                         encoding="utf-8",
                     )
@@ -406,6 +442,8 @@ class OccCompanionEmitter:
                         pr_number=pr_number,
                         evidence_id=evidence_id,
                         ci_evidence_id=ci_evidence_id,
+                        downstream_check_value=downstream_check_value,
+                        ci_check_value=ci_check_value,
                     )
                 contract_paths[ticket] = contract_path
 
@@ -430,6 +468,7 @@ class OccCompanionEmitter:
                         exit_code=downstream_exit,
                         runner=self._runner,
                         verifier=self._verifier,
+                        check_value=downstream_check_value,
                     ),
                     encoding="utf-8",
                 )
@@ -453,6 +492,7 @@ class OccCompanionEmitter:
                         exit_code=ci_exit,
                         runner=self._runner,
                         verifier=self._verifier,
+                        check_value=ci_check_value,
                     ),
                     encoding="utf-8",
                 )
@@ -637,6 +677,27 @@ class OccCompanionEmitter:
         authors a companion for exactly the tickets the gate will check.
         """
         return _extract_ticket_ids(body, title)
+
+    @staticmethod
+    def _is_private_repo(pr_data: dict[str, object]) -> bool:
+        """True when the product PR's repo is private (OMN-14766 F-16).
+
+        Read from the PR REST payload's ``base.repo.private`` (the base is always
+        the product repo, even for a fork PR whose ``head.repo`` is the fork). No
+        extra API call — the emitter already GETs the PR. A private repo cannot be
+        re-probed by the hosted OCC contract-compliance runner (its token has no
+        scope there), so its declared check_values are rendered receipt-local. Fails
+        SAFE toward *public* only when the field is genuinely absent; the effect is
+        a hosted `gh pr view` check that fails loudly in OCC CI rather than a silent
+        skip, so an unexpected shape is surfaced, not masked.
+        """
+        base = pr_data.get("base")
+        if not isinstance(base, dict):
+            return False
+        repo_obj = base.get("repo")
+        if not isinstance(repo_obj, dict):
+            return False
+        return bool(repo_obj.get("private"))
 
     @staticmethod
     def _suppression_reason(pr_data: dict[str, object]) -> str | None:
@@ -838,6 +899,8 @@ class OccCompanionEmitter:
         pr_number: int,
         evidence_id: str,
         ci_evidence_id: str,
+        downstream_check_value: str | None = None,
+        ci_check_value: str | None = None,
     ) -> None:
         """Ensure a PRE-EXISTING contract declares THIS PR's base rows (F-04).
 
@@ -849,19 +912,29 @@ class OccCompanionEmitter:
         :func:`render_companion_contract` composes — so the appended row's parsed
         dod_evidence item (hence its per-entry hash) is byte-identical to the
         fresh-contract row. Structural insert (robust to non-terminal contracts).
+
+        For a private product repo the appended rows carry the hosted-safe
+        ``downstream_check_value`` / ``ci_check_value`` (OMN-14766 F-16), so a
+        repaired pre-existing contract matches the fresh-contract shape there too.
         """
         text = contract_path.read_text(encoding="utf-8")
         blocks: list[str] = []
         if not self._declares_dod_evidence_id(text, evidence_id):
             blocks.append(
                 render_downstream_dod_evidence_item(
-                    evidence_id=evidence_id, repo=repo, pr_number=pr_number
+                    evidence_id=evidence_id,
+                    repo=repo,
+                    pr_number=pr_number,
+                    check_value=downstream_check_value,
                 )
             )
         if not self._declares_dod_evidence_id(text, ci_evidence_id):
             blocks.append(
                 render_ci_dod_evidence_item(
-                    evidence_id=evidence_id, repo=repo, pr_number=pr_number
+                    evidence_id=evidence_id,
+                    repo=repo,
+                    pr_number=pr_number,
+                    check_value=ci_check_value,
                 )
             )
         if blocks:
