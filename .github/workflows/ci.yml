@@ -353,11 +353,12 @@ jobs:
         run: PYTHONPATH=src uv run python -m omnimarket.validators.handler_dispatch_entrypoint src/omnimarket
 
       # ======================================================================
-      # BRANCH-SAFETY GATE (OMN-14768 / friction F-11 + F-12)
+      # BRANCH-SAFETY GATE (OMN-14768 / friction F-11 + F-12; F-12 flip: OMN-14773)
       # Folded into the `lint` job — which is in ci.yml's required "CI Summary"
-      # rollup `needs:` — so F-11 + the self-tests are GENUINELY blocking on
-      # every PR class. F-12 runs here too but is ADVISORY (continue-on-error)
-      # for now to avoid wedging an already-open ticket-split PR — see its step.
+      # rollup `needs:` — so F-11, F-12, and the self-tests are ALL GENUINELY
+      # blocking on every PR class. F-12 was advisory (continue-on-error) at first
+      # to avoid wedging an already-open ticket-split PR (#1811, now CLOSED); with
+      # no open omnimarket PR tripping it, the tolerance was removed (OMN-14773).
       #
       # WHY NOT A STANDALONE WORKFLOW: a separate workflow file gets its own
       # run_id and CANNOT be aggregated into CI Summary (GHA `needs:` cannot
@@ -386,25 +387,22 @@ jobs:
       # `Evidence-Ticket: OMN-XXXX` in the PR body, reusing the Receipt Gate's own
       # regexes so the two cannot drift. PR-only (needs the PR body/head ref).
       #
-      # ADVISORY FOR NOW (continue-on-error: true) — NOT yet merge-blocking, on
-      # purpose. The Receipt-Gate branch↔Evidence-Ticket axis F-12 mirrors is NOT
-      # a required status check on omnimarket dev today, and a legitimate
-      # ticket-split PR can carry a branch named for a parent ticket while its
-      # Evidence-Ticket cites the sub-ticket (live example at authoring time: PR
-      # #1811 — branch `…omn-14765…`, `Evidence-Ticket: OMN-14769`). Making F-12
-      # hard-fail inside the required CI Summary rollup NOW would WEDGE that
-      # already-open PR (and renaming its branch to satisfy F-12 would CLOSE it —
-      # the F-11 class), so this step stays report-only until such open
-      # mismatches clear. It still runs on every PR (visible annotation) and is
-      # BLOCKING at pre-commit (hook `check-branch-identity-tests` self-tests +
-      # the author's own pre-push). FLIP TO BLOCKING: delete the
-      # `continue-on-error: true` line below once no open omnimarket PR trips it
-      # (re-check with `check_branch_identity.py --mode identity`), OR after the
-      # ticket-split convention is folded into `branch_binds_ticket`. F-11 above
-      # is already genuinely blocking (verified it does not wedge #1811).
-      - name: Branch-safety F-12 — Evidence-Ticket branch identity (PR only, advisory)
+      # BLOCKING (OMN-14773): the `continue-on-error: true` that made this step
+      # advisory was removed once the only open PR that tripped it (#1811 — branch
+      # `…omn-14765…`, `Evidence-Ticket: OMN-14769`) closed and no open omnimarket
+      # PR remained to wedge. Because this step runs inside the `lint` job that
+      # feeds the required "CI Summary" rollup, removing the tolerance makes F-12
+      # merge-blocking with NO branch-protection change — it folds into the
+      # existing `CI Summary` required context (enforcement, not detection —
+      # Operating Rule #5). Pre-flip green proof: rename-scan clean, self-tests
+      # green, identity mode green vs dev (no Evidence-Ticket to bind) and vs a
+      # branch that references its Evidence-Ticket; a mismatched branch fails
+      # rc=1 (non-vacuous negative control). It is also BLOCKING at pre-commit
+      # (hook `check-branch-identity-tests`). A legitimate ticket-split PR must
+      # name the branch for the sub-ticket whose `Evidence-Ticket:` it carries
+      # (or fold that convention into `branch_binds_ticket`).
+      - name: Branch-safety F-12 — Evidence-Ticket branch identity (PR only, blocking)
         if: github.event_name == 'pull_request'
-        continue-on-error: true
         env:
           PR_BODY: ${{ github.event.pull_request.body }}
           HEAD_REF: ${{ github.event.pull_request.head.ref }}
