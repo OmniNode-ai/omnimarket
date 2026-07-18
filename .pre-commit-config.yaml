@@ -335,6 +335,31 @@ repos:
         pass_filenames: true
         stages: [pre-commit]
 
+      # OMN-14762 (F-18): coverage-json ignore-errors parity. Keeps the
+      # authoritative gate's pytest-cov json (config-driven) aligned with the
+      # shadow aggregator's `coverage json -i`, so a missing C-extension source
+      # cannot red one and leave the other green. SYNC with ci.yml step
+      # 'Coverage-json ignore-errors parity gate'. Fast, stdlib-only.
+      - id: coverage-ignore-parity
+        name: Coverage-json ignore-errors parity gate (OMN-14762)
+        language: system
+        entry: uv run python scripts/ci/check_coverage_ignore_parity.py
+        files: ^(pyproject\.toml|scripts/ci/aggregate_coverage_artifacts\.py|scripts/ci/check_coverage_ignore_parity\.py)$
+        pass_filenames: false
+        stages: [pre-commit]
+
+      # OMN-14762 (F-19-A): GitHub Actions pin ratchet. Every third-party `uses:`
+      # must be pinned to a 40-char SHA; current unpinned set frozen in
+      # scripts/ci/action_pin_baseline.txt (burn-down only), NEW unpinned fails
+      # closed. SYNC with ci.yml step 'GitHub Actions pin ratchet'. Fast, stdlib-only.
+      - id: check-action-pins
+        name: GitHub Actions pin ratchet (OMN-14762)
+        language: system
+        entry: python scripts/ci/check_action_pins.py
+        files: ^(\.github/workflows/.*\.(yml|yaml)|scripts/ci/action_pin_baseline\.txt|scripts/ci/check_action_pins\.py)$
+        pass_filenames: false
+        stages: [pre-commit]
+
       # OMN-12693: contract-level producer/consumer shape gate.
       # SYNC with node-drift-gate.yml full strict check.
       - id: node-orphan-graph

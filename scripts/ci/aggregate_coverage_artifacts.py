@@ -84,7 +84,12 @@ from omnimarket.nodes.node_coverage_sweep.handlers.handler_coverage_sweep import
     NodeCoverageSweep,
 )
 
-SCHEMA_VERSION = "omnimarket.coverage-artifact/v1"
+# OMN-14762 (F-19-B): the schema version is owned by the shared metadata module
+# so the producer (emit_coverage_shard_metadata.py) and this validator can never
+# disagree on the version tag. Same-dir import (scripts/ci is on sys.path when
+# this runs as a script or is imported by tests via a path insert).
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from coverage_artifact_metadata import SCHEMA_VERSION  # noqa: E402
 
 # Reason codes (stable strings; asserted by tests and grep-able in CI logs).
 REASON_MISSING = "ARTIFACT_MISSING"
