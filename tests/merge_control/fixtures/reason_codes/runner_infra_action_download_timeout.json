@@ -1,0 +1,23 @@
+{
+  "description": "F-08: GitHub action tarball downloads from codeload.github.com timed out during job setup (omnibase_infra#2328 Cross-Repo Migration Conflicts). No product step ever ran.",
+  "friction_ids": ["F-08", "F-25"],
+  "evidence": "omnibase_infra#2328; 2026-07-17T15:25Z",
+  "expected_reason_code": "runner_infra",
+  "naive_would_misclassify_as_product": true,
+  "run_event": "pull_request",
+  "required_context": true,
+  "current_head_sha": "3333333333333333333333333333333333333333",
+  "log_signatures": ["failed to download distribution due to network timeout", "could not resolve host: codeload.github.com"],
+  "job": {
+    "id": 990003,
+    "run_id": 550003,
+    "run_attempt": 1,
+    "status": "completed",
+    "conclusion": "failure",
+    "head_sha": "3333333333333333333333333333333333333333",
+    "name": "Cross-Repo Migration Conflicts",
+    "steps": [
+      {"name": "Set up job", "status": "completed", "conclusion": "failure", "number": 1}
+    ]
+  }
+}

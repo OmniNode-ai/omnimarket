@@ -91,6 +91,16 @@ class PrRecord(BaseModel):
         default_factory=tuple,
         description="Machine evidence that failed checks are rerunnable infra flakes.",
     )
+    failed_check_reason_codes: tuple[str, ...] = Field(
+        default_factory=tuple,
+        description=(
+            "Typed merge-check reason codes (OMN-14765) for the failed checks, "
+            "jobs-API attempt-keyed: stale_context | github_api_outage | "
+            "runner_infra | cancelled | product_failed. Empty means none were "
+            "classified. The routing (_block_reason_for_fix) keys on these so "
+            "cancelled/stale/infra checks are never treated as product failures."
+        ),
+    )
     coderabbit_unresolved: int | None = Field(
         default=None,
         description=(
@@ -142,6 +152,15 @@ class TriageRecord(BaseModel):
     failed_check_flaky_evidence: tuple[str, ...] = Field(
         default_factory=tuple,
         description="Machine evidence that failed checks are rerunnable infra flakes.",
+    )
+    failed_check_reason_codes: tuple[str, ...] = Field(
+        default_factory=tuple,
+        description=(
+            "Typed merge-check reason codes (OMN-14765) carried from inventory: "
+            "stale_context | github_api_outage | runner_infra | cancelled | "
+            "product_failed. Consumed by _block_reason_for_fix as the routing "
+            "decision source."
+        ),
     )
     block_reason: str = Field(
         default="",

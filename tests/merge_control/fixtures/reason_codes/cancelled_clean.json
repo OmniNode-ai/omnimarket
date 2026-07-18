@@ -1,0 +1,24 @@
+{
+  "description": "F-10: the run was cleanly cancelled (concurrency/superseding cancel). gh pr checks renders cancelled as fail; live decisions require runs/<id>/jobs. No step failed.",
+  "friction_ids": ["F-10"],
+  "evidence": "gh pr checks cancelled->fail rendering; 2026-07-16 sweep",
+  "expected_reason_code": "cancelled",
+  "naive_would_misclassify_as_product": true,
+  "run_event": "pull_request",
+  "required_context": true,
+  "current_head_sha": "5555555555555555555555555555555555555555",
+  "log_signatures": [],
+  "job": {
+    "id": 990005,
+    "run_id": 550005,
+    "run_attempt": 1,
+    "status": "completed",
+    "conclusion": "cancelled",
+    "head_sha": "5555555555555555555555555555555555555555",
+    "name": "test",
+    "steps": [
+      {"name": "Set up job", "status": "completed", "conclusion": "success", "number": 1},
+      {"name": "Run pytest", "status": "completed", "conclusion": "cancelled", "number": 2}
+    ]
+  }
+}

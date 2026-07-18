@@ -858,6 +858,23 @@ repos:
         stages: [pre-commit]
         files: ^(\.pre-commit-config\.yaml|\.github/workflows/ci\.yml)$
 
+      # OMN-14765 (epic OMN-14643): merge-check reason-code fixture-corpus gate.
+      # Rule-5 local half of the ci.yml `merge-reason-code-gate` job — replays
+      # every captured jobs-API fixture through
+      # omnimarket.merge_control.reason_code_classifier and fails closed on any
+      # mismatch / shrunk corpus / missing reason code, so a classifier edit can
+      # never silently re-collapse cancelled/stale/infra into product_failed
+      # before push. Scoped to the classifier + fixtures + runner so it is a
+      # no-op for unrelated diffs. SYNC with ci.yml job `merge-reason-code-gate`.
+      - id: merge-reason-code-gate
+        name: Merge-check reason-code fixture-corpus gate (OMN-14765)
+        entry: uv run python scripts/ci/check_merge_reason_codes.py
+        language: system
+        pass_filenames: false
+        files: >-
+          ^(src/omnimarket/merge_control/reason_code_classifier\.py|scripts/ci/check_merge_reason_codes\.py|tests/merge_control/fixtures/reason_codes/.*\.json)$
+        stages: [pre-commit]
+
   # Governed impacted-test selector at PRE-PUSH (OMN-13973 / WS7 fan-out, omnimarket).
   # Runs the fast local IMPACTED SUBSET of the unit suite once per `git push`,
   # via the SAME selector CI uses (scripts/ci/detect_test_paths.py +

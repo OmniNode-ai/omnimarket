@@ -872,6 +872,30 @@ jobs:
           echo "================================================================"
           uv run python scripts/ci/check_topic_drift.py
 
+  # ============================================================================
+  # MERGE-CHECK REASON-CODE GATE (OMN-14765, epic OMN-14643)
+  # Fixture-corpus contract regression gate for the jobs-API-keyed merge-check
+  # reason-code classifier (omnimarket.merge_control.reason_code_classifier).
+  # Rule-5 enforcement: replays every captured jobs-API fixture through the
+  # classifier and fails closed on any mismatch, a shrunk corpus, or a corpus
+  # that no longer covers all five reason codes — so a future edit can never
+  # silently re-collapse cancelled/stale/infra into product_failed. Stdlib-only
+  # (bare setup-python, no uv sync). SYNC with the .pre-commit hook
+  # `merge-reason-code-gate` and with the CI Summary strict success-only gate.
+  # ============================================================================
+  merge-reason-code-gate:
+    name: Merge Reason-Code Gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Merge-check reason-code fixture-corpus gate (OMN-14765)
+        run: python scripts/ci/check_merge_reason_codes.py
+
   event-registry-drift:
     needs: occ-preflight
     name: Event Registry Drift
@@ -1753,7 +1777,7 @@ jobs:
   ci-summary:
     name: CI Summary
     runs-on: ubuntu-latest
-    needs: [occ-preflight, zone-filter, lint, typecheck, detect-changes, test, integration-guard, topic-naming-lint, runtime-sweep, compliance-sweep, core-only-install, contract-compliance, contract-sweep-gate, e2e-workflow-runner, golden-chains, sea-e2e-chains, generated-node-golden-chain, dep-health, uv-lock-pin-reachability, aislop-sweep, coverage-sweep-gate, workflow-module-refs, no-noncanonical-lifecycle-classes, event-registry-drift, topic-drift-check, topic-enum-drift, contract-topic-graph]
+    needs: [occ-preflight, zone-filter, lint, typecheck, detect-changes, test, integration-guard, topic-naming-lint, runtime-sweep, compliance-sweep, core-only-install, contract-compliance, contract-sweep-gate, e2e-workflow-runner, golden-chains, sea-e2e-chains, generated-node-golden-chain, dep-health, uv-lock-pin-reachability, aislop-sweep, coverage-sweep-gate, workflow-module-refs, no-noncanonical-lifecycle-classes, event-registry-drift, topic-drift-check, topic-enum-drift, contract-topic-graph, merge-reason-code-gate]
     if: always()
     steps:
       - name: Check CI results
@@ -1853,6 +1877,19 @@ jobs:
               echo "$NAME: $RESULT"
             fi
           done
+
+          # OMN-14765: strict fail-closed gate on the merge-check reason-code
+          # fixture corpus. Not the loose loop above (where skipped passes) — a
+          # skipped/cancelled classifier gate = un-enforced = fail-open, exactly
+          # the failure class this classifier exists to prevent. Must be EXACTLY
+          # 'success'. SYNC with the .pre-commit hook `merge-reason-code-gate`.
+          REASON_CODE_RESULT="${{ needs.merge-reason-code-gate.result }}"
+          if [ "$REASON_CODE_RESULT" != "success" ]; then
+            echo "::error::merge-reason-code-gate did not pass (result: $REASON_CODE_RESULT) - fail-closed (OMN-14765)"
+            FAILED=true
+          else
+            echo "merge-reason-code-gate: $REASON_CODE_RESULT"
+          fi
 
           if [ "$FAILED" = "true" ]; then
             echo ""
