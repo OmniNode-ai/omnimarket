@@ -371,6 +371,77 @@ _COMPUTE_SELF_BIND_ENTRY_TEMPLATE = (
     ' ${{REPO}} --json number,state"\n'
 )
 
+# Deploy-assessment dod_evidence item (F-05, OMN-14742). Appended to the
+# compute-oracle contract when the product PR touches runtime/deploy-sensitive
+# paths (see find_deploy_sensitive_paths). The product repo's required
+# ``deploy-gate`` (omniclaude
+# ``.github/actions/deploy-gate/validate_pr_deploy_required.py``; the cited
+# ticket's contract is resolved from onex_change_control, NOT the caller repo,
+# per OMN-11423) requires that contract to declare a dod_evidence item whose
+# check_value contains one of ``docker exec`` / ``rpk topic produce`` /
+# ``deploy``. Without this item an auto-authored companion for a runtime-touching
+# product PR FAILS that PR's deploy-gate after Evidence-Source binds — proven:
+# OMN-14623's own fix PR omnimarket#1791 (a node-handler change) needed a MANUAL
+# deploy-scope receipt (OCC#4289) for exactly this reason.
+#
+# The check is an honest, falsifiable diff-scope assertion in canonical
+# ``${PR_NUMBER}`` / ``${REPO}`` placeholder form: it carries the literal
+# ``deploy`` keyword the gate greps for, clears ``lint-contract-check-values``
+# (placeholder gh command, no hardcoded PR number), derives L1 via the substance
+# floor's ``| grep`` static-assert family, and is NOT a circular receipt-grep
+# (avoids the OMN-14505 self-satisfying-substring debt). yamlfmt
+# (onex_change_control, ``max_line_length: 100``) does NOT wrap a long
+# double-quoted ``check_value`` scalar (verified), so the >100-char line stays a
+# formatter fixpoint and does not restale ``contract_sha256`` (F-03 / OMN-14684).
+DEPLOY_ASSESSMENT_EVIDENCE_ID = "dod-deploy-assessment"
+DEPLOY_ASSESSMENT_CHECK_VALUE = (
+    "gh pr diff ${PR_NUMBER} --repo ${REPO} --name-only | "
+    "grep -qiE 'nodes/|handlers/|runtime/|services/|docker|monitor_logs|deploy'"
+)
+# NOT textwrap.dedent'd (every line is indented). ``{check_value}`` is a
+# substituted VALUE, so the literal ``${PR_NUMBER}`` / ``${REPO}`` it carries are
+# NOT re-scanned by ``.format`` — the constant keeps single-brace shell
+# placeholders while this template uses plain named fields. The 2-space list-item
+# indent continues the _COMPUTE_CONTRACT_TEMPLATE dod_evidence sequence exactly,
+# like the self-bind entry above.
+#
+# The ``description`` is kept short (<100-char line) ON PURPOSE: yamlfmt
+# (onex_change_control, ``max_line_length: 100``) FOLDS a long plain-prose
+# double-quoted scalar across lines, which would rewrite the committed contract
+# and restale ``contract_sha256`` (F-03 / OMN-14684). A long ``check_value`` is
+# NOT folded (it carries ``|`` / ``$`` / ``'`` yamlfmt leaves literal — verified),
+# so only the prose description must stay within the wrap width.
+_COMPUTE_DEPLOY_ASSESSMENT_ENTRY_TEMPLATE = (
+    '  - id: "{evidence_id}"\n'
+    '    description: "Deploy-scope DoD so PR #{pr_number} clears the'
+    ' deploy-gate (F-05)."\n'
+    '    source: "generated"\n'
+    "    checks:\n"
+    '      - check_type: "command"\n'
+    '        check_value: "{check_value}"\n'
+)
+
+
+def render_deploy_assessment_dod_evidence_item(*, repo: str, pr_number: int) -> str:
+    """Render the deploy-assessment dod_evidence list item (F-05, OMN-14742).
+
+    Appended to the compute-oracle companion contract when the product PR touches
+    runtime/deploy-sensitive paths, so the product PR's required ``deploy-gate``
+    finds a deploy-keyword dod_evidence item in the cited ticket's OCC contract
+    and is not blocked after Evidence-Source binds. Pure function of its inputs;
+    carries no unsubstituted named placeholder (``${PR_NUMBER}`` / ``${REPO}``
+    are intentional literal shell placeholders, not format fields). ``repo`` is
+    accepted for call-site symmetry with the other item renderers but is not
+    interpolated into this (deliberately short) description.
+    """
+    return _COMPUTE_DEPLOY_ASSESSMENT_ENTRY_TEMPLATE.format(
+        evidence_id=DEPLOY_ASSESSMENT_EVIDENCE_ID,
+        repo=repo,
+        pr_number=pr_number,
+        check_value=DEPLOY_ASSESSMENT_CHECK_VALUE,
+    )
+
+
 _COMPUTE_RECEIPT_TEMPLATE = textwrap.dedent("""\
     ---
     schema_version: "1.0.0"
@@ -634,6 +705,7 @@ def render_compute_companion_contract(
     self_bind_evidence_id: str | None = None,
     occ_pr_number: int | None = None,
     occ_repo: str | None = None,
+    emit_deploy_assessment: bool = False,
 ) -> str:
     """Render the RSD compute-oracle companion contract YAML.
 
@@ -645,28 +717,44 @@ def render_compute_companion_contract(
     the contract declares only that downstream item. On pass 2 — once the OCC
     companion PR exists — the self-bind item is APPENDED (OMN-14622) so the
     contract declares the receipt that binds the OCC PR to itself; without it the
-    OCC companion PR fails its own occ-preflight (``pr_ticket_mismatch``). Pure
-    function of its inputs.
+    OCC companion PR fails its own occ-preflight (``pr_ticket_mismatch``).
+
+    When ``emit_deploy_assessment`` is True (the product PR touches
+    runtime/deploy-sensitive paths — see :func:`find_deploy_sensitive_paths`) the
+    deploy-assessment item is appended BEFORE any self-bind item (F-05,
+    OMN-14742), so the product PR's required deploy-gate finds a deploy-keyword
+    dod_evidence item in the cited ticket's OCC contract. The deploy item is
+    ordered before self-bind so the merged-path suffix subtraction (which renders
+    with ``emit_deploy_assessment`` False on both calls) still isolates exactly
+    the self-bind entry. Pure function of its inputs.
     """
-    base = _COMPUTE_CONTRACT_TEMPLATE.format(
-        ticket_id=ticket_id,
-        repo=repo,
-        pr_number=pr_number,
-        evidence_id=evidence_id,
-    )
-    if self_bind_evidence_id is None:
-        return base
-    if occ_pr_number is None or occ_repo is None:
-        raise ValueError(
-            "self_bind_evidence_id requires occ_pr_number and occ_repo to render "
-            "the self-bind dod_evidence entry"
+    parts = [
+        _COMPUTE_CONTRACT_TEMPLATE.format(
+            ticket_id=ticket_id,
+            repo=repo,
+            pr_number=pr_number,
+            evidence_id=evidence_id,
         )
-    return base + _COMPUTE_SELF_BIND_ENTRY_TEMPLATE.format(
-        self_bind_evidence_id=self_bind_evidence_id,
-        ticket_id=ticket_id,
-        occ_pr_number=occ_pr_number,
-        occ_repo=occ_repo,
-    )
+    ]
+    if emit_deploy_assessment:
+        parts.append(
+            render_deploy_assessment_dod_evidence_item(repo=repo, pr_number=pr_number)
+        )
+    if self_bind_evidence_id is not None:
+        if occ_pr_number is None or occ_repo is None:
+            raise ValueError(
+                "self_bind_evidence_id requires occ_pr_number and occ_repo to render "
+                "the self-bind dod_evidence entry"
+            )
+        parts.append(
+            _COMPUTE_SELF_BIND_ENTRY_TEMPLATE.format(
+                self_bind_evidence_id=self_bind_evidence_id,
+                ticket_id=ticket_id,
+                occ_pr_number=occ_pr_number,
+                occ_repo=occ_repo,
+            )
+        )
+    return "".join(parts)
 
 
 def render_compute_receipt(
@@ -875,11 +963,112 @@ def classify_trivial_infra_fastpath(
     )
 
 
+# ---------------------------------------------------------------------------
+# Deploy-sensitive path classifier (F-05, OMN-14742) — pure, mirrors the
+# canonical deploy-gate's runtime-path predicate so the producer declares a
+# ``dod-deploy-assessment`` dod_evidence item EXACTLY when the product PR would
+# trip the gate.
+#
+# SOURCE OF TRUTH (keep in sync): ``RUNTIME_PATH_PATTERNS`` + ``find_runtime_paths``
+# in ``omniclaude/.github/actions/deploy-gate/validate_pr_deploy_required.py``
+# (OMN-9685 / OMN-14244). omniclaude is not importable from omnimarket at runtime
+# or in CI, so the list is mirrored here and pinned by
+# ``test_occ_companion_deploy_assessment_omn_14742`` against a representative path
+# matrix. ``CLI_PATH_PATTERNS`` are DELIBERATELY excluded: the canonical gate only
+# trips them when the file CONTENT carries a deploy signal, which this pure
+# zero-I/O COMPUTE cannot inspect — a documented conservative under-emit for the
+# rare CLI-only deploy PR (whose deploy-gate would still require a manual receipt).
+# ---------------------------------------------------------------------------
+
+_DEPLOY_SENSITIVE_PATH_PATTERNS: tuple[str, ...] = (
+    # Docker layer
+    "docker/Dockerfile*",
+    "docker/docker-compose*.yml",
+    "docker/docker-compose*.yaml",
+    "docker/**/*.Dockerfile",
+    "Dockerfile*",
+    # Node handlers + contracts (omnibase_infra)
+    "src/omnibase_infra/nodes/*/handlers/*.py",
+    "src/omnibase_infra/nodes/*/handlers/*/*.py",
+    "src/omnibase_infra/nodes/*/contract.yaml",
+    "src/omnibase_infra/nodes/*/*/contract.yaml",
+    # Runtime kernel
+    "src/omnibase_infra/runtime/**/*.py",
+    # Alert daemon (OMN-8870/OMN-8841 incident path)
+    "scripts/monitor_logs.py",
+    # omnimarket node handlers + runtime-touching paths
+    "src/omnimarket/nodes/*/handlers/*.py",
+    "src/omnimarket/nodes/*/contract.yaml",
+    "src/omnimarket/nodes/*/runtime/**/*.py",
+    "src/omnimarket/services/**/*.py",
+    # Cross-repo node handlers and runtime paths (OMN-9685: narrowed from catch-all)
+    "src/*/nodes/*.py",
+    "src/*/nodes/**/*.py",
+    "src/*/runtime/*.py",
+    "src/*/runtime/**/*.py",
+    "src/*/handlers/*.py",
+    "src/*/handlers/**/*.py",
+    "src/*/services/*.py",
+    "src/*/services/**/*.py",
+    # Docker-management packages (OMN-14244)
+    "src/*/docker/*.py",
+    "src/*/docker/**/*.py",
+    # Contract files trigger deploy (behavior change)
+    "src/**/contract.yaml",
+)
+
+
+def _glob_to_regex(pattern: str) -> re.Pattern[str]:
+    """Convert a glob pattern (with ``**`` support) to a compiled regex.
+
+    Byte-for-byte the canonical deploy-gate's ``_glob_to_regex`` (OMN-9685) so
+    this producer's runtime-path predicate matches the gate's exactly: ``*``
+    binds one path segment, ``**`` any depth, ``?`` one non-slash char.
+    """
+    parts = re.split(r"(\*\*|\*|\?)", pattern)
+    regex_parts: list[str] = []
+    for part in parts:
+        if part == "**":
+            regex_parts.append(".*")
+        elif part == "*":
+            regex_parts.append("[^/]*")
+        elif part == "?":
+            regex_parts.append("[^/]")
+        else:
+            regex_parts.append(re.escape(part))
+    return re.compile("^" + "".join(regex_parts) + "$")
+
+
+_COMPILED_DEPLOY_SENSITIVE_PATTERNS: tuple[re.Pattern[str], ...] = tuple(
+    _glob_to_regex(p) for p in _DEPLOY_SENSITIVE_PATH_PATTERNS
+)
+
+
+def find_deploy_sensitive_paths(changed_files: tuple[str, ...]) -> tuple[str, ...]:
+    """Return the subset of ``changed_files`` matching a deploy-sensitive path.
+
+    Mirrors the canonical deploy-gate ``find_runtime_paths`` (minus the
+    content-signal CLI patterns). When non-empty, ``compute_companion_plan``
+    declares a ``dod-deploy-assessment`` dod_evidence item so the product PR's
+    required deploy-gate is satisfied by the auto-authored OCC companion. Pure —
+    no I/O.
+    """
+    hits: list[str] = []
+    for f in changed_files:
+        for regex in _COMPILED_DEPLOY_SENSITIVE_PATTERNS:
+            if regex.match(f):
+                hits.append(f)
+                break
+    return tuple(hits)
+
+
 __all__ = [
     "CONTRACT_ENTRY_SHA_LINE_RE",
     "CONTRACT_SHA_LINE_RE",
     "DEFAULT_RUNNER",
     "DEFAULT_VERIFIER",
+    "DEPLOY_ASSESSMENT_CHECK_VALUE",
+    "DEPLOY_ASSESSMENT_EVIDENCE_ID",
     "EVIDENCE_ITEM_ID_LINE_RE",
     "SHA_RE",
     "TICKET_RE",
@@ -888,11 +1077,13 @@ __all__ = [
     "classify_trivial_infra_fastpath",
     "compute_contract_sha256",
     "extract_evidence_item_id",
+    "find_deploy_sensitive_paths",
     "rebind_contract_entry_sha256_in_text",
     "rebind_contract_sha256_in_text",
     "render_ci_check_receipt",
     "render_ci_dod_evidence_item",
     "render_companion_contract",
+    "render_deploy_assessment_dod_evidence_item",
     "render_downstream_dod_evidence_item",
     "render_downstream_receipt",
     "render_self_bind_dod_evidence_item",
