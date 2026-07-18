@@ -49,7 +49,6 @@ from omnibase_core.models.delegation.model_invocation_command import (
 )
 from omnibase_core.models.delegation.wire import ModelPremiumCounterfactual
 from omnibase_core.models.dispatch.model_handler_output import ModelHandlerOutput
-from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
 from omnibase_core.models.primitives.model_semver import ModelSemVer
 from pydantic import BaseModel
 
@@ -340,6 +339,22 @@ _PER_STEP_DISPATCH: dict[type, str] = {
     ModelQualityGateResult: "handle_gate_result",
     ModelAgentTaskLifecycleEvent: "handle_agent_task_lifecycle",
 }
+
+
+# OMN-14771 (S8 PR1): the typed def-B input union — exactly the six
+# handler_routing event_models the contract declares (routing_strategy
+# "payload_type_match"). handle() dispatches off type(request) through
+# _PER_STEP_DISPATCH; the event-envelope boundary lives in the shared
+# runtime adapter, never in this core handler (definition B, C-core: the
+# envelope type is deliberately absent from this module).
+type DelegationWorkflowInput = (
+    ModelDelegationRequest
+    | ModelInvocationCommand
+    | ModelRoutingDecision
+    | ModelInferenceResponseData
+    | ModelQualityGateResult
+    | ModelAgentTaskLifecycleEvent
+)
 
 
 def _record_inference_response(
@@ -2376,28 +2391,24 @@ class HandlerDelegationWorkflow:
         )
         return self._emit_terminal(terminal_inputs)
 
-    async def handle(self, payload: object) -> list[BaseModel]:
-        """Route a workflow payload to its per-step FSM handler by payload type.
+    async def handle(self, request: DelegationWorkflowInput) -> list[BaseModel]:
+        """Route a typed delegation payload to its per-step FSM handler.
 
-        OMN-13477 (W5): dispatch is driven by ``_PER_STEP_DISPATCH`` — a
-        declarative ``payload model class -> per-step handler method`` table,
-        one entry per ``handler_routing`` event_model the contract declares
-        (``payload_type_match``). This replaces the prior hand-maintained
-        isinstance ladder: each event model resolves to exactly one thin
-        per-step handler, and there is no catch-all branch — an undeclared
-        payload type fails closed (``ValueError``) rather than being silently
-        swallowed by a fallthrough.
+        OMN-14771 (S8 PR1): def-B typed entrypoint. The legacy kernel validates
+        each per-topic payload into the contract's declared ``event_model`` and
+        delivers that TYPED domain model straight here — the handler param is a
+        typed domain model (not an event envelope), so the shared auto-wiring
+        uses its typed-delivery branch (no envelope in this core). Dispatch is
+        driven off
+        ``_PER_STEP_DISPATCH`` (OMN-13477) — one entry per ``handler_routing``
+        event_model — with no catch-all: an undeclared payload type fails closed
+        (``ValueError``) rather than being silently swallowed by a fallthrough.
         """
-        if isinstance(payload, ModelEventEnvelope) or hasattr(payload, "payload"):
-            payload = payload.payload
-        if isinstance(payload, dict):
-            payload = self._coerce_payload_dict(payload)
-
-        handler = self._resolve_per_step_handler(type(payload))
+        handler = self._resolve_per_step_handler(type(request))
         if handler is None:
-            msg = f"Unsupported delegation workflow payload: {type(payload).__name__}"
+            msg = f"Unsupported delegation workflow payload: {type(request).__name__}"
             raise ValueError(msg)
-        return list(handler(payload))
+        return list(handler(request))
 
     def _resolve_per_step_handler(
         self, payload_type: type
@@ -2420,56 +2431,26 @@ class HandlerDelegationWorkflow:
             return None
         return cast("Callable[[Any], list[Any]]", getattr(self, method_name))
 
-    async def handle_async(self, payload: object) -> ModelHandlerOutput[None]:
-        """Runtime auto-wiring entrypoint that returns publishable handler output."""
-        events = await self.handle(payload)
+    async def handle_async(
+        self, request: DelegationWorkflowInput
+    ) -> ModelHandlerOutput[None]:
+        """Runtime auto-wiring entrypoint that returns publishable handler output.
+
+        OMN-14771 (S8 PR1, HOLE-3): the legacy runtime does not stamp outbound
+        correlation, so the orchestrator propagates ``correlation_id`` from the
+        inbound typed domain model. Every one of the six ``handler_routing``
+        event_models types ``correlation_id`` as a required ``UUID``, so it is
+        read directly — the prior ``uuid4()`` FABRICATION fallback (which silently
+        minted a brand-new workflow identity when correlation was missing) is
+        deleted; a legitimate missing correlation must fail, not be papered over.
+        """
+        events = await self.handle(request)
         return ModelHandlerOutput.for_orchestrator(
             input_envelope_id=uuid4(),
-            correlation_id=self._coerce_payload_correlation_id(payload),
+            correlation_id=request.correlation_id,
             handler_id="node_delegation_orchestrator.workflow",
             events=tuple(events),
         )
-
-    @staticmethod
-    def _coerce_payload_correlation_id(payload: object) -> UUID:
-        candidate = getattr(payload, "correlation_id", None)
-        if candidate is None and isinstance(payload, ModelEventEnvelope):
-            candidate = payload.correlation_id
-        if candidate is None and hasattr(payload, "payload"):
-            candidate = getattr(payload.payload, "correlation_id", None)
-        if candidate is None and isinstance(payload, dict):
-            nested_payload = payload.get("payload")
-            candidate = payload.get("correlation_id")
-            if candidate is None and isinstance(nested_payload, dict):
-                candidate = nested_payload.get("correlation_id")
-        if isinstance(candidate, UUID):
-            return candidate
-        if isinstance(candidate, str) and candidate:
-            return UUID(candidate)
-        return uuid4()
-
-    @staticmethod
-    def _coerce_payload_dict(payload: dict[str, object]) -> BaseModel:
-        """Convert raw event-bus payload dictionaries into workflow models."""
-        nested_payload = payload.get("payload")
-        if isinstance(nested_payload, dict) and (
-            "event_type" in payload or "envelope_id" in payload
-        ):
-            return HandlerDelegationWorkflow._coerce_payload_dict(nested_payload)
-        if "lifecycle_type" in payload:
-            return ModelAgentTaskLifecycleEvent.model_validate(payload)
-        if "invocation_kind" in payload or "target_ref" in payload:
-            return ModelInvocationCommand.model_validate(payload)
-        if "selected_model" in payload or "selected_backend_id" in payload:
-            return ModelRoutingDecision.model_validate(payload)
-        if "model_used" in payload or "llm_call_id" in payload:
-            return ModelInferenceResponseData.model_validate(payload)
-        if "quality_score" in payload or "passed" in payload:
-            return ModelQualityGateResult.model_validate(payload)
-        if "prompt" in payload and "task_type" in payload:
-            return ModelDelegationRequest.model_validate(payload)
-        msg = "Unsupported delegation workflow payload dictionary"
-        raise ValueError(msg)
 
     @staticmethod
     def _render_lifecycle_content(

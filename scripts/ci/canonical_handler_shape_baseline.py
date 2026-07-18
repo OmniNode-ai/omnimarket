@@ -28,7 +28,6 @@ NON_CANONICAL: tuple[str, ...] = (
     "omnimarket.nodes.node_closeout_effect",
     "omnimarket.nodes.node_context_roi_runner",
     "omnimarket.nodes.node_contract_reducer",
-    "omnimarket.nodes.node_delegation_orchestrator",
     "omnimarket.nodes.node_delegation_routing_feedback_reducer",
     "omnimarket.nodes.node_deployment_evidence_reducer",
     "omnimarket.nodes.node_dispatch_outcome_bridge_effect",

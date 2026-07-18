@@ -267,17 +267,6 @@ def test_canonical_handle_routes_supported_payloads() -> None:
 
 
 @pytest.mark.unit
-def test_canonical_handle_coerces_raw_payload_dicts() -> None:
-    handler = HandlerDelegationWorkflow()
-    request = _make_request(correlation_id=uuid4())
-
-    output_events = asyncio.run(handler.handle(request.model_dump(mode="json")))
-
-    assert len(output_events) == 1
-    assert isinstance(output_events[0], ModelRoutingIntent)
-
-
-@pytest.mark.unit
 class TestHappyPath:
     """Test the full happy path: request -> route -> infer -> gate pass -> completed."""
 
