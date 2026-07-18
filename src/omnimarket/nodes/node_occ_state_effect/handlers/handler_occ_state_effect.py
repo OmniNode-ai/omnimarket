@@ -82,6 +82,24 @@ def _as_int(value: object, default: int = 0) -> int:
     return value if isinstance(value, int) else default
 
 
+def extract_pr_label_names(pr_payload: dict[str, object]) -> tuple[str, ...]:
+    """Pure: extract the PR label names from a GitHub PR REST payload (F-17).
+
+    REST ``labels`` is a list of ``{"name": ...}`` objects; anything else (a
+    missing key, a non-list, a label without a name) yields no name. Kept a pure
+    function of the payload — like ``extract_symbol_candidates`` — so the F-17
+    label-suppression seam is unit-testable without the live network half.
+    """
+    labels_raw = pr_payload.get("labels")
+    if not isinstance(labels_raw, list):
+        return ()
+    return tuple(
+        str(label["name"])
+        for label in labels_raw
+        if isinstance(label, dict) and label.get("name")
+    )
+
+
 def _resolve_github_token() -> str:
     """Resolve the GitHub token from the contract-declared ref (OMN-12856)."""
     ref = contract_secret_ref(_CONTRACT_PATH, "GITHUB_TOKEN")
@@ -249,6 +267,10 @@ class HandlerOccStateEffect:
         pr_state = str(pr.get("state") or "open")
         pr_is_draft = bool(pr.get("draft"))
         head_ref = str(head.get("ref") or "")
+        # F-17 parity: carry PR label names so the pure COMPUTE can suppress a
+        # do-not-merge/WIP-LABELLED PR (the emitter checks labels; the canonical
+        # producer must too).
+        pr_labels = extract_pr_label_names(pr)
 
         files = self._list_files(owner, repo_name, request.pr_number, token)
         changed_files = tuple(str(f.get("filename", "")) for f in files)
@@ -297,6 +319,7 @@ class HandlerOccStateEffect:
             pr_state=pr_state,
             pr_is_draft=pr_is_draft,
             pr_head_ref=head_ref,
+            pr_labels=pr_labels,
             runner=request.runner,
             verifier=request.verifier,
             run_timestamp=datetime.now(UTC).isoformat(),
@@ -441,6 +464,7 @@ __all__ = [
     "SymbolCandidate",
     "build_content_read_check",
     "declaration_count",
+    "extract_pr_label_names",
     "extract_symbol_candidates",
     "select_asserted_check",
 ]

@@ -201,12 +201,18 @@ class HandlerOccCompanionEffect:
         with tempfile.TemporaryDirectory(prefix="occ-companion-effect-") as tmp:
             clone_dir = str(Path(tmp) / "onex_change_control")
             self._clone_and_branch(clone_dir, branch, token, request.occ_repo)
+            base_sha = self._head_sha(clone_dir)
 
             # Pass 1: write contract + downstream product-receipt, commit, push.
             self._write_files(clone_dir, plan.companion_files)
             self._commit_all(
                 clone_dir,
                 f"evidence: OCC companion pass 1 for {request.repo}#{request.pr_number}",
+            )
+            # F-01: fail closed BEFORE any push if the committed tree is not a
+            # pure add of this run's companion files (never a merged-receipt edit).
+            self._assert_append_only(
+                clone_dir, base_sha, {f.path for f in plan.companion_files}
             )
             self._push(clone_dir, branch, token, request.occ_repo, force=True)
             occ_head_c1 = self._head_sha(clone_dir)
@@ -240,6 +246,14 @@ class HandlerOccCompanionEffect:
             self._commit_all(
                 clone_dir,
                 f"evidence: OCC companion self-bind for {request.occ_repo}#{occ_pr_number}",
+            )
+            # F-01: re-assert append-only over the FINAL tree (pass-1 + pass-2
+            # files) against the clone base before the final push.
+            self._assert_append_only(
+                clone_dir,
+                base_sha,
+                {f.path for f in plan.companion_files}
+                | {f.path for f in plan2.companion_files},
             )
             self._push(clone_dir, branch, token, request.occ_repo, force=False)
 
@@ -306,6 +320,48 @@ class HandlerOccCompanionEffect:
 
     def _head_sha(self, clone_dir: str) -> str:
         return run_git(["git", "rev-parse", "HEAD"], cwd=clone_dir)
+
+    def _assert_append_only(
+        self, clone_dir: str, base_sha: str, allowed_paths: set[str]
+    ) -> None:
+        """Fail CLOSED if the committed tree touched anything unexpected (F-01).
+
+        Diffs the committed branch against the clone base and rejects (a) any
+        deletion and (b) any add/modify of a path outside this run's contract +
+        receipt set. The append-only invariant is already true by construction
+        here — the write only materializes ``plan.companion_files`` — but this is
+        a real check against ``git diff`` that makes the OCC#4293/4295/4296
+        failure mode (a generated companion mutating an already-merged receipt)
+        mechanically impossible rather than merely design-avoided. Ported from
+        ``OccCompanionEmitter._assert_append_only`` (OMN-14741 F-01) so the
+        canonical write-EFFECT reaches parity before the emitter is retired.
+        """
+        diff = run_git(
+            ["git", "diff", "--name-status", base_sha, "HEAD"],
+            cwd=clone_dir,
+            timeout=_GIT_TIMEOUT_SECONDS,
+        )
+        violations: list[str] = []
+        for raw in diff.splitlines():
+            line = raw.strip()
+            if not line:
+                continue
+            parts = line.split("\t")
+            status = parts[0]
+            path = parts[-1]  # rename → dest path is the last field
+            if status.startswith("D"):
+                violations.append(f"deletes {path}")
+            elif path not in allowed_paths:
+                violations.append(f"{status} {path}")
+        if violations:
+            raise RuntimeError(
+                "OCC companion append-only violation (OMN-14741 F-01): the "
+                "generated tree changed files outside this run's contract + "
+                "receipt set: "
+                + "; ".join(sorted(violations))
+                + ". Allowed: "
+                + ", ".join(sorted(allowed_paths))
+            )
 
     # -- github REST helpers (reuse shared github_api) ----------------------
 

@@ -439,7 +439,10 @@ def compute_companion_plan(request: ModelOccCompanionRequest) -> ModelOccCompani
     # F-17: suppress companion authoring for closed/merged, draft, or explicitly
     # do-not-merge/WIP product PRs. Authoring one yields queue noise + a failing
     # obsolete companion for a dead target (occ#4333). A do-not-merge marker is
-    # matched in BOTH the title and body per the friction report.
+    # matched in the title, body, AND labels — the emitter suppresses on a
+    # do-not-merge LABEL as well as the title, so parity requires the canonical
+    # producer to honour labels too (a label is the un-editable-by-body marker a
+    # reviewer applies to hold a PR).
     pr_state_norm = request.pr_state.strip().lower()
     if pr_state_norm in _SUPPRESS_PR_STATES:
         return _plan(
@@ -453,6 +456,17 @@ def compute_companion_plan(request: ModelOccCompanionRequest) -> ModelOccCompani
         return _plan(
             no_op=True,
             no_op_reason="product PR is a draft; suppressing companion (F-17)",
+        )
+    dnm_label = next(
+        (lbl for lbl in request.pr_labels if _DO_NOT_MERGE_RE.search(lbl)), None
+    )
+    if dnm_label is not None:
+        return _plan(
+            no_op=True,
+            no_op_reason=(
+                f"product PR carries a do-not-merge/WIP label ({dnm_label!r}); "
+                "suppressing companion (F-17)"
+            ),
         )
     if _DO_NOT_MERGE_RE.search(request.pr_title) or _DO_NOT_MERGE_RE.search(
         request.pr_body
