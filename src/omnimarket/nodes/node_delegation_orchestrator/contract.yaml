@@ -196,6 +196,17 @@ fsm:
       trigger: "remote lifecycle COMPLETED received before any PROGRESS event reached EXECUTING (handle_agent_task_lifecycle)"
 handler_routing:
   routing_strategy: "payload_type_match"
+  # OMN-14771 (S8 PR3, PR2<->PR3 seam): each entry now carries an explicit
+  # `topic:` binding its event_model to the exact subscribe topic string. This is
+  # the contract half of the RuntimeDispatch single-route-per-topic seam:
+  # omnibase_core ModelHandlerRoutingEntry gains `topic: str | None` (PR2) and
+  # routing_map_builder._resolve_owning_entry matches `entry.topic == <subscribe
+  # topic>` to bind one handler per topic. The field name/type match
+  # ModelHandlerRoutingEntry.topic (str) exactly. It is inert until PR2 lands --
+  # ModelHandlerRoutingEntry.model_config uses extra="ignore", so the key is
+  # dropped on the pre-PR2 kernel -- and it does NOT disturb the legacy
+  # payload_type_match path (handler_wiring.py typed-delivery branch), which keeps
+  # resolving per-topic via event_model. PR2/PR3 are order-independent for safety.
   handlers:
     - operation: "delegation.orchestrate"
       message_category: "command"
@@ -206,6 +217,7 @@ handler_routing:
         name: "ModelDelegationRequest"
         module: "omnibase_core.models.delegation.wire"
       event_type: "omnibase-infra.delegation-request"
+      topic: "onex.cmd.omnibase-infra.delegation-request.v1"
       description: "Receive a delegation request and emit the routing intent."
     - operation: "delegation.orchestrate.invocation"
       message_category: "command"
@@ -216,6 +228,7 @@ handler_routing:
         name: "ModelInvocationCommand"
         module: "omnibase_core.models.delegation.model_invocation_command"
       event_type: "omnibase-infra.invocation"
+      topic: "onex.cmd.omnibase-infra.invocation.v1"
       description: "Accept typed invocation commands on the delegation workflow."
     - operation: "delegation.orchestrate.routing"
       message_category: "event"
@@ -226,6 +239,7 @@ handler_routing:
         name: "ModelRoutingDecision"
         module: "omnimarket.nodes.node_delegation_routing_reducer.models.model_routing_decision"
       event_type: "omnibase-infra.routing-decision"
+      topic: "onex.evt.omnibase-infra.routing-decision.v1"
       description: "Advance the workflow after model-routing selection."
     - operation: "delegation.orchestrate.inference"
       message_category: "event"
@@ -236,6 +250,7 @@ handler_routing:
         name: "ModelInferenceResponseData"
         module: "omnibase_core.models.delegation.wire"
       event_type: "omnibase-infra.inference-response"
+      topic: "onex.evt.omnibase-infra.inference-response.v1"
       description: "Advance the workflow after an LLM inference response."
     - operation: "delegation.orchestrate.lifecycle"
       message_category: "event"
@@ -246,6 +261,7 @@ handler_routing:
         name: "ModelAgentTaskLifecycleEvent"
         module: "omnibase_core.models.delegation.model_agent_task_lifecycle_event"
       event_type: "omnibase-infra.agent-task-lifecycle"
+      topic: "onex.evt.omnibase-infra.agent-task-lifecycle.v1"
       description: "Advance the workflow from remote-agent lifecycle events."
     - operation: "delegation.orchestrate.quality"
       message_category: "event"
@@ -256,6 +272,7 @@ handler_routing:
         name: "ModelQualityGateResult"
         module: "omnimarket.nodes.node_delegation_quality_gate_reducer.models"
       event_type: "omnibase-infra.quality-gate-result"
+      topic: "onex.evt.omnibase-infra.quality-gate-result.v1"
       description: "Complete or fail the workflow after quality evaluation."
 # PluginDelegation owns the Kafka subscription/result-applier lifecycle
 # (event_bus.plugin_managed=true), while generic contract auto-wiring owns the
