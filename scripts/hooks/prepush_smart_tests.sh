@@ -160,14 +160,18 @@ log "selection: is_full_suite=${IS_FULL} reason=${REASON:-none} paths=[ ${PATHS_
 # Assemble the pytest target set. tests/integration is always ignored -- it needs
 # real services and stays a CI-only concern.
 RC=0
+# Marker parity with CI (.github/workflows/ci.yml + omnimarket CLAUDE.md): the CI
+# shards run `-m "not kafka"` (kafka-marked tests need a live broker and are a
+# CI-with-services concern). The local escalation must match what CI actually
+# enforces, or it diverges into failing on tests CI never runs here (OMN-14746).
 if [ "$IS_FULL" = "True" ] || [ "$IS_FULL" = "true" ]; then
-  log "running FULL suite (fail-closed escalation): uv run pytest tests/ --ignore=tests/integration ${PREPUSH_PYTEST_ARGS:-}"
+  log "running FULL suite (fail-closed escalation): uv run pytest tests/ --ignore=tests/integration -m 'not kafka' ${PREPUSH_PYTEST_ARGS:-}"
   # shellcheck disable=SC2086
-  uv run pytest tests/ --ignore=tests/integration --tb=short ${PREPUSH_PYTEST_ARGS:-} || RC=$?
+  uv run pytest tests/ --ignore=tests/integration -m "not kafka" --tb=short ${PREPUSH_PYTEST_ARGS:-} || RC=$?
 elif [ "${#PATHS[@]}" -gt 0 ]; then
-  log "running impacted subset: uv run pytest ${PATHS_STR}--ignore=tests/integration ${PREPUSH_PYTEST_ARGS:-}"
+  log "running impacted subset: uv run pytest ${PATHS_STR}--ignore=tests/integration -m 'not kafka' ${PREPUSH_PYTEST_ARGS:-}"
   # shellcheck disable=SC2086
-  uv run pytest "${PATHS[@]}" --ignore=tests/integration --tb=short ${PREPUSH_PYTEST_ARGS:-} || RC=$?
+  uv run pytest "${PATHS[@]}" --ignore=tests/integration -m "not kafka" --tb=short ${PREPUSH_PYTEST_ARGS:-} || RC=$?
 else
   log "no impacted unit tests mapped for this push (no source/test change contributed a target); nothing to run."
 fi
