@@ -93,6 +93,21 @@ class TestAppendOnlyGuard:
                 str(tmp_path), base, {"contracts/OMN-9999.yaml"}
             )
 
+    def test_renaming_a_merged_receipt_into_allowed_path_is_rejected(
+        self, tmp_path: Path
+    ) -> None:
+        base = _init_repo_with_merged_receipt(tmp_path)
+        _git(tmp_path, "config", "diff.renames", "true")
+        merged_rel = "drift/dod_receipts/OMN-1/dod-001/command.yaml"
+        allowed_new_rel = "drift/dod_receipts/OMN-9999/dod-new-receipt/command.yaml"
+        (tmp_path / allowed_new_rel).parent.mkdir(parents=True, exist_ok=True)
+        _git(tmp_path, "mv", merged_rel, allowed_new_rel)
+        _git(tmp_path, "commit", "-q", "-m", "rename merged receipt")
+        with pytest.raises(RuntimeError, match="deletes"):
+            HandlerOccCompanionEffect()._assert_append_only(
+                str(tmp_path), base, {allowed_new_rel}
+            )
+
     def test_modifying_a_merged_receipt_is_rejected(self, tmp_path: Path) -> None:
         """The exact OCC#4293/4295/4296 failure mode: a generated companion that
         rewrites an already-merged receipt is rejected because that path is not

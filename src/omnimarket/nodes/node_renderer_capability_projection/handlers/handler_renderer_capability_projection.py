@@ -60,6 +60,7 @@ from omnimarket.nodes.node_renderer_capability_projection.models.model_renderer_
 from omnimarket.nodes.node_renderer_capability_projection.renderer_capability_fold import (
     fold_declaration,
 )
+from omnimarket.projection.handler_shim import split_projection_input
 from omnimarket.projection.protocol_database import DatabaseAdapter
 
 HANDLER_ID = "renderer-capability-projection-reducer"
@@ -68,11 +69,6 @@ HANDLER_ID = "renderer-capability-projection-reducer"
 # the unique constraint in 0001_create_renderer_capability_projection.sql.
 TABLE = "renderer_capability_projection"
 CONFLICT_KEY = "renderer_id"
-
-# Runtime-injected keys the projection dispatch path adds alongside the domain
-# payload. Stripped before the payload is validated into a declaration.
-_DB_KEY = "_db"
-_EVENT_TYPE_KEY = "_event_type"
 
 
 class ModelProjectionResult(BaseModel):
@@ -96,11 +92,7 @@ class HandlerRendererCapabilityProjection:
         the table, and UPSERT the resulting rows. Fail fast when the adapter is
         absent — a missing adapter is a wiring bug, not recoverable state.
         """
-        payload = dict(input_data)
-        db_raw = payload.pop(_DB_KEY, None)
-        if not isinstance(db_raw, DatabaseAdapter):
-            raise TypeError("handle() requires a DatabaseAdapter in input_data['_db']")
-        payload.pop(_EVENT_TYPE_KEY, None)
+        db_raw, payload, _meta = split_projection_input(input_data)
         declaration = ModelRendererCapabilityDeclaration.model_validate(payload)
         result = self.project(declaration, db_raw)
         return result.model_dump(mode="json")

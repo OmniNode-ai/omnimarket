@@ -257,6 +257,22 @@ class TestHandlerDispatchPath:
         assert rows[0]["is_degraded"] is False
         assert rows[0]["empty_state_reason"] is None
 
+    def test_handle_strips_runtime_topic_metadata(self) -> None:
+        handler = HandlerRendererCapabilityProjection()
+        db = InmemoryDatabaseAdapter()
+        out = handler.handle(
+            {
+                **_declaration(declared_at=datetime.now(tz=UTC)).model_dump(
+                    mode="json"
+                ),
+                "_db": db,
+                "_event_type": RENDERER_CAPABILITY_DECLARED_TOPIC_V1,
+                "_topic": RENDERER_CAPABILITY_DECLARED_TOPIC_V1,
+            }
+        )
+        assert out["rows_upserted"] == 1
+        assert db.query(TABLE)[0]["renderer_id"] == "ui.effect.web"
+
     def test_project_accumulates_across_heartbeats(self) -> None:
         # The durable accumulator is the table itself: a second renderer's
         # heartbeat folds onto the rows already persisted, keeping both rows.

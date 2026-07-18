@@ -337,7 +337,7 @@ class HandlerOccCompanionEffect:
         canonical write-EFFECT reaches parity before the emitter is retired.
         """
         diff = run_git(
-            ["git", "diff", "--name-status", base_sha, "HEAD"],
+            ["git", "diff", "--no-renames", "--name-status", base_sha, "HEAD"],
             cwd=clone_dir,
             timeout=_GIT_TIMEOUT_SECONDS,
         )
@@ -348,7 +348,7 @@ class HandlerOccCompanionEffect:
                 continue
             parts = line.split("\t")
             status = parts[0]
-            path = parts[-1]  # rename → dest path is the last field
+            path = parts[-1]
             if status.startswith("D"):
                 violations.append(f"deletes {path}")
             elif path not in allowed_paths:
