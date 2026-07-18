@@ -136,3 +136,56 @@ def test_migrated_sources_own_no_topic_literals_or_constant_imports() -> None:
                 f"{source_path} owns a hardcoded topic literal "
                 f"starting {literal_prefix!r}"
             )
+
+
+def _contract_raw() -> dict[str, object]:
+    raw = yaml.safe_load(_CONTRACT.read_text(encoding="utf-8"))
+    assert isinstance(raw, dict)
+    return raw
+
+
+@pytest.mark.unit
+def test_handler_routing_entries_bind_topic_to_subscribe_topics() -> None:
+    """OMN-14771 (S8 PR3): every handler_routing entry declares an explicit
+    ``topic`` equal to one of the contract's subscribe_topics, and the entries
+    cover the subscribe topics one-to-one.
+
+    This is the contract half of the RuntimeDispatch single-route-per-topic seam:
+    omnibase_core ``ModelHandlerRoutingEntry.topic`` (PR2) is resolved by
+    ``routing_map_builder._resolve_owning_entry`` as ``entry.topic == topic``.
+    The test reads the raw YAML (not the parsed model) so it holds regardless of
+    whether PR2 has landed -- ``ModelHandlerRoutingEntry`` uses ``extra="ignore"``,
+    so a model round-trip would silently drop the key on the pre-PR2 kernel.
+    """
+    raw = _contract_raw()
+    handler_routing = raw["handler_routing"]
+    assert isinstance(handler_routing, dict)
+    entries = handler_routing["handlers"]
+    assert isinstance(entries, list)
+    assert entries
+
+    subscribe_topics = _contract_event_bus()["subscribe_topics"]
+    assert isinstance(subscribe_topics, list)
+
+    bound_topics: list[str] = []
+    for entry in entries:
+        assert isinstance(entry, dict)
+        assert "topic" in entry, (
+            f"handler_routing entry {entry.get('operation')!r} is missing the "
+            "explicit 'topic' binding required by the PR2<->PR3 RuntimeDispatch seam"
+        )
+        topic = entry["topic"]
+        assert topic in subscribe_topics, (
+            f"handler_routing topic {topic!r} is not one of the declared "
+            f"subscribe_topics {subscribe_topics!r}"
+        )
+        bound_topics.append(topic)
+
+    # One-to-one: no duplicate bindings and every subscribe topic is owned.
+    assert len(bound_topics) == len(set(bound_topics)), (
+        f"duplicate handler_routing topic bindings: {bound_topics!r}"
+    )
+    assert set(bound_topics) == set(subscribe_topics), (
+        "handler_routing topic bindings do not cover subscribe_topics exactly: "
+        f"bound={sorted(bound_topics)!r} subscribe={sorted(subscribe_topics)!r}"
+    )
