@@ -51,6 +51,7 @@ from omnimarket.nodes.node_renderer_capability_projection.handlers.handler_rende
 from omnimarket.projection.protocol_database import InmemoryDatabaseAdapter
 
 OMNIDASH_ANALYTICS_DB_URL_ENV = "OMNIDASH_ANALYTICS_DB_URL"
+SNAPSHOT_TOPIC = "onex.evt.omnimarket.renderer-capability-projection-snapshot.v1"
 
 
 def _wcap_producer_wire_bytes(
@@ -200,3 +201,25 @@ class TestRendererCapabilityLiveDispatchMaterializes:
         rows = db.query(TABLE)
         assert len(rows) == 1, "re-heartbeat must UPSERT, not duplicate"
         assert rows[0]["renderer_id"] == "ui.effect.web"
+
+
+def test_snapshot_topic_is_declared_as_projection_output() -> None:
+    from pathlib import Path
+
+    from omnibase_core.contracts.contract_loader import load_contract
+
+    contract_path = (
+        Path(__file__).resolve().parents[1]
+        / "src"
+        / "omnimarket"
+        / "nodes"
+        / "node_renderer_capability_projection"
+        / "contract.yaml"
+    )
+    contract = load_contract(contract_path)
+    event_bus = contract["event_bus"]
+    projection = contract["projection_api"]["exposures"][0]
+
+    assert SNAPSHOT_TOPIC in event_bus["publish_topics"]
+    assert SNAPSHOT_TOPIC in contract["externally_consumed_topics"]
+    assert projection["topic"] == SNAPSHOT_TOPIC

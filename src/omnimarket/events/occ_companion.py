@@ -162,6 +162,13 @@ class ModelOccCompanionRequest(BaseModel):
         "COMPUTE can suppress companions for draft PRs (F-17) without a probe.",
     )
     pr_head_ref: str = Field(default="", description="Product PR head branch ref.")
+    pr_labels: tuple[str, ...] = Field(
+        default=(),
+        description="Product PR label names. Carried on the seam so the pure "
+        "COMPUTE can suppress companions for do-not-merge/WIP-LABELLED PRs (F-17) "
+        "without a probe — the emitter checks title + labels; parity requires the "
+        "canonical producer to check labels too.",
+    )
 
     runner: str = Field(
         default="node_occ_companion_compute", description="Receipt runner identity."
