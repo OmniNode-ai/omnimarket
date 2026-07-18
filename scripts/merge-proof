@@ -38,6 +38,10 @@ RESOLVED_INFRA=""
 
 _is_dir() { [ -n "${1:-}" ] && [ -d "${1}" ]; }
 
+shell_quote() {
+  printf '%q' "$1"
+}
+
 usage() {
   sed -n '10,32p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
 }
@@ -92,7 +96,7 @@ guidance_and_die() {
     echo "checkout. Set the environment explicitly, then re-run:"
     echo
     if [ -n "${RESOLVED_OMNI_HOME}" ]; then
-      echo "  export OMNI_HOME=${RESOLVED_OMNI_HOME}"
+      echo "  export OMNI_HOME=$(shell_quote "${RESOLVED_OMNI_HOME}")"
     else
       echo "  export OMNI_HOME=/path/to/omni_home"
     fi
@@ -138,6 +142,7 @@ main() {
   if [ -n "${RESOLVED_OMNI_HOME}" ]; then
     export OMNI_HOME="${RESOLVED_OMNI_HOME}"
   fi
+  unset GIT_DIR GIT_INDEX_FILE GIT_WORK_TREE
 
   case "${mode}" in
     check)
@@ -152,8 +157,8 @@ main() {
       echo "merge-proof: environment OK"
       ;;
     print-env)
-      echo "export OMNI_HOME=${OMNI_HOME:-}"
-      echo "export OMNIBASE_INFRA_PATH=${OMNIBASE_INFRA_PATH}"
+      echo "export OMNI_HOME=$(shell_quote "${OMNI_HOME:-}")"
+      echo "export OMNIBASE_INFRA_PATH=$(shell_quote "${OMNIBASE_INFRA_PATH}")"
       ;;
     exec)
       if [ "${#passthrough[@]}" -eq 0 ]; then

@@ -125,13 +125,57 @@ def test_check_fails_when_infra_lacks_validator(
 def test_print_env_emits_evalable_exports(
     isolated_wrapper: Path, tmp_path: Path
 ) -> None:
-    fake_infra = tmp_path / "fakeinfra"
+    fake_home = tmp_path / "omni home; echo bad"
+    fake_home.mkdir()
+    fake_infra = tmp_path / "fake infra; echo bad"
     fake_infra.mkdir()
     env = _clean_env()
+    env["OMNI_HOME"] = str(fake_home)
     env["OMNIBASE_INFRA_PATH"] = str(fake_infra)
     result = _run(isolated_wrapper, "--print-env", env=env)
     assert result.returncode == 0
-    assert f"export OMNIBASE_INFRA_PATH={fake_infra}" in result.stdout
+    eval_result = subprocess.run(
+        [
+            "bash",
+            "-c",
+            (
+                f"{result.stdout}\n"
+                'printf "%s\\n%s\\n" "$OMNI_HOME" "$OMNIBASE_INFRA_PATH"'
+            ),
+        ],
+        env=_clean_env(),
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+    assert eval_result.returncode == 0, eval_result.stderr
+    assert eval_result.stdout.splitlines() == [str(fake_home), str(fake_infra)]
+
+
+def test_delegated_command_does_not_inherit_git_worktree_bindings(
+    isolated_wrapper: Path, tmp_path: Path
+) -> None:
+    fake_infra = tmp_path / "fakeinfra"
+    fake_infra.mkdir()
+    env = _clean_env()
+    env.update(
+        {
+            "OMNIBASE_INFRA_PATH": str(fake_infra),
+            "GIT_DIR": "/tmp/wrong.git",
+            "GIT_INDEX_FILE": "/tmp/wrong.index",
+            "GIT_WORK_TREE": "/tmp/wrong-worktree",
+        }
+    )
+    result = _run(
+        isolated_wrapper,
+        "--",
+        "bash",
+        "-c",
+        'printf "%s|%s|%s" "${GIT_DIR-unset}" "${GIT_INDEX_FILE-unset}" "${GIT_WORK_TREE-unset}"',
+        env=env,
+    )
+    assert result.returncode == 0, result.stderr
+    assert result.stdout == "unset|unset|unset"
 
 
 def test_real_worktree_autoresolves_without_env() -> None:
