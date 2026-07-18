@@ -502,3 +502,175 @@ class TestF01AppendOnly:
             "A\tcontracts/OMN-9999.yaml\n"
             f"A\tdrift/dod_receipts/OMN-9999/{self._EID}/command.yaml"
         )
+
+
+# ---------------------------------------------------------------------------
+# F-06 — runtime probe is the GraphQL `gh pr view --json files` (OMN-14766)
+# ---------------------------------------------------------------------------
+
+
+def _receipt_field(receipt_path: Path, field: str) -> str:
+    data = yaml.safe_load(receipt_path.read_text())
+    return str(data.get(field, ""))
+
+
+@pytest.mark.unit
+class TestF06RuntimeProbeIsGraphQL:
+    """The emitter's product-diff RUNTIME probe must be `gh pr view --json files`,
+    not the REST-fragile `gh pr diff ... --name-only` (OCC#4297 HTML/503), and it
+    must match the declared check_value on the public path. RED against the pre-fix
+    emitter (probe_command was `gh pr diff`)."""
+
+    _CI_RECEIPT = (
+        "drift/dod_receipts/OMN-9999/dod-OmniNode-ai-omnimarket-pr-321-ci/command.yaml"
+    )
+
+    def test_ci_receipt_probe_command_is_graphql_json_files(
+        self, tmp_path: Path
+    ) -> None:
+        emitter = OccCompanionEmitter()
+        _action, clone_root, _ = _run_emit(emitter, tmp_path)
+        receipt = clone_root / self._CI_RECEIPT
+        probe = _receipt_field(receipt, "probe_command")
+        assert "gh pr view" in probe, (
+            f"F-06: CI receipt probe_command must be the GraphQL `gh pr view`, "
+            f"got: {probe!r}"
+        )
+        assert "--json files" in probe, (
+            f"F-06: CI receipt probe_command must request `--json files`, "
+            f"got: {probe!r}"
+        )
+        assert "gh pr diff" not in probe, (
+            f"F-06: CI receipt probe_command still uses the REST-fragile `gh pr "
+            f"diff` (OCC#4297): {probe!r}"
+        )
+
+    def test_public_ci_receipt_probe_command_equals_check_value(
+        self, tmp_path: Path
+    ) -> None:
+        # On a PUBLIC repo the runtime probe and the re-run check_value must be the
+        # same command (the F-06 remainder OMN-14741 left open).
+        emitter = OccCompanionEmitter()
+        _action, clone_root, _ = _run_emit(emitter, tmp_path)
+        receipt = clone_root / self._CI_RECEIPT
+        assert _receipt_field(receipt, "probe_command") == _receipt_field(
+            receipt, "check_value"
+        ), "F-06: public CI receipt probe_command must equal its check_value"
+
+
+# ---------------------------------------------------------------------------
+# F-16 — private-repo companions emit hosted-safe receipt-local check_values
+# ---------------------------------------------------------------------------
+
+
+def _private_pr_data() -> dict[str, object]:
+    data = _default_pr_data()
+    data["base"] = {"repo": {"private": True}}
+    return data
+
+
+def _public_pr_data() -> dict[str, object]:
+    data = _default_pr_data()
+    data["base"] = {"repo": {"private": False}}
+    return data
+
+
+def _dod_item_check_values(contract_path: Path, item_id: str) -> list[str]:
+    data = yaml.safe_load(contract_path.read_text())
+    out: list[str] = []
+    for item in data.get("dod_evidence") or []:
+        if item.get("id") != item_id:
+            continue
+        for check in item.get("checks") or []:
+            cv = check.get("check_value")
+            if isinstance(cv, str):
+                out.append(cv)
+    return out
+
+
+@pytest.mark.unit
+class TestF16PrivateRepoHostedSafe:
+    """A private product repo cannot be re-probed by the hosted OCC runner (token
+    scope). The generator must emit a receipt-local check_value for the downstream
+    + CI product-diff items/receipts instead of a `gh pr view --repo <private>`
+    probe. RED against the pre-fix emitter (which always emitted `gh pr view`)."""
+
+    _EID = "dod-OmniNode-ai-omnimarket-pr-321"
+    _CI_EID = "dod-OmniNode-ai-omnimarket-pr-321-ci"
+    _CONTRACT = "contracts/OMN-9999.yaml"
+    _DOWN_RECEIPT = (
+        "drift/dod_receipts/OMN-9999/dod-OmniNode-ai-omnimarket-pr-321/command.yaml"
+    )
+    _CI_RECEIPT = (
+        "drift/dod_receipts/OMN-9999/dod-OmniNode-ai-omnimarket-pr-321-ci/command.yaml"
+    )
+
+    @staticmethod
+    def _is_receipt_local(cv: str) -> bool:
+        return cv.startswith("grep -q '^status: PASS$'") and (
+            "$CONTRACT_REPO_DIR/drift/dod_receipts/" in cv
+        )
+
+    def test_private_repo_downstream_and_ci_items_are_receipt_local(
+        self, tmp_path: Path
+    ) -> None:
+        emitter = OccCompanionEmitter()
+        _action, clone_root, _ = _run_emit(
+            emitter, tmp_path, pr_data=_private_pr_data()
+        )
+        contract = clone_root / self._CONTRACT
+        for item_id, eid in ((self._EID, self._EID), (self._CI_EID, self._CI_EID)):
+            for cv in _dod_item_check_values(contract, item_id):
+                assert self._is_receipt_local(cv), (
+                    f"F-16: private-repo contract item {item_id} must be a "
+                    f"receipt-local check, got: {cv!r}"
+                )
+                assert "gh pr view" not in cv, (
+                    f"F-16: private-repo item {item_id} still emits a hosted gh "
+                    f"pr view the OCC token cannot run: {cv!r}"
+                )
+                assert "gh pr diff" not in cv, (
+                    f"F-16: private-repo item {item_id} still emits a hosted gh "
+                    f"pr diff the OCC token cannot run: {cv!r}"
+                )
+                assert eid in cv, (
+                    f"receipt-local path must name its own receipt: {cv!r}"
+                )
+
+    def test_private_repo_receipts_are_receipt_local_but_keep_live_probe(
+        self, tmp_path: Path
+    ) -> None:
+        emitter = OccCompanionEmitter()
+        _action, clone_root, _ = _run_emit(
+            emitter, tmp_path, pr_data=_private_pr_data()
+        )
+        for rel in (self._DOWN_RECEIPT, self._CI_RECEIPT):
+            receipt = clone_root / rel
+            cv = _receipt_field(receipt, "check_value")
+            assert self._is_receipt_local(cv), (
+                f"F-16: private-repo receipt {rel} check_value must be receipt-local, "
+                f"got: {cv!r}"
+            )
+            # The LIVE probe is preserved as captured provenance in the receipt.
+            probe = _receipt_field(receipt, "probe_command")
+            assert "gh pr view" in probe, (
+                f"F-16: the live gh pr view probe must be preserved in the receipt "
+                f"probe_command, got: {probe!r}"
+            )
+
+    def test_public_repo_still_uses_hosted_gh_pr_view(self, tmp_path: Path) -> None:
+        # GREEN anchor: a PUBLIC product repo is unchanged — hosted `gh pr view`.
+        emitter = OccCompanionEmitter()
+        _action, clone_root, _ = _run_emit(emitter, tmp_path, pr_data=_public_pr_data())
+        contract = clone_root / self._CONTRACT
+        ci_values = _dod_item_check_values(contract, self._CI_EID)
+        assert ci_values, "F-16: public repo must declare a CI product-diff item"
+        assert all("gh pr view" in cv for cv in ci_values), (
+            f"F-16: public repo must keep the hosted gh pr view check: {ci_values!r}"
+        )
+        assert all("--json files" in cv for cv in ci_values), (
+            f"F-16: public repo must keep the --json files diff scope: {ci_values!r}"
+        )
+        assert all(not self._is_receipt_local(cv) for cv in ci_values), (
+            "F-16: public repo must NOT be downgraded to receipt-local"
+        )

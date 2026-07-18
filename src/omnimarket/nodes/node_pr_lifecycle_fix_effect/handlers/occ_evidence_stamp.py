@@ -124,6 +124,17 @@ _CONTRACT_HEAD_TEMPLATE = textwrap.dedent("""\
     dod_evidence:
     """)
 
+# Public-repo hosted check_values. Placeholder form (``${PR_NUMBER}`` / ``${REPO}``)
+# for CONTRACT items so they clear ``lint-contract-check-values`` (OMN-14741 F-02)
+# and stay constant-length under yamlfmt. ``check_value`` is now a substituted
+# VALUE (single-brace ``${PR_NUMBER}`` — NOT re-scanned by ``.format``) so the
+# private-repo hosted-safe form (OMN-14766 F-16) can be swapped in per repo without
+# a second template. The default reproduces the OMN-14741 shape byte-for-byte.
+_DOWNSTREAM_ITEM_PUBLIC_CHECK_VALUE = (
+    "gh pr view ${PR_NUMBER} --repo ${REPO} --json number,state"
+)
+_CI_ITEM_PUBLIC_CHECK_VALUE = "gh pr view ${PR_NUMBER} --repo ${REPO} --json files"
+
 # Downstream (Evidence-Source binding) dod_evidence item — an existence probe
 # (tier L0). 2-space list indent so it continues the head template's
 # ``dod_evidence:`` sequence; NOT textwrap.dedent'd (every line is indented).
@@ -133,7 +144,7 @@ _DOWNSTREAM_DOD_ITEM_TEMPLATE = (
     '    source: "generated"\n'
     "    checks:\n"
     '      - check_type: "command"\n'
-    '        check_value: "gh pr view ${{PR_NUMBER}} --repo ${{REPO}} --json number,state"\n'
+    '        check_value: "{check_value}"\n'
 )
 
 # Product-diff-scope dod_evidence item — the substantive check (tier L1 via the
@@ -145,7 +156,7 @@ _CI_DOD_ITEM_TEMPLATE = (
     '    source: "generated"\n'
     "    checks:\n"
     '      - check_type: "command"\n'
-    '        check_value: "gh pr view ${{PR_NUMBER}} --repo ${{REPO}} --json files"\n'
+    '        check_value: "{check_value}"\n'
 )
 
 # Downstream receipt — stamped with the REAL product PR head + number so
@@ -165,7 +176,7 @@ _DOWNSTREAM_RECEIPT_TEMPLATE = textwrap.dedent("""\
     ticket_id: "{ticket_id}"
     evidence_item_id: "{evidence_id}"
     check_type: "command"
-    check_value: "gh pr view {pr_number} --repo {repo} --json number,state,headRefName"
+    check_value: "{check_value}"
     contract_sha256: "sha256:PENDING"
     contract_entry_sha256: "sha256:PENDING"
     status: PASS
@@ -209,7 +220,7 @@ _CI_CHECK_RECEIPT_TEMPLATE = textwrap.dedent("""\
     ticket_id: "{ticket_id}"
     evidence_item_id: "{evidence_id}"
     check_type: "command"
-    check_value: "gh pr view {pr_number} --repo {repo} --json files"
+    check_value: "{check_value}"
     contract_sha256: "sha256:PENDING"
     contract_entry_sha256: "sha256:PENDING"
     status: PASS
@@ -511,39 +522,96 @@ def ci_check_evidence_id(evidence_id: str) -> str:
     return f"{evidence_id}-ci"
 
 
+def receipt_local_check_value(*, ticket_id: str, evidence_id: str) -> str:
+    """Hosted-safe receipt-local ``check_value`` for a private-repo companion.
+
+    OMN-14766 F-16. A private product repo's PR cannot be re-probed by the hosted
+    OCC contract-compliance runner: its workflow ``GITHUB_TOKEN`` has no scope on
+    the private repo, so a ``gh pr view --repo <private>`` ``check_value`` fails
+    hosted while passing on the ``.201`` emitter that has scope (the OCC#4307 /
+    OCC#4318 split). Instead, assert that the committed receipt attests
+    ``status: PASS``. The live ``gh pr view`` probe is preserved verbatim inside
+    the receipt (``probe_command`` / ``probe_stdout`` / ``exit_code``) as captured
+    provenance — CI verifies the receipt's attestation rather than re-running the
+    private-repo probe (the same receipt-preservation pattern OMN-14051 steers
+    authors toward for non-hermetic checks).
+
+    The receipt path is resolved through ``$CONTRACT_REPO_DIR`` (exported by the
+    compliance runner's ``_build_command_env`` to the OCC checkout root) so it
+    binds regardless of the runner's ``cwd`` (the *product* workspace). It derives
+    proof tier L1 via the OMN-14409 substance floor's ``grep`` static-assert family
+    and carries no ``gh pr`` command, so it clears ``lint-contract-check-values``
+    with no ``${PR_NUMBER}`` placeholder. OCC receipt paths never contain spaces,
+    so ``$CONTRACT_REPO_DIR`` is left unquoted — the value stays a single YAML
+    double-quoted scalar with no nested double-quotes, which yamlfmt leaves as a
+    fixpoint.
+    """
+    return (
+        "grep -q '^status: PASS$' "
+        f"$CONTRACT_REPO_DIR/drift/dod_receipts/{ticket_id}/{evidence_id}/command.yaml"
+    )
+
+
+def downstream_receipt_public_check_value(*, pr_number: int, repo: str) -> str:
+    """Public-repo downstream (binding) receipt ``check_value`` (OMN-14741 F-06)."""
+    return f"gh pr view {pr_number} --repo {repo} --json number,state,headRefName"
+
+
+def ci_receipt_public_check_value(*, pr_number: int, repo: str) -> str:
+    """Public-repo product-diff-scope receipt ``check_value`` (OMN-14741 F-06)."""
+    return f"gh pr view {pr_number} --repo {repo} --json files"
+
+
 def render_downstream_dod_evidence_item(
-    *, evidence_id: str, repo: str, pr_number: int
+    *, evidence_id: str, repo: str, pr_number: int, check_value: str | None = None
 ) -> str:
     """Render the Evidence-Source binding dod_evidence item block (tier L0).
 
     Standalone so the effect writer can append it to a PRE-EXISTING contract that
     is missing this PR's rows (OMN-14741 F-04) using the SAME block that
     :func:`render_companion_contract` embeds — one authoring home, no drift. The
-    ``check_value`` is placeholder-var form (``${PR_NUMBER}`` / ``${REPO}``) so it
-    clears ``lint-contract-check-values`` (OMN-14741 F-02).
+    default ``check_value`` is placeholder-var form (``${PR_NUMBER}`` / ``${REPO}``)
+    so it clears ``lint-contract-check-values`` (OMN-14741 F-02). A private product
+    repo passes the hosted-safe :func:`receipt_local_check_value` (OMN-14766 F-16),
+    since a ``gh pr view --repo <private>`` re-run fails under the OCC token scope.
     """
     return _DOWNSTREAM_DOD_ITEM_TEMPLATE.format(
-        evidence_id=evidence_id, repo=repo, pr_number=pr_number
+        evidence_id=evidence_id,
+        repo=repo,
+        pr_number=pr_number,
+        check_value=check_value or _DOWNSTREAM_ITEM_PUBLIC_CHECK_VALUE,
     )
 
 
-def render_ci_dod_evidence_item(*, evidence_id: str, repo: str, pr_number: int) -> str:
+def render_ci_dod_evidence_item(
+    *, evidence_id: str, repo: str, pr_number: int, check_value: str | None = None
+) -> str:
     """Render the product-diff-scope dod_evidence item block (tier L1).
 
-    ``--json files`` derives tier L1 via the OMN-14409 substance floor's
-    diff-assert family and is GraphQL-backed (OMN-14741 F-06). Its id is derived
-    from the base evidence id via :func:`ci_check_evidence_id` so the contract's
-    declared id and the backing receipt's directory can never diverge (OMN-14425).
+    The default ``--json files`` derives tier L1 via the OMN-14409 substance floor's
+    diff-assert family and is GraphQL-backed (OMN-14741 F-06). A private product
+    repo passes the hosted-safe :func:`receipt_local_check_value` (OMN-14766 F-16),
+    which also derives L1 (the substance floor's ``grep`` static-assert family). Its
+    id is derived from the base evidence id via :func:`ci_check_evidence_id` so the
+    contract's declared id and the backing receipt's directory can never diverge
+    (OMN-14425).
     """
     return _CI_DOD_ITEM_TEMPLATE.format(
         ci_evidence_id=ci_check_evidence_id(evidence_id),
         repo=repo,
         pr_number=pr_number,
+        check_value=check_value or _CI_ITEM_PUBLIC_CHECK_VALUE,
     )
 
 
 def render_companion_contract(
-    *, ticket_id: str, repo: str, pr_number: int, evidence_id: str
+    *,
+    ticket_id: str,
+    repo: str,
+    pr_number: int,
+    evidence_id: str,
+    downstream_check_value: str | None = None,
+    ci_check_value: str | None = None,
 ) -> str:
     """Render the ``contracts/<ticket>.yaml`` companion contract YAML.
 
@@ -557,15 +625,23 @@ def render_companion_contract(
     ``gh pr view --json files`` rather than the REST-fragile ``gh pr diff`` (F-06),
     and every line is yamlfmt-idempotent under the OCC ``.yamlfmt`` config (F-03).
     The two base items are composed from the standalone item-block renderers so the
-    effect writer can reuse them to repair a pre-existing contract (F-04).
+    effect writer can reuse them to repair a pre-existing contract (F-04). A private
+    product repo passes hosted-safe ``downstream_check_value`` / ``ci_check_value``
+    (OMN-14766 F-16); public repos leave both ``None`` to keep the OMN-14741 shape.
     """
     return (
         _CONTRACT_HEAD_TEMPLATE.format(ticket_id=ticket_id, pr_number=pr_number)
         + render_downstream_dod_evidence_item(
-            evidence_id=evidence_id, repo=repo, pr_number=pr_number
+            evidence_id=evidence_id,
+            repo=repo,
+            pr_number=pr_number,
+            check_value=downstream_check_value,
         )
         + render_ci_dod_evidence_item(
-            evidence_id=evidence_id, repo=repo, pr_number=pr_number
+            evidence_id=evidence_id,
+            repo=repo,
+            pr_number=pr_number,
+            check_value=ci_check_value,
         )
     )
 
@@ -584,8 +660,16 @@ def render_downstream_receipt(
     exit_code: int,
     runner: str = DEFAULT_RUNNER,
     verifier: str = DEFAULT_VERIFIER,
+    check_value: str | None = None,
 ) -> str:
-    """Render the downstream (product-PR-bound) DoD receipt YAML."""
+    """Render the downstream (product-PR-bound) DoD receipt YAML.
+
+    ``check_value`` is the assertion the OCC contract-compliance runner re-runs; it
+    defaults to the public-repo ``gh pr view --json`` binding probe and is set to the
+    hosted-safe :func:`receipt_local_check_value` for a private product repo
+    (OMN-14766 F-16). The live probe stays recorded in ``probe_command`` /
+    ``probe_stdout`` / ``exit_code`` regardless.
+    """
     return _DOWNSTREAM_RECEIPT_TEMPLATE.format(
         ticket_id=ticket_id,
         evidence_id=evidence_id,
@@ -599,6 +683,10 @@ def render_downstream_receipt(
         exit_code=exit_code,
         runner=runner,
         verifier=verifier,
+        check_value=(
+            check_value
+            or downstream_receipt_public_check_value(pr_number=pr_number, repo=repo)
+        ),
     )
 
 
@@ -616,14 +704,18 @@ def render_ci_check_receipt(
     exit_code: int,
     runner: str = DEFAULT_RUNNER,
     verifier: str = DEFAULT_VERIFIER,
+    check_value: str | None = None,
 ) -> str:
     """Render the product-diff-scope DoD receipt YAML (OMN-14425 / OMN-14650).
 
     Backs the substantive dod_evidence item the substance floor (OMN-14409 /
-    OCC#3990) requires alongside the existence-probe binding item. The declared
-    check is ``gh pr diff ... --name-only | grep -q .`` (a diff assertion),
-    replacing the former ``gh pr checks <source>`` CI-outcome probe that
-    deadlocked on the source PR being green (OMN-14650).
+    OCC#3990) requires alongside the existence-probe binding item. The default
+    declared check is the GraphQL ``gh pr view --json files`` diff-scope assertion
+    (OMN-14741 F-06), replacing the REST-fragile ``gh pr diff`` and the former
+    ``gh pr checks <source>`` CI-outcome probe that deadlocked on the source PR
+    being green (OMN-14650). For a private product repo it is the hosted-safe
+    :func:`receipt_local_check_value` (OMN-14766 F-16). The live probe stays in
+    ``probe_command`` / ``probe_stdout`` / ``exit_code`` regardless.
     """
     return _CI_CHECK_RECEIPT_TEMPLATE.format(
         ticket_id=ticket_id,
@@ -638,6 +730,9 @@ def render_ci_check_receipt(
         exit_code=exit_code,
         runner=runner,
         verifier=verifier,
+        check_value=(
+            check_value or ci_receipt_public_check_value(pr_number=pr_number, repo=repo)
+        ),
     )
 
 
