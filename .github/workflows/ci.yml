@@ -198,6 +198,18 @@ jobs:
           echo "OK: No node-level topics.py files found."
       - name: ONCP node metadata dependency scope
         run: uv run python scripts/ci/check_node_metadata_dependencies.py
+      # OMN-14762 (F-18): keep the authoritative coverage-json invocation
+      # (pytest-cov, config-driven) aligned with the shadow aggregator's
+      # `coverage json -i` so a missing C-extension source can never red one gate
+      # while the other stays green. SYNC with pre-commit hook 'coverage-ignore-parity'.
+      - name: Coverage-json ignore-errors parity gate
+        run: uv run python scripts/ci/check_coverage_ignore_parity.py
+      # OMN-14762 (F-19-A): action-pin ratchet — every third-party `uses:` must be
+      # pinned to a 40-char SHA; the current unpinned set is frozen in
+      # scripts/ci/action_pin_baseline.txt (burn-down only) and NEW unpinned refs
+      # fail closed. SYNC with pre-commit hook 'check-action-pins'.
+      - name: GitHub Actions pin ratchet
+        run: uv run python scripts/ci/check_action_pins.py
       # SYNC: Pre-commit hook 'validate-no-env-fallbacks' at pre-commit stage (OMN-10738)
       # Prevents silent fallback to localhost defaults via os.getenv/os.environ.get
       - name: Validate no silent env fallbacks
@@ -588,32 +600,13 @@ jobs:
           SMART_FLAG: ${{ vars.ENABLE_SMART_TESTS }}
           RUN_ID: ${{ github.run_id }}
           RUN_ATTEMPT: ${{ github.run_attempt }}
-        run: |
-          python - <<'PY'
-          import datetime
-          import json
-          import os
-
-          smart = os.environ.get("SMART_FLAG") == "true"
-          is_full = os.environ.get("IS_FULL") == "true"
-          scope = "smart" if (smart and not is_full) else "full"
-          split = int(os.environ["SPLIT"])
-          meta = {
-              "schema_version": "omnimarket.coverage-artifact/v1",
-              "head_sha": os.environ["HEAD_SHA"],
-              "split": split,
-              "split_count": int(os.environ["SPLIT_COUNT"]),
-              "test_scope": scope,
-              "run_id": os.environ.get("RUN_ID"),
-              "run_attempt": os.environ.get("RUN_ATTEMPT"),
-              "python_version": "3.12",
-              "runner_os": os.environ.get("RUNNER_OS"),
-              "created_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
-          }
-          with open(f"coverage-meta-{split}.json", "w", encoding="utf-8") as fh:
-              json.dump(meta, fh, indent=2)
-          print(json.dumps(meta, indent=2))
-          PY
+        # OMN-14762 (F-19-B): emit through the shared producer
+        # (scripts/ci/coverage_artifact_metadata.build_shard_metadata) instead of
+        # inline python, so the sidecar shape is single-sourced with
+        # aggregate_coverage_artifacts.validate_artifacts and proven by
+        # tests/ci/test_coverage_artifact_metadata_roundtrip.py — a shape drift now
+        # fails a local test, not only downstream CI.
+        run: python scripts/ci/emit_coverage_shard_metadata.py
 
       - name: Upload coverage shard artifact (OMN-14680)
         if: always()
@@ -639,7 +632,7 @@ jobs:
 
       - name: Upload test results
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: test-results-${{ matrix.split }}
           path: junit-${{ matrix.split }}.xml
@@ -775,7 +768,7 @@ jobs:
 
       - name: Upload integration-guard results
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: integration-guard-results
           path: integration-guard.xml
@@ -1163,7 +1156,7 @@ jobs:
           uv run pytest             tests/test_golden_chain_*.py             tests/unit/nodes/test_golden_chain_*.py             tests/nodes/*/test_golden_chain_*.py             -v --tb=short -q -m "not kafka"             --junit-xml=golden-chain-results.xml
       - name: Upload golden chain results
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: golden-chain-results
           path: golden-chain-results.xml
@@ -1205,7 +1198,7 @@ jobs:
             --junit-xml=sea-e2e-chain-results.xml
       - name: Upload SEA chain results
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: sea-e2e-chain-results
           path: sea-e2e-chain-results.xml
@@ -1252,7 +1245,7 @@ jobs:
             --junit-xml=generated-node-golden-chain-results.xml
       - name: Upload generated-node golden-chain results
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: generated-node-golden-chain-results
           path: generated-node-golden-chain-results.xml
@@ -1559,7 +1552,7 @@ jobs:
       # merge-blocking authority until the shadow path is proven and cut over.
       - name: Upload authoritative coverage.json (OMN-14680 shadow parity)
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: coverage-authoritative
           path: coverage.json

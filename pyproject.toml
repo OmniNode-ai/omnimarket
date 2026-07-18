@@ -564,6 +564,12 @@ omit = ["*/tests/*"]
 [tool.coverage.report]
 show_missing = true
 skip_covered = true
+# OMN-14762 (F-18): ignore records whose source is not on disk (e.g. the
+# dependency_injector `providers.pyx` C-extension, which ships only as a `.so`).
+# pytest-cov's json report in run_coverage_sweep_gate.py reads this section, so
+# setting it here makes the authoritative gate's `--cov-report=json` match the
+# shadow aggregator's `coverage json -i`. Enforced by check_coverage_ignore_parity.py.
+ignore_errors = true
 
 [tool.ruff]
 target-version = "py312"
