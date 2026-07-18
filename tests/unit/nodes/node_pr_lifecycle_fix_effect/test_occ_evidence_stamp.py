@@ -39,10 +39,18 @@ from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.occ_evidence_stamp i
 # RED->GREEN proof against the REAL deriver is run manually and cited in the
 # PR body per OMN-14425.
 _GH_PR_VIEW_RE = re.compile(r"\bgh\s+pr\s+view\b")
+# Mirrors the real deriver's diff-assert exception (OMN-14741 F-06): a
+# ``gh pr view --json files`` names the files the PR touches — it is falsifiable
+# about the change, so it derives tier L1 (diff-assert), NOT an existence probe.
+_DIFF_ASSERT_RE = re.compile(r"--json[=\s]+[^|]*\bfiles\b|\.files\[")
 
 
 def _is_existence_probe_like_omn_14409(command: str) -> bool:
-    return bool(_GH_PR_VIEW_RE.search(command))
+    # A ``gh pr view`` is an existence probe UNLESS it reads ``files`` (diff
+    # scope), which the substance floor treats as a substantive diff assertion.
+    return bool(_GH_PR_VIEW_RE.search(command)) and not bool(
+        _DIFF_ASSERT_RE.search(command)
+    )
 
 
 _NAMED_PLACEHOLDER_RE = re.compile(r"\{[a-z_]+\}")
@@ -112,26 +120,27 @@ class TestContractSubstanceFloor:
 
     def test_existence_probe_item_is_preserved_verbatim(self) -> None:
         # OMN-14425 ADDS a claim; it must not remove or alter the binding probe
-        # the Evidence-Source autobind stamp path depends on.
+        # the Evidence-Source autobind stamp path depends on. OMN-14741 F-02: the
+        # check_value now renders in canonical ${PR_NUMBER}/${REPO} placeholder
+        # form (constant-length, lint-clean) rather than an interpolated integer.
         rendered = self._render()
-        assert (
-            "gh pr view 1721 --repo OmniNode-ai/omnimarket --json number,state"
-            in rendered
-        )
+        assert "gh pr view ${PR_NUMBER} --repo ${REPO} --json number,state" in rendered
+        # The former hardcoded-integer form is gone (it fails lint-contract-check-values).
+        assert "gh pr view 1721" not in rendered
 
     def test_second_item_check_value_is_not_an_existence_probe(self) -> None:
-        # OMN-14650: the second item is a product-diff-scope assertion (`gh pr
-        # diff ... --name-only | grep -q .`), NOT a source-CI-green probe. It
-        # still clears the OMN-14409 substance floor (static-assert family) and
-        # is not an existence probe.
+        # OMN-14741 F-06: the second item is a GraphQL product-diff-scope assertion
+        # (`gh pr view ... --json files`), NOT the REST-fragile `gh pr diff` and
+        # NOT a source-CI-green probe. It clears the OMN-14409 substance floor
+        # (diff-assert family) and is not an existence probe.
         rendered = self._render()
-        ci_check_value = (
-            "gh pr diff 1721 --repo OmniNode-ai/omnimarket --name-only | grep -q ."
-        )
+        ci_check_value = "gh pr view ${PR_NUMBER} --repo ${REPO} --json files"
         assert ci_check_value in rendered
         assert not _is_existence_probe_like_omn_14409(ci_check_value)
-        # Regression: the former `gh pr checks <source>` CI-green gate is gone.
+        # Regression: the former `gh pr checks <source>` CI-green gate is gone, and
+        # so is the REST-fragile `gh pr diff` (OMN-14741 F-06).
         assert "gh pr checks" not in rendered
+        assert "gh pr diff" not in rendered
 
     def test_second_item_id_derived_from_base_evidence_id(self) -> None:
         rendered = self._render()
@@ -254,10 +263,13 @@ class TestSelfBindDodEvidenceItemRender:
 
         assert rendered.startswith('  - id: "occ-self-bind-pr-42"\n')
         assert "OCC companion PR #42" in rendered
+        # OMN-14741 F-02: placeholder-var check_value (lint-clean), not the OCC PR
+        # integer that failed lint-contract-check-values on the self-bind command.
         assert (
-            'check_value: "gh pr view 42 --repo OmniNode-ai/onex_change_control '
+            'check_value: "gh pr view ${PR_NUMBER} --repo ${REPO} '
             '--json number,state"' in rendered
         )
+        assert "gh pr view 42" not in rendered
         assert _NAMED_PLACEHOLDER_RE.findall(rendered) == []
 
 
@@ -274,8 +286,8 @@ class TestCiCheckReceiptRender:
             run_timestamp="2026-07-10T00:00:00Z",
             commit_sha="abc1234",
             branch="auto/omninode-ai-omnimarket-pr-123-occ-autobind",
-            probe_command="gh pr diff 123 --repo OmniNode-ai/omnimarket --name-only",
-            probe_stdout='{"number":123,"note":"diff not observed"}',
+            probe_command="gh pr view 123 --repo OmniNode-ai/omnimarket --json files",
+            probe_stdout='{"files":[{"path":"src/x.py"}]}',
             exit_code=0,
         )
 
@@ -286,13 +298,15 @@ class TestCiCheckReceiptRender:
         assert "status: PASS" in rendered
         assert "pr_number: 123" in rendered
         assert 'commit_sha: "abc1234"' in rendered
-        # OMN-14650: the declared check is a product-diff-scope assertion, not the
-        # former source-CI-green `gh pr checks` probe.
+        # OMN-14741 F-06: the declared check is a GraphQL product-diff-scope
+        # assertion (`gh pr view --json files`), not the REST-fragile `gh pr diff`
+        # and not the former source-CI-green `gh pr checks` probe.
         assert (
-            'check_value: "gh pr diff 123 --repo OmniNode-ai/omnimarket '
-            '--name-only | grep -q ."' in rendered
+            'check_value: "gh pr view 123 --repo OmniNode-ai/omnimarket '
+            '--json files"' in rendered
         )
         assert "gh pr checks" not in rendered
+        assert "gh pr diff" not in rendered
         assert 'contract_sha256: "sha256:PENDING"' in rendered
 
     def test_no_unsubstituted_named_placeholders(self) -> None:

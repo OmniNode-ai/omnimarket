@@ -266,6 +266,30 @@ repos:
         pass_filenames: false
         stages: [pre-commit]
 
+      # OMN-14741: OCC emitter golden gate for the LIVE companion producer.
+      # Runs the golden tests that drive the REAL OccCompanionEmitter output
+      # (placeholder-clean check_values, yamlfmt-idempotent YAML, append-only
+      # receipts, pre-existing-contract row append, closed/draft/do-not-merge
+      # suppression) whenever the live emitter/seam or their tests change, so a
+      # broken companion shape is caught locally before push (mirrors the
+      # occ-emitter-golden CI gate). BLOCKING.
+      - id: occ-emitter-golden
+        name: OCC emitter golden gate (OMN-14741) — LIVE producer output
+        entry: >-
+          uv run pytest
+          tests/unit/nodes/node_pr_lifecycle_fix_effect/test_occ_companion_emitter_friction_omn_14741.py
+          tests/unit/nodes/node_pr_lifecycle_fix_effect/test_occ_companion_emitter.py
+          tests/unit/nodes/node_pr_lifecycle_fix_effect/test_occ_evidence_stamp.py
+          -q
+        language: system
+        pass_filenames: false
+        files: >-
+          (?x)^(
+            src/omnimarket/nodes/node_pr_lifecycle_fix_effect/handlers/occ_(companion_emitter|evidence_stamp)\.py
+            |tests/unit/nodes/node_pr_lifecycle_fix_effect/test_occ_(companion_emitter|evidence_stamp|companion_emitter_friction_omn_14741)\.py
+          )$
+        stages: [pre-commit]
+
       - id: topic-naming-lint
         name: Topic Naming Lint
         language: system

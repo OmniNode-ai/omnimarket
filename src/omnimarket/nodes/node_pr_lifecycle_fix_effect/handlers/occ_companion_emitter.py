@@ -42,10 +42,11 @@ import asyncio
 import json
 import logging
 import os
+import re
 import shlex
 import subprocess
 import tempfile
-from collections.abc import Sequence
+from collections.abc import Iterable, Sequence
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Literal
@@ -79,7 +80,9 @@ from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.occ_evidence_stamp i
     rebind_contract_entry_sha256_in_text,
     rebind_contract_sha256_in_text,
     render_ci_check_receipt,
+    render_ci_dod_evidence_item,
     render_companion_contract,
+    render_downstream_dod_evidence_item,
     render_downstream_receipt,
     render_self_bind_dod_evidence_item,
     render_self_bind_receipt,
@@ -111,6 +114,16 @@ _OCC_REPO = OCC_REPO
 
 _DEFAULT_RUNNER = "node_pr_lifecycle_fix_effect"
 _DEFAULT_VERIFIER = "occ-evidence-source-autobind"
+
+# OMN-14741 F-17: emission is suppressed for a product PR that is closed, a draft,
+# or explicitly marked do-not-merge. A do-not-merge marker is any of these tokens
+# in the PR TITLE (case-insensitive) or a matching label name. The compact regex
+# tolerates the common spellings (``DO NOT MERGE`` / ``DO-NOT-MERGE`` /
+# ``DONOTMERGE``) plus ``[WIP]`` / ``WORK IN PROGRESS``.
+_DO_NOT_MERGE_RE = re.compile(
+    r"\bDO[\s_-]?NOT[\s_-]?MERGE\b|\bWORK[\s_-]?IN[\s_-]?PROGRESS\b|\[\s*WIP\s*\]",
+    re.IGNORECASE,
+)
 
 
 def _resolve_github_token() -> str:
@@ -272,6 +285,21 @@ class OccCompanionEmitter:
                 f"{head_sha!r}"
             )
 
+        # OMN-14741 F-17: suppress companion emission for a product PR that will
+        # never merge — closed, draft, or explicitly do-not-merge. Authoring a
+        # companion for such a PR only manufactures queue noise and a failing
+        # obsolete OCC PR (the OCC#4333 class: a companion minted for closed draft
+        # `[WS4 PARITY PROBE - DO NOT MERGE]` omnimarket#1798). Fail-loud skip with
+        # a reason code; ZERO side effects (no clone, no branch, no PR).
+        suppression = self._suppression_reason(pr_data)
+        if suppression is not None:
+            action = (
+                f"skip:{suppression} — {repo}#{pr_number} is not a mergeable "
+                "product PR; OCC companion emission suppressed (OMN-14741 F-17)"
+            )
+            logger.warning("occ_companion_emitter: %s", action)
+            return action
+
         # OMN-14255: the receipt must cite the actual squash ``mergeCommit.oid``
         # once the PR has landed — NOT the pre-merge ``headRefOid``. On these
         # squash-merge-only repos the merge commit is a brand-new SHA with no
@@ -348,7 +376,7 @@ class OccCompanionEmitter:
 
         with tempfile.TemporaryDirectory(prefix="occ-companion-") as tmpdir:
             clone_dir = Path(tmpdir) / "onex_change_control"
-            self._clone_and_branch(clone_dir, branch, tmpdir, token)
+            base_sha = self._clone_and_branch(clone_dir, branch, tmpdir, token)
 
             contract_paths: dict[str, Path] = {}
             for ticket in tickets:
@@ -363,6 +391,21 @@ class OccCompanionEmitter:
                             evidence_id=evidence_id,
                         ),
                         encoding="utf-8",
+                    )
+                else:
+                    # OMN-14741 F-04: a PRE-EXISTING contract (a prior ticket
+                    # already owns contracts/<ticket>.yaml) does NOT declare THIS
+                    # PR's base rows. Without them the freshly-written
+                    # downstream/CI receipts bind to a dod_evidence item that does
+                    # not exist, leaving contract_entry_sha256=PENDING and breaking
+                    # eligibility (the OCC#4304 class). Append the two base rows
+                    # structurally (robust to a non-dod_evidence-terminal contract).
+                    self._ensure_base_dod_evidence(
+                        contract_path,
+                        repo=repo,
+                        pr_number=pr_number,
+                        evidence_id=evidence_id,
+                        ci_evidence_id=ci_evidence_id,
                     )
                 contract_paths[ticket] = contract_path
 
@@ -413,7 +456,16 @@ class OccCompanionEmitter:
                     ),
                     encoding="utf-8",
                 )
-                self._rebind_all_receipts(clone_dir, ticket, contract_path)
+                # OMN-14741 F-01: rebind ONLY this PR's own receipts, never rglob
+                # every receipt under <ticket>/. The whole-file contract_sha256 of
+                # a PRIOR merged receipt for the same ticket goes stale when the
+                # contract grows, but the eligibility/receipt gates grandfather a
+                # prior merged receipt's whole-file hash — so rewriting it here is
+                # a NON-append-only mutation of an already-merged receipt (the
+                # OCC#4293/4295/4296 class). Scope the rebind to this PR's rows.
+                self._rebind_receipts(
+                    clone_dir, ticket, contract_path, {evidence_id, ci_evidence_id}
+                )
 
             self._run_git(["git", "add", "contracts", "drift"], cwd=str(clone_dir))
             self._run_git(
@@ -430,6 +482,15 @@ class OccCompanionEmitter:
                     ),
                 ],
                 cwd=str(clone_dir),
+            )
+            # OMN-14741 F-01: fail CLOSED before pushing if the generated tree
+            # touched anything outside this run's contract + receipt set. This is a
+            # real diff against the clone base, not the assertion-only comment the
+            # force-push previously relied on.
+            self._assert_append_only(
+                clone_dir,
+                base_sha,
+                self._allowed_paths(tickets, {evidence_id, ci_evidence_id}),
             )
             # Force-push: the auto/* bot branch is fully REGENERATED each run
             # (fresh clone off the default + freshly-timestamped receipts), so a
@@ -508,8 +569,16 @@ class OccCompanionEmitter:
                     occ_pr_number=occ_pr_number,
                     ticket_id=ticket,
                 )
-                # Rebind contract hash across ALL matching receipts (friction #9).
-                self._rebind_all_receipts(clone_dir, ticket, contract_paths[ticket])
+                # OMN-14741 F-01: rebind this PR's own three receipts (downstream,
+                # CI, self-bind) against the now-final contract — never the whole
+                # ticket. The per-entry hash is append-invariant; only these fresh
+                # receipts need the current whole-file hash.
+                self._rebind_receipts(
+                    clone_dir,
+                    ticket,
+                    contract_paths[ticket],
+                    {evidence_id, ci_evidence_id, self_bind_evidence_id},
+                )
 
             self._run_git(["git", "add", "contracts", "drift"], cwd=str(clone_dir))
             self._run_git(
@@ -523,6 +592,15 @@ class OccCompanionEmitter:
                     ),
                 ],
                 cwd=str(clone_dir),
+            )
+            # OMN-14741 F-01: re-assert append-only over the FINAL tree (both
+            # commits) before the deterministic all-adds force-push.
+            self._assert_append_only(
+                clone_dir,
+                base_sha,
+                self._allowed_paths(
+                    tickets, {evidence_id, ci_evidence_id, self_bind_evidence_id}
+                ),
             )
             # Force-push (see rationale above): deterministic all-adds regeneration.
             self._run_git(
@@ -559,6 +637,34 @@ class OccCompanionEmitter:
         authors a companion for exactly the tickets the gate will check.
         """
         return _extract_ticket_ids(body, title)
+
+    @staticmethod
+    def _suppression_reason(pr_data: dict[str, object]) -> str | None:
+        """Return a reason code if this product PR must NOT get a companion (F-17).
+
+        Suppression fires when the PR is closed, a draft, or carries a
+        do-not-merge marker in its TITLE or a matching label name. Returns one of
+        ``PR_CLOSED`` / ``PR_DRAFT`` / ``PR_DO_NOT_MERGE``, or ``None`` when the PR
+        is a normal mergeable product PR. Pure — reads only the REST snapshot.
+
+        ``state`` is checked before ``draft`` because a closed draft should report
+        the more actionable ``PR_CLOSED``; both are terminal for emission.
+        """
+        state = pr_data.get("state")
+        if isinstance(state, str) and state.lower() == "closed":
+            return "PR_CLOSED"
+        if bool(pr_data.get("draft")):
+            return "PR_DRAFT"
+        title = pr_data.get("title")
+        if isinstance(title, str) and _DO_NOT_MERGE_RE.search(title):
+            return "PR_DO_NOT_MERGE"
+        labels = pr_data.get("labels")
+        if isinstance(labels, list):
+            for label in labels:
+                name = label.get("name") if isinstance(label, dict) else None
+                if isinstance(name, str) and _DO_NOT_MERGE_RE.search(name):
+                    return "PR_DO_NOT_MERGE"
+        return None
 
     def _observe_pr_probe(
         self, *, probe_command: str, token: str, fallback: dict[str, object]
@@ -598,7 +704,13 @@ class OccCompanionEmitter:
 
     def _clone_and_branch(
         self, clone_dir: Path, branch: str, tmpdir: str, token: str
-    ) -> None:
+    ) -> str:
+        """Clone OCC (shallow) + cut the companion branch. Returns the base SHA.
+
+        The base SHA is the clone's default-branch HEAD, captured BEFORE cutting
+        the branch, so the OMN-14741 F-01 append-only guard can diff the generated
+        tree against exactly the state the companion was branched from.
+        """
         # HTTPS x-access-token clone/push (OMN-13990): the effects container has
         # no SSH identity. The token is redacted from any surfaced git error by
         # occ_git_transport.run_git.
@@ -620,65 +732,67 @@ class OccCompanionEmitter:
             ["git", "config", "user.email", self._git_author_email],
             cwd=str(clone_dir),
         )
+        base_sha = self._head_sha(str(clone_dir))
         self._run_git(["git", "checkout", "-b", branch], cwd=str(clone_dir))
+        return base_sha
 
-    def _rebind_all_receipts(
-        self, clone_dir: Path, ticket: str, contract_path: Path
+    def _rebind_receipts(
+        self,
+        clone_dir: Path,
+        ticket: str,
+        contract_path: Path,
+        evidence_ids: Iterable[str],
     ) -> None:
-        """Rebind every matching receipt's contract hash binding(s).
+        """Rebind THIS PR's receipts' contract hash binding(s) (OMN-14741 F-01).
 
-        Legacy whole-file: sets ``contract_sha256`` to sha256(contract) on
-        every receipt, mirroring the overnight-sweep manual recipe (friction
-        #9): ``LC_ALL=C shasum -a 256 contracts/<ticket>.yaml`` then rewrite
-        the hash in ``drift/dod_receipts/<ticket>/*/command.yaml``. Kept for
-        backward compat — the hardening gate still falls back to it for
-        receipts with no per-entry hash (self-bind receipts).
+        Only the receipt directories named in ``evidence_ids`` are touched —
+        never an rglob over ``<ticket>/`` that would rewrite a PRIOR merged
+        receipt's whole-file ``contract_sha256`` when the contract grows. The
+        eligibility/receipt gates grandfather a prior merged receipt's stale
+        whole-file hash, so rewriting it here is a non-append-only mutation of an
+        already-merged receipt (the OCC#4293/4295/4296 friction). Scoping to this
+        PR's own rows is both correct (those are the only receipts that need the
+        current whole-file hash) and append-only-safe.
 
-        Per-entry (OMN-13888 / OMN-14418 residual 3): for a receipt that
-        declares ``contract_entry_sha256``, also rebind that field to
+        Legacy whole-file: sets ``contract_sha256`` to sha256(contract) on each
+        of this PR's receipts, mirroring the overnight-sweep manual recipe
+        (friction #9). Per-entry (OMN-13888 / OMN-14418 residual 3): for a receipt
+        that declares ``contract_entry_sha256``, also rebind it to
         ``compute_contract_entry_sha256(contract_data, receipt's own
         evidence_item_id)`` — the SAME canonical per-entry hasher the
-        consumer-side gates recompute against, never a local
-        re-implementation. This is per-receipt evidence_item_id-aware (each
-        receipt's own declared id, extracted from its own text) rather than
-        one blanket whole-file substitution, so a contract with multiple
-        dod_evidence items (e.g. the downstream check plus a future sibling
-        check) rebinds each receipt against its own entry, not a shared
-        digest. A receipt whose evidence_item_id is not declared in the
-        contract's dod_evidence (self-bind receipts, by design — see
-        occ_evidence_stamp) is left with the field absent/unset; there is no
-        entry for it to bind to, so ContractEntryNotFoundError is swallowed
-        for that one receipt rather than aborting the whole rebind sweep.
+        consumer-side gates recompute against, never a local re-implementation. A
+        receipt whose id is not a declared dod_evidence item is left with the
+        field absent (``ContractEntryNotFoundError`` swallowed for that receipt).
 
-        Rendering + hashing stay in the pure :mod:`occ_evidence_stamp` seam
-        (plus the canonical omnibase_core per-entry hasher); this method only
-        does the file I/O.
+        Rendering + hashing stay in the pure :mod:`occ_evidence_stamp` seam (plus
+        the canonical omnibase_core per-entry hasher); this method only does I/O.
         """
         contract_bytes = contract_path.read_bytes()
         whole_file_digest = compute_contract_sha256(contract_bytes)
         contract_data = yaml.safe_load(contract_bytes)
         receipt_root = clone_dir / "drift" / "dod_receipts" / ticket
-        for receipt in receipt_root.rglob("*.yaml"):
-            text = receipt.read_text(encoding="utf-8")
-            new_text = rebind_contract_sha256_in_text(text, whole_file_digest)
+        for evidence_id in evidence_ids:
+            for receipt in sorted((receipt_root / evidence_id).rglob("*.yaml")):
+                text = receipt.read_text(encoding="utf-8")
+                new_text = rebind_contract_sha256_in_text(text, whole_file_digest)
 
-            evidence_item_id = extract_evidence_item_id(new_text)
-            if evidence_item_id is not None:
-                try:
-                    entry_digest = compute_contract_entry_sha256(
-                        contract_data, evidence_item_id
-                    )
-                except ContractEntryNotFoundError:
-                    # Not every receipt binds to a declared dod_evidence item
-                    # (self-bind receipts, by design) — nothing to rebind.
-                    pass
-                else:
-                    new_text = rebind_contract_entry_sha256_in_text(
-                        new_text, entry_digest
-                    )
+                evidence_item_id = extract_evidence_item_id(new_text)
+                if evidence_item_id is not None:
+                    try:
+                        entry_digest = compute_contract_entry_sha256(
+                            contract_data, evidence_item_id
+                        )
+                    except ContractEntryNotFoundError:
+                        # Not every receipt binds to a declared dod_evidence item
+                        # (self-bind receipts, by design) — nothing to rebind.
+                        pass
+                    else:
+                        new_text = rebind_contract_entry_sha256_in_text(
+                            new_text, entry_digest
+                        )
 
-            if new_text != text:
-                receipt.write_text(new_text, encoding="utf-8")
+                if new_text != text:
+                    receipt.write_text(new_text, encoding="utf-8")
 
     def _append_self_bind_evidence(
         self,
@@ -690,26 +804,165 @@ class OccCompanionEmitter:
     ) -> None:
         """Append the self-bind item to the contract's dod_evidence (OMN-14650).
 
-        The companion contract is rendered dod_evidence-terminal, so appending a
-        correctly-indented list item at EOF extends the list. Idempotent: a
-        ``synchronize`` re-fire regenerates the branch from a fresh clone of the
-        OCC default, so the contract is re-authored without the item and this
-        appends it again; the id-presence guard additionally protects against a
-        double-append within a single run. Must run BEFORE the whole-file/per-entry
-        rebind so the self-bind receipt binds to the final contract bytes.
+        OMN-14741 F-04: a STRUCTURAL insert at the END of the ``dod_evidence``
+        block, robust to a contract whose ``dod_evidence`` is NOT the terminal
+        top-level key (the naive EOF string-append assumed terminal and produced
+        invalid YAML — the list item landed after a sibling top-level key). The
+        rendered item block is yamlfmt-clean, so inserting it into a yamlfmt-clean
+        contract keeps the file yamlfmt-clean.
+
+        Idempotent: a ``synchronize`` re-fire regenerates the branch from a fresh
+        clone; the id-presence guard (parsed, not a substring match) protects
+        against a double-append within a single run. Must run BEFORE the
+        whole-file/per-entry rebind so the self-bind receipt binds to the final
+        contract bytes.
         """
         text = contract_path.read_text(encoding="utf-8")
-        if f'- id: "{evidence_id}"' in text:
+        if self._declares_dod_evidence_id(text, evidence_id):
             return  # already declared — do not append twice
-        if not text.endswith("\n"):
-            text += "\n"
-        text += render_self_bind_dod_evidence_item(
+        block = render_self_bind_dod_evidence_item(
             evidence_id=evidence_id,
             occ_pr_number=occ_pr_number,
             occ_repo=self._occ_repo,
             ticket_id=ticket_id,
         )
-        contract_path.write_text(text, encoding="utf-8")
+        contract_path.write_text(
+            self._insert_dod_evidence_items(text, [block]), encoding="utf-8"
+        )
+
+    def _ensure_base_dod_evidence(
+        self,
+        contract_path: Path,
+        *,
+        repo: str,
+        pr_number: int,
+        evidence_id: str,
+        ci_evidence_id: str,
+    ) -> None:
+        """Ensure a PRE-EXISTING contract declares THIS PR's base rows (F-04).
+
+        When ``contracts/<ticket>.yaml`` already exists (a prior ticket/PR authored
+        it), it does not declare this PR's downstream/CI dod_evidence items, so the
+        freshly-written receipts bind to nothing and eligibility breaks with
+        ``contract_entry_sha256=PENDING`` (the OCC#4304 class). Append whichever of
+        the two base rows is missing, using the SAME item-block renderers
+        :func:`render_companion_contract` composes — so the appended row's parsed
+        dod_evidence item (hence its per-entry hash) is byte-identical to the
+        fresh-contract row. Structural insert (robust to non-terminal contracts).
+        """
+        text = contract_path.read_text(encoding="utf-8")
+        blocks: list[str] = []
+        if not self._declares_dod_evidence_id(text, evidence_id):
+            blocks.append(
+                render_downstream_dod_evidence_item(
+                    evidence_id=evidence_id, repo=repo, pr_number=pr_number
+                )
+            )
+        if not self._declares_dod_evidence_id(text, ci_evidence_id):
+            blocks.append(
+                render_ci_dod_evidence_item(
+                    evidence_id=evidence_id, repo=repo, pr_number=pr_number
+                )
+            )
+        if blocks:
+            contract_path.write_text(
+                self._insert_dod_evidence_items(text, blocks), encoding="utf-8"
+            )
+
+    @staticmethod
+    def _declares_dod_evidence_id(contract_text: str, evidence_id: str) -> bool:
+        """True when ``evidence_id`` is a declared dod_evidence item (parsed)."""
+        data = yaml.safe_load(contract_text)
+        if not isinstance(data, dict):
+            return False
+        for item in data.get("dod_evidence") or []:
+            if isinstance(item, dict) and item.get("id") == evidence_id:
+                return True
+        return False
+
+    @staticmethod
+    def _insert_dod_evidence_items(contract_text: str, blocks: Sequence[str]) -> str:
+        """Insert item ``blocks`` at the END of the ``dod_evidence`` list (F-04).
+
+        Text-level, byte-shape-preserving: the existing (yamlfmt-clean) contract
+        bytes are untouched except for the inserted, already-yamlfmt-clean,
+        2-space-indented item blocks. The insertion point is the boundary of the
+        ``dod_evidence`` block — the first subsequent column-0 (non-indented,
+        non-blank) line, else EOF — so a contract whose ``dod_evidence`` is NOT the
+        terminal top-level key still gets the item appended to the RIGHT list
+        rather than dumped after a sibling key.
+        """
+        if not blocks:
+            return contract_text
+        lines = contract_text.splitlines(keepends=True)
+        key_idx: int | None = None
+        for i, line in enumerate(lines):
+            if re.match(r"^dod_evidence:[ \t]*$", line):
+                key_idx = i
+                break
+        if key_idx is None:
+            raise RuntimeError(
+                "cannot append dod_evidence item: contract has no block-style "
+                "'dod_evidence:' key (OMN-14741 F-04)"
+            )
+        end = len(lines)
+        for j in range(key_idx + 1, len(lines)):
+            stripped = lines[j].rstrip("\n")
+            if stripped and not stripped[0].isspace():
+                end = j
+                break
+        # Guarantee the line preceding the insertion ends with a newline.
+        if end > 0 and not lines[end - 1].endswith("\n"):
+            lines[end - 1] = lines[end - 1] + "\n"
+        return "".join(lines[:end]) + "".join(blocks) + "".join(lines[end:])
+
+    @staticmethod
+    def _allowed_paths(tickets: Iterable[str], evidence_ids: Iterable[str]) -> set[str]:
+        """Repo-relative paths this run is permitted to add/modify (F-01)."""
+        eids = list(evidence_ids)
+        allowed: set[str] = set()
+        for ticket in tickets:
+            allowed.add(f"contracts/{ticket}.yaml")
+            for eid in eids:
+                allowed.add(f"drift/dod_receipts/{ticket}/{eid}/command.yaml")
+        return allowed
+
+    def _assert_append_only(
+        self, clone_dir: Path, base_sha: str, allowed_paths: set[str]
+    ) -> None:
+        """Fail CLOSED if the generated tree touched anything unexpected (F-01).
+
+        Diffs the committed branch against the clone base and rejects (a) any
+        deletion and (b) any add/modify of a path outside this run's contract +
+        receipt set. This is a real check against ``git diff``, replacing the
+        assertion-only "all-adds" comment the force-push previously trusted — the
+        exact gap that let generated companions mutate already-merged receipts
+        (OCC#4293/4295/4296).
+        """
+        diff = self._run_git(
+            ["git", "diff", "--name-status", base_sha, "HEAD"], cwd=str(clone_dir)
+        )
+        violations: list[str] = []
+        for raw in diff.splitlines():
+            line = raw.strip()
+            if not line:
+                continue
+            parts = line.split("\t")
+            status = parts[0]
+            path = parts[-1]  # rename → dest path is last field
+            if status.startswith("D"):
+                violations.append(f"deletes {path}")
+            elif path not in allowed_paths:
+                violations.append(f"{status} {path}")
+        if violations:
+            raise RuntimeError(
+                "OCC companion append-only violation (OMN-14741 F-01): the "
+                "generated tree changed files outside this run's contract + "
+                "receipt set: "
+                + "; ".join(sorted(violations))
+                + ". Allowed: "
+                + ", ".join(sorted(allowed_paths))
+            )
 
     def _run_git(self, argv: list[str], *, cwd: str) -> str:
         # Delegates to the shared transport, which redacts any embedded
