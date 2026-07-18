@@ -471,6 +471,28 @@ repos:
         pass_filenames: false
         stages: [pre-commit]
 
+      # OMN-14768 / F-11: renaming an OPEN PR's head branch closes the PR. Scan
+      # the whole merge-controller tree whenever any of its files (or the gate
+      # itself) changes. SYNC with ci.yml "Branch-safety gate".
+      - id: check-branch-rename-prohibited
+        name: Branch-rename prohibition (OMN-14768 / F-11)
+        language: system
+        entry: uv run python scripts/ci/check_branch_identity.py --mode rename-scan
+        files: ^(src/omnimarket/nodes/node_(pr_lifecycle_.*|dispatch_worker|merge_effect)/.*\.py|scripts/ci/check_branch_identity\.py)$
+        pass_filenames: false
+        stages: [pre-commit]
+
+      # OMN-14768 / F-11 + F-12: the branch-safety gate is only trustworthy if its
+      # own scanner/identity logic is tested (positive controls). Run the unit
+      # tests when the gate or its tests change. SYNC with ci.yml "Branch-safety gate".
+      - id: check-branch-identity-tests
+        name: Branch-safety gate self-tests (OMN-14768)
+        language: system
+        entry: uv run pytest tests/ci/test_check_branch_identity.py -q
+        files: ^(scripts/ci/check_branch_identity\.py|tests/ci/test_check_branch_identity\.py)$
+        pass_filenames: false
+        stages: [pre-commit]
+
       # OMN-12856: Fail if any omnimarket source reads GH_PAT/GH_TOKEN/GITHUB_TOKEN
       # via os.environ/os.getenv. The canonical path after OMN-12856 is
       # contract_secret_ref + resolve_api_key. SYNC with ci.yml step

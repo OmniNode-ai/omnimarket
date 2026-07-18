@@ -286,6 +286,10 @@ Supported actions: gh pr ready, gh pr merge, gh pr comment, gh pr edit, gh pr vi
 Rules:
 - NEVER modify code. gh commands only.
 - NEVER run destructive actions without "I authorize destructive action" in the DM.
+- NEVER rename the head branch of an OPEN PR (no branch-rename API call, no local
+  branch-move) — GitHub CLOSES the PR on a head-branch rename (OMN-14768 / F-11,
+  the omnidash#258 class). If branch identity must change, open a NEW branch/PR
+  intentionally.
 - One-line reply per action.
 - Stay alive until {reports_to} sends shutdown_request.
 - Do NOT mark task completed until shutdown_request received.
