@@ -1,0 +1,24 @@
+{
+  "description": "F-07: GitHub REST returned an HTML 503 body for the PR-diff/metadata call during a platform incident (OMN-14143). gh pr checks would render this as a plain fail.",
+  "friction_ids": ["F-07"],
+  "evidence": "onex_change_control#4297; OMN-14143 egress cascade",
+  "expected_reason_code": "github_api_outage",
+  "naive_would_misclassify_as_product": true,
+  "run_event": "pull_request",
+  "required_context": true,
+  "current_head_sha": "1111111111111111111111111111111111111111",
+  "log_signatures": ["503 service unavailable", "<!doctype html>"],
+  "job": {
+    "id": 990001,
+    "run_id": 550001,
+    "run_attempt": 1,
+    "status": "completed",
+    "conclusion": "failure",
+    "head_sha": "1111111111111111111111111111111111111111",
+    "name": "verify / Run Receipt-Gate",
+    "steps": [
+      {"name": "Set up job", "status": "completed", "conclusion": "success", "number": 1},
+      {"name": "Run gh pr diff (product-diff-scope)", "status": "completed", "conclusion": "failure", "number": 2}
+    ]
+  }
+}

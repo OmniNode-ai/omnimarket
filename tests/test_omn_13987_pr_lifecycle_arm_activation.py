@@ -63,6 +63,7 @@ def _record(
     category: EnumPrCategory,
     failed_check_names: tuple[str, ...] = (),
     failed_check_flaky_evidence: tuple[str, ...] = (),
+    failed_check_reason_codes: tuple[str, ...] = (),
     ticket_ids: tuple[str, ...] = (),
     block_reason: str = "",
 ) -> TriageRecord:
@@ -73,6 +74,7 @@ def _record(
         ticket_ids=ticket_ids,
         failed_check_names=failed_check_names,
         failed_check_flaky_evidence=failed_check_flaky_evidence,
+        failed_check_reason_codes=failed_check_reason_codes,
         block_reason=block_reason,
     )
 
@@ -281,6 +283,71 @@ class TestChokepoint1Classifier:
             failed_check_names=("self-hosted runner", "Set up job"),
         )
         assert _block_reason_for_fix(pr) == EnumPrBlockReason.CI_FAILURE
+
+    # -- OMN-14765: typed reason codes are the AUTHORITATIVE routing source ----
+
+    def test_typed_cancelled_overrides_product_check_name(self) -> None:
+        """F-10: a check NAMED like a product test but classified CANCELLED by
+        the jobs-API keyed classifier routes to CI_FAILURE (rerun), NOT
+        CODE_FAILURE — the typed code overrides the substring name guess."""
+        pr = _record(
+            category=EnumPrCategory.RED,
+            failed_check_names=("test / pytest unit",),
+            failed_check_reason_codes=("cancelled",),
+        )
+        assert _block_reason_for_fix(pr) == EnumPrBlockReason.CI_FAILURE
+
+    def test_typed_runner_infra_overrides_product_check_name(self) -> None:
+        """F-08/F-23: a product-sounding check that classified RUNNER_INFRA
+        (checkout/setup/hang) reruns, never a code fix."""
+        pr = _record(
+            category=EnumPrCategory.RED,
+            failed_check_names=("Dispatcher Route Coverage (shadow slice)",),
+            failed_check_reason_codes=("runner_infra",),
+        )
+        assert _block_reason_for_fix(pr) == EnumPrBlockReason.CI_FAILURE
+
+    def test_typed_stale_and_outage_route_to_ci_failure(self) -> None:
+        for code in ("stale_context", "github_api_outage"):
+            pr = _record(
+                category=EnumPrCategory.RED,
+                failed_check_names=("verify / Run Receipt-Gate",),
+                failed_check_reason_codes=(code,),
+            )
+            assert _block_reason_for_fix(pr) == EnumPrBlockReason.CI_FAILURE, code
+
+    def test_typed_product_failed_routes_to_code_failure(self) -> None:
+        """An affirmative PRODUCT_FAILED reason code is a code fix even when the
+        PR also carries flaky network evidence — the classifier already ruled it
+        product, so the flaky-evidence rerun path must not rescue it."""
+        pr = _record(
+            category=EnumPrCategory.RED,
+            failed_check_names=("test / pytest unit",),
+            failed_check_flaky_evidence=("could not resolve host: github.com",),
+            failed_check_reason_codes=("product_failed",),
+        )
+        assert _block_reason_for_fix(pr) == EnumPrBlockReason.CODE_FAILURE
+
+    def test_typed_dominant_product_beats_infra(self) -> None:
+        """A mixed failed-check set where ONE check is product_failed and the
+        rest are infra/cancelled routes to CODE_FAILURE (dominant precedence)."""
+        pr = _record(
+            category=EnumPrCategory.RED,
+            failed_check_names=("test", "Set up job"),
+            failed_check_reason_codes=("runner_infra", "cancelled", "product_failed"),
+        )
+        assert _block_reason_for_fix(pr) == EnumPrBlockReason.CODE_FAILURE
+
+    def test_no_reason_codes_falls_back_to_substring_heuristic(self) -> None:
+        """Backward compat: with NO typed reason codes (older inventory data /
+        jobs-API unavailable) routing keeps the substring heuristic — a genuine
+        code check still routes to CODE_FAILURE."""
+        pr = _record(
+            category=EnumPrCategory.RED,
+            failed_check_names=("ruff / lint",),
+            failed_check_reason_codes=(),
+        )
+        assert _block_reason_for_fix(pr) == EnumPrBlockReason.CODE_FAILURE
 
     # -- negative / anti-over-broaden --------------------------------------
 

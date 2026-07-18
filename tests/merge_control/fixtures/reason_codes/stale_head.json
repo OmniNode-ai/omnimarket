@@ -1,0 +1,24 @@
+{
+  "description": "F-09: a failed required check ran on an OLD head SHA; the PR head has since moved (evidence/body fixed). The old failure must not block or dispatch a fix.",
+  "friction_ids": ["F-09", "F-26"],
+  "evidence": "omnidash#259 / OMN-14709 fanout; stale Actions payload survives fix",
+  "expected_reason_code": "stale_context",
+  "naive_would_misclassify_as_product": true,
+  "run_event": "pull_request",
+  "required_context": true,
+  "current_head_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "log_signatures": [],
+  "job": {
+    "id": 990006,
+    "run_id": 550006,
+    "run_attempt": 1,
+    "status": "completed",
+    "conclusion": "failure",
+    "head_sha": "6666666666666666666666666666666666666666",
+    "name": "verify / Run Receipt-Gate",
+    "steps": [
+      {"name": "Set up job", "status": "completed", "conclusion": "success", "number": 1},
+      {"name": "Run receipt gate", "status": "completed", "conclusion": "failure", "number": 2}
+    ]
+  }
+}

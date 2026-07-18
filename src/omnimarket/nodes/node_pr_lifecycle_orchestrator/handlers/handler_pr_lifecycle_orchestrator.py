@@ -52,6 +52,10 @@ from omnimarket.events.pr_arm_gate import (
     ModelArmGateRequest,
 )
 from omnimarket.events.repo_health import EnumFailureOrigin
+from omnimarket.merge_control.reason_code_classifier import (
+    EnumMergeCheckReasonCode,
+    dominant_reason_code,
+)
 from omnimarket.nodes.node_pr_lifecycle_orchestrator.handlers.occ_stamp_readback import (
     ProtocolOccStampReadback,
     _UnverifiedOccStampReadback,
@@ -709,6 +713,25 @@ def _failed_check_flaky_evidence(pr_state: Any) -> tuple[str, ...]:
     return tuple(sorted(set(evidence)))
 
 
+def _failed_check_reason_codes(pr_state: Any) -> tuple[str, ...]:
+    """Return the typed merge-check reason codes for a PR's failed checks.
+
+    OMN-14765: the jobs-API-keyed ``reason_code`` populated on each
+    ``ModelPrCheckRun`` by the inventory node. The orchestrator routes on these
+    typed codes (``_block_reason_for_fix``) instead of guessing infra-vs-product
+    from check names. Deterministic ordering (sorted) keeps the record stable.
+    """
+    codes: list[str] = []
+    for check in getattr(pr_state, "check_runs", ()) or ():
+        conclusion = str(getattr(check, "conclusion", "") or "").lower()
+        if conclusion not in {"failure", "cancelled", "timed_out", "action_required"}:
+            continue
+        code = getattr(check, "reason_code", None)
+        if code:
+            codes.append(str(code))
+    return tuple(sorted(set(codes)))
+
+
 def _extract_ticket_ids(*values: str) -> tuple[str, ...]:
     """Extract canonical OMN ticket IDs from PR title/branch metadata."""
     found: set[str] = set()
@@ -815,20 +838,32 @@ def _block_reason_for_fix(pr: TriageRecord) -> Any:
     if pr.category == EnumPrCategory.NEEDS_REVIEW:
         return EnumPrBlockReason.CHANGES_REQUESTED
 
-    # OMN-13987 CP1: a RED PR whose failed checks are ALL known flaky/infra
-    # (rerunnable) and NONE look like a genuine lint/type/test failure → a cheap
-    # CI rerun. Deliberately narrow + fail-safe: any code-signal check present
-    # falls through to CODE_FAILURE below.
-    if pr.category == EnumPrCategory.RED and (
-        _is_flaky_infra_only(failed_check_names)
-        or (
+    # OMN-14765: the typed, jobs-API-keyed reason codes are the AUTHORITATIVE
+    # decision source for the RED CI_FAILURE-vs-CODE_FAILURE split — they replace
+    # the check-NAME substring guess that rendered `cancelled` as fail (F-10),
+    # counted runner/stale/outage failures as product reds (F-07/F-08/F-09), and
+    # misrouted a hung test as a code failure (F-23). A PR whose failed checks
+    # carry reason codes routes on the dominant code: only an affirmative
+    # PRODUCT_FAILED becomes a code fix; runner_infra / cancelled / outage /
+    # stale never do (rerun/withhold/refresh).
+    if pr.category == EnumPrCategory.RED:
+        dominant = dominant_reason_code(pr.failed_check_reason_codes)
+        if dominant is not None:
+            if dominant is EnumMergeCheckReasonCode.PRODUCT_FAILED:
+                return EnumPrBlockReason.CODE_FAILURE
+            # runner_infra / cancelled / github_api_outage / stale_context:
+            # never a product code fix. The merge controller reruns (an active
+            # outage backoff / recovery-probe control loop is a follow-up).
+            return EnumPrBlockReason.CI_FAILURE
+
+        # Fallback (no typed reason codes — older inventory data / jobs-API
+        # unavailable): OMN-13987 CP1 substring heuristic. Deliberately narrow +
+        # fail-safe: any code-signal check present falls through to CODE_FAILURE.
+        if _is_flaky_infra_only(failed_check_names) or (
             _has_flaky_failure_evidence(pr)
             and not _has_code_signal_failure(failed_check_names)
-        )
-    ):
-        return EnumPrBlockReason.CI_FAILURE
-
-    if pr.category == EnumPrCategory.RED:
+        ):
+            return EnumPrBlockReason.CI_FAILURE
         return EnumPrBlockReason.CODE_FAILURE
     return EnumPrBlockReason.CODE_FAILURE
 
@@ -2038,6 +2073,7 @@ class HandlerPrLifecycleOrchestrator:
                         failed_check_flaky_evidence=_failed_check_flaky_evidence(
                             pr_state
                         ),
+                        failed_check_reason_codes=_failed_check_reason_codes(pr_state),
                         merge_state_status=getattr(
                             pr_state, "merge_state_status", None
                         ),
@@ -2183,6 +2219,7 @@ class HandlerPrLifecycleOrchestrator:
                 ),
                 failed_check_names=pr.failed_check_names,
                 failed_check_flaky_evidence=pr.failed_check_flaky_evidence,
+                failed_check_reason_codes=pr.failed_check_reason_codes,
             )
             for pr in prs
         )
@@ -2216,6 +2253,9 @@ class HandlerPrLifecycleOrchestrator:
                     failed_check_names=getattr(result, "failed_check_names", ()),
                     failed_check_flaky_evidence=getattr(
                         result, "failed_check_flaky_evidence", ()
+                    ),
+                    failed_check_reason_codes=getattr(
+                        result, "failed_check_reason_codes", ()
                     ),
                     block_reason=getattr(result, "reason", ""),
                 )

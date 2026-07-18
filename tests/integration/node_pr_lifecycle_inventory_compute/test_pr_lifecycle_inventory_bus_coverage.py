@@ -83,7 +83,13 @@ class _MockInventoryHandler(HandlerPrLifecycleInventory):
             raise RuntimeError(f"gh pr view failed for #{pr_number}")
         return self._pr_views[pr_number]
 
-    def _collect_check_runs(self, repo: str, pr_number: int) -> list[ModelPrCheckRun]:
+    def _collect_check_runs(
+        self,
+        repo: str,
+        pr_number: int,
+        *,
+        current_head_sha: str | None = None,
+    ) -> list[ModelPrCheckRun]:
         return self._check_runs.get(pr_number, [])
 
     def _collect_reviews(self, repo: str, pr_number: int) -> list[ModelPrReview]:

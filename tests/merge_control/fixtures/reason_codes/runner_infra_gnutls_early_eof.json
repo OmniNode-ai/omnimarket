@@ -1,0 +1,25 @@
+{
+  "description": "F-08: self-hosted runner actions/checkout failed with GnuTLS recv error / fatal: early EOF before the product scan ran (omniclaude#1909 Stale TODO Gate).",
+  "friction_ids": ["F-08"],
+  "evidence": "omniclaude#1909 Stale TODO Gate; 2026-07-17T15:11Z",
+  "expected_reason_code": "runner_infra",
+  "naive_would_misclassify_as_product": true,
+  "run_event": "pull_request",
+  "required_context": true,
+  "current_head_sha": "2222222222222222222222222222222222222222",
+  "log_signatures": ["gnutls recv error", "fatal: early eof", "unexpected disconnect while reading sideband packet"],
+  "job": {
+    "id": 990002,
+    "run_id": 550002,
+    "run_attempt": 1,
+    "status": "completed",
+    "conclusion": "failure",
+    "head_sha": "2222222222222222222222222222222222222222",
+    "name": "Stale TODO Gate",
+    "steps": [
+      {"name": "Set up job", "status": "completed", "conclusion": "success", "number": 1},
+      {"name": "Run actions/checkout@v4", "status": "completed", "conclusion": "failure", "number": 2},
+      {"name": "Scan for stale TODOs", "status": "completed", "conclusion": "skipped", "number": 3}
+    ]
+  }
+}

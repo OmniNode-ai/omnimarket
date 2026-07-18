@@ -17,6 +17,12 @@ import subprocess
 from datetime import UTC, datetime
 from typing import Literal
 
+from omnimarket.merge_control.reason_code_classifier import (
+    EnumMergeCheckReasonCode,
+    MergeCheckFacts,
+    classify,
+    classify_job,
+)
 from omnimarket.nodes.node_pr_lifecycle_inventory_compute.models.model_pr_lifecycle_inventory import (
     ModelOrgWideOpenPrInventory,
     ModelOrgWideOpenPrRemainder,
@@ -455,7 +461,10 @@ class HandlerPrLifecycleInventory:
             RuntimeError: If gh CLI call fails.
         """
         pr_data = self._gh_pr_view(repo, pr_number)
-        check_runs = self._collect_check_runs(repo, pr_number)
+        current_head_sha = str(pr_data.get("headRefOid") or "") or None
+        check_runs = self._collect_check_runs(
+            repo, pr_number, current_head_sha=current_head_sha
+        )
         reviews = self._collect_reviews(repo, pr_number)
 
         state_raw = str(pr_data.get("state", "open")).lower()
@@ -594,7 +603,7 @@ class HandlerPrLifecycleInventory:
             repo,
             "--json",
             "title,state,isDraft,mergeable,mergeStateStatus,reviewDecision,"
-            "baseRefName,headRefName",
+            "baseRefName,headRefName,headRefOid",
         ]
         result = self._run_gh(cmd)
         if result.returncode != 0:
@@ -603,10 +612,19 @@ class HandlerPrLifecycleInventory:
             )
         return json.loads(result.stdout)  # type: ignore[no-any-return]
 
-    def _collect_check_runs(self, repo: str, pr_number: int) -> list[ModelPrCheckRun]:
+    def _collect_check_runs(
+        self,
+        repo: str,
+        pr_number: int,
+        *,
+        current_head_sha: str | None = None,
+    ) -> list[ModelPrCheckRun]:
         """Collect CI check runs for a PR via gh pr checks.
 
-        Returns empty list on failure (non-fatal).
+        Returns empty list on failure (non-fatal). For FAILED checks (the
+        decision-critical subset) the jobs-API attempt is pulled and a typed
+        ``reason_code`` is classified (OMN-14765); green/pending checks are left
+        unclassified. The green-path rollup stays on ``gh pr checks``.
         """
         cmd = [
             "gh",
@@ -629,20 +647,130 @@ class HandlerPrLifecycleInventory:
             return []
         try:
             raw: list[dict[str, object]] = json.loads(result.stdout)
-            return [
-                ModelPrCheckRun(
-                    name=str(item.get("name", "")),
-                    status=self._normalize_check_status(item),
-                    conclusion=self._normalize_check_conclusion(item),
-                    event=self._normalize_check_event(item),
-                    link=str(item.get("link", "") or ""),
-                    flaky_failure_evidence=self._collect_flaky_failure_evidence(item),
+            check_runs: list[ModelPrCheckRun] = []
+            for item in raw:
+                flaky_evidence = self._collect_flaky_failure_evidence(item)
+                check_runs.append(
+                    ModelPrCheckRun(
+                        name=str(item.get("name", "")),
+                        status=self._normalize_check_status(item),
+                        conclusion=self._normalize_check_conclusion(item),
+                        event=self._normalize_check_event(item),
+                        link=str(item.get("link", "") or ""),
+                        flaky_failure_evidence=flaky_evidence,
+                        reason_code=self._classify_check_reason_code(
+                            repo,
+                            item,
+                            current_head_sha=current_head_sha,
+                            flaky_evidence=flaky_evidence,
+                        ),
+                    )
                 )
-                for item in raw
-            ]
+            return check_runs
         except (json.JSONDecodeError, KeyError) as exc:
             logger.debug("Failed to parse check runs for PR #%d: %s", pr_number, exc)
             return []
+
+    def _classify_check_reason_code(
+        self,
+        repo: str,
+        item: dict[str, object],
+        *,
+        current_head_sha: str | None,
+        flaky_evidence: tuple[str, ...],
+    ) -> EnumMergeCheckReasonCode | None:
+        """Classify a FAILED check into a typed merge-check reason code.
+
+        Reads the jobs-API attempt (``runs/<run_id>/jobs`` — latest attempt) to
+        recover the failed STEP name, run head SHA and attempt, then keys the
+        classifier on (failed step, run event, head vs current head, job
+        conclusion, already-collected infra log signatures). Fail-soft: any
+        unavailable/unparseable jobs-API response yields the classifier's
+        fail-closed result on whatever facts are present (never ``None`` masking
+        a real failure as green — a green check simply returns ``None`` early).
+        """
+        conclusion = self._normalize_check_conclusion(item)
+        if conclusion not in {"failure", "cancelled", "timed_out"}:
+            # Only failed checks are decision-critical; leave the rest unclassified.
+            return None
+
+        event = self._normalize_check_event(item)
+        link = str(item.get("link", "") or "")
+        job = self._fetch_jobs_api_job(repo, link)
+        if job is not None:
+            return classify_job(
+                job,
+                run_event=event,
+                current_head_sha=current_head_sha,
+                required_context=True,
+                log_signatures=flaky_evidence,
+            )
+        # No jobs-API job resolved — classify on the gh-pr-checks facts we have
+        # (event / conclusion / infra evidence). Fail-closed inside the classifier.
+        return classify(
+            MergeCheckFacts(
+                run_event=event,
+                current_head_sha=current_head_sha,
+                required_context=True,
+                job_conclusion=conclusion,
+                log_signatures=flaky_evidence,
+            )
+        )
+
+    def _fetch_jobs_api_job(self, repo: str, link: str) -> dict[str, object] | None:
+        """Fetch the jobs-API job object for a check's linked run (fail-soft).
+
+        Parses ``run_id`` and ``job_id`` from a ``gh pr checks`` link of the form
+        ``.../actions/runs/<run_id>/job/<job_id>`` and returns the matching job
+        from ``repos/<repo>/actions/runs/<run_id>/jobs`` (latest attempt). Returns
+        None on any parse/gh/JSON failure so classification degrades gracefully.
+        """
+        if "/actions/runs/" not in link:
+            return None
+        try:
+            after_runs = link.split("/actions/runs/", 1)[1]
+            run_id = after_runs.split("/", 1)[0].strip()
+        except (IndexError, ValueError):
+            return None
+        if not run_id.isdigit():
+            return None
+        job_id = ""
+        if "/job/" in link:
+            job_id = link.rsplit("/job/", 1)[1].split("?", 1)[0].strip()
+        result = self._run_gh(
+            ["gh", "api", f"repos/{repo}/actions/runs/{run_id}/jobs"],
+            timeout=30,
+        )
+        if result.returncode != 0:
+            logger.debug(
+                "jobs-API fetch failed for %s run %s: %s",
+                repo,
+                run_id,
+                result.stderr.strip(),
+            )
+            return None
+        try:
+            payload = json.loads(result.stdout or "{}")
+        except json.JSONDecodeError:
+            return None
+        jobs = payload.get("jobs") if isinstance(payload, dict) else None
+        if not isinstance(jobs, list) or not jobs:
+            return None
+        job_dicts = [j for j in jobs if isinstance(j, dict)]
+        if job_id.isdigit():
+            for j in job_dicts:
+                if str(j.get("id")) == job_id:
+                    return j
+        # Fall back to the first non-successful job (the failing one).
+        for j in job_dicts:
+            if str(j.get("conclusion") or "").lower() in {
+                "failure",
+                "cancelled",
+                "timed_out",
+                "action_required",
+            }:
+                return j
+        return job_dicts[0] if job_dicts else None
 
     def _collect_flaky_failure_evidence(
         self, item: dict[str, object]

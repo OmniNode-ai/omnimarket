@@ -66,6 +66,14 @@ class ModelPrInventoryItem(BaseModel):
         default_factory=tuple,
         description="Machine evidence that failed checks are rerunnable infra flakes.",
     )
+    failed_check_reason_codes: tuple[str, ...] = Field(
+        default_factory=tuple,
+        description=(
+            "Typed merge-check reason codes (OMN-14765) for the failed checks, "
+            "carried from inventory so triage/routing keys on the classified "
+            "code instead of guessing from check names."
+        ),
+    )
 
 
 __all__: list[str] = ["ModelPrInventoryItem"]
