@@ -66,6 +66,7 @@ from omnimarket.nodes.node_build_loop_orchestrator.models.model_orchestrator_sta
 )
 from omnimarket.nodes.node_build_loop_orchestrator.protocols.protocol_sub_handlers import (
     BuildTarget,
+    ClassifyRequest,
     ProtocolBuildDispatchHandler,
     ProtocolCloseoutHandler,
     ProtocolRsdFillHandler,
@@ -458,8 +459,10 @@ class HandlerBuildLoopOrchestrator:
 
             if phase == EnumBuildLoopPhase.CLASSIFYING:
                 classify_result = await self._classify.handle(
-                    correlation_id=correlation_id,
-                    tickets=self._last_fill_result,
+                    ClassifyRequest(
+                        correlation_id=correlation_id,
+                        tickets=self._last_fill_result,
+                    )
                 )
                 self._last_classify_result = tuple(
                     BuildTarget(

@@ -27,6 +27,9 @@ from omnimarket.enums.enum_buildability import EnumBuildability
 from omnimarket.nodes.node_ticket_classify_compute.handlers.handler_ticket_classify import (
     HandlerTicketClassify,
 )
+from omnimarket.nodes.node_ticket_classify_compute.models.model_ticket_classify_input import (
+    ModelTicketClassifyInput,
+)
 from tests.classifier.fixtures.seed_tickets import (
     SEED_ARCHETYPES,
     SEED_CRITERIA_COVERAGE,
@@ -49,7 +52,9 @@ async def test_seed_archetypes_classify_as_expected(
     handler: HandlerTicketClassify, seed: SeedCase
 ) -> None:
     """Known-good / known-bad / edge-ambiguous each classify exactly as recorded."""
-    result = await handler.handle(correlation_id=uuid4(), tickets=(seed.ticket,))
+    result = await handler.handle(
+        ModelTicketClassifyInput(correlation_id=uuid4(), tickets=(seed.ticket,))
+    )
     assert len(result.classifications) == 1
     classification = result.classifications[0]
     assert classification.ticket_id == seed.ticket.ticket_id
@@ -70,7 +75,9 @@ async def test_each_buildability_criterion_is_exercised(
     handler: HandlerTicketClassify, seed: SeedCase
 ) -> None:
     """Each of the 5 classifier criteria has at least one fixture proving it fires."""
-    result = await handler.handle(correlation_id=uuid4(), tickets=(seed.ticket,))
+    result = await handler.handle(
+        ModelTicketClassifyInput(correlation_id=uuid4(), tickets=(seed.ticket,))
+    )
     classification = result.classifications[0]
     assert classification.buildability == seed.expected_buildability, (
         f"Criterion {seed.criterion!r} regressed: expected "
@@ -102,7 +109,9 @@ async def test_batch_classification_preserves_counts(
 ) -> None:
     """Classify all archetypes in one batch; totals match per-ticket expectations."""
     tickets = tuple(case.ticket for case in SEED_ARCHETYPES)
-    result = await handler.handle(correlation_id=uuid4(), tickets=tickets)
+    result = await handler.handle(
+        ModelTicketClassifyInput(correlation_id=uuid4(), tickets=tickets)
+    )
     assert len(result.classifications) == len(SEED_ARCHETYPES)
 
     expected_auto = sum(
@@ -126,7 +135,9 @@ async def test_seed_harness_produces_at_least_one_buildable(
     """
     all_seeds = SEED_ARCHETYPES + SEED_CRITERIA_COVERAGE
     tickets = tuple(case.ticket for case in all_seeds)
-    result = await handler.handle(correlation_id=uuid4(), tickets=tickets)
+    result = await handler.handle(
+        ModelTicketClassifyInput(correlation_id=uuid4(), tickets=tickets)
+    )
     assert result.total_auto_buildable >= 1, (
         "Classifier returned 0 AUTO_BUILDABLE across seed corpus — "
         "OMN-7621 Blocker B regression."

@@ -1,0 +1,34 @@
+{
+  "input": {
+    "correlation_id": "00000010-0000-4000-8000-000000000000",
+    "tickets": [
+      {
+        "contract_yaml": "seam_boundaries:\n  consumes:\n    - protocol: ProtocolEventBus\n      module: omnibase_core.protocols.protocol_event_bus\n      mock_available: true\n  produces: []\n",
+        "description": "",
+        "labels": [],
+        "priority": 0,
+        "seam_boundaries": null,
+        "state": "Todo",
+        "ticket_id": "OMN-10",
+        "title": "Parse contract yaml seam"
+      }
+    ]
+  },
+  "output": {
+    "classifications": [
+      {
+        "buildability": "auto_buildable",
+        "confidence": 0.9,
+        "matched_keywords": [],
+        "reason": "Contract: all consumed protocols are mockable",
+        "seam_source": "contract",
+        "ticket_id": "OMN-10",
+        "title": "Parse contract yaml seam"
+      }
+    ],
+    "correlation_id": "00000010-0000-4000-8000-000000000000",
+    "total_auto_buildable": 1,
+    "total_non_buildable": 0
+  },
+  "output_sha256": "sha256:dadf6594322fe574e219a15c302b7a4b11c52017eb22f3dfd03c043deba6aa02"
+}

@@ -14,6 +14,7 @@ from omnimarket.nodes.node_build_loop_orchestrator.handlers.adapter_llm_classify
     AdapterLlmClassify,
 )
 from omnimarket.nodes.node_build_loop_orchestrator.protocols.protocol_sub_handlers import (
+    ClassifyRequest,
     ClassifyResult,
     ScoredTicket,
 )
@@ -46,8 +47,10 @@ async def test_classify_uses_injected_provider() -> None:
     classifier = AdapterLlmClassify(provider=provider)
 
     result = await classifier.handle(
-        correlation_id=uuid4(),
-        tickets=(_make_ticket(),),
+        ClassifyRequest(
+            correlation_id=uuid4(),
+            tickets=(_make_ticket(),),
+        )
     )
 
     assert isinstance(result, ClassifyResult)
@@ -66,8 +69,10 @@ async def test_classify_injected_provider_no_env_needed(
     # Should not raise even without the env var
     classifier = AdapterLlmClassify(provider=provider)
     result = await classifier.handle(
-        correlation_id=uuid4(),
-        tickets=(_make_ticket(title="stale ticket"),),
+        ClassifyRequest(
+            correlation_id=uuid4(),
+            tickets=(_make_ticket(title="stale ticket"),),
+        )
     )
     assert result.classifications[0].buildability == "skip"
 
@@ -90,8 +95,10 @@ async def test_classify_injected_provider_keyword_fallback() -> None:
     classifier = AdapterLlmClassify(provider=provider)
     ticket = _make_ticket(title="stale wip duplicate", description="blocked waiting")
     result = await classifier.handle(
-        correlation_id=uuid4(),
-        tickets=(ticket,),
+        ClassifyRequest(
+            correlation_id=uuid4(),
+            tickets=(ticket,),
+        )
     )
     # Keyword fallback fires: "stale" => skip
     assert result.classifications[0].buildability == "skip"

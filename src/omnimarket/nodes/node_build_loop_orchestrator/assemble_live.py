@@ -57,6 +57,7 @@ from omnimarket.nodes.node_build_loop_orchestrator.models.model_live_runner_conf
 )
 from omnimarket.nodes.node_build_loop_orchestrator.protocols.protocol_sub_handlers import (
     BuildTarget,
+    ClassifyRequest,
     ClassifyResult,
     CloseoutResult,
     DispatchResult,
@@ -401,10 +402,10 @@ class LiveTicketClassifyHandler:
 
     async def handle(
         self,
-        *,
-        correlation_id: UUID,
-        tickets: tuple[ScoredTicket, ...],
+        request: ClassifyRequest,
     ) -> ClassifyResult:
+        correlation_id = request.correlation_id
+        tickets = request.tickets
         logger.info(
             "[CLASSIFY] Classifying %d tickets via LLM (correlation_id=%s)",
             len(tickets),

@@ -1,0 +1,37 @@
+{
+  "input": {
+    "correlation_id": "00000002-0000-4000-8000-000000000000",
+    "tickets": [
+      {
+        "contract_yaml": null,
+        "description": "work in progress, do not touch",
+        "labels": [],
+        "priority": 0,
+        "seam_boundaries": null,
+        "state": "Todo",
+        "ticket_id": "OMN-2",
+        "title": "WIP: refactor loop"
+      }
+    ]
+  },
+  "output": {
+    "classifications": [
+      {
+        "buildability": "skip",
+        "confidence": 0.9,
+        "matched_keywords": [
+          "in progress",
+          "wip"
+        ],
+        "reason": "Skip: matched ('in progress', 'wip')",
+        "seam_source": "keyword_fallback",
+        "ticket_id": "OMN-2",
+        "title": "WIP: refactor loop"
+      }
+    ],
+    "correlation_id": "00000002-0000-4000-8000-000000000000",
+    "total_auto_buildable": 0,
+    "total_non_buildable": 1
+  },
+  "output_sha256": "sha256:c42e4d640181ceacde269de237e70f242ea12f8aa155ed21617f5059b872722e"
+}

@@ -1,0 +1,88 @@
+{
+  "input": {
+    "correlation_id": "00000012-0000-4000-8000-000000000000",
+    "tickets": [
+      {
+        "contract_yaml": null,
+        "description": "implement compute node",
+        "labels": [],
+        "priority": 0,
+        "seam_boundaries": null,
+        "state": "Todo",
+        "ticket_id": "OMN-12a",
+        "title": "Add handler and test"
+      },
+      {
+        "contract_yaml": null,
+        "description": "wip",
+        "labels": [],
+        "priority": 0,
+        "seam_boundaries": null,
+        "state": "Todo",
+        "ticket_id": "OMN-12b",
+        "title": "WIP stale thing"
+      },
+      {
+        "contract_yaml": null,
+        "description": "research tradeoff",
+        "labels": [],
+        "priority": 0,
+        "seam_boundaries": null,
+        "state": "Todo",
+        "ticket_id": "OMN-12c",
+        "title": "Investigate design spike"
+      }
+    ]
+  },
+  "output": {
+    "classifications": [
+      {
+        "buildability": "auto_buildable",
+        "confidence": 0.6,
+        "matched_keywords": [
+          "add",
+          "compute",
+          "handler",
+          "implement",
+          "node",
+          "test"
+        ],
+        "reason": "Keyword fallback: auto-buildable, matched ('add', 'compute', 'handler', 'implement', 'node', 'test')",
+        "seam_source": "keyword_fallback",
+        "ticket_id": "OMN-12a",
+        "title": "Add handler and test"
+      },
+      {
+        "buildability": "skip",
+        "confidence": 0.9,
+        "matched_keywords": [
+          "stale",
+          "wip"
+        ],
+        "reason": "Skip: matched ('stale', 'wip')",
+        "seam_source": "keyword_fallback",
+        "ticket_id": "OMN-12b",
+        "title": "WIP stale thing"
+      },
+      {
+        "buildability": "needs_arch_decision",
+        "confidence": 0.6,
+        "matched_keywords": [
+          "design",
+          "investigate",
+          "research",
+          "spike",
+          "tradeoff"
+        ],
+        "reason": "Needs arch decision: matched ('design', 'investigate', 'research', 'spike', 'tradeoff')",
+        "seam_source": "keyword_fallback",
+        "ticket_id": "OMN-12c",
+        "title": "Investigate design spike"
+      }
+    ],
+    "correlation_id": "00000012-0000-4000-8000-000000000000",
+    "total_auto_buildable": 1,
+    "total_non_buildable": 2
+  },
+  "output_sha256": "sha256:c097735cb862242a837a1812cb0d5a8e719a2677ea07229d54866f2ba9ea6c71"
+}

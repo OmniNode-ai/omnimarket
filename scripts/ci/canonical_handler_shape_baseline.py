@@ -119,7 +119,6 @@ NON_CANONICAL: tuple[str, ...] = (
     "omnimarket.nodes.node_swarm_dispatch_orchestrator",
     "omnimarket.nodes.node_swarm_subtask_state_reducer",
     "omnimarket.nodes.node_thread_reply_effect",
-    "omnimarket.nodes.node_ticket_classify_compute",
     "omnimarket.nodes.node_ticket_query",
     "omnimarket.nodes.node_user_correction_observer_effect",
     "omnimarket.nodes.node_verified_dispatch_orchestrator",

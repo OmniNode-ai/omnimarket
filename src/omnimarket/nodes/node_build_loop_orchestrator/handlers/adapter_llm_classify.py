@@ -18,7 +18,6 @@ import json
 import logging
 import os
 from typing import Protocol, runtime_checkable
-from uuid import UUID
 
 from omnibase_infra.adapters.llm.adapter_llm_provider_openai import (
     AdapterLlmProviderOpenai,
@@ -32,6 +31,7 @@ from omnibase_infra.adapters.llm.model_llm_adapter_response import (
 
 from omnimarket.nodes.node_build_loop_orchestrator.protocols.protocol_sub_handlers import (
     BuildTarget,
+    ClassifyRequest,
     ClassifyResult,
     ScoredTicket,
 )
@@ -102,11 +102,11 @@ class AdapterLlmClassify:
 
     async def handle(
         self,
-        *,
-        correlation_id: UUID,
-        tickets: tuple[ScoredTicket, ...],
+        request: ClassifyRequest,
     ) -> ClassifyResult:
         """Classify tickets using LLM provider with keyword fallback."""
+        correlation_id = request.correlation_id
+        tickets = request.tickets
         logger.info(
             "LLM classify: %d tickets (correlation_id=%s)",
             len(tickets),
