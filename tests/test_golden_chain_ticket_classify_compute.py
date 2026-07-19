@@ -216,4 +216,9 @@ class TestTicketClassifyComputeGoldenChain:
         )
         assert len(history) == 1
 
+        failure_history = await event_bus.get_event_history(
+            topic="onex.evt.omnimarket.ticket-classify-failed.v1"
+        )
+        assert failure_history == []
+
         await event_bus.close()
