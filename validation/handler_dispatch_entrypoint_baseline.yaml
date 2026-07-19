@@ -106,15 +106,9 @@ known_entrypointless:
   - contract: pr_lifecycle_merge_effect
     handler: GitHubMergeQueueAdapter
     module: omnimarket.nodes.node_pr_lifecycle_merge_effect.handlers.adapter_github_merge_queue
-  - contract: projection_overnight
-    handler: HandlerProjectionOvernightPhaseEnd
-    module: omnimarket.nodes.node_projection_overnight.handlers.handler_projection_overnight
-  - contract: projection_overnight
-    handler: HandlerProjectionOvernightSessionComplete
-    module: omnimarket.nodes.node_projection_overnight.handlers.handler_projection_overnight
-  - contract: projection_overnight
-    handler: HandlerProjectionOvernightSessionStart
-    module: omnimarket.nodes.node_projection_overnight.handlers.handler_projection_overnight
+  # OMN-14802: node_projection_overnight's 3 HandlerProjectionOvernight* handlers
+  # gained a canonical def-B handle() dispatch entrypoint and were removed from this
+  # shrink-only ratchet (proven RED→GREEN via a RuntimeLocal dispatch golden-chain test).
   - contract: ticket_pipeline
     handler: HandlerReportPoster
     module: omnimarket.nodes.node_ticket_pipeline.handlers.handler_report_poster
