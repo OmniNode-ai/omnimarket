@@ -7,10 +7,11 @@ ORCHESTRATOR_GENERIC archetype -> Variant B: the skill-lifecycle handler is
 driven over ``EventBusInmemory`` via ``LocalRuntimeBusAdapter``; a skill-request
 command is published and the terminal event on the success topic is asserted.
 
-The node is no longer a scaffold: ``handle_skill_requested`` routes through the
-real RSD-scoring + self-healing composition (``HandlerDispatchEngineRouter``).
-This test asserts the deterministic behavior of the *skill-lifecycle shim* over
-the bus:
+The node exposes the canonical def-B ``handle(request: ModelSkillRequest) ->
+ModelSkillResult`` entrypoint (OMN-14806); the ``LocalRuntimeBusAdapter`` binds it
+directly and it routes through the real RSD-scoring + self-healing composition
+(``HandlerDispatchEngineRouter``). This test asserts the deterministic behavior of
+the *skill-lifecycle boundary* over the bus:
 
   * dry_run=True  -> terminal status "dry_run" (short-circuit, no routing).
   * dry_run=False -> terminal status "no_candidates": the bare shim carries no
@@ -42,20 +43,6 @@ from tests.integration._wave7_bus import drive_round_trip
 
 _START_TOPIC = "onex.cmd.omnimarket.dispatch_engine.v1"
 _SUCCESS_TOPIC = "onex.evt.omnimarket.dispatch_engine-completed.v1"
-
-
-class _DispatchHandlerWrapper:
-    """Bridge the adapter's ``handle(**payload)`` call to ``handle_skill_requested``.
-
-    ``handle_skill_requested`` is a coroutine; the adapter awaits awaitable
-    handler results, so returning the coroutine here drives the async path.
-    """
-
-    def __init__(self, event_bus: Any) -> None:
-        self._inner = HandlerSkillRequested(event_bus=event_bus)
-
-    def handle(self, **payload: Any) -> Any:
-        return self._inner.handle_skill_requested(**payload)
 
 
 # (case_id, command, expected_status, expected_args)
@@ -110,7 +97,7 @@ async def test_dispatch_engine_round_trip(
 ) -> None:
     history = await drive_round_trip(
         integration_event_bus,
-        handler=_DispatchHandlerWrapper(event_bus=integration_event_bus),
+        handler=HandlerSkillRequested(event_bus=integration_event_bus),
         handler_name="dispatch-engine",
         input_model_cls=ModelSkillRequest,
         start_topic=_START_TOPIC,
@@ -144,7 +131,7 @@ async def test_dispatch_engine_rejects_malformed_skill_path(
 
     history = await drive_round_trip(
         integration_event_bus,
-        handler=_DispatchHandlerWrapper(event_bus=integration_event_bus),
+        handler=HandlerSkillRequested(event_bus=integration_event_bus),
         handler_name="dispatch-engine",
         input_model_cls=ModelSkillRequest,
         start_topic=_START_TOPIC,

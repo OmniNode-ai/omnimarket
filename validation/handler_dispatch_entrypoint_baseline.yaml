@@ -94,9 +94,6 @@ known_entrypointless:
   - contract: node_similarity_compute
     handler: HandlerSimilarityCompute
     module: omnimarket.nodes.node_similarity_compute.handlers.handler_similarity_compute
-  - contract: node_skill_dispatch_engine_orchestrator
-    handler: HandlerSkillRequested
-    module: omnimarket.nodes.node_skill_dispatch_engine_orchestrator.handlers.handler_skill_requested
   - contract: overseer_verifier
     handler: HandlerOverseerVerifier
     module: omnimarket.nodes.node_overseer_verifier.handlers.handler_overseer_verifier

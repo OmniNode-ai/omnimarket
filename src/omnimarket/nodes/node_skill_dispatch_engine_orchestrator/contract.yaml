@@ -64,7 +64,7 @@ capabilities:
 io_operations:
   - operation: skill_requested
     description: Dispatch dispatch_engine skill invocation to polymorphic agent
-    handler_method: handle_skill_requested
+    handler_method: handle
     input_fields:
       - skill_name: str
       - skill_path: str
