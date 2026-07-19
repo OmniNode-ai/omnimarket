@@ -34,6 +34,7 @@ import json
 import logging
 import os
 import re
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from enum import StrEnum
@@ -52,6 +53,10 @@ from omnimarket.events.pr_arm_gate import (
     ModelArmGateRequest,
 )
 from omnimarket.events.repo_health import EnumFailureOrigin
+from omnimarket.merge_control.outage_circuit_breaker import (
+    EnumOutageBreakerState,
+    OutageCircuitBreaker,
+)
 from omnimarket.merge_control.reason_code_classifier import (
     EnumMergeCheckReasonCode,
     dominant_reason_code,
@@ -354,6 +359,19 @@ class ModelPrLifecycleResult(BaseModel):
     prs_delegated_fix_gate_failed: int = Field(default=0, ge=0)
     prs_delegated_fix_escalated: int = Field(default=0, ge=0)
     delegation_cost_savings_usd: float = Field(default=0.0, ge=0.0)
+    # OMN-14774 (F-07): the outage circuit breaker tripped this pass — a
+    # GITHUB_API_OUTAGE reason code was observed and REST-dependent mutations
+    # (merge / enqueue / rerun) were WITHHELD rather than issued into a degraded
+    # API. ``outage_mutations_withheld`` counts the merge/fix/stall PRs skipped
+    # because the breaker was OPEN.
+    outage_active: bool = Field(
+        default=False,
+        description=(
+            "True when a GITHUB_API_OUTAGE was detected and the circuit breaker "
+            "withheld REST-dependent mutations this pass (fail-closed backoff)."
+        ),
+    )
+    outage_mutations_withheld: int = Field(default=0, ge=0)
 
 
 # ---------------------------------------------------------------------------
@@ -449,6 +467,13 @@ class _SweepState:
     # neutral skip that still proceeds to MERGING.
     verification_outcomes: dict[tuple[str, int], str] = field(default_factory=dict)
     prs_verification_blocked: int = 0
+
+    # OMN-14774 (F-07): outage circuit-breaker state for this pass. ``outage_
+    # active`` is True once a GITHUB_API_OUTAGE was observed and the breaker
+    # could not be recovered (mutations withheld); ``outage_mutations_withheld``
+    # tallies the merge/fix/stall PRs skipped because the breaker was OPEN.
+    outage_active: bool = False
+    outage_mutations_withheld: int = 0
 
 
 # ---------------------------------------------------------------------------
@@ -940,6 +965,7 @@ class HandlerPrLifecycleOrchestrator:
         ledger_store: ProtocolPrLedgerStore | None = None,
         projection_db: ProtocolProjectionDatabaseSync | None = None,
         occ_stamp_readback: ProtocolOccStampReadback | None = None,
+        outage_recovery_probe: Callable[[], bool] | None = None,
     ) -> None:
         self._topic_phase_transition = TOPIC_PHASE_TRANSITION
         self._topic_completed = TOPIC_COMPLETED
@@ -987,6 +1013,14 @@ class HandlerPrLifecycleOrchestrator:
             else _UnverifiedOccStampReadback()
         )
         self._occ_stamp_readback_injected = occ_stamp_readback is not None
+        # OMN-14774 (F-07): optional read-only recovery probe the outage circuit
+        # breaker calls to decide whether GitHub's API has recovered enough to
+        # resume REST-dependent mutations. It MUST be side-effect-free (a bare
+        # read, e.g. GET /rate_limit) — never a mutation. When None, the breaker
+        # has no in-pass recovery path and stays OPEN for the pass once tripped
+        # (fail-closed); the next sweep's fresh inventory re-observation is then
+        # the recovery signal. A probe that raises counts as a failed probe.
+        self._outage_recovery_probe: Callable[[], bool] | None = outage_recovery_probe
 
     def _record_ledger_event(
         self,
@@ -1569,7 +1603,27 @@ class HandlerPrLifecycleOrchestrator:
                     orchestrator_action=EnumOrchestratorAction.INVENTORY,
                     phase=state.phase,
                 )
-            await self._remediate_stalled_queue_prs(command, inv_result)
+
+            # OMN-14774 (F-07): active outage backoff. If the classifier tagged
+            # any failed check GITHUB_API_OUTAGE, open the circuit breaker and
+            # withhold REST-dependent mutations (stall-remediation enqueue, merge
+            # fanout, fix reruns) for this pass rather than issue them into a
+            # degraded API — the rerun-storm / false-red failure mode F-07
+            # documented. Resumption is gated on a recovery probe (or the next
+            # sweep's fresh inventory re-observation).
+            outage_active = self._apply_outage_breaker(state, inv_result)
+
+            if outage_active:
+                withheld_stall = len(inv_result.stuck_queue_prs)
+                if withheld_stall:
+                    state.outage_mutations_withheld += withheld_stall
+                    logger.warning(
+                        "[PR-LIFECYCLE-ORCH] outage breaker OPEN — withholding "
+                        "stall-remediation for %d stuck queue PR(s) this pass",
+                        withheld_stall,
+                    )
+            else:
+                await self._remediate_stalled_queue_prs(command, inv_result)
 
             if command.inventory_only:
                 await self._transition_phase(
@@ -1711,7 +1765,16 @@ class HandlerPrLifecycleOrchestrator:
             # Phase: MERGING (merge-group checks; skip if fix_only). ``merge_prs``
             # here is the verification-cleared subset when verify=True — PRs whose
             # verification failed have already been removed and left open.
-            if merge_prs and not command.fix_only:
+            # OMN-14774 (F-07): a merge (enqueue) is a REST-dependent mutation —
+            # withhold it while the outage breaker is OPEN.
+            if merge_prs and not command.fix_only and outage_active:
+                state.outage_mutations_withheld += len(merge_prs)
+                logger.warning(
+                    "[PR-LIFECYCLE-ORCH] outage breaker OPEN — withholding merge "
+                    "of %d ready PR(s) this pass (F-07)",
+                    len(merge_prs),
+                )
+            if merge_prs and not command.fix_only and not outage_active:
                 await self._transition_phase(
                     state,
                     EnumOrchestratorState.MERGING,
@@ -1793,8 +1856,19 @@ class HandlerPrLifecycleOrchestrator:
                     )
                     return self._build_result(state, command.correlation_id)
 
-            # Phase: FIXING (branch checks; skip if merge_only)
-            if fix_prs and not command.merge_only:
+            # Phase: FIXING (branch checks; skip if merge_only). OMN-14774
+            # (F-07): the fix arm issues REST-dependent mutations (gh run rerun
+            # for CI_FAILURE, agent-pushed code fixes) — withhold the whole fix
+            # dispatch while the outage breaker is OPEN so no rerun/mutation is
+            # fired into a degraded API.
+            if fix_prs and not command.merge_only and outage_active:
+                state.outage_mutations_withheld += len(fix_prs)
+                logger.warning(
+                    "[PR-LIFECYCLE-ORCH] outage breaker OPEN — withholding fix "
+                    "dispatch (incl. reruns) for %d PR(s) this pass (F-07)",
+                    len(fix_prs),
+                )
+            if fix_prs and not command.merge_only and not outage_active:
                 await self._transition_phase(
                     state,
                     EnumOrchestratorState.FIXING,
@@ -2094,6 +2168,65 @@ class HandlerPrLifecycleOrchestrator:
             total_collected=len(all_prs),
             stuck_queue_prs=tuple(stuck_queue_prs),
         )
+
+    @staticmethod
+    def _collect_sweep_reason_codes(
+        inv_result: InventoryResult | None,
+    ) -> tuple[str, ...]:
+        """Flatten every failed-check reason code across the inventory (OMN-14774).
+
+        The jobs-API-keyed ``reason_code`` populated on each PR's failed checks
+        by the inventory node (OMN-14765). A single GITHUB_API_OUTAGE anywhere in
+        the sweep is enough to trip the outage circuit breaker, because a
+        degraded GitHub API poisons every REST-dependent mutation, not just the
+        PR that surfaced the outage signature.
+        """
+        if inv_result is None:
+            return ()
+        return tuple(
+            str(code)
+            for pr in inv_result.prs
+            for code in (getattr(pr, "failed_check_reason_codes", ()) or ())
+        )
+
+    def _apply_outage_breaker(
+        self, state: _SweepState, inv_result: InventoryResult | None
+    ) -> bool:
+        """Drive the outage circuit breaker for this pass (OMN-14774 / F-07).
+
+        Observes the sweep-wide reason codes; when a GITHUB_API_OUTAGE is present
+        the breaker OPENS so REST-dependent mutations (stall-remediation enqueue,
+        merge fanout, fix reruns) are WITHHELD rather than issued into a degraded
+        API. When an in-pass recovery probe is wired it is attempted once — a
+        PASS closes the breaker and resumes normal mutation; a FAIL (or no probe)
+        keeps it OPEN (fail-closed). Records the decision on ``state`` and returns
+        True iff mutations must be withheld this pass.
+
+        A fresh breaker is used per pass: the next sweep re-inventories live PR
+        state, so a now-clean reason-code set keeps the breaker CLOSED — the
+        natural cross-pass recovery path.
+        """
+        breaker = OutageCircuitBreaker()
+        breaker.observe(self._collect_sweep_reason_codes(inv_result))
+        if breaker.is_open and self._outage_recovery_probe is not None:
+            resumed = breaker.probe_recovery(self._outage_recovery_probe)
+            logger.info(
+                "[PR-LIFECYCLE-ORCH] GITHUB_API_OUTAGE recovery probe %s",
+                (
+                    "PASSED — resuming REST-dependent mutations"
+                    if resumed
+                    else "FAILED — mutations remain withheld this pass"
+                ),
+            )
+        outage_active = breaker.state is EnumOutageBreakerState.OPEN
+        state.outage_active = outage_active
+        if outage_active:
+            logger.warning(
+                "[PR-LIFECYCLE-ORCH] GITHUB_API_OUTAGE detected — outage circuit "
+                "breaker OPEN; withholding REST-dependent mutations "
+                "(merge/enqueue/rerun) this pass (F-07 fail-closed backoff)",
+            )
+        return outage_active
 
     def _make_merge_queue_adapter(self) -> Any:
         from omnimarket.nodes.node_pr_lifecycle_merge_effect.handlers.adapter_github_merge_queue import (
@@ -3028,6 +3161,8 @@ class HandlerPrLifecycleOrchestrator:
             prs_delegated_fix_gate_failed=state.prs_delegated_fix_gate_failed,
             prs_delegated_fix_escalated=state.prs_delegated_fix_escalated,
             delegation_cost_savings_usd=state.delegation_cost_savings_usd,
+            outage_active=state.outage_active,
+            outage_mutations_withheld=state.outage_mutations_withheld,
         )
 
     @staticmethod
@@ -3187,6 +3322,8 @@ class HandlerPrLifecycleOrchestrator:
                 remainder.model_dump(mode="json")
                 for remainder in result.org_wide_open_remainders
             ],
+            "outage_active": result.outage_active,
+            "outage_mutations_withheld": result.outage_mutations_withheld,
             "error_message": result.error_message,
         }
 
