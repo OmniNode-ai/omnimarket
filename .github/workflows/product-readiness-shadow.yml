@@ -123,7 +123,16 @@ jobs:
       - name: Install dependencies
         run: uv sync --locked --all-extras
       - name: Unit tests (fast slice)
-        run: uv run pytest tests/ -m "unit and not kafka" -q --no-header
+        # OMN-14775 (friction F-23): wrap the shadow slice in the signal-based
+        # timeout harness. A hung test is reaped via SIGABRT (child thread dump)
+        # → SIGTERM → SIGKILL across its whole process group — no orphaned/leaked
+        # child — and the timeout surfaces as an isolation hang (RUNNER_INFRA via
+        # the merge-controller classifier), not a masked os._exit(1) product
+        # failure. `python3` runs the stdlib-only harness; the wrapped `uv run
+        # pytest` keeps the project venv.
+        run: >-
+          python3 scripts/ci/run_shadow_slice.py --timeout 900 --
+          uv run pytest tests/ -m "unit and not kafka" -q --no-header
 
   # --- Reusable, report-only Product Readiness aggregate -------------------
   # NO occ-preflight in this needs-chain. Consumes the product subchecks'
