@@ -34,6 +34,7 @@ import json
 import logging
 import os
 import shlex
+import shutil
 import subprocess
 import tempfile
 from pathlib import Path
@@ -41,6 +42,7 @@ from typing import Literal
 
 from omnimarket.events.occ_autoauthor import OCC_MACHINE_MINTED_LABEL
 from omnimarket.events.occ_companion import (
+    EnumCompanionFileKind,
     ModelCompanionFile,
     ModelObservedProbe,
     ModelOccCompanionPlan,
@@ -76,6 +78,7 @@ logger = logging.getLogger(__name__)
 
 _CONTRACT_PATH = Path(__file__).resolve().parents[1] / "contract.yaml"
 _GIT_TIMEOUT_SECONDS = 120.0
+_YAMLFMT_TIMEOUT_SECONDS = 60.0
 _GIT_AUTHOR_NAME = "node-occ-companion-effect"
 _GIT_AUTHOR_EMAIL = "occ-companion-effect@omninode.ai"
 
@@ -205,6 +208,10 @@ class HandlerOccCompanionEffect:
 
             # Pass 1: write contract + downstream product-receipt, commit, push.
             self._write_files(clone_dir, plan.companion_files)
+            # yamlfmt-before-hash (OMN-14684): fail closed if the just-written
+            # contract is not yamlfmt-stable, BEFORE committing the receipts that
+            # bind its contract_sha256.
+            self._assert_contracts_yamlfmt_stable(clone_dir, plan.companion_files)
             self._commit_all(
                 clone_dir,
                 f"evidence: OCC companion pass 1 for {request.repo}#{request.pr_number}",
@@ -243,6 +250,10 @@ class HandlerOccCompanionEffect:
             plan2 = compute_companion_plan(companion_request_v2)
 
             self._write_files(clone_dir, plan2.companion_files)
+            # yamlfmt-before-hash (OMN-14684): re-assert over the FINAL contract
+            # bytes (pass-2 appends the self-bind dod_evidence entry, OMN-14622)
+            # before the self-bind commit rebinds contract_sha256.
+            self._assert_contracts_yamlfmt_stable(clone_dir, plan2.companion_files)
             self._commit_all(
                 clone_dir,
                 f"evidence: OCC companion self-bind for {request.occ_repo}#{occ_pr_number}",
@@ -361,6 +372,78 @@ class HandlerOccCompanionEffect:
                 + "; ".join(sorted(violations))
                 + ". Allowed: "
                 + ", ".join(sorted(allowed_paths))
+            )
+
+    def _assert_contracts_yamlfmt_stable(
+        self, clone_dir: str, files: tuple[ModelCompanionFile, ...]
+    ) -> None:
+        """Fail CLOSED before push if a written contract is not yamlfmt-idempotent (OMN-14684).
+
+        This is the mechanical "yamlfmt-before-hash" enforcement at the write
+        boundary. Every downstream / self-bind / supersede receipt binds
+        ``contract_sha256 = sha256(contract-file-bytes)``. ``onex_change_control``'s
+        hosted pre-commit runs ``yamlfmt`` on merge; if a pushed
+        ``contracts/<ticket>.yaml`` is not ALREADY a yamlfmt no-op, hosted CI
+        reformats it, the committed bytes change, and every stamped
+        ``contract_sha256`` goes stale — forcing the manual recompute + rebind
+        cascade this producer exists to eliminate (the OMN-14285 / OMN-14326 /
+        OMN-14655 friction class the ticket catalogues).
+
+        The pure COMPUTE already renders the fresh-path contract yamlfmt-idempotent
+        BY CONSTRUCTION (occ-emitter-golden gate, OMN-14710), but that is a
+        template-hand-tuning guarantee, not a mechanical one — and the merged path
+        ASSEMBLES the contract by concatenation (``merged_text +
+        self_bind_entry_text``, OMN-14623), whose seam is not covered by any single
+        template. This guard proves the invariant on the exact bytes that are about
+        to be committed, so the stamped hash is trusted only once the hashed bytes
+        are proven yamlfmt-stable.
+
+        ASSERT-ONLY by design: this EFFECT "performs ZERO authoring of its own" —
+        the RSD-5 attestation oracle (``verify_companion_attestation``) re-runs the
+        pure COMPUTE and byte-diffs its output, so re-formatting the bytes here
+        would diverge from the oracle. A dirty contract is therefore a hard abort
+        (regenerate a yamlfmt-clean contract), never a silent rewrite.
+
+        ``yamlfmt`` is resolved from the OCC repo's own ``.yamlfmt`` config (the
+        clone carries it) so this uses the SAME formatter + width rules hosted CI
+        will. If the ``yamlfmt`` binary is unavailable the check is skipped with a
+        loud warning (hosted CI remains the backstop) rather than passing silently.
+        """
+        contracts = [f for f in files if f.kind == EnumCompanionFileKind.CONTRACT]
+        if not contracts:
+            return
+        yamlfmt = shutil.which("yamlfmt")
+        if yamlfmt is None:
+            logger.warning(
+                "occ_companion_effect: yamlfmt binary unavailable; skipping the "
+                "pre-push contract yamlfmt-stability check (OMN-14684). Hosted "
+                "onex_change_control CI remains the backstop."
+            )
+            return
+        conf = Path(clone_dir) / ".yamlfmt"
+        conf_args = ["-conf", str(conf)] if conf.is_file() else []
+        dirty: list[str] = []
+        for f in contracts:
+            path = Path(clone_dir) / f.path
+            result = subprocess.run(
+                [yamlfmt, *conf_args, "-lint", str(path)],
+                cwd=clone_dir,
+                capture_output=True,
+                text=True,
+                timeout=_YAMLFMT_TIMEOUT_SECONDS,
+                check=False,
+            )
+            if result.returncode != 0:
+                detail = (result.stdout + result.stderr).strip()
+                dirty.append(f"{f.path}: {detail}" if detail else f.path)
+        if dirty:
+            raise RuntimeError(
+                "OCC companion contract is not yamlfmt-stable before push "
+                "(OMN-14684): hosted onex_change_control yamlfmt would reformat the "
+                "contract, invalidating every stamped contract_sha256 and forcing "
+                "the receipt rebind cascade. Regenerate a yamlfmt-idempotent "
+                "contract instead of pushing a hash CI will stale. Offending: "
+                + "; ".join(sorted(dirty))
             )
 
     # -- github REST helpers (reuse shared github_api) ----------------------
