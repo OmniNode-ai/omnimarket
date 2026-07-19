@@ -12,7 +12,11 @@ OMN-8455 TDD requirement: these tests must pass before handler changes merge.
 
 from __future__ import annotations
 
+import json
+from pathlib import Path
+
 import yaml
+from omnibase_core.enums.enum_workflow_result import EnumWorkflowResult
 
 from omnimarket.nodes.node_projection_overnight.handlers.handler_projection_overnight import (
     HandlerProjectionOvernightPhaseEnd,
@@ -23,6 +27,7 @@ from omnimarket.nodes.node_projection_overnight.handlers.handler_projection_over
     ModelOvernightSessionStartEvent,
 )
 from omnimarket.projection.protocol_database import InmemoryDatabaseAdapter
+from tests.runtime_local_compat import RuntimeLocal
 
 SESSION_START_HANDLER = HandlerProjectionOvernightSessionStart()
 PHASE_END_HANDLER = HandlerProjectionOvernightPhaseEnd(
@@ -304,6 +309,23 @@ class TestOvernightProjectionContractWiring:
             contract = yaml.safe_load(f)
         assert len(contract["event_bus"]["publish_topics"]) >= 1
 
+    def test_contract_declares_output_states(self) -> None:
+        """OMN-13781 contract-state-coverage: assert the node's declared output states.
+
+        Covers the two output states the state-coverage gate tracks for this node —
+        the terminal event and the projection snapshot topic — which the def-B
+        dispatch entrypoint (OMN-14802) now actually emits through the runtime.
+        """
+        with open(self._contract_path()) as f:
+            contract = yaml.safe_load(f)
+        publish = contract["event_bus"]["publish_topics"]
+        assert "onex.evt.omnimarket.projection-overnight-applied.v1" in publish
+        assert "onex.snapshot.projection.overnight.v1" in publish
+        assert (
+            contract["terminal_event"]
+            == "onex.evt.omnimarket.projection-overnight-applied.v1"
+        )
+
     def test_readiness_projection_view_migration_exists(self) -> None:
         import pathlib
 
@@ -313,3 +335,110 @@ class TestOvernightProjectionContractWiring:
             "0001_create_overnight_readiness_projection_view.sql"
         ).read_text()
         assert "CREATE OR REPLACE VIEW projection_overnight_readiness" in migration
+
+
+class TestOvernightDispatchEntrypointRuntimeLocal:
+    """OMN-14802: drive the handler through REAL runtime dispatch, not ``.project()``.
+
+    Every test above calls ``.project(event, db)`` directly — none exercises the
+    contract-driven event-bus path
+    (``RuntimeLocal._run_event_driven`` -> ``LocalRuntimeBusAdapter.on_message`` ->
+    ``handler.handle``), which is the same machinery the production Kafka auto-wiring
+    mirrors (``omnibase_infra`` ``handler_wiring._make_dispatch_callback`` /
+    ``_missing_handle``). Before the def-B regen these handlers exposed no ``handle()``,
+    so dispatch hit a bare ``AttributeError`` -> ``on_error`` and this test FAILED with
+    ``result == EnumWorkflowResult.FAILED`` (not TIMEOUT, not a traceback).
+
+    Precedent for the shape: ``tests/test_proof_runtime_local_uninvokable_nodes_omn13713.py``.
+    """
+
+    _CONTRACT = (
+        Path(__file__).resolve().parent.parent
+        / "src/omnimarket/nodes/node_projection_overnight/contract.yaml"
+    )
+
+    def test_session_start_completes_through_runtime_dispatch(
+        self, tmp_path: Path
+    ) -> None:
+        input_path = tmp_path / "input.json"
+        input_path.write_text(
+            json.dumps(
+                {
+                    "correlation_id": "sess-dispatch-001",
+                    "phase": "build_loop_orchestrator",
+                }
+            )
+        )
+        runtime = RuntimeLocal(
+            workflow_path=self._CONTRACT,
+            state_root=tmp_path / "state",
+            input_path=input_path,
+            timeout=10,
+        )
+        result = runtime.run()
+
+        assert result == EnumWorkflowResult.COMPLETED, (
+            f"node_projection_overnight session-start did not complete: {result}"
+        )
+        assert runtime.exit_code == 0
+
+    def test_handle_writes_row_via_def_b_entrypoint(self) -> None:
+        """The canonical def-B entrypoint OWNS the projection: ``handle()`` writes the row.
+
+        Proves the entrypoint is authoritative (not merely 'dispatch resolved') by
+        reading the row back from an injected in-memory adapter — the production
+        ``_db`` injection shape (``handler_wiring`` line 2031).
+        """
+        db = InmemoryDatabaseAdapter()
+        result = HandlerProjectionOvernightSessionStart().handle(
+            {
+                "_db": db,
+                "_event_type": "onex.evt.omnimarket.overnight-phase-start.v1",
+                "correlation_id": "sess-dispatch-002",
+                "phase": "build_loop_orchestrator",
+                "dry_run": True,
+            }
+        )
+        assert result["rows_upserted"] == 1
+        rows = db.query("overnight_sessions")
+        assert len(rows) == 1
+        assert rows[0]["session_id"] == "sess-dispatch-002"
+        assert rows[0]["session_status"] == "in_progress"
+        assert rows[0]["dry_run"] is True
+
+    def test_phase_end_and_session_complete_expose_handle(self) -> None:
+        """All three contract-declared handlers must bind a real dispatch entrypoint.
+
+        This is the invariant that lets the three ``projection_overnight`` rows leave
+        ``handler_dispatch_entrypoint_baseline.yaml`` (OMN-14617 shrink-only ratchet).
+        """
+        phase_db = InmemoryDatabaseAdapter()
+        phase_result = HandlerProjectionOvernightPhaseEnd().handle(
+            {
+                "_db": phase_db,
+                "correlation_id": "sess-dispatch-003",
+                "phase": "ci_watch",
+                "phase_status": "success",
+                "duration_ms": 1200,
+            }
+        )
+        assert phase_result["rows_upserted"] == 1
+        assert phase_db.query("overnight_session_phases")[0]["phase_name"] == "ci_watch"
+        # Parent row ensured out-of-order (phase-end before any session-start).
+        assert (
+            phase_db.query("overnight_sessions")[0]["session_id"] == "sess-dispatch-003"
+        )
+
+        complete_db = InmemoryDatabaseAdapter()
+        complete_result = HandlerProjectionOvernightSessionComplete().handle(
+            {
+                "_db": complete_db,
+                "correlation_id": "sess-dispatch-004",
+                "session_status": "completed",
+                "phases_run": ["ci_watch"],
+            }
+        )
+        assert complete_result["rows_upserted"] == 1
+        assert (
+            complete_db.query("overnight_sessions")[0]["session_status"] == "completed"
+        )
