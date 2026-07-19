@@ -1,9 +1,9 @@
 {
-  "branch_coverage_pct": 45.45,
+  "branch_coverage_pct": 51.85,
   "candidate_count": 2,
   "coverage_target": 80.0,
   "handler_module": "omnimarket.nodes.node_skill_dispatch_engine_orchestrator.handlers.handler_skill_requested",
-  "handler_module_sha256": "sha256:24e879848c5d77a499f945de46542c1c0203bc7b45bcc7322ee6db85b1b59340",
+  "handler_module_sha256": "sha256:7774737aaaeff10d782f4d6e5ee99938c089bde3e5b9ad7c67e0106dcfc87f70",
   "meets_target": false,
   "node_id": "omnimarket.nodes.node_skill_dispatch_engine_orchestrator",
   "receipt_schema": "adequacy_receipt.v1",

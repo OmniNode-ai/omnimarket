@@ -54,7 +54,7 @@ class HandlerSkillRequested:
         self._router = router or HandlerDispatchEngineRouter()
 
     async def handle(
-        self, request: ModelSkillRequest | Mapping[str, object]
+        self, request: ModelSkillRequest | Mapping[str, Any]
     ) -> ModelSkillResult:
         """Dispatch entrypoint: route one skill-lifecycle request to a result.
 
@@ -66,7 +66,7 @@ class HandlerSkillRequested:
         ``no_candidates`` — an honest empty cycle.
         """
         if not isinstance(request, ModelSkillRequest):
-            request = ModelSkillRequest.model_validate(dict(request))
+            request = ModelSkillRequest.model_validate(request)
 
         if request.dry_run:
             logger.debug(
