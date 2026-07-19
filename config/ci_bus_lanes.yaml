@@ -1,0 +1,68 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# config/ci_bus_lanes.yaml
+#
+# Checked-in lane -> bus-broker overlay for the thin CI publishers (OMN-14801,
+# easy slice of the overlay-driven bus fix).
+#
+# WHY THIS EXISTS (OMN-14800 incident): the occ-autobind publisher's broker was
+# sourced ONLY from the opaque repo secret `KAFKA_BOOTSTRAP_SERVERS`. When that
+# secret was silently repointed dev -> stability out of band, the publisher kept
+# running green while emitting to the WRONG lane -- there was no checked-in,
+# reviewable truth to compare the injected value against, so the drift was
+# invisible. This file is that independent truth: a versioned, diff-able,
+# CODEOWNERS-reviewable map from CI lane id to the bus broker that lane is
+# supposed to use. `scripts/publish_occ_autobind_command.py --lane <id>` resolves
+# this file and FAILS LOUD on the trusted runner when the injected secret
+# diverges from the declared broker for the lane -- turning a silent repoint into
+# a red gate rather than a green no-op.
+#
+# CONFIG, NOT SECRET: broker addresses are lane endpoints (host:port), not
+# credentials. Committing LAN addresses is sanctioned via the
+# `# onex-allow-internal-ip` annotation (same pattern as
+# omnibase_infra/docker/lane-overlays/dev.bifrost.yaml). SASL credentials are
+# NEVER stored here -- they remain in secrets.KAFKA_SASL_{USERNAME,PASSWORD}.
+#
+# SEMANTICS of each lane's `broker` value:
+#   inmemory      -> the in-process/in-memory bus (contract-as-data default).
+#                    No cross-process broker; the CI publish is a no-op skip.
+#   from-secret   -> trust the injected `KAFKA_BOOTSTRAP_SERVERS` verbatim; no
+#                    independent truth yet, so NO divergence check is performed.
+#                    This is the safe posture WHILE a broker/secret rotation is
+#                    in flight -- byte-identical to the pre-OMN-14801 behavior.
+#   <host:port>   -> the declared broker for the lane. The publisher PREFERS this
+#                    committed value AND fail-loud-checks the injected secret
+#                    against it on the trusted runner (the silent-drift guard).
+#
+# no lane / unknown lane / no overlay file -> in-memory `default` (no-op skip),
+# EXCEPT on the trusted self-hosted runner for an authoring PR, where an
+# unresolvable / undeclared lane is a wiring gap and FAILS LOUD (never a silent
+# green no-op). See scripts/publish_occ_autobind_command.py.
+#
+# ROTATION SEQUENCING (OMN-14800 follow-up): `dev` is `from-secret` right now
+# because a `KAFKA_BOOTSTRAP_SERVERS` rotation is in flight -- pinning a concrete
+# broker here before the rotation settles would either red every occ-autobind PR
+# on genuine drift, or publish to a stale address. Once the rotation lands, flip
+# `dev` to the concrete rotated `host:port` to give the divergence guard teeth.
+# That flip is a one-line, reviewable config edit -- tracked in OMN-14801.
+
+default: inmemory
+
+lanes:
+  # The occ-autobind authoring lane (the only lane call-occ-autobind.yml uses
+  # today). `from-secret` until the in-flight KAFKA_BOOTSTRAP_SERVERS rotation
+  # settles, then flip to the concrete dev-lane Redpanda external listener, e.g.
+  #   dev:
+  #     broker: "omninode-pc.tail75df5e.ts.net:19092"  # onex-allow-internal-ip OMN-14801 reason="dev-lane Redpanda external listener"
+  dev:
+    broker: from-secret
+
+  # Non-authoring lanes: declared for completeness / future publishers. Left as
+  # `inmemory` so an accidental `--lane stability|prod` from a CI publisher is a
+  # no-op skip rather than a cross-process publish to a live runtime lane. Seed a
+  # concrete broker only when a publisher legitimately targets these lanes.
+  stability:
+    broker: inmemory
+  prod:
+    broker: inmemory

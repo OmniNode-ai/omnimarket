@@ -30,7 +30,21 @@
 #   runner with no broker provisioned) the publish is SKIPPED with a loud
 #   warning and exit 0, so a misconfig is visible but does not red every PR.
 #
-# Ticket: OMN-13317
+# OVERLAY-DRIVEN LANE RESOLUTION (OMN-14801, easy slice of the overlay-driven
+# bus fix; incident OMN-14800):
+#   The injected KAFKA_BOOTSTRAP_SERVERS secret was previously the ONLY source of
+#   the broker. When that opaque secret was silently repointed dev -> stability
+#   out of band, the publisher kept running green while emitting to the WRONG
+#   lane. `--lane <id>` now resolves the checked-in, reviewable
+#   `config/ci_bus_lanes.yaml` overlay (config-as-data, in-memory default) and,
+#   on the trusted runner, FAILS LOUD when the injected secret diverges from the
+#   overlay-declared broker for the lane -- turning a silent repoint into a red
+#   gate. The overlay is PREFERRED as the broker for a lane that declares a
+#   concrete host:port; a lane declared `from-secret` trusts the injected secret
+#   verbatim (the safe posture while a secret rotation is in flight -- the secret
+#   path stays byte-identical to before). This slice does NOT delete the secret.
+#
+# Ticket: OMN-13317, OMN-14801
 #
 # Required environment variables (when not --dry-run):
 #   KAFKA_BOOTSTRAP_SERVERS   -- canonical bus broker endpoint
@@ -45,7 +59,7 @@
 #   PR_TICKET                 -- Linear ticket ID (overrides extraction)
 #
 # Usage:
-#   python scripts/publish_occ_autobind_command.py [--dry-run]
+#   python scripts/publish_occ_autobind_command.py --lane dev [--dry-run]
 
 from __future__ import annotations
 
@@ -59,6 +73,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import click
+import yaml
 
 # Canonical topic constant (single source of truth in omnimarket.events.topics).
 # Load the module by file path so this thin GHA script does not execute
@@ -85,6 +100,67 @@ _TICKET_RE = re.compile(r"OMN-\d+", re.IGNORECASE)
 # GHA-runner script would pull in far more than the minimal deps the workflow
 # installs). OMN-13990.
 _BLOCK_REASON_AUTOBIND = "receipt_evidence_source_autobind"
+
+# Checked-in lane -> bus-broker overlay (OMN-14801). Resolved relative to this
+# script so the resolution is machine-portable (no hardcoded absolute paths).
+_LANE_OVERLAY_PATH = (
+    Path(__file__).resolve().parents[1] / "config" / "ci_bus_lanes.yaml"
+)
+
+# Resolution modes returned by _resolve_lane_broker.
+_MODE_NO_LANE = "no-lane"  # --lane was not supplied
+_MODE_UNKNOWN_LANE = "unknown-lane"  # --lane supplied but absent from the overlay
+_MODE_INMEMORY = "inmemory"  # in-process bus (contract-as-data default): no-op
+_MODE_FROM_SECRET = "from-secret"  # trust the injected secret verbatim (no check)
+_MODE_CONCRETE = "concrete"  # overlay declares a concrete host:port (preferred)
+
+
+def _load_lane_overlay(path: Path | None = None) -> dict[str, object]:
+    """Load the checked-in lane->broker overlay (OMN-14801).
+
+    Returns an empty dict when the overlay file is absent so callers can apply
+    the documented "no overlay -> in-memory default" fallback. A malformed
+    (non-mapping) overlay is likewise treated as empty rather than crashing the
+    thin publisher.
+    """
+    overlay_path = path if path is not None else _LANE_OVERLAY_PATH
+    if not overlay_path.exists():
+        return {}
+    with overlay_path.open("r", encoding="utf-8") as handle:
+        loaded = yaml.safe_load(handle)
+    if not isinstance(loaded, dict):
+        return {}
+    return loaded
+
+
+def _resolve_lane_broker(
+    overlay: dict[str, object], lane: str | None
+) -> tuple[str, str]:
+    """Resolve a CI lane id to ``(mode, declared_broker)`` from the overlay.
+
+    ``mode`` is one of the ``_MODE_*`` constants. ``declared_broker`` is the
+    concrete ``host:port`` only for ``_MODE_CONCRETE``; it is ``""`` otherwise.
+    The precedence intentionally mirrors the overlay's documented semantics:
+    no lane / unknown lane -> caller applies the in-memory default (or fails
+    loud on the trusted runner); an explicit ``inmemory`` -> in-process no-op;
+    ``from-secret`` -> trust the injected secret; anything else -> a concrete,
+    overlay-preferred broker that the injected secret is checked against.
+    """
+    if lane is None or not lane.strip():
+        return (_MODE_NO_LANE, "")
+    lane_key = lane.strip()
+    lanes_obj = overlay.get("lanes")
+    lanes = lanes_obj if isinstance(lanes_obj, dict) else {}
+    if lane_key not in lanes:
+        return (_MODE_UNKNOWN_LANE, "")
+    entry = lanes[lane_key]
+    broker_raw = entry.get("broker") if isinstance(entry, dict) else entry
+    broker_val = "" if broker_raw is None else str(broker_raw).strip()
+    if not broker_val or broker_val == _MODE_INMEMORY:
+        return (_MODE_INMEMORY, "")
+    if broker_val == _MODE_FROM_SECRET:
+        return (_MODE_FROM_SECRET, "")
+    return (_MODE_CONCRETE, broker_val)
 
 
 def _is_trusted_runner() -> bool:
@@ -238,11 +314,22 @@ def publish_occ_autobind_command(
     default=False,
     help="Print payload without publishing to Kafka",
 )
-def main(dry_run: bool) -> None:
+@click.option(
+    "--lane",
+    default=None,
+    help=(
+        "CI bus lane id (e.g. 'dev') resolved against config/ci_bus_lanes.yaml "
+        "to decide the bus target and to fail-loud-check the injected "
+        "KAFKA_BOOTSTRAP_SERVERS against the lane's declared broker (OMN-14801). "
+        "Required on the trusted self-hosted runner for an authoring PR."
+    ),
+)
+def main(dry_run: bool, lane: str | None) -> None:
     """Publish onex.cmd.omnimarket.occ-autobind.v1 for a product PR open/synchronize.
 
     All inputs are read from environment variables injected by the GHA workflow:
     PR_REPO, PR_NUMBER, PR_HEAD_SHA, PR_TITLE (optional), PR_TICKET (optional).
+    The bus target is resolved from ``--lane`` against config/ci_bus_lanes.yaml.
     """
     repo = os.environ.get("PR_REPO", "")
     pr_number_str = os.environ.get("PR_NUMBER", "")
@@ -277,7 +364,7 @@ def main(dry_run: bool) -> None:
 
     click.echo(
         f"occ-autobind command: repo={repo} pr={pr_number} "
-        f"head={pr_head_sha} ticket={ticket!r}"
+        f"head={pr_head_sha} ticket={ticket!r} lane={lane!r}"
     )
 
     if dry_run:
@@ -285,48 +372,145 @@ def main(dry_run: bool) -> None:
         click.echo(json.dumps(payload, indent=2))
         sys.exit(0)
 
-    bootstrap_servers = os.environ.get("KAFKA_BOOTSTRAP_SERVERS", "")
+    bootstrap_servers = os.environ.get("KAFKA_BOOTSTRAP_SERVERS", "").strip()
     username = os.environ.get("KAFKA_SASL_USERNAME", "")
     password = os.environ.get("KAFKA_SASL_PASSWORD", "")
 
-    if not bootstrap_servers:
-        if _is_trusted_runner():
-            # OMN-14451: this is the exact bug class that let the publisher run
-            # green while publishing nothing for its entire lifetime. On the
-            # trusted self-hosted lane for an occ-autobind-eligible PR, a
-            # broker MUST be resolvable (secrets.KAFKA_BOOTSTRAP_SERVERS) --
-            # a publisher that silently no-ops here is worse than one that is
-            # absent, so this fails the job instead of exiting 0.
+    # Read once; a wiring gap (RUNNER_IS_TRUSTED unset/invalid) fails fast here
+    # rather than silently choosing the permissive branch (OMN-14451).
+    trusted = _is_trusted_runner()
+
+    overlay = _load_lane_overlay()
+    mode, declared_broker = _resolve_lane_broker(overlay, lane)
+
+    def _publish_or_die(target_broker: str) -> None:
+        try:
+            published_id = publish_occ_autobind_command(
+                bootstrap_servers=target_broker,
+                username=username,
+                password=password,
+                repo=repo,
+                pr_number=pr_number,
+                ticket=ticket,
+            )
+        except Exception as exc:
+            click.echo(f"Delivery error: {exc}", err=True)
+            sys.exit(1)
+        click.echo(f"Published {TOPIC} event_id={published_id}")
+
+    # --- OMN-14801: overlay-driven lane -> bus-target resolution ---------------
+    # The lane overlay (config/ci_bus_lanes.yaml) is the checked-in, reviewable
+    # truth. On the trusted runner an unresolvable/undeclared lane is a wiring
+    # gap and fails loud; everywhere else it degrades to a graceful no-op skip.
+    if mode in (_MODE_NO_LANE, _MODE_UNKNOWN_LANE):
+        if trusted:
+            lanes_obj = overlay.get("lanes")
+            declared = sorted(lanes_obj) if isinstance(lanes_obj, dict) else []
+            reason = (
+                "--lane was not supplied"
+                if mode == _MODE_NO_LANE
+                else f"lane {lane!r} is not declared"
+            )
             click.echo(
-                "ERROR: KAFKA_BOOTSTRAP_SERVERS is not set on the TRUSTED "
-                "self-hosted runner for an occ-autobind-eligible PR. The "
-                "broker MUST be resolvable here. Failing loudly instead of "
-                "silently skipping (OMN-14451).",
+                f"ERROR: {reason} on the TRUSTED self-hosted runner for an "
+                "occ-autobind-eligible PR. The publishing lane MUST resolve to a "
+                f"declared bus lane in config/{_LANE_OVERLAY_PATH.name} "
+                f"(declared lanes: {declared}). Refusing to guess the bus lane / "
+                "silently no-op (OMN-14801).",
                 err=True,
             )
             sys.exit(1)
         click.echo(
-            "WARNING: KAFKA_BOOTSTRAP_SERVERS is not set -- skipping "
-            "occ-autobind publish (expected on a fork/cloud runner with no "
-            "broker provisioned). Exiting 0.",
+            f"WARNING: no bus lane resolved (mode={mode}, lane={lane!r}) -- "
+            "skipping occ-autobind publish (expected on a fork/cloud runner). "
+            "Exiting 0.",
             err=True,
         )
         sys.exit(0)
 
-    try:
-        published_id = publish_occ_autobind_command(
-            bootstrap_servers=bootstrap_servers,
-            username=username,
-            password=password,
-            repo=repo,
-            pr_number=pr_number,
-            ticket=ticket,
+    if mode == _MODE_INMEMORY:
+        # Contract-as-data default: the in-memory bus reaches no cross-process
+        # consumer from a throwaway CI process, so publishing is a no-op. This is
+        # the doctrinal in-memory default -- loud, visible, exit 0.
+        click.echo(
+            f"lane={lane!r} declares the in-memory bus (config-as-data default "
+            f"in config/{_LANE_OVERLAY_PATH.name}): no cross-process broker to "
+            "publish to, occ-autobind is authored in-process. Skipping "
+            "cross-process publish (no-op). Exiting 0."
         )
-    except Exception as exc:
-        click.echo(f"Delivery error: {exc}", err=True)
-        sys.exit(1)
+        sys.exit(0)
 
-    click.echo(f"Published {TOPIC} event_id={published_id}")
+    if mode == _MODE_FROM_SECRET:
+        # Byte-identical to the pre-OMN-14801 behavior: the injected secret IS
+        # the broker and there is no independent overlay truth to check against.
+        # The secret path is intentionally preserved untouched (a rotation is in
+        # flight; this slice never deletes or bypasses the secret).
+        if not bootstrap_servers:
+            if trusted:
+                click.echo(
+                    "ERROR: KAFKA_BOOTSTRAP_SERVERS is not set on the TRUSTED "
+                    f"self-hosted runner for lane={lane!r} (declared "
+                    "'from-secret'). The broker MUST be resolvable here. Failing "
+                    "loudly instead of silently skipping (OMN-14451).",
+                    err=True,
+                )
+                sys.exit(1)
+            click.echo(
+                "WARNING: KAFKA_BOOTSTRAP_SERVERS is not set -- skipping "
+                "occ-autobind publish (expected on a fork/cloud runner with no "
+                "broker provisioned). Exiting 0.",
+                err=True,
+            )
+            sys.exit(0)
+        _publish_or_die(bootstrap_servers)
+        return
+
+    # mode == _MODE_CONCRETE: the overlay declares an authoritative host:port for
+    # this lane. Prefer the committed value AND fail-loud-check the injected
+    # secret against it (the OMN-14800 silent-drift guard).
+    if not bootstrap_servers:
+        if trusted:
+            click.echo(
+                "KAFKA_BOOTSTRAP_SERVERS is not injected; publishing to the "
+                f"overlay-declared broker for lane={lane!r}: {declared_broker} "
+                f"(config/{_LANE_OVERLAY_PATH.name})."
+            )
+            _publish_or_die(declared_broker)
+            return
+        click.echo(
+            "WARNING: KAFKA_BOOTSTRAP_SERVERS is not set on a fork/cloud runner "
+            f"-- skipping occ-autobind publish for lane={lane!r}. Exiting 0.",
+            err=True,
+        )
+        sys.exit(0)
+
+    if bootstrap_servers != declared_broker:
+        if trusted:
+            # The exact incident: a silently-repointed secret publishing to an
+            # undeclared broker. The injected value is GH-masked in logs; we only
+            # print the committed (non-secret) declared value.
+            click.echo(
+                "ERROR: LANE BUS DRIFT -- the injected KAFKA_BOOTSTRAP_SERVERS "
+                "(GH-masked in logs) does not match the broker declared for "
+                f"lane={lane!r} in config/{_LANE_OVERLAY_PATH.name} (declared: "
+                f"{declared_broker}). This is the silent dev->stability repoint "
+                "class (OMN-14800): refusing to publish the occ-autobind command "
+                "to an undeclared broker. Reconcile the injected secret with the "
+                "checked-in lane overlay (OMN-14801).",
+                err=True,
+            )
+            sys.exit(1)
+        click.echo(
+            "WARNING: injected KAFKA_BOOTSTRAP_SERVERS diverges from the "
+            f"overlay-declared broker for lane={lane!r} on a fork/cloud runner "
+            "-- skipping occ-autobind publish. Exiting 0.",
+            err=True,
+        )
+        sys.exit(0)
+
+    # Injected secret agrees with the overlay-declared broker: prefer the
+    # committed overlay value (identical to the secret) and publish.
+    _publish_or_die(declared_broker)
 
 
 if __name__ == "__main__":

@@ -233,4 +233,28 @@ class TestTicketClassifyComputeGoldenChain:
         )
         assert len(history) == 1
 
+        failure_history = await event_bus.get_event_history(
+            topic="onex.evt.omnimarket.ticket-classify-failed.v1"
+        )
+        assert failure_history == []
+
+        await event_bus.close()
+
+    async def test_declared_failure_topic_is_event_bus_addressable(
+        self, event_bus: EventBusInmemory
+    ) -> None:
+        """The contract-declared failure terminal event has runtime bus coverage."""
+        await event_bus.start()
+
+        await event_bus.publish(
+            "onex.evt.omnimarket.ticket-classify-failed.v1",
+            key=None,
+            value=b'{"error": "classification failed"}',
+        )
+
+        history = await event_bus.get_event_history(
+            topic="onex.evt.omnimarket.ticket-classify-failed.v1"
+        )
+        assert len(history) == 1
+
         await event_bus.close()
