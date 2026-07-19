@@ -156,7 +156,7 @@ class TestFailClosedOnTrustedRunner:
         runner = CliRunner()
         env = {**_required_pr_env(), "RUNNER_IS_TRUSTED": "true"}
         env.pop("KAFKA_BOOTSTRAP_SERVERS", None)
-        result = runner.invoke(module.main, [], env=env)  # type: ignore[attr-defined]
+        result = runner.invoke(module.main, ["--lane", "dev"], env=env)  # type: ignore[attr-defined]
 
         assert result.exit_code == 1, result.output
         assert "TRUSTED" in result.output
@@ -167,7 +167,7 @@ class TestFailClosedOnTrustedRunner:
         runner = CliRunner()
         env = {**_required_pr_env(), "RUNNER_IS_TRUSTED": "false"}
         env.pop("KAFKA_BOOTSTRAP_SERVERS", None)
-        result = runner.invoke(module.main, [], env=env)  # type: ignore[attr-defined]
+        result = runner.invoke(module.main, ["--lane", "dev"], env=env)  # type: ignore[attr-defined]
 
         assert result.exit_code == 0, result.output
         assert "WARNING" in result.output
@@ -179,7 +179,7 @@ class TestFailClosedOnTrustedRunner:
         env = dict(_required_pr_env())
         env.pop("KAFKA_BOOTSTRAP_SERVERS", None)
         env.pop("RUNNER_IS_TRUSTED", None)
-        result = runner.invoke(module.main, [], env=env)  # type: ignore[attr-defined]
+        result = runner.invoke(module.main, ["--lane", "dev"], env=env)  # type: ignore[attr-defined]
 
         assert result.exit_code == 1, result.output
         assert "RUNNER_IS_TRUSTED" in result.output
@@ -201,7 +201,7 @@ class TestFailClosedOnTrustedRunner:
             raise _FakeDeliveryError("unreachable in this unit test — expected")
 
         module.publish_occ_autobind_command = _fake_publish  # type: ignore[attr-defined]
-        result = runner.invoke(module.main, [], env=env)  # type: ignore[attr-defined]
+        result = runner.invoke(module.main, ["--lane", "dev"], env=env)  # type: ignore[attr-defined]
 
         # Reaches the real publish call (not the broker-missing branch) and
         # fails loudly on delivery error — never silently exits 0.
@@ -289,3 +289,228 @@ class TestFailClosedOnUndeliveredFlush:
         )
         assert isinstance(correlation_id, str)
         assert correlation_id
+
+
+def _trusted_pr_env(**overrides: str) -> dict[str, str]:
+    """A minimal trusted-runner env; broker/overrides supplied per-test."""
+    env = {**_required_pr_env(), "RUNNER_IS_TRUSTED": "true"}
+    env.update(overrides)
+    return env
+
+
+def _override_overlay(module: object, overlay: dict[str, object]) -> None:
+    """Point the publisher at an in-memory lane overlay instead of the file."""
+
+    def _fake(path: object = None) -> dict[str, object]:
+        return overlay
+
+    module._load_lane_overlay = _fake  # type: ignore[attr-defined]
+
+
+class _PublishRecorder:
+    """Records the broker the publisher would actually publish to (no I/O)."""
+
+    def __init__(self) -> None:
+        self.brokers: list[str] = []
+
+    def __call__(
+        self,
+        *,
+        bootstrap_servers: str,
+        username: str,
+        password: str,
+        repo: str,
+        pr_number: int,
+        ticket: str,
+    ) -> str:
+        self.brokers.append(bootstrap_servers)
+        return f"cid-{pr_number}"
+
+
+@pytest.mark.unit
+class TestLaneOverlayResolution:
+    """OMN-14801: pure lane->broker resolution from the checked-in overlay."""
+
+    def test_missing_overlay_file_returns_empty(self, tmp_path: Path) -> None:
+        module = _load_publisher()
+        missing = tmp_path / "does_not_exist.yaml"
+        assert module._load_lane_overlay(missing) == {}  # type: ignore[attr-defined]
+
+    def test_malformed_overlay_returns_empty(self, tmp_path: Path) -> None:
+        module = _load_publisher()
+        bad = tmp_path / "ci_bus_lanes.yaml"
+        bad.write_text("- just\n- a\n- list\n", encoding="utf-8")
+        assert module._load_lane_overlay(bad) == {}  # type: ignore[attr-defined]
+
+    def test_overlay_roundtrips_from_disk(self, tmp_path: Path) -> None:
+        module = _load_publisher()
+        path = tmp_path / "ci_bus_lanes.yaml"
+        path.write_text(
+            "default: inmemory\nlanes:\n  dev:\n    broker: from-secret\n",
+            encoding="utf-8",
+        )
+        overlay = module._load_lane_overlay(path)  # type: ignore[attr-defined]
+        assert module._resolve_lane_broker(overlay, "dev") == (  # type: ignore[attr-defined]
+            "from-secret",
+            "",
+        )
+
+    def test_resolution_modes(self) -> None:
+        module = _load_publisher()
+        overlay: dict[str, object] = {
+            "default": "inmemory",
+            "lanes": {
+                "dev": {"broker": "from-secret"},
+                "stability": {"broker": "inmemory"},
+                "prod": {"broker": "broker.example:19092"},
+            },
+        }
+        resolve = module._resolve_lane_broker  # type: ignore[attr-defined]
+        assert resolve(overlay, None) == ("no-lane", "")
+        assert resolve(overlay, "  ") == ("no-lane", "")
+        assert resolve(overlay, "ghost") == ("unknown-lane", "")
+        assert resolve(overlay, "dev") == ("from-secret", "")
+        assert resolve(overlay, "stability") == ("inmemory", "")
+        assert resolve(overlay, "prod") == ("concrete", "broker.example:19092")
+
+    def test_shipped_overlay_keeps_dev_on_secret_path(self) -> None:
+        """The committed config/ci_bus_lanes.yaml MUST keep dev = from-secret so
+        this slice does not disturb the in-flight secret rotation."""
+        module = _load_publisher()
+        overlay = module._load_lane_overlay()  # type: ignore[attr-defined]
+        assert overlay, "shipped config/ci_bus_lanes.yaml should load non-empty"
+        assert module._resolve_lane_broker(overlay, "dev") == (  # type: ignore[attr-defined]
+            "from-secret",
+            "",
+        )
+
+
+@pytest.mark.unit
+class TestLaneDivergenceGuard:
+    """OMN-14801/OMN-14800: a concrete lane broker turns a silently-repointed
+    secret into a loud red gate, and prefers the committed broker on a match."""
+
+    _CONCRETE: dict[str, object] = {
+        "default": "inmemory",
+        "lanes": {"dev": {"broker": "declared:19092"}},
+    }
+
+    def test_divergent_secret_on_trusted_fails_loud(self) -> None:
+        """The exact incident: injected secret != overlay broker => red, no publish."""
+        module = _load_publisher()
+        _override_overlay(module, self._CONCRETE)
+        recorder = _PublishRecorder()
+        module.publish_occ_autobind_command = recorder  # type: ignore[attr-defined]
+        runner = CliRunner()
+        env = _trusted_pr_env(KAFKA_BOOTSTRAP_SERVERS="wrong:29092")
+        result = runner.invoke(module.main, ["--lane", "dev"], env=env)  # type: ignore[attr-defined]
+        assert result.exit_code == 1, result.output
+        assert "DRIFT" in result.output
+        assert "OMN-14800" in result.output
+        assert recorder.brokers == []  # never published to the wrong broker
+
+    def test_matching_secret_publishes_to_declared_broker(self) -> None:
+        module = _load_publisher()
+        _override_overlay(module, self._CONCRETE)
+        recorder = _PublishRecorder()
+        module.publish_occ_autobind_command = recorder  # type: ignore[attr-defined]
+        runner = CliRunner()
+        env = _trusted_pr_env(KAFKA_BOOTSTRAP_SERVERS="declared:19092")
+        result = runner.invoke(module.main, ["--lane", "dev"], env=env)  # type: ignore[attr-defined]
+        assert result.exit_code == 0, result.output
+        assert recorder.brokers == ["declared:19092"]  # overlay-preferred
+
+    def test_secret_unset_on_trusted_publishes_declared(self) -> None:
+        module = _load_publisher()
+        _override_overlay(module, self._CONCRETE)
+        recorder = _PublishRecorder()
+        module.publish_occ_autobind_command = recorder  # type: ignore[attr-defined]
+        runner = CliRunner()
+        env = _trusted_pr_env()
+        env.pop("KAFKA_BOOTSTRAP_SERVERS", None)
+        result = runner.invoke(module.main, ["--lane", "dev"], env=env)  # type: ignore[attr-defined]
+        assert result.exit_code == 0, result.output
+        assert recorder.brokers == ["declared:19092"]
+
+    def test_divergent_secret_on_fork_skips(self) -> None:
+        module = _load_publisher()
+        _override_overlay(module, self._CONCRETE)
+        recorder = _PublishRecorder()
+        module.publish_occ_autobind_command = recorder  # type: ignore[attr-defined]
+        runner = CliRunner()
+        env = {
+            **_required_pr_env(),
+            "RUNNER_IS_TRUSTED": "false",
+            "KAFKA_BOOTSTRAP_SERVERS": "wrong:29092",
+        }
+        result = runner.invoke(module.main, ["--lane", "dev"], env=env)  # type: ignore[attr-defined]
+        assert result.exit_code == 0, result.output
+        assert "WARNING" in result.output
+        assert recorder.brokers == []
+
+
+@pytest.mark.unit
+class TestLaneInMemoryAndNegativeFixtures:
+    """OMN-14801 negative fixtures: the in-memory default no-ops; an unknown
+    lane or a missing overlay fails loud on the trusted runner (never a silent
+    green), degrading to a graceful skip only on fork/cloud runners."""
+
+    def test_inmemory_lane_is_noop_skip(self) -> None:
+        module = _load_publisher()
+        _override_overlay(
+            module,
+            {"default": "inmemory", "lanes": {"dev": {"broker": "inmemory"}}},
+        )
+        recorder = _PublishRecorder()
+        module.publish_occ_autobind_command = recorder  # type: ignore[attr-defined]
+        runner = CliRunner()
+        env = _trusted_pr_env(KAFKA_BOOTSTRAP_SERVERS="whatever:19092")
+        result = runner.invoke(module.main, ["--lane", "dev"], env=env)  # type: ignore[attr-defined]
+        assert result.exit_code == 0, result.output
+        assert "in-memory" in result.output
+        assert recorder.brokers == []  # no cross-process publish
+
+    def test_unknown_lane_on_trusted_fails_loud(self) -> None:
+        module = _load_publisher()
+        _override_overlay(
+            module,
+            {"default": "inmemory", "lanes": {"dev": {"broker": "from-secret"}}},
+        )
+        runner = CliRunner()
+        env = _trusted_pr_env(KAFKA_BOOTSTRAP_SERVERS="x:1")
+        result = runner.invoke(module.main, ["--lane", "bogus"], env=env)  # type: ignore[attr-defined]
+        assert result.exit_code == 1, result.output
+        assert "not declared" in result.output
+
+    def test_missing_overlay_on_trusted_fails_loud(self) -> None:
+        """No lane overlay at all -> undeclared lane -> loud fail on trusted."""
+        module = _load_publisher()
+        _override_overlay(module, {})  # empty == missing file
+        runner = CliRunner()
+        env = _trusted_pr_env(KAFKA_BOOTSTRAP_SERVERS="x:1")
+        result = runner.invoke(module.main, ["--lane", "dev"], env=env)  # type: ignore[attr-defined]
+        assert result.exit_code == 1, result.output
+        assert "not declared" in result.output
+
+    def test_missing_overlay_on_fork_skips(self) -> None:
+        """No lane overlay on a fork/cloud runner -> graceful no-op skip."""
+        module = _load_publisher()
+        _override_overlay(module, {})
+        runner = CliRunner()
+        env = {
+            **_required_pr_env(),
+            "RUNNER_IS_TRUSTED": "false",
+            "KAFKA_BOOTSTRAP_SERVERS": "x:1",
+        }
+        result = runner.invoke(module.main, ["--lane", "dev"], env=env)  # type: ignore[attr-defined]
+        assert result.exit_code == 0, result.output
+        assert "WARNING" in result.output
+
+    def test_no_lane_on_trusted_fails_loud(self) -> None:
+        """Authoring PR on the trusted runner with no --lane is a wiring gap."""
+        module = _load_publisher()
+        runner = CliRunner()
+        env = _trusted_pr_env(KAFKA_BOOTSTRAP_SERVERS="x:1")
+        result = runner.invoke(module.main, [], env=env)  # type: ignore[attr-defined]
+        assert result.exit_code == 1, result.output
+        assert "--lane was not supplied" in result.output

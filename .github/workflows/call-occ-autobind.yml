@@ -28,7 +28,16 @@
 #   exit 0, since that combination means a real misconfiguration, not an
 #   expected fork skip.
 #
-# Ticket: OMN-13990, OMN-14451
+# OVERLAY-DRIVEN LANE RESOLUTION (OMN-14801):
+#   The publish step passes `--lane dev`, which the script resolves against the
+#   checked-in `config/ci_bus_lanes.yaml` overlay to decide the bus target and to
+#   fail-loud-check the injected `secrets.KAFKA_BOOTSTRAP_SERVERS` against the
+#   lane's declared broker (silent dev->stability repoint guard, incident
+#   OMN-14800). `dev` is declared `from-secret` while a secret rotation is in
+#   flight, so the secret path is preserved byte-identical -- this workflow does
+#   NOT remove or bypass the secret.
+#
+# Ticket: OMN-13990, OMN-14451, OMN-14801
 
 name: OCC Autobind Publisher
 
@@ -89,7 +98,9 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install --quiet confluent-kafka click pydantic
+          # pyyaml: parse the checked-in config/ci_bus_lanes.yaml lane overlay
+          # (OMN-14801). Kept deliberately thin -- no product graph import.
+          pip install --quiet confluent-kafka click pydantic pyyaml
 
       - name: Publish onex.cmd.omnimarket.occ-autobind.v1
         # All potentially attacker-controlled inputs (branch name, PR title) are
@@ -109,5 +120,12 @@ jobs:
           PR_TITLE: ${{ github.event.pull_request.title }}
           # Best-effort ticket extraction; the script also parses the branch ref.
           PR_TICKET: ""
+        # OMN-14801: --lane dev selects the authoring lane from the checked-in
+        # config/ci_bus_lanes.yaml overlay. `dev` is declared `from-secret` there
+        # (a KAFKA_BOOTSTRAP_SERVERS rotation is in flight), so the injected
+        # secret remains the broker and the runtime behavior is byte-identical to
+        # before -- the overlay adds the fail-loud divergence guard without
+        # disabling the secret path. Flip `dev` to a concrete host:port in the
+        # overlay once the rotation lands to give the guard teeth.
         run: |
-          python scripts/publish_occ_autobind_command.py
+          python scripts/publish_occ_autobind_command.py --lane dev
