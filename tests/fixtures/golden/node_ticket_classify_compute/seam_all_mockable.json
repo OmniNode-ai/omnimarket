@@ -1,0 +1,49 @@
+{
+  "input": {
+    "correlation_id": "00000008-0000-4000-8000-000000000000",
+    "tickets": [
+      {
+        "contract_yaml": null,
+        "description": "",
+        "labels": [],
+        "priority": 0,
+        "seam_boundaries": {
+          "consumes": [
+            {
+              "mock_available": true,
+              "module": "omnibase_core.protocols.protocol_event_bus",
+              "protocol": "ProtocolEventBus"
+            }
+          ],
+          "produces": [],
+          "tables_read": [],
+          "tables_write": [],
+          "topics": {
+            "publish": [],
+            "subscribe": []
+          }
+        },
+        "state": "Todo",
+        "ticket_id": "OMN-8",
+        "title": "Work behind mockable seam"
+      }
+    ]
+  },
+  "output": {
+    "classifications": [
+      {
+        "buildability": "auto_buildable",
+        "confidence": 0.9,
+        "matched_keywords": [],
+        "reason": "Contract: all consumed protocols are mockable",
+        "seam_source": "contract",
+        "ticket_id": "OMN-8",
+        "title": "Work behind mockable seam"
+      }
+    ],
+    "correlation_id": "00000008-0000-4000-8000-000000000000",
+    "total_auto_buildable": 1,
+    "total_non_buildable": 0
+  },
+  "output_sha256": "sha256:72c0f6fc2366d16f74a301632973b008ed309095bf595324732cf3bd41f81645"
+}

@@ -38,6 +38,7 @@ from omnimarket.nodes.node_build_loop_orchestrator.handlers.handler_build_loop_o
 )
 from omnimarket.nodes.node_build_loop_orchestrator.protocols.protocol_sub_handlers import (
     BuildTarget,
+    ClassifyRequest,
     ClassifyResult,
     CloseoutResult,
     DispatchResult,
@@ -97,9 +98,7 @@ class MockClassify:
 
     async def handle(
         self,
-        *,
-        correlation_id: UUID,
-        tickets: tuple[ScoredTicket, ...],
+        request: ClassifyRequest,
     ) -> ClassifyResult:
         return ClassifyResult(classifications=self._targets)
 

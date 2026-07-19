@@ -21,6 +21,9 @@ from omnimarket.nodes.node_ticket_classify_compute.models.model_seam_boundaries 
     ModelConsumedProtocol,
     ModelSeamBoundaries,
 )
+from omnimarket.nodes.node_ticket_classify_compute.models.model_ticket_classify_input import (
+    ModelTicketClassifyInput,
+)
 from omnimarket.nodes.node_ticket_classify_compute.models.model_ticket_for_classification import (
     ModelTicketForClassification,
 )
@@ -89,7 +92,9 @@ class TestGoldenChainTicketClassify:
         )
 
         cid = uuid4()
-        result = await handler.handle(correlation_id=cid, tickets=tickets)
+        result = await handler.handle(
+            ModelTicketClassifyInput(correlation_id=cid, tickets=tickets)
+        )
 
         assert len(result.classifications) == 5
         assert result.correlation_id == cid

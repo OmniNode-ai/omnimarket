@@ -81,6 +81,23 @@ class ClassifyResult(BaseModel):
     classifications: tuple[BuildTarget, ...] = Field(default_factory=tuple)
 
 
+class ClassifyRequest(BaseModel):
+    """Typed request payload for the ticket classify compute handler (def-B).
+
+    Structurally mirrors ``ModelTicketClassifyInput`` at the orchestrator seam
+    (``correlation_id`` + ``tickets``) without reaching into the classify node's
+    private model package. The real ``HandlerTicketClassify`` (cast to this
+    protocol) reads only ``request.correlation_id`` / ``request.tickets``.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    correlation_id: UUID = Field(..., description="Build loop cycle correlation ID.")
+    tickets: tuple[ScoredTicket, ...] = Field(
+        default_factory=tuple, description="Tickets to classify."
+    )
+
+
 class DelegationPayload(BaseModel):
     """A delegation event to publish to the event bus."""
 
@@ -141,13 +158,11 @@ class ProtocolRsdFillHandler(Protocol):
 
 @runtime_checkable
 class ProtocolTicketClassifyHandler(Protocol):
-    """Protocol for the ticket classify compute handler."""
+    """Protocol for the ticket classify compute handler (def-B, typed payload)."""
 
     async def handle(
         self,
-        *,
-        correlation_id: UUID,
-        tickets: tuple[ScoredTicket, ...],
+        request: ClassifyRequest,
     ) -> ClassifyResult: ...
 
 

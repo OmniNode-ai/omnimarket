@@ -1,0 +1,34 @@
+{
+  "input": {
+    "correlation_id": "00000003-0000-4000-8000-000000000000",
+    "tickets": [
+      {
+        "contract_yaml": null,
+        "description": "already shipped",
+        "labels": [],
+        "priority": 0,
+        "seam_boundaries": null,
+        "state": "Done",
+        "ticket_id": "OMN-3",
+        "title": "Ship the release"
+      }
+    ]
+  },
+  "output": {
+    "classifications": [
+      {
+        "buildability": "skip",
+        "confidence": 0.8,
+        "matched_keywords": [],
+        "reason": "Skip: terminal state 'Done'",
+        "seam_source": "keyword_fallback",
+        "ticket_id": "OMN-3",
+        "title": "Ship the release"
+      }
+    ],
+    "correlation_id": "00000003-0000-4000-8000-000000000000",
+    "total_auto_buildable": 0,
+    "total_non_buildable": 1
+  },
+  "output_sha256": "sha256:0e3a9d78bf0613e6f9af33b43cb33d9a310c470c9d90dca754bd7b67f74d96de"
+}
