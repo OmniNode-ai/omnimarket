@@ -3,7 +3,7 @@
   "candidate_count": 2,
   "coverage_target": 80.0,
   "handler_module": "omnimarket.nodes.node_skill_dispatch_engine_orchestrator.handlers.handler_skill_requested",
-  "handler_module_sha256": "sha256:d386dc6c76633a16e1d8ff36ab0be620d0436af1af353f79df58f5f77385822e",
+  "handler_module_sha256": "sha256:24e879848c5d77a499f945de46542c1c0203bc7b45bcc7322ee6db85b1b59340",
   "meets_target": false,
   "node_id": "omnimarket.nodes.node_skill_dispatch_engine_orchestrator",
   "receipt_schema": "adequacy_receipt.v1",

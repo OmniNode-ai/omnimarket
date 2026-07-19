@@ -22,6 +22,7 @@ resolves to ``no_candidates`` — an honest empty cycle, not a placeholder succe
 from __future__ import annotations
 
 import logging
+from collections.abc import Mapping
 from typing import Any
 
 from omnimarket.nodes.node_skill_dispatch_engine_orchestrator.handlers.handler_dispatch_router import (
@@ -52,7 +53,9 @@ class HandlerSkillRequested:
         self._event_bus = event_bus
         self._router = router or HandlerDispatchEngineRouter()
 
-    async def handle(self, request: ModelSkillRequest) -> ModelSkillResult:
+    async def handle(
+        self, request: ModelSkillRequest | Mapping[str, object]
+    ) -> ModelSkillResult:
         """Dispatch entrypoint: route one skill-lifecycle request to a result.
 
         Boundary validation is enforced by ``ModelSkillRequest`` (skill_name
@@ -62,6 +65,9 @@ class HandlerSkillRequested:
         carries no candidate ticket set, so the router resolves to
         ``no_candidates`` — an honest empty cycle.
         """
+        if not isinstance(request, ModelSkillRequest):
+            request = ModelSkillRequest.model_validate(dict(request))
+
         if request.dry_run:
             logger.debug(
                 "dispatch_engine dry_run for skill=%r path=%r",
