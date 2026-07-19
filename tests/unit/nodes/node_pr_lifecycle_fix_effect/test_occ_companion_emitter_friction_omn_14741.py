@@ -29,8 +29,9 @@ from __future__ import annotations
 import re
 import shutil
 import subprocess
+from collections.abc import Callable
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 import yaml
@@ -43,6 +44,7 @@ from omnibase_core.validation.validator_receipt_gate import (
     compute_contract_entry_sha256,
 )
 
+from omnimarket.github_api import GitHubApiError
 from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.occ_companion_emitter import (
     OccCompanionEmitter,
 )
@@ -103,6 +105,9 @@ def _run_emit(
     *,
     pr_data: dict[str, object] | None = None,
     preseed: object = None,
+    lease_acquire: Callable[..., bool] | None = None,
+    lease_release: MagicMock | None = None,
+    open_or_sync_side_effect: BaseException | None = None,
 ) -> tuple[str, Path, list[list[str]]]:
     """Drive the REAL ``_emit_companion_sync`` with a temp clone + mocked I/O.
 
@@ -111,10 +116,21 @@ def _run_emit(
     run for real so the emitted byte-shape is exercised end to end. ``preseed`` is
     a callback ``(clone_dir) -> None`` invoked after the (mocked) clone mkdir so a
     test can plant a pre-existing contract or a prior merged receipt.
+
+    OMN-14793: the single-producer lease is always-on, so it is mocked here too.
+    ``lease_acquire`` overrides ``acquire_occ_companion_lease`` (default: grant the
+    lease) — a test drives it to prove the second concurrent producer is rejected,
+    or raises from it to prove fail-closed. ``lease_release`` lets a test assert the
+    lease is freed in the mint's ``finally``. ``open_or_sync_side_effect`` injects a
+    mid-mint failure to exercise that ``finally``.
     """
     clone_root = tmp_path / "onex_change_control"
     git_calls: list[list[str]] = []
     resolved_pr_data = pr_data if pr_data is not None else _default_pr_data()
+    acquire: Callable[..., bool] = (
+        lease_acquire if lease_acquire is not None else (lambda **_kw: True)
+    )
+    release_target = lease_release if lease_release is not None else MagicMock()
 
     def fake_rest(method: str, path: str, *, body=None, token=None) -> dict:
         if path.endswith("/pulls/321"):  # product PR GET
@@ -133,12 +149,23 @@ def _run_emit(
             preseed(cd)
         return "0" * 40  # base SHA
 
+    if open_or_sync_side_effect is not None:
+        open_or_sync_patch = patch.object(
+            emitter, "_open_or_sync_occ_pr", side_effect=open_or_sync_side_effect
+        )
+    else:
+        open_or_sync_patch = patch.object(
+            emitter, "_open_or_sync_occ_pr", return_value=55
+        )
+
     with (
         patch(f"{_MOD}.rest_json", side_effect=fake_rest),
         patch(f"{_MOD}._resolve_github_token", return_value="fake-token"),
+        patch(f"{_MOD}.acquire_occ_companion_lease", side_effect=acquire),
+        patch(f"{_MOD}.release_occ_companion_lease", release_target),
         patch.object(emitter, "_run_git", side_effect=fake_run_git),
         patch.object(emitter, "_clone_and_branch", side_effect=fake_clone),
-        patch.object(emitter, "_open_or_sync_occ_pr", return_value=55),
+        open_or_sync_patch,
         patch.object(emitter, "_observe_pr_probe", return_value=("{}", 0)),
         patch.object(emitter, "_patch_evidence_source"),
         patch(
@@ -673,4 +700,130 @@ class TestF16PrivateRepoHostedSafe:
         )
         assert all(not self._is_receipt_local(cv) for cv in ci_values), (
             "F-16: public repo must NOT be downgraded to receipt-local"
+        )
+
+
+# ---------------------------------------------------------------------------
+# OMN-14793 (OMN-14783 rec #2) — single-producer enforcement lease
+#
+# Two live OccCompanionEmitter instances (the local merge_sweep mint path and the
+# .201 effects lane) run on different hosts and force-push the SAME deterministic
+# auto/* branch, so "branch exists" is no discriminator. The guard is an atomic
+# create-if-absent lease keyed on the product PR head SHA: the first acquirer mints,
+# a second concurrent producer no-ops with ZERO side effects. These fixtures drive
+# the LIVE emitter and prove first-wins / second-rejected is load-bearing (RED vs
+# EXISTS-but-WRONG), keyed on head, fail-closed, and released on failure.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestFCSingleProducerLease:
+    def test_second_concurrent_producer_no_ops_with_zero_side_effects(
+        self, tmp_path: Path
+    ) -> None:
+        # F-C1: two producers for the same (repo, PR, head). The lease grants the
+        # first and rejects the second; the second must return skip:LEASE_HELD and
+        # perform NO git side effects (no clone/branch/commit/push/patch).
+        grants = {"n": 0}
+
+        def _acq(**_kw: object) -> bool:
+            grants["n"] += 1
+            return grants["n"] == 1  # first acquirer wins, second is rejected
+
+        action1, _root1, git1 = _run_emit(
+            OccCompanionEmitter(), tmp_path / "p1", lease_acquire=_acq
+        )
+        action2, root2, git2 = _run_emit(
+            OccCompanionEmitter(), tmp_path / "p2", lease_acquire=_acq
+        )
+
+        assert action1.startswith("authored OCC companion"), action1
+        assert git1, "first producer must perform the mint (clone/commit/push)"
+
+        assert action2.startswith("skip:LEASE_HELD"), action2
+        assert git2 == [], (
+            "second producer must perform ZERO git side effects when the lease is "
+            "held — no clone, no branch, no commit, no push"
+        )
+        assert not (root2 / "contracts").exists(), (
+            "second producer must not materialise any companion tree"
+        )
+
+    def test_without_guard_second_producer_also_authors_red_vs_exists(
+        self, tmp_path: Path
+    ) -> None:
+        # F-C2 (RED-vs-EXISTS-but-WRONG): with the lease ALWAYS granted (guard
+        # reverted) the second producer DOES author. The ONLY difference from F-C1
+        # is the lease decision, and it flips skip -> author — proving the reject in
+        # F-C1 is load-bearing, not a vacuous pass.
+        action1, _root1, git1 = _run_emit(
+            OccCompanionEmitter(), tmp_path / "p1", lease_acquire=lambda **_kw: True
+        )
+        action2, root2, git2 = _run_emit(
+            OccCompanionEmitter(), tmp_path / "p2", lease_acquire=lambda **_kw: True
+        )
+
+        assert action1.startswith("authored OCC companion"), action1
+        assert action2.startswith("authored OCC companion"), action2
+        # Both producers author when the lease is always granted — the guard's
+        # False return is the ONLY thing that prevents dual authoring.
+        assert git1, "first producer must author"
+        assert git2, "second producer ALSO authors when the guard is reverted"
+        assert (root2 / "contracts" / "OMN-9999.yaml").is_file()
+
+    def test_synchronize_on_new_head_is_not_wedged_and_keys_on_head(
+        self, tmp_path: Path
+    ) -> None:
+        # F-C3: a legitimate `synchronize` re-fire on a NEW head SHA yields a new
+        # lease key (keyed on PR + head), so it is granted and proceeds — the guard
+        # does not block a real re-mint after new commits. Also asserts the lease is
+        # keyed on the CURRENT head, not the branch or a stale head.
+        seen: dict[str, object] = {}
+
+        def _acq(**kw: object) -> bool:
+            seen.update(kw)
+            return True
+
+        new_head = "e" * 40
+        pr_data = _default_pr_data()
+        pr_data["head"] = {"sha": new_head, "ref": "feature-branch"}
+
+        action, _root, git_calls = _run_emit(
+            OccCompanionEmitter(), tmp_path, pr_data=pr_data, lease_acquire=_acq
+        )
+
+        assert action.startswith("authored OCC companion"), action
+        assert git_calls, "a re-fire on a NEW head must proceed to mint"
+        assert seen["head_sha"] == new_head, (
+            "the lease must be keyed on the CURRENT product PR head SHA"
+        )
+        assert seen["pr_number"] == 321
+
+    def test_lease_released_on_mid_mint_failure(self, tmp_path: Path) -> None:
+        # F-C5: an exception mid-mint must still release the lease in the `finally`,
+        # so a failed attempt does not wedge the head until the TTL steal fires. The
+        # original exception must still propagate.
+        release_mock = MagicMock()
+        with pytest.raises(RuntimeError, match="boom"):
+            _run_emit(
+                OccCompanionEmitter(),
+                tmp_path,
+                lease_release=release_mock,
+                open_or_sync_side_effect=RuntimeError("boom"),
+            )
+        release_mock.assert_called_once()
+
+    def test_fail_closed_on_lease_acquire_transport_error(self, tmp_path: Path) -> None:
+        # F-C6: if the lease surface is unreachable (a non-422 transport error),
+        # acquisition fails CLOSED — the emitter raises and performs NO clone/author
+        # rather than silently falling through to dual authoring.
+        clone_root = tmp_path / "onex_change_control"
+
+        def _boom(**_kw: object) -> bool:
+            raise GitHubApiError("lease surface unreachable", status_code=503)
+
+        with pytest.raises(GitHubApiError):
+            _run_emit(OccCompanionEmitter(), tmp_path, lease_acquire=_boom)
+        assert not clone_root.exists(), (
+            "fail-closed: an unreachable lease surface must not clone or author"
         )

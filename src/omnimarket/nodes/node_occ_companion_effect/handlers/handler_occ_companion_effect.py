@@ -198,6 +198,13 @@ class HandlerOccCompanionEffect:
         occ_owner, occ_name = split_repo(request.occ_repo)
         branch = plan.branch
 
+        # OMN-14793 (OMN-14783 rec #2): when this canonical write-EFFECT is
+        # shadow-wired / promoted to LIVE authority, it MUST acquire the shared
+        # single-producer lease here (before the clone/push) and release it in a
+        # finally, exactly as OccCompanionEmitter does — reuse
+        # occ_git_transport.acquire_occ_companion_lease / release_occ_companion_lease
+        # keyed on request.repo + the product head SHA. Not wired here today
+        # because this node is unwired/never-live; no behavior change.
         with tempfile.TemporaryDirectory(prefix="occ-companion-effect-") as tmp:
             clone_dir = str(Path(tmp) / "onex_change_control")
             self._clone_and_branch(clone_dir, branch, token, request.occ_repo)

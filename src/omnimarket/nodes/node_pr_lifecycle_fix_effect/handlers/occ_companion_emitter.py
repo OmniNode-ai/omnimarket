@@ -44,6 +44,7 @@ import logging
 import os
 import re
 import shlex
+import socket
 import subprocess
 import tempfile
 from collections.abc import Iterable, Sequence
@@ -99,7 +100,9 @@ from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.occ_stamp_authoring 
 )
 from omnimarket.occ_git_transport import (
     OCC_REPO,
+    acquire_occ_companion_lease,
     authenticated_occ_url,
+    release_occ_companion_lease,
     run_git,
 )
 
@@ -115,6 +118,14 @@ _OCC_REPO = OCC_REPO
 
 _DEFAULT_RUNNER = "node_pr_lifecycle_fix_effect"
 _DEFAULT_VERIFIER = "occ-evidence-source-autobind"
+
+# OMN-14793 (OMN-14783 rec #2): the single-producer lease TTL. Floor is the
+# worst-case mint duration (clone + double force-push + PR open) with margin; the
+# per-git-op bound is ``_GIT_TIMEOUT_SECONDS`` (120s) x several network git ops,
+# so 900s comfortably clears a slow-but-live producer while still self-healing a
+# crashed one within 15 min. Too short → a live producer's lease is stolen
+# mid-mint (re-introduces the race); too long → a crashed producer wedges a head.
+_DEFAULT_LEASE_TTL_SECONDS = 900
 
 # OMN-14741 F-17: emission is suppressed for a product PR that is closed, a draft,
 # or explicitly marked do-not-merge. A do-not-merge marker is any of these tokens
@@ -169,6 +180,8 @@ class OccCompanionEmitter:
         mode: Literal["dry_run", "mutate"] = "mutate",
         runner: str = _DEFAULT_RUNNER,
         verifier: str = _DEFAULT_VERIFIER,
+        producer_id: str | None = None,
+        lease_ttl_seconds: int = _DEFAULT_LEASE_TTL_SECONDS,
     ) -> None:
         self._occ_repo = occ_repo
         self._git_author_name = git_author_name
@@ -176,6 +189,13 @@ class OccCompanionEmitter:
         self._mode = mode
         self._runner = runner
         self._verifier = verifier
+        # OMN-14793: a per-host informational producer identity stamped into the
+        # lease commit metadata for forensics. NOT the lease key (the lease keys on
+        # PR head SHA so two hosts contend correctly regardless of identity). The
+        # guard itself is ALWAYS-ON and has no enable/disable flag — an optional
+        # toggle would be a silent no-check (memory feedback_optional_input…).
+        self._producer_id = producer_id or f"{runner}@{socket.gethostname()}"
+        self._lease_ttl_seconds = lease_ttl_seconds
         # verifier == runner is rejected at construction so a mis-wired producer
         # fails fast rather than authoring self-attesting receipts (OMN-12791).
         self._validate_verifier_not_runner(runner=runner, verifier=verifier)
@@ -405,264 +425,305 @@ class OccCompanionEmitter:
                 receipt_local_check_value(ticket_id=ticket, evidence_id=ci_evidence_id),
             )
 
-        with tempfile.TemporaryDirectory(prefix="occ-companion-") as tmpdir:
-            clone_dir = Path(tmpdir) / "onex_change_control"
-            base_sha = self._clone_and_branch(clone_dir, branch, tmpdir, token)
+        # OMN-14793 (OMN-14783 rec #2) single-producer lease: atomically claim
+        # this product PR head in the shared OCC repo BEFORE any clone/branch/
+        # push. Two producers (the local merge_sweep mint path and the .201
+        # effects lane) build independent OccCompanionEmitter instances on
+        # different hosts with no shared in-process state and force-push the
+        # SAME deterministic auto/* branch, so "branch exists" is not a
+        # discriminator. First-acquirer-wins keyed on the PR head SHA; a second
+        # concurrent producer no-ops here with ZERO side effects — closing the
+        # OCC#4406 dual-producer race that let a stale mint land first.
+        lease_ok = acquire_occ_companion_lease(
+            token=token,
+            repo_slug=repo_slug,
+            pr_number=pr_number,
+            head_sha=head_sha,
+            producer_id=self._producer_id,
+            lease_ttl_seconds=self._lease_ttl_seconds,
+            occ_repo=self._occ_repo,
+        )
+        if not lease_ok:
+            action = (
+                f"skip:LEASE_HELD — {repo}#{pr_number}@{head_sha[:8]} companion "
+                "already being minted by another producer (OMN-14793 / OMN-14783)"
+            )
+            logger.warning("occ_companion_emitter: %s", action)
+            return action
 
-            contract_paths: dict[str, Path] = {}
-            for ticket in tickets:
-                downstream_check_value, ci_check_value = _hosted_safe_check_values(
-                    ticket
-                )
-                contract_path = clone_dir / "contracts" / f"{ticket}.yaml"
-                contract_path.parent.mkdir(parents=True, exist_ok=True)
-                if not contract_path.is_file():
-                    contract_path.write_text(
-                        render_companion_contract(
-                            ticket_id=ticket,
+        try:
+            with tempfile.TemporaryDirectory(prefix="occ-companion-") as tmpdir:
+                clone_dir = Path(tmpdir) / "onex_change_control"
+                base_sha = self._clone_and_branch(clone_dir, branch, tmpdir, token)
+
+                contract_paths: dict[str, Path] = {}
+                for ticket in tickets:
+                    downstream_check_value, ci_check_value = _hosted_safe_check_values(
+                        ticket
+                    )
+                    contract_path = clone_dir / "contracts" / f"{ticket}.yaml"
+                    contract_path.parent.mkdir(parents=True, exist_ok=True)
+                    if not contract_path.is_file():
+                        contract_path.write_text(
+                            render_companion_contract(
+                                ticket_id=ticket,
+                                repo=repo,
+                                pr_number=pr_number,
+                                evidence_id=evidence_id,
+                                downstream_check_value=downstream_check_value,
+                                ci_check_value=ci_check_value,
+                            ),
+                            encoding="utf-8",
+                        )
+                    else:
+                        # OMN-14741 F-04: a PRE-EXISTING contract (a prior ticket
+                        # already owns contracts/<ticket>.yaml) does NOT declare THIS
+                        # PR's base rows. Without them the freshly-written
+                        # downstream/CI receipts bind to a dod_evidence item that does
+                        # not exist, leaving contract_entry_sha256=PENDING and breaking
+                        # eligibility (the OCC#4304 class). Append the two base rows
+                        # structurally (robust to a non-dod_evidence-terminal contract).
+                        self._ensure_base_dod_evidence(
+                            contract_path,
                             repo=repo,
                             pr_number=pr_number,
                             evidence_id=evidence_id,
+                            ci_evidence_id=ci_evidence_id,
                             downstream_check_value=downstream_check_value,
                             ci_check_value=ci_check_value,
+                        )
+                    contract_paths[ticket] = contract_path
+
+                    # Stage 1: downstream receipt stamped with the actual landed
+                    # commit — the squash mergeCommit.oid post-merge, else the
+                    # reviewed head SHA pre-merge (OMN-14255).
+                    downstream_dir = (
+                        clone_dir / "drift" / "dod_receipts" / ticket / evidence_id
+                    )
+                    downstream_dir.mkdir(parents=True, exist_ok=True)
+                    (downstream_dir / "command.yaml").write_text(
+                        render_downstream_receipt(
+                            ticket_id=ticket,
+                            evidence_id=evidence_id,
+                            pr_number=pr_number,
+                            repo=repo,
+                            run_timestamp=run_timestamp,
+                            commit_sha=receipt_commit_sha,
+                            branch=branch,
+                            probe_command=downstream_probe_command,
+                            probe_stdout=downstream_stdout,
+                            exit_code=downstream_exit,
+                            runner=self._runner,
+                            verifier=self._verifier,
+                            check_value=downstream_check_value,
                         ),
                         encoding="utf-8",
                     )
-                else:
-                    # OMN-14741 F-04: a PRE-EXISTING contract (a prior ticket
-                    # already owns contracts/<ticket>.yaml) does NOT declare THIS
-                    # PR's base rows. Without them the freshly-written
-                    # downstream/CI receipts bind to a dod_evidence item that does
-                    # not exist, leaving contract_entry_sha256=PENDING and breaking
-                    # eligibility (the OCC#4304 class). Append the two base rows
-                    # structurally (robust to a non-dod_evidence-terminal contract).
-                    self._ensure_base_dod_evidence(
-                        contract_path,
-                        repo=repo,
-                        pr_number=pr_number,
-                        evidence_id=evidence_id,
-                        ci_evidence_id=ci_evidence_id,
-                        downstream_check_value=downstream_check_value,
-                        ci_check_value=ci_check_value,
+
+                    # Stage 1b: CI-outcome receipt (OMN-14425) — backs the second,
+                    # substantive dod_evidence item declared alongside the existence
+                    # probe above.
+                    ci_dir = (
+                        clone_dir / "drift" / "dod_receipts" / ticket / ci_evidence_id
                     )
-                contract_paths[ticket] = contract_path
+                    ci_dir.mkdir(parents=True, exist_ok=True)
+                    (ci_dir / "command.yaml").write_text(
+                        render_ci_check_receipt(
+                            ticket_id=ticket,
+                            evidence_id=ci_evidence_id,
+                            pr_number=pr_number,
+                            repo=repo,
+                            run_timestamp=run_timestamp,
+                            commit_sha=receipt_commit_sha,
+                            branch=branch,
+                            probe_command=ci_probe_command,
+                            probe_stdout=ci_stdout,
+                            exit_code=ci_exit,
+                            runner=self._runner,
+                            verifier=self._verifier,
+                            check_value=ci_check_value,
+                        ),
+                        encoding="utf-8",
+                    )
+                    # OMN-14741 F-01: rebind ONLY this PR's own receipts, never rglob
+                    # every receipt under <ticket>/. The whole-file contract_sha256 of
+                    # a PRIOR merged receipt for the same ticket goes stale when the
+                    # contract grows, but the eligibility/receipt gates grandfather a
+                    # prior merged receipt's whole-file hash — so rewriting it here is
+                    # a NON-append-only mutation of an already-merged receipt (the
+                    # OCC#4293/4295/4296 class). Scope the rebind to this PR's rows.
+                    self._rebind_receipts(
+                        clone_dir, ticket, contract_path, {evidence_id, ci_evidence_id}
+                    )
 
-                # Stage 1: downstream receipt stamped with the actual landed
-                # commit — the squash mergeCommit.oid post-merge, else the
-                # reviewed head SHA pre-merge (OMN-14255).
-                downstream_dir = (
-                    clone_dir / "drift" / "dod_receipts" / ticket / evidence_id
+                self._run_git(["git", "add", "contracts", "drift"], cwd=str(clone_dir))
+                self._run_git(
+                    [
+                        "git",
+                        "commit",
+                        "-m",
+                        (
+                            f"evidence({', '.join(tickets)}): author OCC companion "
+                            f"for {repo}#{pr_number}\n\n"
+                            f"OCC companion by node_pr_lifecycle_fix_effect "
+                            f"(OMN-13317 F1 / OMN-13990 / OMN-14285). "
+                            f"Product PR head {head_sha}."
+                        ),
+                    ],
+                    cwd=str(clone_dir),
                 )
-                downstream_dir.mkdir(parents=True, exist_ok=True)
-                (downstream_dir / "command.yaml").write_text(
-                    render_downstream_receipt(
-                        ticket_id=ticket,
-                        evidence_id=evidence_id,
-                        pr_number=pr_number,
-                        repo=repo,
-                        run_timestamp=run_timestamp,
-                        commit_sha=receipt_commit_sha,
-                        branch=branch,
-                        probe_command=downstream_probe_command,
-                        probe_stdout=downstream_stdout,
-                        exit_code=downstream_exit,
-                        runner=self._runner,
-                        verifier=self._verifier,
-                        check_value=downstream_check_value,
-                    ),
-                    encoding="utf-8",
+                # OMN-14741 F-01: fail CLOSED before pushing if the generated tree
+                # touched anything outside this run's contract + receipt set. This is a
+                # real diff against the clone base, not the assertion-only comment the
+                # force-push previously relied on.
+                self._assert_append_only(
+                    clone_dir,
+                    base_sha,
+                    self._allowed_paths(tickets, {evidence_id, ci_evidence_id}),
+                )
+                # Force-push: the auto/* bot branch is fully REGENERATED each run
+                # (fresh clone off the default + freshly-timestamped receipts), so a
+                # `synchronize` re-fire produces history disjoint from the already
+                # pushed remote branch — a plain push would be rejected non-fast-
+                # forward (OMN-13990 / CodeRabbit). Force-push is safe here (content
+                # is deterministic and the branch always presents the companion as
+                # all-adds relative to base, keeping the append-only gate green).
+                self._run_git(
+                    ["git", "push", "--force", "origin", branch], cwd=str(clone_dir)
                 )
 
-                # Stage 1b: CI-outcome receipt (OMN-14425) — backs the second,
-                # substantive dod_evidence item declared alongside the existence
-                # probe above.
-                ci_dir = clone_dir / "drift" / "dod_receipts" / ticket / ci_evidence_id
-                ci_dir.mkdir(parents=True, exist_ok=True)
-                (ci_dir / "command.yaml").write_text(
-                    render_ci_check_receipt(
-                        ticket_id=ticket,
-                        evidence_id=ci_evidence_id,
-                        pr_number=pr_number,
-                        repo=repo,
-                        run_timestamp=run_timestamp,
-                        commit_sha=receipt_commit_sha,
-                        branch=branch,
-                        probe_command=ci_probe_command,
-                        probe_stdout=ci_stdout,
-                        exit_code=ci_exit,
-                        runner=self._runner,
-                        verifier=self._verifier,
-                        check_value=ci_check_value,
-                    ),
-                    encoding="utf-8",
-                )
-                # OMN-14741 F-01: rebind ONLY this PR's own receipts, never rglob
-                # every receipt under <ticket>/. The whole-file contract_sha256 of
-                # a PRIOR merged receipt for the same ticket goes stale when the
-                # contract grows, but the eligibility/receipt gates grandfather a
-                # prior merged receipt's whole-file hash — so rewriting it here is
-                # a NON-append-only mutation of an already-merged receipt (the
-                # OCC#4293/4295/4296 class). Scope the rebind to this PR's rows.
-                self._rebind_receipts(
-                    clone_dir, ticket, contract_path, {evidence_id, ci_evidence_id}
+                # 3. Open or sync the OCC binding PR (one per product PR).
+                occ_pr_number = self._open_or_sync_occ_pr(
+                    branch=branch, ticket=tickets[0], repo=repo, pr_number=pr_number
                 )
 
-            self._run_git(["git", "add", "contracts", "drift"], cwd=str(clone_dir))
-            self._run_git(
-                [
-                    "git",
-                    "commit",
-                    "-m",
-                    (
-                        f"evidence({', '.join(tickets)}): author OCC companion "
-                        f"for {repo}#{pr_number}\n\n"
-                        f"OCC companion by node_pr_lifecycle_fix_effect "
-                        f"(OMN-13317 F1 / OMN-13990 / OMN-14285). "
-                        f"Product PR head {head_sha}."
-                    ),
-                ],
-                cwd=str(clone_dir),
-            )
-            # OMN-14741 F-01: fail CLOSED before pushing if the generated tree
-            # touched anything outside this run's contract + receipt set. This is a
-            # real diff against the clone base, not the assertion-only comment the
-            # force-push previously relied on.
-            self._assert_append_only(
-                clone_dir,
-                base_sha,
-                self._allowed_paths(tickets, {evidence_id, ci_evidence_id}),
-            )
-            # Force-push: the auto/* bot branch is fully REGENERATED each run
-            # (fresh clone off the default + freshly-timestamped receipts), so a
-            # `synchronize` re-fire produces history disjoint from the already
-            # pushed remote branch — a plain push would be rejected non-fast-
-            # forward (OMN-13990 / CodeRabbit). Force-push is safe here (content
-            # is deterministic and the branch always presents the companion as
-            # all-adds relative to base, keeping the append-only gate green).
-            self._run_git(
-                ["git", "push", "--force", "origin", branch], cwd=str(clone_dir)
-            )
-
-            # 3. Open or sync the OCC binding PR (one per product PR).
-            occ_pr_number = self._open_or_sync_occ_pr(
-                branch=branch, ticket=tickets[0], repo=repo, pr_number=pr_number
-            )
-
-            # Genuine OCC-PR probe for the self-bind receipts.
-            occ_owner, occ_repo_name = split_repo(self._occ_repo)
-            occ_pr_data = rest_json(
-                "GET",
-                f"/repos/{occ_owner}/{occ_repo_name}/pulls/{occ_pr_number}",
-                token=token,
-            )
-            occ_state = occ_pr_data.get("state") or "open"
-            occ_head_sha = self._head_sha(str(clone_dir))
-            occ_probe_command = (
-                f"gh pr view {occ_pr_number} --repo {self._occ_repo} "
-                "--json number,state"
-            )
-            occ_stdout, occ_exit = self._observe_pr_probe(
-                probe_command=occ_probe_command,
-                token=token,
-                fallback={"number": occ_pr_number, "state": occ_state},
-            )
-
-            # Stage 2: self-binding receipt per ticket with the REAL OCC PR + head.
-            self_bind_evidence_id = f"occ-self-bind-pr-{occ_pr_number}"
-            for ticket in tickets:
-                self_bind_dir = (
-                    clone_dir
-                    / "drift"
-                    / "dod_receipts"
-                    / ticket
-                    / self_bind_evidence_id
+                # Genuine OCC-PR probe for the self-bind receipts.
+                occ_owner, occ_repo_name = split_repo(self._occ_repo)
+                occ_pr_data = rest_json(
+                    "GET",
+                    f"/repos/{occ_owner}/{occ_repo_name}/pulls/{occ_pr_number}",
+                    token=token,
                 )
-                self_bind_dir.mkdir(parents=True, exist_ok=True)
-                (self_bind_dir / "command.yaml").write_text(
-                    render_self_bind_receipt(
-                        ticket_id=ticket,
+                occ_state = occ_pr_data.get("state") or "open"
+                occ_head_sha = self._head_sha(str(clone_dir))
+                occ_probe_command = (
+                    f"gh pr view {occ_pr_number} --repo {self._occ_repo} "
+                    "--json number,state"
+                )
+                occ_stdout, occ_exit = self._observe_pr_probe(
+                    probe_command=occ_probe_command,
+                    token=token,
+                    fallback={"number": occ_pr_number, "state": occ_state},
+                )
+
+                # Stage 2: self-binding receipt per ticket with the REAL OCC PR + head.
+                self_bind_evidence_id = f"occ-self-bind-pr-{occ_pr_number}"
+                for ticket in tickets:
+                    self_bind_dir = (
+                        clone_dir
+                        / "drift"
+                        / "dod_receipts"
+                        / ticket
+                        / self_bind_evidence_id
+                    )
+                    self_bind_dir.mkdir(parents=True, exist_ok=True)
+                    (self_bind_dir / "command.yaml").write_text(
+                        render_self_bind_receipt(
+                            ticket_id=ticket,
+                            evidence_id=self_bind_evidence_id,
+                            occ_pr_number=occ_pr_number,
+                            occ_repo=self._occ_repo,
+                            run_timestamp=run_timestamp,
+                            occ_commit_sha=occ_head_sha,
+                            branch=branch,
+                            probe_command=occ_probe_command,
+                            probe_stdout=occ_stdout,
+                            exit_code=occ_exit,
+                            runner=self._runner,
+                            verifier=self._verifier,
+                        ),
+                        encoding="utf-8",
+                    )
+                    # OMN-14650: register the self-bind item in the contract's
+                    # dod_evidence BEFORE recomputing contract_sha256, so
+                    # validator_occ_merge_eligibility actually evaluates the self-bind
+                    # receipt — the ONLY receipt bound to the OCC companion PR. Without
+                    # this the receipt is written but never inspected and every auto/*
+                    # companion fails eligibility with pr_ticket_mismatch. The rebind
+                    # below then binds the self-bind receipt's per-entry hash (now that
+                    # the entry exists) and the whole-file hash across ALL receipts.
+                    self._append_self_bind_evidence(
+                        contract_paths[ticket],
                         evidence_id=self_bind_evidence_id,
                         occ_pr_number=occ_pr_number,
-                        occ_repo=self._occ_repo,
-                        run_timestamp=run_timestamp,
-                        occ_commit_sha=occ_head_sha,
-                        branch=branch,
-                        probe_command=occ_probe_command,
-                        probe_stdout=occ_stdout,
-                        exit_code=occ_exit,
-                        runner=self._runner,
-                        verifier=self._verifier,
-                    ),
-                    encoding="utf-8",
+                        ticket_id=ticket,
+                    )
+                    # OMN-14741 F-01: rebind this PR's own three receipts (downstream,
+                    # CI, self-bind) against the now-final contract — never the whole
+                    # ticket. The per-entry hash is append-invariant; only these fresh
+                    # receipts need the current whole-file hash.
+                    self._rebind_receipts(
+                        clone_dir,
+                        ticket,
+                        contract_paths[ticket],
+                        {evidence_id, ci_evidence_id, self_bind_evidence_id},
+                    )
+
+                self._run_git(["git", "add", "contracts", "drift"], cwd=str(clone_dir))
+                self._run_git(
+                    [
+                        "git",
+                        "commit",
+                        "-m",
+                        (
+                            f"evidence({', '.join(tickets)}): self-bind "
+                            f"OCC#{occ_pr_number} + rebind contract_sha256"
+                        ),
+                    ],
+                    cwd=str(clone_dir),
                 )
-                # OMN-14650: register the self-bind item in the contract's
-                # dod_evidence BEFORE recomputing contract_sha256, so
-                # validator_occ_merge_eligibility actually evaluates the self-bind
-                # receipt — the ONLY receipt bound to the OCC companion PR. Without
-                # this the receipt is written but never inspected and every auto/*
-                # companion fails eligibility with pr_ticket_mismatch. The rebind
-                # below then binds the self-bind receipt's per-entry hash (now that
-                # the entry exists) and the whole-file hash across ALL receipts.
-                self._append_self_bind_evidence(
-                    contract_paths[ticket],
-                    evidence_id=self_bind_evidence_id,
-                    occ_pr_number=occ_pr_number,
-                    ticket_id=ticket,
-                )
-                # OMN-14741 F-01: rebind this PR's own three receipts (downstream,
-                # CI, self-bind) against the now-final contract — never the whole
-                # ticket. The per-entry hash is append-invariant; only these fresh
-                # receipts need the current whole-file hash.
-                self._rebind_receipts(
+                # OMN-14741 F-01: re-assert append-only over the FINAL tree (both
+                # commits) before the deterministic all-adds force-push.
+                self._assert_append_only(
                     clone_dir,
-                    ticket,
-                    contract_paths[ticket],
-                    {evidence_id, ci_evidence_id, self_bind_evidence_id},
+                    base_sha,
+                    self._allowed_paths(
+                        tickets, {evidence_id, ci_evidence_id, self_bind_evidence_id}
+                    ),
+                )
+                # Force-push (see rationale above): deterministic all-adds regeneration.
+                self._run_git(
+                    ["git", "push", "--force", "origin", branch], cwd=str(clone_dir)
                 )
 
-            self._run_git(["git", "add", "contracts", "drift"], cwd=str(clone_dir))
-            self._run_git(
-                [
-                    "git",
-                    "commit",
-                    "-m",
-                    (
-                        f"evidence({', '.join(tickets)}): self-bind "
-                        f"OCC#{occ_pr_number} + rebind contract_sha256"
-                    ),
-                ],
-                cwd=str(clone_dir),
-            )
-            # OMN-14741 F-01: re-assert append-only over the FINAL tree (both
-            # commits) before the deterministic all-adds force-push.
-            self._assert_append_only(
-                clone_dir,
-                base_sha,
-                self._allowed_paths(
-                    tickets, {evidence_id, ci_evidence_id, self_bind_evidence_id}
-                ),
-            )
-            # Force-push (see rationale above): deterministic all-adds regeneration.
-            self._run_git(
-                ["git", "push", "--force", "origin", branch], cwd=str(clone_dir)
+            # 5. PATCH Evidence-Source: OCC#<n> back onto the product PR via REST.
+            self._patch_evidence_source(
+                repo=repo,
+                pr_number=pr_number,
+                occ_pr_number=occ_pr_number,
+                tickets=tickets,
+                existing_body=body,
             )
 
-        # 5. PATCH Evidence-Source: OCC#<n> back onto the product PR via REST.
-        self._patch_evidence_source(
-            repo=repo,
-            pr_number=pr_number,
-            occ_pr_number=occ_pr_number,
-            tickets=tickets,
-            existing_body=body,
-        )
-
-        action = (
-            f"authored OCC companion Evidence-Source: OCC#{occ_pr_number} for "
-            f"{', '.join(tickets)} on {repo}#{pr_number} "
-            f"(product head {head_sha}, branch {branch})"
-        )
-        logger.info("occ_companion_emitter: %s", action)
-        return action
+            action = (
+                f"authored OCC companion Evidence-Source: OCC#{occ_pr_number} for "
+                f"{', '.join(tickets)} on {repo}#{pr_number} "
+                f"(product head {head_sha}, branch {branch})"
+            )
+            logger.info("occ_companion_emitter: %s", action)
+            return action
+        finally:
+            # Release on BOTH success and any exception so a crashed/failed
+            # mint frees the head immediately (the TTL steal is only the
+            # backstop for a hard kill that never reaches this finally).
+            # Best-effort — never masks the mint's real return/exception.
+            release_occ_companion_lease(
+                token=token,
+                repo_slug=repo_slug,
+                pr_number=pr_number,
+                head_sha=head_sha,
+                occ_repo=self._occ_repo,
+            )
 
     # ------------------------------------------------------------------
     # Helpers
