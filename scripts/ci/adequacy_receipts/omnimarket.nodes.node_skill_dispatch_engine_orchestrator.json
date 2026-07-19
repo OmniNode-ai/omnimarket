@@ -1,0 +1,22 @@
+{
+  "branch_coverage_pct": 51.85,
+  "candidate_count": 2,
+  "coverage_target": 80.0,
+  "handler_module": "omnimarket.nodes.node_skill_dispatch_engine_orchestrator.handlers.handler_skill_requested",
+  "handler_module_sha256": "sha256:7774737aaaeff10d782f4d6e5ee99938c089bde3e5b9ad7c67e0106dcfc87f70",
+  "meets_target": false,
+  "node_id": "omnimarket.nodes.node_skill_dispatch_engine_orchestrator",
+  "receipt_schema": "adequacy_receipt.v1",
+  "recorded_at": "2026-07-19T19:14:00+00:00",
+  "recorder_schema": "adequacy_receipt.v1",
+  "selected_count": 2,
+  "selected_input_hashes": [
+    "sha256:ba96ef53e2a36f5c6bcdfffe2aa774c027c22e542a627a497a08941ba6249121",
+    "sha256:34ebd7cc09024ea28db81c53bd0c0860d9706b0547f4c87e61c859f8ba1c0781"
+  ],
+  "uncovered_waiver": {
+    "reason": "OMN-14806 is a hand-authored def-B skill-lifecycle conversion for dispatch_engine. The selected input set covers both load-bearing handler branches: dry_run short-circuit and live routing to the honest no_candidates empty cycle. Branch coverage is below the generic compute-node target because this handler is a thin lifecycle boundary around model validation and HandlerDispatchEngineRouter composition; model-boundary failures are covered separately in tests/test_golden_chain_dispatch_engine.py, while router internals are owned by the router tests. This waiver is scoped to adequacy measurement and is paired with the golden-chain equivalence proof for the same selected dispatch inputs.",
+    "uncovered_branch_count": 0
+  },
+  "volatile_mask": []
+}

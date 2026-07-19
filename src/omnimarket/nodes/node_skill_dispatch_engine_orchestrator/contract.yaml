@@ -64,7 +64,7 @@ capabilities:
 io_operations:
   - operation: skill_requested
     description: Dispatch dispatch_engine skill invocation to polymorphic agent
-    handler_method: handle_skill_requested
+    handler_method: handle
     input_fields:
       - skill_name: str
       - skill_path: str
@@ -72,10 +72,13 @@ io_operations:
       - dry_run: bool
     output_fields:
       - skill_name: str
+      - skill_path: str
       - status: str
+      - args: dict[str, str]
       - run_id: str
       - total_selected: int
       - worker_specs: list
+      - error: str | None
     idempotent: false
 
 handler_routing:

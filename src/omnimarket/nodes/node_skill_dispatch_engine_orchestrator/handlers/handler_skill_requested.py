@@ -2,36 +2,41 @@
 # SPDX-License-Identifier: MIT
 """Skill dispatch handler for node_skill_dispatch_engine_orchestrator.
 
-This is the skill-lifecycle entry for the ``dispatch_engine`` skill. It no longer
-returns a ``"dispatched"`` placeholder (OMN-13834): the live path routes through
-``HandlerDispatchEngineRouter``, a thin router that composes the two already-real
-pieces — RSD scoring (``node_rsd_fill_compute``) and self-healing per-repo fan-out
-(``node_self_healing_dispatch_orchestrator``).
+Canonical def-B skill-lifecycle handler for the ``dispatch_engine`` skill. The
+single dispatch entrypoint is ``handle(request: ModelSkillRequest) ->
+ModelSkillResult`` — the shared runtime binds it directly (Kafka auto-wiring's
+``_make_dispatch_callback`` and RuntimeLocal's ``_resolve_handler_method`` both
+resolve ``handle``), so the handler is executable, not merely registered
+(OMN-14806, burning down OMN-14510's ``_missing_handle`` class).
 
-Two surfaces:
-    * ``dispatch(request)`` — the real routed dispatch over a candidate ticket set,
-      returning a ``ModelDispatchEngineReceipt`` with concrete worker specs.
-    * ``handle_skill_requested(...)`` — the skill-lifecycle shim invoked over the
-      command bus. It validates the ``ModelSkillRequest`` boundary and, on the
-      live path, routes. The shim carries no ticket set (backlog polling is owned
-      upstream by ``node_pipeline_fill``), so a bare skill invocation with no
-      candidates resolves to ``no_candidates`` — an honest empty cycle, not a
-      placeholder success.
+``handle`` OWNS the behavior end-to-end: the ``ModelSkillRequest`` boundary is
+enforced by the model's own field validators; a ``dry_run`` short-circuits without
+routing; otherwise it routes through ``HandlerDispatchEngineRouter``, a thin router
+that composes the two already-real pieces — RSD scoring (``node_rsd_fill_compute``)
+and self-healing per-repo fan-out (``node_self_healing_dispatch_orchestrator``)
+(OMN-13834). The skill-lifecycle boundary carries no ticket set (backlog polling is
+owned upstream by ``node_pipeline_fill``), so a bare invocation with no candidates
+resolves to ``no_candidates`` — an honest empty cycle, not a placeholder success.
 """
 
 from __future__ import annotations
 
 import logging
+from collections.abc import Mapping
 from typing import Any
 
 from omnimarket.nodes.node_skill_dispatch_engine_orchestrator.handlers.handler_dispatch_router import (
     HandlerDispatchEngineRouter,
 )
-from omnimarket.nodes.node_skill_dispatch_engine_orchestrator.models.model_dispatch_engine_receipt import (
-    ModelDispatchEngineReceipt,
-)
 from omnimarket.nodes.node_skill_dispatch_engine_orchestrator.models.model_dispatch_engine_request import (
     ModelDispatchEngineRequest,
+)
+from omnimarket.nodes.node_skill_dispatch_engine_orchestrator.models.model_skill_request import (
+    ModelSkillRequest,
+)
+from omnimarket.nodes.node_skill_dispatch_engine_orchestrator.models.model_skill_result import (
+    ModelSkillResult,
+    SkillResultStatus,
 )
 
 __all__ = ["HandlerSkillRequested"]
@@ -40,7 +45,7 @@ logger = logging.getLogger(__name__)
 
 
 class HandlerSkillRequested:
-    """Skill-lifecycle handler for the dispatch_engine skill request event."""
+    """Canonical def-B skill-lifecycle handler for the dispatch_engine skill."""
 
     def __init__(
         self, event_bus: Any, router: HandlerDispatchEngineRouter | None = None
@@ -48,64 +53,48 @@ class HandlerSkillRequested:
         self._event_bus = event_bus
         self._router = router or HandlerDispatchEngineRouter()
 
-    async def dispatch(
-        self, request: ModelDispatchEngineRequest
-    ) -> ModelDispatchEngineReceipt:
-        """Run one real routed dispatch and return the receipt."""
-        return await self._router.route(request)
+    async def handle(
+        self, request: ModelSkillRequest | Mapping[str, Any]
+    ) -> ModelSkillResult:
+        """Dispatch entrypoint: route one skill-lifecycle request to a result.
 
-    async def handle_skill_requested(
-        self,
-        *,
-        skill_name: str,
-        skill_path: str,
-        args: dict[str, str] | None = None,
-        dry_run: bool = False,
-    ) -> dict[str, Any]:
-        """Handle a skill-requested event over the command bus.
-
-        Validates the request boundary, then routes. ``dry_run`` short-circuits to
-        a ``dry_run`` status without routing. The live path routes through the RSD
-        + self-healing composition; a bare shim invocation with no backlog access
-        resolves to ``no_candidates``.
+        Boundary validation is enforced by ``ModelSkillRequest`` (skill_name
+        non-blank, skill_path ends with ``SKILL.md``). ``dry_run`` short-circuits
+        to a ``dry_run`` result without routing; otherwise the request routes
+        through the RSD + self-healing composition. The bare skill-lifecycle path
+        carries no candidate ticket set, so the router resolves to
+        ``no_candidates`` — an honest empty cycle.
         """
-        args = args or {}
-        if not skill_name or not skill_name.strip():
-            raise ValueError("skill_name must not be blank")
-        if not skill_path or not skill_path.endswith("SKILL.md"):
-            raise ValueError("skill_path must end with 'SKILL.md'")
+        if not isinstance(request, ModelSkillRequest):
+            request = ModelSkillRequest.model_validate(request)
 
-        base: dict[str, Any] = {
-            "skill_name": skill_name,
-            "skill_path": skill_path,
-            "args": dict(args),
-        }
-
-        if dry_run:
+        if request.dry_run:
             logger.debug(
-                "dispatch_engine dry_run for skill=%r path=%r", skill_name, skill_path
+                "dispatch_engine dry_run for skill=%r path=%r",
+                request.skill_name,
+                request.skill_path,
             )
-            return {**base, "status": "dry_run"}
+            return ModelSkillResult(
+                skill_name=request.skill_name,
+                skill_path=request.skill_path,
+                args=dict(request.args),
+                status=SkillResultStatus.DRY_RUN,
+            )
 
         receipt = await self._router.route(ModelDispatchEngineRequest(dry_run=False))
         logger.debug(
             "dispatch_engine routed skill=%r path=%r -> status=%s workers=%d",
-            skill_name,
-            skill_path,
+            request.skill_name,
+            request.skill_path,
             receipt.status.value,
             len(receipt.worker_specs),
         )
-        return {
-            **base,
-            "status": receipt.status.value,
-            "run_id": receipt.run_id,
-            "total_selected": receipt.total_selected,
-            "worker_specs": [
-                {
-                    "worker_name": spec.worker_name,
-                    "repo": spec.repo,
-                    "ticket_ids": list(spec.ticket_ids),
-                }
-                for spec in receipt.worker_specs
-            ],
-        }
+        return ModelSkillResult(
+            skill_name=request.skill_name,
+            skill_path=request.skill_path,
+            args=dict(request.args),
+            status=SkillResultStatus(receipt.status.value),
+            run_id=receipt.run_id,
+            total_selected=receipt.total_selected,
+            worker_specs=receipt.worker_specs,
+        )
