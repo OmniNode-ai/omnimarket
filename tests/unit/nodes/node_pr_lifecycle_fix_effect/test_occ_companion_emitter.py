@@ -271,6 +271,13 @@ class TestFullEmitFlow:
         with (
             patch(f"{_MOD}.rest_json", side_effect=fake_rest),
             patch(f"{_MOD}._resolve_github_token", return_value="fake-token"),
+            # OMN-14793: the single-producer lease is always-on; this driver
+            # exercises the mint, so grant the lease and no-op the release. The
+            # lease acquire/reject behaviour is proven directly in the OMN-14793
+            # fixtures (test_occ_companion_emitter_friction_omn_14741.py) and the
+            # helper unit tests (test_occ_git_transport_lease.py).
+            patch(f"{_MOD}.acquire_occ_companion_lease", return_value=True),
+            patch(f"{_MOD}.release_occ_companion_lease"),
             patch.object(emitter, "_run_git", side_effect=fake_run_git),
             patch.object(
                 emitter,
