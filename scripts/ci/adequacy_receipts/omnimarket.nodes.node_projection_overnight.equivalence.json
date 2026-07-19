@@ -1,0 +1,9 @@
+{
+  "node_id": "omnimarket.nodes.node_projection_overnight",
+  "selected_input_hashes": [
+    "sha256:4eba259be181ab0a9b6ca02f92efe5b7dcb8089b231b0e4a9d7f365b00302ac6",
+    "sha256:0ba7755e82accf6570291de2bc491ff73601f5e9983f6d0e54327a35dfb8a5bc",
+    "sha256:902d5c6b540b7b484c580b44a8b983b611a114c61d4d90993cec34356907df57"
+  ],
+  "status": "pass"
+}
