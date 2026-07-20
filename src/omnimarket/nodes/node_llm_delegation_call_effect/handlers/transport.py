@@ -173,11 +173,25 @@ def post_chat_completion(
 
 
 def _httpx_probe_health(probe_url: str, *, timeout_seconds: float) -> bool:
+    """Probe ``/health`` via httpx, returning False ONLY on a genuine transport failure.
+
+    OMN-14097: a bare ``except Exception: return False`` here conflated a real
+    reachability failure (connection refused, DNS failure, timeout — all raised
+    as ``httpx.HTTPError``/``OSError``) with a programming or environment defect
+    (``ImportError``, ``AttributeError``, ``TypeError``, ``NameError`` — the exact
+    signature of a broken/mismatched venv, such as the stale ``omnibase-spi``
+    import gap that originally surfaced this bug). Both used to resolve to the
+    SAME ``False`` -> "unhealthy" -> silently escalate to a paid cloud tier with
+    a fully successful (``exit 0``) result, spending real money for a bug that
+    had nothing to do with the endpoint being unreachable. Only the network/
+    transport exception classes are caught here; anything else propagates so
+    the caller fails loud instead of quietly paying for cloud.
+    """
     try:
         with httpx.Client(timeout=timeout_seconds) as client:
             resp = client.get(probe_url, timeout=timeout_seconds)
         return resp.status_code < 500
-    except Exception:
+    except (httpx.HTTPError, OSError):
         return False
 
 
