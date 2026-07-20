@@ -1,0 +1,10 @@
+{
+  "case_id": "tier_no_match_raises",
+  "fingerprint": "sha256:d6f97f352a0b307c76add4b08fa07cd80e873ef7d5617f261a72ef71dfaa93bf",
+  "input_hash": "sha256:94ae6ad6c563eb513dddac9c1cffb3524203a513e698d1eef411d0980c3713ea",
+  "result": {
+    "error_type": "ValueError",
+    "kind": "error",
+    "message": "required_tier='premium' matched no models in the routing policy. Available tiers: ['local']"
+  }
+}

@@ -1,0 +1,27 @@
+{
+  "branch_coverage_pct": 81.36,
+  "candidate_count": 15,
+  "coverage_target": 80.0,
+  "handler_module": "omnimarket.nodes.node_llm_delegation_routing_compute.handlers.handler_delegation_routing",
+  "handler_module_sha256": "sha256:6879c1fac645e8dc2fd98e87829de56aa41138852b3e5487296b952c3ef012b7",
+  "meets_target": true,
+  "node_id": "omnimarket.nodes.node_llm_delegation_routing_compute",
+  "receipt_schema": "adequacy_receipt.v1",
+  "recorded_at": "2026-07-20T05:50:26.064141+00:00",
+  "recorder_schema": "adequacy_receipt.v1",
+  "selected_count": 10,
+  "selected_input_hashes": [
+    "sha256:37e852ceda5e13177e31a481860311e87ad74b622ffc255d208a2b06c5163dfe",
+    "sha256:516322057ebb3353061dc4136ab3bd4a383e304df4e15f90405dd8c9e406c569",
+    "sha256:2e58deb5314c59f017344921dbbf1227d2f66875c926f8b2a219390189b9743d",
+    "sha256:94ae6ad6c563eb513dddac9c1cffb3524203a513e698d1eef411d0980c3713ea",
+    "sha256:106a703c057514d666795e20ae40489c64bdcb9b546424cb772ec952603fe5db",
+    "sha256:8e15e1e770ef1a3d8f3e9bcd4bd71f6740ddf626b2ea411d845596cff34603a5",
+    "sha256:847ba1e77f361aee7d89a17fb1769488c432be20c24e975250d6251ad3973f71",
+    "sha256:905379b5ce7782ad63899c1f997228387e0298d8e76bda96b2c341f818c04056",
+    "sha256:37519822e97e79f8a9298ddc1f86bf099ad1c6f7b4684b416ffe5e016643b310",
+    "sha256:e35f3973b655a4ad2e08d382c57903db598fbc60a5f7ad7a38fea992a358c332"
+  ],
+  "uncovered_waiver": null,
+  "volatile_mask": []
+}

@@ -23,7 +23,6 @@ from __future__ import annotations
 import asyncio
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
-from uuid import uuid4
 
 import pytest
 
@@ -533,6 +532,6 @@ def test_unknown_task_type_raises() -> None:
 def test_handler_returns_routing_output() -> None:
     handler = HandlerDelegationRouting()
     inp = _input()
-    result = asyncio.run(handler.handle(uuid4(), inp))
+    result = asyncio.run(handler.handle(inp))
     assert isinstance(result, ModelDelegationRoutingOutput)
     assert result.selection.model_id == "model-a"

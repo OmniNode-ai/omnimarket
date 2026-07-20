@@ -1,0 +1,43 @@
+{
+  "base_ref": "7eacd93786d34bbd733de8132e10cab2043902c3",
+  "canonical_handler_module": "omnimarket.nodes.node_llm_delegation_routing_compute.handlers.handler_delegation_routing",
+  "legacy_handler_module": "omnimarket.nodes.node_llm_delegation_routing_compute.handlers.handler_delegation_routing",
+  "node_id": "omnimarket.nodes.node_llm_delegation_routing_compute",
+  "parity": {
+    "selected_input_hashes": [
+      "sha256:37e852ceda5e13177e31a481860311e87ad74b622ffc255d208a2b06c5163dfe",
+      "sha256:516322057ebb3353061dc4136ab3bd4a383e304df4e15f90405dd8c9e406c569",
+      "sha256:2e58deb5314c59f017344921dbbf1227d2f66875c926f8b2a219390189b9743d",
+      "sha256:94ae6ad6c563eb513dddac9c1cffb3524203a513e698d1eef411d0980c3713ea",
+      "sha256:106a703c057514d666795e20ae40489c64bdcb9b546424cb772ec952603fe5db",
+      "sha256:8e15e1e770ef1a3d8f3e9bcd4bd71f6740ddf626b2ea411d845596cff34603a5",
+      "sha256:847ba1e77f361aee7d89a17fb1769488c432be20c24e975250d6251ad3973f71",
+      "sha256:905379b5ce7782ad63899c1f997228387e0298d8e76bda96b2c341f818c04056",
+      "sha256:37519822e97e79f8a9298ddc1f86bf099ad1c6f7b4684b416ffe5e016643b310",
+      "sha256:e35f3973b655a4ad2e08d382c57903db598fbc60a5f7ad7a38fea992a358c332"
+    ],
+    "status": "pass",
+    "test_ids": [
+      "tests/unit/nodes/node_llm_delegation_routing_compute/test_defb_flip_omn14834.py::test_handle_is_single_payload_adaptable",
+      "tests/unit/nodes/node_llm_delegation_routing_compute/test_defb_flip_omn14834.py::test_multipositional_handle_is_the_red",
+      "tests/unit/nodes/node_llm_delegation_routing_compute/test_defb_flip_omn14834.py::test_golden_fingerprint_discriminates",
+      "tests/unit/nodes/node_llm_delegation_routing_compute/test_defb_flip_omn14834.py::test_defb_output_matches_recorded_golden[multi_skip_degraded_a_unhealthy_b]",
+      "tests/unit/nodes/node_llm_delegation_routing_compute/test_defb_flip_omn14834.py::test_defb_output_matches_recorded_golden[context_overflow_skips_a]",
+      "tests/unit/nodes/node_llm_delegation_routing_compute/test_defb_flip_omn14834.py::test_defb_output_matches_recorded_golden[tier_all_skipped_raises]",
+      "tests/unit/nodes/node_llm_delegation_routing_compute/test_defb_flip_omn14834.py::test_defb_output_matches_recorded_golden[tier_no_match_raises]",
+      "tests/unit/nodes/node_llm_delegation_routing_compute/test_defb_flip_omn14834.py::test_defb_output_matches_recorded_golden[unknown_task_type_raises]",
+      "tests/unit/nodes/node_llm_delegation_routing_compute/test_defb_flip_omn14834.py::test_defb_output_matches_recorded_golden[no_capacity_a_skips]",
+      "tests/unit/nodes/node_llm_delegation_routing_compute/test_defb_flip_omn14834.py::test_defb_output_matches_recorded_golden[degraded_fallback_raises]",
+      "tests/unit/nodes/node_llm_delegation_routing_compute/test_defb_flip_omn14834.py::test_defb_output_matches_recorded_golden[unhealthy_fallback_raises]",
+      "tests/unit/nodes/node_llm_delegation_routing_compute/test_defb_flip_omn14834.py::test_defb_output_matches_recorded_golden[expired_degradation_ignored]",
+      "tests/unit/nodes/node_llm_delegation_routing_compute/test_defb_flip_omn14834.py::test_defb_output_matches_recorded_golden[tier_override_frontier]"
+    ]
+  },
+  "preserved_symbols": [
+    "_estimate_tokens",
+    "_is_degraded",
+    "_is_unhealthy",
+    "_select_model"
+  ],
+  "receipt_schema": "handflip_proof.v1"
+}
