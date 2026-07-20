@@ -1,0 +1,87 @@
+{
+  "input": {
+    "existing_profile": {
+      "agent_id": null,
+      "created_at": "2026-01-01T00:00:00Z",
+      "domain_familiarity": {},
+      "persona_version": 5,
+      "preferred_tone": "concise",
+      "rebuilt_from_signals": 5,
+      "session_count": 5,
+      "technical_level": "advanced",
+      "user_id": "user-1",
+      "vocabulary_complexity": 0.8
+    },
+    "signals": [
+      {
+        "confidence": 0.9,
+        "emitted_at": "2026-01-01T00:00:00Z",
+        "evidence": "observed behavior",
+        "inferred_value": "advanced",
+        "session_id": "sess-1",
+        "signal_id": "00000000-0000-0000-0000-00000000005a",
+        "signal_type": "technical_level",
+        "user_id": "user-1"
+      },
+      {
+        "confidence": 0.9,
+        "emitted_at": "2026-01-01T00:00:00Z",
+        "evidence": "observed behavior",
+        "inferred_value": "advanced",
+        "session_id": "sess-1",
+        "signal_id": "00000000-0000-0000-0000-00000000005b",
+        "signal_type": "technical_level",
+        "user_id": "user-1"
+      },
+      {
+        "confidence": 0.9,
+        "emitted_at": "2026-01-01T00:00:00Z",
+        "evidence": "observed behavior",
+        "inferred_value": "advanced",
+        "session_id": "sess-1",
+        "signal_id": "00000000-0000-0000-0000-00000000005c",
+        "signal_type": "technical_level",
+        "user_id": "user-1"
+      },
+      {
+        "confidence": 0.8,
+        "emitted_at": "2026-01-01T00:00:00Z",
+        "evidence": "observed behavior",
+        "inferred_value": "beginner",
+        "session_id": "sess-1",
+        "signal_id": "00000000-0000-0000-0000-00000000005d",
+        "signal_type": "technical_level",
+        "user_id": "user-1"
+      },
+      {
+        "confidence": 0.8,
+        "emitted_at": "2026-01-01T00:00:00Z",
+        "evidence": "observed behavior",
+        "inferred_value": "beginner",
+        "session_id": "sess-1",
+        "signal_id": "00000000-0000-0000-0000-00000000005e",
+        "signal_type": "technical_level",
+        "user_id": "user-1"
+      }
+    ],
+    "user_id": "user-1"
+  },
+  "output": {
+    "error_message": null,
+    "persona": {
+      "agent_id": null,
+      "created_at": "1970-01-01T00:00:00+00:00",
+      "domain_familiarity": {},
+      "persona_version": 6,
+      "preferred_tone": "explanatory",
+      "rebuilt_from_signals": 5,
+      "session_count": 6,
+      "technical_level": "advanced",
+      "user_id": "user-1",
+      "vocabulary_complexity": 0.8
+    },
+    "signals_processed": 5,
+    "status": "success"
+  },
+  "output_sha256": "sha256:a24f85f22af0c6f3d3c5c9d45bf7755bcfd7848f3531a6d77832abcc4a4fc71d"
+}

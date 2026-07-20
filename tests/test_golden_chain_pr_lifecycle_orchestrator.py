@@ -6,7 +6,7 @@ Uses EventBusInmemory, zero infra required.
 
 Mock handler signatures match real sub-handler signatures (OMN-9234 fix):
   - MockInventory.handle(input_model: ModelPrInventoryInput) → sync
-  - MockTriage.handle(correlation_id, prs: tuple[ModelPrInventoryItem, ...]) → async
+  - MockTriage.handle(request: ModelPrTriageInput) → async
   - MockReducer.handle(*args, **kwargs) → async (accepts orchestrator kwargs)
   - MockMerge.handle(command: ModelPrMergeCommand) → async
   - MockFix.handle(command: ModelPrLifecycleFixCommand) → async
@@ -94,21 +94,17 @@ class MockInventory:
 
 
 class MockTriage:
-    """Mock matching HandlerPrLifecycleTriage.handle(correlation_id, prs) signature."""
+    """Mock matching HandlerPrLifecycleTriage.handle(request) signature."""
 
     def __init__(self, classified: tuple[TriageRecord, ...] = ()) -> None:
         self._classified = classified
         self.call_count = 0
         self.last_correlation_id: UUID | None = None
 
-    async def handle(
-        self,
-        correlation_id: UUID,
-        prs: Any,
-    ) -> Any:
-        """Positional args: (correlation_id, prs) — no keyword-only."""
+    async def handle(self, request: Any) -> Any:
+        """Def-B: single ModelPrTriageInput request (OMN-14837)."""
         self.call_count += 1
-        self.last_correlation_id = correlation_id
+        self.last_correlation_id = request.correlation_id
         green = sum(1 for r in self._classified if r.category == EnumPrCategory.GREEN)
         non_green = len(self._classified) - green
         return PrTriageResult(
@@ -712,7 +708,7 @@ class TestPrLifecycleOrchestratorGoldenChain:
         """
 
         class BrokenTriage:
-            async def handle(self, correlation_id: Any, prs: Any) -> Any:
+            async def handle(self, request: Any) -> Any:
                 msg = "triage classifier crashed"
                 raise RuntimeError(msg)
 

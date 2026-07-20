@@ -3,11 +3,22 @@
 """Full declared-state COMPUTE coverage for node_pr_lifecycle_triage_compute,
 driven over the canonical in-memory bus.
 
-OMN-13674 (cluster merge_sweep_pr_lifecycle_compute). The COMPUTE handler is
-dispatched through ``LocalRuntimeBusAdapter`` over ``EventBusInmemory`` (via the
-``integration_event_bus`` fixture) — a command lands on the contract-declared
-subscribe topic and the runtime auto-emits the classification onto the
-contract-declared publish topic ``onex.evt.omnimarket.pr-lifecycle-triage-completed.v1``.
+OMN-13674 (cluster merge_sweep_pr_lifecycle_compute); def-B flip OMN-14837.
+The COMPUTE handler is dispatched through ``LocalRuntimeBusAdapter`` over
+``EventBusInmemory`` (via the ``integration_event_bus`` fixture) — a command lands
+on the contract-declared subscribe topic and the runtime auto-emits the
+classification onto the contract-declared publish topic
+``onex.evt.omnimarket.pr-lifecycle-triage-completed.v1``.
+
+Since OMN-14837 the node is canonical definition-B: ``HandlerPrLifecycleTriage``
+is bound DIRECTLY to the adapter (no ``_TriageBusWrapper`` bridge) and the shared
+runtime resolves its single typed-payload entrypoint
+``handle(request: ModelPrTriageInput) -> ModelPrTriageOutput``. This drives the
+handler through the REAL runtime dispatch resolution — proving it is executable,
+not merely registered. RED before the flip: the def-A ``handle(correlation_id,
+prs)`` fell through the adapter to a ``**kwargs`` call with a JSON-dumped ``prs``
+(list of dicts), so ``_classify_pr`` raised ``AttributeError`` and no terminal
+event was published. GREEN after: the def-B request is passed as the sole object.
 
 COMPUTE DoD:
   * every declared verdict class reached (GREEN / RED / CONFLICTED /
@@ -51,25 +62,11 @@ _SUBSCRIBE_TOPIC = "onex.evt.omnimarket.pr-lifecycle-inventory-completed.v1"
 _PUBLISH_TOPIC = "onex.evt.omnimarket.pr-lifecycle-triage-completed.v1"
 
 
-class _TriageBusWrapper:
-    """Bridge the runtime bus (single input model) onto the triage handler's
-    ``handle(correlation_id, prs)`` calling convention."""
-
-    def __init__(self, handler: HandlerPrLifecycleTriage) -> None:
-        self._handler = handler
-
-    async def handle(self, input_model: ModelPrTriageInput) -> ModelPrTriageOutput:
-        return await self._handler.handle(
-            correlation_id=input_model.correlation_id,
-            prs=input_model.prs,
-        )
-
-
 async def _run_over_bus(bus: Any, command: ModelPrTriageInput) -> ModelPrTriageOutput:
     """Publish a triage command onto the declared subscribe topic and return the
     terminal ``ModelPrTriageOutput`` parsed off the declared publish topic."""
     adapter = LocalRuntimeBusAdapter(
-        handler=_TriageBusWrapper(HandlerPrLifecycleTriage()),
+        handler=HandlerPrLifecycleTriage(),
         handler_name="pr-lifecycle-triage-compute",
         input_model_cls=ModelPrTriageInput,
         output_topic=_PUBLISH_TOPIC,

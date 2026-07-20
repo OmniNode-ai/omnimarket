@@ -1,0 +1,10 @@
+{
+  "case_id": "unknown_task_type_raises",
+  "fingerprint": "sha256:f042781237597bac508da9f79d96fc82fb5471de3c275ba77d6010530ed4f56e",
+  "input_hash": "sha256:106a703c057514d666795e20ae40489c64bdcb9b546424cb772ec952603fe5db",
+  "result": {
+    "error_type": "ValueError",
+    "kind": "error",
+    "message": "No routing policy found for task_type='nonexistent_task'. Known task types: ['changelog']"
+  }
+}

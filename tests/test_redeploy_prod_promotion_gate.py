@@ -27,8 +27,7 @@ from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
 import pytest
-from omnibase_core.enums.enum_node_kind import EnumNodeKind
-from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
+from omnibase_core.runtime.runtime_local_adapter import _invoke_handle_method
 
 from omnimarket.events.runtime_deployment import (
     EnumOccGateState,
@@ -255,37 +254,27 @@ class TestProdPromotionGateCompute:
         decision = evaluate_gate(_command(projection=None))
         assert decision.allowed is False
 
-    async def test_handle_returns_compute_output(self) -> None:
+    async def test_handle_returns_decision(self) -> None:
+        # def-B (OMN-14838): handle(request) returns the decision directly; the
+        # ModelHandlerOutput/envelope boundary is owned by the runtime adapter.
         handler = HandlerProdPromotionGate()
         command = _command(projection=_ready_projection())
-        envelope: ModelEventEnvelope[ModelProdPromotionGateCommand] = (
-            ModelEventEnvelope(
-                payload=command,
-                correlation_id=command.correlation_id,
-                event_type="onex.cmd.omnimarket.prod-promotion-gate-evaluate.v1",
-            )
-        )
-        output = await handler.handle(envelope)
+        decision = await handler.handle(command)
 
-        assert output.node_kind == EnumNodeKind.COMPUTE
-        assert isinstance(output.result, ModelProdPromotionGateDecision)
-        assert output.result.allowed is True
-        assert output.correlation_id == command.correlation_id
-        # COMPUTE must not emit events/intents/projections.
-        assert output.events == ()
-        assert output.intents == ()
-        assert output.projections == ()
+        assert isinstance(decision, ModelProdPromotionGateDecision)
+        assert decision.allowed is True
+        assert decision.image_digest == _DIGEST_STABILITY
 
-    async def test_handle_accepts_dict_payload(self) -> None:
-        handler = HandlerProdPromotionGate()
+    async def test_handle_accepts_dict_payload_via_adapter(self) -> None:
+        # def-B (OMN-14838): dict->model coercion is the shared runtime adapter's
+        # job, not the handler's. Drive the real adapter over a raw dict payload.
         command = _command(runtime_lane=EnumRuntimeLane.DEV, projection=None)
-        envelope: ModelEventEnvelope[dict[str, object]] = ModelEventEnvelope(
-            payload=command.model_dump(mode="json"),
-            correlation_id=command.correlation_id,
+        result = _invoke_handle_method(
+            HandlerProdPromotionGate().handle, command.model_dump(mode="json")
         )
-        output = await handler.handle(envelope)
-        assert isinstance(output.result, ModelProdPromotionGateDecision)
-        assert output.result.allowed is True
+        decision = await result  # type: ignore[misc]
+        assert isinstance(decision, ModelProdPromotionGateDecision)
+        assert decision.allowed is True
 
 
 # ---------------------------------------------------------------------------
@@ -412,8 +401,8 @@ class TestStabilityCandidateProdRefusal:
             assert decision.allowed is True
 
     async def test_handle_emits_candidate_refusal_decision(self) -> None:
-        # The refusal is observable as the COMPUTE node's decision result — the
-        # gate-rejection "event" — with NO prod mutation involved.
+        # The refusal is observable as the def-B decision result — the
+        # gate-rejection — with NO prod mutation involved.
         handler = HandlerProdPromotionGate()
         command = _command(projection=_ready_projection()).model_copy(
             update={
@@ -421,20 +410,7 @@ class TestStabilityCandidateProdRefusal:
                 "non_main_lineage": True,
             }
         )
-        envelope: ModelEventEnvelope[ModelProdPromotionGateCommand] = (
-            ModelEventEnvelope(
-                payload=command,
-                correlation_id=command.correlation_id,
-                event_type="onex.cmd.omnimarket.prod-promotion-gate-evaluate.v1",
-            )
-        )
-        output = await handler.handle(envelope)
-        assert isinstance(output.result, ModelProdPromotionGateDecision)
-        assert output.result.allowed is False
-        assert (
-            EnumProdGrantReason.CANDIDATE_NOT_AUTHORIZED.value in output.result.reason
-        )
-        # COMPUTE purity preserved.
-        assert output.events == ()
-        assert output.intents == ()
-        assert output.projections == ()
+        decision = await handler.handle(command)
+        assert isinstance(decision, ModelProdPromotionGateDecision)
+        assert decision.allowed is False
+        assert EnumProdGrantReason.CANDIDATE_NOT_AUTHORIZED.value in decision.reason

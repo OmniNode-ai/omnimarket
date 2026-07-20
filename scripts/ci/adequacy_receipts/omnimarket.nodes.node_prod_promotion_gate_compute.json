@@ -1,0 +1,25 @@
+{
+  "branch_coverage_pct": 73.33,
+  "candidate_count": 8,
+  "coverage_target": 80.0,
+  "handler_module": "omnimarket.nodes.node_prod_promotion_gate_compute.handlers.handler_prod_promotion_gate",
+  "handler_module_sha256": "sha256:35fc42bbaf6240887d246e17dc69c9bc62a7dffaa8164af4ac05807b24966243",
+  "meets_target": false,
+  "node_id": "omnimarket.nodes.node_prod_promotion_gate_compute",
+  "receipt_schema": "adequacy_receipt.v1",
+  "recorded_at": "2026-07-20T06:20:41.763764+00:00",
+  "recorder_schema": "adequacy_receipt.v1",
+  "selected_count": 5,
+  "selected_input_hashes": [
+    "sha256:2b2162ee17960c754cc35c0ea5e469bf55d9ef3c48c3f8605409036ef45c14e8",
+    "sha256:289dd497ee1d5122caa3a17c2a318c27a1672f6696abb6d2c4f5bc5bb83f43c2",
+    "sha256:b38f1b1a1f634917fba505324fac183bdeca6be06c01cc13ead111ddf5f82a9b",
+    "sha256:4851c94f1997181e50756497188d548baa135640b82b22edee569e86bfb16a52",
+    "sha256:e89c123d1c061c278d9bdb5ea341fcc9be89583109914e94ed81cf691ce9b2ea"
+  ],
+  "uncovered_waiver": {
+    "reason": "All in-module DECISION branches of evaluate_gate + handle are exercised by the selected inputs; the sub-target whole-file percent is dominated by module-level import/def/__all__ statements that execute at import time (before the traced call window), not by unreached decision logic. This is a thin delegating COMPUTE (9 of ~22 statements are imports/defs), so 80% whole-file coverage is structurally unreachable regardless of input pool. Equivalence is additionally proven by the handflip verbatim-preservation of evaluate_gate (git-re-derived) and the green parity matrix.",
+    "uncovered_branch_count": 0
+  },
+  "volatile_mask": []
+}

@@ -1,0 +1,48 @@
+{
+  "input": {
+    "existing_profile": null,
+    "signals": [
+      {
+        "confidence": 0.9,
+        "emitted_at": "2026-01-01T00:00:00Z",
+        "evidence": "observed behavior",
+        "inferred_value": "omnimarket",
+        "session_id": "sess-1",
+        "signal_id": "00000000-0000-0000-0000-000000000029",
+        "signal_type": "domain_familiarity",
+        "user_id": "user-1"
+      },
+      {
+        "confidence": 0.9,
+        "emitted_at": "2026-01-01T00:00:00Z",
+        "evidence": "observed behavior",
+        "inferred_value": "omnimarket",
+        "session_id": "sess-1",
+        "signal_id": "00000000-0000-0000-0000-00000000002a",
+        "signal_type": "domain_familiarity",
+        "user_id": "user-1"
+      }
+    ],
+    "user_id": "user-1"
+  },
+  "output": {
+    "error_message": null,
+    "persona": {
+      "agent_id": null,
+      "created_at": "1970-01-01T00:00:00+00:00",
+      "domain_familiarity": {
+        "omnimarket": 0.2
+      },
+      "persona_version": 1,
+      "preferred_tone": "explanatory",
+      "rebuilt_from_signals": 2,
+      "session_count": 1,
+      "technical_level": "intermediate",
+      "user_id": "user-1",
+      "vocabulary_complexity": 0.5
+    },
+    "signals_processed": 2,
+    "status": "success"
+  },
+  "output_sha256": "sha256:0a4cda38e06f64fc5507ba697fc13a050ca10fc133696ee65f7d5ef35b5a2ebf"
+}

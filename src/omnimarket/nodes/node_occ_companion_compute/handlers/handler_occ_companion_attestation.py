@@ -34,7 +34,6 @@ from __future__ import annotations
 
 import logging
 from typing import Literal
-from uuid import UUID
 
 from omnimarket.nodes.node_occ_companion_compute.handlers.handler_occ_companion_compute import (
     compute_companion_plan,
@@ -110,15 +109,18 @@ class HandlerOccCompanionAttestation:
 
     async def handle(
         self,
-        correlation_id: UUID,
         request: ModelOccAttestationRequest,
     ) -> ModelOccAttestationResult:
-        """Verify ``request.observed_files`` against the recomputed canonical plan."""
+        """Verify ``request.observed_files`` against the recomputed canonical plan.
+
+        Canonical definition-B entrypoint: a single typed-payload parameter the
+        shared runtime adapter binds directly (no ``correlation_id`` positional,
+        no event-envelope type in the core).
+        """
         logger.info(
-            "occ_companion_attestation: repo=%s pr=%s correlation_id=%s",
+            "occ_companion_attestation: repo=%s pr=%s",
             request.expected.repo,
             request.expected.pr_number,
-            correlation_id,
         )
         return verify_companion_attestation(request.observed_files, request.expected)
 

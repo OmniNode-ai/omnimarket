@@ -1,0 +1,23 @@
+{
+  "case_id": "unhealthy_a_skips",
+  "fingerprint": "sha256:f2baa29a686689b1121c90ed640e56f65acdbca8128bf9592e152b348befc7f8",
+  "input_hash": "sha256:e3a4e0a6bee568f6827aeebb5cac2866f3f8d5484408690872535d71265b3ba3",
+  "result": {
+    "kind": "ok",
+    "output": {
+      "selection": {
+        "cost_basis": "zero_marginal_api_cost",
+        "endpoint_env": "LLM_B_URL",
+        "model_id": "model-b",
+        "selection_reason": "preferred model selected",
+        "skipped_models": [
+          {
+            "model_id": "model-a",
+            "skip_reason": "endpoint 'LLM_A_URL' reported unhealthy at 2000-01-01T00:00:00+00:00"
+          }
+        ],
+        "tier": "local"
+      }
+    }
+  }
+}

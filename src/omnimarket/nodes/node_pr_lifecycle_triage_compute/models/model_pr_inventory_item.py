@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""ModelPrInventoryItem — a single PR's collected inventory state.
+"""Compatibility export for the shared PR lifecycle inventory item model.
 
 This model represents the raw data produced by pr_lifecycle_inventory_compute.
 The triage node consumes these items and classifies each one.
@@ -12,68 +12,6 @@ Related:
 
 from __future__ import annotations
 
-from pydantic import BaseModel, ConfigDict, Field
-
-
-class ModelPrInventoryItem(BaseModel):
-    """Raw inventory state for a single PR, produced by the inventory node."""
-
-    model_config = ConfigDict(frozen=True, extra="forbid")
-
-    pr_number: int = Field(..., description="GitHub PR number.")
-    repo: str = Field(
-        ..., description="Repository slug (e.g. 'OmniNode-ai/omnimarket')."
-    )
-    title: str = Field(default="", description="PR title.")
-    branch: str = Field(default="", description="Head branch name.")
-    ticket_ids: tuple[str, ...] = Field(
-        default_factory=tuple,
-        description="Canonical OMN ticket identifiers bound to this PR.",
-    )
-    ci_status: str = Field(
-        default="unknown",
-        description=(
-            "Overall CI status from gh pr checks. "
-            "Expected values: 'passing', 'failing', 'pending', 'skipped', 'unknown'."
-        ),
-    )
-    has_conflicts: bool = Field(
-        default=False,
-        description="True if the PR has merge conflicts.",
-    )
-    approved: bool = Field(
-        default=False,
-        description="True if the PR has at least one approving review and no pending CHANGES_REQUESTED.",
-    )
-    review_count: int = Field(
-        default=0,
-        ge=0,
-        description="Number of completed reviews (approved + changes_requested).",
-    )
-    open_threads: int = Field(
-        default=0,
-        ge=0,
-        description="Number of unresolved review threads.",
-    )
-    failed_check_names: tuple[str, ...] = Field(
-        default_factory=tuple,
-        description=(
-            "Names of failed checks. Used to distinguish receipt-only OCC "
-            "dependency failures from product-code failures."
-        ),
-    )
-    failed_check_flaky_evidence: tuple[str, ...] = Field(
-        default_factory=tuple,
-        description="Machine evidence that failed checks are rerunnable infra flakes.",
-    )
-    failed_check_reason_codes: tuple[str, ...] = Field(
-        default_factory=tuple,
-        description=(
-            "Typed merge-check reason codes (OMN-14765) for the failed checks, "
-            "carried from inventory so triage/routing keys on the classified "
-            "code instead of guessing from check names."
-        ),
-    )
-
+from omnimarket.events.pr_lifecycle_triage import ModelPrInventoryItem
 
 __all__: list[str] = ["ModelPrInventoryItem"]

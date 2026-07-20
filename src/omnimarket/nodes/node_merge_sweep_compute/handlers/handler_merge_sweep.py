@@ -465,14 +465,12 @@ class NodeMergeSweep:
         class _PrebuiltTriage:
             """Returns pre-classified triage without network calls.
 
-            Signature matches ProtocolTriageHandler: handle(correlation_id, prs).
+            Signature matches ProtocolTriageHandler: handle(request).
             Returns PrTriageResult directly so the orchestrator short-circuits
             the ModelPrTriageOutput mapping path.
             """
 
-            async def handle(
-                self, correlation_id: object, prs: object
-            ) -> PrTriageResult:
+            async def handle(self, request: object) -> PrTriageResult:
                 green_count = len(triage_records)
                 return PrTriageResult(
                     classified=triage_records,
