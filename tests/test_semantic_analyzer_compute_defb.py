@@ -19,6 +19,7 @@ Providers are faked (deterministic, no network) so the proof is hermetic.
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Callable
 from pathlib import Path
 from uuid import UUID
 
@@ -106,6 +107,36 @@ def _handle(
 
     async def _run() -> ModelSemanticAnalyzerComputeResponse:
         await handler.initialize(embedding_provider=FakeEmbeddingProvider())
+        return await handler.handle(request)
+
+    return asyncio.run(_run())
+
+
+def _handle_after_init_mutation(
+    request: ModelSemanticAnalyzerComputeRequest,
+    mutate: Callable[[HandlerSemanticCompute], None],
+) -> ModelSemanticAnalyzerComputeResponse:
+    handler = HandlerSemanticCompute(container=ModelONEXContainer())
+
+    async def _run() -> ModelSemanticAnalyzerComputeResponse:
+        await handler.initialize(embedding_provider=FakeEmbeddingProvider())
+        mutate(handler)
+        return await handler.handle(request)
+
+    return asyncio.run(_run())
+
+
+def _handle_with_broken_lifecycle(
+    request: ModelSemanticAnalyzerComputeRequest,
+) -> ModelSemanticAnalyzerComputeResponse:
+    handler = HandlerSemanticCompute(container=ModelONEXContainer())
+
+    async def _raise_runtime_error() -> None:
+        raise RuntimeError("semantic lifecycle failed")
+
+    handler.initialize = _raise_runtime_error  # type: ignore[method-assign]
+
+    async def _run() -> ModelSemanticAnalyzerComputeResponse:
         return await handler.handle(request)
 
     return asyncio.run(_run())
@@ -210,6 +241,43 @@ class TestSemanticComputeDefBEquivalence:
                 operation="analyze",
                 content="Semantic analysis blends embeddings, entities, and topics.",
             )
+        )
+
+    def test_handle_maps_provider_value_error_to_typed_error(self) -> None:
+        async def _raise_value_error(
+            *,
+            content: str,
+            model: str | None = None,
+            correlation_id: UUID | None = None,
+        ) -> list[float]:
+            raise ValueError("embedding provider rejected content")
+
+        def _mutate(handler: HandlerSemanticCompute) -> None:
+            handler.embed = _raise_value_error  # type: ignore[method-assign]
+
+        resp = _handle_after_init_mutation(
+            ModelSemanticAnalyzerComputeRequest(
+                operation="embed", content="provider failure fixture"
+            ),
+            _mutate,
+        )
+
+        assert resp.status == "error"
+        assert resp.operation == "embed"
+        assert resp.error_message == "embedding provider rejected content"
+
+    def test_handle_maps_lifecycle_exception_to_typed_error(self) -> None:
+        resp = _handle_with_broken_lifecycle(
+            ModelSemanticAnalyzerComputeRequest(
+                operation="analyze", content="lifecycle failure fixture"
+            )
+        )
+
+        assert resp.status == "error"
+        assert resp.operation == "analyze"
+        assert (
+            resp.error_message
+            == "Unexpected error: RuntimeError: semantic lifecycle failed"
         )
 
 

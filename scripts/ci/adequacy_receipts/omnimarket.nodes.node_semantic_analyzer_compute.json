@@ -16,8 +16,8 @@
     "sha256:298e12918d3807e049fc7c9a0f3dd9403cf224ce08ff8815e81ea501d1736b94"
   ],
   "uncovered_waiver": {
-    "reason": "OMN-14841 is a hand-authored def-B dispatch-entrypoint flip for a re-export COMPUTE node whose provider-backed compute (embed/extract_entities/analyze) lives in omnimemory. The selected set exercises all three real dispatch branches through handle() with an injected deterministic embedding provider; the residual uncovered branches are the defensive Literal-bypass case and the ValueError/Exception error mappers, which cannot be reached with contract-valid requests (Pydantic rejects invalid operations and empty content at construction). Behaviour equivalence to the pre-flip omnimemory NodeSemanticAnalyzerCompute.execute routing is proven separately in tests/test_semantic_analyzer_compute_defb.py, so the waiver is scoped to adequacy measurement, not behaviour proof.",
-    "uncovered_branch_count": 0
+    "reason": "OMN-14841 is a hand-authored def-B dispatch-entrypoint flip for a re-export COMPUTE node whose provider-backed compute (embed/extract_entities/analyze) lives in omnimemory. The selected adequacy set exercises all three success dispatch branches through handle() with an injected deterministic embedding provider. Dedicated regression tests in tests/test_semantic_analyzer_compute_defb.py cover the typed ValueError and generic Exception mappings using valid request models plus deterministic provider/lifecycle failures. The remaining adequacy waiver is scoped to the defensive Literal-bypass operation branch, which Pydantic rejects during normal request construction; behavior equivalence to the pre-flip omnimemory NodeSemanticAnalyzerCompute.execute routing is proven separately.",
+    "uncovered_branch_count": 1
   },
   "volatile_mask": [
     "result_id",
