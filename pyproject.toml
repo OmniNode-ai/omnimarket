@@ -119,6 +119,7 @@ node_context_selection_policy_compute = "omnimarket.nodes.node_context_selection
 node_design_plan_context_compute = "omnimarket.nodes.node_design_plan_context_compute"
 node_golden_chain_generator_compute = "omnimarket.nodes.node_golden_chain_generator_compute"
 node_delivery_replay_projection_compute = "omnimarket.nodes.node_delivery_replay_projection_compute"
+node_canary_monitoring_gate_compute = "omnimarket.nodes.node_canary_monitoring_gate_compute"
 node_test_generator_compute = "omnimarket.nodes.node_test_generator_compute"
 node_tool_reuse_matcher_compute = "omnimarket.nodes.node_tool_reuse_matcher_compute"
 node_session_phase_evaluator = "omnimarket.nodes.node_session_phase_evaluator"
