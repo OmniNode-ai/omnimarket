@@ -21,7 +21,6 @@ this file is the golden-chain proof, not a duplicate of those seams.
 from __future__ import annotations
 
 from pathlib import Path
-from uuid import uuid4
 
 import pytest
 import yaml
@@ -190,9 +189,8 @@ class TestGoldenChainReplay:
     async def test_handler_handle_replays_deterministically(self) -> None:
         handler = HandlerOccCompanionCompute()
         request = _request()
-        correlation_id = uuid4()
-        plan_a = await handler.handle(correlation_id, request)
-        plan_b = await handler.handle(correlation_id, request)
+        plan_a = await handler.handle(request)
+        plan_b = await handler.handle(request)
         assert plan_a == plan_b
         assert isinstance(plan_a, ModelOccCompanionPlan)
 
@@ -201,7 +199,7 @@ class TestGoldenChainReplay:
         the RSD-5 attestation oracle re-invokes the pure function directly, so
         the two paths can never diverge."""
         request = _request()
-        via_handler = await HandlerOccCompanionCompute().handle(uuid4(), request)
+        via_handler = await HandlerOccCompanionCompute().handle(request)
         via_function = compute_companion_plan(request)
         assert via_handler == via_function
 
@@ -244,10 +242,9 @@ class TestGoldenChainAttestationReplay:
         plan = compute_companion_plan(request)
         handler = HandlerOccCompanionAttestation()
         result = await handler.handle(
-            uuid4(),
             ModelOccAttestationRequest(
                 observed_files=plan.companion_files, expected=request
-            ),
+            )
         )
         assert isinstance(result, ModelOccAttestationResult)
         assert result.accepted is True
@@ -256,10 +253,9 @@ class TestGoldenChainAttestationReplay:
         request = _request()
         plan = compute_companion_plan(request)
         via_handler = await HandlerOccCompanionAttestation().handle(
-            uuid4(),
             ModelOccAttestationRequest(
                 observed_files=plan.companion_files, expected=request
-            ),
+            )
         )
         via_function = verify_companion_attestation(plan.companion_files, request)
         assert via_handler == via_function
