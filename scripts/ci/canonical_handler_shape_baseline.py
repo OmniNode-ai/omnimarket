@@ -72,7 +72,6 @@ NON_CANONICAL: tuple[str, ...] = (
     "omnimarket.nodes.node_pr_merged_projection",
     "omnimarket.nodes.node_pr_review_fsm_reducer",
     "omnimarket.nodes.node_pr_watch_orchestrator",
-    "omnimarket.nodes.node_prod_promotion_gate_compute",
     "omnimarket.nodes.node_projection_baselines",
     "omnimarket.nodes.node_projection_baselines_quality",
     "omnimarket.nodes.node_projection_baselines_roi",
