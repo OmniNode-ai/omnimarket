@@ -1,0 +1,19 @@
+{
+  "base_ref": "478583ce6c8ce0d424000f715a28b0fd78289f05",
+  "canonical_handler_module": "omnimarket.nodes.node_rsd_fill_compute.handlers.handler_rsd_fill",
+  "legacy_handler_module": "omnimarket.nodes.node_rsd_fill_compute.handlers.handler_rsd_fill",
+  "node_id": "omnimarket.nodes.node_rsd_fill_compute",
+  "parity": {
+    "selected_input_hashes": [
+      "sha256:f42d2229e2e9b5f8f279ae9b8e20b40e650abfede257ddc320000931a5644728"
+    ],
+    "status": "pass",
+    "test_ids": [
+      "tests/unit/nodes/node_rsd_fill_compute/test_rsd_fill_golden_equivalence.py::test_handle_reproduces_recorded_golden[top_n_distinct]"
+    ]
+  },
+  "preserved_symbols": [
+    "HandlerRsdFill._select_top_n"
+  ],
+  "receipt_schema": "handflip_proof.v1"
+}

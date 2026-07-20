@@ -1,0 +1,14 @@
+{
+  "input": {
+    "correlation_id": "00000004-0000-4000-8000-000000000000",
+    "max_tickets": 5,
+    "scored_tickets": []
+  },
+  "output": {
+    "correlation_id": "00000004-0000-4000-8000-000000000000",
+    "selected_tickets": [],
+    "total_candidates": 0,
+    "total_selected": 0
+  },
+  "output_sha256": "sha256:0c4bfd59aac099e5cae00cb6c19b6f0088485019a89550c89ccf14a20441efa6"
+}

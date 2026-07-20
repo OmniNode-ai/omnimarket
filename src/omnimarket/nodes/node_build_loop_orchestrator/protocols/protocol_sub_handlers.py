@@ -59,6 +59,25 @@ class RsdFillResult(BaseModel):
     total_selected: int = Field(default=0, ge=0)
 
 
+class RsdFillRequest(BaseModel):
+    """Typed request payload for the RSD fill compute handler (def-B).
+
+    Structurally mirrors ``ModelRsdFillInput`` at the orchestrator seam
+    (``correlation_id`` + ``scored_tickets`` + ``max_tickets``) without reaching
+    into the RSD fill node's private model package. The real ``HandlerRsdFill``
+    (cast to this protocol) reads only ``request.correlation_id`` /
+    ``request.scored_tickets`` / ``request.max_tickets``.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    correlation_id: UUID = Field(..., description="Build loop cycle correlation ID.")
+    scored_tickets: tuple[ScoredTicket, ...] = Field(
+        default_factory=tuple, description="Pre-scored candidate tickets."
+    )
+    max_tickets: int = Field(default=5, description="Maximum tickets to select.")
+
+
 class BuildTarget(BaseModel):
     """A ticket classified as buildable."""
 
@@ -145,14 +164,11 @@ class ProtocolVerifyHandler(Protocol):
 
 @runtime_checkable
 class ProtocolRsdFillHandler(Protocol):
-    """Protocol for the RSD fill compute handler."""
+    """Protocol for the RSD fill compute handler (def-B, typed payload)."""
 
     async def handle(
         self,
-        *,
-        correlation_id: UUID,
-        scored_tickets: tuple[ScoredTicket, ...],
-        max_tickets: int = 5,
+        request: RsdFillRequest,
     ) -> RsdFillResult: ...
 
 

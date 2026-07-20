@@ -131,6 +131,13 @@ _KNOWN_VIOLATIONS: frozenset[str] = frozenset(
         "omnimarket.nodes.node_overnight.handlers.handler_overnight:omnimarket.nodes.node_build_loop.models.model_loop_start_command:ModelLoopStartCommand",
         # node_pipeline_fill → node_rsd_fill_compute
         "omnimarket.nodes.node_pipeline_fill.handlers.handler_pipeline_fill:omnimarket.nodes.node_rsd_fill_compute.models.model_scored_ticket:ModelScoredTicket",
+        # OMN-14839: def-B flip of node_rsd_fill_compute. Its in-process callers
+        # (dispatch_router, pipeline_fill) build the canonical ModelRsdFillInput to
+        # invoke handle(request). Same cross-node dependency as the pre-existing
+        # HandlerRsdFill / ModelScoredTicket imports above; resolve when the RSD-fill
+        # cluster shared models move to omnimarket.events.*.
+        "omnimarket.nodes.node_pipeline_fill.handlers.handler_pipeline_fill:omnimarket.nodes.node_rsd_fill_compute.models.model_rsd_fill_input:ModelRsdFillInput",
+        "omnimarket.nodes.node_skill_dispatch_engine_orchestrator.handlers.handler_dispatch_router:omnimarket.nodes.node_rsd_fill_compute.models.model_rsd_fill_input:ModelRsdFillInput",
         # node_pr_lifecycle_fix_effect → node_pr_lifecycle_inventory_compute
         # OMN-14242: import relocated from handlers/handler_admin_merge.py to
         # models/model_admin_merge_request.py (thin canonical shape — the

@@ -61,6 +61,7 @@ from omnimarket.nodes.node_build_loop_orchestrator.protocols.protocol_sub_handle
     ClassifyResult,
     CloseoutResult,
     DispatchResult,
+    RsdFillRequest,
     RsdFillResult,
     ScoredTicket,
     VerifyResult,
@@ -317,13 +318,9 @@ class LiveVerifyHandler:
 class LiveRsdFillHandler:
     """Fetches tickets from Linear (Backlog/Todo) and returns them as ScoredTickets."""
 
-    async def handle(
-        self,
-        *,
-        correlation_id: UUID,
-        scored_tickets: tuple[ScoredTicket, ...],
-        max_tickets: int = 5,
-    ) -> RsdFillResult:
+    async def handle(self, request: RsdFillRequest) -> RsdFillResult:
+        correlation_id = request.correlation_id
+        max_tickets = request.max_tickets
         logger.info(
             "[RSD-FILL] Fetching up to %d tickets from Linear (correlation_id=%s)",
             max_tickets,

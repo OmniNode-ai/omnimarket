@@ -21,6 +21,9 @@ from omnimarket.nodes.node_build_dispatch_effect.handlers.dispatch_history_store
 from omnimarket.nodes.node_build_loop_orchestrator.handlers.adapter_linear_fill import (
     AdapterLinearFill,
 )
+from omnimarket.nodes.node_build_loop_orchestrator.protocols.protocol_sub_handlers import (
+    RsdFillRequest,
+)
 
 
 def _clean_adapter(**kwargs: Any) -> AdapterLinearFill:
@@ -68,7 +71,9 @@ async def test_leaf_tickets_pass_through() -> None:
             json=lambda: payload,
             raise_for_status=lambda: None,
         )
-        result = await adapter.handle(correlation_id=uuid4(), max_tickets=5)
+        result = await adapter.handle(
+            RsdFillRequest(correlation_id=uuid4(), max_tickets=5)
+        )
 
     ids = [t.ticket_id for t in result.selected_tickets]
     assert ids == ["OMN-1001", "OMN-1002"]
@@ -92,7 +97,9 @@ async def test_tickets_with_children_are_filtered_out() -> None:
             json=lambda: payload,
             raise_for_status=lambda: None,
         )
-        result = await adapter.handle(correlation_id=uuid4(), max_tickets=5)
+        result = await adapter.handle(
+            RsdFillRequest(correlation_id=uuid4(), max_tickets=5)
+        )
 
     ids = [t.ticket_id for t in result.selected_tickets]
     assert ids == ["OMN-2000"]
@@ -117,7 +124,9 @@ async def test_tickets_with_epic_label_are_filtered_out() -> None:
             json=lambda: payload,
             raise_for_status=lambda: None,
         )
-        result = await adapter.handle(correlation_id=uuid4(), max_tickets=5)
+        result = await adapter.handle(
+            RsdFillRequest(correlation_id=uuid4(), max_tickets=5)
+        )
 
     ids = [t.ticket_id for t in result.selected_tickets]
     assert ids == ["OMN-3003"]

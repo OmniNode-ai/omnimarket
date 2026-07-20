@@ -90,3 +90,19 @@ async def test_pipeline_fill_golden_chain_dispatches_and_records_state(
     last_run = yaml.safe_load((tmp_path / "last-run.yaml").read_text())
     assert last_run["dispatched"] == ["OMN-9001"]
     assert last_run["dry_run"] is False
+
+
+def test_terminal_event_declared_and_bound() -> None:
+    """State-coverage: the declared terminal event is bound to its literal."""
+    contract_path = (
+        Path(__file__).resolve().parent.parent
+        / "src"
+        / "omnimarket"
+        / "nodes"
+        / "node_pipeline_fill"
+        / "contract.yaml"
+    )
+    contract = yaml.safe_load(contract_path.read_text(encoding="utf-8"))
+    assert (
+        contract["terminal_event"] == "onex.evt.omnimarket.pipeline-fill-completed.v1"
+    )

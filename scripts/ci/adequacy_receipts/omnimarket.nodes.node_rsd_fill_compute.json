@@ -1,0 +1,21 @@
+{
+  "branch_coverage_pct": 22.22,
+  "candidate_count": 8,
+  "coverage_target": 80.0,
+  "handler_module": "omnimarket.nodes.node_rsd_fill_compute.handlers.handler_rsd_fill",
+  "handler_module_sha256": "sha256:e39a4fb28622c814c747e330f0bbf8239012d25c39345380eb255ef1a7115855",
+  "meets_target": false,
+  "node_id": "omnimarket.nodes.node_rsd_fill_compute",
+  "receipt_schema": "adequacy_receipt.v1",
+  "recorded_at": "2026-07-20T06:55:50.004162+00:00",
+  "recorder_schema": "adequacy_receipt.v1",
+  "selected_count": 1,
+  "selected_input_hashes": [
+    "sha256:f42d2229e2e9b5f8f279ae9b8e20b40e650abfede257ddc320000931a5644728"
+  ],
+  "uncovered_waiver": {
+    "reason": "branch_coverage_pct is structurally deflated: coverage.py measures AFTER module import, so the module-level Literal/const assignments and the def/class headers (executed at import time, before cov.start) count as unmeasured. The _select_top_n selection body (sort key, top-N slice, tie-breaks, empty/single/max-exceeds paths) IS exercised by this pool and proven byte-identical to the pre-flip def-A logic by the hand-flip verbatim proof + test_rsd_fill_golden_equivalence.py (perturbation-discriminating). OMN-14839.",
+    "uncovered_branch_count": 0
+  },
+  "volatile_mask": []
+}

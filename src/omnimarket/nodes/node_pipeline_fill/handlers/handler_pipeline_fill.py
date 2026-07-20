@@ -38,6 +38,9 @@ from omnimarket.nodes.node_pipeline_fill.models.model_pipeline_fill_result impor
 from omnimarket.nodes.node_rsd_fill_compute.handlers.handler_rsd_fill import (
     HandlerRsdFill,
 )
+from omnimarket.nodes.node_rsd_fill_compute.models.model_rsd_fill_input import (
+    ModelRsdFillInput,
+)
 from omnimarket.nodes.node_rsd_fill_compute.models.model_scored_ticket import (
     ModelScoredTicket,
 )
@@ -297,9 +300,11 @@ class HandlerPipelineFill:
         # Convert to ModelScoredTicket and score via HandlerRsdFill
         scored_input = tuple(_to_scored_ticket(t) for t in filtered)
         fill_result = await self._rsd.handle(
-            correlation_id=command.correlation_id,
-            scored_tickets=scored_input,
-            max_tickets=command.top_n,
+            ModelRsdFillInput(
+                correlation_id=command.correlation_id,
+                scored_tickets=scored_input,
+                max_tickets=command.top_n,
+            )
         )
 
         # Write scores.yaml — observable artifact for audit / debugging
