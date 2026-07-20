@@ -37,6 +37,8 @@ from omnimarket.nodes.node_linear_triage.handlers.handler_linear_triage import (
     _occ_receipt_dir,
     _parse_receipt_payload,
     _receipt_is_pass_for_ticket,
+    _receipt_passes_strict_model,
+    _strict_receipt_model_enabled,
 )
 from omnimarket.nodes.node_linear_triage.models.model_linear_triage_state import (
     EnumTriageAction,
@@ -65,6 +67,34 @@ def _pass_receipt(ticket_id: str = "OMN-9999") -> dict[str, object]:
         "commit_sha": "a" * 40,
         "runner": "node-dod-verify",
         "verifier": "node-dod-verify-ci",
+    }
+
+
+def _full_dod_receipt_payload(
+    ticket_id: str = "OMN-9999",
+    *,
+    runner: str = "worker-A",
+    verifier: str = "worker-B",
+    status: str = "PASS",
+) -> dict[str, object]:
+    """A payload that constructs a valid ``ModelDodReceipt`` (all required
+    fields present), unlike ``_pass_receipt`` above which only satisfies the
+    loose three-field dict check. ``runner``/``verifier`` default to distinct
+    identities (independently verified); pass the same value for both to
+    exercise the self-attestation downgrade (OMN-13991)."""
+    return {
+        "schema_version": "1.0.0",
+        "ticket_id": ticket_id,
+        "evidence_item_id": "dod-run",
+        "check_type": "command",
+        "check_value": "pytest tests/ -v",
+        "status": status,
+        "run_timestamp": datetime.now(tz=UTC).isoformat(),
+        "commit_sha": "a" * 40,
+        "runner": runner,
+        "verifier": verifier,
+        "probe_command": "pytest tests/ -v",
+        "probe_stdout": "1 passed",
     }
 
 
@@ -326,6 +356,118 @@ class TestOccReceiptSubprocessProbe:
         monkeypatch.delenv("OMNI_HOME", raising=False)
         probe = OccReceiptSubprocessProbe()
         assert probe.occ_receipt_detail(ticket_id="OMN-9999") is None
+
+
+# ---------------------------------------------------------------------------
+# OMN-13991: strict ModelDodReceipt gate — the missing DurableEvidenceGate-class
+# production caller. RED: the loose dict check trusts a self-attested PASS
+# verbatim. GREEN: the strict, flag-gated check constructs the real
+# ModelDodReceipt, whose adversarial invariants downgrade self-attestation to
+# ADVISORY, so the same payload is now rejected.
+# ---------------------------------------------------------------------------
+
+
+class TestStrictReceiptModelGate:
+    def test_flag_disabled_by_default(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.delenv("OMNI_LINEAR_TRIAGE_STRICT_RECEIPT_MODEL", raising=False)
+        assert _strict_receipt_model_enabled() is False
+
+    def test_flag_enabled_by_truthy_values(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        for value in ("1", "true", "True", "YES", "on"):
+            monkeypatch.setenv("OMNI_LINEAR_TRIAGE_STRICT_RECEIPT_MODEL", value)
+            assert _strict_receipt_model_enabled() is True
+        monkeypatch.setenv("OMNI_LINEAR_TRIAGE_STRICT_RECEIPT_MODEL", "0")
+        assert _strict_receipt_model_enabled() is False
+
+    def test_red_self_attested_pass_is_accepted_by_the_loose_check(self) -> None:
+        """RED: this is today's live behavior — a self-attested PASS (the
+        producer that ran the check is also the sole attester of its own
+        result) is accepted verbatim by the dict-field check."""
+        payload = _full_dod_receipt_payload(runner="worker-A", verifier="worker-A")
+        assert _receipt_is_pass_for_ticket(payload, "OMN-9999")
+
+    def test_green_self_attested_pass_is_rejected_by_the_strict_model(self) -> None:
+        """GREEN: constructing the real ModelDodReceipt runs the Centralized
+        Transition Policy, which auto-downgrades a self-attested PASS to
+        ADVISORY — the strict check now refuses the same payload."""
+        payload = _full_dod_receipt_payload(runner="worker-A", verifier="worker-A")
+        assert not _receipt_passes_strict_model(payload, "OMN-9999")
+
+    def test_independently_verified_pass_is_accepted_by_the_strict_model(
+        self,
+    ) -> None:
+        payload = _full_dod_receipt_payload(runner="worker-A", verifier="worker-B")
+        assert _receipt_passes_strict_model(payload, "OMN-9999")
+
+    def test_malformed_receipt_is_rejected_by_the_strict_model(self) -> None:
+        """A receipt missing required ModelDodReceipt fields (e.g. probe_stdout,
+        commit_sha) fails construction outright, fail-closed."""
+        payload = _pass_receipt()  # only the 3 loose-check fields, not a full receipt
+        assert not _receipt_passes_strict_model(payload, "OMN-9999")
+
+    def test_mismatched_ticket_rejected_by_strict_model(self) -> None:
+        payload = _full_dod_receipt_payload(ticket_id="OMN-1111")
+        assert not _receipt_passes_strict_model(payload, "OMN-9999")
+
+    def test_fail_status_rejected_by_strict_model(self) -> None:
+        payload = _full_dod_receipt_payload(status="FAIL")
+        assert not _receipt_passes_strict_model(payload, "OMN-9999")
+
+
+class TestOccReceiptSubprocessProbeStrictGate:
+    """End-to-end RED-to-GREEN through the real probe the Done-mutation path
+    calls, gated by the OMN-13991 env flag."""
+
+    def test_flag_off_still_accepts_self_attested_receipt(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.delenv("OMNI_LINEAR_TRIAGE_STRICT_RECEIPT_MODEL", raising=False)
+        repo = _init_occ_repo(
+            tmp_path,
+            {
+                "drift/dod_receipts/OMN-9999/dod-run/command.yaml": (
+                    _full_dod_receipt_payload(runner="worker-A", verifier="worker-A")
+                )
+            },
+        )
+        # RED (default/current behavior): unchanged when the gate is off.
+        assert _probe(repo).occ_receipt_detail(
+            ticket_id="OMN-9999"
+        ) == _occ_receipt_dir("OMN-9999")
+
+    def test_flag_on_rejects_self_attested_receipt(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("OMNI_LINEAR_TRIAGE_STRICT_RECEIPT_MODEL", "1")
+        repo = _init_occ_repo(
+            tmp_path,
+            {
+                "drift/dod_receipts/OMN-9999/dod-run/command.yaml": (
+                    _full_dod_receipt_payload(runner="worker-A", verifier="worker-A")
+                )
+            },
+        )
+        # GREEN: the same on-disk receipt is now refused as OCC_RECEIPT evidence,
+        # so the Done-mutation chokepoint never sees it.
+        assert _probe(repo).occ_receipt_detail(ticket_id="OMN-9999") is None
+
+    def test_flag_on_still_accepts_independently_verified_receipt(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("OMNI_LINEAR_TRIAGE_STRICT_RECEIPT_MODEL", "1")
+        repo = _init_occ_repo(
+            tmp_path,
+            {
+                "drift/dod_receipts/OMN-9999/dod-run/command.yaml": (
+                    _full_dod_receipt_payload(runner="worker-A", verifier="worker-B")
+                )
+            },
+        )
+        assert _probe(repo).occ_receipt_detail(
+            ticket_id="OMN-9999"
+        ) == _occ_receipt_dir("OMN-9999")
 
 
 # ---------------------------------------------------------------------------

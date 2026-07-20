@@ -24,9 +24,11 @@ from typing import Any, Protocol, runtime_checkable
 import yaml
 from omnibase_core.enums.governance.enum_evidence_class import EnumEvidenceClass
 from omnibase_core.enums.ticket.enum_receipt_status import EnumReceiptStatus
+from omnibase_core.models.contracts.ticket.model_dod_receipt import ModelDodReceipt
 from omnibase_core.validation.runtime_ops_verb_loader import (
     load_runtime_ops_verb_allowlist,
 )
+from pydantic import ValidationError
 
 from omnimarket.config.service_endpoints import (
     GITHUB_GRAPHQL_URL,
@@ -663,6 +665,64 @@ def _receipt_is_pass_for_ticket(payload: dict[str, object], ticket_id: str) -> b
     return _norm_omn(receipt_ticket) == _norm_omn(ticket_id)
 
 
+# OMN-13991: opt-in strict ModelDodReceipt enforcement for OCC-receipt closes.
+#
+# ``_receipt_is_pass_for_ticket`` above trusts three raw dict fields
+# (``status``, ``run_timestamp``, ``ticket_id``) verbatim. It never constructs
+# ``omnibase_core``'s ``ModelDodReceipt``, so the model's Centralized
+# Transition Policy invariants — self-attestation (``verifier == runner``)
+# downgrading a ``PASS`` to ``ADVISORY``, weak ``file_exists`` proof doing the
+# same, and the empty-``probe_stdout`` rejection for executable check types —
+# never run on the actual Linear-Done mutation path. A receipt file that
+# reached the OCC governance ref by any means other than the model's own
+# constructor (hand-authored, a legacy producer, a schema-drifted path) can
+# carry a self-declared ``status: PASS`` that the dict check accepts at face
+# value. This is the "weak presence check" OMN-13991 was filed against;
+# DurableEvidenceGate is the intended strong enforcement but has zero
+# production callers (this repairs one call site of that class of gap without
+# adopting the full DurableEvidenceGate probe stack, which needs a live
+# ``gh pr view``/contract-loader chain out of scope here).
+#
+# Default OFF (shadow-first, per OMN-13991's staged-rollout DoD): this gate is
+# consequential (it can block a Done flip that today would have gone through),
+# so it ships gated until the false-block rate against real receipts on
+# ``origin/dev`` is measured. Flip via
+# ``OMNI_LINEAR_TRIAGE_STRICT_RECEIPT_MODEL=1``.
+_ENV_STRICT_RECEIPT_MODEL = "OMNI_LINEAR_TRIAGE_STRICT_RECEIPT_MODEL"
+_TRUTHY = frozenset({"1", "true", "yes", "on"})
+
+
+def _strict_receipt_model_enabled() -> bool:
+    """True when the OMN-13991 strict ``ModelDodReceipt`` gate is enabled.
+
+    Pure function over the environment — no other I/O.
+    """
+    return os.environ.get(_ENV_STRICT_RECEIPT_MODEL, "").strip().lower() in _TRUTHY
+
+
+def _receipt_passes_strict_model(payload: dict[str, object], ticket_id: str) -> bool:
+    """True when ``payload`` constructs a valid ``ModelDodReceipt`` that is
+    PASS for ``ticket_id`` *after* the model's adversarial invariants run.
+
+    This is additive to (never a replacement for) ``_receipt_is_pass_for_ticket``
+    — callers AND both. Fail-closed: a ``ValidationError`` (malformed schema,
+    e.g. missing required fields, invalid ``commit_sha``/``schema_version``, an
+    executable check with empty ``probe_stdout``) rejects the receipt outright.
+    A structurally valid receipt whose ``status`` the model downgraded to
+    ``ADVISORY`` (self-attestation: ``verifier == runner``; or a weak
+    ``file_exists`` proof) is also rejected, because ``enforce_close_evidence``
+    only accepts a genuine, independently-verified ``PASS``. Pure function —
+    no I/O.
+    """
+    try:
+        receipt = ModelDodReceipt.model_validate(payload)
+    except (ValidationError, ValueError):
+        return False
+    if receipt.status is not EnumReceiptStatus.PASS:
+        return False
+    return _norm_omn(receipt.ticket_id) == _norm_omn(ticket_id)
+
+
 _RUNTIME_OPS_EVIDENCE_CLASS = EnumEvidenceClass.RUNTIME_OPS.value
 
 
@@ -790,12 +850,20 @@ class OccReceiptSubprocessProbe:
         tracked = self._ls_tree(receipt_dir)
         if not tracked:
             return None
+        strict = _strict_receipt_model_enabled()
         for rel_path in tracked:
             payload = self._show(rel_path)
             if payload is None:
                 continue
-            if _receipt_is_pass_for_ticket(payload, ticket_id):
-                return receipt_dir
+            if not _receipt_is_pass_for_ticket(payload, ticket_id):
+                continue
+            # OMN-13991: when enabled, additionally require the payload to
+            # construct a valid ModelDodReceipt whose status survives the
+            # model's own adversarial invariants (self-attestation / weak-proof
+            # downgrade). Default OFF — see _strict_receipt_model_enabled.
+            if strict and not _receipt_passes_strict_model(payload, ticket_id):
+                continue
+            return receipt_dir
         return None
 
     def _ls_tree(self, receipt_dir: str) -> list[str]:
