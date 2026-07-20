@@ -88,9 +88,6 @@ known_entrypointless:
   - contract: node_overseer_observer
     handler: NullSideEffectObserver
     module: omnimarket.nodes.node_overseer_observer.handlers.handler_side_effect_observer
-  - contract: node_semantic_analyzer_compute
-    handler: HandlerSemanticCompute
-    module: omnimarket.nodes.node_semantic_analyzer_compute.handlers.handler_semantic_compute
   - contract: node_similarity_compute
     handler: HandlerSimilarityCompute
     module: omnimarket.nodes.node_similarity_compute.handlers.handler_similarity_compute
