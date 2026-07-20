@@ -1739,11 +1739,10 @@ jobs:
   # depend on jobs defined in THIS file.
   #
   # OMN-14582 Phase 1: unconditional (no needs/if), mirroring
-  # no-noncanonical-lifecycle-classes exactly, so it never silently skips --
-  # but wired into CI Summary's LOOSE loop only (skipped-or-success passes)
-  # for now, NOT the strict success-only check. Promoting it to strict
-  # (the actual merge-blocking flip) is OMN-14582 Phase 2, gated on Phase 1
-  # proving out reliable on real PRs first.
+  # no-noncanonical-lifecycle-classes exactly, so it never silently skips.
+  # OMN-14582 Phase 2 / OMN-14640: promoted to the strict success-only slot
+  # in ci-summary below (RESULT must be EXACTLY 'success'; skipped/cancelled/
+  # failure all block) -- see the strict block in the ci-summary job.
   # ============================================================================
   contract-topic-graph:
     name: contract-topic-graph
@@ -1859,8 +1858,7 @@ jobs:
             "uv-lock-pin-reachability=${{ needs.uv-lock-pin-reachability.result }}" \
             "aislop-sweep=${{ needs.aislop-sweep.result }}" \
             "coverage-sweep-gate=${{ needs.coverage-sweep-gate.result }}" \
-            "workflow-module-refs=${{ needs.workflow-module-refs.result }}" \
-            "contract-topic-graph=${{ needs.contract-topic-graph.result }}"; do
+            "workflow-module-refs=${{ needs.workflow-module-refs.result }}"; do
             NAME="${check%%=*}"
             RESULT="${check##*=}"
             if [ "$RESULT" != "success" ] && [ "$RESULT" != "skipped" ]; then
@@ -1871,12 +1869,23 @@ jobs:
             fi
           done
 
-          # OMN-14582 Phase 1: contract-topic-graph is deliberately in the loose
-          # loop above (success||skipped both pass), NOT given the strict
-          # treatment below yet. Promoting it to strict (the actual
-          # merge-blocking flip) is Phase 2, gated on Phase 1 proving reliable
-          # across several real PRs first -- do not move it up without that
-          # evidence and an explicit go-ahead (see OMN-14582).
+          # OMN-14582 Phase 2 / OMN-14640: strict fail-closed gate on
+          # contract-topic-graph (the static seam-measurement oracle). Phase 1
+          # (omnimarket#1754) put it in the loose loop above (success||skipped
+          # both pass) as an interim, non-enforcing landing; that left the seam
+          # tool gating nothing, since a skipped/cancelled run still passed the
+          # sole required "CI Summary" check. This flip removes it from the
+          # loose loop and requires the result to be EXACTLY 'success';
+          # skipped/cancelled/failure ALL block, mirroring the
+          # no-noncanonical-lifecycle-classes treatment immediately below. It
+          # stays in ci-summary needs: so this job WAITS for it (no race).
+          CONTRACT_TOPIC_GRAPH_RESULT="${{ needs.contract-topic-graph.result }}"
+          if [ "$CONTRACT_TOPIC_GRAPH_RESULT" != "success" ]; then
+            echo "::error::contract-topic-graph did not pass (result: $CONTRACT_TOPIC_GRAPH_RESULT) - fail-closed (OMN-14640)"
+            FAILED=true
+          else
+            echo "contract-topic-graph: $CONTRACT_TOPIC_GRAPH_RESULT"
+          fi
 
           # OMN-14350: strict fail-closed gate on the non-canonical lifecycle-class
           # ratchet. Unlike the loop above (success||skipped both pass), the ratchet
