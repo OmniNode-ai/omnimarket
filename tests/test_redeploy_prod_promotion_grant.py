@@ -214,17 +214,10 @@ async def _drive_dispatch(
         # (round-tripped through the resolved event, so compare by value).
         assert gate_command.promotion_grant == grant
 
-    # Edge 2: gate COMPUTE evaluates the command.
-    gate_envelope: ModelEventEnvelope[ModelProdPromotionGateCommand] = (
-        ModelEventEnvelope(
-            payload=gate_command,
-            correlation_id=gate_command.correlation_id,
-            event_type=TOPIC_PROD_GATE_EVALUATE,
-        )
-    )
-    gate_output = await gate.handle(gate_envelope)
-    assert gate_output.node_kind == EnumNodeKind.COMPUTE
-    decision = gate_output.result
+    # Edge 2: gate COMPUTE evaluates the def-B command directly. The shared
+    # runtime adapter owns envelope unwrapping/wrapping; this test drives the
+    # same typed payload the orchestrator routed.
+    decision = await gate.handle(gate_command)
     assert isinstance(decision, ModelProdPromotionGateDecision)
 
     # Edge 3: gate-evaluated -> orchestrator routes deploy-publish or BLOCKED.
