@@ -1,0 +1,26 @@
+{
+  "branch_coverage_pct": 55.07,
+  "candidate_count": 7,
+  "coverage_target": 80.0,
+  "handler_module": "omnimarket.nodes.node_occ_companion_compute.handlers.handler_occ_companion_compute",
+  "handler_module_sha256": "sha256:8d316b3498338fada7ac708a081d9e95d83aba0927b3f3f538c4df378b55da09",
+  "meets_target": false,
+  "node_id": "omnimarket.nodes.node_occ_companion_compute",
+  "receipt_schema": "adequacy_receipt.v1",
+  "recorded_at": "2026-07-20T05:59:40.407080+00:00",
+  "recorder_schema": "adequacy_receipt.v1",
+  "selected_count": 6,
+  "selected_input_hashes": [
+    "sha256:15eed0d7435893b52abe9d6d5f9bad80f12270691a7c296337dc0717cc46455a",
+    "sha256:3bd1ba10d5a4fe9bde200b1ae67abbd2dfe0f1aed1892d4238d884e60c73cf7f",
+    "sha256:78d40dae35b2775196df10a10514a9496e4d720c898e021e51f4d2f796868e72",
+    "sha256:5a830dcb91ab3211189b89b60085444c886b63054345fb6141fa6bde9bccba54",
+    "sha256:9c4aeaf9547ba9d57a9785b819d53c560e3604855f9ebd558a4ba571425f80df",
+    "sha256:2ee5f5d383f55ba5f9bd7bcab7e3af296c5e4998fc2ceedf42cf94cba4ec5f21"
+  ],
+  "uncovered_waiver": {
+    "reason": "OMN-14835 hand-flips node_occ_companion_compute to canonical def-B via a PURE adapter-boundary signature change (OMN-14781 path): both handlers drop the non-canonical correlation_id positional so handle(self, request) is the single typed-payload entrypoint the shared runtime adapter binds. The load-bearing renderer (compute_companion_plan and every helper) is preserved byte-identically base_ref<->HEAD and re-derived from git by the canonical-shape ratchet (the .handflip.json proof). Equivalence is proven by that git-verbatim preservation plus the green real-adapter dispatch parity tests over the selected corpus (dispatched plan == compute_companion_plan), not by a broad branch-coverage claim over the large deterministic renderer body; the corpus exercises the primary decision branches (fresh / suppressed / fast-path / private-repo / deploy-sensitive / no-ticket) but not every merged-path supersession arc.",
+    "uncovered_branch_count": 0
+  },
+  "volatile_mask": []
+}

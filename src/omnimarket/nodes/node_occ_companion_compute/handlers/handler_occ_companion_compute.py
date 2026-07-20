@@ -31,7 +31,6 @@ import hashlib
 import logging
 import re
 from typing import Literal
-from uuid import UUID
 
 import yaml
 from omnibase_compat.contracts.pr_occ_stamp import (
@@ -856,20 +855,20 @@ class HandlerOccCompanionCompute:
 
     async def handle(
         self,
-        correlation_id: UUID,
         request: ModelOccCompanionRequest,
     ) -> ModelOccCompanionPlan:
         """Render the deterministic companion plan for ``request``.
 
-        Delegates to the standalone pure :func:`compute_companion_plan` so the
-        attestation oracle (RSD-5) can re-invoke the same logic without the
-        handler envelope.
+        Canonical definition-B entrypoint: a single typed-payload parameter the
+        shared runtime adapter binds directly (no ``correlation_id`` positional,
+        no event-envelope type in the core). Delegates to the standalone pure
+        :func:`compute_companion_plan` so the attestation oracle (RSD-5) can
+        re-invoke the same logic without the handler envelope.
         """
         logger.info(
-            "occ_companion_compute: repo=%s pr=%s correlation_id=%s",
+            "occ_companion_compute: repo=%s pr=%s",
             request.repo,
             request.pr_number,
-            correlation_id,
         )
         return compute_companion_plan(request)
 

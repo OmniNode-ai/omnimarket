@@ -54,7 +54,6 @@ NON_CANONICAL: tuple[str, ...] = (
     "omnimarket.nodes.node_model_router",
     "omnimarket.nodes.node_monitor_alert_responder",
     "omnimarket.nodes.node_navigation_history_reducer",
-    "omnimarket.nodes.node_occ_companion_compute",
     "omnimarket.nodes.node_occ_evidence_draft_orchestrator",
     "omnimarket.nodes.node_omnigate_projection",
     "omnimarket.nodes.node_omnigate_receipt_generator",

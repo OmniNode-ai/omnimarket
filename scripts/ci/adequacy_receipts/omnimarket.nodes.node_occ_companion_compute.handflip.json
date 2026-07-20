@@ -1,0 +1,33 @@
+{
+  "node_id": "omnimarket.nodes.node_occ_companion_compute",
+  "receipt_schema": "handflip_proof.v1",
+  "canonical_handler_module": "omnimarket.nodes.node_occ_companion_compute.handlers.handler_occ_companion_compute",
+  "legacy_handler_module": "omnimarket.nodes.node_occ_companion_compute.handlers.handler_occ_companion_compute",
+  "base_ref": "7eacd93786d34bbd733de8132e10cab2043902c3",
+  "preserved_symbols": [
+    "compute_companion_plan",
+    "deterministic_fingerprint",
+    "classify_trivial_infra_fastpath",
+    "_supersede_file",
+    "_receipt",
+    "_stamp_product_body",
+    "_strip_observed_facts"
+  ],
+  "parity": {
+    "status": "pass",
+    "test_ids": [
+      "tests/unit/nodes/node_occ_companion_compute/test_occ_companion_defb_dispatch_omn14835.py::test_handle_is_single_payload_defb",
+      "tests/unit/nodes/node_occ_companion_compute/test_occ_companion_defb_dispatch_omn14835.py::test_defb_dispatch_green_and_equivalent[pr321]",
+      "tests/unit/nodes/node_occ_companion_compute/test_occ_companion_defb_dispatch_omn14835.py::test_defb_dispatch_green_and_equivalent[pr326]",
+      "tests/unit/nodes/node_occ_companion_compute/test_occ_companion_defb_dispatch_omn14835.py::test_attestation_defb_dispatch_green"
+    ],
+    "selected_input_hashes": [
+      "sha256:15eed0d7435893b52abe9d6d5f9bad80f12270691a7c296337dc0717cc46455a",
+      "sha256:3bd1ba10d5a4fe9bde200b1ae67abbd2dfe0f1aed1892d4238d884e60c73cf7f",
+      "sha256:78d40dae35b2775196df10a10514a9496e4d720c898e021e51f4d2f796868e72",
+      "sha256:5a830dcb91ab3211189b89b60085444c886b63054345fb6141fa6bde9bccba54",
+      "sha256:9c4aeaf9547ba9d57a9785b819d53c560e3604855f9ebd558a4ba571425f80df",
+      "sha256:2ee5f5d383f55ba5f9bd7bcab7e3af296c5e4998fc2ceedf42cf94cba4ec5f21"
+    ]
+  }
+}
