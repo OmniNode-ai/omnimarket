@@ -1,0 +1,85 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - OCC Observation Projection (OMN-14851, storage-agnostic scaffold)
+#
+# Pure COMPUTE. Dedupes an arbitrary raw OCC-observation trail (append-only
+# rows keyed by product_repo/product_pr_number/head_sha/policy_version/
+# workflow_run_id/run_attempt) into exactly one deterministic representative
+# observation per distinct EXACT SOURCE TUPLE (product_repo, product_pr_number,
+# head_sha, policy_version), so a rerun of the same head_sha counts once
+# toward N=10, never N times.
+#
+# This node does NOT read or write any durable store. WHERE the append-only
+# raw log lives is an open architecture decision tracked on OMN-14851 — this
+# node is the storage-agnostic seam between whichever store is approved and
+# the existing node_occ_autoauthor_window counter, which this node feeds
+# UNCHANGED (no change to the window counter's own semantics).
+#
+# Directly-invoked only (no Kafka producer/consumer) — it declares no
+# event_bus topics, so it contributes no edges to the contract-topic-graph.
+# The runtime resolves it via handler_routing.default_handler (_run_compute
+# path: no terminal_event / no event bus needed), matching
+# node_occ_autoauthor_window.
+#
+# Related Tickets:
+#   - OMN-14851: this node (storage-agnostic dedup projection scaffold)
+#   - OMN-14844: observer async-fix (spine item 5, upstream blocker)
+#   - OMN-14393: RSD-5 report-only attestation gate + N-window
+name: "node_occ_observation_projection"
+lifecycle: experimental
+node_type: "COMPUTE_GENERIC"
+runtime_profiles: [main]
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_version: "1.0.0"
+description: "Pure computation: dedupes the raw append-only OCC observation trail into one deterministic representative observation per distinct exact source tuple, ready to feed node_occ_autoauthor_window. Zero I/O; storage-agnostic."
+input_model:
+  name: "ModelOccObservationProjectionRequest"
+  module: "omnimarket.nodes.node_occ_observation_projection.models.model_occ_observation_projection_request"
+  description: "The raw append-only observation records (any order, may contain duplicate attempts or reruns)."
+output_model:
+  name: "ModelOccObservationProjectionResult"
+  module: "omnimarket.nodes.node_occ_observation_projection.models.model_occ_observation_projection_result"
+  description: "The deduplicated qualifying-observation projection, ready for ModelOccAutoauthorWindowRequest.observations."
+# Top-level handler block: the runtime's compute-execution path (_run_compute,
+# reached because this contract declares no terminal_event) resolves the
+# handler and builds the typed input payload from THIS block's input_model.
+handler:
+  module: "omnimarket.nodes.node_occ_observation_projection.handlers.handler_occ_observation_projection"
+  class: "HandlerOccObservationProjection"
+  input_model: "omnimarket.nodes.node_occ_observation_projection.models.model_occ_observation_projection_request.ModelOccObservationProjectionRequest"
+handler_routing:
+  routing_strategy: "operation_match"
+  default_handler: "omnimarket.nodes.node_occ_observation_projection.handlers.handler_occ_observation_projection:HandlerOccObservationProjection"
+  handlers:
+    - operation: "compute_observation_projection"
+      handler:
+        name: "HandlerOccObservationProjection"
+        module: "omnimarket.nodes.node_occ_observation_projection.handlers.handler_occ_observation_projection"
+# Declared command/terminal bus interface (dispatch-addressable). No top-level
+# `terminal_event:` scalar is set, so the local runtime keeps using the
+# _run_compute path for `onex node`; these runtime_dispatch topics are the CLI
+# dispatcher's own command/result seam (exempt from orphan detection, like
+# node_occ_autoauthor_window) and carry no bus producer/consumer today.
+runtime_dispatch:
+  command_topic: "onex.cmd.omnimarket.occ-observation-projection-requested.v1"
+  terminal_events:
+    success: "onex.evt.omnimarket.occ-observation-projection-completed.v1"
+    failure: "onex.evt.omnimarket.occ-observation-projection-failed.v1"
+metadata:
+  transport_type: inmemory
+  description: "OCC observation dedup projection — pure, storage-agnostic aggregator (no external transport)"
+  author: "OmniNode Team"
+  created: "2026-07-20"
+  tags:
+    - "compute"
+    - "occ"
+    - "autoauthor"
+    - "report-only"
+    - "OMN-14851"
+  related_tickets:
+    - "OMN-14851"
+    - "OMN-14844"
+    - "OMN-14393"
