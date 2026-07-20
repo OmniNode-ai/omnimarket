@@ -1,0 +1,178 @@
+{
+  "input": {
+    "existing_profile": null,
+    "signals": [
+      {
+        "confidence": 0.9,
+        "emitted_at": "2026-01-01T00:00:00Z",
+        "evidence": "observed behavior",
+        "inferred_value": "repo-x",
+        "session_id": "sess-1",
+        "signal_id": "00000000-0000-0000-0000-000000000064",
+        "signal_type": "domain_familiarity",
+        "user_id": "user-1"
+      },
+      {
+        "confidence": 0.9,
+        "emitted_at": "2026-01-01T00:00:00Z",
+        "evidence": "observed behavior",
+        "inferred_value": "repo-x",
+        "session_id": "sess-1",
+        "signal_id": "00000000-0000-0000-0000-000000000065",
+        "signal_type": "domain_familiarity",
+        "user_id": "user-1"
+      },
+      {
+        "confidence": 0.9,
+        "emitted_at": "2026-01-01T00:00:00Z",
+        "evidence": "observed behavior",
+        "inferred_value": "repo-x",
+        "session_id": "sess-1",
+        "signal_id": "00000000-0000-0000-0000-000000000066",
+        "signal_type": "domain_familiarity",
+        "user_id": "user-1"
+      },
+      {
+        "confidence": 0.9,
+        "emitted_at": "2026-01-01T00:00:00Z",
+        "evidence": "observed behavior",
+        "inferred_value": "repo-x",
+        "session_id": "sess-1",
+        "signal_id": "00000000-0000-0000-0000-000000000067",
+        "signal_type": "domain_familiarity",
+        "user_id": "user-1"
+      },
+      {
+        "confidence": 0.9,
+        "emitted_at": "2026-01-01T00:00:00Z",
+        "evidence": "observed behavior",
+        "inferred_value": "repo-x",
+        "session_id": "sess-1",
+        "signal_id": "00000000-0000-0000-0000-000000000068",
+        "signal_type": "domain_familiarity",
+        "user_id": "user-1"
+      },
+      {
+        "confidence": 0.9,
+        "emitted_at": "2026-01-01T00:00:00Z",
+        "evidence": "observed behavior",
+        "inferred_value": "repo-x",
+        "session_id": "sess-1",
+        "signal_id": "00000000-0000-0000-0000-000000000069",
+        "signal_type": "domain_familiarity",
+        "user_id": "user-1"
+      },
+      {
+        "confidence": 0.9,
+        "emitted_at": "2026-01-01T00:00:00Z",
+        "evidence": "observed behavior",
+        "inferred_value": "repo-x",
+        "session_id": "sess-1",
+        "signal_id": "00000000-0000-0000-0000-00000000006a",
+        "signal_type": "domain_familiarity",
+        "user_id": "user-1"
+      },
+      {
+        "confidence": 0.9,
+        "emitted_at": "2026-01-01T00:00:00Z",
+        "evidence": "observed behavior",
+        "inferred_value": "repo-x",
+        "session_id": "sess-1",
+        "signal_id": "00000000-0000-0000-0000-00000000006b",
+        "signal_type": "domain_familiarity",
+        "user_id": "user-1"
+      },
+      {
+        "confidence": 0.9,
+        "emitted_at": "2026-01-01T00:00:00Z",
+        "evidence": "observed behavior",
+        "inferred_value": "repo-x",
+        "session_id": "sess-1",
+        "signal_id": "00000000-0000-0000-0000-00000000006c",
+        "signal_type": "domain_familiarity",
+        "user_id": "user-1"
+      },
+      {
+        "confidence": 0.9,
+        "emitted_at": "2026-01-01T00:00:00Z",
+        "evidence": "observed behavior",
+        "inferred_value": "repo-x",
+        "session_id": "sess-1",
+        "signal_id": "00000000-0000-0000-0000-00000000006d",
+        "signal_type": "domain_familiarity",
+        "user_id": "user-1"
+      },
+      {
+        "confidence": 0.9,
+        "emitted_at": "2026-01-01T00:00:00Z",
+        "evidence": "observed behavior",
+        "inferred_value": "repo-x",
+        "session_id": "sess-1",
+        "signal_id": "00000000-0000-0000-0000-00000000006e",
+        "signal_type": "domain_familiarity",
+        "user_id": "user-1"
+      },
+      {
+        "confidence": 0.9,
+        "emitted_at": "2026-01-01T00:00:00Z",
+        "evidence": "observed behavior",
+        "inferred_value": "repo-x",
+        "session_id": "sess-1",
+        "signal_id": "00000000-0000-0000-0000-00000000006f",
+        "signal_type": "domain_familiarity",
+        "user_id": "user-1"
+      },
+      {
+        "confidence": 0.9,
+        "emitted_at": "2026-01-01T00:00:00Z",
+        "evidence": "observed behavior",
+        "inferred_value": "repo-x",
+        "session_id": "sess-1",
+        "signal_id": "00000000-0000-0000-0000-000000000070",
+        "signal_type": "domain_familiarity",
+        "user_id": "user-1"
+      },
+      {
+        "confidence": 0.9,
+        "emitted_at": "2026-01-01T00:00:00Z",
+        "evidence": "observed behavior",
+        "inferred_value": "repo-x",
+        "session_id": "sess-1",
+        "signal_id": "00000000-0000-0000-0000-000000000071",
+        "signal_type": "domain_familiarity",
+        "user_id": "user-1"
+      },
+      {
+        "confidence": 0.9,
+        "emitted_at": "2026-01-01T00:00:00Z",
+        "evidence": "observed behavior",
+        "inferred_value": "repo-x",
+        "session_id": "sess-1",
+        "signal_id": "00000000-0000-0000-0000-000000000072",
+        "signal_type": "domain_familiarity",
+        "user_id": "user-1"
+      }
+    ],
+    "user_id": "user-1"
+  },
+  "output": {
+    "error_message": null,
+    "persona": {
+      "agent_id": null,
+      "created_at": "1970-01-01T00:00:00+00:00",
+      "domain_familiarity": {
+        "repo-x": 1.0
+      },
+      "persona_version": 1,
+      "preferred_tone": "explanatory",
+      "rebuilt_from_signals": 15,
+      "session_count": 1,
+      "technical_level": "intermediate",
+      "user_id": "user-1",
+      "vocabulary_complexity": 0.5
+    },
+    "signals_processed": 15,
+    "status": "success"
+  },
+  "output_sha256": "sha256:72afd5b7114d039e0d6e53e9e5b62b27d863045c3df10599d33362f911bf1bca"
+}

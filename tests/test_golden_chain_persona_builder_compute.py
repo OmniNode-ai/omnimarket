@@ -51,13 +51,12 @@ class TestPersonaBuilderComputeGoldenChain:
     async def test_empty_signals_no_existing_returns_insufficient(self) -> None:
         """No signals and no existing profile returns insufficient_data."""
         handler = HandlerPersonaClassify()
-        cid = uuid4()
         request = ModelPersonaClassifyRequest(
             user_id="user-1",
             signals=[],
             existing_profile=None,
         )
-        result = await handler.handle(cid, request)
+        result = await handler.handle(request)
         assert result.status == "insufficient_data"
         assert result.persona is None
         assert result.signals_processed == 0
@@ -67,7 +66,6 @@ class TestPersonaBuilderComputeGoldenChain:
         from omnimemory.enums import EnumPreferredTone, EnumTechnicalLevel
 
         handler = HandlerPersonaClassify()
-        cid = uuid4()
         now = datetime.now(tz=UTC)
 
         from omnimemory.models.persona import ModelUserPersonaV1
@@ -88,7 +86,7 @@ class TestPersonaBuilderComputeGoldenChain:
             signals=[],
             existing_profile=existing,
         )
-        result = await handler.handle(cid, request)
+        result = await handler.handle(request)
         assert result.status == "success"
         assert result.persona == existing
         assert result.signals_processed == 0
@@ -96,7 +94,6 @@ class TestPersonaBuilderComputeGoldenChain:
     async def test_fresh_user_gets_initial_persona(self) -> None:
         """First session with signals creates a new persona."""
         handler = HandlerPersonaClassify()
-        cid = uuid4()
         request = ModelPersonaClassifyRequest(
             user_id="user-1",
             signals=[
@@ -107,7 +104,7 @@ class TestPersonaBuilderComputeGoldenChain:
                 )
             ],
         )
-        result = await handler.handle(cid, request)
+        result = await handler.handle(request)
         assert result.status == "success"
         assert result.persona is not None
         assert result.signals_processed == 1
@@ -116,7 +113,6 @@ class TestPersonaBuilderComputeGoldenChain:
     async def test_domain_familiarity_accumulates(self) -> None:
         """Domain familiarity increments by 0.1 per signal."""
         handler = HandlerPersonaClassify()
-        cid = uuid4()
         request = ModelPersonaClassifyRequest(
             user_id="user-1",
             signals=[
@@ -124,7 +120,7 @@ class TestPersonaBuilderComputeGoldenChain:
                 _signal(signal_type="domain_familiarity", inferred_value="omnimarket"),
             ],
         )
-        result = await handler.handle(cid, request)
+        result = await handler.handle(request)
         assert result.persona is not None
         # 2 signals * 0.1 increment = 0.2
         assert result.persona.domain_familiarity.get("omnimarket") == pytest.approx(
@@ -134,7 +130,6 @@ class TestPersonaBuilderComputeGoldenChain:
     async def test_domain_familiarity_caps_at_1(self) -> None:
         """Domain familiarity is capped at 1.0."""
         handler = HandlerPersonaClassify()
-        cid = uuid4()
         # 15 signals to push past 1.0
         request = ModelPersonaClassifyRequest(
             user_id="user-1",
@@ -143,7 +138,7 @@ class TestPersonaBuilderComputeGoldenChain:
                 for _ in range(15)
             ],
         )
-        result = await handler.handle(cid, request)
+        result = await handler.handle(request)
         assert result.persona is not None
         assert result.persona.domain_familiarity.get("repo-x") == pytest.approx(
             1.0, abs=0.01
@@ -152,7 +147,6 @@ class TestPersonaBuilderComputeGoldenChain:
     async def test_vocabulary_ema_applied(self) -> None:
         """Vocabulary complexity uses EMA with alpha=0.2."""
         handler = HandlerPersonaClassify()
-        cid = uuid4()
         # Start with existing profile at 0.5, send a signal of 1.0
         # Expected: 0.2*1.0 + 0.8*0.5 = 0.6
         from omnimemory.enums import EnumPreferredTone, EnumTechnicalLevel
@@ -176,14 +170,13 @@ class TestPersonaBuilderComputeGoldenChain:
             ],
             existing_profile=existing,
         )
-        result = await handler.handle(cid, request)
+        result = await handler.handle(request)
         assert result.persona is not None
         assert result.persona.vocabulary_complexity == pytest.approx(0.6, abs=0.01)
 
     async def test_technical_level_conservatism_on_early_session(self) -> None:
         """Technical level can shift on early sessions (< 3 sessions)."""
         handler = HandlerPersonaClassify()
-        cid = uuid4()
         from omnimemory.enums import EnumPreferredTone, EnumTechnicalLevel
         from omnimemory.models.persona import ModelUserPersonaV1
 
@@ -209,7 +202,7 @@ class TestPersonaBuilderComputeGoldenChain:
             ],
             existing_profile=existing,
         )
-        result = await handler.handle(cid, request)
+        result = await handler.handle(request)
         assert result.persona is not None
         assert result.persona.technical_level == EnumTechnicalLevel.ADVANCED
 
@@ -232,7 +225,6 @@ class TestPersonaBuilderComputeGoldenChain:
         Proposed change is 'beginner' with only 2/5=40% — blocked.
         """
         handler = HandlerPersonaClassify()
-        cid = uuid4()
         from omnimemory.enums import EnumPreferredTone, EnumTechnicalLevel
         from omnimemory.models.persona import ModelUserPersonaV1
 
@@ -272,7 +264,7 @@ class TestPersonaBuilderComputeGoldenChain:
             signals=signals,
             existing_profile=existing,
         )
-        result = await handler.handle(cid, request)
+        result = await handler.handle(request)
         assert result.persona is not None
         # Most voted is 'advanced' (same as existing) — stays ADVANCED
         assert result.persona.technical_level == EnumTechnicalLevel.ADVANCED
@@ -280,12 +272,11 @@ class TestPersonaBuilderComputeGoldenChain:
     async def test_persona_version_increments(self) -> None:
         """Persona version increments by 1 each classification."""
         handler = HandlerPersonaClassify()
-        cid = uuid4()
         request = ModelPersonaClassifyRequest(
             user_id="user-1",
             signals=[_signal()],
         )
-        result = await handler.handle(cid, request)
+        result = await handler.handle(request)
         assert result.persona is not None
         assert result.persona.persona_version == 1
 

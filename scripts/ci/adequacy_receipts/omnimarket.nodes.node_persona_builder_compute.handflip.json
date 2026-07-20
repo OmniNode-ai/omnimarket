@@ -1,0 +1,33 @@
+{
+  "base_ref": "7eacd93786d34bbd733de8132e10cab2043902c3",
+  "canonical_handler_module": "omnimarket.nodes.node_persona_builder_compute.handlers.handler_persona_classify",
+  "legacy_handler_module": "omnimarket.nodes.node_persona_builder_compute.handlers.handler_persona_classify",
+  "node_id": "omnimarket.nodes.node_persona_builder_compute",
+  "parity": {
+    "selected_input_hashes": [
+      "sha256:95539b88539e37b6b692e1fc4e97602631525c3cd5066a43622a19b507f93ae7",
+      "sha256:4be94f0f9c5bfeaffaf5b7aa04d3d7f5392756aa5debc545fe8a6960ad4b41ce",
+      "sha256:6fe2d8030c6469b2638ac95189ea38e339aa37d51e336e2de1e0e25d10fe2798",
+      "sha256:fdfa50ab4e32a801d20b8ffe5540a33b2413365a612921559aeb50217dd2f3ec",
+      "sha256:10b9a8e606de3f61a9d0c82889e2491886956e0a40aca160df0380180aa7991c",
+      "sha256:0dc83669a20e5ba54f31789083409066aa74dc6e17747b0c11f00ad2221967a6",
+      "sha256:22a12341dbdac3065a83ee7e9d3c12dd5f89909534f363d19caced966a8e85e0",
+      "sha256:5ba1c303177a1babb4fbf18a363bdb4e9981b49ed3e953c5f4240ecb7918d85d",
+      "sha256:184233cb61107aa50cb50058f24f48e67facd8ad8b948734d6a9a85ff84b37e4",
+      "sha256:d896b7b17dc767f2622d796633e5e5ea74273c2f79222a7d514d57269f3e7f8b"
+    ],
+    "status": "pass",
+    "test_ids": [
+      "tests/unit/nodes/node_persona_builder_compute/test_persona_builder_golden_equivalence.py::test_handle_reproduces_recorded_golden",
+      "tests/test_golden_chain_persona_builder_compute.py::TestPersonaBuilderComputeGoldenChain"
+    ]
+  },
+  "preserved_symbols": [
+    "_classify_persona",
+    "_classify_technical_level",
+    "_classify_vocabulary",
+    "_classify_tone",
+    "_classify_domains"
+  ],
+  "receipt_schema": "handflip_proof.v1"
+}

@@ -1,0 +1,14 @@
+{
+  "input": {
+    "existing_profile": null,
+    "signals": [],
+    "user_id": "user-1"
+  },
+  "output": {
+    "error_message": null,
+    "persona": null,
+    "signals_processed": 0,
+    "status": "insufficient_data"
+  },
+  "output_sha256": "sha256:1de1cde7329e92e9f0794ace9e293c110f75f3d1cacb7f8ae0d7435ca81a1a3d"
+}
