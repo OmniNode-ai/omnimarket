@@ -25,13 +25,15 @@ from __future__ import annotations
 
 import logging
 from typing import Literal
-from uuid import UUID
 
 from omnimarket.nodes.node_pr_lifecycle_triage_compute.models.enum_pr_triage_category import (
     EnumPrTriageCategory,
 )
 from omnimarket.nodes.node_pr_lifecycle_triage_compute.models.model_pr_inventory_item import (
     ModelPrInventoryItem,
+)
+from omnimarket.nodes.node_pr_lifecycle_triage_compute.models.model_pr_triage_input import (
+    ModelPrTriageInput,
 )
 from omnimarket.nodes.node_pr_lifecycle_triage_compute.models.model_pr_triage_output import (
     ModelPrTriageOutput,
@@ -200,18 +202,23 @@ class HandlerPrLifecycleTriage:
 
     async def handle(
         self,
-        correlation_id: UUID,
-        prs: tuple[ModelPrInventoryItem, ...],
+        request: ModelPrTriageInput,
     ) -> ModelPrTriageOutput:
         """Classify PRs into triage categories.
 
+        Canonical definition-B entrypoint: the shared runtime adapter
+        (``omnibase_core.runtime.runtime_local_adapter``) validates the wire
+        payload into ``ModelPrTriageInput`` and invokes this as the sole request
+        object. Pure compute (no I/O, no envelope).
+
         Args:
-            correlation_id: Correlation ID from the inventory event.
-            prs: PR inventory items to classify.
+            request: Validated triage input (correlation id + PR inventory items).
 
         Returns:
             ModelPrTriageOutput with per-PR results and category counts.
         """
+        correlation_id = request.correlation_id
+        prs = request.prs
         logger.info(
             "Triaging %d PRs (correlation_id=%s)",
             len(prs),
