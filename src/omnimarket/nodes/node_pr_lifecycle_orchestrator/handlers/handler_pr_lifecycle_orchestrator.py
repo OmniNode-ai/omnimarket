@@ -2329,10 +2329,8 @@ class HandlerPrLifecycleOrchestrator:
         """
         assert self._triage is not None
 
-        from omnimarket.nodes.node_pr_lifecycle_triage_compute.models.model_pr_inventory_item import (
+        from omnimarket.events.pr_lifecycle_triage import (
             ModelPrInventoryItem,
-        )
-        from omnimarket.nodes.node_pr_lifecycle_triage_compute.models.model_pr_triage_input import (
             ModelPrTriageInput,
         )
 

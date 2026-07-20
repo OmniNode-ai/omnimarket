@@ -609,11 +609,9 @@ class _PatternBInventoryHandler:
 
 
 class _PatternBTriageHandler:
-    async def handle(
-        self,
-        correlation_id: object,
-        prs: tuple[object, ...],
-    ) -> PrTriageResult:
+    async def handle(self, request: object) -> PrTriageResult:
+        correlation_id = request.correlation_id
+        prs = tuple(request.prs)
         assert correlation_id
         assert len(prs) == 2
         return PrTriageResult(
