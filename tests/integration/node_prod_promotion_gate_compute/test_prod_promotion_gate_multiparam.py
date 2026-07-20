@@ -2,10 +2,10 @@
 # SPDX-License-Identifier: MIT
 """Multi-parameter integration test for node_prod_promotion_gate_compute (OMN-13683, WS-5 Wave 9).
 
-Variant A (COMPUTE): drives the real ``HandlerProdPromotionGate.handle`` dispatch
-end-to-end over a ``ModelEventEnvelope`` and asserts the typed
-``ModelProdPromotionGateDecision`` carried on ``ModelHandlerOutput`` for a matrix
-of distinct gate-fact param sets. This is the prod-promotion *gate sub-node ONLY*
+Variant A (COMPUTE): drives the real def-B ``HandlerProdPromotionGate.handle``
+dispatch end-to-end and asserts the typed ``ModelProdPromotionGateDecision``
+returned directly (OMN-14838 canonical flip) for a matrix of distinct gate-fact
+param sets. This is the prod-promotion *gate sub-node ONLY*
 — it is a pure, in-process decision (a rejection or an allow). It NEVER exercises
 a live deploy EFFECT, live prod, or the .201 server.
 
@@ -32,8 +32,6 @@ from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
 import pytest
-from omnibase_core.enums.enum_node_kind import EnumNodeKind
-from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
 
 from omnimarket.events.runtime_deployment import (
     EnumOccGateState,
@@ -348,23 +346,10 @@ async def test_prod_promotion_gate_multiparam(
 ) -> None:
     handler = HandlerProdPromotionGate()
     command = builder()
-    envelope: ModelEventEnvelope[ModelProdPromotionGateCommand] = ModelEventEnvelope(
-        payload=command,
-        correlation_id=command.correlation_id,
-        event_type="onex.cmd.omnimarket.prod-promotion-gate-evaluate.v1",
-    )
 
-    output = await handler.handle(envelope)
+    # def-B (OMN-14838): handle(request) returns the decision directly.
+    decision = await handler.handle(command)
 
-    # Typed dispatch envelope assertions.
-    assert output.node_kind == EnumNodeKind.COMPUTE
-    assert output.correlation_id == command.correlation_id
-    # COMPUTE purity: a gate is a pure decision, never an effect.
-    assert output.events == ()
-    assert output.intents == ()
-    assert output.projections == ()
-
-    decision = output.result
     assert isinstance(decision, ModelProdPromotionGateDecision)
     assert decision.allowed is expected_allowed
     assert reason_substr.lower() in decision.reason.lower()

@@ -29,7 +29,6 @@ from uuid import uuid4
 
 import pytest
 import yaml
-from omnibase_core.enums.enum_node_kind import EnumNodeKind
 from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
 from pydantic import ValidationError
 
@@ -606,17 +605,9 @@ class TestOrchestratorResolverGoldenChain:
         assert gate_command.promotion_grant.approved_by == _APPROVER
         assert gate_command.evaluated_at == resolved.evaluated_at
 
-        # Edge 4: gate COMPUTE evaluates -> prod ALLOWED with the resolved grant.
-        gate_env: ModelEventEnvelope[ModelProdPromotionGateCommand] = (
-            ModelEventEnvelope(
-                payload=gate_command,
-                correlation_id=gate_command.correlation_id,
-                event_type=TOPIC_PROD_GATE_EVALUATE,
-            )
-        )
-        gate_out = await gate.handle(gate_env)
-        assert gate_out.node_kind == EnumNodeKind.COMPUTE
-        decision = gate_out.result
+        # Edge 4: gate COMPUTE evaluates the def-B command directly; the shared
+        # runtime adapter owns envelope wrapping outside this pure compute core.
+        decision = await gate.handle(gate_command)
         assert isinstance(decision, ModelProdPromotionGateDecision)
         assert decision.allowed is True
 
@@ -654,15 +645,7 @@ class TestOrchestratorResolverGoldenChain:
         assert isinstance(gate_command, ModelProdPromotionGateCommand)
         assert gate_command.promotion_grant is None
 
-        gate_env: ModelEventEnvelope[ModelProdPromotionGateCommand] = (
-            ModelEventEnvelope(
-                payload=gate_command,
-                correlation_id=gate_command.correlation_id,
-                event_type=TOPIC_PROD_GATE_EVALUATE,
-            )
-        )
-        gate_out = await gate.handle(gate_env)
-        decision = gate_out.result
+        decision = await gate.handle(gate_command)
         assert isinstance(decision, ModelProdPromotionGateDecision)
         assert decision.allowed is False
         assert "missing_promotion_grant" in decision.reason
