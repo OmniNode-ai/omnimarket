@@ -284,6 +284,13 @@ class HandlerProjectionDelegation:
             raise TypeError("handle() requires a DatabaseAdapter in input_data['_db']")
         event_type = str(payload.pop("_event_type", ""))
         if "delegation-judge-verdict" in event_type:
+            # OMN-14855: the multi-topic dispatch fan-out injects an envelope-only
+            # "_topic" key into input_data (same pattern as handler_instruction_eval,
+            # handler_projection_session_replay, handler_delegation_routing_feedback
+            # in this repo). ModelDelegationJudgeVerdictEvent sets extra="forbid", so
+            # leaving "_topic" in the payload always trips extra_forbidden and sends
+            # every judge-verdict event to the malformed DLQ.
+            payload.pop("_topic", None)
             verdict = ModelDelegationJudgeVerdictEvent(**payload)
             result = self.project_judge_verdict(verdict, db_raw)
             return result.model_dump(mode="json")
