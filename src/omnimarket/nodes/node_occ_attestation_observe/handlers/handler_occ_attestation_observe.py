@@ -192,7 +192,7 @@ class HandlerOccAttestationObserve:
         request: ModelOccAttestationObserveRequest,
         observed_at: str,
     ) -> ModelOccAutoauthorObservation:
-        token = self._resolve_github_token()
+        token = await asyncio.to_thread(self._resolve_github_token)
 
         # READ the live product-PR + OCC facts (reuses RSD-2, read-only).
         expected_request = await self._state_handler.handle(
