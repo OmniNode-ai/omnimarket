@@ -29,6 +29,9 @@ from uuid import UUID
 import yaml
 
 from omnimarket.config.service_endpoints import LINEAR_GRAPHQL_URL
+from omnimarket.models.model_rsd_fill_input import (
+    ModelRsdFillInput,
+)
 from omnimarket.nodes.node_pipeline_fill.models.model_pipeline_fill_command import (
     ModelPipelineFillCommand,
 )
@@ -37,9 +40,6 @@ from omnimarket.nodes.node_pipeline_fill.models.model_pipeline_fill_result impor
 )
 from omnimarket.nodes.node_rsd_fill_compute.handlers.handler_rsd_fill import (
     HandlerRsdFill,
-)
-from omnimarket.nodes.node_rsd_fill_compute.models.model_rsd_fill_input import (
-    ModelRsdFillInput,
 )
 from omnimarket.nodes.node_rsd_fill_compute.models.model_scored_ticket import (
     ModelScoredTicket,

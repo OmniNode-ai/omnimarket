@@ -33,11 +33,11 @@ from omnimarket.events.self_healing_dispatch import (
     ModelDispatchGroup,
     ModelSelfHealingDispatchRequest,
 )
+from omnimarket.models.model_rsd_fill_input import (
+    ModelRsdFillInput,
+)
 from omnimarket.nodes.node_rsd_fill_compute.handlers.handler_rsd_fill import (
     HandlerRsdFill,
-)
-from omnimarket.nodes.node_rsd_fill_compute.models.model_rsd_fill_input import (
-    ModelRsdFillInput,
 )
 from omnimarket.nodes.node_self_healing_dispatch_orchestrator.handlers.handler_self_healing_dispatch_orchestrator import (
     HandlerSelfHealingDispatchOrchestrator,

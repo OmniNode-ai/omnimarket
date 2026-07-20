@@ -9,12 +9,19 @@
   "receipt_schema": "adequacy_receipt.v1",
   "recorded_at": "2026-07-20T06:55:50.004162+00:00",
   "recorder_schema": "adequacy_receipt.v1",
-  "selected_count": 1,
+  "selected_count": 8,
   "selected_input_hashes": [
+    "sha256:af6af24de4189ace2fad93310d8044da921d83562f824416e041fa8b48b6ea2e",
+    "sha256:68df023b4bf241622da5fc01ad7ec06c7c4d377dd313bc95f1437b6a5ff1ae42",
+    "sha256:ec583db30fbbc46e5d70c24a755efce3277eef4f8107f8c2ed0f88edace07a3d",
+    "sha256:c6f54943210b2496f94a1c2650abf3fac8f4b24f266b1fe6e67ce8e77194e76f",
+    "sha256:968124f4fde2d153619be312bd2fb158b9686106b3730af00cbef1d8b2951561",
+    "sha256:7922c9372d6591299c241392fbb28d79660dc82cadb490120f9e43e5d74666ce",
+    "sha256:d9e23547f864fa52e98e0e4f7b36ec9961e17ac71d403d21bc2bdb46b57970ad",
     "sha256:f42d2229e2e9b5f8f279ae9b8e20b40e650abfede257ddc320000931a5644728"
   ],
   "uncovered_waiver": {
-    "reason": "branch_coverage_pct is structurally deflated: coverage.py measures AFTER module import, so the module-level Literal/const assignments and the def/class headers (executed at import time, before cov.start) count as unmeasured. The _select_top_n selection body (sort key, top-N slice, tie-breaks, empty/single/max-exceeds paths) IS exercised by this pool and proven byte-identical to the pre-flip def-A logic by the hand-flip verbatim proof + test_rsd_fill_golden_equivalence.py (perturbation-discriminating). OMN-14839.",
+    "reason": "branch_coverage_pct is structurally deflated: coverage.py measures AFTER module import, so the module-level Literal/const assignments and the def/class headers (executed at import time, before cov.start) count as unmeasured. The _select_top_n selection body (sort key, top-N slice, tie-breaks, empty, single, max-exceeds, larger-pool, and full-field paths) IS exercised by the eight-case golden pool and proven byte-identical to the pre-flip def-A logic by the hand-flip verbatim proof + test_rsd_fill_golden_equivalence.py (perturbation-discriminating). OMN-14839.",
     "uncovered_branch_count": 0
   },
   "volatile_mask": []

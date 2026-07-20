@@ -75,7 +75,7 @@ class RsdFillRequest(BaseModel):
     scored_tickets: tuple[ScoredTicket, ...] = Field(
         default_factory=tuple, description="Pre-scored candidate tickets."
     )
-    max_tickets: int = Field(default=5, description="Maximum tickets to select.")
+    max_tickets: int = Field(default=5, ge=0, description="Maximum tickets to select.")
 
 
 class BuildTarget(BaseModel):
