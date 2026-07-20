@@ -64,6 +64,15 @@ class HandlerRsdFill:
         Returns:
             ModelRsdFillOutput with selected tickets.
         """
+        return self._select_top_n(correlation_id, scored_tickets, max_tickets)
+
+    def _select_top_n(
+        self,
+        correlation_id: UUID,
+        scored_tickets: tuple[ModelScoredTicket, ...],
+        max_tickets: int,
+    ) -> ModelRsdFillOutput:
+        """Pure top-N-by-RSD-score selection with deterministic tie-breaking."""
         logger.info(
             "RSD fill: selecting top-%d from %d candidates (correlation_id=%s)",
             max_tickets,
