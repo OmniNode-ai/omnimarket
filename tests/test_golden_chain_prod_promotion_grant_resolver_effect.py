@@ -7,7 +7,8 @@ grant from the durable trust anchor:
 
   * present + future-expiry + matching -> grant materialized (RESOLVED);
   * absent / expired / digest-mismatch / batch-mismatch / lane-mismatch -> None;
-  * ``approved_by == requested_by`` -> SELF_GRANTED (rejected, None);
+  * ``approved_by == requested_by`` (solo CODEOWNER self-approval) -> RESOLVED
+    (dual-control removed, OMN-14814); the other fail-closed conditions still hold;
   * consumed entry -> ABSENT (no replay), None;
   * provenance fields populated on the EMITTED audit evidence (source commit SHA,
     grant file path, grant_id, file sha256, CODEOWNERS-match);
@@ -205,12 +206,39 @@ class TestResolveGrant:
         assert result.outcome is EnumGrantResolution.RESOLVED
         assert result.grant is not None
 
-    def test_self_granted_when_approver_equals_requester(self) -> None:
+    def test_sole_owner_self_grant_resolves(self) -> None:
+        # OMN-14814: dual-control removed. A grant whose approver equals the
+        # requester (solo CODEOWNER self-approval) now RESOLVES given valid
+        # digest/batch/expiry — it is no longer rejected as SELF_GRANTED.
         entry = _grant_entry(approved_by=_REQUESTER)
         result = _resolve(_grant_file(entry))
-        assert result.outcome is EnumGrantResolution.SELF_GRANTED
-        assert result.grant is None
+        assert result.outcome is EnumGrantResolution.RESOLVED
+        assert result.grant is not None
+        assert result.grant.approved_by == _REQUESTER
         assert result.grant_id == _GRANT_ID
+
+    def test_sole_owner_self_grant_still_expired_when_past_expiry(self) -> None:
+        # Removing dual-control does NOT weaken the other fail-closed conditions:
+        # a self-approved but expired grant is still EXPIRED (grant None).
+        entry = _grant_entry(
+            approved_by=_REQUESTER,
+            expires_at=_EVALUATED_AT - timedelta(seconds=1),
+        )
+        result = _resolve(_grant_file(entry))
+        assert result.outcome is EnumGrantResolution.EXPIRED
+        assert result.grant is None
+
+    def test_sole_owner_self_grant_still_consumed_no_replay(self) -> None:
+        entry = _grant_entry(approved_by=_REQUESTER, consumed=True)
+        result = _resolve(_grant_file(entry))
+        assert result.outcome is EnumGrantResolution.CONSUMED
+        assert result.grant is None
+
+    def test_sole_owner_self_grant_still_absent_on_digest_mismatch(self) -> None:
+        entry = _grant_entry(approved_by=_REQUESTER)
+        result = _resolve(_grant_file(entry), digest=_DIGEST_DRIFT)
+        assert result.outcome is EnumGrantResolution.ABSENT
+        assert result.grant is None
 
     def test_consumed_is_absent_no_replay(self) -> None:
         entry = _grant_entry(consumed=True)
@@ -386,13 +414,16 @@ class TestResolverEffectHandler:
         assert event.resolution is EnumGrantResolution.EXPIRED
         assert event.grant is None
 
-    async def test_self_granted_emits_none(self) -> None:
+    async def test_sole_owner_self_grant_emits_resolved(self) -> None:
+        # OMN-14814: a self-approved grant now materializes through the EFFECT
+        # (dual-control removed) rather than emitting SELF_GRANTED + None.
         raw = _grant_file(_grant_entry(approved_by=_REQUESTER))
         handler = HandlerProdPromotionGrantResolver(fetcher=_StubFetcher(raw))
         event = await handler.handle(_command(requested_by=_REQUESTER))
         assert isinstance(event, ModelProdPromotionGrantResolvedEvent)
-        assert event.resolution is EnumGrantResolution.SELF_GRANTED
-        assert event.grant is None
+        assert event.resolution is EnumGrantResolution.RESOLVED
+        assert event.grant is not None
+        assert event.grant.approved_by == _REQUESTER
 
     async def test_consumed_emits_none(self) -> None:
         raw = _grant_file(_grant_entry(consumed=True))

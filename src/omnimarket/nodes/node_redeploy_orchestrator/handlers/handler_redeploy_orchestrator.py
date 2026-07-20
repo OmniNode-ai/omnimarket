@@ -246,8 +246,8 @@ class HandlerRedeployOrchestrator:
         ``grant`` + ``evaluated_at`` come ONLY from the out-of-band resolver
         (Phase-2b); they are NEVER taken from ``start.promotion_grant``. For
         non-prod lanes both are ``None`` and the gate allows trivially.
-        ``requested_by`` is threaded so the gate enforces
-        ``approved_by != requested_by``.
+        ``requested_by`` is threaded for audit provenance (dual-control is NOT
+        enforced — OMN-14814: solo CODEOWNER self-approval is allowed).
         """
         gate_command = ModelProdPromotionGateCommand(
             correlation_id=start.correlation_id,
