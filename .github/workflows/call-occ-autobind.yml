@@ -12,32 +12,29 @@
 # fires on `edited`) re-evaluates green — zero manual authoring.
 #
 # BROKER DECISION (mirrors pr-merged-publisher.yml, OMN-13226; corrected under
-# OMN-14451):
+# OMN-14451; secret dependency removed under OMN-14813):
 #   Trusted (non-fork) PR events run on the self-hosted omnibase-ci runner on
-#   .201. That runner is a DOCKER CONTAINER (docker-compose.runners.yml,
-#   omnibase_infra) with no bind mount for ~/.omnibase/.env -- that path is
-#   host-only and does not exist inside the container, so `source
-#   ~/.omnibase/.env` was always a silent no-op there (previously masked by
-#   `|| true`). KAFKA_BOOTSTRAP_SERVERS is now supplied ONLY via the
-#   repo-level `secrets.KAFKA_BOOTSTRAP_SERVERS` (the dev-lane Redpanda's
-#   Tailscale-advertised external listener, reachable from inside the runner
-#   container across the bridge network -- verified live, OMN-14451). Fork
-#   PRs fall back to ubuntu-latest, where no broker is configured and the
-#   publisher skips gracefully (exit 0). On the trusted runner, a missing
-#   broker is now a hard failure (RUNNER_IS_TRUSTED) rather than a silent
-#   exit 0, since that combination means a real misconfiguration, not an
-#   expected fork skip.
+#   .201. That runner reaches the dev-lane Redpanda across the bridge network.
+#   The broker is now resolved SECRET-FREE from the checked-in
+#   `config/ci_bus_lanes.yaml` overlay: `dev` declares the concrete external
+#   listener `omninode-pc.tail75df5e.ts.net:19092` directly, so the publisher
+#   publishes to that committed address with NO `KAFKA_BOOTSTRAP_SERVERS` secret
+#   injected (OMN-14813 completes OMN-14801 design point 3 -- no raw broker
+#   address in any GHA secret). Fork PRs fall back to ubuntu-latest and skip
+#   gracefully (exit 0). On the trusted runner an unreachable broker still fails
+#   loud (RuntimeError / exit 1, OMN-14639 undelivered-flush guard), so a real
+#   misconfiguration is a red signal, not a silent green -- the safety posture is
+#   strictly better than trusting an opaque secret.
 #
-# OVERLAY-DRIVEN LANE RESOLUTION (OMN-14801):
+# OVERLAY-DRIVEN LANE RESOLUTION (OMN-14801 / OMN-14813):
 #   The publish step passes `--lane dev`, which the script resolves against the
-#   checked-in `config/ci_bus_lanes.yaml` overlay to decide the bus target and to
-#   fail-loud-check the injected `secrets.KAFKA_BOOTSTRAP_SERVERS` against the
-#   lane's declared broker (silent dev->stability repoint guard, incident
-#   OMN-14800). `dev` is declared `from-secret` while a secret rotation is in
-#   flight, so the secret path is preserved byte-identical -- this workflow does
-#   NOT remove or bypass the secret.
+#   checked-in `config/ci_bus_lanes.yaml` overlay to decide the bus target. `dev`
+#   is declared as the concrete broker above, so the publisher uses it directly.
+#   The overlay's fail-loud divergence guard (silent dev->stability repoint,
+#   incident OMN-14800) still fires if a `KAFKA_BOOTSTRAP_SERVERS` secret is ever
+#   re-injected and diverges -- but this workflow no longer injects one.
 #
-# Ticket: OMN-13990, OMN-14451, OMN-14801
+# Ticket: OMN-13990, OMN-14451, OMN-14801, OMN-14813
 
 name: OCC Autobind Publisher
 
@@ -106,26 +103,24 @@ jobs:
         # All potentially attacker-controlled inputs (branch name, PR title) are
         # passed through environment variables to prevent shell injection.
         #
-        # OMN-14451: KAFKA_BOOTSTRAP_SERVERS comes ONLY from the repo secret now
-        # (the dev-lane Redpanda's Tailscale-advertised external listener). The
-        # runner is a container with no ~/.omnibase/.env bind mount, so sourcing
-        # that host-only dotfile here was always a silent no-op -- removed.
+        # OMN-14813: SECRET-FREE. `KAFKA_BOOTSTRAP_SERVERS` (and the dev-lane's
+        # dead SASL creds -- the dev lane is plaintext, no SASL) are no longer
+        # injected. The broker is resolved from the checked-in
+        # config/ci_bus_lanes.yaml overlay, where `dev` declares the concrete
+        # external listener directly. No per-repo `gh secret set` is required for
+        # this fan-out anymore.
         env:
-          KAFKA_BOOTSTRAP_SERVERS: ${{ secrets.KAFKA_BOOTSTRAP_SERVERS }}
-          KAFKA_SASL_USERNAME: ${{ secrets.KAFKA_SASL_USERNAME }}
-          KAFKA_SASL_PASSWORD: ${{ secrets.KAFKA_SASL_PASSWORD }}
           PR_REPO: ${{ github.repository }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           PR_TITLE: ${{ github.event.pull_request.title }}
           # Best-effort ticket extraction; the script also parses the branch ref.
           PR_TICKET: ""
-        # OMN-14801: --lane dev selects the authoring lane from the checked-in
-        # config/ci_bus_lanes.yaml overlay. `dev` is declared `from-secret` there
-        # (a KAFKA_BOOTSTRAP_SERVERS rotation is in flight), so the injected
-        # secret remains the broker and the runtime behavior is byte-identical to
-        # before -- the overlay adds the fail-loud divergence guard without
-        # disabling the secret path. Flip `dev` to a concrete host:port in the
-        # overlay once the rotation lands to give the guard teeth.
+        # OMN-14801/OMN-14813: --lane dev selects the authoring lane from the
+        # checked-in config/ci_bus_lanes.yaml overlay. `dev` declares the concrete
+        # dev-lane broker there, so the publisher resolves it straight from the
+        # committed overlay with no secret. An unreachable broker still fails loud
+        # (OMN-14639); the overlay divergence guard still fires if a secret is
+        # ever re-injected and diverges.
         run: |
           python scripts/publish_occ_autobind_command.py --lane dev

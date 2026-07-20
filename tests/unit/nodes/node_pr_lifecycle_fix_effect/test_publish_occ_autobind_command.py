@@ -142,7 +142,20 @@ class TestFailClosedOnTrustedRunner:
     container with no ~/.omnibase/.env bind mount) was treated identically to
     a fork PR on ubuntu-latest (an expected, broker-less skip). These tests
     pin the fix: the two cases must now diverge on exit code.
+
+    These tests exercise the ``from-secret`` MODE, so they pin an explicit
+    from-secret overlay via ``_override_overlay`` rather than depending on the
+    shipped config/ci_bus_lanes.yaml value (which now declares the concrete dev
+    broker after OMN-14813 flipped ``dev`` off ``from-secret``). The from-secret
+    resolver branch still exists and must stay covered.
     """
+
+    # An explicit from-secret overlay so these tests assert the MODE, decoupled
+    # from whatever the shipped dev lane declares (OMN-14813).
+    _FROM_SECRET: dict[str, object] = {
+        "default": "inmemory",
+        "lanes": {"dev": {"broker": "from-secret"}},
+    }
 
     def test_missing_broker_on_trusted_runner_fails_loudly(self) -> None:
         """RED reproduction: broker unset + trusted runner => must NOT be exit 0.
@@ -153,6 +166,7 @@ class TestFailClosedOnTrustedRunner:
         condition the old code never checked.
         """
         module = _load_publisher()
+        _override_overlay(module, self._FROM_SECRET)
         runner = CliRunner()
         env = {**_required_pr_env(), "RUNNER_IS_TRUSTED": "true"}
         env.pop("KAFKA_BOOTSTRAP_SERVERS", None)
@@ -164,6 +178,7 @@ class TestFailClosedOnTrustedRunner:
     def test_missing_broker_on_fork_runner_skips_gracefully(self) -> None:
         """A fork PR on ubuntu-latest has no broker by design — exit 0 stays."""
         module = _load_publisher()
+        _override_overlay(module, self._FROM_SECRET)
         runner = CliRunner()
         env = {**_required_pr_env(), "RUNNER_IS_TRUSTED": "false"}
         env.pop("KAFKA_BOOTSTRAP_SERVERS", None)
@@ -187,6 +202,7 @@ class TestFailClosedOnTrustedRunner:
     def test_broker_present_publishes_regardless_of_trust_flag(self) -> None:
         """A resolvable broker takes the normal publish path either way."""
         module = _load_publisher()
+        _override_overlay(module, self._FROM_SECRET)
         runner = CliRunner()
         env = {
             **_required_pr_env(),
@@ -373,15 +389,18 @@ class TestLaneOverlayResolution:
         assert resolve(overlay, "stability") == ("inmemory", "")
         assert resolve(overlay, "prod") == ("concrete", "broker.example:19092")
 
-    def test_shipped_overlay_keeps_dev_on_secret_path(self) -> None:
-        """The committed config/ci_bus_lanes.yaml MUST keep dev = from-secret so
-        this slice does not disturb the in-flight secret rotation."""
+    def test_shipped_overlay_declares_concrete_dev_broker(self) -> None:
+        """The committed config/ci_bus_lanes.yaml now declares the concrete
+        dev-lane broker directly (OMN-14813, completing OMN-14801): the rotation
+        settled and the secret dependency was dropped, so ``dev`` resolves to the
+        concrete external listener rather than ``from-secret``. This pins that the
+        shipped overlay is SECRET-FREE for the dev lane."""
         module = _load_publisher()
         overlay = module._load_lane_overlay()  # type: ignore[attr-defined]
         assert overlay, "shipped config/ci_bus_lanes.yaml should load non-empty"
         assert module._resolve_lane_broker(overlay, "dev") == (  # type: ignore[attr-defined]
-            "from-secret",
-            "",
+            "concrete",
+            "omninode-pc.tail75df5e.ts.net:19092",
         )
 
 
@@ -431,6 +450,22 @@ class TestLaneDivergenceGuard:
         result = runner.invoke(module.main, ["--lane", "dev"], env=env)  # type: ignore[attr-defined]
         assert result.exit_code == 0, result.output
         assert recorder.brokers == ["declared:19092"]
+
+    def test_shipped_dev_lane_publishes_secret_free(self) -> None:
+        """OMN-14813 acceptance: against the REAL shipped config/ci_bus_lanes.yaml
+        (no overlay override), a trusted runner with NO KAFKA_BOOTSTRAP_SERVERS
+        injected and ``--lane dev`` resolves and publishes to the overlay-declared
+        concrete broker. Proves the dev-lane occ-autobind fan-out needs no secret.
+        """
+        module = _load_publisher()  # uses the shipped overlay (no _override)
+        recorder = _PublishRecorder()
+        module.publish_occ_autobind_command = recorder  # type: ignore[attr-defined]
+        runner = CliRunner()
+        env = _trusted_pr_env()
+        env.pop("KAFKA_BOOTSTRAP_SERVERS", None)
+        result = runner.invoke(module.main, ["--lane", "dev"], env=env)  # type: ignore[attr-defined]
+        assert result.exit_code == 0, result.output
+        assert recorder.brokers == ["omninode-pc.tail75df5e.ts.net:19092"]
 
     def test_divergent_secret_on_fork_skips(self) -> None:
         module = _load_publisher()
