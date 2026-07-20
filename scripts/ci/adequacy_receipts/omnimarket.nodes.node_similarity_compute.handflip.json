@@ -1,0 +1,31 @@
+{
+  "base_ref": "7eacd93786d34bbd733de8132e10cab2043902c3",
+  "canonical_handler_module": "omnimarket.nodes.node_similarity_compute.handlers.handler_similarity_compute",
+  "legacy_handler_module": "omnimarket.nodes.node_similarity_compute.handlers.handler_similarity_compute",
+  "node_id": "omnimarket.nodes.node_similarity_compute",
+  "parity": {
+    "selected_input_hashes": [
+      "sha256:dc4044dd6f1ed98c42dd96089f3491258fd5870281c14542e97238431a3ca317",
+      "sha256:ed2c6183ef846736bb81b1ad69d4084cb81985f3a5d2705c357137ded0bdfab3",
+      "sha256:2d049d9817d8a2c51d5be0e31de96fc3b11eb5c27f74ff8cee41cf64a5130296",
+      "sha256:a03a1abe4dc808d8333023ddab1a81ec88e8d8adfbf4bf570ea93f71959c12d9",
+      "sha256:150127b4afbd2ee9f43602d306e035e19a34a79a56688063c47a55bc2078f583"
+    ],
+    "status": "pass",
+    "test_ids": [
+      "tests/test_similarity_compute_defb_omn14840.py::TestSimilarityComputeDefBParity::test_cosine_distance_parity",
+      "tests/test_similarity_compute_defb_omn14840.py::TestSimilarityComputeDefBParity::test_euclidean_distance_parity",
+      "tests/test_similarity_compute_defb_omn14840.py::TestSimilarityComputeDefBParity::test_compare_cosine_threshold_parity",
+      "tests/test_similarity_compute_defb_omn14840.py::TestSimilarityComputeDefBParity::test_compare_euclidean_threshold_parity",
+      "tests/test_similarity_compute_defb_omn14840.py::TestSimilarityComputeDefBParity::test_compare_no_threshold_is_match_none",
+      "tests/test_similarity_compute_defb_omn14840.py::TestSimilarityComputeDefBParity::test_zero_magnitude_returns_error_response"
+    ]
+  },
+  "preserved_symbols": [
+    "HandlerSimilarityCompute.cosine_distance",
+    "HandlerSimilarityCompute.euclidean_distance",
+    "HandlerSimilarityCompute.compare",
+    "HandlerSimilarityCompute._validate_vectors"
+  ],
+  "receipt_schema": "handflip_proof.v1"
+}
