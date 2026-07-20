@@ -499,13 +499,9 @@ class _StubInventoryHandler:
 
 
 class _StubTriageHandler:
-    """Stub matching HandlerPrLifecycleTriage.handle(correlation_id, prs) signature."""
+    """Stub matching HandlerPrLifecycleTriage.handle(request) signature."""
 
-    async def handle(
-        self,
-        correlation_id: UUID,
-        prs: Any,
-    ) -> Any:
+    async def handle(self, request: Any) -> Any:
         logger.warning("[PR-LIFECYCLE-ORCH] triage stub called (sub-node not wired)")
         return PrTriageResult(classified=(), green_count=0, non_green_count=0)
 
@@ -1643,7 +1639,7 @@ class HandlerPrLifecycleOrchestrator:
             )
 
             assert self._triage is not None
-            # Real triage handler signature: handle(correlation_id, prs: tuple[ModelPrInventoryItem])
+            # Real triage handler signature: handle(request: ModelPrTriageInput)
             # Convert PrRecord → ModelPrInventoryItem before calling.
             triage_result = await self._call_triage(
                 correlation_id=command.correlation_id,
@@ -2325,7 +2321,7 @@ class HandlerPrLifecycleOrchestrator:
     ) -> PrTriageResult:
         """Call the triage handler with its real signature.
 
-        HandlerPrLifecycleTriage.handle(correlation_id, prs: tuple[ModelPrInventoryItem])
+        HandlerPrLifecycleTriage.handle(request: ModelPrTriageInput)
         → ModelPrTriageOutput.
 
         Adapts PrRecord → ModelPrInventoryItem before the call, then maps
@@ -2335,6 +2331,9 @@ class HandlerPrLifecycleOrchestrator:
 
         from omnimarket.nodes.node_pr_lifecycle_triage_compute.models.model_pr_inventory_item import (
             ModelPrInventoryItem,
+        )
+        from omnimarket.nodes.node_pr_lifecycle_triage_compute.models.model_pr_triage_input import (
+            ModelPrTriageInput,
         )
 
         items = tuple(
@@ -2357,7 +2356,9 @@ class HandlerPrLifecycleOrchestrator:
             for pr in prs
         )
 
-        raw = await self._triage.handle(correlation_id, items)
+        raw = await self._triage.handle(
+            ModelPrTriageInput(correlation_id=correlation_id, prs=items)
+        )
 
         # Short-circuit: test stub returned PrTriageResult directly.
         if isinstance(raw, PrTriageResult):

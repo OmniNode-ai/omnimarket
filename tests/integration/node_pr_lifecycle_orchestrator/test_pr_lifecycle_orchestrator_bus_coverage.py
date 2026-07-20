@@ -50,7 +50,7 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass, field
 from typing import Any
-from uuid import UUID, uuid4
+from uuid import uuid4
 
 import pytest
 
@@ -162,9 +162,7 @@ class _MockTriage:
         self._result = result
         self._raises = raises
 
-    async def handle(
-        self, correlation_id: UUID, prs: tuple[Any, ...]
-    ) -> PrTriageResult:
+    async def handle(self, request: Any) -> PrTriageResult:
         self._calls.triage += 1
         if self._raises:
             raise RuntimeError("triage boom")

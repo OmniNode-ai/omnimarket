@@ -22,7 +22,6 @@ from __future__ import annotations
 
 from enum import StrEnum
 from typing import Any, Protocol, runtime_checkable
-from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -311,7 +310,7 @@ class PruneResult(BaseModel):
 # HandlerPrLifecycleInventory.handle(input_model: ModelPrInventoryInput)
 #   → ModelPrInventoryOutput
 #
-# HandlerPrLifecycleTriage.handle(correlation_id, prs: tuple[ModelPrInventoryItem])
+# HandlerPrLifecycleTriage.handle(request: ModelPrTriageInput)
 #   → ModelPrTriageOutput
 #
 # HandlerPrLifecycleStateReducer.handle(*args, correlation_id, classified, ...)
@@ -342,11 +341,7 @@ class ProtocolTriageHandler(Protocol):
     Signature matches HandlerPrLifecycleTriage.handle().
     """
 
-    async def handle(
-        self,
-        correlation_id: UUID,
-        prs: tuple[Any, ...],
-    ) -> Any: ...
+    async def handle(self, request: Any) -> Any: ...
 
 
 @runtime_checkable

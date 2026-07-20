@@ -53,7 +53,7 @@ class _MockTriage:
     def __init__(self, classified: tuple[TriageRecord, ...]) -> None:
         self._classified = classified
 
-    async def handle(self, correlation_id: Any, prs: Any) -> PrTriageResult:
+    async def handle(self, request: Any) -> PrTriageResult:
         green = sum(
             1 for record in self._classified if record.category == EnumPrCategory.GREEN
         )

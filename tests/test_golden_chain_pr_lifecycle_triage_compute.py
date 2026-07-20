@@ -26,6 +26,9 @@ from omnimarket.nodes.node_pr_lifecycle_triage_compute.models.enum_pr_triage_cat
 from omnimarket.nodes.node_pr_lifecycle_triage_compute.models.model_pr_inventory_item import (
     ModelPrInventoryItem,
 )
+from omnimarket.nodes.node_pr_lifecycle_triage_compute.models.model_pr_triage_input import (
+    ModelPrTriageInput,
+)
 
 
 @pytest.mark.unit
@@ -50,7 +53,9 @@ class TestPrLifecycleTriageComputeGoldenChain:
             ),
         )
 
-        result = await handler.handle(correlation_id=correlation_id, prs=prs)
+        result = await handler.handle(
+            ModelPrTriageInput(correlation_id=correlation_id, prs=prs)
+        )
 
         assert result.correlation_id == correlation_id
         assert len(result.results) == 1
@@ -75,7 +80,9 @@ class TestPrLifecycleTriageComputeGoldenChain:
             ),
         )
 
-        result = await handler.handle(correlation_id=correlation_id, prs=prs)
+        result = await handler.handle(
+            ModelPrTriageInput(correlation_id=correlation_id, prs=prs)
+        )
 
         assert result.results[0].category == EnumPrTriageCategory.RED
         assert result.total_red == 1
@@ -99,7 +106,9 @@ class TestPrLifecycleTriageComputeGoldenChain:
             ),
         )
 
-        result = await handler.handle(correlation_id=correlation_id, prs=prs)
+        result = await handler.handle(
+            ModelPrTriageInput(correlation_id=correlation_id, prs=prs)
+        )
 
         assert result.results[0].category == EnumPrTriageCategory.OCC_DEPENDENCY
         assert result.results[0].ticket_ids == ("OMN-10486",)
@@ -126,7 +135,9 @@ class TestPrLifecycleTriageComputeGoldenChain:
             ),
         )
 
-        result = await handler.handle(correlation_id=correlation_id, prs=prs)
+        result = await handler.handle(
+            ModelPrTriageInput(correlation_id=correlation_id, prs=prs)
+        )
 
         assert result.results[0].category == EnumPrTriageCategory.RED
         assert "no ticket ID was found" in result.results[0].reason
@@ -157,7 +168,9 @@ class TestPrLifecycleTriageComputeGoldenChain:
             ),
         )
 
-        result = await handler.handle(correlation_id=correlation_id, prs=prs)
+        result = await handler.handle(
+            ModelPrTriageInput(correlation_id=correlation_id, prs=prs)
+        )
 
         assert result.results[0].category == EnumPrTriageCategory.OCC_DEPENDENCY
         assert result.total_occ_dependency == 1
@@ -186,7 +199,9 @@ class TestPrLifecycleTriageComputeGoldenChain:
             ),
         )
 
-        result = await handler.handle(correlation_id=correlation_id, prs=prs)
+        result = await handler.handle(
+            ModelPrTriageInput(correlation_id=correlation_id, prs=prs)
+        )
 
         assert result.results[0].category == EnumPrTriageCategory.OCC_DEPENDENCY
         assert result.total_occ_dependency == 1
@@ -212,7 +227,9 @@ class TestPrLifecycleTriageComputeGoldenChain:
             ),
         )
 
-        result = await handler.handle(correlation_id=correlation_id, prs=prs)
+        result = await handler.handle(
+            ModelPrTriageInput(correlation_id=correlation_id, prs=prs)
+        )
 
         assert result.results[0].category == EnumPrTriageCategory.RED
         assert result.total_occ_dependency == 0
@@ -241,7 +258,9 @@ class TestPrLifecycleTriageComputeGoldenChain:
             ),
         )
 
-        result = await handler.handle(correlation_id=correlation_id, prs=prs)
+        result = await handler.handle(
+            ModelPrTriageInput(correlation_id=correlation_id, prs=prs)
+        )
 
         assert result.results[0].category == EnumPrTriageCategory.OCC_DEPENDENCY
         assert result.total_occ_dependency == 1
@@ -273,7 +292,9 @@ class TestPrLifecycleTriageComputeGoldenChain:
             ),
         )
 
-        result = await handler.handle(correlation_id=correlation_id, prs=prs)
+        result = await handler.handle(
+            ModelPrTriageInput(correlation_id=correlation_id, prs=prs)
+        )
 
         assert result.results[0].category == EnumPrTriageCategory.RED
         assert result.total_occ_dependency == 0
@@ -294,7 +315,9 @@ class TestPrLifecycleTriageComputeGoldenChain:
             ),
         )
 
-        result = await handler.handle(correlation_id=correlation_id, prs=prs)
+        result = await handler.handle(
+            ModelPrTriageInput(correlation_id=correlation_id, prs=prs)
+        )
 
         assert result.results[0].category == EnumPrTriageCategory.CONFLICTED
         assert result.total_conflicted == 1
@@ -314,7 +337,9 @@ class TestPrLifecycleTriageComputeGoldenChain:
             ),
         )
 
-        result = await handler.handle(correlation_id=correlation_id, prs=prs)
+        result = await handler.handle(
+            ModelPrTriageInput(correlation_id=correlation_id, prs=prs)
+        )
 
         assert result.results[0].category == EnumPrTriageCategory.NEEDS_REVIEW
         assert result.total_needs_review == 1
@@ -333,7 +358,9 @@ class TestPrLifecycleTriageComputeGoldenChain:
             ),
         )
 
-        result = await handler.handle(correlation_id=correlation_id, prs=prs)
+        result = await handler.handle(
+            ModelPrTriageInput(correlation_id=correlation_id, prs=prs)
+        )
 
         assert result.results[0].category == EnumPrTriageCategory.NEEDS_REVIEW
 
@@ -352,7 +379,9 @@ class TestPrLifecycleTriageComputeGoldenChain:
             ),
         )
 
-        result = await handler.handle(correlation_id=correlation_id, prs=prs)
+        result = await handler.handle(
+            ModelPrTriageInput(correlation_id=correlation_id, prs=prs)
+        )
 
         assert result.results[0].category == EnumPrTriageCategory.NEEDS_REVIEW
         assert "2 unresolved" in result.results[0].reason
@@ -373,7 +402,9 @@ class TestPrLifecycleTriageComputeGoldenChain:
             ),
         )
 
-        result = await handler.handle(correlation_id=correlation_id, prs=prs)
+        result = await handler.handle(
+            ModelPrTriageInput(correlation_id=correlation_id, prs=prs)
+        )
 
         assert result.results[0].category == EnumPrTriageCategory.CONFLICTED
 
@@ -413,7 +444,9 @@ class TestPrLifecycleTriageComputeGoldenChain:
             ),
         )
 
-        result = await handler.handle(correlation_id=correlation_id, prs=prs)
+        result = await handler.handle(
+            ModelPrTriageInput(correlation_id=correlation_id, prs=prs)
+        )
 
         assert len(result.results) == 4
         assert result.total_green == 1
@@ -426,7 +459,9 @@ class TestPrLifecycleTriageComputeGoldenChain:
         handler = HandlerPrLifecycleTriage()
         correlation_id = uuid4()
 
-        result = await handler.handle(correlation_id=correlation_id, prs=())
+        result = await handler.handle(
+            ModelPrTriageInput(correlation_id=correlation_id, prs=())
+        )
 
         assert len(result.results) == 0
         assert result.total_green == 0
@@ -451,7 +486,9 @@ class TestPrLifecycleTriageComputeGoldenChain:
                     open_threads=0,
                 ),
             )
-            result = await handler.handle(correlation_id=correlation_id, prs=prs)
+            result = await handler.handle(
+                ModelPrTriageInput(correlation_id=correlation_id, prs=prs)
+            )
             event = {
                 "correlation_id": str(result.correlation_id),
                 "total_green": result.total_green,
