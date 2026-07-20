@@ -1,0 +1,26 @@
+{
+  "branch_coverage_pct": 51.43,
+  "candidate_count": 5,
+  "coverage_target": 80.0,
+  "handler_module": "omnimarket.nodes.node_semantic_analyzer_compute.handlers.handler_semantic_compute",
+  "handler_module_sha256": "sha256:782495af5b24696ec6d54cb15ecc2599f2f6a95930b05354f9cf02916300ad60",
+  "meets_target": false,
+  "node_id": "omnimarket.nodes.node_semantic_analyzer_compute",
+  "receipt_schema": "adequacy_receipt.v1",
+  "recorded_at": "2026-07-20T07:07:40.565858+00:00",
+  "recorder_schema": "adequacy_receipt.v1",
+  "selected_count": 3,
+  "selected_input_hashes": [
+    "sha256:4ebe82c91f30586ca30694c23b5206443561e0bd826180b26250876326ea8584",
+    "sha256:12541582abe517c82e16c8f2c1e684ca46b9c86343c4834cee8fcc4868b0d910",
+    "sha256:298e12918d3807e049fc7c9a0f3dd9403cf224ce08ff8815e81ea501d1736b94"
+  ],
+  "uncovered_waiver": {
+    "reason": "OMN-14841 is a hand-authored def-B dispatch-entrypoint flip for a re-export COMPUTE node whose provider-backed compute (embed/extract_entities/analyze) lives in omnimemory. The selected adequacy set exercises all three success dispatch branches through handle() with an injected deterministic embedding provider. Dedicated regression tests in tests/test_semantic_analyzer_compute_defb.py cover the typed ValueError and generic Exception mappings using valid request models plus deterministic provider/lifecycle failures. The remaining adequacy waiver is scoped to the defensive Literal-bypass operation branch, which Pydantic rejects during normal request construction; behavior equivalence to the pre-flip omnimemory NodeSemanticAnalyzerCompute.execute routing is proven separately.",
+    "uncovered_branch_count": 1
+  },
+  "volatile_mask": [
+    "result_id",
+    "processing_time_ms"
+  ]
+}
