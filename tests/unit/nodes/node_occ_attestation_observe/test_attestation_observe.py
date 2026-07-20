@@ -260,6 +260,66 @@ async def test_unstamped_product_pr_yields_not_clean_observation() -> None:
     assert "Evidence-Source" in obs.reason
 
 
+class _RealTokenObserve(HandlerOccAttestationObserve):
+    """Uses the REAL ``_resolve_github_token()`` (not stubbed) to exercise the
+    sync-in-async regression directly; every other network boundary is
+    stubbed offline, exactly like ``_OfflineObserve``."""
+
+    def __init__(
+        self,
+        req: ModelOccCompanionRequest,
+        content_by_path: dict[str, str],
+        *,
+        minted: bool,
+        eligible: bool,
+    ) -> None:
+        super().__init__(state_handler=_StubState(req))
+        self._content = content_by_path
+        self._minted = minted
+        self._eligible = eligible
+
+    def _read_occ_preflight_eligible(
+        self, repo: str, head_sha: str, token: str
+    ) -> bool:
+        return self._eligible
+
+    def _read_occ_pr_head_and_marker(
+        self, occ_repo: str, occ_pr_number: int, token: str
+    ) -> tuple[str, bool]:
+        return _OCC_HEAD_SHA, self._minted
+
+    def _content_at_ref(self, repo: str, path: str, ref: str, token: str) -> str | None:
+        return self._content.get(path)
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_resolve_github_token_is_awaited_off_the_event_loop(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """OMN-14844 regression: ``_resolve_github_token()`` calls ``resolve_api_key()``,
+    which RAISES if invoked from inside a running event loop. ``_observe`` is
+    ``async def`` and pytest-asyncio always runs it inside a running loop, so
+    the REAL (unstubbed) token resolution must be called off the loop via
+    ``asyncio.to_thread(...)`` -- exactly like its 3 sibling I/O calls three
+    lines below it -- or every real dispatch fail-softs: occ_pr_number stays
+    None and every attestation boolean stays False, making the OMN-13976 N=10
+    real-doneness gate permanently unsatisfiable.
+    """
+    monkeypatch.setenv("GITHUB_TOKEN", "fake-token-for-omn-14844-regression")
+    req = _request_with_stamp()
+    plan = _plan_for(req)
+    content = {f.path: f.content for f in plan.companion_files}
+    handler = _RealTokenObserve(req, content, minted=True, eligible=True)
+
+    obs = await handler.handle(_observe_request())
+
+    assert "RuntimeError" not in (obs.reason or "")
+    assert obs.occ_pr_number == 4284
+    assert obs.attestation_match is True
+    assert obs.is_clean is True
+
+
 @pytest.mark.unit
 @pytest.mark.asyncio
 async def test_handler_is_fail_soft_on_error() -> None:
