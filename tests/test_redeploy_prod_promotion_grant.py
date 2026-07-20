@@ -10,13 +10,15 @@ redeploy-completed:BLOCKED — NOT handler-isolation against a pure function.
 
 The grant model (``ModelProdPromotionGrant``) is an approver-issued, durable,
 absolute-expiry authorization fact. The prod gate fails closed unless the grant
-satisfies ALL of: ``approved_lane == PROD``, digest match, batch match,
-``approved_by != requested_by`` (anti-self-grant), and ``evaluated_at`` within the
-approver-set absolute expiry. dev/stability behavior is byte-for-byte unchanged.
+satisfies ALL of: ``approved_lane == PROD``, digest match, batch match, and
+``evaluated_at`` within the approver-set absolute expiry. Dual-control
+(``approved_by != requested_by``) is intentionally NOT enforced (OMN-14814: a
+solo CODEOWNER authors and approves their own grant). dev/stability behavior is
+byte-for-byte unchanged.
 
-Known follow-on gap (NOT closed here): requester identity is forgeable, so this
-is single-party authorization with an approver signature, not two-person
-integrity.
+By design this is single-party authorization with an approver signature, not
+two-person integrity; the anti-self-*issuance* guarantee is the ``@main`` fetch
+of the grant anchor, not an approver-identity comparison.
 """
 
 from __future__ import annotations
@@ -346,12 +348,15 @@ class TestProdGrantBoundaryDispatch:
         assert "grant_batch_mismatch" in decision.reason
         assert [e.event_type for e in events] == [TOPIC_REDEPLOY_COMPLETED]
 
-    async def test_prod_gate_blocks_self_grant(self) -> None:
+    async def test_prod_gate_allows_sole_owner_self_grant(self) -> None:
+        # OMN-14814: dual-control removed. A solo-CODEOWNER self-approved grant
+        # (approver == requester) with all other technical fields valid now PASSES
+        # the gate and routes to deploy-publish.
         self_granted = _grant(approved_by=_REQUESTER)
         decision, events = await _drive_dispatch(_start(), grant=self_granted)
-        assert decision.allowed is False
-        assert "self_granted" in decision.reason
-        assert [e.event_type for e in events] == [TOPIC_REDEPLOY_COMPLETED]
+        assert decision.allowed is True
+        assert decision.image_digest == _DIGEST
+        assert [e.event_type for e in events] == [TOPIC_DEPLOY_PUBLISH]
 
     async def test_prod_gate_allows_matching_fresh_grant(self) -> None:
         decision, events = await _drive_dispatch(_start(), grant=_grant())
@@ -402,13 +407,26 @@ class TestProdGrantPureGate:
         assert decision.allowed is False
         assert "grant_batch_mismatch" in decision.reason
 
-    def test_self_granted_typed_reason(self) -> None:
+    def test_sole_owner_self_grant_allowed(self) -> None:
+        # OMN-14814: a self-approved grant is no longer blocked by the pure gate.
         grant = _grant(approved_by=_REQUESTER)
         decision = evaluate_prod_promotion_gate(
             _inputs(grant=grant, requested_by=_REQUESTER)
         )
+        assert decision.allowed is True
+        assert decision.image_digest == _DIGEST
+
+    def test_sole_owner_self_grant_still_blocks_when_expired(self) -> None:
+        # Removing dual-control does NOT weaken the other conditions: a
+        # self-approved but expired grant still fails closed (EXPIRED).
+        grant = _grant(
+            approved_by=_REQUESTER, expires_at=_EVALUATED_AT - timedelta(seconds=1)
+        )
+        decision = evaluate_prod_promotion_gate(
+            _inputs(grant=grant, requested_by=_REQUESTER)
+        )
         assert decision.allowed is False
-        assert "self_granted" in decision.reason
+        assert "expired_promotion_grant" in decision.reason
 
     def test_matching_fresh_grant_allows(self) -> None:
         decision = evaluate_prod_promotion_gate(_inputs(grant=_grant()))

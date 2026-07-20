@@ -17,9 +17,16 @@ Match + lifecycle rules (DoD):
   * lane must equal ``prod`` and digest + batch must match the request key;
   * a ``consumed: true`` (or removed) entry resolves to ABSENT — no replay;
   * ``evaluated_at > expires_at`` resolves to EXPIRED;
-  * ``approved_by == requested_by`` resolves to SELF_GRANTED (rejected);
-  * a present, future-expiry, matching, non-self entry resolves to RESOLVED and
+  * a present, future-expiry, matching entry resolves to RESOLVED and
     materializes ``ModelProdPromotionGrant``.
+
+Dual-control (``approved_by != requested_by``) is intentionally NOT enforced
+(OMN-14814): with a single CODEOWNER, a second-approver requirement would
+permanently wedge prod promotion. The anti-self-*issuance* guarantee is
+preserved elsewhere — the grant is fetched from ``onex_change_control@main`` in
+the handler's I/O boundary, so a request still cannot author the authorization
+that approves it. This resolver only stops rejecting a grant whose approver
+equals the requester.
 
 Every non-RESOLVED outcome leaves the grant ``None`` so the prod gate fails
 closed. There is no silent default.
@@ -65,8 +72,8 @@ class ModelGrantResolution(BaseModel):
     """Resolver output: typed outcome + materialized grant + matched grant_id.
 
     ``grant`` is populated only when ``outcome is RESOLVED``; ``grant_id`` carries
-    the matched entry's id even for EXPIRED / CONSUMED / SELF_GRANTED so the audit
-    provenance can name the rejected entry. ABSENT leaves both ``None``.
+    the matched entry's id even for EXPIRED / CONSUMED so the audit provenance can
+    name the rejected entry. ABSENT leaves both ``None``.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -208,11 +215,11 @@ def resolve_grant(
                 outcome=EnumGrantResolution.CONSUMED, grant_id=grant_id
             )
 
-        # Anti-self-grant: the approver must differ from the requester.
-        if str(entry["approved_by"]) == requested_by:
-            return ModelGrantResolution(
-                outcome=EnumGrantResolution.SELF_GRANTED, grant_id=grant_id
-            )
+        # Dual-control removed (OMN-14814): a grant whose approver equals the
+        # requester (solo CODEOWNER self-approval) is NOT rejected here. The
+        # anti-self-issuance guarantee lives in the handler's @main fetch, not an
+        # approver-identity comparison. ``requested_by`` is retained on the
+        # signature for the handler call-site + audit provenance.
 
         # Absolute expiry (inclusive boundary): evaluated_at must not exceed it.
         if evaluated_at > _coerce_datetime(entry["expires_at"]):

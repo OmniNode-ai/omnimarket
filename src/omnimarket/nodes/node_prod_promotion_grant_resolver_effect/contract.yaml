@@ -21,10 +21,12 @@ description: >
   PR branch, so a request cannot author the authorization that approves it),
   keyed by (promotion_batch_id, image_digest, lane=prod), and parses the YAML
   directly without importing anything from onex_change_control. A present,
-  future-expiry, matching, non-self entry materializes ModelProdPromotionGrant; a
-  consumed entry resolves to ABSENT (no replay); an expired entry to EXPIRED; a
-  self-granted entry to SELF_GRANTED; no match to ABSENT — every non-RESOLVED
-  outcome leaves the grant None so the prod gate fails closed. Emits the resolved
+  future-expiry, matching entry materializes ModelProdPromotionGrant; a consumed
+  entry resolves to ABSENT (no replay); an expired entry to EXPIRED; no match to
+  ABSENT — every non-RESOLVED outcome leaves the grant None so the prod gate fails
+  closed. Dual-control (approved_by != requested_by) is NOT enforced (OMN-14814):
+  a solo CODEOWNER authors and approves their own grant; the anti-self-issuance
+  guarantee is the @main fetch, not an approver-identity check. Emits the resolved
   fact plus durable audit provenance (source commit SHA, grant file path,
   grant_id, file sha256, CODEOWNERS-match). The GitHub token is resolved at the
   effect boundary from the contract-declared api_key_ref. No subprocess shell-out.

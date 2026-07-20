@@ -12,8 +12,10 @@ a live deploy EFFECT, live prod, or the .201 server.
 Surface covered (each a parametrized case, >=1 negative control):
   * non-prod lanes (dev / stability) -> ALLOW unconditionally (gate is a no-op);
   * prod + full valid facts (MERGED / RECEIPT_GATE_PASS) -> ALLOW, digest reused;
+  * prod + solo-CODEOWNER self-approved grant -> ALLOW (dual-control removed,
+    OMN-14814: ``approved_by == requested_by`` is no longer blocked);
   * prod BLOCK modes: no readiness projection, not-READY, digest drift, batch
-    mismatch, OCC pending, missing/blank rollback, missing grant, self-granted,
+    mismatch, OCC pending, missing/blank rollback, missing grant,
     expired grant, grant lane mismatch, stability-candidate / non-main lineage;
   * UNKNOWN-fail-closed: ``prod_health`` resolved UNKNOWN with no grant still
     BLOCKS. NOTE: this COMPUTE node does NOT consult ``prod_health`` — the
@@ -207,6 +209,17 @@ _CASES: list[
         "prod reuses the stability digest",
         True,
     ),
+    (
+        # OMN-14814: dual-control removed. A solo-CODEOWNER self-approved grant
+        # (approved_by == requested_by) with all other facts valid now ALLOWS.
+        "prod-sole-owner-self-grant-allow",
+        lambda: _command(
+            projection=_ready_projection(), grant=_grant(approved_by=_REQUESTER)
+        ),
+        True,
+        "prod reuses the stability digest",
+        True,
+    ),
     # --- BLOCK paths (negative controls) ---
     (
         "prod-no-projection-fail-closed",
@@ -262,19 +275,22 @@ _CASES: list[
         False,
     ),
     (
-        "prod-self-granted-block",
-        lambda: _command(
-            projection=_ready_projection(), grant=_grant(approved_by=_REQUESTER)
-        ),
-        False,
-        EnumProdGrantReason.SELF_GRANTED.value,
-        False,
-    ),
-    (
         "prod-expired-grant-block",
         lambda: _command(
             projection=_ready_projection(),
             grant=_grant(expires_delta=timedelta(hours=-1)),
+        ),
+        False,
+        EnumProdGrantReason.EXPIRED_PROMOTION_GRANT.value,
+        False,
+    ),
+    (
+        # OMN-14814: removing dual-control does NOT weaken the other conditions —
+        # a self-approved grant that is also expired still fails closed.
+        "prod-sole-owner-self-grant-expired-block",
+        lambda: _command(
+            projection=_ready_projection(),
+            grant=_grant(approved_by=_REQUESTER, expires_delta=timedelta(hours=-1)),
         ),
         False,
         EnumProdGrantReason.EXPIRED_PROMOTION_GRANT.value,
