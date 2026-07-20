@@ -1,0 +1,36 @@
+{
+  "input": {
+    "existing_profile": null,
+    "signals": [
+      {
+        "confidence": 0.9,
+        "emitted_at": "2026-01-01T00:00:00Z",
+        "evidence": "observed behavior",
+        "inferred_value": "advanced",
+        "session_id": "sess-1",
+        "signal_id": "00000000-0000-0000-0000-000000000003",
+        "signal_type": "technical_level",
+        "user_id": "user-1"
+      }
+    ],
+    "user_id": "user-1"
+  },
+  "output": {
+    "error_message": null,
+    "persona": {
+      "agent_id": null,
+      "created_at": "1970-01-01T00:00:00+00:00",
+      "domain_familiarity": {},
+      "persona_version": 1,
+      "preferred_tone": "explanatory",
+      "rebuilt_from_signals": 1,
+      "session_count": 1,
+      "technical_level": "advanced",
+      "user_id": "user-1",
+      "vocabulary_complexity": 0.5
+    },
+    "signals_processed": 1,
+    "status": "success"
+  },
+  "output_sha256": "sha256:93eb8574ce4d75419c9f3487a793ecd18e43ba38cd8ab8cd2e0c76c0f32c4db7"
+}

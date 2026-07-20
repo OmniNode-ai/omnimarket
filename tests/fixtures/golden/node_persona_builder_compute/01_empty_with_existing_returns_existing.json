@@ -1,0 +1,36 @@
+{
+  "input": {
+    "existing_profile": {
+      "agent_id": null,
+      "created_at": "2026-01-01T00:00:00Z",
+      "domain_familiarity": {},
+      "persona_version": 5,
+      "preferred_tone": "concise",
+      "rebuilt_from_signals": 5,
+      "session_count": 5,
+      "technical_level": "advanced",
+      "user_id": "user-1",
+      "vocabulary_complexity": 0.8
+    },
+    "signals": [],
+    "user_id": "user-1"
+  },
+  "output": {
+    "error_message": null,
+    "persona": {
+      "agent_id": null,
+      "created_at": "1970-01-01T00:00:00+00:00",
+      "domain_familiarity": {},
+      "persona_version": 5,
+      "preferred_tone": "concise",
+      "rebuilt_from_signals": 5,
+      "session_count": 5,
+      "technical_level": "advanced",
+      "user_id": "user-1",
+      "vocabulary_complexity": 0.8
+    },
+    "signals_processed": 0,
+    "status": "success"
+  },
+  "output_sha256": "sha256:36b20c8779fb6e6682ed4957a4fab3b7c67949c772d53b1af4f09d1d1edbbd6c"
+}

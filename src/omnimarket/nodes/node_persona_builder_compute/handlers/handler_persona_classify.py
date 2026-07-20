@@ -19,7 +19,6 @@ from __future__ import annotations
 
 from collections import Counter
 from datetime import UTC, datetime
-from uuid import UUID
 
 from omnimemory.enums import EnumPreferredTone, EnumTechnicalLevel
 from omnimemory.models.persona import ModelPersonaSignal, ModelUserPersonaV1
@@ -58,20 +57,22 @@ class HandlerPersonaClassify:
     handler_category = "COMPUTE"
 
     async def handle(
-        self,
-        correlation_id: UUID,
-        input_data: ModelPersonaClassifyRequest,
+        self, request: ModelPersonaClassifyRequest
     ) -> ModelPersonaClassifyResult:
         """Classify persona signals into an updated profile.
 
+        Canonical def-B entrypoint (OMN-14836): a single typed-payload positional
+        the shared runtime adapts (``omnibase_core.runtime.runtime_local_adapter``).
+        The classification logic is unchanged — it delegates to the byte-identical
+        pure ``_classify_persona`` reducer below (verbatim hand-flip, OMN-14781).
+
         Args:
-            correlation_id: Tracing ID (unused in pure compute, present for interface consistency).
-            input_data: Signals batch and optional existing profile.
+            request: Signals batch and optional existing profile.
 
         Returns:
             Updated persona snapshot.
         """
-        return _classify_persona(input_data)
+        return _classify_persona(request)
 
 
 def _classify_persona(

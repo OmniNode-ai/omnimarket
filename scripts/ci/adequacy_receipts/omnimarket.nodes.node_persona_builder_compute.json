@@ -1,0 +1,32 @@
+{
+  "branch_coverage_pct": 77.19,
+  "candidate_count": 12,
+  "coverage_target": 80.0,
+  "handler_module": "omnimarket.nodes.node_persona_builder_compute.handlers.handler_persona_classify",
+  "handler_module_sha256": "sha256:27e0ff1981ebb70af987d156c382c1c81791649d154c25f570c301dc9dab0045",
+  "meets_target": false,
+  "node_id": "omnimarket.nodes.node_persona_builder_compute",
+  "receipt_schema": "adequacy_receipt.v1",
+  "recorded_at": "2026-07-20T06:01:38.697643+00:00",
+  "recorder_schema": "adequacy_receipt.v1",
+  "selected_count": 10,
+  "selected_input_hashes": [
+    "sha256:95539b88539e37b6b692e1fc4e97602631525c3cd5066a43622a19b507f93ae7",
+    "sha256:4be94f0f9c5bfeaffaf5b7aa04d3d7f5392756aa5debc545fe8a6960ad4b41ce",
+    "sha256:6fe2d8030c6469b2638ac95189ea38e339aa37d51e336e2de1e0e25d10fe2798",
+    "sha256:fdfa50ab4e32a801d20b8ffe5540a33b2413365a612921559aeb50217dd2f3ec",
+    "sha256:10b9a8e606de3f61a9d0c82889e2491886956e0a40aca160df0380180aa7991c",
+    "sha256:0dc83669a20e5ba54f31789083409066aa74dc6e17747b0c11f00ad2221967a6",
+    "sha256:22a12341dbdac3065a83ee7e9d3c12dd5f89909534f363d19caced966a8e85e0",
+    "sha256:5ba1c303177a1babb4fbf18a363bdb4e9981b49ed3e953c5f4240ecb7918d85d",
+    "sha256:184233cb61107aa50cb50058f24f48e67facd8ad8b948734d6a9a85ff84b37e4",
+    "sha256:d896b7b17dc767f2622d796633e5e5ea74273c2f79222a7d514d57269f3e7f8b"
+  ],
+  "uncovered_waiver": {
+    "reason": "Coverage-guided selection reaches 77.19% branch coverage over the handler module (< 80% target). branch_coverage_pct is deflated because coverage.py measures AFTER module import: the module-level keyword constants, imports, and the def/class statements execute at import time (before cov.start()) and count as unmeasured. The classification branches (empty/insufficient, technical-level conservatism shift/hold/block, vocabulary EMA + ValueError skip, domain accumulate + cap, tone mode, low-confidence filter) ARE exercised by the selected pool and proven byte-identical to the pre-flip def-A reducer by test_persona_builder_golden_equivalence.py (perturbation-discriminating). This is a verbatim signature-only hand-flip (OMN-14781): the _classify_* reducer symbols are byte-identical across the flip, so behavior equivalence is git-re-derived, not coverage-inferred. OMN-14836.",
+    "uncovered_branch_count": 0
+  },
+  "volatile_mask": [
+    "persona.created_at"
+  ]
+}
