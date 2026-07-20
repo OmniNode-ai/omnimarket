@@ -17,6 +17,9 @@ from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
 from omnimarket.nodes.node_rsd_fill_compute.handlers.handler_rsd_fill import (
     HandlerRsdFill,
 )
+from omnimarket.nodes.node_rsd_fill_compute.models.model_rsd_fill_input import (
+    ModelRsdFillInput,
+)
 from omnimarket.nodes.node_rsd_fill_compute.models.model_scored_ticket import (
     ModelScoredTicket,
 )
@@ -52,7 +55,7 @@ class TestRsdFillComputeGoldenChain:
         )
 
         result = await handler.handle(
-            correlation_id=cid, scored_tickets=tickets, max_tickets=2
+            ModelRsdFillInput(correlation_id=cid, scored_tickets=tickets, max_tickets=2)
         )
 
         assert result.correlation_id == cid
@@ -72,7 +75,7 @@ class TestRsdFillComputeGoldenChain:
         )
 
         result = await handler.handle(
-            correlation_id=cid, scored_tickets=tickets, max_tickets=2
+            ModelRsdFillInput(correlation_id=cid, scored_tickets=tickets, max_tickets=2)
         )
 
         selected_ids = [t.ticket_id for t in result.selected_tickets]
@@ -89,7 +92,7 @@ class TestRsdFillComputeGoldenChain:
         )
 
         result = await handler.handle(
-            correlation_id=cid, scored_tickets=tickets, max_tickets=2
+            ModelRsdFillInput(correlation_id=cid, scored_tickets=tickets, max_tickets=2)
         )
 
         selected_ids = [t.ticket_id for t in result.selected_tickets]
@@ -101,7 +104,7 @@ class TestRsdFillComputeGoldenChain:
         cid = uuid4()
 
         result = await handler.handle(
-            correlation_id=cid, scored_tickets=(), max_tickets=5
+            ModelRsdFillInput(correlation_id=cid, scored_tickets=(), max_tickets=5)
         )
 
         assert result.total_candidates == 0
@@ -120,7 +123,9 @@ class TestRsdFillComputeGoldenChain:
         )
 
         result = await handler.handle(
-            correlation_id=cid, scored_tickets=tickets, max_tickets=10
+            ModelRsdFillInput(
+                correlation_id=cid, scored_tickets=tickets, max_tickets=10
+            )
         )
 
         assert result.total_selected == 2
@@ -133,7 +138,7 @@ class TestRsdFillComputeGoldenChain:
         tickets = (_ticket("OMN-SOLO", rsd_score=42.0),)
 
         result = await handler.handle(
-            correlation_id=cid, scored_tickets=tickets, max_tickets=1
+            ModelRsdFillInput(correlation_id=cid, scored_tickets=tickets, max_tickets=1)
         )
 
         assert result.total_selected == 1
@@ -151,9 +156,11 @@ class TestRsdFillComputeGoldenChain:
             cid = uuid4()
             tickets = tuple(ModelScoredTicket(**t) for t in payload.get("tickets", []))
             result = await handler.handle(
-                correlation_id=cid,
-                scored_tickets=tickets,
-                max_tickets=payload.get("max_tickets", 5),
+                ModelRsdFillInput(
+                    correlation_id=cid,
+                    scored_tickets=tickets,
+                    max_tickets=payload.get("max_tickets", 5),
+                )
             )
             result_dict = result.model_dump(mode="json")
             completed_events.append(result_dict)

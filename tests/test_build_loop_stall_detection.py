@@ -23,6 +23,9 @@ from omnimarket.nodes.node_build_dispatch_effect.handlers.dispatch_history_store
 from omnimarket.nodes.node_build_loop_orchestrator.handlers.adapter_linear_fill import (
     AdapterLinearFill,
 )
+from omnimarket.nodes.node_build_loop_orchestrator.protocols.protocol_sub_handlers import (
+    RsdFillRequest,
+)
 
 
 @pytest.fixture
@@ -123,7 +126,9 @@ async def test_fill_adapter_skips_tickets_at_max_attempts(
             json=lambda: payload,
             raise_for_status=lambda: None,
         )
-        result = await adapter.handle(correlation_id=uuid4(), max_tickets=5)
+        result = await adapter.handle(
+            RsdFillRequest(correlation_id=uuid4(), max_tickets=5)
+        )
 
     ids = [t.ticket_id for t in result.selected_tickets]
     assert ids == ["OMN-9999"]
