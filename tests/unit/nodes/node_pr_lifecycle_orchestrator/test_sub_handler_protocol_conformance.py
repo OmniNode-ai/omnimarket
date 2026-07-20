@@ -221,7 +221,7 @@ def test_real_triage_handler_conforms_to_protocol() -> None:
     )
     params = _sig_params(handler.handle)
     param_names = list(params.keys())
-    assert param_names[:1] == ["request"], (
+    assert param_names == ["request"], (
         f"HandlerPrLifecycleTriage.handle() must have parameters "
         f"[request], got: {param_names}"
     )
@@ -475,8 +475,8 @@ def test_protocol_triage_handle_positional_params() -> None:
     """ProtocolTriageHandler.handle must have a single (request) positional param."""
     proto_params = _sig_params(ProtocolTriageHandler.handle)
     names = list(proto_params.keys())
-    assert names[:1] == ["request"], (
-        f"ProtocolTriageHandler.handle must start with [request], got: {names}"
+    assert names == ["request"], (
+        f"ProtocolTriageHandler.handle must have exactly [request], got: {names}"
     )
 
 

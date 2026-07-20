@@ -1,0 +1,34 @@
+{
+  "input": {
+    "correlation_id": "00000005-0000-4000-8000-000000000000",
+    "max_tickets": 1,
+    "scored_tickets": [
+      {
+        "description": "",
+        "labels": [],
+        "priority": 0,
+        "rsd_score": 42.0,
+        "state": "",
+        "ticket_id": "OMN-SOLO",
+        "title": "T"
+      }
+    ]
+  },
+  "output": {
+    "correlation_id": "00000005-0000-4000-8000-000000000000",
+    "selected_tickets": [
+      {
+        "description": "",
+        "labels": [],
+        "priority": 0,
+        "rsd_score": 42.0,
+        "state": "",
+        "ticket_id": "OMN-SOLO",
+        "title": "T"
+      }
+    ],
+    "total_candidates": 1,
+    "total_selected": 1
+  },
+  "output_sha256": "sha256:35419f1baf737d71526fba8504d90d4f2b63f7bdccb51c6ee81b38f9027ce1ec"
+}

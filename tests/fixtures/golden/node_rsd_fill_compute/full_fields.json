@@ -1,0 +1,51 @@
+{
+  "input": {
+    "correlation_id": "00000007-0000-4000-8000-000000000000",
+    "max_tickets": 1,
+    "scored_tickets": [
+      {
+        "description": "d",
+        "labels": [
+          "area:core",
+          "urgent"
+        ],
+        "priority": 1,
+        "rsd_score": 9.0,
+        "state": "Todo",
+        "ticket_id": "OMN-X",
+        "title": "Rich"
+      },
+      {
+        "description": "e",
+        "labels": [
+          "area:web"
+        ],
+        "priority": 2,
+        "rsd_score": 4.0,
+        "state": "Backlog",
+        "ticket_id": "OMN-Y",
+        "title": "Poor"
+      }
+    ]
+  },
+  "output": {
+    "correlation_id": "00000007-0000-4000-8000-000000000000",
+    "selected_tickets": [
+      {
+        "description": "d",
+        "labels": [
+          "area:core",
+          "urgent"
+        ],
+        "priority": 1,
+        "rsd_score": 9.0,
+        "state": "Todo",
+        "ticket_id": "OMN-X",
+        "title": "Rich"
+      }
+    ],
+    "total_candidates": 2,
+    "total_selected": 1
+  },
+  "output_sha256": "sha256:566cf9ada7e6ebb0fa403f4fb61f24f27fbf3cffc07de71db5df81c9049dbc32"
+}

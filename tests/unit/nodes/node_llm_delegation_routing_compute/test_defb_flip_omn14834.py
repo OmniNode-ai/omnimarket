@@ -296,6 +296,15 @@ def fingerprint(result: dict[str, object]) -> str:
     )
 
 
+def input_fingerprint(inp: ModelDelegationRoutingInput) -> str:
+    return (
+        "sha256:"
+        + hashlib.sha256(
+            json.dumps(inp.model_dump(mode="json"), sort_keys=True).encode("utf-8")
+        ).hexdigest()
+    )
+
+
 _CORPUS = build_corpus()
 
 
@@ -346,6 +355,9 @@ def test_defb_output_matches_recorded_golden(
     )
     golden = json.loads(golden_path.read_text(encoding="utf-8"))
     live = canonical_result(inp)
+    assert input_fingerprint(inp) == golden["input_hash"], (
+        f"input fingerprint drift for {case_id}"
+    )
     assert live == golden["result"], f"behavior drift for {case_id}"
     assert fingerprint(live) == golden["fingerprint"], (
         f"fingerprint drift for {case_id}"

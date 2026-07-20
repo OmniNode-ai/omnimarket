@@ -72,6 +72,7 @@ from omnimarket.nodes.node_build_loop_orchestrator.protocols.protocol_sub_handle
     ProtocolRsdFillHandler,
     ProtocolTicketClassifyHandler,
     ProtocolVerifyHandler,
+    RsdFillRequest,
     ScoredTicket,
 )
 from omnimarket.nodes.node_overseer_verifier import ModelVerifierRequest
@@ -449,9 +450,11 @@ class HandlerBuildLoopOrchestrator:
 
             if phase == EnumBuildLoopPhase.FILLING:
                 fill_result = await self._rsd_fill.handle(
-                    correlation_id=correlation_id,
-                    scored_tickets=(),
-                    max_tickets=max_tickets,
+                    RsdFillRequest(
+                        correlation_id=correlation_id,
+                        scored_tickets=(),
+                        max_tickets=max_tickets,
+                    )
                 )
                 self._last_fill_result = fill_result.selected_tickets
                 metrics["tickets_filled"] = fill_result.total_selected

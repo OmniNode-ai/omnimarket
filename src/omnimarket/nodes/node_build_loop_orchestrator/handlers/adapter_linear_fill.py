@@ -17,7 +17,6 @@ from __future__ import annotations
 
 import logging
 import os
-from uuid import UUID
 
 import httpx
 
@@ -28,6 +27,7 @@ from omnimarket.nodes.node_build_dispatch_effect.handlers.dispatch_history_store
     DispatchHistoryStore,
 )
 from omnimarket.nodes.node_build_loop_orchestrator.protocols.protocol_sub_handlers import (
+    RsdFillRequest,
     RsdFillResult,
     ScoredTicket,
 )
@@ -135,18 +135,15 @@ class AdapterLinearFill:
         self._team_id_resolved = False
         self._history_store = history_store or DispatchHistoryStore()
 
-    async def handle(
-        self,
-        *,
-        correlation_id: UUID,
-        scored_tickets: tuple[ScoredTicket, ...] = (),
-        max_tickets: int = 5,
-    ) -> RsdFillResult:
-        """Fetch top-N tickets from Linear Active Sprint.
+    async def handle(self, request: RsdFillRequest) -> RsdFillResult:
+        """Fetch top-N tickets from Linear Active Sprint (def-B typed payload).
 
         If pre-scored tickets are provided, delegates to the pure compute
         path (select top-N from provided). Otherwise fetches from Linear.
         """
+        correlation_id = request.correlation_id
+        scored_tickets = request.scored_tickets
+        max_tickets = request.max_tickets
         if scored_tickets:
             sorted_tickets = sorted(
                 scored_tickets,

@@ -33,6 +33,9 @@ from omnimarket.events.self_healing_dispatch import (
     ModelDispatchGroup,
     ModelSelfHealingDispatchRequest,
 )
+from omnimarket.models.model_rsd_fill_input import (
+    ModelRsdFillInput,
+)
 from omnimarket.nodes.node_rsd_fill_compute.handlers.handler_rsd_fill import (
     HandlerRsdFill,
 )
@@ -81,9 +84,11 @@ class HandlerDispatchEngineRouter:
 
         # 1. Score / rank via the RSD compute node (pure, deterministic).
         fill = await self._rsd.handle(
-            correlation_id=request.correlation_id,
-            scored_tickets=request.candidate_tickets,
-            max_tickets=request.top_n,
+            ModelRsdFillInput(
+                correlation_id=request.correlation_id,
+                scored_tickets=request.candidate_tickets,
+                max_tickets=request.top_n,
+            )
         )
         selected = tuple(
             t for t in fill.selected_tickets if t.rsd_score >= request.min_score

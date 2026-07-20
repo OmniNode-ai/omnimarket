@@ -29,6 +29,9 @@ from uuid import UUID
 import yaml
 
 from omnimarket.config.service_endpoints import LINEAR_GRAPHQL_URL
+from omnimarket.models.model_rsd_fill_input import (
+    ModelRsdFillInput,
+)
 from omnimarket.nodes.node_pipeline_fill.models.model_pipeline_fill_command import (
     ModelPipelineFillCommand,
 )
@@ -297,9 +300,11 @@ class HandlerPipelineFill:
         # Convert to ModelScoredTicket and score via HandlerRsdFill
         scored_input = tuple(_to_scored_ticket(t) for t in filtered)
         fill_result = await self._rsd.handle(
-            correlation_id=command.correlation_id,
-            scored_tickets=scored_input,
-            max_tickets=command.top_n,
+            ModelRsdFillInput(
+                correlation_id=command.correlation_id,
+                scored_tickets=scored_input,
+                max_tickets=command.top_n,
+            )
         )
 
         # Write scores.yaml — observable artifact for audit / debugging
