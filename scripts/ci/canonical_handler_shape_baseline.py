@@ -46,7 +46,6 @@ NON_CANONICAL: tuple[str, ...] = (
     "omnimarket.nodes.node_knowledge_query_federation_orchestrator",
     "omnimarket.nodes.node_kreuzberg_parse_effect",
     "omnimarket.nodes.node_llm_delegation_projection",
-    "omnimarket.nodes.node_llm_delegation_routing_compute",
     "omnimarket.nodes.node_log_projection",
     "omnimarket.nodes.node_loop_state_reducer",
     "omnimarket.nodes.node_memory_retrieval_effect",

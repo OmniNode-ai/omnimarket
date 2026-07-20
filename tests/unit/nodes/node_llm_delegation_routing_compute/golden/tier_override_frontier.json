@@ -1,0 +1,18 @@
+{
+  "case_id": "tier_override_frontier",
+  "fingerprint": "sha256:17d7da0f932a8f485264fad5b998872c18bfadc006ce21460d3c3b3ade3c489c",
+  "input_hash": "sha256:e35f3973b655a4ad2e08d382c57903db598fbc60a5f7ad7a38fea992a358c332",
+  "result": {
+    "kind": "ok",
+    "output": {
+      "selection": {
+        "cost_basis": "cloud_api_cost",
+        "endpoint_env": "LLM_FRONTIER_URL",
+        "model_id": "frontier-model",
+        "selection_reason": "tier-override='frontier': first eligible model in tier",
+        "skipped_models": [],
+        "tier": "frontier"
+      }
+    }
+  }
+}

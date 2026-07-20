@@ -1,0 +1,10 @@
+{
+  "case_id": "tier_all_skipped_raises",
+  "fingerprint": "sha256:aeff7982309d6c8a9569103dd912995344044261bbe13fa015ac5c22ddc8712a",
+  "input_hash": "sha256:2e58deb5314c59f017344921dbbf1227d2f66875c926f8b2a219390189b9743d",
+  "result": {
+    "error_type": "ValueError",
+    "kind": "error",
+    "message": "required_tier='frontier': all 1 candidate(s) were skipped. Skipped: ['frontier-model']. Cannot fall back across tiers."
+  }
+}

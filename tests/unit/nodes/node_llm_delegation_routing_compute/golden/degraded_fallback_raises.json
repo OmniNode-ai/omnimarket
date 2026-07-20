@@ -1,0 +1,10 @@
+{
+  "case_id": "degraded_fallback_raises",
+  "fingerprint": "sha256:bed2403bce4252f33c054883dcc532ae5137cd070e3e448bb427e8997ad61288",
+  "input_hash": "sha256:847ba1e77f361aee7d89a17fb1769488c432be20c24e975250d6251ad3973f71",
+  "result": {
+    "error_type": "ValueError",
+    "kind": "error",
+    "message": "Fallback model 'model-c' is also degraded: degraded until 2999-01-01T00:00:00+00:00: quality gate failure. All routing options exhausted."
+  }
+}

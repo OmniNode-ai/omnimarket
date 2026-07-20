@@ -24,7 +24,6 @@ Routing algorithm (deterministic, stateless):
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from uuid import UUID
 
 from omnimarket.nodes.node_llm_delegation_routing_compute.models.model_delegation_routing_input import (
     DegradationEntry,
@@ -230,9 +229,8 @@ class HandlerDelegationRouting:
 
     async def handle(
         self,
-        correlation_id: UUID,
-        input_data: ModelDelegationRoutingInput,
+        request: ModelDelegationRoutingInput,
     ) -> ModelDelegationRoutingOutput:
         now = datetime.now(tz=UTC)
-        selection = _select_model(input_data, now)
+        selection = _select_model(request, now)
         return ModelDelegationRoutingOutput(selection=selection)

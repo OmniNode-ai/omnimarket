@@ -1,0 +1,18 @@
+{
+  "case_id": "happy_first_preferred",
+  "fingerprint": "sha256:6240a3bf19586d93939ef2f852bb8d6865b891774d1e22e91a117eddebfc500c",
+  "input_hash": "sha256:2576245c880c79456cccb6c099bb44044cad7446adaeb5418c2add9a62ac1265",
+  "result": {
+    "kind": "ok",
+    "output": {
+      "selection": {
+        "cost_basis": "zero_marginal_api_cost",
+        "endpoint_env": "LLM_A_URL",
+        "model_id": "model-a",
+        "selection_reason": "preferred model selected",
+        "skipped_models": [],
+        "tier": "local"
+      }
+    }
+  }
+}
