@@ -17,18 +17,55 @@
 # ModelOccAutoauthorObservation — the durable evidence unit the N=10 window
 # (node_occ_autoauthor_window) aggregates for the FUTURE fail-closed flip.
 #
-# SAFETY (this is the whole point — do NOT weaken):
-#   * `continue-on-error: true` — a mismatch/failure here is OBSERVED, never enforced.
+# SAFETY — an ATTESTATION MISMATCH IS STILL NEVER ENFORCED (do NOT weaken):
 #   * NOT added to required_status_checks and NOT referenced by ci.yml's CI Summary
 #     `needs:` (GHA `needs:` cannot cross workflow-file boundaries — CI Summary can
 #     only gate on jobs defined in ci.yml). So this structurally cannot block a
 #     merge, exactly like the OMN-14657 observe job.
+#   * A mismatch is DATA, not an exit code: HandlerOccAttestationObserve.handle
+#     catches every exception and returns a fail-soft ModelOccAutoauthorObservation
+#     (attestation_match=False + reason). It cannot fail the step. The report-only
+#     guarantee therefore does NOT depend on `continue-on-error`.
 #   * The FAIL-CLOSED flip (relocate oracle to omnibase_compat, wire into
 #     validator_receipt_gate / validator_occ_merge_eligibility as required CI +
 #     pre-commit) is a LATER operator-gated step, OUT OF THIS LANE.
 #
-# Ticket: OMN-14393 (RSD-5). Design:
-#   docs/plans/2026-07-14-rsd3-occ-producer-and-retirement.md §3-§4.
+# A4 ACTIVATION (OMN-14904) — the observation store is LIVE by default:
+#   The job-level `continue-on-error: true` was REMOVED. It was not protecting the
+#   report-only property (see above); it was swallowing infrastructure failures —
+#   precisely the class of defect OMN-14844 was (a sync-in-async call that made
+#   every observation silently fail-soft while the job stayed green). A broken
+#   durable write must now be RED, because a broken activation that looks green is
+#   worse than no activation.
+#
+#   * `node_occ_observation_effect` runs in `mutate` by DEFAULT. The operator repo
+#     variable OMNI_OCC_OBSERVATION_STORE_MODE is a KILL SWITCH only: it is read
+#     from `vars.*` (never PR input), validated against a hardcoded
+#     {dry_run,mutate} allowlist, and can force the write back to dry_run.
+#   * FORK GUARD: the job-level `if` already excludes fork heads; the mode resolver
+#     re-checks head.repo.full_name == github.repository and forces dry_run if it
+#     ever changes. `pull_request` (not `pull_request_target`) also means a fork
+#     never receives the write secret.
+#   * `permissions:` STAYS READ-ONLY, deliberately. Raising it would NOT enable this
+#     write and would be a pure over-grant: `permissions:` scopes only the ambient
+#     per-run GITHUB_TOKEN, which is repo-scoped to `omnimarket` and can never push
+#     to `onex_change_control` at ANY permission level. The cross-repo write needs a
+#     DIFFERENT credential, passed explicitly below. (Committed gate:
+#     tests/unit/workflows/test_report_only_occ_workflows.py
+#     ::test_attestation_workflow_has_no_write_permissions.)
+#   * CREDENTIAL: `secrets.OCC_AUTOAUTHOR_TOKEN` — the narrow, already-designed
+#     secret name `call-occ-companion-author.yml` reserves for exactly this
+#     (fine-grained PAT / GitHub App scoped to contents:write + pull-requests:write
+#     on OmniNode-ai/onex_change_control ONLY). The org-wide CROSS_REPO_PAT is
+#     explicitly REJECTED (rolling plan §2 A3). No new credential surface.
+#   * If that secret is absent, the job FAILS LOUD with an actionable error rather
+#     than degrading to a silent no-op. Stand down with the kill switch, never by
+#     re-adding a swallow.
+#
+# Tickets: OMN-14393 (RSD-5, original report-only gate), OMN-14888 (observation
+# store nodes), OMN-14904 (this activation). Design:
+#   docs/plans/2026-07-14-rsd3-occ-producer-and-retirement.md §3-§4
+#   docs/plans/2026-07-20-occ-real-doneness-working-path-and-liveness-plan.md
 
 name: OCC Attestation Observe (report-only)
 
@@ -53,15 +90,43 @@ jobs:
       (contains(github.event.pull_request.title, 'OMN-') ||
        contains(github.event.pull_request.head.ref, 'OMN-'))
     runs-on: ubuntu-latest
-    # Report-only, non-blocking (design §3 guardrail): a red step here is
-    # observed, never enforced. No required-status-check name; no `needs:` refs.
-    continue-on-error: true
+    # NOTE (OMN-14904): `continue-on-error: true` was REMOVED here. The
+    # report-only property is structural (no required-status-check name, no
+    # cross-file `needs:`, and the observer node cannot raise), so the swallow
+    # bought nothing except hiding a broken durable write. See the header block.
     timeout-minutes: 10
     steps:
       - name: Checkout code
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
         with:
           persist-credentials: false
+
+      - name: Resolve observation-store write mode (allowlist + fork guard)
+        id: obsmode
+        env:
+          # Operator KILL SWITCH repo variable — NOT PR input. Absent => mutate
+          # (A4 activation, OMN-14904: the committed default is LIVE).
+          OMNI_OCC_OBSERVATION_STORE_MODE: ${{ vars.OMNI_OCC_OBSERVATION_STORE_MODE }}
+          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+          THIS_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          # Fail-closed allowlist: anything but the two known modes => dry_run.
+          MODE="${OMNI_OCC_OBSERVATION_STORE_MODE:-mutate}"
+          case "$MODE" in
+            dry_run|mutate) ;;
+            *) echo "::warning::unrecognized OMNI_OCC_OBSERVATION_STORE_MODE='$MODE' — defaulting to dry_run"; MODE="dry_run" ;;
+          esac
+          # FORK GUARD (belt-and-braces — the job-level `if` already excludes fork
+          # heads). No cross-repo write is ever attempted from a fork: a fork PR
+          # cannot receive OCC_AUTOAUTHOR_TOKEN under `pull_request`, so force
+          # dry_run explicitly instead of relying on the secret being empty.
+          if [ "$HEAD_REPO" != "$THIS_REPO" ]; then
+            echo "::notice::fork head '$HEAD_REPO' != '$THIS_REPO' — forcing dry_run (no cross-repo write from forks)"
+            MODE="dry_run"
+          fi
+          echo "Resolved observation-store mode: $MODE"
+          echo "mode=$MODE" >> "$GITHUB_OUTPUT"
 
       - name: Install uv
         uses: astral-sh/setup-uv@38f3f104447c67c051c4a08e39b64a148898af3a # v4
@@ -105,49 +170,82 @@ jobs:
         # (workflow_run_id/run_attempt make reruns of the same head_sha
         # distinguishable raw attempts that dedupe to ONE qualifying
         # observation downstream — see project_qualifying_observations).
-        if: always()
+        #
+        # NO SILENT SKIP (OMN-14904): an absent/empty observation used to `echo`
+        # and pass. An absent input must FAIL — a check that silently skips is a
+        # check that does not exist.
+        env:
+          OBS_MODE: ${{ steps.obsmode.outputs.mode }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          WORKFLOW_RUN_ID: ${{ github.run_id }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
         run: |
-          if [ -s occ_attestation_observe_result.json ]; then
-            uv run python scripts/ci/build_occ_observation_effect_payload.py \
-              --observe-result occ_attestation_observe_result.json \
-              --head-sha "${{ github.event.pull_request.head.sha }}" \
-              --policy-version "v1" \
-              --workflow-run-id "${{ github.run_id }}" \
-              --run-attempt "${{ github.run_attempt }}" \
-              --recorded-at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-              --output occ_observation_effect_payload.json \
-            || echo "build_occ_observation_effect_payload: non-fatal, no payload built"
-          else
-            echo "occ_attestation_observe_result.json missing/empty; skipping payload build"
+          set -euo pipefail
+          if [ ! -s occ_attestation_observe_result.json ]; then
+            echo "::error::occ_attestation_observe_result.json is missing/empty — there is no observation to persist. Failing loud instead of skipping."
+            exit 1
+          fi
+          uv run python scripts/ci/build_occ_observation_effect_payload.py \
+            --observe-result occ_attestation_observe_result.json \
+            --head-sha "$HEAD_SHA" \
+            --policy-version "v1" \
+            --workflow-run-id "$WORKFLOW_RUN_ID" \
+            --run-attempt "$RUN_ATTEMPT" \
+            --recorded-at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            --mode "$OBS_MODE" \
+            --output occ_observation_effect_payload.json
+
+      - name: Validate OCC cross-repo write token (mutate only)
+        # Fail LOUD, never silently degrade to dry_run. `permissions:` cannot
+        # substitute for this: it scopes only the ambient omnimarket-scoped
+        # GITHUB_TOKEN, which can never push to onex_change_control.
+        if: ${{ steps.obsmode.outputs.mode == 'mutate' }}
+        env:
+          OCC_AUTOAUTHOR_TOKEN: ${{ secrets.OCC_AUTOAUTHOR_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -z "${OCC_AUTOAUTHOR_TOKEN:-}" ]; then
+            echo "::error::observation-store mode=mutate requires secret OCC_AUTOAUTHOR_TOKEN with contents:write + pull-requests:write on OmniNode-ai/onex_change_control (fine-grained PAT or GitHub App install token; the org-wide CROSS_REPO_PAT is NOT an acceptable substitute). Provision it, or set repo variable OMNI_OCC_OBSERVATION_STORE_MODE=dry_run to stand the durable write down. See OMN-14904."
+            exit 1
           fi
 
-      - name: Run node_occ_observation_effect (dry_run — see OMN-14888 for live activation)
-        # mode=dry_run ONLY: renders the deterministic OCC path + content and
-        # reports them WITHOUT any GitHub mutation. This repo's ambient
-        # GITHUB_TOKEN is scoped to omnimarket and cannot push to
-        # onex_change_control (a different repo), so going live needs one of
-        # the two routes documented on OMN-14888 (bus + sibling adapter next to
-        # OccAutobindAdapter, or a new write-scoped secret) — neither is wired
-        # here. This step proves the mechanism end-to-end on real observation
-        # data without any live cross-repo mutation.
-        if: always()
+      - name: Run node_occ_observation_effect (mode-gated — A4 activation, OMN-14904)
+        # mutate: clones onex_change_control, appends exactly ONE net-new record
+        # file (F-01 append-only diff assertion enforced in the handler), pushes
+        # a deterministic branch, and opens/reuses the OCC PR. Re-ingesting the
+        # identical raw attempt is an idempotent no-op, not a duplicate.
+        # dry_run: renders the deterministic path + content, no GitHub mutation.
+        env:
+          OBS_MODE: ${{ steps.obsmode.outputs.mode }}
+          OCC_AUTOAUTHOR_TOKEN: ${{ secrets.OCC_AUTOAUTHOR_TOKEN }}
         run: |
-          if [ -s occ_observation_effect_payload.json ]; then
-            uv run onex node node_occ_observation_effect \
-              --input occ_observation_effect_payload.json \
-              --output receipt \
-              | tee occ_observation_effect_result.json
-          else
-            echo "occ_observation_effect_payload.json missing/empty; skipping dry_run"
+          set -euo pipefail
+          if [ ! -s occ_observation_effect_payload.json ]; then
+            echo "::error::occ_observation_effect_payload.json is missing/empty — the observation was NOT persisted. Failing loud instead of skipping."
+            exit 1
           fi
+          if [ "$OBS_MODE" = "mutate" ]; then
+            # HandlerOccObservationEffect resolves its write credential from
+            # GITHUB_TOKEN; point that at the narrow cross-repo token.
+            export GITHUB_TOKEN="${OCC_AUTOAUTHOR_TOKEN:?mode=mutate requires OCC_AUTOAUTHOR_TOKEN}"
+          fi
+          uv run onex node node_occ_observation_effect \
+            --input occ_observation_effect_payload.json \
+            --output receipt \
+            | tee occ_observation_effect_result.json
 
       - name: Publish observation to job summary
         if: always()
+        env:
+          OBS_MODE: ${{ steps.obsmode.outputs.mode }}
         run: |
           {
             echo "### OCC Attestation — report-only observation (non-blocking)"
             echo
-            echo "Ticket: OMN-14393. This gate OBSERVES only — it cannot block a merge."
+            echo "Ticket: OMN-14393. The ATTESTATION result is observed, never enforced — it is"
+            echo "data in the receipt below, it carries no required-status-check name, and it is"
+            echo "not in ci.yml's CI Summary needs, so it cannot block a merge. (A failure of the"
+            echo "durable WRITE below does fail this job — deliberately, per OMN-14904.)"
             echo "One ModelOccAutoauthorObservation is emitted per run; the N=10 window"
             echo "(node_occ_autoauthor_window) aggregates them for the future flip."
             echo
@@ -159,10 +257,11 @@ jobs:
             fi
             echo '```'
             echo
-            echo "### OCC Observation Effect — durable-storage dry_run (OMN-14888)"
+            echo "### OCC Observation Effect — durable append-only store (OMN-14888 / OMN-14904)"
             echo
-            echo "Renders the deterministic append-only path/content for onex_change_control;"
-            echo "no GitHub mutation performed (see step notes for the live-activation gap)."
+            echo "Resolved mode: \`${OBS_MODE:-unresolved}\` (kill switch: repo variable OMNI_OCC_OBSERVATION_STORE_MODE)."
+            echo "mutate appends exactly one net-new record file to onex_change_control and opens/reuses"
+            echo "the OCC PR; dry_run renders the deterministic path/content with no GitHub mutation."
             echo
             echo '```json'
             if [ -s occ_observation_effect_result.json ]; then
