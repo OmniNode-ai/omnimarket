@@ -289,6 +289,7 @@ def run(
                         "changed live-path node has no matching golden-chain test",
                         (
                             "add tests/test_golden_chain_<node>.py or "
+                            "tests/unit/nodes/test_golden_chain_*.py or "
                             "tests/nodes/<node>/test_golden_chain_*.py -- "
                             "a node-local src/omnimarket/nodes/<node>/tests/ "
                             "test is never collected by CI (OMN-14338) and "
