@@ -3,10 +3,10 @@
 """Deliverable 4(b): the OMN-14393 report-only workflows are structurally NON-BLOCKING.
 
 Asserts, against the committed YAML, that both workflows are separate files whose
-job ids are NOT referenced by ci.yml's required ``CI Summary`` ``needs:`` list (GHA
-``needs:`` cannot cross workflow-file boundaries — so a failing attestation cannot
-feed the merge-gating rollup), and that the mutate-capable author workflow defaults
-to dry_run (flag OFF) and never sources its mode from PR input.
+job ids are NOT part of the required ``CI Summary`` poller's own workflow jobs or
+gate anchors (GHA jobs cannot cross workflow-file boundaries), and that the
+mutate-capable author workflow defaults to dry_run (flag OFF) and never sources
+its mode from PR input.
 
 OMN-14904 (A4 activation) changes the attestation workflow's guardrail shape:
 
@@ -15,9 +15,11 @@ OMN-14904 (A4 activation) changes the attestation workflow's guardrail shape:
     durable cross-repo write (``node_occ_observation_effect`` in ``mutate``), and a
     broken write that reports green is the exact failure mode this program exists
     to remove. The report-only guarantee for the ATTESTATION result is structural,
-    not exit-code based: the job carries no required-status-check name, is absent
-    from ci-summary ``needs:``, and ``HandlerOccAttestationObserve.handle`` catches
-    every exception and returns a fail-soft observation instead of raising.
+    not exit-code based: the job carries no required-status-check name, is in a
+    separate workflow file that the no-``needs`` CI Summary poller cannot observe,
+    is absent from ``scripts/ci/ci_summary_gate.py`` gate anchors, and
+    ``HandlerOccAttestationObserve.handle`` catches every exception and returns a
+    fail-soft observation instead of raising.
 """
 
 from __future__ import annotations
@@ -27,6 +29,8 @@ from typing import Any, cast
 
 import pytest
 import yaml
+
+from scripts.ci.ci_summary_gate import SKIPPABLE_GATE_JOBS, STRICT_GATE_JOBS
 
 _WORKFLOWS = Path(__file__).resolve().parents[3] / ".github" / "workflows"
 _AUTHOR = _WORKFLOWS / "call-occ-companion-author.yml"
@@ -68,12 +72,25 @@ def test_attestation_job_has_no_continue_on_error_swallow() -> None:
 
 
 @pytest.mark.unit
-def test_new_jobs_are_not_in_ci_summary_needs() -> None:
+def test_new_jobs_do_not_gate_ci_summary_poller() -> None:
     ci = _load(_CI)
-    needs = ci["jobs"]["ci-summary"]["needs"]
+    summary = ci["jobs"]["ci-summary"]
+    # OMN-14127 (CI-G2): ci-summary is a NO-`needs` fail-closed poller. It polls
+    # only its OWN workflow run's jobs, so cross-file report-only OCC jobs can
+    # never be observed — let alone gate — the required CI Summary context.
+    assert "needs" not in summary, (
+        "ci-summary must be a NO-`needs` poller (OMN-14127); a needs-gated "
+        "required context wedges the PR under fleet saturation."
+    )
+    gate_anchors = set(STRICT_GATE_JOBS) | set(SKIPPABLE_GATE_JOBS)
     for forbidden in ("occ-companion-author", "occ-attestation-observe"):
-        assert forbidden not in needs, (
-            f"{forbidden} must NOT gate the required CI Summary rollup"
+        # Separate workflow files — not folded into ci.yml (cross-file, so the
+        # poller never even sees them) and not among its gate anchors.
+        assert forbidden not in ci["jobs"], (
+            f"{forbidden} must stay in its own workflow file, not ci.yml"
+        )
+        assert forbidden not in gate_anchors, (
+            f"{forbidden} must NOT be a CI Summary poller gate anchor"
         )
 
 
