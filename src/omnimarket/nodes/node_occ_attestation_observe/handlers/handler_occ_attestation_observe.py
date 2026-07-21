@@ -55,7 +55,6 @@ from omnimarket.events.occ_companion import (
 from omnimarket.github_api import (
     GitHubApiError,
     rest_json,
-    rest_json_array,
     split_repo,
 )
 from omnimarket.inference.secret_store_resolver import resolve_api_key
@@ -313,6 +312,23 @@ class HandlerOccAttestationObserve:
     def _read_occ_preflight_eligible(
         self, repo: str, head_sha: str, token: str
     ) -> bool:
+        """Read the product PR's occ-preflight conclusion from its head commit.
+
+        ``GET /repos/{owner}/{repo}/commits/{sha}/check-runs`` returns a JSON
+        **object** — ``{"total_count": N, "check_runs": [...]}`` — NOT a bare
+        array (OMN-14906). Calling ``rest_json_array`` here raised
+        ``GitHubApiError('unexpected JSON response type ...')`` on EVERY real
+        response, which the ``except`` below then swallowed to ``False``, making
+        ``occ_preflight_eligible`` structurally unreachable and therefore N=10
+        unreachable. The list lives under ``check_runs``; pagination is driven by
+        that nested list's length (OMN-14442: an unpaginated read goes green by
+        truncation when the interesting run sorts past page 1).
+
+        The ``except`` remains fail-safe by design — this is a report-only
+        observer that must never raise — but the swallow is now LOGGED, so a
+        systematic read failure is visible in the run log instead of silently
+        pinning every observation to not-clean.
+        """
         if not head_sha:
             return False
         owner, name = split_repo(repo)
@@ -320,17 +336,33 @@ class HandlerOccAttestationObserve:
             runs: list[dict[str, object]] = []
             page = 1
             while True:
-                batch = rest_json_array(
+                payload = rest_json(
                     "GET",
                     f"/repos/{owner}/{name}/commits/{head_sha}/check-runs"
                     f"?per_page=100&page={page}",
                     token=token,
                 )
+                raw_batch = payload.get("check_runs")
+                if not isinstance(raw_batch, list):
+                    raise GitHubApiError(
+                        "check-runs response has no 'check_runs' list "
+                        f"(keys={sorted(payload)})"
+                    )
+                batch = [item for item in raw_batch if isinstance(item, dict)]
                 runs.extend(batch)
-                if len(batch) < 100:
+                if len(raw_batch) < 100:
                     break
                 page += 1
-        except GitHubApiError:
+        except GitHubApiError as exc:
+            # Fail-safe (report-only), but never silent: an unreadable
+            # check-runs response is why every observation was not-clean.
+            logger.warning(
+                "occ_attestation_observe: could not read occ-preflight eligibility "
+                "for %s@%s — treating as NOT eligible: %s",
+                repo,
+                head_sha,
+                exc,
+            )
             return False
         return extract_check_conclusion(runs, _OCC_PREFLIGHT_CHECK_NAME) == "success"
 

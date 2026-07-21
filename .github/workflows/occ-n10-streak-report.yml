@@ -1,0 +1,173 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# occ-n10-streak-report.yml
+#
+# OMN-14906 (rolling plan §2 row A5) — the MISSING LINK in the N=10 chain.
+#
+# Before this file, `node_occ_observation_source_effect` (read the durable
+# append-only OCC observation trail + dedupe it) and `node_occ_autoauthor_window`
+# (trailing consecutive-clean streak vs N) were referenced by NO workflow, NO
+# script, and NO orchestrator. Every node in the chain existed and was
+# unit-tested; nothing ever composed them, so **no concrete streak value was
+# produced anywhere**. This workflow is that composition.
+#
+# READ-ONLY. It clones onex_change_control, reads
+# `drift/occ_observations/**/*.yaml`, and reports a number. It writes nothing,
+# opens nothing, merges nothing, and is not a required status check.
+#
+# FAIL-CLOSED (the whole point — do NOT weaken):
+#   * No `continue-on-error`. A red run here means the N=10 evidence chain is
+#     not readable, which is exactly the fact this workflow exists to surface.
+#   * An ABSENT `drift/occ_observations/` tree is a HARD ERROR, not a zero
+#     (OMN-14906 defect 2). As of 2026-07-21 that tree does not exist on
+#     onex_change_control@main, so the FIRST run of this workflow is EXPECTED to
+#     fail with exactly that error — that is the honest state of the chain, not
+#     a workflow bug. It goes green once the OMN-14888 write side leaves
+#     `dry_run` and appends its first record.
+#
+# TWO DELIBERATE NON-DECISIONS (out of scope for OMN-14906, do not silently
+# resolve them by editing this file):
+#
+#   1. TOKEN. Reading onex_change_control from omnimarket Actions needs a
+#      cross-repo credential. This uses the EXISTING `OCC_AUTOAUTHOR_TOKEN`
+#      (already wired for OCC *writes* in call-occ-companion-author.yml) — a
+#      read here is a strict subset of a grant that already exists, so no new
+#      secret and no new scope is introduced. The durable answer is the
+#      repo-scoped ONEXBOT App token tracked on rolling-plan row A3, which
+#      explicitly REJECTS the org-wide CROSS_REPO_PAT. Swap to it there, not here.
+#
+#   2. SCHEDULE. `workflow_dispatch` only, on purpose. Adding a cron before the
+#      writer is live would burn CI capacity producing a guaranteed-red run per
+#      day. Add the schedule when row A4 activates the writer out of `dry_run`.
+
+name: OCC N=10 Streak Report (read-only)
+
+on:
+  workflow_dispatch:
+    inputs:
+      required_streak:
+        description: "N — required consecutive-clean streak"
+        required: false
+        default: "10"
+
+permissions:
+  contents: read
+
+jobs:
+  occ-n10-streak:
+    name: OCC N=10 streak (read-only, fail-closed)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout omnimarket
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
+        with:
+          persist-credentials: false
+
+      - name: Checkout onex_change_control (read-only, observation trail)
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
+        with:
+          repository: OmniNode-ai/onex_change_control
+          ref: main
+          path: .occ-checkout
+          token: ${{ secrets.OCC_AUTOAUTHOR_TOKEN }}
+          persist-credentials: false
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@38f3f104447c67c051c4a08e39b64a148898af3a # v4
+        with:
+          version: "latest"
+
+      - name: Set up Python 3.12
+        run: uv python install 3.12
+
+      - name: Install dependencies
+        run: uv sync --locked --all-extras
+
+      - name: Build observation-source payload
+        run: |
+          set -euo pipefail
+          jq -n --arg dir "$GITHUB_WORKSPACE/.occ-checkout" \
+            '{checkout_dir: $dir}' > occ_observation_source_payload.json
+          cat occ_observation_source_payload.json
+
+      - name: Run node_occ_observation_source_effect (read + dedupe)
+        run: |
+          set -euo pipefail
+          uv run onex node node_occ_observation_source_effect \
+            --input occ_observation_source_payload.json \
+            --output receipt \
+            | tee occ_observation_source_result.json
+
+      - name: Build window payload from the deduped projection
+        # Structural extraction, not a hardcoded nesting path: the `onex node`
+        # receipt wrapper shape is an implementation detail of
+        # omnimarket.cli.reporting that this workflow does not own (same reason
+        # scripts/ci/build_occ_observation_effect_payload.py searches by
+        # signature). `jq -e` makes a failed match a HARD failure, never an
+        # empty observation set that would silently report streak 0.
+        env:
+          REQUIRED_STREAK: ${{ github.event.inputs.required_streak || '10' }}
+        run: |
+          set -euo pipefail
+          jq -e \
+            --argjson n "$REQUIRED_STREAK" \
+            '[.. | objects | select(has("observations") and has("raw_record_count"))]
+               | if length == 0
+                 then error("no ModelOccObservationSourceEffectResult found in receipt")
+                 else .[0] end
+               | {observations: .observations, required_streak: $n}' \
+            occ_observation_source_result.json \
+            > occ_autoauthor_window_payload.json
+          cat occ_autoauthor_window_payload.json
+
+      - name: Run node_occ_autoauthor_window (concrete streak)
+        run: |
+          set -euo pipefail
+          uv run onex node node_occ_autoauthor_window \
+            --input occ_autoauthor_window_payload.json \
+            --output receipt \
+            | tee occ_autoauthor_window_result.json
+
+      - name: Publish the concrete streak to the job summary
+        if: always()
+        run: |
+          {
+            echo "### OCC N=10 — concrete streak (read-only)"
+            echo
+            echo "Ticket: OMN-14906. Composes node_occ_observation_source_effect →"
+            echo "node_occ_autoauthor_window over the durable OCC observation trail."
+            echo "Reports a number; flips, retires, and blocks nothing."
+            echo
+            echo "#### Deduped source projection"
+            echo '```json'
+            if [ -s occ_observation_source_result.json ]; then
+              cat occ_observation_source_result.json
+            else
+              echo "(no result — see step logs; an ABSENT observation store is a hard error by design)"
+            fi
+            echo '```'
+            echo
+            echo "#### Window / streak"
+            echo '```json'
+            if [ -s occ_autoauthor_window_result.json ]; then
+              cat occ_autoauthor_window_result.json
+            else
+              echo "(no result — see step logs)"
+            fi
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload streak artifacts
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: occ-n10-streak-${{ github.run_id }}
+          path: |
+            occ_observation_source_payload.json
+            occ_observation_source_result.json
+            occ_autoauthor_window_payload.json
+            occ_autoauthor_window_result.json
+          if-no-files-found: ignore
+          retention-days: 30
