@@ -97,6 +97,50 @@ jobs:
             --output receipt \
             | tee occ_attestation_observe_result.json
 
+      - name: Build node_occ_observation_effect payload (OMN-14888)
+        # Durable-storage half (OMN-14888, resolves the OMN-14851 open storage
+        # question: Option A, git-committed files in onex_change_control). This
+        # renders the ModelOccObservationEffectRequest payload from the real
+        # observation this run just produced + the GitHub Actions run identity
+        # (workflow_run_id/run_attempt make reruns of the same head_sha
+        # distinguishable raw attempts that dedupe to ONE qualifying
+        # observation downstream — see project_qualifying_observations).
+        if: always()
+        run: |
+          if [ -s occ_attestation_observe_result.json ]; then
+            uv run python scripts/ci/build_occ_observation_effect_payload.py \
+              --observe-result occ_attestation_observe_result.json \
+              --head-sha "${{ github.event.pull_request.head.sha }}" \
+              --policy-version "v1" \
+              --workflow-run-id "${{ github.run_id }}" \
+              --run-attempt "${{ github.run_attempt }}" \
+              --recorded-at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+              --output occ_observation_effect_payload.json \
+            || echo "build_occ_observation_effect_payload: non-fatal, no payload built"
+          else
+            echo "occ_attestation_observe_result.json missing/empty; skipping payload build"
+          fi
+
+      - name: Run node_occ_observation_effect (dry_run — see OMN-14888 for live activation)
+        # mode=dry_run ONLY: renders the deterministic OCC path + content and
+        # reports them WITHOUT any GitHub mutation. This repo's ambient
+        # GITHUB_TOKEN is scoped to omnimarket and cannot push to
+        # onex_change_control (a different repo), so going live needs one of
+        # the two routes documented on OMN-14888 (bus + sibling adapter next to
+        # OccAutobindAdapter, or a new write-scoped secret) — neither is wired
+        # here. This step proves the mechanism end-to-end on real observation
+        # data without any live cross-repo mutation.
+        if: always()
+        run: |
+          if [ -s occ_observation_effect_payload.json ]; then
+            uv run onex node node_occ_observation_effect \
+              --input occ_observation_effect_payload.json \
+              --output receipt \
+              | tee occ_observation_effect_result.json
+          else
+            echo "occ_observation_effect_payload.json missing/empty; skipping dry_run"
+          fi
+
       - name: Publish observation to job summary
         if: always()
         run: |
@@ -114,6 +158,19 @@ jobs:
               echo "(node did not produce a result — see step logs above)"
             fi
             echo '```'
+            echo
+            echo "### OCC Observation Effect — durable-storage dry_run (OMN-14888)"
+            echo
+            echo "Renders the deterministic append-only path/content for onex_change_control;"
+            echo "no GitHub mutation performed (see step notes for the live-activation gap)."
+            echo
+            echo '```json'
+            if [ -s occ_observation_effect_result.json ]; then
+              cat occ_observation_effect_result.json
+            else
+              echo "(node did not produce a result — see step logs above)"
+            fi
+            echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload observation artifact
@@ -124,5 +181,7 @@ jobs:
           path: |
             occ_attestation_observe_payload.json
             occ_attestation_observe_result.json
+            occ_observation_effect_payload.json
+            occ_observation_effect_result.json
           if-no-files-found: ignore
           retention-days: 30

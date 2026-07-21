@@ -1,0 +1,95 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - OCC Observation Effect (OMN-14888)
+#
+# Write-EFFECT. Appends ONE ModelOccObservationRecord (built in OMN-14851,
+# unchanged) as a net-new file into onex_change_control at its deterministic
+# path (occ_observation_record_relpath), resolving the OMN-14851 open
+# storage-surface question in favor of Option A: git-committed append-only
+# files, same discipline as the existing OCC-companion whole-file-hash
+# convention. Reuses the shared occ_git_transport (clone/push) rather than a
+# second cross-repo write surface.
+#
+# mode="dry_run" (default) renders path+content only, no GitHub mutation —
+# same shadow-wired convention as node_occ_companion_effect. See the OMN-14888
+# ticket for the two documented activation routes (bus + sibling adapter next
+# to OccAutobindAdapter vs. a new write-scoped GHA secret); neither is wired
+# by this contract alone.
+#
+# Related Tickets:
+#   - OMN-14888: this node (durable append-only write-EFFECT)
+#   - OMN-14851: ModelOccObservationRecord + project_qualifying_observations (reused, unmodified)
+#   - OMN-14844: observer async-fix (upstream, makes real observations possible)
+#   - OMN-14622: node_occ_companion_effect (git-transport + F-01 pattern reused here)
+name: "node_occ_observation_effect"
+lifecycle: experimental
+node_type: "EFFECT_GENERIC"
+runtime_profiles: [effects]
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_version: "1.0.0"
+description: "Write-EFFECT: appends one durable, append-only OCC observation record into onex_change_control at its deterministic path. mode=dry_run by default (no GitHub mutation)."
+input_model:
+  name: "ModelOccObservationEffectRequest"
+  module: "omnimarket.nodes.node_occ_observation_effect.models.model_occ_observation_effect_request"
+  description: "The raw observation record to persist; mode gates mutation."
+output_model:
+  name: "ModelOccObservationEffectResult"
+  module: "omnimarket.nodes.node_occ_observation_effect.models.model_occ_observation_effect_result"
+  description: "The append outcome (path, PR opened/reused, or the dry_run plan)."
+handler:
+  module: "omnimarket.nodes.node_occ_observation_effect.handlers.handler_occ_observation_effect"
+  class: "HandlerOccObservationEffect"
+  input_model: "omnimarket.nodes.node_occ_observation_effect.models.model_occ_observation_effect_request.ModelOccObservationEffectRequest"
+handler_routing:
+  routing_strategy: "operation_match"
+  default_handler: "omnimarket.nodes.node_occ_observation_effect.handlers.handler_occ_observation_effect:HandlerOccObservationEffect"
+  handlers:
+    - operation: "append_occ_observation"
+      handler:
+        name: "HandlerOccObservationEffect"
+        module: "omnimarket.nodes.node_occ_observation_effect.handlers.handler_occ_observation_effect"
+# Directly-invoked only (no Kafka producer/consumer today) — matches
+# node_occ_companion_effect's own runtime_dispatch-only declaration pattern.
+runtime_dispatch:
+  command_topic: "onex.cmd.omnimarket.occ-observation-effect-requested.v1"
+  terminal_events:
+    success: "onex.evt.omnimarket.occ-observation-effect-completed.v1"
+    failure: "onex.evt.omnimarket.occ-observation-effect-failed.v1"
+secrets:
+  GITHUB_TOKEN:
+    description: "GitHub PAT or Actions token for REST (OCC PR open) and HTTPS git clone/push. mode=dry_run performs no I/O and does not require this secret to be resolvable."
+    required: true
+side_effects:
+  reads:
+    - git
+  writes:
+    - github_pull_request
+    - onex_change_control_branch
+  duplicate_key_fields:
+    - record
+  duplicate_handling: idempotent
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  runtime_profiles: [effects]
+  idempotent: true
+  timeout_ms: 120000
+metadata:
+  transport_type: http
+  description: "OCC observation append write-EFFECT — appends one durable record into onex_change_control (GitHub REST + git over HTTP)"
+  author: "OmniNode Team"
+  created: "2026-07-21"
+  tags:
+    - "effect"
+    - "occ"
+    - "observation"
+    - "append-only"
+    - "OMN-14888"
+  related_tickets:
+    - "OMN-14888"
+    - "OMN-14851"
+    - "OMN-14844"
+    - "OMN-14622"

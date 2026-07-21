@@ -159,7 +159,11 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
     # monitoring-signal-to-threshold gate scaffold, thresholds pending A6): 372 -> 373.
     # OMN-14851 adds node_occ_observation_projection (COMPUTE; storage-agnostic
     # dedup projection scaffold for the OCC N=10 real-doneness counter): 373 -> 374.
-    assert summary["node_dirs"] == 374
+    # OMN-14888 adds node_occ_observation_effect (EFFECT; durable append-only OCC
+    # observation write, dry_run default) and node_occ_observation_source_effect
+    # (EFFECT; reads the durable OCC observation trail from a checkout and feeds
+    # the existing dedup projection): 374 -> 376.
+    assert summary["node_dirs"] == 376
     # OMN-14151 deliberately removes request/response entry points from the
     # three legacy arm surfaces; the new arm-gate compute node is the single
     # active route. OMN-14608's reducer entry point brings the count back up:
@@ -174,7 +178,10 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
     # runtime_dispatch, resolves as routable): 369 -> 370.
     # OMN-14851 adds the observation-projection compute route (addressable via
     # runtime_dispatch, resolves as routable): 370 -> 371.
-    assert summary["entry_points"] == 371
+    # OMN-14888 adds the observation-effect (write) and observation-source-effect
+    # (read) routes (both addressable via runtime_dispatch, resolve as
+    # routable): 371 -> 373.
+    assert summary["entry_points"] == 373
     assert set(summary["missing_entry_points"]) == OMN_14151_LEGACY_ARM_SURFACES
     assert summary["dangling_entry_points"] == []
     assert summary["routable"] >= 299
