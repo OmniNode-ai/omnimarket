@@ -157,12 +157,25 @@ def _coverage_target_for_node(node_dir: Path) -> CoverageTarget:
 
 
 def _golden_chain_test_files(repo_root: Path) -> list[Path]:
+    # OMN-14338: only locations under TESTS_DIR are ever collected by a CI
+    # pytest invocation --
+    #   - the dedicated "Golden Chain Suite" job runs explicit globs that are
+    #     all rooted under tests/ (tests/test_golden_chain_*.py,
+    #     tests/unit/nodes/test_golden_chain_*.py,
+    #     tests/nodes/*/test_golden_chain_*.py), and
+    #   - the "Run pytest (full suite)" job runs `pytest tests/`, which
+    #     collects everything else nested under tests/ recursively.
+    # `[tool.pytest.ini_options] testpaths = ["tests"]` means src/ is never
+    # collected by *any* pytest invocation, in CI or locally. A golden-chain
+    # test placed at the node-local `src/omnimarket/nodes/<node>/tests/`
+    # path therefore satisfies this gate's path/content match while never
+    # actually running -- a silent no-op. Do NOT reintroduce a NODES_DIR glob
+    # here without also making the golden-chains CI job collect it (see
+    # .github/workflows/ci.yml job `golden-chains`) -- the accepted-location
+    # set here and the CI job's collected-location set must stay in sync.
     candidates: set[Path] = set()
     if (repo_root / TESTS_DIR).is_dir():
         candidates.update((repo_root / TESTS_DIR).rglob("test_golden_chain*.py"))
-    candidates.update(
-        (repo_root / NODES_DIR).glob("node_*/tests/test_golden_chain*.py")
-    )
     return sorted(candidates)
 
 
@@ -275,9 +288,12 @@ def run(
                     findings=[
                         "changed live-path node has no matching golden-chain test",
                         (
-                            "add tests/test_golden_chain_<node>.py, "
-                            "tests/nodes/<node>/test_golden_chain_*.py, or "
-                            "<node>/tests/test_golden_chain*.py"
+                            "add tests/test_golden_chain_<node>.py or "
+                            "tests/unit/nodes/test_golden_chain_*.py or "
+                            "tests/nodes/<node>/test_golden_chain_*.py -- "
+                            "a node-local src/omnimarket/nodes/<node>/tests/ "
+                            "test is never collected by CI (OMN-14338) and "
+                            "does not satisfy this gate"
                         ),
                     ],
                 )
