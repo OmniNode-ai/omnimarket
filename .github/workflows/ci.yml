@@ -1827,135 +1827,89 @@ jobs:
 
   ci-summary:
     name: CI Summary
+    # OMN-14127 fan-out: REQUIRED branch-protection context, implemented as a
+    # NO-`needs`, GitHub-hosted, FAIL-CLOSED poller (ported from omnibase_core
+    # #1397 / omnibase_infra #2230 / omniclaude #1870 — omnimarket was the last
+    # `needs`-gated ci-summary on the fleet). A `needs`-gated job gets no
+    # check-run until its `needs` terminalize, so under self-hosted fleet
+    # saturation the old needs-based CI Summary (needs: [occ-preflight,
+    # zone-filter, lint, ...28 upstream jobs]) was ABSENT forever and the PR
+    # wedged BLOCKED with no auto-recovery. With NO `needs` this job's check-run
+    # instantiates immediately (the required context can never be absent); it
+    # polls the current run's job conclusions and posts a terminal
+    # success/failure within a bounded deadline. DEFAULT-DENY: green ONLY when
+    # every strict/skippable gate is present+good, the dynamic test matrix ran
+    # to completion, AND no non-allowlisted job failed — see
+    # scripts/ci/ci_summary_gate.py for the auditable gating set + strict/
+    # skippable split + soft-allowlist (unit-tested in
+    # tests/unit/scripts/ci/test_ci_summary_gate.py). Pure hosted GitHub-API
+    # polling: zero self-hosted/LAN dependency. DO NOT rename — the job name IS
+    # the required context; a rename re-wedges every PR.
+    #
+    # COVERAGE HONESTY: this poller summarizes ci.yml jobs ONLY. ~38 other
+    # required contexts (Hostile Review Gate, deploy-gate, OCC Emitter Golden
+    # Gate, receipt-honesty, ...) are produced by OTHER workflow files, are
+    # independently required, and are NOT summarized here — see
+    # UNSUMMARIZED_REQUIRED_CONTEXTS in the gate script. The name does not imply
+    # whole-PR coverage.
     runs-on: ubuntu-latest
-    needs: [occ-preflight, zone-filter, lint, typecheck, detect-changes, test, integration-guard, topic-naming-lint, runtime-sweep, compliance-sweep, core-only-install, contract-compliance, contract-sweep-gate, e2e-workflow-runner, golden-chains, sea-e2e-chains, generated-node-golden-chain, dep-health, uv-lock-pin-reachability, aislop-sweep, coverage-sweep-gate, workflow-module-refs, no-noncanonical-lifecycle-classes, event-registry-drift, topic-drift-check, topic-enum-drift, contract-topic-graph, merge-reason-code-gate]
     if: always()
+    permissions:
+      actions: read
+      contents: read
+    # Deadline (below) is comfortably under any run-cancellation window so the
+    # required context ALWAYS posts a terminal state first. The concurrency
+    # group above does NOT cancel-in-progress, so on pull_request there is
+    # effectively no shorter cancel window than GitHub's job default. This job
+    # timeout is only a hard backstop above the internal poll deadline.
+    timeout-minutes: 100
     steps:
-      - name: Check CI results
+      - name: Checkout (gate script)
+        uses: actions/checkout@v4
+      - name: Poll run jobs and compute fail-closed CI Summary verdict
+        working-directory: ${{ github.workspace }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+          # Bounded poll window (minutes) — kept under the run-cancel window so
+          # the required context always reaches a terminal state first.
+          DEADLINE_MINUTES: "90"
+          POLL_INTERVAL_SECONDS: "45"
         run: |
-          echo "=== CI Summary ==="
-          FAILED=false
-
-          for check in \
-            "occ-preflight=${{ needs.occ-preflight.result }}" \
-            "zone-filter=${{ needs.zone-filter.result }}" \
-            "lint=${{ needs.lint.result }}" \
-            "typecheck=${{ needs.typecheck.result }}" \
-            "detect-changes=${{ needs.detect-changes.result }}" \
-            "test=${{ needs.test.result }}" \
-            "integration-guard=${{ needs.integration-guard.result }}" \
-            "topic-naming-lint=${{ needs.topic-naming-lint.result }}" \
-            "runtime-sweep=${{ needs.runtime-sweep.result }}" \
-            "compliance-sweep=${{ needs.compliance-sweep.result }}" \
-            "core-only-install=${{ needs.core-only-install.result }}" \
-            "contract-compliance=${{ needs.contract-compliance.result }}" \
-            "contract-sweep-gate=${{ needs.contract-sweep-gate.result }}" \
-            "e2e-workflow-runner=${{ needs.e2e-workflow-runner.result }}" \
-            "golden-chains=${{ needs.golden-chains.result }}" \
-            "sea-e2e-chains=${{ needs.sea-e2e-chains.result }}" \
-            "generated-node-golden-chain=${{ needs.generated-node-golden-chain.result }}" \
-            "dep-health=${{ needs.dep-health.result }}" \
-            "uv-lock-pin-reachability=${{ needs.uv-lock-pin-reachability.result }}" \
-            "aislop-sweep=${{ needs.aislop-sweep.result }}" \
-            "coverage-sweep-gate=${{ needs.coverage-sweep-gate.result }}" \
-            "workflow-module-refs=${{ needs.workflow-module-refs.result }}"; do
-            NAME="${check%%=*}"
-            RESULT="${check##*=}"
-            if [ "$RESULT" != "success" ] && [ "$RESULT" != "skipped" ]; then
-              echo "::error::$NAME failed (result: $RESULT)"
-              FAILED=true
-            else
-              echo "$NAME: $RESULT"
+          # GitHub invokes this step as `bash -e {0}`; disable errexit because
+          # the gate script's non-zero exit codes are handled explicitly below
+          # (2 = PENDING must NOT terminate the poll loop).
+          set +e
+          set -uo pipefail
+          deadline=$(( $(date +%s) + DEADLINE_MINUTES * 60 ))
+          attempt=0
+          while true; do
+            attempt=$((attempt + 1))
+            if ! gh api --paginate \
+                "repos/${GH_REPO}/actions/runs/${RUN_ID}/jobs?filter=all&per_page=100" \
+                --jq '.jobs[]' | jq -s '.' > jobs.json; then
+              if [ "$(date +%s)" -ge "${deadline}" ]; then
+                echo "::error::CI Summary poll deadline (${DEADLINE_MINUTES}m) reached while fetching jobs — failing closed"
+                exit 1
+              fi
+              echo "gh api fetch failed (attempt ${attempt}); retrying after ${POLL_INTERVAL_SECONDS}s"
+              sleep "${POLL_INTERVAL_SECONDS}"
+              continue
             fi
-          done
-
-          # OMN-14582 Phase 2 / OMN-14640: strict fail-closed gate on
-          # contract-topic-graph (the static seam-measurement oracle). Phase 1
-          # (omnimarket#1754) put it in the loose loop above (success||skipped
-          # both pass) as an interim, non-enforcing landing; that left the seam
-          # tool gating nothing, since a skipped/cancelled run still passed the
-          # sole required "CI Summary" check. This flip removes it from the
-          # loose loop and requires the result to be EXACTLY 'success';
-          # skipped/cancelled/failure ALL block, mirroring the
-          # no-noncanonical-lifecycle-classes treatment immediately below. It
-          # stays in ci-summary needs: so this job WAITS for it (no race).
-          CONTRACT_TOPIC_GRAPH_RESULT="${{ needs.contract-topic-graph.result }}"
-          if [ "$CONTRACT_TOPIC_GRAPH_RESULT" != "success" ]; then
-            echo "::error::contract-topic-graph did not pass (result: $CONTRACT_TOPIC_GRAPH_RESULT) - fail-closed (OMN-14640)"
-            FAILED=true
-          else
-            echo "contract-topic-graph: $CONTRACT_TOPIC_GRAPH_RESULT"
-          fi
-
-          # OMN-14350: strict fail-closed gate on the non-canonical lifecycle-class
-          # ratchet. Unlike the loop above (success||skipped both pass), the ratchet
-          # must be EXACTLY 'success'; skipped/cancelled/failure ALL block (a skipped
-          # ratchet = un-enforced = fail-closed). It is in CI Summary needs: so this
-          # job WAITS for it (no race).
-          RATCHET_RESULT="${{ needs.no-noncanonical-lifecycle-classes.result }}"
-          if [ "$RATCHET_RESULT" != "success" ]; then
-            echo "::error::no-noncanonical-lifecycle-classes ratchet did not pass (result: $RATCHET_RESULT) - fail-closed (OMN-14350)"
-            FAILED=true
-          else
-            echo "no-noncanonical-lifecycle-classes: $RATCHET_RESULT"
-          fi
-
-          # OMN-14645: strict fail-closed gate on coverage-sweep-gate. It was
-          # previously in the loose loop above where BOTH 'success' and
-          # 'skipped' pass -- a 'skipped' coverage sweep would silently PASS the
-          # required "CI Summary" (fail-OPEN, an un-measured scope reported
-          # clean). Per reference_ci_gate_enforcement_mechanics the coverage
-          # census must be EXACTLY 'success'; skipped/cancelled/failure ALL
-          # block. This does NOT mask cancellation -- a 'cancelled' coverage
-          # sweep (the 2026-07-15 storm symptom) still fails here, loudly; the
-          # concurrency/timeout hardening above is what PREVENTS the cancel.
-          COVERAGE_RESULT="${{ needs.coverage-sweep-gate.result }}"
-          if [ "$COVERAGE_RESULT" != "success" ]; then
-            echo "::error::coverage-sweep-gate did not pass (result: $COVERAGE_RESULT) - fail-closed (OMN-14645); cancelled/skipped/failure never counts as a measured-clean coverage census"
-            FAILED=true
-          else
-            echo "coverage-sweep-gate: $COVERAGE_RESULT"
-          fi
-
-          # OMN-14590: event-registry-drift / topic-drift-check / topic-enum-drift
-          # ran on every PR already but were never referenced by ci-summary's
-          # needs: -- unlike most of OMN-14415's catalogue, these three live in
-          # THIS SAME FILE as ci-summary, so there was no `needs:` cross-file
-          # excuse; it was a plain omission. Strict success-only (not the loose
-          # loop above): each already ratchets pre-existing debt to a baseline
-          # (only NEW violations fail), so a skip/cancel/failure here is a real
-          # regression or a broken run, never an expected transient state.
-          for check in \
-            "event-registry-drift=${{ needs.event-registry-drift.result }}" \
-            "topic-drift-check=${{ needs.topic-drift-check.result }}" \
-            "topic-enum-drift=${{ needs.topic-enum-drift.result }}"; do
-            NAME="${check%%=*}"
-            RESULT="${check##*=}"
-            if [ "$RESULT" != "success" ]; then
-              echo "::error::$NAME did not pass (result: $RESULT) - fail-closed (OMN-14590)"
-              FAILED=true
-            else
-              echo "$NAME: $RESULT"
+            python3 scripts/ci/ci_summary_gate.py --jobs-file jobs.json --run-attempt "${RUN_ATTEMPT}"
+            rc=$?
+            case "${rc}" in
+              0) echo "::notice::CI Summary = SUCCESS (all gating jobs provably passed)"; exit 0 ;;
+              1) echo "::error::CI Summary = FAILURE (fail-closed: a gating job failed/cancelled)"; exit 1 ;;
+              2) : ;;  # PENDING — gating jobs still running; keep polling
+              *) echo "::error::ci_summary_gate.py returned unexpected code ${rc}; failing closed"; exit 1 ;;
+            esac
+            if [ "$(date +%s)" -ge "${deadline}" ]; then
+              echo "::error::CI Summary poll deadline (${DEADLINE_MINUTES}m) reached with gating jobs still pending — failing closed"
+              python3 scripts/ci/ci_summary_gate.py --jobs-file jobs.json --run-attempt "${RUN_ATTEMPT}" --report-only || true
+              exit 1
             fi
+            sleep "${POLL_INTERVAL_SECONDS}"
           done
-
-          # OMN-14765: strict fail-closed gate on the merge-check reason-code
-          # fixture corpus. Not the loose loop above (where skipped passes) — a
-          # skipped/cancelled classifier gate = un-enforced = fail-open, exactly
-          # the failure class this classifier exists to prevent. Must be EXACTLY
-          # 'success'. SYNC with the .pre-commit hook `merge-reason-code-gate`.
-          REASON_CODE_RESULT="${{ needs.merge-reason-code-gate.result }}"
-          if [ "$REASON_CODE_RESULT" != "success" ]; then
-            echo "::error::merge-reason-code-gate did not pass (result: $REASON_CODE_RESULT) - fail-closed (OMN-14765)"
-            FAILED=true
-          else
-            echo "merge-reason-code-gate: $REASON_CODE_RESULT"
-          fi
-
-          if [ "$FAILED" = "true" ]; then
-            echo ""
-            echo "CI Summary FAILED"
-            exit 1
-          fi
-          echo ""
-          echo "CI Summary PASSED"

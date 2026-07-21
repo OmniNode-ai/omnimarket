@@ -850,11 +850,11 @@ repos:
       # mypy type checking (OMN-11412: added missing mypy pre-commit hook)
       - id: mypy-type-check
         name: mypy (type checking - strict)
-        entry: bash -c 'uv run mypy "$@" --show-error-codes --no-error-summary' --
+        entry: bash -c 'uv run mypy src/omnimarket --show-error-codes --no-error-summary'
         language: system
         types: [python]
         files: ^src/omnimarket/.*\.py$
-        pass_filenames: true
+        pass_filenames: false
         stages: [pre-push]
 
       # --------------------------------------------------------------------------
