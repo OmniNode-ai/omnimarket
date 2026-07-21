@@ -131,12 +131,19 @@ def test_repo_level_golden_chain_reference_satisfies_gate(
 
 
 @pytest.mark.unit
-def test_node_local_golden_chain_satisfies_gate(
+def test_node_local_golden_chain_does_not_satisfy_gate(
     coverage_module: object,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Node-local golden-chain tests count by path even without content references."""
+    """OMN-14338 regression: a golden-chain test living only at the node-local
+    ``src/omnimarket/nodes/<node>/tests/`` path is never collected by any CI
+    pytest invocation (the dedicated golden-chains job's explicit globs stop at
+    ``tests/*``, and the full-suite job runs `pytest tests/`, whose
+    `testpaths = ["tests"]` excludes `src/` entirely). The gate must therefore
+    treat this location as equivalent to having no golden-chain test at all --
+    accepting it here is exactly the silent-no-op false green OMN-14338 flags.
+    """
     node_dir = _write_node(tmp_path, "node_beta_effect")
     local_tests_dir = node_dir / "tests"
     local_tests_dir.mkdir()
@@ -155,7 +162,7 @@ def test_node_local_golden_chain_satisfies_gate(
             check_all=False,
             output_json=False,
         )
-        == 0
+        == 1
     )
 
 
