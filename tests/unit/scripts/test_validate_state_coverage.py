@@ -510,6 +510,39 @@ def test_declared_state_shape_changed_false_for_handler_routing_only_diff(
 
 
 @pytest.mark.unit
+def test_read_contract_at_ref_delimits_git_show_ref(
+    scc_module: object, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Git refs are passed after an option delimiter before rev:path syntax."""
+    import subprocess
+    import types
+
+    before_contract = "node_type: effect\noutputs:\n  result: {type: string}\n"
+    seen_args: list[str] = []
+
+    monkeypatch.setattr(scc_module, "REPO_ROOT", tmp_path)  # type: ignore[attr-defined]
+
+    def _fake_run(args: list[str], **_kwargs: object) -> types.SimpleNamespace:
+        seen_args.extend(args)
+        return types.SimpleNamespace(returncode=0, stdout=before_contract, stderr="")
+
+    monkeypatch.setattr(subprocess, "run", _fake_run)
+
+    result = scc_module._read_contract_at_ref(  # type: ignore[attr-defined]
+        "src/omnimarket/nodes/node_example_effect/contract.yaml",
+        "-untrusted-ref",
+    )
+
+    assert seen_args == [
+        "git",
+        "show",
+        "--",
+        "-untrusted-ref:src/omnimarket/nodes/node_example_effect/contract.yaml",
+    ]
+    assert result == {"node_type": "effect", "outputs": {"result": {"type": "string"}}}
+
+
+@pytest.mark.unit
 def test_declared_state_shape_changed_true_for_real_output_change(
     scc_module: object, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:

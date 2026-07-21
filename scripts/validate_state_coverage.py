@@ -453,7 +453,7 @@ def _read_contract_at_ref(rel_path: str, git_ref: str) -> dict[str, Any] | None:
     genuinely changed") rather than silently exempting a brand-new node.
     """
     proc = subprocess.run(
-        ["git", "show", f"{git_ref}:{rel_path}"],
+        ["git", "show", "--", f"{git_ref}:{rel_path}"],
         capture_output=True,
         text=True,
         check=False,
