@@ -1,0 +1,24 @@
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# Governed data (NOT code) for the OMN-14890 author-identity independence
+# gate. Identities on this list are treated as independent-by-construction
+# sanctioned automation: a receipt whose OCC-side author normalizes to one of
+# these identities PASSES the identity check without needing to differ from
+# the product-PR author string (genuine automation is independent by
+# construction; a human is not entitled to this exemption).
+#
+# OMN-14893 found that neither candidate mechanism below is wired to a real
+# production commit yet:
+#   * OccCompanionEmitter's coded git_author_email default (bot@omninode.ai)
+#     never appears on a real onex_change_control commit.
+#   * onexbot (org-installed GitHub App) has contents:read only — it cannot
+#     push a commit or open a companion PR, and has never authored one.
+# Both are listed here as the SANCTIONED TARGET identities so the allowlist
+# is ready the moment either is actually wired to production traffic; until
+# then this list has zero matches against the real receipt corpus (see the
+# OMN-14890 shadow-measurement evidence — this is expected, not a bug).
+schema_version: 1
+sanctioned_identities:
+  - "bot@omninode.ai" # OccCompanionEmitter coded git_author_email default (OMN-14893: not yet wired)
+  - "onexbot[bot]" # org-installed GitHub App PR-author login (OMN-14893: contents:read only, not yet wired)

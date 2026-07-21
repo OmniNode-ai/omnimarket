@@ -1,0 +1,15 @@
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# Governed data (NOT code) for the OMN-14890 author-identity independence
+# gate. Maps a raw git-author-email / GitHub-login (lower-cased, after
+# stripping) to a canonical identity id, so one physical operator cannot
+# launder independence by authoring the product PR under one address and the
+# OCC evidence under a second address that resolves to the same person.
+#
+# Empty today — no known dual-identity operator case has been found — but the
+# mechanism must exist before enforcement, not be bolted on reactively after a
+# bypass is discovered. Adding an alias is a reviewable governance change:
+# edit this file, never hardcode a mapping in Python.
+schema_version: 1
+aliases: {}

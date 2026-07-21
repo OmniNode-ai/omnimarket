@@ -44,6 +44,10 @@ from omnimarket.nodes.node_linear_triage.models.model_linear_triage_state import
     ModelLinearTriageStartCommand,
     ModelTriageAction,
 )
+from omnimarket.nodes.node_linear_triage.services.author_identity_config import (
+    load_identity_aliases,
+    load_sanctioned_occ_autobind_identities,
+)
 from omnimarket.nodes.node_linear_triage.services.close_evidence_gate import (
     EnumCloseEvidenceKind,
     ModelCloseEvidence,
@@ -723,6 +727,333 @@ def _receipt_passes_strict_model(payload: dict[str, object], ticket_id: str) -> 
     return _norm_omn(receipt.ticket_id) == _norm_omn(ticket_id)
 
 
+# OMN-14890: genuine author-identity independence signal.
+#
+# OMN-13991's shadow-measurement (docs/evidence/OMN-13991/shadow-measurement-
+# 2026-07-20.md, 616 tickets / 3,941 receipts) found the strict gate's Rule 1
+# (``verifier == runner`` literal string equality) is a STRUCTURAL NO-OP
+# against the real receipt corpus: every producer mints a syntactically
+# distinct verifier label by naming convention even when the SAME agent/human
+# authored both the product fix and its own OCC evidence (OMN-14431 is the
+# concrete case: product commit and OCC evidence commit both authored by the
+# identical git identity, cosmetically-distinct runner/verifier strings).
+#
+# This gate replaces label comparison with actual identity comparison:
+#   product_author = git-author of the product PR's head commit (resolved
+#     locally from the receipt's own commit_sha + the repo named in
+#     check_value's ``--repo`` flag, against the canonical clone under
+#     $OMNI_HOME — no network call needed for a commit already fetched).
+#   occ_author = git-author of the commit that added this receipt file on
+#     the OCC governance ref (same git-backed pattern OccReceiptSubprocessProbe
+#     already uses for ls-tree/show).
+# Both are normalized through a governed alias map (identity_aliases.yaml) so
+# a single physical operator cannot launder independence via a second email
+# address. PASS iff occ_author is a governed sanctioned-automation identity
+# (sanctioned_occ_autobind_identities.yaml) OR the two normalized identities
+# differ. FAIL — regardless of what the free-text runner/verifier fields say
+# — whenever they normalize to the same identity.
+#
+# Narrow carve-out: a receipt whose check_value is a tautological existence
+# probe (``gh pr view <own pr_number> --repo ... --json`` limited to a closed,
+# zero-correctness-content field set) is exempt from the identity check ONLY
+# when the PR's required CI checks are independently green — correctness is
+# then proved by CI, not by self-attestation of "the PR exists". Any other
+# check shape (a real command/test_passes claim of verifying behavior) gets
+# no carve-out.
+#
+# Default OFF (flag-gated, shadow-first — same staged-rollout discipline as
+# OMN-13991): this is a consequential, potentially-high-would-block-rate gate
+# (OMN-14893 found neither sanctioned-automation identity is actually wired to
+# production traffic yet, so most receipts will resolve to the SAME identity
+# on both sides today). Flip via
+# ``OMNI_LINEAR_TRIAGE_AUTHOR_IDENTITY_GATE=1`` only after shadow-measuring
+# the would-block rate against real receipts.
+_ENV_AUTHOR_IDENTITY_GATE = "OMNI_LINEAR_TRIAGE_AUTHOR_IDENTITY_GATE"
+
+# Tautological existence-probe shape: a ``gh pr view`` call whose --json field
+# set is a subset of these structural/existence fields carries zero
+# correctness content — it proves the PR exists and what its head SHA is, not
+# that any behavior was verified.
+_SELF_BIND_JSON_FIELDS = frozenset(
+    {"number", "state", "headRefName", "headRefOid", "files"}
+)
+_GH_PR_VIEW_JSON_RE = re.compile(
+    r"gh\s+pr\s+view\s+\d+\s+--repo\s+\S+\s+--json\s+([\w,]+)"
+)
+_REPO_FLAG_RE = re.compile(r"--repo\s+(?:OmniNode-ai/)?([A-Za-z0-9_.-]+)")
+
+
+def _author_identity_gate_enabled() -> bool:
+    """True when the OMN-14890 author-identity independence gate is enabled.
+
+    Pure function over the environment — no other I/O.
+    """
+    return os.environ.get(_ENV_AUTHOR_IDENTITY_GATE, "").strip().lower() in _TRUTHY
+
+
+def _extract_repo_from_check_value(check_value: str) -> str | None:
+    """Return the ``org/repo`` (org stripped) named by a ``--repo`` flag, else None.
+
+    Pure function — no I/O.
+    """
+    m = _REPO_FLAG_RE.search(check_value or "")
+    return m.group(1) if m else None
+
+
+def _is_tautological_existence_probe(check_value: str) -> bool:
+    """True when ``check_value`` is a ``gh pr view --json`` call over ONLY
+    structural/existence fields (:data:`_SELF_BIND_JSON_FIELDS`) — a probe
+    that proves the PR exists, not that any behavior was verified.
+
+    Pure function — no I/O.
+    """
+    m = _GH_PR_VIEW_JSON_RE.search(check_value or "")
+    if not m:
+        return False
+    fields = {f.strip() for f in m.group(1).split(",") if f.strip()}
+    return bool(fields) and fields.issubset(_SELF_BIND_JSON_FIELDS)
+
+
+def _normalize_identity(raw: str, aliases: dict[str, str]) -> str:
+    """Lower-case + strip ``raw``, then resolve through the governed alias map.
+
+    Pure function — no I/O.
+    """
+    key = raw.strip().lower()
+    return aliases.get(key, key)
+
+
+def _author_identity_verdict(
+    *,
+    check_value: str,
+    product_author_raw: str | None,
+    occ_author_raw: str | None,
+    aliases: dict[str, str],
+    sanctioned: frozenset[str],
+    ci_checks_green: bool | None,
+) -> bool:
+    """Pure decision: True = PASS (genuine independence proven, or the narrow
+    self-bind carve-out applies); False = FAIL (same identity on both sides,
+    or independence could not be established). Fail-closed: an unresolved
+    identity never PASSes except via the CI-green carve-out.
+
+    Pure function over already-resolved inputs — all I/O (git/gh probing)
+    happens in the caller (:class:`AuthorIdentitySubprocessProbe`).
+    """
+    if _is_tautological_existence_probe(check_value) and ci_checks_green is True:
+        # Zero-correctness-content self-bind evidence, but CI independently
+        # proves the PR's correctness — carve-out fires.
+        return True
+
+    if product_author_raw is None or occ_author_raw is None:
+        return False
+
+    occ_id = _normalize_identity(occ_author_raw, aliases)
+    if occ_id in sanctioned:
+        # Genuine sanctioned automation is independent by construction.
+        return True
+
+    product_id = _normalize_identity(product_author_raw, aliases)
+    return product_id != occ_id
+
+
+@runtime_checkable
+class AuthorIdentityProbe(Protocol):
+    """Probe: resolve the real git/GitHub identities an OMN-14890 independence
+    verdict needs. Every method is fail-closed (returns ``None``) on any
+    resolution failure — the gate never fabricates an identity to force a
+    PASS or a FAIL.
+    """
+
+    def product_author(self, *, repo: str, commit_sha: str) -> str | None: ...
+
+    def occ_author(self, *, rel_path: str) -> str | None: ...
+
+    def ci_checks_green(self, *, repo: str, pr_number: int) -> bool | None: ...
+
+
+class AuthorIdentitySubprocessProbe:
+    """Default :class:`AuthorIdentityProbe` backed by local ``git`` (both
+    sides) and ``gh pr checks`` (carve-out only). Every failure mode is
+    fail-closed: a missing clone, unresolvable commit, or subprocess error
+    returns ``None`` rather than fabricating an identity or a green CI claim.
+    """
+
+    def __init__(
+        self,
+        *,
+        omni_home: Path | None = None,
+        occ_repo_path: Path | None = None,
+        governance_ref: str = _OCC_GOVERNANCE_REF,
+    ) -> None:
+        self._governance_ref = governance_ref
+        if omni_home is not None:
+            self._omni_home: Path | None = omni_home
+        else:
+            env_home = os.environ.get("OMNI_HOME")
+            self._omni_home = Path(env_home) if env_home else None
+        if occ_repo_path is not None:
+            self._occ_repo_path: Path | None = occ_repo_path
+        elif self._omni_home is not None:
+            self._occ_repo_path = self._omni_home / _OCC_REPO_DIRNAME
+        else:
+            self._occ_repo_path = None
+
+    def product_author(self, *, repo: str, commit_sha: str) -> str | None:
+        if self._omni_home is None:
+            return None
+        repo_path = self._omni_home / repo
+        if not repo_path.is_dir():
+            return None
+        return self._git_author(repo_path, commit_sha)
+
+    def occ_author(self, *, rel_path: str) -> str | None:
+        if self._occ_repo_path is None or not self._occ_repo_path.is_dir():
+            return None
+        try:
+            proc = subprocess.run(
+                [
+                    "git",
+                    "-C",
+                    str(self._occ_repo_path),
+                    "log",
+                    self._governance_ref,
+                    "-1",
+                    "--format=%ae",
+                    "--",
+                    rel_path,
+                ],
+                capture_output=True,
+                text=True,
+                timeout=15,
+                check=False,
+            )
+        except (subprocess.TimeoutExpired, FileNotFoundError, OSError) as exc:
+            _log.warning("occ_author git log failed for %s: %s", rel_path, exc)
+            return None
+        if proc.returncode != 0:
+            return None
+        email = proc.stdout.strip()
+        return email or None
+
+    def ci_checks_green(self, *, repo: str, pr_number: int) -> bool | None:
+        try:
+            proc = subprocess.run(
+                [
+                    "gh",
+                    "pr",
+                    "checks",
+                    str(pr_number),
+                    "--repo",
+                    f"OmniNode-ai/{repo}",
+                    "--required",
+                ],
+                capture_output=True,
+                text=True,
+                timeout=30,
+                check=False,
+            )
+        except (subprocess.TimeoutExpired, FileNotFoundError, OSError) as exc:
+            _log.warning(
+                "ci_checks_green gh call failed for %s#%s: %s", repo, pr_number, exc
+            )
+            return None
+        # gh pr checks exits 0 only when every required check passed.
+        return proc.returncode == 0
+
+    def _git_author(self, repo_path: Path, commit_sha: str) -> str | None:
+        try:
+            proc = subprocess.run(
+                ["git", "-C", str(repo_path), "log", "-1", "--format=%ae", commit_sha],
+                capture_output=True,
+                text=True,
+                timeout=15,
+                check=False,
+            )
+        except (subprocess.TimeoutExpired, FileNotFoundError, OSError) as exc:
+            _log.warning(
+                "product_author git log failed for %s@%s: %s",
+                repo_path,
+                commit_sha,
+                exc,
+            )
+            return None
+        if proc.returncode != 0:
+            return None
+        email = proc.stdout.strip()
+        return email or None
+
+
+def _build_commit_repo_hints(payloads: list[dict[str, object]]) -> dict[str, str]:
+    """Map ``commit_sha -> repo`` from every sibling receipt (same ticket)
+    whose ``check_value`` carries a ``--repo`` flag.
+
+    Not every receipt's ``check_value`` names a repo — plain test/lint
+    commands (``pytest tests/ -v``) run implicitly in the product repo and
+    carry no ``--repo`` flag, but a SIBLING receipt proving the exact same
+    ``commit_sha`` (e.g. a ``gh pr view <n> --repo ...`` existence probe for
+    the same PR) does. Since the mapping is keyed by the literal commit_sha —
+    not merely "same ticket" — borrowing the hint does not weaken the gate:
+    it only recognizes that two receipts asserting proof against the
+    identical commit necessarily concern the identical repo. Pure function.
+    """
+    hints: dict[str, str] = {}
+    for payload in payloads:
+        check_value = payload.get("check_value")
+        commit_sha = payload.get("commit_sha")
+        if not isinstance(check_value, str) or not isinstance(commit_sha, str):
+            continue
+        if not commit_sha.strip():
+            continue
+        repo = _extract_repo_from_check_value(check_value)
+        if repo is not None:
+            hints.setdefault(commit_sha, repo)
+    return hints
+
+
+def _receipt_passes_author_identity_gate(
+    payload: dict[str, object],
+    rel_path: str,
+    *,
+    probe: AuthorIdentityProbe,
+    aliases: dict[str, str],
+    sanctioned: frozenset[str],
+    commit_repo_hints: dict[str, str] | None = None,
+) -> bool:
+    """I/O-performing wrapper: resolve identities via ``probe``, then apply
+    the pure :func:`_author_identity_verdict` decision. Fail-closed on any
+    missing/malformed field.
+    """
+    check_value = payload.get("check_value")
+    commit_sha = payload.get("commit_sha")
+    if not isinstance(check_value, str) or not check_value.strip():
+        return False
+    if not isinstance(commit_sha, str) or not commit_sha.strip():
+        return False
+    repo = _extract_repo_from_check_value(check_value)
+    if repo is None and commit_repo_hints is not None:
+        repo = commit_repo_hints.get(commit_sha)
+    if repo is None:
+        return False
+
+    ci_checks_green: bool | None = None
+    pr_number = payload.get("pr_number")
+    if _is_tautological_existence_probe(check_value) and isinstance(pr_number, int):
+        ci_checks_green = probe.ci_checks_green(repo=repo, pr_number=pr_number)
+
+    product_author_raw = probe.product_author(repo=repo, commit_sha=commit_sha)
+    occ_author_raw = probe.occ_author(rel_path=rel_path)
+
+    return _author_identity_verdict(
+        check_value=check_value,
+        product_author_raw=product_author_raw,
+        occ_author_raw=occ_author_raw,
+        aliases=aliases,
+        sanctioned=sanctioned,
+        ci_checks_green=ci_checks_green,
+    )
+
+
 _RUNTIME_OPS_EVIDENCE_CLASS = EnumEvidenceClass.RUNTIME_OPS.value
 
 
@@ -828,8 +1159,10 @@ class OccReceiptSubprocessProbe:
         *,
         occ_repo_path: Path | None = None,
         governance_ref: str = _OCC_GOVERNANCE_REF,
+        author_identity_probe: AuthorIdentityProbe | None = None,
     ) -> None:
         self._governance_ref = governance_ref
+        self._author_identity_probe = author_identity_probe
         if occ_repo_path is not None:
             self._occ_repo_path: Path | None = occ_repo_path
             return
@@ -843,6 +1176,14 @@ class OccReceiptSubprocessProbe:
         else:
             self._occ_repo_path = Path(omni_home) / _OCC_REPO_DIRNAME
 
+    def _get_author_identity_probe(self) -> AuthorIdentityProbe:
+        if self._author_identity_probe is None:
+            self._author_identity_probe = AuthorIdentitySubprocessProbe(
+                occ_repo_path=self._occ_repo_path,
+                governance_ref=self._governance_ref,
+            )
+        return self._author_identity_probe
+
     def occ_receipt_detail(self, *, ticket_id: str) -> str | None:
         if self._occ_repo_path is None or not self._occ_repo_path.is_dir():
             return None
@@ -851,10 +1192,22 @@ class OccReceiptSubprocessProbe:
         if not tracked:
             return None
         strict = _strict_receipt_model_enabled()
+        author_gate = _author_identity_gate_enabled()
+
+        # Parse every sibling receipt once — needed both for the main loop
+        # and (when the author-identity gate is on) to build the commit_sha
+        # -> repo hint map from whichever sibling receipts DO name a repo.
+        parsed: list[tuple[str, dict[str, object]]] = []
         for rel_path in tracked:
             payload = self._show(rel_path)
-            if payload is None:
-                continue
+            if payload is not None:
+                parsed.append((rel_path, payload))
+
+        commit_repo_hints = (
+            _build_commit_repo_hints([p for _, p in parsed]) if author_gate else {}
+        )
+
+        for rel_path, payload in parsed:
             if not _receipt_is_pass_for_ticket(payload, ticket_id):
                 continue
             # OMN-13991: when enabled, additionally require the payload to
@@ -862,6 +1215,21 @@ class OccReceiptSubprocessProbe:
             # model's own adversarial invariants (self-attestation / weak-proof
             # downgrade). Default OFF — see _strict_receipt_model_enabled.
             if strict and not _receipt_passes_strict_model(payload, ticket_id):
+                continue
+            # OMN-14890: when enabled, additionally require the product-PR
+            # author and the OCC-evidence author to be genuinely distinct
+            # identities (or the OCC author to be sanctioned automation) —
+            # replaces the OMN-13991 literal verifier==runner label check,
+            # which is a structural no-op against the real corpus. Default
+            # OFF — see _author_identity_gate_enabled.
+            if author_gate and not _receipt_passes_author_identity_gate(
+                payload,
+                rel_path,
+                probe=self._get_author_identity_probe(),
+                aliases=load_identity_aliases(),
+                sanctioned=load_sanctioned_occ_autobind_identities(),
+                commit_repo_hints=commit_repo_hints,
+            ):
                 continue
             return receipt_dir
         return None
