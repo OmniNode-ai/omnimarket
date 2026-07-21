@@ -12,6 +12,7 @@ import pytest
 from omnimarket.events.occ_autoauthor import ModelOccAutoauthorObservation
 from omnimarket.events.occ_observation_record import ModelOccObservationRecord
 from omnimarket.events.occ_observation_store import (
+    OCC_OBSERVATIONS_ROOT,
     occ_observation_record_relpath,
     render_occ_observation_record,
 )
@@ -63,7 +64,30 @@ def _write(checkout_dir: Path, record: ModelOccObservationRecord) -> None:
 
 @pytest.mark.unit
 @pytest.mark.asyncio
-async def test_empty_checkout_yields_zero_observations(tmp_path: Path) -> None:
+async def test_absent_store_root_errors(tmp_path: Path) -> None:
+    """OMN-14906: an ABSENT store must fail closed, not read as an empty one.
+
+    This test previously asserted the opposite (a checkout with no
+    ``drift/occ_observations/`` tree returned ``raw_record_count=0``). That
+    codified the "optional input that silently skips" defect: the read reported
+    a clean zero for a store that has never existed — which is the live state of
+    ``onex_change_control@main``.
+    """
+    handler = HandlerOccObservationSourceEffect()
+    with pytest.raises(FileNotFoundError):
+        await handler.handle(
+            ModelOccObservationSourceEffectRequest(checkout_dir=str(tmp_path))
+        )
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_present_but_empty_store_yields_zero_observations(
+    tmp_path: Path,
+) -> None:
+    """A PRESENT but empty trail is a distinct, valid zero result."""
+    (tmp_path / OCC_OBSERVATIONS_ROOT).mkdir(parents=True)
+
     handler = HandlerOccObservationSourceEffect()
     result = await handler.handle(
         ModelOccObservationSourceEffectRequest(checkout_dir=str(tmp_path))
