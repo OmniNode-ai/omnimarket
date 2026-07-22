@@ -13,8 +13,8 @@ Two responsibilities:
 
 2. **Wiring** — the guard is a real gate, not advisory (Operating Rule 5): a
    ``workflow-module-refs`` pre-commit hook exists, a ``workflow-module-refs`` CI
-   job exists, it is a member of the required ``ci-summary`` rollup ``needs`` set,
-   and the ``ci-summary`` failure loop checks its result.
+   job exists, and the required ``ci-summary`` poller treats its job name as a
+   strict gate.
 """
 
 from __future__ import annotations
@@ -32,6 +32,7 @@ from scripts.ci.check_workflow_module_refs import (
     is_in_repo,
     module_resolves,
 )
+from scripts.ci.ci_summary_gate import STRICT_GATE_JOBS
 
 REPO_ROOT = Path(__file__).parent.parent
 CI_WORKFLOW = REPO_ROOT / ".github" / "workflows" / "ci.yml"
@@ -175,9 +176,11 @@ class TestGateWiring:
         run_steps = " ".join(step.get("run", "") for step in job["steps"])
         assert "scripts/ci/check_workflow_module_refs.py" in run_steps
 
-    def test_job_is_in_ci_summary_needs(self) -> None:
-        assert "workflow-module-refs" in self._ci()["jobs"]["ci-summary"]["needs"]
+    def test_job_is_in_ci_summary_strict_gates(self) -> None:
+        assert "Workflow Module Resolution" in STRICT_GATE_JOBS
 
-    def test_ci_summary_failure_loop_checks_the_job(self) -> None:
-        run = self._ci()["jobs"]["ci-summary"]["steps"][0]["run"]
-        assert "workflow-module-refs=${{ needs.workflow-module-refs.result }}" in run
+    def test_ci_summary_failure_loop_uses_fail_closed_poller(self) -> None:
+        run_steps = " ".join(
+            step.get("run", "") for step in self._ci()["jobs"]["ci-summary"]["steps"]
+        )
+        assert "scripts/ci/ci_summary_gate.py" in run_steps
