@@ -11,33 +11,41 @@ enforcement. Phase 1 (omnimarket#1754, merged to dev) relocated
 reports the required ``CI Summary`` check GREEN — the seam-measurement tool
 gates nothing.
 
-This Phase 2 flip promotes ``contract-topic-graph`` to the same strict
-success-only treatment as ``no-noncanonical-lifecycle-classes``
-(``ci.yml`` OMN-14350 block): the job's result must be EXACTLY ``success``;
-``skipped``/``cancelled``/``failure`` must all set ``FAILED=true``.
+This Phase 2 flip promotes ``contract-topic-graph`` to strict success-only
+treatment: the job's result must be EXACTLY ``success``;
+``skipped``/``cancelled``/``failure`` must all block the required
+``CI Summary`` context.
 
-These tests assert the static wiring that makes the flip real:
+OMN-14127 fan-out (CI-G2): ``ci-summary`` migrated from a ``needs``-gated shell
+loop to a NO-``needs`` fail-closed poller (``scripts/ci/ci_summary_gate.py``) so
+the required context can never go absent under fleet saturation. The strict
+contract-topic-graph enforcement therefore moved OUT of the YAML strict-block
+and INTO the poller's ``STRICT_GATE_JOBS`` anchor (by the job's display name).
 
-1. ``contract-topic-graph`` stays a member of the ``ci-summary`` ``needs:``
-   list (so the rollup WAITS for it — no race).
-2. ``contract-topic-graph`` is REMOVED from the loose ``for check in ...``
-   loop (where ``skipped`` silently passes).
-3. A dedicated strict fail-closed block checks
-   ``needs.contract-topic-graph.result`` and requires it to equal exactly
-   ``success``; any other result (including ``skipped``/``cancelled``) must
-   set ``FAILED=true``.
+These tests assert that relocation preserved the strict enforcement:
+
+1. the ``contract-topic-graph`` job still exists in ``ci.yml``;
+2. ``ci-summary`` is a NO-``needs`` poller invoking the gate script (no race:
+   the poller waits until the job terminalizes); and
+3. ``contract-topic-graph`` is a member of the poller's ``STRICT_GATE_JOBS``
+   (must be present + completed + EXACTLY ``success``; skipped/cancelled/
+   failure all block), NOT the skippable set.
 """
 
 from __future__ import annotations
 
-import re
 from pathlib import Path
 
 import pytest
 import yaml
 
+from scripts.ci.ci_summary_gate import SKIPPABLE_GATE_JOBS, STRICT_GATE_JOBS
+
 REPO_ROOT = Path(__file__).parent.parent.parent
 CI_WORKFLOW = REPO_ROOT / ".github" / "workflows" / "ci.yml"
+
+# The contract-topic-graph job's Actions display name == its job key.
+CONTRACT_TOPIC_GRAPH_DISPLAY_NAME = "contract-topic-graph"
 
 
 @pytest.mark.unit
@@ -59,66 +67,39 @@ class TestContractTopicGraphStrictGateWiring:
             f"contract-topic-graph job missing from ci.yml. Jobs: {sorted(jobs)}"
         )
 
-    def test_contract_topic_graph_in_ci_summary_needs(self) -> None:
-        """The rollup must still WAIT for this job (no needs:/no race)."""
-        jobs = self._parsed().get("jobs", {})
-        summary = jobs.get("ci-summary", {})
-        needs = summary.get("needs", [])
-        if isinstance(needs, str):
-            needs = [needs]
-        assert "contract-topic-graph" in needs, (
-            f"contract-topic-graph must stay in ci-summary needs. needs={needs}"
-        )
+    def test_ci_summary_is_no_needs_poller(self) -> None:
+        """OMN-14127: ci-summary must be a NO-``needs`` poller (never wedges).
 
-    def test_contract_topic_graph_not_in_loose_failure_loop(self) -> None:
-        """The LOOSE loop (success||skipped both pass) must NOT check this job.
-
-        This is the RED assertion pre-flip: Phase 1 put contract-topic-graph
-        into this exact loose-loop line. Phase 2 must remove it so a
-        skipped/cancelled run cannot silently pass CI Summary.
+        The poller waits until every anchored job terminalizes before it
+        renders a verdict, so it still WAITS for contract-topic-graph — but via
+        the job list, not a ``needs`` edge that can go absent under saturation.
         """
-        content = self._content()
-        assert (
-            'contract-topic-graph=${{ needs.contract-topic-graph.result }}"; do'
-            not in content
-        ), (
-            "contract-topic-graph must NOT be a member of the loose "
-            "success||skipped loop — that is the un-enforced Phase 1 state "
-            "this ticket exists to close (OMN-14640)."
+        summary = self._parsed().get("jobs", {}).get("ci-summary", {})
+        assert "needs" not in summary, (
+            "ci-summary must have NO `needs:` (OMN-14127 poller pattern); a "
+            "needs-gated required context wedges the PR under fleet saturation."
+        )
+        assert "scripts/ci/ci_summary_gate.py" in self._content(), (
+            "ci-summary must invoke the fail-closed poller gate script"
         )
 
-    def test_contract_topic_graph_has_dedicated_strict_result_variable(self) -> None:
-        """A dedicated result variable must read the job's exact GHA result."""
-        content = self._content()
-        assert re.search(
-            r'CONTRACT_[A-Z_]*RESULT="\$\{\{\s*needs\.contract-topic-graph\.result\s*\}\}"',
-            content,
-        ), (
-            "Expected a dedicated strict result variable reading "
-            "needs.contract-topic-graph.result (mirroring RATCHET_RESULT / "
-            "COVERAGE_RESULT / REASON_CODE_RESULT strict blocks)."
-        )
+    def test_contract_topic_graph_is_strict_gate_in_poller(self) -> None:
+        """Strict enforcement relocated to STRICT_GATE_JOBS (exact success).
 
-    def test_contract_topic_graph_strict_block_requires_exact_success(self) -> None:
-        """The strict block must require RESULT != "success" -> FAILED=true.
-
-        Anything other than the literal string 'success' (skipped, cancelled,
-        failure) must flip FAILED=true, mirroring the no-noncanonical-lifecycle
-        -classes / coverage-sweep-gate / merge-reason-code-gate strict blocks.
+        A strict gate must be present + completed + EXACTLY ``success``;
+        skipped/cancelled/failure all block the required CI Summary context —
+        the same enforcement the old YAML strict-block provided (OMN-14640),
+        now in the poller.
         """
-        content = self._content()
-        match = re.search(
-            r'CONTRACT_[A-Z_]*RESULT="\$\{\{\s*needs\.contract-topic-graph\.result\s*\}\}"'
-            r"(.*?)fi",
-            content,
-            re.DOTALL,
+        assert CONTRACT_TOPIC_GRAPH_DISPLAY_NAME in STRICT_GATE_JOBS, (
+            f"{CONTRACT_TOPIC_GRAPH_DISPLAY_NAME!r} must be in STRICT_GATE_JOBS "
+            "so a skipped/cancelled/failed run blocks the required CI Summary "
+            f"(OMN-14640). STRICT_GATE_JOBS={STRICT_GATE_JOBS}"
         )
-        assert match, "Could not locate strict contract-topic-graph result block"
-        block = match.group(1)
-        assert '!= "success"' in block, (
-            'Strict block must gate on RESULT != "success" (exact match, '
-            "not the loose success||skipped check)"
-        )
-        assert "FAILED=true" in block, (
-            "Strict block must set FAILED=true when the result is not exactly success"
+
+    def test_contract_topic_graph_not_skippable(self) -> None:
+        """It must NOT be in the skippable (success||skipped) set."""
+        assert CONTRACT_TOPIC_GRAPH_DISPLAY_NAME not in SKIPPABLE_GATE_JOBS, (
+            "contract-topic-graph must be strict, not skippable — a skipped run "
+            "must fail closed (OMN-14640), not silently pass."
         )
