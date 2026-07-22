@@ -1867,8 +1867,20 @@ jobs:
       - name: Checkout (gate script)
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
         with:
-          ref: ${{ github.event.pull_request.base.sha }}
+          ref: ${{ github.event_name == 'merge_group' && github.event.merge_group.base_sha || github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.sha }}
           persist-credentials: false
+      - name: Checkout head gate script
+        if: ${{ github.event_name == 'pull_request' || github.event_name == 'merge_group' }}
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          path: .ci-summary-head
+          sparse-checkout: scripts/ci/ci_summary_gate.py
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+      - name: Restore head gate script
+        if: ${{ github.event_name == 'pull_request' || github.event_name == 'merge_group' }}
+        run: cp .ci-summary-head/scripts/ci/ci_summary_gate.py scripts/ci/ci_summary_gate.py
       - name: Poll run jobs and compute fail-closed CI Summary verdict
         working-directory: ${{ github.workspace }}
         env:
