@@ -70,6 +70,17 @@ MERGE_STATE_TRANSITION_TOPIC_V1 = "onex.evt.omnimarket.merge-state-transition.v1
 # with zero manual edits.
 OCC_AUTOBIND_COMMAND_TOPIC_V1 = "onex.cmd.omnimarket.occ-autobind.v1"  # onex-topic-allow: canonical topic registry; declared in node_pr_lifecycle_fix_effect contract.yaml subscribe_topics (OMN-13317)
 
+# Canonical RSD-3 write-EFFECT command (OMN-14941 born path). Thin-published by
+# the call-occ-companion-effect GHA caller (via the omniclaude reusable) on
+# product-PR opened/synchronize; consumed by node_occ_companion_effect, which
+# runs the deterministic read -> compute -> write OCC-companion producer cycle
+# (RSD-2 state read, RSD-1 pure compute, git/gh side effects) and stamps
+# Evidence-Source: OCC#<n> back onto the product PR. Only THIS path mints
+# occ:machine-minted + minted_by_node=true. The published command MUST set
+# mode="mutate" explicitly — the model defaults to dry_run (fail-safe), so an
+# omitted mode is a silent no-mint (the optional-input-silent-skip trap).
+OCC_COMPANION_EFFECT_COMMAND_TOPIC_V1 = "onex.cmd.omnimarket.occ-companion-effect-requested.v1"  # onex-topic-allow: canonical topic registry; declared in node_occ_companion_effect contract.yaml subscribe_topics (OMN-14941)
+
 # Typed FSM watchdog topics (OMN-12959). Canonical terminal-state-invariant
 # vocabulary: every workflow FSM reaches a declared terminal OR trips one of
 # these typed watchdogs. Consumed via omnimarket.events.watchdog, which maps the
