@@ -106,7 +106,7 @@ class StubPushValidationClient:
         suite_log: str = GREEN_LOG,
         push: ModelPushResult | None = None,
         host: str = "omninode-pc",
-        credential: str = "gh:jonahgabriel",
+        credential: str = "gh:test-user",
     ) -> None:
         self.calls: list[str] = []
         self._observation = observation or ModelBranchObservation(
@@ -366,7 +366,7 @@ class TestAcceptanceReceiptBinding:
 
     async def test_receipt_echoes_request_and_client_identities(self) -> None:
         client = StubPushValidationClient(
-            suite_log=GREEN_LOG, host="omninode-pc", credential="gh:jonahgabriel"
+            suite_log=GREEN_LOG, host="omninode-pc", credential="gh:test-user"
         )
         request = make_request()
         receipt = await HandlerPushValidationEffect(client=client).handle(request)
@@ -382,7 +382,7 @@ class TestAcceptanceReceiptBinding:
         # host and credential identity: SEPARATE fields, both filled from
         # client readbacks — always, on every outcome.
         assert receipt.host_identity == "omninode-pc"
-        assert receipt.credential_identity == "gh:jonahgabriel"
+        assert receipt.credential_identity == "gh:test-user"
         assert receipt.started_at.endswith("Z")
         assert receipt.completed_at.endswith("Z")
         assert receipt.started_at <= receipt.completed_at

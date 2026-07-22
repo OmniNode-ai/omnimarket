@@ -62,7 +62,7 @@ def receipt_kwargs(**overrides: Any) -> dict[str, Any]:
         "push_exit": 0,
         "remote_sha_readback": SHA,
         "host_identity": "omninode-pc",
-        "credential_identity": "gh:jonahgabriel",
+        "credential_identity": "gh:test-user",
         "failure_detail": None,
         "started_at": "2026-07-22T00:00:00Z",
         "completed_at": "2026-07-22T00:05:00Z",

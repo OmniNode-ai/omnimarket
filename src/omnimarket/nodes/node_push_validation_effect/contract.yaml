@@ -112,7 +112,7 @@ terminal_event: "onex.evt.omnimarket.push-validation-completed.v1"
 # NOTE: no contract-declared secrets in this phase. The interim pushing
 # credential is the host-resident interactive `gh` login on the worker host
 # (execution seam is host-run, not containerized); the receipt's
-# credential_identity field reads it back at runtime (e.g. "gh:jonahgabriel"),
+# credential_identity field reads it back at runtime (e.g. "gh:<login>"),
 # kept SEPARATE from host_identity so the later durable-machine-credential
 # swap changes credential_identity only.
 

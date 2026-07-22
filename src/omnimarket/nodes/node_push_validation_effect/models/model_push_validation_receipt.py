@@ -144,7 +144,7 @@ class ModelPushValidationReceipt(BaseModel):
         ...,
         min_length=1,
         description="The pushing credential, mechanism-prefixed, read back at "
-        "runtime (e.g. 'gh:jonahgabriel' via `gh api user --jq .login`).",
+        "runtime (e.g. 'gh:<login>' via `gh api user --jq .login`).",
     )
     failure_detail: str | None = Field(
         default=None,
