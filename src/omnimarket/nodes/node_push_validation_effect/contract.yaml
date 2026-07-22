@@ -1,0 +1,152 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Push Validation Effect (gateway P2 tenant #1, OMN-14920)
+#
+# COMBINED PR (contract + handler): the def-B handler
+# (HandlerPushValidationEffect, operation "run_push_validation") ships in the
+# same revision as this contract, hand-written under the documented-exception
+# operator grant of 2026-07-22 (RSD Track-2 generation not usable this week;
+# session fable-gwexec-0722-n2 ledger entry). This contract + the acceptance
+# suite in tests/nodes/node_push_validation_effect/ are the future RSD
+# regeneration target. The handler_routing block below satisfies the
+# contract-topic-graph gate (subscribe-without-handler is rejected) and the
+# boot-resolvable gate (tests/test_handler_routing_boot_resolvable.py).
+#
+# GATEWAY SEAM (omninode_infra onex-api, workflow_type "push-validation"):
+#   - The gateway catalog entry (workflow-contracts.yaml) publishes to the
+#     command topic below via PUSH_VALIDATION_REQUEST_TOPIC and dispatches
+#     event_type "omnimarket.push-validation-requested" (the runtime's
+#     {producer}.{event-name} derivation of the command topic).
+#   - The gateway does NOT consume the receipt topics; status readback is
+#     projection-backed (P1 pattern) via projection_push_validation_receipt,
+#     PRIMARY KEY (tenant_principal_id, correlation_id) — tenant-scoped by the
+#     IMMUTABLE principal, never the mutable tenant slug.
+#   - Canonical cross-repo wire fixture (vendored byte-identically by the
+#     omninode_infra tenant-#1 PR):
+#     fixtures/push_validation_requested_wire_envelope.json
+#
+# DOUBLE-PUSH PREVENTION (must hold BEFORE a second worker host joins):
+#   - The command topic is created with 1 partition.
+#   - ALL worker hosts share ONE consumer group derived by the canonical
+#     compute_consumer_group_id (omnibase_infra util_consumer_group) from
+#     node_name=node_push_validation_effect + runtime host config. The group
+#     id MUST NOT embed host identity — never set a per-host ONEX_GROUP_ID
+#     override for this node. With 1 partition + 1 shared group, Kafka assigns
+#     the partition to exactly one consumer; a second host is standby.
+#   - verified: 2026-07-22 via `ssh omni-201-ts docker exec
+#     omnibase-infra-redpanda rpk group list` — the same runtime derives
+#     local.omnimarket.node_occ_companion_effect.consume.1.0.0.__i.runtime-effects.__t.onex.cmd.omnimarket.occ-companion-effect-requested.v1
+#     for the sibling EFFECT node, so this node's dev-lane group will be
+#     local.omnimarket.node_push_validation_effect.consume.1.0.0.__i.runtime-effects.__t.onex.cmd.omnimarket.push-validation-requested.v1
+#
+# Related Tickets:
+#   - OMN-14920: push-suite EFFECT contract + receipt model (gateway P2 tenant #1)
+name: "node_push_validation_effect"
+lifecycle: experimental
+node_type: "EFFECT_GENERIC"
+runtime_profiles: [effects]
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_version: "1.0.0"
+description: >-
+  Push-validation EFFECT (gateway P2 tenant #1, OMN-14920): clone the target
+  repo, verify the installed pre-push hook, run the governed suite, and push a
+  pre-validated branch head — emitting a ModelPushValidationReceipt that binds
+  the outcome to the pushed SHA. Contract-text semantics (load-bearing, encode
+  verbatim in the handler docstring):
+  (1) expected_head_sha is FAIL-CLOSED: after fetch, if the fetched head of
+  `branch` != expected_head_sha, ABORT — no silent refetch, no retry-with-new-head,
+  no suite, no push. Receipt: outcome=stale_head, suite_verdict=not_run,
+  push_exit=null, remote_sha_readback=observed head.
+  (2) Suite failure is a SUCCESSFUL node execution: the receipt
+  (outcome=suite_failed, push_exit=null) is emitted on the COMPLETED topic. The
+  failure terminal topic is reserved for infrastructure/handler errors (clone
+  failure, toolchain absent, crash). A seeded failing-suite request MUST
+  produce a completed-topic receipt recording the failure honestly and MUST
+  NOT push — a red suite NEVER pushes.
+  (3) Zero bypass flags anywhere in the path — no `--no-verify` ever;
+  hook_id_readback (digest of the INSTALLED pre-push hook content) is captured
+  BEFORE any push attempt, and an unhooked clone refuses to push
+  (outcome=refused).
+  (4) branch in {dev, main} -> outcome=refused (the worker never pushes
+  protected branches directly).
+  (5) Idempotency under at-least-once redelivery: if the remote head already
+  == expected_head_sha on arrival, outcome=already_pushed, suite_verdict=not_run
+  — a redelivered command must not double-push.
+input_model:
+  name: "ModelPushValidationRequest"
+  module: "omnimarket.nodes.node_push_validation_effect.models.model_push_validation_request"
+  description: "The gateway wire payload: repo/branch/expected_head_sha/requester plus gateway-stamped correlation and tenant identity."
+output_model:
+  name: "ModelPushValidationReceipt"
+  module: "omnimarket.nodes.node_push_validation_effect.models.model_push_validation_receipt"
+  description: "Outcome receipt binding suite verdict, hook readback, push exit, and remote SHA readback to the tenant-scoped projection key."
+
+handler_routing:
+  routing_strategy: "operation_match"
+  handlers:
+    - operation: "run_push_validation"
+      handler:
+        name: "HandlerPushValidationEffect"
+        module: "omnimarket.nodes.node_push_validation_effect.handlers.handler_push_validation_effect"
+
+runtime_dispatch:
+  command_topic: "onex.cmd.omnimarket.push-validation-requested.v1"
+  terminal_events:
+    success: "onex.evt.omnimarket.push-validation-completed.v1"
+    failure: "onex.evt.omnimarket.push-validation-failed.v1"
+
+event_bus:
+  subscribe_topics:
+    - "onex.cmd.omnimarket.push-validation-requested.v1"
+  publish_topics:
+    - "onex.evt.omnimarket.push-validation-completed.v1"
+    - "onex.evt.omnimarket.push-validation-failed.v1"
+  dlq_topics:
+    - "onex.dlq.omnimarket.push-validation.v1"
+
+terminal_event: "onex.evt.omnimarket.push-validation-completed.v1"
+
+# NOTE: no contract-declared secrets in this phase. The interim pushing
+# credential is the host-resident interactive `gh` login on the worker host
+# (execution seam is host-run, not containerized); the receipt's
+# credential_identity field reads it back at runtime (e.g. "gh:jonahgabriel"),
+# kept SEPARATE from host_identity so the later durable-machine-credential
+# swap changes credential_identity only.
+
+side_effects:
+  reads:
+    - git
+    - github_api
+  writes:
+    - git_remote_branch
+  duplicate_key_fields:
+    - repo
+    - branch
+    - expected_head_sha
+  duplicate_handling: idempotent
+
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  runtime_profiles: [effects]
+  idempotent: true
+  # Suite runs are multi-minute-to-hours CPU-saturating jobs (canary:
+  # 12,987 tests / 244s on a warm host; cold or escalated runs take longer).
+  timeout_ms: 14400000
+
+metadata:
+  transport_type: kafka
+  description: "Push-validation write-EFFECT — hook-verified, suite-gated, fail-closed branch push with tenant-scoped receipt (gateway P2 tenant #1)"
+  author: "OmniNode Team"
+  created: "2026-07-22"
+  tags:
+    - "effect"
+    - "push-validation"
+    - "gateway"
+    - "push-farm"
+    - "OMN-14920"
+  related_tickets:
+    - "OMN-14920"
