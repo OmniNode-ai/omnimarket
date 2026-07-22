@@ -29,15 +29,53 @@
 #   KAFKA_SASL_USERNAME        -- Confluent Cloud API key (or SASL username)
 #   KAFKA_SASL_PASSWORD        -- Confluent Cloud API secret (or SASL password)
 #   DEPLOY_AGENT_HMAC_SECRET   -- HMAC secret for signing redeploy commands
+#
+# ============================================================================
+# DISABLED — DORMANT (workflow_dispatch-only) as of 2026-07-21, OMN-14702 / CI-C6
+# ----------------------------------------------------------------------------
+# WHY: This auto-trigger's real job — emit exactly one redeploy-start command
+# when a runtime-touching PR merges — has NEVER once succeeded in this repo. The
+# omnimarket repo has only KAFKA_BOOTSTRAP_SERVERS provisioned; the three
+# publish preconditions KAFKA_SASL_USERNAME, KAFKA_SASL_PASSWORD, and
+# DEPLOY_AGENT_HMAC_SECRET are ABSENT. Per RT-5 fail-closed discipline
+# (OMN-14470/OMN-14702) the script correctly refuses to skip-green, so every
+# runtime merge produced a RED post-merge check.
+#
+# SUCCESS vs FAILURE, measured over workflow 261435054 since 2026-07-12
+# ({failure: 61, success: 31, skipped: 8}):
+#   - FAILURE  = the merged PR touched src/omnimarket/** (or carried the
+#                runtime_change label). Runtime change detected -> attempts to
+#                publish -> RT-5 fail-closed on the missing SASL/HMAC secrets.
+#                (e.g. run 29844422698, PR #1850.)
+#   - SUCCESS  = the merged PR touched NO runtime paths and had no
+#                runtime_change label. Script prints "No rebuild trigger" and
+#                exits 0 — the NO-OP branch, ZERO deploy work done.
+#                (e.g. run 29798203123, PR #1849.)
+#   - SKIPPED  = PR closed WITHOUT merging (job `if: merged == true`).
+# The 31 "successes" therefore represent no work at all; nothing real is lost by
+# stopping this trigger.
+#
+# WHERE THE WORK NOW HAPPENS: runtime redeploy flows through the canonical gated
+# path — node_redeploy_orchestrator (invoked via the `/onex:redeploy` skill /
+# manual redeploy-start dispatch), which this header already names as the SOLE
+# owner of the deploy lifecycle. That path does not depend on this CI
+# auto-trigger.
+#
+# RE-ENABLE: provision KAFKA_SASL_USERNAME / KAFKA_SASL_PASSWORD /
+# DEPLOY_AGENT_HMAC_SECRET as omnimarket repo secrets (operator / Daniyal action
+# — cloud creds; Jonah has no cloud secrets), then restore the `pull_request`
+# trigger below. The job body and the RT-5 fail-closed guards in
+# scripts/trigger_rebuild_on_merge.py are intentionally left UNCHANGED so the
+# producer still fails closed if ever dispatched with secrets missing.
+# ============================================================================
 
 name: Runtime Rebuild Trigger
 
+# Auto-trigger disabled (see DISABLED banner above). Manual dispatch only until
+# the deploy secrets are provisioned; the job's `if: merged == true` guard means
+# a bare workflow_dispatch run is a safe no-op.
 on:
-  pull_request:
-    types: [closed]
-    branches:
-      - main
-      - dev
+  workflow_dispatch: {}
 
 jobs:
   trigger-rebuild:
