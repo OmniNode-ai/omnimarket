@@ -35,6 +35,7 @@ import logging
 import os
 import shlex
 import shutil
+import socket
 import subprocess
 import tempfile
 from pathlib import Path
@@ -70,7 +71,9 @@ from omnimarket.nodes.node_occ_state_effect.handlers.handler_occ_state_effect im
     HandlerOccStateEffect,
 )
 from omnimarket.occ_git_transport import (
+    acquire_occ_companion_lease,
     authenticated_occ_url,
+    release_occ_companion_lease,
     run_git,
 )
 
@@ -81,6 +84,24 @@ _GIT_TIMEOUT_SECONDS = 120.0
 _YAMLFMT_TIMEOUT_SECONDS = 60.0
 _GIT_AUTHOR_NAME = "node-occ-companion-effect"
 _GIT_AUTHOR_EMAIL = "occ-companion-effect@omninode.ai"
+
+# OMN-14793 / OMN-14941: the single-producer lease TTL. Floor is the worst-case
+# mint duration (clone + double push + PR open) with margin; the per-git-op
+# bound is ``_GIT_TIMEOUT_SECONDS`` (120s) x several network git ops, so 900s
+# comfortably clears a slow-but-live producer while still self-healing a
+# crashed one within 15 min (same value as OccCompanionEmitter's
+# ``_DEFAULT_LEASE_TTL_SECONDS`` — the two producers contend on the SAME lease
+# refs, so their TTL semantics must match).
+_LEASE_TTL_SECONDS = 900
+
+# OMN-14941 (F-01 hardening): OCC surfaces this producer must NEVER write, even
+# if a (buggy or adversarial) compute plan lists them in companion_files. The
+# companion is contracts/ + drift/ evidence ONLY; grants/ (prod-promotion
+# grants, OMN-13418) and allowlists/ are change-control surfaces that require a
+# human CODEOWNERS-gated merge — a machine-minted diff touching them is a
+# privilege escalation, not evidence.
+_FORBIDDEN_PATH_PREFIXES = ("grants/", "allowlists/")
+_ALLOWED_ROOT_PREFIXES = ("contracts/", "drift/")
 
 
 def _resolve_github_token() -> str:
@@ -200,104 +221,141 @@ class HandlerOccCompanionEffect:
         token = _resolve_github_token()
         occ_owner, occ_name = split_repo(request.occ_repo)
         branch = plan.branch
+        head_sha = companion_request.pr_head_sha
 
-        # OMN-14793 (OMN-14783 rec #2): when this canonical write-EFFECT is
-        # shadow-wired / promoted to LIVE authority, it MUST acquire the shared
-        # single-producer lease here (before the clone/push) and release it in a
-        # finally, exactly as OccCompanionEmitter does — reuse
-        # occ_git_transport.acquire_occ_companion_lease / release_occ_companion_lease
-        # keyed on request.repo + the product head SHA. Not wired here today
-        # because this node is unwired/never-live; no behavior change.
-        with tempfile.TemporaryDirectory(prefix="occ-companion-effect-") as tmp:
-            clone_dir = str(Path(tmp) / "onex_change_control")
-            self._clone_and_branch(clone_dir, branch, token, request.occ_repo)
-            base_sha = self._head_sha(clone_dir)
-
-            # Pass 1: write contract + downstream product-receipt, commit, push.
-            self._write_files(clone_dir, plan.companion_files)
-            # yamlfmt-before-hash (OMN-14684): fail closed if the just-written
-            # contract is not yamlfmt-stable, BEFORE committing the receipts that
-            # bind its contract_sha256.
-            self._assert_contracts_yamlfmt_stable(clone_dir, plan.companion_files)
-            self._commit_all(
-                clone_dir,
-                f"evidence: OCC companion pass 1 for {request.repo}#{request.pr_number}",
-            )
-            # F-01: fail closed BEFORE any push if the committed tree is not a
-            # pure add of this run's companion files (never a merged-receipt edit).
-            self._assert_append_only(
-                clone_dir, base_sha, {f.path for f in plan.companion_files}
-            )
-            self._push(clone_dir, branch, token, request.occ_repo, force=True)
-            occ_head_c1 = self._head_sha(clone_dir)
-
-            # Open (or reuse) the OCC PR now that the branch has a diff.
-            occ_pr_number, occ_pr_url = self._open_or_sync_occ_pr(
-                occ_owner, occ_name, branch, plan.tickets, request, token
-            )
-
-            # Marker seam (OMN-14393): stamp the machine-minted label so the
-            # report-only window can decide `minted_by_node`. OccCompanionEmitter
-            # and this node share the `auto/…-occ-autobind` branch prefix, so
-            # branch alone is not a discriminator. Best-effort: a label failure
-            # must never abort authoring (the label is observability, not a gate).
-            self._apply_machine_minted_label(occ_owner, occ_name, occ_pr_number, token)
-
-            # Pass 2: re-run the SAME pure compute with the OCC PR facts so it
-            # renders the self-bind receipt (+ contract self-bind entry) and the
-            # Evidence-Source-stamped product body — deterministically.
-            occ_probe = self._observe_occ_probe(occ_pr_number, request.occ_repo, token)
-            companion_request_v2 = companion_request.model_copy(
-                update={
-                    "occ_pr_number": occ_pr_number,
-                    "occ_head_sha": occ_head_c1,
-                    "occ_probe": occ_probe,
-                }
-            )
-            plan2 = compute_companion_plan(companion_request_v2)
-
-            self._write_files(clone_dir, plan2.companion_files)
-            # yamlfmt-before-hash (OMN-14684): re-assert over the FINAL contract
-            # bytes (pass-2 appends the self-bind dod_evidence entry, OMN-14622)
-            # before the self-bind commit rebinds contract_sha256.
-            self._assert_contracts_yamlfmt_stable(clone_dir, plan2.companion_files)
-            self._commit_all(
-                clone_dir,
-                f"evidence: OCC companion self-bind for {request.occ_repo}#{occ_pr_number}",
-            )
-            # F-01: re-assert append-only over the FINAL tree (pass-1 + pass-2
-            # files) against the clone base before the final push.
-            self._assert_append_only(
-                clone_dir,
-                base_sha,
-                {f.path for f in plan.companion_files}
-                | {f.path for f in plan2.companion_files},
-            )
-            self._push(clone_dir, branch, token, request.occ_repo, force=False)
-
-        # Stamp the product PR body with the Evidence-Source block.
-        product_owner, product_name = split_repo(request.repo)
-        stamped = self._patch_product_body(
-            product_owner,
-            product_name,
-            request.pr_number,
-            plan2.product_body_stamped,
-            companion_request.pr_body,
-            token,
+        # OMN-14793 (OMN-14783 rec #2) single-producer lease, wired live for the
+        # born path (OMN-14941): atomically claim this product PR head in the
+        # shared OCC repo BEFORE any clone/branch/push. OccCompanionEmitter and
+        # this node build independent producers on different hosts with no
+        # shared in-process state and force-push the SAME deterministic auto/*
+        # branch, so "branch exists" is not a discriminator. First-acquirer-wins
+        # keyed on repo + PR number + head SHA; a second concurrent producer
+        # no-ops here with ZERO side effects (the OCC#4406 dual-producer race).
+        lease_ok = acquire_occ_companion_lease(
+            token=token,
+            repo_slug=request.repo,
+            pr_number=request.pr_number,
+            head_sha=head_sha,
+            producer_id=f"node_occ_companion_effect@{socket.gethostname()}",
+            lease_ttl_seconds=_LEASE_TTL_SECONDS,
+            occ_repo=request.occ_repo,
         )
+        if not lease_ok:
+            action = (
+                f"skip:LEASE_HELD — {request.repo}#{request.pr_number}"
+                f"@{head_sha[:8]} companion already being minted by another "
+                "producer (OMN-14793 / OMN-14941)"
+            )
+            logger.warning("occ_companion_effect: %s", action)
+            return self._result(request, plan, action=action)
 
-        return self._result(
-            request,
-            plan2,
-            action=(
-                f"authored OCC#{occ_pr_number} for {', '.join(plan2.tickets)} "
-                f"({len(plan2.companion_files)} files) and "
-                f"{'stamped' if stamped else 'left'} the product PR body"
-            ),
-            occ_pr_number=occ_pr_number,
-            occ_pr_url=occ_pr_url,
-            product_body_stamped=stamped,
-        )
+        try:
+            with tempfile.TemporaryDirectory(prefix="occ-companion-effect-") as tmp:
+                clone_dir = str(Path(tmp) / "onex_change_control")
+                self._clone_and_branch(clone_dir, branch, token, request.occ_repo)
+                base_sha = self._head_sha(clone_dir)
+
+                # Pass 1: write contract + downstream product-receipt, commit, push.
+                self._write_files(clone_dir, plan.companion_files)
+                # yamlfmt-before-hash (OMN-14684): fail closed if the just-written
+                # contract is not yamlfmt-stable, BEFORE committing the receipts that
+                # bind its contract_sha256.
+                self._assert_contracts_yamlfmt_stable(clone_dir, plan.companion_files)
+                self._commit_all(
+                    clone_dir,
+                    f"evidence: OCC companion pass 1 for {request.repo}#{request.pr_number}",
+                )
+                # F-01: fail closed BEFORE any push if the committed tree is not a
+                # pure add of this run's companion files (never a merged-receipt edit).
+                self._assert_append_only(
+                    clone_dir, base_sha, {f.path for f in plan.companion_files}
+                )
+                self._push(clone_dir, branch, token, request.occ_repo, force=True)
+                occ_head_c1 = self._head_sha(clone_dir)
+
+                # Open (or reuse) the OCC PR now that the branch has a diff.
+                occ_pr_number, occ_pr_url = self._open_or_sync_occ_pr(
+                    occ_owner, occ_name, branch, plan.tickets, request, token
+                )
+
+                # Marker seam (OMN-14393): stamp the machine-minted label so the
+                # report-only window can decide `minted_by_node`. OccCompanionEmitter
+                # and this node share the `auto/…-occ-autobind` branch prefix, so
+                # branch alone is not a discriminator. Best-effort: a label failure
+                # must never abort authoring (the label is observability, not a gate).
+                self._apply_machine_minted_label(
+                    occ_owner, occ_name, occ_pr_number, token
+                )
+
+                # Pass 2: re-run the SAME pure compute with the OCC PR facts so it
+                # renders the self-bind receipt (+ contract self-bind entry) and the
+                # Evidence-Source-stamped product body — deterministically.
+                occ_probe = self._observe_occ_probe(
+                    occ_pr_number, request.occ_repo, token
+                )
+                companion_request_v2 = companion_request.model_copy(
+                    update={
+                        "occ_pr_number": occ_pr_number,
+                        "occ_head_sha": occ_head_c1,
+                        "occ_probe": occ_probe,
+                    }
+                )
+                plan2 = compute_companion_plan(companion_request_v2)
+
+                self._write_files(clone_dir, plan2.companion_files)
+                # yamlfmt-before-hash (OMN-14684): re-assert over the FINAL contract
+                # bytes (pass-2 appends the self-bind dod_evidence entry, OMN-14622)
+                # before the self-bind commit rebinds contract_sha256.
+                self._assert_contracts_yamlfmt_stable(clone_dir, plan2.companion_files)
+                self._commit_all(
+                    clone_dir,
+                    f"evidence: OCC companion self-bind for {request.occ_repo}#{occ_pr_number}",
+                )
+                # F-01: re-assert append-only over the FINAL tree (pass-1 + pass-2
+                # files) against the clone base before the final push.
+                self._assert_append_only(
+                    clone_dir,
+                    base_sha,
+                    {f.path for f in plan.companion_files}
+                    | {f.path for f in plan2.companion_files},
+                )
+                self._push(clone_dir, branch, token, request.occ_repo, force=False)
+
+            # Stamp the product PR body with the Evidence-Source block.
+            product_owner, product_name = split_repo(request.repo)
+            stamped = self._patch_product_body(
+                product_owner,
+                product_name,
+                request.pr_number,
+                plan2.product_body_stamped,
+                companion_request.pr_body,
+                token,
+            )
+
+            return self._result(
+                request,
+                plan2,
+                action=(
+                    f"authored OCC#{occ_pr_number} for {', '.join(plan2.tickets)} "
+                    f"({len(plan2.companion_files)} files) and "
+                    f"{'stamped' if stamped else 'left'} the product PR body"
+                ),
+                occ_pr_number=occ_pr_number,
+                occ_pr_url=occ_pr_url,
+                product_body_stamped=stamped,
+            )
+        finally:
+            # Release on BOTH success and any exception so a crashed/failed mint
+            # frees the head immediately (the TTL steal is only the backstop for
+            # a hard kill that never reaches this finally). Best-effort — never
+            # masks the mint's real return/exception.
+            release_occ_companion_lease(
+                token=token,
+                repo_slug=request.repo,
+                pr_number=request.pr_number,
+                head_sha=head_sha,
+                occ_repo=request.occ_repo,
+            )
 
     # -- git helpers (reuse shared occ_git_transport) -----------------------
 
@@ -345,14 +403,21 @@ class HandlerOccCompanionEffect:
         """Fail CLOSED if the committed tree touched anything unexpected (F-01).
 
         Diffs the committed branch against the clone base and rejects (a) any
-        deletion and (b) any add/modify of a path outside this run's contract +
-        receipt set. The append-only invariant is already true by construction
-        here — the write only materializes ``plan.companion_files`` — but this is
-        a real check against ``git diff`` that makes the OCC#4293/4295/4296
-        failure mode (a generated companion mutating an already-merged receipt)
-        mechanically impossible rather than merely design-avoided. Ported from
+        deletion, (b) any add/modify of a path outside this run's contract +
+        receipt set, and (c) — UNCONDITIONALLY, even for paths present in
+        ``allowed_paths`` (OMN-14941) — any path under a forbidden OCC surface
+        (``grants/``, ``allowlists/``) or outside the ``contracts/`` + ``drift/``
+        evidence roots. (a)/(b) make the OCC#4293/4295/4296 failure mode (a
+        generated companion mutating an already-merged receipt) mechanically
+        impossible rather than merely design-avoided — ported from
         ``OccCompanionEmitter._assert_append_only`` (OMN-14741 F-01) so the
         canonical write-EFFECT reaches parity before the emitter is retired.
+        (c) closes the residual privilege-escalation vector: ``allowed_paths``
+        is derived from the compute plan's ``companion_files``, so a buggy or
+        adversarial plan that lists ``grants/prod_promotion_grants.yaml``
+        (the OMN-13418 prod-promotion gate's source of truth) or an allowlist
+        would otherwise sail through the membership check. Plan membership must
+        never be able to authorize a write outside the evidence surfaces.
         """
         diff = run_git(
             ["git", "diff", "--no-renames", "--name-status", base_sha, "HEAD"],
@@ -369,6 +434,18 @@ class HandlerOccCompanionEffect:
             path = parts[-1]
             if status.startswith("D"):
                 violations.append(f"deletes {path}")
+            elif path.startswith(_FORBIDDEN_PATH_PREFIXES):
+                # Unconditional deny — plan membership does NOT authorize these.
+                violations.append(
+                    f"{status} {path} (forbidden change-control surface — "
+                    "grants//allowlists/ are never machine-mintable, OMN-14941)"
+                )
+            elif not path.startswith(_ALLOWED_ROOT_PREFIXES):
+                # Unconditional deny — the companion is contracts/ + drift/ ONLY.
+                violations.append(
+                    f"{status} {path} (outside the contracts//drift/ evidence "
+                    "roots — never machine-mintable, OMN-14941)"
+                )
             elif path not in allowed_paths:
                 violations.append(f"{status} {path}")
         if violations:
