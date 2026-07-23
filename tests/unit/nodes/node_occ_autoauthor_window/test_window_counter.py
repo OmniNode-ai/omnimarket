@@ -62,13 +62,18 @@ def test_counter_increments_on_consecutive_clean_passes() -> None:
 
 
 @pytest.mark.unit
-def test_flip_ready_at_exactly_n() -> None:
+def test_streak_reaches_n_but_bare_observations_withhold_flip_ready() -> None:
+    # OMN-14954: streak-only flip_ready is retired. Bare observations carry no
+    # tuple identity / composition evidence, so the streak is reported but
+    # flip_ready stays False (record-mode coverage lives in
+    # test_window_composition_omn14954.py).
     obs = tuple(_obs(i) for i in range(1, 11))  # 10 clean
     result = aggregate_autoauthor_window(
         ModelOccAutoauthorWindowRequest(observations=obs, required_streak=10)
     )
     assert result.consecutive_clean == 10
-    assert result.flip_ready is True
+    assert result.flip_ready is False
+    assert result.composition_met is False
 
 
 @pytest.mark.unit
@@ -131,7 +136,9 @@ async def test_handler_wraps_the_pure_counter() -> None:
     result = await HandlerOccAutoauthorWindow().handle(
         ModelOccAutoauthorWindowRequest(observations=obs, required_streak=10)
     )
-    assert result.flip_ready is True
+    # OMN-14954: legacy observations mode reports the streak but withholds
+    # flip_ready (composition unverifiable without tuple-keyed records).
+    assert result.flip_ready is False
     assert result.consecutive_clean == 10
 
 

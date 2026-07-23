@@ -27,10 +27,42 @@ class ModelOccAutoauthorWindowResult(BaseModel):
     )
     flip_ready: bool = Field(
         ...,
-        description="True iff consecutive_clean >= required_streak (evidence for the future flip — NOT the flip itself).",
+        description=(
+            "True iff consecutive_clean >= required_streak AND the composition "
+            "floor is met over tuple-keyed records (OMN-14954). Evidence for "
+            "the future flip — NOT the flip itself. Never True from legacy "
+            "bare observations (composition unverifiable, fail-closed)."
+        ),
     )
     total_observations: int = Field(
-        ..., ge=0, description="Total observations in the trail."
+        ..., ge=0, description="Total observations/raw records in the trail."
+    )
+    distinct_tuples: int = Field(
+        default=0,
+        ge=0,
+        description=(
+            "Distinct exact source tuples after dedup (record mode only; 0 in "
+            "legacy observations mode where tuple identity is unknown)."
+        ),
+    )
+    merged_path_clean: int = Field(
+        default=0,
+        ge=0,
+        description="Merged-path records inside the trailing clean streak.",
+    )
+    runtime_gated_clean: int = Field(
+        default=0,
+        ge=0,
+        description="Runtime/deploy-gated records inside the trailing clean streak.",
+    )
+    composition_met: bool = Field(
+        default=False,
+        description=(
+            "True iff merged_path_clean >= min_merged_path AND "
+            "runtime_gated_clean >= min_runtime_gated, measured over the "
+            "trailing clean streak of distinct tuples. Always False in legacy "
+            "observations mode (unverifiable — fail-closed)."
+        ),
     )
     streak_broken_by: str = Field(
         default="",

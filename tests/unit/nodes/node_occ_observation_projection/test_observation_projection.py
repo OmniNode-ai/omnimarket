@@ -197,7 +197,10 @@ def test_projection_output_feeds_the_window_request_unchanged() -> None:
         ModelOccAutoauthorWindowRequest(observations=projected, required_streak=10)
     )
     assert window_result.consecutive_clean == 10
-    assert window_result.flip_ready is True
+    # OMN-14954: bare observations remain VALID window input and the streak is
+    # unchanged, but flip_ready now requires tuple-keyed records (composition
+    # is unverifiable here — fail-closed).
+    assert window_result.flip_ready is False
 
 
 @pytest.mark.unit
