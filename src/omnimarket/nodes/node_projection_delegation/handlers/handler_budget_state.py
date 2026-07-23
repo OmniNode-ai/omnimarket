@@ -24,6 +24,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from omnimarket.pricing import resolve_tier_cost
 from omnimarket.projection.protocol_database import DatabaseAdapter
+from omnimarket.projection.tenant_isolation import require_tenant_id
 
 TABLE = "delegation_budget_state"
 CONFLICT_KEY = "tenant_id,cost_tier_name,budget_period"
@@ -94,6 +95,9 @@ def materialize_budget_state(
     if cost is None or cost.monthly_cap_usd is None:
         return ModelBudgetStateResult(skipped_reason="tier_not_budgeted")
 
+    # OMN-14898: no-op unless ENFORCE_TENANT_ISOLATION is set (preserves the
+    # DEFAULT_TENANT fallback below by default).
+    require_tenant_id(event.tenant_id, table=TABLE)
     tenant_id = event.resolved_tenant()
     period = event.budget_period()
     cap = Decimal(str(cost.monthly_cap_usd))
