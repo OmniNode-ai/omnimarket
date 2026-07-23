@@ -68,6 +68,7 @@ _MIGRATIONS_DIR = (
     / "migrations"
 )
 _BASE_SQL = _MIGRATIONS_DIR / "0007_delegation_events.sql"
+_BUDGET_STATE_SQL = _MIGRATIONS_DIR / "0019_delegation_budget_state.sql"
 _TENANT_ID_SQL = _MIGRATIONS_DIR / "0022_delegation_events_tenant_id.sql"
 _RLS_SQL = _MIGRATIONS_DIR / "0023_delegation_rls_tenant_isolation.sql"
 
@@ -306,7 +307,7 @@ def _sync_dsn_for_schema(schema: str) -> str:
 
 @pytest.mark.integration
 async def test_real_postgres_cross_tenant_write_is_rls_isolated_on_read() -> None:
-    """Apply 0007+0022+0023 for real, then prove tenant A cannot read tenant B's row.
+    """Apply 0007+0019+0022+0023, then prove tenant A cannot read tenant B's row.
 
     Writers on compose lanes connect as the ``postgres`` SUPERUSER and bypass
     RLS regardless of this ticket's application-level guard (see
@@ -326,6 +327,7 @@ async def test_real_postgres_cross_tenant_write_is_rls_isolated_on_read() -> Non
     try:
         await conn.execute(f"SET search_path TO {schema}, public")
         await conn.execute(_BASE_SQL.read_text(encoding="utf-8"))
+        await conn.execute(_BUDGET_STATE_SQL.read_text(encoding="utf-8"))
         await conn.execute(_TENANT_ID_SQL.read_text(encoding="utf-8"))
         await conn.execute(_APP_DASHBOARD_ROLE_SQL)
         await conn.execute(_RLS_SQL.read_text(encoding="utf-8"))
