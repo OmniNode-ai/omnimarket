@@ -152,7 +152,8 @@ def test_attestation_workflow_has_no_write_permissions() -> None:
     ``permissions:`` scopes only the ambient per-run ``GITHUB_TOKEN``, which is
     repo-scoped to ``omnimarket`` and can never push to ``onex_change_control`` at
     ANY permission level. The cross-repo write uses a separate narrow credential
-    (``secrets.OCC_AUTOAUTHOR_TOKEN``), asserted below.
+    (a per-run OnexBot-OCC-Writer App installation token, OMN-14955), asserted
+    below.
     """
     data = _load(_ATTEST)
     perms = data["permissions"]
@@ -223,25 +224,60 @@ def test_observation_store_has_an_explicit_fork_guard() -> None:
 
 @pytest.mark.unit
 def test_observation_store_wires_the_narrow_cross_repo_write_token() -> None:
-    """The write credential is passed explicitly and validated fail-LOUD."""
-    validate = _attest_step("Validate OCC cross-repo write token")
+    """The write credential is minted per-run, scoped to one repo, fail-LOUD.
+
+    OMN-14955: the OMN-14904 ``secrets.OCC_AUTOAUTHOR_TOKEN`` PAT was never
+    provisioned; the credential is the least-privilege OnexBot-OCC-Writer
+    GitHub App (org secrets ``ONEXBOT_OCC_APP_ID``/``ONEXBOT_OCC_PRIVATE_KEY``,
+    the A3/E2 credential), minted via the same canonical
+    ``actions/create-github-app-token`` pattern ``pr-arch-review.yml`` uses and
+    scoped down to ``OmniNode-ai/onex_change_control`` only.
+    """
+    validate = _attest_step("Validate OCC cross-repo write credential")
     assert validate["if"] == "${{ steps.obsmode.outputs.mode == 'mutate' }}"
+    assert validate["env"]["ONEXBOT_OCC_APP_ID"] == "${{ secrets.ONEXBOT_OCC_APP_ID }}"
     assert (
-        validate["env"]["OCC_AUTOAUTHOR_TOKEN"] == "${{ secrets.OCC_AUTOAUTHOR_TOKEN }}"
+        validate["env"]["ONEXBOT_OCC_PRIVATE_KEY"]
+        == "${{ secrets.ONEXBOT_OCC_PRIVATE_KEY }}"
     )
-    # Absent secret must FAIL the job, not silently degrade to dry_run.
-    assert 'if [ -z "${OCC_AUTOAUTHOR_TOKEN:-}" ]; then' in validate["run"]
+    # Absent secrets must FAIL the job, not silently degrade to dry_run.
+    assert (
+        'if [ -z "${ONEXBOT_OCC_APP_ID:-}" ] || [ -z "${ONEXBOT_OCC_PRIVATE_KEY:-}" ]; then'
+        in validate["run"]
+    )
     assert "::error::" in validate["run"]
     assert "exit 1" in validate["run"]
 
+    mint = _attest_step("Mint OCC write token")
+    assert mint["id"] == "occ-app-token"
+    assert mint["if"] == "${{ steps.obsmode.outputs.mode == 'mutate' }}"
+    assert str(mint["uses"]).startswith("actions/create-github-app-token@")
+    assert mint["with"]["app-id"] == "${{ secrets.ONEXBOT_OCC_APP_ID }}"
+    assert mint["with"]["private-key"] == "${{ secrets.ONEXBOT_OCC_PRIVATE_KEY }}"
+    # Scoped-down installation token: one org, ONE repository. Without these
+    # `with:` keys the token would cover every repo the App is installed on.
+    assert mint["with"]["owner"] == "OmniNode-ai"
+    assert mint["with"]["repositories"] == "onex_change_control"
+
     write = _attest_step("Run node_occ_observation_effect")
-    assert write["env"]["OCC_AUTOAUTHOR_TOKEN"] == "${{ secrets.OCC_AUTOAUTHOR_TOKEN }}"
+    assert write["env"]["OCC_WRITE_TOKEN"] == "${{ steps.occ-app-token.outputs.token }}"
     assert write["env"]["OBS_MODE"] == "${{ steps.obsmode.outputs.mode }}"
     assert 'if [ "$OBS_MODE" = "mutate" ]; then' in write["run"]
     assert (
-        'export GITHUB_TOKEN="${OCC_AUTOAUTHOR_TOKEN:?mode=mutate requires OCC_AUTOAUTHOR_TOKEN}"'
+        'export GITHUB_TOKEN="${OCC_WRITE_TOKEN:?mode=mutate requires the minted OnexBot-OCC-Writer token}"'
         in write["run"]
     )
+
+
+@pytest.mark.unit
+def test_observation_store_does_not_reference_the_unprovisioned_pat() -> None:
+    """OMN-14955: ``secrets.OCC_AUTOAUTHOR_TOKEN`` was never provisioned (live
+    readback on OMN-14904) — the attestation workflow must not read it as a
+    credential again (a historical mention in comments is fine). The legacy
+    ``call-occ-companion-author.yml`` Toggle-1 path still names it; that
+    workflow is default-off dry_run and its retirement is tracked under A3.
+    """
+    assert "secrets.OCC_AUTOAUTHOR_TOKEN" not in _ATTEST.read_text(encoding="utf-8")
 
 
 @pytest.mark.unit
