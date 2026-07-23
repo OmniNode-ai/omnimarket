@@ -517,9 +517,30 @@ omnimarket = "omnimarket.nodes"
 # strict ancestor of a9f25887, so this supersedes the 14402 pin and keeps its
 # excluded_backend_refs feature. REMOVE WHEN RELEASED: once core publishes a
 # version containing #1439, delete this override (the range pin covers it).
-omnibase-core = { git = "https://github.com/OmniNode-ai/omnibase_core.git", rev = "a9f25887a51851ddf24258e6a7a507e7e56b28d8" }  # raw-override-ok: OMN-14600
+#
+# OMN-14779: re-pinned from a9f25887 to aca32f24 -- the omnibase-infra bump in
+# this same PR (see below) pulls in omnibase_infra runtime/auto_wiring code
+# that imports omnibase_core.runtime.runtime_fanout_resolver at module scope
+# (added by core commit ed0a45bf3, OMN-14403). That module does not exist at
+# a9f25887, so importing omnibase_infra with the old core pin raised
+# ModuleNotFoundError. aca32f244 is a direct descendant of ed0a45bf3 (the
+# adjacent OMN-14743 fail-closed fix to the same resolver) and remains a
+# strict descendant of a9f25887, so no prior feature is lost. REMOVE WHEN
+# RELEASED: once core publishes a version containing this commit, delete this
+# override (the range pin above already covers it) and `uv lock`.
+omnibase-core = { git = "https://github.com/OmniNode-ai/omnibase_core.git", rev = "aca32f2446f73cc2a8c903429e2a1f636722366e" }  # raw-override-ok: OMN-14779
 # omnibase-infra git rev retained — infra is not in the dep-provenance forbidden set.
-omnibase-infra = { git = "https://github.com/OmniNode-ai/omnibase_infra.git", rev = "7e52d5b0046c394b38454b97157e7a7191e6f008" }
+#
+# OMN-14779 (PR 2/2): re-pinned from 7e52d5b0 to bbaa7186 -- the MERGED squash
+# commit of omnibase_infra #2402 on dev, which packages
+# src/omnibase_infra/contracts/canary/model_replay_projection_seam.json as
+# wheel data. This omnimarket-side half imports that seam JSON and asserts
+# ModelReplayProjection / ModelReplayCursor / ModelDeliveryPosition
+# .model_fields against it field-by-field -- the pin bump is required for the
+# packaged data to be importable. REMOVE WHEN RELEASED: once omnibase-infra
+# publishes a version containing #2402, delete this override (the range pin
+# above already covers it) and `uv lock`.
+omnibase-infra = { git = "https://github.com/OmniNode-ai/omnibase_infra.git", rev = "bbaa71864c6b96d8d3867debaef0fec137d3d97d" }
 omninode-memory = { git = "https://github.com/OmniNode-ai/omnimemory.git", rev = "1cd318d5ca3071a24585191592d3a84fafd30cf7" }
 onex-change-control = { git = "https://github.com/OmniNode-ai/onex_change_control.git", rev = "dd2620d18001495b8d0f493b421b38399e9aab4b" }
 
