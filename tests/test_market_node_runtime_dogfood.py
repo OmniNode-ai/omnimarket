@@ -163,7 +163,11 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
     # observation write, dry_run default) and node_occ_observation_source_effect
     # (EFFECT; reads the durable OCC observation trail from a checkout and feeds
     # the existing dedup projection): 374 -> 376.
-    assert summary["node_dirs"] == 376
+    # OMN-14920 adds node_push_validation_effect (EFFECT; hook-verified,
+    # suite-gated, fail-closed branch push for the gateway push-validation
+    # workflow — closes the zero-consumer window on the #624 command topic):
+    # 376 -> 377.
+    assert summary["node_dirs"] == 377
     # OMN-14151 deliberately removes request/response entry points from the
     # three legacy arm surfaces; the new arm-gate compute node is the single
     # active route. OMN-14608's reducer entry point brings the count back up:
@@ -181,7 +185,9 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
     # OMN-14888 adds the observation-effect (write) and observation-source-effect
     # (read) routes (both addressable via runtime_dispatch, resolve as
     # routable): 371 -> 373.
-    assert summary["entry_points"] == 373
+    # OMN-14920 adds the push-validation write-effect route (addressable via
+    # runtime_dispatch, resolves as routable): 373 -> 374.
+    assert summary["entry_points"] == 374
     assert set(summary["missing_entry_points"]) == OMN_14151_LEGACY_ARM_SURFACES
     assert summary["dangling_entry_points"] == []
     assert summary["routable"] >= 299
