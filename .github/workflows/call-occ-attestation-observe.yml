@@ -53,17 +53,30 @@
 #     DIFFERENT credential, passed explicitly below. (Committed gate:
 #     tests/unit/workflows/test_report_only_occ_workflows.py
 #     ::test_attestation_workflow_has_no_write_permissions.)
-#   * CREDENTIAL: `secrets.OCC_AUTOAUTHOR_TOKEN` — the narrow, already-designed
-#     secret name `call-occ-companion-author.yml` reserves for exactly this
-#     (fine-grained PAT / GitHub App scoped to contents:write + pull-requests:write
-#     on OmniNode-ai/onex_change_control ONLY). The org-wide CROSS_REPO_PAT is
-#     explicitly REJECTED (rolling plan §2 A3). No new credential surface.
-#   * If that secret is absent, the job FAILS LOUD with an actionable error rather
-#     than degrading to a silent no-op. Stand down with the kill switch, never by
-#     re-adding a swallow.
+#   * CREDENTIAL (OMN-14955, supersedes the OMN-14904 `OCC_AUTOAUTHOR_TOKEN`
+#     plan): an installation token minted per-run from the least-privilege
+#     **OnexBot-OCC-Writer** GitHub App (org secrets ONEXBOT_OCC_APP_ID /
+#     ONEXBOT_OCC_PRIVATE_KEY — the A3/E2 credential, verified least-privilege
+#     2026-07-22: contents+PR write, selected-repo). The mint step is the SAME
+#     canonical `actions/create-github-app-token@v1` pattern `pr-arch-review.yml`
+#     already uses, scoped down further with `owner`/`repositories` to
+#     OmniNode-ai/onex_change_control ONLY. The `OCC_AUTOAUTHOR_TOKEN` PAT this
+#     workflow previously referenced was never provisioned (live readback on
+#     OMN-14904) and is NOT a real credential — do not reintroduce it here. The
+#     org-wide CROSS_REPO_PAT remains explicitly REJECTED (rolling plan §2 A3).
+#     No new credential surface: the App already exists for the OCC writer lane.
+#   * If the App secrets are absent, the job FAILS LOUD with an actionable error
+#     rather than degrading to a silent no-op. Stand down with the kill switch,
+#     never by re-adding a swallow.
+#   * WRITE-SURFACE BOUND (A3 guard context): in mutate, node_occ_observation_effect
+#     can only append ONE net-new record under drift/occ_observations/** —
+#     occ_observation_record_relpath pins the path and
+#     HandlerOccObservationEffect._assert_append_only (F-01) fails CLOSED on any
+#     other touched path, so this token cannot be steered at grants/** or
+#     allowlists/** through this workflow.
 #
 # Tickets: OMN-14393 (RSD-5, original report-only gate), OMN-14888 (observation
-# store nodes), OMN-14904 (this activation). Design:
+# store nodes), OMN-14904 (activation shape), OMN-14955 (App-mint credential). Design:
 #   docs/plans/2026-07-14-rsd3-occ-producer-and-retirement.md §3-§4
 #   docs/plans/2026-07-20-occ-real-doneness-working-path-and-liveness-plan.md
 
@@ -119,8 +132,9 @@ jobs:
           esac
           # FORK GUARD (belt-and-braces — the job-level `if` already excludes fork
           # heads). No cross-repo write is ever attempted from a fork: a fork PR
-          # cannot receive OCC_AUTOAUTHOR_TOKEN under `pull_request`, so force
-          # dry_run explicitly instead of relying on the secret being empty.
+          # cannot receive the ONEXBOT_OCC_APP_ID/ONEXBOT_OCC_PRIVATE_KEY secrets
+          # under `pull_request`, so force dry_run explicitly instead of relying
+          # on the App-token mint failing on empty secrets.
           if [ "$HEAD_REPO" != "$THIS_REPO" ]; then
             echo "::notice::fork head '$HEAD_REPO' != '$THIS_REPO' — forcing dry_run (no cross-repo write from forks)"
             MODE="dry_run"
@@ -195,19 +209,36 @@ jobs:
             --mode "$OBS_MODE" \
             --output occ_observation_effect_payload.json
 
-      - name: Validate OCC cross-repo write token (mutate only)
+      - name: Validate OCC cross-repo write credential (mutate only)
         # Fail LOUD, never silently degrade to dry_run. `permissions:` cannot
         # substitute for this: it scopes only the ambient omnimarket-scoped
-        # GITHUB_TOKEN, which can never push to onex_change_control.
+        # GITHUB_TOKEN, which can never push to onex_change_control. The check
+        # runs BEFORE the mint step so an unprovisioned App surfaces as an
+        # actionable error, not an opaque create-github-app-token failure.
         if: ${{ steps.obsmode.outputs.mode == 'mutate' }}
         env:
-          OCC_AUTOAUTHOR_TOKEN: ${{ secrets.OCC_AUTOAUTHOR_TOKEN }}
+          ONEXBOT_OCC_APP_ID: ${{ secrets.ONEXBOT_OCC_APP_ID }}
+          ONEXBOT_OCC_PRIVATE_KEY: ${{ secrets.ONEXBOT_OCC_PRIVATE_KEY }}
         run: |
           set -euo pipefail
-          if [ -z "${OCC_AUTOAUTHOR_TOKEN:-}" ]; then
-            echo "::error::observation-store mode=mutate requires secret OCC_AUTOAUTHOR_TOKEN with contents:write + pull-requests:write on OmniNode-ai/onex_change_control (fine-grained PAT or GitHub App install token; the org-wide CROSS_REPO_PAT is NOT an acceptable substitute). Provision it, or set repo variable OMNI_OCC_OBSERVATION_STORE_MODE=dry_run to stand the durable write down. See OMN-14904."
+          if [ -z "${ONEXBOT_OCC_APP_ID:-}" ] || [ -z "${ONEXBOT_OCC_PRIVATE_KEY:-}" ]; then
+            echo "::error::observation-store mode=mutate requires org secrets ONEXBOT_OCC_APP_ID + ONEXBOT_OCC_PRIVATE_KEY (the least-privilege OnexBot-OCC-Writer GitHub App with contents:write + pull-requests:write on OmniNode-ai/onex_change_control; the org-wide CROSS_REPO_PAT is NOT an acceptable substitute). Provision them, or set repo variable OMNI_OCC_OBSERVATION_STORE_MODE=dry_run to stand the durable write down. See OMN-14955 / OMN-14904."
             exit 1
           fi
+
+      - name: Mint OCC write token (OnexBot-OCC-Writer App, mutate only)
+        # Canonical App-token mint pattern (same as pr-arch-review.yml), scoped
+        # down to the single target repo: the installation token can touch
+        # OmniNode-ai/onex_change_control ONLY, for this run only (~1h TTL) —
+        # strictly narrower than any long-lived PAT.
+        id: occ-app-token
+        if: ${{ steps.obsmode.outputs.mode == 'mutate' }}
+        uses: actions/create-github-app-token@d72941d797fd3113feb6b93fd0dec494b13a2547 # v1
+        with:
+          app-id: ${{ secrets.ONEXBOT_OCC_APP_ID }}
+          private-key: ${{ secrets.ONEXBOT_OCC_PRIVATE_KEY }}
+          owner: OmniNode-ai
+          repositories: onex_change_control
 
       - name: Run node_occ_observation_effect (mode-gated — A4 activation, OMN-14904)
         # mutate: clones onex_change_control, appends exactly ONE net-new record
@@ -217,7 +248,7 @@ jobs:
         # dry_run: renders the deterministic path + content, no GitHub mutation.
         env:
           OBS_MODE: ${{ steps.obsmode.outputs.mode }}
-          OCC_AUTOAUTHOR_TOKEN: ${{ secrets.OCC_AUTOAUTHOR_TOKEN }}
+          OCC_WRITE_TOKEN: ${{ steps.occ-app-token.outputs.token }}
         run: |
           set -euo pipefail
           if [ ! -s occ_observation_effect_payload.json ]; then
@@ -226,8 +257,9 @@ jobs:
           fi
           if [ "$OBS_MODE" = "mutate" ]; then
             # HandlerOccObservationEffect resolves its write credential from
-            # GITHUB_TOKEN; point that at the narrow cross-repo token.
-            export GITHUB_TOKEN="${OCC_AUTOAUTHOR_TOKEN:?mode=mutate requires OCC_AUTOAUTHOR_TOKEN}"
+            # GITHUB_TOKEN; point that at the minted, onex_change_control-scoped
+            # OnexBot-OCC-Writer installation token.
+            export GITHUB_TOKEN="${OCC_WRITE_TOKEN:?mode=mutate requires the minted OnexBot-OCC-Writer token}"
           fi
           uv run onex node node_occ_observation_effect \
             --input occ_observation_effect_payload.json \
