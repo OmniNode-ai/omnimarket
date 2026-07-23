@@ -38,10 +38,29 @@ surface is approved only needs to produce/consume
 from __future__ import annotations
 
 from collections.abc import Iterable
+from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict, Field
 
 from omnimarket.events.occ_autoauthor import ModelOccAutoauthorObservation
+
+
+class EnumOccVerificationPath(StrEnum):
+    """How the observed product PR's proof was gated (OMN-14954, lane A7).
+
+    The representative-N window requires a composition floor — >=3 merged-path
+    plus >=1 runtime/deploy-gated observations inside the trailing clean streak
+    — so each record must say which verification path produced it.
+
+    ``UNSPECIFIED`` exists ONLY so rows persisted before this field still parse;
+    it counts toward NO composition threshold (fail-closed — an unlabeled row
+    can never help satisfy the representativeness criterion).
+    """
+
+    MERGED_PATH = "merged_path"
+    RUNTIME_DEPLOY_GATED = "runtime_deploy_gated"
+    UNSPECIFIED = "unspecified"
+
 
 #: The full append-only raw-log identity: one row per actual workflow attempt.
 OccObservationRawKey = tuple[str, int, str, str, int, int]
@@ -84,6 +103,15 @@ class ModelOccObservationRecord(BaseModel):
     recorded_at: str = Field(
         ..., description="ISO-8601 timestamp the record was appended (injected)."
     )
+    verification_path: EnumOccVerificationPath = Field(
+        default=EnumOccVerificationPath.UNSPECIFIED,
+        description=(
+            "Which verification path gated the observed product PR "
+            "(merged_path | runtime_deploy_gated). Defaults to 'unspecified' so "
+            "pre-OMN-14954 rows still parse; 'unspecified' satisfies NO "
+            "composition threshold (fail-closed)."
+        ),
+    )
     observation: ModelOccAutoauthorObservation = Field(
         ..., description="The observation payload produced by this attempt."
     )
@@ -123,6 +151,43 @@ def occ_observation_source_tuple(
     )
 
 
+def project_qualifying_records(
+    records: Iterable[ModelOccObservationRecord],
+) -> tuple[ModelOccObservationRecord, ...]:
+    """Pure: dedupe the raw append-only log to one RECORD per source tuple.
+
+    Identical dedup semantics to :func:`project_qualifying_observations`, but
+    the representatives keep their full envelope — tuple identity and
+    ``verification_path`` — so the composition-aware window (OMN-14954) can
+    count distinct tuples and the merged-path / runtime-deploy-gated floor.
+    Output order matches the observation projection: sorted by
+    ``(observation.observed_at, product_repo, product_pr_number)``.
+    """
+    by_raw_key: dict[OccObservationRawKey, ModelOccObservationRecord] = {}
+    for record in records:
+        by_raw_key[occ_observation_raw_key(record)] = record
+
+    by_source_tuple: dict[OccObservationSourceTuple, ModelOccObservationRecord] = {}
+    for record in by_raw_key.values():
+        source_tuple = occ_observation_source_tuple(record)
+        current = by_source_tuple.get(source_tuple)
+        if current is None or (record.workflow_run_id, record.run_attempt) > (
+            current.workflow_run_id,
+            current.run_attempt,
+        ):
+            by_source_tuple[source_tuple] = record
+
+    representatives = list(by_source_tuple.values())
+    representatives.sort(
+        key=lambda r: (
+            r.observation.observed_at,
+            r.product_repo,
+            r.product_pr_number,
+        )
+    )
+    return tuple(representatives)
+
+
 def project_qualifying_observations(
     records: Iterable[ModelOccObservationRecord],
 ) -> tuple[ModelOccAutoauthorObservation, ...]:
@@ -148,33 +213,20 @@ def project_qualifying_observations(
          observation, matching the window aggregator's own sort key, so the
          projection composes with ``ModelOccAutoauthorWindowRequest.observations``
          with no behavior change downstream.
+
+    Implemented as the stripped form of :func:`project_qualifying_records`
+    (OMN-14954) — one dedup, two views.
     """
-    by_raw_key: dict[OccObservationRawKey, ModelOccObservationRecord] = {}
-    for record in records:
-        by_raw_key[occ_observation_raw_key(record)] = record
-
-    by_source_tuple: dict[OccObservationSourceTuple, ModelOccObservationRecord] = {}
-    for record in by_raw_key.values():
-        source_tuple = occ_observation_source_tuple(record)
-        current = by_source_tuple.get(source_tuple)
-        if current is None or (record.workflow_run_id, record.run_attempt) > (
-            current.workflow_run_id,
-            current.run_attempt,
-        ):
-            by_source_tuple[source_tuple] = record
-
-    observations = [record.observation for record in by_source_tuple.values()]
-    observations.sort(
-        key=lambda o: (o.observed_at, o.product_repo, o.product_pr_number)
-    )
-    return tuple(observations)
+    return tuple(record.observation for record in project_qualifying_records(records))
 
 
 __all__ = [
+    "EnumOccVerificationPath",
     "ModelOccObservationRecord",
     "OccObservationRawKey",
     "OccObservationSourceTuple",
     "occ_observation_raw_key",
     "occ_observation_source_tuple",
     "project_qualifying_observations",
+    "project_qualifying_records",
 ]

@@ -24,7 +24,10 @@ from pathlib import Path
 import pytest
 
 from omnimarket.events.occ_autoauthor import ModelOccAutoauthorObservation
-from omnimarket.events.occ_observation_record import ModelOccObservationRecord
+from omnimarket.events.occ_observation_record import (
+    EnumOccVerificationPath,
+    ModelOccObservationRecord,
+)
 from omnimarket.events.occ_observation_store import (
     occ_observation_record_relpath,
     render_occ_observation_record,
@@ -44,7 +47,12 @@ from omnimarket.nodes.node_occ_observation_source_effect.models.model_occ_observ
 
 
 def _clean_record(
-    *, head_sha: str, workflow_run_id: int, run_attempt: int = 1, observed_at: str
+    *,
+    head_sha: str,
+    workflow_run_id: int,
+    run_attempt: int = 1,
+    observed_at: str,
+    path: EnumOccVerificationPath = EnumOccVerificationPath.UNSPECIFIED,
 ) -> ModelOccObservationRecord:
     return ModelOccObservationRecord(
         product_repo="OmniNode-ai/omnimarket",
@@ -54,6 +62,7 @@ def _clean_record(
         workflow_run_id=workflow_run_id,
         run_attempt=run_attempt,
         recorded_at=observed_at,
+        verification_path=path,
         observation=ModelOccAutoauthorObservation(
             product_repo="OmniNode-ai/omnimarket",
             product_pr_number=1841,
@@ -118,6 +127,7 @@ async def test_ten_reruns_of_the_identical_tuple_count_as_one(tmp_path: Path) ->
                 workflow_run_id=999,
                 run_attempt=attempt,
                 observed_at="2026-07-21T00:00:00Z",
+                path=EnumOccVerificationPath.MERGED_PATH,
             ),
         )
 
@@ -125,13 +135,20 @@ async def test_ten_reruns_of_the_identical_tuple_count_as_one(tmp_path: Path) ->
     assert result.raw_record_count == 10
     assert result.distinct_source_tuples == 1
 
+    # Record mode (OMN-14954): the window dedupes the raw log itself. A single
+    # distinct tuple cannot meet the default composition floor, so thresholds
+    # are set explicitly to keep this test about DEDUP, not composition.
     window = aggregate_autoauthor_window(
         ModelOccAutoauthorWindowRequest(
-            observations=result.observations, required_streak=1
+            records=result.records,
+            required_streak=1,
+            min_merged_path=1,
+            min_runtime_gated=0,
         )
     )
     assert window.consecutive_clean == 1
-    assert window.total_observations == 1
+    assert window.distinct_tuples == 1
+    assert window.total_observations == 10  # raw rows, deduped to 1 tuple
     assert window.flip_ready is True
 
 
@@ -140,6 +157,11 @@ async def test_ten_reruns_of_the_identical_tuple_count_as_one(tmp_path: Path) ->
 async def test_ten_distinct_clean_tuples_reach_flip_ready_at_n10(
     tmp_path: Path,
 ) -> None:
+    paths = (
+        [EnumOccVerificationPath.MERGED_PATH] * 3
+        + [EnumOccVerificationPath.RUNTIME_DEPLOY_GATED]
+        + [EnumOccVerificationPath.UNSPECIFIED] * 6
+    )
     for i in range(10):
         _durably_write(
             tmp_path,
@@ -147,6 +169,7 @@ async def test_ten_distinct_clean_tuples_reach_flip_ready_at_n10(
                 head_sha=f"{i:040d}",
                 workflow_run_id=i,
                 observed_at=f"2026-07-21T00:0{i}:00Z",
+                path=paths[i],
             ),
         )
 
@@ -155,11 +178,11 @@ async def test_ten_distinct_clean_tuples_reach_flip_ready_at_n10(
     assert result.distinct_source_tuples == 10
 
     window = aggregate_autoauthor_window(
-        ModelOccAutoauthorWindowRequest(
-            observations=result.observations, required_streak=10
-        )
+        ModelOccAutoauthorWindowRequest(records=result.records, required_streak=10)
     )
     assert window.consecutive_clean == 10
+    assert window.distinct_tuples == 10
+    assert window.composition_met is True
     assert window.flip_ready is True
     assert window.streak_broken_by == ""
 
@@ -196,9 +219,7 @@ async def test_fail_soft_observation_is_durable_but_does_not_qualify(
     assert any(not o.is_clean for o in result.observations)
 
     window = aggregate_autoauthor_window(
-        ModelOccAutoauthorWindowRequest(
-            observations=result.observations, required_streak=10
-        )
+        ModelOccAutoauthorWindowRequest(records=result.records, required_streak=10)
     )
     # It does NOT qualify toward the clean streak: the trailing (most recent)
     # observation is the fail-soft one, so the streak resets to zero.

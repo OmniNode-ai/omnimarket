@@ -1,12 +1,17 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-# ONEX Node Contract - OCC Auto-authoring Window (OMN-14393, report-only)
+# ONEX Node Contract - OCC Auto-authoring Window (OMN-14393, report-only;
+# composition-aware representative-N since OMN-14954)
 #
 # Pure COMPUTE. Aggregates the durable OCC auto-authoring observation trail into a
-# trailing consecutive-clean streak (N=10 default) and reports whether it has
-# reached N. This is the EVIDENCE GATE for the future OMN-14393 fail-closed flip
+# trailing consecutive-clean streak over DISTINCT exact source tuples (N=10
+# default) and reports whether the representative window criterion is met:
+# streak >= N AND >=min_merged_path merged-path AND >=min_runtime_gated
+# runtime/deploy-gated records inside the trailing clean streak. This is the
+# EVIDENCE GATE for the future OMN-14393 fail-closed flip
 # (docs/plans/2026-07-14-rsd3-occ-producer-and-retirement.md §4): it counts, it
-# does NOT flip anything, retire anything, or block any PR.
+# does NOT flip anything, retire anything, or block any PR. Legacy bare
+# observations report the streak but can never certify flip_ready (fail-closed).
 #
 # Directly-invoked only (no Kafka producer/consumer) — it declares no event_bus
 # topics, so it contributes no edges to the contract-topic-graph. The runtime
@@ -22,10 +27,10 @@ node_type: "COMPUTE_GENERIC"
 runtime_profiles: [main]
 contract_version:
   major: 1
-  minor: 0
+  minor: 1
   patch: 0
-node_version: "1.0.0"
-description: "Pure computation: counts the trailing consecutive-clean streak over the OCC auto-authoring observation trail and reports flip-readiness (N=10). Zero I/O; evidence-only."
+node_version: "1.1.0"
+description: "Pure computation: counts the trailing consecutive-clean streak over distinct exact source tuples and the merged-path/runtime-deploy-gated composition floor, reporting representative-N flip-readiness (N=10, >=3 merged-path, >=1 runtime/deploy-gated). Zero I/O; evidence-only."
 input_model:
   name: "ModelOccAutoauthorWindowRequest"
   module: "omnimarket.nodes.node_occ_autoauthor_window.models.model_occ_autoauthor_window_request"
@@ -74,3 +79,4 @@ metadata:
   related_tickets:
     - "OMN-14393"
     - "OMN-14285"
+    - "OMN-14954"

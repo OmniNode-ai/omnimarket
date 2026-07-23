@@ -112,10 +112,12 @@ class TestGoldenChainReplay:
         via_function = aggregate_autoauthor_window(request)
         assert via_handler == via_function
 
-    async def test_ten_clean_reaches_flip_ready(self) -> None:
+    async def test_ten_clean_reaches_streak_but_not_flip_ready(self) -> None:
+        # OMN-14954: legacy bare observations report the streak but withhold
+        # flip_ready (composition unverifiable without tuple-keyed records).
         request = ModelOccAutoauthorWindowRequest(
             observations=_clean_trail(10), required_streak=10
         )
         result = await HandlerOccAutoauthorWindow().handle(request)
         assert result.consecutive_clean == 10
-        assert result.flip_ready is True
+        assert result.flip_ready is False

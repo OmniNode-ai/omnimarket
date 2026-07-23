@@ -105,6 +105,7 @@ class HandlerOccObservationSourceEffect:
         )
         return ModelOccObservationSourceEffectResult(
             observations=observations,
+            records=tuple(records),
             raw_record_count=len(records),
             distinct_source_tuples=len(observations),
             malformed_paths=tuple(malformed),

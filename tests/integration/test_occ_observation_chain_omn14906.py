@@ -38,7 +38,10 @@ from typing import Any
 import pytest
 
 from omnimarket.events.occ_autoauthor import ModelOccAutoauthorObservation
-from omnimarket.events.occ_observation_record import ModelOccObservationRecord
+from omnimarket.events.occ_observation_record import (
+    EnumOccVerificationPath,
+    ModelOccObservationRecord,
+)
 from omnimarket.events.occ_observation_store import (
     OCC_OBSERVATIONS_ROOT,
     occ_observation_record_relpath,
@@ -255,7 +258,13 @@ def _observation(
     )
 
 
-def _record(pr: int, *, clean: bool, minute: int) -> ModelOccObservationRecord:
+def _record(
+    pr: int,
+    *,
+    clean: bool,
+    minute: int,
+    path: EnumOccVerificationPath = EnumOccVerificationPath.UNSPECIFIED,
+) -> ModelOccObservationRecord:
     stamp = f"2026-07-21T10:{minute:02d}:00+00:00"
     return ModelOccObservationRecord(
         product_repo=_REPO,
@@ -265,6 +274,7 @@ def _record(pr: int, *, clean: bool, minute: int) -> ModelOccObservationRecord:
         workflow_run_id=900000 + pr,
         run_attempt=1,
         recorded_at=stamp,
+        verification_path=path,
         observation=_observation(pr, clean=clean, observed_at=stamp),
     )
 
@@ -336,10 +346,19 @@ async def test_source_to_window_composition_emits_concrete_streak(
     """source EFFECT → window COMPUTE over a real on-disk store yields N=10.
 
     This is the composition no workflow performs today (the three nodes are
-    referenced by no workflow). Ten distinct source tuples, all clean, must
-    produce ``consecutive_clean == 10`` and ``flip_ready is True``.
+    referenced by no workflow). Ten distinct source tuples, all clean, with a
+    representative composition (>=3 merged-path, >=1 runtime/deploy-gated,
+    OMN-14954) must produce ``consecutive_clean == 10`` and
+    ``flip_ready is True``.
     """
-    records = [_record(1700 + i, clean=True, minute=i) for i in range(10)]
+    paths = (
+        [EnumOccVerificationPath.MERGED_PATH] * 3
+        + [EnumOccVerificationPath.RUNTIME_DEPLOY_GATED]
+        + [EnumOccVerificationPath.UNSPECIFIED] * 6
+    )
+    records = [
+        _record(1700 + i, clean=True, minute=i, path=paths[i]) for i in range(10)
+    ]
     _write_store(tmp_path, records)
 
     source = await HandlerOccObservationSourceEffect().handle(
@@ -349,13 +368,15 @@ async def test_source_to_window_composition_emits_concrete_streak(
     assert source.distinct_source_tuples == 10
 
     window = await HandlerOccAutoauthorWindow().handle(
-        ModelOccAutoauthorWindowRequest(
-            observations=source.observations, required_streak=10
-        )
+        ModelOccAutoauthorWindowRequest(records=source.records, required_streak=10)
     )
 
     assert window.total_observations == 10
+    assert window.distinct_tuples == 10
     assert window.consecutive_clean == 10
+    assert window.merged_path_clean == 3
+    assert window.runtime_gated_clean == 1
+    assert window.composition_met is True
     assert window.flip_ready is True
 
 
@@ -370,12 +391,11 @@ async def test_one_non_clean_observation_resets_the_streak(tmp_path: Path) -> No
         ModelOccObservationSourceEffectRequest(checkout_dir=str(tmp_path))
     )
     window = await HandlerOccAutoauthorWindow().handle(
-        ModelOccAutoauthorWindowRequest(
-            observations=source.observations, required_streak=10
-        )
+        ModelOccAutoauthorWindowRequest(records=source.records, required_streak=10)
     )
 
     assert window.total_observations == 10
+    assert window.distinct_tuples == 10
     assert window.consecutive_clean == 4
     assert window.flip_ready is False
     assert window.streak_broken_by == f"{_REPO}#1705"
