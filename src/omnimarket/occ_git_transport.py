@@ -145,6 +145,41 @@ def _lease_key(repo_slug: str, pr_number: int, head_sha: str) -> str:
     return f"{normalized}-pr-{pr_number}-{head_sha}"
 
 
+def _resolve_reusable_tree_sha(owner: str, repo_name: str, token: str) -> str:
+    """Return an existing tree SHA to point a lease commit at.
+
+    ``POST /repos/{owner}/{repo}/git/trees`` unconditionally rejects an empty
+    ``tree: []`` array with ``422 "Invalid tree info"`` on this GitHub API
+    surface — reproduced live 2026-07-23 (OMN-14981): a bare empty array, an
+    empty array with ``base_tree`` set, and ``base_tree`` alone all 422
+    identically, so there is no request shape that mints a *new* empty tree
+    object via this endpoint. A lease commit does not need a **new** tree —
+    only *some* existing, already-committed tree to point at: the commit is
+    parentless, lives only under ``refs/occ-companion-leases/…``, is never
+    merged, and no consumer ever reads its tree contents — so reuse the
+    repo's current default-branch tree instead of trying to create one.
+    """
+    repo_info = rest_json("GET", f"/repos/{owner}/{repo_name}", token=token)
+    default_branch = repo_info.get("default_branch")
+    if not isinstance(default_branch, str) or not default_branch:
+        raise GitHubApiError(
+            f"repo {owner}/{repo_name} has no default_branch: {repo_info!r}"
+        )
+    head_commit = rest_json(
+        "GET",
+        f"/repos/{owner}/{repo_name}/commits/{default_branch}",
+        token=token,
+    )
+    commit_info = head_commit.get("commit")
+    tree = commit_info.get("tree") if isinstance(commit_info, dict) else None
+    tree_sha = tree.get("sha") if isinstance(tree, dict) else None
+    if not isinstance(tree_sha, str):
+        raise GitHubApiError(
+            f"default branch {default_branch} commit has no tree sha: {head_commit!r}"
+        )
+    return tree_sha
+
+
 def _create_lease_commit(
     owner: str,
     repo_name: str,
@@ -156,22 +191,15 @@ def _create_lease_commit(
 ) -> str:
     """Create a fresh lease commit and return its SHA.
 
-    A parentless commit pointing at an empty tree, so it materialises no files
-    and can never collide with real OCC content. GitHub sets ``committer.date``
-    to the current server time when it is omitted, giving a *server-authoritative*
+    A parentless commit pointing at a reused, pre-existing tree (see
+    :func:`_resolve_reusable_tree_sha`), so it materialises no NEW files and
+    can never collide with real OCC content. GitHub sets ``committer.date`` to
+    the current server time when it is omitted, giving a *server-authoritative*
     acquisition clock — read back on a 422 to decide TTL expiry without depending
     on either producer host's wall clock (skew-free, OMN-14783 build note §6.2).
     The lease metadata is also encoded in the commit message for forensics.
     """
-    tree = rest_json(
-        "POST",
-        f"/repos/{owner}/{repo_name}/git/trees",
-        token=token,
-        body={"tree": []},
-    )
-    tree_sha = tree.get("sha")
-    if not isinstance(tree_sha, str):
-        raise GitHubApiError(f"lease tree create returned no sha: {tree!r}")
+    tree_sha = _resolve_reusable_tree_sha(owner, repo_name, token)
     message = json.dumps(
         {
             "occ_companion_lease": True,
