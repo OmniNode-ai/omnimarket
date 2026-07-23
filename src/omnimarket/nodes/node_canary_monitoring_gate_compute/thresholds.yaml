@@ -1,0 +1,113 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# thresholds.yaml — real numeric canary-monitoring abort thresholds (OMN-14948, B10->B11).
+#
+# Delivered by the A6 contractor deliverable (OMN-14732, Daniyal, 2026-07-22)
+# and cited here verbatim from the attached artifacts (`thresholds.json` +
+# `omn-14732-a6-monitoring-thresholds.md`). Do NOT hand-edit a numeric value
+# in this file without a corresponding cited source update — a threshold
+# without provenance is a fabricated number per repo doctrine.
+#
+# A6 delivered a single hard abort count per signal, not a graduated
+# warn/abort band. `warn_threshold` is set equal to `abort_threshold` for
+# every entry below to make that explicit in the typed model (which requires
+# both fields resolved together) rather than inventing an intermediate warn
+# number A6 never specified. Each signal therefore only ever classifies as
+# PASS or ABORT in practice (never WARN) until a real warn tier is supplied.
+#
+# `comparison: gte` for every signal below: all five are error/lag *counts*
+# observed over the canary soak window, where a higher count is worse.
+#
+# soak_window_basis (A6, thresholds.json): canary plan's own acceptance
+# floor is soak >= 30 minutes OR 2 MSK IAM token-refresh cycles, whichever
+# is longer. An MSK IAM SigV4 presigned auth token is a 15-minute request
+# (verified live in OMN-14195: X-Amz-Expires=900), so 2 refresh cycles = 30
+# minutes -- both halves of the plan's floor agree at 30 minutes. All
+# "soak duration" windows below are scoped to that 30-minute floor (or the
+# real run's actual soak length if longer).
+
+source: "OMN-14732 (A6 monitoring thresholds, Daniyal, delivered 2026-07-22; accepted/Done by operator 2026-07-22T23:11:40Z)"
+
+signals:
+  auth:
+    comparison: gte
+    abort_threshold: 2
+    warn_threshold: 2
+    unit: count
+    window: "soak duration (>= 30 min)"
+    basis: >
+      One re-auth failure at a token-rotation boundary (2 rotations expected
+      in the 30-minute floor) can be a benign transient that self-corrects
+      on immediate retry. A second failure in the same window is a real
+      pattern, not noise, so the abort threshold is 2, not 1.
+
+  tls:
+    comparison: gte
+    abort_threshold: 1
+    warn_threshold: 1
+    unit: count
+    window: "soak duration (>= 30 min)"
+    basis: >
+      The OMN-14195 proof showed a clean SSL handshake and certificate
+      verification against both brokers with zero TLS errors end to end. A
+      healthy canary should see zero; any TLS/cert error during the soak is
+      already anomalous -- zero-tolerance, abort on the first occurrence.
+
+  broker:
+    comparison: gte
+    abort_threshold: 3
+    warn_threshold: 3
+    unit: count
+    window: "soak duration (>= 30 min)"
+    basis: >
+      Cluster has 2 brokers. One isolated reconnect against either broker
+      over a 30-minute window is tolerated as ordinary network flakiness; 3
+      or more indicates a real connectivity regression rather than a
+      one-off blip.
+
+  lag:
+    comparison: gte
+    abort_threshold: 5
+    warn_threshold: 5
+    unit: messages
+    window: instantaneous
+    basis: >
+      Per the accepted B11 design the canary activates consumers before a
+      single producer and runs one synthetic command through the pipeline --
+      not sustained throughput -- so expected steady-state lag is ~0. A lag
+      of more than a handful of messages during a single-command canary
+      means the consumer has stalled or fallen behind, not ordinary jitter.
+
+  rds:
+    comparison: gte
+    abort_threshold: 2
+    warn_threshold: 2
+    unit: count
+    window: "soak duration (>= 30 min)"
+    basis: >
+      Same one-blip tolerance as auth: one blip tolerated, two aborts.
+      Distinct from benign single-AZ maintenance-window unavailability --
+      see rds_maintenance_window_note below and
+      ModelMonitoringGateInput.rds_single_az_maintenance_window, which
+      downgrades an RDS abort breach to WARN during a declared maintenance
+      window so a maintenance event is never read as a canary failure.
+      Verified live (2026-07-22): omninode-dev-postgres is db.t3.medium,
+      single-AZ (MultiAZ=false) -- the maintenance-window nuance is real,
+      not hypothetical.
+
+rds_maintenance_window_note: >
+  The RDS instance is single-AZ with no HA. A maintenance window causes a
+  brief, expected, benign unavailability that looks like RDS errors but is
+  not a canary failure. rds_error_threshold_count alone cannot tell the
+  difference. The caller building ModelMonitoringGateInput is responsible
+  for cross-referencing live maintenance-window state (AWS
+  PendingMaintenanceActions + PreferredMaintenanceWindow via
+  `aws rds describe-db-instances`) and setting
+  rds_single_az_maintenance_window=True only when the maintenance is
+  actually active or imminent (inside PreferredMaintenanceWindow, or a
+  pending action has an AWS-scheduled CurrentApplyDate) -- NOT merely
+  because some optional patch exists (`has_pending_maintenance` is too loose
+  a signal; AWS almost always has an optional patch available). This
+  distinction is enforced by the ModelMonitoringGateInput field docstring
+  and exercised by the maintenance-suppression tests in
+  test_default_thresholds.py.
