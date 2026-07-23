@@ -23,6 +23,7 @@ from omnimarket.occ_git_transport import (
     _create_lease_ref,
     _lease_is_stale,
     _lease_key,
+    _resolve_reusable_tree_sha,
     acquire_occ_companion_lease,
     release_occ_companion_lease,
 )
@@ -90,6 +91,42 @@ class TestCreateLeaseRef:
 
 
 # ---------------------------------------------------------------------------
+# _resolve_reusable_tree_sha — reuse default-branch tree (OMN-14981 fix:
+# POST .../git/trees 422s "Invalid tree info" for every empty-tree shape)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestResolveReusableTreeSha:
+    def test_returns_default_branch_tree_sha(self) -> None:
+        with patch(
+            f"{_MOD}.rest_json",
+            side_effect=[
+                {"default_branch": "dev"},
+                {"commit": {"tree": {"sha": "t" * 40}}},
+            ],
+        ):
+            assert _resolve_reusable_tree_sha("o", "r", "tok") == "t" * 40
+
+    def test_missing_default_branch_raises(self) -> None:
+        with (
+            patch(f"{_MOD}.rest_json", return_value={}),
+            pytest.raises(GitHubApiError),
+        ):
+            _resolve_reusable_tree_sha("o", "r", "tok")
+
+    def test_missing_tree_sha_raises(self) -> None:
+        with (
+            patch(
+                f"{_MOD}.rest_json",
+                side_effect=[{"default_branch": "dev"}, {"commit": {}}],
+            ),
+            pytest.raises(GitHubApiError),
+        ):
+            _resolve_reusable_tree_sha("o", "r", "tok")
+
+
+# ---------------------------------------------------------------------------
 # _create_lease_commit — fresh server-timestamped lease commit
 # ---------------------------------------------------------------------------
 
@@ -99,7 +136,11 @@ class TestCreateLeaseCommit:
     def test_returns_commit_sha(self) -> None:
         with patch(
             f"{_MOD}.rest_json",
-            side_effect=[{"sha": "t" * 40}, {"sha": "c" * 40}],
+            side_effect=[
+                {"default_branch": "dev"},
+                {"commit": {"tree": {"sha": "t" * 40}}},
+                {"sha": "c" * 40},
+            ],
         ):
             sha = _create_lease_commit(
                 "o", "r", "tok", producer_id="p", pr_number=1, head_sha=_HEAD
@@ -108,7 +149,19 @@ class TestCreateLeaseCommit:
 
     def test_missing_tree_sha_raises(self) -> None:
         with (
-            patch(f"{_MOD}.rest_json", side_effect=[{}, {"sha": "c" * 40}]),
+            patch(
+                f"{_MOD}.rest_json",
+                side_effect=[{"default_branch": "dev"}, {}, {"sha": "c" * 40}],
+            ),
+            pytest.raises(GitHubApiError),
+        ):
+            _create_lease_commit(
+                "o", "r", "tok", producer_id="p", pr_number=1, head_sha=_HEAD
+            )
+
+    def test_missing_default_branch_raises(self) -> None:
+        with (
+            patch(f"{_MOD}.rest_json", side_effect=[{}]),
             pytest.raises(GitHubApiError),
         ):
             _create_lease_commit(
