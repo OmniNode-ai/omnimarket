@@ -54,6 +54,7 @@ from omnimarket.nodes.node_projection_delegation.handlers.handler_budget_state i
 )
 from omnimarket.pricing import recompute_actual_cost_and_savings
 from omnimarket.projection.protocol_database import DatabaseAdapter
+from omnimarket.projection.tenant_isolation import require_tenant_id
 
 TABLE = "delegation_events"
 CONFLICT_KEY = "correlation_id"
@@ -384,6 +385,12 @@ class HandlerProjectionDelegation:
             "request_override_applied": event.request_override_applied,
             "override_within_bounds": event.override_within_bounds,
         }
+        # OMN-14898: refuse the write before it is ever built out further when
+        # isolation enforcement is on and no tenant was resolved (raises
+        # TenantRequiredError -- no row, no fall-through to the column
+        # default). No-op while ENFORCE_TENANT_ISOLATION is False, so the
+        # OMN-14058 interim fallback below is unchanged by default.
+        require_tenant_id(event.tenant_id, table=TABLE)
         # OMN-14058 (OPERATOR-ACCEPTED INTERIM): only stamp tenant_id when the
         # source event carried one — omitting the key (rather than writing
         # None) lets the delegation_events column DEFAULT 'omninode' apply on
@@ -490,6 +497,9 @@ class HandlerProjectionDelegation:
             "projection_version": row_model.projection_version,
             "reducer_version": row_model.reducer_version,
         }
+        # OMN-14898: same fail-closed guard as project() -- no-op unless
+        # ENFORCE_TENANT_ISOLATION is set.
+        require_tenant_id(row_model.tenant_id, table=TABLE)
         # OMN-14058 (OPERATOR-ACCEPTED INTERIM): only stamp tenant_id when
         # present — omitting the key lets the column DEFAULT 'omninode' apply
         # on INSERT and leaves an already-known tenant untouched on UPDATE.

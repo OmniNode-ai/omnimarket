@@ -380,6 +380,21 @@ class Settings(BaseSettings):
             "per-tenant identity design is OMN-14107."
         ),
     )
+    enforce_tenant_isolation: bool = Field(
+        default=False,
+        description=(
+            "OMN-14898: fail-closed rejection of projection writes (delegation_"
+            "events, delegation_budget_state) that resolve no tenant_id, instead "
+            "of silently falling through to the 'omninode'/'default' column "
+            "default. Defaults False to preserve the OMN-14058 single-tenant "
+            "interim (onex_tenant_id='' is the default state of every lane "
+            "today). Flip True only in a lane where OMN-14362 (per-tenant "
+            "broker ACLs -- the trust anchor for the stamp) and OMN-14899 "
+            "(non-superuser writer role so Postgres RLS actually binds writes) "
+            "have both landed live; enabling it earlier rejects real "
+            "single-tenant traffic for no isolation benefit."
+        ),
+    )
 
     # =========================================================================
     # API KEYS / WEBHOOKS — informational misc
