@@ -1,0 +1,136 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# OMN-14975: node-migration vendor parity gate (left-shift enforcement).
+#
+# ROOT CAUSE THIS CLOSES
+#   omnibase_infra vendors every src/omnimarket/nodes/<node>/migrations/*.sql
+#   file into docker/migrations/forward/nodes/<node>/ via
+#   scripts/sync-node-migrations.sh, and enforces parity with an always_run
+#   local pre-commit hook (onex-check-node-migration-sync) plus a CI check
+#   (node-migration-sync.yml) that diffs against the omnimarket dev tip.
+#
+#   That enforcement lives ENTIRELY on the infra side and only fires when
+#   someone happens to commit to omnibase_infra next. omnimarket — the repo
+#   that actually originates the drift by adding/editing a node migration —
+#   has never had any check. The result (OMN-14556, OMN-14555, OMN-13805,
+#   OMN-13746, OMN-13020, OMN-13401, OMN-14975: six prior "Done" tickets, all
+#   the same mechanical re-vendor-and-close fix): every omnimarket migration
+#   merge silently drifts the infra vendor tree, and the FIRST person to
+#   touch omnibase_infra afterwards — for a completely unrelated change —
+#   hits a hard-failing pre-commit hook they didn't cause and can't explain
+#   without archaeology. Fixing the artifact each time never killed the
+#   mechanism: the generation event (omnimarket migration merge) and the
+#   enforcement event (next unrelated omnibase_infra commit) are decoupled
+#   across repos with zero cross-repo trigger between them.
+#
+# WHAT THIS GATE DOES
+#   Runs on every omnimarket PR that touches
+#     src/omnimarket/nodes/*/migrations/*.sql
+#   and fails the PR (not a downstream infra PR days later) unless the sibling
+#   omnibase_infra tree (checked out at dev tip) ALREADY carries a byte-
+#   identical vendored copy of every changed/added migration file at
+#     docker/migrations/forward/nodes/<node>/<file>.sql
+#   This moves the enforcement to the point of origin: a node migration
+#   cannot land in omnimarket until omnibase_infra has already vendored it
+#   (via scripts/sync-node-migrations.sh, run and committed as part of, or
+#   ahead of, this same change) — the infra vendor tree can then never be
+#   more than one omnimarket PR ahead of the source, and the always_run infra
+#   hook has nothing left to drift against.
+#
+#   This does NOT replace the infra-side check (which still guards deletions,
+#   renames, and direct infra-tree edits) — it complements it by removing the
+#   only path that produces net-new drift asymmetrically.
+#
+# INTENDED WIRING (follow-up, requires repo-admin branch-protection edit —
+#   not made in this PR): add `node-migration-vendor-parity-gate` as a
+#   required status check on omnimarket's dev branch protection so a green
+#   run is mandatory, not merely advisory.
+
+name: node-migration-vendor-parity-gate
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    branches: [main, dev]
+    paths:
+      - "src/omnimarket/nodes/*/migrations/*.sql"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  vendor-parity-check:
+    name: node-migration-vendor-parity-gate
+    runs-on: >-
+      ${{
+        (github.event.pull_request.head.repo.full_name != github.repository)
+        && fromJSON(vars.OMNI_PUBLIC_PR_RUNS_ON_JSON || '["ubuntu-latest"]')
+        || fromJSON(vars.OMNI_TRUSTED_CI_RUNS_ON_JSON || '["self-hosted","omnibase-ci"]')
+      }}
+    timeout-minutes: 10
+    steps:
+      - name: Checkout omnimarket (PR head — source of truth for changed migrations)
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          fetch-depth: 0
+
+      - name: Checkout omnibase_infra dev (sibling — vendored destination)
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          repository: OmniNode-ai/omnibase_infra
+          ref: dev
+          path: omnibase_infra-dest
+          token: ${{ secrets.OMNI_GITHUB_TOKEN || github.token }}
+          sparse-checkout: |
+            docker/migrations/forward/nodes
+          sparse-checkout-cone-mode: false
+
+      - name: Verify every changed node migration is already vendored
+        shell: bash
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          git fetch --no-tags --depth=1 origin "${BASE_SHA}" 2>/dev/null || true
+
+          mapfile -t changed < <(
+            git diff --name-only --diff-filter=ACMR "${BASE_SHA}" "${HEAD_SHA}" -- \
+              'src/omnimarket/nodes/*/migrations/*.sql' || true
+          )
+
+          if [ "${#changed[@]}" -eq 0 ]; then
+            echo "::notice::No node migration files changed; nothing to verify."
+            exit 0
+          fi
+
+          fail=0
+          for src_file in "${changed[@]}"; do
+            # src_file = src/omnimarket/nodes/<node>/migrations/<file>.sql
+            node_name="$(basename "$(dirname "$(dirname "${src_file}")")")"
+            filename="$(basename "${src_file}")"
+            dest_file="omnibase_infra-dest/docker/migrations/forward/nodes/${node_name}/${filename}"
+
+            if [ ! -f "${dest_file}" ]; then
+              echo "::error::${src_file} has no vendored counterpart at docker/migrations/forward/nodes/${node_name}/${filename} in omnibase_infra@dev. Land the vendor commit in omnibase_infra FIRST (scripts/sync-node-migrations.sh), merge it, then this PR will pass." >&2
+              fail=1
+              continue
+            fi
+
+            if ! cmp -s "${src_file}" "${dest_file}"; then
+              echo "::error::${src_file} differs from the vendored copy in omnibase_infra@dev (${dest_file}). Re-run scripts/sync-node-migrations.sh in omnibase_infra and land that PR first." >&2
+              fail=1
+            fi
+          done
+
+          if [ "${fail}" -ne 0 ]; then
+            echo "::error::node migration vendor parity check FAILED — see above. This gate exists to stop the recurring node-migration-sync drift class (OMN-14975 and 6 prior tickets) at its source." >&2
+            exit 1
+          fi
+
+          echo "::notice::All changed node migrations are already vendored in omnibase_infra@dev."
