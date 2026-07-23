@@ -331,6 +331,7 @@ async def test_real_postgres_cross_tenant_write_is_rls_isolated_on_read() -> Non
         await conn.execute(_TENANT_ID_SQL.read_text(encoding="utf-8"))
         await conn.execute(_APP_DASHBOARD_ROLE_SQL)
         await conn.execute(_RLS_SQL.read_text(encoding="utf-8"))
+        await conn.execute(f"GRANT USAGE ON SCHEMA {schema} TO app_dashboard")
         # Test-local throwaway login credential, scoped to this disposable
         # schema/session only -- never a live/production credential.
         await conn.execute(
