@@ -349,35 +349,54 @@ class TestWireFixture:
         assert request.requester == "session:fable-dogfood-0722"
         assert request.tenant_id == "push-farm"
 
-    def test_pre_contract_v2_fixture_defaults_are_byte_identical_behavior(
+    def test_contract_v2_fixture_carries_mode_and_source_identity(
         self, wire: dict
     ) -> None:
-        """Contract v2 (OMN-14976): the UNCHANGED fixture (no gateway update
-        this session) must parse to defaults that reproduce pre-v2 semantics
-        exactly — mode=validate_and_push (the push flow, unchanged) and
-        source_identity=None (implicit commit identity)."""
+        """Contract v2 (OMN-14976, seam-mismatch fix): the fixture is
+        RE-PINNED (not left unchanged) to carry mode=validate_only and a
+        commit source_identity, byte-identical to the omninode_infra
+        gateway's re-pinned fixture. Default-value coverage for an
+        omitted mode/source_identity submission (mode=validate_and_push,
+        source_identity=None) lives directly on the model in
+        test_contract_v2_omn14976.py::TestModeField.test_default_mode_is_validate_and_push
+        / TestSourceIdentityInvariants.test_absent_source_identity_is_valid
+        — this fixture no longer needs to double as that proof."""
         from omnimarket.nodes.node_push_validation_effect.models.model_push_validation_request import (
             EnumPushValidationMode,
+            EnumSourceIdentityType,
         )
 
         request = ModelPushValidationRequest(**wire["payload"])
-        assert request.mode == EnumPushValidationMode.VALIDATE_AND_PUSH
-        assert request.source_identity is None
+        assert request.mode == EnumPushValidationMode.VALIDATE_ONLY
+        assert request.source_identity is not None
+        assert request.source_identity.identity_type == EnumSourceIdentityType.COMMIT
+        assert request.source_identity.expected_head_sha == request.expected_head_sha
 
     def test_payload_key_order_matches_model_field_order(self, wire: dict) -> None:
-        """Wire insertion order is byte-load-bearing: passthrough (catalog
-        order) -> correlation_id -> emitted_at -> tenant_id ->
-        tenant_principal_id. The model declares fields in the same order.
-
-        Contract v2 (OMN-14976) appended ``mode``/``source_identity`` at the
-        END of the model. The fixture is DELIBERATELY unchanged (the gateway
-        has not been updated to send them this session), so this is an
-        ordered-PREFIX check, not exact equality — a real gateway wire
-        payload that also omits the new optional fields must still match the
-        model's field order for every key it DOES send."""
+        """The RE-PINNED fixture carries the exact field SET the model
+        declares, and the relative order WITHIN each of the two seam
+        generations agrees — but full positional equality does NOT hold,
+        by design: the wire inserts mode/source_identity right after
+        requester (the catalog's payload_schema property declaration
+        order in workflow-contracts.yaml), while the model APPENDS them
+        at the end of its field list (the frozen-seam invariant proven by
+        test_contract_v2_fields_are_appended_after_the_frozen_seam below).
+        That interleaving asymmetry is harmless — Pydantic validates
+        extra="forbid" payloads by field NAME, never position — but is
+        asserted explicitly here so it stays a documented, intentional
+        divergence rather than an unexamined one."""
         wire_keys = list(wire["payload"].keys())
         model_field_names = list(ModelPushValidationRequest.model_fields)
-        assert wire_keys == model_field_names[: len(wire_keys)]
+        assert set(wire_keys) == set(model_field_names)
+
+        v2_fields = {"mode", "source_identity"}
+        wire_v1_fields = [k for k in wire_keys if k not in v2_fields]
+        model_v1_fields = [k for k in model_field_names if k not in v2_fields]
+        assert wire_v1_fields == model_v1_fields
+
+        wire_v2_fields = [k for k in wire_keys if k in v2_fields]
+        model_v2_fields = [k for k in model_field_names if k in v2_fields]
+        assert wire_v2_fields == model_v2_fields
 
     def test_contract_v2_fields_are_appended_after_the_frozen_seam(self) -> None:
         """mode/source_identity must come AFTER every OMN-14920 field, never
@@ -437,5 +456,5 @@ class TestWireFixture:
             f"{version['major']}.{version['minor']}.{version['patch']}"
         )
         assert wire["metadata"]["tags"]["contract_id"] == contract_id
-        assert contract_id == "node_push_validation_effect:1.0.0"
+        assert contract_id == "node_push_validation_effect:1.1.0"
         assert wire["metadata"]["tags"]["workflow_type"] == "push-validation"
