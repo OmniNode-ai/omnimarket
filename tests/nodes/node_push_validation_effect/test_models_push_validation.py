@@ -318,6 +318,7 @@ class TestReceiptWireValues:
             "stale_head",
             "push_failed",
             "refused",
+            "validated",  # Contract v2 (OMN-14976)
         ]
         assert [verdict.value for verdict in EnumSuiteVerdict] == [
             "pass",

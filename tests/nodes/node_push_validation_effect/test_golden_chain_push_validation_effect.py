@@ -349,13 +349,55 @@ class TestWireFixture:
         assert request.requester == "session:fable-dogfood-0722"
         assert request.tenant_id == "push-farm"
 
+    def test_pre_contract_v2_fixture_defaults_are_byte_identical_behavior(
+        self, wire: dict
+    ) -> None:
+        """Contract v2 (OMN-14976): the UNCHANGED fixture (no gateway update
+        this session) must parse to defaults that reproduce pre-v2 semantics
+        exactly — mode=validate_and_push (the push flow, unchanged) and
+        source_identity=None (implicit commit identity)."""
+        from omnimarket.nodes.node_push_validation_effect.models.model_push_validation_request import (
+            EnumPushValidationMode,
+        )
+
+        request = ModelPushValidationRequest(**wire["payload"])
+        assert request.mode == EnumPushValidationMode.VALIDATE_AND_PUSH
+        assert request.source_identity is None
+
     def test_payload_key_order_matches_model_field_order(self, wire: dict) -> None:
         """Wire insertion order is byte-load-bearing: passthrough (catalog
         order) -> correlation_id -> emitted_at -> tenant_id ->
-        tenant_principal_id. The model declares fields in the same order."""
-        assert list(wire["payload"].keys()) == list(
-            ModelPushValidationRequest.model_fields
-        )
+        tenant_principal_id. The model declares fields in the same order.
+
+        Contract v2 (OMN-14976) appended ``mode``/``source_identity`` at the
+        END of the model. The fixture is DELIBERATELY unchanged (the gateway
+        has not been updated to send them this session), so this is an
+        ordered-PREFIX check, not exact equality — a real gateway wire
+        payload that also omits the new optional fields must still match the
+        model's field order for every key it DOES send."""
+        wire_keys = list(wire["payload"].keys())
+        model_field_names = list(ModelPushValidationRequest.model_fields)
+        assert wire_keys == model_field_names[: len(wire_keys)]
+
+    def test_contract_v2_fields_are_appended_after_the_frozen_seam(self) -> None:
+        """mode/source_identity must come AFTER every OMN-14920 field, never
+        interleaved — that is what keeps the prefix check above meaningful."""
+        model_field_names = list(ModelPushValidationRequest.model_fields)
+        frozen_seam_fields = [
+            "repo",
+            "branch",
+            "expected_head_sha",
+            "requester",
+            "correlation_id",
+            "emitted_at",
+            "tenant_id",
+            "tenant_principal_id",
+        ]
+        assert model_field_names[: len(frozen_seam_fields)] == frozen_seam_fields
+        assert model_field_names[len(frozen_seam_fields) :] == [
+            "mode",
+            "source_identity",
+        ]
 
     def test_payload_correlation_id_equals_envelope_correlation_id(
         self, wire: dict
