@@ -125,8 +125,9 @@ sub_handler_dependencies:
 handler_routing:
   handlers:
     - operation: "run_canary"
-      handler_class: "HandlerCanaryOrchestrator"
-      handler_module: "omnimarket.nodes.node_adr_canary_orchestrator.handlers.handler_canary_orchestrator"
+      handler:
+        name: "HandlerCanaryOrchestrator"
+        module: "omnimarket.nodes.node_adr_canary_orchestrator.handlers.handler_canary_orchestrator"
 
 # === PERFORMANCE ===
 performance:
