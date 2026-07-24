@@ -364,8 +364,34 @@ def _supersede_file(
     # width wide enough that PyYAML never wraps a scalar, so the bytes are a
     # yamlfmt no-op before push. (The flat receipt/contract templates already
     # start with ``---`` and stay single-line, so only this dumped path drifted.)
+    #
+    # ``exclude_defaults=True`` (OMN-15028): this is the ONLY render path in the
+    # repo that dumps a full ``ModelDodReceipt``/``ModelReceiptSupersession``
+    # instance rather than filling a fixed-shape string template (see
+    # ``render_compute_receipt`` — plain receipts can never leak an unrecognized
+    # field because the template literally does not have a slot for one). A
+    # plain ``model_dump()`` here re-serializes EVERY field of the nested
+    # ``replacement: ModelDodReceipt``, including brand-new optional fields
+    # (e.g. the OMN-14168 RUNTIME_OPS block, OMN-13927 ``diff_attestations``)
+    # that exist on whatever ``omnibase_core`` revision this producer is pinned
+    # to but have not yet been promoted to ``omnibase_core@main`` — the ref the
+    # Receipt Gate always installs (see ``.github/workflows/receipt-gate.yml``
+    # -> ``ref: main``). Because ``ModelDodReceipt``/``ModelReceiptSupersession``
+    # are both ``extra="forbid"``, that main-pinned gate schema-rejects those
+    # unrecognized keys wholesale (6 ``extra_forbidden`` errors, OMN-15028) even
+    # though every one of them was sitting at its declared default (``None`` /
+    # ``False`` / ``[]``) and carried zero evidentiary content. Every field this
+    # renderer actually sets to a non-default value (whole real receipt data,
+    # plus a genuine RUNTIME_OPS block when ``evidence_class`` is set) is
+    # unaffected — only forward-schema placeholders at their default are
+    # dropped, which is always safe: a consumer on ANY schema version that
+    # still declares that field will apply the exact same default itself on
+    # ``model_validate``. This is general forward/backward schema-evolution
+    # hygiene, not a version-detection hack — it holds for every future
+    # optional field omnibase_core adds ahead of its next main promotion, not
+    # just today's six.
     content = "---\n" + yaml.safe_dump(
-        record.model_dump(mode="json"),
+        record.model_dump(mode="json", exclude_defaults=True),
         sort_keys=False,
         default_flow_style=False,
         allow_unicode=True,
