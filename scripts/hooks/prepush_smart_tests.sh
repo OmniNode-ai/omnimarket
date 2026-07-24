@@ -56,6 +56,30 @@ die() {
   exit 1
 }
 
+# =============================================================================
+# Ambient-PYTHONPATH sanitization (OMN-14420 / OMN-15019)
+# =============================================================================
+# omnibase_core / omnibase_infra / omnibase_spi / omnibase_compat are
+# THIRD-PARTY pinned dependencies in this repo, resolved from THIS repo's own
+# .venv/site-packages via uv.lock -- never from a worktree src/ directory. An
+# ambient PYTHONPATH exported by the parent shell/session (e.g. pointing at a
+# sibling canonical clone's src/, per the operator's omni_home layout) is
+# inserted ahead of site-packages by the interpreter, so `uv run pytest` --
+# and the selector module it invokes -- can SILENTLY import a different,
+# possibly stale, copy of a runtime dependency than the one this repo's
+# uv.lock actually pinned. OMN-15019 was exactly this: a ModuleNotFoundError
+# misdiagnosed as an omnibase_infra packaging gap that was actually ambient
+# PYTHONPATH shadowing a stale sibling clone.
+#
+# Sanitize LOUDLY, never silently: log the exact value being stripped (so the
+# operator can see this hook changed their environment) and unset it for
+# every subprocess this hook spawns. This is a hook-scoped strip only -- it
+# does not touch the invoking shell's own PYTHONPATH after the hook exits.
+if [ -n "${PYTHONPATH:-}" ]; then
+  log "WARNING: ambient PYTHONPATH detected (${PYTHONPATH}) -- stripping it for this pre-push run (OMN-14420: an ambient PYTHONPATH can silently shadow this repo's pinned omnibase_* dependencies with a stale sibling clone). This hook always runs hermetically; see tests/conftest.py's hermetic-import guard for defense-in-depth on direct 'uv run pytest' invocations."
+  unset PYTHONPATH
+fi
+
 REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null)" \
   || die "not inside a git worktree" \
          "run 'git push' from within the omnimarket repository"
