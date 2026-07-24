@@ -195,9 +195,8 @@ event_bus:
 handler_routing:
   handlers:
     - operation: "embed_batch"
-      handler:
-        name: "HandlerCodeEmbeddingEffect"
-        module: "omnimarket.nodes.node_code_embedding_effect.handlers.handler_code_embedding_effect"
+      handler_class: "HandlerCodeEmbeddingEffect"
+      handler_module: "omnimarket.nodes.node_code_embedding_effect.handlers.handler_code_embedding_effect"
 
 # === VALIDATION RULES ===
 validation_rules:

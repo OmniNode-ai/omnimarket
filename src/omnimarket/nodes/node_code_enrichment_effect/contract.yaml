@@ -191,9 +191,8 @@ event_bus:
 handler_routing:
   handlers:
     - operation: "enrich_batch"
-      handler:
-        name: "HandlerCodeEnrichmentEffect"
-        module: "omnimarket.nodes.node_code_enrichment_effect.handlers.handler_code_enrichment_effect"
+      handler_class: "HandlerCodeEnrichmentEffect"
+      handler_module: "omnimarket.nodes.node_code_enrichment_effect.handlers.handler_code_enrichment_effect"
 
 # === VALIDATION RULES ===
 validation_rules:

@@ -17,10 +17,9 @@ OMN-15004's audit found three flat-schema stragglers the OMN-14000 migration
 (PR #1631) missed: ``node_agent_coordinator_orchestrator``,
 ``node_memory_lifecycle_orchestrator``, and ``node_persona_lifecycle_orchestrator``
 (fixed in OMN-15005). Proving that fix's RED->GREEN over the FULL contract
-set additionally surfaced 7 more affected nodes, tracked in OMN-15007. 5 of
+set additionally surfaced 7 more affected nodes, tracked in OMN-15007. 3 of
 those 7 are FIXED here: ``node_adr_canary_orchestrator``,
-``node_adr_document_ingestion_effect``, ``node_code_embedding_effect``,
-``node_code_enrichment_effect``, and ``node_intent_query_effect`` (a
+``node_adr_document_ingestion_effect``, and ``node_intent_query_effect`` (a
 straightforward flat-to-nested rename, or -- for ``node_intent_query_effect``'s
 4 additional entries -- adding the nested ``handler:`` mapping pointing at the
 single real router class already declared at the contract's root ``handler:``
@@ -28,22 +27,38 @@ field, verified against the real handler source: it matches
 ``request.operation`` internally and dispatches to the exact operations the
 bare ``handler_key`` entries named).
 
-The remaining 2 of the 7 (``node_intent_storage_effect``,
-``node_memory_retrieval_effect``) are intentionally OUT OF SCOPE here and
+The remaining 4 of the 7 (``node_intent_storage_effect``,
+``node_memory_retrieval_effect``, ``node_code_embedding_effect``,
+``node_code_enrichment_effect``) are intentionally OUT OF SCOPE here and
 tracked as a split-out follow-up in **OMN-15027**: converting them the same
-way is loader-correct (verified GREEN locally) but newly exposes their real
-handler classes (``HandlerIntentStorageAdapter``, ``HandlerMemoryRetrieval`` --
-both living in the cross-repo ``omnimemory`` dependency, exposing only
-``execute()``, never ``handle()``/``handle_async()``) to omnimarket's SEPARATE,
-frozen/shrink-only ``handler_dispatch_entrypoint`` gate (OMN-14617), which
-refuses new baseline entries. Fixing that is either cross-repo work in
-``omnimemory`` or a new RSD-authored wrapper node -- not a shape-only change,
-so it does not belong in this mechanical-conversion ticket. See OMN-15027 for
-the full analysis.
+way is loader-correct (verified GREEN locally, real loader) but newly exposes
+each real handler class to a SEPARATE omnimarket gate that used to be
+structurally blind to these entries (since neither gate ever read the flat/
+bare-``handler_key`` shape):
+
+* ``node_intent_storage_effect`` / ``node_memory_retrieval_effect``: real
+  handlers (``HandlerIntentStorageAdapter``, ``HandlerMemoryRetrieval`` --
+  both cross-repo in ``omnimemory``) expose only ``execute()``, never
+  ``handle()``/``handle_async()`` -- newly fails the frozen/shrink-only
+  ``handler_dispatch_entrypoint`` gate (OMN-14617), which refuses new
+  baseline entries.
+* ``node_code_embedding_effect`` / ``node_code_enrichment_effect``: real
+  handlers (``HandlerCodeEmbeddingEffect``, ``HandlerCodeEnrichmentEffect``)
+  take a required constructor param (``repository:
+  ProtocolCodeEntityRepository``) that is not one of the 3 boot-injectable
+  params (``event_bus``, ``container``, ``ownership_query``) -- newly fails
+  the empty-allowlist, fail-closed ``test_handler_routing_boot_resolvable.py``
+  gate (OMN-13551), which "quarantines" the handler at runtime boot.
+
+None of these 4 fixes is a shape-only change (they require either cross-repo
+work, a new RSD-authored wrapper node, or a constructor-shape refactor of the
+handler itself to resolve dependencies from the injectable ``container``
+instead) -- so none belongs in this mechanical-conversion ticket. See
+OMN-15027 for the full analysis.
 
 This test drives the REAL loader over every ``src/omnimarket/nodes/*/contract.yaml``
-and asserts the 8 FIXED nodes (3 from OMN-15005 + 5 from OMN-15007) produce
-zero discovery errors and the expected handler counts, while the 2 OMN-15027
+and asserts the 6 FIXED nodes (3 from OMN-15005 + 3 from OMN-15007) produce
+zero discovery errors and the expected handler counts, while the 4 OMN-15027
 carve-out nodes are explicitly documented as still-expected-to-error (so this
 test stays honest: it does not silently pass because they are excluded, nor
 silently start asserting on them if the carve-out list drifts without a
@@ -59,7 +74,7 @@ from omnibase_infra.runtime.auto_wiring.discovery import discover_contracts_from
 _NODES_DIR = Path(__file__).parent.parent.parent / "src" / "omnimarket" / "nodes"
 
 # node -> expected handler_routing.handlers count (OMN-15005 + OMN-15007, the
-# 8 nodes FIXED across both tickets).
+# 6 nodes FIXED across both tickets).
 _EXPECTED_HANDLER_COUNTS = {
     # OMN-15005
     "node_agent_coordinator_orchestrator": 4,
@@ -68,21 +83,24 @@ _EXPECTED_HANDLER_COUNTS = {
     # OMN-15007
     "node_adr_canary_orchestrator": 1,
     "node_adr_document_ingestion_effect": 1,
-    "node_code_embedding_effect": 1,
-    "node_code_enrichment_effect": 1,
     "node_intent_query_effect": 5,
 }
 
 # Split out from OMN-15007 into OMN-15027: converting these to the nested
-# shape is loader-correct but collides with the frozen/shrink-only
-# handler_dispatch_entrypoint gate (cross-repo omnimemory handlers with no
-# handle()/handle_async()). Left in their pre-existing (still flat-key-only,
-# still loader-erroring) state -- no regression, status quo preserved. Listed
+# shape is loader-correct but collides with a separate, downstream omnimarket
+# gate that was structurally blind to the flat/bare-handler_key shape (see
+# module docstring for the per-node breakdown: handler_dispatch_entrypoint
+# frozen baseline for the intent_storage/memory_retrieval pair,
+# boot-resolvability empty allowlist for the code_embedding/code_enrichment
+# pair). Left in their pre-existing (still flat-key-only, still
+# loader-erroring) state -- no regression, status quo preserved. Listed
 # explicitly so this test stays honest about the carve-out.
 _KNOWN_OUT_OF_SCOPE_FLAT_SCHEMA_NODES = frozenset(
     {
         "node_intent_storage_effect",
         "node_memory_retrieval_effect",
+        "node_code_embedding_effect",
+        "node_code_enrichment_effect",
     }
 )
 
@@ -92,13 +110,13 @@ def _all_contract_paths() -> list[Path]:
 
 
 def test_named_omnimarket_contracts_parse_with_zero_discovery_errors() -> None:
-    """The real loader must parse the 8 OMN-15005/OMN-15007-fixed contracts
+    """The real loader must parse the 6 OMN-15005/OMN-15007-fixed contracts
     without raising the OMN-14141 flat-schema ValueError (surfaced as a
     ModelDiscoveryError).
 
     RED on the pre-OMN-15007-fix tree: this fails with ModelDiscoveryError
     entries citing "handler_routing.handlers[N] is missing a nested
-    'handler: {name, module}' mapping" for the 5 OMN-15007-fixed nodes (in
+    'handler: {name, module}' mapping" for the 3 OMN-15007-fixed nodes (in
     addition to the OMN-15005 3, already fixed on this branch's base).
     """
     manifest = discover_contracts_from_paths(_all_contract_paths())
