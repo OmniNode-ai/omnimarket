@@ -47,6 +47,19 @@ import pytest_asyncio
 # same-shaped guard for that repo's OWN package; this is the omnimarket-side
 # mirror for its two cross-repo runtime dependencies.
 #
+# NOT every out-of-venv resolution is an accidental shadow: a small number of
+# CI jobs (e.g. .github/workflows/validator-fsm-handler-drift.yml)
+# DELIBERATELY point PYTHONPATH at a freshly-checked-out sibling clone to
+# exercise a specific cross-repo validator against it. There is no reliable
+# metadata signal that distinguishes that intentional case from an
+# accidental ambient shadow (uv's `pip install -e --no-deps` for a foreign
+# package does not reliably record a PEP 660 editable direct_url.json here),
+# so the escape hatch is an explicit, visible, opt-in env var that the
+# intentional-override job sets alongside its own PYTHONPATH -- never a
+# silent narrowing of this guard's default. Mirrors the codebase's existing
+# declared-escape-hatch pattern (e.g. OMNIMARKET_LEGACY_MERGE_ARM_ENABLED
+# above): the override must be visible in the workflow YAML, not inferred.
+#
 # Fail LOUD at collection time — never a silent fallback or narrowing — with
 # the exact remediation inline, instead of a confusing downstream
 # ModuleNotFoundError/AttributeError many tests later that looks like an
@@ -54,26 +67,38 @@ import pytest_asyncio
 # ...` submodule import below, so a shadowed-but-incomplete sibling clone is
 # correctly diagnosed here instead of surfacing as an unrelated-looking
 # ModuleNotFoundError on a submodule.
-_VENV_ROOT = Path(sys.prefix).resolve()
-for _dep_module in (omnibase_core, omnibase_infra):
-    _dep_file = _dep_module.__file__
-    if _dep_file is None:
-        raise RuntimeError(
-            f"Hermetic import guard failed: `{_dep_module.__name__}` has no "
-            "__file__ (unexpected namespace-package resolution) -- cannot "
-            "verify it resolved from this repo's venv. See OMN-14420."
-        )
-    _resolved_dep_path = Path(_dep_file).resolve()
-    if _VENV_ROOT not in _resolved_dep_path.parents:
-        raise RuntimeError(
-            f"Hermetic import guard failed: `{_dep_module.__name__}` resolved "
-            f"OUTSIDE this repo's venv ({_VENV_ROOT}); got "
-            f"{_resolved_dep_path} instead. This almost always means an "
-            "ambient PYTHONPATH in your shell is shadowing the pinned, "
-            "installed dependency with a different (possibly stale) sibling "
-            "clone — see OMN-14420. Re-run with 'env -u PYTHONPATH' prefixed "
-            "on your command."
-        )
+_HERMETIC_GUARD_OVERRIDE_ENV = "OMNIMARKET_ALLOW_PYTHONPATH_OVERRIDE"
+if os.environ.get(_HERMETIC_GUARD_OVERRIDE_ENV):
+    print(
+        f"[hermetic-import-guard] {_HERMETIC_GUARD_OVERRIDE_ENV} is set -- "
+        "skipping the OMN-14420 ambient-PYTHONPATH guard for this run "
+        "(declared intentional cross-repo dependency override).",
+        file=sys.stderr,
+    )
+else:
+    _VENV_ROOT = Path(sys.prefix).resolve()
+    for _dep_module in (omnibase_core, omnibase_infra):
+        _dep_file = _dep_module.__file__
+        if _dep_file is None:
+            raise RuntimeError(
+                f"Hermetic import guard failed: `{_dep_module.__name__}` has "
+                "no __file__ (unexpected namespace-package resolution) -- "
+                "cannot verify it resolved from this repo's venv. See "
+                "OMN-14420."
+            )
+        _resolved_dep_path = Path(_dep_file).resolve()
+        if _VENV_ROOT not in _resolved_dep_path.parents:
+            raise RuntimeError(
+                f"Hermetic import guard failed: `{_dep_module.__name__}` "
+                f"resolved OUTSIDE this repo's venv ({_VENV_ROOT}); got "
+                f"{_resolved_dep_path} instead. This almost always means an "
+                "ambient PYTHONPATH in your shell is shadowing the pinned, "
+                "installed dependency with a different (possibly stale) "
+                "sibling clone — see OMN-14420. Re-run with "
+                "'env -u PYTHONPATH' prefixed on your command. If this "
+                f"PYTHONPATH override is intentional, set "
+                f"{_HERMETIC_GUARD_OVERRIDE_ENV}=1 to declare it explicitly."
+            )
 
 from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory  # noqa: E402
 from omnibase_infra.event_bus.event_bus_kafka import EventBusKafka  # noqa: E402
