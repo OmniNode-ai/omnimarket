@@ -91,32 +91,36 @@ handler_routing:
     # Register an agent's subscription to a memory topic
     - operation: subscribe
       routing_key: "subscribe"
-      handler_module: "omnimemory.handlers.handler_subscription"
-      handler_class: "HandlerSubscription"
+      handler:
+        name: "HandlerSubscription"
+        module: "omnimemory.handlers.handler_subscription"
       handler_key: "HandlerSubscription.subscribe"
       priority: 0
       output_events: []
     # Remove an agent's subscription from a memory topic
     - operation: unsubscribe
       routing_key: "unsubscribe"
-      handler_module: "omnimemory.handlers.handler_subscription"
-      handler_class: "HandlerSubscription"
+      handler:
+        name: "HandlerSubscription"
+        module: "omnimemory.handlers.handler_subscription"
       handler_key: "HandlerSubscription.unsubscribe"
       priority: 0
       output_events: []
     # List all subscriptions for a given agent
     - operation: list_subscriptions
       routing_key: "list_subscriptions"
-      handler_module: "omnimemory.handlers.handler_subscription"
-      handler_class: "HandlerSubscription"
+      handler:
+        name: "HandlerSubscription"
+        module: "omnimemory.handlers.handler_subscription"
       handler_key: "HandlerSubscription.list_subscriptions"
       priority: 0
       output_events: []
     # Publish notification event to Kafka for subscriber consumption
     - operation: notify
       routing_key: "notify"
-      handler_module: "omnimemory.handlers.handler_subscription"
-      handler_class: "HandlerSubscription"
+      handler:
+        name: "HandlerSubscription"
+        module: "omnimemory.handlers.handler_subscription"
       handler_key: "HandlerSubscription.notify"
       priority: 0
       output_events: ["onex.evt.omnimemory.memory-notification.v1"]

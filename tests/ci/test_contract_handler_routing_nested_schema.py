@@ -1,0 +1,206 @@
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+"""Contract guard (OMN-15005, child of OMN-14141): every omnimarket
+``handler_routing.handlers[]`` entry must use the nested ``handler: {name,
+module}`` mapping the real loader understands.
+
+OMN-14141 shipped a fail-closed guard in
+``omnibase_infra.runtime.auto_wiring.discovery.discover_contracts_from_paths``:
+a ``handlers[]`` entry that still uses the historical FLAT
+``handler_class:``/``handler_module:`` string schema cannot be parsed into a
+dispatcher and raises ``ValueError`` (surfaced here as a
+``ModelDiscoveryError`` on the manifest) instead of silently producing
+``handlers=()`` and phantom-wiring the subscribed topic with zero live
+handlers.
+
+OMN-15004's audit found three flat-schema stragglers the OMN-14000 migration
+(PR #1631) missed: ``node_agent_coordinator_orchestrator``,
+``node_memory_lifecycle_orchestrator``, and ``node_persona_lifecycle_orchestrator``.
+This test drives the REAL loader over every ``src/omnimarket/nodes/*/contract.yaml``
+and asserts these three named nodes produce zero discovery errors and the
+expected handler counts -- it is the permanent, scoped CI gate this ticket
+calls for (fail-closed, no new workflow surface -- runs under existing pytest
+CI).
+
+Scope note: a live run over ALL omnimarket contracts (not just the three named
+here) additionally surfaces 7 OTHER pre-existing flat-schema contracts
+(``node_adr_canary_orchestrator``, ``node_adr_document_ingestion_effect``,
+``node_code_embedding_effect``, ``node_code_enrichment_effect``,
+``node_intent_query_effect``, ``node_intent_storage_effect``,
+``node_memory_retrieval_effect``) that are OUT OF SCOPE for OMN-15005 (a
+distinct, undiscovered defect -- not named in the ticket, not part of the
+OMN-14000 migration this ticket follows up on). This test intentionally does
+NOT assert zero errors across the full sweep -- see
+``_KNOWN_OUT_OF_SCOPE_FLAT_SCHEMA_NODES`` below, tracked as a follow-up in
+OMN-15007.
+"""
+
+from __future__ import annotations
+
+from pathlib import Path
+
+from omnibase_infra.runtime.auto_wiring.discovery import discover_contracts_from_paths
+
+_NODES_DIR = Path(__file__).parent.parent.parent / "src" / "omnimarket" / "nodes"
+
+# node -> expected handler_routing.handlers count (per the OMN-15005 plan).
+_EXPECTED_HANDLER_COUNTS = {
+    "node_agent_coordinator_orchestrator": 4,
+    "node_memory_lifecycle_orchestrator": 3,
+    "node_persona_lifecycle_orchestrator": 2,
+}
+
+# Pre-existing flat-schema contracts discovered while building this fix,
+# OUT OF SCOPE for OMN-15005 (tracked separately in OMN-15007). Listed
+# explicitly so this test stays honest: it must not silently pass because
+# these are excluded, nor silently start asserting on them if a future change
+# touches this list without updating the ticket reference.
+_KNOWN_OUT_OF_SCOPE_FLAT_SCHEMA_NODES = frozenset(
+    {
+        "node_adr_canary_orchestrator",
+        "node_adr_document_ingestion_effect",
+        "node_code_embedding_effect",
+        "node_code_enrichment_effect",
+        "node_intent_query_effect",
+        "node_intent_storage_effect",
+        "node_memory_retrieval_effect",
+    }
+)
+
+
+def _all_contract_paths() -> list[Path]:
+    return sorted(_NODES_DIR.glob("*/contract.yaml"))
+
+
+def test_named_omnimarket_contracts_parse_with_zero_discovery_errors() -> None:
+    """The real loader must parse the 3 OMN-15005-named contracts without
+    raising the OMN-14141 flat-schema ValueError (surfaced as a
+    ModelDiscoveryError).
+
+    RED on the pre-fix tree: this fails with three ModelDiscoveryError entries
+    citing "handler_routing.handlers[N] is missing a nested 'handler: {name,
+    module}' mapping" for node_agent_coordinator_orchestrator,
+    node_memory_lifecycle_orchestrator, and node_persona_lifecycle_orchestrator.
+    """
+    manifest = discover_contracts_from_paths(_all_contract_paths())
+
+    errors_by_node = {error.entry_point_name: error.error for error in manifest.errors}
+
+    flat_schema_errors = {
+        node: msg
+        for node, msg in errors_by_node.items()
+        if node in _EXPECTED_HANDLER_COUNTS
+    }
+    assert not flat_schema_errors, (
+        f"{len(flat_schema_errors)} omnimarket contract(s) still use the flat "
+        "handler_class/handler_module schema and hard-fail the real loader "
+        f"(OMN-14141/OMN-15005): {flat_schema_errors}"
+    )
+
+    # Sanity-check the out-of-scope carve-out doesn't silently grow: any NEW
+    # flat-schema error outside both the named set and the documented
+    # out-of-scope set is a real regression this test must catch.
+    unexpected_errors = {
+        node: msg
+        for node, msg in errors_by_node.items()
+        if node not in _EXPECTED_HANDLER_COUNTS
+        and node not in _KNOWN_OUT_OF_SCOPE_FLAT_SCHEMA_NODES
+    }
+    assert not unexpected_errors, (
+        f"Unexpected NEW discovery errors over omnimarket contracts (not in the "
+        f"OMN-15005 scope, not in the documented out-of-scope carve-out): "
+        f"{unexpected_errors}"
+    )
+
+
+def test_migrated_nodes_are_discovered_with_expected_handler_counts() -> None:
+    """Each migrated node must appear in the discovered set with its full,
+    correctly-parsed handler_routing.handlers count -- not silently dropped to
+    zero dispatchers (the OMN-14139/OMN-14135 phantom-wiring failure mode)."""
+    manifest = discover_contracts_from_paths(_all_contract_paths())
+    discovered_by_name = {c.name: c for c in manifest.contracts}
+
+    for node, expected_count in _EXPECTED_HANDLER_COUNTS.items():
+        assert node in discovered_by_name, (
+            f"{node} was not discovered at all -- check it did not get "
+            "swallowed as a discovery error."
+        )
+        contract = discovered_by_name[node]
+        assert contract.handler_routing is not None, (
+            f"{node} discovered but handler_routing is None."
+        )
+        actual_count = len(contract.handler_routing.handlers)
+        assert actual_count == expected_count, (
+            f"{node} expected {expected_count} handler_routing.handlers entries, "
+            f"got {actual_count}."
+        )
+
+
+def test_flat_shape_fixture_is_rejected_nested_shape_parses(tmp_path: Path) -> None:
+    """Recurrence guard: a minimal flat-shape contract fixture is rejected by
+    the loader; the same fixture converted to the nested shape parses with
+    the expected handler count. Keeps this a permanent, repo-agnostic
+    regression test independent of the three specific contracts above."""
+    node_dir = tmp_path / "node_flat_schema_fixture"
+    node_dir.mkdir()
+    flat_contract = node_dir / "contract.yaml"
+    flat_contract.write_text(
+        """
+name: "node_flat_schema_fixture"
+contract_version: {major: 0, minor: 1, patch: 0}
+node_version: {major: 0, minor: 1, patch: 0}
+description: "Fixture contract using the historical flat handler schema."
+node_type: orchestrator
+input_model: "ModelFixtureRequest"
+output_model: "ModelFixtureResponse"
+handler_routing:
+  version: {major: 1, minor: 0, patch: 0}
+  routing_strategy: operation_match
+  handlers:
+    - operation: do_thing
+      routing_key: "do_thing"
+      handler_module: "some.module"
+      handler_class: "HandlerFixture"
+      handler_key: "HandlerFixture.do_thing"
+      priority: 0
+      output_events: []
+  default_handler: null
+"""
+    )
+    manifest = discover_contracts_from_paths([flat_contract])
+    assert not manifest.contracts, "flat-shape fixture must not be discovered"
+    assert len(manifest.errors) == 1
+    assert "missing a nested" in manifest.errors[0].error
+    assert "handler: {name, module}" in manifest.errors[0].error
+
+    nested_dir = tmp_path / "node_nested_schema_fixture"
+    nested_dir.mkdir()
+    nested_contract = nested_dir / "contract.yaml"
+    nested_contract.write_text(
+        """
+name: "node_nested_schema_fixture"
+contract_version: {major: 0, minor: 1, patch: 0}
+node_version: {major: 0, minor: 1, patch: 0}
+description: "Fixture contract using the nested handler schema."
+node_type: orchestrator
+input_model: "ModelFixtureRequest"
+output_model: "ModelFixtureResponse"
+handler_routing:
+  version: {major: 1, minor: 0, patch: 0}
+  routing_strategy: operation_match
+  handlers:
+    - operation: do_thing
+      routing_key: "do_thing"
+      handler:
+        name: "HandlerFixture"
+        module: "some.module"
+      handler_key: "HandlerFixture.do_thing"
+      priority: 0
+      output_events: []
+  default_handler: null
+"""
+    )
+    nested_manifest = discover_contracts_from_paths([nested_contract])
+    assert not nested_manifest.errors, nested_manifest.errors
+    assert len(nested_manifest.contracts) == 1
+    assert len(nested_manifest.contracts[0].handler_routing.handlers) == 1
