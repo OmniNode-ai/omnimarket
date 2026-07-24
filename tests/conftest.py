@@ -20,6 +20,8 @@ import omnibase_infra
 import pytest
 import pytest_asyncio
 
+from omnimarket.config.env_flags import env_flag
+
 # =============================================================================
 # Hermetic import guard (OMN-14420 / OMN-15019) — omnimarket-side
 # =============================================================================
@@ -68,7 +70,7 @@ import pytest_asyncio
 # correctly diagnosed here instead of surfacing as an unrelated-looking
 # ModuleNotFoundError on a submodule.
 _HERMETIC_GUARD_OVERRIDE_ENV = "OMNIMARKET_ALLOW_PYTHONPATH_OVERRIDE"
-if os.environ.get(_HERMETIC_GUARD_OVERRIDE_ENV):
+if env_flag(_HERMETIC_GUARD_OVERRIDE_ENV, safe_default=False):
     print(
         f"[hermetic-import-guard] {_HERMETIC_GUARD_OVERRIDE_ENV} is set -- "
         "skipping the OMN-14420 ambient-PYTHONPATH guard for this run "
