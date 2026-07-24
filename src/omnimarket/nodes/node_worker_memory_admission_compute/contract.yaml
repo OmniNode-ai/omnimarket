@@ -1,0 +1,102 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Worker Memory Admission Compute (D3, OMN-14977)
+#
+# Spec source: docs/plans/2026-07-23-distributed-validation-context-aware-runtime-plan.md
+# §2 D3 (Rev 2, hostile-reviewed). Prerequisite for activating a second
+# push-validation worker host (e.g. `.200`) — see that plan's §4 Phase C
+# ordering: "this policy is enforced BEFORE .200 activates as a worker."
+#
+# Pure COMPUTE (rule 7a): the handler performs no I/O and reads no clock.
+# `vm_stat` parsing and wall-clock stamping are an EFFECT concern upstream of
+# this node (not yet wired — see the OMN-14977 ticket comment for the
+# explicit residual: a `vm_stat`-reading advertisement EFFECT that calls this
+# COMPUTE node on a heartbeat cadence).
+#
+# Directly-invoked only (no Kafka producer/consumer) — it declares no
+# event_bus topics, so it contributes no edges to the contract-topic-graph.
+# The runtime resolves it via handler_routing.default_handler (_run_compute
+# path: no terminal_event / no event bus needed). Follows the same
+# no-bus-yet pattern as node_canary_monitoring_gate_compute.
+name: "node_worker_memory_admission_compute"
+lifecycle: experimental
+node_type: "COMPUTE_GENERIC"
+runtime_profiles: [main]
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_version: "1.0.0"
+description: >-
+  RAM-aware worker admission (D3): evaluates one job request against a
+  host's most recent heartbeat-cadenced memory advertisement using
+  usable = total - wired - inference_reservation (wired read from vm_stat
+  pages upstream — Metal-wired weights are invisible to per-process RSS).
+  Fail-closed on stale advertisements (bound = 2x cadence_seconds, checked
+  BEFORE the headroom comparison). Refusal is always a typed receipt, never
+  a silent queue — there is no scheduler yet, so the WORKER itself refuses.
+input_model:
+  name: "ModelMemoryAdmissionRequest"
+  module: "omnimarket.nodes.node_worker_memory_admission_compute.models.model_worker_memory_admission"
+  description: "One job's requested memory plus the candidate host's most recent advertisement."
+output_model:
+  name: "ModelMemoryAdmissionReceipt"
+  module: "omnimarket.nodes.node_worker_memory_admission_compute.models.model_worker_memory_admission"
+  description: "Typed admitted/refused outcome with headroom and staleness evidence."
+
+# Top-level handler block: the runtime's compute-execution path (_run_compute,
+# reached because this contract declares no terminal_event) resolves the
+# handler and builds the typed input payload from THIS block's input_model.
+handler:
+  module: "omnimarket.nodes.node_worker_memory_admission_compute.handlers.handler_worker_memory_admission_compute"
+  class: "HandlerWorkerMemoryAdmissionCompute"
+  input_model: "omnimarket.nodes.node_worker_memory_admission_compute.models.model_worker_memory_admission.ModelMemoryAdmissionRequest"
+
+handler_routing:
+  routing_strategy: "operation_match"
+  default_handler: "omnimarket.nodes.node_worker_memory_admission_compute.handlers.handler_worker_memory_admission_compute:HandlerWorkerMemoryAdmissionCompute"
+  handlers:
+    - operation: "evaluate_memory_admission"
+      handler:
+        name: "HandlerWorkerMemoryAdmissionCompute"
+        module: "omnimarket.nodes.node_worker_memory_admission_compute.handlers.handler_worker_memory_admission_compute"
+
+descriptor:
+  node_archetype: compute
+  purity: pure
+  runtime_profiles: [main]
+  idempotent: true
+  timeout_ms: 5000
+
+# Declared command/terminal seam (dispatch-addressable). No top-level
+# `terminal_event:` scalar is set, so the local runtime keeps using the
+# _run_compute path for `onex node`; these runtime_dispatch topics are the
+# CLI dispatcher's own command/result seam (exempt from orphan detection) and
+# carry no bus producer/consumer today. The real bus wiring (a vm_stat-reading,
+# heartbeat-cadenced advertisement EFFECT publishing the command topic) is the
+# explicit residual named in the OMN-14977 ticket comment — not built this
+# session.
+runtime_dispatch:
+  command_topic: "onex.cmd.omnimarket.memory-admission-requested.v1"
+  terminal_events:
+    success: "onex.evt.omnimarket.memory-admission-evaluated.v1"
+    failure: "onex.evt.omnimarket.memory-admission-evaluation-failed.v1"
+
+replay:
+  requires_validator_version: true
+  timestamp_authority: ingest_sequence
+  deterministic: true
+
+metadata:
+  transport_type: inmemory
+  description: "RAM-aware worker admission COMPUTE — headroom formula + fail-closed staleness gate (D3, OMN-14977, no external transport)"
+  author: "OmniNode Team"
+  created: "2026-07-24"
+  tags:
+    - "compute"
+    - "worker-admission"
+    - "memory-policy"
+    - "distributed-validation"
+    - "OMN-14977"
+  related_tickets:
+    - "OMN-14977"
