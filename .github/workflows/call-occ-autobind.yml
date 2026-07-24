@@ -34,14 +34,37 @@
 #   incident OMN-14800) still fires if a `KAFKA_BOOTSTRAP_SERVERS` secret is ever
 #   re-injected and diverges -- but this workflow no longer injects one.
 #
-# Ticket: OMN-13990, OMN-14451, OMN-14801, OMN-14813
+# TRIGGER COVERAGE (OMN-14989, identical gap to OMN-14987/omnibase_infra):
+# opened/synchronize alone miss two born-path holes. (1) draft->ready_for_review
+# WITHOUT an intervening push never re-fires either event -- GitHub emits a
+# distinct ready_for_review event that this workflow did not listen for, so a
+# PR opened as draft and later marked ready was permanently stranded unbound.
+# (2) closed-then-reopened has the same hole via the reopened event. Both are
+# now listed. The F-17 draft-suppression guard is NOT a trigger-level gate --
+# it lives downstream in node_occ_companion_compute
+# (handler_occ_companion_compute.py), which checks live pr_is_draft state at
+# compute time, so adding ready_for_review here cannot cause a mint while the
+# PR is still a draft; it only unblocks the mint for the transition OUT of
+# draft.
+#
+# BRANCH FILTER (OMN-14989, #2377 stacked-PR vector): the prior
+# branches: [main, dev, "hotfix/**"] filter meant a PR whose BASE is a
+# feature branch (a stacked PR) never instantiated this workflow at all -- the
+# born path silently never ran, and if the base later retargeted dev the
+# opened/synchronize events had already passed. Removed to match
+# omnibase_infra's call-occ-autobind.yml / call-occ-companion-effect.yml
+# already-deliberate no-filter design: every pull_request now fires here; the
+# job's own bot/OMN-ticket gate below filters what should not publish. Any
+# future base-branch filtering must be IN-JOB with a logged skip, never at the
+# trigger.
+#
+# Ticket: OMN-13990, OMN-14451, OMN-14801, OMN-14813, OMN-14989
 
 name: OCC Autobind Publisher
 
 on:
   pull_request:
-    branches: [main, dev, "hotfix/**"]
-    types: [opened, synchronize]
+    types: [opened, synchronize, reopened, ready_for_review]
 
 permissions:
   contents: read
