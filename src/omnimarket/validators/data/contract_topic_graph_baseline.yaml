@@ -60,7 +60,6 @@ accepted:
 - ORPHANED_CONSUMER::environment_health_scanner::onex.cmd.omnimarket.environment-health-scan-start.v1
 - ORPHANED_CONSUMER::full_triage_orchestrator::onex.cmd.omnimarket.full-triage-start.v1
 - ORPHANED_CONSUMER::golden_chain_sweep::onex.cmd.omnimarket.golden-chain-sweep-start.v1
-- ORPHANED_CONSUMER::golden_chain_sweep::onex.evt.omniclaude.session-outcome.v1
 - ORPHANED_CONSUMER::handoff_effect::onex.cmd.omnimarket.handoff-effect-start.v1
 - ORPHANED_CONSUMER::integration_test_runner::onex.cmd.omnimarket.integration-test-runner-start.v1
 - ORPHANED_CONSUMER::kafka_topic_emit_probe::onex.cmd.omnimarket.kafka-probe-trigger.v1
@@ -323,8 +322,6 @@ accepted:
 - ORPHANED_CONSUMER::projection_live_events::onex.evt.platform.log-entry.v1
 - ORPHANED_CONSUMER::projection_live_events::onex.evt.platform.node-state-change.v1
 - ORPHANED_CONSUMER::projection_registration::onex.evt.platform.node-state-change.v1
-- ORPHANED_CONSUMER::projection_session_outcome::onex.evt.omniclaude.session-outcome.v1
-- ORPHANED_CONSUMER::projection_session_replay::onex.evt.omniclaude.session-outcome.v1
 - ORPHANED_CONSUMER::regression_test_orchestrator::onex.cmd.omnimarket.regression-suite-start.v1
 - ORPHANED_CONSUMER::retention_cleanup::onex.cmd.omnimarket.retention-cleanup-requested.v1
 - ORPHANED_CONSUMER::review_thread_reconciler::onex.cmd.omnimarket.review-thread-reconcile.v1
@@ -739,3 +736,33 @@ external_producers:
   # workflow. node_merge_state_projection is the REPORT-ONLY measurement
   # consumer; the publisher is wired in the WS6 enforcement follow-up.
   onex.evt.omnimarket.merge-state-transition.v1: "merge-flow instrumentation publisher (GHA workflow / publisher script) — OMN-14648 WS6"
+  # OMN-14986: node_pr_state_projection_compute's contract routes its
+  # "pr_state.upsert" intent to node_pr_state_write_effect via the generic
+  # IntentEffectDispatchBridge (OMN-14516) -- an in-process call, never a
+  # literal Kafka publish. The command topic below is declared on the
+  # write-effect's contract only for introspection / independent invocation;
+  # the graph cannot see the intent-routing edge.
+  onex.cmd.omnibase-infra.pr-state-upsert.v1: "produced in-process by IntentEffectDispatchBridge from node_pr_state_projection_compute's intent_consumption.intent_routing_table (OMN-14516), not a literal Kafka publish — OMN-14986"
+  # OMN-14986: same pattern -- node_validation_ledger_projection_compute
+  # routes its "validation_ledger.append" intent to
+  # node_validation_ledger_write_effect via the same in-process bridge.
+  onex.cmd.omnibase-infra.validation-ledger-append.v1: "produced in-process by IntentEffectDispatchBridge from node_validation_ledger_projection_compute's intent_consumption.intent_routing_table (OMN-14516), not a literal Kafka publish — OMN-14986"
+  # OMN-14986: real, live omniclaude hook-emitted events (raw Kafka publish
+  # calls in omniclaude's Python hook code, not ONEX node contracts -- see
+  # src/omniclaude/hooks/handler_event_emitter.py and
+  # src/omniclaude/lib/manifest_injection_event_publisher.py). omniclaude's
+  # hooks are pre-contract legacy publish sites with no contract.yaml
+  # declaring publish_topics, so the checkout-tier census (CHECKOUT_PACKAGES)
+  # cannot see them -- confirmed live via grep: build_topic(TopicBase.*) call
+  # sites in omniclaude's own source tree, not test-only references.
+  onex.evt.omniclaude.session-outcome.v1: "published by omniclaude src/omniclaude/hooks/handler_event_emitter.py (raw hook code, no contract.yaml) — OMN-14986"
+  onex.evt.omniclaude.validator-catch.v1: "published by omniclaude src/omniclaude/hooks/handlers/context_scope_auditor.py (raw hook code, no contract.yaml) — OMN-14986"
+  # OMN-14986: node_savings_estimation_compute's subscribe_topics previously
+  # declared onex.evt.omniclaude.hook-context-injected.v1, which omniclaude
+  # has never published (its real topic, per
+  # src/omniclaude/hooks/topics.py::TopicBase.CONTEXT_INJECTED, is
+  # context-injected.v1 -- no "hook-" prefix). Renamed on the infra side to
+  # match the real wire topic (omnibase_infra PR citing this ticket); the
+  # renamed topic is still a raw hook-emitted publish with no contract.yaml,
+  # so it needs the same census exemption as the two topics above.
+  onex.evt.omniclaude.context-injected.v1: "published by omniclaude src/omniclaude/lib/manifest_injection_event_publisher.py (raw hook code, no contract.yaml); renamed from the non-existent hook-context-injected.v1 — OMN-14986"
