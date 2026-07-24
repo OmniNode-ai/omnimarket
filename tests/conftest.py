@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import sys
 import time
 from collections.abc import AsyncGenerator, Callable, Generator
 from pathlib import Path
@@ -14,11 +15,71 @@ from typing import Any
 from urllib.parse import quote_plus
 
 import asyncpg
+import omnibase_core
+import omnibase_infra
 import pytest
 import pytest_asyncio
-from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
-from omnibase_infra.event_bus.event_bus_kafka import EventBusKafka
-from omnibase_infra.event_bus.models.config import ModelKafkaEventBusConfig
+
+# =============================================================================
+# Hermetic import guard (OMN-14420 / OMN-15019) — omnimarket-side
+# =============================================================================
+# omnibase_core / omnibase_infra are THIRD-PARTY pinned dependencies here
+# (resolved from this repo's own .venv/site-packages per uv.lock), NOT
+# editable worktree sources. Unlike a repo importing its OWN package (where
+# this repo's `[tool.pytest.ini_options] pythonpath = ["src", "."]` setting
+# inserts this repo's own src/ ahead of everything else on sys.path), that
+# ini setting does nothing to protect a THIRD-PARTY dependency's resolution.
+#
+# An ambient PYTHONPATH exported by the parent shell/session (OMN-14420:
+# "Ambient PYTHONPATH makes worktree test runs silently execute
+# canonical-clone source") is inserted into sys.path by the interpreter
+# itself, ahead of site-packages. If it happens to contain a sibling
+# canonical clone's `omnibase_core/src` or `omnibase_infra/src`,
+# `import omnibase_core` / `import omnibase_infra` silently resolves to a
+# different — possibly stale, possibly incompatible — copy than the one
+# uv.lock actually pinned and installed, instead of failing or warning.
+#
+# OMN-15019 reproduced exactly this shape: a `ModuleNotFoundError` diagnosed
+# as an omnibase_infra packaging gap disappeared under `env -u PYTHONPATH`
+# and reproduced identically after a from-scratch `.venv` rebuild — the
+# failure was never about packaging, it was ambient PYTHONPATH redirecting
+# the import to a stale sibling clone. omnibase_infra#2423 shipped the
+# same-shaped guard for that repo's OWN package; this is the omnimarket-side
+# mirror for its two cross-repo runtime dependencies.
+#
+# Fail LOUD at collection time — never a silent fallback or narrowing — with
+# the exact remediation inline, instead of a confusing downstream
+# ModuleNotFoundError/AttributeError many tests later that looks like an
+# unrelated packaging or code bug. Runs BEFORE any `from omnibase_X.sub import
+# ...` submodule import below, so a shadowed-but-incomplete sibling clone is
+# correctly diagnosed here instead of surfacing as an unrelated-looking
+# ModuleNotFoundError on a submodule.
+_VENV_ROOT = Path(sys.prefix).resolve()
+for _dep_module in (omnibase_core, omnibase_infra):
+    _dep_file = _dep_module.__file__
+    if _dep_file is None:
+        raise RuntimeError(
+            f"Hermetic import guard failed: `{_dep_module.__name__}` has no "
+            "__file__ (unexpected namespace-package resolution) -- cannot "
+            "verify it resolved from this repo's venv. See OMN-14420."
+        )
+    _resolved_dep_path = Path(_dep_file).resolve()
+    if _VENV_ROOT not in _resolved_dep_path.parents:
+        raise RuntimeError(
+            f"Hermetic import guard failed: `{_dep_module.__name__}` resolved "
+            f"OUTSIDE this repo's venv ({_VENV_ROOT}); got "
+            f"{_resolved_dep_path} instead. This almost always means an "
+            "ambient PYTHONPATH in your shell is shadowing the pinned, "
+            "installed dependency with a different (possibly stale) sibling "
+            "clone — see OMN-14420. Re-run with 'env -u PYTHONPATH' prefixed "
+            "on your command."
+        )
+
+from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory  # noqa: E402
+from omnibase_infra.event_bus.event_bus_kafka import EventBusKafka  # noqa: E402
+from omnibase_infra.event_bus.models.config import (  # noqa: E402
+    ModelKafkaEventBusConfig,
+)
 
 
 @pytest.fixture
