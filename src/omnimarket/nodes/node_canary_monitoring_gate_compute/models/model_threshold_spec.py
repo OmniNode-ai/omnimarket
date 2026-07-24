@@ -1,21 +1,28 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""ModelThresholdSpec — a per-signal abort/warn threshold declaration (OMN-14735, B10).
+"""ModelThresholdSpec — a per-signal abort/warn threshold declaration (OMN-14735/OMN-14948, B10).
 
 The **numeric** ``warn_threshold``/``abort_threshold`` values are a required
 input from the managed-staging contractor deliverable A6 ("Supply monitoring
 thresholds" — see
 ``docs/plans/2026-07-17-managed-staging-verified-state-and-task-split.md``).
-A6 has not been delivered as of this scaffold (OMN-14723 tree). This model
-therefore represents an **unresolved** threshold — both fields default to
-``None`` — as a first-class, typed state rather than a fabricated placeholder
-number. ``is_resolved`` reports whether real numbers have landed; the gate
-handler treats an unresolved spec as ``UNRESOLVED``, never as "pass" or a
-guessed number.
+A6 was delivered 2026-07-22 (OMN-14732) for all five signal domains; the real
+values are declared in ``thresholds.yaml`` and resolved to instances of this
+model by
+:func:`omnimarket.nodes.node_canary_monitoring_gate_compute.handlers.threshold_config_loader.default_threshold_specs`
+(OMN-14948) — never as a literal number typed directly into Python source.
 
-Do not set ``warn_threshold``/``abort_threshold`` to a literal number in this
-repository until A6 is delivered and cited (ticket + contractor artifact
-reference) in ``source``.
+Both fields default to ``None``, representing an **unresolved** threshold as
+a first-class, typed state rather than a fabricated placeholder number. This
+remains load-bearing beyond the initial A6 handoff: any caller that builds a
+spec without real numbers (a future signal domain, a misconfigured request)
+still gets an honest unresolved state. ``is_resolved`` reports whether real
+numbers have landed; the gate handler treats an unresolved spec as
+``UNRESOLVED``, never as "pass" or a guessed number.
+
+Do not set ``warn_threshold``/``abort_threshold`` to a literal number
+anywhere in this repository outside ``thresholds.yaml`` without citing a
+real source (ticket + contractor artifact reference) in ``source``.
 """
 
 from __future__ import annotations

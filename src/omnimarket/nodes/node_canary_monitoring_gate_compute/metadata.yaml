@@ -1,6 +1,6 @@
 name: node_canary_monitoring_gate_compute
-version: "0.1.0"
-description: "Pure computation: classifies observed auth/TLS/broker/lag/RDS monitoring signal readings against per-signal threshold specs, reporting PASS/WARN/ABORT/BLOCKED_PENDING_A6. Scaffold only — numeric thresholds pending A6 contractor deliverable. Evidence-only, zero I/O."
+version: "0.2.0"
+description: "Pure computation: classifies observed auth/TLS/broker/lag/RDS monitoring signal readings against per-signal threshold specs, reporting PASS/WARN/ABORT/BLOCKED_PENDING_A6. Real numeric thresholds wired from the A6 contractor deliverable (OMN-14732) via thresholds.yaml (OMN-14948). Evidence-only, zero I/O."
 pack: pipeline
 node_role: compute
 display_name: "Canary Monitoring Gate Compute"

@@ -68,6 +68,11 @@ dependencies = [
     "pytest-asyncio>=1.3.0",
     "docker>=7.0.0",
     "rich>=13.0.0",
+    # OMN-14893: GitHub App JWT signing + installation-token exchange for the
+    # OCC machine-auth path (github_app_auth.py). Already an unconditional
+    # transitive dep via omnibase-infra>=... (pyjwt>=2.12.0); declared
+    # directly so this repo does not depend on that transitivity holding.
+    "pyjwt[crypto]>=2.12.0",
 ]
 
 [project.optional-dependencies]

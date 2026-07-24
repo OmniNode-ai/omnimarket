@@ -1,21 +1,24 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""HandlerCanaryMonitoringGate — classify monitoring signals against thresholds (OMN-14735, B10).
+"""HandlerCanaryMonitoringGate — classify monitoring signals against thresholds (OMN-14735/OMN-14948, B10).
 
 Pure COMPUTE. Wires each observed signal reading (auth/TLS/broker/lag/RDS —
 the five domains named in the managed-staging execution plan's A6/B10 tasks)
 to its threshold spec and classifies the result as ``PASS``/``WARN``/
 ``ABORT``/``UNRESOLVED``.
 
-**This is a scaffold, not a live monitoring integration.** The numeric
-``warn_threshold``/``abort_threshold`` values are a contractor deliverable
-(A6, ``docs/plans/2026-07-17-managed-staging-verified-state-and-task-split.md``)
-that has not been supplied as of this scaffold. Every threshold spec built
-from real inputs today is therefore unresolved by construction, and every
-reading classifies as ``UNRESOLVED`` — never a fabricated PASS/WARN/ABORT.
-Once A6 lands, the same threshold specs gain real numbers and a real
-``source`` citation, and the identical logic below starts producing real
-verdicts with no code change required.
+The numeric ``warn_threshold``/``abort_threshold`` values are supplied by
+the A6 contractor deliverable (OMN-14732, delivered 2026-07-22) and wired
+via
+:func:`omnimarket.nodes.node_canary_monitoring_gate_compute.handlers.threshold_config_loader.default_threshold_specs`,
+which reads them from ``thresholds.yaml`` (OMN-14948) rather than any value
+being hardcoded in this module. This function itself stays a pure,
+threshold-agnostic classifier: callers that omit ``thresholds`` from the
+request, or pass their own unresolved/partial specs, still get
+``UNRESOLVED``/``BLOCKED_PENDING_A6`` — never a fabricated PASS/WARN/ABORT.
+That fallback is a permanent safety property of the model
+(:class:`~...model_threshold_spec.ModelThresholdSpec`), not scaffold-only
+behavior.
 
 No I/O, no clock, no randomness, no live bus/AWS/Kubernetes dependency.
 """

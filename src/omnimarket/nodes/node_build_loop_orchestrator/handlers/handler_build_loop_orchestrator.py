@@ -212,6 +212,7 @@ class HandlerBuildLoopOrchestrator:
 
         self._topic_phase_transition = topics.phase_transition
         self._topic_completed = topics.completed
+        self._topic_failed = topics.failed
         self._topic_dod_checked = topics.dod_checked
         self._topic_overseer_verification_completed = (
             topics.overseer_verification_completed
@@ -297,50 +298,75 @@ class HandlerBuildLoopOrchestrator:
             loop_command.skip_closeout,
         )
 
-        summaries: list[ModelLoopCycleSummary] = []
-        total_dispatched = 0
-        cycles_completed = 0
-        cycles_failed = 0
+        # OMN-15002 silence closure: handle() previously had no top-level
+        # exception handling. An exception raised outside the per-phase
+        # try/except in _execute_phase (e.g. in _fsm.start/_fsm.advance,
+        # _to_loop_command, or the cycle-loop control flow itself) propagated
+        # straight out of handle() into the auto-wiring consume boundary.
+        # With ONEX_BOUNDARY_DLQ_ENABLED off (the live dev/prod/judge default
+        # -- see OMN-14551), that boundary logs-and-swallows: the input
+        # offset still commits, and NOTHING is emitted on any of this
+        # contract's 11 publish topics -- a committed-but-silent loss
+        # indistinguishable from the routing bug this ticket fixes. This
+        # try/except makes that failure mode loud and terminal-signal-bearing
+        # regardless of the DLQ flag: any unhandled exception now publishes
+        # build-loop-failed with the correlation_id and error detail BEFORE
+        # re-raising, so a queryable terminal event always exists even if the
+        # boundary swallow still happens above this handler.
+        try:
+            summaries: list[ModelLoopCycleSummary] = []
+            total_dispatched = 0
+            cycles_completed = 0
+            cycles_failed = 0
 
-        for cycle_idx in range(loop_command.max_cycles):
+            for cycle_idx in range(loop_command.max_cycles):
+                logger.info(
+                    "[BUILD-LOOP-ORCH] Starting cycle %d/%d (correlation_id=%s)",
+                    cycle_idx + 1,
+                    loop_command.max_cycles,
+                    loop_command.correlation_id,
+                )
+                summary = await self._run_cycle(loop_command)
+                summaries.append(summary)
+
+                if summary.final_phase == EnumBuildLoopPhase.COMPLETE:
+                    cycles_completed += 1
+                    total_dispatched += summary.tickets_dispatched
+                else:
+                    cycles_failed += 1
+                    logger.warning(
+                        "[BUILD-LOOP-ORCH] Cycle %d failed in phase %s: %s",
+                        cycle_idx + 1,
+                        summary.final_phase.value,
+                        summary.error_message,
+                    )
+                    break
+
             logger.info(
-                "[BUILD-LOOP-ORCH] Starting cycle %d/%d (correlation_id=%s)",
-                cycle_idx + 1,
-                loop_command.max_cycles,
+                "[BUILD-LOOP-ORCH] === EXIT === %d completed, %d failed, "
+                "%d dispatched (correlation_id=%s)",
+                cycles_completed,
+                cycles_failed,
+                total_dispatched,
                 loop_command.correlation_id,
             )
-            summary = await self._run_cycle(loop_command)
-            summaries.append(summary)
 
-            if summary.final_phase == EnumBuildLoopPhase.COMPLETE:
-                cycles_completed += 1
-                total_dispatched += summary.tickets_dispatched
-            else:
-                cycles_failed += 1
-                logger.warning(
-                    "[BUILD-LOOP-ORCH] Cycle %d failed in phase %s: %s",
-                    cycle_idx + 1,
-                    summary.final_phase.value,
-                    summary.error_message,
-                )
-                break
-
-        logger.info(
-            "[BUILD-LOOP-ORCH] === EXIT === %d completed, %d failed, "
-            "%d dispatched (correlation_id=%s)",
-            cycles_completed,
-            cycles_failed,
-            total_dispatched,
-            loop_command.correlation_id,
-        )
-
-        return ModelOrchestratorResult(
-            correlation_id=loop_command.correlation_id,
-            cycles_completed=cycles_completed,
-            cycles_failed=cycles_failed,
-            cycle_summaries=tuple(summaries),
-            total_tickets_dispatched=total_dispatched,
-        )
+            return ModelOrchestratorResult(
+                correlation_id=loop_command.correlation_id,
+                cycles_completed=cycles_completed,
+                cycles_failed=cycles_failed,
+                cycle_summaries=tuple(summaries),
+                total_tickets_dispatched=total_dispatched,
+            )
+        except Exception as exc:
+            logger.exception(
+                "[BUILD-LOOP-ORCH] === UNHANDLED FAILURE === handle() raised "
+                "(correlation_id=%s): %s",
+                loop_command.correlation_id,
+                exc,
+            )
+            await self._publish_failed_event(loop_command.correlation_id, exc)
+            raise
 
     @staticmethod
     def _to_loop_command(
@@ -782,6 +808,46 @@ class HandlerBuildLoopOrchestrator:
                 topic=self._topic_phase_transition,
                 key=None,
                 value=payload,
+            )
+
+    async def _publish_failed_event(self, correlation_id: UUID, exc: Exception) -> None:
+        """Publish a terminal build-loop-failed event (OMN-15002 silence closure).
+
+        Best-effort: a failure publishing the failure event must never mask
+        the original exception, which the caller always re-raises after this
+        returns. If the event bus itself is unavailable or the publish call
+        raises, that secondary failure is logged (not swallowed silently) but
+        does not prevent the original exception from propagating.
+        """
+        if self._event_bus is None:
+            logger.error(
+                "[BUILD-LOOP-ORCH] No event bus configured -- cannot publish "
+                "build-loop-failed terminal event for correlation_id=%s. The "
+                "original exception below still propagates.",
+                correlation_id,
+            )
+            return
+        payload = json.dumps(
+            {
+                "correlation_id": str(correlation_id),
+                "error_type": type(exc).__name__,
+                "error_message": str(exc),
+                "timestamp": datetime.now(tz=UTC).isoformat(),
+            }
+        ).encode()
+        try:
+            await self._event_bus.publish(
+                topic=self._topic_failed,
+                key=None,
+                value=payload,
+            )
+        except Exception:
+            logger.exception(
+                "[BUILD-LOOP-ORCH] Failed to publish build-loop-failed terminal "
+                "event for correlation_id=%s -- the original exception below "
+                "still propagates, but no terminal signal exists on the bus "
+                "for this failure.",
+                correlation_id,
             )
 
 

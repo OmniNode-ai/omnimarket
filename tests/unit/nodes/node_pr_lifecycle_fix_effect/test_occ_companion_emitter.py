@@ -80,10 +80,18 @@ class TestRunGit:
 class TestOpenOrSyncOccPr:
     def test_returns_existing_open_pr_without_creating(self) -> None:
         emitter = OccCompanionEmitter()
+        label_calls: list[str] = []
 
         def fake_rest(method: str, path: str, *, body=None, token=None) -> dict:
             if "/search/issues" in path:
                 return {"items": [{"number": 4242}]}
+            # OMN-14893: the sync path also (idempotently) verifies the
+            # occ:machine-minted provenance marker (label POST is the only
+            # other call permitted here).
+            if method == "POST" and path.endswith("/issues/4242/labels"):
+                label_calls.append(path)
+                assert body == {"labels": ["occ:machine-minted"]}
+                return {}
             raise AssertionError(f"unexpected POST/GET during sync: {method} {path}")
 
         with (
@@ -97,16 +105,23 @@ class TestOpenOrSyncOccPr:
                 pr_number=1,
             )
         assert result == 4242  # synced to the existing companion, no create
+        assert label_calls == [
+            "/repos/OmniNode-ai/onex_change_control/issues/4242/labels"
+        ]
 
     def test_creates_on_default_branch_when_none_exists(self) -> None:
         emitter = OccCompanionEmitter()
         posted: dict = {}
+        label_calls: list[tuple[str, dict]] = []
 
         def fake_rest(method: str, path: str, *, body=None, token=None) -> dict:
             if "/search/issues" in path:
                 return {"items": []}
             if method == "GET":  # default-branch resolution
                 return {"default_branch": "dev"}
+            if path.endswith("/issues/77/labels"):
+                label_calls.append((path, body or {}))
+                return {}
             posted.update(body or {})
             return {"number": 77}
 
@@ -122,6 +137,39 @@ class TestOpenOrSyncOccPr:
             )
         assert result == 77
         assert posted["base"] == "dev"  # OCC default branch, never hardcoded main
+        # OMN-14893 provenance marker: applied on create too (the OCC#4661
+        # gap — this emitter never applied it before this fix).
+        assert label_calls == [
+            (
+                "/repos/OmniNode-ai/onex_change_control/issues/77/labels",
+                {"labels": ["occ:machine-minted"]},
+            )
+        ]
+
+    def test_label_failure_is_swallowed_never_aborts_author(self) -> None:
+        """Best-effort contract (OMN-14893): a label API hiccup must not fail the mint."""
+        from omnimarket.github_api import GitHubApiError
+
+        emitter = OccCompanionEmitter()
+
+        def fake_rest(method: str, path: str, *, body=None, token=None) -> dict:
+            if "/search/issues" in path:
+                return {"items": [{"number": 4242}]}
+            if path.endswith("/labels"):
+                raise GitHubApiError("label API down", status_code=500)
+            raise AssertionError(f"unexpected call: {method} {path}")
+
+        with (
+            patch(f"{_MOD}.rest_json", side_effect=fake_rest),
+            patch(f"{_MOD}._resolve_github_token", return_value="fake-token"),
+        ):
+            result = emitter._open_or_sync_occ_pr(
+                branch="auto/x-pr-1-occ-autobind",
+                ticket="OMN-9999",
+                repo="OmniNode-ai/omnimarket",
+                pr_number=1,
+            )
+        assert result == 4242  # mint still succeeds despite the label failure
 
     def test_raises_on_missing_number(self) -> None:
         emitter = OccCompanionEmitter()
@@ -624,3 +672,80 @@ class TestAppendStability:
         # append — this is the rot OMN-14411/OMN-14418 residual 3 describe.
         whole_file_after = f"sha256:{__import__('hashlib').sha256(contract_path.read_bytes()).hexdigest()}"
         assert receipt_before["contract_sha256"] != whole_file_after
+
+
+# ---------------------------------------------------------------------------
+# _resolve_github_token — OMN-14893 auth-mode switch (pat default / app opt-in)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestResolveGithubTokenAuthMode:
+    def test_default_mode_is_pat_unchanged_behavior(self, monkeypatch) -> None:
+        from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.occ_companion_emitter import (
+            _resolve_github_token,
+        )
+
+        monkeypatch.delenv("OMNI_OCC_GITHUB_AUTH_MODE", raising=False)
+        with (
+            patch(f"{_MOD}.contract_secret_ref", return_value="GITHUB_TOKEN"),
+            patch(f"{_MOD}.resolve_api_key") as mock_resolve,
+        ):
+            from pydantic import SecretStr
+
+            mock_resolve.return_value = SecretStr("ghp_humanpat")
+            token = _resolve_github_token()
+        assert token == "ghp_humanpat"
+
+    def test_app_mode_routes_through_app_auth_never_touches_pat(
+        self, monkeypatch
+    ) -> None:
+        from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.occ_companion_emitter import (
+            _resolve_github_token,
+        )
+
+        monkeypatch.setenv("OMNI_OCC_GITHUB_AUTH_MODE", "app")
+        with (
+            patch(
+                f"{_MOD}.resolve_app_installation_token_from_contract",
+                return_value="ghs_appminted",
+            ) as mock_app_resolve,
+            patch(f"{_MOD}.resolve_api_key") as mock_pat_resolve,
+        ):
+            token = _resolve_github_token()
+        assert token == "ghs_appminted"
+        mock_app_resolve.assert_called_once()
+        # The pat-mode resolver is never touched at all in this branch.
+        mock_pat_resolve.assert_not_called()
+
+    def test_unknown_mode_raises(self, monkeypatch) -> None:
+        from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.occ_companion_emitter import (
+            _resolve_github_token,
+        )
+
+        monkeypatch.setenv("OMNI_OCC_GITHUB_AUTH_MODE", "bogus")
+        with pytest.raises(RuntimeError, match="not a recognized OCC"):
+            _resolve_github_token()
+
+    def test_app_mode_credential_missing_propagates_no_pat_fallback(
+        self, monkeypatch
+    ) -> None:
+        """A missing app credential in app mode must never fall back to the PAT."""
+        from omnimarket.github_app_auth import GitHubAppCredentialMissingError
+        from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.occ_companion_emitter import (
+            _resolve_github_token,
+        )
+
+        monkeypatch.setenv("OMNI_OCC_GITHUB_AUTH_MODE", "app")
+        with (
+            patch(
+                f"{_MOD}.resolve_app_installation_token_from_contract",
+                side_effect=GitHubAppCredentialMissingError(
+                    "ONEXBOT_OCC_APP_ID missing"
+                ),
+            ),
+            patch(f"{_MOD}.resolve_api_key") as mock_pat_resolve,
+            pytest.raises(GitHubAppCredentialMissingError, match="ONEXBOT_OCC_APP_ID"),
+        ):
+            _resolve_github_token()
+        mock_pat_resolve.assert_not_called()
