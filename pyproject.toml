@@ -536,16 +536,17 @@ omnimarket = "omnimarket.nodes"
 omnibase-core = { git = "https://github.com/OmniNode-ai/omnibase_core.git", rev = "aca32f2446f73cc2a8c903429e2a1f636722366e" }  # raw-override-ok: OMN-14779
 # omnibase-infra git rev retained — infra is not in the dep-provenance forbidden set.
 #
-# OMN-14779 (PR 2/2): re-pinned from 7e52d5b0 to bbaa7186 -- the MERGED squash
-# commit of omnibase_infra #2402 on dev, which packages
+# OMN-14779 (PR 2/2): re-pinned from 7e52d5b0 to 77144f83 -- current
+# omnibase_infra dev, a descendant of the merged #2402/#2419 squashes that package
 # src/omnibase_infra/contracts/canary/model_replay_projection_seam.json as
 # wheel data. This omnimarket-side half imports that seam JSON and asserts
 # ModelReplayProjection / ModelReplayCursor / ModelDeliveryPosition
-# .model_fields against it field-by-field -- the pin bump is required for the
-# packaged data to be importable. REMOVE WHEN RELEASED: once omnibase-infra
-# publishes a version containing #2402, delete this override (the range pin
-# above already covers it) and `uv lock`.
-omnibase-infra = { git = "https://github.com/OmniNode-ai/omnibase_infra.git", rev = "bbaa71864c6b96d8d3867debaef0fec137d3d97d" }
+# .model_fields against it field-by-field. The newer pin also includes
+# post-#2402 graph repairs required by omnimarket's contract-topic graph gate.
+# REMOVE WHEN RELEASED: once omnibase-infra publishes a version containing #2402
+# plus the graph repairs, delete this override (the range pin above already
+# covers it) and `uv lock`.
+omnibase-infra = { git = "https://github.com/OmniNode-ai/omnibase_infra.git", rev = "77144f83a9f720fb4a97f1e35c48b588b748a892" }
 omninode-memory = { git = "https://github.com/OmniNode-ai/omnimemory.git", rev = "1cd318d5ca3071a24585191592d3a84fafd30cf7" }
 onex-change-control = { git = "https://github.com/OmniNode-ai/onex_change_control.git", rev = "dd2620d18001495b8d0f493b421b38399e9aab4b" }
 
