@@ -70,7 +70,9 @@ from omnibase_core.validation.validator_receipt_gate import (
     compute_contract_entry_sha256,
 )
 
-from omnimarket.github_api import rest_json, split_repo
+from omnimarket.events.occ_autoauthor import OCC_MACHINE_MINTED_LABEL
+from omnimarket.github_api import GitHubApiError, rest_json, split_repo
+from omnimarket.github_app_auth import resolve_app_installation_token_from_contract
 from omnimarket.inference.secret_store_resolver import resolve_api_key
 from omnimarket.nodes.contract_topics import contract_secret_ref
 from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.occ_evidence_stamp import (
@@ -138,20 +140,48 @@ _DO_NOT_MERGE_RE = re.compile(
 )
 
 
-def _resolve_github_token() -> str:
-    """Resolve the GitHub token from the contract-declared ref (OMN-12856).
+# OMN-14893: the OCC machine path defaults to the shared operator PAT
+# (``pat`` mode, unchanged behavior) until ``ONEXBOT_OCC_APP_ID`` /
+# ``ONEXBOT_OCC_PRIVATE_KEY`` are provisioned to this runtime. Flipping
+# ``OMNI_OCC_GITHUB_AUTH_MODE=app`` routes through
+# ``resolve_app_installation_token_from_contract`` instead, which NEVER reads
+# ``GITHUB_TOKEN`` — the fallback that reproduced OMN-14893's original defect
+# is not merely avoided by an ``if``, it is mechanically absent from that
+# code path (see ``github_app_auth`` module docstring).
+_GITHUB_AUTH_MODE_ENV_VAR = "OMNI_OCC_GITHUB_AUTH_MODE"
 
-    ``env_var_fallback`` (OMN-14452): the deployed effects lane's secret
-    resolver is configured with an explicit LLM/Slack-only mapping and
-    ``enable_convention_fallback: false`` (delegation secrets, OMN-13861/13960)
-    — it never resolves ``GITHUB_TOKEN``, which isn't an LLM secret and isn't
-    in that mapping. ``GITHUB_TOKEN`` is passed straight through as a literal
-    container env var (``runtime-effects.yaml`` ``required_env``), so falling
-    back to reading it directly — the same mechanism already used for
-    OpenRouter/Gemini provider-native names — resolves it instead of raising
-    ``SecretResolutionError`` on a secret that is genuinely present in the
-    environment.
+
+def _resolve_github_token() -> str:
+    """Resolve the GitHub credential the OCC machine path authenticates with.
+
+    ``OMNI_OCC_GITHUB_AUTH_MODE`` (OMN-14893) selects the auth path:
+
+    * ``pat`` (default, unchanged behavior) — the contract-declared
+      ``GITHUB_TOKEN`` ref, resolved via ``env_var_fallback`` (OMN-14452): the
+      deployed effects lane's secret resolver is configured with an explicit
+      LLM/Slack-only mapping and ``enable_convention_fallback: false``
+      (delegation secrets, OMN-13861/13960) — it never resolves
+      ``GITHUB_TOKEN``, which isn't an LLM secret and isn't in that mapping.
+      ``GITHUB_TOKEN`` is passed straight through as a literal container env
+      var (``runtime-effects.yaml`` ``required_env``), so falling back to
+      reading it directly — the same mechanism already used for
+      OpenRouter/Gemini provider-native names — resolves it instead of
+      raising ``SecretResolutionError`` on a secret that is genuinely present
+      in the environment.
+    * ``app`` — mint a short-lived ``onexbot-occ-writer`` App installation
+      token via ``ONEXBOT_OCC_APP_ID`` / ``ONEXBOT_OCC_PRIVATE_KEY``
+      (contract-declared, required only in this mode). Raises immediately,
+      naming the missing secret, if either credential is declared but
+      unresolvable — no PAT fallback exists in this branch.
     """
+    mode = os.environ.get(_GITHUB_AUTH_MODE_ENV_VAR, "pat").strip().lower() or "pat"
+    if mode == "app":
+        return resolve_app_installation_token_from_contract(_CONTRACT_PATH)
+    if mode != "pat":
+        raise RuntimeError(
+            f"{_GITHUB_AUTH_MODE_ENV_VAR}={mode!r} is not a recognized OCC "
+            "GitHub auth mode (expected 'pat' or 'app')."
+        )
     ref = contract_secret_ref(_CONTRACT_PATH, "GITHUB_TOKEN")
     secret = resolve_api_key(ref, env_var_fallback=ref)
     if secret is None:
@@ -1140,6 +1170,14 @@ class OccCompanionEmitter:
 
         existing_number = self._first_open_pr_number(owner, repo_name, branch, token)
         if existing_number is not None:
+            # OMN-14893: OCC#4661 shipped with no distinguishable provenance
+            # marker because this emitter never applied one — the ONLY signal
+            # was the git commit author, which OMN-14893's own investigation
+            # showed is subtle enough to cause a real misattribution. Verify
+            # (idempotent add) the marker on every sync too, not only create,
+            # so a companion opened before this fix landed gets it retro-
+            # actively on its next `synchronize` re-fire.
+            self._apply_machine_minted_label(owner, repo_name, existing_number, token)
             return existing_number
 
         # Human prose is authored here; the Evidence-Ticket line is rendered by
@@ -1176,7 +1214,43 @@ class OccCompanionEmitter:
             raise RuntimeError(
                 f"OCC PR creation returned unexpected number field: {number!r}"
             )
+        # OMN-14893 provenance marker: see the sync-path comment above.
+        self._apply_machine_minted_label(owner, repo_name, number, token)
         return number
+
+    @staticmethod
+    def _apply_machine_minted_label(
+        owner: str, repo_name: str, occ_pr_number: int, token: str
+    ) -> None:
+        """Best-effort: add the machine-minted marker label to the OCC PR.
+
+        The distinguishable marker (OMN-14393 / OMN-14893) that lets the
+        report-only window — and any human skimming the PR list — decide
+        ``minted_by_node`` without inspecting git commit authorship (the
+        signal that caused a real misattribution, per the OMN-14893
+        investigation). Mirrors ``HandlerOccCompanionEffect``'s
+        ``_apply_machine_minted_label`` byte-for-byte (net-negative-surface:
+        same label constant, same best-effort contract). Non-fatal: any
+        failure is logged and swallowed so a label API hiccup can never abort
+        a successful author.
+        """
+        try:
+            rest_json(
+                "POST",
+                f"/repos/{owner}/{repo_name}/issues/{occ_pr_number}/labels",
+                token=token,
+                body={"labels": [OCC_MACHINE_MINTED_LABEL]},
+            )
+        except (
+            GitHubApiError,
+            OSError,
+        ) as exc:  # fallback-ok: label is observability, not a gate
+            logger.warning(
+                "occ_companion_emitter: could not apply %r label to OCC#%s: %s",
+                OCC_MACHINE_MINTED_LABEL,
+                occ_pr_number,
+                exc,
+            )
 
     @staticmethod
     def _occ_default_branch(owner: str, repo_name: str, token: str) -> str:

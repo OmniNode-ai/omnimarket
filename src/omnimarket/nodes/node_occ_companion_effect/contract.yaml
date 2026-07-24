@@ -68,6 +68,16 @@ secrets:
   GITHUB_TOKEN:
     description: "GitHub PAT or Actions token for REST (PR read/patch, OCC PR open) and HTTPS git clone/push."
     required: true
+  # OMN-14893: the onexbot-occ-writer GitHub App credentials, consumed ONLY
+  # when OMNI_OCC_GITHUB_AUTH_MODE=app. See node_pr_lifecycle_fix_effect's
+  # contract.yaml for the identical declaration + rationale (both OCC
+  # companion producers share the same auth-mode contract).
+  ONEXBOT_OCC_APP_ID:
+    description: "onexbot-occ-writer GitHub App id (app-auth mode only)."
+    required: false
+  ONEXBOT_OCC_PRIVATE_KEY:
+    description: "onexbot-occ-writer GitHub App private key PEM (app-auth mode only)."
+    required: false
 
 side_effects:
   reads:

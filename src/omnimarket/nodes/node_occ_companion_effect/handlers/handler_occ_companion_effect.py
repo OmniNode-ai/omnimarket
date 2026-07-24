@@ -56,6 +56,7 @@ from omnimarket.github_api import (
     rest_json_array,
     split_repo,
 )
+from omnimarket.github_app_auth import resolve_app_installation_token_from_contract
 from omnimarket.inference.secret_store_resolver import resolve_api_key
 from omnimarket.nodes.contract_topics import contract_secret_ref
 from omnimarket.nodes.node_occ_companion_compute.handlers.handler_occ_companion_compute import (
@@ -104,8 +105,34 @@ _FORBIDDEN_PATH_PREFIXES = ("grants/", "allowlists/")
 _ALLOWED_ROOT_PREFIXES = ("contracts/", "drift/")
 
 
+# OMN-14893: same auth-mode switch as OccCompanionEmitter (the two producers
+# share the auth-mode contract so they can be cut over independently or
+# together). ``app`` mode routes through
+# ``resolve_app_installation_token_from_contract``, which never reads
+# ``GITHUB_TOKEN`` — the PAT fallback that reproduced OMN-14893's original
+# defect is mechanically absent from that code path, not just avoided by an
+# ``if`` (see ``github_app_auth`` module docstring).
+_GITHUB_AUTH_MODE_ENV_VAR = "OMNI_OCC_GITHUB_AUTH_MODE"
+
+
 def _resolve_github_token() -> str:
-    """Resolve the GitHub token from the contract-declared ref (OMN-12856)."""
+    """Resolve the GitHub credential this write-EFFECT authenticates with.
+
+    ``OMNI_OCC_GITHUB_AUTH_MODE`` (OMN-14893) selects ``pat`` (default,
+    contract-declared ``GITHUB_TOKEN``, OMN-12856) or ``app`` (short-lived
+    ``onexbot-occ-writer`` App installation token via ``ONEXBOT_OCC_APP_ID`` /
+    ``ONEXBOT_OCC_PRIVATE_KEY``, contract-declared, required only in this
+    mode — raises immediately naming the missing secret if unresolvable,
+    with no PAT fallback in this branch).
+    """
+    mode = os.environ.get(_GITHUB_AUTH_MODE_ENV_VAR, "pat").strip().lower() or "pat"
+    if mode == "app":
+        return resolve_app_installation_token_from_contract(_CONTRACT_PATH)
+    if mode != "pat":
+        raise RuntimeError(
+            f"{_GITHUB_AUTH_MODE_ENV_VAR}={mode!r} is not a recognized OCC "
+            "GitHub auth mode (expected 'pat' or 'app')."
+        )
     ref = contract_secret_ref(_CONTRACT_PATH, "GITHUB_TOKEN")
     secret = resolve_api_key(ref, env_var_fallback=ref)
     if secret is None:
