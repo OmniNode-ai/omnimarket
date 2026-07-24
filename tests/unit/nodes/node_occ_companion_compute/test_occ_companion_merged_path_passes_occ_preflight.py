@@ -35,6 +35,7 @@ from omnibase_core.validation.validator_occ_merge_eligibility import (
 from omnibase_core.validation.validator_receipt_gate import (
     compute_contract_entry_sha256,
 )
+from pydantic import BaseModel, ConfigDict, ValidationError
 
 from omnimarket.nodes.node_occ_companion_compute.handlers.handler_occ_companion_compute import (
     compute_companion_plan,
@@ -294,3 +295,170 @@ def test_red_control_without_self_bind_entry_occ_pr_audience_fails(
     result = validate_occ_merge_eligibility(_occ_pr_audience(tmp_path))
     assert not result.eligible
     assert result.reason.value == "pr_ticket_mismatch", result.detail
+
+
+# ---------------------------------------------------------------------------
+# OMN-15028: the supersede ``replacement`` must stay parseable by a Receipt
+# Gate pinned to an OLDER ``omnibase_core`` schema, not just the schema this
+# producer happens to be built against.
+#
+# Live failure this reproduces (omnibase_infra#2424, onex_change_control#4720,
+# CI run 30122331978/job 89577690819):
+#
+#   "detail":"supersession record .../command.supersede.2424.yaml is invalid:
+#   6 validation errors for ModelReceiptSupersession
+#   replacement.diff_attestations
+#     Extra inputs are not permitted [type=extra_forbidden, input_value=[], ...]
+#   replacement.mutation_command / .mutation_verb / .target_identity /
+#   .no_source_change / .prevention_followup   (same extra_forbidden shape)
+#   ","eligible":false,"reason":"nonpass_receipt"
+#
+# Root cause: the Receipt Gate (``receipt-gate.yml`` in every product repo)
+# ALWAYS installs ``omnibase_core`` from ``ref: main``, which — independent of
+# whatever revision this producer's own ``omnibase_core`` dependency is pinned
+# to (a git rev off ``dev``) — is the frozen, released schema every consumer
+# validates against. ``ModelDodReceipt``/``ModelReceiptSupersession`` are both
+# ``extra="forbid"``, so any field the producer emits that ``main`` doesn't
+# yet recognize hard-fails the gate, even at a harmless default value.
+#
+# ``_ModelDodReceiptMainSnapshot`` below is a frozen, ``extra="forbid"``
+# replica of ``omnibase_core@main``'s ``ModelDodReceipt`` field set as of the
+# last promotion (SHA 537cffcc, 2026-07-08, v0.46.6) — the exact shape the
+# live Receipt Gate validated against when OMN-15028 was filed. It stands in
+# for "a receipt-gate pinned to an older, already-released schema" without
+# requiring a second ``omnibase_core`` install in this test suite. Update it
+# only in lockstep with a confirmed ``omnibase_core`` dev->main promotion.
+class _ModelDodReceiptMainSnapshot(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    schema_version: str
+    ticket_id: str
+    evidence_item_id: str
+    check_type: str
+    check_value: str
+    status: str
+    run_timestamp: str
+    commit_sha: str
+    runner: str
+    verifier: str
+    probe_command: str
+    probe_stdout: str
+    actual_output: str | None = None
+    exit_code: int | None = None
+    duration_ms: int | None = None
+    pr_number: int | None = None
+    contract_sha256: str | None = None
+    contract_entry_sha256: str | None = None
+    branch: str | None = None
+    working_dir: str | None = None
+    proof_packet: object | None = None
+    evidence_class: str | None = None
+
+
+class _ModelReceiptSupersessionMainSnapshot(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    schema_version: str
+    ticket_id: str
+    evidence_item_id: str
+    check_type: str
+    supersedes: str
+    reason: str
+    superseder: str
+    created_at: str
+    tombstone: bool = False
+    replacement: _ModelDodReceiptMainSnapshot | None = None
+
+
+@pytest.mark.unit
+def test_merged_supersede_replacement_is_compatible_with_pinned_main_schema(
+    tmp_path: Path,
+) -> None:
+    """OMN-15028 cross-boundary regression: the ACTUAL rendered supersede file
+    — produced by driving the real render seam (``compute_companion_plan`` ->
+    ``_supersede_file``), not a hand-authored fixture — must still validate
+    against the older, already-released ``omnibase_core@main`` schema a
+    live Receipt Gate installs, not only against whatever newer schema this
+    producer's own pinned ``omnibase_core`` happens to declare.
+
+    Before the OMN-15028 fix, this failed with the exact live error above:
+    ``model_dump(mode="json")`` (no ``exclude_defaults``) re-serialized every
+    dev-schema-only field of ``replacement`` at its default value, and
+    ``_ModelDodReceiptMainSnapshot`` — a faithful stand-in for the pinned
+    consumer — rejects each one as ``extra_forbidden``.
+    """
+    plan = _merged_pass2_plan()
+    supersede = next(f for f in plan.companion_files if ".supersede." in f.path)
+    raw = yaml.safe_load(supersede.content)
+
+    # Sanity: the fields OMN-15028 fixed must be genuinely absent from the
+    # rendered bytes, not merely tolerated by a permissive parse below.
+    dev_only_fields = {
+        "diff_attestations",
+        "mutation_command",
+        "mutation_verb",
+        "target_identity",
+        "no_source_change",
+        "prevention_followup",
+    }
+    present = dev_only_fields & set(raw["replacement"].keys())
+    assert not present, (
+        f"supersede replacement still carries dev-schema-only default fields "
+        f"{present} — these are exactly the OMN-15028 extra_forbidden fields "
+        f"on omnibase_core@main"
+    )
+
+    # The real cross-boundary assertion: the pinned-main replica parses the
+    # actual render output cleanly.
+    record = _ModelReceiptSupersessionMainSnapshot.model_validate(raw)
+    assert record.replacement is not None
+    assert record.replacement.contract_entry_sha256 is not None
+    assert record.replacement.contract_sha256 is not None
+    assert record.replacement.pr_number == _PRODUCT_PR
+
+    # And the dev-pinned (current) schema this producer actually runs against
+    # must still accept its own output — the fix must not have dropped a
+    # field that dev-side consumers still require.
+    from omnibase_core.models.contracts.ticket.model_receipt_supersession import (
+        ModelReceiptSupersession,
+    )
+
+    ModelReceiptSupersession.model_validate(raw)
+
+
+@pytest.mark.unit
+def test_red_control_unfiltered_dump_reproduces_omn15028_extra_forbidden(
+    tmp_path: Path,
+) -> None:
+    """RED control: reproduce the exact OMN-15028 failure by re-dumping the
+    real, live-constructed ``replacement`` receipt WITHOUT ``exclude_defaults``
+    (the pre-fix behavior) and showing the pinned-main replica schema-rejects
+    it on precisely the six fields the live CI transcript named."""
+    from omnibase_core.models.contracts.ticket.model_receipt_supersession import (
+        ModelReceiptSupersession,
+    )
+
+    plan = _merged_pass2_plan()
+    supersede = next(f for f in plan.companion_files if ".supersede." in f.path)
+    record = ModelReceiptSupersession.model_validate(yaml.safe_load(supersede.content))
+
+    # Re-dump the SAME, already-fixed record the way pre-OMN-15028 code did —
+    # a full dump with no default-exclusion — to reproduce the buggy shape.
+    unfiltered = record.model_dump(mode="json")
+
+    with pytest.raises(ValidationError) as exc_info:
+        _ModelReceiptSupersessionMainSnapshot.model_validate(unfiltered)
+
+    errors = {
+        ".".join(str(p) for p in e["loc"]): e["type"] for e in exc_info.value.errors()
+    }
+    expected_dev_only_fields = {
+        "replacement.diff_attestations",
+        "replacement.mutation_command",
+        "replacement.mutation_verb",
+        "replacement.target_identity",
+        "replacement.no_source_change",
+        "replacement.prevention_followup",
+    }
+    assert set(errors) == expected_dev_only_fields
+    assert all(kind == "extra_forbidden" for kind in errors.values())
