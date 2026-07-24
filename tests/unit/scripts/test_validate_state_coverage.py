@@ -510,10 +510,27 @@ def test_declared_state_shape_changed_false_for_handler_routing_only_diff(
 
 
 @pytest.mark.unit
-def test_read_contract_at_ref_delimits_git_show_ref(
+def test_read_contract_at_ref_uses_rev_path_object_syntax_no_delimiter(
     scc_module: object, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """Git refs are passed after an option delimiter before rev:path syntax."""
+    """``git show <ref>:<path>`` (no ``--`` delimiter) is the correct invocation.
+
+    OMN-15005 regression: a prior revision inserted ``--`` before the combined
+    ``<ref>:<path>`` argument. Git's ``rev:path`` object-notation is ONLY
+    recognized when NOT preceded by ``--`` -- with the delimiter present, git
+    instead treats the whole string as a literal pathspec, which never matches
+    an on-disk file and silently returns empty output (exit 0) instead of
+    erroring. That silently defeated ``_declared_state_shape_changed``'s
+    before/after comparison for EVERY call (``before`` was always parsed as
+    ``{}``), which broke the OMN-14009 "purely-additive handler_routing edit
+    stays strict-exempt" guarantee for every node with real declared outputs.
+
+    A ref that looks like an option flag (e.g. ``-untrusted-ref``) still fails
+    safely without the delimiter: git rejects it with a non-zero exit
+    ("unrecognized argument"), which the caller already treats as unreadable
+    and maps to ``None`` (fail-safe -> shape treated as changed). No delimiter
+    is needed to preserve that fail-safe property.
+    """
     import subprocess
     import types
 
@@ -530,16 +547,28 @@ def test_read_contract_at_ref_delimits_git_show_ref(
 
     result = scc_module._read_contract_at_ref(  # type: ignore[attr-defined]
         "src/omnimarket/nodes/node_example_effect/contract.yaml",
-        "-untrusted-ref",
+        "origin/dev",
     )
 
     assert seen_args == [
         "git",
         "show",
-        "--",
-        "-untrusted-ref:src/omnimarket/nodes/node_example_effect/contract.yaml",
+        "origin/dev:src/omnimarket/nodes/node_example_effect/contract.yaml",
     ]
     assert result == {"node_type": "effect", "outputs": {"result": {"type": "string"}}}
+
+
+@pytest.mark.unit
+def test_read_contract_at_ref_returns_none_on_unrecognized_ref_like_flag(
+    scc_module: object,
+) -> None:
+    """A ref shaped like an option flag hits the REAL git binary (no mock) and
+    fails closed: non-zero exit -> ``None`` -> caller treats shape as changed."""
+    result = scc_module._read_contract_at_ref(  # type: ignore[attr-defined]
+        "src/omnimarket/nodes/node_agent_coordinator_orchestrator/contract.yaml",
+        "-untrusted-ref",
+    )
+    assert result is None
 
 
 @pytest.mark.unit

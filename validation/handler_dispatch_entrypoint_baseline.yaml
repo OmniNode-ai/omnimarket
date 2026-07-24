@@ -58,6 +58,9 @@ known_entrypointless:
   - contract: data_verification
     handler: PostgresDataSource
     module: omnimarket.nodes.node_data_verification.handlers.datasource_postgres
+  - contract: node_agent_coordinator_orchestrator
+    handler: HandlerSubscription
+    module: omnimemory.handlers.handler_subscription
   - contract: node_architecture_graph_populate_effect
     handler: HandlerArchitectureGraphPopulate
     module: omnimarket.nodes.node_architecture_graph_populate_effect.handlers.handler_architecture_graph_populate

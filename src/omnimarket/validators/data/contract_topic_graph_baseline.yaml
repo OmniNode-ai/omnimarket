@@ -1,11 +1,8 @@
 accepted:
-- DECLARED_BUT_UNWIRED::node_agent_coordinator_orchestrator::-
 - DECLARED_BUT_UNWIRED::node_context_audit_dlq_effect::-
 - DECLARED_BUT_UNWIRED::node_contract_registry_reducer::-
 - DECLARED_BUT_UNWIRED::node_contract_resolver_bridge::-
 - DECLARED_BUT_UNWIRED::node_e2e_orchestrator::-
-- DECLARED_BUT_UNWIRED::node_memory_lifecycle_orchestrator::-
-- DECLARED_BUT_UNWIRED::node_persona_lifecycle_orchestrator::-
 - DECLARED_BUT_UNWIRED::node_validation_adjudicator::-
 - DISCONNECTED_SUBGRAPH::ab_compare_orchestrator::-
 - DISCONNECTED_SUBGRAPH::adr_decision_extraction_llm_effect::-
