@@ -1,6 +1,7 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""HandlerPushValidationEffect — push-validation write-EFFECT (OMN-14920).
+"""HandlerPushValidationEffect — push-validation write-EFFECT (OMN-14920,
+Contract v2 mode=validate_only OMN-14976).
 
 Canonical def-B handler: ``handle(request: ModelPushValidationRequest) ->
 ModelPushValidationReceipt``. The envelope boundary is the shared runtime
@@ -33,6 +34,13 @@ Contract-text semantics (load-bearing, encoded verbatim from contract.yaml):
     not double-push. This check runs FIRST, before the stale-head comparison,
     so a redelivery after a successful push short-circuits even if the live
     branch has since moved on.
+(6) Contract v2 (OMN-14976): ``request.mode=validate_only`` — after a green
+    suite, the handler returns outcome=validated WITHOUT calling
+    ``push_branch`` at all. The push flow (mode=validate_and_push, the
+    default) is completely unchanged; this is a pure addition gated on the
+    new field. The request model's own invariant already guarantees
+    ``source_identity`` (when present) is ``commit``-only for
+    mode=validate_and_push, so the handler does not need to re-check it.
 
 Tenant gate (optional-input-silent-skip is banned): ``tenant_principal_id``
 must be present and well-formed (``t-<32hex>``). The typed request model
@@ -41,6 +49,14 @@ already enforces this at parse time; the handler re-validates defensively
 receipt — the receipt model's own pattern would reject it — so the handler
 REFUSES by raising (failure terminal topic) rather than fabricating tenant
 identity in a completed-topic receipt.
+
+Named residuals NOT built this session (see OMN-14976 ticket comment): the
+gateway-side (omninode_infra) advertisement of ``mode``/``source_identity``;
+``environment_identity`` population (the receipt field exists, defaults to
+``None`` — no runtime-lane-identity source is wired into this handler yet);
+the bundle-transfer leg for non-commit source identities (OMN-14979); the
+pre-push client that would actually set mode=validate_only from a laptop
+(OMN-14980).
 """
 
 from __future__ import annotations
@@ -57,6 +73,7 @@ from omnimarket.nodes.node_push_validation_effect.models.model_push_validation_r
     ModelPushValidationReceipt,
 )
 from omnimarket.nodes.node_push_validation_effect.models.model_push_validation_request import (
+    EnumPushValidationMode,
     ModelPushValidationRequest,
 )
 from omnimarket.nodes.node_push_validation_effect.protocols.git_push_validation_subprocess import (
@@ -160,6 +177,7 @@ class HandlerPushValidationEffect:
                 failure_detail=failure_detail,
                 started_at=started_at,
                 completed_at=_utc_now_z(),
+                mode=request.mode,
             )
 
         # (4) Protected branches are refused before any git side effect.
@@ -219,6 +237,18 @@ class HandlerPushValidationEffect:
                 suite_verdict=EnumSuiteVerdict.FAIL,
                 suite_log_digest=suite.log_digest,
                 failure_detail=suite.detail or "governed suite red",
+            )
+
+        # (6) Contract v2 (OMN-14976): validate_only stops here — suite pass,
+        # push intentionally never attempted. push_branch is not called at
+        # all (not merely skipped-and-recorded): validate_only must never
+        # touch the remote.
+        if request.mode == EnumPushValidationMode.VALIDATE_ONLY:
+            return receipt(
+                EnumPushValidationOutcome.VALIDATED,
+                hook_id_readback=hooks.hook_id_readback,
+                suite_verdict=EnumSuiteVerdict.PASS,
+                suite_log_digest=suite.log_digest,
             )
 
         push = self._client.push_branch(

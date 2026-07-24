@@ -23,4 +23,4 @@ capabilities:
 dependencies: []
 authors: ["OmniNode Platform Team"]
 license: "MIT"
-tags: ["effect", "push-validation", "gateway", "push-farm", "OMN-14920"]
+tags: ["effect", "push-validation", "gateway", "push-farm", "OMN-14920", "OMN-14976"]
