@@ -110,6 +110,18 @@ secrets:
   GITHUB_TOKEN:
     description: "GitHub PAT or Actions token for REST and GraphQL API calls."
     required: true
+  # OMN-14893: the onexbot-occ-writer GitHub App credentials. Consumed ONLY
+  # when OMNI_OCC_GITHUB_AUTH_MODE=app; declared `required: false` at the
+  # contract level because the default `pat` mode does not need them, but the
+  # app-auth code path (github_app_auth.resolve_app_installation_token_from_contract)
+  # itself fails loud, naming this ref, if the mode is switched to `app`
+  # without these being resolvable — no silent PAT fallback exists there.
+  ONEXBOT_OCC_APP_ID:
+    description: "onexbot-occ-writer GitHub App id (app-auth mode only)."
+    required: false
+  ONEXBOT_OCC_PRIVATE_KEY:
+    description: "onexbot-occ-writer GitHub App private key PEM (app-auth mode only)."
+    required: false
 
 metadata:
   transport_type: kafka
