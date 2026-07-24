@@ -43,6 +43,8 @@ Flow (event-driven, no in-process loop):
 
 from __future__ import annotations
 
+import hashlib
+import json
 from pathlib import Path
 from typing import assert_never
 
@@ -67,6 +69,18 @@ from omnimarket.codegen.models import (
 )
 
 HANDLER_ID = "hybrid-codegen-orchestrator"
+
+# RSD emission-side provenance stamp (OMN-15011). Every generated node ships a
+# ``.rsd_provenance.json`` sidecar alongside handler.py/contract.yaml/metadata.yaml,
+# co-located in the same generated node directory. The stamp is the seam contract
+# consumed field-for-field by the omnibase_core fail-closed gate
+# (scripts/ci/rsd_provenance_stamp.py) -- schema/filename/field-name changes here
+# require a matching update there. ``files_sha256`` binds the stamp to the ACTUAL
+# emitted content (recomputed live by the gate, never trusted) so a copied/stale
+# stamp is detectable, mirroring OMN-14355's adequacy-receipt staleness recompute.
+PROVENANCE_STAMP_FILENAME = ".rsd_provenance.json"
+PROVENANCE_STAMP_SCHEMA = "rsd_provenance_stamp.v1"
+PROVENANCE_PRODUCER_NODE = "node_hybrid_codegen_orchestrator"
 
 # The six subscribe-topic payloads this orchestrator consumes (contract
 # ``handler_routing`` topic_match ``event_model`` per topic). The subscribe topic's
@@ -119,15 +133,46 @@ def _render_metadata_yaml(spec: ModelCodegenSpec) -> str:
     )
 
 
+def _sha256_text(text: str) -> str:
+    """Digest of a generated file's content, prefixed like the OMN-14355 receipts."""
+    return "sha256:" + hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+def _provenance_stamp_json(state: ModelCodegenPipelineState, metadata_yaml: str) -> str:
+    """Render the machine provenance stamp for this run (pure; no I/O).
+
+    Binds ``files_sha256`` to the SAME content strings written to disk for
+    handler.py/contract.yaml/metadata.yaml, so the consuming gate can recompute
+    each digest from the files it finds on disk and reject any mismatch (stale or
+    copy-pasted stamp) rather than trusting the ``generated_by`` field alone.
+    """
+    stamp = {
+        "receipt_schema": PROVENANCE_STAMP_SCHEMA,
+        "generated_by": "rsd_delegation",
+        "producer_node": PROVENANCE_PRODUCER_NODE,
+        "run_id": state.correlation_id,
+        "node_name": state.spec.node_name,
+        "files_sha256": {
+            "handler.py": _sha256_text(state.source_text),
+            "contract.yaml": _sha256_text(state.contract_yaml),
+            "metadata.yaml": _sha256_text(metadata_yaml),
+        },
+    }
+    return json.dumps(stamp, indent=2, sort_keys=True) + "\n"
+
+
 def _generated_files(
     state: ModelCodegenPipelineState,
 ) -> tuple[ModelGeneratedFile, ...]:
     """Assemble the file set for the generated node from the pipeline state."""
+    metadata_yaml = _render_metadata_yaml(state.spec)
     return (
         ModelGeneratedFile(relative_path="handler.py", content=state.source_text),
         ModelGeneratedFile(relative_path="contract.yaml", content=state.contract_yaml),
+        ModelGeneratedFile(relative_path="metadata.yaml", content=metadata_yaml),
         ModelGeneratedFile(
-            relative_path="metadata.yaml", content=_render_metadata_yaml(state.spec)
+            relative_path=PROVENANCE_STAMP_FILENAME,
+            content=_provenance_stamp_json(state, metadata_yaml),
         ),
     )
 

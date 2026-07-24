@@ -18,6 +18,8 @@ applier does (``removeprefix('Model')`` then published_events lookup).
 
 from __future__ import annotations
 
+import hashlib
+import json
 from pathlib import Path
 
 import pytest
@@ -160,6 +162,7 @@ class TestPhaseRoutingEquivalence:
         assert by_path["handler.py"] == "handler-src"
         assert by_path["contract.yaml"] == "name: x\n"
         assert "metadata.yaml" in by_path
+        assert ".rsd_provenance.json" in by_path
 
     def test_files_written_emits_completed_terminal(self) -> None:
         topic, payload = _handle(
@@ -239,3 +242,64 @@ class TestContractTopicCoverage:
             "onex.evt.omnimarket.hybrid-codegen-completed.v1"
         )
         assert contract["descriptor"]["node_archetype"] == "orchestrator"
+
+
+@pytest.mark.unit
+class TestProvenanceStampSeam:
+    """OMN-15011 emission-side seam: the ``.rsd_provenance.json`` stamp this
+    orchestrator writes is the field-for-field contract the omnibase_core
+    fail-closed gate (``scripts/ci/rsd_provenance_stamp.py``) parses and
+    RECOMPUTES against on the consuming side. The two repos cannot co-import
+    each other (compat -> core -> spi -> infra layering; omnimarket has no
+    reach into omnibase_core's CI scripts), so this locks the schema this side
+    emits with an exact golden dict -- the same golden dict, byte-for-byte, is
+    asserted against a fixture in omnibase_core's
+    ``tests/unit/scripts/ci/test_rsd_provenance_stamp.py`` (see that file's
+    ``TestSeamContractWithOmnimarketEmitter`` for the other half of this seam).
+    This mirrors the existing seam-match pattern in
+    ``omnimarket.codegen.models`` (``ModelValidatorRequestSeam`` et al.):
+    verified at the schema/field level without requiring co-presence of the
+    consuming node.
+    """
+
+    def test_provenance_stamp_is_a_generated_file(self) -> None:
+        state = _state(source="handler-src", contract_yaml="name: x\n")
+        _, payload = _handle(ModelCodegenSerializeOutcome(state=state))
+        assert isinstance(payload, ModelFileWriteCommand)
+        by_path = {f.relative_path: f.content for f in payload.files}
+        assert ".rsd_provenance.json" in by_path
+
+    def test_provenance_stamp_schema_matches_gate_seam_contract(self) -> None:
+        state = ModelCodegenPipelineState(
+            spec=_spec(),
+            correlation_id="run-abc-123",
+            source_text="class Handler: ...",
+            contract_yaml="name: node_greeter_compute\n",
+        )
+        _, payload = _handle(ModelCodegenSerializeOutcome(state=state))
+        assert isinstance(payload, ModelFileWriteCommand)
+        by_path = {f.relative_path: f.content for f in payload.files}
+        stamp = json.loads(by_path[".rsd_provenance.json"])
+
+        # Field-for-field seam contract (OMN-14208 guard): every key/type the
+        # omnibase_core gate reads MUST be present with these exact names.
+        assert stamp["receipt_schema"] == "rsd_provenance_stamp.v1"
+        assert stamp["generated_by"] == "rsd_delegation"
+        assert stamp["producer_node"] == "node_hybrid_codegen_orchestrator"
+        assert stamp["run_id"] == "run-abc-123"
+        assert stamp["node_name"] == "NodeGreeterCompute"
+        assert set(stamp["files_sha256"]) == {
+            "handler.py",
+            "contract.yaml",
+            "metadata.yaml",
+        }
+
+        # The digest is RECOMPUTED here from the same content written to the
+        # sibling files -- proves the stamp is not free-standing/self-asserted;
+        # the gate performs this exact recompute against the live files on disk.
+        def _sha(text: str) -> str:
+            return "sha256:" + hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+        assert stamp["files_sha256"]["handler.py"] == _sha(by_path["handler.py"])
+        assert stamp["files_sha256"]["contract.yaml"] == _sha(by_path["contract.yaml"])
+        assert stamp["files_sha256"]["metadata.yaml"] == _sha(by_path["metadata.yaml"])
