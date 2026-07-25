@@ -123,12 +123,14 @@ jobs:
   # Calls the reusable workflow in omnibase_core. Outputs docs_only (true|false).
   zone-filter:
     needs: occ-preflight
+    if: always()
     uses: OmniNode-ai/omnibase_core/.github/workflows/zone-filter.yml@7631ef3321e1a6561f4b2c70019ee57d24160620
     with:
       python-version: "3.12"
 
   lint:
     needs: occ-preflight
+    if: always()
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -835,6 +837,7 @@ jobs:
 
   topic-naming-lint:
     needs: occ-preflight
+    if: always()
     name: Topic Naming Lint
     runs-on: ubuntu-latest
     steps:
@@ -874,6 +877,7 @@ jobs:
   # ============================================================================
   topic-enum-drift:
     needs: occ-preflight
+    if: always()
     name: Topic Enum Drift Check
     runs-on: ubuntu-latest
     steps:
@@ -903,6 +907,7 @@ jobs:
   # ============================================================================
   topic-drift-check:
     needs: occ-preflight
+    if: always()
     name: Topic Drift Check
     runs-on: ubuntu-latest
     steps:
@@ -950,6 +955,7 @@ jobs:
 
   event-registry-drift:
     needs: occ-preflight
+    if: always()
     name: Event Registry Drift
     runs-on: ubuntu-latest
     steps:
@@ -982,6 +988,7 @@ jobs:
   # ============================================================================
   runtime-sweep:
     needs: occ-preflight
+    if: always()
     name: Runtime Sweep
     runs-on: ubuntu-latest
     steps:
@@ -1014,6 +1021,7 @@ jobs:
   # ============================================================================
   compliance-sweep:
     needs: occ-preflight
+    if: always()
     name: Compliance Sweep
     runs-on: ubuntu-latest
     steps:
@@ -1051,6 +1059,7 @@ jobs:
   # ============================================================================
   core-only-install:
     needs: occ-preflight
+    if: always()
     name: Core-Only Install Gate
     runs-on: ubuntu-latest
     steps:
@@ -1337,6 +1346,7 @@ jobs:
   # ============================================================================
   uv-lock-pin-reachability:
     needs: occ-preflight
+    if: always()
     name: uv.lock Pin Reachability
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -1374,6 +1384,7 @@ jobs:
 
   dep-health:
     needs: occ-preflight
+    if: always()
     name: Dependency Health Gate
     runs-on: ubuntu-latest
     steps:
@@ -1477,6 +1488,7 @@ jobs:
   # ============================================================================
   contract-sweep-gate:
     needs: occ-preflight
+    if: always()
     name: Contract Sweep Gate
     runs-on: ubuntu-latest
     steps:
@@ -1514,6 +1526,7 @@ jobs:
   # ============================================================================
   aislop-sweep:
     needs: occ-preflight
+    if: always()
     name: Aislop Sweep (strict, PR diff)
     runs-on: ubuntu-latest
     steps:
@@ -1578,6 +1591,7 @@ jobs:
   # ============================================================================
   coverage-sweep-gate:
     needs: occ-preflight
+    if: always()
     name: Coverage Sweep Gate
     runs-on: ubuntu-latest
     # OMN-14645: bound the longest-pole job explicitly. The generation step caps
@@ -1693,6 +1707,7 @@ jobs:
   # ============================================================================
   workflow-module-refs:
     needs: occ-preflight
+    if: always()
     name: Workflow Module Resolution
     runs-on: ubuntu-latest
     steps:
