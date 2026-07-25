@@ -33,8 +33,13 @@ DTO_IMPORTS = {
     # the orchestrator now constructs one of these two thin ModelDelegationResult
     # subclasses directly (class identity alone drives class-name -> topic
     # routing; no carrier, no embedded-topic field).
-    "omnimarket.nodes.node_delegation_orchestrator.models.ModelDelegationCompleted": "omnibase_core.models.delegation.wire.model_delegation_result.ModelDelegationCompleted",
-    "omnimarket.nodes.node_delegation_orchestrator.models.ModelDelegationFailed": "omnibase_core.models.delegation.wire.model_delegation_result.ModelDelegationFailed",
+    # OMN-15126: core split ModelDelegationCompleted/ModelDelegationFailed out
+    # of model_delegation_result.py into their own leaf modules (core commit
+    # 9449083a, "OMN-15028: linearize main promotion prerequisites") --
+    # updated to the current canonical leaf-module paths (still re-exported
+    # from omnibase_core.models.delegation.wire's package __init__).
+    "omnimarket.nodes.node_delegation_orchestrator.models.ModelDelegationCompleted": "omnibase_core.models.delegation.wire.model_delegation_completed.ModelDelegationCompleted",
+    "omnimarket.nodes.node_delegation_orchestrator.models.ModelDelegationFailed": "omnibase_core.models.delegation.wire.model_delegation_failed.ModelDelegationFailed",
     "omnimarket.nodes.node_delegation_orchestrator.models.ModelInferenceIntent": "omnibase_core.models.delegation.wire.model_orchestrator_intents.ModelInferenceIntent",
     "omnimarket.nodes.node_delegation_orchestrator.models.ModelInferenceResponseData": "omnibase_core.models.delegation.wire.model_orchestrator_intents.ModelInferenceResponseData",
     "omnimarket.nodes.node_delegation_orchestrator.models.ModelQualityGateIntent": "omnibase_core.models.delegation.wire.model_orchestrator_intents.ModelQualityGateIntent",

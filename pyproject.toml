@@ -471,6 +471,8 @@ node_skill_functional_audit_compute = "omnimarket.nodes.node_skill_functional_au
 node_dispatch_outcome_bridge_effect = "omnimarket.nodes.node_dispatch_outcome_bridge_effect"
 node_repo_health_classify_compute = "omnimarket.nodes.node_repo_health_classify_compute"
 node_repo_health_repair_effect = "omnimarket.nodes.node_repo_health_repair_effect"
+node_liveness_demand_query_effect = "omnimarket.nodes.node_liveness_demand_query_effect"
+node_liveness_evaluate_compute = "omnimarket.nodes.node_liveness_evaluate_compute"
 node_projection_sandbox_decisions = "omnimarket.nodes.node_projection_sandbox_decisions"
 node_projection_delegation_inference_response = "omnimarket.nodes.node_projection_delegation_inference_response"
 node_worker_memory_admission_compute = "omnimarket.nodes.node_worker_memory_admission_compute"
@@ -535,7 +537,20 @@ omnimarket = "omnimarket.nodes"
 # strict descendant of a9f25887, so no prior feature is lost. REMOVE WHEN
 # RELEASED: once core publishes a version containing this commit, delete this
 # override (the range pin above already covers it) and `uv lock`.
-omnibase-core = { git = "https://github.com/OmniNode-ai/omnibase_core.git", rev = "aca32f2446f73cc2a8c903429e2a1f636722366e" }  # raw-override-ok: OMN-14779
+#
+# OMN-15126: re-pinned from aca32f24 to 15096be7 -- the merged squash commit
+# of core #1507 on dev (per that PR's own body: "bump omnimarket's
+# omnibase-core git-rev override... to this PR's merged dev SHA"), which adds
+# EnumLivenessState / ModelLivenessRegistryEntry / ModelLivenessReceipt +
+# supporting refs (design docs/design/2026-07-20-demand-aware-liveness-...).
+# 15096be7 is a direct descendant of aca32f24 (34 commits ahead on core dev,
+# verified via `git merge-base --is-ancestor`), so no prior feature is lost.
+# This is a MERGED commit on dev, never a feature-branch head (memory
+# reference_never_pin_a_feature_branch_head), so it is reachable forever.
+# REMOVE WHEN RELEASED: once core publishes a version containing this
+# commit, delete this override (the range pin above already covers it) and
+# `uv lock`.
+omnibase-core = { git = "https://github.com/OmniNode-ai/omnibase_core.git", rev = "15096be73f3e6b341822eb5060000ada52df4a2e" }  # raw-override-ok: OMN-15126
 # omnibase-infra git rev retained — infra is not in the dep-provenance forbidden set.
 #
 # OMN-14779 (PR 2/2): re-pinned from 7e52d5b0 to 77144f83 -- current
