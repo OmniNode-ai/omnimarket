@@ -398,6 +398,16 @@ jobs:
           # reviewer fail-closes on the CIDR gate → verdict=degraded even after the
           # endpoint_url fix + the secret. The model host is within this subnet.
           LLM_ENDPOINT_CIDR_ALLOWLIST: "192.168.86.0/24"  # onex-allow-internal-ip OMN-14176 reason="LAN subnet allowlist for the review LLM endpoint host 192.168.86.201; transport fail-closes if unset"
+          # THROWAWAY-SEED-EXPERIMENT (lane seed-degraded-verdict, revert before
+          # merge/close): points qwen3-review-b at a closed local port on the
+          # runner itself (127.0.0.1:1, nothing listens there) so the second
+          # reviewer model fails fast with ECONNREFUSED on every retry attempt,
+          # deterministically producing cli_review exit 2 ("exactly 1 model
+          # succeeded") -> verdict=degraded. This does NOT touch the live
+          # .201:8001 endpoint, model_registry.yaml, or any shared config --
+          # it only overrides this one job's own env for this one throwaway
+          # branch/PR, which is closed and never merged.
+          LLM_QWEN3_REVIEW_B_URL: "http://127.0.0.1:1"
         working-directory: ../omniintelligence
         run: |
           set -euo pipefail
