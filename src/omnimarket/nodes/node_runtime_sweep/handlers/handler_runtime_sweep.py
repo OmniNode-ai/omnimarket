@@ -36,6 +36,15 @@ _CONSUME_PURPOSE_SEGMENT = normalize_kafka_identifier(
     EnumConsumerGroupPurpose.CONSUME.value
 )
 
+# OMN-15041: the reverse-direction (present-but-undeclared) check matches a
+# live group against a declared node identity for ANY purpose, not just
+# CONSUME -- a kernel/skill consumer could legitimately use INTROSPECTION,
+# REPLAY, AUDIT, BACKFILL, or CONTRACT_REGISTRY. Precompute all normalized
+# purpose segments once (same normalize_kafka_identifier the runtime uses).
+_ALL_PURPOSE_SEGMENTS: tuple[str, ...] = tuple(
+    normalize_kafka_identifier(p.value) for p in EnumConsumerGroupPurpose
+)
+
 # ---------------------------------------------------------------------------
 # Enums
 # ---------------------------------------------------------------------------
@@ -93,6 +102,17 @@ class EnumFindingType(StrEnum):
     # harness collects per-entry-point probes; the pure node turns a failed
     # probe into this finding.
     BROKEN_ENTRY_POINT = "BROKEN_ENTRY_POINT"
+    # OMN-15041: the REVERSE direction of CONTRACT_NO_LIVE_CONSUMER -- a LIVE
+    # consumer group on the broker whose identity segment matches NO
+    # contract-declared node_name (for any EnumConsumerGroupPurpose) and is not
+    # in the reasoned grandfather allowlist. This is the general form of the
+    # bug that produced the OMN-14843 false "delegation dead" alarm: a group
+    # minted outside compute_consumer_group_id() (a bare module constant, e.g.
+    # the pre-fix CORE_RUNTIME_GROUP) is indistinguishable from a genuine
+    # orphan/casualty without this check. CONTRACT_NO_LIVE_CONSUMER asks "does
+    # every declared consumer have a live group"; this finding asks "does
+    # every live group belong to a declared consumer."
+    UNDECLARED_CONSUMER_GROUP = "UNDECLARED_CONSUMER_GROUP"
 
 
 class EnumSweepCheck(StrEnum):
@@ -194,6 +214,33 @@ class ModelEntryPointProbe(BaseModel):
     module_path: str
     ok: bool
     reason: str = ""
+
+
+class ModelGrandfatheredConsumerGroupPattern(BaseModel):
+    """One bounded, reasoned exemption in the OMN-15041 undeclared-group ratchet.
+
+    The reverse-direction diff (present-but-undeclared) is fail-closed by
+    default: ANY live consumer group whose identity segment does not match a
+    contract-declared node_name is a finding. A small, enumerated set of LIVE,
+    LEGITIMATE consumer groups predate this gate and are not (yet)
+    contract-declared -- either kernel-internal wiring (hardcoded node_name
+    string literals in ``service_kernel.py`` / ``runtime_host_process.py``,
+    the same gap class OMN-15040 closes for ``CORE_RUNTIME_GROUP``) or ad hoc,
+    non-ONEX-node Kafka clients. Each entry here is reasoned and ticketed --
+    NEVER an open wildcard. The list is ratcheted: see
+    ``_GRANDFATHERED_UNDECLARED_CONSUMER_GROUP_MAX_COUNT`` and its paired test
+    (count only shrinks; a bump requires justifying the new entry in the same
+    diff, mirroring the ``FROZEN_PROTOCOLS_MODELS_MAX``-style ratchets used
+    elsewhere in this codebase).
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    pattern: str = Field(
+        description="Regex (re.search) tested against the lower-cased live group id."
+    )
+    reason: str
+    ticket: str
 
 
 class ModelRuntimeFinding(BaseModel):
@@ -342,6 +389,127 @@ _PLACEHOLDER_PATTERNS = [
 # Default terminal SLA for any archetype not present in request.archetype_sla_ms.
 # A workflow started-but-not-terminal past this is treated as stranded.
 DEFAULT_ARCHETYPE_SLA_MS = 600_000  # 10 minutes
+
+# OMN-15041: bounded, reasoned exemptions from the undeclared-consumer-group
+# check, discovered via a live readback of omnibase-infra-stability-test-redpanda
+# on 2026-07-24 (the readback that authored this allowlist). Each pattern is
+# `re.search`-matched against the lower-cased live group id. NEVER add an entry
+# without a reason + ticket; NEVER widen a pattern beyond what the specific
+# discovered group(s) require. Triage/retirement tracked in OMN-15050.
+_GRANDFATHERED_UNDECLARED_CONSUMER_GROUP_PATTERNS: tuple[
+    ModelGrandfatheredConsumerGroupPattern, ...
+] = (
+    ModelGrandfatheredConsumerGroupPattern(
+        pattern=r"\.runtime_config\.contract-registry\.contract-registry\.",
+        reason=(
+            "Kernel-internal contract-lifecycle consumer wired directly in "
+            "service_kernel.py (node_name='contract-registry' hardcoded, not "
+            "backed by a nodes/*/contract.yaml). Live, legitimate infra "
+            "component -- same gap class as OMN-15040's CORE_RUNTIME_GROUP, "
+            "not an orphan."
+        ),
+        ticket="OMN-15050",
+    ),
+    ModelGrandfatheredConsumerGroupPattern(
+        pattern=r"\.runtime_config\.runtime-error-triage\.consume\.",
+        reason=(
+            "Kernel-internal runtime-error-triage consumer wired directly in "
+            "service_kernel.py (node_name='runtime-error-triage' hardcoded, "
+            "not backed by a nodes/*/contract.yaml, OMN-5655). Live, "
+            "legitimate infra component."
+        ),
+        ticket="OMN-15050",
+    ),
+    ModelGrandfatheredConsumerGroupPattern(
+        pattern=r"-dynamic-contract-listener\.consume\.",
+        reason=(
+            "Kernel dynamic-contract-listener subscriber; node_name is built "
+            "as f'{base_node_name}-dynamic-contract-listener' in "
+            "runtime_host_process.py, not backed by a contract.yaml. Live, "
+            "legitimate infra component."
+        ),
+        ticket="OMN-15050",
+    ),
+    ModelGrandfatheredConsumerGroupPattern(
+        pattern=r"\.runtime_config\.delegation-orchestrator\.consume\.",
+        reason=(
+            "STALE (unconfirmed live): node_name 'delegation-orchestrator' is "
+            "not found anywhere in current omnibase_infra source (searched "
+            "2026-07-24) -- appears to be residue from a prior deploy "
+            "generation, the same class as the onex.core-runtime.delegation "
+            "orphan already deleted this session. Grandfathered rather than "
+            "silently ignored so OMN-15050 can confirm-and-delete rather than "
+            "this gate re-litigating it every run."
+        ),
+        ticket="OMN-15050",
+    ),
+    ModelGrandfatheredConsumerGroupPattern(
+        pattern=r"^delegate-skill-runtime-port-",
+        reason=(
+            "Ad hoc skill-runtime helper consumer group (port/instance id in "
+            "the name). Not sourced to a literal in any repo cloned under "
+            "omni_home as of 2026-07-24 -- origin unconfirmed, not "
+            "independently verified live vs dead."
+        ),
+        ticket="OMN-15050",
+    ),
+    ModelGrandfatheredConsumerGroupPattern(
+        pattern=r"^onex-deploy-agent$",
+        reason=(
+            "Standalone deploy-agent process consumer group. Not sourced to a "
+            "literal in any repo cloned under omni_home as of 2026-07-24 -- "
+            "origin unconfirmed."
+        ),
+        ticket="OMN-15050",
+    ),
+    ModelGrandfatheredConsumerGroupPattern(
+        pattern=r"^pattern-b-broker-",
+        reason=(
+            "Sourced to omnibase_infra/runtime/service_pattern_b_broker.py -- "
+            "a non-node Kafka client, not backed by a contract.yaml."
+        ),
+        ticket="OMN-15050",
+    ),
+    ModelGrandfatheredConsumerGroupPattern(
+        pattern=r"^runtime-local-",
+        reason=(
+            "Sourced to omnibase_infra/runtime/runtime_host_process.py -- "
+            "local-runtime dispatch helper groups (HandlerDelegateSkill, "
+            "terminal), not backed by a contract.yaml."
+        ),
+        ticket="OMN-15050",
+    ),
+    ModelGrandfatheredConsumerGroupPattern(
+        pattern=r"^s3-stability-readback-",
+        reason=(
+            "Naming suggests an ephemeral synthetic test/readback probe group. "
+            "Not sourced to a literal in any repo cloned under omni_home as of "
+            "2026-07-24 -- origin unconfirmed; if it recurs across lane "
+            "refreshes it is not actually ephemeral and needs real accounting."
+        ),
+        ticket="OMN-15050",
+    ),
+    ModelGrandfatheredConsumerGroupPattern(
+        pattern=r"^savings-estimator\.",
+        reason=(
+            "Sourced to omnibase_infra/runtime/service_kernel.py -- "
+            "savings-estimation instrumentation consumer groups, not backed "
+            "by a contract.yaml."
+        ),
+        ticket="OMN-15050",
+    ),
+)
+
+# Ratchet ceiling: this count may only shrink (OMN-15050 retires entries),
+# never grow silently. A PR raising this constant must justify the new
+# entry(ies) inline and update the paired ratchet test
+# (test_omn_15041_undeclared_consumer_group.py::test_grandfather_allowlist_ratchet).
+_GRANDFATHERED_UNDECLARED_CONSUMER_GROUP_MAX_COUNT = 10
+
+_GRANDFATHERED_UNDECLARED_CONSUMER_GROUP_COMPILED: tuple[re.Pattern[str], ...] = tuple(
+    re.compile(entry.pattern)
+    for entry in _GRANDFATHERED_UNDECLARED_CONSUMER_GROUP_PATTERNS
+)
 
 
 # ---------------------------------------------------------------------------
@@ -576,6 +744,15 @@ class NodeRuntimeSweep:
                     request.contracts, census
                 )
                 findings.extend(liveness_findings)
+                # OMN-15041: reverse direction over the SAME census -- every
+                # live group must trace back to a declared contract (or a
+                # reasoned, ticketed grandfather entry). Guarded by the exact
+                # same fail-closed require_live_consumer_census / scanned>0
+                # checks above, so this direction can never render a vacuous
+                # "no undeclared groups" pass either.
+                findings.extend(
+                    self._check_undeclared_consumer_groups(request.contracts, census)
+                )
 
         entities_checked = (
             len(request.contracts)
@@ -927,3 +1104,115 @@ class NodeRuntimeSweep:
                 )
             )
         return findings, consumers_checked
+
+    @staticmethod
+    def _group_matches_known_node(
+        padded_group: str, known_normalized_names: frozenset[str]
+    ) -> bool:
+        """True when ``padded_group`` carries ANY known node's identity segment.
+
+        Mirrors ``_node_has_live_consumer``'s anchored-segment matcher but
+        checks EVERY :class:`EnumConsumerGroupPurpose`, not just CONSUME —
+        the reverse direction must not false-flag a legitimate
+        INTROSPECTION/REPLAY/AUDIT/BACKFILL/CONTRACT_REGISTRY consumer as
+        undeclared just because it used a non-default purpose.
+        """
+        return any(
+            f".{name}.{purpose}." in padded_group
+            for name in known_normalized_names
+            for purpose in _ALL_PURPOSE_SEGMENTS
+        )
+
+    @staticmethod
+    def _grandfathered_undeclared_group_ticket(group_lower: str) -> str | None:
+        """Return the allowlist ticket matching ``group_lower``, or None."""
+        for entry, compiled in zip(
+            _GRANDFATHERED_UNDECLARED_CONSUMER_GROUP_PATTERNS,
+            _GRANDFATHERED_UNDECLARED_CONSUMER_GROUP_COMPILED,
+            strict=True,
+        ):
+            if compiled.search(group_lower):
+                return entry.ticket
+        return None
+
+    def _check_undeclared_consumer_groups(
+        self,
+        contracts: list[ModelContractInput],
+        live_consumer_groups: list[str],
+    ) -> list[ModelRuntimeFinding]:
+        """OMN-15041: reverse-direction diff — present-but-undeclared groups.
+
+        ``_check_consumer_liveness`` asks "does every declared, subscribing
+        contract have a live group" (expected-but-absent — real wiring
+        death). This method asks the OPPOSITE question over the SAME live
+        census: "does every live group belong to a declared contract"
+        (present-but-undeclared — an orphan, or a group minted outside
+        ``compute_consumer_group_id()`` by a bare module constant).
+
+        Without this direction, a hardcoded group name (the pre-fix
+        ``CORE_RUNTIME_GROUP = "onex.core-runtime.delegation"`` literal is the
+        concrete case that motivated this ticket) is indistinguishable from a
+        genuine orphan/casualty: nothing ties it to a contract, so an
+        operator reading the broker cannot tell "this is expected kernel
+        wiring" from "this consumer's contract was deleted and nobody
+        cleaned up its group" — the exact ambiguity that cost a full
+        investigation lane disproving a false "delegation is dead" alarm
+        (OMN-14843).
+
+        Scope: EVERY contract collected (not just subscribing/profile-scoped
+        ones — a live group could in principle belong to any declared node
+        identity). A group is accounted for when its identity segment
+        matches ANY declared node_name for ANY purpose
+        (``_group_matches_known_node``), or when it matches a bounded,
+        reasoned, ticketed grandfather pattern
+        (``_GRANDFATHERED_UNDECLARED_CONSUMER_GROUP_PATTERNS`` — OMN-15050
+        tracks retiring these). Everything else is undeclared and CRITICAL.
+
+        There is deliberately NO "looks non-canonical, skip it" exemption:
+        the motivating bug (``onex.core-runtime.delegation``) is a 3-segment
+        string with no recognizable purpose token, so any shape-based filter
+        would have missed exactly the case this check exists to catch.
+        """
+        known_normalized: set[str] = set()
+        for contract in contracts:
+            try:
+                known_normalized.add(normalize_kafka_identifier(contract.node_name))
+            except ValueError:
+                continue
+        known_frozen = frozenset(known_normalized)
+
+        findings: list[ModelRuntimeFinding] = []
+        for group in live_consumer_groups:
+            group_stripped = group.strip()
+            if not group_stripped:
+                continue
+            group_lower = group_stripped.lower()
+            padded = f".{group_lower}."
+
+            if self._group_matches_known_node(padded, known_frozen):
+                continue
+            if self._grandfathered_undeclared_group_ticket(group_lower) is not None:
+                continue
+
+            findings.append(
+                ModelRuntimeFinding(
+                    finding_type=EnumFindingType.UNDECLARED_CONSUMER_GROUP,
+                    subject=group_stripped,
+                    message=(
+                        f"Live consumer group '{group_stripped}' matches NO "
+                        f"contract-declared node identity ({len(contracts)} "
+                        f"contract(s), {len(known_frozen)} normalized node "
+                        "name(s) checked) and is not in the grandfathered "
+                        "allowlist. Either the group belongs to a node whose "
+                        "contract was renamed/removed without deleting the "
+                        "broker-side group (orphan — delete it), or it was "
+                        "minted outside compute_consumer_group_id() (a bare "
+                        "module constant / ad hoc client — add a contract, or "
+                        "a reasoned + ticketed allowlist entry). This is the "
+                        "reverse direction of CONTRACT_NO_LIVE_CONSUMER "
+                        "(OMN-15041)."
+                    ),
+                    severity="CRITICAL",
+                )
+            )
+        return findings

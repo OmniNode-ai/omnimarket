@@ -15,6 +15,15 @@ merge-queue governor's single gated arm path (node_pr_arm_gate_compute +
 node_pr_lifecycle_merge_effect). Hard-gated fail-closed — ``handle()`` returns
 a no-op result before any `gh` mutation unless ``_LEGACY_ARM_ENV_VAR`` is
 explicitly enabled.
+
+OMN-15053: this is the backing node for the ``/onex:auto_merge`` skill — a
+sibling of ``/onex:merge_sweep``'s ``node_merge_sweep_auto_merge_arm_effect``,
+which landed omnimarket#1879 on 2026-07-24 as a "working as designed" side
+effect of dogfooding a sanctioned skill (CLAUDE.md rule 1) in direct tension
+with CLAUDE.md rule 3 ("agents never merge"). The disabled path used to
+return a silent no-op success result; it now raises
+``LegacyMergeArmDisabledError`` loudly instead. Re-enabling requires a fresh
+operator decision — see OMN-15053 before setting ``_LEGACY_ARM_ENV_VAR=true``.
 """
 
 from __future__ import annotations
@@ -28,7 +37,7 @@ from collections.abc import Callable
 from typing import Any, Literal
 from uuid import UUID
 
-from omnimarket.config.env_flags import env_flag
+from omnimarket.config.env_flags import require_legacy_merge_arm_enabled
 from omnimarket.nodes.node_auto_merge_effect.models.model_auto_merge_input import (
     ModelAutoMergeInput,
 )
@@ -45,8 +54,10 @@ _POLL_INTERVAL_S = 60
 _POLL_STATES = {"BEHIND", "BLOCKED", "UNSTABLE", "HAS_HOOKS", "UNKNOWN"}
 
 # OMN-14151: legacy arm surface hard-gate. Safe default False — this handler
-# is a no-op (never calls `gh pr merge`) unless an operator explicitly opts
-# this surface back in.
+# never calls `gh pr merge` unless an operator explicitly opts this surface
+# back in. OMN-15053: a disabled attempt now raises
+# LegacyMergeArmDisabledError (loud) instead of returning a no-op result
+# (silent).
 _LEGACY_ARM_ENV_VAR = "OMNIMARKET_LEGACY_MERGE_ARM_ENABLED"
 
 
@@ -100,23 +111,13 @@ class HandlerAutoMergeEffect:
             repo,
         )
 
-        if not env_flag(_LEGACY_ARM_ENV_VAR, safe_default=False):
-            logger.info(
-                "auto-merge gated (no-op): pr=%s repo=%s — legacy arm surface "
-                "disabled by default (OMN-14151); set %s=true to re-enable",
-                pr_number,
-                repo,
-                _LEGACY_ARM_ENV_VAR,
-            )
-            return ModelAutoMergeResult(
-                correlation_id=correlation_id,
-                pr_number=pr_number,
-                repo=repo,
-                merged=False,
-                blocked_reason=(
-                    f"gated: legacy arm surface disabled ({_LEGACY_ARM_ENV_VAR} not enabled)"
-                ),
-            )
+        # OMN-15053: loud refusal, not a silent no-op. A disabled guard must
+        # never look like a guard that was simply never reached.
+        require_legacy_merge_arm_enabled(
+            _LEGACY_ARM_ENV_VAR,
+            surface="node_auto_merge_effect",
+            context=f"{repo}#{pr_number}",
+        )
 
         deadline = time.monotonic() + gate_timeout_hours * 3600
 

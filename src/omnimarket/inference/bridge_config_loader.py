@@ -24,8 +24,9 @@ new model.
 
 OpenRouter keys follow the pattern ``openrouter/<model_id>`` where model_id is
 the full OpenRouter routing string (e.g. ``qwen/qwen3-coder:free``). These are
-registered dynamically from the OpenRouter model catalog when OPENROUTER_API_KEY
-is present. The base URL is resolved from ``OPENROUTER_BASE_URL`` config —
+registered dynamically from the OpenRouter model catalog when the OpenRouter
+API key (``OPEN_ROUTER_API_KEY`` — resolved via the ``llm.openrouter.api_key``
+secret ref, OMN-15048) is present. The base URL is resolved from ``OPENROUTER_BASE_URL`` config —
 there is NO hardcoded in-code provider URL default (OMN-12824). When OpenRouter
 is configured (key present) but the base URL is missing, registration fails
 closed rather than substituting a baked-in literal.
@@ -92,12 +93,15 @@ def load_inference_bridge_config_from_env() -> ModelInferenceBridgeConfig:
     if unset), ``transport="http"``, ``context_window``, and ``timeout_seconds``.
     GLM also picks up ``api_key`` from ``LLM_GLM_API_KEY`` when present.
 
-    OpenRouter models are registered as ``openrouter/<model_id>`` keys when
-    OPENROUTER_API_KEY is set. Each entry carries the OpenRouter base URL,
+    OpenRouter models are registered as ``openrouter/<model_id>`` keys when the
+    OpenRouter API key (``OPEN_ROUTER_API_KEY``) resolves. Each entry carries the
+    OpenRouter base URL,
     model_id, and required HTTP-Referer / X-Title headers.
     """
     model_configs = _build_static_model_configs()
-    openrouter_key = resolve_api_key("OPENROUTER_API_KEY", required=False)
+    openrouter_key = resolve_api_key(
+        "llm.openrouter.api_key", required=False, env_var_fallback="OPEN_ROUTER_API_KEY"
+    )
     _register_openrouter_models(model_configs, openrouter_key)
     return ModelInferenceBridgeConfig(model_configs=model_configs)
 
@@ -111,7 +115,9 @@ async def load_inference_bridge_config_from_env_async() -> ModelInferenceBridgeC
     The static ``LLM_*`` env reads are pure and shared with the sync loader.
     """
     model_configs = _build_static_model_configs()
-    openrouter_key = await resolve_api_key_async("OPENROUTER_API_KEY", required=False)
+    openrouter_key = await resolve_api_key_async(
+        "llm.openrouter.api_key", required=False, env_var_fallback="OPEN_ROUTER_API_KEY"
+    )
     _register_openrouter_models(model_configs, openrouter_key)
     return ModelInferenceBridgeConfig(model_configs=model_configs)
 
@@ -174,7 +180,7 @@ def _register_openrouter_models(
     ).strip()  # contract-config-ok: config
     if not base_url:
         raise ValueError(
-            "OpenRouter is configured (OPENROUTER_API_KEY present) but "
+            "OpenRouter is configured (OPEN_ROUTER_API_KEY present) but "
             "OPENROUTER_BASE_URL is missing. Declare the OpenRouter base URL in "
             "config — no hardcoded provider URL default is permitted (OMN-12824)."
         )

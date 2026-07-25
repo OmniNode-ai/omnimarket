@@ -11,6 +11,24 @@ from omnimarket.inference.bridge_config_loader import (
 )
 
 
+@pytest.fixture(autouse=True)
+def _isolate_openrouter_secret_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    """OMN-15048: keep this suite independent of ambient OpenRouter credentials.
+
+    Prior to OMN-15048 the loader read the literal ``OPENROUTER_API_KEY`` (no
+    underscore), which no real deployment surface ever sets, so OpenRouter
+    registration always silently no-opped here regardless of what was in the
+    ambient dev-shell environment. Now that the loader resolves the real
+    ``OPEN_ROUTER_API_KEY`` (via the secret store's ``llm.openrouter.api_key``
+    alias), a developer's own ``~/.omnibase/.env`` value would otherwise leak
+    into these URL-focused tests. Tests that specifically exercise OpenRouter
+    registration set the var explicitly after this fixture runs.
+    """
+    monkeypatch.delenv("OPEN_ROUTER_API_KEY", raising=False)
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+    monkeypatch.delenv("OPENROUTER_BASE_URL", raising=False)
+
+
 @pytest.mark.unit
 def test_empty_env_produces_empty_config(monkeypatch: pytest.MonkeyPatch) -> None:
     for var in (
@@ -120,6 +138,36 @@ def test_context_window_preserved(monkeypatch: pytest.MonkeyPatch) -> None:
     assert (
         cfg.model_configs["qwen3-coder"]["context_window"] == 131_072
     )  # OMN-12492: qwen3-coder-30b updated to Qwen3.6-35B-A3B (131K ctx)
+
+
+@pytest.mark.unit
+def test_openrouter_key_resolves_from_canonical_open_router_api_key(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """OMN-15048: OpenRouter registration must resolve from ``OPEN_ROUTER_API_KEY``
+    — the name every real deployment surface (k8s manifests,
+    docker-compose.judge.yml, ~/.omnibase/.env) actually sets. The loader
+    previously read the literal ``OPENROUTER_API_KEY`` (no underscore), which
+    is never set anywhere live, so OpenRouter registration silently no-opped.
+    """
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+    monkeypatch.setenv("OPEN_ROUTER_API_KEY", "sk-canonical-underscore-key")
+    monkeypatch.setenv("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1")
+    for var in (
+        "LLM_CODER_URL",
+        "LLM_CODER_FAST_URL",
+        "LLM_DEEPSEEK_R1_URL",
+        "LLM_QWEN3_NEXT_URL",
+        "LLM_GLM_URL",
+    ):
+        monkeypatch.delenv(var, raising=False)
+
+    cfg = load_inference_bridge_config_from_env()
+
+    openrouter_keys = [k for k in cfg.model_configs if k.startswith("openrouter/")]
+    assert openrouter_keys, "expected at least one openrouter/* model registered"
+    for key in openrouter_keys:
+        assert cfg.model_configs[key]["api_key"] == "sk-canonical-underscore-key"
 
 
 @pytest.mark.unit
