@@ -289,7 +289,14 @@ def _probe(repo: Path) -> OccReceiptSubprocessProbe:
 
 
 class TestOccReceiptSubprocessProbe:
-    def test_tracked_pass_receipt_returns_receipt_dir(self, tmp_path: Path) -> None:
+    def test_tracked_pass_receipt_returns_receipt_dir(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # This class exercises the legacy loose dict-only check in isolation;
+        # ``_pass_receipt()`` intentionally only satisfies that check's 3
+        # fields, not a full ``ModelDodReceipt`` — disable the (now default-on,
+        # OMN-15030) strict layer so this test targets what it names.
+        monkeypatch.setenv("OMNI_LINEAR_TRIAGE_STRICT_RECEIPT_MODEL", "0")
         repo = _init_occ_repo(
             tmp_path,
             {"drift/dod_receipts/OMN-9999/dod-run/command.yaml": _pass_receipt()},
@@ -330,7 +337,11 @@ class TestOccReceiptSubprocessProbe:
         )
         assert _probe(repo).occ_receipt_detail(ticket_id="OMN-9999") is None
 
-    def test_multiple_receipts_one_pass_returns_dir(self, tmp_path: Path) -> None:
+    def test_multiple_receipts_one_pass_returns_dir(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # Same isolation rationale as test_tracked_pass_receipt_returns_receipt_dir.
+        monkeypatch.setenv("OMNI_LINEAR_TRIAGE_STRICT_RECEIPT_MODEL", "0")
         fail = _pass_receipt()
         fail["status"] = "FAIL"
         repo = _init_occ_repo(
@@ -368,18 +379,24 @@ class TestOccReceiptSubprocessProbe:
 
 
 class TestStrictReceiptModelGate:
-    def test_flag_disabled_by_default(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_flag_enabled_by_default(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """OMN-15030: advanced past shadow — enforcing is now the default."""
         monkeypatch.delenv("OMNI_LINEAR_TRIAGE_STRICT_RECEIPT_MODEL", raising=False)
-        assert _strict_receipt_model_enabled() is False
+        assert _strict_receipt_model_enabled() is True
 
-    def test_flag_enabled_by_truthy_values(
+    def test_flag_enabled_by_truthy_or_unrecognized_values(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        for value in ("1", "true", "True", "YES", "on"):
+        for value in ("1", "true", "True", "YES", "on", "garbage"):
             monkeypatch.setenv("OMNI_LINEAR_TRIAGE_STRICT_RECEIPT_MODEL", value)
             assert _strict_receipt_model_enabled() is True
-        monkeypatch.setenv("OMNI_LINEAR_TRIAGE_STRICT_RECEIPT_MODEL", "0")
-        assert _strict_receipt_model_enabled() is False
+
+    def test_flag_disabled_by_explicit_falsy_values(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        for value in ("0", "false", "False", "no", "off"):
+            monkeypatch.setenv("OMNI_LINEAR_TRIAGE_STRICT_RECEIPT_MODEL", value)
+            assert _strict_receipt_model_enabled() is False
 
     def test_red_self_attested_pass_is_accepted_by_the_loose_check(self) -> None:
         """RED: this is today's live behavior — a self-attested PASS (the
@@ -420,9 +437,27 @@ class TestOccReceiptSubprocessProbeStrictGate:
     """End-to-end RED-to-GREEN through the real probe the Done-mutation path
     calls, gated by the OMN-13991 env flag."""
 
-    def test_flag_off_still_accepts_self_attested_receipt(
+    def test_explicit_flag_off_still_accepts_self_attested_receipt(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
+        """The explicit opt-out escape hatch still exists post-OMN-15030."""
+        monkeypatch.setenv("OMNI_LINEAR_TRIAGE_STRICT_RECEIPT_MODEL", "0")
+        repo = _init_occ_repo(
+            tmp_path,
+            {
+                "drift/dod_receipts/OMN-9999/dod-run/command.yaml": (
+                    _full_dod_receipt_payload(runner="worker-A", verifier="worker-A")
+                )
+            },
+        )
+        assert _probe(repo).occ_receipt_detail(
+            ticket_id="OMN-9999"
+        ) == _occ_receipt_dir("OMN-9999")
+
+    def test_flag_enforcing_by_default_rejects_self_attested_receipt(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """OMN-15030: no env var set — enforcing is now the default behavior."""
         monkeypatch.delenv("OMNI_LINEAR_TRIAGE_STRICT_RECEIPT_MODEL", raising=False)
         repo = _init_occ_repo(
             tmp_path,
@@ -432,31 +467,14 @@ class TestOccReceiptSubprocessProbeStrictGate:
                 )
             },
         )
-        # RED (default/current behavior): unchanged when the gate is off.
-        assert _probe(repo).occ_receipt_detail(
-            ticket_id="OMN-9999"
-        ) == _occ_receipt_dir("OMN-9999")
-
-    def test_flag_on_rejects_self_attested_receipt(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        monkeypatch.setenv("OMNI_LINEAR_TRIAGE_STRICT_RECEIPT_MODEL", "1")
-        repo = _init_occ_repo(
-            tmp_path,
-            {
-                "drift/dod_receipts/OMN-9999/dod-run/command.yaml": (
-                    _full_dod_receipt_payload(runner="worker-A", verifier="worker-A")
-                )
-            },
-        )
-        # GREEN: the same on-disk receipt is now refused as OCC_RECEIPT evidence,
-        # so the Done-mutation chokepoint never sees it.
+        # GREEN: the same on-disk receipt is refused as OCC_RECEIPT evidence by
+        # default, so the Done-mutation chokepoint never sees it.
         assert _probe(repo).occ_receipt_detail(ticket_id="OMN-9999") is None
 
-    def test_flag_on_still_accepts_independently_verified_receipt(
+    def test_flag_enforcing_by_default_still_accepts_independently_verified_receipt(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setenv("OMNI_LINEAR_TRIAGE_STRICT_RECEIPT_MODEL", "1")
+        monkeypatch.delenv("OMNI_LINEAR_TRIAGE_STRICT_RECEIPT_MODEL", raising=False)
         repo = _init_occ_repo(
             tmp_path,
             {
