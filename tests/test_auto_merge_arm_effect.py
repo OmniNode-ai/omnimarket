@@ -10,6 +10,7 @@ from uuid import UUID
 import pytest
 from pydantic import SecretStr
 
+from omnimarket.config.env_flags import LegacyMergeArmDisabledError
 from omnimarket.nodes.node_merge_sweep_auto_merge_arm_effect.handlers.handler_auto_merge_arm import (
     HandlerAutoMergeArmEffect,
 )
@@ -174,3 +175,28 @@ async def test_unarmed_clean_alert_reason_defaults_when_error_none() -> None:
     alert = output.events[1]
     assert isinstance(alert, ModelAutoMergeUnarmedCleanAlertEvent)
     assert alert.reason  # non-empty
+
+
+# --- OMN-15053: disabled surface fails loudly, not silently ---
+
+
+@pytest.mark.asyncio
+async def test_disabled_surface_raises_loudly_not_silent_noop(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """OMN-15053: with the legacy arm surface disabled (this module's own
+    autouse fixture normally opts it in for the rest of this suite — override
+    that here), handle() must RAISE LegacyMergeArmDisabledError instead of
+    quietly returning a completion event with armed=False.
+
+    This proves the disabled path is impossible to mistake for "worked" (the
+    incident this ticket closes: omnimarket#1879 landed through this exact
+    handler on 2026-07-24 while the caller believed nothing had merged).
+    """
+    monkeypatch.delenv("OMNIMARKET_LEGACY_MERGE_ARM_ENABLED", raising=False)
+    with patch.object(
+        HandlerAutoMergeArmEffect, "_arm_sync", return_value=(True, None)
+    ):
+        handler = HandlerAutoMergeArmEffect()
+        with pytest.raises(LegacyMergeArmDisabledError, match="OMN-15053"):
+            await handler.handle(_cmd())

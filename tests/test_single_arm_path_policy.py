@@ -14,8 +14,11 @@ mechanically (not by convention), that:
      (deregistered) — a queue-mutating command can no longer reach them via
      the ONEX node-dispatch runtime;
   3. each of those three legacy handlers' source still carries the fail-closed
-     env-flag hard-gate, so even a direct/manual invocation stays a no-op by
-     default;
+     env-flag hard-gate, and (OMN-15053) the two GitHub-mutating handlers
+     raise loudly rather than silently no-op'ing when the gate is closed, so
+     a direct/manual invocation without the flag either never routes (triage)
+     or raises immediately (the two effect handlers) instead of quietly
+     reporting success;
   4. the orchestrator's merge fanout genuinely calls the arm-gate before
      ever calling the merge handler;
   5. the arm-gate's default policy is report-only + kill-switch engaged (zero
@@ -101,14 +104,23 @@ def test_legacy_arm_node_has_no_pyproject_entry(node_name: str) -> None:
     "handler_path", _LEGACY_ARM_HANDLER_FILES, ids=lambda p: p.name
 )
 def test_legacy_arm_handler_source_still_hard_gated(handler_path: Path) -> None:
-    """Even a direct/manual dispatch of the legacy handler is a no-op by
-    default — the source must still reference the fail-closed env-flag gate."""
+    """Even a direct/manual dispatch of the legacy handler is refused by
+    default — the source must still reference the fail-closed env-flag gate.
+
+    OMN-15053: the two GitHub-mutating handlers (auto_merge_effect,
+    auto_merge_arm_effect) now call the loud-refusal helper
+    ``require_legacy_merge_arm_enabled`` (which itself calls ``env_flag``
+    internally, in env_flags.py); triage's arm-emit still calls ``env_flag``
+    directly since it only decides whether to route, not whether to mutate.
+    Either spelling proves the gate is still wired.
+    """
     source = handler_path.read_text()
     assert "OMNIMARKET_LEGACY_MERGE_ARM_ENABLED" in source, (
         f"{handler_path} no longer references the OMN-14151 hard-gate env flag"
     )
-    assert "env_flag(" in source, (
-        f"{handler_path} no longer calls the canonical env_flag() helper"
+    assert "env_flag(" in source or "require_legacy_merge_arm_enabled(" in source, (
+        f"{handler_path} no longer calls the canonical env_flag()/"
+        "require_legacy_merge_arm_enabled() helper"
     )
 
 

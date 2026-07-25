@@ -10,6 +10,9 @@ node_version: {major: 1, minor: 0, patch: 0}
 # single gated arm path (node_pr_arm_gate_compute + node_pr_lifecycle_merge_effect).
 # entry_points deregistered from pyproject.toml/metadata.yaml; handler
 # hard-gated fail-closed (OMNIMARKET_LEGACY_MERGE_ARM_ENABLED, default False).
+# OMN-15053: this handler landed omnimarket#1879 on 2026-07-24 via a direct
+# /onex:merge_sweep dispatch. Gate now fails LOUD (raises
+# LegacyMergeArmDisabledError) instead of a silent no-op when disabled.
 lifecycle: deprecated
 
 description: >
