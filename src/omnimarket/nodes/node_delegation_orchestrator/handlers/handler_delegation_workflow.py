@@ -74,9 +74,6 @@ from omnimarket.nodes.node_delegation_orchestrator.enums import (
 from omnimarket.nodes.node_delegation_orchestrator.lifecycle_reactor import (
     next_state_from_lifecycle,
 )
-from omnimarket.nodes.node_delegation_orchestrator.models.model_baseline_intent import (
-    ModelBaselineIntent,
-)
 from omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_escalation_attempt import (
     ModelDelegationEscalationAttempt,
 )
@@ -124,7 +121,6 @@ from omnimarket.nodes.node_delegation_routing_reducer.models.model_routing_decis
 from omnimarket.pricing import (
     ModelActualCostMeasurement,
     build_premium_counterfactual,
-    estimate_baseline_cost_usd,
     recompute_actual_cost_and_savings,
 )
 from omnimarket.routing.model_escalation_decision_request import (
@@ -1371,9 +1367,12 @@ class HandlerDelegationWorkflow:
 
         Returns:
         1. The single canonical delegation terminal event (completed or failed)
-        2. A baseline comparison intent for savings computation (pass only)
 
         OMN-13629: the legacy task-delegated.v1 compat event is no longer emitted.
+        OMN-15051: the secondary baseline-comparison intent previously returned
+        alongside the terminal on the pass path is gone -- it was a dead-end
+        producer (zero Kafka consumers); see the OMN-15051 comment above the
+        removed emission for the full evidence chain.
         """
         cid = result.correlation_id
         workflow = self._workflows.get(cid)
@@ -1472,38 +1471,25 @@ class HandlerDelegationWorkflow:
                 required_bar_authority=required_bar_authority,
             )
 
-            estimated_claude_cost = estimate_baseline_cost_usd(
-                prompt_tokens=workflow.inference_prompt_tokens,
-                completion_tokens=workflow.inference_completion_tokens,
-            )
-            # OMN-13396: the candidate (delegated tier) cost is the MEASURED actual
-            # cost of the served tokens, not a hardcoded 0.0. free_local -> 0.0;
-            # metered -> rate x measured tokens. Same typed-tier-cost computation
-            # the projection uses, so baseline-vs-candidate is an honest delta.
-            candidate_cost = self._measure_terminal_cost(
-                tier_name=workflow.current_tier_name or "",
-                prompt_tokens=workflow.inference_prompt_tokens,
-                completion_tokens=workflow.inference_completion_tokens,
-                premium_counterfactual=None,
-            )
-
             self._advance(workflow, EnumDelegationState.COMPLETED)
             # OMN-13629 (WS-F Phase 1): the terminal is now a single canonical
-            # event from the one builder. Emission order is
-            # [completed-terminal, baseline-intent]; the legacy compat twin that
-            # previously trailed the baseline intent is gone.
+            # event from the one builder. OMN-15051: the secondary
+            # ``ModelBaselineIntent`` emission onto
+            # ``baseline-comparison-request.v1`` (removed here) predated this
+            # consolidation and never had a Kafka consumer (contract-topic-graph
+            # ORPHANED_PRODUCER; zero contracts anywhere subscribe to that
+            # topic). It carried no information the canonical terminal doesn't
+            # already carry: ``final_attempt_cost``/``cumulative_attempt_cost``
+            # below equal the removed ``candidate_cost_usd`` byte-for-byte (same
+            # ``recompute_actual_cost_and_savings`` call), and the Claude-cost
+            # counterfactual it also carried is independently re-derived
+            # downstream by ``node_projection_savings`` from the terminal's
+            # served tokens via ``build_premium_counterfactual`` (same
+            # ``DEFAULT_BASELINE_MODEL`` + pricing manifest) with strictly
+            # better provenance (pinned Decimal + as_of date vs. a bare float).
+            # Removing the emission is a dead-topic cleanup, not a savings/cost
+            # telemetry regression.
             events.extend(self._emit_terminal(terminal_inputs))
-            events.append(
-                ModelBaselineIntent(
-                    correlation_id=cid,
-                    task_type=workflow.request.task_type,
-                    baseline_cost_usd=estimated_claude_cost,
-                    candidate_cost_usd=candidate_cost.cash_cost_usd,
-                    prompt_tokens=workflow.inference_prompt_tokens,
-                    completion_tokens=workflow.inference_completion_tokens,
-                    total_tokens=workflow.inference_total_tokens,
-                )
-            )
             return events
 
         # --- FAILED: evaluate escalation (OMN-12254) ---

@@ -367,8 +367,8 @@ class TestDispatcherQualityGateResultOutputEvents:
     async def test_output_events_empty_when_bus_wired(self) -> None:
         """When bus is wired, routable events (with .topic) are published directly.
 
-        Events without a .topic attribute (e.g. ModelBaselineIntent) are not
-        routable via the direct-publish path and remain in output_events for the
+        Events without a .topic attribute are not routable via the
+        direct-publish path and remain in output_events for the
         DispatchResultApplier's type-based router.  Only topicless events may appear.
         """
         bus = _make_mock_bus()
