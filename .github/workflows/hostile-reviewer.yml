@@ -408,12 +408,32 @@ jobs:
         run: |
           set -uo pipefail  # NOT -e: this step classifies its own exit code below.
 
-          OUTPUT=$(uv run python -m omniintelligence.review_pairing.retry_budget \
+          # NOTE(OMN-15066 post-mortem): GH Actions runs `run:` steps under
+          # `bash -e {0}` by default -- that -e is already active before this
+          # script's own `set -uo pipefail` runs, and `set -uo pipefail` does
+          # NOT clear an inherited -e (see the identical warning on the
+          # occ-preflight job in this same repo's workflows). A bare
+          # `OUTPUT=$(cmd); STATUS=$?` is a plain assignment, not part of an
+          # if/while/until condition, so under inherited -e bash aborts the
+          # WHOLE STEP the instant `cmd` exits non-zero -- `STATUS=$?`,
+          # `echo "$OUTPUT"`, and the grep-based skip-match below never run.
+          # That is exactly what happened live: two consecutive runs
+          # (89631488717, 89641673515) hard-failed in ~4-5s with ZERO
+          # captured stdout/stderr and the skip-match branch never reached,
+          # because the module-not-found ModuleNotFoundError (exit 1) killed
+          # the step at the `OUTPUT=$(...)` line itself. Using the command
+          # substitution as the condition of an if is the errexit-safe form
+          # -- bash does not trigger -e for a command that is part of an
+          # if/while/until condition, regardless of ambient -e state.
+          if OUTPUT=$(uv run python -m omniintelligence.review_pairing.retry_budget \
             --model qwen3-review \
             --model qwen3-review-b \
             --job-timeout-seconds 3600 \
-            --setup-overhead-seconds 300 2>&1)
-          STATUS=$?
+            --setup-overhead-seconds 300 2>&1); then
+            STATUS=0
+          else
+            STATUS=$?
+          fi
 
           echo "$OUTPUT"
 
