@@ -96,6 +96,26 @@ guard_full_suite_host() {
       "push from .200 instead (ssh jonah@stickybeatz-studio.tail75df5e.ts.net, wrap remote commands as zsh -lc \"...\"; see docs/runbooks/200-build-lane-execution-pattern.md for the full pattern), OR set PREPUSH_ALLOW_LOCAL_FULL_SUITE=1 to run the full suite on this host anyway (visible, degraded-evidence override -- do not use as a routine bypass)"
 }
 
+# Early, STATICALLY-known full-suite escalation short-circuits the guard
+# before any git ancestry lookup below (OMN-15059 CI fix). `PREPUSH_FULL_SUITE`
+# / `ENABLE_SMART_TESTS=off` force the full suite unconditionally, independent
+# of which files changed -- so the host identity can and must be checked here,
+# before the `git merge-base` call a few lines down. A shallow/single-branch
+# checkout (e.g. a CI runner with no `origin/dev` ancestry) can fail that
+# merge-base lookup outright, which previously masked this guard's refusal
+# message behind a generic "no common ancestor" git error. The DYNAMIC case --
+# the governed selector itself escalating to the full suite because of which
+# files changed -- still requires the merge-base to compute the diff first,
+# and remains guarded at its own call site further down (`guard_full_suite_host`
+# inside the `IS_FULL` branch); this early check does not replace that one, it
+# only covers the case where the answer is already known without a diff.
+case "${ENABLE_SMART_TESTS:-}" in
+  false | False | FALSE | 0 | off | OFF) guard_full_suite_host ;;
+esac
+if [ -n "${PREPUSH_FULL_SUITE:-}" ]; then
+  guard_full_suite_host
+fi
+
 # =============================================================================
 # Ambient-PYTHONPATH sanitization (OMN-14420 / OMN-15019)
 # =============================================================================
