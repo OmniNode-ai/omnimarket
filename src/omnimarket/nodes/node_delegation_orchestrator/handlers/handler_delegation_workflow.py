@@ -1367,9 +1367,12 @@ class HandlerDelegationWorkflow:
 
         Returns:
         1. The single canonical delegation terminal event (completed or failed)
-        2. A baseline comparison intent for savings computation (pass only)
 
         OMN-13629: the legacy task-delegated.v1 compat event is no longer emitted.
+        OMN-15051: the secondary baseline-comparison intent previously returned
+        alongside the terminal on the pass path is gone -- it was a dead-end
+        producer (zero Kafka consumers); see the OMN-15051 comment above the
+        removed emission for the full evidence chain.
         """
         cid = result.correlation_id
         workflow = self._workflows.get(cid)
