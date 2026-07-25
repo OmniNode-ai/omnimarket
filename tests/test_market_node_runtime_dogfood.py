@@ -170,7 +170,10 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
     # OMN-14977 adds node_worker_memory_admission_compute (COMPUTE; D3
     # RAM-aware worker admission — headroom formula + fail-closed staleness
     # gate, no live bus wiring yet): 377 -> 378.
-    assert summary["node_dirs"] == 378
+    # OMN-14978 adds node_fleet_partition_key_compute (COMPUTE; fleet
+    # topology keying — deterministic injective repo:branch partition key,
+    # no live bus wiring yet): 378 -> 379.
+    assert summary["node_dirs"] == 379
     # OMN-14151 deliberately removes request/response entry points from the
     # three legacy arm surfaces; the new arm-gate compute node is the single
     # active route. OMN-14608's reducer entry point brings the count back up:
@@ -193,7 +196,9 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
     # OMN-14977 adds the worker-memory-admission compute route (addressable
     # via runtime_dispatch, resolves as routable — same no-live-bus-yet
     # pattern as node_canary_monitoring_gate_compute): 374 -> 375.
-    assert summary["entry_points"] == 375
+    # OMN-14978 adds the fleet-partition-key compute route (addressable via
+    # runtime_dispatch, resolves as routable): 375 -> 376.
+    assert summary["entry_points"] == 376
     assert set(summary["missing_entry_points"]) == OMN_14151_LEGACY_ARM_SURFACES
     assert summary["dangling_entry_points"] == []
     assert summary["routable"] >= 299
