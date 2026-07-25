@@ -683,21 +683,40 @@ def _receipt_is_pass_for_ticket(payload: dict[str, object], ticket_id: str) -> b
 # adopting the full DurableEvidenceGate probe stack, which needs a live
 # ``gh pr view``/contract-loader chain out of scope here).
 #
-# Default OFF (shadow-first, per OMN-13991's staged-rollout DoD): this gate is
-# consequential (it can block a Done flip that today would have gone through),
-# so it ships gated until the false-block rate against real receipts on
-# ``origin/dev`` is measured. Flip via
-# ``OMNI_LINEAR_TRIAGE_STRICT_RECEIPT_MODEL=1``.
+# OMN-15030: advanced past shadow to ENFORCING BY DEFAULT. OMN-13991's
+# staged-rollout DoD ("shadow -> measured -> enforcing") required the measured
+# false-block rate before flipping; that measurement is done — a full 21-day
+# census of every OCC receipt on ``onex_change_control@origin/dev`` (616
+# tickets, 3,941 receipt files) run through the real production functions
+# found a **0/607 (0.0%) would-block rate** (``omni_home#202``,
+# 2026-07-21, docs/evidence/OMN-13991/shadow-measurement-2026-07-20.md).
+# Enforcing today does not wedge any receipt in that census.
+#
+# Honesty note carried forward from the measurement (do not re-report this as
+# closing the self-attestation risk): the 0% is structurally low-value, not
+# proof of independence — every current receipt producer already mints
+# ``verifier`` as a string syntactically distinct from ``runner`` by naming
+# convention, so the literal ``verifier == runner`` rule has no surface to
+# fire on in the current corpus. A materially stronger, git-identity-based
+# independence signal (78.9% would-block on the same census methodology) is
+# already built and shadow-measured under OMN-14890 (omnimarket#1851), but
+# stays OFF pending OMN-14893 (sanctioned-automation identity wiring) — do
+# not conflate the two flags. This flip only advances the narrower,
+# already-safe OMN-13991 slice past shadow; it does not supersede OMN-14890.
+#
+# Set ``OMNI_LINEAR_TRIAGE_STRICT_RECEIPT_MODEL`` to one of
+# ``{"0", "false", "no", "off"}`` to opt back into the loose dict-only check.
 _ENV_STRICT_RECEIPT_MODEL = "OMNI_LINEAR_TRIAGE_STRICT_RECEIPT_MODEL"
-_TRUTHY = frozenset({"1", "true", "yes", "on"})
+_FALSY = frozenset({"0", "false", "no", "off"})
 
 
 def _strict_receipt_model_enabled() -> bool:
-    """True when the OMN-13991 strict ``ModelDodReceipt`` gate is enabled.
+    """True unless the OMN-13991 strict ``ModelDodReceipt`` gate is explicitly disabled.
 
-    Pure function over the environment — no other I/O.
+    Enforcing by default since OMN-15030 (measured-safe: 0/607 false-block
+    rate). Pure function over the environment — no other I/O.
     """
-    return os.environ.get(_ENV_STRICT_RECEIPT_MODEL, "").strip().lower() in _TRUTHY
+    return os.environ.get(_ENV_STRICT_RECEIPT_MODEL, "").strip().lower() not in _FALSY
 
 
 def _receipt_passes_strict_model(payload: dict[str, object], ticket_id: str) -> bool:
