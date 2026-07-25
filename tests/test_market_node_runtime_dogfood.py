@@ -167,7 +167,10 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
     # suite-gated, fail-closed branch push for the gateway push-validation
     # workflow — closes the zero-consumer window on the #624 command topic):
     # 376 -> 377.
-    assert summary["node_dirs"] == 377
+    # OMN-14977 adds node_worker_memory_admission_compute (COMPUTE; D3
+    # RAM-aware worker admission — headroom formula + fail-closed staleness
+    # gate, no live bus wiring yet): 377 -> 378.
+    assert summary["node_dirs"] == 378
     # OMN-14151 deliberately removes request/response entry points from the
     # three legacy arm surfaces; the new arm-gate compute node is the single
     # active route. OMN-14608's reducer entry point brings the count back up:
@@ -187,7 +190,10 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
     # routable): 371 -> 373.
     # OMN-14920 adds the push-validation write-effect route (addressable via
     # runtime_dispatch, resolves as routable): 373 -> 374.
-    assert summary["entry_points"] == 374
+    # OMN-14977 adds the worker-memory-admission compute route (addressable
+    # via runtime_dispatch, resolves as routable — same no-live-bus-yet
+    # pattern as node_canary_monitoring_gate_compute): 374 -> 375.
+    assert summary["entry_points"] == 375
     assert set(summary["missing_entry_points"]) == OMN_14151_LEGACY_ARM_SURFACES
     assert summary["dangling_entry_points"] == []
     assert summary["routable"] >= 299

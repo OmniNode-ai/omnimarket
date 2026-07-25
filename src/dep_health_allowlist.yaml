@@ -56,19 +56,20 @@ allowlist:
     planned_subscriber: node_delegation_quality_gate_reducer
     expires_at: "2026-08-15"
 
-  # --- baseline-comparison-request ---
-  # Published by: node_delegation_orchestrator (omnimarket)
-  # Intended consumer: omnibase_infra node_baseline_comparison_compute
-  # Status: genuinely_unwired — node_baseline_comparison_compute is a COMPUTE node
-  #         with no event_bus section; it operates via direct invocation not Kafka.
-  #         The Kafka-triggered path for baseline comparison is not yet wired.
-  # Expires: 2026-08-15 — wire baseline comparison via Kafka or remove this topic
-  #           if direct invocation is the intended model.
-  - topic: "onex.cmd.omnibase-infra.baseline-comparison-request.v1"
-    reason: "Baseline comparison compute node has no Kafka event_bus; direct invocation model — Kafka path not yet wired."
-    owner_repo: omnibase_infra
-    planned_subscriber: node_baseline_comparison_compute
-    expires_at: "2026-08-15"
+  # --- baseline-comparison-request: RESOLVED (OMN-15051) ---
+  # Removed 2026-07-24. node_delegation_orchestrator no longer publishes
+  # onex.cmd.omnibase-infra.baseline-comparison-request.v1. Investigation
+  # confirmed no Kafka consumer was ever planned for this shape:
+  # node_baseline_comparison_compute (the name-adjacent guess in the original
+  # 2026-05-15 triage) is OMN-2155's A/B pattern-ROI compute node — its
+  # ModelBaselineComparisonInput (paired ModelBaselineRunResult objects) is a
+  # structurally unrelated shape to the orchestrator's ModelBaselineIntent
+  # (flat per-task cost telemetry) and was never the intended target. The real
+  # cost-savings telemetry this event carried is already fully derivable from
+  # the canonical delegation-{completed,failed}.v1 terminal, which
+  # node_projection_savings already consumes directly, re-deriving the same
+  # Claude-cost counterfactual from served tokens. See handler_delegation_
+  # workflow.py OMN-15051 comment for the full evidence chain.
 
   # --- alert-fix-requested ---
   # Published by: node_monitor_alert_responder (omnimarket)

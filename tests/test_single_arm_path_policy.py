@@ -157,3 +157,99 @@ def test_default_arm_gate_policy_is_report_only_and_killed() -> None:
     policy = ModelArmGatePolicy()
     assert policy.action_mode is EnumArmActionMode.REPORT_ONLY
     assert policy.kill_switch is True
+
+
+# ---------------------------------------------------------------------------
+# OMN-15064: HandlerAdminMerge (node_pr_lifecycle_fix_effect) joins the SAME
+# choke point. It is a distinct code path from the arm-gate/merge-fanout
+# above (a raw admin merge of stuck-queue PRs, not a readiness-arm decision)
+# so it gets its own source-level + behavioral proof rather than being
+# folded into the fanout ordering assertion above.
+# ---------------------------------------------------------------------------
+
+_ADMIN_MERGE_REQUEST_SOURCE = (
+    _REPO_ROOT
+    / "src/omnimarket/nodes/node_pr_lifecycle_fix_effect/models/model_admin_merge_request.py"
+)
+_ADMIN_MERGE_HANDLER_SOURCE = (
+    _REPO_ROOT
+    / "src/omnimarket/nodes/node_pr_lifecycle_fix_effect/handlers/handler_admin_merge.py"
+)
+
+
+@pytest.mark.unit
+def test_admin_merge_request_carries_the_shared_policy_shape() -> None:
+    """ModelAdminMergeRequest.policy is the SAME ModelArmGatePolicy shape as
+    every other arm/merge surface — not a second, separately-bypassable
+    switch (OMN-15064)."""
+    source = _ADMIN_MERGE_REQUEST_SOURCE.read_text()
+    assert "from omnimarket.events.pr_arm_gate import ModelArmGatePolicy" in source
+    assert "policy: ModelArmGatePolicy" in source
+
+
+@pytest.mark.unit
+def test_admin_merge_fallback_opt_in_defaults_false() -> None:
+    """A destructive raw-merge capability must not default on (OMN-15064)."""
+    from omnimarket.nodes.node_pr_lifecycle_fix_effect.models.model_admin_merge_request import (
+        ModelAdminMergeRequest,
+    )
+
+    request = ModelAdminMergeRequest()
+    assert request.enable_admin_merge_fallback is False
+    assert request.policy.action_mode is EnumArmActionMode.REPORT_ONLY
+    assert request.policy.kill_switch is True
+
+
+@pytest.mark.unit
+def test_admin_merge_handler_source_checks_action_mode_and_kill_switch() -> None:
+    """Source-level proof the handler evaluates both policy fields before any
+    merge — not just the opt-in flag."""
+    source = _ADMIN_MERGE_HANDLER_SOURCE.read_text()
+    assert "EnumArmActionMode.ENFORCE" in source
+    assert "payload.policy.kill_switch" in source
+    assert "AdminMergeGateClosedError" in source
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_admin_merge_opted_in_but_gate_closed_raises_not_silently_skips() -> None:
+    """Behavioral proof: enable_admin_merge_fallback=True with stuck PRs on a
+    real pass, but the arm-gate policy closed (the shipped default), must
+    raise — not return a quiet ``prs_skipped`` result indistinguishable from
+    this handler never being reached (OMN-15064)."""
+    from datetime import UTC, datetime, timedelta
+
+    from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.handler_admin_merge import (
+        AdminMergeGateClosedError,
+        HandlerAdminMerge,
+    )
+    from omnimarket.nodes.node_pr_lifecycle_fix_effect.models.model_admin_merge_request import (
+        ModelAdminMergeRequest,
+    )
+    from omnimarket.nodes.node_pr_lifecycle_inventory_compute.models.model_pr_lifecycle_inventory import (
+        ModelStuckQueueEntry,
+    )
+
+    class _FailIfCalledAdapter:
+        async def admin_merge(self, repo: str, pr_number: int) -> None:
+            raise AssertionError(
+                "admin_merge must never be called while the arm-gate is closed"
+            )
+
+    handler = HandlerAdminMerge(adapter=_FailIfCalledAdapter())
+    stuck_pr = ModelStuckQueueEntry(
+        pr_number=1,
+        repo="OmniNode-ai/omnimarket",
+        title="stuck PR",
+        queue_entered_at=datetime.now(tz=UTC) - timedelta(minutes=45),
+        queue_age_minutes=45.0,
+    )
+
+    with pytest.raises(AdminMergeGateClosedError):
+        await handler.handle(
+            ModelAdminMergeRequest(
+                stuck_prs=[stuck_pr],
+                enable_admin_merge_fallback=True,
+                dry_run=False,
+            )
+        )

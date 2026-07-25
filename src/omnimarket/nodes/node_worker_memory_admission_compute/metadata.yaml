@@ -1,0 +1,22 @@
+name: node_worker_memory_admission_compute
+version: "1.0.0"
+description: "RAM-aware worker admission COMPUTE (D3): headroom formula (usable = total - wired - inference_reservation) + fail-closed staleness gate against a heartbeat-cadenced host advertisement — refusal is always a typed receipt (OMN-14977)."
+pack: distributed_validation
+node_role: compute
+display_name: "Worker Memory Admission Compute"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_worker_memory_admission_compute: "omnimarket.nodes.node_worker_memory_admission_compute"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: none
+dependencies: []
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["compute", "worker-admission", "memory-policy", "distributed-validation", "OMN-14977"]

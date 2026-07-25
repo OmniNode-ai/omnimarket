@@ -678,15 +678,30 @@ repos:
         name: Merge-queue governor single-arm-path gate (OMN-14151)
         language: system
         entry: uv run pytest tests/test_single_arm_path_policy.py -q -m unit
+        # OMN-15064: switched to (?x) verbose mode (matches the working idiom
+        # used elsewhere in this file, e.g. the OCC-emitter-golden-gate hook
+        # above) — the prior folded->-block-scalar form silently inserted a
+        # leading space before every continuation branch (YAML `>-` folding
+        # joins wrapped lines with a single space), so every branch except
+        # the first (`pyproject\.toml`) NEVER matched any real file path.
+        # This hook has been effectively file-trigger-dead for every path
+        # except pyproject.toml since it was introduced; (?x) mode ignores
+        # insignificant whitespace/newlines in the pattern so indentation is
+        # safe again.
         files: >-
-          ^(pyproject\.toml|
-          src/omnimarket/config/env_flags\.py|
-          src/omnimarket/nodes/node_pr_arm_gate_compute/.*|
-          src/omnimarket/nodes/node_auto_merge_effect/handlers/handler_auto_merge_effect\.py|
-          src/omnimarket/nodes/node_merge_sweep_auto_merge_arm_effect/handlers/handler_auto_merge_arm\.py|
-          src/omnimarket/nodes/node_merge_sweep_triage_orchestrator/handlers/handler_triage\.py|
-          src/omnimarket/nodes/node_pr_lifecycle_orchestrator/handlers/handler_pr_lifecycle_orchestrator\.py|
-          tests/test_single_arm_path_policy\.py)$
+          (?x)^(
+            pyproject\.toml
+            |src/omnimarket/config/env_flags\.py
+            |src/omnimarket/events/pr_arm_gate\.py
+            |src/omnimarket/nodes/node_pr_arm_gate_compute/.*
+            |src/omnimarket/nodes/node_auto_merge_effect/handlers/handler_auto_merge_effect\.py
+            |src/omnimarket/nodes/node_merge_sweep_auto_merge_arm_effect/handlers/handler_auto_merge_arm\.py
+            |src/omnimarket/nodes/node_merge_sweep_triage_orchestrator/handlers/handler_triage\.py
+            |src/omnimarket/nodes/node_pr_lifecycle_orchestrator/handlers/handler_pr_lifecycle_orchestrator\.py
+            |src/omnimarket/nodes/node_pr_lifecycle_fix_effect/handlers/handler_admin_merge\.py
+            |src/omnimarket/nodes/node_pr_lifecycle_fix_effect/models/model_admin_merge_request\.py
+            |tests/test_single_arm_path_policy\.py
+          )$
         pass_filenames: false
         stages: [pre-commit]
 
