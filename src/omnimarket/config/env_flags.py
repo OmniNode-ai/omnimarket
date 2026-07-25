@@ -58,4 +58,65 @@ def env_flag(name: str, *, safe_default: bool) -> bool:
     return safe_default
 
 
-__all__: list[str] = ["env_flag"]
+class LegacyMergeArmDisabledError(RuntimeError):
+    """Raised when a legacy merge-arm/auto-merge surface is invoked while gated off.
+
+    OMN-15053: an agent that dogfoods ``/onex:merge_sweep`` (CLAUDE.md rule 1)
+    can reach a real GitHub-mutating merge path even though CLAUDE.md rule 3
+    says agents never merge — that rule had no mechanism behind it until now.
+    ``omnimarket#1879`` landed this way on 2026-07-24 via
+    ``node_merge_sweep_auto_merge_arm_effect``. Landing a PR through any of
+    the legacy arm surfaces gated by ``OMNIMARKET_LEGACY_MERGE_ARM_ENABLED``
+    (``node_merge_sweep_auto_merge_arm_effect``, ``node_auto_merge_effect``)
+    is now refused LOUDLY (this exception) instead of the previous silent
+    no-op result, so a disabled guard can never be mistaken for a guard that
+    was simply never reached.
+    """
+
+
+def require_legacy_merge_arm_enabled(
+    env_var_name: str, *, surface: str, context: str
+) -> None:
+    """Raise :class:`LegacyMergeArmDisabledError` unless explicitly re-enabled.
+
+    Callers use this at the point of GitHub mutation (arming auto-merge or
+    calling ``gh pr merge``) instead of a soft ``if not env_flag(...): return
+    noop`` branch, so a disabled surface fails loudly and audibly rather than
+    quietly reporting success with an easy-to-miss error string.
+
+    Args:
+        env_var_name: Name of the gating env var (e.g.
+            ``OMNIMARKET_LEGACY_MERGE_ARM_ENABLED``).
+        surface: Human-readable node/handler name, for the error message.
+        context: Repo#PR (or similar) identifying what was about to be
+            mutated, for the error message.
+
+    Raises:
+        LegacyMergeArmDisabledError: always, unless
+            ``env_flag(env_var_name, safe_default=False)`` resolves True.
+    """
+    if env_flag(env_var_name, safe_default=False):
+        return
+    logger.error(
+        "%s: REFUSING to arm/merge %s -- OMN-15053 kill switch engaged "
+        "(%s is not enabled). This is a loud, intentional refusal, not an "
+        "infra error -- see OMN-15053 for the re-enable path.",
+        surface,
+        context,
+        env_var_name,
+    )
+    raise LegacyMergeArmDisabledError(
+        f"{surface}: refusing to arm/merge {context} -- OMN-15053: the "
+        "legacy merge-arm surface is disabled by operator decision "
+        "('nothing should merge a PR right now'). "
+        f"Set {env_var_name}=true to re-enable this surface -- that "
+        "requires a fresh operator decision; see OMN-15053 for context "
+        "and current status before flipping it."
+    )
+
+
+__all__: list[str] = [
+    "LegacyMergeArmDisabledError",
+    "env_flag",
+    "require_legacy_merge_arm_enabled",
+]

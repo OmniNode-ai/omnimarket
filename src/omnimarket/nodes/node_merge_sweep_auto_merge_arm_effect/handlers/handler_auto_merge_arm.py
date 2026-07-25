@@ -16,6 +16,15 @@ OMN-14151: this is one of the three legacy arm surfaces superseded by the
 merge-queue governor's single gated arm path (node_pr_arm_gate_compute +
 node_pr_lifecycle_merge_effect). Hard-gated fail-closed — the GraphQL mutation
 never fires unless ``_LEGACY_ARM_ENV_VAR`` is explicitly enabled.
+
+OMN-15053: this exact surface landed omnimarket#1879 on 2026-07-24 as a
+"working as designed" side effect of an agent dogfooding ``/onex:merge_sweep``
+per CLAUDE.md rule 1, in direct tension with CLAUDE.md rule 3 ("agents never
+merge"). The disabled path used to return a silent no-op success event;
+it now raises ``LegacyMergeArmDisabledError`` loudly instead, so a disabled
+guard can never be mistaken for a guard that was never reached. Re-enabling
+requires a fresh operator decision — see OMN-15053 before setting
+``_LEGACY_ARM_ENV_VAR=true``.
 """
 
 from __future__ import annotations
@@ -31,7 +40,7 @@ from uuid import uuid4
 
 from omnibase_core.models.dispatch.model_handler_output import ModelHandlerOutput
 
-from omnimarket.config.env_flags import env_flag
+from omnimarket.config.env_flags import require_legacy_merge_arm_enabled
 from omnimarket.config.service_endpoints import GITHUB_GRAPHQL_URL
 from omnimarket.inference.secret_store_resolver import resolve_api_key_async
 from omnimarket.nodes.contract_topics import contract_secret_ref
@@ -49,7 +58,9 @@ _log = logging.getLogger(__name__)
 _CONTRACT_PATH = Path(__file__).resolve().parents[1] / "contract.yaml"
 
 # OMN-14151: legacy arm surface hard-gate. Safe default False — the GraphQL
-# mutation is a no-op unless an operator explicitly opts this surface back in.
+# mutation never fires unless an operator explicitly opts this surface back in.
+# OMN-15053: a disabled attempt now raises LegacyMergeArmDisabledError (loud)
+# instead of returning a no-op success event (silent).
 _LEGACY_ARM_ENV_VAR = "OMNIMARKET_LEGACY_MERGE_ARM_ENABLED"
 
 _GRAPHQL_MUTATION = (
@@ -74,30 +85,13 @@ class HandlerAutoMergeArmEffect:
         (OMN-12856) and resolved at the effect boundary via the canonical
         secret-store resolver — never read from env directly in this handler.
         """
-        if not env_flag(_LEGACY_ARM_ENV_VAR, safe_default=False):
-            _log.info(
-                "auto-merge arm gated (no-op): %s#%s — legacy arm surface disabled "
-                "by default (OMN-14151); set %s=true to re-enable",
-                request.repo,
-                request.pr_number,
-                _LEGACY_ARM_ENV_VAR,
-            )
-            completion = ModelAutoMergeArmedEvent(
-                pr_number=request.pr_number,
-                repo=request.repo,
-                correlation_id=request.correlation_id,
-                run_id=request.run_id,
-                total_prs=request.total_prs,
-                armed=False,
-                error=f"gated: legacy arm surface disabled ({_LEGACY_ARM_ENV_VAR} not enabled)",
-                elapsed_seconds=0.0,
-            )
-            return ModelHandlerOutput.for_effect(
-                input_envelope_id=uuid4(),
-                correlation_id=request.correlation_id,
-                handler_id="node_merge_sweep_auto_merge_arm_effect",
-                events=(completion,),
-            )
+        # OMN-15053: loud refusal, not a silent no-op. A disabled guard must
+        # never look like a guard that was simply never reached.
+        require_legacy_merge_arm_enabled(
+            _LEGACY_ARM_ENV_VAR,
+            surface="node_merge_sweep_auto_merge_arm_effect",
+            context=f"{request.repo}#{request.pr_number}",
+        )
 
         # Resolve token ref-name from contract, then value from secret store.
         _github_ref = contract_secret_ref(_CONTRACT_PATH, "GITHUB_TOKEN")

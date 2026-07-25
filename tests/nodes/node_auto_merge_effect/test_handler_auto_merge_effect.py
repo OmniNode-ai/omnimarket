@@ -15,6 +15,7 @@ from uuid import uuid4
 
 import pytest
 
+from omnimarket.config.env_flags import LegacyMergeArmDisabledError
 from omnimarket.nodes.node_auto_merge_effect.handlers.handler_auto_merge_effect import (
     HandlerAutoMergeEffect,
 )
@@ -342,3 +343,41 @@ async def test_ticket_close_failure_is_non_blocking() -> None:
 
     assert result.merged is True
     assert result.ticket_close_status == "failed"
+
+
+# ---------------------------------------------------------------------------
+# OMN-15053: disabled surface fails loudly, not silently
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_disabled_surface_raises_loudly_not_silent_noop(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """OMN-15053: with the legacy arm surface disabled (this module's own
+    autouse fixture normally opts it in for the rest of this suite — override
+    that here), handle() must RAISE LegacyMergeArmDisabledError before ever
+    calling `_run`, instead of quietly returning merged=False.
+
+    A silent skip is indistinguishable from a guard that was never reached;
+    this proves the refusal is loud and happens before any `gh` subprocess
+    call.
+    """
+    monkeypatch.delenv("OMNIMARKET_LEGACY_MERGE_ARM_ENABLED", raising=False)
+
+    def _run_should_never_be_called(_cmd: list[str]) -> tuple[int, str, str]:
+        raise AssertionError(
+            "gh subprocess must never run while the legacy arm surface is disabled"
+        )
+
+    handler = HandlerAutoMergeEffect(run_fn=_run_should_never_be_called)
+    _make_no_sleep(handler)
+
+    with pytest.raises(LegacyMergeArmDisabledError, match="OMN-15053"):
+        await handler.handle(
+            ModelAutoMergeInput(
+                correlation_id=uuid4(),
+                pr_number=PR_NUM,
+                repo=REPO,
+            )
+        )
