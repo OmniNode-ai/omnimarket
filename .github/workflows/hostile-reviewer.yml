@@ -129,7 +129,25 @@ jobs:
         && fromJSON(vars.OMNI_PUBLIC_PR_RUNS_ON_JSON || '["ubuntu-latest"]')
         || fromJSON(vars.OMNI_TRUSTED_CI_RUNS_ON_JSON || '["ubuntu-latest"]')
       }}
-    timeout-minutes: 35
+    # OMN-15066: was 35 (2100s). The "Run adversarial review" step calls the
+    # two models SEQUENTIALLY (cli_review.run_review, a plain for loop), and
+    # each call retries up to max_retries=3 (4 attempts) with exponential
+    # backoff on a per-model timeout_seconds from
+    # omniintelligence/.../model_registry.yaml. Worst case:
+    #   qwen3-review:   4 x 120s + 14s backoff =  494s
+    #   qwen3-review-b: 4 x 600s + 14s backoff = 2414s
+    #   sequential sum                         = 2908s
+    # 2908s > the old 2100s ceiling — that mismatch is what silently stalled
+    # jobs 89616541439/89616551741 to a 35m21s cancellation with zero log
+    # output. 60 min (3600s) leaves ~400s of margin over 2908s plus the
+    # "Validate retry-budget invariant" step's own setup-overhead allowance
+    # below. The "Validate retry-budget invariant" step (below) asserts this
+    # arithmetic on every run against the LIVE registry + LIVE installed
+    # max_retries default, so a future edit that breaks the invariant again
+    # fails fast instead of silently stalling — keep this comment's numbers
+    # in sync with that step's --job-timeout-seconds value if you change
+    # either.
+    timeout-minutes: 60
 
     steps:
       - name: Checkout PR branch
@@ -370,6 +388,54 @@ jobs:
             sleep "$sleep_seconds"
             attempt=$((attempt + 1))
           done
+
+      - name: Validate retry-budget invariant (OMN-15066)
+        # Cheap, no GPU/network calls -- reads the just-installed
+        # omniintelligence's model_registry.yaml and reflects on the
+        # installed omnibase_infra transport's max_retries default. Asserts
+        # attempts * per_attempt_timeout + backoff, summed across the two
+        # models IN THE SAME ORDER the review step below calls them, plus a
+        # setup-overhead allowance, stays under this job's timeout-minutes
+        # (above). This is the self-verifying form of the timeout-minutes
+        # comment above: a future bump to a model's timeout_seconds, a
+        # change to max_retries, or a shrink of timeout-minutes that
+        # reintroduces the OMN-15066 mismatch fails HERE, in ~seconds,
+        # instead of silently stalling the review step for 35+ minutes.
+        # Skipped under the same condition as install/review (preflight
+        # short-circuit to DEGRADED — nothing to validate).
+        if: steps.preflight.outputs.reachable != 'false'
+        working-directory: ../omniintelligence
+        run: |
+          set -uo pipefail  # NOT -e: this step classifies its own exit code below.
+
+          OUTPUT=$(uv run python -m omniintelligence.review_pairing.retry_budget \
+            --model qwen3-review \
+            --model qwen3-review-b \
+            --job-timeout-seconds 3600 \
+            --setup-overhead-seconds 300 2>&1)
+          STATUS=$?
+
+          echo "$OUTPUT"
+
+          if [ "$STATUS" -eq 0 ]; then
+            exit 0
+          fi
+
+          # Landing-order tolerance (OMN-15066 companion PRs land across 3
+          # repos independently): this workflow always clones omniintelligence
+          # at its CURRENT default-branch HEAD, so a run of THIS workflow file
+          # can race ahead of the omniintelligence companion PR that adds the
+          # retry_budget module. Treat ONLY "module not found" as a transitional
+          # skip (warn, exit 0) — every other non-zero exit (a real invariant
+          # violation, or any other error) fails the job. This must not become
+          # a general escape hatch: do not add other strings here.
+          if echo "$OUTPUT" | grep -q "No module named.*retry_budget"; then
+            echo "::warning::retry_budget module not found on omniintelligence's current default branch — the OMN-15066 companion PR there has not merged yet. Skipping this run; this MUST start passing once it merges, and a persistent skip is itself a bug."
+            exit 0
+          fi
+
+          echo "::error::Retry-budget invariant check failed (OMN-15066) — see output above. Either the budget genuinely exceeds this job's timeout-minutes, or the check itself errored. Do not bypass; fix the underlying mismatch."
+          exit 1
 
       - name: Run adversarial review
         # Skipped only when the preflight proved the endpoint unreachable; the
