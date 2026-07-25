@@ -72,13 +72,30 @@ The sweep's per-repo isolation causes this to appear as an orphan when scanning 
 
 ---
 
-### Topic 4: `onex.cmd.omnibase-infra.baseline-comparison-request.v1` — ALLOWLISTED
+### Topic 4: `onex.cmd.omnibase-infra.baseline-comparison-request.v1` — RESOLVED (OMN-15051, 2026-07-24)
 
 **Publisher:** `node_delegation_orchestrator` (omnimarket)
-**Intended subscriber:** `node_baseline_comparison_compute` (omnibase_infra)
+**Originally-guessed intended subscriber:** `node_baseline_comparison_compute` (omnibase_infra) — **this guess was wrong**, corrected below.
 **Why not wired:** `node_baseline_comparison_compute` is a COMPUTE node with no `event_bus` section — it operates via direct invocation, not Kafka subscription. The Kafka-triggered path for baseline comparison is not yet implemented.
 **Action needed:** Either add a Kafka-subscribed effect wrapper node or remove this topic and use direct invocation only.
 **Expires:** 2026-08-15
+
+**Resolution (OMN-15051):** removed the producer instead of wiring a consumer.
+`node_baseline_comparison_compute` was never the real intended target — its
+`ModelBaselineComparisonInput` (paired `ModelBaselineRunResult` A/B pattern-ROI
+records, OMN-2155) is a structurally unrelated shape from the orchestrator's
+`ModelBaselineIntent` (flat per-task cost telemetry); the name match ("baseline")
+was coincidental. The actual cost-savings telemetry this event carried is
+already fully derivable from the canonical `delegation-{completed,failed}.v1`
+terminal (`final_attempt_cost`/`cumulative_attempt_cost`), which
+`node_projection_savings` already consumes directly, independently re-deriving
+the same Claude-cost counterfactual from served tokens via
+`build_premium_counterfactual` (same `DEFAULT_BASELINE_MODEL` + pricing
+manifest `estimate_baseline_cost_usd` used). Zero contracts anywhere ever
+subscribed to this topic. The emission, contract topic/published_events entry,
+and this allowlist entry were removed together; see
+`handler_delegation_workflow.py`'s OMN-15051 comment for the full evidence
+chain.
 
 ---
 

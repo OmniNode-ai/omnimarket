@@ -322,13 +322,14 @@ class TestHappyPath:
         assert intents[0].intent == "quality_gate"
         assert handler.workflows[cid].state == EnumDelegationState.INFERENCE_COMPLETED
 
-        # Step 4: Handle gate result (pass) -> emits single canonical terminal +
-        # baseline intent. OMN-13629: the legacy compat task-delegated.v1 twin is
-        # no longer emitted, so the completed path is 2 events, not 3.
+        # Step 4: Handle gate result (pass) -> emits the single canonical
+        # terminal only. OMN-13629: the legacy compat task-delegated.v1 twin is
+        # no longer emitted. OMN-15051: the secondary baseline-intent command
+        # (dead-end publish, zero Kafka consumers) was removed too, so the
+        # completed path is 1 event, not 2.
         gate = _make_gate_result(cid, passed=True, quality_score=0.9)
         intents = handler.handle_gate_result(gate)
-        # 2 events: delegation-completed terminal, baseline intent.
-        assert len(intents) == 2
+        assert len(intents) == 1
         assert isinstance(intents[0], ModelDelegationCompleted)
         assert handler.workflows[cid].state == EnumDelegationState.COMPLETED
 
@@ -343,17 +344,11 @@ class TestHappyPath:
         assert result.prompt_tokens == 100
         assert result.completion_tokens == 50
         assert result.total_tokens == 150
-
-        # Baseline intent for savings computation (Task 11)
-        from omnimarket.nodes.node_delegation_orchestrator.models.model_baseline_intent import (
-            ModelBaselineIntent,
-        )
-
-        assert isinstance(intents[1], ModelBaselineIntent)
-        assert intents[1].correlation_id == cid
-        assert intents[1].task_type == "test"
-        assert intents[1].baseline_cost_usd > 0
-        assert intents[1].candidate_cost_usd == pytest.approx(0.0)
+        # final_attempt_cost/cumulative_attempt_cost on the canonical terminal
+        # carry the same measured candidate cost the removed baseline intent's
+        # candidate_cost_usd used to carry (OMN-15051).
+        assert result.final_attempt_cost == pytest.approx(0.0)
+        assert result.cumulative_attempt_cost == pytest.approx(0.0)
 
         # OMN-13629: NO compat ModelTaskDelegatedEvent is emitted.
         from omnimarket.nodes.node_delegation_orchestrator.models.model_task_delegated_event import (

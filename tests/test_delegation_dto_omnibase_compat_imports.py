@@ -25,7 +25,6 @@ import yaml
 DTO_IMPORTS = {
     "omnimarket.events.delegation.ModelDelegationRequest": "omnibase_core.models.delegation.wire.model_delegation_wire_request.ModelDelegationRequest",
     "omnimarket.events.delegation.ModelDelegationResult": "omnibase_core.models.delegation.wire.model_delegation_result.ModelDelegationResult",
-    "omnimarket.nodes.node_delegation_orchestrator.models.ModelBaselineIntent": "omnibase_core.models.delegation.wire.model_orchestrator_intents.ModelBaselineIntent",
     "omnimarket.nodes.node_delegation_orchestrator.models.model_compliance_loop_result.ModelComplianceLoopResult": "omnibase_core.models.delegation.wire.model_orchestrator_intents.ModelComplianceLoopResult",
     "omnimarket.nodes.node_delegation_orchestrator.models.ModelDelegationRequest": "omnibase_core.models.delegation.wire.model_delegation_wire_request.ModelDelegationRequest",
     "omnimarket.nodes.node_delegation_orchestrator.models.ModelDelegationResult": "omnibase_core.models.delegation.wire.model_delegation_result.ModelDelegationResult",
