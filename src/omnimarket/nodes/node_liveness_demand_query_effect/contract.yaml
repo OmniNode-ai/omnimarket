@@ -65,7 +65,7 @@ descriptor:
   idempotent: true
   timeout_ms: 30000
 metadata:
-  transport_type: db
+  transport_type: database
   description: "Liveness demand-source query + correlated join -- real Postgres EFFECT half of the OMN-15126 evaluator"
   author: "OmniNode Team"
   created: "2026-07-25"
