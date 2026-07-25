@@ -147,7 +147,11 @@ model_escalation:
     - name: cheap_cloud
       description: "Low-cost cloud API routing tier."
       required_env_keys:
-        - OPENROUTER_API_KEY
+        # OMN-15048: canonical deployed name is OPEN_ROUTER_API_KEY (with
+        # underscore) — the literal OPENROUTER_API_KEY is never set on any
+        # real deployment surface (k8s manifests, docker-compose.judge.yml,
+        # ~/.omnibase/.env all declare the underscore form).
+        - OPEN_ROUTER_API_KEY
     - name: mid_frontier
       description: "Mid-tier frontier routing tier."
     - name: expensive_frontier

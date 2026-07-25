@@ -137,6 +137,47 @@ async def test_local_unhealthy_fallback() -> None:
 @pytest.mark.usefixtures("openrouter_base_url_env")
 @pytest.mark.unit
 @pytest.mark.asyncio
+async def test_default_env_resolves_canonical_open_router_api_key(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """OMN-15048: the handler's DEFAULT (no-override) key resolution must pick
+    up ``OPEN_ROUTER_API_KEY`` — the name every real deployment surface
+    (k8s manifests, docker-compose.judge.yml, ~/.omnibase/.env) actually sets.
+
+    This drives the constructor's default path (no ``openrouter_api_key=``
+    override, exactly how the runtime instantiates the handler) and asserts
+    the resolved key reaches the live HTTP call as an Authorization header —
+    not a surrogate check of a string constant.
+    """
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+    monkeypatch.setenv("OPEN_ROUTER_API_KEY", "sk-canonical-underscore-key")
+
+    captured_headers: dict[str, str] = {}
+
+    async def _capture(
+        url: str, timeout: float, headers: dict[str, str]
+    ) -> tuple[int, bytes]:
+        captured_headers.update(headers)
+        return 200, _openrouter_models_body([])
+
+    handler = HandlerSwarmFleetDiscovery(
+        http_get_fn=_capture,
+        registry_path=_REGISTRY_PATH,
+    )
+    req = ModelFleetDiscoveryRequest(
+        correlation_id="test-omn-15048",
+        include_local=False,
+        include_openrouter=True,
+        min_healthy_endpoints=0,
+    )
+    await handler.handle(req)
+
+    assert captured_headers.get("Authorization") == "Bearer sk-canonical-underscore-key"
+
+
+@pytest.mark.usefixtures("openrouter_base_url_env")
+@pytest.mark.unit
+@pytest.mark.asyncio
 async def test_openrouter_discovery_live_models() -> None:
     # OpenRouter returns several free models including ones in our catalog
     live_ids = [

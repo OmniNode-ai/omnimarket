@@ -27,6 +27,7 @@ from omnimarket.inference.openrouter_models import (
     ModelOpenRouterModelConfig,
     get_openrouter_models,
 )
+from omnimarket.inference.secret_store_resolver import resolve_api_key_loop_safe
 from omnimarket.nodes.node_swarm_fleet_discovery_effect.models.model_fleet_discovery_request import (
     ModelFleetDiscoveryRequest,
 )
@@ -90,8 +91,14 @@ class HandlerSwarmFleetDiscovery:
     """Discovers and health-checks the full model fleet (local + OpenRouter).
 
     Inject ``http_get_fn`` in tests to avoid real network calls.
-    The ``openrouter_api_key`` parameter overrides the ``OPENROUTER_API_KEY``
-    env var (for testing).
+    The ``openrouter_api_key`` parameter overrides the resolved OpenRouter key
+    (for testing). When not overridden, the key is resolved through the
+    canonical secret store (``llm.openrouter.api_key``, falling back to the
+    literal ``OPEN_ROUTER_API_KEY`` env var — the name every real deployment
+    surface sets: k8s manifests, ``docker-compose.judge.yml``,
+    ``~/.omnibase/.env``). OMN-15048: a prior literal read of
+    ``OPENROUTER_API_KEY`` (no underscore) never matched any real deployment
+    surface and silently disabled OpenRouter fleet discovery everywhere.
     """
 
     handler_type: Literal["node_handler"] = "node_handler"
@@ -107,7 +114,15 @@ class HandlerSwarmFleetDiscovery:
         self._http_get = http_get_fn or _default_http_get
         self._timeout = timeout_seconds
         self._registry_path = registry_path or _DEFAULT_REGISTRY_PATH
-        self._api_key = openrouter_api_key or os.environ.get("OPENROUTER_API_KEY", "")
+        if openrouter_api_key:
+            self._api_key = openrouter_api_key
+        else:
+            resolved = resolve_api_key_loop_safe(
+                "llm.openrouter.api_key",
+                required=False,
+                env_var_fallback="OPEN_ROUTER_API_KEY",
+            )
+            self._api_key = resolved.get_secret_value() if resolved else ""
 
     async def handle(
         self, request: ModelFleetDiscoveryRequest
