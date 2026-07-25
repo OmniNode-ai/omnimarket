@@ -10,12 +10,22 @@
 # Codex is excluded from the initial pilot — add --model codex once non-interactive
 # OAuth auth is confirmed on trusted CI runners (OMN-8524).
 #
-# Gate semantics (pilot phase):
+# Gate semantics:
 #   blocked  — critical/error findings from at least one succeeded model → exit 1
-#   degraded — all models failed (infra unavailable) → exit 0 (informational, pilot)
-#   passed   — no critical/error findings → exit 0
+#   degraded — fewer than 2 models succeeded (infra unavailable/timeout) → exit 1
+#   passed   — >=2 models succeeded, no critical/error findings → exit 0
 #
-# Reference: OMN-8524
+# OMN-15110: degraded used to exit 0 ("informational, pilot phase" per OMN-8524).
+# Live measurement 2026-07-25 showed degraded in 5 of 6 concurrent PR runs
+# (qwen3-review-b, a single-slot llama-server endpoint on .201:8001, timing out
+# under concurrent-PR contention) — a gate that is green with one of two
+# adversarial reviewers dead is not an adversarial gate, it is a formality.
+# The "Enforce hostile-review verdict" step below is the single place that
+# turns any non-"passed" verdict into job failure, regardless of which of the
+# three upstream branches (preflight short-circuit, cli_review non-zero exit,
+# or the normal verdict parse) produced it.
+#
+# Reference: OMN-8524, OMN-15066 (job-timeout raise; does not fix this), OMN-15110
 
 name: Hostile Reviewer
 
@@ -463,6 +473,37 @@ jobs:
             exit 1
           fi
 
+      - name: Enforce hostile-review verdict (OMN-15110)
+        # DEGRADED must not satisfy the gate. Historically this workflow's
+        # three verdict-producing branches (the preflight short-circuit at
+        # ~line 260, the cli_review non-zero-exit branch at ~line 414, and the
+        # normal verdict-parse branch at ~line 460) each `exit 0` on
+        # verdict=degraded, justified as "pilot phase informational, does not
+        # block merge" (OMN-8524). Live measurement (OMN-15110) showed
+        # degraded in 5 of 6 concurrent PR runs on 2026-07-25 -- qwen3-review-b
+        # (a single-slot llama-server endpoint) timing out under concurrent-PR
+        # GPU contention even after the OMN-15066 timeout-minutes raise. This
+        # step is the single point of truth that turns ANY non-"passed"
+        # verdict into job failure, regardless of which upstream branch
+        # produced it (same fallback the PR-comment step below already uses),
+        # so `hostile-review-gate` observes `needs.hostile-review.result ==
+        # 'failure'` and blocks merge for a human decision (re-run under lower
+        # contention, or investigate further) instead of silently passing with
+        # one of two adversarial reviewers dead.
+        #
+        # Deliberately does NOT touch the three branches above: they still
+        # need to emit accurate step outputs for the PR-comment step, and
+        # `blocked` already exits 1 at its own branch -- this step is
+        # idempotent in that case, not a behavior change.
+        if: always()
+        run: |
+          VERDICT="${{ steps.review.outputs.verdict || steps.preflight.outputs.verdict }}"
+          echo "Resolved verdict: ${VERDICT:-unknown}"
+          if [ "$VERDICT" != "passed" ]; then
+            echo "::error::Hostile Reviewer verdict is '${VERDICT:-unknown}', not 'passed'. The adversarial gate requires a full review from both reviewer models; DEGRADED no longer satisfies this gate (OMN-15110). See the PR comment posted by this job for details, then either re-run once GPU contention clears or investigate the reviewer endpoint."
+            exit 1
+          fi
+
       - name: Post review summary as PR comment
         if: always()
         uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea # v7
@@ -494,13 +535,14 @@ jobs:
             const label = {
               passed: 'PASSED',
               blocked: 'BLOCKED',
-              degraded: 'DEGRADED (informational)',
+              degraded: 'DEGRADED',
             }[verdict] || verdict.toUpperCase();
 
             let note = '';
             if (verdict === 'degraded') {
-              note = '\n\n> **Note**: All reviewer models failed or were unavailable. ' +
-                'Degraded results are informational during the pilot phase (OMN-8524) and do not block merge.';
+              note = '\n\n> **Action required**: fewer than 2 reviewer models succeeded ' +
+                '(infra unavailable or timeout). This blocks merge (OMN-15110) -- re-run ' +
+                'once the reviewer endpoint is reachable/uncontended, or investigate.';
               if (error) note += ` Error: \`${error}\``;
             } else if (verdict === 'blocked') {
               note = '\n\n> **Action required**: Resolve CRITICAL/ERROR findings before merge.';
@@ -516,13 +558,13 @@ jobs:
               '',
               '---',
               '',
-              '**Gate semantics (pilot phase)**',
+              '**Gate semantics**',
               '',
               '| Verdict | Meaning | Blocks merge? |',
               '|---------|---------|---------------|',
-              '| `passed` | No critical/error findings | No |',
+              '| `passed` | >=2 models succeeded, no critical/error findings | No |',
               '| `blocked` | CRITICAL or ERROR findings found | **Yes** |',
-              '| `degraded` | All models unavailable (infra) | No (pilot) |',
+              '| `degraded` | Fewer than 2 models succeeded (infra unavailable/timeout) | **Yes** (OMN-15110) |',
               '',
               '_Powered by [omniintelligence.review_pairing.cli_review](https://github.com/OmniNode-ai/omniintelligence) — node-based adversarial review via HandlerLlmCliSubprocess (OMN-8524)_',
             ].join('\n');
