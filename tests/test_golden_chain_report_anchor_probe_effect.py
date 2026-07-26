@@ -375,7 +375,7 @@ def test_pr_confirmed_green() -> None:
                 pr_claim=ModelPrAnchorClaim(
                     field_name="pr_number",
                     pr_number=213,
-                    repo="jonahgabriel/steel_onslaught",
+                    repo="owner/repo",
                 ),
             )
         )
@@ -398,7 +398,7 @@ def test_pr_not_found_red() -> None:
                 pr_claim=ModelPrAnchorClaim(
                     field_name="pr_number",
                     pr_number=999999,
-                    repo="jonahgabriel/steel_onslaught",
+                    repo="owner/repo",
                 ),
             )
         )
