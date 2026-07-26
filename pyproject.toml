@@ -477,6 +477,7 @@ node_projection_sandbox_decisions = "omnimarket.nodes.node_projection_sandbox_de
 node_projection_delegation_inference_response = "omnimarket.nodes.node_projection_delegation_inference_response"
 node_worker_memory_admission_compute = "omnimarket.nodes.node_worker_memory_admission_compute"
 node_fleet_partition_key_compute = "omnimarket.nodes.node_fleet_partition_key_compute"
+node_report_anchor_probe_effect = "omnimarket.nodes.node_report_anchor_probe_effect"
 
 [project.scripts]
 onex-integration-test-runner = "omnimarket.nodes.node_integration_test_runner.cli:main"
