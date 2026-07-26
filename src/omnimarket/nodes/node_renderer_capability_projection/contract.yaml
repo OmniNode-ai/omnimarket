@@ -63,6 +63,11 @@ output_model:
   module: omnimarket.nodes.node_renderer_capability_projection.models.model_renderer_capability_projection_state
   description: "Renderer Capability Registry projection state (one row per renderer_id)."
 
+# The generic runtime /skill edge is terminal-event correlated. The projection
+# runtime emits this existing snapshot topic only after at least one durable row
+# is upserted, so it is the truthful completion contract for a heartbeat.
+terminal_event: onex.evt.omnimarket.renderer-capability-projection-snapshot.v1
+
 event_bus:
   subscribe_topics:
     - onex.cmd.ui.renderer-capability-declared.v1
