@@ -53,12 +53,12 @@
 # cross-org reusables) = Shape B/C, per the design spec's context->job resolution
 # algorithm (OMN-14854 ticket, spec section 1).
 #
-# NOTE (this PR, OMN-14857): this manifest backs the guard's OWN required check
-# (`required-check-skip-guard / check-skip-vectors`, ADVISORY row at the bottom),
-# which runs on every omnimarket PR starting this PR. Branch protection is NOT
-# modified in this PR — the guard is observation-only until a follow-up flips it
-# to REQUIRED after 2+ independent green runs on dev (same ordering OMN-14854 used
-# for omniclaude).
+# NOTE (OMN-15178, operator ruling "Make it blocking" 2026-07-26T07:25Z): this
+# manifest backs the guard's OWN required check (`required-check-skip-guard /
+# check-skip-vectors`, REQUIRED row at the bottom, flipped from ADVISORY after
+# 12+ independent green runs on dev). Branch protection already carries this
+# context live (gh api repos/OmniNode-ai/omnimarket/branches/dev/protection/required_status_checks,
+# added additively, 31->32 contexts, 0 removed).
 
 schema_version: 3
 classification: toolchain
@@ -437,11 +437,11 @@ gates:
     rationale: "Live required status check on omnimarket main branch protection (verified 2026-07-20 via gh api required_status_checks)."
 
   - name: "required-check-skip-guard / check-skip-vectors"
-    mode: ADVISORY
+    mode: REQUIRED
     producer_kind: local
     caller_workflow: required-check-skip-guard-caller.yml
     caller_job: required-check-skip-guard
     reusable_workflow: required-check-skip-guard-reusable.yml
     reusable_job: check-skip-vectors
     skip_semantics: never
-    rationale: "OMN-14857: fan-out of this guard's own required check from the omniclaude canary (OMN-14854). Runs on every omnimarket PR but is NOT YET in required_status_checks — the branch-protection flip happens only after 2 independent green runs on dev, tracked as a follow-up. mode stays ADVISORY until that flip lands (same PR as the flip, per schema-v3 rule: mode changes and branch-protection changes land together)."
+    rationale: "OMN-14857/OMN-15178: fan-out of this guard's own required check from the omniclaude canary (OMN-14854). FLIPPED to REQUIRED per operator ruling 2026-07-26T07:25Z (\"Make it blocking\") after 12 independent green runs of required-check-skip-guard-caller.yml on dev. Branch protection already carries this context live (added additively, 31->32 contexts, 0 removed) — this manifest row now matches live state, per schema-v3 rule that mode and branch-protection stay in sync."
