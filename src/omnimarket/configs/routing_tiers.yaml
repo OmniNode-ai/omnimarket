@@ -97,6 +97,32 @@ tiers:
           - complex_reasoning
           - code_generation
         fast_path_threshold_tokens: 8192
+      # OMN-15180: local-coder-mlx (registered as a bifrost_delegation.yaml
+      # backend by OMN-15155, .200:8401 MLX endpoint) was reachable ONLY via an
+      # explicit resolve_delegation_backend(task_type, backend_id="local-coder-mlx")
+      # pin. Declared AFTER local-coder (same Qwen3.6-35B-A3B family, MLX 8bit
+      # quantization) so unpinned FIRST-CHOICE selection is UNCHANGED —
+      # local-coder still wins by file order (identical to the pre-existing
+      # local-ds-v4-flash entry, which never wins over local-coder for
+      # code_generation either). The reachability this registration adds is
+      # the OMN-14402 same-tier backend FALLBACK
+      # (sibling_backend_available_in_tier, wired into
+      # HandlerDelegationWorkflow.handle_inference_response on the deployed bus
+      # path): once local-coder (and, for code_generation, local-ds-v4-flash)
+      # fails with a transport error, the orchestrator retries this sibling in
+      # the SAME tier before escalating to cheap_cloud — proven end to end in
+      # test_local_coder_mlx_same_tier_fallback_omn15180.py. The deterministic
+      # "reach this exact backend on demand" path is the wire-level backend_id
+      # pin (this ticket's ModelDelegateSkillRequest.backend_id field), not
+      # unpinned tier selection.
+      - id: mlx-community/Qwen3.6-35B-A3B-8bit
+        backend_id: local-coder-mlx
+        max_context_tokens: 65536
+        use_for:
+          - code_generation
+          - refactor
+          - document
+        fast_path_threshold_tokens: 65536
     eval_before_accept: true
     eval_model: qwen3.6-35b
     max_retries: 2

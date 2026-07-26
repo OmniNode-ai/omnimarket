@@ -45,6 +45,14 @@ class ProtocolDelegationDispatchPort(Protocol):
     OMN-13161: ``max_tokens`` is ``int | None``. ``None`` means the request
     omitted an explicit budget; the dispatch implementation resolves the effective
     value from the selected backend's per-backend ceiling in the routing contract.
+
+    OMN-15180: ``backend_id`` is ``str | None``, default ``None``. ``None``
+    preserves the pre-existing cheapest-first tier_order resolution.
+    ``LocalDelegationDispatchPort`` (bus-less local path) honors a non-None pin
+    end-to-end via the OMN-15156 seam. ``RuntimeDelegationDispatchPort`` (deployed
+    bus path) declares the same parameter to satisfy this Protocol but does not
+    yet thread it downstream — see that port's docstring for the explicit
+    fail-loud boundary.
     """
 
     async def dispatch(
@@ -60,6 +68,7 @@ class ProtocolDelegationDispatchPort(Protocol):
         quality_contract_mode: str,
         acceptance_criteria: tuple[str, ...],
         tenant_id: str | None,
+        backend_id: str | None = None,
     ) -> dict[str, object]: ...
 
 
@@ -316,6 +325,11 @@ class HandlerDelegateSkill:
                 # dead on arrival -- this is the seam pinned by
                 # test_handler_propagates_verified_tenant_id_to_dispatch_port.
                 tenant_id=request.tenant_id,
+                # OMN-15180: thread the optional wire-level backend pin to the
+                # dispatch port. A pin that stops here is dead on arrival -- this
+                # is the seam pinned by
+                # test_handler_propagates_backend_id_pin_to_dispatch_port.
+                backend_id=request.backend_id,
             )
         except Exception as exc:
             return ModelDelegateSkillResponse(

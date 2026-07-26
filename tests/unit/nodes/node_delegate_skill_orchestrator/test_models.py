@@ -78,6 +78,59 @@ def test_valid_request_full() -> None:
     )
 
 
+def test_backend_id_defaults_to_none() -> None:
+    """OMN-15180: omitting backend_id preserves pre-existing behavior — None,
+    not a default pin, so unpinned callers are unaffected by this field's
+    addition."""
+    req = ModelDelegateSkillRequest(
+        prompt="Write tests for the payment webhook retry path",
+        task_type="test",
+        source="claude-code",
+    )
+    assert req.backend_id is None
+
+
+def test_backend_id_round_trips_through_model_dump_and_validate() -> None:
+    """OMN-15180: an explicit backend_id pin survives a full serialize/parse
+    round-trip — the exact shape a wire-level caller (e.g. steel's
+    LlmBusDelegationClient) sends and the shape the orchestrator's own
+    contract-validation/CLI compile path parses back."""
+    req = ModelDelegateSkillRequest(
+        prompt="Write tests for the payment webhook retry path",
+        task_type="code_generation",
+        source="claude-code",
+        backend_id="local-coder-mlx",
+    )
+    assert req.backend_id == "local-coder-mlx"
+
+    dumped = req.model_dump(mode="json")
+    assert dumped["backend_id"] == "local-coder-mlx"
+
+    round_tripped = ModelDelegateSkillRequest.model_validate(dumped)
+    assert round_tripped.backend_id == "local-coder-mlx"
+    assert round_tripped == req
+
+
+def test_backend_id_widening_preserves_frozen_extra_forbid() -> None:
+    """OMN-15180: adding backend_id is additive-only — the model stays frozen
+    and still rejects unknown fields (extra='forbid' is not silently loosened)."""
+    req = ModelDelegateSkillRequest(
+        prompt="Write tests for the payment webhook retry path",
+        task_type="test",
+        source="claude-code",
+    )
+    with pytest.raises(ValidationError):
+        req.backend_id = "should-not-be-settable"  # type: ignore[misc]
+
+    with pytest.raises(ValidationError):
+        ModelDelegateSkillRequest(
+            prompt="Write tests for the payment webhook retry path",
+            task_type="test",
+            source="claude-code",
+            unknown_field="not allowed",  # type: ignore[call-arg]
+        )
+
+
 def test_invalid_task_type_rejected() -> None:
     with pytest.raises(ValidationError):
         ModelDelegateSkillRequest(

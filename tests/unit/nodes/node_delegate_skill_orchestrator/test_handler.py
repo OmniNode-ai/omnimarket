@@ -179,6 +179,51 @@ async def test_handler_passes_none_tenant_id_when_unset() -> None:
 
 
 @pytest.mark.unit
+async def test_handler_propagates_backend_id_pin_to_dispatch_port() -> None:
+    """OMN-15180: a caller-supplied backend_id pin on the wire request MUST
+    reach the dispatch port. Without this, the LocalDelegationDispatchPort pin
+    OMN-15156 implemented is unreachable from any wire-level caller (e.g.
+    steel's LlmBusDelegationClient) -- this pins the seam so the field can't
+    silently stop being read, mirroring
+    test_handler_propagates_verified_tenant_id_to_dispatch_port.
+    """
+    port = AsyncMock()
+    port.dispatch.return_value = {"status": "completed", "content": "ok"}
+    handler = HandlerDelegateSkill(object(), dispatch_port=port)
+    request = ModelDelegateSkillRequest(
+        prompt="Write the code",
+        task_type="code_generation",
+        source="claude-code",
+        backend_id="local-coder-mlx",
+    )
+
+    await handler.handle(request)
+
+    port.dispatch.assert_awaited_once()
+    call_kwargs = port.dispatch.await_args.kwargs
+    assert call_kwargs["backend_id"] == "local-coder-mlx"
+
+
+@pytest.mark.unit
+async def test_handler_passes_none_backend_id_when_unset() -> None:
+    """No pin supplied -> None reaches the dispatch port, not a default pin
+    (regression: unpinned behavior is unchanged by the backend_id addition)."""
+    port = AsyncMock()
+    port.dispatch.return_value = {"status": "completed", "content": "ok"}
+    handler = HandlerDelegateSkill(object(), dispatch_port=port)
+    request = ModelDelegateSkillRequest(
+        prompt="Write the code",
+        task_type="code_generation",
+        source="claude-code",
+    )
+
+    await handler.handle(request)
+
+    call_kwargs = port.dispatch.await_args.kwargs
+    assert call_kwargs["backend_id"] is None
+
+
+@pytest.mark.unit
 async def test_handler_propagates_correlation_id(
     mock_dispatch_port: AsyncMock,
     event_bus: object,

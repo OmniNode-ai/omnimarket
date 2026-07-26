@@ -91,7 +91,28 @@ class RuntimeDelegationDispatchPort:
         quality_contract_mode: str,
         acceptance_criteria: tuple[str, ...],
         tenant_id: str | None,
+        backend_id: str | None = None,
     ) -> dict[str, object]:
+        # OMN-15180: the deployed bus path publishes ``ModelDelegationRequest``
+        # (omnibase_core), which carries no ``backend_id`` field, and the
+        # downstream consumer (``HandlerDelegationWorkflow`` in
+        # node_delegation_orchestrator) has no backend-pin input today — pinning
+        # was only threaded through the bus-less ``LocalDelegationDispatchPort``
+        # (OMN-15156). Silently accepting and dropping a caller's explicit pin
+        # here would be exactly the "pin drops at a hop" defect class OMN-15180
+        # exists to close, so a non-None pin fails loudly instead: extending the
+        # pin across the bus boundary (a cross-repo omnibase_core change) is out
+        # of this ticket's scope.
+        if backend_id is not None:
+            raise NotImplementedError(
+                "backend_id pin is not yet supported on the deployed bus "
+                "dispatch path (RuntimeDelegationDispatchPort) -- only the "
+                "bus-less LocalDelegationDispatchPort honors it today (OMN-15156/"
+                "OMN-15180). Threading the pin across the bus boundary requires "
+                "a backend_id field on omnibase_core's ModelDelegationRequest "
+                "plus HandlerDelegationWorkflow routing support, which is out of "
+                "scope here."
+            )
         # OMN-13161: the bus runtime path carries its own routing-tier budgets in
         # the downstream delegation chain. When the request omits max_tokens, fall
         # back to the runtime model's contract default rather than forcing a value;
