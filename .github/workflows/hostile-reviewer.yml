@@ -79,20 +79,83 @@ jobs:
 
       - name: Clone omniintelligence
         run: |
-          OMNIINTELLIGENCE_SHA=$(git ls-remote https://github.com/OmniNode-ai/omniintelligence.git HEAD | cut -f1)
-          git clone --depth=1 https://github.com/OmniNode-ai/omniintelligence.git ../omniintelligence
+          set -euo pipefail
+          clone_with_retry() {
+            local repo_name="$1"
+            local target_dir="$2"
+            local sha_var_name="$3"
+            local remote_url="https://github.com/OmniNode-ai/${repo_name}.git"
+            local resolved_sha
+
+            resolved_sha="$(git ls-remote "${remote_url}" HEAD | cut -f1)"
+            printf -v "${sha_var_name}" '%s' "${resolved_sha}"
+            for attempt in 1 2 3 4; do
+              rm -rf "${target_dir}"
+              if git clone --depth=1 "${remote_url}" "${target_dir}"; then
+                return 0
+              fi
+              echo "::warning::clone ${repo_name} failed (attempt ${attempt}/4); retrying after transient fetch failure"
+              sleep $((attempt * 5))
+            done
+            echo "::error::clone ${repo_name} failed after 4 attempts"
+            return 1
+          }
+
+          clone_with_retry omniintelligence ../omniintelligence OMNIINTELLIGENCE_SHA
           echo "omniintelligence pinned to: $OMNIINTELLIGENCE_SHA"
 
       - name: Clone omnibase_core
         run: |
-          OMNIBASE_CORE_SHA=$(git ls-remote https://github.com/OmniNode-ai/omnibase_core.git HEAD | cut -f1)
-          git clone --depth=1 https://github.com/OmniNode-ai/omnibase_core.git ../omnibase_core
+          set -euo pipefail
+          clone_with_retry() {
+            local repo_name="$1"
+            local target_dir="$2"
+            local sha_var_name="$3"
+            local remote_url="https://github.com/OmniNode-ai/${repo_name}.git"
+            local resolved_sha
+
+            resolved_sha="$(git ls-remote "${remote_url}" HEAD | cut -f1)"
+            printf -v "${sha_var_name}" '%s' "${resolved_sha}"
+            for attempt in 1 2 3 4; do
+              rm -rf "${target_dir}"
+              if git clone --depth=1 "${remote_url}" "${target_dir}"; then
+                return 0
+              fi
+              echo "::warning::clone ${repo_name} failed (attempt ${attempt}/4); retrying after transient fetch failure"
+              sleep $((attempt * 5))
+            done
+            echo "::error::clone ${repo_name} failed after 4 attempts"
+            return 1
+          }
+
+          clone_with_retry omnibase_core ../omnibase_core OMNIBASE_CORE_SHA
           echo "omnibase_core pinned to: $OMNIBASE_CORE_SHA"
 
       - name: Clone omnibase_compat
         run: |
-          OMNIBASE_COMPAT_SHA=$(git ls-remote https://github.com/OmniNode-ai/omnibase_compat.git HEAD | cut -f1)
-          git clone --depth=1 https://github.com/OmniNode-ai/omnibase_compat.git ../omnibase_compat
+          set -euo pipefail
+          clone_with_retry() {
+            local repo_name="$1"
+            local target_dir="$2"
+            local sha_var_name="$3"
+            local remote_url="https://github.com/OmniNode-ai/${repo_name}.git"
+            local resolved_sha
+
+            resolved_sha="$(git ls-remote "${remote_url}" HEAD | cut -f1)"
+            printf -v "${sha_var_name}" '%s' "${resolved_sha}"
+            for attempt in 1 2 3 4; do
+              rm -rf "${target_dir}"
+              if git clone --depth=1 "${remote_url}" "${target_dir}"; then
+                return 0
+              fi
+              echo "::warning::clone ${repo_name} failed (attempt ${attempt}/4); retrying after transient fetch failure"
+              sleep $((attempt * 5))
+            done
+            echo "::error::clone ${repo_name} failed after 4 attempts"
+            return 1
+          }
+
+          clone_with_retry omnibase_compat ../omnibase_compat OMNIBASE_COMPAT_SHA
           echo "omnibase_compat pinned to: $OMNIBASE_COMPAT_SHA"
 
       - name: Install uv
