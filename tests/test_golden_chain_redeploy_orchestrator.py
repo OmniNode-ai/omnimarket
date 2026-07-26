@@ -69,6 +69,9 @@ class TestRedeployOrchestratorGoldenChain:
         )
         output = await handler.handle(envelope)
 
+        assert TOPIC_PROD_GATE_EVALUATE == (
+            "onex.cmd.omnimarket.prod-promotion-gate-evaluate.v1"
+        )
         assert output.node_kind == EnumNodeKind.ORCHESTRATOR
         assert [e.event_type for e in output.events] == [TOPIC_PROD_GATE_EVALUATE]
         gate_cmd = output.events[0].payload
