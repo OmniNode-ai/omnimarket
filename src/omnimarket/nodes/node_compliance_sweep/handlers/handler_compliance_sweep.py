@@ -327,6 +327,23 @@ _TRANSPORT_IMPORTS = {
     "boto3",
 }
 
+# OMN-15126: canonical transport-type label per import root, so a handler
+# whose contract.yaml already DECLARES the matching transport is not flagged
+# for the exact I/O its own contract discloses. Mirrors the mapping already
+# proven correct in onex_change_control's
+# handler_contract_compliance._TRANSPORT_CALLSITE_PATTERNS (call-site
+# detection there; import detection here, same canonical labels).
+_TRANSPORT_IMPORT_TO_TYPE: dict[str, str] = {
+    "psycopg": "DATABASE",
+    "psycopg2": "DATABASE",
+    "asyncpg": "DATABASE",
+    "sqlalchemy": "DATABASE",
+    "httpx": "HTTP",
+    "requests": "HTTP",
+    "aiohttp": "HTTP",
+    "boto3": "AWS",
+}
+
 _LOGIC_INDICATORS = [
     re.compile(r"class\s+\w+.*:"),
     re.compile(r"def\s+(handle|process|execute)\s*\("),
@@ -742,6 +759,35 @@ class NodeComplianceSweep:
                 )
         return violations
 
+    def _declared_contract_transports(self, handler_file: Path) -> set[str]:
+        """Read the sibling contract.yaml's declared transport(s), upper-cased.
+
+        OMN-15126: a handler under ``nodes/<node>/handlers/<file>.py`` has its
+        contract at ``nodes/<node>/contract.yaml`` (two directories up). This
+        mirrors onex_change_control's own
+        ``handler_contract_compliance.parse_contract_transports`` so a
+        correctly-declared EFFECT node is not flagged for the exact transport
+        its own contract discloses -- this scanner previously had zero
+        awareness of contract-declared transports at all, unlike the
+        equivalent onex_change_control check.
+        """
+        contract_path = handler_file.parent.parent / "contract.yaml"
+        if not contract_path.is_file():
+            return set()
+        try:
+            data = yaml.safe_load(contract_path.read_text(encoding="utf-8"))
+        except (OSError, yaml.YAMLError):
+            return set()
+        if not isinstance(data, dict):
+            return set()
+        declared: set[str] = set()
+        metadata = data.get("metadata")
+        if isinstance(metadata, dict):
+            transport_type = metadata.get("transport_type")
+            if transport_type:
+                declared.add(str(transport_type).upper())
+        return declared
+
     def _check_transport_imports(
         self, repo: str, path: str, node: str, handler_file: Path
     ) -> list[ModelComplianceViolation]:
@@ -752,11 +798,17 @@ class NodeComplianceSweep:
         except (OSError, SyntaxError):
             return []
 
+        declared_transports = self._declared_contract_transports(handler_file)
+
         for ast_node in ast.walk(tree):
             if isinstance(ast_node, ast.Import):
                 for alias in ast_node.names:
                     root_module = alias.name.split(".")[0]
-                    if root_module in _TRANSPORT_IMPORTS:
+                    if (
+                        root_module in _TRANSPORT_IMPORTS
+                        and _TRANSPORT_IMPORT_TO_TYPE.get(root_module)
+                        not in declared_transports
+                    ):
                         violations.append(
                             ModelComplianceViolation(
                                 repo=repo,
@@ -770,7 +822,11 @@ class NodeComplianceSweep:
                         )
             elif isinstance(ast_node, ast.ImportFrom) and ast_node.module:
                 root_module = ast_node.module.split(".")[0]
-                if root_module in _TRANSPORT_IMPORTS:
+                if (
+                    root_module in _TRANSPORT_IMPORTS
+                    and _TRANSPORT_IMPORT_TO_TYPE.get(root_module)
+                    not in declared_transports
+                ):
                     violations.append(
                         ModelComplianceViolation(
                             repo=repo,

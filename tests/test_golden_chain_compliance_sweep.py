@@ -80,6 +80,34 @@ class TestComplianceSweepGoldenChain:
         assert result.status == "violations_found"
         assert result.by_type.get("UNDECLARED_TRANSPORT", 0) >= 1
 
+    async def test_transport_import_not_flagged_when_contract_declares_it(
+        self, event_bus: EventBusInmemory
+    ) -> None:
+        """OMN-15126: a handler's DB import is not flagged when the node's own
+        contract.yaml declares metadata.transport_type: database -- this is
+        exactly the shape a real EFFECT node uses (e.g.
+        node_liveness_demand_query_effect), and the scanner should not
+        penalize a correctly-declared transport it can trivially verify
+        against the sibling contract."""
+        handler = NodeComplianceSweep()
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            node_dir = Path(tmpdir) / "src" / "nodes" / "node_test_db_effect"
+            handlers_dir = node_dir / "handlers"
+            handlers_dir.mkdir(parents=True)
+            (handlers_dir / "handler_db.py").write_text("import psycopg2\n\nx = 1\n")
+            (node_dir / "contract.yaml").write_text(
+                "metadata:\n  transport_type: database\n"
+            )
+
+            request = ComplianceSweepRequest(
+                target_dirs=[tmpdir], checks=["undeclared-transport"]
+            )
+            result = handler.handle(request)
+
+        assert result.status == "compliant"
+        assert result.by_type.get("UNDECLARED_TRANSPORT", 0) == 0
+
     async def test_selective_checks(self, event_bus: EventBusInmemory) -> None:
         """Only specified checks should run."""
         handler = NodeComplianceSweep()

@@ -1,0 +1,97 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Liveness Evaluate Compute (OMN-15126)
+#
+# Pure computation: the demand-aware liveness state decision (OMN-14845
+# design §3.2). Given the already-fetched outcome of
+# node_liveness_demand_query_effect (registry resolution + demand-query +
+# correlated-join evidence), decides NOT_READY / NO_DEMAND / HEALTHY / STALE
+# / RED and emits a ModelLivenessReceipt (omnibase_core). Zero I/O,
+# deterministic given its input -- the keystone of OMN-15126's "input event
+# -> terminal event -> exact projection key/value; balanced topic offsets
+# cannot certify liveness" proof bar.
+#
+# Directly-invoked only (no Kafka producer/consumer) -- it declares no
+# event_bus topics, so it contributes no edges to the contract-topic-graph.
+# Same no-bus-yet pattern as node_fleet_partition_key_compute,
+# node_canary_monitoring_gate_compute, and node_worker_memory_admission_compute
+# (OMN-14977/14978). The registry-catalog placement (design §7 OPEN-3) and
+# the live orchestrator that would wire real demand into this node are
+# explicit, undecided residuals -- not invented here.
+#
+# Related Tickets:
+#   - OMN-15126: demand-aware liveness evaluator (this node, COMPUTE half)
+#   - OMN-14845: design (state machine, registry contract, receipt contract)
+#   - OMN-13976: epic — OCC real-doneness spine
+name: "node_liveness_evaluate_compute"
+lifecycle: experimental
+node_type: "COMPUTE_GENERIC"
+runtime_profiles: [main]
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_version: "1.0.0"
+description: "Pure computation: the demand-aware liveness state decision (NOT_READY/NO_DEMAND/HEALTHY/STALE/RED, design §3.2) from already-fetched registry/demand-query/join evidence. Zero I/O."
+input_model:
+  name: "ModelLivenessEvaluateRequest"
+  module: "omnimarket.nodes.node_liveness_evaluate_compute.models.model_liveness_evaluate_request"
+  description: "Already-fetched registry/demand-query/correlated-join evidence for one surface's evaluation cycle."
+output_model:
+  name: "ModelLivenessReceipt"
+  module: "omnibase_core.models.runtime.model_liveness_receipt"
+  description: "Correlated-readback liveness receipt (omnibase_core, design §5) -- the state decision plus its exact join evidence."
+
+# Top-level handler block: the runtime's compute-execution path (_run_compute,
+# reached because this contract declares no terminal_event) resolves the
+# handler and builds the typed input payload from THIS block's input_model.
+handler:
+  module: "omnimarket.nodes.node_liveness_evaluate_compute.handlers.handler_liveness_evaluate_compute"
+  class: "HandlerLivenessEvaluateCompute"
+  input_model: "omnimarket.nodes.node_liveness_evaluate_compute.models.model_liveness_evaluate_request.ModelLivenessEvaluateRequest"
+
+handler_routing:
+  routing_strategy: "operation_match"
+  default_handler: "omnimarket.nodes.node_liveness_evaluate_compute.handlers.handler_liveness_evaluate_compute:HandlerLivenessEvaluateCompute"
+  handlers:
+    - operation: "evaluate_liveness"
+      handler:
+        name: "HandlerLivenessEvaluateCompute"
+        module: "omnimarket.nodes.node_liveness_evaluate_compute.handlers.handler_liveness_evaluate_compute"
+
+descriptor:
+  node_archetype: compute
+  purity: pure
+  runtime_profiles: [main]
+  idempotent: true
+  timeout_ms: 5000
+
+# Declared command/terminal seam (dispatch-addressable). No top-level
+# `terminal_event:` scalar is set, so the local runtime keeps using the
+# _run_compute path for `onex node`; these runtime_dispatch topics are the
+# CLI dispatcher's own command/result seam (exempt from orphan detection) and
+# carry no bus producer/consumer today.
+runtime_dispatch:
+  command_topic: "onex.cmd.omnimarket.liveness-evaluate-requested.v1"
+  terminal_events:
+    success: "onex.evt.omnimarket.liveness-evaluated.v1"
+    failure: "onex.evt.omnimarket.liveness-evaluate-failed.v1"
+
+replay:
+  requires_validator_version: true
+  timestamp_authority: ingest_sequence
+  deterministic: true
+
+metadata:
+  transport_type: inmemory
+  description: "Demand-aware liveness state decision (design §3.2) -- pure COMPUTE half of the OMN-15126 evaluator, no external transport"
+  author: "OmniNode Team"
+  created: "2026-07-25"
+  tags:
+    - "compute"
+    - "liveness"
+    - "OMN-15126"
+  related_tickets:
+    - "OMN-15126"
+    - "OMN-14845"
+    - "OMN-13976"

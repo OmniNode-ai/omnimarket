@@ -1,0 +1,23 @@
+name: node_liveness_evaluate_compute
+version: "1.0.0"
+description: "Pure computation: the demand-aware liveness state decision (NOT_READY/NO_DEMAND/HEALTHY/STALE/RED) from already-fetched evidence, zero I/O"
+pack: liveness
+node_role: compute
+display_name: "Liveness Evaluate"
+omnibase_core_compat: ">=0.46.8,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_liveness_evaluate_compute: "omnimarket.nodes.node_liveness_evaluate_compute"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: read_only
+dependencies:
+  - "omnibase_core>=0.46.8"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["compute", "liveness", "OMN-15126"]
