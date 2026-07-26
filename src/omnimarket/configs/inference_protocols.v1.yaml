@@ -70,6 +70,20 @@ profiles:
   # system_prompt_contains remains the fallback for task_type=None callers (no
   # regression to that path). Mirrors the sibling
   # cloud-gemini-flash-no-think-code profile above.
+  #
+  # OMN-15187: added "agent_delegation" to this same allowlist. OMN-14626's
+  # own fix intent was "make the choice explicit per task_type, not
+  # accidental" — agent_delegation fell through that same task_types gate
+  # (present since OMN-14626, never amended for it) and was left on the
+  # thinking-ON-by-default path, exactly the failure mode OMN-14626 fixed for
+  # code_generation/test/validator_generation/refactor. A per-tick tactical
+  # delegation decision is low-latency-budgeted (OMN-15170's driver allocates
+  # ~96-600 max_tokens) and gains nothing from hidden chain-of-thought — same
+  # rationale as the other four members, not a reversal of the allowlist's
+  # purpose. Live-proven: reasoning-ON burns the full max_tokens budget on CoT
+  # and returns empty `content` at 96-600 tokens; the model needs ~1500-2000+
+  # tokens of CoT to reach a final answer for an ~800-token tactical prompt.
+  # Full evidence: OMN-15187, omni_home/docs/evidence/2026-07-26-omn15170-live-driver.md.
   - profile_id: local-qwen-no-think
     enabled: true
     model_name_patterns:
@@ -79,6 +93,7 @@ profiles:
       - "test"
       - "validator_generation"
       - "refactor"
+      - "agent_delegation"
     system_prompt_contains:
       - "test generation"
       - "test engineer"
