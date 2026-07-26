@@ -551,7 +551,27 @@ omnimarket = "omnimarket.nodes"
 # REMOVE WHEN RELEASED: once core publishes a version containing this
 # commit, delete this override (the range pin above already covers it) and
 # `uv lock`.
-omnibase-core = { git = "https://github.com/OmniNode-ai/omnibase_core.git", rev = "15096be73f3e6b341822eb5060000ada52df4a2e" }  # raw-override-ok: OMN-15126
+#
+# OMN-15163: re-pinned from 15096be7 to 3f2998b3 -- the merged squash commit
+# of core #1510 on dev (feat(OMN-15161): port per-role dispatch report
+# contract as fleet wire type), which adds
+# omnibase_core.models.dispatch.report (ModelDispatchReportImplementer/
+# Lander/Registry/Scout/Verifier, ROLE_TO_MODEL) plus
+# validator_dispatch_report_anchors / check_dispatch_report_content_anchors.
+# 3f2998b3 is a direct descendant of 15096be7 -- verified
+# `git merge-base --is-ancestor 15096be7 3f2998b3` on core -- and is itself
+# the current core dev tip (no later dev squash exists as of this pin), so no
+# prior feature is lost. This is a MERGED commit on dev, never a
+# feature-branch head (memory reference_never_pin_a_feature_branch_head), so
+# it is reachable forever. The 15 commits in the 15096be7..3f2998b3 range are
+# all core-internal CI/validator/test/promotion churn (required-checks.yaml,
+# occ-preflight.yml, validator_receipt_gate.py, no_faked_boundary handler,
+# MixinNodeDispatch tests, dev->main promotion merges) with zero omnimarket
+# surface impact; 3f2998b3 itself is a pure-addition commit (+1922/-0, new
+# files only). REMOVE WHEN RELEASED: once core publishes a version containing
+# this commit, delete this override (the range pin above already covers it)
+# and `uv lock`.
+omnibase-core = { git = "https://github.com/OmniNode-ai/omnibase_core.git", rev = "3f2998b3337e4050b4758e0dd2a0fe1061ce0d98" }  # raw-override-ok: OMN-15163
 # omnibase-infra git rev retained — infra is not in the dep-provenance forbidden set.
 #
 # OMN-14779 (PR 2/2): re-pinned from 7e52d5b0 to 77144f83 -- current
