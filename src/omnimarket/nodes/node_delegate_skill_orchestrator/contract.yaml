@@ -167,6 +167,12 @@ inputs:
     type: list
     required: false
     description: Request-level quality criteria enforced by the quality gate.
+  backend_id:
+    type: str
+    required: false
+    description: >
+      Optional explicit backend pin (e.g. 'local-coder-mlx'). None resolves
+      the backend via the normal cheapest-first tier_order selection.
 
 runtime_dispatch:
   command_topic: onex.cmd.omnimarket.delegate-skill.v1
