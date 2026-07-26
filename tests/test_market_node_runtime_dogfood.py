@@ -183,7 +183,11 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
     # report-validation COMPUTE node — no live bus wiring yet, directly-invoked
     # only, same runtime_dispatch-only pattern as node_liveness_demand_query_effect):
     # 381 -> 382.
-    assert summary["node_dirs"] == 382
+    # OMN-15163 adds node_report_validation_compute (COMPUTE; deterministic
+    # shape + content-anchor validation of dispatch-worker report payloads
+    # against the OMN-15161 report contract, consuming OMN-15164's probe
+    # output — no live bus wiring yet, directly-invoked only): 382 -> 383.
+    assert summary["node_dirs"] == 383
     # OMN-14151 deliberately removes request/response entry points from the
     # three legacy arm surfaces; the new arm-gate compute node is the single
     # active route. OMN-14608's reducer entry point brings the count back up:
@@ -214,7 +218,9 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
     # node_fleet_partition_key_compute): 376 -> 378.
     # OMN-15164 adds the report-anchor-probe-effect route (addressable via
     # runtime_dispatch, resolves as routable): 378 -> 379.
-    assert summary["entry_points"] == 379
+    # OMN-15163 adds the report-validation-compute route (addressable via
+    # runtime_dispatch, resolves as routable): 379 -> 380.
+    assert summary["entry_points"] == 380
     assert set(summary["missing_entry_points"]) == OMN_14151_LEGACY_ARM_SURFACES
     assert summary["dangling_entry_points"] == []
     assert summary["routable"] >= 299
