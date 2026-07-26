@@ -91,10 +91,11 @@ jobs:
             printf -v "${sha_var_name}" '%s' "${resolved_sha}"
             for attempt in 1 2 3 4; do
               rm -rf "${target_dir}"
-              if git init "${target_dir}" \
-                && git -C "${target_dir}" remote add origin "${remote_url}" \
-                && git -C "${target_dir}" fetch --depth=1 origin "${resolved_sha}" \
-                && git -C "${target_dir}" checkout --detach "${resolved_sha}"; then
+              if timeout 20s bash -c 'git init "$1" \
+                && git -C "$1" remote add origin "$2" \
+                && git -C "$1" fetch --depth=1 origin "$3" \
+                && git -C "$1" checkout --detach "$3"' \
+                _ "${target_dir}" "${remote_url}" "${resolved_sha}"; then
                 return 0
               fi
               echo "::warning::clone ${repo_name} failed (attempt ${attempt}/4); retrying after transient fetch failure"
@@ -121,10 +122,11 @@ jobs:
             printf -v "${sha_var_name}" '%s' "${resolved_sha}"
             for attempt in 1 2 3 4; do
               rm -rf "${target_dir}"
-              if git init "${target_dir}" \
-                && git -C "${target_dir}" remote add origin "${remote_url}" \
-                && git -C "${target_dir}" fetch --depth=1 origin "${resolved_sha}" \
-                && git -C "${target_dir}" checkout --detach "${resolved_sha}"; then
+              if timeout 20s bash -c 'git init "$1" \
+                && git -C "$1" remote add origin "$2" \
+                && git -C "$1" fetch --depth=1 origin "$3" \
+                && git -C "$1" checkout --detach "$3"' \
+                _ "${target_dir}" "${remote_url}" "${resolved_sha}"; then
                 return 0
               fi
               echo "::warning::clone ${repo_name} failed (attempt ${attempt}/4); retrying after transient fetch failure"
@@ -151,10 +153,11 @@ jobs:
             printf -v "${sha_var_name}" '%s' "${resolved_sha}"
             for attempt in 1 2 3 4; do
               rm -rf "${target_dir}"
-              if git init "${target_dir}" \
-                && git -C "${target_dir}" remote add origin "${remote_url}" \
-                && git -C "${target_dir}" fetch --depth=1 origin "${resolved_sha}" \
-                && git -C "${target_dir}" checkout --detach "${resolved_sha}"; then
+              if timeout 20s bash -c 'git init "$1" \
+                && git -C "$1" remote add origin "$2" \
+                && git -C "$1" fetch --depth=1 origin "$3" \
+                && git -C "$1" checkout --detach "$3"' \
+                _ "${target_dir}" "${remote_url}" "${resolved_sha}"; then
                 return 0
               fi
               echo "::warning::clone ${repo_name} failed (attempt ${attempt}/4); retrying after transient fetch failure"
