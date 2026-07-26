@@ -165,6 +165,10 @@ class TestPatternLearningChainValidation:
         # OMN-12660 WS-G / OMN-13544: f1_publish_loop reconciled
         # (published_at was never a column; the event time column is timestamp).
         projected_rows["f1_publish_loop"]["timestamp"] = "2026-06-03T00:00:00Z"
+        # OMN-15147: push_validation expects workflow_type/status alongside
+        # correlation_id (gateway_workflows columns).
+        projected_rows["push_validation"]["workflow_type"] = "push-validation"
+        projected_rows["push_validation"]["status"] = "completed"
         # OMN-12687 WS I-A: inference request/response round-trip fields
         projected_rows["delegation_inference_round_trip"].update(
             {

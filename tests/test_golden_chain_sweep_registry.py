@@ -72,7 +72,9 @@ class TestLoadRegistry:
             "delegation_inference_round_trip",
             "delegation_projection_materialization",
         }.issubset(names)
-        assert len(chains) == 13
+        # OMN-15147: cloud ops-mirror canary chain.
+        assert "push_validation" in names
+        assert len(chains) == 14
 
     def test_loads_custom_yaml(self, tmp_path: Path) -> None:
         registry_file = tmp_path / "golden_chains.yaml"
@@ -178,6 +180,14 @@ class TestLoadRegistry:
             chain_map["delegation_projection_materialization"].tail_table
             == "delegation_events"
         )
+        # OMN-15147: push_validation head_topic must byte-match
+        # omninode_infra's PUSH_VALIDATION_REQUEST_TOPIC constant and
+        # node_push_validation_effect's runtime_dispatch.command_topic.
+        assert (
+            chain_map["push_validation"].head_topic
+            == "onex.cmd.omnimarket.push-validation-requested.v1"
+        )
+        assert chain_map["push_validation"].tail_table == "gateway_workflows"
 
     def test_i_a_proof_path_chains_are_diagnostic_until_live_packet(self) -> None:
         chain_map = {c.name: c for c in load_registry()}
@@ -253,6 +263,10 @@ class TestRegistryIntegrationWithSweep:
         # OMN-12660 WS-G / OMN-13544: f1_publish_loop reconciled
         # (published_at was never a column; the event time column is timestamp).
         projected_rows["f1_publish_loop"]["timestamp"] = "2026-06-03T00:00:00Z"
+        # OMN-15147: push_validation expects workflow_type/status alongside
+        # correlation_id (gateway_workflows columns).
+        projected_rows["push_validation"]["workflow_type"] = "push-validation"
+        projected_rows["push_validation"]["status"] = "completed"
         # OMN-12687 WS I-A: inference request/response round-trip fields
         projected_rows["delegation_inference_round_trip"].update(
             {
@@ -285,5 +299,5 @@ class TestRegistryIntegrationWithSweep:
         result = NodeGoldenChainSweep().handle(request)
 
         assert result.overall_status == EnumSweepStatus.PASS
-        assert result.chains_total == 13
-        assert result.chains_passed == 13
+        assert result.chains_total == 14
+        assert result.chains_passed == 14

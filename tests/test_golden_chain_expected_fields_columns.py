@@ -148,6 +148,31 @@ PROJECTION_TABLE_COLUMNS: dict[str, set[str]] = {
         "created_at",
         "updated_at",
     },
+    # gateway_workflows: cross-repo table (omninode_infra), NOT an omnimarket
+    # projection. Pinned here per this module's own convention (transcribed
+    # from the deployed forward migrations) since omnimarket tests cannot
+    # reach the omninode_infra migration tree either.
+    #   - db/migrations/20260721_gateway_workflows.sql
+    #   - db/migrations/20260725_gateway_workflows_terminal.sql
+    # OMN-15147: push_validation golden chain (cloud ops-mirror canary).
+    "gateway_workflows": {
+        "workflow_id",
+        "tenant_id",
+        "principal_id",
+        "authenticated_user_id",
+        "workflow_type",
+        "contract_id",
+        "command_topic",
+        "envelope_id",
+        "correlation_id",
+        "causation_id",
+        "status",
+        "submitted_at",
+        "updated_at",
+        "terminal_model_used",
+        "terminal_total_tokens",
+        "terminal_latency_ms",
+    },
 }
 
 
