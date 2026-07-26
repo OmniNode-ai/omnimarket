@@ -44,8 +44,8 @@ from omnimarket.nodes.node_projection_delegation_inference_response.handlers.han
     HandlerProjectionDelegationInferenceResponse,
 )
 from omnimarket.nodes.node_projection_delegation_inference_response.models.model_inference_response_projection import (
+    DEFAULT_TENANT,
     MAX_HISTORY,
-    SINGLETON_KEY,
     ModelInferenceResponseProjectionResult,
 )
 from omnimarket.projection.protocol_database import InmemoryDatabaseAdapter
@@ -166,7 +166,9 @@ async def test_single_event_materializes_singleton_over_bus(
         rows = db.query(TABLE)
         assert len(rows) == 1
         row = rows[0]
-        assert row["singleton_key"] == SINGLETON_KEY
+        # OMN-14894 tranche 2: no tenant_id on the payload falls back to
+        # DEFAULT_TENANT ('omninode'), not the pre-tranche-2 'global' literal.
+        assert row["singleton_key"] == DEFAULT_TENANT
         assert row["latest_correlation_id"] == correlation_id
         assert row["latest_model_name"] == "glm-5.2"
         assert row["latest_task_type"] == "chat"
