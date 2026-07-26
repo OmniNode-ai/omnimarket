@@ -173,7 +173,12 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
     # OMN-14978 adds node_fleet_partition_key_compute (COMPUTE; fleet
     # topology keying — deterministic injective repo:branch partition key,
     # no live bus wiring yet): 378 -> 379.
-    assert summary["node_dirs"] == 379
+    # OMN-15126 adds node_liveness_demand_query_effect (EFFECT; real Postgres
+    # demand-source query + correlated join, design OMN-14845 §3.2 steps 1-2)
+    # and node_liveness_evaluate_compute (COMPUTE; pure demand-aware liveness
+    # state decision — NOT_READY/NO_DEMAND/HEALTHY/STALE/RED, design §3.2 —
+    # no live bus wiring yet, directly-invoked only): 379 -> 381.
+    assert summary["node_dirs"] == 381
     # OMN-14151 deliberately removes request/response entry points from the
     # three legacy arm surfaces; the new arm-gate compute node is the single
     # active route. OMN-14608's reducer entry point brings the count back up:
@@ -198,7 +203,11 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
     # pattern as node_canary_monitoring_gate_compute): 374 -> 375.
     # OMN-14978 adds the fleet-partition-key compute route (addressable via
     # runtime_dispatch, resolves as routable): 375 -> 376.
-    assert summary["entry_points"] == 376
+    # OMN-15126 adds the liveness-demand-query-effect and
+    # liveness-evaluate-compute routes (both addressable via runtime_dispatch,
+    # resolve as routable — same no-live-bus-yet pattern as
+    # node_fleet_partition_key_compute): 376 -> 378.
+    assert summary["entry_points"] == 378
     assert set(summary["missing_entry_points"]) == OMN_14151_LEGACY_ARM_SURFACES
     assert summary["dangling_entry_points"] == []
     assert summary["routable"] >= 299
