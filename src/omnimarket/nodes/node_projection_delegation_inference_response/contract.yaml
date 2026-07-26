@@ -82,6 +82,7 @@ projection_api:
       table: projection_delegation_inference_response_text
       schema: public
       columns:
+        - tenant_id
         - latest_correlation_id
         - latest_model_name
         - latest_task_type

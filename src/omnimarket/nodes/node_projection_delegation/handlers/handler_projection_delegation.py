@@ -62,6 +62,10 @@ GENERATION_TABLE = "generation_events"
 JUDGE_VERDICT_TABLE = "delegation_judge_verdict_events"
 JUDGE_VERDICT_CONFLICT_KEY = "event_hash"
 
+# OMN-14894 (tranche 2): interim single-tenant fallback, mirrors 0019/0022's
+# DEFAULT 'omninode' convention on this same projection surface.
+DEFAULT_TENANT = "omninode"
+
 # OMN-12775 (close-the-loop A3): canonical owner of the generation_events
 # projection — the node that writes the row. Persisted so the dashboard renders
 # the real owner instead of its reader-side fallback string.
@@ -568,8 +572,20 @@ class HandlerProjectionDelegation:
         event: ModelDelegationJudgeVerdictEvent,
         db: DatabaseAdapter,
     ) -> ModelProjectionResult:
-        """UPSERT a reproducible judge verdict event into its evidence table."""
+        """UPSERT a reproducible judge verdict event into its evidence table.
+
+        OMN-14894 (tranche 2): delegation_judge_verdict_events has no tenant
+        identity of its own -- ModelDelegationJudgeVerdictEvent never carried
+        one. Resolve tenant_id by joining the same correlation_id against
+        delegation_events (written by this same node), falling back to
+        DEFAULT_TENANT when no match exists yet, so the row is always
+        stamped and never silently tenant-less (the OMN-14058
+        writer-erasure pattern this tranche closes). See migration 0025's
+        own caveat: the join was only verified against a 4-row sample with a
+        50% miss rate -- re-verify completeness once volume grows.
+        """
         row = _judge_verdict_projection_row(event)
+        row["tenant_id"] = _resolve_judge_verdict_tenant_id(event, db)
         ok = db.upsert(JUDGE_VERDICT_TABLE, JUDGE_VERDICT_CONFLICT_KEY, row)
         return ModelProjectionResult(
             rows_upserted=1 if ok else 0, table=JUDGE_VERDICT_TABLE
@@ -589,6 +605,7 @@ class HandlerProjectionDelegation:
 
 
 __all__: list[str] = [
+    "DEFAULT_TENANT",
     "GENERATION_PROJECTION_OWNER",
     "JUDGE_VERDICT_TABLE",
     "HandlerProjectionDelegation",
@@ -600,6 +617,26 @@ __all__: list[str] = [
     "compute_generation_proof_fields",
     "validate_actual_cost_provenance",
 ]
+
+
+def _resolve_judge_verdict_tenant_id(
+    event: ModelDelegationJudgeVerdictEvent,
+    db: DatabaseAdapter,
+) -> str:
+    """Resolve tenant_id for a judge-verdict row via a correlation_id join.
+
+    Looks up delegation_events by the same correlation_id (same node, same
+    write path) and returns its tenant_id when found. Falls back to
+    DEFAULT_TENANT when no matching delegation_events row exists yet (late
+    or out-of-order projection, or a genuine correlation-id gap -- see
+    migration 0025's join-completeness caveat).
+    """
+    matches = db.query(TABLE, filters={"correlation_id": str(event.correlation_id)})
+    if matches:
+        tenant_id = matches[0].get("tenant_id")
+        if isinstance(tenant_id, str) and tenant_id.strip():
+            return tenant_id
+    return DEFAULT_TENANT
 
 
 def _judge_verdict_projection_row(

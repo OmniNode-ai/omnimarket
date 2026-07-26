@@ -27,8 +27,8 @@ from datetime import UTC, datetime
 from typing import Any
 
 from omnimarket.nodes.node_projection_delegation_inference_response.models.model_inference_response_projection import (
+    DEFAULT_TENANT,
     MAX_HISTORY,
-    SINGLETON_KEY,
     ModelInferenceResponseProjectionResult,
     ModelRecentInferenceResponse,
 )
@@ -94,7 +94,18 @@ class HandlerProjectionDelegationInferenceResponse:
         *,
         topic: str = SOURCE_TOPIC,
     ) -> ModelInferenceResponseProjectionResult:
-        """Upsert the singleton snapshot row from a raw event payload dict."""
+        """Upsert the per-tenant snapshot row from a raw event payload dict.
+
+        OMN-14894 (tranche 2): this table was a single global singleton
+        (singleton_key always 'global') -- every tenant's inference-response
+        event overwrote the same row, a confirmed active cross-tenant leak
+        (Linear OMN-14894 comment 6b84daf0). ModelInferenceResponseData
+        carries tenant_id (OMN-14280) but this handler previously dropped it
+        entirely. It now reads tenant_id from the payload (falling back to
+        DEFAULT_TENANT when absent, never silently omitted) and re-keys the
+        upsert conflict key to the resolved tenant identity, so each tenant
+        gets its own row instead of colliding on 'global'.
+        """
         now = _now_utc()
 
         correlation_id = str(payload.get("correlation_id", ""))
@@ -104,6 +115,13 @@ class HandlerProjectionDelegationInferenceResponse:
         prompt_tokens = int(payload.get("prompt_tokens", 0))
         completion_tokens = int(payload.get("completion_tokens", 0))
         latency_ms = int(payload.get("latency_ms", 0))
+
+        raw_tenant_id = payload.get("tenant_id")
+        tenant_id = (
+            str(raw_tenant_id)
+            if isinstance(raw_tenant_id, str) and raw_tenant_id.strip()
+            else DEFAULT_TENANT
+        )
 
         # Build the new recent-response entry.
         new_entry = ModelRecentInferenceResponse(
@@ -117,8 +135,8 @@ class HandlerProjectionDelegationInferenceResponse:
             captured_at=now,
         )
 
-        # Fetch the current singleton row to retrieve existing recent_responses.
-        existing_rows = db.query(TABLE, filters={"singleton_key": SINGLETON_KEY})
+        # Fetch this tenant's current row to retrieve existing recent_responses.
+        existing_rows = db.query(TABLE, filters={"singleton_key": tenant_id})
         recent: list[dict[str, Any]] = []
         if existing_rows:
             recent = _parse_recent(existing_rows[0].get("recent_responses", []))
@@ -130,7 +148,8 @@ class HandlerProjectionDelegationInferenceResponse:
         ][:MAX_HISTORY]
 
         row: dict[str, object] = {
-            "singleton_key": SINGLETON_KEY,
+            "singleton_key": tenant_id,
+            "tenant_id": tenant_id,
             "latest_correlation_id": correlation_id,
             "latest_model_name": model_used,
             "latest_task_type": task_type,
@@ -150,4 +169,6 @@ class HandlerProjectionDelegationInferenceResponse:
             extra={"correlation_id": correlation_id, "model": model_used},
         )
 
-        return ModelInferenceResponseProjectionResult(rows_upserted=1)
+        return ModelInferenceResponseProjectionResult(
+            rows_upserted=1, singleton_key=tenant_id
+        )

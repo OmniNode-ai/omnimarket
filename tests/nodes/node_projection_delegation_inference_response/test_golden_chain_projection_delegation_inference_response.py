@@ -4,11 +4,15 @@
 
 Tests verify:
 - Handler imports and is instantiable (RED->GREEN gate)
-- Singleton row upserted with correct latest_* fields
+- Per-tenant row upserted with correct latest_* fields (OMN-14894 tranche 2:
+  the table was a single global singleton until this tranche; every event
+  now keys on tenant_id, defaulting to DEFAULT_TENANT when absent)
 - recent_responses window maintained (max MAX_HISTORY entries)
 - Idempotency: duplicate event with same correlation_id re-upserts (no duplicate row)
 - provisioned always True after first event
 - source_topic matches the contracted subscribe topic
+- Two tenants' events land on two distinct rows, not one collapsed row
+  (the confirmed leak this tranche closes -- Linear OMN-14894 comment 6b84daf0)
 """
 
 from __future__ import annotations
@@ -62,9 +66,12 @@ def test_handle_upserts_singleton_row() -> None:
     result = handler.handle(payload)
 
     rows = db.query(TABLE)
-    assert len(rows) == 1, "Singleton table must contain exactly one row"
+    assert len(rows) == 1, "One tenant's event must produce exactly one row"
     row = rows[0]
-    assert row["singleton_key"] == "global"
+    assert row["singleton_key"] == "omninode", (
+        "no tenant_id on the payload falls back to DEFAULT_TENANT, never 'global'"
+    )
+    assert row["tenant_id"] == "omninode"
     assert row["latest_correlation_id"] == str(correlation_id)
     assert row["latest_model_name"] == "glm-5.2"
     assert row["latest_generated_text"] == "Hello from the model"
@@ -187,3 +194,83 @@ def test_handle_missing_db_raises() -> None:
                 "error_message": "",
             }
         )
+
+
+@pytest.mark.unit
+def test_two_tenants_land_on_two_distinct_rows_omn14894() -> None:
+    """OMN-14894 tranche 2: the confirmed cross-tenant leak closes.
+
+    Before this tranche, every inference-response event upserted the same
+    hardcoded 'global' singleton row regardless of tenant_id -- two tenants
+    sharing write traffic collapsed onto one row, silently overwriting each
+    other's latest_generated_text. This proves tenant A's event and tenant
+    B's event now produce two independent rows, keyed by tenant_id.
+    """
+    db = InmemoryDatabaseAdapter()
+    handler = HandlerProjectionDelegationInferenceResponse()
+
+    handler.handle(
+        {
+            "_db": db,
+            "_topic": "onex.evt.omnibase-infra.inference-response.v1",
+            "_partition": 0,
+            "_offset": 1,
+            "correlation_id": str(uuid4()),
+            "content": "tenant A response",
+            "model_used": "glm-5.2",
+            "tenant_id": "tenant-a",
+            "prompt_tokens": 10,
+            "completion_tokens": 5,
+            "latency_ms": 50,
+        }
+    )
+    handler.handle(
+        {
+            "_db": db,
+            "_topic": "onex.evt.omnibase-infra.inference-response.v1",
+            "_partition": 0,
+            "_offset": 2,
+            "correlation_id": str(uuid4()),
+            "content": "tenant B response",
+            "model_used": "glm-5.2",
+            "tenant_id": "tenant-b",
+            "prompt_tokens": 20,
+            "completion_tokens": 8,
+            "latency_ms": 60,
+        }
+    )
+
+    rows = db.query(TABLE)
+    assert len(rows) == 2, "two distinct tenants must never collapse onto one row"
+    by_tenant = {row["tenant_id"]: row for row in rows}
+    assert by_tenant["tenant-a"]["latest_generated_text"] == "tenant A response"
+    assert by_tenant["tenant-b"]["latest_generated_text"] == "tenant B response"
+    assert by_tenant["tenant-a"]["singleton_key"] == "tenant-a"
+    assert by_tenant["tenant-b"]["singleton_key"] == "tenant-b"
+
+
+@pytest.mark.unit
+def test_missing_tenant_id_falls_back_to_default_tenant_omn14894() -> None:
+    """A payload with no tenant_id key still stamps DEFAULT_TENANT, never blank."""
+    db = InmemoryDatabaseAdapter()
+    handler = HandlerProjectionDelegationInferenceResponse()
+
+    handler.handle(
+        {
+            "_db": db,
+            "_topic": "onex.evt.omnibase-infra.inference-response.v1",
+            "_partition": 0,
+            "_offset": 1,
+            "correlation_id": str(uuid4()),
+            "content": "no tenant on the wire",
+            "model_used": "glm-5.2",
+            "prompt_tokens": 1,
+            "completion_tokens": 1,
+            "latency_ms": 1,
+        }
+    )
+
+    rows = db.query(TABLE)
+    assert len(rows) == 1
+    assert rows[0]["tenant_id"] == "omninode"
+    assert rows[0]["singleton_key"] == "omninode"
