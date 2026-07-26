@@ -8,17 +8,14 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
-# SEAM IMPORT (deliberate, not a violation of "no cross-node model imports"):
-# omnimarket.nodes.node_report_anchor_probe_effect.models.model_probe_result
-# docstring states verbatim "This is the SEAM surface: OMN-15163's
-# report-validation COMPUTE node consumes this model as (part of) its own
-# input." Re-declaring an equivalent shape here would violate the stronger
-# one-canonical-model-per-shape rule (duplicate models are gated); reusing
-# the EFFECT node's exact output type is the field-by-field seam match the
-# OMN-15163 ticket brief requires.
-from omnimarket.nodes.node_report_anchor_probe_effect.models.model_probe_result import (
-    ModelReportAnchorProbeResult,
-)
+# SEAM IMPORT: omnimarket.events.report_anchor_probe is the canonical OWNER
+# of this shape (promoted there under this ticket precisely so this import is
+# NOT a cross-node reach-in -- tests/test_no_cross_node_reach_in.py fails
+# closed on any new omnimarket.nodes.<a>.*models* -> omnimarket.nodes.<b>
+# import and forbids growing its allowlist). node_report_anchor_probe_effect
+# (OMN-15164) produces this exact type; re-declaring an equivalent shape here
+# would separately violate one-canonical-model-per-shape.
+from omnimarket.events.report_anchor_probe import ModelReportAnchorProbeResult
 from omnimarket.nodes.node_report_validation_compute.models.model_dispatch_worker_role import (
     EnumDispatchWorkerRole,
 )

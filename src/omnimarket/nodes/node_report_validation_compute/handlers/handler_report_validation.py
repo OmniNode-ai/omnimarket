@@ -34,7 +34,11 @@ from __future__ import annotations
 from omnibase_core.models.dispatch.report import ROLE_TO_MODEL
 from pydantic import BaseModel, ValidationError
 
-from omnimarket.nodes.node_report_anchor_probe_effect.models import (
+# SEAM IMPORT: see model_report_validation_request.py's comment for why this
+# is omnimarket.events.report_anchor_probe (the canonical OWNER of the
+# OMN-15164 EFFECT node's output shape), not a
+# omnimarket.nodes.node_report_anchor_probe_effect reach-in.
+from omnimarket.events.report_anchor_probe import (
     EnumAnchorProbeStatus,
     ModelPathProbeResult,
     ModelReportAnchorProbeResult,

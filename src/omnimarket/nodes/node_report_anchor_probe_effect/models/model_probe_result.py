@@ -3,55 +3,18 @@
 """Output model for the report anchor-probe EFFECT (OMN-15164).
 
 This is the SEAM surface: OMN-15163's report-validation COMPUTE node consumes
-this model as (part of) its own input. See that ticket's contract/PR body for
-the field-by-field match; do not rename fields here without updating that
-lane's contract in the same PR.
+this model as (part of) its own input. Canonical home:
+``omnimarket.events.report_anchor_probe`` (promoted there under OMN-15163 so
+that node can import it directly instead of reaching into this node's
+private models package — ``tests/test_no_cross_node_reach_in.py`` fails
+closed on a new cross-node model import and forbids growing its allowlist).
+Re-exported here so this node's own intra-node imports (which predate the
+promotion) keep working unchanged. Do not rename fields in the canonical
+module without updating both nodes' contract/PR bodies in the same PR.
 """
 
 from __future__ import annotations
 
-from uuid import UUID
-
-from pydantic import BaseModel, ConfigDict, Field
-
-from omnimarket.nodes.node_report_anchor_probe_effect.models.model_probe_outcome import (
-    ModelPathProbeResult,
-    ModelPrProbeResult,
-    ModelShaProbeResult,
-)
-
-
-class ModelReportAnchorProbeResult(BaseModel):
-    """Typed probe results for every claim in the request."""
-
-    model_config = ConfigDict(frozen=True, extra="forbid")
-
-    correlation_id: UUID
-    sha_results: tuple[ModelShaProbeResult, ...] = Field(default=())
-    path_results: tuple[ModelPathProbeResult, ...] = Field(default=())
-    pr_result: ModelPrProbeResult | None = Field(default=None)
-
-    @property
-    def all_resolved(self) -> bool:
-        """True iff every probed claim (sha, path, and PR if present) resolved.
-
-        An empty request (no claims at all) is vacuously ``True`` -- absence of
-        a claim is not a failed claim; the caller decides whether a report
-        with zero content-anchor fields is itself acceptable.
-        """
-        if self.pr_result is not None and not self.pr_result.resolved:
-            return False
-        return all(r.resolved for r in self.sha_results) and all(
-            r.resolved for r in self.path_results
-        )
-
-    @property
-    def total_claims(self) -> int:
-        return (
-            len(self.sha_results)
-            + len(self.path_results)
-            + (1 if self.pr_result is not None else 0)
-        )
-
+from omnimarket.events.report_anchor_probe import ModelReportAnchorProbeResult
 
 __all__ = ["ModelReportAnchorProbeResult"]

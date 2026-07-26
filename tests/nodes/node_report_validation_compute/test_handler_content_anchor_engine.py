@@ -23,7 +23,7 @@ from omnibase_core.models.dispatch.report import (
     ModelDispatchReportVerifier,
 )
 
-from omnimarket.nodes.node_report_anchor_probe_effect.models import (
+from omnimarket.events.report_anchor_probe import (
     EnumAnchorProbeStatus,
     ModelPathProbeResult,
     ModelPrProbeResult,

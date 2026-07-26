@@ -30,7 +30,7 @@ from uuid import uuid4
 import pytest
 from omnibase_core.enums.enum_dispatch_report_role import EnumDispatchReportRole
 
-from omnimarket.nodes.node_report_anchor_probe_effect.models import (
+from omnimarket.events.report_anchor_probe import (
     EnumAnchorProbeStatus,
     ModelPathProbeResult,
     ModelReportAnchorProbeResult,
