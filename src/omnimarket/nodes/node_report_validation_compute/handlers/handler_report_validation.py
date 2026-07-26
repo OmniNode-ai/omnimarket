@@ -16,11 +16,14 @@ validate (shape AND content anchors)"):
    mismatch or a field_validator content rejection -- is ``INVALID_SHAPE``.
 2. Content anchors: for every ``*_sha``/``*_paths`` field the CONSTRUCTED
    report actually carries a value for, is there a matching, RESOLVED entry
-   in the caller-supplied ``probe_result`` (OMN-15164 EFFECT node output)? A
-   present anchor claim with no matching probe-result entry is
-   ``ANCHOR_UNCHECKABLE`` (fail-closed -- an unchecked anchor is never a
-   silent pass); a present, checked, but NOT-resolved claim is
-   ``INVALID_CONTENT``.
+   in the caller-supplied ``probe_result`` (OMN-15164 EFFECT node output),
+   for the EXACT claimed sha/path -- a resolved probe entry for the same
+   field but a DIFFERENT sha/path never satisfies the claim -- and for the
+   SAME ``correlation_id`` as this request (a probe result computed for a
+   different dispatch is untrusted, never silently reused)? A present anchor
+   claim with no matching probe-result entry is ``ANCHOR_UNCHECKABLE``
+   (fail-closed -- an unchecked anchor is never a silent pass); a present,
+   checked, but NOT-resolved claim is ``INVALID_CONTENT``.
 
 All I/O that produces ``probe_result`` already happened upstream in
 ``node_report_anchor_probe_effect`` (OMN-15164) -- this handler never calls
@@ -30,6 +33,8 @@ handler impure.
 """
 
 from __future__ import annotations
+
+import json
 
 from omnibase_core.models.dispatch.report import ROLE_TO_MODEL
 from pydantic import BaseModel, ValidationError
@@ -71,10 +76,15 @@ def _shape_violations_from_error(exc: ValidationError) -> tuple[str, ...]:
 
 def _index_sha_results(
     probe_result: ModelReportAnchorProbeResult | None,
-) -> dict[str, ModelShaProbeResult]:
+) -> dict[tuple[str, str], ModelShaProbeResult]:
+    """Index by ``(field_name, sha)``, not ``field_name`` alone -- a RESOLVED
+    probe result for the same field but a DIFFERENT sha must never satisfy
+    this report's claim (a stale or mismatched probe would otherwise pass)."""
     if probe_result is None:
         return {}
-    return {result.field_name: result for result in probe_result.sha_results}
+    return {
+        (result.field_name, result.sha): result for result in probe_result.sha_results
+    }
 
 
 def _index_path_results(
@@ -110,7 +120,7 @@ def _check_content_anchors(
         if field_name.endswith(_SHA_SUFFIX):
             if value is None:
                 continue
-            sha_result = sha_by_field.get(field_name)
+            sha_result = sha_by_field.get((field_name, value))
             if sha_result is None:
                 missing_context.append(f"anchor_missing_context: {field_name}")
             elif sha_result.status is not EnumAnchorProbeStatus.RESOLVED:
@@ -179,30 +189,39 @@ class HandlerReportValidation:
 
         report_model_cls = ROLE_TO_MODEL[report_role]
 
+        # JSON-MODE validation, not a strict=False override (call-site or
+        # otherwise): raw_report_payload is a wire-shaped dict, so every enum
+        # field (verdict, role) always arrives as a plain str, never a live
+        # Python enum instance. Under the model's own strict=True config,
+        # pydantic's Python-OBJECT validation path (model_validate on a dict)
+        # requires an ACTUAL enum member for Enum-typed fields and rejects the
+        # equal-valued str outright; model_validate_json does NOT hit this --
+        # JSON-mode strict validation allows str -> enum construction, because
+        # JSON has no native enum type. A blanket `strict=False` override at
+        # the Python-object call site was tried first and reverted: pydantic
+        # applies it to EVERY ordinary field, not just enums (field-level
+        # StrictStr/StrictInt annotations survive it, but that is relying on
+        # every current and future field in this model family being
+        # explicitly Strict-annotated -- a silent trap for a field that isn't).
+        # Routing through JSON preserves strict=True for every field except
+        # enums, with no such trap. json.dumps is on a dict[str, object] --
+        # if raw_report_payload contains a non-JSON-serializable value that
+        # itself is a wire-shape violation, not a crash.
         try:
-            # strict=False OVERRIDE (call-site only -- the report models stay
-            # strict=True in omnibase_core): raw_report_payload is a wire-shaped
-            # dict, so every enum field (verdict, role) always arrives as a
-            # plain str, never a live Python enum instance. Under the model's
-            # own strict=True config, pydantic's Python-object validation path
-            # requires an ACTUAL enum member for `Enum`-typed fields and
-            # rejects the equal-valued str outright (`model_validate_json`
-            # does NOT hit this -- JSON-mode strict validation allows str ->
-            # enum construction; only strict Python-object validation does
-            # not). Without this override, model_validate() would reject
-            # every real (string-enum) report as INVALID_SHAPE regardless of
-            # content, which is the opposite of this node's job. strict=False
-            # does NOT relax anything else this validator relies on: extra
-            # fields are still forbidden (extra="forbid"), PrNumber/GitSha
-            # keep their type/pattern constraints, and the summary
-            # field_validator (placeholder/bare-ack rejection) still runs --
-            # verified directly against this exact model at
-            # implementation time (raw string-verdict payload with a valid
-            # summary parses; the same payload with summary="test" still
-            # raises ValidationError).
-            validated_report = report_model_cls.model_validate(
-                request.raw_report_payload, strict=False
+            serialized_payload = json.dumps(request.raw_report_payload)
+        except (TypeError, ValueError) as exc:
+            return ModelReportValidationResult(
+                correlation_id=request.correlation_id,
+                dispatch_role=request.dispatch_role,
+                report_role=report_role,
+                verdict=EnumReportValidationVerdict.INVALID_SHAPE,
+                violations=(
+                    f"shape: raw_report_payload is not JSON-serializable: {exc}",
+                ),
             )
+
+        try:
+            validated_report = report_model_cls.model_validate_json(serialized_payload)
         except ValidationError as exc:
             return ModelReportValidationResult(
                 correlation_id=request.correlation_id,
@@ -212,8 +231,22 @@ class HandlerReportValidation:
                 violations=_shape_violations_from_error(exc),
             )
 
+        # A probe_result computed for a DIFFERENT correlation_id is untrusted
+        # context -- it proves nothing about THIS report's anchor claims, so
+        # it is discarded (treated as absent) before the per-field check runs.
+        # A discarded probe naturally reproduces ANCHOR_UNCHECKABLE for
+        # whichever fields actually needed it (the same code path as
+        # probe_result=None); a report with no anchor claims at all is
+        # unaffected either way.
+        probe_result = request.probe_result
+        if (
+            probe_result is not None
+            and probe_result.correlation_id != request.correlation_id
+        ):
+            probe_result = None
+
         missing_context, unresolved = _check_content_anchors(
-            validated_report, request.probe_result
+            validated_report, probe_result
         )
 
         if missing_context:

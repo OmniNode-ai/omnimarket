@@ -25,7 +25,7 @@ fails closed too, rather than silently defaulting anywhere.
 
 from __future__ import annotations
 
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 from omnibase_core.enums.enum_dispatch_report_role import EnumDispatchReportRole
@@ -51,14 +51,24 @@ SUBSTANTIVE_SUMMARY_IMPLEMENTER = (
     "content-anchor validation against the OMN-15161 report contract."
 )
 
+# Shared correlation_id for every RED/GREEN case that pairs a request with a
+# probe_result: the handler discards a probe_result whose correlation_id
+# does not match the request's (a probe computed for a different dispatch is
+# untrusted context, per the CodeRabbit-flagged correlation-binding fix), so
+# every fixture that means for its probe to actually apply must use this same
+# id. `test_red_probe_result_wrong_correlation_is_anchor_uncheckable` below is
+# the one deliberate exception.
+CORRELATION_ID = uuid4()
+
 
 def _handle(
     dispatch_role: EnumDispatchWorkerRole,
     raw_report_payload: dict[str, object],
     probe_result: ModelReportAnchorProbeResult | None = None,
+    correlation_id: UUID = CORRELATION_ID,
 ):
     request = ModelReportValidationRequest(
-        correlation_id=uuid4(),
+        correlation_id=correlation_id,
         dispatch_role=dispatch_role,
         raw_report_payload=raw_report_payload,
         probe_result=probe_result,
@@ -80,7 +90,7 @@ def _implementer_payload(*, summary: str, files_path: str) -> dict[str, object]:
 
 def _resolved_implementer_probe(files_path: str) -> ModelReportAnchorProbeResult:
     return ModelReportAnchorProbeResult(
-        correlation_id=uuid4(),
+        correlation_id=CORRELATION_ID,
         sha_results=(
             ModelShaProbeResult(
                 field_name="head_sha",
@@ -158,7 +168,7 @@ def test_red_probe_says_sha_unresolved_is_invalid_content() -> None:
         summary=SUBSTANTIVE_SUMMARY_IMPLEMENTER, files_path=files_path
     )
     probe_result = ModelReportAnchorProbeResult(
-        correlation_id=uuid4(),
+        correlation_id=CORRELATION_ID,
         sha_results=(
             ModelShaProbeResult(
                 field_name="head_sha",
@@ -180,6 +190,83 @@ def test_red_probe_says_sha_unresolved_is_invalid_content() -> None:
 
     assert result.verdict is EnumReportValidationVerdict.INVALID_CONTENT
     assert any("head_sha" in v and "not_resolved" in v for v in result.violations)
+
+
+def test_red_probe_result_for_a_different_sha_is_anchor_uncheckable() -> None:
+    """A RESOLVED probe entry for the same field but a DIFFERENT sha must
+    never satisfy this report's claim -- it is exactly as uninformative as no
+    probe at all (CodeRabbit finding, PR #1911)."""
+    files_path = "src/omnimarket/nodes/node_report_validation_compute/contract.yaml"
+    payload = _implementer_payload(
+        summary=SUBSTANTIVE_SUMMARY_IMPLEMENTER, files_path=files_path
+    )
+    stale_sha = "f" * 40
+    assert stale_sha != HEAD_SHA
+    probe_result = ModelReportAnchorProbeResult(
+        correlation_id=CORRELATION_ID,
+        sha_results=(
+            ModelShaProbeResult(
+                field_name="head_sha",
+                sha=stale_sha,
+                status=EnumAnchorProbeStatus.RESOLVED,
+                detail="resolves to a real commit -- but the WRONG one",
+            ),
+        ),
+        path_results=(
+            ModelPathProbeResult(
+                field_name="files_changed_paths",
+                path=files_path,
+                resolved_path=f"/repo/{files_path}",
+                status=EnumAnchorProbeStatus.RESOLVED,
+            ),
+        ),
+    )
+    result = _handle(EnumDispatchWorkerRole.fixer, payload, probe_result=probe_result)
+
+    assert result.verdict is EnumReportValidationVerdict.ANCHOR_UNCHECKABLE
+    assert any("head_sha" in v and "missing_context" in v for v in result.violations)
+
+
+def test_red_probe_result_wrong_correlation_is_anchor_uncheckable() -> None:
+    """A probe_result computed for a DIFFERENT correlation_id is untrusted
+    context and must be discarded entirely, never silently reused to satisfy
+    this report's anchor claims (CodeRabbit finding, PR #1911)."""
+    files_path = "src/omnimarket/nodes/node_report_validation_compute/contract.yaml"
+    payload = _implementer_payload(
+        summary=SUBSTANTIVE_SUMMARY_IMPLEMENTER, files_path=files_path
+    )
+    other_correlation_id = uuid4()
+    assert other_correlation_id != CORRELATION_ID
+    probe_result = ModelReportAnchorProbeResult(
+        correlation_id=other_correlation_id,
+        sha_results=(
+            ModelShaProbeResult(
+                field_name="head_sha",
+                sha=HEAD_SHA,
+                status=EnumAnchorProbeStatus.RESOLVED,
+            ),
+        ),
+        path_results=(
+            ModelPathProbeResult(
+                field_name="files_changed_paths",
+                path=files_path,
+                resolved_path=f"/repo/{files_path}",
+                status=EnumAnchorProbeStatus.RESOLVED,
+            ),
+        ),
+    )
+    result = _handle(
+        EnumDispatchWorkerRole.fixer,
+        payload,
+        probe_result=probe_result,
+        correlation_id=CORRELATION_ID,
+    )
+
+    assert result.verdict is EnumReportValidationVerdict.ANCHOR_UNCHECKABLE
+    assert any("head_sha" in v and "missing_context" in v for v in result.violations)
+    assert any(
+        "files_changed_paths" in v and "missing_context" in v for v in result.violations
+    )
 
 
 def test_red_ops_role_is_declared_unmappable() -> None:
@@ -276,7 +363,7 @@ def test_green_scout_default_roles_are_valid(
         "pr_number": None,
     }
     probe_result = ModelReportAnchorProbeResult(
-        correlation_id=uuid4(),
+        correlation_id=CORRELATION_ID,
         path_results=(
             ModelPathProbeResult(
                 field_name="findings_paths",

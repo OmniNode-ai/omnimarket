@@ -57,20 +57,32 @@ there is nothing to map it FROM here.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
+from types import MappingProxyType
+from typing import Final
+
 from omnibase_core.enums.enum_dispatch_report_role import EnumDispatchReportRole
 
 from omnimarket.nodes.node_report_validation_compute.models.model_dispatch_worker_role import (
     EnumDispatchWorkerRole,
 )
 
-ROLE_MAPPING_TABLE: dict[EnumDispatchWorkerRole, EnumDispatchReportRole] = {
-    EnumDispatchWorkerRole.fixer: EnumDispatchReportRole.IMPLEMENTER,
-    EnumDispatchWorkerRole.watcher: EnumDispatchReportRole.SCOUT,
-    EnumDispatchWorkerRole.designer: EnumDispatchReportRole.SCOUT,
-    EnumDispatchWorkerRole.auditor: EnumDispatchReportRole.SCOUT,
-    EnumDispatchWorkerRole.synthesizer: EnumDispatchReportRole.SCOUT,
-    EnumDispatchWorkerRole.sweep: EnumDispatchReportRole.SCOUT,
-}
+# MappingProxyType (not a plain dict): the table is a closed routing decision
+# baked in at import time -- a mutable public dict would let any importer
+# silently alter validation routing (e.g. re-point `ops`), defeating the
+# deterministic fail-closed policy this module documents above.
+ROLE_MAPPING_TABLE: Final[Mapping[EnumDispatchWorkerRole, EnumDispatchReportRole]] = (
+    MappingProxyType(
+        {
+            EnumDispatchWorkerRole.fixer: EnumDispatchReportRole.IMPLEMENTER,
+            EnumDispatchWorkerRole.watcher: EnumDispatchReportRole.SCOUT,
+            EnumDispatchWorkerRole.designer: EnumDispatchReportRole.SCOUT,
+            EnumDispatchWorkerRole.auditor: EnumDispatchReportRole.SCOUT,
+            EnumDispatchWorkerRole.synthesizer: EnumDispatchReportRole.SCOUT,
+            EnumDispatchWorkerRole.sweep: EnumDispatchReportRole.SCOUT,
+        }
+    )
+)
 
 # Declared out-of-scope, not silently defaulted. See module docstring.
 UNMAPPABLE_DISPATCH_ROLES: frozenset[EnumDispatchWorkerRole] = frozenset(

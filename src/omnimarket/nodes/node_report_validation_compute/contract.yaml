@@ -82,9 +82,6 @@ inputs:
     description: "OMN-15164 EFFECT node's ModelReportAnchorProbeResult for this report's *_sha/*_paths claims. Missing on a report that carries an anchor claim yields ANCHOR_UNCHECKABLE, never a silent pass."
 
 outputs:
-  correlation_id:
-    type: uuid
-    description: "Echoed runtime correlation ID."
   dispatch_role:
     type: str
     description: "Echoed input dispatch_role."
