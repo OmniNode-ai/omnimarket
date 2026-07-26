@@ -4,6 +4,9 @@
 
 from __future__ import annotations
 
+import ast
+from pathlib import Path
+from typing import get_args
 from uuid import UUID, uuid4
 
 import pytest
@@ -17,6 +20,9 @@ from omnimarket.nodes.node_delegate_skill_orchestrator.models.model_delegate_ski
     ModelDelegateSkillResponse,
     ModelDelegateSkillResponseMetrics,
 )
+
+# src/omnimarket -- parents[4] from this test file's directory.
+_SRC_ROOT = Path(__file__).resolve().parents[4] / "src" / "omnimarket"
 
 
 def test_valid_request_minimal() -> None:
@@ -97,6 +103,74 @@ def test_invalid_source_rejected() -> None:
             task_type="test",
             source="unknown-adapter",  # type: ignore[arg-type]
         )
+
+
+def test_valid_request_external_client_source() -> None:
+    """OMN-15158: widen source with a third member for non-adapter callers
+    (e.g. the steel/battery delegation client) that are neither the Claude
+    Code CLI nor the Codex adapter."""
+    req = ModelDelegateSkillRequest(
+        prompt="Route a battery match through the delegation node",
+        task_type="agent_delegation",
+        source="external-client",
+    )
+    assert req.source == "external-client"
+
+
+def test_source_literal_has_exactly_three_members() -> None:
+    """OMN-15158: pin the widened Literal set so a future edit cannot silently
+    narrow it back to two members or grow it beyond the ticketed third."""
+    assert get_args(ModelDelegateSkillRequest.model_fields["source"].annotation) == (
+        "claude-code",
+        "codex",
+        "external-client",
+    )
+
+
+def _files_referencing_delegate_skill_models() -> list[Path]:
+    """Every src/omnimarket file that imports the request or response model.
+
+    ``model_delegate_skill_request.py`` itself is excluded by the caller --
+    the ``source:`` field declaration is not a "reader", it's the field.
+    """
+    hits: list[Path] = []
+    for path in _SRC_ROOT.rglob("*.py"):
+        text = path.read_text()
+        if "ModelDelegateSkillRequest" in text or "ModelDelegateSkillResponse" in text:
+            hits.append(path)
+    return hits
+
+
+def test_no_reader_assumes_two_member_source_set() -> None:
+    """OMN-15158 grep-style guard: no code path may read ``.source`` off a
+    constructed ``ModelDelegateSkillRequest``/``ModelDelegateSkillResponse``
+    instance and branch/compare against the stale two-member set.
+
+    Verified by live grep (2026-07-26) that ``.source`` has zero readers
+    across every src/omnimarket file that references either model -- this
+    test pins that fact so a future equality/exhaustive-match reader (which
+    would silently misroute or misattribute an ``"external-client"``-sourced
+    request the same way hostile finding #7 warned about) fails CI instead of
+    landing quietly. The wire model's own field declaration is excluded (it
+    defines ``source``, it doesn't read it).
+    """
+    offenders: list[str] = []
+    excluded = (
+        _SRC_ROOT / "models" / "delegation" / "wire" / "model_delegate_skill_request.py"
+    )
+    for path in _files_referencing_delegate_skill_models():
+        if path == excluded:
+            continue
+        tree = ast.parse(path.read_text(), filename=str(path))
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Attribute) and node.attr == "source":
+                offenders.append(f"{path.relative_to(_SRC_ROOT)}:{node.lineno}")
+    assert not offenders, (
+        "Found `.source` attribute access in a file that references "
+        "ModelDelegateSkillRequest/ModelDelegateSkillResponse -- this may be "
+        "a reader that assumes the stale 2-member Literal set "
+        f"(claude-code/codex only): {offenders}"
+    )
 
 
 def test_non_uuid_correlation_id_rejected() -> None:

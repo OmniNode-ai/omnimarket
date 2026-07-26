@@ -53,7 +53,7 @@ class ModelDelegateSkillRequest(BaseModel):
             "Task classification for routing. Must match contract allowed_task_types."
         ),
     )
-    source: Literal["claude-code", "codex"] = Field(
+    source: Literal["claude-code", "codex", "external-client"] = Field(
         ...,
         description="Registered adapter source.",
     )
