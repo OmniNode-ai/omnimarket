@@ -338,6 +338,39 @@ async def test_runtime_dispatch_port_threads_verified_tenant_id_onto_published_r
 
 
 @pytest.mark.unit
+async def test_runtime_dispatch_port_rejects_backend_id_pin_loudly() -> None:
+    """OMN-15180: the deployed bus path publishes ``ModelDelegationRequest``
+    (omnibase_core), which carries no ``backend_id`` field, and the downstream
+    ``HandlerDelegationWorkflow`` has no backend-pin input today. A non-None
+    pin must fail LOUDLY here rather than being silently accepted and dropped
+    -- the exact "pin drops at a hop" defect class this ticket exists to
+    close. Never publishes to the bus when it raises.
+    """
+    bus = _CapturingEventBus()
+    port = RuntimeDelegationDispatchPort(
+        event_bus=bus,
+        config=_runtime_dispatch_config(),
+    )
+
+    with pytest.raises(NotImplementedError, match="backend_id pin"):
+        await port.dispatch(
+            prompt="Write tests",
+            task_type="code_generation",
+            correlation_id=uuid4(),
+            max_tokens=512,
+            source_file_path=None,
+            source_session_id=None,
+            wait=False,
+            quality_contract_mode="replace_task_class",
+            acceptance_criteria=(),
+            tenant_id=None,
+            backend_id="local-coder-mlx",
+        )
+
+    assert bus.published == []
+
+
+@pytest.mark.unit
 async def test_runtime_dispatch_port_unwraps_delegation_event_payload() -> None:
     bus = EventBusInmemory(environment="test", group="delegate-skill-port")
     original_correlation_id = uuid4()

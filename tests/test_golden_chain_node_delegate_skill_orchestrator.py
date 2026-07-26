@@ -57,12 +57,14 @@ class _StubDispatchPort:
         quality_contract_mode: str,
         acceptance_criteria: tuple[str, ...],
         tenant_id: str | None,
+        backend_id: str | None = None,
     ) -> dict[str, object]:
         self.calls.append(
             {
                 "prompt": prompt,
                 "task_type": task_type,
                 "correlation_id": correlation_id,
+                "backend_id": backend_id,
             }
         )
         return self._result

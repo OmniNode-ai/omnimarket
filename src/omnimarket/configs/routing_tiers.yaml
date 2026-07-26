@@ -97,6 +97,23 @@ tiers:
           - complex_reasoning
           - code_generation
         fast_path_threshold_tokens: 8192
+      # OMN-15180: local-coder-mlx (registered as a bifrost_delegation.yaml
+      # backend by OMN-15155, .200:8401 MLX endpoint) was reachable ONLY via an
+      # explicit resolve_delegation_backend(task_type, backend_id="local-coder-mlx")
+      # pin. Registering it here lets task_type-based tier selection
+      # (first_eligible_tier -> backend_id_for_tier -> _select_model_for_task)
+      # resolve it too. It is declared AFTER local-coder (same Qwen3.6-35B-A3B
+      # family, MLX 8bit quantization) so unpinned auto-selection keeps
+      # preferring the existing local-coder backend by file order — this entry
+      # only changes reachability, not the live routing decision.
+      - id: mlx-community/Qwen3.6-35B-A3B-8bit
+        backend_id: local-coder-mlx
+        max_context_tokens: 65536
+        use_for:
+          - code_generation
+          - refactor
+          - document
+        fast_path_threshold_tokens: 65536
     eval_before_accept: true
     eval_model: qwen3.6-35b
     max_retries: 2

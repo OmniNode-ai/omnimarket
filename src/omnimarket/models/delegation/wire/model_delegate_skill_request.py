@@ -118,6 +118,22 @@ class ModelDelegateSkillRequest(BaseModel):
             "Never a self-reported/client-writable value."
         ),
     )
+    # OMN-15180: optional caller-supplied backend PIN. None (the default)
+    # preserves the exact pre-existing cheapest-first task_type + tier_order
+    # resolution. A non-None value is threaded verbatim to
+    # HandlerDelegateSkill.handle() -> dispatch_port.dispatch(backend_id=...),
+    # reusing the OMN-15156 pin LocalDelegationDispatchPort already implements
+    # (resolve_delegation_backend(task_type, backend_id=...), bypassing tier
+    # selection for the INITIAL attempt only). This is what makes a wire-level
+    # caller (e.g. steel's LlmBusDelegationClient, OMN-15159) able to reach a
+    # specific backend such as local-coder-mlx deterministically.
+    backend_id: str | None = Field(
+        default=None,
+        description=(
+            "Optional explicit backend pin (e.g. 'local-coder-mlx'). None resolves "
+            "the backend via the normal cheapest-first tier_order selection."
+        ),
+    )
 
     @field_validator("acceptance_criteria")
     @classmethod
