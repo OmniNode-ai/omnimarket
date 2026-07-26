@@ -91,7 +91,10 @@ jobs:
             printf -v "${sha_var_name}" '%s' "${resolved_sha}"
             for attempt in 1 2 3 4; do
               rm -rf "${target_dir}"
-              if git clone --depth=1 "${remote_url}" "${target_dir}"; then
+              if git init "${target_dir}" \
+                && git -C "${target_dir}" remote add origin "${remote_url}" \
+                && git -C "${target_dir}" fetch --depth=1 origin "${resolved_sha}" \
+                && git -C "${target_dir}" checkout --detach "${resolved_sha}"; then
                 return 0
               fi
               echo "::warning::clone ${repo_name} failed (attempt ${attempt}/4); retrying after transient fetch failure"
@@ -118,7 +121,10 @@ jobs:
             printf -v "${sha_var_name}" '%s' "${resolved_sha}"
             for attempt in 1 2 3 4; do
               rm -rf "${target_dir}"
-              if git clone --depth=1 "${remote_url}" "${target_dir}"; then
+              if git init "${target_dir}" \
+                && git -C "${target_dir}" remote add origin "${remote_url}" \
+                && git -C "${target_dir}" fetch --depth=1 origin "${resolved_sha}" \
+                && git -C "${target_dir}" checkout --detach "${resolved_sha}"; then
                 return 0
               fi
               echo "::warning::clone ${repo_name} failed (attempt ${attempt}/4); retrying after transient fetch failure"
@@ -145,7 +151,10 @@ jobs:
             printf -v "${sha_var_name}" '%s' "${resolved_sha}"
             for attempt in 1 2 3 4; do
               rm -rf "${target_dir}"
-              if git clone --depth=1 "${remote_url}" "${target_dir}"; then
+              if git init "${target_dir}" \
+                && git -C "${target_dir}" remote add origin "${remote_url}" \
+                && git -C "${target_dir}" fetch --depth=1 origin "${resolved_sha}" \
+                && git -C "${target_dir}" checkout --detach "${resolved_sha}"; then
                 return 0
               fi
               echo "::warning::clone ${repo_name} failed (attempt ${attempt}/4); retrying after transient fetch failure"
