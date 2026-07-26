@@ -19,10 +19,8 @@ flattened domain payload **dict** + an injected ``_db`` adapter, calls
 reducer-shaped ``handle(envelope)`` both crashed on ``dict.payload`` and would
 never have written a row.
 
-This module feeds the EXACT on-wire bytes the omnidash W-cap producer emits
-(``server/renderer-capability-producer.ts``: ``{envelope_id,
-envelope_timestamp, correlation_id, source_tool, payload:{capability,
-declared_at}, transport}``) through the *real* runtime path:
+This module feeds the canonical command envelope the generic runtime edge emits
+for OmniDash through the *real* runtime path:
 
     on-wire JSON bytes
       -> ModelEventEnvelope.model_validate           (the runtime's deserialize)
@@ -54,25 +52,20 @@ OMNIDASH_ANALYTICS_DB_URL_ENV = "OMNIDASH_ANALYTICS_DB_URL"
 SNAPSHOT_TOPIC = "onex.evt.omnimarket.renderer-capability-projection-snapshot.v1"
 
 
-def _wcap_producer_wire_bytes(
+def _runtime_command_wire_bytes(
     *,
     renderer_id: str = "ui.effect.web",
     declared_at: datetime,
 ) -> bytes:
-    """The exact JSON the omnidash W-cap thin producer publishes to the bus.
-
-    Mirrors ``buildCapabilityDeclarationEnvelope`` in
-    ``omnidash/server/renderer-capability-producer.ts``: a bespoke outer object
-    whose fields are valid ``ModelEventEnvelope`` fields (envelope_id,
-    envelope_timestamp, correlation_id, source_tool, payload) plus an extra
-    ``transport`` marker the canonical envelope ignores.
-    """
+    """The canonical command JSON the runtime edge publishes to the bus."""
     iso = declared_at.astimezone(UTC).isoformat().replace("+00:00", "Z")
     envelope = {
         "envelope_id": "11111111-1111-4111-8111-111111111111",
         "envelope_timestamp": iso,
         "correlation_id": "22222222-2222-4222-8222-222222222222",
-        "source_tool": "omnidash-ui",
+        "event_type": RENDERER_CAPABILITY_DECLARED_TOPIC_V1,
+        "source_tool": "pattern-b-broker",
+        "target_tool": "node_renderer_capability_projection",
         "payload": {
             "capability": {
                 "renderer_id": renderer_id,
@@ -84,11 +77,6 @@ def _wcap_producer_wire_bytes(
                 "supports_interaction": True,
             },
             "declared_at": iso,
-        },
-        "transport": {
-            "kind": "thin-publish",
-            "producer": "omnidash-renderer-capability-producer",
-            "topic": RENDERER_CAPABILITY_DECLARED_TOPIC_V1,
         },
     }
     return json.dumps(envelope).encode("utf-8")
@@ -147,7 +135,7 @@ class TestRendererCapabilityLiveDispatchMaterializes:
 
         # The live producer sets declared_at = now (fresh heartbeat), so the
         # observer-clock freshness derivation must classify it not-degraded.
-        raw = _wcap_producer_wire_bytes(declared_at=datetime.now(tz=UTC))
+        raw = _runtime_command_wire_bytes(declared_at=datetime.now(tz=UTC))
         materialized = _materialized_dispatch_from_wire(raw)
 
         # Drive the REAL projection dispatch callback with the materialized dict.
@@ -190,11 +178,13 @@ class TestRendererCapabilityLiveDispatchMaterializes:
 
         t0 = datetime(2026, 6, 18, 12, 0, 0, tzinfo=UTC)
         await callback(
-            _materialized_dispatch_from_wire(_wcap_producer_wire_bytes(declared_at=t0))
+            _materialized_dispatch_from_wire(
+                _runtime_command_wire_bytes(declared_at=t0)
+            )
         )
         await callback(
             _materialized_dispatch_from_wire(
-                _wcap_producer_wire_bytes(declared_at=t0 + timedelta(seconds=30))
+                _runtime_command_wire_bytes(declared_at=t0 + timedelta(seconds=30))
             )
         )
 
@@ -221,5 +211,6 @@ def test_snapshot_topic_is_declared_as_projection_output() -> None:
     projection = contract["projection_api"]["exposures"][0]
 
     assert SNAPSHOT_TOPIC in event_bus["publish_topics"]
+    assert contract["terminal_event"] == SNAPSHOT_TOPIC
     assert SNAPSHOT_TOPIC in contract["externally_consumed_topics"]
     assert projection["topic"] == SNAPSHOT_TOPIC
