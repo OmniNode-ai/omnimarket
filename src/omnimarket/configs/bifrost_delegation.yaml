@@ -20,8 +20,8 @@
 #
 # See routing_tiers.yaml for tier escalation ladder.
 #
-# Tickets: OMN-10637, OMN-10638, OMN-10657, OMN-12815, OMN-13170, OMN-13343, OMN-13351
-config_version: "2.3.0"
+# Tickets: OMN-10637, OMN-10638, OMN-10657, OMN-12815, OMN-13170, OMN-13343, OMN-13351, OMN-15155
+config_version: "2.4.0"
 schema_version: "bifrost_delegation.v1"
 # Backend definitions — endpoint_url values are merged from the overlay at load time.
 # model_name is null here; resolved at deploy time via bifrost_overrides.yaml overlay.
@@ -284,6 +284,25 @@ backends:
       - reasoning
       - research
       - code_generation
+  # Local Coder-MLX backend — Qwen3.6-35B-A3B-8bit served via mlx_lm.server on
+  # .200 port 8401 (OMN-15155, steel-node-dispatch plan P0). Unauthenticated
+  # (verified 2026-07-26): no secret_ref/api_key_env.
+  - backend_id: local-coder-mlx
+    endpoint_url_env: BIFROST_LOCAL_CODER_MLX_ENDPOINT_URL
+    endpoint_url: null
+    # endpoint_url null in repo default; overlay/store sets .200:8401  # onex-allow-internal-ip OMN-15155 reason="repo-default comment documenting local overlay target for Coder-MLX"
+    model_name: mlx-community/Qwen3.6-35B-A3B-8bit
+    tier: local
+    # Same 65536-token output budget as local-coder (same base Qwen3.6-35B-A3B
+    # model family, MLX 8bit quantization does not shrink the context window) →
+    # same 300000 ms ceiling so a full module/test-suite generation is not
+    # capped by transport timeout (OMN-13170 pattern). Overlay-overridable.
+    timeout_ms: 300000
+    max_tokens: 65536
+    capabilities:
+      - code_generation
+      - refactoring
+      - documentation
   # OpenRouter backends (OMN-7980) — route authority carries logical secret refs
   # (secret_ref). OMN-13943: api_key_env is a genuine ADDITIONAL fallback the
   # effect boundary resolves when secret_ref's dotted convention mapping (→

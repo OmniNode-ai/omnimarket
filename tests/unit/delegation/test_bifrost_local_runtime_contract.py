@@ -42,3 +42,11 @@ def test_local_delegation_backends_declare_renderable_endpoint_envs() -> None:
         "BIFROST_LOCAL_DS_V4_FLASH_ENDPOINT_URL"
     )
     assert backends["local-ds-v4-flash"]["model_name"] == "ds-v4-flash"
+
+    assert backends["local-coder-mlx"]["endpoint_url_env"] == (
+        "BIFROST_LOCAL_CODER_MLX_ENDPOINT_URL"
+    )
+    assert (
+        backends["local-coder-mlx"]["model_name"]
+        == "mlx-community/Qwen3.6-35B-A3B-8bit"
+    )
