@@ -151,6 +151,55 @@ chains:
         handler: node_llm_delegation_call_effect.HandlerInferenceIntent
         topic: onex.evt.omnibase-infra.inference-response.v1
 
+  # OMN-15147: cloud ops-mirror canary — push-validation golden chain,
+  # cloned from the sea_acceptance shape (diagnostic/replay-not-applicable).
+  # SCOPE NARROWING (named explicitly, not silently substituted): the ticket's
+  # literal ask (items 3/4) is a dedicated push-validation-specific cloud
+  # projection table (an omnimarket-projection-api cloud equivalent). That
+  # does not exist tonight, so this chain's terminal stage instead tails
+  # public.gateway_workflows (omninode_infra, already live — written by
+  # apply_workflow_terminal_generic / workflow_terminal_consumer.py) filtered
+  # to workflow_type='push-validation'. This is a real, non-omnimarket table:
+  # the reachability oracle (reachability.py) can find no in-repo projection
+  # writing it, so this chain is automatically routed to Group B
+  # (omnibase_infra CI), never Group A — no census-collector fixture needed
+  # here. Follow-up (honest_stop, not filed as a ticket this session): build
+  # the dedicated push-validation cloud projection table/service and swap
+  # this chain's tail_table to it.
+  #
+  # head_topic MUST stay byte-for-byte equal to
+  # omninode_infra/docker/onex-api/topic_constants.py::PUSH_VALIDATION_REQUEST_TOPIC
+  # and to node_push_validation_effect/contract.yaml's runtime_dispatch.command_topic
+  # (both independently verified equal at authoring time).
+  #
+  # UNVERIFIED THIS SESSION (named, not assumed): whether golden_chain_sweep /
+  # census_collector can target the onex-dev k8s Postgres/broker at all, vs.
+  # being .201-lab-lane-only by construction (collect_census has no DB/broker
+  # dial-out in this repo — projected_rows are caller-supplied, so a future
+  # cloud-targeting caller is plausible but does not exist yet). This
+  # registration is therefore code-only/dev-verifiable tonight, not
+  # cloud-sweep-runnable.
+  - name: push_validation
+    head_topic: onex.cmd.omnimarket.push-validation-requested.v1
+    tail_table: gateway_workflows
+    proof_classification: diagnostic
+    replay_status: replay-not-applicable
+    expected_fields:
+      - correlation_id
+      - workflow_type
+      - status
+    stages:
+      - name: push_validation_requested
+        topic: onex.cmd.omnimarket.push-validation-requested.v1
+      - name: push_validation_completed
+        handler: node_push_validation_effect.HandlerPushValidationEffect
+        topic: onex.evt.omnimarket.push-validation-completed.v1
+      - name: push_validation_failed
+        handler: node_push_validation_effect.HandlerPushValidationEffect
+        topic: onex.evt.omnimarket.push-validation-failed.v1
+      - name: terminal_projection
+        table: gateway_workflows
+
   # OMN-12687: WS I-A — terminal reducer materialization chain
   - name: delegation_projection_materialization
     head_topic: onex.evt.omnibase-infra.delegation-completed.v1
