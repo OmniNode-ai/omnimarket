@@ -87,18 +87,19 @@ jobs:
             local remote_url="https://github.com/OmniNode-ai/${repo_name}.git"
             local resolved_sha
 
-            resolved_sha="$(git ls-remote "${remote_url}" HEAD | cut -f1)"
-            printf -v "${sha_var_name}" '%s' "${resolved_sha}"
             for attempt in 1 2 3 4; do
               rm -rf "${target_dir}"
-              if timeout 20s bash -c 'git init "$1" \
+              if resolved_sha="$(timeout 20s git ls-remote "${remote_url}" HEAD | cut -f1)" \
+                && [ -n "${resolved_sha}" ] \
+                && timeout 20s bash -c 'git init "$1" \
                 && git -C "$1" remote add origin "$2" \
                 && git -C "$1" fetch --depth=1 origin "$3" \
                 && git -C "$1" checkout --detach "$3"' \
                 _ "${target_dir}" "${remote_url}" "${resolved_sha}"; then
+                printf -v "${sha_var_name}" '%s' "${resolved_sha}"
                 return 0
               fi
-              echo "::warning::clone ${repo_name} failed (attempt ${attempt}/4); retrying after transient fetch failure"
+              echo "::warning::clone ${repo_name} failed (attempt ${attempt}/4); retrying after transient ls-remote/fetch failure"
               sleep $((attempt * 5))
             done
             echo "::error::clone ${repo_name} failed after 4 attempts"
@@ -118,18 +119,19 @@ jobs:
             local remote_url="https://github.com/OmniNode-ai/${repo_name}.git"
             local resolved_sha
 
-            resolved_sha="$(git ls-remote "${remote_url}" HEAD | cut -f1)"
-            printf -v "${sha_var_name}" '%s' "${resolved_sha}"
             for attempt in 1 2 3 4; do
               rm -rf "${target_dir}"
-              if timeout 20s bash -c 'git init "$1" \
+              if resolved_sha="$(timeout 20s git ls-remote "${remote_url}" HEAD | cut -f1)" \
+                && [ -n "${resolved_sha}" ] \
+                && timeout 20s bash -c 'git init "$1" \
                 && git -C "$1" remote add origin "$2" \
                 && git -C "$1" fetch --depth=1 origin "$3" \
                 && git -C "$1" checkout --detach "$3"' \
                 _ "${target_dir}" "${remote_url}" "${resolved_sha}"; then
+                printf -v "${sha_var_name}" '%s' "${resolved_sha}"
                 return 0
               fi
-              echo "::warning::clone ${repo_name} failed (attempt ${attempt}/4); retrying after transient fetch failure"
+              echo "::warning::clone ${repo_name} failed (attempt ${attempt}/4); retrying after transient ls-remote/fetch failure"
               sleep $((attempt * 5))
             done
             echo "::error::clone ${repo_name} failed after 4 attempts"
@@ -149,18 +151,19 @@ jobs:
             local remote_url="https://github.com/OmniNode-ai/${repo_name}.git"
             local resolved_sha
 
-            resolved_sha="$(git ls-remote "${remote_url}" HEAD | cut -f1)"
-            printf -v "${sha_var_name}" '%s' "${resolved_sha}"
             for attempt in 1 2 3 4; do
               rm -rf "${target_dir}"
-              if timeout 20s bash -c 'git init "$1" \
+              if resolved_sha="$(timeout 20s git ls-remote "${remote_url}" HEAD | cut -f1)" \
+                && [ -n "${resolved_sha}" ] \
+                && timeout 20s bash -c 'git init "$1" \
                 && git -C "$1" remote add origin "$2" \
                 && git -C "$1" fetch --depth=1 origin "$3" \
                 && git -C "$1" checkout --detach "$3"' \
                 _ "${target_dir}" "${remote_url}" "${resolved_sha}"; then
+                printf -v "${sha_var_name}" '%s' "${resolved_sha}"
                 return 0
               fi
-              echo "::warning::clone ${repo_name} failed (attempt ${attempt}/4); retrying after transient fetch failure"
+              echo "::warning::clone ${repo_name} failed (attempt ${attempt}/4); retrying after transient ls-remote/fetch failure"
               sleep $((attempt * 5))
             done
             echo "::error::clone ${repo_name} failed after 4 attempts"
