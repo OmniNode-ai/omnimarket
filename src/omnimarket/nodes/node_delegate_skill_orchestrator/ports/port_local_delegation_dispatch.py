@@ -447,7 +447,17 @@ class LocalDelegationDispatchPort:
         quality_contract_mode: str,
         acceptance_criteria: tuple[str, ...],
         tenant_id: str | None,
+        backend_id: str | None = None,
     ) -> dict[str, object]:
+        # OMN-15156: an optional caller-supplied backend PIN. ``None`` (the
+        # default) preserves the exact pre-existing cheapest-first task_type +
+        # tier_order resolution — see ``_resolve_initial_backend``. A non-None
+        # value bypasses tier_order selection entirely for the INITIAL attempt
+        # only; it does NOT change escalation behavior — see the
+        # ``_resolve_initial_backend`` docstring's "Escalation-interaction note"
+        # for the observed pin+failure interaction (a transport failure on the
+        # pinned backend still excludes its WHOLE tier, not just that backend).
+        #
         # OMN-14001 — read the captured-outcome ROI overlay ONCE per delegation
         # (fail-open None when no ROI projection is wired). Threaded as a pure input
         # into the routing authority so a tier proven to fail in ``context_roi_scores``
@@ -468,7 +478,11 @@ class LocalDelegationDispatchPort:
         # 1. ROUTING AUTHORITY — resolve the INITIAL (cheapest-first) backend.
         #    Cheapest-first among tiers NOT ROI-suppressed; escalation only advances
         #    UP the closed-set task-class tier_order (OMN-13140/OMN-13849/OMN-14001).
-        backend = self._resolve_initial_backend(task_type, roi_overlay=roi_overlay)
+        #    OMN-15156: a caller-supplied backend_id pin bypasses this cheapest-first
+        #    selection for the INITIAL attempt only — see _resolve_initial_backend.
+        backend = self._resolve_initial_backend(
+            task_type, roi_overlay=roi_overlay, backend_id=backend_id
+        )
 
         # Escalation budget from the task-class contract escalation_policy
         # (OMN-13849). None -> the class declares no budget; fall back to the bus
@@ -914,8 +928,33 @@ class LocalDelegationDispatchPort:
         task_type: str,
         *,
         roi_overlay: ModelRoutingRoiOverlay | None = None,
+        backend_id: str | None = None,
     ) -> ModelResolvedDelegationBackend:
         """Resolve the cheapest-first INITIAL backend via the task-class tier_order.
+
+        OMN-15156: when ``backend_id`` is supplied it is a caller-supplied PIN —
+        it bypasses cheapest-first ``tier_order`` selection entirely and resolves
+        the EXACT backend requested via ``resolve_delegation_backend``'s existing
+        ``backend_id`` kwarg, the SAME targeted-resolution path the LLM-judge
+        already uses to pin a concrete backend (OMN-13470). An unknown/
+        unresolvable ``backend_id`` is NOT caught here: ``resolve_delegation_backend``
+        raises ``RuntimeError`` (see its docstring) and it propagates verbatim —
+        fail loudly, never a silent fallback to the untargeted/tier-based
+        resolution. This is deliberately asymmetric with the tier-based branch
+        below (which DOES catch ``RuntimeError`` and falls back): a resolution
+        failure on the closed-set ladder's own chosen tier means "try the
+        untargeted path instead," but a resolution failure on a caller's EXPLICIT
+        pin means the caller asked for a backend that doesn't exist, and hiding
+        that behind a silent fallback would defeat the whole point of pinning.
+
+        Escalation-interaction note (OMN-15156, P0 readback requirement): this pin
+        affects ONLY the initial attempt. If the pinned backend's transport call
+        fails, the existing escalation loop in ``dispatch()`` still excludes the
+        pinned backend's WHOLE TIER (via ``tier_for_backend(backend.backend_id)``)
+        and re-resolves the next hop through the normal closed-set ``tier_order``
+        — NOT back to the pin, and NOT to a different backend within the same
+        tier. This ticket does not redesign escalation; a single-backend (rather
+        than whole-tier) exclusion semantics is out of scope here.
 
         OMN-14001: when ``roi_overlay`` demotes a proven-failing tier,
         ``first_eligible_tier`` returns the cheapest tier NOT ROI-suppressed, so a
@@ -942,6 +981,8 @@ class LocalDelegationDispatchPort:
         routable tier_order (legacy / no-contract classes), preserving their
         behavior without opening the closed set for classes that DO declare one.
         """
+        if backend_id is not None:
+            return resolve_delegation_backend(task_type, backend_id=backend_id)
         first_tier = first_eligible_tier(task_type, roi_overlay=roi_overlay)
         if first_tier is not None:
             backend_id = backend_id_for_tier(first_tier, task_type)
