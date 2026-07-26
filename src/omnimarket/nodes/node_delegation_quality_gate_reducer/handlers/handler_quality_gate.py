@@ -24,11 +24,23 @@ and cannot by itself return passed=true (OMN-13370).
 When no contract DoD is provided (both dod_deterministic and dod_heuristic are empty),
 falls back to the legacy hardcoded checks as reject-only diagnostics.
 
-Failure categories: REFUSAL, MALFORMED, WEAK_OUTPUT, TASK_MISMATCH.
+Failure categories: REFUSAL, MALFORMED, WEAK_OUTPUT, TASK_MISMATCH, SCHEMA_VIOLATION.
+
+OMN-15193 -- contract-declared response validation: when a caller passes
+``response_contract`` (a JSON Schema describing the expected response shape),
+structural schema validation REPLACES the task-class keyword heuristics
+(``sub_tasks_verified`` substring matching, ``no_refusal`` phrase matching) for
+that request -- it is evaluated BEFORE the contract-DoD / legacy branches below
+and, when supplied, is the sole acceptance authority. This closes the
+false-positive class where a legitimate response (e.g. a ``rationale`` field
+containing "i cannot" as part of coherent prose) trips a keyword heuristic that
+was never actually checking response structure. ``response_contract=None`` (the
+default) is byte-identical to pre-OMN-15193 behavior.
 
 Related:
     - OMN-7040: Node-based delegation pipeline
     - OMN-10616: Wire quality gate to read DoD from contract
+    - OMN-15193: Contract-declared response validation replaces keyword heuristics
 """
 
 from __future__ import annotations
@@ -38,7 +50,9 @@ import hashlib
 import json
 import re
 from collections.abc import Callable
+from typing import Any
 
+import jsonschema
 import yaml
 
 from omnimarket.events.delegation_judge_verdict import EnumDelegationJudgeVerdict
@@ -1029,6 +1043,110 @@ def _run_contract_checks(
     return det_failures, heuristic_failures, skipped_deterministic
 
 
+# OMN-15193: prefix for a structural JSON-Schema mismatch against a
+# caller-declared ``response_contract``. Distinct from the report-shaped
+# heuristic prefixes (REFUSAL/MALFORMED/WEAK_OUTPUT/TASK_MISMATCH) so a
+# schema-validation failure is unambiguously attributable to the declared
+# contract, not to a keyword heuristic that was bypassed for this request.
+_SCHEMA_VIOLATION_PREFIX = "SCHEMA_VIOLATION"
+
+
+def _schema_violation_reasons(
+    candidate: Any, response_contract: dict[str, object]
+) -> list[str]:
+    """Return specific per-violation reasons for a JSON-Schema mismatch.
+
+    Uses whichever ``jsonschema`` validator class matches the contract's own
+    declared ``$schema`` (falling back to the latest supported draft when the
+    contract declares none), so a per-violation reason names the exact
+    JSON-pointer path and the exact constraint that failed (e.g. "'action' is a
+    required property", "'confidence' is not of type 'number'") instead of a
+    single opaque pass/fail bit. Errors are sorted by path for a stable,
+    replay-identical ordering. Raises ``jsonschema.exceptions.SchemaError`` when
+    ``response_contract`` itself is not a valid JSON Schema -- a caller-authoring
+    bug that must surface loudly, never silently pass every candidate.
+    """
+    validator_cls = jsonschema.validators.validator_for(response_contract)
+    validator_cls.check_schema(response_contract)
+    validator = validator_cls(response_contract)
+    errors = sorted(
+        validator.iter_errors(candidate),
+        key=lambda error: [str(part) for part in error.path],
+    )
+    return [
+        f"{_SCHEMA_VIOLATION_PREFIX}: "
+        f"{'.'.join(str(part) for part in error.path) or '<root>'}: {error.message}"
+        for error in errors
+    ]
+
+
+def _evaluate_response_contract(
+    gate_input: ModelQualityGateInput, response_contract: dict[str, object]
+) -> ModelQualityGateResult:
+    """Structural schema validation REPLACES the keyword-heuristic DoD (OMN-15193).
+
+    When a caller declares a ``response_contract`` (a JSON Schema describing the
+    expected response shape), the gate validates the raw response against that
+    schema instead of running the task-class keyword heuristics
+    (``sub_tasks_verified`` substring matching, ``no_refusal`` phrase matching).
+    Schema validation subsumes what those heuristics were actually checking for
+    -- empty/malformed/truncated/wrong-shape output all fail schema validation
+    with a specific per-violation reason -- without false-positiving on
+    legitimate prose that happens to contain a refusal-adjacent substring (e.g.
+    a ``rationale`` field containing the words "i cannot" as part of a coherent
+    explanation, not an actual refusal).
+
+    This is a HARD REPLACEMENT for this request: ``dod_deterministic`` /
+    ``dod_heuristic`` / ``acceptance_criteria`` / the LLM-judge combine are not
+    consulted at all when a contract is declared -- the schema is the sole
+    acceptance authority.
+    """
+    content = _strip_thinking_traces(gate_input.llm_response_content).strip()
+    if not content:
+        return ModelQualityGateResult(
+            correlation_id=gate_input.correlation_id,
+            passed=False,
+            fail_category="fail_deterministic",
+            quality_score=0.0,
+            failure_reasons=(
+                "MALFORMED: empty response fails response_contract validation",
+            ),
+            fallback_recommended=True,
+        )
+
+    try:
+        candidate = json.loads(content)
+    except json.JSONDecodeError as exc:
+        return ModelQualityGateResult(
+            correlation_id=gate_input.correlation_id,
+            passed=False,
+            fail_category="fail_deterministic",
+            quality_score=0.0,
+            failure_reasons=(f"MALFORMED: response is not valid JSON: {exc.msg}",),
+            fallback_recommended=True,
+        )
+
+    reasons = _schema_violation_reasons(candidate, response_contract)
+    if reasons:
+        return ModelQualityGateResult(
+            correlation_id=gate_input.correlation_id,
+            passed=False,
+            fail_category="fail_deterministic",
+            quality_score=0.0,
+            failure_reasons=tuple(reasons),
+            fallback_recommended=True,
+        )
+
+    return ModelQualityGateResult(
+        correlation_id=gate_input.correlation_id,
+        passed=True,
+        fail_category="pass",
+        quality_score=1.0,
+        failure_reasons=(),
+        fallback_recommended=False,
+    )
+
+
 def _stable_hash(value: object) -> str:
     """Return a stable sha256 hash for acceptance replay identity."""
     encoded = json.dumps(value, sort_keys=True, separators=(",", ":")).encode()
@@ -1327,6 +1445,7 @@ def delta(
     *,
     judge_adequacy_score: float | None = None,
     judge_verdict: EnumDelegationJudgeVerdict | None = None,
+    response_contract: dict[str, object] | None = None,
 ) -> ModelQualityGateResult:
     """Evaluate LLM output quality for a delegation response.
 
@@ -1335,6 +1454,13 @@ def delta(
     canonical inference path; its already-resolved 0.0-1.0 adequacy score is
     passed in here, so this reducer stays pure and replay-safe (the recorded
     judge verdict is read back, never re-called).
+
+    OMN-15193: when ``response_contract`` is supplied (a caller-declared JSON
+    Schema), structural schema validation REPLACES everything below --
+    dod_deterministic/dod_heuristic/acceptance_criteria/the judge combine are
+    not consulted at all for this request. See ``_evaluate_response_contract``.
+    ``response_contract=None`` (the default) skips this branch entirely and is
+    byte-identical to pre-OMN-15193 behavior.
 
     When gate_input carries contract-declared DoD checks (dod_deterministic /
     dod_heuristic), those checks take precedence:
@@ -1371,10 +1497,17 @@ def delta(
             path. A ``FAIL`` verdict vetoes acceptance on the verifiable path
             regardless of the combined score (OMN-13642). ``None`` preserves the
             prior score-only behavior.
+        response_contract: Optional caller-declared JSON Schema (OMN-15193).
+            When supplied, REPLACES the task-class DoD / judge combine below
+            with structural schema validation. ``None`` preserves prior
+            behavior byte-for-byte.
 
     Returns:
         A quality gate result with pass/fail, fail_category, score, and reasons.
     """
+    if response_contract is not None:
+        return _evaluate_response_contract(gate_input, response_contract)
+
     if gate_input.quality_contract_mode == "replace_task_class":
         dod_deterministic = gate_input.acceptance_criteria
         dod_heuristic: tuple[str, ...] = ()

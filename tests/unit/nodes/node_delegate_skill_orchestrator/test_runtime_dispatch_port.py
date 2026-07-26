@@ -371,6 +371,40 @@ async def test_runtime_dispatch_port_rejects_backend_id_pin_loudly() -> None:
 
 
 @pytest.mark.unit
+async def test_runtime_dispatch_port_rejects_response_contract_loudly() -> None:
+    """OMN-15193: the deployed bus path publishes ``ModelDelegationRequest``
+    (omnibase_core), which carries no ``response_contract`` field, and the
+    downstream ``HandlerDelegationWorkflow`` / ``HandlerQualityGateIntent`` have
+    no declared-schema input today. A non-None contract must fail LOUDLY here
+    rather than being silently accepted and dropped -- the exact per-hop-drop
+    defect class this ticket exists to close. Never publishes to the bus when
+    it raises.
+    """
+    bus = _CapturingEventBus()
+    port = RuntimeDelegationDispatchPort(
+        event_bus=bus,
+        config=_runtime_dispatch_config(),
+    )
+
+    with pytest.raises(NotImplementedError, match="response_contract"):
+        await port.dispatch(
+            prompt="Decide the next tactical action",
+            task_type="agent_delegation",
+            correlation_id=uuid4(),
+            max_tokens=512,
+            source_file_path=None,
+            source_session_id=None,
+            wait=False,
+            quality_contract_mode="extend_task_class",
+            acceptance_criteria=(),
+            tenant_id=None,
+            response_contract={"type": "object"},
+        )
+
+    assert bus.published == []
+
+
+@pytest.mark.unit
 async def test_runtime_dispatch_port_unwraps_delegation_event_payload() -> None:
     bus = EventBusInmemory(environment="test", group="delegate-skill-port")
     original_correlation_id = uuid4()

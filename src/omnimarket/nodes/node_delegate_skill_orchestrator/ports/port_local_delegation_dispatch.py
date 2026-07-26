@@ -448,6 +448,7 @@ class LocalDelegationDispatchPort:
         acceptance_criteria: tuple[str, ...],
         tenant_id: str | None,
         backend_id: str | None = None,
+        response_contract: dict[str, object] | None = None,
     ) -> dict[str, object]:
         # OMN-15156: an optional caller-supplied backend PIN. ``None`` (the
         # default) preserves the exact pre-existing cheapest-first task_type +
@@ -530,6 +531,7 @@ class LocalDelegationDispatchPort:
                 max_tokens=max_tokens,
                 quality_contract_mode=quality_contract_mode,
                 acceptance_criteria=acceptance_criteria,
+                response_contract=response_contract,
             )
 
             # A hard transport/timeout failure: classify retryable vs terminal and,
@@ -1059,6 +1061,7 @@ class LocalDelegationDispatchPort:
         max_tokens: int | None,
         quality_contract_mode: str,
         acceptance_criteria: tuple[str, ...],
+        response_contract: dict[str, object] | None = None,
     ) -> _AttemptOutcome:
         """Run one resolve->effect->gate attempt for ``backend``.
 
@@ -1209,6 +1212,7 @@ class LocalDelegationDispatchPort:
             content=result.content or "",
             quality_contract_mode=quality_contract_mode,
             acceptance_criteria=acceptance_criteria,
+            response_contract=response_contract,
         )
         return _AttemptOutcome(
             result=result,
@@ -1225,6 +1229,7 @@ class LocalDelegationDispatchPort:
         content: str,
         quality_contract_mode: str,
         acceptance_criteria: tuple[str, ...],
+        response_contract: dict[str, object] | None = None,
     ) -> ModelQualityGateResult:
         """Run the canonical quality-gate reducer, combining the LLM-judge score.
 
@@ -1243,6 +1248,17 @@ class LocalDelegationDispatchPort:
         does on the bus. A ``JUDGE_FAILED`` verdict carries no score and falls back
         to deterministic-only (never a silent zero); the deterministic refusal/empty
         hard floor still hard-blocks before any combine.
+
+        OMN-15193: when ``response_contract`` is supplied, ``delta`` validates the
+        candidate structurally against the declared schema and REPLACES the
+        task-class DoD (dod_deterministic/dod_heuristic/acceptance_criteria) and
+        the judge combine for this request -- the schema is threaded through
+        unconditionally, and the (still-resolved) task-class DoD stays available
+        as the ``gate_input`` for the fallback branch ``delta`` takes when
+        ``response_contract`` is ``None``. The judge EFFECT call is skipped when a
+        contract is declared: the caller's own schema is the acceptance
+        authority, so scoring the candidate against task-class judge criteria
+        would be wasted work and cannot influence the verdict.
         """
         dod_deterministic, dod_heuristic = resolve_task_class_dod_checks(task_type)
         gate_input = ModelQualityGateInput(
@@ -1257,7 +1273,7 @@ class LocalDelegationDispatchPort:
 
         judge_score: float | None = None
         judge_verdict_value: EnumDelegationJudgeVerdict | None = None
-        if task_type in JUDGE_COMBINABLE_TASK_TYPES:
+        if response_contract is None and task_type in JUDGE_COMBINABLE_TASK_TYPES:
             judge_verdict = await self._judge.score(
                 correlation_id=correlation_id,
                 task_type=task_type,
@@ -1282,6 +1298,7 @@ class LocalDelegationDispatchPort:
             gate_input,
             judge_adequacy_score=judge_score,
             judge_verdict=judge_verdict_value,
+            response_contract=response_contract,
         )
 
     def _project_evidence(

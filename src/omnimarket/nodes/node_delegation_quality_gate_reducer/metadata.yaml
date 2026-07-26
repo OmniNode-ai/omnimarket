@@ -17,6 +17,7 @@ dependencies:
   - "omnibase_core>=0.39.0"
   - "omnibase-compat>=0.3.1"
   - "omnibase-infra>=0.34.0"
+  - "jsonschema>=4.18.0"
 authors: ["OmniNode Platform Team"]
 license: "MIT"
 tags: ["delegation", "quality-gate", "reducer", "validation"]

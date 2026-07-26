@@ -173,6 +173,14 @@ inputs:
     description: >
       Optional explicit backend pin (e.g. 'local-coder-mlx'). None resolves
       the backend via the normal cheapest-first tier_order selection.
+  response_contract:
+    type: object
+    required: false
+    description: >
+      Optional JSON-Schema-shaped contract describing the expected response
+      structure (OMN-15193). When set, the delegation quality gate validates
+      the response structurally against this schema instead of the
+      task-class keyword heuristics. None preserves current behavior.
 
 runtime_dispatch:
   command_topic: onex.cmd.omnimarket.delegate-skill.v1
