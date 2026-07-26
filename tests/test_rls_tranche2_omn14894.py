@@ -59,6 +59,7 @@ _INFERENCE_MIGRATIONS = (
 )
 
 _BASE_SQL = _DELEGATION_MIGRATIONS / "0007_delegation_events.sql"
+_BUDGET_STATE_SQL = _DELEGATION_MIGRATIONS / "0019_delegation_budget_state.sql"
 _TENANT_ID_SQL = _DELEGATION_MIGRATIONS / "0022_delegation_events_tenant_id.sql"
 _RLS_SQL = _DELEGATION_MIGRATIONS / "0023_delegation_rls_tenant_isolation.sql"
 _JUDGE_VERDICT_SQL = _DELEGATION_MIGRATIONS / "0016_delegation_judge_verdict_events.sql"
@@ -249,6 +250,7 @@ async def test_real_postgres_tranche2_rls_isolates_both_tables() -> None:
     try:
         await conn.execute(f"SET search_path TO {schema}, public")
         await conn.execute(_BASE_SQL.read_text(encoding="utf-8"))
+        await conn.execute(_BUDGET_STATE_SQL.read_text(encoding="utf-8"))
         await conn.execute(_TENANT_ID_SQL.read_text(encoding="utf-8"))
         await conn.execute(_JUDGE_VERDICT_SQL.read_text(encoding="utf-8"))
         await conn.execute(_APP_DASHBOARD_ROLE_SQL)
