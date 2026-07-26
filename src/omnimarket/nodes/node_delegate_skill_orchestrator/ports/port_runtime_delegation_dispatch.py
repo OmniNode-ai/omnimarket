@@ -92,6 +92,7 @@ class RuntimeDelegationDispatchPort:
         acceptance_criteria: tuple[str, ...],
         tenant_id: str | None,
         backend_id: str | None = None,
+        response_contract: dict[str, object] | None = None,
     ) -> dict[str, object]:
         # OMN-15180: the deployed bus path publishes ``ModelDelegationRequest``
         # (omnibase_core), which carries no ``backend_id`` field, and the
@@ -112,6 +113,29 @@ class RuntimeDelegationDispatchPort:
                 "a backend_id field on omnibase_core's ModelDelegationRequest "
                 "plus HandlerDelegationWorkflow routing support, which is out of "
                 "scope here."
+            )
+        # OMN-15193: same fail-loud boundary as ``backend_id`` immediately above.
+        # ``ModelDelegationRequest`` (omnibase_core) carries no
+        # ``response_contract`` field and ``HandlerDelegationWorkflow`` /
+        # ``HandlerQualityGateIntent`` (the bus-path quality-gate consumer) have
+        # no declared-schema input today. Silently dropping a caller's declared
+        # contract here would be exactly the per-hop-drop defect class this
+        # ticket exists to close, so a non-None contract fails loudly instead:
+        # threading it across the bus boundary requires a ``response_contract``
+        # field on omnibase_core's ``ModelDelegationRequest`` plus
+        # ``HandlerQualityGateIntent`` schema-validation support, which is a
+        # cross-repo change out of this ticket's scope (OMN-15193 is scoped to
+        # the bus-less ``LocalDelegationDispatchPort`` path the OMN-15170 live
+        # driver actually exercises).
+        if response_contract is not None:
+            raise NotImplementedError(
+                "response_contract is not yet supported on the deployed bus "
+                "dispatch path (RuntimeDelegationDispatchPort) -- only the "
+                "bus-less LocalDelegationDispatchPort honors it today (OMN-15193)."
+                " Threading the contract across the bus boundary requires a "
+                "response_contract field on omnibase_core's "
+                "ModelDelegationRequest plus HandlerQualityGateIntent schema-"
+                "validation support, which is out of scope here."
             )
         # OMN-13161: the bus runtime path carries its own routing-tier budgets in
         # the downstream delegation chain. When the request omits max_tokens, fall

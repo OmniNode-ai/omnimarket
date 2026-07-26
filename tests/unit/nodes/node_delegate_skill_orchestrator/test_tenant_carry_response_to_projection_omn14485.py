@@ -75,6 +75,7 @@ class _StubDispatchPort:
         acceptance_criteria: tuple[str, ...],
         tenant_id: str | None,
         backend_id: str | None = None,
+        response_contract: dict[str, object] | None = None,
     ) -> dict[str, object]:
         return {
             "status": "completed",

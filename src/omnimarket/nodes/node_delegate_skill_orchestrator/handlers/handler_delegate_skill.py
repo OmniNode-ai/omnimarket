@@ -53,6 +53,15 @@ class ProtocolDelegationDispatchPort(Protocol):
     bus path) declares the same parameter to satisfy this Protocol but does not
     yet thread it downstream — see that port's docstring for the explicit
     fail-loud boundary.
+
+    OMN-15193: ``response_contract`` is ``dict[str, object] | None``, default
+    ``None``. ``None`` preserves the exact pre-existing quality-gate behavior
+    (task-class keyword heuristics). A non-None value is a caller-declared JSON
+    Schema; ``LocalDelegationDispatchPort`` threads it into the quality-gate
+    reducer, where structural schema validation REPLACES the keyword heuristics
+    for that request. ``RuntimeDelegationDispatchPort`` declares the same
+    parameter to satisfy this Protocol but does not yet thread it downstream —
+    see that port's docstring for the explicit fail-loud boundary.
     """
 
     async def dispatch(
@@ -69,6 +78,7 @@ class ProtocolDelegationDispatchPort(Protocol):
         acceptance_criteria: tuple[str, ...],
         tenant_id: str | None,
         backend_id: str | None = None,
+        response_contract: dict[str, object] | None = None,
     ) -> dict[str, object]: ...
 
 
@@ -330,6 +340,11 @@ class HandlerDelegateSkill:
                 # is the seam pinned by
                 # test_handler_propagates_backend_id_pin_to_dispatch_port.
                 backend_id=request.backend_id,
+                # OMN-15193: thread the optional wire-level declared response
+                # contract to the dispatch port. A contract that stops here is
+                # dead on arrival -- this is the seam pinned by
+                # test_handler_propagates_response_contract_to_dispatch_port.
+                response_contract=request.response_contract,
             )
         except Exception as exc:
             return ModelDelegateSkillResponse(

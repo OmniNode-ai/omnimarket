@@ -224,6 +224,57 @@ async def test_handler_passes_none_backend_id_when_unset() -> None:
 
 
 @pytest.mark.unit
+async def test_handler_propagates_response_contract_to_dispatch_port() -> None:
+    """OMN-15193: a caller-declared response_contract on the wire request MUST
+    reach the dispatch port. Without this, the quality-gate schema-validation
+    path is unreachable from any wire-level caller (e.g. steel's
+    LlmBusDelegationClient) -- this pins the seam so the field can't silently
+    stop being read, mirroring
+    test_handler_propagates_backend_id_pin_to_dispatch_port.
+    """
+    schema = {
+        "type": "object",
+        "properties": {"action": {"type": "string"}},
+        "required": ["action"],
+    }
+    port = AsyncMock()
+    port.dispatch.return_value = {"status": "completed", "content": "ok"}
+    handler = HandlerDelegateSkill(object(), dispatch_port=port)
+    request = ModelDelegateSkillRequest(
+        prompt="Decide the next tactical action",
+        task_type="agent_delegation",
+        source="claude-code",
+        response_contract=schema,
+    )
+
+    await handler.handle(request)
+
+    port.dispatch.assert_awaited_once()
+    call_kwargs = port.dispatch.await_args.kwargs
+    assert call_kwargs["response_contract"] == schema
+
+
+@pytest.mark.unit
+async def test_handler_passes_none_response_contract_when_unset() -> None:
+    """No contract declared -> None reaches the dispatch port, not an implicit
+    schema (regression: unpinned behavior is unchanged by the response_contract
+    addition)."""
+    port = AsyncMock()
+    port.dispatch.return_value = {"status": "completed", "content": "ok"}
+    handler = HandlerDelegateSkill(object(), dispatch_port=port)
+    request = ModelDelegateSkillRequest(
+        prompt="Decide the next tactical action",
+        task_type="agent_delegation",
+        source="claude-code",
+    )
+
+    await handler.handle(request)
+
+    call_kwargs = port.dispatch.await_args.kwargs
+    assert call_kwargs["response_contract"] is None
+
+
+@pytest.mark.unit
 async def test_handler_propagates_correlation_id(
     mock_dispatch_port: AsyncMock,
     event_bus: object,

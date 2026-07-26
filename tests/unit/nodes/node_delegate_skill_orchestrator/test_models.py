@@ -131,6 +131,67 @@ def test_backend_id_widening_preserves_frozen_extra_forbid() -> None:
         )
 
 
+def test_response_contract_defaults_to_none() -> None:
+    """OMN-15193: omitting response_contract preserves pre-existing behavior --
+    None, not an implicit schema, so unpinned callers are unaffected."""
+    req = ModelDelegateSkillRequest(
+        prompt="Write tests for the payment webhook retry path",
+        task_type="test",
+        source="claude-code",
+    )
+    assert req.response_contract is None
+
+
+def test_response_contract_round_trips_through_model_dump_and_validate() -> None:
+    """OMN-15193: a declared JSON-Schema response contract survives a full
+    serialize/parse round-trip -- the exact shape a wire-level caller (e.g.
+    steel's LlmBusDelegationClient) sends and the shape the orchestrator's own
+    contract-validation/CLI compile path parses back."""
+    schema = {
+        "type": "object",
+        "properties": {
+            "action": {"type": "string"},
+            "confidence": {"type": "number"},
+        },
+        "required": ["action", "confidence"],
+    }
+    req = ModelDelegateSkillRequest(
+        prompt="Decide the next tactical action",
+        task_type="agent_delegation",
+        source="claude-code",
+        response_contract=schema,
+    )
+    assert req.response_contract == schema
+
+    dumped = req.model_dump(mode="json")
+    assert dumped["response_contract"] == schema
+
+    round_tripped = ModelDelegateSkillRequest.model_validate(dumped)
+    assert round_tripped.response_contract == schema
+    assert round_tripped == req
+
+
+def test_response_contract_widening_preserves_frozen_extra_forbid() -> None:
+    """OMN-15193: adding response_contract is additive-only -- the model stays
+    frozen and still rejects unknown fields (extra='forbid' is not silently
+    loosened)."""
+    req = ModelDelegateSkillRequest(
+        prompt="Write tests for the payment webhook retry path",
+        task_type="test",
+        source="claude-code",
+    )
+    with pytest.raises(ValidationError):
+        req.response_contract = {"type": "object"}  # type: ignore[misc]
+
+    with pytest.raises(ValidationError):
+        ModelDelegateSkillRequest(
+            prompt="Write tests for the payment webhook retry path",
+            task_type="test",
+            source="claude-code",
+            unknown_field="not allowed",  # type: ignore[call-arg]
+        )
+
+
 def test_invalid_task_type_rejected() -> None:
     with pytest.raises(ValidationError):
         ModelDelegateSkillRequest(

@@ -73,6 +73,13 @@ dependencies = [
     # transitive dep via omnibase-infra>=... (pyjwt>=2.12.0); declared
     # directly so this repo does not depend on that transitivity holding.
     "pyjwt[crypto]>=2.12.0",
+    # OMN-15193: JSON-Schema structural validation for a contract-declared
+    # delegation response_contract (handler_quality_gate.py). Already an
+    # unconditional transitive dep (dependency-injector / mcp pull in
+    # jsonschema>=4.26.0); declared directly so this repo does not depend on
+    # that transitivity holding -- it is a boring, already-resolved validator,
+    # not a new addition to the resolved dependency set.
+    "jsonschema>=4.18.0",
 ]
 
 [project.optional-dependencies]
@@ -626,6 +633,7 @@ dev = [
     "ruff>=0.14.13,<0.16.0",
     "mypy>=1.19.1",
     "types-pyyaml>=6.0.12.20250822",
+    "types-jsonschema>=4.25.1.20251222",
 ]
 
 [tool.coverage.run]

@@ -30,7 +30,12 @@ def _validate_schema(candidate: str, schema: dict[str, object]) -> bool:
         return False
 
     try:
-        import jsonschema  # type: ignore[import-untyped]
+        # OMN-15193: jsonschema is now a direct dependency (with types-jsonschema
+        # stubs) elsewhere in this repo, so the import is fully typed here too --
+        # the prior `type: ignore[import-untyped]` is stale. The try/except
+        # ImportError fallback below is retained unchanged: this node still
+        # declares zero REQUIRED runtime dependencies beyond stdlib.
+        import jsonschema
 
         try:
             jsonschema.validate(instance=data, schema=schema)
