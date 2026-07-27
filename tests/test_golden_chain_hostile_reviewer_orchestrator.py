@@ -158,7 +158,9 @@ class TestHostileReviewerOrchestratorGoldenChain:
         completed = await _orchestrator(adapter).handle(command)
         payload = completed.model_dump(mode="json")
 
-        # Preserved ModelHostileReviewerCompletedEvent shape (OMN-13210 replay).
+        # Preserved ModelHostileReviewerCompletedEvent shape (OMN-13210 replay),
+        # extended by OMN-15152 with per-route status fields (additive, with
+        # defaults, so old replayed events without these keys still parse).
         assert set(payload) == {
             "correlation_id",
             "final_phase",
@@ -167,8 +169,12 @@ class TestHostileReviewerOrchestratorGoldenChain:
             "pass_count",
             "total_findings",
             "error_message",
+            "models_succeeded",
+            "models_failed",
         }
         assert payload["final_phase"] == "done"
+        assert payload["models_succeeded"] == ["review_primary"]
+        assert payload["models_failed"] == []
 
     async def test_partial_failure_does_not_abort(self) -> None:
         # Neither route is mapped to recorded findings, so both replay the empty
@@ -180,14 +186,93 @@ class TestHostileReviewerOrchestratorGoldenChain:
         assert completed.final_phase == EnumHostileReviewerPhase.DONE
         assert completed.total_findings == 0
 
-    async def test_all_models_fail_yields_clean_done(self) -> None:
+    async def test_all_models_fail_yields_failed_event(self) -> None:
+        """OMN-15152 fail-closed: when every requested reviewer route errors,
+        the orchestrator must NOT report SUCCESS/DONE/0-findings -- that is
+        indistinguishable from an actually-clean review and is the exact
+        fail-open defect this ticket fixes. It must return a typed FAILED
+        event with route-level diagnostics."""
         command = _command(models=["review_primary"])
 
         completed = await _orchestrator(_FailInferenceAdapter()).handle(command)
-        # Per-model transport failures degrade gracefully -> DONE, zero findings.
-        assert completed.final_phase == EnumHostileReviewerPhase.DONE
+        assert completed.final_phase == EnumHostileReviewerPhase.FAILED
         assert completed.total_findings == 0
-        assert completed.error_message is None
+        assert completed.pass_count == 0
+        assert completed.error_message is not None
+        assert "review_primary" in completed.error_message
+        assert "connection refused" in completed.error_message
+        assert completed.models_succeeded == []
+        assert completed.models_failed == ["review_primary"]
+
+    async def test_all_models_fail_across_multiple_routes_yields_failed_event(
+        self,
+    ) -> None:
+        command = _command(models=["review_primary", "review_b"])
+
+        completed = await _orchestrator(_FailInferenceAdapter()).handle(command)
+        assert completed.final_phase == EnumHostileReviewerPhase.FAILED
+        assert completed.error_message is not None
+        assert set(completed.models_failed) == {"review_primary", "review_b"}
+        assert completed.models_succeeded == []
+
+    async def test_partial_failure_reports_per_route_status(self) -> None:
+        """A subset of routes failing must not be silently absorbed into a
+        clean DONE -- the completed event must report exactly which routes
+        succeeded and which failed so callers can enforce quorum."""
+
+        class _OneRouteFailsAdapter(ModelInferenceAdapter):
+            async def infer(
+                self,
+                model_key: str,
+                system_prompt: str,
+                user_prompt: str,
+                timeout_seconds: float,
+                temperature: float | None = None,
+            ) -> str:
+                if model_key == "review_b":
+                    raise RuntimeError("connection refused")
+                return "[]"
+
+        command = _command(models=["review_primary", "review_b"])
+
+        completed = await _orchestrator(_OneRouteFailsAdapter()).handle(command)
+        assert completed.final_phase == EnumHostileReviewerPhase.DONE
+        assert completed.models_succeeded == ["review_primary"]
+        assert completed.models_failed == ["review_b"]
+        assert completed.pass_count == 1
+
+    async def test_route_error_diagnostics_preserved_even_when_str_is_empty(
+        self,
+    ) -> None:
+        """OMN-15152 repro #3: some exceptions str() to an empty string
+        (e.g. KeyError('content') printed via a bare %s). The per-route
+        diagnostic must stay non-empty and identify the failing route even
+        when the underlying exception's str() is empty."""
+
+        class _EmptyStrError(Exception):
+            def __str__(self) -> str:
+                return ""
+
+        class _EmptyErrorAdapter(ModelInferenceAdapter):
+            async def infer(
+                self,
+                model_key: str,
+                system_prompt: str,
+                user_prompt: str,
+                timeout_seconds: float,
+                temperature: float | None = None,
+            ) -> str:
+                raise _EmptyStrError()
+
+        command = _command(models=["review_primary"])
+
+        completed = await _orchestrator(_EmptyErrorAdapter()).handle(command)
+        assert completed.final_phase == EnumHostileReviewerPhase.FAILED
+        assert completed.error_message is not None
+        assert "review_primary" in completed.error_message
+        # str(exc) is empty, so the diagnostic must fall back to something
+        # that still identifies the exception (its type), not a blank string.
+        assert "_EmptyStrError" in completed.error_message
 
     async def test_fatal_error_yields_failed_event(self) -> None:
         # A github-diff effect that raises makes the whole run fail.

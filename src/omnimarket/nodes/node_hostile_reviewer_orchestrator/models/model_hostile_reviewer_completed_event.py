@@ -32,6 +32,22 @@ class ModelHostileReviewerCompletedEvent(BaseModel):
     pass_count: int = Field(default=0, ge=0)
     total_findings: int = Field(default=0, ge=0)
     error_message: str | None = Field(default=None)
+    models_succeeded: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Logical route keys whose inference call completed without error "
+            "(OMN-15152). Additive field with a default so replayed events "
+            "recorded before this field existed still parse."
+        ),
+    )
+    models_failed: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Logical route keys whose inference call raised (OMN-15152). "
+            "Callers use models_succeeded/models_failed to enforce quorum "
+            "instead of trusting a bare SUCCESS/0-findings verdict."
+        ),
+    )
 
 
 __all__: list[str] = ["ModelHostileReviewerCompletedEvent"]

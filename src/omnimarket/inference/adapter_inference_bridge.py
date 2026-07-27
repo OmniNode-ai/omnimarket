@@ -147,15 +147,41 @@ class AdapterInferenceBridge(ModelInferenceAdapter):
             "temperature": float(raw_temperature),
         }
 
+        # OMN-15152 repro #1: a caller-supplied base_url may already carry a
+        # /v1 suffix (e.g. "http://host:port/v1"). Appending "/v1/chat/..."
+        # unconditionally produced ".../v1/v1/chat/completions" -> a 404 that
+        # the orchestrator then silently swallowed into a clean 0-findings
+        # result. Normalize so the suffix is never doubled.
+        normalized_base = base_url.rstrip("/")
+        if normalized_base.endswith("/v1"):
+            url = f"{normalized_base}/chat/completions"
+        else:
+            url = f"{normalized_base}/v1/chat/completions"
+
         async with httpx.AsyncClient(timeout=timeout_seconds) as client:
             resp = await client.post(
-                f"{base_url}/v1/chat/completions",
+                url,
                 json=payload,
                 headers=headers,
             )
             resp.raise_for_status()
             data = resp.json()
-            return str(data["choices"][0]["message"]["content"])
+            message = data["choices"][0]["message"]
+            # OMN-15152 repro #2: some OpenAI-compatible reasoning-model
+            # responses land the actual text in `message.reasoning` and leave
+            # `content` empty/absent. A bare `message["content"]` index then
+            # raised an undiagnosable KeyError('content') that the caller
+            # swallowed into a clean 0-findings result. Tolerate the
+            # reasoning-shape response; only fail with a clear, specific error
+            # when neither field carries usable text.
+            content = message.get("content") or message.get("reasoning")
+            if not content:
+                msg = (
+                    f"Model route {model_key!r} response has no content or "
+                    f"reasoning text: {message!r}"
+                )
+                raise ValueError(msg)
+            return str(content)
 
     async def _call_cli_model(
         self,

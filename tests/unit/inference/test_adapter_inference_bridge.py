@@ -625,6 +625,213 @@ async def test_call_cli_model_does_not_block_event_loop() -> None:
     assert infer_result == "async-out"
 
 
+# ---------------------------------------------------------------------------
+# _call_http_model(): OMN-15152 fail-open defect cluster
+#
+# 1. base_url already carrying a /v1 suffix must not be double-appended to
+#    ".../v1/v1/chat/completions" (the live-reproduced 404 repro).
+# 2. reasoning-shape responses (message.reasoning populated, content empty)
+#    must not crash with a bare, undiagnosable KeyError('content').
+# ---------------------------------------------------------------------------
+
+
+async def test_call_http_model_base_url_with_v1_suffix_does_not_double() -> None:
+    """OMN-15152 repro #1: base_url already ends with /v1 -> must call
+    <base_url>/chat/completions, never <base_url>/v1/chat/completions."""
+    config = ModelInferenceBridgeConfig(
+        model_configs={
+            "v1-suffixed": {
+                "transport": "http",
+                "base_url": "http://localhost:11434/v1",
+                "model_id": "gpt-test",
+            }
+        }
+    )
+    bridge = AdapterInferenceBridge(config)
+    mock_cm, mock_client = _make_mock_httpx_cm("ok")
+
+    with patch(_HTTP_MODULE, return_value=mock_cm):
+        result = await bridge.infer(
+            model_key="v1-suffixed",
+            system_prompt="sys",
+            user_prompt="usr",
+            timeout_seconds=5.0,
+        )
+
+    assert result == "ok"
+    call_args = mock_client.post.call_args
+    url = call_args.args[0]
+    assert url == "http://localhost:11434/v1/chat/completions"
+    assert "/v1/v1/" not in url
+
+
+async def test_call_http_model_base_url_with_trailing_slash_v1_does_not_double() -> (
+    None
+):
+    """Same defect with a trailing slash on top of the /v1 suffix."""
+    config = ModelInferenceBridgeConfig(
+        model_configs={
+            "v1-slash": {
+                "transport": "http",
+                "base_url": "http://localhost:11434/v1/",
+                "model_id": "gpt-test",
+            }
+        }
+    )
+    bridge = AdapterInferenceBridge(config)
+    mock_cm, mock_client = _make_mock_httpx_cm("ok")
+
+    with patch(_HTTP_MODULE, return_value=mock_cm):
+        await bridge.infer(
+            model_key="v1-slash",
+            system_prompt="sys",
+            user_prompt="usr",
+            timeout_seconds=5.0,
+        )
+
+    url = mock_client.post.call_args.args[0]
+    assert url == "http://localhost:11434/v1/chat/completions"
+
+
+async def test_call_http_model_base_url_without_v1_still_appends_v1() -> None:
+    """Existing behavior for a bare base_url (no /v1 suffix) is unchanged."""
+    config = ModelInferenceBridgeConfig(
+        model_configs={
+            "no-v1": {
+                "transport": "http",
+                "base_url": "http://localhost:11434",
+                "model_id": "gpt-test",
+            }
+        }
+    )
+    bridge = AdapterInferenceBridge(config)
+    mock_cm, mock_client = _make_mock_httpx_cm("ok")
+
+    with patch(_HTTP_MODULE, return_value=mock_cm):
+        await bridge.infer(
+            model_key="no-v1",
+            system_prompt="sys",
+            user_prompt="usr",
+            timeout_seconds=5.0,
+        )
+
+    url = mock_client.post.call_args.args[0]
+    assert url == "http://localhost:11434/v1/chat/completions"
+
+
+async def test_call_http_model_reasoning_shape_uses_reasoning_when_content_empty() -> (
+    None
+):
+    """OMN-15152 repro #2: reasoning-model responses land text in
+    message.reasoning with content empty/absent. Must not crash with a bare
+    KeyError('content') and must surface the reasoning text."""
+    config = ModelInferenceBridgeConfig(
+        model_configs={
+            "reasoning-model": {
+                "transport": "http",
+                "base_url": "https://api.example.com",
+                "model_id": "reasoning-test",
+            }
+        }
+    )
+    bridge = AdapterInferenceBridge(config)
+    mock_response = MagicMock()
+    mock_response.raise_for_status = MagicMock()
+    mock_response.json.return_value = {
+        "choices": [
+            {
+                "message": {
+                    "content": "",
+                    "reasoning": "the actual model output landed here",
+                }
+            }
+        ]
+    }
+    mock_client = AsyncMock()
+    mock_client.post.return_value = mock_response
+    mock_cm = MagicMock()
+    mock_cm.__aenter__ = AsyncMock(return_value=mock_client)
+    mock_cm.__aexit__ = AsyncMock(return_value=False)
+
+    with patch(_HTTP_MODULE, return_value=mock_cm):
+        result = await bridge.infer(
+            model_key="reasoning-model",
+            system_prompt="sys",
+            user_prompt="usr",
+            timeout_seconds=5.0,
+        )
+
+    assert result == "the actual model output landed here"
+
+
+async def test_call_http_model_content_absent_falls_back_to_reasoning() -> None:
+    """Same as above but the content key is entirely absent, not just empty."""
+    config = ModelInferenceBridgeConfig(
+        model_configs={
+            "reasoning-model-2": {
+                "transport": "http",
+                "base_url": "https://api.example.com",
+                "model_id": "reasoning-test-2",
+            }
+        }
+    )
+    bridge = AdapterInferenceBridge(config)
+    mock_response = MagicMock()
+    mock_response.raise_for_status = MagicMock()
+    mock_response.json.return_value = {
+        "choices": [{"message": {"reasoning": "reasoning-only text"}}]
+    }
+    mock_client = AsyncMock()
+    mock_client.post.return_value = mock_response
+    mock_cm = MagicMock()
+    mock_cm.__aenter__ = AsyncMock(return_value=mock_client)
+    mock_cm.__aexit__ = AsyncMock(return_value=False)
+
+    with patch(_HTTP_MODULE, return_value=mock_cm):
+        result = await bridge.infer(
+            model_key="reasoning-model-2",
+            system_prompt="sys",
+            user_prompt="usr",
+            timeout_seconds=5.0,
+        )
+
+    assert result == "reasoning-only text"
+
+
+async def test_call_http_model_no_content_or_reasoning_raises_clear_error() -> None:
+    """Neither content nor reasoning present -> a specific, diagnosable
+    ValueError, never a bare unhandled KeyError('content')."""
+    config = ModelInferenceBridgeConfig(
+        model_configs={
+            "empty-model": {
+                "transport": "http",
+                "base_url": "https://api.example.com",
+                "model_id": "empty-test",
+            }
+        }
+    )
+    bridge = AdapterInferenceBridge(config)
+    mock_response = MagicMock()
+    mock_response.raise_for_status = MagicMock()
+    mock_response.json.return_value = {"choices": [{"message": {}}]}
+    mock_client = AsyncMock()
+    mock_client.post.return_value = mock_response
+    mock_cm = MagicMock()
+    mock_cm.__aenter__ = AsyncMock(return_value=mock_client)
+    mock_cm.__aexit__ = AsyncMock(return_value=False)
+
+    with (
+        patch(_HTTP_MODULE, return_value=mock_cm),
+        pytest.raises(ValueError, match="no content or reasoning"),
+    ):
+        await bridge.infer(
+            model_key="empty-model",
+            system_prompt="sys",
+            user_prompt="usr",
+            timeout_seconds=5.0,
+        )
+
+
 async def test_call_cli_model_timeout_maps_to_timeout_expired() -> None:
     bridge = _cli_bridge()
 
