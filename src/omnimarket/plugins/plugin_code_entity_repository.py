@@ -26,8 +26,8 @@ It registers one already-constructed instance and closes its pool on shutdown.
 
 Activation posture
 ------------------
-The plugin activates unconditionally and registers the adapter even when
-``OMNIINTELLIGENCE_DB_URL`` is unset. That is deliberate: the adapter builds its
+The plugin activates unconditionally and registers the repository even when
+``OMNIINTELLIGENCE_DB_URL`` is unset. That is deliberate: the repository builds its
 pool lazily, so an unset DSN raises a *configuration* error naming the env var
 at the effect boundary, which is strictly more diagnosable than the *wiring*
 error ("no provider registered") the nodes raise today. Conditioning activation
@@ -87,7 +87,7 @@ class PluginCodeEntityRepository:
         self,
         _config: ModelDomainPluginConfig,
     ) -> ModelDomainPluginResult:
-        """Construct the repository adapter. Opens no connection."""
+        """Construct the repository. Opens no connection."""
         from omnibase_core.models.runtime.model_domain_plugin import (
             ModelDomainPluginResult,
         )
@@ -96,7 +96,7 @@ class PluginCodeEntityRepository:
         return ModelDomainPluginResult(
             plugin_id=self.plugin_id,
             success=True,
-            message="Code entity repository adapter constructed (pool is lazy)",
+            message="Code entity repository constructed (pool is lazy)",
             resources_created=[type(self._repository).__name__],
         )
 
@@ -104,7 +104,7 @@ class PluginCodeEntityRepository:
         self,
         config: ModelDomainPluginConfig,
     ) -> ModelDomainPluginResult:
-        """Register the adapter under ``ProtocolCodeEntityRepository``."""
+        """Register the repository under ``ProtocolCodeEntityRepository``."""
         from omnibase_core.models.runtime.model_domain_plugin import (
             ModelDomainPluginResult,
         )
@@ -194,7 +194,7 @@ class PluginCodeEntityRepository:
         self,
         _config: ModelDomainPluginConfig,
     ) -> ModelDomainPluginResult:
-        """Close the adapter's pool if one was opened."""
+        """Close the repository's pool if one was opened."""
         from omnibase_core.models.runtime.model_domain_plugin import (
             ModelDomainPluginResult,
         )

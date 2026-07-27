@@ -21,7 +21,7 @@ directly, against the real handlers and a real ``ModelONEXContainer``:
 
 Everything the store is asked for is served by an in-process double, so the test
 is hermetic. The *repository behaviour* (the SQL) is proven separately, against
-real Postgres, in ``test_adapter_code_entity_repository_postgres.py``.
+real Postgres, in ``test_repository_code_entity_postgres.py``.
 """
 
 from __future__ import annotations
@@ -122,9 +122,9 @@ def _plugin_config(container: ModelONEXContainer) -> ModelDomainPluginConfig:
 
 
 async def _wired_container(repository: object) -> ModelONEXContainer:
-    """Container wired by the real plugin, with *repository* as the adapter.
+    """Container wired by the real plugin, with *repository* as the implementation.
 
-    The plugin's own construction path is exercised; only the adapter instance
+    The plugin's own construction path is exercised; only the repository instance
     is swapped, so the DI key, the registration call and the lifecycle hook
     under test are all production code.
     """
@@ -300,19 +300,19 @@ async def test_one_registration_serves_both_nodes() -> None:
     assert resolved_enrichment is repository
 
 
-async def test_production_adapter_satisfies_the_protocol() -> None:
-    """The shipped adapter structurally implements the canonical protocol.
+async def test_production_repository_satisfies_the_protocol() -> None:
+    """The shipped repository structurally implements the canonical protocol.
 
     ``runtime_checkable`` only checks method presence, so this is a shape
     assertion, not a signature one — the signature contract is enforced by mypy
-    --strict on the adapter module and by the behaviour tests.
+    --strict on the repository module and by the behaviour tests.
     """
-    adapter = RepositoryCodeEntityPostgres(dsn="postgresql://unused/db")
-    assert isinstance(adapter, ProtocolCodeEntityRepository)
+    repository = RepositoryCodeEntityPostgres(dsn="postgresql://unused/db")
+    assert isinstance(repository, ProtocolCodeEntityRepository)
 
 
-async def test_plugin_registers_the_real_postgres_adapter_by_default() -> None:
-    """Unpatched, the plugin puts the production adapter in the container.
+async def test_plugin_registers_the_real_postgres_repository_by_default() -> None:
+    """Unpatched, the plugin puts the production repository in the container.
 
     Guards against the provider silently degrading to a null object or a stub:
     the thing registered must be the Postgres implementation.

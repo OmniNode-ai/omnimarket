@@ -19,7 +19,7 @@ rather than assuming a provisioned ``code_entities``: probed 2026-07-27, that
 table exists in no database on either the .201 dev or stability lane, so a test
 that assumed it would skip forever and prove nothing. TEMP also means the test
 leaves no durable footprint in whatever database it is pointed at. The DDL
-mirrors the AST-extraction store's shape for the columns this adapter touches.
+mirrors the AST-extraction store's shape for the columns this repository touches.
 """
 
 from __future__ import annotations
@@ -45,7 +45,7 @@ pytestmark = pytest.mark.asyncio
 
 
 class _RecordingPool:
-    """Records every statement/arg pair the adapter issues."""
+    """Records every statement/arg pair the repository issues."""
 
     def __init__(self, rows: list[dict[str, Any]] | None = None) -> None:
         self.rows = rows or []
@@ -64,7 +64,7 @@ class _RecordingPool:
         return None
 
 
-def _adapter(pool: _RecordingPool) -> RepositoryCodeEntityPostgres:
+def _repository(pool: _RecordingPool) -> RepositoryCodeEntityPostgres:
     return RepositoryCodeEntityPostgres(pool=pool)  # type: ignore[arg-type]
 
 
@@ -73,51 +73,51 @@ async def test_missing_dsn_env_raises_naming_the_variable(
 ) -> None:
     """No DSN -> loud OSError naming the env var, never a silent default."""
     monkeypatch.delenv(CODE_ENTITY_DB_URL_ENV, raising=False)
-    adapter = RepositoryCodeEntityPostgres()
+    repository = RepositoryCodeEntityPostgres()
 
     with pytest.raises(OSError, match=CODE_ENTITY_DB_URL_ENV):
-        await adapter.get_entities_needing_embedding(limit=10)
+        await repository.get_entities_needing_embedding(limit=10)
 
 
 async def test_dsn_is_read_from_env_at_first_use_not_construction(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Constructing the adapter with no DSN configured must not raise.
+    """Constructing the repository with no DSN configured must not raise.
 
-    The plugin constructs the adapter during kernel boot; raising there would
+    The plugin constructs the repository during kernel boot; raising there would
     take the whole runtime down over a config gap that only matters at dispatch.
     """
     monkeypatch.delenv(CODE_ENTITY_DB_URL_ENV, raising=False)
-    adapter = RepositoryCodeEntityPostgres()
+    repository = RepositoryCodeEntityPostgres()
 
     monkeypatch.setenv(CODE_ENTITY_DB_URL_ENV, "postgresql://u:p@h:5432/db")
-    assert adapter._resolve_dsn() == "postgresql://u:p@h:5432/db"
+    assert repository._resolve_dsn() == "postgresql://u:p@h:5432/db"
 
 
 @pytest.mark.parametrize("limit", [0, -1])
 async def test_non_positive_limit_is_rejected(limit: int) -> None:
     """LIMIT 0 would look like a drained queue; reject it instead."""
-    adapter = _adapter(_RecordingPool())
+    repository = _repository(_RecordingPool())
 
     with pytest.raises(ValueError, match="limit must be > 0"):
-        await adapter.get_entities_needing_embedding(limit=limit)
+        await repository.get_entities_needing_embedding(limit=limit)
     with pytest.raises(ValueError, match="limit must be > 0"):
-        await adapter.get_entities_needing_enrichment(limit=limit)
+        await repository.get_entities_needing_enrichment(limit=limit)
 
 
 async def test_update_embedded_at_skips_the_round_trip_on_empty_input() -> None:
     pool = _RecordingPool()
-    await _adapter(pool).update_embedded_at([])
+    await _repository(pool).update_embedded_at([])
     assert pool.executed == []
 
 
 async def test_queries_are_parameterised_and_bind_the_limit() -> None:
     """No value interpolation: the limit must arrive as a bind parameter."""
     pool = _RecordingPool(rows=[{"id": "x"}])
-    adapter = _adapter(pool)
+    repository = _repository(pool)
 
-    await adapter.get_entities_needing_embedding(limit=7)
-    await adapter.get_entities_needing_enrichment(limit=9)
+    await repository.get_entities_needing_embedding(limit=7)
+    await repository.get_entities_needing_enrichment(limit=9)
 
     embedding_sql, embedding_args = pool.fetched[0]
     enrichment_sql, enrichment_args = pool.fetched[1]
@@ -136,7 +136,7 @@ async def test_update_enrichment_binds_every_field_positionally() -> None:
     pool = _RecordingPool()
     entity_id = str(uuid4())
 
-    await _adapter(pool).update_enrichment(
+    await _repository(pool).update_enrichment(
         entity_id=entity_id,
         classification="handler",
         llm_description="Handles requests.",
@@ -157,7 +157,7 @@ async def test_update_enrichment_binds_every_field_positionally() -> None:
     assert "last_enriched_at = NOW()" in sql
 
 
-async def test_injected_pool_is_not_closed_by_the_adapter() -> None:
+async def test_injected_pool_is_not_closed_by_the_repository() -> None:
     """An injected pool belongs to its owner; close() must not touch it."""
     closed = False
 
@@ -166,8 +166,8 @@ async def test_injected_pool_is_not_closed_by_the_adapter() -> None:
             nonlocal closed
             closed = True
 
-    adapter = RepositoryCodeEntityPostgres(pool=_Pool())  # type: ignore[arg-type]
-    await adapter.close()
+    repository = RepositoryCodeEntityPostgres(pool=_Pool())  # type: ignore[arg-type]
+    await repository.close()
     assert closed is False
 
 
@@ -205,7 +205,7 @@ CREATE TEMP TABLE IF NOT EXISTS {table} (
 
 
 class _ConnectionAsPool:
-    """Adapts a single asyncpg connection to the pool surface the adapter uses."""
+    """Adapts a single asyncpg connection to the pool surface the repository uses."""
 
     def __init__(self, conn: Any) -> None:
         self._conn = conn
@@ -222,7 +222,7 @@ class _ConnectionAsPool:
 
 @pytest.fixture
 def scratch_table(monkeypatch: pytest.MonkeyPatch) -> str:
-    """A unique per-test table name, patched in as the adapter's table."""
+    """A unique per-test table name, patched in as the repository's table."""
     table = f"code_entities_omn15230_{uuid4().hex[:12]}"
     monkeypatch.setattr(
         "omnimarket.repositories.repository_code_entity_postgres.CODE_ENTITIES_TABLE",
@@ -279,7 +279,7 @@ async def test_real_postgres_roundtrip(
     conn = postgres_fixture
     await conn.execute(_SCRATCH_TABLE_DDL.format(table=scratch_table))
     try:
-        adapter = RepositoryCodeEntityPostgres(
+        repository = RepositoryCodeEntityPostgres(
             pool=_ConnectionAsPool(conn)  # type: ignore[arg-type]
         )
 
@@ -298,7 +298,7 @@ async def test_real_postgres_roundtrip(
         enriched = await _seed(conn, scratch_table, classification="model")
 
         # -- embedding selection: never-embedded + stale, never fresh
-        pending = await adapter.get_entities_needing_embedding(limit=50)
+        pending = await repository.get_entities_needing_embedding(limit=50)
         pending_ids = {str(row["id"]) for row in pending}
         assert never_embedded in pending_ids
         assert stale in pending_ids
@@ -320,16 +320,16 @@ async def test_real_postgres_roundtrip(
             assert column in sample
 
         # -- update_embedded_at clears them from the pending set
-        await adapter.update_embedded_at([never_embedded, stale])
+        await repository.update_embedded_at([never_embedded, stale])
         still_pending = {
             str(row["id"])
-            for row in await adapter.get_entities_needing_embedding(limit=50)
+            for row in await repository.get_entities_needing_embedding(limit=50)
         }
         assert never_embedded not in still_pending
         assert stale not in still_pending
 
         # -- enrichment selection: classification IS NULL only
-        needs_enrichment = await adapter.get_entities_needing_enrichment(limit=50)
+        needs_enrichment = await repository.get_entities_needing_enrichment(limit=50)
         enrichment_ids = {str(row["id"]) for row in needs_enrichment}
         assert never_embedded in enrichment_ids
         assert enriched not in enrichment_ids
@@ -337,7 +337,7 @@ async def test_real_postgres_roundtrip(
             assert column in needs_enrichment[0]
 
         # -- update_enrichment writes every declared column
-        await adapter.update_enrichment(
+        await repository.update_enrichment(
             entity_id=never_embedded,
             classification="handler",
             llm_description="Handles requests.",
@@ -362,7 +362,7 @@ async def test_real_postgres_roundtrip(
 
         assert never_embedded not in {
             str(row["id"])
-            for row in await adapter.get_entities_needing_enrichment(limit=50)
+            for row in await repository.get_entities_needing_enrichment(limit=50)
         }
     finally:
         await conn.execute(f"DROP TABLE IF EXISTS {scratch_table}")

@@ -30,7 +30,7 @@ maps to. There is **no default DSN**: an unset env var raises at first use rathe
 than silently pointing at some other database (CLAUDE.md rule 8).
 
 The pool is created lazily, on first query — not in ``__init__`` — so the
-adapter can be constructed and registered in the container at kernel boot
+repository can be constructed and registered in the container at kernel boot
 without opening a connection, and a mis-set DSN surfaces at the effect boundary
 with a message naming the env var.
 """
@@ -137,7 +137,7 @@ class RepositoryCodeEntityPostgres:
         return pool
 
     async def close(self) -> None:
-        """Close the pool if this adapter created it.
+        """Close the pool if this repository created it.
 
         An injected pool is owned by the caller and is left alone.
         """
