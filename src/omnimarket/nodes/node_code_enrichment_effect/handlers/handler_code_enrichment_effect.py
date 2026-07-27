@@ -24,7 +24,7 @@ from __future__ import annotations
 import json
 import logging
 import os
-from typing import Any, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
 import httpx
 
@@ -34,6 +34,9 @@ from omnimarket.nodes.node_code_enrichment_effect.models.model_code_enrichment_r
 from omnimarket.nodes.node_code_enrichment_effect.models.model_code_enrichment_result import (
     ModelCodeEnrichmentResult,
 )
+
+if TYPE_CHECKING:
+    from omnibase_core.container import ModelONEXContainer
 
 logger = logging.getLogger(__name__)
 
@@ -76,6 +79,15 @@ PROMPT_TEMPLATE: str = (
 
 @runtime_checkable
 class ProtocolCodeEntityRepository(Protocol):
+    """Enrichment-side code entity repository.
+
+    NOTE(OMN-15230): a *different* protocol with the same name and a different
+    method set lives in ``handler_code_embedding_effect``
+    (``get_entities_needing_embedding`` / ``update_embedded_at``). The two are
+    independent DI keys and must not be conflated; consolidating them is
+    tracked separately and is deliberately out of scope here.
+    """
+
     async def get_entities_needing_enrichment(
         self, *, limit: int
     ) -> list[dict[str, Any]]: ...
@@ -94,14 +106,35 @@ class ProtocolCodeEntityRepository(Protocol):
 class HandlerCodeEnrichmentEffect:
     """EFFECT handler — enriches code entities with LLM classification and description.
 
-    Dependencies are injected via constructor for testability (canonical thin
-    shape, OMN-14242). ``handle()`` takes a single typed
-    ``ModelCodeEnrichmentRequest`` payload — no envelope, no coercion; the
-    runtime wraps.
+    Container-driven DI (OMN-15229, following the OMN-13603 precedent in
+    ``handler_ticket_query``): the constructor takes only the injectable
+    ``container`` so the boot resolver
+    (``tests/test_handler_routing_boot_resolvable.py`` / OMN-13551) can build
+    this handler from known-injectable params alone. The
+    ``ProtocolCodeEntityRepository`` is resolved from the container at the
+    effect boundary *inside* ``handle()`` — never at construction — and
+    resolution failure is loud, never a silent empty result.
+
+    ``handle()`` keeps the canonical definition-B shape: a single typed
+    ``ModelCodeEnrichmentRequest`` payload in, ``ModelCodeEnrichmentResult``
+    out — no envelope, no coercion; the runtime wraps.
     """
 
-    def __init__(self, repository: ProtocolCodeEntityRepository) -> None:
-        self._repository = repository
+    def __init__(self, container: ModelONEXContainer) -> None:
+        self._container = container
+
+    def _resolve_repository(self) -> ProtocolCodeEntityRepository:
+        """Resolve ProtocolCodeEntityRepository from the container.
+
+        Called at the effect boundary. Fails loud when no provider is
+        registered: an enrichment EFFECT with no repository cannot do its job,
+        so the caller must see the wiring gap rather than a zero-count result.
+        """
+        # NOTE(OMN-13603): mypy false-positive — a Protocol is the canonical DI
+        # key for get_service; it is never instantiated here.
+        return self._container.get_service(
+            ProtocolCodeEntityRepository  # type: ignore[type-abstract]  # Protocol used as DI key
+        )
 
     async def handle(
         self, payload: ModelCodeEnrichmentRequest
@@ -144,7 +177,8 @@ class HandlerCodeEnrichmentEffect:
             )
         )
 
-        entities = await self._repository.get_entities_needing_enrichment(
+        repository = self._resolve_repository()
+        entities = await repository.get_entities_needing_enrichment(
             limit=effective_batch_size
         )
         if not entities:
@@ -193,7 +227,7 @@ class HandlerCodeEnrichmentEffect:
                         else:
                             classification = raw_classification
 
-                        await self._repository.update_enrichment(
+                        await repository.update_enrichment(
                             entity_id=str(entity["id"]),
                             classification=classification,
                             llm_description=result.get("description", ""),
@@ -306,4 +340,5 @@ __all__ = [
     "ENRICHMENT_CLASSIFICATIONS",
     "PROMPT_TEMPLATE",
     "HandlerCodeEnrichmentEffect",
+    "ProtocolCodeEntityRepository",
 ]

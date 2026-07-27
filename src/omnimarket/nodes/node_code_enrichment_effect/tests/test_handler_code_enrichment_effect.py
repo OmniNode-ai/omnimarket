@@ -6,10 +6,16 @@
 Unit tests: mocked LLM client, real code paths for confidence threshold logic.
 Integration stubs: @pytest.mark.integration — skipped unless .201 is available.
 
-Canonical thin shape (OMN-14242 canary): repository is constructor-injected;
-handle() takes a single ModelCodeEnrichmentRequest payload.
+Container-driven DI (OMN-15229): the handler takes only the injectable
+``container``; the ProtocolCodeEntityRepository double is registered on a real
+ModelONEXContainer and resolved at the effect boundary inside handle().
+handle() keeps the definition-B single-payload shape.
 
-[OMN-5657, OMN-5664]
+NOTE: this module lives outside ``testpaths = ["tests"]`` and is therefore not
+collected by CI. The CI-collected proof for the OMN-15229 refactor lives in
+``tests/nodes/node_code_enrichment_effect/test_handler_code_enrichment_effect_di.py``.
+
+[OMN-5657, OMN-5664, OMN-15229]
 """
 
 from __future__ import annotations
@@ -21,11 +27,13 @@ from uuid import uuid4
 
 import httpx
 import pytest
+from omnibase_core.container import ModelONEXContainer
 
 from omnimarket.nodes.node_code_enrichment_effect.handlers.handler_code_enrichment_effect import (
     DEFAULT_CONFIDENCE_THRESHOLD,
     TOPIC_CODE_ENRICHED,
     HandlerCodeEnrichmentEffect,
+    ProtocolCodeEntityRepository,
 )
 from omnimarket.nodes.node_code_enrichment_effect.models.model_code_enrichment_request import (
     ModelCodeEnrichmentRequest,
@@ -64,6 +72,20 @@ def _make_mock_repository(entities: list[dict[str, Any]]) -> MagicMock:
     repo.get_entities_needing_enrichment = AsyncMock(return_value=entities)
     repo.update_enrichment = AsyncMock()
     return repo
+
+
+async def _handler_with_repository(repo: MagicMock) -> HandlerCodeEnrichmentEffect:
+    """Build the handler over a real container holding *repo* as the provider.
+
+    Mirrors the runtime resolver path (OMN-15229): boot injects only the
+    container; the repository is resolved from it at the effect boundary.
+    """
+    container = ModelONEXContainer()
+    await container.service_registry.register_instance(
+        ProtocolCodeEntityRepository,  # type: ignore[type-abstract]  # Protocol used as DI key
+        repo,
+    )
+    return HandlerCodeEnrichmentEffect(container=container)
 
 
 def _llm_json_response(
@@ -128,7 +150,7 @@ async def test_successful_enrichment(monkeypatch: pytest.MonkeyPatch) -> None:
 
     monkeypatch.setattr(httpx.AsyncClient, "post", mock_post)
 
-    handler = HandlerCodeEnrichmentEffect(repository=repo)
+    handler = await _handler_with_repository(repo)
     result = await handler.handle(
         ModelCodeEnrichmentRequest(
             correlation_id="test-enrich-001",
@@ -167,7 +189,7 @@ async def test_low_confidence_fallback(monkeypatch: pytest.MonkeyPatch) -> None:
 
     monkeypatch.setattr(httpx.AsyncClient, "post", mock_post)
 
-    handler = HandlerCodeEnrichmentEffect(repository=repo)
+    handler = await _handler_with_repository(repo)
     result = await handler.handle(
         ModelCodeEnrichmentRequest(
             correlation_id="test-enrich-002",
@@ -197,7 +219,7 @@ async def test_llm_failure_increments_failed_count(
 
     monkeypatch.setattr(httpx.AsyncClient, "post", mock_post)
 
-    handler = HandlerCodeEnrichmentEffect(repository=repo)
+    handler = await _handler_with_repository(repo)
     result = await handler.handle(
         ModelCodeEnrichmentRequest(
             correlation_id="test-enrich-003",
@@ -215,7 +237,7 @@ async def test_llm_failure_increments_failed_count(
 async def test_no_entities_returns_zero_counts() -> None:
     """When no entities need enrichment, return zero counts immediately."""
     repo = _make_mock_repository([])
-    handler = HandlerCodeEnrichmentEffect(repository=repo)
+    handler = await _handler_with_repository(repo)
 
     result = await handler.handle(
         ModelCodeEnrichmentRequest(
@@ -236,7 +258,7 @@ async def test_missing_llm_url_raises() -> None:
     import os
 
     repo = _make_mock_repository([_make_entity()])
-    handler = HandlerCodeEnrichmentEffect(repository=repo)
+    handler = await _handler_with_repository(repo)
 
     env_backup = os.environ.pop("LLM_CODER_URL", None)
     try:
@@ -269,7 +291,7 @@ async def test_fallback_used_when_primary_unreachable(
     monkeypatch.setattr(httpx.AsyncClient, "post", mock_post)
     monkeypatch.setenv("LLM_FALLBACK_URL", "http://fallback:8001")
 
-    handler = HandlerCodeEnrichmentEffect(repository=repo)
+    handler = await _handler_with_repository(repo)
     result = await handler.handle(
         ModelCodeEnrichmentRequest(
             correlation_id="test-enrich-006",
@@ -287,7 +309,7 @@ async def test_fallback_used_when_primary_unreachable(
 async def test_correlation_id_propagated_to_output() -> None:
     """correlation_id from input must appear unchanged in output."""
     repo = _make_mock_repository([])
-    handler = HandlerCodeEnrichmentEffect(repository=repo)
+    handler = await _handler_with_repository(repo)
     corr = "unique-enrichment-corr-abc-123"
 
     result = await handler.handle(
