@@ -30,6 +30,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from uuid import UUID
 
@@ -78,6 +79,21 @@ _log = logging.getLogger(__name__)
 DEFAULT_MODEL_CONTEXT_WINDOW = 32_000
 DEFAULT_TIMEOUT_SECONDS = 90.0
 _PROMPT_TEMPLATE_ID = "adversarial_reviewer_pr"
+
+
+@dataclass(frozen=True, slots=True)
+class _FanOutResult:
+    """Per-route outcome of the parallel review fan-out (OMN-15152).
+
+    Distinguishes routes that actually produced review output from routes
+    that errored, so the caller can fail closed when every route died instead
+    of silently reporting a clean 0-findings result.
+    """
+
+    per_model_findings: dict[str, list[ModelReviewFinding]]
+    models_succeeded: list[str]
+    models_failed: list[str]
+    route_errors: dict[str, str]
 
 
 def _finding_to_aggregator_dict(finding: ModelReviewFinding) -> dict[str, object]:
@@ -165,11 +181,43 @@ class HandlerHostileReviewerOrchestrator:
         diff_content = await self._resolve_diff(command)
         adapter = self._resolve_adapter(command.models)
 
-        per_model_findings = await self._fan_out_reviews(
+        fan_out = await self._fan_out_reviews(
             command=command,
             diff_content=diff_content,
             adapter=adapter,
         )
+        per_model_findings = fan_out.per_model_findings
+
+        if not fan_out.models_succeeded:
+            # OMN-15152 fail-closed: every requested reviewer route errored.
+            # A clean SUCCESS/DONE/0-findings verdict here is indistinguishable
+            # from an actually-clean review -- a caller (skill, plan gate, CI)
+            # could not tell "reviewed clean" from "never reviewed". Return a
+            # typed failure with route-level diagnostics instead.
+            diagnostics = "; ".join(
+                f"{model_key}: {fan_out.route_errors[model_key]}"
+                for model_key in fan_out.models_failed
+            )
+            error_message = (
+                f"all {len(command.models)} reviewer route(s) failed, no "
+                f"review output produced: {diagnostics}"
+            )
+            _log.error(
+                "hostile reviewer fail-closed (correlation_id=%s): %s",
+                command.correlation_id,
+                error_message,
+            )
+            return ModelHostileReviewerCompletedEvent(
+                correlation_id=command.correlation_id,
+                final_phase=EnumHostileReviewerPhase.FAILED,
+                started_at=started_at,
+                completed_at=datetime.now(tz=UTC),
+                pass_count=0,
+                total_findings=0,
+                error_message=error_message,
+                models_succeeded=[],
+                models_failed=fan_out.models_failed,
+            )
 
         total_findings = await self._aggregate(
             command.correlation_id, per_model_findings
@@ -180,9 +228,11 @@ class HandlerHostileReviewerOrchestrator:
             final_phase=EnumHostileReviewerPhase.DONE,
             started_at=started_at,
             completed_at=datetime.now(tz=UTC),
-            pass_count=len(command.models),
+            pass_count=len(fan_out.models_succeeded),
             total_findings=total_findings,
             error_message=None,
+            models_succeeded=fan_out.models_succeeded,
+            models_failed=fan_out.models_failed,
         )
 
     async def _resolve_diff(self, command: ModelHostileReviewerStartCommand) -> str:
@@ -213,7 +263,7 @@ class HandlerHostileReviewerOrchestrator:
         command: ModelHostileReviewerStartCommand,
         diff_content: str,
         adapter: ModelInferenceAdapter,
-    ) -> dict[str, list[ModelReviewFinding]]:
+    ) -> _FanOutResult:
         """Fan out per-model: build prompt -> infer -> parse. Parallel."""
         tasks = [
             self._review_one_model(
@@ -226,10 +276,23 @@ class HandlerHostileReviewerOrchestrator:
         ]
         results = await asyncio.gather(*tasks)
         per_model: dict[str, list[ModelReviewFinding]] = {}
-        for model_key, findings in results:
+        models_succeeded: list[str] = []
+        models_failed: list[str] = []
+        route_errors: dict[str, str] = {}
+        for model_key, findings, error_diagnostic in results:
+            if error_diagnostic is not None:
+                models_failed.append(model_key)
+                route_errors[model_key] = error_diagnostic
+                continue
+            models_succeeded.append(model_key)
             if findings:
                 per_model[model_key] = findings
-        return per_model
+        return _FanOutResult(
+            per_model_findings=per_model,
+            models_succeeded=models_succeeded,
+            models_failed=models_failed,
+            route_errors=route_errors,
+        )
 
     async def _review_one_model(
         self,
@@ -237,7 +300,15 @@ class HandlerHostileReviewerOrchestrator:
         model_key: str,
         diff_content: str,
         adapter: ModelInferenceAdapter,
-    ) -> tuple[str, list[ModelReviewFinding]]:
+    ) -> tuple[str, list[ModelReviewFinding], str | None]:
+        """Return ``(model_key, findings, error_diagnostic)``.
+
+        ``error_diagnostic`` is ``None`` on success. On failure it is built
+        from ``repr(exc)`` rather than ``str(exc)`` (OMN-15152 repro #3): some
+        exceptions (e.g. a bare ``KeyError``) str() to an empty string, which
+        previously produced an undiagnosable ``review model X failed: ``
+        log line with no information about what actually broke.
+        """
         prompt = await self._build_prompt(command.correlation_id, diff_content)
         try:
             raw = await adapter.infer(
@@ -247,11 +318,12 @@ class HandlerHostileReviewerOrchestrator:
                 timeout_seconds=DEFAULT_TIMEOUT_SECONDS,
             )
         except Exception as exc:  # boundary-ok: per-model degradation, not fatal
-            _log.warning("review model %s failed: %s", model_key, exc)
-            return model_key, []
+            error_diagnostic = repr(exc)
+            _log.warning("review model %s failed: %s", model_key, error_diagnostic)
+            return model_key, [], error_diagnostic
 
         parsed = await self._parse_response(command.correlation_id, model_key, raw)
-        return model_key, list(parsed.findings)
+        return model_key, list(parsed.findings), None
 
     async def _build_prompt(
         self, correlation_id: UUID, diff_content: str
