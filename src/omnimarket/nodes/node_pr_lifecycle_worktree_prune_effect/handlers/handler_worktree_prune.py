@@ -110,6 +110,76 @@ class ProtocolGitWorktreeAdapter(Protocol):
         ...
 
 
+@runtime_checkable
+class ProtocolGitContentProbe(Protocol):
+    """Content-reachability probe for the OMN-15251 superseded classifier.
+
+    Split from ``ProtocolGitWorktreeAdapter`` so an adapter predating this
+    ticket still satisfies the base protocol; the handler feature-detects the
+    probe and degrades to plain SKIPPED_DIRTY when it is absent.
+    """
+
+    def content_sha_at_ref(
+        self, worktree_path: str, ref: str, rel_path: str
+    ) -> str | None:
+        """Return a content hash for ``rel_path`` at ``ref``, or None if absent there."""
+        ...
+
+    def working_content_sha(self, worktree_path: str, rel_path: str) -> str | None:
+        """Return a content hash for ``rel_path`` in the working tree, or None if absent."""
+        ...
+
+    def content_sha_in_ref_history(
+        self, worktree_path: str, ref: str, rel_path: str, content_sha: str
+    ) -> bool:
+        """True when ``content_sha`` is a version of ``rel_path`` somewhere in ``ref``'s history.
+
+        Equality with the ref *head* is the common case, but a worktree that
+        simply fell behind holds an EARLIER version of a file the merge target
+        has since advanced. Those bytes are still fully recoverable from the
+        merge target's history, so deleting the worktree loses nothing.
+        """
+        ...
+
+
+def _unquote_porcelain_path(raw: str) -> str:
+    """Decode a ``git status --porcelain`` path token.
+
+    git wraps paths containing spaces or specials in double quotes with C-style
+    escapes. Probing the quoted literal would look up a path that does not
+    exist, read as "absent at the merge target", and preserve a worktree that
+    was in fact fully landed — a false BLOCKED, the exact noise OMN-15251 exists
+    to remove.
+    """
+    token = raw.strip()
+    if len(token) >= 2 and token.startswith('"') and token.endswith('"'):
+        try:
+            return token[1:-1].encode().decode("unicode_escape")
+        except UnicodeDecodeError:
+            return token[1:-1]
+    return token
+
+
+def _porcelain_paths(porcelain: str) -> tuple[str, ...]:
+    """Extract the repo-relative path each porcelain entry ultimately refers to.
+
+    For a rename/copy (``R  old -> new``) the destination is what the working
+    tree now holds, so reachability must be proven for ``new``.
+    """
+    paths: list[str] = []
+    for line in porcelain.splitlines():
+        if not line.strip():
+            continue
+        # Status is the first two columns; the path payload follows a space.
+        payload = line[3:] if len(line) > 3 else line.strip()
+        if " -> " in payload:
+            payload = payload.split(" -> ", 1)[1]
+        path = _unquote_porcelain_path(payload)
+        if path:
+            paths.append(path)
+    return tuple(paths)
+
+
 # ---------------------------------------------------------------------------
 # Handler
 # ---------------------------------------------------------------------------
@@ -139,6 +209,7 @@ class HandlerWorktreePrune:
         outcome: EnumPruneOutcome,
         worktree_path: str | None = None,
         dirty_file_count: int = 0,
+        unreachable_paths: tuple[str, ...] = (),
         detail: str = "",
         error: str | None = None,
     ) -> ModelWorktreePruneResult:
@@ -149,10 +220,76 @@ class HandlerWorktreePrune:
             worktree_path=worktree_path,
             outcome=outcome,
             dirty_file_count=dirty_file_count,
+            unreachable_paths=unreachable_paths,
             detail=detail,
             error=error,
             completed_at=datetime.now(tz=UTC),
         )
+
+    def _unreachable_dirty_paths(
+        self,
+        *,
+        worktree_path: str,
+        merge_target_ref: str | None,
+        dirty_paths: tuple[str, ...],
+    ) -> tuple[str, ...] | None:
+        """Return dirty paths NOT provably reachable from the merge target.
+
+        Returns ``None`` when reachability cannot be established at all (no
+        merge target, no content probe on the adapter, or a probe error). The
+        caller must treat ``None`` as "preserve" — it is deliberately distinct
+        from ``()`` ("checked, and everything is landed"), because collapsing
+        the two would let an inconclusive probe authorize a deletion.
+        """
+        if not merge_target_ref:
+            return None
+        probe = self._git
+        if not isinstance(probe, ProtocolGitContentProbe):
+            return None
+
+        unreachable: list[str] = []
+        for rel_path in dirty_paths:
+            try:
+                working = probe.working_content_sha(worktree_path, rel_path)
+                landed = probe.content_sha_at_ref(
+                    worktree_path, merge_target_ref, rel_path
+                )
+            except Exception as exc:  # any probe failure ⇒ preserve, never delete
+                logger.warning(
+                    "[WORKTREE-PRUNE] content probe failed for %s (%s) — preserving "
+                    "worktree %s",
+                    rel_path,
+                    exc,
+                    worktree_path,
+                )
+                return None
+            # A locally deleted file is a divergence no history lookup can
+            # excuse — the worktree asserts an absence the merge target does not.
+            if working is None:
+                unreachable.append(rel_path)
+                continue
+            # Cheap path first: identical to the merge-target head.
+            if landed is not None and working == landed:
+                continue
+            # Fallback: the exact bytes may still live in the merge target's
+            # history (the worktree simply fell behind). Recoverable from the
+            # mainline ⇒ nothing is lost by removing the worktree.
+            try:
+                in_history = probe.content_sha_in_ref_history(
+                    worktree_path, merge_target_ref, rel_path, working
+                )
+            except Exception as exc:  # any probe failure ⇒ preserve, never delete
+                logger.warning(
+                    "[WORKTREE-PRUNE] history probe failed for %s (%s) — preserving "
+                    "worktree %s",
+                    rel_path,
+                    exc,
+                    worktree_path,
+                )
+                return None
+            if not in_history:
+                unreachable.append(rel_path)
+        return tuple(unreachable)
 
     async def handle(
         self, command: ModelWorktreePruneCommand
@@ -255,23 +392,54 @@ class HandlerWorktreePrune:
             )
 
         dirty_lines = [line for line in porcelain.splitlines() if line.strip()]
+
+        # OMN-15251 — `dirty` is a filesystem fact, not a content fact. Before
+        # manufacturing an operator decision, ask the question that actually
+        # matters: is any of this content absent from the merge target? Only a
+        # positive proof of full reachability downgrades dirty to superseded;
+        # every inconclusive answer preserves the worktree.
+        superseded = False
         if dirty_lines:
-            logger.warning(
-                "[WORKTREE-PRUNE] flagging dirty worktree (NOT removing): %s "
-                "(%d uncommitted path(s), ticket=%s)",
-                target,
-                len(dirty_lines),
-                command.ticket_id,
-            )
-            return self._result(
-                command,
-                outcome=EnumPruneOutcome.SKIPPED_DIRTY,
+            dirty_paths = _porcelain_paths(porcelain)
+            unreachable = self._unreachable_dirty_paths(
                 worktree_path=str(target),
-                dirty_file_count=len(dirty_lines),
-                detail=(
-                    f"flagged: {len(dirty_lines)} uncommitted path(s) — kept for "
-                    "recovery, not removed"
-                ),
+                merge_target_ref=command.merge_target_ref,
+                dirty_paths=dirty_paths,
+            )
+            if unreachable is None or unreachable:
+                reason = (
+                    "reachability inconclusive (no merge target, no content probe, "
+                    "or probe error)"
+                    if unreachable is None
+                    else f"{len(unreachable)} path(s) not on {command.merge_target_ref}"
+                )
+                logger.warning(
+                    "[WORKTREE-PRUNE] flagging dirty worktree (NOT removing): %s "
+                    "(%d uncommitted path(s), %s, ticket=%s)",
+                    target,
+                    len(dirty_lines),
+                    reason,
+                    command.ticket_id,
+                )
+                return self._result(
+                    command,
+                    outcome=EnumPruneOutcome.SKIPPED_DIRTY,
+                    worktree_path=str(target),
+                    dirty_file_count=len(dirty_lines),
+                    unreachable_paths=unreachable or (),
+                    detail=(
+                        f"flagged: {len(dirty_lines)} uncommitted path(s), {reason} — "
+                        "kept for recovery, not removed"
+                    ),
+                )
+            superseded = True
+            logger.info(
+                "[WORKTREE-PRUNE] dirty worktree is SUPERSEDED — all %d path(s) "
+                "already on %s: %s (ticket=%s)",
+                len(dirty_lines),
+                command.merge_target_ref,
+                target,
+                command.ticket_id,
             )
 
         if command.dry_run:
@@ -279,7 +447,13 @@ class HandlerWorktreePrune:
                 command,
                 outcome=EnumPruneOutcome.DRY_RUN,
                 worktree_path=str(target),
-                detail="clean worktree — would remove (dry_run)",
+                dirty_file_count=len(dirty_lines),
+                detail=(
+                    f"superseded worktree ({len(dirty_lines)} dirty path(s) all on "
+                    f"{command.merge_target_ref}) — would remove (dry_run)"
+                    if superseded
+                    else "clean worktree — would remove (dry_run)"
+                ),
             )
 
         try:
@@ -299,7 +473,8 @@ class HandlerWorktreePrune:
             )
 
         logger.info(
-            "[WORKTREE-PRUNE] pruned clean worktree %s (ticket=%s repo=%s pr=%s)",
+            "[WORKTREE-PRUNE] pruned %s worktree %s (ticket=%s repo=%s pr=%s)",
+            "superseded" if superseded else "clean",
             target,
             command.ticket_id,
             repo_name,
@@ -307,9 +482,19 @@ class HandlerWorktreePrune:
         )
         return self._result(
             command,
-            outcome=EnumPruneOutcome.PRUNED,
+            outcome=(
+                EnumPruneOutcome.PRUNED_SUPERSEDED
+                if superseded
+                else EnumPruneOutcome.PRUNED
+            ),
             worktree_path=str(target),
-            detail="removed clean, merged worktree",
+            dirty_file_count=len(dirty_lines),
+            detail=(
+                f"removed superseded worktree — all {len(dirty_lines)} dirty path(s) "
+                f"already reachable from {command.merge_target_ref}"
+                if superseded
+                else "removed clean, merged worktree"
+            ),
         )
 
 
@@ -320,6 +505,7 @@ def _bare_repo_name(repo: str) -> str:
 
 __all__: list[str] = [
     "HandlerWorktreePrune",
+    "ProtocolGitContentProbe",
     "ProtocolGitWorktreeAdapter",
     "WorktreesRootUnresolvedError",
     "resolve_worktrees_root",

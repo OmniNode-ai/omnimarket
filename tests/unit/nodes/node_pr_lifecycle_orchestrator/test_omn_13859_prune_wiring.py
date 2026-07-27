@@ -158,3 +158,89 @@ async def test_prune_handler_exception_is_swallowed() -> None:
 async def test_stub_prune_handler_is_inert() -> None:
     result = await _StubPruneHandler().handle(object())
     assert result is None
+
+
+# ---------------------------------------------------------------------------
+# OMN-15251 — the merge-target seam.
+#
+# The superseded classifier is inert unless the orchestrator actually supplies
+# merge_target_ref. These drive the real orchestrator seam (not a second
+# independent unit suite) so a field-name or prefix drift fails here.
+# ---------------------------------------------------------------------------
+
+
+def _merged_one(
+    ticket: str = "OMN-15251", pr_number: int = 77
+) -> tuple[TriageRecord, ...]:
+    return (
+        TriageRecord(
+            pr_number=pr_number,
+            repo="OmniNode-ai/omnimarket",
+            category=EnumPrCategory.GREEN,
+            ticket_ids=(ticket,),
+        ),
+    )
+
+
+@pytest.mark.unit
+async def test_merge_target_ref_is_derived_from_inventory_base_ref() -> None:
+    """base_ref='dev' must reach the prune command as 'origin/dev'."""
+    spy = SpyPruneHandler()
+    orch = _orchestrator(spy)
+    inventory = InventoryResult(
+        prs=(
+            PrRecord(
+                pr_number=77,
+                repo="OmniNode-ai/omnimarket",
+                branch="jonah/omn-15251-x",
+                base_ref="dev",
+                ticket_ids=("OMN-15251",),
+            ),
+        ),
+        total_collected=1,
+    )
+
+    await orch._prune_merged_worktrees(
+        merged=_merged_one(), inventory=inventory, correlation_id=uuid4()
+    )
+
+    assert spy.commands[0].merge_target_ref == "origin/dev"
+
+
+@pytest.mark.unit
+async def test_missing_base_ref_sends_no_merge_target_and_fails_closed() -> None:
+    """Unknown base branch must not be guessed — the effect then preserves."""
+    spy = SpyPruneHandler()
+    orch = _orchestrator(spy)
+    inventory = InventoryResult(
+        prs=(
+            PrRecord(
+                pr_number=77,
+                repo="OmniNode-ai/omnimarket",
+                branch="jonah/omn-15251-x",
+                ticket_ids=("OMN-15251",),
+            ),
+        ),
+        total_collected=1,
+    )
+
+    await orch._prune_merged_worktrees(
+        merged=_merged_one(), inventory=inventory, correlation_id=uuid4()
+    )
+
+    assert spy.commands[0].merge_target_ref is None
+
+
+@pytest.mark.unit
+async def test_superseded_prune_counts_as_pruned_not_dirty() -> None:
+    """PRUNED_SUPERSEDED must aggregate as pruned, never as a dirty decision."""
+    spy = SpyPruneHandler(outcomes={"OMN-15251": EnumPruneOutcome.PRUNED_SUPERSEDED})
+    orch = _orchestrator(spy)
+
+    result = await orch._prune_merged_worktrees(
+        merged=_merged_one(), inventory=None, correlation_id=uuid4()
+    )
+
+    assert result == PruneResult(
+        worktrees_pruned=1, worktrees_flagged_dirty=0, worktrees_skipped=0
+    )
