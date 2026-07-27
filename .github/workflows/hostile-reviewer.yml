@@ -682,8 +682,12 @@ jobs:
         && fromJSON(vars.OMNI_PUBLIC_PR_RUNS_ON_JSON || '["ubuntu-latest"]')
         || fromJSON(vars.OMNI_TRUSTED_CI_RUNS_ON_JSON || '["ubuntu-latest"]')
       }}
+    # SEEDED-PROOF (OMN-15178 X4 parity, throwaway): `if: always()` is
+    # intentionally removed here to reproduce the exact vector-5 skip-vector
+    # shape (OMN-15057) on omnimarket, mirroring the omniclaude RED proof
+    # (omniclaude#1947, closed unmerged 2026-07-26). This branch is a
+    # throwaway and is closed unmerged — it must never land on dev.
     needs: [hostile-review]
-    if: always()
     steps:
       - name: Evaluate gate
         run: |
