@@ -6,10 +6,22 @@ Direct unit coverage of the ``delta`` reducer's ``response_contract`` branch --
 the cross-boundary seam (wire -> handler -> dispatch port -> this reducer) is
 covered separately in
 tests/unit/nodes/node_delegate_skill_orchestrator/test_wire_response_contract_reaches_quality_gate_omn15193.py.
-These tests pin the reducer's own contract: given a declared schema, structural
-validation REPLACES the report-shaped keyword heuristics (``sub_tasks_verified``
-substring matching, ``no_refusal`` phrase matching) for that request, and
-``response_contract=None`` is byte-identical to pre-OMN-15193 behavior.
+These tests pin the reducer's own contract: given a declared schema (passed
+here as an explicit kwarg, ``delta``'s own API -- callers resolve it from
+either an explicit per-request override or the task-class default, see
+``resolve_task_class_response_contract``), structural validation REPLACES the
+task-class DoD/legacy checks for that request, and ``response_contract=None``
+is byte-identical to pre-OMN-15193 behavior FOR THAT PARAMETER -- ``delta``
+itself never resolves a task-class default; that resolution is the CALLER's
+job (dispatch port / bus-intent handler), one layer up.
+
+OMN-15196 separately retired the ``agent_delegation`` task class's
+``sub_tasks_verified``/``no_refusal`` DoD-heuristic entries in
+task_class_contracts.v1.yaml (the keyword-heuristic dispatch-table entries
+are deleted from handler_quality_gate.py too) -- a DIRECT ``delta`` call for
+this task class with no ``response_contract`` at all now runs a SMALLER DoD
+than before OMN-15196 (see
+``test_same_response_without_declared_contract_passes_retired_dod`` below).
 """
 
 from __future__ import annotations
@@ -85,18 +97,36 @@ def test_declared_contract_passes_response_with_i_cannot_rationale() -> None:
 
 
 @pytest.mark.unit
-def test_same_response_without_declared_contract_still_rejected() -> None:
-    """Fallback regression: IDENTICAL content with NO response_contract keeps
-    running the pre-existing task-class heuristics -- proves this ticket did
-    not change behavior for callers that do not opt in."""
+def test_same_response_without_declared_contract_passes_retired_dod() -> None:
+    """OMN-15196: ``agent_delegation``'s task-class DoD (dod_deterministic=
+    task_completed, dod_heuristic=semantic_adequacy -- ``resolve_task_class_
+    dod_checks``'s SOURCE OF TRUTH, task_class_contracts.v1.yaml) no longer
+    declares ``no_refusal``/``sub_tasks_verified`` -- both retired -- so a call
+    into ``delta`` with NO ``response_contract`` at all (bypassing the
+    dispatch-port/bus-intent layers that resolve the class's declared DEFAULT
+    schema, OMN-15196's other seam) now has only ``task_completed``
+    (non-empty) and ``semantic_adequacy`` (not truncated) as its DoD, and the
+    "i cannot" tactical response satisfies both -- this is `delta`'s OWN
+    contract given the (now-retired) YAML DoD, proving the keyword-heuristic
+    entries are truly gone, not merely bypassed for this request."""
     result = quality_gate_delta(
         _agent_delegation_gate_input(_GOOD_TACTICAL_RESPONSE_WITH_I_CANNOT_RATIONALE)
     )
 
+    assert result.passed is True
+    assert not any("REFUSAL" in reason for reason in result.failure_reasons)
+    assert not any("sub_tasks_verified" in reason for reason in result.failure_reasons)
+
+
+@pytest.mark.unit
+def test_same_response_empty_still_rejected_by_retired_dod() -> None:
+    """The retired-heuristic DoD still hard-blocks a genuinely empty/truncated
+    answer via task_completed/semantic_adequacy -- retiring the keyword
+    heuristics did not silently disable every check for this class."""
+    result = quality_gate_delta(_agent_delegation_gate_input("   "))
+
     assert result.passed is False
-    assert result.fail_category == "fail_heuristic"
-    assert any("REFUSAL" in reason for reason in result.failure_reasons)
-    assert any("sub_tasks_verified" in reason for reason in result.failure_reasons)
+    assert any("empty" in reason for reason in result.failure_reasons)
 
 
 @pytest.mark.unit

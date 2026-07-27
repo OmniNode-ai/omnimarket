@@ -135,26 +135,30 @@ class ModelDelegateSkillRequest(BaseModel):
         ),
     )
     # OMN-15193: optional caller-declared JSON-Schema response contract. None
-    # (the default) preserves the exact pre-existing quality-gate behavior —
-    # the task-class keyword heuristics (sub_tasks_verified substring matching,
-    # no_refusal phrase matching) still apply. A non-None value is threaded
+    # (the default) is threaded to dispatch_port.dispatch(response_contract=None),
+    # which then resolves the TASK-CLASS-DECLARED default schema, if any
+    # (`response_contract_ref` in task_class_contracts.v1.yaml, OMN-15196) --
+    # for `agent_delegation` this is the per-role dispatch report contract
+    # (OMN-15161), which REPLACES the now-retired `sub_tasks_verified`/
+    # `no_refusal` keyword heuristics. A non-None value here is threaded
     # verbatim to HandlerDelegateSkill.handle() -> dispatch_port.dispatch(
-    # response_contract=...) -> the quality-gate reducer (`delta`), where
-    # structural JSON-Schema validation against this schema REPLACES the
-    # keyword heuristics for THIS request only -- it does not touch the
-    # task-class contract (task_class_contracts.v1.yaml) any other caller of
-    # the same task_type still sees. This is what makes a caller that knows its
-    # own response shape (e.g. steel's LlmBusDelegationClient, OMN-15170) immune
-    # to a false-positive refusal match on a legitimate rationale substring like
-    # "i cannot" and to the report-shaped `sub_tasks_verified` literal-substring
-    # requirement.
+    # response_contract=...) -> the quality-gate reducer (`delta`), and always
+    # takes precedence over the task-class default -- structural JSON-Schema
+    # validation against THIS schema applies for THIS request only, without
+    # touching the task-class contract any other caller of the same task_type
+    # still sees. This is what makes a caller that knows its own response shape
+    # (e.g. steel's LlmBusDelegationClient, OMN-15170) immune to a
+    # false-positive refusal match on a legitimate rationale substring like
+    # "i cannot", even for a task class with no declared default (or one whose
+    # default does not match this caller's own response shape).
     response_contract: dict[str, object] | None = Field(
         default=None,
         description=(
             "Optional JSON-Schema-shaped contract describing the expected "
             "response structure. When set, the quality gate validates the "
             "response structurally against this schema instead of the "
-            "task-class keyword heuristics. None preserves current behavior."
+            "task-class keyword heuristics. None falls back to the task-class "
+            "declared default schema (if any), then to the legacy heuristics."
         ),
     )
 

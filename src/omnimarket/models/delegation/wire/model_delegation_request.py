@@ -43,7 +43,12 @@ SUPPORTED_ACCEPTANCE_CRITERIA = frozenset(
         "response_non_empty",
         "signature_preserved",
         "step_by_step_explanation",
-        "sub_tasks_verified",
+        # OMN-15196: "sub_tasks_verified" RETIRED -- its keyword-heuristic
+        # implementation is deleted from handler_quality_gate.py, and it never
+        # had a working deterministic-check dispatch entry anyway (acceptance_
+        # criteria flows into dod_deterministic, not dod_heuristic, where this
+        # name lived) -- naming it here would already MALFORMED-fail as an
+        # unsupported deterministic check.
         "task_completed",
         "uses_pytest_mark_unit",
     }

@@ -126,6 +126,7 @@ from omnimarket.nodes.node_delegation_routing_reducer.handlers.handler_delegatio
     next_eligible_tier,
     resolve_task_class_dod_checks,
     resolve_task_class_max_escalations,
+    resolve_task_class_response_contract,
     tier_for_backend,
     tier_max_retries,
 )
@@ -1259,7 +1260,23 @@ class LocalDelegationDispatchPort:
         contract is declared: the caller's own schema is the acceptance
         authority, so scoring the candidate against task-class judge criteria
         would be wasted work and cannot influence the verdict.
+
+        OMN-15196: when the CALLER passes no ``response_contract`` of its own,
+        the task class's own DECLARED default (``response_contract_ref`` in
+        task_class_contracts.v1.yaml, e.g. the per-role dispatch report contract
+        for ``agent_delegation``) is resolved and used instead -- retiring the
+        keyword heuristics (``sub_tasks_verified`` et al.) those migrated classes
+        used to rely on. An explicit caller-declared ``response_contract`` always
+        wins over the task-class default (unchanged precedence); a task class
+        that declares no ``response_contract_ref`` resolves ``None`` here exactly
+        as before, so this is additive -- unmigrated classes are unaffected.
         """
+        effective_response_contract = response_contract
+        if effective_response_contract is None:
+            effective_response_contract = resolve_task_class_response_contract(
+                task_type
+            )
+
         dod_deterministic, dod_heuristic = resolve_task_class_dod_checks(task_type)
         gate_input = ModelQualityGateInput(
             correlation_id=correlation_id,
@@ -1273,7 +1290,10 @@ class LocalDelegationDispatchPort:
 
         judge_score: float | None = None
         judge_verdict_value: EnumDelegationJudgeVerdict | None = None
-        if response_contract is None and task_type in JUDGE_COMBINABLE_TASK_TYPES:
+        if (
+            effective_response_contract is None
+            and task_type in JUDGE_COMBINABLE_TASK_TYPES
+        ):
             judge_verdict = await self._judge.score(
                 correlation_id=correlation_id,
                 task_type=task_type,
@@ -1298,7 +1318,7 @@ class LocalDelegationDispatchPort:
             gate_input,
             judge_adequacy_score=judge_score,
             judge_verdict=judge_verdict_value,
-            response_contract=response_contract,
+            response_contract=effective_response_contract,
         )
 
     def _project_evidence(
