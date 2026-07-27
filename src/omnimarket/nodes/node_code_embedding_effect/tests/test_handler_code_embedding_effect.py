@@ -6,11 +6,18 @@
 Unit tests: mocked Qdrant and embedding client, exercising real code paths.
 Integration stubs: @pytest.mark.integration — skipped unless .201 is available.
 
-Canonical thin shape (OMN-14242 fam4b): repository and qdrant_client are
-constructor-injected; handle() takes a single ModelCodeEmbeddingRequest
-payload.
+Canonical thin shape (OMN-14242 fam4b): handle() takes a single
+ModelCodeEmbeddingRequest payload.
 
-[OMN-5657, OMN-5665]
+Container-driven DI (OMN-15228): the handler takes the injectable ``container``
+and resolves ProtocolCodeEntityRepository from it at the effect boundary, so
+these tests inject the repository double through a container double rather than
+a ``repository=`` constructor kwarg. The boot-resolvability, protocol-key, and
+missing-provider proofs live in
+``tests/nodes/node_code_embedding_effect/test_boot_resolvable_container_di.py``
+(CI collects ``pytest tests/``; this node-local directory is not collected).
+
+[OMN-5657, OMN-5665, OMN-15228]
 """
 
 from __future__ import annotations
@@ -68,6 +75,20 @@ def _make_mock_qdrant(collection: str = "code_patterns") -> MagicMock:
     return qdrant
 
 
+def _handler(
+    repository: MagicMock, qdrant_client: Any | None = None
+) -> HandlerCodeEmbeddingEffect:
+    """Build the handler with *repository* reachable through the container.
+
+    Mirrors the runtime resolver path (OMN-15228): the handler takes the
+    injectable container and resolves ProtocolCodeEntityRepository from it at
+    the effect boundary inside handle().
+    """
+    container = MagicMock()
+    container.get_service.return_value = repository
+    return HandlerCodeEmbeddingEffect(container=container, qdrant_client=qdrant_client)
+
+
 # =============================================================================
 # Unit tests: build_embedding_text
 # =============================================================================
@@ -114,7 +135,7 @@ class TestHandlerCodeEmbeddingEffect:
         repo = _make_mock_repository([entity])
         qdrant = _make_mock_qdrant()
         fake_embedding = [0.1] * 4096
-        handler = HandlerCodeEmbeddingEffect(repository=repo, qdrant_client=qdrant)
+        handler = _handler(repo, qdrant)
 
         with patch(
             "omnimarket.nodes.node_code_embedding_effect.handlers.handler_code_embedding_effect.httpx.AsyncClient"
@@ -157,7 +178,7 @@ class TestHandlerCodeEmbeddingEffect:
         entity = _make_entity()
         repo = _make_mock_repository([entity])
         qdrant = _make_mock_qdrant()
-        handler = HandlerCodeEmbeddingEffect(repository=repo, qdrant_client=qdrant)
+        handler = _handler(repo, qdrant)
 
         with patch(
             "omnimarket.nodes.node_code_embedding_effect.handlers.handler_code_embedding_effect.httpx.AsyncClient"
@@ -183,7 +204,7 @@ class TestHandlerCodeEmbeddingEffect:
     async def test_no_entities_returns_zero_counts(self) -> None:
         repo = _make_mock_repository([])
         qdrant = _make_mock_qdrant()
-        handler = HandlerCodeEmbeddingEffect(repository=repo, qdrant_client=qdrant)
+        handler = _handler(repo, qdrant)
 
         result = await handler.handle(
             ModelCodeEmbeddingRequest(
@@ -200,7 +221,7 @@ class TestHandlerCodeEmbeddingEffect:
     async def test_missing_embedding_url_raises(self) -> None:
         repo = _make_mock_repository([_make_entity()])
         qdrant = _make_mock_qdrant()
-        handler = HandlerCodeEmbeddingEffect(repository=repo, qdrant_client=qdrant)
+        handler = _handler(repo, qdrant)
 
         import os
 
@@ -217,7 +238,7 @@ class TestHandlerCodeEmbeddingEffect:
     @pytest.mark.asyncio
     async def test_qdrant_none_and_host_missing_returns_graceful_skip(self) -> None:
         repo = _make_mock_repository([_make_entity()])
-        handler = HandlerCodeEmbeddingEffect(repository=repo, qdrant_client=None)
+        handler = _handler(repo, None)
 
         import os
 
@@ -240,7 +261,7 @@ class TestHandlerCodeEmbeddingEffect:
     async def test_correlation_id_propagated_to_output(self) -> None:
         repo = _make_mock_repository([])
         qdrant = _make_mock_qdrant()
-        handler = HandlerCodeEmbeddingEffect(repository=repo, qdrant_client=qdrant)
+        handler = _handler(repo, qdrant)
         corr = "unique-correlation-xyz-789"
 
         result = await handler.handle(
