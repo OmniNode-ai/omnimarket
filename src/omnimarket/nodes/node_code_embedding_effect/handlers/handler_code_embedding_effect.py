@@ -22,7 +22,7 @@ from __future__ import annotations
 
 import logging
 import os
-from typing import Any, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
 import httpx
 
@@ -32,6 +32,9 @@ from omnimarket.nodes.node_code_embedding_effect.models.model_code_embedding_req
 from omnimarket.nodes.node_code_embedding_effect.models.model_code_embedding_result import (
     ModelCodeEmbeddingResult,
 )
+
+if TYPE_CHECKING:
+    from omnibase_core.container import ModelONEXContainer
 
 logger = logging.getLogger(__name__)
 
@@ -59,19 +62,53 @@ class ProtocolCodeEntityRepository(Protocol):
 class HandlerCodeEmbeddingEffect:
     """EFFECT handler — embeds code entities and stores vectors in Qdrant.
 
-    Dependencies are injected via constructor for testability (canonical thin
-    shape, OMN-14242). ``handle()`` takes a single typed
-    ``ModelCodeEmbeddingRequest`` payload — no envelope, no coercion; the
-    runtime wraps.
+    Container-driven pattern (OMN-15228, copying the OMN-13603 precedent in
+    ``node_ticket_query``): the constructor takes only the injectable
+    ``container``, so ``ServiceHandlerResolver`` can build this handler at boot
+    from known-param injection alone (``event_bus``, ``container``,
+    ``ownership_query``). Before this change ``repository`` was a required,
+    default-less ctor param, which quarantined the handler at boot and tripped
+    the OMN-13551 guard (``tests/test_handler_routing_boot_resolvable.py``).
+
+    ``ProtocolCodeEntityRepository`` is resolved from the container at the
+    effect boundary inside ``handle()`` — at the point of first use, so the
+    documented "Qdrant unavailability is a graceful skip" invariant above is
+    preserved exactly (a batch that skips on Qdrant never needed a repository).
+    Resolution fails loud when no provider is registered: an embedding EFFECT
+    with no entity repository cannot do its job, so the caller must see the
+    wiring gap rather than a zero-count result. No silent fallback, no
+    null-object repository.
+
+    ``qdrant_client`` stays a defaulted ctor param: unlike the repository it has
+    no protocol to serve as a DI key, and its production path is already lazy —
+    ``_build_qdrant_client()`` is called inside ``handle()`` from env config
+    whenever the param is ``None``. A default-valued param does not affect boot
+    resolvability.
+
+    ``handle()`` takes a single typed ``ModelCodeEmbeddingRequest`` payload and
+    returns a single typed model (definition-B) — no envelope, no coercion; the
+    runtime wraps. That signature is unchanged by this refactor.
     """
 
     def __init__(
         self,
-        repository: ProtocolCodeEntityRepository,
+        container: ModelONEXContainer,
         qdrant_client: Any | None = None,
     ) -> None:
-        self._repository = repository
+        self._container = container
         self._qdrant_client = qdrant_client
+
+    def _resolve_repository(self) -> ProtocolCodeEntityRepository:
+        """Resolve ProtocolCodeEntityRepository from the container.
+
+        Called at the effect boundary inside ``handle()``, never at
+        construction. Fails loud when no provider is registered.
+        """
+        # NOTE(OMN-13603): mypy false-positive — a Protocol is the canonical DI
+        # key for get_service; it is never instantiated here.
+        return self._container.get_service(
+            ProtocolCodeEntityRepository  # type: ignore[type-abstract]  # Protocol used as DI key
+        )
 
     async def handle(
         self, payload: ModelCodeEmbeddingRequest
@@ -144,7 +181,12 @@ class HandlerCodeEmbeddingEffect:
                 batch_size_used=effective_batch_size,
             )
 
-        entities = await self._repository.get_entities_needing_embedding(
+        # Effect boundary: resolve the repository at first use, after the
+        # Qdrant graceful-skip paths above, so an unavailable Qdrant still
+        # short-circuits without demanding a provider (module invariant).
+        repository = self._resolve_repository()
+
+        entities = await repository.get_entities_needing_embedding(
             limit=effective_batch_size
         )
         if not entities:
@@ -186,7 +228,7 @@ class HandlerCodeEmbeddingEffect:
                     failed += 1
 
         if embedded_ids:
-            await self._repository.update_embedded_at(embedded_ids)
+            await repository.update_embedded_at(embedded_ids)
 
         logger.info(
             "Embedding complete: %d embedded, %d failed (correlation_id=%s)",
