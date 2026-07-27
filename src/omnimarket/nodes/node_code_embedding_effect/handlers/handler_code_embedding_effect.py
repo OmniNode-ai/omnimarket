@@ -22,7 +22,7 @@ from __future__ import annotations
 
 import logging
 import os
-from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Any
 
 import httpx
 
@@ -31,6 +31,9 @@ from omnimarket.nodes.node_code_embedding_effect.models.model_code_embedding_req
 )
 from omnimarket.nodes.node_code_embedding_effect.models.model_code_embedding_result import (
     ModelCodeEmbeddingResult,
+)
+from omnimarket.protocols.protocol_code_entity_repository import (
+    ProtocolCodeEntityRepository,
 )
 
 if TYPE_CHECKING:
@@ -50,15 +53,6 @@ PRIMARY_FIELDS = ("entity_name", "docstring", "signature")
 SECONDARY_FIELDS = ("llm_description",)
 
 
-@runtime_checkable
-class ProtocolCodeEntityRepository(Protocol):
-    async def get_entities_needing_embedding(
-        self, *, limit: int
-    ) -> list[dict[str, Any]]: ...
-
-    async def update_embedded_at(self, entity_ids: list[str]) -> None: ...
-
-
 class HandlerCodeEmbeddingEffect:
     """EFFECT handler — embeds code entities and stores vectors in Qdrant.
 
@@ -70,8 +64,11 @@ class HandlerCodeEmbeddingEffect:
     default-less ctor param, which quarantined the handler at boot and tripped
     the OMN-13551 guard (``tests/test_handler_routing_boot_resolvable.py``).
 
-    ``ProtocolCodeEntityRepository`` is resolved from the container at the
-    effect boundary inside ``handle()`` — at the point of first use, so the
+    ``ProtocolCodeEntityRepository`` (canonical declaration in
+    ``omnimarket.protocols.protocol_code_entity_repository`` since OMN-15230;
+    this module used to declare its own same-named copy) is resolved from the
+    container at the effect boundary inside ``handle()`` — at the point of first
+    use, so the
     documented "Qdrant unavailability is a graceful skip" invariant above is
     preserved exactly (a batch that skips on Qdrant never needed a repository).
     Resolution fails loud when no provider is registered: an embedding EFFECT
@@ -367,5 +364,9 @@ async def _get_embedding(
 
 __all__ = [
     "HandlerCodeEmbeddingEffect",
+    # Re-exported (OMN-15230): the canonical declaration lives in
+    # omnimarket.protocols; existing importers of this module keep resolving the
+    # same class object, which is the whole point of the consolidation.
+    "ProtocolCodeEntityRepository",
     "build_embedding_text",
 ]

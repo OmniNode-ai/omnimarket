@@ -502,6 +502,13 @@ market = "omnimarket.cli.market:market"
 
 [project.entry-points."onex.domain_plugins"]
 delegation = "omnimarket.nodes.node_delegation_orchestrator.plugin:PluginDelegation"
+# OMN-15230: registers the ProtocolCodeEntityRepository provider in the boot
+# container. Discovered by ServiceKernel step 4.6
+# (RegistryDomainPlugin.discover_from_entry_points over "onex.domain_plugins");
+# the "omnimarket." namespace is already on the plugin allowlist. Without this
+# entry point node_code_embedding_effect / node_code_enrichment_effect resolve
+# nothing at their effect boundary and fail on first dispatch.
+code_entity_repository = "omnimarket.plugins.plugin_code_entity_repository:PluginCodeEntityRepository"
 
 [project.entry-points."onex.node_package"]
 omnimarket = "omnimarket.nodes"
