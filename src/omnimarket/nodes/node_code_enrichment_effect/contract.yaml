@@ -189,10 +189,29 @@ event_bus:
 
 # === HANDLER ROUTING ===
 handler_routing:
+  # OMN-15027 B3 (OMN-15246): converted from the flat `handler_class`/
+  # `handler_module` shape to the nested `handler: {name, module}` mapping the
+  # OMN-14141 fail-closed loader requires. The flat shape was not parseable and
+  # silently produced ZERO dispatchers, phantom-wiring the subscribed topic
+  # `onex.evt.omnimarket.code-entities-extracted.v1` with no live handler.
+  #
+  # Unblocked by OMN-15229 (PR #1912), which converted
+  # `HandlerCodeEnrichmentEffect` to the container-driven DI shape: its
+  # ctor now takes only the boot-injectable `container` (plus defaulted params),
+  # so `ServiceHandlerResolver` can construct it and the fail-closed,
+  # empty-allowlist boot-resolvability gate (OMN-13551) passes. The handler
+  # already exposes the def-B `handle(request) -> response` entrypoint, so the
+  # frozen/shrink-only `handler_dispatch_entrypoint` baseline (OMN-14617) needs
+  # no additions.
+  #
+  # `module` below matches this contract's root `handler.module` field verbatim so
+  # the compliance sweep's MISSING_HANDLER_ROUTING check still resolves the
+  # canonical handler.
   handlers:
     - operation: "enrich_batch"
-      handler_class: "HandlerCodeEnrichmentEffect"
-      handler_module: "omnimarket.nodes.node_code_enrichment_effect.handlers.handler_code_enrichment_effect"
+      handler:
+        name: "HandlerCodeEnrichmentEffect"
+        module: "omnimarket.nodes.node_code_enrichment_effect.handlers.handler_code_enrichment_effect"
 
 # === VALIDATION RULES ===
 validation_rules:
