@@ -38,10 +38,16 @@ bare-``handler_key`` shape):
 
 * ``node_intent_storage_effect`` / ``node_memory_retrieval_effect``: real
   handlers (``HandlerIntentStorageAdapter``, ``HandlerMemoryRetrieval`` --
-  both cross-repo in ``omnimemory``) expose only ``execute()``, never
-  ``handle()``/``handle_async()`` -- newly fails the frozen/shrink-only
+  both cross-repo in ``omnimemory``) exposed only ``execute()``, never
+  ``handle()``/``handle_async()`` -- newly failed the frozen/shrink-only
   ``handler_dispatch_entrypoint`` gate (OMN-14617), which refuses new
-  baseline entries.
+  baseline entries. **CLEARED by OMN-15027 A3 (OMN-15236)**: OMN-15226
+  (omnimemory#415) added a def-B ``handle()`` to ``HandlerIntentStorageAdapter``
+  and OMN-15227 (omnimemory#416) added one to ``HandlerMemoryRetrieval`` and
+  repointed the routing off the three ``*Mock`` sub-handlers; bumping the
+  ``omninode-memory`` rev pin to omnimemory dev ``887dc679`` made both nodes
+  convertible on merit, with ZERO additions to the frozen baseline. Both now
+  live in ``_EXPECTED_HANDLER_COUNTS`` (3 handlers each).
 * ``node_code_embedding_effect`` / ``node_code_enrichment_effect``: real
   handlers (``HandlerCodeEmbeddingEffect``, ``HandlerCodeEnrichmentEffect``)
   take a required constructor param (``repository:
@@ -50,19 +56,20 @@ bare-``handler_key`` shape):
   the empty-allowlist, fail-closed ``test_handler_routing_boot_resolvable.py``
   gate (OMN-13551), which "quarantines" the handler at runtime boot.
 
-None of these 4 fixes is a shape-only change (they require either cross-repo
+None of these 4 fixes was a shape-only change (each required either cross-repo
 work, a new RSD-authored wrapper node, or a constructor-shape refactor of the
 handler itself to resolve dependencies from the injectable ``container``
-instead) -- so none belongs in this mechanical-conversion ticket. See
+instead) -- so none belonged in this mechanical-conversion ticket. See
 OMN-15027 for the full analysis.
 
 This test drives the REAL loader over every ``src/omnimarket/nodes/*/contract.yaml``
-and asserts the 6 FIXED nodes (3 from OMN-15005 + 3 from OMN-15007) produce
-zero discovery errors and the expected handler counts, while the 4 OMN-15027
-carve-out nodes are explicitly documented as still-expected-to-error (so this
-test stays honest: it does not silently pass because they are excluded, nor
-silently start asserting on them if the carve-out list drifts without a
-ticket reference).
+and asserts the FIXED nodes (3 from OMN-15005 + 3 from OMN-15007 + the 2 Group A
+nodes cleared by OMN-15236 = 8) produce zero discovery errors and the expected
+handler counts, while the remaining OMN-15027 carve-out nodes (the Group B pair,
+owned by B3) are explicitly documented as still-expected-to-error (so this test
+stays honest: it does not silently pass because they are excluded, nor silently
+start asserting on them if the carve-out list drifts without a ticket
+reference).
 """
 
 from __future__ import annotations
@@ -84,6 +91,11 @@ _EXPECTED_HANDLER_COUNTS = {
     "node_adr_canary_orchestrator": 1,
     "node_adr_document_ingestion_effect": 1,
     "node_intent_query_effect": 5,
+    # OMN-15027 A3 (OMN-15236) -- Group A, unblocked by the omninode-memory pin
+    # bump to omnimemory dev 887dc679 (OMN-15226 def-B handle() on
+    # HandlerIntentStorageAdapter + OMN-15227 repoint off the Mock handlers).
+    "node_intent_storage_effect": 3,
+    "node_memory_retrieval_effect": 3,
 }
 
 # Split out from OMN-15007 into OMN-15027: converting these to the nested
@@ -95,10 +107,17 @@ _EXPECTED_HANDLER_COUNTS = {
 # pair). Left in their pre-existing (still flat-key-only, still
 # loader-erroring) state -- no regression, status quo preserved. Listed
 # explicitly so this test stays honest about the carve-out.
+#
+# OMN-15027 A3 (OMN-15236) CLEARED the Group A pair: node_intent_storage_effect
+# and node_memory_retrieval_effect were removed from this carve-out and added to
+# _EXPECTED_HANDLER_COUNTS once the omninode-memory pin bump made both target
+# handlers dispatch-entrypoint- and boot-resolvable. The 2 remaining entries are
+# the Group B pair, owned by B3 (contract conversion for
+# node_code_embedding_effect / node_code_enrichment_effect); their handlers were
+# already refactored to container-driven DI by OMN-15228/OMN-15229, but their
+# contracts are still flat.
 _KNOWN_OUT_OF_SCOPE_FLAT_SCHEMA_NODES = frozenset(
     {
-        "node_intent_storage_effect",
-        "node_memory_retrieval_effect",
         "node_code_embedding_effect",
         "node_code_enrichment_effect",
     }

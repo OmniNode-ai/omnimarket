@@ -12,6 +12,9 @@ from omnimarket.nodes.node_filesystem_crawler_effect.models.model_crawl_filesyst
 from omnimarket.nodes.node_filesystem_crawler_effect.models.model_crawl_filesystem_result import (
     ModelCrawlFilesystemResult,
 )
+from omnimarket.nodes.node_filesystem_crawler_effect.models.model_crawl_state_record import (
+    ModelCrawlStateRecord,
+)
 from omnimarket.nodes.node_filesystem_crawler_effect.models.model_filesystem_crawl_result import (
     ModelFilesystemCrawlResult,
 )
@@ -24,6 +27,7 @@ __all__ = [
     "ModelContentDiscoveredEvent",
     "ModelCrawlFilesystemRequest",
     "ModelCrawlFilesystemResult",
+    "ModelCrawlStateRecord",
     "ModelFilesystemCrawlResult",
     "ModelFilesystemCrawlerConfig",
 ]

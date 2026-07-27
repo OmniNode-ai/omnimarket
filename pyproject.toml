@@ -593,7 +593,7 @@ omnibase-core = { git = "https://github.com/OmniNode-ai/omnibase_core.git", rev 
 # plus the graph repairs, delete this override (the range pin above already
 # covers it) and `uv lock`.
 omnibase-infra = { git = "https://github.com/OmniNode-ai/omnibase_infra.git", rev = "77144f83a9f720fb4a97f1e35c48b588b748a892" }
-omninode-memory = { git = "https://github.com/OmniNode-ai/omnimemory.git", rev = "1cd318d5ca3071a24585191592d3a84fafd30cf7" }
+omninode-memory = { git = "https://github.com/OmniNode-ai/omnimemory.git", rev = "887dc679816b9ca4fe1cf51354ac9d5f2869d4ba" }
 onex-change-control = { git = "https://github.com/OmniNode-ai/onex_change_control.git", rev = "dd2620d18001495b8d0f493b421b38399e9aab4b" }
 
 [tool.uv]
