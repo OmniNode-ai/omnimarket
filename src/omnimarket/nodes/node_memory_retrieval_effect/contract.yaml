@@ -161,23 +161,52 @@ handler_routing:
     minor: 0
     patch: 0
   routing_strategy: operation_match
+  # OMN-15027 A3 (OMN-15236): converted from the flat `handler_key` shape to the
+  # nested `handler: {name, module}` mapping the OMN-14141 fail-closed loader
+  # requires. The flat shape parsed to ZERO dispatchers and phantom-wired the
+  # subscribed topic with no live handler.
+  #
+  # OMN-15227: every dispatchable operation routes to the production handler
+  # HandlerMemoryRetrieval, which is the class the runtime actually dispatches
+  # to (omnimemory.runtime.dispatch_handlers.create_memory_retrieval_dispatch_handler)
+  # and the only one satisfying both downstream omnimarket gates: the
+  # dispatch-entrypoint gate (OMN-14617 — requires handle_async/handle) and the
+  # boot-resolvability gate (OMN-13603 — no required, default-less ctor param
+  # outside {event_bus, container, ownership_query}).
+  #
+  # The Qdrant/Db/Graph mocks previously named here are NOT dispatch targets —
+  # they are internal sub-handlers that HandlerMemoryRetrieval.execute() fans
+  # out to by operation. Each exposes only execute() and requires a default-less
+  # `config`, so declaring them here failed both gates. Do not re-point at them.
+  #
+  # omnimarket declares only the 3 dispatchable operations. The upstream
+  # omnimemory contract additionally lists `health_check` and `index`; `index`
+  # routes to the non-dispatchable HandlerQdrant (OMN-15235) and is deliberately
+  # NOT mirrored here — importing it would turn a latent upstream defect into a
+  # RED omnimarket gate.
   handlers:
-    # Semantic similarity search via Qdrant
+    # Semantic similarity search via Qdrant (sub-handler: HandlerQdrantMock)
     - operation: search
       routing_key: "search"
-      handler_key: "HandlerQdrantMock"
+      handler:
+        name: "HandlerMemoryRetrieval"
+        module: "omnimemory.nodes.node_memory_retrieval_effect.handlers.handler_memory_retrieval"
       priority: 0
       output_events: []
-    # Full-text search via PostgreSQL
+    # Full-text search via PostgreSQL (sub-handler: HandlerDbMock)
     - operation: search_text
       routing_key: "search_text"
-      handler_key: "HandlerDbMock"
+      handler:
+        name: "HandlerMemoryRetrieval"
+        module: "omnimemory.nodes.node_memory_retrieval_effect.handlers.handler_memory_retrieval"
       priority: 0
       output_events: []
-    # Graph traversal via Neo4j/Memgraph
+    # Graph traversal via Neo4j/Memgraph (sub-handler: HandlerGraphMock)
     - operation: search_graph
       routing_key: "search_graph"
-      handler_key: "HandlerGraphMock"
+      handler:
+        name: "HandlerMemoryRetrieval"
+        module: "omnimemory.nodes.node_memory_retrieval_effect.handlers.handler_memory_retrieval"
       priority: 0
       output_events: []
   default_handler: "HandlerMemoryRetrieval"

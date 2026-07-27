@@ -1774,7 +1774,7 @@ requires-dist = [
     { name = "omnibase-core", git = "https://github.com/OmniNode-ai/omnibase_core.git?rev=3f2998b3337e4050b4758e0dd2a0fe1061ce0d98" },
     { name = "omnibase-infra", git = "https://github.com/OmniNode-ai/omnibase_infra.git?rev=77144f83a9f720fb4a97f1e35c48b588b748a892" },
     { name = "omnibase-spi", specifier = ">=0.23.0,<0.24.0" },
-    { name = "omninode-memory", git = "https://github.com/OmniNode-ai/omnimemory.git?rev=1cd318d5ca3071a24585191592d3a84fafd30cf7" },
+    { name = "omninode-memory", git = "https://github.com/OmniNode-ai/omnimemory.git?rev=887dc679816b9ca4fe1cf51354ac9d5f2869d4ba" },
     { name = "onex-change-control", git = "https://github.com/OmniNode-ai/onex_change_control.git?rev=dd2620d18001495b8d0f493b421b38399e9aab4b" },
     { name = "packaging", specifier = ">=24.0" },
     { name = "psycopg2-binary", specifier = ">=2.9.10" },
@@ -1806,7 +1806,7 @@ dev = [
 [[package]]
 name = "omninode-memory"
 version = "0.17.0"
-source = { git = "https://github.com/OmniNode-ai/omnimemory.git?rev=1cd318d5ca3071a24585191592d3a84fafd30cf7#1cd318d5ca3071a24585191592d3a84fafd30cf7" }
+source = { git = "https://github.com/OmniNode-ai/omnimemory.git?rev=887dc679816b9ca4fe1cf51354ac9d5f2869d4ba#887dc679816b9ca4fe1cf51354ac9d5f2869d4ba" }
 dependencies = [
     { name = "aiohttp" },
     { name = "alembic" },

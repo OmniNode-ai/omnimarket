@@ -34,7 +34,6 @@ from uuid import UUID
 from omnimemory.enums.crawl.enum_context_source_type import EnumContextSourceType
 from omnimemory.enums.crawl.enum_crawler_type import EnumCrawlerType
 from omnimemory.enums.crawl.enum_detected_doc_type import EnumDetectedDocType
-from omnimemory.models.crawl.model_crawl_state_record import ModelCrawlStateRecord
 from omnimemory.models.crawl.model_document_changed_event import (
     ModelDocumentChangedEvent,
 )
@@ -48,18 +47,21 @@ from omnimemory.models.crawl.model_document_removed_event import (
     ModelDocumentRemovedEvent,
 )
 
+from omnimarket.nodes.node_filesystem_crawler_effect.models.model_crawl_state_record import (
+    ModelCrawlStateRecord,
+)
 from omnimarket.nodes.node_filesystem_crawler_effect.models.model_filesystem_crawl_result import (
     ModelFilesystemCrawlResult,
 )
 
 if TYPE_CHECKING:
     from omnimemory.models.crawl.types import TriggerSource
-    from omnimemory.protocols.protocol_crawl_state_repository import (
-        ProtocolCrawlStateRepository,
-    )
 
     from omnimarket.nodes.node_filesystem_crawler_effect.models.model_filesystem_crawler_config import (
         ModelFilesystemCrawlerConfig,
+    )
+    from omnimarket.nodes.node_filesystem_crawler_effect.protocols.protocol_crawl_state_repository import (
+        ProtocolCrawlStateRepository,
     )
 
 __all__ = ["HandlerFilesystemCrawler"]

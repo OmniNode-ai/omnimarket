@@ -24,10 +24,12 @@ from uuid import uuid4
 
 import pytest
 from omnimemory.enums.crawl.enum_crawler_type import EnumCrawlerType
-from omnimemory.models.crawl.model_crawl_state_record import ModelCrawlStateRecord
 
 from omnimarket.nodes.node_filesystem_crawler_effect.handlers.handler_filesystem_crawler import (
     HandlerFilesystemCrawler,
+)
+from omnimarket.nodes.node_filesystem_crawler_effect.models.model_crawl_state_record import (
+    ModelCrawlStateRecord,
 )
 from omnimarket.nodes.node_filesystem_crawler_effect.models.model_filesystem_crawler_config import (
     ModelFilesystemCrawlerConfig,

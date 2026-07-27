@@ -155,23 +155,46 @@ handler_routing:
     minor: 0
     patch: 0
   routing_strategy: operation_match
+  # OMN-15027 A3 (OMN-15236): converted from the flat `handler_key` shape to the
+  # nested `handler: {name, module}` mapping the OMN-14141 fail-closed loader
+  # requires. The flat shape parsed to ZERO dispatchers and phantom-wired the
+  # subscribed topic with no live handler.
+  #
+  # All three operations route to HandlerIntentStorageAdapter, which gained a
+  # def-B `handle(request) -> response` entrypoint in OMN-15226 (omnimemory#415)
+  # and whose ctor params are all defaulted — so it satisfies both downstream
+  # omnimarket gates: dispatch-entrypoint (OMN-14617) and boot-resolvability
+  # (OMN-13603). Requires the omninode-memory pin at >= omnimemory dev 887dc679.
+  #
+  # The module below is the `adapters` PACKAGE, matching this contract's root
+  # `handler.module` field verbatim (the package's __init__ re-exports the
+  # class). The compliance sweep's MISSING_HANDLER_ROUTING check compares the
+  # root canonical handler FQN against the routing table, so naming the deeper
+  # `adapters.adapter_intent_storage` module here — though equally importable —
+  # makes the canonical handler look unreachable and trips the gate.
   handlers:
     # Store operation: persist a classified intent linked to a session
     - operation: store
       routing_key: "store"
-      handler_key: "HandlerIntentStorageAdapter"
+      handler:
+        name: "HandlerIntentStorageAdapter"
+        module: "omnimemory.nodes.node_intent_storage_effect.adapters"
       priority: 0
       output_events: []
     # Get session operation: retrieve intents for a specific session
     - operation: get_session
       routing_key: "get_session"
-      handler_key: "HandlerIntentStorageAdapter"
+      handler:
+        name: "HandlerIntentStorageAdapter"
+        module: "omnimemory.nodes.node_intent_storage_effect.adapters"
       priority: 0
       output_events: []
     # Get distribution operation: aggregate intent category distribution
     - operation: get_distribution
       routing_key: "get_distribution"
-      handler_key: "HandlerIntentStorageAdapter"
+      handler:
+        name: "HandlerIntentStorageAdapter"
+        module: "omnimemory.nodes.node_intent_storage_effect.adapters"
       priority: 0
       output_events: []
   default_handler: null
