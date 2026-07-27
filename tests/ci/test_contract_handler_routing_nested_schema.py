@@ -50,11 +50,19 @@ bare-``handler_key`` shape):
   live in ``_EXPECTED_HANDLER_COUNTS`` (3 handlers each).
 * ``node_code_embedding_effect`` / ``node_code_enrichment_effect``: real
   handlers (``HandlerCodeEmbeddingEffect``, ``HandlerCodeEnrichmentEffect``)
-  take a required constructor param (``repository:
+  took a required constructor param (``repository:
   ProtocolCodeEntityRepository``) that is not one of the 3 boot-injectable
-  params (``event_bus``, ``container``, ``ownership_query``) -- newly fails
+  params (``event_bus``, ``container``, ``ownership_query``) -- newly failed
   the empty-allowlist, fail-closed ``test_handler_routing_boot_resolvable.py``
   gate (OMN-13551), which "quarantines" the handler at runtime boot.
+  **CLEARED by OMN-15027 B3 (OMN-15246)**: OMN-15228 (PR #1913) and OMN-15229
+  (PR #1912) refactored both handlers to the container-driven DI shape -- each
+  ctor now takes only the injectable ``container`` (plus, for the embedding
+  handler, a defaulted ``qdrant_client``) and resolves
+  ``ProtocolCodeEntityRepository`` from the container at the effect boundary.
+  Both already exposed the def-B ``handle(request) -> response`` entrypoint, so
+  the frozen ``handler_dispatch_entrypoint`` baseline took ZERO additions. Both
+  now live in ``_EXPECTED_HANDLER_COUNTS`` (1 handler each).
 
 None of these 4 fixes was a shape-only change (each required either cross-repo
 work, a new RSD-authored wrapper node, or a constructor-shape refactor of the
@@ -63,13 +71,10 @@ instead) -- so none belonged in this mechanical-conversion ticket. See
 OMN-15027 for the full analysis.
 
 This test drives the REAL loader over every ``src/omnimarket/nodes/*/contract.yaml``
-and asserts the FIXED nodes (3 from OMN-15005 + 3 from OMN-15007 + the 2 Group A
-nodes cleared by OMN-15236 = 8) produce zero discovery errors and the expected
-handler counts, while the remaining OMN-15027 carve-out nodes (the Group B pair,
-owned by B3) are explicitly documented as still-expected-to-error (so this test
-stays honest: it does not silently pass because they are excluded, nor silently
-start asserting on them if the carve-out list drifts without a ticket
-reference).
+and asserts the FIXED nodes (3 from OMN-15005 + 3 from OMN-15007 + both
+OMN-15027 Group A nodes cleared by OMN-15236 + both Group B nodes cleared by
+OMN-15246 = 10) produce zero discovery errors and the expected handler counts.
+The OMN-15027 carve-out set is now empty.
 """
 
 from __future__ import annotations
@@ -96,6 +101,11 @@ _EXPECTED_HANDLER_COUNTS = {
     # HandlerIntentStorageAdapter + OMN-15227 repoint off the Mock handlers).
     "node_intent_storage_effect": 3,
     "node_memory_retrieval_effect": 3,
+    # OMN-15027 B3 (OMN-15246) -- Group B, unblocked by the container-driven DI
+    # refactors OMN-15228 (PR #1913, HandlerCodeEmbeddingEffect) and OMN-15229
+    # (PR #1912, HandlerCodeEnrichmentEffect), both merged to omnimarket dev.
+    "node_code_embedding_effect": 1,
+    "node_code_enrichment_effect": 1,
 }
 
 # Split out from OMN-15007 into OMN-15027: converting these to the nested
@@ -108,20 +118,8 @@ _EXPECTED_HANDLER_COUNTS = {
 # loader-erroring) state -- no regression, status quo preserved. Listed
 # explicitly so this test stays honest about the carve-out.
 #
-# OMN-15027 A3 (OMN-15236) CLEARED the Group A pair: node_intent_storage_effect
-# and node_memory_retrieval_effect were removed from this carve-out and added to
-# _EXPECTED_HANDLER_COUNTS once the omninode-memory pin bump made both target
-# handlers dispatch-entrypoint- and boot-resolvable. The 2 remaining entries are
-# the Group B pair, owned by B3 (contract conversion for
-# node_code_embedding_effect / node_code_enrichment_effect); their handlers were
-# already refactored to container-driven DI by OMN-15228/OMN-15229, but their
-# contracts are still flat.
-_KNOWN_OUT_OF_SCOPE_FLAT_SCHEMA_NODES = frozenset(
-    {
-        "node_code_embedding_effect",
-        "node_code_enrichment_effect",
-    }
-)
+# OMN-15027 A3 (OMN-15236) and B3 (OMN-15246) cleared all four split-out nodes.
+_KNOWN_OUT_OF_SCOPE_FLAT_SCHEMA_NODES = frozenset()
 
 
 def _all_contract_paths() -> list[Path]:
